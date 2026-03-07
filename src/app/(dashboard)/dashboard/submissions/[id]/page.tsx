@@ -1,19 +1,140 @@
 import { getTranslations } from "next-intl/server";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
+import { db } from "@/lib/db";
+import { submissions, problems, users, submissionResults, testCases } from "@/lib/db/schema";
+import { eq } from "drizzle-orm";
+import { auth } from "@/lib/auth";
+import { redirect, notFound } from "next/navigation";
+import { Badge } from "@/components/ui/badge";
+import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 
-export default async function SubmissionDetailPage() {
+export default async function SubmissionDetailPage({ params }: { params: Promise<{ id: string }> }) {
+  const session = await auth();
+  if (!session?.user) redirect("/login");
+
+  const resolvedParams = await params;
+  const submissionId = resolvedParams.id;
+
   const t = await getTranslations("submissions");
-  const tCommon = await getTranslations("common");
+  
+  const submission = await db.query.submissions.findFirst({
+    where: eq(submissions.id, submissionId),
+    with: {
+      user: {
+        columns: { name: true, email: true }
+      },
+      problem: {
+        columns: { id: true, title: true }
+      }
+    }
+  });
+
+  if (!submission) {
+    notFound();
+  }
+
+  // Access control
+  if (submission.userId !== session.user.id && session.user.role !== "admin" && session.user.role !== "super_admin" && session.user.role !== "instructor") {
+    redirect("/dashboard/submissions");
+  }
+
+  const results = await db
+    .select({
+      id: submissionResults.id,
+      status: submissionResults.status,
+      executionTimeMs: submissionResults.executionTimeMs,
+      memoryUsedKb: submissionResults.memoryUsedKb,
+      testCase: {
+        sortOrder: testCases.sortOrder,
+      }
+    })
+    .from(submissionResults)
+    .leftJoin(testCases, eq(submissionResults.testCaseId, testCases.id))
+    .where(eq(submissionResults.submissionId, submissionId));
 
   return (
-    <div>
-      <h2 className="text-2xl font-bold mb-4">{t("detail")}</h2>
+    <div className="space-y-6">
+      <div className="flex justify-between items-start">
+        <div>
+          <h2 className="text-2xl font-bold mb-2">Submission {submission.id.substring(0,8)}</h2>
+          <div className="flex gap-2">
+            <Badge variant="outline">User: {submission.user?.name}</Badge>
+            <Badge variant="outline">Problem: {submission.problem?.title}</Badge>
+            <Badge variant="outline">Language: {submission.language}</Badge>
+            <Badge variant={submission.status === "accepted" ? "default" : submission.status === "pending" || submission.status === "judging" ? "secondary" : "destructive"}>
+              {submission.status}
+            </Badge>
+          </div>
+        </div>
+        <div className="text-right text-sm text-muted-foreground">
+          <p>Submitted: {submission.submittedAt ? new Date(submission.submittedAt).toLocaleString() : "-"}</p>
+          <p>Score: {submission.score !== null ? submission.score : "-"}</p>
+          <p>Time: {submission.executionTimeMs ? `${submission.executionTimeMs} ms` : "-"}</p>
+          <p>Memory: {submission.memoryUsedKb ? `${submission.memoryUsedKb} KB` : "-"}</p>
+        </div>
+      </div>
+
       <Card>
         <CardHeader>
-          <CardTitle>{tCommon("comingSoon")}</CardTitle>
+          <CardTitle>Source Code</CardTitle>
         </CardHeader>
         <CardContent>
-          <p className="text-muted-foreground">{tCommon("underConstruction")}</p>
+          <pre className="p-4 bg-muted rounded-lg overflow-x-auto">
+            <code>{submission.sourceCode}</code>
+          </pre>
+        </CardContent>
+      </Card>
+
+      {submission.compileOutput && (
+        <Card>
+          <CardHeader>
+            <CardTitle>Compile/Error Output</CardTitle>
+          </CardHeader>
+          <CardContent>
+            <pre className="p-4 bg-muted rounded-lg overflow-x-auto text-red-500">
+              <code>{submission.compileOutput}</code>
+            </pre>
+          </CardContent>
+        </Card>
+      )}
+
+      <Card>
+        <CardHeader>
+          <CardTitle>Test Case Results</CardTitle>
+          <CardDescription>Execution details for each evaluated test case.</CardDescription>
+        </CardHeader>
+        <CardContent>
+          <Table>
+            <TableHeader>
+              <TableRow>
+                <TableHead>Test Case</TableHead>
+                <TableHead>Status</TableHead>
+                <TableHead>Time (ms)</TableHead>
+                <TableHead>Memory (KB)</TableHead>
+              </TableRow>
+            </TableHeader>
+            <TableBody>
+              {results.sort((a, b) => (a.testCase?.sortOrder || 0) - (b.testCase?.sortOrder || 0)).map((res, i) => (
+                <TableRow key={res.id}>
+                  <TableCell>#{i + 1}</TableCell>
+                  <TableCell>
+                    <Badge variant={res.status === "accepted" ? "default" : "destructive"}>
+                      {res.status}
+                    </Badge>
+                  </TableCell>
+                  <TableCell>{res.executionTimeMs !== null ? res.executionTimeMs : "-"}</TableCell>
+                  <TableCell>{res.memoryUsedKb !== null ? res.memoryUsedKb : "-"}</TableCell>
+                </TableRow>
+              ))}
+              {results.length === 0 && (
+                <TableRow>
+                  <TableCell colSpan={4} className="text-center text-muted-foreground">
+                    No results available yet.
+                  </TableCell>
+                </TableRow>
+              )}
+            </TableBody>
+          </Table>
         </CardContent>
       </Card>
     </div>
