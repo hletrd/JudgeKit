@@ -1,11 +1,12 @@
 import { getToken } from "next-auth/jwt";
 import { NextRequest, NextResponse } from "next/server";
+import { shouldUseSecureAuthCookie } from "@/lib/auth/secure-cookie";
 
 export async function getApiUser(request: NextRequest) {
   const token = await getToken({
     req: request,
     secret: process.env.AUTH_SECRET,
-    secureCookie: request.nextUrl.protocol === "https:",
+    secureCookie: shouldUseSecureAuthCookie(request),
   });
   if (!token) return null;
   return {

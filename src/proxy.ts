@@ -1,12 +1,13 @@
 import { NextResponse } from "next/server";
 import type { NextRequest } from "next/server";
 import { getToken } from "next-auth/jwt";
+import { shouldUseSecureAuthCookie } from "@/lib/auth/secure-cookie";
 
 export async function proxy(request: NextRequest) {
   const token = await getToken({
     req: request,
     secret: process.env.AUTH_SECRET,
-    secureCookie: request.nextUrl.protocol === "https:",
+    secureCookie: shouldUseSecureAuthCookie(request),
   });
 
   const isAuthPage = request.nextUrl.pathname.startsWith("/login");
