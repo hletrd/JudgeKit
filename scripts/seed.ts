@@ -4,6 +4,7 @@ import { eq } from "drizzle-orm";
 import { hash } from "bcryptjs";
 import { nanoid } from "nanoid";
 import * as schema from "../src/lib/db/schema";
+import { DEFAULT_JUDGE_LANGUAGES, serializeJudgeCommand } from "../src/lib/judge/languages";
 import path from "path";
 import fs from "fs";
 
@@ -198,87 +199,42 @@ async function seed() {
   }
 
   // Seed default language configs
-  const existingLangs = db
-    .select()
-    .from(schema.languageConfigs)
-    .all();
+  const existingLanguageKeys = new Set(
+    db.select({ language: schema.languageConfigs.language }).from(schema.languageConfigs).all()
+      .map((row) => row.language)
+  );
+  const insertedLanguages: string[] = [];
 
-  if (existingLangs.length === 0) {
-    const languages = [
-      {
-        id: nanoid(),
-        language: "c17",
-        displayName: "C",
-        standard: "C17",
-        extension: ".c",
-        dockerImage: "judge-cpp:latest",
-        compiler: "GCC (gcc)",
-        compileCommand: "gcc -O2 -std=c17 -o /workspace/solution /workspace/solution.c -lm",
-        runCommand: "/workspace/solution",
-        isEnabled: true,
-        updatedAt: new Date(),
-      },
-      {
-        id: nanoid(),
-        language: "c23",
-        displayName: "C",
-        standard: "C23",
-        extension: ".c",
-        dockerImage: "judge-cpp:latest",
-        compiler: "GCC (gcc)",
-        compileCommand: "gcc -O2 -std=c23 -o /workspace/solution /workspace/solution.c -lm",
-        runCommand: "/workspace/solution",
-        isEnabled: true,
-        updatedAt: new Date(),
-      },
-      {
-        id: nanoid(),
-        language: "cpp20",
-        displayName: "C++20",
-        standard: "C++20",
-        extension: ".cpp",
-        dockerImage: "judge-cpp:latest",
-        compiler: "GCC (g++)",
-        compileCommand: "g++ -O2 -std=c++20 -o /workspace/solution /workspace/solution.cpp",
-        runCommand: "/workspace/solution",
-        isEnabled: true,
-        updatedAt: new Date(),
-      },
-      {
-        id: nanoid(),
-        language: "cpp23",
-        displayName: "C++23",
-        standard: "C++23",
-        extension: ".cpp",
-        dockerImage: "judge-cpp:latest",
-        compiler: "GCC (g++)",
-        compileCommand: "g++ -O2 -std=c++23 -o /workspace/solution /workspace/solution.cpp",
-        runCommand: "/workspace/solution",
-        isEnabled: true,
-        updatedAt: new Date(),
-      },
-      {
-        id: nanoid(),
-        language: "python",
-        displayName: "Python 3",
-        standard: null,
-        extension: ".py",
-        dockerImage: "judge-python:latest",
-        compiler: "CPython",
-        compileCommand: null,
-        runCommand: "python3 /workspace/solution.py",
-        isEnabled: true,
-        updatedAt: new Date(),
-      },
-    ];
-
-    for (const lang of languages) {
-      db.insert(schema.languageConfigs).values(lang).run();
+  for (const language of DEFAULT_JUDGE_LANGUAGES) {
+    if (existingLanguageKeys.has(language.language)) {
+      continue;
     }
 
-    console.log("Seeded default language configs: C, C++, Python");
+    const compileCommand = serializeJudgeCommand(language.compileCommand);
+
+    db.insert(schema.languageConfigs)
+      .values({
+        id: nanoid(),
+        language: language.language,
+        displayName: language.displayName,
+        extension: language.extension,
+        dockerImage: language.dockerImage,
+        compiler: language.compiler,
+        runCommand: language.runCommand.join(" "),
+        isEnabled: true,
+        updatedAt: new Date(),
+        ...(language.standard ? { standard: language.standard } : {}),
+        ...(compileCommand ? { compileCommand } : {}),
+      })
+      .run();
+
+    insertedLanguages.push(language.language);
+  }
+
+  if (insertedLanguages.length > 0) {
+    console.log(`Seeded missing language configs: ${insertedLanguages.join(", ")}`);
   } else {
-    console.log("Language configs already exist, skipping.");
+    console.log("Language configs already synchronized.");
   }
 
   if (adminUserId) {

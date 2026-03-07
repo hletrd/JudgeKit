@@ -10,7 +10,8 @@
     "db:push": "drizzle-kit push",
     "db:studio": "drizzle-kit studio",
     "db:generate": "drizzle-kit generate",
-    "seed": "npx tsx scripts/seed.ts",
+    "seed": "tsx scripts/seed.ts",
+    "languages:sync": "tsx scripts/sync-language-configs.ts",
     "test:e2e": "playwright test"
   },
   "dependencies": {
@@ -64,6 +65,7 @@
     "eslint": "^9",
     "eslint-config-next": "16.1.6",
     "tailwindcss": "^4",
+    "tsx": "^4.21.0",
     "typescript": "^5"
   }
 }
