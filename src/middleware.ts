@@ -6,6 +6,7 @@ export async function middleware(request: NextRequest) {
   const token = await getToken({
     req: request,
     secret: process.env.AUTH_SECRET,
+    secureCookie: request.nextUrl.protocol === "https:",
   });
 
   const isAuthPage = request.nextUrl.pathname.startsWith("/login");
