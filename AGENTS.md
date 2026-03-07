@@ -9,7 +9,8 @@ An online judge system for student programming assignments. Built with Next.js 1
 - **Framework:** Next.js 16 (App Router, `src/` directory)
 - **Language:** TypeScript (strict mode)
 - **Database:** SQLite via `better-sqlite3` + Drizzle ORM (WAL mode)
-- **Auth:** Auth.js v5 (Credentials provider, database sessions)
+- **Auth:** Auth.js v5 (Credentials provider, JWT sessions)
+- **i18n:** next-intl (English default, Korean)
 - **UI:** Tailwind CSS v4, shadcn/ui components, Lucide icons
 - **Validation:** Zod
 - **Judge:** Docker containers (C/C++ via GCC 14, Python 3.14)
@@ -96,6 +97,23 @@ online-judge/
   - Default compiler flags (e.g., `-O2 -std=c++17`)
   - Additional allowed/disallowed flags
   - Configurable time/memory limits per problem
+
+## REST API (v1)
+
+All API endpoints under `/api/v1/`. Auth via JWT Bearer token. Responses: `{ data: ... }` or `{ error: "..." }`.
+
+| Endpoint | Methods | Auth | Description |
+|----------|---------|------|-------------|
+| `/api/v1/problems` | GET, POST | User / Instructor+ | List/create problems |
+| `/api/v1/problems/[id]` | GET, PATCH, DELETE | User / Author+Admin | Problem CRUD |
+| `/api/v1/submissions` | GET, POST | User | List own / submit code |
+| `/api/v1/submissions/[id]` | GET | User (own) / Admin | Submission detail with results |
+| `/api/v1/groups` | GET, POST | User / Instructor+ | List/create groups |
+| `/api/v1/groups/[id]` | GET, PATCH, DELETE | Member / Admin | Group CRUD |
+| `/api/v1/users` | GET, POST | Admin | List/create users |
+| `/api/v1/users/[id]` | GET, PATCH, DELETE | Admin / Self | User CRUD |
+| `/api/v1/languages` | GET | Public | List enabled languages |
+| `/api/v1/judge/poll` | GET, POST | Judge token | Poll/report submissions |
 
 ## Key Files
 
