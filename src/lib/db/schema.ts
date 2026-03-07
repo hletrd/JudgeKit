@@ -223,6 +223,7 @@ export const languageConfigs = sqliteTable("language_configs", {
   standard: text("standard"),
   extension: text("extension").notNull(),
   dockerImage: text("docker_image").notNull(),
+  compiler: text("compiler"),
   compileCommand: text("compile_command"),
   runCommand: text("run_command").notNull(),
   isEnabled: integer("is_enabled", { mode: "boolean" }).default(true),

@@ -86,7 +86,7 @@ export default async function DashboardPage() {
                   <TableCell>
                     <Badge variant="secondary">{lang.displayName} {lang.standard ? `(${lang.standard})` : ""}</Badge>
                   </TableCell>
-                  <TableCell className="font-mono text-sm">{lang.dockerImage.split(':')[0]}</TableCell>
+                  <TableCell className="font-mono text-sm">{lang.compiler || "-"}</TableCell>
                   <TableCell className="font-mono text-sm">{lang.compileCommand || "-"}</TableCell>
                 </TableRow>
               ))}
