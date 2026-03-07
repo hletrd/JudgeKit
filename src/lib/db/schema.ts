@@ -233,6 +233,17 @@ export const languageConfigs = sqliteTable("language_configs", {
   ),
 });
 
+export const systemSettings = sqliteTable("system_settings", {
+  id: text("id")
+    .primaryKey()
+    .$defaultFn(() => "global"),
+  siteTitle: text("site_title"),
+  siteDescription: text("site_description"),
+  updatedAt: integer("updated_at", { mode: "timestamp" }).$defaultFn(
+    () => new Date(Date.now())
+  ),
+});
+
 export const submissionResults = sqliteTable("submission_results", {
   id: text("id")
     .primaryKey()
