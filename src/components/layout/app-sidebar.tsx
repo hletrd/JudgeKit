@@ -2,6 +2,7 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
+import { useTranslations } from "next-intl";
 import {
   Sidebar,
   SidebarContent,
@@ -27,19 +28,21 @@ interface AppSidebarProps {
 }
 
 const navItems = [
-  { title: "Dashboard", href: "/dashboard", icon: LayoutDashboard, roles: ["super_admin", "admin", "instructor", "student"] },
-  { title: "Problems", href: "/dashboard/problems", icon: BookOpen, roles: ["super_admin", "admin", "instructor", "student"] },
-  { title: "Submissions", href: "/dashboard/submissions", icon: Send, roles: ["super_admin", "admin", "instructor", "student"] },
-  { title: "Groups", href: "/dashboard/groups", icon: Users, roles: ["super_admin", "admin", "instructor", "student"] },
+  { titleKey: "dashboard" as const, href: "/dashboard", icon: LayoutDashboard, roles: ["super_admin", "admin", "instructor", "student"] },
+  { titleKey: "problems" as const, href: "/dashboard/problems", icon: BookOpen, roles: ["super_admin", "admin", "instructor", "student"] },
+  { titleKey: "submissions" as const, href: "/dashboard/submissions", icon: Send, roles: ["super_admin", "admin", "instructor", "student"] },
+  { titleKey: "groups" as const, href: "/dashboard/groups", icon: Users, roles: ["super_admin", "admin", "instructor", "student"] },
 ];
 
 const adminItems = [
-  { title: "User Management", href: "/dashboard/admin/users", icon: Shield, roles: ["super_admin", "admin"] },
-  { title: "All Submissions", href: "/dashboard/admin/submissions", icon: FileCode, roles: ["super_admin", "admin", "instructor"] },
+  { titleKey: "userManagement" as const, href: "/dashboard/admin/users", icon: Shield, roles: ["super_admin", "admin"] },
+  { titleKey: "allSubmissions" as const, href: "/dashboard/admin/submissions", icon: FileCode, roles: ["super_admin", "admin", "instructor"] },
 ];
 
 export function AppSidebar({ user }: AppSidebarProps) {
   const pathname = usePathname();
+  const t = useTranslations("nav");
+  const tCommon = useTranslations("common");
 
   const filteredNav = navItems.filter(item => item.roles.includes(user.role));
   const filteredAdmin = adminItems.filter(item => item.roles.includes(user.role));
@@ -49,12 +52,12 @@ export function AppSidebar({ user }: AppSidebarProps) {
       <SidebarHeader className="border-b p-4">
         <div className="flex items-center gap-2">
           <GraduationCap className="h-6 w-6" />
-          <span className="text-lg font-bold">Online Judge</span>
+          <span className="text-lg font-bold">{tCommon("appName")}</span>
         </div>
       </SidebarHeader>
       <SidebarContent>
         <SidebarGroup>
-          <SidebarGroupLabel>Navigation</SidebarGroupLabel>
+          <SidebarGroupLabel>{t("navigation")}</SidebarGroupLabel>
           <SidebarGroupContent>
             <SidebarMenu>
               {filteredNav.map((item) => (
@@ -64,7 +67,7 @@ export function AppSidebar({ user }: AppSidebarProps) {
                     render={<Link href={item.href} />}
                   >
                     <item.icon className="h-4 w-4" />
-                    <span>{item.title}</span>
+                    <span>{t(item.titleKey)}</span>
                   </SidebarMenuButton>
                 </SidebarMenuItem>
               ))}
@@ -73,7 +76,7 @@ export function AppSidebar({ user }: AppSidebarProps) {
         </SidebarGroup>
         {filteredAdmin.length > 0 && (
           <SidebarGroup>
-            <SidebarGroupLabel>Administration</SidebarGroupLabel>
+            <SidebarGroupLabel>{t("administration")}</SidebarGroupLabel>
             <SidebarGroupContent>
               <SidebarMenu>
                 {filteredAdmin.map((item) => (
@@ -83,7 +86,7 @@ export function AppSidebar({ user }: AppSidebarProps) {
                       render={<Link href={item.href} />}
                     >
                       <item.icon className="h-4 w-4" />
-                      <span>{item.title}</span>
+                      <span>{t(item.titleKey)}</span>
                     </SidebarMenuButton>
                   </SidebarMenuItem>
                 ))}

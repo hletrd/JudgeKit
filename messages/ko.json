@@ -1,0 +1,107 @@
+{
+  "common": {
+    "appName": "Online Judge",
+    "comingSoon": "준비 중",
+    "underConstruction": "이 페이지는 준비 중입니다.",
+    "loading": "로딩 중...",
+    "error": "오류",
+    "save": "저장",
+    "cancel": "취소",
+    "delete": "삭제",
+    "edit": "수정",
+    "create": "생성",
+    "submit": "제출",
+    "search": "검색",
+    "back": "뒤로",
+    "next": "다음",
+    "previous": "이전",
+    "language": "언어",
+    "english": "English",
+    "korean": "한국어"
+  },
+  "auth": {
+    "signIn": "로그인",
+    "signOut": "로그아웃",
+    "signingIn": "로그인 중...",
+    "signInDescription": "계정에 로그인하세요",
+    "email": "이메일",
+    "password": "비밀번호",
+    "emailPlaceholder": "admin@example.com",
+    "invalidCredentials": "이메일 또는 비밀번호가 올바르지 않습니다"
+  },
+  "nav": {
+    "navigation": "메뉴",
+    "administration": "관리",
+    "dashboard": "대시보드",
+    "problems": "문제",
+    "submissions": "제출 내역",
+    "groups": "그룹",
+    "userManagement": "사용자 관리",
+    "allSubmissions": "전체 제출 내역",
+    "profile": "프로필"
+  },
+  "dashboard": {
+    "title": "대시보드",
+    "welcome": "Online Judge에 오신 것을 환영합니다",
+    "welcomeDescription": "사이드바에서 메뉴를 선택하여 시작하세요."
+  },
+  "problems": {
+    "title": "문제",
+    "detail": "문제 상세",
+    "description": "프로그래밍 문제를 탐색하고 풀어보세요."
+  },
+  "submissions": {
+    "title": "내 제출 내역",
+    "detail": "제출 상세",
+    "description": "제출 기록과 결과를 확인하세요."
+  },
+  "groups": {
+    "title": "그룹",
+    "detail": "그룹 상세",
+    "description": "등록된 그룹과 과제를 확인하세요."
+  },
+  "admin": {
+    "users": {
+      "title": "사용자 관리",
+      "description": "사용자, 역할, 권한을 관리합니다."
+    },
+    "submissions": {
+      "title": "전체 제출 내역",
+      "description": "시스템 전체의 제출 내역을 확인하고 관리합니다."
+    }
+  },
+  "profile": {
+    "title": "프로필",
+    "description": "계정 설정 및 환경설정을 관리합니다."
+  },
+  "judge": {
+    "title": "채점 환경",
+    "cpu": "Ampere Altra (ARM64)",
+    "os": "Debian Bookworm (Linux)",
+    "architecture": "AArch64 (ARM64)",
+    "defaultTimeLimit": "2,000 ms",
+    "defaultMemoryLimit": "256 MB",
+    "limitsNote": "시간 및 메모리 제한은 문제별로 설정할 수 있습니다."
+  },
+  "languages": {
+    "title": "지원 언어",
+    "language": "언어",
+    "compiler": "컴파일러 / 런타임",
+    "compileOptions": "컴파일 옵션",
+    "cpp": {
+      "name": "C++17",
+      "compiler": "GCC 14 (g++)",
+      "flags": "-O2 -std=c++17 -lm"
+    },
+    "c": {
+      "name": "C11",
+      "compiler": "GCC 14 (gcc)",
+      "flags": "-O2 -std=c11 -lm"
+    },
+    "python": {
+      "name": "Python 3",
+      "compiler": "CPython 3.14",
+      "flags": "-"
+    }
+  }
+}

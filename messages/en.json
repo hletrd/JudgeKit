@@ -1,0 +1,107 @@
+{
+  "common": {
+    "appName": "Online Judge",
+    "comingSoon": "Coming Soon",
+    "underConstruction": "This page is under construction.",
+    "loading": "Loading...",
+    "error": "Error",
+    "save": "Save",
+    "cancel": "Cancel",
+    "delete": "Delete",
+    "edit": "Edit",
+    "create": "Create",
+    "submit": "Submit",
+    "search": "Search",
+    "back": "Back",
+    "next": "Next",
+    "previous": "Previous",
+    "language": "Language",
+    "english": "English",
+    "korean": "Korean"
+  },
+  "auth": {
+    "signIn": "Sign in",
+    "signOut": "Sign out",
+    "signingIn": "Signing in...",
+    "signInDescription": "Sign in to your account",
+    "email": "Email",
+    "password": "Password",
+    "emailPlaceholder": "admin@example.com",
+    "invalidCredentials": "Invalid email or password"
+  },
+  "nav": {
+    "navigation": "Navigation",
+    "administration": "Administration",
+    "dashboard": "Dashboard",
+    "problems": "Problems",
+    "submissions": "Submissions",
+    "groups": "Groups",
+    "userManagement": "User Management",
+    "allSubmissions": "All Submissions",
+    "profile": "Profile"
+  },
+  "dashboard": {
+    "title": "Dashboard",
+    "welcome": "Welcome to Online Judge",
+    "welcomeDescription": "Select a menu item from the sidebar to get started."
+  },
+  "problems": {
+    "title": "Problems",
+    "detail": "Problem Detail",
+    "description": "Browse and solve programming problems."
+  },
+  "submissions": {
+    "title": "My Submissions",
+    "detail": "Submission Detail",
+    "description": "View your submission history and results."
+  },
+  "groups": {
+    "title": "Groups",
+    "detail": "Group Detail",
+    "description": "View your enrolled groups and assignments."
+  },
+  "admin": {
+    "users": {
+      "title": "User Management",
+      "description": "Manage users, roles, and permissions."
+    },
+    "submissions": {
+      "title": "All Submissions",
+      "description": "View and manage all submissions across the system."
+    }
+  },
+  "profile": {
+    "title": "Profile",
+    "description": "Manage your account settings and preferences."
+  },
+  "judge": {
+    "title": "Judge Environment",
+    "cpu": "Ampere Altra (ARM64)",
+    "os": "Debian Bookworm (Linux)",
+    "architecture": "AArch64 (ARM64)",
+    "defaultTimeLimit": "2,000 ms",
+    "defaultMemoryLimit": "256 MB",
+    "limitsNote": "Time and memory limits are configurable per problem."
+  },
+  "languages": {
+    "title": "Supported Languages",
+    "language": "Language",
+    "compiler": "Compiler / Runtime",
+    "compileOptions": "Compile Options",
+    "cpp": {
+      "name": "C++17",
+      "compiler": "GCC 14 (g++)",
+      "flags": "-O2 -std=c++17 -lm"
+    },
+    "c": {
+      "name": "C11",
+      "compiler": "GCC 14 (gcc)",
+      "flags": "-O2 -std=c11 -lm"
+    },
+    "python": {
+      "name": "Python 3",
+      "compiler": "CPython 3.14",
+      "flags": "-"
+    }
+  }
+}

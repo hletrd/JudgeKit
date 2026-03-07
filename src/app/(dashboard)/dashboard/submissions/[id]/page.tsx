@@ -1,15 +1,19 @@
+import { getTranslations } from "next-intl/server";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 
-export default function SubmissionDetailPage() {
+export default async function SubmissionDetailPage() {
+  const t = await getTranslations("submissions");
+  const tCommon = await getTranslations("common");
+
   return (
     <div>
-      <h2 className="text-2xl font-bold mb-4">Submission Detail</h2>
+      <h2 className="text-2xl font-bold mb-4">{t("detail")}</h2>
       <Card>
         <CardHeader>
-          <CardTitle>Coming Soon</CardTitle>
+          <CardTitle>{tCommon("comingSoon")}</CardTitle>
         </CardHeader>
         <CardContent>
-          <p className="text-muted-foreground">This page is under construction.</p>
+          <p className="text-muted-foreground">{tCommon("underConstruction")}</p>
         </CardContent>
       </Card>
     </div>

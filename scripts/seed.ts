@@ -65,7 +65,7 @@ async function seed() {
         displayName: "C",
         extension: ".c",
         dockerImage: "judge-cpp:latest",
-        compileCommand: "gcc -O2 -o /workspace/solution /workspace/solution.c -lm",
+        compileCommand: "gcc -O2 -std=c11 -o /workspace/solution /workspace/solution.c -lm",
         runCommand: "/workspace/solution",
         isEnabled: true,
         updatedAt: new Date(),

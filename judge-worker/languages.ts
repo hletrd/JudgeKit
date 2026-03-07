@@ -11,7 +11,7 @@ export const LANGUAGE_CONFIGS: Record<string, LanguageConfig> = {
     name: "C",
     extension: ".c",
     dockerImage: "judge-cpp:latest",
-    compileCommand: ["gcc", "-O2", "-o", "/workspace/solution", "/workspace/solution.c", "-lm"],
+    compileCommand: ["gcc", "-O2", "-std=c11", "-o", "/workspace/solution", "/workspace/solution.c", "-lm"],
     runCommand: ["/workspace/solution"],
   },
   cpp: {
