@@ -1,9 +1,15 @@
 import { getTranslations } from "next-intl/server";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import { auth } from "@/lib/auth";
+import { findSessionUser } from "@/lib/auth/find-session-user";
 import { ChangePasswordForm } from "./change-password-form";
+import { InvalidChangePasswordSession } from "./invalid-change-password-session";
 
 export default async function ChangePasswordPage() {
   const t = await getTranslations("changePassword");
+  const session = await auth();
+  const currentUser = await findSessionUser(session);
+  const shouldResetSession = !currentUser || !currentUser.passwordHash;
 
   return (
     <div className="flex min-h-screen items-center justify-center">
@@ -13,7 +19,11 @@ export default async function ChangePasswordPage() {
           <CardDescription>{t("description")}</CardDescription>
         </CardHeader>
         <CardContent>
-          <ChangePasswordForm />
+          {shouldResetSession ? (
+            <InvalidChangePasswordSession />
+          ) : (
+            <ChangePasswordForm username={currentUser.username} />
+          )}
         </CardContent>
       </Card>
     </div>

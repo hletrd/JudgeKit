@@ -1,13 +1,16 @@
 "use client";
 
 import { useState } from "react";
+import { signIn, signOut } from "next-auth/react";
+import { useRouter } from "next/navigation";
 import { useTranslations } from "next-intl";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { changePassword } from "@/lib/actions/change-password";
 
-export function ChangePasswordForm() {
+export function ChangePasswordForm({ username }: { username: string }) {
+  const router = useRouter();
   const t = useTranslations("changePassword");
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
@@ -37,11 +40,32 @@ export function ChangePasswordForm() {
     const result = await changePassword(currentPassword, newPassword);
 
     if (!result.success) {
+      if (result.error === "sessionExpired" || result.error === "userNotFound") {
+        await signOut({ redirect: false });
+        router.replace("/login");
+        router.refresh();
+        return;
+      }
+
       setError(t(result.error ?? "error"));
       setLoading(false);
     } else {
-      // Full reload to refresh JWT with mustChangePassword cleared
-      window.location.href = "/dashboard";
+      const refreshedSession = await signIn("credentials", {
+        username,
+        password: newPassword,
+        redirect: false,
+        redirectTo: "/dashboard",
+      });
+
+      if (refreshedSession?.error || !refreshedSession?.ok) {
+        await signOut({ redirect: false });
+        router.replace("/login");
+        router.refresh();
+        return;
+      }
+
+      router.replace("/dashboard");
+      router.refresh();
     }
   }
 

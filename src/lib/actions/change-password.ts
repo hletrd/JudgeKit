@@ -2,25 +2,25 @@
 
 import { hash, compare } from "bcryptjs";
 import { eq } from "drizzle-orm";
+import { auth } from "@/lib/auth";
+import { findSessionUser, hasSessionIdentity } from "@/lib/auth/find-session-user";
 import { db } from "@/lib/db";
 import { users } from "@/lib/db/schema";
-import { auth } from "@/lib/auth";
 
 export async function changePassword(
   currentPassword: string,
   newPassword: string
 ): Promise<{ success: boolean; error?: string }> {
   const session = await auth();
-  if (!session?.user?.id) {
-    return { success: false, error: "Not authenticated" };
+
+  if (!hasSessionIdentity(session)) {
+    return { success: false, error: "sessionExpired" };
   }
 
-  const user = await db.query.users.findFirst({
-    where: eq(users.id, session.user.id),
-  });
+  const user = await findSessionUser(session);
 
   if (!user || !user.passwordHash) {
-    return { success: false, error: "userNotFound" };
+    return { success: false, error: "sessionExpired" };
   }
 
   const isValid = await compare(currentPassword, user.passwordHash);
@@ -40,7 +40,7 @@ export async function changePassword(
       mustChangePassword: false,
       updatedAt: new Date(),
     })
-    .where(eq(users.id, session.user.id))
+    .where(eq(users.id, user.id))
     .run();
 
   return { success: true };
