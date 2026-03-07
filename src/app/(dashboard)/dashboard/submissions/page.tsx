@@ -99,10 +99,14 @@ export default async function SubmissionsPage({
             <TableBody>
               {visibleSubmissions.map((sub) => (
                 <TableRow key={sub.id}>
-                  <TableCell className="font-mono text-xs">{sub.id.substring(0, 8)}</TableCell>
+                  <TableCell className="font-mono text-xs">
+                    <Link href={`/dashboard/submissions/${sub.id}`} className="text-primary hover:underline">
+                      {sub.id.substring(0, 8)}
+                    </Link>
+                  </TableCell>
                   <TableCell>
                     {sub.problem ? (
-                      <Link href={`/dashboard/problems/${sub.problem.id}`} className="hover:underline text-blue-600">
+                      <Link href={`/dashboard/problems/${sub.problem.id}`} className="text-primary hover:underline">
                         {sub.problem.title}
                       </Link>
                     ) : (

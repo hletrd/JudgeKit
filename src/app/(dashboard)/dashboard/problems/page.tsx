@@ -211,7 +211,11 @@ export default async function ProblemsPage({
             <TableBody>
               {filteredProblems.map((problem) => (
                 <TableRow key={problem.id}>
-                  <TableCell className="font-medium">{problem.title}</TableCell>
+                  <TableCell className="font-medium">
+                    <Link href={`/dashboard/problems/${problem.id}`} className="text-primary hover:underline">
+                      {problem.title}
+                    </Link>
+                  </TableCell>
                   <TableCell>{renderProgress(problem.progress)}</TableCell>
                   <TableCell>{problem.author?.name || tCommon("system")}</TableCell>
                   <TableCell>{t("timeLimitValue", { value: problem.timeLimitMs ?? 2000 })}</TableCell>
