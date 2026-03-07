@@ -1,4 +1,8 @@
-FROM python:3.14.3-slim-bookworm
+FROM golang:1.26.1-bookworm
+
+ENV GOCACHE=/workspace/.go-build-cache \
+    GOMODCACHE=/workspace/.go-mod-cache \
+    HOME=/workspace
 
 RUN useradd --create-home --shell /usr/sbin/nologin judge && \
     mkdir -p /workspace && \

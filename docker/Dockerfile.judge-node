@@ -1,0 +1,11 @@
+FROM node:24.14.0-bookworm-slim
+
+RUN npm install --global typescript@5.9.3 @types/node@24.12.0 && \
+    npm cache clean --force && \
+    useradd --create-home --shell /usr/sbin/nologin judge && \
+    mkdir -p /workspace && \
+    chown judge:judge /workspace
+
+WORKDIR /workspace
+
+USER judge

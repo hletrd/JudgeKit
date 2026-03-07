@@ -1,4 +1,6 @@
-FROM python:3.14.3-slim-bookworm
+FROM swift:6.2.4-noble
+
+ENV HOME=/workspace
 
 RUN useradd --create-home --shell /usr/sbin/nologin judge && \
     mkdir -p /workspace && \
