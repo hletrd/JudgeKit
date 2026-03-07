@@ -46,7 +46,7 @@
 - As of 2026-03-07, commit `6951d46` is deployed to `oj-demo.atik.kr`; the demo host has the `system_settings.time_zone` column applied and the public login page returns HTTP 200
 - Security hardening now includes login rate limiting, explicit auth/judge env validation, stronger API access checks, problem/test-case exposure fixes, and shared security headers
 - As of 2026-03-07, a remote smoke test against `oj-demo.atik.kr` succeeded with instructor-authenticated `POST /api/v1/problems` calls and left six private Korean practice problems on the demo host for API verification
-- Remaining roadmap items are still open: assignment CRUD, group membership management, broader audit/event logging, CI, and backup/observability work
+- Remaining roadmap items are still open: assignment CRUD, group membership management, broader audit/event logging, additional language/runtime expansion, CI, and backup/observability work
 
 ## Getting Started
 
