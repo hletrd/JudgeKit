@@ -16,7 +16,7 @@ export async function GET(request: NextRequest) {
     const offset = (page - 1) * limit;
     const visibility = searchParams.get("visibility");
 
-    let query = db.select().from(problems).orderBy(desc(problems.createdAt)).limit(limit).offset(offset);
+    const query = db.select().from(problems).orderBy(desc(problems.createdAt)).limit(limit).offset(offset);
 
     const allProblems = await query;
 

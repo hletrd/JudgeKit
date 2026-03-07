@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { db } from "@/lib/db";
 import { submissions } from "@/lib/db/schema";
-import { eq, and, desc } from "drizzle-orm";
+import { eq, desc } from "drizzle-orm";
 import { getApiUser, unauthorized, isAdmin } from "@/lib/api/auth";
 import { nanoid } from "nanoid";
 
