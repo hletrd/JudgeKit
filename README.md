@@ -1,36 +1,92 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+<p align="center">
+  <img src="https://img.shields.io/badge/Next.js-16-black?logo=next.js" alt="Next.js 16" />
+  <img src="https://img.shields.io/badge/TypeScript-5-blue?logo=typescript" alt="TypeScript" />
+  <img src="https://img.shields.io/badge/SQLite-Drizzle_ORM-green?logo=sqlite" alt="SQLite" />
+  <img src="https://img.shields.io/badge/Docker-Sandboxed-2496ED?logo=docker" alt="Docker" />
+  <img src="https://img.shields.io/badge/Auth.js-v5-purple?logo=auth0" alt="Auth.js" />
+</p>
+
+<h1 align="center">Online Judge</h1>
+
+<p align="center">
+  A secure online judge system for student programming assignments.<br/>
+  Automated code evaluation with Docker-sandboxed execution for C, C++, and Python.
+</p>
+
+<p align="center">
+  <a href="#features">Features</a> &middot;
+  <a href="#getting-started">Getting Started</a> &middot;
+  <a href="#tech-stack">Tech Stack</a> &middot;
+  <a href="#project-structure">Project Structure</a>
+</p>
+
+---
+
+## Features
+
+- **Role-based access** — Super admin, admin, instructor, and student roles with granular permissions
+- **Classroom management** — Groups, enrollments, and assignments with deadlines and late penalties
+- **Problem management** — Markdown descriptions, configurable time/memory limits, public/private/hidden visibility
+- **Secure code execution** — Docker containers with no network, seccomp profiles, memory/CPU limits, and non-root users
+- **Multi-language support** — C, C++, and Python with admin-customizable compile options
+- **Real-time judging** — Queue-based submission processing with per-test-case results
 
 ## Getting Started
 
-First, run the development server:
-
 ```bash
+# Install dependencies
+npm install
+
+# Set up environment
+cp .env.example .env
+# Edit .env and set AUTH_SECRET (generate with: openssl rand -base64 32)
+
+# Push database schema
+npm run db:push
+
+# Seed default admin user
+npm run seed
+# Default credentials: admin@example.com / admin123
+
+# Start development server
 npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
-bun dev
 ```
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+Open [http://localhost:3000](http://localhost:3000) to access the application.
 
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
+## Tech Stack
 
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
+| Layer | Technology |
+|-------|-----------|
+| Framework | Next.js 16 (App Router) |
+| Language | TypeScript |
+| Database | SQLite + Drizzle ORM |
+| Auth | Auth.js v5 (Credentials) |
+| UI | Tailwind CSS v4, shadcn/ui |
+| Code Editor | Monaco Editor |
+| Judge | Docker (GCC 14, Python 3.14) |
+| Validation | Zod |
 
-## Learn More
+## Project Structure
 
-To learn more about Next.js, take a look at the following resources:
+```
+online-judge/
+├── docker/              # Judge Docker images & seccomp profile
+├── judge-worker/        # Separate judge process (polls & executes)
+├── scripts/             # Seed scripts
+├── src/
+│   ├── app/
+│   │   ├── (auth)/      # Login page
+│   │   ├── (dashboard)/ # Protected dashboard routes
+│   │   └── api/         # API routes
+│   ├── lib/
+│   │   ├── db/          # Schema, relations, connection
+│   │   └── auth/        # Auth config & permissions
+│   ├── components/      # UI components
+│   └── types/           # TypeScript types
+└── data/                # SQLite database (gitignored)
+```
 
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
+## License
 
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
-
-## Deploy on Vercel
-
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
-
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+MIT
