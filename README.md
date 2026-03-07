@@ -50,13 +50,22 @@ npm run db:push
 
 # Seed default admin user
 npm run seed
-# Default credentials: admin@example.com / admin123
 
 # Start development server
 npm run dev
 ```
 
 Open [http://localhost:3000](http://localhost:3000) to access the application.
+
+### Default Admin Account
+
+| Field | Value |
+|-------|-------|
+| Email | `admin@example.com` |
+| Password | `admin123` |
+| Role | `super_admin` |
+
+> **Note:** Change the default password immediately in production.
 
 ## Tech Stack
 
