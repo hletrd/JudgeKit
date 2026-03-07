@@ -1,0 +1,17 @@
+[Unit]
+Description=Online Judge Judge Worker
+After=network.target docker.service online-judge.service
+Requires=online-judge.service
+
+[Service]
+Type=simple
+User=ubuntu
+WorkingDirectory=/home/ubuntu/online-judge
+EnvironmentFile=/home/ubuntu/online-judge/.env
+Environment=NODE_ENV=production
+ExecStart=/usr/bin/npx tsx judge-worker/index.ts
+Restart=always
+RestartSec=5
+
+[Install]
+WantedBy=multi-user.target
