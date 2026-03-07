@@ -1,7 +1,7 @@
 import { getTranslations } from "next-intl/server";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { db } from "@/lib/db";
-import { submissions, problems, users, submissionResults, testCases } from "@/lib/db/schema";
+import { submissions, submissionResults, testCases } from "@/lib/db/schema";
 import { eq } from "drizzle-orm";
 import { auth } from "@/lib/auth";
 import { redirect, notFound } from "next/navigation";
@@ -16,7 +16,6 @@ export default async function SubmissionDetailPage({ params }: { params: Promise
   const submissionId = resolvedParams.id;
 
   const t = await getTranslations("submissions");
-  const tCommon = await getTranslations("common");
   
   const submission = await db.query.submissions.findFirst({
     where: eq(submissions.id, submissionId),
