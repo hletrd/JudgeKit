@@ -4,10 +4,10 @@ import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { useTranslations } from "next-intl";
 import { toast } from "sonner";
+import { CodeEditor } from "@/components/code/code-editor";
 import { Button } from "@/components/ui/button";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { Textarea } from "@/components/ui/textarea";
 
 type SubmissionLanguage = {
   id: string;
@@ -55,6 +55,12 @@ export function ProblemSubmissionForm({ problemId, languages }: ProblemSubmissio
 
   async function handleSubmit(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault();
+
+    if (!sourceCode) {
+      toast.error(translateSubmissionError("sourceCode is required"));
+      return;
+    }
+
     setIsSubmitting(true);
 
     try {
@@ -112,15 +118,16 @@ export function ProblemSubmissionForm({ problemId, languages }: ProblemSubmissio
         </Select>
       </div>
       <div className="space-y-2">
-        <Label htmlFor="sourceCode">{t("sourceCodeLabel")}</Label>
-        <Textarea
+        <Label id="sourceCode-label" htmlFor="sourceCode">
+          {t("sourceCodeLabel")}
+        </Label>
+        <CodeEditor
           id="sourceCode"
-          name="sourceCode"
-          className="font-mono min-h-[300px]"
+          ariaLabelledby="sourceCode-label"
           placeholder={t("writeCodePlaceholder")}
-          required
           value={sourceCode}
-          onChange={(event) => setSourceCode(event.target.value)}
+          language={language}
+          onValueChange={setSourceCode}
         />
       </div>
       <Button type="submit" className="w-full" disabled={isSubmitting}>

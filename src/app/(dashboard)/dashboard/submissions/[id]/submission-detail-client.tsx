@@ -1,10 +1,13 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
+import { useLocale } from "next-intl";
+import { CodeViewer } from "@/components/code/code-viewer";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { ACTIVE_SUBMISSION_STATUSES, getSubmissionStatusVariant } from "@/lib/submissions/status";
+import { formatDateTimeInKst } from "@/lib/datetime";
 
 type SubmissionResultView = {
   id: string;
@@ -123,6 +126,7 @@ function normalizeSubmission(data: Record<string, unknown>): SubmissionDetailVie
 
 export function SubmissionDetailClient(props: SubmissionDetailClientProps) {
   const [submission, setSubmission] = useState(props.initialSubmission);
+  const locale = useLocale();
 
   const isLive = ACTIVE_SUBMISSION_STATUSES.has(submission.status);
   const sortedResults = useMemo(
@@ -201,7 +205,7 @@ export function SubmissionDetailClient(props: SubmissionDetailClientProps) {
 
         <div className="text-right text-sm text-muted-foreground">
           <p>
-            {props.submittedLabel}: {submission.submittedAt ? new Date(submission.submittedAt).toLocaleString() : "-"}
+            {props.submittedLabel}: {submission.submittedAt ? formatDateTimeInKst(submission.submittedAt, locale) : "-"}
           </p>
           <p>
             {props.scoreLabel}: {submission.score !== null ? submission.score : "-"}
@@ -220,9 +224,12 @@ export function SubmissionDetailClient(props: SubmissionDetailClientProps) {
           <CardTitle>{props.sourceCodeLabel}</CardTitle>
         </CardHeader>
         <CardContent>
-          <pre className="overflow-x-auto rounded-lg bg-muted p-4">
-            <code>{submission.sourceCode}</code>
-          </pre>
+          <CodeViewer
+            ariaLabel={props.sourceCodeLabel}
+            language={submission.language}
+            minHeight={260}
+            value={submission.sourceCode}
+          />
         </CardContent>
       </Card>
 
@@ -232,9 +239,13 @@ export function SubmissionDetailClient(props: SubmissionDetailClientProps) {
             <CardTitle>{props.compileOutputLabel}</CardTitle>
           </CardHeader>
           <CardContent>
-            <pre className="overflow-x-auto rounded-lg bg-muted p-4 text-red-500">
-              <code>{submission.compileOutput}</code>
-            </pre>
+            <CodeViewer
+              ariaLabel={props.compileOutputLabel}
+              language="plaintext"
+              minHeight={140}
+              tone="danger"
+              value={submission.compileOutput}
+            />
           </CardContent>
         </Card>
       )}
