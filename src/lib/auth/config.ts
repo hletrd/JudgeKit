@@ -17,6 +17,14 @@ import {
   getValidatedAuthSecret,
   shouldUseSecureSessionCookie,
 } from "@/lib/security/env";
+import {
+  getLoginEventContextFromUser,
+  recordLoginEvent,
+  recordLoginEventWithContext,
+  type LoginEventContextCarrier,
+  type LoginEventRequestSummary,
+  sanitizeLoginEventContext,
+} from "@/lib/auth/login-events";
 
 type AuthUserRecord = {
   id: string;
@@ -27,6 +35,26 @@ type AuthUserRecord = {
   role: UserRole;
   mustChangePassword: boolean | null;
 };
+
+type AuthenticatedLoginUser = Omit<AuthUserRecord, "mustChangePassword"> & {
+  mustChangePassword: boolean;
+} & LoginEventContextCarrier;
+
+function createSuccessfulLoginResponse(
+  user: AuthUserRecord,
+  loginEventContext: LoginEventRequestSummary
+): AuthenticatedLoginUser {
+  return {
+    id: user.id,
+    username: user.username,
+    email: user.email,
+    name: user.name,
+    className: user.className,
+    role: user.role,
+    mustChangePassword: user.mustChangePassword ?? false,
+    loginEventContext,
+  };
+}
 
 function getTokenUserId(token: JWT) {
   return token.id ?? token.sub;
@@ -70,9 +98,14 @@ export const authConfig: NextAuthConfig = {
       },
       async authorize(credentials, request) {
         const rateLimitKey = getRateLimitKey("login", request.headers);
+        const attemptedIdentifier = typeof credentials?.username === "string" ? credentials.username : null;
 
         if (isRateLimited(rateLimitKey)) {
-          console.warn("Blocked login attempt due to rate limiting", { rateLimitKey });
+          recordLoginEvent({
+            outcome: "rate_limited",
+            attemptedIdentifier,
+            request,
+          });
           return null;
         }
 
@@ -95,28 +128,57 @@ export const authConfig: NextAuthConfig = {
 
         if (!user || !user.passwordHash || !user.isActive) {
           recordRateLimitFailure(rateLimitKey);
-          console.warn("Rejected login attempt", { identifier, reason: "user_not_found_or_inactive" });
+          recordLoginEvent({
+            outcome: "invalid_credentials",
+            attemptedIdentifier: identifier,
+            userId: user?.id ?? null,
+            request,
+          });
           return null;
         }
 
         const isValid = await compare(password, user.passwordHash);
         if (!isValid) {
           recordRateLimitFailure(rateLimitKey);
-          console.warn("Rejected login attempt", { identifier, reason: "invalid_password" });
+          recordLoginEvent({
+            outcome: "invalid_credentials",
+            attemptedIdentifier: identifier,
+            userId: user.id,
+            request,
+          });
           return null;
         }
 
         clearRateLimit(rateLimitKey);
 
-        return {
-          id: user.id,
-          username: user.username,
-          email: user.email,
-          name: user.name,
-          className: user.className,
-          role: user.role as UserRole,
-          mustChangePassword: user.mustChangePassword ?? false,
-        };
+        return createSuccessfulLoginResponse(
+          {
+            id: user.id,
+            username: user.username,
+            email: user.email,
+            name: user.name,
+            className: user.className,
+            role: user.role as UserRole,
+            mustChangePassword: user.mustChangePassword ?? false,
+          },
+          {
+            attemptedIdentifier: identifier,
+            ipAddress:
+              request.headers
+                .get("x-forwarded-for")
+                ?.split(",")[0]
+                ?.trim() || request.headers.get("x-real-ip")?.trim() || null,
+            userAgent: request.headers.get("user-agent")?.trim() || null,
+            requestMethod: request.method?.trim().toUpperCase() || null,
+            requestPath: (() => {
+              try {
+                return new URL(request.url).pathname;
+              } catch {
+                return null;
+              }
+            })(),
+          }
+        );
       },
     }),
   ],
@@ -125,7 +187,50 @@ export const authConfig: NextAuthConfig = {
   pages: {
     signIn: "/login",
   },
+  events: {
+    async signIn({ account, user }) {
+      if (account?.provider !== "credentials") {
+        return;
+      }
+
+      const loginEventContext = getLoginEventContextFromUser(user);
+
+      if (!loginEventContext) {
+        return;
+      }
+
+      recordLoginEventWithContext({
+        outcome: "success",
+        userId: user.id ?? null,
+        context: loginEventContext,
+      });
+    },
+  },
   callbacks: {
+    async signIn({ account, credentials, user }) {
+      if (account?.provider !== "credentials") {
+        return true;
+      }
+
+      const carriedLoginEventContext = getLoginEventContextFromUser(user);
+      const loginEventContext =
+        carriedLoginEventContext ??
+        sanitizeLoginEventContext({
+          attemptedIdentifier: typeof credentials?.username === "string" ? credentials.username : null,
+        });
+
+      if (!user.id || !carriedLoginEventContext) {
+        recordLoginEventWithContext({
+          outcome: "policy_denied",
+          userId: user.id ?? null,
+          context: loginEventContext,
+        });
+
+        return false;
+      }
+
+      return true;
+    },
     async jwt({ token, user, trigger }) {
       if (user) {
         return syncTokenWithUser(token, {

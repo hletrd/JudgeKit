@@ -1,8 +1,60 @@
 import { getToken } from "next-auth/jwt";
 import { NextRequest, NextResponse } from "next/server";
 import { shouldUseSecureAuthCookie } from "@/lib/auth/secure-cookie";
+import { db } from "@/lib/db";
+import { users } from "@/lib/db/schema";
 import { getValidatedAuthSecret } from "@/lib/security/env";
 import type { UserRole } from "@/types";
+import { eq } from "drizzle-orm";
+
+const apiUserSelect = {
+  id: users.id,
+  role: users.role,
+  username: users.username,
+  email: users.email,
+  name: users.name,
+  className: users.className,
+  isActive: users.isActive,
+  mustChangePassword: users.mustChangePassword,
+};
+
+export function getTokenUserId(token: { id?: unknown; sub?: unknown } | null | undefined) {
+  if (typeof token?.id === "string" && token.id.length > 0) {
+    return token.id;
+  }
+
+  if (typeof token?.sub === "string" && token.sub.length > 0) {
+    return token.sub;
+  }
+
+  return null;
+}
+
+export async function getActiveAuthUserById(userId: string | null | undefined) {
+  if (!userId) {
+    return null;
+  }
+
+  const user = await db
+    .select(apiUserSelect)
+    .from(users)
+    .where(eq(users.id, userId))
+    .then((rows) => rows[0] ?? null);
+
+  if (!user?.isActive) {
+    return null;
+  }
+
+  return {
+    id: user.id,
+    role: user.role as UserRole,
+    username: user.username,
+    email: user.email,
+    name: user.name,
+    className: user.className,
+    mustChangePassword: Boolean(user.mustChangePassword),
+  };
+}
 
 export async function getApiUser(request: NextRequest) {
   const token = await getToken({
@@ -10,16 +62,8 @@ export async function getApiUser(request: NextRequest) {
     secret: getValidatedAuthSecret(),
     secureCookie: shouldUseSecureAuthCookie(request),
   });
-  if (!token) return null;
-  return {
-    id: token.id as string,
-    role: token.role as UserRole,
-    username: token.username as string,
-    email: (token.email as string | null | undefined) ?? null,
-    name: token.name as string,
-    className: (token.className as string | null | undefined) ?? null,
-    mustChangePassword: Boolean(token.mustChangePassword),
-  };
+
+  return getActiveAuthUserById(getTokenUserId(token));
 }
 
 export function unauthorized() {

@@ -3,6 +3,7 @@ import {
   users,
   sessions,
   accounts,
+  loginEvents,
   groups,
   enrollments,
   problems,
@@ -17,6 +18,7 @@ import {
 export const usersRelations = relations(users, ({ many }) => ({
   sessions: many(sessions),
   accounts: many(accounts),
+  loginEvents: many(loginEvents),
   enrollments: many(enrollments),
   instructedGroups: many(groups),
   authoredProblems: many(problems),
@@ -33,6 +35,13 @@ export const sessionsRelations = relations(sessions, ({ one }) => ({
 export const accountsRelations = relations(accounts, ({ one }) => ({
   user: one(users, {
     fields: [accounts.userId],
+    references: [users.id],
+  }),
+}));
+
+export const loginEventsRelations = relations(loginEvents, ({ one }) => ({
+  user: one(users, {
+    fields: [loginEvents.userId],
     references: [users.id],
   }),
 }));

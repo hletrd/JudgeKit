@@ -7,6 +7,7 @@ import {
   index,
 } from "drizzle-orm/sqlite-core";
 import { nanoid } from "nanoid";
+import { generateSubmissionId } from "@/lib/submissions/id";
 
 export const users = sqliteTable("users", {
   id: text("id")
@@ -56,6 +57,30 @@ export const accounts = sqliteTable("accounts", {
   id_token: text("id_token"),
   session_state: text("session_state"),
 });
+
+export const loginEvents = sqliteTable(
+  "login_events",
+  {
+    id: text("id")
+      .primaryKey()
+      .$defaultFn(() => nanoid()),
+    outcome: text("outcome").notNull(),
+    attemptedIdentifier: text("attempted_identifier"),
+    userId: text("user_id").references(() => users.id, { onDelete: "set null" }),
+    ipAddress: text("ip_address"),
+    userAgent: text("user_agent"),
+    requestMethod: text("request_method"),
+    requestPath: text("request_path"),
+    createdAt: integer("created_at", { mode: "timestamp" }).$defaultFn(
+      () => new Date(Date.now())
+    ),
+  },
+  (table) => [
+    index("login_events_outcome_idx").on(table.outcome),
+    index("login_events_user_idx").on(table.userId),
+    index("login_events_created_at_idx").on(table.createdAt),
+  ]
+);
 
 export const groups = sqliteTable("groups", {
   id: text("id")
@@ -187,7 +212,7 @@ export const submissions = sqliteTable(
   {
     id: text("id")
       .primaryKey()
-      .$defaultFn(() => nanoid()),
+      .$defaultFn(() => generateSubmissionId()),
     userId: text("user_id")
       .notNull()
       .references(() => users.id, { onDelete: "cascade" }),
