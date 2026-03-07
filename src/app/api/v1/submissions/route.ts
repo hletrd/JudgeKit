@@ -5,11 +5,12 @@ import { isJudgeLanguage } from "@/lib/judge/languages";
 import { and, desc, eq } from "drizzle-orm";
 import { getApiUser, unauthorized, isAdmin } from "@/lib/api/auth";
 import { canAccessProblem } from "@/lib/auth/permissions";
-import { nanoid } from "nanoid";
+import { validateAssignmentSubmission } from "@/lib/assignments/submissions";
 import {
   MAX_SOURCE_CODE_SIZE_BYTES,
   isSubmissionStatus,
 } from "@/lib/security/constants";
+import { generateSubmissionId } from "@/lib/submissions/id";
 
 export async function GET(request: NextRequest) {
   try {
@@ -57,6 +58,12 @@ export async function POST(request: NextRequest) {
 
     const body = await request.json();
     const { problemId, language, sourceCode, assignmentId } = body;
+    const normalizedAssignmentId =
+      assignmentId == null
+        ? null
+        : typeof assignmentId === "string"
+          ? assignmentId.trim() || null
+          : undefined;
 
     if (!problemId || typeof problemId !== "string") {
       return NextResponse.json({ error: "problemRequired" }, { status: 400 });
@@ -66,6 +73,9 @@ export async function POST(request: NextRequest) {
     }
     if (!sourceCode || typeof sourceCode !== "string") {
       return NextResponse.json({ error: "sourceCodeRequired" }, { status: 400 });
+    }
+    if (normalizedAssignmentId === undefined) {
+      return NextResponse.json({ error: "invalidAssignmentId" }, { status: 400 });
     }
     if (!isJudgeLanguage(language)) {
       return NextResponse.json({ error: "languageNotSupported" }, { status: 400 });
@@ -89,6 +99,22 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: "problemNotFound" }, { status: 404 });
     }
 
+    if (normalizedAssignmentId) {
+      const assignmentValidation = await validateAssignmentSubmission(
+        normalizedAssignmentId,
+        problemId,
+        user.id,
+        user.role
+      );
+
+      if (!assignmentValidation.ok) {
+        return NextResponse.json(
+          { error: assignmentValidation.error },
+          { status: assignmentValidation.status }
+        );
+      }
+    }
+
     const hasAccess = await canAccessProblem(problemId, user.id, user.role);
 
     if (!hasAccess) {
@@ -109,14 +135,14 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: "languageNotSupported" }, { status: 400 });
     }
 
-    const id = nanoid();
+    const id = generateSubmissionId();
     await db.insert(submissions).values({
       id,
       userId: user.id,
       problemId,
       language,
       sourceCode,
-      assignmentId: assignmentId || null,
+      assignmentId: normalizedAssignmentId,
       status: "pending",
       submittedAt: new Date(),
     });

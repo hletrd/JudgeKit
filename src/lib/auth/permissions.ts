@@ -1,4 +1,5 @@
 import { auth } from "./index";
+import { canViewAssignmentSubmissions } from "@/lib/assignments/submissions";
 import { db } from "@/lib/db";
 import { enrollments, groups, problemGroupAccess, problems } from "@/lib/db/schema";
 import { eq, and } from "drizzle-orm";
@@ -93,4 +94,20 @@ export async function canAccessProblem(
     .where(eq(problemGroupAccess.problemId, problemId));
 
   return accessRows.some((row) => groupIds.includes(row.groupId));
+}
+
+export async function canAccessSubmission(
+  submission: { userId: string; assignmentId: string | null },
+  userId: string,
+  role: UserRole
+): Promise<boolean> {
+  if (role === "super_admin" || role === "admin") {
+    return true;
+  }
+
+  if (submission.userId === userId) {
+    return true;
+  }
+
+  return canViewAssignmentSubmissions(submission.assignmentId, userId, role);
 }

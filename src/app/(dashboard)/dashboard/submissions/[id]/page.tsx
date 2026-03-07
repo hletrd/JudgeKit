@@ -3,7 +3,9 @@ import { db } from "@/lib/db";
 import { submissions } from "@/lib/db/schema";
 import { eq } from "drizzle-orm";
 import { auth } from "@/lib/auth";
+import { canAccessSubmission } from "@/lib/auth/permissions";
 import { getResolvedSystemTimeZone } from "@/lib/system-settings";
+import { formatSubmissionIdPrefix } from "@/lib/submissions/id";
 import { redirect, notFound } from "next/navigation";
 import { SubmissionDetailClient } from "./submission-detail-client";
 
@@ -53,7 +55,13 @@ export default async function SubmissionDetailPage({ params }: { params: Promise
   }
 
   // Access control
-  if (submission.userId !== session.user.id && session.user.role !== "admin" && session.user.role !== "super_admin") {
+  const hasAccess = await canAccessSubmission(
+    { userId: submission.userId, assignmentId: submission.assignmentId },
+    session.user.id,
+    session.user.role
+  );
+
+  if (!hasAccess) {
     redirect("/dashboard/submissions");
   }
 
@@ -92,7 +100,7 @@ export default async function SubmissionDetailPage({ params }: { params: Promise
             : null,
         })),
       }}
-      headingLabel={t("submissionId", { id: submission.id.substring(0, 8) })}
+      headingLabel={t("submissionId", { id: formatSubmissionIdPrefix(submission.id) })}
       statusLabels={statusLabels}
       submittedLabel={t("submitted")}
       scoreLabel={t("score")}

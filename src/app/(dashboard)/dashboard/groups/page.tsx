@@ -94,7 +94,7 @@ export default async function GroupsPage() {
               {myGroups.map((group) => (
                 <TableRow key={group.id}>
                   <TableCell className="font-medium">{group.name}</TableCell>
-                  <TableCell>{group.description || "-"}</TableCell>
+                  <TableCell className="max-w-md !whitespace-pre-wrap break-words">{group.description || "-"}</TableCell>
                   <TableCell>{group.instructor?.name || tCommon("unknown")}</TableCell>
                   <TableCell>
                     <Link href={`/dashboard/groups/${group.id}`}>

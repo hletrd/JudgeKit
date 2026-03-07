@@ -7,6 +7,7 @@ import { auth } from "@/lib/auth";
 import { formatDateTimeInTimeZone } from "@/lib/datetime";
 import { getResolvedSystemTimeZone } from "@/lib/system-settings";
 import { redirect, notFound } from "next/navigation";
+import Link from "next/link";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Badge } from "@/components/ui/badge";
 
@@ -46,12 +47,16 @@ export default async function GroupDetailPage({ params }: { params: Promise<{ id
 
   // Fetch group assignments
   const groupAssignments = await db.select().from(assignments).where(eq(assignments.groupId, groupId));
+  const canViewAssignmentBoard =
+    group.instructorId === session.user.id ||
+    session.user.role === "admin" ||
+    session.user.role === "super_admin";
 
   return (
     <div className="space-y-6">
       <div>
         <h2 className="text-3xl font-bold mb-2">{group.name}</h2>
-        <p className="text-muted-foreground">{group.description || tCommon("unknown")}</p>
+        <div className="description-copy text-muted-foreground">{group.description || tCommon("unknown")}</div>
         <div className="mt-2 flex gap-2">
           <Badge variant="outline">
             {t("instructorLabel", { name: group.instructor?.name || tCommon("unknown") })}
@@ -84,7 +89,18 @@ export default async function GroupDetailPage({ params }: { params: Promise<{ id
                 
                 return (
                   <TableRow key={assignment.id}>
-                    <TableCell className="font-medium">{assignment.title}</TableCell>
+                    <TableCell className="font-medium">
+                      {canViewAssignmentBoard ? (
+                        <Link
+                          href={`/dashboard/groups/${groupId}/assignments/${assignment.id}`}
+                          className="text-primary hover:underline"
+                        >
+                          {assignment.title}
+                        </Link>
+                      ) : (
+                        assignment.title
+                      )}
+                    </TableCell>
                     <TableCell>
                       {assignment.startsAt
                         ? formatDateTimeInTimeZone(assignment.startsAt, locale, timeZone)

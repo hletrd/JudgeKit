@@ -19,6 +19,7 @@ import { Button } from "@/components/ui/button";
 import { formatDateTimeInTimeZone } from "@/lib/datetime";
 import { getResolvedSystemTimeZone } from "@/lib/system-settings";
 import { getSubmissionStatusVariant } from "@/lib/submissions/status";
+import { formatSubmissionIdPrefix } from "@/lib/submissions/id";
 
 const PAGE_SIZE = 50;
 
@@ -110,7 +111,7 @@ export default async function AdminSubmissionsPage({
                 <TableRow key={sub.id}>
                   <TableCell className="font-mono text-xs">
                     <Link href={`/dashboard/submissions/${sub.id}`} className="text-primary hover:underline">
-                      {sub.id.substring(0, 8)}
+                      {formatSubmissionIdPrefix(sub.id)}
                     </Link>
                   </TableCell>
                   <TableCell>
