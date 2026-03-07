@@ -220,6 +220,7 @@ export const languageConfigs = sqliteTable("language_configs", {
     .$defaultFn(() => nanoid()),
   language: text("language").unique().notNull(),
   displayName: text("display_name").notNull(),
+  standard: text("standard"),
   extension: text("extension").notNull(),
   dockerImage: text("docker_image").notNull(),
   compileCommand: text("compile_command"),

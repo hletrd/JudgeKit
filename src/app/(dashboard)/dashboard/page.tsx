@@ -3,11 +3,16 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Badge } from "@/components/ui/badge";
 import { Cpu, HardDrive, Clock, MemoryStick } from "lucide-react";
+import { db } from "@/lib/db";
+import { languageConfigs } from "@/lib/db/schema";
+import { eq } from "drizzle-orm";
 
 export default async function DashboardPage() {
   const t = await getTranslations("dashboard");
   const tJudge = await getTranslations("judge");
   const tLangs = await getTranslations("languages");
+
+  const langs = await db.select().from(languageConfigs).where(eq(languageConfigs.isEnabled, true));
 
   return (
     <div className="space-y-6">
@@ -76,13 +81,13 @@ export default async function DashboardPage() {
               </TableRow>
             </TableHeader>
             <TableBody>
-              {(["c17", "c23", "cpp20", "cpp23", "python"] as const).map((lang) => (
-                <TableRow key={lang}>
+              {langs.map((lang) => (
+                <TableRow key={lang.id}>
                   <TableCell>
-                    <Badge variant="secondary">{tLangs(`${lang}.name`)}</Badge>
+                    <Badge variant="secondary">{lang.displayName} {lang.standard ? `(${lang.standard})` : ""}</Badge>
                   </TableCell>
-                  <TableCell className="font-mono text-sm">{tLangs(`${lang}.compiler`)}</TableCell>
-                  <TableCell className="font-mono text-sm">{tLangs(`${lang}.flags`)}</TableCell>
+                  <TableCell className="font-mono text-sm">{lang.dockerImage.split(':')[0]}</TableCell>
+                  <TableCell className="font-mono text-sm">{lang.compileCommand || "-"}</TableCell>
                 </TableRow>
               ))}
             </TableBody>

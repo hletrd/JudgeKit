@@ -1,7 +1,7 @@
 import { getTranslations } from "next-intl/server";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { db } from "@/lib/db";
-import { problems } from "@/lib/db/schema";
+import { problems, languageConfigs } from "@/lib/db/schema";
 import { eq } from "drizzle-orm";
 import { auth } from "@/lib/auth";
 import { redirect, notFound } from "next/navigation";
@@ -33,6 +33,9 @@ export default async function ProblemDetailPage({ params }: { params: Promise<{ 
   if (!problem) {
     notFound();
   }
+
+  // Fetch languages
+  const langs = await db.select().from(languageConfigs).where(eq(languageConfigs.isEnabled, true));
 
   // Basic access control (simplified for now)
   if (problem.visibility === "private" && problem.authorId !== session.user.id && session.user.role !== "admin" && session.user.role !== "super_admin") {
@@ -75,9 +78,11 @@ export default async function ProblemDetailPage({ params }: { params: Promise<{ 
                     <SelectValue placeholder={t("selectLanguage")} />
                   </SelectTrigger>
                   <SelectContent>
-                    <SelectItem value="c17">C17 (GCC)</SelectItem>
-                    <SelectItem value="cpp23">C++23 (GCC)</SelectItem>
-                    <SelectItem value="python">Python 3.13</SelectItem>
+                    {langs.map((lang) => (
+                      <SelectItem key={lang.id} value={lang.language}>
+                        {lang.displayName} {lang.standard ? `(${lang.standard})` : ""}
+                      </SelectItem>
+                    ))}
                   </SelectContent>
                 </Select>
               </div>
