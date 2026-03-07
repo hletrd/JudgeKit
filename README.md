@@ -14,7 +14,7 @@
 
 <p align="center">
   A secure online judge system for student programming assignments.<br/>
-  Automated code evaluation with Docker-sandboxed execution for C, C++, and Python.
+  Automated code evaluation with Docker-sandboxed execution for C, C++, Python, JavaScript, TypeScript, Rust, Go, and Swift.
 </p>
 
 <p align="center">
@@ -33,7 +33,7 @@
 - **Classroom management** — Groups, enrollments, and assignments with deadlines and late penalties
 - **Problem management** — Sanitized descriptions, configurable time/memory limits, public/private/hidden visibility, and test-case editing before submissions exist
 - **Secure code execution** — Docker containers with no network, seccomp profiles, memory/CPU limits, and non-root users
-- **Multi-language support** — C, C++, and Python with admin-customizable compile options
+- **Multi-language support** — C, C++, Python, JavaScript, TypeScript, Rust, Go, and Swift with admin-customizable compile options
 - **Submission workflow** — JSON submission flow, live status polling, per-test-case results, and paginated submission history
 
 ## Current Status
@@ -176,8 +176,13 @@ JUDGE_DISABLE_CUSTOM_SECCOMP=0
 npm install
 npm run db:push
 npm run seed
+npm run languages:sync
 docker build -t judge-cpp -f docker/Dockerfile.judge-cpp .
 docker build -t judge-python -f docker/Dockerfile.judge-python .
+docker build -t judge-node -f docker/Dockerfile.judge-node .
+docker build -t judge-rust -f docker/Dockerfile.judge-rust .
+docker build -t judge-go -f docker/Dockerfile.judge-go .
+docker build -t judge-swift -f docker/Dockerfile.judge-swift .
 npm run build
 ```
 
@@ -198,12 +203,13 @@ The worker unit file lives at `scripts/online-judge-worker.service` and expects 
 git pull --rebase origin main
 npm install
 npm run db:push
+npm run languages:sync
 npm run build
 sudo systemctl restart online-judge.service
 sudo systemctl restart online-judge-worker.service
 ```
 
-If you changed the judge Dockerfiles or compiler/runtime assumptions, rebuild the images before restarting the worker.
+If you changed the judge Dockerfiles or compiler/runtime assumptions, run `npm run languages:sync`, rebuild the affected images, and then restart the worker.
 
 ### 6. Post-deploy verification
 
@@ -228,7 +234,7 @@ journalctl -u online-judge-worker.service -n 50 --no-pager
 | Auth | Auth.js v5 (Credentials) |
 | UI | Tailwind CSS v4, shadcn/ui |
 | Code Editor | Textarea today, Monaco-ready dependency installed |
-| Judge | Docker on Alpine Linux (GCC toolchain, Python 3) |
+| Judge | Dockerized toolchains for GCC, Python 3.14.3, Node.js 24.14.0 / TypeScript 5.9.3, Rust 1.94.0, Go 1.26.1, and Swift 6.2.4 |
 | Validation | Zod |
 
 ## Project Structure

@@ -13,7 +13,7 @@ An online judge system for student programming assignments. Built with Next.js 1
 - **i18n:** next-intl (English default, Korean)
 - **UI:** Tailwind CSS v4, shadcn/ui components, Lucide icons
 - **Validation:** Zod
-- **Judge:** Docker containers (C/C++ via GCC 14, Python 3.14)
+- **Judge:** Docker containers (C/C++ via GCC, Python 3.14.3, Node.js 24.14.0 / TypeScript 5.9.3, Rust 1.94.0, Go 1.26.1, Swift 6.2.4)
 
 ## Project Structure
 
@@ -67,6 +67,7 @@ online-judge/
 - For every UI, route, or page-affecting change, always verify the affected page locally before finishing the work
 - Treat work as incomplete until the local build and local page verification both pass
 - After verified code changes, always deploy the updated app to the remote server and confirm the deployed page or flow there
+- When managed judge languages or toolchain versions change, run `npm run languages:sync` on existing deployments after `npm run db:push`
 
 ## Database Conventions
 
