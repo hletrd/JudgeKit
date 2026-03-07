@@ -7,22 +7,23 @@ const PASSWORD_ALPHABET = /^[ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnpqrstuvwxyz234
 const BASE_URL = process.env.PLAYWRIGHT_BASE_URL ?? 'http://127.0.0.1:3100';
 
 test('admin can change password, see sample problems, and create a user with generated password', async ({ browser }) => {
-  const context = await browser.newContext({
-    baseURL: BASE_URL,
-    permissions: ['clipboard-read', 'clipboard-write'],
-  });
-  const page = await context.newPage();
+  async function createContext() {
+    return browser.newContext({
+      baseURL: BASE_URL,
+      permissions: ['clipboard-read', 'clipboard-write'],
+    });
+  }
 
-  async function signIn(password) {
-    const csrfResponse = await context.request.get('/api/auth/csrf');
+  async function signIn(activeContext, username, password) {
+    const csrfResponse = await activeContext.request.get('/api/auth/csrf');
     expect(csrfResponse.ok()).toBeTruthy();
 
     const { csrfToken } = await csrfResponse.json();
     const callbackUrl = `${BASE_URL}/dashboard`;
-    const response = await context.request.post('/api/auth/callback/credentials?json=true', {
+    const response = await activeContext.request.post('/api/auth/callback/credentials?json=true', {
       form: {
         csrfToken,
-        username: LOGIN_USERNAME,
+        username,
         password,
         callbackUrl,
         redirectTo: callbackUrl,
@@ -33,7 +34,10 @@ test('admin can change password, see sample problems, and create a user with gen
     expect(response.ok()).toBeTruthy();
   }
 
-  await signIn(INITIAL_ADMIN_PASSWORD);
+  const context = await createContext();
+  const page = await context.newPage();
+
+  await signIn(context, LOGIN_USERNAME, INITIAL_ADMIN_PASSWORD);
   await page.goto('/dashboard', { waitUntil: 'networkidle' });
   let currentUrl = page.url();
 
@@ -76,5 +80,19 @@ test('admin can change password, see sample problems, and create a user with gen
   await expect(page.getByText(username, { exact: true })).toBeVisible();
   await expect(page.getByText(className, { exact: true })).toBeVisible();
 
+  const newUserContext = await createContext();
+  const newUserPage = await newUserContext.newPage();
+  const updatedUserPassword = 'StudentPass345';
+
+  await signIn(newUserContext, username, generatedPassword);
+  await newUserPage.goto('/dashboard', { waitUntil: 'networkidle' });
+  await expect(newUserPage).toHaveURL(/\/change-password$/);
+  await newUserPage.fill('#currentPassword', generatedPassword);
+  await newUserPage.fill('#newPassword', updatedUserPassword);
+  await newUserPage.fill('#confirmPassword', updatedUserPassword);
+  await newUserPage.getByRole('button', { name: 'Change Password' }).click();
+  await newUserPage.waitForURL('**/dashboard', { timeout: 15000 });
+
+  await newUserContext.close();
   await context.close();
 });
