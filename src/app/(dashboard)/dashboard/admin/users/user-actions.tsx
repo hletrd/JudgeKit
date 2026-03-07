@@ -7,7 +7,7 @@ import { toast } from "sonner";
 import { useRouter } from "next/navigation";
 import { useTranslations } from "next-intl";
 
-export default function UserActions({ userId, isActive, isSelf }: { userId: string; isActive: boolean; isSelf: boolean }) {
+export default function UserActions({ userId, isActive, isSelf, userRole }: { userId: string; isActive: boolean; isSelf: boolean; userRole: string }) {
   const [isPending, startTransition] = useTransition();
   const router = useRouter();
   const t = useTranslations("admin.users");
@@ -25,7 +25,7 @@ export default function UserActions({ userId, isActive, isSelf }: { userId: stri
     });
   }
 
-  if (isSelf) return null;
+  if (isSelf || userRole === "super_admin") return null;
 
   return (
     <Button 

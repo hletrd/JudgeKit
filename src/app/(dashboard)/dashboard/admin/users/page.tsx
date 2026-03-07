@@ -16,6 +16,7 @@ import { auth } from "@/lib/auth";
 import { redirect } from "next/navigation";
 import UserActions from "./user-actions";
 import AddUserDialog from "./add-user-dialog";
+import EditUserDialog from "./edit-user-dialog";
 
 export default async function UserManagementPage() {
   const session = await auth();
@@ -69,11 +70,21 @@ export default async function UserManagementPage() {
                     {user.createdAt ? new Date(user.createdAt).toLocaleDateString() : "-"}
                   </TableCell>
                   <TableCell>
-                    <UserActions 
-                      userId={user.id} 
-                      isActive={!!user.isActive} 
-                      isSelf={user.id === session.user.id} 
-                    />
+                    <div className="flex gap-2 items-center">
+                      <EditUserDialog user={{
+                        id: user.id,
+                        username: user.username,
+                        email: user.email,
+                        name: user.name,
+                        role: user.role
+                      }} />
+                      <UserActions 
+                        userId={user.id} 
+                        isActive={!!user.isActive} 
+                        isSelf={user.id === session.user.id} 
+                        userRole={user.role}
+                      />
+                    </div>
                   </TableCell>
                 </TableRow>
               ))}
