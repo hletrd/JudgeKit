@@ -51,3 +51,10 @@ export function formatDateInTimeZone(
     day: "2-digit",
   });
 }
+
+export function formatDateTimeInKst(
+  value: number | string | Date,
+  locale: string | string[] = DEFAULT_LOCALE
+) {
+  return formatDateTimeInTimeZone(value, locale, DEFAULT_TIME_ZONE);
+}
