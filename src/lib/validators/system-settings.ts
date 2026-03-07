@@ -9,6 +9,15 @@ function normalizeOptionalString(value: unknown) {
   return trimmed === "" ? undefined : trimmed;
 }
 
+function isValidTimeZone(value: string) {
+  try {
+    new Intl.DateTimeFormat("en-US", { timeZone: value });
+    return true;
+  } catch {
+    return false;
+  }
+}
+
 export const systemSettingsSchema = z.object({
   siteTitle: z.preprocess(
     normalizeOptionalString,
@@ -17,6 +26,14 @@ export const systemSettingsSchema = z.object({
   siteDescription: z.preprocess(
     normalizeOptionalString,
     z.string().max(255, "siteDescriptionTooLong").optional()
+  ),
+  timeZone: z.preprocess(
+    normalizeOptionalString,
+    z
+      .string()
+      .max(100, "invalidTimeZone")
+      .refine(isValidTimeZone, "invalidTimeZone")
+      .optional()
   ),
 });
 

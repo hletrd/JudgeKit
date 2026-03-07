@@ -1,8 +1,9 @@
-import { getTranslations } from "next-intl/server";
+import { getLocale, getTranslations } from "next-intl/server";
 import { db } from "@/lib/db";
 import { submissions } from "@/lib/db/schema";
 import { eq } from "drizzle-orm";
 import { auth } from "@/lib/auth";
+import { getResolvedSystemTimeZone } from "@/lib/system-settings";
 import { redirect, notFound } from "next/navigation";
 import { SubmissionDetailClient } from "./submission-detail-client";
 
@@ -14,6 +15,8 @@ export default async function SubmissionDetailPage({ params }: { params: Promise
   const submissionId = resolvedParams.id;
 
   const t = await getTranslations("submissions");
+  const locale = await getLocale();
+  const timeZone = await getResolvedSystemTimeZone();
   const statusLabels = {
     pending: t("status.pending"),
     queued: t("status.queued"),
@@ -102,6 +105,8 @@ export default async function SubmissionDetailPage({ params }: { params: Promise
       testCaseResultsDescription={t("testCaseResultsDesc")}
       noResultsLabel={t("noResults")}
       liveUpdatesLabel={t("liveUpdatesActive")}
+      locale={locale}
+      timeZone={timeZone}
       timeValueLabel={t("timeValue", { value: "{value}" })}
       memoryValueLabel={t("memoryValue", { value: "{value}" })}
       tableProblemLabel={t("table.problem")}

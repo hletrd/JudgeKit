@@ -1,13 +1,12 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
-import { useLocale } from "next-intl";
 import { CodeViewer } from "@/components/code/code-viewer";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
+import { formatDateTimeInTimeZone } from "@/lib/datetime";
 import { ACTIVE_SUBMISSION_STATUSES, getSubmissionStatusVariant } from "@/lib/submissions/status";
-import { formatDateTimeInKst } from "@/lib/datetime";
 
 type SubmissionResultView = {
   id: string;
@@ -54,6 +53,8 @@ type SubmissionDetailClientProps = {
   testCaseResultsDescription: string;
   noResultsLabel: string;
   liveUpdatesLabel: string;
+  locale: string;
+  timeZone: string;
   timeValueLabel: string;
   memoryValueLabel: string;
   tableProblemLabel: string;
@@ -126,8 +127,6 @@ function normalizeSubmission(data: Record<string, unknown>): SubmissionDetailVie
 
 export function SubmissionDetailClient(props: SubmissionDetailClientProps) {
   const [submission, setSubmission] = useState(props.initialSubmission);
-  const locale = useLocale();
-
   const isLive = ACTIVE_SUBMISSION_STATUSES.has(submission.status);
   const sortedResults = useMemo(
     () =>
@@ -205,7 +204,7 @@ export function SubmissionDetailClient(props: SubmissionDetailClientProps) {
 
         <div className="text-right text-sm text-muted-foreground">
           <p>
-            {props.submittedLabel}: {submission.submittedAt ? formatDateTimeInKst(submission.submittedAt, locale) : "-"}
+            {props.submittedLabel}: {submission.submittedAt ? formatDateTimeInTimeZone(submission.submittedAt, props.locale, props.timeZone) : "-"}
           </p>
           <p>
             {props.scoreLabel}: {submission.score !== null ? submission.score : "-"}

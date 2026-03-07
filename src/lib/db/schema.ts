@@ -239,6 +239,7 @@ export const systemSettings = sqliteTable("system_settings", {
     .$defaultFn(() => "global"),
   siteTitle: text("site_title"),
   siteDescription: text("site_description"),
+  timeZone: text("time_zone"),
   updatedAt: integer("updated_at", { mode: "timestamp" }).$defaultFn(
     () => new Date(Date.now())
   ),

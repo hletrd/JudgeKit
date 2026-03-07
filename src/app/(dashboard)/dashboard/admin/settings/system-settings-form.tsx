@@ -13,25 +13,32 @@ import { Textarea } from "@/components/ui/textarea";
 type SystemSettingsFormProps = {
   initialSiteTitle: string;
   initialSiteDescription: string;
+  initialTimeZone: string;
   defaultSiteTitle: string;
   defaultSiteDescription: string;
+  defaultTimeZone: string;
   currentSiteTitle: string;
   currentSiteDescription: string;
+  currentTimeZone: string;
 };
 
 export function SystemSettingsForm({
   initialSiteTitle,
   initialSiteDescription,
+  initialTimeZone,
   defaultSiteTitle,
   defaultSiteDescription,
+  defaultTimeZone,
   currentSiteTitle,
   currentSiteDescription,
+  currentTimeZone,
 }: SystemSettingsFormProps) {
   const router = useRouter();
   const t = useTranslations("admin.settings");
   const tCommon = useTranslations("common");
   const [siteTitle, setSiteTitle] = useState(initialSiteTitle);
   const [siteDescription, setSiteDescription] = useState(initialSiteDescription);
+  const [timeZone, setTimeZone] = useState(initialTimeZone);
   const [isLoading, setIsLoading] = useState(false);
 
   async function handleSubmit(event: React.FormEvent<HTMLFormElement>) {
@@ -39,7 +46,7 @@ export function SystemSettingsForm({
     setIsLoading(true);
 
     try {
-      const result = await updateSystemSettings({ siteTitle, siteDescription });
+      const result = await updateSystemSettings({ siteTitle, siteDescription, timeZone });
 
       if (!result.success) {
         toast.error(t(result.error ?? "updateError"));
@@ -81,6 +88,19 @@ export function SystemSettingsForm({
         />
         <p className="text-xs text-muted-foreground">
           {t("siteDescriptionHint", { current: currentSiteDescription })}
+        </p>
+      </div>
+
+      <div className="space-y-2">
+        <Label htmlFor="time-zone">{t("timeZone")}</Label>
+        <Input
+          id="time-zone"
+          value={timeZone}
+          onChange={(event) => setTimeZone(event.target.value)}
+          placeholder={defaultTimeZone}
+        />
+        <p className="text-xs text-muted-foreground">
+          {t("timeZoneHint", { current: currentTimeZone })}
         </p>
       </div>
 

@@ -2,7 +2,11 @@ import { redirect } from "next/navigation";
 import { getTranslations } from "next-intl/server";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { auth } from "@/lib/auth";
-import { getResolvedSystemSettings, getSystemSettings } from "@/lib/system-settings";
+import {
+  DEFAULT_SYSTEM_TIME_ZONE,
+  getResolvedSystemSettings,
+  getSystemSettings,
+} from "@/lib/system-settings";
 import { SystemSettingsForm } from "./system-settings-form";
 
 export default async function AdminSettingsPage() {
@@ -34,10 +38,13 @@ export default async function AdminSettingsPage() {
           <SystemSettingsForm
             initialSiteTitle={storedSettings?.siteTitle ?? ""}
             initialSiteDescription={storedSettings?.siteDescription ?? ""}
+            initialTimeZone={storedSettings?.timeZone ?? ""}
             defaultSiteTitle={tCommon("appName")}
             defaultSiteDescription={tCommon("appDescription")}
+            defaultTimeZone={DEFAULT_SYSTEM_TIME_ZONE}
             currentSiteTitle={resolvedSettings.siteTitle}
             currentSiteDescription={resolvedSettings.siteDescription}
+            currentTimeZone={resolvedSettings.timeZone}
           />
         </CardContent>
       </Card>

@@ -1,9 +1,11 @@
-import { getTranslations } from "next-intl/server";
+import { getLocale, getTranslations } from "next-intl/server";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { db } from "@/lib/db";
 import { users } from "@/lib/db/schema";
 import { auth } from "@/lib/auth";
+import { formatDateTimeInTimeZone } from "@/lib/datetime";
+import { getResolvedSystemTimeZone } from "@/lib/system-settings";
 import { eq } from "drizzle-orm";
 import Link from "next/link";
 import { notFound, redirect } from "next/navigation";
@@ -28,6 +30,8 @@ export default async function AdminUserDetailPage({
 
   const t = await getTranslations("admin.users");
   const tCommon = await getTranslations("common");
+  const locale = await getLocale();
+  const timeZone = await getResolvedSystemTimeZone();
   const roleLabels = {
     student: tCommon("roles.student"),
     instructor: tCommon("roles.instructor"),
@@ -83,7 +87,7 @@ export default async function AdminUserDetailPage({
           <div className="space-y-1 sm:col-span-2">
             <p className="text-sm text-muted-foreground">{t("table.joined")}</p>
             <p className="font-medium">
-              {user.createdAt ? new Date(user.createdAt).toLocaleString() : "-"}
+              {user.createdAt ? formatDateTimeInTimeZone(user.createdAt, locale, timeZone) : "-"}
             </p>
           </div>
         </CardContent>

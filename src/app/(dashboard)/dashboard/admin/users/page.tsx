@@ -1,4 +1,4 @@
-import { getTranslations } from "next-intl/server";
+import { getLocale, getTranslations } from "next-intl/server";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import {
   Table,
@@ -18,6 +18,8 @@ import Link from "next/link";
 import UserActions from "./user-actions";
 import AddUserDialog from "./add-user-dialog";
 import EditUserDialog from "./edit-user-dialog";
+import { formatDateInTimeZone } from "@/lib/datetime";
+import { getResolvedSystemTimeZone } from "@/lib/system-settings";
 
 export default async function UserManagementPage() {
   const session = await auth();
@@ -26,6 +28,8 @@ export default async function UserManagementPage() {
 
   const t = await getTranslations("admin.users");
   const tCommon = await getTranslations("common");
+  const locale = await getLocale();
+  const timeZone = await getResolvedSystemTimeZone();
   const roleLabels = {
     student: tCommon("roles.student"),
     instructor: tCommon("roles.instructor"),
@@ -80,7 +84,7 @@ export default async function UserManagementPage() {
                     )}
                   </TableCell>
                   <TableCell>
-                    {user.createdAt ? new Date(user.createdAt).toLocaleDateString() : "-"}
+                    {user.createdAt ? formatDateInTimeZone(user.createdAt, locale, timeZone) : "-"}
                   </TableCell>
                   <TableCell>
                     <div className="flex gap-2 items-center">

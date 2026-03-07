@@ -1,9 +1,11 @@
-import { getTranslations } from "next-intl/server";
+import { getLocale, getTranslations } from "next-intl/server";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { db } from "@/lib/db";
 import { groups, enrollments, assignments } from "@/lib/db/schema";
 import { and, eq } from "drizzle-orm";
 import { auth } from "@/lib/auth";
+import { formatDateTimeInTimeZone } from "@/lib/datetime";
+import { getResolvedSystemTimeZone } from "@/lib/system-settings";
 import { redirect, notFound } from "next/navigation";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Badge } from "@/components/ui/badge";
@@ -17,6 +19,8 @@ export default async function GroupDetailPage({ params }: { params: Promise<{ id
 
   const t = await getTranslations("groups");
   const tCommon = await getTranslations("common");
+  const locale = await getLocale();
+  const timeZone = await getResolvedSystemTimeZone();
   
   const group = await db.query.groups.findFirst({
     where: eq(groups.id, groupId),
@@ -81,8 +85,16 @@ export default async function GroupDetailPage({ params }: { params: Promise<{ id
                 return (
                   <TableRow key={assignment.id}>
                     <TableCell className="font-medium">{assignment.title}</TableCell>
-                    <TableCell>{assignment.startsAt ? new Date(assignment.startsAt).toLocaleString() : "-"}</TableCell>
-                    <TableCell>{assignment.deadline ? new Date(assignment.deadline).toLocaleString() : "-"}</TableCell>
+                    <TableCell>
+                      {assignment.startsAt
+                        ? formatDateTimeInTimeZone(assignment.startsAt, locale, timeZone)
+                        : "-"}
+                    </TableCell>
+                    <TableCell>
+                      {assignment.deadline
+                        ? formatDateTimeInTimeZone(assignment.deadline, locale, timeZone)
+                        : "-"}
+                    </TableCell>
                     <TableCell>
                       {isUpcoming ? (
                         <Badge variant="secondary">{t("statusUpcoming")}</Badge>

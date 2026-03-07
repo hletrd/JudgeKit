@@ -32,7 +32,7 @@ export async function updateSystemSettings(
     };
   }
 
-  const { siteTitle, siteDescription } = parsedInput.data;
+  const { siteTitle, siteDescription, timeZone } = parsedInput.data;
 
   await db
     .insert(systemSettings)
@@ -40,6 +40,7 @@ export async function updateSystemSettings(
       id: GLOBAL_SETTINGS_ID,
       siteTitle: siteTitle ?? null,
       siteDescription: siteDescription ?? null,
+      timeZone: timeZone ?? null,
       updatedAt: new Date(),
     })
     .onConflictDoUpdate({
@@ -47,6 +48,7 @@ export async function updateSystemSettings(
       set: {
         siteTitle: siteTitle ?? null,
         siteDescription: siteDescription ?? null,
+        timeZone: timeZone ?? null,
         updatedAt: new Date(),
       },
     });

@@ -1,4 +1,4 @@
-import { getTranslations } from "next-intl/server";
+import { getLocale, getTranslations } from "next-intl/server";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import {
   Table,
@@ -16,6 +16,8 @@ import { auth } from "@/lib/auth";
 import { redirect } from "next/navigation";
 import Link from "next/link";
 import { Button } from "@/components/ui/button";
+import { formatDateTimeInTimeZone } from "@/lib/datetime";
+import { getResolvedSystemTimeZone } from "@/lib/system-settings";
 import { getSubmissionStatusVariant } from "@/lib/submissions/status";
 
 const PAGE_SIZE = 50;
@@ -32,10 +34,11 @@ export default async function AdminSubmissionsPage({
   const resolvedSearchParams = searchParams ? await searchParams : undefined;
   const currentPage = Math.max(1, Number(resolvedSearchParams?.page ?? "1") || 1);
   const offset = (currentPage - 1) * PAGE_SIZE;
-
   const t = await getTranslations("admin.submissions");
   const tCommon = await getTranslations("common");
   const tSubmissions = await getTranslations("submissions");
+  const locale = await getLocale();
+  const timeZone = await getResolvedSystemTimeZone();
   const statusLabels = {
     pending: tSubmissions("status.pending"),
     queued: tSubmissions("status.queued"),
@@ -136,7 +139,9 @@ export default async function AdminSubmissionsPage({
                   </TableCell>
                   <TableCell>{sub.score !== null ? sub.score : "-"}</TableCell>
                   <TableCell>
-                    {sub.submittedAt ? new Date(sub.submittedAt).toLocaleString() : "-"}
+                    {sub.submittedAt
+                      ? formatDateTimeInTimeZone(sub.submittedAt, locale, timeZone)
+                      : "-"}
                   </TableCell>
                   <TableCell>
                     <Link href={`/dashboard/submissions/${sub.id}`}>
