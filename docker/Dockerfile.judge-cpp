@@ -1,6 +1,7 @@
-FROM gcc:14-bookworm
+FROM alpine:latest
 
-RUN useradd -m -s /bin/false judge && \
+RUN apk add --no-cache gcc g++ musl-dev && \
+    adduser -D -s /bin/false judge && \
     mkdir -p /workspace && \
     chown judge:judge /workspace
 

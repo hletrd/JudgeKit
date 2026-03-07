@@ -90,7 +90,7 @@
   "judge": {
     "title": "채점 환경",
     "cpu": "Ampere Altra (ARM64)",
-    "os": "Debian Bookworm (Linux)",
+    "os": "Alpine Linux (latest)",
     "architecture": "AArch64 (ARM64)",
     "defaultTimeLimit": "2,000 ms",
     "defaultMemoryLimit": "256 MB",
