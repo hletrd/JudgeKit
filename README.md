@@ -134,7 +134,7 @@ As of 2026-03-07, the demo deployment at `oj-demo.atik.kr` includes six instruct
 ## Deployment and Database Reset
 
 - Before touching production, verify that the SSH target matches the public DNS for the environment you intend to change. `oj-demo.atik.kr` should be treated as a separate host from the main `atik.kr` box unless you confirm otherwise.
-- As of 2026-03-07, the demo host runs the web app via `online-judge.service` from `/home/ubuntu/online-judge`. A separate managed judge-worker service is not configured there yet.
+- As of 2026-03-07, the demo host runs the web app via `online-judge.service` and the judge worker via `online-judge-worker.service` from `/home/ubuntu/online-judge`.
 - As of 2026-03-07, the demo host also contains six instructor-owned private smoke-test problems created through the API: `두 수의 합 (A+B)`, `두 수의 차 (A-B)`, `두 수의 곱 (A*B)`, `세 수의 합`, `두 수 중 큰 수`, and `절댓값 구하기`.
 - To reset the SQLite database for a disposable or demo environment, stop the app first, remove `data/judge.db`, `data/judge.db-shm`, and `data/judge.db-wal`, then run:
 
@@ -144,6 +144,79 @@ npm run seed
 ```
 
 - Re-verify login after a reset with username `admin` and password `admin123`; the expected first destination is `/change-password`.
+
+## Comprehensive Deployment Guide
+
+### 1. Host prerequisites
+
+- Ubuntu host with Docker Engine, Node.js 24, npm, and systemd
+- Repo checked out at `/home/ubuntu/online-judge`
+- `key.pem` available locally for SSH access
+- Ports `80` and `443` terminated by nginx; app stays on port `3000`
+
+### 2. Environment configuration
+
+Start from `.env.example` and set at least:
+
+```bash
+AUTH_SECRET=<openssl rand -base64 32>
+AUTH_URL=https://oj-demo.atik.kr
+JUDGE_AUTH_TOKEN=<openssl rand -hex 32>
+JUDGE_POLL_URL=http://localhost:3000/api/v1/judge/poll
+POLL_INTERVAL=2000
+JUDGE_DISABLE_CUSTOM_SECCOMP=0
+```
+
+- Keep `JUDGE_POLL_URL` on the internal host URL unless the worker runs on another machine
+- Set `JUDGE_DISABLE_CUSTOM_SECCOMP=1` on hosts where Docker 28+/modern kernels reject the repository seccomp profile during container init; the worker now also retries once with Docker's default seccomp if the custom profile fails with the known `fsmount:fscontext:proc` error
+
+### 3. Initial provisioning
+
+```bash
+npm install
+npm run db:push
+npm run seed
+docker build -t judge-cpp -f docker/Dockerfile.judge-cpp .
+docker build -t judge-python -f docker/Dockerfile.judge-python .
+npm run build
+```
+
+### 4. Install systemd services
+
+The web app service is host-specific, but the judge-worker unit is now versioned in the repo.
+
+```bash
+sudo ./scripts/install-online-judge-worker-service.sh
+sudo systemctl restart online-judge.service
+```
+
+The worker unit file lives at `scripts/online-judge-worker.service` and expects the repo at `/home/ubuntu/online-judge` with `.env` in the same directory.
+
+### 5. Deploy updates
+
+```bash
+git pull --rebase origin main
+npm install
+npm run db:push
+npm run build
+sudo systemctl restart online-judge.service
+sudo systemctl restart online-judge-worker.service
+```
+
+If you changed the judge Dockerfiles or compiler/runtime assumptions, rebuild the images before restarting the worker.
+
+### 6. Post-deploy verification
+
+```bash
+systemctl is-active online-judge.service
+systemctl is-active online-judge-worker.service
+curl -I http://127.0.0.1:3000/login
+journalctl -u online-judge-worker.service -n 50 --no-pager
+```
+
+- Confirm submissions progress out of `pending`
+- If you see `401 Unauthorized` in worker logs, verify `JUDGE_AUTH_TOKEN`
+- If you see the `fsmount:fscontext:proc` container-init error, set `JUDGE_DISABLE_CUSTOM_SECCOMP=1` and restart `online-judge-worker.service`
 
 ## Tech Stack
 
