@@ -14,7 +14,6 @@ export default async function ProfilePage() {
   if (!session?.user) redirect("/login");
 
   const t = await getTranslations("profile");
-  const tCommon = await getTranslations("common");
 
   return (
     <div className="max-w-2xl mx-auto space-y-6">

@@ -36,7 +36,7 @@ export default function ProfileForm({
       } else {
         toast.error(t(result.error ?? "updateError"));
       }
-    } catch (err) {
+    } catch {
       toast.error(tCommon("error"));
     } finally {
       setIsLoading(false);
