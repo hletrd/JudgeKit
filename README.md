@@ -42,11 +42,11 @@
 
 - Phase 0 remediation is complete: submission flow works, the judge worker executes submissions, instructors can manage test cases during problem authoring, the problem edit page exists, and the group creation flow is wired
 - High-priority Phase 1 work is also in place: dashboard `loading.tsx` / `error.tsx` / `not-found.tsx`, submission polling, paginated submissions, solved/attempted problem indicators, translated status badges, callback-aware login, sanitized problem descriptions, theme switching, richer code surfaces, and admin-managed site identity/timezone settings
-- Local main also includes the dashboard-rendering-audit-and-editor-upgrades batch plus the classroom-management and broader audit-logging follow-up: instructor assignment status boards with scoped submission drill-down, admin login logs, theme-aware CodeMirror surfaces, draft recovery, guarded delete flows, 32-character hex submission IDs, group membership management, assignment create/edit/delete flows, student assignment detail/submission paths, assignment-context enforcement for enrolled students, group deletion guards that preserve assignment-linked history, and admin audit logs for privileged and system-driven mutations across settings, users, problems, groups, assignments, submissions, judging, profile updates, and password changes. These changes are verified locally but not yet confirmed on `oj-demo.atik.kr`.
-- As of 2026-03-07, commit `6951d46` is deployed to `oj-demo.atik.kr`; the demo host has the `system_settings.time_zone` column applied and the public login page returns HTTP 200
+- Local main also includes the dashboard-rendering-audit-and-editor-upgrades batch plus the classroom-management, broader audit-logging, and operational-hardening follow-up: instructor assignment status boards with scoped submission drill-down, admin login logs, theme-aware CodeMirror surfaces, draft recovery, guarded delete flows, 32-character hex submission IDs, group membership management, assignment create/edit/delete flows, student assignment detail/submission paths, assignment-context enforcement for enrolled students, group deletion guards that preserve assignment-linked history, admin audit logs for privileged and system-driven mutations, a public `/api/health` readiness endpoint, verified SQLite backup/restore scripts, and repository-native GitHub Actions CI for lint/build/Playwright checks.
+- As of 2026-03-08, `oj-demo.atik.kr` has been reverified after the classroom/audit rollout: the public login page returns HTTP 200, protected dashboard routes redirect through login, and both `online-judge.service` and `online-judge-worker.service` are active.
 - Security hardening now includes login rate limiting, explicit auth/judge env validation, stronger API access checks, problem/test-case exposure fixes, and shared security headers
 - As of 2026-03-07, a remote smoke test against `oj-demo.atik.kr` succeeded with instructor-authenticated `POST /api/v1/problems` calls and left six private Korean practice problems on the demo host for API verification
-- Remaining roadmap items are still open: additional language/runtime expansion, CI, and backup/observability work
+- Remaining roadmap items are still open: additional language/runtime expansion
 
 ## Getting Started
 
@@ -140,7 +140,7 @@ As of 2026-03-07, the demo deployment at `oj-demo.atik.kr` includes six instruct
 
 - Before touching production, verify that the SSH target matches the public DNS for the environment you intend to change. `oj-demo.atik.kr` should be treated as a separate host from the main `atik.kr` box unless you confirm otherwise.
 - As of 2026-03-07, the demo host runs the web app via `online-judge.service` and the judge worker via `online-judge-worker.service` from `/home/ubuntu/online-judge`.
-- As of 2026-03-07, the demo host is verified at commit `6951d46`, and its `system_settings` table includes the `time_zone` column required for timezone-aware timestamp rendering.
+- As of 2026-03-08, the demo host has been reverified with the classroom-management and audit rollout live, and `/api/health` is the lightweight readiness endpoint for automated checks after future deploys.
 - As of 2026-03-07, the demo host also contains six instructor-owned private smoke-test problems created through the API: `두 수의 합 (A+B)`, `두 수의 차 (A-B)`, `두 수의 곱 (A*B)`, `세 수의 합`, `두 수 중 큰 수`, and `절댓값 구하기`.
 - Do not assume the long-lived demo host still uses the seeded `admin` / `admin123` credentials unless it was reset and reseeded immediately beforehand.
 - To reset the SQLite database for a disposable or demo environment, stop the app first, remove `data/judge.db`, `data/judge.db-shm`, and `data/judge.db-wal`, then run:
@@ -219,16 +219,24 @@ sudo systemctl restart online-judge-worker.service
 If you changed the judge Dockerfiles or compiler/runtime assumptions, run `npm run languages:sync`, rebuild the affected images, and then restart the worker.
 If you changed versioned systemd unit files or drop-ins, run `sudo systemctl daemon-reload` before restarting services.
 
+### 5a. Optional CI and backup tooling
+
+- GitHub Actions CI now runs lint, production build, backup/restore verification, and the Playwright suite on pushes, pull requests, and manual dispatch via `.github/workflows/ci.yml`.
+- SQLite backup tooling now lives in `scripts/backup-db.sh` and `scripts/verify-db-backup.sh`.
+- Repo-managed backup timer artifacts live in `scripts/online-judge-backup.service`, `scripts/online-judge-backup.timer`, and `scripts/install-online-judge-backup-timer.sh`.
+
 ### 6. Post-deploy verification
 
 ```bash
 systemctl is-active online-judge.service
 systemctl is-active online-judge-worker.service
 curl -I http://127.0.0.1:3000/login
+curl http://127.0.0.1:3000/api/health
 journalctl -u online-judge-worker.service -n 50 --no-pager
 ```
 
 - Confirm submissions progress out of `pending`
+- Confirm `/api/health` returns `{"status":"ok"...}` with `checks.database` set to `ok`
 - If you see `401 Unauthorized` in worker logs, verify `JUDGE_AUTH_TOKEN`
 - If you see the `fsmount:fscontext:proc` container-init error, set `JUDGE_DISABLE_CUSTOM_SECCOMP=1` and restart `online-judge-worker.service`
 - For system settings schema or timezone changes, verify `/dashboard/admin/settings` and at least one timestamped page such as `/dashboard/submissions` or `/dashboard/admin/users/[id]` after deploy

@@ -11,13 +11,13 @@ The `dashboard-rendering-audit-and-editor-upgrades` batch is now locally verifie
 - Theme switching, CodeMirror code surfaces, markdown rendering, draft recovery, mixed submission IDs, and guarded delete flows
 - Group membership management plus assignment create/edit/delete flows, assignment-linked student detail pages, and submission guards tied to assignment schedules/history
 - Broader audit/event logging across admin mutations, submission/judge lifecycle events, and the admin audit-log page
+- GitHub Actions CI plus the operational-hardening baseline: `/api/health`, SQLite backup/restore scripts, and repo-managed backup timer artifacts
 
 ## Still open
 
 - Additional language/runtime expansion work
-- CI and backup/observability work
 
 ## Safety note
 
-- The demo host is still only confirmed at commit `6951d46`; do not describe the newer local dashboard/audit/editor upgrades as deployed until the next remote rollout is verified.
+- The demo host was reverified on 2026-03-08 after the classroom/audit rollout; future sessions should still verify the host again after any later deploy.
 - Future sessions should isolate the next coherent batch before updating deployment-facing docs again.
