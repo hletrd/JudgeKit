@@ -25,4 +25,9 @@ export const createGroupSchema = z.object({
   ),
 });
 
+export const groupMembershipSchema = z.object({
+  userId: z.preprocess(trimString, z.string().min(1, "studentRequired")),
+});
+
 export type CreateGroupInput = z.infer<typeof createGroupSchema>;
+export type GroupMembershipInput = z.infer<typeof groupMembershipSchema>;

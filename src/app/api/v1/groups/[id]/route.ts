@@ -1,9 +1,10 @@
 import { NextRequest, NextResponse } from "next/server";
 import { db } from "@/lib/db";
-import { groups } from "@/lib/db/schema";
-import { eq } from "drizzle-orm";
+import { assignments, groups, submissions } from "@/lib/db/schema";
+import { eq, sql } from "drizzle-orm";
 import { canAccessGroup } from "@/lib/auth/permissions";
 import { getApiUser, unauthorized, forbidden, notFound, isAdmin } from "@/lib/api/auth";
+import { recordAuditEvent } from "@/lib/audit/events";
 
 export async function GET(
   request: NextRequest,
@@ -109,6 +110,24 @@ export async function PATCH(
     await db.update(groups).set(updates).where(eq(groups.id, id));
 
     const updated = await db.query.groups.findFirst({ where: eq(groups.id, id) });
+
+    if (updated) {
+      recordAuditEvent({
+        actorId: user.id,
+        actorRole: user.role,
+        action: "group.updated",
+        resourceType: "group",
+        resourceId: updated.id,
+        resourceLabel: updated.name,
+        summary: `Updated group \"${updated.name}\"`,
+        details: {
+          changedFields: Object.keys(body).filter((key) => ["name", "description", "isArchived"].includes(key)),
+          isArchived: updated.isArchived,
+        },
+        request,
+      });
+    }
+
     return NextResponse.json({ data: updated });
   } catch (error) {
     console.error("PATCH /api/v1/groups/[id] error:", error);
@@ -129,7 +148,43 @@ export async function DELETE(
     const group = await db.query.groups.findFirst({ where: eq(groups.id, id) });
     if (!group) return notFound("Group");
 
+    const assignmentSubmissionCountRow = await db
+      .select({ total: sql<number>`count(${submissions.id})` })
+      .from(assignments)
+      .innerJoin(submissions, eq(submissions.assignmentId, assignments.id))
+      .where(eq(assignments.groupId, id))
+      .then((rows) => rows[0] ?? { total: 0 });
+
+    const assignmentSubmissionCount = Number(assignmentSubmissionCountRow.total ?? 0);
+
+    if (assignmentSubmissionCount > 0) {
+      return NextResponse.json(
+        {
+          error: "groupDeleteBlocked",
+          details: {
+            assignmentSubmissionCount,
+          },
+        },
+        { status: 409 }
+      );
+    }
+
     await db.delete(groups).where(eq(groups.id, id));
+
+    recordAuditEvent({
+      actorId: user.id,
+      actorRole: user.role,
+      action: "group.deleted",
+      resourceType: "group",
+      resourceId: group.id,
+      resourceLabel: group.name,
+      summary: `Deleted group \"${group.name}\"`,
+      details: {
+        isArchived: group.isArchived,
+      },
+      request,
+    });
+
     return NextResponse.json({ data: { id } });
   } catch (error) {
     console.error("DELETE /api/v1/groups/[id] error:", error);

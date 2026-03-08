@@ -4,8 +4,12 @@ import { languageConfigs, problems, submissions } from "@/lib/db/schema";
 import { isJudgeLanguage } from "@/lib/judge/languages";
 import { and, desc, eq } from "drizzle-orm";
 import { getApiUser, unauthorized, isAdmin } from "@/lib/api/auth";
+import { recordAuditEvent } from "@/lib/audit/events";
 import { canAccessProblem } from "@/lib/auth/permissions";
-import { validateAssignmentSubmission } from "@/lib/assignments/submissions";
+import {
+  getStudentAssignmentContextsForProblem,
+  validateAssignmentSubmission,
+} from "@/lib/assignments/submissions";
 import {
   MAX_SOURCE_CODE_SIZE_BYTES,
   isSubmissionStatus,
@@ -92,11 +96,19 @@ export async function POST(request: NextRequest) {
 
     const problem = await db.query.problems.findFirst({
       where: eq(problems.id, problemId),
-      columns: { id: true },
+      columns: { id: true, title: true },
     });
 
     if (!problem) {
       return NextResponse.json({ error: "problemNotFound" }, { status: 404 });
+    }
+
+    if (!normalizedAssignmentId && user.role === "student") {
+      const assignmentContexts = await getStudentAssignmentContextsForProblem(problemId, user.id);
+
+      if (assignmentContexts.length > 0) {
+        return NextResponse.json({ error: "assignmentContextRequired" }, { status: 409 });
+      }
     }
 
     if (normalizedAssignmentId) {
@@ -150,6 +162,26 @@ export async function POST(request: NextRequest) {
     const submission = await db.query.submissions.findFirst({
       where: eq(submissions.id, id),
     });
+
+    if (submission) {
+      recordAuditEvent({
+        actorId: user.id,
+        actorRole: user.role,
+        action: "submission.created",
+        resourceType: "submission",
+        resourceId: submission.id,
+        resourceLabel: submission.id,
+        summary: `Created submission ${submission.id} for "${problem.title}"`,
+        details: {
+          assignmentId: normalizedAssignmentId,
+          language,
+          problemId: problem.id,
+          problemTitle: problem.title,
+        },
+        request,
+      });
+    }
+
     return NextResponse.json({ data: submission }, { status: 201 });
   } catch (error) {
     console.error("POST /api/v1/submissions error:", error);

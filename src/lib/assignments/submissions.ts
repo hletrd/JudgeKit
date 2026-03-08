@@ -3,6 +3,7 @@ import {
   assignmentProblems,
   assignments,
   enrollments,
+  groups,
   problems,
   submissions,
   users,
@@ -13,6 +14,8 @@ import type { SubmissionStatus, UserRole } from "@/types";
 type AssignmentValidationError =
   | "invalidAssignmentId"
   | "assignmentNotFound"
+  | "assignmentNotStarted"
+  | "assignmentClosed"
   | "assignmentEnrollmentRequired"
   | "assignmentProblemMismatch";
 
@@ -20,6 +23,9 @@ type AssignmentAccessRecord = {
   id: string;
   groupId: string;
   instructorId: string | null;
+  startsAt: Date | null;
+  deadline: Date | null;
+  lateDeadline: Date | null;
 };
 
 type AssignmentValidationSuccess = {
@@ -82,6 +88,16 @@ export type AssignmentStatusRows = {
   rows: AssignmentStudentStatusRow[];
 };
 
+export type StudentAssignmentProblemContext = {
+  assignmentId: string;
+  title: string;
+  groupId: string;
+  groupName: string;
+  startsAt: Date | null;
+  deadline: Date | null;
+  lateDeadline: Date | null;
+};
+
 function roundAssignmentScore(value: number) {
   return Math.round(value * 100) / 100;
 }
@@ -110,6 +126,9 @@ async function getAssignmentAccessRecord(
     columns: {
       id: true,
       groupId: true,
+      startsAt: true,
+      deadline: true,
+      lateDeadline: true,
     },
     with: {
       group: {
@@ -128,6 +147,9 @@ async function getAssignmentAccessRecord(
     id: assignment.id,
     groupId: assignment.groupId,
     instructorId: assignment.group?.instructorId ?? null,
+    startsAt: assignment.startsAt ?? null,
+    deadline: assignment.deadline ?? null,
+    lateDeadline: assignment.lateDeadline ?? null,
   };
 }
 
@@ -155,6 +177,28 @@ export async function validateAssignmentSubmission(
       status: 404,
       error: "assignmentNotFound",
     };
+  }
+
+  if (!isAdminRole(role)) {
+    const now = Date.now();
+    const startsAt = assignment.startsAt?.valueOf() ?? null;
+    const effectiveCloseAt = assignment.lateDeadline?.valueOf() ?? assignment.deadline?.valueOf() ?? null;
+
+    if (startsAt && startsAt > now) {
+      return {
+        ok: false,
+        status: 403,
+        error: "assignmentNotStarted",
+      };
+    }
+
+    if (effectiveCloseAt && effectiveCloseAt < now) {
+      return {
+        ok: false,
+        status: 403,
+        error: "assignmentClosed",
+      };
+    }
   }
 
   if (!isAdminRole(role)) {
@@ -222,6 +266,31 @@ export async function canViewAssignmentSubmissions(
   }
 
   return assignment.instructorId === userId;
+}
+
+export async function getStudentAssignmentContextsForProblem(
+  problemId: string,
+  userId: string
+): Promise<StudentAssignmentProblemContext[]> {
+  return db
+    .select({
+      assignmentId: assignments.id,
+      title: assignments.title,
+      groupId: assignments.groupId,
+      groupName: groups.name,
+      startsAt: assignments.startsAt,
+      deadline: assignments.deadline,
+      lateDeadline: assignments.lateDeadline,
+    })
+    .from(assignmentProblems)
+    .innerJoin(assignments, eq(assignments.id, assignmentProblems.assignmentId))
+    .innerJoin(groups, eq(groups.id, assignments.groupId))
+    .innerJoin(
+      enrollments,
+      and(eq(enrollments.groupId, assignments.groupId), eq(enrollments.userId, userId))
+    )
+    .where(eq(assignmentProblems.problemId, problemId))
+    .orderBy(asc(assignments.deadline), asc(assignments.title));
 }
 
 export async function getAssignmentStatusRows(
