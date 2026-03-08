@@ -8,6 +8,8 @@
     "start": "next start",
     "lint": "eslint",
     "db:push": "drizzle-kit push",
+    "backup:db": "bash scripts/backup-db.sh",
+    "backup:verify": "bash scripts/verify-db-backup.sh",
     "db:studio": "drizzle-kit studio",
     "db:generate": "drizzle-kit generate",
     "seed": "tsx scripts/seed.ts",
