@@ -7,7 +7,12 @@ import { findSessionUser, hasSessionIdentity } from "@/lib/auth/find-session-use
 import { buildServerActionAuditContext, recordAuditEvent } from "@/lib/audit/events";
 import { db } from "@/lib/db";
 import { users } from "@/lib/db/schema";
-import { MIN_PASSWORD_LENGTH } from "@/lib/security/constants";
+import { clearRateLimit, isRateLimited, recordRateLimitFailure } from "@/lib/security/rate-limit";
+import { getPasswordValidationError } from "@/lib/security/password";
+
+function getChangePasswordRateLimitKey(userId: string) {
+  return `change-password:user:${userId}`;
+}
 
 export async function changePassword(
   currentPassword: string,
@@ -25,13 +30,22 @@ export async function changePassword(
     return { success: false, error: "sessionExpired" };
   }
 
+  const rateLimitKey = getChangePasswordRateLimitKey(user.id);
+
+  if (isRateLimited(rateLimitKey)) {
+    return { success: false, error: "changePasswordRateLimited" };
+  }
+
   const isValid = await compare(currentPassword, user.passwordHash);
   if (!isValid) {
+    recordRateLimitFailure(rateLimitKey);
     return { success: false, error: "currentPasswordIncorrect" };
   }
 
-  if (newPassword.length < MIN_PASSWORD_LENGTH) {
-    return { success: false, error: "passwordTooShort" };
+  const passwordValidationError = getPasswordValidationError(newPassword);
+
+  if (passwordValidationError) {
+    return { success: false, error: passwordValidationError };
   }
 
   const newHash = await hash(newPassword, 12);
@@ -49,6 +63,8 @@ export async function changePassword(
     console.error("Failed to change password:", error);
     return { success: false, error: "error" };
   }
+
+  clearRateLimit(rateLimitKey);
 
   const auditContext = await buildServerActionAuditContext("/change-password");
   recordAuditEvent({

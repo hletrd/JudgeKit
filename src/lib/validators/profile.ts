@@ -1,21 +1,5 @@
 import { z } from "zod";
-
-function trimString(value: unknown) {
-  if (typeof value !== "string") {
-    return value;
-  }
-
-  return value.trim();
-}
-
-function normalizeOptionalString(value: unknown) {
-  if (typeof value !== "string") {
-    return value;
-  }
-
-  const trimmed = value.trim();
-  return trimmed === "" ? undefined : trimmed;
-}
+import { normalizeOptionalString, trimString } from "@/lib/validators/preprocess";
 
 export const updateProfileSchema = z.object({
   name: z.preprocess(
@@ -32,4 +16,31 @@ export const updateProfileSchema = z.object({
   ),
 });
 
+export const adminUpdateUserSchema = updateProfileSchema.extend({
+  username: z.preprocess(
+    trimString,
+    z
+      .string()
+      .min(2, "usernameTooShort")
+      .max(50, "usernameTooLong")
+      .regex(/^[a-zA-Z0-9_-]+$/, "usernameInvalidChars")
+      .optional()
+  ),
+});
+
+export const userCreateSchema = adminUpdateUserSchema.extend({
+  username: z.preprocess(
+    trimString,
+    z
+      .string()
+      .min(2, "usernameTooShort")
+      .max(50, "usernameTooLong")
+      .regex(/^[a-zA-Z0-9_-]+$/, "usernameInvalidChars")
+  ),
+  role: z.preprocess(trimString, z.string().min(1, "invalidRole")),
+  password: z.string().optional(),
+});
+
 export type UpdateProfileInput = z.infer<typeof updateProfileSchema>;
+export type AdminUpdateUserInput = z.infer<typeof adminUpdateUserSchema>;
+export type UserCreateInput = z.infer<typeof userCreateSchema>;

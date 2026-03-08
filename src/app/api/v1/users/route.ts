@@ -1,17 +1,19 @@
 import { NextRequest, NextResponse } from "next/server";
 import { db } from "@/lib/db";
 import { users } from "@/lib/db/schema";
-import { eq, desc } from "drizzle-orm";
-import { getApiUser, unauthorized, forbidden, isAdmin } from "@/lib/api/auth";
+import { eq, desc, sql } from "drizzle-orm";
+import { getApiUser, unauthorized, forbidden, isAdmin, csrfForbidden } from "@/lib/api/auth";
 import { recordAuditEvent } from "@/lib/audit/events";
 import { nanoid } from "nanoid";
 import { hash } from "bcryptjs";
 import { generateSecurePassword } from "@/lib/auth/generated-password";
+import { safeUserSelect } from "@/lib/db/selects";
 import {
-  MIN_PASSWORD_LENGTH,
   canManageRole,
   isUserRole,
 } from "@/lib/security/constants";
+import { getPasswordValidationError } from "@/lib/security/password";
+import { userCreateSchema } from "@/lib/validators/profile";
 
 export async function GET(request: NextRequest) {
   try {
@@ -29,34 +31,22 @@ export async function GET(request: NextRequest) {
       return NextResponse.json({ error: "Invalid role" }, { status: 400 });
     }
 
-    const userSelect = {
-      id: users.id,
-      username: users.username,
-      email: users.email,
-      name: users.name,
-      className: users.className,
-      role: users.role,
-      isActive: users.isActive,
-      createdAt: users.createdAt,
-      updatedAt: users.updatedAt,
-    };
+    const whereClause = role ? eq(users.role, role) : undefined;
 
-    const results = role
-      ? await db
-          .select(userSelect)
-          .from(users)
-          .where(eq(users.role, role))
-          .orderBy(desc(users.createdAt))
-          .limit(limit)
-          .offset(offset)
-      : await db
-          .select(userSelect)
-          .from(users)
-          .orderBy(desc(users.createdAt))
-          .limit(limit)
-          .offset(offset);
+    const [totalRow] = await db
+      .select({ count: sql<number>`count(*)` })
+      .from(users)
+      .where(whereClause);
 
-    return NextResponse.json({ data: results, page, limit });
+    const results = await db
+      .select(safeUserSelect)
+      .from(users)
+      .where(whereClause)
+      .orderBy(desc(users.createdAt))
+      .limit(limit)
+      .offset(offset);
+
+    return NextResponse.json({ data: results, page, limit, total: Number(totalRow?.count ?? 0) });
   } catch (error) {
     console.error("GET /api/v1/users error:", error);
     return NextResponse.json({ error: "Internal server error" }, { status: 500 });
@@ -65,59 +55,60 @@ export async function GET(request: NextRequest) {
 
 export async function POST(request: NextRequest) {
   try {
+    const csrfError = csrfForbidden(request);
+    if (csrfError) return csrfError;
+
     const user = await getApiUser(request);
     if (!user) return unauthorized();
     if (!isAdmin(user.role)) return forbidden();
 
-    const body = await request.json();
-    const { username, email, name, className, password, role } = body;
-    const normalizedEmail = typeof email === "string" && email.trim() !== "" ? email.trim() : null;
-    const normalizedClassName = typeof className === "string" && className.trim() !== "" ? className.trim() : null;
+    const parsed = userCreateSchema.safeParse(await request.json());
 
-    if (!username || typeof username !== "string") {
-      return NextResponse.json({ error: "Username is required" }, { status: 400 });
-    }
-    if (email !== undefined && typeof email !== "string") {
-      return NextResponse.json({ error: "Email is required" }, { status: 400 });
-    }
-    if (!name || typeof name !== "string") {
-      return NextResponse.json({ error: "Name is required" }, { status: 400 });
-    }
-    if (password !== undefined && (typeof password !== "string" || password.length < MIN_PASSWORD_LENGTH)) {
+    if (!parsed.success) {
       return NextResponse.json(
-        { error: `Password must be at least ${MIN_PASSWORD_LENGTH} characters` },
+        { error: parsed.error.issues[0]?.message ?? "createUserFailed" },
         { status: 400 }
       );
     }
 
-    const requestedRole = typeof role === "string" && role.trim() !== "" ? role.trim() : "student";
+    const { username, email, name, className, password, role } = parsed.data;
+    const normalizedEmail = email ?? null;
+    const normalizedClassName = className ?? null;
+    const requestedRole = role.trim() || "student";
 
     if (!isUserRole(requestedRole)) {
-      return NextResponse.json({ error: "Invalid role" }, { status: 400 });
+      return NextResponse.json({ error: "invalidRole" }, { status: 400 });
     }
 
     if (!canManageRole(user.role, requestedRole)) {
       return NextResponse.json(
-        { error: "Only super_admin can assign super_admin role" },
+        { error: "onlySuperAdminCanChangeSuperAdminRole" },
         { status: 403 }
       );
     }
 
+    if (password) {
+      const passwordValidationError = getPasswordValidationError(password);
+
+      if (passwordValidationError) {
+        return NextResponse.json({ error: passwordValidationError }, { status: 400 });
+      }
+    }
+
     const existing = await db.query.users.findFirst({ where: eq(users.username, username) });
     if (existing) {
-      return NextResponse.json({ error: "Username already in use" }, { status: 409 });
+      return NextResponse.json({ error: "usernameInUse" }, { status: 409 });
     }
 
     if (normalizedEmail) {
       const existingEmail = await db.query.users.findFirst({ where: eq(users.email, normalizedEmail) });
       if (existingEmail) {
-        return NextResponse.json({ error: "Email already in use" }, { status: 409 });
+        return NextResponse.json({ error: "emailInUse" }, { status: 409 });
       }
     }
 
     const generatedPassword = generateSecurePassword();
-    const passwordToHash =
-      typeof password === "string" && password.length >= MIN_PASSWORD_LENGTH ? password : generatedPassword;
+    const passwordToHash = password ?? generatedPassword;
     const passwordHash = await hash(passwordToHash, 12);
     const id = nanoid();
 
@@ -136,17 +127,7 @@ export async function POST(request: NextRequest) {
     });
 
     const created = await db
-      .select({
-        id: users.id,
-        username: users.username,
-        email: users.email,
-        name: users.name,
-        className: users.className,
-        role: users.role,
-        isActive: users.isActive,
-        createdAt: users.createdAt,
-        updatedAt: users.updatedAt,
-      })
+      .select(safeUserSelect)
       .from(users)
       .where(eq(users.id, id))
       .then((r) => r[0]);
@@ -168,7 +149,10 @@ export async function POST(request: NextRequest) {
       });
     }
 
-    return NextResponse.json({ data: created, generatedPassword: password ? undefined : generatedPassword }, { status: 201 });
+    return NextResponse.json(
+      { data: created, passwordGenerated: password === undefined },
+      { status: 201 }
+    );
   } catch (error) {
     console.error("POST /api/v1/users error:", error);
     return NextResponse.json({ error: "Internal server error" }, { status: 500 });

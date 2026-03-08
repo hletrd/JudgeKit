@@ -31,12 +31,6 @@ export function ChangePasswordForm({ username }: { username: string }) {
       return;
     }
 
-    if (newPassword.length < 8) {
-      setError(t("passwordTooShort"));
-      setLoading(false);
-      return;
-    }
-
     const result = await changePassword(currentPassword, newPassword);
 
     if (!result.success) {

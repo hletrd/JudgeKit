@@ -3,6 +3,7 @@ import { drizzle } from "drizzle-orm/better-sqlite3";
 import { eq } from "drizzle-orm";
 import { hash } from "bcryptjs";
 import { nanoid } from "nanoid";
+import { randomBytes } from "crypto";
 import * as schema from "../src/lib/db/schema";
 import { DEFAULT_JUDGE_LANGUAGES, serializeJudgeCommand } from "../src/lib/judge/languages";
 import path from "path";
@@ -175,7 +176,8 @@ async function seed() {
   if (existingAdmin) {
     console.log("Super admin already exists, skipping user seed.");
   } else {
-    const passwordHash = await hash("admin123", 12);
+    const generatedPassword = randomBytes(16).toString("hex");
+    const passwordHash = await hash(generatedPassword, 12);
     adminUserId = nanoid();
 
     db.insert(schema.users)
@@ -194,8 +196,9 @@ async function seed() {
 
     console.log("Seeded super admin user:");
     console.log("  Username: admin");
-    console.log("  Password: admin123");
+    console.log(`  Password: ${generatedPassword}`);
     console.log("  Role: super_admin");
+    console.log("  (mustChangePassword: true — will be forced to change on first login)");
   }
 
   // Seed default language configs

@@ -9,10 +9,10 @@ import { nanoid } from "nanoid";
 import { buildServerActionAuditContext, recordAuditEvent } from "@/lib/audit/events";
 import { generateSecurePassword } from "@/lib/auth/generated-password";
 import {
-  MIN_PASSWORD_LENGTH,
   canManageRole,
   isUserRole,
 } from "@/lib/security/constants";
+import { getPasswordValidationError } from "@/lib/security/password";
 import type { UserRole } from "@/types";
 
 type UserUpdates = Partial<typeof users.$inferInsert>;
@@ -29,6 +29,7 @@ type UserManagementErrorKey =
   | "onlySuperAdminCanChangeSuperAdminRole"
   | "cannotChangeSuperAdminRole"
   | "passwordTooShort"
+  | "passwordTooWeak"
   | "updateUserFailed"
   | "createUserFailed";
 
@@ -151,8 +152,12 @@ export async function editUser(userId: string, data: ManagedUserInput): Promise<
       return { success: false, error: "cannotChangeSuperAdminRole" };
     }
 
-    if (data.password && data.password.length < MIN_PASSWORD_LENGTH) {
-      return { success: false, error: "passwordTooShort" };
+    if (data.password) {
+      const passwordValidationError = getPasswordValidationError(data.password);
+
+      if (passwordValidationError) {
+        return { success: false, error: passwordValidationError };
+      }
     }
 
     const updates: UserUpdates = {
@@ -164,7 +169,7 @@ export async function editUser(userId: string, data: ManagedUserInput): Promise<
       updatedAt: new Date(),
     };
 
-    if (data.password && data.password.length >= MIN_PASSWORD_LENGTH) {
+    if (data.password) {
       updates.passwordHash = await hash(data.password, 12);
       updates.mustChangePassword = true;
     }
@@ -182,7 +187,7 @@ export async function editUser(userId: string, data: ManagedUserInput): Promise<
       summary: `Updated user @${data.username}`,
       details: {
         changedFields: Object.keys(updates).filter((key) => key !== "passwordHash"),
-        resetPassword: Boolean(data.password && data.password.length >= MIN_PASSWORD_LENGTH),
+        resetPassword: Boolean(data.password),
         role: requestedRole,
       },
       context: auditContext,
@@ -237,14 +242,18 @@ export async function createUser(data: ManagedUserInput): Promise<UserManagement
       }
     }
 
-    if (data.password && data.password.length < MIN_PASSWORD_LENGTH) {
-      return { success: false, error: "passwordTooShort" };
+    if (data.password) {
+      const passwordValidationError = getPasswordValidationError(data.password);
+
+      if (passwordValidationError) {
+        return { success: false, error: passwordValidationError };
+      }
     }
 
     const id = nanoid();
     const generatedPassword = generateSecurePassword();
     const passwordToHash =
-      data.password && data.password.length >= MIN_PASSWORD_LENGTH ? data.password : generatedPassword;
+      data.password ?? generatedPassword;
     const passwordHash = await hash(passwordToHash, 12);
 
     await db.insert(users).values({

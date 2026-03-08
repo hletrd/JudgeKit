@@ -2,26 +2,16 @@ import { NextRequest, NextResponse } from "next/server";
 import { db } from "@/lib/db";
 import { users } from "@/lib/db/schema";
 import { eq } from "drizzle-orm";
-import { getApiUser, unauthorized, forbidden, notFound, isAdmin } from "@/lib/api/auth";
+import { getApiUser, unauthorized, forbidden, notFound, isAdmin, csrfForbidden } from "@/lib/api/auth";
 import { recordAuditEvent } from "@/lib/audit/events";
 import { hash } from "bcryptjs";
 import {
-  MIN_PASSWORD_LENGTH,
   canManageRole,
   isUserRole,
 } from "@/lib/security/constants";
-
-const safeUserSelect = {
-  id: users.id,
-  username: users.username,
-  email: users.email,
-  name: users.name,
-  className: users.className,
-  role: users.role,
-  isActive: users.isActive,
-  createdAt: users.createdAt,
-  updatedAt: users.updatedAt,
-};
+import { safeUserSelect } from "@/lib/db/selects";
+import { getPasswordValidationError } from "@/lib/security/password";
+import { updateProfileSchema, adminUpdateUserSchema } from "@/lib/validators/profile";
 
 export async function GET(
   request: NextRequest,
@@ -57,6 +47,9 @@ export async function PATCH(
   { params }: { params: Promise<{ id: string }> }
 ) {
   try {
+    const csrfError = csrfForbidden(request);
+    if (csrfError) return csrfError;
+
     const user = await getApiUser(request);
     if (!user) return unauthorized();
 
@@ -75,13 +68,37 @@ export async function PATCH(
     if (!found) return notFound("User");
 
     const body = await request.json();
+
+    // Validate profile fields via Zod
+    const profileSchema = isAdminActor ? adminUpdateUserSchema : updateProfileSchema;
+    const profileFields: Record<string, unknown> = {};
+    if (body.name !== undefined) profileFields.name = body.name;
+    if (body.email !== undefined) profileFields.email = body.email;
+    if (body.className !== undefined) profileFields.className = body.className;
+    if (isAdminActor && body.username !== undefined) profileFields.username = body.username;
+
+    if (Object.keys(profileFields).length > 0) {
+      const parsed = profileSchema.partial().safeParse(profileFields);
+      if (!parsed.success) {
+        return NextResponse.json(
+          { error: parsed.error.issues[0]?.message ?? "validationError" },
+          { status: 400 }
+        );
+      }
+    }
+
+    // Non-admin cannot change username
+    if (!isAdminActor && body.username !== undefined) {
+      return NextResponse.json({ error: "usernameChangeNotAllowed" }, { status: 403 });
+    }
+
     const { name, username, email, className, role, isActive, password } = body;
 
     const updates: Record<string, unknown> = { updatedAt: new Date() };
     const normalizedEmail = typeof email === "string" && email.trim() !== "" ? email.trim() : null;
     const normalizedClassName = typeof className === "string" && className.trim() !== "" ? className.trim() : null;
 
-    if (username !== undefined) {
+    if (username !== undefined && isAdminActor) {
       const existingUsername = await db.query.users.findFirst({
         where: eq(users.username, username),
       });
@@ -102,7 +119,7 @@ export async function PATCH(
     }
 
     if (name !== undefined) updates.name = name;
-    if (username !== undefined) updates.username = username;
+    if (username !== undefined && isAdminActor) updates.username = username;
     if (email !== undefined) updates.email = normalizedEmail;
     if (className !== undefined) updates.className = normalizedClassName;
     if (isActive !== undefined && isAdminActor) {
@@ -151,12 +168,16 @@ export async function PATCH(
         );
       }
 
-      if (typeof password !== "string" || password.length < MIN_PASSWORD_LENGTH) {
-        return NextResponse.json(
-          { error: `Password must be at least ${MIN_PASSWORD_LENGTH} characters` },
-          { status: 400 }
-        );
+      if (typeof password !== "string") {
+        return NextResponse.json({ error: "passwordTooShort" }, { status: 400 });
       }
+
+      const passwordValidationError = getPasswordValidationError(password);
+
+      if (passwordValidationError) {
+        return NextResponse.json({ error: passwordValidationError }, { status: 400 });
+      }
+
       updates.passwordHash = await hash(password, 12);
       updates.mustChangePassword = true;
     }
@@ -202,6 +223,9 @@ export async function DELETE(
   { params }: { params: Promise<{ id: string }> }
 ) {
   try {
+    const csrfError = csrfForbidden(request);
+    if (csrfError) return csrfError;
+
     const user = await getApiUser(request);
     if (!user) return unauthorized();
     if (!isAdmin(user.role)) return forbidden();
