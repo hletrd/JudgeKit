@@ -69,6 +69,7 @@
     "groups": "Groups",
     "userManagement": "User Management",
     "allSubmissions": "All Submissions",
+    "auditLogs": "Audit Logs",
     "loginLogs": "Login Logs",
     "profile": "Profile",
     "systemSettings": "System Settings"
@@ -156,6 +157,13 @@
       "forbidden": "You do not have permission to submit to this problem.",
       "problemRequired": "Problem information is missing. Refresh the page and try again.",
       "problemNotFound": "This problem could not be found.",
+      "assignmentContextRequired": "Open this problem from the assignment page so your progress is recorded correctly.",
+      "invalidAssignmentId": "The assignment context is invalid.",
+      "assignmentNotFound": "This assignment could not be found.",
+      "assignmentNotStarted": "This assignment is not open for submissions yet.",
+      "assignmentClosed": "This assignment is already closed.",
+      "assignmentEnrollmentRequired": "You must be enrolled in this assignment's group to submit.",
+      "assignmentProblemMismatch": "This problem is not part of the selected assignment.",
       "languageRequired": "Please select a language.",
       "languageNotSupported": "This language is not currently available for submissions.",
       "sourceCodeRequired": "Please enter your source code.",
@@ -184,7 +192,11 @@
       "timeLimit": "Time Limit: {value} ms",
       "memoryLimit": "Memory Limit: {value} MB",
       "author": "Author: {name}"
-    }
+    },
+    "assignmentSelectionTitle": "Choose an assignment context",
+    "assignmentSelectionDescription": "This problem belongs to one of your assignments. Open it from the assignment page so your submission is recorded against the correct class activity.",
+    "assignmentSelectionOpenAssignment": "Open {title} ({group})",
+    "assignmentSelectionSubmitHint": "Choose one of the assignments above to submit this problem with the correct assignment context."
   },
   "submissions": {
     "title": "My Submissions",
@@ -258,20 +270,92 @@
       "action": "Action"
     },
     "noGroups": "You are not enrolled in any groups.",
+    "membersTitle": "Members",
+    "memberCount": "{count} members",
+    "assignmentCount": "{count} assignments",
+    "memberTable": {
+      "name": "Name",
+      "username": "Username"
+    },
+    "noMembers": "No students are enrolled in this group yet.",
+    "availableStudentsLabel": "Available students",
+    "availableStudentsPlaceholder": "Select a student",
+    "availableStudentsEmpty": "All active students are already enrolled in this group.",
+    "addMember": "Add member",
+    "removeMember": "Remove",
+    "removeMemberDialogTitle": "Remove this member from the group?",
+    "removeMemberDialogDescription": "{name} will lose access to this group and its assignments.",
+    "memberAddSuccess": "Group member added successfully",
+    "memberRemoveSuccess": "Group member removed successfully",
+    "memberAddFailed": "Failed to add group member",
+    "memberRemoveFailed": "Failed to remove group member",
+    "memberLoadFailed": "Failed to load group members",
+    "studentRequired": "Select a student to add.",
+    "studentNotFound": "The selected student could not be found.",
+    "studentInactive": "This student account is inactive and cannot be enrolled.",
+    "studentRoleInvalid": "Only active student accounts can be enrolled in a group.",
+    "studentAlreadyEnrolled": "This student is already enrolled in the group.",
+    "studentEnrollmentNotFound": "This enrollment no longer exists.",
+    "groupMemberRemovalBlocked": "This member cannot be removed because they already have assignment submissions in this group.",
     "archived": "Archived",
     "active": "Active",
     "assignments": "Assignments",
+    "assignmentsDescription": "Create assignments, manage linked problems, and review schedules for this group.",
+    "createAssignment": "Create assignment",
+    "assignmentCreateDialogTitle": "Create assignment",
+    "assignmentCreateDialogDescription": "Add an assignment, schedule it, and choose the problems students should solve.",
+    "assignmentEditDialogTitle": "Edit assignment",
+    "assignmentEditDialogDescription": "Update the assignment details and linked problems.",
+    "assignmentCreateSuccess": "Assignment created successfully",
+    "assignmentUpdateSuccess": "Assignment updated successfully",
+    "assignmentDeleteSuccess": "Assignment deleted successfully",
+    "assignmentDeleteFailed": "Failed to delete assignment",
+    "assignmentDeleteBlocked": "This assignment cannot be deleted because it already has {submissions} submission(s).",
+    "assignmentDeleteDialogTitle": "Delete this assignment?",
+    "assignmentDeleteDialogDescription": "\"{title}\" will be permanently removed only if it has no assignment-linked submissions.",
+    "assignmentLoadFailed": "Failed to load assignments",
+    "assignmentTitleLabel": "Assignment title",
+    "assignmentDescriptionLabel": "Description",
+    "assignmentStartsAtLabel": "Starts at",
+    "assignmentDeadlineLabel": "Deadline",
+    "assignmentLateDeadlineLabel": "Late deadline",
+    "assignmentLatePenaltyLabel": "Late penalty (%)",
+    "assignmentProblemsTitle": "Assignment problems",
+    "assignmentProblemsDescription": "Choose the problems that belong to this assignment and assign their points.",
+    "assignmentProblemsLocked": "Problem links are locked because this assignment already has submissions. You can still edit the schedule and description.",
     "assignmentTable": {
       "title": "Title",
       "startsAt": "Starts At",
       "deadline": "Deadline",
+      "problems": "Problems",
       "status": "Status"
     },
     "statusUpcoming": "Upcoming",
     "statusClosed": "Closed",
     "statusOpen": "Open",
     "noAssignments": "No assignments currently available.",
-    "instructorLabel": "Instructor: {name}"
+    "instructorLabel": "Instructor: {name}",
+    "problemCount": "{count} problems",
+    "assignmentProblemLabel": "Problem {number}",
+    "assignmentProblemSelectLabel": "Problem",
+    "assignmentProblemSelectPlaceholder": "Select a problem",
+    "assignmentProblemPointsLabel": "Points",
+    "assignmentProblemRequired": "Add at least one problem to the assignment.",
+    "assignmentProblemDuplicate": "Each assignment problem can only be added once.",
+    "assignmentProblemForbidden": "One or more selected problems are not available for this group.",
+    "assignmentPointsInvalid": "Points must be between 1 and 10,000.",
+    "assignmentTitleRequired": "Assignment title is required.",
+    "assignmentTitleTooLong": "Assignment title must be 200 characters or less.",
+    "assignmentDescriptionTooLong": "Assignment description must be 5,000 characters or less.",
+    "assignmentLatePenaltyInvalid": "Late penalty must be between 0 and 100.",
+    "assignmentScheduleInvalid": "The start time must be before the deadline.",
+    "assignmentLateDeadlineInvalid": "The late deadline must be on or after the deadline.",
+    "tooManyAssignmentProblems": "You can add up to 100 problems to an assignment.",
+    "assignmentCreateFailed": "Failed to create assignment",
+    "assignmentUpdateFailed": "Failed to update assignment",
+    "addProblem": "Add problem",
+    "removeProblem": "Remove",
+    "noAssignmentProblems": "No problems linked yet. Add at least one problem to create the assignment."
   },
   "admin": {
     "users": {
@@ -379,6 +463,55 @@
       "pagination": {
         "results": "Showing {start}-{end} of {total} login events",
         "page": "Page {current} of {total}"
+      }
+    },
+    "auditLogs": {
+      "title": "Audit Logs",
+      "description": "Review recent privileged mutations across administration and classroom management.",
+      "filtersTitle": "Filters",
+      "resultsTitle": "Recent Audit Events",
+      "applyFilters": "Apply Filters",
+      "resetFilters": "Reset",
+      "noEvents": "No audit events matched the current filters.",
+      "unknownActor": "Unknown actor",
+      "systemGeneratedActor": "System-generated event",
+      "resourceTypes": {
+        "all": "All resources",
+        "system_settings": "System Settings",
+        "user": "Users",
+        "problem": "Problems",
+        "group": "Groups",
+        "group_member": "Group Members",
+        "assignment": "Assignments",
+        "submission": "Submissions"
+      },
+      "table": {
+        "timestamp": "Timestamp",
+        "action": "Action",
+        "resource": "Resource",
+        "actor": "Actor",
+        "summary": "Summary",
+        "details": "Details"
+      },
+      "filters": {
+        "searchLabel": "Search",
+        "searchPlaceholder": "Action, resource, actor, or summary",
+        "resourceTypeLabel": "Resource type"
+      },
+      "detailSections": {
+        "payload": "Payload",
+        "request": "Request context"
+      },
+      "pagination": {
+        "results": "Showing {start}-{end} of {total} audit events",
+        "page": "Page {current} of {total}"
+      },
+      "detailToggle": "View details",
+      "request": {
+        "method": "Method",
+        "path": "Path",
+        "ipAddress": "IP address",
+        "userAgent": "User agent"
       }
     },
     "settings": {

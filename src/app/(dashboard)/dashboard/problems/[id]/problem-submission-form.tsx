@@ -22,9 +22,15 @@ type ProblemSubmissionFormProps = {
   userId: string;
   problemId: string;
   languages: SubmissionLanguage[];
+  assignmentId?: string | null;
 };
 
-export function ProblemSubmissionForm({ userId, problemId, languages }: ProblemSubmissionFormProps) {
+export function ProblemSubmissionForm({
+  userId,
+  problemId,
+  languages,
+  assignmentId = null,
+}: ProblemSubmissionFormProps) {
   const router = useRouter();
   const t = useTranslations("problems");
   const tCommon = useTranslations("common");
@@ -83,6 +89,7 @@ export function ProblemSubmissionForm({ userId, problemId, languages }: ProblemS
           problemId,
           language,
           sourceCode,
+          assignmentId,
         }),
       });
 

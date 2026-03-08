@@ -1,22 +1,19 @@
 import Link from "next/link";
 import { getLocale, getTranslations } from "next-intl/server";
+import { eq } from "drizzle-orm";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import {
-  Table,
-  TableBody,
-  TableCell,
-  TableHead,
-  TableHeader,
-  TableRow,
-} from "@/components/ui/table";
+import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { auth } from "@/lib/auth";
 import {
   canViewAssignmentSubmissions,
   getAssignmentStatusRows,
   type AssignmentStudentStatusRow,
 } from "@/lib/assignments/submissions";
+import { canAccessGroup } from "@/lib/auth/permissions";
+import { db } from "@/lib/db";
+import { assignments } from "@/lib/db/schema";
 import { formatDateTimeInTimeZone } from "@/lib/datetime";
 import { getResolvedSystemTimeZone } from "@/lib/system-settings";
 import { formatSubmissionIdPrefix } from "@/lib/submissions/id";
@@ -112,9 +109,174 @@ export default async function GroupAssignmentDetailPage({
 
   const role = session.user.role as UserRole;
   const canViewBoard = await canViewAssignmentSubmissions(assignmentId, session.user.id, role);
+  const hasGroupAccess = await canAccessGroup(groupId, session.user.id, role);
+
+  if (!canViewBoard && !hasGroupAccess) {
+    redirect("/dashboard/groups");
+  }
+
+  const assignment = await db.query.assignments.findFirst({
+    where: eq(assignments.id, assignmentId),
+    with: {
+      group: {
+        columns: {
+          instructorId: true,
+          name: true,
+        },
+      },
+      assignmentProblems: {
+        with: {
+          problem: {
+            columns: {
+              id: true,
+              title: true,
+            },
+          },
+        },
+      },
+    },
+  });
+
+  if (!assignment || assignment.groupId !== groupId) {
+    notFound();
+  }
+
+  const sortedProblems = [...assignment.assignmentProblems].sort(
+    (left, right) => (left.sortOrder ?? 0) - (right.sortOrder ?? 0)
+  );
+  const totalPoints = sortedProblems.reduce((sum, problem) => sum + (problem.points ?? 100), 0);
+  const now = new Date();
+  const isUpcoming = assignment.startsAt && new Date(assignment.startsAt) > now;
+  const isPast =
+    (assignment.lateDeadline && new Date(assignment.lateDeadline) < now) ||
+    (!assignment.lateDeadline && assignment.deadline && new Date(assignment.deadline) < now);
+  const assignmentOverviewTitle = locale === "ko" ? "과제 안내" : "Assignment overview";
+  const assignmentProblemsTitle = locale === "ko" ? "문제 목록" : "Problems";
+  const assignmentDescriptionFallback =
+    locale === "ko" ? "과제 설명이 아직 없습니다." : "No assignment description yet.";
+  const lateDeadlineLabel = locale === "ko" ? "지각 허용 마감" : "Late deadline";
+  const latePenaltyLabel = locale === "ko" ? "지각 감점" : "Late penalty";
+  const pointsLabel = locale === "ko" ? "배점" : "Points";
+  const openProblemLabel = locale === "ko" ? "문제 열기" : "Open problem";
+  const noProblemsLabel = locale === "ko" ? "등록된 문제가 없습니다." : "No problems assigned yet.";
 
   if (!canViewBoard) {
-    redirect("/dashboard/groups");
+    return (
+      <div className="space-y-6">
+        <div className="flex flex-wrap items-center justify-between gap-3">
+          <div className="space-y-2">
+            <div className="flex flex-wrap items-center gap-2">
+              <Badge variant="outline">{tGroups("assignments")}</Badge>
+              <Badge variant="secondary">{tGroups("problemCount", { count: sortedProblems.length })}</Badge>
+            </div>
+            <h2 className="text-3xl font-bold">{assignment.title}</h2>
+            <p className="text-sm text-muted-foreground">
+              {assignment.group?.name ?? tGroups("detail")} · {pointsLabel}: {totalPoints}
+            </p>
+          </div>
+
+          <Link href={`/dashboard/groups/${groupId}`}>
+            <Button variant="outline">{tCommon("back")}</Button>
+          </Link>
+        </div>
+
+        <Card>
+          <CardHeader>
+            <CardTitle>{assignmentOverviewTitle}</CardTitle>
+          </CardHeader>
+          <CardContent className="space-y-4">
+            <div className="flex flex-wrap gap-2">
+              {isUpcoming ? (
+                <Badge variant="secondary">{tGroups("statusUpcoming")}</Badge>
+              ) : isPast ? (
+                <Badge variant="outline">{tGroups("statusClosed")}</Badge>
+              ) : (
+                <Badge className="bg-green-500">{tGroups("statusOpen")}</Badge>
+              )}
+              <Badge variant="outline">{pointsLabel}: {totalPoints}</Badge>
+            </div>
+
+            <p className="description-copy text-sm text-muted-foreground">
+              {assignment.description || assignmentDescriptionFallback}
+            </p>
+
+            <dl className="grid gap-4 md:grid-cols-2">
+              <div className="space-y-1">
+                <dt className="text-sm font-medium">{tGroups("assignmentTable.startsAt")}</dt>
+                <dd className="text-sm text-muted-foreground">
+                  {assignment.startsAt
+                    ? formatDateTimeInTimeZone(assignment.startsAt, locale, timeZone)
+                    : "-"}
+                </dd>
+              </div>
+              <div className="space-y-1">
+                <dt className="text-sm font-medium">{tGroups("assignmentTable.deadline")}</dt>
+                <dd className="text-sm text-muted-foreground">
+                  {assignment.deadline
+                    ? formatDateTimeInTimeZone(assignment.deadline, locale, timeZone)
+                    : "-"}
+                </dd>
+              </div>
+              <div className="space-y-1">
+                <dt className="text-sm font-medium">{lateDeadlineLabel}</dt>
+                <dd className="text-sm text-muted-foreground">
+                  {assignment.lateDeadline
+                    ? formatDateTimeInTimeZone(assignment.lateDeadline, locale, timeZone)
+                    : "-"}
+                </dd>
+              </div>
+              <div className="space-y-1">
+                <dt className="text-sm font-medium">{latePenaltyLabel}</dt>
+                <dd className="text-sm text-muted-foreground">{assignment.latePenalty ?? 0}%</dd>
+              </div>
+            </dl>
+          </CardContent>
+        </Card>
+
+        <Card>
+          <CardHeader>
+            <CardTitle>{assignmentProblemsTitle}</CardTitle>
+          </CardHeader>
+          <CardContent>
+            <Table>
+              <TableHeader>
+                <TableRow>
+                  <TableHead>{tGroups("assignmentTable.title")}</TableHead>
+                  <TableHead>{pointsLabel}</TableHead>
+                  <TableHead>{tCommon("action")}</TableHead>
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                {sortedProblems.map((problem) => (
+                  <TableRow key={problem.id}>
+                    <TableCell className="font-medium">{problem.problem?.title ?? "-"}</TableCell>
+                    <TableCell>{problem.points ?? 100}</TableCell>
+                    <TableCell>
+                      {problem.problem ? (
+                        <Link href={`/dashboard/problems/${problem.problem.id}?assignmentId=${assignment.id}`}>
+                          <Button variant="outline" size="sm">
+                            {openProblemLabel}
+                          </Button>
+                        </Link>
+                      ) : (
+                        "-"
+                      )}
+                    </TableCell>
+                  </TableRow>
+                ))}
+                {sortedProblems.length === 0 && (
+                  <TableRow>
+                    <TableCell colSpan={3} className="text-center text-muted-foreground">
+                      {noProblemsLabel}
+                    </TableCell>
+                  </TableRow>
+                )}
+              </TableBody>
+            </Table>
+          </CardContent>
+        </Card>
+      </div>
+    );
   }
 
   const assignmentStatus = await getAssignmentStatusRows(assignmentId);
@@ -127,7 +289,6 @@ export default async function GroupAssignmentDetailPage({
   const statusFilter = normalizeStatusFilter(resolvedSearchParams?.status);
   const studentQuery = resolvedSearchParams?.student?.trim() ?? "";
   const normalizedStudentQuery = studentQuery.toLocaleLowerCase();
-  const totalPoints = assignmentStatus.problems.reduce((sum, problem) => sum + problem.points, 0);
   const filteredRows = assignmentStatus.rows.filter((row) => {
     if (!matchesStudentQuery(row, normalizedStudentQuery)) {
       return false;
@@ -172,7 +333,7 @@ export default async function GroupAssignmentDetailPage({
           </div>
           <h2 className="text-3xl font-bold">{assignmentStatus.assignment.title}</h2>
           <p className="text-sm text-muted-foreground">
-            {tGroups("detail")} · {totalScoreLabel}: {totalPoints}
+            {assignment.group?.name ?? tGroups("detail")} · {totalScoreLabel}: {totalPoints}
           </p>
         </div>
 
@@ -180,6 +341,59 @@ export default async function GroupAssignmentDetailPage({
           <Button variant="outline">{tCommon("back")}</Button>
         </Link>
       </div>
+
+      <Card>
+        <CardHeader>
+          <CardTitle>{assignmentOverviewTitle}</CardTitle>
+        </CardHeader>
+        <CardContent className="space-y-4">
+          <div className="flex flex-wrap gap-2">
+            {isUpcoming ? (
+              <Badge variant="secondary">{tGroups("statusUpcoming")}</Badge>
+            ) : isPast ? (
+              <Badge variant="outline">{tGroups("statusClosed")}</Badge>
+            ) : (
+              <Badge className="bg-green-500">{tGroups("statusOpen")}</Badge>
+            )}
+            <Badge variant="outline">{pointsLabel}: {totalPoints}</Badge>
+          </div>
+
+          <p className="description-copy text-sm text-muted-foreground">
+            {assignment.description || assignmentDescriptionFallback}
+          </p>
+
+          <dl className="grid gap-4 md:grid-cols-2">
+            <div className="space-y-1">
+              <dt className="text-sm font-medium">{tGroups("assignmentTable.startsAt")}</dt>
+              <dd className="text-sm text-muted-foreground">
+                {assignment.startsAt
+                  ? formatDateTimeInTimeZone(assignment.startsAt, locale, timeZone)
+                  : "-"}
+              </dd>
+            </div>
+            <div className="space-y-1">
+              <dt className="text-sm font-medium">{tGroups("assignmentTable.deadline")}</dt>
+              <dd className="text-sm text-muted-foreground">
+                {assignment.deadline
+                  ? formatDateTimeInTimeZone(assignment.deadline, locale, timeZone)
+                  : "-"}
+              </dd>
+            </div>
+            <div className="space-y-1">
+              <dt className="text-sm font-medium">{lateDeadlineLabel}</dt>
+              <dd className="text-sm text-muted-foreground">
+                {assignment.lateDeadline
+                  ? formatDateTimeInTimeZone(assignment.lateDeadline, locale, timeZone)
+                  : "-"}
+              </dd>
+            </div>
+            <div className="space-y-1">
+              <dt className="text-sm font-medium">{latePenaltyLabel}</dt>
+              <dd className="text-sm text-muted-foreground">{assignment.latePenalty ?? 0}%</dd>
+            </div>
+          </dl>
+        </CardContent>
+      </Card>
 
       <Card>
         <CardHeader>

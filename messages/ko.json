@@ -69,6 +69,7 @@
     "groups": "그룹",
     "userManagement": "사용자 관리",
     "allSubmissions": "전체 제출 내역",
+    "auditLogs": "감사 로그",
     "loginLogs": "로그인 기록",
     "profile": "프로필",
     "systemSettings": "시스템 설정"
@@ -156,6 +157,13 @@
       "forbidden": "이 문제에 제출할 권한이 없습니다.",
       "problemRequired": "문제 정보가 없습니다. 페이지를 새로고침한 뒤 다시 시도하세요.",
       "problemNotFound": "문제를 찾을 수 없습니다.",
+      "assignmentContextRequired": "진행 상황이 올바르게 기록되도록 과제 페이지에서 이 문제를 열어 제출하세요.",
+      "invalidAssignmentId": "과제 문맥 정보가 올바르지 않습니다.",
+      "assignmentNotFound": "과제를 찾을 수 없습니다.",
+      "assignmentNotStarted": "이 과제는 아직 제출 기간이 아닙니다.",
+      "assignmentClosed": "이 과제는 이미 마감되었습니다.",
+      "assignmentEnrollmentRequired": "이 과제에 제출하려면 해당 그룹에 등록되어 있어야 합니다.",
+      "assignmentProblemMismatch": "이 문제는 선택한 과제에 포함되어 있지 않습니다.",
       "languageRequired": "언어를 선택하세요.",
       "languageNotSupported": "현재 제출에 사용할 수 없는 언어입니다.",
       "sourceCodeRequired": "소스 코드를 입력하세요.",
@@ -184,7 +192,11 @@
       "timeLimit": "시간 제한: {value} ms",
       "memoryLimit": "메모리 제한: {value} MB",
       "author": "작성자: {name}"
-    }
+    },
+    "assignmentSelectionTitle": "과제 문맥 선택",
+    "assignmentSelectionDescription": "이 문제는 현재 등록된 과제에 포함되어 있습니다. 제출 결과가 올바른 과제에 기록되도록 과제 페이지에서 열어 주세요.",
+    "assignmentSelectionOpenAssignment": "{group}의 {title} 열기",
+    "assignmentSelectionSubmitHint": "올바른 과제 문맥으로 제출하려면 위의 과제 중 하나를 선택하세요."
   },
   "submissions": {
     "title": "내 제출 내역",
@@ -258,20 +270,92 @@
       "action": "작업"
     },
     "noGroups": "등록된 그룹이 없습니다.",
+    "membersTitle": "구성원",
+    "memberCount": "구성원 {count}명",
+    "assignmentCount": "과제 {count}개",
+    "memberTable": {
+      "name": "이름",
+      "username": "사용자명"
+    },
+    "noMembers": "아직 이 그룹에 등록된 학생이 없습니다.",
+    "availableStudentsLabel": "등록 가능한 학생",
+    "availableStudentsPlaceholder": "학생을 선택하세요",
+    "availableStudentsEmpty": "활성 상태인 학생이 모두 이 그룹에 등록되어 있습니다.",
+    "addMember": "구성원 추가",
+    "removeMember": "제거",
+    "removeMemberDialogTitle": "이 구성원을 그룹에서 제거할까요?",
+    "removeMemberDialogDescription": "{name} 사용자는 이 그룹과 과제에 더 이상 접근할 수 없습니다.",
+    "memberAddSuccess": "그룹 구성원이 성공적으로 추가되었습니다",
+    "memberRemoveSuccess": "그룹 구성원이 성공적으로 제거되었습니다",
+    "memberAddFailed": "그룹 구성원을 추가하지 못했습니다",
+    "memberRemoveFailed": "그룹 구성원을 제거하지 못했습니다",
+    "memberLoadFailed": "그룹 구성원을 불러오지 못했습니다",
+    "studentRequired": "추가할 학생을 선택하세요.",
+    "studentNotFound": "선택한 학생을 찾을 수 없습니다.",
+    "studentInactive": "비활성화된 학생 계정은 그룹에 등록할 수 없습니다.",
+    "studentRoleInvalid": "활성 상태의 학생 계정만 그룹에 등록할 수 있습니다.",
+    "studentAlreadyEnrolled": "이 학생은 이미 그룹에 등록되어 있습니다.",
+    "studentEnrollmentNotFound": "이 등록 정보가 더 이상 존재하지 않습니다.",
+    "groupMemberRemovalBlocked": "이 구성원은 이 그룹에 과제 제출 내역이 있어 제거할 수 없습니다.",
     "archived": "보관됨",
     "active": "활성",
     "assignments": "과제",
+    "assignmentsDescription": "이 그룹의 과제를 만들고, 문제를 연결하고, 일정을 관리하세요.",
+    "createAssignment": "과제 생성",
+    "assignmentCreateDialogTitle": "과제 생성",
+    "assignmentCreateDialogDescription": "과제를 만들고, 일정을 설정하고, 학생이 풀 문제를 선택하세요.",
+    "assignmentEditDialogTitle": "과제 수정",
+    "assignmentEditDialogDescription": "과제 정보와 연결된 문제를 수정합니다.",
+    "assignmentCreateSuccess": "과제가 성공적으로 생성되었습니다",
+    "assignmentUpdateSuccess": "과제가 성공적으로 수정되었습니다",
+    "assignmentDeleteSuccess": "과제가 성공적으로 삭제되었습니다",
+    "assignmentDeleteFailed": "과제를 삭제하지 못했습니다",
+    "assignmentDeleteBlocked": "이 과제에는 이미 제출 {submissions}건이 있어 삭제할 수 없습니다.",
+    "assignmentDeleteDialogTitle": "이 과제를 삭제할까요?",
+    "assignmentDeleteDialogDescription": "\"{title}\" 과제는 과제 연결 제출 내역이 없을 때만 영구 삭제됩니다.",
+    "assignmentLoadFailed": "과제를 불러오지 못했습니다",
+    "assignmentTitleLabel": "과제 제목",
+    "assignmentDescriptionLabel": "설명",
+    "assignmentStartsAtLabel": "시작 일시",
+    "assignmentDeadlineLabel": "마감 일시",
+    "assignmentLateDeadlineLabel": "지각 허용 마감",
+    "assignmentLatePenaltyLabel": "지각 감점 (%)",
+    "assignmentProblemsTitle": "과제 문제",
+    "assignmentProblemsDescription": "이 과제에 포함할 문제를 선택하고 배점을 설정하세요.",
+    "assignmentProblemsLocked": "이 과제에는 이미 제출 내역이 있어 문제 연결이 잠겨 있습니다. 일정과 설명은 계속 수정할 수 있습니다.",
     "assignmentTable": {
       "title": "제목",
       "startsAt": "시작 일시",
       "deadline": "마감 일시",
+      "problems": "문제 수",
       "status": "상태"
     },
     "statusUpcoming": "예정",
     "statusClosed": "마감",
     "statusOpen": "진행 중",
     "noAssignments": "현재 이용 가능한 과제가 없습니다.",
-    "instructorLabel": "담당 강사: {name}"
+    "instructorLabel": "담당 강사: {name}",
+    "problemCount": "문제 {count}개",
+    "assignmentProblemLabel": "문제 {number}",
+    "assignmentProblemSelectLabel": "문제",
+    "assignmentProblemSelectPlaceholder": "문제를 선택하세요",
+    "assignmentProblemPointsLabel": "배점",
+    "assignmentProblemRequired": "과제에는 최소 1개의 문제가 필요합니다.",
+    "assignmentProblemDuplicate": "같은 문제는 과제에 한 번만 추가할 수 있습니다.",
+    "assignmentProblemForbidden": "선택한 문제 중 일부는 이 그룹에서 사용할 수 없습니다.",
+    "assignmentPointsInvalid": "배점은 1점에서 10,000점 사이여야 합니다.",
+    "assignmentTitleRequired": "과제 제목은 필수입니다.",
+    "assignmentTitleTooLong": "과제 제목은 200자 이하여야 합니다.",
+    "assignmentDescriptionTooLong": "과제 설명은 5,000자 이하여야 합니다.",
+    "assignmentLatePenaltyInvalid": "지각 감점은 0에서 100 사이여야 합니다.",
+    "assignmentScheduleInvalid": "시작 일시는 마감 일시보다 빨라야 합니다.",
+    "assignmentLateDeadlineInvalid": "지각 허용 마감은 마감 일시 이후이거나 같아야 합니다.",
+    "tooManyAssignmentProblems": "과제에는 최대 100개의 문제만 추가할 수 있습니다.",
+    "assignmentCreateFailed": "과제를 생성하지 못했습니다",
+    "assignmentUpdateFailed": "과제를 수정하지 못했습니다",
+    "addProblem": "문제 추가",
+    "removeProblem": "삭제",
+    "noAssignmentProblems": "아직 연결된 문제가 없습니다. 과제를 만들려면 최소 1개를 추가하세요."
   },
   "admin": {
     "users": {
@@ -379,6 +463,55 @@
       "pagination": {
         "results": "로그인 이벤트 {start}-{end} / 총 {total}개 표시 중",
         "page": "{current} / {total}페이지"
+      }
+    },
+    "auditLogs": {
+      "title": "감사 로그",
+      "description": "관리 및 수업 관리 영역에서 발생한 주요 변경 이력을 검토합니다.",
+      "filtersTitle": "필터",
+      "resultsTitle": "최근 감사 이벤트",
+      "applyFilters": "필터 적용",
+      "resetFilters": "초기화",
+      "noEvents": "현재 필터와 일치하는 감사 이벤트가 없습니다.",
+      "unknownActor": "알 수 없는 작업자",
+      "systemGeneratedActor": "시스템 생성 이벤트",
+      "resourceTypes": {
+        "all": "모든 리소스",
+        "system_settings": "시스템 설정",
+        "user": "사용자",
+        "problem": "문제",
+        "group": "그룹",
+        "group_member": "그룹 구성원",
+        "assignment": "과제",
+        "submission": "제출"
+      },
+      "table": {
+        "timestamp": "시각",
+        "action": "작업",
+        "resource": "리소스",
+        "actor": "작업자",
+        "summary": "요약",
+        "details": "세부 정보"
+      },
+      "filters": {
+        "searchLabel": "검색",
+        "searchPlaceholder": "작업, 리소스, 작업자 또는 요약 검색",
+        "resourceTypeLabel": "리소스 종류"
+      },
+      "detailSections": {
+        "payload": "이벤트 내용",
+        "request": "요청 문맥"
+      },
+      "pagination": {
+        "results": "감사 이벤트 {start}-{end} / 총 {total}개 표시 중",
+        "page": "{current} / {total}페이지"
+      },
+      "detailToggle": "세부 정보 보기",
+      "request": {
+        "method": "메서드",
+        "path": "경로",
+        "ipAddress": "IP 주소",
+        "userAgent": "사용자 에이전트"
       }
     },
     "settings": {
