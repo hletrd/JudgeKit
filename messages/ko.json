@@ -247,6 +247,7 @@
       "runtime_error": "런타임 오류",
       "compile_error": "컴파일 오류"
     },
+    "detailedResultsHidden": "이 제출에 대한 테스트 케이스 상세 결과는 제공되지 않습니다.",
     "pagination": {
       "showingRange": "{start}-{end}개 표시 중"
     }

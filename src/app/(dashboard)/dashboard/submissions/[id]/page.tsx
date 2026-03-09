@@ -128,6 +128,8 @@ export default async function SubmissionDetailPage({ params }: { params: Promise
         time: t("testCaseTable.time"),
         memory: t("testCaseTable.memory"),
       }}
+      showDetailedResults={true}
+      detailedResultsHiddenLabel={t("detailedResultsHidden")}
     />
   );
 }

@@ -247,6 +247,7 @@
       "runtime_error": "Runtime Error",
       "compile_error": "Compile Error"
     },
+    "detailedResultsHidden": "Detailed test case results are not available for this submission.",
     "pagination": {
       "showingRange": "Showing {start}-{end}"
     }
