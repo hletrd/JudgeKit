@@ -58,12 +58,10 @@ function getRowStatusFilterValue(row: AssignmentStudentStatusRow): Exclude<Statu
 
 function buildStatusLabels(
   tSubmissions: Awaited<ReturnType<typeof getTranslations>>,
-  locale: string
+  tAssignment: Awaited<ReturnType<typeof getTranslations>>
 ): Record<Exclude<StatusFilterValue, "all">, string> {
-  const notSubmitted = locale === "ko" ? "미제출" : "Not submitted";
-
   return {
-    not_submitted: notSubmitted,
+    not_submitted: tAssignment("notSubmitted"),
     pending: tSubmissions("status.pending"),
     queued: tSubmissions("status.queued"),
     judging: tSubmissions("status.judging"),
@@ -97,7 +95,7 @@ export default async function GroupAssignmentDetailPage({
   const session = await auth();
   if (!session?.user) redirect("/login");
 
-  const [{ id: groupId, assignmentId }, resolvedSearchParams, locale, timeZone, tGroups, tCommon, tSubmissions] =
+  const [{ id: groupId, assignmentId }, resolvedSearchParams, locale, timeZone, tGroups, tCommon, tSubmissions, tAssignment] =
     await Promise.all([
       params,
       searchParams ?? Promise.resolve(undefined),
@@ -106,6 +104,7 @@ export default async function GroupAssignmentDetailPage({
       getTranslations("groups"),
       getTranslations("common"),
       getTranslations("submissions"),
+      getTranslations("groups.assignmentDetail"),
     ]);
 
   const role = session.user.role as UserRole;
@@ -151,15 +150,14 @@ export default async function GroupAssignmentDetailPage({
   const isPast =
     (assignment.lateDeadline && new Date(assignment.lateDeadline) < now) ||
     (!assignment.lateDeadline && assignment.deadline && new Date(assignment.deadline) < now);
-  const assignmentOverviewTitle = locale === "ko" ? "과제 안내" : "Assignment overview";
-  const assignmentProblemsTitle = locale === "ko" ? "문제 목록" : "Problems";
-  const assignmentDescriptionFallback =
-    locale === "ko" ? "과제 설명이 아직 없습니다." : "No assignment description yet.";
-  const lateDeadlineLabel = locale === "ko" ? "지각 허용 마감" : "Late deadline";
-  const latePenaltyLabel = locale === "ko" ? "지각 감점" : "Late penalty";
-  const pointsLabel = locale === "ko" ? "배점" : "Points";
-  const openProblemLabel = locale === "ko" ? "문제 열기" : "Open problem";
-  const noProblemsLabel = locale === "ko" ? "등록된 문제가 없습니다." : "No problems assigned yet.";
+  const assignmentOverviewTitle = tAssignment("overviewTitle");
+  const assignmentProblemsTitle = tAssignment("problemsTitle");
+  const assignmentDescriptionFallback = tAssignment("descriptionFallback");
+  const lateDeadlineLabel = tAssignment("lateDeadline");
+  const latePenaltyLabel = tAssignment("latePenalty");
+  const pointsLabel = tAssignment("points");
+  const openProblemLabel = tAssignment("openProblem");
+  const noProblemsLabel = tAssignment("noProblems");
 
   if (!canViewBoard) {
     return (
@@ -290,7 +288,7 @@ export default async function GroupAssignmentDetailPage({
     notFound();
   }
 
-  const statusLabels = buildStatusLabels(tSubmissions, locale);
+  const statusLabels = buildStatusLabels(tSubmissions, tAssignment);
   const statusFilter = normalizeStatusFilter(resolvedSearchParams?.status);
   const studentQuery = resolvedSearchParams?.student?.trim() ?? "";
   const normalizedStudentQuery = studentQuery.toLocaleLowerCase();
@@ -305,28 +303,23 @@ export default async function GroupAssignmentDetailPage({
 
     return getRowStatusFilterValue(row) === statusFilter;
   });
-  const filterSummary =
-    locale === "ko"
-      ? `총 ${filteredRows.length}명의 학생`
-      : `${filteredRows.length} student${filteredRows.length === 1 ? "" : "s"}`;
-  const boardTitle = locale === "ko" ? "과제 현황" : "Assignment status board";
-  const filterTitle = locale === "ko" ? "필터" : "Filters";
-  const allStatusesLabel = locale === "ko" ? "모든 상태" : "All statuses";
-  const bestScoreLabel = locale === "ko" ? "최고 점수" : "Best score";
-  const attemptsLabel = locale === "ko" ? "시도" : "Attempts";
-  const latestSubmissionLabel = locale === "ko" ? "최근 제출" : "Latest submission";
-  const noLatestSubmissionLabel = locale === "ko" ? "제출 없음" : "No submission";
-  const noFilteredStudentsLabel =
-    locale === "ko" ? "조건에 맞는 학생이 없습니다." : "No students match the current filters.";
-  const filterButtonLabel = locale === "ko" ? "적용" : "Apply";
-  const resetButtonLabel = locale === "ko" ? "초기화" : "Reset";
-  const totalScoreLabel = locale === "ko" ? "총점" : "Total score";
-  const studentLabel = locale === "ko" ? "학생" : "Student";
-  const statusLabel = locale === "ko" ? "상태" : "Status";
-  const studentSearchLabel = locale === "ko" ? "학생 검색" : "Student search";
-  const studentSearchPlaceholder =
-    locale === "ko" ? "이름, 사용자명, 반으로 검색" : "Search by name, username, or class";
-  const lastSubmissionLabel = locale === "ko" ? "마지막 제출" : "Last submission";
+  const filterSummary = tAssignment("filterSummary", { count: filteredRows.length });
+  const boardTitle = tAssignment("boardTitle");
+  const filterTitle = tAssignment("filtersTitle");
+  const allStatusesLabel = tAssignment("allStatuses");
+  const bestScoreLabel = tAssignment("bestScore");
+  const attemptsLabel = tAssignment("attempts");
+  const latestSubmissionLabel = tAssignment("latestSubmission");
+  const noLatestSubmissionLabel = tAssignment("noSubmission");
+  const noFilteredStudentsLabel = tAssignment("noFilteredStudents");
+  const filterButtonLabel = tAssignment("applyFilter");
+  const resetButtonLabel = tAssignment("resetFilter");
+  const totalScoreLabel = tAssignment("totalScore");
+  const studentLabel = tAssignment("student");
+  const statusLabel = tAssignment("status");
+  const studentSearchLabel = tAssignment("studentSearch");
+  const studentSearchPlaceholder = tAssignment("studentSearchPlaceholder");
+  const lastSubmissionLabel = tAssignment("lastSubmission");
 
   return (
     <div className="space-y-6">
