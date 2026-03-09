@@ -6,6 +6,7 @@ import { getApiUser, unauthorized, forbidden, isInstructor, isAdmin, csrfForbidd
 import { recordAuditEvent } from "@/lib/audit/events";
 import { createProblemWithTestCases } from "@/lib/problem-management";
 import { problemMutationSchema, problemVisibilityValues } from "@/lib/validators/problem-management";
+import { checkApiRateLimit, recordApiRateHit } from "@/lib/security/api-rate-limit";
 
 export async function GET(request: NextRequest) {
   try {
@@ -73,7 +74,7 @@ export async function GET(request: NextRequest) {
     return NextResponse.json({ data: paginatedProblems, page, limit, total });
   } catch (error) {
     console.error("GET /api/v1/problems error:", error);
-    return NextResponse.json({ error: "Internal server error" }, { status: 500 });
+    return NextResponse.json({ error: "internalServerError" }, { status: 500 });
   }
 }
 

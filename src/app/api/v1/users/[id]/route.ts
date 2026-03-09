@@ -38,7 +38,7 @@ export async function GET(
     return NextResponse.json({ data: found });
   } catch (error) {
     console.error("GET /api/v1/users/[id] error:", error);
-    return NextResponse.json({ error: "Internal server error" }, { status: 500 });
+    return NextResponse.json({ error: "internalServerError" }, { status: 500 });
   }
 }
 
@@ -144,25 +144,25 @@ export async function PATCH(
       if (!isAdminActor) return forbidden();
 
       if (typeof role !== "string" || !isUserRole(role)) {
-        return NextResponse.json({ error: "Invalid role" }, { status: 400 });
+        return NextResponse.json({ error: "invalidRole" }, { status: 400 });
       }
 
       if (!canManageRole(user.role, role)) {
         return NextResponse.json(
-          { error: "Only super_admin can assign super_admin role" },
+          { error: "superAdminRoleRestricted" },
           { status: 403 }
         );
       }
 
       if (found.role === "super_admin" && role !== "super_admin" && user.role !== "super_admin") {
         return NextResponse.json(
-          { error: "Only super_admin can change super_admin role" },
+          { error: "superAdminRoleRestricted" },
           { status: 403 }
         );
       }
 
       if (found.role === "super_admin" && role !== "super_admin") {
-        return NextResponse.json({ error: "Cannot change super_admin role" }, { status: 403 });
+        return NextResponse.json({ error: "superAdminRoleRestricted" }, { status: 403 });
       }
 
       updates.role = role;
@@ -227,7 +227,7 @@ export async function PATCH(
     return NextResponse.json({ data: updated });
   } catch (error) {
     console.error("PATCH /api/v1/users/[id] error:", error);
-    return NextResponse.json({ error: "Internal server error" }, { status: 500 });
+    return NextResponse.json({ error: "internalServerError" }, { status: 500 });
   }
 }
 
@@ -280,6 +280,6 @@ export async function DELETE(
     return NextResponse.json({ data: { id, isActive: false } });
   } catch (error) {
     console.error("DELETE /api/v1/users/[id] error:", error);
-    return NextResponse.json({ error: "Internal server error" }, { status: 500 });
+    return NextResponse.json({ error: "internalServerError" }, { status: 500 });
   }
 }

@@ -30,7 +30,7 @@ type ClaimedSubmissionRow = {
 export async function GET(request: NextRequest) {
   try {
     if (!isJudgeAuthorized(request)) {
-      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+      return NextResponse.json({ error: "unauthorized" }, { status: 401 });
     }
 
     const claimToken = nanoid();
@@ -100,7 +100,7 @@ export async function GET(request: NextRequest) {
     });
 
     if (!problem) {
-      return NextResponse.json({ error: "Problem not found" }, { status: 500 });
+      return NextResponse.json({ error: "problemNotFound" }, { status: 500 });
     }
 
     // Fetch test cases for the problem
@@ -120,14 +120,14 @@ export async function GET(request: NextRequest) {
     });
   } catch (error) {
     console.error("GET /api/v1/judge/poll error:", error);
-    return NextResponse.json({ error: "Internal server error" }, { status: 500 });
+    return NextResponse.json({ error: "internalServerError" }, { status: 500 });
   }
 }
 
 export async function POST(request: NextRequest) {
   try {
     if (!isJudgeAuthorized(request)) {
-      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+      return NextResponse.json({ error: "unauthorized" }, { status: 401 });
     }
 
     const parsed = judgeStatusReportSchema.safeParse(await request.json());
@@ -274,6 +274,6 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ data: updated });
   } catch (error) {
     console.error("POST /api/v1/judge/poll error:", error);
-    return NextResponse.json({ error: "Internal server error" }, { status: 500 });
+    return NextResponse.json({ error: "internalServerError" }, { status: 500 });
   }
 }

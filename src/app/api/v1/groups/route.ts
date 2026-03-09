@@ -6,6 +6,7 @@ import { getApiUser, unauthorized, forbidden, isAdmin, isInstructor, csrfForbidd
 import { recordAuditEvent } from "@/lib/audit/events";
 import { nanoid } from "nanoid";
 import { createGroupSchema } from "@/lib/validators/groups";
+import { checkApiRateLimit, recordApiRateHit } from "@/lib/security/api-rate-limit";
 
 export async function GET(request: NextRequest) {
   try {
@@ -77,7 +78,7 @@ export async function GET(request: NextRequest) {
     return NextResponse.json({ data: results, page, limit, total });
   } catch (error) {
     console.error("GET /api/v1/groups error:", error);
-    return NextResponse.json({ error: "Internal server error" }, { status: 500 });
+    return NextResponse.json({ error: "internalServerError" }, { status: 500 });
   }
 }
 

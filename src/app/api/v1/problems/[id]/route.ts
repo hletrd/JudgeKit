@@ -7,6 +7,7 @@ import { recordAuditEvent } from "@/lib/audit/events";
 import { canAccessProblem } from "@/lib/auth/permissions";
 import { updateProblemWithTestCases } from "@/lib/problem-management";
 import { problemMutationSchema } from "@/lib/validators/problem-management";
+import { checkApiRateLimit, recordApiRateHit } from "@/lib/security/api-rate-limit";
 
 export async function GET(
   request: NextRequest,
@@ -39,7 +40,7 @@ export async function GET(
     return NextResponse.json({ data: managedProblem ?? problem });
   } catch (error) {
     console.error("GET /api/v1/problems/[id] error:", error);
-    return NextResponse.json({ error: "Internal server error" }, { status: 500 });
+    return NextResponse.json({ error: "internalServerError" }, { status: 500 });
   }
 }
 

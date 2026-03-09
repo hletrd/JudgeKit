@@ -6,6 +6,7 @@ import { assignments, enrollments, submissions } from "@/lib/db/schema";
 import { canManageGroupResources } from "@/lib/assignments/management";
 import { getApiUser, forbidden, notFound, unauthorized, csrfForbidden } from "@/lib/api/auth";
 import type { UserRole } from "@/types";
+import { checkApiRateLimit, recordApiRateHit } from "@/lib/security/api-rate-limit";
 
 export async function DELETE(
   request: NextRequest,

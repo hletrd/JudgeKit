@@ -13,6 +13,7 @@ import { assignmentMutationSchema } from "@/lib/validators/assignments";
 import { getApiUser, forbidden, notFound, unauthorized, csrfForbidden } from "@/lib/api/auth";
 import { canAccessGroup } from "@/lib/auth/permissions";
 import type { UserRole } from "@/types";
+import { checkApiRateLimit, recordApiRateHit } from "@/lib/security/api-rate-limit";
 
 export async function GET(
   request: NextRequest,

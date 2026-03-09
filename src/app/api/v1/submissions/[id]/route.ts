@@ -55,6 +55,6 @@ export async function GET(
     return NextResponse.json({ data: submission });
   } catch (error) {
     console.error("GET /api/v1/submissions/[id] error:", error);
-    return NextResponse.json({ error: "Internal server error" }, { status: 500 });
+    return NextResponse.json({ error: "internalServerError" }, { status: 500 });
   }
 }

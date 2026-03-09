@@ -28,7 +28,7 @@ export async function GET(request: NextRequest) {
     const role = searchParams.get("role");
 
     if (role && !isUserRole(role)) {
-      return NextResponse.json({ error: "Invalid role" }, { status: 400 });
+      return NextResponse.json({ error: "invalidRole" }, { status: 400 });
     }
 
     const whereClause = role ? eq(users.role, role) : undefined;
@@ -49,7 +49,7 @@ export async function GET(request: NextRequest) {
     return NextResponse.json({ data: results, page, limit, total: Number(totalRow?.count ?? 0) });
   } catch (error) {
     console.error("GET /api/v1/users error:", error);
-    return NextResponse.json({ error: "Internal server error" }, { status: 500 });
+    return NextResponse.json({ error: "internalServerError" }, { status: 500 });
   }
 }
 
@@ -95,13 +95,13 @@ export async function POST(request: NextRequest) {
       }
     }
 
-    const existing = await db.query.users.findFirst({ where: eq(users.username, username) });
+    const existing = await db.query.users.findFirst({ where: eq(users.username, username), columns: { id: true } });
     if (existing) {
       return NextResponse.json({ error: "usernameInUse" }, { status: 409 });
     }
 
     if (normalizedEmail) {
-      const existingEmail = await db.query.users.findFirst({ where: eq(users.email, normalizedEmail) });
+      const existingEmail = await db.query.users.findFirst({ where: eq(users.email, normalizedEmail), columns: { id: true } });
       if (existingEmail) {
         return NextResponse.json({ error: "emailInUse" }, { status: 409 });
       }
@@ -155,6 +155,6 @@ export async function POST(request: NextRequest) {
     );
   } catch (error) {
     console.error("POST /api/v1/users error:", error);
-    return NextResponse.json({ error: "Internal server error" }, { status: 500 });
+    return NextResponse.json({ error: "internalServerError" }, { status: 500 });
   }
 }

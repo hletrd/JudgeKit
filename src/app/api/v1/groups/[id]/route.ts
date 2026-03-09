@@ -6,6 +6,7 @@ import { canAccessGroup } from "@/lib/auth/permissions";
 import { getApiUser, unauthorized, forbidden, notFound, isAdmin, csrfForbidden } from "@/lib/api/auth";
 import { recordAuditEvent } from "@/lib/audit/events";
 import { updateGroupSchema } from "@/lib/validators/groups";
+import { checkApiRateLimit, recordApiRateHit } from "@/lib/security/api-rate-limit";
 
 export async function GET(
   request: NextRequest,
@@ -82,7 +83,7 @@ export async function GET(
     });
   } catch (error) {
     console.error("GET /api/v1/groups/[id] error:", error);
-    return NextResponse.json({ error: "Internal server error" }, { status: 500 });
+    return NextResponse.json({ error: "internalServerError" }, { status: 500 });
   }
 }
 
@@ -144,7 +145,7 @@ export async function PATCH(
     return NextResponse.json({ data: updated });
   } catch (error) {
     console.error("PATCH /api/v1/groups/[id] error:", error);
-    return NextResponse.json({ error: "Internal server error" }, { status: 500 });
+    return NextResponse.json({ error: "internalServerError" }, { status: 500 });
   }
 }
 
@@ -204,6 +205,6 @@ export async function DELETE(
     return NextResponse.json({ data: { id } });
   } catch (error) {
     console.error("DELETE /api/v1/groups/[id] error:", error);
-    return NextResponse.json({ error: "Internal server error" }, { status: 500 });
+    return NextResponse.json({ error: "internalServerError" }, { status: 500 });
   }
 }
