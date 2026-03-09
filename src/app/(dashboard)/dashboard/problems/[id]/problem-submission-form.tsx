@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useMemo, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { useTranslations } from "next-intl";
 import { toast } from "sonner";
@@ -35,6 +35,7 @@ export function ProblemSubmissionForm({
   const router = useRouter();
   const t = useTranslations("problems");
   const tCommon = useTranslations("common");
+  const fileInputRef = useRef<HTMLInputElement | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const availableLanguages = useMemo(() => languages.map((entry) => entry.language), [languages]);
   const { language, setLanguage, sourceCode, setSourceCode, isDirty, clearAllDrafts } = useSourceDraft({
@@ -45,6 +46,25 @@ export function ProblemSubmissionForm({
   });
 
   const { allowNextNavigation } = useUnsavedChangesGuard({ isDirty });
+
+  async function handleSourceFileChange(event: React.ChangeEvent<HTMLInputElement>) {
+    const selectedFile = event.target.files?.[0];
+
+    if (!selectedFile) {
+      return;
+    }
+
+    try {
+      const fileContents = await selectedFile.text();
+      setSourceCode(fileContents);
+      toast.success(t("sourceFileLoaded", { name: selectedFile.name }));
+    } catch (error) {
+      console.error("Failed to read source file:", error);
+      toast.error(t("sourceFileLoadFailed"));
+    } finally {
+      event.target.value = "";
+    }
+  }
 
   function translateSubmissionError(error: unknown) {
     if (typeof error !== "string") {
@@ -122,7 +142,24 @@ export function ProblemSubmissionForm({
   return (
     <form className="space-y-4" onSubmit={handleSubmit}>
       <div className="space-y-2">
-        <Label htmlFor="language">{t("selectLanguage")}</Label>
+        <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+          <Label htmlFor="language">{t("selectLanguage")}</Label>
+          <input
+            ref={fileInputRef}
+            className="sr-only"
+            onChange={(event) => {
+              void handleSourceFileChange(event);
+            }}
+            type="file"
+          />
+          <Button
+            type="button"
+            variant="outline"
+            onClick={() => fileInputRef.current?.click()}
+          >
+            {t("uploadSourceFile")}
+          </Button>
+        </div>
         <Select value={language} onValueChange={(value) => value && setLanguage(value)}>
           <SelectTrigger id="language">
             <SelectValue placeholder={t("selectLanguage")} />
