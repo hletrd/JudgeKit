@@ -86,7 +86,11 @@ export default async function ProblemsPage({
     const accessibleIds = await getAccessibleProblemIds(
       session.user.id,
       session.user.role,
-      allProblems
+      allProblems.map((p) => ({
+        id: p.id,
+        visibility: p.visibility ?? "private",
+        authorId: p.authorId,
+      }))
     );
     accessibleProblems = allProblems.filter((p) => accessibleIds.has(p.id));
   }

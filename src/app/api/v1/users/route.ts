@@ -12,6 +12,7 @@ import {
   canManageRole,
   isUserRole,
 } from "@/lib/security/constants";
+import type { UserRole } from "@/types";
 import { getPasswordValidationError } from "@/lib/security/password";
 import { userCreateSchema } from "@/lib/validators/profile";
 import { checkApiRateLimit, recordApiRateHit } from "@/lib/security/api-rate-limit";
@@ -32,7 +33,7 @@ export async function GET(request: NextRequest) {
       return NextResponse.json({ error: "invalidRole" }, { status: 400 });
     }
 
-    const whereClause = role ? eq(users.role, role) : undefined;
+    const whereClause = role ? eq(users.role, role as UserRole) : undefined;
 
     const [totalRow] = await db
       .select({ count: sql<number>`count(*)` })
