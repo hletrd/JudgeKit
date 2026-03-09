@@ -68,8 +68,17 @@ export async function toggleUserActive(userId: string, isActive: boolean): Promi
   }
 
   try {
+    const updates: UserUpdates = {
+      isActive,
+      updatedAt: new Date(),
+    };
+
+    if (!isActive) {
+      updates.tokenInvalidatedAt = new Date();
+    }
+
     await db.update(users)
-      .set({ isActive, updatedAt: new Date() })
+      .set(updates)
       .where(eq(users.id, userId));
 
     const auditContext = await buildServerActionAuditContext("/dashboard/admin/users");
@@ -83,6 +92,7 @@ export async function toggleUserActive(userId: string, isActive: boolean): Promi
       summary: `${isActive ? "Restored" : "Deactivated"} access for @${targetUser.username}`,
       details: {
         isActive,
+        invalidatedExistingSessions: !isActive,
         role: targetUser.role,
       },
       context: auditContext,
@@ -169,9 +179,16 @@ export async function editUser(userId: string, data: ManagedUserInput): Promise<
       updatedAt: new Date(),
     };
 
+    const shouldInvalidateExistingSessions =
+      requestedRole !== targetUser.role || Boolean(data.password);
+
     if (data.password) {
       updates.passwordHash = await hash(data.password, 12);
       updates.mustChangePassword = true;
+    }
+
+    if (shouldInvalidateExistingSessions) {
+      updates.tokenInvalidatedAt = new Date();
     }
 
     await db.update(users).set(updates).where(eq(users.id, userId));
@@ -187,6 +204,7 @@ export async function editUser(userId: string, data: ManagedUserInput): Promise<
       summary: `Updated user @${data.username}`,
       details: {
         changedFields: Object.keys(updates).filter((key) => key !== "passwordHash"),
+        invalidatedExistingSessions: shouldInvalidateExistingSessions,
         resetPassword: Boolean(data.password),
         role: requestedRole,
       },

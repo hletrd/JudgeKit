@@ -73,8 +73,8 @@ export async function PATCH(
     const profileSchema = isAdminActor ? adminUpdateUserSchema : updateProfileSchema;
     const profileFields: Record<string, unknown> = {};
     if (body.name !== undefined) profileFields.name = body.name;
-    if (body.email !== undefined) profileFields.email = body.email;
     if (body.className !== undefined) profileFields.className = body.className;
+    if (isAdminActor && body.email !== undefined) profileFields.email = body.email;
     if (isAdminActor && body.username !== undefined) profileFields.username = body.username;
 
     if (Object.keys(profileFields).length > 0) {
@@ -87,9 +87,12 @@ export async function PATCH(
       }
     }
 
-    // Non-admin cannot change username
     if (!isAdminActor && body.username !== undefined) {
       return NextResponse.json({ error: "usernameChangeNotAllowed" }, { status: 403 });
+    }
+
+    if (!isAdminActor && body.email !== undefined) {
+      return NextResponse.json({ error: "emailChangeNotAllowed" }, { status: 403 });
     }
 
     const { name, username, email, className, role, isActive, password } = body;
@@ -104,23 +107,23 @@ export async function PATCH(
       });
 
       if (existingUsername && existingUsername.id !== id) {
-        return NextResponse.json({ error: "Username already in use" }, { status: 409 });
+        return NextResponse.json({ error: "usernameInUse" }, { status: 409 });
       }
     }
 
-    if (email !== undefined && normalizedEmail) {
+    if (isAdminActor && email !== undefined && normalizedEmail) {
       const existingEmail = await db.query.users.findFirst({
         where: eq(users.email, normalizedEmail),
       });
 
       if (existingEmail && existingEmail.id !== id) {
-        return NextResponse.json({ error: "Email already in use" }, { status: 409 });
+        return NextResponse.json({ error: "emailInUse" }, { status: 409 });
       }
     }
 
     if (name !== undefined) updates.name = name;
     if (username !== undefined && isAdminActor) updates.username = username;
-    if (email !== undefined) updates.email = normalizedEmail;
+    if (email !== undefined && isAdminActor) updates.email = normalizedEmail;
     if (className !== undefined) updates.className = normalizedClassName;
     if (isActive !== undefined && isAdminActor) {
       if (isActive === false && found.id === user.id) {
@@ -132,6 +135,10 @@ export async function PATCH(
       }
 
       updates.isActive = isActive;
+
+      if (isActive === false) {
+        updates.tokenInvalidatedAt = new Date();
+      }
     }
     if (role !== undefined) {
       if (!isAdminActor) return forbidden();
@@ -159,6 +166,10 @@ export async function PATCH(
       }
 
       updates.role = role;
+
+      if (role !== found.role) {
+        updates.tokenInvalidatedAt = new Date();
+      }
     }
     if (password !== undefined) {
       if (!isAdminActor || isSelf) {
@@ -180,6 +191,7 @@ export async function PATCH(
 
       updates.passwordHash = await hash(password, 12);
       updates.mustChangePassword = true;
+      updates.tokenInvalidatedAt = new Date();
     }
 
     await db.update(users).set(updates).where(eq(users.id, id));
@@ -206,6 +218,7 @@ export async function PATCH(
           resetPassword: password !== undefined,
           role: updated.role,
           isActive: updated.isActive,
+          invalidatedExistingSessions: Boolean(updates.tokenInvalidatedAt),
         },
         request,
       });

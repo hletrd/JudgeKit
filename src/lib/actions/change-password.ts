@@ -55,6 +55,7 @@ export async function changePassword(
       .set({
         passwordHash: newHash,
         mustChangePassword: false,
+        tokenInvalidatedAt: new Date(),
         updatedAt: new Date(),
       })
       .where(eq(users.id, user.id))
@@ -76,6 +77,7 @@ export async function changePassword(
     resourceLabel: user.username,
     summary: `Changed password for @${user.username}`,
     details: {
+      invalidatedExistingSessions: true,
       mustChangePassword: false,
     },
     context: auditContext,
