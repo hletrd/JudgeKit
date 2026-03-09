@@ -102,10 +102,39 @@ function roundAssignmentScore(value: number) {
   return Math.round(value * 100) / 100;
 }
 
-function mapSubmissionPercentageToAssignmentPoints(score: number, points: number) {
+function mapSubmissionPercentageToAssignmentPoints(
+  score: number,
+  points: number,
+  lateContext?: {
+    submittedAt: Date | null;
+    deadline: Date | null;
+    lateDeadline: Date | null;
+    latePenalty: number;
+  }
+) {
   const normalizedPercentage = Math.min(Math.max(score, 0), 100);
+  let earnedPoints = roundAssignmentScore((normalizedPercentage / 100) * points);
 
-  return roundAssignmentScore((normalizedPercentage / 100) * points);
+  if (lateContext && lateContext.submittedAt && lateContext.deadline && lateContext.latePenalty > 0) {
+    const submittedTime = lateContext.submittedAt.valueOf();
+    const deadlineTime = lateContext.deadline.valueOf();
+
+    if (submittedTime > deadlineTime) {
+      // Submitted after deadline — apply late penalty
+      const penaltyFraction = lateContext.latePenalty / 100;
+      earnedPoints = roundAssignmentScore(earnedPoints * (1 - penaltyFraction));
+    }
+  }
+
+  return earnedPoints;
+}
+
+export function isSubmissionLate(
+  submittedAt: Date | null,
+  deadline: Date | null
+): boolean {
+  if (!submittedAt || !deadline) return false;
+  return submittedAt.valueOf() > deadline.valueOf();
 }
 
 function isAdminRole(role: UserRole) {
@@ -302,6 +331,9 @@ export async function getAssignmentStatusRows(
       id: true,
       title: true,
       groupId: true,
+      deadline: true,
+      lateDeadline: true,
+      latePenalty: true,
     },
     with: {
       group: {
@@ -419,7 +451,13 @@ export async function getAssignmentStatusRows(
     if (typeof submission.score === "number") {
       const earnedPoints = mapSubmissionPercentageToAssignmentPoints(
         submission.score,
-        problem.points
+        problem.points,
+        {
+          submittedAt: submission.submittedAt,
+          deadline: assignment.deadline ?? null,
+          lateDeadline: assignment.lateDeadline ?? null,
+          latePenalty: assignment.latePenalty ?? 0,
+        }
       );
 
       problem.bestScore =
