@@ -3,7 +3,7 @@
 import { hash, compare } from "bcryptjs";
 import { eq } from "drizzle-orm";
 import { auth } from "@/lib/auth";
-import { findSessionUser, hasSessionIdentity } from "@/lib/auth/find-session-user";
+import { findSessionUserWithPassword, hasSessionIdentity } from "@/lib/auth/find-session-user";
 import { buildServerActionAuditContext, recordAuditEvent } from "@/lib/audit/events";
 import { db } from "@/lib/db";
 import { users } from "@/lib/db/schema";
@@ -24,7 +24,7 @@ export async function changePassword(
     return { success: false, error: "sessionExpired" };
   }
 
-  const user = await findSessionUser(session);
+  const user = await findSessionUserWithPassword(session);
 
   if (!user || !user.passwordHash) {
     return { success: false, error: "sessionExpired" };
