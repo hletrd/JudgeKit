@@ -175,7 +175,7 @@ JUDGE_DISABLE_CUSTOM_SECCOMP=0
 ```
 
 - Keep `JUDGE_POLL_URL` on the internal host URL unless the worker runs on another machine
-- Set `JUDGE_DISABLE_CUSTOM_SECCOMP=1` on hosts where Docker 28+/modern kernels reject the repository seccomp profile during container init; the worker now also retries once with Docker's default seccomp if the custom profile fails with the known `fsmount:fscontext:proc` error
+- Set `JUDGE_DISABLE_CUSTOM_SECCOMP=1` on hosts where Docker 28+/modern kernels reject the repository seccomp profile during container init; local main now uses Docker's default seccomp for compilation, applies the repository seccomp profile only during run-phase execution when enabled, and fails closed if that run-phase profile cannot be applied
 
 ### 3. Initial provisioning
 
@@ -238,7 +238,7 @@ journalctl -u online-judge-worker.service -n 50 --no-pager
 - Confirm submissions progress out of `pending`
 - Confirm `/api/health` returns `{"status":"ok"...}` with `checks.database` set to `ok`
 - If you see `401 Unauthorized` in worker logs, verify `JUDGE_AUTH_TOKEN`
-- If you see the `fsmount:fscontext:proc` container-init error, set `JUDGE_DISABLE_CUSTOM_SECCOMP=1` and restart `online-judge-worker.service`
+- If you see the `fsmount:fscontext:proc` container-init error, either restore/fix the repository seccomp profile or explicitly set `JUDGE_DISABLE_CUSTOM_SECCOMP=1` before restarting `online-judge-worker.service`; the worker no longer retries under Docker's default seccomp when the custom run-phase profile is expected
 - For system settings schema or timezone changes, verify `/dashboard/admin/settings` and at least one timestamped page such as `/dashboard/submissions` or `/dashboard/admin/users/[id]` after deploy
 
 ## Tech Stack
