@@ -330,6 +330,7 @@ export const rateLimits = sqliteTable(
     attempts: integer("attempts").notNull().default(0),
     windowStartedAt: integer("window_started_at").notNull(),
     blockedUntil: integer("blocked_until"),
+    consecutiveBlocks: integer("consecutive_blocks").default(0),
     lastAttempt: integer("last_attempt").notNull(),
     createdAt: integer("created_at").$defaultFn(() => Date.now()),
   },

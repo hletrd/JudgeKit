@@ -35,7 +35,7 @@ function getEntry(key: string) {
   if (!existing) {
     return {
       now,
-      entry: { attempts: 0, windowStartedAt: now, blockedUntil: 0 },
+      entry: { attempts: 0, windowStartedAt: now, blockedUntil: 0, consecutiveBlocks: 0 },
       exists: false,
     };
   }
@@ -47,6 +47,7 @@ function getEntry(key: string) {
         attempts: 0,
         windowStartedAt: now,
         blockedUntil: existing.blockedUntil && existing.blockedUntil > now ? existing.blockedUntil : 0,
+        consecutiveBlocks: existing.consecutiveBlocks ?? 0,
       },
       exists: true,
     };
@@ -58,6 +59,7 @@ function getEntry(key: string) {
       attempts: existing.attempts,
       windowStartedAt: existing.windowStartedAt,
       blockedUntil: existing.blockedUntil ?? 0,
+      consecutiveBlocks: existing.consecutiveBlocks ?? 0,
     },
     exists: true,
   };
@@ -80,8 +82,17 @@ export function isAnyKeyRateLimited(...keys: string[]) {
 export function recordRateLimitFailure(key: string) {
   const { now, entry, exists } = getEntry(key);
   const attempts = entry.attempts + 1;
-  const blockedUntil =
-    attempts >= RATE_LIMIT_MAX_ATTEMPTS ? now + RATE_LIMIT_BLOCK_MS : entry.blockedUntil;
+
+  let blockedUntil = entry.blockedUntil;
+  let consecutiveBlocks = entry.consecutiveBlocks;
+
+  if (attempts >= RATE_LIMIT_MAX_ATTEMPTS) {
+    // Escalating backoff: 2^consecutiveBlocks multiplier, capped at 2^4 = 16x (~4 hours)
+    const multiplier = Math.pow(2, Math.min(consecutiveBlocks, 4));
+    const blockDuration = RATE_LIMIT_BLOCK_MS * multiplier;
+    blockedUntil = now + blockDuration;
+    consecutiveBlocks += 1;
+  }
 
   if (exists) {
     db.update(rateLimits)
@@ -89,6 +100,7 @@ export function recordRateLimitFailure(key: string) {
         attempts,
         windowStartedAt: entry.windowStartedAt,
         blockedUntil: blockedUntil || null,
+        consecutiveBlocks,
         lastAttempt: now,
       })
       .where(eq(rateLimits.key, key))
@@ -101,6 +113,7 @@ export function recordRateLimitFailure(key: string) {
         attempts,
         windowStartedAt: entry.windowStartedAt,
         blockedUntil: blockedUntil || null,
+        consecutiveBlocks,
         lastAttempt: now,
       })
       .run();

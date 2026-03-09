@@ -14,7 +14,7 @@ import { db } from "@/lib/db";
 import { problems, submissions, users } from "@/lib/db/schema";
 import { desc, eq } from "drizzle-orm";
 import { auth } from "@/lib/auth";
-import { canAccessProblem } from "@/lib/auth/permissions";
+import { getAccessibleProblemIds } from "@/lib/auth/permissions";
 import { redirect } from "next/navigation";
 import Link from "next/link";
 import { Button } from "@/components/ui/button";
@@ -79,18 +79,17 @@ export default async function ProblemsPage({
     .leftJoin(users, eq(problems.authorId, users.id))
     .orderBy(desc(problems.createdAt));
 
-  const accessibleProblems = canManageProblems
-    ? allProblems
-    : (
-        await Promise.all(
-          allProblems.map(async (problem) => ({
-            problem,
-            hasAccess: await canAccessProblem(problem.id, session.user.id, session.user.role),
-          }))
-        )
-      )
-        .filter((entry) => entry.hasAccess)
-        .map((entry) => entry.problem);
+  let accessibleProblems: typeof allProblems;
+  if (canManageProblems) {
+    accessibleProblems = allProblems;
+  } else {
+    const accessibleIds = await getAccessibleProblemIds(
+      session.user.id,
+      session.user.role,
+      allProblems
+    );
+    accessibleProblems = allProblems.filter((p) => accessibleIds.has(p.id));
+  }
 
   const userSubmissionRows = await db
     .select({

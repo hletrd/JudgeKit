@@ -2,7 +2,7 @@ import { auth } from "./index";
 import { canViewAssignmentSubmissions } from "@/lib/assignments/submissions";
 import { db } from "@/lib/db";
 import { enrollments, groups, problemGroupAccess, problems } from "@/lib/db/schema";
-import { eq, and } from "drizzle-orm";
+import { eq, and, inArray } from "drizzle-orm";
 import type { UserRole } from "@/types";
 
 export async function canAccessGroup(
@@ -94,6 +94,64 @@ export async function canAccessProblem(
     .where(eq(problemGroupAccess.problemId, problemId));
 
   return accessRows.some((row) => groupIds.includes(row.groupId));
+}
+
+export async function getAccessibleProblemIds(
+  userId: string,
+  role: UserRole,
+  problemList: Array<{ id: string; visibility: string; authorId: string | null }>
+): Promise<Set<string>> {
+  if (role === "super_admin" || role === "admin") {
+    return new Set(problemList.map((p) => p.id));
+  }
+
+  // Public problems and authored problems are always accessible
+  const accessible = new Set<string>();
+  const needsGroupCheck: string[] = [];
+
+  for (const problem of problemList) {
+    if (problem.visibility === "public") {
+      accessible.add(problem.id);
+    } else if (problem.authorId === userId) {
+      accessible.add(problem.id);
+    } else {
+      needsGroupCheck.push(problem.id);
+    }
+  }
+
+  if (needsGroupCheck.length === 0) {
+    return accessible;
+  }
+
+  // Fetch user enrollments once
+  const userEnrollments = await db
+    .select({ groupId: enrollments.groupId })
+    .from(enrollments)
+    .where(eq(enrollments.userId, userId));
+
+  if (userEnrollments.length === 0) {
+    return accessible;
+  }
+
+  const groupIds = userEnrollments.map((e) => e.groupId);
+
+  // Fetch all problemGroupAccess rows for the non-public problems in one query
+  const accessRows = await db
+    .select({
+      problemId: problemGroupAccess.problemId,
+      groupId: problemGroupAccess.groupId,
+    })
+    .from(problemGroupAccess)
+    .where(inArray(problemGroupAccess.problemId, needsGroupCheck));
+
+  const groupIdSet = new Set(groupIds);
+  for (const row of accessRows) {
+    if (groupIdSet.has(row.groupId)) {
+      accessible.add(row.problemId);
+    }
+  }
+
+  return accessible;
 }
 
 export async function canAccessSubmission(
