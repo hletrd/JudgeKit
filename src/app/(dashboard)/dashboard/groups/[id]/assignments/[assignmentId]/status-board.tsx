@@ -1,12 +1,15 @@
 import Link from "next/link";
+import { PenLine } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { SubmissionStatusBadge } from "@/components/submission-status-badge";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 import { type AssignmentStudentStatusRow } from "@/lib/assignments/submissions";
 import { formatDateTimeInTimeZone } from "@/lib/datetime";
 import { formatSubmissionIdPrefix } from "@/lib/submissions/id";
 import type { SubmissionStatus } from "@/types";
+import { ScoreOverrideDialog, type ScoreOverrideLabels } from "./score-override-dialog";
 
 type StatusFilterValue =
   | "all"
@@ -44,6 +47,7 @@ export interface StatusBoardLabels {
   statsMedian: string;
   statsSubmitted: string;
   statsPerfect: string;
+  overrideLabels?: ScoreOverrideLabels;
 }
 
 export interface StatusBoardProps {
@@ -54,6 +58,9 @@ export interface StatusBoardProps {
   locale: string;
   timeZone: string;
   labels: StatusBoardLabels;
+  groupId: string;
+  assignmentId: string;
+  canManageOverrides?: boolean;
 }
 
 function formatBoardScore(score: number, locale: string) {
@@ -88,6 +95,9 @@ export function StatusBoard({
   locale,
   timeZone,
   labels,
+  groupId,
+  assignmentId,
+  canManageOverrides = false,
 }: StatusBoardProps) {
   const scoreValues = filteredRows
     .map((row) => row.bestTotalScore)
@@ -154,7 +164,12 @@ export function StatusBoard({
               return (
                 <TableRow key={row.userId}>
                   <TableCell className="align-top whitespace-normal">
-                    <div className="font-medium">{row.name}</div>
+                    <Link
+                      href={`/dashboard/groups/${groupId}/assignments/${assignmentId}/student/${row.userId}`}
+                      className="font-medium text-primary hover:underline"
+                    >
+                      {row.name}
+                    </Link>
                     <div className="text-xs text-muted-foreground">@{row.username}</div>
                   </TableCell>
                   <TableCell className="align-top">{row.className ?? labels.notSet}</TableCell>
@@ -211,9 +226,33 @@ export function StatusBoard({
                       data-testid={`assignment-problem-score-${row.userId}-${problem.problemId}`}
                     >
                       <div className="space-y-1">
-                        <div>
-                          {labels.bestScore}: {formatBoardScore(problem.bestScore ?? 0, locale)}/
-                          {formatBoardScore(problem.points, locale)}
+                        <div className="flex items-center gap-1">
+                          <span className={problem.isOverridden ? "italic" : ""}>
+                            {labels.bestScore}: {formatBoardScore(problem.bestScore ?? 0, locale)}/
+                            {formatBoardScore(problem.points, locale)}
+                          </span>
+                          {problem.isOverridden && labels.overrideLabels && (
+                            <TooltipProvider>
+                              <Tooltip>
+                                <TooltipTrigger>
+                                  <PenLine className="size-3 shrink-0 text-amber-500" />
+                                </TooltipTrigger>
+                                <TooltipContent>{labels.overrideLabels.overrideIndicator}</TooltipContent>
+                              </Tooltip>
+                            </TooltipProvider>
+                          )}
+                          {canManageOverrides && labels.overrideLabels && (
+                            <ScoreOverrideDialog
+                              groupId={groupId}
+                              assignmentId={assignmentId}
+                              problemId={problem.problemId}
+                              userId={row.userId}
+                              currentScore={problem.bestScore ?? 0}
+                              maxPoints={problem.points}
+                              isOverridden={problem.isOverridden}
+                              labels={labels.overrideLabels}
+                            />
+                          )}
                         </div>
                         <div className="text-xs text-muted-foreground">
                           {labels.attempts}: {problem.attemptCount}
