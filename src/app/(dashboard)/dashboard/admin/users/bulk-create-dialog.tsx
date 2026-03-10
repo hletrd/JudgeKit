@@ -90,6 +90,12 @@ function downloadCredentialsCsv(users: CreatedUser[]) {
 export default function BulkCreateDialog() {
   const t = useTranslations("admin.users");
   const tCommon = useTranslations("common");
+  const roleLabels: Record<string, string> = {
+    student: tCommon("roles.student"),
+    instructor: tCommon("roles.instructor"),
+    admin: tCommon("roles.admin"),
+    super_admin: tCommon("roles.super_admin"),
+  };
   const router = useRouter();
 
   const [open, setOpen] = useState(false);
@@ -128,7 +134,7 @@ export default function BulkCreateDialog() {
       skipEmptyLines: true,
       complete: (result) => {
         if (!result.data || result.data.length === 0) {
-          setParseError("CSV file is empty or has no data rows.");
+          setParseError(t("bulkCsvEmpty"));
           return;
         }
 
@@ -153,11 +159,11 @@ export default function BulkCreateDialog() {
           const name = mapped["name"] ?? "";
 
           if (!username || username.length < 2) {
-            errors.push(`Row ${i + 2}: missing or invalid username`);
+            errors.push(t("bulkRowInvalidUsername", { row: i + 2 }));
             continue;
           }
           if (!name) {
-            errors.push(`Row ${i + 2}: missing name`);
+            errors.push(t("bulkRowMissingName", { row: i + 2 }));
             continue;
           }
 
@@ -171,11 +177,11 @@ export default function BulkCreateDialog() {
         }
 
         if (errors.length > 0) {
-          setParseError(errors.slice(0, 5).join("; ") + (errors.length > 5 ? ` ... and ${errors.length - 5} more` : ""));
+          setParseError(errors.slice(0, 5).join("; ") + (errors.length > 5 ? ` ${t("bulkMoreErrors", { count: errors.length - 5 })}` : ""));
         }
 
         if (rows.length > 200) {
-          setParseError(`Too many rows: ${rows.length}. Maximum is 200.`);
+          setParseError(t("bulkTooManyRows", { count: rows.length, max: 200 }));
           setParsedRows(rows.slice(0, 200));
           return;
         }
@@ -228,13 +234,13 @@ export default function BulkCreateDialog() {
               <DialogTitle>{t("bulkCreate")}</DialogTitle>
               <DialogDescription>
                 {t("bulkCreateSuccess", { count: results.created.length })}
-                {results.failed.length > 0 && ` (${results.failed.length} failed)`}
+                {results.failed.length > 0 && ` ${t("bulkFailedSuffix", { count: results.failed.length })}`}
               </DialogDescription>
             </DialogHeader>
             <div className="space-y-4">
               {results.created.length > 0 && (
                 <div>
-                  <p className="text-sm font-medium mb-2">Created users ({results.created.length})</p>
+                  <p className="text-sm font-medium mb-2">{t("bulkCreatedUsersTitle", { count: results.created.length })}</p>
                   <div className="max-h-64 overflow-y-auto border rounded">
                     <Table>
                       <TableHeader>
@@ -259,13 +265,13 @@ export default function BulkCreateDialog() {
               )}
               {results.failed.length > 0 && (
                 <div>
-                  <p className="text-sm font-medium mb-2 text-destructive">Failed ({results.failed.length})</p>
+                  <p className="text-sm font-medium mb-2 text-destructive">{t("bulkFailedTitle", { count: results.failed.length })}</p>
                   <div className="max-h-32 overflow-y-auto border rounded border-destructive/30">
                     <Table>
                       <TableHeader>
                         <TableRow>
                           <TableHead>{t("table.username")}</TableHead>
-                          <TableHead>Reason</TableHead>
+                          <TableHead>{t("bulkReason")}</TableHead>
                         </TableRow>
                       </TableHeader>
                       <TableBody>
@@ -314,7 +320,7 @@ export default function BulkCreateDialog() {
                   className="block w-full text-sm text-muted-foreground file:mr-4 file:py-1 file:px-3 file:rounded file:border file:border-input file:text-sm file:font-medium file:bg-background file:text-foreground hover:file:bg-accent cursor-pointer"
                 />
                 <p className="text-xs text-muted-foreground">
-                  Required columns: <span className="font-mono">username</span>, <span className="font-mono">name</span>. Optional: <span className="font-mono">email</span>, <span className="font-mono">role</span>, <span className="font-mono">class</span>. Max 200 rows.
+                  {t("bulkCsvHint")}
                 </p>
               </div>
               {parseError && (
@@ -331,7 +337,7 @@ export default function BulkCreateDialog() {
                           <TableHead>{t("table.name")}</TableHead>
                           <TableHead>{t("table.email")}</TableHead>
                           <TableHead>{t("table.role")}</TableHead>
-                          <TableHead>Class</TableHead>
+                          <TableHead>{tCommon("class")}</TableHead>
                         </TableRow>
                       </TableHeader>
                       <TableBody>
@@ -340,14 +346,14 @@ export default function BulkCreateDialog() {
                             <TableCell className="font-mono">{row.username}</TableCell>
                             <TableCell>{row.name}</TableCell>
                             <TableCell>{row.email || "-"}</TableCell>
-                            <TableCell>{row.role || "student"}</TableCell>
+                            <TableCell>{roleLabels[row.role || "student"] ?? row.role}</TableCell>
                             <TableCell>{row.className || "-"}</TableCell>
                           </TableRow>
                         ))}
                         {parsedRows.length > 50 && (
                           <TableRow>
                             <TableCell colSpan={5} className="text-center text-muted-foreground text-sm">
-                              ... and {parsedRows.length - 50} more rows
+                              {t("bulkMoreRows", { count: parsedRows.length - 50 })}
                             </TableCell>
                           </TableRow>
                         )}
