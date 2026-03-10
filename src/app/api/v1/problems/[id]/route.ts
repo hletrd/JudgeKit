@@ -30,14 +30,12 @@ export async function GET(
       return NextResponse.json({ data: problem });
     }
 
-    const managedProblem = await db.query.problems.findFirst({
-      where: eq(problems.id, id),
-      with: {
-        testCases: true,
-      },
+    // Only fetch test cases for managers (single additional query instead of re-fetching problem)
+    const problemTestCases = await db.query.testCases.findMany({
+      where: eq(testCases.problemId, id),
     });
 
-    return NextResponse.json({ data: managedProblem ?? problem });
+    return NextResponse.json({ data: { ...problem, testCases: problemTestCases } });
   } catch (error) {
     console.error("GET /api/v1/problems/[id] error:", error);
     return NextResponse.json({ error: "internalServerError" }, { status: 500 });
@@ -106,7 +104,7 @@ export async function PATCH(
       );
     }
 
-    updateProblemWithTestCases(id, parsedInput.data);
+    await updateProblemWithTestCases(id, parsedInput.data);
 
     const updated = await db.query.problems.findFirst({
       where: eq(problems.id, id),
