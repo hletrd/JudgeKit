@@ -23,6 +23,8 @@ Last updated: 2026-03-10
 - Follow-up cleanup in the same local batch corrected the submission rate-limit timestamp comparison to use a typed Drizzle timestamp comparison, documented `AUTH_TRUST_HOST` in the example/deployment docs, and disabled Playwright local server reuse so `db:push` cannot be skipped by a stale process.
 - The auth/sandbox follow-up batch was re-verified locally on 2026-03-09 with `npm run db:push`, `npx tsc --noEmit`, `npm run lint`, `npm run build`, and `npm run test:e2e -- --grep @smoke`.
 - The broader `P1.8` unit-test expansion batch was verified locally on 2026-03-10 with `npx tsc --noEmit`, `npm run lint`, `npm run test:unit`, and `npm run build`; direct Vitest coverage now includes permission helpers, assignment submission-access checks, the persisted rate-limit core, and the API mutation rate-limit wrapper.
+- Local main now also includes Java 25 and Kotlin 2.3 judge support via a shared JVM image, plus CodeMirror syntax support for both languages in the submission/editor surfaces. Java submissions currently follow the standard `Main` entrypoint convention inside the judge.
+- The runtime-expansion batch was verified locally on 2026-03-10 with `npm run languages:sync`, `npx tsc --noEmit`, `npm run lint`, `npm run test:unit`, `npm run build`, plus host-side Java/Kotlin compile-run smoke checks using downloaded official Temurin 25.0.2 and Kotlin 2.3.10 toolchains; Docker image build verification remains blocked in this session because no Docker daemon is reachable.
 
 ## Operational notes
 
@@ -42,4 +44,5 @@ Last updated: 2026-03-10
 - `docs/review-plan.md`, `docs/security-review-2026-03-08.md`, `docs/deployment.md`, and `.context/development/open-workstreams.md` now also record the locally completed security/API hardening batch and its verification state.
 - `README.md`, `docs/deployment.md`, `docs/review-plan.md`, `docs/security-review-2026-03-08.md`, and `.context/development/open-workstreams.md` now also record the 2026-03-09 auth/session and seccomp follow-up batch, including the fail-closed run-phase sandbox behavior and self-service identity restrictions.
 - `docs/review-plan.md`, `.context/development/open-workstreams.md`, and this file now also record the 2026-03-10 `P1.8` test-expansion follow-up batch and its local verification state.
+- `docs/feature-plan.md`, `docs/review-plan.md`, `.context/development/open-workstreams.md`, and this file now also record the 2026-03-10 Java/Kotlin runtime-expansion batch.
 - `AGENTS.md` already reflects that `system_settings` carries title, description, and timezone overrides.
