@@ -100,6 +100,17 @@ describe("canAccessGroup", () => {
 });
 
 describe("canAccessProblem", () => {
+  it("allows public problems without group lookups", async () => {
+    dbMock.query.problems.findFirst.mockResolvedValue({
+      id: "problem-1",
+      visibility: "public",
+      authorId: "author-2",
+    });
+
+    await expect(canAccessProblem("problem-1", "user-1", "student")).resolves.toBe(true);
+    expect(dbMock.select).not.toHaveBeenCalled();
+  });
+
   it("allows shared hidden problems through enrolled groups", async () => {
     dbMock.query.problems.findFirst.mockResolvedValue({
       id: "problem-1",
@@ -122,6 +133,17 @@ describe("canAccessProblem", () => {
     dbMock.select.mockReturnValueOnce(createSelectResult([]));
 
     await expect(canAccessProblem("problem-1", "user-1", "student")).resolves.toBe(false);
+  });
+
+  it("allows authors to access their own restricted problems", async () => {
+    dbMock.query.problems.findFirst.mockResolvedValue({
+      id: "problem-1",
+      visibility: "private",
+      authorId: "user-1",
+    });
+
+    await expect(canAccessProblem("problem-1", "user-1", "student")).resolves.toBe(true);
+    expect(dbMock.select).not.toHaveBeenCalled();
   });
 });
 
@@ -150,6 +172,20 @@ describe("getAccessibleProblemIds", () => {
 });
 
 describe("canAccessSubmission", () => {
+  it("allows admins and submission owners without assignment lookups", async () => {
+    await expect(
+      canAccessSubmission({ userId: "student-1", assignmentId: null }, "admin-1", "admin")
+    ).resolves.toBe(true);
+    await expect(
+      canAccessSubmission(
+        { userId: "student-1", assignmentId: "assignment-1" },
+        "student-1",
+        "student"
+      )
+    ).resolves.toBe(true);
+    expect(canViewAssignmentSubmissionsMock).not.toHaveBeenCalled();
+  });
+
   it("defers to assignment visibility for non-owner submissions", async () => {
     canViewAssignmentSubmissionsMock.mockResolvedValueOnce(true).mockResolvedValueOnce(false);
 
