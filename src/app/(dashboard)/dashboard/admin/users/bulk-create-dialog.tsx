@@ -2,6 +2,7 @@
 
 import { useState, useRef } from "react";
 import { useTranslations } from "next-intl";
+import { apiFetch } from "@/lib/api/client";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
@@ -192,11 +193,10 @@ export default function BulkCreateDialog() {
 
     setIsLoading(true);
     try {
-      const response = await fetch("/api/v1/users/bulk", {
+      const response = await apiFetch("/api/v1/users/bulk", {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
-          "x-csrf-token": "1",
         },
         body: JSON.stringify({ users: parsedRows }),
       });
