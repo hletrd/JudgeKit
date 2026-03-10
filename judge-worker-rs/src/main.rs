@@ -59,6 +59,9 @@ async fn main() {
 
     tokio::pin!(shutdown);
 
+    let mut cleanup_counter = 0;
+    const CLEANUP_INTERVAL: usize = 100;
+
     loop {
         // Check for shutdown or poll for work
         tokio::select! {
@@ -78,6 +81,13 @@ async fn main() {
                     }
                 }
             }
+        }
+
+        // Periodic cleanup of orphaned containers
+        cleanup_counter += 1;
+        if cleanup_counter >= CLEANUP_INTERVAL {
+            docker::cleanup_orphaned_containers().await;
+            cleanup_counter = 0;
         }
 
         // Sleep before next poll, but still respect shutdown

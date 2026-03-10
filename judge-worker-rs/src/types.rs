@@ -24,6 +24,7 @@ pub enum Language {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
 pub struct TestCase {
     pub id: String,
     pub input: String,
@@ -32,6 +33,7 @@ pub struct TestCase {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
 pub struct Submission {
     pub id: String,
     #[serde(rename = "claimToken")]
@@ -48,6 +50,7 @@ pub struct Submission {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
 pub struct PollResponse {
     pub data: Option<Submission>,
 }
@@ -66,22 +69,22 @@ pub struct TestResult {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct StatusReport {
+pub struct StatusReport<'a> {
     #[serde(rename = "submissionId")]
-    pub submission_id: String,
+    pub submission_id: &'a str,
     #[serde(rename = "claimToken")]
-    pub claim_token: String,
-    pub status: String,
+    pub claim_token: &'a str,
+    pub status: &'a str,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct ResultReport {
+pub struct ResultReport<'a> {
     #[serde(rename = "submissionId")]
-    pub submission_id: String,
+    pub submission_id: &'a str,
     #[serde(rename = "claimToken")]
-    pub claim_token: String,
-    pub status: String,
+    pub claim_token: &'a str,
+    pub status: &'a str,
     #[serde(rename = "compileOutput")]
-    pub compile_output: String,
+    pub compile_output: &'a str,
     pub results: Vec<TestResult>,
 }

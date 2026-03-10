@@ -252,3 +252,28 @@ pub async fn run_docker(
 
     Ok(result)
 }
+
+pub async fn cleanup_orphaned_containers() {
+    let output = tokio::process::Command::new("docker")
+        .args(["ps", "-a", "--filter", "name=oj-", "--filter", "status=exited", "-q"])
+        .output()
+        .await;
+
+    if let Ok(output) = output {
+        let ids = String::from_utf8_lossy(&output.stdout);
+        for id in ids.lines().filter(|l| !l.is_empty()) {
+            match tokio::process::Command::new("docker")
+                .args(["rm", id])
+                .output()
+                .await
+            {
+                Ok(_) => {
+                    tracing::debug!("Cleaned up orphaned container: {}", id);
+                }
+                Err(e) => {
+                    tracing::warn!("Failed to remove orphaned container {}: {}", id, e);
+                }
+            }
+        }
+    }
+}

@@ -11,6 +11,9 @@ const COMPILATION_TIMEOUT_MS: u64 = 20_000;
 const MIN_TIMEOUT_MS: u64 = 100;
 
 pub async fn execute(client: &ApiClient, config: &Config, submission: Submission) {
+    let span = tracing::info_span!("judge_submission", submission_id = %submission.id);
+    let _guard = span.enter();
+
     let lang_config = match languages::get_config(&submission.language) {
         Some(config) => config,
         None => {

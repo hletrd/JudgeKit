@@ -46,9 +46,9 @@ impl ApiClient {
     /// POST status update (e.g. "judging") without results
     pub async fn report_status(&self, submission_id: &str, claim_token: &str, status: &str) -> Result<(), String> {
         let body = StatusReport {
-            submission_id: submission_id.to_string(),
-            claim_token: claim_token.to_string(),
-            status: status.to_string(),
+            submission_id,
+            claim_token,
+            status,
         };
 
         let response = self.client
@@ -77,10 +77,10 @@ impl ApiClient {
         results: Vec<TestResult>,
     ) -> Result<(), String> {
         let body = ResultReport {
-            submission_id: submission_id.to_string(),
-            claim_token: claim_token.to_string(),
-            status: status.to_string(),
-            compile_output: compile_output.to_string(),
+            submission_id,
+            claim_token,
+            status,
+            compile_output,
             results,
         };
 

@@ -259,6 +259,12 @@ mod tests {
         // Unknown language returns None
         assert!(get_config(&Language::Unknown).is_none());
 
-        assert_eq!(languages.len(), 16, "expected exactly 16 language variants");
+        // Verify every entry in the test array has a config — no magic number needed.
+        // If you add a new language, add it to the `languages` array above.
+        assert_eq!(
+            languages.len(),
+            languages.iter().filter_map(|l| get_config(l)).count(),
+            "every language in the test array must have a config"
+        );
     }
 }
