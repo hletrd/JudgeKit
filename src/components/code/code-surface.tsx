@@ -10,6 +10,7 @@ import {
   syntaxHighlighting,
   type LanguageSupport,
 } from "@codemirror/language";
+import { java, kotlin } from "@codemirror/legacy-modes/mode/clike";
 import { go } from "@codemirror/legacy-modes/mode/go";
 import { rust } from "@codemirror/legacy-modes/mode/rust";
 import { swift } from "@codemirror/legacy-modes/mode/swift";
@@ -107,6 +108,10 @@ function getLanguageExtension(language: string | null | undefined): LanguageSupp
       return javascript();
     case "typescript":
       return javascript({ typescript: true });
+    case "java":
+      return StreamLanguage.define(java);
+    case "kotlin":
+      return StreamLanguage.define(kotlin);
     case "go":
       return StreamLanguage.define(go);
     case "rust":
