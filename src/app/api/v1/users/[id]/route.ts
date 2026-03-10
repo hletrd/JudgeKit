@@ -170,15 +170,23 @@ function applyRoleUpdate(
 async function applyPasswordUpdate(
   updates: UserUpdates,
   password: unknown,
-  isAdminActor: boolean,
-  isSelf: boolean
+  actorRole: string,
+  isSelf: boolean,
+  targetRole: string
 ) {
   if (password === undefined) {
     return null;
   }
 
+  const isAdminActor = actorRole === "admin" || actorRole === "super_admin";
+
   if (!isAdminActor || isSelf) {
     return jsonError("passwordChangeRequiresCurrentPassword", 403);
+  }
+
+  // Only super_admin can reset another admin's password
+  if ((targetRole === "admin" || targetRole === "super_admin") && actorRole !== "super_admin") {
+    return jsonError("cannotResetAdminPassword", 403);
   }
 
   if (typeof password !== "string") {
@@ -280,8 +288,9 @@ export async function PATCH(
     const passwordUpdateError = await applyPasswordUpdate(
       updates,
       body.password,
-      isAdminActor,
-      isSelf
+      user.role,
+      isSelf,
+      found.role
     );
     if (passwordUpdateError) return passwordUpdateError;
 
@@ -360,6 +369,18 @@ export async function DELETE(
     }
 
     if (permanent) {
+      // Require username confirmation for permanent deletion
+      let body: { confirmUsername?: string } = {};
+      try {
+        body = await request.json();
+      } catch {
+        return jsonError("confirmUsernameRequired", 400);
+      }
+
+      if (!body.confirmUsername || body.confirmUsername !== found.username) {
+        return jsonError("confirmUsernameRequired", 400);
+      }
+
       // Record audit BEFORE deletion since actorId FK gets set-null on cascade
       recordAuditEvent({
         actorId: user.id,
