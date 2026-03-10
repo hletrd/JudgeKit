@@ -87,7 +87,7 @@ jobs:
           workspace.joinpath("solution.kt").write_text(
               """fun main() {
                   val tokens = generateSequence(::readlnOrNull)
-                      .flatMap { it.split(Regex("\\s+")).asSequence() }
+                      .flatMap { it.split(Regex("\\\\s+")).asSequence() }
                       .filter { it.isNotBlank() }
                       .toList()
                   if (tokens.size >= 2) {
