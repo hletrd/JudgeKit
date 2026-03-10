@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { db } from "@/lib/db";
-import { assignments, groups, submissions } from "@/lib/db/schema";
+import { assignments, groups, submissions, enrollments } from "@/lib/db/schema";
 import { eq, sql } from "drizzle-orm";
 import { canAccessGroup } from "@/lib/auth/permissions";
 import { getApiUser, unauthorized, forbidden, notFound, isAdmin, csrfForbidden } from "@/lib/api/auth";
@@ -55,17 +55,26 @@ export async function GET(
               columns: { id: true, name: true, email: true },
             },
           },
+          limit: 50,
         },
       },
     });
 
     if (!group) return notFound("Group");
 
+    // Get total member count for pagination
+    const memberCountResult = await db
+      .select({ count: sql<number>`count(${enrollments.id})` })
+      .from(enrollments)
+      .where(eq(enrollments.groupId, id));
+    const memberCount = Number(memberCountResult[0]?.count ?? 0);
+
     const canViewEmails = isAdmin(user.role) || group.instructorId === user.id;
 
     return NextResponse.json({
       data: {
         ...group,
+        memberCount,
         instructor: group.instructor
           ? {
               ...group.instructor,
