@@ -73,6 +73,7 @@ test("@smoke preserves remediation login, problem, submission, and group flows",
     await page.goto(`/dashboard/problems/${problemId}`, { waitUntil: "networkidle" });
     await page.locator("#sourceCode").fill("a, b = map(int, input().split())\nprint(a + b)\n");
     await page.getByRole("button", { name: "Submit" }).click();
+    await page.getByRole("button", { name: "Send to Judge" }).click();
     await page.waitForURL(/\/dashboard\/submissions\/[^/]+$/, { timeout: 15_000 });
 
     await page.goto(`/dashboard/problems/${problemId}/edit`, { waitUntil: "networkidle" });

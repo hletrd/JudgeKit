@@ -168,6 +168,7 @@ test("task 7 guards browser back navigation while dirty and stays clean after su
 
   await test.step("successful submit clears the draft so later back navigation has no warning", async () => {
     await page.getByRole("button", { name: "Submit" }).click();
+    await page.getByRole("button", { name: "Send to Judge" }).click();
     await page.waitForURL(/\/dashboard\/submissions\/[^/]+$/, { timeout: 15_000 });
 
     await expectNoDialogDuring(page, async () => {

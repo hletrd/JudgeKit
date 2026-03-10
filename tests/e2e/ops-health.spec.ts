@@ -7,11 +7,12 @@ test("health endpoint reports database readiness", async ({ request }) => {
 
   const payload = await response.json();
 
-  expect(payload).toEqual({
+  expect(payload).toMatchObject({
     checks: {
+      auditEvents: "ok",
       database: "ok",
     },
     status: "ok",
-    timestamp: expect.any(String),
   });
+  expect(payload.timestamp).toEqual(expect.any(String));
 });

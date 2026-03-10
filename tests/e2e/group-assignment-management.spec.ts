@@ -418,6 +418,7 @@ test("group assignment management supports member add, assignment CRUD, and stud
     await editor.click();
     await studentPage.keyboard.type('print("assignment flow")');
     await studentPage.getByRole("button", { name: "Submit" }).click();
+    await studentPage.getByRole("button", { name: "Send to Judge" }).click();
 
     await studentPage.waitForURL(/\/dashboard\/submissions\//, { timeout: 15_000 });
 
