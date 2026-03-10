@@ -160,4 +160,24 @@ describe("rate-limit helpers", () => {
 
     expect(rows.size).toBe(0);
   });
+
+  it("evicts stale entries while recording fresh failures", async () => {
+    const { recordRateLimitFailure } = await importRateLimitModule();
+
+    rows.set("login:stale", {
+      id: "stale-id",
+      key: "login:stale",
+      attempts: 1,
+      windowStartedAt: 0,
+      blockedUntil: null,
+      consecutiveBlocks: 0,
+      lastAttempt: 0,
+    });
+
+    vi.spyOn(Date, "now").mockReturnValue(24 * 60 * 60 * 1000 + 1000);
+    recordRateLimitFailure("login:fresh");
+
+    expect(rows.has("login:stale")).toBe(false);
+    expect(rows.has("login:fresh")).toBe(true);
+  });
 });
