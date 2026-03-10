@@ -13,7 +13,9 @@ import {
   assignments,
   assignmentProblems,
   submissions,
+  submissionComments,
   submissionResults,
+  scoreOverrides,
 } from "./schema";
 
 export const usersRelations = relations(users, ({ many }) => ({
@@ -25,6 +27,7 @@ export const usersRelations = relations(users, ({ many }) => ({
   instructedGroups: many(groups),
   authoredProblems: many(problems),
   submissions: many(submissions),
+  submissionComments: many(submissionComments),
 }));
 
 export const sessionsRelations = relations(sessions, ({ one }) => ({
@@ -116,6 +119,7 @@ export const assignmentsRelations = relations(assignments, ({ one, many }) => ({
   }),
   assignmentProblems: many(assignmentProblems),
   submissions: many(submissions),
+  scoreOverrides: many(scoreOverrides),
 }));
 
 export const assignmentProblemsRelations = relations(
@@ -146,7 +150,22 @@ export const submissionsRelations = relations(submissions, ({ one, many }) => ({
     references: [assignments.id],
   }),
   results: many(submissionResults),
+  comments: many(submissionComments),
 }));
+
+export const submissionCommentsRelations = relations(
+  submissionComments,
+  ({ one }) => ({
+    submission: one(submissions, {
+      fields: [submissionComments.submissionId],
+      references: [submissions.id],
+    }),
+    author: one(users, {
+      fields: [submissionComments.authorId],
+      references: [users.id],
+    }),
+  })
+);
 
 export const submissionResultsRelations = relations(
   submissionResults,
@@ -158,6 +177,28 @@ export const submissionResultsRelations = relations(
     testCase: one(testCases, {
       fields: [submissionResults.testCaseId],
       references: [testCases.id],
+    }),
+  })
+);
+
+export const scoreOverridesRelations = relations(
+  scoreOverrides,
+  ({ one }) => ({
+    assignment: one(assignments, {
+      fields: [scoreOverrides.assignmentId],
+      references: [assignments.id],
+    }),
+    problem: one(problems, {
+      fields: [scoreOverrides.problemId],
+      references: [problems.id],
+    }),
+    user: one(users, {
+      fields: [scoreOverrides.userId],
+      references: [users.id],
+    }),
+    creator: one(users, {
+      fields: [scoreOverrides.createdBy],
+      references: [users.id],
     }),
   })
 );

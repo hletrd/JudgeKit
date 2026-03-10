@@ -340,6 +340,66 @@ export const rateLimits = sqliteTable(
   ]
 );
 
+export const submissionComments = sqliteTable(
+  "submission_comments",
+  {
+    id: text("id")
+      .primaryKey()
+      .$defaultFn(() => nanoid()),
+    submissionId: text("submission_id")
+      .notNull()
+      .references(() => submissions.id, { onDelete: "cascade" }),
+    authorId: text("author_id")
+      .notNull()
+      .references(() => users.id),
+    content: text("content").notNull(),
+    createdAt: integer("created_at", { mode: "timestamp" }).$defaultFn(
+      () => new Date(Date.now())
+    ),
+    updatedAt: integer("updated_at", { mode: "timestamp" }).$defaultFn(
+      () => new Date(Date.now())
+    ),
+  },
+  (table) => [
+    index("sc_submission_idx").on(table.submissionId),
+    index("sc_author_idx").on(table.authorId),
+  ]
+);
+
+export const scoreOverrides = sqliteTable(
+  "score_overrides",
+  {
+    id: text("id")
+      .primaryKey()
+      .$defaultFn(() => nanoid()),
+    assignmentId: text("assignment_id")
+      .notNull()
+      .references(() => assignments.id, { onDelete: "cascade" }),
+    problemId: text("problem_id")
+      .notNull()
+      .references(() => problems.id, { onDelete: "cascade" }),
+    userId: text("user_id")
+      .notNull()
+      .references(() => users.id, { onDelete: "cascade" }),
+    overrideScore: integer("override_score").notNull(),
+    reason: text("reason"),
+    createdBy: text("created_by")
+      .notNull()
+      .references(() => users.id),
+    createdAt: integer("created_at")
+      .notNull()
+      .$defaultFn(() => Date.now()),
+  },
+  (table) => [
+    uniqueIndex("score_overrides_assignment_problem_user_idx").on(
+      table.assignmentId,
+      table.problemId,
+      table.userId
+    ),
+    index("score_overrides_assignment_idx").on(table.assignmentId),
+  ]
+);
+
 export const submissionResults = sqliteTable(
   "submission_results",
   {
