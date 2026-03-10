@@ -1,5 +1,6 @@
 use std::path::Path;
 use std::time::Instant;
+use tokio::io::AsyncReadExt;
 use tokio::io::AsyncWriteExt;
 use uuid::Uuid;
 
@@ -143,54 +144,81 @@ async fn run_docker_once(
 
     if let Some(ref input) = options.input {
         if let Some(mut stdin) = child.stdin.take() {
-            let _ = stdin.write_all(input.as_bytes()).await;
+            if let Err(e) = stdin.write_all(input.as_bytes()).await {
+                tracing::error!("Failed to write stdin to container {container_name}: {e}");
+                drop(stdin);
+                kill_container(&container_name).await;
+                remove_container(&container_name).await;
+                return Err(format!("Failed to write stdin: {e}"));
+            }
             drop(stdin);
         }
     }
 
     let timeout_duration =
         std::time::Duration::from_millis(options.timeout_ms.max(MIN_TIMEOUT_MS));
+
+    const MAX_OUTPUT_BYTES: u64 = 1_048_576; // 1MB
+
+    let stdout_handle = {
+        let stdout = child.stdout.take().expect("stdout not captured");
+        tokio::spawn(async move {
+            let mut buf = Vec::new();
+            let _ = stdout.take(MAX_OUTPUT_BYTES).read_to_end(&mut buf).await;
+            buf
+        })
+    };
+
+    let stderr_handle = {
+        let stderr = child.stderr.take().expect("stderr not captured");
+        tokio::spawn(async move {
+            let mut buf = String::new();
+            let _ = stderr.take(MAX_OUTPUT_BYTES).read_to_string(&mut buf).await;
+            buf
+        })
+    };
+
     let start = Instant::now();
 
-    match tokio::time::timeout(timeout_duration, child.wait_with_output()).await {
-        Ok(Ok(output)) => {
-            let exit_code = output.status.code();
-            let duration_ms = start.elapsed().as_millis() as u64;
+    let wait_result = tokio::time::timeout(timeout_duration, child.wait()).await;
+
+    match wait_result {
+        Ok(Ok(exit_status)) => {
+            let duration_ms = u64::try_from(start.elapsed().as_millis()).unwrap_or(u64::MAX);
+            let stdout = stdout_handle.await.unwrap_or_default();
+            let stderr = stderr_handle.await.unwrap_or_default();
             let oom_killed = inspect_oom_killed(&container_name).await;
             remove_container(&container_name).await;
-            let stderr = String::from_utf8_lossy(&output.stderr).into_owned();
-            return Ok(DockerRunResult {
-                stdout: output.stdout,
+            Ok(DockerRunResult {
+                stdout,
                 stderr,
-                exit_code,
+                exit_code: exit_status.code(),
                 timed_out: false,
                 oom_killed,
                 duration_ms,
-            });
+            })
         }
         Ok(Err(e)) => {
             kill_container(&container_name).await;
             remove_container(&container_name).await;
-            return Err(format!("Docker process error: {e}"));
+            Err(format!("Docker process error: {e}"))
         }
         Err(_) => {
-            // Timeout path — timed_out is always true here
+            // Timeout
+            let duration_ms = u64::try_from(start.elapsed().as_millis()).unwrap_or(u64::MAX);
+            kill_container(&container_name).await;
+            let oom_killed = inspect_oom_killed(&container_name).await;
+            remove_container(&container_name).await;
+            Ok(DockerRunResult {
+                stdout: Vec::new(),
+                stderr: String::new(),
+                exit_code: None,
+                timed_out: true,
+                oom_killed,
+                duration_ms,
+            })
         }
     }
-
-    let duration_ms = start.elapsed().as_millis() as u64;
-    kill_container(&container_name).await;
-    let oom_killed = inspect_oom_killed(&container_name).await;
-    remove_container(&container_name).await;
-
-    Ok(DockerRunResult {
-        stdout: Vec::new(),
-        stderr: String::new(),
-        exit_code: None,
-        timed_out: true,
-        oom_killed,
-        duration_ms,
-    })
 }
 
 pub async fn run_docker(
