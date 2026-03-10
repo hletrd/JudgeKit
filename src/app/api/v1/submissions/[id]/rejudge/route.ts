@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { db } from "@/lib/db";
+import { db, sqlite } from "@/lib/db";
 import { submissions, submissionResults } from "@/lib/db/schema";
 import { eq } from "drizzle-orm";
 import { getApiUser, unauthorized, forbidden, notFound, isInstructor, csrfForbidden } from "@/lib/api/auth";
@@ -40,23 +40,24 @@ export async function POST(
 
     if (!submission) return notFound("Submission");
 
-    // Delete existing test case results
-    await db.delete(submissionResults).where(eq(submissionResults.submissionId, id));
+    // Delete existing test case results and reset submission (atomic transaction)
+    sqlite.transaction(() => {
+      db.delete(submissionResults).where(eq(submissionResults.submissionId, id)).run();
 
-    // Reset submission to pending
-    await db
-      .update(submissions)
-      .set({
-        status: "pending",
-        score: null,
-        compileOutput: null,
-        executionTimeMs: null,
-        memoryUsedKb: null,
-        judgeClaimToken: null,
-        judgeClaimedAt: null,
-        judgedAt: null,
-      })
-      .where(eq(submissions.id, id));
+      db.update(submissions)
+        .set({
+          status: "pending",
+          score: null,
+          compileOutput: null,
+          executionTimeMs: null,
+          memoryUsedKb: null,
+          judgeClaimToken: null,
+          judgeClaimedAt: null,
+          judgedAt: null,
+        })
+        .where(eq(submissions.id, id))
+        .run();
+    })();
 
     const updated = await db.query.submissions.findFirst({
       where: eq(submissions.id, id),
