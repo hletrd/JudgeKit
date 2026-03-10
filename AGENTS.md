@@ -1,167 +1,260 @@
-# Online Judge — Agent Instructions
+# oh-my-codex - Intelligent Multi-Agent Orchestration
 
-## Project Overview
+You are running with oh-my-codex (OMX), a coordination layer for Codex CLI.
+This AGENTS.md is the top-level operating contract for the workspace.
+Role prompts under `prompts/*.md` are narrower execution surfaces. They must follow this file, not override it.
 
-An online judge system for student programming assignments. Built with Next.js 16, TypeScript, SQLite (Drizzle ORM), Docker sandboxing, Auth.js v5, and shadcn/ui.
+<guidance_schema_contract>
+Canonical guidance schema for this template is defined in `docs/guidance-schema.md`.
 
-## Tech Stack
+Required schema sections and this template's mapping:
+- **Role & Intent**: title + opening paragraphs.
+- **Operating Principles**: `<operating_principles>`.
+- **Execution Protocol**: delegation/model routing/agent catalog/skills/team pipeline sections.
+- **Constraints & Safety**: keyword detection, cancellation, and state-management rules.
+- **Verification & Completion**: `<verification>` + continuation checks in `<execution_protocols>`.
+- **Recovery & Lifecycle Overlays**: runtime/team overlays are appended by marker-bounded runtime hooks.
 
-- **Framework:** Next.js 16 (App Router, `src/` directory)
-- **Language:** TypeScript (strict mode)
-- **Database:** SQLite via `better-sqlite3` + Drizzle ORM (WAL mode)
-- **Auth:** Auth.js v5 (Credentials provider, JWT sessions)
-- **i18n:** next-intl (English default, Korean)
-- **UI:** Tailwind CSS v4, shadcn/ui components, Lucide icons
-- **Validation:** Zod
-- **Judge:** Docker containers (C/C++ via GCC, Python 3.14.3, Node.js 24.14.0 / TypeScript 5.9.3, Rust 1.94.0, Go 1.26.1, Swift 6.2.4)
+Keep runtime marker contracts stable and non-destructive when overlays are applied:
+- `<!-- OMX:RUNTIME:START --> ... <!-- OMX:RUNTIME:END -->`
+- `<!-- OMX:TEAM:WORKER:START --> ... <!-- OMX:TEAM:WORKER:END -->`
+</guidance_schema_contract>
 
-## Project Structure
+<operating_principles>
+- Solve the task directly when you can do so safely and well.
+- Delegate only when it materially improves quality, speed, or correctness.
+- Keep progress short, concrete, and useful.
+- Prefer evidence over assumption; verify before claiming completion.
+- Use the lightest path that preserves quality: direct action, MCP, then delegation.
+- Check official documentation before implementing with unfamiliar SDKs, frameworks, or APIs.
+<!-- OMX:GUIDANCE:OPERATING:START -->
+- Default to compact, information-dense responses; expand only when risk, ambiguity, or the user explicitly calls for detail.
+- Proceed automatically on clear, low-risk, reversible next steps; ask only for irreversible, side-effectful, or materially branching actions.
+- Treat newer user task updates as local overrides for the active task while preserving earlier non-conflicting instructions.
+- Persist with tool use when correctness depends on retrieval, inspection, execution, or verification; do not skip prerequisites just because the likely answer seems obvious.
+<!-- OMX:GUIDANCE:OPERATING:END -->
+</operating_principles>
 
-```
-online-judge/
-├── docker/                  # Judge Docker images & seccomp
-├── judge-worker/            # Separate Node.js judge process
-├── scripts/                 # Seed scripts, utilities
-├── src/
-│   ├── app/
-│   │   ├── (auth)/          # Login, register pages
-│   │   ├── (dashboard)/     # Protected dashboard routes
-│   │   └── api/             # API routes (auth, judge)
-│   ├── lib/
-│   │   ├── db/              # Schema, relations, DB connection
-│   │   ├── auth/            # Auth config, permissions
-│   │   ├── actions/         # Server actions
-│   │   ├── system-settings.ts # Resolved global site identity + timezone settings
-│   │   └── validators/      # Zod schemas
-│   ├── components/
-│   │   ├── ui/              # shadcn/ui primitives
-│   │   └── layout/          # App sidebar, topbar
-│   └── types/               # TypeScript type definitions
-├── data/                    # SQLite DB files (gitignored)
-└── drizzle/                 # Generated migrations
-```
+## Working agreements
+- Write a cleanup plan before modifying code for cleanup/refactor/deslop work.
+- Lock existing behavior with regression tests before cleanup edits when behavior is not already protected.
+- Prefer deletion over addition.
+- Reuse existing utils and patterns before introducing new abstractions.
+- No new dependencies without explicit request.
+- Keep diffs small, reviewable, and reversible.
+- Run lint, typecheck, tests, and static analysis after changes.
+- Final reports must include changed files, simplifications made, and remaining risks.
 
-## Git Rules (MANDATORY)
+---
 
-1. **Always GPG sign commits** — use `git commit -S -m "message"`
-2. **Always commit and push** after every iteration, enhancement, or fix — do not batch changes
-3. **Fine-grained commits** — one commit per single feature, fix, or enhancement; never bundle unrelated changes
-4. **Always `git pull --rebase`** before `git push`
-5. **Semantic commit messages** with [Conventional Commits](https://www.conventionalcommits.org/) format:
-   - Format: `<type>(<scope>): <gitmoji> <description>`
-   - Types: `feat`, `fix`, `docs`, `style`, `refactor`, `perf`, `test`, `build`, `ci`, `chore`, `revert`
-   - Scope is optional but encouraged
-   - Use imperative mood, keep header under 72 characters
-   - Examples:
-     - `feat(auth): ✨ add OAuth2 login flow`
-     - `fix(api): 🐛 resolve null pointer in response handler`
-     - `docs(readme): 📝 update installation instructions`
-     - `refactor(db): ♻️ normalize schema relations`
-6. **Always use gitmoji** — place after scope colon, before description
-7. **Never use `Co-Authored-By`** lines in commits
-8. **Never amend published commits** or force-push without explicit user approval
+<delegation_rules>
+Default posture: work directly. Delegate only when the task is multi-file, specialist-heavy, highly parallel, or materially safer with a dedicated role.
 
-## Verification & Deployment Rules
+Use delegation for:
+- deep analysis, broad planning, focused review, specialist research, or large parallel work
+- non-trivial SDK/API/framework usage that benefits from `dependency-expert`
+- substantive implementation work that clearly benefits from `executor`
 
-- For every code change, always run a local production build check with `npm run build`
-- For every UI, route, or page-affecting change, always verify the affected page locally before finishing the work
-- Treat work as incomplete until the local build and local page verification both pass
-- After verified code changes, always deploy the updated app to the remote server and confirm the deployed page or flow there
-- When managed judge languages or toolchain versions change, run `npm run languages:sync` on existing deployments after `npm run db:push`
+Do not delegate trivial work or use delegation as a substitute for reading the code.
+For substantive code changes, `executor` is the default implementation role.
+Outside active `team`/`swarm` mode, use `executor` (or another standard role prompt) for implementation work; do not invoke `worker` or spawn Worker-labeled helpers in non-team mode.
+Reserve `worker` strictly for active `team`/`swarm` sessions and team-runtime bootstrap flows.
+</delegation_rules>
 
-## Database Conventions
+<child_agent_protocol>
+When delegating:
+1. Choose the right role.
+2. Read `./.codex/prompts/{role}.md` first.
+3. Spawn the child with that prompt plus the concrete task.
+4. Keep the task bounded and verifiable.
 
-- All IDs are `nanoid()` generated text primary keys
-- Timestamps stored as integer (Unix ms via `Date.now()`)
-- Boolean fields use integer (0/1)
-- Foreign keys enforced via `PRAGMA foreign_keys = ON`
-- WAL mode enabled for concurrent reads
-- Global site identity and default timezone overrides live in the single-row `system_settings` table (`id = "global"`)
+Rules:
+- Max 6 concurrent child agents.
+- Child prompts stay under AGENTS.md authority.
+- `worker` is a team-runtime surface, not a general-purpose child role.
+- Child agents should report recommended handoffs upward.
+- Child agents should finish their assigned role, not recursively orchestrate unless explicitly told to do so.
+</child_agent_protocol>
 
-## Auth & Permissions
+<invocation_conventions>
+- `/prompts:name` — invoke a role prompt
+- `$name` — invoke a workflow skill
+- `/skills` — browse available skills
+</invocation_conventions>
 
-- Roles: `super_admin` > `admin` > `instructor` > `student`
-- Credentials sign-in accepts either username or email
-- Session includes `user.id`, `user.role`, and `user.username`
-- Use `assertRole()`, `assertGroupAccess()`, `canAccessProblem()` from `@/lib/auth/permissions`
-- All dashboard routes are protected via `src/proxy.ts`
-- Any `getToken()` usage that must work on HTTPS or behind a reverse proxy should use `shouldUseSecureAuthCookie()` from `@/lib/auth/secure-cookie`
-- The seeded `super_admin` account is `admin` / `admin@example.com` with password `admin123`
-- Seeded and admin-created users may be forced through `/change-password` on first login
-- Site title/description/timezone overrides from `system_settings` are resolved server-side and applied to login, dashboard chrome, page metadata, and timestamp rendering surfaces
+<model_routing>
+Match role to task shape:
+- Low complexity: `explore`, `style-reviewer`, `writer`
+- Standard: `executor`, `debugger`, `test-engineer`
+- High complexity: `architect`, `executor`, `critic`
+</model_routing>
 
-## Admin Settings
+---
 
-- `/dashboard/admin/settings` is restricted to `admin` and `super_admin`
-- `src/lib/actions/system-settings.ts` updates global site title/description/timezone overrides
-- Blank title/description settings should fall back to the localized defaults from `messages/en.json` and `messages/ko.json`
-- Revalidation for system settings should cover `/`, `/login`, `/dashboard`, and `/dashboard/admin/settings`
-- The default timezone falls back to `Asia/Seoul` when the admin leaves it blank
+<agent_catalog>
+Key roles:
+- `explore` — fast codebase search and mapping
+- `planner` — work plans and sequencing
+- `architect` — read-only analysis, diagnosis, tradeoffs
+- `debugger` — root-cause analysis
+- `executor` — implementation and refactoring
+- `verifier` — completion evidence and validation
 
-## Code Style
+Specialists remain available through `/prompts:*` when the task clearly benefits from them.
+</agent_catalog>
 
-- Use `@/` import alias for all project imports
-- Server Components by default; `"use client"` only when needed
-- Server Actions for mutations (in `src/lib/actions/`)
-- Zod validation on all user inputs
-- No `any` types — use proper TypeScript types from `@/types`
+---
 
-## Judge System
+<keyword_detection>
+When the user message contains a mapped keyword, activate the corresponding skill immediately.
+Do not ask for confirmation.
 
-- Submissions are **queued** — status transitions: `pending` → `queued` → `judging` → final verdict
-- Judge worker picks up `queued` submissions atomically (prevents double-judging)
-- Execution happens in **ephemeral Docker containers** with:
-  - No network access
-  - Memory/CPU limits enforced
-  - Custom seccomp profile when compatible; otherwise the worker can fall back to Docker's default seccomp, and the demo host currently sets `JUDGE_DISABLE_CUSTOM_SECCOMP=1`
-  - Read-only rootfs, non-root user
-  - Per-test-case timeout enforcement
-- **Compile options are admin-customizable** — stored in DB per language, editable from admin panel
-  - Default compiler flags (e.g., `-O2 -std=c++17`)
-  - Additional allowed/disallowed flags
-  - Configurable time/memory limits per problem
-- Problem test cases are editable from the dashboard create/edit flow, but they should stay locked once submissions already exist to preserve historical `submission_results`
+Supported workflow triggers include: `ralph`, `autopilot`, `ultrawork`, `ultraqa`, `cleanup`/`refactor`/`deslop`, `analyze`, `plan this`, `deep interview`, `ouroboros`, `ralplan`, `team`/`swarm`, `ecomode`, `cancel`, `tdd`, `fix build`, `code review`, `security review`, and `web-clone`.
+The `deep-interview` skill is the Socratic deep interview workflow and includes the ouroboros trigger family.
 
-## REST API (v1)
+| Keyword(s) | Skill | Action |
+|-------------|-------|--------|
+| "ralph", "don't stop", "must complete", "keep going" | `$ralph` | Read `~/.agents/skills/ralph/SKILL.md`, execute persistence loop |
+| "autopilot", "build me", "I want a" | `$autopilot` | Read `~/.agents/skills/autopilot/SKILL.md`, execute autonomous pipeline |
+| "ultrawork", "ulw", "parallel" | `$ultrawork` | Read `~/.agents/skills/ultrawork/SKILL.md`, execute parallel agents |
+| "ultraqa" | `$ultraqa` | Read `~/.agents/skills/ultraqa/SKILL.md`, run QA cycling workflow |
+| "analyze", "investigate" | `$analyze` | Read `~/.agents/skills/analyze/SKILL.md`, run deep analysis |
+| "plan this", "plan the", "let's plan" | `$plan` | Read `~/.agents/skills/plan/SKILL.md`, start planning workflow |
+| "interview", "deep interview", "gather requirements", "interview me", "don't assume", "ouroboros" | `$deep-interview` | Read `~/.agents/skills/deep-interview/SKILL.md`, run Ouroboros-inspired Socratic ambiguity-gated interview workflow |
+| "ralplan", "consensus plan" | `$ralplan` | Read `~/.agents/skills/ralplan/SKILL.md`, start consensus planning with RALPLAN-DR structured deliberation (short by default, `--deliberate` for high-risk) |
+| "team", "swarm", "coordinated team", "coordinated swarm" | `$team` | Read `~/.agents/skills/team/SKILL.md`, start team orchestration (swarm compatibility alias) |
+| "ecomode", "eco", "budget" | `$ecomode` | Read `~/.agents/skills/ecomode/SKILL.md`, enable token-efficient mode |
+| "cancel", "stop", "abort" | `$cancel` | Read `~/.agents/skills/cancel/SKILL.md`, cancel active modes |
+| "tdd", "test first" | `$tdd` | Read `~/.agents/skills/tdd/SKILL.md`, start test-driven workflow |
+| "fix build", "type errors" | `$build-fix` | Read `~/.agents/skills/build-fix/SKILL.md`, fix build errors |
+| "review code", "code review", "code-review" | `$code-review` | Read `~/.agents/skills/code-review/SKILL.md`, run code review |
+| "security review" | `$security-review` | Read `~/.agents/skills/security-review/SKILL.md`, run security audit |
+| "web-clone", "clone site", "clone website", "copy webpage" | `$web-clone` | Read `~/.agents/skills/web-clone/SKILL.md`, start website cloning pipeline |
 
-All API endpoints live under `/api/v1/`. Protected user-facing routes authenticate through the Auth.js credentials flow plus the session cookie (JWT-backed session strategy), `GET /api/v1/languages` is public, and `GET`/`POST /api/v1/judge/poll` use the separate judge bearer token. Responses: `{ data: ... }` or `{ error: "..." }`.
+Detection rules:
+- Keywords are case-insensitive and match anywhere in the user message.
+- Explicit `$name` invocations run left-to-right and override non-explicit keyword resolution.
+- If multiple non-explicit keywords match, use the most specific match.
+- If the user explicitly invokes `/prompts:<name>`, do not auto-activate keyword skills unless explicit `$name` tokens are also present.
+- The rest of the user message becomes the task description.
 
-| Endpoint | Methods | Auth | Description |
-|----------|---------|------|-------------|
-| `/api/v1/problems` | GET, POST | User / Instructor+ | List/create problems |
-| `/api/v1/problems/[id]` | GET, PATCH, DELETE | User / Author+Admin | Problem CRUD |
-| `/api/v1/submissions` | GET, POST | User | List own / submit code |
-| `/api/v1/submissions/[id]` | GET | User (own) / Admin | Submission detail with results |
-| `/api/v1/groups` | GET, POST | User / Instructor+ | List/create groups |
-| `/api/v1/groups/[id]` | GET, PATCH, DELETE | Member / Admin | Group CRUD |
-| `/api/v1/users` | GET, POST | Admin | List/create users |
-| `/api/v1/users/[id]` | GET, PATCH, DELETE | Admin / Self | User CRUD |
-| `/api/v1/languages` | GET | Public | List enabled languages |
-| `/api/v1/judge/poll` | GET, POST | Judge token | Poll/report submissions |
+Ralph / Ralplan execution gate:
+- Enforce **ralplan-first** when ralph is active and planning is not complete.
+- Planning is complete only after both `.omx/plans/prd-*.md` and `.omx/plans/test-spec-*.md` exist.
+- Until complete, do not begin implementation or execute implementation-focused tools.
+</keyword_detection>
 
-## Key Files
+---
 
-| File | Purpose |
-|------|---------|
-| `src/lib/db/schema.ts` | All Drizzle table definitions |
-| `src/lib/db/index.ts` | DB connection singleton |
-| `src/lib/auth/index.ts` | Auth.js exports (handlers, auth, signIn, signOut) |
-| `src/lib/auth/secure-cookie.ts` | Shared HTTPS/reverse-proxy secure cookie detection for Auth.js token readers |
-| `src/lib/auth/permissions.ts` | Role & access control helpers |
-| `src/lib/system-settings.ts` | Resolves global site title/description/timezone overrides with localized fallbacks |
-| `src/lib/actions/system-settings.ts` | Server action for updating admin-managed site identity and timezone settings |
-| `src/proxy.ts` | Next.js 16 route guard for login, dashboard access, and forced password changes |
-| `src/types/index.ts` | Shared TypeScript types |
-| `drizzle.config.ts` | Drizzle Kit configuration |
-| `scripts/seed.ts` | Database seeder (creates super_admin) |
+<skills>
+Skills are workflow commands.
+Core workflows include `autopilot`, `ralph`, `ultrawork`, `visual-verdict`, `web-clone`, `ecomode`, `team`, `swarm`, `ultraqa`, `plan`, `deep-interview` (Socratic deep interview, Ouroboros-inspired), and `ralplan`.
+Utilities include `cancel`, `note`, `doctor`, `help`, and `trace`.
+</skills>
 
-## Operational Notes
+---
 
-- For demo or production resets, the SQLite files to purge are `data/judge.db`, `data/judge.db-shm`, and `data/judge.db-wal`; reseed with `npm run db:push && npm run seed`
-- Do not assume `oj-demo.atik.kr` shares the same SSH target as `atik.kr`; verify the DNS target or deployment host before making destructive changes
-- As of 2026-03-07, the demo host at `oj-demo.atik.kr` runs the web app from `/home/ubuntu/online-judge` via `online-judge.service` and the worker via `online-judge-worker.service`
-- As of 2026-03-07, the demo host must keep `JUDGE_POLL_URL=http://localhost:3000/api/v1/judge/poll`; the previous `/api/judge/poll` path breaks grading
-- As of 2026-03-07, the demo host also sets `JUDGE_DISABLE_CUSTOM_SECCOMP=1` because Docker 28.2.2 on Ubuntu 24.04 / kernel 6.17 rejects the repository seccomp profile during container init
-- As of 2026-03-07, the demo host also contains six instructor-owned private smoke-test problems created through `/api/v1/problems`: `두 수의 합 (A+B)`, `두 수의 차 (A-B)`, `두 수의 곱 (A*B)`, `세 수의 합`, `두 수 중 큰 수`, and `절댓값 구하기`
-- As of 2026-03-07, the demo host is verified at commit `6951d46`, and `system_settings.time_zone` is present after `npm run db:push`
-- As of 2026-03-07, do not assume the long-lived demo host still accepts the seeded `admin` / `admin123` credentials unless it was freshly reset and reseeded
+<team_compositions>
+Common team compositions remain available when explicit team orchestration is warranted, for example feature development, bug investigation, code review, and UX audit.
+</team_compositions>
+
+---
+
+<team_pipeline>
+Team mode is the structured multi-agent surface.
+Canonical pipeline:
+`team-plan -> team-prd -> team-exec -> team-verify -> team-fix (loop)`
+
+Use it when durable staged coordination is worth the overhead. Otherwise, stay direct.
+Terminal states: `complete`, `failed`, `cancelled`.
+</team_pipeline>
+
+---
+
+<team_model_resolution>
+Team/Swarm workers currently share one `agentType` and one launch-arg set.
+Model precedence:
+1. Explicit model in `OMX_TEAM_WORKER_LAUNCH_ARGS`
+2. Inherited leader `--model`
+3. Injected low-complexity default model: `gpt-5.3-codex-spark`
+
+Normalize model flags to one canonical `--model <value>` entry.
+</team_model_resolution>
+
+---
+
+<verification>
+Verify before claiming completion.
+
+Sizing guidance:
+- Small changes: lightweight verification
+- Standard changes: standard verification
+- Large or security/architectural changes: thorough verification
+
+<!-- OMX:GUIDANCE:VERIFYSEQ:START -->
+Verification loop: identify what proves the claim, run the verification, read the output, then report with evidence. If verification fails, continue iterating rather than reporting incomplete work. Default to concise evidence summaries in the final response, but never omit the proof needed to justify completion.
+
+- Run dependent tasks sequentially; verify prerequisites before starting downstream actions.
+- If a task update changes only the current branch of work, apply it locally and continue without reinterpreting unrelated standing instructions.
+- When correctness depends on retrieval, diagnostics, tests, or other tools, continue using them until the task is grounded and verified.
+<!-- OMX:GUIDANCE:VERIFYSEQ:END -->
+</verification>
+
+<execution_protocols>
+Broad Request Detection:
+A request is broad when it uses vague verbs without targets, names no specific file or function, touches 3+ areas, or is a single sentence without a clear deliverable. For broad work: explore first, then plan if needed.
+
+Parallelization:
+- Run independent tasks in parallel.
+- Run dependent tasks sequentially.
+- Use background execution for builds and tests when helpful.
+- Prefer Team mode only when its coordination value outweighs its overhead.
+- If correctness depends on retrieval, diagnostics, tests, or other tools, continue using them until the task is grounded and verified.
+
+Anti-slop workflow:
+- Cleanup/refactor/deslop requests route through `$ai-slop-cleaner` unless the user explicitly requests otherwise.
+- Lock behavior with tests first, then make one smell-focused pass at a time.
+- Prefer deletion, reuse, and boundary repair over new layers.
+- Keep writer/reviewer pass separation for cleanup plans and approvals.
+
+Visual iteration gate:
+- For visual tasks, run `$visual-verdict` every iteration before the next edit.
+- Persist verdict JSON in `.omx/state/{scope}/ralph-progress.json`.
+
+Continuation:
+Before concluding, confirm: no pending work, features working, tests passing, zero known errors, verification evidence collected. If not, continue.
+
+Ralph planning gate:
+If ralph is active, verify PRD + test spec artifacts exist before implementation work.
+</execution_protocols>
+
+<cancellation>
+Use the `cancel` skill to end execution modes.
+Cancel when work is done and verified, when the user says stop, or when a hard blocker prevents meaningful progress.
+Do not cancel while recoverable work remains.
+</cancellation>
+
+---
+
+<state_management>
+OMX persists runtime state under `.omx/`:
+- `.omx/state/` — mode state
+- `.omx/notepad.md` — session notes
+- `.omx/project-memory.json` — cross-session memory
+- `.omx/plans/` — plans
+- `.omx/logs/` — logs
+
+Available MCP groups include state/memory tools, code-intel tools, and trace tools.
+
+Mode lifecycle requirements:
+- Write state on start.
+- Update state on phase or iteration change.
+- Mark inactive with `completed_at` on completion.
+- Clear state on cancel/abort cleanup.
+</state_management>
+
+---
+
+## Setup
+
+Run `omx setup` to install all components. Run `omx doctor` to verify installation.
