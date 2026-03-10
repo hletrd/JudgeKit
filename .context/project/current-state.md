@@ -4,7 +4,7 @@ Last updated: 2026-03-09
 
 ## Shipped and deployed
 
-- `oj-demo.atik.kr` has been reverified on 2026-03-08 after the classroom-management and broader audit rollout.
+- The public host is `oj.auraedu.me`; the legacy hostname `oj-demo.atik.kr` was retired at nginx during the 2026-03-09 cutover.
 - The deployed demo host serves the public login page over HTTP 200, redirects protected dashboard routes through login, and keeps both `online-judge.service` and `online-judge-worker.service` active.
 - Admin system settings support a default timezone in addition to the site title and description.
 - Rendered timestamps use the configured timezone on student/admin submission pages, admin user pages, and group assignment schedule views.
@@ -22,6 +22,7 @@ Last updated: 2026-03-09
 - The current remediation batch was re-verified locally on 2026-03-08 with `npm run db:push`, `npm run lint`, `npm run build`, and `npm run test:e2e -- --grep @smoke`.
 - Follow-up cleanup in the same local batch corrected the submission rate-limit timestamp comparison to use a typed Drizzle timestamp comparison, documented `AUTH_TRUST_HOST` in the example/deployment docs, and disabled Playwright local server reuse so `db:push` cannot be skipped by a stale process.
 - The auth/sandbox follow-up batch was re-verified locally on 2026-03-09 with `npm run db:push`, `npx tsc --noEmit`, `npm run lint`, `npm run build`, and `npm run test:e2e -- --grep @smoke`.
+- The broader `P1.8` unit-test expansion batch was verified locally on 2026-03-10 with `npx tsc --noEmit`, `npm run lint`, `npm run test:unit`, and `npm run build`; direct Vitest coverage now includes permission helpers, assignment submission-access checks, the persisted rate-limit core, and the API mutation rate-limit wrapper.
 
 ## Operational notes
 
@@ -40,4 +41,5 @@ Last updated: 2026-03-09
 - `docs/review.md` now records the timezone rollout plus the newer classroom/audit/ops and security-hardening status without leaving those batches marked as pending deploy.
 - `docs/review-plan.md`, `docs/security-review-2026-03-08.md`, `docs/deployment.md`, and `.context/development/open-workstreams.md` now also record the locally completed security/API hardening batch and its verification state.
 - `README.md`, `docs/deployment.md`, `docs/review-plan.md`, `docs/security-review-2026-03-08.md`, and `.context/development/open-workstreams.md` now also record the 2026-03-09 auth/session and seccomp follow-up batch, including the fail-closed run-phase sandbox behavior and self-service identity restrictions.
+- `docs/review-plan.md`, `.context/development/open-workstreams.md`, and this file now also record the 2026-03-10 `P1.8` test-expansion follow-up batch and its local verification state.
 - `AGENTS.md` already reflects that `system_settings` carries title, description, and timezone overrides.
