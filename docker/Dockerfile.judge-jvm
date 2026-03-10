@@ -1,0 +1,18 @@
+FROM eclipse-temurin:25.0.2_10-jdk-noble
+
+ARG KOTLIN_VERSION=2.3.10
+
+RUN apt-get update && \
+    apt-get install -y --no-install-recommends curl unzip && \
+    curl -fsSL "https://github.com/JetBrains/kotlin/releases/download/v${KOTLIN_VERSION}/kotlin-compiler-${KOTLIN_VERSION}.zip" -o /tmp/kotlin-compiler.zip && \
+    unzip -q /tmp/kotlin-compiler.zip -d /opt && \
+    ln -s /opt/kotlinc/bin/kotlinc /usr/local/bin/kotlinc && \
+    rm -f /tmp/kotlin-compiler.zip && \
+    rm -rf /var/lib/apt/lists/* && \
+    useradd --create-home --shell /usr/sbin/nologin judge && \
+    mkdir -p /workspace && \
+    chown judge:judge /workspace
+
+WORKDIR /workspace
+
+USER judge

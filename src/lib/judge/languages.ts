@@ -2,7 +2,9 @@ import type { Language } from "@/types";
 
 export const JUDGE_TOOLCHAIN_VERSIONS = {
   go: "1.26.1",
+  java: "25.0.2",
   nodejs: "24.14.0",
+  kotlin: "2.3.10",
   python: "3.14.3",
   rust: "1.94.0",
   swift: "6.2.4",
@@ -61,6 +63,20 @@ export const JUDGE_LANGUAGE_CONFIGS: Record<Language, JudgeLanguageDefinition> =
     compileCommand: ["g++", "-O2", "-std=c++23", "-o", "/workspace/solution", "/workspace/solution.cpp"],
     runCommand: ["/workspace/solution"],
   },
+  java: {
+    language: "java",
+    displayName: "Java",
+    standard: "25",
+    extension: ".java",
+    dockerImage: "judge-jvm:latest",
+    compiler: `Eclipse Temurin ${JUDGE_TOOLCHAIN_VERSIONS.java} (javac/java)`,
+    compileCommand: [
+      "sh",
+      "-lc",
+      "mkdir -p /workspace/out && cp /workspace/solution.java /workspace/Main.java && javac --release 25 -encoding UTF-8 -d /workspace/out /workspace/Main.java",
+    ],
+    runCommand: ["java", "-cp", "/workspace/out", "Main"],
+  },
   python: {
     language: "python",
     displayName: "Python",
@@ -106,6 +122,22 @@ export const JUDGE_LANGUAGE_CONFIGS: Record<Language, JudgeLanguageDefinition> =
       "/workspace/solution.ts",
     ],
     runCommand: ["node", "/workspace/dist/solution.js"],
+  },
+  kotlin: {
+    language: "kotlin",
+    displayName: "Kotlin",
+    standard: "2.3",
+    extension: ".kt",
+    dockerImage: "judge-jvm:latest",
+    compiler: `Kotlin ${JUDGE_TOOLCHAIN_VERSIONS.kotlin} / Eclipse Temurin ${JUDGE_TOOLCHAIN_VERSIONS.java}`,
+    compileCommand: [
+      "kotlinc",
+      "/workspace/solution.kt",
+      "-include-runtime",
+      "-d",
+      "/workspace/solution.jar",
+    ],
+    runCommand: ["java", "-jar", "/workspace/solution.jar"],
   },
   rust: {
     language: "rust",
