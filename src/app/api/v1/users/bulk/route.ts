@@ -66,31 +66,38 @@ export async function POST(request: NextRequest) {
       generatedPassword: string;
     }> = [];
 
-    // Prepare all inserts, collecting failures for duplicates
-    for (const item of userList) {
+    // Prepare all inserts in parallel, collecting failures for duplicates
+    const filteredItems = userList.filter((item) => {
       if (existingUsernameSet.has(item.username)) {
         failed.push({ username: item.username, reason: "usernameInUse" });
-        continue;
+        return false;
       }
+      return true;
+    });
 
-      const generatedPassword = generateSecurePassword();
-      const passwordHash = await hash(generatedPassword, 12);
-      const id = nanoid();
-      const normalizedEmail = item.email && item.email.trim() !== "" ? item.email.trim() : null;
-      const normalizedClassName =
-        item.className && item.className.trim() !== "" ? item.className.trim() : null;
+    const preparedEntries = await Promise.all(
+      filteredItems.map(async (item) => {
+        const generatedPassword = generateSecurePassword();
+        const passwordHash = await hash(generatedPassword, 12);
+        const id = nanoid();
+        const normalizedEmail = item.email && item.email.trim() !== "" ? item.email.trim() : null;
+        const normalizedClassName =
+          item.className && item.className.trim() !== "" ? item.className.trim() : null;
 
-      toInsert.push({
-        id,
-        username: item.username,
-        name: item.name,
-        email: normalizedEmail,
-        className: normalizedClassName,
-        passwordHash,
-        role: item.role ?? "student",
-        generatedPassword,
-      });
-    }
+        return {
+          id,
+          username: item.username,
+          name: item.name,
+          email: normalizedEmail,
+          className: normalizedClassName,
+          passwordHash,
+          role: item.role ?? ("student" as const),
+          generatedPassword,
+        };
+      })
+    );
+
+    toInsert.push(...preparedEntries);
 
     // Insert all valid users in a single transaction
     if (toInsert.length > 0) {
@@ -137,7 +144,7 @@ export async function POST(request: NextRequest) {
       request,
     });
 
-    return NextResponse.json(
+    const response = NextResponse.json(
       {
         created,
         failed,
@@ -146,6 +153,9 @@ export async function POST(request: NextRequest) {
       },
       { status: 201 }
     );
+    response.headers.set("Cache-Control", "no-store, no-cache");
+    response.headers.set("Pragma", "no-cache");
+    return response;
   } catch (error) {
     console.error("POST /api/v1/users/bulk error:", error);
     return NextResponse.json({ error: "internalServerError" }, { status: 500 });

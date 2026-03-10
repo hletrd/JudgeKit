@@ -203,11 +203,13 @@ export async function editUser(userId: string, data: ManagedUserInput): Promise<
       return { success: false, error: "emailInUse" };
     }
 
+    let passwordHash: string | undefined;
     if (data.password) {
       const passwordResult = await validateAndHashPassword(data.password);
       if (passwordResult.error) {
         return { success: false, error: passwordResult.error };
       }
+      passwordHash = passwordResult.hash;
     }
 
     const updates: UserUpdates = {
@@ -222,13 +224,8 @@ export async function editUser(userId: string, data: ManagedUserInput): Promise<
     const shouldInvalidateExistingSessions =
       validatedRole !== targetUser.role || Boolean(data.password);
 
-    if (data.password) {
-      const passwordResult = await validateAndHashPassword(data.password);
-      // Already validated above — error branch is unreachable here, but guard for safety
-      if (passwordResult.error) {
-        return { success: false, error: passwordResult.error };
-      }
-      updates.passwordHash = passwordResult.hash;
+    if (passwordHash) {
+      updates.passwordHash = passwordHash;
       updates.mustChangePassword = true;
     }
 
