@@ -11,6 +11,16 @@ EnvironmentFile=/home/ubuntu/online-judge/.env
 ExecStart=/home/ubuntu/online-judge/judge-worker-rs/target/release/judge-worker
 Restart=always
 RestartSec=5
+# Security hardening
+ProtectSystem=strict
+ProtectHome=read-only
+PrivateTmp=true
+NoNewPrivileges=true
+ReadWritePaths=/home/ubuntu/online-judge/data
+ProtectKernelTunables=true
+ProtectKernelModules=true
+ProtectControlGroups=true
+RestrictSUIDSGID=true
 
 [Install]
 WantedBy=multi-user.target
