@@ -165,15 +165,6 @@ export default async function DashboardPage() {
     <div className="space-y-6">
       <h2 className="text-2xl font-bold">{t("title")}</h2>
 
-      <Card>
-        <CardHeader>
-          <CardTitle>{t("welcome", { siteTitle: settings.siteTitle })}</CardTitle>
-        </CardHeader>
-        <CardContent>
-          <p className="text-muted-foreground">{t("welcomeDescription")}</p>
-        </CardContent>
-      </Card>
-
       {session.user.role === "student" && (
         <>
           <div className="grid gap-4 md:grid-cols-3">

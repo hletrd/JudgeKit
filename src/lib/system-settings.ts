@@ -1,3 +1,4 @@
+import { cache } from "react";
 import { eq } from "drizzle-orm";
 import { DEFAULT_TIME_ZONE } from "@/lib/datetime";
 import { db } from "@/lib/db";
@@ -12,11 +13,11 @@ export async function getSystemSettings() {
   });
 }
 
-export async function getResolvedSystemSettings(defaults: {
+export const getResolvedSystemSettings = cache(async (defaults: {
   siteTitle: string;
   siteDescription: string;
   timeZone?: string;
-}) {
+}) => {
   const settings = await getSystemSettings();
 
   return {
@@ -24,7 +25,7 @@ export async function getResolvedSystemSettings(defaults: {
     siteDescription: settings?.siteDescription ?? defaults.siteDescription,
     timeZone: settings?.timeZone ?? defaults.timeZone ?? DEFAULT_SYSTEM_TIME_ZONE,
   };
-}
+});
 
 export async function getResolvedSystemTimeZone() {
   const settings = await getSystemSettings();
