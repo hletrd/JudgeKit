@@ -33,9 +33,9 @@ static CPP23_RUN: &[&str] = &["/workspace/solution"];
 
 static JAVA_COMPILE: &[&str] = &[
     "sh", "-lc",
-    "mkdir -p /workspace/out && cp /workspace/solution.java /workspace/Main.java && javac --release 25 -encoding UTF-8 -d /workspace/out /workspace/Main.java",
+    "export JAVA_TOOL_OPTIONS='-Djava.io.tmpdir=/workspace' && mkdir -p /workspace/out && cp /workspace/solution.java /workspace/Main.java && javac --release 25 -encoding UTF-8 -d /workspace/out /workspace/Main.java",
 ];
-static JAVA_RUN: &[&str] = &["java", "-cp", "/workspace/out", "Main"];
+static JAVA_RUN: &[&str] = &["java", "-Djava.io.tmpdir=/workspace", "-cp", "/workspace/out", "Main"];
 
 static PYTHON_RUN: &[&str] = &["python3", "/workspace/solution.py"];
 
@@ -55,10 +55,10 @@ static TYPESCRIPT_COMPILE: &[&str] = &[
 static TYPESCRIPT_RUN: &[&str] = &["node", "/workspace/dist/solution.js"];
 
 static KOTLIN_COMPILE: &[&str] = &[
-    "kotlinc", "/workspace/solution.kt",
+    "kotlinc", "-J-Djava.io.tmpdir=/workspace", "/workspace/solution.kt",
     "-include-runtime", "-d", "/workspace/solution.jar",
 ];
-static KOTLIN_RUN: &[&str] = &["java", "-jar", "/workspace/solution.jar"];
+static KOTLIN_RUN: &[&str] = &["java", "-Djava.io.tmpdir=/workspace", "-jar", "/workspace/solution.jar"];
 
 static RUST_COMPILE: &[&str] = &[
     "rustc", "-O", "-o", "/workspace/solution", "/workspace/solution.rs",

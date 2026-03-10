@@ -77,9 +77,9 @@ export const JUDGE_LANGUAGE_CONFIGS: Record<Language, JudgeLanguageDefinition> =
     compileCommand: [
       "sh",
       "-lc",
-      "mkdir -p /workspace/out && cp /workspace/solution.java /workspace/Main.java && javac --release 25 -encoding UTF-8 -d /workspace/out /workspace/Main.java",
+      "export JAVA_TOOL_OPTIONS='-Djava.io.tmpdir=/workspace' && mkdir -p /workspace/out && cp /workspace/solution.java /workspace/Main.java && javac --release 25 -encoding UTF-8 -d /workspace/out /workspace/Main.java",
     ],
-    runCommand: ["java", "-cp", "/workspace/out", "Main"],
+    runCommand: ["java", "-Djava.io.tmpdir=/workspace", "-cp", "/workspace/out", "Main"],
   },
   python: {
     language: "python",
@@ -136,12 +136,13 @@ export const JUDGE_LANGUAGE_CONFIGS: Record<Language, JudgeLanguageDefinition> =
     compiler: `Kotlin ${JUDGE_TOOLCHAIN_VERSIONS.kotlin} / Eclipse Temurin ${JUDGE_TOOLCHAIN_VERSIONS.java}`,
     compileCommand: [
       "kotlinc",
+      "-J-Djava.io.tmpdir=/workspace",
       "/workspace/solution.kt",
       "-include-runtime",
       "-d",
       "/workspace/solution.jar",
     ],
-    runCommand: ["java", "-jar", "/workspace/solution.jar"],
+    runCommand: ["java", "-Djava.io.tmpdir=/workspace", "-jar", "/workspace/solution.jar"],
   },
   rust: {
     language: "rust",
