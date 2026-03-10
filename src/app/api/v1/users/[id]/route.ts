@@ -14,6 +14,197 @@ import { getPasswordValidationError } from "@/lib/security/password";
 import { updateProfileSchema, adminUpdateUserSchema } from "@/lib/validators/profile";
 import { checkApiRateLimit, recordApiRateHit } from "@/lib/security/api-rate-limit";
 
+type ApiUser = NonNullable<Awaited<ReturnType<typeof getApiUser>>>;
+type UserUpdates = Record<string, unknown>;
+
+function jsonError(error: string, status: number) {
+  return NextResponse.json({ error }, { status });
+}
+
+function normalizeOptionalText(value: unknown) {
+  return typeof value === "string" && value.trim() !== "" ? value.trim() : null;
+}
+
+function getProfileFields(body: Record<string, unknown>, isAdminActor: boolean) {
+  const profileFields: Record<string, unknown> = {};
+
+  if (body.name !== undefined) profileFields.name = body.name;
+  if (body.className !== undefined) profileFields.className = body.className;
+  if (isAdminActor && body.email !== undefined) profileFields.email = body.email;
+  if (isAdminActor && body.username !== undefined) profileFields.username = body.username;
+
+  return profileFields;
+}
+
+function validateProfileFields(body: Record<string, unknown>, isAdminActor: boolean) {
+  const profileSchema = isAdminActor ? adminUpdateUserSchema : updateProfileSchema;
+  const profileFields = getProfileFields(body, isAdminActor);
+
+  if (Object.keys(profileFields).length === 0) {
+    return null;
+  }
+
+  const parsed = profileSchema.partial().safeParse(profileFields);
+
+  if (!parsed.success) {
+    return jsonError(parsed.error.issues[0]?.message ?? "validationError", 400);
+  }
+
+  return null;
+}
+
+async function ensureUniqueIdentityFields(
+  userId: string,
+  username: unknown,
+  normalizedEmail: string | null,
+  isAdminActor: boolean
+) {
+  if (typeof username === "string" && isAdminActor) {
+    const existingUsername = await db.query.users.findFirst({
+      where: eq(users.username, username),
+      columns: { id: true },
+    });
+
+    if (existingUsername && existingUsername.id !== userId) {
+      return jsonError("usernameInUse", 409);
+    }
+  }
+
+  if (isAdminActor && normalizedEmail) {
+    const existingEmail = await db.query.users.findFirst({
+      where: eq(users.email, normalizedEmail),
+      columns: { id: true },
+    });
+
+    if (existingEmail && existingEmail.id !== userId) {
+      return jsonError("emailInUse", 409);
+    }
+  }
+
+  return null;
+}
+
+async function findSafeUserById(userId: string) {
+  return db
+    .select(safeUserSelect)
+    .from(users)
+    .where(eq(users.id, userId))
+    .then((rows) => rows[0] ?? null);
+}
+
+type ExistingUserRecord = NonNullable<Awaited<ReturnType<typeof findSafeUserById>>>;
+
+function applyBasicFieldUpdates(
+  updates: UserUpdates,
+  body: Record<string, unknown>,
+  isAdminActor: boolean
+) {
+  const normalizedEmail = normalizeOptionalText(body.email);
+  const normalizedClassName = normalizeOptionalText(body.className);
+
+  if (body.name !== undefined) updates.name = body.name;
+  if (body.username !== undefined && isAdminActor) updates.username = body.username;
+  if (body.email !== undefined && isAdminActor) updates.email = normalizedEmail;
+  if (body.className !== undefined) updates.className = normalizedClassName;
+
+  return { normalizedEmail };
+}
+
+function applyActiveStatusUpdate(
+  updates: UserUpdates,
+  body: Record<string, unknown>,
+  found: ExistingUserRecord,
+  actorId: string,
+  isAdminActor: boolean
+) {
+  if (body.isActive === undefined || !isAdminActor) {
+    return null;
+  }
+
+  if (body.isActive === false && found.id === actorId) {
+    return jsonError("cannotDeactivateSelf", 403);
+  }
+
+  if (body.isActive === false && found.role === "super_admin") {
+    return jsonError("cannotDeactivateSuperAdmin", 403);
+  }
+
+  updates.isActive = body.isActive;
+
+  if (body.isActive === false) {
+    updates.tokenInvalidatedAt = new Date();
+  }
+
+  return null;
+}
+
+function applyRoleUpdate(
+  updates: UserUpdates,
+  body: Record<string, unknown>,
+  actor: ApiUser,
+  found: ExistingUserRecord,
+  isAdminActor: boolean
+) {
+  if (body.role === undefined) {
+    return null;
+  }
+
+  if (!isAdminActor) {
+    return forbidden();
+  }
+
+  if (typeof body.role !== "string" || !isUserRole(body.role)) {
+    return jsonError("invalidRole", 400);
+  }
+
+  if (!canManageRole(actor.role, body.role)) {
+    return jsonError("superAdminRoleRestricted", 403);
+  }
+
+  if (found.role === "super_admin" && body.role !== "super_admin") {
+    return jsonError("superAdminRoleRestricted", 403);
+  }
+
+  updates.role = body.role;
+
+  if (body.role !== found.role) {
+    updates.tokenInvalidatedAt = new Date();
+  }
+
+  return null;
+}
+
+async function applyPasswordUpdate(
+  updates: UserUpdates,
+  password: unknown,
+  isAdminActor: boolean,
+  isSelf: boolean
+) {
+  if (password === undefined) {
+    return null;
+  }
+
+  if (!isAdminActor || isSelf) {
+    return jsonError("passwordChangeRequiresCurrentPassword", 403);
+  }
+
+  if (typeof password !== "string") {
+    return jsonError("passwordTooShort", 400);
+  }
+
+  const passwordValidationError = getPasswordValidationError(password);
+
+  if (passwordValidationError) {
+    return jsonError(passwordValidationError, 400);
+  }
+
+  updates.passwordHash = await hash(password, 12);
+  updates.mustChangePassword = true;
+  updates.tokenInvalidatedAt = new Date();
+
+  return null;
+}
+
 export async function GET(
   request: NextRequest,
   { params }: { params: Promise<{ id: string }> }
@@ -28,11 +219,7 @@ export async function GET(
 
     if (!isAdminActor && !isSelf) return forbidden();
 
-    const found = await db
-      .select(safeUserSelect)
-      .from(users)
-      .where(eq(users.id, id))
-      .then((r) => r[0]);
+    const found = await findSafeUserById(id);
 
     if (!found) return notFound("User");
 
@@ -64,150 +251,50 @@ export async function PATCH(
 
     if (!isAdminActor && !isSelf) return forbidden();
 
-    const found = await db
-      .select(safeUserSelect)
-      .from(users)
-      .where(eq(users.id, id))
-      .then((r) => r[0]);
+    const found = await findSafeUserById(id);
 
     if (!found) return notFound("User");
 
-    const body = await request.json();
-
-    // Validate profile fields via Zod
-    const profileSchema = isAdminActor ? adminUpdateUserSchema : updateProfileSchema;
-    const profileFields: Record<string, unknown> = {};
-    if (body.name !== undefined) profileFields.name = body.name;
-    if (body.className !== undefined) profileFields.className = body.className;
-    if (isAdminActor && body.email !== undefined) profileFields.email = body.email;
-    if (isAdminActor && body.username !== undefined) profileFields.username = body.username;
-
-    if (Object.keys(profileFields).length > 0) {
-      const parsed = profileSchema.partial().safeParse(profileFields);
-      if (!parsed.success) {
-        return NextResponse.json(
-          { error: parsed.error.issues[0]?.message ?? "validationError" },
-          { status: 400 }
-        );
-      }
-    }
+    const body = (await request.json()) as Record<string, unknown>;
+    const profileValidationError = validateProfileFields(body, isAdminActor);
+    if (profileValidationError) return profileValidationError;
 
     if (!isAdminActor && body.username !== undefined) {
-      return NextResponse.json({ error: "usernameChangeNotAllowed" }, { status: 403 });
+      return jsonError("usernameChangeNotAllowed", 403);
     }
 
     if (!isAdminActor && body.email !== undefined) {
-      return NextResponse.json({ error: "emailChangeNotAllowed" }, { status: 403 });
+      return jsonError("emailChangeNotAllowed", 403);
     }
-
-    const { name, username, email, className, role, isActive, password } = body;
 
     const updates: Record<string, unknown> = { updatedAt: new Date() };
-    const normalizedEmail = typeof email === "string" && email.trim() !== "" ? email.trim() : null;
-    const normalizedClassName = typeof className === "string" && className.trim() !== "" ? className.trim() : null;
+    const { normalizedEmail } = applyBasicFieldUpdates(updates, body, isAdminActor);
 
-    if (username !== undefined && isAdminActor) {
-      const existingUsername = await db.query.users.findFirst({
-        where: eq(users.username, username),
-        columns: { id: true },
-      });
+    const uniqueIdentityError = await ensureUniqueIdentityFields(
+      id,
+      body.username,
+      normalizedEmail,
+      isAdminActor
+    );
+    if (uniqueIdentityError) return uniqueIdentityError;
 
-      if (existingUsername && existingUsername.id !== id) {
-        return NextResponse.json({ error: "usernameInUse" }, { status: 409 });
-      }
-    }
+    const activeStatusError = applyActiveStatusUpdate(updates, body, found, user.id, isAdminActor);
+    if (activeStatusError) return activeStatusError;
 
-    if (isAdminActor && email !== undefined && normalizedEmail) {
-      const existingEmail = await db.query.users.findFirst({
-        where: eq(users.email, normalizedEmail),
-        columns: { id: true },
-      });
+    const roleUpdateError = applyRoleUpdate(updates, body, user, found, isAdminActor);
+    if (roleUpdateError) return roleUpdateError;
 
-      if (existingEmail && existingEmail.id !== id) {
-        return NextResponse.json({ error: "emailInUse" }, { status: 409 });
-      }
-    }
-
-    if (name !== undefined) updates.name = name;
-    if (username !== undefined && isAdminActor) updates.username = username;
-    if (email !== undefined && isAdminActor) updates.email = normalizedEmail;
-    if (className !== undefined) updates.className = normalizedClassName;
-    if (isActive !== undefined && isAdminActor) {
-      if (isActive === false && found.id === user.id) {
-        return NextResponse.json({ error: "cannotDeactivateSelf" }, { status: 403 });
-      }
-
-      if (isActive === false && found.role === "super_admin") {
-        return NextResponse.json({ error: "cannotDeactivateSuperAdmin" }, { status: 403 });
-      }
-
-      updates.isActive = isActive;
-
-      if (isActive === false) {
-        updates.tokenInvalidatedAt = new Date();
-      }
-    }
-    if (role !== undefined) {
-      if (!isAdminActor) return forbidden();
-
-      if (typeof role !== "string" || !isUserRole(role)) {
-        return NextResponse.json({ error: "invalidRole" }, { status: 400 });
-      }
-
-      if (!canManageRole(user.role, role)) {
-        return NextResponse.json(
-          { error: "superAdminRoleRestricted" },
-          { status: 403 }
-        );
-      }
-
-      if (found.role === "super_admin" && role !== "super_admin" && user.role !== "super_admin") {
-        return NextResponse.json(
-          { error: "superAdminRoleRestricted" },
-          { status: 403 }
-        );
-      }
-
-      if (found.role === "super_admin" && role !== "super_admin") {
-        return NextResponse.json({ error: "superAdminRoleRestricted" }, { status: 403 });
-      }
-
-      updates.role = role;
-
-      if (role !== found.role) {
-        updates.tokenInvalidatedAt = new Date();
-      }
-    }
-    if (password !== undefined) {
-      if (!isAdminActor || isSelf) {
-        return NextResponse.json(
-          { error: "passwordChangeRequiresCurrentPassword" },
-          { status: 403 }
-        );
-      }
-
-      if (typeof password !== "string") {
-        return NextResponse.json({ error: "passwordTooShort" }, { status: 400 });
-      }
-
-      const passwordValidationError = getPasswordValidationError(password);
-
-      if (passwordValidationError) {
-        return NextResponse.json({ error: passwordValidationError }, { status: 400 });
-      }
-
-      updates.passwordHash = await hash(password, 12);
-      updates.mustChangePassword = true;
-      updates.tokenInvalidatedAt = new Date();
-    }
+    const passwordUpdateError = await applyPasswordUpdate(
+      updates,
+      body.password,
+      isAdminActor,
+      isSelf
+    );
+    if (passwordUpdateError) return passwordUpdateError;
 
     await db.update(users).set(updates).where(eq(users.id, id));
 
-    const updated = await db
-      .select(safeUserSelect)
-      .from(users)
-      .where(eq(users.id, id))
-      .then((r) => r[0]);
+    const updated = await findSafeUserById(id);
 
     if (updated) {
       recordAuditEvent({
@@ -222,7 +309,7 @@ export async function PATCH(
           changedFields: Object.keys(body).filter((key) =>
             ["name", "username", "email", "className", "role", "isActive", "password"].includes(key)
           ),
-          resetPassword: password !== undefined,
+          resetPassword: body.password !== undefined,
           role: updated.role,
           isActive: updated.isActive,
           invalidatedExistingSessions: Boolean(updates.tokenInvalidatedAt),

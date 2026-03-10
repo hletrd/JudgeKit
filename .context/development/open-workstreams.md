@@ -34,6 +34,7 @@ The `dashboard-rendering-audit-and-editor-upgrades` batch is now locally verifie
 - Problem creation/editing now supports loading test-case input/output from local files directly into each row of the test-case editor
 - Assignment detail pages now show relative deadline countdown text, and assignment-scoped problem pages surface deadline and late-window warning badges from the active assignment context
 - Problems, submissions, users, and groups API routes now share one pagination parser instead of duplicating page/limit/offset parsing logic
+- The users PATCH API route now decomposes profile validation, uniqueness checks, role updates, active-state changes, and password-reset handling into focused helpers
 
 ## Still open
 
