@@ -1,0 +1,15 @@
+[Unit]
+Description=Online Judge Next.js App
+After=network.target
+
+[Service]
+Type=simple
+User=ubuntu
+WorkingDirectory=/home/ubuntu/online-judge
+Environment=NODE_ENV=production
+ExecStart=/usr/bin/npm start -- -H 127.0.0.1 -p 3000
+Restart=always
+RestartSec=5
+
+[Install]
+WantedBy=multi-user.target
