@@ -15,7 +15,7 @@ export const users = sqliteTable("users", {
     .primaryKey()
     .$defaultFn(() => nanoid()),
   username: text("username").unique().notNull(),
-  email: text("email"),
+  email: text("email").unique(),
   name: text("name").notNull(),
   className: text("class_name"),
   passwordHash: text("password_hash"),
@@ -212,26 +212,32 @@ export const problemGroupAccess = sqliteTable(
   ]
 );
 
-export const assignments = sqliteTable("assignments", {
-  id: text("id")
-    .primaryKey()
-    .$defaultFn(() => nanoid()),
-  groupId: text("group_id")
-    .notNull()
-    .references(() => groups.id, { onDelete: "cascade" }),
-  title: text("title").notNull(),
-  description: text("description"),
-  startsAt: integer("starts_at", { mode: "timestamp" }),
-  deadline: integer("deadline", { mode: "timestamp" }),
-  lateDeadline: integer("late_deadline", { mode: "timestamp" }),
-  latePenalty: real("late_penalty").default(0),
-  createdAt: integer("created_at", { mode: "timestamp" }).$defaultFn(
-    () => new Date(Date.now())
-  ),
-  updatedAt: integer("updated_at", { mode: "timestamp" }).$defaultFn(
-    () => new Date(Date.now())
-  ),
-});
+export const assignments = sqliteTable(
+  "assignments",
+  {
+    id: text("id")
+      .primaryKey()
+      .$defaultFn(() => nanoid()),
+    groupId: text("group_id")
+      .notNull()
+      .references(() => groups.id, { onDelete: "cascade" }),
+    title: text("title").notNull(),
+    description: text("description"),
+    startsAt: integer("starts_at", { mode: "timestamp" }),
+    deadline: integer("deadline", { mode: "timestamp" }),
+    lateDeadline: integer("late_deadline", { mode: "timestamp" }),
+    latePenalty: real("late_penalty").default(0),
+    createdAt: integer("created_at", { mode: "timestamp" }).$defaultFn(
+      () => new Date(Date.now())
+    ),
+    updatedAt: integer("updated_at", { mode: "timestamp" }).$defaultFn(
+      () => new Date(Date.now())
+    ),
+  },
+  (table) => [
+    index("assignments_group_idx").on(table.groupId),
+  ]
+);
 
 export const assignmentProblems = sqliteTable(
   "assignment_problems",
@@ -251,6 +257,7 @@ export const assignmentProblems = sqliteTable(
   (table) => [
     index("ap_assignment_idx").on(table.assignmentId),
     index("ap_problem_idx").on(table.problemId),
+    uniqueIndex("ap_assignment_problem_idx").on(table.assignmentId, table.problemId),
   ]
 );
 
@@ -288,6 +295,7 @@ export const submissions = sqliteTable(
     index("submissions_status_idx").on(table.status),
     index("submissions_user_idx").on(table.userId),
     index("submissions_problem_idx").on(table.problemId),
+    index("submissions_assignment_idx").on(table.assignmentId),
   ]
 );
 
@@ -417,5 +425,6 @@ export const submissionResults = sqliteTable(
   },
   (table) => [
     index("sr_submission_idx").on(table.submissionId),
+    index("sr_test_case_idx").on(table.testCaseId),
   ]
 );
