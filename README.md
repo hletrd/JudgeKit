@@ -255,6 +255,7 @@ journalctl -u online-judge-worker-rs.service -n 50 --no-pager
 ```
 
 - Confirm submissions progress out of `pending`
+- Run the all-languages judge E2E test: `PLAYWRIGHT_BASE_URL=https://oj.auraedu.me npx playwright test tests/e2e/all-languages-judge.spec.ts`
 - Confirm `/api/health` returns `{"status":"ok"...}` with `checks.database` set to `ok`
 - Confirm `https://oj.auraedu.me/login` completes TLS validation and serves the app
 - If you see `401 Unauthorized` in worker logs, verify `JUDGE_AUTH_TOKEN`
@@ -271,7 +272,7 @@ journalctl -u online-judge-worker-rs.service -n 50 --no-pager
 | Database | SQLite + Drizzle ORM |
 | Auth | Auth.js v5 (Credentials) |
 | UI | Tailwind CSS v4, shadcn/ui |
-| Code Editor | CodeMirror-based editor/viewer surfaces with theme-aware styling |
+| Code Editor | CodeMirror 6 with CSP-nonce-aware syntax highlighting and theme-aware styling |
 | Judge Worker | Rust binary with zero-allocation output comparison |
 | Judge Runtimes | Dockerized toolchains for GCC, Python 3.14.3, Node.js 24.14.0 / TypeScript 5.9.3, Rust 1.94.0, Go 1.26.1, Swift 6.2.4, Mono 6.12, R 4.5, Perl 5.40, and PHP 8.4 |
 | Validation | Zod |
