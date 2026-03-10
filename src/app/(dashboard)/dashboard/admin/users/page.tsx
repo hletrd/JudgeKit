@@ -1,5 +1,7 @@
 import { getLocale, getTranslations } from "next-intl/server";
+import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Input } from "@/components/ui/input";
 import {
   Table,
   TableBody,
@@ -12,44 +14,163 @@ import { Badge } from "@/components/ui/badge";
 import { db } from "@/lib/db";
 import { users } from "@/lib/db/schema";
 import { safeUserSelect } from "@/lib/db/selects";
-import { desc } from "drizzle-orm";
+import { and, desc, eq, or, sql } from "drizzle-orm";
 import { auth } from "@/lib/auth";
 import { redirect } from "next/navigation";
 import Link from "next/link";
 import UserActions from "./user-actions";
 import AddUserDialog from "./add-user-dialog";
+import BulkCreateDialog from "./bulk-create-dialog";
 import EditUserDialog from "./edit-user-dialog";
 import { formatDateInTimeZone } from "@/lib/datetime";
 import { getResolvedSystemTimeZone } from "@/lib/system-settings";
 
-export default async function UserManagementPage() {
+const PAGE_SIZE = 25;
+
+function normalizePage(value?: string) {
+  const parsed = Number(value ?? "1");
+  return Number.isFinite(parsed) && parsed > 0 ? Math.floor(parsed) : 1;
+}
+
+function normalizeSearch(value?: string) {
+  return typeof value === "string" ? value.trim().slice(0, 100) : "";
+}
+
+export default async function UserManagementPage({
+  searchParams,
+}: {
+  searchParams?: Promise<{ page?: string; search?: string; role?: string }>;
+}) {
   const session = await auth();
   if (!session?.user) redirect("/login");
   if (session.user.role !== "admin" && session.user.role !== "super_admin") redirect("/dashboard");
 
+  const resolvedSearchParams = searchParams ? await searchParams : undefined;
   const t = await getTranslations("admin.users");
   const tCommon = await getTranslations("common");
   const locale = await getLocale();
   const timeZone = await getResolvedSystemTimeZone();
+  const currentPage = normalizePage(resolvedSearchParams?.page);
+  const offset = (currentPage - 1) * PAGE_SIZE;
+  const searchQuery = normalizeSearch(resolvedSearchParams?.search);
+  const roleFilter = resolvedSearchParams?.role;
   const roleLabels = {
     student: tCommon("roles.student"),
     instructor: tCommon("roles.instructor"),
     admin: tCommon("roles.admin"),
     super_admin: tCommon("roles.super_admin"),
   };
-  const allUsers = await db.select(safeUserSelect).from(users).orderBy(desc(users.createdAt));
+  const filters = [];
+
+  if (searchQuery) {
+    const likePattern = `%${searchQuery.toLowerCase()}%`;
+    filters.push(
+      or(
+        sql`lower(${users.username}) like ${likePattern}`,
+        sql`lower(${users.name}) like ${likePattern}`
+      )
+    );
+  }
+
+  if (roleFilter && roleFilter in roleLabels) {
+    filters.push(eq(users.role, roleFilter as keyof typeof roleLabels));
+  }
+
+  const whereClause =
+    filters.length === 0 ? undefined : filters.length === 1 ? filters[0] : and(...filters);
+
+  const [totalRow] = await db
+    .select({ total: sql<number>`count(*)` })
+    .from(users)
+    .where(whereClause);
+
+  const allUsers = await db
+    .select(safeUserSelect)
+    .from(users)
+    .where(whereClause)
+    .orderBy(desc(users.createdAt))
+    .limit(PAGE_SIZE + 1)
+    .offset(offset);
+  const total = Number(totalRow?.total ?? 0);
+  const totalPages = Math.max(1, Math.ceil(total / PAGE_SIZE));
+  const hasNextPage = allUsers.length > PAGE_SIZE;
+  const visibleUsers = hasNextPage ? allUsers.slice(0, PAGE_SIZE) : allUsers;
+  const rangeStart = visibleUsers.length === 0 ? 0 : offset + 1;
+  const rangeEnd = offset + visibleUsers.length;
+
+  const buildHref = (page: number) => {
+    const params = new URLSearchParams();
+    if (page > 1) params.set("page", String(page));
+    if (searchQuery) params.set("search", searchQuery);
+    if (roleFilter && roleFilter in roleLabels) params.set("role", roleFilter);
+    const queryString = params.toString();
+    return queryString ? `/dashboard/admin/users?${queryString}` : "/dashboard/admin/users";
+  };
 
   return (
     <div>
       <div className="flex justify-between items-center mb-4">
         <h2 className="text-2xl font-bold">{t("title")}</h2>
-        <AddUserDialog />
+        <div className="flex gap-2">
+          <BulkCreateDialog />
+          <AddUserDialog />
+        </div>
       </div>
       <Card>
         <CardHeader>
-          <CardTitle>{t("usersList")}</CardTitle>
+          <CardTitle>{t("filtersTitle")}</CardTitle>
         </CardHeader>
         <CardContent>
+          <form className="flex flex-col gap-3 md:flex-row md:items-end" method="get">
+            <div className="flex-1 space-y-2">
+              <label className="text-sm font-medium" htmlFor="users-search">
+                {t("filters.searchLabel")}
+              </label>
+              <Input
+                id="users-search"
+                name="search"
+                type="search"
+                defaultValue={searchQuery}
+                placeholder={t("filters.searchPlaceholder")}
+              />
+            </div>
+            <div className="space-y-2">
+              <label className="text-sm font-medium" htmlFor="users-role">
+                {t("filters.roleLabel")}
+              </label>
+              <select
+                id="users-role"
+                name="role"
+                defaultValue={roleFilter && roleFilter in roleLabels ? roleFilter : ""}
+                className="flex h-8 min-w-48 rounded-lg border border-input bg-background px-3 py-2 text-sm shadow-xs outline-none focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50"
+              >
+                <option value="">{t("allRoles")}</option>
+                {Object.entries(roleLabels).map(([value, label]) => (
+                  <option key={value} value={value}>
+                    {label}
+                  </option>
+                ))}
+              </select>
+            </div>
+            <div className="flex gap-2">
+              <Button type="submit">{t("applyFilters")}</Button>
+              <Link href="/dashboard/admin/users">
+                <Button type="button" variant="outline">{t("resetFilters")}</Button>
+              </Link>
+            </div>
+          </form>
+        </CardContent>
+      </Card>
+      <Card>
+        <CardHeader>
+          <CardTitle>{t("resultsTitle")}</CardTitle>
+        </CardHeader>
+        <CardContent>
+          {visibleUsers.length > 0 && (
+            <p className="mb-4 text-sm text-muted-foreground">
+              {t("pagination.results", { start: rangeStart, end: rangeEnd, total })}
+            </p>
+          )}
           <Table>
             <TableHeader>
               <TableRow>
@@ -64,7 +185,7 @@ export default async function UserManagementPage() {
               </TableRow>
             </TableHeader>
             <TableBody>
-              {allUsers.map((user) => (
+              {visibleUsers.map((user) => (
                 <TableRow key={user.id}>
                   <TableCell className="font-medium">
                     <Link href={`/dashboard/admin/users/${user.id}`} className="text-primary hover:underline">
@@ -108,7 +229,7 @@ export default async function UserManagementPage() {
                   </TableCell>
                 </TableRow>
               ))}
-              {allUsers.length === 0 && (
+              {visibleUsers.length === 0 && (
                 <TableRow>
                     <TableCell colSpan={8} className="text-center text-muted-foreground">
                       {t("noUsers")}
@@ -117,6 +238,25 @@ export default async function UserManagementPage() {
               )}
             </TableBody>
           </Table>
+          <div className="mt-4 flex items-center justify-end gap-2">
+            {currentPage > 1 ? (
+              <Link href={buildHref(currentPage - 1)}>
+                <Button variant="outline">{tCommon("previous")}</Button>
+              </Link>
+            ) : (
+              <Button variant="outline" disabled>{tCommon("previous")}</Button>
+            )}
+            <span className="text-sm text-muted-foreground">
+              {t("pagination.page", { current: currentPage, total: totalPages })}
+            </span>
+            {hasNextPage ? (
+              <Link href={buildHref(currentPage + 1)}>
+                <Button variant="outline">{tCommon("next")}</Button>
+              </Link>
+            ) : (
+              <Button variant="outline" disabled>{tCommon("next")}</Button>
+            )}
+          </div>
         </CardContent>
       </Card>
     </div>
