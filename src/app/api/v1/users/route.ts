@@ -8,15 +8,17 @@ import { nanoid } from "nanoid";
 import { hash } from "bcryptjs";
 import { generateSecurePassword } from "@/lib/auth/generated-password";
 import { safeUserSelect } from "@/lib/db/selects";
-import {
-  canManageRole,
-  isUserRole,
-} from "@/lib/security/constants";
+import { isUserRole } from "@/lib/security/constants";
 import type { UserRole } from "@/types";
-import { getPasswordValidationError } from "@/lib/security/password";
 import { userCreateSchema } from "@/lib/validators/profile";
 import { checkApiRateLimit, recordApiRateHit } from "@/lib/security/api-rate-limit";
 import { parsePagination } from "@/lib/api/pagination";
+import {
+  isUsernameTaken,
+  isEmailTaken,
+  validateAndHashPassword,
+  validateRoleChange,
+} from "@/lib/users/core";
 
 export async function GET(request: NextRequest) {
   try {
@@ -81,35 +83,27 @@ export async function POST(request: NextRequest) {
     const normalizedClassName = className ?? null;
     const requestedRole = role.trim() || "student";
 
-    if (!isUserRole(requestedRole)) {
+    const roleError = validateRoleChange(user.role, requestedRole);
+    if (roleError === "invalidRole") {
       return NextResponse.json({ error: "invalidRole" }, { status: 400 });
     }
-
-    if (!canManageRole(user.role, requestedRole)) {
-      return NextResponse.json(
-        { error: "onlySuperAdminCanChangeSuperAdminRole" },
-        { status: 403 }
-      );
+    if (roleError) {
+      return NextResponse.json({ error: roleError }, { status: 403 });
     }
 
     if (password) {
-      const passwordValidationError = getPasswordValidationError(password);
-
-      if (passwordValidationError) {
-        return NextResponse.json({ error: passwordValidationError }, { status: 400 });
+      const passwordResult = await validateAndHashPassword(password);
+      if (passwordResult.error) {
+        return NextResponse.json({ error: passwordResult.error }, { status: 400 });
       }
     }
 
-    const existing = await db.query.users.findFirst({ where: eq(users.username, username), columns: { id: true } });
-    if (existing) {
+    if (await isUsernameTaken(username)) {
       return NextResponse.json({ error: "usernameInUse" }, { status: 409 });
     }
 
-    if (normalizedEmail) {
-      const existingEmail = await db.query.users.findFirst({ where: eq(users.email, normalizedEmail), columns: { id: true } });
-      if (existingEmail) {
-        return NextResponse.json({ error: "emailInUse" }, { status: 409 });
-      }
+    if (normalizedEmail && await isEmailTaken(normalizedEmail)) {
+      return NextResponse.json({ error: "emailInUse" }, { status: 409 });
     }
 
     const generatedPassword = generateSecurePassword();
@@ -124,7 +118,7 @@ export async function POST(request: NextRequest) {
       name,
       className: normalizedClassName,
       passwordHash,
-      role: requestedRole,
+      role: requestedRole as UserRole,
       isActive: true,
       mustChangePassword: true,
       createdAt: new Date(),

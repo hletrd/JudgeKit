@@ -8,12 +8,13 @@ import { hash } from "bcryptjs";
 import { nanoid } from "nanoid";
 import { buildServerActionAuditContext, recordAuditEvent } from "@/lib/audit/events";
 import { generateSecurePassword } from "@/lib/auth/generated-password";
-import {
-  canManageRole,
-  isUserRole,
-} from "@/lib/security/constants";
-import { getPasswordValidationError } from "@/lib/security/password";
 import type { UserRole } from "@/types";
+import {
+  isUsernameTaken,
+  isEmailTaken,
+  validateAndHashPassword,
+  validateRoleChange,
+} from "@/lib/users/core";
 
 type UserUpdates = Partial<typeof users.$inferInsert>;
 
@@ -122,34 +123,6 @@ export async function editUser(userId: string, data: ManagedUserInput): Promise<
     const normalizedClassName = data.className?.trim() || null;
     const requestedRole = data.role.trim();
 
-    if (!isUserRole(requestedRole)) {
-      return { success: false, error: "updateUserFailed" };
-    }
-
-    if (!canManageRole(actorRole, requestedRole)) {
-      return { success: false, error: "onlySuperAdminCanChangeSuperAdminRole" };
-    }
-
-    const existing = await db.query.users.findFirst({
-      where: eq(users.username, data.username),
-      columns: { id: true },
-    });
-
-    if (existing && existing.id !== userId) {
-      return { success: false, error: "usernameInUse" };
-    }
-
-    if (normalizedEmail) {
-      const existingEmail = await db.query.users.findFirst({
-        where: eq(users.email, normalizedEmail),
-        columns: { id: true },
-      });
-
-      if (existingEmail && existingEmail.id !== userId) {
-        return { success: false, error: "emailInUse" };
-      }
-    }
-
     const targetUser = await db.query.users.findFirst({
       where: eq(users.id, userId),
       columns: { id: true, username: true, role: true },
@@ -157,20 +130,23 @@ export async function editUser(userId: string, data: ManagedUserInput): Promise<
 
     if (!targetUser) return { success: false, error: "userNotFound" };
 
-    // Prevent changing role of super_admin unless you are super_admin
-    if (targetUser.role === "super_admin" && requestedRole !== "super_admin" && actorRole !== "super_admin") {
-      return { success: false, error: "onlySuperAdminCanChangeSuperAdminRole" };
+    const roleError = validateRoleChange(actorRole, requestedRole, targetUser.role);
+    if (roleError === "invalidRole") return { success: false, error: "updateUserFailed" };
+    if (roleError) return { success: false, error: roleError };
+    const validatedRole = requestedRole as UserRole;
+
+    if (await isUsernameTaken(data.username, userId)) {
+      return { success: false, error: "usernameInUse" };
     }
-    // Also prevent changing super_admin role at all, for safety.
-    if (targetUser.role === "super_admin" && requestedRole !== "super_admin") {
-      return { success: false, error: "cannotChangeSuperAdminRole" };
+
+    if (normalizedEmail && await isEmailTaken(normalizedEmail, userId)) {
+      return { success: false, error: "emailInUse" };
     }
 
     if (data.password) {
-      const passwordValidationError = getPasswordValidationError(data.password);
-
-      if (passwordValidationError) {
-        return { success: false, error: passwordValidationError };
+      const passwordResult = await validateAndHashPassword(data.password);
+      if (passwordResult.error) {
+        return { success: false, error: passwordResult.error };
       }
     }
 
@@ -179,15 +155,20 @@ export async function editUser(userId: string, data: ManagedUserInput): Promise<
       email: normalizedEmail,
       name: data.name,
       className: normalizedClassName,
-      role: requestedRole,
+      role: validatedRole,
       updatedAt: new Date(),
     };
 
     const shouldInvalidateExistingSessions =
-      requestedRole !== targetUser.role || Boolean(data.password);
+      validatedRole !== targetUser.role || Boolean(data.password);
 
     if (data.password) {
-      updates.passwordHash = await hash(data.password, 12);
+      const passwordResult = await validateAndHashPassword(data.password);
+      // Already validated above — error branch is unreachable here, but guard for safety
+      if (passwordResult.error) {
+        return { success: false, error: passwordResult.error };
+      }
+      updates.passwordHash = passwordResult.hash;
       updates.mustChangePassword = true;
     }
 
@@ -210,7 +191,7 @@ export async function editUser(userId: string, data: ManagedUserInput): Promise<
         changedFields: Object.keys(updates).filter((key) => key !== "passwordHash"),
         invalidatedExistingSessions: shouldInvalidateExistingSessions,
         resetPassword: Boolean(data.password),
-        role: requestedRole,
+        role: validatedRole,
       },
       context: auditContext,
     });
@@ -238,46 +219,29 @@ export async function createUser(data: ManagedUserInput): Promise<UserManagement
     const normalizedClassName = data.className?.trim() || null;
     const requestedRole = data.role.trim();
 
-    if (!isUserRole(requestedRole)) {
-      return { success: false, error: "createUserFailed" };
-    }
+    const roleError = validateRoleChange(actorRole, requestedRole);
+    if (roleError === "invalidRole") return { success: false, error: "createUserFailed" };
+    if (roleError) return { success: false, error: roleError };
+    const validatedRole = requestedRole as UserRole;
 
-    if (!canManageRole(actorRole, requestedRole)) {
-      return { success: false, error: "onlySuperAdminCanChangeSuperAdminRole" };
-    }
-
-    const existing = await db.query.users.findFirst({
-      where: eq(users.username, data.username),
-      columns: { id: true },
-    });
-
-    if (existing) {
+    if (await isUsernameTaken(data.username)) {
       return { success: false, error: "usernameInUse" };
     }
 
-    if (normalizedEmail) {
-      const existingEmail = await db.query.users.findFirst({
-        where: eq(users.email, normalizedEmail),
-        columns: { id: true },
-      });
-
-      if (existingEmail) {
-        return { success: false, error: "emailInUse" };
-      }
+    if (normalizedEmail && await isEmailTaken(normalizedEmail)) {
+      return { success: false, error: "emailInUse" };
     }
 
     if (data.password) {
-      const passwordValidationError = getPasswordValidationError(data.password);
-
-      if (passwordValidationError) {
-        return { success: false, error: passwordValidationError };
+      const passwordResult = await validateAndHashPassword(data.password);
+      if (passwordResult.error) {
+        return { success: false, error: passwordResult.error };
       }
     }
 
     const id = nanoid();
     const generatedPassword = generateSecurePassword();
-    const passwordToHash =
-      data.password ?? generatedPassword;
+    const passwordToHash = data.password ?? generatedPassword;
     const passwordHash = await hash(passwordToHash, 12);
 
     await db.insert(users).values({
@@ -286,7 +250,7 @@ export async function createUser(data: ManagedUserInput): Promise<UserManagement
       email: normalizedEmail,
       name: data.name,
       className: normalizedClassName,
-      role: requestedRole,
+      role: validatedRole,
       passwordHash,
       isActive: true,
       mustChangePassword: true, // force new user to change password on first login
@@ -304,7 +268,7 @@ export async function createUser(data: ManagedUserInput): Promise<UserManagement
       resourceLabel: data.username,
       summary: `Created user @${data.username}`,
       details: {
-        role: requestedRole,
+        role: validatedRole,
         usedGeneratedPassword: !data.password,
       },
       context: auditContext,

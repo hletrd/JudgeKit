@@ -4,15 +4,18 @@ import { users } from "@/lib/db/schema";
 import { eq } from "drizzle-orm";
 import { getApiUser, unauthorized, forbidden, notFound, isAdmin, csrfForbidden } from "@/lib/api/auth";
 import { recordAuditEvent } from "@/lib/audit/events";
-import { hash } from "bcryptjs";
 import {
   canManageRole,
   isUserRole,
 } from "@/lib/security/constants";
 import { safeUserSelect } from "@/lib/db/selects";
-import { getPasswordValidationError } from "@/lib/security/password";
 import { updateProfileSchema, adminUpdateUserSchema } from "@/lib/validators/profile";
 import { checkApiRateLimit, recordApiRateHit } from "@/lib/security/api-rate-limit";
+import {
+  isUsernameTaken,
+  isEmailTaken,
+  validateAndHashPassword,
+} from "@/lib/users/core";
 
 type ApiUser = NonNullable<Awaited<ReturnType<typeof getApiUser>>>;
 type UserUpdates = Record<string, unknown>;
@@ -60,23 +63,13 @@ async function ensureUniqueIdentityFields(
   isAdminActor: boolean
 ) {
   if (typeof username === "string" && isAdminActor) {
-    const existingUsername = await db.query.users.findFirst({
-      where: eq(users.username, username),
-      columns: { id: true },
-    });
-
-    if (existingUsername && existingUsername.id !== userId) {
+    if (await isUsernameTaken(username, userId)) {
       return jsonError("usernameInUse", 409);
     }
   }
 
   if (isAdminActor && normalizedEmail) {
-    const existingEmail = await db.query.users.findFirst({
-      where: eq(users.email, normalizedEmail),
-      columns: { id: true },
-    });
-
-    if (existingEmail && existingEmail.id !== userId) {
+    if (await isEmailTaken(normalizedEmail, userId)) {
       return jsonError("emailInUse", 409);
     }
   }
@@ -192,13 +185,13 @@ async function applyPasswordUpdate(
     return jsonError("passwordTooShort", 400);
   }
 
-  const passwordValidationError = getPasswordValidationError(password);
+  const passwordResult = await validateAndHashPassword(password);
 
-  if (passwordValidationError) {
-    return jsonError(passwordValidationError, 400);
+  if (passwordResult.error) {
+    return jsonError(passwordResult.error, 400);
   }
 
-  updates.passwordHash = await hash(password, 12);
+  updates.passwordHash = passwordResult.hash;
   updates.mustChangePassword = true;
   updates.tokenInvalidatedAt = new Date();
 
