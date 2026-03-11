@@ -1,7 +1,7 @@
 {
   "common": {
-    "appName": "Online Judge",
-    "appDescription": "Online judge system for programming assignments",
+    "appName": "JudgeKit",
+    "appDescription": "Secure code evaluation platform for programming assignments",
     "comingSoon": "Coming Soon",
     "underConstruction": "This page is under construction.",
     "loading": "Loading...",

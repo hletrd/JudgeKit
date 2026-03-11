@@ -1,7 +1,7 @@
 {
   "common": {
-    "appName": "Online Judge",
-    "appDescription": "프로그래밍 과제를 위한 온라인 저지 시스템",
+    "appName": "JudgeKit",
+    "appDescription": "프로그래밍 과제를 위한 코드 채점 플랫폼",
     "comingSoon": "준비 중",
     "underConstruction": "이 페이지는 준비 중입니다.",
     "loading": "로딩 중...",

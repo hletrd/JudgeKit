@@ -153,8 +153,8 @@ jobs:
 
       - name: Verify backup and restore scripts
         run: |
-          npm run backup:db -- "$RUNNER_TEMP/online-judge-backup.db"
-          npm run backup:verify -- "$RUNNER_TEMP/online-judge-backup.db" "$RUNNER_TEMP/online-judge-restore.db"
+          npm run backup:db -- "$RUNNER_TEMP/judgekit-backup.db"
+          npm run backup:verify -- "$RUNNER_TEMP/judgekit-backup.db" "$RUNNER_TEMP/judgekit-restore.db"
 
       - name: Build app for Playwright webServer
         run: npm run build

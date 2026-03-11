@@ -1,8 +1,8 @@
 <p align="center">
-  <img src="src/app/icon.svg" alt="Online Judge" width="96" height="96" />
+  <img src="src/app/icon.svg" alt="JudgeKit" width="96" height="96" />
 </p>
 
-<h1 align="center">Online Judge</h1>
+<h1 align="center">JudgeKit</h1>
 
 <p align="center">
   <img src="https://img.shields.io/badge/Next.js-16-black?logo=next.js" alt="Next.js 16" />
@@ -13,8 +13,8 @@
 </p>
 
 <p align="center">
-  A secure online judge system for student programming assignments.<br/>
-  Automated code evaluation with Docker-sandboxed execution for C, C++, Java, Kotlin, Python, JavaScript, TypeScript, Rust, Go, Swift, C#, R, Perl, and PHP.
+  A secure code evaluation platform for programming assignments.<br/>
+  Automated judging with Docker-sandboxed execution for C, C++, Java, Kotlin, Python, JavaScript, TypeScript, Rust, Go, Swift, C#, R, Perl, and PHP.
 </p>
 
 <p align="center">
@@ -280,7 +280,7 @@ journalctl -u online-judge-worker-rs.service -n 50 --no-pager
 ## Project Structure
 
 ```
-online-judge/
+judgekit/
 ├── docker/              # Judge Docker images & seccomp profile
 ├── judge-worker/        # Legacy TS judge worker (reference)
 ├── judge-worker-rs/     # Rust judge worker (production)
