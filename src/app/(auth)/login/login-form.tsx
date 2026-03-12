@@ -55,7 +55,6 @@ export function LoginForm() {
       }
       router.refresh();
     } catch (error) {
-      console.error("Sign-in failed", error);
       setError(t("invalidCredentials"));
       setLoading(false);
     }

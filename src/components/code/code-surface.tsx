@@ -357,14 +357,17 @@ export function CodeSurface({
     }
 
     isSyncingRef.current = true;
-    view.dispatch({
-      changes: {
-        from: 0,
-        insert: value,
-        to: currentValue.length,
-      },
-    });
-    isSyncingRef.current = false;
+    try {
+      view.dispatch({
+        changes: {
+          from: 0,
+          insert: value,
+          to: currentValue.length,
+        },
+      });
+    } finally {
+      isSyncingRef.current = false;
+    }
   }, [value]);
 
   return (

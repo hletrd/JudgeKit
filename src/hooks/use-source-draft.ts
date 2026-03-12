@@ -342,13 +342,13 @@ export function useSourceDraft({ userId, problemId, languages, initialLanguage }
     window.localStorage.removeItem(storageKey);
   }, [availableLanguages, draftStore, fallbackLanguage, storageKey]);
 
-  const isDirty = (() => {
+  const isDirty = useMemo(() => {
     const currentDrafts = draftState.drafts;
     const currentKeys = Object.keys(currentDrafts);
     const initialKeys = Object.keys(initialDrafts);
     if (currentKeys.length !== initialKeys.length) return true;
     return currentKeys.some((key) => currentDrafts[key] !== initialDrafts[key]);
-  })();
+  }, [draftState.drafts, initialDrafts]);
 
   return {
     language: draftState.selectedLanguage,
