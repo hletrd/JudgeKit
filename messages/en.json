@@ -470,6 +470,7 @@
       "statsMedian": "Median",
       "statsSubmitted": "Submitted",
       "statsPerfect": "Perfect scores",
+      "pointsAbbreviation": "pt",
       "studentSubmissions": "Submissions by {student}",
       "allAttempts": "All attempts",
       "noAttempts": "No submissions yet",
@@ -587,7 +588,8 @@
       "deleteSuccess": "User permanently deleted",
       "deleteFailed": "Failed to delete user",
       "cannotDeleteSuperAdmin": "The super admin account cannot be deleted",
-      "cannotDeleteSelf": "You cannot delete your own account"
+      "cannotDeleteSelf": "You cannot delete your own account",
+      "deleteUserFailed": "Failed to delete user. Please try again."
     },
     "submissions": {
       "title": "All Submissions",
@@ -758,7 +760,9 @@
     "placeholder": "Write feedback for this submission...",
     "submit": "Add Comment",
     "noComments": "No feedback yet.",
-    "by": "by {author}"
+    "by": "by {author}",
+    "loadError": "Failed to load comments",
+    "submitError": "Failed to submit comment"
   },
   "judge": {
     "title": "Judge Environment",
