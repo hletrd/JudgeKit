@@ -16,6 +16,7 @@ import {
   validateRoleChange,
 } from "@/lib/users/core";
 import { isUserRole } from "@/lib/security/constants";
+import { adminUpdateUserSchema, userCreateSchema } from "@/lib/validators/profile";
 import { isTrustedServerActionOrigin } from "@/lib/security/server-actions";
 import { checkServerActionRateLimit } from "@/lib/security/api-rate-limit";
 import { logger } from "@/lib/logger";
@@ -196,8 +197,9 @@ export async function editUser(userId: string, data: ManagedUserInput): Promise<
   const rateLimit = checkServerActionRateLimit(session.user.id, "editUser", 20, 60);
   if (rateLimit) return { success: false, error: "rateLimited" };
 
-  if (!data.username || !data.name) {
-    return { success: false, error: "usernameAndNameRequired" };
+  const editParsed = adminUpdateUserSchema.safeParse(data);
+  if (!editParsed.success) {
+    return { success: false, error: "updateUserFailed" };
   }
 
   try {
@@ -318,8 +320,9 @@ export async function createUser(data: ManagedUserInput): Promise<UserManagement
   const rateLimit = checkServerActionRateLimit(session.user.id, "createUser", 20, 60);
   if (rateLimit) return { success: false, error: "rateLimited" };
 
-  if (!data.username || !data.name) {
-    return { success: false, error: "usernameAndNameRequired" };
+  const createParsed = userCreateSchema.safeParse(data);
+  if (!createParsed.success) {
+    return { success: false, error: "createUserFailed" };
   }
 
   try {
