@@ -137,10 +137,11 @@ export function ScoreOverrideDialog({
             type="button"
             className="inline-flex size-5 items-center justify-center rounded text-muted-foreground hover:text-foreground"
             title={labels.scoreOverride}
+            aria-label={labels.scoreOverride}
           />
         }
       >
-        <Pencil className="size-3" />
+        <Pencil className="size-3" aria-hidden="true" />
       </DialogTrigger>
       <DialogContent className="sm:max-w-md">
         <DialogHeader>

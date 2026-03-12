@@ -22,8 +22,11 @@ export function LocaleSwitcher() {
 
   return (
     <DropdownMenu>
-      <DropdownMenuTrigger className="inline-flex h-9 w-9 items-center justify-center rounded-md text-sm font-medium transition-colors hover:bg-accent hover:text-accent-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring">
-        <Languages className="h-4 w-4" />
+      <DropdownMenuTrigger
+        aria-label={t("language")}
+        className="inline-flex h-9 w-9 items-center justify-center rounded-md text-sm font-medium transition-colors hover:bg-accent hover:text-accent-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
+      >
+        <Languages className="h-4 w-4" aria-hidden="true" />
         <span className="sr-only">{t("language")}</span>
       </DropdownMenuTrigger>
       <DropdownMenuContent align="end">

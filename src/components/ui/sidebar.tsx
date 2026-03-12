@@ -258,6 +258,7 @@ function SidebarTrigger({
       data-slot="sidebar-trigger"
       variant="ghost"
       size="icon-sm"
+      aria-label={tCommon("toggleSidebar")}
       className={cn(className)}
       onClick={(event) => {
         onClick?.(event)
@@ -265,7 +266,7 @@ function SidebarTrigger({
       }}
       {...props}
     >
-      <PanelLeftIcon />
+      <PanelLeftIcon aria-hidden="true" />
       <span className="sr-only">{tCommon("toggleSidebar")}</span>
     </Button>
   )

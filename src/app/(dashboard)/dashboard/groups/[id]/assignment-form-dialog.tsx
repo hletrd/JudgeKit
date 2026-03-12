@@ -360,7 +360,7 @@ export default function AssignmentFormDialog({
                   onClick={addProblemRow}
                   disabled={isLoading || !areProblemsEditable || availableProblems.length === 0}
                 >
-                  <Plus />
+                  <Plus aria-hidden="true" />
                   {t("addProblem")}
                 </Button>
               </div>
@@ -384,7 +384,7 @@ export default function AssignmentFormDialog({
                         onClick={() => removeProblemRow(index)}
                         disabled={isLoading || !areProblemsEditable}
                       >
-                        <Trash2 />
+                        <Trash2 aria-hidden="true" />
                         {t("removeProblem")}
                       </Button>
                     </div>

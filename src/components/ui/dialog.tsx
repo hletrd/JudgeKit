@@ -70,11 +70,11 @@ function DialogContent({
                 variant="ghost"
                 className="absolute top-2 right-2"
                 size="icon-sm"
+                aria-label={tCommon("close")}
               />
             }
           >
-            <XIcon
-            />
+            <XIcon aria-hidden="true" />
             <span className="sr-only">{tCommon("close")}</span>
           </DialogPrimitive.Close>
         )}

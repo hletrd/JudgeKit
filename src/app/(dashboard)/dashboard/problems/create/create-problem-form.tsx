@@ -306,7 +306,7 @@ export default function CreateProblemForm({
               onClick={addTestCase}
               disabled={isLoading || !areTestCasesEditable}
             >
-              <Plus />
+              <Plus aria-hidden="true" />
               {t("addTestCase")}
             </Button>
           </div>
@@ -327,7 +327,7 @@ export default function CreateProblemForm({
                     onClick={() => removeTestCase(index)}
                     disabled={isLoading || !areTestCasesEditable}
                   >
-                    <Trash2 />
+                    <Trash2 aria-hidden="true" />
                     {t("removeTestCase")}
                   </Button>
                 </div>
