@@ -12,13 +12,13 @@ import {
 import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
 import { db } from "@/lib/db";
-import { problems, submissions, users } from "@/lib/db/schema";
-import { desc, eq, and, like } from "drizzle-orm";
+import { enrollments, problemGroupAccess, problems, submissions, users } from "@/lib/db/schema";
+import { desc, eq, and, like, or, sql, inArray } from "drizzle-orm";
 import { auth } from "@/lib/auth";
-import { getAccessibleProblemIds } from "@/lib/auth/permissions";
 import { redirect } from "next/navigation";
 import Link from "next/link";
 import { Button } from "@/components/ui/button";
+import { PaginationControls } from "@/components/pagination-controls";
 
 type ProblemProgress = "solved" | "attempted" | "untried";
 type ProblemFilter = "all" | "solved" | "unsolved" | "attempted";
@@ -79,6 +79,35 @@ function buildPageHref(
   return qs ? `${PAGE_PATH}?${qs}` : PAGE_PATH;
 }
 
+/**
+ * Build the SQL access filter for non-admin users.
+ * Mirrors the pattern from the API route: public OR authored OR group-enrolled.
+ */
+function buildAccessFilter(userId: string) {
+  return or(
+    eq(problems.visibility, "public"),
+    eq(problems.authorId, userId),
+    sql`exists (
+      select 1
+      from ${problemGroupAccess}
+      inner join ${enrollments}
+        on ${problemGroupAccess.groupId} = ${enrollments.groupId}
+      where ${problemGroupAccess.problemId} = ${problems.id}
+        and ${enrollments.userId} = ${userId}
+    )`
+  );
+}
+
+/**
+ * Combine all where-clause fragments, dropping any undefined values.
+ */
+function combineFilters(...filters: (ReturnType<typeof eq> | undefined)[]) {
+  const defined = filters.filter(Boolean) as Exclude<(typeof filters)[number], undefined>[];
+  if (defined.length === 0) return undefined;
+  if (defined.length === 1) return defined[0];
+  return and(...defined);
+}
+
 export default async function ProblemsPage({
   searchParams,
 }: {
@@ -120,80 +149,183 @@ export default async function ProblemsPage({
       ? eq(problems.visibility, currentVisibility)
       : undefined;
 
-  const baseWhereClause =
-    searchFilter && visibilityDbFilter
-      ? and(searchFilter, visibilityDbFilter)
-      : searchFilter ?? visibilityDbFilter;
+  // For non-admins, push access control to the DB using an EXISTS subquery
+  const accessFilter = canManageProblems
+    ? undefined
+    : buildAccessFilter(session.user.id);
 
-  const allProblems = await db
-    .select({
-      id: problems.id,
-      title: problems.title,
-      timeLimitMs: problems.timeLimitMs,
-      memoryLimitMb: problems.memoryLimitMb,
-      visibility: problems.visibility,
-      authorId: problems.authorId,
-      createdAt: problems.createdAt,
-      author: {
-        name: users.name,
-      },
-    })
-    .from(problems)
-    .leftJoin(users, eq(problems.authorId, users.id))
-    .where(baseWhereClause)
-    .orderBy(desc(problems.createdAt));
+  const baseWhereClause = combineFilters(searchFilter, visibilityDbFilter, accessFilter);
 
-  let accessibleProblems: typeof allProblems;
-  if (canManageProblems) {
-    accessibleProblems = allProblems;
+  // ─── Two paths: DB-level pagination when no progress filter, lightweight ID
+  // fetch + in-memory progress filter otherwise. ───
+
+  let filteredProblems: Array<{
+    id: string;
+    title: string;
+    timeLimitMs: number | null;
+    memoryLimitMb: number | null;
+    visibility: string | null;
+    authorId: string | null;
+    createdAt: Date | null;
+    author: { name: string | null } | null;
+    progress: ProblemProgress;
+  }>;
+  let totalCount: number;
+  let clampedPage: number;
+
+  if (currentFilter === "all") {
+    // ── Path A: No progress filter → full DB-level pagination ──
+
+    // Count query
+    const [countRow] = await db
+      .select({ count: sql<number>`count(*)` })
+      .from(problems)
+      .where(baseWhereClause);
+    totalCount = Number(countRow?.count ?? 0);
+
+    const totalPages = Math.max(1, Math.ceil(totalCount / PAGE_SIZE));
+    clampedPage = Math.min(currentPage, totalPages);
+    const offset = (clampedPage - 1) * PAGE_SIZE;
+
+    // Paginated problem rows
+    const pageProblems = await db
+      .select({
+        id: problems.id,
+        title: problems.title,
+        timeLimitMs: problems.timeLimitMs,
+        memoryLimitMb: problems.memoryLimitMb,
+        visibility: problems.visibility,
+        authorId: problems.authorId,
+        createdAt: problems.createdAt,
+        author: {
+          name: users.name,
+        },
+      })
+      .from(problems)
+      .leftJoin(users, eq(problems.authorId, users.id))
+      .where(baseWhereClause)
+      .orderBy(desc(problems.createdAt))
+      .limit(PAGE_SIZE)
+      .offset(offset);
+
+    // Fetch submission statuses only for problems on this page
+    const pageIds = pageProblems.map((p) => p.id);
+    const problemStatuses = new Map<string, Array<string | null>>();
+    if (pageIds.length > 0) {
+      const subRows = await db
+        .select({
+          problemId: submissions.problemId,
+          status: submissions.status,
+        })
+        .from(submissions)
+        .where(
+          and(
+            eq(submissions.userId, session.user.id),
+            inArray(submissions.problemId, pageIds)
+          )
+        );
+      for (const row of subRows) {
+        const arr = problemStatuses.get(row.problemId) ?? [];
+        arr.push(row.status);
+        problemStatuses.set(row.problemId, arr);
+      }
+    }
+
+    filteredProblems = pageProblems.map((p) => ({
+      ...p,
+      progress: getProblemProgress(problemStatuses.get(p.id) ?? []),
+    }));
   } else {
-    const accessibleIds = await getAccessibleProblemIds(
-      session.user.id,
-      session.user.role,
-      allProblems.map((p) => ({
-        id: p.id,
-        visibility: p.visibility ?? "private",
-        authorId: p.authorId,
-      }))
-    );
-    accessibleProblems = allProblems.filter((p) => accessibleIds.has(p.id));
+    // ── Path B: Progress filter active → fetch lightweight IDs, filter in
+    // memory, then load full rows only for the current page ──
+
+    // Step 1: Get all accessible problem IDs matching search/visibility filters
+    const idRows = await db
+      .select({ id: problems.id })
+      .from(problems)
+      .where(baseWhereClause)
+      .orderBy(desc(problems.createdAt));
+    const allIds = idRows.map((r) => r.id);
+
+    // Step 2: Fetch submission statuses for these problems for the current user
+    const problemStatuses = new Map<string, Array<string | null>>();
+    if (allIds.length > 0) {
+      const subRows = await db
+        .select({
+          problemId: submissions.problemId,
+          status: submissions.status,
+        })
+        .from(submissions)
+        .where(
+          and(
+            eq(submissions.userId, session.user.id),
+            inArray(submissions.problemId, allIds)
+          )
+        );
+      for (const row of subRows) {
+        const arr = problemStatuses.get(row.problemId) ?? [];
+        arr.push(row.status);
+        problemStatuses.set(row.problemId, arr);
+      }
+    }
+
+    // Step 3: Compute progress per problem and filter
+    const matchingIds: string[] = [];
+    for (const id of allIds) {
+      const progress = getProblemProgress(problemStatuses.get(id) ?? []);
+      if (currentFilter === "solved" && progress === "solved") matchingIds.push(id);
+      else if (currentFilter === "attempted" && progress === "attempted") matchingIds.push(id);
+      else if (currentFilter === "unsolved" && progress !== "solved") matchingIds.push(id);
+    }
+
+    // Step 4: Paginate the filtered IDs
+    totalCount = matchingIds.length;
+    const totalPages = Math.max(1, Math.ceil(totalCount / PAGE_SIZE));
+    clampedPage = Math.min(currentPage, totalPages);
+    const offset = (clampedPage - 1) * PAGE_SIZE;
+    const pageIds = matchingIds.slice(offset, offset + PAGE_SIZE);
+
+    // Step 5: Fetch full problem rows only for the current page
+    if (pageIds.length > 0) {
+      const pageProblems = await db
+        .select({
+          id: problems.id,
+          title: problems.title,
+          timeLimitMs: problems.timeLimitMs,
+          memoryLimitMb: problems.memoryLimitMb,
+          visibility: problems.visibility,
+          authorId: problems.authorId,
+          createdAt: problems.createdAt,
+          author: {
+            name: users.name,
+          },
+        })
+        .from(problems)
+        .leftJoin(users, eq(problems.authorId, users.id))
+        .where(inArray(problems.id, pageIds));
+
+      // Re-order to match the original sorted order (by pageIds order)
+      const rowMap = new Map(pageProblems.map((p) => [p.id, p]));
+      filteredProblems = pageIds
+        .map((id) => {
+          const p = rowMap.get(id);
+          if (!p) return null;
+          return {
+            ...p,
+            progress: getProblemProgress(problemStatuses.get(id) ?? []),
+          };
+        })
+        .filter((p): p is NonNullable<typeof p> => p !== null);
+    } else {
+      filteredProblems = [];
+    }
   }
 
-  const userSubmissionRows = await db
-    .select({
-      problemId: submissions.problemId,
-      status: submissions.status,
-    })
-    .from(submissions)
-    .where(eq(submissions.userId, session.user.id));
-
-  const problemStatuses = new Map<string, Array<string | null>>();
-  for (const submission of userSubmissionRows) {
-    const currentStatuses = problemStatuses.get(submission.problemId) ?? [];
-    currentStatuses.push(submission.status);
-    problemStatuses.set(submission.problemId, currentStatuses);
-  }
-
-  const problemsWithProgress = accessibleProblems.map((problem) => ({
-    ...problem,
-    progress: getProblemProgress(problemStatuses.get(problem.id) ?? []),
-  }));
-
-  const progressFiltered = problemsWithProgress.filter((problem) => {
-    if (currentFilter === "all") return true;
-    if (currentFilter === "solved") return problem.progress === "solved";
-    if (currentFilter === "attempted") return problem.progress === "attempted";
-    return problem.progress !== "solved";
-  });
-
-  // Pagination (applied after all in-memory filters)
-  const totalCount = progressFiltered.length;
   const totalPages = Math.max(1, Math.ceil(totalCount / PAGE_SIZE));
-  const clampedPage = Math.min(currentPage, totalPages);
   const offset = (clampedPage - 1) * PAGE_SIZE;
-  const filteredProblems = progressFiltered.slice(offset, offset + PAGE_SIZE);
   const rangeStart = totalCount === 0 ? 0 : offset + 1;
   const rangeEnd = offset + filteredProblems.length;
+  const hasNextPage = clampedPage < totalPages;
 
   const progressLabels = {
     solved: t("progress.solved"),
@@ -389,29 +521,16 @@ export default async function ProblemsPage({
       </Card>
 
       {/* Pagination controls */}
-      {totalPages > 1 && (
-        <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-          <p className="text-sm text-muted-foreground">
-            {t("pagination.page", { current: clampedPage, total: totalPages })}
-          </p>
-          <div className="flex items-center gap-2">
-            {clampedPage > 1 ? (
-              <Link href={buildPageHref(clampedPage - 1, currentFilter, currentVisibility, searchQuery)}>
-                <Button variant="outline">{tCommon("previous")}</Button>
-              </Link>
-            ) : (
-              <Button variant="outline" disabled>{tCommon("previous")}</Button>
-            )}
-            {clampedPage < totalPages ? (
-              <Link href={buildPageHref(clampedPage + 1, currentFilter, currentVisibility, searchQuery)}>
-                <Button variant="outline">{tCommon("next")}</Button>
-              </Link>
-            ) : (
-              <Button variant="outline" disabled>{tCommon("next")}</Button>
-            )}
-          </div>
-        </div>
-      )}
+      <PaginationControls
+        currentPage={clampedPage}
+        hasNextPage={hasNextPage}
+        buildHref={(page) => buildPageHref(page, currentFilter, currentVisibility, searchQuery)}
+        rangeText={
+          totalCount > 0
+            ? t("pagination.page", { current: clampedPage, total: totalPages })
+            : undefined
+        }
+      />
     </div>
   );
 }
