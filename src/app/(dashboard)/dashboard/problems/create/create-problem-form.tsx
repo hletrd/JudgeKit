@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { useTranslations } from "next-intl";
 import { Plus, Trash2 } from "lucide-react";
@@ -75,6 +75,9 @@ export default function CreateProblemForm({
     initialProblem?.testCases.length ? initialProblem.testCases : []
   );
   const areTestCasesEditable = !testCasesLocked || testCaseOverrideEnabled;
+
+  const testCaseInputFileRefs = useRef<HTMLInputElement[]>([]);
+  const testCaseOutputFileRefs = useRef<HTMLInputElement[]>([]);
 
   function getErrorMessage(error: unknown) {
     if (!(error instanceof Error)) {
@@ -329,7 +332,7 @@ export default function CreateProblemForm({
                       <div>
                         <input
                           className="sr-only"
-                          id={`test-case-input-file-${index}`}
+                          ref={(el) => { testCaseInputFileRefs.current[index] = el!; }}
                           onChange={(event) => {
                             void handleTestCaseFileChange(index, "input", event);
                           }}
@@ -340,9 +343,7 @@ export default function CreateProblemForm({
                           variant="outline"
                           size="sm"
                           disabled={isLoading || !areTestCasesEditable}
-                          onClick={() =>
-                            document.getElementById(`test-case-input-file-${index}`)?.click()
-                          }
+                          onClick={() => testCaseInputFileRefs.current[index]?.click()}
                         >
                           {t("testCaseUploadInput")}
                         </Button>
@@ -363,7 +364,7 @@ export default function CreateProblemForm({
                       <div>
                         <input
                           className="sr-only"
-                          id={`test-case-output-file-${index}`}
+                          ref={(el) => { testCaseOutputFileRefs.current[index] = el!; }}
                           onChange={(event) => {
                             void handleTestCaseFileChange(index, "expectedOutput", event);
                           }}
@@ -374,9 +375,7 @@ export default function CreateProblemForm({
                           variant="outline"
                           size="sm"
                           disabled={isLoading || !areTestCasesEditable}
-                          onClick={() =>
-                            document.getElementById(`test-case-output-file-${index}`)?.click()
-                          }
+                          onClick={() => testCaseOutputFileRefs.current[index]?.click()}
                         >
                           {t("testCaseUploadOutput")}
                         </Button>
