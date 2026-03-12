@@ -1,3 +1,4 @@
+use crate::types::SecretString;
 use std::env;
 use std::path::PathBuf;
 use std::time::Duration;
@@ -6,7 +7,7 @@ pub struct Config {
     pub claim_url: String,
     pub report_url: String,
     pub poll_interval: Duration,
-    pub auth_token: String,
+    pub auth_token: SecretString,
     pub disable_custom_seccomp: bool,
     pub seccomp_profile_path: PathBuf,
     /// Directory where failed result payloads are written as JSON for manual recovery.
@@ -88,23 +89,24 @@ impl Config {
         };
         let poll_interval = Duration::from_millis(poll_interval_ms);
 
-        let auth_token = env::var("JUDGE_AUTH_TOKEN")
+        let auth_token_raw = env::var("JUDGE_AUTH_TOKEN")
             .map_err(|_| "JUDGE_AUTH_TOKEN environment variable is required".to_string())?;
-        if auth_token == "your-judge-auth-token" {
+        if auth_token_raw == "your-judge-auth-token" {
             return Err(
                 "JUDGE_AUTH_TOKEN must not be the placeholder value 'your-judge-auth-token'"
                     .to_string(),
             );
         }
-        if auth_token.is_empty() {
+        if auth_token_raw.is_empty() {
             return Err("JUDGE_AUTH_TOKEN must not be empty".to_string());
         }
-        if auth_token.len() < 32 {
+        if auth_token_raw.len() < 32 {
             return Err(
                 "JUDGE_AUTH_TOKEN must be at least 32 characters. Generate one with: openssl rand -hex 32"
                     .to_string(),
             );
         }
+        let auth_token = SecretString::new(auth_token_raw);
 
         let disable_custom_seccomp = match env::var("JUDGE_DISABLE_CUSTOM_SECCOMP") {
             Ok(val) => {

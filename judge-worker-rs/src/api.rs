@@ -1,14 +1,14 @@
-use crate::types::{PollResponse, Submission, StatusReport, ResultReport, TestResult};
+use crate::types::{PollResponse, SecretString, Submission, StatusReport, ResultReport, TestResult};
 
 pub struct ApiClient {
     client: reqwest::Client,
     claim_url: String,
     report_url: String,
-    auth_token: String,
+    auth_token: SecretString,
 }
 
 impl ApiClient {
-    pub fn new(claim_url: String, report_url: String, auth_token: String) -> Result<Self, String> {
+    pub fn new(claim_url: String, report_url: String, auth_token: SecretString) -> Result<Self, String> {
         let client = reqwest::Client::builder()
             .connect_timeout(std::time::Duration::from_secs(10))
             .timeout(std::time::Duration::from_secs(30))
@@ -28,7 +28,7 @@ impl ApiClient {
     pub async fn poll(&self) -> Result<Option<Submission>, String> {
         let response = self.client
             .post(&self.claim_url)
-            .header("Authorization", format!("Bearer {}", self.auth_token))
+            .header("Authorization", format!("Bearer {}", self.auth_token.expose()))
             .header("Content-Type", "application/json")
             .body("{}")
             .send()
@@ -57,7 +57,7 @@ impl ApiClient {
 
         let response = self.client
             .post(&self.report_url)
-            .header("Authorization", format!("Bearer {}", self.auth_token))
+            .header("Authorization", format!("Bearer {}", self.auth_token.expose()))
             .json(&body)
             .send()
             .await
@@ -90,7 +90,7 @@ impl ApiClient {
 
         let response = self.client
             .post(&self.report_url)
-            .header("Authorization", format!("Bearer {}", self.auth_token))
+            .header("Authorization", format!("Bearer {}", self.auth_token.expose()))
             .json(&body)
             .send()
             .await
