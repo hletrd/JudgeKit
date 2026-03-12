@@ -8,8 +8,7 @@ import { nanoid } from "nanoid";
 import { hash } from "bcryptjs";
 import { generateSecurePassword } from "@/lib/auth/generated-password";
 import { safeUserSelect } from "@/lib/db/selects";
-import { isUserRole } from "@/lib/security/constants";
-import type { UserRole } from "@/types";
+import { assertUserRole, isUserRole } from "@/lib/security/constants";
 import { userCreateSchema } from "@/lib/validators/profile";
 import { checkApiRateLimit, recordApiRateHit } from "@/lib/security/api-rate-limit";
 import { parsePagination } from "@/lib/api/pagination";
@@ -34,7 +33,7 @@ export async function GET(request: NextRequest) {
       return NextResponse.json({ error: "invalidRole" }, { status: 400 });
     }
 
-    const whereClause = role ? eq(users.role, role as UserRole) : undefined;
+    const whereClause = role ? eq(users.role, assertUserRole(role)) : undefined;
 
     const [totalRow] = await db
       .select({ count: sql<number>`count(*)` })
@@ -118,7 +117,7 @@ export async function POST(request: NextRequest) {
       name,
       className: normalizedClassName,
       passwordHash,
-      role: requestedRole as UserRole,
+      role: assertUserRole(requestedRole),
       isActive: true,
       mustChangePassword: true,
       createdAt: new Date(),

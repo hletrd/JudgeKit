@@ -4,6 +4,7 @@ import { db } from "@/lib/db";
 import { enrollments, groups, problemGroupAccess, problems } from "@/lib/db/schema";
 import { eq, and, inArray } from "drizzle-orm";
 import type { UserRole } from "@/types";
+import { isUserRole } from "@/lib/security/constants";
 
 export async function canAccessGroup(
   groupId: string,
@@ -50,7 +51,7 @@ export async function assertAuth() {
 
 export async function assertRole(...roles: UserRole[]) {
   const session = await assertAuth();
-  if (!roles.includes(session.user.role as UserRole)) {
+  if (!isUserRole(session.user.role) || !roles.includes(session.user.role)) {
     throw new Error("Forbidden");
   }
   return session;
@@ -58,7 +59,10 @@ export async function assertRole(...roles: UserRole[]) {
 
 export async function assertGroupAccess(groupId: string) {
   const session = await assertAuth();
-  const role = session.user.role as UserRole;
+  if (!isUserRole(session.user.role)) {
+    throw new Error("Forbidden");
+  }
+  const role = session.user.role;
 
   if (!(await canAccessGroup(groupId, session.user.id, role))) {
     throw new Error("Forbidden");

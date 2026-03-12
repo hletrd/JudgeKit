@@ -8,7 +8,7 @@ import { canManageGroupResources } from "@/lib/assignments/management";
 import { groupMembershipSchema } from "@/lib/validators/groups";
 import { getApiUser, forbidden, notFound, unauthorized, csrfForbidden } from "@/lib/api/auth";
 import { canAccessGroup } from "@/lib/auth/permissions";
-import type { UserRole } from "@/types";
+import { assertUserRole } from "@/lib/security/constants";
 import { checkApiRateLimit, recordApiRateHit } from "@/lib/security/api-rate-limit";
 
 export async function GET(
@@ -20,7 +20,7 @@ export async function GET(
     if (!user) return unauthorized();
 
     const { id } = await params;
-    const hasAccess = await canAccessGroup(id, user.id, user.role as UserRole);
+    const hasAccess = await canAccessGroup(id, user.id, assertUserRole(user.role as string));
     if (!hasAccess) return forbidden();
 
     const members = await db.query.enrollments.findMany({
@@ -71,7 +71,7 @@ export async function POST(
     const canManage = canManageGroupResources(
       group.instructorId,
       user.id,
-      user.role as UserRole
+      assertUserRole(user.role as string)
     );
 
     if (!canManage) return forbidden();

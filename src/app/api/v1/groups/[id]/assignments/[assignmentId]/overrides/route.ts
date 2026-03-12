@@ -6,7 +6,7 @@ import { assignments, scoreOverrides } from "@/lib/db/schema";
 import { recordAuditEvent } from "@/lib/audit/events";
 import { canManageGroupResources } from "@/lib/assignments/management";
 import { getApiUser, forbidden, notFound, unauthorized, csrfForbidden } from "@/lib/api/auth";
-import type { UserRole } from "@/types";
+import { assertUserRole } from "@/lib/security/constants";
 import { checkApiRateLimit, recordApiRateHit } from "@/lib/security/api-rate-limit";
 
 const scoreOverrideBodySchema = z.object({
@@ -43,7 +43,7 @@ async function resolveAssignmentAndAuthorize(
   const canManage = canManageGroupResources(
     group.instructorId,
     user.id,
-    user.role as UserRole
+    assertUserRole(user.role as string)
   );
 
   if (!canManage) return { error: forbidden() };

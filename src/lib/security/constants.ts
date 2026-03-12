@@ -40,7 +40,16 @@ export function isUserRole(value: string): value is UserRole {
 }
 
 export function canManageRole(actorRole: UserRole, requestedRole: UserRole) {
-  return requestedRole !== "super_admin" || actorRole === "super_admin";
+  if (requestedRole === "super_admin") return actorRole === "super_admin";
+  if (requestedRole === "admin") return actorRole === "super_admin";
+  return actorRole === "admin" || actorRole === "super_admin";
+}
+
+export function assertUserRole(role: string): UserRole {
+  if (!isUserRole(role)) {
+    throw new Error(`Invalid user role: ${role}`);
+  }
+  return role;
 }
 
 export function isSubmissionStatus(value: string): value is SubmissionStatus {

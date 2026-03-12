@@ -14,6 +14,7 @@ import { getApiUser, forbidden, notFound, unauthorized, csrfForbidden, isAdmin }
 import { canAccessGroup } from "@/lib/auth/permissions";
 import type { UserRole } from "@/types";
 import { checkApiRateLimit, recordApiRateHit } from "@/lib/security/api-rate-limit";
+import { assertUserRole, isUserRole } from "@/lib/security/constants";
 
 export async function GET(
   request: NextRequest,
@@ -24,7 +25,8 @@ export async function GET(
     if (!user) return unauthorized();
 
     const { id, assignmentId } = await params;
-    const hasAccess = await canAccessGroup(id, user.id, user.role as UserRole);
+    if (!isUserRole(user.role)) return forbidden();
+    const hasAccess = await canAccessGroup(id, user.id, user.role);
     if (!hasAccess) return forbidden();
 
     const assignment = await db.query.assignments.findFirst({
@@ -77,7 +79,7 @@ export async function PATCH(
     const canManage = canManageGroupResources(
       group.instructorId,
       user.id,
-      user.role as UserRole
+      assertUserRole(user.role as string)
     );
 
     if (!canManage) return forbidden();
@@ -158,7 +160,7 @@ export async function PATCH(
     if (body.problems !== undefined) {
       const manageableProblemIds = new Set(
         (
-          await getManageableProblemsForGroup(id, user.id, user.role as UserRole)
+          await getManageableProblemsForGroup(id, user.id, assertUserRole(user.role as string))
         ).map((problem) => problem.id)
       );
 
@@ -237,7 +239,7 @@ export async function DELETE(
     const canManage = canManageGroupResources(
       group.instructorId,
       user.id,
-      user.role as UserRole
+      assertUserRole(user.role as string)
     );
 
     if (!canManage) return forbidden();

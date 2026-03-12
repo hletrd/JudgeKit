@@ -5,7 +5,7 @@ import { db } from "@/lib/db";
 import { assignments, enrollments, submissions } from "@/lib/db/schema";
 import { canManageGroupResources } from "@/lib/assignments/management";
 import { getApiUser, forbidden, notFound, unauthorized, csrfForbidden } from "@/lib/api/auth";
-import type { UserRole } from "@/types";
+import { assertUserRole } from "@/lib/security/constants";
 import { checkApiRateLimit, recordApiRateHit } from "@/lib/security/api-rate-limit";
 
 export async function DELETE(
@@ -34,7 +34,7 @@ export async function DELETE(
     const canManage = canManageGroupResources(
       group.instructorId,
       user.id,
-      user.role as UserRole
+      assertUserRole(user.role as string)
     );
 
     if (!canManage) return forbidden();

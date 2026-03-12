@@ -10,6 +10,7 @@ import {
   isInstructor,
 } from "@/lib/api/auth";
 import { checkApiRateLimit, recordApiRateHit } from "@/lib/security/api-rate-limit";
+import { isUserRole } from "@/lib/security/constants";
 
 /** Shape returned by getApiUser */
 export type AuthUser = NonNullable<Awaited<ReturnType<typeof getApiUser>>>;
@@ -118,8 +119,7 @@ export function createApiHandler<T = unknown>(config: HandlerConfig<T>) {
 
         // Role check
         if (typeof auth === "object" && auth.roles && auth.roles.length > 0) {
-          const hasRole = auth.roles.includes(user.role as UserRole);
-          if (!hasRole) return forbidden();
+          if (!isUserRole(user.role) || !auth.roles.includes(user.role)) return forbidden();
         }
       }
 

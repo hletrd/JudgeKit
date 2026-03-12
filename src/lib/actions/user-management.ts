@@ -15,6 +15,7 @@ import {
   validateAndHashPassword,
   validateRoleChange,
 } from "@/lib/users/core";
+import { isUserRole } from "@/lib/security/constants";
 import { isTrustedServerActionOrigin } from "@/lib/security/server-actions";
 
 type UserUpdates = Partial<typeof users.$inferInsert>;
@@ -37,7 +38,8 @@ type UserManagementErrorKey =
   | "createUserFailed"
   | "cannotDeleteSelf"
   | "cannotDeleteSuperAdmin"
-  | "deleteUserFailed";
+  | "deleteUserFailed"
+  | "confirmUsernameMismatch";
 
 type UserManagementResult =
   | { success: true; generatedPassword?: string }
@@ -138,7 +140,7 @@ export async function deleteUserPermanently(userId: string, confirmUsername: str
   if (!targetUser) return { success: false, error: "userNotFound" };
 
   if (targetUser.username !== confirmUsername) {
-    return { success: false, error: "userNotFound" };
+    return { success: false, error: "confirmUsernameMismatch" };
   }
 
   if (targetUser.role === "super_admin") {
@@ -186,7 +188,10 @@ export async function editUser(userId: string, data: ManagedUserInput): Promise<
   }
 
   try {
-    const actorRole = session.user.role as UserRole;
+    if (!isUserRole(session.user.role)) {
+      return { success: false, error: "unauthorized" };
+    }
+    const actorRole = session.user.role;
     const normalizedEmail = data.email?.trim() || null;
     const normalizedClassName = data.className?.trim() || null;
     const requestedRole = data.role.trim();
@@ -201,7 +206,8 @@ export async function editUser(userId: string, data: ManagedUserInput): Promise<
     const roleError = validateRoleChange(actorRole, requestedRole, targetUser.role);
     if (roleError === "invalidRole") return { success: false, error: "updateUserFailed" };
     if (roleError) return { success: false, error: roleError };
-    const validatedRole = requestedRole as UserRole;
+    if (!isUserRole(requestedRole)) return { success: false, error: "updateUserFailed" };
+    const validatedRole = requestedRole;
 
     if (await isUsernameTaken(data.username, userId)) {
       return { success: false, error: "usernameInUse" };
@@ -283,7 +289,10 @@ export async function createUser(data: ManagedUserInput): Promise<UserManagement
   }
 
   try {
-    const actorRole = session.user.role as UserRole;
+    if (!isUserRole(session.user.role)) {
+      return { success: false, error: "unauthorized" };
+    }
+    const actorRole = session.user.role;
     const normalizedEmail = data.email?.trim() || null;
     const normalizedClassName = data.className?.trim() || null;
     const requestedRole = data.role.trim();
@@ -291,7 +300,8 @@ export async function createUser(data: ManagedUserInput): Promise<UserManagement
     const roleError = validateRoleChange(actorRole, requestedRole);
     if (roleError === "invalidRole") return { success: false, error: "createUserFailed" };
     if (roleError) return { success: false, error: roleError };
-    const validatedRole = requestedRole as UserRole;
+    if (!isUserRole(requestedRole)) return { success: false, error: "createUserFailed" };
+    const validatedRole = requestedRole;
 
     if (await isUsernameTaken(data.username)) {
       return { success: false, error: "usernameInUse" };

@@ -11,7 +11,7 @@ import {
 import { assignmentMutationSchema } from "@/lib/validators/assignments";
 import { getApiUser, forbidden, notFound, unauthorized, csrfForbidden } from "@/lib/api/auth";
 import { canAccessGroup } from "@/lib/auth/permissions";
-import type { UserRole } from "@/types";
+import { assertUserRole } from "@/lib/security/constants";
 import { checkApiRateLimit, recordApiRateHit } from "@/lib/security/api-rate-limit";
 
 export async function GET(
@@ -30,7 +30,7 @@ export async function GET(
 
     if (!group) return notFound("Group");
 
-    const hasAccess = await canAccessGroup(id, user.id, user.role as UserRole);
+    const hasAccess = await canAccessGroup(id, user.id, assertUserRole(user.role as string));
     if (!hasAccess) return forbidden();
 
     const groupAssignments = await db.query.assignments.findMany({
@@ -80,7 +80,7 @@ export async function POST(
     const canManage = canManageGroupResources(
       group.instructorId,
       user.id,
-      user.role as UserRole
+      assertUserRole(user.role as string)
     );
 
     if (!canManage) return forbidden();
@@ -105,7 +105,7 @@ export async function POST(
 
     const manageableProblemIds = new Set(
       (
-        await getManageableProblemsForGroup(id, user.id, user.role as UserRole)
+        await getManageableProblemsForGroup(id, user.id, assertUserRole(user.role as string))
       ).map((problem) => problem.id)
     );
 
