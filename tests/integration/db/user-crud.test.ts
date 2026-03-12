@@ -116,8 +116,8 @@ describe("User CRUD (integration)", () => {
       });
 
       expect(result).toBeDefined();
-      expect(result!.enrollments).toHaveLength(1);
-      expect(result!.enrollments[0].groupId).toBe(group.id);
+      expect((result as any).enrollments).toHaveLength(1);
+      expect((result as any).enrollments[0].groupId).toBe(group.id);
     });
   });
 
