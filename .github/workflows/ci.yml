@@ -17,9 +17,9 @@ permissions:
   contents: read
 
 env:
-  AUTH_SECRET: ci-auth-secret-32-characters-minimum
-  AUTH_URL: http://localhost:3110
-  JUDGE_AUTH_TOKEN: ci-judge-auth-token-32-characters-minimum
+  AUTH_SECRET: ${{ secrets.AUTH_SECRET || 'ci-auth-secret-32-characters-minimum' }}
+  AUTH_URL: ${{ secrets.AUTH_URL || 'http://localhost:3110' }}
+  JUDGE_AUTH_TOKEN: ${{ secrets.JUDGE_AUTH_TOKEN || 'ci-judge-auth-token-32-characters-minimum' }}
 
 jobs:
   quality:
@@ -107,6 +107,69 @@ jobs:
 
           kotlin_output="$(docker run --rm -v "$workspace:/workspace" -w /workspace judge-jvm sh -lc "kotlinc /workspace/solution.kt -include-runtime -d /workspace/solution.jar && printf '1 2\n' | java -jar /workspace/solution.jar")"
           [ "$kotlin_output" = "3" ]
+
+  docker-validate:
+    name: Docker image validation
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v6
+
+      - name: Validate docker-compose.yml syntax
+        run: docker compose config --quiet
+
+      - name: Check Dockerfile syntax (judge-cpp)
+        run: docker build --check -f docker/Dockerfile.judge-cpp .
+
+      - name: Check Dockerfile syntax (judge-python)
+        run: docker build --check -f docker/Dockerfile.judge-python .
+
+      - name: Check Dockerfile syntax (judge-node)
+        run: docker build --check -f docker/Dockerfile.judge-node .
+
+      - name: Check Dockerfile syntax (judge-jvm)
+        run: docker build --check -f docker/Dockerfile.judge-jvm .
+
+      - name: Check Dockerfile syntax (judge-rust)
+        run: docker build --check -f docker/Dockerfile.judge-rust .
+
+      - name: Check Dockerfile syntax (judge-go)
+        run: docker build --check -f docker/Dockerfile.judge-go .
+
+      - name: Check Dockerfile syntax (judge-swift)
+        run: docker build --check -f docker/Dockerfile.judge-swift .
+
+      - name: Check Dockerfile syntax (judge-csharp)
+        run: docker build --check -f docker/Dockerfile.judge-csharp .
+
+      - name: Check Dockerfile syntax (judge-r)
+        run: docker build --check -f docker/Dockerfile.judge-r .
+
+      - name: Check Dockerfile syntax (judge-perl)
+        run: docker build --check -f docker/Dockerfile.judge-perl .
+
+      - name: Check Dockerfile syntax (judge-php)
+        run: docker build --check -f docker/Dockerfile.judge-php .
+
+  scripts:
+    name: Script validation
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v6
+
+      - name: Syntax check backup-db.sh
+        run: bash -n scripts/backup-db.sh
+
+      - name: Syntax check verify-db-backup.sh
+        run: bash -n scripts/verify-db-backup.sh
+
+      - name: Smoke test backup script
+        run: bash scripts/test-backup.sh
 
   e2e:
     name: End-to-end tests
