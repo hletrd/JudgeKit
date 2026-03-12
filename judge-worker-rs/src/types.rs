@@ -24,7 +24,6 @@ pub enum Language {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
-#[serde(deny_unknown_fields)]
 pub struct TestCase {
     pub id: String,
     pub input: String,
@@ -33,7 +32,6 @@ pub struct TestCase {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
-#[serde(deny_unknown_fields)]
 pub struct Submission {
     pub id: String,
     #[serde(rename = "claimToken")]
@@ -50,7 +48,6 @@ pub struct Submission {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
-#[serde(deny_unknown_fields)]
 pub struct PollResponse {
     pub data: Option<Submission>,
 }
