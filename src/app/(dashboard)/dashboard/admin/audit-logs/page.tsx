@@ -87,7 +87,7 @@ function buildGroupMemberScopeFilter(groupIds: string[]) {
   return or(
     ...groupIds.map(
       (groupId) =>
-        sql`coalesce(${auditEvents.details}, '') like ${`%"groupId":"${groupId}"%`}`
+        sql`json_extract(${auditEvents.details}, '$.groupId') = ${groupId}`
     )
   );
 }
