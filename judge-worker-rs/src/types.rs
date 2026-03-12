@@ -1,5 +1,29 @@
 use serde::{Deserialize, Serialize};
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "snake_case")]
+pub enum Verdict {
+    Accepted,
+    WrongAnswer,
+    TimeLimit,
+    MemoryLimit,
+    RuntimeError,
+    CompileError,
+}
+
+impl Verdict {
+    pub fn as_str(&self) -> &'static str {
+        match self {
+            Verdict::Accepted => "accepted",
+            Verdict::WrongAnswer => "wrong_answer",
+            Verdict::TimeLimit => "time_limit",
+            Verdict::MemoryLimit => "memory_limit",
+            Verdict::RuntimeError => "runtime_error",
+            Verdict::CompileError => "compile_error",
+        }
+    }
+}
+
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum Language {

@@ -3,7 +3,7 @@ use crate::comparator::compare_output;
 use crate::config::Config;
 use crate::docker::{self, DockerRunOptions, Phase};
 use crate::languages;
-use crate::types::{Submission, TestResult};
+use crate::types::{Submission, TestResult, Verdict};
 use serde::Serialize;
 use tokio::fs;
 use tracing::Instrument;
@@ -24,7 +24,7 @@ async fn execute_inner(client: &ApiClient, config: &Config, submission: Submissi
     let lang_config = match languages::get_config(&submission.language) {
         Some(lc) => lc,
         None => {
-            report_error(client, config, &submission, "compile_error", "Unsupported language").await;
+            report_error(client, config, &submission, Verdict::CompileError.as_str(), "Unsupported language").await;
             return;
         }
     };
@@ -63,7 +63,7 @@ async fn execute_inner(client: &ApiClient, config: &Config, submission: Submissi
 
     // Validate source code size before writing to disk
     if submission.source_code.len() > MAX_SOURCE_CODE_BYTES {
-        report_error(client, config, &submission, "compile_error", "Source code exceeds maximum size limit").await;
+        report_error(client, config, &submission, Verdict::CompileError.as_str(), "Source code exceeds maximum size limit").await;
         return;
     }
 
@@ -144,7 +144,7 @@ async fn execute_inner(client: &ApiClient, config: &Config, submission: Submissi
                 client,
                 config,
                 &submission,
-                "compile_error",
+                Verdict::CompileError.as_str(),
                 "Compilation timed out",
                 vec![],
             )
@@ -158,7 +158,7 @@ async fn execute_inner(client: &ApiClient, config: &Config, submission: Submissi
             } else {
                 &compile_output
             };
-            report_result(client, config, &submission, "compile_error", output, vec![]).await;
+            report_result(client, config, &submission, Verdict::CompileError.as_str(), output, vec![]).await;
             return;
         }
     }
@@ -214,16 +214,16 @@ async fn execute_inner(client: &ApiClient, config: &Config, submission: Submissi
         let actual_output = String::from_utf8_lossy(&execution.stdout).into_owned();
 
         // Determine test case status
-        let status = if execution.timed_out {
-            "time_limit"
+        let verdict = if execution.timed_out {
+            Verdict::TimeLimit
         } else if execution.oom_killed || execution.exit_code == Some(137) {
-            "memory_limit"
+            Verdict::MemoryLimit
         } else if execution.exit_code.unwrap_or(1) != 0 {
-            "runtime_error"
+            Verdict::RuntimeError
         } else if !is_correct {
-            "wrong_answer"
+            Verdict::WrongAnswer
         } else {
-            "accepted"
+            Verdict::Accepted
         };
 
         let memory_used_kb = if execution.oom_killed {
@@ -234,13 +234,13 @@ async fn execute_inner(client: &ApiClient, config: &Config, submission: Submissi
 
         results.push(TestResult {
             test_case_id: test_case.id.clone(),
-            status: status.to_string(),
+            status: verdict.as_str().to_string(),
             actual_output,
             execution_time_ms: execution.duration_ms,
             memory_used_kb: memory_used_kb.into(),
         });
 
-        if status != "accepted" {
+        if verdict != Verdict::Accepted {
             break;
         }
     }
@@ -248,9 +248,9 @@ async fn execute_inner(client: &ApiClient, config: &Config, submission: Submissi
     // Determine final status
     let final_status = results
         .iter()
-        .find(|r| r.status != "accepted")
+        .find(|r| r.status != Verdict::Accepted.as_str())
         .map(|r| r.status.clone())
-        .unwrap_or_else(|| "accepted".to_string());
+        .unwrap_or_else(|| Verdict::Accepted.as_str().to_string());
 
     report_result(
         client,
@@ -323,7 +323,44 @@ async fn report_with_retry(
     // All retries exhausted — persist to dead-letter directory so the result
     // can be replayed manually and the submission does not remain stuck in
     // `judging` status indefinitely.
-    let failed_at = chrono::Utc::now().format("%Y%m%dT%H%M%SZ").to_string();
+    let failed_at = {
+        let now = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap_or_default()
+            .as_secs();
+        let secs_per_min = 60u64;
+        let secs_per_hour = 3600u64;
+        let secs_per_day = 86400u64;
+        // Days since Unix epoch (1970-01-01)
+        let mut days = now / secs_per_day;
+        let time_of_day = now % secs_per_day;
+        let hh = time_of_day / secs_per_hour;
+        let mm = (time_of_day % secs_per_hour) / secs_per_min;
+        let ss = time_of_day % secs_per_min;
+        // Compute year/month/day using the Gregorian proleptic calendar
+        let mut year = 1970u64;
+        loop {
+            let leap = (year % 4 == 0 && year % 100 != 0) || year % 400 == 0;
+            let days_in_year = if leap { 366 } else { 365 };
+            if days < days_in_year {
+                break;
+            }
+            days -= days_in_year;
+            year += 1;
+        }
+        let leap = (year % 4 == 0 && year % 100 != 0) || year % 400 == 0;
+        let days_in_month = [31u64, if leap { 29 } else { 28 }, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31];
+        let mut month = 1u64;
+        for &dim in &days_in_month {
+            if days < dim {
+                break;
+            }
+            days -= dim;
+            month += 1;
+        }
+        let day = days + 1;
+        format!("{:04}{:02}{:02}T{:02}{:02}{:02}Z", year, month, day, hh, mm, ss)
+    };
     let entry = DeadLetterEntry {
         submission_id,
         claim_token,
