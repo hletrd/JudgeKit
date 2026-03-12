@@ -5,12 +5,14 @@ import * as relations from "./relations";
 import path from "path";
 import fs from "fs";
 
-const dataDir = path.join(process.cwd(), "data");
+const dbPath = process.env.DATABASE_PATH
+  ? path.resolve(process.env.DATABASE_PATH)
+  : path.join(process.cwd(), "data", "judge.db");
+
+const dataDir = path.dirname(dbPath);
 if (!fs.existsSync(dataDir)) {
   fs.mkdirSync(dataDir, { recursive: true, mode: 0o700 });
 }
-
-const dbPath = path.join(dataDir, "judge.db");
 const sqlite = new Database(dbPath);
 sqlite.pragma("busy_timeout = 5000");
 sqlite.pragma("journal_mode = WAL");
