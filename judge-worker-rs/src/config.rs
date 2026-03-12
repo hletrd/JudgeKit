@@ -52,6 +52,12 @@ impl Config {
         if auth_token.is_empty() {
             return Err("JUDGE_AUTH_TOKEN must not be empty".to_string());
         }
+        if auth_token.len() < 32 {
+            return Err(
+                "JUDGE_AUTH_TOKEN must be at least 32 characters. Generate one with: openssl rand -hex 32"
+                    .to_string(),
+            );
+        }
 
         let disable_custom_seccomp = match env::var("JUDGE_DISABLE_CUSTOM_SECCOMP") {
             Ok(val) => {
