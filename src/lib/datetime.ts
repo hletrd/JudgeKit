@@ -52,6 +52,11 @@ export function formatDateInTimeZone(
   });
 }
 
+/**
+ * @deprecated Use `formatDateTimeInTimeZone` instead, which accepts an explicit
+ * `timeZone` parameter and is more flexible. This wrapper hard-codes KST
+ * (Asia/Seoul) and will be removed in a future cleanup.
+ */
 export function formatDateTimeInKst(
   value: number | string | Date,
   locale: string | string[] = DEFAULT_LOCALE
