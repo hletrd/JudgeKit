@@ -201,6 +201,10 @@ export async function editUser(userId: string, data: ManagedUserInput): Promise<
     return { success: false, error: "updateUserFailed" };
   }
 
+  if (!data.username?.trim()) {
+    return { success: false, error: "usernameAndNameRequired" };
+  }
+
   try {
     if (!isUserRole(session.user.role)) {
       return { success: false, error: "unauthorized" };
