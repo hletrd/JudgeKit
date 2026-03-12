@@ -13,6 +13,7 @@ const COMPILATION_TIMEOUT_MS: u64 = 20_000;
 const MIN_TIMEOUT_MS: u64 = 100;
 const MAX_TIME_LIMIT_MS: u64 = 30_000;
 const MAX_MEMORY_LIMIT_MB: u32 = 1024;
+const MAX_SOURCE_CODE_BYTES: usize = 256 * 1024; // 256 KB
 
 pub async fn execute(client: &ApiClient, config: &Config, submission: Submission) {
     let span = tracing::info_span!("judge_submission", submission_id = %submission.id);
@@ -57,6 +58,12 @@ async fn execute_inner(client: &ApiClient, config: &Config, submission: Submissi
     {
         tracing::error!("Failed to set temp dir permissions: {e}");
         report_error(client, config, &submission, "runtime_error", &e.to_string()).await;
+        return;
+    }
+
+    // Validate source code size before writing to disk
+    if submission.source_code.len() > MAX_SOURCE_CODE_BYTES {
+        report_error(client, config, &submission, "compile_error", "Source code exceeds maximum size limit").await;
         return;
     }
 
@@ -154,6 +161,12 @@ async fn execute_inner(client: &ApiClient, config: &Config, submission: Submissi
             report_result(client, config, &submission, "compile_error", output, vec![]).await;
             return;
         }
+    }
+
+    // Reject submissions with no test cases rather than silently returning "accepted"
+    if submission.test_cases.is_empty() {
+        report_error(client, config, &submission, "runtime_error", "No test cases defined for this problem").await;
+        return;
     }
 
     // Run phase: execute each test case sequentially
