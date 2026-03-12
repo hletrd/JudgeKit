@@ -76,28 +76,32 @@ export async function canAccessProblem(
   userId: string,
   role: UserRole
 ): Promise<boolean> {
-  const problem = await db.query.problems.findFirst({
-    where: eq(problems.id, problemId),
-  });
+  const problem = await db
+    .select({ visibility: problems.visibility, authorId: problems.authorId })
+    .from(problems)
+    .where(eq(problems.id, problemId))
+    .limit(1)
+    .then((rows) => rows[0] ?? null);
+
   if (!problem) return false;
   if (problem.visibility === "public") return true;
   if (role === "super_admin" || role === "admin") return true;
   if (problem.authorId === userId) return true;
 
-  const userEnrollments = await db
-    .select()
-    .from(enrollments)
-    .where(eq(enrollments.userId, userId));
-  const groupIds = userEnrollments.map((e) => e.groupId);
-
-  if (groupIds.length === 0) return false;
-
-  const accessRows = await db
+  const accessRow = await db
     .select({ groupId: problemGroupAccess.groupId })
     .from(problemGroupAccess)
-    .where(eq(problemGroupAccess.problemId, problemId));
+    .innerJoin(enrollments, eq(enrollments.groupId, problemGroupAccess.groupId))
+    .where(
+      and(
+        eq(problemGroupAccess.problemId, problemId),
+        eq(enrollments.userId, userId)
+      )
+    )
+    .limit(1)
+    .then((rows) => rows[0] ?? null);
 
-  return accessRows.some((row) => groupIds.includes(row.groupId));
+  return accessRow !== null;
 }
 
 export async function getAccessibleProblemIds(
