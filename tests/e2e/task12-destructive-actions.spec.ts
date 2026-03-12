@@ -16,7 +16,7 @@ import { captureEvidence } from "./support/evidence";
 import { expect, test } from "./fixtures";
 import { getPlaywrightBaseUrl, RUNTIME_ADMIN_USERNAME } from "./support/runtime-admin";
 
-const RUNTIME_STUDENT_PASSWORD = "StudentPass234";
+const RUNTIME_STUDENT_PASSWORD = process.env.E2E_STUDENT_PASSWORD ?? "StudentPass234";
 
 async function loginWithCredentials(page: Page, username: string, password: string) {
   await page.goto("/login", { waitUntil: "networkidle" });

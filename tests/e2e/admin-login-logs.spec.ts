@@ -11,7 +11,7 @@ import { RUNTIME_ADMIN_USERNAME } from "./support/runtime-admin";
 const PAGE_SIZE = 50;
 const LOGIN_LOGS_PATH = "/dashboard/admin/login-logs";
 const RUNTIME_INSTRUCTOR_USERNAME = "pwloginlogs_instructor";
-const RUNTIME_INSTRUCTOR_PASSWORD = "InstructorPass234";
+const RUNTIME_INSTRUCTOR_PASSWORD = process.env.E2E_INSTRUCTOR_PASSWORD ?? "InstructorPass234";
 const RUNTIME_INSTRUCTOR_EMAIL = "pwloginlogs_instructor@example.com";
 const RUNTIME_INSTRUCTOR_NAME = "Playwright Login Logs Instructor";
 

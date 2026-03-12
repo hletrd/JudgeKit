@@ -16,7 +16,7 @@ import { captureEvidence } from "./support/evidence";
 import { expect, test } from "./fixtures";
 import { getPlaywrightBaseUrl, RUNTIME_ADMIN_USERNAME } from "./support/runtime-admin";
 
-const RUNTIME_STUDENT_PASSWORD = "GroupStudentPass234";
+const RUNTIME_STUDENT_PASSWORD = process.env.E2E_GROUP_STUDENT_PASSWORD ?? "GroupStudentPass234";
 const PLAYWRIGHT_JUDGE_AUTH_TOKEN = process.env.JUDGE_AUTH_TOKEN ?? "playwright-local-token-for-smoke";
 
 async function loginWithCredentials(page: Page, username: string, password: string) {
