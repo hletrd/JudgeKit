@@ -3,6 +3,7 @@ import { getTranslations } from "next-intl/server";
 import { Skeleton } from "@/components/ui/skeleton";
 import { redirect } from "next/navigation";
 import { auth } from "@/lib/auth";
+import { canManageUsers, isInstructorOrAbove } from "@/lib/auth/role-helpers";
 import { StudentDashboard } from "./_components/student-dashboard";
 import { InstructorDashboard } from "./_components/instructor-dashboard";
 import { AdminDashboard } from "./_components/admin-dashboard";
@@ -13,8 +14,7 @@ export default async function DashboardPage() {
 
   const t = await getTranslations("dashboard");
 
-  const isAdminView =
-    session.user.role === "admin" || session.user.role === "super_admin";
+  const isAdminView = canManageUsers(session.user.role);
   const isInstructorView = session.user.role === "instructor";
 
   return (

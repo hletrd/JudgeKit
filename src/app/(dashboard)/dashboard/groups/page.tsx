@@ -1,3 +1,4 @@
+import type { Metadata } from "next";
 import { getTranslations } from "next-intl/server";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import {
@@ -12,11 +13,17 @@ import { db } from "@/lib/db";
 import { groups, enrollments, users } from "@/lib/db/schema";
 import { eq } from "drizzle-orm";
 import { auth } from "@/lib/auth";
+import { canManageUsers, isInstructorOrAbove } from "@/lib/auth/role-helpers";
 import { redirect } from "next/navigation";
 import Link from "next/link";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import CreateGroupDialog from "./create-group-dialog";
+
+export async function generateMetadata(): Promise<Metadata> {
+  const t = await getTranslations("groups");
+  return { title: t("title") };
+}
 
 export default async function GroupsPage() {
   const session = await auth();
@@ -27,7 +34,7 @@ export default async function GroupsPage() {
   
   let myGroups;
 
-  if (session.user.role === "admin" || session.user.role === "super_admin") {
+  if (canManageUsers(session.user.role)) {
     myGroups = await db
       .select({
         id: groups.id,
@@ -90,7 +97,7 @@ export default async function GroupsPage() {
     <div>
       <div className="flex justify-between items-center mb-4">
         <h2 className="text-2xl font-bold">{t("title")}</h2>
-        {(session.user.role === "admin" || session.user.role === "super_admin" || session.user.role === "instructor") && (
+        {isInstructorOrAbove(session.user.role) && (
           <CreateGroupDialog />
         )}
       </div>
