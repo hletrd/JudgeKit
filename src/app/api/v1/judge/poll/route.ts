@@ -172,6 +172,9 @@ export async function POST(request: NextRequest) {
 
     const submission = await db.query.submissions.findFirst({
       where: eq(submissions.id, submissionId),
+      columns: {
+        sourceCode: false,
+      },
     });
 
     if (!submission) {
@@ -196,6 +199,9 @@ export async function POST(request: NextRequest) {
 
       const updatedInProgress = await db.query.submissions.findFirst({
         where: eq(submissions.id, submissionId),
+        columns: {
+          sourceCode: false,
+        },
       });
 
       recordAuditEvent({
@@ -253,6 +259,9 @@ export async function POST(request: NextRequest) {
 
     const updated = await db.query.submissions.findFirst({
       where: eq(submissions.id, submissionId),
+      columns: {
+        sourceCode: false,
+      },
     });
 
     recordAuditEvent({
