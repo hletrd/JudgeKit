@@ -17,9 +17,9 @@ permissions:
   contents: read
 
 env:
-  AUTH_SECRET: ${{ secrets.AUTH_SECRET || 'ci-auth-secret-32-characters-minimum' }}
+  AUTH_SECRET: ${{ secrets.AUTH_SECRET }}
   AUTH_URL: ${{ secrets.AUTH_URL || 'http://localhost:3110' }}
-  JUDGE_AUTH_TOKEN: ${{ secrets.JUDGE_AUTH_TOKEN || 'ci-judge-auth-token-32-characters-minimum' }}
+  JUDGE_AUTH_TOKEN: ${{ secrets.JUDGE_AUTH_TOKEN }}
 
 jobs:
   quality:
