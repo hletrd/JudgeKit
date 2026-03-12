@@ -16,7 +16,7 @@ export function LocaleSwitcher() {
   const currentLocale = useLocale();
 
   function setLocale(locale: string) {
-    document.cookie = `locale=${locale};path=/;max-age=${60 * 60 * 24 * 365}`;
+    document.cookie = `NEXT_LOCALE=${locale}; Path=/; SameSite=Lax; ${location.protocol === "https:" ? "Secure; " : ""}Max-Age=${60 * 60 * 24 * 365}`;
     router.refresh();
   }
 
