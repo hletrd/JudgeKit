@@ -3,6 +3,7 @@ import { db, sqlite } from "@/lib/db";
 import { problems, submissions, submissionResults, testCases } from "@/lib/db/schema";
 import { eq, asc, and } from "drizzle-orm";
 import { nanoid } from "nanoid";
+import { z } from "zod";
 import { recordAuditEvent } from "@/lib/audit/events";
 import { isJudgeAuthorized } from "@/lib/judge/auth";
 import {
@@ -13,22 +14,24 @@ import {
 import { isSubmissionStatus } from "@/lib/security/constants";
 import { judgeStatusReportSchema } from "@/lib/validators/api";
 
-type ClaimedSubmissionRow = {
-  id: string;
-  userId: string;
-  problemId: string;
-  assignmentId: string | null;
-  claimToken: string | null;
-  language: string;
-  sourceCode: string;
-  status: string | null;
-  compileOutput: string | null;
-  executionTimeMs: number | null;
-  memoryUsedKb: number | null;
-  score: number | null;
-  judgedAt: number | null;
-  submittedAt: number;
-};
+const claimedSubmissionRowSchema = z.object({
+  id: z.string(),
+  userId: z.string(),
+  problemId: z.string(),
+  assignmentId: z.string().nullable(),
+  claimToken: z.string().nullable(),
+  language: z.string(),
+  sourceCode: z.string(),
+  status: z.string().nullable(),
+  compileOutput: z.string().nullable(),
+  executionTimeMs: z.number().nullable(),
+  memoryUsedKb: z.number().nullable(),
+  score: z.number().nullable(),
+  judgedAt: z.number().nullable(),
+  submittedAt: z.number(),
+});
+
+type ClaimedSubmissionRow = z.infer<typeof claimedSubmissionRowSchema>;
 
 export async function GET(request: NextRequest) {
   try {
@@ -39,7 +42,10 @@ export async function GET(request: NextRequest) {
     const claimToken = nanoid();
     const claimCreatedAt = Date.now();
 
-    const claimed = sqlite
+    // Raw SQL is required here for an atomic UPDATE...RETURNING claim operation.
+    // Drizzle ORM does not natively support UPDATE...RETURNING for SQLite in a
+    // single round-trip, which would create a race condition between claim and fetch.
+    const claimedRaw = sqlite
       .prepare(
         `
           UPDATE submissions
@@ -73,7 +79,11 @@ export async function GET(request: NextRequest) {
             submitted_at AS submittedAt
         `
       )
-      .get({ claimToken, claimCreatedAt }) as ClaimedSubmissionRow | undefined;
+      .get({ claimToken, claimCreatedAt });
+
+    const claimed: ClaimedSubmissionRow | undefined = claimedRaw !== undefined
+      ? claimedSubmissionRowSchema.parse(claimedRaw)
+      : undefined;
 
     if (!claimed) {
       return NextResponse.json({ data: null });
