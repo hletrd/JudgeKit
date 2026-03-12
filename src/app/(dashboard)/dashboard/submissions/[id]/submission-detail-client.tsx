@@ -1,62 +1,23 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useState } from "react";
 import Link from "next/link";
 import { ArrowLeft } from "lucide-react";
 import { CodeViewer } from "@/components/code/code-viewer";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { Textarea } from "@/components/ui/textarea";
 import { SubmissionStatusBadge } from "@/components/submission-status-badge";
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
-import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { apiFetch } from "@/lib/api/client";
 import { toast } from "sonner";
-import { formatDateTimeInTimeZone, formatRelativeTimeFromNow } from "@/lib/datetime";
+import { formatDateTimeInTimeZone } from "@/lib/datetime";
 import { ACTIVE_SUBMISSION_STATUSES } from "@/lib/submissions/status";
 import { formatSubmissionIdPrefix } from "@/lib/submissions/id";
 import { useTranslations, useLocale } from "next-intl";
-
-type SubmissionResultView = {
-  id: string;
-  status: string;
-  executionTimeMs: number | null;
-  memoryUsedKb: number | null;
-  testCase: {
-    sortOrder: number | null;
-  } | null;
-};
-
-type SubmissionDetailView = {
-  id: string;
-  assignmentId: string | null;
-  language: string;
-  status: string;
-  sourceCode: string;
-  compileOutput: string | null;
-  executionTimeMs: number | null;
-  memoryUsedKb: number | null;
-  score: number | null;
-  submittedAt: number | null;
-  user: {
-    name: string | null;
-  } | null;
-  problem: {
-    id: string;
-    title: string;
-  } | null;
-  results: SubmissionResultView[];
-};
-
-type CommentView = {
-  id: string;
-  content: string;
-  createdAt: string | number | null;
-  author: {
-    name: string | null;
-    role: string;
-  } | null;
-};
+import { useSubmissionPolling, normalizeSubmission } from "@/hooks/use-submission-polling";
+import type { SubmissionDetailView } from "@/hooks/use-submission-polling";
+import { SubmissionResultPanel } from "./_components/submission-result-panel";
+import { CommentSection } from "./_components/comment-section";
 
 type SubmissionDetailClientProps = {
   showDetailedResults: boolean;
@@ -66,78 +27,14 @@ type SubmissionDetailClientProps = {
   userRole: string;
 };
 
-function normalizeSubmission(data: Record<string, unknown>): SubmissionDetailView {
-  const results = Array.isArray(data.results)
-    ? data.results.map((result) => {
-        const record = result as Record<string, unknown>;
-        const testCase = record.testCase as Record<string, unknown> | null;
-
-        return {
-          id: String(record.id),
-          status: String(record.status),
-          executionTimeMs:
-            typeof record.executionTimeMs === "number" ? record.executionTimeMs : null,
-          memoryUsedKb: typeof record.memoryUsedKb === "number" ? record.memoryUsedKb : null,
-          testCase: testCase
-            ? {
-                sortOrder:
-                  typeof testCase.sortOrder === "number" ? testCase.sortOrder : null,
-              }
-            : null,
-        };
-      })
-    : [];
-
-  const user = data.user as Record<string, unknown> | null;
-  const problem = data.problem as Record<string, unknown> | null;
-  const submittedAtValue = data.submittedAt;
-  const submittedAt =
-    typeof submittedAtValue === "number"
-      ? submittedAtValue
-      : typeof submittedAtValue === "string"
-        ? Date.parse(submittedAtValue)
-        : null;
-
-  return {
-    id: String(data.id),
-    assignmentId: typeof data.assignmentId === "string" ? data.assignmentId : null,
-    language: String(data.language),
-    status: String(data.status),
-    sourceCode: String(data.sourceCode),
-    compileOutput: typeof data.compileOutput === "string" ? data.compileOutput : null,
-    executionTimeMs: typeof data.executionTimeMs === "number" ? data.executionTimeMs : null,
-    memoryUsedKb: typeof data.memoryUsedKb === "number" ? data.memoryUsedKb : null,
-    score: typeof data.score === "number" ? data.score : null,
-    submittedAt,
-    user: user
-      ? {
-          name: typeof user.name === "string" ? user.name : null,
-        }
-      : null,
-    problem:
-      problem && typeof problem.id === "string" && typeof problem.title === "string"
-        ? {
-            id: problem.id,
-            title: problem.title,
-          }
-        : null,
-    results,
-  };
-}
-
-
 export function SubmissionDetailClient(props: SubmissionDetailClientProps) {
   const t = useTranslations("submissions");
   const tCommon = useTranslations("common");
-  const tComments = useTranslations("comments");
   const locale = useLocale();
 
-  const [submission, setSubmission] = useState(props.initialSubmission);
-  const [pollingError, setPollingError] = useState(false);
-  const [comments, setComments] = useState<CommentView[]>([]);
-  const [commentContent, setCommentContent] = useState("");
-  const [commentSubmitting, setCommentSubmitting] = useState(false);
+  const { submission, setSubmission, error: pollingError } = useSubmissionPolling(props.initialSubmission);
   const [rejudging, setRejudging] = useState(false);
+
   const canComment = props.userRole === "instructor" || props.userRole === "admin" || props.userRole === "super_admin";
   const canRejudge = props.userRole === "instructor" || props.userRole === "admin" || props.userRole === "super_admin";
   const isLive = ACTIVE_SUBMISSION_STATUSES.has(submission.status);
@@ -147,150 +44,6 @@ export function SubmissionDetailClient(props: SubmissionDetailClientProps) {
       : submission.assignmentId
         ? `/dashboard/problems/${submission.problem.id}?assignmentId=${submission.assignmentId}`
         : `/dashboard/problems/${submission.problem.id}`;
-  const sortedResults = useMemo(
-    () =>
-      [...submission.results].sort(
-        (left, right) => (left.testCase?.sortOrder ?? 0) - (right.testCase?.sortOrder ?? 0)
-      ),
-    [submission.results]
-  );
-
-  useEffect(() => {
-    if (!isLive) {
-      setPollingError(false);
-      return undefined;
-    }
-
-    const controller = new AbortController();
-    let isCancelled = false;
-    let timeoutId: number | null = null;
-    let delayMs = 3000;
-
-    function clearScheduledRefresh() {
-      if (timeoutId !== null) {
-        window.clearTimeout(timeoutId);
-        timeoutId = null;
-      }
-    }
-
-    function scheduleRefresh() {
-      clearScheduledRefresh();
-
-      if (isCancelled || document.visibilityState === "hidden") {
-        return;
-      }
-
-      timeoutId = window.setTimeout(() => {
-        void refreshSubmission();
-      }, delayMs);
-    }
-
-    async function refreshSubmission() {
-      if (document.visibilityState === "hidden") {
-        clearScheduledRefresh();
-        return;
-      }
-
-      try {
-        const response = await apiFetch(`/api/v1/submissions/${submission.id}`, {
-          cache: "no-store",
-          signal: controller.signal,
-        });
-
-        if (!response.ok) {
-          throw new Error("submissionRefreshFailed");
-        }
-
-        const payload = (await response.json()) as { data?: Record<string, unknown> };
-
-        if (!payload.data) {
-          throw new Error("submissionPayloadMissing");
-        }
-
-        if (isCancelled) {
-          return;
-        }
-
-        const nextSubmission = normalizeSubmission(payload.data);
-        setSubmission(nextSubmission);
-        setPollingError(false);
-        delayMs = 3000;
-
-        if (ACTIVE_SUBMISSION_STATUSES.has(nextSubmission.status)) {
-          scheduleRefresh();
-        }
-      } catch (error) {
-        if (isCancelled || (error instanceof DOMException && error.name === "AbortError")) {
-          return;
-        }
-
-        setPollingError(true);
-        delayMs = Math.min(delayMs * 2, 30000);
-        scheduleRefresh();
-      }
-    }
-
-    function handleVisibilityChange() {
-      if (document.visibilityState === "hidden") {
-        clearScheduledRefresh();
-        return;
-      }
-
-      if (!isCancelled) {
-        void refreshSubmission();
-      }
-    }
-
-    void refreshSubmission();
-    document.addEventListener("visibilitychange", handleVisibilityChange);
-
-    return () => {
-      isCancelled = true;
-      controller.abort();
-      clearScheduledRefresh();
-      document.removeEventListener("visibilitychange", handleVisibilityChange);
-    };
-  }, [isLive, submission.id]);
-
-  const fetchComments = useCallback(async () => {
-    try {
-      const response = await apiFetch(`/api/v1/submissions/${submission.id}/comments`);
-      if (response.ok) {
-        const payload = (await response.json()) as { data?: CommentView[] };
-        if (payload.data) {
-          setComments(payload.data);
-        }
-      }
-    } catch {
-      toast.error(tComments("loadError"));
-    }
-  }, [submission.id]);
-
-  useEffect(() => {
-    void fetchComments();
-  }, [fetchComments]);
-
-  async function handleCommentSubmit() {
-    if (!commentContent.trim() || commentSubmitting) return;
-
-    setCommentSubmitting(true);
-    try {
-      const response = await apiFetch(`/api/v1/submissions/${submission.id}/comments`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ content: commentContent.trim() }),
-      });
-
-      if (response.ok) {
-        setCommentContent("");
-        void fetchComments();
-      }
-    } catch {
-      toast.error(tComments("submitError"));
-    } finally {
-      setCommentSubmitting(false);
-    }
-  }
 
   async function handleRejudge() {
     if (rejudging) return;
@@ -405,123 +158,16 @@ export function SubmissionDetailClient(props: SubmissionDetailClientProps) {
         </CardContent>
       </Card>
 
-      {props.showDetailedResults ? (
-        <>
-          {submission.compileOutput && (
-            <Card>
-              <CardHeader>
-                <CardTitle>{t("compileOutput")}</CardTitle>
-              </CardHeader>
-              <CardContent>
-                <CodeViewer
-                  ariaLabel={t("compileOutput")}
-                  language="plaintext"
-                  minHeight={140}
-                  tone="danger"
-                  value={submission.compileOutput}
-                />
-              </CardContent>
-            </Card>
-          )}
+      <SubmissionResultPanel
+        showDetailedResults={props.showDetailedResults}
+        compileOutput={submission.compileOutput}
+        results={submission.results}
+      />
 
-          <Card>
-            <CardHeader>
-              <CardTitle>{t("testCaseResults")}</CardTitle>
-              <CardDescription>{t("testCaseResultsDesc")}</CardDescription>
-            </CardHeader>
-            <CardContent>
-              <Table>
-                <TableHeader>
-                  <TableRow>
-                    <TableHead>{t("testCaseTable.testCase")}</TableHead>
-                    <TableHead>{t("testCaseTable.status")}</TableHead>
-                    <TableHead>{t("testCaseTable.time")}</TableHead>
-                    <TableHead>{t("testCaseTable.memory")}</TableHead>
-                  </TableRow>
-                </TableHeader>
-                <TableBody>
-                  {sortedResults.map((result, index) => (
-                    <TableRow key={result.id}>
-                      <TableCell>#{index + 1}</TableCell>
-                      <TableCell>
-                        <SubmissionStatusBadge
-                          label={t(`status.${result.status}` as Parameters<typeof t>[0]) ?? result.status}
-                          status={result.status}
-                        />
-                      </TableCell>
-                      <TableCell>{result.executionTimeMs !== null ? result.executionTimeMs : "-"}</TableCell>
-                      <TableCell>{result.memoryUsedKb !== null ? result.memoryUsedKb : "-"}</TableCell>
-                    </TableRow>
-                  ))}
-
-                  {sortedResults.length === 0 && (
-                    <TableRow>
-                      <TableCell colSpan={4} className="text-center text-muted-foreground">
-                        {t("noResults")}
-                      </TableCell>
-                    </TableRow>
-                  )}
-                </TableBody>
-              </Table>
-            </CardContent>
-          </Card>
-        </>
-      ) : (
-        <Card>
-          <CardContent className="py-6">
-            <p className="text-center text-muted-foreground">{t("detailedResultsHidden")}</p>
-          </CardContent>
-        </Card>
-      )}
-
-      <Card>
-        <CardHeader>
-          <CardTitle>{tComments("title")}</CardTitle>
-        </CardHeader>
-        <CardContent className="space-y-4">
-          {comments.length === 0 && (
-            <p className="text-sm text-muted-foreground">{tComments("noComments")}</p>
-          )}
-
-          {comments.map((comment) => (
-            <div key={comment.id} className="rounded-md border p-3 space-y-1">
-              <div className="flex items-center gap-2 text-sm">
-                <span className="font-medium">
-                  {tComments("by", { author: comment.author?.name ?? "-" })}
-                </span>
-                {comment.author?.role && (
-                  <Badge variant="secondary" className="text-xs">
-                    {tCommon(`roles.${comment.author.role}` as Parameters<typeof tCommon>[0]) ?? comment.author.role}
-                  </Badge>
-                )}
-                <span className="text-muted-foreground text-xs">
-                  {comment.createdAt != null ? formatRelativeTimeFromNow(comment.createdAt) : ""}
-                </span>
-              </div>
-              <p className="text-sm whitespace-pre-wrap">{comment.content}</p>
-            </div>
-          ))}
-
-          {canComment && (
-            <div className="space-y-2 pt-2">
-              <Textarea
-                placeholder={tComments("placeholder")}
-                value={commentContent}
-                onChange={(e) => setCommentContent(e.target.value)}
-                maxLength={2000}
-                rows={3}
-              />
-              <Button
-                onClick={() => void handleCommentSubmit()}
-                disabled={commentSubmitting || !commentContent.trim()}
-                size="sm"
-              >
-                {tComments("submit")}
-              </Button>
-            </div>
-          )}
-        </CardContent>
-      </Card>
+      <CommentSection
+        submissionId={submission.id}
+        canComment={canComment}
+      />
     </div>
   );
 }
