@@ -41,6 +41,18 @@ pub struct DockerRunResult {
     pub duration_ms: u64,
 }
 
+#[derive(Debug, thiserror::Error)]
+pub enum DockerError {
+    #[error("failed to spawn docker: {0}")]
+    SpawnFailed(#[from] std::io::Error),
+    #[error("failed to write stdin: {0}")]
+    StdinFailed(std::io::Error),
+    #[error("docker process error: {0}")]
+    ProcessError(String),
+}
+
+#[derive(Debug, thiserror::Error)]
+#[error("{0}")]
 pub struct JudgeEnvironmentError(pub String);
 
 fn get_memory_limit_mb(limit: u32) -> u32 {
@@ -83,7 +95,7 @@ fn should_retry_without_seccomp(stderr: &str) -> bool {
 async fn run_docker_once(
     options: &DockerRunOptions,
     seccomp_profile: Option<&Path>,
-) -> Result<DockerRunResult, String> {
+) -> Result<DockerRunResult, DockerError> {
     let container_name = format!("oj-{}", Uuid::new_v4());
     let mem_limit = get_memory_limit_mb(options.memory_limit_mb);
     let pids_limit = "16";
@@ -143,16 +155,16 @@ async fn run_docker_once(
         .stdout(std::process::Stdio::piped())
         .stderr(std::process::Stdio::piped())
         .spawn()
-        .map_err(|e| format!("Failed to spawn docker: {e}"))?;
+        .map_err(DockerError::SpawnFailed)?;
 
     if let Some(ref input) = options.input {
         if let Some(mut stdin) = child.stdin.take() {
             if let Err(e) = stdin.write_all(input.as_bytes()).await {
-                tracing::error!("Failed to write stdin to container {container_name}: {e}");
+                tracing::error!(error = %e, container = %container_name, "Failed to write stdin to container");
                 drop(stdin);
                 kill_container(&container_name).await;
                 remove_container(&container_name).await;
-                return Err(format!("Failed to write stdin: {e}"));
+                return Err(DockerError::StdinFailed(e));
             }
             drop(stdin);
         }
@@ -204,7 +216,7 @@ async fn run_docker_once(
         Ok(Err(e)) => {
             kill_container(&container_name).await;
             remove_container(&container_name).await;
-            Err(format!("Docker process error: {e}"))
+            Err(DockerError::ProcessError(e.to_string()))
         }
         Err(_) => {
             // Timeout
@@ -245,7 +257,7 @@ pub async fn run_docker(
 
     let result = run_docker_once(options, seccomp_profile)
         .await
-        .map_err(|e| JudgeEnvironmentError(e))?;
+        .map_err(|e| JudgeEnvironmentError(e.to_string()))?;
 
     if use_custom_seccomp && should_retry_without_seccomp(&result.stderr) {
         return Err(JudgeEnvironmentError(
@@ -271,10 +283,10 @@ pub async fn cleanup_orphaned_containers() {
                 .await
             {
                 Ok(_) => {
-                    tracing::debug!("Cleaned up orphaned container: {}", id);
+                    tracing::debug!(container_id = %id, "Cleaned up orphaned container");
                 }
                 Err(e) => {
-                    tracing::warn!("Failed to remove orphaned container {}: {}", id, e);
+                    tracing::warn!(error = %e, container_id = %id, "Failed to remove orphaned container");
                 }
             }
         }
