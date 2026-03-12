@@ -40,7 +40,7 @@ fi
 # Retention policy: remove backups older than 30 days
 BACKUP_DIR="$(dirname "$BACKUP_PATH")"
 if [ -d "$BACKUP_DIR" ]; then
-    find "$BACKUP_DIR" -name "judge-*.db" -o -name "judge-*.db.age" | while read -r f; do
+    find "$BACKUP_DIR" -maxdepth 1 \( -name "judge-*.db" -o -name "judge-*.db.age" \) | while read -r f; do
         if [ "$(find "$f" -mtime +30 2>/dev/null)" ]; then
             rm -f "$f"
             echo "Removed old backup: $f"
