@@ -1,8 +1,9 @@
 "use client";
 
 import Link from "next/link";
-import { Button } from "@/components/ui/button";
+import { buttonVariants } from "@/components/ui/button";
 import { ChevronLeft, ChevronRight } from "lucide-react";
+import { cn } from "@/lib/utils";
 
 interface PaginationControlsProps {
   currentPage: number;
@@ -24,17 +25,21 @@ export function PaginationControls({
       )}
       <div className="flex gap-2 ml-auto">
         {currentPage > 1 && (
-          <Link href={buildHref(currentPage - 1)} aria-label="Previous page">
-            <Button variant="outline" size="sm">
-              <ChevronLeft className="h-4 w-4" aria-hidden="true" />
-            </Button>
+          <Link
+            href={buildHref(currentPage - 1)}
+            aria-label="Previous page"
+            className={cn(buttonVariants({ variant: "outline", size: "sm" }))}
+          >
+            <ChevronLeft className="h-4 w-4" aria-hidden="true" />
           </Link>
         )}
         {hasNextPage && (
-          <Link href={buildHref(currentPage + 1)} aria-label="Next page">
-            <Button variant="outline" size="sm">
-              <ChevronRight className="h-4 w-4" aria-hidden="true" />
-            </Button>
+          <Link
+            href={buildHref(currentPage + 1)}
+            aria-label="Next page"
+            className={cn(buttonVariants({ variant: "outline", size: "sm" }))}
+          >
+            <ChevronRight className="h-4 w-4" aria-hidden="true" />
           </Link>
         )}
       </div>
