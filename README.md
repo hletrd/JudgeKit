@@ -93,7 +93,7 @@ If port `3000` is already occupied, stop the stale process before restarting the
 For browser-driven or same-origin automation, the existing Auth.js session is reused automatically. For external scripts, log in through the credentials callback first and persist the session cookie in a cookie jar before calling protected user-facing `/api/v1/*` routes. The example below is read-only and safe to rerun; instructor/admin-only writes such as `POST /api/v1/problems` use the same cookie-jar flow but mutate remote state.
 
 ```bash
-export OJ_BASE_URL="https://oj.auraedu.me"
+export OJ_BASE_URL="https://your-domain.example"
 export OJ_USERNAME="instructor"
 export OJ_PASSWORD="your-password"
 
@@ -150,7 +150,7 @@ Start from `.env.example` and set at least:
 
 ```bash
 AUTH_SECRET=<openssl rand -base64 32>
-AUTH_URL=https://oj.auraedu.me
+AUTH_URL=https://your-domain.example
 AUTH_TRUST_HOST=true
 JUDGE_AUTH_TOKEN=<openssl rand -hex 32>
 JUDGE_POLL_URL=http://localhost:3000/api/v1/judge/poll
@@ -213,13 +213,13 @@ sudo install -m 0644 scripts/online-judge.nginx-http.conf /etc/nginx/sites-avail
 sudo ln -sfn /etc/nginx/sites-available/online-judge /etc/nginx/sites-enabled/online-judge
 sudo nginx -t
 sudo systemctl reload nginx
-sudo certbot certonly --nginx -d oj.auraedu.me --non-interactive
+sudo certbot certonly --nginx -d your-domain.example --non-interactive
 sudo install -m 0644 scripts/online-judge.nginx.conf /etc/nginx/sites-available/online-judge
 sudo nginx -t
 sudo systemctl reload nginx
 ```
 
-The final checked-in HTTPS config serves `oj.auraedu.me` only and rejects requests for unknown or retired hostnames.
+The final checked-in HTTPS config serves `your-domain.example` only and rejects requests for unknown or retired hostnames.
 
 ### 5. Deploy updates
 
@@ -255,11 +255,11 @@ journalctl -u online-judge-worker-rs.service -n 50 --no-pager
 ```
 
 - Confirm submissions progress out of `pending`
-- Run the all-languages judge E2E test: `PLAYWRIGHT_BASE_URL=https://oj.auraedu.me npx playwright test tests/e2e/all-languages-judge.spec.ts`
+- Run the all-languages judge E2E test: `PLAYWRIGHT_BASE_URL=https://your-domain.example npx playwright test tests/e2e/all-languages-judge.spec.ts`
 - Confirm `/api/health` returns `{"status":"ok"...}` with `checks.database` set to `ok`
-- Confirm `https://oj.auraedu.me/login` completes TLS validation and serves the app
+- Confirm `https://your-domain.example/login` completes TLS validation and serves the app
 - If you see `401 Unauthorized` in worker logs, verify `JUDGE_AUTH_TOKEN`
-- If `oj.auraedu.me` shows a certificate mismatch, reissue the certificate for `oj.auraedu.me` and reload nginx before treating the cutover as complete
+- If `your-domain.example` shows a certificate mismatch, reissue the certificate for `your-domain.example` and reload nginx before treating the cutover as complete
 - If you see the `fsmount:fscontext:proc` container-init error, either restore/fix the repository seccomp profile or explicitly set `JUDGE_DISABLE_CUSTOM_SECCOMP=1` before restarting `online-judge-worker-rs.service`; the worker no longer retries under Docker's default seccomp when the custom run-phase profile is expected
 - For system settings schema or timezone changes, verify `/dashboard/admin/settings` and at least one timestamped page such as `/dashboard/submissions` or `/dashboard/admin/users/[id]` after deploy
 

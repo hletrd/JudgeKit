@@ -4,7 +4,7 @@ Last updated: 2026-03-10
 
 ## Shipped and deployed
 
-- The public host is `oj.auraedu.me`; the legacy hostname `oj-demo.atik.kr` was retired at nginx during the 2026-03-09 cutover.
+- The public host is `your-domain.example`; the legacy hostname `oj-demo.atik.kr` was retired at nginx during the 2026-03-09 cutover.
 - The deployed demo host serves the public login page over HTTP 200, redirects protected dashboard routes through login, and keeps both `online-judge.service` and `online-judge-worker.service` active.
 - Admin system settings support a default timezone in addition to the site title and description.
 - Rendered timestamps use the configured timezone on student/admin submission pages, admin user pages, and group assignment schedule views.

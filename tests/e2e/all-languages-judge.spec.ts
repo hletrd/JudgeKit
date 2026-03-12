@@ -1,6 +1,6 @@
 import { test, expect, type Page, type BrowserContext } from "@playwright/test";
 
-const BASE_URL = "https://oj.auraedu.me";
+const BASE_URL = process.env.PLAYWRIGHT_BASE_URL || "http://localhost:3000";
 const CREDENTIALS = { username: "test", password: "Admin1234" };
 
 // A+B solutions for every supported language
