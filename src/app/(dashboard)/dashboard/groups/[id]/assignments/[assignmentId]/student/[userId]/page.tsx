@@ -17,6 +17,7 @@ import {
 import { getResolvedSystemTimeZone } from "@/lib/system-settings";
 import { formatDateTimeInTimeZone } from "@/lib/datetime";
 import { formatSubmissionIdPrefix } from "@/lib/submissions/id";
+import { buildStatusLabels } from "@/lib/judge/status-labels";
 import { SubmissionStatusBadge } from "@/components/submission-status-badge";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -130,17 +131,7 @@ export default async function StudentSubmissionsPage({
     submissionsByProblem.get(sub.problemId)!.push(sub);
   }
 
-  const statusLabels: Record<string, string> = {
-    pending: tSubmissions("status.pending"),
-    queued: tSubmissions("status.queued"),
-    judging: tSubmissions("status.judging"),
-    accepted: tSubmissions("status.accepted"),
-    wrong_answer: tSubmissions("status.wrong_answer"),
-    time_limit: tSubmissions("status.time_limit"),
-    memory_limit: tSubmissions("status.memory_limit"),
-    runtime_error: tSubmissions("status.runtime_error"),
-    compile_error: tSubmissions("status.compile_error"),
-  };
+  const statusLabels: Record<string, string> = buildStatusLabels(tSubmissions);
 
   const scoreboardUrl = `/dashboard/groups/${groupId}/assignments/${assignmentId}`;
 

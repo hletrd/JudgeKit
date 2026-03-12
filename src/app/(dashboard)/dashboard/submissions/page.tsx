@@ -19,6 +19,7 @@ import { Button } from "@/components/ui/button";
 import { formatDateTimeInTimeZone } from "@/lib/datetime";
 import { getResolvedSystemTimeZone } from "@/lib/system-settings";
 import { formatSubmissionIdPrefix } from "@/lib/submissions/id";
+import { buildStatusLabels } from "@/lib/judge/status-labels";
 
 const PAGE_SIZE = 25;
 
@@ -61,17 +62,7 @@ export default async function SubmissionsPage({
   const locale = await getLocale();
   const timeZone = await getResolvedSystemTimeZone();
   const isInstructorView = session.user.role === "instructor";
-  const statusLabels = {
-    pending: t("status.pending"),
-    queued: t("status.queued"),
-    judging: t("status.judging"),
-    accepted: t("status.accepted"),
-    wrong_answer: t("status.wrong_answer"),
-    time_limit: t("status.time_limit"),
-    memory_limit: t("status.memory_limit"),
-    runtime_error: t("status.runtime_error"),
-    compile_error: t("status.compile_error"),
-  };
+  const statusLabels = buildStatusLabels(t);
   
   const userSubmissions: InstructorSubmissionRow[] | StudentSubmissionRow[] = isInstructorView
     ? await db

@@ -19,6 +19,7 @@ import { Button } from "@/components/ui/button";
 import { formatDateTimeInTimeZone } from "@/lib/datetime";
 import { getResolvedSystemTimeZone } from "@/lib/system-settings";
 import { formatSubmissionIdPrefix } from "@/lib/submissions/id";
+import { buildStatusLabels } from "@/lib/judge/status-labels";
 
 const PAGE_SIZE = 50;
 
@@ -39,17 +40,7 @@ export default async function AdminSubmissionsPage({
   const tSubmissions = await getTranslations("submissions");
   const locale = await getLocale();
   const timeZone = await getResolvedSystemTimeZone();
-  const statusLabels = {
-    pending: tSubmissions("status.pending"),
-    queued: tSubmissions("status.queued"),
-    judging: tSubmissions("status.judging"),
-    accepted: tSubmissions("status.accepted"),
-    wrong_answer: tSubmissions("status.wrong_answer"),
-    time_limit: tSubmissions("status.time_limit"),
-    memory_limit: tSubmissions("status.memory_limit"),
-    runtime_error: tSubmissions("status.runtime_error"),
-    compile_error: tSubmissions("status.compile_error"),
-  };
+  const statusLabels = buildStatusLabels(tSubmissions);
   const allSubmissions = await db
     .select({
       id: submissions.id,
