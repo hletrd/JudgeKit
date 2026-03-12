@@ -28,3 +28,22 @@ if integrity is None or integrity[0] != "ok":
 
 print(f"Created verified backup: {target}")
 PY
+
+# Encrypt backup if age is available (install: https://github.com/FiloSottile/age)
+AGE_RECIPIENT="${AGE_RECIPIENT:-}"
+if [ -n "$AGE_RECIPIENT" ] && command -v age >/dev/null 2>&1; then
+    age -r "$AGE_RECIPIENT" -o "${BACKUP_PATH}.age" "$BACKUP_PATH"
+    rm -f "$BACKUP_PATH"
+    echo "Encrypted backup: ${BACKUP_PATH}.age"
+fi
+
+# Retention policy: remove backups older than 30 days
+BACKUP_DIR="$(dirname "$BACKUP_PATH")"
+if [ -d "$BACKUP_DIR" ]; then
+    find "$BACKUP_DIR" -name "judge-*.db" -o -name "judge-*.db.age" | while read -r f; do
+        if [ "$(find "$f" -mtime +30 2>/dev/null)" ]; then
+            rm -f "$f"
+            echo "Removed old backup: $f"
+        fi
+    done
+fi

@@ -1,6 +1,7 @@
 const AUTH_SECRET_PLACEHOLDER = "your-secret-key-here-generate-with-openssl-rand-base64-32";
 const JUDGE_AUTH_TOKEN_PLACEHOLDER = "your-judge-auth-token";
 const JUDGE_AUTH_TOKEN_DEV_PLACEHOLDER = "dev-test-token-for-local-development";
+const JUDGE_AUTH_TOKEN_PLAYWRIGHT_PLACEHOLDER = "playwright-local-token-for-smoke";
 const JUDGE_AUTH_TOKEN_MIN_LENGTH = 32;
 const SECURE_AUTH_SESSION_COOKIE_NAME = "__Secure-authjs.session-token";
 const AUTH_SESSION_COOKIE_NAME = "authjs.session-token";
@@ -151,7 +152,8 @@ export function getValidatedJudgeAuthToken() {
 
   if (
     judgeAuthToken === JUDGE_AUTH_TOKEN_PLACEHOLDER ||
-    judgeAuthToken === JUDGE_AUTH_TOKEN_DEV_PLACEHOLDER
+    judgeAuthToken === JUDGE_AUTH_TOKEN_DEV_PLACEHOLDER ||
+    judgeAuthToken === JUDGE_AUTH_TOKEN_PLAYWRIGHT_PLACEHOLDER
   ) {
     throw new Error("JUDGE_AUTH_TOKEN must be replaced with a strong random value before starting the application.");
   }
