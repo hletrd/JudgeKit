@@ -324,7 +324,7 @@ export default function BulkCreateDialog() {
                 </p>
               </div>
               {parseError && (
-                <p className="text-sm text-destructive">{parseError}</p>
+                <p className="text-sm text-destructive" role="alert">{parseError}</p>
               )}
               {parsedRows.length > 0 && (
                 <div>
