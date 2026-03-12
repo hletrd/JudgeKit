@@ -189,7 +189,7 @@ export default function BulkCreateDialog() {
         setParsedRows(rows);
       },
       error: (err) => {
-        setParseError(`Failed to parse CSV: ${err.message}`);
+        setParseError(t("bulkCsvParseError", { message: err.message }));
       },
     });
   }
@@ -265,7 +265,7 @@ export default function BulkCreateDialog() {
               )}
               {results.failed.length > 0 && (
                 <div>
-                  <p className="text-sm font-medium mb-2 text-destructive">{t("bulkFailedTitle", { count: results.failed.length })}</p>
+                  <p className="text-sm font-medium mb-2 text-destructive" role="alert">{t("bulkFailedTitle", { count: results.failed.length })}</p>
                   <div className="max-h-32 overflow-y-auto border rounded border-destructive/30">
                     <Table>
                       <TableHeader>
