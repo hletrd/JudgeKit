@@ -179,36 +179,47 @@ test("assignment board renders earned points for non-100-point problems", async 
 
   const fixtures = await seedAssignmentBoardScoreFixtures(runtimeSuffix.replace(/[^a-zA-Z0-9]/g, ""));
 
-  await page.goto(
-    `/dashboard/groups/${fixtures.groupId}/assignments/${fixtures.assignmentId}`,
-    { waitUntil: "networkidle" }
-  );
+  try {
+    await page.goto(
+      `/dashboard/groups/${fixtures.groupId}/assignments/${fixtures.assignmentId}`,
+      { waitUntil: "networkidle" }
+    );
 
-  const studentRow = page.getByRole("row", { name: new RegExp(fixtures.studentName) });
-  await expect(studentRow).toBeVisible();
-  await expect(page.getByTestId(`assignment-total-score-${fixtures.studentId}`)).toHaveText("65/80");
-  await expect(page.getByTestId(`assignment-attempt-count-${fixtures.studentId}`)).toHaveText("3");
-  await expect(page.getByTestId(`assignment-row-status-${fixtures.studentId}`)).toContainText(
-    "Wrong Answer"
-  );
+    const studentRow = page.getByRole("row", { name: new RegExp(fixtures.studentName) });
+    await expect(studentRow).toBeVisible();
+    await expect(page.getByTestId(`assignment-total-score-${fixtures.studentId}`)).toHaveText("65/80");
+    await expect(page.getByTestId(`assignment-attempt-count-${fixtures.studentId}`)).toHaveText("3");
+    await expect(page.getByTestId(`assignment-row-status-${fixtures.studentId}`)).toContainText(
+      "Wrong Answer"
+    );
 
-  const firstProblemScore = page.getByTestId(
-    `assignment-problem-score-${fixtures.studentId}-${fixtures.firstProblemId}`
-  );
-  await expect(firstProblemScore).toContainText("Best score: 50/50");
-  await expect(firstProblemScore).toContainText("Attempts: 2");
-  await expect(firstProblemScore).toContainText(
-    formatSubmissionIdPrefix(fixtures.firstLatestSubmissionId)
-  );
+    const firstProblemScore = page.getByTestId(
+      `assignment-problem-score-${fixtures.studentId}-${fixtures.firstProblemId}`
+    );
+    await expect(firstProblemScore).toContainText("Best score: 50/50");
+    await expect(firstProblemScore).toContainText("Attempts: 2");
+    await expect(firstProblemScore).toContainText(
+      formatSubmissionIdPrefix(fixtures.firstLatestSubmissionId)
+    );
 
-  const secondProblemScore = page.getByTestId(
-    `assignment-problem-score-${fixtures.studentId}-${fixtures.secondProblemId}`
-  );
-  await expect(secondProblemScore).toContainText("Best score: 15/30");
-  await expect(secondProblemScore).toContainText("Attempts: 1");
-  await expect(secondProblemScore).toContainText(
-    formatSubmissionIdPrefix(fixtures.secondLatestSubmissionId)
-  );
+    const secondProblemScore = page.getByTestId(
+      `assignment-problem-score-${fixtures.studentId}-${fixtures.secondProblemId}`
+    );
+    await expect(secondProblemScore).toContainText("Best score: 15/30");
+    await expect(secondProblemScore).toContainText("Attempts: 1");
+    await expect(secondProblemScore).toContainText(
+      formatSubmissionIdPrefix(fixtures.secondLatestSubmissionId)
+    );
 
-  await captureEvidence(page, testInfo, "assignment-board-score");
+    await captureEvidence(page, testInfo, "assignment-board-score");
+  } finally {
+    db.delete(submissions).where(eq(submissions.userId, fixtures.studentId)).run();
+    db.delete(assignmentProblems).where(eq(assignmentProblems.assignmentId, fixtures.assignmentId)).run();
+    db.delete(assignments).where(eq(assignments.id, fixtures.assignmentId)).run();
+    db.delete(problems).where(eq(problems.id, fixtures.firstProblemId)).run();
+    db.delete(problems).where(eq(problems.id, fixtures.secondProblemId)).run();
+    db.delete(enrollments).where(eq(enrollments.groupId, fixtures.groupId)).run();
+    db.delete(groups).where(eq(groups.id, fixtures.groupId)).run();
+    db.delete(users).where(eq(users.id, fixtures.studentId)).run();
+  }
 });

@@ -1,10 +1,5 @@
 import { test, expect, type Page, type BrowserContext } from "@playwright/test";
-
-const BASE_URL = process.env.PLAYWRIGHT_BASE_URL || "http://localhost:3000";
-const CREDENTIALS = {
-  username: process.env.E2E_USERNAME ?? "test",
-  password: process.env.E2E_PASSWORD ?? "Admin1234",
-};
+import { BASE_URL, DEFAULT_CREDENTIALS as CREDENTIALS } from "./support/constants";
 
 // A+B solutions for every supported language
 const SOLUTIONS: Record<string, string> = {

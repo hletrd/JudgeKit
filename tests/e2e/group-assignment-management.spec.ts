@@ -1,4 +1,3 @@
-import type { Page } from "@playwright/test";
 import { hash } from "bcryptjs";
 import { and, eq } from "drizzle-orm";
 import { nanoid } from "nanoid";
@@ -12,24 +11,15 @@ import {
   submissions,
   users,
 } from "@/lib/db/schema";
+import type { Page } from "@playwright/test";
 import { captureEvidence } from "./support/evidence";
 import { expect, test } from "./fixtures";
+import { loginWithCredentials } from "./support/helpers";
 import { getPlaywrightBaseUrl, RUNTIME_ADMIN_USERNAME } from "./support/runtime-admin";
 
 const RUNTIME_STUDENT_PASSWORD = process.env.E2E_GROUP_STUDENT_PASSWORD ?? "GroupStudentPass234";
 const PLAYWRIGHT_JUDGE_AUTH_TOKEN = process.env.JUDGE_AUTH_TOKEN ?? "playwright-local-token-for-smoke";
 
-async function loginWithCredentials(page: Page, username: string, password: string) {
-  await page.goto("/login", { waitUntil: "networkidle" });
-  await page.locator("#username").fill(username);
-  await page.locator("#password").fill(password);
-  await page.getByRole("button", { name: "Sign in" }).click();
-  await page.waitForURL(/\/(dashboard|change-password)(?:$|\?)/, { timeout: 15_000 });
-
-  if (page.url().includes("/change-password")) {
-    throw new Error(`Unexpected forced password change for ${username}`);
-  }
-}
 
 async function createRuntimeStudent(runtimeSuffix: string) {
   const id = nanoid();

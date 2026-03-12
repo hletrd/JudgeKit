@@ -1,4 +1,7 @@
 import type { Page } from "@playwright/test";
+import { eq } from "drizzle-orm";
+import { db } from "@/lib/db";
+import { problems, submissions } from "@/lib/db/schema";
 import { expect, test } from "./fixtures";
 
 const EDITOR_PLACEHOLDER = "Write your code here...";
@@ -143,48 +146,53 @@ test("task 7 guards browser back navigation while dirty and stays clean after su
   const solutionPreview = normalizeSourceText(solution.trim().split("\n")[0] ?? solution);
   const normalizedSolution = normalizeSourceText(solution);
 
-  await page.goto("/dashboard/problems", { waitUntil: "networkidle" });
-  await page.getByRole("link", { name: problemTitle, exact: true }).click();
-  await page.waitForURL(`/dashboard/problems/${problemId}`, { timeout: 15_000 });
-  await chooseLanguage(page, label);
-  await page.locator("#sourceCode").fill(solution);
-  await page.waitForTimeout(700);
-
-  await test.step("browser back stays on the page when the dirty-history dialog is dismissed", async () => {
-    await expectBackDialog(page, false);
-    await expect(page).toHaveURL(new RegExp(`/dashboard/problems/${problemId}$`));
-    await expect.poll(async () => normalizeSourceText(await readEditorText(page))).toContain(solutionPreview);
-  });
-
-  await test.step("browser back leaves after the dialog is accepted and the draft restores on return", async () => {
-    await expectBackDialog(page, true);
-    await expect(page).toHaveURL(/\/dashboard\/problems$/);
-
-    await page.goForward();
+  try {
+    await page.goto("/dashboard/problems", { waitUntil: "networkidle" });
+    await page.getByRole("link", { name: problemTitle, exact: true }).click();
     await page.waitForURL(`/dashboard/problems/${problemId}`, { timeout: 15_000 });
     await chooseLanguage(page, label);
-    await expect.poll(async () => normalizeSourceText(await readEditorText(page))).toBe(normalizedSolution);
-  });
+    await page.locator("#sourceCode").fill(solution);
+    await page.waitForTimeout(700);
 
-  await test.step("successful submit clears the draft so later back navigation has no warning", async () => {
-    await page.getByRole("button", { name: "Submit" }).click();
-    await page.getByRole("button", { name: "Send to Judge" }).click();
-    await page.waitForURL(/\/dashboard\/submissions\/[^/]+$/, { timeout: 15_000 });
-
-    await expectNoDialogDuring(page, async () => {
-      await page.evaluate(() => {
-        window.history.back();
-      });
+    await test.step("browser back stays on the page when the dirty-history dialog is dismissed", async () => {
+      await expectBackDialog(page, false);
       await expect(page).toHaveURL(new RegExp(`/dashboard/problems/${problemId}$`));
+      await expect.poll(async () => normalizeSourceText(await readEditorText(page))).toContain(solutionPreview);
     });
 
-    await expect.poll(async () => normalizeSourceText(await readEditorText(page))).toBe("");
-
-    await expectNoDialogDuring(page, async () => {
-      await page.evaluate(() => {
-        window.history.back();
-      });
+    await test.step("browser back leaves after the dialog is accepted and the draft restores on return", async () => {
+      await expectBackDialog(page, true);
       await expect(page).toHaveURL(/\/dashboard\/problems$/);
+
+      await page.goForward();
+      await page.waitForURL(`/dashboard/problems/${problemId}`, { timeout: 15_000 });
+      await chooseLanguage(page, label);
+      await expect.poll(async () => normalizeSourceText(await readEditorText(page))).toBe(normalizedSolution);
     });
-  });
+
+    await test.step("successful submit clears the draft so later back navigation has no warning", async () => {
+      await page.getByRole("button", { name: "Submit" }).click();
+      await page.getByRole("button", { name: "Send to Judge" }).click();
+      await page.waitForURL(/\/dashboard\/submissions\/[^/]+$/, { timeout: 15_000 });
+
+      await expectNoDialogDuring(page, async () => {
+        await page.evaluate(() => {
+          window.history.back();
+        });
+        await expect(page).toHaveURL(new RegExp(`/dashboard/problems/${problemId}$`));
+      });
+
+      await expect.poll(async () => normalizeSourceText(await readEditorText(page))).toBe("");
+
+      await expectNoDialogDuring(page, async () => {
+        await page.evaluate(() => {
+          window.history.back();
+        });
+        await expect(page).toHaveURL(/\/dashboard\/problems$/);
+      });
+    });
+  } finally {
+    db.delete(submissions).where(eq(submissions.problemId, problemId)).run();
+    db.delete(problems).where(eq(problems.id, problemId)).run();
+  }
 });
