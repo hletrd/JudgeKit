@@ -34,7 +34,10 @@ type UserManagementErrorKey =
   | "passwordTooWeak"
   | "passwordTooCommon"
   | "updateUserFailed"
-  | "createUserFailed";
+  | "createUserFailed"
+  | "cannotDeleteSelf"
+  | "cannotDeleteSuperAdmin"
+  | "deleteUserFailed";
 
 type UserManagementResult =
   | { success: true; generatedPassword?: string }
@@ -124,7 +127,7 @@ export async function deleteUserPermanently(userId: string): Promise<UserManagem
   }
 
   if (userId === session.user.id) {
-    return { success: false, error: "cannotDeactivateSelf" };
+    return { success: false, error: "cannotDeleteSelf" };
   }
 
   const targetUser = await db.query.users.findFirst({
@@ -135,7 +138,7 @@ export async function deleteUserPermanently(userId: string): Promise<UserManagem
   if (!targetUser) return { success: false, error: "userNotFound" };
 
   if (targetUser.role === "super_admin") {
-    return { success: false, error: "cannotDeactivateSuperAdmin" };
+    return { success: false, error: "cannotDeleteSuperAdmin" };
   }
 
   try {
@@ -160,7 +163,7 @@ export async function deleteUserPermanently(userId: string): Promise<UserManagem
     return { success: true };
   } catch (error) {
     console.error("Failed to permanently delete user:", error);
-    return { success: false, error: "updateUserStatusFailed" };
+    return { success: false, error: "deleteUserFailed" };
   }
 }
 
@@ -294,17 +297,17 @@ export async function createUser(data: ManagedUserInput): Promise<UserManagement
       return { success: false, error: "emailInUse" };
     }
 
-    if (data.password) {
-      const passwordResult = await validateAndHashPassword(data.password);
-      if (passwordResult.error) {
-        return { success: false, error: passwordResult.error };
-      }
-    }
-
     const id = nanoid();
-    const generatedPassword = generateSecurePassword();
-    const passwordToHash = data.password ?? generatedPassword;
-    const passwordHash = await hash(passwordToHash, 12);
+    let passwordHash: string;
+    let generatedPassword: string | undefined;
+    if (data.password) {
+      const result = await validateAndHashPassword(data.password);
+      if (result.error) return { success: false, error: result.error };
+      passwordHash = result.hash!;
+    } else {
+      generatedPassword = generateSecurePassword();
+      passwordHash = await hash(generatedPassword, 12);
+    }
 
     await db.insert(users).values({
       id,
