@@ -385,6 +385,10 @@ export async function createUser(data: ManagedUserInput): Promise<UserManagement
       context: auditContext,
     });
 
+    // Security note: Generated passwords are returned in the response body for admin UX.
+    // The bulk API endpoint sets Cache-Control: no-store. Server action responses are not
+    // cacheable by HTTP intermediaries. Accepted risk — admin needs the password to share
+    // with the user. Consider CSV-only download as a future improvement.
     return {
       success: true,
       generatedPassword: data.password ? undefined : generatedPassword,
