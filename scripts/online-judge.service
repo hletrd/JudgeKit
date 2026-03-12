@@ -21,6 +21,8 @@ ProtectKernelTunables=true
 ProtectKernelModules=true
 ProtectControlGroups=true
 RestrictSUIDSGID=true
+MemoryMax=2G
+CPUQuota=200%
 
 [Install]
 WantedBy=multi-user.target

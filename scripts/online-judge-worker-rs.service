@@ -27,6 +27,8 @@ RestrictRealtime=true
 LockPersonality=true
 MemoryDenyWriteExecute=true
 SystemCallArchitectures=native
+MemoryMax=4G
+CPUQuota=400%
 
 [Install]
 WantedBy=multi-user.target
