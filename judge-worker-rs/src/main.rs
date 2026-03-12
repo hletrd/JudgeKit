@@ -39,11 +39,17 @@ async fn main() {
     }
 
     let concurrency = config.judge_concurrency;
-    let client = Arc::new(ApiClient::new(
+    let client = Arc::new(match ApiClient::new(
         config.claim_url.clone(),
         config.report_url.clone(),
         config.auth_token.clone(),
-    ));
+    ) {
+        Ok(c) => c,
+        Err(e) => {
+            tracing::error!("Failed to create API client: {e}");
+            std::process::exit(1);
+        }
+    });
     let config = Arc::new(config);
     let semaphore = Arc::new(Semaphore::new(concurrency));
 

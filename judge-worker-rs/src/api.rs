@@ -8,18 +8,18 @@ pub struct ApiClient {
 }
 
 impl ApiClient {
-    pub fn new(claim_url: String, report_url: String, auth_token: String) -> Self {
+    pub fn new(claim_url: String, report_url: String, auth_token: String) -> Result<Self, String> {
         let client = reqwest::Client::builder()
             .connect_timeout(std::time::Duration::from_secs(10))
             .timeout(std::time::Duration::from_secs(30))
             .build()
-            .expect("failed to build HTTP client");
-        Self {
+            .map_err(|e| format!("failed to build HTTP client: {e}"))?;
+        Ok(Self {
             client,
             claim_url,
             report_url,
             auth_token,
-        }
+        })
     }
 
     /// POST claim_url with Bearer auth and empty JSON body.
