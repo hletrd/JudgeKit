@@ -234,7 +234,7 @@ export default function CreateProblemForm({
             min={100} 
             max={10000} 
             value={timeLimitMs} 
-            onChange={(e) => setTimeLimitMs(parseInt(e.target.value))} 
+            onChange={(e) => setTimeLimitMs(parseInt(e.target.value, 10))}
             required 
           />
         </div>
@@ -246,7 +246,7 @@ export default function CreateProblemForm({
             min={16} 
             max={1024} 
             value={memoryLimitMb} 
-            onChange={(e) => setMemoryLimitMb(parseInt(e.target.value))} 
+            onChange={(e) => setMemoryLimitMb(parseInt(e.target.value, 10))}
             required 
           />
         </div>

@@ -304,6 +304,7 @@ export default async function GroupAssignmentDetailPage({
           statsMedian: tAssignment("statsMedian"),
           statsSubmitted: tAssignment("statsSubmitted"),
           statsPerfect: tAssignment("statsPerfect"),
+          pointsAbbreviation: tAssignment("pointsAbbreviation"),
           overrideLabels: {
             scoreOverride: tAssignment("scoreOverride"),
             overrideScore: tAssignment("overrideScore"),

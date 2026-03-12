@@ -259,7 +259,7 @@ export function SubmissionDetailClient(props: SubmissionDetailClientProps) {
         }
       }
     } catch {
-      toast.error("Failed to load comments");
+      toast.error(tComments("loadError"));
     }
   }, [submission.id]);
 
@@ -283,7 +283,7 @@ export function SubmissionDetailClient(props: SubmissionDetailClientProps) {
         void fetchComments();
       }
     } catch {
-      toast.error("Failed to submit comment");
+      toast.error(tComments("submitError"));
     } finally {
       setCommentSubmitting(false);
     }
