@@ -3,6 +3,7 @@ import { db, sqlite } from "@/lib/db";
 import { submissions, submissionResults } from "@/lib/db/schema";
 import { eq } from "drizzle-orm";
 import { getApiUser, unauthorized, forbidden, notFound, isInstructor, csrfForbidden } from "@/lib/api/auth";
+import { canAccessSubmission } from "@/lib/auth/permissions";
 import { recordAuditEvent } from "@/lib/audit/events";
 import { consumeApiRateLimit } from "@/lib/security/api-rate-limit";
 import { apiSuccess, apiError } from "@/lib/api/responses";
@@ -40,6 +41,9 @@ export async function POST(
     });
 
     if (!submission) return notFound("Submission");
+
+    const hasAccess = await canAccessSubmission(submission, user.id, user.role);
+    if (!hasAccess) return forbidden();
 
     // Delete existing test case results and reset submission (atomic transaction)
     sqlite.transaction(() => {

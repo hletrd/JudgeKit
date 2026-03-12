@@ -395,7 +395,7 @@ export async function DELETE(
       return apiSuccess({ id, deleted: true });
     }
 
-    await db.update(users).set({ isActive: false, updatedAt: new Date() }).where(eq(users.id, id));
+    await db.update(users).set({ isActive: false, tokenInvalidatedAt: new Date(), updatedAt: new Date() }).where(eq(users.id, id));
 
     recordAuditEvent({
       actorId: user.id,

@@ -9,6 +9,7 @@ import { logger } from "@/lib/logger";
 
 const POLL_INTERVAL_MS = 2000;
 const TIMEOUT_MS = 5 * 60 * 1000;
+const AUTH_RECHECK_INTERVAL_MS = 30_000;
 
 export async function GET(
   request: NextRequest,
@@ -70,9 +71,21 @@ export async function GET(
           }
         }, TIMEOUT_MS);
 
+        let lastAuthCheck = Date.now();
+
         const pollTimer = setInterval(() => {
           void (async () => {
             if (closed) return;
+
+              // Periodically re-check auth to ensure deactivated users don't continue receiving data
+              if (Date.now() - lastAuthCheck >= AUTH_RECHECK_INTERVAL_MS) {
+                lastAuthCheck = Date.now();
+                const reAuthUser = await getApiUser(request);
+                if (!reAuthUser) {
+                  close();
+                  return;
+                }
+              }
 
             try {
               const current = await db.query.submissions.findFirst({
