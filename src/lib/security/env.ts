@@ -1,5 +1,7 @@
 const AUTH_SECRET_PLACEHOLDER = "your-secret-key-here-generate-with-openssl-rand-base64-32";
 const JUDGE_AUTH_TOKEN_PLACEHOLDER = "your-judge-auth-token";
+const JUDGE_AUTH_TOKEN_DEV_PLACEHOLDER = "dev-test-token-for-local-development";
+const JUDGE_AUTH_TOKEN_MIN_LENGTH = 32;
 const SECURE_AUTH_SESSION_COOKIE_NAME = "__Secure-authjs.session-token";
 const AUTH_SESSION_COOKIE_NAME = "authjs.session-token";
 
@@ -147,8 +149,17 @@ export function getValidatedAuthSecret() {
 export function getValidatedJudgeAuthToken() {
   const judgeAuthToken = requireNonEmptyEnv("JUDGE_AUTH_TOKEN", process.env.JUDGE_AUTH_TOKEN);
 
-  if (judgeAuthToken === JUDGE_AUTH_TOKEN_PLACEHOLDER) {
+  if (
+    judgeAuthToken === JUDGE_AUTH_TOKEN_PLACEHOLDER ||
+    judgeAuthToken === JUDGE_AUTH_TOKEN_DEV_PLACEHOLDER
+  ) {
     throw new Error("JUDGE_AUTH_TOKEN must be replaced with a strong random value before starting the application.");
+  }
+
+  if (judgeAuthToken.length < JUDGE_AUTH_TOKEN_MIN_LENGTH) {
+    throw new Error(
+      "JUDGE_AUTH_TOKEN must be at least 32 characters. Generate one with: openssl rand -hex 32"
+    );
   }
 
   return judgeAuthToken;
