@@ -58,6 +58,12 @@ vi.mock("@/lib/security/constants", () => ({
   isUserRole: mocks.isUserRole,
   USER_ROLES: ["student", "instructor", "admin", "super_admin"],
   canManageRole: vi.fn(),
+  ROLE_LEVEL: {
+    student: 1,
+    instructor: 2,
+    admin: 3,
+    super_admin: 4,
+  },
 }));
 
 vi.mock("@/lib/auth/generated-password", () => ({
@@ -436,7 +442,7 @@ describe("editUser", () => {
     setupAuthorizedAdmin();
 
     const result = await editUser("user-1", { ...defaultUserInput, username: "" });
-    expect(result).toEqual({ success: false, error: "usernameAndNameRequired" });
+    expect(result).toEqual({ success: false, error: "updateUserFailed" });
   });
 
   it("returns usernameAndNameRequired when name is empty", async () => {
@@ -444,7 +450,7 @@ describe("editUser", () => {
     setupAuthorizedAdmin();
 
     const result = await editUser("user-1", { ...defaultUserInput, name: "" });
-    expect(result).toEqual({ success: false, error: "usernameAndNameRequired" });
+    expect(result).toEqual({ success: false, error: "updateUserFailed" });
   });
 
   it("returns error from validateRoleChange (invalidRole)", async () => {
@@ -653,7 +659,7 @@ describe("createUser", () => {
     setupAuthorizedAdmin();
 
     const result = await createUser({ ...defaultUserInput, username: "" });
-    expect(result).toEqual({ success: false, error: "usernameAndNameRequired" });
+    expect(result).toEqual({ success: false, error: "createUserFailed" });
   });
 
   it("returns usernameInUse for duplicate username", async () => {

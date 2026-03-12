@@ -14,6 +14,7 @@ const {
   recordAuditEventMock,
   buildAuditRequestContextMock,
   randomUUIDMock,
+  randomBytesMock,
   createHashMock,
 } = vi.hoisted(() => ({
   getTokenMock: vi.fn(),
@@ -25,6 +26,7 @@ const {
   recordAuditEventMock: vi.fn(),
   buildAuditRequestContextMock: vi.fn(),
   randomUUIDMock: vi.fn(),
+  randomBytesMock: vi.fn(),
   createHashMock: vi.fn(),
 }));
 
@@ -62,10 +64,12 @@ vi.mock("crypto", () => {
     update: vi.fn().mockReturnThis(),
     digest: vi.fn().mockReturnValue("abcdef0123456789abcdef0123456789"),
   };
+  randomBytesMock.mockReturnValue(Buffer.from("0123456789abcdef"));
   return {
     default: {
       randomUUID: randomUUIDMock,
       createHash: createHashMock.mockReturnValue(hashObj),
+      randomBytes: randomBytesMock,
     },
   };
 });
@@ -409,15 +413,16 @@ describe("proxy", () => {
   // =========================================================================
   describe("CSP nonce injection", () => {
     it("sets Content-Security-Policy header with nonce on pass-through responses", async () => {
-      randomUUIDMock.mockReturnValue("test-uuid-1234");
+      const nonceBytes = Buffer.from("test-nonce-bytes");
+      randomBytesMock.mockReturnValue(nonceBytes);
 
       const response = await proxy(makeRequest("/login"));
 
       const csp = response.headers.get("Content-Security-Policy");
       expect(csp).toBeTruthy();
 
-      // Nonce is base64-encoded UUID
-      const expectedNonce = Buffer.from("test-uuid-1234").toString("base64");
+      // Nonce is base64-encoded random bytes
+      const expectedNonce = nonceBytes.toString("base64");
       expect(csp).toContain(`'nonce-${expectedNonce}'`);
     });
 
@@ -440,13 +445,14 @@ describe("proxy", () => {
     });
 
     it("sets x-nonce request header for downstream consumption", async () => {
-      randomUUIDMock.mockReturnValue("downstream-uuid");
+      const nonceBytes = Buffer.from("downstream-nonce-bytes");
+      randomBytesMock.mockReturnValue(nonceBytes);
 
       const response = await proxy(makeRequest("/login"));
 
       // The x-nonce header is set on the request headers forwarded downstream.
       // NextResponse.next() embeds them — we verify the CSP contains the matching nonce.
-      const expectedNonce = Buffer.from("downstream-uuid").toString("base64");
+      const expectedNonce = nonceBytes.toString("base64");
       const csp = response.headers.get("Content-Security-Policy");
       expect(csp).toContain(expectedNonce);
     });

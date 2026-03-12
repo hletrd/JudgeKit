@@ -40,10 +40,29 @@ import {
   getAccessibleProblemIds,
 } from "@/lib/auth/permissions";
 
-function createSelectResult<T>(result: T) {
+function createSelectResult<T>(result: T[]) {
+  // Build a "thenable array" that can be awaited directly (resolves to result[])
+  // AND has .limit().then() chaining for canAccessProblem's pattern.
+  function makeLimitChain() {
+    return {
+      limit: vi.fn(() => ({
+        then: vi.fn((resolve: (rows: T[]) => unknown) => Promise.resolve(resolve(result))),
+      })),
+    };
+  }
+
+  function makeWhereResult(): ReturnType<typeof makeLimitChain> & Promise<T[]> {
+    const limitChain = makeLimitChain();
+    const promise = Promise.resolve(result);
+    return Object.assign(promise, limitChain) as ReturnType<typeof makeLimitChain> & Promise<T[]>;
+  }
+
   return {
     from: vi.fn(() => ({
-      where: vi.fn(() => result),
+      where: vi.fn(() => makeWhereResult()),
+      innerJoin: vi.fn(() => ({
+        where: vi.fn(() => makeWhereResult()),
+      })),
     })),
   };
 }
@@ -101,49 +120,49 @@ describe("canAccessGroup", () => {
 
 describe("canAccessProblem", () => {
   it("allows public problems without group lookups", async () => {
-    dbMock.query.problems.findFirst.mockResolvedValue({
-      id: "problem-1",
-      visibility: "public",
-      authorId: "author-2",
-    });
+    // First select: problem lookup returns public problem
+    dbMock.select.mockReturnValueOnce(
+      createSelectResult([{ visibility: "public", authorId: "author-2" }])
+    );
 
     await expect(canAccessProblem("problem-1", "user-1", "student")).resolves.toBe(true);
-    expect(dbMock.select).not.toHaveBeenCalled();
+    // Only one select call (the problem lookup) — no group lookup needed
+    expect(dbMock.select).toHaveBeenCalledTimes(1);
   });
 
   it("allows shared hidden problems through enrolled groups", async () => {
-    dbMock.query.problems.findFirst.mockResolvedValue({
-      id: "problem-1",
-      visibility: "hidden",
-      authorId: "author-2",
-    });
-    dbMock.select
-      .mockReturnValueOnce(createSelectResult([{ groupId: "group-1" }]))
-      .mockReturnValueOnce(createSelectResult([{ groupId: "group-1" }]));
+    // First select: problem lookup
+    dbMock.select.mockReturnValueOnce(
+      createSelectResult([{ visibility: "hidden", authorId: "author-2" }])
+    );
+    // Second select: JOIN query for group access returns a row
+    dbMock.select.mockReturnValueOnce(
+      createSelectResult([{ groupId: "group-1" }])
+    );
 
     await expect(canAccessProblem("problem-1", "user-1", "student")).resolves.toBe(true);
   });
 
   it("returns false for restricted problems without a matching group", async () => {
-    dbMock.query.problems.findFirst.mockResolvedValue({
-      id: "problem-1",
-      visibility: "private",
-      authorId: "author-2",
-    });
+    // First select: problem lookup
+    dbMock.select.mockReturnValueOnce(
+      createSelectResult([{ visibility: "private", authorId: "author-2" }])
+    );
+    // Second select: JOIN query returns no rows
     dbMock.select.mockReturnValueOnce(createSelectResult([]));
 
     await expect(canAccessProblem("problem-1", "user-1", "student")).resolves.toBe(false);
   });
 
   it("allows authors to access their own restricted problems", async () => {
-    dbMock.query.problems.findFirst.mockResolvedValue({
-      id: "problem-1",
-      visibility: "private",
-      authorId: "user-1",
-    });
+    // First select: problem lookup — author matches userId
+    dbMock.select.mockReturnValueOnce(
+      createSelectResult([{ visibility: "private", authorId: "user-1" }])
+    );
 
     await expect(canAccessProblem("problem-1", "user-1", "student")).resolves.toBe(true);
-    expect(dbMock.select).not.toHaveBeenCalled();
+    // Only one select call (the problem lookup) — no group lookup needed for author
+    expect(dbMock.select).toHaveBeenCalledTimes(1);
   });
 });
 

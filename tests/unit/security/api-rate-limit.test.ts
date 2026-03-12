@@ -1,24 +1,49 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { NextRequest } from "next/server";
 
-const { getRateLimitKeyMock, isRateLimitedMock, recordRateLimitFailureMock } = vi.hoisted(
-  () => ({
-    getRateLimitKeyMock: vi.fn(),
-    isRateLimitedMock: vi.fn(),
-    recordRateLimitFailureMock: vi.fn(),
-  })
-);
+const { getRateLimitKeyMock, isRateLimitedMock, dbMock } = vi.hoisted(() => ({
+  getRateLimitKeyMock: vi.fn(),
+  isRateLimitedMock: vi.fn(),
+  dbMock: {
+    select: vi.fn(),
+    insert: vi.fn(),
+    update: vi.fn(),
+  },
+}));
 
 vi.mock("@/lib/security/rate-limit", () => ({
   getRateLimitKey: getRateLimitKeyMock,
   isRateLimited: isRateLimitedMock,
-  recordRateLimitFailure: recordRateLimitFailureMock,
+}));
+
+vi.mock("@/lib/db", () => ({
+  db: dbMock,
+}));
+
+vi.mock("nanoid", () => ({
+  nanoid: vi.fn(() => "test-nanoid"),
 }));
 
 import { consumeApiRateLimit } from "@/lib/security/api-rate-limit";
 
 beforeEach(() => {
   vi.clearAllMocks();
+  // Default: db.select returns no existing row (new request)
+  dbMock.select.mockReturnValue({
+    from: vi.fn(() => ({
+      where: vi.fn(() => ({
+        get: vi.fn(() => undefined),
+      })),
+    })),
+  });
+  dbMock.insert.mockReturnValue({
+    values: vi.fn(() => ({ run: vi.fn() })),
+  });
+  dbMock.update.mockReturnValue({
+    set: vi.fn(() => ({
+      where: vi.fn(() => ({ run: vi.fn() })),
+    })),
+  });
 });
 
 function createRequest() {
@@ -40,7 +65,8 @@ describe("consumeApiRateLimit", () => {
       "api:groups",
       expect.any(Headers)
     );
-    expect(recordRateLimitFailureMock).toHaveBeenCalledWith("api:groups:198.51.100.8");
+    // recordApiAttempt is called internally via db.insert (new key)
+    expect(dbMock.insert).toHaveBeenCalled();
   });
 
   it("returns a 429 response when the request is already rate limited", async () => {
@@ -60,9 +86,10 @@ describe("consumeApiRateLimit", () => {
     const request = createRequest();
 
     consumeApiRateLimit(request, "groups");
+    // Second call with same request object: key already consumed, returns null without recording
     consumeApiRateLimit(request, "groups");
 
-    // recordRateLimitFailure is called once per consumeApiRateLimit invocation (no dedup)
-    expect(recordRateLimitFailureMock).toHaveBeenCalledTimes(2);
+    // recordApiAttempt is only called once (dedup via WeakMap)
+    expect(dbMock.insert).toHaveBeenCalledTimes(1);
   });
 });
