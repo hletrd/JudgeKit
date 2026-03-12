@@ -1,8 +1,13 @@
 import { NextRequest, NextResponse } from "next/server";
+import { getAuthUrlObject } from "@/lib/security/env";
 
 const SAFE_METHODS = new Set(["GET", "HEAD", "OPTIONS"]);
 
 function getExpectedHost(request: NextRequest) {
+  const authUrl = getAuthUrlObject();
+  if (authUrl) {
+    return authUrl.host;
+  }
   return request.headers.get("x-forwarded-host")?.split(",")[0]?.trim() ?? request.headers.get("host")?.trim() ?? null;
 }
 
