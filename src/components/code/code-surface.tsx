@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
+import { useEditorCompartments } from "@/hooks/use-editor-compartments";
 import { defaultKeymap, history, historyKeymap, indentWithTab } from "@codemirror/commands";
 import {
   bracketMatching,
@@ -11,7 +12,7 @@ import {
   syntaxHighlighting,
 } from "@codemirror/language";
 import { oneDarkHighlightStyle } from "@codemirror/theme-one-dark";
-import { Compartment, EditorState, type Extension } from "@codemirror/state";
+import { EditorState, type Extension } from "@codemirror/state";
 import {
   drawSelection,
   EditorView,
@@ -196,12 +197,7 @@ export function CodeSurface({
   const editorViewRef = useRef<EditorView | null>(null);
   const onValueChangeRef = useRef(onValueChangeAction);
   const isSyncingRef = useRef(false);
-  const languageCompartmentRef = useRef(new Compartment());
-  const highlightCompartmentRef = useRef(new Compartment());
-  const minHeightCompartmentRef = useRef(new Compartment());
-  const editabilityCompartmentRef = useRef(new Compartment());
-  const placeholderCompartmentRef = useRef(new Compartment());
-  const contentAttributesCompartmentRef = useRef(new Compartment());
+  const { language: languageCompartmentRef, highlight: highlightCompartmentRef, minHeight: minHeightCompartmentRef, editability: editabilityCompartmentRef, placeholderComp: placeholderCompartmentRef, contentAttributes: contentAttributesCompartmentRef } = useEditorCompartments();
   const [initialEditorConfig] = useState(() => ({
     ariaLabel,
     ariaLabelledby,
