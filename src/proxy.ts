@@ -10,10 +10,10 @@ import crypto from "crypto";
 
 // In-process LRU cache for proxy auth lookups.
 // Security tradeoff: revoked or deactivated users may retain access for up to
-// AUTH_CACHE_TTL_MS (5 seconds) after the change is applied to the database.
+// AUTH_CACHE_TTL_MS (2 seconds) after the change is applied to the database.
 // Negative results (user not found / inactive / token invalidated) are NOT cached.
 const authUserCache = new Map<string, { user: Awaited<ReturnType<typeof getActiveAuthUserById>>; expiresAt: number }>();
-const AUTH_CACHE_TTL_MS = 5_000; // 5 seconds
+const AUTH_CACHE_TTL_MS = 2_000; // 2 seconds
 const AUTH_CACHE_MAX_SIZE = 500;
 
 function getCachedAuthUser(cacheKey: string) {
@@ -42,7 +42,7 @@ function clearAuthSessionCookies(response: NextResponse) {
 }
 
 function createSecuredNextResponse(request: NextRequest) {
-  const nonce = Buffer.from(crypto.randomUUID()).toString("base64");
+  const nonce = crypto.randomBytes(16).toString("base64");
   const isDev = process.env.NODE_ENV === "development";
   const requestHeaders = new Headers(request.headers);
   requestHeaders.set("x-nonce", nonce);

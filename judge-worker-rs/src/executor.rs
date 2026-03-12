@@ -48,10 +48,10 @@ async fn execute_inner(client: &ApiClient, config: &Config, submission: Submissi
 
     let workspace_dir = temp_dir.path();
 
-    // Set permissions to 0o755 so the judge user inside the container can write to the workspace
+    // Set permissions to 0o700 so only the owner can access the workspace
     if let Err(e) = fs::set_permissions(
         workspace_dir,
-        std::os::unix::fs::PermissionsExt::from_mode(0o755),
+        std::os::unix::fs::PermissionsExt::from_mode(0o700),
     )
     .await
     {
