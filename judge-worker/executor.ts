@@ -295,11 +295,15 @@ async function runDockerCommand(options: DockerCommandOptions): Promise<DockerCo
 export async function executeSubmission(submission: Submission): Promise<void> {
   const config = LANGUAGE_CONFIGS[submission.language];
   if (!config) {
-    await reportResult(submission.id, submission.claimToken, "compile_error", "Unsupported language", []);
+    await reportJudgeUpdate(submission.id, submission.claimToken, {
+      status: "compile_error",
+      compileOutput: "Unsupported language",
+      results: [],
+    });
     return;
   }
 
-  await reportSubmissionStatus(submission.id, submission.claimToken, "judging");
+  await reportJudgeUpdate(submission.id, submission.claimToken, { status: "judging" });
 
   const workspaceDir = await mkdtemp(path.join(tmpdir(), "online-judge-"));
   let compileOutput = "";
@@ -326,18 +330,20 @@ export async function executeSubmission(submission: Submission): Promise<void> {
       compileOutput = [compilation.stdout, compilation.stderr].filter(Boolean).join("\n").trim();
 
       if (compilation.timedOut) {
-        await reportResult(submission.id, submission.claimToken, "compile_error", "Compilation timed out", []);
+        await reportJudgeUpdate(submission.id, submission.claimToken, {
+          status: "compile_error",
+          compileOutput: "Compilation timed out",
+          results: [],
+        });
         return;
       }
 
       if (compilation.oomKilled || compilation.exitCode !== 0) {
-        await reportResult(
-          submission.id,
-          submission.claimToken,
-          "compile_error",
-          compileOutput || "Compilation failed",
-          []
-        );
+        await reportJudgeUpdate(submission.id, submission.claimToken, {
+          status: "compile_error",
+          compileOutput: compileOutput || "Compilation failed",
+          results: [],
+        });
         return;
       }
     }
@@ -381,13 +387,11 @@ export async function executeSubmission(submission: Submission): Promise<void> {
       }
     }
 
-    await reportResult(
-      submission.id,
-      submission.claimToken,
-      getFinalSubmissionStatus(results),
+    await reportJudgeUpdate(submission.id, submission.claimToken, {
+      status: getFinalSubmissionStatus(results),
       compileOutput,
-      results
-    );
+      results,
+    });
   } catch (error) {
     console.error(`Failed to execute submission ${submission.id}:`, error);
 
@@ -398,25 +402,21 @@ export async function executeSubmission(submission: Submission): Promise<void> {
           ? error.message
           : "Judge execution failed";
 
-    await reportResult(
-      submission.id,
-      submission.claimToken,
-      "runtime_error",
-      errorMessage,
-      []
-    );
+    await reportJudgeUpdate(submission.id, submission.claimToken, {
+      status: "runtime_error",
+      compileOutput: errorMessage,
+      results: [],
+    });
   } finally {
     await rm(workspaceDir, { force: true, recursive: true });
   }
 }
 
-async function reportResult(
+async function reportJudgeUpdate(
   submissionId: string,
   claimToken: string,
-  status: string,
-  compileOutput: string,
-  results: TestResult[]
-) {
+  payload: Record<string, unknown>
+): Promise<void> {
   const pollUrl = getJudgePollUrl();
   const authToken = getJudgeAuthToken();
 
@@ -427,37 +427,14 @@ async function reportResult(
         Authorization: `Bearer ${authToken}`,
         "Content-Type": "application/json",
       },
-      body: JSON.stringify({ submissionId, claimToken, status, compileOutput, results }),
+      body: JSON.stringify({ submissionId, claimToken, ...payload }),
     });
 
     if (!response.ok) {
       const responseText = await response.text();
-      console.error("Failed to report result:", response.status, responseText);
+      console.error("Failed to report judge update:", response.status, responseText);
     }
   } catch (error) {
-    console.error("Failed to report result:", error);
-  }
-}
-
-async function reportSubmissionStatus(submissionId: string, claimToken: string, status: string) {
-  const pollUrl = getJudgePollUrl();
-  const authToken = getJudgeAuthToken();
-
-  try {
-    const response = await fetch(pollUrl, {
-      method: "POST",
-      headers: {
-        Authorization: `Bearer ${authToken}`,
-        "Content-Type": "application/json",
-      },
-      body: JSON.stringify({ submissionId, claimToken, status }),
-    });
-
-    if (!response.ok) {
-      const responseText = await response.text();
-      console.error("Failed to report submission status:", response.status, responseText);
-    }
-  } catch (error) {
-    console.error("Failed to report submission status:", error);
+    console.error("Failed to report judge update:", error);
   }
 }

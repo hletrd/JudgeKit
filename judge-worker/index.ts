@@ -1,15 +1,19 @@
-import { getJudgeAuthToken, getJudgePollIntervalMs, getJudgePollUrl } from "./config";
+import { getJudgeAuthToken, getJudgeClaimUrl, getJudgePollIntervalMs, getJudgePollUrl } from "./config";
 import type { Submission } from "./executor";
 
+const CLAIM_URL = getJudgeClaimUrl();
 const POLL_URL = getJudgePollUrl();
 const POLL_INTERVAL = getJudgePollIntervalMs();
 const AUTH_TOKEN = getJudgeAuthToken();
 
-if (POLL_URL.startsWith("http://") && !POLL_URL.startsWith("http://localhost") && !POLL_URL.startsWith("http://127.0.0.1") && !POLL_URL.startsWith("http://[::1]")) {
-  console.warn(
-    "WARNING: JUDGE_POLL_URL uses unencrypted HTTP for a non-localhost address. " +
-    "This exposes the auth token and submission data in transit. Use HTTPS in production."
-  );
+for (const url of [CLAIM_URL, POLL_URL]) {
+  if (url.startsWith("http://") && !url.startsWith("http://localhost") && !url.startsWith("http://127.0.0.1") && !url.startsWith("http://[::1]")) {
+    console.warn(
+      "WARNING: Judge URL uses unencrypted HTTP for a non-localhost address. " +
+      "This exposes the auth token and submission data in transit. Use HTTPS in production."
+    );
+    break;
+  }
 }
 
 let isPolling = false;
@@ -22,12 +26,13 @@ async function pollForSubmissions() {
   isPolling = true;
 
   try {
-    const response = await fetch(POLL_URL, {
-      method: "GET",
+    const response = await fetch(CLAIM_URL, {
+      method: "POST",
       headers: {
         "Authorization": `Bearer ${AUTH_TOKEN}`,
         "Content-Type": "application/json",
       },
+      body: "{}",
     });
 
     if (!response.ok) {
@@ -53,7 +58,7 @@ async function pollForSubmissions() {
 
 async function main() {
   console.log("Judge worker started");
-  console.log(`Polling ${POLL_URL} every ${POLL_INTERVAL}ms`);
+  console.log(`Claim URL: ${CLAIM_URL}, Report URL: ${POLL_URL}, interval: ${POLL_INTERVAL}ms`);
 
   await pollForSubmissions();
 }
