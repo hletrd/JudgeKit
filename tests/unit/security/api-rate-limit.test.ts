@@ -15,7 +15,7 @@ vi.mock("@/lib/security/rate-limit", () => ({
   recordRateLimitFailure: recordRateLimitFailureMock,
 }));
 
-import { checkApiRateLimit, recordApiRateHit } from "@/lib/security/api-rate-limit";
+import { consumeApiRateLimit } from "@/lib/security/api-rate-limit";
 
 beforeEach(() => {
   vi.clearAllMocks();
@@ -30,12 +30,12 @@ function createRequest() {
   });
 }
 
-describe("checkApiRateLimit", () => {
+describe("consumeApiRateLimit", () => {
   it("returns null when the endpoint is still allowed", () => {
     getRateLimitKeyMock.mockReturnValue("api:groups:198.51.100.8");
-    isRateLimitedMock.mockReturnValueOnce(false).mockReturnValueOnce(false);
+    isRateLimitedMock.mockReturnValueOnce(false);
 
-    expect(checkApiRateLimit(createRequest(), "groups")).toBeNull();
+    expect(consumeApiRateLimit(createRequest(), "groups")).toBeNull();
     expect(getRateLimitKeyMock).toHaveBeenCalledWith(
       "api:groups",
       expect.any(Headers)
@@ -47,42 +47,22 @@ describe("checkApiRateLimit", () => {
     getRateLimitKeyMock.mockReturnValue("api:groups:198.51.100.8");
     isRateLimitedMock.mockReturnValue(true);
 
-    const response = checkApiRateLimit(createRequest(), "groups");
+    const response = consumeApiRateLimit(createRequest(), "groups");
 
     expect(response?.status).toBe(429);
     expect(response?.headers.get("Retry-After")).toBe("60");
     await expect(response?.json()).resolves.toEqual({ error: "rateLimited" });
   });
 
-  it("blocks the request that reaches the threshold after consuming its hit", async () => {
+  it("does not double-count the same request key", () => {
     getRateLimitKeyMock.mockReturnValue("api:groups:198.51.100.8");
-    isRateLimitedMock.mockReturnValueOnce(false).mockReturnValueOnce(true);
-
-    const response = checkApiRateLimit(createRequest(), "groups");
-
-    expect(recordRateLimitFailureMock).toHaveBeenCalledWith("api:groups:198.51.100.8");
-    expect(response?.status).toBe(429);
-    await expect(response?.json()).resolves.toEqual({ error: "rateLimited" });
-  });
-});
-
-describe("recordApiRateHit", () => {
-  it("records hits under the endpoint-specific API key", () => {
-    getRateLimitKeyMock.mockReturnValue("api:groups:198.51.100.8");
-
-    recordApiRateHit(createRequest(), "groups");
-
-    expect(recordRateLimitFailureMock).toHaveBeenCalledWith("api:groups:198.51.100.8");
-  });
-
-  it("does not double-count requests that were already consumed by the check helper", () => {
-    getRateLimitKeyMock.mockReturnValue("api:groups:198.51.100.8");
-    isRateLimitedMock.mockReturnValueOnce(false).mockReturnValueOnce(false);
+    isRateLimitedMock.mockReturnValue(false);
     const request = createRequest();
 
-    expect(checkApiRateLimit(request, "groups")).toBeNull();
-    recordApiRateHit(request, "groups");
+    consumeApiRateLimit(request, "groups");
+    consumeApiRateLimit(request, "groups");
 
+    // recordRateLimitFailure should only be called once for the same request+endpoint
     expect(recordRateLimitFailureMock).toHaveBeenCalledTimes(1);
   });
 });
