@@ -229,6 +229,21 @@ export async function editUser(userId: string, data: ManagedUserInput): Promise<
       return { success: false, error: "emailInUse" };
     }
 
+    // Prevent password reset for users of equal or higher privilege
+    if (data.password && targetUser.role) {
+      const ROLE_LEVEL: Record<string, number> = {
+        student: 0,
+        instructor: 1,
+        admin: 2,
+        super_admin: 3,
+      };
+      const actorLevel = ROLE_LEVEL[actorRole] ?? 0;
+      const targetLevel = ROLE_LEVEL[targetUser.role] ?? 0;
+      if (targetLevel >= actorLevel) {
+        return { success: false, error: "unauthorized" };
+      }
+    }
+
     let passwordHash: string | undefined;
     if (data.password) {
       const passwordResult = await validateAndHashPassword(data.password, {
