@@ -3,18 +3,33 @@ import { apiError } from "@/lib/api/responses";
 import { db } from "@/lib/db";
 import { submissions } from "@/lib/db/schema";
 import { eq } from "drizzle-orm";
-import { getApiUser, unauthorized, forbidden, notFound, isAdmin } from "@/lib/api/auth";
+import { getApiUser, unauthorized, forbidden, notFound } from "@/lib/api/auth";
+import { canAccessSubmission } from "@/lib/auth/permissions";
 import { IN_PROGRESS_JUDGE_STATUSES } from "@/lib/judge/verdict";
 import { logger } from "@/lib/logger";
 import { consumeApiRateLimit } from "@/lib/security/api-rate-limit";
 
 // Track active SSE connections per user to prevent resource exhaustion
 const activeConnections = new Map<string, number>();
+const connectionLastActivity = new Map<string, number>();
 const MAX_SSE_CONNECTIONS_PER_USER = 5;
 
 const POLL_INTERVAL_MS = 2000;
 const TIMEOUT_MS = 5 * 60 * 1000;
 const AUTH_RECHECK_INTERVAL_MS = 30_000;
+
+// Periodic cleanup of stale connection tracking entries
+const CLEANUP_INTERVAL_MS = 60_000;
+setInterval(() => {
+  const now = Date.now();
+  const staleThreshold = TIMEOUT_MS + 30_000; // timeout + 30s buffer
+  for (const [userId, lastActive] of connectionLastActivity) {
+    if (now - lastActive > staleThreshold) {
+      activeConnections.delete(userId);
+      connectionLastActivity.delete(userId);
+    }
+  }
+}, CLEANUP_INTERVAL_MS);
 
 export async function GET(
   request: NextRequest,
@@ -33,6 +48,7 @@ export async function GET(
       return apiError("tooManyConnections", 429);
     }
     activeConnections.set(user.id, currentCount + 1);
+    connectionLastActivity.set(user.id, Date.now());
 
     const userId = user.id;
 
@@ -44,14 +60,14 @@ export async function GET(
         id: true,
         userId: true,
         status: true,
+        assignmentId: true,
       },
     });
 
     if (!submission) return notFound("Submission");
 
-    if (submission.userId !== user.id && !isAdmin(user.role)) {
-      return forbidden();
-    }
+    const hasAccess = await canAccessSubmission(submission, user.id, user.role);
+    if (!hasAccess) return forbidden();
 
     // If already in a terminal state, return the full submission immediately as a single event
     if (!IN_PROGRESS_JUDGE_STATUSES.has(submission.status ?? "")) {
@@ -107,6 +123,7 @@ export async function GET(
         const pollTimer = setInterval(() => {
           void (async () => {
             if (closed) return;
+            connectionLastActivity.set(userId, Date.now());
 
               // Periodically re-check auth to ensure deactivated users don't continue receiving data
               if (Date.now() - lastAuthCheck >= AUTH_RECHECK_INTERVAL_MS) {
