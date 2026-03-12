@@ -21,3 +21,9 @@ export function parsePagination(
     offset: (page - 1) * limit,
   };
 }
+
+export function parseCursorParams(searchParams: Record<string, string | string[] | undefined>) {
+  const cursor = typeof searchParams.cursor === "string" ? searchParams.cursor : undefined;
+  const limit = Math.min(Math.max(1, parseInt(String(searchParams.limit ?? "20"), 10) || 20), 100);
+  return { cursor, limit };
+}

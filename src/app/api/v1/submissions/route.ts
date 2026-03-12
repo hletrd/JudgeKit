@@ -2,7 +2,7 @@ import { NextRequest } from "next/server";
 import { db } from "@/lib/db";
 import { languageConfigs, problems, submissions } from "@/lib/db/schema";
 import { isJudgeLanguage } from "@/lib/judge/languages";
-import { and, desc, eq, gt, sql } from "drizzle-orm";
+import { and, desc, eq, gt, lt, sql } from "drizzle-orm";
 import { getApiUser, unauthorized, isAdmin, csrfForbidden } from "@/lib/api/auth";
 import { recordAuditEvent } from "@/lib/audit/events";
 import { canAccessProblem } from "@/lib/auth/permissions";
@@ -19,7 +19,7 @@ import {
 } from "@/lib/security/constants";
 import { generateSubmissionId } from "@/lib/submissions/id";
 import { submissionCreateSchema } from "@/lib/validators/api";
-import { parsePagination } from "@/lib/api/pagination";
+import { parsePagination, parseCursorParams } from "@/lib/api/pagination";
 import { apiError, apiPaginated, apiSuccess } from "@/lib/api/responses";
 import { logger } from "@/lib/logger";
 
@@ -29,9 +29,9 @@ export async function GET(request: NextRequest) {
     if (!user) return unauthorized();
 
     const searchParams = request.nextUrl.searchParams;
-    const { page, limit, offset } = parsePagination(searchParams);
     const problemId = searchParams.get("problemId");
     const status = searchParams.get("status");
+    const cursorParam = searchParams.get("cursor");
 
     if (status && !isSubmissionStatus(status)) {
       return apiError("invalidSubmissionStatus", 400);
@@ -44,6 +44,62 @@ export async function GET(request: NextRequest) {
     const userFilter = isAdmin(user.role) ? undefined : eq(submissions.userId, user.id);
     const problemFilter = problemId ? eq(submissions.problemId, problemId) : undefined;
     const statusFilter = status ? eq(submissions.status, status) : undefined;
+
+    if (cursorParam !== null) {
+      // Cursor-based pagination mode
+      const { cursor, limit } = parseCursorParams({
+        cursor: cursorParam,
+        limit: searchParams.get("limit") ?? undefined,
+      });
+
+      // Resolve the submittedAt of the cursor submission to page backwards
+      let cursorFilter: ReturnType<typeof lt> | undefined;
+      if (cursor) {
+        const cursorRow = await db.query.submissions.findFirst({
+          where: eq(submissions.id, cursor),
+          columns: { submittedAt: true },
+        });
+        if (cursorRow?.submittedAt) {
+          cursorFilter = lt(submissions.submittedAt, cursorRow.submittedAt);
+        }
+      }
+
+      const filters = [userFilter, problemFilter, statusFilter, cursorFilter].flatMap((f) =>
+        f ? [f] : []
+      );
+      const whereClause =
+        filters.length === 0 ? undefined : filters.length === 1 ? filters[0] : and(...filters);
+
+      // Fetch limit + 1 to detect if there is a next page
+      const results = await db.query.submissions.findMany({
+        where: whereClause,
+        columns: {
+          id: true,
+          userId: true,
+          problemId: true,
+          assignmentId: true,
+          language: true,
+          status: true,
+          executionTimeMs: true,
+          memoryUsedKb: true,
+          score: true,
+          judgedAt: true,
+          submittedAt: true,
+        },
+        orderBy: [desc(submissions.submittedAt)],
+        limit: limit + 1,
+      });
+
+      const hasMore = results.length > limit;
+      const pageResults = hasMore ? results.slice(0, limit) : results;
+      const nextCursor = hasMore ? pageResults[pageResults.length - 1]?.id : undefined;
+
+      return apiSuccess({ data: pageResults, nextCursor: nextCursor ?? null });
+    }
+
+    // Offset-based pagination mode (default, backward compatible)
+    const { page, limit, offset } = parsePagination(searchParams);
+
     const filters = [userFilter, problemFilter, statusFilter].flatMap((filter) =>
       filter ? [filter] : []
     );
