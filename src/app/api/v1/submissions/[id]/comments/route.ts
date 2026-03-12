@@ -81,6 +81,9 @@ export async function POST(
 
     if (!submission) return notFound("Submission");
 
+    const hasAccess = await canAccessSubmission(submission, user.id, user.role);
+    if (!hasAccess) return forbidden();
+
     const body = await request.json();
     const parsed = commentCreateSchema.safeParse(body);
 
