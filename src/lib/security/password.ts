@@ -26,7 +26,7 @@ const COMMON_PASSWORDS = new Set([
   "killer", "george", "andrew", "andrea", "joshua", "student",
 ]);
 
-export type PasswordValidationError = "passwordTooShort" | "passwordTooWeak" | "passwordTooCommon" | "passwordTooContextual";
+export type PasswordValidationError = "passwordTooShort" | "passwordTooLong" | "passwordTooWeak" | "passwordTooCommon" | "passwordTooContextual";
 
 /**
  * Returns true if the password contains the username or the local part of the
@@ -60,6 +60,10 @@ export function getPasswordValidationError(
 ): PasswordValidationError | null {
   if (password.length < MIN_PASSWORD_LENGTH) {
     return "passwordTooShort";
+  }
+
+  if (password.length > 128) {
+    return "passwordTooLong";
   }
 
   if (COMMON_PASSWORDS.has(password.toLowerCase())) {
