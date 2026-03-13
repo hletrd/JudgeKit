@@ -1,6 +1,6 @@
 import type { JWT } from "next-auth/jwt";
 
-export const AUTH_SESSION_MAX_AGE_SECONDS = 8 * 60 * 60;
+export const AUTH_SESSION_MAX_AGE_SECONDS = 14 * 24 * 60 * 60;
 
 type TokenTimeCarrier = {
   authenticatedAt?: unknown;
