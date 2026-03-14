@@ -146,6 +146,23 @@ function insertNewlineGnuStyle(view: EditorView): boolean {
   return true;
 }
 
+// Auto-dedent when typing `}`: if the line before the cursor is only whitespace,
+// remove one indent level (4 spaces).
+const electricBrace = EditorView.inputHandler.of((view, from, to, text) => {
+  if (text !== "}") return false;
+  const line = view.state.doc.lineAt(from);
+  const beforeCursor = line.text.slice(0, from - line.from);
+  if (!/^\s+$/.test(beforeCursor)) return false;
+  const unit = "    ";
+  if (!beforeCursor.endsWith(unit)) return false;
+  const newIndent = beforeCursor.slice(0, beforeCursor.length - unit.length);
+  view.dispatch({
+    changes: { from: line.from, to, insert: newIndent + "}" },
+    selection: { anchor: line.from + newIndent.length + 1 },
+  });
+  return true;
+});
+
 // drawSelection() replaces native selection rendering with CodeMirror's own layer,
 // which conflicts with iOS Safari's UIKit selection handles and touch input.
 const isIOS =
@@ -161,6 +178,7 @@ const baseExtensions: Extension[] = [
   ...(isIOS ? [] : [drawSelection()]),
   highlightSpecialChars(),
   bracketMatching(),
+  electricBrace,
   EditorView.lineWrapping,
   keymap.of([
     { key: "Enter", run: insertNewlineGnuStyle },
