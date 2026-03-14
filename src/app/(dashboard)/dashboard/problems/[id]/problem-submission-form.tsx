@@ -128,7 +128,7 @@ export function ProblemSubmissionForm({
       }
 
       allowNextNavigation();
-      router.push(`/dashboard/submissions/${submissionId}`);
+      router.push(`/dashboard/submissions/${submissionId}?from=problem`);
       clearAllDrafts();
     } catch {
       toast.error(tCommon("error"));

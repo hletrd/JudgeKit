@@ -14,7 +14,12 @@ export default async function SubmissionDetailPage({ params, searchParams }: { p
   const resolvedParams = await params;
   const resolvedSearchParams = searchParams ? await searchParams : undefined;
   const submissionId = resolvedParams.id;
-  const backHref = resolvedSearchParams?.from === "admin" ? "/dashboard/admin/submissions" : "/dashboard/submissions";
+  const fromParam = resolvedSearchParams?.from;
+  const backHref = fromParam === "admin"
+    ? "/dashboard/admin/submissions"
+    : fromParam === "problem"
+      ? "/dashboard/problems"
+      : "/dashboard/submissions";
 
   const timeZone = await getResolvedSystemTimeZone();
 
