@@ -36,8 +36,9 @@ function setCachedAuthUser(cacheKey: string, user: Awaited<ReturnType<typeof get
 }
 
 function clearAuthSessionCookies(response: NextResponse) {
-  response.cookies.delete("authjs.session-token");
-  response.cookies.delete("__Secure-authjs.session-token");
+  // Explicitly set path and secure to ensure cookies are actually cleared
+  response.cookies.set("authjs.session-token", "", { maxAge: 0, path: "/" });
+  response.cookies.set("__Secure-authjs.session-token", "", { maxAge: 0, path: "/", secure: true });
 
   return response;
 }
@@ -133,8 +134,9 @@ export async function proxy(request: NextRequest) {
       });
 
       // Hard-reject for admin roles — force re-authentication
+      // Skip if already on auth page to prevent redirect loops
       const role = typeof token.role === "string" ? token.role : "";
-      if (role === "admin" || role === "super_admin") {
+      if ((role === "admin" || role === "super_admin") && !isAuthPage) {
         if (isApiRoute) {
           return clearAuthSessionCookies(
             NextResponse.json({ error: "SessionUaMismatch" }, { status: 401 })

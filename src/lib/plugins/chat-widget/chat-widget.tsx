@@ -288,16 +288,15 @@ export default function ChatWidget(_props: PluginWidgetProps) {
               target.style.height = Math.min(target.scrollHeight, 120) + "px";
             }}
           />
-          <Button
-            size="icon"
+          <button
+            type="button"
             onClick={() => void handleSend()}
             disabled={!input.trim() || isStreaming}
             aria-label={t("send")}
-            className="shrink-0 self-end [&_svg]:size-4"
-            style={{ height: "36px", width: "36px" }}
+            className="shrink-0 self-end rounded-lg bg-primary px-3 py-2 text-primary-foreground transition-colors hover:bg-primary/90 disabled:opacity-50"
           >
-            <Send />
-          </Button>
+            <Send className="h-4 w-4" />
+          </button>
         </div>
       </div>
     </div>
