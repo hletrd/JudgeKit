@@ -6,6 +6,8 @@ import { usePathname, useSearchParams } from "next/navigation";
 import { MessageCircle, X, Minus, Send } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import type { PluginWidgetProps } from "@/lib/plugins/types";
+import ReactMarkdown from "react-markdown";
+import remarkGfm from "remark-gfm";
 
 interface Message {
   role: "user" | "assistant";
@@ -50,6 +52,18 @@ export default function ChatWidget(_props: PluginWidgetProps) {
       inputRef.current?.focus();
     }
   }, [isOpen, isMinimized]);
+
+  // Auto-open on submission errors
+  useEffect(() => {
+    function handleSubmissionError(e: CustomEvent) {
+      if (e.detail?.hasError && problemContext) {
+        setIsOpen(true);
+        setIsMinimized(false);
+      }
+    }
+    window.addEventListener("oj:submission-error", handleSubmissionError as EventListener);
+    return () => window.removeEventListener("oj:submission-error", handleSubmissionError as EventListener);
+  }, [problemContext]);
 
   const handleSend = useCallback(async () => {
     const trimmed = input.trim();
@@ -226,13 +240,17 @@ export default function ChatWidget(_props: PluginWidgetProps) {
             className={`flex ${msg.role === "user" ? "justify-end" : "justify-start"}`}
           >
             <div
-              className={`max-w-[85%] rounded-lg px-3 py-2 text-sm whitespace-pre-wrap break-words ${
+              className={`max-w-[85%] rounded-lg px-3 py-2 text-sm break-words ${
                 msg.role === "user"
-                  ? "bg-primary text-primary-foreground"
-                  : "bg-muted text-foreground"
+                  ? "bg-primary text-primary-foreground whitespace-pre-wrap"
+                  : "bg-muted text-foreground prose prose-sm dark:prose-invert max-w-none prose-p:my-1 prose-pre:my-1 prose-ul:my-1 prose-ol:my-1 prose-li:my-0.5 prose-headings:my-1.5 prose-code:text-xs prose-pre:text-xs"
               }`}
             >
-              {msg.content}
+              {msg.role === "assistant" ? (
+                <ReactMarkdown remarkPlugins={[remarkGfm]}>{msg.content}</ReactMarkdown>
+              ) : (
+                msg.content
+              )}
               {msg.role === "assistant" && !msg.content && isStreaming && i === messages.length - 1 && (
                 <span className="inline-flex gap-1">
                   <span className="animate-bounce" style={{ animationDelay: "0ms" }}>.</span>

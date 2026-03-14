@@ -196,9 +196,16 @@ async function handleGetSubmissionDetail(
     memoryUsedKb: submission.memoryUsedKb,
   };
 
-  // Respect visibility flags (same as student sees)
-  if (problem?.showCompileOutput && submission.compileOutput) {
-    result.compileOutput = submission.compileOutput;
+  // Always include the student's own source code
+  result.sourceCode = submission.sourceCode;
+
+  // Include compileOutput always, but note when hidden
+  if (submission.compileOutput) {
+    if (problem?.showCompileOutput) {
+      result.compileOutput = submission.compileOutput;
+    } else {
+      result.compileOutput = "(Compile output is hidden for this problem)";
+    }
   }
 
   if (problem?.showDetailedResults) {

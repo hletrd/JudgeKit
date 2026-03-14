@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { ArrowLeft } from "lucide-react";
@@ -39,6 +39,15 @@ export function SubmissionDetailClient(props: SubmissionDetailClientProps) {
 
   const { submission, setSubmission, error: pollingError } = useSubmissionPolling(props.initialSubmission);
   const [rejudging, setRejudging] = useState(false);
+
+  // Notify chat widget of submission errors
+  useEffect(() => {
+    if (submission && !["pending", "queued", "judging", "accepted"].includes(submission.status)) {
+      window.dispatchEvent(new CustomEvent("oj:submission-error", {
+        detail: { hasError: true, status: submission.status }
+      }));
+    }
+  }, [submission?.status]);
 
   const canComment = props.userRole === "instructor" || props.userRole === "admin" || props.userRole === "super_admin";
   const canRejudge = props.userRole === "instructor" || props.userRole === "admin" || props.userRole === "super_admin";
