@@ -467,6 +467,7 @@ export default async function ProblemsPage({
           <Table>
             <TableHeader>
               <TableRow>
+                <TableHead className="w-12">{t("table.number")}</TableHead>
                 <TableHead>{t("table.title")}</TableHead>
                 <TableHead>{t("table.progress")}</TableHead>
                 <TableHead>{t("table.author")}</TableHead>
@@ -477,8 +478,9 @@ export default async function ProblemsPage({
               </TableRow>
             </TableHeader>
             <TableBody>
-              {filteredProblems.map((problem) => (
+              {filteredProblems.map((problem, index) => (
                 <TableRow key={problem.id}>
+                  <TableCell className="text-muted-foreground">{offset + index + 1}</TableCell>
                   <TableCell className="font-medium">
                     <Link href={`/dashboard/problems/${problem.id}`} className="text-primary hover:underline">
                       {problem.title}
@@ -511,7 +513,7 @@ export default async function ProblemsPage({
               ))}
               {filteredProblems.length === 0 && (
                 <TableRow>
-                  <TableCell colSpan={7} className="text-center text-muted-foreground">
+                  <TableCell colSpan={8} className="text-center text-muted-foreground">
                     {t("noProblems")}
                   </TableCell>
                 </TableRow>

@@ -119,6 +119,7 @@
     "create": "Create Problem",
     "solve": "Solve",
     "table": {
+      "number": "#",
       "title": "Title",
       "progress": "Progress",
       "author": "Author",

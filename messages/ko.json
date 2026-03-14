@@ -119,6 +119,7 @@
     "create": "문제 생성",
     "solve": "풀기",
     "table": {
+      "number": "#",
       "title": "제목",
       "progress": "진행 상태",
       "author": "작성자",
