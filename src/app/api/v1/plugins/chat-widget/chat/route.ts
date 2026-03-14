@@ -9,10 +9,15 @@ import { AGENT_TOOLS, executeTool, type AgentContext } from "@/lib/plugins/chat-
 import { checkServerActionRateLimit } from "@/lib/security/api-rate-limit";
 import { isAiAssistantEnabled } from "@/lib/system-settings";
 import { db } from "@/lib/db";
-import { problems } from "@/lib/db/schema";
+import { problems, chatMessages } from "@/lib/db/schema";
 import { logger } from "@/lib/logger";
+import { nanoid } from "nanoid";
 
 const MAX_TOOL_ITERATIONS = 5;
+
+function generateSessionId(): string {
+  return nanoid(12);
+}
 
 const requestSchema = z.object({
   messages: z.array(
@@ -26,6 +31,7 @@ const requestSchema = z.object({
     assignmentId: z.string().max(100).optional(),
     editorCode: z.string().max(100000).optional(),
     editorLanguage: z.string().max(50).optional(),
+    sessionId: z.string().max(50).optional(),
   }).optional(),
 });
 
@@ -135,6 +141,48 @@ export async function POST(request: Request) {
 
     const { context } = parsed.data;
 
+    const sessionId = context?.sessionId || generateSessionId();
+
+    // Save the latest user message
+    const lastUserMessage = [...parsed.data.messages].reverse().find(m => m.role === "user");
+    if (lastUserMessage) {
+      try {
+        await db.insert(chatMessages).values({
+          userId: session.user.id,
+          sessionId,
+          role: "user",
+          content: lastUserMessage.content,
+          problemId: context?.problemId ?? null,
+          model: null,
+          provider: config.provider,
+        });
+      } catch (e) {
+        // Don't fail the request if logging fails
+        logger.error({ err: e }, "Failed to save chat message");
+      }
+    }
+
+    // Also save any previous assistant message that wasn't saved yet
+    // (the client sends full history, so the second-to-last message from assistant is the previous response)
+    if (parsed.data.messages.length >= 2) {
+      const prevAssistant = parsed.data.messages[parsed.data.messages.length - 2];
+      if (prevAssistant?.role === "assistant" && prevAssistant.content) {
+        try {
+          await db.insert(chatMessages).values({
+            userId: session.user.id,
+            sessionId,
+            role: "assistant",
+            content: prevAssistant.content,
+            problemId: context?.problemId ?? null,
+            model: null,
+            provider: config.provider,
+          });
+        } catch (e) {
+          logger.error({ err: e }, "Failed to save assistant message");
+        }
+      }
+    }
+
     // Check global AI assistant toggle
     const globalEnabled = await isAiAssistantEnabled();
     if (!globalEnabled) {
@@ -222,6 +270,7 @@ export async function POST(request: Request) {
           "Content-Type": "text/plain; charset=utf-8",
           "Cache-Control": "no-cache",
           "Transfer-Encoding": "chunked",
+          "X-Chat-Session-Id": sessionId,
         },
       });
     }
@@ -255,6 +304,7 @@ export async function POST(request: Request) {
           headers: {
             "Content-Type": "text/plain; charset=utf-8",
             "Cache-Control": "no-cache",
+            "X-Chat-Session-Id": sessionId,
           },
         });
       }
@@ -282,6 +332,7 @@ export async function POST(request: Request) {
         "Content-Type": "text/plain; charset=utf-8",
         "Cache-Control": "no-cache",
         "Transfer-Encoding": "chunked",
+        "X-Chat-Session-Id": sessionId,
       },
     });
   } catch (error) {

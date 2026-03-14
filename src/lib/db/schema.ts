@@ -509,3 +509,19 @@ export const plugins = sqliteTable("plugins", {
     .notNull()
     .$defaultFn(() => new Date(Date.now())),
 });
+
+export const chatMessages = sqliteTable("chat_messages", {
+  id: text("id")
+    .primaryKey()
+    .$defaultFn(() => nanoid()),
+  userId: text("user_id").references(() => users.id, { onDelete: "cascade" }),
+  sessionId: text("session_id").notNull(),
+  role: text("role").notNull(), // "user" | "assistant" | "system"
+  content: text("content").notNull(),
+  problemId: text("problem_id"),
+  model: text("model"),
+  provider: text("provider"),
+  createdAt: integer("created_at", { mode: "timestamp" })
+    .notNull()
+    .$defaultFn(() => new Date(Date.now())),
+});

@@ -952,7 +952,12 @@
         "openai": "OpenAI",
         "claude": "Claude (Anthropic)",
         "gemini": "Gemini (Google)"
-      }
+      },
+      "chatLogs": "채팅 로그",
+      "chatLogsDescription": "사용자별 AI 도우미 대화 기록을 확인합니다.",
+      "viewChatLogs": "채팅 로그 보기",
+      "noLogs": "아직 채팅 로그가 없습니다.",
+      "noMessages": "이 대화에 메시지가 없습니다."
     }
   },
   "rankings": {

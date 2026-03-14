@@ -19,6 +19,7 @@ import {
   problemSets,
   problemSetProblems,
   problemSetGroupAccess,
+  chatMessages,
 } from "./schema";
 
 export const usersRelations = relations(users, ({ many }) => ({
@@ -32,6 +33,7 @@ export const usersRelations = relations(users, ({ many }) => ({
   submissions: many(submissions),
   submissionComments: many(submissionComments),
   createdProblemSets: many(problemSets),
+  chatMessages: many(chatMessages),
 }));
 
 export const sessionsRelations = relations(sessions, ({ one }) => ({
@@ -245,3 +247,10 @@ export const problemSetGroupAccessRelations = relations(
     }),
   })
 );
+
+export const chatMessagesRelations = relations(chatMessages, ({ one }) => ({
+  user: one(users, {
+    fields: [chatMessages.userId],
+    references: [users.id],
+  }),
+}));
