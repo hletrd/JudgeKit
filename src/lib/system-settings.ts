@@ -8,9 +8,25 @@ const GLOBAL_SETTINGS_ID = "global";
 export const DEFAULT_SYSTEM_TIME_ZONE = DEFAULT_TIME_ZONE;
 
 export async function getSystemSettings() {
-  return db.query.systemSettings.findFirst({
-    where: eq(systemSettings.id, GLOBAL_SETTINGS_ID),
-  });
+  try {
+    return await db.query.systemSettings.findFirst({
+      where: eq(systemSettings.id, GLOBAL_SETTINGS_ID),
+    });
+  } catch {
+    // Fallback: query without new columns (migration may not have run yet)
+    const rows = await db
+      .select({
+        id: systemSettings.id,
+        siteTitle: systemSettings.siteTitle,
+        siteDescription: systemSettings.siteDescription,
+        timeZone: systemSettings.timeZone,
+        updatedAt: systemSettings.updatedAt,
+      })
+      .from(systemSettings)
+      .where(eq(systemSettings.id, GLOBAL_SETTINGS_ID))
+      .limit(1);
+    return rows[0] ?? undefined;
+  }
 }
 
 export const getResolvedSystemSettings = cache(async (defaults: {
@@ -24,13 +40,17 @@ export const getResolvedSystemSettings = cache(async (defaults: {
     siteTitle: settings?.siteTitle ?? defaults.siteTitle,
     siteDescription: settings?.siteDescription ?? defaults.siteDescription,
     timeZone: settings?.timeZone ?? defaults.timeZone ?? DEFAULT_SYSTEM_TIME_ZONE,
-    aiAssistantEnabled: settings?.aiAssistantEnabled ?? true,
+    aiAssistantEnabled: (settings as any)?.aiAssistantEnabled ?? true,
   };
 });
 
 export async function isAiAssistantEnabled(): Promise<boolean> {
-  const settings = await getSystemSettings();
-  return settings?.aiAssistantEnabled ?? true;
+  try {
+    const settings = await getSystemSettings();
+    return (settings as any)?.aiAssistantEnabled ?? true;
+  } catch {
+    return true; // Default to enabled if column doesn't exist yet
+  }
 }
 
 export async function getResolvedSystemTimeZone() {

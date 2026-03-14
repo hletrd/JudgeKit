@@ -45,7 +45,7 @@ export default async function AdminSettingsPage() {
             currentSiteTitle={resolvedSettings.siteTitle}
             currentSiteDescription={resolvedSettings.siteDescription}
             currentTimeZone={resolvedSettings.timeZone}
-            initialAiAssistantEnabled={storedSettings?.aiAssistantEnabled ?? true}
+            initialAiAssistantEnabled={'aiAssistantEnabled' in (storedSettings ?? {}) ? (storedSettings as any).aiAssistantEnabled ?? true : true}
           />
         </CardContent>
       </Card>

@@ -143,12 +143,16 @@ export async function POST(request: Request) {
 
     // Check per-problem AI toggle
     if (context?.problemId) {
-      const problem = await db.query.problems.findFirst({
-        where: eq(problems.id, context.problemId),
-        columns: { allowAiAssistant: true },
-      });
-      if (problem && !problem.allowAiAssistant) {
-        return NextResponse.json({ error: "aiDisabledForProblem" }, { status: 403 });
+      try {
+        const problem = await db.query.problems.findFirst({
+          where: eq(problems.id, context.problemId),
+          columns: { allowAiAssistant: true },
+        });
+        if (problem && !problem.allowAiAssistant) {
+          return NextResponse.json({ error: "aiDisabledForProblem" }, { status: 403 });
+        }
+      } catch {
+        // Column may not exist yet — skip per-problem check
       }
     }
 
