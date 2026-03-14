@@ -1,5 +1,6 @@
 import { getTranslations } from "next-intl/server";
 import { CheckCircle2, CircleDashed, XCircle } from "lucide-react";
+import { SubmissionStatusBadge } from "@/components/submission-status-badge";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import {
   Table,
@@ -127,6 +128,7 @@ export default async function ProblemsPage({
 
   const t = await getTranslations("problems");
   const tCommon = await getTranslations("common");
+  const tSubmissions = await getTranslations("submissions");
   const visibilityLabels = {
     public: t("visibilityOptions.public"),
     private: t("visibilityOptions.private"),
@@ -169,6 +171,7 @@ export default async function ProblemsPage({
     createdAt: Date | null;
     author: { name: string | null } | null;
     progress: ProblemProgress;
+    latestStatus: string | null;
   }>;
   let totalCount: number;
   let clampedPage: number;
@@ -211,11 +214,13 @@ export default async function ProblemsPage({
     // Fetch submission statuses only for problems on this page
     const pageIds = pageProblems.map((p) => p.id);
     const problemStatuses = new Map<string, Array<string | null>>();
+    const latestStatusMap = new Map<string, { status: string | null; submittedAt: Date | null }>();
     if (pageIds.length > 0) {
       const subRows = await db
         .select({
           problemId: submissions.problemId,
           status: submissions.status,
+          submittedAt: submissions.submittedAt,
         })
         .from(submissions)
         .where(
@@ -228,12 +233,18 @@ export default async function ProblemsPage({
         const arr = problemStatuses.get(row.problemId) ?? [];
         arr.push(row.status);
         problemStatuses.set(row.problemId, arr);
+
+        const existing = latestStatusMap.get(row.problemId);
+        if (!existing || (row.submittedAt && (!existing.submittedAt || row.submittedAt > existing.submittedAt))) {
+          latestStatusMap.set(row.problemId, { status: row.status, submittedAt: row.submittedAt });
+        }
       }
     }
 
     filteredProblems = pageProblems.map((p) => ({
       ...p,
       progress: getProblemProgress(problemStatuses.get(p.id) ?? []),
+      latestStatus: latestStatusMap.get(p.id)?.status ?? null,
     }));
   } else {
     // ── Path B: Progress filter active → fetch lightweight IDs, filter in
@@ -249,11 +260,13 @@ export default async function ProblemsPage({
 
     // Step 2: Fetch submission statuses for these problems for the current user
     const problemStatuses = new Map<string, Array<string | null>>();
+    const latestStatusMap = new Map<string, { status: string | null; submittedAt: Date | null }>();
     if (allIds.length > 0) {
       const subRows = await db
         .select({
           problemId: submissions.problemId,
           status: submissions.status,
+          submittedAt: submissions.submittedAt,
         })
         .from(submissions)
         .where(
@@ -266,6 +279,11 @@ export default async function ProblemsPage({
         const arr = problemStatuses.get(row.problemId) ?? [];
         arr.push(row.status);
         problemStatuses.set(row.problemId, arr);
+
+        const existing = latestStatusMap.get(row.problemId);
+        if (!existing || (row.submittedAt && (!existing.submittedAt || row.submittedAt > existing.submittedAt))) {
+          latestStatusMap.set(row.problemId, { status: row.status, submittedAt: row.submittedAt });
+        }
       }
     }
 
@@ -313,6 +331,7 @@ export default async function ProblemsPage({
           return {
             ...p,
             progress: getProblemProgress(problemStatuses.get(id) ?? []),
+            latestStatus: latestStatusMap.get(id)?.status ?? null,
           };
         })
         .filter((p): p is NonNullable<typeof p> => p !== null);
@@ -345,13 +364,23 @@ export default async function ProblemsPage({
     hidden: t("visibilityOptions.hidden"),
   };
 
-  function renderProgress(problemProgress: ProblemProgress) {
+  function renderProgress(problemProgress: ProblemProgress, latestStatus: string | null) {
     if (problemProgress === "solved") {
       return (
         <span className="inline-flex items-center gap-2 text-emerald-600">
           <CheckCircle2 className="size-4" />
           {progressLabels.solved}
         </span>
+      );
+    }
+
+    if (problemProgress === "attempted" && latestStatus) {
+      const statusLabel = tSubmissions(`status.${latestStatus}` as Parameters<typeof tSubmissions>[0]) ?? latestStatus;
+      return (
+        <SubmissionStatusBadge
+          label={statusLabel}
+          status={latestStatus}
+        />
       );
     }
 
@@ -486,7 +515,7 @@ export default async function ProblemsPage({
                       {problem.title}
                     </Link>
                   </TableCell>
-                  <TableCell>{renderProgress(problem.progress)}</TableCell>
+                  <TableCell>{renderProgress(problem.progress, problem.latestStatus)}</TableCell>
                   <TableCell>{problem.author?.name || tCommon("system")}</TableCell>
                   <TableCell>{t("timeLimitValue", { value: problem.timeLimitMs ?? 2000 })}</TableCell>
                   <TableCell>{t("memoryLimitValue", { value: problem.memoryLimitMb ?? 256 })}</TableCell>
