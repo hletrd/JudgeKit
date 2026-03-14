@@ -12,7 +12,7 @@ import {
 } from "@codemirror/language";
 import { tags } from "@lezer/highlight";
 import { oneDarkHighlightStyle } from "@codemirror/theme-one-dark";
-import { EditorSelection, EditorState, type Extension } from "@codemirror/state";
+import { EditorState, type Extension } from "@codemirror/state";
 import {
   drawSelection,
   EditorView,
@@ -119,23 +119,6 @@ const materialLightHighlightStyle = HighlightStyle.define([
   { tag: tags.invalid, color: "#FF5370" },
 ]);
 
-// Insert newline and copy current line's indent without language-based auto-indent.
-// This avoids unwanted indentation after if/for/while in Allman/GNU brace style.
-function insertNewlineKeepIndent(view: EditorView): boolean {
-  const { state } = view;
-  const changes = state.changeByRange((range) => {
-    const line = state.doc.lineAt(range.head);
-    const indent = /^[\t ]*/.exec(line.text)?.[0] ?? "";
-    const insert = state.lineBreak + indent;
-    return {
-      changes: { from: range.from, to: range.to, insert },
-      range: EditorSelection.cursor(range.from + insert.length),
-    };
-  });
-  view.dispatch(changes, { scrollIntoView: true, userEvent: "input" });
-  return true;
-}
-
 // drawSelection() replaces native selection rendering with CodeMirror's own layer,
 // which conflicts with iOS Safari's UIKit selection handles and touch input.
 const isIOS =
@@ -150,12 +133,8 @@ const baseExtensions: Extension[] = [
   ...(isIOS ? [] : [drawSelection()]),
   highlightSpecialChars(),
   bracketMatching(),
-  keymap.of([
-    { key: "Enter", run: insertNewlineKeepIndent },
-    indentWithTab,
-    ...defaultKeymap,
-    ...historyKeymap,
-  ]),
+  EditorView.lineWrapping,
+  keymap.of([indentWithTab, ...defaultKeymap, ...historyKeymap]),
 ];
 
 async function getLanguageExtension(language: string | null | undefined): Promise<Extension[]> {
