@@ -1,0 +1,16 @@
+[Unit]
+Description=JudgeKit Rate Limiter (Rust)
+After=network.target
+
+[Service]
+Type=simple
+User=ubuntu
+WorkingDirectory=/home/ubuntu/online-judge/rate-limiter-rs
+ExecStart=/home/ubuntu/online-judge/rate-limiter-rs/target/release/rate-limiter
+Restart=always
+RestartSec=3
+Environment=RUST_LOG=info
+Environment=RATE_LIMITER_PORT=3001
+
+[Install]
+WantedBy=multi-user.target
