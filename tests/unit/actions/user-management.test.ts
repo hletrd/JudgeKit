@@ -686,20 +686,20 @@ describe("createUser", () => {
     expect(result).toEqual({ success: false, error: "emailInUse" });
   });
 
-  it("returns password validation error when provided password is weak", async () => {
+  it("returns password validation error when provided password is too short", async () => {
     const { createUser } = await import("@/lib/actions/user-management");
     setupAuthorizedAdmin();
     mocks.validateRoleChange.mockReturnValue(null);
     mocks.isUsernameTaken.mockResolvedValue(false);
     mocks.isEmailTaken.mockResolvedValue(false);
     mocks.nanoid.mockReturnValue("new-id");
-    mocks.validateAndHashPassword.mockResolvedValue({ error: "passwordTooWeak" });
+    mocks.validateAndHashPassword.mockResolvedValue({ error: "passwordTooShort" });
 
     const result = await createUser({
       ...defaultUserInput,
       password: "weak",
     });
-    expect(result).toEqual({ success: false, error: "passwordTooWeak" });
+    expect(result).toEqual({ success: false, error: "passwordTooShort" });
   });
 
   it("creates user with provided password", async () => {

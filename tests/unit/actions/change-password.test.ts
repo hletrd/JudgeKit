@@ -201,36 +201,6 @@ describe("changePassword", () => {
     expect(result).toEqual({ success: false, error: "passwordTooShort" });
   });
 
-  it("returns passwordTooWeak for missing complexity requirements", async () => {
-    const { changePassword } = await import("@/lib/actions/change-password");
-    setupAuthenticatedUser();
-    mocks.compare.mockResolvedValue(true);
-    mocks.getPasswordValidationError.mockReturnValue("passwordTooWeak");
-
-    const result = await changePassword("correctpass", "alllowercase");
-    expect(result).toEqual({ success: false, error: "passwordTooWeak" });
-  });
-
-  it("returns passwordTooCommon for common passwords", async () => {
-    const { changePassword } = await import("@/lib/actions/change-password");
-    setupAuthenticatedUser();
-    mocks.compare.mockResolvedValue(true);
-    mocks.getPasswordValidationError.mockReturnValue("passwordTooCommon");
-
-    const result = await changePassword("correctpass", "password123");
-    expect(result).toEqual({ success: false, error: "passwordTooCommon" });
-  });
-
-  it("returns passwordTooContextual when password contains username", async () => {
-    const { changePassword } = await import("@/lib/actions/change-password");
-    setupAuthenticatedUser();
-    mocks.compare.mockResolvedValue(true);
-    mocks.getPasswordValidationError.mockReturnValue("passwordTooContextual");
-
-    const result = await changePassword("correctpass", "testuser123A");
-    expect(result).toEqual({ success: false, error: "passwordTooContextual" });
-  });
-
   it("changes password successfully, clears rate limit, and records audit", async () => {
     const { changePassword } = await import("@/lib/actions/change-password");
     setupAuthenticatedUser();
