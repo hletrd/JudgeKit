@@ -329,6 +329,7 @@
     "detail": "Submission Detail",
     "description": "View your submission history and results.",
     "mySubmissions": "My Submissions",
+    "allSubmissions": "All Submissions",
     "groupSubmissions": "Student Submissions",
     "table": {
       "id": "ID",
