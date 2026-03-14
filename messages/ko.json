@@ -939,7 +939,7 @@
       "currentKey": "현재 키",
       "model": "모델",
       "assistantName": "도우미 이름",
-      "assistantNamePlaceholder": "예: AuraEdu AI 도우미",
+      "assistantNamePlaceholder": "예: JudgeKit AI 도우미",
       "assistantNameHint": "AI 도우미의 표시 이름입니다. 비워두면 기본값이 사용됩니다.",
       "systemPrompt": "시스템 프롬프트",
       "systemPromptHint": "AI 도우미에게 전달할 지시사항입니다.",
