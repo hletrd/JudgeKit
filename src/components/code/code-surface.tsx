@@ -6,7 +6,6 @@ import { defaultKeymap, history, historyKeymap, indentWithTab } from "@codemirro
 import {
   bracketMatching,
   defaultHighlightStyle,
-  indentOnInput,
   indentUnit,
   StreamLanguage,
   syntaxHighlighting,
@@ -16,7 +15,6 @@ import { EditorState, type Extension } from "@codemirror/state";
 import {
   drawSelection,
   EditorView,
-  highlightActiveLine,
   highlightSpecialChars,
   keymap,
   placeholder,
@@ -66,9 +64,6 @@ const baseTheme = EditorView.theme({
   "&.cm-focused .cm-selectionBackground, .cm-selectionBackground, .cm-content ::selection": {
     backgroundColor: "var(--code-surface-selection)",
   },
-  ".cm-activeLine": {
-    backgroundColor: "var(--code-surface-active-line)",
-  },
   ".cm-cursor, .cm-dropCursor": {
     borderLeftColor: "var(--code-surface-caret)",
   },
@@ -88,9 +83,7 @@ const baseExtensions: Extension[] = [
   indentUnit.of("    "),
   history(),
   drawSelection(),
-  highlightActiveLine(),
   highlightSpecialChars(),
-  indentOnInput(),
   bracketMatching(),
   keymap.of([indentWithTab, ...defaultKeymap, ...historyKeymap]),
 ];
