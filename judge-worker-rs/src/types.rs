@@ -82,6 +82,12 @@ pub enum Language {
     D,
     Racket,
     Vlang,
+    C99,
+    C89,
+    Fortran,
+    Pascal,
+    Brainfuck,
+    Cobol,
     #[serde(other)]
     Unknown,
 }

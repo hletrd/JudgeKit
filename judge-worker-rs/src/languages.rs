@@ -132,6 +132,29 @@ static RACKET_RUN: &[&str] = &["racket", "/workspace/solution.rkt"];
 static V_COMPILE: &[&str] = &["v", "-prod", "-o", "/workspace/solution", "/workspace/solution.v"];
 static V_RUN: &[&str] = &["/workspace/solution"];
 
+// C99
+static C99_COMPILE: &[&str] = &["gcc", "-O2", "-std=c99", "-o", "/workspace/solution", "/workspace/solution.c", "-lm"];
+static C99_RUN: &[&str] = &["/workspace/solution"];
+
+// C89 (ANSI C)
+static C89_COMPILE: &[&str] = &["gcc", "-O2", "-std=c89", "-o", "/workspace/solution", "/workspace/solution.c", "-lm"];
+static C89_RUN: &[&str] = &["/workspace/solution"];
+
+// Fortran
+static FORTRAN_COMPILE: &[&str] = &["gfortran", "-O2", "-std=f2018", "-o", "/workspace/solution", "/workspace/solution.f90"];
+static FORTRAN_RUN: &[&str] = &["/workspace/solution"];
+
+// Pascal
+static PASCAL_COMPILE: &[&str] = &["fpc", "-O2", "-o/workspace/solution", "/workspace/solution.pas"];
+static PASCAL_RUN: &[&str] = &["/workspace/solution"];
+
+// Brainfuck
+static BRAINFUCK_RUN: &[&str] = &["bf", "/workspace/solution.bf"];
+
+// COBOL
+static COBOL_COMPILE: &[&str] = &["cobc", "-x", "-O2", "-o", "/workspace/solution", "/workspace/solution.cob"];
+static COBOL_RUN: &[&str] = &["/workspace/solution"];
+
 static C17_CONFIG: LanguageConfig = LanguageConfig {
     extension: ".c",
     docker_image: "judge-cpp:latest",
@@ -328,6 +351,48 @@ static VLANG_CONFIG: LanguageConfig = LanguageConfig {
     run_command: V_RUN,
 };
 
+static C99_CONFIG: LanguageConfig = LanguageConfig {
+    extension: ".c",
+    docker_image: "judge-cpp:latest",
+    compile_command: Some(C99_COMPILE),
+    run_command: C99_RUN,
+};
+
+static C89_CONFIG: LanguageConfig = LanguageConfig {
+    extension: ".c",
+    docker_image: "judge-cpp:latest",
+    compile_command: Some(C89_COMPILE),
+    run_command: C89_RUN,
+};
+
+static FORTRAN_CONFIG: LanguageConfig = LanguageConfig {
+    extension: ".f90",
+    docker_image: "judge-fortran:latest",
+    compile_command: Some(FORTRAN_COMPILE),
+    run_command: FORTRAN_RUN,
+};
+
+static PASCAL_CONFIG: LanguageConfig = LanguageConfig {
+    extension: ".pas",
+    docker_image: "judge-pascal:latest",
+    compile_command: Some(PASCAL_COMPILE),
+    run_command: PASCAL_RUN,
+};
+
+static BRAINFUCK_CONFIG: LanguageConfig = LanguageConfig {
+    extension: ".bf",
+    docker_image: "judge-brainfuck:latest",
+    compile_command: None,
+    run_command: BRAINFUCK_RUN,
+};
+
+static COBOL_CONFIG: LanguageConfig = LanguageConfig {
+    extension: ".cob",
+    docker_image: "judge-cobol:latest",
+    compile_command: Some(COBOL_COMPILE),
+    run_command: COBOL_RUN,
+};
+
 pub fn get_config(language: &Language) -> Option<&'static LanguageConfig> {
     match language {
         Language::C17 => Some(&C17_CONFIG),
@@ -358,6 +423,12 @@ pub fn get_config(language: &Language) -> Option<&'static LanguageConfig> {
         Language::D => Some(&D_CONFIG),
         Language::Racket => Some(&RACKET_CONFIG),
         Language::Vlang => Some(&VLANG_CONFIG),
+        Language::C99 => Some(&C99_CONFIG),
+        Language::C89 => Some(&C89_CONFIG),
+        Language::Fortran => Some(&FORTRAN_CONFIG),
+        Language::Pascal => Some(&PASCAL_CONFIG),
+        Language::Brainfuck => Some(&BRAINFUCK_CONFIG),
+        Language::Cobol => Some(&COBOL_CONFIG),
         Language::Unknown => None,
     }
 }
@@ -398,6 +469,12 @@ mod tests {
             Language::D,
             Language::Racket,
             Language::Vlang,
+            Language::C99,
+            Language::C89,
+            Language::Fortran,
+            Language::Pascal,
+            Language::Brainfuck,
+            Language::Cobol,
         ];
 
         for lang in &languages {
