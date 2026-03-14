@@ -57,6 +57,7 @@ data/*.db-shm
 
 # rust
 judge-worker-rs/target/
+rate-limiter-rs/target/
 
 # dead-letter queue (failed result payloads for manual recovery)
 dead-letter/
