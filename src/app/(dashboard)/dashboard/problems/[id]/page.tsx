@@ -19,7 +19,7 @@ import { ProblemSubmissionForm } from "./problem-submission-form";
 import Link from "next/link";
 import { Button } from "@/components/ui/button";
 import { ProblemDeleteButton } from "./problem-delete-button";
-import { ArrowLeft } from "lucide-react";
+import { ArrowLeft, Trophy } from "lucide-react";
 
 export default async function ProblemDetailPage({
   params,
@@ -43,6 +43,7 @@ export default async function ProblemDetailPage({
 
   const t = await getTranslations("problems");
   const tCommon = await getTranslations("common");
+  const tRankings = await getTranslations("rankings");
   
   const problem = await db.query.problems.findFirst({
     where: eq(problems.id, problemId),
@@ -162,14 +163,22 @@ export default async function ProblemDetailPage({
               </Link>
               <h2 className="text-3xl font-bold">{problem.title}</h2>
             </div>
-            {canEdit && (
-              <div className="flex flex-wrap gap-2">
-                <Link href={`/dashboard/problems/${problem.id}/edit`}>
-                  <Button variant="outline" size="sm">{tCommon("edit")}</Button>
-                </Link>
-                <ProblemDeleteButton problemId={problem.id} problemTitle={problem.title} />
-              </div>
-            )}
+            <div className="flex flex-wrap gap-2">
+              <Link href={`/dashboard/problems/${problem.id}/rankings`}>
+                <Button variant="outline" size="sm">
+                  <Trophy className="size-4 mr-1" />
+                  {tRankings("viewRankings")}
+                </Button>
+              </Link>
+              {canEdit && (
+                <>
+                  <Link href={`/dashboard/problems/${problem.id}/edit`}>
+                    <Button variant="outline" size="sm">{tCommon("edit")}</Button>
+                  </Link>
+                  <ProblemDeleteButton problemId={problem.id} problemTitle={problem.title} />
+                </>
+              )}
+            </div>
           </div>
           <div className="mb-4 flex gap-2 text-sm text-muted-foreground">
             <Badge variant="outline">{t("badges.timeLimit", { value: problem.timeLimitMs ?? 2000 })}</Badge>
