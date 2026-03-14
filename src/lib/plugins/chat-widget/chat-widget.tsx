@@ -31,13 +31,19 @@ export default function ChatWidget(_props: PluginWidgetProps) {
   const searchParams = useSearchParams();
 
   // Detect problem context from URL
-  const problemContext = (() => {
+  const urlProblemContext = (() => {
     const match = pathname.match(/\/dashboard\/problems\/([^/]+)$/);
     if (!match) return null;
     const problemId = match[1];
     const assignmentId = searchParams?.get("assignmentId") ?? undefined;
     return { problemId, assignmentId };
   })();
+
+  // Event-sourced context (from submission error events)
+  const [eventContext, setEventContext] = useState<{ problemId: string; assignmentId?: string; submissionId?: string } | null>(null);
+
+  // Use URL context first, fall back to event context
+  const problemContext = urlProblemContext ?? eventContext;
 
   const scrollToBottom = useCallback(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
@@ -53,17 +59,24 @@ export default function ChatWidget(_props: PluginWidgetProps) {
     }
   }, [isOpen, isMinimized]);
 
-  // Auto-open on submission errors
+  // Auto-open on submission errors and capture problem context
   useEffect(() => {
     function handleSubmissionError(e: CustomEvent) {
-      if (e.detail?.hasError && problemContext) {
+      if (e.detail?.hasError) {
+        if (e.detail.problemId) {
+          setEventContext({
+            problemId: e.detail.problemId,
+            assignmentId: e.detail.assignmentId,
+            submissionId: e.detail.submissionId,
+          });
+        }
         setIsOpen(true);
         setIsMinimized(false);
       }
     }
     window.addEventListener("oj:submission-error", handleSubmissionError as EventListener);
     return () => window.removeEventListener("oj:submission-error", handleSubmissionError as EventListener);
-  }, [problemContext]);
+  }, []);
 
   const handleSend = useCallback(async () => {
     const trimmed = input.trim();

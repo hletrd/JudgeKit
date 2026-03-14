@@ -25,7 +25,7 @@ export function FilterSelect({
   const [value, setValue] = useState(defaultValue);
   return (
     <>
-      <input type="hidden" name={name} value={value} />
+      <input type="hidden" name={name} value={value} hidden />
       <Select value={value} onValueChange={(v) => setValue(v ?? "")}>
         <SelectTrigger className="w-48 h-8">
           <SelectValue placeholder={placeholder} />

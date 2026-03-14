@@ -40,14 +40,20 @@ export function SubmissionDetailClient(props: SubmissionDetailClientProps) {
   const { submission, setSubmission, error: pollingError } = useSubmissionPolling(props.initialSubmission);
   const [rejudging, setRejudging] = useState(false);
 
-  // Notify chat widget of submission errors
+  // Notify chat widget of submission errors with problem context
   useEffect(() => {
     if (submission && !["pending", "queued", "judging", "accepted"].includes(submission.status)) {
       window.dispatchEvent(new CustomEvent("oj:submission-error", {
-        detail: { hasError: true, status: submission.status }
+        detail: {
+          hasError: true,
+          status: submission.status,
+          problemId: submission.problem?.id,
+          assignmentId: submission.assignmentId,
+          submissionId: submission.id,
+        }
       }));
     }
-  }, [submission?.status]);
+  }, [submission?.status, submission?.problem?.id, submission?.assignmentId, submission?.id]);
 
   const canComment = props.userRole === "instructor" || props.userRole === "admin" || props.userRole === "super_admin";
   const canRejudge = props.userRole === "instructor" || props.userRole === "admin" || props.userRole === "super_admin";
