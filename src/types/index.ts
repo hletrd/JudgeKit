@@ -26,4 +26,16 @@ export type Language =
   | "csharp"
   | "r"
   | "perl"
-  | "php";
+  | "php"
+  | "ruby"
+  | "lua"
+  | "haskell"
+  | "dart"
+  | "zig"
+  | "nim"
+  | "ocaml"
+  | "elixir"
+  | "julia"
+  | "d"
+  | "racket"
+  | "vlang";

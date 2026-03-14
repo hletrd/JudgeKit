@@ -1,0 +1,8 @@
+FROM dart:3.8
+
+RUN useradd --create-home --shell /usr/sbin/nologin judge && \
+    mkdir -p /workspace && \
+    chown judge:judge /workspace
+
+WORKDIR /workspace
+USER judge

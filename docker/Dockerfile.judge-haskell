@@ -1,0 +1,8 @@
+FROM haskell:9.12-slim
+
+RUN useradd --create-home --shell /usr/sbin/nologin judge && \
+    mkdir -p /workspace && \
+    chown judge:judge /workspace
+
+WORKDIR /workspace
+USER judge

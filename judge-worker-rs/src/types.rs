@@ -70,6 +70,18 @@ pub enum Language {
     R,
     Perl,
     Php,
+    Ruby,
+    Lua,
+    Haskell,
+    Dart,
+    Zig,
+    Nim,
+    Ocaml,
+    Elixir,
+    Julia,
+    D,
+    Racket,
+    Vlang,
     #[serde(other)]
     Unknown,
 }

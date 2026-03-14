@@ -1,0 +1,8 @@
+FROM elixir:1.18-alpine
+
+RUN adduser -D -s /bin/false judge && \
+    mkdir -p /workspace && \
+    chown judge:judge /workspace
+
+WORKDIR /workspace
+USER judge

@@ -1,0 +1,9 @@
+FROM alpine:3.21
+
+RUN apk add --no-cache nim gcc musl-dev && \
+    adduser -D -s /bin/false judge && \
+    mkdir -p /workspace && \
+    chown judge:judge /workspace
+
+WORKDIR /workspace
+USER judge

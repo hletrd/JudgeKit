@@ -1,0 +1,8 @@
+FROM racket/racket:8.17
+
+RUN useradd --create-home --shell /usr/sbin/nologin judge 2>/dev/null || adduser -D -s /bin/false judge && \
+    mkdir -p /workspace && \
+    chown judge:judge /workspace
+
+WORKDIR /workspace
+USER judge
