@@ -306,9 +306,9 @@ export default function ChatWidget(_props: PluginWidgetProps) {
             onClick={() => void handleSend()}
             disabled={!input.trim() || isStreaming}
             aria-label={t("send")}
-            className="shrink-0 self-end rounded-lg border border-primary bg-primary px-3 py-2 text-primary-foreground transition-colors hover:bg-primary/90 disabled:opacity-50"
+            className="shrink-0 self-end rounded-lg border border-primary bg-primary text-sm leading-5 px-3 py-2 text-primary-foreground transition-colors hover:bg-primary/90 disabled:opacity-50"
           >
-            <Send className="h-4 w-4" />
+            <Send className="h-5 w-5" />
           </button>
         </div>
       </div>
