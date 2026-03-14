@@ -864,6 +864,7 @@
     "submit": "댓글 추가",
     "noComments": "아직 피드백이 없습니다.",
     "by": "{author} 작성",
+    "aiAssistant": "AI 어시스턴트",
     "loadError": "댓글을 불러오지 못했습니다",
     "submitError": "댓글 제출에 실패했습니다"
   },

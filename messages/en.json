@@ -864,6 +864,7 @@
     "submit": "Add Comment",
     "noComments": "No feedback yet.",
     "by": "by {author}",
+    "aiAssistant": "AI Assistant",
     "loadError": "Failed to load comments",
     "submitError": "Failed to submit comment"
   },

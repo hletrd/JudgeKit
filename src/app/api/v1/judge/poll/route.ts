@@ -17,6 +17,7 @@ import {
 } from "@/lib/judge/verdict";
 import { isSubmissionStatus } from "@/lib/security/constants";
 import { judgeStatusReportSchema } from "@/lib/validators/api";
+import { triggerAutoCodeReview } from "@/lib/judge/auto-review";
 import { logger } from "@/lib/logger";
 
 export async function POST(request: NextRequest) {
@@ -152,6 +153,11 @@ export async function POST(request: NextRequest) {
       },
       request,
     });
+
+    // Trigger AI code review in background for accepted submissions
+    if (status === "accepted") {
+      void triggerAutoCodeReview(submissionId);
+    }
 
     return apiSuccess(updated);
   } catch (error) {

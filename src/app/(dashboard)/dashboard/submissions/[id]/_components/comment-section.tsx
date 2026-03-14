@@ -87,11 +87,17 @@ export function CommentSection({ submissionId, canComment }: CommentSectionProps
           <div key={comment.id} className="rounded-md border p-3 space-y-1">
             <div className="flex items-center gap-2 text-sm">
               <span className="font-medium">
-                {tComments("by", { author: comment.author?.name ?? "-" })}
+                {comment.author
+                  ? tComments("by", { author: comment.author.name ?? "-" })
+                  : tComments("by", { author: tComments("aiAssistant") })}
               </span>
-              {comment.author?.role && (
+              {comment.author?.role ? (
                 <Badge variant="secondary" className="text-xs">
                   {tCommon(`roles.${comment.author.role}` as Parameters<typeof tCommon>[0]) ?? comment.author.role}
+                </Badge>
+              ) : (
+                <Badge variant="outline" className="text-xs border-blue-300 text-blue-600 dark:border-blue-700 dark:text-blue-400">
+                  AI
                 </Badge>
               )}
               <span className="text-muted-foreground text-xs">
