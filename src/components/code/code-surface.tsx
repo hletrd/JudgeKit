@@ -77,12 +77,18 @@ const baseTheme = EditorView.theme({
   },
 });
 
+// drawSelection() replaces native selection rendering with CodeMirror's own layer,
+// which conflicts with iOS Safari's UIKit selection handles and touch input.
+const isIOS =
+  typeof navigator !== "undefined" &&
+  /iPad|iPhone|iPod/.test(navigator.userAgent);
+
 const baseExtensions: Extension[] = [
   baseTheme,
   EditorState.tabSize.of(4),
   indentUnit.of("    "),
   history(),
-  drawSelection(),
+  ...(isIOS ? [] : [drawSelection()]),
   highlightSpecialChars(),
   bracketMatching(),
   keymap.of([indentWithTab, ...defaultKeymap, ...historyKeymap]),
