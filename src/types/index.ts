@@ -38,4 +38,10 @@ export type Language =
   | "julia"
   | "d"
   | "racket"
-  | "vlang";
+  | "vlang"
+  | "c99"
+  | "c89"
+  | "fortran"
+  | "pascal"
+  | "brainfuck"
+  | "cobol";
