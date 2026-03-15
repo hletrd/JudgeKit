@@ -50,4 +50,10 @@ export type Language =
   | "scala"
   | "erlang"
   | "commonlisp"
-  | "bash";
+  | "bash"
+  | "whitespace"
+  | "befunge"
+  | "rockstar"
+  | "shakespeare"
+  | "aheui"
+  | "hyeong";

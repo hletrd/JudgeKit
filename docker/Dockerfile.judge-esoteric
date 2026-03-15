@@ -1,0 +1,82 @@
+# =============================================================================
+# Stage 1: Build Rust-based interpreters (Aheui, Hyeong)
+# =============================================================================
+FROM rust:1.94-slim-bookworm AS rust-builder
+
+RUN apt-get update && apt-get install -y --no-install-recommends git ca-certificates && \
+    rm -rf /var/lib/apt/lists/*
+
+# Build aheui-rs (Korean esoteric language interpreter)
+RUN cargo install --git https://github.com/niceb5y/aheui-rs aheui
+
+# Build hyeong interpreter
+RUN cargo install --git https://github.com/panhyo/hyeo-ung-lang-rs hyeong
+
+# =============================================================================
+# Stage 2: Build C-based interpreters (Befunge)
+# =============================================================================
+FROM debian:bookworm-slim AS c-builder
+
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    build-essential git ca-certificates cmake && \
+    rm -rf /var/lib/apt/lists/*
+
+# Build bef (Befunge-93 reference interpreter by Cat's Eye Technologies)
+RUN git clone --depth 1 https://github.com/catseye/bef.git /tmp/bef && \
+    cd /tmp/bef && \
+    cc -O2 -o befunge93 bef.c && \
+    cp befunge93 /usr/local/bin/
+
+# =============================================================================
+# Stage 3: Build Haskell-based interpreters (Whitespace)
+# =============================================================================
+FROM haskell:9.6-slim-buster AS hs-builder
+
+# Build a lightweight whitespace interpreter
+RUN cabal update && cabal install whitespace --install-method=copy --installdir=/usr/local/bin/ \
+    || true
+
+# Fallback: clone and build a simple Whitespace interpreter if cabal fails
+RUN if [ ! -f /usr/local/bin/wspace ]; then \
+    apt-get update && apt-get install -y --no-install-recommends git && \
+    git clone --depth 1 https://github.com/TryItOnline/whitespace.git /tmp/ws && \
+    cd /tmp/ws && \
+    ghc -O2 -o /usr/local/bin/wspace Whitespace.hs || true; \
+    fi
+
+# =============================================================================
+# Stage 4: Runtime image
+# =============================================================================
+FROM python:3.14-slim-bookworm
+
+# Install Node.js for Rockstar interpreter
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    curl ca-certificates && \
+    curl -fsSL https://deb.nodesource.com/setup_24.x | bash - && \
+    apt-get install -y --no-install-recommends nodejs && \
+    rm -rf /var/lib/apt/lists/*
+
+# Install Shakespeare interpreter (Python-based)
+RUN pip install --no-cache-dir shakespearelang
+
+# Install Rockstar interpreter (Node.js-based)
+RUN npm install -g rockstar-js 2>/dev/null || npm install -g @pprof/rockstar 2>/dev/null || true
+
+# Copy Rust-built binaries (Aheui, Hyeong)
+COPY --from=rust-builder /usr/local/cargo/bin/aheui /usr/local/bin/aheui
+COPY --from=rust-builder /usr/local/cargo/bin/hyeong /usr/local/bin/hyeong
+
+# Copy C-built binaries (Befunge-93)
+COPY --from=c-builder /usr/local/bin/befunge93 /usr/local/bin/befunge93
+
+# Copy Haskell-built binaries (Whitespace)
+COPY --from=hs-builder /usr/local/bin/wspace /usr/local/bin/wspace 2>/dev/null || true
+
+# Create judge user
+RUN adduser --disabled-password --gecos "" --shell /bin/false judge && \
+    mkdir -p /workspace && \
+    chown judge:judge /workspace
+
+WORKDIR /workspace
+
+USER judge

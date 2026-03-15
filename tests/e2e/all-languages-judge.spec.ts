@@ -94,6 +94,85 @@ print $a + $b, "\\n";`,
   php: `<?php
 list($a, $b) = explode(" ", trim(fgets(STDIN)));
 echo $a + $b . "\\n";`,
+  clang_c23: `#include <stdio.h>
+int main() {
+    int a, b;
+    scanf("%d %d", &a, &b);
+    printf("%d\\n", a + b);
+    return 0;
+}`,
+  clang_cpp23: `#include <iostream>
+using namespace std;
+int main() {
+    int a, b;
+    cin >> a >> b;
+    cout << a + b << endl;
+    return 0;
+}`,
+  whitespace: [
+    // Whitespace A+B: push 0, readnum, push 1, readnum, push 0, retrieve, push 1, retrieve, add, printnum, end
+    // IMP: S=stack, TS=arith, TT=heap, TL=io, L=flow
+    // Push 0:    SS S\\n     (stack push, number = +0)
+    // ReadNum:   TL TT       (io read-number to heap)
+    // Push 1:    SS ST\\n    (stack push, number = +1)
+    // ReadNum:   TL TT
+    // Push 0:    SS S\\n
+    // Retrieve:  TT T        (heap retrieve)
+    // Push 1:    SS ST\\n
+    // Retrieve:  TT T
+    // Add:       TS SS       (arith add)
+    // PrintNum:  TL ST       (io print-number)
+    // Push 10:   SS STSTS\\n (stack push, number = +10 = newline)
+    // PrintChar: TL SS       (io print-char)
+    // End:       LLL         (flow end)
+    "   \\n",     // push 0
+    "\\t\\n\\t\\t",   // readnum -> heap[0]
+    "   \\t\\n",  // push 1
+    "\\t\\n\\t\\t",   // readnum -> heap[1]
+    "   \\n",     // push 0
+    "\\t\\t\\t",      // retrieve heap[0]
+    "   \\t\\n",  // push 1
+    "\\t\\t\\t",      // retrieve heap[1]
+    "\\t   ",     // add
+    "\\t\\n \\t", // print number
+    "   \\t \\t \\n", // push 10 (newline)
+    "\\t\\n  ",   // print char
+    "\\n\\n\\n",  // end
+  ].join(""),
+  befunge: `&&+.@`,
+  rockstar: `Listen to A
+Listen to B
+Shout A plus B`,
+  shakespeare: `The Sum of Two Numbers.
+
+Romeo, a young man.
+Juliet, a lovely woman.
+The Ghost, a quiet spirit.
+
+Act I: The Sum.
+Scene I: Input and Output.
+
+[Enter Romeo and Juliet]
+
+Juliet:
+ Listen to your heart.
+
+[Exit Romeo]
+[Enter The Ghost]
+
+Juliet:
+ Listen to your heart.
+
+[Exit The Ghost]
+[Enter Romeo]
+
+Juliet:
+ You are the sum of yourself and The Ghost.
+ Open your heart.
+
+[Exeunt]`,
+  aheui: `방방다망하`,
+  hyeong: `혀엉...혀엉....형타형타`,
 };
 
 const TEST_CASES = [
@@ -166,7 +245,7 @@ async function waitForJudging(
   throw new Error(`Submission ${submissionId} did not finish within ${timeoutMs}ms`);
 }
 
-test("submit A+B in all 16 languages and verify judging", async ({ browser }) => {
+test("submit A+B in all 24 languages and verify judging", async ({ browser }) => {
   test.setTimeout(600_000); // 10 minutes total
 
   const context = await browser.newContext();

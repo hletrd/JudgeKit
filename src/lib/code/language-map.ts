@@ -15,6 +15,8 @@ export const CODE_SURFACE_LANGUAGE_MAP = {
   r: "r",
   perl: "perl",
   php: "php",
+  clang_c23: "c",
+  clang_cpp23: "cpp",
 } as const;
 
 export const CODE_SURFACE_PLAINTEXT_LANGUAGE = "plaintext" as const;

@@ -457,6 +457,66 @@ static BASH_CONFIG: LanguageConfig = LanguageConfig {
     run_command: BASH_RUN,
 };
 
+// Whitespace
+static WHITESPACE_RUN: &[&str] = &["wspace", "/workspace/solution.ws"];
+
+static WHITESPACE_CONFIG: LanguageConfig = LanguageConfig {
+    extension: ".ws",
+    docker_image: "judge-esoteric:latest",
+    compile_command: None,
+    run_command: WHITESPACE_RUN,
+};
+
+// Befunge
+static BEFUNGE_RUN: &[&str] = &["befunge93", "/workspace/solution.bf"];
+
+static BEFUNGE_CONFIG: LanguageConfig = LanguageConfig {
+    extension: ".bf",
+    docker_image: "judge-esoteric:latest",
+    compile_command: None,
+    run_command: BEFUNGE_RUN,
+};
+
+// Rockstar
+static ROCKSTAR_RUN: &[&str] = &["rockstar", "/workspace/solution.rock"];
+
+static ROCKSTAR_CONFIG: LanguageConfig = LanguageConfig {
+    extension: ".rock",
+    docker_image: "judge-esoteric:latest",
+    compile_command: None,
+    run_command: ROCKSTAR_RUN,
+};
+
+// Shakespeare
+static SHAKESPEARE_RUN: &[&str] = &["shakespeare", "run", "/workspace/solution.spl"];
+
+static SHAKESPEARE_CONFIG: LanguageConfig = LanguageConfig {
+    extension: ".spl",
+    docker_image: "judge-esoteric:latest",
+    compile_command: None,
+    run_command: SHAKESPEARE_RUN,
+};
+
+// Aheui
+static AHEUI_RUN: &[&str] = &["aheui", "/workspace/solution.aheui"];
+
+static AHEUI_CONFIG: LanguageConfig = LanguageConfig {
+    extension: ".aheui",
+    docker_image: "judge-esoteric:latest",
+    compile_command: None,
+    run_command: AHEUI_RUN,
+};
+
+// Hyeong
+static HYEONG_RUN: &[&str] = &["hyeong", "/workspace/solution.hyeong"];
+
+static HYEONG_CONFIG: LanguageConfig = LanguageConfig {
+    extension: ".hyeong",
+    docker_image: "judge-esoteric:latest",
+    compile_command: None,
+    run_command: HYEONG_RUN,
+};
+
 pub fn get_config(language: &Language) -> Option<&'static LanguageConfig> {
     match language {
         Language::C17 => Some(&C17_CONFIG),
@@ -499,6 +559,12 @@ pub fn get_config(language: &Language) -> Option<&'static LanguageConfig> {
         Language::Erlang => Some(&ERLANG_CONFIG),
         Language::Commonlisp => Some(&COMMONLISP_CONFIG),
         Language::Bash => Some(&BASH_CONFIG),
+        Language::Whitespace => Some(&WHITESPACE_CONFIG),
+        Language::Befunge => Some(&BEFUNGE_CONFIG),
+        Language::Rockstar => Some(&ROCKSTAR_CONFIG),
+        Language::Shakespeare => Some(&SHAKESPEARE_CONFIG),
+        Language::Aheui => Some(&AHEUI_CONFIG),
+        Language::Hyeong => Some(&HYEONG_CONFIG),
         Language::Unknown => None,
     }
 }
@@ -551,6 +617,12 @@ mod tests {
             Language::Erlang,
             Language::Commonlisp,
             Language::Bash,
+            Language::Whitespace,
+            Language::Befunge,
+            Language::Rockstar,
+            Language::Shakespeare,
+            Language::Aheui,
+            Language::Hyeong,
         ];
 
         for lang in &languages {

@@ -96,6 +96,12 @@ pub enum Language {
     Erlang,
     Commonlisp,
     Bash,
+    Whitespace,
+    Befunge,
+    Rockstar,
+    Shakespeare,
+    Aheui,
+    Hyeong,
     #[serde(other)]
     Unknown,
 }

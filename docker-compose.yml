@@ -79,3 +79,15 @@ services:
       context: .
       dockerfile: docker/Dockerfile.judge-php
     image: judge-php:${GIT_SHA:-latest}
+
+  judge-clang:
+    build:
+      context: .
+      dockerfile: docker/Dockerfile.judge-clang
+    image: judge-clang:${GIT_SHA:-latest}
+
+  judge-esoteric:
+    build:
+      context: .
+      dockerfile: docker/Dockerfile.judge-esoteric
+    image: judge-esoteric:${GIT_SHA:-latest}
