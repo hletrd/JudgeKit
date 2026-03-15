@@ -468,7 +468,7 @@ static WHITESPACE_CONFIG: LanguageConfig = LanguageConfig {
 };
 
 // Befunge
-static BEFUNGE_RUN: &[&str] = &["befunge93", "/workspace/solution.bf"];
+static BEFUNGE_RUN: &[&str] = &["befunge93", "-q", "/workspace/solution.bf"];
 
 static BEFUNGE_CONFIG: LanguageConfig = LanguageConfig {
     extension: ".bf",
@@ -508,7 +508,7 @@ static AHEUI_CONFIG: LanguageConfig = LanguageConfig {
 };
 
 // Hyeong
-static HYEONG_RUN: &[&str] = &["hyeong", "/workspace/solution.hyeong"];
+static HYEONG_RUN: &[&str] = &["hyeong", "run", "/workspace/solution.hyeong"];
 
 static HYEONG_CONFIG: LanguageConfig = LanguageConfig {
     extension: ".hyeong",

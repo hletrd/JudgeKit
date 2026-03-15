@@ -500,7 +500,7 @@ export const JUDGE_LANGUAGE_CONFIGS: Record<Language, JudgeLanguageDefinition> =
     dockerImage: "judge-esoteric:latest",
     compiler: "Befunge Interpreter",
     compileCommand: null,
-    runCommand: ["befunge93", "/workspace/solution.bf"],
+    runCommand: ["befunge93", "-q", "/workspace/solution.bf"],
   },
   rockstar: {
     language: "rockstar",
@@ -540,7 +540,7 @@ export const JUDGE_LANGUAGE_CONFIGS: Record<Language, JudgeLanguageDefinition> =
     dockerImage: "judge-esoteric:latest",
     compiler: "Hyeong Interpreter",
     compileCommand: null,
-    runCommand: ["hyeong", "/workspace/solution.hyeong"],
+    runCommand: ["hyeong", "run", "/workspace/solution.hyeong"],
   },
 };
 
