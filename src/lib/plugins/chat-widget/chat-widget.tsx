@@ -4,13 +4,8 @@ import { useState, useRef, useEffect, useCallback } from "react";
 import { useTranslations } from "next-intl";
 import { usePathname, useSearchParams } from "next/navigation";
 import { MessageCircle, X, Minus, Send } from "lucide-react";
-import { Button } from "@/components/ui/button";
+import { AssistantMarkdown } from "@/components/assistant-markdown";
 import type { PluginWidgetProps } from "@/lib/plugins/types";
-import ReactMarkdown from "react-markdown";
-import remarkGfm from "remark-gfm";
-import remarkMath from "remark-math";
-import rehypeKatex from "rehype-katex";
-import "katex/dist/katex.min.css";
 
 interface Message {
   role: "user" | "assistant";
@@ -26,7 +21,7 @@ export default function ChatWidget(_props: PluginWidgetProps) {
   const [input, setInput] = useState("");
   const [isStreaming, setIsStreaming] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const messagesEndRef = useRef<HTMLDivElement>(null);
+  const messagesContainerRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLTextAreaElement>(null);
   const abortControllerRef = useRef<AbortController | null>(null);
   const [aiDisabled, setAiDisabled] = useState<string | null>(null);
@@ -69,8 +64,14 @@ export default function ChatWidget(_props: PluginWidgetProps) {
   }, [pathname]);
 
   const scrollToBottom = useCallback(() => {
-    messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
-  }, []);
+    const container = messagesContainerRef.current;
+    if (!container) return;
+
+    container.scrollTo({
+      top: container.scrollHeight,
+      behavior: isStreaming ? "auto" : "smooth",
+    });
+  }, [isStreaming]);
 
   useEffect(() => {
     scrollToBottom();
@@ -278,7 +279,7 @@ export default function ChatWidget(_props: PluginWidgetProps) {
       </div>
 
       {/* Messages */}
-      <div className="flex-1 overflow-y-auto p-4 space-y-3">
+      <div ref={messagesContainerRef} className="flex-1 overflow-y-auto p-4 space-y-3">
         {messages.length === 0 && (
           <p className="text-center text-sm text-muted-foreground mt-8">
             {t("placeholder")}
@@ -297,7 +298,7 @@ export default function ChatWidget(_props: PluginWidgetProps) {
               }`}
             >
               {msg.role === "assistant" ? (
-                <ReactMarkdown remarkPlugins={[remarkGfm, remarkMath]} rehypePlugins={[rehypeKatex]}>{msg.content}</ReactMarkdown>
+                <AssistantMarkdown content={msg.content} />
               ) : (
                 msg.displayContent ?? msg.content
               )}
@@ -316,7 +317,6 @@ export default function ChatWidget(_props: PluginWidgetProps) {
             {error}
           </div>
         )}
-        <div ref={messagesEndRef} />
       </div>
 
       {/* Input */}

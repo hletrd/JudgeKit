@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useState } from "react";
+import { AssistantMarkdown } from "@/components/assistant-markdown";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
@@ -104,7 +105,13 @@ export function CommentSection({ submissionId, canComment }: CommentSectionProps
                 {comment.createdAt != null ? formatRelativeTimeFromNow(comment.createdAt) : ""}
               </span>
             </div>
-            <p className="text-sm whitespace-pre-wrap">{comment.content}</p>
+            {comment.author === null ? (
+              <div className="text-sm prose prose-sm dark:prose-invert max-w-none prose-p:my-1 prose-pre:my-1 prose-pre:overflow-x-auto prose-ul:my-1 prose-ol:my-1 prose-li:my-0.5 prose-headings:my-1.5 prose-code:text-xs prose-pre:text-xs prose-code:break-all">
+                <AssistantMarkdown content={comment.content} />
+              </div>
+            ) : (
+              <p className="text-sm whitespace-pre-wrap">{comment.content}</p>
+            )}
           </div>
         ))}
 

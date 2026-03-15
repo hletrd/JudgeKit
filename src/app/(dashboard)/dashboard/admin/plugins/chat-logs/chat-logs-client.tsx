@@ -2,16 +2,12 @@
 
 import { useState, useEffect, useCallback } from "react";
 import { useTranslations } from "next-intl";
+import { AssistantMarkdown } from "@/components/assistant-markdown";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { apiFetch } from "@/lib/api/client";
 import { ArrowLeft, MessageCircle, User } from "lucide-react";
-import ReactMarkdown from "react-markdown";
-import remarkGfm from "remark-gfm";
-import remarkMath from "remark-math";
-import rehypeKatex from "rehype-katex";
-import "katex/dist/katex.min.css";
 
 interface ChatSession {
   sessionId: string;
@@ -116,7 +112,7 @@ export function ChatLogsClient() {
                 </div>
                 {msg.role === "assistant" ? (
                   <div className="prose prose-sm dark:prose-invert max-w-none prose-p:my-1 prose-pre:my-1">
-                    <ReactMarkdown remarkPlugins={[remarkGfm, remarkMath]} rehypePlugins={[rehypeKatex]}>{msg.content}</ReactMarkdown>
+                    <AssistantMarkdown content={msg.content} />
                   </div>
                 ) : (
                   <div className="whitespace-pre-wrap">{msg.content}</div>
