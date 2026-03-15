@@ -1,76 +1,65 @@
 # =============================================================================
-# Stage 1: Build Rust-based interpreters (Aheui, Hyeong)
+# Stage 1: Build Rust-based interpreters (Hyeong)
 # =============================================================================
 FROM rust:1.94-slim-bookworm AS rust-builder
+
+ENV CARGO_NET_GIT_FETCH_WITH_CLI=true
 
 RUN apt-get update && apt-get install -y --no-install-recommends git ca-certificates && \
     rm -rf /var/lib/apt/lists/*
 
-# Build aheui-rs (Korean esoteric language interpreter)
-RUN cargo install --git https://github.com/niceb5y/aheui-rs aheui
-
-# Build hyeong interpreter
-RUN cargo install --git https://github.com/panhyo/hyeo-ung-lang-rs hyeong
+# Install hyeong from crates.io (https://github.com/buttercrab/hyeo-ung-lang)
+RUN cargo install hyeong
 
 # =============================================================================
-# Stage 2: Build C-based interpreters (Befunge)
+# Stage 2: Build C-based interpreters (Befunge-93)
 # =============================================================================
 FROM debian:bookworm-slim AS c-builder
 
 RUN apt-get update && apt-get install -y --no-install-recommends \
-    build-essential git ca-certificates cmake && \
+    build-essential git ca-certificates && \
     rm -rf /var/lib/apt/lists/*
 
 # Build bef (Befunge-93 reference interpreter by Cat's Eye Technologies)
-RUN git clone --depth 1 https://github.com/catseye/bef.git /tmp/bef && \
-    cd /tmp/bef && \
-    cc -O2 -o befunge93 bef.c && \
-    cp befunge93 /usr/local/bin/
+# https://github.com/catseye/Befunge-93
+RUN git clone --depth 1 https://github.com/catseye/Befunge-93.git /tmp/befunge && \
+    cd /tmp/befunge && \
+    gcc -O2 -o /usr/local/bin/befunge93 src/bef.c
 
 # =============================================================================
-# Stage 3: Build Haskell-based interpreters (Whitespace)
+# Stage 3: Runtime image
 # =============================================================================
-FROM haskell:9.6-slim-buster AS hs-builder
-
-# Build a lightweight whitespace interpreter
-RUN cabal update && cabal install whitespace --install-method=copy --installdir=/usr/local/bin/ \
-    || true
-
-# Fallback: clone and build a simple Whitespace interpreter if cabal fails
-RUN if [ ! -f /usr/local/bin/wspace ]; then \
-    apt-get update && apt-get install -y --no-install-recommends git && \
-    git clone --depth 1 https://github.com/TryItOnline/whitespace.git /tmp/ws && \
-    cd /tmp/ws && \
-    ghc -O2 -o /usr/local/bin/wspace Whitespace.hs || true; \
-    fi
-
-# =============================================================================
-# Stage 4: Runtime image
-# =============================================================================
-FROM python:3.14-slim-bookworm
+FROM python:3.12-slim-bookworm
 
 # Install Node.js for Rockstar interpreter
 RUN apt-get update && apt-get install -y --no-install-recommends \
-    curl ca-certificates && \
-    curl -fsSL https://deb.nodesource.com/setup_24.x | bash - && \
+    curl ca-certificates git && \
+    curl -fsSL https://deb.nodesource.com/setup_22.x | bash - && \
     apt-get install -y --no-install-recommends nodejs && \
     rm -rf /var/lib/apt/lists/*
 
-# Install Shakespeare interpreter (Python-based)
-RUN pip install --no-cache-dir shakespearelang
+# Python-based interpreters:
+#   shakespearelang - Shakespeare Programming Language
+#   aheui           - Aheui compiler/interpreter (https://pypi.org/project/aheui/)
+#   whitespace      - Whitespace interpreter (https://pypi.org/project/whitespace/)
+RUN pip install --no-cache-dir shakespearelang aheui whitespace
 
-# Install Rockstar interpreter (Node.js-based)
-RUN npm install -g rockstar-js 2>/dev/null || npm install -g @pprof/rockstar 2>/dev/null || true
+# Rockstar (Satriani - official JS interpreter)
+# https://github.com/RockstarLang/rockstar
+RUN git clone --depth 1 https://github.com/RockstarLang/rockstar.git /opt/rockstar && \
+    cd /opt/rockstar/satriani && npm install --production && \
+    printf '#!/bin/sh\nnode /opt/rockstar/satriani/rockstar "$@"\n' > /usr/local/bin/rockstar && \
+    chmod +x /usr/local/bin/rockstar
 
-# Copy Rust-built binaries (Aheui, Hyeong)
-COPY --from=rust-builder /usr/local/cargo/bin/aheui /usr/local/bin/aheui
+# Create wspace wrapper (whitespace pip package may not install CLI as 'wspace')
+RUN printf '#!/bin/sh\npython3 -m whitespace "$@"\n' > /usr/local/bin/wspace && \
+    chmod +x /usr/local/bin/wspace
+
+# Copy Rust-built binaries (Hyeong)
 COPY --from=rust-builder /usr/local/cargo/bin/hyeong /usr/local/bin/hyeong
 
 # Copy C-built binaries (Befunge-93)
 COPY --from=c-builder /usr/local/bin/befunge93 /usr/local/bin/befunge93
-
-# Copy Haskell-built binaries (Whitespace)
-COPY --from=hs-builder /usr/local/bin/wspace /usr/local/bin/wspace 2>/dev/null || true
 
 # Create judge user
 RUN adduser --disabled-password --gecos "" --shell /bin/false judge && \
