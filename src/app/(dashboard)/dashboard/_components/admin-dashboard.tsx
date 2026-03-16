@@ -7,6 +7,7 @@ import { languageConfigs } from "@/lib/db/schema";
 import { eq } from "drizzle-orm";
 import {
   getJudgeLanguageDefinition,
+  getDockerImageRuntimeInfo,
   serializeJudgeCommand,
 } from "@/lib/judge/languages";
 import { getRuntimeSystemInfo } from "@/lib/system-info";
@@ -80,6 +81,7 @@ export async function AdminDashboard() {
               <TableRow>
                 <TableHead>{tLangs("language")}</TableHead>
                 <TableHead>{tLangs("compiler")}</TableHead>
+                <TableHead>{tLangs("runtime")}</TableHead>
                 <TableHead>{tLangs("compileOptions")}</TableHead>
               </TableRow>
             </TableHeader>
@@ -92,6 +94,9 @@ export async function AdminDashboard() {
                     </Badge>
                   </TableCell>
                   <TableCell className="font-mono text-sm">{definition.compiler || "-"}</TableCell>
+                  <TableCell className="text-xs text-muted-foreground">
+                    {getDockerImageRuntimeInfo(definition.dockerImage)}
+                  </TableCell>
                   <TableCell className="font-mono text-sm">
                     {serializeJudgeCommand(definition.compileCommand) || "-"}
                   </TableCell>

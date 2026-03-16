@@ -884,6 +884,7 @@
     "title": "지원 언어",
     "language": "언어",
     "compiler": "컴파일러 / 런타임",
+    "runtime": "실행 환경",
     "compileOptions": "컴파일 옵션",
     "c17": {
       "name": "C17",

@@ -46,6 +46,47 @@ export interface JudgeLanguageDefinition {
   runCommand: string[];
 }
 
+/** Human-readable base OS / toolchain description for each Docker judge image. */
+export const DOCKER_IMAGE_RUNTIME_INFO: Record<string, string> = {
+  "judge-cpp:latest": `Alpine 3.21 / GCC ${JUDGE_TOOLCHAIN_VERSIONS.fortran}`,
+  "judge-clang:latest": `Alpine 3.21 / Clang ${JUDGE_TOOLCHAIN_VERSIONS.clang}`,
+  "judge-python:latest": `Debian Bookworm / CPython ${JUDGE_TOOLCHAIN_VERSIONS.python}`,
+  "judge-node:latest": `Debian Bookworm / Node.js ${JUDGE_TOOLCHAIN_VERSIONS.nodejs}`,
+  "judge-jvm:latest": `Ubuntu Noble / Temurin ${JUDGE_TOOLCHAIN_VERSIONS.java} + Kotlin ${JUDGE_TOOLCHAIN_VERSIONS.kotlin}`,
+  "judge-rust:latest": `Debian Bookworm / Rust ${JUDGE_TOOLCHAIN_VERSIONS.rust}`,
+  "judge-go:latest": `Debian Bookworm / Go ${JUDGE_TOOLCHAIN_VERSIONS.go}`,
+  "judge-swift:latest": `Ubuntu Noble / Swift ${JUDGE_TOOLCHAIN_VERSIONS.swift}`,
+  "judge-csharp:latest": `Mono ${JUDGE_TOOLCHAIN_VERSIONS.mono}`,
+  "judge-r:latest": `R ${JUDGE_TOOLCHAIN_VERSIONS.r}`,
+  "judge-perl:latest": `Debian Bookworm / Perl ${JUDGE_TOOLCHAIN_VERSIONS.perl}`,
+  "judge-php:latest": `Debian Bookworm / PHP ${JUDGE_TOOLCHAIN_VERSIONS.php}`,
+  "judge-ruby:latest": `Alpine 3.21 / Ruby ${JUDGE_TOOLCHAIN_VERSIONS.ruby}`,
+  "judge-lua:latest": `Alpine 3.21 / Lua ${JUDGE_TOOLCHAIN_VERSIONS.lua}`,
+  "judge-haskell:latest": `Debian Bookworm / GHC ${JUDGE_TOOLCHAIN_VERSIONS.haskell}`,
+  "judge-dart:latest": `Debian Bookworm / Dart ${JUDGE_TOOLCHAIN_VERSIONS.dart}`,
+  "judge-zig:latest": `Alpine 3.21 / Zig ${JUDGE_TOOLCHAIN_VERSIONS.zig}`,
+  "judge-nim:latest": `Alpine 3.21 / Nim ${JUDGE_TOOLCHAIN_VERSIONS.nim}`,
+  "judge-ocaml:latest": `Alpine 3.21 / OCaml ${JUDGE_TOOLCHAIN_VERSIONS.ocaml}`,
+  "judge-elixir:latest": `Debian Bookworm / Elixir ${JUDGE_TOOLCHAIN_VERSIONS.elixir}`,
+  "judge-julia:latest": `Debian Bookworm / Julia ${JUDGE_TOOLCHAIN_VERSIONS.julia}`,
+  "judge-d:latest": `Ubuntu Noble / LDC2 ${JUDGE_TOOLCHAIN_VERSIONS.d}`,
+  "judge-racket:latest": `Debian Bookworm / Racket ${JUDGE_TOOLCHAIN_VERSIONS.racket}`,
+  "judge-v:latest": `Alpine 3.21 / V ${JUDGE_TOOLCHAIN_VERSIONS.vlang}`,
+  "judge-fortran:latest": `Debian Bookworm / GFortran ${JUDGE_TOOLCHAIN_VERSIONS.fortran}`,
+  "judge-pascal:latest": `Debian Bookworm / FPC ${JUDGE_TOOLCHAIN_VERSIONS.fpc}`,
+  "judge-brainfuck:latest": "Alpine 3.21 / bf interpreter",
+  "judge-cobol:latest": `Debian Bookworm / GnuCOBOL ${JUDGE_TOOLCHAIN_VERSIONS.gnucobol}`,
+  "judge-scala:latest": `Ubuntu Noble / Scala ${JUDGE_TOOLCHAIN_VERSIONS.scala}`,
+  "judge-erlang:latest": `Debian Bookworm / OTP ${JUDGE_TOOLCHAIN_VERSIONS.erlang}`,
+  "judge-commonlisp:latest": `Debian Bookworm / SBCL ${JUDGE_TOOLCHAIN_VERSIONS.sbcl}`,
+  "judge-bash:latest": `Debian Bookworm / Bash ${JUDGE_TOOLCHAIN_VERSIONS.bash}`,
+  "judge-esoteric:latest": "Debian Bookworm / Befunge-93 + Aheui (PyPI) + Hyeong (Rust)",
+};
+
+export function getDockerImageRuntimeInfo(dockerImage: string): string {
+  return DOCKER_IMAGE_RUNTIME_INFO[dockerImage] ?? dockerImage;
+}
+
 export const JUDGE_LANGUAGE_CONFIGS: Record<Language, JudgeLanguageDefinition> = {
   c17: {
     language: "c17",
