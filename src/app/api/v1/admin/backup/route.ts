@@ -5,6 +5,8 @@ import { logger } from "@/lib/logger";
 import fs from "fs";
 import path from "path";
 
+export const dynamic = "force-dynamic";
+
 function getDbPath(): string {
   return process.env.DATABASE_PATH
     ? path.resolve(process.env.DATABASE_PATH)
