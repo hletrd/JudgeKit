@@ -27,7 +27,7 @@ export async function loginWithCredentials(
   await page.goto("/login", { waitUntil: "networkidle" });
   await page.locator("#username").fill(username);
   await page.locator("#password").fill(password);
-  await page.getByRole("button", { name: "Sign in" }).click();
+  await page.getByRole("button", { name: /sign in|로그인/i }).click();
 
   await page.waitForURL(/\/(dashboard|change-password)(?:$|\?)/, { timeout: 15_000 });
 
