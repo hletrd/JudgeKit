@@ -495,7 +495,7 @@ export async function getAssignmentStatusRows(
   //
   // We use better-sqlite3 directly for this complex query for clarity and performance.
 
-  const problemAggStmt = sqlite.prepare<[string, number | null, number, string], ProblemAggRow>(`
+  const problemAggStmt = sqlite.prepare<[number | null, number, string, number | null, number, string], ProblemAggRow>(`
     WITH scored AS (
       SELECT
         s.user_id,
@@ -508,10 +508,10 @@ export async function getAssignmentStatusRows(
         CASE
           WHEN s.score IS NOT NULL THEN
             CASE
-              WHEN ?2 IS NOT NULL AND ?3 > 0 AND ?4 != 'windowed' AND s.submitted_at IS NOT NULL AND s.submitted_at > ?2
+              WHEN ? IS NOT NULL AND ? > 0 AND ? != 'windowed' AND s.submitted_at IS NOT NULL AND s.submitted_at > ?
               THEN ROUND(
                 ROUND(MIN(MAX(s.score, 0), 100) / 100.0 * COALESCE(ap.points, 100), 2)
-                * (1.0 - ?3 / 100.0),
+                * (1.0 - ? / 100.0),
                 2
               )
               ELSE ROUND(MIN(MAX(s.score, 0), 100) / 100.0 * COALESCE(ap.points, 100), 2)
@@ -525,7 +525,7 @@ export async function getAssignmentStatusRows(
       FROM submissions s
       INNER JOIN assignment_problems ap
         ON ap.assignment_id = s.assignment_id AND ap.problem_id = s.problem_id
-      WHERE s.assignment_id = ?1
+      WHERE s.assignment_id = ?
     )
     SELECT
       user_id   AS userId,
@@ -540,10 +540,12 @@ export async function getAssignmentStatusRows(
   `);
 
   const problemAggRows: ProblemAggRow[] = problemAggStmt.all(
-    assignmentId,
     deadlineSec,
     latePenalty,
-    assignment.examMode ?? "none"
+    assignment.examMode ?? "none",
+    deadlineSec,
+    latePenalty,
+    assignmentId
   );
 
   // ---- SQL-aggregated per-user "latest submission" across all problems ----
@@ -559,7 +561,7 @@ export async function getAssignmentStatusRows(
           ORDER BY s.submitted_at DESC, s.id DESC
         ) AS rn
       FROM submissions s
-      WHERE s.assignment_id = ?1
+      WHERE s.assignment_id = ?
     )
     SELECT
       user_id AS userId,
