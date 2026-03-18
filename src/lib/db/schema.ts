@@ -603,5 +603,6 @@ export const antiCheatEvents = sqliteTable(
   (table) => [
     index("ace_assignment_user_idx").on(table.assignmentId, table.userId),
     index("ace_assignment_type_idx").on(table.assignmentId, table.eventType),
+    index("ace_assignment_created_idx").on(table.assignmentId, table.createdAt),
   ]
 );

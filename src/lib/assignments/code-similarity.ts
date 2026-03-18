@@ -8,7 +8,7 @@ import { eq, and } from "drizzle-orm";
  * Strips comments, whitespace, and string literals to reduce false negatives.
  * Preserves C/C++ preprocessor directives (#include, #define, etc.).
  */
-function normalizeSource(source: string): string {
+export function normalizeSource(source: string): string {
   return source
     // Remove single-line comments (// style)
     .replace(/\/\/.*$/gm, "")
@@ -41,7 +41,7 @@ function generateNgrams(text: string, n: number): Set<string> {
 /**
  * Compute Jaccard similarity between two sets.
  */
-function jaccardSimilarity(a: Set<string>, b: Set<string>): number {
+export function jaccardSimilarity(a: Set<string>, b: Set<string>): number {
   if (a.size === 0 && b.size === 0) return 0;
   let intersection = 0;
   for (const item of a) {
