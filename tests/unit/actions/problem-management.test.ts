@@ -85,6 +85,8 @@ function makeInput(overrides: Partial<ProblemMutationInput> = {}): ProblemMutati
     showCompileOutput: true,
     showDetailedResults: true,
     showRuntimeErrors: true,
+    allowAiAssistant: true,
+    comparisonMode: "exact",
     testCases: [],
     ...overrides,
   };
