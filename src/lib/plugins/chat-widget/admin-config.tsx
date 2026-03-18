@@ -149,6 +149,8 @@ export default function ChatWidgetAdminConfig({ config, onSave }: PluginAdminPro
               <SelectContent>
                 {provider === "openai" && (
                   <>
+                    <SelectItem value="gpt-5.4-mini" label="GPT-5.4 Mini">GPT-5.4 Mini</SelectItem>
+                    <SelectItem value="gpt-5.4-nano" label="GPT-5.4 Nano">GPT-5.4 Nano</SelectItem>
                     <SelectItem value="gpt-5-mini" label="GPT-5 Mini">GPT-5 Mini</SelectItem>
                     <SelectItem value="gpt-5.4" label="GPT-5.4">GPT-5.4</SelectItem>
                     <SelectItem value="gpt-5.4-pro" label="GPT-5.4 Pro">GPT-5.4 Pro</SelectItem>
