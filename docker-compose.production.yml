@@ -44,7 +44,7 @@ services:
     privileged: true
     volumes:
       - /var/run/docker.sock:/var/run/docker.sock
-      - /tmp/judgekit-workspaces:/tmp  # Shared with host so sibling judge containers can access source files
+      - /judge-workspaces:/judge-workspaces  # Identity-mapped so sibling containers see the same path
       - judgekit-dead-letter:/app/dead-letter
     env_file:
       - .env.production
@@ -52,6 +52,7 @@ services:
       - JUDGE_BASE_URL=http://app:3000/api/v1
       - JUDGE_SECCOMP_PROFILE=/etc/judge/seccomp-profile.json
       - DEAD_LETTER_DIR=/app/dead-letter
+      - TMPDIR=/judge-workspaces
     depends_on:
       app:
         condition: service_healthy
