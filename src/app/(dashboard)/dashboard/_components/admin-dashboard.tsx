@@ -41,28 +41,28 @@ export async function AdminDashboard() {
               <Cpu className="size-5 text-muted-foreground" />
               <div>
                 <p className="text-xs text-muted-foreground">{tJudge("cpuLabel")}</p>
-                <p className="text-sm font-medium">{runtimeSystemInfo.cpu}</p>
+                <p className="text-sm font-medium mb-[3px]">{runtimeSystemInfo.cpu}</p>
               </div>
             </div>
             <div className="flex items-center gap-3 rounded-lg border p-3">
               <HardDrive className="size-5 text-muted-foreground" />
               <div>
                 <p className="text-xs text-muted-foreground">{tJudge("osLabel")}</p>
-                <p className="text-sm font-medium">{runtimeSystemInfo.os}</p>
+                <p className="text-sm font-medium mb-[3px]">{runtimeSystemInfo.os}</p>
               </div>
             </div>
             <div className="flex items-center gap-3 rounded-lg border p-3">
               <Clock className="size-5 text-muted-foreground" />
               <div>
                 <p className="text-xs text-muted-foreground">{tJudge("timeLimitLabel")}</p>
-                <p className="text-sm font-medium">{tJudge("defaultTimeLimit")}</p>
+                <p className="text-sm font-medium mb-[3px]">{tJudge("defaultTimeLimit")}</p>
               </div>
             </div>
             <div className="flex items-center gap-3 rounded-lg border p-3">
               <MemoryStick className="size-5 text-muted-foreground" />
               <div>
                 <p className="text-xs text-muted-foreground">{tJudge("memoryLimitLabel")}</p>
-                <p className="text-sm font-medium">{tJudge("defaultMemoryLimit")}</p>
+                <p className="text-sm font-medium mb-[3px]">{tJudge("defaultMemoryLimit")}</p>
               </div>
             </div>
           </div>

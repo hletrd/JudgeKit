@@ -308,7 +308,7 @@ export default function BulkCreateDialog() {
             </DialogHeader>
             <div className="space-y-4">
               <div className="space-y-2">
-                <label className="text-sm font-medium" htmlFor="bulk-csv-input">
+                <label className="text-sm font-medium mb-[3px]" htmlFor="bulk-csv-input">
                   {t("uploadCsv")}
                 </label>
                 <input

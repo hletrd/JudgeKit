@@ -284,7 +284,7 @@ export function GroupMembersManager({
         {canManage && currentAvailableStudents.length > 0 && (
           <div className="flex flex-col gap-3 rounded-md border p-4">
             <div className="flex items-center justify-between">
-              <p className="text-sm font-medium">{t("selectStudents")}</p>
+              <p className="text-sm font-medium mb-[3px]">{t("selectStudents")}</p>
               <div className="flex items-center gap-2">
                 <Button
                   variant="outline"
