@@ -1,47 +1,33 @@
 {
-  "defaultAction": "SCMP_ACT_ERRNO",
+  "defaultAction": "SCMP_ACT_ALLOW",
   "architectures": ["SCMP_ARCH_X86_64", "SCMP_ARCH_X86", "SCMP_ARCH_AARCH64"],
   "syscalls": [
     {
       "names": [
-        "read", "write", "open", "close", "stat", "fstat", "lstat",
-        "poll", "lseek", "mmap", "mprotect", "munmap", "brk",
-        "rt_sigaction", "rt_sigprocmask", "rt_sigreturn",
-        "ioctl", "access", "pipe", "select",
-        "mremap", "msync", "madvise",
-        "dup", "dup2", "dup3",
-        "nanosleep", "clock_nanosleep",
-        "getpid", "getuid", "getgid", "geteuid", "getegid",
-        "arch_prctl", "set_tid_address", "set_robust_list",
-        "futex", "exit", "exit_group",
-        "uname", "fcntl", "flock",
-        "openat", "newfstatat", "readlink", "readlinkat",
-        "getcwd", "getdents", "getdents64",
-        "clock_gettime", "clock_getres",
-        "pread64", "pwrite64",
-        "getrandom", "rseq",
-        "prlimit64", "sysinfo",
-        "execve", "wait4",
-        "pipe2", "mmap2"
+        "mount", "umount2", "pivot_root",
+        "swapon", "swapoff",
+        "reboot", "kexec_load", "kexec_file_load",
+        "init_module", "finit_module", "delete_module",
+        "acct",
+        "settimeofday", "clock_settime", "adjtimex",
+        "ptrace",
+        "personality",
+        "keyctl", "add_key", "request_key",
+        "mbind", "set_mempolicy", "move_pages",
+        "userfaultfd",
+        "bpf", "perf_event_open",
+        "lookup_dcookie",
+        "open_by_handle_at", "name_to_handle_at",
+        "kcmp", "ioperm", "iopl",
+        "nfsservctl"
       ],
-      "action": "SCMP_ACT_ALLOW"
-    },
-    {
-      "names": ["clone"],
-      "action": "SCMP_ACT_ALLOW",
-      "args": [
-        {
-          "index": 0,
-          "value": 2114060288,
-          "valueTwo": 0,
-          "op": "SCMP_CMP_MASKED_EQ"
-        }
-      ]
+      "action": "SCMP_ACT_ERRNO",
+      "errnoRet": 1
     },
     {
       "names": ["clone3"],
       "action": "SCMP_ACT_ERRNO",
-      "errnoRet": 1
+      "errnoRet": 38
     }
   ]
 }
