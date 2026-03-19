@@ -115,8 +115,8 @@ export default async function AdminSubmissionsPage({
         </CardHeader>
         <CardContent>
           <form className="flex flex-col gap-4 md:flex-row md:items-end" method="get">
-            <div className="flex-1 space-y-2">
-              <label className="text-sm font-medium mb-[3px]" htmlFor="submissions-search">
+            <div className="flex-1 space-y-3">
+              <label className="text-sm font-medium" htmlFor="submissions-search">
                 {t("searchLabel")}
               </label>
               <Input

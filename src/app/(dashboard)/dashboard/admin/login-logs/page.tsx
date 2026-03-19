@@ -207,8 +207,8 @@ export default async function AdminLoginLogsPage({
         </CardHeader>
         <CardContent>
           <form className="flex flex-col gap-4 md:flex-row md:items-end" method="get">
-            <div className="flex-1 space-y-2">
-              <label className="text-sm font-medium mb-[3px]" htmlFor="login-log-search">
+            <div className="flex-1 space-y-3">
+              <label className="text-sm font-medium" htmlFor="login-log-search">
                 {t("filters.searchLabel")}
               </label>
               <Input
@@ -220,8 +220,8 @@ export default async function AdminLoginLogsPage({
               />
             </div>
 
-            <div className="space-y-2">
-              <label className="text-sm font-medium mb-[3px]" htmlFor="login-log-outcome">
+            <div className="space-y-3">
+              <label className="text-sm font-medium" htmlFor="login-log-outcome">
                 {t("filters.outcomeLabel")}
               </label>
               <FilterSelect

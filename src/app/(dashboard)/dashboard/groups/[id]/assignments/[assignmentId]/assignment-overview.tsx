@@ -157,7 +157,7 @@ export function AssignmentOverview({
 
           <dl className="grid gap-4 md:grid-cols-2">
             <div className="space-y-1">
-              <dt className="text-sm font-medium mb-[3px]">{labels.startsAt}</dt>
+              <dt className="text-sm font-medium">{labels.startsAt}</dt>
               <dd className="text-sm text-muted-foreground">
                 {assignment.startsAt
                   ? formatDateTimeInTimeZone(assignment.startsAt, locale, timeZone)
@@ -165,7 +165,7 @@ export function AssignmentOverview({
               </dd>
             </div>
             <div className="space-y-1">
-              <dt className="text-sm font-medium mb-[3px]">{labels.deadline}</dt>
+              <dt className="text-sm font-medium">{labels.deadline}</dt>
               <dd className="text-sm text-muted-foreground">
                 {assignment.deadline
                   ? formatDateTimeInTimeZone(assignment.deadline, locale, timeZone)
@@ -179,7 +179,7 @@ export function AssignmentOverview({
             </div>
             {assignment.examMode !== "windowed" && (
               <div className="space-y-1">
-                <dt className="text-sm font-medium mb-[3px]">{labels.lateDeadline}</dt>
+                <dt className="text-sm font-medium">{labels.lateDeadline}</dt>
                 <dd className="text-sm text-muted-foreground">
                   {assignment.lateDeadline
                     ? formatDateTimeInTimeZone(assignment.lateDeadline, locale, timeZone)
@@ -194,13 +194,13 @@ export function AssignmentOverview({
             )}
             {assignment.examMode !== "windowed" && (
               <div className="space-y-1">
-                <dt className="text-sm font-medium mb-[3px]">{labels.latePenalty}</dt>
+                <dt className="text-sm font-medium">{labels.latePenalty}</dt>
                 <dd className="text-sm text-muted-foreground">{assignment.latePenalty ?? 0}%</dd>
               </div>
             )}
             {assignment.examMode === "windowed" && assignment.examDurationMinutes && (
               <div className="space-y-1">
-                <dt className="text-sm font-medium mb-[3px]">{labels.examDuration}</dt>
+                <dt className="text-sm font-medium">{labels.examDuration}</dt>
                 <dd className="text-sm text-muted-foreground">{assignment.examDurationMinutes} min</dd>
               </div>
             )}

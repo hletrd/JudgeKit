@@ -289,8 +289,8 @@ export default async function AdminAuditLogsPage({
         </CardHeader>
         <CardContent>
           <form className="flex flex-col gap-4 md:flex-row md:items-end" method="get">
-            <div className="flex-1 space-y-2">
-              <label className="text-sm font-medium mb-[3px]" htmlFor="audit-log-search">
+            <div className="flex-1 space-y-3">
+              <label className="text-sm font-medium" htmlFor="audit-log-search">
                 {t("filters.searchLabel")}
               </label>
               <Input
@@ -302,8 +302,8 @@ export default async function AdminAuditLogsPage({
               />
             </div>
 
-            <div className="space-y-2">
-              <label className="text-sm font-medium mb-[3px]" htmlFor="audit-log-resource-type">
+            <div className="space-y-3">
+              <label className="text-sm font-medium" htmlFor="audit-log-resource-type">
                 {t("filters.resourceTypeLabel")}
               </label>
               <FilterSelect
@@ -398,7 +398,7 @@ export default async function AdminAuditLogsPage({
                           {event.details ? (
                             <div className="space-y-1">
                               <p className="text-xs font-medium text-foreground">{t("detailSections.payload")}</p>
-                              <pre className="rounded-md bg-muted p-2 text-xs">{event.details}</pre>
+                              <pre className="rounded-md bg-muted p-2 text-xs overflow-x-auto whitespace-pre-wrap break-all">{event.details}</pre>
                             </div>
                           ) : null}
                           {event.requestMethod || event.requestPath || event.ipAddress || event.userAgent ? (

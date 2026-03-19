@@ -84,7 +84,7 @@ export function DatabaseBackupRestore({ isSuperAdmin }: { isSuperAdmin: boolean 
 
       {isSuperAdmin && (
         <div className="space-y-3 border-t pt-4">
-          <p className="text-sm font-medium mb-[3px]">{t("restoreTitle")}</p>
+          <p className="text-sm font-medium">{t("restoreTitle")}</p>
           <p className="text-xs text-muted-foreground">{t("restoreWarning")}</p>
           <input
             ref={fileInputRef}
