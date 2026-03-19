@@ -2,19 +2,18 @@ FROM eclipse-temurin:21-jdk-jammy
 ARG TARGETARCH
 RUN apt-get update && apt-get install -y --no-install-recommends curl && \
     ARCH=$(case ${TARGETARCH} in amd64) echo "x86_64";; arm64) echo "aarch64";; *) echo "x86_64";; esac) && \
-    curl -fsSL "https://github.com/coursier/coursier/releases/latest/download/cs-${ARCH}-pc-linux.gz" | gzip -d > /usr/local/bin/cs && \
-    chmod +x /usr/local/bin/cs && \
-    HOME=/root cs install --install-dir /usr/local/bin scala:3.5.2 scalac:3.5.2 && \
-    # Pre-cache scala compiler deps so scalac works offline (--network none)
+    curl -fsSL "https://github.com/scala/scala3/releases/download/3.5.2/scala3-3.5.2-${ARCH}-pc-linux.tar.gz" | \
+    tar -xzf - -C /opt && \
+    ln -s /opt/scala3-3.5.2-${ARCH}-pc-linux/bin/scala /usr/local/bin/scala && \
+    ln -s /opt/scala3-3.5.2-${ARCH}-pc-linux/bin/scalac /usr/local/bin/scalac && \
+    rm -rf /var/lib/apt/lists/* && \
+    # Warmup: pre-cache compiler classes so scalac works offline
     mkdir -p /tmp/warmup && \
     echo 'object Main { def main(args: Array[String]): Unit = println(42) }' > /tmp/warmup/Main.scala && \
-    HOME=/root scalac -d /tmp/warmup /tmp/warmup/Main.scala && \
+    scalac -d /tmp/warmup /tmp/warmup/Main.scala && \
     java -cp /tmp/warmup Main && \
-    # Copy cached deps to a path accessible by judge user
-    cp -r /root/.cache /opt/scala-cache && chmod -R 755 /opt/scala-cache && \
-    rm -rf /tmp/warmup /var/lib/apt/lists/* && \
+    rm -rf /tmp/warmup && \
     useradd --create-home --shell /usr/sbin/nologin judge && \
     mkdir -p /workspace && chown judge:judge /workspace
-ENV COURSIER_CACHE=/opt/scala-cache/coursier
 WORKDIR /workspace
 USER judge
