@@ -74,13 +74,26 @@ Every feature, fix, or enhancement MUST include appropriate tests. Do not merge 
 - `cargo test` (in judge-worker-rs/) — all Rust tests pass
 - E2E tests pass against test server before deploy to production
 
+## Environment Variables (`ENV.md`)
+
+All deployment credentials, SSH access, target hosts, and runtime secrets are documented in **`ENV.md`** (gitignored, never committed). Before any deployment, SSH, or E2E testing task, **always read `ENV.md` first** to get the correct values.
+
+`ENV.md` contains:
+- **Deployment targets** — host IPs, domains, SSH users/passwords/keys, remote directories, app ports
+- **Web admin credentials** — username/password for each environment
+- **E2E test credentials** — `PLAYWRIGHT_BASE_URL`, `E2E_USERNAME`, `E2E_PASSWORD`
+- **SSH access commands** — ready-to-use `sshpass`/`ssh` commands for each target
+- **Docker & Nginx** — container management commands, nginx config paths
+
 ## Deployment
 
-Deployment targets and credentials are documented in `ENV.md` (gitignored).
-The primary deploy script is `deploy-docker.sh`. See `ENV.md` for per-target configuration.
-Always test against `oj-internal.maum.ai` (test), never against `oj.auraedu.me` (production).
+The primary deploy script is `deploy-docker.sh`. Pass environment variables from `ENV.md`:
+- `SSH_PASSWORD` — for password-based SSH auth (Target 1)
+- `SSH_KEY` — for key-based SSH auth (Target 2)
+- `REMOTE_HOST`, `REMOTE_USER`, `DOMAIN` — target overrides
+- `PLATFORM` — `linux/amd64` (default, Target 1) or `linux/arm64` (Target 2)
 
-**IMPORTANT:** Before deploying, always read `ENV.md` for SSH credentials, target hosts, and environment variables needed by deploy scripts.
+Always test against `oj-internal.maum.ai` (test), never against `oj.auraedu.me` (production).
 
 ## Conventions
 
