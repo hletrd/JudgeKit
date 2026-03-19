@@ -37,6 +37,7 @@ interface LanguageConfig {
   compiler: string | null;
   compileCommand: string | null;
   runCommand: string;
+  dockerfile: string | null;
   isEnabled: boolean | null;
   updatedAt: Date;
   runtimeInfo: string;
@@ -47,7 +48,7 @@ export function LanguageConfigTable({ languages }: { languages: LanguageConfig[]
   const router = useRouter();
   const [isPending, startTransition] = useTransition();
   const [editingLang, setEditingLang] = useState<LanguageConfig | null>(null);
-  const [editForm, setEditForm] = useState({ dockerImage: "", compileCommand: "", runCommand: "" });
+  const [editForm, setEditForm] = useState({ dockerImage: "", compileCommand: "", runCommand: "", dockerfile: "" });
   const [search, setSearch] = useState("");
 
   function openEdit(lang: LanguageConfig) {
@@ -56,6 +57,7 @@ export function LanguageConfigTable({ languages }: { languages: LanguageConfig[]
       dockerImage: lang.dockerImage,
       compileCommand: lang.compileCommand ?? "",
       runCommand: lang.runCommand,
+      dockerfile: lang.dockerfile ?? "",
     });
   }
 
@@ -255,6 +257,18 @@ export function LanguageConfigTable({ languages }: { languages: LanguageConfig[]
                 className="font-mono text-sm"
               />
               <p className="text-xs text-muted-foreground">{t("edit.runCommandHelp")}</p>
+            </div>
+
+            <div className="space-y-2">
+              <Label>{t("edit.dockerfile")}</Label>
+              <Textarea
+                value={editForm.dockerfile}
+                onChange={(e) => setEditForm(prev => ({ ...prev, dockerfile: e.target.value }))}
+                rows={10}
+                className="font-mono text-sm"
+                placeholder={t("edit.dockerfilePlaceholder")}
+              />
+              <p className="text-xs text-muted-foreground">{t("edit.dockerfileHelp")}</p>
             </div>
           </div>
 

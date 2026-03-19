@@ -70,7 +70,7 @@ export async function toggleLanguage(
 
 export async function updateLanguageConfig(
   language: string,
-  data: { dockerImage: string; compileCommand: string; runCommand: string }
+  data: { dockerImage: string; compileCommand: string; runCommand: string; dockerfile?: string }
 ): Promise<LanguageConfigActionResult> {
   if (!(await isTrustedServerActionOrigin())) {
     return { success: false, error: "unauthorized" };
@@ -91,6 +91,7 @@ export async function updateLanguageConfig(
         dockerImage: data.dockerImage,
         compileCommand: data.compileCommand || null,
         runCommand: data.runCommand,
+        dockerfile: data.dockerfile || null,
         updatedAt: new Date(),
       })
       .where(eq(languageConfigs.language, language));
@@ -109,6 +110,7 @@ export async function updateLanguageConfig(
         dockerImage: data.dockerImage,
         compileCommand: data.compileCommand,
         runCommand: data.runCommand,
+        hasDockerfile: Boolean(data.dockerfile),
       },
       context: auditContext,
     });

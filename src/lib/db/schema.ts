@@ -353,6 +353,7 @@ export const languageConfigs = sqliteTable("language_configs", {
   compiler: text("compiler"),
   compileCommand: text("compile_command"),
   runCommand: text("run_command").notNull(),
+  dockerfile: text("dockerfile"),
   isEnabled: integer("is_enabled", { mode: "boolean" }).default(true),
   updatedAt: integer("updated_at", { mode: "timestamp" })
     .notNull()
