@@ -504,22 +504,6 @@ test("submit A+B in all supported languages and verify judging", async ({ browse
     "brainfuck",   // byte-level I/O, cannot handle multi-digit decimal numbers
     "vlang",       // V Docker image fails to build from source reliably
     "whitespace",  // Whitespace interpreter file encoding issues
-    // Below: worker binary has stale compile commands (cargo rebuild blocked by DNS)
-    // All work when tested directly — will pass once worker is rebuilt
-    "erlang",      // needs HOME=/tmp wrapper
-    "dart",        // needs HOME=/tmp + --suppress-analytics
-    "zig",         // needs -femit-bin= (not -femit-binary=)
-    "nim",         // needs --out:/workspace/solution
-    "csharp",      // needs HOME=/tmp for mono
-    "scala",       // needs HOME=/tmp for scalac
-    "groovy",      // needs Java 21 (image has Java 25, class version 69)
-    "lua",         // needs updated io.read format
-    "elixir",      // needs HOME=/tmp for BEAM
-    "clojure",     // needs sh -c for classpath glob
-    "powershell",  // needs HOME=/tmp for pwsh
-    "prolog",      // needs read_line_to_string instead of read_term
-    "java",        // intermittent compile failure
-    "typescript",  // intermittent compile failure
   ]);
 
   const unexpected = failed.filter((r) => !KNOWN_FLAKY.has(r.language));
