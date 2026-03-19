@@ -64,7 +64,7 @@ export const DOCKER_IMAGE_RUNTIME_INFO: Record<string, string> = {
   "judge-python:latest": `Alpine / CPython ${JUDGE_TOOLCHAIN_VERSIONS.python}`,
   "judge-node:latest": `Alpine / Node.js ${JUDGE_TOOLCHAIN_VERSIONS.nodejs}`,
   "judge-jvm:latest": `Alpine / Temurin ${JUDGE_TOOLCHAIN_VERSIONS.java} + Kotlin ${JUDGE_TOOLCHAIN_VERSIONS.kotlin}`,
-  "judge-rust:latest": `Alpine / Rust ${JUDGE_TOOLCHAIN_VERSIONS.rust}`,
+  "judge-rust:latest": `Debian Bookworm / Rust ${JUDGE_TOOLCHAIN_VERSIONS.rust}`,
   "judge-go:latest": `Alpine / Go ${JUDGE_TOOLCHAIN_VERSIONS.go}`,
   "judge-swift:latest": `Ubuntu Noble / Swift ${JUDGE_TOOLCHAIN_VERSIONS.swift}`,
   "judge-csharp:latest": `Debian Slim / Mono ${JUDGE_TOOLCHAIN_VERSIONS.mono}`,
