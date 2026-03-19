@@ -99,44 +99,56 @@ After syncing, the judge worker reads `dockerImage`, `compileCommand`, and `runC
 
 Changes take effect immediately for new submissions without restarting services.
 
-## Docker Image Sizes (amd64, pre-Alpine migration)
+## Docker Image Sizes (amd64, 2026-03-20)
 
-Current sizes on the test server before deploying lightened images:
+| Image | Size | Base | Change |
+|-------|------|------|--------|
+| `judge-haskell` | 3.97 GB | haskell:9.8-slim | — |
+| `judge-swift` | 2.79 GB | Multi-stage ubuntu:24.04 | **-2.26 GB (45%)** |
+| `judge-julia` | 1.50 GB | julia:1.12 | — |
+| `judge-r` | 1.27 GB | r-base:4.5.0 | — |
+| `judge-rust` | 1.21 GB | rust:1.94-slim-bookworm | — |
+| `judge-csharp` | 1.07 GB | mono:6.12 | — |
+| `judge-clang` | 879 MB | Alpine 3.21 | — |
+| `judge-octave` | 830 MB | Alpine 3.21 | **-94 MB** |
+| `judge-scala` | 780 MB | temurin:21-jdk-alpine | **-111 MB** |
+| `judge-nim` | 727 MB | Alpine 3.21 | — |
+| `judge-groovy` | 613 MB | temurin:21-jdk-alpine | **-117 MB** |
+| `judge-zig` | 598 MB | Alpine 3.21 | — |
+| `judge-jvm` | 593 MB | temurin:25-jdk-alpine | **-128 MB** |
+| `judge-crystal` | 581 MB | Debian Bookworm | — |
+| `judge-d` | 563 MB | Ubuntu Noble | — |
+| `judge-ocaml` | 554 MB | Alpine 3.21 | — |
+| `judge-dart` | 492 MB | Multi-stage bookworm-slim | **-578 MB (54%)** |
+| `judge-v` | 492 MB | Debian Bookworm slim | — |
+| `judge-powershell` | 461 MB | Debian Bookworm | — |
+| `judge-cobol` | 443 MB | Debian Bookworm slim | — |
+| `judge-ada` | 443 MB | Alpine 3.21 | **-72 MB** |
+| `judge-scheme` | 404 MB | Debian Bookworm slim | — |
+| `judge-racket` | 359 MB | Debian Bookworm | — |
+| `judge-go` | 357 MB | golang:1.26.1-alpine | **-853 MB (71%)** |
+| `judge-cpp` | 340 MB | Alpine 3.21 | — |
+| `judge-fortran` | 323 MB | Alpine 3.21 | **-115 MB** |
+| `judge-clojure` | 312 MB | temurin:25-jre-alpine | **-123 MB** |
+| `judge-node` | 257 MB | node:24-alpine | **-96 MB** |
+| `judge-prolog` | 245 MB | Debian Bookworm slim | — |
+| `judge-pascal` | 219 MB | Debian Bookworm slim | — |
+| `judge-esoteric` | 201 MB | Debian Bookworm | — |
+| `judge-elixir` | 173 MB | Alpine 3.21 | — |
+| `judge-php` | 155 MB | php:8.4-cli-alpine | **-596 MB (79%)** |
+| `judge-erlang` | 147 MB | Alpine 3.21 | — |
+| `judge-ruby` | 128 MB | Alpine 3.21 | — |
+| `judge-postscript` | 124 MB | Alpine 3.21 | **-98 MB** |
+| `judge-brainfuck` | 119 MB | Debian Bookworm slim | — |
+| `judge-commonlisp` | 80 MB | Alpine 3.21 | — |
+| `judge-python` | 71 MB | python:3.14-alpine | **-109 MB** |
+| `judge-perl` | 64 MB | Alpine 3.21 | **-198 MB** |
+| `judge-tcl` | 20 MB | Alpine 3.21 | — |
+| `judge-bash` | 15 MB | Alpine 3.21 | — |
+| `judge-lua` | 14 MB | Alpine 3.21 | — |
+| `judge-awk` | 13 MB | Alpine 3.21 | — |
 
-| Image | Size | Base |
-|-------|------|------|
-| `judge-swift` | 5.05 GB | Ubuntu Noble |
-| `judge-haskell` | 3.97 GB | Debian Bookworm |
-| `judge-julia` | 1.50 GB | Debian Bookworm |
-| `judge-r` | 1.27 GB | Debian Bookworm |
-| `judge-rust` | 1.21 GB | Debian Bookworm slim -> **Alpine** |
-| `judge-go` | 1.21 GB | Debian Bookworm -> **Alpine** |
-| `judge-dart` | 1.07 GB | Debian Bookworm |
-| `judge-csharp` | 1.07 GB | Mono 6.12 -> **Mono 6.12-slim** |
-| `judge-octave` | 924 MB | Debian Bookworm slim -> **Alpine** |
-| `judge-scala` | 891 MB | Ubuntu Jammy -> **Alpine** |
-| `judge-clang` | 879 MB | Alpine (no change) |
-| `judge-php` | 751 MB | Debian Bookworm -> **Alpine** |
-| `judge-groovy` | 730 MB | Ubuntu Jammy -> **Alpine** |
-| `judge-nim` | 727 MB | Alpine (no change) |
-| `judge-jvm` | 721 MB | Ubuntu Noble -> **Alpine** |
-| `judge-zig` | 598 MB | Alpine (no change) |
-| `judge-crystal` | 581 MB | Debian Bookworm (no change) |
-| `judge-d` | 563 MB | Ubuntu Noble (no change) |
-| `judge-ocaml` | 554 MB | Alpine (no change) |
-| `judge-ada` | 515 MB | Debian Bookworm slim -> **Alpine** |
-| `judge-v` | 492 MB | Debian Bookworm slim (no change) |
-| `judge-powershell` | 461 MB | Debian Bookworm (no change) |
-| `judge-cobol` | 443 MB | Debian Bookworm slim (no change) |
-| `judge-fortran` | 438 MB | Debian Bookworm slim -> **Alpine** |
-| `judge-clojure` | 435 MB | Ubuntu Noble -> **Alpine** |
-| `judge-scheme` | 404 MB | Debian Bookworm slim (no change) |
-| `judge-racket` | 359 MB | Debian Bookworm (no change) |
-| `judge-node` | 353 MB | Debian Bookworm slim -> **Alpine** |
-| `judge-cpp` | 340 MB | Alpine (no change) |
-| `judge-perl` | 262 MB | Debian Bookworm slim -> **Alpine** |
-| `judge-prolog` | 245 MB | Debian Bookworm slim (no change) |
-| `judge-postscript` | 222 MB | Debian Bookworm slim -> **Alpine** |
+**Total: ~25.5 GB** (down from ~31.1 GB, saved **~5.6 GB / 18%**)
 | `judge-pascal` | 219 MB | Debian Bookworm slim (no change) |
 | `judge-esoteric` | 201 MB | Debian Bookworm (no change) |
 | `judge-python` | 180 MB | Debian Bookworm slim -> **Alpine** |

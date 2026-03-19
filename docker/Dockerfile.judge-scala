@@ -5,6 +5,8 @@ RUN apk add --no-cache bash curl && \
     curl -fsSL "https://github.com/scala/scala3/releases/download/3.5.2/scala3-3.5.2-${ARCH}-pc-linux.tar.gz" | \
     tar -xzf - -C /opt && \
     mv /opt/scala3-3.5.2-* /opt/scala3 && \
+    ln -s /opt/scala3/bin/scala /usr/local/bin/scala && \
+    ln -s /opt/scala3/bin/scalac /usr/local/bin/scalac && \
     adduser -D -s /bin/false judge && \
     mkdir -p /workspace && chown judge:judge /workspace
 ENV PATH="/opt/scala3/bin:$PATH"
