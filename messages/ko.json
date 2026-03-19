@@ -915,7 +915,11 @@
       },
       "actions": {
         "resetAll": "모두 기본값으로 초기화",
-        "resetAllConfirm": "모든 언어를 기본 설정으로 초기화하시겠습니까? 이 작업은 되돌릴 수 없습니다."
+        "resetAllConfirm": "모든 언어를 기본 설정으로 초기화하시겠습니까? 이 작업은 되돌릴 수 없습니다.",
+        "build": "이미지 빌드",
+        "remove": "이미지 삭제",
+        "building": "빌드 중...",
+        "removeConfirm": "이 Docker 이미지를 삭제하시겠습니까? 나중에 다시 빌드할 수 있습니다."
       },
       "toast": {
         "toggleSuccess": "{language} {state}.",
@@ -925,7 +929,15 @@
         "resetSuccess": "언어가 기본값으로 초기화되었습니다.",
         "resetError": "언어 초기화에 실패했습니다.",
         "resetAllSuccess": "모든 언어가 기본값으로 초기화되었습니다.",
-        "resetAllError": "모든 언어 초기화에 실패했습니다."
+        "resetAllError": "모든 언어 초기화에 실패했습니다.",
+        "buildSuccess": "Docker 이미지가 성공적으로 빌드되었습니다.",
+        "buildError": "Docker 이미지 빌드에 실패했습니다.",
+        "removeSuccess": "Docker 이미지가 삭제되었습니다.",
+        "removeError": "Docker 이미지 삭제에 실패했습니다."
+      },
+      "imageStatus": {
+        "available": "사용 가능",
+        "notBuilt": "미빌드"
       },
       "edit": {
         "title": "언어 설정 편집",

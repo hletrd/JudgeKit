@@ -923,7 +923,11 @@
       },
       "actions": {
         "resetAll": "Reset All to Defaults",
-        "resetAllConfirm": "Reset ALL languages to their default configuration? This cannot be undone."
+        "resetAllConfirm": "Reset ALL languages to their default configuration? This cannot be undone.",
+        "build": "Build Image",
+        "remove": "Remove Image",
+        "building": "Building...",
+        "removeConfirm": "Remove this Docker image? It can be rebuilt later."
       },
       "toast": {
         "toggleSuccess": "{language} {state}.",
@@ -933,7 +937,15 @@
         "resetSuccess": "Language reset to defaults.",
         "resetError": "Failed to reset language.",
         "resetAllSuccess": "All languages reset to defaults.",
-        "resetAllError": "Failed to reset all languages."
+        "resetAllError": "Failed to reset all languages.",
+        "buildSuccess": "Docker image built successfully.",
+        "buildError": "Failed to build Docker image.",
+        "removeSuccess": "Docker image removed.",
+        "removeError": "Failed to remove Docker image."
+      },
+      "imageStatus": {
+        "available": "Available",
+        "notBuilt": "Not built"
       },
       "edit": {
         "title": "Edit Language Configuration",

@@ -73,6 +73,28 @@ export async function inspectDockerImage(imageTag: string): Promise<Record<strin
   }
 }
 
+/** Build a Docker image from a Dockerfile in the docker/ directory */
+export async function buildDockerImage(
+  imageName: string,
+  dockerfilePath: string,
+): Promise<{ success: boolean; error?: string; logs?: string }> {
+  if (!/^[a-zA-Z0-9][a-zA-Z0-9._\-/:]+$/.test(imageName)) {
+    return { success: false, error: "Invalid image name" };
+  }
+
+  try {
+    const { stdout, stderr } = await exec(
+      "docker",
+      ["build", "-t", imageName, "-f", dockerfilePath, "."],
+      { timeout: 600_000, maxBuffer: 10 * 1024 * 1024 },
+    );
+    return { success: true, logs: (stdout + "\n" + stderr).trim() };
+  } catch (error) {
+    const msg = error instanceof Error ? error.message : String(error);
+    return { success: false, error: msg };
+  }
+}
+
 /** Remove a Docker image */
 export async function removeDockerImage(imageTag: string): Promise<{ success: boolean; error?: string }> {
   if (!/^[a-zA-Z0-9][a-zA-Z0-9._\-/:]+$/.test(imageTag)) {

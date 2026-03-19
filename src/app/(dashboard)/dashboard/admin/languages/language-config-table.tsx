@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useTransition } from "react";
+import { useState, useTransition, useEffect, useCallback } from "react";
 import { useTranslations } from "next-intl";
 import { useRouter } from "next/navigation";
 import { toast } from "sonner";
@@ -13,7 +13,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { Badge } from "@/components/ui/badge";
 import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetDescription } from "@/components/ui/sheet";
 import { toggleLanguage, updateLanguageConfig, resetLanguageToDefaults, resetAllLanguagesToDefaults } from "@/lib/actions/language-configs";
-import { RotateCcw, Pencil } from "lucide-react";
+import { RotateCcw, Pencil, Hammer, Trash2, Loader2 } from "lucide-react";
 
 // Recommended Docker images for the combobox dropdown
 const RECOMMENDED_IMAGES = [
@@ -50,6 +50,63 @@ export function LanguageConfigTable({ languages }: { languages: LanguageConfig[]
   const [editingLang, setEditingLang] = useState<LanguageConfig | null>(null);
   const [editForm, setEditForm] = useState({ dockerImage: "", compileCommand: "", runCommand: "", dockerfile: "" });
   const [search, setSearch] = useState("");
+  const [imageInfo, setImageInfo] = useState<Map<string, string>>(new Map());
+  const [buildingLangs, setBuildingLangs] = useState<Set<string>>(new Set());
+
+  const fetchImageStatus = useCallback(async () => {
+    try {
+      const res = await fetch("/api/v1/admin/docker/images");
+      if (res.ok) {
+        const json = await res.json();
+        const info = new Map<string, string>();
+        for (const img of json.data ?? []) {
+          info.set(`${img.repository}:${img.tag}`, img.size ?? "");
+        }
+        setImageInfo(info);
+      }
+    } catch { /* ignore */ }
+  }, []);
+
+  useEffect(() => { fetchImageStatus(); }, [fetchImageStatus]);
+
+  function handleBuild(lang: LanguageConfig) {
+    setBuildingLangs(prev => new Set(prev).add(lang.language));
+    fetch("/api/v1/admin/docker/images/build", {
+      method: "POST",
+      headers: { "Content-Type": "application/json", "x-csrf-token": "1" },
+      body: JSON.stringify({ language: lang.language }),
+    })
+      .then(async (res) => {
+        if (res.ok) {
+          toast.success(t("toast.buildSuccess"));
+          fetchImageStatus();
+        } else {
+          const data = await res.json().catch(() => ({}));
+          toast.error(data.error ?? t("toast.buildError"));
+        }
+      })
+      .catch(() => toast.error(t("toast.buildError")))
+      .finally(() => setBuildingLangs(prev => { const next = new Set(prev); next.delete(lang.language); return next; }));
+  }
+
+  function handleRemoveImage(lang: LanguageConfig) {
+    if (!confirm(t("actions.removeConfirm"))) return;
+    fetch("/api/v1/admin/docker/images", {
+      method: "DELETE",
+      headers: { "Content-Type": "application/json", "x-csrf-token": "1" },
+      body: JSON.stringify({ imageTag: lang.dockerImage }),
+    })
+      .then(async (res) => {
+        if (res.ok) {
+          toast.success(t("toast.removeSuccess"));
+          fetchImageStatus();
+        } else {
+          const data = await res.json().catch(() => ({}));
+          toast.error(data.error ?? t("toast.removeError"));
+        }
+      })
+      .catch(() => toast.error(t("toast.removeError")));
+  }
 
   function openEdit(lang: LanguageConfig) {
     setEditingLang(lang);
@@ -158,7 +215,7 @@ export function LanguageConfigTable({ languages }: { languages: LanguageConfig[]
               <TableHead className="hidden md:table-cell">{t("table.extension")}</TableHead>
               <TableHead>{t("table.dockerImage")}</TableHead>
               <TableHead className="hidden lg:table-cell">{t("table.compileCommand")}</TableHead>
-              <TableHead className="w-[80px]">{t("table.actions")}</TableHead>
+              <TableHead className="w-[120px]">{t("table.actions")}</TableHead>
             </TableRow>
           </TableHeader>
           <TableBody>
@@ -190,9 +247,14 @@ export function LanguageConfigTable({ languages }: { languages: LanguageConfig[]
                   <span className="text-xs font-mono text-muted-foreground">{lang.extension.startsWith(".") ? lang.extension : `.${lang.extension}`}</span>
                 </TableCell>
                 <TableCell>
-                  <div className="flex flex-col">
+                  <div className="flex flex-col gap-0.5">
                     <span className="text-sm font-mono">{lang.dockerImage}</span>
                     <span className="text-xs text-muted-foreground">{lang.runtimeInfo}</span>
+                    {imageInfo.size > 0 && (
+                      imageInfo.has(lang.dockerImage)
+                        ? <Badge variant="outline" className="w-fit text-xs text-green-600 border-green-300">{t("imageStatus.available")}{imageInfo.get(lang.dockerImage) ? ` (${imageInfo.get(lang.dockerImage)})` : ""}</Badge>
+                        : <Badge variant="outline" className="w-fit text-xs text-muted-foreground">{t("imageStatus.notBuilt")}</Badge>
+                    )}
                   </div>
                 </TableCell>
                 <TableCell className="hidden lg:table-cell">
@@ -201,9 +263,33 @@ export function LanguageConfigTable({ languages }: { languages: LanguageConfig[]
                   </span>
                 </TableCell>
                 <TableCell>
-                  <Button variant="ghost" size="icon-sm" onClick={() => openEdit(lang)}>
-                    <Pencil className="size-3.5" />
-                  </Button>
+                  <div className="flex items-center gap-0.5">
+                    <Button variant="ghost" size="icon-sm" onClick={() => openEdit(lang)}>
+                      <Pencil className="size-3.5" />
+                    </Button>
+                    <Button
+                      variant="ghost"
+                      size="icon-sm"
+                      onClick={() => handleBuild(lang)}
+                      disabled={buildingLangs.has(lang.language)}
+                      title={t("actions.build")}
+                    >
+                      {buildingLangs.has(lang.language)
+                        ? <Loader2 className="size-3.5 animate-spin" />
+                        : <Hammer className="size-3.5" />}
+                    </Button>
+                    {imageInfo.has(lang.dockerImage) && (
+                      <Button
+                        variant="ghost"
+                        size="icon-sm"
+                        onClick={() => handleRemoveImage(lang)}
+                        title={t("actions.remove")}
+                        className="text-destructive"
+                      >
+                        <Trash2 className="size-3.5" />
+                      </Button>
+                    )}
+                  </div>
                 </TableCell>
               </TableRow>
             ))}
