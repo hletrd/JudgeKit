@@ -96,6 +96,8 @@ export async function POST(
       latePenalty: body.latePenalty ?? 0,
       examMode: body.examMode ?? "none",
       examDurationMinutes: body.examDurationMinutes ?? null,
+      scoringModel: body.scoringModel ?? "ioi",
+      enableAntiCheat: body.enableAntiCheat ?? false,
       problems: body.problems ?? [],
     });
 

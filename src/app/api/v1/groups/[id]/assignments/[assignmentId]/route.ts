@@ -120,6 +120,8 @@ export const PATCH = createApiHandler({
       latePenalty: body.latePenalty ?? assignment.latePenalty ?? 0,
       examMode: body.examMode ?? assignment.examMode ?? "none",
       examDurationMinutes: body.examDurationMinutes !== undefined ? body.examDurationMinutes : assignment.examDurationMinutes ?? null,
+      scoringModel: body.scoringModel ?? assignment.scoringModel ?? "ioi",
+      enableAntiCheat: body.enableAntiCheat ?? assignment.enableAntiCheat ?? false,
       problems:
         body.problems ??
         assignment.assignmentProblems
