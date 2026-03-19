@@ -10,21 +10,23 @@
   <img src="https://img.shields.io/badge/TypeScript-5-blue?logo=typescript" alt="TypeScript" />
   <img src="https://img.shields.io/badge/SQLite-Drizzle_ORM-green?logo=sqlite" alt="SQLite" />
   <img src="https://img.shields.io/badge/Docker-Sandboxed-2496ED?logo=docker" alt="Docker" />
+  <img src="https://img.shields.io/badge/Platform-AMD64_%7C_ARM64-orange?logo=linux" alt="AMD64 | ARM64" />
 </p>
 
 <p align="center">
-  A secure code evaluation platform for programming assignments.<br/>
-  Docker-sandboxed execution for <a href="docs/languages.md">55 language variants</a>.
+  A secure, cross-platform code evaluation platform for programming assignments.<br/>
+  Docker-sandboxed execution for <a href="docs/languages.md">55 language variants</a> on both AMD64 and ARM64.
 </p>
 
 ---
 
 ## Features
 
+- **Cross-platform (AMD64 + ARM64)** — Full stack runs natively on both architectures: Next.js app, Rust judge worker, Rust sidecars, and all 44 Docker judge images. Deploy on x86-64 servers or ARM64 (AWS Graviton, Ampere Altra, Apple Silicon) with automatic architecture detection — no emulation, no cross-compilation
+- **55 languages** — C/C++, Java, Python, Rust, Go, and [50 more](docs/languages.md), all with multi-arch Docker images and admin-customizable compile/run settings
+- **Secure execution** — Docker containers with no network, seccomp, memory/CPU limits
 - **Role-based access** — Super admin, admin, instructor, student
 - **Classroom management** — Groups, enrollments, assignments with deadlines and late penalties
-- **55 languages** — C/C++, Java, Python, Rust, Go, and [50 more](docs/languages.md) with admin-customizable settings
-- **Secure execution** — Docker containers with no network, seccomp, memory/CPU limits
 - **Contest system** — IOI and ICPC scoring, scheduled and windowed modes, real-time leaderboard, anti-cheat
 - **Code similarity** — Rust-accelerated Jaccard n-gram analysis with TS fallback
 
