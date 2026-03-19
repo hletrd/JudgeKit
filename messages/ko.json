@@ -896,6 +896,9 @@
       }
     },
     "languages": {
+      "title": "언어 관리",
+      "description": "지원 프로그래밍 언어, 컴파일 옵션, Docker 이미지를 설정합니다.",
+      "languageCount": "{total}개 언어 중 {enabled}개 활성화",
       "search": "언어 검색...",
       "noResults": "언어를 찾을 수 없습니다.",
       "noCompileCommand": "컴파일 없음",

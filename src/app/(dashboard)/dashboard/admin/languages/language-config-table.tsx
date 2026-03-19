@@ -185,7 +185,7 @@ export function LanguageConfigTable({ languages }: { languages: LanguageConfig[]
                   {lang.standard && <Badge variant="secondary">{lang.standard}</Badge>}
                 </TableCell>
                 <TableCell className="hidden md:table-cell">
-                  <span className="text-xs font-mono text-muted-foreground">.{lang.extension}</span>
+                  <span className="text-xs font-mono text-muted-foreground">{lang.extension.startsWith(".") ? lang.extension : `.${lang.extension}`}</span>
                 </TableCell>
                 <TableCell>
                   <div className="flex flex-col">

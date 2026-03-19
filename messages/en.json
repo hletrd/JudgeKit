@@ -904,6 +904,9 @@
       }
     },
     "languages": {
+      "title": "Language Management",
+      "description": "Configure supported programming languages, compile options, and Docker images.",
+      "languageCount": "{enabled} of {total} languages enabled",
       "search": "Search languages...",
       "noResults": "No languages found.",
       "noCompileCommand": "No compile step",
