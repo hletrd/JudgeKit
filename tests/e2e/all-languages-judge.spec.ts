@@ -504,20 +504,7 @@ test("submit A+B in all supported languages and verify judging", async ({ browse
     "brainfuck",   // byte-level I/O, cannot handle multi-digit decimal numbers
     "vlang",       // V Docker image fails to build from source reliably
     "whitespace",  // Whitespace interpreter file encoding issues
-    "erlang",      // intermittent — works directly but fails under E2E load
-    "java",        // intermittent compile failure under E2E load
-    "typescript",  // intermittent compile failure under E2E load
-    "csharp",      // intermittent — mono HOME=/tmp timing
-    "clojure",     // intermittent — JVM classpath under load
-    "prolog",      // intermittent — SWI-Prolog under load
-    "powershell",  // intermittent — pwsh stdin timing
-    "lua",         // intermittent — io.read timing
-    "dart",        // intermittent — Dart SDK under load
-    "zig",         // intermittent — zig cache timing
-    "nim",         // intermittent — nimcache timing
-    "elixir",      // intermittent — BEAM startup timing
-    "scala",       // intermittent — scalac HOME timing
-    "groovy",      // Groovy needs Java 21, image has Java 25
+    "groovy",      // Groovy 4.0 incompatible with Java 25 (class version 69)
   ]);
 
   const unexpected = failed.filter((r) => !KNOWN_FLAKY.has(r.language));
