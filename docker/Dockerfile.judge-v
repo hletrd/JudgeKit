@@ -1,10 +1,11 @@
 FROM debian:bookworm-slim
 RUN apt-get update && apt-get install -y --no-install-recommends \
-    gcc libc6-dev git make && \
-    git clone --depth 1 https://github.com/vlang/v /opt/vlang && \
-    cd /opt/vlang && make && \
-    ln -s /opt/vlang/v /usr/local/bin/v && \
-    apt-get purge -y git make && apt-get autoremove -y && \
+    gcc libc6-dev curl unzip ca-certificates && \
+    curl -sL https://github.com/vlang/v/releases/latest/download/v_linux.zip -o /tmp/v.zip && \
+    unzip -q /tmp/v.zip -d /opt && \
+    ln -s /opt/v/v /usr/local/bin/v && \
+    rm /tmp/v.zip && \
+    apt-get purge -y curl unzip && apt-get autoremove -y && \
     rm -rf /var/lib/apt/lists/* && \
     useradd --create-home --shell /usr/sbin/nologin judge && \
     mkdir -p /workspace && chown judge:judge /workspace

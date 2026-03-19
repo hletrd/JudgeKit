@@ -114,8 +114,10 @@ int main() {
   hyeong: `혀엉...혀엉....형타형타`,
   whitespace: [
     "   \n",          // push 0
+    " \n ",           // dup (addr for readnum)
     "\t\n\t\t",       // readnum → heap[0]
     "   \t\n",        // push 1
+    " \n ",           // dup (addr for readnum)
     "\t\n\t\t",       // readnum → heap[1]
     "   \n",          // push 0
     "\t\t\t",         // retrieve heap[0]
@@ -123,8 +125,6 @@ int main() {
     "\t\t\t",         // retrieve heap[1]
     "\t   ",          // add
     "\t\n \t",        // output number
-    "   \t \t \n",    // push 10 (newline)
-    "\t\n  ",         // output char
     "\n\n\n",         // end
   ].join(""),
   ada: `with Ada.Text_IO; use Ada.Text_IO;
@@ -505,8 +505,6 @@ test("submit A+B in all supported languages and verify judging", async ({ browse
   const KNOWN_FLAKY = new Set([
     "hyeong",      // char-level I/O, cannot parse space-separated integers
     "brainfuck",   // byte-level I/O, cannot parse multi-digit decimal numbers
-    "vlang",       // V Docker image fails to build from source
-    "whitespace",  // interpreter compatibility issue
   ]);
 
   const unexpected = failed.filter((r) => !KNOWN_FLAKY.has(r.language));
