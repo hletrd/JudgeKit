@@ -364,7 +364,7 @@ export default async function ContestDetailPage({
   ).length;
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-4">
       <Link
         href="/dashboard/contests"
         className="inline-flex items-center gap-1 text-sm text-muted-foreground hover:text-foreground"
@@ -546,7 +546,7 @@ export default async function ContestDetailPage({
         </TabsContent>
 
         {/* Leaderboard Tab */}
-        <TabsContent value="leaderboard" className="mt-6">
+        <TabsContent value="leaderboard" className="mt-4">
           <LeaderboardTable assignmentId={assignmentId} canViewStudentDetails />
         </TabsContent>
 

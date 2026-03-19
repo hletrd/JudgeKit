@@ -58,7 +58,7 @@ export function FilterForm({
       <CardContent>
         <form className="flex flex-col gap-3 md:flex-row md:items-end" method="get">
           <div className="flex-1 space-y-2">
-            <label className="text-sm font-medium" htmlFor="student-search">
+            <label className="block text-sm font-medium mb-1" htmlFor="student-search">
               {labels.studentSearch}
             </label>
             <input
@@ -73,7 +73,7 @@ export function FilterForm({
           </div>
 
           <div className="space-y-2">
-            <label className="text-sm font-medium" htmlFor="status-filter">
+            <label className="block text-sm font-medium mb-1" htmlFor="status-filter">
               {labels.status}
             </label>
             <select
@@ -92,7 +92,7 @@ export function FilterForm({
             </select>
           </div>
 
-          <div className="flex gap-2 md:pt-7">
+          <div className="flex gap-2">
             <Button type="submit">{labels.applyFilter}</Button>
             <Link href={resetHref ?? `/dashboard/groups/${groupId}/assignments/${assignmentId}`}>
               <Button type="button" variant="outline">
