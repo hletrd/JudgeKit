@@ -1,7 +1,6 @@
-FROM alpine:3.21
+FROM nimlang/nim:2.0.14-alpine
 
-RUN apk add --no-cache nim gcc musl-dev && \
-    adduser -D -s /bin/false judge && \
+RUN adduser -D -s /bin/false judge && \
     mkdir -p /workspace && \
     chown judge:judge /workspace
 
