@@ -110,6 +110,7 @@ export default async function StudentSubmissionsPage({
       language: submissions.language,
       status: submissions.status,
       score: submissions.score,
+      compileOutput: submissions.compileOutput,
       executionTimeMs: submissions.executionTimeMs,
       memoryUsedKb: submissions.memoryUsedKb,
       submittedAt: submissions.submittedAt,
@@ -210,6 +211,10 @@ export default async function StudentSubmissionsPage({
                                 <SubmissionStatusBadge
                                   status={sub.status}
                                   label={statusLabels[sub.status] ?? sub.status}
+                                  compileOutput={sub.compileOutput}
+                                  executionTimeMs={sub.executionTimeMs}
+                                  memoryUsedKb={sub.memoryUsedKb}
+                                  score={sub.score}
                                 />
                               ) : (
                                 <Badge variant="outline">-</Badge>

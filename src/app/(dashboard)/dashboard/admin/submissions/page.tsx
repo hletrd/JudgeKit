@@ -65,6 +65,9 @@ export default async function AdminSubmissionsPage({
       status: submissions.status,
       submittedAt: submissions.submittedAt,
       score: submissions.score,
+      compileOutput: submissions.compileOutput,
+      executionTimeMs: submissions.executionTimeMs,
+      memoryUsedKb: submissions.memoryUsedKb,
       user: {
         id: users.id,
         name: users.name,
@@ -186,6 +189,10 @@ export default async function AdminSubmissionsPage({
                     <SubmissionStatusBadge
                       label={statusLabels[sub.status as keyof typeof statusLabels] ?? sub.status}
                       status={sub.status}
+                      compileOutput={sub.compileOutput}
+                      executionTimeMs={sub.executionTimeMs}
+                      memoryUsedKb={sub.memoryUsedKb}
+                      score={sub.score}
                     />
                   </TableCell>
                   <TableCell>{sub.score !== null ? sub.score : "-"}</TableCell>

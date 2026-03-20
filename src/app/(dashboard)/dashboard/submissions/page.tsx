@@ -39,6 +39,9 @@ type SubmissionRow = {
   status: string | null;
   submittedAt: Date | null;
   score: number | null;
+  compileOutput: string | null;
+  executionTimeMs: number | null;
+  memoryUsedKb: number | null;
   problem: {
     id: string | null;
     title: string | null;
@@ -92,6 +95,9 @@ export default async function SubmissionsPage({
       status: submissions.status,
       submittedAt: submissions.submittedAt,
       score: submissions.score,
+      compileOutput: submissions.compileOutput,
+      executionTimeMs: submissions.executionTimeMs,
+      memoryUsedKb: submissions.memoryUsedKb,
       problem: {
         id: problems.id,
         title: problems.title,
@@ -204,6 +210,10 @@ export default async function SubmissionsPage({
                     <SubmissionStatusBadge
                       label={statusLabels[sub.status as keyof typeof statusLabels] ?? sub.status}
                       status={sub.status}
+                      compileOutput={sub.compileOutput}
+                      executionTimeMs={sub.executionTimeMs}
+                      memoryUsedKb={sub.memoryUsedKb}
+                      score={sub.score}
                     />
                   </TableCell>
                   <TableCell>{sub.score !== null ? sub.score : "-"}</TableCell>
