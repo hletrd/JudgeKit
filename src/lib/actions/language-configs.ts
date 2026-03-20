@@ -125,6 +125,92 @@ export async function updateLanguageConfig(
   }
 }
 
+export async function addLanguageConfig(input: {
+  language: string;
+  displayName: string;
+  standard?: string;
+  extension: string;
+  dockerImage: string;
+  compiler?: string;
+  compileCommand?: string;
+  runCommand: string;
+  dockerfile?: string;
+}): Promise<LanguageConfigActionResult> {
+  if (!(await isTrustedServerActionOrigin())) {
+    return { success: false, error: "unauthorized" };
+  }
+
+  const session = await getAuthorizedSession();
+  if (!session) {
+    return { success: false, error: "unauthorized" };
+  }
+
+  const rateLimit = checkServerActionRateLimit(session.user.id, "languageConfig", 30, 60);
+  if (rateLimit) return { success: false, error: "rateLimited" };
+
+  // Validate language key: alphanumeric + underscore only, no spaces
+  if (!/^[a-z0-9_]+$/.test(input.language)) {
+    return { success: false, error: "invalidLanguageKey" };
+  }
+
+  if (!input.displayName.trim() || !input.extension.trim() || !input.dockerImage.trim() || !input.runCommand.trim()) {
+    return { success: false, error: "missingRequiredFields" };
+  }
+
+  try {
+    // Check for uniqueness
+    const existing = await db
+      .select({ id: languageConfigs.id })
+      .from(languageConfigs)
+      .where(eq(languageConfigs.language, input.language))
+      .limit(1);
+
+    if (existing.length > 0) {
+      return { success: false, error: "languageAlreadyExists" };
+    }
+
+    await db.insert(languageConfigs).values({
+      language: input.language,
+      displayName: input.displayName.trim(),
+      standard: input.standard?.trim() || null,
+      extension: input.extension.trim(),
+      dockerImage: input.dockerImage.trim(),
+      compiler: input.compiler?.trim() || null,
+      compileCommand: input.compileCommand?.trim() || null,
+      runCommand: input.runCommand.trim(),
+      dockerfile: input.dockerfile?.trim() || null,
+      isEnabled: true,
+      updatedAt: new Date(),
+    });
+
+    const auditContext = await buildServerActionAuditContext("/dashboard/admin/languages");
+    recordAuditEvent({
+      actorId: session.user.id,
+      actorRole: session.user.role,
+      action: "language_config.created",
+      resourceType: "language_config",
+      resourceId: input.language,
+      resourceLabel: input.displayName,
+      summary: `Created new language ${input.language} (${input.displayName})`,
+      details: {
+        language: input.language,
+        displayName: input.displayName,
+        dockerImage: input.dockerImage,
+        extension: input.extension,
+      },
+      context: auditContext,
+    });
+
+    revalidatePath("/dashboard/admin/languages");
+    revalidatePath("/", "layout");
+
+    return { success: true };
+  } catch (error) {
+    logger.error({ err: error }, "Failed to add language config");
+    return { success: false, error: "createFailed" };
+  }
+}
+
 export async function resetLanguageToDefaults(
   language: string
 ): Promise<LanguageConfigActionResult> {

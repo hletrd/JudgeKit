@@ -964,6 +964,16 @@
         "cancel": "Cancel",
         "resetToDefaults": "Reset to Defaults",
         "resetConfirm": "Reset this language to its default configuration?"
+      },
+      "add": {
+        "title": "Add Language",
+        "button": "Add Language",
+        "languageKey": "Language Key",
+        "languageKeyPlaceholder": "e.g. mylang",
+        "languageKeyHelp": "Unique identifier (lowercase, no spaces)",
+        "create": "Create Language",
+        "createSuccess": "Language created successfully.",
+        "createError": "Failed to create language."
       }
     }
   },

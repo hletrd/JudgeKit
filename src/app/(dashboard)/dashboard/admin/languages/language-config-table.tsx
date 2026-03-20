@@ -12,8 +12,8 @@ import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { Badge } from "@/components/ui/badge";
 import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetDescription } from "@/components/ui/sheet";
-import { toggleLanguage, updateLanguageConfig, resetLanguageToDefaults, resetAllLanguagesToDefaults } from "@/lib/actions/language-configs";
-import { RotateCcw, Pencil, Hammer, Trash2, Loader2 } from "lucide-react";
+import { toggleLanguage, updateLanguageConfig, resetLanguageToDefaults, resetAllLanguagesToDefaults, addLanguageConfig } from "@/lib/actions/language-configs";
+import { RotateCcw, Pencil, Hammer, Trash2, Loader2, Plus } from "lucide-react";
 
 // Recommended Docker images for the combobox dropdown
 const RECOMMENDED_IMAGES = [
@@ -46,6 +46,7 @@ interface LanguageConfig {
 
 export function LanguageConfigTable({ languages }: { languages: LanguageConfig[] }) {
   const t = useTranslations("admin.languages");
+  const tCommon = useTranslations("common");
   const router = useRouter();
   const [isPending, startTransition] = useTransition();
   const [editingLang, setEditingLang] = useState<LanguageConfig | null>(null);
@@ -54,6 +55,12 @@ export function LanguageConfigTable({ languages }: { languages: LanguageConfig[]
   const [imageInfo, setImageInfo] = useState<Map<string, string>>(new Map());
   const [diskUsage, setDiskUsage] = useState<{ total: string; used: string; available: string; usePercent: string } | null>(null);
   const [buildingLangs, setBuildingLangs] = useState<Set<string>>(new Set());
+  const [addOpen, setAddOpen] = useState(false);
+  const [addForm, setAddForm] = useState({
+    language: "", displayName: "", standard: "", extension: "",
+    dockerImage: "", compiler: "", compileCommand: "", runCommand: "",
+    dockerfile: "",
+  });
 
   const fetchImageStatus = useCallback(async () => {
     try {
@@ -176,6 +183,34 @@ export function LanguageConfigTable({ languages }: { languages: LanguageConfig[]
     });
   }
 
+  function handleCreate() {
+    startTransition(async () => {
+      const result = await addLanguageConfig({
+        language: addForm.language,
+        displayName: addForm.displayName,
+        standard: addForm.standard || undefined,
+        extension: addForm.extension,
+        dockerImage: addForm.dockerImage,
+        compiler: addForm.compiler || undefined,
+        compileCommand: addForm.compileCommand || undefined,
+        runCommand: addForm.runCommand,
+        dockerfile: addForm.dockerfile || undefined,
+      });
+      if (result.success) {
+        toast.success(t("add.createSuccess"));
+        setAddOpen(false);
+        setAddForm({
+          language: "", displayName: "", standard: "", extension: "",
+          dockerImage: "", compiler: "", compileCommand: "", runCommand: "",
+          dockerfile: "",
+        });
+        router.refresh();
+      } else {
+        toast.error(t("add.createError"));
+      }
+    });
+  }
+
   // Collect unique docker images currently in use for the datalist
   const existingImages = [...new Set(languages.map(l => l.dockerImage))];
   const allImageOptions = [...new Set([...existingImages, ...RECOMMENDED_IMAGES])].sort();
@@ -216,7 +251,11 @@ export function LanguageConfigTable({ languages }: { languages: LanguageConfig[]
           placeholder={t("search")}
           className="max-w-xs"
         />
-        <div className="ml-auto">
+        <div className="ml-auto flex items-center gap-2">
+          <Button variant="default" size="sm" onClick={() => setAddOpen(true)} disabled={isPending}>
+            <Plus className="size-4 mr-1.5" />
+            {t("add.button")}
+          </Button>
           <Button variant="outline" size="sm" onClick={handleResetAll} disabled={isPending}>
             <RotateCcw className="size-4 mr-1.5" />
             {t("actions.resetAll")}
@@ -392,6 +431,115 @@ export function LanguageConfigTable({ languages }: { languages: LanguageConfig[]
             >
               <RotateCcw className="size-4 mr-1.5" />
               {t("edit.resetToDefaults")}
+            </Button>
+          </div>
+        </SheetContent>
+      </Sheet>
+
+      {/* Add Language Sheet */}
+      <Sheet open={addOpen} onOpenChange={setAddOpen}>
+        <SheetContent className="sm:max-w-lg flex flex-col">
+          <SheetHeader className="px-6 pt-6">
+            <SheetTitle>{t("add.title")}</SheetTitle>
+            <SheetDescription>
+              {t("add.languageKeyHelp")}
+            </SheetDescription>
+          </SheetHeader>
+
+          <div className="flex-1 overflow-y-auto px-6 py-6 space-y-6">
+            <div className="space-y-2">
+              <Label>{t("add.languageKey")}</Label>
+              <Input
+                value={addForm.language}
+                onChange={(e) => setAddForm(prev => ({ ...prev, language: e.target.value }))}
+                placeholder={t("add.languageKeyPlaceholder")}
+              />
+              <p className="text-xs text-muted-foreground">{t("add.languageKeyHelp")}</p>
+            </div>
+
+            <div className="space-y-2">
+              <Label>{t("table.language")}</Label>
+              <Input
+                value={addForm.displayName}
+                onChange={(e) => setAddForm(prev => ({ ...prev, displayName: e.target.value }))}
+                placeholder="e.g. My Language"
+              />
+            </div>
+
+            <div className="space-y-2">
+              <Label>{t("table.standard")} <span className="text-muted-foreground text-xs">({tCommon("optional")})</span></Label>
+              <Input
+                value={addForm.standard}
+                onChange={(e) => setAddForm(prev => ({ ...prev, standard: e.target.value }))}
+                placeholder="e.g. C++20"
+              />
+            </div>
+
+            <div className="space-y-2">
+              <Label>{t("table.extension")}</Label>
+              <Input
+                value={addForm.extension}
+                onChange={(e) => setAddForm(prev => ({ ...prev, extension: e.target.value }))}
+                placeholder="e.g. .ml"
+              />
+            </div>
+
+            <div className="space-y-2">
+              <Label>{t("edit.dockerImage")}</Label>
+              <Input
+                value={addForm.dockerImage}
+                onChange={(e) => setAddForm(prev => ({ ...prev, dockerImage: e.target.value }))}
+                placeholder={t("edit.dockerImagePlaceholder")}
+                list="docker-images-add"
+              />
+              <datalist id="docker-images-add">
+                {allImageOptions.map(img => (
+                  <option key={img} value={img} />
+                ))}
+              </datalist>
+            </div>
+
+            <div className="space-y-2">
+              <Label>{t("edit.compileCommand")} <span className="text-muted-foreground text-xs">({tCommon("optional")})</span></Label>
+              <Textarea
+                value={addForm.compileCommand}
+                onChange={(e) => setAddForm(prev => ({ ...prev, compileCommand: e.target.value }))}
+                rows={3}
+                className="font-mono text-sm"
+              />
+              <p className="text-xs text-muted-foreground">{t("edit.compileCommandHelp")}</p>
+            </div>
+
+            <div className="space-y-2">
+              <Label>{t("edit.runCommand")}</Label>
+              <Textarea
+                value={addForm.runCommand}
+                onChange={(e) => setAddForm(prev => ({ ...prev, runCommand: e.target.value }))}
+                rows={2}
+                className="font-mono text-sm"
+              />
+              <p className="text-xs text-muted-foreground">{t("edit.runCommandHelp")}</p>
+            </div>
+
+            <div className="space-y-2">
+              <Label>{t("edit.dockerfile")} <span className="text-muted-foreground text-xs">({tCommon("optional")})</span></Label>
+              <Textarea
+                value={addForm.dockerfile}
+                onChange={(e) => setAddForm(prev => ({ ...prev, dockerfile: e.target.value }))}
+                rows={10}
+                className="font-mono text-sm"
+                placeholder={t("edit.dockerfilePlaceholder")}
+              />
+              <p className="text-xs text-muted-foreground">{t("edit.dockerfileHelp")}</p>
+            </div>
+          </div>
+
+          <div className="border-t px-6 py-4 flex gap-2">
+            <Button onClick={handleCreate} disabled={isPending || !addForm.language || !addForm.displayName || !addForm.extension || !addForm.dockerImage || !addForm.runCommand}>
+              {t("add.create")}
+            </Button>
+            <Button variant="outline" onClick={() => setAddOpen(false)} disabled={isPending}>
+              {t("edit.cancel")}
             </Button>
           </div>
         </SheetContent>
