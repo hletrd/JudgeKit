@@ -514,7 +514,7 @@ export const JUDGE_LANGUAGE_CONFIGS: Record<Language, JudgeLanguageDefinition> =
     dockerImage: "judge-scala:latest",
     compiler: `Scala ${JUDGE_TOOLCHAIN_VERSIONS.scala}`,
     compileCommand: ["sh", "-c", "export HOME=/tmp && mkdir -p /workspace/out && scalac -d /workspace/out /workspace/solution.scala"],
-    runCommand: ["sh", "-c", "export HOME=/tmp && scala -classpath /workspace/out Main"],
+    runCommand: ["sh", "-c", "export HOME=/tmp && java -classpath /workspace/out Main"],
   },
   erlang: {
     language: "erlang",

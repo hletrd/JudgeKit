@@ -13,6 +13,8 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     apt-get purge -y curl unzip && apt-get autoremove -y && \
     rm -rf /var/lib/apt/lists/* && \
     useradd --create-home --shell /usr/sbin/nologin judge && \
-    mkdir -p /workspace && chown judge:judge /workspace
+    mkdir -p /workspace && chown judge:judge /workspace && \
+    mkdir -p /tmp/vmodules && chown judge:judge /tmp/vmodules
+ENV VMODULES=/tmp/vmodules
 WORKDIR /workspace
 USER judge

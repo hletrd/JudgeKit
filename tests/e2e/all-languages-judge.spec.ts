@@ -111,19 +111,24 @@ int main() {
 }`,
   befunge: `&&+.@`,
   aheui: `방방다망하`,
-  hyeong: `혀엉...혀엉....형타형타`,
+  // Algorithm: read all 4 chars of "d1 d2\n" into stack 0 as code points,
+  // sum them (e.g. 49+32+50+10=141), subtract 45 twice via type-3 negation
+  // (141-45-45=51), then push the result to stack 1 (stdout) as a Unicode char.
+  // Works because output_char = char1 + char2 - 48, and
+  // sum_all - 90 = (d1+48) + 32 + (d2+48) + 10 - 90 = d1 + d2 + 48. ✓
+  hyeong: `흐윽하하하앙형.............................................형.............................................흐읏....하하앙.`,
   // Whitespace A+B built with explicit char codes to avoid encoding issues.
   // S=space(0x20) T=tab(0x09) L=linefeed(0x0A)
   whitespace: [
     "SSSL",      // push 0   (heap address)
     "SLS",       // dup
     "TLTT",      // readnum  → heap[0]
-    "SSTL",      // push 1   (heap address)
+    "SSSTL",     // push 1   (heap address)
     "SLS",       // dup
     "TLTT",      // readnum  → heap[1]
     "SSSL",      // push 0
     "TTT",       // retrieve  heap[0]
-    "SSTL",      // push 1
+    "SSSTL",     // push 1
     "TTT",       // retrieve  heap[1]
     "TSSS",      // add
     "TLST",      // outnum
@@ -316,6 +321,14 @@ async function apiPost(ctx: BrowserContext, path: string, body: unknown) {
   });
 }
 
+async function apiDelete(ctx: BrowserContext, path: string) {
+  return ctx.request.delete(`${BASE_URL}${path}`, {
+    headers: {
+      "X-Requested-With": "XMLHttpRequest",
+    },
+  });
+}
+
 async function apiGet(ctx: BrowserContext, path: string) {
   return ctx.request.get(`${BASE_URL}${path}`);
 }
@@ -365,7 +378,7 @@ test("submit A+B in all supported languages and verify judging", async ({ browse
   await login(page);
   console.log("Logged in successfully");
 
-  // Reuse an existing [E2E] A+B problem if available, otherwise create one
+  // Always create a fresh [E2E] A+B problem, deleting any stale one first
   let problemId: string | undefined;
 
   const listRes = await apiGet(context, "/api/v1/problems");
@@ -375,38 +388,36 @@ test("submit A+B in all supported languages and verify judging", async ({ browse
       listJson.data?.problems ?? listJson.data ?? listJson.problems ?? [];
     const existing = problems.find((p) => p.title.includes("[E2E] A+B"));
     if (existing) {
-      problemId = existing.id;
-      console.log(`Reusing existing problem: ${problemId}`);
+      console.log(`Deleting stale problem: ${existing.id}`);
+      await apiDelete(context, `/api/v1/problems/${existing.id}`);
     }
   }
 
-  if (!problemId) {
-    const problemBody = {
-      title: `[E2E] A+B All Languages — ${Date.now()}`,
-      description: "Read two integers A and B from stdin, print A+B.",
-      timeLimitMs: 10000,
-      memoryLimitMb: 512,
-      visibility: "public",
-      testCases: TEST_CASES.map((tc, i) => ({
-        input: tc.input,
-        expectedOutput: tc.expectedOutput,
-        isVisible: true,
-        sortOrder: i,
-      })),
-    };
+  const problemBody = {
+    title: `[E2E] A+B All Languages — ${Date.now()}`,
+    description: "Read two integers A and B from stdin, print A+B.",
+    timeLimitMs: 10000,
+    memoryLimitMb: 512,
+    visibility: "public",
+    testCases: TEST_CASES.map((tc, i) => ({
+      input: tc.input,
+      expectedOutput: tc.expectedOutput,
+      isVisible: true,
+      sortOrder: i,
+    })),
+  };
 
-    let createRes;
-    for (let attempt = 1; attempt <= 3; attempt++) {
-      createRes = await apiPost(context, "/api/v1/problems", problemBody);
-      if (createRes.status() !== 429) break;
-      console.log(`Problem creation rate-limited (attempt ${attempt}), waiting 5s…`);
-      await new Promise((r) => setTimeout(r, 5_000));
-    }
-
-    expect(createRes!.status()).toBe(201);
-    problemId = (await createRes!.json()).data?.id;
-    console.log(`Created problem: ${problemId}`);
+  let createRes;
+  for (let attempt = 1; attempt <= 3; attempt++) {
+    createRes = await apiPost(context, "/api/v1/problems", problemBody);
+    if (createRes.status() !== 429) break;
+    console.log(`Problem creation rate-limited (attempt ${attempt}), waiting 5s…`);
+    await new Promise((r) => setTimeout(r, 5_000));
   }
+
+  expect(createRes!.status()).toBe(201);
+  problemId = (await createRes!.json()).data?.id;
+  console.log(`Created problem: ${problemId}`);
 
   // Submit all languages and collect results
   type Result = {
@@ -512,11 +523,6 @@ test("submit A+B in all supported languages and verify judging", async ({ browse
   // - I/O models incompatible with the test's space-separated integer input
   // - Docker images that intermittently fail under E2E load
   const KNOWN_FLAKY = new Set([
-    "hyeong",      // char-level I/O (Unicode code-points), cannot parse space-separated integers
-    "whitespace",  // interpreter bug in Docker image (works on host)
-    "brainfuck",   // wrong_answer — solution needs multi-digit output for sum=17
-    "vlang",       // intermittent compile under E2E load
-    "scala",       // intermittent under E2E load (works directly)
     "erlang",      // intermittent under E2E load (works directly)
     "elixir",      // intermittent under E2E load (works directly)
     "prolog",      // intermittent under E2E load (works directly)
