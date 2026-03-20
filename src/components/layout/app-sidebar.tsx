@@ -17,7 +17,7 @@ import {
   SidebarFooter,
   SidebarHeader,
 } from "@/components/ui/sidebar";
-import { BookOpen, FileCode, Send, Users, User, LayoutDashboard, GraduationCap, Shield, LogOut, LogIn, History, FolderOpen, Blocks, Trophy, MessageCircle, Timer, KeyRound, Code } from "lucide-react";
+import { BookOpen, FileCode, Send, Users, User, LayoutDashboard, GraduationCap, Shield, LogOut, LogIn, History, FolderOpen, Blocks, Trophy, MessageCircle, Timer, KeyRound, Code, Settings } from "lucide-react";
 
 interface AppSidebarProps {
   user: {
@@ -35,31 +35,93 @@ type NavItem = {
   titleKey: string;
   href: string;
   icon: typeof LayoutDashboard;
-  capability?: string; // null = visible to all authenticated users
+  capability?: string;
 };
 
-const navItems: NavItem[] = [
-  { titleKey: "dashboard", href: "/dashboard", icon: LayoutDashboard },
-  { titleKey: "problems", href: "/dashboard/problems", icon: BookOpen },
-  { titleKey: "submissions", href: "/dashboard/submissions", icon: Send },
-  { titleKey: "problemSets", href: "/dashboard/problem-sets", icon: FolderOpen, capability: "problem_sets.create" },
-  { titleKey: "groups", href: "/dashboard/groups", icon: Users },
-  { titleKey: "contests", href: "/dashboard/contests", icon: Timer },
-  { titleKey: "rankings", href: "/dashboard/rankings", icon: Trophy },
-  { titleKey: "profile", href: "/dashboard/profile", icon: User },
+type NavGroup = {
+  labelKey: string;
+  items: NavItem[];
+};
+
+const navGroups: NavGroup[] = [
+  {
+    labelKey: "navigation",
+    items: [
+      { titleKey: "dashboard", href: "/dashboard", icon: LayoutDashboard },
+    ],
+  },
+  {
+    labelKey: "learning",
+    items: [
+      { titleKey: "problems", href: "/dashboard/problems", icon: BookOpen },
+      { titleKey: "submissions", href: "/dashboard/submissions", icon: Send },
+      { titleKey: "contests", href: "/dashboard/contests", icon: Timer },
+      { titleKey: "rankings", href: "/dashboard/rankings", icon: Trophy },
+    ],
+  },
+  {
+    labelKey: "manage",
+    items: [
+      { titleKey: "groups", href: "/dashboard/groups", icon: Users },
+      { titleKey: "problemSets", href: "/dashboard/problem-sets", icon: FolderOpen, capability: "problem_sets.create" },
+    ],
+  },
+  {
+    labelKey: "account",
+    items: [
+      { titleKey: "profile", href: "/dashboard/profile", icon: User },
+    ],
+  },
 ];
 
-const adminItems: NavItem[] = [
-  { titleKey: "userManagement", href: "/dashboard/admin/users", icon: Shield, capability: "users.view" },
-  { titleKey: "roleManagement", href: "/dashboard/admin/roles", icon: KeyRound, capability: "users.manage_roles" },
-  { titleKey: "allSubmissions", href: "/dashboard/admin/submissions", icon: FileCode, capability: "submissions.view_all" },
-  { titleKey: "auditLogs", href: "/dashboard/admin/audit-logs", icon: History, capability: "system.audit_logs" },
-  { titleKey: "loginLogs", href: "/dashboard/admin/login-logs", icon: LogIn, capability: "system.login_logs" },
-  { titleKey: "systemSettings", href: "/dashboard/admin/settings", icon: GraduationCap, capability: "system.settings" },
-  { titleKey: "languages", href: "/dashboard/admin/languages", icon: Code, capability: "system.settings" },
-  { titleKey: "plugins", href: "/dashboard/admin/plugins", icon: Blocks, capability: "system.plugins" },
-  { titleKey: "chatLogs", href: "/dashboard/admin/plugins/chat-logs", icon: MessageCircle, capability: "system.chat_logs" },
+const adminGroups: NavGroup[] = [
+  {
+    labelKey: "adminUsers",
+    items: [
+      { titleKey: "userManagement", href: "/dashboard/admin/users", icon: Shield, capability: "users.view" },
+      { titleKey: "roleManagement", href: "/dashboard/admin/roles", icon: KeyRound, capability: "users.manage_roles" },
+    ],
+  },
+  {
+    labelKey: "adminMonitoring",
+    items: [
+      { titleKey: "allSubmissions", href: "/dashboard/admin/submissions", icon: FileCode, capability: "submissions.view_all" },
+      { titleKey: "auditLogs", href: "/dashboard/admin/audit-logs", icon: History, capability: "system.audit_logs" },
+      { titleKey: "loginLogs", href: "/dashboard/admin/login-logs", icon: LogIn, capability: "system.login_logs" },
+      { titleKey: "chatLogs", href: "/dashboard/admin/plugins/chat-logs", icon: MessageCircle, capability: "system.chat_logs" },
+    ],
+  },
+  {
+    labelKey: "adminSystem",
+    items: [
+      { titleKey: "systemSettings", href: "/dashboard/admin/settings", icon: Settings, capability: "system.settings" },
+      { titleKey: "languages", href: "/dashboard/admin/languages", icon: Code, capability: "system.settings" },
+      { titleKey: "plugins", href: "/dashboard/admin/plugins", icon: Blocks, capability: "system.plugins" },
+    ],
+  },
 ];
+
+function NavItems({ items, pathname, t }: { items: NavItem[]; pathname: string; t: (key: string) => string }) {
+  return (
+    <>
+      {items.map((item) => {
+        const isActive = pathname === item.href || (item.href !== "/dashboard" && pathname.startsWith(item.href + "/"));
+        return (
+          <SidebarMenuItem key={item.href}>
+            <SidebarMenuButton
+              isActive={isActive}
+              aria-current={isActive ? "page" : undefined}
+              render={<Link href={item.href} />}
+            >
+              <item.icon className="size-4" aria-hidden="true" />
+              <span>{t(item.titleKey)}</span>
+            </SidebarMenuButton>
+          </SidebarMenuItem>
+        );
+      })}
+    </>
+  );
+}
 
 export function AppSidebar({ user, siteTitle, capabilities = [] }: AppSidebarProps) {
   const pathname = usePathname();
@@ -76,12 +138,9 @@ export function AppSidebar({ user, siteTitle, capabilities = [] }: AppSidebarPro
 
   const capsSet = new Set(capabilities);
 
-  const filteredNav = navItems.filter(item =>
-    !item.capability || capsSet.has(item.capability)
-  );
-  const filteredAdmin = adminItems.filter(item =>
-    !item.capability || capsSet.has(item.capability)
-  );
+  function filterItems(items: NavItem[]) {
+    return items.filter(item => !item.capability || capsSet.has(item.capability));
+  }
 
   async function handleSignOut() {
     setIsSigningOut(true);
@@ -97,51 +156,43 @@ export function AppSidebar({ user, siteTitle, capabilities = [] }: AppSidebarPro
         </div>
       </SidebarHeader>
       <SidebarContent>
-        <SidebarGroup>
-          <SidebarGroupLabel>{t("navigation")}</SidebarGroupLabel>
-          <SidebarGroupContent>
-            <SidebarMenu>
-              {filteredNav.map((item) => {
-                const isActive = pathname === item.href || (item.href !== "/dashboard" && pathname.startsWith(item.href + "/"));
-                return (
-                  <SidebarMenuItem key={item.href}>
-                    <SidebarMenuButton
-                      isActive={isActive}
-                      aria-current={isActive ? "page" : undefined}
-                      render={<Link href={item.href} />}
-                    >
-                      <item.icon className="size-4" aria-hidden="true" />
-                      <span>{t(item.titleKey)}</span>
-                    </SidebarMenuButton>
-                  </SidebarMenuItem>
-                );
-              })}
-            </SidebarMenu>
-          </SidebarGroupContent>
-        </SidebarGroup>
-        {filteredAdmin.length > 0 && (
-          <SidebarGroup>
-            <SidebarGroupLabel>{t("administration")}</SidebarGroupLabel>
-            <SidebarGroupContent>
-              <SidebarMenu>
-                {filteredAdmin.map((item) => {
-                  const isActive = pathname === item.href || pathname.startsWith(item.href + "/");
-                  return (
-                    <SidebarMenuItem key={item.href}>
-                      <SidebarMenuButton
-                        isActive={isActive}
-                        aria-current={isActive ? "page" : undefined}
-                        render={<Link href={item.href} />}
-                      >
-                        <item.icon className="size-4" aria-hidden="true" />
-                        <span>{t(item.titleKey)}</span>
-                      </SidebarMenuButton>
-                    </SidebarMenuItem>
-                  );
-                })}
-              </SidebarMenu>
-            </SidebarGroupContent>
-          </SidebarGroup>
+        {navGroups.map((group) => {
+          const filtered = filterItems(group.items);
+          if (filtered.length === 0) return null;
+          return (
+            <SidebarGroup key={group.labelKey}>
+              <SidebarGroupLabel>{t(group.labelKey)}</SidebarGroupLabel>
+              <SidebarGroupContent>
+                <SidebarMenu>
+                  <NavItems items={filtered} pathname={pathname} t={t} />
+                </SidebarMenu>
+              </SidebarGroupContent>
+            </SidebarGroup>
+          );
+        })}
+
+        {adminGroups.some(g => filterItems(g.items).length > 0) && (
+          <>
+            <SidebarGroup>
+              <SidebarGroupLabel className="text-xs font-semibold uppercase tracking-wider text-muted-foreground/70">
+                {t("administration")}
+              </SidebarGroupLabel>
+            </SidebarGroup>
+            {adminGroups.map((group) => {
+              const filtered = filterItems(group.items);
+              if (filtered.length === 0) return null;
+              return (
+                <SidebarGroup key={group.labelKey}>
+                  <SidebarGroupLabel>{t(group.labelKey)}</SidebarGroupLabel>
+                  <SidebarGroupContent>
+                    <SidebarMenu>
+                      <NavItems items={filtered} pathname={pathname} t={t} />
+                    </SidebarMenu>
+                  </SidebarGroupContent>
+                </SidebarGroup>
+              );
+            })}
+          </>
         )}
       </SidebarContent>
       <SidebarFooter className="border-t p-4">
