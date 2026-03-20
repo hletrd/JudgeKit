@@ -1,7 +1,7 @@
 FROM debian:bookworm-slim AS builder
 
 RUN apt-get update && \
-    apt-get install -y --no-install-recommends git make gcc binutils libc6-dev && \
+    apt-get install -y --no-install-recommends git make gcc binutils libc6-dev ca-certificates && \
     git clone --depth 1 https://github.com/Spydr06/BCause.git /tmp/bcause && \
     cd /tmp/bcause && make && \
     cp /tmp/bcause/bcause /usr/local/bin/bcause && \
