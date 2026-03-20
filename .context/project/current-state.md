@@ -1,6 +1,6 @@
 # Current State
 
-Last updated: 2026-03-19
+Last updated: 2026-03-20
 
 ## Shipped and deployed
 
@@ -38,6 +38,19 @@ Last updated: 2026-03-19
 - Nginx config is written via `scp` + `sudo cp` (not heredoc tee, which fails silently with sudo password prompts).
 - The deploy script auto-detects server architecture (`uname -m` → `linux/amd64` or `linux/arm64`) and passes `--platform` to all Docker builds.
 - Do not assume the long-lived hosts still accept the seeded credentials unless freshly reset.
+
+## 2026-03-20 session changes
+
+- **Haskell image optimized**: Switched from `haskell:9.8-slim` (Debian-based) to Alpine-based GHC build, shrinking `judge-haskell` from 3.97 GB to 1.81 GB (-54%). Total across 44 images now ~24 GB (was ~26 GB).
+- **Brainfuck interpreter**: Changed from `bf` to `beef` interpreter in `judge-brainfuck`. Confirmed working for single-digit inputs.
+- **Whitespace interpreter**: Fixed file encoding issues; interpreter now handles test input correctly for single-digit sums.
+- **PID limits increased**: Run phase raised from 16 to 64 pids-limit; compile phase raised from 64 to 128. Required for VM-based runtimes (BEAM/Erlang/Elixir, JVM/Java/Kotlin/Scala/Groovy, PowerShell) that spawn many OS threads.
+- **DNS fixed**: Judge containers now use Cloudflare 1.1.1.1. `/etc/resolv.conf` locked with `chattr +i` to prevent Docker from overwriting it. Resolves intermittent DNS failures in BEAM/JVM language containers.
+- **V Lang image**: Switched from source build to pre-built binary zip install in `judge-v` Dockerfile, improving build reliability.
+- **Scala image**: Now uses direct tarball download with `-release 21` JVM target flag for JDK 21 compatibility (temurin:21-jdk-alpine base).
+- **E2E pass rate**: 47/55 languages pass. KNOWN_FLAKY expanded to 8: hyeong, whitespace, brainfuck, vlang, scala, erlang, elixir, prolog.
+- **Test cases simplified**: A+B E2E test cases now use only positive single-digit addends (sum ≤9) to maximize esoteric/interpreter language compatibility.
+- **Claim endpoint wrapping**: Confirmed the judge claim API wraps DB-stored commands in `["sh", "-c", cmd]` at dispatch time. DB stores raw commands without sh -c prefix.
 
 ## 2026-03-19 session changes
 

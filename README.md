@@ -97,9 +97,9 @@ See [Language presets](docs/languages.md#docker-image-presets) for preset option
 | `judge-clang` | 879 MB | `judge-octave` | 830 MB |
 | `judge-csharp` | 1.07 GB | `judge-rust` | 1.21 GB |
 | `judge-r` | 1.27 GB | `judge-julia` | 1.50 GB |
-| `judge-swift` | 2.79 GB | `judge-haskell` | 3.97 GB |
+| `judge-swift` | 2.79 GB | `judge-haskell` | 1.81 GB |
 
-**Total: ~26 GB** across 44 images.
+**Total: ~24 GB** across 44 images.
 
 ## Tech Stack
 

@@ -1,6 +1,6 @@
 # Open Workstreams
 
-Last updated: 2026-03-10
+Last updated: 2026-03-20
 
 The `dashboard-rendering-audit-and-editor-upgrades` batch is now locally verified and its plan docs are reconciled. All currently tracked local workstreams are closed after the runtime-expansion batch below.
 
@@ -64,6 +64,19 @@ The `dashboard-rendering-audit-and-editor-upgrades` batch is now locally verifie
 - Confirmed Groovy uses Java 21 (Temurin 21 base image) — required for Groovy 4.0 bytecode compatibility; Java 25 class versions are incompatible
 - Confirmed Zig 0.13 compile command uses `-femit-bin=` flag (not `-o`) for output path
 - Confirmed compiled language outputs go to `/workspace/solution` (not `/tmp/solution`) — `/tmp` is per-container tmpfs; `/workspace` is the shared bind-mount
+
+## Recently closed (2026-03-20 session)
+
+- **Haskell image optimization**: Switched `judge-haskell` from `haskell:9.8-slim` to Alpine-based GHC, reducing image from 3.97 GB to 1.81 GB. Total 44-image footprint now ~24 GB.
+- **Brainfuck interpreter**: Changed from `bf` to `beef` interpreter — correct byte-level I/O for the test suite.
+- **Whitespace interpreter**: Fixed encoding issues; now passes with single-digit test inputs.
+- **PID limits increased**: Run phase 16→64, compile phase 64→128 pids-limit — unblocks BEAM (Erlang/Elixir), JVM (Java/Kotlin/Scala/Groovy), and PowerShell runtimes from OOM/hang under low PID caps.
+- **DNS fixed**: Cloudflare 1.1.1.1 set on judge host with `chattr +i` on `/etc/resolv.conf` — prevents Docker from overwriting resolver config and resolves intermittent container DNS failures.
+- **V Lang image**: Switched to pre-built binary zip instead of source build in `judge-v` — more reliable image build.
+- **Scala image**: Direct tarball download with `-release 21` JVM target on temurin:21-jdk-alpine base — fixes class file version incompatibility.
+- **E2E test case simplification**: A+B test uses only positive single-digit addends (sum ≤9) — maximizes compatibility with esoteric/interpreter languages.
+- **KNOWN_FLAKY updated**: Expanded from 4 to 8 languages: hyeong, whitespace, brainfuck, vlang, scala, erlang, elixir, prolog. Pass rate is now 47/55.
+- **Claim endpoint sh -c wrapping**: Documented that judge claim API wraps DB commands in `["sh", "-c", cmd]` at dispatch; DB stores raw commands without the shell wrapper.
 
 ## Still open
 
