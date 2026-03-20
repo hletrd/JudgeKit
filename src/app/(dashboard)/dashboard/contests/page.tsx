@@ -11,6 +11,7 @@ import type { ContestStatus } from "@/lib/assignments/contests";
 import { formatDateTimeInTimeZone, formatRelativeTimeFromNow } from "@/lib/datetime";
 import { getResolvedSystemTimeZone } from "@/lib/system-settings";
 import { KeyRound, Plus } from "lucide-react";
+import { PaginationControls } from "@/components/pagination-controls";
 
 type FilterValue = "all" | "upcoming" | "active" | "past";
 
@@ -42,6 +43,14 @@ function getStatusBadgeVariant(status: ContestStatus) {
   }
 }
 
+function buildContestPageHref(page: number, filter: FilterValue) {
+  const params = new URLSearchParams();
+  if (page > 1) params.set("page", String(page));
+  if (filter !== "all") params.set("filter", filter);
+  const qs = params.toString();
+  return qs ? `/dashboard/contests?${qs}` : "/dashboard/contests";
+}
+
 function getStatusBorderClass(status: ContestStatus): string {
   switch (status) {
     case "upcoming":
@@ -58,7 +67,7 @@ function getStatusBorderClass(status: ContestStatus): string {
 export default async function ContestsPage({
   searchParams,
 }: {
-  searchParams?: Promise<{ filter?: string }>;
+  searchParams?: Promise<{ filter?: string; page?: string }>;
 }) {
   const session = await auth();
   if (!session?.user) redirect("/login");
@@ -75,6 +84,8 @@ export default async function ContestsPage({
   const contests = getContestsForUser(session.user.id, role);
   const now = new Date();
   const filter = normalizeFilter(resolvedSearchParams?.filter);
+  const PAGE_SIZE = 25;
+  const currentPage = Math.max(1, Math.floor(Number(resolvedSearchParams?.page ?? "1")) || 1);
 
   const statusMap = new Map(
     contests.map((c) => [c.id, getContestStatus(c, now)])
@@ -83,6 +94,12 @@ export default async function ContestsPage({
   const filteredContests = contests.filter((c) =>
     statusMatchesFilter(statusMap.get(c.id)!, filter)
   );
+
+  const totalCount = filteredContests.length;
+  const totalPages = Math.max(1, Math.ceil(totalCount / PAGE_SIZE));
+  const clampedPage = Math.min(currentPage, totalPages);
+  const offset = (clampedPage - 1) * PAGE_SIZE;
+  const pagedContests = filteredContests.slice(offset, offset + PAGE_SIZE);
 
   const statusLabelMap: Record<ContestStatus, string> = {
     upcoming: t("statusUpcoming"),
@@ -109,7 +126,7 @@ export default async function ContestsPage({
       <div className="flex flex-wrap items-center justify-between gap-4">
         <div className="flex flex-wrap gap-2">
           {filterTabs.map((tab) => (
-            <Link key={tab.value} href={`/dashboard/contests${tab.value === "all" ? "" : `?filter=${tab.value}`}`}>
+            <Link key={tab.value} href={buildContestPageHref(1, tab.value)}>
               <Badge
                 variant={filter === tab.value ? "default" : "outline"}
                 className="cursor-pointer px-3 py-1 text-sm"
@@ -137,13 +154,13 @@ export default async function ContestsPage({
         </div>
       </div>
 
-      {filteredContests.length === 0 ? (
+      {pagedContests.length === 0 ? (
         <div className="py-12 text-center text-muted-foreground">
           {t("noContests")}
         </div>
       ) : (
         <div className="space-y-2">
-          {filteredContests.map((contest) => {
+          {pagedContests.map((contest) => {
             const status = statusMap.get(contest.id)!;
             return (
               <Link key={contest.id} href={`/dashboard/contests/${contest.id}`} className="block">
@@ -197,6 +214,13 @@ export default async function ContestsPage({
           })}
         </div>
       )}
+      <PaginationControls
+        currentPage={clampedPage}
+        hasNextPage={clampedPage < totalPages}
+        prevHref={clampedPage > 1 ? buildContestPageHref(clampedPage - 1, filter) : undefined}
+        nextHref={clampedPage < totalPages ? buildContestPageHref(clampedPage + 1, filter) : undefined}
+        rangeText={totalCount > 0 ? `${offset + 1}–${Math.min(offset + PAGE_SIZE, totalCount)} / ${totalCount}` : undefined}
+      />
     </div>
   );
 }

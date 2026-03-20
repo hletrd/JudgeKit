@@ -14,17 +14,50 @@ import {
 } from "@/components/ui/table";
 import { Badge } from "@/components/ui/badge";
 import { formatRelativeTimeFromNow } from "@/lib/datetime";
+import { PaginationControls } from "@/components/pagination-controls";
 
 export async function generateMetadata(): Promise<Metadata> {
   const t = await getTranslations("rankings");
   return { title: t("title") };
 }
 
-export default async function RankingsPage() {
+export default async function RankingsPage({
+  searchParams,
+}: {
+  searchParams?: Promise<{ page?: string }>;
+}) {
   const session = await auth();
   if (!session?.user) redirect("/login");
 
+  const resolvedSearchParams = searchParams ? await searchParams : undefined;
+  const PAGE_SIZE = 50;
+  const currentPage = Math.max(1, Math.floor(Number(resolvedSearchParams?.page ?? "1")) || 1);
+
   const t = await getTranslations("rankings");
+
+  const countRow = sqlite
+    .prepare(
+      `
+    WITH first_accepts AS (
+      SELECT
+        user_id,
+        problem_id,
+        MIN(submitted_at) as first_accepted_at
+      FROM submissions
+      WHERE status = 'accepted'
+      GROUP BY user_id, problem_id
+    )
+    SELECT COUNT(DISTINCT fa.user_id) as total
+    FROM first_accepts fa
+    INNER JOIN users u ON u.id = fa.user_id
+    WHERE u.is_active = 1
+  `
+    )
+    .get() as { total: number };
+  const totalCount = countRow?.total ?? 0;
+  const totalPages = Math.max(1, Math.ceil(totalCount / PAGE_SIZE));
+  const clampedPage = Math.min(currentPage, totalPages);
+  const clampedOffset = (clampedPage - 1) * PAGE_SIZE;
 
   const rankingRows = sqlite
     .prepare(
@@ -50,9 +83,10 @@ export default async function RankingsPage() {
     WHERE u.is_active = 1
     GROUP BY u.id
     ORDER BY solvedCount DESC, lastSolveTime ASC
+    LIMIT ? OFFSET ?
   `
     )
-    .all() as Array<{
+    .all(PAGE_SIZE, clampedOffset) as Array<{
     userId: string;
     username: string;
     name: string;
@@ -93,8 +127,8 @@ export default async function RankingsPage() {
                   {rankingRows.map((row, index) => (
                     <TableRow key={row.userId}>
                       <TableCell>
-                        <Badge variant={index < 3 ? "default" : "secondary"}>
-                          {index + 1}
+                        <Badge variant={clampedOffset + index < 3 ? "default" : "secondary"}>
+                          {clampedOffset + index + 1}
                         </Badge>
                       </TableCell>
                       <TableCell className="font-mono text-sm">
@@ -120,6 +154,13 @@ export default async function RankingsPage() {
           )}
         </CardContent>
       </Card>
+      <PaginationControls
+        currentPage={clampedPage}
+        hasNextPage={clampedPage < totalPages}
+        prevHref={clampedPage > 1 ? `/dashboard/rankings?page=${clampedPage - 1}` : undefined}
+        nextHref={clampedPage < totalPages ? `/dashboard/rankings?page=${clampedPage + 1}` : undefined}
+        rangeText={totalCount > 0 ? `${clampedOffset + 1}–${Math.min(clampedOffset + PAGE_SIZE, totalCount)} / ${totalCount}` : undefined}
+      />
     </div>
   );
 }

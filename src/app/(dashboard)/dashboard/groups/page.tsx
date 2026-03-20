@@ -19,15 +19,24 @@ import Link from "next/link";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import CreateGroupDialog from "./create-group-dialog";
+import { PaginationControls } from "@/components/pagination-controls";
 
 export async function generateMetadata(): Promise<Metadata> {
   const t = await getTranslations("groups");
   return { title: t("title") };
 }
 
-export default async function GroupsPage() {
+export default async function GroupsPage({
+  searchParams,
+}: {
+  searchParams?: Promise<{ page?: string }>;
+}) {
   const session = await auth();
   if (!session?.user) redirect("/login");
+
+  const resolvedSearchParams = searchParams ? await searchParams : undefined;
+  const PAGE_SIZE = 25;
+  const currentPage = Math.max(1, Math.floor(Number(resolvedSearchParams?.page ?? "1")) || 1);
 
   const t = await getTranslations("groups");
   const tCommon = await getTranslations("common");
@@ -93,6 +102,12 @@ export default async function GroupsPage() {
     }));
   }
 
+  const totalCount = myGroups.length;
+  const totalPages = Math.max(1, Math.ceil(totalCount / PAGE_SIZE));
+  const clampedPage = Math.min(currentPage, totalPages);
+  const offset = (clampedPage - 1) * PAGE_SIZE;
+  const pagedGroups = myGroups.slice(offset, offset + PAGE_SIZE);
+
   return (
     <div>
       <div className="flex justify-between items-center mb-4">
@@ -114,7 +129,7 @@ export default async function GroupsPage() {
               </TableRow>
             </TableHeader>
             <TableBody>
-              {myGroups.map((group) => (
+              {pagedGroups.map((group) => (
                 <TableRow key={group.id} className={group.isArchived ? "opacity-60" : undefined}>
                   <TableCell className="font-medium">
                     <span className={group.isArchived ? "text-muted-foreground" : undefined}>
@@ -137,7 +152,7 @@ export default async function GroupsPage() {
                   </TableCell>
                 </TableRow>
               ))}
-              {myGroups.length === 0 && (
+              {pagedGroups.length === 0 && (
                 <TableRow>
                   <TableCell colSpan={4} className="text-center text-muted-foreground">
                     {t("noGroups")}
@@ -149,6 +164,13 @@ export default async function GroupsPage() {
           </div>
         </CardContent>
       </Card>
+      <PaginationControls
+        currentPage={clampedPage}
+        hasNextPage={clampedPage < totalPages}
+        prevHref={clampedPage > 1 ? `/dashboard/groups?page=${clampedPage - 1}` : undefined}
+        nextHref={clampedPage < totalPages ? `/dashboard/groups?page=${clampedPage + 1}` : undefined}
+        rangeText={totalCount > 0 ? `${offset + 1}–${Math.min(offset + PAGE_SIZE, totalCount)} / ${totalCount}` : undefined}
+      />
     </div>
   );
 }
