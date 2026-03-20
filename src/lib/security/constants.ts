@@ -30,7 +30,7 @@ export const SUBMISSION_RATE_LIMIT_MAX_PER_MINUTE = parseInt(
 );
 /** @deprecated Use getSubmissionMaxPending() */
 export const SUBMISSION_MAX_PENDING = parseInt(
-  process.env.SUBMISSION_MAX_PENDING || "3",
+  process.env.SUBMISSION_MAX_PENDING || "200",
   10
 );
 /** @deprecated Use getSubmissionGlobalQueueLimit() */

@@ -456,7 +456,6 @@ END`,
 }`,
   raku: `my ($a, $b) = get.words;
 say $a + $b;`,
-  malbolge: ``,
   shakespeare: `The Sum of Two Numbers.
 
 Romeo, a young man.
@@ -609,7 +608,6 @@ async function waitForJudging(
 const KNOWN_FLAKY = new Set<string>([
   "simula",        // Docker image won't build (GNU Cim)
   "intercal",      // No A+B solution possible
-  "malbolge",      // No A+B solution possible
   "unlambda",      // No A+B solution possible
   "umjunsik",      // Needs testing
   "k",             // Wrong output (solution needs fix)
