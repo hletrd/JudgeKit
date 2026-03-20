@@ -594,6 +594,7 @@ test("submit A+B in all supported languages and verify judging", async ({ browse
     "freebasic",   // newly added — Docker image may not yet be stable
     "smalltalk",   // newly added — Docker image may not yet be stable
     "fsharp",      // .NET SDK needs HOME writable
+    "b",           // newly added — BCause compiler, debugging worker integration
   ]);
 
   const unexpected = failed.filter((r) => !KNOWN_FLAKY.has(r.language));
