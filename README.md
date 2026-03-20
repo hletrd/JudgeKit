@@ -132,6 +132,12 @@ judgekit/
 └── data/                # SQLite database (gitignored)
 ```
 
+## Deployment Prerequisites
+
+- **Docker socket**: Both the `app` and `judge-worker` containers require `/var/run/docker.sock` mounted. The app container uses it for admin image management (build/remove language images via `/dashboard/admin/languages`). The judge worker uses it for sandboxed code execution.
+- **`/judge-workspaces`**: Must exist on the host before starting the stack — used as the shared workspace volume between the judge worker and sibling judge containers.
+- The `deploy-docker.sh` script handles setup automatically (server-side builds, architecture detection, nginx config). See [Deployment Guide](docs/deployment.md).
+
 ## Documentation
 
 - [Deployment Guide](docs/deployment.md) — provisioning, deploy scripts, nginx, post-deploy checks

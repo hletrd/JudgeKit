@@ -39,7 +39,15 @@ Last updated: 2026-03-20
 - The deploy script auto-detects server architecture (`uname -m` → `linux/amd64` or `linux/arm64`) and passes `--platform` to all Docker builds.
 - Do not assume the long-lived hosts still accept the seeded credentials unless freshly reset.
 
-## 2026-03-20 session changes
+## 2026-03-20 session changes (latest)
+
+- **Docker CLI in app container**: `Dockerfile` installs `docker-cli` (Alpine package). The `nextjs` user is added to the `docker` group (gid 987). `docker-compose.production.yml` mounts `/var/run/docker.sock` on both `app` and `judge-worker` containers. This enables the admin language management UI to build/remove Docker images without a separate privileged sidecar.
+- **CSRF header corrected**: Mutation API routes check for `X-Requested-With: XMLHttpRequest` (not `x-csrf-token`). All admin UI fetches and E2E helpers use this header on POST/DELETE/PATCH requests.
+- **Disk usage on language admin page**: `/dashboard/admin/languages` now shows a progress bar at the top with total Docker disk usage on the host, color-coded green/yellow/red. Fetched live via the Docker images API on page load.
+- **Per-image sizes on language admin page**: Each language row shows the local image size fetched live from `GET /api/v1/admin/docker/images`. Rows where the image is not pulled show "Not built".
+- **Deploy builds use `--no-cache`**: `deploy-docker.sh` passes `--no-cache` for `judgekit-app` and `judgekit-judge-worker` builds to ensure clean rebuilds on every deploy.
+
+## 2026-03-20 session changes (earlier)
 
 - **Haskell image optimized**: Switched from `haskell:9.8-slim` (Debian-based) to Alpine-based GHC build, shrinking `judge-haskell` from 3.97 GB to 1.81 GB (-54%). Total across 44 images now ~24 GB (was ~26 GB).
 - **Brainfuck interpreter**: Changed from `bf` to `beef` interpreter in `judge-brainfuck`. Confirmed working for single-digit inputs.

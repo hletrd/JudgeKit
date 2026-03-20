@@ -96,6 +96,8 @@ After syncing, the judge worker reads `dockerImage`, `compileCommand`, and `runC
 - Compile command (`compileCommand`)
 - Run command (`runCommand`)
 - Toggle languages enabled/disabled
+- **Disk usage** — a progress bar shows total Docker disk usage on the host with color coding (green/yellow/red). Displayed at the top of the page, fetched live via the Docker images API.
+- **Per-image sizes** — each language row shows the local image size fetched live from `GET /api/v1/admin/docker/images`. Rows where the image is not yet pulled show "Not built".
 
 Changes take effect immediately for new submissions without restarting services.
 
@@ -166,11 +168,13 @@ Changes take effect immediately for new submissions without restarting services.
 
 ## Docker Image Management API
 
-- `GET /api/v1/admin/docker/images` — returns the list of locally available Docker images on the judge host. Used by the language management UI to show image availability status.
+- `GET /api/v1/admin/docker/images` — returns the list of locally available Docker images on the judge host, including per-image size in bytes. Used by the language management UI to show image availability status and sizes.
 - `POST /api/v1/admin/docker/images/build` — builds a Docker image from its Dockerfile in `docker/`. Body: `{ language: string }`. Looks up the language config to derive the Dockerfile path. Admin/super_admin only. Audit logged.
 - `DELETE /api/v1/admin/docker/images` — removes a Docker image by tag. Body: `{ imageTag: string }`. Admin/super_admin only. Audit logged.
 
-The language admin UI at `/dashboard/admin/languages` includes per-language Build (hammer icon) and Remove (trash icon) buttons. Image availability is shown as a badge ("Available" / "Not built") per row.
+The language admin UI at `/dashboard/admin/languages` includes per-language Build (hammer icon) and Remove (trash icon) buttons. Image availability is shown as a badge ("Available" / "Not built") per row, with live image size fetched from the API.
+
+**CSRF**: Mutation API routes require the `X-Requested-With: XMLHttpRequest` header. This is the correct header name — do not use `x-csrf-token`. The admin language management UI and E2E fetch helpers must include this header on POST/DELETE/PATCH requests.
 
 ## Student Detail Page
 
@@ -209,7 +213,9 @@ JudgeKit supports full contest management with two scoring models and two schedu
 
 ### Docker Deployment Architecture
 - **Server-side builds**: `deploy-docker.sh` rsyncs source to the remote server and builds Docker images there. No local image builds — avoids architecture mismatches between dev machines (e.g., arm64 Mac) and the target host (e.g., amd64 Linux).
+- **`--no-cache` on app and worker builds**: `deploy-docker.sh` passes `--no-cache` when building `judgekit-app` and `judgekit-judge-worker` to ensure a clean build on every deploy. Language images are not rebuilt with `--no-cache` by default.
 - **Architecture auto-detection**: The deploy script runs `uname -m` on the remote host and sets `--platform linux/amd64` or `--platform linux/arm64` accordingly. All `docker build` commands (app, judge worker, and all language images) receive this flag.
+- **Docker CLI in the app container**: The `judgekit-app` image installs `docker-cli` (Alpine package) and the `nextjs` user is added to the `docker` group (gid 987) so it can reach the socket. The compose file mounts `/var/run/docker.sock:/var/run/docker.sock` on both the `app` and `judge-worker` containers. This enables the admin Docker image management API (`GET/POST/DELETE /api/v1/admin/docker/images`) to operate without a separate privileged sidecar.
 - **`privileged: true`** on the judge-worker container — required for Docker-in-Docker execution (the worker spawns sibling containers to run student code).
 - **`/judge-workspaces` volume mount** — `/judge-workspaces:/judge-workspaces` is mounted on the worker container. The `TMPDIR=/judge-workspaces` env var ensures the worker writes temporary files to this shared volume. The host must have `/judge-workspaces` created before starting the stack.
 - **Compiled output path**: All compiled language Dockerfiles output binaries to `/workspace/solution` (not `/tmp/solution`). `/tmp` is an ephemeral per-container tmpfs; `/workspace` is the shared workspace bind-mounted between the worker and sibling judge containers.

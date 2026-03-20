@@ -65,6 +65,14 @@ The `dashboard-rendering-audit-and-editor-upgrades` batch is now locally verifie
 - Confirmed Zig 0.13 compile command uses `-femit-bin=` flag (not `-o`) for output path
 - Confirmed compiled language outputs go to `/workspace/solution` (not `/tmp/solution`) — `/tmp` is per-container tmpfs; `/workspace` is the shared bind-mount
 
+## Recently closed (2026-03-20 session — latest)
+
+- **Docker CLI in app container**: `docker-cli` installed in `Dockerfile`; `nextjs` user added to `docker` group (gid 987); `/var/run/docker.sock` mounted on `app` container in `docker-compose.production.yml`. Enables admin language image build/remove without a privileged sidecar.
+- **CSRF header fix**: Corrected mutation route CSRF check to use `X-Requested-With: XMLHttpRequest` (was incorrectly documented as `x-csrf-token`). All admin UI fetches and E2E helpers updated accordingly.
+- **Disk usage display**: Language admin page (`/dashboard/admin/languages`) shows a color-coded progress bar for total Docker disk usage at the top of the page, fetched live via the images API.
+- **Per-image sizes**: Each language row on the admin language page shows local image size from the live Docker images API response. "Not built" shown for absent images.
+- **Deploy `--no-cache`**: `deploy-docker.sh` now passes `--no-cache` for `judgekit-app` and `judgekit-judge-worker` builds to guarantee fresh layers on every deploy.
+
 ## Recently closed (2026-03-20 session)
 
 - **Haskell image optimization**: Switched `judge-haskell` from `haskell:9.8-slim` to Alpine-based GHC, reducing image from 3.97 GB to 1.81 GB. Total 44-image footprint now ~24 GB.
