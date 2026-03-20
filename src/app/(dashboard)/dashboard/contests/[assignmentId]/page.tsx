@@ -4,7 +4,8 @@ import { getLocale, getTranslations } from "next-intl/server";
 import { and, eq } from "drizzle-orm";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent } from "@/components/ui/card";
-import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
+import { TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
+import { HashTabs } from "@/components/hash-tabs";
 import { auth } from "@/lib/auth";
 import {
   canViewAssignmentSubmissions,
@@ -438,7 +439,7 @@ export default async function ContestDetailPage({
       </div>
 
       {/* Tabbed interface */}
-      <Tabs defaultValue="overview">
+      <HashTabs defaultValue="overview">
         <TabsList variant="line" className="w-full justify-start">
           <TabsTrigger value="overview" className="gap-1.5">{t("tabs.overview")}</TabsTrigger>
           <TabsTrigger value="submissions" className="gap-1.5">{t("tabs.submissions")}</TabsTrigger>
@@ -561,7 +562,7 @@ export default async function ContestDetailPage({
             <AntiCheatDashboard assignmentId={assignmentId} />
           </TabsContent>
         )}
-      </Tabs>
+      </HashTabs>
     </div>
   );
 }

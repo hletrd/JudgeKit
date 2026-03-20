@@ -174,10 +174,10 @@ export default async function UserManagementPage({
                 ]}
               />
             </div>
-            <div className="flex gap-2">
-              <Button type="submit">{t("applyFilters")}</Button>
+            <div className="flex gap-2 items-end">
+              <Button type="submit" className="h-10">{t("applyFilters")}</Button>
               <Link href="/dashboard/admin/users">
-                <Button type="button" variant="outline">{t("resetFilters")}</Button>
+                <Button type="button" variant="outline" className="h-10">{t("resetFilters")}</Button>
               </Link>
             </div>
           </form>

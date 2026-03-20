@@ -137,10 +137,10 @@ export default async function AdminSubmissionsPage({
                 placeholder={t("searchPlaceholder")}
               />
             </div>
-            <div className="flex gap-2">
-              <Button type="submit">{tCommon("search")}</Button>
+            <div className="flex gap-2 items-end">
+              <Button type="submit" className="h-10">{tCommon("search")}</Button>
               <Link href="/dashboard/admin/submissions">
-                <Button type="button" variant="outline">{t("resetSearch")}</Button>
+                <Button type="button" variant="outline" className="h-10">{t("resetSearch")}</Button>
               </Link>
             </div>
           </form>
