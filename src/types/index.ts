@@ -78,4 +78,7 @@ export type Language =
   | "postscript"
   | "delphi"
   | "fsharp"
-  | "j";
+  | "j"
+  | "apl"
+  | "freebasic"
+  | "smalltalk";

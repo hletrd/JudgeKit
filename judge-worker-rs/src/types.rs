@@ -114,6 +114,9 @@ pub enum Language {
     Delphi,
     Fsharp,
     J,
+    Apl,
+    Freebasic,
+    Smalltalk,
     #[serde(other)]
     Unknown,
 }

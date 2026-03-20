@@ -105,6 +105,9 @@ export const DOCKER_IMAGE_RUNTIME_INFO: Record<string, string> = {
   "judge-postscript:latest": `Alpine 3.21 / Ghostscript ${JUDGE_TOOLCHAIN_VERSIONS.ghostscript}`,
   "judge-fsharp:latest": "Alpine / .NET SDK 8.0 (dotnet fsi)",
   "judge-j:latest": "Debian Bookworm / J 9.6",
+  "judge-apl:latest": "Debian Bookworm / GNU APL",
+  "judge-freebasic:latest": "Debian Bookworm / FreeBASIC",
+  "judge-smalltalk:latest": "Debian Bookworm / GNU Smalltalk",
 };
 
 export function getDockerImageRuntimeInfo(dockerImage: string): string {
@@ -727,6 +730,36 @@ export const JUDGE_LANGUAGE_CONFIGS: Record<Language, JudgeLanguageDefinition> =
     compiler: "jconsole 9.6",
     compileCommand: null,
     runCommand: ["jconsole", "/workspace/solution.ijs"],
+  },
+  apl: {
+    language: "apl",
+    displayName: "APL",
+    standard: null,
+    extension: ".apl",
+    dockerImage: "judge-apl:latest",
+    compiler: null,
+    compileCommand: null,
+    runCommand: ["apl", "--script", "-f", "/workspace/solution.apl"],
+  },
+  freebasic: {
+    language: "freebasic",
+    displayName: "FreeBASIC",
+    standard: null,
+    extension: ".bas",
+    dockerImage: "judge-freebasic:latest",
+    compiler: "fbc",
+    compileCommand: ["fbc", "-O", "2", "-o", "/workspace/solution", "/workspace/solution.bas"],
+    runCommand: ["/workspace/solution"],
+  },
+  smalltalk: {
+    language: "smalltalk",
+    displayName: "Smalltalk",
+    standard: null,
+    extension: ".st",
+    dockerImage: "judge-smalltalk:latest",
+    compiler: null,
+    compileCommand: null,
+    runCommand: ["gst", "/workspace/solution.st"],
   },
 };
 

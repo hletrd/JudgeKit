@@ -642,6 +642,37 @@ static J_CONFIG: LanguageConfig = LanguageConfig {
     run_command: J_RUN,
 };
 
+// APL (GNU APL)
+static APL_RUN: &[&str] = &["apl", "--script", "-f", "/workspace/solution.apl"];
+
+static APL_CONFIG: LanguageConfig = LanguageConfig {
+    extension: ".apl",
+    docker_image: "judge-apl:latest",
+    compile_command: None,
+    run_command: APL_RUN,
+};
+
+// FreeBASIC
+static FREEBASIC_COMPILE: &[&str] = &["fbc", "-O", "2", "-o", "/workspace/solution", "/workspace/solution.bas"];
+static FREEBASIC_RUN: &[&str] = &["/workspace/solution"];
+
+static FREEBASIC_CONFIG: LanguageConfig = LanguageConfig {
+    extension: ".bas",
+    docker_image: "judge-freebasic:latest",
+    compile_command: Some(FREEBASIC_COMPILE),
+    run_command: FREEBASIC_RUN,
+};
+
+// Smalltalk (GNU Smalltalk)
+static SMALLTALK_RUN: &[&str] = &["gst", "/workspace/solution.st"];
+
+static SMALLTALK_CONFIG: LanguageConfig = LanguageConfig {
+    extension: ".st",
+    docker_image: "judge-smalltalk:latest",
+    compile_command: None,
+    run_command: SMALLTALK_RUN,
+};
+
 pub fn get_config(language: &Language) -> Option<&'static LanguageConfig> {
     match language {
         Language::C17 => Some(&C17_CONFIG),
@@ -702,6 +733,9 @@ pub fn get_config(language: &Language) -> Option<&'static LanguageConfig> {
         Language::Delphi => Some(&DELPHI_CONFIG),
         Language::Fsharp => Some(&FSHARP_CONFIG),
         Language::J => Some(&J_CONFIG),
+        Language::Apl => Some(&APL_CONFIG),
+        Language::Freebasic => Some(&FREEBASIC_CONFIG),
+        Language::Smalltalk => Some(&SMALLTALK_CONFIG),
         Language::Unknown => None,
     }
 }
@@ -772,6 +806,9 @@ mod tests {
             Language::Delphi,
             Language::Fsharp,
             Language::J,
+            Language::Apl,
+            Language::Freebasic,
+            Language::Smalltalk,
         ];
 
         for lang in &languages {
