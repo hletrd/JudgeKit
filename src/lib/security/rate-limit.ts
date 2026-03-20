@@ -1,15 +1,27 @@
 import { db, sqlite } from "@/lib/db";
 import { rateLimits } from "@/lib/db/schema";
 import { extractClientIp } from "@/lib/security/ip";
+import { getConfiguredSettings } from "@/lib/system-settings-config";
 import { eq, lt } from "drizzle-orm";
 import { nanoid } from "nanoid";
 
-const RATE_LIMIT_MAX_ATTEMPTS = parseInt(process.env.RATE_LIMIT_MAX_ATTEMPTS || "5", 10);
-const RATE_LIMIT_WINDOW_MS = parseInt(process.env.RATE_LIMIT_WINDOW_MS || "60000", 10);
-const RATE_LIMIT_BLOCK_MS = parseInt(process.env.RATE_LIMIT_BLOCK_MS || "900000", 10);
-const RATE_LIMIT_EVICTION_AGE_MS = 24 * 60 * 60 * 1000;
+function getRateLimitConfig() {
+  const s = getConfiguredSettings();
+  return {
+    maxAttempts: s.loginRateLimitMaxAttempts,
+    windowMs: s.loginRateLimitWindowMs,
+    blockMs: s.loginRateLimitBlockMs,
+  };
+}
 
-export { RATE_LIMIT_MAX_ATTEMPTS, RATE_LIMIT_WINDOW_MS, RATE_LIMIT_BLOCK_MS };
+/** @deprecated Use getConfiguredSettings().loginRateLimitMaxAttempts */
+export const RATE_LIMIT_MAX_ATTEMPTS = getRateLimitConfig().maxAttempts;
+/** @deprecated Use getConfiguredSettings().loginRateLimitWindowMs */
+export const RATE_LIMIT_WINDOW_MS = getRateLimitConfig().windowMs;
+/** @deprecated Use getConfiguredSettings().loginRateLimitBlockMs */
+export const RATE_LIMIT_BLOCK_MS = getRateLimitConfig().blockMs;
+
+const RATE_LIMIT_EVICTION_AGE_MS = 24 * 60 * 60 * 1000;
 
 export function getRateLimitKey(action: string, headers: Headers) {
   return `${action}:${extractClientIp(headers)}`;
@@ -59,7 +71,7 @@ function getEntry(key: string) {
     };
   }
 
-  if (existing.windowStartedAt + RATE_LIMIT_WINDOW_MS <= now) {
+  if (existing.windowStartedAt + getRateLimitConfig().windowMs <= now) {
     return {
       now,
       entry: {
@@ -106,9 +118,10 @@ export function recordRateLimitFailure(key: string) {
     let blockedUntil = entry.blockedUntil;
     let consecutiveBlocks = entry.consecutiveBlocks;
 
-    if (attempts >= RATE_LIMIT_MAX_ATTEMPTS) {
+    const cfg = getRateLimitConfig();
+    if (attempts >= cfg.maxAttempts) {
       const multiplier = Math.pow(2, Math.min(consecutiveBlocks, 4));
-      const blockDuration = RATE_LIMIT_BLOCK_MS * multiplier;
+      const blockDuration = cfg.blockMs * multiplier;
       blockedUntil = now + blockDuration;
       consecutiveBlocks += 1;
     }

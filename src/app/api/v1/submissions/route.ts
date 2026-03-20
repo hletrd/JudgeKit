@@ -12,10 +12,10 @@ import {
   validateAssignmentSubmission,
 } from "@/lib/assignments/submissions";
 import {
-  MAX_SOURCE_CODE_SIZE_BYTES,
-  SUBMISSION_RATE_LIMIT_MAX_PER_MINUTE,
-  SUBMISSION_MAX_PENDING,
-  SUBMISSION_GLOBAL_QUEUE_LIMIT,
+  getMaxSourceCodeSizeBytes,
+  getSubmissionRateLimitMaxPerMinute,
+  getSubmissionMaxPending,
+  getSubmissionGlobalQueueLimit,
   isSubmissionStatus,
 } from "@/lib/security/constants";
 import { generateSubmissionId } from "@/lib/submissions/id";
@@ -176,7 +176,7 @@ export async function POST(request: NextRequest) {
       )
       .then((rows) => Number(rows[0]?.count ?? 0));
 
-    if (recentSubmissions >= SUBMISSION_RATE_LIMIT_MAX_PER_MINUTE) {
+    if (recentSubmissions >= getSubmissionRateLimitMaxPerMinute()) {
       return apiError("submissionRateLimited", 429, undefined, {
         headers: { "Retry-After": "60" },
       });
@@ -194,7 +194,7 @@ export async function POST(request: NextRequest) {
       )
       .then((rows) => Number(rows[0]?.count ?? 0));
 
-    if (pendingCount >= SUBMISSION_MAX_PENDING) {
+    if (pendingCount >= getSubmissionMaxPending()) {
       return apiError("tooManyPendingSubmissions", 429, undefined, {
         headers: { "Retry-After": "10" },
       });
@@ -207,13 +207,13 @@ export async function POST(request: NextRequest) {
       .where(sql`${submissions.status} IN ('pending', 'queued')`)
       .then((rows) => Number(rows[0]?.count ?? 0));
 
-    if (globalPendingCount >= SUBMISSION_GLOBAL_QUEUE_LIMIT) {
+    if (globalPendingCount >= getSubmissionGlobalQueueLimit()) {
       return apiError("judgeQueueFull", 503, undefined, {
         headers: { "Retry-After": "30" },
       });
     }
 
-    if (Buffer.byteLength(sourceCode, "utf8") > MAX_SOURCE_CODE_SIZE_BYTES) {
+    if (Buffer.byteLength(sourceCode, "utf8") > getMaxSourceCodeSizeBytes()) {
       return apiError("sourceCodeTooLarge", 413);
     }
 

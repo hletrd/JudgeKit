@@ -9,7 +9,7 @@ import { recordAuditEvent } from "@/lib/audit/events";
 import { isJudgeAuthorized } from "@/lib/judge/auth";
 import { logger } from "@/lib/logger";
 
-const STALE_CLAIM_TIMEOUT_MS = parseInt(process.env.JUDGE_STALE_CLAIM_TIMEOUT_MS || "300000", 10);
+import { getConfiguredSettings } from "@/lib/system-settings-config";
 
 const claimedSubmissionRowSchema = z.object({
   id: z.string(),
@@ -61,7 +61,7 @@ export async function POST(request: NextRequest) {
             WHERE status = 'pending'
                OR (status IN ('queued', 'judging')
                    AND judge_claimed_at < (unixepoch('now') * 1000 - @staleClaimTimeoutMs))
-            ORDER BY submitted_at ASC
+            ORDER BY submitted_at ASC, rowid ASC
             LIMIT 1
           )
           RETURNING
@@ -81,7 +81,7 @@ export async function POST(request: NextRequest) {
             submitted_at AS submittedAt
         `
       )
-      .get({ claimToken, claimCreatedAt, staleClaimTimeoutMs: STALE_CLAIM_TIMEOUT_MS });
+      .get({ claimToken, claimCreatedAt, staleClaimTimeoutMs: getConfiguredSettings().staleClaimTimeoutMs });
 
     const claimed: ClaimedSubmissionRow | undefined = claimedRaw !== undefined
       ? claimedSubmissionRowSchema.parse(claimedRaw)

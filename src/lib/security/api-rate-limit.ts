@@ -2,11 +2,19 @@ import { NextRequest, NextResponse } from "next/server";
 import { getRateLimitKey, isRateLimited } from "./rate-limit";
 import { db } from "@/lib/db";
 import { rateLimits } from "@/lib/db/schema";
+import { getConfiguredSettings } from "@/lib/system-settings-config";
 import { eq } from "drizzle-orm";
 import { nanoid } from "nanoid";
 
-export const API_RATE_LIMIT_MAX = parseInt(process.env.API_RATE_LIMIT_MAX || "30", 10);
-export const API_RATE_LIMIT_WINDOW_MS = parseInt(process.env.API_RATE_LIMIT_WINDOW_MS || "60000", 10);
+function getApiRateLimitConfig() {
+  const s = getConfiguredSettings();
+  return { max: s.apiRateLimitMax, windowMs: s.apiRateLimitWindowMs };
+}
+
+/** @deprecated Use getConfiguredSettings().apiRateLimitMax */
+export const API_RATE_LIMIT_MAX = getApiRateLimitConfig().max;
+/** @deprecated Use getConfiguredSettings().apiRateLimitWindowMs */
+export const API_RATE_LIMIT_WINDOW_MS = getApiRateLimitConfig().windowMs;
 
 const consumedRequestKeys = new WeakMap<NextRequest, Set<string>>();
 
@@ -29,7 +37,7 @@ function recordApiAttempt(key: string) {
   const now = Date.now();
   const existing = db.select().from(rateLimits).where(eq(rateLimits.key, key)).get();
 
-  const windowMs = API_RATE_LIMIT_WINDOW_MS;
+  const { max: apiMax, windowMs } = getApiRateLimitConfig();
 
   if (!existing) {
     db.insert(rateLimits)
@@ -56,7 +64,7 @@ function recordApiAttempt(key: string) {
   }
 
   // Simply increment without escalating backoff
-  const blocked = existing.attempts + 1 >= API_RATE_LIMIT_MAX
+  const blocked = existing.attempts + 1 >= apiMax
     ? now + windowMs
     : null;
 

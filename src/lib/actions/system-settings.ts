@@ -6,12 +6,35 @@ import { buildServerActionAuditContext, recordAuditEvent } from "@/lib/audit/eve
 import { db } from "@/lib/db";
 import { systemSettings } from "@/lib/db/schema";
 import { GLOBAL_SETTINGS_ID } from "@/lib/system-settings";
+import { invalidateSettingsCache } from "@/lib/system-settings-config";
 import { isTrustedServerActionOrigin } from "@/lib/security/server-actions";
 import { checkServerActionRateLimit } from "@/lib/security/api-rate-limit";
 import {
   type SystemSettingsInput,
   systemSettingsSchema,
 } from "@/lib/validators/system-settings";
+
+/** Keys for the 18 configurable integer settings */
+const CONFIG_KEYS = [
+  "loginRateLimitMaxAttempts",
+  "loginRateLimitWindowMs",
+  "loginRateLimitBlockMs",
+  "apiRateLimitMax",
+  "apiRateLimitWindowMs",
+  "submissionRateLimitMaxPerMinute",
+  "submissionMaxPending",
+  "submissionGlobalQueueLimit",
+  "defaultTimeLimitMs",
+  "defaultMemoryLimitMb",
+  "maxSourceCodeSizeBytes",
+  "staleClaimTimeoutMs",
+  "sessionMaxAgeSeconds",
+  "minPasswordLength",
+  "defaultPageSize",
+  "maxSseConnectionsPerUser",
+  "ssePollIntervalMs",
+  "sseTimeoutMs",
+] as const;
 
 type UpdateSystemSettingsResult = {
   success: boolean;
@@ -44,26 +67,37 @@ export async function updateSystemSettings(
 
   const { siteTitle, siteDescription, timeZone, aiAssistantEnabled } = parsedInput.data;
 
+  // Build config fields — undefined means "not provided", null means "clear to default"
+  const configValues: Record<string, number | null> = {};
+  for (const key of CONFIG_KEYS) {
+    const val = parsedInput.data[key];
+    // val is number | null | undefined; undefined = not in payload, skip
+    if (val !== undefined) {
+      configValues[key] = val;
+    }
+  }
+
+  const baseValues = {
+    siteTitle: siteTitle ?? null,
+    siteDescription: siteDescription ?? null,
+    timeZone: timeZone ?? null,
+    aiAssistantEnabled: aiAssistantEnabled ?? true,
+    ...configValues,
+    updatedAt: new Date(),
+  };
+
   await db
     .insert(systemSettings)
     .values({
       id: GLOBAL_SETTINGS_ID,
-      siteTitle: siteTitle ?? null,
-      siteDescription: siteDescription ?? null,
-      timeZone: timeZone ?? null,
-      aiAssistantEnabled: aiAssistantEnabled ?? true,
-      updatedAt: new Date(),
+      ...baseValues,
     })
     .onConflictDoUpdate({
       target: systemSettings.id,
-      set: {
-        siteTitle: siteTitle ?? null,
-        siteDescription: siteDescription ?? null,
-        timeZone: timeZone ?? null,
-        aiAssistantEnabled: aiAssistantEnabled ?? true,
-        updatedAt: new Date(),
-      },
+      set: baseValues,
     });
+
+  invalidateSettingsCache();
 
   const auditContext = await buildServerActionAuditContext("/dashboard/admin/settings");
   recordAuditEvent({
@@ -79,6 +113,7 @@ export async function updateSystemSettings(
       siteDescription: siteDescription ?? null,
       timeZone: timeZone ?? null,
       aiAssistantEnabled: aiAssistantEnabled ?? true,
+      ...configValues,
     },
     context: auditContext,
   });

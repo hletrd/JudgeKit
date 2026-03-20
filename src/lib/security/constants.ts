@@ -1,18 +1,39 @@
 import type { SubmissionStatus, UserRole } from "@/types";
 import { DEFAULT_ROLE_LEVELS } from "@/lib/capabilities/defaults";
 import { getRoleLevel } from "@/lib/capabilities/cache";
+import { getConfiguredSettings } from "@/lib/system-settings-config";
 
+export function getMinPasswordLength() {
+  return getConfiguredSettings().minPasswordLength;
+}
+export function getMaxSourceCodeSizeBytes() {
+  return getConfiguredSettings().maxSourceCodeSizeBytes;
+}
+export function getSubmissionRateLimitMaxPerMinute() {
+  return getConfiguredSettings().submissionRateLimitMaxPerMinute;
+}
+export function getSubmissionMaxPending() {
+  return getConfiguredSettings().submissionMaxPending;
+}
+export function getSubmissionGlobalQueueLimit() {
+  return getConfiguredSettings().submissionGlobalQueueLimit;
+}
+
+/** @deprecated Use getMinPasswordLength() */
 export const MIN_PASSWORD_LENGTH = 8;
+/** @deprecated Use getMaxSourceCodeSizeBytes() */
 export const MAX_SOURCE_CODE_SIZE_BYTES = 256 * 1024;
-
+/** @deprecated Use getSubmissionRateLimitMaxPerMinute() */
 export const SUBMISSION_RATE_LIMIT_MAX_PER_MINUTE = parseInt(
   process.env.SUBMISSION_RATE_LIMIT_MAX_PER_MINUTE || "120",
   10
 );
+/** @deprecated Use getSubmissionMaxPending() */
 export const SUBMISSION_MAX_PENDING = parseInt(
   process.env.SUBMISSION_MAX_PENDING || "3",
   10
 );
+/** @deprecated Use getSubmissionGlobalQueueLimit() */
 export const SUBMISSION_GLOBAL_QUEUE_LIMIT = parseInt(
   process.env.SUBMISSION_GLOBAL_QUEUE_LIMIT || "100",
   10

@@ -8,21 +8,19 @@ import { canAccessSubmission } from "@/lib/auth/permissions";
 import { IN_PROGRESS_JUDGE_STATUSES } from "@/lib/judge/verdict";
 import { logger } from "@/lib/logger";
 import { consumeApiRateLimit } from "@/lib/security/api-rate-limit";
+import { getConfiguredSettings } from "@/lib/system-settings-config";
 
 // Track active SSE connections per user to prevent resource exhaustion
 const activeConnections = new Map<string, number>();
 const connectionLastActivity = new Map<string, number>();
-const MAX_SSE_CONNECTIONS_PER_USER = 5;
 
-const POLL_INTERVAL_MS = 2000;
-const TIMEOUT_MS = 5 * 60 * 1000;
 const AUTH_RECHECK_INTERVAL_MS = 30_000;
 
 // Periodic cleanup of stale connection tracking entries
 const CLEANUP_INTERVAL_MS = 60_000;
 setInterval(() => {
   const now = Date.now();
-  const staleThreshold = TIMEOUT_MS + 30_000; // timeout + 30s buffer
+  const staleThreshold = getConfiguredSettings().sseTimeoutMs + 30_000; // timeout + 30s buffer
   for (const [userId, lastActive] of connectionLastActivity) {
     if (now - lastActive > staleThreshold) {
       activeConnections.delete(userId);
@@ -43,8 +41,9 @@ export async function GET(
     if (rateLimitResponse) return rateLimitResponse;
 
     // Enforce per-user SSE connection cap
+    const sseConfig = getConfiguredSettings();
     const currentCount = activeConnections.get(user.id) ?? 0;
-    if (currentCount >= MAX_SSE_CONNECTIONS_PER_USER) {
+    if (currentCount >= sseConfig.maxSseConnectionsPerUser) {
       return apiError("tooManyConnections", 429);
     }
     activeConnections.set(user.id, currentCount + 1);
@@ -117,7 +116,7 @@ export async function GET(
             controller.enqueue(encoder.encode("event: timeout\ndata: {}\n\n"));
             close();
           }
-        }, TIMEOUT_MS);
+        }, sseConfig.sseTimeoutMs);
 
         let lastAuthCheck = Date.now();
 
@@ -172,7 +171,7 @@ export async function GET(
               }
             }
           })();
-        }, POLL_INTERVAL_MS);
+        }, sseConfig.ssePollIntervalMs);
       },
     });
 

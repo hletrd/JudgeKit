@@ -1,0 +1,7 @@
+{
+  "id": "0004_system_settings_config",
+  "prevId": "0003_tearful_gabe_jones",
+  "version": "6",
+  "dialect": "sqlite",
+  "tables": {}
+}

@@ -368,6 +368,31 @@ export const systemSettings = sqliteTable("system_settings", {
   siteDescription: text("site_description"),
   timeZone: text("time_zone"),
   aiAssistantEnabled: integer("ai_assistant_enabled", { mode: "boolean" }).notNull().default(true),
+  // Rate Limiting (Login)
+  loginRateLimitMaxAttempts: integer("login_rate_limit_max_attempts"),
+  loginRateLimitWindowMs: integer("login_rate_limit_window_ms"),
+  loginRateLimitBlockMs: integer("login_rate_limit_block_ms"),
+  // Rate Limiting (API)
+  apiRateLimitMax: integer("api_rate_limit_max"),
+  apiRateLimitWindowMs: integer("api_rate_limit_window_ms"),
+  // Rate Limiting (Submissions)
+  submissionRateLimitMaxPerMinute: integer("submission_rate_limit_max_per_minute"),
+  submissionMaxPending: integer("submission_max_pending"),
+  submissionGlobalQueueLimit: integer("submission_global_queue_limit"),
+  // Judge Defaults
+  defaultTimeLimitMs: integer("default_time_limit_ms"),
+  defaultMemoryLimitMb: integer("default_memory_limit_mb"),
+  maxSourceCodeSizeBytes: integer("max_source_code_size_bytes"),
+  staleClaimTimeoutMs: integer("stale_claim_timeout_ms"),
+  // Session & Auth
+  sessionMaxAgeSeconds: integer("session_max_age_seconds"),
+  minPasswordLength: integer("min_password_length"),
+  // Pagination
+  defaultPageSize: integer("default_page_size"),
+  // Real-time / SSE
+  maxSseConnectionsPerUser: integer("max_sse_connections_per_user"),
+  ssePollIntervalMs: integer("sse_poll_interval_ms"),
+  sseTimeoutMs: integer("sse_timeout_ms"),
   updatedAt: integer("updated_at", { mode: "timestamp" })
     .notNull()
     .$defaultFn(() => new Date(Date.now())),

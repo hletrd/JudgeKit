@@ -1,11 +1,11 @@
 import { z } from "zod";
 import { normalizeOptionalString, trimString } from "@/lib/validators/preprocess";
-import { MAX_SOURCE_CODE_SIZE_BYTES } from "@/lib/security/constants";
+import { getMaxSourceCodeSizeBytes } from "@/lib/security/constants";
 
 export const submissionCreateSchema = z.object({
   problemId: z.preprocess(trimString, z.string().min(1, "problemRequired")),
   language: z.preprocess(trimString, z.string().min(1, "languageRequired")),
-  sourceCode: z.string().min(1, "sourceCodeRequired").max(MAX_SOURCE_CODE_SIZE_BYTES, "sourceCodeTooLarge"),
+  sourceCode: z.string().min(1, "sourceCodeRequired").max(getMaxSourceCodeSizeBytes(), "sourceCodeTooLarge"),
   assignmentId: z.preprocess(
     normalizeOptionalString,
     z.string().min(1, "invalidAssignmentId").nullable().optional()
