@@ -422,18 +422,17 @@ _start:
     mov rax, 60
     xor rdi, rdi
     syscall`,
-  bqn: `l←•GetLine@
-n←•BQN¨((' '≠l)/⊸⊔l)
-•Out •Fmt +´n`,
+  bqn: `l ← •GetLine@
+w ← ' '((⊢-˜+\`×·¬⊢)∘=⊔⊢)l
+•Out •Repr +´•BQN¨w`,
   lolcode: `HAI 1.2
-  I HAS A input ITZ ""
-  I HAS A a ITZ 0
-  I HAS A b ITZ 0
-  GIMMEH input
-  a R MAEK input A NUMBAR
-  GIMMEH input
-  b R MAEK input A NUMBAR
-  VISIBLE SUM OF a AN b
+I HAS A a ITZ 0
+I HAS A b ITZ 0
+GIMMEH a
+GIMMEH b
+a IS NOW A NUMBR
+b IS NOW A NUMBR
+VISIBLE SUM OF a AN b
 KTHXBYE`,
   forth: `: main pad 80 stdin read-line throw drop pad swap evaluate + . cr ;
 main`,
@@ -612,12 +611,9 @@ const KNOWN_FLAKY = new Set<string>([
   "intercal",      // No A+B solution possible
   "malbolge",      // No A+B solution possible
   "unlambda",      // No A+B solution possible
-  "bqn",           // BQN solution syntax error
-  "lolcode",       // libreadline.so.8 missing in image
   "umjunsik",      // Needs testing
   "k",             // Wrong output (solution needs fix)
   "uiua",          // GLIBC_2.39 missing in image
-  "coffeescript",  // coffee not in judge-node PATH
   "vbnet",         // dotnet-script not available
   "shakespeare",   // Needs testing
 ]);
