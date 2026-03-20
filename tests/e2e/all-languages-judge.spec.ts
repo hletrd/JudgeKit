@@ -301,7 +301,7 @@ printfn "%d" (a + b)`,
   apl: `⎕←+/⎕\n)OFF`,
   freebasic: `Dim As Integer a, b
 Input a, b
-Print a + b`,
+Print Str(a + b)`,
   smalltalk: `| line parts a b |
 line := stdin nextLine.
 parts := line subStrings: $ .
