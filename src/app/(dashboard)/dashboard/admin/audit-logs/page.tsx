@@ -316,9 +316,9 @@ export default async function AdminAuditLogsPage({
             </div>
 
             <div className="flex gap-2 items-end">
-              <Button type="submit" className="h-10">{t("applyFilters")}</Button>
+              <Button type="submit">{t("applyFilters")}</Button>
               <Link href={PAGE_PATH}>
-                <Button type="button" variant="outline" className="h-10">{t("resetFilters")}</Button>
+                <Button type="button" variant="outline">{t("resetFilters")}</Button>
               </Link>
             </div>
           </form>

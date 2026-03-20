@@ -162,9 +162,9 @@ export default async function SubmissionsPage({
               />
             </div>
             <div className="flex gap-2 items-end">
-              <Button type="submit" className="h-10">{tCommon("search")}</Button>
+              <Button type="submit">{tCommon("search")}</Button>
               <Link href="/dashboard/submissions">
-                <Button type="button" variant="outline" className="h-10">{t("resetSearch")}</Button>
+                <Button type="button" variant="outline">{t("resetSearch")}</Button>
               </Link>
             </div>
           </form>
