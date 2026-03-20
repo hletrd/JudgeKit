@@ -825,6 +825,7 @@ test("submit A+B in all supported languages and verify judging", async ({ browse
     "coffeescript", // Runtime error
     "llvm_ir",     // Runtime error
     "vbnet",       // Compile error
+    "fsharp",      // dotnet JIT needs exec tmpfs (blocked by noexec in run phase)
   ]);
 
   const unexpected = failed.filter((r) => !KNOWN_FLAKY.has(r.language));
