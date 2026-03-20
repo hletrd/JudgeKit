@@ -298,7 +298,7 @@ let a = int parts.[0]
 let b = int parts.[1]
 printfn "%d" (a + b)`,
   j: `input =. dltb (1!:1) 3\necho ": +/ ". input -. LF\nexit ""`,
-  apl: `⎕←+/⍎¨(' '≠X)⊆X←⍞`,
+  apl: `⎕←+/⎕\n)OFF`,
   freebasic: `Dim As Integer a, b
 Input a, b
 Print a + b`,
@@ -816,27 +816,22 @@ test("submit A+B in all supported languages and verify judging", async ({ browse
   // - I/O models incompatible with the test's space-separated integer input
   // - Docker images that intermittently fail under E2E load
   const KNOWN_FLAKY = new Set<string>([
-    // Docker images not built (BuildKit DNS or ancient code)
-    "apl",         // GNU APL: BuildKit DNS blocks git clone from savannah
-    "snobol4",     // CSNOBOL4: BuildKit DNS blocks SourceForge download
-    "simula",      // GNU Cim 5.1: image not built on test server
-    // Empty source code in E2E test (languages where no A+B solution exists)
+    // Docker image not built
+    "simula",      // GNU Cim: won't compile with modern GCC
+    // No A+B solution possible
     "intercal",    // No A+B solution implemented
     "malbolge",    // No A+B solution implemented
     "unlambda",    // No A+B solution implemented
-    // Runtime/compile command issues (images built, commands need tuning)
+    // Runtime/compile issues (images built, need command tuning)
     "bqn",         // Runtime error — command/path issue
     "lolcode",     // Runtime error — command/path issue
     "umjunsik",    // Runtime error — command/path issue
     "k",           // Runtime error — command/path issue
     "uiua",        // Runtime error — command/path issue
-    "odin",        // Compile error — -o flag syntax mismatch
-    "haxe",        // Compile error — package name resolution
+    "odin",        // Compile error — -o flag syntax
+    "haxe",        // Compile error — package resolution
     "shakespeare", // Runtime error — command/path issue
-    "algol68",     // Wrong answer — output format mismatch
-    // Existing issues from prior batches
-    "fsharp",      // .NET SDK HOME writable
-    "freebasic",   // SourceForge download broken
+    "algol68",     // Wrong answer — output format
     "coffeescript", // Runtime error
     "llvm_ir",     // Runtime error
     "vbnet",       // Compile error
