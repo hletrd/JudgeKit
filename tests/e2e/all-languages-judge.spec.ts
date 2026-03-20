@@ -816,35 +816,17 @@ test("submit A+B in all supported languages and verify judging", async ({ browse
   // - I/O models incompatible with the test's space-separated integer input
   // - Docker images that intermittently fail under E2E load
   const KNOWN_FLAKY = new Set([
-    "apl",         // newly added — Docker image may not yet be stable
-    "freebasic",   // newly added — Docker image may not yet be stable
-    "smalltalk",   // newly added — Docker image may not yet be stable
-    "fsharp",      // .NET SDK needs HOME writable
-    "b",           // newly added — BCause compiler, debugging worker integration
-    "sed",         // lookup-table approach, newly added
-    "dc",          // newly added
-    "coffeescript", // newly added
-    "llvm_ir",     // newly added
-    "vbnet",       // newly added — .NET VB compiler
-    "nasm",        // newly added — x86-64 assembly
-    "bqn",         // newly added — CBQN build from source
-    "lolcode",     // newly added — lci build from source
-    "forth",       // newly added
-    "algol68",     // newly added
-    "umjunsik",    // newly added — Korean esoteric lang
-    "intercal",    // newly added — esoteric
-    "k",           // newly added — ngn/k build from source
-    "haxe",        // newly added — Python backend
-    "raku",        // newly added — Rakudo
-    "malbolge",    // newly added — esoteric, pre-generated program
-    "shakespeare", // newly added — esoteric, pip package
-    "unlambda",    // newly added — combinator-based esoteric
-    "snobol4",     // newly added — csnobol4 build from source
-    "icon",        // newly added — Unicon
-    "simula",      // newly added — GNU Cim build from source
-    "uiua",        // newly added — cargo install
-    "odin",        // newly added — Odin compiler
-    "objective_c", // newly added — GCC gobjc
+    // Docker images not built (build from source failed)
+    "apl",         // GNU APL make fails
+    "bqn",         // CBQN make fails
+    "lolcode",     // lci cmake fails
+    "forth",       // no gforth in Alpine
+    "umjunsik",    // cargo install DNS fail
+    "intercal",    // not in Debian repos
+    "snobol4",     // csnobol4 make fails
+    "icon",        // unicon not in Debian repos
+    "simula",      // GNU Cim make fails
+    "uiua",        // cargo install DNS fail
   ]);
 
   const unexpected = failed.filter((r) => !KNOWN_FLAKY.has(r.language));
