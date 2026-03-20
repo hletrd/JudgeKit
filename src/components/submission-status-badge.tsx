@@ -1,3 +1,5 @@
+"use client";
+
 import { AlertTriangle, CheckCircle2, Clock3, Timer, HardDrive } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import {
