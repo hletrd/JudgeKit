@@ -291,10 +291,10 @@ echo $((a + b))`,
 // so that esoteric languages (brainfuck, whitespace) with byte-level I/O can
 // handle them without multi-digit parsing/output routines.
 const TEST_CASES = [
-  { input: "1 2", expectedOutput: "3" },
-  { input: "3 4", expectedOutput: "7" },
-  { input: "0 5", expectedOutput: "5" },
-  { input: "2 1", expectedOutput: "3" },
+  { input: "1 2\n", expectedOutput: "3" },
+  { input: "3 4\n", expectedOutput: "7" },
+  { input: "0 5\n", expectedOutput: "5" },
+  { input: "2 1\n", expectedOutput: "3" },
 ];
 
 async function login(page: Page) {
