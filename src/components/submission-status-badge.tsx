@@ -120,7 +120,7 @@ export function SubmissionStatusBadge({
     <TooltipProvider>
       <Tooltip>
         <TooltipTrigger render={<span className="inline-flex" />}>{badge}</TooltipTrigger>
-        <TooltipContent className="bg-popover/80 text-popover-foreground backdrop-blur-md border border-border/50 shadow-lg">
+        <TooltipContent className="bg-popover/80 text-popover-foreground backdrop-blur-md border border-border/50 shadow-lg" arrowClassName="bg-popover/80 fill-popover/80 backdrop-blur-md">
           <TooltipBody
             status={status}
             compileOutput={compileOutput}
