@@ -15,15 +15,15 @@
 
 <p align="center">
   A secure, cross-platform code evaluation platform for programming assignments.<br/>
-  Docker-sandboxed execution for <a href="docs/languages.md">89 language variants</a> on both AMD64 and ARM64.
+  Docker-sandboxed execution for <a href="docs/languages.md">88 language variants</a> on both AMD64 and ARM64.
 </p>
 
 ---
 
 ## Features
 
-- **Cross-platform (AMD64 + ARM64)** — Full stack runs natively on both architectures: Next.js app, Rust judge worker, Rust sidecars, and all 69 Docker judge images. Deploy on x86-64 servers or ARM64 (AWS Graviton, Ampere Altra, Apple Silicon) with automatic architecture detection — no emulation, no cross-compilation
-- **89 languages** — C/C++, Java, Python, Rust, Go, Deno, Bun, Gleam, Standard ML, and [80 more](docs/languages.md), all with multi-arch Docker images and admin-customizable compile/run settings
+- **Cross-platform (AMD64 + ARM64)** — Full stack runs natively on both architectures: Next.js app, Rust judge worker, Rust sidecars, and all 70 Docker judge images. Deploy on x86-64 servers or ARM64 (AWS Graviton, Ampere Altra, Apple Silicon) with automatic architecture detection — no emulation, no cross-compilation
+- **88 languages** — C/C++, Java, Python, Rust, Go, Deno, Bun, Gleam, Standard ML, and [78 more](docs/languages.md), all with multi-arch Docker images and admin-customizable compile/run settings
 - **Secure execution** — Docker containers with no network, seccomp, memory/CPU limits
 - **Role-based access** — Super admin, admin, instructor, student
 - **Classroom management** — Groups, enrollments, assignments with deadlines and late penalties
@@ -72,7 +72,7 @@ See [Language presets](docs/languages.md#docker-image-presets) for preset option
 
 ## Docker Judge Images
 
-67 language-specific Docker images for sandboxed code execution on both AMD64 and ARM64.
+70 language-specific Docker images for sandboxed code execution on both AMD64 and ARM64. 68 of 70 build on both architectures.
 
 | Image | amd64 | arm64 | Image | amd64 | arm64 |
 |-------|-------|-------|-------|-------|-------|
@@ -107,9 +107,10 @@ See [Language presets](docs/languages.md#docker-image-presets) for preset option
 | `judge-csharp` | 1.07 GB | 693 MB | `judge-rust` | 1.21 GB | 810 MB |
 | `judge-r` | 1.27 GB | 850 MB | `judge-julia` | 1.50 GB | 1.23 GB |
 | `judge-odin` | 1.81 GB | 1.34 GB | `judge-haskell` | 1.81 GB | 1.59 GB |
-| `judge-swift` | 2.79 GB | 2.11 GB | `judge-smalltalk` | 122 MB | 76 MB |
+| `judge-powershell` | 461 MB | 352 MB | `judge-smalltalk` | 122 MB | 76 MB |
+| `judge-swift` | 2.79 GB | 2.11 GB | | | |
 
-4 images are amd64-only: `judge-powershell`, `judge-apl`, `judge-b`, `judge-simula`.
+2 images are amd64-only: `judge-b` (x86 inline asm), `judge-apl` (make fails on arm64).
 
 ## Tech Stack
 
@@ -152,7 +153,7 @@ judgekit/
 
 - [Deployment Guide](docs/deployment.md) — provisioning, deploy scripts, nginx, post-deploy checks
 - [Authentication](docs/authentication.md) — sign-in flow, cookie architecture, API smoke test
-- [Languages](docs/languages.md) — all 89 variants, Docker image presets, admin management
+- [Languages](docs/languages.md) — all 88 variants, Docker image presets, admin management
 
 ## License
 
