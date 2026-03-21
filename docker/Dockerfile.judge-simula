@@ -1,0 +1,17 @@
+FROM debian:bookworm-slim
+
+RUN apt-get update && \
+    apt-get install -y --no-install-recommends gcc make libc6-dev ca-certificates curl autoconf automake libtool file texinfo flex bison && \
+    curl -fsSL https://ftp.gnu.org/gnu/cim/cim-5.1.tar.gz | tar xz -C /tmp && \
+    cd /tmp/cim-* && \
+    sed -i 's/^CFLAGS.*/CFLAGS = -g -O0 -Wno-error -Wno-implicit-function-declaration/' Makefile.in && \
+    ./configure CFLAGS="-g -O0 -Wno-error -Wno-implicit-function-declaration" && \
+    make && make install && \
+    cd / && rm -rf /tmp/cim-* && \
+    apt-get purge -y gcc make libc6-dev ca-certificates curl autoconf automake libtool file texinfo flex bison && \
+    apt-get autoremove -y && rm -rf /var/lib/apt/lists/* && \
+    useradd -m -s /bin/false judge && \
+    mkdir -p /workspace && chown judge:judge /workspace
+
+WORKDIR /workspace
+USER judge

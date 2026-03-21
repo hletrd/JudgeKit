@@ -399,6 +399,12 @@ services:
       dockerfile: docker/Dockerfile.judge-objective-c
     image: judge-objective-c:${GIT_SHA:-latest}
 
+  judge-simula:
+    build:
+      context: .
+      dockerfile: docker/Dockerfile.judge-simula
+    image: judge-simula:${GIT_SHA:-latest}
+
   judge-deno:
     build:
       context: .

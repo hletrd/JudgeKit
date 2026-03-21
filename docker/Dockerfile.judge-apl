@@ -1,11 +1,14 @@
 FROM debian:bookworm-slim AS builder
 
 RUN apt-get update && apt-get install -y --no-install-recommends \
-        build-essential g++ libreadline-dev pkg-config git ca-certificates \
-        autoconf automake libtool gettext && \
-    git clone --depth 1 --branch master https://git.savannah.gnu.org/git/apl.git /tmp/apl && \
-    cd /tmp/apl && autoreconf -fi && ./configure --prefix=/usr/local && make -j$(nproc) && make install && \
-    rm -rf /tmp/apl
+        build-essential g++ libreadline-dev pkg-config curl ca-certificates autoconf autotools-dev && \
+    curl -sL https://ftp.gnu.org/gnu/apl/apl-1.8.tar.gz -o /tmp/apl.tar.gz && \
+    tar -xzf /tmp/apl.tar.gz -C /tmp && \
+    cd /tmp/apl-1.8 && \
+    cp /usr/share/misc/config.sub . && \
+    cp /usr/share/misc/config.guess . && \
+    ./configure --prefix=/usr/local && make -j$(nproc) && make install && \
+    rm -rf /tmp/apl-1.8 /tmp/apl.tar.gz
 
 FROM debian:bookworm-slim
 
