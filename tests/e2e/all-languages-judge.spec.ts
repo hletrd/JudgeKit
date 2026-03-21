@@ -633,12 +633,11 @@ export fn main() void = {
   val b = parts[1].default("0").parse-int.default(0)
   println( (a + b).show )`,
   lean: `def main : IO Unit := do
-  let stdin ← IO.getStdin
-  let line ← stdin.getLine
+  let line ← (← IO.getStdin).getLine
   let parts := line.trim.splitOn " "
-  let a := (parts.get! 0).toInt!
-  let b := (parts.get! 1).toInt!
-  IO.println s!"{a + b}"`,
+  match parts with
+  | [a, b] => IO.println s!"{a.toInt! + b.toInt!}"
+  | _ => return ()`,
 };
 
 // Keep inputs as positive single-digit numbers with single-digit sums (≤ 9)

@@ -5,9 +5,10 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     cd /tmp/nelua && make -j$(nproc) && make install PREFIX=/usr/local
 
 FROM debian:bookworm-slim
-RUN apt-get update && apt-get install -y --no-install-recommends gcc libc-dev lua5.4 && \
+RUN apt-get update && apt-get install -y --no-install-recommends gcc libc-dev && \
     rm -rf /var/lib/apt/lists/*
 COPY --from=builder /usr/local/bin/nelua /usr/local/bin/nelua
+COPY --from=builder /usr/local/bin/nelua-lua /usr/local/bin/nelua-lua
 COPY --from=builder /usr/local/lib/nelua /usr/local/lib/nelua
 RUN useradd -m -s /bin/false judge && \
     mkdir -p /workspace && chown judge:judge /workspace

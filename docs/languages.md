@@ -96,13 +96,13 @@
 | 90 | `squirrel` | Squirrel 3.2 | `judge-squirrel` | ❓ | ❓ | ❓ | ❓ |
 | 91 | `rexx` | Rexx (Regina) | `judge-rexx` | ❓ | ❓ | ❓ | ❓ |
 | 92 | `hy` | Hy (Lisp on Python) | `judge-hy` | ❓ | ❓ | ❓ | ❓ |
-| 93 | `arturo` | Arturo | `judge-arturo` | ❓ | ❓ | ❓ | ❓ |
+| 93 | `arturo` | Arturo | `judge-arturo` | ✅ | ❌ amd64 only | ❓ | ❓ |
 | 94 | `janet` | Janet | `judge-janet` | ❓ | ❓ | ❓ | ❓ |
 | 95 | `c3` | C3 | `judge-c3` | ✅ | ❌ amd64 only | ❓ | ❓ |
 | 96 | `vala` | Vala | `judge-vala` | ❓ | ❓ | ❓ | ❓ |
 | 97 | `nelua` | Nelua | `judge-nelua` | ❓ | ❓ | ❓ | ❓ |
 | 98 | `hare` | Hare | `judge-hare` | ❓ | ❓ | ❓ | ❓ |
-| 99 | `koka` | Koka | `judge-koka` | ❓ | ❓ | ❓ | ❓ |
+| 99 | `koka` | Koka | `judge-koka` | ✅ | ❌ amd64 only | ❓ | ❓ |
 | 100 | `lean` | Lean 4 | `judge-lean` | ❓ | ❓ | ❓ | ❓ |
 
 ### ARM64 Build Summary

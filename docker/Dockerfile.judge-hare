@@ -1,27 +1,6 @@
-FROM alpine:3.21 AS builder
-RUN apk add --no-cache build-base git scdoc ca-certificates
-# Build QBE
-RUN git clone --depth 1 https://git.sr.ht/~mcf/qbe /tmp/qbe && \
-    cd /tmp/qbe && make -j$(nproc) && make install PREFIX=/usr
-# Build harec (uses Makefile, not configure)
-RUN git clone --depth 1 https://git.sr.ht/~sircmpwn/harec /tmp/harec && \
-    cd /tmp/harec && cp configs/linux.mk config.mk && \
-    sed -i 's|PREFIX=/usr/local|PREFIX=/usr|' config.mk && \
-    make -j$(nproc) && make install
-# Build hare
-RUN git clone --depth 1 https://git.sr.ht/~sircmpwn/hare /tmp/hare && \
-    cd /tmp/hare && cp configs/linux.mk config.mk && \
-    sed -i 's|PREFIX=/usr/local|PREFIX=/usr|' config.mk && \
-    make -j$(nproc) && make install
-
-FROM alpine:3.21
-RUN apk add --no-cache gcc musl-dev
-COPY --from=builder /usr/bin/qbe /usr/bin/qbe
-COPY --from=builder /usr/bin/harec /usr/bin/harec
-COPY --from=builder /usr/bin/hare /usr/bin/hare
-COPY --from=builder /usr/lib/hare /usr/lib/hare
-COPY --from=builder /usr/src/hare /usr/src/hare
-RUN adduser -D -s /bin/false judge && \
+FROM alpine:edge
+RUN apk add --no-cache --repository=https://dl-cdn.alpinelinux.org/alpine/edge/testing hare && \
+    adduser -D -s /bin/false judge && \
     mkdir -p /workspace && chown judge:judge /workspace
 WORKDIR /workspace
 USER judge
