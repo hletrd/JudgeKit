@@ -62,3 +62,4 @@ rate-limiter-rs/target/
 # dead-letter queue (failed result payloads for manual recovery)
 dead-letter/
 judge-worker-rs/dead-letter/
+.context/
