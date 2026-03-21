@@ -1,7 +1,6 @@
 import { redirect } from "next/navigation";
 import { getTranslations } from "next-intl/server";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
-import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { auth } from "@/lib/auth";
 import { resolveCapabilities } from "@/lib/capabilities/cache";
 import {
@@ -14,6 +13,11 @@ import type { ConfiguredSettings } from "@/lib/system-settings-config";
 import { SystemSettingsForm } from "./system-settings-form";
 import { ConfigSettingsForm } from "./config-settings-form";
 import { DatabaseBackupRestore } from "./database-backup-restore";
+import { DatabaseInfo } from "./database-info";
+import { SettingsTabs } from "./settings-tabs";
+import { sqlite } from "@/lib/db";
+import fs from "fs";
+import path from "path";
 
 const SECURITY_FIELDS: { key: keyof ConfiguredSettings }[] = [
   { key: "loginRateLimitMaxAttempts" },
@@ -61,6 +65,40 @@ function extractInitialValues(
   return result;
 }
 
+function getDbInfo() {
+  const dbPath = process.env.DATABASE_PATH
+    ? path.resolve(process.env.DATABASE_PATH)
+    : path.join(process.cwd(), "data", "judge.db");
+
+  let sizeBytes = 0;
+  let walSizeBytes = 0;
+  try {
+    sizeBytes = fs.statSync(dbPath).size;
+  } catch { /* */ }
+  try {
+    walSizeBytes = fs.statSync(dbPath + "-wal").size;
+  } catch { /* */ }
+
+  const journalMode = (sqlite.pragma("journal_mode", { simple: true }) as string) ?? "unknown";
+  const foreignKeys = (sqlite.pragma("foreign_keys", { simple: true }) as number) === 1;
+  const busyTimeout = (sqlite.pragma("busy_timeout", { simple: true }) as number) ?? 0;
+  const pageSize = (sqlite.pragma("page_size", { simple: true }) as number) ?? 0;
+  const pageCount = (sqlite.pragma("page_count", { simple: true }) as number) ?? 0;
+  const tableCount = (sqlite.prepare("SELECT count(*) as c FROM sqlite_master WHERE type='table' AND name NOT LIKE 'sqlite_%'").get() as { c: number })?.c ?? 0;
+
+  return {
+    path: dbPath,
+    sizeBytes,
+    walSizeBytes,
+    journalMode,
+    foreignKeys,
+    busyTimeout,
+    tableCount,
+    pageSize,
+    pageCount,
+  };
+}
+
 export default async function AdminSettingsPage() {
   const session = await auth();
   if (!session?.user) redirect("/login");
@@ -75,25 +113,14 @@ export default async function AdminSettingsPage() {
   });
   const storedSettings = await getSystemSettings();
   const stored = storedSettings as Record<string, unknown> | undefined;
+  const dbInfo = getDbInfo();
 
-  return (
-    <div className="space-y-6">
-      <div>
-        <h2 className="text-2xl font-bold">{t("title")}</h2>
-        <p className="text-sm text-muted-foreground">{t("description")}</p>
-      </div>
-
-      <Tabs defaultValue="general">
-        <TabsList className="w-full flex-wrap">
-          <TabsTrigger value="general">{t("tabGeneral")}</TabsTrigger>
-          <TabsTrigger value="security">{t("tabSecurity")}</TabsTrigger>
-          <TabsTrigger value="submissions">{t("tabSubmissions")}</TabsTrigger>
-          <TabsTrigger value="judge">{t("tabJudge")}</TabsTrigger>
-          <TabsTrigger value="session">{t("tabSession")}</TabsTrigger>
-          <TabsTrigger value="advanced">{t("tabAdvanced")}</TabsTrigger>
-        </TabsList>
-
-        <TabsContent value="general" className="space-y-6 mt-4">
+  const tabs = [
+    {
+      value: "general",
+      label: t("tabGeneral"),
+      content: (
+        <>
           <Card>
             <CardHeader>
               <CardTitle>{t("siteCardTitle")}</CardTitle>
@@ -114,7 +141,6 @@ export default async function AdminSettingsPage() {
               />
             </CardContent>
           </Card>
-
           <Card>
             <CardHeader>
               <CardTitle>{t("backupTitle")}</CardTitle>
@@ -124,88 +150,128 @@ export default async function AdminSettingsPage() {
               <DatabaseBackupRestore isSuperAdmin={caps.has("system.backup")} />
             </CardContent>
           </Card>
-        </TabsContent>
+        </>
+      ),
+    },
+    {
+      value: "security",
+      label: t("tabSecurity"),
+      content: (
+        <Card>
+          <CardHeader>
+            <CardTitle>{t("securityCardTitle")}</CardTitle>
+            <CardDescription>{t("securityCardDescription")}</CardDescription>
+          </CardHeader>
+          <CardContent>
+            <ConfigSettingsForm
+              fields={SECURITY_FIELDS}
+              initialValues={extractInitialValues(stored, SECURITY_FIELDS)}
+              defaults={SETTING_DEFAULTS}
+            />
+          </CardContent>
+        </Card>
+      ),
+    },
+    {
+      value: "submissions",
+      label: t("tabSubmissions"),
+      content: (
+        <Card>
+          <CardHeader>
+            <CardTitle>{t("submissionsCardTitle")}</CardTitle>
+            <CardDescription>{t("submissionsCardDescription")}</CardDescription>
+          </CardHeader>
+          <CardContent>
+            <ConfigSettingsForm
+              fields={SUBMISSION_FIELDS}
+              initialValues={extractInitialValues(stored, SUBMISSION_FIELDS)}
+              defaults={SETTING_DEFAULTS}
+            />
+          </CardContent>
+        </Card>
+      ),
+    },
+    {
+      value: "judge",
+      label: t("tabJudge"),
+      content: (
+        <Card>
+          <CardHeader>
+            <CardTitle>{t("judgeCardTitle")}</CardTitle>
+            <CardDescription>{t("judgeCardDescription")}</CardDescription>
+          </CardHeader>
+          <CardContent>
+            <ConfigSettingsForm
+              fields={JUDGE_FIELDS}
+              initialValues={extractInitialValues(stored, JUDGE_FIELDS)}
+              defaults={SETTING_DEFAULTS}
+            />
+          </CardContent>
+        </Card>
+      ),
+    },
+    {
+      value: "session",
+      label: t("tabSession"),
+      content: (
+        <Card>
+          <CardHeader>
+            <CardTitle>{t("sessionCardTitle")}</CardTitle>
+            <CardDescription>{t("sessionCardDescription")}</CardDescription>
+          </CardHeader>
+          <CardContent>
+            <ConfigSettingsForm
+              fields={SESSION_FIELDS}
+              initialValues={extractInitialValues(stored, SESSION_FIELDS)}
+              defaults={SETTING_DEFAULTS}
+            />
+          </CardContent>
+        </Card>
+      ),
+    },
+    {
+      value: "advanced",
+      label: t("tabAdvanced"),
+      content: (
+        <Card>
+          <CardHeader>
+            <CardTitle>{t("advancedCardTitle")}</CardTitle>
+            <CardDescription>{t("advancedCardDescription")}</CardDescription>
+          </CardHeader>
+          <CardContent>
+            <ConfigSettingsForm
+              fields={ADVANCED_FIELDS}
+              initialValues={extractInitialValues(stored, ADVANCED_FIELDS)}
+              defaults={SETTING_DEFAULTS}
+            />
+          </CardContent>
+        </Card>
+      ),
+    },
+    {
+      value: "database",
+      label: t("tabDatabase"),
+      content: (
+        <Card>
+          <CardHeader>
+            <CardTitle>{t("databaseCardTitle")}</CardTitle>
+            <CardDescription>{t("databaseCardDescription")}</CardDescription>
+          </CardHeader>
+          <CardContent>
+            <DatabaseInfo dbInfo={dbInfo} />
+          </CardContent>
+        </Card>
+      ),
+    },
+  ];
 
-        <TabsContent value="security" className="mt-4">
-          <Card>
-            <CardHeader>
-              <CardTitle>{t("securityCardTitle")}</CardTitle>
-              <CardDescription>{t("securityCardDescription")}</CardDescription>
-            </CardHeader>
-            <CardContent>
-              <ConfigSettingsForm
-                fields={SECURITY_FIELDS}
-                initialValues={extractInitialValues(stored, SECURITY_FIELDS)}
-                defaults={SETTING_DEFAULTS}
-              />
-            </CardContent>
-          </Card>
-        </TabsContent>
-
-        <TabsContent value="submissions" className="mt-4">
-          <Card>
-            <CardHeader>
-              <CardTitle>{t("submissionsCardTitle")}</CardTitle>
-              <CardDescription>{t("submissionsCardDescription")}</CardDescription>
-            </CardHeader>
-            <CardContent>
-              <ConfigSettingsForm
-                fields={SUBMISSION_FIELDS}
-                initialValues={extractInitialValues(stored, SUBMISSION_FIELDS)}
-                defaults={SETTING_DEFAULTS}
-              />
-            </CardContent>
-          </Card>
-        </TabsContent>
-
-        <TabsContent value="judge" className="mt-4">
-          <Card>
-            <CardHeader>
-              <CardTitle>{t("judgeCardTitle")}</CardTitle>
-              <CardDescription>{t("judgeCardDescription")}</CardDescription>
-            </CardHeader>
-            <CardContent>
-              <ConfigSettingsForm
-                fields={JUDGE_FIELDS}
-                initialValues={extractInitialValues(stored, JUDGE_FIELDS)}
-                defaults={SETTING_DEFAULTS}
-              />
-            </CardContent>
-          </Card>
-        </TabsContent>
-
-        <TabsContent value="session" className="mt-4">
-          <Card>
-            <CardHeader>
-              <CardTitle>{t("sessionCardTitle")}</CardTitle>
-              <CardDescription>{t("sessionCardDescription")}</CardDescription>
-            </CardHeader>
-            <CardContent>
-              <ConfigSettingsForm
-                fields={SESSION_FIELDS}
-                initialValues={extractInitialValues(stored, SESSION_FIELDS)}
-                defaults={SETTING_DEFAULTS}
-              />
-            </CardContent>
-          </Card>
-        </TabsContent>
-
-        <TabsContent value="advanced" className="mt-4">
-          <Card>
-            <CardHeader>
-              <CardTitle>{t("advancedCardTitle")}</CardTitle>
-              <CardDescription>{t("advancedCardDescription")}</CardDescription>
-            </CardHeader>
-            <CardContent>
-              <ConfigSettingsForm
-                fields={ADVANCED_FIELDS}
-                initialValues={extractInitialValues(stored, ADVANCED_FIELDS)}
-                defaults={SETTING_DEFAULTS}
-              />
-            </CardContent>
-          </Card>
-        </TabsContent>
-      </Tabs>
+  return (
+    <div className="space-y-6">
+      <div>
+        <h2 className="text-2xl font-bold">{t("title")}</h2>
+        <p className="text-sm text-muted-foreground">{t("description")}</p>
+      </div>
+      <SettingsTabs tabs={tabs} />
     </div>
   );
 }

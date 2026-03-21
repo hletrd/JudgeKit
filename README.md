@@ -146,21 +146,9 @@ judgekit/
 
 ## Architecture
 
-```
-                    +-------------------+
-                    |   App Server      |
-                    |   (Next.js)       |
-                    |   SQLite DB       |
-                    +-------------------+
-                     /    |    |     \
-                HTTPS  HTTPS  HTTPS  HTTPS
-                  /      |      |      \
-          +--------+ +--------+ +--------+ +--------+
-          |Worker-1| |Worker-2| |Worker-3| |Worker-N|
-          |Rust bin| |Rust bin| |Rust bin| |Rust bin|
-          |Docker  | |Docker  | |Docker  | |Docker  |
-          +--------+ +--------+ +--------+ +--------+
-```
+<p align="center">
+  <img src="docs/architecture.svg" alt="JudgeKit Architecture" width="720" />
+</p>
 
 Workers connect to the app server via HTTP(S) only. Each worker registers on startup, sends periodic heartbeats, and deregisters on graceful shutdown. The atomic `UPDATE...RETURNING` claim SQL ensures no two workers can claim the same submission. Stale workers are automatically detected and their submissions reclaimed.
 
