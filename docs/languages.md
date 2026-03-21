@@ -1,6 +1,6 @@
 # Supported Languages (89 variants)
 
-69 Docker images covering 89 language variants. E2E test suite (amd64): 84 passed, 5 skipped (KNOWN_FLAKY), 0 failed (~2.2 min).
+70 Docker images covering 89 language variants. E2E test suite (amd64): 88 passed, 1 skipped (KNOWN_FLAKY), 0 failed (~4 min).
 
 | # | Language ID | Description | Docker Image | E2E (amd64) |
 |---|-------------|-------------|--------------|-------------|
@@ -67,6 +67,7 @@
 | 61 | `hyeong` | Hyeong | `judge-esoteric` | ✅ Pass |
 | 62 | `whitespace` | Whitespace | `judge-esoteric` | ✅ Pass |
 | 63 | `b` | B (BCause) | `judge-b` | ✅ Pass |
+| 64 | `flix` | Flix 0.69.2 | `judge-flix` | ✅ Pass |
 | 65 | `apl` | APL (GNU APL) | `judge-apl` | ✅ Pass |
 | 66 | `freebasic` | FreeBASIC | `judge-freebasic` | ✅ Pass |
 | 67 | `smalltalk` | Smalltalk (GNU Smalltalk) | `judge-smalltalk` | ✅ Pass |
@@ -78,29 +79,34 @@
 | 73 | `odin` | Odin | `judge-odin` | ✅ Pass |
 | 74 | `uiua` | Uiua | `judge-uiua` | ✅ Pass |
 | 75 | `bqn` | BQN (CBQN) | `judge-bqn` | ✅ Pass |
-| 76 | `k` | K (ngn/k) | `judge-k` | ⚠️ Skip (ngn/k can't read stdin in script mode) |
+| 76 | `k` | K (ngn/k) | `judge-k` | ⚠️ Skip (stdout broken in script mode) |
 | 77 | `icon` | Icon | `judge-icon` | ✅ Pass |
 | 78 | `algol68` | Algol 68 (a68g) | `judge-algol68` | ✅ Pass |
 | 79 | `snobol4` | SNOBOL4 (CSNOBOL4) | `judge-snobol4` | ✅ Pass |
-| 80 | `lolcode` | LOLCODE (lci) | `judge-lolcode` | ⚠️ Skip (GIMMEH reads full lines, can't parse space-separated input) |
+| 80 | `lolcode` | LOLCODE (lci) | `judge-lolcode` | ✅ Pass |
 | 81 | `shakespeare` | Shakespeare (shakespearelang) | `judge-shakespeare` | ✅ Pass |
-| 82 | `umjunsik` | 엄준식 (Umjunsik) | `judge-umjunsik` | ⚠️ Skip (Rust crate is compiler only, not interpreter) |
+| 82 | `umjunsik` | 엄준식 (Umjunsik) | `judge-umjunsik` | ✅ Pass |
 | 83 | `deno_js` | JavaScript (Deno) | `judge-deno` | ✅ Pass |
 | 84 | `deno_ts` | TypeScript (Deno) | `judge-deno` | ✅ Pass |
 | 85 | `bun_js` | JavaScript (Bun) | `judge-bun` | ✅ Pass |
 | 86 | `bun_ts` | TypeScript (Bun) | `judge-bun` | ✅ Pass |
-| 87 | `gleam` | Gleam (Erlang target) | `judge-gleam` | ⚠️ Skip (gleam_stdlib compile error with project template setup) |
+| 87 | `gleam` | Gleam (Erlang target) | `judge-gleam` | ✅ Pass |
 | 88 | `sml` | Standard ML (Poly/ML) | `judge-sml` | ✅ Pass |
 | 89 | `fennel` | Fennel (Lua VM) | `judge-lua` | ✅ Pass |
 
-### KNOWN_FLAKY (5 languages)
+### KNOWN_FLAKY (1 language)
 
 These languages are skipped in E2E tests:
-- **flix**: No A+B solution yet (language not yet in table)
-- **lolcode**: GIMMEH reads full lines, can't parse space-separated input
-- **umjunsik**: Rust crate is compiler only (Lamina IR), not interpreter
-- **k**: ngn/k can't read stdin in script mode (eoleof)
-- **gleam**: gleam_stdlib compile error with project template setup
+- **k**: ngn/k can't write to stdout in script mode (type/eoleof errors)
+
+### Newly Fixed (previously flaky, now passing)
+
+- **flix**: Flix 0.69.2 with build-jar + Files.readString approach
+- **gleam**: Gleam 1.14.0 with Erlang FFI and erl direct run
+- **umjunsik**: Python interpreter with fixed 0-indexed jump targets
+- **lolcode**: tr wrapper for space-separated input
+- **uiua**: Ubuntu 25.04, &sc syntax for 0.18.x
+- **shakespeare**: tr wrapper for space-separated input
 
 ## Docker Image Presets
 
@@ -109,7 +115,7 @@ These languages are skipped in E2E tests:
 | `core` | C/C++, Python, Java/Kotlin | ~0.8 GB |
 | `popular` | Core + Node.js, Rust, Go | ~2.5 GB |
 | `extended` | Popular + Ruby, Lua, Bash, C#, PHP, Perl, Swift, R, Haskell, Dart, Zig | ~8 GB |
-| `all` | All 72 images | ~30 GB |
+| `all` | All 70 images | ~30 GB |
 
 ## Admin Language Management
 
