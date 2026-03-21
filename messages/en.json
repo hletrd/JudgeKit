@@ -1077,7 +1077,14 @@
       "cancel": "Cancel",
       "removeAction": "Remove",
       "removeSuccess": "Worker removed successfully",
-      "removeFailed": "Failed to remove worker"
+      "removeFailed": "Failed to remove worker",
+      "addWorker": "Add Worker",
+      "addWorkerTitle": "Add a Judge Worker",
+      "addWorkerDescription": "Deploy a new worker on a dedicated machine. Workers auto-register when they connect.",
+      "addWorkerDocker": "Option 1: Docker Compose",
+      "addWorkerScript": "Option 2: Deploy Script",
+      "addWorkerNote": "Replace <your-judge-auth-token> with the JUDGE_AUTH_TOKEN from your .env.production file. The worker will appear in this list once it starts.",
+      "copied": "Copied to clipboard"
     }
   },
   "profile": {

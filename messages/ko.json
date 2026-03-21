@@ -1069,7 +1069,14 @@
       "cancel": "취소",
       "removeAction": "제거",
       "removeSuccess": "워커가 제거되었습니다",
-      "removeFailed": "워커 제거에 실패했습니다"
+      "removeFailed": "워커 제거에 실패했습니다",
+      "addWorker": "워커 추가",
+      "addWorkerTitle": "채점 워커 추가",
+      "addWorkerDescription": "전용 머신에 새 워커를 배포합니다. 워커가 연결되면 자동으로 등록됩니다.",
+      "addWorkerDocker": "방법 1: Docker Compose",
+      "addWorkerScript": "방법 2: 배포 스크립트",
+      "addWorkerNote": "<your-judge-auth-token>을 .env.production 파일의 JUDGE_AUTH_TOKEN으로 교체하세요. 워커가 시작되면 이 목록에 표시됩니다.",
+      "copied": "클립보드에 복사됨"
     }
   },
   "profile": {

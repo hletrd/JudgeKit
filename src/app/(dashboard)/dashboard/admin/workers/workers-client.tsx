@@ -31,7 +31,15 @@ import {
   AlertDialogTitle,
   AlertDialogTrigger,
 } from "@/components/ui/alert-dialog";
-import { Trash2, RefreshCw, Pencil, Check, X } from "lucide-react";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogHeader,
+  DialogTitle,
+  DialogTrigger,
+} from "@/components/ui/dialog";
+import { Trash2, RefreshCw, Pencil, Check, X, Plus, Copy } from "lucide-react";
 import { toast } from "sonner";
 
 interface Worker {
@@ -138,6 +146,75 @@ function AliasCell({ worker, onUpdate }: { worker: Worker; onUpdate: () => void 
   );
 }
 
+function AddWorkerDialog() {
+  const t = useTranslations("admin.workers");
+  const appUrl = typeof window !== "undefined" ? window.location.origin : "";
+
+  const dockerCmd = `JUDGE_BASE_URL=${appUrl}/api/v1 \\
+JUDGE_AUTH_TOKEN=<your-judge-auth-token> \\
+JUDGE_CONCURRENCY=4 \\
+docker compose -f docker-compose.worker.yml up -d`;
+
+  const deployCmd = `./scripts/deploy-worker.sh \\
+  --host=<worker-ip> \\
+  --app-url=${appUrl}/api/v1 \\
+  --concurrency=4 \\
+  --sync-images`;
+
+  function copyToClipboard(text: string) {
+    navigator.clipboard.writeText(text);
+    toast.success(t("copied"));
+  }
+
+  return (
+    <Dialog>
+      <DialogTrigger render={
+        <Button variant="outline" size="sm">
+          <Plus className="mr-2 h-4 w-4" />
+          {t("addWorker")}
+        </Button>
+      } />
+      <DialogContent>
+        <DialogHeader>
+          <DialogTitle>{t("addWorkerTitle")}</DialogTitle>
+          <DialogDescription>{t("addWorkerDescription")}</DialogDescription>
+        </DialogHeader>
+        <div className="space-y-4">
+          <div>
+            <h4 className="text-sm font-medium mb-2">{t("addWorkerDocker")}</h4>
+            <div className="relative">
+              <pre className="bg-muted p-3 rounded text-xs overflow-x-auto whitespace-pre-wrap">{dockerCmd}</pre>
+              <Button
+                variant="ghost"
+                size="icon"
+                className="absolute top-1 right-1 h-6 w-6"
+                onClick={() => copyToClipboard(dockerCmd)}
+              >
+                <Copy className="h-3 w-3" />
+              </Button>
+            </div>
+          </div>
+          <div>
+            <h4 className="text-sm font-medium mb-2">{t("addWorkerScript")}</h4>
+            <div className="relative">
+              <pre className="bg-muted p-3 rounded text-xs overflow-x-auto whitespace-pre-wrap">{deployCmd}</pre>
+              <Button
+                variant="ghost"
+                size="icon"
+                className="absolute top-1 right-1 h-6 w-6"
+                onClick={() => copyToClipboard(deployCmd)}
+              >
+                <Copy className="h-3 w-3" />
+              </Button>
+            </div>
+          </div>
+          <p className="text-xs text-muted-foreground">{t("addWorkerNote")}</p>
+        </div>
+      </DialogContent>
+    </Dialog>
+  );
+}
+
 export function WorkersPageClient() {
   const t = useTranslations("admin.workers");
   const [workers, setWorkers] = useState<Worker[]>([]);
@@ -221,10 +298,13 @@ export function WorkersPageClient() {
                 {t("tableDescription", { count: workers.length })}
               </CardDescription>
             </div>
-            <Button variant="outline" size="sm" onClick={() => fetchData()}>
-              <RefreshCw className="mr-2 h-4 w-4" />
-              {t("refresh")}
-            </Button>
+            <div className="flex gap-2">
+              <AddWorkerDialog />
+              <Button variant="outline" size="sm" onClick={() => fetchData()}>
+                <RefreshCw className="mr-2 h-4 w-4" />
+                {t("refresh")}
+              </Button>
+            </div>
           </div>
         </CardHeader>
         <CardContent>
