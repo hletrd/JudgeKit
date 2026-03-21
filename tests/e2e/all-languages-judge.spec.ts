@@ -984,6 +984,7 @@ let submissionIds: Map<string, string> = new Map();
 
 test.describe("Judge all supported languages", () => {
   test.beforeAll(async ({ browser }) => {
+    test.setTimeout(600_000);  // 10 minutes for submitting 114 languages
     ctx = await browser.newContext();
     const page = await ctx.newPage();
     await login(page);
