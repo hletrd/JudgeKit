@@ -4,10 +4,12 @@ FROM ghcr.io/gleam-lang/gleam:v1.14.0-erlang-alpine
 RUN mkdir -p /tmp/gleam-init && cd /tmp/gleam-init && \
     gleam new solution --skip-git --skip-github 2>/dev/null && \
     cd /tmp/gleam-init/solution && \
-    # Pin gleam_stdlib to exact version compatible with 1.14.0
+    # Pin gleam_stdlib and add gleam_erlang for stdin support
     sed -i 's/gleam_stdlib = .*/gleam_stdlib = ">= 0.44.0 and < 1.0.0"/' gleam.toml && \
     # Remove dev-dependencies to avoid unnecessary downloads
     sed -i '/\[dev-dependencies\]/,/^$/d' gleam.toml && \
+    # Add gleam_erlang dependency
+    gleam add gleam_erlang 2>/dev/null && \
     gleam deps download 2>/dev/null && \
     gleam build --target erlang 2>/dev/null || true && \
     cp -r /tmp/gleam-init/solution /opt/gleam-template && \
