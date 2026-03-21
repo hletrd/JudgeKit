@@ -39,6 +39,19 @@ Last updated: 2026-03-20
 - The deploy script auto-detects server architecture (`uname -m` → `linux/amd64` or `linux/arm64`) and passes `--platform` to all Docker builds.
 - Do not assume the long-lived hosts still accept the seeded credentials unless freshly reset.
 
+## 2026-03-21 session changes (production arm64 deployment)
+
+- **Production deployed**: Full deploy to `oj.auraedu.me` (arm64 Ampere Altra) via `deploy-docker.sh`.
+- **67 of 71 Docker images built on arm64**. 4 are amd64-only: `judge-powershell` (no arm64 package), `judge-apl` (build fails), `judge-b` (BCause GCC incompatibility), `judge-simula` (GNU Cim won't compile).
+- **J language removed**: No arm64 binary, unmaintained. Removed from all configs.
+- **Racket Dockerfile fixed**: Switched from `racket/racket:8.17` (amd64-only) to Debian `racket` package (multi-arch).
+- **Dart Dockerfile fixed**: Reverted to `dart:3.8` multi-arch base image (works on both amd64/arm64).
+- **FreeBASIC Dockerfile fixed**: Architecture-aware binary download (`x86_64`/`aarch64`).
+- **Umjunsik Dockerfile fixed**: Switched to Python pip install (`umjunsik==2.0.2`).
+- **Worker Dockerfile hardened**: `cargo clean` before build + arch verification to prevent stale binary issues.
+- **README updated**: Dual amd64/arm64 size table for all 67 images.
+- **E2E credentials**: Test user (`test`/`e2etest1234`) created on production for E2E testing.
+
 ## 2026-03-20 session changes (new runtimes batch)
 
 - **8 new language variants added**: Deno JS/TS (`judge-deno`), Bun JS/TS (`judge-bun`), Gleam (`judge-gleam`), Standard ML (`judge-sml`), Fennel (reuses `judge-lua`), Flix (reuses `judge-jvm`).

@@ -246,18 +246,22 @@ JudgeKit supports full contest management with two scoring models and two schedu
 - **Claim endpoint sh -c wrapping**: The judge claim API endpoint wraps `compileCommand` and `runCommand` values in `["sh", "-c", cmd]` before passing to the worker. The DB stores raw commands without `sh -c` — do not double-wrap when editing via admin UI.
 - **Zig compile flag**: Zig 0.13 uses `-femit-bin=/workspace/solution` (not `-o`) to specify the output binary path. Example: `zig build-exe --cache-dir /tmp/zig-cache -femit-bin=/workspace/solution /workspace/solution.zig`.
 
+### ARM64-Only Issues (4 images)
+
+These images fail to build on arm64 and are amd64-only:
+- **powershell**: Microsoft doesn't publish arm64 Debian packages
+- **apl**: GNU APL build from source fails (autotools + DNS issues)
+- **b**: BCause compiler uses Clang-specific flags incompatible with arm64 GCC
+- **simula**: GNU Cim 5.1 doesn't compile with modern GCC on arm64
+
 ### Known Flaky Languages (E2E)
 
-5 languages remain in KNOWN_FLAKY. Per-language individual tests run in ~5 minutes:
+Languages in KNOWN_FLAKY are skipped in E2E tests:
 - **umjunsik**: Korean esoteric lang — compiler compiles to Lamina IR, syntax unclear
 - **k**: ngn/k can't read stdin in script mode (eoleof error)
 - **flix**: No A+B solution yet (complex functional JVM language)
-- **lolcode**: GIMMEH reads full lines — can't parse space-separated input
-- **gleam**: gleam_stdlib compile error with project template setup
-
-Previously flaky, now fixed:
-- **F#**: Dockerfile sets `HOME=/tmp` and `DOTNET_CLI_HOME=/tmp` so the .NET SDK writes to writable directories.
-- **FreeBASIC**: SourceForge download uses `--retry 5 --retry-delay 10 --max-time 180` with file-based download instead of piped tar.
+- **gleam**: Project template setup needed for compilation
+- **simula**: Docker image won't build (GNU Cim)
 
 Test cases use only positive single-digit sums (<=9) to maximize esoteric language compatibility.
 
