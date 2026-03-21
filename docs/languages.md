@@ -23,8 +23,8 @@
 | 17 | `go` | Go 1.26 | `judge-go` |
 | 18 | `swift` | Swift 6.2 | `judge-swift` |
 | 19 | `csharp` | C# (Mono 6.12) | `judge-csharp` |
-| 20 | `fsharp` | F# (.NET 8) | `judge-fsharp` |
-| 21 | `vbnet` | Visual Basic .NET (.NET SDK 10.0) | `judge-fsharp` |
+| 20 | `fsharp` | F# (.NET 10) | `judge-fsharp` |
+| 21 | `vbnet` | Visual Basic .NET (.NET 10) | `judge-fsharp` |
 | 22 | `r` | R 4.5 | `judge-r` |
 | 23 | `perl` | Perl 5.40 | `judge-perl` |
 | 24 | `php` | PHP 8.4 | `judge-php` |

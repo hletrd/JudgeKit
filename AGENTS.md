@@ -41,8 +41,8 @@ JudgeKit supports 92 language variants across 72 Docker images:
 | 18 | `swift` | Swift 6.2 | `judge-swift` |
 | 19 | `objective_c` | Objective-C (GCC gobjc) | `judge-objective-c` |
 | 20 | `csharp` | C# (Mono 6.12) | `judge-csharp` |
-| 21 | `fsharp` | F# (.NET 8) | `judge-fsharp` |
-| 22 | `vbnet` | Visual Basic .NET (.NET SDK 10.0) | `judge-fsharp` |
+| 21 | `fsharp` | F# (.NET 10) | `judge-fsharp` |
+| 22 | `vbnet` | Visual Basic .NET (.NET 10) | `judge-fsharp` |
 | 23 | `r` | R 4.5 | `judge-r` |
 | 24 | `perl` | Perl 5.40 | `judge-perl` |
 | 25 | `php` | PHP 8.4 | `judge-php` |

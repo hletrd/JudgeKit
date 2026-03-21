@@ -746,10 +746,10 @@ export const JUDGE_LANGUAGE_CONFIGS: Record<Language, JudgeLanguageDefinition> =
   fsharp: {
     language: "fsharp",
     displayName: "F#",
-    standard: ".NET 8",
+    standard: ".NET 10",
     extension: ".fsx",
     dockerImage: "judge-fsharp:latest",
-    compiler: "dotnet fsi (.NET 8)",
+    compiler: "dotnet fsi (.NET 10)",
     compileCommand: null,
     runCommand: ["dotnet", "fsi", "/workspace/solution.fsx"],
   },
@@ -846,10 +846,10 @@ export const JUDGE_LANGUAGE_CONFIGS: Record<Language, JudgeLanguageDefinition> =
   vbnet: {
     language: "vbnet",
     displayName: "Visual Basic .NET",
-    standard: ".NET 8",
+    standard: ".NET 10",
     extension: ".vb",
     dockerImage: "judge-fsharp:latest",
-    compiler: "dotnet (VB.NET)",
+    compiler: "dotnet (VB.NET, .NET 10)",
     compileCommand: [
       "sh",
       "-c",
