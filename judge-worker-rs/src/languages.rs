@@ -632,16 +632,6 @@ static FSHARP_CONFIG: LanguageConfig = LanguageConfig {
     run_command: FSHARP_RUN,
 };
 
-// J language
-static J_RUN: &[&str] = &["jconsole", "/workspace/solution.ijs"];
-
-static J_CONFIG: LanguageConfig = LanguageConfig {
-    extension: ".ijs",
-    docker_image: "judge-j:latest",
-    compile_command: None,
-    run_command: J_RUN,
-};
-
 // APL (GNU APL)
 static APL_RUN: &[&str] = &["apl", "--script", "-f", "/workspace/solution.apl"];
 
@@ -1076,7 +1066,6 @@ pub fn get_config(language: &Language) -> Option<&'static LanguageConfig> {
         Language::Postscript => Some(&POSTSCRIPT_CONFIG),
         Language::Delphi => Some(&DELPHI_CONFIG),
         Language::Fsharp => Some(&FSHARP_CONFIG),
-        Language::J => Some(&J_CONFIG),
         Language::Apl => Some(&APL_CONFIG),
         Language::Freebasic => Some(&FREEBASIC_CONFIG),
         Language::Smalltalk => Some(&SMALLTALK_CONFIG),
@@ -1182,7 +1171,6 @@ mod tests {
             Language::Postscript,
             Language::Delphi,
             Language::Fsharp,
-            Language::J,
             Language::Apl,
             Language::Freebasic,
             Language::Smalltalk,

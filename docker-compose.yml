@@ -284,12 +284,6 @@ services:
       dockerfile: docker/Dockerfile.judge-fsharp
     image: judge-fsharp:${GIT_SHA:-latest}
 
-  judge-j:
-    build:
-      context: .
-      dockerfile: docker/Dockerfile.judge-j
-    image: judge-j:${GIT_SHA:-latest}
-
   judge-apl:
     build:
       context: .

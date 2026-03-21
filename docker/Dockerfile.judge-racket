@@ -1,8 +1,10 @@
-FROM racket/racket:8.17
+FROM debian:bookworm-slim
 
-RUN useradd --create-home --shell /usr/sbin/nologin judge 2>/dev/null || adduser -D -s /bin/false judge && \
-    mkdir -p /workspace && \
-    chown judge:judge /workspace
+RUN apt-get update && \
+    apt-get install -y --no-install-recommends racket && \
+    rm -rf /var/lib/apt/lists/* && \
+    useradd -m -s /bin/false judge && \
+    mkdir -p /workspace && chown judge:judge /workspace
 
 WORKDIR /workspace
 USER judge

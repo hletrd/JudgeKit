@@ -1,10 +1,22 @@
 FROM debian:bookworm-slim
+
 RUN apt-get update && apt-get install -y --no-install-recommends curl ca-certificates && \
-    curl -sL https://www.jsoftware.com/download/j9.6/install/j9.6.2_linux64.tar.gz | \
-    tar -xzf - -C /opt && \
-    ln -s /opt/j9.6.2/bin/jconsole /usr/local/bin/jconsole && \
+    ARCH=$(dpkg --print-architecture) && \
+    if [ "$ARCH" = "amd64" ]; then \
+      curl -sL https://www.jsoftware.com/download/j9.6/install/j9.6.2_linux64.tar.gz | tar -xzf - -C /opt; \
+    elif [ "$ARCH" = "arm64" ]; then \
+      curl -sL https://www.jsoftware.com/download/j9.6/install/j9.6.2_linux64_aarch64.tar.gz | tar -xzf - -C /opt || \
+      (apt-get install -y --no-install-recommends git build-essential && \
+       git clone --depth 1 https://github.com/jsoftware/jsource.git /tmp/jsource && \
+       cd /tmp/jsource && mkdir -p jlibrary/bin/linux-arm64 && \
+       make -C make2 j64 && cp bin/linux-arm64/jconsole /opt/ && \
+       rm -rf /tmp/jsource && apt-get purge -y git build-essential && apt-get autoremove -y); \
+    fi && \
+    ls /opt/j*/bin/jconsole 2>/dev/null && ln -sf /opt/j*/bin/jconsole /usr/local/bin/jconsole || \
+    ln -sf /opt/jconsole /usr/local/bin/jconsole 2>/dev/null || true && \
     rm -rf /var/lib/apt/lists/* && \
-    useradd --create-home --shell /usr/sbin/nologin judge && \
+    useradd -m -s /bin/false judge && \
     mkdir -p /workspace && chown judge:judge /workspace
+
 WORKDIR /workspace
 USER judge

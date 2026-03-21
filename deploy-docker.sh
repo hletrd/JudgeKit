@@ -35,7 +35,7 @@ SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 CORE_LANGS="cpp python jvm"
 POPULAR_LANGS="$CORE_LANGS node rust go"
 EXTENDED_LANGS="$POPULAR_LANGS ruby lua bash csharp php perl swift r haskell dart zig"
-ALL_LANGS="cpp clang python node jvm rust go swift csharp r perl php ruby lua haskell dart zig nim ocaml elixir julia d racket v fortran pascal cobol brainfuck scala erlang commonlisp bash esoteric ada clojure prolog tcl awk scheme groovy octave crystal powershell postscript fsharp j apl freebasic smalltalk b nasm bqn lolcode forth algol68 umjunsik intercal k haxe raku shakespeare unlambda snobol4 icon simula uiua odin objective-c deno bun gleam sml"
+ALL_LANGS="cpp clang python node jvm rust go swift csharp r perl php ruby lua haskell dart zig nim ocaml elixir julia d racket v fortran pascal cobol brainfuck scala erlang commonlisp bash esoteric ada clojure prolog tcl awk scheme groovy octave crystal powershell postscript fsharp apl freebasic smalltalk b nasm bqn lolcode forth algol68 umjunsik intercal k haxe raku shakespeare unlambda snobol4 icon simula uiua odin objective-c deno bun gleam sml"
 
 resolve_languages() {
   local spec="$1"

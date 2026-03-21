@@ -113,7 +113,6 @@ pub enum Language {
     Postscript,
     Delphi,
     Fsharp,
-    J,
     Apl,
     Freebasic,
     Smalltalk,

@@ -1,9 +1,13 @@
-FROM ghcr.io/gleam-lang/gleam:v1.7.0-erlang-alpine
+FROM ghcr.io/gleam-lang/gleam:v1.14.0-erlang-alpine
 
-# Create a Gleam project template for compilation
+# Create a Gleam project template with pre-downloaded deps
 RUN mkdir -p /tmp/gleam-init && cd /tmp/gleam-init && \
     gleam new solution --skip-git --skip-github 2>/dev/null && \
+    cd /tmp/gleam-init/solution && \
+    gleam deps download 2>/dev/null && \
+    gleam build --target erlang 2>/dev/null || true && \
     cp -r /tmp/gleam-init/solution /opt/gleam-template && \
+    chmod -R a+rX /opt/gleam-template && \
     rm -rf /tmp/gleam-init
 
 RUN adduser -D -s /bin/false judge && \

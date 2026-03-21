@@ -1,14 +1,19 @@
 FROM debian:bookworm-slim
+
 RUN apt-get update && apt-get install -y --no-install-recommends \
         curl ca-certificates libncurses5 libx11-6 libxext6 libxpm4 libxrandr2 \
         libgpm2 libtinfo6 gcc libc6-dev libgcc-12-dev && \
+    ARCH=$(dpkg --print-architecture) && \
+    if [ "$ARCH" = "amd64" ]; then FB_ARCH="x86_64"; \
+    elif [ "$ARCH" = "arm64" ]; then FB_ARCH="aarch64"; fi && \
     curl -fSL --retry 5 --retry-delay 10 --max-time 180 -o /tmp/fbc.tar.gz \
-        "https://sourceforge.net/projects/fbc/files/FreeBASIC-1.10.1/Binaries-Linux/FreeBASIC-1.10.1-linux-x86_64.tar.gz/download" && \
+        "https://sourceforge.net/projects/fbc/files/FreeBASIC-1.10.1/Binaries-Linux/FreeBASIC-1.10.1-linux-${FB_ARCH}.tar.gz/download" && \
     tar -xzf /tmp/fbc.tar.gz -C /opt && \
-    cd /opt/FreeBASIC-1.10.1-linux-x86_64 && ./install.sh -i /usr/local && \
-    rm -rf /opt/FreeBASIC-1.10.1-linux-x86_64 /tmp/fbc.tar.gz && \
+    cd /opt/FreeBASIC-1.10.1-linux-${FB_ARCH} && ./install.sh -i /usr/local && \
+    rm -rf /opt/FreeBASIC-1.10.1-linux-${FB_ARCH} /tmp/fbc.tar.gz && \
     rm -rf /var/lib/apt/lists/* && \
     useradd --create-home --shell /usr/sbin/nologin judge && \
     mkdir -p /workspace && chown judge:judge /workspace
+
 WORKDIR /workspace
 USER judge

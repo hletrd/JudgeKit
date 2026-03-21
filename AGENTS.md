@@ -90,7 +90,6 @@ JudgeKit supports 92 language variants across 72 Docker images:
 | 67 | `hyeong` | Hyeong | `judge-esoteric` |
 | 68 | `whitespace` | Whitespace | `judge-esoteric` |
 | 69 | `b` | B (BCause) | `judge-b` |
-| 70 | `j` | J 9.6 | `judge-j` |
 | 71 | `apl` | APL (GNU APL) | `judge-apl` |
 | 72 | `freebasic` | FreeBASIC | `judge-freebasic` |
 | 73 | `smalltalk` | Smalltalk (GNU Smalltalk) | `judge-smalltalk` |
