@@ -301,6 +301,32 @@ export const assignmentProblems = sqliteTable(
   ]
 );
 
+export const judgeWorkers = sqliteTable(
+  "judge_workers",
+  {
+    id: text("id")
+      .primaryKey()
+      .$defaultFn(() => nanoid()),
+    hostname: text("hostname").notNull(),
+    concurrency: integer("concurrency").notNull().default(1),
+    activeTasks: integer("active_tasks").notNull().default(0),
+    version: text("version"),
+    labels: text("labels", { mode: "json" }).$type<string[]>().default([]),
+    status: text("status").notNull().default("online"),
+    registeredAt: integer("registered_at", { mode: "timestamp" })
+      .notNull()
+      .$defaultFn(() => new Date(Date.now())),
+    lastHeartbeatAt: integer("last_heartbeat_at", { mode: "timestamp" })
+      .notNull()
+      .$defaultFn(() => new Date(Date.now())),
+    deregisteredAt: integer("deregistered_at", { mode: "timestamp" }),
+  },
+  (table) => [
+    index("judge_workers_status_idx").on(table.status),
+    index("judge_workers_last_heartbeat_idx").on(table.lastHeartbeatAt),
+  ]
+);
+
 export const submissions = sqliteTable(
   "submissions",
   {
@@ -321,6 +347,7 @@ export const submissions = sqliteTable(
     status: text("status").default("pending"),
     judgeClaimToken: text("judge_claim_token"),
     judgeClaimedAt: integer("judge_claimed_at", { mode: "timestamp" }),
+    judgeWorkerId: text("judge_worker_id"),
     compileOutput: text("compile_output"),
     executionTimeMs: integer("execution_time_ms"),
     memoryUsedKb: integer("memory_used_kb"),
@@ -338,6 +365,7 @@ export const submissions = sqliteTable(
     index("submissions_user_idx").on(table.userId),
     index("submissions_problem_idx").on(table.problemId),
     index("submissions_assignment_idx").on(table.assignmentId),
+    index("submissions_judge_worker_idx").on(table.judgeWorkerId),
   ]
 );
 

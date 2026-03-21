@@ -24,6 +24,7 @@ import {
   contestAccessTokens,
   antiCheatEvents,
   roles,
+  judgeWorkers,
 } from "./schema";
 
 export const usersRelations = relations(users, ({ many }) => ({
@@ -167,6 +168,10 @@ export const submissionsRelations = relations(submissions, ({ one, many }) => ({
     fields: [submissions.assignmentId],
     references: [assignments.id],
   }),
+  judgeWorker: one(judgeWorkers, {
+    fields: [submissions.judgeWorkerId],
+    references: [judgeWorkers.id],
+  }),
   results: many(submissionResults),
   comments: many(submissionComments),
 }));
@@ -291,6 +296,10 @@ export const contestAccessTokensRelations = relations(
 );
 
 export const rolesRelations = relations(roles, () => ({}));
+
+export const judgeWorkersRelations = relations(judgeWorkers, ({ many }) => ({
+  submissions: many(submissions),
+}));
 
 export const antiCheatEventsRelations = relations(
   antiCheatEvents,

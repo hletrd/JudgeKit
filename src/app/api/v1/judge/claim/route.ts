@@ -41,6 +41,9 @@ export async function POST(request: NextRequest) {
       return apiError("unsupportedMediaType", 415);
     }
 
+    const body = await request.json();
+    const workerId: string | null = typeof body?.workerId === "string" ? body.workerId : null;
+
     const claimToken = nanoid();
     const claimCreatedAt = Date.now();
 
@@ -54,7 +57,8 @@ export async function POST(request: NextRequest) {
           SET
             status = 'queued',
             judge_claim_token = @claimToken,
-            judge_claimed_at = @claimCreatedAt
+            judge_claimed_at = @claimCreatedAt,
+            judge_worker_id = @workerId
           WHERE id = (
             SELECT id
             FROM submissions
@@ -81,7 +85,7 @@ export async function POST(request: NextRequest) {
             submitted_at AS submittedAt
         `
       )
-      .get({ claimToken, claimCreatedAt, staleClaimTimeoutMs: getConfiguredSettings().staleClaimTimeoutMs });
+      .get({ claimToken, claimCreatedAt, staleClaimTimeoutMs: getConfiguredSettings().staleClaimTimeoutMs, workerId });
 
     const claimed: ClaimedSubmissionRow | undefined = claimedRaw !== undefined
       ? claimedSubmissionRowSchema.parse(claimedRaw)
@@ -108,6 +112,7 @@ export async function POST(request: NextRequest) {
         language: claimed.language,
         problemId: claimed.problemId,
         status: claimed.status,
+        workerId,
       },
       request,
     });

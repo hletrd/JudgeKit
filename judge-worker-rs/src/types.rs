@@ -239,3 +239,52 @@ pub struct ResultReport<'a> {
     pub compile_output: &'a str,
     pub results: Vec<TestResult>,
 }
+
+#[derive(Debug, Clone, Serialize)]
+pub struct RegisterRequest<'a> {
+    pub hostname: &'a str,
+    pub concurrency: usize,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub version: Option<&'a str>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub labels: Option<Vec<&'a str>>,
+}
+
+#[derive(Debug, Clone, Deserialize)]
+pub struct RegisterResponseData {
+    #[serde(rename = "workerId")]
+    pub worker_id: String,
+    #[serde(rename = "heartbeatIntervalMs")]
+    pub heartbeat_interval_ms: u64,
+    #[serde(rename = "staleClaimTimeoutMs")]
+    pub stale_claim_timeout_ms: u64,
+}
+
+#[derive(Debug, Clone, Deserialize)]
+pub struct RegisterResponse {
+    pub data: RegisterResponseData,
+}
+
+#[derive(Debug, Clone, Serialize)]
+pub struct HeartbeatRequest<'a> {
+    #[serde(rename = "workerId")]
+    pub worker_id: &'a str,
+    #[serde(rename = "activeTasks")]
+    pub active_tasks: usize,
+    #[serde(rename = "availableSlots")]
+    pub available_slots: usize,
+    #[serde(rename = "uptimeSeconds")]
+    pub uptime_seconds: u64,
+}
+
+#[derive(Debug, Clone, Serialize)]
+pub struct DeregisterRequest<'a> {
+    #[serde(rename = "workerId")]
+    pub worker_id: &'a str,
+}
+
+#[derive(Debug, Clone, Serialize)]
+pub struct ClaimRequest<'a> {
+    #[serde(rename = "workerId", skip_serializing_if = "Option::is_none")]
+    pub worker_id: Option<&'a str>,
+}

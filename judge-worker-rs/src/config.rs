@@ -6,6 +6,9 @@ use std::time::Duration;
 pub struct Config {
     pub claim_url: String,
     pub report_url: String,
+    pub register_url: String,
+    pub heartbeat_url: String,
+    pub deregister_url: String,
     pub poll_interval: Duration,
     pub auth_token: SecretString,
     pub disable_custom_seccomp: bool,
@@ -16,6 +19,9 @@ pub struct Config {
     /// Maximum number of submissions to judge concurrently.
     /// Defaults to 1. Configurable via `JUDGE_CONCURRENCY` env var (1..=16).
     pub judge_concurrency: usize,
+    /// Hostname reported to the app server during registration.
+    /// Defaults to the system hostname.
+    pub worker_hostname: String,
 }
 
 impl Config {
@@ -31,32 +37,49 @@ impl Config {
         //   -> claim_url  = JUDGE_POLL_URL with "/judge/poll" replaced by "/judge/claim"
         //
         // Default: http://localhost:3000/api/v1
-        let (claim_url, report_url) = if let Ok(base) = env::var("JUDGE_BASE_URL") {
+        let (claim_url, report_url, register_url, heartbeat_url, deregister_url) = if let Ok(base) = env::var("JUDGE_BASE_URL") {
             let base = base.trim_end_matches('/');
             (
                 format!("{base}/judge/claim"),
                 format!("{base}/judge/poll"),
+                format!("{base}/judge/register"),
+                format!("{base}/judge/heartbeat"),
+                format!("{base}/judge/deregister"),
             )
         } else if let Ok(poll_url) = env::var("JUDGE_POLL_URL") {
             // Backward compatibility: derive claim URL from poll URL
-            let claim = if let Some(base) = poll_url.strip_suffix("/judge/poll") {
-                format!("{base}/judge/claim")
+            let (claim, base_prefix) = if let Some(base) = poll_url.strip_suffix("/judge/poll") {
+                (format!("{base}/judge/claim"), base.to_string())
             } else {
                 tracing::warn!(
                     "JUDGE_POLL_URL does not end with /judge/poll; \
                      cannot derive claim URL. Falling back to replacing last path segment."
                 );
                 // Best-effort: replace the last path segment
-                match poll_url.rfind('/') {
+                let c = match poll_url.rfind('/') {
                     Some(pos) => format!("{}/claim", &poll_url[..pos]),
                     None => poll_url.replace("poll", "claim"),
-                }
+                };
+                let b = match poll_url.rfind("/judge/") {
+                    Some(pos) => poll_url[..pos].to_string(),
+                    None => "http://localhost:3000/api/v1".to_string(),
+                };
+                (c, b)
             };
-            (claim, poll_url)
+            (
+                claim,
+                poll_url,
+                format!("{base_prefix}/judge/register"),
+                format!("{base_prefix}/judge/heartbeat"),
+                format!("{base_prefix}/judge/deregister"),
+            )
         } else {
             (
                 "http://localhost:3000/api/v1/judge/claim".to_string(),
                 "http://localhost:3000/api/v1/judge/poll".to_string(),
+                "http://localhost:3000/api/v1/judge/register".to_string(),
+                "http://localhost:3000/api/v1/judge/heartbeat".to_string(),
+                "http://localhost:3000/api/v1/judge/deregister".to_string(),
             )
         };
 
@@ -152,15 +175,26 @@ impl Config {
             Err(_) => 1,
         };
 
+        let worker_hostname = env::var("JUDGE_WORKER_HOSTNAME").unwrap_or_else(|_| {
+            hostname::get()
+                .ok()
+                .and_then(|h| h.into_string().ok())
+                .unwrap_or_else(|| "unknown".to_string())
+        });
+
         Ok(Config {
             claim_url,
             report_url,
+            register_url,
+            heartbeat_url,
+            deregister_url,
             poll_interval,
             auth_token,
             disable_custom_seccomp,
             seccomp_profile_path,
             dead_letter_dir,
             judge_concurrency,
+            worker_hostname,
         })
     }
 }

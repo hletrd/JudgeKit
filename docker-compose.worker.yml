@@ -1,0 +1,39 @@
+# =============================================================================
+# JudgeKit Dedicated Judge Worker
+#
+# Deploy this on dedicated machines to scale judging capacity.
+# Each machine runs its own judge worker connecting to the central app server.
+#
+# Usage:
+#   docker compose -f docker-compose.worker.yml up -d
+#
+# Prerequisites:
+#   - Set JUDGE_BASE_URL to the app server's API URL (HTTPS recommended)
+#   - Set JUDGE_AUTH_TOKEN to match the app server's judge auth token
+#   - Judge language images must be available locally or via registry
+#   - /judge-workspaces directory must exist on the host
+# =============================================================================
+
+services:
+  judge-worker:
+    image: judgekit-judge-worker:latest
+    container_name: judgekit-judge-worker
+    restart: unless-stopped
+    privileged: true
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
+      - /judge-workspaces:/judge-workspaces
+      - judgekit-dead-letter:/app/dead-letter
+    environment:
+      - JUDGE_BASE_URL=${JUDGE_BASE_URL:?Set JUDGE_BASE_URL to the app server API URL}
+      - JUDGE_AUTH_TOKEN=${JUDGE_AUTH_TOKEN:?Set JUDGE_AUTH_TOKEN to match the app server}
+      - JUDGE_CONCURRENCY=${JUDGE_CONCURRENCY:-4}
+      - JUDGE_WORKER_HOSTNAME=${JUDGE_WORKER_HOSTNAME:-}
+      - JUDGE_SECCOMP_PROFILE=/etc/judge/seccomp-profile.json
+      - DEAD_LETTER_DIR=/app/dead-letter
+      - TMPDIR=/judge-workspaces
+      - RUST_LOG=${RUST_LOG:-info}
+
+volumes:
+  judgekit-dead-letter:
+    driver: local

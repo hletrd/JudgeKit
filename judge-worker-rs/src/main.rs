@@ -8,6 +8,7 @@ mod types;
 
 use api::ApiClient;
 use config::Config;
+use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::Arc;
 use tokio::sync::Semaphore;
 
@@ -42,6 +43,9 @@ async fn main() {
     let client = Arc::new(match ApiClient::new(
         config.claim_url.clone(),
         config.report_url.clone(),
+        config.register_url.clone(),
+        config.heartbeat_url.clone(),
+        config.deregister_url.clone(),
         config.auth_token.clone(),
     ) {
         Ok(c) => c,
@@ -50,16 +54,91 @@ async fn main() {
             std::process::exit(1);
         }
     });
+
+    let worker_hostname = config.worker_hostname.clone();
     let config = Arc::new(config);
     let semaphore = Arc::new(Semaphore::new(concurrency));
+    let active_tasks = Arc::new(AtomicUsize::new(0));
+    let start_time = std::time::Instant::now();
 
     tracing::info!(concurrency = concurrency, "Judge worker started");
     tracing::info!(
         claim_url = %config.claim_url,
         report_url = %config.report_url,
         poll_interval_ms = config.poll_interval.as_millis() as u64,
+        hostname = %worker_hostname,
         "Worker configuration"
     );
+
+    // Register with the app server
+    let worker_id: Option<String> = match client.register(&worker_hostname, concurrency).await {
+        Ok(resp) => {
+            tracing::info!(
+                worker_id = %resp.data.worker_id,
+                heartbeat_interval_ms = resp.data.heartbeat_interval_ms,
+                "Registered with app server"
+            );
+            Some(resp.data.worker_id)
+        }
+        Err(e) => {
+            tracing::warn!(
+                error = %e,
+                "Failed to register with app server — running without registration"
+            );
+            None
+        }
+    };
+
+    // Spawn heartbeat task if registered
+    let heartbeat_handle = if let Some(ref wid) = worker_id {
+        let client = Arc::clone(&client);
+        let wid = wid.clone();
+        let active_tasks = Arc::clone(&active_tasks);
+        let heartbeat_cancel = tokio_util::sync::CancellationToken::new();
+        let heartbeat_cancel_clone = heartbeat_cancel.clone();
+
+        let handle = tokio::spawn(async move {
+            let mut consecutive_failures: u32 = 0;
+            loop {
+                tokio::select! {
+                    _ = heartbeat_cancel_clone.cancelled() => {
+                        tracing::debug!("Heartbeat task cancelled");
+                        break;
+                    }
+                    _ = tokio::time::sleep(std::time::Duration::from_secs(30)) => {}
+                }
+
+                let current_active = active_tasks.load(Ordering::Relaxed);
+                let available = concurrency.saturating_sub(current_active);
+                let uptime = start_time.elapsed().as_secs();
+
+                match client.heartbeat(&wid, current_active, available, uptime).await {
+                    Ok(()) => {
+                        if consecutive_failures > 0 {
+                            tracing::info!("Heartbeat recovered after {} failures", consecutive_failures);
+                        }
+                        consecutive_failures = 0;
+                    }
+                    Err(e) => {
+                        consecutive_failures += 1;
+                        if consecutive_failures >= 3 {
+                            tracing::warn!(
+                                error = %e,
+                                consecutive_failures,
+                                "Heartbeat failing repeatedly — server may mark this worker as stale"
+                            );
+                        } else {
+                            tracing::debug!(error = %e, "Heartbeat failed");
+                        }
+                    }
+                }
+            }
+        });
+
+        Some((handle, heartbeat_cancel))
+    } else {
+        None
+    };
 
     // Graceful shutdown via SIGTERM/SIGINT
     let shutdown = async {
@@ -109,7 +188,7 @@ async fn main() {
                 drop(permit);
                 break;
             }
-            result = client.poll() => {
+            result = client.poll(worker_id.as_deref()) => {
                 match result {
                     Ok(Some(submission)) => Some(submission),
                     Ok(None) => None,
@@ -126,12 +205,16 @@ async fn main() {
                 tracing::info!(submission_id = %submission.id, "Processing submission");
                 let client = Arc::clone(&client);
                 let config = Arc::clone(&config);
+                let active_tasks = Arc::clone(&active_tasks);
+
+                active_tasks.fetch_add(1, Ordering::Relaxed);
 
                 let handle = tokio::task::spawn(async move {
                     // The permit is moved into this task and dropped when done,
                     // releasing the semaphore slot for a new job.
                     let _permit = permit;
                     executor::execute(&client, &config, submission).await;
+                    active_tasks.fetch_sub(1, Ordering::Relaxed);
                 });
                 task_handles.push(handle);
             }
@@ -158,6 +241,12 @@ async fn main() {
         }
     }
 
+    // Cancel heartbeat task
+    if let Some((handle, cancel)) = heartbeat_handle {
+        cancel.cancel();
+        let _ = handle.await;
+    }
+
     // Graceful shutdown: await all in-flight tasks
     let in_flight = task_handles.len();
     if in_flight > 0 {
@@ -168,6 +257,15 @@ async fn main() {
             }
         }
         tracing::info!("All in-flight submissions completed");
+    }
+
+    // Deregister from the app server
+    if let Some(ref wid) = worker_id {
+        if let Err(e) = client.deregister(wid).await {
+            tracing::warn!(error = %e, "Failed to deregister — server will mark as stale");
+        } else {
+            tracing::info!("Deregistered from app server");
+        }
     }
 
     tracing::info!("Judge worker shut down gracefully");

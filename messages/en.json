@@ -85,7 +85,8 @@
     "rankings": "Rankings",
     "contests": "Contests",
     "roleManagement": "Role Management",
-    "languages": "Languages"
+    "languages": "Languages",
+    "judgeWorkers": "Judge Workers"
   },
   "dashboard": {
     "title": "Dashboard",
@@ -1037,6 +1038,32 @@
         "createSuccess": "Language created successfully.",
         "createError": "Failed to create language."
       }
+    },
+    "workers": {
+      "title": "Judge Workers",
+      "description": "Monitor and manage connected judge worker instances.",
+      "statsOnline": "Workers Online",
+      "statsQueueDepth": "Queue Depth",
+      "statsActiveJudging": "Active Judging",
+      "statsTotalConcurrency": "Total Concurrency",
+      "tableTitle": "Workers",
+      "tableDescription": "{count} registered workers",
+      "refresh": "Refresh",
+      "loading": "Loading...",
+      "noWorkers": "No judge workers registered.",
+      "colHostname": "Hostname",
+      "colStatus": "Status",
+      "colConcurrency": "Concurrency",
+      "colActiveTasks": "Active Tasks",
+      "colVersion": "Version",
+      "colLastHeartbeat": "Last Heartbeat",
+      "colActions": "Actions",
+      "removeConfirmTitle": "Remove this worker?",
+      "removeConfirmDescription": "Worker \"{hostname}\" will be removed and its in-flight submissions will be reclaimed.",
+      "cancel": "Cancel",
+      "removeAction": "Remove",
+      "removeSuccess": "Worker removed successfully",
+      "removeFailed": "Failed to remove worker"
     }
   },
   "profile": {

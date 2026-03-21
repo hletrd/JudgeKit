@@ -14,6 +14,8 @@ tracing = "0.1"
 tracing-subscriber = { version = "0.3", features = ["env-filter"] }
 tempfile = "3"
 memchr = "2"
+hostname = "0.4"
+tokio-util = "0.7"
 
 [profile.release]
 lto = true

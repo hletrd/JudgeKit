@@ -85,7 +85,8 @@
     "rankings": "랭킹",
     "contests": "대회",
     "roleManagement": "역할 관리",
-    "languages": "언어 관리"
+    "languages": "언어 관리",
+    "judgeWorkers": "채점 워커"
   },
   "dashboard": {
     "title": "대시보드",
@@ -1029,6 +1030,32 @@
         "createSuccess": "언어가 생성되었습니다.",
         "createError": "언어 생성에 실패했습니다."
       }
+    },
+    "workers": {
+      "title": "채점 워커",
+      "description": "연결된 채점 워커 인스턴스를 모니터링하고 관리합니다.",
+      "statsOnline": "온라인 워커",
+      "statsQueueDepth": "대기열",
+      "statsActiveJudging": "채점 중",
+      "statsTotalConcurrency": "총 동시 처리",
+      "tableTitle": "워커 목록",
+      "tableDescription": "등록된 워커 {count}개",
+      "refresh": "새로고침",
+      "loading": "로딩 중...",
+      "noWorkers": "등록된 채점 워커가 없습니다.",
+      "colHostname": "호스트명",
+      "colStatus": "상태",
+      "colConcurrency": "동시 처리",
+      "colActiveTasks": "활성 작업",
+      "colVersion": "버전",
+      "colLastHeartbeat": "마지막 하트비트",
+      "colActions": "작업",
+      "removeConfirmTitle": "이 워커를 제거하시겠습니까?",
+      "removeConfirmDescription": "워커 \"{hostname}\"이(가) 제거되고 진행 중인 제출은 회수됩니다.",
+      "cancel": "취소",
+      "removeAction": "제거",
+      "removeSuccess": "워커가 제거되었습니다",
+      "removeFailed": "워커 제거에 실패했습니다"
     }
   },
   "profile": {
