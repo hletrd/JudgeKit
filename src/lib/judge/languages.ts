@@ -57,7 +57,7 @@ export const JUDGE_TOOLCHAIN_VERSIONS = {
   c3c: "0.7",
   vala: "0.56",
   lean: "4.28",
-  koka: "3.1",
+  koka: "3.2",
   regina: "3.9",
 } as const;
 

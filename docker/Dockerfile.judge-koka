@@ -1,7 +1,12 @@
 FROM ubuntu:22.04 AS builder
 RUN apt-get update && apt-get install -y --no-install-recommends \
     curl ca-certificates gcc libc-dev && \
-    curl -sSL https://github.com/koka-lang/koka/releases/download/v3.1.2/koka-v3.1.2-linux-x64.tar.gz | tar -xz -C /usr/local && \
+    ARCH=$(dpkg --print-architecture) && \
+    if [ "$ARCH" = "amd64" ]; then \
+      curl -sSL https://github.com/koka-lang/koka/releases/download/v3.2.3/koka-v3.2.3-linux-x64.tar.gz | tar -xz -C /usr/local; \
+    else \
+      curl -sSL https://github.com/koka-lang/koka/releases/download/v3.2.3/koka-v3.2.3-linux-arm64.tar.gz | tar -xz -C /usr/local; \
+    fi && \
     rm -rf /var/lib/apt/lists/*
 
 FROM ubuntu:22.04
