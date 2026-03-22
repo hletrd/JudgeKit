@@ -73,7 +73,7 @@ See [Language presets](docs/languages.md#docker-image-presets) for preset option
 
 ## Docker Judge Images
 
-70 language-specific Docker images for sandboxed code execution on both AMD64 and ARM64. 68 of 70 build on both architectures.
+95 language-specific Docker images for sandboxed code execution on both AMD64 and ARM64.
 
 | Image | amd64 | arm64 | Image | amd64 | arm64 |
 |-------|-------|-------|-------|-------|-------|
@@ -109,9 +109,21 @@ See [Language presets](docs/languages.md#docker-image-presets) for preset option
 | `judge-r` | 1.27 GB | 850 MB | `judge-julia` | 1.50 GB | 1.23 GB |
 | `judge-odin` | 1.81 GB | 1.34 GB | `judge-haskell` | 1.81 GB | 1.59 GB |
 | `judge-powershell` | 461 MB | 352 MB | `judge-smalltalk` | 122 MB | 76 MB |
-| `judge-swift` | 2.79 GB | 2.11 GB | | | |
+| `judge-swift` | 2.79 GB | 2.11 GB | `judge-arturo` | — | — |
+| `judge-c3` | — | — | `judge-carp` | — | — |
+| `judge-clean` | — | — | `judge-curry` | — | — |
+| `judge-factor` | — | — | `judge-flix` | — | — |
+| `judge-grain` | — | — | `judge-hare` | — | — |
+| `judge-hy` | — | — | `judge-j` | — | — |
+| `judge-janet` | — | — | `judge-koka` | — | — |
+| `judge-lean` | — | — | `judge-mercury` | — | — |
+| `judge-micropython` | — | — | `judge-minizinc` | — | — |
+| `judge-modula2` | — | — | `judge-nelua` | — | — |
+| `judge-picat` | — | — | `judge-pony` | — | — |
+| `judge-rexx` | — | — | `judge-roc` | — | — |
+| `judge-squirrel` | — | — | `judge-vala` | — | — |
 
-2 images are amd64-only: `judge-b` (x86 inline asm), `judge-apl` (make fails on arm64).
+2 images are amd64-only: `judge-b` (x86 inline asm), `judge-apl` (make fails on arm64). Image sizes for Phase 1–3 languages are pending measurement.
 
 ## Tech Stack
 
