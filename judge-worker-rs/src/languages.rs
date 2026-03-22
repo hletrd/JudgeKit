@@ -1166,7 +1166,7 @@ static SPARK_CONFIG: LanguageConfig = LanguageConfig {
 };
 
 // MiniZinc
-static MINIZINC_RUN: &[&str] = &["sh", "-c", "read A B && echo \"a=$A; b=$B;\" > /workspace/data.dzn && minizinc --solver Gecode /workspace/solution.mzn /workspace/data.dzn"];
+static MINIZINC_RUN: &[&str] = &["minizinc-judge", "/workspace/solution.mzn"];
 
 static MINIZINC_CONFIG: LanguageConfig = LanguageConfig {
     extension: ".mzn",

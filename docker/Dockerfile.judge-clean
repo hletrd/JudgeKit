@@ -1,0 +1,22 @@
+FROM debian:bookworm-slim
+
+RUN apt-get update && apt-get install -y --no-install-recommends curl ca-certificates && \
+    ARCH=$(dpkg --print-architecture) && \
+    if [ "$ARCH" = "amd64" ]; then \
+      curl -fsSL -o /tmp/clean.tar.gz https://ftp.cs.ru.nl/Clean/Clean31/linux/clean3.1_64.tar.gz; \
+    elif [ "$ARCH" = "arm64" ]; then \
+      curl -fsSL -o /tmp/clean.tar.gz https://ftp.cs.ru.nl/Clean/Clean31/linux/clean3.1_64_arm.tar.gz; \
+    fi && \
+    mkdir -p /opt/clean && \
+    tar xzf /tmp/clean.tar.gz -C /opt/clean --strip-components=1 && \
+    ln -sf /opt/clean/bin/clm /usr/local/bin/clm && \
+    mkdir -p /opt/clean/lib/StdEnv && \
+    rm /tmp/clean.tar.gz && \
+    apt-get purge -y curl && apt-get autoremove -y && rm -rf /var/lib/apt/lists/* && \
+    useradd --no-create-home --shell /usr/sbin/nologin judge && \
+    mkdir -p /workspace && chown judge:judge /workspace
+
+ENV CLEANPATH=/opt/clean/lib/StdEnv:/opt/clean/lib
+
+WORKDIR /workspace
+USER judge

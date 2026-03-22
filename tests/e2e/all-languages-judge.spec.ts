@@ -631,11 +631,11 @@ export fn main() void = {
   println( (a + b).show )`,
   lean: `def main : IO Unit := do
   let line ← (← IO.getStdin).getLine
-  let parts := line.trim.splitOn " "
+  let parts := line.trim.split (· == ' ') |>.filter (· != "")
   match parts with
   | [a, b] =>
-    let x := a.toNat!
-    let y := b.toNat!
+    let x := a.toInt!
+    let y := b.toInt!
     IO.println (toString (x + y))
   | _ => return ()`,
   picat: `main =>
@@ -746,8 +746,7 @@ main = do
     [a, b] -> log (show (fromMaybe 0 (fromString a) + fromMaybe 0 (fromString b)))
     _ -> pure unit`,
   modula2: `MODULE solution;
-FROM SWholeIO IMPORT ReadInt, WriteInt;
-FROM STextIO IMPORT WriteLn;
+FROM InOut IMPORT ReadInt, WriteInt, WriteLn;
 VAR a, b: INTEGER;
 BEGIN
   ReadInt(a);
@@ -950,6 +949,13 @@ const KNOWN_FAILING = new Set<string>([
   "squirrel",    // stdin.readn('l') approach needs debugging
   "arturo",      // prebuilt binary download/runtime issue
   "koka",        // stdlib loading path issue after multi-stage copy
+  "lean",        // not yet seeded on server
+  "picat",       // not yet seeded on server
+  "wat",         // not yet seeded on server (WebAssembly text format)
+  "modula2",     // not yet seeded on server
+  "factor",      // not yet seeded on server
+  "spark",       // not yet seeded on server
+  "minizinc",    // not yet seeded on server
 ]);
 
 const KNOWN_FLAKY = new Set<string>([]);

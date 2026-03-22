@@ -1318,7 +1318,7 @@ export const JUDGE_LANGUAGE_CONFIGS: Record<Language, JudgeLanguageDefinition> =
     dockerImage: "judge-minizinc:latest",
     compiler: null,
     compileCommand: null,
-    runCommand: ["sh", "-c", "read A B && echo \"a=$A; b=$B;\" > /workspace/data.dzn && minizinc --solver Gecode /workspace/solution.mzn /workspace/data.dzn"],
+    runCommand: ["minizinc-judge", "/workspace/solution.mzn"],
   },
   curry: {
     language: "curry",
