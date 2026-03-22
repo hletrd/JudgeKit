@@ -39,6 +39,19 @@ Last updated: 2026-03-21
 - The deploy script auto-detects server architecture (`uname -m` → `linux/amd64` or `linux/arm64`) and passes `--platform` to all Docker builds.
 - Do not assume the long-lived hosts still accept the seeded credentials unless freshly reset.
 
+## 2026-03-22 session changes (PL/compiler research languages — Phase 3)
+
+- **14 new judge languages added**: Picat (logic+constraint), Mercury (logic/functional), WebAssembly WAT (compiler IR), PureScript (row polymorphism), Modula-2 (GCC gm2), Factor (concatenative), SPARK (formal verification, Ada subset), MiniZinc (constraint modeling), Curry/PAKCS (functional-logic), Clean (uniqueness typing), Roc (fast functional), Carp (Lisp+ownership), Grain (functional→Wasm), Pony (reference capabilities).
+- **13 new Docker images**: `judge-picat`, `judge-mercury`, `judge-wat`, `judge-purescript`, `judge-modula2`, `judge-factor`, `judge-minizinc`, `judge-curry`, `judge-clean`, `judge-roc`, `judge-carp`, `judge-grain`, `judge-pony`. SPARK reuses existing `judge-ada`.
+- **Total language count**: 114 language variants across 95 Docker images (was 100/82).
+- **TypeScript**: All 14 languages added to Language union type, JUDGE_LANGUAGE_CONFIGS, DOCKER_IMAGE_RUNTIME_INFO, and CODE_SURFACE_LANGUAGE_MAP.
+- **Rust worker**: All 14 languages added to types.rs enum, languages.rs configs with compile/run commands, get_config() match, and test array.
+- **docker-compose.yml**: 13 new service entries added.
+- **deploy-docker.sh**: ALL_LANGS updated with 13 new image names.
+- **E2E tests**: A+B solutions added for all 14 new languages with appropriate timeouts.
+- **docs/languages.md**: Updated to 114 variants across 95 images.
+- **Target audience**: PL/compiler researchers — languages chosen for type theory, algebraic effects, formal verification, constraint solving, and novel memory/ownership models.
+
 ## 2026-03-21 session changes (production arm64 deployment)
 
 - **Production deployed**: Full deploy to `oj.auraedu.me` (arm64 Ampere Altra) via `deploy-docker.sh`.
@@ -101,7 +114,7 @@ Last updated: 2026-03-21
 
 - **12 new judge languages added**: MicroPython, Squirrel, Rexx, Hy, Arturo, Janet (Phase 1 — EASY), C3, Vala, Nelua, Hare, Koka, Lean 4 (Phase 2 — MODERATE compiled).
 - **12 new Docker images**: `judge-micropython` (Alpine edge), `judge-squirrel` (Debian bookworm), `judge-rexx` (Debian bookworm / Regina REXX), `judge-hy` (Python 3.13 Alpine / Hy), `judge-arturo` (official arturolang/arturo), `judge-janet` (Alpine multi-stage build), `judge-c3` (Debian bookworm / C3C prebuilt), `judge-vala` (Debian bookworm / valac), `judge-nelua` (Debian bookworm / Nelua source build), `judge-hare` (Alpine / qbe+harec+hare source build), `judge-koka` (Ubuntu 22.04 / Koka release), `judge-lean` (Ubuntu 24.04 / Lean 4 release).
-- **Total language count**: 100 language variants across 82 Docker images (was 88/70).
+- **Total language count**: 100 language variants across 82 Docker images (was 88/70). _(superseded by Phase 3: now 114/95)_
 - **TypeScript**: All 12 languages added to Language union type, JUDGE_LANGUAGE_CONFIGS, and DOCKER_IMAGE_RUNTIME_INFO.
 - **Rust worker**: All 12 languages added to types.rs enum, languages.rs configs with compile/run commands, get_config() match, and test array.
 - **docker-compose.yml**: 12 new service entries added.

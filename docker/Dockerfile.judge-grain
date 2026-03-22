@@ -1,0 +1,12 @@
+FROM debian:bookworm-slim
+
+RUN apt-get update && apt-get install -y --no-install-recommends curl ca-certificates && \
+    curl -fsSL -o /usr/local/bin/grain \
+      https://github.com/grain-lang/grain/releases/download/grain-v0.7.2/grain-linux-x64 && \
+    chmod +x /usr/local/bin/grain && \
+    apt-get purge -y curl && apt-get autoremove -y && rm -rf /var/lib/apt/lists/* && \
+    useradd --no-create-home --shell /usr/sbin/nologin judge && \
+    mkdir -p /workspace && chown judge:judge /workspace
+
+WORKDIR /workspace
+USER judge

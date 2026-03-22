@@ -1,9 +1,10 @@
-FROM alpine:3.21
+FROM debian:bookworm-slim
 
-RUN apk add --no-cache curl tar xz libstdc++ && \
-    ARCH=$(uname -m) && \
-    if [ "$ARCH" = "x86_64" ]; then WABT_ARCH="x64"; WT_ARCH="x86_64"; \
-    elif [ "$ARCH" = "aarch64" ]; then WABT_ARCH="arm64"; WT_ARCH="aarch64"; fi && \
+RUN apt-get update && apt-get install -y --no-install-recommends \
+      curl ca-certificates xz-utils && \
+    ARCH=$(dpkg --print-architecture) && \
+    if [ "$ARCH" = "amd64" ]; then WABT_ARCH="x64"; WT_ARCH="x86_64"; \
+    elif [ "$ARCH" = "arm64" ]; then WABT_ARCH="arm64"; WT_ARCH="aarch64"; fi && \
     curl -fsSL -o /tmp/wabt.tar.gz \
       "https://github.com/WebAssembly/wabt/releases/download/1.0.40/wabt-1.0.40-linux-${WABT_ARCH}.tar.gz" && \
     tar xzf /tmp/wabt.tar.gz -C /usr/local --strip-components=1 && \
@@ -13,11 +14,9 @@ RUN apk add --no-cache curl tar xz libstdc++ && \
     cp /tmp/wasmtime-v43.0.0-${WT_ARCH}-linux/wasmtime /usr/local/bin/ && \
     chmod +x /usr/local/bin/wat2wasm /usr/local/bin/wasmtime && \
     rm -rf /tmp/wabt* /tmp/wasmtime* && \
-    apk del curl tar xz && \
-    adduser -D -s /bin/false judge && \
+    apt-get purge -y curl xz-utils && apt-get autoremove -y && rm -rf /var/lib/apt/lists/* && \
+    useradd --no-create-home --shell /usr/sbin/nologin judge && \
     mkdir -p /workspace && chown judge:judge /workspace
-
-ENV PATH="/usr/local/bin:${PATH}"
 
 WORKDIR /workspace
 USER judge

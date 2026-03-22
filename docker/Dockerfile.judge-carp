@@ -1,0 +1,16 @@
+FROM debian:bookworm-slim
+
+RUN apt-get update && apt-get install -y --no-install-recommends \
+      curl ca-certificates unzip gcc libc6-dev && \
+    curl -fsSL -o /tmp/carp.zip \
+      https://github.com/carp-lang/Carp/releases/download/v0.5.5/carp-v0.5.5-x86_64-linux.zip && \
+    unzip /tmp/carp.zip -d /opt && \
+    mv /opt/carp-v0.5.5-x86_64-linux /opt/carp && \
+    ln -sf /opt/carp/bin/carp /usr/local/bin/carp && \
+    rm /tmp/carp.zip && \
+    apt-get purge -y curl unzip && apt-get autoremove -y && rm -rf /var/lib/apt/lists/* && \
+    useradd --no-create-home --shell /usr/sbin/nologin judge && \
+    mkdir -p /workspace && chown judge:judge /workspace
+
+WORKDIR /workspace
+USER judge

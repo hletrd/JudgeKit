@@ -1,0 +1,9 @@
+FROM debian:bookworm-slim
+
+RUN apt-get update && apt-get install -y --no-install-recommends gm2 && \
+    rm -rf /var/lib/apt/lists/* && \
+    useradd --no-create-home --shell /usr/sbin/nologin judge && \
+    mkdir -p /workspace && chown judge:judge /workspace
+
+WORKDIR /workspace
+USER judge

@@ -1,0 +1,24 @@
+FROM debian:bookworm-slim
+
+RUN apt-get update && apt-get install -y --no-install-recommends curl ca-certificates && \
+    ARCH=$(dpkg --print-architecture) && \
+    if [ "$ARCH" = "amd64" ]; then \
+      curl -fsSL -o /tmp/picat.tar.gz https://picat-lang.org/download/picat397_linux64.tar.gz; \
+    else \
+      curl -fsSL -o /tmp/picat.tar.gz https://picat-lang.org/download/picat397_src.tar.gz && \
+      apt-get install -y --no-install-recommends gcc g++ make && \
+      cd /tmp && tar xzf picat.tar.gz && cd Picat/emu && make -f Makefile.linux64 && \
+      mkdir -p /tmp/Picat_install && cp picat /tmp/Picat_install/ && \
+      cd / && rm -rf /tmp/Picat && tar czf /tmp/picat.tar.gz -C /tmp Picat_install && \
+      apt-get purge -y gcc g++ make && apt-get autoremove -y; \
+    fi && \
+    mkdir -p /opt/picat && \
+    tar xzf /tmp/picat.tar.gz -C /opt/picat --strip-components=1 && \
+    ln -s /opt/picat/picat /usr/local/bin/picat && \
+    rm /tmp/picat.tar.gz && \
+    apt-get purge -y curl && apt-get autoremove -y && rm -rf /var/lib/apt/lists/* && \
+    useradd --no-create-home --shell /usr/sbin/nologin judge && \
+    mkdir -p /workspace && chown judge:judge /workspace
+
+WORKDIR /workspace
+USER judge

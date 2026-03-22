@@ -1,0 +1,14 @@
+FROM debian:bookworm-slim
+
+RUN apt-get update && apt-get install -y --no-install-recommends \
+      curl ca-certificates libgl1 libx11-6 libglib2.0-0 && \
+    curl -fsSL -o /tmp/factor.tar.gz \
+      https://downloads.factorcode.org/releases/0.101/factor-linux-x86-64-0.101.tar.gz && \
+    tar xzf /tmp/factor.tar.gz -C /opt && \
+    rm /tmp/factor.tar.gz && \
+    apt-get purge -y curl && apt-get autoremove -y && rm -rf /var/lib/apt/lists/* && \
+    useradd --no-create-home --shell /usr/sbin/nologin judge && \
+    mkdir -p /workspace && chown judge:judge /workspace
+
+WORKDIR /workspace
+USER judge

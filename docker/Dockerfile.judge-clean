@@ -10,13 +10,12 @@ RUN apt-get update && apt-get install -y --no-install-recommends curl ca-certifi
     mkdir -p /opt/clean && \
     tar xzf /tmp/clean.tar.gz -C /opt/clean --strip-components=1 && \
     ln -sf /opt/clean/bin/clm /usr/local/bin/clm && \
-    mkdir -p /opt/clean/lib/StdEnv && \
     rm /tmp/clean.tar.gz && \
     apt-get purge -y curl && apt-get autoremove -y && rm -rf /var/lib/apt/lists/* && \
     useradd --no-create-home --shell /usr/sbin/nologin judge && \
     mkdir -p /workspace && chown judge:judge /workspace
 
-ENV CLEANPATH=/opt/clean/lib/StdEnv:/opt/clean/lib
+ENV CLEANPATH=/opt/clean/StdEnv:/opt/clean/lib
 
 WORKDIR /workspace
 USER judge

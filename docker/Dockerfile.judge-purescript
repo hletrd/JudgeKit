@@ -1,0 +1,15 @@
+FROM node:24-alpine
+
+RUN apk add --no-cache curl tar && \
+    ARCH=$(uname -m) && \
+    if [ "$ARCH" = "x86_64" ]; then PS_URL="https://github.com/purescript/purescript/releases/download/v0.15.16/linux64.tar.gz"; \
+    elif [ "$ARCH" = "aarch64" ]; then PS_URL="https://github.com/purescript/purescript/releases/download/v0.15.16/linux-arm64.tar.gz"; fi && \
+    curl -fsSL -o /tmp/purs.tar.gz "$PS_URL" && \
+    tar xzf /tmp/purs.tar.gz -C /usr/local/bin --strip-components=1 && \
+    rm /tmp/purs.tar.gz && \
+    apk del curl tar && \
+    adduser -D -s /bin/false judge && \
+    mkdir -p /workspace && chown judge:judge /workspace
+
+WORKDIR /workspace
+USER judge

@@ -1,0 +1,19 @@
+FROM debian:bookworm-slim
+
+RUN apt-get update && apt-get install -y --no-install-recommends \
+      curl ca-certificates swi-prolog sqlite3 libsqlite3-dev rlwrap && \
+    ARCH=$(dpkg --print-architecture) && \
+    if [ "$ARCH" = "amd64" ]; then \
+      curl -fsSL -o /tmp/pakcs.tar.gz \
+        https://www.curry-lang.org/pakcs/download/pakcs-3.9.0-amd64-Linux.tar.gz && \
+      mkdir -p /opt/pakcs && \
+      tar xzf /tmp/pakcs.tar.gz -C /opt/pakcs --strip-components=1 && \
+      rm /tmp/pakcs.tar.gz; \
+    fi && \
+    ln -sf /opt/pakcs/bin/pakcs /usr/local/bin/pakcs && \
+    apt-get purge -y curl && apt-get autoremove -y && rm -rf /var/lib/apt/lists/* && \
+    useradd --no-create-home --shell /usr/sbin/nologin judge && \
+    mkdir -p /workspace && chown judge:judge /workspace
+
+WORKDIR /workspace
+USER judge

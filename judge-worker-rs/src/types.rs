@@ -166,6 +166,21 @@ pub enum Language {
     Hare,
     Koka,
     Lean,
+    Picat,
+    Mercury,
+    Wat,
+    Purescript,
+    #[serde(rename = "modula2")]
+    Modula2,
+    Factor,
+    Spark,
+    Minizinc,
+    Curry,
+    Clean,
+    Roc,
+    Carp,
+    Grain,
+    Pony,
     #[serde(other)]
     Unknown,
 }

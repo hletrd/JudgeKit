@@ -17,6 +17,15 @@ export const CODE_SURFACE_LANGUAGE_MAP = {
   php: "php",
   clang_c23: "c",
   clang_cpp23: "cpp",
+  purescript: "haskell",
+  mercury: "prolog",
+  modula2: "pascal",
+  spark: "rust",
+  curry: "haskell",
+  clean: "haskell",
+  carp: "clojure",
+  pony: "python",
+  roc: "elm",
 } as const;
 
 export const CODE_SURFACE_PLAINTEXT_LANGUAGE = "plaintext" as const;

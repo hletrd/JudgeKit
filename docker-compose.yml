@@ -494,3 +494,81 @@ services:
       context: .
       dockerfile: docker/Dockerfile.judge-lean
     image: judge-lean:${GIT_SHA:-latest}
+
+  judge-picat:
+    build:
+      context: .
+      dockerfile: docker/Dockerfile.judge-picat
+    image: judge-picat:${GIT_SHA:-latest}
+
+  judge-mercury:
+    build:
+      context: .
+      dockerfile: docker/Dockerfile.judge-mercury
+    image: judge-mercury:${GIT_SHA:-latest}
+
+  judge-wat:
+    build:
+      context: .
+      dockerfile: docker/Dockerfile.judge-wat
+    image: judge-wat:${GIT_SHA:-latest}
+
+  judge-purescript:
+    build:
+      context: .
+      dockerfile: docker/Dockerfile.judge-purescript
+    image: judge-purescript:${GIT_SHA:-latest}
+
+  judge-modula2:
+    build:
+      context: .
+      dockerfile: docker/Dockerfile.judge-modula2
+    image: judge-modula2:${GIT_SHA:-latest}
+
+  judge-factor:
+    build:
+      context: .
+      dockerfile: docker/Dockerfile.judge-factor
+    image: judge-factor:${GIT_SHA:-latest}
+
+  judge-minizinc:
+    build:
+      context: .
+      dockerfile: docker/Dockerfile.judge-minizinc
+    image: judge-minizinc:${GIT_SHA:-latest}
+
+  judge-curry:
+    build:
+      context: .
+      dockerfile: docker/Dockerfile.judge-curry
+    image: judge-curry:${GIT_SHA:-latest}
+
+  judge-clean:
+    build:
+      context: .
+      dockerfile: docker/Dockerfile.judge-clean
+    image: judge-clean:${GIT_SHA:-latest}
+
+  judge-roc:
+    build:
+      context: .
+      dockerfile: docker/Dockerfile.judge-roc
+    image: judge-roc:${GIT_SHA:-latest}
+
+  judge-carp:
+    build:
+      context: .
+      dockerfile: docker/Dockerfile.judge-carp
+    image: judge-carp:${GIT_SHA:-latest}
+
+  judge-grain:
+    build:
+      context: .
+      dockerfile: docker/Dockerfile.judge-grain
+    image: judge-grain:${GIT_SHA:-latest}
+
+  judge-pony:
+    build:
+      context: .
+      dockerfile: docker/Dockerfile.judge-pony
+    image: judge-pony:${GIT_SHA:-latest}

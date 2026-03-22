@@ -1,10 +1,13 @@
 FROM ghcr.io/ponylang/ponyc:0.61.1
 
 USER root
-RUN adduser -D -s /bin/false judge && \
-    mkdir -p /workspace && chown judge:judge /workspace && \
-    chmod +x $(which ponyc) && \
-    chmod o+rx /usr/local/bin/ponyc 2>/dev/null || true
+RUN cp -a /root/.local/share/ponyup /opt/ponyup && \
+    chmod -R a+rX /opt/ponyup && \
+    ln -sf /opt/ponyup/bin/ponyc /usr/local/bin/ponyc && \
+    adduser -D -s /bin/false judge && \
+    mkdir -p /workspace && chown judge:judge /workspace
+
+ENV PATH="/usr/local/bin:${PATH}"
 
 WORKDIR /workspace
 USER judge

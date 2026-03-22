@@ -1,0 +1,18 @@
+FROM debian:bookworm-slim
+
+RUN apt-get update && apt-get install -y --no-install-recommends curl ca-certificates && \
+    ARCH=$(dpkg --print-architecture) && \
+    if [ "$ARCH" = "amd64" ]; then ROC_ARCH="linux_x86_64"; \
+    elif [ "$ARCH" = "arm64" ]; then ROC_ARCH="linux_arm64"; fi && \
+    curl -fsSL -o /tmp/roc.tar.gz \
+      "https://github.com/roc-lang/roc/releases/download/alpha4-rolling/roc-${ROC_ARCH}-alpha4-rolling.tar.gz" && \
+    mkdir -p /opt/roc && \
+    tar xzf /tmp/roc.tar.gz -C /opt/roc --strip-components=1 && \
+    ln -sf /opt/roc/roc /usr/local/bin/roc && \
+    rm /tmp/roc.tar.gz && \
+    apt-get purge -y curl && apt-get autoremove -y && rm -rf /var/lib/apt/lists/* && \
+    useradd --no-create-home --shell /usr/sbin/nologin judge && \
+    mkdir -p /workspace && chown judge:judge /workspace
+
+WORKDIR /workspace
+USER judge
