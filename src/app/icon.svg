@@ -7,7 +7,7 @@
   </defs>
   <rect width="512" height="512" rx="96" fill="url(#bg)"/>
   <!-- Code brackets -->
-  <text x="256" y="280" text-anchor="middle" font-family="monospace" font-weight="bold" font-size="200" fill="white" dominant-baseline="central">&lt;/&gt;</text>
+  <text x="256" y="256" text-anchor="middle" font-family="monospace" font-weight="bold" font-size="200" fill="white" dominant-baseline="central">&lt;/&gt;</text>
   <!-- Checkmark -->
   <circle cx="390" cy="130" r="60" fill="#22c55e"/>
   <polyline points="356,130 380,154 424,100" fill="none" stroke="white" stroke-width="16" stroke-linecap="round" stroke-linejoin="round"/>
