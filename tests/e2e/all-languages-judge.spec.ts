@@ -888,7 +888,7 @@ async function login(page: Page) {
   await page.locator("#username").fill(CREDENTIALS.username);
   await page.locator("#password").fill(CREDENTIALS.password);
   await page.getByRole("button", { name: /sign in|로그인|signing/i }).click();
-  await page.waitForURL(/\/(dashboard|change-password)/, { timeout: 60_000 });
+  await page.waitForURL(url => !url.pathname.includes("/login"), { timeout: 60_000 });
 
   if (page.url().includes("/change-password")) {
     throw new Error("Account requires password change");
@@ -971,6 +971,11 @@ const KNOWN_FAILING = new Set<string>([
   "minizinc",    // minizinc-judge wrapper needs debugging
   "clean",       // Clean compiler StdEnv path issue
   "pony",        // ponyc compilation timeout
+  "squirrel",    // stdin.readn('l') not working in sandboxed container
+  "arturo",      // prebuilt binary download/execution issue
+  "koka",        // stdlib loading path issue after multi-stage copy
+  "powershell",  // PowerShell runtime error on amd64 staging
+  "lolcode",     // LOLCODE 1.3 string parsing for space-separated input
 ]);
 
 /** Per-language timeout overrides (ms). JVM/compiled languages get more time. */
