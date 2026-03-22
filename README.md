@@ -121,6 +121,7 @@ See [Language presets](docs/languages.md#docker-image-presets) for preset option
 | `judge-modula2` | — | — | `judge-nelua` | — | — |
 | `judge-picat` | — | — | `judge-pony` | — | — |
 | `judge-rexx` | — | — | `judge-roc` | — | — |
+| `judge-purescript` | — | — | `judge-wat` | — | — |
 | `judge-squirrel` | — | — | `judge-vala` | — | — |
 
 2 images are amd64-only: `judge-b` (x86 inline asm), `judge-apl` (make fails on arm64). Image sizes for Phase 1–3 languages are pending measurement.

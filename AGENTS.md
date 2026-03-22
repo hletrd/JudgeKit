@@ -90,51 +90,51 @@ JudgeKit supports 114 language variants across 95 Docker images:
 | 67 | `hyeong` | Hyeong | `judge-esoteric` |
 | 68 | `whitespace` | Whitespace | `judge-esoteric` |
 | 69 | `b` | B (BCause) | `judge-b` |
-| 71 | `apl` | APL (GNU APL) | `judge-apl` |
-| 72 | `freebasic` | FreeBASIC | `judge-freebasic` |
-| 73 | `smalltalk` | Smalltalk (GNU Smalltalk) | `judge-smalltalk` |
-| 74 | `bqn` | BQN (CBQN) | `judge-bqn` |
-| 75 | `uiua` | Uiua | `judge-uiua` |
-| 76 | `icon` | Icon | `judge-icon` |
-| 77 | `algol68` | Algol 68 (a68g) | `judge-algol68` |
-| 78 | `snobol4` | SNOBOL4 (CSNOBOL4) | `judge-snobol4` |
-| 79 | `lolcode` | LOLCODE (lci) | `judge-lolcode` |
-| 80 | `shakespeare` | Shakespeare (shakespearelang) | `judge-shakespeare` |
-| 81 | `umjunsik` | 엄준식 (Umjunsik) | `judge-umjunsik` |
-| 82 | `deno_js` | JavaScript (Deno) | `judge-deno` |
-| 83 | `deno_ts` | TypeScript (Deno) | `judge-deno` |
-| 84 | `bun_js` | JavaScript (Bun) | `judge-bun` |
-| 85 | `bun_ts` | TypeScript (Bun) | `judge-bun` |
-| 86 | `gleam` | Gleam (Erlang target) | `judge-gleam` |
-| 87 | `sml` | Standard ML (Poly/ML) | `judge-sml` |
-| 88 | `fennel` | Fennel (Lua VM) | `judge-lua` |
-| 89 | `flix` | Flix (JVM) | `judge-jvm` |
-| 90 | `clean` | Clean 3.1 | `judge-clean` |
-| 91 | `curry` | Curry (PAKCS 3.9.0) | `judge-curry` |
-| 92 | `purescript` | PureScript 0.15.16 | `judge-purescript` |
-| 93 | `mercury` | Mercury 22.01.8 | `judge-mercury` |
-| 94 | `carp` | Carp 0.5.5 | `judge-carp` |
-| 95 | `roc` | Roc alpha4 | `judge-roc` |
-| 96 | `grain` | Grain 0.7.2 | `judge-grain` |
-| 97 | `pony` | Pony 0.61.1 | `judge-pony` |
-| 98 | `picat` | Picat 3.9 | `judge-picat` |
-| 99 | `modula2` | Modula-2 (PIM4) | `judge-modula2` |
-| 100 | `factor` | Factor 0.101 | `judge-factor` |
-| 101 | `minizinc` | MiniZinc 2.9.5 | `judge-minizinc` |
-| 102 | `wat` | WebAssembly (WAT) | `judge-wat` |
-| 103 | `spark` | SPARK (Ada/SPARK 2014) | `judge-ada` |
-| 104 | `lean` | Lean 4 4.28 | `judge-lean` |
-| 105 | `c3` | C3 0.7 | `judge-c3` |
-| 106 | `hare` | Hare | `judge-hare` |
-| 107 | `hy` | Hy 1.0 | `judge-hy` |
-| 108 | `janet` | Janet 1.40 | `judge-janet` |
-| 109 | `koka` | Koka 3.2 | `judge-koka` |
-| 110 | `micropython` | MicroPython | `judge-micropython` |
-| 111 | `nelua` | Nelua | `judge-nelua` |
-| 112 | `rexx` | Rexx (Regina 3.9) | `judge-rexx` |
-| 113 | `arturo` | Arturo | `judge-arturo` |
-| 114 | `squirrel` | Squirrel 3.2 | `judge-squirrel` |
-| 115 | `vala` | Vala 0.56 | `judge-vala` |
+| 70 | `apl` | APL (GNU APL) | `judge-apl` |
+| 71 | `freebasic` | FreeBASIC | `judge-freebasic` |
+| 72 | `smalltalk` | Smalltalk (GNU Smalltalk) | `judge-smalltalk` |
+| 73 | `bqn` | BQN (CBQN) | `judge-bqn` |
+| 74 | `uiua` | Uiua | `judge-uiua` |
+| 75 | `icon` | Icon | `judge-icon` |
+| 76 | `algol68` | Algol 68 (a68g) | `judge-algol68` |
+| 77 | `snobol4` | SNOBOL4 (CSNOBOL4) | `judge-snobol4` |
+| 78 | `lolcode` | LOLCODE (lci) | `judge-lolcode` |
+| 79 | `shakespeare` | Shakespeare (shakespearelang) | `judge-shakespeare` |
+| 80 | `umjunsik` | 엄준식 (Umjunsik) | `judge-umjunsik` |
+| 81 | `deno_js` | JavaScript (Deno) | `judge-deno` |
+| 82 | `deno_ts` | TypeScript (Deno) | `judge-deno` |
+| 83 | `bun_js` | JavaScript (Bun) | `judge-bun` |
+| 84 | `bun_ts` | TypeScript (Bun) | `judge-bun` |
+| 85 | `gleam` | Gleam (Erlang target) | `judge-gleam` |
+| 86 | `sml` | Standard ML (Poly/ML) | `judge-sml` |
+| 87 | `fennel` | Fennel (Lua VM) | `judge-lua` |
+| 88 | `flix` | Flix (JVM) | `judge-jvm` |
+| 89 | `clean` | Clean 3.1 | `judge-clean` |
+| 90 | `curry` | Curry (PAKCS 3.9.0) | `judge-curry` |
+| 91 | `purescript` | PureScript 0.15.16 | `judge-purescript` |
+| 92 | `mercury` | Mercury 22.01.8 | `judge-mercury` |
+| 93 | `carp` | Carp 0.5.5 | `judge-carp` |
+| 94 | `roc` | Roc alpha4 | `judge-roc` |
+| 95 | `grain` | Grain 0.7.2 | `judge-grain` |
+| 96 | `pony` | Pony 0.61.1 | `judge-pony` |
+| 97 | `picat` | Picat 3.9 | `judge-picat` |
+| 98 | `modula2` | Modula-2 (PIM4) | `judge-modula2` |
+| 99 | `factor` | Factor 0.101 | `judge-factor` |
+| 100 | `minizinc` | MiniZinc 2.9.5 | `judge-minizinc` |
+| 101 | `wat` | WebAssembly (WAT) | `judge-wat` |
+| 102 | `spark` | SPARK (Ada/SPARK 2014) | `judge-ada` |
+| 103 | `lean` | Lean 4 4.28 | `judge-lean` |
+| 104 | `c3` | C3 0.7 | `judge-c3` |
+| 105 | `hare` | Hare | `judge-hare` |
+| 106 | `hy` | Hy 1.0 | `judge-hy` |
+| 107 | `janet` | Janet 1.40 | `judge-janet` |
+| 108 | `koka` | Koka 3.2 | `judge-koka` |
+| 109 | `micropython` | MicroPython | `judge-micropython` |
+| 110 | `nelua` | Nelua | `judge-nelua` |
+| 111 | `rexx` | Rexx (Regina 3.9) | `judge-rexx` |
+| 112 | `arturo` | Arturo | `judge-arturo` |
+| 113 | `squirrel` | Squirrel 3.2 | `judge-squirrel` |
+| 114 | `vala` | Vala 0.56 | `judge-vala` |
 
 ## Adding a New Language
 
