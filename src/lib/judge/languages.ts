@@ -1283,7 +1283,7 @@ export const JUDGE_LANGUAGE_CONFIGS: Record<Language, JudgeLanguageDefinition> =
   modula2: {
     language: "modula2",
     displayName: "Modula-2",
-    standard: "PIM4",
+    standard: "ISO",
     extension: ".mod",
     dockerImage: "judge-modula2:latest",
     compiler: `GCC gm2 ${JUDGE_TOOLCHAIN_VERSIONS.fortran}`,

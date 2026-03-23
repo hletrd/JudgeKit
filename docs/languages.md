@@ -96,7 +96,7 @@
 | 90 | `squirrel` | Squirrel 3.2 | `judge-squirrel` | ✅ | ❓ | ❌ | ❌ |
 | 91 | `rexx` | Rexx (Regina) | `judge-rexx` | ✅ | ❓ | ✅ | ❓ |
 | 92 | `hy` | Hy (Lisp on Python) | `judge-hy` | ✅ | ❓ | ✅ | ❓ |
-| 93 | `arturo` | Arturo | `judge-arturo` | ✅ | ❌ amd64 only | ❌ | ❌ |
+| 93 | `arturo` | Arturo | `judge-arturo` | ✅ | ❌ amd64 only | ✅ | ❌ |
 | 94 | `janet` | Janet | `judge-janet` | ✅ | ❓ | ✅ | ❓ |
 | 95 | `c3` | C3 | `judge-c3` | ✅ | ❌ amd64 only | ✅ | ❌ |
 | 96 | `vala` | Vala | `judge-vala` | ✅ | ❓ | ✅ | ❓ |
@@ -105,18 +105,18 @@
 | 99 | `koka` | Koka | `judge-koka` | ✅ | ❌ amd64 only | ❌ | ❌ |
 | 100 | `lean` | Lean 4 | `judge-lean` | ✅ | ❓ | ❌ | ❌ |
 | 101 | `picat` | Picat 3.9 | `judge-picat` | ✅ | ❌ build from src | ✅ | ❌ |
-| 102 | `mercury` | Mercury 22.01.8 | `judge-mercury` | ✅ | ✅ | ❌ | ❌ |
+| 102 | `mercury` | Mercury 22.01.8 | `judge-mercury` | ✅ | ✅ | ✅ | ❌ |
 | 103 | `wat` | WebAssembly (WAT, wabt+wasmtime) | `judge-wat` | ✅ | ✅ | ❌ | ❌ |
-| 104 | `purescript` | PureScript 0.15.16 | `judge-purescript` | ✅ | ✅ | ❌ | ❌ |
+| 104 | `purescript` | PureScript 0.15.16 | `judge-purescript` | ✅ | ✅ | ✅ | ❌ |
 | 105 | `modula2` | Modula-2 (GCC gm2) | `judge-modula2` | ✅ | ✅ | ❌ | ❌ |
 | 106 | `factor` | Factor 0.101 | `judge-factor` | ✅ | ❌ amd64 only | ❌ | ❌ |
 | 107 | `spark` | SPARK (Ada/SPARK 2014, GNAT) | `judge-ada` | ✅ | ✅ | ✅ | ❓ |
 | 108 | `minizinc` | MiniZinc 2.9.5 | `judge-minizinc` | ✅ | ❌ amd64 only | ❌ | ❌ |
-| 109 | `curry` | Curry (PAKCS 3.9.0) | `judge-curry` | ✅ | ❌ amd64 only | ❌ | ❌ |
+| 109 | `curry` | Curry (PAKCS 3.9.0) | `judge-curry` | ✅ | ❌ amd64 only | ✅ | ❌ |
 | 110 | `clean` | Clean 3.1 | `judge-clean` | ✅ | ✅ | ❌ | ❌ |
-| 111 | `roc` | Roc (alpha4) | `judge-roc` | ✅ | ✅ | ❌ | ❌ |
-| 112 | `carp` | Carp 0.5.5 | `judge-carp` | ✅ | ❌ amd64 only | ❌ | ❌ |
-| 113 | `grain` | Grain 0.7.2 | `judge-grain` | ✅ | ❌ x64 only | ❌ | ❌ |
+| 111 | `roc` | Roc (alpha4) | `judge-roc` | ✅ | ✅ | ✅ | ❌ |
+| 112 | `carp` | Carp 0.5.5 | `judge-carp` | ✅ | ❌ amd64 only | ✅ | ❌ |
+| 113 | `grain` | Grain 0.7.2 | `judge-grain` | ✅ | ❌ x64 only | ✅ | ❌ |
 | 114 | `pony` | Pony 0.61.1 | `judge-pony` | ✅ | ✅ | ❌ | ❌ |
 
 ### ARM64 Build Summary
@@ -129,7 +129,7 @@
 
 ### amd64 E2E Summary (2026-03-23)
 
-**90 of 114 languages passed** on amd64 (test server). 24 failures:
+**97 of 114 languages passed** on amd64 (test server). 17 failures:
 - **fsharp**: .NET runtime issue
 - **vbnet**: Compilation failure (.NET)
 - **nasm**: Assembly test issue
@@ -139,20 +139,13 @@
 - **algol68**: a68g runtime issue
 - **powershell**: PowerShell runtime issue
 - **squirrel**: Squirrel runtime issue
-- **arturo**: Arturo runtime issue (amd64-only image)
 - **koka**: Koka runtime issue (amd64-only image)
 - **lean**: Lean 4 runtime issue
-- **mercury**: Mercury runtime issue
 - **wat**: WAT/wasmtime runtime issue
-- **purescript**: PureScript runtime issue
 - **modula2**: Modula-2 runtime issue
 - **factor**: Factor runtime issue (amd64-only image)
 - **minizinc**: MiniZinc runtime issue (amd64-only image)
-- **curry**: Curry runtime issue (amd64-only image)
 - **clean**: Clean runtime issue
-- **roc**: Roc runtime issue
-- **carp**: Carp runtime issue (amd64-only image)
-- **grain**: Grain runtime issue (amd64-only image)
 - **pony**: Pony runtime issue
 
 0 languages with unknown amd64 E2E status remaining.
