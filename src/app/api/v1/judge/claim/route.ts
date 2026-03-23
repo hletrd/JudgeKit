@@ -158,8 +158,8 @@ export async function POST(request: NextRequest) {
       testCases: cases,
       // Language config overrides from DB (used by worker when present)
       dockerImage: langConfig?.dockerImage ?? null,
-      compileCommand: langConfig?.compileCommand ? ["sh", "-c", langConfig.compileCommand] : null,
-      runCommand: langConfig?.runCommand ? ["sh", "-c", langConfig.runCommand] : null,
+      compileCommand: langConfig?.compileCommand?.trim() ? ["sh", "-c", langConfig.compileCommand] : null,
+      runCommand: langConfig?.runCommand?.trim() ? ["sh", "-c", langConfig.runCommand] : null,
     });
   } catch (error) {
     logger.error({ err: error }, "POST /api/v1/judge/claim error");

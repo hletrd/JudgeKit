@@ -930,9 +930,7 @@ const KNOWN_FAILING = new Set<string>([
   "roc",         // platform file not pre-cached in Docker
   "grain",       // grainc internal compiler error
   "pony",        // ponyc permission/timeout
-  // Persistent runtime issues — need Docker image investigation
-  "fsharp",      // .NET dotnet fsi runtime_error (globalization)
-  "vbnet",       // .NET dotnet build XML escaping in compile cmd
+  // Persistent runtime issues
   "lolcode",     // lci can't parse space-separated single-line input
 ]);
 
