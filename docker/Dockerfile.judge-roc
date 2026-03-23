@@ -10,6 +10,10 @@ RUN apt-get update && apt-get install -y --no-install-recommends curl ca-certifi
     tar xzf /tmp/roc.tar.gz -C /opt/roc --strip-components=1 && \
     ln -sf /opt/roc/roc /usr/local/bin/roc && \
     rm /tmp/roc.tar.gz && \
+    mkdir -p /opt/roc-platform && \
+    curl -fsSL -o /opt/roc-platform/basic-cli-0.20.0.tar.br \
+      "https://github.com/roc-lang/basic-cli/releases/download/0.20.0/X73hGh05nNTkDHU06FHC0YfFaQB1pimX7gncRcao5mU.tar.br" && \
+    chmod 644 /opt/roc-platform/basic-cli-0.20.0.tar.br && \
     apt-get purge -y curl && apt-get autoremove -y && rm -rf /var/lib/apt/lists/* && \
     useradd --no-create-home --shell /usr/sbin/nologin judge && \
     mkdir -p /workspace && chown judge:judge /workspace

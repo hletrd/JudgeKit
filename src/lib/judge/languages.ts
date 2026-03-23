@@ -1277,8 +1277,8 @@ export const JUDGE_LANGUAGE_CONFIGS: Record<Language, JudgeLanguageDefinition> =
     extension: ".purs",
     dockerImage: "judge-purescript:latest",
     compiler: `PureScript ${JUDGE_TOOLCHAIN_VERSIONS.purescript} (purs)`,
-    compileCommand: ["sh", "-c", "cp /workspace/solution.purs /opt/ps/src/Main.purs && cd /opt/ps && purs compile 'src/**/*.purs' '.spago/p/*/src/**/*.purs' --output output 2>&1"],
-    runCommand: ["node", "-e", "require('/opt/ps/output/Main/index.js').main()"],
+    compileCommand: ["sh", "-c", "cp /workspace/solution.purs /opt/purescript-project/src/Main.purs && cd /opt/purescript-project && spago build 2>&1"],
+    runCommand: ["node", "-e", "require('/opt/purescript-project/output/Main/index.js').main()"],
   },
   modula2: {
     language: "modula2",
@@ -1318,7 +1318,7 @@ export const JUDGE_LANGUAGE_CONFIGS: Record<Language, JudgeLanguageDefinition> =
     dockerImage: "judge-minizinc:latest",
     compiler: null,
     compileCommand: null,
-    runCommand: ["minizinc-judge", "/workspace/solution.mzn"],
+    runCommand: ["sh", "-c", "HOME=/tmp minizinc-judge /workspace/solution.mzn"],
   },
   curry: {
     language: "curry",
@@ -1327,7 +1327,7 @@ export const JUDGE_LANGUAGE_CONFIGS: Record<Language, JudgeLanguageDefinition> =
     extension: ".curry",
     dockerImage: "judge-curry:latest",
     compiler: `PAKCS ${JUDGE_TOOLCHAIN_VERSIONS.pakcs}`,
-    compileCommand: ["sh", "-c", "cd /workspace && pakcs :load solution :save :quit 2>&1"],
+    compileCommand: ["sh", "-c", "cd /workspace && printf ':load solution\\n:save\\n:quit\\n' | pakcs 2>&1"],
     runCommand: ["/workspace/solution"],
   },
   clean: {
@@ -1337,8 +1337,8 @@ export const JUDGE_LANGUAGE_CONFIGS: Record<Language, JudgeLanguageDefinition> =
     extension: ".icl",
     dockerImage: "judge-clean:latest",
     compiler: `Clean ${JUDGE_TOOLCHAIN_VERSIONS.clean}`,
-    compileCommand: ["sh", "-c", "cd /workspace && clm -I /opt/clean/lib/StdEnv Solution -o /workspace/solution 2>&1"],
-    runCommand: ["/workspace/solution"],
+    compileCommand: ["sh", "-c", "export HOME=/tmp && cd /workspace && clm -I /opt/clean/lib/StdEnv Solution -o /workspace/solution 2>&1"],
+    runCommand: ["sh", "-c", "HOME=/tmp /workspace/solution"],
   },
   roc: {
     language: "roc",
@@ -1347,7 +1347,7 @@ export const JUDGE_LANGUAGE_CONFIGS: Record<Language, JudgeLanguageDefinition> =
     extension: ".roc",
     dockerImage: "judge-roc:latest",
     compiler: `Roc ${JUDGE_TOOLCHAIN_VERSIONS.roc}`,
-    compileCommand: ["roc", "build", "--optimize", "/workspace/solution.roc", "--output", "/workspace/solution"],
+    compileCommand: ["sh", "-c", "HOME=/tmp roc build --optimize /workspace/solution.roc --output /workspace/solution 2>&1"],
     runCommand: ["/workspace/solution"],
   },
   carp: {
@@ -1377,7 +1377,7 @@ export const JUDGE_LANGUAGE_CONFIGS: Record<Language, JudgeLanguageDefinition> =
     extension: ".pony",
     dockerImage: "judge-pony:latest",
     compiler: `ponyc ${JUDGE_TOOLCHAIN_VERSIONS.pony}`,
-    compileCommand: ["sh", "-c", "cd /workspace && mkdir -p build && cp solution.pony build/main.pony && cd build && ponyc -o /workspace --bin-name solution 2>&1"],
+    compileCommand: ["sh", "-c", "export HOME=/tmp && cd /workspace && mkdir -p build && cp solution.pony build/main.pony && cd build && ponyc -o /workspace --bin-name solution 2>&1"],
     runCommand: ["/workspace/solution"],
   },
 };

@@ -424,37 +424,14 @@ _start:
   bqn: `l ← •GetLine@
 w ← ' '((⊢-˜+\`×·¬⊢)∘=⊔⊢)l
 •Out •Repr +´•BQN¨w`,
-  lolcode: `HAI 1.3
-CAN HAS STRING?
-I HAS A line
-GIMMEH line
-I HAS A len ITZ STRING'Z LEN line
-I HAS A sp ITZ 0
-I HAS A i ITZ 0
-IM IN YR findsp UPPIN YR i TIL BOTH SAEM i AN len
-  I HAS A ch ITZ STRING'Z AT line AN i
-  BOTH SAEM ch AN " "
-  O RLY?
-  YA RLY
-    sp R i
-    GTFO
-  OIC
-IM OUTTA YR findsp
-I HAS A as ITZ ""
-I HAS A j ITZ 0
-IM IN YR loopa UPPIN YR j TIL BOTH SAEM j AN sp
-  I HAS A ca ITZ STRING'Z AT line AN j
-  as R SMOOSH as AN ca MKAY
-IM OUTTA YR loopa
-I HAS A bs ITZ ""
-j R SUM OF sp AN 1
-IM IN YR loopb UPPIN YR j TIL BOTH SAEM j AN len
-  I HAS A cb ITZ STRING'Z AT line AN j
-  bs R SMOOSH bs AN cb MKAY
-IM OUTTA YR loopb
-as IS NOW A NUMBR
-bs IS NOW A NUMBR
-VISIBLE SUM OF as AN bs
+  lolcode: `HAI 1.2
+I HAS A a ITZ 0
+I HAS A b ITZ 0
+GIMMEH a
+GIMMEH b
+a IS NOW A NUMBR
+b IS NOW A NUMBR
+VISIBLE SUM OF a AN b
 KTHXBYE`,
   forth: `: main pad 80 stdin read-line throw drop pad swap evaluate + . cr ;
 main`,
@@ -590,12 +567,15 @@ def main(): Unit \\ IO =
 line = sys.stdin.readline()
 a, b = map(int, line.split())
 print(a + b)`,
-  squirrel: `local line = ""
-try { while(true) { local c = stdin.readn('b'); if(c == 10 || c == 13) break; line = line + c.tochar(); } } catch(e) {}
-local sp = line.find(" ")
-local a = line.slice(0, sp).tointeger()
-local b = line.slice(sp + 1).tointeger()
-print(a + b + "\\n")`,
+  squirrel: `local a = 0, b = 0, c = 0, phase = 0
+try { while(true) {
+  c = stdin.readn('b')
+  if (c == 32) { phase = 1; continue }
+  if (c == 10 || c == 13) break
+  if (phase == 0) a = a * 10 + (c - 48)
+  else b = b * 10 + (c - 48)
+}} catch(e) {}
+print((a + b) + "\\n")`,
   rexx: `parse pull a b
 say a + b`,
   hy: `(setv parts (.split (input)))
@@ -654,11 +634,11 @@ export fn main() void = {
   println( (a + b).show )`,
   lean: `def main : IO Unit := do
   let line ← (← IO.getStdin).getLine
-  let parts := line.trimRight.splitOn " "
+  let parts := String.splitOn (String.trimRight line) " "
   match parts with
   | [a, b] =>
-    let x := a.toNat!
-    let y := b.toNat!
+    let x := String.toNat! a
+    let y := String.toNat! b
     IO.println (toString (x + y))
   | _ => return ()`,
   picat: `main =>
@@ -694,61 +674,48 @@ main(!IO) :-
   wat: `(module
   (import "wasi_snapshot_preview1" "fd_read" (func $fd_read (param i32 i32 i32 i32) (result i32)))
   (import "wasi_snapshot_preview1" "fd_write" (func $fd_write (param i32 i32 i32 i32) (result i32)))
-  (import "wasi_snapshot_preview1" "proc_exit" (func $proc_exit (param i32)))
-  (memory 1)
-  (export "memory" (memory 0))
-  (func $main (export "_start")
-    (local $pos i32) (local $a i32) (local $b i32) (local $ch i32)
-    (local $sum i32) (local $out_pos i32) (local $tmp i32) (local $digits i32) (local $i i32)
-    (i32.store (i32.const 0) (i32.const 256))
-    (i32.store (i32.const 4) (i32.const 128))
-    (drop (call $fd_read (i32.const 0) (i32.const 0) (i32.const 1) (i32.const 8)))
-    (local.set $pos (i32.const 256))
-    (local.set $a (i32.const 0))
-    (block $da (loop $la
-      (local.set $ch (i32.load8_u (local.get $pos)))
-      (br_if $da (i32.eq (local.get $ch) (i32.const 32)))
-      (local.set $a (i32.add (i32.mul (local.get $a) (i32.const 10)) (i32.sub (local.get $ch) (i32.const 48))))
-      (local.set $pos (i32.add (local.get $pos) (i32.const 1)))
-      (br $la)))
-    (local.set $pos (i32.add (local.get $pos) (i32.const 1)))
-    (local.set $b (i32.const 0))
-    (block $db (loop $lb
-      (local.set $ch (i32.load8_u (local.get $pos)))
-      (br_if $db (i32.le_u (local.get $ch) (i32.const 32)))
-      (local.set $b (i32.add (i32.mul (local.get $b) (i32.const 10)) (i32.sub (local.get $ch) (i32.const 48))))
-      (local.set $pos (i32.add (local.get $pos) (i32.const 1)))
-      (br $lb)))
-    (local.set $sum (i32.add (local.get $a) (local.get $b)))
-    (if (i32.eqz (local.get $sum)) (then
-      (i32.store8 (i32.const 512) (i32.const 48))
-      (i32.store8 (i32.const 513) (i32.const 10))
-      (i32.store (i32.const 16) (i32.const 512))
-      (i32.store (i32.const 20) (i32.const 2))
-      (drop (call $fd_write (i32.const 1) (i32.const 16) (i32.const 1) (i32.const 24)))
-      (call $proc_exit (i32.const 0)) (return)))
-    (local.set $tmp (local.get $sum))
-    (local.set $out_pos (i32.const 600))
-    (local.set $digits (i32.const 0))
-    (block $dc (loop $lc
-      (br_if $dc (i32.eqz (local.get $tmp)))
-      (i32.store8 (local.get $out_pos) (i32.add (i32.rem_u (local.get $tmp) (i32.const 10)) (i32.const 48)))
-      (local.set $tmp (i32.div_u (local.get $tmp) (i32.const 10)))
-      (local.set $out_pos (i32.add (local.get $out_pos) (i32.const 1)))
-      (local.set $digits (i32.add (local.get $digits) (i32.const 1)))
-      (br $lc)))
-    (local.set $i (i32.const 0))
-    (block $dr (loop $lr
-      (br_if $dr (i32.ge_u (local.get $i) (local.get $digits)))
-      (i32.store8 (i32.add (i32.const 512) (local.get $i))
-        (i32.load8_u (i32.sub (i32.sub (local.get $out_pos) (i32.const 1)) (local.get $i))))
-      (local.set $i (i32.add (local.get $i) (i32.const 1)))
-      (br $lr)))
-    (i32.store8 (i32.add (i32.const 512) (local.get $digits)) (i32.const 10))
-    (i32.store (i32.const 16) (i32.const 512))
-    (i32.store (i32.const 20) (i32.add (local.get $digits) (i32.const 1)))
-    (drop (call $fd_write (i32.const 1) (i32.const 16) (i32.const 1) (i32.const 24)))
-    (call $proc_exit (i32.const 0))))`,
+  (memory (export "memory") 1)
+  (func (export "_start")
+    ;; Read stdin into memory at offset 100
+    (i32.store (i32.const 0) (i32.const 100))  ;; iov_base
+    (i32.store (i32.const 4) (i32.const 64))   ;; iov_len
+    (call $fd_read (i32.const 0) (i32.const 0) (i32.const 1) (i32.const 8))
+    drop
+    ;; Parse first number
+    (local $i i32) (local $a i32) (local $b i32) (local $c i32)
+    (local.set $i (i32.const 100))
+    (block $done1
+      (loop $loop1
+        (br_if $done1 (i32.eq (i32.load8_u (local.get $i)) (i32.const 32)))
+        (local.set $a (i32.add (i32.mul (local.get $a) (i32.const 10)) (i32.sub (i32.load8_u (local.get $i)) (i32.const 48))))
+        (local.set $i (i32.add (local.get $i) (i32.const 1)))
+        (br $loop1)))
+    (local.set $i (i32.add (local.get $i) (i32.const 1)))
+    ;; Parse second number
+    (block $done2
+      (loop $loop2
+        (local.set $c (i32.load8_u (local.get $i)))
+        (br_if $done2 (i32.or (i32.eq (local.get $c) (i32.const 10)) (i32.eq (local.get $c) (i32.const 0))))
+        (local.set $b (i32.add (i32.mul (local.get $b) (i32.const 10)) (i32.sub (local.get $c) (i32.const 48))))
+        (local.set $i (i32.add (local.get $i) (i32.const 1)))
+        (br $loop2)))
+    ;; Sum
+    (local.set $a (i32.add (local.get $a) (local.get $b)))
+    ;; Convert to string at offset 200
+    (local.set $i (i32.const 210))
+    (i32.store8 (local.get $i) (i32.const 10))
+    (block $done3
+      (loop $loop3
+        (local.set $i (i32.sub (local.get $i) (i32.const 1)))
+        (i32.store8 (local.get $i) (i32.add (i32.rem_u (local.get $a) (i32.const 10)) (i32.const 48)))
+        (local.set $a (i32.div_u (local.get $a) (i32.const 10)))
+        (br_if $done3 (i32.eqz (local.get $a)))
+        (br $loop3)))
+    ;; Write to stdout
+    (i32.store (i32.const 0) (local.get $i))
+    (i32.store (i32.const 4) (i32.sub (i32.const 211) (local.get $i)))
+    (call $fd_write (i32.const 1) (i32.const 0) (i32.const 1) (i32.const 8))
+    drop))`,
   purescript: `module Main where
 
 import Prelude
@@ -769,8 +736,7 @@ main = do
     [a, b] -> log (show (fromMaybe 0 (fromString a) + fromMaybe 0 (fromString b)))
     _ -> pure unit`,
   modula2: `MODULE solution;
-FROM SWholeIO IMPORT ReadInt, WriteInt;
-FROM STextIO IMPORT WriteLn;
+FROM InOut IMPORT ReadInt, WriteInt, WriteLn;
 VAR a, b: INTEGER;
 BEGIN
   ReadInt(a);
@@ -814,21 +780,22 @@ Start w
   # io = io <<< (a + b) <<< "\\n"
   # (ok, w) = fclose io w
   = w`,
-  roc: `app [main] { pf: platform "https://github.com/roc-lang/basic-cli/releases/download/0.19.0/Hj-J_zxz7V9YurCSTFcFdu7cQbJ4_e3CJ2M1tz6g3ms.tar.br" }
+  roc: `app [main!] { pf: platform "/opt/roc-platform/basic-cli-0.20.0.tar.br" }
 
 import pf.Stdout
 import pf.Stdin
 
-main =
-    input = Stdin.line! {}
+main! : List Str => Result {} _
+main! = |_args|
+    input = Stdin.line!({})?
     parts = Str.splitOn input " "
     when parts is
         [aStr, bStr] ->
             a = Str.toI64 aStr |> Result.withDefault 0
             b = Str.toI64 bStr |> Result.withDefault 0
-            Stdout.line! (Num.toStr (a + b))
+            Stdout.line!("${Num.toStr (a + b)}")
         _ ->
-            Stdout.line! "0"`,
+            Stdout.line!("0")`,
   carp: `(defn main []
   (let [line (IO.get-line)
         parts (String.split-by &line &[\\space])
@@ -837,15 +804,14 @@ main =
     (println* (+ a b))))`,
   grain: `module Main
 
-from "sys/file" include File
+from "wasi/file" include File
 from "bytes" include Bytes
 from "string" include String
 from "number" include Number
 from "result" include Result
 
-let buf = Bytes.make(1024)
-let nread = File.fdRead(File.stdin, buf, 1024)
-let input = Bytes.toString(Bytes.slice(0, Result.unwrap(nread), buf))
+let (bytes, nread) = Result.unwrap(File.fdRead(File.stdin, 1024))
+let input = Bytes.toString(Bytes.slice(0, nread, bytes))
 let parts = String.split(" ", String.trim(input))
 match (parts) {
   [a, b] => {
@@ -958,12 +924,6 @@ async function waitForJudging(
 const KNOWN_FAILING = new Set<string>([
   "fsharp",      // .NET SDK needs HOME=/tmp (fixing)
   "vbnet",       // .NET SDK needs HOME=/tmp (fixing)
-  "purescript",  // needs spago ecosystem pre-built in Docker
-  "mercury",     // apt repo is amd64-only, no arm64 packages
-  "curry",       // PAKCS interactive mode handling
-  "carp",        // unmaintained, x86-64 only
-  "roc",         // downloads platform at compile time, no network in sandbox
-  "grain",       // compiler internal error (grainc.js crash)
   "lean",        // runtime error on judge (IO/parsing issue)
   "wat",         // WAT A+B solution needs debugging (WASI I/O)
   "modula2",     // gm2 ISO module compile issue
@@ -972,7 +932,6 @@ const KNOWN_FAILING = new Set<string>([
   "clean",       // Clean compiler StdEnv path issue
   "pony",        // ponyc compilation timeout
   "squirrel",    // stdin.readn('l') not working in sandboxed container
-  "arturo",      // prebuilt binary download/execution issue
   "koka",        // stdlib loading path issue after multi-stage copy
   "powershell",  // PowerShell runtime error on amd64 staging
   "lolcode",     // LOLCODE 1.3 string parsing for space-separated input
