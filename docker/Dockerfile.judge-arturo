@@ -5,9 +5,10 @@ RUN apt-get update && apt-get install -y --no-install-recommends curl ca-certifi
     if [ "$ARCH" = "amd64" ]; then ART_ARCH="linux-amd64"; \
     elif [ "$ARCH" = "arm64" ]; then ART_ARCH="linux-arm64"; fi && \
     curl -fsSL "https://github.com/arturo-lang/arturo/releases/download/v0.10.0/arturo-0.10.0-${ART_ARCH}-mini.zip" -o /tmp/arturo.zip && \
-    unzip -j /tmp/arturo.zip "*/arturo" -d /usr/local/bin/ && \
+    mkdir -p /tmp/arturo-extract && unzip /tmp/arturo.zip -d /tmp/arturo-extract && \
+    find /tmp/arturo-extract -name "arturo" -type f -exec cp {} /usr/local/bin/arturo \; && \
     chmod +x /usr/local/bin/arturo && \
-    rm /tmp/arturo.zip && \
+    rm -rf /tmp/arturo.zip /tmp/arturo-extract && \
     apt-get purge -y curl unzip && apt-get autoremove -y && rm -rf /var/lib/apt/lists/* && \
     useradd -m -s /bin/false judge && \
     mkdir -p /workspace && chown judge:judge /workspace
