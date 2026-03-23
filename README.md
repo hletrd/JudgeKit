@@ -109,20 +109,20 @@ See [Language presets](docs/languages.md#docker-image-presets) for preset option
 | `judge-r` | 1.27 GB | 850 MB | `judge-julia` | 1.50 GB | 1.23 GB |
 | `judge-odin` | 1.81 GB | 1.34 GB | `judge-haskell` | 1.81 GB | 1.59 GB |
 | `judge-powershell` | 449 MB | 352 MB | `judge-smalltalk` | 122 MB | 76 MB |
-| `judge-swift` | 2.79 GB | 2.11 GB | `judge-arturo` | 133 MB | — |
-| `judge-c3` | 580 MB | — | `judge-carp` | 418 MB | — |
-| `judge-clean` | 154 MB | — | `judge-curry` | 429 MB | — |
-| `judge-factor` | 781 MB | — | `judge-flix` | 657 MB | — |
-| `judge-grain` | 240 MB | — | `judge-hare` | 287 MB | — |
-| `judge-hy` | 84 MB | — | `judge-j` | 150 MB | — |
-| `judge-janet` | 27 MB | — | `judge-koka` | 641 MB | — |
-| `judge-lean` | 3.87 GB | — | `judge-mercury` | 1.14 GB | — |
-| `judge-micropython` | 14 MB | — | `judge-minizinc` | 433 MB | — |
-| `judge-modula2` | 512 MB | — | `judge-nelua` | 380 MB | — |
-| `judge-picat` | 141 MB | — | `judge-pony` | 2.62 GB | — |
-| `judge-rexx` | 114 MB | — | `judge-roc` | 275 MB | — |
-| `judge-purescript` | 335 MB | — | `judge-wat` | 235 MB | — |
-| `judge-squirrel` | — | — | `judge-vala` | 619 MB | — |
+| `judge-swift` | 2.79 GB | 2.11 GB | `judge-arturo` | 133 MB | 111 MB |
+| `judge-c3` | 580 MB | — | `judge-carp` | 418 MB | 303 MB |
+| `judge-clean` | 154 MB | 126 MB | `judge-curry` | 429 MB | 302 MB |
+| `judge-factor` | 781 MB | 584 MB | `judge-flix` | 657 MB | — |
+| `judge-grain` | 240 MB | 186 MB | `judge-hare` | 287 MB | 181 MB |
+| `judge-hy` | 84 MB | 59 MB | `judge-j` | 150 MB | 507 MB |
+| `judge-janet` | 27 MB | 19 MB | `judge-koka` | 641 MB | 470 MB |
+| `judge-lean` | 3.87 GB | 3.02 GB | `judge-mercury` | 1.14 GB | — |
+| `judge-micropython` | 14 MB | 9 MB | `judge-minizinc` | 433 MB | 326 MB |
+| `judge-modula2` | 512 MB | 364 MB | `judge-nelua` | 380 MB | 277 MB |
+| `judge-picat` | 141 MB | 118 MB | `judge-pony` | 2.62 GB | 1.22 GB |
+| `judge-rexx` | 114 MB | 99 MB | `judge-roc` | 275 MB | 207 MB |
+| `judge-purescript` | 335 MB | 260 MB | `judge-wat` | 235 MB | 97 MB |
+| `judge-squirrel` | — | 100 MB | `judge-vala` | 619 MB | 452 MB |
 
 2 images are amd64-only: `judge-b` (x86 inline asm), `judge-apl` (make fails on arm64).
 
