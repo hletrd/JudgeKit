@@ -3,6 +3,7 @@ FROM ghcr.io/ponylang/ponyc:0.61.1
 USER root
 RUN cp -a /root/.local/share/ponyup /opt/ponyup && \
     chmod -R a+rX /opt/ponyup && \
+    find /opt/ponyup -name "ponyc" -exec chmod +x {} \; && \
     ln -sf /opt/ponyup/bin/ponyc /usr/local/bin/ponyc && \
     adduser -D -s /bin/false judge && \
     mkdir -p /workspace && chown judge:judge /workspace

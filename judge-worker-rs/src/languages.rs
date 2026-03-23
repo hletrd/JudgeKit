@@ -1123,8 +1123,8 @@ static WAT_CONFIG: LanguageConfig = LanguageConfig {
 };
 
 // PureScript
-static PURESCRIPT_COMPILE: &[&str] = &["sh", "-c", "cp /workspace/solution.purs /opt/ps/src/Main.purs && cd /opt/ps && purs compile 'src/**/*.purs' '.spago/p/*/src/**/*.purs' --output output 2>&1"];
-static PURESCRIPT_RUN: &[&str] = &["node", "-e", "require('/opt/ps/output/Main/index.js').main()"];
+static PURESCRIPT_COMPILE: &[&str] = &["sh", "-c", "cp /workspace/solution.purs /opt/purescript-project/src/Main.purs && cd /opt/purescript-project && spago build 2>&1"];
+static PURESCRIPT_RUN: &[&str] = &["node", "-e", "require('/opt/purescript-project/output/Main/index.js').main()"];
 
 static PURESCRIPT_CONFIG: LanguageConfig = LanguageConfig {
     extension: ".purs",
@@ -1166,7 +1166,7 @@ static SPARK_CONFIG: LanguageConfig = LanguageConfig {
 };
 
 // MiniZinc
-static MINIZINC_RUN: &[&str] = &["minizinc-judge", "/workspace/solution.mzn"];
+static MINIZINC_RUN: &[&str] = &["sh", "-c", "HOME=/tmp minizinc-judge /workspace/solution.mzn"];
 
 static MINIZINC_CONFIG: LanguageConfig = LanguageConfig {
     extension: ".mzn",
@@ -1176,7 +1176,7 @@ static MINIZINC_CONFIG: LanguageConfig = LanguageConfig {
 };
 
 // Curry (PAKCS)
-static CURRY_COMPILE: &[&str] = &["sh", "-c", "cd /workspace && pakcs :load solution :save :quit 2>&1"];
+static CURRY_COMPILE: &[&str] = &["sh", "-c", "cd /workspace && printf ':load solution\\n:save\\n:quit\\n' | pakcs 2>&1"];
 static CURRY_RUN: &[&str] = &["/workspace/solution"];
 
 static CURRY_CONFIG: LanguageConfig = LanguageConfig {
@@ -1187,8 +1187,8 @@ static CURRY_CONFIG: LanguageConfig = LanguageConfig {
 };
 
 // Clean
-static CLEAN_COMPILE: &[&str] = &["sh", "-c", "cd /workspace && clm -I /opt/clean/lib/StdEnv Solution -o /workspace/solution 2>&1"];
-static CLEAN_RUN: &[&str] = &["/workspace/solution"];
+static CLEAN_COMPILE: &[&str] = &["sh", "-c", "export HOME=/tmp && cd /workspace && clm -I /opt/clean/lib/StdEnv Solution -o /workspace/solution 2>&1"];
+static CLEAN_RUN: &[&str] = &["sh", "-c", "HOME=/tmp /workspace/solution"];
 
 static CLEAN_CONFIG: LanguageConfig = LanguageConfig {
     extension: ".icl",
@@ -1231,7 +1231,7 @@ static GRAIN_CONFIG: LanguageConfig = LanguageConfig {
 };
 
 // Pony
-static PONY_COMPILE: &[&str] = &["sh", "-c", "cd /workspace && mkdir -p build && cp solution.pony build/main.pony && cd build && ponyc -o /workspace --bin-name solution 2>&1"];
+static PONY_COMPILE: &[&str] = &["sh", "-c", "export HOME=/tmp && cd /workspace && mkdir -p build && cp solution.pony build/main.pony && cd build && ponyc -o /workspace --bin-name solution 2>&1"];
 static PONY_RUN: &[&str] = &["/workspace/solution"];
 
 static PONY_CONFIG: LanguageConfig = LanguageConfig {

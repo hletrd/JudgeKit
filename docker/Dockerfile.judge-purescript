@@ -1,15 +1,25 @@
 FROM node:24-alpine
 
-RUN apk add --no-cache curl tar && \
+RUN apk add --no-cache curl tar bash && \
     ARCH=$(uname -m) && \
     if [ "$ARCH" = "x86_64" ]; then PS_URL="https://github.com/purescript/purescript/releases/download/v0.15.16/linux64.tar.gz"; \
     elif [ "$ARCH" = "aarch64" ]; then PS_URL="https://github.com/purescript/purescript/releases/download/v0.15.16/linux-arm64.tar.gz"; fi && \
     curl -fsSL -o /tmp/purs.tar.gz "$PS_URL" && \
     tar xzf /tmp/purs.tar.gz -C /usr/local/bin --strip-components=1 && \
     rm /tmp/purs.tar.gz && \
-    apk del curl tar && \
+    npm install -g spago@next && \
     adduser -D -s /bin/false judge && \
     mkdir -p /workspace && chown judge:judge /workspace
+
+# Pre-build the spago project with required packages at /opt/purescript-project
+RUN mkdir -p /opt/purescript-project && \
+    cd /opt/purescript-project && \
+    spago init --use-solver && \
+    spago install prelude effect console strings integers maybe node-fs node-buffer && \
+    # Write a Main that exercises all required imports so they get compiled into the cache
+    printf 'module Main where\nimport Prelude\nimport Effect (Effect)\nimport Effect.Console (log)\nimport Data.String.Common (split, trim)\nimport Data.String.Pattern (Pattern(..))\nimport Data.Int (fromString)\nimport Data.Maybe (fromMaybe)\nimport Node.FS.Sync (readTextFile)\nimport Node.Encoding (Encoding(..))\nmain :: Effect Unit\nmain = pure unit\n' > /opt/purescript-project/src/Main.purs && \
+    spago build && \
+    chmod -R a+rX /opt/purescript-project
 
 WORKDIR /workspace
 USER judge

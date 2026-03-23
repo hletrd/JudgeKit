@@ -1,11 +1,28 @@
 FROM ubuntu:22.04
 
+ARG TARGETARCH
+
 RUN apt-get update && apt-get install -y --no-install-recommends \
       curl ca-certificates gcc libc6-dev && \
-    echo "deb [trusted=yes] http://dl.mercurylang.org/deb/ jammy main" > /etc/apt/sources.list.d/mercury.list && \
-    apt-get update && \
-    apt-get install -y --no-install-recommends mercury-recommended && \
-    apt-get purge -y curl && apt-get autoremove -y && rm -rf /var/lib/apt/lists/* && \
+    if [ "$TARGETARCH" = "amd64" ]; then \
+      echo "deb [trusted=yes] http://dl.mercurylang.org/deb/ jammy main" > /etc/apt/sources.list.d/mercury.list && \
+      apt-get update && \
+      apt-get install -y --no-install-recommends mercury-recommended; \
+    elif [ "$TARGETARCH" = "arm64" ]; then \
+      apt-get install -y --no-install-recommends \
+        build-essential flex bison libreadline-dev zlib1g-dev \
+        libgmp-dev libssl-dev wget && \
+      MERCURY_VER="22.01.8" && \
+      wget -q "https://dl.mercurylang.org/release/mercury-srcdist-${MERCURY_VER}.tar.gz" -O /tmp/mercury-src.tar.gz && \
+      mkdir -p /tmp/mercury-build && \
+      tar xzf /tmp/mercury-src.tar.gz -C /tmp/mercury-build --strip-components=1 && \
+      cd /tmp/mercury-build && \
+      ./configure --prefix=/usr/local && \
+      make && \
+      make install && \
+      rm -rf /tmp/mercury-build /tmp/mercury-src.tar.gz; \
+    fi && \
+    apt-get purge -y curl wget && apt-get autoremove -y && rm -rf /var/lib/apt/lists/* && \
     useradd --no-create-home --shell /usr/sbin/nologin judge && \
     mkdir -p /workspace && chown judge:judge /workspace
 

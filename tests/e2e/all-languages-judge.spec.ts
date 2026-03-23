@@ -793,7 +793,7 @@ main! = |_args|
         [aStr, bStr] ->
             a = Str.toI64 aStr |> Result.withDefault 0
             b = Str.toI64 bStr |> Result.withDefault 0
-            Stdout.line!("${Num.toStr (a + b)}")
+            Stdout.line!("\${Num.toStr (a + b)}")
         _ ->
             Stdout.line!("0")`,
   carp: `(defn main []

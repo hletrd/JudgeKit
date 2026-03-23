@@ -1,14 +1,29 @@
 FROM debian:bookworm-slim
 
+ARG TARGETARCH
+
 RUN apt-get update && apt-get install -y --no-install-recommends \
-      curl ca-certificates unzip gcc libc6-dev && \
-    curl -fsSL -o /tmp/carp.zip \
-      https://github.com/carp-lang/Carp/releases/download/v0.5.5/carp-v0.5.5-x86_64-linux.zip && \
-    unzip /tmp/carp.zip -d /opt && \
-    mv /opt/carp-v0.5.5-x86_64-linux /opt/carp && \
+      ca-certificates gcc libc6-dev && \
+    if [ "$TARGETARCH" = "amd64" ]; then \
+      apt-get install -y --no-install-recommends curl unzip && \
+      curl -fsSL -o /tmp/carp.zip \
+        https://github.com/carp-lang/Carp/releases/download/v0.5.5/carp-v0.5.5-x86_64-linux.zip && \
+      unzip /tmp/carp.zip -d /opt && \
+      mv /opt/carp-v0.5.5-x86_64-linux /opt/carp && \
+      rm /tmp/carp.zip && \
+      apt-get purge -y curl unzip; \
+    elif [ "$TARGETARCH" = "arm64" ]; then \
+      apt-get install -y --no-install-recommends \
+        curl git build-essential libgmp-dev libffi-dev libncurses-dev zlib1g-dev && \
+      curl -fsSL https://get.haskellstack.org/ | sh && \
+      git clone --depth 1 --branch v0.5.5 https://github.com/carp-lang/Carp.git /tmp/carp-src && \
+      cd /tmp/carp-src && \
+      stack install --local-bin-path /opt/carp/bin && \
+      rm -rf /tmp/carp-src ~/.stack && \
+      apt-get purge -y curl git; \
+    fi && \
     ln -sf /opt/carp/bin/carp /usr/local/bin/carp && \
-    rm /tmp/carp.zip && \
-    apt-get purge -y curl unzip && apt-get autoremove -y && rm -rf /var/lib/apt/lists/* && \
+    apt-get autoremove -y && rm -rf /var/lib/apt/lists/* && \
     useradd --no-create-home --shell /usr/sbin/nologin judge && \
     mkdir -p /workspace && chown judge:judge /workspace
 
