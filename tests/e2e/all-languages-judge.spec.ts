@@ -930,17 +930,10 @@ const KNOWN_FAILING = new Set<string>([
   "roc",         // platform file not pre-cached in Docker
   "grain",       // grainc internal compiler error
   "pony",        // ponyc permission/timeout
-  // Persistent runtime issues
-  "powershell",  // .NET runtime_error on amd64
-  "squirrel",    // stdin reading in sandboxed container
-  "arturo",      // memory_limit — binary too large
-  "koka",        // stdlib loading path
-  "lean",        // Lean 4 runtime error
-  "wat",         // WASI fd_read/fd_write issue
-  "modula2",     // gm2 ISO module wrong answer
-  "factor",      // Factor runtime execution
-  "minizinc",    // minizinc solver runtime
-  "clean",       // Clean StdEnv path
+  // Persistent runtime issues — need Docker image investigation
+  "fsharp",      // .NET dotnet fsi runtime_error (globalization)
+  "vbnet",       // .NET dotnet build XML escaping in compile cmd
+  "lolcode",     // lci can't parse space-separated single-line input
 ]);
 
 /** Per-language timeout overrides (ms). JVM/compiled languages get more time. */
