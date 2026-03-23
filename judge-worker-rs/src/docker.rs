@@ -219,6 +219,12 @@ async fn run_docker_once(
         args.push(part.clone());
     }
 
+    tracing::info!(
+        container = %container_name,
+        command = %args.join(" "),
+        "Docker run command"
+    );
+
     let mut child = tokio::process::Command::new("docker")
         .args(&args)
         .stdin(std::process::Stdio::piped())
