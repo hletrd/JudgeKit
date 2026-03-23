@@ -592,7 +592,7 @@ static CRYSTAL_CONFIG: LanguageConfig = LanguageConfig {
 };
 
 // PowerShell
-static POWERSHELL_RUN: &[&str] = &["sh", "-c", "HOME=/tmp pwsh -NoProfile -NonInteractive -File /workspace/solution.ps1"];
+static POWERSHELL_RUN: &[&str] = &["sh", "-c", "HOME=/tmp DOTNET_SYSTEM_GLOBALIZATION_INVARIANT=1 pwsh -NoProfile -NonInteractive -File /workspace/solution.ps1"];
 
 static POWERSHELL_CONFIG: LanguageConfig = LanguageConfig {
     extension: ".ps1",
@@ -623,7 +623,7 @@ static DELPHI_CONFIG: LanguageConfig = LanguageConfig {
 };
 
 // F# (script mode via dotnet fsi)
-static FSHARP_RUN: &[&str] = &["sh", "-c", "HOME=/tmp DOTNET_CLI_HOME=/tmp dotnet fsi /workspace/solution.fsx"];
+static FSHARP_RUN: &[&str] = &["sh", "-c", "HOME=/tmp DOTNET_CLI_HOME=/tmp DOTNET_SYSTEM_GLOBALIZATION_INVARIANT=1 dotnet fsi /workspace/solution.fsx"];
 
 static FSHARP_CONFIG: LanguageConfig = LanguageConfig {
     extension: ".fsx",
@@ -1101,7 +1101,7 @@ static PICAT_CONFIG: LanguageConfig = LanguageConfig {
 };
 
 // Mercury
-static MERCURY_COMPILE: &[&str] = &["sh", "-c", "cd /workspace && mmc --make solution 2>&1"];
+static MERCURY_COMPILE: &[&str] = &["sh", "-c", "export HOME=/tmp && cd /workspace && mmc --make solution 2>&1"];
 static MERCURY_RUN: &[&str] = &["/workspace/solution"];
 
 static MERCURY_CONFIG: LanguageConfig = LanguageConfig {
@@ -1123,7 +1123,7 @@ static WAT_CONFIG: LanguageConfig = LanguageConfig {
 };
 
 // PureScript
-static PURESCRIPT_COMPILE: &[&str] = &["sh", "-c", "cp /workspace/solution.purs /opt/purescript-project/src/Main.purs && cd /opt/purescript-project && spago build 2>&1"];
+static PURESCRIPT_COMPILE: &[&str] = &["sh", "-c", "HOME=/tmp && cp -f /workspace/solution.purs /opt/purescript-project/src/Main.purs && cd /opt/purescript-project && spago build 2>&1"];
 static PURESCRIPT_RUN: &[&str] = &["node", "-e", "require('/opt/purescript-project/output/Main/index.js').main()"];
 
 static PURESCRIPT_CONFIG: LanguageConfig = LanguageConfig {
@@ -1176,7 +1176,7 @@ static MINIZINC_CONFIG: LanguageConfig = LanguageConfig {
 };
 
 // Curry (PAKCS)
-static CURRY_COMPILE: &[&str] = &["sh", "-c", "cd /workspace && printf ':load solution\\n:save\\n:quit\\n' | pakcs 2>&1"];
+static CURRY_COMPILE: &[&str] = &["sh", "-c", "export HOME=/tmp && cd /workspace && printf ':load solution\\n:save\\n:quit\\n' | pakcs 2>&1"];
 static CURRY_RUN: &[&str] = &["/workspace/solution"];
 
 static CURRY_CONFIG: LanguageConfig = LanguageConfig {
@@ -1209,7 +1209,7 @@ static ROC_CONFIG: LanguageConfig = LanguageConfig {
 };
 
 // Carp
-static CARP_COMPILE: &[&str] = &["sh", "-c", "cd /workspace && carp -b solution.carp 2>&1"];
+static CARP_COMPILE: &[&str] = &["sh", "-c", "export HOME=/tmp && cd /workspace && carp -b solution.carp 2>&1"];
 static CARP_RUN: &[&str] = &["/workspace/out/solution"];
 
 static CARP_CONFIG: LanguageConfig = LanguageConfig {

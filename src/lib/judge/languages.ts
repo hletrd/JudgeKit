@@ -761,7 +761,7 @@ export const JUDGE_LANGUAGE_CONFIGS: Record<Language, JudgeLanguageDefinition> =
     dockerImage: "judge-powershell:latest",
     compiler: `PowerShell ${JUDGE_TOOLCHAIN_VERSIONS.powershell}`,
     compileCommand: null,
-    runCommand: ["sh", "-c", "HOME=/tmp pwsh -NoProfile -NonInteractive -File /workspace/solution.ps1"],
+    runCommand: ["sh", "-c", "HOME=/tmp DOTNET_SYSTEM_GLOBALIZATION_INVARIANT=1 pwsh -NoProfile -NonInteractive -File /workspace/solution.ps1"],
   },
   postscript: {
     language: "postscript",
@@ -1257,7 +1257,7 @@ export const JUDGE_LANGUAGE_CONFIGS: Record<Language, JudgeLanguageDefinition> =
     extension: ".m",
     dockerImage: "judge-mercury:latest",
     compiler: `Melbourne Mercury Compiler ${JUDGE_TOOLCHAIN_VERSIONS.mercury}`,
-    compileCommand: ["sh", "-c", "cd /workspace && mmc --make solution 2>&1"],
+    compileCommand: ["sh", "-c", "export HOME=/tmp && cd /workspace && mmc --make solution 2>&1"],
     runCommand: ["/workspace/solution"],
   },
   wat: {
@@ -1277,7 +1277,7 @@ export const JUDGE_LANGUAGE_CONFIGS: Record<Language, JudgeLanguageDefinition> =
     extension: ".purs",
     dockerImage: "judge-purescript:latest",
     compiler: `PureScript ${JUDGE_TOOLCHAIN_VERSIONS.purescript} (purs)`,
-    compileCommand: ["sh", "-c", "cp /workspace/solution.purs /opt/purescript-project/src/Main.purs && cd /opt/purescript-project && spago build 2>&1"],
+    compileCommand: ["sh", "-c", "HOME=/tmp && cp -f /workspace/solution.purs /opt/purescript-project/src/Main.purs && cd /opt/purescript-project && spago build 2>&1"],
     runCommand: ["node", "-e", "require('/opt/purescript-project/output/Main/index.js').main()"],
   },
   modula2: {
@@ -1327,7 +1327,7 @@ export const JUDGE_LANGUAGE_CONFIGS: Record<Language, JudgeLanguageDefinition> =
     extension: ".curry",
     dockerImage: "judge-curry:latest",
     compiler: `PAKCS ${JUDGE_TOOLCHAIN_VERSIONS.pakcs}`,
-    compileCommand: ["sh", "-c", "cd /workspace && printf ':load solution\\n:save\\n:quit\\n' | pakcs 2>&1"],
+    compileCommand: ["sh", "-c", "export HOME=/tmp && cd /workspace && printf ':load solution\\n:save\\n:quit\\n' | pakcs 2>&1"],
     runCommand: ["/workspace/solution"],
   },
   clean: {
@@ -1357,7 +1357,7 @@ export const JUDGE_LANGUAGE_CONFIGS: Record<Language, JudgeLanguageDefinition> =
     extension: ".carp",
     dockerImage: "judge-carp:latest",
     compiler: `Carp ${JUDGE_TOOLCHAIN_VERSIONS.carp}`,
-    compileCommand: ["sh", "-c", "cd /workspace && carp -b solution.carp 2>&1"],
+    compileCommand: ["sh", "-c", "export HOME=/tmp && cd /workspace && carp -b solution.carp 2>&1"],
     runCommand: ["/workspace/out/solution"],
   },
   grain: {
