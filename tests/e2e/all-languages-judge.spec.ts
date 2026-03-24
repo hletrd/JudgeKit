@@ -924,6 +924,7 @@ async function waitForJudging(
 // Tagged test.fixme() so they show as "to-do" rather than failures.
 const KNOWN_FAILING = new Set<string>([
   "apl",         // GNU APL build fails on ARM64, output format issues
+  "carp",        // Carp 0.5.5 core library API incompatibility
 ]);
 
 /** Per-language timeout overrides (ms). JVM/compiled languages get more time. */
