@@ -65,8 +65,12 @@ vi.mock("@/lib/capabilities/cache", () => ({
   isValidRole: vi.fn().mockResolvedValue(true),
 }));
 
+vi.mock("@/lib/security/api-rate-limit", () => ({
+  consumeApiRateLimit: vi.fn().mockReturnValue(null),
+}));
+
 vi.mock("@/lib/db", () => {
-  const insertChain = { values: insertMock };
+  const insertChain = { values: vi.fn(() => ({ returning: insertMock })) };
   return {
     db: {
       query: {
@@ -156,8 +160,14 @@ beforeEach(async () => {
   // Submission ID generator
   generateSubmissionIdMock.mockReturnValue("submission-abc123");
 
-  // DB insert succeeds
-  insertMock.mockResolvedValue(undefined);
+  // DB insert succeeds — .returning() must yield an array for destructuring
+  insertMock.mockResolvedValue([{
+    id: "submission-abc123",
+    userId: "user-1",
+    problemId: "problem-1",
+    language: "python",
+    status: "pending",
+  }]);
 
   // Inserted submission returned by findFirst
   submissionsFindFirstMock.mockResolvedValue({
@@ -240,7 +250,7 @@ describe("POST /api/v1/submissions", () => {
 
   it("returns 400 for an unsupported/unknown language", async () => {
     const response = await POST(
-      makeRequest({ ...VALID_BODY, language: "brainfuck" })
+      makeRequest({ ...VALID_BODY, language: "nonexistent_lang" })
     );
     const payload = await response.json();
 
