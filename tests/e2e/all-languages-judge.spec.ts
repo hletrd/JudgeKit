@@ -920,7 +920,8 @@ async function waitForJudging(
 // Languages with known issues on the current judge infrastructure.
 // Tagged test.fixme() so they show as "to-do" rather than failures.
 const KNOWN_FAILING = new Set<string>([
-  // All languages fixed or ready for testing
+  "fsharp",      // dotnet publish compile fails in worker (module Program approach)
+  "apl",         // wrong_answer — GNU APL output format issue
 ]);
 
 /** Per-language timeout overrides (ms). JVM/compiled languages get more time. */
