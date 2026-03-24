@@ -1,7 +1,7 @@
 FROM debian:bookworm-slim
 
 RUN apt-get update && apt-get install -y --no-install-recommends \
-      curl ca-certificates && \
+      curl ca-certificates libgl1 && \
     curl -fsSL -o /tmp/minizinc.tgz \
       "https://github.com/MiniZinc/MiniZincIDE/releases/download/2.9.5/MiniZincIDE-2.9.5-bundle-linux-x86_64.tgz" && \
     mkdir -p /opt/minizinc && \
