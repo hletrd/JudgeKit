@@ -16,8 +16,11 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
         zlib1g-dev libzstd-dev libxml2-dev libcurl4-openssl-dev && \
       git clone --depth 1 --branch v0.7.10 https://github.com/c3lang/c3c.git /tmp/c3c-src && \
       cd /tmp/c3c-src && mkdir build && cd build && \
-      cmake .. -DCMAKE_BUILD_TYPE=Release -DCMAKE_INSTALL_PREFIX=/opt/c3 && \
-      make -j$(nproc) && make install && \
+      cmake .. -DCMAKE_BUILD_TYPE=Release && \
+      make -j$(nproc) && \
+      mkdir -p /opt/c3/bin /opt/c3/lib && \
+      cp /tmp/c3c-src/build/c3c /opt/c3/bin/c3c && \
+      cp -r /tmp/c3c-src/lib/* /opt/c3/lib/ 2>/dev/null || true && \
       rm -rf /tmp/c3c-src; \
     fi
 
