@@ -567,14 +567,12 @@ def main(): Unit \\ IO =
 line = sys.stdin.readline()
 a, b = map(int, line.split())
 print(a + b)`,
-  squirrel: `local a = 0, b = 0, c = 0, phase = 0
-try { while(true) {
-  c = stdin.readn('b')
-  if (c == 32) { phase = 1; continue }
-  if (c == 10 || c == 13) break
-  if (phase == 0) a = a * 10 + (c - 48)
-  else b = b * 10 + (c - 48)
-}} catch(e) {}
+  squirrel: `local f = file("/dev/stdin", "r")
+local line = f.readn('l')
+f.close()
+local sp = line.find(" ")
+local a = line.slice(0, sp).tointeger()
+local b = line.slice(sp + 1).tointeger()
 print((a + b) + "\\n")`,
   rexx: `parse pull a b
 say a + b`,

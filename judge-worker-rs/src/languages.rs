@@ -824,7 +824,7 @@ static BQN_CONFIG: LanguageConfig = LanguageConfig {
 };
 
 // LOLCODE
-static LOLCODE_RUN: &[&str] = &["sh", "-c", "tr ' ' '\\n' < /dev/stdin | lci /workspace/solution.lol"];
+static LOLCODE_RUN: &[&str] = &["sh", "-c", "tr ' ' '\\n' | lci /workspace/solution.lol"];
 
 static LOLCODE_CONFIG: LanguageConfig = LanguageConfig {
     extension: ".lol",
@@ -1104,7 +1104,7 @@ static HY_CONFIG: LanguageConfig = LanguageConfig {
 };
 
 // Arturo
-static ARTURO_RUN: &[&str] = &["arturo", "/workspace/solution.art"];
+static ARTURO_RUN: &[&str] = &["sh", "-c", "HOME=/tmp arturo /workspace/solution.art"];
 
 static ARTURO_CONFIG: LanguageConfig = LanguageConfig {
     extension: ".art",
@@ -1244,7 +1244,7 @@ static PURESCRIPT_CONFIG: LanguageConfig = LanguageConfig {
 };
 
 // Modula-2
-static MODULA2_COMPILE: &[&str] = &["gm2", "-O2", "-fiso", "-o", "/workspace/solution", "/workspace/solution.mod"];
+static MODULA2_COMPILE: &[&str] = &["gm2", "-O2", "-o", "/workspace/solution", "/workspace/solution.mod"];
 static MODULA2_RUN: &[&str] = &["/workspace/solution"];
 
 static MODULA2_CONFIG: LanguageConfig = LanguageConfig {

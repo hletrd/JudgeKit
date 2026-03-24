@@ -917,7 +917,7 @@ export const JUDGE_LANGUAGE_CONFIGS: Record<Language, JudgeLanguageDefinition> =
     dockerImage: "judge-lolcode:latest",
     compiler: null,
     compileCommand: null,
-    runCommand: ["sh", "-c", "tr ' ' '\\n' < /dev/stdin | lci /workspace/solution.lol"],
+    runCommand: ["sh", "-c", "tr ' ' '\\n' | lci /workspace/solution.lol"],
   },
   forth: {
     language: "forth",
@@ -1170,7 +1170,7 @@ export const JUDGE_LANGUAGE_CONFIGS: Record<Language, JudgeLanguageDefinition> =
     dockerImage: "judge-arturo:latest",
     compiler: null,
     compileCommand: null,
-    runCommand: ["arturo", "/workspace/solution.art"],
+    runCommand: ["sh", "-c", "HOME=/tmp arturo /workspace/solution.art"],
   },
   janet: {
     language: "janet",
@@ -1285,11 +1285,11 @@ export const JUDGE_LANGUAGE_CONFIGS: Record<Language, JudgeLanguageDefinition> =
   modula2: {
     language: "modula2",
     displayName: "Modula-2",
-    standard: "ISO",
+    standard: "PIM",
     extension: ".mod",
     dockerImage: "judge-modula2:latest",
     compiler: `GCC gm2 ${JUDGE_TOOLCHAIN_VERSIONS.fortran}`,
-    compileCommand: ["gm2", "-O2", "-fiso", "-o", "/workspace/solution", "/workspace/solution.mod"],
+    compileCommand: ["gm2", "-O2", "-o", "/workspace/solution", "/workspace/solution.mod"],
     runCommand: ["/workspace/solution"],
   },
   factor: {
