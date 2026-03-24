@@ -115,7 +115,7 @@
 | 109 | `curry` | Curry (PAKCS 3.9.0) | `judge-curry` | ✅ | ✅ | ✅ | ✅ |
 | 110 | `clean` | Clean 3.1 | `judge-clean` | ✅ | ✅ | ✅ | ✅ |
 | 111 | `roc` | Roc (alpha4) | `judge-roc` | ✅ | ✅ | ✅ | ✅ |
-| 112 | `carp` | Carp 0.5.5 | `judge-carp` | ✅ | ✅ | ✅ | ✅ |
+| 112 | `carp` | Carp 0.5.5 | `judge-carp` | ✅ | ✅ | ❌ | ❌ |
 | 113 | `grain` | Grain 0.7.2 | `judge-grain` | ✅ | ❌ x64 only | ✅ | ❌ x64 only binary |
 | 114 | `pony` | Pony 0.61.1 | `judge-pony` | ✅ | ✅ | ✅ | ✅ |
 
@@ -127,18 +127,20 @@
 
 ### amd64 E2E Summary (2026-03-24)
 
-**113 of 114 languages pass** on amd64. 1 failure:
+**112 of 114 languages pass** on amd64. 2 failures:
 - **apl**: GNU APL output format issue
+- **carp**: Core library API incompatibility (Carp 0.5.5)
 
 ### arm64 E2E Summary (2026-03-24)
 
-**108 of 114 languages pass** on arm64. 6 failures (architecture limits):
+**107 of 114 languages pass** on arm64. 7 failures (architecture limits):
 - **b**: x86-64 inline assembly
 - **apl**: GNU APL build fails on ARM64
 - **c3**: amd64 only binary
 - **grain**: x64 only binary
 - **factor**: x64 only binary
 - **minizinc**: x86_64 only binary (no ARM64 release)
+- **carp**: Core library API incompatibility
 
 ## Docker Image Presets
 
