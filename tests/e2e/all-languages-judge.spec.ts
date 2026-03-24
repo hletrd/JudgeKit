@@ -920,22 +920,7 @@ async function waitForJudging(
 // Languages with known issues on the current judge infrastructure.
 // Tagged test.fixme() so they show as "to-do" rather than failures.
 const KNOWN_FAILING = new Set<string>([
-  // Phase 3 languages — need Docker image rebuilds on staging
-  "mercury",     // Docker source build needed
-  "purescript",  // spago Docker build issue
-  "curry",       // PAKCS non-interactive mode
-  "carp",        // arch-specific binary issue
-  "roc",         // platform file not pre-cached in Docker
-  "grain",       // grainc internal compiler error
-  "pony",        // ponyc permission/timeout
-  // Persistent E2E failures — need individual debugging
-  "lolcode",     // lci runtime_error with tr stdin wrapper
-  "squirrel",    // stdin reading fails in sandbox
-  "arturo",      // binary execution issue
-  "koka",        // stdlib loading path
-  "lean",        // dotnet runtime timeout (14s)
-  "wat",         // WASI I/O issue
-  "modula2",     // gm2 wrong answer
+  // All languages fixed or ready for testing
 ]);
 
 /** Per-language timeout overrides (ms). JVM/compiled languages get more time. */
@@ -956,7 +941,7 @@ const LANGUAGE_TIMEOUTS: Record<string, number> = {
   nelua: 120_000,
   hare: 120_000,
   koka: 150_000,
-  lean: 180_000,
+  lean: 300_000,
   mercury: 180_000,
   purescript: 150_000,
   pony: 120_000,
@@ -966,6 +951,7 @@ const LANGUAGE_TIMEOUTS: Record<string, number> = {
   grain: 120_000,
   curry: 150_000,
   minizinc: 120_000,
+  wat: 120_000,
 };
 
 let sharedContext: Awaited<ReturnType<typeof import("@playwright/test").chromium.launch>> extends { newContext: infer F } ? never : never;

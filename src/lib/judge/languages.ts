@@ -1240,7 +1240,7 @@ export const JUDGE_LANGUAGE_CONFIGS: Record<Language, JudgeLanguageDefinition> =
     dockerImage: "judge-lean:latest",
     compiler: `Lean ${JUDGE_TOOLCHAIN_VERSIONS.lean}`,
     compileCommand: null,
-    runCommand: ["lean", "--run", "/workspace/solution.lean"],
+    runCommand: ["sh", "-c", "HOME=/tmp lean --run /workspace/solution.lean"],
   },
   picat: {
     language: "picat",

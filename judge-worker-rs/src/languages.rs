@@ -1186,7 +1186,7 @@ static KOKA_CONFIG: LanguageConfig = LanguageConfig {
 };
 
 // Lean 4
-static LEAN_RUN: &[&str] = &["lean", "--run", "/workspace/solution.lean"];
+static LEAN_RUN: &[&str] = &["sh", "-c", "HOME=/tmp lean --run /workspace/solution.lean"];
 
 static LEAN_CONFIG: LanguageConfig = LanguageConfig {
     extension: ".lean",

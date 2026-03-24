@@ -15,6 +15,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends gcc libc-dev &&
 COPY --from=builder /usr/local/bin/koka /usr/local/bin/koka
 COPY --from=builder /usr/local/lib/koka /usr/local/lib/koka
 COPY --from=builder /usr/local/share/koka /usr/local/share/koka
+ENV KOKA_HOME=/usr/local
 RUN useradd -m -s /bin/false judge && \
     mkdir -p /workspace && chown judge:judge /workspace
 WORKDIR /workspace
