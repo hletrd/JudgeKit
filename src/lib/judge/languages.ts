@@ -792,7 +792,7 @@ export const JUDGE_LANGUAGE_CONFIGS: Record<Language, JudgeLanguageDefinition> =
     compiler: "dotnet publish (.NET)",
     compileCommand: [
       "sh", "-c",
-      "cd /workspace && mkdir -p proj && cp solution.fsx proj/Program.fs && echo '<Project Sdk=\"Microsoft.NET.Sdk\"><PropertyGroup><OutputType>Exe</OutputType><TargetFramework>net8.0</TargetFramework></PropertyGroup></Project>' > proj/proj.fsproj && cd proj && dotnet publish -c Release -o /workspace/bin --nologo -v q 2>&1",
+      "cd /workspace && mkdir -p proj && printf 'module Program\\n\\n[<EntryPoint>]\\nlet main _ =\\n' > proj/Program.fs && sed 's/^/    /' solution.fsx >> proj/Program.fs && printf '\\n    0\\n' >> proj/Program.fs && echo '<Project Sdk=\"Microsoft.NET.Sdk\"><PropertyGroup><OutputType>Exe</OutputType><TargetFramework>net8.0</TargetFramework></PropertyGroup></Project>' > proj/proj.fsproj && cd proj && dotnet publish -c Release -o /workspace/bin --nologo -v q 2>&1",
     ],
     runCommand: ["/workspace/bin/proj"],
   },
@@ -885,7 +885,7 @@ export const JUDGE_LANGUAGE_CONFIGS: Record<Language, JudgeLanguageDefinition> =
     compiler: "dotnet build (.NET)",
     compileCommand: [
       "sh", "-c",
-      "mkdir -p /workspace/out && echo '<Project Sdk=\"Microsoft.NET.Sdk\"><PropertyGroup><OutputType>Exe</OutputType><RootNamespace>Solution</RootNamespace></PropertyGroup></Project>' > /workspace/out/solution.vbproj && cp /workspace/solution.vb /workspace/out/Program.vb && cd /workspace/out && dotnet build -c Release -o /workspace/bin --nologo -v q 2>&1",
+      "mkdir -p /workspace/out && echo '<Project Sdk=\"Microsoft.NET.Sdk\"><PropertyGroup><OutputType>Exe</OutputType><RootNamespace>Solution</RootNamespace></PropertyGroup></Project>' > /workspace/out/solution.vbproj && cp /workspace/solution.vb /workspace/out/Program.vb && cd /workspace/out && DOTNET_NOLOGO=1 dotnet build -c Release -o /workspace/bin --nologo -v q 2>&1",
     ],
     runCommand: ["/workspace/bin/solution"],
   },
