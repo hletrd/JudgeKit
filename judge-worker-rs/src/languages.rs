@@ -704,7 +704,7 @@ static APL_CONFIG: LanguageConfig = LanguageConfig {
 };
 
 // FreeBASIC
-static FREEBASIC_COMPILE: &[&str] = &["fbc", "-O2", "-o", "/workspace/solution", "/workspace/solution.bas"];
+static FREEBASIC_COMPILE: &[&str] = &["fbc", "-O", "2", "-o", "/workspace/solution", "/workspace/solution.bas"];
 static FREEBASIC_RUN: &[&str] = &["/workspace/solution"];
 
 static FREEBASIC_CONFIG: LanguageConfig = LanguageConfig {

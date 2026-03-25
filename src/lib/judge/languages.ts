@@ -810,7 +810,7 @@ export const JUDGE_LANGUAGE_CONFIGS: Record<Language, JudgeLanguageDefinition> =
     extension: ".bas",
     dockerImage: "judge-freebasic:latest",
     compiler: "fbc",
-    compileCommand: ["fbc", "-O2", "-o", "/workspace/solution", "/workspace/solution.bas"],
+    compileCommand: ["fbc", "-O", "2", "-o", "/workspace/solution", "/workspace/solution.bas"],
     runCommand: ["/workspace/solution"],
   },
   smalltalk: {
