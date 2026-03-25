@@ -124,7 +124,7 @@ See [Language presets](docs/languages.md#docker-image-presets) for preset option
 | `judge-purescript` | 335 MB | 260 MB | `judge-wat` | 235 MB | 97 MB |
 | `judge-squirrel` | — | 100 MB | `judge-vala` | 619 MB | 452 MB |
 
-2 images are amd64-only: `judge-b` (x86 inline asm), `judge-apl` (make fails on arm64).
+All 95 images build on both amd64 and arm64.
 
 ## Tech Stack
 

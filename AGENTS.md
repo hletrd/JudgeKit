@@ -275,13 +275,12 @@ JudgeKit supports full contest management with two scoring models and two schedu
 - **Claim endpoint sh -c wrapping**: The judge claim API endpoint wraps `compileCommand` and `runCommand` values in `["sh", "-c", cmd]` before passing to the worker. The DB stores raw commands without `sh -c` — do not double-wrap when editing via admin UI.
 - **Zig compile flag**: Zig 0.13 uses `-femit-bin=/workspace/solution` (not `-o`) to specify the output binary path. Example: `zig build-exe --cache-dir /tmp/zig-cache -femit-bin=/workspace/solution /workspace/solution.zig`.
 
-### ARM64-Only Issues (4 images)
+### ARM64 Support
 
-These images fail to build on arm64 and are amd64-only:
-- **powershell**: Microsoft doesn't publish arm64 Debian packages
-- **apl**: GNU APL build from source fails (autotools + DNS issues)
-- **b**: BCause compiler uses Clang-specific flags incompatible with arm64 GCC
-- **simula**: GNU Cim 5.1 doesn't compile with modern GCC on arm64
+All 95 Docker images build and run on arm64 (Ampere Altra). Previously problematic images have been fixed:
+- **powershell**: Now uses Microsoft's arm64 packages
+- **apl**: Builds with SIMD disabled (`PERFORMANCE_WANTED=no`)
+- **b**: Uses bext-lang/b compiler on arm64 (BCause on amd64) with `-hist` flag for traditional B escape sequences
 
 ## Setup
 

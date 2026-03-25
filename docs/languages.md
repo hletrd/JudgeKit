@@ -68,7 +68,7 @@
 | 62 | `whitespace` | Whitespace | `judge-esoteric` | ✅ | ✅ | ✅ | ✅ |
 | 63 | `b` | B (BCause / bext-lang) | `judge-b` | ✅ | ✅ | ✅ | ✅ |
 | 64 | `flix` | Flix (JVM) | `judge-jvm` | ✅ | ✅ | ✅ | ✅ |
-| 65 | `apl` | APL (GNU APL) | `judge-apl` | ✅ | ✅ | ✅ | ❌ output format |
+| 65 | `apl` | APL (GNU APL) | `judge-apl` | ✅ | ✅ | ✅ | ✅ |
 | 66 | `freebasic` | FreeBASIC | `judge-freebasic` | ✅ | ✅ | ✅ | ✅ |
 | 67 | `smalltalk` | Smalltalk (GNU Smalltalk) | `judge-smalltalk` | ✅ | ✅ | ✅ | ✅ |
 | 68 | `nasm` | Assembly (NASM x86-64 / GNU as AArch64) | `judge-nasm` | ✅ | ✅ | ✅ | ✅ |
@@ -129,8 +129,7 @@
 
 ### arm64 E2E Summary (2026-03-25)
 
-**113 of 114 languages pass** on arm64. 1 failure:
-- **b**: Build fails on arm64
+**114 of 114 languages pass** on arm64. No failures.
 
 ## Docker Image Presets
 
