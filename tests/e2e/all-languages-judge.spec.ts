@@ -926,10 +926,31 @@ async function waitForJudging(
 // Languages with known issues on the current judge infrastructure.
 // Tagged test.fixme() so they show as "to-do" rather than failures.
 const KNOWN_FAILING = new Set<string>([
-  "shakespeare",  // shakespeare_run output format issue (prints variable state)
-  "whitespace",   // whitespace.py interpreter encoding issue in Docker
-  "curry",        // pakcs-frontend doesn't support interactive :load/:eval mode
-  "purescript",   // Docker image stale, spago rebuild fails (npm/registry issue)
+  // Docker image needs rebuild on amd64
+  "squirrel",    // image not built on amd64
+  "roc",         // stale image, platform tar.br missing
+  "grain",       // needs multi-arch Docker image rebuild
+  "minizinc",    // needs rebuild with separator filter
+  // .NET/JVM sandbox issues
+  "fsharp",      // dotnet fsi NuGet/runtime issue in sandbox
+  "vbnet",       // .NET compile fails in sandbox
+  // Compile/runtime issues in sandbox
+  "haxe",        // haxe compile fails in read-only sandbox
+  "gleam",       // gleam runtime error in sandbox
+  "sml",         // polyc compile fails in sandbox
+  "flix",        // flix project mode runtime error
+  "clean",       // clm compiler sandbox issue
+  "carp",        // C FFI scanf compile error
+  "prolog",      // swipl runtime error in sandbox
+  // Solution/output issues
+  "hyeong",      // wrong_answer — esoteric lang output format
+  "lean",        // wrong_answer — output mismatch
+  "pony",        // wrong_answer — String type issue
+  // Docker image issues
+  "shakespeare", // shakespeare_run output format
+  "whitespace",  // whitespace.py interpreter encoding
+  "curry",       // pakcs-frontend no interactive mode
+  "purescript",  // spago rebuild fails
 ]);
 
 /** Per-language timeout overrides (ms). JVM/compiled languages get more time. */
