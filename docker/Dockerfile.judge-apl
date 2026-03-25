@@ -10,7 +10,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     ARCH=$(dpkg --print-architecture) && \
     if [ "$ARCH" = "arm64" ]; then \
       sed -i 's/PERFORMANCE_WANTED=yes/PERFORMANCE_WANTED=no/' configure && \
-      ./configure --prefix=/usr/local --without-gtk3 CXXFLAGS="-O2"; \
+      ./configure --prefix=/usr/local --without-gtk3 CXXFLAGS="-O2 -Wno-error"; \
     else \
       ./configure --prefix=/usr/local; \
     fi && \
