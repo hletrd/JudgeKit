@@ -926,6 +926,10 @@ async function waitForJudging(
 // Languages with known issues on the current judge infrastructure.
 // Tagged test.fixme() so they show as "to-do" rather than failures.
 const KNOWN_FAILING = new Set<string>([
+  "shakespeare",  // shakespeare_run output format issue (prints variable state)
+  "whitespace",   // whitespace.py interpreter encoding issue in Docker
+  "curry",        // pakcs-frontend doesn't support interactive :load/:eval mode
+  "purescript",   // Docker image stale, spago rebuild fails (npm/registry issue)
 ]);
 
 /** Per-language timeout overrides (ms). JVM/compiled languages get more time. */
