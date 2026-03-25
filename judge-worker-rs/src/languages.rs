@@ -682,7 +682,7 @@ static DELPHI_CONFIG: LanguageConfig = LanguageConfig {
 
 // F# (interpreted via dotnet fsi)
 static FSHARP_COMPILE: &[&str] = &["sh", "-c", "mkdir -p /tmp/.nuget /tmp/.dotnet && echo ok"];
-static FSHARP_RUN: &[&str] = &["sh", "-c", "HOME=/tmp DOTNET_CLI_HOME=/tmp DOTNET_SYSTEM_GLOBALIZATION_INVARIANT=1 DOTNET_SKIP_WORKLOAD_INTEGRITY_CHECK=true DOTNET_NOLOGO=1 dotnet fsi /workspace/solution.fsx"];
+static FSHARP_RUN: &[&str] = &["sh", "-c", "mkdir -p /tmp/.nuget /tmp/.dotnet && HOME=/tmp DOTNET_CLI_HOME=/tmp DOTNET_SYSTEM_GLOBALIZATION_INVARIANT=1 DOTNET_SKIP_WORKLOAD_INTEGRITY_CHECK=true DOTNET_NOLOGO=1 dotnet fsi /workspace/solution.fsx"];
 
 static FSHARP_CONFIG: LanguageConfig = LanguageConfig {
     extension: ".fsx",
