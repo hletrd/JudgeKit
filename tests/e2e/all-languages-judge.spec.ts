@@ -557,7 +557,7 @@ in print (Int.toString sum ^ "\\n") end;`,
 import java.nio.file.Path
 
 def main(): Unit \\ IO =
-    let content = Files.readString(Path.of("/workspace/in"));
+    let content = Files.readString(Path.of("/tmp/in"));
     let parts = String.split({regex = " "}, String.trim(content));
     let a = List.head(parts) |> Option.flatMap(Int32.fromString) |> Option.getWithDefault(0);
     let b = List.drop(1, parts) |> List.head |> Option.flatMap(Int32.fromString) |> Option.getWithDefault(0);
@@ -637,7 +637,8 @@ fun main()
   println( (a + b).show )`,
   lean: `def main : IO Unit := do
   let line ← (← IO.getStdin).getLine
-  let parts := (line.trim).splitOn " "
+  let line := line.dropRightWhile (· == '\n')
+  let parts := line.splitOn " "
   match parts with
   | [a, b] =>
     let x := a.toInt!
