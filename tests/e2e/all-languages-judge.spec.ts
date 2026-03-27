@@ -1,5 +1,134 @@
+import os from "os";
 import { test, expect, type Page, type BrowserContext } from "@playwright/test";
 import { BASE_URL, DEFAULT_CREDENTIALS as CREDENTIALS } from "./support/constants";
+
+const NASM_X86_64 = `section .bss
+buf resb 16
+
+section .text
+global _start
+
+_start:
+    mov rax, 0
+    mov rdi, 0
+    lea rsi, [buf]
+    mov rdx, 16
+    syscall
+    xor rbx, rbx
+    lea rsi, [buf]
+.p1:
+    movzx rax, byte [rsi]
+    cmp al, ' '
+    je .sep
+    sub al, '0'
+    imul rbx, 10
+    add rbx, rax
+    inc rsi
+    jmp .p1
+.sep:
+    inc rsi
+    xor rcx, rcx
+.p2:
+    movzx rax, byte [rsi]
+    cmp al, 10
+    je .dp
+    cmp al, 0
+    je .dp
+    sub al, '0'
+    imul rcx, 10
+    add rcx, rax
+    inc rsi
+    jmp .p2
+.dp:
+    add rbx, rcx
+    lea rdi, [buf+15]
+    mov byte [rdi], 10
+    dec rdi
+    mov rax, rbx
+    mov rcx, 10
+.ts:
+    xor rdx, rdx
+    div rcx
+    add dl, '0'
+    mov [rdi], dl
+    dec rdi
+    test rax, rax
+    jnz .ts
+    inc rdi
+    mov rax, 1
+    mov rsi, rdi
+    lea rdx, [buf+16]
+    sub rdx, rdi
+    mov rdi, 1
+    syscall
+    mov rax, 60
+    xor rdi, rdi
+    syscall`;
+
+const NASM_ARM64 = `.global _start
+.text
+_start:
+    mov x8, #63
+    mov x0, #0
+    ldr x1, =buf
+    mov x2, #16
+    svc #0
+
+    ldr x1, =buf
+    mov w3, #0
+    mov w4, #0
+parse_a:
+    ldrb w5, [x1], #1
+    cmp w5, #32
+    beq parse_b_init
+    sub w5, w5, #48
+    mov w6, #10
+    mul w3, w3, w6
+    add w3, w3, w5
+    b parse_a
+parse_b_init:
+parse_b:
+    ldrb w5, [x1], #1
+    cmp w5, #10
+    beq done
+    cmp w5, #0
+    beq done
+    sub w5, w5, #48
+    mov w6, #10
+    mul w4, w4, w6
+    add w4, w4, w5
+    b parse_b
+done:
+    add w3, w3, w4
+
+    ldr x1, =buf
+    add x1, x1, #15
+    mov w5, #10
+    strb w5, [x1]
+
+    mov w7, w3
+to_str:
+    sub x1, x1, #1
+    udiv w6, w7, w5
+    msub w8, w6, w5, w7
+    add w8, w8, #48
+    strb w8, [x1]
+    mov w7, w6
+    cbnz w7, to_str
+
+    mov x8, #64
+    mov x0, #1
+    ldr x2, =buf
+    add x2, x2, #16
+    sub x2, x2, x1
+    svc #0
+
+    mov x8, #93
+    mov x0, #0
+    svc #0
+
+.bss
+buf: .skip 16`;
 
 // A+B solutions for every supported language
 const SOLUTIONS: Record<string, string> = {
@@ -358,68 +487,7 @@ Module Program
         Console.WriteLine(Integer.Parse(parts(0)) + Integer.Parse(parts(1)))
     End Sub
 End Module`,
-  nasm: `section .bss
-buf resb 16
-
-section .text
-global _start
-
-_start:
-    mov rax, 0
-    mov rdi, 0
-    lea rsi, [buf]
-    mov rdx, 16
-    syscall
-    xor rbx, rbx
-    lea rsi, [buf]
-.p1:
-    movzx rax, byte [rsi]
-    cmp al, ' '
-    je .sep
-    sub al, '0'
-    imul rbx, 10
-    add rbx, rax
-    inc rsi
-    jmp .p1
-.sep:
-    inc rsi
-    xor rcx, rcx
-.p2:
-    movzx rax, byte [rsi]
-    cmp al, 10
-    je .dp
-    cmp al, 0
-    je .dp
-    sub al, '0'
-    imul rcx, 10
-    add rcx, rax
-    inc rsi
-    jmp .p2
-.dp:
-    add rbx, rcx
-    lea rdi, [buf+15]
-    mov byte [rdi], 10
-    dec rdi
-    mov rax, rbx
-    mov rcx, 10
-.ts:
-    xor rdx, rdx
-    div rcx
-    add dl, '0'
-    mov [rdi], dl
-    dec rdi
-    test rax, rax
-    jnz .ts
-    inc rdi
-    mov rax, 1
-    mov rsi, rdi
-    lea rdx, [buf+16]
-    sub rdx, rdi
-    mov rdi, 1
-    syscall
-    mov rax, 60
-    xor rdi, rdi
-    syscall`,
+  nasm: os.arch() === "arm64" ? NASM_ARM64 : NASM_X86_64,
   bqn: `l ← •GetLine@
 w ← ' '((⊢-˜+\`×·¬⊢)∘=⊔⊢)l
 •Out •Repr +´•BQN¨w`,
@@ -822,31 +890,32 @@ from "result" include Result
 let (bytes, nread) = Result.unwrap(File.fdRead(File.stdin, 1024))
 let input = Bytes.toString(Bytes.slice(0, nread, bytes))
 let parts = String.split(" ", String.trim(input))
-match (parts) {
-  [a, b] => {
-    let na = Result.unwrap(Number.parseInt(a, 10))
-    let nb = Result.unwrap(Number.parseInt(b, 10))
-    print(toString(na + nb))
-  },
-  _ => void,
-}`,
-  pony: `use "files"
-
-actor Main
+let na = Result.unwrap(Number.parseInt(parts[0], 10))
+let nb = Result.unwrap(Number.parseInt(parts[1], 10))
+print(toString(na + nb))`,
+  pony: `actor Main
   new create(env: Env) =>
-    try
-      let path = FilePath(FileAuth(env.root), "/dev/stdin")
-      match OpenFile(path)
-      | let file: File =>
-        let data = file.read_string(1024)
-        let line = data.clone()
-        line.strip()
-        let parts = line.split(" ")
-        let a = parts(0)?.i64()?
-        let b = parts(1)?.i64()?
-        env.out.print((a + b).string())
-      end
-    end`,
+    env.input(
+      object iso is InputNotify
+        let _env: Env = env
+        var _data: String iso = recover String end
+
+        fun ref apply(data: Array[U8] iso) =>
+          let d: Array[U8] val = consume data
+          _data.append(d)
+
+        fun ref dispose() =>
+          let line: String val = _data.clone()
+          try
+            let trimmed = line.clone()
+            trimmed.strip()
+            let parts = trimmed.split(" ")
+            let a = parts(0)?.i64()?
+            let b = parts(1)?.i64()?
+            _env.out.print((a + b).string())
+          end
+      end,
+      512)`,
 };
 
 // Keep inputs as positive single-digit numbers with single-digit sums (≤ 9)

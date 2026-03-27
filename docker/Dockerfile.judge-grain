@@ -1,8 +1,9 @@
 FROM ghcr.io/grain-lang/grain:0.7.2-slim AS grain-src
 
 FROM node:24-alpine
-COPY --from=grain-src /usr/local/bin/grain /usr/local/bin/grain
-RUN chmod +x /usr/local/bin/grain && \
+COPY --from=grain-src /usr/local/lib/node_modules/@grain /usr/local/lib/node_modules/@grain
+RUN ln -sf /usr/local/lib/node_modules/@grain/cli/bin/grain.js /usr/local/bin/grain && \
+    chmod +x /usr/local/bin/grain && \
     adduser -D -s /bin/false judge && \
     mkdir -p /workspace && chown judge:judge /workspace
 
