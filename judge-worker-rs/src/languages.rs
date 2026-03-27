@@ -1053,7 +1053,7 @@ static FLIX_CONFIG: LanguageConfig = LanguageConfig {
     docker_image: "judge-flix:latest",
     compile_command: None,
     run_command: FLIX_RUN,
-    needs_exec_tmp: false,
+    needs_exec_tmp: true,
 };
 
 // MicroPython
