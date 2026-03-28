@@ -13,26 +13,28 @@ export default function ContestsLayout({ children }: { children: React.ReactNode
   const pathname = usePathname();
 
   useEffect(() => {
-    const handler = (e: MouseEvent) => {
-      const anchor = (e.target as HTMLElement)?.closest?.("a[href]") as HTMLAnchorElement | null;
+    const handler = (e: Event) => {
+      const me = e as unknown as MouseEvent;
+      const anchor = (me.target as HTMLElement)?.closest?.("a[href]") as HTMLAnchorElement | null;
       if (!anchor) return;
 
       const href = anchor.getAttribute("href");
       if (!href || href.startsWith("#") || href.startsWith("mailto:") || href.startsWith("http")) return;
 
       // Force full page navigation for internal links
-      e.preventDefault();
-      e.stopPropagation();
+      me.preventDefault();
+      me.stopPropagation();
       window.location.href = href;
     };
 
-    document.getElementById("dashboard-main-content")?.addEventListener("click", handler, true);
-    // Also intercept sidebar links when on contest pages
-    document.querySelector("[data-slot='sidebar']")?.addEventListener("click", handler, true);
+    const main = document.getElementById("dashboard-main-content");
+    const sidebar = document.querySelector("[data-slot='sidebar']");
+    main?.addEventListener("click", handler, true);
+    sidebar?.addEventListener("click", handler, true);
 
     return () => {
-      document.getElementById("dashboard-main-content")?.removeEventListener("click", handler, true);
-      document.querySelector("[data-slot='sidebar']")?.removeEventListener("click", handler, true);
+      main?.removeEventListener("click", handler, true);
+      sidebar?.removeEventListener("click", handler, true);
     };
   }, [pathname]);
 
