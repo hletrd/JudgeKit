@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getRateLimitKey, isRateLimited } from "./rate-limit";
-import { db } from "@/lib/db";
+import { db, sqlite } from "@/lib/db";
 import { rateLimits } from "@/lib/db/schema";
 import { getConfiguredSettings } from "@/lib/system-settings-config";
 import { eq } from "drizzle-orm";
@@ -34,48 +34,50 @@ function hasConsumedRequestKey(request: NextRequest, key: string) {
  * without applying exponential blocking on threshold breach.
  */
 function recordApiAttempt(key: string) {
-  const now = Date.now();
-  const existing = db.select().from(rateLimits).where(eq(rateLimits.key, key)).get();
+  sqlite.transaction(() => {
+    const now = Date.now();
+    const existing = db.select().from(rateLimits).where(eq(rateLimits.key, key)).get();
 
-  const { max: apiMax, windowMs } = getApiRateLimitConfig();
+    const { max: apiMax, windowMs } = getApiRateLimitConfig();
 
-  if (!existing) {
-    db.insert(rateLimits)
-      .values({
-        id: nanoid(),
-        key,
-        attempts: 1,
-        windowStartedAt: now,
-        blockedUntil: null,
-        consecutiveBlocks: 0,
-        lastAttempt: now,
-      })
-      .run();
-    return;
-  }
+    if (!existing) {
+      db.insert(rateLimits)
+        .values({
+          id: nanoid(),
+          key,
+          attempts: 1,
+          windowStartedAt: now,
+          blockedUntil: null,
+          consecutiveBlocks: 0,
+          lastAttempt: now,
+        })
+        .run();
+      return;
+    }
 
-  if (existing.windowStartedAt + windowMs <= now) {
-    // Window expired, reset
+    if (existing.windowStartedAt + windowMs <= now) {
+      // Window expired, reset
+      db.update(rateLimits)
+        .set({ attempts: 1, windowStartedAt: now, lastAttempt: now })
+        .where(eq(rateLimits.key, key))
+        .run();
+      return;
+    }
+
+    // Simply increment without escalating backoff
+    const blocked = existing.attempts + 1 >= apiMax
+      ? now + windowMs
+      : null;
+
     db.update(rateLimits)
-      .set({ attempts: 1, windowStartedAt: now, lastAttempt: now })
+      .set({
+        attempts: existing.attempts + 1,
+        lastAttempt: now,
+        blockedUntil: blocked,
+      })
       .where(eq(rateLimits.key, key))
       .run();
-    return;
-  }
-
-  // Simply increment without escalating backoff
-  const blocked = existing.attempts + 1 >= apiMax
-    ? now + windowMs
-    : null;
-
-  db.update(rateLimits)
-    .set({
-      attempts: existing.attempts + 1,
-      lastAttempt: now,
-      blockedUntil: blocked,
-    })
-    .where(eq(rateLimits.key, key))
-    .run();
+  })();
 }
 
 function rateLimitedResponse() {
@@ -148,53 +150,55 @@ export function checkServerActionRateLimit(
 ): { error: string } | null {
   const key = `sa:${userId}:${actionName}`;
   const windowMs = windowSeconds * 1000;
-  const now = Date.now();
 
-  const existing = db.select().from(rateLimits).where(eq(rateLimits.key, key)).get();
+  return sqlite.transaction(() => {
+    const now = Date.now();
+    const existing = db.select().from(rateLimits).where(eq(rateLimits.key, key)).get();
 
-  let attempts: number;
-  let windowStartedAt: number;
-  let exists: boolean;
+    let attempts: number;
+    let windowStartedAt: number;
+    let exists: boolean;
 
-  if (!existing) {
-    attempts = 0;
-    windowStartedAt = now;
-    exists = false;
-  } else if (existing.windowStartedAt + windowMs <= now) {
-    // Window has expired — reset
-    attempts = 0;
-    windowStartedAt = now;
-    exists = true;
-  } else {
-    attempts = existing.attempts;
-    windowStartedAt = existing.windowStartedAt;
-    exists = true;
-  }
+    if (!existing) {
+      attempts = 0;
+      windowStartedAt = now;
+      exists = false;
+    } else if (existing.windowStartedAt + windowMs <= now) {
+      // Window has expired — reset
+      attempts = 0;
+      windowStartedAt = now;
+      exists = true;
+    } else {
+      attempts = existing.attempts;
+      windowStartedAt = existing.windowStartedAt;
+      exists = true;
+    }
 
-  if (attempts >= maxRequests) {
-    return { error: "rateLimited" };
-  }
+    if (attempts >= maxRequests) {
+      return { error: "rateLimited" };
+    }
 
-  const newAttempts = attempts + 1;
+    const newAttempts = attempts + 1;
 
-  if (exists) {
-    db.update(rateLimits)
-      .set({ attempts: newAttempts, windowStartedAt, lastAttempt: now })
-      .where(eq(rateLimits.key, key))
-      .run();
-  } else {
-    db.insert(rateLimits)
-      .values({
-        id: nanoid(),
-        key,
-        attempts: newAttempts,
-        windowStartedAt,
-        blockedUntil: null,
-        consecutiveBlocks: 0,
-        lastAttempt: now,
-      })
-      .run();
-  }
+    if (exists) {
+      db.update(rateLimits)
+        .set({ attempts: newAttempts, windowStartedAt, lastAttempt: now })
+        .where(eq(rateLimits.key, key))
+        .run();
+    } else {
+      db.insert(rateLimits)
+        .values({
+          id: nanoid(),
+          key,
+          attempts: newAttempts,
+          windowStartedAt,
+          blockedUntil: null,
+          consecutiveBlocks: 0,
+          lastAttempt: now,
+        })
+        .run();
+    }
 
-  return null;
+    return null;
+  })();
 }

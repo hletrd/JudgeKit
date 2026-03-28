@@ -102,25 +102,24 @@ export function redeemAccessCode(
     return { ok: false, error: "contestClosed" };
   }
 
-  // Check if already redeemed
-  const existing = db
-    .select({ id: contestAccessTokens.id })
-    .from(contestAccessTokens)
-    .where(
-      and(
-        eq(contestAccessTokens.assignmentId, assignment.id),
-        eq(contestAccessTokens.userId, userId)
-      )
-    )
-    .get();
-
-  if (existing) {
-    // Already redeemed — return success with alreadyEnrolled flag
-    return { ok: true, alreadyEnrolled: true, assignmentId: assignment.id, groupId: assignment.groupId };
-  }
-
-  // Transaction: create token + auto-enroll
+  // Transaction: check + create token + auto-enroll (atomic to prevent TOCTOU race)
   const execute = sqlite.transaction(() => {
+    // Check if already redeemed (inside transaction to prevent race condition)
+    const existing = db
+      .select({ id: contestAccessTokens.id })
+      .from(contestAccessTokens)
+      .where(
+        and(
+          eq(contestAccessTokens.assignmentId, assignment.id),
+          eq(contestAccessTokens.userId, userId)
+        )
+      )
+      .get();
+
+    if (existing) {
+      return { alreadyRedeemed: true as const };
+    }
+
     // Create access token
     db.insert(contestAccessTokens)
       .values({
@@ -154,9 +153,15 @@ export function redeemAccessCode(
         })
         .run();
     }
+
+    return { alreadyRedeemed: false as const };
   });
 
-  execute();
+  const result = execute();
+
+  if (result.alreadyRedeemed) {
+    return { ok: true, alreadyEnrolled: true, assignmentId: assignment.id, groupId: assignment.groupId };
+  }
 
   return { ok: true, assignmentId: assignment.id, groupId: assignment.groupId };
 }
