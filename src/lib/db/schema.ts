@@ -395,6 +395,7 @@ export const submissions = sqliteTable(
     index("submissions_status_submitted_idx").on(table.status, table.submittedAt),
     index("submissions_user_submitted_idx").on(table.userId, table.submittedAt),
     index("submissions_assignment_submitted_idx").on(table.assignmentId, table.submittedAt),
+    index("submissions_user_status_submitted_idx").on(table.userId, table.status, table.submittedAt),
   ]
 );
 

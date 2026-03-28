@@ -1,6 +1,6 @@
 import { NextRequest } from "next/server";
-import { db } from "@/lib/db";
-import { languageConfigs, problems, submissions } from "@/lib/db/schema";
+import { db, sqlite } from "@/lib/db";
+import { examSessions, languageConfigs, problems, submissions } from "@/lib/db/schema";
 import { isJudgeLanguage } from "@/lib/judge/languages";
 import { and, desc, eq, lt, sql } from "drizzle-orm";
 import { getApiUser, unauthorized, isAdmin, csrfForbidden } from "@/lib/api/auth";
@@ -163,39 +163,6 @@ export async function POST(request: NextRequest) {
       return apiError("languageNotSupported", 400);
     }
 
-    // Combined submission rate limiting: recent, pending, and global counts in one query
-    const oneMinuteAgoSec = Math.floor((Date.now() - 60_000) / 1000);
-    const countsRow = await db
-      .select({
-        recentCount: sql<number>`sum(case when ${submissions.userId} = ${user.id} and ${submissions.submittedAt} > ${new Date(Date.now() - 60_000)} then 1 else 0 end)`,
-        pendingCount: sql<number>`sum(case when ${submissions.userId} = ${user.id} and ${submissions.status} in ('pending', 'judging', 'queued') then 1 else 0 end)`,
-        globalPending: sql<number>`sum(case when ${submissions.status} in ('pending', 'queued') then 1 else 0 end)`,
-      })
-      .from(submissions)
-      .then((rows) => rows[0]);
-
-    const recentSubmissions = Number(countsRow?.recentCount ?? 0);
-    const pendingCount = Number(countsRow?.pendingCount ?? 0);
-    const globalPendingCount = Number(countsRow?.globalPending ?? 0);
-
-    if (recentSubmissions >= getSubmissionRateLimitMaxPerMinute()) {
-      return apiError("submissionRateLimited", 429, undefined, {
-        headers: { "Retry-After": "60" },
-      });
-    }
-
-    if (pendingCount >= getSubmissionMaxPending()) {
-      return apiError("tooManyPendingSubmissions", 429, undefined, {
-        headers: { "Retry-After": "10" },
-      });
-    }
-
-    if (globalPendingCount >= getSubmissionGlobalQueueLimit()) {
-      return apiError("judgeQueueFull", 503, undefined, {
-        headers: { "Retry-After": "30" },
-      });
-    }
-
     if (Buffer.byteLength(sourceCode, "utf8") > getMaxSourceCodeSizeBytes()) {
       return apiError("sourceCodeTooLarge", 413);
     }
@@ -252,17 +219,79 @@ export async function POST(request: NextRequest) {
 
     const id = generateSubmissionId();
     const ip = request.headers.get("x-forwarded-for")?.split(",")[0]?.trim() ?? null;
-    const [submission] = await db.insert(submissions).values({
-      id,
-      userId: user.id,
-      problemId,
-      language,
-      sourceCode,
-      assignmentId: normalizedAssignmentId,
-      status: "pending",
-      ipAddress: ip,
-      submittedAt: new Date(),
-    }).returning({
+
+    // Atomic rate limit check + insert in a single transaction
+    // Uses targeted queries with WHERE clauses instead of full table scan
+    const maxPerMinute = getSubmissionRateLimitMaxPerMinute();
+    const maxPending = getSubmissionMaxPending();
+    const maxGlobalQueue = getSubmissionGlobalQueueLimit();
+    const oneMinuteAgo = new Date(Date.now() - 60_000);
+
+    type RateLimitError = { error: string; status: number; retryAfter: string };
+    const txResult = sqlite.transaction(() => {
+      // User-scoped counts (uses submissions_user_status_submitted_idx)
+      const userCounts = sqlite.prepare(`
+        SELECT
+          SUM(CASE WHEN submitted_at > ? THEN 1 ELSE 0 END) AS recent_count,
+          SUM(CASE WHEN status IN ('pending', 'judging', 'queued') THEN 1 ELSE 0 END) AS pending_count
+        FROM submissions
+        WHERE user_id = ?
+      `).get(oneMinuteAgo.toISOString(), user.id) as { recent_count: number; pending_count: number } | undefined;
+
+      const recentSubmissions = Number(userCounts?.recent_count ?? 0);
+      const pendingCount = Number(userCounts?.pending_count ?? 0);
+
+      if (recentSubmissions >= maxPerMinute) {
+        return { error: "submissionRateLimited", status: 429, retryAfter: "60" } satisfies RateLimitError;
+      }
+      if (pendingCount >= maxPending) {
+        return { error: "tooManyPendingSubmissions", status: 429, retryAfter: "10" } satisfies RateLimitError;
+      }
+
+      // Global pending count (uses submissions_status_idx)
+      const globalRow = sqlite.prepare(`
+        SELECT COUNT(*) AS count FROM submissions WHERE status IN ('pending', 'queued')
+      `).get() as { count: number } | undefined;
+
+      if (Number(globalRow?.count ?? 0) >= maxGlobalQueue) {
+        return { error: "judgeQueueFull", status: 503, retryAfter: "30" } satisfies RateLimitError;
+      }
+
+      // For windowed exams, enforce deadline at insert time
+      if (normalizedAssignmentId) {
+        const expiredSession = sqlite.prepare(`
+          SELECT 1 FROM exam_sessions
+          WHERE assignment_id = ? AND user_id = ? AND personal_deadline < datetime('now')
+        `).get(normalizedAssignmentId, user.id);
+        if (expiredSession) {
+          return { error: "examTimeExpired", status: 403, retryAfter: "0" } satisfies RateLimitError;
+        }
+      }
+
+      // Insert the submission
+      db.insert(submissions).values({
+        id,
+        userId: user.id,
+        problemId,
+        language,
+        sourceCode,
+        assignmentId: normalizedAssignmentId,
+        status: "pending",
+        ipAddress: ip,
+        submittedAt: new Date(),
+      }).run();
+
+      return null; // success
+    })();
+
+    if (txResult) {
+      return apiError(txResult.error, txResult.status, undefined, {
+        headers: { "Retry-After": txResult.retryAfter },
+      });
+    }
+
+    // Fetch the inserted submission for the response
+    const [submission] = db.select({
       id: submissions.id,
       userId: submissions.userId,
       problemId: submissions.problemId,
@@ -275,7 +304,7 @@ export async function POST(request: NextRequest) {
       score: submissions.score,
       judgedAt: submissions.judgedAt,
       submittedAt: submissions.submittedAt,
-    });
+    }).from(submissions).where(eq(submissions.id, id)).limit(1).all();
 
     if (submission) {
       recordAuditEvent({
