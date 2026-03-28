@@ -6,7 +6,7 @@ use uuid::Uuid;
 
 const EXECUTION_CPU_LIMIT: &str = "1";
 const MIN_MEMORY_LIMIT_MB: u32 = 16;
-const COMPILE_TMPFS: &str = "/tmp:rw,nosuid,size=512m";
+const COMPILE_TMPFS: &str = "/tmp:rw,nosuid,size=1024m";
 const RUN_TMPFS: &str = "/tmp:rw,noexec,nosuid,size=64m";
 const MIN_TIMEOUT_MS: u64 = 100;
 
