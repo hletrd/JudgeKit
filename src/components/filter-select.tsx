@@ -28,7 +28,7 @@ export function FilterSelect({
       <input type="hidden" name={name} value={value} />
       <Select value={value} onValueChange={(v) => setValue(v ?? "")}>
         <SelectTrigger className="w-48 h-10">
-          <SelectValue placeholder={placeholder} />
+          <SelectValue placeholder={placeholder}>{options.find((opt) => opt.value === value)?.label || value}</SelectValue>
         </SelectTrigger>
         <SelectContent>
           {options.map((opt) => (

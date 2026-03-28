@@ -121,6 +121,16 @@ export default function AssignmentFormDialog({
       : []
   );
 
+  const examModeLabels: Record<string, string> = {
+    none: t("examModeNone"),
+    scheduled: t("examModeScheduled"),
+    windowed: t("examModeWindowed"),
+  };
+  const scoringModelLabels: Record<string, string> = {
+    ioi: t("scoringModelIoi"),
+    icpc: t("scoringModelIcpc"),
+  };
+
   function resetState() {
     setTitle(initialAssignment?.title ?? "");
     setDescription(initialAssignment?.description ?? "");
@@ -376,7 +386,7 @@ export default function AssignmentFormDialog({
                 disabled={isLoading}
               >
                 <SelectTrigger>
-                  <SelectValue />
+                  <SelectValue>{examModeLabels[examMode] || examMode}</SelectValue>
                 </SelectTrigger>
                 <SelectContent>
                   <SelectItem value="none" label={t("examModeNone")}>{t("examModeNone")}</SelectItem>
@@ -414,7 +424,7 @@ export default function AssignmentFormDialog({
                     disabled={isLoading}
                   >
                     <SelectTrigger>
-                      <SelectValue />
+                      <SelectValue>{scoringModelLabels[scoringModel] || scoringModel}</SelectValue>
                     </SelectTrigger>
                     <SelectContent>
                       <SelectItem value="ioi" label={t("scoringModelIoi")}>{t("scoringModelIoi")}</SelectItem>
@@ -524,7 +534,7 @@ export default function AssignmentFormDialog({
                           disabled={isLoading || !areProblemsEditable}
                         >
                           <SelectTrigger>
-                            <SelectValue placeholder={t("assignmentProblemSelectPlaceholder")} />
+                            <SelectValue placeholder={t("assignmentProblemSelectPlaceholder")}>{availableProblems.find((p) => p.id === row.problemId)?.title || row.problemId}</SelectValue>
                           </SelectTrigger>
                           <SelectContent>
                             {availableProblems.map((problem) => (

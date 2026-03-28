@@ -41,6 +41,38 @@ export default function ChatWidgetAdminConfig({ config, onSave }: PluginAdminPro
   const currentApiKey = provider === "claude" ? claudeApiKey : provider === "gemini" ? geminiApiKey : openaiApiKey;
   const currentModel = provider === "claude" ? claudeModel : provider === "gemini" ? geminiModel : openaiModel;
 
+  const providerLabels: Record<string, string> = {
+    openai: t("providerOptions.openai"),
+    claude: t("providerOptions.claude"),
+    gemini: t("providerOptions.gemini"),
+  };
+  const modelLabels: Record<string, string> = {
+    "gpt-5.4-mini": "GPT-5.4 Mini",
+    "gpt-5.4-nano": "GPT-5.4 Nano",
+    "gpt-5-mini": "GPT-5 Mini",
+    "gpt-5.4": "GPT-5.4",
+    "gpt-5.4-pro": "GPT-5.4 Pro",
+    "gpt-4.1": "GPT-4.1",
+    "gpt-4.1-mini": "GPT-4.1 Mini",
+    "gpt-4.1-nano": "GPT-4.1 Nano",
+    "o4-mini": "o4-mini (Reasoning)",
+    "o3-mini": "o3-mini (Reasoning)",
+    "gpt-4o": "GPT-4o",
+    "gpt-4o-mini": "GPT-4o Mini",
+    "claude-sonnet-4-6": "Claude Sonnet 4.6",
+    "claude-opus-4-6": "Claude Opus 4.6",
+    "claude-sonnet-4-20250514": "Claude Sonnet 4",
+    "claude-opus-4-20250514": "Claude Opus 4",
+    "claude-sonnet-4-5-20250929": "Claude Sonnet 4.5",
+    "claude-opus-4-5-20251101": "Claude Opus 4.5",
+    "gemini-3.1-flash-lite-preview": "Gemini 3.1 Flash Lite",
+    "gemini-3.1-pro-preview": "Gemini 3.1 Pro",
+    "gemini-2.5-pro": "Gemini 2.5 Pro",
+    "gemini-2.5-flash": "Gemini 2.5 Flash",
+    "gemini-2.5-flash-lite": "Gemini 2.5 Flash Lite",
+    "gemini-2.0-flash": "Gemini 2.0 Flash",
+  };
+
   function maskApiKey(key: string): string {
     if (!key || key.length <= 8) return key ? "••••••••" : "";
     return `${key.slice(0, 3)}...${key.slice(-4)}`;
@@ -114,7 +146,7 @@ export default function ChatWidgetAdminConfig({ config, onSave }: PluginAdminPro
             <Label>{t("provider")}</Label>
             <Select value={provider} onValueChange={(v) => setProvider(v as Provider)}>
               <SelectTrigger>
-                <SelectValue />
+                <SelectValue>{providerLabels[provider] || provider}</SelectValue>
               </SelectTrigger>
               <SelectContent>
                 <SelectItem value="openai" label={t("providerOptions.openai")}>{t("providerOptions.openai")}</SelectItem>
@@ -144,7 +176,7 @@ export default function ChatWidgetAdminConfig({ config, onSave }: PluginAdminPro
             <Label>{t("model")}</Label>
             <Select value={currentModel} onValueChange={(v) => { if (v) setCurrentModel(v); }}>
               <SelectTrigger>
-                <SelectValue />
+                <SelectValue>{modelLabels[currentModel] || currentModel}</SelectValue>
               </SelectTrigger>
               <SelectContent>
                 {provider === "openai" && (

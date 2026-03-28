@@ -141,7 +141,7 @@ export default function ProfileForm({
           </SelectTrigger>
           <SelectContent>
             {EDITOR_FONT_SIZES.map((size) => (
-              <SelectItem key={size} value={String(size)}>
+              <SelectItem key={size} value={String(size)} label={String(size)}>
                 {size}
               </SelectItem>
             ))}

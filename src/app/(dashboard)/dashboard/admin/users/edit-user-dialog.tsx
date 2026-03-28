@@ -110,7 +110,7 @@ export default function EditUserDialog({ user, actorRole, availableRoles }: Edit
             <Label htmlFor="edit-role">{t("table.role")}</Label>
             <Select value={role} onValueChange={v => { if (v) setRole(v); }} disabled={user.role === "super_admin" || actorRole === "instructor"}>
               <SelectTrigger id="edit-role">
-                <SelectValue />
+                <SelectValue>{builtinRoleLabels[role] || role}</SelectValue>
               </SelectTrigger>
               <SelectContent>
                 {availableRoles ? (

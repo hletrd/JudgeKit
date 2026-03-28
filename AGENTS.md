@@ -489,9 +489,11 @@ This project uses `@base-ui/react/select` via `src/components/ui/select.tsx`. Th
 ```
 
 ### Checklist when adding/modifying any Select:
-1. SelectValue has render function child `{(value) => displayLabel}`
+1. SelectValue has **static children** using the React state variable: `{labelMap[stateVar] || stateVar}`
 2. Every SelectItem has `label` prop matching its display text
 3. Test: selected value shows readable label, not a raw ID/key
+4. For "pick-to-add" selects (no persistent selection), use `key` prop to force remount after each pick
+5. **NEVER** leave `<SelectValue />` without children — it shows the raw value (nanoid/key) instead of a label
 
 ## Conventions
 

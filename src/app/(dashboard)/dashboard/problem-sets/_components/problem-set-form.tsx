@@ -280,6 +280,7 @@ export default function ProblemSetForm({
           <CardContent className="space-y-4">
             <div className="flex gap-2">
               <Select
+                key={selectedProblemIds.length}
                 onValueChange={(value) => addProblem(value as string)}
                 disabled={isLoading || availableProblems.length === 0}
               >
@@ -359,7 +360,7 @@ export default function ProblemSetForm({
                 disabled={isLoading || unassignedGroups.length === 0}
               >
                 <SelectTrigger className="flex-1">
-                  <SelectValue placeholder={t("selectGroupsPlaceholder")} />
+                  <SelectValue placeholder={t("selectGroupsPlaceholder")}>{unassignedGroups.find((g) => g.id === selectedGroupToAdd)?.name || selectedGroupToAdd}</SelectValue>
                 </SelectTrigger>
                 <SelectContent>
                   {unassignedGroups.map((group) => (

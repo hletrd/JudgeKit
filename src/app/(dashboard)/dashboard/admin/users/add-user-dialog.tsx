@@ -143,7 +143,7 @@ export default function AddUserDialog({ actorRole, availableRoles }: { actorRole
               <Label htmlFor="new-role">{t("table.role")}</Label>
               <Select value={role} onValueChange={v => { if (v) setRole(v); }}>
                 <SelectTrigger id="new-role">
-                  <SelectValue />
+                  <SelectValue>{builtinRoleLabels[role] || role}</SelectValue>
                 </SelectTrigger>
                 <SelectContent>
                   {availableRoles ? (

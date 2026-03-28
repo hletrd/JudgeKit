@@ -491,22 +491,20 @@ export default async function ProblemsPage({
               </div>
             )}
 
-            {allTags.length > 0 && (
-              <div className="space-y-1.5">
-                <label className="block text-sm font-medium">
-                  {t("filterByTag")}
-                </label>
-                <FilterSelect
-                  name="tag"
-                  defaultValue={currentTag}
-                  placeholder={t("allTags")}
-                  options={[
-                    { value: "", label: t("allTags") },
-                    ...allTags.map((tag) => ({ value: tag.name, label: tag.name })),
-                  ]}
-                />
-              </div>
-            )}
+            <div className="space-y-1.5">
+              <label className="block text-sm font-medium">
+                {t("filterByTag")}
+              </label>
+              <FilterSelect
+                name="tag"
+                defaultValue={currentTag}
+                placeholder={t("allTags")}
+                options={[
+                  { value: "", label: t("allTags") },
+                  ...allTags.map((tag) => ({ value: tag.name, label: tag.name })),
+                ]}
+              />
+            </div>
 
             {/* Preserve progress filter when submitting the form */}
             {currentFilter !== "all" && (
