@@ -227,8 +227,14 @@ success "Source code synced to remote"
 # Step 3: Build Docker images on the remote host
 # ---------------------------------------------------------------------------
 if [[ "$SKIP_BUILD" == false ]]; then
+    EXTRA_BUILD_ARGS=""
+    if [[ "${DISABLE_MINIFY:-0}" == "1" ]]; then
+        EXTRA_BUILD_ARGS="--build-arg DISABLE_MINIFY=1"
+        info "Minification DISABLED (DISABLE_MINIFY=1)"
+    fi
+
     info "Building app image on ${REMOTE_HOST} (judgekit-app:latest) [${PLATFORM}]..."
-    remote "cd ${REMOTE_DIR} && docker build --no-cache --platform ${PLATFORM} -t judgekit-app:latest -f Dockerfile ."
+    remote "cd ${REMOTE_DIR} && docker build --no-cache --platform ${PLATFORM} ${EXTRA_BUILD_ARGS} -t judgekit-app:latest -f Dockerfile ."
     success "App image built on remote"
 
     info "Building judge worker image on ${REMOTE_HOST} (judgekit-judge-worker:latest) [${PLATFORM}]..."

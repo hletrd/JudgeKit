@@ -197,7 +197,9 @@ export default async function ContestsPage({
                         <>
                           <span>·</span>
                           <CountdownTimer
-                            deadline={new Date((contest.personalDeadline ?? contest.deadline)!).getTime()}
+                            deadline={(contest.personalDeadline ?? contest.deadline) instanceof Date
+                              ? (contest.personalDeadline ?? contest.deadline)!.getTime()
+                              : new Date((contest.personalDeadline ?? contest.deadline)!).getTime()}
                             label={t("endsIn")}
                           />
                         </>

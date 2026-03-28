@@ -3,9 +3,18 @@ import createNextIntlPlugin from "next-intl/plugin";
 
 const withNextIntl = createNextIntlPlugin("./src/i18n/request.ts");
 
+const disableMinify = process.env.DISABLE_MINIFY === "1";
+
 const nextConfig: NextConfig = {
   output: "standalone",
   poweredByHeader: false,
+  productionBrowserSourceMaps: disableMinify,
+  webpack: disableMinify
+    ? (config) => {
+        config.optimization.minimize = false;
+        return config;
+      }
+    : undefined,
   async headers() {
     return [
       {

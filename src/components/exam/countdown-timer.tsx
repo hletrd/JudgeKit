@@ -10,7 +10,7 @@ interface CountdownTimerProps {
 }
 
 function formatCountdown(ms: number): string {
-  if (ms <= 0) return "00:00:00";
+  if (!Number.isFinite(ms) || ms <= 0) return "00:00:00";
   const totalSeconds = Math.floor(ms / 1000);
   const hours = Math.floor(totalSeconds / 3600);
   const minutes = Math.floor((totalSeconds % 3600) / 60);
@@ -19,7 +19,7 @@ function formatCountdown(ms: number): string {
 }
 
 function getTimerColor(ms: number): string {
-  if (ms <= 0) return "bg-red-600 text-white";
+  if (!Number.isFinite(ms) || ms <= 0) return "bg-red-600 text-white";
   if (ms < 5 * 60 * 1000) return "bg-red-500 text-white";
   if (ms < 30 * 60 * 1000) return "bg-yellow-500 text-white";
   return "bg-green-500 text-white";

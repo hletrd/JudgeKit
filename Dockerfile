@@ -35,6 +35,10 @@ ENV AUTH_SECRET=build-placeholder-value-at-least-32-characters-long-for-nextauth
 ENV AUTH_URL=http://localhost:3000
 ENV AUTH_TRUST_HOST=true
 
+# Set DISABLE_MINIFY=1 at build time to skip minification (useful for staging/debugging)
+ARG DISABLE_MINIFY=0
+ENV DISABLE_MINIFY=${DISABLE_MINIFY}
+
 RUN npm run build
 
 # ---------------------------------------------------------------------------
