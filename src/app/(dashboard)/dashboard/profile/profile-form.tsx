@@ -107,7 +107,7 @@ export default function ProfileForm({
         <Select value={preferredLanguage} onValueChange={(v) => setPreferredLanguage(v ?? "")}>
           <SelectTrigger id="preferredLanguage">
             <SelectValue placeholder={t("preferredLanguagePlaceholder")}>
-              {(value: string) => languageLabelMap[value] ?? value}
+              {languageLabelMap[preferredLanguage] ?? preferredLanguage || t("preferredLanguagePlaceholder")}
             </SelectValue>
           </SelectTrigger>
           <SelectContent>
@@ -124,10 +124,7 @@ export default function ProfileForm({
         <Select value={preferredTheme} onValueChange={(v) => setPreferredTheme(v ?? "")}>
           <SelectTrigger id="preferredTheme">
             <SelectValue placeholder={t("preferredThemePlaceholder")}>
-              {(value: string) => {
-                const labels: Record<string, string> = { light: t("themeLight"), dark: t("themeDark"), system: t("themeSystem") };
-                return labels[value] ?? value;
-              }}
+              {{ light: t("themeLight"), dark: t("themeDark"), system: t("themeSystem") }[preferredTheme] ?? preferredTheme}
             </SelectValue>
           </SelectTrigger>
           <SelectContent>
@@ -157,10 +154,7 @@ export default function ProfileForm({
         <Select value={editorFontFamily} onValueChange={(v) => setEditorFontFamily(v ?? DEFAULT_EDITOR_FONT_FAMILY)}>
           <SelectTrigger id="editorFontFamily">
             <SelectValue placeholder={t("editorFontFamilyPlaceholder")}>
-              {(value: string) => {
-                const font = EDITOR_FONT_FAMILIES.find((f) => f.id === value);
-                return font?.name ?? t("editorFontDefault");
-              }}
+              {EDITOR_FONT_FAMILIES.find((f) => f.id === editorFontFamily)?.name ?? t("editorFontDefault")}
             </SelectValue>
           </SelectTrigger>
           <SelectContent>

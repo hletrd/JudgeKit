@@ -1,6 +1,6 @@
 import type { Metadata } from "next";
 import { redirect } from "next/navigation";
-import { getTranslations } from "next-intl/server";
+import { getLocale, getTranslations } from "next-intl/server";
 import { auth } from "@/lib/auth";
 import { sqlite } from "@/lib/db";
 import { Card, CardContent } from "@/components/ui/card";
@@ -34,6 +34,7 @@ export default async function RankingsPage({
   const currentPage = Math.max(1, Math.floor(Number(resolvedSearchParams?.page ?? "1")) || 1);
 
   const t = await getTranslations("rankings");
+  const locale = await getLocale();
 
   const countRow = sqlite
     .prepare(
@@ -143,7 +144,8 @@ export default async function RankingsPage({
                       </TableCell>
                       <TableCell className="text-muted-foreground">
                         {formatRelativeTimeFromNow(
-                          new Date(row.lastSolveTime * 1000)
+                          new Date(row.lastSolveTime * 1000),
+                          locale
                         )}
                       </TableCell>
                     </TableRow>
