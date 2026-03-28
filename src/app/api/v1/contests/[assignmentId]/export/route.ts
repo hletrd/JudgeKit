@@ -1,11 +1,9 @@
 import { NextRequest, NextResponse } from "next/server";
-import { getApiUser, unauthorized, isAdmin, isInstructor } from "@/lib/api/auth";
+import { createApiHandler, isAdmin, isInstructor } from "@/lib/api/handler";
 import { apiError } from "@/lib/api/responses";
 import { computeContestRanking } from "@/lib/assignments/contest-scoring";
 import { getLeaderboardProblems } from "@/lib/assignments/leaderboard";
 import { sqlite } from "@/lib/db";
-import { consumeApiRateLimit } from "@/lib/security/api-rate-limit";
-import { logger } from "@/lib/logger";
 
 function sanitizeFilename(name: string): string {
   return name.replace(/[^a-zA-Z0-9_\- ]/g, "_").slice(0, 100);
@@ -41,18 +39,10 @@ type IpRow = {
   ips: string;
 };
 
-export async function GET(
-  request: NextRequest,
-  { params }: { params: Promise<{ assignmentId: string }> }
-) {
-  try {
-    const user = await getApiUser(request);
-    if (!user) return unauthorized();
-
-    const rl = consumeApiRateLimit(request, "export");
-    if (rl) return rl;
-
-    const { assignmentId } = await params;
+export const GET = createApiHandler({
+  rateLimit: "export",
+  handler: async (req: NextRequest, { user, params }) => {
+    const { assignmentId } = params;
 
     const assignment = sqlite
       .prepare<[string], AssignmentRow>(
@@ -74,7 +64,7 @@ export async function GET(
       return apiError("forbidden", 403);
     }
 
-    const format = request.nextUrl.searchParams.get("format") ?? "csv";
+    const format = req.nextUrl.searchParams.get("format") ?? "csv";
     const problems = getLeaderboardProblems(assignmentId);
     const { scoringModel, entries } = computeContestRanking(assignmentId);
 
@@ -174,8 +164,5 @@ export async function GET(
         "Content-Disposition": `attachment; filename="${safeName}-export.csv"`,
       },
     });
-  } catch (error) {
-    logger.error({ err: error }, "GET export error");
-    return apiError("serverError", 500);
-  }
-}
+  },
+});

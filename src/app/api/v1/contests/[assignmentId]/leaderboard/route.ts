@@ -1,10 +1,8 @@
 import { NextRequest } from "next/server";
-import { getApiUser, unauthorized, isAdmin, isInstructor } from "@/lib/api/auth";
+import { createApiHandler, isAdmin, isInstructor } from "@/lib/api/handler";
 import { apiSuccess, apiError } from "@/lib/api/responses";
 import { computeLeaderboard, getLeaderboardProblems } from "@/lib/assignments/leaderboard";
 import { sqlite } from "@/lib/db";
-import { logger } from "@/lib/logger";
-import { consumeApiRateLimit } from "@/lib/security/api-rate-limit";
 
 type AssignmentAccessRow = {
   groupId: string;
@@ -13,18 +11,10 @@ type AssignmentAccessRow = {
   anonymousLeaderboard: number | null;
 };
 
-export async function GET(
-  request: NextRequest,
-  { params }: { params: Promise<{ assignmentId: string }> }
-) {
-  try {
-    const user = await getApiUser(request);
-    if (!user) return unauthorized();
-
-    const rl = consumeApiRateLimit(request, "leaderboard");
-    if (rl) return rl;
-
-    const { assignmentId } = await params;
+export const GET = createApiHandler({
+  rateLimit: "leaderboard",
+  handler: async (req: NextRequest, { user, params }) => {
+    const { assignmentId } = params;
 
     const assignment = sqlite
       .prepare<[string], AssignmentAccessRow>(
@@ -86,8 +76,5 @@ export async function GET(
       problems,
       entries,
     });
-  } catch (error) {
-    logger.error({ err: error }, "GET /api/v1/contests/[assignmentId]/leaderboard error");
-    return apiError("leaderboardLoadFailed", 500);
-  }
-}
+  },
+});

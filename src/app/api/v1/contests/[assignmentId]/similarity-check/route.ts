@@ -1,26 +1,13 @@
 import { NextRequest } from "next/server";
-import { getApiUser, unauthorized, csrfForbidden, isAdmin, isInstructor } from "@/lib/api/auth";
+import { createApiHandler, isAdmin, isInstructor } from "@/lib/api/handler";
 import { apiSuccess, apiError } from "@/lib/api/responses";
-import { consumeApiRateLimit } from "@/lib/security/api-rate-limit";
 import { runAndStoreSimilarityCheck } from "@/lib/assignments/code-similarity";
 import { getContestAssignment } from "@/lib/assignments/contests";
-import { logger } from "@/lib/logger";
 
-export async function POST(
-  request: NextRequest,
-  { params }: { params: Promise<{ assignmentId: string }> }
-) {
-  try {
-    const csrfError = csrfForbidden(request);
-    if (csrfError) return csrfError;
-
-    const user = await getApiUser(request);
-    if (!user) return unauthorized();
-
-    const rl = consumeApiRateLimit(request, "similarity-check");
-    if (rl) return rl;
-
-    const { assignmentId } = await params;
+export const POST = createApiHandler({
+  rateLimit: "similarity-check",
+  handler: async (req: NextRequest, { user, params }) => {
+    const { assignmentId } = params;
 
     const assignment = getContestAssignment(assignmentId);
 
@@ -54,8 +41,5 @@ export async function POST(
     }
 
     return apiSuccess({ flaggedPairs: flaggedCount });
-  } catch (error) {
-    logger.error({ err: error }, "POST similarity-check error");
-    return apiError("serverError", 500);
-  }
-}
+  },
+});

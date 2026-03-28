@@ -1,19 +1,13 @@
 import { NextRequest } from "next/server";
-import { getApiUser, unauthorized, csrfForbidden, isAdmin, isInstructor } from "@/lib/api/auth";
+import { createApiHandler } from "@/lib/api/handler";
 import { apiSuccess, apiError } from "@/lib/api/responses";
 import { setAccessCode, revokeAccessCode, getAccessCode } from "@/lib/assignments/access-codes";
-import { getContestAssignment, canManageContest, type ContestAssignmentRow } from "@/lib/assignments/contests";
-import { logger } from "@/lib/logger";
+import { getContestAssignment, canManageContest } from "@/lib/assignments/contests";
 
 
-export async function GET(
-  request: NextRequest,
-  { params }: { params: Promise<{ assignmentId: string }> }
-) {
-  try {
-    const user = await getApiUser(request);
-    if (!user) return unauthorized();
-    const { assignmentId } = await params;
+export const GET = createApiHandler({
+  handler: async (req: NextRequest, { user, params }) => {
+    const { assignmentId } = params;
 
     const assignment = getContestAssignment(assignmentId);
     if (!assignment || assignment.examMode === "none") return apiError("notFound", 404);
@@ -21,23 +15,12 @@ export async function GET(
 
     const code = getAccessCode(assignmentId);
     return apiSuccess({ accessCode: code });
-  } catch (error) {
-    logger.error({ err: error }, "GET access-code error");
-    return apiError("serverError", 500);
-  }
-}
+  },
+});
 
-export async function POST(
-  request: NextRequest,
-  { params }: { params: Promise<{ assignmentId: string }> }
-) {
-  try {
-    const csrfError = csrfForbidden(request);
-    if (csrfError) return csrfError;
-
-    const user = await getApiUser(request);
-    if (!user) return unauthorized();
-    const { assignmentId } = await params;
+export const POST = createApiHandler({
+  handler: async (req: NextRequest, { user, params }) => {
+    const { assignmentId } = params;
 
     const assignment = getContestAssignment(assignmentId);
     if (!assignment || assignment.examMode === "none") return apiError("notFound", 404);
@@ -45,23 +28,12 @@ export async function POST(
 
     const code = setAccessCode(assignmentId);
     return apiSuccess({ accessCode: code }, { status: 201 });
-  } catch (error) {
-    logger.error({ err: error }, "POST access-code error");
-    return apiError("serverError", 500);
-  }
-}
+  },
+});
 
-export async function DELETE(
-  request: NextRequest,
-  { params }: { params: Promise<{ assignmentId: string }> }
-) {
-  try {
-    const csrfError = csrfForbidden(request);
-    if (csrfError) return csrfError;
-
-    const user = await getApiUser(request);
-    if (!user) return unauthorized();
-    const { assignmentId } = await params;
+export const DELETE = createApiHandler({
+  handler: async (req: NextRequest, { user, params }) => {
+    const { assignmentId } = params;
 
     const assignment = getContestAssignment(assignmentId);
     if (!assignment || assignment.examMode === "none") return apiError("notFound", 404);
@@ -69,8 +41,5 @@ export async function DELETE(
 
     revokeAccessCode(assignmentId);
     return apiSuccess({ accessCode: null });
-  } catch (error) {
-    logger.error({ err: error }, "DELETE access-code error");
-    return apiError("serverError", 500);
-  }
-}
+  },
+});

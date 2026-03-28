@@ -1,40 +1,30 @@
 import { NextRequest } from "next/server";
 import { nanoid } from "nanoid";
 import { z } from "zod";
-import { getApiUser, unauthorized, csrfForbidden, isAdmin, isInstructor } from "@/lib/api/auth";
+import { createApiHandler } from "@/lib/api/handler";
 import { apiSuccess, apiError } from "@/lib/api/responses";
-import { getContestAssignment, canManageContest, type ContestAssignmentRow } from "@/lib/assignments/contests";
+import { getContestAssignment, canManageContest } from "@/lib/assignments/contests";
 import { db, sqlite } from "@/lib/db";
 import { users, enrollments, contestAccessTokens } from "@/lib/db/schema";
 import { and, eq, inArray, like, or, sql } from "drizzle-orm";
-import { logger } from "@/lib/logger";
 
 
 const inviteSchema = z.object({
   username: z.string().min(1).max(255),
 });
 
-const searchSchema = z.object({
-  q: z.string().min(1).max(100),
-});
-
 /**
  * GET - Search users to invite (autocomplete)
  */
-export async function GET(
-  request: NextRequest,
-  { params }: { params: Promise<{ assignmentId: string }> }
-) {
-  try {
-    const user = await getApiUser(request);
-    if (!user) return unauthorized();
-    const { assignmentId } = await params;
+export const GET = createApiHandler({
+  handler: async (req: NextRequest, { user, params }) => {
+    const { assignmentId } = params;
 
     const assignment = getContestAssignment(assignmentId);
     if (!assignment || assignment.examMode === "none") return apiError("notFound", 404);
     if (!canManageContest(user, assignment)) return apiError("forbidden", 403);
 
-    const query = request.nextUrl.searchParams.get("q")?.trim() ?? "";
+    const query = req.nextUrl.searchParams.get("q")?.trim() ?? "";
     if (!query) return apiSuccess([]);
 
     // Escape LIKE wildcards in user input
@@ -80,37 +70,23 @@ export async function GET(
     }));
 
     return apiSuccess(enriched);
-  } catch (error) {
-    logger.error({ err: error }, "GET contest invite search error");
-    return apiError("serverError", 500);
-  }
-}
+  },
+});
 
 /**
  * POST - Invite a user to the contest by username
  */
-export async function POST(
-  request: NextRequest,
-  { params }: { params: Promise<{ assignmentId: string }> }
-) {
-  try {
-    const csrfError = csrfForbidden(request);
-    if (csrfError) return csrfError;
-
-    const apiUser = await getApiUser(request);
-    if (!apiUser) return unauthorized();
-    const { assignmentId } = await params;
+export const POST = createApiHandler({
+  schema: inviteSchema,
+  handler: async (req: NextRequest, { user: apiUser, body, params }) => {
+    const { assignmentId } = params;
 
     const assignment = getContestAssignment(assignmentId);
     if (!assignment || assignment.examMode === "none") return apiError("notFound", 404);
     if (!canManageContest(apiUser, assignment)) return apiError("forbidden", 403);
 
-    const body = await request.json();
-    const parsed = inviteSchema.safeParse(body);
-    if (!parsed.success) return apiError("invalidUsername", 400);
-
     const targetUser = await db.query.users.findFirst({
-      where: eq(users.username, parsed.data.username),
+      where: eq(users.username, body.username),
       columns: { id: true, username: true, name: true },
     });
 
@@ -172,8 +148,5 @@ export async function POST(
       username: targetUser.username,
       name: targetUser.name,
     });
-  } catch (error) {
-    logger.error({ err: error }, "POST contest invite error");
-    return apiError("inviteFailed", 500);
-  }
-}
+  },
+});

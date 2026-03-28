@@ -1,14 +1,12 @@
 import { NextRequest } from "next/server";
 import { nanoid } from "nanoid";
 import { z } from "zod";
-import { getApiUser, unauthorized, csrfForbidden, isAdmin, isInstructor } from "@/lib/api/auth";
+import { createApiHandler, isAdmin, isInstructor } from "@/lib/api/handler";
 import { apiSuccess, apiError } from "@/lib/api/responses";
 import { db, sqlite } from "@/lib/db";
 import { antiCheatEvents, users } from "@/lib/db/schema";
 import { eq, and, desc, sql } from "drizzle-orm";
-import { consumeApiRateLimit } from "@/lib/security/api-rate-limit";
 import { getContestAssignment } from "@/lib/assignments/contests";
-import { logger } from "@/lib/logger";
 
 /** last heartbeat insert time per "assignmentId:userId" — only insert once per 60s */
 const lastHeartbeatTime = new Map<string, number>();
@@ -30,21 +28,11 @@ const antiCheatEventSchema = z.object({
 });
 
 /** POST: Log an anti-cheat event (student-facing, rate-limited) */
-export async function POST(
-  request: NextRequest,
-  { params }: { params: Promise<{ assignmentId: string }> }
-) {
-  try {
-    const csrfError = csrfForbidden(request);
-    if (csrfError) return csrfError;
-
-    const rateLimitResponse = consumeApiRateLimit(request, "anti-cheat:log");
-    if (rateLimitResponse) return rateLimitResponse;
-
-    const user = await getApiUser(request);
-    if (!user) return unauthorized();
-
-    const { assignmentId } = await params;
+export const POST = createApiHandler({
+  rateLimit: "anti-cheat:log",
+  schema: antiCheatEventSchema,
+  handler: async (req: NextRequest, { user, body, params }) => {
+    const { assignmentId } = params;
     const assignment = getContestAssignment(assignmentId);
 
     if (!assignment || assignment.examMode === "none") {
@@ -75,22 +63,16 @@ export async function POST(
       return apiSuccess({ logged: false });
     }
 
-    const body = await request.json();
-    const parsed = antiCheatEventSchema.safeParse(body);
-    if (!parsed.success) {
-      return apiError("invalidEventType", 400);
-    }
-
-    const { eventType, details: rawDetails } = parsed.data;
+    const { eventType, details: rawDetails } = body;
     const details: Record<string, unknown> | null = rawDetails ? { message: rawDetails } : null;
 
     // Heartbeat events: only insert a DB row once per 60 seconds to reduce churn
     if (eventType === "heartbeat") {
       const heartbeatKey = `${assignmentId}:${user.id}`;
-      const now = Date.now();
+      const nowMs = Date.now();
       const last = lastHeartbeatTime.get(heartbeatKey) ?? 0;
-      if (now - last >= 60_000) {
-        lastHeartbeatTime.set(heartbeatKey, now);
+      if (nowMs - last >= 60_000) {
+        lastHeartbeatTime.set(heartbeatKey, nowMs);
         db.insert(antiCheatEvents)
           .values({
             id: nanoid(),
@@ -98,7 +80,7 @@ export async function POST(
             userId: user.id,
             eventType: "heartbeat",
             details: null,
-            ipAddress: request.headers.get("x-forwarded-for")?.split(",")[0]?.trim() ?? null,
+            ipAddress: req.headers.get("x-forwarded-for")?.split(",")[0]?.trim() ?? null,
             userAgent: null,
             createdAt: new Date(),
           })
@@ -108,8 +90,8 @@ export async function POST(
     }
 
     const ip =
-      request.headers.get("x-forwarded-for")?.split(",")[0]?.trim() ?? null;
-    const userAgent = request.headers.get("user-agent") ?? null;
+      req.headers.get("x-forwarded-for")?.split(",")[0]?.trim() ?? null;
+    const userAgent = req.headers.get("user-agent") ?? null;
 
     db.insert(antiCheatEvents)
       .values({
@@ -125,22 +107,13 @@ export async function POST(
       .run();
 
     return apiSuccess({ logged: true });
-  } catch (error) {
-    logger.error({ err: error }, "POST anti-cheat error");
-    return apiError("serverError", 500);
-  }
-}
+  },
+});
 
 /** GET: Fetch anti-cheat events (instructor+, paginated) */
-export async function GET(
-  request: NextRequest,
-  { params }: { params: Promise<{ assignmentId: string }> }
-) {
-  try {
-    const user = await getApiUser(request);
-    if (!user) return unauthorized();
-
-    const { assignmentId } = await params;
+export const GET = createApiHandler({
+  handler: async (req: NextRequest, { user, params }) => {
+    const { assignmentId } = params;
     const assignment = getContestAssignment(assignmentId);
 
     if (!assignment || assignment.examMode === "none") {
@@ -155,7 +128,7 @@ export async function GET(
       return apiError("forbidden", 403);
     }
 
-    const searchParams = request.nextUrl.searchParams;
+    const searchParams = req.nextUrl.searchParams;
     const userIdFilter = searchParams.get("userId");
     const eventTypeFilter = searchParams.get("eventType");
     const limit = Math.min(Number(searchParams.get("limit") ?? 100), 500);
@@ -197,8 +170,5 @@ export async function GET(
       limit,
       offset,
     });
-  } catch (error) {
-    logger.error({ err: error }, "GET anti-cheat error");
-    return apiError("serverError", 500);
-  }
-}
+  },
+});
