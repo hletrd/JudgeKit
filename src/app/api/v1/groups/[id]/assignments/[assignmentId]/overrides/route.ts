@@ -3,7 +3,7 @@ import { apiSuccess, apiError } from "@/lib/api/responses";
 import { and, eq } from "drizzle-orm";
 import { z } from "zod";
 import { db, sqlite } from "@/lib/db";
-import { assignments, enrollments, scoreOverrides } from "@/lib/db/schema";
+import { assignmentProblems, assignments, enrollments, scoreOverrides } from "@/lib/db/schema";
 import { recordAuditEvent } from "@/lib/audit/events";
 import { canManageGroupResourcesAsync } from "@/lib/assignments/management";
 import { getApiUser, forbidden, notFound, unauthorized, csrfForbidden } from "@/lib/api/auth";
@@ -13,7 +13,7 @@ import { logger } from "@/lib/logger";
 const scoreOverrideBodySchema = z.object({
   problemId: z.string().min(1),
   userId: z.string().min(1),
-  overrideScore: z.number().int().min(0),
+  overrideScore: z.number().min(0).max(10000),
   reason: z.string().max(1000).optional(),
 });
 
@@ -85,6 +85,24 @@ export async function POST(
     }
 
     const { problemId, userId, overrideScore, reason } = parsed.data;
+
+    // Verify problemId belongs to this assignment
+    const assignmentProblem = await db.query.assignmentProblems.findFirst({
+      where: and(
+        eq(assignmentProblems.assignmentId, assignment.id),
+        eq(assignmentProblems.problemId, problemId)
+      ),
+      columns: { id: true, points: true },
+    });
+    if (!assignmentProblem) {
+      return apiError("problemNotInAssignment", 400);
+    }
+
+    // Cap override score to the problem's max points
+    const maxPoints = assignmentProblem.points ?? 100;
+    if (overrideScore > maxPoints) {
+      return apiError("overrideScoreExceedsMax", 400);
+    }
 
     // Verify the target user is enrolled in the group
     const targetEnrollment = await db.query.enrollments.findFirst({

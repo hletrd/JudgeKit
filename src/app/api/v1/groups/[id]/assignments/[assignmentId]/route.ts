@@ -88,6 +88,15 @@ export const PATCH = createApiHandler({
       })
     );
 
+    // Block problem changes during active exam-mode contests
+    if (body.problems !== undefined && assignment.examMode !== "none") {
+      const now = Date.now();
+      const startsAt = assignment.startsAt ? new Date(assignment.startsAt).getTime() : null;
+      if (startsAt && now >= startsAt) {
+        return apiError("contestProblemsLockedDuringActive", 409);
+      }
+    }
+
     if (
       body.problems !== undefined &&
       hasExistingSubmissions &&

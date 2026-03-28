@@ -504,6 +504,9 @@
     "assignmentProblemsTitle": "Assignment problems",
     "assignmentProblemsDescription": "Select problems and set point values.",
     "assignmentProblemsLocked": "Problems are locked because submissions already exist. You can still edit other settings.",
+    "contestProblemsLockedDuringActive": "Cannot change problems while an exam-mode contest is active.",
+    "problemNotInAssignment": "The specified problem does not belong to this assignment.",
+    "overrideScoreExceedsMax": "Override score cannot exceed the problem's maximum points.",
     "assignmentProblemsUnlockForAdmin": "Unlock assignment problems",
     "assignmentProblemsUnlockWarning": "Changing problems after submissions exist may invalidate past grades.",
     "assignmentTable": {

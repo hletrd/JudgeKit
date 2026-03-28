@@ -504,6 +504,9 @@
     "assignmentProblemsTitle": "과제 문제",
     "assignmentProblemsDescription": "문제를 선택하고 배점을 설정합니다.",
     "assignmentProblemsLocked": "제출이 있어 문제 구성이 잠겨 있습니다. 다른 설정은 수정할 수 있습니다.",
+    "contestProblemsLockedDuringActive": "시험 모드 대회가 진행 중일 때는 문제를 변경할 수 없습니다.",
+    "problemNotInAssignment": "지정된 문제가 이 과제에 속하지 않습니다.",
+    "overrideScoreExceedsMax": "점수 오버라이드는 문제의 최대 점수를 초과할 수 없습니다.",
     "assignmentProblemsUnlockForAdmin": "과제 문제 잠금 해제",
     "assignmentProblemsUnlockWarning": "제출이 있는 상태에서 문제를 변경하면 기존 채점 결과가 무효가 될 수 있습니다.",
     "assignmentTable": {
