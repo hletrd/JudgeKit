@@ -5,6 +5,9 @@ import { SidebarProvider, SidebarInset, SidebarTrigger } from "@/components/ui/s
 import { AppSidebar } from "@/components/layout/app-sidebar";
 import { LocaleSwitcher } from "@/components/layout/locale-switcher";
 import { ThemeToggle } from "@/components/layout/theme-toggle";
+import { LectureModeProvider } from "@/components/lecture/lecture-mode-provider";
+import { LectureModeToggle } from "@/components/layout/lecture-mode-toggle";
+import { LectureToolbar } from "@/components/lecture/lecture-toolbar";
 
 import { Toaster } from "@/components/ui/sonner";
 import { getResolvedSystemSettings, isAiAssistantEnabled } from "@/lib/system-settings";
@@ -33,30 +36,40 @@ export default async function DashboardLayout({ children }: { children: React.Re
     siteDescription: t("appDescription"),
   });
 
+  const canUseLectureMode = ["instructor", "admin", "super_admin"].includes(session.user.role);
+
   return (
-    <SidebarProvider>
-      <a
-        href="#dashboard-main-content"
-        className="sr-only focus:not-sr-only focus:absolute focus:left-4 focus:top-4 focus:z-50 focus:rounded-md focus:bg-background focus:px-3 focus:py-2 focus:text-sm focus:shadow-md"
-      >
-        {t("skipToContent")}
-      </a>
-      <AppSidebar user={session.user} siteTitle={settings.siteTitle} capabilities={capabilities} />
-      <SidebarInset>
-        <header className="flex h-14 items-center gap-2 px-4">
-          <SidebarTrigger />
-          <h1 className="text-sm font-semibold">{settings.siteTitle}</h1>
-          <div className="ml-auto flex items-center gap-1">
-            <ThemeToggle dbTheme={session.user.preferredTheme} />
-            <LocaleSwitcher />
-          </div>
-        </header>
-        <main id="dashboard-main-content" className="min-w-0 flex-1 p-6">
-          {children}
-        </main>
-      </SidebarInset>
-      <Toaster />
-      <ChatWidgetLoader />
-    </SidebarProvider>
+    <LectureModeProvider
+      initialActive={canUseLectureMode && session.user.lectureMode === "on"}
+      initialFontScale={session.user.lectureFontScale ?? "1.5"}
+      initialColorScheme={session.user.lectureColorScheme ?? "dark"}
+    >
+      <SidebarProvider>
+        <a
+          href="#dashboard-main-content"
+          className="sr-only focus:not-sr-only focus:absolute focus:left-4 focus:top-4 focus:z-50 focus:rounded-md focus:bg-background focus:px-3 focus:py-2 focus:text-sm focus:shadow-md"
+        >
+          {t("skipToContent")}
+        </a>
+        <AppSidebar user={session.user} siteTitle={settings.siteTitle} capabilities={capabilities} />
+        <SidebarInset>
+          <header className="flex h-14 items-center gap-2 px-4">
+            <SidebarTrigger />
+            <h1 className="text-sm font-semibold">{settings.siteTitle}</h1>
+            <div className="ml-auto flex items-center gap-1">
+              {canUseLectureMode && <LectureModeToggle />}
+              <ThemeToggle dbTheme={session.user.preferredTheme} />
+              <LocaleSwitcher />
+            </div>
+          </header>
+          <main id="dashboard-main-content" className="min-w-0 flex-1 p-6">
+            {children}
+          </main>
+        </SidebarInset>
+        <Toaster />
+        <ChatWidgetLoader />
+        <LectureToolbar />
+      </SidebarProvider>
+    </LectureModeProvider>
   );
 }
