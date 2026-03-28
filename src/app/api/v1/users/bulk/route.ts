@@ -12,6 +12,7 @@ import { bulkUserCreateSchema } from "@/lib/validators/bulk-users";
 import { consumeApiRateLimit } from "@/lib/security/api-rate-limit";
 import { validateRoleChange } from "@/lib/users/core";
 import { logger } from "@/lib/logger";
+import pLimit from "p-limit";
 
 export async function POST(request: NextRequest) {
   try {
@@ -92,8 +93,11 @@ export async function POST(request: NextRequest) {
       return true;
     });
 
+    const hashLimit = pLimit(4);
+
     const preparedEntries = await Promise.all(
-      filteredItems.map(async (item) => {
+      filteredItems.map((item) =>
+        hashLimit(async () => {
         const generatedPassword = generateSecurePassword();
         const passwordHash = await hashPassword(generatedPassword);
         const id = nanoid();
@@ -111,7 +115,8 @@ export async function POST(request: NextRequest) {
           role: item.role ?? ("student" as const),
           generatedPassword,
         };
-      })
+        })
+      )
     );
 
     toInsert.push(...preparedEntries);

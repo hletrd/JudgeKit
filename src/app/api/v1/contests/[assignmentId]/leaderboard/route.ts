@@ -10,6 +10,7 @@ type AssignmentAccessRow = {
   groupId: string;
   instructorId: string | null;
   examMode: string;
+  anonymousLeaderboard: number | null;
 };
 
 export async function GET(
@@ -27,7 +28,7 @@ export async function GET(
 
     const assignment = sqlite
       .prepare<[string], AssignmentAccessRow>(
-        `SELECT a.group_id AS groupId, g.instructor_id AS instructorId, a.exam_mode AS examMode
+        `SELECT a.group_id AS groupId, g.instructor_id AS instructorId, a.exam_mode AS examMode, a.anonymous_leaderboard AS anonymousLeaderboard
          FROM assignments a
          INNER JOIN groups g ON g.id = a.group_id
          WHERE a.id = ?`
@@ -62,12 +63,19 @@ export async function GET(
     const problems = getLeaderboardProblems(assignmentId);
     const leaderboard = computeLeaderboard(assignmentId, isInstructorView);
 
+    const isAnonymous = !isInstructorView && !!assignment.anonymousLeaderboard;
+
     const entries = isInstructorView
       ? leaderboard.entries
       : leaderboard.entries.map(({ userId: _userId, ...rest }) => ({
           ...rest,
           userId: "",
           isCurrentUser: _userId === user.id,
+          ...(isAnonymous && {
+            username: `Participant ${rest.rank}`,
+            name: "",
+            className: null,
+          }),
         }));
 
     return apiSuccess({

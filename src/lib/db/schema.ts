@@ -264,6 +264,7 @@ export const assignments = sqliteTable(
     accessCode: text("access_code"),
     freezeLeaderboardAt: integer("freeze_leaderboard_at", { mode: "timestamp" }),
     enableAntiCheat: integer("enable_anti_cheat", { mode: "boolean" }).notNull().default(false),
+    anonymousLeaderboard: integer("anonymous_leaderboard", { mode: "boolean" }).default(false),
     createdAt: integer("created_at", { mode: "timestamp" })
       .notNull()
       .$defaultFn(() => new Date(Date.now())),
