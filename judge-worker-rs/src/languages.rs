@@ -613,12 +613,13 @@ static SCHEME_CONFIG: LanguageConfig = LanguageConfig {
 };
 
 // Groovy
-static GROOVY_RUN: &[&str] = &["sh", "-c", "JAVA_OPTS='-Djava.io.tmpdir=/tmp -Duser.home=/tmp' groovy /workspace/solution.groovy"];
+static GROOVY_COMPILE: &[&str] = &["sh", "-c", "groovyc -d /workspace /workspace/solution.groovy 2>&1"];
+static GROOVY_RUN: &[&str] = &["sh", "-c", "java -cp \"/workspace:/opt/groovy-4.0.24/lib/*\" solution"];
 
 static GROOVY_CONFIG: LanguageConfig = LanguageConfig {
     extension: ".groovy",
     docker_image: "judge-groovy:latest",
-    compile_command: None,
+    compile_command: Some(GROOVY_COMPILE),
     run_command: GROOVY_RUN,
     needs_exec_tmp: false,
 };
@@ -1046,12 +1047,13 @@ static FENNEL_CONFIG: LanguageConfig = LanguageConfig {
 };
 
 // Flix (JVM)
-static FLIX_RUN: &[&str] = &["sh", "-c", "cat > /tmp/in && cd /workspace && cp -r /opt/flix-template/* . 2>/dev/null; cp /workspace/solution.flix src/Main.flix && java -jar /opt/flix.jar run"];
+static FLIX_COMPILE: &[&str] = &["sh", "-c", "cp -r /opt/flix-template/* /workspace/ 2>/dev/null && rm -rf /workspace/build /workspace/test 2>/dev/null && mv /workspace/solution.flix /workspace/src/Main.flix && cd /workspace && HOME=/tmp java -Djava.io.tmpdir=/tmp -jar /opt/flix.jar build-jar --no-install 2>&1"];
+static FLIX_RUN: &[&str] = &["sh", "-c", "cat > /tmp/in && HOME=/tmp java -Djava.io.tmpdir=/tmp -jar /workspace/artifact/workspace.jar"];
 
 static FLIX_CONFIG: LanguageConfig = LanguageConfig {
     extension: ".flix",
     docker_image: "judge-flix:latest",
-    compile_command: None,
+    compile_command: Some(FLIX_COMPILE),
     run_command: FLIX_RUN,
     needs_exec_tmp: true,
 };
@@ -1299,7 +1301,7 @@ static CURRY_CONFIG: LanguageConfig = LanguageConfig {
 };
 
 // Clean
-static CLEAN_COMPILE: &[&str] = &["sh", "-c", "export HOME=/tmp CLEANPATH=/opt/clean/StdEnv:/opt/clean/lib PATH=/opt/clean/bin:$PATH CLM_ARTIFACTS_PATH=/tmp/clean-artifacts && mkdir -p /tmp/clean-artifacts && cd /workspace && cp solution.icl Solution.icl && clm Solution -o /workspace/solution 2>&1"];
+static CLEAN_COMPILE: &[&str] = &["sh", "-c", "export HOME=/tmp CLEAN_HOME=/opt/clean CLEANPATH=/opt/clean/StdEnv:/opt/clean/lib PATH=/opt/clean/bin:/opt/clean/exe:$PATH && mkdir -p /tmp/clean-artifacts && cd /workspace && cp solution.icl Solution.icl && clm -I /opt/clean/StdEnv -nt -nr Solution -o /workspace/solution 2>&1"];
 static CLEAN_RUN: &[&str] = &["sh", "-c", "HOME=/tmp /workspace/solution"];
 
 static CLEAN_CONFIG: LanguageConfig = LanguageConfig {
@@ -1311,7 +1313,7 @@ static CLEAN_CONFIG: LanguageConfig = LanguageConfig {
 };
 
 // Roc
-static ROC_COMPILE: &[&str] = &["roc", "build", "--optimize", "/workspace/solution.roc", "--output", "/workspace/solution"];
+static ROC_COMPILE: &[&str] = &["sh", "-c", "roc build /workspace/solution.roc --output /workspace/solution 2>&1"];
 static ROC_RUN: &[&str] = &["/workspace/solution"];
 
 static ROC_CONFIG: LanguageConfig = LanguageConfig {

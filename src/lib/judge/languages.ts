@@ -730,8 +730,8 @@ export const JUDGE_LANGUAGE_CONFIGS: Record<Language, JudgeLanguageDefinition> =
     extension: ".groovy",
     dockerImage: "judge-groovy:latest",
     compiler: `Groovy ${JUDGE_TOOLCHAIN_VERSIONS.groovy} / Temurin 21`,
-    compileCommand: null,
-    runCommand: ["sh", "-c", "JAVA_OPTS='-Djava.io.tmpdir=/tmp -Duser.home=/tmp' groovy /workspace/solution.groovy"],
+    compileCommand: ["sh", "-c", "groovyc -d /workspace /workspace/solution.groovy 2>&1"],
+    runCommand: ["sh", "-c", "java -cp \"/workspace:/opt/groovy-4.0.24/lib/*\" solution"],
   },
   octave: {
     language: "octave",
@@ -1117,7 +1117,7 @@ export const JUDGE_LANGUAGE_CONFIGS: Record<Language, JudgeLanguageDefinition> =
     dockerImage: "judge-flix:latest",
     compiler: "Flix (JVM)",
     compileCommand: null,
-    runCommand: ["sh", "-c", "cat > /tmp/in && cd /workspace && cp -r /opt/flix-template/* . 2>/dev/null; cp /workspace/solution.flix src/Main.flix && java -jar /opt/flix.jar run"],
+    runCommand: ["sh", "-c", "cat > /tmp/in && cp -r /opt/flix-template/* /tmp/ && cp /workspace/solution.flix /tmp/src/Main.flix && cd /tmp && HOME=/tmp COURSIER_CACHE=/tmp/.cache java -Xmx400m -Djava.io.tmpdir=/tmp -jar /opt/flix.jar run"],
   },
   micropython: {
     language: "micropython",
@@ -1341,7 +1341,7 @@ export const JUDGE_LANGUAGE_CONFIGS: Record<Language, JudgeLanguageDefinition> =
     compiler: `Clean ${JUDGE_TOOLCHAIN_VERSIONS.clean}`,
     compileCommand: [
       "sh", "-c",
-      "export HOME=/tmp CLEANPATH=/opt/clean/StdEnv:/opt/clean/lib PATH=/opt/clean/bin:$PATH CLM_ARTIFACTS_PATH=/tmp/clean-artifacts && mkdir -p /tmp/clean-artifacts && cd /workspace && cp solution.icl Solution.icl && clm Solution -o /workspace/solution 2>&1",
+      "export HOME=/tmp CLEAN_HOME=/opt/clean CLEANPATH=/opt/clean/StdEnv:/opt/clean/lib PATH=/opt/clean/bin:/opt/clean/exe:$PATH && mkdir -p /tmp/clean-artifacts && cd /workspace && cp solution.icl Solution.icl && clm -I /opt/clean/StdEnv -nt -nr Solution -o /workspace/solution 2>&1",
     ],
     runCommand: ["sh", "-c", "HOME=/tmp /workspace/solution"],
   },
@@ -1352,7 +1352,7 @@ export const JUDGE_LANGUAGE_CONFIGS: Record<Language, JudgeLanguageDefinition> =
     extension: ".roc",
     dockerImage: "judge-roc:latest",
     compiler: `Roc ${JUDGE_TOOLCHAIN_VERSIONS.roc}`,
-    compileCommand: ["sh", "-c", "HOME=/tmp roc build --optimize /workspace/solution.roc --output /workspace/solution 2>&1"],
+    compileCommand: ["sh", "-c", "roc build /workspace/solution.roc --output /workspace/solution 2>&1"],
     runCommand: ["/workspace/solution"],
   },
   carp: {
