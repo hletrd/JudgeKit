@@ -1,5 +1,6 @@
 import { NextRequest } from "next/server";
 import { nanoid } from "nanoid";
+import { z } from "zod";
 import { getApiUser, unauthorized, csrfForbidden, isAdmin, isInstructor } from "@/lib/api/auth";
 import { apiSuccess, apiError } from "@/lib/api/responses";
 import { db, sqlite } from "@/lib/db";
@@ -9,7 +10,7 @@ import { consumeApiRateLimit } from "@/lib/security/api-rate-limit";
 import { getContestAssignment } from "@/lib/assignments/contests";
 import { logger } from "@/lib/logger";
 
-const VALID_EVENT_TYPES = new Set([
+const VALID_EVENT_TYPES = [
   "tab_switch",
   "copy",
   "paste",
@@ -17,7 +18,13 @@ const VALID_EVENT_TYPES = new Set([
   "contextmenu",
   "ip_change",
   "code_similarity",
-]);
+  "heartbeat",
+] as const;
+
+const antiCheatEventSchema = z.object({
+  eventType: z.enum(VALID_EVENT_TYPES),
+  details: z.string().max(500).optional(),
+});
 
 /** POST: Log an anti-cheat event (student-facing, rate-limited) */
 export async function POST(
@@ -58,14 +65,30 @@ export async function POST(
     }
 
     const body = await request.json();
-    const eventType = body.eventType;
-
-    if (!eventType || !VALID_EVENT_TYPES.has(eventType)) {
+    const parsed = antiCheatEventSchema.safeParse(body);
+    if (!parsed.success) {
       return apiError("invalidEventType", 400);
     }
 
-    // Sanitize details: must be string, max 500 chars
-    const details = typeof body.details === "string" ? body.details.slice(0, 500) : null;
+    const { eventType, details: rawDetails } = parsed.data;
+    const details = rawDetails ?? null;
+
+    // Heartbeat events are tracked but don't need to store details
+    if (eventType === "heartbeat") {
+      db.insert(antiCheatEvents)
+        .values({
+          id: nanoid(),
+          assignmentId,
+          userId: user.id,
+          eventType: "heartbeat",
+          details: null,
+          ipAddress: request.headers.get("x-forwarded-for")?.split(",")[0]?.trim() ?? null,
+          userAgent: null,
+          createdAt: new Date(),
+        })
+        .run();
+      return apiSuccess({ logged: true });
+    }
 
     const ip =
       request.headers.get("x-forwarded-for")?.split(",")[0]?.trim() ?? null;
