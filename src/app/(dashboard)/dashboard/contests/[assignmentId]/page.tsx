@@ -15,7 +15,7 @@ import {
 import { canManageGroupResources } from "@/lib/assignments/management";
 import { assertUserRole } from "@/lib/security/constants";
 import { db } from "@/lib/db";
-import { assignments, enrollments } from "@/lib/db/schema";
+import { assignments, enrollments, problems, submissions } from "@/lib/db/schema";
 import { getResolvedSystemTimeZone } from "@/lib/system-settings";
 import { notFound, redirect } from "next/navigation";
 import { getExamSession, getExamSessionsForAssignment } from "@/lib/assignments/exam-sessions";
@@ -33,7 +33,6 @@ import { AntiCheatDashboard } from "@/components/contest/anti-cheat-dashboard";
 import { AnalyticsCharts } from "@/components/contest/analytics-charts";
 import { ExportButton } from "@/components/contest/export-button";
 import AssignmentFormDialog, { type AssignmentEditorValue } from "../../groups/[id]/assignment-form-dialog";
-import { problems, submissions } from "@/lib/db/schema";
 
 const STATUS_FILTER_VALUES = [
   "all",

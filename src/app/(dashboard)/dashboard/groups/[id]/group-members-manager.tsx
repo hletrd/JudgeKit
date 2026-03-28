@@ -257,10 +257,17 @@ export function GroupMembersManager({
         {canManage && (
           <div className="flex w-full flex-col gap-2 md:w-auto md:min-w-80">
             <Label htmlFor={`group-member-select-${groupId}`}>{t("availableStudentsLabel")}</Label>
-            <div className="flex flex-col gap-2 sm:flex-row">
+            <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
               <Select value={selectedStudentId} onValueChange={(value) => setSelectedStudentId(value ?? "")}>
-                <SelectTrigger id={`group-member-select-${groupId}`} className="min-w-48 max-w-72 sm:max-w-none">
-                  <SelectValue placeholder={t("availableStudentsPlaceholder")} />
+                <SelectTrigger id={`group-member-select-${groupId}`} className="min-w-48 max-w-72 truncate sm:max-w-none h-8">
+                  {(() => {
+                    const sel = currentAvailableStudents.find((s) => s.id === selectedStudentId);
+                    return sel ? (
+                      <span className="truncate">{sel.name} (@{sel.username})</span>
+                    ) : (
+                      <span className="text-muted-foreground">{t("availableStudentsPlaceholder")}</span>
+                    );
+                  })()}
                 </SelectTrigger>
                 <SelectContent>
                   {currentAvailableStudents.map((student) => (
@@ -270,7 +277,7 @@ export function GroupMembersManager({
                   ))}
                 </SelectContent>
               </Select>
-              <Button onClick={handleAddMember} disabled={isAdding || !selectedStudentId} size="sm">
+              <Button onClick={handleAddMember} disabled={isAdding || !selectedStudentId} className="h-8">
                 {isAdding ? tCommon("loading") : t("addMember")}
               </Button>
             </div>
