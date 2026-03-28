@@ -479,48 +479,9 @@
   --problem-code-border: oklch(0.28 0.03 200);
 }
 
-/* Lecture mode typography & layout */
+/* Lecture mode typography — only scale problem body and code editor */
 @layer components {
-  .lecture-mode main#dashboard-main-content {
-    padding: 1rem;
-    font-size: calc(1rem * var(--lecture-font-scale)) !important;
-    line-height: 1.7;
-  }
-
-  /* Force-scale ALL text within lecture content — overrides Tailwind utilities (text-sm, text-base, etc.) */
-  .lecture-mode main#dashboard-main-content p,
-  .lecture-mode main#dashboard-main-content span,
-  .lecture-mode main#dashboard-main-content li,
-  .lecture-mode main#dashboard-main-content td,
-  .lecture-mode main#dashboard-main-content th,
-  .lecture-mode main#dashboard-main-content label,
-  .lecture-mode main#dashboard-main-content div,
-  .lecture-mode main#dashboard-main-content a,
-  .lecture-mode main#dashboard-main-content blockquote,
-  .lecture-mode main#dashboard-main-content figcaption,
-  .lecture-mode main#dashboard-main-content input,
-  .lecture-mode main#dashboard-main-content textarea,
-  .lecture-mode main#dashboard-main-content select {
-    font-size: inherit !important;
-  }
-
-  .lecture-mode main#dashboard-main-content h1 {
-    font-size: calc(2rem * var(--lecture-font-scale)) !important;
-  }
-
-  .lecture-mode main#dashboard-main-content h2 {
-    font-size: calc(1.75rem * var(--lecture-font-scale)) !important;
-  }
-
-  .lecture-mode main#dashboard-main-content h3 {
-    font-size: calc(1.4rem * var(--lecture-font-scale)) !important;
-  }
-
-  .lecture-mode main#dashboard-main-content h4 {
-    font-size: calc(1.2rem * var(--lecture-font-scale)) !important;
-  }
-
-  /* Problem description — full content scaling */
+  /* Problem description body — full content scaling */
   .lecture-mode .problem-description {
     font-size: calc(1.125rem * var(--lecture-font-scale)) !important;
     line-height: 1.8;
@@ -567,24 +528,7 @@
     height: auto;
   }
 
-  /* Scale badges, buttons, and card titles */
-  .lecture-mode main#dashboard-main-content .badge,
-  .lecture-mode main#dashboard-main-content [data-slot="badge"] {
-    font-size: calc(0.85rem * var(--lecture-font-scale)) !important;
-    padding: 0.25em 0.6em;
-  }
-
-  .lecture-mode main#dashboard-main-content button,
-  .lecture-mode main#dashboard-main-content [data-slot="button"] {
-    font-size: calc(0.9rem * var(--lecture-font-scale)) !important;
-  }
-
-  /* Card titles */
-  .lecture-mode main#dashboard-main-content [data-slot="card-title"],
-  .lecture-mode main#dashboard-main-content .card-title {
-    font-size: calc(1.25rem * var(--lecture-font-scale)) !important;
-  }
-
+  /* Code editor scaling */
   .lecture-mode .cm-editor {
     font-size: calc(0.95rem * var(--lecture-font-scale)) !important;
   }
