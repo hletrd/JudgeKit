@@ -1,3 +1,4 @@
+// SSE route: not migrated to createApiHandler due to streaming response
 import { NextRequest } from "next/server";
 import { apiError } from "@/lib/api/responses";
 import { db } from "@/lib/db";

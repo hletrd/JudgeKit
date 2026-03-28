@@ -4,22 +4,15 @@ import { eq } from "drizzle-orm";
 import { recordAuditEvent } from "@/lib/audit/events";
 import { db } from "@/lib/db";
 import { submissions, submissionComments } from "@/lib/db/schema";
-import { getApiUser, unauthorized, forbidden, notFound, csrfForbidden, isInstructor } from "@/lib/api/auth";
+import { forbidden, notFound, isInstructor } from "@/lib/api/auth";
 import { canAccessSubmission } from "@/lib/auth/permissions";
 import { commentCreateSchema } from "@/lib/validators/comments";
-import { consumeApiRateLimit } from "@/lib/security/api-rate-limit";
 import { sanitizeHtml } from "@/lib/security/sanitize-html";
-import { logger } from "@/lib/logger";
+import { createApiHandler } from "@/lib/api/handler";
 
-export async function GET(
-  request: NextRequest,
-  { params }: { params: Promise<Record<string, string>> }
-) {
-  try {
-    const user = await getApiUser(request);
-    if (!user) return unauthorized();
-
-    const id = (await params).id;
+export const GET = createApiHandler({
+  handler: async (req: NextRequest, { user, params }) => {
+    const { id } = params;
     if (!id) return notFound("Submission");
     const submission = await db.query.submissions.findFirst({
       where: eq(submissions.id, id),
@@ -46,29 +39,16 @@ export async function GET(
     });
 
     return apiSuccess(comments);
-  } catch (error) {
-    logger.error({ err: error }, "GET /api/v1/submissions/[id]/comments error");
-    return apiError("internalServerError", 500);
-  }
-}
+  },
+});
 
-export async function POST(
-  request: NextRequest,
-  { params }: { params: Promise<Record<string, string>> }
-) {
-  try {
-    const csrfError = csrfForbidden(request);
-    if (csrfError) return csrfError;
-
-    const rateLimitResponse = consumeApiRateLimit(request, "comments:add");
-    if (rateLimitResponse) return rateLimitResponse;
-
-    const user = await getApiUser(request);
-    if (!user) return unauthorized();
-
+export const POST = createApiHandler({
+  rateLimit: "comments:add",
+  schema: commentCreateSchema,
+  handler: async (req: NextRequest, { user, body, params }) => {
     if (!isInstructor(user.role)) return forbidden();
 
-    const id = (await params).id;
+    const { id } = params;
     if (!id) return notFound("Submission");
     const submission = await db.query.submissions.findFirst({
       where: eq(submissions.id, id),
@@ -84,19 +64,12 @@ export async function POST(
     const hasAccess = await canAccessSubmission(submission, user.id, user.role);
     if (!hasAccess) return forbidden();
 
-    const body = await request.json();
-    const parsed = commentCreateSchema.safeParse(body);
-
-    if (!parsed.success) {
-      return apiError(parsed.error.issues[0]?.message ?? "invalidComment", 400);
-    }
-
     const [created] = await db
       .insert(submissionComments)
       .values({
         submissionId: id,
         authorId: user.id,
-        content: sanitizeHtml(parsed.data.content),
+        content: sanitizeHtml(body.content),
       })
       .returning();
 
@@ -112,7 +85,7 @@ export async function POST(
         submissionId: id,
         commentId: created.id,
       },
-      request,
+      request: req,
     });
 
     const comment = await db.query.submissionComments.findFirst({
@@ -125,8 +98,5 @@ export async function POST(
     });
 
     return apiSuccess(comment, { status: 201 });
-  } catch (error) {
-    logger.error({ err: error }, "POST /api/v1/submissions/[id]/comments error");
-    return apiError("internalServerError", 500);
-  }
-}
+  },
+});

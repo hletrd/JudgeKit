@@ -3,19 +3,16 @@ import { apiSuccess, apiError } from "@/lib/api/responses";
 import { db } from "@/lib/db";
 import { roles, users } from "@/lib/db/schema";
 import { eq, sql } from "drizzle-orm";
-import { getApiUser, unauthorized, forbidden, csrfForbidden } from "@/lib/api/auth";
+import { forbidden } from "@/lib/api/auth";
 import { resolveCapabilities, invalidateRoleCache } from "@/lib/capabilities/cache";
 import { recordAuditEvent } from "@/lib/audit/events";
 import { nanoid } from "nanoid";
 import { createRoleSchema } from "@/lib/validators/roles";
 import { isBuiltinRole } from "@/lib/capabilities/types";
-import { logger } from "@/lib/logger";
+import { createApiHandler } from "@/lib/api/handler";
 
-export async function GET(request: NextRequest) {
-  try {
-    const user = await getApiUser(request);
-    if (!user) return unauthorized();
-
+export const GET = createApiHandler({
+  handler: async (req: NextRequest, { user }) => {
     const caps = await resolveCapabilities(user.role);
     if (!caps.has("users.manage_roles")) return forbidden();
 
@@ -51,31 +48,16 @@ export async function GET(request: NextRequest) {
     }));
 
     return apiSuccess(result);
-  } catch (error) {
-    logger.error({ err: error }, "Failed to list roles");
-    return apiError("internalError", 500);
-  }
-}
+  },
+});
 
-export async function POST(request: NextRequest) {
-  try {
-    const user = await getApiUser(request);
-    if (!user) return unauthorized();
-
+export const POST = createApiHandler({
+  schema: createRoleSchema,
+  handler: async (req: NextRequest, { user, body }) => {
     const caps = await resolveCapabilities(user.role);
     if (!caps.has("users.manage_roles")) return forbidden();
 
-    const csrfError = csrfForbidden(request);
-    if (csrfError) return csrfError;
-
-    const body = await request.json();
-    const parsed = createRoleSchema.safeParse(body);
-
-    if (!parsed.success) {
-      return apiError(parsed.error.issues[0]?.message ?? "validationError", 400);
-    }
-
-    const { name, displayName, description, level, capabilities } = parsed.data;
+    const { name, displayName, description, level, capabilities } = body;
 
     // Cannot use built-in role names
     if (isBuiltinRole(name)) {
@@ -118,7 +100,7 @@ export async function POST(request: NextRequest) {
       resourceId: id,
       resourceLabel: name,
       summary: `Created custom role "${displayName}"`,
-      request,
+      request: req,
     });
 
     const created = await db
@@ -128,8 +110,5 @@ export async function POST(request: NextRequest) {
       .then((rows) => rows[0]);
 
     return apiSuccess(created, { status: 201 });
-  } catch (error) {
-    logger.error({ err: error }, "Failed to create role");
-    return apiError("internalError", 500);
-  }
-}
+  },
+});

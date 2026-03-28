@@ -3,24 +3,19 @@ import { apiSuccess, apiError } from "@/lib/api/responses";
 import { db } from "@/lib/db";
 import { roles, users } from "@/lib/db/schema";
 import { eq, sql } from "drizzle-orm";
-import { getApiUser, unauthorized, forbidden, csrfForbidden } from "@/lib/api/auth";
+import { forbidden } from "@/lib/api/auth";
 import { resolveCapabilities, invalidateRoleCache } from "@/lib/capabilities/cache";
 import { recordAuditEvent } from "@/lib/audit/events";
 import { updateRoleSchema } from "@/lib/validators/roles";
 import { withUpdatedAt } from "@/lib/db/helpers";
-import { logger } from "@/lib/logger";
+import { createApiHandler } from "@/lib/api/handler";
 
-type RouteParams = { params: Promise<{ id: string }> };
-
-export async function GET(request: NextRequest, { params }: RouteParams) {
-  try {
-    const user = await getApiUser(request);
-    if (!user) return unauthorized();
-
+export const GET = createApiHandler({
+  handler: async (req: NextRequest, { user, params }) => {
     const caps = await resolveCapabilities(user.role);
     if (!caps.has("users.manage_roles")) return forbidden();
 
-    const { id } = await params;
+    const { id } = params;
     const role = await db
       .select()
       .from(roles)
@@ -38,24 +33,16 @@ export async function GET(request: NextRequest, { params }: RouteParams) {
       .where(eq(users.role, role.name));
 
     return apiSuccess({ ...role, userCount: countRow?.count ?? 0 });
-  } catch (error) {
-    logger.error({ err: error }, "Failed to get role");
-    return apiError("internalError", 500);
-  }
-}
+  },
+});
 
-export async function PATCH(request: NextRequest, { params }: RouteParams) {
-  try {
-    const user = await getApiUser(request);
-    if (!user) return unauthorized();
-
+export const PATCH = createApiHandler({
+  schema: updateRoleSchema,
+  handler: async (req: NextRequest, { user, body, params }) => {
     const caps = await resolveCapabilities(user.role);
     if (!caps.has("users.manage_roles")) return forbidden();
 
-    const csrfError = csrfForbidden(request);
-    if (csrfError) return csrfError;
-
-    const { id } = await params;
+    const { id } = params;
     const role = await db
       .select()
       .from(roles)
@@ -66,14 +53,7 @@ export async function PATCH(request: NextRequest, { params }: RouteParams) {
       return apiError("notFound", 404, "role");
     }
 
-    const body = await request.json();
-    const parsed = updateRoleSchema.safeParse(body);
-
-    if (!parsed.success) {
-      return apiError(parsed.error.issues[0]?.message ?? "validationError", 400);
-    }
-
-    const updates = parsed.data;
+    const updates = body;
 
     // super_admin capabilities cannot be reduced
     if (role.name === "super_admin" && updates.capabilities) {
@@ -112,7 +92,7 @@ export async function PATCH(request: NextRequest, { params }: RouteParams) {
       resourceLabel: role.name,
       summary: `Updated role "${role.displayName}"`,
       details: JSON.stringify(updates),
-      request,
+      request: req,
     });
 
     const updated = await db
@@ -122,24 +102,15 @@ export async function PATCH(request: NextRequest, { params }: RouteParams) {
       .then((rows) => rows[0]);
 
     return apiSuccess(updated);
-  } catch (error) {
-    logger.error({ err: error }, "Failed to update role");
-    return apiError("internalError", 500);
-  }
-}
+  },
+});
 
-export async function DELETE(request: NextRequest, { params }: RouteParams) {
-  try {
-    const user = await getApiUser(request);
-    if (!user) return unauthorized();
-
+export const DELETE = createApiHandler({
+  handler: async (req: NextRequest, { user, params }) => {
     const caps = await resolveCapabilities(user.role);
     if (!caps.has("users.manage_roles")) return forbidden();
 
-    const csrfError = csrfForbidden(request);
-    if (csrfError) return csrfError;
-
-    const { id } = await params;
+    const { id } = params;
     const role = await db
       .select()
       .from(roles)
@@ -177,12 +148,9 @@ export async function DELETE(request: NextRequest, { params }: RouteParams) {
       resourceId: id,
       resourceLabel: role.name,
       summary: `Deleted custom role "${role.displayName}"`,
-      request,
+      request: req,
     });
 
     return apiSuccess({ deleted: true });
-  } catch (error) {
-    logger.error({ err: error }, "Failed to delete role");
-    return apiError("internalError", 500);
-  }
-}
+  },
+});

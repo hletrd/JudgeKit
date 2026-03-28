@@ -3,7 +3,7 @@ import { db, sqlite } from "@/lib/db";
 import { examSessions, languageConfigs, problems, submissions } from "@/lib/db/schema";
 import { isJudgeLanguage } from "@/lib/judge/languages";
 import { and, desc, eq, lt, sql } from "drizzle-orm";
-import { getApiUser, unauthorized, isAdmin, csrfForbidden } from "@/lib/api/auth";
+import { isAdmin } from "@/lib/api/auth";
 import { consumeApiRateLimit } from "@/lib/security/api-rate-limit";
 import { recordAuditEvent } from "@/lib/audit/events";
 import { canAccessProblem } from "@/lib/auth/permissions";
@@ -22,14 +22,11 @@ import { generateSubmissionId } from "@/lib/submissions/id";
 import { submissionCreateSchema } from "@/lib/validators/api";
 import { parsePagination, parseCursorParams } from "@/lib/api/pagination";
 import { apiError, apiPaginated, apiSuccess } from "@/lib/api/responses";
-import { logger } from "@/lib/logger";
+import { createApiHandler } from "@/lib/api/handler";
 
-export async function GET(request: NextRequest) {
-  try {
-    const user = await getApiUser(request);
-    if (!user) return unauthorized();
-
-    const searchParams = request.nextUrl.searchParams;
+export const GET = createApiHandler({
+  handler: async (req: NextRequest, { user }) => {
+    const searchParams = req.nextUrl.searchParams;
     const problemId = searchParams.get("problemId");
     const status = searchParams.get("status");
     const cursorParam = searchParams.get("cursor");
@@ -133,31 +130,15 @@ export async function GET(request: NextRequest) {
     });
 
     return apiPaginated(results, page, limit, Number(totalRow?.count ?? 0));
-  } catch (error) {
-    logger.error({ err: error }, "GET /api/v1/submissions error");
-    return apiError("submissionLoadFailed", 500);
-  }
-}
+  },
+});
 
-export async function POST(request: NextRequest) {
-  try {
-    const csrfError = csrfForbidden(request);
-    if (csrfError) return csrfError;
-
-    const rateLimitResponse = consumeApiRateLimit(request, "submissions:create");
-    if (rateLimitResponse) return rateLimitResponse;
-
-    const user = await getApiUser(request);
-    if (!user) return unauthorized();
-
-    const parsed = submissionCreateSchema.safeParse(await request.json());
-
-    if (!parsed.success) {
-      return apiError(parsed.error.issues[0]?.message ?? "submissionCreateFailed", 400);
-    }
-
-    const { problemId, language, sourceCode } = parsed.data;
-    const normalizedAssignmentId = parsed.data.assignmentId ?? null;
+export const POST = createApiHandler({
+  rateLimit: "submissions:create",
+  schema: submissionCreateSchema,
+  handler: async (req: NextRequest, { user, body }) => {
+    const { problemId, language, sourceCode } = body;
+    const normalizedAssignmentId = body.assignmentId ?? null;
 
     if (!isJudgeLanguage(language)) {
       return apiError("languageNotSupported", 400);
@@ -218,7 +199,7 @@ export async function POST(request: NextRequest) {
     }
 
     const id = generateSubmissionId();
-    const ip = request.headers.get("x-forwarded-for")?.split(",")[0]?.trim() ?? null;
+    const ip = req.headers.get("x-forwarded-for")?.split(",")[0]?.trim() ?? null;
 
     // Atomic rate limit check + insert in a single transaction
     // Uses targeted queries with WHERE clauses instead of full table scan
@@ -321,13 +302,10 @@ export async function POST(request: NextRequest) {
           problemId: problem.id,
           problemTitle: problem.title,
         },
-        request,
+        request: req,
       });
     }
 
     return apiSuccess(submission, { status: 201 });
-  } catch (error) {
-    logger.error({ err: error }, "POST /api/v1/submissions error");
-    return apiError("submissionCreateFailed", 500);
-  }
-}
+  },
+});

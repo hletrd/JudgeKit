@@ -3,35 +3,24 @@ import { apiSuccess, apiError } from "@/lib/api/responses";
 import { db } from "@/lib/db";
 import { judgeWorkers, submissions } from "@/lib/db/schema";
 import { eq, and, inArray } from "drizzle-orm";
-import { getApiUser, unauthorized, forbidden, csrfForbidden } from "@/lib/api/auth";
+import { forbidden } from "@/lib/api/auth";
 import { resolveCapabilities } from "@/lib/capabilities/cache";
 import { recordAuditEvent } from "@/lib/audit/events";
 import { logger } from "@/lib/logger";
 import { z } from "zod";
+import { createApiHandler } from "@/lib/api/handler";
 
 const updateWorkerSchema = z.object({
   alias: z.string().max(100).nullable().optional(),
 });
 
-export async function PATCH(
-  request: NextRequest,
-  { params }: { params: Promise<{ id: string }> }
-) {
-  try {
-    const csrfError = csrfForbidden(request);
-    if (csrfError) return csrfError;
-
-    const user = await getApiUser(request);
-    if (!user) return unauthorized();
-
+export const PATCH = createApiHandler({
+  schema: updateWorkerSchema,
+  handler: async (req: NextRequest, { user, body, params }) => {
     const caps = await resolveCapabilities(user.role);
     if (!caps.has("system.settings")) return forbidden();
 
-    const { id } = await params;
-    const parsed = updateWorkerSchema.safeParse(await request.json());
-    if (!parsed.success) {
-      return apiError("invalidRequest", 400);
-    }
+    const { id } = params;
 
     const worker = await db.query.judgeWorkers.findFirst({
       where: eq(judgeWorkers.id, id),
@@ -42,8 +31,8 @@ export async function PATCH(
     }
 
     const updates: Record<string, unknown> = {};
-    if (parsed.data.alias !== undefined) {
-      updates.alias = parsed.data.alias;
+    if (body.alias !== undefined) {
+      updates.alias = body.alias;
     }
 
     if (Object.keys(updates).length > 0) {
@@ -70,27 +59,15 @@ export async function PATCH(
       .then((rows) => rows[0] ?? null);
 
     return apiSuccess(updated);
-  } catch (error) {
-    logger.error({ err: error }, "PATCH /api/v1/admin/workers/[id] error");
-    return apiError("internalServerError", 500);
-  }
-}
+  },
+});
 
-export async function DELETE(
-  request: NextRequest,
-  { params }: { params: Promise<{ id: string }> }
-) {
-  try {
-    const csrfError = csrfForbidden(request);
-    if (csrfError) return csrfError;
-
-    const user = await getApiUser(request);
-    if (!user) return unauthorized();
-
+export const DELETE = createApiHandler({
+  handler: async (req: NextRequest, { user, params }) => {
     const caps = await resolveCapabilities(user.role);
     if (!caps.has("system.settings")) return forbidden();
 
-    const { id } = await params;
+    const { id } = params;
 
     const worker = await db.query.judgeWorkers.findFirst({
       where: eq(judgeWorkers.id, id),
@@ -127,7 +104,7 @@ export async function DELETE(
       resourceId: id,
       resourceLabel: worker.hostname,
       summary: `Force-removed judge worker ${worker.hostname} (${id})`,
-      request,
+      request: req,
     });
 
     logger.info(
@@ -136,8 +113,5 @@ export async function DELETE(
     );
 
     return apiSuccess({ ok: true });
-  } catch (error) {
-    logger.error({ err: error }, "DELETE /api/v1/admin/workers/[id] error");
-    return apiError("internalServerError", 500);
-  }
-}
+  },
+});

@@ -1,3 +1,4 @@
+// File download route: not migrated to createApiHandler due to raw Response (binary file download)
 import { NextRequest, NextResponse } from "next/server";
 import { getApiUser, unauthorized, forbidden, isAdmin } from "@/lib/api/auth";
 import { consumeApiRateLimit } from "@/lib/security/api-rate-limit";

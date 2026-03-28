@@ -2,32 +2,20 @@ import { NextRequest } from "next/server";
 import { db, sqlite } from "@/lib/db";
 import { submissions, submissionResults } from "@/lib/db/schema";
 import { eq } from "drizzle-orm";
-import { getApiUser, unauthorized, forbidden, notFound, isInstructor, csrfForbidden } from "@/lib/api/auth";
+import { forbidden, notFound, isInstructor } from "@/lib/api/auth";
 import { canAccessSubmission } from "@/lib/auth/permissions";
 import { recordAuditEvent } from "@/lib/audit/events";
-import { consumeApiRateLimit } from "@/lib/security/api-rate-limit";
 import { apiSuccess, apiError } from "@/lib/api/responses";
-import { logger } from "@/lib/logger";
+import { createApiHandler } from "@/lib/api/handler";
 
-export async function POST(
-  request: NextRequest,
-  { params }: { params: Promise<{ id: string }> }
-) {
-  try {
-    const csrfError = csrfForbidden(request);
-    if (csrfError) return csrfError;
-
-    const user = await getApiUser(request);
-    if (!user) return unauthorized();
-
+export const POST = createApiHandler({
+  rateLimit: "submissions.rejudge",
+  handler: async (req: NextRequest, { user, params }) => {
     if (!isInstructor(user.role)) {
       return forbidden();
     }
 
-    const rateLimitError = consumeApiRateLimit(request, "submissions.rejudge");
-    if (rateLimitError) return rateLimitError;
-
-    const { id } = await params;
+    const { id } = params;
 
     const submission = await db.query.submissions.findFirst({
       where: eq(submissions.id, id),
@@ -97,12 +85,9 @@ export async function POST(
         problemId: submission.problemId,
         assignmentId: submission.assignmentId ?? null,
       },
-      request,
+      request: req,
     });
 
     return apiSuccess(updated);
-  } catch (error) {
-    logger.error({ err: error }, "POST /api/v1/submissions/[id]/rejudge error");
-    return apiError("internalServerError", 500);
-  }
-}
+  },
+});

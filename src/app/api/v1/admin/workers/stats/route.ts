@@ -3,15 +3,12 @@ import { apiSuccess, apiError } from "@/lib/api/responses";
 import { db } from "@/lib/db";
 import { judgeWorkers, submissions } from "@/lib/db/schema";
 import { eq, sql, inArray } from "drizzle-orm";
-import { getApiUser, unauthorized, forbidden } from "@/lib/api/auth";
+import { forbidden } from "@/lib/api/auth";
 import { resolveCapabilities } from "@/lib/capabilities/cache";
-import { logger } from "@/lib/logger";
+import { createApiHandler } from "@/lib/api/handler";
 
-export async function GET(request: NextRequest) {
-  try {
-    const user = await getApiUser(request);
-    if (!user) return unauthorized();
-
+export const GET = createApiHandler({
+  handler: async (req: NextRequest, { user }) => {
     const caps = await resolveCapabilities(user.role);
     if (!caps.has("system.settings")) return forbidden();
 
@@ -53,8 +50,5 @@ export async function GET(request: NextRequest) {
       activeJudging,
       totalConcurrency,
     });
-  } catch (error) {
-    logger.error({ err: error }, "GET /api/v1/admin/workers/stats error");
-    return apiError("internalServerError", 500);
-  }
-}
+  },
+});

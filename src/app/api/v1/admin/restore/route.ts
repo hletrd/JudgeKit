@@ -1,3 +1,4 @@
+// File upload route: not migrated to createApiHandler due to formData parsing and raw Response
 import { NextRequest, NextResponse } from "next/server";
 import { getApiUser, unauthorized, forbidden, csrfForbidden } from "@/lib/api/auth";
 import { consumeApiRateLimit } from "@/lib/security/api-rate-limit";

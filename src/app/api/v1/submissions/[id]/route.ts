@@ -3,20 +3,14 @@ import { apiSuccess, apiError } from "@/lib/api/responses";
 import { db } from "@/lib/db";
 import { submissions } from "@/lib/db/schema";
 import { eq } from "drizzle-orm";
-import { getApiUser, unauthorized, forbidden, notFound } from "@/lib/api/auth";
+import { forbidden, notFound } from "@/lib/api/auth";
 import { canAccessSubmission } from "@/lib/auth/permissions";
 import { resolveCapabilities } from "@/lib/capabilities/cache";
-import { logger } from "@/lib/logger";
+import { createApiHandler } from "@/lib/api/handler";
 
-export async function GET(
-  request: NextRequest,
-  { params }: { params: Promise<{ id: string }> }
-) {
-  try {
-    const user = await getApiUser(request);
-    if (!user) return unauthorized();
-
-    const { id } = await params;
+export const GET = createApiHandler({
+  handler: async (req: NextRequest, { user, params }) => {
+    const { id } = params;
     const accessCheckSubmission = await db.query.submissions.findFirst({
       where: eq(submissions.id, id),
       columns: {
@@ -65,8 +59,5 @@ export async function GET(
     }
 
     return apiSuccess(submission);
-  } catch (error) {
-    logger.error({ err: error }, "GET /api/v1/submissions/[id] error");
-    return apiError("internalServerError", 500);
-  }
-}
+  },
+});
