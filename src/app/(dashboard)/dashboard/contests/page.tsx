@@ -8,7 +8,8 @@ import { Button } from "@/components/ui/button";
 import { assertUserRole } from "@/lib/security/constants";
 import { getContestsForUser, getContestStatus } from "@/lib/assignments/contests";
 import type { ContestStatus } from "@/lib/assignments/contests";
-import { formatDateTimeInTimeZone, formatRelativeTimeFromNow } from "@/lib/datetime";
+import { formatDateTimeInTimeZone } from "@/lib/datetime";
+import { CountdownTimer } from "@/components/exam/countdown-timer";
 import { getResolvedSystemTimeZone } from "@/lib/system-settings";
 import { KeyRound, Plus } from "lucide-react";
 import { PaginationControls } from "@/components/pagination-controls";
@@ -182,17 +183,23 @@ export default async function ContestsPage({
                       {contest.startsAt && (
                         <>
                           <span>·</span>
-                          <span>
-                            {status === "upcoming"
-                              ? `${t("startsIn")}: ${formatRelativeTimeFromNow(contest.startsAt, locale)}`
-                              : formatDateTimeInTimeZone(contest.startsAt, locale, timeZone)}
-                          </span>
+                          {status === "upcoming" ? (
+                            <CountdownTimer
+                              deadline={new Date(contest.startsAt).getTime()}
+                              label={t("startsIn")}
+                            />
+                          ) : (
+                            <span>{formatDateTimeInTimeZone(contest.startsAt, locale, timeZone)}</span>
+                          )}
                         </>
                       )}
-                      {(status === "open" || status === "in_progress") && (contest.deadline ?? contest.personalDeadline) && (
+                      {(status === "open" || status === "in_progress") && (contest.personalDeadline ?? contest.deadline) && (
                         <>
                           <span>·</span>
-                          <span>{t("endsIn")}: {formatRelativeTimeFromNow((contest.personalDeadline ?? contest.deadline)!, locale)}</span>
+                          <CountdownTimer
+                            deadline={new Date((contest.personalDeadline ?? contest.deadline)!).getTime()}
+                            label={t("endsIn")}
+                          />
                         </>
                       )}
                     </div>

@@ -17,7 +17,6 @@ import { assertUserRole } from "@/lib/security/constants";
 import { db } from "@/lib/db";
 import { assignments, enrollments } from "@/lib/db/schema";
 import { getResolvedSystemTimeZone } from "@/lib/system-settings";
-import { formatRelativeTimeFromNow } from "@/lib/datetime";
 import { notFound, redirect } from "next/navigation";
 import { getExamSession, getExamSessionsForAssignment } from "@/lib/assignments/exam-sessions";
 import { CountdownTimer } from "@/components/exam/countdown-timer";
@@ -245,9 +244,12 @@ export default async function ContestDetailPage({
             <CardContent className="py-8 text-center space-y-2">
               <p className="text-muted-foreground">{t("contestNotStarted")}</p>
               {assignment.startsAt && (
-                <p className="text-sm text-muted-foreground">
-                  {t("startsIn")}: {formatRelativeTimeFromNow(assignment.startsAt, locale)}
-                </p>
+                <div className="flex justify-center">
+                  <CountdownTimer
+                    deadline={new Date(assignment.startsAt).getTime()}
+                    label={t("startsIn")}
+                  />
+                </div>
               )}
             </CardContent>
           </Card>

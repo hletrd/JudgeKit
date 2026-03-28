@@ -4,7 +4,8 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
-import { formatDateTimeInTimeZone, formatRelativeTimeFromNow } from "@/lib/datetime";
+import { formatDateTimeInTimeZone } from "@/lib/datetime";
+import { CountdownTimer } from "@/components/exam/countdown-timer";
 import type { StudentProblemProgress, StudentProblemStatus } from "@/lib/assignments/submissions";
 
 interface AssignmentProblemEntry {
@@ -172,8 +173,11 @@ export function AssignmentOverview({
                   : "-"}
               </dd>
               {assignment.deadline && (
-                <div className="text-xs text-muted-foreground">
-                  {labels.deadlineCountdown}: {formatRelativeTimeFromNow(assignment.deadline, locale)}
+                <div className="text-xs">
+                  <CountdownTimer
+                    deadline={new Date(assignment.deadline).getTime()}
+                    label={labels.deadlineCountdown}
+                  />
                 </div>
               )}
             </div>
@@ -186,8 +190,11 @@ export function AssignmentOverview({
                     : "-"}
                 </dd>
                 {assignment.lateDeadline && (
-                  <div className="text-xs text-muted-foreground">
-                    {labels.lateDeadlineCountdown}: {formatRelativeTimeFromNow(assignment.lateDeadline, locale)}
+                  <div className="text-xs">
+                    <CountdownTimer
+                      deadline={new Date(assignment.lateDeadline).getTime()}
+                      label={labels.lateDeadlineCountdown}
+                    />
                   </div>
                 )}
               </div>
