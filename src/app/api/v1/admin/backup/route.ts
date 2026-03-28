@@ -1,8 +1,10 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getApiUser, unauthorized, forbidden, isAdmin } from "@/lib/api/auth";
+import { consumeApiRateLimit } from "@/lib/security/api-rate-limit";
 import { recordAuditEvent } from "@/lib/audit/events";
 import { logger } from "@/lib/logger";
-import fs from "fs";
+import fs from "fs/promises";
+import { existsSync } from "fs";
 import path from "path";
 
 export const dynamic = "force-dynamic";
@@ -19,13 +21,16 @@ export async function GET(request: NextRequest) {
     if (!user) return unauthorized();
     if (!isAdmin(user.role)) return forbidden();
 
+    const rateLimitResponse = consumeApiRateLimit(request, "admin:backup");
+    if (rateLimitResponse) return rateLimitResponse;
+
     const dbPath = getDbPath();
 
-    if (!fs.existsSync(dbPath)) {
-      return NextResponse.json({ error: "Database file not found" }, { status: 404 });
+    if (!existsSync(dbPath)) {
+      return NextResponse.json({ error: "databaseNotFound" }, { status: 404 });
     }
 
-    const fileBuffer = fs.readFileSync(dbPath);
+    const fileBuffer = await fs.readFile(dbPath);
     const timestamp = new Date().toISOString().replace(/[:.]/g, "-");
     const filename = `judgekit-backup-${timestamp}.sqlite`;
 

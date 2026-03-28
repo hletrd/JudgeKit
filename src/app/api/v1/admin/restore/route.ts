@@ -3,7 +3,8 @@ import { getApiUser, unauthorized, forbidden, csrfForbidden } from "@/lib/api/au
 import { consumeApiRateLimit } from "@/lib/security/api-rate-limit";
 import { recordAuditEvent } from "@/lib/audit/events";
 import { logger } from "@/lib/logger";
-import fs from "fs";
+import fs from "fs/promises";
+import { existsSync } from "fs";
 import path from "path";
 
 function getDbPath(): string {
@@ -50,12 +51,14 @@ export async function POST(request: NextRequest) {
     const backupTimestamp = new Date().toISOString().replace(/[:.]/g, "-");
     const backupPath = `${dbPath}.pre-restore-${backupTimestamp}`;
 
-    if (fs.existsSync(dbPath)) {
-      fs.copyFileSync(dbPath, backupPath);
+    if (existsSync(dbPath)) {
+      await fs.copyFile(dbPath, backupPath);
     }
 
     // Write the uploaded file
-    fs.writeFileSync(dbPath, buffer);
+    await fs.writeFile(dbPath, buffer);
+
+    logger.info({ backupPath }, "Pre-restore backup saved");
 
     recordAuditEvent({
       actorId: user.id,
@@ -71,7 +74,6 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({
       success: true,
       message: "Database restored. Please restart the application.",
-      backupPath,
     });
   } catch (error) {
     logger.error({ err: error }, "Database restore error");
