@@ -13,6 +13,8 @@ import { DEFAULT_ROLE_CAPABILITIES, DEFAULT_ROLE_LEVELS } from "./defaults";
 /** Cached role data: name → { capabilities Set, level } */
 let roleCache: Map<string, { capabilities: Set<string>; level: number }> | null = null;
 let loadPromise: Promise<void> | null = null;
+let roleCacheLoadedAt = 0;
+const ROLE_CACHE_TTL_MS = 60_000; // 60 seconds
 
 /**
  * Load all roles from DB into the cache.
@@ -54,14 +56,20 @@ async function loadRolesFromDb(): Promise<void> {
 }
 
 /**
- * Ensure the cache is populated. Concurrent calls share one load.
+ * Ensure the cache is populated and not expired. Concurrent calls share one load.
  */
 async function ensureLoaded(): Promise<void> {
-  if (roleCache) return;
+  if (roleCache && Date.now() - roleCacheLoadedAt < ROLE_CACHE_TTL_MS) return;
+  // Cache expired or not loaded — force reload
+  roleCache = null;
   if (!loadPromise) {
-    loadPromise = loadRolesFromDb().finally(() => {
-      loadPromise = null;
-    });
+    loadPromise = loadRolesFromDb()
+      .then(() => {
+        roleCacheLoadedAt = Date.now();
+      })
+      .finally(() => {
+        loadPromise = null;
+      });
   }
   await loadPromise;
 }

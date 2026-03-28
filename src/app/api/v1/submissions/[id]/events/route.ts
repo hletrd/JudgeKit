@@ -5,6 +5,7 @@ import { submissions } from "@/lib/db/schema";
 import { eq } from "drizzle-orm";
 import { getApiUser, unauthorized, forbidden, notFound } from "@/lib/api/auth";
 import { canAccessSubmission } from "@/lib/auth/permissions";
+import { resolveCapabilities } from "@/lib/capabilities/cache";
 import { IN_PROGRESS_JUDGE_STATUSES } from "@/lib/judge/verdict";
 import { logger } from "@/lib/logger";
 import { consumeApiRateLimit } from "@/lib/security/api-rate-limit";
@@ -69,12 +70,13 @@ export async function GET(
     if (!hasAccess) return forbidden();
 
     const isOwner = submission.userId === user.id;
-    const isPrivileged = user.role === "admin" || user.role === "super_admin" || user.role === "instructor";
+    const caps = await resolveCapabilities(user.role);
+    const canViewSource = caps.has("submissions.view_source");
 
     // If already in a terminal state, return the full submission immediately as a single event
     if (!IN_PROGRESS_JUDGE_STATUSES.has(submission.status ?? "")) {
       const fullSubmission = await queryFullSubmission(id);
-      const sanitized = (!isOwner && !isPrivileged && fullSubmission)
+      const sanitized = (!isOwner && !canViewSource && fullSubmission)
         ? stripSourceCode(fullSubmission)
         : fullSubmission;
       const body = `event: result\ndata: ${JSON.stringify(sanitized)}\n\n`;
@@ -159,7 +161,7 @@ export async function GET(
               if (!IN_PROGRESS_JUDGE_STATUSES.has(status)) {
                 const fullSubmission = await queryFullSubmission(id);
                 if (closed) return;
-                const sanitized = (!isOwner && !isPrivileged && fullSubmission)
+                const sanitized = (!isOwner && !canViewSource && fullSubmission)
                   ? stripSourceCode(fullSubmission)
                   : fullSubmission;
                 controller.enqueue(

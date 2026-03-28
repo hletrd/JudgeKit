@@ -26,6 +26,7 @@ export function canManageGroupResources(
   role: string
 ) {
   if (role === "super_admin" || role === "admin") return true;
+  if (role === "instructor" && groupInstructorId === userId) return true;
   if (groupInstructorId === userId) return true;
   return false;
 }

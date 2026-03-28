@@ -2,7 +2,7 @@ import { NextRequest } from "next/server";
 import { apiSuccess, apiError } from "@/lib/api/responses";
 import { eq, and } from "drizzle-orm";
 import { db } from "@/lib/db";
-import { assignments, enrollments } from "@/lib/db/schema";
+import { assignments, enrollments, groups } from "@/lib/db/schema";
 import { recordAuditEvent } from "@/lib/audit/events";
 import { startExamSession, getExamSession } from "@/lib/assignments/exam-sessions";
 import { createApiHandler, isAdmin, forbidden, notFound } from "@/lib/api/handler";
@@ -88,9 +88,14 @@ export const GET = createApiHandler({
     });
     if (!assignment || assignment.groupId !== id) return notFound("Assignment");
 
-    // Instructor/admin can query any user's session
+    // Only group owner or admin can query another user's session
     const url = new URL(_req.url);
-    const targetUserId = (isAdmin(user.role) || user.role === "instructor")
+    const group = await db.query.groups.findFirst({
+      where: eq(groups.id, id),
+      columns: { instructorId: true },
+    });
+    const isGroupOwner = group?.instructorId === user.id;
+    const targetUserId = (isAdmin(user.role) || isGroupOwner)
       ? (url.searchParams.get("userId") ?? user.id)
       : user.id;
 

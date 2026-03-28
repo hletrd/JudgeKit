@@ -5,6 +5,7 @@ import { submissions } from "@/lib/db/schema";
 import { eq } from "drizzle-orm";
 import { getApiUser, unauthorized, forbidden, notFound } from "@/lib/api/auth";
 import { canAccessSubmission } from "@/lib/auth/permissions";
+import { resolveCapabilities } from "@/lib/capabilities/cache";
 import { logger } from "@/lib/logger";
 
 export async function GET(
@@ -55,9 +56,10 @@ export async function GET(
     if (!submission) return notFound("Submission");
 
     const isOwner = submission.userId === user.id;
-    const isPrivileged = user.role === "admin" || user.role === "super_admin" || user.role === "instructor";
+    const caps = await resolveCapabilities(user.role);
+    const canViewSource = caps.has("submissions.view_source");
 
-    if (!isOwner && !isPrivileged) {
+    if (!isOwner && !canViewSource) {
       const { sourceCode: _, ...rest } = submission;
       return apiSuccess(rest);
     }

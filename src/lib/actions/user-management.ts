@@ -2,7 +2,7 @@
 
 import { eq } from "drizzle-orm";
 import { db } from "@/lib/db";
-import { users } from "@/lib/db/schema";
+import { users, groups } from "@/lib/db/schema";
 import { withUpdatedAt } from "@/lib/db/helpers";
 import { auth } from "@/lib/auth";
 import { hashPassword } from "@/lib/security/password-hash";
@@ -45,7 +45,8 @@ type UserManagementErrorKey =
   | "cannotDeleteSelf"
   | "cannotDeleteSuperAdmin"
   | "deleteUserFailed"
-  | "confirmUsernameMismatch";
+  | "confirmUsernameMismatch"
+  | "instructorOwnsGroups";
 
 type UserManagementResult =
   | { success: true; generatedPassword?: string }
@@ -159,6 +160,15 @@ export async function deleteUserPermanently(userId: string, confirmUsername: str
 
   if (targetUser.role === "super_admin") {
     return { success: false, error: "cannotDeleteSuperAdmin" };
+  }
+
+  // Block deletion if user owns groups — must reassign or delete groups first
+  const ownedGroups = await db.query.groups.findMany({
+    where: eq(groups.instructorId, userId),
+    columns: { id: true, name: true },
+  });
+  if (ownedGroups.length > 0) {
+    return { success: false, error: "instructorOwnsGroups" };
   }
 
   try {

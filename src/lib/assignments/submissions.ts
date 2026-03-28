@@ -281,7 +281,12 @@ export async function canViewAssignmentSubmissions(
   }
 
   if (!isAdmin(role) && role !== "instructor") {
-    return false;
+    // Check if a custom role has the needed capability
+    const { resolveCapabilities } = await import("@/lib/capabilities/cache");
+    const caps = await resolveCapabilities(role);
+    if (!caps.has("submissions.view_all") && !caps.has("assignments.view_status")) {
+      return false;
+    }
   }
 
   const assignment = await getAssignmentAccessRecord(assignmentId);
@@ -294,6 +299,17 @@ export async function canViewAssignmentSubmissions(
     return true;
   }
 
+  // Built-in instructor or custom role with capability — check group ownership
+  if (role === "instructor") {
+    return assignment.instructorId === userId;
+  }
+
+  // Custom role with submissions.view_all: allow access to all assignments
+  const { resolveCapabilities: resolveCaps } = await import("@/lib/capabilities/cache");
+  const caps = await resolveCaps(role);
+  if (caps.has("submissions.view_all")) return true;
+
+  // Custom role with assignments.view_status only: scoped to own group
   return assignment.instructorId === userId;
 }
 
