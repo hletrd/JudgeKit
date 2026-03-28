@@ -15,6 +15,8 @@ const VALID_EVENT_TYPES = new Set([
   "paste",
   "blur",
   "contextmenu",
+  "ip_change",
+  "code_similarity",
 ]);
 
 /** POST: Log an anti-cheat event (student-facing, rate-limited) */
