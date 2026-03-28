@@ -48,6 +48,11 @@ function createSecuredNextResponse(request: NextRequest) {
   const isDev = process.env.NODE_ENV === "development";
   const requestHeaders = new Headers(request.headers);
   requestHeaders.set("x-nonce", nonce);
+  // Next.js 16 RSC bug: X-Forwarded-Host from nginx corrupts RSC streaming
+  // during client-side navigation, causing React #300/#310 errors.
+  // Auth routes (/api/auth/) are NOT in the proxy matcher, so they keep
+  // the header for proper callback URL resolution.
+  requestHeaders.delete("x-forwarded-host");
   const response = NextResponse.next({
     request: {
       headers: requestHeaders,
