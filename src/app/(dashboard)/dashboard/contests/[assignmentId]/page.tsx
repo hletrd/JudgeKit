@@ -228,8 +228,8 @@ export default async function ContestDetailPage({
           {tCommon("back")}
         </Link>
 
-        <div>
-          <div className="flex flex-wrap items-center gap-2 mb-2">
+        <div className="overflow-hidden">
+          <div className="flex flex-wrap items-center gap-1.5 mb-2">
             <Badge className={assignment.examMode === "scheduled" ? "bg-blue-500 text-white" : "bg-purple-500 text-white"}>
               {assignment.examMode === "scheduled" ? t("modeScheduled") : t("modeWindowed")}
             </Badge>
@@ -238,7 +238,7 @@ export default async function ContestDetailPage({
             </Badge>
             <Badge variant="outline">{t("group")}: {assignment.group?.name}</Badge>
           </div>
-          <h2 className="text-3xl font-bold">{assignment.title}</h2>
+          <h2 className="text-2xl font-bold sm:text-3xl truncate">{assignment.title}</h2>
         </div>
 
         {isUpcoming && (
@@ -424,8 +424,8 @@ export default async function ContestDetailPage({
       </Link>
 
       {/* Header with scoring model badge */}
-      <div className="space-y-2">
-        <div className="flex flex-wrap items-center gap-2">
+      <div className="space-y-2 overflow-hidden">
+        <div className="flex flex-wrap items-center gap-1.5">
           <Badge className={assignment.examMode === "scheduled" ? "bg-blue-500 text-white" : "bg-purple-500 text-white"}>
             {assignment.examMode === "scheduled" ? t("modeScheduled") : t("modeWindowed")}
           </Badge>
@@ -434,14 +434,22 @@ export default async function ContestDetailPage({
           </Badge>
           <Badge variant="outline">{t("group")}: {assignment.group?.name}</Badge>
         </div>
-        <div className="flex items-start justify-between gap-4">
-          <div>
-            <h2 className="text-3xl font-bold">{assignmentStatus.assignment.title}</h2>
+        <div className="flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between">
+          <div className="min-w-0">
+            <h2 className="text-2xl font-bold sm:text-3xl truncate">{assignmentStatus.assignment.title}</h2>
             <p className="text-sm text-muted-foreground">
               {assignment.group?.name ?? tGroups("detail")} · {tAssignment("totalScore")}: {totalPoints}
             </p>
           </div>
-          <div className="shrink-0 pt-1">
+          <div className="flex gap-2 shrink-0">
+            <AssignmentFormDialog
+              groupId={groupId}
+              availableProblems={availableProblemOptions}
+              initialAssignment={contestEditorValue}
+              allowProblemOverride={
+                session.user.role === "admin" || session.user.role === "super_admin"
+              }
+            />
             <ExportButton assignmentId={assignmentId} />
           </div>
         </div>
@@ -461,7 +469,7 @@ export default async function ContestDetailPage({
 
       {/* Tabbed interface */}
       <HashTabs defaultValue="overview">
-        <TabsList variant="line" className="w-full justify-start">
+        <TabsList variant="line" className="w-full justify-start overflow-x-auto">
           <TabsTrigger value="overview" className="gap-1.5">{t("tabs.overview")}</TabsTrigger>
           <TabsTrigger value="submissions" className="gap-1.5">{t("tabs.submissions")}</TabsTrigger>
           <TabsTrigger value="leaderboard" className="gap-1.5">{t("tabs.leaderboard")}</TabsTrigger>
@@ -487,16 +495,6 @@ export default async function ContestDetailPage({
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
             <AccessCodeManager assignmentId={assignmentId} />
             <InviteParticipants assignmentId={assignmentId} />
-          </div>
-          <div className="flex gap-2">
-            <AssignmentFormDialog
-              groupId={groupId}
-              availableProblems={availableProblemOptions}
-              initialAssignment={contestEditorValue}
-              allowProblemOverride={
-                session.user.role === "admin" || session.user.role === "super_admin"
-              }
-            />
           </div>
         </TabsContent>
 
