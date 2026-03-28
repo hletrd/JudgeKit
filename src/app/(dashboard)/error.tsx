@@ -1,28 +1,15 @@
 "use client";
 
-import { useEffect } from "react";
 import Link from "next/link";
 import { useTranslations } from "next-intl";
 import { Button } from "@/components/ui/button";
 
 export default function DashboardError({
-  error,
   reset,
 }: {
   error: Error & { digest?: string };
   reset: () => void;
 }) {
-  // Next.js 16 + nginx proxy: Host/X-Forwarded-Host headers cause RSC
-  // streaming to corrupt React hook state during client-side navigation.
-  // Workaround: detect React hook errors (#300/#310) and do a full page
-  // reload instead of showing the error page.
-  useEffect(() => {
-    const msg = error?.message ?? "";
-    if (msg.includes("#300") || msg.includes("#310") || msg.includes("hook")) {
-      window.location.reload();
-    }
-  }, [error]);
-
   const t = useTranslations("dashboardState");
 
   return (
