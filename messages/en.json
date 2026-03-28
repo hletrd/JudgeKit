@@ -297,7 +297,10 @@
     "tooManyTags": "Maximum 20 tags per problem",
     "filterByTag": "Filter by tag",
     "allTags": "All tags",
-    "noTags": "No tags"
+    "noTags": "No tags",
+    "searchLanguages": "Search languages...",
+    "recentlyUsed": "Recently Used",
+    "otherLanguages": "Other"
   },
   "problemSets": {
     "title": "Problem Sets",
@@ -570,6 +573,9 @@
     "examStartConfirmAction": "Start Exam",
     "examTimeRemaining": "Time remaining",
     "examTimeExpired": "Time expired",
+    "examWarning15Min": "15 minutes remaining",
+    "examWarning5Min": "5 minutes remaining",
+    "examWarning1Min": "1 minute remaining",
     "examNotStarted": "Exam not started",
     "examSessionStarted": "Exam started successfully",
     "examSessionStartFailed": "Failed to start exam session",
@@ -1478,6 +1484,15 @@
       "analytics": "Analytics",
       "antiCheat": "Anti-Cheat",
       "submissions": "Submissions"
+    },
+    "mySubmissions": {
+      "title": "My Submissions",
+      "noSubmissions": "No submissions yet.",
+      "problem": "Problem",
+      "status": "Status",
+      "score": "Score",
+      "submittedAt": "Submitted At",
+      "action": "Action"
     },
     "quickStats": {
       "participants": "Participants",
