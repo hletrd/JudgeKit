@@ -260,7 +260,12 @@ export function GroupMembersManager({
             <div className="flex flex-col gap-2 sm:flex-row">
               <Select value={selectedStudentId} onValueChange={(value) => setSelectedStudentId(value ?? "")}>
                 <SelectTrigger id={`group-member-select-${groupId}`} className="min-w-64">
-                  <SelectValue placeholder={t("availableStudentsPlaceholder")} />
+                  <SelectValue placeholder={t("availableStudentsPlaceholder")}>
+                    {(() => {
+                      const selected = currentAvailableStudents.find((s) => s.id === selectedStudentId);
+                      return selected ? `${selected.name} (@${selected.username})` : t("availableStudentsPlaceholder");
+                    })()}
+                  </SelectValue>
                 </SelectTrigger>
                 <SelectContent>
                   {currentAvailableStudents.map((student) => (
