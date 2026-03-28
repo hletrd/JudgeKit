@@ -1,6 +1,6 @@
 import { NextRequest } from "next/server";
 import { apiSuccess, apiError } from "@/lib/api/responses";
-import { db } from "@/lib/db";
+import { db, sqlite } from "@/lib/db";
 import { assignments, groups, submissions, enrollments } from "@/lib/db/schema";
 import { eq, sql } from "drizzle-orm";
 import { canAccessGroup } from "@/lib/auth/permissions";
@@ -136,20 +136,28 @@ export const DELETE = createApiHandler({
     const group = await db.query.groups.findFirst({ where: eq(groups.id, id) });
     if (!group) return notFound("Group");
 
-    const assignmentSubmissionCountRow = await db
-      .select({ total: sql<number>`count(${submissions.id})` })
-      .from(assignments)
-      .innerJoin(submissions, eq(submissions.assignmentId, assignments.id))
-      .where(eq(assignments.groupId, id))
-      .then((rows) => rows[0] ?? { total: 0 });
+    let blocked = false;
+    sqlite.transaction(() => {
+      const assignmentSubmissionCountRow = db
+        .select({ total: sql<number>`count(${submissions.id})` })
+        .from(assignments)
+        .innerJoin(submissions, eq(submissions.assignmentId, assignments.id))
+        .where(eq(assignments.groupId, id))
+        .get() ?? { total: 0 };
 
-    const assignmentSubmissionCount = Number(assignmentSubmissionCountRow.total ?? 0);
+      const assignmentSubmissionCount = Number(assignmentSubmissionCountRow.total ?? 0);
 
-    if (assignmentSubmissionCount > 0) {
+      if (assignmentSubmissionCount > 0) {
+        blocked = true;
+        return;
+      }
+
+      db.delete(groups).where(eq(groups.id, id)).run();
+    })();
+
+    if (blocked) {
       return apiError("groupDeleteBlocked", 409);
     }
-
-    await db.delete(groups).where(eq(groups.id, id));
 
     recordAuditEvent({
       actorId: user.id,
