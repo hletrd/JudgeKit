@@ -105,6 +105,7 @@ export default async function ProblemDetailPage({
         lateDeadline: Date | null;
         examMode: string;
         personalDeadline: Date | null;
+        isSubmissionBlocked?: boolean;
       }
     | null = null;
   let assignmentChoices: Array<{
@@ -115,6 +116,22 @@ export default async function ProblemDetailPage({
   }> = [];
 
   if (normalizedAssignmentId) {
+    const assignment = await db.query.assignments.findFirst({
+      where: (assignments, { eq }) => eq(assignments.id, normalizedAssignmentId),
+      columns: { id: true, title: true, deadline: true, lateDeadline: true, startsAt: true, examMode: true },
+    });
+
+    // Block access before contest start for non-admin users
+    if (
+      assignment?.startsAt &&
+      new Date(assignment.startsAt) > new Date() &&
+      session.user.role !== "admin" &&
+      session.user.role !== "super_admin" &&
+      session.user.role !== "instructor"
+    ) {
+      redirect(`/dashboard/contests/${normalizedAssignmentId}`);
+    }
+
     const assignmentValidation = await validateAssignmentSubmission(
       normalizedAssignmentId,
       problem.id,
@@ -126,17 +143,17 @@ export default async function ProblemDetailPage({
       redirect("/dashboard/groups");
     }
 
-    const assignment = await db.query.assignments.findFirst({
-      where: (assignments, { eq }) => eq(assignments.id, normalizedAssignmentId),
-      columns: { id: true, title: true, deadline: true, lateDeadline: true, examMode: true },
-    });
-
     let personalDeadline: Date | null = null;
     if (assignment && assignment.examMode === "windowed") {
       const { getExamSession } = await import("@/lib/assignments/exam-sessions");
       const examSession = await getExamSession(normalizedAssignmentId, session.user.id);
       personalDeadline = examSession?.personalDeadline ?? null;
     }
+
+    // Determine if submissions are blocked (past deadline)
+    const now = new Date();
+    const effectiveDeadline = personalDeadline ?? assignment?.lateDeadline ?? assignment?.deadline ?? null;
+    const isSubmissionBlocked = effectiveDeadline ? new Date(effectiveDeadline) < now : false;
 
     assignmentContext = assignment
       ? {
@@ -146,6 +163,7 @@ export default async function ProblemDetailPage({
           lateDeadline: assignment.lateDeadline ?? null,
           examMode: assignment.examMode ?? "none",
           personalDeadline,
+          isSubmissionBlocked,
         }
       : null;
   } else if (session.user.role === "student") {
@@ -286,7 +304,13 @@ export default async function ProblemDetailPage({
         <CardTitle>{t("submitSolution")}</CardTitle>
       </CardHeader>
       <CardContent>
-        {assignmentChoices.length > 0 ? (
+        {assignmentContext?.isSubmissionBlocked ? (
+          <div className="rounded-lg border border-amber-200 bg-amber-50 p-4 text-center dark:border-amber-900 dark:bg-amber-950">
+            <p className="text-sm font-medium text-amber-700 dark:text-amber-400">
+              {tCommon("contestEnded") ?? "This contest has ended. Submissions are no longer accepted."}
+            </p>
+          </div>
+        ) : assignmentChoices.length > 0 ? (
           <p className="text-sm text-muted-foreground">
             {t("assignmentSelectionSubmitHint")}
           </p>

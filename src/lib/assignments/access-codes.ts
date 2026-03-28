@@ -80,6 +80,8 @@ export function redeemAccessCode(
       groupId: assignments.groupId,
       accessCode: assignments.accessCode,
       examMode: assignments.examMode,
+      deadline: assignments.deadline,
+      lateDeadline: assignments.lateDeadline,
     })
     .from(assignments)
     .where(eq(assignments.accessCode, normalizedCode))
@@ -91,6 +93,13 @@ export function redeemAccessCode(
 
   if (assignment.examMode === "none") {
     return { ok: false, error: "notAContest" };
+  }
+
+  // Block join after contest deadline
+  const now = Date.now();
+  const effectiveClose = assignment.lateDeadline?.valueOf() ?? assignment.deadline?.valueOf() ?? null;
+  if (effectiveClose && effectiveClose < now) {
+    return { ok: false, error: "contestClosed" };
   }
 
   // Check if already redeemed
