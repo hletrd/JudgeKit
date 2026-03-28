@@ -38,6 +38,7 @@ if (activeDialect === "sqlite") {
   sqlite.pragma("journal_mode = WAL");
   sqlite.pragma("synchronous = NORMAL");
   sqlite.pragma("foreign_keys = ON");
+  sqlite.pragma("wal_autocheckpoint = 100");
 } else {
   // Dummy instance for non-SQLite — never used at runtime
   sqlite = null as unknown as Database.Database;

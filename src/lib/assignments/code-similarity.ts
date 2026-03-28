@@ -1,4 +1,5 @@
 import { nanoid } from "nanoid";
+import { Worker } from "worker_threads";
 import { db, sqlite } from "@/lib/db";
 import { antiCheatEvents, submissions } from "@/lib/db/schema";
 import { eq, and } from "drizzle-orm";
@@ -66,52 +67,33 @@ type SubmissionRow = {
 };
 
 /**
- * Run code similarity check using the TypeScript implementation.
+ * Run code similarity check using the TypeScript implementation in a worker thread.
  * This is the fallback path when the Rust sidecar is unavailable.
+ * Offloads the O(n^2) n-gram comparison to a worker thread to avoid blocking the main thread.
  */
 function runSimilarityCheckTS(
   rows: SubmissionRow[],
   threshold: number,
   ngramSize: number
-): SimilarityPair[] {
-  // Group by problem
-  const byProblem = new Map<string, Array<{ userId: string; sourceCode: string }>>();
-  for (const row of rows) {
-    if (!byProblem.has(row.problemId)) {
-      byProblem.set(row.problemId, []);
-    }
-    byProblem.get(row.problemId)!.push({
-      userId: row.userId,
-      sourceCode: row.sourceCode,
+): Promise<SimilarityPair[]> {
+  return new Promise((resolve, reject) => {
+    const worker = new Worker(
+      new URL("./similarity-worker.ts", import.meta.url),
+      { workerData: { submissions: rows, threshold, ngramSize } }
+    );
+    const timeout = setTimeout(() => {
+      worker.terminate();
+      reject(new Error("Similarity check timed out"));
+    }, 30_000);
+    worker.on("message", (result: SimilarityPair[]) => {
+      clearTimeout(timeout);
+      resolve(result);
     });
-  }
-
-  const flaggedPairs: SimilarityPair[] = [];
-
-  // Compare all pairs within each problem
-  for (const [problemId, subs] of byProblem) {
-    // Pre-compute n-grams
-    const ngrams = subs.map((s) => ({
-      userId: s.userId,
-      ngrams: generateNgrams(normalizeSource(s.sourceCode), ngramSize),
-    }));
-
-    for (let i = 0; i < ngrams.length; i++) {
-      for (let j = i + 1; j < ngrams.length; j++) {
-        const sim = jaccardSimilarity(ngrams[i].ngrams, ngrams[j].ngrams);
-        if (sim >= threshold) {
-          flaggedPairs.push({
-            userId1: ngrams[i].userId,
-            userId2: ngrams[j].userId,
-            problemId,
-            similarity: Math.round(sim * 1000) / 1000,
-          });
-        }
-      }
-    }
-  }
-
-  return flaggedPairs;
+    worker.on("error", (err) => {
+      clearTimeout(timeout);
+      reject(err);
+    });
+  });
 }
 
 /**
@@ -155,7 +137,7 @@ export async function runSimilarityCheck(
     // Rust sidecar unavailable — fall through to TS
   }
 
-  return runSimilarityCheckTS(rows, threshold, ngramSize);
+  return await runSimilarityCheckTS(rows, threshold, ngramSize);
 }
 
 /**

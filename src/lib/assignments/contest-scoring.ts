@@ -103,26 +103,8 @@ export function computeContestRanking(assignmentId: string, cutoffSec?: number):
   const cached = getCachedRanking(cacheKey);
   if (cached) return cached;
 
-  // Get assignment metadata
-  const meta = sqlite
-    .prepare<[string], AssignmentMetaRow>(
-      `SELECT scoring_model AS scoringModel, starts_at AS startsAt, deadline, late_penalty AS latePenalty, exam_mode AS examMode
-       FROM assignments WHERE id = ?`
-    )
-    .get(assignmentId);
-
-  if (!meta) {
-    return { scoringModel: "ioi", entries: [] };
-  }
-
-  const scoringModel = (meta.scoringModel ?? "ioi") as ScoringModel;
-  const contestStartMs = meta.startsAt ? meta.startsAt * 1000 : 0;
-  const deadlineSec = meta.deadline;
-  const latePenalty = meta.latePenalty ?? 0;
-
-  // Get all submissions aggregated per (user, problem) with problem points.
-  // Uses a window function to compute first_ac_at per (user, problem) in O(n),
-  // replacing the previous O(n^2) doubly-correlated subquery for wrongBeforeAc.
+  // Get assignment metadata, scoring rows, and problem list in a single
+  // read transaction to ensure a consistent snapshot across all three queries.
   function buildScoringQuery(withCutoff: boolean): string {
     return `
       WITH base AS (
@@ -174,16 +156,47 @@ export function computeContestRanking(assignmentId: string, cutoffSec?: number):
     `;
   }
 
-  // Positional params:
-  //   assignmentId, [cutoffSec], deadlineSec, latePenalty, examMode, deadlineSec, latePenalty
-  const rows =
-    cutoffSec != null
-      ? sqlite
-          .prepare<[string, number, number | null, number, string, number | null, number], RawLeaderboardRow>(buildScoringQuery(true))
-          .all(assignmentId, cutoffSec, deadlineSec, latePenalty, meta.examMode ?? "none", deadlineSec, latePenalty)
-      : sqlite
-          .prepare<[string, number | null, number, string, number | null, number], RawLeaderboardRow>(buildScoringQuery(false))
-          .all(assignmentId, deadlineSec, latePenalty, meta.examMode ?? "none", deadlineSec, latePenalty);
+  const { meta, rows, assignmentProblemRows } = sqlite.transaction(() => {
+    const meta = sqlite
+      .prepare<[string], AssignmentMetaRow>(
+        `SELECT scoring_model AS scoringModel, starts_at AS startsAt, deadline, late_penalty AS latePenalty, exam_mode AS examMode
+         FROM assignments WHERE id = ?`
+      )
+      .get(assignmentId);
+
+    if (!meta) {
+      return { meta: null, rows: [] as RawLeaderboardRow[], assignmentProblemRows: [] as { problemId: string; points: number }[] };
+    }
+
+    // Positional params:
+    //   assignmentId, [cutoffSec], deadlineSec, latePenalty, examMode, deadlineSec, latePenalty
+    const rows =
+      cutoffSec != null
+        ? sqlite
+            .prepare<[string, number, number | null, number, string, number | null, number], RawLeaderboardRow>(buildScoringQuery(true))
+            .all(assignmentId, cutoffSec, meta.deadline, meta.latePenalty ?? 0, meta.examMode ?? "none", meta.deadline, meta.latePenalty ?? 0)
+        : sqlite
+            .prepare<[string, number | null, number, string, number | null, number], RawLeaderboardRow>(buildScoringQuery(false))
+            .all(assignmentId, meta.deadline, meta.latePenalty ?? 0, meta.examMode ?? "none", meta.deadline, meta.latePenalty ?? 0);
+
+    const assignmentProblemRows = sqlite
+      .prepare<[string], { problemId: string; points: number }>(
+        `SELECT problem_id AS problemId, COALESCE(points, 100) AS points
+         FROM assignment_problems WHERE assignment_id = ? ORDER BY sort_order, problem_id`
+      )
+      .all(assignmentId);
+
+    return { meta, rows, assignmentProblemRows };
+  })();
+
+  if (!meta) {
+    return { scoringModel: "ioi", entries: [] };
+  }
+
+  const scoringModel = (meta.scoringModel ?? "ioi") as ScoringModel;
+  const contestStartMs = meta.startsAt ? meta.startsAt * 1000 : 0;
+  const deadlineSec = meta.deadline;
+  const latePenalty = meta.latePenalty ?? 0;
 
   // Group by user
   const userMap = new Map<
@@ -209,12 +222,7 @@ export function computeContestRanking(assignmentId: string, cutoffSec?: number):
   }
 
   // Get all problem IDs in assignment order
-  const assignmentProblems = sqlite
-    .prepare<[string], { problemId: string; points: number }>(
-      `SELECT problem_id AS problemId, COALESCE(points, 100) AS points
-       FROM assignment_problems WHERE assignment_id = ? ORDER BY sort_order, problem_id`
-    )
-    .all(assignmentId);
+  const assignmentProblems = assignmentProblemRows;
 
   // Build leaderboard entries
   const entries: LeaderboardEntry[] = [];
