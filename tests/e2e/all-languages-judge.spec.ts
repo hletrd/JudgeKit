@@ -1,6 +1,9 @@
-import os from "os";
 import { test, expect, type Page, type BrowserContext } from "@playwright/test";
 import { BASE_URL, DEFAULT_CREDENTIALS as CREDENTIALS } from "./support/constants";
+
+// Detect target server architecture from PLAYWRIGHT_BASE_URL
+// ARM64 target uses HTTPS (oj.auraedu.me), AMD64 uses HTTP
+const TARGET_IS_ARM64 = BASE_URL.includes("auraedu") || BASE_URL.includes(":arm64");
 
 const NASM_X86_64 = `section .bss
 buf resb 16
@@ -487,7 +490,7 @@ Module Program
         Console.WriteLine(Integer.Parse(parts(0)) + Integer.Parse(parts(1)))
     End Sub
 End Module`,
-  nasm: os.arch() === "arm64" ? NASM_ARM64 : NASM_X86_64,
+  nasm: TARGET_IS_ARM64 ? NASM_ARM64 : NASM_X86_64,
   bqn: `l ← •GetLine@
 w ← ' '((⊢-˜+\`×·¬⊢)∘=⊔⊢)l
 •Out •Repr +´•BQN¨w`,
@@ -870,14 +873,11 @@ main! = |_args|
         _ ->
             Stdout.line!("0")`,
   carp: `(register-type FILE "FILE")
-(defmodule MyIO
-  (register scanf (Fn [&String (Ptr Int) (Ptr Int)] Int) "scanf"))
+(register scanf (Fn [(Ptr CChar) (Ptr Int) (Ptr Int)] Int) "scanf")
 
 (defn main []
-  (let-do [a 0
-           b 0
-           n 0]
-    (set! n (MyIO.scanf "%d %d" (Pointer.address &a) (Pointer.address &b)))
+  (let-do [a 0 b 0]
+    (ignore (scanf (cstr "%d %d") (Pointer.address &a) (Pointer.address &b)))
     (IO.println &(str (+ a b)))))`,
   grain: `module Main
 

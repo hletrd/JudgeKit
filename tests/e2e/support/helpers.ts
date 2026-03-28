@@ -4,7 +4,7 @@
  * Only patterns that appear in 2+ spec files are extracted here.
  */
 
-import type { Page } from "@playwright/test";
+import type { Page, APIRequestContext } from "@playwright/test";
 import { BASE_URL } from "./constants";
 
 /**
@@ -68,4 +68,103 @@ export async function waitForToast(
     .filter({ hasText: message })
     .first()
     .waitFor({ state: "visible", timeout });
+}
+
+// ---------------------------------------------------------------------------
+// API helpers for test setup/teardown
+// ---------------------------------------------------------------------------
+
+const CSRF_HEADERS = {
+  "Content-Type": "application/json",
+  "X-Requested-With": "XMLHttpRequest",
+};
+
+/**
+ * Create a problem directly via API for test setup.
+ *
+ * @returns The created problem's data object (includes `id`).
+ */
+export async function createProblemViaApi(
+  request: APIRequestContext,
+  overrides: Record<string, unknown> = {},
+): Promise<{ id: string; title: string }> {
+  const suffix = `e2e-${Date.now()}`;
+  const body = {
+    title: `[E2E] Test Problem ${suffix}`,
+    description: "Automated test problem.",
+    timeLimitMs: 2000,
+    memoryLimitMb: 256,
+    visibility: "public",
+    testCases: [
+      { input: "1 2\n", expectedOutput: "3", isVisible: true, sortOrder: 0 },
+    ],
+    ...overrides,
+  };
+
+  const res = await request.post("/api/v1/problems", {
+    data: body,
+    headers: CSRF_HEADERS,
+  });
+  if (!res.ok()) {
+    throw new Error(`createProblemViaApi failed (${res.status()}): ${await res.text()}`);
+  }
+  const json = await res.json();
+  return json.data;
+}
+
+/**
+ * Submit code to a problem directly via API.
+ *
+ * @returns The created submission's data object (includes `id`).
+ */
+export async function createSubmissionViaApi(
+  request: APIRequestContext,
+  problemId: string,
+  language: string,
+  sourceCode: string,
+): Promise<{ id: string; status: string }> {
+  const res = await request.post("/api/v1/submissions", {
+    data: { problemId, language, sourceCode },
+    headers: CSRF_HEADERS,
+  });
+  if (!res.ok()) {
+    throw new Error(`createSubmissionViaApi failed (${res.status()}): ${await res.text()}`);
+  }
+  const json = await res.json();
+  return json.data;
+}
+
+/**
+ * Poll a submission until judging completes (reaches a terminal status).
+ *
+ * @returns The final submission data object.
+ */
+export async function waitForSubmissionResult(
+  request: APIRequestContext,
+  submissionId: string,
+  timeoutMs = 60_000,
+): Promise<{ id: string; status: string; score: number | null }> {
+  const terminalStatuses = new Set([
+    "accepted",
+    "wrong_answer",
+    "time_limit",
+    "memory_limit",
+    "runtime_error",
+    "compile_error",
+  ]);
+  const start = Date.now();
+
+  while (Date.now() - start < timeoutMs) {
+    const res = await request.get(`/api/v1/submissions/${submissionId}`);
+    if (res.ok()) {
+      const json = await res.json();
+      const data = json.data ?? json;
+      if (terminalStatuses.has(data.status)) {
+        return data;
+      }
+    }
+    await new Promise((r) => setTimeout(r, 2_000));
+  }
+
+  throw new Error(`Submission ${submissionId} did not finish within ${timeoutMs}ms`);
 }

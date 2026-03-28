@@ -22,9 +22,9 @@ export default defineConfig({
   use: {
     baseURL,
     headless: true,
-    trace: "retain-on-failure",
-    video: "retain-on-failure",
-    screenshot: "only-on-failure",
+    trace: process.env.PLAYWRIGHT_BASE_URL ? "off" : "retain-on-failure",
+    video: process.env.PLAYWRIGHT_BASE_URL ? "off" : "retain-on-failure",
+    screenshot: process.env.PLAYWRIGHT_BASE_URL ? "off" : "only-on-failure",
   },
   projects: [
     {

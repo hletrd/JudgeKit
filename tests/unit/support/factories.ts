@@ -224,6 +224,92 @@ export function createSelectResult<T>(result: T): { from: ReturnType<typeof vi.f
 }
 
 // ---------------------------------------------------------------------------
+// Worker
+// ---------------------------------------------------------------------------
+
+export interface MockWorkerRow {
+  id: string;
+  hostname: string;
+  ipAddress: string | null;
+  concurrency: number;
+  version: string | null;
+  labels: string[];
+  status: "online" | "offline" | "stale";
+  alias: string | null;
+  secretToken: string | null;
+  activeTasks: number;
+  registeredAt: number;
+  lastHeartbeatAt: number | null;
+  deregisteredAt: number | null;
+}
+
+/**
+ * Creates a mock judge worker row.
+ *
+ * @example
+ * createMockWorkerRow({ status: "stale", concurrency: 8 });
+ */
+export function createMockWorkerRow(
+  overrides?: Partial<MockWorkerRow>
+): MockWorkerRow {
+  return {
+    id: "worker-1",
+    hostname: "judge-worker-01",
+    ipAddress: "192.168.1.100",
+    concurrency: 4,
+    version: "1.0.0",
+    labels: [],
+    status: "online",
+    alias: null,
+    secretToken: null,
+    activeTasks: 0,
+    registeredAt: Date.now(),
+    lastHeartbeatAt: Date.now(),
+    deregisteredAt: null,
+    ...overrides,
+  };
+}
+
+// ---------------------------------------------------------------------------
+// Contest
+// ---------------------------------------------------------------------------
+
+export interface MockContestRow {
+  id: string;
+  title: string;
+  description: string | null;
+  startTime: number;
+  endTime: number;
+  scoringMode: "ioi" | "icpc";
+  accessCode: string | null;
+  isPublic: boolean;
+  createdBy: string;
+}
+
+/**
+ * Creates a mock contest row.
+ *
+ * @example
+ * createMockContestRow({ scoringMode: "icpc", isPublic: false });
+ */
+export function createMockContestRow(
+  overrides?: Partial<MockContestRow>
+): MockContestRow {
+  return {
+    id: "contest-1",
+    title: "Test Contest",
+    description: null,
+    startTime: Date.now(),
+    endTime: Date.now() + 3_600_000,
+    scoringMode: "ioi",
+    accessCode: null,
+    isPublic: true,
+    createdBy: "user-1",
+    ...overrides,
+  };
+}
+
+// ---------------------------------------------------------------------------
 // SQLite prepared-statement mock (used by judge claim route)
 // ---------------------------------------------------------------------------
 
