@@ -57,6 +57,45 @@ export default async function SubmissionDetailPage({ params, searchParams }: { p
     redirect("/dashboard/submissions");
   }
 
+  const isPrivileged =
+    session.user.role === "admin" ||
+    session.user.role === "super_admin" ||
+    session.user.role === "instructor";
+
+  const showDetailedResults = isPrivileged
+    ? true
+    : (submission.problem?.showDetailedResults ?? true);
+  const showRuntimeErrors = isPrivileged
+    ? true
+    : (submission.problem?.showRuntimeErrors ?? true);
+
+  const filteredResults = submission.results.map((result) => {
+    let executionTimeMs = result.executionTimeMs ?? null;
+    let memoryUsedKb = result.memoryUsedKb ?? null;
+    let actualOutput = result.actualOutput ?? null;
+
+    if (!showDetailedResults) {
+      executionTimeMs = null;
+      memoryUsedKb = null;
+      actualOutput = null;
+    } else if (!showRuntimeErrors && result.status === "runtime_error") {
+      actualOutput = null;
+    }
+
+    return {
+      id: result.id,
+      status: result.status,
+      executionTimeMs,
+      memoryUsedKb,
+      actualOutput,
+      testCase: result.testCase
+        ? {
+            sortOrder: result.testCase.sortOrder ?? null,
+          }
+        : null,
+    };
+  });
+
   return (
     <SubmissionDetailClient
       initialSubmission={{
@@ -81,36 +120,15 @@ export default async function SubmissionDetailPage({ params, searchParams }: { p
               title: submission.problem.title,
             }
           : null,
-        results: submission.results.map((result) => ({
-          id: result.id,
-          status: result.status,
-          executionTimeMs: result.executionTimeMs ?? null,
-          memoryUsedKb: result.memoryUsedKb ?? null,
-          actualOutput: result.actualOutput ?? null,
-          testCase: result.testCase
-            ? {
-                sortOrder: result.testCase.sortOrder ?? null,
-              }
-            : null,
-        })),
+        results: filteredResults,
       }}
       backHref={backHref}
       timeZone={timeZone}
       showCompileOutput={
-        session.user.role === "admin" || session.user.role === "super_admin" || session.user.role === "instructor"
-          ? true
-          : submission.problem?.showCompileOutput ?? true
+        isPrivileged ? true : (submission.problem?.showCompileOutput ?? true)
       }
-      showDetailedResults={
-        session.user.role === "admin" || session.user.role === "super_admin" || session.user.role === "instructor"
-          ? true
-          : submission.problem?.showDetailedResults ?? true
-      }
-      showRuntimeErrors={
-        session.user.role === "admin" || session.user.role === "super_admin" || session.user.role === "instructor"
-          ? true
-          : submission.problem?.showRuntimeErrors ?? true
-      }
+      showDetailedResults={showDetailedResults}
+      showRuntimeErrors={showRuntimeErrors}
       userRole={session.user.role}
       userId={session.user.id}
     />

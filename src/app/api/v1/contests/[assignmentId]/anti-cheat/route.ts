@@ -59,6 +59,14 @@ export async function POST(
       return apiError("forbidden", 403);
     }
 
+    const now = new Date();
+    if (assignment.startsAt && now < assignment.startsAt) {
+      return apiError("contestNotStarted", 403);
+    }
+    if (assignment.deadline && now > assignment.deadline) {
+      return apiError("contestEnded", 403);
+    }
+
     if (!assignment.enableAntiCheat) {
       // Anti-cheat not enabled, silently accept
       return apiSuccess({ logged: false });

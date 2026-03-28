@@ -175,6 +175,8 @@ export type ContestAssignmentRow = {
   instructorId: string | null;
   examMode: string;
   enableAntiCheat: boolean;
+  startsAt: Date | null;
+  deadline: Date | null;
 };
 
 /**
@@ -184,11 +186,29 @@ export function canManageContest(user: { id: string; role: string }, assignment:
   return isAdmin(user.role) || (isInstructor(user.role) && assignment.instructorId === user.id);
 }
 
+type RawContestAssignmentRow = {
+  groupId: string;
+  instructorId: string | null;
+  examMode: string;
+  enableAntiCheat: number;
+  starts_at: number | null;
+  deadline: number | null;
+};
+
 export function getContestAssignment(assignmentId: string): ContestAssignmentRow | undefined {
-  return sqlite
-    .prepare<[string], ContestAssignmentRow>(
-      `SELECT a.group_id AS groupId, g.instructor_id AS instructorId, a.exam_mode AS examMode, a.enable_anti_cheat AS enableAntiCheat
+  const row = sqlite
+    .prepare<[string], RawContestAssignmentRow>(
+      `SELECT a.group_id AS groupId, g.instructor_id AS instructorId, a.exam_mode AS examMode, a.enable_anti_cheat AS enableAntiCheat, a.starts_at, a.deadline
        FROM assignments a INNER JOIN groups g ON g.id = a.group_id WHERE a.id = ?`
     )
     .get(assignmentId);
+  if (!row) return undefined;
+  return {
+    groupId: row.groupId,
+    instructorId: row.instructorId,
+    examMode: row.examMode,
+    enableAntiCheat: Boolean(row.enableAntiCheat),
+    startsAt: toDate(row.starts_at),
+    deadline: toDate(row.deadline),
+  };
 }
