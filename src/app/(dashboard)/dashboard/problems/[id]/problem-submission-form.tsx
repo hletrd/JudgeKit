@@ -11,6 +11,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { apiFetch } from "@/lib/api/client";
 import { useSourceDraft } from "@/hooks/use-source-draft";
 import { useUnsavedChangesGuard } from "@/hooks/use-unsaved-changes-guard";
+import { useEditorContent } from "@/contexts/editor-content-context";
 
 type SubmissionLanguage = {
   id: string;
@@ -53,18 +54,15 @@ export function ProblemSubmissionForm({
   });
 
   const { allowNextNavigation } = useUnsavedChangesGuard({ isDirty });
+  const { setContent } = useEditorContent();
 
   // Publish editor content for AI chat widget (read-only bridge)
   useEffect(() => {
-    if (typeof window !== "undefined") {
-      (window as any).__ojEditorContent = { code: sourceCode, language };
-    }
+    setContent({ code: sourceCode, language });
     return () => {
-      if (typeof window !== "undefined") {
-        delete (window as any).__ojEditorContent;
-      }
+      setContent(null);
     };
-  }, [sourceCode, language]);
+  }, [sourceCode, language, setContent]);
 
   async function handleSourceFileChange(event: React.ChangeEvent<HTMLInputElement>) {
     const selectedFile = event.target.files?.[0];

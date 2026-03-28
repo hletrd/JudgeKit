@@ -6,6 +6,7 @@ import { usePathname, useSearchParams } from "next/navigation";
 import { MessageCircle, X, Minus, Send } from "lucide-react";
 import { AssistantMarkdown } from "@/components/assistant-markdown";
 import type { PluginWidgetProps } from "@/lib/plugins/types";
+import { useEditorContent } from "@/contexts/editor-content-context";
 
 interface Message {
   role: "user" | "assistant";
@@ -15,6 +16,7 @@ interface Message {
 
 export default function ChatWidget(_props: PluginWidgetProps) {
   const t = useTranslations("plugins.chatWidget");
+  const { content: editorContent } = useEditorContent();
   const [isOpen, setIsOpen] = useState(false);
   const [isMinimized, setIsMinimized] = useState(false);
   const [messages, setMessages] = useState<Message[]>([]);
@@ -149,7 +151,6 @@ export default function ChatWidget(_props: PluginWidgetProps) {
     try {
       const controller = new AbortController();
       abortControllerRef.current = controller;
-      const editorState = typeof window !== "undefined" ? (window as any).__ojEditorContent : null;
 
       const response = await fetch("/api/v1/plugins/chat-widget/chat", {
         method: "POST",
@@ -159,8 +160,8 @@ export default function ChatWidget(_props: PluginWidgetProps) {
           context: problemContext ? {
             problemId: problemContext.problemId,
             assignmentId: problemContext.assignmentId,
-            editorCode: editorState?.code,
-            editorLanguage: editorState?.language,
+            editorCode: editorContent?.code,
+            editorLanguage: editorContent?.language,
             sessionId: sessionId ?? undefined,
             skipLog: skipLog || undefined,
           } : sessionId ? { sessionId } : undefined,

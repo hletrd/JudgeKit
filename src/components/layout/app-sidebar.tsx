@@ -145,6 +145,10 @@ export function AppSidebar({ user, siteTitle, capabilities = [] }: AppSidebarPro
 
   async function handleSignOut() {
     setIsSigningOut(true);
+    if (typeof window !== "undefined") {
+      const keysToRemove = Object.keys(localStorage).filter((key) => key.startsWith("oj:"));
+      keysToRemove.forEach((key) => localStorage.removeItem(key));
+    }
     await signOut({ callbackUrl: "/login" });
   }
 

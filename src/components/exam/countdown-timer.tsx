@@ -26,6 +26,7 @@ function getTimerColor(ms: number): string {
 }
 
 export function CountdownTimer({ deadline, label, onExpired }: CountdownTimerProps) {
+  const offsetRef = useRef(0);
   const [remaining, setRemaining] = useState(() => deadline - Date.now());
   const [expired, setExpired] = useState(() => deadline - Date.now() <= 0);
   const expiredRef = useRef(expired);
@@ -43,8 +44,21 @@ export function CountdownTimer({ deadline, label, onExpired }: CountdownTimerPro
   }, [expired]);
 
   useEffect(() => {
+    const requestStart = Date.now();
+    fetch("/api/v1/time")
+      .then((res) => res.json())
+      .then((data: { timestamp: number }) => {
+        const roundTrip = Date.now() - requestStart;
+        offsetRef.current = data.timestamp - (requestStart + roundTrip / 2);
+      })
+      .catch(() => {
+        // keep offset at 0 on error
+      });
+  }, []);
+
+  useEffect(() => {
     const interval = setInterval(() => {
-      const diff = deadline - Date.now();
+      const diff = deadline - (Date.now() + offsetRef.current);
       setRemaining(diff);
       if (diff <= 0) {
         handleExpired();

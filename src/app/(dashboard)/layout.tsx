@@ -15,6 +15,7 @@ import { getResolvedSystemSettings, isAiAssistantEnabled } from "@/lib/system-se
 import { ChatWidgetLoader } from "@/components/plugins/chat-widget-loader";
 import { resolveCapabilities } from "@/lib/capabilities/cache";
 import { isPluginEnabled } from "@/lib/plugins/data";
+import { EditorContentProvider } from "@/contexts/editor-content-context";
 
 export default async function DashboardLayout({ children }: { children: React.ReactNode }) {
   const session = await auth();
@@ -40,6 +41,7 @@ export default async function DashboardLayout({ children }: { children: React.Re
   const canUseLectureMode = ["instructor", "admin", "super_admin"].includes(session.user.role);
 
   return (
+    <EditorContentProvider>
     <LectureModeProvider
       initialActive={canUseLectureMode && session.user.lectureMode === "on"}
       initialFontScale={session.user.lectureFontScale ?? "1.5"}
@@ -73,5 +75,6 @@ export default async function DashboardLayout({ children }: { children: React.Re
         <LectureToolbar />
       </SidebarProvider>
     </LectureModeProvider>
+    </EditorContentProvider>
   );
 }
