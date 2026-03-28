@@ -330,16 +330,16 @@ export function LeaderboardTable({
               </TableHead>
               {isIcpc ? (
                 <>
-                  <TableHead className="text-center">{t("solved")}</TableHead>
-                  <TableHead className="text-center">{t("penalty")}</TableHead>
+                  <TableHead className="min-w-[80px] text-center">{t("solved")}</TableHead>
+                  <TableHead className="min-w-[80px] text-center">{t("penalty")}</TableHead>
                 </>
               ) : (
-                <TableHead className="text-center">{t("totalScore")}</TableHead>
+                <TableHead className="min-w-[90px] text-center">{t("totalScore")}</TableHead>
               )}
               {data.problems.map((p) => (
                 <TableHead
                   key={p.problemId}
-                  className="min-w-[60px] text-center"
+                  className="min-w-[72px] text-center"
                   title={p.title}
                 >
                   {p.title.length > 8 ? `${p.title.slice(0, 7)}…` : p.title}
