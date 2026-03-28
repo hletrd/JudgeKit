@@ -107,11 +107,15 @@ const openaiProvider: ChatProvider = {
     if (msg?.tool_calls && msg.tool_calls.length > 0) {
       return {
         type: "tool_calls" as const,
-        toolCalls: msg.tool_calls.map((tc: any) => ({
-          id: tc.id,
-          name: tc.function.name,
-          arguments: JSON.parse(tc.function.arguments || "{}"),
-        })),
+        toolCalls: msg.tool_calls.map((tc: any) => {
+          let args: Record<string, unknown> = {};
+          try { args = JSON.parse(tc.function.arguments || "{}"); } catch { /* malformed response */ }
+          return {
+            id: tc.id,
+            name: tc.function.name,
+            arguments: args,
+          };
+        }),
         rawAssistantMessage: msg,
       };
     }

@@ -21,6 +21,7 @@ export async function getSystemSettings() {
         siteDescription: systemSettings.siteDescription,
         timeZone: systemSettings.timeZone,
         updatedAt: systemSettings.updatedAt,
+        aiAssistantEnabled: systemSettings.aiAssistantEnabled,
       })
       .from(systemSettings)
       .where(eq(systemSettings.id, GLOBAL_SETTINGS_ID))
@@ -40,14 +41,17 @@ export const getResolvedSystemSettings = cache(async (defaults: {
     siteTitle: settings?.siteTitle ?? defaults.siteTitle,
     siteDescription: settings?.siteDescription ?? defaults.siteDescription,
     timeZone: settings?.timeZone ?? defaults.timeZone ?? DEFAULT_SYSTEM_TIME_ZONE,
-    aiAssistantEnabled: (settings as any)?.aiAssistantEnabled ?? true,
+    aiAssistantEnabled: settings?.aiAssistantEnabled ?? true,
   };
 });
 
 export async function isAiAssistantEnabled(): Promise<boolean> {
   try {
-    const settings = await getSystemSettings();
-    return (settings as any)?.aiAssistantEnabled ?? true;
+    const settings = await db.query.systemSettings.findFirst({
+      where: eq(systemSettings.id, GLOBAL_SETTINGS_ID),
+      columns: { aiAssistantEnabled: true },
+    });
+    return settings?.aiAssistantEnabled ?? true;
   } catch {
     return true; // Default to enabled if column doesn't exist yet
   }

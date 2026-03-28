@@ -3,7 +3,7 @@
 import { revalidatePath } from "next/cache";
 import { auth } from "@/lib/auth";
 import { buildServerActionAuditContext, recordAuditEvent } from "@/lib/audit/events";
-import { db } from "@/lib/db";
+import { db, sqlite } from "@/lib/db";
 import { languageConfigs } from "@/lib/db/schema";
 import { eq } from "drizzle-orm";
 import { isTrustedServerActionOrigin } from "@/lib/security/server-actions";
@@ -280,18 +280,21 @@ export async function resetAllLanguagesToDefaults(): Promise<LanguageConfigActio
   if (rateLimit) return { success: false, error: "rateLimited" };
 
   try {
-    for (const [lang, definition] of Object.entries(JUDGE_LANGUAGE_CONFIGS)) {
-      await db
-        .update(languageConfigs)
-        .set({
-          dockerImage: definition.dockerImage,
-          compiler: definition.compiler ?? null,
-          compileCommand: serializeJudgeCommand(definition.compileCommand),
-          runCommand: definition.runCommand.join(" "),
-          updatedAt: new Date(),
-        })
-        .where(eq(languageConfigs.language, lang));
-    }
+    sqlite.transaction(() => {
+      for (const [lang, definition] of Object.entries(JUDGE_LANGUAGE_CONFIGS)) {
+        db
+          .update(languageConfigs)
+          .set({
+            dockerImage: definition.dockerImage,
+            compiler: definition.compiler ?? null,
+            compileCommand: serializeJudgeCommand(definition.compileCommand),
+            runCommand: definition.runCommand.join(" "),
+            updatedAt: new Date(),
+          })
+          .where(eq(languageConfigs.language, lang))
+          .run();
+      }
+    })();
 
     const auditContext = await buildServerActionAuditContext("/dashboard/admin/languages");
     recordAuditEvent({

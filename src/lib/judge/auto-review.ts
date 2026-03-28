@@ -1,6 +1,6 @@
 import { eq } from "drizzle-orm";
 import { db } from "@/lib/db";
-import { submissions, submissionComments, problems } from "@/lib/db/schema";
+import { submissions, submissionComments, users } from "@/lib/db/schema";
 import { isPluginEnabled, getPluginState } from "@/lib/plugins/data";
 import { getProvider } from "@/lib/plugins/chat-widget/providers";
 import { isAiAssistantEnabled } from "@/lib/system-settings";
@@ -54,40 +54,40 @@ export async function triggerAutoCodeReview(submissionId: string): Promise<void>
 
     if (!apiKey) return;
 
-    // Fetch submission with source code and problem info
+    // Fetch submission with source code and problem info in a single query
     const submission = await db.query.submissions.findFirst({
       where: eq(submissions.id, submissionId),
       columns: {
         id: true,
+        userId: true,
         sourceCode: true,
         language: true,
         executionTimeMs: true,
         memoryUsedKb: true,
       },
-    });
-
-    if (!submission || !submission.sourceCode) return;
-
-    // Fetch problem details for context
-    const submissionFull = await db.query.submissions.findFirst({
-      where: eq(submissions.id, submissionId),
       with: {
         problem: {
-          columns: { title: true, description: true },
+          columns: { title: true, description: true, allowAiAssistant: true },
         },
       },
     });
 
-    const problemTitle = submissionFull?.problem?.title ?? "Unknown";
-    const problemDescription = submissionFull?.problem?.description ?? "";
+    if (!submission || !submission.sourceCode) return;
+
+    const problemTitle = submission.problem?.title ?? "Unknown";
+    const problemDescription = submission.problem?.description ?? "";
 
     // Check if per-problem AI is enabled
-    if (submissionFull?.problem) {
-      const problemData = await db.query.problems.findFirst({
-        where: eq(problems.id, (submissionFull as any).problemId),
-        columns: { allowAiAssistant: true },
+    if (submission.problem && !submission.problem.allowAiAssistant) return;
+
+    // Determine review language from user preference, default to Korean
+    let reviewLanguage = "ko";
+    if (submission.userId) {
+      const submissionUser = await db.query.users.findFirst({
+        where: eq(users.id, submission.userId),
+        columns: { preferredLanguage: true },
       });
-      if (problemData && !problemData.allowAiAssistant) return;
+      reviewLanguage = submissionUser?.preferredLanguage ?? "ko";
     }
 
     // Check if we already have an AI comment for this submission
@@ -99,10 +99,17 @@ export async function triggerAutoCodeReview(submissionId: string): Promise<void>
 
     const provider = getProvider(config.provider);
 
+    const languageInstruction =
+      reviewLanguage === "ko"
+        ? "Always respond in Korean (한국어)."
+        : reviewLanguage === "en"
+          ? "Always respond in English."
+          : `Always respond in the language matching locale code "${reviewLanguage}".`;
+
     const systemPrompt = `You are an expert code reviewer for a programming education platform. Your role is to provide constructive, educational feedback on student code that has been accepted (passed all test cases).
 
 ## Guidelines
-- Always respond in Korean (한국어).
+- ${languageInstruction}
 - Be encouraging but honest about areas for improvement.
 - Focus on: code style, efficiency, readability, best practices, potential edge cases.
 - Keep feedback concise (3-8 bullet points).
@@ -111,16 +118,15 @@ export async function triggerAutoCodeReview(submissionId: string): Promise<void>
 - Use markdown formatting for clarity.
 - If the code is already excellent, say so briefly and mention one minor improvement or an advanced technique.`;
 
-    const userPrompt = `다음은 "${problemTitle}" 문제에 대한 학생의 ${submission.language} 코드입니다. 코드 리뷰를 해주세요.
+    const userPrompt = `Review the student's ${submission.language} code for the problem "${problemTitle}".
 
-${problemDescription ? `## 문제 설명\n${problemDescription.slice(0, 2000)}\n` : ""}
-## 소스 코드 (${submission.language})
+${problemDescription ? `## Problem Description\n${problemDescription.slice(0, 2000)}\n` : ""}## Source Code (${submission.language})
 \`\`\`${submission.language}
 ${submission.sourceCode}
 \`\`\`
 
-${submission.executionTimeMs !== null ? `실행 시간: ${submission.executionTimeMs}ms` : ""}
-${submission.memoryUsedKb !== null ? `메모리 사용량: ${submission.memoryUsedKb}KB` : ""}`;
+${submission.executionTimeMs !== null ? `Execution time: ${submission.executionTimeMs}ms` : ""}
+${submission.memoryUsedKb !== null ? `Memory used: ${submission.memoryUsedKb}KB` : ""}`;
 
     // Use non-streaming chat to get the full response
     const response = await provider.chatWithTools({

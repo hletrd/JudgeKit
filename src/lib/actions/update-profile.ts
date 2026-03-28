@@ -8,6 +8,7 @@ import { auth, unstable_update } from "@/lib/auth";
 import { buildServerActionAuditContext, recordAuditEvent } from "@/lib/audit/events";
 import { isTrustedServerActionOrigin } from "@/lib/security/server-actions";
 import { checkServerActionRateLimit } from "@/lib/security/api-rate-limit";
+import { logger } from "@/lib/logger";
 import {
   type UpdateProfileInput,
   updateProfileSchema,
@@ -72,18 +73,23 @@ export async function updateProfile(
     currentUser.editorFontFamily !== normalizedEditorFontFamily ? "editorFontFamily" : null,
   ].flatMap((value) => (value ? [value] : []));
 
-  db.update(users)
-    .set(withUpdatedAt({
-      name,
-      className: normalizedClassName,
-      preferredLanguage: normalizedPreferredLanguage,
-      preferredTheme: normalizedPreferredTheme,
-      editorTheme: normalizedEditorTheme,
-      editorFontSize: normalizedEditorFontSize,
-      editorFontFamily: normalizedEditorFontFamily,
-    }))
-    .where(eq(users.id, session.user.id))
-    .run();
+  try {
+    db.update(users)
+      .set(withUpdatedAt({
+        name,
+        className: normalizedClassName,
+        preferredLanguage: normalizedPreferredLanguage,
+        preferredTheme: normalizedPreferredTheme,
+        editorTheme: normalizedEditorTheme,
+        editorFontSize: normalizedEditorFontSize,
+        editorFontFamily: normalizedEditorFontFamily,
+      }))
+      .where(eq(users.id, session.user.id))
+      .run();
+  } catch (error) {
+    logger.error({ err: error }, "Failed to update profile");
+    return { success: false, error: "updateError" };
+  }
 
   await unstable_update({
     user: {

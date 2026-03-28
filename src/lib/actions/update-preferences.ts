@@ -7,6 +7,7 @@ import { withUpdatedAt } from "@/lib/db/helpers";
 import { auth, unstable_update } from "@/lib/auth";
 import { isTrustedServerActionOrigin } from "@/lib/security/server-actions";
 import { checkServerActionRateLimit } from "@/lib/security/api-rate-limit";
+import { logger } from "@/lib/logger";
 import { z } from "zod";
 import { normalizeOptionalString } from "@/lib/validators/preprocess";
 
@@ -97,10 +98,15 @@ export async function updatePreferences(
     return { success: true };
   }
 
-  db.update(users)
-    .set(withUpdatedAt(updates))
-    .where(eq(users.id, session.user.id))
-    .run();
+  try {
+    db.update(users)
+      .set(withUpdatedAt(updates))
+      .where(eq(users.id, session.user.id))
+      .run();
+  } catch (error) {
+    logger.error({ err: error }, "Failed to update preferences");
+    return { success: false, error: "updateError" };
+  }
 
   await unstable_update({
     user: updates,
