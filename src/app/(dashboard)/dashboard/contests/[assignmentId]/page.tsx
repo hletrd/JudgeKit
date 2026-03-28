@@ -1,11 +1,21 @@
 import Link from "next/link";
 import { ArrowLeft } from "lucide-react";
 import { getLocale, getTranslations } from "next-intl/server";
-import { and, eq } from "drizzle-orm";
+import { and, desc, eq } from "drizzle-orm";
 import { Badge } from "@/components/ui/badge";
-import { Card, CardContent } from "@/components/ui/card";
+import { Button } from "@/components/ui/button";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import {
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from "@/components/ui/table";
 import { TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
 import { HashTabs } from "@/components/hash-tabs";
+import { SubmissionStatusBadge } from "@/components/submission-status-badge";
 import { auth } from "@/lib/auth";
 import {
   canViewAssignmentSubmissions,
@@ -15,8 +25,11 @@ import {
 import { canManageGroupResources } from "@/lib/assignments/management";
 import { assertUserRole } from "@/lib/security/constants";
 import { db } from "@/lib/db";
-import { assignments, enrollments, problems, submissions } from "@/lib/db/schema";
+import { assignments, enrollments, problems, submissions, users } from "@/lib/db/schema";
 import { getResolvedSystemTimeZone } from "@/lib/system-settings";
+import { formatDateTimeInTimeZone } from "@/lib/datetime";
+import { formatSubmissionIdPrefix } from "@/lib/submissions/id";
+import { buildStatusLabels } from "@/lib/judge/status-labels";
 import { notFound, redirect } from "next/navigation";
 import { getExamSession, getExamSessionsForAssignment } from "@/lib/assignments/exam-sessions";
 import { CountdownTimer } from "@/components/exam/countdown-timer";
@@ -97,6 +110,7 @@ export default async function ContestDetailPage({
     tCommon,
     tSubmissions,
     tAssignment,
+    tMySubmissions,
   ] = await Promise.all([
     params,
     searchParams ?? Promise.resolve(undefined),
@@ -107,6 +121,7 @@ export default async function ContestDetailPage({
     getTranslations("common"),
     getTranslations("submissions"),
     getTranslations("groups.assignmentDetail"),
+    getTranslations("contests.mySubmissions"),
   ]);
 
   const role = assertUserRole(session.user.role as string);
@@ -202,7 +217,35 @@ export default async function ContestDetailPage({
 
   // Student view (not instructor/admin with board access)
   if (!canViewBoard) {
-    const studentProblemStatuses = await getStudentProblemStatuses(assignmentId, session.user.id);
+    const [studentProblemStatuses, mySubmissions] = await Promise.all([
+      getStudentProblemStatuses(assignmentId, session.user.id),
+      db
+        .select({
+          id: submissions.id,
+          status: submissions.status,
+          score: submissions.score,
+          submittedAt: submissions.submittedAt,
+          compileOutput: submissions.compileOutput,
+          executionTimeMs: submissions.executionTimeMs,
+          memoryUsedKb: submissions.memoryUsedKb,
+          problem: {
+            id: problems.id,
+            title: problems.title,
+          },
+        })
+        .from(submissions)
+        .leftJoin(problems, eq(submissions.problemId, problems.id))
+        .where(
+          and(
+            eq(submissions.userId, session.user.id),
+            eq(submissions.assignmentId, assignmentId)
+          )
+        )
+        .orderBy(desc(submissions.submittedAt))
+        .limit(50),
+    ]);
+
+    const statusLabels = buildStatusLabels(tSubmissions);
 
     let examSession = null;
     if (assignment.examMode === "windowed") {
@@ -312,6 +355,77 @@ export default async function ContestDetailPage({
               problemStatuses={studentProblemStatuses}
             />
             <LeaderboardTable assignmentId={assignmentId} currentUserId={session.user.id} />
+
+            {/* My Submissions */}
+            <Card>
+              <CardHeader>
+                <CardTitle>{tMySubmissions("title")}</CardTitle>
+              </CardHeader>
+              <CardContent className="p-0">
+                {mySubmissions.length === 0 ? (
+                  <p className="px-6 py-8 text-center text-sm text-muted-foreground">
+                    {tMySubmissions("noSubmissions")}
+                  </p>
+                ) : (
+                  <div className="overflow-x-auto">
+                    <Table>
+                      <TableHeader>
+                        <TableRow>
+                          <TableHead className="pl-6">{tMySubmissions("problem")}</TableHead>
+                          <TableHead>{tMySubmissions("status")}</TableHead>
+                          <TableHead>{tMySubmissions("score")}</TableHead>
+                          <TableHead>{tMySubmissions("submittedAt")}</TableHead>
+                          <TableHead className="pr-6">{tMySubmissions("action")}</TableHead>
+                        </TableRow>
+                      </TableHeader>
+                      <TableBody>
+                        {mySubmissions.map((sub) => (
+                          <TableRow key={sub.id}>
+                            <TableCell className="pl-6">
+                              {sub.problem?.title ? (
+                                <Link
+                                  href={`/dashboard/problems/${sub.problem.id}`}
+                                  className="text-primary hover:underline"
+                                >
+                                  {sub.problem.title}
+                                </Link>
+                              ) : (
+                                tCommon("unknown")
+                              )}
+                            </TableCell>
+                            <TableCell>
+                              <SubmissionStatusBadge
+                                status={sub.status}
+                                label={statusLabels[sub.status as keyof typeof statusLabels] ?? sub.status ?? ""}
+                                compileOutput={sub.compileOutput}
+                                executionTimeMs={sub.executionTimeMs}
+                                memoryUsedKb={sub.memoryUsedKb}
+                                score={sub.score}
+                              />
+                            </TableCell>
+                            <TableCell>
+                              {sub.score !== null ? Math.round(sub.score * 100) / 100 : "-"}
+                            </TableCell>
+                            <TableCell>
+                              {sub.submittedAt
+                                ? formatDateTimeInTimeZone(sub.submittedAt, locale, timeZone)
+                                : "-"}
+                            </TableCell>
+                            <TableCell className="pr-6">
+                              <Link href={`/dashboard/submissions/${sub.id}`}>
+                                <Button variant="outline" size="sm">
+                                  {tCommon("view")}
+                                </Button>
+                              </Link>
+                            </TableCell>
+                          </TableRow>
+                        ))}
+                      </TableBody>
+                    </Table>
+                  </div>
+                )}
+              </CardContent>
+            </Card>
           </>
         )}
       </div>
