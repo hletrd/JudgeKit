@@ -34,10 +34,6 @@ const adminPatchUserSchema = z.object({
 type ApiUser = NonNullable<Awaited<ReturnType<typeof getApiUser>>>;
 type UserUpdates = Record<string, unknown>;
 
-function apiError(error: string, status: number) {
-  return apiError(error, status);
-}
-
 function normalizeOptionalText(value: unknown) {
   return typeof value === "string" && value.trim() !== "" ? value.trim() : null;
 }
