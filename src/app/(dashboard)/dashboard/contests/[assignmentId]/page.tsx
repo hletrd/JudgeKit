@@ -1,5 +1,5 @@
 import Link from "next/link";
-import { ArrowLeft, Users, FileText, BarChart3, Trophy } from "lucide-react";
+import { ArrowLeft } from "lucide-react";
 import { getLocale, getTranslations } from "next-intl/server";
 import { and, eq } from "drizzle-orm";
 import { Badge } from "@/components/ui/badge";
@@ -28,6 +28,7 @@ import { StatusBoard } from "../../groups/[id]/assignments/[assignmentId]/status
 import { LeaderboardTable } from "@/components/contest/leaderboard-table";
 import { AccessCodeManager } from "@/components/contest/access-code-manager";
 import { InviteParticipants } from "@/components/contest/invite-participants";
+import { ContestQuickStats } from "@/components/contest/contest-quick-stats";
 import { AntiCheatMonitor } from "@/components/exam/anti-cheat-monitor";
 import { AntiCheatDashboard } from "@/components/contest/anti-cheat-dashboard";
 import { AnalyticsCharts } from "@/components/contest/analytics-charts";
@@ -408,45 +409,17 @@ export default async function ContestDetailPage({
         </div>
       </div>
 
-      {/* Quick stats bar */}
-      <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
-        <Card>
-          <CardContent className="flex items-center gap-3 py-3 px-4">
-            <Users className="size-5 text-muted-foreground shrink-0" />
-            <div>
-              <p className="text-2xl font-bold">{participantCount}</p>
-              <p className="text-xs text-muted-foreground">{t("quickStats.participants")}</p>
-            </div>
-          </CardContent>
-        </Card>
-        <Card>
-          <CardContent className="flex items-center gap-3 py-3 px-4">
-            <FileText className="size-5 text-muted-foreground shrink-0" />
-            <div>
-              <p className="text-2xl font-bold">{submittedCount}</p>
-              <p className="text-xs text-muted-foreground">{t("quickStats.submissions")}</p>
-            </div>
-          </CardContent>
-        </Card>
-        <Card>
-          <CardContent className="flex items-center gap-3 py-3 px-4">
-            <BarChart3 className="size-5 text-muted-foreground shrink-0" />
-            <div>
-              <p className="text-2xl font-bold">{avgScore}</p>
-              <p className="text-xs text-muted-foreground">{t("quickStats.avgScore")}</p>
-            </div>
-          </CardContent>
-        </Card>
-        <Card>
-          <CardContent className="flex items-center gap-3 py-3 px-4">
-            <Trophy className="size-5 text-muted-foreground shrink-0" />
-            <div>
-              <p className="text-2xl font-bold">{problemsSolvedCount}/{sortedProblems.length}</p>
-              <p className="text-xs text-muted-foreground">{t("quickStats.problemsSolved")}</p>
-            </div>
-          </CardContent>
-        </Card>
-      </div>
+      {/* Quick stats bar (auto-refreshes every 15s) */}
+      <ContestQuickStats
+        assignmentId={assignmentId}
+        problemCount={sortedProblems.length}
+        initialStats={{
+          participantCount,
+          submittedCount,
+          avgScore,
+          problemsSolvedCount,
+        }}
+      />
 
       {/* Tabbed interface */}
       <HashTabs defaultValue="overview">
