@@ -1033,7 +1033,7 @@ const LANGUAGE_TIMEOUTS: Record<string, number> = {
   clean: 120_000,
   carp: 120_000,
   grain: 120_000,
-  curry: 150_000,
+  curry: 600_000,
   minizinc: 120_000,
   wat: 120_000,
   lolcode: 120_000,
