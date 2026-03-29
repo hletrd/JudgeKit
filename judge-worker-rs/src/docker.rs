@@ -186,7 +186,7 @@ async fn run_docker_once(
         format!("{}m", mem_limit),
         "--memory-swap".into(),
         if options.phase == Phase::Compile {
-            format!("{}m", mem_limit * 2) // allow swap during compilation for heavy languages
+            format!("{}m", mem_limit * 4) // allow swap during compilation for heavy languages (qemu)
         } else {
             format!("{}m", mem_limit) // strict limit during execution
         },
