@@ -9,7 +9,7 @@ use tokio::fs;
 use tracing::Instrument;
 
 const COMPILATION_MEMORY_LIMIT_MB: u32 = 1024;
-const COMPILATION_TIMEOUT_MS: u64 = 60_000;
+const COMPILATION_TIMEOUT_MS: u64 = 120_000;
 const MAX_COMPILATION_TIMEOUT_MS: u64 = 300_000;
 const MIN_TIMEOUT_MS: u64 = 100;
 const MAX_TIME_LIMIT_MS: u64 = 30_000;
@@ -117,7 +117,7 @@ async fn execute_inner(client: &ApiClient, config: &Config, submission: Submissi
     // Compile phase (if language requires compilation)
     if let Some(compile_command) = compile_command {
         let clamped_time = submission.time_limit_ms.min(MAX_TIME_LIMIT_MS);
-        let compile_timeout_ms = COMPILATION_TIMEOUT_MS.max(clamped_time.saturating_mul(5)).min(MAX_COMPILATION_TIMEOUT_MS);
+        let compile_timeout_ms = COMPILATION_TIMEOUT_MS.max(clamped_time.saturating_mul(10)).min(MAX_COMPILATION_TIMEOUT_MS);
         let compile_memory_mb =
             COMPILATION_MEMORY_LIMIT_MB.max(submission.memory_limit_mb.min(MAX_MEMORY_LIMIT_MB));
 
