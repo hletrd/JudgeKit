@@ -15,7 +15,7 @@
 
 <p align="center">
   A secure, cross-platform code evaluation platform for programming assignments.<br/>
-  Docker-sandboxed execution for <a href="docs/languages.md">114 language variants</a> on both AMD64 and ARM64.
+  Docker-sandboxed execution for <a href="docs/languages.md">113 language variants</a> on both AMD64 and ARM64.
 </p>
 
 ---
@@ -23,7 +23,7 @@
 ## Features
 
 - **Cross-platform (AMD64 + ARM64)** — Full stack runs natively on both architectures: Next.js app, Rust judge worker, Rust sidecars, and all 95 Docker judge images. Deploy on x86-64 servers or ARM64 (AWS Graviton, Ampere Altra, Apple Silicon) with automatic architecture detection — no emulation, no cross-compilation
-- **114 languages** — C/C++, Java, Python, Rust, Go, Deno, Bun, Gleam, Lean 4, Hare, Koka, Picat, MiniZinc, and [101 more](docs/languages.md), all with multi-arch Docker images and admin-customizable compile/run settings
+- **113 languages** — C/C++, Java, Python, Rust, Go, Deno, Bun, Gleam, Lean 4, Hare, Koka, Picat, MiniZinc, and [100 more](docs/languages.md), all with multi-arch Docker images and admin-customizable compile/run settings
 - **Scalable judging** — Dedicated judge workers with multi-worker support. Workers register, send heartbeats, and gracefully deregister. Admin dashboard for real-time monitoring. Deploy N workers across multiple machines with a single deploy script
 - **Secure execution** — Docker containers with no network, seccomp, memory/CPU limits
 - **Role-based access** — Super admin, admin, instructor, student
@@ -202,7 +202,7 @@ Monitor workers at `/dashboard/admin/workers`.
 
 - [Deployment Guide](docs/deployment.md) — provisioning, deploy scripts, nginx, post-deploy checks
 - [Authentication](docs/authentication.md) — sign-in flow, cookie architecture, API smoke test
-- [Languages](docs/languages.md) — all 114 variants, Docker image presets, admin management
+- [Languages](docs/languages.md) — all 113 variants, Docker image presets, admin management
 - [Judge Workers](docs/judge-workers.md) — multi-worker architecture, registration, deployment
 
 ## License

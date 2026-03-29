@@ -18,7 +18,7 @@ const LANGUAGE_CATEGORIES: Record<string, string[]> = {
   "Swift": ["swift"],
   ".NET": ["csharp", "fsharp", "vbnet"],
   "Haskell / ML": ["haskell", "ocaml", "sml", "flix", "purescript"],
-  "Functional": ["elixir", "erlang", "gleam", "racket", "scheme", "commonlisp", "hy", "fennel", "clean", "mercury", "curry", "koka", "lean", "roc", "grain", "pony", "factor"],
+  "Functional": ["elixir", "erlang", "gleam", "racket", "scheme", "commonlisp", "hy", "fennel", "clean", "mercury", "curry", "koka", "lean", "grain", "pony", "factor"],
   "Scripting": ["perl", "ruby", "php", "lua", "bash", "awk", "tcl", "powershell", "r"],
   "Compiled": ["fortran", "pascal", "d", "ada", "nim", "zig", "dart", "crystal", "vala", "hare", "c3", "nelua", "odin", "vlang"],
   "Esoteric / Other": ["brainfuck", "befunge", "aheui", "hyeong", "whitespace", "umjunsik", "lolcode", "shakespeare", "b", "sed", "dc", "forth", "algol68", "snobol4", "icon", "uiua", "rexx", "arturo", "janet", "picat", "wat", "modula2", "minizinc", "spark", "carp", "raku", "bqn", "squirrel", "julia", "octave", "prolog", "smalltalk", "freebasic", "apl", "nasm", "llvm_ir", "postscript", "haxe", "objective_c", "cobol", "delphi"],

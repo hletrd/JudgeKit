@@ -1,6 +1,6 @@
-# Supported Languages (114 variants)
+# Supported Languages (113 variants)
 
-95 Docker images covering 114 language variants. Deployed on both AMD64 (test) and ARM64 (production).
+95 Docker images covering 113 language variants. Deployed on both AMD64 (test) and ARM64 (production).
 
 | # | Language ID | Description | Docker Image | amd64 | arm64 | amd64 E2E | arm64 E2E |
 |---|-------------|-------------|--------------|-------|-------|-----------|-----------|
@@ -114,10 +114,9 @@
 | 108 | `minizinc` | MiniZinc 2.9.5 | `judge-minizinc` | ✅ | ✅ | ✅ | ✅ |
 | 109 | `curry` | Curry (PAKCS 3.9.0) | `judge-curry` | ✅ | ✅ | ✅ | ✅ |
 | 110 | `clean` | Clean 3.1 | `judge-clean` | ✅ | ✅ | ✅ | ✅ |
-| 111 | `roc` | Roc (alpha4) | `judge-roc` | ✅ | ✅ | ✅ | ✅ |
-| 112 | `carp` | Carp 0.5.5 | `judge-carp` | ✅ | ✅ | ✅ | ✅ |
-| 113 | `grain` | Grain 0.7.2 | `judge-grain` | ✅ | ✅ | ✅ | ✅ |
-| 114 | `pony` | Pony 0.61.1 | `judge-pony` | ✅ | ✅ | ✅ | ✅ |
+| 111 | `carp` | Carp 0.5.5 | `judge-carp` | ✅ | ✅ | ✅ | ✅ |
+| 112 | `grain` | Grain 0.7.2 | `judge-grain` | ✅ | ✅ | ✅ | ✅ |
+| 113 | `pony` | Pony 0.61.1 | `judge-pony` | ✅ | ✅ | ✅ | ✅ |
 
 ### ARM64 Build Summary
 
@@ -125,20 +124,21 @@
 
 ### amd64 E2E Summary (2026-03-29)
 
-**113 of 114 languages pass** on amd64.
-
-| Failing | Status | Root Cause |
-|---------|--------|------------|
-| `roc` | compile_error | Upstream Roc compiler panic (`Arc references to module_ids`) when loading any platform. Affects all available releases (alpha1 through alpha4-rolling) on all architectures. Requires upstream fix. |
+**113 of 113 languages pass** on amd64.
 
 ### arm64 E2E Summary (2026-03-29)
 
-**112 of 114 languages pass** on arm64.
+**112 of 113 languages pass** on arm64.
 
 | Failing | Status | Root Cause |
 |---------|--------|------------|
-| `roc` | compile_error | Same upstream compiler panic as amd64 |
 | `curry` | compile_error | pakcs-frontend (amd64 binary under qemu) exceeds 3.8GB server memory during compilation. Tested with 8GB swap + 2GB container limit + 600s timeout — still OOM killed. Needs server with >=8GB RAM or native arm64 pakcs build. |
+
+### Disabled Languages
+
+| Language | Reason |
+|----------|--------|
+| `roc` | Upstream compiler panic (`Arc references to module_ids`) when loading any platform. Affects all available releases (alpha1 through alpha4-rolling) on all architectures. Dockerfile preserved at `docker/Dockerfile.judge-roc`. Re-enable when upstream fix is available. |
 
 ## Docker Image Presets
 
@@ -157,3 +157,20 @@
 - Build and remove Docker images from the UI
 
 Changes take effect immediately for new submissions without restarting services.
+
+## Potential Additions
+
+Languages under evaluation for future support. Criteria: stable/packaged binary available for Linux amd64+arm64, self-contained Docker image feasible, general-purpose enough for competitive programming.
+
+| Language | Status | Rationale | Notes |
+|----------|--------|-----------|-------|
+| **MoonBit** | Active development — v0.8.3 (Mar 2026), 1.0 roadmap H1 2026 | Compiles to Wasm/JS/native; growing community; AI-friendly syntax; official Docker toolchain available | Strong candidate once 1.0 lands and ARM64 binary is stable |
+| **Chapel** | Stable — v2.8 (Mar 2026), official Docker image `chapel/chapel` | HPC parallel language by HPE/Cray; unique parallelism primitives not covered by any current language; Docker image exists | Niche but distinctive; large image size expected |
+| **Idris 2** | Stable — v0.8.0 (Oct 2025); builds on Chez Scheme or Racket | Dependently-typed functional language; good for theorem-proving style problems; available in Fedora/Debian; bootstraps from Scheme sources | `judge-racket` image already has a Scheme runtime — could reuse it |
+| **Mojo** | Pre-1.0 — targeting 1.0 in H1 2026; compiler still closed-source | Python-superset with C/Rust-level performance; high community interest; targets AI/systems workloads | Compiler is closed-source; Linux ARM64 support in progress; revisit at 1.0 |
+| **ReasonML / Rescript** | Stable — ReScript 12 (2025); compiles to JS | OCaml-like syntax compiling to clean JS; already supported via `judge-node`; only needs a compile step | Low effort: add a `judge-rescript` image using Node.js + ReScript npm package |
+| **Elm** | Stable — 0.19.1 (long-term); compiles to JS | Pure functional language with strong type system; popular in frontend; used in some competitive programming circles | Compiles to JS — runnable via Node.js; small Docker image feasible |
+| **Carbon** | Experimental — targeting v0.1 in late 2026; nightly builds only on limited platforms | Google's C++ successor; significant industry interest | Not suitable yet — no stable release, limited platform support |
+| **Lobster** | Stable — active releases on GitHub; single-file binary | Statically typed scripting language with Rust-like ownership; small and self-contained | Very niche; low priority |
+| **Janet** | Already supported (`judge-janet` #94) | — | Already included |
+| **Gleam** | Already supported (`judge-gleam` #86) | — | Already included |

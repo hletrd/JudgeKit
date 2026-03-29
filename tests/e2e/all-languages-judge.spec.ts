@@ -860,22 +860,6 @@ Start w
   # io = io <<< (a + b) <<< "\\n"
   # (ok, w) = fclose io w
   = w`,
-  roc: `app [main!] { pf: platform "/opt/roc-platform/basic-cli-0.18.0.tar.br" }
-
-import pf.Stdout
-import pf.Stdin
-
-main! : List Str => Result {} _
-main! = |_args|
-    input = Stdin.line!({})?
-    parts = Str.splitOn input " "
-    when parts is
-        [aStr, bStr] ->
-            a = Str.toI64 aStr |> Result.withDefault 0
-            b = Str.toI64 bStr |> Result.withDefault 0
-            Stdout.line!("\${Num.toStr (a + b)}")
-        _ ->
-            Stdout.line!("0")`,
   carp: `(register-type FILE "FILE")
 (register scanf (Fn [(Ptr CChar) (Ptr Int) (Ptr Int)] Int) "scanf")
 
@@ -1029,7 +1013,6 @@ const LANGUAGE_TIMEOUTS: Record<string, number> = {
   mercury: 180_000,
   purescript: 150_000,
   pony: 120_000,
-  roc: 120_000,
   clean: 120_000,
   carp: 120_000,
   grain: 120_000,

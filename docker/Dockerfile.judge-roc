@@ -1,3 +1,6 @@
+# DISABLED: Roc has an upstream compiler panic (Arc references to module_ids)
+# affecting ALL available releases. Re-enable when upstream fix is available.
+
 FROM debian:bookworm-slim
 
 RUN apt-get update && apt-get install -y --no-install-recommends curl ca-certificates && \

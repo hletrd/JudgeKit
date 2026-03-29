@@ -132,7 +132,6 @@ export type Language =
   | "minizinc"
   | "curry"
   | "clean"
-  | "roc"
   | "carp"
   | "grain"
   | "pony";
