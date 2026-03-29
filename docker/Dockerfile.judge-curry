@@ -27,7 +27,15 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
       mv /opt/pakcs/bin/pakcs-frontend /opt/pakcs/bin/pakcs-frontend.amd64 && \
       printf '#!/bin/sh\nexec /usr/bin/qemu-x86_64-static /opt/pakcs/bin/pakcs-frontend.amd64 "$@"\n' > /opt/pakcs/bin/pakcs-frontend && \
       chmod +x /opt/pakcs/bin/pakcs-frontend && \
-      cd /opt/pakcs && make CI_BUILD=yes; \
+      cd /opt/pakcs && \
+      cp scripts/pakcs.sh bin/pakcs && chmod +x bin/pakcs && \
+      cp scripts/cleancurry.sh bin/cleancurry && chmod +x bin/cleancurry && \
+      cp scripts/pakcs-fcypp.sh bin/pakcs-fcypp && chmod +x bin/pakcs-fcypp && \
+      cd src && rm -f prologbasics.pl && cp swibasics.pl prologbasics.pl && \
+      echo "compile(c2p). c2p('/opt/pakcs/lib/Prelude'), compile('/opt/pakcs/lib/.curry/pakcs-3.9.0/Prelude'), loader:loadAndCompile('/opt/pakcs/lib/.curry/pakcs-3.9.0/Prelude.pl',[],create). saveprog_entry('swi.state',user:pakcsMain)." | swipl -q -O 2>/dev/null && \
+      if [ -f swi.state ]; then mv swi.state c2p.state && mv c2p.state pakcs && chmod +x pakcs; fi && \
+      mkdir -p /opt/pakcs/lib/.curry/pakcs-3.9.0 && \
+      /opt/pakcs/bin/pakcs-frontend --flat -Wnone -i/opt/pakcs/lib Prelude -o /opt/pakcs/lib/.curry/pakcs-3.9.0 -D__PAKCS__=309 2>/dev/null || true; \
     fi && \
     ln -sf /opt/pakcs/bin/pakcs /usr/local/bin/pakcs && \
     apt-get purge -y curl && apt-get autoremove -y && rm -rf /var/lib/apt/lists/* && \
