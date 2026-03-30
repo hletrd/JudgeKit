@@ -117,11 +117,11 @@
 | 111 | `carp` | Carp 0.5.5 | `judge-carp` | ✅ | ✅ | ✅ | ✅ |
 | 112 | `grain` | Grain 0.7.2 | `judge-grain` | ✅ | ✅ | ✅ | ✅ |
 | 113 | `pony` | Pony 0.61.1 | `judge-pony` | ✅ | ✅ | ✅ | ✅ |
-| 114 | `moonbit` | MoonBit 0.8 (native) | `judge-moonbit` | ✅ | ❌ | ❓ | — |
-| 115 | `chapel` | Chapel 2.8 | `judge-chapel` | ✅ | ✅ | ❓ | ❓ |
-| 116 | `idris2` | Idris 2 0.8.0 (Chez Scheme) | `judge-idris2` | ✅ | ❌ | ❓ | — |
-| 117 | `rescript` | ReScript 12.2 (Node.js) | `judge-rescript` | ✅ | ✅ | ❓ | ❓ |
-| 118 | `elm` | Elm 0.19.1 (Node.js) | `judge-elm` | ✅ | ✅ | ❓ | ❓ |
+| 114 | `moonbit` | MoonBit 0.8 (native) | `judge-moonbit` | ✅ | ❌ | ✅ | — |
+| 115 | `chapel` | Chapel 2.8 | `judge-chapel` | ✅ | ✅ | ✅ | ✅ |
+| 116 | `idris2` | Idris 2 0.8.0 (Chez Scheme) | `judge-idris2` | ✅ | ❌ | ✅ | — |
+| 117 | `rescript` | ReScript 12.2 (Node.js) | `judge-rescript` | ✅ | ✅ | ✅ | ✅ |
+| 118 | `elm` | Elm 0.19.1 (Node.js) | `judge-elm` | ✅ | ✅ | ✅ | ✅ |
 
 ### ARM64 Build Summary
 
