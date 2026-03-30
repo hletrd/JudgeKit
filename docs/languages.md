@@ -117,7 +117,7 @@
 | 111 | `carp` | Carp 0.5.5 | `judge-carp` | ✅ | ✅ | ✅ | ✅ |
 | 112 | `grain` | Grain 0.7.2 | `judge-grain` | ✅ | ✅ | ✅ | ✅ |
 | 113 | `pony` | Pony 0.61.1 | `judge-pony` | ✅ | ✅ | ✅ | ✅ |
-| 114 | `moonbit` | MoonBit 0.8 (native) | `judge-moonbit` | ✅ | ✅ | ❓ | ❓ |
+| 114 | `moonbit` | MoonBit 0.8 (native) | `judge-moonbit` | ✅ | ❌ | ❓ | — |
 | 115 | `chapel` | Chapel 2.8 | `judge-chapel` | ✅ | ✅ | ❓ | ❓ |
 | 116 | `idris2` | Idris 2 0.8.0 (Chez Scheme) | `judge-idris2` | ✅ | ✅ | ❓ | ❓ |
 | 117 | `rescript` | ReScript 12.2 (Node.js) | `judge-rescript` | ✅ | ✅ | ❓ | ❓ |
@@ -138,6 +138,7 @@
 | Failing | Status | Root Cause |
 |---------|--------|------------|
 | `curry` | compile_error | pakcs-frontend (amd64 binary under qemu) exceeds 3.8GB server memory during compilation. Tested with 8GB swap + 2GB container limit + 600s timeout — still OOM killed. Needs server with >=8GB RAM or native arm64 pakcs build. |
+| `moonbit` | not supported | MoonBit native toolchain only available for x86_64 Linux. ARM64 Wasm toolchain installer fails. Re-enable when upstream ARM64 native toolchain is released. |
 
 ### Disabled Languages
 
