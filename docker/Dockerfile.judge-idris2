@@ -12,6 +12,7 @@ RUN git clone --depth 1 --branch v10.1.0 \
     cd /tmp/chez && \
     ./configure --disable-x11 && \
     make && make install && \
+    ln -sf /usr/local/bin/scheme /usr/local/bin/chez && \
     rm -rf /tmp/chez
 
 # Build Idris 2 v0.8.0 from source
