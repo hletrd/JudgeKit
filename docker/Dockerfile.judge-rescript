@@ -6,14 +6,8 @@ RUN mkdir -p /opt/rescript-project/src && \
     printf '{"name":"solution","version":"1.0.0","dependencies":{"rescript":"^12.2.0"}}\n' \
       > package.json && \
     npm install && \
-    cat > rescript.json << 'RCEOF'
-{
-  "name": "solution",
-  "sources": [{ "dir": "src", "subdirs": false }],
-  "package-specs": { "module": "commonjs", "in-source": true },
-  "suffix": ".res.js"
-}
-RCEOF
+    printf '{"name":"solution","sources":[{"dir":"src","subdirs":false}],"package-specs":{"module":"commonjs","in-source":true},"suffix":".res.js"}\n' \
+      > rescript.json
 
 # Pre-build with dummy source to cache compiler artifacts
 RUN cd /opt/rescript-project && \
