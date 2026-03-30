@@ -1390,7 +1390,7 @@ export const JUDGE_LANGUAGE_CONFIGS: Record<Language, JudgeLanguageDefinition> =
     extension: ".mbt",
     dockerImage: "judge-moonbit:latest",
     compiler: `moon ${JUDGE_TOOLCHAIN_VERSIONS.moonbit}`,
-    compileCommand: ["sh", "-c", "export HOME=/tmp MOON_HOME=/root/.moon && cp -r /opt/moonbit-project /tmp/moonbit-project && cp /workspace/solution.mbt /tmp/moonbit-project/main/main.mbt && cd /tmp/moonbit-project && moon build --target native 2>&1 && cp target/native/release/build/main/main /workspace/solution"],
+    compileCommand: ["sh", "-c", "export HOME=/tmp MOON_HOME=/root/.moon && cp -r /opt/moonbit-project /tmp/moonbit-project && cp /workspace/solution.mbt /tmp/moonbit-project/main/main.mbt && cd /tmp/moonbit-project && moon build --target native 2>&1 && cp _build/native/debug/build/main/main.exe /workspace/solution"],
     runCommand: ["/workspace/solution"],
   },
   chapel: {

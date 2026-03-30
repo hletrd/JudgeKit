@@ -906,9 +906,17 @@ print(toString(na + nb))`,
       512)`,
   moonbit: `fn main {
   let line = read_line()
-  let parts = line.split(" ").collect()
-  let a = @strconv.parse_int(parts[0]).unwrap()
-  let b = @strconv.parse_int(parts[1]).unwrap()
+  let mut a = 0
+  let mut b = 0
+  let mut in_b = false
+  for c in line {
+    if c == ' ' {
+      in_b = true
+    } else {
+      let d = c.to_int() - 48
+      if in_b { b = b * 10 + d } else { a = a * 10 + d }
+    }
+  }
   println(a + b)
 }`,
   chapel: `use IO;

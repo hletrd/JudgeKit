@@ -1361,7 +1361,7 @@ static PONY_CONFIG: LanguageConfig = LanguageConfig {
 };
 
 // MoonBit
-static MOONBIT_COMPILE: &[&str] = &["sh", "-c", "export HOME=/tmp MOON_HOME=/root/.moon && cp -r /opt/moonbit-project /tmp/moonbit-project && cp /workspace/solution.mbt /tmp/moonbit-project/main/main.mbt && cd /tmp/moonbit-project && moon build --target native 2>&1 && cp target/native/release/build/main/main /workspace/solution"];
+static MOONBIT_COMPILE: &[&str] = &["sh", "-c", "export HOME=/tmp MOON_HOME=/root/.moon && cp -r /opt/moonbit-project /tmp/moonbit-project && cp /workspace/solution.mbt /tmp/moonbit-project/main/main.mbt && cd /tmp/moonbit-project && moon build --target native 2>&1 && cp _build/native/debug/build/main/main.exe /workspace/solution"];
 static MOONBIT_RUN: &[&str] = &["/workspace/solution"];
 
 static MOONBIT_CONFIG: LanguageConfig = LanguageConfig {
