@@ -10,7 +10,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 RUN git clone --depth 1 --branch v10.1.0 \
       https://github.com/cisco/ChezScheme.git /tmp/chez && \
     cd /tmp/chez && \
-    ./configure && \
+    ./configure --disable-x11 && \
     make && make install && \
     rm -rf /tmp/chez
 
