@@ -1,35 +1,23 @@
 FROM debian:bookworm-slim
 
-# Install build dependencies
+# Install Chez Scheme from Debian packages (9.5.8, supports amd64+arm64)
+# and build dependencies for Idris 2
 RUN apt-get update && apt-get install -y --no-install-recommends \
-    gcc make curl ca-certificates git \
-    libgmp-dev uuid-dev libncurses-dev zlib1g-dev \
+    chezscheme gcc make curl ca-certificates git libgmp-dev \
     && rm -rf /var/lib/apt/lists/*
 
-# Build Chez Scheme 10.1.0 from source (required for ARM64 support)
-# Find and symlink the actual binary name to 'chez' for Idris 2 bootstrap
-RUN git clone --depth 1 --branch v10.1.0 \
-      https://github.com/cisco/ChezScheme.git /tmp/chez && \
-    cd /tmp/chez && \
-    ./configure --disable-x11 && \
-    make && make install && \
-    CHEZ_BIN=$(find /usr -type f -name 'scheme' | head -1) && \
-    echo "Found Chez Scheme at: $CHEZ_BIN" && \
-    ln -sf "$CHEZ_BIN" /usr/local/bin/chez && \
-    ln -sf "$CHEZ_BIN" /usr/local/bin/scheme && \
-    rm -rf /tmp/chez
-
 # Build Idris 2 v0.8.0 from source
+# Debian's binary is named 'chezscheme', not 'chez'
 ARG IDRIS2_VERSION=v0.8.0
 RUN git clone --depth 1 --branch ${IDRIS2_VERSION} \
       https://github.com/idris-lang/Idris2.git /tmp/idris2 && \
     cd /tmp/idris2 && \
-    make bootstrap SCHEME=chez && \
+    make bootstrap SCHEME=chezscheme && \
     make install PREFIX=/usr/local && \
     rm -rf /tmp/idris2
 
 # Clean up build-only dependencies to reduce image size
-RUN apt-get purge -y make curl ca-certificates git uuid-dev libncurses-dev zlib1g-dev && \
+RUN apt-get purge -y make curl ca-certificates git && \
     apt-get autoremove -y && \
     rm -rf /var/lib/apt/lists/*
 
