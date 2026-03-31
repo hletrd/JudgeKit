@@ -165,6 +165,14 @@ int main() {
     cout << a + b << endl;
     return 0;
 }`,
+  cpp26: `#include <iostream>
+using namespace std;
+int main() {
+    int a, b;
+    cin >> a >> b;
+    cout << a + b << endl;
+    return 0;
+}`,
   java: `import java.util.Scanner;
 public class Main {
     public static void main(String[] args) {
@@ -234,6 +242,14 @@ int main() {
     return 0;
 }`,
   clang_cpp23: `#include <iostream>
+using namespace std;
+int main() {
+    int a, b;
+    cin >> a >> b;
+    cout << a + b << endl;
+    return 0;
+}`,
+  clang_cpp26: `#include <iostream>
 using namespace std;
 int main() {
     int a, b;
