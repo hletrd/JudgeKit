@@ -174,6 +174,8 @@ export const DELETE = createApiHandler({
     const isAuthor = problem.authorId === user.id;
     if (!isAuthor && !isAdmin(user.role)) return forbidden();
 
+    const force = req.nextUrl.searchParams.get("force") === "true";
+
     let blocked = false;
     sqlite.transaction(() => {
       const submissionCountRow = db
@@ -191,7 +193,7 @@ export const DELETE = createApiHandler({
       const submissionCount = Number(submissionCountRow.total ?? 0);
       const assignmentLinkCount = Number(assignmentLinkCountRow.total ?? 0);
 
-      if (submissionCount > 0 || assignmentLinkCount > 0) {
+      if ((submissionCount > 0 || assignmentLinkCount > 0) && !(force && isAdmin(user.role))) {
         blocked = true;
         return;
       }
