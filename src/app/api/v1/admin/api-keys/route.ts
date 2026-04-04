@@ -1,16 +1,17 @@
 import { NextRequest } from "next/server";
 import { z } from "zod";
 import { db } from "@/lib/db";
-import { apiKeys, users } from "@/lib/db/schema";
+import { apiKeys, users, roles } from "@/lib/db/schema";
 import { eq, desc } from "drizzle-orm";
 import { createApiHandler, isAdmin } from "@/lib/api/handler";
 import { apiSuccess, apiError } from "@/lib/api/responses";
 import { generateApiKey } from "@/lib/api/api-key-auth";
 import { recordAuditEvent } from "@/lib/audit/events";
+import { canManageRoleAsync, isUserRole } from "@/lib/security/constants";
 
 const createSchema = z.object({
   name: z.string().min(1).max(100),
-  role: z.enum(["admin", "super_admin", "instructor"]),
+  role: z.string().min(1).max(50),
   expiresAt: z.string().datetime().nullable().optional(),
 });
 
@@ -45,6 +46,24 @@ export const POST = createApiHandler({
   schema: createSchema,
   handler: async (req: NextRequest, { user, body }) => {
     if (!isAdmin(user.role)) return apiError("forbidden", 403);
+
+    // Validate that the requested role exists (built-in or custom)
+    if (!isUserRole(body.role)) {
+      const customRole = await db
+        .select({ id: roles.id })
+        .from(roles)
+        .where(eq(roles.name, body.role))
+        .limit(1);
+      if (customRole.length === 0) {
+        return apiError("invalidRole", 400);
+      }
+    }
+
+    // Privilege escalation check: cannot create a key with higher privilege
+    const canManage = await canManageRoleAsync(user.role, body.role);
+    if (!canManage && user.role !== body.role) {
+      return apiError("cannotAssignHigherRole", 403);
+    }
 
     const { rawKey, keyPrefix } = generateApiKey();
 
