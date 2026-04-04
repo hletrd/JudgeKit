@@ -1,10 +1,13 @@
-// File download route: not migrated to createApiHandler due to raw Response (binary file download)
+// Database backup route: POST with password re-confirmation for security
 import { NextRequest, NextResponse } from "next/server";
-import { getApiUser, unauthorized, forbidden, isAdmin } from "@/lib/api/auth";
+import { getApiUser, unauthorized, forbidden, csrfForbidden } from "@/lib/api/auth";
 import { consumeApiRateLimit } from "@/lib/security/api-rate-limit";
 import { recordAuditEvent } from "@/lib/audit/events";
+import { verifyPassword } from "@/lib/security/password-hash";
 import { logger } from "@/lib/logger";
-import { sqlite } from "@/lib/db";
+import { sqlite, db } from "@/lib/db";
+import { users } from "@/lib/db/schema";
+import { eq } from "drizzle-orm";
 import fs from "fs/promises";
 import { existsSync } from "fs";
 import path from "path";
@@ -18,15 +21,46 @@ function getDbPath(): string {
     : path.join(process.cwd(), "data", "judge.db");
 }
 
-export async function GET(request: NextRequest) {
+export async function POST(request: NextRequest) {
   let backupPath: string | null = null;
   try {
+    const csrfError = csrfForbidden(request);
+    if (csrfError) return csrfError;
+
     const user = await getApiUser(request);
     if (!user) return unauthorized();
-    if (!isAdmin(user.role)) return forbidden();
+    if (user.role !== "super_admin") return forbidden();
 
     const rateLimitResponse = consumeApiRateLimit(request, "admin:backup");
     if (rateLimitResponse) return rateLimitResponse;
+
+    // Require password re-confirmation
+    let body: { password?: string };
+    try {
+      body = await request.json();
+    } catch {
+      return NextResponse.json({ error: "invalidRequestBody" }, { status: 400 });
+    }
+
+    if (!body.password || typeof body.password !== "string") {
+      return NextResponse.json({ error: "passwordRequired" }, { status: 400 });
+    }
+
+    // Verify password against stored hash
+    const [dbUser] = await db
+      .select({ passwordHash: users.passwordHash })
+      .from(users)
+      .where(eq(users.id, user.id))
+      .limit(1);
+
+    if (!dbUser?.passwordHash) {
+      return NextResponse.json({ error: "authenticationFailed" }, { status: 403 });
+    }
+
+    const passwordValid = await verifyPassword(body.password, dbUser.passwordHash);
+    if (!passwordValid) {
+      return NextResponse.json({ error: "invalidPassword" }, { status: 403 });
+    }
 
     const dbPath = getDbPath();
 

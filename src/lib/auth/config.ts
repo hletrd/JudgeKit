@@ -241,7 +241,7 @@ export const authConfig: NextAuthConfig = {
       },
     }),
   ],
-  trustHost: true,
+  trustHost: shouldTrustAuthHost(),
   session: { strategy: "jwt", maxAge: AUTH_SESSION_MAX_AGE_SECONDS },
   pages: {
     signIn: "/login",

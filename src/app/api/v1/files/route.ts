@@ -139,7 +139,8 @@ export const GET = createApiHandler({
       conditions.push(eq(files.category, category));
     }
     if (search) {
-      conditions.push(like(files.originalName, `%${search}%`));
+      const escaped = search.replace(/[%_\\]/g, "\\$&");
+      conditions.push(like(files.originalName, `%${escaped}%`));
     }
     if (!caps.has("files.manage")) {
       conditions.push(eq(files.uploadedBy, user.id));

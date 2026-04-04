@@ -53,7 +53,9 @@ export const GET = createApiHandler({
     const problems = getLeaderboardProblems(assignmentId);
     const leaderboard = computeLeaderboard(assignmentId, isInstructorView);
 
-    const isAnonymous = !isInstructorView && !!assignment.anonymousLeaderboard;
+    // Always anonymize in exam mode for non-instructors, regardless of anonymousLeaderboard flag
+    const isExamMode = assignment.examMode !== "none";
+    const isAnonymous = !isInstructorView && (!!assignment.anonymousLeaderboard || isExamMode);
 
     const entries = isInstructorView
       ? leaderboard.entries

@@ -26,9 +26,16 @@ const pullSchema = z.object({
 });
 
 export const POST = createApiHandler({
-  auth: { roles: ["admin", "super_admin"] },
+  auth: { roles: ["super_admin"] },
   schema: pullSchema,
   handler: async (_req: NextRequest, { body }) => {
+    // Only allow images with the judge- prefix to prevent supply chain attacks
+    if (!body.imageTag.startsWith("judge-") && !body.imageTag.includes("/judge-")) {
+      return NextResponse.json(
+        { error: "imageTagMustStartWithJudge", message: "Only judge-* images are allowed" },
+        { status: 400 }
+      );
+    }
     const result = await pullDockerImage(body.imageTag);
     if (!result.success) {
       return NextResponse.json(
@@ -45,7 +52,7 @@ const deleteSchema = z.object({
 });
 
 export const DELETE = createApiHandler({
-  auth: { roles: ["admin", "super_admin"] },
+  auth: { roles: ["super_admin"] },
   schema: deleteSchema,
   handler: async (req: NextRequest, { body, user }) => {
     const result = await removeDockerImage(body.imageTag);

@@ -7,6 +7,14 @@ import { logger } from "@/lib/logger";
 import fs from "fs/promises";
 import { existsSync } from "fs";
 import path from "path";
+import os from "os";
+import Database from "better-sqlite3";
+
+const REQUIRED_TABLES = [
+  "users", "submissions", "problems", "test_cases",
+  "groups", "assignments", "enrollments", "roles",
+];
+const RESTORE_COOLDOWN_MS = 60 * 60 * 1000; // 1 hour
 
 function getDbPath(): string {
   return process.env.DATABASE_PATH
@@ -44,6 +52,46 @@ export async function POST(request: NextRequest) {
     const SQLITE_MAGIC = Buffer.from("SQLite format 3\0", "ascii");
     if (buffer.length < 16 || !buffer.subarray(0, 16).equals(SQLITE_MAGIC)) {
       return NextResponse.json({ error: "invalidSqliteFile" }, { status: 400 });
+    }
+
+    // Cooldown: max 1 restore per hour
+    const { sqlite: sqliteForCooldown } = await import("@/lib/db");
+    const recentRestore = sqliteForCooldown
+      .prepare(
+        `SELECT 1 FROM audit_events
+         WHERE action = 'system_settings.database_restored'
+         AND created_at > ?
+         LIMIT 1`
+      )
+      .get(Math.floor((Date.now() - RESTORE_COOLDOWN_MS) / 1000));
+
+    if (recentRestore) {
+      return NextResponse.json(
+        { error: "restoreCooldown", message: "Database was restored recently. Please wait 1 hour between restores." },
+        { status: 429 }
+      );
+    }
+
+    // Schema validation: open uploaded file in read-only mode and verify required tables
+    const tempValidationPath = path.join(os.tmpdir(), `judgekit-restore-validate-${Date.now()}.sqlite`);
+    try {
+      await fs.writeFile(tempValidationPath, buffer);
+      const testDb = new Database(tempValidationPath, { readonly: true });
+      try {
+        const rows = testDb.prepare("SELECT name FROM sqlite_master WHERE type='table'").all() as { name: string }[];
+        const tableNames = new Set(rows.map((r) => r.name));
+        const missing = REQUIRED_TABLES.filter((t) => !tableNames.has(t));
+        if (missing.length > 0) {
+          return NextResponse.json(
+            { error: "invalidDatabaseSchema", details: { missingTables: missing } },
+            { status: 400 }
+          );
+        }
+      } finally {
+        testDb.close();
+      }
+    } finally {
+      await fs.unlink(tempValidationPath).catch(() => {});
     }
 
     const dbPath = getDbPath();

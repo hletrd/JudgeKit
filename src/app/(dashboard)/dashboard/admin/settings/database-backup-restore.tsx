@@ -13,14 +13,26 @@ export function DatabaseBackupRestore({ isSuperAdmin }: { isSuperAdmin: boolean 
   const [isDownloading, setIsDownloading] = useState(false);
   const [isRestoring, setIsRestoring] = useState(false);
   const [confirmRestore, setConfirmRestore] = useState(false);
+  const [showPasswordPrompt, setShowPasswordPrompt] = useState(false);
+  const [backupPassword, setBackupPassword] = useState("");
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   async function handleBackup() {
+    if (!backupPassword) {
+      toast.error(t("passwordRequired"));
+      return;
+    }
+
     setIsDownloading(true);
     try {
-      const response = await apiFetch("/api/v1/admin/backup");
+      const response = await apiFetch("/api/v1/admin/backup", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ password: backupPassword }),
+      });
       if (!response.ok) {
-        toast.error(t("backupFailed"));
+        const data = await response.json().catch(() => ({}));
+        toast.error(t(data.error ?? "backupFailed"));
         return;
       }
       const blob = await response.blob();
@@ -32,6 +44,8 @@ export function DatabaseBackupRestore({ isSuperAdmin }: { isSuperAdmin: boolean 
       a.click();
       URL.revokeObjectURL(url);
       toast.success(t("backupSuccess"));
+      setShowPasswordPrompt(false);
+      setBackupPassword("");
     } catch {
       toast.error(t("backupFailed"));
     } finally {
@@ -75,12 +89,41 @@ export function DatabaseBackupRestore({ isSuperAdmin }: { isSuperAdmin: boolean 
 
   return (
     <div className="space-y-4">
-      <div className="flex items-center gap-3">
-        <Button variant="outline" onClick={handleBackup} disabled={isDownloading}>
-          <Download className="mr-2 h-4 w-4" />
-          {isDownloading ? tCommon("loading") : t("downloadBackup")}
-        </Button>
-      </div>
+      {isSuperAdmin && (
+        <div className="space-y-3">
+          {!showPasswordPrompt ? (
+            <Button variant="outline" onClick={() => setShowPasswordPrompt(true)}>
+              <Download className="mr-2 h-4 w-4" />
+              {t("downloadBackup")}
+            </Button>
+          ) : (
+            <div className="flex items-center gap-2">
+              <input
+                type="password"
+                value={backupPassword}
+                onChange={(e) => setBackupPassword(e.target.value)}
+                onKeyDown={(e) => e.key === "Enter" && handleBackup()}
+                placeholder={t("enterPassword")}
+                className="h-9 rounded-md border border-input bg-background px-3 text-sm"
+                autoFocus
+              />
+              <Button variant="outline" onClick={handleBackup} disabled={isDownloading || !backupPassword}>
+                <Download className="mr-2 h-4 w-4" />
+                {isDownloading ? tCommon("loading") : tCommon("confirm")}
+              </Button>
+              <Button
+                variant="ghost"
+                onClick={() => {
+                  setShowPasswordPrompt(false);
+                  setBackupPassword("");
+                }}
+              >
+                {tCommon("cancel")}
+              </Button>
+            </div>
+          )}
+        </div>
+      )}
 
       {isSuperAdmin && (
         <div className="space-y-3 border-t pt-4">
