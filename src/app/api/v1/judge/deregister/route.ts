@@ -10,7 +10,7 @@ import { z } from "zod";
 
 const deregisterSchema = z.object({
   workerId: z.string().min(1),
-  workerSecret: z.string().min(1).optional(),
+  workerSecret: z.string().min(1),
 });
 
 export async function POST(request: NextRequest) {
@@ -26,19 +26,17 @@ export async function POST(request: NextRequest) {
 
     const { workerId, workerSecret } = parsed.data;
 
-    // Validate per-worker secret if provided
-    if (workerSecret) {
-      const worker = await db.query.judgeWorkers.findFirst({
-        where: eq(judgeWorkers.id, workerId),
-        columns: { secretToken: true },
-      });
-      if (!worker) return apiError("workerNotFound", 404);
-      if (worker.secretToken) {
-        const a = Buffer.from(workerSecret);
-        const b = Buffer.from(worker.secretToken);
-        if (a.length !== b.length || !timingSafeEqual(a, b)) {
-          return apiError("invalidWorkerSecret", 403);
-        }
+    // Validate per-worker secret (mandatory)
+    const worker = await db.query.judgeWorkers.findFirst({
+      where: eq(judgeWorkers.id, workerId),
+      columns: { secretToken: true },
+    });
+    if (!worker) return apiError("workerNotFound", 404);
+    if (worker.secretToken) {
+      const a = Buffer.from(workerSecret);
+      const b = Buffer.from(worker.secretToken);
+      if (a.length !== b.length || !timingSafeEqual(a, b)) {
+        return apiError("invalidWorkerSecret", 403);
       }
     }
 
@@ -51,7 +49,7 @@ export async function POST(request: NextRequest) {
       })
       .where(eq(judgeWorkers.id, workerId));
 
-    if (result.changes === 0) {
+    if ((result.rowCount ?? 0) === 0) {
       return apiError("workerNotFound", 404);
     }
 

@@ -1,18 +1,15 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { NextRequest } from "next/server";
 
-// ---------------------------------------------------------------------------
-// Hoisted mocks
-// ---------------------------------------------------------------------------
 const {
   isJudgeAuthorizedMock,
   findFirstMock,
-  updateRunMock,
+  updateWhereMock,
   loggerMock,
 } = vi.hoisted(() => ({
   isJudgeAuthorizedMock: vi.fn(),
   findFirstMock: vi.fn(),
-  updateRunMock: vi.fn(),
+  updateWhereMock: vi.fn(),
   loggerMock: { info: vi.fn(), error: vi.fn(), warn: vi.fn(), debug: vi.fn() },
 }));
 
@@ -39,9 +36,7 @@ vi.mock("@/lib/db", () => ({
     },
     update: vi.fn(() => ({
       set: vi.fn(() => ({
-        where: vi.fn(() => ({
-          run: updateRunMock,
-        })),
+        where: updateWhereMock,
       })),
     })),
   },
@@ -58,9 +53,6 @@ vi.mock("@/lib/api/responses", async () => {
 
 import { POST } from "@/app/api/v1/judge/deregister/route";
 
-// ---------------------------------------------------------------------------
-// Helpers
-// ---------------------------------------------------------------------------
 function makeRequest(body: unknown) {
   return new NextRequest("http://localhost:3000/api/v1/judge/deregister", {
     method: "POST",
@@ -72,20 +64,14 @@ function makeRequest(body: unknown) {
   });
 }
 
-// ---------------------------------------------------------------------------
-// Setup
-// ---------------------------------------------------------------------------
 beforeEach(() => {
   vi.clearAllMocks();
 
   isJudgeAuthorizedMock.mockReturnValue(true);
   findFirstMock.mockResolvedValue({ secretToken: "secret-abc" });
-  updateRunMock.mockReturnValue({ changes: 1 });
+  updateWhereMock.mockResolvedValue({ rowCount: 1 });
 });
 
-// ---------------------------------------------------------------------------
-// Tests
-// ---------------------------------------------------------------------------
 describe("POST /api/v1/judge/deregister", () => {
   it("deregisters a worker successfully", async () => {
     const response = await POST(
@@ -133,22 +119,22 @@ describe("POST /api/v1/judge/deregister", () => {
   });
 
   it("returns 404 when update affects zero rows", async () => {
-    updateRunMock.mockReturnValue({ changes: 0 });
+    updateWhereMock.mockResolvedValue({ rowCount: 0 });
+    findFirstMock.mockResolvedValue({ secretToken: "secret-abc" });
 
     const response = await POST(
-      makeRequest({ workerId: "nonexistent" })
+      makeRequest({ workerId: "nonexistent", workerSecret: "secret-abc" })
     );
 
     expect(response.status).toBe(404);
   });
 
-  it("succeeds without workerSecret (skip secret validation)", async () => {
+  it("returns 400 without workerSecret (now mandatory)", async () => {
     const response = await POST(
       makeRequest({ workerId: "worker-1" })
     );
 
-    expect(response.status).toBe(200);
-    expect(findFirstMock).not.toHaveBeenCalled();
+    expect(response.status).toBe(400);
   });
 
   it("returns 500 on unexpected error", async () => {
