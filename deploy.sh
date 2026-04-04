@@ -130,7 +130,7 @@ info "Waiting for app to start..."
 sleep 5
 
 info "Running database migrations (drizzle-kit push)..."
-remote "docker exec judgekit-app npx drizzle-kit push --force" 2>&1 || \
+remote "docker exec judgekit-app npx drizzle-kit push" 2>&1 || \
   warn "drizzle-kit push failed — may need manual intervention"
 success "Database migrated"
 

@@ -339,7 +339,7 @@ remote "docker run --rm \
     -v ${REMOTE_DIR}:/app -w /app \
     -e DATABASE_URL='postgres://judgekit:${PG_PASS}@db:5432/judgekit' \
     node:24-alpine \
-    sh -c 'npx drizzle-kit push --force'" 2>&1 || \
+    sh -c 'npx drizzle-kit push'" 2>&1 || \
   warn "drizzle-kit push failed — may need manual intervention"
 success "Database migrated"
 

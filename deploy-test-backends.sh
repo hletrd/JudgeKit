@@ -190,7 +190,7 @@ console.log('SQLite migration: ' + files.length + ' files');
 \""
   else
     # PG/MySQL: use drizzle-kit push via npx inside container
-    remote "docker exec -e DB_DIALECT=${dialect} ${container} npx drizzle-kit push --force" 2>&1 || \
+    remote "docker exec -e DB_DIALECT=${dialect} ${container} npx drizzle-kit push" 2>&1 || \
       warn "drizzle-kit push failed for ${label} — may need manual intervention"
   fi
   success "${label} schema ready"
