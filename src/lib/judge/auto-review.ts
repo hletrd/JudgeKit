@@ -128,17 +128,34 @@ ${submission.sourceCode}
 ${submission.executionTimeMs !== null ? `Execution time: ${submission.executionTimeMs}ms` : ""}
 ${submission.memoryUsedKb !== null ? `Memory used: ${submission.memoryUsedKb}KB` : ""}`;
 
-    // Use non-streaming chat to get the full response
-    const response = await provider.chatWithTools({
-      apiKey,
-      model,
-      messages: [
-        { role: "system", content: systemPrompt },
-        { role: "user", content: userPrompt },
-      ],
-      maxTokens: config.maxTokens || 1024,
-      tools: [], // No tools needed for review
-    });
+    // Use non-streaming chat to get the full response, with a 30s timeout
+    // to prevent resource leaks if the AI provider hangs.
+    const AUTO_REVIEW_TIMEOUT_MS = 30_000;
+    const timeoutController = new AbortController();
+    const timeoutId = setTimeout(() => timeoutController.abort(), AUTO_REVIEW_TIMEOUT_MS);
+
+    let response;
+    try {
+      response = await Promise.race([
+        provider.chatWithTools({
+          apiKey,
+          model,
+          messages: [
+            { role: "system", content: systemPrompt },
+            { role: "user", content: userPrompt },
+          ],
+          maxTokens: config.maxTokens || 1024,
+          tools: [], // No tools needed for review
+        }),
+        new Promise<never>((_resolve, reject) => {
+          timeoutController.signal.addEventListener("abort", () => {
+            reject(new Error(`Auto code review timed out after ${AUTO_REVIEW_TIMEOUT_MS}ms`));
+          });
+        }),
+      ]);
+    } finally {
+      clearTimeout(timeoutId);
+    }
 
     const reviewText = response.type === "text" ? (response.text ?? "") : "";
 

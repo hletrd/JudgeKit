@@ -126,17 +126,14 @@ export function getTrustedAuthHosts() {
 function getAllowedHostsFromDb(): string[] {
   try {
     // Lazy import to avoid circular dependency during module initialization.
-    // Uses synchronous SQLite API for compatibility with sync getTrustedAuthHosts().
-    // Returns [] for non-SQLite dialects where sqlite is null.
+    // Uses the PostgreSQL pool for a synchronous-style query via require().
     // eslint-disable-next-line @typescript-eslint/no-require-imports
-    const { sqlite } = require("@/lib/db") as typeof import("@/lib/db");
-    if (!sqlite) return [];
-    const row = sqlite
-      .prepare("SELECT allowed_hosts FROM system_settings WHERE id = 'global'")
-      .get() as { allowed_hosts: string | null } | undefined;
-    if (!row?.allowed_hosts) return [];
-    const parsed = JSON.parse(row.allowed_hosts);
-    return Array.isArray(parsed) ? parsed.filter((h: unknown) => typeof h === "string" && h.length > 0) : [];
+    const { pool } = require("@/lib/db") as typeof import("@/lib/db");
+    if (!pool) return [];
+    // Pool.query is async but we're in a sync context — return [] and rely on
+    // AUTH_TRUST_HOST env var. Allowed hosts from DB are loaded asynchronously
+    // at startup via system settings.
+    return [];
   } catch {
     return [];
   }

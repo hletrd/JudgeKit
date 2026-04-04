@@ -1,6 +1,6 @@
 import { eq } from "drizzle-orm";
 import { nanoid } from "nanoid";
-import { db, sqlite, execTransaction } from "@/lib/db";
+import { db, execTransaction } from "@/lib/db";
 import { problems, testCases, tags, problemTags } from "@/lib/db/schema";
 import type { ProblemMutationInput } from "@/lib/validators/problem-management";
 import { sanitizeHtml } from "@/lib/security/sanitize-html";

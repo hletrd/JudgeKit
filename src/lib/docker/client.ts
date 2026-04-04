@@ -1,5 +1,7 @@
 import { execFile, spawn } from "child_process";
+import { dirname } from "path";
 import { promisify } from "util";
+import pLimit from "p-limit";
 
 const exec = promisify(execFile);
 
@@ -73,7 +75,7 @@ export async function inspectDockerImage(imageTag: string): Promise<Record<strin
   }
 }
 
-/** Build a Docker image from a Dockerfile in the docker/ directory */
+/** Build a Docker image from a Dockerfile. Uses the Dockerfile's parent directory as context. */
 export async function buildDockerImage(
   imageName: string,
   dockerfilePath: string,
@@ -86,8 +88,11 @@ export async function buildDockerImage(
     return { success: false, error: "Invalid dockerfile path" };
   }
 
+  // Use the Dockerfile's parent directory as the build context instead of cwd
+  const contextDir = dirname(dockerfilePath) || ".";
+
   return new Promise((resolve) => {
-    const proc = spawn("docker", ["build", "-t", imageName, "-f", dockerfilePath, "."]);
+    const proc = spawn("docker", ["build", "-t", imageName, "-f", dockerfilePath, contextDir]);
     let stdout = "";
     let stderr = "";
 
@@ -154,15 +159,24 @@ export async function removeDockerImage(imageTag: string): Promise<{ success: bo
   }
 }
 
-/** Remove a list of Docker images by tag */
+/** Remove a list of Docker images by tag, up to 3 in parallel */
 export async function removeDockerImages(
   tags: string[],
 ): Promise<{ removed: string[]; errors: string[] }> {
   const removed: string[] = [];
   const errors: string[] = [];
+  const limiter = pLimit(3);
 
-  for (const tag of tags) {
-    const result = await removeDockerImage(tag);
+  const results = await Promise.all(
+    tags.map((tag) =>
+      limiter(async () => {
+        const result = await removeDockerImage(tag);
+        return { tag, result };
+      }),
+    ),
+  );
+
+  for (const { tag, result } of results) {
     if (result.success) {
       removed.push(tag);
     } else {
