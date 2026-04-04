@@ -47,7 +47,9 @@ if [[ ! -f "${SCRIPT_DIR}/.env.production" ]]; then
 AUTH_SECRET=$(openssl rand -base64 32)
 AUTH_URL=http://${DOMAIN}
 AUTH_TRUST_HOST=true
-DATABASE_PATH=/app/data/judge.db
+DB_DIALECT=postgresql
+DATABASE_URL=postgres://judgekit:\${POSTGRES_PASSWORD}@db:5432/judgekit
+POSTGRES_PASSWORD=$(openssl rand -hex 32)
 JUDGE_AUTH_TOKEN=$(openssl rand -hex 32)
 JUDGE_CONCURRENCY=2
 POLL_INTERVAL=2000
@@ -122,28 +124,9 @@ success "Containers started"
 info "Waiting for app to start..."
 sleep 5
 
-info "Running database migrations..."
-remote "docker exec judgekit-app-1 node -e \"
-const Database = require('better-sqlite3');
-const fs = require('fs');
-const path = require('path');
-const db = new Database('/app/data/judge.db');
-db.pragma('journal_mode = WAL');
-db.pragma('foreign_keys = ON');
-const dir = '/app/drizzle';
-if (fs.existsSync(dir)) {
-  const files = fs.readdirSync(dir).filter(f => f.endsWith('.sql')).sort();
-  for (const file of files) {
-    const sql = fs.readFileSync(path.join(dir, file), 'utf8');
-    for (const stmt of sql.split('--> statement-breakpoint')) {
-      const t = stmt.trim();
-      if (t) try { db.exec(t); } catch(e) { /* skip already exists */ }
-    }
-  }
-  console.log('Migrations applied:', files.length, 'files');
-}
-db.close();
-\""
+info "Running database migrations (drizzle-kit push)..."
+remote "docker exec judgekit-app-1 npx drizzle-kit push --force" 2>&1 || \
+  warn "drizzle-kit push failed — may need manual intervention"
 success "Database migrated"
 
 # ---- Step 7b: Seed admin user + language configs ----

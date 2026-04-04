@@ -1,10 +1,8 @@
-import Database from "better-sqlite3";
-import { drizzle } from "drizzle-orm/better-sqlite3";
+import { Pool } from "pg";
+import { drizzle } from "drizzle-orm/node-postgres";
 import { eq } from "drizzle-orm";
 import { nanoid } from "nanoid";
-import path from "path";
-import fs from "fs";
-import * as schema from "../src/lib/db/schema";
+import * as schema from "../src/lib/db/schema.pg";
 import { DEFAULT_JUDGE_LANGUAGES, serializeJudgeCommand } from "../src/lib/judge/languages";
 
 type ExistingLanguageConfigRow = {
@@ -34,19 +32,14 @@ function hasManagedMetadataChanges(
 }
 
 async function syncLanguageConfigs() {
-  const dataDir = path.join(process.cwd(), "data");
-  if (!fs.existsSync(dataDir)) {
-    fs.mkdirSync(dataDir, { recursive: true });
-  }
+  const url = process.env.DATABASE_URL;
+  if (!url) throw new Error("DATABASE_URL is required");
 
-  const dbPath = path.join(dataDir, "judge.db");
-  const sqlite = new Database(dbPath);
-  sqlite.pragma("journal_mode = WAL");
-  sqlite.pragma("foreign_keys = ON");
+  const pool = new Pool({ connectionString: url });
+  const db = drizzle(pool, { schema });
 
-  const db = drizzle(sqlite, { schema });
   const existingLanguages = new Map(
-    db
+    (await db
       .select({
         language: schema.languageConfigs.language,
         displayName: schema.languageConfigs.displayName,
@@ -57,72 +50,66 @@ async function syncLanguageConfigs() {
         compileCommand: schema.languageConfigs.compileCommand,
         runCommand: schema.languageConfigs.runCommand,
       })
-      .from(schema.languageConfigs)
-      .all()
+      .from(schema.languageConfigs))
       .map((row) => [row.language, row] as const)
   );
   const insertedLanguages: string[] = [];
   const updatedLanguages: string[] = [];
 
-  const syncAll = sqlite.transaction(() => {
-    for (const language of DEFAULT_JUDGE_LANGUAGES) {
-      const compileCommand = serializeJudgeCommand(language.compileCommand);
-      const existing = existingLanguages.get(language.language);
-      const expectedValues = {
-        displayName: language.displayName,
-        standard: language.standard ?? null,
-        extension: language.extension,
-        dockerImage: language.dockerImage,
-        compiler: language.compiler ?? null,
-        compileCommand: compileCommand ?? null,
-        runCommand: language.runCommand.join(" "),
-      };
+  for (const language of DEFAULT_JUDGE_LANGUAGES) {
+    const compileCommand = serializeJudgeCommand(language.compileCommand);
+    const existing = existingLanguages.get(language.language);
+    const expectedValues = {
+      displayName: language.displayName,
+      standard: language.standard ?? null,
+      extension: language.extension,
+      dockerImage: language.dockerImage,
+      compiler: language.compiler ?? null,
+      compileCommand: compileCommand ?? null,
+      runCommand: language.runCommand.join(" "),
+    };
 
-      if (!existing) {
-        db.insert(schema.languageConfigs)
-          .values({
-            id: nanoid(),
-            language: language.language,
-            displayName: expectedValues.displayName,
-            extension: expectedValues.extension,
-            dockerImage: expectedValues.dockerImage,
-            compiler: expectedValues.compiler,
-            runCommand: expectedValues.runCommand,
-            isEnabled: true,
-            updatedAt: new Date(),
-            ...(expectedValues.standard ? { standard: expectedValues.standard } : {}),
-            ...(expectedValues.compileCommand ? { compileCommand: expectedValues.compileCommand } : {}),
-          })
-          .run();
-
-        insertedLanguages.push(language.language);
-        continue;
-      }
-
-      if (!hasManagedMetadataChanges(existing, expectedValues)) {
-        continue;
-      }
-
-      db.update(schema.languageConfigs)
-        .set({
+    if (!existing) {
+      await db.insert(schema.languageConfigs)
+        .values({
+          id: nanoid(),
+          language: language.language,
           displayName: expectedValues.displayName,
-          standard: expectedValues.standard,
           extension: expectedValues.extension,
           dockerImage: expectedValues.dockerImage,
           compiler: expectedValues.compiler,
-          compileCommand: expectedValues.compileCommand,
           runCommand: expectedValues.runCommand,
+          isEnabled: true,
           updatedAt: new Date(),
-        })
-        .where(eq(schema.languageConfigs.language, language.language))
-        .run();
+          ...(expectedValues.standard ? { standard: expectedValues.standard } : {}),
+          ...(expectedValues.compileCommand ? { compileCommand: expectedValues.compileCommand } : {}),
+        });
 
-      updatedLanguages.push(language.language);
+      insertedLanguages.push(language.language);
+      continue;
     }
-  });
-  syncAll();
 
-  sqlite.close();
+    if (!hasManagedMetadataChanges(existing, expectedValues)) {
+      continue;
+    }
+
+    await db.update(schema.languageConfigs)
+      .set({
+        displayName: expectedValues.displayName,
+        standard: expectedValues.standard,
+        extension: expectedValues.extension,
+        dockerImage: expectedValues.dockerImage,
+        compiler: expectedValues.compiler,
+        compileCommand: expectedValues.compileCommand,
+        runCommand: expectedValues.runCommand,
+        updatedAt: new Date(),
+      })
+      .where(eq(schema.languageConfigs.language, language.language));
+
+    updatedLanguages.push(language.language);
+  }
+
+  await pool.end();
 
   if (insertedLanguages.length === 0 && updatedLanguages.length === 0) {
     console.log("Language configs already synchronized.");

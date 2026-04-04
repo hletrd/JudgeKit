@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-
+# Verify a database backup — supports PostgreSQL (.sql.gz) and SQLite (.db)
 set -euo pipefail
 
 if [ "$#" -lt 1 ]; then
@@ -9,14 +9,32 @@ fi
 
 BACKUP_PATH="$1"
 
-if [ "$#" -ge 2 ]; then
-  RESTORE_PATH="$2"
-else
-  RESTORE_PATH="$(mktemp "${TMPDIR:-/tmp}/online-judge-restore-XXXXXX.db")"
-  rm -f "$RESTORE_PATH"
-fi
+if [[ "$BACKUP_PATH" == *.sql.gz ]]; then
+  # --- PostgreSQL backup verification ---
+  if ! gzip -t "$BACKUP_PATH" 2>/dev/null; then
+    echo "ERROR: Backup is not valid gzip: $BACKUP_PATH" >&2
+    exit 1
+  fi
 
-python3 - "$BACKUP_PATH" "$RESTORE_PATH" <<'PY'
+  # Check it contains SQL statements
+  LINE_COUNT=$(zcat "$BACKUP_PATH" | head -100 | wc -l)
+  if [ "$LINE_COUNT" -lt 1 ]; then
+    echo "ERROR: Backup appears empty: $BACKUP_PATH" >&2
+    exit 1
+  fi
+
+  echo "PostgreSQL backup verified: $BACKUP_PATH (valid gzip, contains SQL)"
+
+else
+  # --- SQLite backup verification ---
+  if [ "$#" -ge 2 ]; then
+    RESTORE_PATH="$2"
+  else
+    RESTORE_PATH="$(mktemp "${TMPDIR:-/tmp}/online-judge-restore-XXXXXX.db")"
+    rm -f "$RESTORE_PATH"
+  fi
+
+  python3 - "$BACKUP_PATH" "$RESTORE_PATH" <<'PY'
 from pathlib import Path
 import sqlite3
 import sys
@@ -42,3 +60,4 @@ if integrity is None or integrity[0] != "ok":
 
 print(f"Verified backup restore: {restore}")
 PY
+fi

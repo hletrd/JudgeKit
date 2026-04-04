@@ -11,7 +11,7 @@ FROM node:24-alpine AS base
 FROM base AS deps
 WORKDIR /app
 
-# Install build tools for native modules (better-sqlite3)
+# Install build tools for native modules (argon2)
 RUN apk add --no-cache python3 make g++
 
 COPY package.json package-lock.json ./
@@ -23,7 +23,7 @@ RUN npm ci
 FROM base AS builder
 WORKDIR /app
 
-# Build tools needed for better-sqlite3 rebuild during build
+# Build tools needed for native module rebuild during build
 RUN apk add --no-cache python3 make g++
 
 COPY --from=deps /app/node_modules ./node_modules
@@ -52,7 +52,7 @@ ENV NODE_ENV=production
 ENV NEXT_TELEMETRY_DISABLED=1
 ENV AUTH_TRUST_HOST=true
 
-# better-sqlite3 requires libstdc++ at runtime; Docker CLI for admin image management; vips for sharp image processing
+# libstdc++ for native modules; Docker CLI for admin image management; vips for sharp image processing
 RUN apk add --no-cache libstdc++ docker-cli vips
 
 RUN addgroup --system --gid 1001 nodejs && \
@@ -69,11 +69,6 @@ COPY --from=builder /app/public ./public
 COPY --from=builder /app/messages ./messages
 COPY --from=builder /app/drizzle ./drizzle
 
-# better-sqlite3 native module — standalone doesn't bundle native addons
-COPY --from=builder /app/node_modules/better-sqlite3 ./node_modules/better-sqlite3
-COPY --from=builder /app/node_modules/bindings ./node_modules/bindings
-COPY --from=builder /app/node_modules/file-uri-to-path ./node_modules/file-uri-to-path
-
 # PostgreSQL driver (pg) and all transitive dependencies
 COPY --from=builder /app/node_modules/pg ./node_modules/pg
 COPY --from=builder /app/node_modules/pg-connection-string ./node_modules/pg-connection-string
@@ -89,24 +84,11 @@ COPY --from=builder /app/node_modules/postgres-interval ./node_modules/postgres-
 COPY --from=builder /app/node_modules/split2 ./node_modules/split2
 COPY --from=builder /app/node_modules/xtend ./node_modules/xtend
 
-# MySQL driver (mysql2) and all transitive dependencies
-COPY --from=builder /app/node_modules/mysql2 ./node_modules/mysql2
-COPY --from=builder /app/node_modules/aws-ssl-profiles ./node_modules/aws-ssl-profiles
-COPY --from=builder /app/node_modules/denque ./node_modules/denque
-COPY --from=builder /app/node_modules/generate-function ./node_modules/generate-function
-COPY --from=builder /app/node_modules/iconv-lite ./node_modules/iconv-lite
-COPY --from=builder /app/node_modules/is-property ./node_modules/is-property
-COPY --from=builder /app/node_modules/long ./node_modules/long
-COPY --from=builder /app/node_modules/lru.min ./node_modules/lru.min
-COPY --from=builder /app/node_modules/named-placeholders ./node_modules/named-placeholders
-COPY --from=builder /app/node_modules/safer-buffer ./node_modules/safer-buffer
-COPY --from=builder /app/node_modules/sql-escaper ./node_modules/sql-escaper
-
 # sharp native module for image processing
 COPY --from=builder /app/node_modules/sharp ./node_modules/sharp
 COPY --from=builder /app/node_modules/@img ./node_modules/@img
 
-# Data directory for SQLite (mount a volume here)
+# Data directory (for uploads, logs, etc.)
 RUN mkdir -p /app/data && chown nextjs:nodejs /app/data
 
 USER nextjs

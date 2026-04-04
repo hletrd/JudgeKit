@@ -1,9 +1,9 @@
-import Database from "better-sqlite3";
-import { drizzle } from "drizzle-orm/better-sqlite3";
+import { Pool } from "pg";
+import { drizzle } from "drizzle-orm/node-postgres";
 import { eq } from "drizzle-orm";
 import { hashPassword } from "../src/lib/security/password-hash";
 import { nanoid } from "nanoid";
-import * as schema from "../src/lib/db/schema";
+import * as schema from "../src/lib/db/schema.pg";
 import { DEFAULT_JUDGE_LANGUAGES, serializeJudgeCommand } from "../src/lib/judge/languages";
 import { DEFAULT_ROLE_CAPABILITIES, DEFAULT_ROLE_LEVELS, DEFAULT_ROLE_DISPLAY_NAMES } from "../src/lib/capabilities/defaults";
 import { BUILTIN_ROLE_NAMES } from "../src/lib/capabilities/types";
@@ -153,24 +153,18 @@ Output
 ];
 
 async function seed() {
-  const dataDir = path.join(process.cwd(), "data");
-  if (!fs.existsSync(dataDir)) {
-    fs.mkdirSync(dataDir, { recursive: true });
-  }
+  const url = process.env.DATABASE_URL;
+  if (!url) throw new Error("DATABASE_URL is required");
 
-  const dbPath = path.join(dataDir, "judge.db");
-  const sqlite = new Database(dbPath);
-  sqlite.pragma("journal_mode = WAL");
-  sqlite.pragma("foreign_keys = ON");
-
-  const db = drizzle(sqlite, { schema });
+  const pool = new Pool({ connectionString: url });
+  const db = drizzle(pool, { schema });
 
   // Seed super admin
-  const existingAdmin = db
+  const [existingAdmin] = await db
     .select()
     .from(schema.users)
     .where(eq(schema.users.role, "super_admin"))
-    .get();
+    .limit(1);
 
   let adminUserId = existingAdmin?.id;
 
@@ -182,7 +176,7 @@ async function seed() {
     const passwordHash = await hashPassword(adminPassword);
     adminUserId = nanoid();
 
-    db.insert(schema.users)
+    await db.insert(schema.users)
       .values({
         id: adminUserId,
         username: adminUsername, email: "admin@example.com",
@@ -194,7 +188,7 @@ async function seed() {
         createdAt: new Date(),
         updatedAt: new Date(),
       })
-      .run();
+
 
     console.log("Seeded super admin user:");
     console.log(`  Username: ${adminUsername}`);
@@ -208,7 +202,7 @@ async function seed() {
 
   // Seed built-in roles
   const existingRoleNames = new Set(
-    db.select({ name: schema.roles.name }).from(schema.roles).all()
+    (await db.select({ name: schema.roles.name }).from(schema.roles))
       .map((row) => row.name)
   );
   const insertedRoles: string[] = [];
@@ -218,7 +212,7 @@ async function seed() {
       continue;
     }
 
-    db.insert(schema.roles)
+    await db.insert(schema.roles)
       .values({
         id: nanoid(),
         name: roleName,
@@ -230,7 +224,7 @@ async function seed() {
         createdAt: new Date(),
         updatedAt: new Date(),
       })
-      .run();
+
 
     insertedRoles.push(roleName);
   }
@@ -243,7 +237,7 @@ async function seed() {
 
   // Seed default language configs
   const existingLanguageKeys = new Set(
-    db.select({ language: schema.languageConfigs.language }).from(schema.languageConfigs).all()
+    (await db.select({ language: schema.languageConfigs.language }).from(schema.languageConfigs))
       .map((row) => row.language)
   );
   const insertedLanguages: string[] = [];
@@ -255,7 +249,7 @@ async function seed() {
 
     const compileCommand = serializeJudgeCommand(language.compileCommand);
 
-    db.insert(schema.languageConfigs)
+    await db.insert(schema.languageConfigs)
       .values({
         id: nanoid(),
         language: language.language,
@@ -269,7 +263,7 @@ async function seed() {
         ...(language.standard ? { standard: language.standard } : {}),
         ...(compileCommand ? { compileCommand } : {}),
       })
-      .run();
+
 
     insertedLanguages.push(language.language);
   }
@@ -284,11 +278,11 @@ async function seed() {
     const seededProblemTitles: string[] = [];
 
     for (const problem of sampleProblems) {
-      const existingProblem = db
+      const [existingProblem] = await db
         .select({ id: schema.problems.id })
         .from(schema.problems)
         .where(eq(schema.problems.title, problem.title))
-        .get();
+        .limit(1);
 
       if (existingProblem) {
         continue;
@@ -296,7 +290,7 @@ async function seed() {
 
       const problemId = nanoid();
 
-      db.insert(schema.problems)
+      await db.insert(schema.problems)
         .values({
           id: problemId,
           title: problem.title,
@@ -307,11 +301,11 @@ async function seed() {
           authorId: adminUserId,
           createdAt: new Date(),
           updatedAt: new Date(),
-        })
-        .run();
+        });
 
-      problem.tests.forEach((testCase, index) => {
-        db.insert(schema.testCases)
+      for (let index = 0; index < problem.tests.length; index++) {
+        const testCase = problem.tests[index];
+        await db.insert(schema.testCases)
           .values({
             id: nanoid(),
             problemId,
@@ -319,9 +313,8 @@ async function seed() {
             expectedOutput: testCase.expectedOutput,
             isVisible: testCase.isVisible,
             sortOrder: index,
-          })
-          .run();
-      });
+          });
+      }
 
       seededProblemTitles.push(problem.title);
     }
@@ -333,7 +326,7 @@ async function seed() {
     }
   }
 
-  sqlite.close();
+  await pool.end();
 }
 
 seed().catch(console.error);

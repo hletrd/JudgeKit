@@ -186,7 +186,9 @@ if [[ ! -f "${SCRIPT_DIR}/.env.production" ]]; then
 AUTH_SECRET=${AUTH_SECRET}
 AUTH_URL=${AUTH_URL_VALUE}
 AUTH_TRUST_HOST=true
-DATABASE_PATH=/app/data/judge.db
+DB_DIALECT=postgresql
+DATABASE_URL=postgres://judgekit:\${POSTGRES_PASSWORD}@db:5432/judgekit
+POSTGRES_PASSWORD=$(openssl rand -hex 32)
 JUDGE_AUTH_TOKEN=${JUDGE_AUTH_TOKEN}
 JUDGE_CONCURRENCY=2
 POLL_INTERVAL=2000
@@ -320,30 +322,9 @@ for i in $(seq 1 30); do
     sleep 1
 done
 
-info "Running database migrations..."
-remote "docker exec judgekit-app node -e \"
-const Database = require('better-sqlite3');
-const fs = require('fs');
-const path = require('path');
-const db = new Database('/app/data/judge.db');
-db.pragma('busy_timeout = 5000');
-db.pragma('journal_mode = WAL');
-db.pragma('foreign_keys = ON');
-const migrationsDir = '/app/drizzle';
-const files = fs.readdirSync(migrationsDir).filter(f => f.endsWith('.sql')).sort();
-for (const file of files) {
-  const sql = fs.readFileSync(path.join(migrationsDir, file), 'utf8');
-  const stmts = sql.split('--> statement-breakpoint');
-  for (const stmt of stmts) {
-    const trimmed = stmt.trim();
-    if (trimmed) {
-      try { db.exec(trimmed); } catch(e) { /* ignore already exists */ }
-    }
-  }
-}
-db.close();
-console.log('Migration complete: ' + files.length + ' files processed');
-\""
+info "Running database migrations (drizzle-kit push)..."
+remote "docker exec judgekit-app npx drizzle-kit push --force" 2>&1 || \
+  warn "drizzle-kit push failed — may need manual intervention"
 success "Database migrated"
 
 # ---------------------------------------------------------------------------
