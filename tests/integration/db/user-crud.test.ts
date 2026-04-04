@@ -1,34 +1,42 @@
 import { describe, it, expect, beforeEach, afterEach } from "vitest";
-import { eq, and } from "drizzle-orm";
-import { createTestDb, hasSqliteIntegrationSupport, seedUser, seedGroup, seedEnrollment, type TestDb } from "../support";
+import { eq } from "drizzle-orm";
+import {
+  createTestDb,
+  hasPostgresIntegrationSupport,
+  seedUser,
+  seedGroup,
+  seedEnrollment,
+  type TestDb,
+} from "../support";
 import { users, groups, enrollments } from "@/lib/db/schema";
 import { withUpdatedAt } from "@/lib/db/helpers";
 
-describe.skipIf(!hasSqliteIntegrationSupport)("User CRUD (integration)", () => {
+describe.skipIf(!hasPostgresIntegrationSupport)("User CRUD (integration)", () => {
   let ctx: TestDb;
 
-  beforeEach(() => {
-    ctx = createTestDb();
+  beforeEach(async () => {
+    ctx = await createTestDb();
   });
 
-  afterEach(() => {
-    ctx.cleanup();
+  afterEach(async () => {
+    await ctx.cleanup();
   });
-
-  // ---------------------------------------------------------------------------
-  // CREATE
-  // ---------------------------------------------------------------------------
 
   describe("create", () => {
-    it("inserts a user with all default fields", () => {
-      const seeded = seedUser(ctx, {
+    it("inserts a user with all default fields", async () => {
+      const seeded = await seedUser(ctx, {
         username: "alice",
         name: "Alice",
         email: "alice@example.com",
         role: "student",
       });
 
-      const row = ctx.db.select().from(users).where(eq(users.id, seeded.id)).get();
+      const row = await ctx.db
+        .select()
+        .from(users)
+        .where(eq(users.id, seeded.id))
+        .then((rows) => rows[0]);
+
       expect(row).toBeDefined();
       expect(row!.username).toBe("alice");
       expect(row!.name).toBe("Alice");
@@ -38,195 +46,203 @@ describe.skipIf(!hasSqliteIntegrationSupport)("User CRUD (integration)", () => {
       expect(row!.mustChangePassword).toBe(false);
     });
 
-    it("inserts a user with admin role", () => {
-      const seeded = seedUser(ctx, { username: "admin1", name: "Admin", role: "admin" });
-      const row = ctx.db.select().from(users).where(eq(users.id, seeded.id)).get();
+    it("inserts a user with admin role", async () => {
+      const seeded = await seedUser(ctx, { username: "admin1", name: "Admin", role: "admin" });
+      const row = await ctx.db
+        .select()
+        .from(users)
+        .where(eq(users.id, seeded.id))
+        .then((rows) => rows[0]);
       expect(row!.role).toBe("admin");
     });
 
-    it("enforces unique username constraint", () => {
-      seedUser(ctx, { username: "duplicate" });
-      expect(() => {
-        seedUser(ctx, { username: "duplicate" });
-      }).toThrow(/UNIQUE/);
+    it("enforces unique username constraint", async () => {
+      await seedUser(ctx, { username: "duplicate" });
+      await expect(seedUser(ctx, { username: "duplicate" })).rejects.toThrow();
     });
 
-    it("enforces unique email constraint", () => {
-      seedUser(ctx, { username: "u1", email: "same@example.com" });
-      expect(() => {
-        seedUser(ctx, { username: "u2", email: "same@example.com" });
-      }).toThrow(/UNIQUE/);
+    it("enforces unique email constraint", async () => {
+      await seedUser(ctx, { username: "u1", email: "same@example.com" });
+      await expect(seedUser(ctx, { username: "u2", email: "same@example.com" })).rejects.toThrow();
     });
 
-    it("allows multiple users with null email", () => {
-      seedUser(ctx, { username: "no-email-1", email: null });
-      seedUser(ctx, { username: "no-email-2", email: null });
+    it("allows multiple users with null email", async () => {
+      await seedUser(ctx, { username: "no-email-1", email: null });
+      await seedUser(ctx, { username: "no-email-2", email: null });
 
-      const rows = ctx.db.select().from(users).all();
+      const rows = await ctx.db.select().from(users);
       expect(rows).toHaveLength(2);
     });
   });
 
-  // ---------------------------------------------------------------------------
-  // READ
-  // ---------------------------------------------------------------------------
-
   describe("read", () => {
-    it("finds a user by username", () => {
-      seedUser(ctx, { username: "findme", name: "Found" });
+    it("finds a user by username", async () => {
+      await seedUser(ctx, { username: "findme", name: "Found" });
 
-      const row = ctx.db
+      const row = await ctx.db
         .select()
         .from(users)
         .where(eq(users.username, "findme"))
-        .get();
+        .then((rows) => rows[0]);
 
       expect(row).toBeDefined();
       expect(row!.name).toBe("Found");
     });
 
-    it("returns undefined for nonexistent user", () => {
-      const row = ctx.db
+    it("returns undefined for nonexistent user", async () => {
+      const row = await ctx.db
         .select()
         .from(users)
         .where(eq(users.username, "ghost"))
-        .get();
+        .then((rows) => rows[0]);
 
       expect(row).toBeUndefined();
     });
 
-    it("lists all users", () => {
-      seedUser(ctx, { username: "a" });
-      seedUser(ctx, { username: "b" });
-      seedUser(ctx, { username: "c" });
+    it("lists all users", async () => {
+      await seedUser(ctx, { username: "a" });
+      await seedUser(ctx, { username: "b" });
+      await seedUser(ctx, { username: "c" });
 
-      const rows = ctx.db.select().from(users).all();
+      const rows = await ctx.db.select().from(users);
       expect(rows).toHaveLength(3);
     });
 
-    it("uses Drizzle relational query to find user with enrollments", () => {
-      const instructor = seedUser(ctx, { username: "prof", role: "instructor" });
-      const student = seedUser(ctx, { username: "stu", role: "student" });
-      const group = seedGroup(ctx, { name: "CS101", instructorId: instructor.id });
-      seedEnrollment(ctx, { userId: student.id, groupId: group.id });
+    it("uses Drizzle relational query to find user with enrollments", async () => {
+      const instructor = await seedUser(ctx, { username: "prof", role: "instructor" });
+      const student = await seedUser(ctx, { username: "stu", role: "student" });
+      const group = await seedGroup(ctx, { name: "CS101", instructorId: instructor.id });
+      await seedEnrollment(ctx, { userId: student.id, groupId: group.id });
 
-      const result = ctx.db.query.users.findFirst({
+      const result = await ctx.db.query.users.findFirst({
         where: eq(users.id, student.id),
         with: { enrollments: true },
       });
 
       expect(result).toBeDefined();
-      expect((result as any).enrollments).toHaveLength(1);
-      expect((result as any).enrollments[0].groupId).toBe(group.id);
+      expect(result!.enrollments).toHaveLength(1);
+      expect(result!.enrollments[0].groupId).toBe(group.id);
     });
   });
 
-  // ---------------------------------------------------------------------------
-  // UPDATE
-  // ---------------------------------------------------------------------------
-
   describe("update", () => {
-    it("updates user name", () => {
-      const seeded = seedUser(ctx, { username: "original", name: "Original" });
+    it("updates user name", async () => {
+      const seeded = await seedUser(ctx, { username: "original", name: "Original" });
 
-      ctx.db
+      await ctx.db
         .update(users)
         .set(withUpdatedAt({ name: "Updated" }))
-        .where(eq(users.id, seeded.id))
-        .run();
+        .where(eq(users.id, seeded.id));
 
-      const row = ctx.db.select().from(users).where(eq(users.id, seeded.id)).get();
+      const row = await ctx.db
+        .select()
+        .from(users)
+        .where(eq(users.id, seeded.id))
+        .then((rows) => rows[0]);
+
       expect(row!.name).toBe("Updated");
-      // updatedAt should be refreshed (at least not null)
       expect(row!.updatedAt).toBeDefined();
     });
 
-    it("updates user role", () => {
-      const seeded = seedUser(ctx, { username: "promote", role: "student" });
+    it("updates user role", async () => {
+      const seeded = await seedUser(ctx, { username: "promote", role: "student" });
 
-      ctx.db
+      await ctx.db
         .update(users)
         .set(withUpdatedAt({ role: "instructor" }))
-        .where(eq(users.id, seeded.id))
-        .run();
+        .where(eq(users.id, seeded.id));
 
-      const row = ctx.db.select().from(users).where(eq(users.id, seeded.id)).get();
+      const row = await ctx.db
+        .select()
+        .from(users)
+        .where(eq(users.id, seeded.id))
+        .then((rows) => rows[0]);
+
       expect(row!.role).toBe("instructor");
     });
 
-    it("deactivates a user", () => {
-      const seeded = seedUser(ctx, { username: "active-user", isActive: true });
+    it("deactivates a user", async () => {
+      const seeded = await seedUser(ctx, { username: "active-user", isActive: true });
 
-      ctx.db
+      await ctx.db
         .update(users)
         .set(withUpdatedAt({ isActive: false }))
-        .where(eq(users.id, seeded.id))
-        .run();
+        .where(eq(users.id, seeded.id));
 
-      const row = ctx.db.select().from(users).where(eq(users.id, seeded.id)).get();
+      const row = await ctx.db
+        .select()
+        .from(users)
+        .where(eq(users.id, seeded.id))
+        .then((rows) => rows[0]);
+
       expect(row!.isActive).toBe(false);
     });
 
-    it("sets mustChangePassword flag", () => {
-      const seeded = seedUser(ctx, { username: "pwchange" });
+    it("sets mustChangePassword flag", async () => {
+      const seeded = await seedUser(ctx, { username: "pwchange" });
 
-      ctx.db
+      await ctx.db
         .update(users)
         .set(withUpdatedAt({ mustChangePassword: true }))
-        .where(eq(users.id, seeded.id))
-        .run();
+        .where(eq(users.id, seeded.id));
 
-      const row = ctx.db.select().from(users).where(eq(users.id, seeded.id)).get();
+      const row = await ctx.db
+        .select()
+        .from(users)
+        .where(eq(users.id, seeded.id))
+        .then((rows) => rows[0]);
+
       expect(row!.mustChangePassword).toBe(true);
     });
   });
 
-  // ---------------------------------------------------------------------------
-  // DELETE
-  // ---------------------------------------------------------------------------
-
   describe("delete", () => {
-    it("deletes a user by id", () => {
-      const seeded = seedUser(ctx, { username: "doomed" });
+    it("deletes a user by id", async () => {
+      const seeded = await seedUser(ctx, { username: "doomed" });
 
-      ctx.db.delete(users).where(eq(users.id, seeded.id)).run();
+      await ctx.db.delete(users).where(eq(users.id, seeded.id));
 
-      const row = ctx.db.select().from(users).where(eq(users.id, seeded.id)).get();
+      const row = await ctx.db
+        .select()
+        .from(users)
+        .where(eq(users.id, seeded.id))
+        .then((rows) => rows[0]);
+
       expect(row).toBeUndefined();
     });
 
-    it("cascades deletion to enrollments", () => {
-      const student = seedUser(ctx, { username: "enrolled-stu" });
-      const group = seedGroup(ctx, { name: "Cascade Group" });
-      seedEnrollment(ctx, { userId: student.id, groupId: group.id });
+    it("cascades deletion to enrollments", async () => {
+      const student = await seedUser(ctx, { username: "enrolled-stu" });
+      const group = await seedGroup(ctx, { name: "Cascade Group" });
+      await seedEnrollment(ctx, { userId: student.id, groupId: group.id });
 
-      // Verify enrollment exists
-      const before = ctx.db
+      const before = await ctx.db
         .select()
         .from(enrollments)
-        .where(eq(enrollments.userId, student.id))
-        .all();
+        .where(eq(enrollments.userId, student.id));
       expect(before).toHaveLength(1);
 
-      // Delete user
-      ctx.db.delete(users).where(eq(users.id, student.id)).run();
+      await ctx.db.delete(users).where(eq(users.id, student.id));
 
-      // Enrollment should be cascade-deleted
-      const after = ctx.db
+      const after = await ctx.db
         .select()
         .from(enrollments)
-        .where(eq(enrollments.userId, student.id))
-        .all();
+        .where(eq(enrollments.userId, student.id));
       expect(after).toHaveLength(0);
     });
 
-    it("sets null on group instructorId when instructor is deleted", () => {
-      const instructor = seedUser(ctx, { username: "instr", role: "instructor" });
-      const group = seedGroup(ctx, { name: "Orphan Group", instructorId: instructor.id });
+    it("sets null on group instructorId when instructor is deleted", async () => {
+      const instructor = await seedUser(ctx, { username: "instr", role: "instructor" });
+      const group = await seedGroup(ctx, { name: "Orphan Group", instructorId: instructor.id });
 
-      ctx.db.delete(users).where(eq(users.id, instructor.id)).run();
+      await ctx.db.delete(users).where(eq(users.id, instructor.id));
 
-      const row = ctx.db.select().from(groups).where(eq(groups.id, group.id)).get();
+      const row = await ctx.db
+        .select()
+        .from(groups)
+        .where(eq(groups.id, group.id))
+        .then((rows) => rows[0]);
+
       expect(row).toBeDefined();
       expect(row!.instructorId).toBeNull();
     });

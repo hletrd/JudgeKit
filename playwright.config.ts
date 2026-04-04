@@ -5,9 +5,20 @@ const localBaseUrl = "http://localhost:3110";
 const localServerUrl = localBaseUrl;
 const baseURL = process.env.PLAYWRIGHT_BASE_URL ?? localBaseUrl;
 const evidenceRoot = path.join(".sisyphus", "evidence", "playwright");
+const remoteDbAssistedSpecs = [
+  "tests/e2e/admin-audit-logs.spec.ts",
+  "tests/e2e/admin-login-logs.spec.ts",
+  "tests/e2e/assignment-board-score.spec.ts",
+  "tests/e2e/group-assignment-management.spec.ts",
+  "tests/e2e/remediation.smoke.spec.ts",
+  "tests/e2e/task12-destructive-actions.spec.ts",
+  "tests/e2e/task7-unsaved-changes-history.spec.ts",
+  "tests/e2e/timezone-settings.spec.ts",
+];
 
 export default defineConfig({
   testDir: "./tests/e2e",
+  testIgnore: process.env.PLAYWRIGHT_BASE_URL ? remoteDbAssistedSpecs : undefined,
   fullyParallel: false,
   workers: 1,
   timeout: 90_000,

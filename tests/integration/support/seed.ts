@@ -1,9 +1,9 @@
 /**
  * Seed helpers for integration tests.
  *
- * These insert real rows via Drizzle ORM into the in-memory test database.
- * Every function returns the inserted row so tests can reference IDs and
- * other generated values.
+ * These insert real rows via Drizzle ORM into the isolated PostgreSQL test
+ * schema. Every function returns the inserted row so tests can reference IDs
+ * and other generated values.
  */
 import { nanoid } from "nanoid";
 import type { TestDb } from "./test-db";
@@ -21,10 +21,6 @@ import {
 } from "@/lib/db/schema";
 import type { UserRole, Language, SubmissionStatus, ProblemVisibility } from "@/types";
 
-// ---------------------------------------------------------------------------
-// Users
-// ---------------------------------------------------------------------------
-
 export interface SeedUserOptions {
   id?: string;
   username?: string;
@@ -37,7 +33,7 @@ export interface SeedUserOptions {
   className?: string | null;
 }
 
-export function seedUser(ctx: TestDb, opts: SeedUserOptions = {}) {
+export async function seedUser(ctx: TestDb, opts: SeedUserOptions = {}) {
   const id = opts.id ?? nanoid();
   const now = new Date();
   const row = {
@@ -53,13 +49,9 @@ export function seedUser(ctx: TestDb, opts: SeedUserOptions = {}) {
     createdAt: now,
     updatedAt: now,
   };
-  ctx.db.insert(users).values(row).run();
+  await ctx.db.insert(users).values(row);
   return row;
 }
-
-// ---------------------------------------------------------------------------
-// Problems
-// ---------------------------------------------------------------------------
 
 export interface SeedProblemOptions {
   id?: string;
@@ -71,7 +63,7 @@ export interface SeedProblemOptions {
   memoryLimitMb?: number;
 }
 
-export function seedProblem(ctx: TestDb, opts: SeedProblemOptions = {}) {
+export async function seedProblem(ctx: TestDb, opts: SeedProblemOptions = {}) {
   const id = opts.id ?? nanoid();
   const now = new Date();
   const row = {
@@ -85,13 +77,9 @@ export function seedProblem(ctx: TestDb, opts: SeedProblemOptions = {}) {
     createdAt: now,
     updatedAt: now,
   };
-  ctx.db.insert(problems).values(row).run();
+  await ctx.db.insert(problems).values(row);
   return row;
 }
-
-// ---------------------------------------------------------------------------
-// Test Cases
-// ---------------------------------------------------------------------------
 
 export interface SeedTestCaseOptions {
   id?: string;
@@ -102,7 +90,7 @@ export interface SeedTestCaseOptions {
   sortOrder?: number;
 }
 
-export function seedTestCase(ctx: TestDb, opts: SeedTestCaseOptions) {
+export async function seedTestCase(ctx: TestDb, opts: SeedTestCaseOptions) {
   const id = opts.id ?? nanoid();
   const row = {
     id,
@@ -112,13 +100,9 @@ export function seedTestCase(ctx: TestDb, opts: SeedTestCaseOptions) {
     isVisible: opts.isVisible ?? false,
     sortOrder: opts.sortOrder ?? 0,
   };
-  ctx.db.insert(testCases).values(row).run();
+  await ctx.db.insert(testCases).values(row);
   return row;
 }
-
-// ---------------------------------------------------------------------------
-// Submissions
-// ---------------------------------------------------------------------------
 
 export interface SeedSubmissionOptions {
   id?: string;
@@ -130,7 +114,7 @@ export interface SeedSubmissionOptions {
   status?: SubmissionStatus;
 }
 
-export function seedSubmission(ctx: TestDb, opts: SeedSubmissionOptions) {
+export async function seedSubmission(ctx: TestDb, opts: SeedSubmissionOptions) {
   const id = opts.id ?? nanoid();
   const now = new Date();
   const row = {
@@ -143,13 +127,9 @@ export function seedSubmission(ctx: TestDb, opts: SeedSubmissionOptions) {
     status: opts.status ?? ("pending" as SubmissionStatus),
     submittedAt: now,
   };
-  ctx.db.insert(submissions).values(row).run();
+  await ctx.db.insert(submissions).values(row);
   return row;
 }
-
-// ---------------------------------------------------------------------------
-// Groups
-// ---------------------------------------------------------------------------
 
 export interface SeedGroupOptions {
   id?: string;
@@ -158,7 +138,7 @@ export interface SeedGroupOptions {
   instructorId?: string | null;
 }
 
-export function seedGroup(ctx: TestDb, opts: SeedGroupOptions = {}) {
+export async function seedGroup(ctx: TestDb, opts: SeedGroupOptions = {}) {
   const id = opts.id ?? nanoid();
   const now = new Date();
   const row = {
@@ -170,15 +150,11 @@ export function seedGroup(ctx: TestDb, opts: SeedGroupOptions = {}) {
     createdAt: now,
     updatedAt: now,
   };
-  ctx.db.insert(groups).values(row).run();
+  await ctx.db.insert(groups).values(row);
   return row;
 }
 
-// ---------------------------------------------------------------------------
-// Enrollments
-// ---------------------------------------------------------------------------
-
-export function seedEnrollment(ctx: TestDb, opts: { userId: string; groupId: string }) {
+export async function seedEnrollment(ctx: TestDb, opts: { userId: string; groupId: string }) {
   const id = nanoid();
   const row = {
     id,
@@ -186,13 +162,9 @@ export function seedEnrollment(ctx: TestDb, opts: { userId: string; groupId: str
     groupId: opts.groupId,
     enrolledAt: new Date(),
   };
-  ctx.db.insert(enrollments).values(row).run();
+  await ctx.db.insert(enrollments).values(row);
   return row;
 }
-
-// ---------------------------------------------------------------------------
-// Assignments
-// ---------------------------------------------------------------------------
 
 export interface SeedAssignmentOptions {
   id?: string;
@@ -203,7 +175,7 @@ export interface SeedAssignmentOptions {
   deadline?: Date | null;
 }
 
-export function seedAssignment(ctx: TestDb, opts: SeedAssignmentOptions) {
+export async function seedAssignment(ctx: TestDb, opts: SeedAssignmentOptions) {
   const id = opts.id ?? nanoid();
   const now = new Date();
   const row = {
@@ -216,15 +188,11 @@ export function seedAssignment(ctx: TestDb, opts: SeedAssignmentOptions) {
     createdAt: now,
     updatedAt: now,
   };
-  ctx.db.insert(assignments).values(row).run();
+  await ctx.db.insert(assignments).values(row);
   return row;
 }
 
-// ---------------------------------------------------------------------------
-// Assignment Problems
-// ---------------------------------------------------------------------------
-
-export function seedAssignmentProblem(
+export async function seedAssignmentProblem(
   ctx: TestDb,
   opts: { assignmentId: string; problemId: string; points?: number; sortOrder?: number }
 ) {
@@ -236,15 +204,11 @@ export function seedAssignmentProblem(
     points: opts.points ?? 100,
     sortOrder: opts.sortOrder ?? 0,
   };
-  ctx.db.insert(assignmentProblems).values(row).run();
+  await ctx.db.insert(assignmentProblems).values(row);
   return row;
 }
 
-// ---------------------------------------------------------------------------
-// Submission Results
-// ---------------------------------------------------------------------------
-
-export function seedSubmissionResult(
+export async function seedSubmissionResult(
   ctx: TestDb,
   opts: {
     submissionId: string;
@@ -265,15 +229,11 @@ export function seedSubmissionResult(
     executionTimeMs: opts.executionTimeMs ?? null,
     memoryUsedKb: opts.memoryUsedKb ?? null,
   };
-  ctx.db.insert(submissionResults).values(row).run();
+  await ctx.db.insert(submissionResults).values(row);
   return row;
 }
 
-// ---------------------------------------------------------------------------
-// Submission Comments
-// ---------------------------------------------------------------------------
-
-export function seedSubmissionComment(
+export async function seedSubmissionComment(
   ctx: TestDb,
   opts: { submissionId: string; authorId?: string | null; content: string }
 ) {
@@ -287,6 +247,6 @@ export function seedSubmissionComment(
     createdAt: now,
     updatedAt: now,
   };
-  ctx.db.insert(submissionComments).values(row).run();
+  await ctx.db.insert(submissionComments).values(row);
   return row;
 }

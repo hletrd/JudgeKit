@@ -2,8 +2,7 @@ import { describe, it, expect, beforeEach, afterEach } from "vitest";
 import { eq, and } from "drizzle-orm";
 import {
   createTestDb,
-  hasSqliteIntegrationSupport,
-  hasSqliteIntegrationSupport,
+  hasPostgresIntegrationSupport,
   seedUser,
   seedProblem,
   seedTestCase,
@@ -25,42 +24,37 @@ import {
 } from "@/lib/db/schema";
 import { nanoid } from "nanoid";
 
-describe.skipIf(!hasSqliteIntegrationSupport)("Submission lifecycle (integration)", () => {
+describe.skipIf(!hasPostgresIntegrationSupport)("Submission lifecycle (integration)", () => {
   let ctx: TestDb;
   let userId: string;
   let problemId: string;
 
-  beforeEach(() => {
-    ctx = createTestDb();
-    // Seed baseline entities needed for every submission test
-    const user = seedUser(ctx, { username: "submitter", role: "student" });
-    const problem = seedProblem(ctx, { title: "Sum Two Numbers" });
+  beforeEach(async () => {
+    ctx = await createTestDb();
+    const user = await seedUser(ctx, { username: "submitter", role: "student" });
+    const problem = await seedProblem(ctx, { title: "Sum Two Numbers" });
     userId = user.id;
     problemId = problem.id;
   });
 
-  afterEach(() => {
-    ctx.cleanup();
+  afterEach(async () => {
+    await ctx.cleanup();
   });
 
-  // ---------------------------------------------------------------------------
-  // Submit
-  // ---------------------------------------------------------------------------
-
   describe("submit", () => {
-    it("creates a submission in pending status", () => {
-      const sub = seedSubmission(ctx, {
+    it("creates a submission in pending status", async () => {
+      const sub = await seedSubmission(ctx, {
         userId,
         problemId,
         language: "python",
         sourceCode: "print(int(input()) + int(input()))",
       });
 
-      const row = ctx.db
+      const row = await ctx.db
         .select()
         .from(submissions)
         .where(eq(submissions.id, sub.id))
-        .get();
+        .then((rows) => rows[0]);
 
       expect(row).toBeDefined();
       expect(row!.status).toBe("pending");
@@ -71,147 +65,117 @@ describe.skipIf(!hasSqliteIntegrationSupport)("Submission lifecycle (integration
       expect(row!.submittedAt).toBeDefined();
     });
 
-    it("creates a submission linked to an assignment", () => {
-      const instructor = seedUser(ctx, { username: "prof", role: "instructor" });
-      const group = seedGroup(ctx, { instructorId: instructor.id });
-      const assignment = seedAssignment(ctx, { groupId: group.id, title: "HW1" });
-      seedAssignmentProblem(ctx, { assignmentId: assignment.id, problemId });
+    it("creates a submission linked to an assignment", async () => {
+      const instructor = await seedUser(ctx, { username: "prof", role: "instructor" });
+      const group = await seedGroup(ctx, { instructorId: instructor.id });
+      const assignment = await seedAssignment(ctx, { groupId: group.id, title: "HW1" });
+      await seedAssignmentProblem(ctx, { assignmentId: assignment.id, problemId });
 
-      const sub = seedSubmission(ctx, {
+      const sub = await seedSubmission(ctx, {
         userId,
         problemId,
         assignmentId: assignment.id,
       });
 
-      const row = ctx.db
+      const row = await ctx.db
         .select()
         .from(submissions)
         .where(eq(submissions.id, sub.id))
-        .get();
+        .then((rows) => rows[0]);
 
       expect(row!.assignmentId).toBe(assignment.id);
     });
 
-    it("allows multiple submissions for the same user and problem", () => {
-      seedSubmission(ctx, { userId, problemId, sourceCode: "attempt 1" });
-      seedSubmission(ctx, { userId, problemId, sourceCode: "attempt 2" });
-      seedSubmission(ctx, { userId, problemId, sourceCode: "attempt 3" });
+    it("allows multiple submissions for the same user and problem", async () => {
+      await seedSubmission(ctx, { userId, problemId, sourceCode: "attempt 1" });
+      await seedSubmission(ctx, { userId, problemId, sourceCode: "attempt 2" });
+      await seedSubmission(ctx, { userId, problemId, sourceCode: "attempt 3" });
 
-      const rows = ctx.db
+      const rows = await ctx.db
         .select()
         .from(submissions)
-        .where(
-          and(eq(submissions.userId, userId), eq(submissions.problemId, problemId))
-        )
-        .all();
+        .where(and(eq(submissions.userId, userId), eq(submissions.problemId, problemId)));
 
       expect(rows).toHaveLength(3);
     });
   });
 
-  // ---------------------------------------------------------------------------
-  // Claim (judge worker picks up a pending submission)
-  // ---------------------------------------------------------------------------
-
   describe("claim", () => {
-    it("transitions pending to judging with a claim token", () => {
-      const sub = seedSubmission(ctx, { userId, problemId, status: "pending" });
+    it("transitions pending to judging with a claim token", async () => {
+      const sub = await seedSubmission(ctx, { userId, problemId, status: "pending" });
       const claimToken = nanoid();
       const claimedAt = new Date();
 
-      ctx.db
+      await ctx.db
         .update(submissions)
         .set({
           status: "judging",
           judgeClaimToken: claimToken,
           judgeClaimedAt: claimedAt,
         })
-        .where(
-          and(eq(submissions.id, sub.id), eq(submissions.status, "pending"))
-        )
-        .run();
+        .where(and(eq(submissions.id, sub.id), eq(submissions.status, "pending")));
 
-      const row = ctx.db
+      const row = await ctx.db
         .select()
         .from(submissions)
         .where(eq(submissions.id, sub.id))
-        .get();
+        .then((rows) => rows[0]);
 
       expect(row!.status).toBe("judging");
       expect(row!.judgeClaimToken).toBe(claimToken);
       expect(row!.judgeClaimedAt).toBeDefined();
     });
 
-    it("does not claim an already-claimed submission (optimistic lock)", () => {
-      const sub = seedSubmission(ctx, { userId, problemId, status: "judging" });
+    it("does not claim an already-claimed submission (optimistic lock)", async () => {
+      const sub = await seedSubmission(ctx, { userId, problemId, status: "judging" });
 
-      // Attempt to claim something that is already "judging"
-      const result = ctx.db
+      const result = await ctx.db
         .update(submissions)
         .set({
           status: "judging",
           judgeClaimToken: "new-token",
           judgeClaimedAt: new Date(),
         })
-        .where(
-          and(eq(submissions.id, sub.id), eq(submissions.status, "pending"))
-        )
-        .run();
+        .where(and(eq(submissions.id, sub.id), eq(submissions.status, "pending")))
+        .returning({ id: submissions.id });
 
-      // The WHERE clause won't match, so no rows are updated
-      expect(result.changes).toBe(0);
+      expect(result).toHaveLength(0);
     });
 
-    it("claims the oldest pending submission", () => {
-      // Create three submissions; only the oldest pending one should be picked
-      const sub1 = seedSubmission(ctx, { userId, problemId, status: "pending" });
-      const sub2 = seedSubmission(ctx, { userId, problemId, status: "pending" });
-      const sub3 = seedSubmission(ctx, { userId, problemId, status: "pending" });
+    it("claims the oldest pending submission", async () => {
+      await seedSubmission(ctx, { userId, problemId, status: "pending" });
+      await seedSubmission(ctx, { userId, problemId, status: "pending" });
+      await seedSubmission(ctx, { userId, problemId, status: "pending" });
 
-      // Simulate claiming by finding the first pending (ordered by submittedAt)
-      const pending = ctx.db
+      const pending = await ctx.db
         .select()
         .from(submissions)
-        .where(eq(submissions.status, "pending"))
-        .all();
+        .where(eq(submissions.status, "pending"));
 
       expect(pending.length).toBe(3);
 
-      // Claim the first one
       const claimToken = nanoid();
-      ctx.db
+      await ctx.db
         .update(submissions)
         .set({ status: "judging", judgeClaimToken: claimToken })
-        .where(
-          and(
-            eq(submissions.id, pending[0].id),
-            eq(submissions.status, "pending")
-          )
-        )
-        .run();
+        .where(and(eq(submissions.id, pending[0].id), eq(submissions.status, "pending")));
 
-      // Now only 2 should be pending
-      const stillPending = ctx.db
+      const stillPending = await ctx.db
         .select()
         .from(submissions)
-        .where(eq(submissions.status, "pending"))
-        .all();
+        .where(eq(submissions.status, "pending"));
 
       expect(stillPending.length).toBe(2);
     });
   });
 
-  // ---------------------------------------------------------------------------
-  // Judge (record results for each test case)
-  // ---------------------------------------------------------------------------
-
   describe("judge", () => {
-    it("records per-test-case results", () => {
-      const tc1 = seedTestCase(ctx, { problemId, input: "1 2\n", expectedOutput: "3\n" });
-      const tc2 = seedTestCase(ctx, { problemId, input: "3 4\n", expectedOutput: "7\n" });
-      const sub = seedSubmission(ctx, { userId, problemId, status: "judging" });
+    it("records per-test-case results", async () => {
+      const tc1 = await seedTestCase(ctx, { problemId, input: "1 2\n", expectedOutput: "3\n" });
+      const tc2 = await seedTestCase(ctx, { problemId, input: "3 4\n", expectedOutput: "7\n" });
+      const sub = await seedSubmission(ctx, { userId, problemId, status: "judging" });
 
-      seedSubmissionResult(ctx, {
+      await seedSubmissionResult(ctx, {
         submissionId: sub.id,
         testCaseId: tc1.id,
         status: "accepted",
@@ -219,7 +183,7 @@ describe.skipIf(!hasSqliteIntegrationSupport)("Submission lifecycle (integration
         executionTimeMs: 15,
         memoryUsedKb: 8192,
       });
-      seedSubmissionResult(ctx, {
+      await seedSubmissionResult(ctx, {
         submissionId: sub.id,
         testCaseId: tc2.id,
         status: "accepted",
@@ -228,20 +192,19 @@ describe.skipIf(!hasSqliteIntegrationSupport)("Submission lifecycle (integration
         memoryUsedKb: 8100,
       });
 
-      const results = ctx.db
+      const results = await ctx.db
         .select()
         .from(submissionResults)
-        .where(eq(submissionResults.submissionId, sub.id))
-        .all();
+        .where(eq(submissionResults.submissionId, sub.id));
 
       expect(results).toHaveLength(2);
       expect(results.every((r) => r.status === "accepted")).toBe(true);
     });
 
-    it("finalizes submission as accepted with score and timing", () => {
-      const sub = seedSubmission(ctx, { userId, problemId, status: "judging" });
+    it("finalizes submission as accepted with score and timing", async () => {
+      const sub = await seedSubmission(ctx, { userId, problemId, status: "judging" });
 
-      ctx.db
+      await ctx.db
         .update(submissions)
         .set({
           status: "accepted",
@@ -250,14 +213,13 @@ describe.skipIf(!hasSqliteIntegrationSupport)("Submission lifecycle (integration
           memoryUsedKb: 16384,
           judgedAt: new Date(),
         })
-        .where(eq(submissions.id, sub.id))
-        .run();
+        .where(eq(submissions.id, sub.id));
 
-      const row = ctx.db
+      const row = await ctx.db
         .select()
         .from(submissions)
         .where(eq(submissions.id, sub.id))
-        .get();
+        .then((rows) => rows[0]);
 
       expect(row!.status).toBe("accepted");
       expect(row!.score).toBe(100);
@@ -266,10 +228,10 @@ describe.skipIf(!hasSqliteIntegrationSupport)("Submission lifecycle (integration
       expect(row!.judgedAt).toBeDefined();
     });
 
-    it("finalizes submission as wrong_answer with partial score", () => {
-      const sub = seedSubmission(ctx, { userId, problemId, status: "judging" });
+    it("finalizes submission as wrong_answer with partial score", async () => {
+      const sub = await seedSubmission(ctx, { userId, problemId, status: "judging" });
 
-      ctx.db
+      await ctx.db
         .update(submissions)
         .set({
           status: "wrong_answer",
@@ -278,21 +240,20 @@ describe.skipIf(!hasSqliteIntegrationSupport)("Submission lifecycle (integration
           memoryUsedKb: 32000,
           judgedAt: new Date(),
         })
-        .where(eq(submissions.id, sub.id))
-        .run();
+        .where(eq(submissions.id, sub.id));
 
-      const row = ctx.db
+      const row = await ctx.db
         .select()
         .from(submissions)
         .where(eq(submissions.id, sub.id))
-        .get();
+        .then((rows) => rows[0]);
 
       expect(row!.status).toBe("wrong_answer");
       expect(row!.score).toBe(50);
     });
 
-    it("records compile_error with compile output", () => {
-      const sub = seedSubmission(ctx, {
+    it("records compile_error with compile output", async () => {
+      const sub = await seedSubmission(ctx, {
         userId,
         problemId,
         language: "cpp20",
@@ -300,7 +261,7 @@ describe.skipIf(!hasSqliteIntegrationSupport)("Submission lifecycle (integration
         status: "judging",
       });
 
-      ctx.db
+      await ctx.db
         .update(submissions)
         .set({
           status: "compile_error",
@@ -308,14 +269,13 @@ describe.skipIf(!hasSqliteIntegrationSupport)("Submission lifecycle (integration
           score: 0,
           judgedAt: new Date(),
         })
-        .where(eq(submissions.id, sub.id))
-        .run();
+        .where(eq(submissions.id, sub.id));
 
-      const row = ctx.db
+      const row = await ctx.db
         .select()
         .from(submissions)
         .where(eq(submissions.id, sub.id))
-        .get();
+        .then((rows) => rows[0]);
 
       expect(row!.status).toBe("compile_error");
       expect(row!.compileOutput).toContain("expected");
@@ -323,145 +283,127 @@ describe.skipIf(!hasSqliteIntegrationSupport)("Submission lifecycle (integration
     });
   });
 
-  // ---------------------------------------------------------------------------
-  // Relational queries
-  // ---------------------------------------------------------------------------
-
   describe("relational queries", () => {
-    it("loads submission with results via Drizzle query API", () => {
-      const tc = seedTestCase(ctx, { problemId });
-      const sub = seedSubmission(ctx, { userId, problemId, status: "accepted" });
-      seedSubmissionResult(ctx, {
+    it("loads submission with results via Drizzle query API", async () => {
+      const tc = await seedTestCase(ctx, { problemId });
+      const sub = await seedSubmission(ctx, { userId, problemId, status: "accepted" });
+      await seedSubmissionResult(ctx, {
         submissionId: sub.id,
         testCaseId: tc.id,
         status: "accepted",
       });
 
-      const result = ctx.db.query.submissions.findFirst({
+      const result = await ctx.db.query.submissions.findFirst({
         where: eq(submissions.id, sub.id),
         with: { results: true },
       });
 
       expect(result).toBeDefined();
-      expect((result as any).results).toHaveLength(1);
-      expect((result as any).results[0].status).toBe("accepted");
+      expect(result!.results).toHaveLength(1);
+      expect(result!.results[0].status).toBe("accepted");
     });
 
-    it("loads submission with comments", () => {
-      const sub = seedSubmission(ctx, { userId, problemId });
-      const instructor = seedUser(ctx, { username: "commenter", role: "instructor" });
-      seedSubmissionComment(ctx, {
+    it("loads submission with comments", async () => {
+      const sub = await seedSubmission(ctx, { userId, problemId });
+      const instructor = await seedUser(ctx, { username: "commenter", role: "instructor" });
+      await seedSubmissionComment(ctx, {
         submissionId: sub.id,
         authorId: instructor.id,
         content: "Good approach, but consider edge cases.",
       });
-      seedSubmissionComment(ctx, {
+      await seedSubmissionComment(ctx, {
         submissionId: sub.id,
         authorId: instructor.id,
         content: "Fixed in next revision.",
       });
 
-      const result = ctx.db.query.submissions.findFirst({
+      const result = await ctx.db.query.submissions.findFirst({
         where: eq(submissions.id, sub.id),
         with: { comments: true },
       });
 
       expect(result).toBeDefined();
-      expect((result as any).comments).toHaveLength(2);
+      expect(result!.comments).toHaveLength(2);
     });
 
-    it("loads problem with test cases and submissions", () => {
-      seedTestCase(ctx, { problemId, input: "1\n", expectedOutput: "1\n" });
-      seedTestCase(ctx, { problemId, input: "2\n", expectedOutput: "4\n" });
-      seedSubmission(ctx, { userId, problemId });
+    it("loads problem with test cases and submissions", async () => {
+      await seedTestCase(ctx, { problemId, input: "1\n", expectedOutput: "1\n" });
+      await seedTestCase(ctx, { problemId, input: "2\n", expectedOutput: "4\n" });
+      await seedSubmission(ctx, { userId, problemId });
 
-      const result = ctx.db.query.problems.findFirst({
-        where: eq(submissions.problemId, problemId),
+      const result = await ctx.db.query.problems.findFirst({
+        where: eq(problems.id, problemId),
         with: { testCases: true, submissions: true },
       });
 
       expect(result).toBeDefined();
-      expect((result as any).testCases).toHaveLength(2);
-      expect((result as any).submissions).toHaveLength(1);
+      expect(result!.testCases).toHaveLength(2);
+      expect(result!.submissions).toHaveLength(1);
     });
   });
 
-  // ---------------------------------------------------------------------------
-  // Cascade deletes
-  // ---------------------------------------------------------------------------
-
   describe("cascade deletes", () => {
-    it("deletes submission results when submission is deleted", () => {
-      const tc = seedTestCase(ctx, { problemId });
-      const sub = seedSubmission(ctx, { userId, problemId });
-      seedSubmissionResult(ctx, {
+    it("deletes submission results when submission is deleted", async () => {
+      const tc = await seedTestCase(ctx, { problemId });
+      const sub = await seedSubmission(ctx, { userId, problemId });
+      await seedSubmissionResult(ctx, {
         submissionId: sub.id,
         testCaseId: tc.id,
         status: "accepted",
       });
 
-      // Verify result exists
-      const before = ctx.db
+      const before = await ctx.db
         .select()
         .from(submissionResults)
-        .where(eq(submissionResults.submissionId, sub.id))
-        .all();
+        .where(eq(submissionResults.submissionId, sub.id));
       expect(before).toHaveLength(1);
 
-      // Delete submission
-      ctx.db.delete(submissions).where(eq(submissions.id, sub.id)).run();
+      await ctx.db.delete(submissions).where(eq(submissions.id, sub.id));
 
-      // Results should be cascade-deleted
-      const after = ctx.db
+      const after = await ctx.db
         .select()
         .from(submissionResults)
-        .where(eq(submissionResults.submissionId, sub.id))
-        .all();
+        .where(eq(submissionResults.submissionId, sub.id));
       expect(after).toHaveLength(0);
     });
 
-    it("deletes submission comments when submission is deleted", () => {
-      const sub = seedSubmission(ctx, { userId, problemId });
-      seedSubmissionComment(ctx, { submissionId: sub.id, content: "Nice!" });
+    it("deletes submission comments when submission is deleted", async () => {
+      const sub = await seedSubmission(ctx, { userId, problemId });
+      await seedSubmissionComment(ctx, { submissionId: sub.id, content: "Nice!" });
 
-      ctx.db.delete(submissions).where(eq(submissions.id, sub.id)).run();
+      await ctx.db.delete(submissions).where(eq(submissions.id, sub.id));
 
-      const remaining = ctx.db
+      const remaining = await ctx.db
         .select()
         .from(submissionComments)
-        .where(eq(submissionComments.submissionId, sub.id))
-        .all();
+        .where(eq(submissionComments.submissionId, sub.id));
       expect(remaining).toHaveLength(0);
     });
 
-    it("deletes test cases when problem is deleted", () => {
-      seedTestCase(ctx, { problemId, input: "1\n", expectedOutput: "1\n" });
-      seedTestCase(ctx, { problemId, input: "2\n", expectedOutput: "2\n" });
+    it("deletes test cases when problem is deleted", async () => {
+      await seedTestCase(ctx, { problemId, input: "1\n", expectedOutput: "1\n" });
+      await seedTestCase(ctx, { problemId, input: "2\n", expectedOutput: "2\n" });
 
-      // Must delete submissions first (they reference the problem)
-      ctx.db.delete(submissions).where(eq(submissions.problemId, problemId)).run();
+      await ctx.db.delete(submissions).where(eq(submissions.problemId, problemId));
+      await ctx.db.delete(problems).where(eq(problems.id, problemId));
 
-      ctx.db.delete(problems).where(eq(problems.id, problemId)).run();
-
-      const remaining = ctx.db
+      const remaining = await ctx.db
         .select()
         .from(testCases)
-        .where(eq(testCases.problemId, problemId))
-        .all();
+        .where(eq(testCases.problemId, problemId));
       expect(remaining).toHaveLength(0);
     });
 
-    it("cascades user deletion to all submissions", () => {
-      seedSubmission(ctx, { userId, problemId, sourceCode: "s1" });
-      seedSubmission(ctx, { userId, problemId, sourceCode: "s2" });
+    it("cascades user deletion to all submissions", async () => {
+      await seedSubmission(ctx, { userId, problemId, sourceCode: "s1" });
+      await seedSubmission(ctx, { userId, problemId, sourceCode: "s2" });
 
-      ctx.db.delete(users).where(eq(users.id, userId)).run();
+      await ctx.db.delete(users).where(eq(users.id, userId));
 
-      const remaining = ctx.db
+      const remaining = await ctx.db
         .select()
         .from(submissions)
-        .where(eq(submissions.userId, userId))
-        .all();
+        .where(eq(submissions.userId, userId));
       expect(remaining).toHaveLength(0);
     });
   });

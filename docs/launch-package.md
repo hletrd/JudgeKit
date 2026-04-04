@@ -30,6 +30,9 @@ This launch package consists of the following companion documents:
 3. **Threat model**  
    `docs/threat-model.md`
 
+4. **Go / no-go memo**
+   `docs/go-no-go-memo.md`
+
 Together, these documents answer:
 
 - what is currently strong
@@ -37,6 +40,7 @@ Together, these documents answer:
 - what must be fixed first
 - what can launch in what order
 - what evidence is required before a high-stakes rollout
+- what the current verified launch decision is
 
 ---
 
@@ -152,6 +156,7 @@ Before any real high-stakes rollout, the following must exist and be current:
 - [ ] remediation roadmap
 - [ ] release readiness checklist
 - [ ] threat model
+- [ ] go / no-go memo
 - [ ] deployment/runback/rollback docs
 - [ ] privacy and retention policy
 - [ ] incident owner and operational runbook

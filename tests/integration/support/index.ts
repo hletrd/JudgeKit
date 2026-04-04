@@ -1,4 +1,4 @@
-export { createTestDb, type TestDb } from "./test-db";
+export { createTestDb, hasPostgresIntegrationSupport, type TestDb } from "./test-db";
 export {
   seedUser,
   seedProblem,

@@ -295,6 +295,7 @@ pub struct RegisterResponseData {
     #[serde(rename = "heartbeatIntervalMs")]
     pub heartbeat_interval_ms: u64,
     #[serde(rename = "staleClaimTimeoutMs")]
+    #[allow(dead_code)]
     pub stale_claim_timeout_ms: u64,
 }
 

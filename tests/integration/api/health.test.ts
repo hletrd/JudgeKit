@@ -1,28 +1,28 @@
 import { describe, it, expect, beforeEach, afterEach } from "vitest";
-import { createTestDb, hasSqliteIntegrationSupport, seedUser, type TestDb } from "../support";
-import { eq } from "drizzle-orm";
+import { createTestDb, hasPostgresIntegrationSupport, seedUser, type TestDb } from "../support";
+import { eq, sql } from "drizzle-orm";
 import { users } from "@/lib/db/schema";
 
-describe.skipIf(!hasSqliteIntegrationSupport)("Integration DB health check", () => {
+describe.skipIf(!hasPostgresIntegrationSupport)("Integration DB health check", () => {
   let ctx: TestDb;
 
-  beforeEach(() => {
-    ctx = createTestDb();
+  beforeEach(async () => {
+    ctx = await createTestDb();
   });
 
-  afterEach(() => {
-    ctx.cleanup();
+  afterEach(async () => {
+    await ctx.cleanup();
   });
 
-  it("creates an in-memory database with all tables", () => {
-    // Query sqlite_master to verify tables were created by migrations
-    const tables = ctx.sqlite
-      .prepare(
-        "SELECT name FROM sqlite_master WHERE type='table' AND name NOT LIKE 'sqlite_%' AND name NOT LIKE '__drizzle%' ORDER BY name"
-      )
-      .all() as { name: string }[];
+  it("creates an isolated PostgreSQL schema with all tables", async () => {
+    const result = await ctx.client.query(
+      `SELECT table_name
+       FROM information_schema.tables
+       WHERE table_schema = 'public' AND table_name NOT LIKE '__drizzle%'
+       ORDER BY table_name`,
+    );
 
-    const tableNames = tables.map((t) => t.name);
+    const tableNames = result.rows.map((t) => t.table_name as string);
 
     expect(tableNames).toContain("users");
     expect(tableNames).toContain("problems");
@@ -45,37 +45,38 @@ describe.skipIf(!hasSqliteIntegrationSupport)("Integration DB health check", () 
     expect(tableNames).toContain("problem_group_access");
   });
 
-  it("supports basic insert and select via Drizzle", () => {
-    const seeded = seedUser(ctx, { username: "healthcheck", name: "Health Check" });
+  it("supports basic insert and select via Drizzle", async () => {
+    const seeded = await seedUser(ctx, { username: "healthcheck", name: "Health Check" });
 
-    const found = ctx.db
+    const found = await ctx.db
       .select()
       .from(users)
       .where(eq(users.id, seeded.id))
-      .get();
+      .then((rows) => rows[0]);
 
     expect(found).toBeDefined();
     expect(found!.username).toBe("healthcheck");
     expect(found!.name).toBe("Health Check");
   });
 
-  it("enforces foreign keys", () => {
-    // Inserting a session with a non-existent userId should fail
-    expect(() => {
-      ctx.sqlite
-        .prepare(
-          "INSERT INTO sessions (session_token, user_id, expires) VALUES (?, ?, ?)"
-        )
-        .run("tok-1", "nonexistent-user", Date.now());
-    }).toThrow(/FOREIGN KEY/);
+  it("enforces foreign keys", async () => {
+    await expect(
+      ctx.client.query(
+        "INSERT INTO sessions (session_token, user_id, expires) VALUES ($1, $2, $3)",
+        ["tok-1", "nonexistent-user", new Date(Date.now() + 60_000)]
+      )
+    ).rejects.toThrow();
   });
 
-  it("provides isolated databases per call", () => {
-    seedUser(ctx, { username: "isolated" });
+  it("provides isolated databases per call", async () => {
+    await seedUser(ctx, { username: "isolated" });
 
-    const ctx2 = createTestDb();
-    const rows = ctx2.db.select().from(users).all();
-    expect(rows).toHaveLength(0);
-    ctx2.cleanup();
+    const ctx2 = await createTestDb();
+    try {
+      const rows = await ctx2.db.select({ count: sql<number>`count(*)` }).from(users);
+      expect(Number(rows[0]?.count ?? 0)).toBe(0);
+    } finally {
+      await ctx2.cleanup();
+    }
   });
 });

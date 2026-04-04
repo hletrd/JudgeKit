@@ -1,55 +1,90 @@
 /**
- * In-memory SQLite test database helper.
+ * PostgreSQL integration test database helper.
  *
- * Integration tests in this repo were originally built around better-sqlite3.
- * That package is optional in the current workspace, so we detect it lazily and
- * allow suites to skip cleanly when the runtime is unavailable.
+ * Each call provisions an isolated temporary database, runs the real project
+ * migrations into it, and returns a Drizzle client bound to that database.
  */
 import path from "node:path";
-import { createRequire } from "node:module";
+import { fileURLToPath } from "node:url";
+import { nanoid } from "nanoid";
+import { Pool, type PoolClient } from "pg";
+import { drizzle, type NodePgDatabase } from "drizzle-orm/node-postgres";
+import { migrate } from "drizzle-orm/node-postgres/migrator";
 import * as schema from "@/lib/db/schema";
 import * as relations from "@/lib/db/relations";
 
-const require = createRequire(import.meta.url);
+const schemaWithRelations = { ...schema, ...relations } as const;
+type AppSchema = typeof schemaWithRelations;
 
-export const hasSqliteIntegrationSupport = (() => {
-  try {
-    require.resolve("better-sqlite3");
-    require.resolve("drizzle-orm/better-sqlite3");
-    require.resolve("drizzle-orm/better-sqlite3/migrator");
-    return true;
-  } catch {
-    return false;
-  }
-})();
+function getIntegrationDatabaseUrl() {
+  return (
+    process.env.INTEGRATION_DATABASE_URL ??
+    process.env.TEST_DATABASE_URL ??
+    process.env.DATABASE_URL ??
+    ""
+  ).trim();
+}
+
+export const hasPostgresIntegrationSupport = getIntegrationDatabaseUrl().length > 0;
 
 export type TestDb = {
-  db: any;
-  sqlite: any;
-  cleanup: () => void;
+  db: NodePgDatabase<AppSchema>;
+  client: PoolClient;
+  pool: Pool;
+  databaseName: string;
+  cleanup: () => Promise<void>;
 };
 
-export function createTestDb(): TestDb {
-  if (!hasSqliteIntegrationSupport) {
-    throw new Error("better-sqlite3 integration support is not installed");
+export async function createTestDb(): Promise<TestDb> {
+  const connectionString = getIntegrationDatabaseUrl();
+  if (!connectionString) {
+    throw new Error("DATABASE_URL is required for PostgreSQL integration tests");
   }
 
-  const Database = require("better-sqlite3");
-  const { drizzle } = require("drizzle-orm/better-sqlite3");
-  const { migrate } = require("drizzle-orm/better-sqlite3/migrator");
+  const databaseName = `itest_${nanoid().replace(/[^a-zA-Z0-9_]/g, "_")}`;
+  const adminPool = new Pool({ connectionString, max: 1 });
+  const adminClient = await adminPool.connect();
+  await adminClient.query(`CREATE DATABASE "${databaseName}"`);
+  adminClient.release();
+  await adminPool.end();
 
-  const sqlite = new Database(":memory:");
-  sqlite.pragma("journal_mode = WAL");
-  sqlite.pragma("foreign_keys = ON");
+  const testUrl = new URL(connectionString);
+  testUrl.pathname = `/${databaseName}`;
 
-  const db = drizzle(sqlite, { schema: { ...schema, ...relations } });
-
-  const migrationsFolder = path.resolve(__dirname, "../../../drizzle/migrations");
-  migrate(db, { migrationsFolder });
+  const pool = new Pool({ connectionString: testUrl.toString(), max: 1 });
+  const client = await pool.connect();
+  const db = drizzle(client, { schema: schemaWithRelations });
+  const migrationsFolder = path.resolve(
+    path.dirname(fileURLToPath(import.meta.url)),
+    "../../../drizzle/pg"
+  );
+  await migrate(db as any, { migrationsFolder });
 
   return {
     db,
-    sqlite,
-    cleanup: () => sqlite.close(),
+    client,
+    pool,
+    databaseName,
+    cleanup: async () => {
+      const cleanupPool = new Pool({ connectionString, max: 1 });
+      try {
+        client.release();
+        await pool.end();
+        const cleanupClient = await cleanupPool.connect();
+        try {
+          await cleanupClient.query(
+            `SELECT pg_terminate_backend(pid)
+             FROM pg_stat_activity
+             WHERE datname = $1 AND pid <> pg_backend_pid()`,
+            [databaseName]
+          );
+          await cleanupClient.query(`DROP DATABASE IF EXISTS "${databaseName}"`);
+        } finally {
+          cleanupClient.release();
+        }
+      } finally {
+        await cleanupPool.end();
+      }
+    },
   };
 }
