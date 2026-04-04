@@ -66,7 +66,7 @@ export default async function DashboardLayout({ children }: { children: React.Re
             <SidebarTrigger />
             <div className="min-w-0 flex-1">
               <span className="block truncate text-sm font-semibold">{settings.siteTitle}</span>
-              <span className="text-[10px] uppercase tracking-wide text-muted-foreground">
+              <span className="sr-only">
                 {t(`platformModes.${settings.platformMode}`)}
               </span>
             </div>

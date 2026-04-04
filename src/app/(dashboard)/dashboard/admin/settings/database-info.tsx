@@ -33,7 +33,7 @@ export function DatabaseInfo({ dbInfo }: { dbInfo: DbInfo }) {
       {rows.map((row) => (
         <div key={row.label} className="flex justify-between py-2 border-b last:border-0">
           <span className="text-sm text-muted-foreground">{row.label}</span>
-          <span className="text-sm font-mono">{row.value}</span>
+          <span className="text-sm font-mono truncate max-w-[60%] text-right" title={row.value}>{row.value}</span>
         </div>
       ))}
     </div>
