@@ -94,6 +94,7 @@
     "contests": "Contests",
     "roleManagement": "Role Management",
     "languages": "Languages",
+    "tagManagement": "Tag Management",
     "judgeWorkers": "Judge Workers",
     "compiler": "Compiler",
     "apiKeys": "API Keys"

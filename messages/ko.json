@@ -94,6 +94,7 @@
     "contests": "대회",
     "roleManagement": "역할 관리",
     "languages": "언어 관리",
+    "tagManagement": "태그 관리",
     "judgeWorkers": "채점 워커",
     "compiler": "컴파일러",
     "apiKeys": "API 키"
