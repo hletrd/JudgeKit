@@ -15,19 +15,19 @@
 # Environment:
 #   SSH_PASSWORD    — SSH password for the remote host (password auth)
 #   SSH_KEY         — Path to SSH private key (key auth, e.g. key.pem)
-#   REMOTE_HOST     — Target host IP or hostname (required, see ENV.md)
-#   REMOTE_USER     — Target SSH user (required, see ENV.md)
-#   DOMAIN          — Target domain name (required, see ENV.md)
+#   REMOTE_HOST     — Target host IP or hostname (required, see .env)
+#   REMOTE_USER     — Target SSH user (required, see .env)
+#   DOMAIN          — Target domain name (required, see .env)
 # =============================================================================
 set -euo pipefail
 
 # ---------------------------------------------------------------------------
 # Configuration
 # ---------------------------------------------------------------------------
-REMOTE_HOST="${REMOTE_HOST:?REMOTE_HOST is required (see ENV.md)}"
-REMOTE_USER="${REMOTE_USER:?REMOTE_USER is required (see ENV.md)}"
+REMOTE_HOST="${REMOTE_HOST:?REMOTE_HOST is required (see .env)}"
+REMOTE_USER="${REMOTE_USER:?REMOTE_USER is required (see .env)}"
 REMOTE_DIR="/home/${REMOTE_USER}/judgekit"
-DOMAIN="${DOMAIN:?DOMAIN is required (see ENV.md)}"
+DOMAIN="${DOMAIN:?DOMAIN is required (see .env)}"
 APP_PORT=3100
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 

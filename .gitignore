@@ -47,8 +47,7 @@ yarn-error.log*
 *.tsbuildinfo
 next-env.d.ts
 
-# deployment secrets
-ENV.md
+# deployment secrets (now in .env, covered by .env rule above)
 
 # database
 data/*.db

@@ -5,7 +5,7 @@
  * leaderboard, join page, and analytics — all through the browser UI.
  *
  * Run against a live server:
- *   PLAYWRIGHT_BASE_URL=<from ENV.md> E2E_USERNAME=<from ENV.md> E2E_PASSWORD='<from ENV.md>' npx playwright test tests/e2e/contest-system.spec.ts
+ *   PLAYWRIGHT_BASE_URL=<from .env> E2E_USERNAME=<from .env> E2E_PASSWORD='<from .env>' npx playwright test tests/e2e/contest-system.spec.ts
  */
 
 import { test, expect } from "@playwright/test";

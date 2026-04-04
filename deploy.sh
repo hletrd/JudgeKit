@@ -3,13 +3,13 @@ set -euo pipefail
 
 # ============================================================
 # JudgeKit All-in-One Deployment Script
-# See ENV.md for deployment targets and credentials.
+# See .env for deployment targets and credentials.
 # ============================================================
 
-REMOTE_HOST="${REMOTE_HOST:?REMOTE_HOST is required (see ENV.md)}"
-REMOTE_USER="${REMOTE_USER:?REMOTE_USER is required (see ENV.md)}"
+REMOTE_HOST="${REMOTE_HOST:?REMOTE_HOST is required (see .env)}"
+REMOTE_USER="${REMOTE_USER:?REMOTE_USER is required (see .env)}"
 REMOTE_DIR="/home/${REMOTE_USER}/judgekit"
-DOMAIN="${DOMAIN:?DOMAIN is required (see ENV.md)}"
+DOMAIN="${DOMAIN:?DOMAIN is required (see .env)}"
 APP_PORT=3100
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 

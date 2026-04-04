@@ -396,7 +396,7 @@ For every feature, go through this checklist:
 
 - Use factories from `tests/unit/support/factories.ts` for test data
 - Mock external dependencies (DB, auth) in unit/API tests using `vi.mock()`
-- E2E tests run against the test server (see `ENV.md` for target), never production
+- E2E tests run against the test server (see `.env` for target), never production
 - Name test files as `<module>.test.ts` (unit/API) or `<feature>.spec.ts` (E2E)
 - Group related assertions in `describe` blocks
 - Test both success and error paths
@@ -404,11 +404,11 @@ For every feature, go through this checklist:
 
 ### E2E Testing Rules (MANDATORY)
 
-**Target:** Always run E2E tests against the test server (see `ENV.md` for host and credentials). Never against production.
+**Target:** Always run E2E tests against the test server (see `.env` for host and credentials). Never against production.
 
 ```bash
-# Standard E2E run (read ENV.md for host, credentials)
-PLAYWRIGHT_BASE_URL=<from ENV.md> E2E_USERNAME=<from ENV.md> E2E_PASSWORD='<from ENV.md>' \
+# Standard E2E run (read .env for host, credentials)
+PLAYWRIGHT_BASE_URL=<from .env> E2E_USERNAME=<from .env> E2E_PASSWORD='<from .env>' \
   npx playwright test tests/e2e/
 ```
 
@@ -431,24 +431,25 @@ PLAYWRIGHT_BASE_URL=<from ENV.md> E2E_USERNAME=<from ENV.md> E2E_PASSWORD='<from
 - `cargo test` (in judge-worker-rs/) — all Rust tests pass
 - E2E tests pass against test server after deploy
 
-## Environment Variables (`ENV.md`)
+## Environment Variables (`.env`)
 
-All deployment credentials, SSH access, target hosts, and runtime secrets are documented in **`ENV.md`** (gitignored, never committed). Before any deployment, SSH, or E2E testing task, **always read `ENV.md` first** to get the correct values.
+All deployment credentials, SSH access, target hosts, and runtime secrets are documented in **`.env`** (gitignored, never committed). Before any deployment, SSH, or E2E testing task, **always read `.env` first** to get the correct values. See `.env.example` for the full list of available variables with placeholder values.
 
-`ENV.md` contains:
+`.env` contains:
+- **App runtime config** — auth secrets, database, rate limiting, judge worker settings
 - **Deployment targets** — host IPs, domains, SSH users/passwords/keys, remote directories, app ports
 - **Web admin credentials** — username/password for each environment
-- **E2E test credentials** — `PLAYWRIGHT_BASE_URL`, `E2E_USERNAME`, `E2E_PASSWORD`
-- **SSH access commands** — ready-to-use `sshpass`/`ssh` commands for each target
-- **Docker & Nginx** — container management commands, nginx config paths
+- **E2E test credentials** — `E2E_TEST_BASE_URL`, `E2E_TEST_USERNAME`, `E2E_TEST_PASSWORD`
+- **SSH access commands** — ready-to-use `sshpass`/`ssh` commands for each target (in comments)
+- **Docker & Nginx** — container management commands, nginx config paths (in comments)
 
-**CRITICAL**: Always read `ENV.md` for deployment targets, SSH credentials (hosts, users, passwords, keys), web admin logins, E2E test credentials, and remote directory paths. Never hardcode credentials in code or agent instructions. `ENV.md` contains ready-to-use SSH commands, Docker Compose commands, and E2E test invocations for each target environment.
+**CRITICAL**: Always read `.env` for deployment targets, SSH credentials (hosts, users, passwords, keys), web admin logins, E2E test credentials, and remote directory paths. Never hardcode credentials in code or agent instructions. `.env` contains ready-to-use SSH commands, Docker Compose commands, and E2E test invocations for each target environment (in comments).
 
 ## Deployment
 
-**RULE: Always read `ENV.md` before any deployment, SSH, or E2E testing task.** Never guess credentials or host addresses — they are all documented in `ENV.md`. Failing to read it first leads to failed deploys and wasted time.
+**RULE: Always read `.env` before any deployment, SSH, or E2E testing task.** Never guess credentials or host addresses — they are all documented in `.env`. Failing to read it first leads to failed deploys and wasted time.
 
-The primary deploy script is `deploy-docker.sh`. Pass environment variables from `ENV.md`:
+The primary deploy script is `deploy-docker.sh`. Pass environment variables from `.env`:
 - `SSH_PASSWORD` — for password-based SSH auth (Target 1)
 - `SSH_KEY` — for key-based SSH auth (Target 2)
 - `REMOTE_HOST`, `REMOTE_USER`, `DOMAIN` — target overrides
@@ -462,7 +463,7 @@ The primary deploy script is `deploy-docker.sh`. Pass environment variables from
 
 **Seccomp profile:** Uses a deny-list approach — default action is `SCMP_ACT_ALLOW`, with specific dangerous syscalls explicitly blocked. This is more permissive during container init (avoids Docker 28+/modern-kernel init errors) while still restricting the attack surface during code execution.
 
-Always test against the test server documented in `ENV.md`, never against production. Read `ENV.md` for all target hosts and domains.
+Always test against the test server documented in `.env`, never against production. Read `.env` for all target hosts and domains.
 
 ## Select / Dropdown Components (CRITICAL)
 
