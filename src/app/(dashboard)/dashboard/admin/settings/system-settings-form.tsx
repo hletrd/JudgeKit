@@ -10,17 +10,28 @@ import { Checkbox } from "@/components/ui/checkbox";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
+import { DEFAULT_PLATFORM_MODE, PLATFORM_MODE_VALUES } from "@/lib/platform-mode";
+import type { PlatformMode } from "@/types";
 
 type SystemSettingsFormProps = {
   initialSiteTitle: string;
   initialSiteDescription: string;
   initialTimeZone: string;
+  initialPlatformMode: PlatformMode;
   defaultSiteTitle: string;
   defaultSiteDescription: string;
   defaultTimeZone: string;
   currentSiteTitle: string;
   currentSiteDescription: string;
   currentTimeZone: string;
+  currentPlatformMode: PlatformMode;
   initialAiAssistantEnabled: boolean;
 };
 
@@ -28,12 +39,14 @@ export function SystemSettingsForm({
   initialSiteTitle,
   initialSiteDescription,
   initialTimeZone,
+  initialPlatformMode,
   defaultSiteTitle,
   defaultSiteDescription,
   defaultTimeZone,
   currentSiteTitle,
   currentSiteDescription,
   currentTimeZone,
+  currentPlatformMode,
   initialAiAssistantEnabled,
 }: SystemSettingsFormProps) {
   const router = useRouter();
@@ -42,6 +55,7 @@ export function SystemSettingsForm({
   const [siteTitle, setSiteTitle] = useState(initialSiteTitle);
   const [siteDescription, setSiteDescription] = useState(initialSiteDescription);
   const [timeZone, setTimeZone] = useState(initialTimeZone);
+  const [platformMode, setPlatformMode] = useState<PlatformMode>(initialPlatformMode);
   const [aiAssistantEnabled, setAiAssistantEnabled] = useState(initialAiAssistantEnabled);
   const [isLoading, setIsLoading] = useState(false);
   const ianaTimeZones = useMemo(() => {
@@ -63,7 +77,7 @@ export function SystemSettingsForm({
     setIsLoading(true);
 
     try {
-      const result = await updateSystemSettings({ siteTitle, siteDescription, timeZone, aiAssistantEnabled });
+      const result = await updateSystemSettings({ siteTitle, siteDescription, timeZone, platformMode, aiAssistantEnabled });
 
       if (!result.success) {
         toast.error(t(result.error ?? "updateError"));
@@ -127,6 +141,28 @@ export function SystemSettingsForm({
         <p className="text-xs text-muted-foreground">
           {t("timeZoneHint", { current: currentTimeZone })}
         </p>
+      </div>
+
+      <div className="space-y-2">
+        <Label htmlFor="platform-mode">{t("platformMode")}</Label>
+        <Select value={platformMode} onValueChange={(value) => setPlatformMode(value as PlatformMode)}>
+          <SelectTrigger id="platform-mode">
+            <SelectValue>{t(`platformModeOptions.${platformMode}`)}</SelectValue>
+          </SelectTrigger>
+          <SelectContent>
+            {PLATFORM_MODE_VALUES.map((mode) => (
+              <SelectItem key={mode} value={mode} label={t(`platformModeOptions.${mode}`)}>
+                {t(`platformModeOptions.${mode}`)}
+              </SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
+        <p className="text-xs text-muted-foreground">
+          {t("platformModeHint", {
+            current: t(`platformModeOptions.${currentPlatformMode ?? DEFAULT_PLATFORM_MODE}`),
+          })}
+        </p>
+        <p className="text-xs text-muted-foreground">{t(`platformModeDescriptions.${platformMode}`)}</p>
       </div>
 
       <div className="space-y-2">
