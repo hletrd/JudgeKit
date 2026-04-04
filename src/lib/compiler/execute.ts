@@ -2,9 +2,10 @@ import { spawn, execFile } from "child_process";
 import { promisify } from "util";
 import { chmod, mkdir, writeFile, rm } from "fs/promises";
 import { join } from "path";
-import { tmpdir } from "os";
+import { tmpdir, cpus } from "os";
 import { randomUUID } from "crypto";
 import { existsSync } from "fs";
+import pLimit from "p-limit";
 import { getConfiguredSettings } from "@/lib/system-settings-config";
 import { logger } from "@/lib/logger";
 
@@ -19,6 +20,19 @@ const SECCOMP_PROFILE_PATH = join(
   process.cwd(),
   "docker/seccomp-profile.json"
 );
+
+/**
+ * Module-level concurrency limiter for Docker container spawning.
+ * Caps parallel containers to (CPU count - 1), minimum 1, to prevent
+ * resource exhaustion when many judge runs are claimed simultaneously.
+ */
+const executionLimiter = pLimit(Math.max(cpus().length - 1, 1));
+
+/**
+ * Maximum age (ms) for a running compiler container before it is
+ * considered stuck and eligible for orphan cleanup.
+ */
+const MAX_CONTAINER_AGE_MS = 10 * 60 * 1000; // 10 minutes
 
 /**
  * Base directory for compiler workspaces.
@@ -192,6 +206,7 @@ function stopContainer(containerName: string): void {
 
 /**
  * Execute a command in a Docker container with resource limits and sandboxing.
+ * Gated by executionLimiter to cap concurrent container count.
  */
 async function runDocker(opts: {
   image: string;
@@ -253,111 +268,115 @@ async function runDocker(opts: {
 
   logger.info({ container: containerName, command: args.join(" ") }, "[compiler] Docker run");
 
-  let child: ReturnType<typeof spawn> | null = null;
-  let killed = false;
-  let stdout = "";
-  let stderr = "";
-  let cleaned = false;
-  const start = performance.now();
+  // Gate on the concurrency limiter so we never exceed CPU-count containers
+  return executionLimiter(() => {
+    let child: ReturnType<typeof spawn> | null = null;
+    let killed = false;
+    let stdout = "";
+    let stderr = "";
+    let cleaned = false;
+    const start = performance.now();
 
-  // Unified cleanup function to prevent duplicate cleanup
-  const cleanup = async (remove = true): Promise<void> => {
-    if (cleaned) return;
-    cleaned = true;
-    if (remove) {
-      // Fire and forget - run in background
-      cleanupContainer(containerName).catch(() => {});
-    }
-  };
-
-  // Ensure container is cleaned up even if spawn fails
-  try {
-    child = spawn("docker", args, {
-      stdio: ["pipe", "pipe", "pipe"],
-    });
-  } catch (spawnError) {
-    // spawn() rarely throws (it's the parent process creation that typically succeeds)
-    // but if it does, the container may still exist
-    await cleanup();
-    throw spawnError;
-  }
-
-  // Handle stdin
-  if (opts.stdin !== null && child.stdin) {
-    child.stdin.write(opts.stdin);
-    child.stdin.end();
-  } else if (child.stdin) {
-    child.stdin.end();
-  }
-
-  // Track stream destruction to prevent unbounded growth
-  let stdoutClosed = false;
-  let stderrClosed = false;
-
-  child.stdout?.on("data", (chunk: Buffer) => {
-    if (stdoutClosed || stdout.length >= MAX_OUTPUT_BYTES) {
-      stdoutClosed = true;
-      child.stdout?.destroy();
-      return;
-    }
-    const remaining = MAX_OUTPUT_BYTES - stdout.length;
-    stdout += chunk.toString("utf8", 0, remaining);
-  });
-
-  child.stderr?.on("data", (chunk: Buffer) => {
-    if (stderrClosed || stderr.length >= MAX_OUTPUT_BYTES) {
-      stderrClosed = true;
-      child.stderr?.destroy();
-      return;
-    }
-    const remaining = MAX_OUTPUT_BYTES - stderr.length;
-    stderr += chunk.toString("utf8", 0, remaining);
-  });
-
-  // Set up timeout
-  const timer = setTimeout(() => {
-    killed = true;
-    if (child?.kill("SIGKILL")) {
-      stopContainer(containerName);
-    }
-  }, opts.timeoutMs);
-  timer.unref();
-
-  return new Promise((resolve) => {
-    const finish = async (wallDurationMs: number) => {
-      clearTimeout(timer);
-      await cleanup(true);
-
-      // Inspect container for OOM and accurate timing
-      const state = await inspectContainerState(containerName);
-
-      resolve({
-        stdout: stdout.slice(0, MAX_OUTPUT_BYTES),
-        stderr: stderr.slice(0, MAX_OUTPUT_BYTES),
-        exitCode: child?.exitCode ?? null,
-        timedOut: killed,
-        oomKilled: state.oomKilled,
-        durationMs: state.durationMs ?? wallDurationMs,
-      });
+    // Unified cleanup function to prevent duplicate cleanup
+    const cleanup = async (remove = true): Promise<void> => {
+      if (cleaned) return;
+      cleaned = true;
+      if (remove) {
+        // Fire and forget - run in background
+        cleanupContainer(containerName).catch(() => {});
+      }
     };
 
-    child?.on("close", async (code) => {
-      const durationMs = Math.round(performance.now() - start);
-      await finish(durationMs);
+    // Ensure container is cleaned up even if spawn fails
+    try {
+      child = spawn("docker", args, {
+        stdio: ["pipe", "pipe", "pipe"],
+      });
+    } catch (spawnError) {
+      // spawn() rarely throws (it's the parent process creation that typically succeeds)
+      // but if it does, the container may still exist
+      cleanup().catch(() => {});
+      throw spawnError;
+    }
+
+    // Handle stdin
+    if (opts.stdin !== null && child.stdin) {
+      child.stdin.write(opts.stdin);
+      child.stdin.end();
+    } else if (child.stdin) {
+      child.stdin.end();
+    }
+
+    // Track stream destruction to prevent unbounded growth
+    let stdoutClosed = false;
+    let stderrClosed = false;
+
+    child.stdout?.on("data", (chunk: Buffer) => {
+      if (stdoutClosed || stdout.length >= MAX_OUTPUT_BYTES) {
+        stdoutClosed = true;
+        child.stdout?.destroy();
+        return;
+      }
+      const remaining = MAX_OUTPUT_BYTES - stdout.length;
+      stdout += chunk.toString("utf8", 0, remaining);
     });
 
-    child?.on("error", async (err) => {
-      clearTimeout(timer);
-      await cleanup(true);
-      const durationMs = Math.round(performance.now() - start);
+    child.stderr?.on("data", (chunk: Buffer) => {
+      if (stderrClosed || stderr.length >= MAX_OUTPUT_BYTES) {
+        stderrClosed = true;
+        child.stderr?.destroy();
+        return;
+      }
+      const remaining = MAX_OUTPUT_BYTES - stderr.length;
+      stderr += chunk.toString("utf8", 0, remaining);
+    });
 
-      resolve({
-        stdout: "",
-        stderr: err.message,
-        exitCode: null,
-        timedOut: false,
-        oomKilled: false,
-        durationMs,
+    // Set up timeout
+    const timer = setTimeout(() => {
+      killed = true;
+      if (child?.kill("SIGKILL")) {
+        stopContainer(containerName);
+      }
+    }, opts.timeoutMs);
+    timer.unref();
+
+    return new Promise<DockerRunResult>((resolve) => {
+      const finish = async (wallDurationMs: number) => {
+        clearTimeout(timer);
+
+        // Inspect container BEFORE removal so OOM/timing metadata is still available
+        const state = await inspectContainerState(containerName);
+
+        await cleanup(true);
+
+        resolve({
+          stdout: stdout.slice(0, MAX_OUTPUT_BYTES),
+          stderr: stderr.slice(0, MAX_OUTPUT_BYTES),
+          exitCode: child?.exitCode ?? null,
+          timedOut: killed,
+          oomKilled: state.oomKilled,
+          durationMs: state.durationMs ?? wallDurationMs,
+        });
+      };
+
+      child?.on("close", async (code) => {
+        const durationMs = Math.round(performance.now() - start);
+        await finish(durationMs);
+      });
+
+      child?.on("error", async (err) => {
+        clearTimeout(timer);
+        await cleanup(true);
+        const durationMs = Math.round(performance.now() - start);
+
+        resolve({
+          stdout: "",
+          stderr: err.message,
+          exitCode: null,
+          timedOut: false,
+          oomKilled: false,
+          durationMs,
+        });
       });
     });
   });
@@ -520,31 +539,66 @@ export async function executeCompilerRun(
 
 /**
  * Clean up orphaned compiler containers.
+ * Handles exited, created, dead, and stale running containers.
  * Should be called periodically or on startup.
  */
 export async function cleanupOrphanedContainers(): Promise<number> {
   try {
+    // Query all compiler containers regardless of status
     const { stdout } = await exec("docker", [
       "ps",
       "-a",
       "--filter",
       "name=compiler-",
-      "--filter",
-      "status=exited",
       "--format",
-      "{{.Names}}",
+      "{{.Names}}\t{{.Status}}\t{{.CreatedAt}}",
     ], { timeout: 10_000 });
 
-    const containers = stdout.trim().split("\n").filter(Boolean);
+    const lines = stdout.trim().split("\n").filter(Boolean);
     let cleaned = 0;
 
-    for (const container of containers) {
-      try {
-        await exec("docker", ["rm", "-f", container], { timeout: 5_000 });
-        cleaned++;
-        logger.info({ container }, "[compiler] Cleaned up orphaned container");
-      } catch (error) {
-        logger.warn({ error, container }, "[compiler] Failed to remove orphaned container");
+    for (const line of lines) {
+      const [container, status] = line.split("\t");
+      if (!container || !status) continue;
+
+      const statusLower = status.toLowerCase();
+
+      // Always clean: exited, created, dead containers
+      const shouldClean =
+        statusLower.startsWith("exited") ||
+        statusLower.startsWith("created") ||
+        statusLower.startsWith("dead");
+
+      // For running containers, check if they've been running too long
+      let staleRunning = false;
+      if (!shouldClean && statusLower.startsWith("up")) {
+        try {
+          const { stdout: inspectOut } = await exec("docker", [
+            "inspect",
+            "--format",
+            "{{.Created}}",
+            container,
+          ], { timeout: 5_000 });
+          const createdAt = new Date(inspectOut.trim()).getTime();
+          if (!Number.isNaN(createdAt) && Date.now() - createdAt > MAX_CONTAINER_AGE_MS) {
+            staleRunning = true;
+          }
+        } catch {
+          // If inspect fails, skip this container
+        }
+      }
+
+      if (shouldClean || staleRunning) {
+        try {
+          await exec("docker", ["rm", "-f", container], { timeout: 5_000 });
+          cleaned++;
+          logger.info(
+            { container, status: staleRunning ? "stale-running" : statusLower },
+            "[compiler] Cleaned up orphaned container",
+          );
+        } catch (error) {
+          logger.warn({ error, container }, "[compiler] Failed to remove orphaned container");
+        }
       }
     }
 
