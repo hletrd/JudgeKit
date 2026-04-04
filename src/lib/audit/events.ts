@@ -80,6 +80,48 @@ export async function buildServerActionAuditContext(
   };
 }
 
+// --- Write buffer for batched audit inserts ---
+const FLUSH_INTERVAL_MS = 5_000;
+const FLUSH_SIZE_THRESHOLD = 50;
+
+type AuditEventRow = typeof auditEvents.$inferInsert;
+let _auditBuffer: AuditEventRow[] = [];
+let _flushTimer: ReturnType<typeof setInterval> | null = null;
+
+function ensureFlushTimer() {
+  if (_flushTimer) return;
+  _flushTimer = setInterval(flushAuditBuffer, FLUSH_INTERVAL_MS);
+  // Allow the process to exit even if the timer is still active
+  if (_flushTimer && typeof _flushTimer === "object" && "unref" in _flushTimer) {
+    _flushTimer.unref();
+  }
+}
+
+/**
+ * Flush all buffered audit events to the database in a single batch insert.
+ * Exported for use during graceful shutdown.
+ */
+export async function flushAuditBuffer(): Promise<void> {
+  if (_auditBuffer.length === 0) return;
+
+  const batch = _auditBuffer;
+  _auditBuffer = [];
+
+  try {
+    await db.insert(auditEvents).values(batch);
+    consecutiveAuditFailures = 0;
+  } catch (error) {
+    auditEventWriteFailures += batch.length;
+    consecutiveAuditFailures += 1;
+    lastAuditEventWriteFailureAt = new Date().toISOString();
+    if (consecutiveAuditFailures >= MAX_SILENT_FAILURES) {
+      logger.error({ count: batch.length, err: error, consecutiveFailures: consecutiveAuditFailures }, `CRITICAL: failed to flush ${batch.length} audit events`);
+    } else {
+      logger.warn({ count: batch.length, err: error }, "Failed to flush audit event batch");
+    }
+  }
+}
+
 export function recordAuditEvent({
   actorId,
   actorRole,
@@ -94,32 +136,27 @@ export function recordAuditEvent({
 }: RecordAuditEventInput) {
   const resolvedContext = request ? buildAuditRequestContext(request) : context;
 
-  try {
-    void db.insert(auditEvents)
-      .values({
-        actorId: normalizeText(actorId, 64),
-        actorRole: normalizeText(actorRole, 32),
-        action: normalizeText(action, 128) ?? "unknown",
-        resourceType: normalizeText(resourceType, 64) ?? "unknown",
-        resourceId: normalizeText(resourceId, 64),
-        resourceLabel: normalizeText(resourceLabel, MAX_TEXT_LENGTH),
-        summary: normalizeText(summary, MAX_TEXT_LENGTH) ?? "Audit event",
-        details: serializeDetails(details),
-        ipAddress: normalizeText(resolvedContext?.ipAddress, 128),
-        userAgent: normalizeText(resolvedContext?.userAgent, MAX_TEXT_LENGTH),
-        requestMethod: normalizeText(resolvedContext?.requestMethod, 32),
-        requestPath: normalizeText(resolvedContext?.requestPath, MAX_PATH_LENGTH),
-      });
-    consecutiveAuditFailures = 0;
-  } catch (error) {
-    auditEventWriteFailures += 1;
-    consecutiveAuditFailures += 1;
-    lastAuditEventWriteFailureAt = new Date().toISOString();
-    if (consecutiveAuditFailures >= MAX_SILENT_FAILURES) {
-      logger.error({ action, actorId: normalizeText(actorId, 64), resourceType, err: error, consecutiveFailures: consecutiveAuditFailures }, `CRITICAL: ${consecutiveAuditFailures} consecutive audit write failures`);
-    } else {
-      logger.warn({ action, actorId: normalizeText(actorId, 64), resourceType, err: error }, "Failed to persist audit event");
-    }
+  _auditBuffer.push({
+    actorId: normalizeText(actorId, 64),
+    actorRole: normalizeText(actorRole, 32),
+    action: normalizeText(action, 128) ?? "unknown",
+    resourceType: normalizeText(resourceType, 64) ?? "unknown",
+    resourceId: normalizeText(resourceId, 64),
+    resourceLabel: normalizeText(resourceLabel, MAX_TEXT_LENGTH),
+    summary: normalizeText(summary, MAX_TEXT_LENGTH) ?? "Audit event",
+    details: serializeDetails(details),
+    ipAddress: normalizeText(resolvedContext?.ipAddress, 128),
+    userAgent: normalizeText(resolvedContext?.userAgent, MAX_TEXT_LENGTH),
+    requestMethod: normalizeText(resolvedContext?.requestMethod, 32),
+    requestPath: normalizeText(resolvedContext?.requestPath, MAX_PATH_LENGTH),
+  });
+
+  ensureFlushTimer();
+
+  if (_auditBuffer.length >= FLUSH_SIZE_THRESHOLD) {
+    flushAuditBuffer().catch(() => {
+      // Error already logged inside flushAuditBuffer
+    });
   }
 }
 
@@ -149,6 +186,11 @@ export function startAuditEventPruning() {
   if ((globalThis as any)[PRUNE_KEY]) clearInterval((globalThis as any)[PRUNE_KEY]);
   (globalThis as any)[PRUNE_KEY] = setInterval(pruneOldAuditEvents, 24 * 60 * 60 * 1000);
   pruneTimer = (globalThis as any)[PRUNE_KEY];
+
+  // Run an initial prune on startup so retention is enforced even if the app restarts frequently
+  pruneOldAuditEvents().catch(() => {
+    // Errors already logged inside pruneOldAuditEvents
+  });
 }
 
 export function stopAuditEventPruning() {
