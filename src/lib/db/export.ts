@@ -100,6 +100,15 @@ function normalizeValue(val: unknown): unknown {
 const EXPORT_CHUNK_SIZE = 1000;
 
 /**
+ * Columns that should be redacted (set to null) in exports for security.
+ * Maps table name to column names to redact.
+ */
+const REDACTED_COLUMNS: Record<string, Set<string>> = {
+  users: new Set(["passwordHash"]),
+  judgeWorkers: new Set(["secretToken"]),
+};
+
+/**
  * Export the entire database to a portable JSON format.
  * Uses cursor-based pagination to avoid loading entire tables into memory.
  */
@@ -130,9 +139,12 @@ export async function exportDatabase(): Promise<JudgeKitExport> {
         columns = Object.keys(chunk[0] as object);
       }
 
+      const redactSet = REDACTED_COLUMNS[name];
       for (const row of chunk) {
         allExportedRows.push(
-          columns.map((col) => normalizeValue((row as any)[col]))
+          columns.map((col) =>
+            redactSet?.has(col) ? null : normalizeValue((row as any)[col])
+          )
         );
       }
 
