@@ -26,16 +26,13 @@ set -euo pipefail
 # ---------------------------------------------------------------------------
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 
-# Source deployment env vars from proxmox-ops .env or .env.deploy
-for _envfile in "${SCRIPT_DIR}/.env.deploy" "${SCRIPT_DIR}/../proxmox-ops/.env"; do
-    if [[ -f "$_envfile" ]]; then
-        set -a
-        # shellcheck disable=SC1091
-        source "$_envfile"
-        set +a
-        break
-    fi
-done
+# Source deployment env vars from .env.deploy
+if [[ -f "${SCRIPT_DIR}/.env.deploy" ]]; then
+    set -a
+    # shellcheck disable=SC1091
+    source "${SCRIPT_DIR}/.env.deploy"
+    set +a
+fi
 
 REMOTE_HOST="${REMOTE_HOST:?REMOTE_HOST is required (see .env)}"
 REMOTE_USER="${REMOTE_USER:?REMOTE_USER is required (see .env)}"

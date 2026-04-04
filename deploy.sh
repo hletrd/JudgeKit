@@ -19,10 +19,8 @@ success() { printf '\033[0;32m[OK]\033[0m %s\n' "$*"; }
 warn()    { printf '\033[1;33m[WARN]\033[0m %s\n' "$*"; }
 die()     { printf '\033[0;31m[ERROR]\033[0m %s\n' "$*" >&2; exit 1; }
 
-# Load SSH password from proxmox-ops if available
-for envfile in "${SCRIPT_DIR}/../proxmox-ops/.env" "${SCRIPT_DIR}/.env.deploy"; do
-  [[ -f "$envfile" ]] && { set -a; source "$envfile"; set +a; break; }
-done
+# Load deployment env vars from .env.deploy
+[[ -f "${SCRIPT_DIR}/.env.deploy" ]] && { set -a; source "${SCRIPT_DIR}/.env.deploy"; set +a; }
 
 SSH_OPTS="-o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -o LogLevel=ERROR"
 
