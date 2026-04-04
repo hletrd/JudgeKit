@@ -282,8 +282,8 @@ export function ApiKeysClient() {
                     <TableRow key={key.id}>
                       <TableCell className="font-medium">{key.name}</TableCell>
                       <TableCell>
-                        <div className="flex items-center gap-1.5">
-                          <code className="text-xs bg-muted px-2 py-1 rounded break-all select-all max-w-[280px]">
+                        <div className="flex items-center gap-1.5 min-w-0">
+                          <code className="text-xs bg-muted px-2 py-1 rounded truncate select-all max-w-[280px] block">
                             {key.keyPlain}
                           </code>
                           <Button
