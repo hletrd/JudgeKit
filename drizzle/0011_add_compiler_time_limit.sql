@@ -1,0 +1,1 @@
+ALTER TABLE `system_settings` ADD COLUMN `compiler_time_limit_ms` integer;

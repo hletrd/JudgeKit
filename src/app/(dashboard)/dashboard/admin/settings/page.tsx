@@ -12,9 +12,11 @@ import { SETTING_DEFAULTS } from "@/lib/system-settings-config";
 import type { ConfiguredSettings } from "@/lib/system-settings-config";
 import { SystemSettingsForm } from "./system-settings-form";
 import { ConfigSettingsForm } from "./config-settings-form";
+import { AllowedHostsForm } from "./allowed-hosts-form";
 import { DatabaseBackupRestore } from "./database-backup-restore";
 import { DatabaseInfo } from "./database-info";
 import { SettingsTabs } from "./settings-tabs";
+import { getAuthUrlObject, normalizeHostForComparison } from "@/lib/security/env";
 import { sqlite } from "@/lib/db";
 import fs from "fs";
 import path from "path";
@@ -37,6 +39,7 @@ const SUBMISSION_FIELDS: { key: keyof ConfiguredSettings }[] = [
 const JUDGE_FIELDS: { key: keyof ConfiguredSettings }[] = [
   { key: "defaultTimeLimitMs" },
   { key: "defaultMemoryLimitMb" },
+  { key: "compilerTimeLimitMs" },
   { key: "staleClaimTimeoutMs" },
 ];
 
@@ -121,6 +124,20 @@ export default async function AdminSettingsPage() {
   const stored = storedSettings as Record<string, unknown> | undefined;
   const dbInfo = getDbInfo();
 
+  const authUrlObj = getAuthUrlObject();
+  const authUrlHost = authUrlObj ? normalizeHostForComparison(authUrlObj.host) : null;
+
+  let initialAllowedHosts: string[] = [];
+  try {
+    const raw = stored?.allowedHosts;
+    if (typeof raw === "string" && raw.length > 0) {
+      const parsed = JSON.parse(raw);
+      if (Array.isArray(parsed)) {
+        initialAllowedHosts = parsed.filter((h: unknown) => typeof h === "string" && h.length > 0);
+      }
+    }
+  } catch { /* ignore parse errors */ }
+
   const tabs = [
     {
       value: "general",
@@ -163,19 +180,33 @@ export default async function AdminSettingsPage() {
       value: "security",
       label: t("tabSecurity"),
       content: (
-        <Card>
-          <CardHeader>
-            <CardTitle>{t("securityCardTitle")}</CardTitle>
-            <CardDescription>{t("securityCardDescription")}</CardDescription>
-          </CardHeader>
-          <CardContent>
-            <ConfigSettingsForm
-              fields={SECURITY_FIELDS}
-              initialValues={extractInitialValues(stored, SECURITY_FIELDS)}
-              defaults={SETTING_DEFAULTS}
-            />
-          </CardContent>
-        </Card>
+        <>
+          <Card>
+            <CardHeader>
+              <CardTitle>{t("allowedHostsCardTitle")}</CardTitle>
+              <CardDescription>{t("allowedHostsCardDescription")}</CardDescription>
+            </CardHeader>
+            <CardContent>
+              <AllowedHostsForm
+                initialHosts={initialAllowedHosts}
+                authUrlHost={authUrlHost}
+              />
+            </CardContent>
+          </Card>
+          <Card>
+            <CardHeader>
+              <CardTitle>{t("securityCardTitle")}</CardTitle>
+              <CardDescription>{t("securityCardDescription")}</CardDescription>
+            </CardHeader>
+            <CardContent>
+              <ConfigSettingsForm
+                fields={SECURITY_FIELDS}
+                initialValues={extractInitialValues(stored, SECURITY_FIELDS)}
+                defaults={SETTING_DEFAULTS}
+              />
+            </CardContent>
+          </Card>
+        </>
       ),
     },
     {

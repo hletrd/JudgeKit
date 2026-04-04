@@ -64,6 +64,8 @@ export const systemSettingsSchema = z.object({
   maxSseConnectionsPerUser: optionalInt(1, 50),
   ssePollIntervalMs: optionalInt(500, 30_000),
   sseTimeoutMs: optionalInt(10_000, 3_600_000),
+  // Compiler
+  compilerTimeLimitMs: optionalInt(1_000, 600_000),
   // File Uploads
   uploadMaxImageSizeBytes: optionalInt(1_048_576, 104_857_600),
   uploadMaxFileSizeBytes: optionalInt(1_048_576, 524_288_000),
