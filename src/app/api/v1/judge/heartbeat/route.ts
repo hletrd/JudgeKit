@@ -39,12 +39,11 @@ export async function POST(request: NextRequest) {
       columns: { secretToken: true },
     });
     if (!worker) return apiError("workerNotFound", 404);
-    if (worker.secretToken) {
-      const a = Buffer.from(workerSecret);
-      const b = Buffer.from(worker.secretToken);
-      if (a.length !== b.length || !timingSafeEqual(a, b)) {
-        return apiError("invalidWorkerSecret", 403);
-      }
+    if (!worker.secretToken) return apiError("workerSecretNotConfigured", 403);
+    const a = Buffer.from(workerSecret);
+    const b = Buffer.from(worker.secretToken);
+    if (a.length !== b.length || !timingSafeEqual(a, b)) {
+      return apiError("invalidWorkerSecret", 403);
     }
 
     const result = await db
