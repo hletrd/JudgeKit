@@ -149,6 +149,13 @@ export async function proxy(request: NextRequest) {
   }
 
   if ((isProtectedRoute || isChangePasswordPage) && !activeUser) {
+    // Let API key-bearing requests pass through to route handlers
+    // (middleware can't do DB lookups for API key validation in Edge runtime)
+    const hasApiKeyAuth = isApiRoute && request.headers.get("authorization")?.startsWith("Bearer ");
+    if (hasApiKeyAuth) {
+      return createSecuredNextResponse(request);
+    }
+
     if (isApiRoute) {
       return clearAuthSessionCookies(
         NextResponse.json({ error: "Unauthorized" }, { status: 401 })
