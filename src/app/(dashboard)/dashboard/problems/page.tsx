@@ -21,6 +21,7 @@ import Link from "next/link";
 import { Button } from "@/components/ui/button";
 import { PaginationControls } from "@/components/pagination-controls";
 import { FilterSelect } from "@/components/filter-select";
+import { ProblemImportButton } from "./problem-import-button";
 
 type ProblemProgress = "solved" | "attempted" | "untried";
 type ProblemFilter = "all" | "solved" | "unsolved" | "attempted";
@@ -454,9 +455,12 @@ export default async function ProblemsPage({
       <div className="mb-4 flex justify-between items-center">
         <h2 className="text-2xl font-bold">{t("title")}</h2>
         {canManageProblems && (
-          <Link href="/dashboard/problems/create">
-            <Button>{t("create")}</Button>
-          </Link>
+          <div className="flex gap-2">
+            <ProblemImportButton />
+            <Link href="/dashboard/problems/create">
+              <Button>{t("create")}</Button>
+            </Link>
+          </div>
         )}
       </div>
 

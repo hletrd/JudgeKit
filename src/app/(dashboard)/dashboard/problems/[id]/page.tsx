@@ -21,6 +21,7 @@ import { ProblemLectureWrapper } from "./problem-lecture-wrapper";
 import Link from "next/link";
 import { Button } from "@/components/ui/button";
 import { ProblemDeleteButton } from "./problem-delete-button";
+import { ProblemExportButton } from "./problem-export-button";
 import { ArrowLeft, Trophy } from "lucide-react";
 
 export async function generateMetadata({ params }: { params: Promise<{ id: string }> }) {
@@ -215,6 +216,7 @@ export default async function ProblemDetailPage({
             </Link>
             {canEdit && (
               <>
+                <ProblemExportButton problemId={problem.id} />
                 <Link href={`/dashboard/problems/${problem.id}/edit`}>
                   <Button variant="outline" size="sm">{tCommon("edit")}</Button>
                 </Link>
