@@ -1666,7 +1666,14 @@
     "timedOut": "Execution timed out",
     "exitCode": "Exit code: {code}",
     "executionTime": "Execution time: {time}ms",
-    "compileError": "Compilation failed"
+    "compileError": "Compilation failed",
+    "alreadyRunning": "Already running, please wait...",
+    "runFailed": "Failed to run code",
+    "networkError": "Network error occurred",
+    "codeEditorLabel": "Code editor",
+    "loadingLanguages": "Loading languages...",
+    "noLanguagesTitle": "No Languages Available",
+    "noLanguagesDescription": "No programming languages are currently enabled. Please contact an administrator."
   },
   "capabilities": {
     "groups": {

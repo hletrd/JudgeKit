@@ -1666,7 +1666,14 @@
     "timedOut": "실행 시간 초과",
     "exitCode": "종료 코드: {code}",
     "executionTime": "실행 시간: {time}ms",
-    "compileError": "컴파일 실패"
+    "compileError": "컴파일 실패",
+    "alreadyRunning": "이미 실행 중입니다. 잠시 기다려 주세요...",
+    "runFailed": "코드 실행에 실패했습니다",
+    "networkError": "네트워크 오류가 발생했습니다",
+    "codeEditorLabel": "코드 편집기",
+    "loadingLanguages": "언어 로드 중...",
+    "noLanguagesTitle": "사용 가능한 언어 없음",
+    "noLanguagesDescription": "현재 활성화된 프로그래밍 언어가 없습니다. 관리자에게 문의해 주세요."
   },
   "capabilities": {
     "groups": {
