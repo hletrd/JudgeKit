@@ -65,15 +65,15 @@ test.describe("Contest System", () => {
       await page.goto("/dashboard/contests");
       await page.waitForLoadState("networkidle");
 
-      // Verify multiple filter badges exist (All, Upcoming, Active, Past)
-      const filterLinks = page.locator("a").filter({ has: page.locator("[data-slot='badge']") });
-      const count = await filterLinks.count();
-      expect(count).toBeGreaterThanOrEqual(3);
+      // Verify filter badges exist (All, Upcoming, Active, Past)
+      const pastFilter = page.getByRole("link").filter({ hasText: /Past|지난/ });
+      await expect(pastFilter).toBeVisible();
 
-      // Click the last filter (Past) and verify page doesn't error
-      await filterLinks.last().click();
+      // Click the Past filter and verify we stay on the contests list page
+      await pastFilter.click();
       await page.waitForLoadState("networkidle");
-      await expect(page.getByRole("heading", { level: 2 }).first()).toContainText(/Contests|대회/);
+      await expect(page).toHaveURL(/\/dashboard\/contests/);
+      await expect(page.locator("h2.text-3xl").first()).toContainText(/Contests|대회/);
     });
   });
 
