@@ -4,9 +4,11 @@ import { db } from "@/lib/db";
 import { languageConfigs } from "@/lib/db/schema";
 import { eq } from "drizzle-orm";
 import { getJudgeLanguageDefinition } from "@/lib/judge/languages";
+import { auth } from "@/lib/auth";
 import { CompilerClient } from "./compiler-client";
 
 export default async function CompilerPage() {
+  const session = await auth();
   const t = await getTranslations("compiler");
 
   const languages = (await db
@@ -49,5 +51,5 @@ export default async function CompilerPage() {
     );
   }
 
-  return <CompilerClient languages={languages} title={t("title")} description={t("description")} />;
+  return <CompilerClient languages={languages} title={t("title")} description={t("description")} preferredLanguage={session?.user?.preferredLanguage ?? null} />;
 }

@@ -40,6 +40,7 @@ type CompilerClientProps = {
   languages: CompilerLanguage[];
   title: string;
   description: string;
+  preferredLanguage?: string | null;
 };
 
 const DEFAULT_CODE: Record<string, string> = {
@@ -87,7 +88,7 @@ function TruncatedOutput({ content, className }: { content: string; className?: 
   );
 }
 
-export function CompilerClient({ languages, title, description }: CompilerClientProps) {
+export function CompilerClient({ languages, title, description, preferredLanguage }: CompilerClientProps) {
   const t = useTranslations("compiler");
 
   // MEDIUM FIX: Proper state initialization order
@@ -95,7 +96,9 @@ export function CompilerClient({ languages, title, description }: CompilerClient
     const saved = typeof window !== "undefined" ? localStorage.getItem("compiler:language") : null;
     const defaultLanguage = saved && languages.some((l) => l.language === saved)
       ? saved
-      : languages.find((l) => l.language === "python")?.language ?? languages[0]?.language;
+      : preferredLanguage && languages.some((l) => l.language === preferredLanguage)
+        ? preferredLanguage
+        : languages.find((l) => l.language === "python")?.language ?? languages[0]?.language;
     return {
       language: defaultLanguage,
       sourceCode: getDefaultCode(defaultLanguage ?? "python"),
