@@ -102,6 +102,12 @@ export function getTrustedAuthHosts() {
 
   trustedHosts.add(normalizeHostForComparison(authUrl.host));
 
+  // Add allowed hosts from DB
+  const dbHosts = getAllowedHostsFromDb();
+  for (const host of dbHosts) {
+    trustedHosts.add(normalizeHostForComparison(host));
+  }
+
   if (process.env.NODE_ENV === "production") {
     return trustedHosts;
   }
@@ -115,6 +121,20 @@ export function getTrustedAuthHosts() {
   }
 
   return trustedHosts;
+}
+
+function getAllowedHostsFromDb(): string[] {
+  try {
+    const { sqlite } = require("@/lib/db");
+    const row = sqlite
+      .prepare("SELECT allowed_hosts FROM system_settings WHERE id = 'global'")
+      .get() as { allowed_hosts: string | null } | undefined;
+    if (!row?.allowed_hosts) return [];
+    const parsed = JSON.parse(row.allowed_hosts);
+    return Array.isArray(parsed) ? parsed.filter((h: unknown) => typeof h === "string" && h.length > 0) : [];
+  } catch {
+    return [];
+  }
 }
 
 export function shouldUseSecureSessionCookie() {

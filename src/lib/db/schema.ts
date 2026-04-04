@@ -459,6 +459,8 @@ export const systemSettings = sqliteTable("system_settings", {
   uploadMaxImageSizeBytes: integer("upload_max_image_size_bytes"),
   uploadMaxFileSizeBytes: integer("upload_max_file_size_bytes"),
   uploadMaxImageDimension: integer("upload_max_image_dimension"),
+  // Allowed Hosts (JSON array of domain strings)
+  allowedHosts: text("allowed_hosts"),
   updatedAt: integer("updated_at", { mode: "timestamp" })
     .notNull()
     .$defaultFn(() => new Date(Date.now())),

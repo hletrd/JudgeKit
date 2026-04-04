@@ -65,7 +65,7 @@ export async function updateSystemSettings(
     };
   }
 
-  const { siteTitle, siteDescription, timeZone, aiAssistantEnabled } = parsedInput.data;
+  const { siteTitle, siteDescription, timeZone, aiAssistantEnabled, allowedHosts } = parsedInput.data;
 
   // Build config fields — undefined means "not provided", null means "clear to default"
   const configValues: Record<string, number | null> = {};
@@ -77,7 +77,7 @@ export async function updateSystemSettings(
     }
   }
 
-  const baseValues = {
+  const baseValues: Record<string, unknown> = {
     siteTitle: siteTitle ?? null,
     siteDescription: siteDescription ?? null,
     timeZone: timeZone ?? null,
@@ -85,6 +85,10 @@ export async function updateSystemSettings(
     ...configValues,
     updatedAt: new Date(),
   };
+
+  if (allowedHosts !== undefined) {
+    baseValues.allowedHosts = allowedHosts.length > 0 ? JSON.stringify(allowedHosts) : null;
+  }
 
   await db
     .insert(systemSettings)

@@ -70,6 +70,17 @@ export const systemSettingsSchema = z.object({
   uploadMaxImageSizeBytes: optionalInt(1_048_576, 104_857_600),
   uploadMaxFileSizeBytes: optionalInt(1_048_576, 524_288_000),
   uploadMaxImageDimension: optionalInt(512, 16_384),
+  // Allowed Hosts
+  allowedHosts: z
+    .array(
+      z
+        .string()
+        .min(1, "allowedHostEmpty")
+        .max(253, "allowedHostTooLong")
+        .regex(/^[a-zA-Z0-9.*:[\]\-]+$/, "allowedHostInvalid")
+    )
+    .max(50, "tooManyAllowedHosts")
+    .optional(),
 });
 
 export type SystemSettingsInput = z.infer<typeof systemSettingsSchema>;
