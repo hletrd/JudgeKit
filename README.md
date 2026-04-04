@@ -78,54 +78,55 @@ See [Language presets](docs/languages.md#docker-image-presets) for preset option
 | Image | amd64 | arm64 | Image | amd64 | arm64 |
 |-------|-------|-------|-------|-------|-------|
 | `judge-awk` | 13 MB | 10 MB | `judge-lua` | 14 MB | 10 MB |
-| `judge-bash` | 15 MB | 13 MB | `judge-tcl` | 20 MB | 13 MB |
+| `judge-micropython` | 14 MB | 9 MB | `judge-bash` | 15 MB | 13 MB |
+| `judge-tcl` | 20 MB | 13 MB | `judge-janet` | 27 MB | 19 MB |
 | `judge-nasm` | 34 MB | 26 MB | `judge-perl` | 64 MB | 48 MB |
 | `judge-python` | 71 MB | 51 MB | `judge-commonlisp` | 80 MB | 50 MB |
-| `judge-postscript` | 124 MB | 95 MB | `judge-ruby` | 128 MB | 84 MB |
-| `judge-erlang` | 147 MB | 88 MB | `judge-algol68` | 115 MB | 100 MB |
-| `judge-forth` | 116 MB | 101 MB | `judge-lolcode` | 116 MB | 101 MB |
-| `judge-snobol4` | 116 MB | 101 MB | `judge-icon` | 120 MB | 102 MB |
-| `judge-elixir` | 173 MB | 102 MB | `judge-brainfuck` | 119 MB | 103 MB |
-| `judge-php` | 155 MB | 105 MB | `judge-bun` | 153 MB | 107 MB |
-| `judge-gleam` | 187 MB | 113 MB | `judge-umjunsik` | 113 MB | 98 MB |
-| `judge-deno` | 194 MB | 124 MB | `judge-bqn` | 157 MB | 125 MB |
-| `judge-shakespeare` | 199 MB | 160 MB | `judge-esoteric` | 201 MB | 161 MB |
-| `judge-uiua` | 230 MB | 178 MB | `judge-pascal` | 219 MB | 185 MB |
-| `judge-node` | 259 MB | 188 MB | `judge-prolog` | 245 MB | 192 MB |
-| `judge-raku` | 258 MB | 212 MB | `judge-fortran` | 323 MB | 213 MB |
-| `judge-clojure` | 312 MB | 229 MB | `judge-cpp` | 340 MB | 231 MB |
-| `judge-go` | 357 MB | 237 MB | `judge-v` | 492 MB | 273 MB |
-| `judge-haxe` | 377 MB | 277 MB | `judge-scheme` | 404 MB | 298 MB |
-| `judge-objective-c` | 427 MB | 305 MB | `judge-ada` | 443 MB | 315 MB |
-| `judge-freebasic` | 441 MB | 320 MB | `judge-cobol` | 443 MB | 321 MB |
-| `judge-sml` | 493 MB | 356 MB | `judge-dart` | 492 MB | 374 MB |
-| `judge-racket` | 730 MB | 507 MB | `judge-d` | 563 MB | 388 MB |
+| `judge-hy` | 84 MB | 59 MB | `judge-malbolge` | 114 MB | — |
+| `judge-rexx` | 114 MB | 99 MB | `judge-algol68` | 115 MB | 100 MB |
+| `judge-squirrel` | 115 MB | 100 MB | `judge-forth` | 116 MB | 101 MB |
+| `judge-snobol4` | 116 MB | 101 MB | `judge-lolcode` | 117 MB | 101 MB |
+| `judge-brainfuck` | 119 MB | 103 MB | `judge-icon` | 120 MB | 102 MB |
+| `judge-smalltalk` | 122 MB | 76 MB | `judge-postscript` | 124 MB | 95 MB |
+| `judge-arturo` | 127 MB | 111 MB | `judge-ruby` | 128 MB | 84 MB |
+| `judge-picat` | 141 MB | 118 MB | `judge-erlang` | 147 MB | 88 MB |
+| `judge-j` | 150 MB | 507 MB | `judge-bun` | 153 MB | 107 MB |
+| `judge-php` | 155 MB | 105 MB | `judge-bqn` | 157 MB | 125 MB |
+| `judge-elixir` | 173 MB | 102 MB | `judge-b` | 177 MB | — |
+| `judge-gleam` | 187 MB | 113 MB | `judge-deno` | 194 MB | 124 MB |
+| `judge-shakespeare` | 199 MB | 160 MB | `judge-umjunsik` | 200 MB | 98 MB |
+| `judge-esoteric` | 201 MB | 161 MB | `judge-apl` | 206 MB | — |
+| `judge-pascal` | 219 MB | 185 MB | `judge-uiua` | 230 MB | 178 MB |
+| `judge-wat` | 235 MB | 97 MB | `judge-prolog` | 245 MB | 192 MB |
+| `judge-raku` | 258 MB | 212 MB | `judge-node` | 260 MB | 188 MB |
+| `judge-elm` | 276 MB | 186 MB | `judge-hare` | 287 MB | 181 MB |
+| `judge-roc` | 293 MB | 207 MB | `judge-clojure` | 312 MB | 229 MB |
+| `judge-fortran` | 323 MB | 213 MB | `judge-cpp` | 340 MB | 231 MB |
+| `judge-go` | 357 MB | 237 MB | `judge-haxe` | 377 MB | 277 MB |
+| `judge-nelua` | 380 MB | 277 MB | `judge-scheme` | 404 MB | 298 MB |
+| `judge-rescript` | 406 MB | 283 MB | `judge-clean` | 415 MB | 126 MB |
+| `judge-carp` | 418 MB | 303 MB | `judge-objective-c` | 427 MB | 305 MB |
+| `judge-freebasic` | 441 MB | 320 MB | `judge-ada` | 443 MB | 315 MB |
+| `judge-cobol` | 443 MB | 321 MB | `judge-powershell` | 460 MB | 352 MB |
+| `judge-dart` | 492 MB | 374 MB | `judge-v` | 492 MB | 273 MB |
+| `judge-sml` | 493 MB | 356 MB | `judge-modula2` | 512 MB | 364 MB |
+| `judge-curry` | 520 MB | 302 MB | `judge-purescript` | 530 MB | 260 MB |
+| `judge-ocaml` | 554 MB | 406 MB | `judge-d` | 563 MB | 388 MB |
+| `judge-c3` | 580 MB | — | `judge-crystal` | 581 MB | 405 MB |
 | `judge-zig` | 598 MB | 395 MB | `judge-groovy` | 613 MB | 400 MB |
-| `judge-crystal` | 581 MB | 405 MB | `judge-ocaml` | 554 MB | 406 MB |
-| `judge-jvm` | 656 MB | 436 MB | `judge-nim` | 727 MB | 523 MB |
-| `judge-scala` | 780 MB | 523 MB | `judge-octave` | 830 MB | 538 MB |
-| `judge-clang` | 879 MB | 670 MB | `judge-fsharp` | 985 MB | 687 MB |
-| `judge-csharp` | 1.07 GB | 693 MB | `judge-rust` | 1.21 GB | 810 MB |
-| `judge-r` | 1.27 GB | 850 MB | `judge-julia` | 1.50 GB | 1.23 GB |
-| `judge-odin` | 1.81 GB | 1.34 GB | `judge-haskell` | 1.81 GB | 1.59 GB |
-| `judge-powershell` | 449 MB | 352 MB | `judge-smalltalk` | 122 MB | 76 MB |
-| `judge-swift` | 2.79 GB | 2.11 GB | `judge-arturo` | 133 MB | 111 MB |
-| `judge-c3` | 580 MB | — | `judge-carp` | 418 MB | 303 MB |
-| `judge-clean` | 154 MB | 126 MB | `judge-curry` | 429 MB | 302 MB |
-| `judge-factor` | 781 MB | 584 MB | `judge-flix` | 657 MB | — |
-| `judge-grain` | 240 MB | 186 MB | `judge-hare` | 287 MB | 181 MB |
-| `judge-hy` | 84 MB | 59 MB | `judge-j` | 150 MB | 507 MB |
-| `judge-janet` | 27 MB | 19 MB | `judge-koka` | 641 MB | 470 MB |
-| `judge-lean` | 3.87 GB | 3.02 GB | `judge-mercury` | 1.14 GB | — |
-| `judge-micropython` | 14 MB | 9 MB | `judge-minizinc` | 433 MB | 326 MB |
-| `judge-modula2` | 512 MB | 364 MB | `judge-nelua` | 380 MB | 277 MB |
-| `judge-picat` | 141 MB | 118 MB | `judge-pony` | 2.62 GB | 1.22 GB |
-| `judge-rexx` | 114 MB | 99 MB | `judge-roc` | 275 MB | 207 MB |
-| `judge-purescript` | 335 MB | 260 MB | `judge-wat` | 235 MB | 97 MB |
-| `judge-squirrel` | — | 100 MB | `judge-vala` | 619 MB | 452 MB |
-| `judge-moonbit` | — | — | `judge-chapel` | — | — |
-| `judge-idris2` | — | — | `judge-rescript` | — | — |
-| `judge-elm` | — | — | | | |
+| `judge-vala` | 619 MB | 452 MB | `judge-koka` | 641 MB | 470 MB |
+| `judge-jvm` | 656 MB | 436 MB | `judge-flix` | 657 MB | — |
+| `judge-idris2` | 660 MB | — | `judge-nim` | 727 MB | 523 MB |
+| `judge-racket` | 730 MB | 507 MB | `judge-minizinc` | 747 MB | 326 MB |
+| `judge-scala` | 780 MB | 523 MB | `judge-factor` | 781 MB | 584 MB |
+| `judge-octave` | 830 MB | 538 MB | `judge-moonbit` | 833 MB | — |
+| `judge-fsharp` | 985 MB | 687 MB | `judge-clang` | 1.02 GB | 670 MB |
+| `judge-csharp` | 1.07 GB | 693 MB | `judge-mercury` | 1.14 GB | — |
+| `judge-rust` | 1.21 GB | 810 MB | `judge-r` | 1.27 GB | 850 MB |
+| `judge-grain` | 1.30 GB | 186 MB | `judge-julia` | 1.50 GB | 1.23 GB |
+| `judge-haskell` | 1.81 GB | 1.59 GB | `judge-odin` | 1.81 GB | 1.34 GB |
+| `judge-chapel` | 2.39 GB | 1.60 GB | `judge-pony` | 2.62 GB | 1.22 GB |
+| `judge-swift` | 2.79 GB | 2.11 GB | `judge-lean` | 3.87 GB | 3.02 GB |
 
 All 100 images build on both amd64 and arm64.
 
