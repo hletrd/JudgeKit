@@ -1,4 +1,4 @@
-import { sqlite, execTransaction } from "@/lib/db";
+import { rawQueryOne, rawQueryAll } from "@/lib/db/queries";
 import { logger } from "@/lib/logger";
 import { LRUCache } from "lru-cache";
 import type { ScoringModel } from "@/types";
@@ -63,14 +63,14 @@ type RawLeaderboardRow = {
   attemptCount: number;
   bestScore: number | null;
   hasAc: number;
-  firstAcAt: number | null;
+  firstAcAt: Date | null;
   wrongBeforeAc: number;
 };
 
 type AssignmentMetaRow = {
   scoringModel: string;
-  startsAt: number | null;
-  deadline: number | null;
+  startsAt: Date | null;
+  deadline: Date | null;
   latePenalty: number | null;
   examMode: string;
 };
@@ -80,10 +80,10 @@ type AssignmentMetaRow = {
  * Returns a sorted leaderboard with per-problem breakdowns.
  * @param cutoffSec Optional Unix timestamp (seconds) to filter submissions before this time (for freeze).
  */
-export function computeContestRanking(assignmentId: string, cutoffSec?: number): {
+export async function computeContestRanking(assignmentId: string, cutoffSec?: number): Promise<{
   scoringModel: ScoringModel;
   entries: LeaderboardEntry[];
-} {
+}> {
   const cacheKey = `${assignmentId}:${cutoffSec ?? 'live'}`;
   const cached = rankingCache.get(cacheKey);
   if (cached) {
@@ -95,23 +95,22 @@ export function computeContestRanking(assignmentId: string, cutoffSec?: number):
     // Stale but still within TTL — return stale data and trigger ONE background refresh
     if (!_refreshingKeys.has(cacheKey)) {
       _refreshingKeys.add(cacheKey);
-      // Use queueMicrotask so the refresh runs after this synchronous function returns
-      queueMicrotask(() => {
-        try {
-          const fresh = _computeContestRankingInner(assignmentId, cutoffSec);
+      _computeContestRankingInner(assignmentId, cutoffSec)
+        .then((fresh) => {
           rankingCache.set(cacheKey, { data: fresh, createdAt: Date.now() });
-        } catch {
+        })
+        .catch(() => {
           // On error the stale entry remains in cache; next request will retry
-        } finally {
+        })
+        .finally(() => {
           _refreshingKeys.delete(cacheKey);
-        }
-      });
+        });
     }
     return cached.data;
   }
 
   // Cache miss — compute fresh and populate cache
-  const result = _computeContestRankingInner(assignmentId, cutoffSec);
+  const result = await _computeContestRankingInner(assignmentId, cutoffSec);
   rankingCache.set(cacheKey, { data: result, createdAt: Date.now() });
   return result;
 }
@@ -120,12 +119,10 @@ export function computeContestRanking(assignmentId: string, cutoffSec?: number):
  * Inner computation extracted so it can be called from both the public API
  * and the background stale-while-revalidate refresh path.
  */
-function _computeContestRankingInner(assignmentId: string, cutoffSec?: number): {
+async function _computeContestRankingInner(assignmentId: string, cutoffSec?: number): Promise<{
   scoringModel: ScoringModel;
   entries: LeaderboardEntry[];
-} {
-  // Get assignment metadata, scoring rows, and problem list in a single
-  // read transaction to ensure a consistent snapshot across all three queries.
+}> {
   function buildScoringQuery(withCutoff: boolean): string {
     return `
       WITH base AS (
@@ -144,75 +141,65 @@ function _computeContestRankingInner(assignmentId: string, cutoffSec?: number): 
         INNER JOIN assignment_problems ap
           ON ap.assignment_id = s.assignment_id AND ap.problem_id = s.problem_id
         INNER JOIN users u ON u.id = s.user_id
-        WHERE s.assignment_id = ?${withCutoff ? " AND s.submitted_at <= ?" : ""}
+        WHERE s.assignment_id = @assignmentId${withCutoff ? " AND EXTRACT(EPOCH FROM s.submitted_at)::bigint <= @cutoffSec" : ""}
       )
       SELECT
-        user_id AS userId,
+        user_id AS "userId",
         username,
         name,
-        class_name AS className,
-        problem_id AS problemId,
+        class_name AS "className",
+        problem_id AS "problemId",
         points,
-        COUNT(*) AS attemptCount,
+        COUNT(*) AS "attemptCount",
         MAX(
           CASE
             WHEN score IS NOT NULL THEN
               CASE
-                WHEN ? IS NOT NULL AND ? > 0 AND ? != 'windowed'
-                     AND submitted_at IS NOT NULL AND submitted_at > ?
-                THEN ROUND(MIN(MAX(score, 0), 100) / 100.0 * points, 2)
-                     * (1.0 - ? / 100.0)
-                ELSE ROUND(MIN(MAX(score, 0), 100) / 100.0 * points, 2)
+                WHEN @deadline IS NOT NULL AND @latePenalty > 0 AND @examMode != 'windowed'
+                     AND submitted_at IS NOT NULL AND EXTRACT(EPOCH FROM submitted_at)::bigint > @deadline
+                THEN ROUND((LEAST(GREATEST(score, 0), 100) / 100.0 * points) * (1.0 - @latePenalty / 100.0), 2)
+                ELSE ROUND(LEAST(GREATEST(score, 0), 100) / 100.0 * points, 2)
               END
             ELSE NULL
           END
-        ) AS bestScore,
-        MAX(CASE WHEN score = 100 THEN 1 ELSE 0 END) AS hasAc,
-        MIN(CASE WHEN score = 100 THEN submitted_at ELSE NULL END) AS firstAcAt,
+        ) AS "bestScore",
+        MAX(CASE WHEN score = 100 THEN 1 ELSE 0 END) AS "hasAc",
+        MIN(CASE WHEN score = 100 THEN submitted_at ELSE NULL END) AS "firstAcAt",
         SUM(CASE WHEN (score IS NULL OR score < 100)
-                  AND submitted_at < COALESCE(first_ac_at, 9999999999)
-             THEN 1 ELSE 0 END) AS wrongBeforeAc
+                  AND EXTRACT(EPOCH FROM submitted_at)::bigint < COALESCE(EXTRACT(EPOCH FROM first_ac_at)::bigint, 9999999999)
+             THEN 1 ELSE 0 END) AS "wrongBeforeAc"
       FROM base
       GROUP BY user_id, problem_id
     `;
   }
 
-  const { meta, rows, assignmentProblemRows } = execTransaction(() => {
-    const meta = sqlite
-      .prepare<[string], AssignmentMetaRow>(
-        `SELECT scoring_model AS scoringModel, starts_at AS startsAt, deadline, late_penalty AS latePenalty, exam_mode AS examMode
-         FROM assignments WHERE id = ?`
-      )
-      .get(assignmentId);
-
-    if (!meta) {
-      return { meta: null, rows: [] as RawLeaderboardRow[], assignmentProblemRows: [] as { problemId: string; points: number }[] };
-    }
-
-    // Positional params:
-    //   assignmentId, [cutoffSec], deadlineSec, latePenalty, examMode, deadlineSec, latePenalty
-    const rows =
-      cutoffSec != null
-        ? sqlite
-            .prepare<[string, number, number | null, number, string, number | null, number], RawLeaderboardRow>(buildScoringQuery(true))
-            .all(assignmentId, cutoffSec, meta.deadline, meta.latePenalty ?? 0, meta.examMode ?? "none", meta.deadline, meta.latePenalty ?? 0)
-        : sqlite
-            .prepare<[string, number | null, number, string, number | null, number], RawLeaderboardRow>(buildScoringQuery(false))
-            .all(assignmentId, meta.deadline, meta.latePenalty ?? 0, meta.examMode ?? "none", meta.deadline, meta.latePenalty ?? 0);
-
-    const assignmentProblemRows = sqlite
-      .prepare<[string], { problemId: string; points: number }>(
-        `SELECT problem_id AS problemId, COALESCE(points, 100) AS points
-         FROM assignment_problems WHERE assignment_id = ? ORDER BY sort_order, problem_id`
-      )
-      .all(assignmentId);
-
-    return { meta, rows, assignmentProblemRows };
-  });
+  const meta = await rawQueryOne<AssignmentMetaRow>(
+    `SELECT scoring_model AS "scoringModel", starts_at AS "startsAt", deadline, late_penalty AS "latePenalty", exam_mode AS "examMode"
+     FROM assignments WHERE id = @assignmentId`,
+    { assignmentId }
+  );
 
   if (!meta) {
     return { scoringModel: "ioi", entries: [] };
   }
+
+  // Deadline as epoch seconds for the scoring query (null if no deadline)
+  const deadlineSec = meta.deadline ? Math.floor(new Date(meta.deadline).getTime() / 1000) : null;
+  const latePenalty = meta.latePenalty ?? 0;
+  const examMode = meta.examMode ?? "none";
+
+  const rows = await rawQueryAll<RawLeaderboardRow>(
+    buildScoringQuery(cutoffSec != null),
+    cutoffSec != null
+      ? { assignmentId, cutoffSec, deadline: deadlineSec, latePenalty, examMode }
+      : { assignmentId, deadline: deadlineSec, latePenalty, examMode }
+  );
+
+  const assignmentProblemRows = await rawQueryAll<{ problemId: string; points: number }>(
+    `SELECT problem_id AS "problemId", COALESCE(points, 100) AS points
+     FROM assignment_problems WHERE assignment_id = @assignmentId ORDER BY sort_order, problem_id`,
+    { assignmentId }
+  );
 
   const scoringModel = (meta.scoringModel ?? "ioi") as ScoringModel;
 
@@ -222,9 +209,7 @@ function _computeContestRankingInner(assignmentId: string, cutoffSec?: number): 
     return { scoringModel, entries: [] };
   }
 
-  const contestStartMs = meta.startsAt ? meta.startsAt * 1000 : 0;
-  const deadlineSec = meta.deadline;
-  const latePenalty = meta.latePenalty ?? 0;
+  const contestStartMs = meta.startsAt ? new Date(meta.startsAt).getTime() : 0;
 
   // Group by user
   const userMap = new Map<
@@ -272,7 +257,7 @@ function _computeContestRankingInner(assignmentId: string, cutoffSec?: number): 
 
         if (scoringModel === "icpc") {
           const solved = row.hasAc === 1;
-          const firstAcMs = row.firstAcAt ? row.firstAcAt * 1000 : null;
+          const firstAcMs = row.firstAcAt ? new Date(row.firstAcAt).getTime() : null;
           const penalty =
             solved && firstAcMs
               ? computeIcpcPenalty(contestStartMs, firstAcMs, row.wrongBeforeAc)
@@ -294,7 +279,7 @@ function _computeContestRankingInner(assignmentId: string, cutoffSec?: number): 
           score: row.bestScore ?? 0,
           attempts: row.attemptCount,
           solved: (row.bestScore ?? 0) >= ap.points,
-          firstAcAt: row.firstAcAt ? row.firstAcAt * 1000 : null,
+          firstAcAt: row.firstAcAt ? new Date(row.firstAcAt).getTime() : null,
           penalty: 0,
         };
       }

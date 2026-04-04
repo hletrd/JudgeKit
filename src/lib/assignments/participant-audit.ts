@@ -6,11 +6,11 @@ export type ParticipantAuditData = {
   scoringModel: ScoringModel;
 };
 
-export function getParticipantAuditData(
+export async function getParticipantAuditData(
   assignmentId: string,
   userId: string
-): ParticipantAuditData | null {
-  const { scoringModel, entries } = computeContestRanking(assignmentId);
+): Promise<ParticipantAuditData | null> {
+  const { scoringModel, entries } = await computeContestRanking(assignmentId);
   const entry = entries.find((e) => e.userId === userId);
   if (!entry) return null;
   return { entry, scoringModel };

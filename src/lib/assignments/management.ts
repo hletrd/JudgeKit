@@ -1,6 +1,6 @@
 import { and, eq, or, sql } from "drizzle-orm";
 import { nanoid } from "nanoid";
-import { db, sqlite, execTransaction } from "@/lib/db";
+import { db, execTransaction } from "@/lib/db";
 import {
   assignmentProblems,
   assignments,

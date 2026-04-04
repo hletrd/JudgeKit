@@ -1,4 +1,4 @@
-import { sqlite } from "@/lib/db";
+import { rawQueryOne, rawQueryAll } from "@/lib/db/queries";
 import { computeContestRanking } from "./contest-scoring";
 
 type HistogramBucket = {
@@ -77,7 +77,7 @@ type SubmissionTimeRow = {
   name: string;
   problemId: string;
   score: number | null;
-  submittedAt: number;
+  submittedAt: Date;
   points: number;
 };
 
@@ -89,18 +89,17 @@ type CheatCountRow = {
   count: number;
 };
 
-export function computeContestAnalytics(assignmentId: string, includeTimeline = false): ContestAnalytics {
-  const { entries } = computeContestRanking(assignmentId);
+export async function computeContestAnalytics(assignmentId: string, includeTimeline = false): Promise<ContestAnalytics> {
+  const { entries } = await computeContestRanking(assignmentId);
 
-  const problems = sqlite
-    .prepare<[string], ProblemRow>(
-      `SELECT ap.problem_id AS problemId, p.title, COALESCE(ap.points, 100) AS points
-       FROM assignment_problems ap
-       INNER JOIN problems p ON p.id = ap.problem_id
-       WHERE ap.assignment_id = ?
-       ORDER BY ap.sort_order, p.title`
-    )
-    .all(assignmentId);
+  const problems = await rawQueryAll<ProblemRow>(
+    `SELECT ap.problem_id AS "problemId", p.title, COALESCE(ap.points, 100) AS points
+     FROM assignment_problems ap
+     INNER JOIN problems p ON p.id = ap.problem_id
+     WHERE ap.assignment_id = @assignmentId
+     ORDER BY ap.sort_order, p.title`,
+    { assignmentId }
+  );
 
   // 1. Score distribution
   const totalPointsPossible = problems.reduce((s, p) => s + p.points, 0);
@@ -152,20 +151,20 @@ export function computeContestAnalytics(assignmentId: string, includeTimeline = 
   });
 
   // 3. First-AC map — needed for both timeline and solve times
-  const firstAcMap = new Map<string, number>(); // "userId:problemId" -> timestamp
-  const allAcSubs = sqlite
-    .prepare<[string], { userId: string; problemId: string; submittedAt: number }>(
-      `SELECT s.user_id AS userId, s.problem_id AS problemId, s.submitted_at AS submittedAt
-       FROM submissions s
-       WHERE s.assignment_id = ? AND s.score = 100
-       ORDER BY s.submitted_at ASC`
-    )
-    .all(assignmentId);
+  const firstAcMap = new Map<string, number>(); // "userId:problemId" -> timestamp (seconds)
+  const allAcSubs = await rawQueryAll<{ userId: string; problemId: string; submittedAt: Date }>(
+    `SELECT s.user_id AS "userId", s.problem_id AS "problemId", s.submitted_at AS "submittedAt"
+     FROM submissions s
+     WHERE s.assignment_id = @assignmentId AND s.score = 100
+     ORDER BY s.submitted_at ASC`,
+    { assignmentId }
+  );
 
   for (const sub of allAcSubs) {
     const key = `${sub.userId}:${sub.problemId}`;
     if (!firstAcMap.has(key)) {
-      firstAcMap.set(key, sub.submittedAt);
+      // Store as unix seconds for compatibility with existing logic
+      firstAcMap.set(key, Math.floor(new Date(sub.submittedAt).getTime() / 1000));
     }
   }
 
@@ -193,17 +192,16 @@ export function computeContestAnalytics(assignmentId: string, includeTimeline = 
   // 4. Student score progression (only when requested)
   let studentProgressions: StudentProgression[] | undefined;
   if (includeTimeline) {
-    const submissionRows = sqlite
-      .prepare<[string], SubmissionTimeRow>(
-        `SELECT s.user_id AS userId, u.name, s.problem_id AS problemId, s.score, s.submitted_at AS submittedAt,
-                COALESCE(ap.points, 100) AS points
-         FROM submissions s
-         INNER JOIN users u ON u.id = s.user_id
-         INNER JOIN assignment_problems ap ON ap.assignment_id = s.assignment_id AND ap.problem_id = s.problem_id
-         WHERE s.assignment_id = ?
-         ORDER BY s.submitted_at ASC`
-      )
-      .all(assignmentId);
+    const submissionRows = await rawQueryAll<SubmissionTimeRow>(
+      `SELECT s.user_id AS "userId", u.name, s.problem_id AS "problemId", s.score, s.submitted_at AS "submittedAt",
+              COALESCE(ap.points, 100) AS points
+       FROM submissions s
+       INNER JOIN users u ON u.id = s.user_id
+       INNER JOIN assignment_problems ap ON ap.assignment_id = s.assignment_id AND ap.problem_id = s.problem_id
+       WHERE s.assignment_id = @assignmentId
+       ORDER BY s.submitted_at ASC`,
+      { assignmentId }
+    );
 
     const userProgressMap = new Map<string, { name: string; bestScores: Map<string, number>; progressionPoints: Array<{ timestamp: number; totalScore: number }> }>();
 
@@ -214,11 +212,12 @@ export function computeContestAnalytics(assignmentId: string, includeTimeline = 
       const userData = userProgressMap.get(sub.userId)!;
       const adjustedScore = sub.score != null ? Math.round(Math.min(Math.max(sub.score, 0), 100) / 100 * sub.points * 100) / 100 : 0;
       const currentBest = userData.bestScores.get(sub.problemId) ?? 0;
+      const submittedAtMs = new Date(sub.submittedAt).getTime();
 
       if (adjustedScore > currentBest) {
         userData.bestScores.set(sub.problemId, adjustedScore);
         const totalScore = Array.from(userData.bestScores.values()).reduce((s, v) => s + v, 0);
-        userData.progressionPoints.push({ timestamp: sub.submittedAt * 1000, totalScore });
+        userData.progressionPoints.push({ timestamp: submittedAtMs, totalScore });
       }
     }
 
@@ -230,10 +229,11 @@ export function computeContestAnalytics(assignmentId: string, includeTimeline = 
   }
 
   // 5. Per-problem solve time (median/mean time from contest start to first AC)
-  const contestMeta = sqlite
-    .prepare<[string], { startsAt: number | null }>(`SELECT starts_at AS startsAt FROM assignments WHERE id = ?`)
-    .get(assignmentId);
-  const contestStartSec = contestMeta?.startsAt ?? 0;
+  const contestMeta = await rawQueryOne<{ startsAt: Date | null }>(
+    `SELECT starts_at AS "startsAt" FROM assignments WHERE id = @assignmentId`,
+    { assignmentId }
+  );
+  const contestStartSec = contestMeta?.startsAt ? Math.floor(new Date(contestMeta.startsAt).getTime() / 1000) : 0;
 
   const problemSolveTimes: ProblemSolveTime[] = problems.map((p) => {
     const solveTimes: number[] = [];
@@ -255,29 +255,28 @@ export function computeContestAnalytics(assignmentId: string, includeTimeline = 
   });
 
   // 6. Cheat summary
-  const cheatRows = sqlite
-    .prepare<[string], CheatCountRow>(
-      `SELECT ace.user_id AS userId, u.name, u.username, ace.event_type AS eventType, COUNT(*) AS count
-       FROM anti_cheat_events ace
-       INNER JOIN users u ON u.id = ace.user_id
-       WHERE ace.assignment_id = ?
-       GROUP BY ace.user_id, ace.event_type
-       ORDER BY count DESC`
-    )
-    .all(assignmentId);
+  const cheatRows = await rawQueryAll<CheatCountRow>(
+    `SELECT ace.user_id AS "userId", u.name, u.username, ace.event_type AS "eventType", COUNT(*) AS count
+     FROM anti_cheat_events ace
+     INNER JOIN users u ON u.id = ace.user_id
+     WHERE ace.assignment_id = @assignmentId
+     GROUP BY ace.user_id, u.name, u.username, ace.event_type
+     ORDER BY count DESC`,
+    { assignmentId }
+  );
 
   const byType: Record<string, number> = {};
   const studentEventCounts = new Map<string, { name: string; username: string; count: number }>();
   let totalEvents = 0;
 
   for (const row of cheatRows) {
-    byType[row.eventType] = (byType[row.eventType] ?? 0) + row.count;
-    totalEvents += row.count;
+    byType[row.eventType] = (byType[row.eventType] ?? 0) + Number(row.count);
+    totalEvents += Number(row.count);
     const existing = studentEventCounts.get(row.userId);
     if (existing) {
-      existing.count += row.count;
+      existing.count += Number(row.count);
     } else {
-      studentEventCounts.set(row.userId, { name: row.name, username: row.username, count: row.count });
+      studentEventCounts.set(row.userId, { name: row.name, username: row.username, count: Number(row.count) });
     }
   }
 

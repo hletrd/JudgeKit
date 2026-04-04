@@ -1,6 +1,6 @@
 import { randomBytes } from "crypto";
 import { nanoid } from "nanoid";
-import { db, sqlite, execTransaction } from "@/lib/db";
+import { db, execTransaction } from "@/lib/db";
 import { assignments, contestAccessTokens, enrollments } from "@/lib/db/schema";
 import { and, eq } from "drizzle-orm";
 

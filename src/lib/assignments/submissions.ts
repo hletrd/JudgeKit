@@ -1,4 +1,5 @@
-import { db, sqlite } from "@/lib/db";
+import { db } from "@/lib/db";
+import { rawQueryAll } from "@/lib/db/queries";
 import {
   assignmentProblems,
   assignments,
@@ -498,20 +499,12 @@ export async function getAssignmentStatusRows(
   //
   // We compute this in one CTE-based query.
 
-  // Drizzle mode:"timestamp" stores seconds in SQLite (not ms).
-  // Convert the JS Date back to seconds for the raw SQL comparison.
-  const deadlineSec = assignment.deadline
-    ? Math.floor(assignment.deadline.valueOf() / 1000)
-    : null;
+  const deadlineVal = assignment.deadline ?? null;
   const latePenalty = assignment.latePenalty ?? 0;
 
-  // Build the per-problem adjusted-score expression.
-  // The CASE handles late penalty; we also need to join with assignment_problems
-  // to get the points for each problem.
-  //
-  // We use better-sqlite3 directly for this complex query for clarity and performance.
-
-  const problemAggStmt = sqlite.prepare<[number | null, number, string, number | null, number, string], ProblemAggRow>(`
+  // Build the per-problem adjusted-score expression via raw SQL.
+  // Uses named params (@name) for dialect-agnostic execution.
+  const problemAggRows = await rawQueryAll<ProblemAggRow>(`
     WITH scored AS (
       SELECT
         s.user_id,
@@ -524,13 +517,13 @@ export async function getAssignmentStatusRows(
         CASE
           WHEN s.score IS NOT NULL THEN
             CASE
-              WHEN ? IS NOT NULL AND ? > 0 AND ? != 'windowed' AND s.submitted_at IS NOT NULL AND s.submitted_at > ?
+              WHEN @deadline IS NOT NULL AND @latePenalty > 0 AND @examMode != 'windowed' AND s.submitted_at IS NOT NULL AND s.submitted_at > @deadline
               THEN ROUND(
-                ROUND(MIN(MAX(s.score, 0), 100) / 100.0 * COALESCE(ap.points, 100), 2)
-                * (1.0 - ? / 100.0),
+                ROUND(LEAST(GREATEST(s.score, 0), 100) / 100.0 * COALESCE(ap.points, 100), 2)
+                * (1.0 - @latePenalty / 100.0),
                 2
               )
-              ELSE ROUND(MIN(MAX(s.score, 0), 100) / 100.0 * COALESCE(ap.points, 100), 2)
+              ELSE ROUND(LEAST(GREATEST(s.score, 0), 100) / 100.0 * COALESCE(ap.points, 100), 2)
             END
           ELSE NULL
         END AS adjusted_score,
@@ -541,28 +534,24 @@ export async function getAssignmentStatusRows(
       FROM submissions s
       INNER JOIN assignment_problems ap
         ON ap.assignment_id = s.assignment_id AND ap.problem_id = s.problem_id
-      WHERE s.assignment_id = ?
+      WHERE s.assignment_id = @assignmentId
     )
     SELECT
-      user_id   AS userId,
-      problem_id AS problemId,
-      COUNT(*)  AS attemptCount,
-      MAX(adjusted_score) AS bestAdjustedScore,
-      MAX(CASE WHEN rn = 1 THEN sub_id END)       AS latestSubId,
-      MAX(CASE WHEN rn = 1 THEN status END)        AS latestStatus,
-      MAX(CASE WHEN rn = 1 THEN submitted_at END)  AS latestSubmittedAt
+      user_id   AS "userId",
+      problem_id AS "problemId",
+      COUNT(*)  AS "attemptCount",
+      MAX(adjusted_score) AS "bestAdjustedScore",
+      MAX(CASE WHEN rn = 1 THEN sub_id END)       AS "latestSubId",
+      MAX(CASE WHEN rn = 1 THEN status END)        AS "latestStatus",
+      MAX(CASE WHEN rn = 1 THEN submitted_at END)  AS "latestSubmittedAt"
     FROM scored
     GROUP BY user_id, problem_id
-  `);
-
-  const problemAggRows: ProblemAggRow[] = problemAggStmt.all(
-    deadlineSec,
+  `, {
+    deadline: deadlineVal,
     latePenalty,
-    assignment.examMode ?? "none",
-    deadlineSec,
-    latePenalty,
-    assignmentId
-  );
+    examMode: assignment.examMode ?? "none",
+    assignmentId,
+  });
 
   // ---- Build lookup maps from aggregated rows ----
   // Key: "userId:problemId" -> ProblemAggRow

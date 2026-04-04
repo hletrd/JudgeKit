@@ -1,5 +1,6 @@
-import { sqlite } from "@/lib/db";
+import { db } from "@/lib/db";
 import { isAdmin, isInstructor } from "@/lib/api/auth";
+import { rawQueryOne, rawQueryAll } from "@/lib/db/queries";
 import type { UserRole, ExamMode, ScoringModel } from "@/types";
 
 export type ContestEntry = {
@@ -57,18 +58,14 @@ type RawContestRow = {
   exam_mode: string;
   exam_duration_minutes: number | null;
   scoring_model: string;
-  starts_at: number | null;
-  deadline: number | null;
-  freeze_leaderboard_at: number | null;
-  enable_anti_cheat: number;
+  starts_at: Date | null;
+  deadline: Date | null;
+  freeze_leaderboard_at: Date | null;
+  enable_anti_cheat: boolean;
   problem_count: number;
-  started_at: number | null;
-  personal_deadline: number | null;
+  started_at: Date | null;
+  personal_deadline: Date | null;
 };
-
-function toDate(epochSec: number | null): Date | null {
-  return epochSec != null ? new Date(epochSec * 1000) : null;
-}
 
 function mapRow(row: RawContestRow): ContestEntry {
   return {
@@ -80,13 +77,13 @@ function mapRow(row: RawContestRow): ContestEntry {
     examMode: row.exam_mode as ExamMode,
     examDurationMinutes: row.exam_duration_minutes,
     scoringModel: (row.scoring_model ?? "ioi") as ScoringModel,
-    startsAt: toDate(row.starts_at),
-    deadline: toDate(row.deadline),
-    freezeLeaderboardAt: toDate(row.freeze_leaderboard_at),
+    startsAt: row.starts_at ? new Date(row.starts_at) : null,
+    deadline: row.deadline ? new Date(row.deadline) : null,
+    freezeLeaderboardAt: row.freeze_leaderboard_at ? new Date(row.freeze_leaderboard_at) : null,
     enableAntiCheat: Boolean(row.enable_anti_cheat),
     problemCount: row.problem_count,
-    startedAt: toDate(row.started_at),
-    personalDeadline: toDate(row.personal_deadline),
+    startedAt: row.started_at ? new Date(row.started_at) : null,
+    personalDeadline: row.personal_deadline ? new Date(row.personal_deadline) : null,
   };
 }
 
@@ -113,60 +110,57 @@ const BASE_SELECT = `
 
 const ORDER_BY = `
   ORDER BY
-    CASE WHEN a.starts_at IS NOT NULL AND a.starts_at > unixepoch('now') THEN 0 ELSE 1 END,
-    CASE WHEN a.starts_at IS NOT NULL AND a.starts_at > unixepoch('now') THEN a.starts_at END ASC,
-    CASE WHEN a.deadline IS NOT NULL AND a.deadline <= unixepoch('now') THEN a.deadline END DESC,
+    CASE WHEN a.starts_at IS NOT NULL AND a.starts_at > NOW() THEN 0 ELSE 1 END,
+    CASE WHEN a.starts_at IS NOT NULL AND a.starts_at > NOW() THEN a.starts_at ELSE NULL END ASC,
+    CASE WHEN a.deadline IS NOT NULL AND a.deadline <= NOW() THEN a.deadline ELSE NULL END DESC,
     a.starts_at ASC
 `;
 
-export function getContestsForUser(
+export async function getContestsForUser(
   userId: string,
   role: UserRole
-): ContestEntry[] {
+): Promise<ContestEntry[]> {
   if (role === "super_admin" || role === "admin") {
-    const rows = sqlite
-      .prepare<[string], RawContestRow>(
-        `${BASE_SELECT}
-         LEFT JOIN exam_sessions es ON es.assignment_id = a.id AND es.user_id = ?
-         WHERE a.exam_mode != 'none'
-         ${ORDER_BY}`
-      )
-      .all(userId);
+    const rows = await rawQueryAll<RawContestRow>(
+      `${BASE_SELECT}
+       LEFT JOIN exam_sessions es ON es.assignment_id = a.id AND es.user_id = @userId
+       WHERE a.exam_mode != 'none'
+       ${ORDER_BY}`,
+      { userId }
+    );
     return rows.map(mapRow);
   }
 
   if (role === "instructor") {
-    const rows = sqlite
-      .prepare<[string, string], RawContestRow>(
-        `${BASE_SELECT}
-         LEFT JOIN exam_sessions es ON es.assignment_id = a.id AND es.user_id = ?
-         WHERE a.exam_mode != 'none'
-           AND g.instructor_id = ?
-         ${ORDER_BY}`
-      )
-      .all(userId, userId);
+    const rows = await rawQueryAll<RawContestRow>(
+      `${BASE_SELECT}
+       LEFT JOIN exam_sessions es ON es.assignment_id = a.id AND es.user_id = @userId
+       WHERE a.exam_mode != 'none'
+         AND g.instructor_id = @userId
+       ${ORDER_BY}`,
+      { userId }
+    );
     return rows.map(mapRow);
   }
 
   // student: enrolled OR has access token
-  const rows = sqlite
-    .prepare<[string, string, string], RawContestRow>(
-      `${BASE_SELECT}
-       LEFT JOIN exam_sessions es ON es.assignment_id = a.id AND es.user_id = ?
-       WHERE a.exam_mode != 'none'
-         AND (
-           EXISTS (
-             SELECT 1 FROM enrollments e
-             WHERE e.group_id = a.group_id AND e.user_id = ?
-           )
-           OR EXISTS (
-             SELECT 1 FROM contest_access_tokens cat
-             WHERE cat.assignment_id = a.id AND cat.user_id = ?
-           )
+  const rows = await rawQueryAll<RawContestRow>(
+    `${BASE_SELECT}
+     LEFT JOIN exam_sessions es ON es.assignment_id = a.id AND es.user_id = @userId
+     WHERE a.exam_mode != 'none'
+       AND (
+         EXISTS (
+           SELECT 1 FROM enrollments e
+           WHERE e.group_id = a.group_id AND e.user_id = @userId
          )
-       ${ORDER_BY}`
-    )
-    .all(userId, userId, userId);
+         OR EXISTS (
+           SELECT 1 FROM contest_access_tokens cat
+           WHERE cat.assignment_id = a.id AND cat.user_id = @userId
+         )
+       )
+     ${ORDER_BY}`,
+    { userId }
+  );
   return rows.map(mapRow);
 }
 
@@ -190,25 +184,24 @@ type RawContestAssignmentRow = {
   groupId: string;
   instructorId: string | null;
   examMode: string;
-  enableAntiCheat: number;
-  starts_at: number | null;
-  deadline: number | null;
+  enableAntiCheat: boolean;
+  starts_at: Date | null;
+  deadline: Date | null;
 };
 
-export function getContestAssignment(assignmentId: string): ContestAssignmentRow | undefined {
-  const row = sqlite
-    .prepare<[string], RawContestAssignmentRow>(
-      `SELECT a.group_id AS groupId, g.instructor_id AS instructorId, a.exam_mode AS examMode, a.enable_anti_cheat AS enableAntiCheat, a.starts_at, a.deadline
-       FROM assignments a INNER JOIN groups g ON g.id = a.group_id WHERE a.id = ?`
-    )
-    .get(assignmentId);
+export async function getContestAssignment(assignmentId: string): Promise<ContestAssignmentRow | undefined> {
+  const row = await rawQueryOne<RawContestAssignmentRow>(
+    `SELECT a.group_id AS "groupId", g.instructor_id AS "instructorId", a.exam_mode AS "examMode", a.enable_anti_cheat AS "enableAntiCheat", a.starts_at, a.deadline
+     FROM assignments a INNER JOIN groups g ON g.id = a.group_id WHERE a.id = @assignmentId`,
+    { assignmentId }
+  );
   if (!row) return undefined;
   return {
     groupId: row.groupId,
     instructorId: row.instructorId,
     examMode: row.examMode,
     enableAntiCheat: Boolean(row.enableAntiCheat),
-    startsAt: toDate(row.starts_at),
-    deadline: toDate(row.deadline),
+    startsAt: row.starts_at ? new Date(row.starts_at) : null,
+    deadline: row.deadline ? new Date(row.deadline) : null,
   };
 }

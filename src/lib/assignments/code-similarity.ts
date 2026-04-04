@@ -1,5 +1,6 @@
 import { nanoid } from "nanoid";
-import { db, sqlite } from "@/lib/db";
+import { db } from "@/lib/db";
+import { rawQueryAll } from "@/lib/db/queries";
 import { antiCheatEvents, submissions } from "@/lib/db/schema";
 import { eq, and } from "drizzle-orm";
 import { computeSimilarityRust } from "./code-similarity-client";
@@ -65,17 +66,13 @@ type SubmissionRow = {
   sourceCode: string;
 };
 
-/**
- * Yield the event loop to prevent blocking during heavy computation.
- */
-function yieldEventLoop(): Promise<void> {
-  return new Promise((resolve) => setImmediate(resolve));
-}
+/** Maximum elapsed ms before yielding the event loop during O(n^2) comparison. */
+const YIELD_INTERVAL_MS = 8;
 
 /**
  * Run code similarity check using the TypeScript implementation.
- * Uses chunked async processing to yield the event loop every ~100 comparisons,
- * preventing long blocking during O(n^2) pair-wise n-gram comparison.
+ * Uses time-based yielding to keep the event loop responsive during
+ * O(n^2) pair-wise n-gram comparison.
  */
 async function runSimilarityCheckTS(
   rows: SubmissionRow[],
@@ -93,7 +90,7 @@ async function runSimilarityCheckTS(
   }
 
   const pairs: SimilarityPair[] = [];
-  let comparisons = 0;
+  let lastYield = Date.now();
 
   for (const [problemId, entries] of byProblem) {
     for (let i = 0; i < entries.length; i++) {
@@ -107,10 +104,10 @@ async function runSimilarityCheckTS(
             similarity: sim,
           });
         }
-        comparisons++;
-        // Yield every 100 comparisons to keep the event loop responsive
-        if (comparisons % 100 === 0) {
-          await yieldEventLoop();
+        // Yield based on elapsed wall-clock time for predictable responsiveness
+        if (Date.now() - lastYield > YIELD_INTERVAL_MS) {
+          await new Promise<void>((r) => setTimeout(r, 0));
+          lastYield = Date.now();
         }
       }
     }
@@ -132,20 +129,19 @@ export async function runSimilarityCheck(
   ngramSize = 3
 ): Promise<SimilarityPair[]> {
   // Get best submission per (user, problem) — the one with highest score
-  const rows = sqlite
-    .prepare<[string], SubmissionRow>(
-      `WITH best AS (
-        SELECT user_id AS userId, problem_id AS problemId, source_code AS sourceCode,
-               ROW_NUMBER() OVER (PARTITION BY user_id, problem_id ORDER BY score DESC, submitted_at DESC) AS rn
-        FROM submissions
-        WHERE assignment_id = ?
-      )
-      SELECT userId, problemId, sourceCode FROM best WHERE rn = 1`
+  const rows = await rawQueryAll<SubmissionRow>(
+    `WITH best AS (
+      SELECT user_id AS "userId", problem_id AS "problemId", source_code AS "sourceCode",
+             ROW_NUMBER() OVER (PARTITION BY user_id, problem_id ORDER BY score DESC, submitted_at DESC) AS rn
+      FROM submissions
+      WHERE assignment_id = @assignmentId
     )
-    .all(assignmentId);
+    SELECT "userId", "problemId", "sourceCode" FROM best WHERE rn = 1`,
+    { assignmentId }
+  );
 
-  // Guard against excessively large contests
-  const MAX_SUBMISSIONS_FOR_SIMILARITY = 1000;
+  // Guard against excessively large contests (O(n^2) comparison)
+  const MAX_SUBMISSIONS_FOR_SIMILARITY = 500;
   if (rows.length > MAX_SUBMISSIONS_FOR_SIMILARITY) {
     return [];
   }

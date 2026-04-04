@@ -1,4 +1,4 @@
-import { db, sqlite, execTransaction } from "@/lib/db";
+import { db } from "@/lib/db";
 import { assignments, examSessions, users } from "@/lib/db/schema";
 import { and, eq, asc } from "drizzle-orm";
 import { nanoid } from "nanoid";
@@ -82,60 +82,34 @@ export async function startExamSession(
 
   const id = nanoid();
   const startedAt = now;
-  const nowSec = Math.floor(startedAt.getTime() / 1000);
-  const personalDeadlineSec = Math.floor(personalDeadline.getTime() / 1000);
 
-  execTransaction(() => {
-    const result = sqlite
-      .prepare(
-        `INSERT OR IGNORE INTO exam_sessions (id, assignment_id, user_id, started_at, personal_deadline, ip_address)
-         SELECT ?, ?, ?, ?, ?, ?
-         WHERE EXISTS (
-           SELECT 1 FROM assignments
-           WHERE id = ? AND (starts_at IS NULL OR starts_at <= ?) AND (deadline IS NULL OR deadline > ?)
-         )`
-      )
-      .run(
-        id,
-        assignmentId,
-        userId,
-        nowSec,
-        personalDeadlineSec,
-        ipAddress ?? null,
-        assignmentId,
-        nowSec,
-        nowSec
-      );
+  await db.insert(examSessions).values({
+    id,
+    assignmentId,
+    userId,
+    startedAt,
+    personalDeadline,
+    ipAddress: ipAddress ?? null,
+  }).onConflictDoNothing();
 
-    const row = sqlite
-      .prepare(
-        `SELECT id, assignment_id, user_id, started_at, personal_deadline
-         FROM exam_sessions
-         WHERE assignment_id = ? AND user_id = ?`
-      )
-      .get(assignmentId, userId) as {
-      id: string;
-      assignment_id: string;
-      user_id: string;
-      started_at: number;
-      personal_deadline: number;
-    } | undefined;
-
-    if (!row) {
-      throw new Error("assignmentClosed");
-    }
-
-    return row;
+  // Re-fetch the authoritative row (covers both newly-inserted and race-condition existing)
+  const session = await db.query.examSessions.findFirst({
+    where: and(
+      eq(examSessions.assignmentId, assignmentId),
+      eq(examSessions.userId, userId)
+    ),
   });
 
-  const row = insertAndSelect();
+  if (!session) {
+    throw new Error("assignmentClosed");
+  }
 
   return {
-    id: row.id,
-    assignmentId: row.assignment_id,
-    userId: row.user_id,
-    startedAt: new Date(row.started_at * 1000),
-    personalDeadline: new Date(row.personal_deadline * 1000),
+    id: session.id,
+    assignmentId: session.assignmentId,
+    userId: session.userId,
+    startedAt: session.startedAt,
+    personalDeadline: session.personalDeadline,
   };
 }
 
