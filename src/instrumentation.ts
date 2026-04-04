@@ -2,6 +2,7 @@ import { getValidatedAuthSecret, getValidatedJudgeAuthToken } from "@/lib/securi
 import { startRateLimitEviction } from "@/lib/security/rate-limit";
 import { startAuditEventPruning } from "@/lib/audit/events";
 import { syncLanguageConfigsOnStartup } from "@/lib/judge/sync-language-configs";
+import { initializeSettings } from "@/lib/system-settings-config";
 
 export async function register() {
   getValidatedAuthSecret();
@@ -9,6 +10,9 @@ export async function register() {
 
   // Insert any missing language configs into the database
   await syncLanguageConfigsOnStartup();
+
+  // Load admin-configured settings from DB before serving any requests
+  await initializeSettings();
 
   // Start background maintenance jobs (only runs once per process)
   startRateLimitEviction();

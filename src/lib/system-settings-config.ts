@@ -77,6 +77,8 @@ const ENV_OVERRIDES: Partial<Record<keyof ConfiguredSettings, string>> = {
 
 let cached: ConfiguredSettings | null = null;
 let cachedAt = 0;
+let _initPromise: Promise<void> | null = null;
+let _initialized = false;
 
 function resolveValue(
   key: keyof ConfiguredSettings,
@@ -121,6 +123,29 @@ async function loadFromDb(): Promise<ConfiguredSettings> {
     }
     return settings;
   }
+}
+
+/**
+ * Await the first DB load so that admin-configured settings are available
+ * before any request is served. Call this during app startup (e.g. in
+ * instrumentation.ts `register()`).
+ */
+export async function initializeSettings(): Promise<void> {
+  if (_initialized) return;
+  if (!_initPromise) {
+    _initPromise = loadFromDb()
+      .then((settings) => {
+        cached = settings;
+        cachedAt = Date.now();
+        _initialized = true;
+      })
+      .catch(() => {
+        // On error, seal defaults so callers aren't stuck on null
+        if (!cached) cached = { ...DEFAULTS } as ConfiguredSettings;
+        _initialized = true;
+      });
+  }
+  await _initPromise;
 }
 
 /**

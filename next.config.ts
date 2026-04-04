@@ -32,6 +32,16 @@ const nextConfig: NextConfig = {
           { key: "X-Frame-Options", value: "DENY" },
           { key: "X-XSS-Protection", value: "0" },
           {
+            // NOTE: This static CSP is a baseline fallback for routes NOT
+            // handled by the proxy middleware (src/proxy.ts). The proxy
+            // generates a per-request cryptographic nonce and sets a stricter
+            // CSP with `script-src 'self' 'nonce-<value>'` which overrides
+            // this header for all dashboard and API routes.
+            //
+            // 'unsafe-inline' is retained here ONLY for the static fallback
+            // because Next.js config headers cannot contain dynamic nonces.
+            // style-src keeps 'unsafe-inline' because CSS-in-JS libraries
+            // and Next.js font injection require it.
             key: "Content-Security-Policy",
             value: [
               "default-src 'self'",
