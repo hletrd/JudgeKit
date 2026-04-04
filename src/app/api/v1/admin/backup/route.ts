@@ -48,8 +48,8 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: "authenticationFailed" }, { status: 403 });
     }
 
-    const passwordValid = await verifyPassword(body.password, dbUser.passwordHash);
-    if (!passwordValid) {
+    const { valid } = await verifyPassword(body.password, dbUser.passwordHash);
+    if (!valid) {
       return NextResponse.json({ error: "invalidPassword" }, { status: 403 });
     }
 
