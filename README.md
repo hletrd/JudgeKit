@@ -121,7 +121,7 @@ See [Language presets](docs/languages.md#docker-image-presets) for preset option
 | `judge-scala` | 780 MB | 523 MB | `judge-factor` | 781 MB | 584 MB |
 | `judge-octave` | 830 MB | 538 MB | `judge-moonbit` | 833 MB | 890 MB |
 | `judge-fsharp` | 985 MB | 687 MB | `judge-clang` | 1.02 GB | 670 MB |
-| `judge-csharp` | 1.07 GB | 693 MB | `judge-mercury` | 1.14 GB | — |
+| `judge-csharp` | 1.07 GB | 693 MB | `judge-mercury` | 1.14 GB | 2.03 GB |
 | `judge-rust` | 1.21 GB | 810 MB | `judge-r` | 1.27 GB | 850 MB |
 | `judge-grain` | 1.30 GB | 186 MB | `judge-julia` | 1.50 GB | 1.23 GB |
 | `judge-haskell` | 1.81 GB | 1.59 GB | `judge-odin` | 1.81 GB | 1.34 GB |
