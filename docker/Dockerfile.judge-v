@@ -1,9 +1,11 @@
 FROM debian:bookworm-slim
 RUN apt-get update && apt-get install -y --no-install-recommends \
-    gcc libc6-dev curl ca-certificates && \
+    gcc libc6-dev curl ca-certificates unzip && \
+    ARCH=$(dpkg --print-architecture) && \
+    if [ "$ARCH" = "arm64" ]; then V_ZIP="v_linux_arm64.zip"; \
+    else V_ZIP="v_linux.zip"; fi && \
     mkdir -p /opt/vlang && \
-    curl -sL https://github.com/vlang/v/releases/latest/download/v_linux.zip -o /tmp/v.zip && \
-    apt-get install -y --no-install-recommends unzip && \
+    curl -sL "https://github.com/vlang/v/releases/latest/download/${V_ZIP}" -o /tmp/v.zip && \
     cd /tmp && unzip -o v.zip && \
     cp -r /tmp/v/* /opt/vlang/ 2>/dev/null || cp -r /tmp/v /opt/vlang/ && \
     chmod +x /opt/vlang/v && \
