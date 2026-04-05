@@ -22,6 +22,18 @@ pub struct Config {
     /// Hostname reported to the app server during registration.
     /// Defaults to the system hostname.
     pub worker_hostname: String,
+    /// Whether the HTTP runner endpoint is enabled.
+    /// Defaults to true. Configurable via `RUNNER_ENABLED` env var.
+    pub runner_enabled: bool,
+    /// Host address for the runner HTTP server.
+    /// Defaults to `0.0.0.0`. Configurable via `RUNNER_HOST` env var.
+    pub runner_host: String,
+    /// Port for the runner HTTP server.
+    /// Defaults to 3001. Configurable via `RUNNER_PORT` env var.
+    pub runner_port: u16,
+    /// Maximum concurrent runner executions.
+    /// Defaults to max(num_cpus - 1, 1). Configurable via `RUNNER_CONCURRENCY` env var.
+    pub runner_concurrency: usize,
 }
 
 impl Config {
@@ -182,6 +194,36 @@ impl Config {
                 .unwrap_or_else(|| "unknown".to_string())
         });
 
+        let runner_enabled = match env::var("RUNNER_ENABLED") {
+            Ok(val) => {
+                let lower = val.trim().to_lowercase();
+                !matches!(lower.as_str(), "0" | "false" | "no" | "off")
+            }
+            Err(_) => true,
+        };
+
+        let runner_host = env::var("RUNNER_HOST").unwrap_or_else(|_| "0.0.0.0".to_string());
+
+        let runner_port: u16 = match env::var("RUNNER_PORT") {
+            Ok(val) => val
+                .parse::<u16>()
+                .map_err(|_| format!("RUNNER_PORT must be a valid port number, got: {val}"))?,
+            Err(_) => 3001,
+        };
+
+        let runner_concurrency: usize = match env::var("RUNNER_CONCURRENCY") {
+            Ok(val) => {
+                let n = val
+                    .parse::<usize>()
+                    .map_err(|_| format!("RUNNER_CONCURRENCY must be a positive integer, got: {val}"))?;
+                if !(1..=64).contains(&n) {
+                    return Err("RUNNER_CONCURRENCY must be between 1 and 64 (inclusive)".to_string());
+                }
+                n
+            }
+            Err(_) => num_cpus::get().saturating_sub(1).max(1),
+        };
+
         Ok(Config {
             claim_url,
             report_url,
@@ -195,6 +237,10 @@ impl Config {
             dead_letter_dir,
             judge_concurrency,
             worker_hostname,
+            runner_enabled,
+            runner_host,
+            runner_port,
+            runner_concurrency,
         })
     }
 }

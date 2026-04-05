@@ -161,6 +161,14 @@ services:
       - JUDGE_SECCOMP_PROFILE=/etc/judge/seccomp-profile.json
       - DEAD_LETTER_DIR=/app/dead-letter
       - TMPDIR=/judge-workspaces
+      - RUNNER_PORT=3001
+      - RUNNER_HOST=0.0.0.0
+    healthcheck:
+      test: ["CMD", "wget", "--no-verbose", "--tries=1", "-O", "/dev/null", "http://127.0.0.1:3001/health"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 10s
     depends_on:
       app-sqlite:
         condition: service_healthy

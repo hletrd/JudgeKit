@@ -16,6 +16,9 @@ tempfile = "3"
 memchr = "2"
 hostname = "0.4"
 tokio-util = "0.7"
+axum = "0.8"
+tower-http = { version = "0.6", features = ["cors"] }
+num_cpus = "1"
 
 [profile.release]
 lto = true

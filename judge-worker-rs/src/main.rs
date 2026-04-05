@@ -4,6 +4,7 @@ mod config;
 mod docker;
 mod executor;
 mod languages;
+mod runner;
 mod types;
 
 use api::ApiClient;
@@ -142,6 +143,36 @@ async fn main() {
         None
     };
 
+    // Start runner HTTP server if enabled
+    let runner_handle = if config.runner_enabled {
+        let runner_state = Arc::new(runner::RunnerState {
+            config: Arc::clone(&config),
+            semaphore: Arc::new(Semaphore::new(config.runner_concurrency)),
+        });
+        let app = runner::create_router(runner_state);
+        let addr = format!("{}:{}", config.runner_host, config.runner_port);
+        let listener = match tokio::net::TcpListener::bind(&addr).await {
+            Ok(l) => l,
+            Err(e) => {
+                tracing::error!(error = %e, addr = %addr, "Failed to bind runner HTTP server");
+                std::process::exit(1);
+            }
+        };
+        tracing::info!(
+            addr = %addr,
+            concurrency = config.runner_concurrency,
+            "Runner HTTP server started"
+        );
+        Some(tokio::spawn(async move {
+            if let Err(e) = axum::serve(listener, app).await {
+                tracing::error!(error = %e, "Runner HTTP server error");
+            }
+        }))
+    } else {
+        tracing::info!("Runner HTTP server disabled");
+        None
+    };
+
     // Graceful shutdown via SIGTERM/SIGINT
     let shutdown = async {
         let mut sigterm =
@@ -268,6 +299,12 @@ async fn main() {
         } else {
             tracing::info!("Deregistered from app server");
         }
+    }
+
+    // Abort runner HTTP server
+    if let Some(handle) = runner_handle {
+        handle.abort();
+        tracing::info!("Runner HTTP server stopped");
     }
 
     tracing::info!("Judge worker shut down gracefully");

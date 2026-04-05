@@ -51,6 +51,15 @@ services:
       - TMPDIR=/judge-workspaces
       - RUST_LOG=${RUST_LOG:-info}
       - DOCKER_HOST=tcp://docker-proxy:2375
+      - RUNNER_PORT=${RUNNER_PORT:-3001}
+      - RUNNER_HOST=0.0.0.0
+      - RUNNER_CONCURRENCY=${RUNNER_CONCURRENCY:-4}
+    healthcheck:
+      test: ["CMD", "wget", "--no-verbose", "--tries=1", "-O", "/dev/null", "http://127.0.0.1:3001/health"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 10s
     depends_on:
       docker-proxy:
         condition: service_started

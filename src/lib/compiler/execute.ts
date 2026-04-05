@@ -43,6 +43,15 @@ const MAX_CONTAINER_AGE_MS = 10 * 60 * 1000; // 10 minutes
  */
 const WORKSPACE_BASE = process.env.COMPILER_WORKSPACE_DIR || tmpdir();
 
+/**
+ * URL of the Rust runner HTTP endpoint (e.g. "http://judge-worker:3001").
+ * When set, executeCompilerRun() delegates Docker execution to the Rust
+ * sidecar instead of spawning containers from the Node.js process.
+ * Falls back to local TS execution if the runner is unreachable.
+ */
+const COMPILER_RUNNER_URL = process.env.COMPILER_RUNNER_URL || "";
+const JUDGE_AUTH_TOKEN = process.env.JUDGE_AUTH_TOKEN || "";
+
 export interface CompilerRunOptions {
   /** Source code to compile/run */
   sourceCode: string;
@@ -383,12 +392,67 @@ async function runDocker(opts: {
 }
 
 /**
+ * Attempt to delegate execution to the Rust runner sidecar.
+ * Returns the result on success, or null if the runner is unavailable.
+ */
+async function tryRustRunner(
+  options: CompilerRunOptions,
+): Promise<CompilerRunResult | null> {
+  if (!COMPILER_RUNNER_URL || !JUDGE_AUTH_TOKEN) return null;
+
+  try {
+    const settings = getConfiguredSettings();
+    const timeLimitMs = options.timeLimitMs ?? settings.compilerTimeLimitMs;
+
+    const response = await fetch(`${COMPILER_RUNNER_URL}/run`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${JUDGE_AUTH_TOKEN}`,
+      },
+      body: JSON.stringify({
+        sourceCode: options.sourceCode,
+        stdin: options.stdin,
+        extension: options.language.extension,
+        dockerImage: options.language.dockerImage,
+        compileCommand: options.language.compileCommand,
+        runCommand: options.language.runCommand,
+        timeLimitMs,
+      }),
+      signal: AbortSignal.timeout(Math.max(timeLimitMs * 4, 120_000)),
+    });
+
+    if (!response.ok) {
+      logger.warn(
+        { status: response.status, url: COMPILER_RUNNER_URL },
+        "[compiler] Rust runner returned non-OK status, falling back to local execution",
+      );
+      return null;
+    }
+
+    const data = await response.json() as CompilerRunResult;
+    return data;
+  } catch (error) {
+    logger.warn(
+      { error, url: COMPILER_RUNNER_URL },
+      "[compiler] Rust runner unavailable, falling back to local execution",
+    );
+    return null;
+  }
+}
+
+/**
  * Execute source code in a Docker-sandboxed environment.
  * Compiles (if needed) and runs the code with optional stdin.
+ * Delegates to the Rust runner sidecar when COMPILER_RUNNER_URL is set.
  */
 export async function executeCompilerRun(
   options: CompilerRunOptions,
 ): Promise<CompilerRunResult> {
+  // Try Rust runner first
+  const rustResult = await tryRustRunner(options);
+  if (rustResult !== null) return rustResult;
+
   const settings = getConfiguredSettings();
   const timeLimitMs = options.timeLimitMs ?? settings.compilerTimeLimitMs;
 

@@ -1,0 +1,368 @@
+use std::sync::Arc;
+
+use axum::extract::State;
+use axum::http::{HeaderMap, StatusCode};
+use axum::response::IntoResponse;
+use axum::routing::{get, post};
+use axum::{Json, Router};
+use serde::{Deserialize, Serialize};
+use tokio::sync::Semaphore;
+
+use crate::config::Config;
+use crate::docker::{self, DockerRunOptions, Phase};
+use crate::languages;
+use crate::types::Language;
+
+const MEMORY_LIMIT_MB: u32 = 256;
+const MAX_SOURCE_CODE_BYTES: usize = 64 * 1024; // 64KB
+const MAX_STDIN_BYTES: usize = 64 * 1024; // 64KB
+const DEFAULT_TIME_LIMIT_MS: u64 = 10_000;
+const MIN_COMPILE_TIMEOUT_MS: u64 = 30_000;
+
+pub struct RunnerState {
+    pub config: Arc<Config>,
+    pub semaphore: Arc<Semaphore>,
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct RunRequest {
+    pub source_code: String,
+    #[serde(default)]
+    pub stdin: String,
+    pub extension: String,
+    pub docker_image: String,
+    pub compile_command: Option<String>,
+    pub run_command: String,
+    #[serde(default)]
+    pub time_limit_ms: Option<u64>,
+    /// Optional language identifier for static config lookup (needs_exec_tmp)
+    #[serde(default)]
+    pub language: Option<Language>,
+}
+
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct RunResponse {
+    pub stdout: String,
+    pub stderr: String,
+    pub exit_code: Option<i32>,
+    pub execution_time_ms: u64,
+    pub timed_out: bool,
+    pub oom_killed: bool,
+    pub compile_output: Option<String>,
+}
+
+#[derive(Debug, Serialize)]
+struct ErrorResponse {
+    error: String,
+}
+
+fn validate_docker_image(image: &str) -> bool {
+    if image.is_empty() || image.contains("://") {
+        return false;
+    }
+    let first = image.as_bytes()[0];
+    if !first.is_ascii_alphanumeric() {
+        return false;
+    }
+    image
+        .chars()
+        .all(|c| c.is_ascii_alphanumeric() || matches!(c, '.' | '_' | '-' | '/' | ':'))
+}
+
+fn validate_shell_command(cmd: &str) -> bool {
+    if cmd.is_empty() || cmd.len() > 10_000 {
+        return false;
+    }
+    if cmd.contains('\0') {
+        return false;
+    }
+    // Block command/process substitution and eval
+    let dangerous_patterns = ["`", "$(", "${", "<(", ">("];
+    for pat in &dangerous_patterns {
+        if cmd.contains(pat) {
+            return false;
+        }
+    }
+    // Block eval as a word
+    if cmd.split_whitespace().any(|w| w == "eval") {
+        return false;
+    }
+    true
+}
+
+fn check_auth(headers: &HeaderMap, config: &Config) -> Result<(), StatusCode> {
+    let auth = headers
+        .get("authorization")
+        .and_then(|v| v.to_str().ok())
+        .ok_or(StatusCode::UNAUTHORIZED)?;
+
+    let token = auth.strip_prefix("Bearer ").ok_or(StatusCode::UNAUTHORIZED)?;
+    if token != config.auth_token.expose() {
+        return Err(StatusCode::UNAUTHORIZED);
+    }
+    Ok(())
+}
+
+async fn health() -> StatusCode {
+    StatusCode::OK
+}
+
+async fn run_handler(
+    State(state): State<Arc<RunnerState>>,
+    headers: HeaderMap,
+    Json(req): Json<RunRequest>,
+) -> impl IntoResponse {
+    // Auth check
+    if let Err(status) = check_auth(&headers, &state.config) {
+        return (
+            status,
+            Json(ErrorResponse {
+                error: "unauthorized".to_string(),
+            }),
+        )
+            .into_response();
+    }
+
+    // Validate source code size
+    if req.source_code.len() > MAX_SOURCE_CODE_BYTES {
+        return (
+            StatusCode::BAD_REQUEST,
+            Json(ErrorResponse {
+                error: "Source code exceeds maximum size limit (64KB)".to_string(),
+            }),
+        )
+            .into_response();
+    }
+
+    // Validate stdin size
+    if req.stdin.len() > MAX_STDIN_BYTES {
+        return (
+            StatusCode::BAD_REQUEST,
+            Json(ErrorResponse {
+                error: "Stdin exceeds maximum size limit (64KB)".to_string(),
+            }),
+        )
+            .into_response();
+    }
+
+    // Validate docker image
+    if !validate_docker_image(&req.docker_image) {
+        return (
+            StatusCode::BAD_REQUEST,
+            Json(ErrorResponse {
+                error: "Invalid Docker image reference".to_string(),
+            }),
+        )
+            .into_response();
+    }
+
+    // Validate shell commands
+    if let Some(ref cmd) = req.compile_command
+        && !validate_shell_command(cmd)
+    {
+        return (
+            StatusCode::BAD_REQUEST,
+            Json(ErrorResponse {
+                error: "Invalid compile command".to_string(),
+            }),
+        )
+            .into_response();
+    }
+    if !validate_shell_command(&req.run_command) {
+        return (
+            StatusCode::BAD_REQUEST,
+            Json(ErrorResponse {
+                error: "Invalid run command".to_string(),
+            }),
+        )
+            .into_response();
+    }
+
+    // Acquire concurrency permit
+    let _permit = match state.semaphore.try_acquire() {
+        Ok(permit) => permit,
+        Err(_) => {
+            return (
+                StatusCode::SERVICE_UNAVAILABLE,
+                Json(ErrorResponse {
+                    error: "Runner is at capacity, try again later".to_string(),
+                }),
+            )
+                .into_response();
+        }
+    };
+
+    // Execute
+    let result = execute_run(&state.config, &req).await;
+
+    match result {
+        Ok(response) => (StatusCode::OK, Json(response)).into_response(),
+        Err(err) => (
+            StatusCode::INTERNAL_SERVER_ERROR,
+            Json(ErrorResponse { error: err }),
+        )
+            .into_response(),
+    }
+}
+
+async fn execute_run(config: &Config, req: &RunRequest) -> Result<RunResponse, String> {
+    let time_limit_ms = req.time_limit_ms.unwrap_or(DEFAULT_TIME_LIMIT_MS);
+    let needs_exec_tmp = req
+        .language
+        .as_ref()
+        .and_then(|l| languages::get_config(l))
+        .is_some_and(|c| c.needs_exec_tmp);
+
+    // Create temp workspace
+    let temp_dir = tempfile::TempDir::new().map_err(|e| format!("Failed to create temp dir: {e}"))?;
+    let workspace_dir = temp_dir.path();
+
+    // Set permissions to 0o777 for sibling container access
+    tokio::fs::set_permissions(
+        workspace_dir,
+        std::os::unix::fs::PermissionsExt::from_mode(0o777),
+    )
+    .await
+    .map_err(|e| format!("Failed to set workspace permissions: {e}"))?;
+
+    let workspace_dir_str = workspace_dir
+        .to_str()
+        .ok_or_else(|| "Temp directory path is not valid UTF-8".to_string())?
+        .to_owned();
+
+    // Write source file
+    let source_path = workspace_dir.join(format!("solution{}", req.extension));
+    tokio::fs::write(&source_path, &req.source_code)
+        .await
+        .map_err(|e| format!("Failed to write source code: {e}"))?;
+
+    tokio::fs::set_permissions(
+        &source_path,
+        std::os::unix::fs::PermissionsExt::from_mode(0o644),
+    )
+    .await
+    .map_err(|e| format!("Failed to set source file permissions: {e}"))?;
+
+    let mut compile_output: Option<String> = None;
+
+    // Compile phase
+    if let Some(ref compile_command) = req.compile_command {
+        let compile_timeout_ms = (time_limit_ms.saturating_mul(2)).max(MIN_COMPILE_TIMEOUT_MS);
+
+        let compile_opts = DockerRunOptions {
+            image: req.docker_image.clone(),
+            workspace_dir: workspace_dir_str.clone(),
+            command: vec!["sh".into(), "-c".into(), compile_command.clone()],
+            phase: Phase::Compile,
+            input: None,
+            timeout_ms: compile_timeout_ms,
+            memory_limit_mb: MEMORY_LIMIT_MB,
+            read_only_workspace: false,
+            needs_exec_tmp,
+        };
+
+        let compilation = docker::run_docker(
+            &compile_opts,
+            &config.seccomp_profile_path,
+            config.disable_custom_seccomp,
+        )
+        .await
+        .map_err(|e| format!("Docker error during compilation: {e}"))?;
+
+        if compilation.timed_out {
+            return Ok(RunResponse {
+                stdout: String::new(),
+                stderr: String::new(),
+                exit_code: None,
+                execution_time_ms: compilation.duration_ms,
+                timed_out: true,
+                oom_killed: compilation.oom_killed,
+                compile_output: Some("Compilation timed out".to_string()),
+            });
+        }
+
+        if compilation.oom_killed || compilation.exit_code != Some(0) {
+            let stdout_str = String::from_utf8_lossy(&compilation.stdout).into_owned();
+            let output = [stdout_str.as_str(), compilation.stderr.as_str()]
+                .into_iter()
+                .filter(|s| !s.is_empty())
+                .collect::<Vec<_>>()
+                .join("\n");
+            let output = output.trim().to_string();
+            return Ok(RunResponse {
+                stdout: String::new(),
+                stderr: String::new(),
+                exit_code: compilation.exit_code,
+                execution_time_ms: compilation.duration_ms,
+                timed_out: false,
+                oom_killed: compilation.oom_killed,
+                compile_output: Some(if output.is_empty() {
+                    "Compilation failed".to_string()
+                } else {
+                    output
+                }),
+            });
+        }
+
+        if !compilation.stderr.is_empty() {
+            compile_output = Some(compilation.stderr.clone());
+        }
+    }
+
+    // Run phase
+    // Ensure stdin ends with newline
+    let stdin_text = if req.stdin.is_empty() {
+        String::new()
+    } else if req.stdin.ends_with('\n') {
+        req.stdin.clone()
+    } else {
+        format!("{}\n", req.stdin)
+    };
+
+    let run_opts = DockerRunOptions {
+        image: req.docker_image.clone(),
+        workspace_dir: workspace_dir_str,
+        command: vec!["sh".into(), "-c".into(), req.run_command.clone()],
+        phase: Phase::Run,
+        input: if stdin_text.is_empty() {
+            None
+        } else {
+            Some(stdin_text)
+        },
+        timeout_ms: time_limit_ms,
+        memory_limit_mb: MEMORY_LIMIT_MB,
+        read_only_workspace: true,
+        needs_exec_tmp,
+    };
+
+    let execution = docker::run_docker(
+        &run_opts,
+        &config.seccomp_profile_path,
+        config.disable_custom_seccomp,
+    )
+    .await
+    .map_err(|e| format!("Docker error during execution: {e}"))?;
+
+    let stdout = String::from_utf8_lossy(&execution.stdout).into_owned();
+
+    Ok(RunResponse {
+        stdout,
+        stderr: execution.stderr,
+        exit_code: execution.exit_code,
+        execution_time_ms: execution.duration_ms,
+        timed_out: execution.timed_out,
+        oom_killed: execution.oom_killed,
+        compile_output,
+    })
+
+    // temp_dir dropped here, workspace cleaned up automatically
+}
+
+pub fn create_router(state: Arc<RunnerState>) -> Router {
+    Router::new()
+        .route("/health", get(health))
+        .route("/run", post(run_handler))
+        .with_state(state)
+}
