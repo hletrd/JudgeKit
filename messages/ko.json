@@ -221,6 +221,11 @@
     "descLabel": "설명 (Markdown/HTML)",
     "timeLimitLabel": "시간 제한 (ms)",
     "memoryLimitLabel": "메모리 제한 (MB)",
+    "problemTypeLabel": "문제 유형",
+    "problemTypeAuto": "자동 채점",
+    "problemTypeManual": "수동 (채점 없음)",
+    "problemTypeAutoHint": "제출물이 테스트 케이스를 기준으로 자동 채점됩니다.",
+    "problemTypeManualHint": "제출물이 자동 채점 없이 저장됩니다. 서술형, 논술형 문제에 적합합니다.",
     "visibilityLabel": "공개 여부",
     "studentVisibilityLabel": "학생 공개 설정",
     "createSuccess": "문제가 생성되었습니다",
@@ -488,7 +493,8 @@
       "time_limit": "시간 초과",
       "memory_limit": "메모리 초과",
       "runtime_error": "런타임 오류",
-      "compile_error": "컴파일 오류"
+      "compile_error": "컴파일 오류",
+      "submitted": "제출 완료"
     },
     "compileOutputHidden": "이 제출에 대한 컴파일 오류 상세 정보는 제공되지 않습니다.",
     "detailedResultsHidden": "이 제출에 대한 테스트 케이스 상세 결과는 제공되지 않습니다.",
@@ -1075,10 +1081,10 @@
         "recruiting": "채용"
       },
       "platformModeDescriptions": {
-        "homework": "일반 과제, 연습, 비교적 낮은 위험도의 학습 활동에 맞춘 모드입니다.",
-        "exam": "공정성과 더 엄격한 제한이 중요한 통제된 평가에 맞춘 모드입니다.",
-        "contest": "리더보드와 운영 흐름이 중요한 프로그래밍 대회에 맞춘 모드입니다.",
-        "recruiting": "후보자 평가와 제한된 보조 기능이 중요한 채용 코딩 테스트에 맞춘 모드입니다."
+        "homework": "일반 과제 및 연습용. 모든 기능 활성화, 제한 없음.",
+        "exam": "통제된 평가용. AI 리뷰와 독립 컴파일러 기본 비활성화.",
+        "contest": "프로그래밍 대회용. AI 리뷰 기본 비활성화, 컴파일러는 사용 가능.",
+        "recruiting": "채용 코딩 테스트용. 후보자 탐색 제한, 채용 맞춤 라벨, AI 보조 비활성화."
       }
     },
     "files": {
@@ -1275,6 +1281,7 @@
       "colStatus": "상태",
       "colConcurrency": "동시 처리",
       "colActiveTasks": "활성 작업",
+      "colCpu": "CPU",
       "colVersion": "버전",
       "colLastHeartbeat": "마지막 하트비트",
       "colActions": "작업",
@@ -1312,7 +1319,7 @@
       "never": "없음",
       "noExpiry": "만료 없음",
       "createTitle": "API 키 생성",
-      "createDescription": "키는 생성 후 한 번만 표시됩니다.",
+      "createDescription": "외부 연동용 API 키를 생성합니다.",
       "nameLabel": "이름",
       "namePlaceholder": "예: CI/CD 파이프라인",
       "roleLabel": "역할",
@@ -1326,7 +1333,7 @@
       "createSuccess": "API 키가 생성되었습니다",
       "createError": "API 키 생성에 실패했습니다",
       "keyCreatedTitle": "API 키 생성 완료",
-      "keyCreatedDescription": "이 키를 지금 복사하세요. 다시 표시되지 않습니다.",
+      "keyCreatedDescription": "새 API 키가 아래에 표시됩니다. 키 목록에서 언제든 다시 확인할 수 있습니다.",
       "copyKey": "키 복사",
       "copied": "복사됨!",
       "done": "완료",
@@ -1337,7 +1344,12 @@
       "delete": "삭제",
       "deleteSuccess": "API 키가 삭제되었습니다",
       "deleteFailed": "API 키 삭제에 실패했습니다",
-      "toggleFailed": "API 키 변경에 실패했습니다"
+      "toggleFailed": "API 키 변경에 실패했습니다",
+      "viewKey": "키 보기",
+      "viewKeyTitle": "API 키",
+      "viewKeyDescription": "\"{name}\" 키의 전체 내용입니다.",
+      "noEncryptedKey": "키 조회 기능 도입 전에 생성된 키입니다. 키를 재생성해 주세요.",
+      "viewKeyFailed": "API 키 조회에 실패했습니다"
     },
     "tags": {
       "title": "태그 관리",

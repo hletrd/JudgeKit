@@ -21,6 +21,8 @@ export const GET = createApiHandler({
         concurrency: judgeWorkers.concurrency,
         activeTasks: judgeWorkers.activeTasks,
         version: judgeWorkers.version,
+        cpuModel: judgeWorkers.cpuModel,
+        architecture: judgeWorkers.architecture,
         labels: judgeWorkers.labels,
         status: judgeWorkers.status,
         registeredAt: judgeWorkers.registeredAt,

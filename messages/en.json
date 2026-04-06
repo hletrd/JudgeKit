@@ -221,6 +221,11 @@
     "descLabel": "Description (Markdown/HTML)",
     "timeLimitLabel": "Time Limit (ms)",
     "memoryLimitLabel": "Memory Limit (MB)",
+    "problemTypeLabel": "Problem Type",
+    "problemTypeAuto": "Auto Judge",
+    "problemTypeManual": "Manual (No Judge)",
+    "problemTypeAutoHint": "Submissions are automatically judged against test cases.",
+    "problemTypeManualHint": "Submissions are stored without automatic judging. Suitable for descriptive or essay-type problems.",
     "visibilityLabel": "Visibility",
     "studentVisibilityLabel": "Student Visibility Settings",
     "createSuccess": "Problem created",
@@ -488,7 +493,8 @@
       "time_limit": "Time Limit Exceeded",
       "memory_limit": "Memory Limit Exceeded",
       "runtime_error": "Runtime Error",
-      "compile_error": "Compile Error"
+      "compile_error": "Compile Error",
+      "submitted": "Submitted"
     },
     "compileOutputHidden": "Compile error details are not available for this submission.",
     "detailedResultsHidden": "Detailed test case results are not available for this submission.",
@@ -1075,10 +1081,10 @@
         "recruiting": "Recruiting"
       },
       "platformModeDescriptions": {
-        "homework": "Optimized for regular coursework, practice, and lower-stakes assignments.",
-        "exam": "Optimized for controlled assessments where fairness and tighter restrictions matter most.",
-        "contest": "Optimized for competitive programming workflows, leaderboard visibility, and contest operations.",
-        "recruiting": "Optimized for candidate evaluation with hiring-focused language and controlled assistance."
+        "homework": "For regular coursework and practice. All features enabled, no restrictions.",
+        "exam": "For controlled assessments. Disables AI review and standalone compiler by default.",
+        "contest": "For competitive programming. Disables AI review by default; compiler stays available.",
+        "recruiting": "For hiring evaluations. Restricted navigation for candidates, hiring-focused labels, no AI assistance."
       }
     },
     "files": {
@@ -1275,6 +1281,7 @@
       "colStatus": "Status",
       "colConcurrency": "Concurrency",
       "colActiveTasks": "Active Tasks",
+      "colCpu": "CPU",
       "colVersion": "Version",
       "colLastHeartbeat": "Last Heartbeat",
       "colActions": "Actions",
@@ -1312,7 +1319,7 @@
       "never": "Never",
       "noExpiry": "No expiry",
       "createTitle": "Create API Key",
-      "createDescription": "The key will only be shown once after creation.",
+      "createDescription": "Create a new API key for programmatic access.",
       "nameLabel": "Name",
       "namePlaceholder": "e.g. CI/CD Pipeline",
       "roleLabel": "Role",
@@ -1326,7 +1333,7 @@
       "createSuccess": "API key created",
       "createError": "Failed to create API key",
       "keyCreatedTitle": "API Key Created",
-      "keyCreatedDescription": "Copy this key now. It will not be shown again.",
+      "keyCreatedDescription": "Your new API key is shown below. You can also view it later from the key list.",
       "copyKey": "Copy Key",
       "copied": "Copied!",
       "done": "Done",
@@ -1337,7 +1344,12 @@
       "delete": "Delete",
       "deleteSuccess": "API key deleted",
       "deleteFailed": "Failed to delete API key",
-      "toggleFailed": "Failed to update API key"
+      "toggleFailed": "Failed to update API key",
+      "viewKey": "View Key",
+      "viewKeyTitle": "API Key",
+      "viewKeyDescription": "Full API key for \"{name}\".",
+      "noEncryptedKey": "This key was created before key viewing was available. Please regenerate the key.",
+      "viewKeyFailed": "Failed to retrieve API key"
     },
     "tags": {
       "title": "Tag Management",

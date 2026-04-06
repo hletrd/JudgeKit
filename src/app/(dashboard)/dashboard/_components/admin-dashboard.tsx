@@ -3,7 +3,7 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@
 import { Badge } from "@/components/ui/badge";
 import { Cpu, HardDrive, Clock, MemoryStick } from "lucide-react";
 import { db } from "@/lib/db";
-import { languageConfigs } from "@/lib/db/schema";
+import { judgeWorkers, languageConfigs } from "@/lib/db/schema";
 import { eq } from "drizzle-orm";
 import {
   getJudgeLanguageDefinition,
@@ -13,15 +13,38 @@ import {
 import { getRuntimeSystemInfo } from "@/lib/system-info";
 import { getTranslations } from "next-intl/server";
 
+function summarizeWorkerCpus(workers: { cpuModel: string | null }[]): string | null {
+  const models = workers.map((w) => w.cpuModel).filter(Boolean) as string[];
+  if (models.length === 0) return null;
+
+  const counts = new Map<string, number>();
+  for (const m of models) {
+    counts.set(m, (counts.get(m) ?? 0) + 1);
+  }
+
+  return Array.from(counts.entries())
+    .map(([model, count]) => (count > 1 ? `${count}x ${model}` : model))
+    .join(", ");
+}
+
 export async function AdminDashboard() {
   const t = await getTranslations("dashboard");
   const tJudge = await getTranslations("judge");
   const tLangs = await getTranslations("languages");
 
-  const [langs, runtimeSystemInfo] = await Promise.all([
+  const [langs, runtimeSystemInfo, onlineWorkers] = await Promise.all([
     db.select().from(languageConfigs).where(eq(languageConfigs.isEnabled, true)),
     getRuntimeSystemInfo(),
+    db
+      .select({ cpuModel: judgeWorkers.cpuModel, architecture: judgeWorkers.architecture })
+      .from(judgeWorkers)
+      .where(eq(judgeWorkers.status, "online")),
   ]);
+
+  const workerCpuSummary = summarizeWorkerCpus(onlineWorkers);
+  const workerArchitectures = [
+    ...new Set(onlineWorkers.map((w) => w.architecture).filter(Boolean) as string[]),
+  ].join(", ");
 
   const enabledLanguages = langs.flatMap((language) => {
     const definition = getJudgeLanguageDefinition(language.language);
@@ -41,7 +64,7 @@ export async function AdminDashboard() {
               <Cpu className="size-5 text-muted-foreground" />
               <div>
                 <p className="text-xs text-muted-foreground">{tJudge("cpuLabel")}</p>
-                <p className="text-sm font-medium">{runtimeSystemInfo.cpu}</p>
+                <p className="text-sm font-medium">{workerCpuSummary ?? runtimeSystemInfo.cpu}</p>
               </div>
             </div>
             <div className="flex items-center gap-3 rounded-lg border p-3">
@@ -73,7 +96,7 @@ export async function AdminDashboard() {
       <Card>
         <CardHeader>
           <CardTitle>{tLangs("title")}</CardTitle>
-          <CardDescription>{runtimeSystemInfo.architecture}</CardDescription>
+          <CardDescription>{workerArchitectures || runtimeSystemInfo.architecture}</CardDescription>
         </CardHeader>
         <CardContent className="min-w-0">
           <div className="overflow-x-auto">

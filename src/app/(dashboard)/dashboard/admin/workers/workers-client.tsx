@@ -51,6 +51,8 @@ interface Worker {
   concurrency: number;
   activeTasks: number;
   version: string | null;
+  cpuModel: string | null;
+  architecture: string | null;
   labels: string[];
   status: string;
   registeredAt: string;
@@ -324,6 +326,7 @@ export function WorkersPageClient() {
                   <TableHead>{t("colStatus")}</TableHead>
                   <TableHead>{t("colConcurrency")}</TableHead>
                   <TableHead>{t("colActiveTasks")}</TableHead>
+                  <TableHead>{t("colCpu")}</TableHead>
                   <TableHead>{t("colVersion")}</TableHead>
                   <TableHead>{t("colLastHeartbeat")}</TableHead>
                   <TableHead>{t("colActions")}</TableHead>
@@ -348,6 +351,11 @@ export function WorkersPageClient() {
                     </TableCell>
                     <TableCell>{w.concurrency}</TableCell>
                     <TableCell>{w.activeTasks}</TableCell>
+                    <TableCell className="text-muted-foreground text-sm">
+                      {w.cpuModel
+                        ? `${w.cpuModel}${w.architecture ? ` (${w.architecture})` : ""}`
+                        : "-"}
+                    </TableCell>
                     <TableCell className="text-muted-foreground">
                       {w.version ?? "-"}
                     </TableCell>

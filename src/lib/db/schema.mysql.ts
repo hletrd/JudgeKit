@@ -137,6 +137,7 @@ export const apiKeys = mysqlTable(
     name: varchar("name", { length: 255 }).notNull(),
     keyHash: varchar("key_hash", { length: 64 }).notNull(),
     keyPrefix: varchar("key_prefix", { length: 255 }).notNull(),
+    encryptedKey: varchar("encrypted_key", { length: 512 }),
     createdById: varchar("created_by_id", { length: 36 })
       .notNull()
       .references(() => users.id, { onDelete: "cascade" }),
@@ -208,6 +209,7 @@ export const problems = mysqlTable("problems", {
   description: text("description"),
   timeLimitMs: int("time_limit_ms").default(2000),
   memoryLimitMb: int("memory_limit_mb").default(256),
+  problemType: varchar("problem_type", { length: 32 }).notNull().default("auto"),
   visibility: varchar("visibility", { length: 255 }).default("private"),
   showCompileOutput: boolean("show_compile_output").notNull().default(true),
   showDetailedResults: boolean("show_detailed_results").notNull().default(true),
@@ -359,6 +361,8 @@ export const judgeWorkers = mysqlTable(
     concurrency: int("concurrency").notNull().default(1),
     activeTasks: int("active_tasks").notNull().default(0),
     version: varchar("version", { length: 255 }),
+    cpuModel: varchar("cpu_model", { length: 255 }),
+    architecture: varchar("architecture", { length: 64 }),
     labels: json("labels").$type<string[]>().default([]),
     status: varchar("status", { length: 255 }).notNull().default("online"),
     registeredAt: timestamp("registered_at")

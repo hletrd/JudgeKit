@@ -13,6 +13,47 @@ use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::Arc;
 use tokio::sync::Semaphore;
 
+/// Detect CPU model name from the system.
+fn detect_cpu_model() -> Option<String> {
+    #[cfg(target_os = "linux")]
+    {
+        if let Ok(contents) = std::fs::read_to_string("/proc/cpuinfo") {
+            for line in contents.lines() {
+                if let Some(value) = line.strip_prefix("model name") {
+                    if let Some(name) = value.trim_start().strip_prefix(':') {
+                        let name = name.trim();
+                        if !name.is_empty() {
+                            return Some(name.to_string());
+                        }
+                    }
+                }
+            }
+        }
+        None
+    }
+    #[cfg(target_os = "macos")]
+    {
+        std::process::Command::new("sysctl")
+            .args(["-n", "machdep.cpu.brand_string"])
+            .output()
+            .ok()
+            .and_then(|o| {
+                let s = String::from_utf8_lossy(&o.stdout).trim().to_string();
+                if s.is_empty() { None } else { Some(s) }
+            })
+    }
+    #[cfg(not(any(target_os = "linux", target_os = "macos")))]
+    {
+        None
+    }
+}
+
+/// Detect CPU architecture (e.g. "x86_64", "aarch64").
+fn detect_architecture() -> Option<String> {
+    let arch = std::env::consts::ARCH;
+    if arch.is_empty() { None } else { Some(arch.to_string()) }
+}
+
 #[tokio::main]
 async fn main() {
     // Initialize tracing with RUST_LOG env filter, default to "info"
@@ -71,9 +112,13 @@ async fn main() {
         "Worker configuration"
     );
 
+    // Detect CPU info for registration
+    let cpu_model = detect_cpu_model();
+    let cpu_architecture = detect_architecture();
+
     // Register with the app server
     let (worker_id, worker_secret): (Option<String>, Option<String>) =
-        match client.register(&worker_hostname, concurrency).await {
+        match client.register(&worker_hostname, concurrency, cpu_model.as_deref(), cpu_architecture.as_deref()).await {
             Ok(resp) => {
                 tracing::info!(
                     worker_id = %resp.data.worker_id,

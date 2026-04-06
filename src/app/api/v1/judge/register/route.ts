@@ -13,6 +13,8 @@ const registerSchema = z.object({
   concurrency: z.number().int().min(1).max(64),
   version: z.string().max(64).optional(),
   labels: z.array(z.string().max(64)).max(32).optional(),
+  cpuModel: z.string().max(255).optional(),
+  architecture: z.string().max(64).optional(),
 });
 
 const HEARTBEAT_INTERVAL_MS = 30_000;
@@ -29,7 +31,7 @@ export async function POST(request: NextRequest) {
       return apiError(parsed.error.issues[0]?.message ?? "invalidRequest", 400);
     }
 
-    const { hostname, concurrency, version, labels } = parsed.data;
+    const { hostname, concurrency, version, labels, cpuModel, architecture } = parsed.data;
     const ipAddress = extractClientIp(request.headers);
     const workerSecret = randomBytes(32).toString("hex");
 
@@ -40,6 +42,8 @@ export async function POST(request: NextRequest) {
         ipAddress,
         concurrency,
         version: version ?? null,
+        cpuModel: cpuModel ?? null,
+        architecture: architecture ?? null,
         labels: labels ?? [],
         status: "online",
         secretToken: workerSecret,

@@ -142,6 +142,7 @@ export const apiKeys = pgTable(
     name: text("name").notNull(),
     keyHash: text("key_hash").notNull(),
     keyPrefix: text("key_prefix").notNull(),
+    encryptedKey: text("encrypted_key"),
     createdById: text("created_by_id")
       .notNull()
       .references(() => users.id, { onDelete: "cascade" }),
@@ -245,6 +246,7 @@ export const problems = pgTable(
     description: text("description"),
     timeLimitMs: integer("time_limit_ms").default(2000),
     memoryLimitMb: integer("memory_limit_mb").default(256),
+    problemType: text("problem_type").notNull().default("auto"),
     visibility: text("visibility").default("private"),
     showCompileOutput: boolean("show_compile_output").notNull().default(true),
     showDetailedResults: boolean("show_detailed_results").notNull().default(true),
@@ -400,6 +402,8 @@ export const judgeWorkers = pgTable(
     concurrency: integer("concurrency").notNull().default(1),
     activeTasks: integer("active_tasks").notNull().default(0),
     version: text("version"),
+    cpuModel: text("cpu_model"),
+    architecture: text("architecture"),
     labels: jsonb("labels").$type<string[]>().default([]),
     status: text("status").notNull().default("online"),
     registeredAt: timestamp("registered_at", { withTimezone: true })

@@ -284,6 +284,10 @@ pub struct RegisterRequest<'a> {
     pub version: Option<&'a str>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub labels: Option<Vec<&'a str>>,
+    #[serde(rename = "cpuModel", skip_serializing_if = "Option::is_none")]
+    pub cpu_model: Option<&'a str>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub architecture: Option<&'a str>,
 }
 
 #[derive(Debug, Clone, Deserialize)]

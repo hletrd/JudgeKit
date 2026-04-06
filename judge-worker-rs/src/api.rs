@@ -47,12 +47,16 @@ impl ApiClient {
         &self,
         hostname: &str,
         concurrency: usize,
+        cpu_model: Option<&str>,
+        architecture: Option<&str>,
     ) -> Result<RegisterResponse, String> {
         let body = RegisterRequest {
             hostname,
             concurrency,
             version: Some(env!("CARGO_PKG_VERSION")),
             labels: None,
+            cpu_model,
+            architecture,
         };
 
         let response = self
