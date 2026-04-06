@@ -22,7 +22,8 @@ type StatusFilterValue =
   | "time_limit"
   | "memory_limit"
   | "runtime_error"
-  | "compile_error";
+  | "compile_error"
+  | "submitted";
 
 interface ProblemHeader {
   problemId: string;

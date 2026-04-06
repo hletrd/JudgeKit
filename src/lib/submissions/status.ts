@@ -11,7 +11,7 @@ export function getSubmissionStatusVariant(
     return "default";
   }
 
-  if (isActiveSubmissionStatus(status)) {
+  if (status === "submitted" || isActiveSubmissionStatus(status)) {
     return "secondary";
   }
 

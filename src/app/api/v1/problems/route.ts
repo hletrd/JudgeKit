@@ -81,6 +81,7 @@ export const POST = createApiHandler({
       title: body.title,
       description: body.description ?? "",
       sequenceNumber: body.sequenceNumber ?? null,
+      problemType: body.problemType ?? "auto",
       timeLimitMs: body.timeLimitMs ?? 2000,
       memoryLimitMb: body.memoryLimitMb ?? 256,
       visibility: body.visibility ?? "private",

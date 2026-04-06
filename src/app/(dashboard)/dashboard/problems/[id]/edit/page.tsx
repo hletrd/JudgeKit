@@ -81,6 +81,7 @@ export default async function EditProblemPage({ params }: { params: Promise<{ id
               title: problem.title,
               description: problem.description ?? "",
               sequenceNumber: problem.sequenceNumber ?? null,
+              problemType: (problem.problemType ?? "auto") as "auto" | "manual",
               timeLimitMs: problem.timeLimitMs ?? 2000,
               memoryLimitMb: problem.memoryLimitMb ?? 256,
               visibility: (problem.visibility ?? "private") as "public" | "private" | "hidden",

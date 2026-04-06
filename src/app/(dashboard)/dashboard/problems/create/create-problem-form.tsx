@@ -19,6 +19,7 @@ import { toast } from "sonner";
 import { ProblemDescription } from "@/components/problem-description";
 
 type ProblemVisibility = "public" | "private" | "hidden";
+type ProblemType = "auto" | "manual";
 
 type ProblemTestCaseDraft = {
   _key?: string;
@@ -32,6 +33,7 @@ export type ProblemFormInitialData = {
   title: string;
   description: string;
   sequenceNumber: number | null;
+  problemType: ProblemType;
   timeLimitMs: number;
   memoryLimitMb: number;
   visibility: ProblemVisibility;
@@ -91,6 +93,7 @@ export default function CreateProblemForm({
   );
   const [timeLimitMs, setTimeLimitMs] = useState(initialProblem?.timeLimitMs ?? 2000);
   const [memoryLimitMb, setMemoryLimitMb] = useState(initialProblem?.memoryLimitMb ?? 256);
+  const [problemType, setProblemType] = useState<ProblemType>(initialProblem?.problemType ?? "auto");
   const [visibility, setVisibility] = useState<ProblemVisibility>(initialProblem?.visibility ?? "private");
   const [showCompileOutput, setShowCompileOutput] = useState(initialProblem?.showCompileOutput ?? true);
   const [showDetailedResults, setShowDetailedResults] = useState(initialProblem?.showDetailedResults ?? true);
@@ -368,6 +371,7 @@ export default function CreateProblemForm({
           title,
           description,
           sequenceNumber: parsedSeqNum && Number.isFinite(parsedSeqNum) && parsedSeqNum > 0 ? parsedSeqNum : null,
+          problemType,
           timeLimitMs,
           memoryLimitMb,
           visibility,
@@ -583,7 +587,7 @@ export default function CreateProblemForm({
         <p className="text-xs text-muted-foreground">{t("tagsHint")}</p>
       </div>
 
-      <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
+      {problemType === "auto" && <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
         <div className="space-y-2">
           <Label htmlFor="timeLimit">{t("timeLimitLabel")}</Label>
           <Input
@@ -608,23 +612,40 @@ export default function CreateProblemForm({
             required
           />
         </div>
+      </div>}
+
+      <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
+        <div className="space-y-2">
+          <Label htmlFor="problemType">{t("problemTypeLabel")}</Label>
+          <Select value={problemType} onValueChange={(v) => { if (v) setProblemType(v as ProblemType); }}>
+            <SelectTrigger id="problemType">
+              <SelectValue>{problemType === "auto" ? t("problemTypeAuto") : t("problemTypeManual")}</SelectValue>
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="auto" label={t("problemTypeAuto")}>{t("problemTypeAuto")}</SelectItem>
+              <SelectItem value="manual" label={t("problemTypeManual")}>{t("problemTypeManual")}</SelectItem>
+            </SelectContent>
+          </Select>
+          <p className="text-xs text-muted-foreground">
+            {problemType === "manual" ? t("problemTypeManualHint") : t("problemTypeAutoHint")}
+          </p>
+        </div>
+        <div className="space-y-2">
+          <Label htmlFor="visibility">{t("visibilityLabel")}</Label>
+          <Select value={visibility} onValueChange={(v) => { if (v) setVisibility(v); }}>
+            <SelectTrigger id="visibility">
+              <SelectValue>{visibilityLabels[visibility]}</SelectValue>
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="public" label={visibilityLabels.public}>{visibilityLabels.public}</SelectItem>
+              <SelectItem value="private" label={visibilityLabels.private}>{visibilityLabels.private}</SelectItem>
+              <SelectItem value="hidden" label={visibilityLabels.hidden}>{visibilityLabels.hidden}</SelectItem>
+            </SelectContent>
+          </Select>
+        </div>
       </div>
 
-      <div className="space-y-2">
-        <Label htmlFor="visibility">{t("visibilityLabel")}</Label>
-        <Select value={visibility} onValueChange={(v) => { if (v) setVisibility(v); }}>
-          <SelectTrigger id="visibility">
-            <SelectValue>{visibilityLabels[visibility]}</SelectValue>
-          </SelectTrigger>
-          <SelectContent>
-            <SelectItem value="public" label={visibilityLabels.public}>{visibilityLabels.public}</SelectItem>
-            <SelectItem value="private" label={visibilityLabels.private}>{visibilityLabels.private}</SelectItem>
-            <SelectItem value="hidden" label={visibilityLabels.hidden}>{visibilityLabels.hidden}</SelectItem>
-          </SelectContent>
-        </Select>
-      </div>
-
-      <div className="space-y-3 rounded-lg border p-4">
+      {problemType === "auto" && <div className="space-y-3 rounded-lg border p-4">
         <h3 className="text-base font-semibold">{t("comparisonModeLabel")}</h3>
         <div className="space-y-2">
           <Select value={comparisonMode} onValueChange={(v) => setComparisonMode(v as "exact" | "float")}>
@@ -665,7 +686,7 @@ export default function CreateProblemForm({
             </div>
           </div>
         )}
-      </div>
+      </div>}
 
       <div className="space-y-3 rounded-lg border p-4">
         <h3 className="text-base font-semibold">{t("studentVisibilityLabel")}</h3>
@@ -706,7 +727,7 @@ export default function CreateProblemForm({
         )}
       </div>
 
-      <div className="space-y-4 rounded-lg border p-4">
+      {problemType === "auto" && <div className="space-y-4 rounded-lg border p-4">
         <div className="flex items-start justify-between gap-4">
           <div className="space-y-1">
             <h3 className="text-base font-semibold">{t("testCasesTitle")}</h3>
@@ -858,7 +879,7 @@ export default function CreateProblemForm({
             ))}
           </div>
         )}
-      </div>
+      </div>}
 
       <div className="flex justify-end gap-2">
         <Button

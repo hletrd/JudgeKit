@@ -150,7 +150,7 @@ export const POST = createApiHandler({
     // Fetch problem and language config in parallel
     const [[problem], [languageConfig]] = await Promise.all([
       db
-        .select({ id: problems.id, title: problems.title })
+        .select({ id: problems.id, title: problems.title, problemType: problems.problemType })
         .from(problems)
         .where(eq(problems.id, problemId))
         .limit(1),
@@ -201,6 +201,8 @@ export const POST = createApiHandler({
 
     const id = generateSubmissionId();
     const ip = req.headers.get("x-forwarded-for")?.split(",")[0]?.trim() ?? null;
+    const isManualProblem = problem.problemType === "manual";
+    const initialStatus = isManualProblem ? "submitted" : "pending";
 
     // Atomic rate limit check + insert in a single transaction
     // Uses SELECT FOR UPDATE to prevent concurrent submissions from bypassing limits
@@ -226,18 +228,22 @@ export const POST = createApiHandler({
       if (recentSubmissions >= maxPerMinute) {
         return { error: "submissionRateLimited" as const, status: 429, retryAfter: "60" };
       }
-      if (pendingCount >= maxPending) {
-        return { error: "tooManyPendingSubmissions" as const, status: 429, retryAfter: "10" };
-      }
 
-      // Global pending count
-      const globalRow = await tx
-        .select({ count: sql<number>`COUNT(*)` })
-        .from(submissions)
-        .where(sql`${submissions.status} IN ('pending', 'queued')`);
+      // Skip judge queue checks for manual problems (no judging needed)
+      if (!isManualProblem) {
+        if (pendingCount >= maxPending) {
+          return { error: "tooManyPendingSubmissions" as const, status: 429, retryAfter: "10" };
+        }
 
-      if (Number(globalRow[0]?.count ?? 0) >= maxGlobalQueue) {
-        return { error: "judgeQueueFull" as const, status: 503, retryAfter: "30" };
+        // Global pending count
+        const globalRow = await tx
+          .select({ count: sql<number>`COUNT(*)` })
+          .from(submissions)
+          .where(sql`${submissions.status} IN ('pending', 'queued')`);
+
+        if (Number(globalRow[0]?.count ?? 0) >= maxGlobalQueue) {
+          return { error: "judgeQueueFull" as const, status: 503, retryAfter: "30" };
+        }
       }
 
       // For windowed exams, enforce deadline at insert time
@@ -266,7 +272,7 @@ export const POST = createApiHandler({
         language,
         sourceCode,
         assignmentId: normalizedAssignmentId,
-        status: "pending",
+        status: initialStatus,
         ipAddress: ip,
         submittedAt: new Date(),
       });

@@ -2,6 +2,7 @@ import { z } from "zod";
 import { trimString } from "@/lib/validators/preprocess";
 
 export const problemVisibilityValues = ["public", "private", "hidden"] as const;
+export const problemTypeValues = ["auto", "manual"] as const;
 
 export const problemTestCaseSchema = z.object({
   input: z.string().min(1, "testCaseInputRequired"),
@@ -15,6 +16,7 @@ export const problemMutationSchema = z.object({
   sequenceNumber: z.number().int().min(1).nullable().optional(),
   timeLimitMs: z.number().int().min(100, "invalidTimeLimit").max(10000, "invalidTimeLimit"),
   memoryLimitMb: z.number().int().min(16, "invalidMemoryLimit").max(1024, "invalidMemoryLimit"),
+  problemType: z.enum(problemTypeValues).optional().default("auto"),
   visibility: z.enum(problemVisibilityValues),
   showCompileOutput: z.boolean().optional().default(true),
   showDetailedResults: z.boolean().optional().default(true),

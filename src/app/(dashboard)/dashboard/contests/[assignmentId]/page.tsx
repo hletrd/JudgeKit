@@ -489,6 +489,7 @@ export default async function ContestDetailPage({
     memory_limit: tSubmissions("status.memory_limit"),
     runtime_error: tSubmissions("status.runtime_error"),
     compile_error: tSubmissions("status.compile_error"),
+    submitted: tSubmissions("status.submitted"),
   } as const;
 
   const statusFilter = normalizeStatusFilter(resolvedSearchParams?.status);

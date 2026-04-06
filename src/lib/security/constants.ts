@@ -54,6 +54,7 @@ export const SUBMISSION_STATUSES: readonly SubmissionStatus[] = [
   "memory_limit",
   "runtime_error",
   "compile_error",
+  "submitted",
 ];
 
 /**
