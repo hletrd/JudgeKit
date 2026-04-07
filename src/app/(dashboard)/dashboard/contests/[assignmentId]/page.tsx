@@ -47,6 +47,7 @@ import { ExportButton } from "@/components/contest/export-button";
 import { RecruiterCandidatesPanel } from "@/components/contest/recruiter-candidates-panel";
 import { RecruitingInvitationsPanel } from "@/components/contest/recruiting-invitations-panel";
 import AssignmentFormDialog, { type AssignmentEditorValue } from "../../groups/[id]/assignment-form-dialog";
+import { AssignmentDeleteButton } from "../../groups/[id]/assignment-delete-button";
 
 const STATUS_FILTER_VALUES = [
   "all",
@@ -569,6 +570,12 @@ export default async function ContestDetailPage({
               }
             />
             <ExportButton assignmentId={assignmentId} />
+            <AssignmentDeleteButton
+              groupId={groupId}
+              assignmentId={assignmentId}
+              assignmentTitle={assignment.title}
+              redirectTo="/dashboard/contests"
+            />
           </div>
         </div>
       </div>

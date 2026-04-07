@@ -12,9 +12,10 @@ import {
   submissions,
   users,
 } from "@/lib/db/schema";
-import { and, asc, eq } from "drizzle-orm";
+import { and, asc, eq, inArray } from "drizzle-orm";
 import type { SubmissionStatus } from "@/types";
 import { isAdmin } from "@/lib/api/auth";
+import { getRecruitingAccessContext } from "@/lib/recruiting/access";
 
 type AssignmentValidationError =
   | "invalidAssignmentId"
@@ -369,6 +370,15 @@ export async function getStudentAssignmentContextsForProblem(
   problemId: string,
   userId: string
 ): Promise<StudentAssignmentProblemContext[]> {
+  const recruitingAccess = await getRecruitingAccessContext(userId);
+  const assignmentScope = recruitingAccess.isRecruitingCandidate
+    ? recruitingAccess.assignmentIds
+    : null;
+
+  if (assignmentScope && assignmentScope.length === 0) {
+    return [];
+  }
+
   return db
     .select({
       assignmentId: assignments.id,
@@ -393,7 +403,14 @@ export async function getStudentAssignmentContextsForProblem(
       examSessions,
       and(eq(examSessions.assignmentId, assignments.id), eq(examSessions.userId, userId))
     )
-    .where(eq(assignmentProblems.problemId, problemId))
+    .where(
+      assignmentScope
+        ? and(
+            eq(assignmentProblems.problemId, problemId),
+            inArray(assignments.id, assignmentScope)
+          )
+        : eq(assignmentProblems.problemId, problemId)
+    )
     .orderBy(asc(assignments.deadline), asc(assignments.title));
 }
 

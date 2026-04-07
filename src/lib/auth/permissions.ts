@@ -6,6 +6,7 @@ import { eq, and, inArray } from "drizzle-orm";
 import type { UserRole } from "@/types";
 import { isUserRole } from "@/lib/security/constants";
 import { resolveCapabilities } from "@/lib/capabilities/cache";
+import { getRecruitingAccessContext } from "@/lib/recruiting/access";
 
 export async function canAccessGroup(
   groupId: string,
@@ -21,6 +22,11 @@ export async function canAccessGroup(
   // Built-in admin/super_admin fallback
   if (role === "super_admin" || role === "admin") {
     return true;
+  }
+
+  const recruitingAccess = await getRecruitingAccessContext(userId);
+  if (recruitingAccess.isRecruitingCandidate) {
+    return false;
   }
 
   const group = await db.query.groups.findFirst({
@@ -96,6 +102,17 @@ export async function canAccessProblem(
   userId: string,
   role: string
 ): Promise<boolean> {
+  const caps = await resolveCapabilities(role);
+  if (caps.has("problems.view_all")) return true;
+
+  // Built-in admin/super_admin fallback
+  if (role === "super_admin" || role === "admin") return true;
+
+  const recruitingAccess = await getRecruitingAccessContext(userId);
+  if (recruitingAccess.isRecruitingCandidate) {
+    return recruitingAccess.problemIds.includes(problemId);
+  }
+
   const problem = await db
     .select({ visibility: problems.visibility, authorId: problems.authorId })
     .from(problems)
@@ -105,13 +122,6 @@ export async function canAccessProblem(
 
   if (!problem) return false;
   if (problem.visibility === "public") return true;
-
-  // Check capability: problems.view_all bypasses visibility
-  const caps = await resolveCapabilities(role);
-  if (caps.has("problems.view_all")) return true;
-
-  // Built-in admin/super_admin fallback
-  if (role === "super_admin" || role === "admin") return true;
   if (problem.authorId === userId) return true;
 
   const accessRow = await db
@@ -144,6 +154,12 @@ export async function getAccessibleProblemIds(
   // Built-in admin/super_admin fallback
   if (role === "super_admin" || role === "admin") {
     return new Set(problemList.map((p) => p.id));
+  }
+
+  const recruitingAccess = await getRecruitingAccessContext(userId);
+  if (recruitingAccess.isRecruitingCandidate) {
+    const allowedProblemIds = new Set(recruitingAccess.problemIds);
+    return new Set(problemList.map((p) => p.id).filter((id) => allowedProblemIds.has(id)));
   }
 
   // Public problems and authored problems are always accessible

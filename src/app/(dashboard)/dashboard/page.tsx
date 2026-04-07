@@ -8,7 +8,7 @@ import { StudentDashboard } from "./_components/student-dashboard";
 import { InstructorDashboard } from "./_components/instructor-dashboard";
 import { AdminDashboard } from "./_components/admin-dashboard";
 import { CandidateDashboard } from "./_components/candidate-dashboard";
-import { getResolvedPlatformMode } from "@/lib/system-settings";
+import { getRecruitingAccessContext } from "@/lib/recruiting/access";
 
 export default async function DashboardPage() {
   const session = await auth();
@@ -16,7 +16,8 @@ export default async function DashboardPage() {
 
   const t = await getTranslations("dashboard");
   const caps = await resolveCapabilities(session.user.role);
-  const platformMode = await getResolvedPlatformMode();
+  const accessContext = await getRecruitingAccessContext(session.user.id);
+  const platformMode = accessContext.effectivePlatformMode;
 
   const isAdminView = caps.has("system.settings");
   const isInstructorView = caps.has("submissions.view_all") && !caps.has("system.settings");
@@ -59,7 +60,11 @@ export default async function DashboardPage() {
             </div>
           }
         >
-          <CandidateDashboard userId={session.user.id} role={session.user.role} />
+          <CandidateDashboard
+            userId={session.user.id}
+            role={session.user.role}
+            assignmentIds={accessContext.assignmentIds}
+          />
         </Suspense>
       )}
 

@@ -1,10 +1,11 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import type { UserRole } from "@/types";
 
-const { authMock, canViewAssignmentSubmissionsMock, dbMock, resolveCapabilitiesMock } = vi.hoisted(() => ({
+const { authMock, canViewAssignmentSubmissionsMock, dbMock, resolveCapabilitiesMock, getRecruitingAccessContextMock } = vi.hoisted(() => ({
   authMock: vi.fn(),
   canViewAssignmentSubmissionsMock: vi.fn(),
   resolveCapabilitiesMock: vi.fn(),
+  getRecruitingAccessContextMock: vi.fn(),
   dbMock: {
     query: {
       groups: {
@@ -36,6 +37,10 @@ vi.mock("@/lib/db", () => ({
 vi.mock("@/lib/capabilities/cache", () => ({
   resolveCapabilities: resolveCapabilitiesMock,
   invalidateRoleCache: vi.fn(),
+}));
+
+vi.mock("@/lib/recruiting/access", () => ({
+  getRecruitingAccessContext: getRecruitingAccessContextMock,
 }));
 
 import {
@@ -92,6 +97,13 @@ beforeEach(() => {
     const caps = DEFAULT_ROLE_CAPABILITIES[role as keyof typeof DEFAULT_ROLE_CAPABILITIES];
     return new Set(caps ?? []);
   });
+
+  getRecruitingAccessContextMock.mockResolvedValue({
+    assignmentIds: [],
+    problemIds: [],
+    isRecruitingCandidate: false,
+    effectivePlatformMode: "homework",
+  });
 });
 
 describe("assertRole", () => {
@@ -129,6 +141,20 @@ describe("canAccessGroup", () => {
 
     await expect(canAccessGroup("missing-group", "user-1", "student")).resolves.toBe(false);
   });
+
+  it("blocks recruiting candidates from accessing groups even if enrolled", async () => {
+    getRecruitingAccessContextMock.mockResolvedValueOnce({
+      assignmentIds: ["assignment-1"],
+      problemIds: ["problem-1"],
+      isRecruitingCandidate: true,
+      effectivePlatformMode: "recruiting",
+    });
+    dbMock.query.groups.findFirst.mockResolvedValue({ instructorId: "instructor-2" });
+    dbMock.query.enrollments.findFirst.mockResolvedValue({ id: "enrollment-1" });
+
+    await expect(canAccessGroup("group-1", "user-1", "student")).resolves.toBe(false);
+    expect(dbMock.query.groups.findFirst).not.toHaveBeenCalled();
+  });
 });
 
 describe("canAccessProblem", () => {
@@ -141,6 +167,28 @@ describe("canAccessProblem", () => {
     await expect(canAccessProblem("problem-1", "user-1", "student")).resolves.toBe(true);
     // Only one select call (the problem lookup) — no group lookup needed
     expect(dbMock.select).toHaveBeenCalledTimes(1);
+  });
+
+  it("restricts recruiting candidates to invitation-scoped problems", async () => {
+    getRecruitingAccessContextMock.mockResolvedValueOnce({
+      assignmentIds: ["assignment-1"],
+      problemIds: ["problem-allowed"],
+      isRecruitingCandidate: true,
+      effectivePlatformMode: "recruiting",
+    });
+
+    await expect(canAccessProblem("problem-blocked", "user-1", "student")).resolves.toBe(false);
+    expect(dbMock.select).not.toHaveBeenCalled();
+
+    getRecruitingAccessContextMock.mockResolvedValueOnce({
+      assignmentIds: ["assignment-1"],
+      problemIds: ["problem-allowed"],
+      isRecruitingCandidate: true,
+      effectivePlatformMode: "recruiting",
+    });
+
+    await expect(canAccessProblem("problem-allowed", "user-1", "student")).resolves.toBe(true);
+    expect(dbMock.select).not.toHaveBeenCalled();
   });
 
   it("allows shared hidden problems through enrolled groups", async () => {
@@ -200,6 +248,23 @@ describe("getAccessibleProblemIds", () => {
     expect(accessible).toEqual(
       new Set(["public-problem", "authored-problem", "shared-problem"])
     );
+  });
+
+  it("narrows accessible problems to invitation-scoped recruiting problems", async () => {
+    getRecruitingAccessContextMock.mockResolvedValueOnce({
+      assignmentIds: ["assignment-1"],
+      problemIds: ["shared-problem"],
+      isRecruitingCandidate: true,
+      effectivePlatformMode: "recruiting",
+    });
+
+    const accessible = await getAccessibleProblemIds("user-1", "student", [
+      { id: "public-problem", visibility: "public", authorId: "author-2" },
+      { id: "shared-problem", visibility: "private", authorId: "author-2" },
+    ]);
+
+    expect(accessible).toEqual(new Set(["shared-problem"]));
+    expect(dbMock.select).not.toHaveBeenCalled();
   });
 });
 

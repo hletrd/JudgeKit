@@ -210,9 +210,6 @@ export function AppSidebar({ user, siteTitle, platformMode, capabilities = [] }:
           <GraduationCap className="h-6 w-6" aria-hidden="true" />
           <div className="min-w-0">
             <span className="block truncate text-lg font-bold">{siteTitle}</span>
-            <Badge variant="outline" className="mt-1 text-[10px] uppercase tracking-wide">
-              {tCommon(`platformModes.${platformMode}`)}
-            </Badge>
           </div>
         </div>
       </SidebarHeader>

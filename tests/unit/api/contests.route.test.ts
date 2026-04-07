@@ -13,6 +13,7 @@ const {
   computeLeaderboardMock,
   getLeaderboardProblemsMock,
   rawQueryOneMock,
+  getRecruitingAccessContextMock,
 } = vi.hoisted(() => ({
   getApiUserMock: vi.fn(),
   consumeApiRateLimitMock: vi.fn<() => NextResponse | null>(() => null),
@@ -25,6 +26,7 @@ const {
   computeLeaderboardMock: vi.fn(),
   getLeaderboardProblemsMock: vi.fn(),
   rawQueryOneMock: vi.fn(),
+  getRecruitingAccessContextMock: vi.fn(),
 }));
 
 vi.mock("@/lib/api/auth", () => ({
@@ -66,6 +68,10 @@ vi.mock("@/lib/assignments/leaderboard", () => ({
 
 vi.mock("@/lib/db/queries", () => ({
   rawQueryOne: rawQueryOneMock,
+}));
+
+vi.mock("@/lib/recruiting/access", () => ({
+  getRecruitingAccessContext: getRecruitingAccessContextMock,
 }));
 
 vi.mock("@/lib/security/constants", () => ({
@@ -159,6 +165,12 @@ describe("POST /api/v1/contests/join", () => {
     vi.clearAllMocks();
     consumeApiRateLimitMock.mockReturnValue(null);
     getApiUserMock.mockResolvedValue(ADMIN_USER);
+    getRecruitingAccessContextMock.mockResolvedValue({
+      assignmentIds: [],
+      problemIds: [],
+      isRecruitingCandidate: false,
+      effectivePlatformMode: "homework",
+    });
     redeemAccessCodeMock.mockResolvedValue({
       ok: true,
       assignmentId: "assign-1",
@@ -221,6 +233,20 @@ describe("POST /api/v1/contests/join", () => {
     const body = await res.json();
     expect(res.status).toBe(400);
     expect(body.error).toBe("invalidAccessCode");
+  });
+
+  it("returns 403 when a recruiting candidate tries to join by access code", async () => {
+    getRecruitingAccessContextMock.mockResolvedValueOnce({
+      assignmentIds: ["assign-1"],
+      problemIds: ["problem-1"],
+      isRecruitingCandidate: true,
+      effectivePlatformMode: "recruiting",
+    });
+    const res = await joinPOST(makeJoinRequest({ code: "ABC123" }));
+    const body = await res.json();
+    expect(res.status).toBe(403);
+    expect(body.error).toBe("forbidden");
+    expect(redeemAccessCodeMock).not.toHaveBeenCalled();
   });
 
   it("returns 500 on unexpected error", async () => {

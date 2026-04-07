@@ -15,8 +15,8 @@ import {
 import { Badge } from "@/components/ui/badge";
 import { formatRelativeTimeFromNow } from "@/lib/datetime";
 import { PaginationControls } from "@/components/pagination-controls";
-import { getResolvedPlatformMode } from "@/lib/system-settings";
 import { resolveCapabilities } from "@/lib/capabilities/cache";
+import { getRecruitingAccessContext } from "@/lib/recruiting/access";
 
 export async function generateMetadata(): Promise<Metadata> {
   const t = await getTranslations("rankings");
@@ -37,10 +37,13 @@ export default async function RankingsPage({
 
   const t = await getTranslations("rankings");
   const locale = await getLocale();
-  const platformMode = await getResolvedPlatformMode();
   const caps = await resolveCapabilities(session.user.role);
+  const { isRecruitingCandidate, effectivePlatformMode } = await getRecruitingAccessContext(session.user.id);
 
-  if (platformMode === "recruiting" && !caps.has("system.settings") && !caps.has("submissions.view_all")) {
+  if (
+    effectivePlatformMode === "recruiting" &&
+    (isRecruitingCandidate || (!caps.has("system.settings") && !caps.has("submissions.view_all")))
+  ) {
     redirect("/dashboard");
   }
 

@@ -1,9 +1,9 @@
 import Link from "next/link";
-import { desc, eq, sql } from "drizzle-orm";
+import { and, desc, eq, inArray, sql } from "drizzle-orm";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { db } from "@/lib/db";
-import { enrollments, languageConfigs, problems, submissions } from "@/lib/db/schema";
+import { assignmentProblems, enrollments, languageConfigs, problems, submissions } from "@/lib/db/schema";
 import { getTranslations } from "next-intl/server";
 import { resolveCapabilities } from "@/lib/capabilities/cache";
 import { formatDateTimeInTimeZone } from "@/lib/datetime";
@@ -13,9 +13,14 @@ import { getLocale } from "next-intl/server";
 type CandidateDashboardProps = {
   userId: string;
   role: string;
+  assignmentIds: string[];
 };
 
-export async function CandidateDashboard({ userId, role }: CandidateDashboardProps) {
+export async function CandidateDashboard({
+  userId,
+  role,
+  assignmentIds,
+}: CandidateDashboardProps) {
   const t = await getTranslations("dashboard");
   const tCommon = await getTranslations("common");
   const locale = await getLocale();
@@ -27,12 +32,22 @@ export async function CandidateDashboard({ userId, role }: CandidateDashboardPro
   // Determine accessible problem count at the database level instead of fetching all problems
   const caps = await resolveCapabilities(role);
   const canViewAll = caps.has("problems.view_all") || role === "super_admin" || role === "admin";
+  const restrictToAssignmentIds = assignmentIds.length > 0;
+  const assignmentSubmissionFilter = restrictToAssignmentIds
+    ? inArray(submissions.assignmentId, assignmentIds)
+    : undefined;
 
   const isRecruitingMode = (await getResolvedPlatformMode()) === "recruiting";
 
   const [accessibleProblemCount, submissionCountRows, enabledLanguagesRows, recentSubmissions] = await Promise.all([
     canViewAll
       ? db.select({ count: sql<number>`count(*)` }).from(problems).then((r) => Number(r[0]?.count ?? 0))
+      : restrictToAssignmentIds
+        ? db
+            .select({ count: sql<number>`count(distinct ${assignmentProblems.problemId})` })
+            .from(assignmentProblems)
+            .where(inArray(assignmentProblems.assignmentId, assignmentIds))
+            .then((r) => Number(r[0]?.count ?? 0))
       : (async () => {
           if (isRecruitingMode) {
             // In recruiting mode: count only problems assigned to the user's enrolled contests
@@ -79,7 +94,11 @@ export async function CandidateDashboard({ userId, role }: CandidateDashboardPro
     db
       .select({ count: sql<number>`count(*)` })
       .from(submissions)
-      .where(eq(submissions.userId, userId)),
+      .where(
+        assignmentSubmissionFilter
+          ? and(eq(submissions.userId, userId), assignmentSubmissionFilter)
+          : eq(submissions.userId, userId)
+      ),
     db
       .select({ count: sql<number>`count(*)` })
       .from(languageConfigs)
@@ -94,7 +113,11 @@ export async function CandidateDashboard({ userId, role }: CandidateDashboardPro
       })
       .from(submissions)
       .leftJoin(problems, eq(submissions.problemId, problems.id))
-      .where(eq(submissions.userId, userId))
+      .where(
+        assignmentSubmissionFilter
+          ? and(eq(submissions.userId, userId), assignmentSubmissionFilter)
+          : eq(submissions.userId, userId)
+      )
       .orderBy(desc(submissions.submittedAt))
       .limit(5),
   ]);

@@ -78,18 +78,23 @@ resolve_languages() {
 SKIP_BUILD=false
 SKIP_LANGUAGES=false
 LANGUAGE_FILTER=""
-INCLUDE_WORKER=true
+INCLUDE_WORKER="${INCLUDE_WORKER:-true}"
 for arg in "$@"; do
   case "$arg" in
     --skip-build) SKIP_BUILD=true ;;
     --skip-languages) SKIP_LANGUAGES=true ;;
     --languages=*) LANGUAGE_FILTER="${arg#--languages=}" ;;
     --no-worker) INCLUDE_WORKER=false ;;
+    --with-worker) INCLUDE_WORKER=true ;;
     --help|-h)
-      echo "Usage: $0 [--skip-build] [--skip-languages] [--languages=<preset|lang,lang,...>] [--no-worker]"
+      echo "Usage: $0 [--skip-build] [--skip-languages] [--languages=<preset|lang,lang,...>] [--no-worker|--with-worker]"
       echo ""
       echo "Options:"
-      echo "  --no-worker  — Do not start a local judge worker (use when workers run on separate machines)"
+      echo "  --no-worker    — Do not start a local judge worker (use when workers run on separate machines)"
+      echo "  --with-worker  — Force starting a local judge worker"
+      echo ""
+      echo "Environment:"
+      echo "  INCLUDE_WORKER=false  — Persistently disable the local worker for this target"
       echo ""
       echo "Language presets: core, popular, extended, all, none"
       echo "  core     — C/C++, Python, Java/Kotlin (~1.2 GB)"

@@ -43,6 +43,10 @@ export function GroupInstructorsManager({
   const [selectedUserId, setSelectedUserId] = useState("");
   const [selectedRole, setSelectedRole] = useState<"co_instructor" | "ta">("ta");
   const [isAdding, setIsAdding] = useState(false);
+  const selectedUser = availableUsers.find((user) => user.id === selectedUserId);
+  const selectedUserLabel = selectedUser
+    ? `${selectedUser.name} (${selectedUser.username})`
+    : "";
 
   async function handleAdd() {
     if (!selectedUserId) return;
@@ -108,27 +112,29 @@ export function GroupInstructorsManager({
       <CardContent className="space-y-4">
         {canManage && (
           <div className="flex flex-col gap-2 sm:flex-row sm:items-end">
-            <Select value={selectedUserId} onValueChange={setSelectedUserId}>
+            <Select value={selectedUserId} onValueChange={(value) => setSelectedUserId(value ?? "")}>
               <SelectTrigger className="flex-1">
-                <SelectValue placeholder={t("selectUser")} />
+                <SelectValue placeholder={t("selectUser")}>
+                  {selectedUserLabel || selectedUserId}
+                </SelectValue>
               </SelectTrigger>
               <SelectContent>
                 {availableUsers
                   .filter((u) => !instructors.some((i) => i.userId === u.id))
                   .map((user) => (
-                    <SelectItem key={user.id} value={user.id}>
+                    <SelectItem key={user.id} value={user.id} label={`${user.name} (${user.username})`}>
                       {user.name} ({user.username})
                     </SelectItem>
                   ))}
               </SelectContent>
             </Select>
-            <Select value={selectedRole} onValueChange={(v) => setSelectedRole(v as "co_instructor" | "ta")}>
+            <Select value={selectedRole} onValueChange={(value) => setSelectedRole((value ?? "ta") as "co_instructor" | "ta")}>
               <SelectTrigger className="w-40">
-                <SelectValue />
+                <SelectValue>{roleLabel(selectedRole)}</SelectValue>
               </SelectTrigger>
               <SelectContent>
-                <SelectItem value="ta">{t("teachingAssistant")}</SelectItem>
-                <SelectItem value="co_instructor">{t("coInstructor")}</SelectItem>
+                <SelectItem value="ta" label={t("teachingAssistant")}>{t("teachingAssistant")}</SelectItem>
+                <SelectItem value="co_instructor" label={t("coInstructor")}>{t("coInstructor")}</SelectItem>
               </SelectContent>
             </Select>
             <Button onClick={() => void handleAdd()} disabled={!selectedUserId || isAdding} size="sm">

@@ -46,7 +46,7 @@ export const POST = createApiHandler({
       resourceId: invitation.id,
       resourceLabel: body.candidateName,
       summary: `Created recruiting invitation for "${body.candidateName}"`,
-      details: { assignmentId, candidateEmail: body.candidateEmail },
+      details: { assignmentId, candidateEmail: body.candidateEmail ?? null },
       request: req,
     });
 

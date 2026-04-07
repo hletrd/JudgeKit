@@ -23,6 +23,7 @@ import { Button } from "@/components/ui/button";
 import { ProblemDeleteButton } from "./problem-delete-button";
 import { ProblemExportButton } from "./problem-export-button";
 import { ArrowLeft, Trophy } from "lucide-react";
+import { getRecruitingAccessContext } from "@/lib/recruiting/access";
 
 export async function generateMetadata({ params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
@@ -57,6 +58,8 @@ export default async function ProblemDetailPage({
   const tCommon = await getTranslations("common");
   const tRankings = await getTranslations("rankings");
   const locale = await getLocale();
+  const recruitingAccess = await getRecruitingAccessContext(session.user.id);
+  const effectivePlatformMode = recruitingAccess.effectivePlatformMode;
   
   const problem = await db.query.problems.findFirst({
     where: eq(problems.id, problemId),
@@ -91,7 +94,7 @@ export default async function ProblemDetailPage({
   const hasAccess = await canAccessProblem(problem.id, session.user.id, session.user.role);
 
   if (!hasAccess) {
-    redirect("/dashboard/problems");
+    redirect(recruitingAccess.isRecruitingCandidate ? "/dashboard/contests" : "/dashboard/problems");
   }
 
   const canEdit =
@@ -142,7 +145,7 @@ export default async function ProblemDetailPage({
     );
 
     if (!assignmentValidation.ok) {
-      redirect("/dashboard/groups");
+      redirect(recruitingAccess.isRecruitingCandidate ? "/dashboard/contests" : "/dashboard/groups");
     }
 
     let personalDeadline: Date | null = null;
@@ -208,12 +211,14 @@ export default async function ProblemDetailPage({
             <h2 className="text-3xl font-bold">{problem.title}</h2>
           </div>
           <div className="flex flex-wrap gap-2">
-            <Link href={`/dashboard/problems/${problem.id}/rankings`}>
-              <Button variant="outline" size="sm">
-                <Trophy className="size-4 mr-1" />
-                {tRankings("viewRankings")}
-              </Button>
-            </Link>
+            {effectivePlatformMode !== "recruiting" && (
+              <Link href={`/dashboard/problems/${problem.id}/rankings`}>
+                <Button variant="outline" size="sm">
+                  <Trophy className="size-4 mr-1" />
+                  {tRankings("viewRankings")}
+                </Button>
+              </Link>
+            )}
             {canEdit && (
               <>
                 <ProblemExportButton problemId={problem.id} />

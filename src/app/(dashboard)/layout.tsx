@@ -16,12 +16,14 @@ import { ChatWidgetLoader } from "@/components/plugins/chat-widget-loader";
 import { resolveCapabilities } from "@/lib/capabilities/cache";
 import { isPluginEnabled } from "@/lib/plugins/data";
 import { EditorContentProvider } from "@/contexts/editor-content-context";
+import { getRecruitingAccessContext } from "@/lib/recruiting/access";
 
 export default async function DashboardLayout({ children }: { children: React.ReactNode }) {
   const session = await auth();
   if (!session?.user) redirect("/login");
 
-  const [t, capabilities] = await Promise.all([
+  const [{ effectivePlatformMode }, t, capabilities] = await Promise.all([
+    getRecruitingAccessContext(session.user.id),
     getTranslations("common"),
     (async () => {
       const [caps, chatPluginOn, aiOn] = await Promise.all([
@@ -58,7 +60,7 @@ export default async function DashboardLayout({ children }: { children: React.Re
         <AppSidebar
           user={session.user}
           siteTitle={settings.siteTitle}
-          platformMode={settings.platformMode}
+          platformMode={effectivePlatformMode}
           capabilities={capabilities}
         />
         <SidebarInset>
@@ -67,7 +69,7 @@ export default async function DashboardLayout({ children }: { children: React.Re
             <div className="min-w-0 flex-1">
               <span className="block truncate text-sm font-semibold">{settings.siteTitle}</span>
               <span className="sr-only">
-                {t(`platformModes.${settings.platformMode}`)}
+                {t(`platformModes.${effectivePlatformMode}`)}
               </span>
             </div>
             <div className="ml-auto flex items-center gap-1">

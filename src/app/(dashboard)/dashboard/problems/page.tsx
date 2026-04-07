@@ -22,6 +22,7 @@ import { Button } from "@/components/ui/button";
 import { PaginationControls } from "@/components/pagination-controls";
 import { FilterSelect } from "@/components/filter-select";
 import { ProblemImportButton } from "./problem-import-button";
+import { getRecruitingAccessContext } from "@/lib/recruiting/access";
 
 type ProblemProgress = "solved" | "attempted" | "untried";
 type ProblemFilter = "all" | "solved" | "unsolved" | "attempted";
@@ -130,6 +131,7 @@ export default async function ProblemsPage({
   const t = await getTranslations("problems");
   const tCommon = await getTranslations("common");
   const tSubmissions = await getTranslations("submissions");
+  const recruitingAccess = await getRecruitingAccessContext(session.user.id);
   const visibilityLabels = {
     public: t("visibilityOptions.public"),
     private: t("visibilityOptions.private"),
@@ -141,10 +143,19 @@ export default async function ProblemsPage({
     session.user.role === "instructor";
 
   // Fetch all tags for the filter dropdown
-  const allTags = await db
-    .select({ id: tags.id, name: tags.name, color: tags.color })
-    .from(tags)
-    .orderBy(asc(tags.name));
+  const allTags = recruitingAccess.isRecruitingCandidate
+    ? (recruitingAccess.problemIds.length > 0
+        ? await db
+            .selectDistinct({ id: tags.id, name: tags.name, color: tags.color })
+            .from(problemTags)
+            .innerJoin(tags, eq(problemTags.tagId, tags.id))
+            .where(inArray(problemTags.problemId, recruitingAccess.problemIds))
+            .orderBy(asc(tags.name))
+        : [])
+    : await db
+        .select({ id: tags.id, name: tags.name, color: tags.color })
+        .from(tags)
+        .orderBy(asc(tags.name));
 
   // Build search filter (title or author name)
   const searchFilter =
@@ -164,7 +175,11 @@ export default async function ProblemsPage({
   // Access filter for non-admins
   const accessFilter = canManageProblems
     ? undefined
-    : buildAccessFilter(session.user.id);
+    : recruitingAccess.isRecruitingCandidate
+      ? (recruitingAccess.problemIds.length > 0
+          ? inArray(problems.id, recruitingAccess.problemIds)
+          : sql`false`)
+      : buildAccessFilter(session.user.id);
 
   // Tag filter: restrict to problems that have this tag
   const tagFilter = currentTag
