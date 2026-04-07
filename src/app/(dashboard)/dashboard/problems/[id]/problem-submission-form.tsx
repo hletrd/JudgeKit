@@ -63,12 +63,24 @@ export function ProblemSubmissionForm({
   const { allowNextNavigation } = useUnsavedChangesGuard({ isDirty });
   const { setContent } = useEditorContent();
 
-  // Auto-save code snapshots every 30s when code changes (contest mode only)
+  // Adaptive code snapshots: 10s after a change, backs off to 60s if idle
   const lastSnapshotRef = useRef<string>("");
+  const lastChangeRef = useRef<number>(0);
+  const snapshotTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
   useEffect(() => {
-    if (!assignmentId || !sourceCode) return;
-    const interval = setInterval(() => {
-      if (sourceCode && sourceCode !== lastSnapshotRef.current && sourceCode.trim().length > 0) {
+    if (!assignmentId) return;
+    lastChangeRef.current = Date.now();
+  }, [sourceCode, assignmentId]);
+
+  useEffect(() => {
+    if (!assignmentId) return;
+    function tick() {
+      const now = Date.now();
+      const sinceLastChange = now - lastChangeRef.current;
+      const changed = sourceCode !== lastSnapshotRef.current && sourceCode.trim().length > 0;
+
+      if (changed) {
         lastSnapshotRef.current = sourceCode;
         void apiFetch("/api/v1/code-snapshots", {
           method: "POST",
@@ -76,8 +88,13 @@ export function ProblemSubmissionForm({
           body: JSON.stringify({ problemId, assignmentId, language, sourceCode }),
         }).catch(() => {});
       }
-    }, 30000);
-    return () => clearInterval(interval);
+
+      // Next check: 10s if recently changed, up to 60s if idle
+      const nextDelay = sinceLastChange < 30000 ? 10000 : 60000;
+      snapshotTimerRef.current = setTimeout(tick, nextDelay);
+    }
+    snapshotTimerRef.current = setTimeout(tick, 10000);
+    return () => { if (snapshotTimerRef.current) clearTimeout(snapshotTimerRef.current); };
   }, [assignmentId, problemId, language, sourceCode]);
   const [isRunning, setIsRunning] = useState(false);
   const [stdinOpen, setStdinOpen] = useState(false);
