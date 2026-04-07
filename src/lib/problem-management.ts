@@ -3,7 +3,7 @@ import { nanoid } from "nanoid";
 import { db, execTransaction, type TransactionClient } from "@/lib/db";
 import { problems, testCases, tags, problemTags } from "@/lib/db/schema";
 import type { ProblemMutationInput } from "@/lib/validators/problem-management";
-import { sanitizeHtml } from "@/lib/security/sanitize-html";
+import { sanitizeMarkdown } from "@/lib/security/sanitize-html";
 
 function mapTestCases(problemId: string, values: ProblemMutationInput["testCases"]) {
   return values.map((testCase, index) => ({
@@ -66,7 +66,7 @@ export async function createProblemWithTestCases(input: ProblemMutationInput, au
         id,
         sequenceNumber: input.sequenceNumber ?? null,
         title: input.title,
-        description: sanitizeHtml(input.description),
+        description: sanitizeMarkdown(input.description),
         timeLimitMs: input.timeLimitMs,
         memoryLimitMb: input.memoryLimitMb,
         problemType: input.problemType,
@@ -107,7 +107,7 @@ export async function updateProblemWithTestCases(problemId: string, input: Probl
       .set({
         sequenceNumber: input.sequenceNumber ?? null,
         title: input.title,
-        description: sanitizeHtml(input.description),
+        description: sanitizeMarkdown(input.description),
         timeLimitMs: input.timeLimitMs,
         memoryLimitMb: input.memoryLimitMb,
         problemType: input.problemType,

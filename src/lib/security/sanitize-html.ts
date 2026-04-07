@@ -65,3 +65,17 @@ export function sanitizeHtml(html: string) {
     ADD_ATTR: ["rel"],
   });
 }
+
+/**
+ * Sanitize markdown content for problem descriptions.
+ *
+ * Unlike sanitizeHtml(), this does NOT escape `<`/`>` because descriptions
+ * are rendered by react-markdown with `skipHtml` (inherently XSS-safe).
+ * DOMPurify treats input as HTML and would escape angle brackets inside
+ * markdown code blocks, breaking the rendered output.
+ */
+export function sanitizeMarkdown(text: string): string {
+  // Strip null bytes and other control characters (except newline, tab, carriage return)
+  // eslint-disable-next-line no-control-regex
+  return text.replace(/[\x00-\x08\x0B\x0C\x0E-\x1F\x7F]/g, "");
+}
