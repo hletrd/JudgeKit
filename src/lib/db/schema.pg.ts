@@ -759,6 +759,33 @@ export const recruitingInvitations = pgTable(
   ]
 );
 
+export const codeSnapshots = pgTable(
+  "code_snapshots",
+  {
+    id: text("id")
+      .primaryKey()
+      .$defaultFn(() => nanoid()),
+    userId: text("user_id")
+      .notNull()
+      .references(() => users.id, { onDelete: "cascade" }),
+    problemId: text("problem_id")
+      .notNull()
+      .references(() => problems.id, { onDelete: "cascade" }),
+    assignmentId: text("assignment_id")
+      .references(() => assignments.id, { onDelete: "cascade" }),
+    language: text("language").notNull(),
+    sourceCode: text("source_code").notNull(),
+    charCount: integer("char_count").notNull(),
+    createdAt: timestamp("created_at", { withTimezone: true })
+      .notNull()
+      .$defaultFn(() => new Date(Date.now())),
+  },
+  (table) => [
+    index("cs_user_problem_idx").on(table.userId, table.problemId, table.assignmentId),
+    index("cs_created_at_idx").on(table.createdAt),
+  ]
+);
+
 export const contestAccessTokens = pgTable(
   "contest_access_tokens",
   {

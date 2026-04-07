@@ -713,6 +713,33 @@ export const recruitingInvitations = mysqlTable(
   ]
 );
 
+export const codeSnapshots = mysqlTable(
+  "code_snapshots",
+  {
+    id: varchar("id", { length: 36 })
+      .primaryKey()
+      .$defaultFn(() => nanoid()),
+    userId: varchar("user_id", { length: 36 })
+      .notNull()
+      .references(() => users.id, { onDelete: "cascade" }),
+    problemId: varchar("problem_id", { length: 36 })
+      .notNull()
+      .references(() => problems.id, { onDelete: "cascade" }),
+    assignmentId: varchar("assignment_id", { length: 36 })
+      .references(() => assignments.id, { onDelete: "cascade" }),
+    language: varchar("language", { length: 50 }).notNull(),
+    sourceCode: text("source_code").notNull(),
+    charCount: int("char_count").notNull(),
+    createdAt: timestamp("created_at")
+      .notNull()
+      .$defaultFn(() => new Date(Date.now())),
+  },
+  (table) => [
+    index("cs_user_problem_idx").on(table.userId, table.problemId, table.assignmentId),
+    index("cs_created_at_idx").on(table.createdAt),
+  ]
+);
+
 export const contestAccessTokens = mysqlTable(
   "contest_access_tokens",
   {

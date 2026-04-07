@@ -62,6 +62,23 @@ export function ProblemSubmissionForm({
 
   const { allowNextNavigation } = useUnsavedChangesGuard({ isDirty });
   const { setContent } = useEditorContent();
+
+  // Auto-save code snapshots every 30s when code changes (contest mode only)
+  const lastSnapshotRef = useRef<string>("");
+  useEffect(() => {
+    if (!assignmentId || !sourceCode) return;
+    const interval = setInterval(() => {
+      if (sourceCode && sourceCode !== lastSnapshotRef.current && sourceCode.trim().length > 0) {
+        lastSnapshotRef.current = sourceCode;
+        void apiFetch("/api/v1/code-snapshots", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ problemId, assignmentId, language, sourceCode }),
+        }).catch(() => {});
+      }
+    }, 30000);
+    return () => clearInterval(interval);
+  }, [assignmentId, problemId, language, sourceCode]);
   const [isRunning, setIsRunning] = useState(false);
   const [stdinOpen, setStdinOpen] = useState(false);
   const [stdin, setStdin] = useState("");

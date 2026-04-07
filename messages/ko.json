@@ -1844,6 +1844,11 @@
       },
       "fetchError": "초대 목록을 불러오지 못했습니다."
     },
+    "codeTimeline": {
+      "title": "{name}의 코드 타임라인",
+      "noSnapshots": "기록된 코드 스냅샷이 없습니다.",
+      "allProblems": "전체 문제"
+    },
     "recruiter": {
       "title": "지원자 현황",
       "candidateCount": "{count}명의 지원자",
@@ -2066,26 +2071,26 @@
   "recruit": {
     "title": "코딩 평가",
     "welcome": "{name}님, 환영합니다",
-    "description": "코딩 평가에 초대되었습니다.",
+    "description": "코딩 평가에 초대됐습니다.",
     "duration": "{minutes}분",
     "instructions": "시작을 누르면 타이머가 바로 시작됩니다. 중간에 멈출 수 없습니다.",
     "problemCount": "총 {count}문제",
     "durationDetail": "제한 시간: {minutes}분",
     "deadlineInfo": "마감일: {date}",
     "importantNotes": "시작 전 안내",
-    "noteTimer": "시작 버튼을 누르면 타이머가 시작되며, 일시 정지나 재시작이 불가합니다.",
-    "noteSubmissions": "여러 번 제출할 수 있으며, 가장 높은 점수가 반영됩니다.",
-    "noteCompletion": "안정적인 인터넷 환경과 충분한 시간을 확보한 후 시작해 주세요.",
+    "noteTimer": "시작하면 타이머가 돌아갑니다. 멈추거나 다시 시작할 수 없습니다.",
+    "noteSubmissions": "제출은 여러 번 가능하고, 최고 점수로 반영됩니다.",
+    "noteCompletion": "인터넷 연결과 시간 여유가 있는지 확인하고 시작하세요.",
     "startAssessment": "평가 시작",
     "continueAssessment": "평가 계속하기",
     "starting": "시작 중...",
-    "startFailed": "평가를 시작하지 못했습니다. 다시 시도해 주세요.",
-    "invalidToken": "유효하지 않은 초대",
-    "invalidTokenDescription": "이 초대 링크는 유효하지 않거나 취소되었습니다.",
-    "expired": "초대 만료",
-    "expiredDescription": "이 초대 링크가 만료되었습니다. 담당자에게 문의해 주세요.",
-    "contestClosed": "평가 종료",
-    "contestClosedDescription": "이 평가는 더 이상 참여할 수 없습니다.",
-    "resultsNotAvailable": "이 평가의 결과를 확인할 수 없습니다."
+    "startFailed": "시작하지 못했습니다. 다시 시도해 주세요.",
+    "invalidToken": "잘못된 링크",
+    "invalidTokenDescription": "이 링크는 잘못됐거나 취소된 초대입니다.",
+    "expired": "만료된 초대",
+    "expiredDescription": "초대 링크가 만료됐습니다. 담당자에게 새 링크를 요청하세요.",
+    "contestClosed": "평가 마감",
+    "contestClosedDescription": "마감된 평가입니다.",
+    "resultsNotAvailable": "결과를 볼 수 없습니다."
   }
 }

@@ -1844,6 +1844,11 @@
       },
       "fetchError": "Failed to load invitations."
     },
+    "codeTimeline": {
+      "title": "Code timeline — {name}",
+      "noSnapshots": "No code snapshots recorded yet.",
+      "allProblems": "All problems"
+    },
     "recruiter": {
       "title": "Candidate Overview",
       "candidateCount": "{count} candidates",

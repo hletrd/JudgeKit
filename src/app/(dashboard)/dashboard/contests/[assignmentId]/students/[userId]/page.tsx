@@ -13,6 +13,7 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@
 import { formatDateTimeInTimeZone } from "@/lib/datetime";
 import { getResolvedSystemTimeZone } from "@/lib/system-settings";
 import { getLanguageDisplayLabel } from "@/lib/judge/languages";
+import { CodeTimelinePanel } from "@/components/contest/code-timeline-panel";
 
 export default async function StudentDetailPage({
   params,
@@ -182,6 +183,12 @@ export default async function StudentDetailPage({
           </Table>
         </CardContent>
       </Card>
+
+      <CodeTimelinePanel
+        assignmentId={assignmentId}
+        userId={userId}
+        userName={student.name}
+      />
     </div>
   );
 }
