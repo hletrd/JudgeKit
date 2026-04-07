@@ -68,6 +68,10 @@ function escapeLike(value: string) {
   return value.replaceAll("\\", "\\\\").replaceAll("%", "\\%").replaceAll("_", "\\_");
 }
 
+function formatDifficultyValue(value: number) {
+  return value.toFixed(2).replace(/\.?0+$/, "");
+}
+
 function buildPageHref(
   page: number,
   progressFilter: ProblemFilter,
@@ -614,7 +618,7 @@ export default async function ProblemsPage({
                   <TableCell>{t("timeLimitValue", { value: problem.timeLimitMs ?? 2000 })}</TableCell>
                   <TableCell>{t("memoryLimitValue", { value: problem.memoryLimitMb ?? 256 })}</TableCell>
                   <TableCell>
-                    {problem.difficulty != null ? t("difficultyValue", { value: problem.difficulty.toFixed(1) }) : <span className="text-muted-foreground">-</span>}
+                    {problem.difficulty != null ? t("difficultyValue", { value: formatDifficultyValue(problem.difficulty) }) : <span className="text-muted-foreground">-</span>}
                   </TableCell>
                   <TableCell>
                     <Badge variant={problem.visibility === "public" ? "default" : "secondary"}>

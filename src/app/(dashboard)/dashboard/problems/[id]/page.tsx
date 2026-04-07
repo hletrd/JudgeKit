@@ -26,6 +26,10 @@ import { ProblemExportButton } from "./problem-export-button";
 import { ArrowLeft, Trophy } from "lucide-react";
 import { getRecruitingAccessContext } from "@/lib/recruiting/access";
 
+function formatDifficultyValue(value: number) {
+  return value.toFixed(2).replace(/\.?0+$/, "");
+}
+
 export async function generateMetadata({ params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
   const problem = await db.query.problems.findFirst({
@@ -239,7 +243,7 @@ export default async function ProblemDetailPage({
           <Badge variant="outline">{t("badges.timeLimit", { value: problem.timeLimitMs ?? 2000 })}</Badge>
           <Badge variant="outline">{t("badges.memoryLimit", { value: problem.memoryLimitMb ?? 256 })}</Badge>
           {problem.difficulty != null && (
-            <Badge variant="outline">{t("badges.difficulty", { value: problem.difficulty.toFixed(1) })}</Badge>
+            <Badge variant="outline">{t("badges.difficulty", { value: formatDifficultyValue(problem.difficulty) })}</Badge>
           )}
           <Badge variant="secondary">{t("badges.author", { name: problem.author?.name || tCommon("system") })}</Badge>
           {assignmentContext && <Badge>{assignmentContext.title}</Badge>}

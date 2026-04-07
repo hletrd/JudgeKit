@@ -1,4 +1,5 @@
-import { test, expect, type APIRequestContext } from "./fixtures";
+import type { APIRequestContext } from "@playwright/test";
+import { test, expect } from "./fixtures";
 
 const CSRF_HEADERS = {
   "Content-Type": "application/json",

@@ -601,6 +601,33 @@ describe("PATCH /api/v1/users/[id]", () => {
     expect(res.status).toBe(404);
   });
 
+  it("admin can clear mustChangePassword for a user", async () => {
+    getApiUserMock.mockResolvedValue(adminUser);
+
+    const updatedUser = { ...safeUser, mustChangePassword: false };
+    dbSelectMock
+      .mockReturnValueOnce(makeSelectChain([{ ...safeUser, mustChangePassword: true }]))
+      .mockReturnValueOnce(makeSelectChain([updatedUser]));
+
+    const whereMock = vi.fn().mockResolvedValue(undefined);
+    const setMock = vi.fn(() => ({ where: whereMock }));
+    dbUpdateMock.mockReturnValue({ set: setMock });
+
+    const req = makeRequest(
+      "http://localhost:3000/api/v1/users/student-id",
+      { method: "PATCH", body: { mustChangePassword: false } }
+    );
+    const res = await PATCH(req, makeCtx("student-id"));
+    const body = await res.json();
+
+    expect(res.status).toBe(200);
+    expect(body.data.mustChangePassword).toBe(false);
+    expect(setMock).toHaveBeenCalledWith(expect.objectContaining({
+      mustChangePassword: false,
+      tokenInvalidatedAt: expect.any(Date),
+    }));
+  });
+
   it("rejects CSRF-less mutation", async () => {
     csrfForbiddenMock.mockReturnValue(
       new Response(JSON.stringify({ error: "forbidden" }), { status: 403 })

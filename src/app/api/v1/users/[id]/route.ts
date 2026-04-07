@@ -27,6 +27,7 @@ const adminPatchUserSchema = z.object({
   className: z.string().max(100).optional().nullable(),
   role: z.enum(["student", "instructor", "admin", "super_admin"]).optional(),
   isActive: z.boolean().optional(),
+  mustChangePassword: z.boolean().optional(),
   password: z.string().min(1).optional(),
 }).strict();
 
@@ -133,6 +134,27 @@ function applyActiveStatusUpdate(
   updates.isActive = body.isActive;
 
   if (body.isActive === false) {
+    updates.tokenInvalidatedAt = new Date();
+  }
+
+  return null;
+}
+
+function applyMustChangePasswordUpdate(
+  updates: UserUpdates,
+  body: Record<string, unknown>,
+  isAdminActor: boolean
+) {
+  if (body.mustChangePassword === undefined) {
+    return null;
+  }
+
+  if (!isAdminActor) {
+    return forbidden();
+  }
+
+  updates.mustChangePassword = body.mustChangePassword;
+  if (body.mustChangePassword === false) {
     updates.tokenInvalidatedAt = new Date();
   }
 
@@ -274,6 +296,9 @@ export const PATCH = createApiHandler({
     const activeStatusError = applyActiveStatusUpdate(updates, body, found, user.id, isAdminActor);
     if (activeStatusError) return activeStatusError;
 
+    const mustChangePasswordError = applyMustChangePasswordUpdate(updates, body, isAdminActor);
+    if (mustChangePasswordError) return mustChangePasswordError;
+
     const roleUpdateError = applyRoleUpdate(updates, body, user, found, isAdminActor);
     if (roleUpdateError) return roleUpdateError;
 
@@ -301,7 +326,7 @@ export const PATCH = createApiHandler({
         summary: `Updated user @${updated.username} via API`,
         details: {
           changedFields: Object.keys(body).filter((key) =>
-            ["name", "username", "email", "className", "role", "isActive", "password"].includes(key)
+            ["name", "username", "email", "className", "role", "isActive", "mustChangePassword", "password"].includes(key)
           ),
           resetPassword: body.password !== undefined,
           role: updated.role,

@@ -266,8 +266,7 @@ test.describe.serial("Problem Difficulty & Tags", () => {
 
     // Wait for navigation away from the create page
     await adminPage.waitForURL((url) => url.toString() !== createUrl, { timeout: 15_000 });
-    const content = await adminPage.textContent("body");
-    expect(content).toMatch(/6\.28/);
+    await expect(adminPage.getByText(/6\.28\s*\/\s*10/)).toBeVisible();
   });
 
   // ── Edit difficulty via form UI ──
@@ -280,11 +279,11 @@ test.describe.serial("Problem Difficulty & Tags", () => {
     await difficultyInput.clear();
     await difficultyInput.fill("8.5");
 
-    await adminPage.getByRole("button", { name: /save|저장/i }).click();
-    await adminPage.waitForURL(`**/dashboard/problems/${problemWithTagsId}`, { timeout: 15_000 });
+    const editUrl = adminPage.url();
+    await adminPage.locator('form button[type="submit"]').click();
+    await adminPage.waitForURL((url) => url.toString() !== editUrl, { timeout: 15_000 });
 
-    const content = await adminPage.textContent("body");
-    expect(content).toMatch(/8\.5/);
+    await expect(adminPage.getByText(/8\.5\s*\/\s*10/)).toBeVisible();
   });
 
   // ── Cleanup ──

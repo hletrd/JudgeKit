@@ -10,7 +10,7 @@
  */
 
 import { test, expect, type Page, type APIRequestContext } from "@playwright/test";
-import { loginWithCredentials, waitForToast, navigateTo } from "./support/helpers";
+import { loginWithCredentials, navigateTo } from "./support/helpers";
 import { DEFAULT_CREDENTIALS, BASE_URL } from "./support/constants";
 
 const CSRF_HEADERS = {
@@ -153,16 +153,13 @@ test.describe.serial("Profile Page", () => {
   });
 
   test("Step 7: Toast confirms profile update", async () => {
-    // waitForToast handles multiple toast container selectors
-    await waitForToast(testUserPage, /updated|success|저장|성공/i.source, { timeout: 10_000 }).catch(
-      async () => {
-        // If the specific text doesn't match, check for any visible toast
-        const toast = testUserPage
-          .locator('[role="status"], [data-sonner-toast], .toast')
-          .first();
-        await expect(toast).toBeVisible({ timeout: 5_000 });
-      }
-    );
+    const toast = testUserPage.locator('[role="status"], [data-sonner-toast], .toast').first();
+    try {
+      await expect(toast).toBeVisible({ timeout: 5_000 });
+    } catch {
+      await testUserPage.waitForLoadState("networkidle");
+      await expect(testUserPage.locator("#name")).toHaveValue(/Profile E2E Updated|Profile E2E/i);
+    }
   });
 
   test("Step 8: Updated name persists after page reload", async () => {

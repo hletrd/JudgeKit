@@ -26,6 +26,7 @@ const problemPatchSchema = z.object({
   floatAbsoluteError: z.number().min(0).max(1).nullable().optional(),
   floatRelativeError: z.number().min(0).max(1).nullable().optional(),
   difficulty: z.number().min(0).max(10).nullable().optional(),
+  defaultLanguage: z.string().max(50).nullable().optional(),
   testCases: z.array(z.object({
     id: z.string().optional(),
     input: z.string().optional(),
@@ -119,6 +120,7 @@ export const PATCH = createApiHandler({
       floatAbsoluteError: body.floatAbsoluteError !== undefined ? body.floatAbsoluteError : problem.floatAbsoluteError ?? null,
       floatRelativeError: body.floatRelativeError !== undefined ? body.floatRelativeError : problem.floatRelativeError ?? null,
       difficulty: body.difficulty !== undefined ? body.difficulty : problem.difficulty ?? null,
+      defaultLanguage: body.defaultLanguage !== undefined ? body.defaultLanguage : problem.defaultLanguage ?? null,
       testCases:
         body.testCases
           ? body.testCases.map((tc, i) => {

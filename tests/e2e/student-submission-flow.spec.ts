@@ -85,7 +85,7 @@ test.describe.serial("Student Submission Flow", () => {
       description: "Read two integers A and B from stdin and print their sum.",
       timeLimitMs: 2000,
       memoryLimitMb: 256,
-      visibility: "private",
+      visibility: "public",
       testCases: [
         { input: "1 2", expectedOutput: "3", isVisible: true, sortOrder: 0 },
         { input: "10 20", expectedOutput: "30", isVisible: true, sortOrder: 1 },

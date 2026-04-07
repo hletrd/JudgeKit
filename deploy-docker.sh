@@ -353,6 +353,19 @@ remote "docker run --rm \
   warn "drizzle-kit push failed — may need manual intervention"
 success "Database migrated"
 
+# Apply additive schema repairs for columns that may be missing on older
+# PostgreSQL deployments even when drizzle-kit push reports no diff.
+info "Applying additive PostgreSQL schema repairs..."
+remote "docker run --rm \
+    --network ${NETWORK_NAME} \
+    -e PGPASSWORD='${PG_PASS}' \
+    postgres:18-alpine \
+    psql -h db -U judgekit -d judgekit <<'SQL'
+ALTER TABLE problems ADD COLUMN IF NOT EXISTS default_language text;
+ALTER TABLE system_settings ADD COLUMN IF NOT EXISTS default_language text;
+SQL" >/dev/null
+success "Schema repairs applied"
+
 # Run ANALYZE to ensure query planner has fresh statistics
 info "Running ANALYZE on database..."
 remote "docker run --rm \
