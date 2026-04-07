@@ -25,7 +25,7 @@ type AntiCheatEvent = {
   eventType: string;
   details: string | null;
   ipAddress: string | null;
-  createdAt: number;
+  createdAt: string;
 };
 
 const EVENT_TYPE_COLORS: Record<string, string> = {
@@ -130,8 +130,10 @@ export function ParticipantAntiCheatTimeline({
     });
   }
 
-  function formatEventTime(epochSec: number): string {
-    return new Date(epochSec * 1000).toLocaleString();
+  function formatEventTime(ts: string | number): string {
+    const d = typeof ts === "number" ? new Date(ts * 1000) : new Date(ts);
+    if (isNaN(d.getTime())) return "-";
+    return d.toLocaleString();
   }
 
   if (error && events.length === 0) {
@@ -185,7 +187,7 @@ export function ParticipantAntiCheatTimeline({
                 className={`cursor-pointer select-none ${typeFilter !== type ? (EVENT_TYPE_COLORS[type] ?? "") : ""}`}
                 onClick={() => setTypeFilter(typeFilter === type ? null : type)}
               >
-                {type}
+                {t(`eventTypes.${type}` as any) ?? type}
               </Badge>
             ))}
           </div>

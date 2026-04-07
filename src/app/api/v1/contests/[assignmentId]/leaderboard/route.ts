@@ -3,6 +3,7 @@ import { createApiHandler, isAdmin, isInstructor } from "@/lib/api/handler";
 import { apiSuccess, apiError } from "@/lib/api/responses";
 import { computeLeaderboard, getLeaderboardProblems } from "@/lib/assignments/leaderboard";
 import { rawQueryOne } from "@/lib/db/queries";
+import { getResolvedPlatformMode } from "@/lib/system-settings";
 
 type AssignmentAccessRow = {
   groupId: string;
@@ -51,9 +52,10 @@ export const GET = createApiHandler({
     const problems = await getLeaderboardProblems(assignmentId);
     const leaderboard = await computeLeaderboard(assignmentId, isInstructorView);
 
-    // Always anonymize in exam mode for non-instructors, regardless of anonymousLeaderboard flag
+    // Anonymize in exam mode for non-instructors, but not in recruiting mode
+    const platformMode = await getResolvedPlatformMode();
     const isExamMode = assignment.examMode !== "none";
-    const isAnonymous = !isInstructorView && (!!assignment.anonymousLeaderboard || isExamMode);
+    const isAnonymous = !isInstructorView && platformMode !== "recruiting" && (!!assignment.anonymousLeaderboard || isExamMode);
 
     const entries = isInstructorView
       ? leaderboard.entries

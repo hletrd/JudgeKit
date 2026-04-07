@@ -26,7 +26,11 @@ type ProblemTestCaseDraft = {
   input: string;
   expectedOutput: string;
   isVisible: boolean;
+  _inputDirty?: boolean;
+  _outputDirty?: boolean;
 };
+
+const LARGE_TESTCASE_THRESHOLD = 5000;
 
 export type ProblemFormInitialData = {
   id: string;
@@ -114,6 +118,17 @@ export default function CreateProblemForm({
       : []
   );
   const areTestCasesEditable = !testCasesLocked || testCaseOverrideEnabled;
+  const [expandedTestCases, setExpandedTestCases] = useState<Set<string>>(new Set());
+  const originalTestCasesRef = useRef<Map<number, { input: string; expectedOutput: string }>>(new Map());
+
+  // Store original test case content for change detection
+  useEffect(() => {
+    if (initialProblem?.testCases.length) {
+      const map = new Map<number, { input: string; expectedOutput: string }>();
+      initialProblem.testCases.forEach((tc, i) => map.set(i, { input: tc.input, expectedOutput: tc.expectedOutput }));
+      originalTestCasesRef.current = map;
+    }
+  }, [initialProblem]);
 
   useEffect(() => {
     if (forceDisableAiAssistant) {
@@ -388,7 +403,18 @@ export default function CreateProblemForm({
           defaultLanguage: defaultLanguage || null,
           tags: currentTags,
           ...(areTestCasesEditable
-            ? { testCases: testCases.map(({ _key, ...rest }) => { void _key; return rest; }) }
+            ? { testCases: testCases.map(({ _key, _inputDirty, _outputDirty, ...rest }, i) => {
+                void _key;
+                const orig = originalTestCasesRef.current.get(i);
+                if (isEditing && orig) {
+                  return {
+                    ...rest,
+                    input: orig.input === rest.input ? undefined : rest.input,
+                    expectedOutput: orig.expectedOutput === rest.expectedOutput ? undefined : rest.expectedOutput,
+                  };
+                }
+                return rest;
+              }) }
             : {}),
           ...(testCaseOverrideEnabled ? { allowLockedTestCases: true } : {}),
         }),
@@ -838,13 +864,22 @@ export default function CreateProblemForm({
                         </Button>
                       </div>
                     </div>
-                    <Textarea
-                      id={`test-case-input-${index}`}
-                      value={testCase.input}
-                      onChange={(event) => updateTestCase(index, { input: event.target.value })}
-                      className="min-h-[140px] max-h-[400px] overflow-y-auto font-mono text-sm"
-                      disabled={isLoading || !areTestCasesEditable}
-                    />
+                    {testCase.input.length > LARGE_TESTCASE_THRESHOLD && !expandedTestCases.has(`input-${index}`) ? (
+                      <div className="flex items-center justify-between rounded-lg border bg-muted/40 p-3 min-h-[140px]">
+                        <span className="text-sm text-muted-foreground">{(testCase.input.length / 1024).toFixed(1)} KB</span>
+                        <Button type="button" variant="outline" size="sm" onClick={() => setExpandedTestCases((s) => new Set(s).add(`input-${index}`))}>
+                          {t("showContent")}
+                        </Button>
+                      </div>
+                    ) : (
+                      <Textarea
+                        id={`test-case-input-${index}`}
+                        value={testCase.input}
+                        onChange={(event) => updateTestCase(index, { input: event.target.value })}
+                        className="min-h-[140px] max-h-[400px] overflow-y-auto font-mono text-sm"
+                        disabled={isLoading || !areTestCasesEditable}
+                      />
+                    )}
                   </div>
 
                   <div className="space-y-2">
@@ -870,15 +905,24 @@ export default function CreateProblemForm({
                         </Button>
                       </div>
                     </div>
-                    <Textarea
-                      id={`test-case-output-${index}`}
-                      value={testCase.expectedOutput}
-                      onChange={(event) =>
-                        updateTestCase(index, { expectedOutput: event.target.value })
-                      }
-                      className="min-h-[140px] max-h-[400px] overflow-y-auto font-mono text-sm"
-                      disabled={isLoading || !areTestCasesEditable}
-                    />
+                    {testCase.expectedOutput.length > LARGE_TESTCASE_THRESHOLD && !expandedTestCases.has(`output-${index}`) ? (
+                      <div className="flex items-center justify-between rounded-lg border bg-muted/40 p-3 min-h-[140px]">
+                        <span className="text-sm text-muted-foreground">{(testCase.expectedOutput.length / 1024).toFixed(1)} KB</span>
+                        <Button type="button" variant="outline" size="sm" onClick={() => setExpandedTestCases((s) => new Set(s).add(`output-${index}`))}>
+                          {t("showContent")}
+                        </Button>
+                      </div>
+                    ) : (
+                      <Textarea
+                        id={`test-case-output-${index}`}
+                        value={testCase.expectedOutput}
+                        onChange={(event) =>
+                          updateTestCase(index, { expectedOutput: event.target.value })
+                        }
+                        className="min-h-[140px] max-h-[400px] overflow-y-auto font-mono text-sm"
+                        disabled={isLoading || !areTestCasesEditable}
+                      />
+                    )}
                   </div>
                 </div>
 

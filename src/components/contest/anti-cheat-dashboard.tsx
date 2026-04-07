@@ -35,7 +35,7 @@ type AntiCheatEvent = {
   eventType: string;
   details: string | null;
   ipAddress: string | null;
-  createdAt: number;
+  createdAt: string;
 };
 
 interface AntiCheatDashboardProps {
@@ -236,8 +236,10 @@ export function AntiCheatDashboard({ assignmentId }: AntiCheatDashboardProps) {
     }
   }
 
-  function formatEventTime(epochSec: number): string {
-    return new Date(epochSec * 1000).toLocaleString();
+  function formatEventTime(ts: string | number): string {
+    const d = typeof ts === "number" ? new Date(ts * 1000) : new Date(ts);
+    if (isNaN(d.getTime())) return "-";
+    return d.toLocaleString();
   }
 
   if (error && events.length === 0) {
@@ -381,7 +383,7 @@ export function AntiCheatDashboard({ assignmentId }: AntiCheatDashboardProps) {
                   className={`cursor-pointer select-none ${typeFilter !== type ? (EVENT_TYPE_COLORS[type] ?? "") : ""}`}
                   onClick={() => setTypeFilter(typeFilter === type ? null : type)}
                 >
-                  {type}
+                  {t(`eventTypes.${type}` as any) ?? type}
                 </Badge>
               ))}
             </div>
@@ -453,7 +455,7 @@ export function AntiCheatDashboard({ assignmentId }: AntiCheatDashboardProps) {
                           variant="secondary"
                           className={EVENT_TYPE_COLORS[event.eventType] ?? ""}
                         >
-                          {event.eventType}
+                          {t(`eventTypes.${event.eventType}` as any) ?? event.eventType}
                         </Badge>
                       </TableCell>
                       <TableCell className="text-sm text-muted-foreground">

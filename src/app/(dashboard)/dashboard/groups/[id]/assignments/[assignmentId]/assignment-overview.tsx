@@ -247,7 +247,14 @@ export function AssignmentOverview({
                       {problemStatuses && problem.problem && (
                         <ProgressIcon progress={progress ?? "untried"} labels={labels} />
                       )}
-                      {problem.problem?.title ?? "-"}
+                      {problem.problem ? (
+                        <Link
+                          href={`/dashboard/problems/${problem.problem.id}?assignmentId=${assignment.id}`}
+                          className="hover:underline"
+                        >
+                          {problem.problem.title}
+                        </Link>
+                      ) : "-"}
                     </div>
                   </TableCell>
                   <TableCell>{problem.points ?? 100}</TableCell>

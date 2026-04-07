@@ -250,6 +250,7 @@
     "zipImportNoPairs": "No valid input/output pairs found in ZIP. Use numbered files like 01.in, 01.out.",
     "zipImportFailed": "Failed to parse ZIP file.",
     "removeTestCase": "Remove",
+    "showContent": "Show",
     "noTestCases": "No test cases yet. Add at least one to make the problem judgeable.",
     "testCaseLabel": "Test Case {number}",
     "testCaseInputLabel": "Input",
@@ -1711,8 +1712,10 @@
         "copy": "Copy",
         "paste": "Paste",
         "blur": "Window Blur",
+        "contextmenu": "Right Click",
         "ip_change": "IP Change",
-        "code_similarity": "Code Similarity"
+        "code_similarity": "Code Similarity",
+        "heartbeat": "Heartbeat"
       },
       "warningTabSwitch": "Tab switch detected. An integrity signal has been recorded for review.",
       "similarityCheck": "Run Similarity Scan",

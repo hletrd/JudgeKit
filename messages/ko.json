@@ -250,6 +250,7 @@
     "zipImportNoPairs": "ZIP에서 유효한 입출력 쌍을 찾을 수 없습니다. 01.in, 01.out 형식을 사용하세요.",
     "zipImportFailed": "ZIP 파일을 읽을 수 없습니다.",
     "removeTestCase": "삭제",
+    "showContent": "보기",
     "noTestCases": "아직 테스트 케이스가 없습니다. 채점 가능하게 하려면 최소 1개를 추가하세요.",
     "testCaseLabel": "테스트 케이스 {number}",
     "testCaseInputLabel": "입력",
