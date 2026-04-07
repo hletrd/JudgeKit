@@ -272,7 +272,7 @@ export default async function ProblemDetailPage({
         </div>
       </div>
       <Card>
-        <CardContent className="pt-6">
+        <CardContent className="pt-4">
           {problem.description ? (
             <ProblemDescription
               className="text-sm sm:text-base"

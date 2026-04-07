@@ -1,6 +1,9 @@
 import { NextRequest } from "next/server";
+import { eq, and, inArray } from "drizzle-orm";
 import { createApiHandler, isAdmin } from "@/lib/api/handler";
 import { apiSuccess, apiError } from "@/lib/api/responses";
+import { db } from "@/lib/db";
+import { recruitingInvitations } from "@/lib/db/schema";
 import { bulkCreateRecruitingInvitations } from "@/lib/assignments/recruiting-invitations";
 import { bulkCreateRecruitingInvitationsSchema } from "@/lib/validators/recruiting-invitations";
 import { recordAuditEvent } from "@/lib/audit/events";
@@ -11,6 +14,32 @@ export const POST = createApiHandler({
     if (!isAdmin(user.role)) return apiError("forbidden", 403);
 
     const { assignmentId } = params;
+
+    // Check for duplicate emails within the request
+    const emails = body.invitations
+      .map((inv) => inv.candidateEmail?.toLowerCase())
+      .filter((e): e is string => !!e);
+    const uniqueEmails = new Set(emails);
+    if (uniqueEmails.size !== emails.length) {
+      return apiError("duplicateEmailsInRequest", 400);
+    }
+
+    // Check for duplicate emails against existing invitations
+    if (uniqueEmails.size > 0) {
+      const existing = await db
+        .select({ email: recruitingInvitations.candidateEmail })
+        .from(recruitingInvitations)
+        .where(
+          and(
+            eq(recruitingInvitations.assignmentId, assignmentId),
+            inArray(recruitingInvitations.candidateEmail, [...uniqueEmails])
+          )
+        );
+      if (existing.length > 0) {
+        return apiError("emailAlreadyInvited", 409);
+      }
+    }
+
     const created = await bulkCreateRecruitingInvitations({
       assignmentId,
       invitations: body.invitations.map((inv) => ({

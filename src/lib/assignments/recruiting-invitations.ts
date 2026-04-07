@@ -233,7 +233,7 @@ export async function redeemRecruitingToken(
         id: uid,
         username,
         name: invitation.candidateName,
-        email: invitation.candidateEmail,
+        email: null,
         passwordHash: null,
         role: "student",
         isActive: true,

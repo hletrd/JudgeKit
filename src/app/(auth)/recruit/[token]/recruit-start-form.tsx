@@ -3,7 +3,7 @@
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { useTranslations } from "next-intl";
-import { signIn } from "next-auth/react";
+import { signIn, signOut } from "next-auth/react";
 import { Button } from "@/components/ui/button";
 
 export function RecruitStartForm({
@@ -25,6 +25,9 @@ export function RecruitStartForm({
     setError(null);
 
     try {
+      // Sign out any existing session first
+      await signOut({ redirect: false }).catch(() => {});
+
       const result = await signIn("credentials", {
         recruitToken: token,
         redirect: false,

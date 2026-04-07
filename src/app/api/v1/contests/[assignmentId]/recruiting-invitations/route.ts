@@ -1,6 +1,9 @@
 import { NextRequest } from "next/server";
 import { createApiHandler, isAdmin } from "@/lib/api/handler";
 import { apiSuccess, apiError } from "@/lib/api/responses";
+import { eq, and } from "drizzle-orm";
+import { db } from "@/lib/db";
+import { recruitingInvitations } from "@/lib/db/schema";
 import {
   createRecruitingInvitation,
   getRecruitingInvitations,
@@ -29,6 +32,21 @@ export const POST = createApiHandler({
     if (!isAdmin(user.role)) return apiError("forbidden", 403);
 
     const { assignmentId } = params;
+
+    // Reject duplicate email within the same assignment
+    if (body.candidateEmail) {
+      const existing = await db.query.recruitingInvitations.findFirst({
+        where: and(
+          eq(recruitingInvitations.assignmentId, assignmentId),
+          eq(recruitingInvitations.candidateEmail, body.candidateEmail),
+        ),
+        columns: { id: true },
+      });
+      if (existing) {
+        return apiError("emailAlreadyInvited", 409);
+      }
+    }
+
     const invitation = await createRecruitingInvitation({
       assignmentId,
       candidateName: body.candidateName,

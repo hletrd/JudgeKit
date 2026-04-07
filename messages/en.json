@@ -320,7 +320,7 @@
       "submissionLoadFailed": "Failed to load submissions.",
       "submissionCreateFailed": "Failed to submit your solution.",
       "examNotStarted": "You must start the exam before submitting.",
-      "examTimeExpired": "Your exam time has expired."
+      "examTimeExpired": "Your assessment time has ended."
     },
     "visibilityOptions": {
       "public": "Public",
@@ -674,7 +674,7 @@
     "examStartConfirmDescription": "You will have {duration} minutes to complete this exam. The timer cannot be paused or restarted once started.",
     "examStartConfirmAction": "Start Exam",
     "examTimeRemaining": "Time remaining",
-    "examTimeExpired": "Time expired",
+    "examTimeExpired": "Assessment time ended",
     "examWarning15Min": "15 minutes remaining",
     "examWarning5Min": "5 minutes remaining",
     "examWarning1Min": "1 minute remaining",

@@ -52,12 +52,33 @@ export const POST = createApiHandler({
       return apiError("duplicateUsernamesInRequest", 400);
     }
 
+    // Check for duplicate emails within the request itself
+    const requestEmails = userList
+      .map((u) => u.email?.trim().toLowerCase())
+      .filter((e): e is string => !!e);
+    const uniqueRequestEmails = new Set(requestEmails);
+    if (uniqueRequestEmails.size !== requestEmails.length) {
+      return apiError("duplicateEmailsInRequest", 400);
+    }
+
     // Check existing usernames in DB (case-insensitive, scoped to request usernames only)
     const existingUsers = await db.query.users.findMany({
       where: inArray(users.username, [...uniqueRequestUsernames]),
       columns: { username: true },
     });
     const existingUsernameSet = new Set(existingUsers.map((u) => u.username.toLowerCase()));
+
+    // Check existing emails in DB
+    let existingEmailSet = new Set<string>();
+    if (uniqueRequestEmails.size > 0) {
+      const existingByEmail = await db.query.users.findMany({
+        where: inArray(users.email, [...uniqueRequestEmails]),
+        columns: { email: true },
+      });
+      existingEmailSet = new Set(
+        existingByEmail.map((u) => u.email?.toLowerCase()).filter((e): e is string => !!e)
+      );
+    }
 
     type CreatedEntry = { username: string; name: string; generatedPassword: string };
     type FailedEntry = { username: string; reason: string };
