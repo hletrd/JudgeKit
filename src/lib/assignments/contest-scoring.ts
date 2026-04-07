@@ -159,10 +159,10 @@ async function _computeContestRankingInner(assignmentId: string, cutoffSec?: num
           CASE
             WHEN score IS NOT NULL THEN
               CASE
-                WHEN @deadline IS NOT NULL AND @latePenalty > 0 AND @examMode != 'windowed'
-                     AND submitted_at IS NOT NULL AND EXTRACT(EPOCH FROM submitted_at)::bigint > @deadline
-                THEN ROUND((LEAST(GREATEST(score, 0), 100) / 100.0 * points) * (1.0 - @latePenalty / 100.0), 2)
-                ELSE ROUND(LEAST(GREATEST(score, 0), 100) / 100.0 * points, 2)
+                WHEN @deadline::bigint IS NOT NULL AND @latePenalty::double precision > 0 AND @examMode::text != 'windowed'
+                     AND submitted_at IS NOT NULL AND EXTRACT(EPOCH FROM submitted_at)::bigint > @deadline::bigint
+                THEN ROUND(((LEAST(GREATEST(score, 0), 100) / 100.0 * points) * (1.0 - @latePenalty::double precision / 100.0))::numeric, 2)
+                ELSE ROUND((LEAST(GREATEST(score, 0), 100) / 100.0 * points)::numeric, 2)
               END
             ELSE NULL
           END
@@ -173,7 +173,7 @@ async function _computeContestRankingInner(assignmentId: string, cutoffSec?: num
                   AND EXTRACT(EPOCH FROM submitted_at)::bigint < COALESCE(EXTRACT(EPOCH FROM first_ac_at)::bigint, 9999999999)
              THEN 1 ELSE 0 END) AS "wrongBeforeAc"
       FROM base
-      GROUP BY user_id, problem_id
+      GROUP BY user_id, problem_id, username, name, class_name, points
     `;
   }
 
