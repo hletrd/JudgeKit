@@ -3,6 +3,7 @@ import { nanoid } from "nanoid";
 import { db } from "@/lib/db";
 import { assignments, contestAccessTokens, enrollments } from "@/lib/db/schema";
 import { and, eq } from "drizzle-orm";
+import { withUpdatedAt } from "@/lib/db/helpers";
 
 /**
  * Generate a random 8-character uppercase alphanumeric access code.
@@ -28,7 +29,7 @@ export function generateAccessCode(): string {
 export async function setAccessCode(assignmentId: string, code?: string): Promise<string> {
   const accessCode = code ?? generateAccessCode();
   await db.update(assignments)
-    .set({ accessCode })
+    .set(withUpdatedAt({ accessCode }))
     .where(eq(assignments.id, assignmentId));
   return accessCode;
 }
@@ -38,7 +39,7 @@ export async function setAccessCode(assignmentId: string, code?: string): Promis
  */
 export async function revokeAccessCode(assignmentId: string): Promise<void> {
   await db.update(assignments)
-    .set({ accessCode: null })
+    .set(withUpdatedAt({ accessCode: null }))
     .where(eq(assignments.id, assignmentId));
 }
 
@@ -60,6 +61,7 @@ type RedeemResult =
 
 /**
  * Redeem an access code: verify it, create access token, auto-enroll in group.
+ * Entire operation runs inside a transaction to prevent TOCTOU races.
  */
 export async function redeemAccessCode(
   code: string,
@@ -72,91 +74,100 @@ export async function redeemAccessCode(
     return { ok: false, error: "invalidAccessCode" };
   }
 
-  const [assignment] = await db
-    .select({
-      id: assignments.id,
-      groupId: assignments.groupId,
-      accessCode: assignments.accessCode,
-      examMode: assignments.examMode,
-      deadline: assignments.deadline,
-      lateDeadline: assignments.lateDeadline,
-    })
-    .from(assignments)
-    .where(eq(assignments.accessCode, normalizedCode))
-    .limit(1);
+  try {
+    return await db.transaction(async (tx) => {
+      // Read assignment inside transaction for consistent snapshot
+      const [assignment] = await tx
+        .select({
+          id: assignments.id,
+          groupId: assignments.groupId,
+          accessCode: assignments.accessCode,
+          examMode: assignments.examMode,
+          deadline: assignments.deadline,
+          lateDeadline: assignments.lateDeadline,
+        })
+        .from(assignments)
+        .where(eq(assignments.accessCode, normalizedCode))
+        .limit(1);
 
-  if (!assignment) {
-    return { ok: false, error: "invalidAccessCode" };
-  }
+      if (!assignment) {
+        return { ok: false as const, error: "invalidAccessCode" };
+      }
 
-  if (assignment.examMode === "none") {
-    return { ok: false, error: "notAContest" };
-  }
+      if (assignment.examMode === "none") {
+        return { ok: false as const, error: "notAContest" };
+      }
 
-  // Block join after contest deadline
-  const now = Date.now();
-  const effectiveClose = assignment.lateDeadline?.valueOf() ?? assignment.deadline?.valueOf() ?? null;
-  if (effectiveClose && effectiveClose < now) {
-    return { ok: false, error: "contestClosed" };
-  }
+      // Block join after contest deadline (using transaction-consistent time)
+      const now = new Date();
+      const effectiveClose = assignment.lateDeadline ?? assignment.deadline ?? null;
+      if (effectiveClose && effectiveClose < now) {
+        return { ok: false as const, error: "contestClosed" };
+      }
 
-  // Transaction: check + create token + auto-enroll (atomic to prevent TOCTOU race)
-  let alreadyRedeemed = false;
-
-  await db.transaction(async (tx) => {
-    // Check if already redeemed (inside transaction to prevent race condition)
-    const [existing] = await tx
-      .select({ id: contestAccessTokens.id })
-      .from(contestAccessTokens)
-      .where(
-        and(
-          eq(contestAccessTokens.assignmentId, assignment.id),
-          eq(contestAccessTokens.userId, userId)
+      // Check if already redeemed (inside transaction to prevent race condition)
+      const [existing] = await tx
+        .select({ id: contestAccessTokens.id })
+        .from(contestAccessTokens)
+        .where(
+          and(
+            eq(contestAccessTokens.assignmentId, assignment.id),
+            eq(contestAccessTokens.userId, userId)
+          )
         )
-      )
-      .limit(1);
+        .limit(1);
 
-    if (existing) {
-      alreadyRedeemed = true;
-      return;
-    }
+      if (existing) {
+        return { ok: true as const, alreadyEnrolled: true, assignmentId: assignment.id, groupId: assignment.groupId };
+      }
 
-    // Create access token
-    await tx.insert(contestAccessTokens)
-      .values({
-        id: nanoid(),
-        assignmentId: assignment.id,
-        userId,
-        redeemedAt: new Date(),
-        ipAddress: ipAddress ?? null,
-      });
-
-    // Auto-enroll in group if not already enrolled
-    const [enrollment] = await tx
-      .select({ id: enrollments.id })
-      .from(enrollments)
-      .where(
-        and(
-          eq(enrollments.groupId, assignment.groupId),
-          eq(enrollments.userId, userId)
-        )
-      )
-      .limit(1);
-
-    if (!enrollment) {
-      await tx.insert(enrollments)
+      // Create access token
+      await tx.insert(contestAccessTokens)
         .values({
           id: nanoid(),
+          assignmentId: assignment.id,
           userId,
-          groupId: assignment.groupId,
-          enrolledAt: new Date(),
+          redeemedAt: new Date(),
+          ipAddress: ipAddress ?? null,
         });
+
+      // Auto-enroll in group if not already enrolled
+      const [enrollment] = await tx
+        .select({ id: enrollments.id })
+        .from(enrollments)
+        .where(
+          and(
+            eq(enrollments.groupId, assignment.groupId),
+            eq(enrollments.userId, userId)
+          )
+        )
+        .limit(1);
+
+      if (!enrollment) {
+        await tx.insert(enrollments)
+          .values({
+            id: nanoid(),
+            userId,
+            groupId: assignment.groupId,
+            enrolledAt: new Date(),
+          });
+      }
+
+      return { ok: true as const, assignmentId: assignment.id, groupId: assignment.groupId };
+    });
+  } catch (err: any) {
+    // Unique constraint violation on contestAccessTokens (concurrent redemption)
+    if (err?.code === "23505") {
+      // Re-fetch assignment info for the response
+      const [assignment] = await db
+        .select({ id: assignments.id, groupId: assignments.groupId })
+        .from(assignments)
+        .where(eq(assignments.accessCode, normalizedCode))
+        .limit(1);
+      if (assignment) {
+        return { ok: true, alreadyEnrolled: true, assignmentId: assignment.id, groupId: assignment.groupId };
+      }
     }
-  });
-
-  if (alreadyRedeemed) {
-    return { ok: true, alreadyEnrolled: true, assignmentId: assignment.id, groupId: assignment.groupId };
+    throw err;
   }
-
-  return { ok: true, assignmentId: assignment.id, groupId: assignment.groupId };
 }
