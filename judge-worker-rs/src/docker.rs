@@ -30,7 +30,7 @@ pub struct DockerRunOptions {
     pub needs_exec_tmp: bool,
 }
 
-#[derive(PartialEq)]
+#[derive(Clone, Copy, PartialEq)]
 pub enum Phase {
     Compile,
     Run,
@@ -158,6 +158,28 @@ async fn remove_container(container_name: &str) {
 
 fn should_retry_without_seccomp(stderr: &str) -> bool {
     SECCOMP_INIT_ERROR_SNIPPETS.iter().all(|snippet| stderr.contains(snippet))
+}
+
+fn resolve_seccomp_profile<'a>(
+    phase: Phase,
+    seccomp_profile_path: &'a Path,
+    disable_custom_seccomp: bool,
+) -> Result<Option<&'a Path>, JudgeEnvironmentError> {
+    // Compile containers stay on Docker's default seccomp profile because some
+    // toolchains (for example .NET/MSBuild) trip over the custom sandbox while
+    // still being constrained by the rest of the compile-phase isolation.
+    if disable_custom_seccomp || phase == Phase::Compile {
+        return Ok(None);
+    }
+
+    if !seccomp_profile_path.exists() {
+        return Err(JudgeEnvironmentError(format!(
+            "Seccomp profile not found: {}",
+            seccomp_profile_path.display()
+        )));
+    }
+
+    Ok(Some(seccomp_profile_path))
 }
 
 async fn run_docker_once(
@@ -319,25 +341,17 @@ pub async fn run_docker(
     seccomp_profile_path: &Path,
     disable_custom_seccomp: bool,
 ) -> Result<DockerRunResult, JudgeEnvironmentError> {
-    let use_custom_seccomp = !disable_custom_seccomp;
-
-    let seccomp_profile = if use_custom_seccomp {
-        if !seccomp_profile_path.exists() {
-            return Err(JudgeEnvironmentError(format!(
-                "Seccomp profile not found: {}",
-                seccomp_profile_path.display()
-            )));
-        }
-        Some(seccomp_profile_path)
-    } else {
-        None
-    };
+    let seccomp_profile = resolve_seccomp_profile(
+        options.phase,
+        seccomp_profile_path,
+        disable_custom_seccomp,
+    )?;
 
     let result = run_docker_once(options, seccomp_profile)
         .await
         .map_err(|e| JudgeEnvironmentError(e.to_string()))?;
 
-    if use_custom_seccomp && should_retry_without_seccomp(&result.stderr) {
+    if seccomp_profile.is_some() && should_retry_without_seccomp(&result.stderr) {
         tracing::warn!(
             stderr = %result.stderr,
             image = %options.image,
@@ -349,6 +363,48 @@ pub async fn run_docker(
     }
 
     Ok(result)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{resolve_seccomp_profile, JudgeEnvironmentError, Phase};
+    use std::path::PathBuf;
+    use tempfile::NamedTempFile;
+
+    #[test]
+    fn compile_phase_uses_default_seccomp_even_when_custom_profile_exists() {
+        let profile = NamedTempFile::new().expect("temp seccomp profile");
+        let resolved = resolve_seccomp_profile(Phase::Compile, profile.path(), false)
+            .expect("compile phase should not require custom seccomp");
+
+        assert!(resolved.is_none());
+    }
+
+    #[test]
+    fn run_phase_requires_existing_profile_when_custom_seccomp_is_enabled() {
+        let missing = PathBuf::from("/tmp/nonexistent-seccomp-profile.json");
+        let result = resolve_seccomp_profile(Phase::Run, &missing, false);
+
+        assert!(matches!(result, Err(JudgeEnvironmentError(message)) if message.contains("Seccomp profile not found")));
+    }
+
+    #[test]
+    fn run_phase_uses_profile_when_available() {
+        let profile = NamedTempFile::new().expect("temp seccomp profile");
+        let resolved = resolve_seccomp_profile(Phase::Run, profile.path(), false)
+            .expect("run phase should accept an existing seccomp profile");
+
+        assert_eq!(resolved, Some(profile.path()));
+    }
+
+    #[test]
+    fn disabled_custom_seccomp_skips_profile_for_run_phase() {
+        let missing = PathBuf::from("/tmp/nonexistent-seccomp-profile.json");
+        let resolved = resolve_seccomp_profile(Phase::Run, &missing, true)
+            .expect("disabled seccomp should skip profile lookup");
+
+        assert!(resolved.is_none());
+    }
 }
 
 pub async fn cleanup_orphaned_containers() {
