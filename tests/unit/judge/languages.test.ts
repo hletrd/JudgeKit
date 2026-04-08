@@ -236,6 +236,17 @@ describe("judge language definitions", () => {
     expect(run).toContain("/workspace/solution.exe");
   });
 
+  it("vbnet: uses workspace-local dotnet caches and single-worker MSBuild", () => {
+    const def = getJudgeLanguageDefinition("vbnet");
+    expect(def).not.toBeNull();
+    const compile = serializeJudgeCommand(def?.compileCommand);
+    expect(compile).toContain("/workspace/.nuget/packages");
+    expect(compile).toContain("/workspace/.dotnet");
+    expect(compile).toContain("-maxcpucount:1");
+    expect(compile).toContain("-nodeReuse:false");
+    expect(def?.runCommand).toEqual(["/workspace/bin/solution"]);
+  });
+
   // ── Scripting (other) ─────────────────────────────────────────────────────
 
   it("r: exists as interpreted language with no compile command", () => {

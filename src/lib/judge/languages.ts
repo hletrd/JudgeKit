@@ -910,7 +910,7 @@ export const JUDGE_LANGUAGE_CONFIGS: Record<Language, JudgeLanguageDefinition> =
     compiler: "dotnet build (.NET)",
     compileCommand: [
       "sh", "-c",
-      "mkdir -p /tmp/.nuget /tmp/.dotnet && mkdir -p /workspace/out && echo '<Project Sdk=\"Microsoft.NET.Sdk\"><PropertyGroup><OutputType>Exe</OutputType><TargetFramework>net8.0</TargetFramework><RootNamespace>Solution</RootNamespace></PropertyGroup></Project>' > /workspace/out/solution.vbproj && cp /workspace/solution.vb /workspace/out/Program.vb && cd /workspace/out && HOME=/tmp DOTNET_CLI_HOME=/tmp DOTNET_SYSTEM_GLOBALIZATION_INVARIANT=1 DOTNET_NOLOGO=1 dotnet build -c Release -o /workspace/bin --nologo -v q 2>&1",
+      "mkdir -p /workspace/.nuget/packages /workspace/.dotnet /workspace/out /workspace/bin && echo '<Project Sdk=\"Microsoft.NET.Sdk\"><PropertyGroup><OutputType>Exe</OutputType><TargetFramework>net8.0</TargetFramework><RootNamespace>Solution</RootNamespace></PropertyGroup></Project>' > /workspace/out/solution.vbproj && cp /workspace/solution.vb /workspace/out/Program.vb && cd /workspace/out && HOME=/workspace DOTNET_CLI_HOME=/workspace/.dotnet NUGET_PACKAGES=/workspace/.nuget/packages DOTNET_SYSTEM_GLOBALIZATION_INVARIANT=1 DOTNET_SKIP_FIRST_TIME_EXPERIENCE=1 DOTNET_SKIP_WORKLOAD_INTEGRITY_CHECK=true DOTNET_NOLOGO=1 dotnet build -c Release -o /workspace/bin --nologo -v q -maxcpucount:1 -nodeReuse:false 2>&1",
     ],
     runCommand: ["/workspace/bin/solution"],
   },
