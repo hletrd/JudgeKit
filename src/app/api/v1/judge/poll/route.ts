@@ -95,28 +95,45 @@ export async function POST(request: NextRequest) {
 
     const { score, maxExecutionTimeMs, maxMemoryUsedKb } = computeFinalJudgeMetrics(results);
 
-    const finalResult = await db.update(submissions).set({
-      status,
-      judgeClaimToken: null,
-      judgeClaimedAt: null,
-      compileOutput: compileOutput ?? null,
-      score,
-      executionTimeMs: maxExecutionTimeMs,
-      memoryUsedKb: maxMemoryUsedKb,
-      judgedAt: new Date(),
-    }).where(
-      and(eq(submissions.id, submissionId), eq(submissions.judgeClaimToken, claimToken))
-    );
+    // Wrap status update + result replacement in a single transaction
+    let claimValid = false;
+    try {
+      await db.transaction(async (tx) => {
+        const finalResult = await tx.update(submissions).set({
+          status,
+          judgeClaimToken: null,
+          judgeClaimedAt: null,
+          compileOutput: compileOutput ?? null,
+          score,
+          executionTimeMs: maxExecutionTimeMs,
+          memoryUsedKb: maxMemoryUsedKb,
+          judgedAt: new Date(),
+        }).where(
+          and(eq(submissions.id, submissionId), eq(submissions.judgeClaimToken, claimToken))
+        );
 
-    if ((finalResult.rowCount ?? 0) === 0) {
-      return apiError("invalidJudgeClaim", 403);
+        if ((finalResult.rowCount ?? 0) === 0) {
+          throw new Error("invalidJudgeClaim");
+        }
+
+        await tx.delete(submissionResults).where(eq(submissionResults.submissionId, submissionId));
+
+        const rows = buildSubmissionResultRows(submissionId, results);
+        if (rows.length > 0) {
+          await tx.insert(submissionResults).values(rows);
+        }
+
+        claimValid = true;
+      });
+    } catch (err: any) {
+      if (err?.message === "invalidJudgeClaim") {
+        return apiError("invalidJudgeClaim", 403);
+      }
+      throw err;
     }
 
-    await db.delete(submissionResults).where(eq(submissionResults.submissionId, submissionId));
-
-    const rows = buildSubmissionResultRows(submissionId, results);
-    if (rows.length > 0) {
-      await db.insert(submissionResults).values(rows);
+    if (!claimValid) {
+      return apiError("invalidJudgeClaim", 403);
     }
 
     const updated = await db.query.submissions.findFirst({
