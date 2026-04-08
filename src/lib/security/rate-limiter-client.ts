@@ -64,11 +64,8 @@ export async function checkRateLimit(
   const result = await callRateLimiter<RateLimitCheckResult>("/check", { key, maxAttempts, windowMs });
   if (result) return result;
 
-  // Sidecar unreachable — deny by default for safety when circuit is open
-  if (isRateLimiterDegraded()) {
-    return { allowed: true, remaining: maxAttempts, retryAfter: null };
-  }
-  return { allowed: true, remaining: maxAttempts, retryAfter: null };
+  // Sidecar unreachable — deny by default for safety
+  return { allowed: false, remaining: 0, retryAfter: Date.now() + RECOVERY_WINDOW_MS };
 }
 
 export async function recordRateLimitFailure(
