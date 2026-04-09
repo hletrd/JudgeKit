@@ -365,9 +365,10 @@ info "Running database migrations (drizzle-kit push)..."
 
 # Create a temporary env file on the remote for DB credentials (avoids leaking
 # passwords in process listings via -e flags).
-remote "grep '^POSTGRES_PASSWORD=' ${REMOTE_DIR}/.env.production > ${REMOTE_DIR}/.env.dbcreds && \
-        echo 'PGPASSWORD='\"$(grep '^POSTGRES_PASSWORD=' ${REMOTE_DIR}/.env.production | cut -d= -f2-)\" >> ${REMOTE_DIR}/.env.dbcreds && \
-        echo 'DATABASE_URL=postgres://judgekit:'\"$(grep '^POSTGRES_PASSWORD=' ${REMOTE_DIR}/.env.production | cut -d= -f2-)\"'@db:5432/judgekit' >> ${REMOTE_DIR}/.env.dbcreds && \
+remote "PG_PASS=\$(grep '^POSTGRES_PASSWORD=' ${REMOTE_DIR}/.env.production | cut -d= -f2-) && \
+        echo \"POSTGRES_PASSWORD=\${PG_PASS}\" > ${REMOTE_DIR}/.env.dbcreds && \
+        echo \"PGPASSWORD=\${PG_PASS}\" >> ${REMOTE_DIR}/.env.dbcreds && \
+        echo \"DATABASE_URL=postgres://judgekit:\${PG_PASS}@db:5432/judgekit\" >> ${REMOTE_DIR}/.env.dbcreds && \
         chmod 600 ${REMOTE_DIR}/.env.dbcreds"
 
 # Determine the Docker network name (compose project name + _default)
