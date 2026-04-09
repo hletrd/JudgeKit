@@ -64,7 +64,7 @@ async function getEntry(
   queryDb: Pick<typeof db, "select"> | Pick<TransactionClient, "select"> = db
 ) {
   const now = Date.now();
-  const [existing] = await queryDb.select().from(rateLimits).where(eq(rateLimits.key, key)).limit(1);
+  const [existing] = await queryDb.select().from(rateLimits).where(eq(rateLimits.key, key)).limit(1).for("update");
 
   if (!existing) {
     return {
@@ -100,18 +100,20 @@ async function getEntry(
 }
 
 export async function isRateLimited(key: string) {
-  const { now, entry } = await getEntry(key);
-
-  if (entry.blockedUntil > now) {
-    return true;
-  }
-
-  return false;
+  return execTransaction(async (tx) => {
+    const { now, entry } = await getEntry(key, tx);
+    return entry.blockedUntil > now;
+  });
 }
 
 export async function isAnyKeyRateLimited(...keys: string[]) {
-  const results = await Promise.all(keys.map((key) => isRateLimited(key)));
-  return results.some(Boolean);
+  return execTransaction(async (tx) => {
+    const results = await Promise.all(keys.map(async (key) => {
+      const { now, entry } = await getEntry(key, tx);
+      return entry.blockedUntil > now;
+    }));
+    return results.some(Boolean);
+  });
 }
 
 export async function recordRateLimitFailure(key: string) {
@@ -156,9 +158,40 @@ export async function recordRateLimitFailure(key: string) {
 }
 
 export async function recordRateLimitFailureMulti(...keys: string[]) {
-  for (const key of keys) {
-    await recordRateLimitFailure(key);
-  }
+  await execTransaction(async (tx) => {
+    for (const key of keys) {
+      const { now, entry, exists } = await getEntry(key, tx);
+      const config = getRateLimitConfig();
+      const newAttempts = entry.attempts + 1;
+      let blockedUntil = entry.blockedUntil;
+      let consecutiveBlocks = entry.consecutiveBlocks;
+
+      if (newAttempts >= config.maxAttempts) {
+        consecutiveBlocks += 1;
+        const blockMs = config.blockMs * Math.pow(2, Math.min(consecutiveBlocks - 1, 5));
+        blockedUntil = now + blockMs;
+      }
+
+      if (exists) {
+        await tx.update(rateLimits).set({
+          attempts: newAttempts,
+          windowStartedAt: entry.windowStartedAt === now ? now : entry.windowStartedAt,
+          blockedUntil: blockedUntil > 0 ? blockedUntil : null,
+          consecutiveBlocks,
+          lastAttempt: now,
+        }).where(eq(rateLimits.key, key));
+      } else {
+        await tx.insert(rateLimits).values({
+          key,
+          attempts: newAttempts,
+          windowStartedAt: now,
+          blockedUntil: blockedUntil > 0 ? blockedUntil : null,
+          consecutiveBlocks,
+          lastAttempt: now,
+        });
+      }
+    }
+  });
 }
 
 export async function clearRateLimit(key: string) {
@@ -166,7 +199,9 @@ export async function clearRateLimit(key: string) {
 }
 
 export async function clearRateLimitMulti(...keys: string[]) {
-  for (const key of keys) {
-    await clearRateLimit(key);
-  }
+  await execTransaction(async (tx) => {
+    for (const key of keys) {
+      await tx.delete(rateLimits).where(eq(rateLimits.key, key));
+    }
+  });
 }

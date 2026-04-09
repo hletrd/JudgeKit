@@ -1,4 +1,5 @@
 import { NextRequest } from "next/server";
+import { extractClientIp } from "@/lib/security/ip";
 import { db, execTransaction } from "@/lib/db";
 import { examSessions, languageConfigs, problems, submissions } from "@/lib/db/schema";
 import { isJudgeLanguage } from "@/lib/judge/languages";
@@ -200,7 +201,7 @@ export const POST = createApiHandler({
     }
 
     const id = generateSubmissionId();
-    const ip = req.headers.get("x-forwarded-for")?.split(",")[0]?.trim() ?? null;
+    const ip = extractClientIp(req.headers);
     const isManualProblem = problem.problemType === "manual";
     const initialStatus = isManualProblem ? "submitted" : "pending";
 

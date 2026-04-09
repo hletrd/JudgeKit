@@ -44,7 +44,8 @@ async function resolveAssignmentAndAuthorize(
   const canManage = await canManageGroupResourcesAsync(
     group.instructorId,
     user.id,
-    user.role
+    user.role,
+    id
   );
 
   if (!canManage) return { error: forbidden() };

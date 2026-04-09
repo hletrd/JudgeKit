@@ -1,4 +1,5 @@
 import { NextRequest } from "next/server";
+import { extractClientIp } from "@/lib/security/ip";
 import { nanoid } from "nanoid";
 import { z } from "zod";
 import { createApiHandler, isAdmin, isInstructor } from "@/lib/api/handler";
@@ -83,7 +84,7 @@ export const POST = createApiHandler({
             userId: user.id,
             eventType: "heartbeat",
             details: null,
-            ipAddress: req.headers.get("x-forwarded-for")?.split(",")[0]?.trim() ?? null,
+            ipAddress: extractClientIp(req.headers),
             userAgent: null,
             createdAt: new Date(),
           });
@@ -91,8 +92,7 @@ export const POST = createApiHandler({
       return apiSuccess({ logged: true });
     }
 
-    const ip =
-      req.headers.get("x-forwarded-for")?.split(",")[0]?.trim() ?? null;
+    const ip = extractClientIp(req.headers);
     const userAgent = req.headers.get("user-agent") ?? null;
 
     await db.insert(antiCheatEvents)

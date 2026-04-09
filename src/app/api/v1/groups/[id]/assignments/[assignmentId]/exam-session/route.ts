@@ -1,4 +1,5 @@
 import { NextRequest } from "next/server";
+import { extractClientIp } from "@/lib/security/ip";
 import { apiSuccess, apiError } from "@/lib/api/responses";
 import { eq, and } from "drizzle-orm";
 import { db } from "@/lib/db";
@@ -35,7 +36,7 @@ export const POST = createApiHandler({
 
     try {
       const existingSession = await getExamSession(assignmentId, user.id);
-      const ip = req.headers.get("x-forwarded-for")?.split(",")[0]?.trim() ?? null;
+      const ip = extractClientIp(req.headers);
       const session = await startExamSession(assignmentId, user.id, ip);
       const isNewSession = !existingSession;
 

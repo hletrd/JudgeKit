@@ -36,12 +36,9 @@ function isValidIp(value: string) {
 
 export function extractClientIp(headers: HeaderCarrier) {
   const forwardedFor = headers.get("x-forwarded-for");
-  const realIp = headers.get("x-real-ip")?.trim();
 
-  if (realIp && isValidIp(realIp)) {
-    return realIp;
-  }
-
+  // Process X-Forwarded-For first with hop validation to prevent spoofing.
+  // X-Real-IP is only used as fallback when XFF is absent (single-proxy setups).
   if (forwardedFor) {
     const parts = forwardedFor
       .split(",")
@@ -60,6 +57,12 @@ export function extractClientIp(headers: HeaderCarrier) {
       }
       // Extracted value is not a valid IP — fall through to fallbacks
     }
+  }
+
+  // Only trust X-Real-IP when XFF is absent (avoids bypassing hop validation)
+  const realIp = headers.get("x-real-ip")?.trim();
+  if (realIp && isValidIp(realIp)) {
+    return realIp;
   }
 
   if (process.env.NODE_ENV === "production" && !forwardedFor) {

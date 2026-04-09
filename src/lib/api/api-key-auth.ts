@@ -3,6 +3,7 @@ import { eq, and } from "drizzle-orm";
 import { db } from "@/lib/db";
 import { apiKeys, users } from "@/lib/db/schema";
 import { authUserSelect } from "@/lib/db/selects";
+import { ROLE_LEVEL } from "@/lib/security/constants";
 import type { UserRole } from "@/types";
 
 export const API_KEY_PREFIX = "jk_";
@@ -19,8 +20,13 @@ export function hashApiKey(rawKey: string) {
 }
 
 function getEncryptionKey() {
-  const secret = process.env.PLUGIN_CONFIG_ENCRYPTION_KEY || process.env.AUTH_SECRET;
-  if (!secret) throw new Error("PLUGIN_CONFIG_ENCRYPTION_KEY or AUTH_SECRET must be set");
+  const secret = process.env.PLUGIN_CONFIG_ENCRYPTION_KEY;
+  if (!secret) {
+    throw new Error(
+      "PLUGIN_CONFIG_ENCRYPTION_KEY must be set for API key encryption. " +
+      "Generate a dedicated key: openssl rand -hex 32"
+    );
+  }
   return createHash("sha256").update(secret).digest();
 }
 
@@ -89,9 +95,9 @@ export async function authenticateApiKey(authHeader: string | null) {
 
   // Use the lesser of the API key's declared role and the creator's current role.
   // This prevents privilege escalation when a user is demoted after creating a key.
-  const ROLE_RANK: Record<string, number> = { student: 0, instructor: 1, admin: 2, super_admin: 3 };
-  const keyRoleRank = ROLE_RANK[candidate.role] ?? 0;
-  const userRoleRank = ROLE_RANK[user.role] ?? 0;
+  // Uses ROLE_LEVEL from constants which handles custom roles via the capability system.
+  const keyRoleRank = ROLE_LEVEL[candidate.role as UserRole] ?? 0;
+  const userRoleRank = ROLE_LEVEL[user.role as UserRole] ?? 0;
   const effectiveRole = (keyRoleRank <= userRoleRank ? candidate.role : user.role) as UserRole;
 
   return {

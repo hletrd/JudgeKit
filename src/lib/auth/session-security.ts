@@ -26,7 +26,7 @@ export function isTokenInvalidated(
   authenticatedAtSeconds: number | null,
   tokenInvalidatedAt: Date | null | undefined
 ) {
-  if (!authenticatedAtSeconds || !tokenInvalidatedAt) {
+  if (authenticatedAtSeconds === null || authenticatedAtSeconds === undefined || !tokenInvalidatedAt) {
     return false;
   }
 

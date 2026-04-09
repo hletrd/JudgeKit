@@ -1,4 +1,5 @@
 import { NextRequest } from "next/server";
+import { extractClientIp } from "@/lib/security/ip";
 import { createApiHandler } from "@/lib/api/handler";
 import { apiSuccess, apiError } from "@/lib/api/responses";
 import { redeemAccessCode } from "@/lib/assignments/access-codes";
@@ -14,7 +15,7 @@ export const POST = createApiHandler({
       return apiError("forbidden", 403);
     }
 
-    const ip = req.headers.get("x-forwarded-for")?.split(",")[0]?.trim() ?? null;
+    const ip = extractClientIp(req.headers);
     const result = await redeemAccessCode(body.code, user.id, ip ?? undefined);
 
     if (!result.ok) {

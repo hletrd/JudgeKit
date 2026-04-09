@@ -9,7 +9,7 @@ const snapshotSchema = z.object({
   problemId: z.string().min(1),
   assignmentId: z.string().nullable().optional(),
   language: z.string().min(1),
-  sourceCode: z.string(),
+  sourceCode: z.string().max(256 * 1024),
 });
 
 export const POST = createApiHandler({
