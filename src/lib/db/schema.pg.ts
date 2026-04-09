@@ -466,7 +466,7 @@ export const submissions = pgTable(
     index("submissions_assignment_idx").on(table.assignmentId),
     index("submissions_judge_worker_idx").on(table.judgeWorkerId),
     index("submissions_submitted_at_idx").on(table.submittedAt),
-    index("submissions_leaderboard_idx").on(table.assignmentId, table.userId, sql`desc(${table.submittedAt})`),
+    index("submissions_leaderboard_idx").on(table.assignmentId, table.userId, table.submittedAt),
   ]
 );
 
