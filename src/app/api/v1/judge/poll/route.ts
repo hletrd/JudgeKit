@@ -5,7 +5,7 @@
 // directory would break production without a coordinated redeploy.
 import { NextRequest } from "next/server";
 import { apiSuccess, apiError } from "@/lib/api/responses";
-import { db } from "@/lib/db";
+import { db, execTransaction } from "@/lib/db";
 import { submissions, submissionResults } from "@/lib/db/schema";
 import { eq, and } from "drizzle-orm";
 import { recordAuditEvent } from "@/lib/audit/events";
@@ -54,26 +54,32 @@ export async function POST(request: NextRequest) {
     }
 
     if (IN_PROGRESS_JUDGE_STATUSES.has(status)) {
-      const inProgressResult = await db
-        .update(submissions)
-        .set({
-          status,
-          judgeClaimedAt: submission.judgeClaimedAt ?? new Date(),
-        })
-        .where(
-          and(eq(submissions.id, submissionId), eq(submissions.judgeClaimToken, claimToken))
-        );
+      const updatedInProgress = await execTransaction(async (tx) => {
+        const inProgressResult = await tx
+          .update(submissions)
+          .set({
+            status,
+            judgeClaimedAt: submission.judgeClaimedAt ?? new Date(),
+          })
+          .where(
+            and(eq(submissions.id, submissionId), eq(submissions.judgeClaimToken, claimToken))
+          );
 
-      if ((inProgressResult.rowCount ?? 0) === 0) {
+        if ((inProgressResult.rowCount ?? 0) === 0) {
+          throw new Error("invalidJudgeClaim");
+        }
+
+        return await tx.query.submissions.findFirst({
+          where: eq(submissions.id, submissionId),
+          columns: {
+            sourceCode: false,
+          },
+        });
+      });
+
+      if (!updatedInProgress) {
         return apiError("invalidJudgeClaim", 403);
       }
-
-      const updatedInProgress = await db.query.submissions.findFirst({
-        where: eq(submissions.id, submissionId),
-        columns: {
-          sourceCode: false,
-        },
-      });
 
       recordAuditEvent({
         action: "submission.status_updated",
@@ -125,8 +131,8 @@ export async function POST(request: NextRequest) {
 
         claimValid = true;
       });
-    } catch (err: any) {
-      if (err?.message === "invalidJudgeClaim") {
+    } catch (err: unknown) {
+      if (err instanceof Error && err.message === "invalidJudgeClaim") {
         return apiError("invalidJudgeClaim", 403);
       }
       throw err;

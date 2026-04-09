@@ -33,9 +33,7 @@ JUDGE_DISABLE_CUSTOM_SECCOMP=0
 | `AUTH_SECRET` | Yes | — | Session encryption key (`openssl rand -base64 32`) |
 | `AUTH_URL` | Yes | — | App public URL |
 | `AUTH_TRUST_HOST` | No | `false` | Set `true` behind a reverse proxy |
-| `DB_DIALECT` | No | `sqlite` | Database dialect: `postgresql` (recommended), `sqlite`, or `mysql` |
-| `DATABASE_URL` | Yes (PG/MySQL) | — | Connection string (e.g. `postgres://user:pass@host:5432/judgekit`) |
-| `DATABASE_PATH` | No | `./data/judge.db` | SQLite database path (only when `DB_DIALECT=sqlite`) |
+| `DATABASE_URL` | Yes | — | PostgreSQL connection string (e.g. `postgres://user:pass@host:5432/judgekit`) |
 | `JUDGE_AUTH_TOKEN` | Yes | — | Shared secret for worker auth (`openssl rand -hex 32`) |
 | `JUDGE_BASE_URL` | No | `http://localhost:3000/api/v1` | App API URL for workers |
 | `JUDGE_CONCURRENCY` | No | `1` | Max parallel submissions per worker (1-16) |
@@ -149,6 +147,14 @@ docker compose -f docker-compose.worker.yml up -d
 - Set friendly aliases via the edit icon in the Alias column
 - Force-remove stale workers to reclaim their in-flight submissions
 
+> **Important app-scaling limitation:** remote/dedicated judge workers are safe
+> to scale horizontally, but the **web app is currently expected to run as a
+> single instance** for `/api/v1/submissions/[id]/events` SSE connection caps
+> and `/api/v1/contests/[assignmentId]/anti-cheat` heartbeat deduplication.
+> Before adding multiple app replicas, introduce shared-state coordination
+> (Redis/PostgreSQL/etc.) or document and validate an equivalent sticky-session
+> strategy for those routes.
+
 See [Judge Workers](judge-workers.md) for full architecture and API reference.
 
 ## Post-deploy Verification
@@ -168,24 +174,18 @@ curl http://127.0.0.1:3000/api/health
 ## CI and Backup
 
 - GitHub Actions CI: `.github/workflows/ci.yml` — lint, build, backup/restore, Playwright
-- Database backup: `scripts/backup-db.sh`, `scripts/verify-db-backup.sh` (supports PostgreSQL and SQLite)
+- Database backup: `scripts/backup-db.sh`, `scripts/verify-db-backup.sh` (current runtime uses PostgreSQL)
 - Systemd backup timer: `scripts/online-judge-backup.service`, `scripts/online-judge-backup.timer`
 
 ## Database Reset
 
-**PostgreSQL (production):**
+**PostgreSQL runtime:**
 ```bash
 # Stop app first, then:
-DB_DIALECT=postgresql DATABASE_URL=postgres://... npx drizzle-kit push
+DATABASE_URL=postgres://... npx drizzle-kit push
 npm run seed
 ```
 
-**SQLite (development):**
-```bash
-# Stop app first, then:
-rm data/judge.db data/judge.db-shm data/judge.db-wal
-npm run db:push
-npm run seed
-```
+Historical SQLite/MySQL files may still exist in the repository for migration/test context, but the active runtime documented here is PostgreSQL-only.
 
 Default admin: `admin` / `admin123` (forced password change on first login).

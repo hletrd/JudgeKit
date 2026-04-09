@@ -14,7 +14,7 @@ import crypto from "crypto";
 // AUTH_CACHE_TTL_MS (2 seconds) after the change is applied to the database.
 // Negative results (user not found / inactive / token invalidated) are NOT cached.
 const authUserCache = new Map<string, { user: Awaited<ReturnType<typeof getActiveAuthUserById>>; expiresAt: number }>();
-const AUTH_CACHE_TTL_MS = 2_000; // 2 seconds
+const AUTH_CACHE_TTL_MS = parseInt(process.env.AUTH_CACHE_TTL_MS ?? '2000', 10);
 const AUTH_CACHE_MAX_SIZE = 500;
 
 function getCachedAuthUser(cacheKey: string) {
@@ -187,5 +187,5 @@ export async function proxy(request: NextRequest) {
 }
 
 export const config = {
-  matcher: ["/dashboard/:path*", "/api/v1/:path*", "/login", "/change-password"],
+  matcher: ["/dashboard/:path*", "/api/v1/:path*", "/login", "/change-password", "/", "/recruit/:path*"],
 };

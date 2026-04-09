@@ -38,7 +38,7 @@ success() { echo -e "\033[0;32m[OK]\033[0m $*"; }
 warn()    { echo -e "\033[1;33m[WARN]\033[0m $*"; }
 die()     { echo -e "\033[0;31m[ERROR]\033[0m $*" >&2; exit 1; }
 
-SSH_OPTS="-o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -o LogLevel=ERROR"
+SSH_OPTS="-o StrictHostKeyChecking=accept-new -o LogLevel=ERROR"
 
 remote() {
   if [[ -n "${SSH_PASSWORD:-}" ]]; then
@@ -107,7 +107,7 @@ if ! remote "test -f ${REMOTE_DIR}/.env.production" 2>/dev/null; then
   JUDGE_AUTH_TOKEN=$(openssl rand -hex 32)
   remote "cat > ${REMOTE_DIR}/.env.production << 'ENVEOF'
 AUTH_SECRET=${AUTH_SECRET}
-AUTH_URL=http://${DOMAIN}
+AUTH_URL=https://${DOMAIN}
 AUTH_TRUST_HOST=true
 JUDGE_AUTH_TOKEN=${JUDGE_AUTH_TOKEN}
 JUDGE_CONCURRENCY=2

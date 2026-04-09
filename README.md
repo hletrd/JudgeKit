@@ -15,15 +15,15 @@
 
 <p align="center">
   A secure, cross-platform code evaluation platform for programming assignments.<br/>
-  Docker-sandboxed execution for <a href="docs/languages.md">118 language variants</a> on both AMD64 and ARM64.
+  Docker-sandboxed execution for <a href="docs/languages.md">120 language variants</a> on both AMD64 and ARM64.
 </p>
 
 ---
 
 ## Features
 
-- **Cross-platform (AMD64 + ARM64)** — Full stack runs natively on both architectures: Next.js app, Rust judge worker, Rust sidecars, and all 100 Docker judge images. Deploy on x86-64 servers or ARM64 (AWS Graviton, Ampere Altra, Apple Silicon) with automatic architecture detection — no emulation, no cross-compilation
-- **118 languages** — C/C++, Java, Python, Rust, Go, Deno, Bun, Gleam, Lean 4, Hare, Koka, Chapel, Elm, Idris 2, and [104 more](docs/languages.md), all with multi-arch Docker images and admin-customizable compile/run settings
+- **Cross-platform (AMD64 + ARM64)** — Full stack runs natively on both architectures: Next.js app, Rust judge worker, Rust sidecars, and the full supported judge-image set. Deploy on x86-64 servers or ARM64 (AWS Graviton, Ampere Altra, Apple Silicon) with automatic architecture detection — no emulation, no cross-compilation
+- **120 languages** — C/C++, Java, Python, Rust, Go, Deno, Bun, Gleam, Lean 4, Hare, Koka, Chapel, Elm, Idris 2, and [106 more](docs/languages.md), all with multi-arch Docker images and admin-customizable compile/run settings
 - **Scalable judging** — Distributed judge workers with automatic registration and heartbeats. Live admin dashboard. Deploy across multiple machines with a single script
 - **Secure execution** — Docker containers with no network, seccomp, memory/CPU limits
 - **Role-based access** — Super admin, admin, instructor, student
@@ -136,7 +136,7 @@ All 100 images build on both amd64 and arm64.
 |-------|-----------|
 | Framework | Next.js 16 (App Router) |
 | Language | TypeScript |
-| Database | PostgreSQL + Drizzle ORM (SQLite, MySQL also supported) |
+| Database | PostgreSQL + Drizzle ORM |
 | Auth | Auth.js v5 (Credentials) |
 | UI | Tailwind CSS v4, shadcn/ui |
 | Judge Worker | Rust binary with Docker-sandboxed execution (multi-worker) |
@@ -214,6 +214,13 @@ Or use the deploy script:
 ```
 
 Monitor workers at `/dashboard/admin/workers`.
+
+> **App-instance scaling note:** judge workers can scale horizontally, but the
+> Next.js app currently assumes a **single app instance** for contest SSE
+> connection caps and anti-cheat heartbeat deduplication. Do not run multiple
+> app replicas behind a load balancer unless you first add shared coordination
+> (for example Redis/PostgreSQL-backed connection and heartbeat state) or prove
+> an equivalent sticky-session design for those routes.
 
 ### Prerequisites
 

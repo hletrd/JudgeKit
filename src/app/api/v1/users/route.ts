@@ -3,6 +3,7 @@ import { apiSuccess, apiError, apiPaginated } from "@/lib/api/responses";
 import { db } from "@/lib/db";
 import { users } from "@/lib/db/schema";
 import { eq, desc, sql } from "drizzle-orm";
+import { execTransaction } from "@/lib/db";
 import { forbidden, isAdmin } from "@/lib/api/handler";
 import { recordAuditEvent } from "@/lib/audit/events";
 import { nanoid } from "nanoid";
@@ -13,8 +14,6 @@ import { assertUserRole, isUserRole } from "@/lib/security/constants";
 import { userCreateSchema } from "@/lib/validators/profile";
 import { parsePagination } from "@/lib/api/pagination";
 import {
-  isUsernameTaken,
-  isEmailTaken,
   validateAndHashPassword,
   validateRoleChange,
 } from "@/lib/users/core";
@@ -63,7 +62,7 @@ export const POST = createApiHandler({
     }
 
     const { username, email, name, className, password, role } = parsed.data;
-    const normalizedEmail = email ?? null;
+    const normalizedEmail = email?.trim().toLowerCase() || null;
     const normalizedClassName = className ?? null;
     const requestedRole = role.trim() || "student";
 
@@ -75,39 +74,70 @@ export const POST = createApiHandler({
       return apiError(roleError, 403);
     }
 
+    let passwordHash: string;
+
     if (password) {
       const passwordResult = await validateAndHashPassword(password);
       if (passwordResult.error) {
         return apiError(passwordResult.error, 400);
       }
+      passwordHash = passwordResult.hash;
+    } else {
+      passwordHash = await hashPassword(generateSecurePassword());
     }
-
-    if (await isUsernameTaken(username)) {
-      return apiError("usernameInUse", 409);
-    }
-
-    if (normalizedEmail && await isEmailTaken(normalizedEmail)) {
-      return apiError("emailInUse", 409);
-    }
-
-    const generatedPassword = generateSecurePassword();
-    const passwordToHash = password ?? generatedPassword;
-    const passwordHash = await hashPassword(passwordToHash);
     const id = nanoid();
 
-    const [created] = await db.insert(users).values({
-      id,
-      username,
-      email: normalizedEmail,
-      name,
-      className: normalizedClassName,
-      passwordHash,
-      role: assertUserRole(requestedRole),
-      isActive: true,
-      mustChangePassword: true,
-      createdAt: new Date(),
-      updatedAt: new Date(),
-    }).returning(safeUserSelect);
+    // Atomic uniqueness check + insert in a single transaction to prevent TOCTOU races
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    let created: any;
+    try {
+      const result = await execTransaction(async (tx) => {
+        // Check username uniqueness inside transaction
+        const [existingUsername] = await tx
+          .select({ id: users.id })
+          .from(users)
+          .where(sql`lower(${users.username}) = lower(${username})`)
+          .limit(1);
+        if (existingUsername) {
+          throw new Error("usernameInUse");
+        }
+
+        // Check email uniqueness inside transaction
+        if (normalizedEmail) {
+          const [existingEmail] = await tx
+            .select({ id: users.id })
+            .from(users)
+            .where(sql`lower(${users.email}) = lower(${normalizedEmail})`)
+            .limit(1);
+          if (existingEmail) {
+            throw new Error("emailInUse");
+          }
+        }
+
+        return tx.insert(users).values({
+          id,
+          username,
+          email: normalizedEmail,
+          name,
+          className: normalizedClassName,
+          passwordHash,
+          role: assertUserRole(requestedRole),
+          isActive: true,
+          mustChangePassword: true,
+          createdAt: new Date(),
+          updatedAt: new Date(),
+        }).returning(safeUserSelect);
+      });
+      created = result[0];
+    } catch (err: unknown) {
+      if (err instanceof Error && err.message === "usernameInUse") {
+        return apiError("usernameInUse", 409);
+      }
+      if (err instanceof Error && err.message === "emailInUse") {
+        return apiError("emailInUse", 409);
+      }
+      throw err;
+    }
 
     if (created) {
       recordAuditEvent({
@@ -126,7 +156,10 @@ export const POST = createApiHandler({
       });
     }
 
-    const response = apiSuccess({ user: created, passwordGenerated: password === undefined }, { status: 201 });
+    const response = apiSuccess({
+      user: created,
+      passwordGenerated: password === undefined,
+    }, { status: 201 });
     response.headers.set("Cache-Control", "no-store, no-cache");
     return response;
   },

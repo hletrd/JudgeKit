@@ -15,6 +15,16 @@ const { getContestAssignmentMock, runAndStoreSimilarityCheckMock, mockUser } = v
   },
 }));
 
+const {
+  dbSelectMock,
+  dbFromMock,
+  dbWhereMock,
+} = vi.hoisted(() => ({
+  dbSelectMock: vi.fn(),
+  dbFromMock: vi.fn(),
+  dbWhereMock: vi.fn(),
+}));
+
 vi.mock("@/lib/api/handler", () => ({
   createApiHandler:
     ({ handler }: { handler: (req: NextRequest, ctx: { user: typeof mockUser; params: Record<string, string>; body?: unknown }) => Promise<Response> }) =>
@@ -39,6 +49,20 @@ vi.mock("@/lib/assignments/code-similarity", () => ({
   runAndStoreSimilarityCheck: runAndStoreSimilarityCheckMock,
 }));
 
+vi.mock("@/lib/db", () => ({
+  db: {
+    select: dbSelectMock,
+  },
+}));
+
+vi.mock("@/lib/db/schema", () => ({
+  users: {
+    id: "users.id",
+    username: "users.username",
+    name: "users.name",
+  },
+}));
+
 describe("POST /api/v1/contests/[assignmentId]/similarity-check", () => {
   beforeEach(() => {
     vi.clearAllMocks();
@@ -47,6 +71,9 @@ describe("POST /api/v1/contests/[assignmentId]/similarity-check", () => {
       examMode: "scheduled",
       instructorId: "admin-1",
     });
+    dbWhereMock.mockResolvedValue([]);
+    dbFromMock.mockReturnValue({ where: dbWhereMock });
+    dbSelectMock.mockReturnValue({ from: dbFromMock });
   });
 
   it("returns explicit not_run status instead of silently reporting zero flagged pairs", async () => {
@@ -76,18 +103,24 @@ describe("POST /api/v1/contests/[assignmentId]/similarity-check", () => {
   });
 
   it("returns explicit timed_out status when the scan exceeds the route timeout", async () => {
-    vi.useFakeTimers();
     runAndStoreSimilarityCheckMock.mockImplementation(
-      () =>
-        new Promise((resolve) => {
-          setTimeout(() => resolve({
+      (_assignmentId: string, _options: unknown, signal: AbortSignal) => {
+        return new Promise((resolve, reject) => {
+          const timeoutId = setTimeout(() => resolve({
             status: "completed",
             reason: null,
             flaggedPairs: 0,
             submissionCount: 2,
             maxSupportedSubmissions: 500,
           }), 31_000);
-        })
+          signal.addEventListener("abort", () => {
+            clearTimeout(timeoutId);
+            const err = new Error("The operation was aborted");
+            err.name = "AbortError";
+            reject(err);
+          });
+        });
+      }
     );
 
     const { POST } = await import("@/app/api/v1/contests/[assignmentId]/similarity-check/route");
@@ -96,9 +129,7 @@ describe("POST /api/v1/contests/[assignmentId]/similarity-check", () => {
       headers: { "X-Requested-With": "XMLHttpRequest" },
     });
 
-    const resPromise = POST(req, { params: Promise.resolve({ assignmentId: "assignment-1" }) } as never);
-    await vi.advanceTimersByTimeAsync(30_000);
-    const res = await resPromise;
+    const res = await POST(req, { params: Promise.resolve({ assignmentId: "assignment-1" }) } as never);
     const body = await res.json();
 
     expect(res.status).toBe(200);
@@ -106,7 +137,5 @@ describe("POST /api/v1/contests/[assignmentId]/similarity-check", () => {
       status: "timed_out",
       reason: "timeout",
     });
-
-    vi.useRealTimers();
-  });
+  }, 35000);
 });

@@ -1,22 +1,12 @@
 #!/usr/bin/env tsx
 /**
- * SQLite → PostgreSQL Data Migration Script
+ * Legacy migration helper for importing a portable JSON export into the
+ * current PostgreSQL-backed JudgeKit runtime.
  *
- * Exports all data from the current SQLite database to a portable JSON file
- * that can be imported into a PostgreSQL instance via the admin API.
- *
- * Usage:
- *   # 1. Export from SQLite (run while SQLite instance is up, or directly)
- *   DATABASE_PATH=./data/judge.db tsx scripts/migrate-sqlite-to-pg.ts export
- *
- *   # 2. Import into PostgreSQL (run against the new PG instance)
- *   curl -X POST http://localhost:3100/api/v1/admin/migrate/import \
- *     -H "Content-Type: application/json" \
- *     -H "Cookie: <admin-session-cookie>" \
- *     -d @data/export.json
- *
- *   Or use this script to import directly:
- *   DB_DIALECT=postgresql DATABASE_URL=postgres://... tsx scripts/migrate-sqlite-to-pg.ts import
+ * NOTE:
+ * - The live JudgeKit runtime is PostgreSQL-only.
+ * - The historical SQLite export path previously documented here is no longer
+ *   supported by the current runtime stack.
  */
 
 import fs from "fs";
@@ -26,20 +16,16 @@ const command = process.argv[2] ?? "export";
 const outputPath = process.argv[3] ?? path.join(process.cwd(), "data", "export.json");
 
 async function doExport() {
-  // Force SQLite dialect for export
-  process.env.DB_DIALECT = "sqlite";
-  process.env.DATABASE_PATH = process.env.DATABASE_PATH ?? "./data/judge.db";
-
-  const dbPath = path.resolve(process.env.DATABASE_PATH);
-  if (!fs.existsSync(dbPath)) {
-    console.error(`SQLite database not found at: ${dbPath}`);
+  if (!process.env.DATABASE_URL) {
+    console.error("Export mode now requires a live PostgreSQL DATABASE_URL.");
+    console.error("The legacy SQLite export flow is no longer supported by the current runtime.");
+    console.error("Use the admin streamed export routes or run this script against a PostgreSQL-backed environment.");
     process.exit(1);
   }
 
-  console.log(`Exporting from SQLite database: ${dbPath}`);
+  console.log(`Exporting from PostgreSQL database`);
 
-  const { exportDatabase } = await import("../src/lib/db/export");
-  const data = await exportDatabase();
+  const { streamDatabaseExport } = await import("../src/lib/db/export");
 
   // Ensure output directory exists
   const outDir = path.dirname(outputPath);
@@ -47,28 +33,44 @@ async function doExport() {
     fs.mkdirSync(outDir, { recursive: true });
   }
 
-  fs.writeFileSync(outputPath, JSON.stringify(data, null, 2));
+  const stream = streamDatabaseExport();
+  const reader = stream.getReader();
+  const fileHandle = fs.createWriteStream(outputPath, { encoding: "utf8" });
+  let bytesWritten = 0;
+
+  try {
+    while (true) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      const chunk = Buffer.from(value);
+      bytesWritten += chunk.length;
+      await new Promise<void>((resolve, reject) => {
+        fileHandle.write(chunk, (error) => {
+          if (error) reject(error);
+          else resolve();
+        });
+      });
+    }
+  } finally {
+    await new Promise<void>((resolve, reject) => {
+      fileHandle.end((error) => {
+        if (error) reject(error);
+        else resolve();
+      });
+    });
+    reader.releaseLock();
+  }
 
   console.log(`\nExport complete:`);
   console.log(`  File: ${outputPath}`);
-  console.log(`  Size: ${(fs.statSync(outputPath).size / 1024 / 1024).toFixed(2)} MB`);
-  console.log(`  Source dialect: ${data.sourceDialect}`);
-  console.log(`  Tables: ${Object.keys(data.tables).length}`);
-
-  let totalRows = 0;
-  for (const [name, table] of Object.entries(data.tables)) {
-    if (table.rowCount > 0) {
-      console.log(`    ${name}: ${table.rowCount} rows`);
-    }
-    totalRows += table.rowCount;
-  }
-  console.log(`  Total rows: ${totalRows}`);
+  console.log(`  Size: ${(bytesWritten / 1024 / 1024).toFixed(2)} MB`);
+  console.log("  Export written via streaming JSON serializer (row counts omitted to avoid re-loading the file)");
 
   console.log(`\nNext steps:`);
   console.log(`  1. Start the PostgreSQL stack:`);
   console.log(`     docker compose -f docker-compose.production.yml up -d`);
   console.log(`  2. Push schema to PostgreSQL:`);
-  console.log(`     DB_DIALECT=postgresql DATABASE_URL=postgres://... npx drizzle-kit push`);
+  console.log(`     DATABASE_URL=postgres://... npx drizzle-kit push`);
   console.log(`  3. Import data (option A — via API):`);
   console.log(`     curl -X POST http://localhost:3100/api/v1/admin/migrate/import \\`);
   console.log(`       -H "Content-Type: application/json" \\`);
@@ -82,13 +84,6 @@ async function doImport() {
   if (!fs.existsSync(outputPath)) {
     console.error(`Export file not found at: ${outputPath}`);
     console.error(`Run the export step first: tsx scripts/migrate-sqlite-to-pg.ts export`);
-    process.exit(1);
-  }
-
-  const dialect = process.env.DB_DIALECT;
-  if (dialect !== "postgresql") {
-    console.error(`DB_DIALECT must be "postgresql" for import (got: "${dialect ?? "not set"}")`);
-    console.error(`Usage: DB_DIALECT=postgresql DATABASE_URL=postgres://... tsx scripts/migrate-sqlite-to-pg.ts import`);
     process.exit(1);
   }
 
@@ -130,15 +125,19 @@ async function doImport() {
   }
 }
 
-switch (command) {
-  case "export":
-    await doExport();
-    break;
-  case "import":
-    await doImport();
-    break;
-  default:
-    console.error(`Unknown command: ${command}`);
-    console.error(`Usage: tsx scripts/migrate-sqlite-to-pg.ts [export|import] [path]`);
-    process.exit(1);
+async function main() {
+  switch (command) {
+    case "export":
+      await doExport();
+      break;
+    case "import":
+      await doImport();
+      break;
+    default:
+      console.error(`Unknown command: ${command}`);
+      console.error(`Usage: tsx scripts/migrate-sqlite-to-pg.ts [export|import] [path]`);
+      process.exit(1);
+  }
 }
+
+void main();

@@ -4,6 +4,7 @@ import { plugins } from "@/lib/db/schema";
 import { getAllPluginDefinitions, getPluginDefinition } from "./registry";
 import type { PluginState } from "./types";
 import { decryptPluginConfigForUse, redactPluginConfigForRead } from "./secrets";
+import { logger } from "@/lib/logger";
 
 type GetPluginStateOptions = {
   includeSecrets?: boolean;
@@ -26,17 +27,22 @@ export async function getPluginState(
   const definition = getPluginDefinition(pluginId);
   if (!definition) return null;
 
-  const [row] = await db.select().from(plugins).where(eq(plugins.id, pluginId)).limit(1);
-  const includeSecrets = options.includeSecrets === true;
-  const rawConfig = (row?.config as Record<string, unknown>) ?? { ...definition.defaultConfig };
+  try {
+    const [row] = await db.select().from(plugins).where(eq(plugins.id, pluginId)).limit(1);
+    const includeSecrets = options.includeSecrets === true;
+    const rawConfig = (row?.config as Record<string, unknown>) ?? { ...definition.defaultConfig };
 
-  return {
-    id: pluginId,
-    enabled: row?.enabled ?? false,
-    config: normalizePluginConfig(pluginId, rawConfig, includeSecrets),
-    definition,
-    updatedAt: row?.updatedAt ?? null,
-  };
+    return {
+      id: pluginId,
+      enabled: row?.enabled ?? false,
+      config: normalizePluginConfig(pluginId, rawConfig, includeSecrets),
+      definition,
+      updatedAt: row?.updatedAt ?? null,
+    };
+  } catch (err) {
+    logger.error({ err, pluginId }, "[plugins] Failed to load plugin state");
+    return null;
+  }
 }
 
 export async function getAllPluginStates(
@@ -48,15 +54,27 @@ export async function getAllPluginStates(
   const includeSecrets = options.includeSecrets === true;
 
   return definitions.map((def) => {
-    const row = rowMap.get(def.id);
-    const rawConfig = (row?.config as Record<string, unknown>) ?? { ...def.defaultConfig };
-    return {
-      id: def.id,
-      enabled: row?.enabled ?? false,
-      config: normalizePluginConfig(def.id, rawConfig, includeSecrets),
-      definition: def,
-      updatedAt: row?.updatedAt ?? null,
-    };
+    try {
+      const row = rowMap.get(def.id);
+      const rawConfig = (row?.config as Record<string, unknown>) ?? { ...def.defaultConfig };
+      return {
+        id: def.id,
+        enabled: row?.enabled ?? false,
+        config: normalizePluginConfig(def.id, rawConfig, includeSecrets),
+        definition: def,
+        updatedAt: row?.updatedAt ?? null,
+      };
+    } catch (err) {
+      // Isolate failures: return a safe default state if individual plugin processing fails
+      logger.error({ err, pluginId: def.id }, "[plugins] Failed to load plugin state");
+      return {
+        id: def.id,
+        enabled: false,
+        config: { ...def.defaultConfig },
+        definition: def,
+        updatedAt: null,
+      };
+    }
   });
 }
 

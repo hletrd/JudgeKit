@@ -75,7 +75,7 @@ export async function POST(request: NextRequest) {
     const ext = getExtensionForMime(finalMimeType);
     const storedName = `${nanoid()}${ext}`;
 
-    writeUploadedFile(storedName, finalBuffer);
+    await writeUploadedFile(storedName, finalBuffer);
 
     const [inserted] = await db
       .insert(files)

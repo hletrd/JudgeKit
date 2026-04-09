@@ -103,8 +103,8 @@ export async function computeContestRanking(assignmentId: string, cutoffSec?: nu
         .then((fresh) => {
           rankingCache.set(cacheKey, { data: fresh, createdAt: Date.now() });
         })
-        .catch(() => {
-          // On error the stale entry remains in cache; next request will retry
+        .catch((err) => {
+          logger.error({ err }, "[contest-scoring] Failed to refresh ranking cache");
         })
         .finally(() => {
           _refreshingKeys.delete(cacheKey);

@@ -60,8 +60,7 @@ async function loadRolesFromDb(): Promise<void> {
  */
 async function ensureLoaded(): Promise<void> {
   if (roleCache && Date.now() - roleCacheLoadedAt < ROLE_CACHE_TTL_MS) return;
-  // Cache expired or not loaded — force reload
-  roleCache = null;
+  // Cache expired or not loaded — force reload (keep old cache until new one is ready)
   if (!loadPromise) {
     loadPromise = loadRolesFromDb()
       .then(() => {

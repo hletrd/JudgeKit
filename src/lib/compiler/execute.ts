@@ -1,6 +1,6 @@
 import { spawn, execFile } from "child_process";
 import { promisify } from "util";
-import { chmod, mkdir, writeFile, rm } from "fs/promises";
+import { chmod, mkdir, writeFile, rm, mkdtemp, lstat } from "fs/promises";
 import { join } from "path";
 import { tmpdir, cpus } from "os";
 import { randomUUID } from "crypto";
@@ -98,7 +98,23 @@ function validateDockerImage(image: string): boolean {
   // - Only alphanumeric, dots, hyphens, underscores, slashes, colons
   // - Must start with alphanumeric
   const pattern = /^[a-zA-Z0-9][a-zA-Z0-9._\-\/:]*$/;
-  return pattern.test(image) && !image.includes("://");
+  if (!pattern.test(image) || image.includes("://")) return false;
+
+  // If image references an external registry (first path segment contains a dot),
+  // it must match one of the trusted registries in TRUSTED_DOCKER_REGISTRIES env var.
+  const firstSegment = image.split("/")[0];
+  const hasRegistryPrefix = image.includes("/") && firstSegment.includes(".");
+  if (hasRegistryPrefix) {
+    const trusted = (process.env.TRUSTED_DOCKER_REGISTRIES || "")
+      .split(",")
+      .map((r) => r.trim())
+      .filter(Boolean);
+    if (trusted.length === 0 || !trusted.some((r) => image.startsWith(r))) {
+      return false;
+    }
+  }
+
+  return true;
 }
 
 /**
@@ -267,6 +283,11 @@ async function runDocker(opts: {
   // Seccomp profile
   if (existsSync(SECCOMP_PROFILE_PATH)) {
     args.push(`--security-opt=seccomp=${SECCOMP_PROFILE_PATH}`);
+  } else {
+    logger.warn(
+      { path: SECCOMP_PROFILE_PATH },
+      "[compiler] Seccomp profile not found; container will run with default seccomp policy"
+    );
   }
 
   if (opts.stdin !== null) {
@@ -506,12 +527,18 @@ export async function executeCompilerRun(
     };
   }
 
-  // Create temp workspace — world-writable so sibling Docker containers
-  // (which may run as a different uid) can write compiled output.
+  // Create temp workspace. 0o755 is sufficient because containers run as
+  // root inside their own user namespace.  In Docker-in-Docker setups where
+  // sibling containers need write access, the COMPILER_WORKSPACE_DIR should
+  // be configured with appropriate group ACLs instead of world-writable perms.
   // chmod after mkdir to bypass process umask.
-  const workspaceDir = join(WORKSPACE_BASE, `compiler-${randomUUID()}`);
-  await mkdir(workspaceDir, { recursive: true });
-  await chmod(workspaceDir, 0o777);
+  await mkdir(WORKSPACE_BASE, { recursive: true });
+  const workspaceDir = await mkdtemp(join(WORKSPACE_BASE, "compiler-"));
+  const workspaceStat = await lstat(workspaceDir);
+  if (!workspaceStat.isDirectory() || workspaceStat.isSymbolicLink()) {
+    throw new Error("Compiler workspace path is invalid");
+  }
+  await chmod(workspaceDir, 0o750);
 
   try {
     // Write source file (world-readable for sibling container access)

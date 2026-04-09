@@ -67,6 +67,7 @@ const dbMockObj = {
   select: dbSelectMock,
   insert: vi.fn(() => ({ values: dbInsertMock })),
   query: { submissions: { findFirst: vi.fn() } },
+  execute: vi.fn().mockResolvedValue(undefined),
 };
 
 vi.mock("@/lib/db", () => ({

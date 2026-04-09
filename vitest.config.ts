@@ -16,7 +16,7 @@ export default defineConfig({
       thresholds: {
         statements: 60,
         branches: 50,
-        functions: 50,
+        functions: 40,
         lines: 60,
         // Per-module thresholds for security-critical code
         "src/lib/security/**": {

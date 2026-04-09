@@ -137,7 +137,31 @@ export const authConfig: NextAuthConfig = {
       async authorize(credentials, request) {
         // Recruiting token auth — bypass password flow
         if (typeof credentials?.recruitToken === "string" && credentials.recruitToken.length > 0) {
-          return authorizeRecruitingToken(credentials.recruitToken, request);
+          // Apply rate limiting by IP to prevent token brute-force attacks
+          const recruitIpKey = getRateLimitKey("login", request.headers);
+          if (await isAnyKeyRateLimited(recruitIpKey)) {
+            recordLoginEvent({
+              outcome: "rate_limited",
+              attemptedIdentifier: "recruitToken",
+              request,
+            });
+            return null;
+          }
+
+          const result = await authorizeRecruitingToken(credentials.recruitToken, request);
+
+          if (!result) {
+            await recordRateLimitFailureMulti(recruitIpKey);
+            recordLoginEvent({
+              outcome: "invalid_credentials",
+              attemptedIdentifier: "recruitToken",
+              request,
+            });
+            return null;
+          }
+
+          await clearRateLimitMulti(recruitIpKey);
+          return result;
         }
 
         const ipRateLimitKey = getRateLimitKey("login", request.headers);
@@ -170,13 +194,13 @@ export const authConfig: NextAuthConfig = {
 
         if (!user) {
           user = await db.query.users.findFirst({
-            where: eq(users.email, identifier),
+            where: sql`lower(${users.email}) = lower(${identifier})`,
           });
         }
 
         if (!user || !user.passwordHash || !user.isActive) {
           await verifyPassword(password, user?.passwordHash ?? DUMMY_PASSWORD_HASH);
-          void recordRateLimitFailureMulti(...rateLimitKeys);
+          await recordRateLimitFailureMulti(...rateLimitKeys);
           recordLoginEvent({
             outcome: "invalid_credentials",
             attemptedIdentifier: identifier,
@@ -188,7 +212,7 @@ export const authConfig: NextAuthConfig = {
 
         const { valid: isValid, needsRehash } = await verifyPassword(password, user.passwordHash);
         if (!isValid) {
-          void recordRateLimitFailureMulti(...rateLimitKeys);
+          await recordRateLimitFailureMulti(...rateLimitKeys);
           recordLoginEvent({
             outcome: "invalid_credentials",
             attemptedIdentifier: identifier,
@@ -199,21 +223,20 @@ export const authConfig: NextAuthConfig = {
         }
 
         // Transparent rehash: migrate legacy bcrypt hashes to Argon2id on
-        // successful login.  Fire-and-forget so it never blocks the login flow.
+        // successful login. Awaited to ensure the hash is actually updated.
         if (needsRehash) {
-          hashPassword(password)
-            .then((newHash) =>
-              db
-                .update(users)
-                .set({ passwordHash: newHash })
-                .where(eq(users.id, user.id))
-            )
-            .catch((err) => {
-              logger.error({ err, userId: user.id }, "[auth] Failed to rehash password");
-            });
+          try {
+            const newHash = await hashPassword(password);
+            await db
+              .update(users)
+              .set({ passwordHash: newHash })
+              .where(eq(users.id, user.id));
+          } catch (err) {
+            logger.error({ err, userId: user.id }, "[auth] Failed to rehash password");
+          }
         }
 
-        void clearRateLimitMulti(...rateLimitKeys);
+        await clearRateLimitMulti(...rateLimitKeys);
 
         return createSuccessfulLoginResponse(
           {

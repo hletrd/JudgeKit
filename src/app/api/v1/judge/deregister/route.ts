@@ -2,8 +2,8 @@ import { NextRequest } from "next/server";
 import { timingSafeEqual } from "node:crypto";
 import { apiSuccess, apiError } from "@/lib/api/responses";
 import { db } from "@/lib/db";
-import { judgeWorkers } from "@/lib/db/schema";
-import { eq } from "drizzle-orm";
+import { judgeWorkers, submissions } from "@/lib/db/schema";
+import { eq, inArray } from "drizzle-orm";
 import { isJudgeAuthorized } from "@/lib/judge/auth";
 import { logger } from "@/lib/logger";
 import { z } from "zod";
@@ -53,6 +53,38 @@ export async function POST(request: NextRequest) {
     }
 
     logger.info({ workerId }, "[judge/deregister] Worker deregistered");
+
+    // Release all submissions claimed by this worker so they don't remain stuck
+    try {
+      // Find all submissions currently claimed by this worker
+      const claimed = await db
+        .select({ id: submissions.id })
+        .from(submissions)
+        .where(eq(submissions.judgeWorkerId, workerId));
+
+      if (claimed.length > 0) {
+        const claimedIds = claimed.map((s) => s.id);
+        await db
+          .update(submissions)
+          .set({
+            status: "pending",
+            judgeClaimToken: null,
+            judgeClaimedAt: null,
+            judgeWorkerId: null,
+          })
+          .where(inArray(submissions.id, claimedIds));
+
+        logger.info(
+          { workerId, releasedCount: claimedIds.length },
+          "[judge/deregister] Released claimed submissions"
+        );
+      }
+    } catch (releaseErr) {
+      logger.error(
+        { err: releaseErr, workerId },
+        "[judge/deregister] Failed to release claimed submissions"
+      );
+    }
 
     return apiSuccess({ ok: true });
   } catch (error) {

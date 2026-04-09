@@ -1,7 +1,7 @@
 import { auth } from "./index";
 import { canViewAssignmentSubmissions } from "@/lib/assignments/submissions";
 import { db } from "@/lib/db";
-import { enrollments, groups, problemGroupAccess, problems } from "@/lib/db/schema";
+import { enrollments, groupInstructors, groups, problemGroupAccess, problems } from "@/lib/db/schema";
 import { eq, and, inArray } from "drizzle-orm";
 import type { UserRole } from "@/types";
 import { isUserRole } from "@/lib/security/constants";
@@ -44,6 +44,15 @@ export async function canAccessGroup(
   }
 
   if (group.instructorId === userId) {
+    return true;
+  }
+
+  const instructionalRole = await db.query.groupInstructors.findFirst({
+    where: and(eq(groupInstructors.userId, userId), eq(groupInstructors.groupId, groupId)),
+    columns: { id: true },
+  });
+
+  if (instructionalRole) {
     return true;
   }
 

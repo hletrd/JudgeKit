@@ -1,4 +1,4 @@
-import { mkdirSync, writeFileSync, unlinkSync, readFileSync, existsSync } from "node:fs";
+import { mkdir, writeFile, unlink, readFile, access } from "node:fs/promises";
 import { join, resolve } from "node:path";
 
 function getDataDir(): string {
@@ -11,8 +11,8 @@ export function getUploadsDir(): string {
   return join(getDataDir(), "uploads");
 }
 
-export function ensureUploadsDir(): void {
-  mkdirSync(getUploadsDir(), { recursive: true });
+export async function ensureUploadsDir(): Promise<void> {
+  await mkdir(getUploadsDir(), { recursive: true });
 }
 
 export function resolveStoredPath(storedName: string): string {
@@ -26,23 +26,28 @@ export function resolveStoredPath(storedName: string): string {
   return join(getUploadsDir(), storedName);
 }
 
-export function writeUploadedFile(storedName: string, data: Buffer): void {
-  ensureUploadsDir();
-  writeFileSync(resolveStoredPath(storedName), data, { mode: 0o644 });
+export async function writeUploadedFile(storedName: string, data: Buffer): Promise<void> {
+  await ensureUploadsDir();
+  await writeFile(resolveStoredPath(storedName), data, { mode: 0o644 });
 }
 
-export function deleteUploadedFile(storedName: string): void {
+export async function deleteUploadedFile(storedName: string): Promise<void> {
   try {
-    unlinkSync(resolveStoredPath(storedName));
+    await unlink(resolveStoredPath(storedName));
   } catch (err: unknown) {
     if ((err as NodeJS.ErrnoException).code !== "ENOENT") throw err;
   }
 }
 
-export function readUploadedFile(storedName: string): Buffer {
-  return readFileSync(resolveStoredPath(storedName));
+export async function readUploadedFile(storedName: string): Promise<Buffer> {
+  return readFile(resolveStoredPath(storedName));
 }
 
-export function uploadedFileExists(storedName: string): boolean {
-  return existsSync(resolveStoredPath(storedName));
+export async function uploadedFileExists(storedName: string): Promise<boolean> {
+  try {
+    await access(resolveStoredPath(storedName));
+    return true;
+  } catch {
+    return false;
+  }
 }

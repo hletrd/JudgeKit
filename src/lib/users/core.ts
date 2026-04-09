@@ -1,4 +1,4 @@
-import { eq, sql } from "drizzle-orm";
+import { sql } from "drizzle-orm";
 import { hashPassword } from "@/lib/security/password-hash";
 import { db } from "@/lib/db";
 import { users } from "@/lib/db/schema";
@@ -32,7 +32,7 @@ export async function isEmailTaken(
   excludeId?: string
 ): Promise<boolean> {
   const existing = await db.query.users.findFirst({
-    where: eq(users.email, email),
+    where: sql`lower(${users.email}) = lower(${email})`,
     columns: { id: true },
   });
   return existing !== undefined && existing.id !== excludeId;

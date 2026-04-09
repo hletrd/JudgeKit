@@ -4,6 +4,7 @@ import { bulkUserCreateSchema } from "@/lib/validators/bulk-users";
 const validUser = {
   username: "jdoe",
   name: "John Doe",
+  password: "StrongPass123!",
 };
 
 describe("bulkUserCreateSchema", () => {
@@ -20,6 +21,7 @@ describe("bulkUserCreateSchema", () => {
           username: "jdoe",
           name: "John Doe",
           email: "jdoe@example.com",
+          password: "StrongPass123!",
           role: "instructor",
           className: "CS101",
         },
@@ -37,6 +39,7 @@ describe("bulkUserCreateSchema", () => {
     const users = Array.from({ length: 201 }, (_, i) => ({
       username: `user${i}`,
       name: `User ${i}`,
+      password: `StrongPass${i}!`,
     }));
     const result = bulkUserCreateSchema.safeParse({ users });
     expect(result.success).toBe(false);
@@ -46,6 +49,7 @@ describe("bulkUserCreateSchema", () => {
     const users = Array.from({ length: 200 }, (_, i) => ({
       username: `user${String(i).padStart(3, "0")}`,
       name: `User ${i}`,
+      password: `StrongPass${i}!`,
     }));
     const result = bulkUserCreateSchema.safeParse({ users });
     expect(result.success).toBe(true);
@@ -53,7 +57,7 @@ describe("bulkUserCreateSchema", () => {
 
   it("trims whitespace from username and name", () => {
     const result = bulkUserCreateSchema.parse({
-      users: [{ username: "  jdoe  ", name: "  John Doe  " }],
+      users: [{ username: "  jdoe  ", name: "  John Doe  ", password: "StrongPass123!" }],
     });
     expect(result.users[0]?.username).toBe("jdoe");
     expect(result.users[0]?.name).toBe("John Doe");

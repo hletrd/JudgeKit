@@ -8,6 +8,7 @@ const {
   resolveCapabilitiesMock,
   getAccessibleProblemIdsMock,
   dbSelectMock,
+  dbUpdateMock,
   readUploadedFileMock,
 } = vi.hoisted(() => ({
   getApiUserMock: vi.fn(),
@@ -16,6 +17,7 @@ const {
   resolveCapabilitiesMock: vi.fn(),
   getAccessibleProblemIdsMock: vi.fn(),
   dbSelectMock: vi.fn(),
+  dbUpdateMock: vi.fn(),
   readUploadedFileMock: vi.fn(),
 }));
 
@@ -76,6 +78,7 @@ vi.mock("@/lib/logger", () => ({
 vi.mock("@/lib/db", () => ({
   db: {
     select: dbSelectMock,
+    update: dbUpdateMock,
     delete: vi.fn(),
   },
 }));
@@ -102,6 +105,11 @@ describe("GET /api/v1/files/[id]", () => {
     csrfForbiddenMock.mockReturnValue(null);
     consumeApiRateLimitMock.mockResolvedValue(null);
     readUploadedFileMock.mockReturnValue(Buffer.from("hello"));
+    dbUpdateMock.mockReturnValue({
+      set: vi.fn(() => ({
+        where: vi.fn(async () => undefined),
+      })),
+    });
   });
 
   it("returns 401 when unauthenticated", async () => {
@@ -177,6 +185,44 @@ describe("GET /api/v1/files/[id]", () => {
         expect.objectContaining({ id: "problem-1" }),
       ])
     );
+  });
+
+  it("prefers explicit problem linkage without scanning descriptions", async () => {
+    getApiUserMock.mockResolvedValue({
+      ...ownerUser,
+      id: "student-4",
+      username: "student4",
+    });
+    resolveCapabilitiesMock.mockResolvedValue(new Set(["files.upload"]));
+    dbSelectMock
+      .mockReturnValueOnce(
+        makeSelectChain([
+          {
+            id: "file-2",
+            storedName: "stored.bin",
+            originalName: "linked.png",
+            mimeType: "image/webp",
+            uploadedBy: "instructor-1",
+            problemId: "problem-2",
+          },
+        ])
+      )
+      .mockReturnValueOnce(
+        makeWhereTerminalChain([
+          {
+            id: "problem-2",
+            visibility: "private",
+            authorId: "instructor-1",
+          },
+        ])
+      );
+    getAccessibleProblemIdsMock.mockResolvedValue(new Set(["problem-2"]));
+
+    const { GET } = await import("@/app/api/v1/files/[id]/route");
+    const res = await GET(makeRequest("file-2"), { params: Promise.resolve({ id: "file-2" }) });
+
+    expect(res.status).toBe(200);
+    expect(dbUpdateMock).not.toHaveBeenCalled();
   });
 
   it("returns 403 for unrelated users when the file is not accessible via ownership or problem access", async () => {

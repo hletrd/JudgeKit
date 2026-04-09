@@ -12,15 +12,16 @@
  *   - All created rows use a "e2e-" prefix convention so cleanup is scoped.
  */
 
-import { timingSafeEqual } from "node:crypto";
 import { NextRequest } from "next/server";
 import { z } from "zod";
 import { hashPassword } from "@/lib/security/password-hash";
-import { like } from "drizzle-orm";
+import { sql } from "drizzle-orm";
 import { db } from "@/lib/db";
 import { users, problems } from "@/lib/db/schema";
 import { apiSuccess, apiError } from "@/lib/api/responses";
 import { logger } from "@/lib/logger";
+import { safeTokenCompare } from "@/lib/security/timing";
+import { csrfForbidden } from "@/lib/api/auth";
 
 // ─── Auth helpers ────────────────────────────────────────────────────────────
 
@@ -42,14 +43,7 @@ function isAuthorized(req: NextRequest): boolean {
   if (!authHeader?.startsWith("Bearer ")) return false;
 
   const provided = authHeader.slice(7);
-
-  // Timing-safe comparison to prevent token oracle attacks.
-  const providedBuf = Buffer.from(provided);
-  const expectedBuf = Buffer.from(expected);
-
-  if (providedBuf.length !== expectedBuf.length) return false;
-
-  return timingSafeEqual(providedBuf, expectedBuf);
+  return safeTokenCompare(provided, expected);
 }
 
 // ─── Request body schemas ────────────────────────────────────────────────────
@@ -107,6 +101,9 @@ export async function POST(req: NextRequest) {
   if (!isAuthorized(req)) {
     return apiError("unauthorized", 401);
   }
+
+  const csrfError = csrfForbidden(req);
+  if (csrfError) return csrfError;
 
   const contentType = req.headers.get("content-type");
   if (!contentType?.includes("application/json")) {
@@ -175,19 +172,24 @@ export async function POST(req: NextRequest) {
       case "cleanup": {
         const { usernamePrefix, titlePrefix } = body.data ?? {};
 
+        // Escape LIKE metacharacters to prevent wildcard injection.
+        const escapeLike = (s: string) => s.replace(/[%_\\]/g, "\\$&");
+
         // Delete users whose username starts with the given prefix (default "e2e-").
         // Cascade rules in the schema will remove their sessions, submissions, etc.
         const effectiveUserPrefix = usernamePrefix ?? "e2e-";
+        const escapedUserPrefix = escapeLike(effectiveUserPrefix);
         const deletedUsers = await db
           .delete(users)
-          .where(like(users.username, `${effectiveUserPrefix}%`))
+          .where(sql`${users.username} LIKE ${escapedUserPrefix + '%'} ESCAPE '\\'`)
           .returning({ id: users.id });
 
         // Delete problems whose title starts with the given prefix (default "[E2E]").
         const effectiveTitlePrefix = titlePrefix ?? "[E2E]";
+        const escapedTitlePrefix = escapeLike(effectiveTitlePrefix);
         const deletedProblems = await db
           .delete(problems)
-          .where(like(problems.title, `${effectiveTitlePrefix}%`))
+          .where(sql`${problems.title} LIKE ${escapedTitlePrefix + '%'} ESCAPE '\\'`)
           .returning({ id: problems.id });
 
         logger.info(

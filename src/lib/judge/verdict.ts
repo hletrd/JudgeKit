@@ -17,7 +17,7 @@ export function computeFinalJudgeMetrics(results: JudgeResultInput[] | undefined
 
   if (Array.isArray(results) && results.length > 0) {
     const passed = results.filter((result) => result.status === "accepted").length;
-    score = (passed / results.length) * 100;
+    score = Math.round((passed * 10000) / results.length) / 100;
 
     const times = results
       .map((result) => result.executionTimeMs)

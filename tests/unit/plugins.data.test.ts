@@ -23,6 +23,7 @@ vi.mock("@/lib/db", () => ({
 }));
 
 process.env.AUTH_SECRET = "plugin-secret-test-key-material-32chars";
+process.env.PLUGIN_CONFIG_ENCRYPTION_KEY = "plugin-config-encryption-key-test-material-32chars";
 
 describe("plugin data reads", () => {
   beforeEach(() => {

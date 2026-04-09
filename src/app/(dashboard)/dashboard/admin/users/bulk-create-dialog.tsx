@@ -13,6 +13,7 @@ import Papa from "papaparse";
 type ParsedRow = {
   username: string;
   name: string;
+  password: string;
   email?: string;
   role?: string;
   className?: string;
@@ -21,7 +22,6 @@ type ParsedRow = {
 type CreatedUser = {
   username: string;
   name: string;
-  generatedPassword: string;
 };
 
 type FailedUser = {
@@ -40,6 +40,9 @@ const HEADER_ALIASES: Record<string, string> = {
   name: "name",
   fullname: "name",
   displayname: "name",
+  password: "password",
+  passwd: "password",
+  pass: "password",
   email: "email",
   emailaddress: "email",
   role: "role",
@@ -69,22 +72,6 @@ function normalizeRole(raw?: string): "student" | "instructor" {
     return "instructor";
   }
   return "student";
-}
-
-function downloadCredentialsCsv(users: CreatedUser[]) {
-  const header = ["username", "name", "password"];
-  const rows = users.map((u) => [u.username, u.name, u.generatedPassword]);
-  const csv = [header, ...rows]
-    .map((row) => row.map((cell) => `"${cell.replace(/"/g, '""')}"`).join(","))
-    .join("\n");
-
-  const blob = new Blob([csv], { type: "text/csv;charset=utf-8;" });
-  const url = URL.createObjectURL(blob);
-  const a = document.createElement("a");
-  a.href = url;
-  a.download = "credentials.csv";
-  a.click();
-  URL.revokeObjectURL(url);
 }
 
 export default function BulkCreateDialog() {
@@ -157,6 +144,7 @@ export default function BulkCreateDialog() {
 
           const username = mapped["username"] ?? "";
           const name = mapped["name"] ?? "";
+          const password = mapped["password"] ?? "";
 
           if (!username || username.length < 2) {
             errors.push(t("bulkRowInvalidUsername", { row: i + 2 }));
@@ -166,10 +154,15 @@ export default function BulkCreateDialog() {
             errors.push(t("bulkRowMissingName", { row: i + 2 }));
             continue;
           }
+          if (!password) {
+            errors.push(t("bulkRowMissingPassword", { row: i + 2 }));
+            continue;
+          }
 
           rows.push({
             username,
             name,
+            password,
             email: mapped["email"] || undefined,
             role: normalizeRole(mapped["role"]),
             className: mapped["className"] || undefined,
@@ -248,7 +241,6 @@ export default function BulkCreateDialog() {
                         <TableRow>
                           <TableHead>{t("table.username")}</TableHead>
                           <TableHead>{t("table.name")}</TableHead>
-                          <TableHead>{t("generatedPasswordLabel")}</TableHead>
                         </TableRow>
                       </TableHeader>
                       <TableBody>
@@ -256,7 +248,6 @@ export default function BulkCreateDialog() {
                           <TableRow key={u.username}>
                             <TableCell className="font-mono">{u.username}</TableCell>
                             <TableCell>{u.name}</TableCell>
-                            <TableCell className="font-mono">{u.generatedPassword}</TableCell>
                           </TableRow>
                         ))}
                       </TableBody>
@@ -290,11 +281,6 @@ export default function BulkCreateDialog() {
               )}
             </div>
             <DialogFooter>
-              {results.created.length > 0 && (
-                <Button type="button" variant="outline" onClick={() => downloadCredentialsCsv(results.created)}>
-                  {t("downloadCredentials")}
-                </Button>
-              )}
               <Button type="button" onClick={() => handleOpenChange(false)}>
                 {tCommon("done")}
               </Button>

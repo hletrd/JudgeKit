@@ -74,6 +74,11 @@ vi.mock("@/lib/db", () => ({
     delete: dbDeleteMock,
     select: dbSelectMock,
   },
+  execTransaction: vi.fn(async (fn: (tx: any) => unknown) => fn({
+    select: dbSelectMock,
+    delete: dbDeleteMock,
+    execute: vi.fn().mockResolvedValue(undefined),
+  })),
 }));
 
 // canAccessGroup is only used by GET/PATCH — stub it anyway so the module resolves
@@ -126,14 +131,30 @@ const EXISTING_GROUP = {
 };
 
 /** Wire db.select(...).from(...).innerJoin(...).where(...).then(...) chain */
-function mockSubmissionCount(count: number) {
+function mockSubmissionCount(count: number, groupExists = true) {
   const thenFn = vi.fn((cb: (rows: Array<{ total: number }>) => unknown) =>
     Promise.resolve(cb([{ total: count }]))
   );
   const whereFn = vi.fn(() => ({ then: thenFn }));
   const innerJoinFn = vi.fn(() => ({ where: whereFn }));
   const fromFn = vi.fn(() => ({ innerJoin: innerJoinFn }));
-  dbSelectMock.mockReturnValue({ from: fromFn });
+
+  // Mock the transaction pattern: tx.select().from(groups).where().for("update").limit()
+  const limitFn = vi.fn().mockResolvedValue(groupExists ? [EXISTING_GROUP] : []);
+  const forFn = vi.fn(() => ({ limit: limitFn }));
+  const whereGroupFn = vi.fn(() => ({ for: forFn }));
+
+  // Track which select calls are for groups vs submissions
+  let selectCallCount = 0;
+  dbSelectMock.mockImplementation(() => {
+    selectCallCount++;
+    if (selectCallCount % 3 === 1) {
+      // First call in transaction: groups check
+      return { from: vi.fn(() => ({ where: whereGroupFn })) };
+    }
+    // Second call: submission count
+    return { from: fromFn };
+  });
 }
 
 // ---------------------------------------------------------------------------
@@ -226,7 +247,7 @@ describe("DELETE /api/v1/groups/[id] — CSRF and rate-limit guards", () => {
 describe("DELETE /api/v1/groups/[id] — group existence check", () => {
   it("returns 404 when the group does not exist", async () => {
     getApiUserMock.mockResolvedValue(ADMIN_USER);
-    groupsFindFirstMock.mockResolvedValue(null);
+    mockSubmissionCount(0, false); // group doesn't exist
 
     const res = await DELETE(makeRequest(), { params: PARAMS });
     expect(res.status).toBe(404);

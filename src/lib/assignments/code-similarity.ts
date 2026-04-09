@@ -90,7 +90,8 @@ export type SimilarityRunResult = {
 async function runSimilarityCheckTS(
   rows: SubmissionRow[],
   threshold: number,
-  ngramSize: number
+  ngramSize: number,
+  signal?: AbortSignal,
 ): Promise<SimilarityPair[]> {
   // Group by problemId
   const byProblem = new Map<string, { userId: string; ngrams: Set<string> }[]>();
@@ -108,6 +109,9 @@ async function runSimilarityCheckTS(
   for (const [problemId, entries] of byProblem) {
     for (let i = 0; i < entries.length; i++) {
       for (let j = i + 1; j < entries.length; j++) {
+        if (signal?.aborted) {
+          throw new DOMException("Similarity check timed out", "AbortError");
+        }
         const sim = jaccardSimilarity(entries[i].ngrams, entries[j].ngrams);
         if (sim >= threshold) {
           pairs.push({
@@ -139,8 +143,13 @@ async function runSimilarityCheckTS(
 export async function runSimilarityCheck(
   assignmentId: string,
   threshold = 0.85,
-  ngramSize = 3
+  ngramSize = 3,
+  signal?: AbortSignal
 ): Promise<SimilarityRunResult> {
+  if (signal?.aborted) {
+    throw new DOMException("Similarity check timed out", "AbortError");
+  }
+
   // Get best submission per (user, problem) — the one with highest score
   const rows = await rawQueryAll<SubmissionRow>(
     `WITH best AS (
@@ -196,7 +205,7 @@ export async function runSimilarityCheck(
     // Rust sidecar unavailable — fall through to TS
   }
 
-  pairs = await runSimilarityCheckTS(rows, threshold, ngramSize);
+  pairs = await runSimilarityCheckTS(rows, threshold, ngramSize, signal);
   return {
     status: "completed",
     reason: null,
@@ -212,9 +221,10 @@ export async function runSimilarityCheck(
  */
 export async function runAndStoreSimilarityCheck(
   assignmentId: string,
-  threshold = 0.85
+  threshold = 0.85,
+  signal?: AbortSignal
 ): Promise<SimilarityRunResult> {
-  const result = await runSimilarityCheck(assignmentId, threshold);
+  const result = await runSimilarityCheck(assignmentId, threshold, 3, signal);
 
   if (result.status !== "completed") {
     return result;

@@ -121,24 +121,59 @@ export const PATCH = createApiHandler({
       floatRelativeError: body.floatRelativeError !== undefined ? body.floatRelativeError : problem.floatRelativeError ?? null,
       difficulty: body.difficulty !== undefined ? body.difficulty : problem.difficulty ?? null,
       defaultLanguage: body.defaultLanguage !== undefined ? body.defaultLanguage : problem.defaultLanguage ?? null,
-      testCases:
-        body.testCases
-          ? body.testCases.map((tc, i) => {
-              const existing = existingTestCases
-                .sort((left, right) => (left.sortOrder ?? 0) - (right.sortOrder ?? 0))[i];
-              return {
-                input: tc.input ?? existing?.input ?? "",
-                expectedOutput: tc.expectedOutput ?? existing?.expectedOutput ?? "",
-                isVisible: tc.isVisible ?? existing?.isVisible ?? false,
-              };
-            })
-          : existingTestCases
+      testCases: (() => {
+          if (!body.testCases) {
+            return existingTestCases
               .sort((left, right) => (left.sortOrder ?? 0) - (right.sortOrder ?? 0))
               .map((testCase) => ({
                 input: testCase.input,
                 expectedOutput: testCase.expectedOutput,
                 isVisible: testCase.isVisible ?? false,
-              })),
+              }));
+          }
+          // Build a map from test case id to the update payload for O(1) lookup.
+          // New test cases (no id) are appended as-is.
+          const updateMap = new Map<string, (typeof body.testCases)[number]>();
+          const newCases: (typeof body.testCases)[number][] = [];
+          for (const tc of body.testCases) {
+            if (tc.id) {
+              updateMap.set(tc.id, tc);
+            } else {
+              newCases.push(tc);
+            }
+          }
+
+          // Apply updates to existing test cases by id, preserving order.
+          type TestCaseInput = { input: string; expectedOutput: string; isVisible: boolean };
+          const merged: TestCaseInput[] = existingTestCases
+            .sort((left, right) => (left.sortOrder ?? 0) - (right.sortOrder ?? 0))
+            .map((existing) => {
+              const update = updateMap.get(existing.id);
+              if (!update) {
+                return {
+                  input: existing.input,
+                  expectedOutput: existing.expectedOutput,
+                  isVisible: existing.isVisible ?? false,
+                };
+              }
+              return {
+                input: update.input ?? existing.input,
+                expectedOutput: update.expectedOutput ?? existing.expectedOutput,
+                isVisible: update.isVisible ?? existing.isVisible ?? false,
+              };
+            });
+
+          // Append new test cases (no matching id)
+          for (const tc of newCases) {
+            merged.push({
+              input: tc.input ?? "",
+              expectedOutput: tc.expectedOutput ?? "",
+              isVisible: tc.isVisible ?? false,
+            });
+          }
+
+          return merged;
+        })(),
       tags: body.tags ?? existingTagNames,
     });
 

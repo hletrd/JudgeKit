@@ -155,9 +155,9 @@ export async function redeemAccessCode(
 
       return { ok: true as const, assignmentId: assignment.id, groupId: assignment.groupId };
     });
-  } catch (err: any) {
+  } catch (err: unknown) {
     // Unique constraint violation on contestAccessTokens (concurrent redemption)
-    if (err?.code === "23505") {
+    if (typeof err === "object" && err !== null && "code" in err && err.code === "23505") {
       // Re-fetch assignment info for the response
       const [assignment] = await db
         .select({ id: assignments.id, groupId: assignments.groupId })

@@ -59,11 +59,12 @@ export async function POST(request: NextRequest) {
       return apiError("workerNotFound", 404);
     }
 
-    // Piggyback staleness sweep: mark workers stale if heartbeat is too old
+    // Piggyback staleness sweep: mark workers stale if heartbeat is too old.
+    // Awaiting prevents the sweep from racing with another worker's heartbeat.
     const staleThreshold = new Date(
       Date.now() - HEARTBEAT_INTERVAL_MS * STALE_MULTIPLIER
     );
-    void db.update(judgeWorkers)
+    await db.update(judgeWorkers)
       .set({ status: "stale" })
       .where(
         and(

@@ -14,6 +14,10 @@ const {
   getLeaderboardProblemsMock,
   rawQueryOneMock,
   getRecruitingAccessContextMock,
+  dbTransactionMock,
+  txInsertMock,
+  txValuesMock,
+  recordAuditEventMock,
 } = vi.hoisted(() => ({
   getApiUserMock: vi.fn(),
   consumeApiRateLimitMock: vi.fn<() => NextResponse | null>(() => null),
@@ -27,6 +31,10 @@ const {
   getLeaderboardProblemsMock: vi.fn(),
   rawQueryOneMock: vi.fn(),
   getRecruitingAccessContextMock: vi.fn(),
+  dbTransactionMock: vi.fn(),
+  txInsertMock: vi.fn(),
+  txValuesMock: vi.fn(),
+  recordAuditEventMock: vi.fn(),
 }));
 
 vi.mock("@/lib/api/auth", () => ({
@@ -70,6 +78,23 @@ vi.mock("@/lib/db/queries", () => ({
   rawQueryOne: rawQueryOneMock,
 }));
 
+const dbSelectFromWhereMock = vi.fn(() => Promise.resolve([{ id: "problem-1" }]));
+
+vi.mock("@/lib/db", () => ({
+  db: {
+    transaction: dbTransactionMock,
+    select: vi.fn(() => ({
+      from: vi.fn(() => ({
+        where: dbSelectFromWhereMock,
+      })),
+    })),
+  },
+}));
+
+vi.mock("@/lib/audit/events", () => ({
+  recordAuditEvent: recordAuditEventMock,
+}));
+
 vi.mock("@/lib/recruiting/access", () => ({
   getRecruitingAccessContext: getRecruitingAccessContextMock,
 }));
@@ -85,6 +110,7 @@ import {
   DELETE as accessCodeDELETE,
 } from "@/app/api/v1/contests/[assignmentId]/access-code/route";
 import { GET as leaderboardGET } from "@/app/api/v1/contests/[assignmentId]/leaderboard/route";
+import { POST as quickCreatePOST } from "@/app/api/v1/contests/quick-create/route";
 
 function makeJoinRequest(body: unknown) {
   return new NextRequest("http://localhost:3000/api/v1/contests/join", {
@@ -110,6 +136,17 @@ function makeAccessCodeRequest(method: string, assignmentId = "assign-1") {
 function makeLeaderboardRequest(assignmentId = "assign-1") {
   return new NextRequest(`http://localhost:3000/api/v1/contests/${assignmentId}/leaderboard`, {
     method: "GET",
+  });
+}
+
+function makeQuickCreateRequest(body: unknown) {
+  return new NextRequest("http://localhost:3000/api/v1/contests/quick-create", {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      "X-Requested-With": "XMLHttpRequest",
+    },
+    body: JSON.stringify(body),
   });
 }
 
@@ -177,6 +214,11 @@ describe("POST /api/v1/contests/join", () => {
       groupId: "group-1",
       alreadyEnrolled: false,
     });
+    txValuesMock.mockResolvedValue(undefined);
+    txInsertMock.mockReturnValue({ values: txValuesMock });
+    dbTransactionMock.mockImplementation(async (callback: any) => callback({
+      insert: txInsertMock,
+    }));
   });
 
   it("returns 429 when rate limited", async () => {
@@ -255,6 +297,48 @@ describe("POST /api/v1/contests/join", () => {
     const body = await res.json();
     expect(res.status).toBe(500);
     expect(body.error).toBe("internalServerError");
+  });
+});
+
+describe("POST /api/v1/contests/quick-create", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    getApiUserMock.mockResolvedValue(ADMIN_USER);
+    txValuesMock.mockResolvedValue(undefined);
+    txInsertMock.mockReturnValue({ values: txValuesMock });
+    dbTransactionMock.mockImplementation(async (callback: any) => callback({
+      insert: txInsertMock,
+    }));
+  });
+
+  it("rejects schedules where the deadline is not after the start time", async () => {
+    const res = await quickCreatePOST(makeQuickCreateRequest({
+      title: "Contest",
+      durationMinutes: 60,
+      problemIds: ["problem-1"],
+      startsAt: "2026-04-08T12:00:00.000Z",
+      deadline: "2026-04-08T12:00:00.000Z",
+    }));
+    const body = await res.json();
+
+    expect(res.status).toBe(400);
+    expect(body.error).toBe("assignmentScheduleInvalid");
+    expect(dbTransactionMock).not.toHaveBeenCalled();
+  });
+
+  it("creates the contest when the schedule is valid", async () => {
+    const res = await quickCreatePOST(makeQuickCreateRequest({
+      title: "Contest",
+      durationMinutes: 60,
+      problemIds: ["problem-1"],
+      startsAt: "2026-04-08T12:00:00.000Z",
+      deadline: "2026-04-08T13:00:00.000Z",
+    }));
+
+    expect(res.status).toBe(201);
+    expect(dbTransactionMock).toHaveBeenCalledOnce();
+    expect(txInsertMock).toHaveBeenCalledTimes(3);
+    expect(recordAuditEventMock).toHaveBeenCalledOnce();
   });
 });
 

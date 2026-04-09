@@ -32,9 +32,10 @@ type Props = {
   rangeStart: number;
   rangeEnd: number;
   totalCount: number;
+  maxFileSizeBytes?: number;
 };
 
-export function FileManagementClient({ files, rangeStart, rangeEnd, totalCount }: Props) {
+export function FileManagementClient({ files, rangeStart, rangeEnd, totalCount, maxFileSizeBytes }: Props) {
   const t = useTranslations("admin.files");
   const router = useRouter();
   const [selected, setSelected] = useState<Set<string>>(new Set());
@@ -224,6 +225,7 @@ export function FileManagementClient({ files, rangeStart, rangeEnd, totalCount }
         open={uploadOpen}
         onOpenChange={setUploadOpen}
         onComplete={handleUploadComplete}
+        maxFileSizeBytes={maxFileSizeBytes}
       />
 
       <FileDeleteDialog

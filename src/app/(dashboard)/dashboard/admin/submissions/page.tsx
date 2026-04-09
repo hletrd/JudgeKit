@@ -22,7 +22,7 @@ import { PaginationControls } from "@/components/pagination-controls";
 import { Input } from "@/components/ui/input";
 import { formatDateTimeInTimeZone } from "@/lib/datetime";
 import { getResolvedSystemTimeZone } from "@/lib/system-settings";
-import { formatSubmissionIdPrefix } from "@/lib/submissions/id";
+import { formatSubmissionIdPrefix } from "@/lib/submissions/format";
 import { buildStatusLabels } from "@/lib/judge/status-labels";
 import { SubmissionListAutoRefresh } from "@/components/submission-list-auto-refresh";
 import { getLanguageDisplayLabel } from "@/lib/judge/languages";

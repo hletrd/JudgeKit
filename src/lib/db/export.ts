@@ -5,8 +5,8 @@
  * be imported into any supported dialect (SQLite, PostgreSQL, MySQL).
  */
 
-import { db } from "./index";
-import { activeDialect } from "./index";
+import { asc, sql } from "drizzle-orm";
+import { db, type TransactionClient, activeDialect } from "./index";
 import type { DbDialect } from "./config";
 import * as schema from "./schema";
 
@@ -25,52 +25,171 @@ export interface JudgeKitExport {
   >;
 }
 
+export function createExportJsonStream(data: JudgeKitExport): ReadableStream<Uint8Array> {
+  const encoder = new TextEncoder();
+
+  return new ReadableStream({
+    start(controller) {
+      controller.enqueue(
+        encoder.encode(
+          `{"version":${data.version},"exportedAt":${JSON.stringify(data.exportedAt)},"sourceDialect":${JSON.stringify(data.sourceDialect)},"appVersion":${JSON.stringify(data.appVersion)},"tables":{`
+        )
+      );
+
+      const entries = Object.entries(data.tables);
+      entries.forEach(([tableName, tableData], tableIndex) => {
+        controller.enqueue(
+          encoder.encode(
+            `${tableIndex === 0 ? "" : ","}${JSON.stringify(tableName)}:{"columns":${JSON.stringify(tableData.columns)},"rows":[`
+          )
+        );
+
+        tableData.rows.forEach((row, rowIndex) => {
+          controller.enqueue(encoder.encode(`${rowIndex === 0 ? "" : ","}${JSON.stringify(row)}`));
+        });
+
+        controller.enqueue(encoder.encode(`],"rowCount":${tableData.rowCount}}`));
+      });
+
+      controller.enqueue(encoder.encode("}}"));
+      controller.close();
+    },
+  });
+}
+
+export function streamDatabaseExport(): ReadableStream<Uint8Array> {
+  const encoder = new TextEncoder();
+  let cancelled = false;
+
+  return new ReadableStream({
+    async start(controller) {
+      try {
+        await db.transaction(async (tx) => {
+          if (cancelled) return;
+          await tx.execute(sql.raw("SET TRANSACTION ISOLATION LEVEL REPEATABLE READ READ ONLY"));
+
+          controller.enqueue(
+            encoder.encode(
+              `{"version":1,"exportedAt":${JSON.stringify(new Date().toISOString())},"sourceDialect":${JSON.stringify(activeDialect)},"appVersion":${JSON.stringify(process.env.npm_package_version ?? "unknown")},"tables":{`
+            )
+          );
+
+          for (const [tableIndex, { name, table, orderColumns }] of TABLE_ORDER.entries()) {
+            if (cancelled) return;
+            const columnsChunk = await tx
+              .select()
+              .from(table)
+              .orderBy(...getOrderClauses(table, orderColumns))
+              .limit(EXPORT_CHUNK_SIZE)
+              .offset(0);
+
+            const columns = columnsChunk.length > 0 ? Object.keys(columnsChunk[0] as object) : [];
+            const redactSet = REDACTED_COLUMNS[name];
+
+            controller.enqueue(
+              encoder.encode(
+                `${tableIndex === 0 ? "" : ","}${JSON.stringify(name)}:{"columns":${JSON.stringify(columns)},"rows":[`
+              )
+            );
+
+            let rowCount = 0;
+            let offset = 0;
+            let rowIndex = 0;
+            let chunk = columnsChunk;
+
+            while (true) {
+              if (cancelled) return;
+              if (chunk.length === 0) break;
+
+              for (const row of chunk) {
+                if (cancelled) return;
+                const normalizedRow = columns.map((col) =>
+                  redactSet?.has(col) ? null : normalizeValue((row as any)[col])
+                );
+                controller.enqueue(
+                  encoder.encode(`${rowIndex === 0 ? "" : ","}${JSON.stringify(normalizedRow)}`)
+                );
+                rowCount += 1;
+                rowIndex += 1;
+              }
+
+              if (chunk.length < EXPORT_CHUNK_SIZE) {
+                break;
+              }
+
+              offset += chunk.length;
+              chunk = await tx
+                .select()
+                .from(table)
+                .orderBy(...getOrderClauses(table, orderColumns))
+                .limit(EXPORT_CHUNK_SIZE)
+                .offset(offset);
+            }
+
+            controller.enqueue(encoder.encode(`],"rowCount":${rowCount}}`));
+          }
+
+          if (cancelled) return;
+          controller.enqueue(encoder.encode("}}"));
+        });
+        if (cancelled) return;
+        controller.close();
+      } catch (error) {
+        if (!cancelled) controller.error(error);
+      }
+    },
+    cancel() {
+      cancelled = true;
+    },
+  });
+}
+
 /**
  * Tables in FK-dependency order (parents before children).
  * Each entry maps a logical name to the Drizzle table reference.
  */
-const TABLE_ORDER: { name: string; table: any }[] = [
+const TABLE_ORDER: { name: string; table: any; orderColumns: string[] }[] = [
   // Level 0: no foreign keys
-  { name: "users", table: schema.users },
-  { name: "roles", table: schema.roles },
-  { name: "tags", table: schema.tags },
-  { name: "systemSettings", table: schema.systemSettings },
-  { name: "judgeWorkers", table: schema.judgeWorkers },
-  { name: "languageConfigs", table: schema.languageConfigs },
-  { name: "plugins", table: schema.plugins },
-  { name: "rateLimits", table: schema.rateLimits },
+  { name: "users", table: schema.users, orderColumns: ["id"] },
+  { name: "roles", table: schema.roles, orderColumns: ["id"] },
+  { name: "tags", table: schema.tags, orderColumns: ["id"] },
+  { name: "systemSettings", table: schema.systemSettings, orderColumns: ["id"] },
+  { name: "judgeWorkers", table: schema.judgeWorkers, orderColumns: ["id"] },
+  { name: "languageConfigs", table: schema.languageConfigs, orderColumns: ["id"] },
+  { name: "plugins", table: schema.plugins, orderColumns: ["id"] },
+  { name: "rateLimits", table: schema.rateLimits, orderColumns: ["id"] },
   // Level 1: FK to level 0
-  { name: "sessions", table: schema.sessions },
-  { name: "accounts", table: schema.accounts },
-  { name: "loginEvents", table: schema.loginEvents },
-  { name: "auditEvents", table: schema.auditEvents },
-  { name: "apiKeys", table: schema.apiKeys },
-  { name: "groups", table: schema.groups },
-  { name: "problems", table: schema.problems },
-  { name: "files", table: schema.files },
-  { name: "problemSets", table: schema.problemSets },
+  { name: "sessions", table: schema.sessions, orderColumns: ["sessionToken"] },
+  { name: "accounts", table: schema.accounts, orderColumns: ["id"] },
+  { name: "loginEvents", table: schema.loginEvents, orderColumns: ["id"] },
+  { name: "auditEvents", table: schema.auditEvents, orderColumns: ["id"] },
+  { name: "apiKeys", table: schema.apiKeys, orderColumns: ["id"] },
+  { name: "groups", table: schema.groups, orderColumns: ["id"] },
+  { name: "problems", table: schema.problems, orderColumns: ["id"] },
+  { name: "files", table: schema.files, orderColumns: ["id"] },
+  { name: "problemSets", table: schema.problemSets, orderColumns: ["id"] },
   // Level 2: FK to level 0-1
-  { name: "enrollments", table: schema.enrollments },
-  { name: "groupInstructors", table: schema.groupInstructors },
-  { name: "testCases", table: schema.testCases },
-  { name: "problemGroupAccess", table: schema.problemGroupAccess },
-  { name: "assignments", table: schema.assignments },
-  { name: "problemSetProblems", table: schema.problemSetProblems },
-  { name: "problemSetGroupAccess", table: schema.problemSetGroupAccess },
-  { name: "problemTags", table: schema.problemTags },
-  { name: "chatMessages", table: schema.chatMessages },
+  { name: "enrollments", table: schema.enrollments, orderColumns: ["id"] },
+  { name: "groupInstructors", table: schema.groupInstructors, orderColumns: ["id"] },
+  { name: "testCases", table: schema.testCases, orderColumns: ["id"] },
+  { name: "problemGroupAccess", table: schema.problemGroupAccess, orderColumns: ["id"] },
+  { name: "assignments", table: schema.assignments, orderColumns: ["id"] },
+  { name: "problemSetProblems", table: schema.problemSetProblems, orderColumns: ["id"] },
+  { name: "problemSetGroupAccess", table: schema.problemSetGroupAccess, orderColumns: ["id"] },
+  { name: "problemTags", table: schema.problemTags, orderColumns: ["id"] },
+  { name: "chatMessages", table: schema.chatMessages, orderColumns: ["id"] },
   // Level 3: FK to level 0-2
-  { name: "assignmentProblems", table: schema.assignmentProblems },
-  { name: "recruitingInvitations", table: schema.recruitingInvitations },
-  { name: "examSessions", table: schema.examSessions },
-  { name: "contestAccessTokens", table: schema.contestAccessTokens },
+  { name: "assignmentProblems", table: schema.assignmentProblems, orderColumns: ["id"] },
+  { name: "recruitingInvitations", table: schema.recruitingInvitations, orderColumns: ["id"] },
+  { name: "examSessions", table: schema.examSessions, orderColumns: ["id"] },
+  { name: "contestAccessTokens", table: schema.contestAccessTokens, orderColumns: ["id"] },
   // Level 4: FK to level 0-3
-  { name: "submissions", table: schema.submissions },
-  { name: "antiCheatEvents", table: schema.antiCheatEvents },
-  { name: "scoreOverrides", table: schema.scoreOverrides },
+  { name: "submissions", table: schema.submissions, orderColumns: ["id"] },
+  { name: "antiCheatEvents", table: schema.antiCheatEvents, orderColumns: ["id"] },
+  { name: "scoreOverrides", table: schema.scoreOverrides, orderColumns: ["id"] },
   // Level 5: FK to level 0-4
-  { name: "submissionResults", table: schema.submissionResults },
-  { name: "submissionComments", table: schema.submissionComments },
+  { name: "submissionResults", table: schema.submissionResults, orderColumns: ["id"] },
+  { name: "submissionComments", table: schema.submissionComments, orderColumns: ["id"] },
 ];
 
 /** Returns the ordered table names for import/export */
@@ -110,58 +229,71 @@ const REDACTED_COLUMNS: Record<string, Set<string>> = {
   judgeWorkers: new Set(["secretToken"]),
 };
 
+function getOrderClauses(table: any, orderColumns: string[]) {
+  return orderColumns
+    .map((column) => table[column])
+    .filter(Boolean)
+    .map((column) => asc(column));
+}
+
+async function selectTableChunks(
+  tx: TransactionClient,
+  table: any,
+  orderColumns: string[]
+): Promise<Record<string, unknown>[]> {
+  const rows: Record<string, unknown>[] = [];
+  let offset = 0;
+
+  while (true) {
+    const chunk = await tx
+      .select()
+      .from(table)
+      .orderBy(...getOrderClauses(table, orderColumns))
+      .limit(EXPORT_CHUNK_SIZE)
+      .offset(offset);
+
+    if (chunk.length === 0) break;
+    rows.push(...chunk);
+    if (chunk.length < EXPORT_CHUNK_SIZE) break;
+    offset += chunk.length;
+  }
+
+  return rows;
+}
+
 /**
  * Export the entire database to a portable JSON format.
  * Uses cursor-based pagination to avoid loading entire tables into memory.
  */
 export async function exportDatabase(): Promise<JudgeKitExport> {
-  const result: JudgeKitExport = {
-    version: 1,
-    exportedAt: new Date().toISOString(),
-    sourceDialect: activeDialect,
-    appVersion: process.env.npm_package_version ?? "unknown",
-    tables: {},
-  };
+  return db.transaction(async (tx) => {
+    await tx.execute(sql.raw("SET TRANSACTION ISOLATION LEVEL REPEATABLE READ READ ONLY"));
 
-  for (const { name, table } of TABLE_ORDER) {
-    let columns: string[] | null = null;
-    const allExportedRows: unknown[][] = [];
-    let offset = 0;
+    const result: JudgeKitExport = {
+      version: 1,
+      exportedAt: new Date().toISOString(),
+      sourceDialect: activeDialect,
+      appVersion: process.env.npm_package_version ?? "unknown",
+      tables: {},
+    };
 
-    while (true) {
-      const chunk = await db
-        .select()
-        .from(table)
-        .limit(EXPORT_CHUNK_SIZE)
-        .offset(offset);
-
-      if (chunk.length === 0) break;
-
-      if (!columns) {
-        columns = Object.keys(chunk[0] as object);
-      }
-
+    for (const { name, table, orderColumns } of TABLE_ORDER) {
+      const orderedRows = await selectTableChunks(tx as TransactionClient, table, orderColumns);
+      const columns = orderedRows.length > 0 ? Object.keys(orderedRows[0] as object) : [];
       const redactSet = REDACTED_COLUMNS[name];
-      for (const row of chunk) {
-        allExportedRows.push(
-          columns.map((col) =>
-            redactSet?.has(col) ? null : normalizeValue((row as any)[col])
-          )
-        );
-      }
+      const rows = orderedRows.map((row) =>
+        columns.map((col) => (redactSet?.has(col) ? null : normalizeValue((row as any)[col])))
+      );
 
-      if (chunk.length < EXPORT_CHUNK_SIZE) break;
-      offset += EXPORT_CHUNK_SIZE;
+      result.tables[name] = {
+        columns,
+        rows,
+        rowCount: rows.length,
+      };
     }
 
-    result.tables[name] = {
-      columns: columns ?? [],
-      rows: allExportedRows,
-      rowCount: allExportedRows.length,
-    };
-  }
-
-  return result;
+    return result;
+  });
 }
 
 /**

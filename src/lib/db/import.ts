@@ -155,8 +155,10 @@ export async function importDatabase(data: JudgeKitExport): Promise<ImportResult
         if (!table) continue;
         try {
           await tx.delete(table);
-        } catch (err: any) {
-          logger.warn({ tableName, err: err.message }, "Failed to truncate table during import");
+        } catch (err: unknown) {
+          const message = err instanceof Error ? err.message : String(err);
+          logger.error({ tableName, err: message }, "Failed to truncate table during import");
+          throw new Error(`Failed to truncate ${tableName}: ${message}`);
         }
       }
 
@@ -194,10 +196,13 @@ export async function importDatabase(data: JudgeKitExport): Promise<ImportResult
           try {
             await tx.insert(table).values(values);
             imported += values.length;
-          } catch (err: any) {
-            logger.error({ tableName, batch: i, err: err.message }, "Failed to insert batch");
-            result.errors.push(`${tableName} batch ${i}: ${err.message}`);
+          } catch (err: unknown) {
+            const message = err instanceof Error ? err.message : String(err);
+            logger.error({ tableName, batch: i, err: message }, "Failed to insert batch");
+            result.errors.push(`${tableName} batch ${i}: ${message}`);
+            result.success = false;
             skipped += values.length;
+            throw new Error(`Failed to import ${tableName} batch ${i}: ${message}`);
           }
         }
 
@@ -207,9 +212,10 @@ export async function importDatabase(data: JudgeKitExport): Promise<ImportResult
       }
     }); // constraints checked at COMMIT
 
-  } catch (err: any) {
+  } catch (err: unknown) {
+    const message = err instanceof Error ? err.message : String(err);
     result.success = false;
-    result.errors.push(`Import failed: ${err.message}`);
+    result.errors.push(`Import failed: ${message}`);
   }
 
   return result;

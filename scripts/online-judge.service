@@ -1,6 +1,7 @@
 [Unit]
 Description=Online Judge Next.js App
-After=network.target
+After=network.target docker.service postgresql.service
+Wants=postgresql.service
 OnFailure=notify-failure@%n.service
 
 [Service]

@@ -4,6 +4,8 @@
  * Falls back gracefully — if the process restarts, all limits reset (acceptable trade-off).
  */
 
+import { extractClientIp } from "@/lib/security/ip";
+
 interface RateLimitEntry {
   attempts: number;
   windowStartedAt: number;
@@ -131,9 +133,7 @@ export function consumeInMemoryRateLimit(
   maxAttempts: number = 30,
   windowMs: number = 60000
 ): { limited: boolean; retryAfter?: number } {
-  const ip = request.headers.get("x-forwarded-for")?.split(",")[0]?.trim()
-    || request.headers.get("x-real-ip")
-    || "unknown";
+  const ip = extractClientIp(request.headers) || "unknown";
   const key = `${action}:${ip}`;
 
   if (isRateLimitedInMemory(key, maxAttempts, windowMs)) {

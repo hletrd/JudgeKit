@@ -1520,7 +1520,7 @@ Create a database backup. **Super Admin only.** Rate limit: `admin:backup`.
 { "password": "string" }
 ```
 
-Password re-confirmation required for security. Returns a binary file download (`.sqlite` or `.json` depending on database dialect).
+Password re-confirmation required for security. Returns a streamed JSON export for the PostgreSQL runtime.
 
 ---
 
@@ -1530,7 +1530,7 @@ Restore from backup. **Super Admin only.** Rate limit: `admin:restore`.
 
 **Request:** `multipart/form-data` with a `file` field. Max 500 MB.
 
-Auto-detects file type (SQLite or JSON). For SQLite: creates a pre-restore backup, validates schema, then replaces the database. For JSON: validates and imports via the migration system.
+Accepts a JudgeKit JSON export. Validates and imports it via the migration system.
 
 ---
 
@@ -1547,7 +1547,7 @@ Accepts `application/json` or `multipart/form-data`.
 {
   "data": {
     "valid": true,
-    "sourceDialect": "sqlite",
+    "sourceDialect": "postgresql",
     "exportedAt": "ISO8601",
     "tableCount": 15,
     "totalRows": 1000,

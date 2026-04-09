@@ -44,6 +44,8 @@ interface ChatProvider {
   formatToolResult(toolCallId: string, toolName: string, result: string): ChatMessage | Record<string, unknown>;
 }
 
+const PROVIDER_REQUEST_TIMEOUT_MS = 25_000;
+
 // ── OpenAI ──────────────────────────────────────────────────────────────────
 
 const openaiProvider: ChatProvider = {
@@ -54,6 +56,7 @@ const openaiProvider: ChatProvider = {
         "Content-Type": "application/json",
         Authorization: `Bearer ${apiKey}`,
       },
+      signal: AbortSignal.timeout(PROVIDER_REQUEST_TIMEOUT_MS),
       body: JSON.stringify({
         model,
         messages,
@@ -92,6 +95,7 @@ const openaiProvider: ChatProvider = {
         "Content-Type": "application/json",
         Authorization: `Bearer ${apiKey}`,
       },
+      signal: AbortSignal.timeout(PROVIDER_REQUEST_TIMEOUT_MS),
       body: JSON.stringify({ model, messages, max_tokens: maxTokens, tools: openaiTools }),
     });
 
@@ -158,6 +162,7 @@ const claudeProvider: ChatProvider = {
         "x-api-key": apiKey,
         "anthropic-version": "2023-06-01",
       },
+      signal: AbortSignal.timeout(PROVIDER_REQUEST_TIMEOUT_MS),
       body: JSON.stringify(body),
     });
 
@@ -209,6 +214,7 @@ const claudeProvider: ChatProvider = {
         "x-api-key": apiKey,
         "anthropic-version": "2023-06-01",
       },
+      signal: AbortSignal.timeout(PROVIDER_REQUEST_TIMEOUT_MS),
       body: JSON.stringify(body),
     });
 
@@ -250,6 +256,15 @@ const claudeProvider: ChatProvider = {
 
 // ── Gemini ───────────────────────────────────────────────────────────────────
 
+/** Reject model identifiers that could cause path traversal in the Gemini API URL. */
+export const SAFE_GEMINI_MODEL_PATTERN = /^[a-zA-Z0-9][a-zA-Z0-9._-]*$/;
+
+function validateGeminiModel(model: string): void {
+  if (!SAFE_GEMINI_MODEL_PATTERN.test(model)) {
+    throw new Error(`Invalid Gemini model identifier: ${model}`);
+  }
+}
+
 const geminiProvider: ChatProvider = {
   async stream({ apiKey, model, messages, maxTokens }) {
     const systemMessage = messages.find((m) => m.role === "system");
@@ -269,11 +284,13 @@ const geminiProvider: ChatProvider = {
       body.systemInstruction = { parts: [{ text: systemMessage.content }] };
     }
 
+    validateGeminiModel(model);
     const url = `https://generativelanguage.googleapis.com/v1beta/models/${model}:streamGenerateContent?alt=sse`;
 
     const response = await fetch(url, {
       method: "POST",
       headers: { "Content-Type": "application/json", "x-goog-api-key": apiKey },
+      signal: AbortSignal.timeout(PROVIDER_REQUEST_TIMEOUT_MS),
       body: JSON.stringify(body),
     });
 
@@ -328,11 +345,13 @@ const geminiProvider: ChatProvider = {
       body.systemInstruction = { parts: [{ text: systemMessage.content }] };
     }
 
+    validateGeminiModel(model);
     const url = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent`;
 
     const response = await fetch(url, {
       method: "POST",
       headers: { "Content-Type": "application/json", "x-goog-api-key": apiKey },
+      signal: AbortSignal.timeout(PROVIDER_REQUEST_TIMEOUT_MS),
       body: JSON.stringify(body),
     });
 

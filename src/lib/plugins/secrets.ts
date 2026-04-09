@@ -6,10 +6,12 @@ const ENCRYPTION_VERSION = "enc:v1";
 const SECRET_KEY_SUFFIX = "Configured";
 
 function getEncryptionKey() {
-  const secret = process.env.PLUGIN_CONFIG_ENCRYPTION_KEY || process.env.AUTH_SECRET;
+  const secret = process.env.PLUGIN_CONFIG_ENCRYPTION_KEY;
 
   if (!secret) {
-    throw new Error("PLUGIN_CONFIG_ENCRYPTION_KEY or AUTH_SECRET must be set");
+    throw new Error(
+      "PLUGIN_CONFIG_ENCRYPTION_KEY must be set. Generate a dedicated key: openssl rand -hex 32"
+    );
   }
 
   return createHash("sha256").update(secret).digest();

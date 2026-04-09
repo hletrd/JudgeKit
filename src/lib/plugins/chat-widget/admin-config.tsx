@@ -82,11 +82,6 @@ export default function ChatWidgetAdminConfig({ config, onSave }: PluginAdminPro
     "gemini-2.0-flash": "Gemini 2.0 Flash",
   };
 
-  function maskApiKey(key: string): string {
-    if (!key || key.length <= 8) return key ? "••••••••" : "";
-    return `${key.slice(0, 3)}...${key.slice(-4)}`;
-  }
-
   async function handleTestConnection() {
     setIsTesting(true);
     setTestResult(null);
@@ -174,12 +169,8 @@ export default function ChatWidgetAdminConfig({ config, onSave }: PluginAdminPro
               placeholder={t("apiKeyPlaceholder")}
             />
             <p className="text-xs text-muted-foreground">{t("apiKeyHint")}</p>
-            {currentApiKey ? (
-              <p className="text-xs font-mono text-muted-foreground">
-                {t("currentKey")}: {maskApiKey(currentApiKey)}
-              </p>
-            ) : currentApiKeyConfigured ? (
-              <p className="text-xs text-muted-foreground">
+            {currentApiKeyConfigured && !currentApiKey ? (
+              <p className="text-xs text-green-600 font-medium">
                 {t("currentKey")}: {t("storedKeyConfigured")}
               </p>
             ) : null}
@@ -215,7 +206,6 @@ export default function ChatWidgetAdminConfig({ config, onSave }: PluginAdminPro
                 )}
                 {provider === "claude" && (
                   <>
-                    <SelectItem value="claude-sonnet-4-6" label="Claude Haiku 4.5">Claude Haiku 4.5</SelectItem>
                     <SelectItem value="claude-sonnet-4-6" label="Claude Sonnet 4.6">Claude Sonnet 4.6</SelectItem>
                     <SelectItem value="claude-opus-4-6" label="Claude Opus 4.6">Claude Opus 4.6</SelectItem>
                     <SelectItem value="claude-sonnet-4-20250514" label="Claude Sonnet 4">Claude Sonnet 4</SelectItem>

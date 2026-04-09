@@ -5,7 +5,6 @@ import { apiKeys, roles } from "@/lib/db/schema";
 import { eq } from "drizzle-orm";
 import { createApiHandler, isAdmin } from "@/lib/api/handler";
 import { apiSuccess, apiError } from "@/lib/api/responses";
-import { decryptApiKey } from "@/lib/api/api-key-auth";
 import { recordAuditEvent } from "@/lib/audit/events";
 import { canManageRoleAsync, isUserRole } from "@/lib/security/constants";
 
@@ -22,27 +21,24 @@ export const GET = createApiHandler({
 
     const { id } = params;
     const [existing] = await db
-      .select({ id: apiKeys.id, name: apiKeys.name, encryptedKey: apiKeys.encryptedKey })
+      .select({ id: apiKeys.id, name: apiKeys.name })
       .from(apiKeys)
       .where(eq(apiKeys.id, id))
       .limit(1);
     if (!existing) return apiError("notFound", 404, "ApiKey");
-    if (!existing.encryptedKey) return apiError("noEncryptedKey", 400);
-
-    const rawKey = decryptApiKey(existing.encryptedKey);
 
     recordAuditEvent({
       actorId: user.id,
       actorRole: user.role,
-      action: "api_key.viewed",
+      action: "api_key.raw_view_rejected",
       resourceType: "api_key",
       resourceId: id,
       resourceLabel: existing.name,
-      summary: `Viewed API key "${existing.name}"`,
+      summary: `Rejected raw API key view for "${existing.name}"`,
       request: req,
     });
 
-    return apiSuccess({ key: rawKey });
+    return apiError("rawKeyRevealDisabled", 410);
   },
 });
 

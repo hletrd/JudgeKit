@@ -46,6 +46,7 @@ export const POST = createApiHandler({
           memoryUsedKb: null,
           judgeClaimToken: null,
           judgeClaimedAt: null,
+          judgeWorkerId: null,
           judgedAt: null,
         })
         .where(eq(submissions.id, id));

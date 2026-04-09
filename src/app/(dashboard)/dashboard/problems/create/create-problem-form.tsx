@@ -403,8 +403,10 @@ export default function CreateProblemForm({
           defaultLanguage: defaultLanguage || null,
           tags: currentTags,
           ...(areTestCasesEditable
-            ? { testCases: testCases.map(({ _key, _inputDirty, _outputDirty, ...rest }, i) => {
+            ? { testCases: testCases.map(({ _key, _inputDirty: _unusedInputDirty, _outputDirty: _unusedOutputDirty, ...rest }, i) => {
                 void _key;
+                void _unusedInputDirty;
+                void _unusedOutputDirty;
                 const orig = originalTestCasesRef.current.get(i);
                 if (isEditing && orig) {
                   return {

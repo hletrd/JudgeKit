@@ -25,63 +25,63 @@ beforeEach(() => {
 });
 
 describe("validateTrustedAuthHost", () => {
-  it("returns null when trusted hosts set is empty (no restriction)", () => {
-    getTrustedAuthHostsMock.mockReturnValue(new Set());
+  it("returns null when trusted hosts set is empty (no restriction)", async () => {
+    getTrustedAuthHostsMock.mockResolvedValue(new Set());
 
-    const result = validateTrustedAuthHost(makeRequest({ host: "evil.com" }));
-
-    expect(result).toBeNull();
-  });
-
-  it("returns null when request host matches a trusted host", () => {
-    getTrustedAuthHostsMock.mockReturnValue(new Set(["example.com"]));
-
-    const result = validateTrustedAuthHost(makeRequest({ host: "example.com" }));
+    const result = await validateTrustedAuthHost(makeRequest({ host: "evil.com" }));
 
     expect(result).toBeNull();
   });
 
-  it("returns null when no host header is present", () => {
-    getTrustedAuthHostsMock.mockReturnValue(new Set(["example.com"]));
+  it("returns null when request host matches a trusted host", async () => {
+    getTrustedAuthHostsMock.mockResolvedValue(new Set(["example.com"]));
 
-    const result = validateTrustedAuthHost(makeRequest());
+    const result = await validateTrustedAuthHost(makeRequest({ host: "example.com" }));
 
     expect(result).toBeNull();
   });
 
-  it("returns 400 response when host is not trusted", () => {
-    getTrustedAuthHostsMock.mockReturnValue(new Set(["trusted.com"]));
+  it("returns null when no host header is present", async () => {
+    getTrustedAuthHostsMock.mockResolvedValue(new Set(["example.com"]));
 
-    const result = validateTrustedAuthHost(makeRequest({ host: "evil.com" }));
+    const result = await validateTrustedAuthHost(makeRequest());
+
+    expect(result).toBeNull();
+  });
+
+  it("returns 400 response when host is not trusted", async () => {
+    getTrustedAuthHostsMock.mockResolvedValue(new Set(["trusted.com"]));
+
+    const result = await validateTrustedAuthHost(makeRequest({ host: "evil.com" }));
 
     expect(result).not.toBeNull();
     expect(result!.status).toBe(400);
   });
 
-  it("uses x-forwarded-host header when present", () => {
-    getTrustedAuthHostsMock.mockReturnValue(new Set(["proxy.com"]));
+  it("uses x-forwarded-host header when present", async () => {
+    getTrustedAuthHostsMock.mockResolvedValue(new Set(["proxy.com"]));
 
-    const result = validateTrustedAuthHost(
+    const result = await validateTrustedAuthHost(
       makeRequest({ "x-forwarded-host": "proxy.com", host: "backend.com" })
     );
 
     expect(result).toBeNull();
   });
 
-  it("uses first value from comma-separated x-forwarded-host", () => {
-    getTrustedAuthHostsMock.mockReturnValue(new Set(["first.com"]));
+  it("uses first value from comma-separated x-forwarded-host", async () => {
+    getTrustedAuthHostsMock.mockResolvedValue(new Set(["first.com"]));
 
-    const result = validateTrustedAuthHost(
+    const result = await validateTrustedAuthHost(
       makeRequest({ "x-forwarded-host": "first.com, second.com" })
     );
 
     expect(result).toBeNull();
   });
 
-  it("rejects when x-forwarded-host is not trusted", () => {
-    getTrustedAuthHostsMock.mockReturnValue(new Set(["trusted.com"]));
+  it("rejects when x-forwarded-host is not trusted", async () => {
+    getTrustedAuthHostsMock.mockResolvedValue(new Set(["trusted.com"]));
 
-    const result = validateTrustedAuthHost(
+    const result = await validateTrustedAuthHost(
       makeRequest({ "x-forwarded-host": "evil.com", host: "trusted.com" })
     );
 

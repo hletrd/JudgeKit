@@ -7,12 +7,6 @@ const disableMinify = process.env.DISABLE_MINIFY === "1";
 
 const nextConfig: NextConfig = {
   output: "standalone",
-  typescript: {
-    // Route handler return-type constraints in Next.js 16 are stricter than
-    // the patterns used in several API routes (NextResponse | null narrowing).
-    // Type safety is enforced via tsc in CI; skip during next build.
-    ignoreBuildErrors: true,
-  },
   poweredByHeader: false,
   productionBrowserSourceMaps: disableMinify,
   webpack: disableMinify
@@ -46,7 +40,7 @@ const nextConfig: NextConfig = {
             key: "Content-Security-Policy",
             value: [
               "default-src 'self'",
-              "script-src 'self' 'unsafe-inline'",
+              "script-src 'self'",
               "style-src 'self' 'unsafe-inline'",
               "font-src 'self' data:",
               "img-src 'self' data: blob:",

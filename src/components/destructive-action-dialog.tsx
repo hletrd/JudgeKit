@@ -20,6 +20,7 @@ type DestructiveActionDialogProps = {
   confirmLabel: string;
   cancelLabel: string;
   onConfirmAction: () => Promise<boolean>;
+  onOpenChange?: (open: boolean) => void;
   disabled?: boolean;
   triggerVariant?: "default" | "destructive" | "outline" | "secondary" | "ghost" | "link";
   triggerSize?: "default" | "sm" | "lg" | "icon" | "icon-sm";
@@ -34,6 +35,7 @@ export function DestructiveActionDialog({
   confirmLabel,
   cancelLabel,
   onConfirmAction,
+  onOpenChange,
   disabled = false,
   triggerVariant = "destructive",
   triggerSize = "sm",
@@ -43,6 +45,11 @@ export function DestructiveActionDialog({
   const [open, setOpen] = useState(false);
   const [isPending, setIsPending] = useState(false);
 
+  function handleOpenChange(nextOpen: boolean) {
+    setOpen(nextOpen);
+    onOpenChange?.(nextOpen);
+  }
+
   async function handleConfirm() {
     setIsPending(true);
 
@@ -50,7 +57,7 @@ export function DestructiveActionDialog({
       const shouldClose = await onConfirmAction();
 
       if (shouldClose) {
-        setOpen(false);
+        handleOpenChange(false);
       }
     } finally {
       setIsPending(false);
@@ -58,7 +65,7 @@ export function DestructiveActionDialog({
   }
 
   return (
-    <Dialog open={open} onOpenChange={setOpen}>
+    <Dialog open={open} onOpenChange={handleOpenChange}>
       <DialogTrigger
         render={
           <Button
@@ -77,7 +84,7 @@ export function DestructiveActionDialog({
           <DialogDescription>{description}</DialogDescription>
         </DialogHeader>
         <DialogFooter>
-          <Button type="button" variant="outline" onClick={() => setOpen(false)} disabled={isPending}>
+          <Button type="button" variant="outline" onClick={() => handleOpenChange(false)} disabled={isPending}>
             {cancelLabel}
           </Button>
           <Button

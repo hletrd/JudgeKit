@@ -1,23 +1,38 @@
 import { NextRequest } from "next/server";
-import { apiSuccess, apiError } from "@/lib/api/responses";
-import { eq } from "drizzle-orm";
+import { apiError, apiPaginated, apiSuccess } from "@/lib/api/responses";
+import { eq, sql } from "drizzle-orm";
 import { nanoid } from "nanoid";
 import { recordAuditEvent } from "@/lib/audit/events";
 import { db } from "@/lib/db";
 import { enrollments, users } from "@/lib/db/schema";
-import { canManageGroupResources } from "@/lib/assignments/management";
+import { canManageGroupResourcesAsync } from "@/lib/assignments/management";
 import { groupMembershipSchema } from "@/lib/validators/groups";
 import { canAccessGroup } from "@/lib/auth/permissions";
 import { createApiHandler, forbidden, notFound } from "@/lib/api/handler";
+import { parsePagination } from "@/lib/api/pagination";
 
 export const GET = createApiHandler({
-  handler: async (_req: NextRequest, { user, params }) => {
+  handler: async (req: NextRequest, { user, params }) => {
     const { id } = params;
     const hasAccess = await canAccessGroup(id, user.id, user.role);
     if (!hasAccess) return forbidden();
 
+    const { page, limit, offset } = parsePagination(req.nextUrl.searchParams, {
+      defaultLimit: 100,
+      maxLimit: 500,
+    });
+
+    const [totalRow] = await db
+      .select({ count: sql<number>`count(*)` })
+      .from(enrollments)
+      .where(eq(enrollments.groupId, id));
+
+    const total = Number(totalRow?.count ?? 0);
+
     const members = await db.query.enrollments.findMany({
       where: eq(enrollments.groupId, id),
+      limit,
+      offset,
       with: {
         user: {
           columns: {
@@ -31,7 +46,7 @@ export const GET = createApiHandler({
       },
     });
 
-    return apiSuccess(members);
+    return apiPaginated(members, page, limit, total);
   },
 });
 
@@ -47,10 +62,11 @@ export const POST = createApiHandler({
 
     if (!group) return notFound("Group");
 
-    const canManage = canManageGroupResources(
+    const canManage = await canManageGroupResourcesAsync(
       group.instructorId,
       user.id,
-      user.role
+      user.role,
+      id
     );
 
     if (!canManage) return forbidden();
@@ -79,26 +95,19 @@ export const POST = createApiHandler({
       return apiError("studentRoleInvalid", 409);
     }
 
-    const existingEnrollment = await db.query.enrollments.findFirst({
-      where: (enrollmentsTable, { and, eq: equals }) =>
-        and(
-          equals(enrollmentsTable.groupId, id),
-          equals(enrollmentsTable.userId, body.userId)
-        ),
-      columns: { id: true },
-    });
-
-    if (existingEnrollment) {
-      return apiError("studentAlreadyEnrolled", 409);
-    }
-
     const enrollmentId = nanoid();
-    await db.insert(enrollments).values({
+    const [inserted] = await db.insert(enrollments).values({
       id: enrollmentId,
       groupId: id,
       userId: body.userId,
       enrolledAt: new Date(),
-    });
+    }).onConflictDoNothing({
+      target: [enrollments.userId, enrollments.groupId],
+    }).returning({ id: enrollments.id });
+
+    if (!inserted) {
+      return apiError("studentAlreadyEnrolled", 409);
+    }
 
     const createdEnrollment = await db.query.enrollments.findFirst({
       where: eq(enrollments.id, enrollmentId),

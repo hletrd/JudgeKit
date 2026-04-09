@@ -1,5 +1,4 @@
 import { execFile, spawn } from "child_process";
-import { dirname } from "path";
 import { promisify } from "util";
 import pLimit from "p-limit";
 
@@ -75,7 +74,7 @@ export async function inspectDockerImage(imageTag: string): Promise<Record<strin
   }
 }
 
-/** Build a Docker image from a Dockerfile. Uses the Dockerfile's parent directory as context. */
+/** Build a Docker image from a Dockerfile using the repo root as the build context. */
 export async function buildDockerImage(
   imageName: string,
   dockerfilePath: string,
@@ -88,8 +87,9 @@ export async function buildDockerImage(
     return { success: false, error: "Invalid dockerfile path" };
   }
 
-  // Use the Dockerfile's parent directory as the build context instead of cwd
-  const contextDir = dirname(dockerfilePath) || ".";
+  // Use the repository root as the build context so Dockerfiles can COPY shared
+  // assets under docker/ and other repo-relative paths just like the deploy scripts.
+  const contextDir = ".";
 
   return new Promise((resolve) => {
     const proc = spawn("docker", ["build", "-t", imageName, "-f", dockerfilePath, contextDir]);

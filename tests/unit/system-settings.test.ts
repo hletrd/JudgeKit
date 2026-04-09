@@ -168,6 +168,7 @@ describe("getResolvedSystemSettings", () => {
       timeZone: "Asia/Tokyo",
       platformMode: "contest",
       aiAssistantEnabled: false,
+      defaultLanguage: null,
     });
   });
 
@@ -182,6 +183,7 @@ describe("getResolvedSystemSettings", () => {
       timeZone: "Europe/London",
       platformMode: "homework",
       aiAssistantEnabled: true,
+      defaultLanguage: null,
     });
   });
 

@@ -75,6 +75,18 @@ export function getAuthUrlObject() {
   }
 }
 
+function parseAllowedHosts(raw: string | null | undefined): string[] {
+  if (!raw) return [];
+
+  try {
+    const parsed = JSON.parse(raw);
+    if (!Array.isArray(parsed)) return [];
+    return parsed.filter((value): value is string => typeof value === "string" && value.trim().length > 0);
+  } catch {
+    return [];
+  }
+}
+
 export function validateAuthUrl() {
   const authUrl = getAuthUrl();
 
@@ -92,7 +104,7 @@ export function validateAuthUrl() {
   return authUrl;
 }
 
-export function getTrustedAuthHosts() {
+export async function getTrustedAuthHosts() {
   const authUrl = getAuthUrlObject();
   const trustedHosts = new Set<string>();
 
@@ -102,8 +114,7 @@ export function getTrustedAuthHosts() {
 
   trustedHosts.add(normalizeHostForComparison(authUrl.host));
 
-  // Add allowed hosts from DB
-  const dbHosts = getAllowedHostsFromDb();
+  const dbHosts = await getAllowedHostsFromDb();
   for (const host of dbHosts) {
     trustedHosts.add(normalizeHostForComparison(host));
   }
@@ -123,17 +134,11 @@ export function getTrustedAuthHosts() {
   return trustedHosts;
 }
 
-function getAllowedHostsFromDb(): string[] {
+async function getAllowedHostsFromDb(): Promise<string[]> {
   try {
-    // Lazy import to avoid circular dependency during module initialization.
-    // Uses the PostgreSQL pool for a synchronous-style query via require().
-    // eslint-disable-next-line @typescript-eslint/no-require-imports
-    const { pool } = require("@/lib/db") as typeof import("@/lib/db");
-    if (!pool) return [];
-    // Pool.query is async but we're in a sync context — return [] and rely on
-    // AUTH_TRUST_HOST env var. Allowed hosts from DB are loaded asynchronously
-    // at startup via system settings.
-    return [];
+    const { getSystemSettings } = await import("@/lib/system-settings");
+    const settings = await getSystemSettings();
+    return parseAllowedHosts(settings?.allowedHosts);
   } catch {
     return [];
   }

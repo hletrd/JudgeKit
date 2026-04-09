@@ -5,7 +5,7 @@ vi.mock("@/lib/system-settings-config", () => ({
 }));
 
 import {
-  AUTH_SESSION_MAX_AGE_SECONDS,
+  getSessionMaxAgeSeconds,
   clearAuthToken,
   getTokenAuthenticatedAtSeconds,
   isTokenInvalidated,
@@ -181,8 +181,8 @@ describe("clearAuthToken", () => {
   });
 });
 
-describe("AUTH_SESSION_MAX_AGE_SECONDS", () => {
-  it("equals 14 days in seconds", () => {
-    expect(AUTH_SESSION_MAX_AGE_SECONDS).toBe(14 * 24 * 60 * 60);
+describe("getSessionMaxAgeSeconds", () => {
+  it("returns 14 days in seconds from configured settings", () => {
+    expect(getSessionMaxAgeSeconds()).toBe(14 * 24 * 60 * 60);
   });
 });

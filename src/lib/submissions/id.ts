@@ -1,5 +1,3 @@
-import { randomBytes } from "node:crypto";
-
 export const SUBMISSION_ID_LENGTH = 32;
 
 /**
@@ -13,7 +11,9 @@ export const SUBMISSION_ID_LENGTH = 32;
 export const SUBMISSION_ID_VISIBLE_PREFIX_LENGTH = 12;
 
 export function generateSubmissionId(): string {
-  return randomBytes(SUBMISSION_ID_LENGTH / 2).toString("hex");
+  const bytes = new Uint8Array(SUBMISSION_ID_LENGTH / 2);
+  crypto.getRandomValues(bytes);
+  return Array.from(bytes, (byte) => byte.toString(16).padStart(2, "0")).join("");
 }
 
 export function formatSubmissionIdPrefix(id: string): string {

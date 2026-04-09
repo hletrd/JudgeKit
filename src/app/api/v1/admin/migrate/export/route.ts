@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
-import { getApiUser, unauthorized, forbidden } from "@/lib/api/auth";
+import { getApiUser, unauthorized, forbidden, csrfForbidden } from "@/lib/api/auth";
 import { consumeApiRateLimit } from "@/lib/security/api-rate-limit";
-import { exportDatabase } from "@/lib/db/export";
+import { streamDatabaseExport } from "@/lib/db/export";
 import { recordAuditEvent } from "@/lib/audit/events";
 import { logger } from "@/lib/logger";
 
@@ -16,7 +16,8 @@ export async function GET(request: NextRequest) {
     const rateLimitResponse = await consumeApiRateLimit(request, "admin:migrate-export");
     if (rateLimitResponse) return rateLimitResponse;
 
-    const data = await exportDatabase();
+    const csrfError = csrfForbidden(request);
+    if (csrfError) return csrfError;
 
     const timestamp = new Date().toISOString().replace(/[:.]/g, "-");
     const filename = `judgekit-export-${timestamp}.json`;
@@ -28,13 +29,11 @@ export async function GET(request: NextRequest) {
       resourceType: "system_settings",
       resourceId: "database",
       resourceLabel: "Database export",
-      summary: `Exported database (${Object.keys(data.tables).length} tables, ${Object.values(data.tables).reduce((sum, t) => sum + t.rowCount, 0)} rows)`,
+      summary: `Exported database as streamed JSON (${filename})`,
       request,
     });
 
-    const json = JSON.stringify(data, null, 2);
-
-    return new Response(json, {
+    return new Response(streamDatabaseExport(), {
       headers: {
         "Content-Type": "application/json",
         "Content-Disposition": `attachment; filename="${filename}"`,

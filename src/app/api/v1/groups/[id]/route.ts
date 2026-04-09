@@ -4,9 +4,11 @@ import { db } from "@/lib/db";
 import { assignments, groups, submissions, enrollments } from "@/lib/db/schema";
 import { eq, sql } from "drizzle-orm";
 import { canAccessGroup } from "@/lib/auth/permissions";
+import { canManageGroupResourcesAsync } from "@/lib/assignments/management";
 import { recordAuditEvent } from "@/lib/audit/events";
 import { updateGroupSchema } from "@/lib/validators/groups";
 import { withUpdatedAt } from "@/lib/db/helpers";
+import { execTransaction } from "@/lib/db";
 import { createApiHandler, isAdmin, notFound, forbidden } from "@/lib/api/handler";
 
 export const GET = createApiHandler({
@@ -50,7 +52,6 @@ export const GET = createApiHandler({
               columns: { id: true, name: true, email: true },
             },
           },
-          limit: 50,
         },
       },
     });
@@ -69,6 +70,7 @@ export const GET = createApiHandler({
     return apiSuccess({
       ...group,
       memberCount,
+      membersTruncated: memberCount > group.enrollments.length,
       instructor: group.instructor
         ? {
             ...group.instructor,
@@ -94,7 +96,13 @@ export const PATCH = createApiHandler({
     const group = await db.query.groups.findFirst({ where: eq(groups.id, id) });
     if (!group) return notFound("Group");
 
-    if (!isAdmin(user.role) && group.instructorId !== user.id) return forbidden();
+    const canManage = await canManageGroupResourcesAsync(
+      group.instructorId,
+      user.id,
+      user.role,
+      id
+    );
+    if (!canManage) return forbidden();
 
     const { name, description, isArchived } = body;
 
@@ -133,27 +141,28 @@ export const DELETE = createApiHandler({
   rateLimit: "groups:delete",
   handler: async (req: NextRequest, { user, params }) => {
     const { id } = params;
-    const group = await db.query.groups.findFirst({ where: eq(groups.id, id) });
-    if (!group) return notFound("Group");
+    const result = await execTransaction(async (tx) => {
+      const [group] = await tx.select().from(groups).where(eq(groups.id, id)).for("update").limit(1);
+      if (!group) return { error: "notFound" as const };
 
-    const [assignmentSubmissionCountRow] = await db
-      .select({ total: sql<number>`count(${submissions.id})` })
-      .from(assignments)
-      .innerJoin(submissions, eq(submissions.assignmentId, assignments.id))
-      .where(eq(assignments.groupId, id));
+      const [countRow] = await tx
+        .select({ total: sql<number>`count(${submissions.id})` })
+        .from(assignments)
+        .innerJoin(submissions, eq(submissions.assignmentId, assignments.id))
+        .where(eq(assignments.groupId, id));
 
-    const assignmentSubmissionCount = Number(assignmentSubmissionCountRow?.total ?? 0);
+      if (Number(countRow?.total ?? 0) > 0) {
+        return { error: "groupDeleteBlocked" as const };
+      }
 
-    let blocked = false;
-    if (assignmentSubmissionCount > 0) {
-      blocked = true;
-    } else {
-      await db.delete(groups).where(eq(groups.id, id));
-    }
+      await tx.delete(groups).where(eq(groups.id, id));
+      return { group };
+    });
 
-    if (blocked) {
-      return apiError("groupDeleteBlocked", 409);
-    }
+    if (result.error === "notFound") return notFound("Group");
+    if (result.error === "groupDeleteBlocked") return apiError("groupDeleteBlocked", 409);
+
+    const group = result.group!;
 
     recordAuditEvent({
       actorId: user.id,

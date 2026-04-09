@@ -146,7 +146,7 @@ export const POST = createApiHandler({
       60
     );
     if (rateLimitResult) {
-      return NextResponse.json({ error: "rateLimit" }, { status: 429 });
+      return NextResponse.json({ error: "rateLimit" }, { status: 429, headers: { "Retry-After": "60" } });
     }
 
     // Parse and validate request body
@@ -223,6 +223,11 @@ export const POST = createApiHandler({
     }
 
     // Determine API key and model based on provider
+    const VALID_PROVIDERS = new Set(["openai", "claude", "gemini"]);
+    if (!VALID_PROVIDERS.has(config.provider)) {
+      return NextResponse.json({ error: "invalidProvider" }, { status: 400 });
+    }
+
     let apiKey: string;
     let model: string;
     switch (config.provider) {

@@ -5,20 +5,18 @@ import { db } from "@/lib/db";
 import { assignments, submissions } from "@/lib/db/schema";
 import { recordAuditEvent } from "@/lib/audit/events";
 import {
-  canManageGroupResources,
+  canManageGroupResourcesAsync,
   deleteAssignmentWithProblems,
   getManageableProblemsForGroup,
   updateAssignmentWithProblems,
 } from "@/lib/assignments/management";
 import { assignmentMutationSchema } from "@/lib/validators/assignments";
 import { canAccessGroup } from "@/lib/auth/permissions";
-import { isUserRole } from "@/lib/security/constants";
 import { createApiHandler, isAdmin, forbidden, notFound } from "@/lib/api/handler";
 
 export const GET = createApiHandler({
   handler: async (_req: NextRequest, { user, params }) => {
     const { id, assignmentId } = params;
-    if (!isUserRole(user.role)) return forbidden();
     const hasAccess = await canAccessGroup(id, user.id, user.role);
     if (!hasAccess) return forbidden();
 
@@ -54,10 +52,11 @@ export const PATCH = createApiHandler({
 
     if (!group) return notFound("Group");
 
-    const canManage = canManageGroupResources(
+    const canManage = await canManageGroupResourcesAsync(
       group.instructorId,
       user.id,
-      user.role
+      user.role,
+      id
     );
 
     if (!canManage) return forbidden();
@@ -228,10 +227,11 @@ export const DELETE = createApiHandler({
 
     if (!group) return notFound("Group");
 
-    const canManage = canManageGroupResources(
+    const canManage = await canManageGroupResourcesAsync(
       group.instructorId,
       user.id,
-      user.role
+      user.role,
+      id
     );
 
     if (!canManage) return forbidden();

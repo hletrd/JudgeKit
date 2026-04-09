@@ -42,8 +42,11 @@ async function callRateLimiter<T>(path: string, body: Record<string, unknown>): 
       circuitOpenUntil = Date.now() + RECOVERY_WINDOW_MS;
       return null;
     }
-    consecutiveFailures = 0; // Reset on success
-    return await response.json() as T;
+    const data = await response.json() as T;
+    if (data !== null && data !== undefined) {
+      consecutiveFailures = 0;
+    }
+    return data;
   } catch {
     consecutiveFailures++;
     circuitOpenUntil = Date.now() + RECOVERY_WINDOW_MS;

@@ -7,7 +7,7 @@ import { listDockerImages, inspectDockerImage, removeDockerImages } from "@/lib/
 import { recordAuditEvent } from "@/lib/audit/events";
 
 export const POST = createApiHandler({
-  auth: { roles: ["super_admin"] },
+  auth: { capabilities: ["system.settings"] },
   handler: async (req: NextRequest, { user }) => {
     const images = await listDockerImages("judge-*");
 

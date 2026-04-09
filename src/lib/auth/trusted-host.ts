@@ -20,9 +20,9 @@ function getRequestHost(request: NextRequest) {
   return host ? normalizeHostForComparison(host) : null;
 }
 
-export function validateTrustedAuthHost(request: NextRequest) {
+export async function validateTrustedAuthHost(request: NextRequest) {
   const requestHost = getRequestHost(request);
-  const trustedHosts = getTrustedAuthHosts();
+  const trustedHosts = await getTrustedAuthHosts();
 
   if (!requestHost || trustedHosts.size === 0 || trustedHosts.has(requestHost)) {
     return null;

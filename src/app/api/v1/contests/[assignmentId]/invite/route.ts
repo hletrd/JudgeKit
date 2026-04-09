@@ -4,7 +4,7 @@ import { z } from "zod";
 import { createApiHandler } from "@/lib/api/handler";
 import { apiSuccess, apiError } from "@/lib/api/responses";
 import { getContestAssignment, canManageContest } from "@/lib/assignments/contests";
-import { db } from "@/lib/db";
+import { db, execTransaction } from "@/lib/db";
 import { users, enrollments, contestAccessTokens } from "@/lib/db/schema";
 import { and, eq, inArray, or, sql } from "drizzle-orm";
 
@@ -92,48 +92,57 @@ export const POST = createApiHandler({
 
     if (!targetUser) return apiError("userNotFound", 404);
 
-    // Create contest access token if not exists
-    const [existingToken] = await db
-      .select({ id: contestAccessTokens.id })
-      .from(contestAccessTokens)
-      .where(
-        and(
-          eq(contestAccessTokens.assignmentId, assignmentId),
-          eq(contestAccessTokens.userId, targetUser.id)
-        )
-      );
+    // Atomically upsert contest access token + enrollment inside a transaction
+    await execTransaction(async (tx) => {
+      // Upsert contest access token
+      const [existingToken] = await tx
+        .select({ id: contestAccessTokens.id })
+        .from(contestAccessTokens)
+        .where(
+          and(
+            eq(contestAccessTokens.assignmentId, assignmentId),
+            eq(contestAccessTokens.userId, targetUser.id)
+          )
+        );
 
-    if (!existingToken) {
-      await db.insert(contestAccessTokens)
-        .values({
-          id: nanoid(),
-          assignmentId,
-          userId: targetUser.id,
-          redeemedAt: new Date(),
-          ipAddress: null, // Instructor-initiated invite; invitee IP not available
-        });
-    }
+      if (!existingToken) {
+        await tx.insert(contestAccessTokens)
+          .values({
+            id: nanoid(),
+            assignmentId,
+            userId: targetUser.id,
+            redeemedAt: new Date(),
+            ipAddress: null,
+          })
+          .onConflictDoNothing({
+            target: [contestAccessTokens.assignmentId, contestAccessTokens.userId],
+          });
+      }
 
-    // Auto-enroll in group if not already
-    const [existingEnrollment] = await db
-      .select({ id: enrollments.id })
-      .from(enrollments)
-      .where(
-        and(
-          eq(enrollments.groupId, assignment.groupId),
-          eq(enrollments.userId, targetUser.id)
-        )
-      );
+      // Upsert enrollment
+      const [existingEnrollment] = await tx
+        .select({ id: enrollments.id })
+        .from(enrollments)
+        .where(
+          and(
+            eq(enrollments.groupId, assignment.groupId),
+            eq(enrollments.userId, targetUser.id)
+          )
+        );
 
-    if (!existingEnrollment) {
-      await db.insert(enrollments)
-        .values({
-          id: nanoid(),
-          userId: targetUser.id,
-          groupId: assignment.groupId,
-          enrolledAt: new Date(),
-        });
-    }
+      if (!existingEnrollment) {
+        await tx.insert(enrollments)
+          .values({
+            id: nanoid(),
+            userId: targetUser.id,
+            groupId: assignment.groupId,
+            enrolledAt: new Date(),
+          })
+          .onConflictDoNothing({
+            target: [enrollments.userId, enrollments.groupId],
+          });
+      }
+    });
     return apiSuccess({
       userId: targetUser.id,
       username: targetUser.username,

@@ -28,6 +28,26 @@ export const PATCH = createApiHandler({
     const invitation = await getRecruitingInvitation(params.invitationId);
     if (!invitation) return apiError("notFound", 404, "RecruitingInvitation");
 
+    // Validate status state machine transitions
+    if (body.status !== undefined && body.status !== invitation.status) {
+      const current = invitation.status;
+      const next = body.status;
+
+      if (current === "redeemed") {
+        return apiError("invalidStatusTransition", 400, "Redeemed invitations are immutable");
+      }
+
+      const allowed: Record<string, string[]> = {
+        pending: ["revoked", "redeemed"],
+        revoked: ["pending"],
+      };
+
+      const permitted = allowed[current];
+      if (!permitted || !permitted.includes(next)) {
+        return apiError("invalidStatusTransition", 400, `Cannot transition from ${current} to ${next}`);
+      }
+    }
+
     await updateRecruitingInvitation(params.invitationId, {
       expiresAt: body.expiresAt !== undefined
         ? (body.expiresAt ? new Date(body.expiresAt) : null)

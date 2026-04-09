@@ -3,7 +3,7 @@ import { z } from "zod";
 import { db } from "@/lib/db";
 import { codeSnapshots } from "@/lib/db/schema";
 import { createApiHandler } from "@/lib/api/handler";
-import { apiSuccess, apiError } from "@/lib/api/responses";
+import { apiSuccess } from "@/lib/api/responses";
 
 const snapshotSchema = z.object({
   problemId: z.string().min(1),

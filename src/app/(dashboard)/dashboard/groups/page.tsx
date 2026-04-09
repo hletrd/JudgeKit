@@ -10,8 +10,8 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import { db } from "@/lib/db";
-import { groups, enrollments, users } from "@/lib/db/schema";
-import { eq } from "drizzle-orm";
+import { groupInstructors, groups, enrollments, users } from "@/lib/db/schema";
+import { and, eq, or } from "drizzle-orm";
 import { auth } from "@/lib/auth";
 import { canManageUsers, isInstructorOrAbove } from "@/lib/auth/role-helpers";
 import { redirect } from "next/navigation";
@@ -54,7 +54,7 @@ export default async function GroupsPage({
   
   let myGroups;
 
-  if (canManageUsers(session.user.role)) {
+  if (canManageUsers(session.user.role) || caps.has("groups.view_all")) {
     myGroups = await db
       .select({
         id: groups.id,
@@ -67,9 +67,8 @@ export default async function GroupsPage({
       })
       .from(groups)
       .leftJoin(users, eq(groups.instructorId, users.id));
-  } else if (session.user.role === "instructor") {
-    // Instructors should only see groups they own
-    myGroups = await db
+  } else {
+    const instructionalGroups = await db
       .select({
         id: groups.id,
         name: groups.name,
@@ -81,9 +80,18 @@ export default async function GroupsPage({
       })
       .from(groups)
       .leftJoin(users, eq(groups.instructorId, users.id))
-      .where(eq(groups.instructorId, session.user.id));
-  } else {
-    // Students see groups they are enrolled in
+      .leftJoin(
+        groupInstructors,
+        and(eq(groupInstructors.groupId, groups.id), eq(groupInstructors.userId, session.user.id))
+      )
+      .where(
+        or(
+          eq(groups.instructorId, session.user.id),
+          eq(groupInstructors.userId, session.user.id)
+        )
+      );
+
+    // Students (and instructional users who are also enrolled) see enrolled groups too.
     const userEnrollments = await db
       .select({
         group: {
@@ -102,15 +110,37 @@ export default async function GroupsPage({
       .leftJoin(users, eq(groups.instructorId, users.id))
       .where(eq(enrollments.userId, session.user.id));
 
-    myGroups = userEnrollments.map(e => ({
-      id: e.group.id,
-      name: e.group.name,
-      description: e.group.description,
-      isArchived: e.group.isArchived,
-      instructor: {
-        name: e.instructor?.name || tCommon("unknown"),
-      }
-    }));
+    const visibleGroups = new Map<string, {
+      id: string;
+      name: string;
+      description: string | null;
+      isArchived: boolean | null;
+      instructor: { name: string };
+    }>();
+
+    for (const group of instructionalGroups) {
+      visibleGroups.set(group.id, {
+        ...group,
+        isArchived: group.isArchived ?? false,
+        instructor: {
+          name: group.instructor?.name || tCommon("unknown"),
+        },
+      });
+    }
+
+    for (const enrollment of userEnrollments) {
+      visibleGroups.set(enrollment.group.id, {
+        id: enrollment.group.id,
+        name: enrollment.group.name,
+        description: enrollment.group.description,
+        isArchived: enrollment.group.isArchived ?? false,
+        instructor: {
+          name: enrollment.instructor?.name || tCommon("unknown"),
+        }
+      });
+    }
+
+    myGroups = Array.from(visibleGroups.values());
   }
 
   const totalCount = myGroups.length;

@@ -10,9 +10,16 @@ const requestSchema = z.object({
   model: z.string().min(1),
 });
 
+const TEST_CONNECTION_TIMEOUT_MS = 15_000;
+
 export const POST = createApiHandler({
   auth: false,
   handler: async (req: NextRequest) => {
+    // CSRF check — auth:false disables the handler's built-in check
+    const { validateCsrf } = await import("@/lib/security/csrf");
+    const csrfError = validateCsrf(req);
+    if (csrfError) return csrfError;
+
     const session = await auth();
     if (!session?.user || (session.user.role !== "admin" && session.user.role !== "super_admin")) {
       return NextResponse.json({ error: "unauthorized" }, { status: 401 });
@@ -37,6 +44,7 @@ export const POST = createApiHandler({
             "Content-Type": "application/json",
             Authorization: `Bearer ${apiKey}`,
           },
+          signal: AbortSignal.timeout(TEST_CONNECTION_TIMEOUT_MS),
           body: JSON.stringify({
             model,
             messages: [{ role: "user", content: "Hi" }],
@@ -53,6 +61,7 @@ export const POST = createApiHandler({
             "x-api-key": apiKey,
             "anthropic-version": "2023-06-01",
           },
+          signal: AbortSignal.timeout(TEST_CONNECTION_TIMEOUT_MS),
           body: JSON.stringify({
             model,
             messages: [{ role: "user", content: "Hi" }],
@@ -62,10 +71,15 @@ export const POST = createApiHandler({
         break;
 
       case "gemini": {
+        const { SAFE_GEMINI_MODEL_PATTERN } = await import("@/lib/plugins/chat-widget/providers");
+        if (!SAFE_GEMINI_MODEL_PATTERN.test(model)) {
+          return NextResponse.json({ error: "invalidModel" }, { status: 400 });
+        }
         const url = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent`;
         response = await fetch(url, {
           method: "POST",
           headers: { "Content-Type": "application/json", "x-goog-api-key": apiKey },
+          signal: AbortSignal.timeout(TEST_CONNECTION_TIMEOUT_MS),
           body: JSON.stringify({
             contents: [{ role: "user", parts: [{ text: "Hi" }] }],
             generationConfig: { maxOutputTokens: 1 },

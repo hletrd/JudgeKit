@@ -13,7 +13,7 @@ import { apiFetch } from "@/lib/api/client";
 import { toast } from "sonner";
 import { formatDateTimeInTimeZone } from "@/lib/datetime";
 import { ACTIVE_SUBMISSION_STATUSES } from "@/lib/submissions/status";
-import { formatSubmissionIdPrefix } from "@/lib/submissions/id";
+import { formatSubmissionIdPrefix } from "@/lib/submissions/format";
 import { useTranslations, useLocale } from "next-intl";
 import { useSubmissionPolling, normalizeSubmission } from "@/hooks/use-submission-polling";
 import type { SubmissionDetailView } from "@/hooks/use-submission-polling";

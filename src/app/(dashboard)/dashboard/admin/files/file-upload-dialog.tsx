@@ -19,6 +19,8 @@ type Props = {
   open: boolean;
   onOpenChange: (open: boolean) => void;
   onComplete: () => void;
+  /** Max upload size in bytes. Defaults to 50MB. Keep in sync with server uploadMaxFileSizeBytes setting. */
+  maxFileSizeBytes?: number;
 };
 
 type QueuedFile = {
@@ -27,20 +29,29 @@ type QueuedFile = {
   error?: string;
 };
 
-export function FileUploadDialog({ open, onOpenChange, onComplete }: Props) {
+export function FileUploadDialog({ open, onOpenChange, onComplete, maxFileSizeBytes = 50 * 1024 * 1024 }: Props) {
   const t = useTranslations("admin.files");
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [queue, setQueue] = useState<QueuedFile[]>([]);
   const [isDragging, setIsDragging] = useState(false);
   const [isUploading, setIsUploading] = useState(false);
 
-  function addFiles(fileList: FileList | File[]) {
-    const newFiles = Array.from(fileList).map((file) => ({
-      file,
-      status: "pending" as const,
-    }));
+  const addFiles = useCallback((fileList: FileList | File[]) => {
+    const MAX_UPLOAD_SIZE = maxFileSizeBytes;
+    const newFiles = Array.from(fileList)
+      .filter((file) => {
+        if (file.size > MAX_UPLOAD_SIZE) {
+          toast.error(t("fileTooLarge", { fileName: file.name }));
+          return false;
+        }
+        return true;
+      })
+      .map((file) => ({
+        file,
+        status: "pending" as const,
+      }));
     setQueue((prev) => [...prev, ...newFiles]);
-  }
+  }, [t, maxFileSizeBytes]);
 
   function removeFromQueue(index: number) {
     setQueue((prev) => prev.filter((_, i) => i !== index));
@@ -62,7 +73,7 @@ export function FileUploadDialog({ open, onOpenChange, onComplete }: Props) {
     if (e.dataTransfer?.files) {
       addFiles(e.dataTransfer.files);
     }
-  }, []);
+  }, [addFiles]);
 
   async function handleUpload() {
     if (queue.length === 0) return;

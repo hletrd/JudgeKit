@@ -200,6 +200,30 @@ export const enrollments = mysqlTable(
   ]
 );
 
+export const groupInstructors = mysqlTable(
+  "group_instructors",
+  {
+    id: varchar("id", { length: 36 })
+      .primaryKey()
+      .$defaultFn(() => nanoid()),
+    groupId: varchar("group_id", { length: 36 })
+      .notNull()
+      .references(() => groups.id, { onDelete: "cascade" }),
+    userId: varchar("user_id", { length: 36 })
+      .notNull()
+      .references(() => users.id, { onDelete: "cascade" }),
+    role: varchar("role", { length: 255 }).notNull(),
+    assignedAt: timestamp("assigned_at")
+      .notNull()
+      .$defaultFn(() => new Date(Date.now())),
+  },
+  (table) => [
+    uniqueIndex("group_instructors_group_user_idx").on(table.groupId, table.userId),
+    index("group_instructors_user_idx").on(table.userId),
+    index("group_instructors_group_idx").on(table.groupId),
+  ]
+);
+
 export const problems = mysqlTable("problems", {
   id: varchar("id", { length: 36 })
     .primaryKey()
@@ -219,6 +243,7 @@ export const problems = mysqlTable("problems", {
   floatAbsoluteError: double("float_absolute_error"),
   floatRelativeError: double("float_relative_error"),
   difficulty: double("difficulty"),
+  defaultLanguage: varchar("default_language", { length: 255 }),
   authorId: varchar("author_id", { length: 36 }).references(() => users.id, {
     onDelete: "set null",
   }),
@@ -449,6 +474,7 @@ export const systemSettings = mysqlTable("system_settings", {
   siteTitle: varchar("site_title", { length: 255 }),
   siteDescription: text("site_description"),
   timeZone: varchar("time_zone", { length: 255 }),
+  defaultLanguage: varchar("default_language", { length: 255 }),
   platformMode: varchar("platform_mode", { length: 255 }).$type<PlatformMode>().notNull().default("homework"),
   aiAssistantEnabled: boolean("ai_assistant_enabled").notNull().default(true),
   // Rate Limiting (Login)
@@ -520,6 +546,7 @@ export const submissionComments = mysqlTable(
     authorId: varchar("author_id", { length: 36 })
       .references(() => users.id, { onDelete: "set null" }),
     content: text("content").notNull(),
+    lineNumber: int("line_number"),
     createdAt: timestamp("created_at")
       .notNull()
       .$defaultFn(() => new Date(Date.now())),
@@ -867,6 +894,8 @@ export const files = mysqlTable(
     category: varchar("category", { length: 50 }).notNull().default("attachment"),
     width: int("width"),
     height: int("height"),
+    problemId: varchar("problem_id", { length: 36 })
+      .references(() => problems.id, { onDelete: "set null" }),
     uploadedBy: varchar("uploaded_by", { length: 36 })
       .references(() => users.id, { onDelete: "set null" }),
     createdAt: timestamp("created_at")
@@ -874,6 +903,7 @@ export const files = mysqlTable(
       .$defaultFn(() => new Date(Date.now())),
   },
   (table) => [
+    index("files_problem_id_idx").on(table.problemId),
     index("files_uploaded_by_idx").on(table.uploadedBy),
     index("files_category_idx").on(table.category),
     index("files_created_at_idx").on(table.createdAt),

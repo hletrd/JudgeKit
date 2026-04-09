@@ -213,6 +213,9 @@ export const POST = createApiHandler({
     const txResult = await execTransaction(async (tx) => {
       const oneMinuteAgo = new Date(Date.now() - 60_000);
 
+      // Acquire advisory lock on user ID to serialize concurrent submissions
+      await tx.execute(sql`SELECT pg_advisory_xact_lock(('x' || md5(${user.id}))::bit(64)::bigint)`);
+
       // Rate-limit checks with row-level advisory lock on user submissions
       const userCounts = await tx
         .select({

@@ -38,7 +38,7 @@ prompt() {
   local input
   echo -en "${CYAN}${prompt_text}${NC} ${DIM}[${default}]${NC}: "
   read -r input
-  eval "$var_name=\"\${input:-$default}\""
+  printf -v "$var_name" '%s' "${input:-$default}"
 }
 
 prompt_secret() {
@@ -47,7 +47,7 @@ prompt_secret() {
   echo -en "${CYAN}${prompt_text}${NC} ${DIM}[${default}]${NC}: "
   read -rs input
   echo
-  eval "$var_name=\"\${input:-$default}\""
+  printf -v "$var_name" '%s' "${input:-$default}"
 }
 
 # ---------------------------------------------------------------------------
@@ -63,7 +63,8 @@ ALL_LANGS="cpp clang python node jvm rust go swift csharp r perl php ruby lua
   smalltalk b nasm bqn lolcode forth algol68 umjunsik haxe raku shakespeare
   snobol4 icon uiua odin objective-c deno bun gleam sml micropython squirrel
   rexx hy arturo janet c3 vala nelua hare koka lean picat mercury wat
-  purescript modula2 factor minizinc curry clean roc carp grain pony"
+  purescript modula2 factor minizinc curry clean roc carp grain pony
+  chapel elm flix idris2 moonbit rescript"
 # Normalize whitespace
 ALL_LANGS=$(echo $ALL_LANGS | tr -s ' ')
 
@@ -72,7 +73,7 @@ preset_description() {
     core)     echo "C/C++, Python, Java/Kotlin (~1.2 GB)" ;;
     popular)  echo "Core + Node.js, Rust, Go (~4 GB)" ;;
     extended) echo "Popular + Ruby, Lua, Bash, C#, PHP, Perl, Swift, R, Haskell, Dart, Zig (~12 GB)" ;;
-    all)      echo "All 100+ language images (~30 GB)" ;;
+    all)      echo "All supported language images (~30 GB)" ;;
     none)     echo "No Docker images (web app only)" ;;
   esac
 }

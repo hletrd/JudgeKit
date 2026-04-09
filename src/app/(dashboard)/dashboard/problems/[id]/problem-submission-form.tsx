@@ -108,6 +108,30 @@ export function ProblemSubmissionForm({
     compileOutput: string | null;
   } | null>(null);
 
+  const translateSubmissionError = useCallback((error: unknown) => {
+    if (typeof error !== "string") {
+      return tCommon("error");
+    }
+
+    const legacyErrorMap: Record<string, string> = {
+      Unauthorized: "submissionErrors.unauthorized",
+      Forbidden: "submissionErrors.forbidden",
+      "problemId is required": "submissionErrors.problemRequired",
+      "language is required": "submissionErrors.languageRequired",
+      "sourceCode is required": "submissionErrors.sourceCodeRequired",
+      [`sourceCode exceeds the 65536-byte limit`]: "submissionErrors.sourceCodeTooLarge",
+      "Internal server error": "submissionErrors.submissionCreateFailed",
+    };
+
+    const translationKey = legacyErrorMap[error] ?? `submissionErrors.${error}`;
+
+    try {
+      return t(translationKey as never);
+    } catch {
+      return tCommon("error");
+    }
+  }, [t, tCommon]);
+
   const handleRun = useCallback(async () => {
     if (!sourceCode) {
       toast.error(translateSubmissionError("sourceCode is required"));
@@ -132,7 +156,7 @@ export function ProblemSubmissionForm({
     } finally {
       setIsRunning(false);
     }
-  }, [sourceCode, language, stdin, tCommon]);
+  }, [sourceCode, language, stdin, tCommon, translateSubmissionError]);
 
   // Publish editor content for AI chat widget (read-only bridge)
   useEffect(() => {
@@ -157,30 +181,6 @@ export function ProblemSubmissionForm({
       toast.error(t("sourceFileLoadFailed"));
     } finally {
       event.target.value = "";
-    }
-  }
-
-  function translateSubmissionError(error: unknown) {
-    if (typeof error !== "string") {
-      return tCommon("error");
-    }
-
-    const legacyErrorMap: Record<string, string> = {
-      Unauthorized: "submissionErrors.unauthorized",
-      Forbidden: "submissionErrors.forbidden",
-      "problemId is required": "submissionErrors.problemRequired",
-      "language is required": "submissionErrors.languageRequired",
-      "sourceCode is required": "submissionErrors.sourceCodeRequired",
-      [`sourceCode exceeds the 65536-byte limit`]: "submissionErrors.sourceCodeTooLarge",
-      "Internal server error": "submissionErrors.submissionCreateFailed",
-    };
-
-    const translationKey = legacyErrorMap[error] ?? `submissionErrors.${error}`;
-
-    try {
-      return t(translationKey as never);
-    } catch {
-      return tCommon("error");
     }
   }
 

@@ -1,6 +1,6 @@
-import { timingSafeEqual } from "node:crypto";
 import type { NextRequest } from "next/server";
 import { getValidatedJudgeAuthToken } from "@/lib/security/env";
+import { safeTokenCompare } from "@/lib/security/timing";
 
 function parseBearerToken(authHeader: string | null) {
   if (!authHeader?.startsWith("Bearer ")) {
@@ -18,12 +18,5 @@ export function isJudgeAuthorized(request: NextRequest) {
   }
 
   const expectedToken = getValidatedJudgeAuthToken();
-  const providedBuffer = Buffer.from(providedToken);
-  const expectedBuffer = Buffer.from(expectedToken);
-
-  if (providedBuffer.length !== expectedBuffer.length) {
-    return false;
-  }
-
-  return timingSafeEqual(providedBuffer, expectedBuffer);
+  return safeTokenCompare(providedToken, expectedToken);
 }

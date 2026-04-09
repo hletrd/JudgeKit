@@ -9,7 +9,7 @@ import { logger } from "@/lib/logger";
 import { db } from "@/lib/db";
 import { users } from "@/lib/db/schema";
 import { eq } from "drizzle-orm";
-import { exportDatabase } from "@/lib/db/export";
+import { streamDatabaseExport } from "@/lib/db/export";
 
 export const dynamic = "force-dynamic";
 
@@ -55,9 +55,6 @@ export async function POST(request: NextRequest) {
 
     const timestamp = new Date().toISOString().replace(/[:.]/g, "-");
 
-    // Export as portable JSON
-    const data = await exportDatabase();
-    const json = JSON.stringify(data);
     const filename = `judgekit-backup-${timestamp}.json`;
 
     recordAuditEvent({
@@ -67,11 +64,11 @@ export async function POST(request: NextRequest) {
       resourceType: "system_settings",
       resourceId: "database",
       resourceLabel: "Database backup",
-      summary: `Downloaded PostgreSQL backup as JSON (${(json.length / 1024 / 1024).toFixed(1)} MB, ${Object.values(data.tables).reduce((s, t) => s + t.rowCount, 0)} rows)`,
+      summary: "Downloaded PostgreSQL backup as a streamed JSON export",
       request,
     });
 
-    return new Response(json, {
+    return new Response(streamDatabaseExport(), {
       headers: {
         "Content-Type": "application/json",
         "Content-Disposition": `attachment; filename="${filename}"`,

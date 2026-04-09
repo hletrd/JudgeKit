@@ -32,6 +32,19 @@ export function canManageGroupResources(
   return false;
 }
 
+async function getGroupInstructorAssignmentRole(
+  groupId: string,
+  userId: string
+): Promise<string | null> {
+  const [row] = await db
+    .select({ role: groupInstructors.role })
+    .from(groupInstructors)
+    .where(and(eq(groupInstructors.groupId, groupId), eq(groupInstructors.userId, userId)))
+    .limit(1);
+
+  return row?.role ?? null;
+}
+
 /**
  * Async version that supports custom roles via capability check
  * and co-instructor / TA group roles.
@@ -46,12 +59,8 @@ export async function canManageGroupResourcesAsync(
   const caps = await resolveCapabilities(role);
   if (caps.has("assignments.edit")) return true;
   if (groupId) {
-    const gi = await db
-      .select({ role: groupInstructors.role })
-      .from(groupInstructors)
-      .where(and(eq(groupInstructors.groupId, groupId), eq(groupInstructors.userId, userId)))
-      .limit(1);
-    if (gi.length > 0) return true;
+    const assignedRole = await getGroupInstructorAssignmentRole(groupId, userId);
+    if (assignedRole === "co_instructor") return true;
   }
   return false;
 }
@@ -62,12 +71,7 @@ export async function canManageGroupResourcesAsync(
  * cannot delete problems or modify system settings.
  */
 export async function isGroupTA(groupId: string, userId: string): Promise<boolean> {
-  const [row] = await db
-    .select({ role: groupInstructors.role })
-    .from(groupInstructors)
-    .where(and(eq(groupInstructors.groupId, groupId), eq(groupInstructors.userId, userId)))
-    .limit(1);
-  return row?.role === "ta";
+  return (await getGroupInstructorAssignmentRole(groupId, userId)) === "ta";
 }
 
 /**
@@ -76,12 +80,7 @@ export async function isGroupTA(groupId: string, userId: string): Promise<boolea
  */
 export async function hasGroupInstructorRole(groupId: string, userId: string, groupOwnerId: string | null): Promise<boolean> {
   if (groupOwnerId === userId) return true;
-  const [row] = await db
-    .select({ role: groupInstructors.role })
-    .from(groupInstructors)
-    .where(and(eq(groupInstructors.groupId, groupId), eq(groupInstructors.userId, userId)))
-    .limit(1);
-  return !!row;
+  return (await getGroupInstructorAssignmentRole(groupId, userId)) !== null;
 }
 
 export async function getManageableProblemsForGroup(

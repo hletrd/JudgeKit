@@ -617,6 +617,38 @@ describe("proxy", () => {
 
       expect(getActiveAuthUserByIdMock).not.toHaveBeenCalled();
     });
+
+    it("uses AUTH_CACHE_TTL_MS from environment variable", async () => {
+      // Set custom AUTH_CACHE_TTL_MS before importing proxy
+      vi.stubEnv("AUTH_CACHE_TTL_MS", "5000");
+
+      // Re-import proxy to pick up the new env var
+      vi.resetModules();
+      vi.clearAllMocks();
+
+      getTokenMock.mockResolvedValue(null);
+      getActiveAuthUserByIdMock.mockResolvedValue(null);
+      getTokenUserIdMock.mockReturnValue(null);
+      getTokenAuthenticatedAtSecondsMock.mockReturnValue(null);
+      shouldUseSecureAuthCookieMock.mockReturnValue(false);
+      getValidatedAuthSecretMock.mockReturnValue("test-secret-that-is-at-least-32-chars");
+      randomUUIDMock.mockReturnValue("00000000-0000-0000-0000-000000000000");
+      buildAuditRequestContextMock.mockReturnValue({});
+
+      vi.stubEnv("NODE_ENV", "test");
+
+      proxy = (await import("@/proxy")).proxy;
+
+      // The test passes if proxy loads successfully with the custom TTL
+      // We can't directly test the TTL value without exposing internals,
+      // but we verify that proxy doesn't throw when AUTH_CACHE_TTL_MS is set
+      const response = await proxy(makeRequest("/dashboard"));
+      expect(response.status).toBeGreaterThanOrEqual(300); // Redirect to login
+      expect(response.status).toBeLessThan(400);
+
+      // Reset to default
+      vi.stubEnv("AUTH_CACHE_TTL_MS", "2000");
+    });
   });
 
   // =========================================================================

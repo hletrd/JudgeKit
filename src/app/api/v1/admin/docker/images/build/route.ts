@@ -15,7 +15,7 @@ const buildSchema = z.object({
 });
 
 export const POST = createApiHandler({
-  auth: { roles: ["admin", "super_admin"] },
+  auth: { capabilities: ["system.settings"] },
   schema: buildSchema,
   handler: async (req: NextRequest, { body, user }) => {
     // Look up the language config to find the docker image name

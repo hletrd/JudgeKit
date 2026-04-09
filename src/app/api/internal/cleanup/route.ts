@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
-import { timingSafeEqual } from "crypto";
 import { cleanupOldEvents } from "@/lib/db/cleanup";
+import { safeTokenCompare } from "@/lib/security/timing";
 
 export const dynamic = "force-dynamic";
 
@@ -15,10 +15,7 @@ export async function POST(request: NextRequest) {
 
   const authHeader = request.headers.get("authorization");
   const expected = `Bearer ${cronSecret}`;
-  const isValid =
-    authHeader !== null &&
-    authHeader.length === expected.length &&
-    timingSafeEqual(Buffer.from(authHeader), Buffer.from(expected));
+  const isValid = authHeader !== null && safeTokenCompare(authHeader, expected);
   if (!isValid) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }

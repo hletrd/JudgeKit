@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { sanitizeHtml } from "@/lib/security/sanitize-html";
+import { sanitizeHtml, sanitizeMarkdown } from "@/lib/security/sanitize-html";
 
 describe("sanitizeHtml", () => {
   it("preserves basic formatting content", () => {
@@ -150,5 +150,39 @@ describe("OWASP XSS evasion vectors", () => {
     expect(sanitized).not.toContain("<input");
     expect(sanitized).not.toContain("javascript:");
     expect(sanitized).not.toContain("alert(1)");
+  });
+});
+
+describe("sanitizeMarkdown", () => {
+  it("strips null bytes from text", () => {
+    expect(sanitizeMarkdown("hello\x00world")).toBe("helloworld");
+  });
+
+  it("strips other control characters but preserves newline, tab, and carriage return", () => {
+    expect(sanitizeMarkdown("line1\nline2\tindented\r\nline3")).toBe(
+      "line1\nline2\tindented\r\nline3"
+    );
+    expect(sanitizeMarkdown("before\x07bell\x0Bvertical\x0Cformfeed\x1Eafter")).toBe(
+      "beforebellverticalformfeedafter"
+    );
+  });
+
+  it("preserves normal text unchanged", () => {
+    const text = "Hello, world! This is normal text.";
+    expect(sanitizeMarkdown(text)).toBe(text);
+  });
+
+  it("handles empty string", () => {
+    expect(sanitizeMarkdown("")).toBe("");
+  });
+
+  it("preserves markdown formatting (bold, links, code blocks)", () => {
+    const markdown = "**bold** and [a link](https://example.com)\n```\ncode\n```";
+    expect(sanitizeMarkdown(markdown)).toBe(markdown);
+  });
+
+  it("strips multiple different control characters at once", () => {
+    const input = "a\x00b\x01c\x08d\x0Be\x0Cf\x1Fg\x7Fh";
+    expect(sanitizeMarkdown(input)).toBe("abcdefgh");
   });
 });

@@ -14,6 +14,7 @@ import { getAccessibleProblemIds } from "@/lib/auth/permissions";
 
 async function canAccessFile(
   fileId: string,
+  problemId: string | null,
   uploadedBy: string | null,
   userId: string,
   role: string
@@ -28,17 +29,32 @@ async function canAccessFile(
     return true;
   }
 
-  const problemRows = await db
-    .select({
-      id: problems.id,
-      visibility: problems.visibility,
-      authorId: problems.authorId,
-    })
-    .from(problems)
-    .where(like(problems.description, `%/api/v1/files/${fileId}%`));
+  const problemRows = problemId
+    ? await db
+        .select({
+          id: problems.id,
+          visibility: problems.visibility,
+          authorId: problems.authorId,
+        })
+        .from(problems)
+        .where(eq(problems.id, problemId))
+    : await db
+        .select({
+          id: problems.id,
+          visibility: problems.visibility,
+          authorId: problems.authorId,
+        })
+        .from(problems)
+        .where(like(problems.description, `%"/api/v1/files/${fileId}"%`));
 
   if (problemRows.length === 0) {
     return false;
+  }
+
+  if (!problemId && problemRows.length === 1) {
+    void db.update(files)
+      .set({ problemId: problemRows[0].id })
+      .where(eq(files.id, fileId));
   }
 
   const accessibleProblemIds = await getAccessibleProblemIds(
@@ -72,7 +88,7 @@ export async function GET(
       return apiError("notFound", 404);
     }
 
-    const allowed = await canAccessFile(file.id, file.uploadedBy ?? null, user.id, user.role);
+    const allowed = await canAccessFile(file.id, file.problemId ?? null, file.uploadedBy ?? null, user.id, user.role);
     if (!allowed) {
       return forbidden();
     }
@@ -85,7 +101,7 @@ export async function GET(
 
     let buffer: Buffer;
     try {
-      buffer = readUploadedFile(file.storedName);
+      buffer = await readUploadedFile(file.storedName);
     } catch {
       return apiError("notFound", 404);
     }
@@ -148,7 +164,7 @@ export async function DELETE(
       }
     }
 
-    deleteUploadedFile(file.storedName);
+    // Delete from DB first; if this succeeds the row is gone regardless of disk outcome.
     await db.delete(files).where(eq(files.id, id));
 
     recordAuditEvent({
@@ -161,6 +177,13 @@ export async function DELETE(
       summary: `Deleted file: ${file.originalName}`,
       request,
     });
+
+    // Best-effort disk cleanup — log failures but don't fail the response.
+    try {
+      await deleteUploadedFile(file.storedName);
+    } catch (diskErr) {
+      logger.warn({ err: diskErr, storedName: file.storedName }, "Failed to delete file from disk after DB delete");
+    }
 
     return apiSuccess({ deleted: true });
   } catch (error) {

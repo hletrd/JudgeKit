@@ -10,6 +10,7 @@ import {
   uniqueIndex,
   index,
 } from "drizzle-orm/pg-core";
+import { sql } from "drizzle-orm";
 import { nanoid } from "nanoid";
 import { generateSubmissionId } from "@/lib/submissions/id";
 import type { ExamMode, PlatformMode, ScoringModel } from "@/types";
@@ -49,6 +50,8 @@ export const users = pgTable(
   },
   (table) => [
     index("users_created_at_idx").on(table.createdAt),
+    // Case-insensitive index for username lookups (isUsernameTaken uses lower())
+    index("users_lower_username_idx").on(sql`lower(${table.username})`),
   ]
 );
 
@@ -463,6 +466,7 @@ export const submissions = pgTable(
     index("submissions_assignment_idx").on(table.assignmentId),
     index("submissions_judge_worker_idx").on(table.judgeWorkerId),
     index("submissions_submitted_at_idx").on(table.submittedAt),
+    index("submissions_leaderboard_idx").on(table.assignmentId, table.userId, sql`desc(${table.submittedAt})`),
   ]
 );
 
@@ -488,7 +492,7 @@ export const languageConfigs = pgTable("language_configs", {
 export const systemSettings = pgTable("system_settings", {
   id: text("id")
     .primaryKey()
-    .$defaultFn(() => "global"),
+    .default("global"),
   siteTitle: text("site_title"),
   siteDescription: text("site_description"),
   timeZone: text("time_zone"),
@@ -550,6 +554,7 @@ export const rateLimits = pgTable(
   },
   (table) => [
     uniqueIndex("rate_limits_key_idx").on(table.key),
+    index("rate_limits_last_attempt_idx").on(table.lastAttempt),
   ]
 );
 
@@ -839,7 +844,7 @@ export const tags = pgTable(
     id: text("id")
       .primaryKey()
       .$defaultFn(() => nanoid()),
-    name: text("name").notNull(),
+    name: text("name").unique().notNull(),
     color: text("color"),
     createdBy: text("created_by").references(() => users.id, {
       onDelete: "set null",
@@ -847,10 +852,7 @@ export const tags = pgTable(
     createdAt: timestamp("created_at", { withTimezone: true })
       .notNull()
       .$defaultFn(() => new Date(Date.now())),
-  },
-  (table) => [
-    uniqueIndex("tags_name_idx").on(table.name),
-  ]
+  }
 );
 
 export const problemTags = pgTable(
@@ -913,6 +915,8 @@ export const files = pgTable(
     category: text("category").notNull().default("attachment"),
     width: integer("width"),
     height: integer("height"),
+    problemId: text("problem_id")
+      .references(() => problems.id, { onDelete: "set null" }),
     uploadedBy: text("uploaded_by")
       .references(() => users.id, { onDelete: "set null" }),
     createdAt: timestamp("created_at", { withTimezone: true })
@@ -920,6 +924,7 @@ export const files = pgTable(
       .$defaultFn(() => new Date(Date.now())),
   },
   (table) => [
+    index("files_problem_id_idx").on(table.problemId),
     index("files_uploaded_by_idx").on(table.uploadedBy),
     index("files_category_idx").on(table.category),
     index("files_created_at_idx").on(table.createdAt),

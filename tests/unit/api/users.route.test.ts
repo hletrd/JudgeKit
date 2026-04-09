@@ -92,7 +92,7 @@ function makeSelectChain(rows: unknown[]) {
   chain.where.mockReturnValue(chain);
   chain.orderBy.mockReturnValue(chain);
   chain.limit.mockReturnValue(chain);
-  chain.offset.mockReturnValue(rows);
+  chain.offset.mockReturnValue(Promise.resolve(rows));
   // Allow .then() chaining (Promise-like)
   chain.then.mockImplementation((cb: (v: unknown) => unknown) =>
     Promise.resolve(cb(rows))
@@ -112,6 +112,11 @@ vi.mock("@/lib/db", () => ({
       },
     },
   },
+  execTransaction: vi.fn(async (fn: (tx: any) => unknown) => fn({
+    select: dbSelectMock,
+    insert: dbInsertMock,
+    update: dbUpdateMock,
+  })),
 }));
 
 vi.mock("@/lib/capabilities/cache", () => ({
@@ -304,6 +309,13 @@ describe("POST /api/v1/users", () => {
 
   it("creates user with valid data and returns 201", async () => {
     getApiUserMock.mockResolvedValue(adminUser);
+    dbSelectMock.mockReset();
+
+    // Transaction: username check (not found), email check (not found), insert
+    dbSelectMock
+      .mockReturnValueOnce(makeSelectChain([])) // username check
+      .mockReturnValueOnce(makeSelectChain([])) // email check
+      .mockReturnValueOnce(makeSelectChain([safeUser])); // returning (not used by route)
 
     const insertChain = {
       values: vi.fn().mockReturnValue({
@@ -327,14 +339,19 @@ describe("POST /api/v1/users", () => {
     expect(res.status).toBe(201);
     expect(body.data).toMatchObject({
       user: expect.objectContaining({ username: "student1" }),
+      passwordGenerated: true,
     });
+    expect(body.data.generatedPassword).toBeUndefined();
     expect(dbInsertMock).toHaveBeenCalled();
     expect(recordAuditEventMock).toHaveBeenCalled();
   });
 
   it("rejects duplicate username with 409", async () => {
     getApiUserMock.mockResolvedValue(adminUser);
-    isUsernameTakenMock.mockResolvedValue(true);
+    dbSelectMock.mockReset();
+
+    // Transaction: username check (found) -> throws error
+    dbSelectMock.mockReturnValueOnce(makeSelectChain([{ id: "existing" }]));
 
     const req = makeRequest("http://localhost:3000/api/v1/users", {
       method: "POST",
@@ -354,8 +371,12 @@ describe("POST /api/v1/users", () => {
 
   it("rejects duplicate email with 409", async () => {
     getApiUserMock.mockResolvedValue(adminUser);
-    isUsernameTakenMock.mockResolvedValue(false);
-    isEmailTakenMock.mockResolvedValue(true);
+    dbSelectMock.mockReset();
+
+    // Transaction: username check (not found), email check (found) -> throws error
+    dbSelectMock
+      .mockReturnValueOnce(makeSelectChain([]))
+      .mockReturnValueOnce(makeSelectChain([{ id: "existing" }]));
 
     const req = makeRequest("http://localhost:3000/api/v1/users", {
       method: "POST",
@@ -424,6 +445,7 @@ describe("GET /api/v1/users/[id]", () => {
 
   it("returns user detail for admin", async () => {
     getApiUserMock.mockResolvedValue(adminUser);
+    dbSelectMock.mockReset();
     dbSelectMock.mockReturnValue(makeSelectChain([safeUser]));
 
     const req = makeRequest(
@@ -438,6 +460,7 @@ describe("GET /api/v1/users/[id]", () => {
 
   it("allows user to fetch their own record", async () => {
     getApiUserMock.mockResolvedValue(studentUser);
+    dbSelectMock.mockReset();
     dbSelectMock.mockReturnValue(makeSelectChain([safeUser]));
 
     const req = makeRequest(
@@ -461,6 +484,7 @@ describe("GET /api/v1/users/[id]", () => {
 
   it("returns 404 when user not found", async () => {
     getApiUserMock.mockResolvedValue(adminUser);
+    dbSelectMock.mockReset();
     dbSelectMock.mockReturnValue(makeSelectChain([]));
 
     const req = makeRequest(

@@ -2,9 +2,9 @@ import { NextRequest } from "next/server";
 import { apiSuccess, apiError } from "@/lib/api/responses";
 import { and, eq } from "drizzle-orm";
 import { recordAuditEvent } from "@/lib/audit/events";
-import { db } from "@/lib/db";
+import { db, execTransaction } from "@/lib/db";
 import { assignments, enrollments, submissions } from "@/lib/db/schema";
-import { canManageGroupResources } from "@/lib/assignments/management";
+import { canManageGroupResourcesAsync } from "@/lib/assignments/management";
 import { forbidden, notFound, createApiHandler } from "@/lib/api/handler";
 
 export const DELETE = createApiHandler({
@@ -18,10 +18,11 @@ export const DELETE = createApiHandler({
 
     if (!group) return notFound("Group");
 
-    const canManage = canManageGroupResources(
+    const canManage = await canManageGroupResourcesAsync(
       group.instructorId,
       user.id,
-      user.role
+      user.role,
+      id
     );
 
     if (!canManage) return forbidden();
@@ -40,18 +41,27 @@ export const DELETE = createApiHandler({
       columns: { id: true, username: true },
     });
 
-    const assignmentSubmission = await db
-      .select({ id: submissions.id })
-      .from(submissions)
-      .innerJoin(assignments, eq(assignments.id, submissions.assignmentId))
-      .where(and(eq(submissions.userId, userId), eq(assignments.groupId, id)))
-      .then((rows) => rows[0] ?? null);
+    try {
+      await execTransaction(async (tx) => {
+        const assignmentSubmission = await tx
+          .select({ id: submissions.id })
+          .from(submissions)
+          .innerJoin(assignments, eq(assignments.id, submissions.assignmentId))
+          .where(and(eq(submissions.userId, userId), eq(assignments.groupId, id)))
+          .then((rows) => rows[0] ?? null);
 
-    if (assignmentSubmission) {
-      return apiError("groupMemberRemovalBlocked", 409);
+        if (assignmentSubmission) {
+          throw new Error("groupMemberRemovalBlocked");
+        }
+
+        await tx.delete(enrollments).where(eq(enrollments.id, enrollment.id));
+      });
+    } catch (err) {
+      if (err instanceof Error && err.message === "groupMemberRemovalBlocked") {
+        return apiError("groupMemberRemovalBlocked", 409);
+      }
+      throw err;
     }
-
-    await db.delete(enrollments).where(eq(enrollments.id, enrollment.id));
 
     recordAuditEvent({
       actorId: user.id,

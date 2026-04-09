@@ -17,7 +17,7 @@ function getOriginHost(origin: string | null) {
 
 export async function isTrustedServerActionOrigin() {
   const headerStore = await headers();
-  const trustedHosts = getTrustedAuthHosts();
+  const trustedHosts = await getTrustedAuthHosts();
   const originHost = getOriginHost(headerStore.get("origin"));
 
   if (!originHost) {

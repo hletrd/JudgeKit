@@ -17,6 +17,13 @@ const schemaWithRelations = { ...schema, ...relations } as const;
 type AppSchema = typeof schemaWithRelations;
 let db: NodePgDatabase<AppSchema>;
 
+function parsePoolEnv(name: string, fallback: number) {
+  const raw = process.env[name];
+  if (!raw) return fallback;
+  const parsed = Number.parseInt(raw, 10);
+  return Number.isFinite(parsed) && parsed > 0 ? parsed : fallback;
+}
+
 if (isBuildPhase) {
   // During build phase, create a dummy drizzle instance for type-checking.
   // No actual DB connection is made.
@@ -27,7 +34,12 @@ if (isBuildPhase) {
   const url = process.env.DATABASE_URL;
   if (!url) throw new Error("DATABASE_URL is required");
 
-  _pool = new Pool({ connectionString: url });
+  _pool = new Pool({
+    connectionString: url,
+    max: parsePoolEnv("DATABASE_POOL_MAX", 20),
+    idleTimeoutMillis: parsePoolEnv("DATABASE_POOL_IDLE_TIMEOUT_MS", 30_000),
+    connectionTimeoutMillis: parsePoolEnv("DATABASE_POOL_CONNECTION_TIMEOUT_MS", 10_000),
+  });
   db = drizzle(_pool, { schema: schemaWithRelations });
 }
 

@@ -1,6 +1,6 @@
 # Supported Languages (120 variants)
 
-100 Docker images covering 120 language variants. Deployed on both AMD64 (test) and ARM64 (production).
+Multi-arch Docker images covering 120 language variants. Deployed on both AMD64 (test) and ARM64 (production).
 
 | # | Language ID | Description | Docker Image | amd64 | arm64 | amd64 E2E | arm64 E2E |
 |---|-------------|-------------|--------------|-------|-------|-----------|-----------|

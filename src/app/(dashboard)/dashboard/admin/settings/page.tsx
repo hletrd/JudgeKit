@@ -88,7 +88,15 @@ async function getDbInfo() {
   const version = fullVersion.split(" ").slice(0, 2).join(" ");
 
   const dbUrl = process.env.DATABASE_URL ?? "";
-  const maskedUrl = dbUrl.replace(/:([^:@]+)@/, ':***@');
+  // Mask everything except host:port — hide username, password, and database name
+  const maskedUrl = (() => {
+    try {
+      const u = new URL(dbUrl);
+      return `${u.protocol}//***:***@${u.host}/***`;
+    } catch {
+      return "***";
+    }
+  })();
 
   return {
     dialect: "postgresql" as const,
@@ -102,8 +110,8 @@ async function getDbInfo() {
 export default async function AdminSettingsPage() {
   const session = await auth();
   if (!session?.user) redirect("/login");
+  if (session.user.role !== "super_admin") redirect("/dashboard");
   const caps = await resolveCapabilities(session.user.role);
-  if (!caps.has("system.settings")) redirect("/dashboard");
 
   const t = await getTranslations("admin.settings");
   const tCommon = await getTranslations("common");

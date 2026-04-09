@@ -1,3 +1,4 @@
+import { createHash } from "crypto";
 import { db } from "@/lib/db";
 import { users } from "@/lib/db/schema";
 import { eq } from "drizzle-orm";
@@ -42,6 +43,8 @@ export async function authorizeRecruitingToken(
 
   if (!user || !user.isActive) return null;
 
+  const tokenFingerprint = createHash("sha256").update(token).digest("hex").slice(0, 8);
+
   return {
     id: user.id,
     username: user.username,
@@ -59,7 +62,7 @@ export async function authorizeRecruitingToken(
     lectureFontScale: user.lectureFontScale,
     lectureColorScheme: user.lectureColorScheme,
     loginEventContext: {
-      attemptedIdentifier: `recruit:${token.slice(0, 8)}`,
+      attemptedIdentifier: `recruit:${tokenFingerprint}`,
       ipAddress,
       userAgent: request.headers.get("user-agent")?.trim() || null,
       requestMethod: request.method?.trim().toUpperCase() || null,

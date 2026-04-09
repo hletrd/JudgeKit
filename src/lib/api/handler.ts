@@ -12,6 +12,7 @@ import {
 } from "@/lib/api/auth";
 import { consumeApiRateLimit } from "@/lib/security/api-rate-limit";
 import { isUserRole } from "@/lib/security/constants";
+import { resolveCapabilities } from "@/lib/capabilities/cache";
 import { logger } from "@/lib/logger";
 
 /** Shape returned by getApiUser */
@@ -33,6 +34,8 @@ type AuthConfig =
   | true
   | {
       roles?: UserRole[];
+      capabilities?: string[];
+      requireAllCapabilities?: boolean;
     };
 
 /**
@@ -111,6 +114,14 @@ export function createApiHandler<T = unknown>(config: HandlerConfig<T>) {
         // Role check
         if (typeof auth === "object" && auth.roles && auth.roles.length > 0) {
           if (!isUserRole(user.role) || !auth.roles.includes(user.role)) return forbidden();
+        }
+
+        if (typeof auth === "object" && auth.capabilities && auth.capabilities.length > 0) {
+          const caps = await resolveCapabilities(user.role);
+          const hasRequiredCapabilities = auth.requireAllCapabilities === false
+            ? auth.capabilities.some((capability) => caps.has(capability))
+            : auth.capabilities.every((capability) => caps.has(capability));
+          if (!hasRequiredCapabilities) return forbidden();
         }
       }
 

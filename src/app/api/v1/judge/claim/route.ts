@@ -2,7 +2,7 @@ import { NextRequest } from "next/server";
 import { apiSuccess, apiError } from "@/lib/api/responses";
 import { db } from "@/lib/db";
 import { rawQueryOne } from "@/lib/db/queries";
-import { problems, testCases, languageConfigs } from "@/lib/db/schema";
+import { problems, testCases, languageConfigs, judgeWorkers } from "@/lib/db/schema";
 import { eq, asc } from "drizzle-orm";
 import { nanoid } from "nanoid";
 import { z } from "zod";
@@ -45,6 +45,27 @@ export async function POST(request: NextRequest) {
 
     const body = await request.json();
     const workerId: string | null = typeof body?.workerId === "string" ? body.workerId : null;
+
+    // Validate that the worker exists, is online, and has capacity
+    if (workerId) {
+      const [worker] = await db
+        .select({
+          status: judgeWorkers.status,
+          activeTasks: judgeWorkers.activeTasks,
+          concurrency: judgeWorkers.concurrency,
+        })
+        .from(judgeWorkers)
+        .where(eq(judgeWorkers.id, workerId))
+        .limit(1);
+
+      if (!worker || worker.status !== "online") {
+        return apiError("workerNotFound", 403);
+      }
+
+      if (worker.activeTasks >= worker.concurrency) {
+        return apiError("workerAtCapacity", 503);
+      }
+    }
 
     const claimToken = nanoid();
     const claimCreatedAt = Date.now();

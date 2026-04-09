@@ -37,7 +37,7 @@ async function getStaleImages(images: { repository: string; tag: string }[]): Pr
 }
 
 export const GET = createApiHandler({
-  auth: { roles: ["admin", "super_admin"] },
+  auth: { capabilities: ["system.settings"] },
   handler: async (req: NextRequest) => {
     const filter = req.nextUrl.searchParams.get("filter") ?? "judge-*";
     // Validate filter to prevent unexpected Docker CLI behavior
@@ -64,7 +64,7 @@ const pullSchema = z.object({
 });
 
 export const POST = createApiHandler({
-  auth: { roles: ["super_admin"] },
+  auth: { capabilities: ["system.settings"] },
   schema: pullSchema,
   handler: async (_req: NextRequest, { body }) => {
     // Only allow images with the judge- prefix to prevent supply chain attacks
@@ -90,9 +90,16 @@ const deleteSchema = z.object({
 });
 
 export const DELETE = createApiHandler({
-  auth: { roles: ["super_admin"] },
+  auth: { capabilities: ["system.settings"] },
   schema: deleteSchema,
   handler: async (req: NextRequest, { body, user }) => {
+    // Only allow removal of judge-* images (same restriction as POST pull)
+    if (!body.imageTag.startsWith("judge-") && !body.imageTag.includes("/judge-")) {
+      return NextResponse.json(
+        { error: "imageTagMustStartWithJudge", message: "Only judge-* images can be removed" },
+        { status: 400 }
+      );
+    }
     const result = await removeDockerImage(body.imageTag);
     if (!result.success) {
       return NextResponse.json(

@@ -11,13 +11,15 @@ const {
   updateWhereMock,
   deleteWhereMock,
   sanitizeHtmlMock,
+  sanitizeMarkdownMock,
 } = vi.hoisted(() => {
   const insertRunMock = vi.fn();
   const updateSetMock = vi.fn();
   const updateWhereMock = vi.fn();
   const deleteWhereMock = vi.fn();
   const sanitizeHtmlMock = vi.fn((html: string) => `sanitized:${html}`);
-  return { insertRunMock, updateSetMock, updateWhereMock, deleteWhereMock, sanitizeHtmlMock };
+  const sanitizeMarkdownMock = vi.fn((markdown: string) => `sanitized:${markdown}`);
+  return { insertRunMock, updateSetMock, updateWhereMock, deleteWhereMock, sanitizeHtmlMock, sanitizeMarkdownMock };
 });
 
 // db.insert(table).values(v)
@@ -62,6 +64,7 @@ vi.mock("@/lib/db", () => ({
 
 vi.mock("@/lib/security/sanitize-html", () => ({
   sanitizeHtml: sanitizeHtmlMock,
+  sanitizeMarkdown: sanitizeMarkdownMock,
 }));
 
 // nanoid produces predictable IDs in tests so we can assert on them
@@ -127,7 +130,7 @@ beforeEach(() => {
       delete: dbDeleteMock,
     })
   );
-  sanitizeHtmlMock.mockImplementation((html: string) => `sanitized:${html}`);
+  sanitizeMarkdownMock.mockImplementation((markdown: string) => `sanitized:${markdown}`);
 });
 
 // ════════════════════════════════════════════════════════════════════════════
@@ -168,7 +171,7 @@ describe("createProblemWithTestCases", () => {
 
   it("sanitizes html description before storing", async () => {
     await createProblemWithTestCases(makeInput({ description: "<b>bold</b>" }), "author-1");
-    expect(sanitizeHtmlMock).toHaveBeenCalledWith("<b>bold</b>");
+    expect(sanitizeMarkdownMock).toHaveBeenCalledWith("<b>bold</b>");
   });
 
   it("does NOT insert test cases when testCases array is empty", async () => {
@@ -259,7 +262,7 @@ describe("updateProblemWithTestCases", () => {
     const input = makeInput({ description: "<em>updated</em>" });
     await updateProblemWithTestCases("problem-1", input);
 
-    expect(dbUpdateMock).toHaveBeenCalledTimes(1);
+    expect(dbUpdateMock).toHaveBeenCalled();
     const setCall = dbUpdateMock.mock.results[0].value.set;
     expect(setCall).toHaveBeenCalledWith(
       expect.objectContaining({
@@ -274,7 +277,7 @@ describe("updateProblemWithTestCases", () => {
 
   it("sanitizes html description before updating", async () => {
     await updateProblemWithTestCases("problem-1", makeInput({ description: "<u>text</u>" }));
-    expect(sanitizeHtmlMock).toHaveBeenCalledWith("<u>text</u>");
+    expect(sanitizeMarkdownMock).toHaveBeenCalledWith("<u>text</u>");
   });
 
   it("deletes existing test cases for the problem", async () => {

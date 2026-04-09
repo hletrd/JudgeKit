@@ -10,6 +10,7 @@ const {
   csrfForbiddenMock,
   consumeApiRateLimitMock,
   isUserRoleMock,
+  resolveCapabilitiesMock,
   loggerErrorMock,
 } = vi.hoisted(() => ({
   getApiUserMock: vi.fn(),
@@ -22,6 +23,7 @@ const {
   csrfForbiddenMock: vi.fn<() => NextResponse | null>(() => null),
   consumeApiRateLimitMock: vi.fn<() => NextResponse | null>(() => null),
   isUserRoleMock: vi.fn(() => true),
+  resolveCapabilitiesMock: vi.fn(async () => new Set<string>()),
   loggerErrorMock: vi.fn(),
 }));
 
@@ -44,6 +46,10 @@ vi.mock("@/lib/security/api-rate-limit", () => ({
 vi.mock("@/lib/security/constants", () => ({
   isUserRole: isUserRoleMock,
   USER_ROLES: ["student", "instructor", "admin", "super_admin"],
+}));
+
+vi.mock("@/lib/capabilities/cache", () => ({
+  resolveCapabilities: resolveCapabilitiesMock,
 }));
 
 vi.mock("@/lib/logger", () => ({
@@ -95,6 +101,7 @@ beforeEach(() => {
   vi.clearAllMocks();
   getApiUserMock.mockResolvedValue(fakeUser);
   isUserRoleMock.mockReturnValue(true);
+  resolveCapabilitiesMock.mockResolvedValue(new Set(["system.settings"]));
   csrfForbiddenMock.mockReturnValue(null);
   consumeApiRateLimitMock.mockReturnValue(null);
 });
@@ -223,6 +230,29 @@ describe("createApiHandler", () => {
       expect(res.status).toBe(200);
     });
 
+    it("allows access when required capabilities are present", async () => {
+      const handler = createApiHandler({
+        auth: { capabilities: ["system.settings"] },
+        handler: async () => NextResponse.json({ ok: true }),
+      });
+
+      const res = await handler(makeRequest("GET"));
+
+      expect(res.status).toBe(200);
+    });
+
+    it("returns 403 when required capabilities are missing", async () => {
+      const handler = createApiHandler({
+        auth: { capabilities: ["nonexistent.capability"] },
+        handler: async () => NextResponse.json({ ok: true }),
+      });
+
+      const res = await handler(makeRequest("GET"));
+
+      expect(res.status).toBe(403);
+      expect(forbiddenMock).toHaveBeenCalledOnce();
+    });
+
     it("returns 403 when isUserRole returns false", async () => {
       isUserRoleMock.mockReturnValue(false);
 
@@ -256,6 +286,50 @@ describe("createApiHandler", () => {
 
       const handler = createApiHandler({
         auth: { roles: [] },
+        handler: async () => NextResponse.json({ ok: true }),
+      });
+
+      const res = await handler(makeRequest("GET"));
+
+      expect(res.status).toBe(200);
+    });
+
+    it("allows access when the user has all required capabilities", async () => {
+      resolveCapabilitiesMock.mockResolvedValue(new Set(["system.settings", "docker.manage"]));
+
+      const handler = createApiHandler({
+        auth: { capabilities: ["system.settings", "docker.manage"] },
+        handler: async () => NextResponse.json({ ok: true }),
+      });
+
+      const res = await handler(makeRequest("GET"));
+
+      expect(res.status).toBe(200);
+      expect(resolveCapabilitiesMock).toHaveBeenCalledWith(fakeUser.role);
+    });
+
+    it("returns 403 when the user is missing a required capability", async () => {
+      resolveCapabilitiesMock.mockResolvedValue(new Set(["system.settings"]));
+
+      const handler = createApiHandler({
+        auth: { capabilities: ["system.settings", "docker.manage"] },
+        handler: async () => NextResponse.json({ ok: true }),
+      });
+
+      const res = await handler(makeRequest("GET"));
+
+      expect(res.status).toBe(403);
+      expect(forbiddenMock).toHaveBeenCalledOnce();
+    });
+
+    it("supports any-of capability checks when requireAllCapabilities is false", async () => {
+      resolveCapabilitiesMock.mockResolvedValue(new Set(["docker.manage"]));
+
+      const handler = createApiHandler({
+        auth: {
+          capabilities: ["system.settings", "docker.manage"],
+          requireAllCapabilities: false,
+        },
         handler: async () => NextResponse.json({ ok: true }),
       });
 

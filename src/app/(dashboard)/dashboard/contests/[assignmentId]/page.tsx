@@ -22,10 +22,11 @@ import {
   getAssignmentStatusRows,
   getStudentProblemStatuses,
 } from "@/lib/assignments/submissions";
-import { canManageGroupResources } from "@/lib/assignments/management";
+import { canManageGroupResourcesAsync } from "@/lib/assignments/management";
+import { canAccessGroup } from "@/lib/auth/permissions";
 import { assertUserRole } from "@/lib/security/constants";
 import { db } from "@/lib/db";
-import { assignments, enrollments, problems, submissions } from "@/lib/db/schema";
+import { assignments, problems, submissions } from "@/lib/db/schema";
 import { getResolvedSystemTimeZone } from "@/lib/system-settings";
 import { formatDateTimeInTimeZone } from "@/lib/datetime";
 import { buildStatusLabels } from "@/lib/judge/status-labels";
@@ -165,27 +166,19 @@ export default async function ContestDetailPage({
   const canViewBoard = await canViewAssignmentSubmissions(assignmentId, session.user.id, role);
   let hasAccess = canViewBoard;
   if (!hasAccess) {
-    if (role === "super_admin" || role === "admin") {
-      hasAccess = true;
-    } else if (role === "instructor" && assignment.group?.instructorId === session.user.id) {
-      hasAccess = true;
-    } else {
-      const enrollment = await db.query.enrollments.findFirst({
-        where: and(
-          eq(enrollments.userId, session.user.id),
-          eq(enrollments.groupId, groupId)
-        ),
-      });
-      hasAccess = Boolean(enrollment);
-    }
+    hasAccess = await canAccessGroup(groupId, session.user.id, role);
   }
 
   if (!hasAccess) {
     redirect("/dashboard/contests");
   }
 
-  const canManage = role === "super_admin" || role === "admin" ||
-    (role === "instructor" && assignment.group?.instructorId === session.user.id);
+  const canManage = await canManageGroupResourcesAsync(
+    assignment.group?.instructorId ?? null,
+    session.user.id,
+    role,
+    groupId
+  );
 
   const sortedProblems = [...assignment.assignmentProblems].sort(
     (left, right) => (left.sortOrder ?? 0) - (right.sortOrder ?? 0)
@@ -454,18 +447,19 @@ export default async function ContestDetailPage({
   }
 
   // Fetch data for contest settings editor
-  const [availableProblemOptions, hasExistingSubmissions] = await Promise.all([
-    db
-      .select({ id: problems.id, title: problems.title })
-      .from(problems)
-      .then((rows) => rows.map((r) => ({ id: r.id, title: r.title }))),
-    db.query.submissions
-      .findFirst({
-        where: eq(submissions.problemId, sortedProblems[0]?.problem?.id ?? ""),
-        columns: { id: true },
-      })
-      .then(Boolean),
-  ]);
+  const availableProblemOptions = await db
+    .select({ id: problems.id, title: problems.title })
+    .from(problems)
+    .then((rows) => rows.map((r) => ({ id: r.id, title: r.title })));
+
+  const hasExistingSubmissions = sortedProblems.length > 0
+    ? await db.query.submissions
+        .findFirst({
+          where: eq(submissions.problemId, sortedProblems[0]?.problem?.id ?? ""),
+          columns: { id: true },
+        })
+        .then(Boolean)
+    : false;
 
   const contestEditorValue: AssignmentEditorValue = {
     id: assignment.id,
@@ -663,11 +657,7 @@ export default async function ContestDetailPage({
             groupId={groupId}
             assignmentId={assignmentId}
             isContestView
-            canManageOverrides={canManageGroupResources(
-              assignment.group?.instructorId ?? null,
-              session.user.id,
-              role
-            )}
+            canManageOverrides={canManage}
             examMode={assignment.examMode ?? undefined}
             examSessions={examSessionsForAssignment.map((s) => ({
               userId: s.userId,

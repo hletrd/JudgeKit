@@ -34,7 +34,7 @@
   <!-- App Server -->
   <rect x="250" y="132" width="220" height="72" rx="8" fill="url(#appGrad)" opacity="0.95"/>
   <text x="360" y="156" text-anchor="middle" fill="white" font-weight="700" font-size="14">App Server</text>
-  <text x="360" y="174" text-anchor="middle" fill="#bfdbfe" font-size="11">Next.js + SQLite</text>
+  <text x="360" y="174" text-anchor="middle" fill="#bfdbfe" font-size="11">Next.js + PostgreSQL</text>
   <text x="360" y="192" text-anchor="middle" fill="#93c5fd" font-size="10">Port 3000</text>
 
   <!-- Connections App to Workers -->

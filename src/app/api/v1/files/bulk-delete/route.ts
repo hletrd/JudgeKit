@@ -7,6 +7,7 @@ import { resolveCapabilities } from "@/lib/capabilities/cache";
 import { recordAuditEvent } from "@/lib/audit/events";
 import { deleteUploadedFile } from "@/lib/files/storage";
 import { fileDeleteSchema } from "@/lib/validators/files";
+import { logger } from "@/lib/logger";
 
 export const POST = createApiHandler({
   rateLimit: "files:bulk_delete",
@@ -24,14 +25,18 @@ export const POST = createApiHandler({
       return apiSuccess({ deleted: 0 });
     }
 
-    // Delete from disk
-    for (const row of rows) {
-      deleteUploadedFile(row.storedName);
-    }
-
-    // Delete from DB
+    // Delete from DB first; if this succeeds the rows are gone regardless of disk outcome.
     const deletedIds = rows.map((r) => r.id);
     await db.delete(files).where(inArray(files.id, deletedIds));
+
+    // Best-effort disk cleanup — log failures but don't fail the response.
+    for (const row of rows) {
+      try {
+        await deleteUploadedFile(row.storedName);
+      } catch (diskErr) {
+        logger.warn({ err: diskErr, storedName: row.storedName }, "Failed to delete file from disk after DB delete");
+      }
+    }
 
     recordAuditEvent({
       actorId: user.id,

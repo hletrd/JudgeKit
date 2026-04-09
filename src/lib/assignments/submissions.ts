@@ -206,10 +206,18 @@ export async function validateAssignmentSubmission(
   }
 
   if (!isAdmin(role)) {
-    const enrollment = await db.query.enrollments.findFirst({
-      where: and(eq(enrollments.groupId, assignment.groupId), eq(enrollments.userId, userId)),
-      columns: { id: true },
-    });
+    const [enrollment, examSession] = await Promise.all([
+      db.query.enrollments.findFirst({
+        where: and(eq(enrollments.groupId, assignment.groupId), eq(enrollments.userId, userId)),
+        columns: { id: true },
+      }),
+      assignment.examMode === "windowed"
+        ? db.query.examSessions.findFirst({
+            where: and(eq(examSessions.assignmentId, assignment.id), eq(examSessions.userId, userId)),
+            columns: { personalDeadline: true },
+          })
+        : Promise.resolve(null),
+    ]);
 
     if (!enrollment) {
       // Check for contest access token as enrollment alternative
@@ -229,21 +237,16 @@ export async function validateAssignmentSubmission(
         };
       }
     }
-  }
 
-  // Windowed exam validation
-  if (!isAdmin(role) && assignment.examMode === "windowed") {
-    const session = await db.query.examSessions.findFirst({
-      where: and(eq(examSessions.assignmentId, assignment.id), eq(examSessions.userId, userId)),
-      columns: { personalDeadline: true },
-    });
+    // Windowed exam validation
+    if (assignment.examMode === "windowed") {
+      if (!examSession) {
+        return { ok: false, status: 403, error: "examNotStarted" };
+      }
 
-    if (!session) {
-      return { ok: false, status: 403, error: "examNotStarted" };
-    }
-
-    if (session.personalDeadline && session.personalDeadline.valueOf() < Date.now()) {
-      return { ok: false, status: 403, error: "examTimeExpired" };
+      if (examSession.personalDeadline && examSession.personalDeadline.valueOf() < Date.now()) {
+        return { ok: false, status: 403, error: "examTimeExpired" };
+      }
     }
   }
 

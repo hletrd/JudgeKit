@@ -353,19 +353,20 @@ describe("getValidatedJudgeAuthToken", () => {
 describe("getTrustedAuthHosts", () => {
   afterEach(() => {
     vi.unstubAllEnvs();
+    vi.doUnmock("@/lib/system-settings");
   });
 
   it("returns an empty set when AUTH_URL is not set", async () => {
     setEnv({ AUTH_URL: undefined, NEXTAUTH_URL: undefined });
     const { getTrustedAuthHosts } = await importEnv();
-    expect(getTrustedAuthHosts().size).toBe(0);
+    expect((await getTrustedAuthHosts()).size).toBe(0);
   });
 
   it("returns the auth host in production", async () => {
     vi.stubEnv("NODE_ENV", "production");
     setEnv({ AUTH_URL: "https://example.com" });
     const { getTrustedAuthHosts } = await importEnv();
-    const hosts = getTrustedAuthHosts();
+    const hosts = await getTrustedAuthHosts();
     expect(hosts.has("example.com")).toBe(true);
     expect(hosts.size).toBe(1);
   });
@@ -374,7 +375,7 @@ describe("getTrustedAuthHosts", () => {
     vi.stubEnv("NODE_ENV", "development");
     setEnv({ AUTH_URL: "http://localhost:3000" });
     const { getTrustedAuthHosts } = await importEnv();
-    const hosts = getTrustedAuthHosts();
+    const hosts = await getTrustedAuthHosts();
     expect(hosts.has("localhost:3000")).toBe(true);
     expect(hosts.has("127.0.0.1:3000")).toBe(true);
     expect(hosts.has("[::1]:3000")).toBe(true);
@@ -384,8 +385,25 @@ describe("getTrustedAuthHosts", () => {
     vi.stubEnv("NODE_ENV", "development");
     setEnv({ AUTH_URL: "https://staging.example.com" });
     const { getTrustedAuthHosts } = await importEnv();
-    const hosts = getTrustedAuthHosts();
+    const hosts = await getTrustedAuthHosts();
     expect(hosts.size).toBe(1);
     expect(hosts.has("staging.example.com")).toBe(true);
+  });
+
+  it("adds allowed hosts from persisted system settings", async () => {
+    vi.stubEnv("NODE_ENV", "production");
+    setEnv({ AUTH_URL: "https://example.com" });
+    vi.doMock("@/lib/system-settings", () => ({
+      getSystemSettings: vi.fn().mockResolvedValue({
+        allowedHosts: JSON.stringify(["alt.example.com", "internal.example.com:8443"]),
+      }),
+    }));
+
+    const { getTrustedAuthHosts } = await importEnv();
+    const hosts = await getTrustedAuthHosts();
+
+    expect(hosts.has("example.com")).toBe(true);
+    expect(hosts.has("alt.example.com")).toBe(true);
+    expect(hosts.has("internal.example.com:8443")).toBe(true);
   });
 });

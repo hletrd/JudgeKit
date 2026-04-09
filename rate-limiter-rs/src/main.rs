@@ -50,7 +50,7 @@ struct CheckRequest {
     window_ms: u64,
 }
 
-#[derive(Serialize)]
+#[derive(Deserialize, Serialize)]
 #[serde(rename_all = "camelCase")]
 struct CheckResponse {
     allowed: bool,
@@ -67,7 +67,7 @@ struct RecordFailureRequest {
     block_ms: u64,
 }
 
-#[derive(Serialize)]
+#[derive(Deserialize, Serialize)]
 #[serde(rename_all = "camelCase")]
 struct RecordFailureResponse {
     blocked: bool,
@@ -79,7 +79,7 @@ struct ResetRequest {
     key: String,
 }
 
-#[derive(Serialize)]
+#[derive(Deserialize, Serialize)]
 struct OkResponse {
     ok: bool,
 }
@@ -353,4 +353,86 @@ async fn main() {
         .expect("server error");
 
     info!("rate limiter stopped");
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use axum::body::to_bytes;
+    use axum::response::Response;
+
+    async fn decode_json<T: for<'de> serde::Deserialize<'de>>(response: impl IntoResponse) -> T {
+        let response: Response = response.into_response();
+        let body = to_bytes(response.into_body(), usize::MAX).await.unwrap();
+        serde_json::from_slice(&body).unwrap()
+    }
+
+    #[tokio::test]
+    async fn check_increments_and_blocks_at_limit() {
+        let store: Store = Arc::new(DashMap::new());
+
+        let first: CheckResponse = decode_json(check(
+            State(Arc::clone(&store)),
+            Json(CheckRequest { key: "login:user".into(), max_attempts: 2, window_ms: 60_000 }),
+        ).await).await;
+        assert!(first.allowed);
+        assert_eq!(first.remaining, 1);
+
+        let second: CheckResponse = decode_json(check(
+            State(Arc::clone(&store)),
+            Json(CheckRequest { key: "login:user".into(), max_attempts: 2, window_ms: 60_000 }),
+        ).await).await;
+        assert!(second.allowed);
+        assert_eq!(second.remaining, 0);
+
+        let third: CheckResponse = decode_json(check(
+            State(store),
+            Json(CheckRequest { key: "login:user".into(), max_attempts: 2, window_ms: 60_000 }),
+        ).await).await;
+        assert!(!third.allowed);
+        assert_eq!(third.remaining, 0);
+        assert!(third.retry_after.is_some());
+    }
+
+    #[tokio::test]
+    async fn record_failure_blocks_and_reset_clears_entry() {
+        let store: Store = Arc::new(DashMap::new());
+
+        let first: RecordFailureResponse = decode_json(record_failure(
+            State(Arc::clone(&store)),
+            Json(RecordFailureRequest {
+                key: "auth:user".into(),
+                max_attempts: 2,
+                window_ms: 60_000,
+                block_ms: 1_000,
+            }),
+        ).await).await;
+        assert!(!first.blocked);
+        assert!(first.blocked_until.is_none());
+
+        let second: RecordFailureResponse = decode_json(record_failure(
+            State(Arc::clone(&store)),
+            Json(RecordFailureRequest {
+                key: "auth:user".into(),
+                max_attempts: 2,
+                window_ms: 60_000,
+                block_ms: 1_000,
+            }),
+        ).await).await;
+        assert!(second.blocked);
+        assert!(second.blocked_until.is_some());
+
+        let _: OkResponse = decode_json(reset(
+            State(Arc::clone(&store)),
+            Json(ResetRequest { key: "auth:user".into() }),
+        ).await).await;
+        assert!(store.get("auth:user").is_none());
+
+        let after_reset: CheckResponse = decode_json(check(
+            State(store),
+            Json(CheckRequest { key: "auth:user".into(), max_attempts: 2, window_ms: 60_000 }),
+        ).await).await;
+        assert!(after_reset.allowed);
+        assert_eq!(after_reset.remaining, 1);
+    }
 }

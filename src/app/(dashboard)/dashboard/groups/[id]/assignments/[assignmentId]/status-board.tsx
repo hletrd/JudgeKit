@@ -7,7 +7,7 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 import { type AssignmentStudentStatusRow } from "@/lib/assignments/submissions";
 import { formatDateTimeInTimeZone } from "@/lib/datetime";
-import { formatSubmissionIdPrefix } from "@/lib/submissions/id";
+import { formatSubmissionIdPrefix } from "@/lib/submissions/format";
 import type { SubmissionStatus } from "@/types";
 import { ScoreOverrideDialog, type ScoreOverrideLabels } from "./score-override-dialog";
 

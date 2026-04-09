@@ -1,10 +1,11 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
-const { rawQueryAllMock, computeSimilarityRustMock, dbDeleteMock, dbInsertMock } = vi.hoisted(() => ({
+const { rawQueryAllMock, computeSimilarityRustMock, dbDeleteMock, dbInsertMock, dbTransactionMock } = vi.hoisted(() => ({
   rawQueryAllMock: vi.fn(),
   computeSimilarityRustMock: vi.fn(),
   dbDeleteMock: vi.fn(),
   dbInsertMock: vi.fn(),
+  dbTransactionMock: vi.fn(),
 }));
 
 vi.mock("@/lib/db/queries", () => ({
@@ -19,6 +20,7 @@ vi.mock("@/lib/db", () => ({
   db: {
     delete: dbDeleteMock,
     insert: dbInsertMock,
+    transaction: dbTransactionMock,
   },
 }));
 
@@ -31,6 +33,12 @@ describe("code similarity status reporting", () => {
     vi.clearAllMocks();
     dbDeleteMock.mockReturnValue({ where: vi.fn(async () => undefined) });
     dbInsertMock.mockReturnValue({ values: vi.fn(async () => undefined) });
+    dbTransactionMock.mockImplementation(async (callback: (tx: { delete: typeof dbDeleteMock; insert: typeof dbInsertMock }) => Promise<unknown>) =>
+      callback({
+        delete: dbDeleteMock,
+        insert: dbInsertMock,
+      })
+    );
   });
 
   it("returns not_run when there are no submissions", async () => {

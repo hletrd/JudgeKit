@@ -3,7 +3,7 @@ import { handlers } from "@/lib/auth";
 import { validateTrustedAuthHost } from "@/lib/auth/trusted-host";
 
 export async function GET(request: NextRequest) {
-  const hostValidationResult = validateTrustedAuthHost(request);
+  const hostValidationResult = await validateTrustedAuthHost(request);
 
   if (hostValidationResult) {
     return hostValidationResult;
@@ -13,7 +13,7 @@ export async function GET(request: NextRequest) {
 }
 
 export async function POST(request: NextRequest) {
-  const hostValidationResult = validateTrustedAuthHost(request);
+  const hostValidationResult = await validateTrustedAuthHost(request);
 
   if (hostValidationResult) {
     return hostValidationResult;

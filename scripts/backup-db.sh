@@ -10,7 +10,7 @@ if [ "$DB_DIALECT" = "postgresql" ]; then
   BACKUP_PATH="${1:-data/backups/judge-$(date +%Y%m%d-%H%M%S).sql.gz}"
 
   mkdir -p "$(dirname "$BACKUP_PATH")"
-  pg_dump "$DATABASE_URL" | gzip > "$BACKUP_PATH"
+  timeout 300s pg_dump "$DATABASE_URL" | gzip > "$BACKUP_PATH"
   echo "Created PostgreSQL backup: $BACKUP_PATH"
 
   # Verify the backup is a valid gzip
@@ -63,8 +63,13 @@ BACKUP_DIR="$(dirname "$BACKUP_PATH")"
 if [ -d "$BACKUP_DIR" ]; then
     find "$BACKUP_DIR" -maxdepth 1 \( -name "judge-*.db" -o -name "judge-*.db.age" -o -name "judge-*.sql.gz" -o -name "judge-*.sql.gz.age" \) | while read -r f; do
         if [ "$(find "$f" -mtime +30 2>/dev/null)" ]; then
-            rm -f "$f"
-            echo "Removed old backup: $f"
+            NEWER_COUNT=$(find "$BACKUP_DIR" -maxdepth 1 \( -name "judge-*.db" -o -name "judge-*.sql.gz" \) -mtime -30 2>/dev/null | wc -l)
+            if [ "$NEWER_COUNT" -gt 0 ]; then
+                rm -f "$f"
+                echo "Removed old backup: $f"
+            else
+                echo "WARNING: Skipping deletion of $f -- no newer backups exist" >&2
+            fi
         fi
     done
 fi

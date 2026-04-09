@@ -6,7 +6,7 @@ import { assignments } from "@/lib/db/schema";
 import { recordAuditEvent } from "@/lib/audit/events";
 import {
   createAssignmentWithProblems,
-  canManageGroupResources,
+  canManageGroupResourcesAsync,
   getManageableProblemsForGroup,
 } from "@/lib/assignments/management";
 import { assignmentMutationSchema } from "@/lib/validators/assignments";
@@ -77,10 +77,11 @@ export async function POST(
 
     if (!group) return notFound("Group");
 
-    const canManage = canManageGroupResources(
+    const canManage = await canManageGroupResourcesAsync(
       group.instructorId,
       user.id,
-      user.role
+      user.role,
+      id
     );
 
     if (!canManage) return forbidden();

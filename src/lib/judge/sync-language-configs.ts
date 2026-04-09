@@ -4,8 +4,6 @@ import { eq } from "drizzle-orm";
 import { nanoid } from "nanoid";
 import { DEFAULT_JUDGE_LANGUAGES, serializeJudgeCommand } from "./languages";
 
-const RETRY_DELAY_MS = 30_000;
-const MAX_RETRIES = 3;
 
 async function doSync(): Promise<boolean> {
   const existing = await db
@@ -66,20 +64,28 @@ async function doSync(): Promise<boolean> {
 }
 
 export async function syncLanguageConfigsOnStartup() {
+  const MAX_SYNC_RETRIES = 10;
+  const MAX_BACKOFF_MS = 30_000;
+  let retryCount = 0;
+
   try {
     await doSync();
   } catch {
-    // Table may not exist yet (pre-migration). Schedule retries.
-    let retries = 0;
+    // Table may not exist yet (pre-migration). Schedule retries with exponential backoff.
     const retry = () => {
       setTimeout(async () => {
-        retries++;
+        retryCount++;
+        if (retryCount >= MAX_SYNC_RETRIES) {
+          console.error("[sync] Max retries exceeded, giving up");
+          return;
+        }
         try {
           await doSync();
         } catch {
-          if (retries < MAX_RETRIES) retry();
+          const delay = Math.min(1000 * Math.pow(2, retryCount), MAX_BACKOFF_MS);
+          setTimeout(retry, delay);
         }
-      }, RETRY_DELAY_MS);
+      }, Math.min(1000 * Math.pow(2, retryCount), MAX_BACKOFF_MS));
     };
     retry();
   }

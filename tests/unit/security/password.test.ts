@@ -68,6 +68,52 @@ describe("getPasswordValidationError", () => {
       getPasswordValidationError("Alice123", { username: "alice" })
     ).toBe("passwordTooSimilar");
   });
+
+  // --- H-02: Bidirectional similarity check tests ---
+
+  it("rejects password when username contains password (reverse direction)", () => {
+    expect(
+      getPasswordValidationError("mypassword123", { username: "longusernamecontainingsomething" })
+    ).toBeNull();
+    expect(
+      getPasswordValidationError("mysupersecretpassword", { username: "secret" })
+    ).toBe("passwordTooSimilar");
+  });
+
+  it("rejects password when email local part contains password (reverse direction)", () => {
+    expect(
+      getPasswordValidationError("mypassword123", { email: "user@example.com" })
+    ).toBeNull();
+    expect(
+      getPasswordValidationError("mysupersecretpassword", { email: "secret@example.com" })
+    ).toBe("passwordTooSimilar");
+  });
+
+  it("does NOT trigger similarity check for short username (< 4 chars)", () => {
+    expect(
+      getPasswordValidationError("abc12345", { username: "bob" })
+    ).toBeNull();
+    expect(
+      getPasswordValidationError("xyz78901", { username: "sam" })
+    ).toBeNull();
+    // Short username should NOT fail even if password contains it
+    expect(
+      getPasswordValidationError("bobpass123", { username: "bob" })
+    ).toBeNull();
+  });
+
+  it("does NOT trigger similarity check for short email local part (< 4 chars)", () => {
+    expect(
+      getPasswordValidationError("abc12345", { email: "bob@example.com" })
+    ).toBeNull();
+    expect(
+      getPasswordValidationError("xyz78901", { email: "sam@company.org" })
+    ).toBeNull();
+    // Short email local part should NOT fail even if password contains it
+    expect(
+      getPasswordValidationError("bobpass123", { email: "bob@example.com" })
+    ).toBeNull();
+  });
 });
 
 describe("isStrongPassword", () => {

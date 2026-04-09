@@ -49,7 +49,7 @@ import {
   DialogFooter,
 } from "@/components/ui/dialog";
 import { toast } from "sonner";
-import { Plus, Copy, Trash2, Check, Eye } from "lucide-react";
+import { Plus, Copy, Trash2, Check } from "lucide-react";
 
 interface ApiKey {
   id: string;
@@ -82,11 +82,6 @@ export function ApiKeysClient() {
   const [loading, setLoading] = useState(true);
   const [createdKey, setCreatedKey] = useState<CreatedKey | null>(null);
   const [createdKeyCopied, setCreatedKeyCopied] = useState(false);
-
-  // View key dialog state
-  const [viewingKey, setViewingKey] = useState<{ name: string; key: string } | null>(null);
-  const [viewKeyCopied, setViewKeyCopied] = useState(false);
-  const [viewKeyLoading, setViewKeyLoading] = useState<string | null>(null);
 
   // Create dialog state
   const [createOpen, setCreateOpen] = useState(false);
@@ -167,36 +162,6 @@ export function ApiKeysClient() {
     setCreatedKeyCopied(true);
     toast.success(t("copied"));
     setTimeout(() => setCreatedKeyCopied(false), 2000);
-  }
-
-  async function handleViewKey(key: ApiKey) {
-    if (!key.hasEncryptedKey) {
-      toast.error(t("noEncryptedKey"));
-      return;
-    }
-    setViewKeyLoading(key.id);
-    try {
-      const res = await fetch(`/api/v1/admin/api-keys/${key.id}`, {
-        headers: { "X-Requested-With": "XMLHttpRequest" },
-      });
-      if (res.ok) {
-        const json = await res.json();
-        setViewingKey({ name: key.name, key: json.data.key });
-        setViewKeyCopied(false);
-      } else {
-        toast.error(t("viewKeyFailed"));
-      }
-    } finally {
-      setViewKeyLoading(null);
-    }
-  }
-
-  async function copyViewedKey() {
-    if (!viewingKey) return;
-    await navigator.clipboard.writeText(viewingKey.key);
-    setViewKeyCopied(true);
-    toast.success(t("copied"));
-    setTimeout(() => setViewKeyCopied(false), 2000);
   }
 
   async function handleToggle(key: ApiKey) {
@@ -292,40 +257,6 @@ export function ApiKeysClient() {
                   setCreatedKeyCopied(false);
                 }}
               >
-                {t("done")}
-              </Button>
-            </DialogFooter>
-          </DialogContent>
-        </Dialog>
-        <Dialog
-          open={viewingKey !== null}
-          onOpenChange={(open) => {
-            if (!open) {
-              setViewingKey(null);
-              setViewKeyCopied(false);
-            }
-          }}
-        >
-          <DialogContent>
-            <DialogHeader>
-              <DialogTitle>{t("viewKeyTitle")}</DialogTitle>
-              <DialogDescription>{t("viewKeyDescription", { name: viewingKey?.name ?? "" })}</DialogDescription>
-            </DialogHeader>
-            <div className="space-y-3 py-2">
-              <div className="rounded-md border bg-muted/40 p-3">
-                <code className="block break-all text-sm">{viewingKey?.key ?? ""}</code>
-              </div>
-            </div>
-            <DialogFooter>
-              <Button variant="outline" onClick={copyViewedKey}>
-                {viewKeyCopied ? (
-                  <Check className="mr-2 h-4 w-4" />
-                ) : (
-                  <Copy className="mr-2 h-4 w-4" />
-                )}
-                {t("copyKey")}
-              </Button>
-              <Button onClick={() => { setViewingKey(null); setViewKeyCopied(false); }}>
                 {t("done")}
               </Button>
             </DialogFooter>
@@ -437,15 +368,6 @@ export function ApiKeysClient() {
                       </TableCell>
                       <TableCell>
                         <div className="flex items-center gap-2">
-                          <Button
-                            variant="outline"
-                            size="sm"
-                            onClick={() => handleViewKey(key)}
-                            disabled={!key.hasEncryptedKey || viewKeyLoading === key.id}
-                            title={key.hasEncryptedKey ? t("viewKey") : t("noEncryptedKey")}
-                          >
-                            <Eye className="h-4 w-4" />
-                          </Button>
                           <Button
                             variant="outline"
                             size="sm"

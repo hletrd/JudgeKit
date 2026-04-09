@@ -4,7 +4,7 @@ import { eq } from "drizzle-orm";
 import { db } from "@/lib/db";
 import { assignments } from "@/lib/db/schema";
 import { getExamSessionsForAssignment } from "@/lib/assignments/exam-sessions";
-import { canManageGroupResources } from "@/lib/assignments/management";
+import { canManageGroupResourcesAsync } from "@/lib/assignments/management";
 import { createApiHandler, forbidden, notFound } from "@/lib/api/handler";
 
 export const GET = createApiHandler({
@@ -17,10 +17,11 @@ export const GET = createApiHandler({
     });
     if (!group) return notFound("Group");
 
-    const canManage = canManageGroupResources(
+    const canManage = await canManageGroupResourcesAsync(
       group.instructorId,
       user.id,
-      user.role
+      user.role,
+      id
     );
     if (!canManage) return forbidden();
 

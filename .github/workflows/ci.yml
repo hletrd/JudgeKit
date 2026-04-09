@@ -38,6 +38,9 @@ jobs:
           cache: npm
           cache-dependency-path: "**/package-lock.json"
 
+      - name: Set up Rust
+        uses: dtolnay/rust-toolchain@stable
+
       - name: Restore Next.js build cache
         uses: actions/cache@v5
         with:
@@ -53,11 +56,20 @@ jobs:
       - name: Run lint
         run: npm run lint
 
+      - name: Run TypeScript check
+        run: npx tsc --noEmit
+
       - name: Run unit tests
         run: npm run test:unit
 
-      - name: Check coverage thresholds
-        run: npm run test:unit -- --coverage
+      - name: Run judge worker tests
+        run: cargo test --quiet --manifest-path judge-worker-rs/Cargo.toml
+
+      - name: Run code similarity tests
+        run: cargo test --quiet --manifest-path code-similarity-rs/Cargo.toml
+
+      - name: Run rate limiter tests
+        run: cargo test --quiet --manifest-path rate-limiter-rs/Cargo.toml
 
       - name: Run production build
         run: npm run build

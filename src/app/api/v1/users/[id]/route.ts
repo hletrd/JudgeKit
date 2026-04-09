@@ -1,7 +1,7 @@
 import { NextRequest } from "next/server";
 import { z } from "zod";
 import { apiSuccess, apiError } from "@/lib/api/responses";
-import { db } from "@/lib/db";
+import { db, execTransaction } from "@/lib/db";
 import { users } from "@/lib/db/schema";
 import { eq } from "drizzle-orm";
 import { forbidden, notFound, isAdmin, createApiHandler } from "@/lib/api/handler";
@@ -35,6 +35,11 @@ type UserUpdates = Record<string, unknown>;
 
 function normalizeOptionalText(value: unknown) {
   return typeof value === "string" && value.trim() !== "" ? value.trim() : null;
+}
+
+function normalizeOptionalEmail(value: unknown) {
+  const normalized = normalizeOptionalText(value);
+  return normalized?.toLowerCase() ?? null;
 }
 
 function getProfileFields(body: Record<string, unknown>, isAdminActor: boolean) {
@@ -101,7 +106,7 @@ function applyBasicFieldUpdates(
   body: Record<string, unknown>,
   isAdminActor: boolean
 ) {
-  const normalizedEmail = normalizeOptionalText(body.email);
+  const normalizedEmail = normalizeOptionalEmail(body.email);
   const normalizedClassName = normalizeOptionalText(body.className);
 
   if (body.name !== undefined) updates.name = body.name;
@@ -285,14 +290,6 @@ export const PATCH = createApiHandler({
     const updates: Record<string, unknown> = {};
     const { normalizedEmail } = applyBasicFieldUpdates(updates, body, isAdminActor);
 
-    const uniqueIdentityError = await ensureUniqueIdentityFields(
-      id,
-      body.username,
-      normalizedEmail,
-      isAdminActor
-    );
-    if (uniqueIdentityError) return uniqueIdentityError;
-
     const activeStatusError = applyActiveStatusUpdate(updates, body, found, user.id, isAdminActor);
     if (activeStatusError) return activeStatusError;
 
@@ -311,7 +308,26 @@ export const PATCH = createApiHandler({
     );
     if (passwordUpdateError) return passwordUpdateError;
 
-    await db.update(users).set(withUpdatedAt(updates)).where(eq(users.id, id));
+    // Wrap uniqueness check + update in a transaction to prevent TOCTOU races
+    try {
+      await execTransaction(async (tx) => {
+        const uniqueIdentityError = await ensureUniqueIdentityFields(
+          id,
+          body.username,
+          normalizedEmail,
+          isAdminActor
+        );
+        if (uniqueIdentityError) throw uniqueIdentityError;
+
+        await tx.update(users).set(withUpdatedAt(updates)).where(eq(users.id, id));
+      });
+    } catch (err: unknown) {
+      // Re-throw API error responses from ensureUniqueIdentityFields
+      if (err && typeof err === "object" && "status" in err && "body" in err) {
+        return err as ReturnType<typeof apiError>;
+      }
+      throw err;
+    }
 
     const updated = await findSafeUserById(id);
 

@@ -37,7 +37,7 @@ services:
       - "-c"
       - "default_statistics_target=200"
     volumes:
-      - judgekit-pgdata:/var/lib/postgresql
+      - judgekit-pgdata:/var/lib/postgresql/data
     environment:
       POSTGRES_DB: judgekit
       POSTGRES_USER: judgekit

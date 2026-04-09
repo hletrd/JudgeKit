@@ -3,10 +3,9 @@ import { nanoid } from "nanoid";
 import { recordAuditEvent } from "@/lib/audit/events";
 import { db } from "@/lib/db";
 import { enrollments } from "@/lib/db/schema";
-import { canManageGroupResources } from "@/lib/assignments/management";
+import { canManageGroupResourcesAsync } from "@/lib/assignments/management";
 import { bulkEnrollmentSchema } from "@/lib/validators/groups";
 import { forbidden, notFound, createApiHandler } from "@/lib/api/handler";
-import { isUserRole } from "@/lib/security/constants";
 import { apiSuccess, apiError } from "@/lib/api/responses";
 
 export const POST = createApiHandler({
@@ -20,11 +19,11 @@ export const POST = createApiHandler({
 
     if (!group) return notFound("Group");
 
-    if (!isUserRole(user.role)) return forbidden();
-    const canManage = canManageGroupResources(
+    const canManage = await canManageGroupResourcesAsync(
       group.instructorId,
       user.id,
-      user.role
+      user.role,
+      id
     );
 
     if (!canManage) return forbidden();

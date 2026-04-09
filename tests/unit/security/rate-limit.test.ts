@@ -23,6 +23,12 @@ const dbMock = {
   insert: vi.fn(),
 };
 
+const extractClientIpMock = vi.fn((headers: Headers) => headers.get("x-forwarded-for") ?? "0.0.0.0");
+
+vi.mock("@/lib/security/ip", () => ({
+  extractClientIp: extractClientIpMock,
+}));
+
 vi.mock("nanoid", () => ({
   nanoid: vi.fn(() => "rate-limit-id"),
 }));
@@ -55,6 +61,7 @@ function readRow(predicate: Predicate) {
 beforeEach(() => {
   rows.clear();
   execTransactionMock.mockClear();
+  extractClientIpMock.mockClear();
   dbMock.select.mockImplementation(() => ({
     from: vi.fn(() => ({
       where: vi.fn((predicate: Predicate) => ({
@@ -188,5 +195,66 @@ describe("rate-limit helpers", () => {
     // Clear the stale entry manually to verify clearRateLimit works
     await clearRateLimit("login:stale");
     expect(rows.has("login:stale")).toBe(false);
+  });
+});
+
+describe("startRateLimitEviction / stopRateLimitEviction", () => {
+  it("starts eviction interval and calling again is a no-op", async () => {
+    const setIntervalSpy = vi.spyOn(globalThis, "setInterval").mockReturnValue(123 as unknown as NodeJS.Timeout);
+    const clearIntervalSpy = vi.spyOn(globalThis, "clearInterval").mockReturnValue(undefined);
+
+    const { startRateLimitEviction, stopRateLimitEviction } = await importRateLimitModule();
+
+    startRateLimitEviction();
+    expect(setIntervalSpy).toHaveBeenCalledTimes(1);
+    expect(setIntervalSpy).toHaveBeenCalledWith(expect.any(Function), 60_000);
+
+    // Calling again should not create another interval
+    startRateLimitEviction();
+    expect(setIntervalSpy).toHaveBeenCalledTimes(1);
+
+    // Stop clears the timer
+    stopRateLimitEviction();
+    expect(clearIntervalSpy).toHaveBeenCalledWith(123);
+    expect(clearIntervalSpy).toHaveBeenCalledTimes(1);
+
+    setIntervalSpy.mockRestore();
+    clearIntervalSpy.mockRestore();
+  });
+
+  it("stopRateLimitEviction is safe when not started", async () => {
+    const clearIntervalSpy = vi.spyOn(globalThis, "clearInterval").mockReturnValue(undefined);
+
+    const { stopRateLimitEviction } = await importRateLimitModule();
+
+    // Should not throw and should not call clearInterval
+    stopRateLimitEviction();
+    expect(clearIntervalSpy).not.toHaveBeenCalled();
+
+    clearIntervalSpy.mockRestore();
+  });
+});
+
+describe("getRateLimitKey", () => {
+  it("constructs key from action and extracted IP", async () => {
+    const { getRateLimitKey } = await importRateLimitModule();
+
+    extractClientIpMock.mockReturnValue("10.0.0.1");
+
+    const headers = new Headers({ "x-forwarded-for": "10.0.0.1" });
+    const key = getRateLimitKey("login", headers);
+
+    expect(key).toBe("login:10.0.0.1");
+    expect(extractClientIpMock).toHaveBeenCalledWith(headers);
+  });
+});
+
+describe("getUsernameRateLimitKey", () => {
+  it("constructs key from action and lowercased username", async () => {
+    const { getUsernameRateLimitKey } = await importRateLimitModule();
+
+    expect(getUsernameRateLimitKey("login", "Alice")).toBe("login:user:alice");
+    expect(getUsernameRateLimitKey("login", "BOB")).toBe("login:user:bob");
+    expect(getUsernameRateLimitKey("login", "charlie")).toBe("login:user:charlie");
   });
 });

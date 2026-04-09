@@ -311,8 +311,8 @@ export async function redeemRecruitingToken(
         alreadyRedeemed: false,
       };
     });
-  } catch (err: any) {
-    if (err.message === "alreadyRedeemed") {
+  } catch (err: unknown) {
+    if (err instanceof Error && err.message === "alreadyRedeemed") {
       return { ok: false, error: "alreadyRedeemed" };
     }
     throw err;

@@ -14,7 +14,6 @@ import {
 } from "@/lib/assignments/submissions";
 import { formatRelativeTimeFromNow } from "@/lib/datetime";
 import { ProblemDescription } from "@/components/problem-description";
-import { getTrustedLegacySeededDescription } from "@/lib/problems/legacy-seeded";
 import { getResolvedSystemSettings } from "@/lib/system-settings";
 import { CountdownTimer } from "@/components/exam/countdown-timer";
 import { ProblemSubmissionForm } from "./problem-submission-form";
@@ -37,7 +36,7 @@ export async function generateMetadata({ params }: { params: Promise<{ id: strin
     columns: { title: true, description: true, visibility: true },
   });
   if (!problem) return { title: "Problem" };
-  if (problem.visibility !== "public") return { title: problem.title };
+  if (problem.visibility !== "public") return { title: "Problem" };
 
   const { stripMarkdownForMeta } = await import("@/lib/utils");
   const desc = stripMarkdownForMeta(problem.description ?? "").slice(0, 160);
@@ -207,13 +206,6 @@ export default async function ProblemDetailPage({
     }));
   }
 
-  const legacyHtmlDescription = getTrustedLegacySeededDescription({
-    title: problem.title,
-    description: problem.description,
-    authorUsername: problem.author?.username,
-    authorEmail: problem.author?.email,
-  });
-
   const problemPanel = (
     <div className="space-y-5">
       <div>
@@ -243,7 +235,7 @@ export default async function ProblemDetailPage({
                 <Link href={`/dashboard/problems/${problem.id}/edit`}>
                   <Button variant="outline" size="sm">{tCommon("edit")}</Button>
                 </Link>
-                <ProblemDeleteButton problemId={problem.id} problemTitle={problem.title} />
+                <ProblemDeleteButton problemId={problem.id} problemTitle={problem.title} isAdmin={session.user.role === "admin" || session.user.role === "super_admin"} />
               </>
             )}
           </div>
@@ -286,7 +278,6 @@ export default async function ProblemDetailPage({
             <ProblemDescription
               className="text-sm sm:text-base"
               description={problem.description}
-              legacyHtmlDescription={legacyHtmlDescription}
             />
           ) : (
             <p>{t("noDescription")}</p>

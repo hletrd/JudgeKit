@@ -1,6 +1,6 @@
 import { NextRequest } from "next/server";
 import { apiSuccess, apiError } from "@/lib/api/responses";
-import { db } from "@/lib/db";
+import { db, execTransaction } from "@/lib/db";
 import { roles, users } from "@/lib/db/schema";
 import { eq, sql } from "drizzle-orm";
 import { forbidden } from "@/lib/api/auth";
@@ -126,17 +126,26 @@ export const DELETE = createApiHandler({
       return apiError("cannotDeleteBuiltinRole", 403);
     }
 
-    // Cannot delete role with assigned users
-    const [countRow] = await db
-      .select({ count: sql<number>`count(*)` })
-      .from(users)
-      .where(eq(users.role, role.name));
+    // Cannot delete role with assigned users - wrap check + delete in transaction
+    try {
+      await execTransaction(async (tx) => {
+        const [countRow] = await tx
+          .select({ count: sql<number>`count(*)` })
+          .from(users)
+          .where(eq(users.role, role.name));
 
-    if ((countRow?.count ?? 0) > 0) {
-      return apiError("roleHasUsers", 409);
+        if ((countRow?.count ?? 0) > 0) {
+          throw new Error("roleHasUsers");
+        }
+
+        await tx.delete(roles).where(eq(roles.id, id));
+      });
+    } catch (err: unknown) {
+      if (err instanceof Error && err.message === "roleHasUsers") {
+        return apiError("roleHasUsers", 409);
+      }
+      throw err;
     }
-
-    await db.delete(roles).where(eq(roles.id, id));
 
     invalidateRoleCache();
 

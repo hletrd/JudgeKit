@@ -2,7 +2,7 @@
 
 ## Project Overview
 
-JudgeKit is a secure online judge platform for programming assignments. Next.js 16 frontend + API, Rust judge worker, Docker-sandboxed execution, PostgreSQL database (SQLite and MySQL also supported).
+JudgeKit is a secure online judge platform for programming assignments. Next.js 16 frontend + API, Rust judge worker, Docker-sandboxed execution, PostgreSQL database runtime.
 
 ## Key Directories
 
@@ -15,9 +15,9 @@ JudgeKit is a secure online judge platform for programming assignments. Next.js 
 | `tests/` | Playwright E2E tests, Vitest unit/integration tests |
 | `data/` | Local database files (gitignored) |
 
-## Supported Languages (114)
+## Supported Languages
 
-JudgeKit supports 114 language variants across 95 Docker images:
+JudgeKit currently defines 120 language variants. Treat `src/lib/judge/languages.ts` and `docs/languages.md` as the source of truth when the static table below drifts.
 
 | # | Language ID | Description | Docker Image |
 |---|-------------|-------------|--------------|
@@ -250,9 +250,9 @@ JudgeKit supports full contest management with two scoring models and two schedu
 ## Architecture
 
 ### Database
-- **PostgreSQL 18** (production default); SQLite and MySQL also supported via `DB_DIALECT` env var
-- **ORM**: Drizzle ORM with per-dialect schemas: `schema.ts` (SQLite), `schema.pg.ts` (PostgreSQL), `schema.mysql.ts` (MySQL)
-- **Migrations**: Drizzle-generated SQL files in `drizzle/` (SQLite), `drizzle/pg/` (PostgreSQL), `drizzle/mysql/` (MySQL)
+- **PostgreSQL 18** runtime
+- **ORM**: Drizzle ORM with PostgreSQL runtime schema (`schema.pg.ts`); legacy SQLite/MySQL schema artifacts remain in-repo for migration/test context
+- **Migrations**: PostgreSQL runtime migrations under `drizzle/pg/`; older SQLite/MySQL migration artifacts remain in-repo for migration/test context
 - **Sync**: `npm run languages:sync` syncs language definitions from TypeScript config to the `language_configs` table
 
 ### Security Sandbox

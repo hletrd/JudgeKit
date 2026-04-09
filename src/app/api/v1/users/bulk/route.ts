@@ -1,15 +1,12 @@
 import { NextRequest, NextResponse } from "next/server";
 import { apiError } from "@/lib/api/responses";
-import { db, execTransaction } from "@/lib/db";
+import { execTransaction } from "@/lib/db";
 import { users } from "@/lib/db/schema";
-import { inArray } from "drizzle-orm";
 import { forbidden, isAdmin, isInstructor, createApiHandler } from "@/lib/api/handler";
 import { recordAuditEvent } from "@/lib/audit/events";
 import { nanoid } from "nanoid";
-import { hashPassword } from "@/lib/security/password-hash";
-import { generateSecurePassword } from "@/lib/auth/generated-password";
 import { bulkUserCreateSchema } from "@/lib/validators/bulk-users";
-import { validateRoleChange } from "@/lib/users/core";
+import { validateAndHashPassword, validateRoleChange } from "@/lib/users/core";
 import pLimit from "p-limit";
 
 export const POST = createApiHandler({
@@ -61,31 +58,9 @@ export const POST = createApiHandler({
       return apiError("duplicateEmailsInRequest", 400);
     }
 
-    // Check existing usernames in DB (case-insensitive, scoped to request usernames only)
-    const existingUsers = await db.query.users.findMany({
-      where: inArray(users.username, [...uniqueRequestUsernames]),
-      columns: { username: true },
-    });
-    const existingUsernameSet = new Set(existingUsers.map((u) => u.username.toLowerCase()));
-
-    // Check existing emails in DB
-    let existingEmailSet = new Set<string>();
-    if (uniqueRequestEmails.size > 0) {
-      const existingByEmail = await db.query.users.findMany({
-        where: inArray(users.email, [...uniqueRequestEmails]),
-        columns: { email: true },
-      });
-      existingEmailSet = new Set(
-        existingByEmail.map((u) => u.email?.toLowerCase()).filter((e): e is string => !!e)
-      );
-    }
-
-    type CreatedEntry = { username: string; name: string; generatedPassword: string };
+    type CreatedEntry = { username: string; name: string };
     type FailedEntry = { username: string; reason: string };
-
-    const created: CreatedEntry[] = [];
-    const failed: FailedEntry[] = [];
-    const toInsert: Array<{
+    type PreparedSuccessEntry = {
       id: string;
       username: string;
       name: string;
@@ -93,55 +68,62 @@ export const POST = createApiHandler({
       className: string | null;
       passwordHash: string;
       role: "student" | "instructor";
-      generatedPassword: string;
-    }> = [];
+    };
+    type PreparedFailureEntry = {
+      username: string;
+      failedReason: string;
+    };
 
-    // Prepare all inserts in parallel, collecting failures for duplicates
-    const filteredItems = userList.filter((item) => {
-      if (existingUsernameSet.has(item.username.toLowerCase())) {
-        failed.push({ username: item.username, reason: "usernameInUse" });
-        return false;
-      }
-      const email = item.email?.trim().toLowerCase();
-      if (email && existingEmailSet.has(email)) {
-        failed.push({ username: item.username, reason: "emailInUse" });
-        return false;
-      }
-      return true;
-    });
+    const created: CreatedEntry[] = [];
+    const failed: FailedEntry[] = [];
 
+    // Prepare all password hashes in parallel
     const hashLimit = pLimit(4);
-
-    const preparedEntries = await Promise.all(
-      filteredItems.map((item) =>
+    const preparedEntries: Array<PreparedSuccessEntry | PreparedFailureEntry> = await Promise.all(
+      userList.map((item) =>
         hashLimit(async () => {
-        const generatedPassword = generateSecurePassword();
-        const passwordHash = await hashPassword(generatedPassword);
-        const id = nanoid();
-        const normalizedEmail = item.email && item.email.trim() !== "" ? item.email.trim() : null;
-        const normalizedClassName =
-          item.className && item.className.trim() !== "" ? item.className.trim() : null;
+          const passwordResult = await validateAndHashPassword(item.password, {
+            username: item.username,
+            email: item.email?.trim() || null,
+          });
+          if ("error" in passwordResult) {
+            return {
+              username: item.username.toLowerCase(),
+              failedReason: passwordResult.error ?? "createUserFailed",
+            };
+          }
 
-        return {
-          id,
-          username: item.username.toLowerCase(),
-          name: item.name,
-          email: normalizedEmail,
-          className: normalizedClassName,
-          passwordHash,
-          role: item.role ?? ("student" as const),
-          generatedPassword,
-        };
+          const id = nanoid();
+          const normalizedEmail = item.email && item.email.trim() !== "" ? item.email.trim().toLowerCase() : null;
+          const normalizedClassName =
+            item.className && item.className.trim() !== "" ? item.className.trim() : null;
+
+          return {
+            id,
+            username: item.username.toLowerCase(),
+            name: item.name,
+            email: normalizedEmail,
+            className: normalizedClassName,
+            passwordHash: passwordResult.hash,
+            role: item.role ?? ("student" as const),
+          };
         })
       )
     );
 
-    toInsert.push(...preparedEntries);
+    const validEntries = preparedEntries.filter(
+      (entry): entry is PreparedSuccessEntry => !("failedReason" in entry)
+    );
+    for (const entry of preparedEntries) {
+      if ("failedReason" in entry) {
+        failed.push({ username: entry.username, reason: entry.failedReason });
+      }
+    }
 
-    // Insert all valid users in a single transaction
-    if (toInsert.length > 0) {
-      await execTransaction(async (tx) => {
-        for (const entry of toInsert) {
+    // Insert all users in a single transaction, handling unique constraint violations
+    await execTransaction(async (tx) => {
+      for (const entry of validEntries) {
+        try {
           await tx.insert(users).values({
             id: entry.id,
             username: entry.username,
@@ -155,17 +137,27 @@ export const POST = createApiHandler({
             createdAt: new Date(),
             updatedAt: new Date(),
           });
+          created.push({
+            username: entry.username,
+            name: entry.name,
+          });
+        } catch (err: unknown) {
+          // PostgreSQL unique constraint violation
+          const pgErr = err as { code?: string; constraint?: string };
+          if (pgErr.code === "23505") {
+            if (pgErr.constraint?.includes("username")) {
+              failed.push({ username: entry.username, reason: "usernameInUse" });
+            } else if (pgErr.constraint?.includes("email")) {
+              failed.push({ username: entry.username, reason: "emailInUse" });
+            } else {
+              failed.push({ username: entry.username, reason: "createUserFailed" });
+            }
+          } else {
+            throw err;
+          }
         }
-      });
-
-      for (const entry of toInsert) {
-        created.push({
-          username: entry.username,
-          name: entry.name,
-          generatedPassword: entry.generatedPassword,
-        });
       }
-    }
+    });
 
     // Record audit event for the bulk operation
     recordAuditEvent({

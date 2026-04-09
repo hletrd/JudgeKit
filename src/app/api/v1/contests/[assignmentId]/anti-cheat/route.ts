@@ -132,7 +132,7 @@ export const GET = createApiHandler({
     const searchParams = req.nextUrl.searchParams;
     const userIdFilter = searchParams.get("userId");
     const eventTypeFilter = searchParams.get("eventType");
-    const limit = Math.min(Number(searchParams.get("limit") ?? 100), 500);
+    const limit = Math.max(1, Math.min(Number(searchParams.get("limit") ?? 100), 500));
     const offset = Number(searchParams.get("offset") ?? 0);
 
     // Build filters using Drizzle

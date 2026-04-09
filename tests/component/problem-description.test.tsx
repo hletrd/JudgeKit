@@ -10,15 +10,9 @@ vi.mock("@/components/code/copy-code-button", () => ({
   ),
 }));
 
-const mockSanitizeHtml = vi.fn((html: string) => `sanitized:${html}`);
-vi.mock("@/lib/security/sanitize-html", () => ({
-  sanitizeHtml: (html: string) => mockSanitizeHtml(html),
-}));
-
 describe("ProblemDescription", () => {
   beforeEach(() => {
     vi.clearAllMocks();
-    mockSanitizeHtml.mockImplementation((html: string) => `sanitized:${html}`);
   });
 
   it("renders markdown content", () => {
@@ -50,58 +44,23 @@ describe("ProblemDescription", () => {
     );
   });
 
-  it("uses sanitized HTML path when legacyHtmlDescription matches trimmed description", () => {
+  it("renders HTML content safely through ReactMarkdown", () => {
     const html = "<p>Hello world</p>";
-    const { container } = render(
-      <ProblemDescription description={html} legacyHtmlDescription={html} />
-    );
+    render(<ProblemDescription description={html} />);
 
-    expect(screen.queryByTestId("copy-code-button")).not.toBeInTheDocument();
-    expect(container.firstChild).toHaveAttribute(
-      "class",
-      expect.stringContaining("problem-description")
-    );
+    expect(screen.getByText("Hello world")).toBeInTheDocument();
+    expect(screen.getByText("Hello world").tagName).toBe("P");
   });
 
-  it("calls sanitizeHtml for legacy HTML content", () => {
-    const html = "<p>Legacy content</p>";
-
-    render(<ProblemDescription description={html} legacyHtmlDescription={html} />);
-
-    expect(mockSanitizeHtml).toHaveBeenCalledWith(html);
-  });
-
-  it("uses ReactMarkdown when legacyHtmlDescription does not match description", () => {
-    render(
-      <ProblemDescription
-        description="# Markdown Title"
-        legacyHtmlDescription="<h1>HTML Title</h1>"
-      />
-    );
+  it("renders markdown headings", () => {
+    render(<ProblemDescription description="# Markdown Title" />);
 
     expect(screen.getByText("Markdown Title", { selector: "h1" })).toBeInTheDocument();
   });
 
-  it("uses ReactMarkdown when legacyHtmlDescription is null", () => {
-    render(<ProblemDescription description="Some markdown" legacyHtmlDescription={null} />);
-
-    expect(screen.getByText("Some markdown")).toBeInTheDocument();
-  });
-
-  it("uses ReactMarkdown when legacyHtmlDescription is undefined", () => {
-    render(<ProblemDescription description="Some markdown" />);
-
-    expect(screen.getByText("Some markdown")).toBeInTheDocument();
-  });
-
-  it("applies className to container in legacy HTML mode", () => {
-    const html = "<p>Legacy</p>";
+  it("applies className to container", () => {
     const { container } = render(
-      <ProblemDescription
-        description={html}
-        legacyHtmlDescription={html}
-        className="extra-class"
-      />
+      <ProblemDescription description="Some markdown" className="extra-class" />
     );
 
     const wrapper = container.firstChild as HTMLElement;

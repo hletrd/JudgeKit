@@ -49,7 +49,7 @@ type UserManagementErrorKey =
   | "instructorOwnsGroups";
 
 type UserManagementResult =
-  | { success: true; generatedPassword?: string }
+  | { success: true }
   | { success: false; error: UserManagementErrorKey };
 
 type ManagedUserInput = {
@@ -224,7 +224,7 @@ export async function editUser(userId: string, data: ManagedUserInput): Promise<
       return { success: false, error: "unauthorized" };
     }
     const actorRole = session.user.role;
-    const normalizedEmail = data.email?.trim() || null;
+    const normalizedEmail = data.email?.trim().toLowerCase() || null;
     const normalizedClassName = data.className?.trim() || null;
     const requestedRole = data.role.trim();
 
@@ -345,7 +345,7 @@ export async function createUser(data: ManagedUserInput): Promise<UserManagement
       return { success: false, error: "unauthorized" };
     }
     const actorRole = session.user.role;
-    const normalizedEmail = data.email?.trim() || null;
+    const normalizedEmail = data.email?.trim().toLowerCase() || null;
     const normalizedClassName = data.className?.trim() || null;
     const requestedRole = data.role.trim();
 
@@ -370,7 +370,6 @@ export async function createUser(data: ManagedUserInput): Promise<UserManagement
 
     const id = nanoid();
     let passwordHash: string;
-    let generatedPassword: string | undefined;
     if (data.password) {
       const result = await validateAndHashPassword(data.password, {
         username: data.username,
@@ -379,8 +378,7 @@ export async function createUser(data: ManagedUserInput): Promise<UserManagement
       if (result.error) return { success: false, error: result.error };
       passwordHash = result.hash!;
     } else {
-      generatedPassword = generateSecurePassword();
-      passwordHash = await hashPassword(generatedPassword);
+      passwordHash = await hashPassword(generateSecurePassword());
     }
 
     await db.insert(users).values({
@@ -413,14 +411,7 @@ export async function createUser(data: ManagedUserInput): Promise<UserManagement
       context: auditContext,
     });
 
-    // Security note: Generated passwords are returned in the response body for admin UX.
-    // The bulk API endpoint sets Cache-Control: no-store. Server action responses are not
-    // cacheable by HTTP intermediaries. Accepted risk — admin needs the password to share
-    // with the user. Consider CSV-only download as a future improvement.
-    return {
-      success: true,
-      generatedPassword: data.password ? undefined : generatedPassword,
-    };
+    return { success: true };
   } catch (error) {
     logger.error({ err: error }, "Failed to create user");
     return { success: false, error: "createUserFailed" };

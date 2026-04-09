@@ -4,7 +4,7 @@ JudgeKit supports N concurrent judge workers connecting to a single app server. 
 
 ## Architecture
 
-Workers access the app via HTTP(S) only. The database (PostgreSQL in production, SQLite for development) handles concurrent access. The atomic `UPDATE...RETURNING` claim SQL prevents race conditions — only one worker can claim a given submission.
+Workers access the app via HTTP(S) only. The PostgreSQL runtime handles concurrent access. The atomic `UPDATE...RETURNING` claim SQL prevents race conditions — only one worker can claim a given submission.
 
 <p align="center">
   <img src="./judge-workers-architecture.svg" alt="Judge Workers Architecture" width="720" />
@@ -66,10 +66,10 @@ Workers poll `/api/v1/judge/claim` to claim submissions. The claim request inclu
 
 ### Single-machine (co-located)
 
-The default `docker-compose.production.yml` includes both app and worker:
+Include the local judge worker profile when using `docker-compose.production.yml`:
 
 ```bash
-docker compose -f docker-compose.production.yml --env-file .env.production up -d
+docker compose -f docker-compose.production.yml --profile worker --env-file .env.production up -d
 ```
 
 ### Dedicated workers
@@ -84,6 +84,12 @@ docker compose -f docker-compose.worker.yml up -d
 ```
 
 The dedicated worker compose file includes a local `docker-proxy` sidecar. The judge worker reaches Docker through `DOCKER_HOST=tcp://docker-proxy:2375` instead of mounting `/var/run/docker.sock` directly, which narrows direct daemon exposure.
+
+> **Important:** this horizontal scaling guidance applies to **judge workers**.
+> The main Next.js app currently keeps SSE connection tracking and anti-cheat
+> heartbeat deduplication in process-local memory, so app-server replication
+> requires additional shared-state work (or a carefully validated sticky-session
+> design) before it is safe to run multiple app instances.
 
 ### Deploy script
 

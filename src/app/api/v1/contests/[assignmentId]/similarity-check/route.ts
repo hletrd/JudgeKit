@@ -1,5 +1,5 @@
 import { NextRequest } from "next/server";
-import { eq, inArray } from "drizzle-orm";
+import { inArray } from "drizzle-orm";
 import { createApiHandler, isAdmin, isInstructor } from "@/lib/api/handler";
 import { apiSuccess, apiError } from "@/lib/api/responses";
 import { db } from "@/lib/db";
@@ -28,16 +28,14 @@ export const POST = createApiHandler({
 
     let result;
     try {
-      result = await Promise.race([
-        new Promise<Awaited<ReturnType<typeof runAndStoreSimilarityCheck>>>((resolve) => {
-          resolve(runAndStoreSimilarityCheck(assignmentId));
-        }),
-        new Promise<never>((_, reject) =>
-          setTimeout(() => reject(new Error("Similarity check timed out")), 30_000)
-        ),
-      ]);
+      const controller = new AbortController();
+      const timeoutId = setTimeout(() => controller.abort(), 30_000);
+
+      result = await runAndStoreSimilarityCheck(assignmentId, undefined, controller.signal);
+
+      clearTimeout(timeoutId);
     } catch (error) {
-      if (error instanceof Error && error.message.includes("timed out")) {
+      if (error instanceof Error && (error.name === "AbortError" || error.message.includes("timed out"))) {
         return apiSuccess({
           status: "timed_out",
           reason: "timeout",
@@ -50,8 +48,10 @@ export const POST = createApiHandler({
       throw error;
     }
 
+    const pairs = result.pairs ?? [];
+
     // Enrich pairs with usernames
-    const allUserIds = [...new Set(result.pairs.flatMap((p) => [p.userId1, p.userId2]))];
+    const allUserIds = [...new Set(pairs.flatMap((p) => [p.userId1, p.userId2]))];
     const userMap = new Map<string, string>();
     if (allUserIds.length > 0) {
       const userRows = await db
@@ -63,7 +63,7 @@ export const POST = createApiHandler({
       }
     }
 
-    const enrichedPairs = result.pairs.map((p) => ({
+    const enrichedPairs = pairs.map((p) => ({
       ...p,
       user1Name: userMap.get(p.userId1) ?? p.userId1,
       user2Name: userMap.get(p.userId2) ?? p.userId2,

@@ -11,6 +11,9 @@ const { authMock, canViewAssignmentSubmissionsMock, dbMock, resolveCapabilitiesM
       groups: {
         findFirst: vi.fn(),
       },
+      groupInstructors: {
+        findFirst: vi.fn(),
+      },
       enrollments: {
         findFirst: vi.fn(),
       },
@@ -45,6 +48,10 @@ vi.mock("@/lib/recruiting/access", () => ({
 
 import {
   assertRole,
+  assertAuth,
+  assertCapability,
+  assertGroupAccess,
+  getSession,
   canAccessGroup,
   canAccessProblem,
   canAccessSubmission,
@@ -90,6 +97,7 @@ function createSession(role: UserRole) {
 beforeEach(() => {
   vi.clearAllMocks();
   dbMock.select.mockReset();
+  dbMock.query.groupInstructors.findFirst.mockResolvedValue(null);
 
   // Default: resolveCapabilities returns capability sets matching built-in roles
   resolveCapabilitiesMock.mockImplementation(async (role: string) => {
@@ -131,6 +139,7 @@ describe("canAccessGroup", () => {
 
   it("falls back to enrollment membership for non-owners", async () => {
     dbMock.query.groups.findFirst.mockResolvedValue({ instructorId: "instructor-2" });
+    dbMock.query.groupInstructors.findFirst.mockResolvedValue(null);
     dbMock.query.enrollments.findFirst.mockResolvedValue({ id: "enrollment-1" });
 
     await expect(canAccessGroup("group-1", "user-1", "student")).resolves.toBe(true);
@@ -142,7 +151,7 @@ describe("canAccessGroup", () => {
     await expect(canAccessGroup("missing-group", "user-1", "student")).resolves.toBe(false);
   });
 
-  it("blocks recruiting candidates from accessing groups even if enrolled", async () => {
+  it("still allows recruiting candidates to access their assigned group when enrolled", async () => {
     getRecruitingAccessContextMock.mockResolvedValueOnce({
       assignmentIds: ["assignment-1"],
       problemIds: ["problem-1"],
@@ -152,8 +161,16 @@ describe("canAccessGroup", () => {
     dbMock.query.groups.findFirst.mockResolvedValue({ instructorId: "instructor-2" });
     dbMock.query.enrollments.findFirst.mockResolvedValue({ id: "enrollment-1" });
 
-    await expect(canAccessGroup("group-1", "user-1", "student")).resolves.toBe(false);
+    await expect(canAccessGroup("group-1", "user-1", "student")).resolves.toBe(true);
     expect(dbMock.query.groups.findFirst).not.toHaveBeenCalled();
+  });
+
+  it("allows co-instructors and TAs to access the group", async () => {
+    dbMock.query.groups.findFirst.mockResolvedValue({ instructorId: "instructor-2" });
+    dbMock.query.groupInstructors.findFirst.mockResolvedValue({ id: "group-role-1" });
+
+    await expect(canAccessGroup("group-1", "user-1", "instructor")).resolves.toBe(true);
+    expect(dbMock.query.enrollments.findFirst).not.toHaveBeenCalled();
   });
 });
 
@@ -316,5 +333,124 @@ describe("canAccessSubmission", () => {
         "custom_role"
       )
     ).resolves.toBe(false);
+  });
+});
+
+describe("getSession", () => {
+  it("returns session when user is authenticated", async () => {
+    authMock.mockResolvedValue(createSession("student"));
+
+    await expect(getSession()).resolves.toMatchObject({
+      user: { id: "user-1", role: "student" },
+    });
+  });
+
+  it("returns null when no session", async () => {
+    authMock.mockResolvedValue(null);
+
+    await expect(getSession()).resolves.toBeNull();
+  });
+
+  it("returns null when session has no user", async () => {
+    authMock.mockResolvedValue({ user: null });
+
+    await expect(getSession()).resolves.toBeNull();
+  });
+});
+
+describe("assertAuth", () => {
+  it("returns session when authenticated", async () => {
+    authMock.mockResolvedValue(createSession("admin"));
+
+    await expect(assertAuth()).resolves.toMatchObject({
+      user: { role: "admin" },
+    });
+  });
+
+  it("throws when not authenticated", async () => {
+    authMock.mockResolvedValue(null);
+
+    await expect(assertAuth()).rejects.toThrow("Unauthorized");
+  });
+
+  it("throws when session has no user", async () => {
+    authMock.mockResolvedValue({ user: null });
+
+    await expect(assertAuth()).rejects.toThrow("Unauthorized");
+  });
+});
+
+describe("assertCapability", () => {
+  it("returns session when capability is present", async () => {
+    authMock.mockResolvedValue(createSession("admin"));
+    resolveCapabilitiesMock.mockResolvedValueOnce(new Set(["users.view", "users.edit"]));
+
+    await expect(assertCapability("users.view")).resolves.toMatchObject({
+      user: { role: "admin" },
+    });
+  });
+
+  it("throws when capability is missing", async () => {
+    authMock.mockResolvedValue(createSession("student"));
+    resolveCapabilitiesMock.mockResolvedValueOnce(new Set(["content.submit_solutions"]));
+
+    await expect(assertCapability("users.view")).rejects.toThrow("Forbidden");
+  });
+
+  it("throws when not authenticated", async () => {
+    authMock.mockResolvedValue(null);
+
+    await expect(assertCapability("users.view")).rejects.toThrow("Unauthorized");
+  });
+});
+
+describe("assertGroupAccess", () => {
+  it("returns session when user has group access", async () => {
+    authMock.mockResolvedValue(createSession("instructor"));
+    dbMock.query.groups.findFirst.mockResolvedValue({ instructorId: "user-1" });
+
+    await expect(assertGroupAccess("group-1")).resolves.toMatchObject({
+      user: { role: "instructor" },
+    });
+  });
+
+  it("throws when user does not have group access", async () => {
+    authMock.mockResolvedValue(createSession("student"));
+    dbMock.query.groups.findFirst.mockResolvedValue({ instructorId: "other-instructor" });
+    dbMock.query.groupInstructors.findFirst.mockResolvedValue(null);
+    dbMock.query.enrollments.findFirst.mockResolvedValue(null);
+
+    await expect(assertGroupAccess("group-1")).rejects.toThrow("Forbidden");
+  });
+
+  it("throws when not authenticated", async () => {
+    authMock.mockResolvedValue(null);
+
+    await expect(assertGroupAccess("group-1")).rejects.toThrow("Unauthorized");
+  });
+});
+
+describe("getAccessibleProblemIds edge cases", () => {
+  it("returns early when all problems are public or authored (no group check needed)", async () => {
+    const accessible = await getAccessibleProblemIds("user-1", "student", [
+      { id: "public-1", visibility: "public", authorId: "author-2" },
+      { id: "authored-1", visibility: "hidden", authorId: "user-1" },
+    ]);
+
+    expect(accessible).toEqual(new Set(["public-1", "authored-1"]));
+    // No DB queries needed
+    expect(dbMock.select).not.toHaveBeenCalled();
+  });
+
+  it("returns early when user has no enrollments", async () => {
+    // First select: enrollment query returns empty
+    dbMock.select.mockReturnValueOnce(createSelectResult([]));
+
+    const accessible = await getAccessibleProblemIds("user-1", "student", [
+      { id: "private-1", visibility: "private", authorId: "author-2" },
+    ]);
+
+    expect(accessible).toEqual(new Set());
+    expect(dbMock.select).toHaveBeenCalledTimes(1);
   });
 });

@@ -11,7 +11,11 @@ import { redirect, notFound } from "next/navigation";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
-import { canManageGroupResources, getManageableProblemsForGroup } from "@/lib/assignments/management";
+import {
+  canManageGroupResourcesAsync,
+  getManageableProblemsForGroup,
+} from "@/lib/assignments/management";
+import { canAccessGroup } from "@/lib/auth/permissions";
 import { assertUserRole } from "@/lib/security/constants";
 import AssignmentFormDialog, { type AssignmentEditorValue } from "./assignment-form-dialog";
 import { AssignmentDeleteButton } from "./assignment-delete-button";
@@ -96,10 +100,14 @@ export default async function GroupDetailPage({ params }: { params: Promise<{ id
     notFound();
   }
 
-  const canManageGroup = canManageGroupResources(group.instructorId, session.user.id, role);
-  const isEnrolled = group.enrollments.some((enrollment) => enrollment.userId === session.user.id);
+  const canManageGroup = await canManageGroupResourcesAsync(
+    group.instructorId,
+    session.user.id,
+    role,
+    groupId
+  );
 
-  if (!isEnrolled && !canManageGroup) {
+  if (!(await canAccessGroup(groupId, session.user.id, role))) {
     redirect("/dashboard/groups");
   }
 

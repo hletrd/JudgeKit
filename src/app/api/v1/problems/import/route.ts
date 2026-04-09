@@ -1,6 +1,6 @@
 import { NextRequest } from "next/server";
 import { z } from "zod";
-import { apiSuccess, apiError } from "@/lib/api/responses";
+import { apiSuccess } from "@/lib/api/responses";
 import { createApiHandler, forbidden } from "@/lib/api/handler";
 import { createProblemWithTestCases } from "@/lib/problem-management";
 import { resolveCapabilities } from "@/lib/capabilities/cache";
@@ -60,7 +60,7 @@ export const POST = createApiHandler({
         floatRelativeError: problem.floatRelativeError ?? null,
         difficulty: problem.difficulty ?? null,
         tags: problem.tags,
-        testCases: problem.testCases.map((tc, i) => ({
+        testCases: problem.testCases.map((tc) => ({
           input: tc.input,
           expectedOutput: tc.expectedOutput,
           isVisible: tc.isVisible,

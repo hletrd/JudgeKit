@@ -1,7 +1,7 @@
-import { eq } from "drizzle-orm";
+import { eq, inArray } from "drizzle-orm";
 import { nanoid } from "nanoid";
 import { db, execTransaction, type TransactionClient } from "@/lib/db";
-import { problems, testCases, tags, problemTags } from "@/lib/db/schema";
+import { problems, testCases, tags, problemTags, files } from "@/lib/db/schema";
 import type { ProblemMutationInput } from "@/lib/validators/problem-management";
 import { sanitizeMarkdown } from "@/lib/security/sanitize-html";
 
@@ -14,6 +14,11 @@ function mapTestCases(problemId: string, values: ProblemMutationInput["testCases
     isVisible: testCase.isVisible,
     sortOrder: index,
   }));
+}
+
+function extractLinkedFileIds(description: string): string[] {
+  const matches = description.matchAll(/\/api\/v1\/files\/([A-Za-z0-9_-]+)/g);
+  return [...new Set(Array.from(matches, (match) => match[1]))];
 }
 
 type DatabaseExecutor = Pick<typeof db, "select" | "insert" | "update" | "delete">;
@@ -56,6 +61,24 @@ async function syncProblemTags(
   }
 }
 
+async function syncProblemFileLinks(
+  problemId: string,
+  description: string,
+  executor: DatabaseExecutor | TransactionClient = db
+) {
+  const linkedFileIds = extractLinkedFileIds(description);
+
+  await executor.update(files)
+    .set({ problemId: null })
+    .where(eq(files.problemId, problemId));
+
+  if (linkedFileIds.length === 0) return;
+
+  await executor.update(files)
+    .set({ problemId })
+    .where(inArray(files.id, linkedFileIds));
+}
+
 export async function createProblemWithTestCases(input: ProblemMutationInput, authorId: string) {
   const id = nanoid();
   const now = new Date();
@@ -94,6 +117,8 @@ export async function createProblemWithTestCases(input: ProblemMutationInput, au
       const tagIds = await resolveTagIdsWithExecutor(input.tags, authorId, tx);
       await syncProblemTags(id, tagIds, tx);
     }
+
+    await syncProblemFileLinks(id, input.description, tx);
 
   });
 
@@ -135,6 +160,8 @@ export async function updateProblemWithTestCases(problemId: string, input: Probl
 
     const tagIds = await resolveTagIdsWithExecutor(input.tags, actorId ?? "", tx);
     await syncProblemTags(problemId, tagIds, tx);
+
+    await syncProblemFileLinks(problemId, input.description, tx);
 
   });
 }

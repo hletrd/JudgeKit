@@ -210,7 +210,7 @@ async fn main() {
     let cpu_architecture = detect_architecture();
 
     // Register with the app server
-    let (worker_id, worker_secret): (Option<String>, Option<String>) =
+    let (worker_id, worker_secret, heartbeat_interval): (Option<String>, Option<String>, std::time::Duration) =
         match client.register(&worker_hostname, concurrency, cpu_model.as_deref(), cpu_architecture.as_deref()).await {
             Ok(resp) => {
                 tracing::info!(
@@ -218,14 +218,18 @@ async fn main() {
                     heartbeat_interval_ms = resp.data.heartbeat_interval_ms,
                     "Registered with app server"
                 );
-                (Some(resp.data.worker_id), resp.data.worker_secret)
+                (
+                    Some(resp.data.worker_id),
+                    resp.data.worker_secret,
+                    std::time::Duration::from_millis(resp.data.heartbeat_interval_ms.max(1_000)),
+                )
             }
             Err(e) => {
                 tracing::warn!(
                     error = %e,
                     "Failed to register with app server — running without registration"
                 );
-                (None, None)
+                (None, None, std::time::Duration::from_secs(30))
             }
         };
 
@@ -235,6 +239,7 @@ async fn main() {
         let wid = wid.clone();
         let wsecret = worker_secret.clone();
         let active_tasks = Arc::clone(&active_tasks);
+        let heartbeat_interval = heartbeat_interval;
         let heartbeat_cancel = tokio_util::sync::CancellationToken::new();
         let heartbeat_cancel_clone = heartbeat_cancel.clone();
 
@@ -246,7 +251,7 @@ async fn main() {
                         tracing::debug!("Heartbeat task cancelled");
                         break;
                     }
-                    _ = tokio::time::sleep(std::time::Duration::from_secs(30)) => {}
+                    _ = tokio::time::sleep(heartbeat_interval) => {}
                 }
 
                 let current_active = active_tasks.load(Ordering::Relaxed);
@@ -326,12 +331,17 @@ async fn main() {
     tokio::pin!(shutdown);
 
     let mut task_handles: Vec<tokio::task::JoinHandle<()>> = Vec::new();
-    let mut cleanup_counter: usize = 0;
-    const CLEANUP_INTERVAL: usize = 100;
+    let cleanup_interval = std::time::Duration::from_secs(300);
+    let mut last_cleanup_at = std::time::Instant::now();
 
     loop {
         // Reap completed tasks to avoid unbounded handle accumulation
         task_handles.retain(|h| !h.is_finished());
+
+        if last_cleanup_at.elapsed() >= cleanup_interval {
+            docker::cleanup_orphaned_containers().await;
+            last_cleanup_at = std::time::Instant::now();
+        }
 
         // Wait for a semaphore permit before polling for work.
         // This ensures we only claim jobs we can actually process.
@@ -392,13 +402,6 @@ async fn main() {
             None => {
                 // No work available — release the permit and sleep before next poll
                 drop(permit);
-
-                // Periodic cleanup of orphaned containers
-                cleanup_counter += 1;
-                if cleanup_counter >= CLEANUP_INTERVAL {
-                    docker::cleanup_orphaned_containers().await;
-                    cleanup_counter = 0;
-                }
 
                 // Sleep before next poll, but still respect shutdown
                 tokio::select! {

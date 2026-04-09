@@ -11,6 +11,7 @@ const {
   canManageRoleAsyncMock,
   isUserRoleMock,
   generateApiKeyMock,
+  encryptApiKeyMock,
 } = vi.hoisted(() => ({
   getApiUserMock: vi.fn(),
   csrfForbiddenMock: vi.fn(),
@@ -21,6 +22,7 @@ const {
   canManageRoleAsyncMock: vi.fn(),
   isUserRoleMock: vi.fn(),
   generateApiKeyMock: vi.fn(),
+  encryptApiKeyMock: vi.fn((rawKey: string) => `enc:${rawKey}`),
 }));
 
 vi.mock("@/lib/api/auth", () => ({
@@ -48,6 +50,7 @@ vi.mock("@/lib/security/constants", () => ({
 
 vi.mock("@/lib/api/api-key-auth", () => ({
   generateApiKey: generateApiKeyMock,
+  encryptApiKey: encryptApiKeyMock,
 }));
 
 function makeSelectChain(rows: unknown[]) {
@@ -70,6 +73,8 @@ vi.mock("@/lib/db", () => ({
   db: {
     select: dbSelectMock,
     insert: dbInsertMock,
+    update: vi.fn(),
+    delete: vi.fn(),
   },
 }));
 
@@ -182,5 +187,23 @@ describe("admin api keys routes", () => {
       keyPrefix: "jk_test_",
       name: "Deploy Key",
     });
+  });
+
+  it("rejects re-disclosure of an existing raw API key", async () => {
+    dbSelectMock.mockReturnValueOnce(
+      makeSelectChain([
+        { id: "key-1", name: "Deploy Key" },
+      ])
+    );
+
+    const { GET } = await import("@/app/api/v1/admin/api-keys/[id]/route");
+    const res = await GET(
+      makeRequest("http://localhost:3000/api/v1/admin/api-keys/key-1"),
+      { params: Promise.resolve({ id: "key-1" }) } as never,
+    );
+    const body = await res.json();
+
+    expect(res.status).toBe(410);
+    expect(body.error).toBe("rawKeyRevealDisabled");
   });
 });

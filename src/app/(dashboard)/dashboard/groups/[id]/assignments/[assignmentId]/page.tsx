@@ -11,7 +11,7 @@ import {
   getStudentProblemStatuses,
 } from "@/lib/assignments/submissions";
 import { canAccessGroup } from "@/lib/auth/permissions";
-import { canManageGroupResources } from "@/lib/assignments/management";
+import { canManageGroupResourcesAsync } from "@/lib/assignments/management";
 import { assertUserRole } from "@/lib/security/constants";
 import { db } from "@/lib/db";
 import { assignments } from "@/lib/db/schema";
@@ -237,6 +237,12 @@ export default async function GroupAssignmentDetailPage({
       ? getExamSessionsForAssignment(assignmentId)
       : Promise.resolve([]),
   ]);
+  const canManageOverrides = await canManageGroupResourcesAsync(
+    assignment.group?.instructorId ?? null,
+    session.user.id,
+    role,
+    groupId
+  );
 
   if (!assignmentStatus || assignmentStatus.assignment.groupId !== groupId) {
     notFound();
@@ -334,11 +340,7 @@ export default async function GroupAssignmentDetailPage({
         timeZone={timeZone}
         groupId={groupId}
         assignmentId={assignmentId}
-        canManageOverrides={canManageGroupResources(
-          assignment.group?.instructorId ?? null,
-          session.user.id,
-          role
-        )}
+        canManageOverrides={canManageOverrides}
         examMode={assignment.examMode ?? undefined}
         examSessions={examSessionsForAssignment.map((s) => ({
           userId: s.userId,

@@ -765,10 +765,7 @@ describe("createUser", () => {
       ...defaultUserInput,
       password: undefined,
     });
-    expect(result).toEqual({
-      success: true,
-      generatedPassword: "gen-password-abc",
-    });
+    expect(result).toEqual({ success: true });
     expect(mocks.dbInsertValues).toHaveBeenCalledWith(
       expect.objectContaining({
         passwordHash: "hashed-gen-password",

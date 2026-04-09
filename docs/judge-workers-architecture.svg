@@ -9,7 +9,7 @@
   <rect x="240" y="20" width="240" height="100" rx="10" fill="#f0f4ff" stroke="#4a6fa5" stroke-width="2" filter="url(#shadow)"/>
   <text x="360" y="50" text-anchor="middle" font-weight="bold" font-size="15" fill="#1a1a2e">App Server</text>
   <text x="360" y="70" text-anchor="middle" fill="#4a6fa5">(Next.js)</text>
-  <text x="360" y="88" text-anchor="middle" fill="#4a6fa5">SQLite DB</text>
+  <text x="360" y="88" text-anchor="middle" fill="#4a6fa5">PostgreSQL DB</text>
   <text x="360" y="106" text-anchor="middle" fill="#4a6fa5">Port 3000</text>
 
   <!-- Connection lines -->

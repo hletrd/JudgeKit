@@ -4,13 +4,11 @@ import rehypeHighlight from "rehype-highlight";
 import remarkBreaks from "remark-breaks";
 import remarkGfm from "remark-gfm";
 import { CopyCodeButton } from "@/components/code/copy-code-button";
-import { cn } from "@/lib/utils";
 import { sanitizeHtml } from "@/lib/security/sanitize-html";
-
+import { cn } from "@/lib/utils";
 type ProblemDescriptionProps = {
   className?: string;
   description: string;
-  legacyHtmlDescription?: string | null;
 };
 
 function getCodeBlockText(children: ReactNode): string {
@@ -32,9 +30,10 @@ function getCodeBlockText(children: ReactNode): string {
 export function ProblemDescription({
   className,
   description,
-  legacyHtmlDescription,
 }: ProblemDescriptionProps) {
-  if (legacyHtmlDescription && description.trim() === legacyHtmlDescription) {
+  const looksLikeLegacyHtml = /<(p|h[1-6]|pre|ul|ol|li|table|blockquote|img|div|br|hr)\b/i.test(description);
+
+  if (looksLikeLegacyHtml) {
     return (
       <div
         className={cn("problem-description", className)}
@@ -54,7 +53,7 @@ export function ProblemDescription({
             <a
               {...props}
               className="font-medium text-foreground underline underline-offset-4"
-              rel="noreferrer"
+              rel="noreferrer noopener"
               target="_blank"
             />
           ),

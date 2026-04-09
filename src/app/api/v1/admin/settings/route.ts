@@ -1,6 +1,6 @@
 import { NextRequest } from "next/server";
-import { createApiHandler, isAdmin } from "@/lib/api/handler";
-import { apiSuccess, apiError } from "@/lib/api/responses";
+import { createApiHandler } from "@/lib/api/handler";
+import { apiSuccess } from "@/lib/api/responses";
 import { db } from "@/lib/db";
 import { systemSettings } from "@/lib/db/schema";
 import { DEFAULT_PLATFORM_MODE, getSystemSettings, GLOBAL_SETTINGS_ID } from "@/lib/system-settings";
@@ -9,20 +9,38 @@ import { systemSettingsSchema } from "@/lib/validators/system-settings";
 import { recordAuditEvent } from "@/lib/audit/events";
 
 export const GET = createApiHandler({
+  auth: { capabilities: ["system.settings"] },
   handler: async (req: NextRequest, { user }) => {
-    if (!isAdmin(user.role)) return apiError("forbidden", 403);
-
+    void req;
+    void user;
     const settings = await getSystemSettings();
     return apiSuccess(settings ?? {});
   },
 });
 
 export const PUT = createApiHandler({
+  auth: { capabilities: ["system.settings"] },
   schema: systemSettingsSchema,
   handler: async (req: NextRequest, { user, body }) => {
-    if (!isAdmin(user.role)) return apiError("forbidden", 403);
+    const { siteTitle, siteDescription, timeZone, platformMode, aiAssistantEnabled, allowedHosts, ...restConfig } = body;
 
-    const { siteTitle, siteDescription, timeZone, platformMode, aiAssistantEnabled, allowedHosts, ...configValues } = body;
+    // Explicitly enumerate allowed numeric config keys to prevent arbitrary field injection
+    const allowedConfigKeys = [
+      "defaultLanguage",
+      "loginRateLimitMaxAttempts", "loginRateLimitWindowMs", "loginRateLimitBlockMs",
+      "apiRateLimitMax", "apiRateLimitWindowMs",
+      "submissionRateLimitMaxPerMinute", "submissionMaxPending", "submissionGlobalQueueLimit",
+      "defaultTimeLimitMs", "defaultMemoryLimitMb", "maxSourceCodeSizeBytes", "staleClaimTimeoutMs",
+      "sessionMaxAgeSeconds", "minPasswordLength",
+      "defaultPageSize",
+      "maxSseConnectionsPerUser", "ssePollIntervalMs", "sseTimeoutMs",
+      "compilerTimeLimitMs",
+      "uploadMaxImageSizeBytes", "uploadMaxFileSizeBytes", "uploadMaxImageDimension",
+    ] as const;
+
+    const filteredConfig = Object.fromEntries(
+      Object.entries(restConfig).filter(([k]) => (allowedConfigKeys as readonly string[]).includes(k))
+    );
 
     const baseValues: Record<string, unknown> = {
       siteTitle: siteTitle ?? null,
@@ -34,7 +52,7 @@ export const PUT = createApiHandler({
     };
 
     // Add numeric config values (undefined = not in payload, null = clear to default)
-    for (const [key, val] of Object.entries(configValues)) {
+    for (const [key, val] of Object.entries(filteredConfig)) {
       if (val !== undefined) {
         baseValues[key] = val;
       }

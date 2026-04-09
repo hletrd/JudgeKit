@@ -383,7 +383,7 @@ export function AntiCheatDashboard({ assignmentId }: AntiCheatDashboardProps) {
                   className={`cursor-pointer select-none ${typeFilter !== type ? (EVENT_TYPE_COLORS[type] ?? "") : ""}`}
                   onClick={() => setTypeFilter(typeFilter === type ? null : type)}
                 >
-                  {t(`eventTypes.${type}` as any) ?? type}
+                  {t(`eventTypes.${type}` as Parameters<typeof t>[0]) ?? type}
                 </Badge>
               ))}
             </div>
@@ -455,7 +455,7 @@ export function AntiCheatDashboard({ assignmentId }: AntiCheatDashboardProps) {
                           variant="secondary"
                           className={EVENT_TYPE_COLORS[event.eventType] ?? ""}
                         >
-                          {t(`eventTypes.${event.eventType}` as any) ?? event.eventType}
+                          {t(`eventTypes.${event.eventType}` as Parameters<typeof t>[0]) ?? event.eventType}
                         </Badge>
                       </TableCell>
                       <TableCell className="text-sm text-muted-foreground">

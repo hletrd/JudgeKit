@@ -5,9 +5,6 @@ export function getSessionMaxAgeSeconds() {
   return getConfiguredSettings().sessionMaxAgeSeconds;
 }
 
-/** @deprecated Use getSessionMaxAgeSeconds() — value requires restart to take effect */
-export const AUTH_SESSION_MAX_AGE_SECONDS = 14 * 24 * 60 * 60;
-
 type TokenTimeCarrier = {
   authenticatedAt?: unknown;
   iat?: unknown;

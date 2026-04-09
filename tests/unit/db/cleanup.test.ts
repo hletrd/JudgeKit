@@ -6,7 +6,6 @@ const mocks = vi.hoisted(() => {
   return {
     // db.delete chain helpers
     dbDeleteWhere: vi.fn(),
-    dbDeleteWhereReturning: vi.fn(),
 
     // lt operator spy
     lt: vi.fn((_field: unknown, value: unknown) => ({ _lt: value })),
@@ -36,6 +35,10 @@ vi.mock("@/lib/db/schema", () => ({
 
 // Track calls per table so we can assert independently
 const deleteCallOrder: string[] = [];
+const deleteReturningResults: Record<string, unknown[]> = {
+  audit: [{ id: "a1" }, { id: "a2" }, { id: "a3" }],
+  login: [{ id: "l1" }],
+};
 
 vi.mock("@/lib/db", () => ({
   db: {
@@ -45,12 +48,10 @@ vi.mock("@/lib/db", () => ({
         : "login";
       return {
         where: vi.fn((...args: unknown[]) => {
+          deleteCallOrder.push(tableName);
           mocks.dbDeleteWhere(tableName, ...args);
           return {
-            returning: vi.fn((...rArgs: unknown[]) => {
-              deleteCallOrder.push(tableName);
-              return mocks.dbDeleteWhereReturning(tableName, ...rArgs);
-            }),
+            returning: vi.fn(() => Promise.resolve(deleteReturningResults[tableName] ?? [])),
           };
         }),
       };
@@ -76,10 +77,6 @@ afterEach(() => {
 describe("cleanupOldEvents", () => {
   it("returns the count of deleted audit and login events", async () => {
     const { cleanupOldEvents } = await import("@/lib/db/cleanup");
-    mocks.dbDeleteWhereReturning.mockImplementation((table: string) => {
-      if (table === "audit") return Promise.resolve([{ id: "a1" }, { id: "a2" }, { id: "a3" }]);
-      return Promise.resolve([{ id: "l1" }]);
-    });
 
     const result = await cleanupOldEvents();
     expect(result).toEqual({ auditDeleted: 3, loginDeleted: 1 });
@@ -87,7 +84,8 @@ describe("cleanupOldEvents", () => {
 
   it("returns zero counts when no old events exist", async () => {
     const { cleanupOldEvents } = await import("@/lib/db/cleanup");
-    mocks.dbDeleteWhereReturning.mockResolvedValue([]);
+    deleteReturningResults.audit = [];
+    deleteReturningResults.login = [];
 
     const result = await cleanupOldEvents();
     expect(result).toEqual({ auditDeleted: 0, loginDeleted: 0 });
@@ -95,7 +93,8 @@ describe("cleanupOldEvents", () => {
 
   it("calls db.delete with the auditEvents table reference", async () => {
     const { cleanupOldEvents } = await import("@/lib/db/cleanup");
-    mocks.dbDeleteWhereReturning.mockResolvedValue([]);
+    deleteReturningResults.audit = [];
+    deleteReturningResults.login = [];
 
     await cleanupOldEvents();
 
@@ -106,7 +105,8 @@ describe("cleanupOldEvents", () => {
 
   it("calls db.delete with the loginEvents table reference", async () => {
     const { cleanupOldEvents } = await import("@/lib/db/cleanup");
-    mocks.dbDeleteWhereReturning.mockResolvedValue([]);
+    deleteReturningResults.audit = [];
+    deleteReturningResults.login = [];
 
     await cleanupOldEvents();
 
@@ -117,13 +117,14 @@ describe("cleanupOldEvents", () => {
 
   it("uses a cutoff based on 90-day default retention", async () => {
     const { cleanupOldEvents } = await import("@/lib/db/cleanup");
-    mocks.dbDeleteWhereReturning.mockResolvedValue([]);
+    deleteReturningResults.audit = [];
+    deleteReturningResults.login = [];
 
     const before = Date.now();
     await cleanupOldEvents();
     const after = Date.now();
 
-    // lt is called with the createdAt field and a cutoff Date
+    // lt is called for the 2 DELETE WHERE clauses
     expect(mocks.lt).toHaveBeenCalledTimes(2);
 
     const [, cutoff] = mocks.lt.mock.calls[0] as [unknown, Date];
@@ -139,9 +140,8 @@ describe("cleanupOldEvents", () => {
 
   it("deletes audit events before login events", async () => {
     const { cleanupOldEvents } = await import("@/lib/db/cleanup");
-    mocks.dbDeleteWhereReturning.mockImplementation((table: string) =>
-      Promise.resolve(table === "audit" ? [{ id: "a1" }] : [{ id: "l1" }])
-    );
+    deleteReturningResults.audit = [{ id: "a1" }];
+    deleteReturningResults.login = [{ id: "l1" }];
 
     await cleanupOldEvents();
 
@@ -150,14 +150,15 @@ describe("cleanupOldEvents", () => {
 
   it("passes the same cutoff date to both audit and login deletes", async () => {
     const { cleanupOldEvents } = await import("@/lib/db/cleanup");
-    mocks.dbDeleteWhereReturning.mockResolvedValue([]);
+    deleteReturningResults.audit = [];
+    deleteReturningResults.login = [];
 
     await cleanupOldEvents();
 
     expect(mocks.lt).toHaveBeenCalledTimes(2);
-    const [, auditCutoff] = mocks.lt.mock.calls[0] as [unknown, Date];
-    const [, loginCutoff] = mocks.lt.mock.calls[1] as [unknown, Date];
-    // Both calls use the same cutoff Date object (computed once)
-    expect(auditCutoff).toBe(loginCutoff);
+    const [, auditDeleteCutoff] = mocks.lt.mock.calls[0] as [unknown, Date];
+    const [, loginDeleteCutoff] = mocks.lt.mock.calls[1] as [unknown, Date];
+    // Both calls reuse the same cutoff Date object (computed once)
+    expect(auditDeleteCutoff).toBe(loginDeleteCutoff);
   });
 });

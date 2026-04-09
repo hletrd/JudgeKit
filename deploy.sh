@@ -22,7 +22,7 @@ die()     { printf '\033[0;31m[ERROR]\033[0m %s\n' "$*" >&2; exit 1; }
 # Load deployment env vars from .env.deploy
 [[ -f "${SCRIPT_DIR}/.env.deploy" ]] && { set -a; source "${SCRIPT_DIR}/.env.deploy"; set +a; }
 
-SSH_OPTS="-o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -o LogLevel=ERROR"
+SSH_OPTS="-o StrictHostKeyChecking=accept-new -o LogLevel=ERROR"
 
 remote() {
   if [[ -n "${SSH_PASSWORD:-}" ]]; then
@@ -45,7 +45,7 @@ if [[ ! -f "${SCRIPT_DIR}/.env.production" ]]; then
   info "Generating .env.production with fresh secrets..."
   cat > "${SCRIPT_DIR}/.env.production" <<EOF
 AUTH_SECRET=$(openssl rand -base64 32)
-AUTH_URL=http://${DOMAIN}
+AUTH_URL=https://${DOMAIN}
 AUTH_TRUST_HOST=true
 DB_DIALECT=postgresql
 DATABASE_URL=postgres://judgekit:\${POSTGRES_PASSWORD}@db:5432/judgekit
@@ -160,7 +160,7 @@ server {
         proxy_set_header Connection "upgrade";
         proxy_set_header Host $host;
         proxy_set_header X-Real-IP $remote_addr;
-        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-For $remote_addr;
         proxy_set_header X-Forwarded-Proto $scheme;
         proxy_cache_bypass $http_upgrade;
     }

@@ -45,7 +45,7 @@ export async function changePassword(
 
   const { valid: isValid } = await verifyPassword(currentPassword, user.passwordHash);
   if (!isValid) {
-    void recordRateLimitFailure(rateLimitKey);
+    await recordRateLimitFailure(rateLimitKey);
     return { success: false, error: "currentPasswordIncorrect" };
   }
 
@@ -73,7 +73,7 @@ export async function changePassword(
     return { success: false, error: "error" };
   }
 
-  void clearRateLimit(rateLimitKey);
+  await clearRateLimit(rateLimitKey);
 
   const auditContext = await buildServerActionAuditContext("/change-password");
   recordAuditEvent({

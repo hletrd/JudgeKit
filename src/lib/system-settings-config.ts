@@ -90,7 +90,7 @@ function resolveValue(
     const envVal = process.env[envKey];
     if (envVal !== undefined && envVal !== "") {
       const parsed = parseInt(envVal, 10);
-      if (Number.isFinite(parsed)) return parsed;
+      if (Number.isFinite(parsed) && parsed >= 0) return parsed;
     }
   }
 

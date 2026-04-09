@@ -13,6 +13,7 @@ import { db } from "@/lib/db";
 import { files, users } from "@/lib/db/schema";
 import { formatDateTimeInTimeZone } from "@/lib/datetime";
 import { getResolvedSystemTimeZone } from "@/lib/system-settings";
+import { getConfiguredSettings } from "@/lib/system-settings-config";
 import { FileManagementClient } from "./file-management-client";
 
 const PAGE_SIZE = 24;
@@ -184,6 +185,7 @@ export default async function AdminFilesPage({
         rangeStart={rangeStart}
         rangeEnd={rangeEnd}
         totalCount={totalCount}
+        maxFileSizeBytes={getConfiguredSettings().uploadMaxFileSizeBytes}
       />
 
       <PaginationControls

@@ -4,7 +4,7 @@ import { and, eq } from "drizzle-orm";
 import { apiSuccess, apiError } from "@/lib/api/responses";
 import { db } from "@/lib/db";
 import { groupInstructors, users } from "@/lib/db/schema";
-import { canManageGroupResources } from "@/lib/assignments/management";
+import { canManageGroupResourcesAsync } from "@/lib/assignments/management";
 import { createApiHandler, forbidden, notFound } from "@/lib/api/handler";
 
 const addInstructorSchema = z.object({
@@ -26,7 +26,12 @@ export const GET = createApiHandler({
     });
     if (!group) return notFound("Group");
 
-    const canManage = canManageGroupResources(group.instructorId, user.id, user.role);
+    const canManage = await canManageGroupResourcesAsync(
+      group.instructorId,
+      user.id,
+      user.role,
+      id
+    );
     if (!canManage) return forbidden();
 
     const instructors = await db
@@ -58,7 +63,12 @@ export const POST = createApiHandler({
     });
     if (!group) return notFound("Group");
 
-    const canManage = canManageGroupResources(group.instructorId, user.id, user.role);
+    const canManage = await canManageGroupResourcesAsync(
+      group.instructorId,
+      user.id,
+      user.role,
+      id
+    );
     if (!canManage) return forbidden();
 
     const targetUser = await db.query.users.findFirst({
@@ -104,7 +114,12 @@ export const DELETE = createApiHandler({
     });
     if (!group) return notFound("Group");
 
-    const canManage = canManageGroupResources(group.instructorId, user.id, user.role);
+    const canManage = await canManageGroupResourcesAsync(
+      group.instructorId,
+      user.id,
+      user.role,
+      id
+    );
     if (!canManage) return forbidden();
 
     await db

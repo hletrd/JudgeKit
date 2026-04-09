@@ -35,7 +35,7 @@ vi.mock("nanoid", () => ({
   nanoid: vi.fn(() => "test-nanoid"),
 }));
 
-import { consumeApiRateLimit } from "@/lib/security/api-rate-limit";
+import { consumeApiRateLimit, consumeUserApiRateLimit, checkServerActionRateLimit } from "@/lib/security/api-rate-limit";
 
 function mockSelectResult(row: Record<string, unknown> | undefined) {
   const rows = row ? [row] : [];
@@ -116,5 +116,214 @@ describe("consumeApiRateLimit", () => {
 
     // transaction is only called once (dedup via WeakMap)
     expect(dbMock.insert).toHaveBeenCalledTimes(1);
+  });
+});
+
+describe("consumeUserApiRateLimit", () => {
+  it("returns null when allowed (new key)", async () => {
+    const request = createRequest();
+    const result = await consumeUserApiRateLimit(request, "user-123", "settings");
+    expect(result).toBeNull();
+    // Should NOT call getRateLimitKey — it builds the key internally
+    expect(getRateLimitKeyMock).not.toHaveBeenCalled();
+    expect(dbMock.insert).toHaveBeenCalled();
+  });
+
+  it("returns a 429 response when rate limited", async () => {
+    mockSelectResult({
+      key: "api:settings:user:user-123",
+      attempts: 120,
+      windowStartedAt: Date.now(),
+      blockedUntil: Date.now() + 60000,
+      consecutiveBlocks: 1,
+      lastAttempt: Date.now(),
+    });
+
+    const request = createRequest();
+    const response = await consumeUserApiRateLimit(request, "user-123", "settings");
+
+    expect(response?.status).toBe(429);
+    expect(response?.headers.get("Retry-After")).toBe("60");
+    await expect(response?.json()).resolves.toEqual({ error: "rateLimited" });
+  });
+
+  it("deduplicates same request+key via WeakMap", async () => {
+    const request = createRequest();
+
+    await consumeUserApiRateLimit(request, "user-123", "settings");
+    // Second call with same request object and same params: dedup returns null without recording again
+    await consumeUserApiRateLimit(request, "user-123", "settings");
+
+    // Only one insert — the second call is deduped
+    expect(dbMock.insert).toHaveBeenCalledTimes(1);
+  });
+});
+
+describe("atomicConsumeRateLimit internal paths", () => {
+  it("resets window when existing row has expired window", async () => {
+    // Window started 120s ago, windowMs is 60s => expired
+    mockSelectResult({
+      key: "api:groups:198.51.100.8",
+      attempts: 5,
+      windowStartedAt: Date.now() - 120_000,
+      blockedUntil: null,
+      consecutiveBlocks: 0,
+      lastAttempt: Date.now() - 120_000,
+    });
+
+    getRateLimitKeyMock.mockReturnValue("api:groups:198.51.100.8");
+    const result = await consumeApiRateLimit(createRequest(), "groups");
+
+    expect(result).toBeNull();
+    // Should update (not insert) because the row exists
+    expect(dbMock.update).toHaveBeenCalled();
+    expect(dbMock.insert).not.toHaveBeenCalled();
+  });
+
+  it("returns 429 when max attempts reached within window", async () => {
+    // apiRateLimitMax is 2, attempts is already 2 (>= max), window still valid
+    mockSelectResult({
+      key: "api:groups:198.51.100.8",
+      attempts: 2,
+      windowStartedAt: Date.now(),
+      blockedUntil: null,
+      consecutiveBlocks: 0,
+      lastAttempt: Date.now(),
+    });
+
+    getRateLimitKeyMock.mockReturnValue("api:groups:198.51.100.8");
+    const response = await consumeApiRateLimit(createRequest(), "groups");
+
+    expect(response?.status).toBe(429);
+  });
+
+  it("sets blockedUntil when newAttempts reaches apiMax (increment with block)", async () => {
+    // apiRateLimitMax is 2, attempts is 1, so newAttempts=2 >= apiMax => blockedUntil is set
+    mockSelectResult({
+      key: "api:groups:198.51.100.8",
+      attempts: 1,
+      windowStartedAt: Date.now(),
+      blockedUntil: null,
+      consecutiveBlocks: 0,
+      lastAttempt: Date.now(),
+    });
+
+    // Capture what .set() is called with
+    const setFn = vi.fn(() => ({
+      where: vi.fn(async () => undefined),
+    }));
+    dbMock.update.mockReturnValue({ set: setFn });
+
+    getRateLimitKeyMock.mockReturnValue("api:groups:198.51.100.8");
+    const result = await consumeApiRateLimit(createRequest(), "groups");
+
+    expect(result).toBeNull();
+    expect(setFn).toHaveBeenCalled();
+    const setArgs = (setFn.mock as unknown as { calls: Array<[Record<string, unknown>]> }).calls[0][0];
+    expect(setArgs.attempts).toBe(2);
+    expect(setArgs.blockedUntil).toBeTypeOf("number");
+    expect(setArgs.blockedUntil).toBeGreaterThan(Date.now() - 1000);
+  });
+});
+
+describe("checkServerActionRateLimit", () => {
+  it("returns null when under limit (no existing row)", async () => {
+    mockSelectResult(undefined);
+
+    const result = await checkServerActionRateLimit("user-1", "deleteAccount");
+
+    expect(result).toBeNull();
+    expect(dbMock.insert).toHaveBeenCalled();
+    expect(dbMock.update).not.toHaveBeenCalled();
+  });
+
+  it("returns null when under limit (existing row within window)", async () => {
+    mockSelectResult({
+      key: "sa:user-1:deleteAccount",
+      attempts: 5,
+      windowStartedAt: Date.now(),
+      blockedUntil: null,
+      consecutiveBlocks: 0,
+      lastAttempt: Date.now(),
+    });
+
+    const result = await checkServerActionRateLimit("user-1", "deleteAccount", 20, 60);
+
+    expect(result).toBeNull();
+    // Existing row => update, not insert
+    expect(dbMock.update).toHaveBeenCalled();
+    expect(dbMock.insert).not.toHaveBeenCalled();
+  });
+
+  it("returns { error: 'rateLimited' } when at max", async () => {
+    mockSelectResult({
+      key: "sa:user-1:deleteAccount",
+      attempts: 20,
+      windowStartedAt: Date.now(),
+      blockedUntil: null,
+      consecutiveBlocks: 0,
+      lastAttempt: Date.now(),
+    });
+
+    const result = await checkServerActionRateLimit("user-1", "deleteAccount", 20, 60);
+
+    expect(result).toEqual({ error: "rateLimited" });
+    // No insert or update when rate limited
+    expect(dbMock.insert).not.toHaveBeenCalled();
+    expect(dbMock.update).not.toHaveBeenCalled();
+  });
+
+  it("resets window when expired and allows the request", async () => {
+    // windowSeconds=60, window started 120s ago => expired
+    mockSelectResult({
+      key: "sa:user-1:deleteAccount",
+      attempts: 20,
+      windowStartedAt: Date.now() - 120_000,
+      blockedUntil: null,
+      consecutiveBlocks: 0,
+      lastAttempt: Date.now() - 120_000,
+    });
+
+    const result = await checkServerActionRateLimit("user-1", "deleteAccount", 20, 60);
+
+    expect(result).toBeNull();
+    // Should update (not insert) because the row exists
+    expect(dbMock.update).toHaveBeenCalled();
+    expect(dbMock.insert).not.toHaveBeenCalled();
+  });
+
+  it("inserts new row when no existing row is found", async () => {
+    mockSelectResult(undefined);
+
+    const result = await checkServerActionRateLimit("user-2", "updateProfile", 10, 30);
+
+    expect(result).toBeNull();
+    expect(dbMock.insert).toHaveBeenCalled();
+    expect(dbMock.update).not.toHaveBeenCalled();
+  });
+
+  it("updates existing row when row exists and is within window", async () => {
+    // Capture what .set() is called with
+    const setFn = vi.fn(() => ({
+      where: vi.fn(async () => undefined),
+    }));
+    dbMock.update.mockReturnValue({ set: setFn });
+
+    mockSelectResult({
+      key: "sa:user-1:someAction",
+      attempts: 3,
+      windowStartedAt: Date.now(),
+      blockedUntil: null,
+      consecutiveBlocks: 0,
+      lastAttempt: Date.now(),
+    });
+
+    const result = await checkServerActionRateLimit("user-1", "someAction", 10, 60);
+
+    expect(result).toBeNull();
+    expect(dbMock.update).toHaveBeenCalled();
+    expect(setFn).toHaveBeenCalled();
+    const setArgs = (setFn.mock as unknown as { calls: Array<[Record<string, unknown>]> }).calls[0][0];
+    expect(setArgs.attempts).toBe(4);
   });
 });

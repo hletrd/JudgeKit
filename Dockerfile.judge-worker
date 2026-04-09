@@ -19,7 +19,7 @@ RUN cargo clean && cargo build --release && \
     EXPECTED_ARCH=$(uname -m) && \
     BINARY_ARCH=$(readelf -h target/release/judge-worker 2>/dev/null | grep Machine | awk '{print $NF}') && \
     echo "Build arch: ${EXPECTED_ARCH}, Binary arch: ${BINARY_ARCH}" && \
-    target/release/judge-worker --help 2>/dev/null || true
+    target/release/judge-worker --help >/dev/null
 
 # ---------------------------------------------------------------------------
 # Runtime: Alpine with docker-cli for spawning judge containers
@@ -32,7 +32,7 @@ COPY --from=builder /build/target/release/judge-worker /usr/local/bin/judge-work
 COPY docker/seccomp-profile.json /etc/judge/seccomp-profile.json
 
 # Verify the binary is executable on this platform
-RUN /usr/local/bin/judge-worker --help 2>/dev/null || true
+RUN /usr/local/bin/judge-worker --help >/dev/null
 
 ENV RUST_LOG=info
 

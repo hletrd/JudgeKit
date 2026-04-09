@@ -8,6 +8,45 @@ import { logger } from "@/lib/logger";
 
 export const dynamic = "force-dynamic";
 
+const MAX_IMPORT_BYTES = 500 * 1024 * 1024;
+
+async function readJsonBodyWithLimit(request: NextRequest): Promise<JudgeKitExport> {
+  const declaredLength = request.headers.get("content-length");
+  if (declaredLength) {
+    const parsedLength = Number(declaredLength);
+    if (Number.isFinite(parsedLength) && parsedLength > MAX_IMPORT_BYTES) {
+      throw new Error("fileTooLarge");
+    }
+  }
+
+  const reader = request.body?.getReader();
+  if (!reader) {
+    throw new Error("invalidJson");
+  }
+
+  const decoder = new TextDecoder();
+  let text = "";
+  let total = 0;
+
+  while (true) {
+    const { done, value } = await reader.read();
+    if (done) break;
+    total += value.byteLength;
+    if (total > MAX_IMPORT_BYTES) {
+      throw new Error("fileTooLarge");
+    }
+    text += decoder.decode(value, { stream: true });
+  }
+
+  text += decoder.decode();
+
+  try {
+    return JSON.parse(text) as JudgeKitExport;
+  } catch {
+    throw new Error("invalidJson");
+  }
+}
+
 export async function POST(request: NextRequest) {
   try {
     const csrfError = csrfForbidden(request);
@@ -33,9 +72,23 @@ export async function POST(request: NextRequest) {
         return NextResponse.json({ error: "fileTooLarge" }, { status: 400 });
       }
       const text = await file.text();
-      data = JSON.parse(text);
+      try {
+        data = JSON.parse(text);
+      } catch {
+        return NextResponse.json({ error: "invalidJson" }, { status: 400 });
+      }
     } else {
-      data = await request.json();
+      try {
+        data = await readJsonBodyWithLimit(request);
+      } catch (error) {
+        if (error instanceof Error && error.message === "fileTooLarge") {
+          return NextResponse.json({ error: "fileTooLarge" }, { status: 400 });
+        }
+        if (error instanceof Error && error.message === "invalidJson") {
+          return NextResponse.json({ error: "invalidJson" }, { status: 400 });
+        }
+        throw error;
+      }
     }
 
     // Validate before importing

@@ -58,7 +58,7 @@ declare global {
 if (globalThis.__sseCleanupTimer) clearInterval(globalThis.__sseCleanupTimer);
 globalThis.__sseCleanupTimer = setInterval(() => {
   const now = Date.now();
-  const staleThreshold = getConfiguredSettings().sseTimeoutMs + 30_000;
+  const staleThreshold = Math.min(getConfiguredSettings().sseTimeoutMs + 30_000, 2 * 60 * 60 * 1000);
   for (const [connId, info] of connectionInfoMap) {
     if (now - info.createdAt > staleThreshold) {
       removeConnection(connId);
@@ -105,7 +105,8 @@ function unsubscribeFromPoll(submissionId: string, callback: PollCallback): void
 }
 
 function startSharedPollTimer(): void {
-  const pollIntervalMs = getConfiguredSettings().ssePollIntervalMs;
+  const configuredInterval = getConfiguredSettings().ssePollIntervalMs;
+  const pollIntervalMs = Math.max(1000, configuredInterval);
   sharedPollTimer = setInterval(() => {
     void sharedPollTick();
   }, pollIntervalMs);
@@ -281,6 +282,7 @@ export async function GET(
               } catch (err) {
                 if (!closed) {
                   logger.error({ err }, "SSE final fetch error for submission %s", id);
+                  controller.enqueue(encoder.encode(`event: error\ndata: {"error":"fetch_failed"}\n\n`));
                 }
               } finally {
                 close();

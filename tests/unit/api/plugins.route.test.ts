@@ -57,6 +57,7 @@ vi.mock("@/lib/system-settings", () => ({
 
 vi.mock("@/lib/plugins/chat-widget/providers", () => ({
   getProvider: getProviderMock,
+  SAFE_GEMINI_MODEL_PATTERN: /^[a-zA-Z0-9][a-zA-Z0-9._-]*$/,
 }));
 
 vi.mock("@/lib/plugins/chat-widget/tools", () => ({

@@ -2,7 +2,8 @@ import { NextRequest } from "next/server";
 import { z } from "zod";
 import { nanoid } from "nanoid";
 import { db } from "@/lib/db";
-import { groups, assignments, assignmentProblems } from "@/lib/db/schema";
+import { groups, assignments, assignmentProblems, problems } from "@/lib/db/schema";
+import { inArray } from "drizzle-orm";
 import { createApiHandler, isAdmin } from "@/lib/api/handler";
 import { apiSuccess, apiError } from "@/lib/api/responses";
 import { recordAuditEvent } from "@/lib/audit/events";
@@ -30,6 +31,19 @@ export const POST = createApiHandler({
     const deadline = body.deadline
       ? new Date(body.deadline)
       : new Date(now.getTime() + 30 * 24 * 3600000); // default 30 days
+
+    if (startsAt.getTime() >= deadline.getTime()) {
+      return apiError("assignmentScheduleInvalid", 400);
+    }
+
+    // Verify all problem IDs exist in the database
+    const existingProblems = await db
+      .select({ id: problems.id })
+      .from(problems)
+      .where(inArray(problems.id, body.problemIds));
+    if (existingProblems.length !== body.problemIds.length) {
+      return apiError("invalidProblemIds", 400);
+    }
 
     await db.transaction(async (tx) => {
       // Auto-create a hidden group for this contest
