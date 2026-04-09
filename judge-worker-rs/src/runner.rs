@@ -58,18 +58,7 @@ struct ErrorResponse {
     error: String,
 }
 
-fn validate_docker_image(image: &str) -> bool {
-    if image.is_empty() || image.contains("://") {
-        return false;
-    }
-    let first = image.as_bytes()[0];
-    if !first.is_ascii_alphanumeric() {
-        return false;
-    }
-    image
-        .chars()
-        .all(|c| c.is_ascii_alphanumeric() || matches!(c, '.' | '_' | '-' | '/' | ':'))
-}
+use crate::validation::{validate_docker_image, validate_extension};
 
 fn validate_shell_command(cmd: &str) -> bool {
     if cmd.is_empty() || cmd.len() > 10_000 {
@@ -99,10 +88,24 @@ fn check_auth(headers: &HeaderMap, config: &Config) -> Result<(), StatusCode> {
         .ok_or(StatusCode::UNAUTHORIZED)?;
 
     let token = auth.strip_prefix("Bearer ").ok_or(StatusCode::UNAUTHORIZED)?;
-    if token != config.auth_token.expose() {
+    // Use constant-time comparison to prevent timing side-channel attacks
+    let expected = config.auth_token.expose();
+    if token.len() != expected.len() || !constant_time_eq(token.as_bytes(), expected.as_bytes()) {
         return Err(StatusCode::UNAUTHORIZED);
     }
     Ok(())
+}
+
+/// Constant-time byte comparison to prevent timing attacks on auth tokens.
+fn constant_time_eq(a: &[u8], b: &[u8]) -> bool {
+    if a.len() != b.len() {
+        return false;
+    }
+    let mut diff = 0u8;
+    for (x, y) in a.iter().zip(b.iter()) {
+        diff |= x ^ y;
+    }
+    diff == 0
 }
 
 async fn health() -> StatusCode {
@@ -231,6 +234,11 @@ async fn execute_run(config: &Config, req: &RunRequest) -> Result<RunResponse, S
         .to_str()
         .ok_or_else(|| "Temp directory path is not valid UTF-8".to_string())?
         .to_owned();
+
+    // Validate file extension to prevent path traversal
+    if !validate_extension(&req.extension) {
+        return Err(format!("Invalid file extension: {}", req.extension));
+    }
 
     // Write source file
     let source_path = workspace_dir.join(format!("solution{}", req.extension));

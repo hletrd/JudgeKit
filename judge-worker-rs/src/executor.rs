@@ -16,6 +16,8 @@ const MAX_TIME_LIMIT_MS: u64 = 30_000;
 const MAX_MEMORY_LIMIT_MB: u32 = 1024;
 const MAX_SOURCE_CODE_BYTES: usize = 256 * 1024; // 256 KB
 
+use crate::validation::validate_docker_image;
+
 pub async fn execute(client: &ApiClient, config: &Config, submission: Submission) {
     let span = tracing::info_span!("judge_submission", submission_id = %submission.id);
     execute_inner(client, config, submission).instrument(span).await;
@@ -35,6 +37,12 @@ async fn execute_inner(client: &ApiClient, config: &Config, submission: Submissi
     let docker_image = submission.docker_image.as_deref()
         .or(lang_config.map(|c| c.docker_image))
         .unwrap_or("alpine:latest");
+
+    // Validate docker image reference to prevent pulling arbitrary images
+    if !validate_docker_image(docker_image) {
+        report_error(client, config, &submission, Verdict::CompileError.as_str(), "Invalid Docker image reference").await;
+        return;
+    }
     let compile_command: Option<Vec<&str>> = match &submission.compile_command {
         Some(cmd) if !cmd.is_empty() && !cmd.iter().all(|s| s.is_empty()) => Some(cmd.iter().map(|s| s.as_str()).collect()),
         _ => lang_config.and_then(|c| c.compile_command.map(|c| c.to_vec())),
@@ -45,6 +53,11 @@ async fn execute_inner(client: &ApiClient, config: &Config, submission: Submissi
     };
     let extension = lang_config.map(|c| c.extension).unwrap_or(default_ext);
     let needs_exec_tmp = lang_config.is_some_and(|c| c.needs_exec_tmp);
+
+    if run_command.is_empty() {
+        report_error(client, config, &submission, Verdict::CompileError.as_str(), "No run command configured for this language").await;
+        return;
+    }
 
     // Report "judging" status; log errors but continue
     if let Err(e) = client
@@ -116,8 +129,7 @@ async fn execute_inner(client: &ApiClient, config: &Config, submission: Submissi
 
     // Compile phase (if language requires compilation)
     if let Some(compile_command) = compile_command {
-        let clamped_time = submission.time_limit_ms.min(MAX_TIME_LIMIT_MS);
-        let compile_timeout_ms = COMPILATION_TIMEOUT_MS.max(clamped_time.saturating_mul(10)).min(MAX_COMPILATION_TIMEOUT_MS);
+        let compile_timeout_ms = COMPILATION_TIMEOUT_MS;
         let compile_memory_mb =
             COMPILATION_MEMORY_LIMIT_MB.max(submission.memory_limit_mb.min(MAX_MEMORY_LIMIT_MB));
 

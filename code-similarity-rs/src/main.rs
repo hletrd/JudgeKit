@@ -27,11 +27,17 @@ async fn compute(Json(req): Json<ComputeRequest>) -> impl IntoResponse {
     let submissions = req.submissions;
 
     // Run CPU-intensive work on rayon's thread pool via spawn_blocking
-    let pairs = tokio::task::spawn_blocking(move || {
+    let pairs = match tokio::task::spawn_blocking(move || {
         compute_similarity(submissions, threshold, ngram_size)
     })
     .await
-    .unwrap_or_default();
+    {
+        Ok(result) => result,
+        Err(e) => {
+            tracing::error!(error = %e, "Similarity computation panicked");
+            Vec::new()
+        }
+    };
 
     Json(ComputeResponse { pairs })
 }

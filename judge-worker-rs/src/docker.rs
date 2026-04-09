@@ -68,31 +68,43 @@ struct ContainerInspect {
     duration_ms: Option<u64>,
 }
 
-/// Parse the time-of-day portion of a Docker RFC 3339 timestamp into
-/// nanoseconds since midnight.  Accepts `2024-01-15T10:30:45.123456789Z`.
-fn parse_timestamp_nanos_since_midnight(s: &str) -> Option<u128> {
-    let after_t = s.split('T').nth(1)?;
-    let end = after_t
-        .find(|c: char| !c.is_ascii_digit() && c != ':' && c != '.')
-        .unwrap_or(after_t.len());
-    let time_part = &after_t[..end];
+/// Parse a Docker RFC 3339 timestamp into epoch milliseconds.
+/// Accepts `2024-01-15T10:30:45.123456789Z`.
+fn parse_timestamp_epoch_ms(s: &str) -> Option<u64> {
+    // Split into date and time at 'T'
+    let (date_part, rest) = s.split_once('T')?;
+    let date_parts: Vec<&str> = date_part.split('-').collect();
+    if date_parts.len() != 3 { return None; }
+    let year: i64 = date_parts[0].parse().ok()?;
+    let month: i64 = date_parts[1].parse().ok()?;
+    let day: i64 = date_parts[2].parse().ok()?;
+
+    // Strip timezone suffix to get time portion
+    let end = rest.find(|c: char| !c.is_ascii_digit() && c != ':' && c != '.').unwrap_or(rest.len());
+    let time_part = &rest[..end];
 
     let mut parts = time_part.split(':');
-    let hours: u64 = parts.next()?.parse().ok()?;
-    let minutes: u64 = parts.next()?.parse().ok()?;
+    let hours: i64 = parts.next()?.parse().ok()?;
+    let minutes: i64 = parts.next()?.parse().ok()?;
     let sec_frac = parts.next()?;
 
-    let (secs, nanos) = if let Some(dot) = sec_frac.find('.') {
-        let secs: u64 = sec_frac[..dot].parse().ok()?;
+    let (secs, millis) = if let Some(dot) = sec_frac.find('.') {
+        let secs: i64 = sec_frac[..dot].parse().ok()?;
         let frac = &sec_frac[dot + 1..];
-        let padded = format!("{:0<9}", &frac[..frac.len().min(9)]);
-        let nanos: u64 = padded.parse().ok()?;
-        (secs, nanos)
+        let padded = format!("{:0<3}", &frac[..frac.len().min(3)]);
+        let millis: i64 = padded.parse().ok()?;
+        (secs, millis)
     } else {
-        (sec_frac.parse().ok()?, 0u64)
+        (sec_frac.parse().ok()?, 0i64)
     };
 
-    Some(u128::from(hours * 3600 + minutes * 60 + secs) * 1_000_000_000 + u128::from(nanos))
+    // Days from Unix epoch using a simplified calculation (sufficient for 2000-2100)
+    let mut y = year;
+    let mut m = month;
+    if m <= 2 { y -= 1; m += 12; }
+    let days = 365 * y + y / 4 - y / 100 + y / 400 + (153 * (m - 3) + 2) / 5 + day - 719469;
+    let total_ms = ((days * 86400 + hours * 3600 + minutes * 60 + secs) * 1000) + millis;
+    Some(total_ms as u64)
 }
 
 /// Inspect a stopped container for OOM status and actual runtime (from
@@ -118,11 +130,11 @@ async fn inspect_container_state(container_name: &str) -> ContainerInspect {
 
             let duration_ms = if parts.len() >= 3 {
                 match (
-                    parse_timestamp_nanos_since_midnight(parts[1]),
-                    parse_timestamp_nanos_since_midnight(parts[2]),
+                    parse_timestamp_epoch_ms(parts[1]),
+                    parse_timestamp_epoch_ms(parts[2]),
                 ) {
                     (Some(start), Some(end)) if end >= start => {
-                        Some(((end - start) / 1_000_000) as u64)
+                        Some(end - start)
                     }
                     _ => None,
                 }
@@ -157,7 +169,7 @@ async fn remove_container(container_name: &str) {
 }
 
 fn should_retry_without_seccomp(stderr: &str) -> bool {
-    SECCOMP_INIT_ERROR_SNIPPETS.iter().all(|snippet| stderr.contains(snippet))
+    SECCOMP_INIT_ERROR_SNIPPETS.iter().any(|snippet| stderr.contains(snippet))
 }
 
 fn resolve_seccomp_profile<'a>(
@@ -223,6 +235,8 @@ async fn run_docker_once(
         "--security-opt=no-new-privileges".into(),
         "--ulimit".into(),
         "nofile=1024:1024".into(),
+        "--user".into(),
+        "65534:65534".into(),
         "-v".into(),
         workspace_volume,
         "-w".into(),

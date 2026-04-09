@@ -6,6 +6,7 @@ mod executor;
 mod languages;
 mod runner;
 mod types;
+mod validation;
 
 use api::ApiClient;
 use config::Config;
