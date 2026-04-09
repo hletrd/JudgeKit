@@ -9,6 +9,7 @@ const {
   findFirstMock,
   updateWhereMock,
   deleteWhereMock,
+  execTransactionMock,
   recordAuditEventMock,
   loggerMock,
 } = vi.hoisted(() => ({
@@ -19,6 +20,7 @@ const {
   findFirstMock: vi.fn(),
   updateWhereMock: vi.fn(),
   deleteWhereMock: vi.fn(),
+  execTransactionMock: vi.fn(),
   recordAuditEventMock: vi.fn(),
   loggerMock: { info: vi.fn(), error: vi.fn(), warn: vi.fn(), debug: vi.fn() },
 }));
@@ -100,6 +102,7 @@ vi.mock("@/lib/db", () => ({
       where: deleteWhereMock,
     })),
   },
+  execTransaction: execTransactionMock,
 }));
 
 vi.mock("@/lib/security/constants", () => ({
@@ -154,6 +157,21 @@ describe("admin workers routes", () => {
     resolveCapabilitiesMock.mockResolvedValue(new Set(["system.settings"]));
     updateWhereMock.mockResolvedValue(undefined);
     deleteWhereMock.mockResolvedValue(undefined);
+    execTransactionMock.mockImplementation(async (fn: (tx: {
+      update: () => { set: (value: unknown) => { where: typeof updateWhereMock } };
+      delete: () => { where: typeof deleteWhereMock };
+    }) => Promise<void>) =>
+      fn({
+        update: () => ({
+          set: () => ({
+            where: updateWhereMock,
+          }),
+        }),
+        delete: () => ({
+          where: deleteWhereMock,
+        }),
+      })
+    );
   });
 
   describe("GET /api/v1/admin/workers", () => {

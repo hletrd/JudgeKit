@@ -6,6 +6,7 @@ const mocks = vi.hoisted(() => {
   return {
     isTrustedServerActionOrigin: vi.fn<() => Promise<boolean>>(),
     auth: vi.fn<() => Promise<{ user: { id: string; role: string } } | null>>(),
+    resolveCapabilities: vi.fn<(role: string) => Promise<Set<string>>>(),
     checkServerActionRateLimit: vi.fn<() => { error: string } | null>(),
     buildServerActionAuditContext: vi.fn<() => Promise<Record<string, string>>>(),
     recordAuditEvent: vi.fn(),
@@ -25,6 +26,10 @@ vi.mock("@/lib/security/server-actions", () => ({
 
 vi.mock("@/lib/auth", () => ({
   auth: mocks.auth,
+}));
+
+vi.mock("@/lib/capabilities/cache", () => ({
+  resolveCapabilities: mocks.resolveCapabilities,
 }));
 
 vi.mock("@/lib/security/api-rate-limit", () => ({
@@ -83,6 +88,7 @@ function setupAuthorizedAdmin(role: "admin" | "super_admin" = "admin") {
   mocks.auth.mockResolvedValue({
     user: { id: "actor-1", role },
   });
+  mocks.resolveCapabilities.mockResolvedValue(new Set(["system.settings"]));
   mocks.checkServerActionRateLimit.mockReturnValue(null);
   mocks.buildServerActionAuditContext.mockResolvedValue({
     ipAddress: "127.0.0.1",
@@ -104,6 +110,9 @@ const validInput = {
 
 beforeEach(() => {
   vi.clearAllMocks();
+  mocks.resolveCapabilities.mockImplementation((role: string) =>
+    Promise.resolve(new Set(role === "admin" || role === "super_admin" ? ["system.settings"] : []))
+  );
 });
 
 afterEach(() => {
@@ -128,15 +137,35 @@ describe("updateSystemSettings", () => {
     expect(result).toEqual({ success: false, error: "unauthorized" });
   });
 
-  it("returns unauthorized when user is not admin or super_admin", async () => {
+  it("returns unauthorized when user lacks system.settings", async () => {
     const { updateSystemSettings } = await import("@/lib/actions/system-settings");
     mocks.isTrustedServerActionOrigin.mockResolvedValue(true);
     mocks.auth.mockResolvedValue({
       user: { id: "u1", role: "student" },
     });
+    mocks.resolveCapabilities.mockResolvedValue(new Set());
 
     const result = await updateSystemSettings(validInput);
     expect(result).toEqual({ success: false, error: "unauthorized" });
+  });
+
+  it("allows a custom role with system.settings", async () => {
+    const { updateSystemSettings } = await import("@/lib/actions/system-settings");
+    mocks.isTrustedServerActionOrigin.mockResolvedValue(true);
+    mocks.auth.mockResolvedValue({
+      user: { id: "ops-1", role: "ops_manager" },
+    });
+    mocks.resolveCapabilities.mockResolvedValue(new Set(["system.settings"]));
+    mocks.checkServerActionRateLimit.mockReturnValue(null);
+    mocks.buildServerActionAuditContext.mockResolvedValue({
+      ipAddress: "127.0.0.1",
+      userAgent: "test",
+      requestMethod: "SERVER_ACTION",
+      requestPath: "/dashboard/admin/settings",
+    });
+
+    const result = await updateSystemSettings(validInput);
+    expect(result).toEqual({ success: true });
   });
 
   it("returns rateLimited when rate limit is exceeded", async () => {

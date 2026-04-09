@@ -1,7 +1,7 @@
 import { NextRequest } from "next/server";
 import { z } from "zod";
-import { createApiHandler, isAdmin, notFound } from "@/lib/api/handler";
-import { apiSuccess, apiError } from "@/lib/api/responses";
+import { createApiHandler, notFound } from "@/lib/api/handler";
+import { apiSuccess } from "@/lib/api/responses";
 import { db } from "@/lib/db";
 import { languageConfigs } from "@/lib/db/schema";
 import { eq } from "drizzle-orm";
@@ -16,9 +16,8 @@ const updateLanguageSchema = z.object({
 });
 
 export const GET = createApiHandler({
-  handler: async (req: NextRequest, { user, params }) => {
-    if (!isAdmin(user.role)) return apiError("forbidden", 403);
-
+  auth: { capabilities: ["system.settings"] },
+  handler: async (_req: NextRequest, { params }) => {
     const [lang] = await db
       .select()
       .from(languageConfigs)
@@ -31,10 +30,9 @@ export const GET = createApiHandler({
 });
 
 export const PATCH = createApiHandler({
+  auth: { capabilities: ["system.settings"] },
   schema: updateLanguageSchema,
   handler: async (req: NextRequest, { user, body, params }) => {
-    if (!isAdmin(user.role)) return apiError("forbidden", 403);
-
     const existing = await db
       .select({ id: languageConfigs.id })
       .from(languageConfigs)

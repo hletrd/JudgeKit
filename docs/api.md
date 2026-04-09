@@ -1513,7 +1513,7 @@ When `sessionId` is provided, returns messages. Otherwise returns session list.
 
 #### `POST /api/v1/admin/backup`
 
-Create a database backup. **Super Admin only.** Rate limit: `admin:backup`.
+Create a database backup. Requires the `system.backup` capability. Rate limit: `admin:backup`.
 
 **Request Body:**
 ```json
@@ -1526,9 +1526,9 @@ Password re-confirmation required for security. Returns a streamed JSON export f
 
 #### `POST /api/v1/admin/restore`
 
-Restore from backup. **Super Admin only.** Rate limit: `admin:restore`.
+Restore from backup. Requires the `system.backup` capability. Rate limit: `admin:restore`.
 
-**Request:** `multipart/form-data` with a `file` field. Max 500 MB.
+**Request:** `multipart/form-data` with `file` and `password` fields. Max 100 MB.
 
 Accepts a JudgeKit JSON export. Validates and imports it via the migration system.
 
@@ -1538,7 +1538,7 @@ Accepts a JudgeKit JSON export. Validates and imports it via the migration syste
 
 #### `POST /api/v1/admin/migrate/validate`
 
-Validate a JudgeKit export file. **Super Admin only.**
+Validate a JudgeKit export file. Requires the `system.backup` capability.
 
 Accepts `application/json` or `multipart/form-data`.
 
@@ -1558,17 +1558,22 @@ Accepts `application/json` or `multipart/form-data`.
 
 ---
 
-#### `GET /api/v1/admin/migrate/export`
+#### `POST /api/v1/admin/migrate/export`
 
-Export the entire database as JSON. **Super Admin only.** Rate limit: `admin:migrate-export`.
+Export the entire database as JSON. Requires the `system.backup` capability. Rate limit: `admin:migrate-export`.
 
-Returns a JSON file download.
+**Request Body:**
+```json
+{ "password": "string" }
+```
+
+Password re-confirmation required. Returns a JSON file download.
 
 ---
 
 #### `POST /api/v1/admin/migrate/import`
 
-Import a JudgeKit export. **Super Admin only.** Rate limit: `admin:migrate-import`. Max 500 MB.
+Import a JudgeKit export. Requires the `system.backup` capability. Rate limit: `admin:migrate-import`. Max 100 MB.
 
 **Response:**
 ```json

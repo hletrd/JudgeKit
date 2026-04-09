@@ -4,7 +4,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 const mocks = vi.hoisted(() => {
   return {
-    dbQueryUsersFindFirst: vi.fn(),
+    dbSelectMock: vi.fn(),
     hashPassword: vi.fn<() => Promise<string>>(),
     getPasswordValidationError: vi.fn<() => string | null>(),
     isUserRole: vi.fn<(v: string) => boolean>(),
@@ -27,11 +27,7 @@ vi.mock("drizzle-orm", async () => {
 
 vi.mock("@/lib/db", () => ({
   db: {
-    query: {
-      users: {
-        findFirst: (...args: unknown[]) => mocks.dbQueryUsersFindFirst(...args),
-      },
-    },
+    select: mocks.dbSelectMock,
   },
 }));
 
@@ -60,6 +56,13 @@ vi.mock("@/lib/security/password", () => ({
 
 beforeEach(() => {
   vi.clearAllMocks();
+  mocks.dbSelectMock.mockImplementation(() => ({
+    from: vi.fn(() => ({
+      where: vi.fn(() => ({
+        limit: vi.fn(() => Promise.resolve([])),
+      })),
+    })),
+  }));
 });
 
 afterEach(() => {
@@ -73,7 +76,13 @@ afterEach(() => {
 describe("isUsernameTaken", () => {
   it("returns true when username exists", async () => {
     const { isUsernameTaken } = await import("@/lib/users/core");
-    mocks.dbQueryUsersFindFirst.mockResolvedValue({ id: "user-1" });
+    mocks.dbSelectMock.mockImplementation(() => ({
+      from: vi.fn(() => ({
+        where: vi.fn(() => ({
+          limit: vi.fn(() => Promise.resolve([{ id: "user-1" }])),
+        })),
+      })),
+    }));
 
     const result = await isUsernameTaken("alice");
     expect(result).toBe(true);
@@ -81,7 +90,6 @@ describe("isUsernameTaken", () => {
 
   it("returns false when username does not exist", async () => {
     const { isUsernameTaken } = await import("@/lib/users/core");
-    mocks.dbQueryUsersFindFirst.mockResolvedValue(undefined);
 
     const result = await isUsernameTaken("alice");
     expect(result).toBe(false);
@@ -89,7 +97,13 @@ describe("isUsernameTaken", () => {
 
   it("returns false when existing user id matches excludeId (self-check)", async () => {
     const { isUsernameTaken } = await import("@/lib/users/core");
-    mocks.dbQueryUsersFindFirst.mockResolvedValue({ id: "user-1" });
+    mocks.dbSelectMock.mockImplementation(() => ({
+      from: vi.fn(() => ({
+        where: vi.fn(() => ({
+          limit: vi.fn(() => Promise.resolve([{ id: "user-1" }])),
+        })),
+      })),
+    }));
 
     const result = await isUsernameTaken("alice", "user-1");
     expect(result).toBe(false);
@@ -97,7 +111,13 @@ describe("isUsernameTaken", () => {
 
   it("returns true when existing user id does not match excludeId", async () => {
     const { isUsernameTaken } = await import("@/lib/users/core");
-    mocks.dbQueryUsersFindFirst.mockResolvedValue({ id: "user-2" });
+    mocks.dbSelectMock.mockImplementation(() => ({
+      from: vi.fn(() => ({
+        where: vi.fn(() => ({
+          limit: vi.fn(() => Promise.resolve([{ id: "user-2" }])),
+        })),
+      })),
+    }));
 
     const result = await isUsernameTaken("alice", "user-1");
     expect(result).toBe(true);
@@ -111,7 +131,13 @@ describe("isUsernameTaken", () => {
 describe("isEmailTaken", () => {
   it("returns true when email exists", async () => {
     const { isEmailTaken } = await import("@/lib/users/core");
-    mocks.dbQueryUsersFindFirst.mockResolvedValue({ id: "user-1" });
+    mocks.dbSelectMock.mockImplementation(() => ({
+      from: vi.fn(() => ({
+        where: vi.fn(() => ({
+          limit: vi.fn(() => Promise.resolve([{ id: "user-1" }])),
+        })),
+      })),
+    }));
 
     const result = await isEmailTaken("alice@example.com");
     expect(result).toBe(true);
@@ -119,7 +145,6 @@ describe("isEmailTaken", () => {
 
   it("returns false when email does not exist", async () => {
     const { isEmailTaken } = await import("@/lib/users/core");
-    mocks.dbQueryUsersFindFirst.mockResolvedValue(undefined);
 
     const result = await isEmailTaken("alice@example.com");
     expect(result).toBe(false);
@@ -127,7 +152,13 @@ describe("isEmailTaken", () => {
 
   it("returns false when existing user id matches excludeId", async () => {
     const { isEmailTaken } = await import("@/lib/users/core");
-    mocks.dbQueryUsersFindFirst.mockResolvedValue({ id: "user-1" });
+    mocks.dbSelectMock.mockImplementation(() => ({
+      from: vi.fn(() => ({
+        where: vi.fn(() => ({
+          limit: vi.fn(() => Promise.resolve([{ id: "user-1" }])),
+        })),
+      })),
+    }));
 
     const result = await isEmailTaken("alice@example.com", "user-1");
     expect(result).toBe(false);
@@ -135,7 +166,13 @@ describe("isEmailTaken", () => {
 
   it("returns true when existing user id does not match excludeId", async () => {
     const { isEmailTaken } = await import("@/lib/users/core");
-    mocks.dbQueryUsersFindFirst.mockResolvedValue({ id: "user-2" });
+    mocks.dbSelectMock.mockImplementation(() => ({
+      from: vi.fn(() => ({
+        where: vi.fn(() => ({
+          limit: vi.fn(() => Promise.resolve([{ id: "user-2" }])),
+        })),
+      })),
+    }));
 
     const result = await isEmailTaken("alice@example.com", "user-1");
     expect(result).toBe(true);

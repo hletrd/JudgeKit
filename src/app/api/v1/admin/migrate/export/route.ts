@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getApiUser, unauthorized, forbidden, csrfForbidden } from "@/lib/api/auth";
 import { consumeApiRateLimit } from "@/lib/security/api-rate-limit";
+import { resolveCapabilities } from "@/lib/capabilities/cache";
 import { streamDatabaseExport } from "@/lib/db/export";
 import { recordAuditEvent } from "@/lib/audit/events";
 import { verifyPassword } from "@/lib/security/password-hash";
@@ -18,7 +19,8 @@ export async function POST(request: NextRequest) {
 
     const user = await getApiUser(request);
     if (!user) return unauthorized();
-    if (user.role !== "super_admin") return forbidden();
+    const caps = await resolveCapabilities(user.role);
+    if (!caps.has("system.backup")) return forbidden();
 
     const rateLimitResponse = await consumeApiRateLimit(request, "admin:migrate-export");
     if (rateLimitResponse) return rateLimitResponse;

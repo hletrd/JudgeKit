@@ -505,10 +505,9 @@ export async function executeCompilerRun(
     };
   }
 
-  // Create temp workspace. 0o755 is sufficient because containers run as
-  // root inside their own user namespace.  In Docker-in-Docker setups where
-  // sibling containers need write access, the COMPILER_WORKSPACE_DIR should
-  // be configured with appropriate group ACLs instead of world-writable perms.
+  // Create temp workspace. Compiler containers now run as uid/gid 65534 for
+  // defense-in-depth, so the workspace must remain writable/traversable by that
+  // sandbox user in local fallback mode as well as Docker-in-Docker mode.
   // chmod after mkdir to bypass process umask.
   await mkdir(WORKSPACE_BASE, { recursive: true });
   const workspaceDir = await mkdtemp(join(WORKSPACE_BASE, "compiler-"));
@@ -516,7 +515,7 @@ export async function executeCompilerRun(
   if (!workspaceStat.isDirectory() || workspaceStat.isSymbolicLink()) {
     throw new Error("Compiler workspace path is invalid");
   }
-  await chmod(workspaceDir, 0o750);
+  await chmod(workspaceDir, 0o777);
 
   try {
     // Write source file (world-readable for sibling container access)
@@ -524,6 +523,7 @@ export async function executeCompilerRun(
     await writeFile(join(workspaceDir, sourceFileName), options.sourceCode, {
       encoding: "utf8",
     });
+    await chmod(join(workspaceDir, sourceFileName), 0o644);
 
     let compileOutput: string | null = null;
 

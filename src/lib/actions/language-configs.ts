@@ -3,6 +3,7 @@
 import { revalidatePath } from "next/cache";
 import { auth } from "@/lib/auth";
 import { buildServerActionAuditContext, recordAuditEvent } from "@/lib/audit/events";
+import { resolveCapabilities } from "@/lib/capabilities/cache";
 import { db } from "@/lib/db";
 import { languageConfigs } from "@/lib/db/schema";
 import { eq } from "drizzle-orm";
@@ -17,7 +18,11 @@ type LanguageConfigActionResult =
 
 async function getAuthorizedSession() {
   const session = await auth();
-  if (!session?.user || (session.user.role !== "admin" && session.user.role !== "super_admin")) {
+  if (!session?.user) {
+    return null;
+  }
+  const caps = await resolveCapabilities(session.user.role);
+  if (!caps.has("system.settings")) {
     return null;
   }
   return session;

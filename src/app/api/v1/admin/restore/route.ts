@@ -2,6 +2,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getApiUser, unauthorized, forbidden, csrfForbidden } from "@/lib/api/auth";
 import { consumeApiRateLimit } from "@/lib/security/api-rate-limit";
+import { resolveCapabilities } from "@/lib/capabilities/cache";
 import { recordAuditEvent } from "@/lib/audit/events";
 import { verifyPassword } from "@/lib/security/password-hash";
 import { logger } from "@/lib/logger";
@@ -10,6 +11,7 @@ import { users } from "@/lib/db/schema";
 import { eq } from "drizzle-orm";
 import { importDatabase } from "@/lib/db/import";
 import { validateExport, type JudgeKitExport } from "@/lib/db/export";
+import { MAX_IMPORT_BYTES, readUploadedJsonFileWithLimit } from "@/lib/db/import-transfer";
 
 export async function POST(request: NextRequest) {
   try {
@@ -18,7 +20,8 @@ export async function POST(request: NextRequest) {
 
     const user = await getApiUser(request);
     if (!user) return unauthorized();
-    if (user.role !== "super_admin") return forbidden();
+    const caps = await resolveCapabilities(user.role);
+    if (!caps.has("system.backup")) return forbidden();
 
     const rateLimitError = await consumeApiRateLimit(request, "admin:restore");
     if (rateLimitError) return rateLimitError;
@@ -51,15 +54,13 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: "noFileProvided" }, { status: 400 });
     }
 
-    // Validate file size (max 500MB)
-    if (file.size > 500 * 1024 * 1024) {
+    // Validate file size before parsing
+    if (file.size > MAX_IMPORT_BYTES) {
       return NextResponse.json({ error: "fileTooLarge" }, { status: 400 });
     }
 
-    const buffer = Buffer.from(await file.arrayBuffer());
-
     // Must be a JSON export file
-    const isJsonFile = file.name?.endsWith(".json") || buffer[0] === 0x7B; // '{'
+    const isJsonFile = file.name?.endsWith(".json") || file.type === "application/json";
     if (!isJsonFile) {
       return NextResponse.json(
         { error: "unsupportedFileFormat", message: "Only JSON export files are supported. Use the JSON export format." },
@@ -69,8 +70,11 @@ export async function POST(request: NextRequest) {
 
     let data: JudgeKitExport;
     try {
-      data = JSON.parse(buffer.toString("utf-8"));
-    } catch {
+      data = await readUploadedJsonFileWithLimit<JudgeKitExport>(file);
+    } catch (error) {
+      if (error instanceof Error && error.message === "fileTooLarge") {
+        return NextResponse.json({ error: "fileTooLarge" }, { status: 400 });
+      }
       return NextResponse.json({ error: "invalidJsonFile" }, { status: 400 });
     }
 
@@ -86,7 +90,7 @@ export async function POST(request: NextRequest) {
       resourceType: "system_settings",
       resourceId: "database",
       resourceLabel: "Database restore",
-      summary: `Restoring from JSON export (source: ${data.sourceDialect}, ${(buffer.length / 1024 / 1024).toFixed(1)} MB)`,
+      summary: `Restoring from JSON export (source: ${data.sourceDialect}, ${(file.size / 1024 / 1024).toFixed(1)} MB)`,
       request,
     });
 

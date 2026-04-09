@@ -1,6 +1,6 @@
 import { NextRequest } from "next/server";
 import { z } from "zod";
-import { createApiHandler, isAdmin, notFound } from "@/lib/api/handler";
+import { createApiHandler, notFound } from "@/lib/api/handler";
 import { apiSuccess, apiError } from "@/lib/api/responses";
 import { db } from "@/lib/db";
 import { plugins } from "@/lib/db/schema";
@@ -17,9 +17,8 @@ const updatePluginSchema = z.object({
 });
 
 export const GET = createApiHandler({
-  handler: async (req: NextRequest, { user, params }) => {
-    if (!isAdmin(user.role)) return apiError("forbidden", 403);
-
+  auth: { capabilities: ["system.plugins"] },
+  handler: async (_req: NextRequest, { params }) => {
     const state = await getPluginState(params.id);
     if (!state) return notFound("plugin");
 
@@ -36,9 +35,9 @@ export const GET = createApiHandler({
 });
 
 export const PATCH = createApiHandler({
+  auth: { capabilities: ["system.plugins"] },
   schema: updatePluginSchema,
   handler: async (req: NextRequest, { user, body, params }) => {
-    if (!isAdmin(user.role)) return apiError("forbidden", 403);
 
     const definition = getPluginDefinition(params.id);
     if (!definition) return notFound("plugin");

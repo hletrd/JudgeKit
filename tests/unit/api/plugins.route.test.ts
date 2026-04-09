@@ -6,6 +6,7 @@ import { NextRequest, NextResponse } from "next/server";
 // ---------------------------------------------------------------------------
 const {
   authMock,
+  resolveCapabilitiesMock,
   isPluginEnabledMock,
   getPluginStateMock,
   checkServerActionRateLimitMock,
@@ -20,6 +21,7 @@ const {
   fetchMock,
 } = vi.hoisted(() => ({
   authMock: vi.fn(),
+  resolveCapabilitiesMock: vi.fn(),
   isPluginEnabledMock: vi.fn(),
   getPluginStateMock: vi.fn(),
   checkServerActionRateLimitMock: vi.fn(),
@@ -40,6 +42,10 @@ const {
 
 vi.mock("@/lib/auth", () => ({
   auth: authMock,
+}));
+
+vi.mock("@/lib/capabilities/cache", () => ({
+  resolveCapabilities: resolveCapabilitiesMock,
 }));
 
 vi.mock("@/lib/plugins/data", () => ({
@@ -161,6 +167,9 @@ beforeEach(() => {
   vi.clearAllMocks();
 
   authMock.mockResolvedValue(STUDENT_SESSION);
+  resolveCapabilitiesMock.mockImplementation((role: string) =>
+    Promise.resolve(new Set(role === "student" ? [] : ["system.plugins"]))
+  );
   isPluginEnabledMock.mockResolvedValue(true);
   getPluginStateMock.mockResolvedValue({ config: PLUGIN_CONFIG });
   checkServerActionRateLimitMock.mockReturnValue(null); // not rate limited

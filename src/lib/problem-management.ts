@@ -1,4 +1,4 @@
-import { eq, inArray } from "drizzle-orm";
+import { asc, eq, inArray } from "drizzle-orm";
 import { nanoid } from "nanoid";
 import { db, execTransaction, type TransactionClient } from "@/lib/db";
 import { problems, testCases, tags, problemTags, files } from "@/lib/db/schema";
@@ -15,6 +15,75 @@ function mapTestCases(problemId: string, values: ProblemMutationInput["testCases
     isVisible: testCase.isVisible,
     sortOrder: index,
   }));
+}
+
+type ExistingTestCaseRow = {
+  id: string;
+  input: string;
+  expectedOutput: string;
+  isVisible: boolean | null;
+  sortOrder: number | null;
+};
+
+type PlannedTestCaseRow = ProblemMutationInput["testCases"][number] & {
+  id: string;
+  problemId: string;
+  sortOrder: number;
+};
+
+export function planProblemTestCaseSync(
+  problemId: string,
+  existingCases: ExistingTestCaseRow[],
+  nextCases: ProblemMutationInput["testCases"]
+) {
+  const existingBySignature = new Map<string, ExistingTestCaseRow[]>();
+  const matchedIds = new Set<string>();
+  const updates: Array<{ id: string; sortOrder: number }> = [];
+  const inserts: PlannedTestCaseRow[] = [];
+
+  for (const existing of existingCases) {
+    const signature = JSON.stringify([
+      existing.input,
+      existing.expectedOutput,
+      Boolean(existing.isVisible),
+    ]);
+    const bucket = existingBySignature.get(signature) ?? [];
+    bucket.push(existing);
+    existingBySignature.set(signature, bucket);
+  }
+
+  for (const [index, testCase] of nextCases.entries()) {
+    const signature = JSON.stringify([
+      testCase.input,
+      testCase.expectedOutput,
+      Boolean(testCase.isVisible),
+    ]);
+    const bucket = existingBySignature.get(signature) ?? [];
+    const match = bucket.find((existing) => !matchedIds.has(existing.id));
+
+    if (match) {
+      matchedIds.add(match.id);
+      if ((match.sortOrder ?? 0) !== index) {
+        updates.push({ id: match.id, sortOrder: index });
+      }
+      continue;
+    }
+
+    inserts.push({
+      id: nanoid(),
+      problemId,
+      input: testCase.input,
+      expectedOutput: testCase.expectedOutput,
+      isVisible: testCase.isVisible,
+      sortOrder: index,
+    });
+  }
+
+  const deleteIds = existingCases
+    .map((testCase) => testCase.id)
+    .filter((id) => !matchedIds.has(id));
+
+  return { updates, inserts, deleteIds };
 }
 
 type DatabaseExecutor = Pick<typeof db, "select" | "insert" | "update" | "delete">;
@@ -64,6 +133,43 @@ async function syncProblemTags(
   for (const tagId of tagIds) {
     await executor.insert(problemTags)
       .values({ id: nanoid(), problemId, tagId });
+  }
+}
+
+async function syncProblemTestCases(
+  problemId: string,
+  values: ProblemMutationInput["testCases"],
+  executor: DatabaseExecutor | TransactionClient = db
+) {
+  const existingCases = await executor
+    .select({
+      id: testCases.id,
+      input: testCases.input,
+      expectedOutput: testCases.expectedOutput,
+      isVisible: testCases.isVisible,
+      sortOrder: testCases.sortOrder,
+    })
+    .from(testCases)
+    .where(eq(testCases.problemId, problemId))
+    .orderBy(asc(testCases.sortOrder), asc(testCases.id));
+
+  const plan = planProblemTestCaseSync(problemId, existingCases, values);
+
+  for (const update of plan.updates) {
+    await executor
+      .update(testCases)
+      .set({ sortOrder: update.sortOrder })
+      .where(eq(testCases.id, update.id));
+  }
+
+  if (plan.deleteIds.length > 0) {
+    await executor
+      .delete(testCases)
+      .where(inArray(testCases.id, plan.deleteIds));
+  }
+
+  if (plan.inserts.length > 0) {
+    await executor.insert(testCases).values(plan.inserts);
   }
 }
 
@@ -157,12 +263,7 @@ export async function updateProblemWithTestCases(problemId: string, input: Probl
       })
       .where(eq(problems.id, problemId));
 
-    await tx.delete(testCases).where(eq(testCases.problemId, problemId));
-
-    const mappedTestCases = mapTestCases(problemId, input.testCases);
-    if (mappedTestCases.length > 0) {
-      await tx.insert(testCases).values(mappedTestCases);
-    }
+    await syncProblemTestCases(problemId, input.testCases, tx);
 
     const tagIds = await resolveTagIdsWithExecutor(input.tags, actorId ?? "", tx);
     await syncProblemTags(problemId, tagIds, tx);

@@ -5,6 +5,7 @@ import { plugins } from "@/lib/db/schema";
 import { withUpdatedAt } from "@/lib/db/helpers";
 import { auth } from "@/lib/auth";
 import { buildServerActionAuditContext, recordAuditEvent } from "@/lib/audit/events";
+import { resolveCapabilities } from "@/lib/capabilities/cache";
 import { getPluginDefinition } from "@/lib/plugins/registry";
 import { isTrustedServerActionOrigin } from "@/lib/security/server-actions";
 import { checkServerActionRateLimit } from "@/lib/security/api-rate-limit";
@@ -16,13 +17,18 @@ type PluginActionResult =
   | { success: true }
   | { success: false; error: string };
 
+async function canManagePlugins(role: string) {
+  const caps = await resolveCapabilities(role);
+  return caps.has("system.plugins");
+}
+
 export async function togglePlugin(pluginId: string, enabled: boolean): Promise<PluginActionResult> {
   if (!(await isTrustedServerActionOrigin())) {
     return { success: false, error: "unauthorized" };
   }
 
   const session = await auth();
-  if (!session?.user || (session.user.role !== "admin" && session.user.role !== "super_admin")) {
+  if (!session?.user || !(await canManagePlugins(session.user.role))) {
     return { success: false, error: "unauthorized" };
   }
 
@@ -73,7 +79,7 @@ export async function updatePluginConfig(pluginId: string, rawConfig: unknown): 
   }
 
   const session = await auth();
-  if (!session?.user || (session.user.role !== "admin" && session.user.role !== "super_admin")) {
+  if (!session?.user || !(await canManagePlugins(session.user.role))) {
     return { success: false, error: "unauthorized" };
   }
 

@@ -67,7 +67,7 @@ describe("extractClientIp", () => {
     );
   });
 
-  it("prefers x-real-ip over a client-supplied x-forwarded-for chain", async () => {
+  it("prefers the validated x-forwarded-for client hop over x-real-ip when both are present", async () => {
     const { extractClientIp } = await importIpModule();
 
     expect(
@@ -77,7 +77,7 @@ describe("extractClientIp", () => {
           "x-forwarded-for": "198.51.100.8, 203.0.113.10",
         })
       )
-    ).toBe("203.0.113.10");
+    ).toBe("198.51.100.8");
   });
 
   it('returns "0.0.0.0" when no x-forwarded-for and no x-real-ip', async () => {

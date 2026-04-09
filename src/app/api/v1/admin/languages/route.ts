@@ -1,6 +1,6 @@
 import { NextRequest } from "next/server";
 import { z } from "zod";
-import { createApiHandler, isAdmin } from "@/lib/api/handler";
+import { createApiHandler } from "@/lib/api/handler";
 import { apiSuccess, apiError } from "@/lib/api/responses";
 import { db } from "@/lib/db";
 import { languageConfigs } from "@/lib/db/schema";
@@ -20,9 +20,8 @@ const addLanguageSchema = z.object({
 });
 
 export const GET = createApiHandler({
-  handler: async (req: NextRequest, { user }) => {
-    if (!isAdmin(user.role)) return apiError("forbidden", 403);
-
+  auth: { capabilities: ["system.settings"] },
+  handler: async () => {
     const languages = await db
       .select()
       .from(languageConfigs)
@@ -33,11 +32,10 @@ export const GET = createApiHandler({
 });
 
 export const POST = createApiHandler({
+  auth: { capabilities: ["system.settings"] },
   rateLimit: "languages:create",
   schema: addLanguageSchema,
   handler: async (req: NextRequest, { user, body }) => {
-    if (!isAdmin(user.role)) return apiError("forbidden", 403);
-
     const existing = await db
       .select({ id: languageConfigs.id })
       .from(languageConfigs)

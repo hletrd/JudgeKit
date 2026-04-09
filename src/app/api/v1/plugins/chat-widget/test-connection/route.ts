@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { z } from "zod";
 import { auth } from "@/lib/auth";
+import { resolveCapabilities } from "@/lib/capabilities/cache";
 import { createApiHandler } from "@/lib/api/handler";
 import { logger } from "@/lib/logger";
 
@@ -21,7 +22,11 @@ export const POST = createApiHandler({
     if (csrfError) return csrfError;
 
     const session = await auth();
-    if (!session?.user || (session.user.role !== "admin" && session.user.role !== "super_admin")) {
+    if (!session?.user) {
+      return NextResponse.json({ error: "unauthorized" }, { status: 401 });
+    }
+    const caps = await resolveCapabilities(session.user.role);
+    if (!caps.has("system.plugins")) {
       return NextResponse.json({ error: "unauthorized" }, { status: 401 });
     }
 

@@ -246,18 +246,12 @@ function normalizeValue(val: unknown): unknown {
 const EXPORT_CHUNK_SIZE = 1000;
 
 /**
- * Columns that should be redacted (set to null) in exports for security.
- * Maps table name to column names to redact.
+ * Backup/export endpoints now produce full-fidelity exports so they can be
+ * round-tripped through import/restore without silently corrupting required
+ * columns. Keep this empty unless a future export format explicitly
+ * differentiates between "sanitized export" and "restorable backup".
  */
-const REDACTED_COLUMNS: Record<string, Set<string>> = {
-  users: new Set(["passwordHash"]),
-  sessions: new Set(["sessionToken"]),
-  judgeWorkers: new Set(["secretToken"]),
-  accounts: new Set(["refresh_token", "access_token", "id_token"]),
-  apiKeys: new Set(["encryptedKey", "keyHash"]),
-  recruitingInvitations: new Set(["token"]),
-  assignments: new Set(["accessCode"]),
-};
+const REDACTED_COLUMNS: Record<string, Set<string>> = {};
 
 function getOrderClauses(table: any, orderColumns: string[]) {
   return orderColumns

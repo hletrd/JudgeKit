@@ -1,4 +1,4 @@
-import { eq, sql } from "drizzle-orm";
+import { sql } from "drizzle-orm";
 import { hashPassword } from "@/lib/security/password-hash";
 import { db, type TransactionClient } from "@/lib/db";
 import { users } from "@/lib/db/schema";

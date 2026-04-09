@@ -2,12 +2,14 @@ import { NextRequest, NextResponse } from "next/server";
 import { desc, eq, sql, and, asc } from "drizzle-orm";
 import { db } from "@/lib/db";
 import { chatMessages, users } from "@/lib/db/schema";
-import { forbidden, isAdmin } from "@/lib/api/auth";
+import { forbidden } from "@/lib/api/auth";
 import { createApiHandler } from "@/lib/api/handler";
+import { resolveCapabilities } from "@/lib/capabilities/cache";
 
 export const GET = createApiHandler({
   handler: async (req: NextRequest, { user }) => {
-    if (!isAdmin(user.role)) return forbidden();
+    const caps = await resolveCapabilities(user.role);
+    if (!caps.has("system.chat_logs")) return forbidden();
 
     const url = new URL(req.url);
     const userId = url.searchParams.get("userId");

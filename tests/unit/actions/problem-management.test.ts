@@ -6,6 +6,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 // client. We capture that call so individual tests can inspect behavior.
 
 const {
+  dbSelectMock,
   insertRunMock,
   updateSetMock,
   updateWhereMock,
@@ -13,14 +14,29 @@ const {
   sanitizeHtmlMock,
   sanitizeMarkdownMock,
 } = vi.hoisted(() => {
+  const dbSelectMock = vi.fn();
   const insertRunMock = vi.fn();
   const updateSetMock = vi.fn();
   const updateWhereMock = vi.fn();
   const deleteWhereMock = vi.fn();
   const sanitizeHtmlMock = vi.fn((html: string) => `sanitized:${html}`);
   const sanitizeMarkdownMock = vi.fn((markdown: string) => `sanitized:${markdown}`);
-  return { insertRunMock, updateSetMock, updateWhereMock, deleteWhereMock, sanitizeHtmlMock, sanitizeMarkdownMock };
+  return { dbSelectMock, insertRunMock, updateSetMock, updateWhereMock, deleteWhereMock, sanitizeHtmlMock, sanitizeMarkdownMock };
 });
+
+function makeSelectChain(rows: unknown[]) {
+  const chain = {
+    from: vi.fn(),
+    where: vi.fn(),
+    limit: vi.fn(),
+    orderBy: vi.fn(),
+  };
+  chain.from.mockReturnValue(chain);
+  chain.where.mockReturnValue(chain);
+  chain.limit.mockReturnValue(rows);
+  chain.orderBy.mockReturnValue(rows);
+  return chain;
+}
 
 // db.insert(table).values(v)
 const dbInsertMock = vi.hoisted(() =>
@@ -44,8 +60,9 @@ const dbDeleteMock = vi.hoisted(() =>
 );
 
 const execTransactionMock = vi.hoisted(() =>
-  vi.fn(async (fn: (tx: { insert: typeof dbInsertMock; update: typeof dbUpdateMock; delete: typeof dbDeleteMock }) => unknown) =>
+  vi.fn(async (fn: (tx: { select: typeof dbSelectMock; insert: typeof dbInsertMock; update: typeof dbUpdateMock; delete: typeof dbDeleteMock }) => unknown) =>
     fn({
+      select: dbSelectMock,
       insert: dbInsertMock,
       update: dbUpdateMock,
       delete: dbDeleteMock,
@@ -55,6 +72,7 @@ const execTransactionMock = vi.hoisted(() =>
 
 vi.mock("@/lib/db", () => ({
   db: {
+    select: dbSelectMock,
     insert: dbInsertMock,
     update: dbUpdateMock,
     delete: dbDeleteMock,
@@ -111,6 +129,7 @@ function makeTestCases(count: number) {
 
 beforeEach(() => {
   vi.clearAllMocks();
+  dbSelectMock.mockImplementation(() => makeSelectChain([]));
   // Restore default implementations after clearAllMocks resets call counts
   dbInsertMock.mockImplementation(
     () => ({ values: vi.fn(async (values: unknown) => insertRunMock(values)) })
@@ -123,8 +142,9 @@ beforeEach(() => {
   dbDeleteMock.mockImplementation(
     () => ({ where: vi.fn(async (cond: unknown) => deleteWhereMock(cond)) })
   );
-  execTransactionMock.mockImplementation(async (fn: (tx: { insert: typeof dbInsertMock; update: typeof dbUpdateMock; delete: typeof dbDeleteMock }) => unknown) =>
+  execTransactionMock.mockImplementation(async (fn: (tx: { select: typeof dbSelectMock; insert: typeof dbInsertMock; update: typeof dbUpdateMock; delete: typeof dbDeleteMock }) => unknown) =>
     fn({
+      select: dbSelectMock,
       insert: dbInsertMock,
       update: dbUpdateMock,
       delete: dbDeleteMock,
@@ -280,9 +300,9 @@ describe("updateProblemWithTestCases", () => {
     expect(sanitizeMarkdownMock).toHaveBeenCalledWith("<u>text</u>");
   });
 
-  it("deletes existing test cases for the problem", async () => {
+  it("loads existing test cases before syncing replacements", async () => {
     await updateProblemWithTestCases("problem-1", makeInput());
-    expect(dbDeleteMock).toHaveBeenCalled();
+    expect(dbSelectMock).toHaveBeenCalled();
   });
 
   it("does NOT insert test cases when the new testCases array is empty", async () => {

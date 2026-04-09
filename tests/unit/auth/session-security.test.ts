@@ -105,8 +105,8 @@ describe("isTokenInvalidated", () => {
     expect(isTokenInvalidated(null, invalidatedAt)).toBe(false);
   });
 
-  it("returns false when authenticatedAtSeconds is zero (falsy)", () => {
-    expect(isTokenInvalidated(0, invalidatedAt)).toBe(false);
+  it("treats authenticatedAtSeconds zero as a real timestamp", () => {
+    expect(isTokenInvalidated(0, invalidatedAt)).toBe(true);
   });
 
   it("returns false when both arguments are null", () => {

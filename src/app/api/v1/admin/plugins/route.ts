@@ -1,12 +1,10 @@
-import { NextRequest } from "next/server";
-import { createApiHandler, isAdmin } from "@/lib/api/handler";
-import { apiSuccess, apiError } from "@/lib/api/responses";
+import { createApiHandler } from "@/lib/api/handler";
+import { apiSuccess } from "@/lib/api/responses";
 import { getAllPluginStates } from "@/lib/plugins/data";
 
 export const GET = createApiHandler({
-  handler: async (req: NextRequest, { user }) => {
-    if (!isAdmin(user.role)) return apiError("forbidden", 403);
-
+  auth: { capabilities: ["system.plugins"] },
+  handler: async () => {
     const states = await getAllPluginStates();
 
     const data = states.map((s) => ({

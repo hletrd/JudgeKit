@@ -3,6 +3,7 @@
 import { revalidatePath } from "next/cache";
 import { auth } from "@/lib/auth";
 import { buildServerActionAuditContext, recordAuditEvent } from "@/lib/audit/events";
+import { resolveCapabilities } from "@/lib/capabilities/cache";
 import { db } from "@/lib/db";
 import { systemSettings } from "@/lib/db/schema";
 import { DEFAULT_PLATFORM_MODE, GLOBAL_SETTINGS_ID } from "@/lib/system-settings";
@@ -54,7 +55,12 @@ export async function updateSystemSettings(
 
   const session = await auth();
 
-  if (!session?.user || (session.user.role !== "admin" && session.user.role !== "super_admin")) {
+  if (!session?.user) {
+    return { success: false, error: "unauthorized" };
+  }
+
+  const caps = await resolveCapabilities(session.user.role);
+  if (!caps.has("system.settings")) {
     return { success: false, error: "unauthorized" };
   }
 

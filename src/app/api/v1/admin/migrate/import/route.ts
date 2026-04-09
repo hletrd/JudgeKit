@@ -1,8 +1,10 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getApiUser, unauthorized, forbidden, csrfForbidden } from "@/lib/api/auth";
 import { consumeApiRateLimit } from "@/lib/security/api-rate-limit";
+import { resolveCapabilities } from "@/lib/capabilities/cache";
 import { importDatabase } from "@/lib/db/import";
 import { validateExport, type JudgeKitExport } from "@/lib/db/export";
+import { MAX_IMPORT_BYTES, readJsonBodyWithLimit, readUploadedJsonFileWithLimit } from "@/lib/db/import-transfer";
 import { recordAuditEvent } from "@/lib/audit/events";
 import { verifyPassword } from "@/lib/security/password-hash";
 import { db } from "@/lib/db";
@@ -12,45 +14,6 @@ import { logger } from "@/lib/logger";
 
 export const dynamic = "force-dynamic";
 
-const MAX_IMPORT_BYTES = 500 * 1024 * 1024;
-
-async function readJsonBodyWithLimit(request: NextRequest): Promise<JudgeKitExport> {
-  const declaredLength = request.headers.get("content-length");
-  if (declaredLength) {
-    const parsedLength = Number(declaredLength);
-    if (Number.isFinite(parsedLength) && parsedLength > MAX_IMPORT_BYTES) {
-      throw new Error("fileTooLarge");
-    }
-  }
-
-  const reader = request.body?.getReader();
-  if (!reader) {
-    throw new Error("invalidJson");
-  }
-
-  const decoder = new TextDecoder();
-  let text = "";
-  let total = 0;
-
-  while (true) {
-    const { done, value } = await reader.read();
-    if (done) break;
-    total += value.byteLength;
-    if (total > MAX_IMPORT_BYTES) {
-      throw new Error("fileTooLarge");
-    }
-    text += decoder.decode(value, { stream: true });
-  }
-
-  text += decoder.decode();
-
-  try {
-    return JSON.parse(text) as JudgeKitExport;
-  } catch {
-    throw new Error("invalidJson");
-  }
-}
-
 export async function POST(request: NextRequest) {
   try {
     const csrfError = csrfForbidden(request);
@@ -58,7 +21,8 @@ export async function POST(request: NextRequest) {
 
     const user = await getApiUser(request);
     if (!user) return unauthorized();
-    if (user.role !== "super_admin") return forbidden();
+    const caps = await resolveCapabilities(user.role);
+    if (!caps.has("system.backup")) return forbidden();
 
     const rateLimitError = await consumeApiRateLimit(request, "admin:migrate-import");
     if (rateLimitError) return rateLimitError;
@@ -94,14 +58,16 @@ export async function POST(request: NextRequest) {
       if (!file) {
         return NextResponse.json({ error: "noFileProvided" }, { status: 400 });
       }
-      if (file.size > 500 * 1024 * 1024) {
+      if (file.size > MAX_IMPORT_BYTES) {
         return NextResponse.json({ error: "fileTooLarge" }, { status: 400 });
       }
-      const text = await file.text();
       let data: JudgeKitExport;
       try {
-        data = JSON.parse(text);
-      } catch {
+        data = await readUploadedJsonFileWithLimit<JudgeKitExport>(file);
+      } catch (error) {
+        if (error instanceof Error && error.message === "fileTooLarge") {
+          return NextResponse.json({ error: "fileTooLarge" }, { status: 400 });
+        }
         return NextResponse.json({ error: "invalidJson" }, { status: 400 });
       }
 
@@ -175,10 +141,13 @@ export async function POST(request: NextRequest) {
     }
 
     // Extract the actual export data, stripping the password field
-    const { password: _pw, data: nestedData, ...rest } = jsonBody as Record<string, unknown>;
+    const jsonBodyRecord = { ...(jsonBody as Record<string, unknown>) };
+    const nestedData = jsonBodyRecord.data;
+    delete jsonBodyRecord.password;
+    delete jsonBodyRecord.data;
     const data: JudgeKitExport = nestedData
       ? nestedData as JudgeKitExport
-      : rest as unknown as JudgeKitExport;
+      : jsonBodyRecord as unknown as JudgeKitExport;
 
     const errors = validateExport(data);
     if (errors.length > 0) {

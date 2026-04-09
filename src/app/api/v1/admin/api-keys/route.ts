@@ -3,7 +3,7 @@ import { z } from "zod";
 import { db } from "@/lib/db";
 import { apiKeys, users, roles } from "@/lib/db/schema";
 import { eq, desc } from "drizzle-orm";
-import { createApiHandler, isAdmin } from "@/lib/api/handler";
+import { createApiHandler } from "@/lib/api/handler";
 import { apiSuccess, apiError } from "@/lib/api/responses";
 import { generateApiKey, encryptApiKey } from "@/lib/api/api-key-auth";
 import { recordAuditEvent } from "@/lib/audit/events";
@@ -16,9 +16,8 @@ const createSchema = z.object({
 });
 
 export const GET = createApiHandler({
-  handler: async (req: NextRequest, { user }) => {
-    if (!isAdmin(user.role)) return apiError("forbidden", 403);
-
+  auth: { capabilities: ["system.settings"] },
+  handler: async () => {
     const rows = await db
       .select({
         id: apiKeys.id,
@@ -47,11 +46,10 @@ export const GET = createApiHandler({
 });
 
 export const POST = createApiHandler({
+  auth: { capabilities: ["system.settings"] },
   rateLimit: "api-keys:create",
   schema: createSchema,
   handler: async (req: NextRequest, { user, body }) => {
-    if (!isAdmin(user.role)) return apiError("forbidden", 403);
-
     // Validate that the requested role exists (built-in or custom)
     if (!isUserRole(body.role)) {
       const customRole = await db

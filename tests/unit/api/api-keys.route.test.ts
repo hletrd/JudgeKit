@@ -12,6 +12,7 @@ const {
   isUserRoleMock,
   generateApiKeyMock,
   encryptApiKeyMock,
+  resolveCapabilitiesMock,
 } = vi.hoisted(() => ({
   getApiUserMock: vi.fn(),
   csrfForbiddenMock: vi.fn(),
@@ -23,6 +24,7 @@ const {
   isUserRoleMock: vi.fn(),
   generateApiKeyMock: vi.fn(),
   encryptApiKeyMock: vi.fn((rawKey: string) => `enc:${rawKey}`),
+  resolveCapabilitiesMock: vi.fn(),
 }));
 
 vi.mock("@/lib/api/auth", () => ({
@@ -46,6 +48,10 @@ vi.mock("@/lib/audit/events", () => ({
 vi.mock("@/lib/security/constants", () => ({
   canManageRoleAsync: canManageRoleAsyncMock,
   isUserRole: isUserRoleMock,
+}));
+
+vi.mock("@/lib/capabilities/cache", () => ({
+  resolveCapabilities: resolveCapabilitiesMock,
 }));
 
 vi.mock("@/lib/api/api-key-auth", () => ({
@@ -111,6 +117,9 @@ describe("admin api keys routes", () => {
   beforeEach(() => {
     vi.clearAllMocks();
     getApiUserMock.mockResolvedValue(adminUser);
+    resolveCapabilitiesMock.mockImplementation((role: string) =>
+      Promise.resolve(new Set(role === "admin" || role === "super_admin" ? ["system.settings"] : []))
+    );
     csrfForbiddenMock.mockReturnValue(null);
     consumeApiRateLimitMock.mockResolvedValue(null);
     canManageRoleAsyncMock.mockResolvedValue(true);

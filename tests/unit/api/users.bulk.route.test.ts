@@ -68,8 +68,12 @@ describe("POST /api/v1/users/bulk", () => {
       mustChangePassword: false,
     });
     validateAndHashPasswordMock.mockResolvedValue({ hash: "hashed" });
-    execTransactionMock.mockImplementation(async (callback: (tx: { insert: (table: unknown) => { values: (value: unknown) => Promise<void> } }) => Promise<void>) =>
+    execTransactionMock.mockImplementation(async (callback: (tx: {
+      execute: (query: unknown) => Promise<void>;
+      insert: (table: unknown) => { values: (value: unknown) => Promise<void> };
+    }) => Promise<void>) =>
       callback({
+        execute: async () => undefined,
         insert: () => ({
           values: async () => undefined,
         }),

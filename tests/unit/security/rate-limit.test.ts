@@ -65,10 +65,12 @@ beforeEach(() => {
   dbMock.select.mockImplementation(() => ({
     from: vi.fn(() => ({
       where: vi.fn((predicate: Predicate) => ({
-        limit: vi.fn(() => {
-          const row = readRow(predicate);
-          return row ? [row] : [];
-        }),
+        limit: vi.fn(() => ({
+          for: vi.fn(() => {
+            const row = readRow(predicate);
+            return row ? [row] : [];
+          }),
+        })),
       })),
     })),
   }));

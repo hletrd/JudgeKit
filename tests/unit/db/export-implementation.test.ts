@@ -23,6 +23,15 @@ describe("exportDatabase implementation guards", () => {
     expect(source).toContain("controller.desiredSize <= 0");
   });
 
+  it("does not redact required columns in restorable backups", () => {
+    const source = readFileSync(join(process.cwd(), "src/lib/db/export.ts"), "utf8");
+
+    expect(source).not.toContain('sessions: new Set(["sessionToken"])');
+    expect(source).not.toContain('apiKeys: new Set(["encryptedKey", "keyHash"])');
+    expect(source).not.toContain('recruitingInvitations: new Set(["token"])');
+    expect(source).not.toContain('users: new Set(["passwordHash"])');
+  });
+
   it("uses the streaming export helper in the migration script instead of materializing the whole export object", () => {
     const source = readFileSync(join(process.cwd(), "scripts/migrate-sqlite-to-pg.ts"), "utf8");
 

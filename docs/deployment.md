@@ -16,6 +16,7 @@ Start from `.env.example` and set at least:
 AUTH_SECRET=<openssl rand -base64 32>
 AUTH_URL=https://your-domain.example
 AUTH_TRUST_HOST=true
+PLUGIN_CONFIG_ENCRYPTION_KEY=<openssl rand -hex 32>
 
 # Judge worker (shared secret between app and worker)
 JUDGE_AUTH_TOKEN=<openssl rand -hex 32>
@@ -33,6 +34,7 @@ JUDGE_DISABLE_CUSTOM_SECCOMP=0
 | `AUTH_SECRET` | Yes | — | Session encryption key (`openssl rand -base64 32`) |
 | `AUTH_URL` | Yes | — | App public URL |
 | `AUTH_TRUST_HOST` | No | `false` | Set `true` behind a reverse proxy |
+| `PLUGIN_CONFIG_ENCRYPTION_KEY` | Yes | — | Dedicated AES-GCM key for plugin secrets and API key encryption (`openssl rand -hex 32`) |
 | `DATABASE_URL` | Yes | — | PostgreSQL connection string (e.g. `postgres://user:pass@host:5432/judgekit`) |
 | `JUDGE_AUTH_TOKEN` | Yes | — | Shared secret for worker auth (`openssl rand -hex 32`) |
 | `JUDGE_BASE_URL` | No | `http://localhost:3000/api/v1` | App API URL for workers |

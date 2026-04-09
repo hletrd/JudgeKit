@@ -3,7 +3,7 @@ import { z } from "zod";
 import { db } from "@/lib/db";
 import { apiKeys, roles } from "@/lib/db/schema";
 import { eq } from "drizzle-orm";
-import { createApiHandler, isAdmin } from "@/lib/api/handler";
+import { createApiHandler } from "@/lib/api/handler";
 import { apiSuccess, apiError } from "@/lib/api/responses";
 import { recordAuditEvent } from "@/lib/audit/events";
 import { canManageRoleAsync, isUserRole } from "@/lib/security/constants";
@@ -16,9 +16,8 @@ const updateSchema = z.object({
 });
 
 export const GET = createApiHandler({
+  auth: { capabilities: ["system.settings"] },
   handler: async (req: NextRequest, { user, params }) => {
-    if (!isAdmin(user.role)) return apiError("forbidden", 403);
-
     const { id } = params;
     const [existing] = await db
       .select({ id: apiKeys.id, name: apiKeys.name })
@@ -43,10 +42,9 @@ export const GET = createApiHandler({
 });
 
 export const PATCH = createApiHandler({
+  auth: { capabilities: ["system.settings"] },
   schema: updateSchema,
   handler: async (req: NextRequest, { user, params, body }) => {
-    if (!isAdmin(user.role)) return apiError("forbidden", 403);
-
     const { id } = params;
     const [existing] = await db.select().from(apiKeys).where(eq(apiKeys.id, id)).limit(1);
     if (!existing) return apiError("notFound", 404, "ApiKey");
@@ -95,9 +93,8 @@ export const PATCH = createApiHandler({
 });
 
 export const DELETE = createApiHandler({
+  auth: { capabilities: ["system.settings"] },
   handler: async (req: NextRequest, { user, params }) => {
-    if (!isAdmin(user.role)) return apiError("forbidden", 403);
-
     const { id } = params;
     const [existing] = await db.select().from(apiKeys).where(eq(apiKeys.id, id)).limit(1);
     if (!existing) return apiError("notFound", 404, "ApiKey");
