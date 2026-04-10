@@ -368,6 +368,46 @@ else
 fi
 
 # ---------------------------------------------------------------------------
+# Step 4c: PG volume safety check (see scripts/pg-volume-safety-check.sh)
+#
+# Detects the "anonymous pgdata volume" orphan-data scenario before we stop
+# the database container. If the real cluster is in an anonymous volume (old
+# compose behavior) and the named volume is empty, the next `docker compose
+# up` would silently initdb a fresh cluster and lose all data. Set
+# SKIP_PG_VOLUME_CHECK=1 to bypass; AUTO_MIGRATE_ORPHANED_PGDATA=1 to auto-
+# migrate (after taking a tar + pg_dump snapshot).
+# ---------------------------------------------------------------------------
+if [[ "${SKIP_PG_VOLUME_CHECK:-0}" == "1" ]]; then
+    warn "SKIP_PG_VOLUME_CHECK=1 set — skipping orphan-volume safety check"
+else
+    SAFETY_ARGS=""
+    if [[ "${AUTO_MIGRATE_ORPHANED_PGDATA:-0}" == "1" ]]; then
+        SAFETY_ARGS="--auto-migrate"
+    fi
+    info "Running PostgreSQL volume safety check on remote..."
+    # The script is already rsynced to the remote in step 2. Run it there so
+    # it can inspect docker on the actual host. Non-zero exit (except 2 = no
+    # db container) aborts the deploy.
+    set +e
+    remote "bash ${REMOTE_DIR}/scripts/pg-volume-safety-check.sh ${SAFETY_ARGS}"
+    SAFETY_RC=$?
+    set -e
+    case "$SAFETY_RC" in
+      0) success "Safety check passed (named volume is authoritative)" ;;
+      2) info "Safety check: no existing db container (first deploy)" ;;
+      1)
+        die "PG volume safety check FAILED — deploy aborted to protect the data. \
+Read the recovery instructions printed above, re-run with \
+AUTO_MIGRATE_ORPHANED_PGDATA=1 to auto-migrate, or \
+SKIP_PG_VOLUME_CHECK=1 to bypass at your own risk."
+        ;;
+      *)
+        die "PG volume safety check exited with unexpected code ${SAFETY_RC} — aborting"
+        ;;
+    esac
+fi
+
+# ---------------------------------------------------------------------------
 # Step 5: Stop old containers, start DB first, migrate, then start all
 # ---------------------------------------------------------------------------
 info "Stopping existing containers (if any)..."

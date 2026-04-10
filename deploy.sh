@@ -2,7 +2,17 @@
 set -euo pipefail
 
 # ============================================================
-# JudgeKit All-in-One Deployment Script
+# JudgeKit All-in-One Deployment Script (LEGACY)
+#
+# DEPRECATED — prefer ./deploy-docker.sh for all new deployments.
+# This script builds images locally and save/loads them over SSH, which:
+#   - has no SSH key auth (SSH_PASSWORD only)
+#   - has no platform detection (cross-arch transfers silently corrupt)
+#   - has no pre-deploy pg_dump safety net (added in deploy-docker.sh)
+#   - has no PG volume orphan-detection (caused the Apr 2026 data wipe)
+#
+# deploy-docker.sh supersedes it and runs the builds on the remote host.
+#
 # See .env for deployment targets and credentials.
 # ============================================================
 
@@ -18,6 +28,25 @@ info()    { printf '\033[0;34m[INFO]\033[0m %s\n' "$*"; }
 success() { printf '\033[0;32m[OK]\033[0m %s\n' "$*"; }
 warn()    { printf '\033[1;33m[WARN]\033[0m %s\n' "$*"; }
 die()     { printf '\033[0;31m[ERROR]\033[0m %s\n' "$*" >&2; exit 1; }
+
+cat >&2 <<'DEPRECATION'
+╔══════════════════════════════════════════════════════════════╗
+║  DEPRECATED: deploy.sh is a legacy path — use deploy-docker.sh  ║
+║                                                                  ║
+║  deploy-docker.sh supports SSH key auth, builds on the remote,   ║
+║  captures a pre-deploy pg_dump, and runs the PG volume orphan    ║
+║  safety check. This script now delegates those safety steps to   ║
+║  the shared scripts/pg-volume-safety-check.sh and scripts/       ║
+║  backup-db.sh helpers, but the build path is still cross-arch    ║
+║  fragile. Migrate when you can.                                  ║
+║                                                                  ║
+║  Set LEGACY_DEPLOY_ACK=1 to silence this banner.                 ║
+╚══════════════════════════════════════════════════════════════╝
+DEPRECATION
+if [[ "${LEGACY_DEPLOY_ACK:-0}" != "1" ]]; then
+  info "Pausing 5s so the warning is actually noticed — set LEGACY_DEPLOY_ACK=1 to skip"
+  sleep 5
+fi
 
 # Load deployment env vars from .env.deploy
 [[ -f "${SCRIPT_DIR}/.env.deploy" ]] && { set -a; source "${SCRIPT_DIR}/.env.deploy"; set +a; }
@@ -118,6 +147,54 @@ success "Images loaded"
 info "Ensuring /compiler-workspaces exists with correct permissions..."
 remote "sudo mkdir -p /compiler-workspaces && sudo chown 1001:1001 /compiler-workspaces && sudo chmod 0700 /compiler-workspaces"
 success "Host directories ready"
+
+# ---- Step 5b: Transfer safety scripts ----
+info "Transferring safety scripts to remote..."
+remote "mkdir -p ${REMOTE_DIR}/scripts"
+remote_copy "${SCRIPT_DIR}/scripts/pg-volume-safety-check.sh" "${REMOTE_USER}@${REMOTE_HOST}:${REMOTE_DIR}/scripts/pg-volume-safety-check.sh"
+remote_copy "${SCRIPT_DIR}/scripts/backup-db.sh" "${REMOTE_USER}@${REMOTE_HOST}:${REMOTE_DIR}/scripts/backup-db.sh"
+remote "chmod +x ${REMOTE_DIR}/scripts/pg-volume-safety-check.sh ${REMOTE_DIR}/scripts/backup-db.sh"
+success "Safety scripts in place"
+
+# ---- Step 5c: Pre-deploy pg_dump (backup net) ----
+if remote "docker inspect judgekit-db >/dev/null 2>&1 && docker inspect --format='{{.State.Running}}' judgekit-db 2>/dev/null | grep -q true"; then
+  BACKUP_TS=$(date -u +%Y%m%d-%H%M%SZ)
+  BACKUP_NAME="judgekit-predeploy-${BACKUP_TS}.dump"
+  info "Running pre-deploy pg_dump..."
+  if remote "mkdir -p /home/${REMOTE_USER}/backups && \
+      PG_PASS=\$(grep '^POSTGRES_PASSWORD=' ${REMOTE_DIR}/.env.production | cut -d= -f2-) && \
+      docker exec -e PGPASSWORD=\"\${PG_PASS}\" judgekit-db pg_dump -U judgekit -d judgekit --format=custom --compress=9 -f /tmp/${BACKUP_NAME} && \
+      docker cp judgekit-db:/tmp/${BACKUP_NAME} /home/${REMOTE_USER}/backups/${BACKUP_NAME} && \
+      docker exec judgekit-db rm -f /tmp/${BACKUP_NAME}"; then
+    success "Pre-deploy backup saved: ~/backups/${BACKUP_NAME}"
+  else
+    warn "Pre-deploy backup FAILED"
+    if [[ "${SKIP_PREDEPLOY_BACKUP:-0}" != "1" ]]; then
+      die "Pre-deploy backup is required. Set SKIP_PREDEPLOY_BACKUP=1 to bypass."
+    fi
+  fi
+else
+  info "No running judgekit-db — skipping pre-deploy backup (first deploy)"
+fi
+
+# ---- Step 5d: PG volume safety check ----
+if [[ "${SKIP_PG_VOLUME_CHECK:-0}" == "1" ]]; then
+  warn "SKIP_PG_VOLUME_CHECK=1 set — skipping orphan-volume safety check"
+else
+  SAFETY_ARGS=""
+  [[ "${AUTO_MIGRATE_ORPHANED_PGDATA:-0}" == "1" ]] && SAFETY_ARGS="--auto-migrate"
+  info "Running PG volume safety check on remote..."
+  set +e
+  remote "bash ${REMOTE_DIR}/scripts/pg-volume-safety-check.sh ${SAFETY_ARGS}"
+  SAFETY_RC=$?
+  set -e
+  case "$SAFETY_RC" in
+    0) success "Safety check passed" ;;
+    2) info "Safety check: no existing db container (first deploy)" ;;
+    1) die "PG volume safety check FAILED — deploy aborted. Follow the recovery steps above, or re-run with AUTO_MIGRATE_ORPHANED_PGDATA=1 / SKIP_PG_VOLUME_CHECK=1." ;;
+    *) die "PG volume safety check returned unexpected code ${SAFETY_RC}" ;;
+  esac
+fi
 
 # ---- Step 6b: Start containers ----
 info "Starting containers..."

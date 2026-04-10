@@ -221,6 +221,82 @@ past (see commit history for the Apr 2026 incident).
 - **Restore**: custom-format dumps restore with `pg_restore -U judgekit -d judgekit -c <file>`;
   gzipped SQL dumps restore with `gunzip -c <file> | psql -U judgekit -d judgekit`.
 
+### PG volume orphan-scenario detection
+
+Every `deploy-docker.sh` / `deploy.sh` / `deploy-test-backends.sh` run invokes
+`scripts/pg-volume-safety-check.sh` on the remote host **before stopping the
+database container**. The safety check inspects the running `judgekit-db`
+container's mount table, the PGDATA environment, and the contents of the
+named volume. It refuses the deploy if it detects the "anonymous volume
+orphan" pattern (real cluster in an anonymous mount at
+`/var/lib/postgresql/...`, named volume at `/var/lib/postgresql/data` empty).
+
+The check runs automatically. Override flags:
+
+- `SKIP_PG_VOLUME_CHECK=1` — skip entirely (for emergency recovery only)
+- `AUTO_MIGRATE_ORPHANED_PGDATA=1` — snapshot the anonymous volume, take a
+  container-side `pg_dump`, and copy the cluster into the named volume
+  automatically. Both backups land in `~/backups/` on the remote.
+
+Run the check manually from the remote at any time:
+
+```bash
+ssh ... "bash ~/judgekit/scripts/pg-volume-safety-check.sh"
+```
+
+### Anonymous volume recovery runbook (Apr 2026 incident replay)
+
+When the safety check reports that the real cluster lives in an anonymous
+volume and the named volume is empty, do **not** proceed with any deploy
+until the data has been migrated. The recovery path that worked during the
+Apr 2026 incident is:
+
+```bash
+# 1. Two independent backups — never migrate without them
+PG_PASS=$(grep '^POSTGRES_PASSWORD=' ~/judgekit/.env.production | cut -d= -f2-)
+docker exec -e PGPASSWORD="$PG_PASS" judgekit-db \
+  pg_dump -U judgekit -d judgekit --format=custom --compress=9 \
+  -f /tmp/pre-migration.dump
+docker cp judgekit-db:/tmp/pre-migration.dump ~/backups/pre-migration-$(date +%s).dump
+
+# 2. Snapshot the anonymous volume at the filesystem level
+ANON_SRC=$(docker inspect judgekit-db --format \
+  '{{range .Mounts}}{{if eq .Destination "/var/lib/postgresql"}}{{.Source}}{{end}}{{end}}')
+sudo tar -czf /tmp/pgdata-anon-$(date +%s).tar.gz -C "$ANON_SRC" _data || true
+sudo tar -czf /tmp/pgdata-anon-$(date +%s).tar.gz -C "$ANON_SRC" .
+
+# 3. Stop the old container so the cluster is not mid-write
+cd ~/judgekit
+docker compose -f docker-compose.production.yml stop db
+
+# 4. Locate the real cluster inside the anonymous volume
+#    (postgres:18-alpine puts it at `18/docker/` under the mount)
+CLUSTER_SRC="${ANON_SRC}/18/docker"
+sudo cat "${CLUSTER_SRC}/PG_VERSION"   # sanity check
+
+# 5. Clear the empty named volume and copy the cluster in
+NAMED_SRC=$(docker volume inspect judgekit_judgekit-pgdata --format '{{.Mountpoint}}')
+sudo bash -c "shopt -s dotglob; rm -rf ${NAMED_SRC}/*"
+sudo cp -a "${CLUSTER_SRC}/." "${NAMED_SRC}/"
+
+# 6. Restart postgres — it finds the pinned PGDATA path already populated
+docker compose -f docker-compose.production.yml --env-file .env.production up -d db
+
+# 7. Verify data is back
+docker exec judgekit-db psql -U judgekit -d judgekit -c \
+  "SELECT (SELECT count(*) FROM users) u, (SELECT count(*) FROM problems) p, (SELECT count(*) FROM submissions) s;"
+```
+
+The automated path (`AUTO_MIGRATE_ORPHANED_PGDATA=1 ./deploy-docker.sh`)
+performs steps 1–5 with identical commands and aborts cleanly if any step
+cannot complete. Read the script output carefully — on success it prints
+the exact paths of the `pg_dump` and tar snapshots so you can roll back.
+
+The legacy anonymous volume is **not** deleted by the migration. It stays
+on the host until `docker volume prune` or a manual `docker volume rm`
+removes it — treat it as a second safety net for at least 7 days before
+pruning.
+
 ## CI and Backup
 
 - GitHub Actions CI: `.github/workflows/ci.yml` — lint, build, backup/restore, Playwright

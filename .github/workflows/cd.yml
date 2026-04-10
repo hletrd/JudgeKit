@@ -1,23 +1,52 @@
 name: CD
 
+# ----------------------------------------------------------------------------
+# Manual deployment trigger only.
+#
+# This workflow previously auto-fired on every successful CI run and invoked a
+# host-based systemd deploy at `~/git/online-judge`, which does not exist on
+# the current Docker-based production hosts (oj.auraedu.me, test.worv.ai).
+# That silent auto-run was disabled after the Apr 2026 data-loss incident:
+# instead, production deployments now go through `./deploy-docker.sh` from a
+# workstation, which captures a pre-deploy pg_dump and runs the PG volume
+# orphan safety check (scripts/pg-volume-safety-check.sh) before touching the
+# database container.
+#
+# If a GitHub-initiated deploy is ever re-enabled, the workflow MUST:
+#   1. Run `scripts/pg-volume-safety-check.sh` on the target before any
+#      container stop/recreate.
+#   2. Fail closed (no deploy) if the safety check exits non-zero.
+#   3. Use secrets-managed SSH to run `deploy-docker.sh` in server mode, not a
+#      host-based systemd restart.
+#
+# Until that wiring exists, keep this workflow on `workflow_dispatch` only.
+# ----------------------------------------------------------------------------
+
 on:
-  workflow_run:
-    workflows: ["CI"]
-    types: [completed]
-    branches: [main]
+  workflow_dispatch:
+    inputs:
+      target:
+        description: 'Deploy target (informational)'
+        required: false
+        default: 'disabled'
+        type: choice
+        options:
+          - disabled
 
 jobs:
   deploy:
-    if: ${{ github.event.workflow_run.conclusion == 'success' }}
     runs-on: ubuntu-latest
-    environment: production
     steps:
-      - name: Deploy to server
-        uses: appleboy/ssh-action@2dc9d598b8a29380f4812a743a75a0e78ba2a258 # v1.2.0
-        with:
-          host: ${{ secrets.DEPLOY_HOST }}
-          username: ${{ secrets.DEPLOY_USER }}
-          key: ${{ secrets.DEPLOY_SSH_KEY }}
-          script: |
-            cd ~/git/online-judge
-            bash scripts/deploy.sh
+      - name: Abort — CD via GitHub Actions is disabled
+        run: |
+          cat <<'MSG'
+          CD via GitHub Actions is intentionally disabled.
+
+          Production deployments run from a workstation with:
+            REMOTE_HOST=... REMOTE_USER=... DOMAIN=... SSH_KEY=... \
+              ./deploy-docker.sh
+
+          See docs/deployment.md > Database Durability for the pre-deploy
+          pg_dump and PG volume safety check wiring.
+          MSG
+          exit 1

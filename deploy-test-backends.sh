@@ -134,6 +134,50 @@ else
 fi
 
 # ---------------------------------------------------------------------------
+# Step 2b: Pre-deploy pg_dump (test-backends uses both pg and mysql — the
+# pg dump is the one that cost us data in the Apr 2026 incident)
+# ---------------------------------------------------------------------------
+if remote "docker inspect judgekit-db-postgres >/dev/null 2>&1 && docker inspect --format='{{.State.Running}}' judgekit-db-postgres 2>/dev/null | grep -q true"; then
+  BACKUP_TS=$(date -u +%Y%m%d-%H%M%SZ)
+  BACKUP_NAME="judgekit-testbackends-predeploy-${BACKUP_TS}.dump"
+  info "Running pre-deploy pg_dump (test-backends postgres)..."
+  if remote "mkdir -p /home/${REMOTE_USER}/backups && \
+      PG_PASS=\$(grep '^POSTGRES_PASSWORD=' ${REMOTE_DIR}/.env.production | cut -d= -f2- || echo judgekit_test) && \
+      docker exec -e PGPASSWORD=\"\${PG_PASS}\" judgekit-db-postgres pg_dump -U judgekit -d judgekit --format=custom --compress=9 -f /tmp/${BACKUP_NAME} && \
+      docker cp judgekit-db-postgres:/tmp/${BACKUP_NAME} /home/${REMOTE_USER}/backups/${BACKUP_NAME} && \
+      docker exec judgekit-db-postgres rm -f /tmp/${BACKUP_NAME}"; then
+    success "Pre-deploy backup saved: ~/backups/${BACKUP_NAME}"
+  else
+    warn "Pre-deploy backup FAILED (test-backends pg)"
+    if [[ "${SKIP_PREDEPLOY_BACKUP:-0}" != "1" ]]; then
+      die "Pre-deploy backup is required. Set SKIP_PREDEPLOY_BACKUP=1 to bypass."
+    fi
+  fi
+fi
+
+# ---------------------------------------------------------------------------
+# Step 2c: PG volume safety check (test-backends stack)
+# The test-backends compose uses container name judgekit-db-postgres.
+# ---------------------------------------------------------------------------
+if [[ "${SKIP_PG_VOLUME_CHECK:-0}" == "1" ]]; then
+  warn "SKIP_PG_VOLUME_CHECK=1 set — skipping orphan-volume safety check"
+else
+  SAFETY_ARGS="--container=judgekit-db-postgres"
+  [[ "${AUTO_MIGRATE_ORPHANED_PGDATA:-0}" == "1" ]] && SAFETY_ARGS="${SAFETY_ARGS} --auto-migrate"
+  info "Running PG volume safety check on remote (test-backends)..."
+  set +e
+  remote "bash ${REMOTE_DIR}/scripts/pg-volume-safety-check.sh ${SAFETY_ARGS}"
+  SAFETY_RC=$?
+  set -e
+  case "$SAFETY_RC" in
+    0) success "Safety check passed" ;;
+    2) info "Safety check: no existing db container (first deploy)" ;;
+    1) die "PG volume safety check FAILED — deploy aborted. Follow the recovery steps above, or re-run with AUTO_MIGRATE_ORPHANED_PGDATA=1 / SKIP_PG_VOLUME_CHECK=1." ;;
+    *) die "PG volume safety check returned unexpected code ${SAFETY_RC}" ;;
+  esac
+fi
+
+# ---------------------------------------------------------------------------
 # Step 3: Stop old containers, start multi-backend stack
 # ---------------------------------------------------------------------------
 info "Stopping existing containers..."

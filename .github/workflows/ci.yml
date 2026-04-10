@@ -180,8 +180,26 @@ jobs:
       - name: Syntax check verify-db-backup.sh
         run: bash -n scripts/verify-db-backup.sh
 
+      - name: Syntax check pg-volume-safety-check.sh
+        run: bash -n scripts/pg-volume-safety-check.sh
+
+      - name: Syntax check deploy scripts
+        run: |
+          bash -n deploy-docker.sh
+          bash -n deploy.sh
+          bash -n deploy-test-backends.sh
+
       - name: Smoke test backup script
         run: bash scripts/test-backup.sh
+
+      - name: Assert PGDATA is pinned in every postgres compose service
+        # The postgres:18-alpine image defaults PGDATA to a non-standard path.
+        # If a compose file mounts judgekit-pgdata without pinning PGDATA,
+        # the cluster silently lands in an anonymous volume and the named
+        # volume stays empty — the exact failure mode of the Apr 2026 data
+        # wipe. This step fails CI if any postgres service regresses that
+        # pinning.
+        run: python3 scripts/check-pgdata-pinned.py docker-compose.production.yml docker-compose.test-backends.yml
 
   e2e:
     name: End-to-end tests
