@@ -79,6 +79,7 @@ AUTH_TRUST_HOST=true
 DB_DIALECT=postgresql
 DATABASE_URL=postgres://judgekit:\${POSTGRES_PASSWORD}@db:5432/judgekit
 POSTGRES_PASSWORD=$(openssl rand -hex 32)
+PLUGIN_CONFIG_ENCRYPTION_KEY=$(openssl rand -hex 32)
 JUDGE_AUTH_TOKEN=$(openssl rand -hex 32)
 JUDGE_CONCURRENCY=2
 POLL_INTERVAL=2000
@@ -93,6 +94,17 @@ EOF
   success "Generated .env.production"
 else
   info "Using existing .env.production"
+fi
+
+# ---- Step 1b: Backfill missing PLUGIN_CONFIG_ENCRYPTION_KEY on remote ----
+# Older deployments predate the key; without it the app 500s on api-key
+# creation. Add a random value if missing without touching existing keys.
+if remote "test -f ${REMOTE_DIR}/.env.production && ! grep -q '^PLUGIN_CONFIG_ENCRYPTION_KEY=' ${REMOTE_DIR}/.env.production" 2>/dev/null; then
+  info "Backfilling missing PLUGIN_CONFIG_ENCRYPTION_KEY on ${REMOTE_HOST}..."
+  NEW_KEY=$(openssl rand -hex 32)
+  remote "printf '\nPLUGIN_CONFIG_ENCRYPTION_KEY=%s\n' '${NEW_KEY}' >> ${REMOTE_DIR}/.env.production && chmod 600 ${REMOTE_DIR}/.env.production" \
+    && success "PLUGIN_CONFIG_ENCRYPTION_KEY added to remote .env.production" \
+    || warn "Failed to backfill PLUGIN_CONFIG_ENCRYPTION_KEY — please add it manually"
 fi
 
 # ---- Step 2: Build Docker images ----

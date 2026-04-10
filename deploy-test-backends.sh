@@ -105,10 +105,12 @@ if ! remote "test -f ${REMOTE_DIR}/.env.production" 2>/dev/null; then
   info "Generating .env.production on remote..."
   AUTH_SECRET=$(openssl rand -base64 32)
   JUDGE_AUTH_TOKEN=$(openssl rand -hex 32)
+  PLUGIN_CONFIG_ENCRYPTION_KEY=$(openssl rand -hex 32)
   remote "cat > ${REMOTE_DIR}/.env.production << 'ENVEOF'
 AUTH_SECRET=${AUTH_SECRET}
 AUTH_URL=https://${DOMAIN}
 AUTH_TRUST_HOST=true
+PLUGIN_CONFIG_ENCRYPTION_KEY=${PLUGIN_CONFIG_ENCRYPTION_KEY}
 JUDGE_AUTH_TOKEN=${JUDGE_AUTH_TOKEN}
 JUDGE_CONCURRENCY=2
 POLL_INTERVAL=2000
@@ -120,6 +122,15 @@ SUBMISSION_RATE_LIMIT_MAX_PER_MINUTE=10
 SUBMISSION_MAX_PENDING=5
 SUBMISSION_GLOBAL_QUEUE_LIMIT=200
 ENVEOF"
+fi
+
+# Backfill missing PLUGIN_CONFIG_ENCRYPTION_KEY on remote
+if remote "test -f ${REMOTE_DIR}/.env.production && ! grep -q '^PLUGIN_CONFIG_ENCRYPTION_KEY=' ${REMOTE_DIR}/.env.production" 2>/dev/null; then
+  info "Backfilling missing PLUGIN_CONFIG_ENCRYPTION_KEY on ${REMOTE_HOST}..."
+  NEW_KEY=$(openssl rand -hex 32)
+  remote "printf '\nPLUGIN_CONFIG_ENCRYPTION_KEY=%s\n' '${NEW_KEY}' >> ${REMOTE_DIR}/.env.production && chmod 600 ${REMOTE_DIR}/.env.production" \
+    && success "PLUGIN_CONFIG_ENCRYPTION_KEY added to remote .env.production" \
+    || warn "Failed to backfill PLUGIN_CONFIG_ENCRYPTION_KEY — please add it manually"
 fi
 
 # ---------------------------------------------------------------------------
