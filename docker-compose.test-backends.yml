@@ -22,11 +22,15 @@ services:
     container_name: judgekit-db-postgres
     restart: unless-stopped
     volumes:
-      - judgekit-pgdata:/var/lib/postgresql
+      - judgekit-pgdata:/var/lib/postgresql/data
     environment:
       POSTGRES_DB: judgekit
       POSTGRES_USER: judgekit
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-judgekit_test}
+      # Pin PGDATA so the named volume is the cluster directory regardless
+      # of image default. See docker-compose.production.yml for the full
+      # rationale (silent data wipe on postgres image upgrade).
+      PGDATA: /var/lib/postgresql/data
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U judgekit"]
       interval: 10s
@@ -52,6 +56,20 @@ services:
       retries: 5
       start_period: 30s
 
+  docker-proxy:
+    image: tecnativa/docker-socket-proxy:latest
+    container_name: judgekit-test-docker-proxy
+    restart: unless-stopped
+    environment:
+      - CONTAINERS=1
+      - IMAGES=1
+      - BUILD=1
+      - POST=1
+      - DELETE=1
+      - LOG_LEVEL=warning
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+
   # ---------------------------------------------------------------------------
   # App: SQLite backend (existing, port 3100)
   # ---------------------------------------------------------------------------
@@ -63,15 +81,14 @@ services:
       - "127.0.0.1:3100:3000"
     volumes:
       - judgekit-data:/app/data
-      - /var/run/docker.sock:/var/run/docker.sock:ro
-      - /compiler-workspaces:/compiler-workspaces
     env_file:
       - .env.production
     environment:
       - DB_DIALECT=sqlite
       - DATABASE_PATH=/app/data/judge.db
       - HOSTNAME=0.0.0.0
-      - COMPILER_WORKSPACE_DIR=/compiler-workspaces
+      - COMPILER_RUNNER_URL=http://judge-worker:3001
+      - DISABLE_COMPILER_LOCAL_FALLBACK=1
     healthcheck:
       test: ["CMD", "wget", "--no-verbose", "--tries=1", "-O", "/dev/null", "http://127.0.0.1:3000/login"]
       interval: 30s
@@ -88,16 +105,14 @@ services:
     restart: unless-stopped
     ports:
       - "127.0.0.1:3101:3000"
-    volumes:
-      - /var/run/docker.sock:/var/run/docker.sock:ro
-      - /compiler-workspaces:/compiler-workspaces
     env_file:
       - .env.production
     environment:
       - DB_DIALECT=postgresql
       - DATABASE_URL=postgres://judgekit:${POSTGRES_PASSWORD:-judgekit_test}@db-postgres:5432/judgekit
       - HOSTNAME=0.0.0.0
-      - COMPILER_WORKSPACE_DIR=/compiler-workspaces
+      - COMPILER_RUNNER_URL=http://judge-worker:3001
+      - DISABLE_COMPILER_LOCAL_FALLBACK=1
       - AUTH_URL=http://oj-internal.maum.ai:3101
     depends_on:
       db-postgres:
@@ -118,16 +133,14 @@ services:
     restart: unless-stopped
     ports:
       - "127.0.0.1:3102:3000"
-    volumes:
-      - /var/run/docker.sock:/var/run/docker.sock:ro
-      - /compiler-workspaces:/compiler-workspaces
     env_file:
       - .env.production
     environment:
       - DB_DIALECT=mysql
       - DATABASE_URL=mysql://judgekit:${MYSQL_PASSWORD:-judgekit_test}@db-mysql:3306/judgekit
       - HOSTNAME=0.0.0.0
-      - COMPILER_WORKSPACE_DIR=/compiler-workspaces
+      - COMPILER_RUNNER_URL=http://judge-worker:3001
+      - DISABLE_COMPILER_LOCAL_FALLBACK=1
       - AUTH_URL=http://oj-internal.maum.ai:3102
     depends_on:
       db-mysql:
@@ -146,12 +159,7 @@ services:
     image: judgekit-judge-worker:latest
     container_name: judgekit-judge-worker
     restart: unless-stopped
-    cap_add:
-      - SYS_ADMIN
-    security_opt:
-      - apparmor:unconfined
     volumes:
-      - /var/run/docker.sock:/var/run/docker.sock:ro
       - /judge-workspaces:/judge-workspaces
       - judgekit-dead-letter:/app/dead-letter
     env_file:
@@ -161,6 +169,7 @@ services:
       - JUDGE_SECCOMP_PROFILE=/etc/judge/seccomp-profile.json
       - DEAD_LETTER_DIR=/app/dead-letter
       - TMPDIR=/judge-workspaces
+      - DOCKER_HOST=tcp://docker-proxy:2375
       - RUNNER_PORT=3001
       - RUNNER_HOST=0.0.0.0
     healthcheck:
@@ -170,6 +179,8 @@ services:
       retries: 3
       start_period: 10s
     depends_on:
+      docker-proxy:
+        condition: service_started
       app-sqlite:
         condition: service_healthy
 

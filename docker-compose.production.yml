@@ -42,6 +42,12 @@ services:
       POSTGRES_DB: judgekit
       POSTGRES_USER: judgekit
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?POSTGRES_PASSWORD is required}
+      # Pin PGDATA so the mounted named volume is the cluster directory
+      # regardless of image default. Without this, postgres:18-alpine
+      # silently puts data in /var/lib/postgresql/18/docker, which lands
+      # inside an anonymous volume when only /var/lib/postgresql/data is
+      # mounted. That mismatch caused a data wipe on 2026-04-09.
+      PGDATA: /var/lib/postgresql/data
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U judgekit"]
       interval: 10s
@@ -49,10 +55,7 @@ services:
       retries: 5
       start_period: 10s
 
-  # Restricted Docker socket proxy — exposes image/build/container APIs.
-  # Both the app container (standalone compiler + admin image management)
-  # and the judge worker use this proxy instead of mounting the Docker socket
-  # directly, reducing the blast radius of a container compromise.
+  # Restricted Docker socket proxy — only the judge worker talks to Docker.
   docker-proxy:
     image: tecnativa/docker-socket-proxy:latest
     container_name: judgekit-docker-proxy
@@ -76,20 +79,15 @@ services:
     restart: unless-stopped
     ports:
       - "127.0.0.1:3100:3000"
-    volumes:
-      - /compiler-workspaces:/compiler-workspaces   # Shared path for compiler sandbox volumes
     env_file:
       - .env.production
     environment:
       - DB_DIALECT=postgresql
       - DATABASE_URL=postgres://judgekit:${POSTGRES_PASSWORD:?POSTGRES_PASSWORD is required}@db:5432/judgekit
       - HOSTNAME=0.0.0.0
-      - COMPILER_WORKSPACE_DIR=/compiler-workspaces
       - COMPILER_RUNNER_URL=http://judge-worker:3001
-      - DOCKER_HOST=tcp://docker-proxy:2375
+      - DISABLE_COMPILER_LOCAL_FALLBACK=1
     depends_on:
-      docker-proxy:
-        condition: service_started
       db:
         condition: service_healthy
     healthcheck:
@@ -107,10 +105,6 @@ services:
     image: judgekit-judge-worker:latest
     container_name: judgekit-judge-worker
     restart: unless-stopped
-    cap_add:
-      - SYS_ADMIN
-    security_opt:
-      - apparmor:unconfined
     volumes:
       - /judge-workspaces:/judge-workspaces  # Identity-mapped so sibling containers see the same path
       - judgekit-dead-letter:/app/dead-letter

@@ -42,6 +42,7 @@ JUDGE_DISABLE_CUSTOM_SECCOMP=0
 | `JUDGE_WORKER_HOSTNAME` | No | System hostname | Worker name shown in admin dashboard |
 | `POLL_INTERVAL` | No | `2000` | Worker poll interval in ms |
 | `JUDGE_DISABLE_CUSTOM_SECCOMP` | No | `0` | Set `1` on Docker 28+/modern kernels |
+| `TRUSTED_DOCKER_REGISTRIES` | No | — | Comma-separated allowlist for fully qualified external judge image registries |
 
 - Set `JUDGE_DISABLE_CUSTOM_SECCOMP=1` on hosts where Docker 28+/modern kernels reject the repository seccomp profile
 
@@ -109,6 +110,8 @@ sudo systemctl restart online-judge-worker-rs.service
 
 Rsyncs source to the remote server and builds Docker images there (never locally), auto-detecting architecture. Supports password (`SSH_PASSWORD`) and key (`SSH_KEY`) SSH auth.
 
+For the default Docker deployment, the Next.js app does **not** talk to Docker directly. The local judge worker is the only container with Docker daemon access (via `docker-proxy`), and the app reaches the worker’s authenticated internal runner/admin endpoints instead.
+
 ```bash
 # Password auth
 SSH_PASSWORD='...' REMOTE_HOST=... REMOTE_USER=... ./deploy-docker.sh
@@ -172,6 +175,51 @@ curl http://127.0.0.1:3000/api/health
 - Confirm `/api/health` returns `{"status":"ok"...}` with `checks.database` set to `ok`
 - If `401 Unauthorized` in worker logs, verify `JUDGE_AUTH_TOKEN`
 - If container-init error (`fsmount:fscontext:proc`), set `JUDGE_DISABLE_CUSTOM_SECCOMP=1`
+
+## Database Durability (READ BEFORE TOUCHING COMPOSE OR DEPLOY SCRIPTS)
+
+The PostgreSQL data lives in the `judgekit-pgdata` named volume, mounted at
+`/var/lib/postgresql/data` inside the container. The compose file explicitly
+sets `PGDATA=/var/lib/postgresql/data` — **do not remove or change it** without
+reading this section. The `postgres:18-alpine` image defaults to
+`/var/lib/postgresql/18/docker` which silently relocates the cluster directory
+outside the named volume on a recreate and has caused a full data wipe in the
+past (see commit history for the Apr 2026 incident).
+
+### Safe operations
+
+- `docker compose -f docker-compose.production.yml restart` — safe
+- `docker compose -f docker-compose.production.yml up -d` — safe (no volume changes)
+- `docker compose -f docker-compose.production.yml down` — safe (keeps volumes)
+- `docker image prune -f` — safe (only removes dangling `<none>` images)
+
+### Dangerous operations — never run on production
+
+- `docker compose down -v` — **deletes `judgekit-pgdata`**. Use `down` without `-v`.
+- `docker volume rm judgekit_judgekit-pgdata` — destroys the cluster
+- `docker volume prune -af` — indiscriminate, can delete mounted volumes on stopped containers
+- `docker system prune -a --volumes` — same, destructive across the board
+- Changing the `postgres` image tag without an explicit `pg_upgrade` plan
+- Upgrading the `postgres` major version inside the same named volume without
+  following the [postgres upgrade guide](https://www.postgresql.org/docs/current/pgupgrade.html)
+
+### Backups
+
+- **Pre-deploy**: `deploy-docker.sh` automatically takes a custom-format
+  `pg_dump` to `~/backups/judgekit-predeploy-<timestamp>.dump` on the remote
+  before every deploy. Retention: `BACKUP_RETAIN_DAYS` (default 30). Set
+  `SKIP_PREDEPLOY_BACKUP=1` to bypass (not recommended).
+- **Scheduled**: `scripts/backup-db.sh` supports a container-exec mode for
+  systems without host-level `pg_dump`. Example daily cron:
+  ```cron
+  17 4 * * *  CONTAINER_NAME=judgekit-db \
+                ENV_FILE=/home/ubuntu/judgekit/.env.production \
+                DB_DIALECT=postgresql \
+                BACKUP_PATH=/home/ubuntu/backups/judgekit-$(/bin/date +\%Y\%m\%d-\%H\%M\%S).sql.gz \
+                /home/ubuntu/judgekit/scripts/backup-db.sh >> /home/ubuntu/backups/backup.log 2>&1
+  ```
+- **Restore**: custom-format dumps restore with `pg_restore -U judgekit -d judgekit -c <file>`;
+  gzipped SQL dumps restore with `gunzip -c <file> | psql -U judgekit -d judgekit`.
 
 ## CI and Backup
 

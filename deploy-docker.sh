@@ -337,6 +337,37 @@ remote "cp -f ${REMOTE_DIR}/docker-compose.production.yml ${REMOTE_DIR}/docker-c
 success "Config ready"
 
 # ---------------------------------------------------------------------------
+# Step 4b: Pre-deploy database backup (safety net against wipes)
+#
+# Every deploy captures a custom-format pg_dump of the current database before
+# touching containers. Dumps land in ~/backups/ on the remote and are kept for
+# BACKUP_RETAIN_DAYS days. Skipped automatically on first-time deploys when no
+# container is running yet.
+# ---------------------------------------------------------------------------
+BACKUP_RETAIN_DAYS="${BACKUP_RETAIN_DAYS:-30}"
+if remote "docker inspect judgekit-db >/dev/null 2>&1 && docker inspect --format='{{.State.Running}}' judgekit-db 2>/dev/null | grep -q true"; then
+    info "Backing up existing database before deploy..."
+    BACKUP_TS=$(date -u +%Y%m%d-%H%M%SZ)
+    BACKUP_NAME="judgekit-predeploy-${BACKUP_TS}.dump"
+    if remote "mkdir -p /home/${REMOTE_USER}/backups && \
+        PG_PASS=\$(grep '^POSTGRES_PASSWORD=' ${REMOTE_DIR}/.env.production | cut -d= -f2-) && \
+        docker exec -e PGPASSWORD=\"\${PG_PASS}\" judgekit-db pg_dump -U judgekit -d judgekit --format=custom --compress=9 -f /tmp/${BACKUP_NAME} && \
+        docker cp judgekit-db:/tmp/${BACKUP_NAME} /home/${REMOTE_USER}/backups/${BACKUP_NAME} && \
+        docker exec judgekit-db rm -f /tmp/${BACKUP_NAME}"; then
+        success "Pre-deploy backup saved: ~/backups/${BACKUP_NAME}"
+        # Retention: delete dumps older than BACKUP_RETAIN_DAYS
+        remote "find /home/${REMOTE_USER}/backups -maxdepth 1 -name 'judgekit-predeploy-*.dump' -mtime +${BACKUP_RETAIN_DAYS} -delete 2>/dev/null || true"
+    else
+        warn "Pre-deploy backup FAILED. Aborting deploy — run the deploy again once the database is reachable, or override with SKIP_PREDEPLOY_BACKUP=1"
+        if [[ "${SKIP_PREDEPLOY_BACKUP:-0}" != "1" ]]; then
+            die "Pre-deploy backup is required. Set SKIP_PREDEPLOY_BACKUP=1 to bypass at your own risk."
+        fi
+    fi
+else
+    info "No running judgekit-db detected — skipping pre-deploy backup (first deploy or db already stopped)"
+fi
+
+# ---------------------------------------------------------------------------
 # Step 5: Stop old containers, start DB first, migrate, then start all
 # ---------------------------------------------------------------------------
 info "Stopping existing containers (if any)..."
@@ -363,35 +394,35 @@ success "Database is ready"
 # ---------------------------------------------------------------------------
 info "Running database migrations (drizzle-kit push)..."
 
-# Create a temporary env file on the remote for DB credentials (avoids leaking
-# passwords in process listings via -e flags).
-remote "PG_PASS=\$(grep '^POSTGRES_PASSWORD=' ${REMOTE_DIR}/.env.production | cut -d= -f2-) && \
-        echo \"POSTGRES_PASSWORD=\${PG_PASS}\" > ${REMOTE_DIR}/.env.dbcreds && \
-        echo \"PGPASSWORD=\${PG_PASS}\" >> ${REMOTE_DIR}/.env.dbcreds && \
-        echo \"DATABASE_URL=postgres://judgekit:\${PG_PASS}@db:5432/judgekit\" >> ${REMOTE_DIR}/.env.dbcreds && \
-        chmod 600 ${REMOTE_DIR}/.env.dbcreds"
-
 # Determine the Docker network name (compose project name + _default)
 NETWORK_NAME=$(remote "docker network ls --format '{{.Name}}' | grep judgekit | head -1" 2>/dev/null)
 NETWORK_NAME="${NETWORK_NAME:-judgekit_default}"
 
 # Run drizzle-kit push via a temporary Node container connected to the DB network.
 # This uses the source code already synced to the remote host (has drizzle.config.ts + schema).
-remote "docker run --rm \
-    --network ${NETWORK_NAME} \
-    -v ${REMOTE_DIR}:/app -w /app \
-    --env-file ${REMOTE_DIR}/.env.dbcreds \
-    node:24-alpine \
-    sh -c 'npx drizzle-kit push'" 2>&1 || \
+remote "PG_PASS=\$(grep '^POSTGRES_PASSWORD=' ${REMOTE_DIR}/.env.production | cut -d= -f2-) && \
+    export POSTGRES_PASSWORD=\"\${PG_PASS}\" && \
+    export PGPASSWORD=\"\${PG_PASS}\" && \
+    export DATABASE_URL=\"postgres://judgekit:\${PG_PASS}@db:5432/judgekit\" && \
+    docker run --rm \
+      --network ${NETWORK_NAME} \
+      -v ${REMOTE_DIR}:/app -w /app \
+      -e POSTGRES_PASSWORD -e PGPASSWORD -e DATABASE_URL \
+      node:24-alpine \
+      sh -c 'npx drizzle-kit push'" 2>&1 || \
   warn "drizzle-kit push failed — may need manual intervention"
 success "Database migrated"
 
 # Apply additive schema repairs for columns that may be missing on older
 # PostgreSQL deployments even when drizzle-kit push reports no diff.
 info "Applying additive PostgreSQL schema repairs..."
-remote "docker run --rm \
+remote "PG_PASS=\$(grep '^POSTGRES_PASSWORD=' ${REMOTE_DIR}/.env.production | cut -d= -f2-) && \
+    export POSTGRES_PASSWORD=\"\${PG_PASS}\" && \
+    export PGPASSWORD=\"\${PG_PASS}\" && \
+    export DATABASE_URL=\"postgres://judgekit:\${PG_PASS}@db:5432/judgekit\" && \
+    docker run --rm \
     --network ${NETWORK_NAME} \
-    --env-file ${REMOTE_DIR}/.env.dbcreds \
+    -e POSTGRES_PASSWORD -e PGPASSWORD -e DATABASE_URL \
     postgres:18-alpine \
     psql -h db -U judgekit -d judgekit <<'SQL'
 ALTER TABLE problems ADD COLUMN IF NOT EXISTS default_language text;
@@ -401,15 +432,16 @@ success "Schema repairs applied"
 
 # Run ANALYZE to ensure query planner has fresh statistics
 info "Running ANALYZE on database..."
-remote "docker run --rm \
+remote "PG_PASS=\$(grep '^POSTGRES_PASSWORD=' ${REMOTE_DIR}/.env.production | cut -d= -f2-) && \
+    export POSTGRES_PASSWORD=\"\${PG_PASS}\" && \
+    export PGPASSWORD=\"\${PG_PASS}\" && \
+    export DATABASE_URL=\"postgres://judgekit:\${PG_PASS}@db:5432/judgekit\" && \
+    docker run --rm \
     --network ${NETWORK_NAME} \
-    --env-file ${REMOTE_DIR}/.env.dbcreds \
+    -e POSTGRES_PASSWORD -e PGPASSWORD -e DATABASE_URL \
     postgres:18-alpine \
     psql -h db -U judgekit -d judgekit -c 'ANALYZE;'" 2>&1 || true
 success "Database statistics updated"
-
-# Clean up temporary credentials file
-remote "rm -f ${REMOTE_DIR}/.env.dbcreds"
 
 # 6b. Now start all remaining containers
 COMPOSE_PROFILE_FLAG=""

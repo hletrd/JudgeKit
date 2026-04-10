@@ -1,17 +1,52 @@
 #!/usr/bin/env bash
 # Database backup script — supports PostgreSQL (production) and SQLite (dev)
+#
+# PostgreSQL modes:
+#   host-exec     (default): requires host-level pg_dump; reads DATABASE_URL
+#   container-exec          : runs pg_dump inside a docker container, no host
+#                             dependency. Enable by setting CONTAINER_NAME.
+#                             Reads POSTGRES_PASSWORD / DB_NAME / DB_USER from
+#                             env, or from ENV_FILE if set.
+#
+# Suitable for daily cron on a production host:
+#   CONTAINER_NAME=judgekit-db \
+#     ENV_FILE=/home/ubuntu/judgekit/.env.production \
+#     BACKUP_PATH=/home/ubuntu/backups/judgekit-$(date +%Y%m%d-%H%M%S).sql.gz \
+#     /home/ubuntu/judgekit/scripts/backup-db.sh
 set -euo pipefail
 
 DB_DIALECT="${DB_DIALECT:-sqlite}"
 
 if [ "$DB_DIALECT" = "postgresql" ]; then
-  # --- PostgreSQL backup via pg_dump ---
-  DATABASE_URL="${DATABASE_URL:?DATABASE_URL is required for PostgreSQL backup}"
-  BACKUP_PATH="${1:-data/backups/judge-$(date +%Y%m%d-%H%M%S).sql.gz}"
-
+  BACKUP_PATH="${1:-${BACKUP_PATH:-data/backups/judge-$(date +%Y%m%d-%H%M%S).sql.gz}}"
   mkdir -p "$(dirname "$BACKUP_PATH")"
-  timeout 300s pg_dump "$DATABASE_URL" | gzip > "$BACKUP_PATH"
-  echo "Created PostgreSQL backup: $BACKUP_PATH"
+
+  if [ -n "${CONTAINER_NAME:-}" ]; then
+    # --- container-exec mode: run pg_dump inside a docker container ---
+    command -v docker >/dev/null 2>&1 || { echo "ERROR: docker not found on PATH" >&2; exit 1; }
+    docker inspect "${CONTAINER_NAME}" >/dev/null 2>&1 \
+      || { echo "ERROR: container ${CONTAINER_NAME} not found" >&2; exit 1; }
+    docker inspect --format='{{.State.Running}}' "${CONTAINER_NAME}" 2>/dev/null | grep -q true \
+      || { echo "ERROR: container ${CONTAINER_NAME} is not running" >&2; exit 1; }
+
+    DB_NAME="${DB_NAME:-judgekit}"
+    DB_USER="${DB_USER:-judgekit}"
+    PG_PASS="${POSTGRES_PASSWORD:-}"
+    if [ -z "${PG_PASS}" ] && [ -n "${ENV_FILE:-}" ] && [ -f "${ENV_FILE}" ]; then
+      PG_PASS=$(grep -E '^POSTGRES_PASSWORD=' "${ENV_FILE}" | cut -d= -f2- | head -1 || true)
+    fi
+    [ -n "${PG_PASS}" ] || { echo "ERROR: POSTGRES_PASSWORD is required (set POSTGRES_PASSWORD or ENV_FILE)" >&2; exit 1; }
+
+    timeout 600s docker exec -e PGPASSWORD="${PG_PASS}" "${CONTAINER_NAME}" \
+      pg_dump -U "${DB_USER}" -d "${DB_NAME}" | gzip > "$BACKUP_PATH"
+    echo "Created PostgreSQL backup via ${CONTAINER_NAME}: $BACKUP_PATH"
+  else
+    # --- host-exec mode: requires host-level pg_dump ---
+    DATABASE_URL="${DATABASE_URL:?DATABASE_URL is required for PostgreSQL backup (or set CONTAINER_NAME for container-exec mode)}"
+    command -v pg_dump >/dev/null 2>&1 || { echo "ERROR: pg_dump not on PATH (install postgresql-client or set CONTAINER_NAME for container-exec mode)" >&2; exit 1; }
+    timeout 300s pg_dump "$DATABASE_URL" | gzip > "$BACKUP_PATH"
+    echo "Created PostgreSQL backup: $BACKUP_PATH"
+  fi
 
   # Verify the backup is a valid gzip
   if ! gzip -t "$BACKUP_PATH" 2>/dev/null; then
