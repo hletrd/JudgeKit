@@ -31,6 +31,45 @@ type PlannedTestCaseRow = ProblemMutationInput["testCases"][number] & {
   sortOrder: number;
 };
 
+/**
+ * Sparse test case patch coming from the client during problem edit. The
+ * client sends `undefined` (i.e. omits the key after JSON serialization) for
+ * `input` or `expectedOutput` when the value is unchanged from what it
+ * originally loaded, to save bandwidth on large cases. It sends them in
+ * positional order matching the originally loaded list.
+ */
+export type ProblemTestCasePatch = {
+  input?: string;
+  expectedOutput?: string;
+  isVisible?: boolean;
+};
+
+/**
+ * Merge a positional sparse test case patch array against the existing test
+ * cases for a problem. Unchanged fields fall back to the existing row at the
+ * same index. Anything past the existing length is treated as a fresh test
+ * case, where the client must have supplied full content (missing fields
+ * fall back to empty strings and will fail downstream validation).
+ *
+ * This function exists because the PATCH /api/v1/problems/[id] route and its
+ * client share an implicit positional contract, and a previous id-based
+ * merge attempt silently swallowed every update because the client never
+ * sends row ids.
+ */
+export function mergeTestCasePatchIntoExisting(
+  sortedExisting: ExistingTestCaseRow[],
+  patch: ProblemTestCasePatch[]
+): ProblemMutationInput["testCases"] {
+  return patch.map((tc, index) => {
+    const existing = sortedExisting[index];
+    return {
+      input: tc.input ?? existing?.input ?? "",
+      expectedOutput: tc.expectedOutput ?? existing?.expectedOutput ?? "",
+      isVisible: tc.isVisible ?? existing?.isVisible ?? false,
+    };
+  });
+}
+
 export function planProblemTestCaseSync(
   problemId: string,
   existingCases: ExistingTestCaseRow[],

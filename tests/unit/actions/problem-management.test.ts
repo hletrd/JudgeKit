@@ -93,6 +93,7 @@ vi.mock("nanoid", () => ({
 // ── Subject under test (imported after mocks) ────────────────────────────────
 import {
   createProblemWithTestCases,
+  mergeTestCasePatchIntoExisting,
   updateProblemWithTestCases,
 } from "@/lib/problem-management";
 import type { ProblemMutationInput } from "@/lib/validators/problem-management";
@@ -349,5 +350,122 @@ describe("updateProblemWithTestCases", () => {
     await expect(updateProblemWithTestCases("problem-1", makeInput())).rejects.toThrow(
       "DB update failure"
     );
+  });
+});
+
+// ════════════════════════════════════════════════════════════════════════════
+// mergeTestCasePatchIntoExisting
+// ════════════════════════════════════════════════════════════════════════════
+//
+// Regression coverage for the PATCH /api/v1/problems/[id] sparse update flow.
+// The client omits `input` / `expectedOutput` for unchanged test cases to
+// save bandwidth on large cases; the server has to fall back to the existing
+// row at the same index, not reject them as empty strings.
+
+describe("mergeTestCasePatchIntoExisting", () => {
+  const existingRow = (overrides: Partial<{
+    id: string;
+    input: string;
+    expectedOutput: string;
+    isVisible: boolean | null;
+    sortOrder: number | null;
+  }> = {}) => ({
+    id: "tc-default",
+    input: "default-input\n",
+    expectedOutput: "default-output\n",
+    isVisible: false,
+    sortOrder: 0,
+    ...overrides,
+  });
+
+  it("preserves every existing value when the patch is all-undefined", () => {
+    const existing = [
+      existingRow({ id: "a", input: "1\n", expectedOutput: "2\n", sortOrder: 0 }),
+      existingRow({ id: "b", input: "3\n", expectedOutput: "4\n", sortOrder: 1 }),
+      existingRow({ id: "c", input: "5\n", expectedOutput: "6\n", sortOrder: 2 }),
+    ];
+    const patch = [{}, {}, {}];
+
+    const merged = mergeTestCasePatchIntoExisting(existing, patch);
+
+    expect(merged).toEqual([
+      { input: "1\n", expectedOutput: "2\n", isVisible: false },
+      { input: "3\n", expectedOutput: "4\n", isVisible: false },
+      { input: "5\n", expectedOutput: "6\n", isVisible: false },
+    ]);
+  });
+
+  it("applies a partial patch while leaving other fields intact", () => {
+    const existing = [
+      existingRow({ id: "a", input: "1\n", expectedOutput: "2\n", sortOrder: 0 }),
+      existingRow({ id: "b", input: "3\n", expectedOutput: "4\n", sortOrder: 1 }),
+    ];
+    const patch = [
+      { input: "edited-1\n" },
+      { expectedOutput: "edited-4\n", isVisible: true },
+    ];
+
+    const merged = mergeTestCasePatchIntoExisting(existing, patch);
+
+    expect(merged).toEqual([
+      { input: "edited-1\n", expectedOutput: "2\n", isVisible: false },
+      { input: "3\n", expectedOutput: "edited-4\n", isVisible: true },
+    ]);
+  });
+
+  it("appends a trailing new test case with full content", () => {
+    const existing = [
+      existingRow({ id: "a", input: "1\n", expectedOutput: "2\n", sortOrder: 0 }),
+    ];
+    const patch = [
+      {},
+      { input: "new-in\n", expectedOutput: "new-out\n", isVisible: true },
+    ];
+
+    const merged = mergeTestCasePatchIntoExisting(existing, patch);
+
+    expect(merged).toEqual([
+      { input: "1\n", expectedOutput: "2\n", isVisible: false },
+      { input: "new-in\n", expectedOutput: "new-out\n", isVisible: true },
+    ]);
+  });
+
+  it("drops a trailing test case when the patch is shorter than existing", () => {
+    const existing = [
+      existingRow({ id: "a", input: "1\n", expectedOutput: "2\n", sortOrder: 0 }),
+      existingRow({ id: "b", input: "3\n", expectedOutput: "4\n", sortOrder: 1 }),
+    ];
+    const patch = [{}];
+
+    const merged = mergeTestCasePatchIntoExisting(existing, patch);
+
+    expect(merged).toEqual([
+      { input: "1\n", expectedOutput: "2\n", isVisible: false },
+    ]);
+  });
+
+  it("treats a null existing isVisible as false", () => {
+    const existing = [
+      existingRow({ id: "a", isVisible: null }),
+    ];
+    const patch = [{}];
+
+    const merged = mergeTestCasePatchIntoExisting(existing, patch);
+
+    expect(merged[0].isVisible).toBe(false);
+  });
+
+  it("does not silently swallow edits when the patch omits ids", () => {
+    // This is the exact regression from commit b6aa481: the earlier id-based
+    // merge treated every case as new because the client never sends ids.
+    const existing = [
+      existingRow({ id: "a", input: "old\n", expectedOutput: "old-out\n", sortOrder: 0 }),
+    ];
+    const patch = [{ input: "new\n" }];
+
+    const merged = mergeTestCasePatchIntoExisting(existing, patch);
+
+    expect(merged[0].input).toBe("new\n");
+    expect(merged[0].expectedOutput).toBe("old-out\n");
   });
 });
