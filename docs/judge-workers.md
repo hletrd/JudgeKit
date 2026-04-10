@@ -66,11 +66,13 @@ Workers poll `/api/v1/judge/claim` to claim submissions. The claim request inclu
 
 ### Single-machine (co-located)
 
-Include the local judge worker profile when using `docker-compose.production.yml`:
+The judge worker is part of `docker-compose.production.yml` by default. No profile flag is needed:
 
 ```bash
-docker compose -f docker-compose.production.yml --profile worker --env-file .env.production up -d
+docker compose -f docker-compose.production.yml --env-file .env.production up -d
 ```
+
+> The worker used to be gated behind `profiles: ["worker"]`, but forgetting `--profile worker` during a manual recovery caused a silent worker outage in Apr 2026. The profile has been removed so the worker always starts with the rest of the stack.
 
 ### Dedicated workers
 

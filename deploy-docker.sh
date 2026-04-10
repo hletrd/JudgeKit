@@ -451,9 +451,17 @@ fi
 
 # ---------------------------------------------------------------------------
 # Step 5: Stop old containers, start DB first, migrate, then start all
+#
+# The `judge-worker` service used to be gated behind `profiles: ["worker"]`,
+# which required every `docker compose` invocation to pass `--profile worker`
+# or the worker would silently be skipped. The profile was removed (Apr 2026)
+# after an incident where a manual `docker compose up` forgot the flag and
+# the worker vanished on two targets at once. The worker is now always part
+# of the stack; deployments that run dedicated workers elsewhere can stop
+# the local worker with `docker compose stop judge-worker` after `up -d`.
 # ---------------------------------------------------------------------------
 info "Stopping existing containers (if any)..."
-remote "cd ${REMOTE_DIR} && cp -f .env.production .env && (docker compose -f docker-compose.production.yml --profile worker down --remove-orphans 2>/dev/null || docker-compose -f docker-compose.production.yml --profile worker down --remove-orphans 2>/dev/null || true)"
+remote "cd ${REMOTE_DIR} && cp -f .env.production .env && (docker compose -f docker-compose.production.yml down --remove-orphans 2>/dev/null || docker-compose -f docker-compose.production.yml down --remove-orphans 2>/dev/null || true)"
 
 # 5a. Start only the database container
 info "Starting database container..."
@@ -525,15 +533,22 @@ remote "PG_PASS=\$(grep '^POSTGRES_PASSWORD=' ${REMOTE_DIR}/.env.production | cu
     psql -h db -U judgekit -d judgekit -c 'ANALYZE;'" 2>&1 || true
 success "Database statistics updated"
 
-# 6b. Now start all remaining containers
-COMPOSE_PROFILE_FLAG=""
+# 6b. Now start all remaining containers.
+# The judge-worker service is always in the compose file (no profile gate).
+# For targets that outsource judging to remote workers, INCLUDE_WORKER=false
+# will stop the local worker immediately after it starts so the app and
+# sidecars still come up cleanly.
 if [[ "${INCLUDE_WORKER}" == "true" ]]; then
-    COMPOSE_PROFILE_FLAG="--profile worker"
     info "Starting all containers (with local judge worker)..."
 else
-    info "Starting all containers (no local judge worker — use remote workers)..."
+    info "Starting all containers (local judge worker will be stopped after startup)..."
 fi
-remote "cd ${REMOTE_DIR} && (docker compose -f docker-compose.production.yml ${COMPOSE_PROFILE_FLAG} --env-file .env.production up -d 2>/dev/null || docker-compose -f docker-compose.production.yml ${COMPOSE_PROFILE_FLAG} --env-file .env.production up -d)"
+remote "cd ${REMOTE_DIR} && (docker compose -f docker-compose.production.yml --env-file .env.production up -d 2>/dev/null || docker-compose -f docker-compose.production.yml --env-file .env.production up -d)"
+
+if [[ "${INCLUDE_WORKER}" != "true" ]]; then
+    info "Stopping local judge-worker per INCLUDE_WORKER=${INCLUDE_WORKER}..."
+    remote "cd ${REMOTE_DIR} && (docker compose -f docker-compose.production.yml --env-file .env.production stop judge-worker 2>/dev/null || docker-compose -f docker-compose.production.yml --env-file .env.production stop judge-worker 2>/dev/null || true)"
+fi
 
 info "Waiting for app container to be healthy..."
 for i in $(seq 1 60); do

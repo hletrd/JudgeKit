@@ -177,20 +177,20 @@ The judge worker also exposes an HTTP runner endpoint (default port `3001`) for 
 ### Single-machine with local worker (default)
 
 ```bash
-# Includes the local judge worker (co-located on the same machine)
-docker compose -f docker-compose.production.yml --profile worker --env-file .env.production up -d
+# Starts the full stack including the co-located judge worker
+docker compose -f docker-compose.production.yml --env-file .env.production up -d
 
-# Or via deploy script (includes local worker by default)
+# Or via deploy script
 ./deploy-docker.sh
 ```
 
 ### App server only (remote workers)
 
-When judge workers run on separate machines, start the app server without a local worker:
+When judge workers run on separate machines, start the full stack and then stop the local worker. Since the worker is always in the compose file, there is no flag to disable it up front:
 
 ```bash
-# No --profile worker → judge-worker service is not started
 docker compose -f docker-compose.production.yml --env-file .env.production up -d
+docker compose -f docker-compose.production.yml --env-file .env.production stop judge-worker
 
 # Or via deploy script
 ./deploy-docker.sh --no-worker
