@@ -155,7 +155,9 @@ impl ApiClient {
             .map_err(|e| format!("Poll request failed: {e}"))?;
 
         if !response.status().is_success() {
-            return Err(format!("Poll failed: {}", response.status()));
+            let status = response.status();
+            let body = response.text().await.unwrap_or_default();
+            return Err(format!("Poll failed: {status} {body}"));
         }
 
         let poll_response: PollResponse = response

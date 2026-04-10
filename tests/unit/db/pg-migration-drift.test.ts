@@ -54,4 +54,11 @@ describe("PostgreSQL migration drift guards", () => {
     expect(sql).toMatch(/CREATE INDEX IF NOT EXISTS "rate_limits_last_attempt_idx"/);
     expect(sql).toMatch(/ALTER TABLE "tags" ADD CONSTRAINT "tags_name_unique" UNIQUE\("name"\)/);
   });
+
+  it("fails with a deterministic message when duplicate tag names exist", () => {
+    const sql = readPgMigrationSql();
+
+    expect(sql).toMatch(/Cannot add tags_name_unique: duplicate tag names exist/);
+    expect(sql).toMatch(/Deduplicate rows in the tags table before applying this migration/);
+  });
 });

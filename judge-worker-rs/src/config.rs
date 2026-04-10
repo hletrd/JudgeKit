@@ -34,6 +34,10 @@ pub struct Config {
     /// Maximum concurrent runner executions.
     /// Defaults to max(num_cpus - 1, 1). Configurable via `RUNNER_CONCURRENCY` env var.
     pub runner_concurrency: usize,
+    /// Whether the worker may continue in unregistered polling mode when
+    /// registration fails. Defaults to false and should only be enabled in
+    /// controlled local/dev environments.
+    pub allow_unregistered_mode: bool,
 }
 
 impl Config {
@@ -224,6 +228,14 @@ impl Config {
             Err(_) => num_cpus::get().saturating_sub(1).max(1),
         };
 
+        let allow_unregistered_mode = match env::var("JUDGE_ALLOW_UNREGISTERED_MODE") {
+            Ok(val) => {
+                let lower = val.trim().to_lowercase();
+                matches!(lower.as_str(), "1" | "true" | "yes" | "on")
+            }
+            Err(_) => false,
+        };
+
         Ok(Config {
             claim_url,
             report_url,
@@ -241,6 +253,7 @@ impl Config {
             runner_host,
             runner_port,
             runner_concurrency,
+            allow_unregistered_mode,
         })
     }
 }

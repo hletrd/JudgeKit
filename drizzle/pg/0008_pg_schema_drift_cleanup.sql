@@ -23,6 +23,16 @@ ALTER TABLE "files" ADD COLUMN IF NOT EXISTS "problem_id" text;
 --> statement-breakpoint
 DO $$
 BEGIN
+	IF EXISTS (
+		SELECT 1
+		FROM "tags"
+		GROUP BY "name"
+		HAVING COUNT(*) > 1
+	) THEN
+		RAISE EXCEPTION 'Cannot add tags_name_unique: duplicate tag names exist'
+			USING HINT = 'Deduplicate rows in the tags table before applying this migration.';
+	END IF;
+
 	IF NOT EXISTS (
 		SELECT 1
 		FROM pg_constraint

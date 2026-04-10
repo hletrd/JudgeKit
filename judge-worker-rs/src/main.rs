@@ -240,11 +240,19 @@ async fn main() {
                 )
             }
             Err(e) => {
-                tracing::warn!(
-                    error = %e,
-                    "Failed to register with app server — running without registration"
-                );
-                (None, None, std::time::Duration::from_secs(30))
+                if config.allow_unregistered_mode {
+                    tracing::warn!(
+                        error = %e,
+                        "Failed to register with app server — running in unregistered mode because JUDGE_ALLOW_UNREGISTERED_MODE is enabled"
+                    );
+                    (None, None, std::time::Duration::from_secs(30))
+                } else {
+                    tracing::error!(
+                        error = %e,
+                        "Failed to register with app server — exiting because unregistered mode is disabled"
+                    );
+                    std::process::exit(1);
+                }
             }
         };
 
