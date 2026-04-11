@@ -165,11 +165,42 @@ export const GET = createApiHandler({
       .from(antiCheatEvents)
       .where(whereClause);
 
+    // Detect heartbeat gaps: if filtering by userId, check for periods >120s
+    // without a heartbeat during the contest window
+    const heartbeatGaps: Array<{ userId: string; gapStartedAt: string; gapEndedAt: string; gapSeconds: number }> = [];
+    if (userIdFilter && assignment.enableAntiCheat) {
+      const heartbeats = await db
+        .select({ createdAt: antiCheatEvents.createdAt })
+        .from(antiCheatEvents)
+        .where(and(
+          eq(antiCheatEvents.assignmentId, assignmentId),
+          eq(antiCheatEvents.userId, userIdFilter),
+          eq(antiCheatEvents.eventType, "heartbeat"),
+        ))
+        .orderBy(antiCheatEvents.createdAt);
+
+      const GAP_THRESHOLD_MS = 120_000; // 2 minutes
+      for (let i = 1; i < heartbeats.length; i++) {
+        const prev = new Date(heartbeats[i - 1].createdAt!).getTime();
+        const curr = new Date(heartbeats[i].createdAt!).getTime();
+        const gap = curr - prev;
+        if (gap > GAP_THRESHOLD_MS) {
+          heartbeatGaps.push({
+            userId: userIdFilter,
+            gapStartedAt: new Date(prev).toISOString(),
+            gapEndedAt: new Date(curr).toISOString(),
+            gapSeconds: Math.round(gap / 1000),
+          });
+        }
+      }
+    }
+
     return apiSuccess({
       events,
       total: Number(totalRow?.count ?? 0),
       limit,
       offset,
+      ...(heartbeatGaps.length > 0 ? { heartbeatGaps } : {}),
     });
   },
 });
