@@ -160,6 +160,14 @@ export default async function RecruitPage({
               <li>{t("noteCompletion")}</li>
             </ul>
           </div>
+          <div className="rounded-lg border border-sky-200 bg-sky-50 dark:border-sky-900 dark:bg-sky-950/30 p-3 space-y-1 text-sm">
+            <p className="font-medium text-sky-800 dark:text-sky-200">{t("reviewNoticeTitle")}</p>
+            <ul className="list-disc list-inside text-xs text-sky-700 dark:text-sky-300 space-y-0.5">
+              <li>{t("reviewNoticeSubmissions")}</li>
+              <li>{t("reviewNoticeSignals")}</li>
+              <li>{t("reviewNoticeAi")}</li>
+            </ul>
+          </div>
         </div>
         <RecruitStartForm
           token={token}

@@ -1343,9 +1343,11 @@
       "createSuccess": "API 키를 만들었습니다",
       "createError": "API 키를 만들지 못했습니다",
       "keyCreatedTitle": "API 키 완료",
-      "keyCreatedDescription": "키가 생성되었습니다. 목록에서 언제든 다시 볼 수 있습니다.",
+      "keyCreatedDescription": "지금 이 키를 복사하세요. 다시 표시되지 않습니다.",
       "copyKey": "키 복사",
+      "copyMaskedKeyPreview": "마스킹된 키 미리보기 복사",
       "copied": "복사됨!",
+      "maskedKeyPreviewCopied": "마스킹된 키 미리보기를 복사했습니다",
       "done": "완료",
       "deactivateSuccess": "API 키를 비활성화했습니다",
       "activateSuccess": "API 키를 활성화했습니다",
@@ -1578,7 +1580,8 @@
       "chatLogsDescription": "사용자별 AI 채팅 기록",
       "viewChatLogs": "채팅 로그 보기",
       "noLogs": "아직 채팅 로그가 없습니다.",
-      "noMessages": "이 대화에 메시지가 없습니다."
+      "noMessages": "이 대화에 메시지가 없습니다.",
+      "loggingNotice": "메시지는 지원 품질 개선 및 오남용 조사를 위해 권한이 있는 운영자가 저장·검토할 수 있습니다."
     }
   },
   "rankings": {
@@ -1753,7 +1756,9 @@
       "signalsDisclaimer": "이 신호들은 검토를 돕기 위한 참고 자료이며, 그 자체로 부정행위의 증거는 아닙니다.",
       "similarityNoSubmissions": "비교할 제출물이 없어 유사도 스캔을 실행하지 않았습니다.",
       "similaritySkippedTooManySubmissions": "제출물 {count}건이 현재 검토 한도 {limit}건을 초과하여 유사도 스캔을 실행하지 않았습니다.",
-      "similarityTimedOut": "유사도 스캔이 시간 안에 완료되지 않아 결과를 기록하지 않았습니다."
+      "similarityTimedOut": "유사도 스캔이 시간 안에 완료되지 않아 결과를 기록하지 않았습니다.",
+      "participantNoticeTitle": "이 평가에서는 무결성 모니터링이 활성화되어 있습니다.",
+      "participantNoticeBody": "평가가 진행되는 동안 포커스 변경, 복사/붙여넣기 등 관련 이벤트가 사후 검토용으로 기록될 수 있습니다."
     },
     "analytics": {
       "title": "분석",
@@ -2096,6 +2101,10 @@
     "expiredDescription": "초대 링크가 만료됐습니다. 담당자에게 새 링크를 요청하세요.",
     "contestClosed": "평가 마감",
     "contestClosedDescription": "마감된 평가입니다.",
-    "resultsNotAvailable": "결과를 볼 수 없습니다."
+    "resultsNotAvailable": "결과를 볼 수 없습니다.",
+    "reviewNoticeTitle": "평가 검토 안내",
+    "reviewNoticeSubmissions": "권한이 있는 검토자는 채용 판단과 지원을 위해 제출물, 시간 정보, 평가 진행 기록을 확인할 수 있습니다.",
+    "reviewNoticeSignals": "무결성 모니터링이 켜져 있으면 포커스 변경, 복사/붙여넣기 같은 신호가 검토용으로 기록될 수 있습니다.",
+    "reviewNoticeAi": "AI 도움말은 플랫폼의 다른 곳에서 켜져 있어도 평가 모드에서는 사용할 수 없습니다."
   }
 }

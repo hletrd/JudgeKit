@@ -285,6 +285,20 @@ export default async function ContestDetailPage({
           <h2 className="text-2xl font-bold sm:text-3xl truncate">{assignment.title}</h2>
         </div>
 
+        {assignment.enableAntiCheat && (
+          <div className="rounded-lg border border-amber-200 bg-amber-50 dark:border-amber-900 dark:bg-amber-950/30 px-4 py-3">
+            <p className="text-sm font-medium text-amber-900 dark:text-amber-100">
+              {t("antiCheat.participantNoticeTitle")}
+            </p>
+            <p className="mt-1 text-sm text-amber-800 dark:text-amber-200">
+              {t("antiCheat.participantNoticeBody")}
+            </p>
+            <p className="mt-2 text-xs text-amber-700 dark:text-amber-300">
+              {t("antiCheat.signalsDisclaimer")}
+            </p>
+          </div>
+        )}
+
         {isUpcoming && (
           <Card>
             <CardContent className="py-8 text-center space-y-2">

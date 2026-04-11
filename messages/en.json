@@ -1343,9 +1343,11 @@
       "createSuccess": "API key created",
       "createError": "Failed to create API key",
       "keyCreatedTitle": "API Key Created",
-      "keyCreatedDescription": "Here's your key. You can view it again from the list anytime.",
+      "keyCreatedDescription": "Copy this key now. It will not be shown again.",
       "copyKey": "Copy Key",
+      "copyMaskedKeyPreview": "Copy masked key preview",
       "copied": "Copied!",
+      "maskedKeyPreviewCopied": "Masked key preview copied",
       "done": "Done",
       "deactivateSuccess": "API key deactivated",
       "activateSuccess": "API key activated",
@@ -1578,7 +1580,8 @@
       "chatLogsDescription": "AI chat history by user.",
       "viewChatLogs": "View Chat Logs",
       "noLogs": "No chat logs yet.",
-      "noMessages": "No messages in this conversation."
+      "noMessages": "No messages in this conversation.",
+      "loggingNotice": "Messages may be stored and reviewed by authorized staff to improve support and investigate misuse."
     }
   },
   "rankings": {
@@ -1753,7 +1756,9 @@
       "signalsDisclaimer": "These signals are review aids, not proof of misconduct on their own.",
       "similarityNoSubmissions": "Similarity scan not run because there are no submissions to compare yet.",
       "similaritySkippedTooManySubmissions": "Similarity scan not run because {count} submissions exceed the current review limit of {limit}.",
-      "similarityTimedOut": "Similarity scan did not finish in time. No results were recorded."
+      "similarityTimedOut": "Similarity scan did not finish in time. No results were recorded.",
+      "participantNoticeTitle": "Integrity monitoring is active for this assessment.",
+      "participantNoticeBody": "Focus changes, copy/paste activity, and related events may be logged for follow-up review while the assessment is open."
     },
     "analytics": {
       "title": "Analytics",
@@ -2096,6 +2101,10 @@
     "expiredDescription": "This link has expired. Contact the organizer for a new one.",
     "contestClosed": "Assessment closed",
     "contestClosedDescription": "This assessment is closed.",
-    "resultsNotAvailable": "Results aren't available for this assessment."
+    "resultsNotAvailable": "Results aren't available for this assessment.",
+    "reviewNoticeTitle": "Assessment review notice",
+    "reviewNoticeSubmissions": "Authorized reviewers may inspect submissions, timestamps, and assessment progress for hiring decisions and support.",
+    "reviewNoticeSignals": "If integrity monitoring is enabled, focus changes, copy/paste events, and similar signals may be recorded for review.",
+    "reviewNoticeAi": "AI help is unavailable in assessment mode, even if it is enabled elsewhere on the platform."
   }
 }
