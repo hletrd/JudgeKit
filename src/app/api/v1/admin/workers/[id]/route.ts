@@ -68,17 +68,21 @@ export const DELETE = createApiHandler({
     if (!caps.has("system.settings")) return forbidden();
 
     const { id } = params;
+    const txResult = await execTransaction(async (tx) => {
+      const [worker] = await tx
+        .select({
+          id: judgeWorkers.id,
+          hostname: judgeWorkers.hostname,
+        })
+        .from(judgeWorkers)
+        .where(eq(judgeWorkers.id, id))
+        .limit(1)
+        .for("update");
 
-    const worker = await db.query.judgeWorkers.findFirst({
-      where: eq(judgeWorkers.id, id),
-    });
+      if (!worker) {
+        return { error: "workerNotFound" as const };
+      }
 
-    if (!worker) {
-      return apiError("workerNotFound", 404);
-    }
-
-    // Atomically reclaim in-flight submissions and remove worker record
-    await execTransaction(async (tx) => {
       await tx.update(submissions)
         .set({
           status: "pending",
@@ -93,7 +97,14 @@ export const DELETE = createApiHandler({
           )
         );
       await tx.delete(judgeWorkers).where(eq(judgeWorkers.id, id));
+      return { worker };
     });
+
+    if ("error" in txResult) {
+      return apiError("workerNotFound", 404);
+    }
+
+    const { worker } = txResult;
 
     recordAuditEvent({
       action: "judge_worker.force_removed",

@@ -158,10 +158,12 @@ describe("admin workers routes", () => {
     updateWhereMock.mockResolvedValue(undefined);
     deleteWhereMock.mockResolvedValue(undefined);
     execTransactionMock.mockImplementation(async (fn: (tx: {
+      select: typeof selectMock;
       update: () => { set: (value: unknown) => { where: typeof updateWhereMock } };
       delete: () => { where: typeof deleteWhereMock };
-    }) => Promise<void>) =>
+    }) => Promise<unknown>) =>
       fn({
+        select: selectMock,
         update: () => ({
           set: () => ({
             where: updateWhereMock,
@@ -294,7 +296,15 @@ describe("admin workers routes", () => {
 
   describe("DELETE /api/v1/admin/workers/[id]", () => {
     it("removes worker and reclaims submissions", async () => {
-      findFirstMock.mockResolvedValue({ id: "w1", hostname: "worker-01" });
+      selectMock.mockReturnValueOnce({
+        from: vi.fn(() => ({
+          where: vi.fn(() => ({
+            limit: vi.fn(() => ({
+              for: vi.fn().mockResolvedValue([{ id: "w1", hostname: "worker-01" }]),
+            })),
+          })),
+        })),
+      });
 
       const response = await DELETE(
         makeRequest("http://localhost/api/v1/admin/workers/w1", { method: "DELETE" }),
@@ -309,7 +319,15 @@ describe("admin workers routes", () => {
     });
 
     it("returns 404 when worker not found", async () => {
-      findFirstMock.mockResolvedValue(null);
+      selectMock.mockReturnValueOnce({
+        from: vi.fn(() => ({
+          where: vi.fn(() => ({
+            limit: vi.fn(() => ({
+              for: vi.fn().mockResolvedValue([]),
+            })),
+          })),
+        })),
+      });
       const response = await DELETE(
         makeRequest("http://localhost/api/v1/admin/workers/nonexistent", { method: "DELETE" }),
         makeParams("nonexistent")
