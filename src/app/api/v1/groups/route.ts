@@ -1,8 +1,8 @@
 import { NextRequest } from "next/server";
 import { db } from "@/lib/db";
-import { groups, enrollments } from "@/lib/db/schema";
-import { eq, desc, sql } from "drizzle-orm";
-import { getApiUser, unauthorized, forbidden, isAdmin, isInstructor, csrfForbidden } from "@/lib/api/auth";
+import { groups, enrollments, groupInstructors } from "@/lib/db/schema";
+import { eq, desc, sql, or } from "drizzle-orm";
+import { getApiUser, unauthorized, forbidden, csrfForbidden } from "@/lib/api/auth";
 import { recordAuditEvent } from "@/lib/audit/events";
 import { parsePagination } from "@/lib/api/pagination";
 import { apiError, apiPaginated, apiSuccess } from "@/lib/api/responses";
@@ -10,11 +10,13 @@ import { nanoid } from "nanoid";
 import { createGroupSchema } from "@/lib/validators/groups";
 import { consumeApiRateLimit } from "@/lib/security/api-rate-limit";
 import { logger } from "@/lib/logger";
+import { resolveCapabilities } from "@/lib/capabilities/cache";
 
 export async function GET(request: NextRequest) {
   try {
     const user = await getApiUser(request);
     if (!user) return unauthorized();
+    const caps = await resolveCapabilities(user.role);
 
     const searchParams = request.nextUrl.searchParams;
     const { page, limit, offset } = parsePagination(searchParams, { defaultLimit: 25 });
@@ -22,7 +24,7 @@ export async function GET(request: NextRequest) {
     let results;
     let total = 0;
 
-    if (isAdmin(user.role)) {
+    if (caps.has("groups.view_all")) {
       const [totalRow] = await db.select({ count: sql<number>`count(*)` }).from(groups);
       total = Number(totalRow?.count ?? 0);
       results = await db.query.groups.findMany({
@@ -35,18 +37,29 @@ export async function GET(request: NextRequest) {
           },
         },
       });
-    } else if (isInstructor(user.role)) {
-      // Include groups where user is primary instructor OR co-instructor/TA
-      const instructorFilter = sql`(${groups.instructorId} = ${user.id} OR EXISTS (
-        SELECT 1 FROM group_instructors gi WHERE gi.group_id = ${groups.id} AND gi.user_id = ${user.id}
-      ))`;
+    } else {
+      const accessibleGroupFilter = or(
+        eq(groups.instructorId, user.id),
+        sql`exists (
+          select 1
+          from ${groupInstructors}
+          where ${groupInstructors.groupId} = ${groups.id}
+            and ${groupInstructors.userId} = ${user.id}
+        )`,
+        sql`exists (
+          select 1
+          from ${enrollments}
+          where ${enrollments.groupId} = ${groups.id}
+            and ${enrollments.userId} = ${user.id}
+        )`
+      );
       const [totalRow] = await db
         .select({ count: sql<number>`count(*)` })
         .from(groups)
-        .where(instructorFilter);
+        .where(accessibleGroupFilter);
       total = Number(totalRow?.count ?? 0);
       results = await db.query.groups.findMany({
-        where: instructorFilter,
+        where: accessibleGroupFilter,
         orderBy: [desc(groups.createdAt)],
         limit,
         offset,
@@ -56,28 +69,6 @@ export async function GET(request: NextRequest) {
           },
         },
       });
-    } else {
-      const [totalRow] = await db
-        .select({ count: sql<number>`count(*)` })
-        .from(enrollments)
-        .where(eq(enrollments.userId, user.id));
-      total = Number(totalRow?.count ?? 0);
-      const userEnrollments = await db.query.enrollments.findMany({
-        where: eq(enrollments.userId, user.id),
-        limit,
-        offset,
-        orderBy: [desc(enrollments.enrolledAt)],
-        with: {
-          group: {
-            with: {
-              instructor: {
-                columns: { id: true, name: true, email: true },
-              },
-            },
-          },
-        },
-      });
-      results = userEnrollments.map((e) => e.group);
     }
 
     return apiPaginated(results, page, limit, total);
@@ -97,7 +88,8 @@ export async function POST(request: NextRequest) {
 
     const user = await getApiUser(request);
     if (!user) return unauthorized();
-    if (!isInstructor(user.role)) return forbidden();
+    const caps = await resolveCapabilities(user.role);
+    if (!caps.has("groups.create")) return forbidden();
 
     const body = await request.json();
     const parsedInput = createGroupSchema.safeParse(body);

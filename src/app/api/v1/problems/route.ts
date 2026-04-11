@@ -2,18 +2,20 @@ import { NextRequest } from "next/server";
 import { db } from "@/lib/db";
 import { problems, problemGroupAccess, enrollments } from "@/lib/db/schema";
 import { eq, desc, sql, and, or } from "drizzle-orm";
-import { forbidden, isAdmin, isInstructor, createApiHandler } from "@/lib/api/handler";
+import { forbidden, createApiHandler } from "@/lib/api/handler";
 import { recordAuditEvent } from "@/lib/audit/events";
 import { parsePagination } from "@/lib/api/pagination";
 import { apiError, apiPaginated, apiSuccess } from "@/lib/api/responses";
 import { createProblemWithTestCases } from "@/lib/problem-management";
 import { problemMutationSchema, problemVisibilityValues } from "@/lib/validators/problem-management";
+import { resolveCapabilities } from "@/lib/capabilities/cache";
 
 export const GET = createApiHandler({
   handler: async (req: NextRequest, { user }) => {
     const searchParams = req.nextUrl.searchParams;
     const { page, limit, offset } = parsePagination(searchParams);
     const visibility = searchParams.get("visibility");
+    const caps = await resolveCapabilities(user.role);
 
     if (visibility && !problemVisibilityValues.includes(visibility as (typeof problemVisibilityValues)[number])) {
       return apiError("invalidVisibility", 400);
@@ -21,7 +23,7 @@ export const GET = createApiHandler({
 
     const visibilityFilter = visibility ? eq(problems.visibility, visibility) : undefined;
 
-    if (isAdmin(user.role)) {
+    if (caps.has("problems.view_all")) {
       const [total] = await db
         .select({ count: sql<number>`count(*)` })
         .from(problems)
@@ -74,7 +76,8 @@ export const GET = createApiHandler({
 export const POST = createApiHandler({
   rateLimit: "problems:create",
   handler: async (req: NextRequest, { user }) => {
-    if (!isInstructor(user.role)) return forbidden();
+    const caps = await resolveCapabilities(user.role);
+    if (!caps.has("problems.create")) return forbidden();
 
     const body = await req.json();
     const parsedInput = problemMutationSchema.safeParse({
