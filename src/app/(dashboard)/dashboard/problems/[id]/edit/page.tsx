@@ -104,6 +104,7 @@ export default async function EditProblemPage({ params }: { params: Promise<{ id
             testCasesLocked={hasSubmissions}
             allowTestCaseOverride={hasSubmissions && canOverrideTestCases}
             forceDisableAiAssistant={forceDisableAiAssistant}
+            editorTheme={session.user.editorTheme}
           />
         </CardContent>
       </Card>

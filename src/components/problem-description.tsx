@@ -4,11 +4,13 @@ import rehypeHighlight from "rehype-highlight";
 import remarkBreaks from "remark-breaks";
 import remarkGfm from "remark-gfm";
 import { CopyCodeButton } from "@/components/code/copy-code-button";
+import { getProblemCodeThemeStyle } from "@/lib/code/problem-code-themes";
 import { sanitizeHtml } from "@/lib/security/sanitize-html";
 import { cn } from "@/lib/utils";
 type ProblemDescriptionProps = {
   className?: string;
   description: string;
+  editorTheme?: string | null;
 };
 
 function getCodeBlockText(children: ReactNode): string {
@@ -30,20 +32,23 @@ function getCodeBlockText(children: ReactNode): string {
 export function ProblemDescription({
   className,
   description,
+  editorTheme,
 }: ProblemDescriptionProps) {
+  const themeStyle = getProblemCodeThemeStyle(editorTheme);
   const looksLikeLegacyHtml = /<(p|h[1-6]|pre|ul|ol|li|table|blockquote|img|div|br|hr)\b/i.test(description);
 
   if (looksLikeLegacyHtml) {
     return (
       <div
         className={cn("problem-description", className)}
+        style={themeStyle}
         dangerouslySetInnerHTML={{ __html: sanitizeHtml(description) }}
       />
     );
   }
 
   return (
-    <div className={cn("problem-description", className)}>
+    <div className={cn("problem-description", className)} style={themeStyle}>
       <ReactMarkdown
         rehypePlugins={[rehypeHighlight]}
         remarkPlugins={[remarkGfm, remarkBreaks]}

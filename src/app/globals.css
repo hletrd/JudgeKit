@@ -267,7 +267,7 @@
     color: var(--problem-code-foreground);
     font-family: var(--font-mono);
     overflow-x: auto;
-    padding: 2.6rem 1.1rem 1rem;
+    padding: 1rem 1.1rem;
   }
 
   .problem-description pre code {

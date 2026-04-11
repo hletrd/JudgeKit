@@ -278,6 +278,7 @@ export default async function ProblemDetailPage({
             <ProblemDescription
               className="text-sm sm:text-base"
               description={problem.description}
+              editorTheme={session.user.editorTheme}
             />
           ) : (
             <p>{t("noDescription")}</p>

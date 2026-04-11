@@ -66,4 +66,17 @@ describe("ProblemDescription", () => {
     const wrapper = container.firstChild as HTMLElement;
     expect(wrapper.className).toContain("extra-class");
   });
+
+  it("applies editor-theme code colors to rendered descriptions", () => {
+    const { container } = render(
+      <ProblemDescription
+        description={"```js\nconsole.log('hi')\n```"}
+        editorTheme="vscode-dark"
+      />
+    );
+
+    const wrapper = container.firstChild as HTMLElement;
+    expect(wrapper.style.getPropertyValue("--problem-code-background")).toBe("#1e1e1e");
+    expect(wrapper.style.getPropertyValue("--problem-code-foreground")).toBe("#d4d4d4");
+  });
 });

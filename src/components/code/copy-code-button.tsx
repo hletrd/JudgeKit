@@ -32,14 +32,14 @@ export function CopyCodeButton({ value }: { value: string }) {
       type="button"
       variant="ghost"
       size="icon"
-      className="absolute right-2 top-2 z-10 h-8 w-8 rounded-md bg-background/80 backdrop-blur-sm hover:bg-background"
+      className="absolute right-1.5 top-1.5 z-10 h-7 w-7 rounded-md opacity-30 transition-opacity hover:opacity-80"
       onClick={handleCopy}
       aria-label={copied ? "Copied" : "Copy code"}
     >
       {copied ? (
-        <Check className="h-4 w-4 text-green-500" />
+        <Check className="h-3.5 w-3.5 text-green-500" />
       ) : (
-        <Copy className="h-4 w-4 text-muted-foreground" />
+        <Copy className="h-3.5 w-3.5 text-[var(--problem-code-foreground,currentColor)]" />
       )}
     </Button>
   );

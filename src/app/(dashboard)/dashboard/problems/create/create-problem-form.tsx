@@ -57,6 +57,7 @@ type CreateProblemFormProps = {
   allowTestCaseOverride?: boolean;
   canUploadFiles?: boolean;
   forceDisableAiAssistant?: boolean;
+  editorTheme?: string | null;
 };
 
 export default function CreateProblemForm({
@@ -66,6 +67,7 @@ export default function CreateProblemForm({
   allowTestCaseOverride = false,
   canUploadFiles = false,
   forceDisableAiAssistant = false,
+  editorTheme,
 }: CreateProblemFormProps) {
   const t = useTranslations("problems");
   const tCommon = useTranslations("common");
@@ -513,7 +515,7 @@ export default function CreateProblemForm({
           <TabsContent value="preview">
             <div className="min-h-[200px] rounded-md border px-3 py-2 text-sm">
               {description.trim() ? (
-                <ProblemDescription description={description} />
+                <ProblemDescription description={description} editorTheme={editorTheme} />
               ) : (
                 <p className="text-muted-foreground">{t("noDescription")}</p>
               )}

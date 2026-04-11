@@ -31,6 +31,7 @@ export default async function CreateProblemPage() {
           <CreateProblemForm
             canUploadFiles={caps.has("files.upload")}
             forceDisableAiAssistant={forceDisableAiAssistant}
+            editorTheme={session.user.editorTheme}
           />
         </CardContent>
       </Card>
