@@ -39,6 +39,7 @@ Treat every item below as **needs revalidation against `HEAD` before code change
 - ✅ atomic login/recruit-token throttling and submission-rate limiting were already fixed at `HEAD` and revalidated during plan execution.
 - ✅ tag creation now only retries on real unique-constraint races instead of masking arbitrary insert failures.
 - ✅ recruiting invitation create/bulk-create now takes assignment/email advisory locks and rechecks duplicates inside the transaction before inserting.
+- ✅ group member removal now locks the enrollment row inside the final transaction before deleting it.
 
 ### 2. Import/export and schema-truth hardening
 **Why next:** multiple reviews still question whether DB import/export is correct, atomic, and aligned with schema/migrations.

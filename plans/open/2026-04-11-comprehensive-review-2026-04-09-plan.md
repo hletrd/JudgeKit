@@ -8,6 +8,7 @@ This review still appears to contain **open work**. It is broad and overlaps wit
 - ✅ Completed in this plan execution: user creation now maps insert-time unique username/email races to the same conflict responses as the preflight checks instead of leaking a raw 500.
 - ✅ Completed in this plan execution: user updates now also translate insert-time username/email unique races into stable conflict responses instead of leaking a raw 500.
 - ✅ Completed in this plan execution: single and bulk recruiting-invitation creation now take assignment/email advisory locks and recheck duplicates inside the transaction before inserting, closing the duplicate-email invite race.
+- ✅ Completed in this plan execution: group member removal now locks the enrollment row inside the final transaction before checking assignment submissions and deleting the enrollment, closing the stale pre-transaction lookup race.
 - ✅ Revalidated at `HEAD`: password rehash is awaited, recruiting-token auth is rate-limited through the same atomic limiter path, and submission creation already holds an advisory lock for the submission-rate limit check.
 
 ## Critical / high themes to address
@@ -101,7 +102,7 @@ Use this plan for findings that are still unique after dedupe.
 - move uniqueness/existence checks plus writes into the same transaction
 - standardize conflict handling (`23505` / no-op outcomes / partial-success reporting)
 - verify role cache invalidation and refresh semantics after mutations
-- **Status:** role-create conflict handling and recruiting-invitation duplicate-email races are now robust; additional role/member/invite mutation paths still need revalidation or fixes.
+- **Status:** role-create conflict handling, recruiting-invitation duplicate-email races, and group member removal TOCTOU are now robust; additional role/member/invite mutation paths still need revalidation or fixes.
 
 ### Tests
 - concurrent invite creation
