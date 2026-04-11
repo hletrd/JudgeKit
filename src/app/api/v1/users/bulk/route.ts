@@ -37,7 +37,9 @@ export const POST = createApiHandler({
       }
     }
 
-    // Instructors can only bulk-create students
+    // Intentional built-in carve-out: instructors retain legacy student-only
+    // bulk-create access even without users.create. Custom roles should rely
+    // on the users.create capability instead of inheriting this exception.
     if (isInstructor(user.role) && !caps.has("users.create")) {
       for (const entry of userList) {
         if (entry.role && entry.role !== "student") {

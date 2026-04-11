@@ -64,6 +64,10 @@ export const PATCH = createApiHandler({
     // Use transaction for atomic read-check-update to prevent TOCTOU races
     const body = await req.json();
     const allowLockedProblems = Boolean(body.allowLockedProblems);
+    // Intentional built-in break-glass override: once submissions exist,
+    // changing assignment problem links remains reserved to built-in admins.
+    // We do not currently expose a narrower capability for this destructive
+    // override, so custom roles continue to follow the locked default path.
 
     const patchResult = await db.transaction(async (tx) => {
       const assignment = await tx.query.assignments.findFirst({

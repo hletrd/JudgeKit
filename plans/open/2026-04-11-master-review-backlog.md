@@ -112,6 +112,7 @@ Treat every item below as **needs revalidation against `HEAD` before code change
 - ✅ exam-session routes now use the shared group-management permission model and `contests.view_analytics` for elevated reads instead of built-in admin-only branching.
 - ✅ server-action user-management auth now honors `users.create` / `users.edit` / `users.delete` capabilities instead of relying only on built-in role checks.
 - ✅ submissions listing now uses `submissions.view_all` capability instead of a built-in admin-only branch.
+- ✅ the only remaining built-in custom-role exceptions are now explicitly documented as intentional carve-outs in code: instructor student-only bulk create access and the built-in-admin-only assignment problem-link override after submissions exist.
 
 ### 4. Judge/worker runtime correctness
 **Why next:** the latest code review still has critical worker/runtime findings that can corrupt verdicts or mis-measure execution.

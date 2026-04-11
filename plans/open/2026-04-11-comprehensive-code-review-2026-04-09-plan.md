@@ -125,7 +125,7 @@ Before changing code, re-check the current implementation for each numbered find
 - inventory every route/page still using hard-coded role checks
 - decide whether to convert to capabilities or keep built-in-only intentionally
 - align UI gating and server enforcement
-- **Status:** recruiting invitation APIs, contest-management routes, admin log APIs, user management routes/actions, problem-set routes, submission moderation routes, admin tag routes, contest quick-create, contest code-snapshot history, exam-session routes, group list/detail/create/delete/export, problem list/detail/create/update/delete, submissions listing, bulk-user creation, and server-action user-management auth now use capability-aware or dynamic-role-aware logic; only a small number of intentionally preserved built-in carve-outs remain to be documented or justified.
+- **Status:** recruiting invitation APIs, contest-management routes, admin log APIs, user management routes/actions, problem-set routes, submission moderation routes, admin tag routes, contest quick-create, contest code-snapshot history, exam-session routes, group list/detail/create/delete/export, problem list/detail/create/update/delete, submissions listing, bulk-user creation, and server-action user-management auth now use capability-aware or dynamic-role-aware logic. The only remaining built-in carve-outs are explicitly intentional and documented in code: (1) legacy instructor student-only bulk create access, and (2) the built-in-admin-only break-glass override for changing assignment problem links after submissions exist.
 
 ### Track 2D — Tighten legacy HTML rendering instead of trusting external media
 **Files**
