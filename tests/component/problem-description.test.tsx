@@ -1,5 +1,3 @@
-import { readFileSync } from "node:fs";
-import { resolve } from "node:path";
 import { render, screen } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { ProblemDescription } from "@/components/problem-description";
@@ -83,8 +81,11 @@ describe("ProblemDescription", () => {
   });
 
   it("keeps enough top padding for the floating code-copy button", () => {
-    const css = readFileSync(resolve(process.cwd(), "src/app/globals.css"), "utf8");
+    const { container } = render(
+      <ProblemDescription description={"```js\nconst answer = 42;\n```"} />
+    );
+    const pre = container.querySelector("pre");
 
-    expect(css).toMatch(/\.problem-description pre\s*\{[\s\S]*padding:\s*2\.75rem 1\.1rem 1rem;/);
+    expect(pre).toHaveStyle({ paddingTop: "2.75rem" });
   });
 });

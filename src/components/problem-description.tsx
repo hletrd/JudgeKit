@@ -7,11 +7,14 @@ import { CopyCodeButton } from "@/components/code/copy-code-button";
 import { getProblemCodeThemeStyle } from "@/lib/code/problem-code-themes";
 import { sanitizeHtml } from "@/lib/security/sanitize-html";
 import { cn } from "@/lib/utils";
+
 type ProblemDescriptionProps = {
   className?: string;
   description: string;
   editorTheme?: string | null;
 };
+
+const PROBLEM_CODE_COPY_BUTTON_CLEARANCE = "2.75rem";
 
 function getCodeBlockText(children: ReactNode): string {
   return Children.toArray(children)
@@ -69,7 +72,15 @@ export function ProblemDescription({
             return (
               <div className="problem-code-block">
                 {copyValue ? <CopyCodeButton value={copyValue} /> : null}
-                <pre {...props}>{children}</pre>
+                <pre
+                  {...props}
+                  style={{
+                    ...props.style,
+                    paddingTop: copyValue ? PROBLEM_CODE_COPY_BUTTON_CLEARANCE : props.style?.paddingTop,
+                  }}
+                >
+                  {children}
+                </pre>
               </div>
             );
           },
