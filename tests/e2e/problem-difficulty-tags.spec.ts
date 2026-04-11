@@ -6,7 +6,7 @@
  * update difficulty, and verify display formatting.
  *
  * Run:
- *   PLAYWRIGHT_BASE_URL=http://oj-internal.maum.ai E2E_USERNAME=admin E2E_PASSWORD='mcl1234~' \
+ *   PLAYWRIGHT_BASE_URL=<url> E2E_USERNAME=<user> E2E_PASSWORD=<pass> \
  *     npx playwright test tests/e2e/problem-difficulty-tags.spec.ts
  */
 

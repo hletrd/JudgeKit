@@ -8,8 +8,11 @@ test("full contest navigation test", async ({ page }) => {
   });
 
   await page.goto("/login");
-  await page.fill('input[name="username"]', process.env.E2E_USERNAME || "admin");
-  await page.fill('input[name="password"]', process.env.E2E_PASSWORD || "admin");
+  const username = process.env.E2E_USERNAME;
+  const password = process.env.E2E_PASSWORD;
+  if (!username || !password) throw new Error('E2E_USERNAME and E2E_PASSWORD env vars required');
+  await page.fill('input[name="username"]', username);
+  await page.fill('input[name="password"]', password);
   await page.click('button[type="submit"]');
   await page.waitForURL("**/dashboard**", { timeout: 15000 });
 

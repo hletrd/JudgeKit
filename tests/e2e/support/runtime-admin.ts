@@ -99,8 +99,11 @@ export async function ensureRuntimeAdminUser(browser?: Browser) {
  */
 export async function loginAsRuntimeAdmin(page: Page) {
   if (isRemoteTarget()) {
-    const username = process.env.E2E_USERNAME ?? "admin";
-    const password = process.env.E2E_PASSWORD ?? "";
+    const username = process.env.E2E_USERNAME;
+    const password = process.env.E2E_PASSWORD;
+    if (!username || !password) {
+      throw new Error("E2E_USERNAME and E2E_PASSWORD env vars required for remote targets");
+    }
 
     await page.goto("/login", { waitUntil: "networkidle" });
     await page.locator("#username").fill(username);

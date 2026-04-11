@@ -1,5 +1,13 @@
 const { chromium } = require('@playwright/test');
 
+const BASE_URL = process.env.PLAYWRIGHT_BASE_URL;
+const USERNAME = process.env.E2E_USERNAME;
+const PASSWORD = process.env.E2E_PASSWORD;
+if (!BASE_URL || !USERNAME || !PASSWORD) {
+  console.error('Usage: PLAYWRIGHT_BASE_URL=<url> E2E_USERNAME=<user> E2E_PASSWORD=<pass> node tests/e2e/debug-login.cjs');
+  process.exit(1);
+}
+
 (async () => {
   const browser = await chromium.launch({ headless: true });
   const page = await browser.newPage();
@@ -12,9 +20,9 @@ const { chromium } = require('@playwright/test');
 
   // Login
   console.log('Logging in...');
-  await page.goto('http://oj-internal.maum.ai/login', { waitUntil: 'domcontentloaded', timeout: 15000 });
-  await page.locator('#username').fill('admin');
-  await page.locator('#password').fill('mcl1234~');
+  await page.goto(`${BASE_URL}/login`, { waitUntil: 'domcontentloaded', timeout: 15000 });
+  await page.locator('#username').fill(USERNAME);
+  await page.locator('#password').fill(PASSWORD);
   await Promise.all([
     page.waitForNavigation({ waitUntil: 'domcontentloaded', timeout: 30000 }).catch(() => {}),
     page.locator('button[type=submit]').click(),
@@ -24,7 +32,7 @@ const { chromium } = require('@playwright/test');
 
   if (page.url().includes('/login')) {
     // Try direct nav with cookie
-    await page.goto('http://oj-internal.maum.ai/dashboard', { waitUntil: 'domcontentloaded', timeout: 30000 });
+    await page.goto('${BASE_URL}/dashboard', { waitUntil: 'domcontentloaded', timeout: 30000 });
     await page.waitForTimeout(2000);
     console.log('After direct nav:', page.url());
     if (page.url().includes('/login')) {
@@ -37,7 +45,7 @@ const { chromium } = require('@playwright/test');
   // Contest list
   console.log('\n=== /dashboard/contests ===');
   errors.length = 0;
-  await page.goto('http://oj-internal.maum.ai/dashboard/contests', { waitUntil: 'domcontentloaded', timeout: 30000 });
+  await page.goto('${BASE_URL}/dashboard/contests', { waitUntil: 'domcontentloaded', timeout: 30000 });
   await page.waitForTimeout(5000);
   console.log('List page errors:', errors.length);
 
@@ -50,7 +58,7 @@ const { chromium } = require('@playwright/test');
   for (const link of links.slice(0, 3)) {
     console.log('\n=== ' + link + ' ===');
     const before = errors.length;
-    await page.goto('http://oj-internal.maum.ai' + link, { waitUntil: 'domcontentloaded', timeout: 30000 });
+    await page.goto('${BASE_URL}' + link, { waitUntil: 'domcontentloaded', timeout: 30000 });
     await page.waitForTimeout(5000);
 
     const body = await page.textContent('body').catch(() => '');

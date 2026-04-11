@@ -1,8 +1,15 @@
 import { test, expect } from '@playwright/test';
 
-const BASE_URL = process.env.PLAYWRIGHT_BASE_URL || 'http://oj-internal.maum.ai';
-const USERNAME = process.env.E2E_USERNAME || 'admin';
-const PASSWORD = process.env.E2E_PASSWORD || 'mcl1234~';
+const BASE_URL = process.env.PLAYWRIGHT_BASE_URL;
+const USERNAME = process.env.E2E_USERNAME;
+const PASSWORD = process.env.E2E_PASSWORD;
+
+if (!BASE_URL || !USERNAME || !PASSWORD) {
+  throw new Error(
+    'Missing required env vars: PLAYWRIGHT_BASE_URL, E2E_USERNAME, E2E_PASSWORD. ' +
+    'Example: PLAYWRIGHT_BASE_URL=http://localhost:3110 E2E_USERNAME=admin E2E_PASSWORD=yourpass npx playwright test'
+  );
+}
 
 test('capture all contest page errors', async ({ page }) => {
   const errors: { url: string; msg: string }[] = [];
