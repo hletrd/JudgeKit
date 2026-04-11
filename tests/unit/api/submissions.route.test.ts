@@ -66,7 +66,7 @@ vi.mock("@/lib/capabilities/cache", () => ({
 const dbMockObj = {
   select: dbSelectMock,
   insert: vi.fn(() => ({ values: dbInsertMock })),
-  query: { submissions: { findFirst: vi.fn() } },
+  query: { submissions: { findFirst: vi.fn(), findMany: vi.fn() } },
   execute: vi.fn().mockResolvedValue(undefined),
 };
 
@@ -84,6 +84,12 @@ function makeRequest(body: unknown, extraHeaders: Record<string, string> = {}) {
       ...extraHeaders,
     },
     body: JSON.stringify(body),
+  });
+}
+
+function makeGetRequest(search = "") {
+  return new NextRequest(`http://localhost:3000/api/v1/submissions${search}`, {
+    method: "GET",
   });
 }
 
@@ -459,5 +465,67 @@ describe("POST /api/v1/submissions", () => {
     const response = await POST(makeRequest(VALID_BODY));
     expect(response.status).toBe(201);
     expect(recordAuditEventMock).not.toHaveBeenCalled();
+  });
+});
+
+describe("GET /api/v1/submissions", () => {
+  beforeEach(async () => {
+    vi.clearAllMocks();
+
+    resolveCapabilitiesMock.mockImplementation(async (role: string) => {
+      const { DEFAULT_ROLE_CAPABILITIES } = await import("@/lib/capabilities/defaults");
+      const caps = DEFAULT_ROLE_CAPABILITIES[role as keyof typeof DEFAULT_ROLE_CAPABILITIES];
+      return new Set(caps ?? []);
+    });
+
+    getApiUserMock.mockResolvedValue(VALID_USER);
+
+    queueSelectResults([
+      [{ count: 1 }],
+    ]);
+    dbMockObj.query.submissions.findMany = vi.fn().mockResolvedValue([
+      {
+        id: "submission-1",
+        userId: "user-1",
+        problemId: "problem-1",
+        assignmentId: null,
+        language: "python",
+        status: "accepted",
+        executionTimeMs: 10,
+        memoryUsedKb: 100,
+        score: 100,
+        judgedAt: new Date(),
+        submittedAt: new Date(),
+      },
+    ]);
+  });
+
+  it("filters to the current user when they lack submissions.view_all", async () => {
+    const { GET } = await import("@/app/api/v1/submissions/route");
+    const response = await GET(makeGetRequest());
+
+    expect(response.status).toBe(200);
+    const submissionWhere = (dbMockObj.query.submissions.findMany as any).mock.calls[0][0]?.where;
+    expect(submissionWhere).toBeDefined();
+  });
+
+  it("does not apply the user filter for a custom role with submissions.view_all", async () => {
+    getApiUserMock.mockResolvedValue({
+      id: "reviewer-1",
+      role: "custom_reviewer",
+      username: "reviewer",
+      email: "reviewer@example.com",
+      name: "Reviewer",
+      className: null,
+      mustChangePassword: false,
+    });
+    resolveCapabilitiesMock.mockResolvedValue(new Set(["submissions.view_all"]));
+
+    const { GET } = await import("@/app/api/v1/submissions/route");
+    const response = await GET(makeGetRequest());
+
+    expect(response.status).toBe(200);
+    const submissionWhere = (dbMockObj.query.submissions.findMany as any).mock.calls[0][0]?.where;
+    expect(submissionWhere).toBeUndefined();
   });
 });

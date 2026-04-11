@@ -108,6 +108,7 @@ Treat every item below as **needs revalidation against `HEAD` before code change
 - ✅ group list/create and problem list/create routes now use the corresponding capability checks instead of built-in admin/instructor branching.
 - ✅ user list/create/detail/update/delete routes now gate privileged access through `users.*` capabilities instead of built-in admin-only role checks.
 - ✅ group detail email visibility now follows the shared async group-management permission helper instead of only primary-instructor/admin checks.
+- ✅ submissions listing now uses `submissions.view_all` capability instead of a built-in admin-only branch.
 
 ### 4. Judge/worker runtime correctness
 **Why next:** the latest code review still has critical worker/runtime findings that can corrupt verdicts or mis-measure execution.

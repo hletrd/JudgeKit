@@ -4,7 +4,6 @@ import { db, execTransaction } from "@/lib/db";
 import { examSessions, languageConfigs, problems, submissions } from "@/lib/db/schema";
 import { isJudgeLanguage } from "@/lib/judge/languages";
 import { and, desc, eq, lt, sql } from "drizzle-orm";
-import { isAdmin } from "@/lib/api/auth";
 import { recordAuditEvent } from "@/lib/audit/events";
 import { canAccessProblem } from "@/lib/auth/permissions";
 import {
@@ -23,6 +22,7 @@ import { submissionCreateSchema } from "@/lib/validators/api";
 import { parsePagination, parseCursorParams } from "@/lib/api/pagination";
 import { apiError, apiPaginated, apiSuccess } from "@/lib/api/responses";
 import { createApiHandler } from "@/lib/api/handler";
+import { resolveCapabilities } from "@/lib/capabilities/cache";
 
 export const GET = createApiHandler({
   handler: async (req: NextRequest, { user }) => {
@@ -30,6 +30,7 @@ export const GET = createApiHandler({
     const problemId = searchParams.get("problemId");
     const status = searchParams.get("status");
     const cursorParam = searchParams.get("cursor");
+    const caps = await resolveCapabilities(user.role);
 
     if (status && !isSubmissionStatus(status)) {
       return apiError("invalidSubmissionStatus", 400);
@@ -39,7 +40,7 @@ export const GET = createApiHandler({
     // even after being removed from a group. This is intentional — students
     // should always be able to review their own past work.
     // See: docs/plan/security-v2-plan.md SEC2-M7
-    const userFilter = isAdmin(user.role) ? undefined : eq(submissions.userId, user.id);
+    const userFilter = caps.has("submissions.view_all") ? undefined : eq(submissions.userId, user.id);
     const problemFilter = problemId ? eq(submissions.problemId, problemId) : undefined;
     const statusFilter = status ? eq(submissions.status, status) : undefined;
 
