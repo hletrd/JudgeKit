@@ -5,7 +5,7 @@ export const problemVisibilityValues = ["public", "private", "hidden"] as const;
 export const problemTypeValues = ["auto", "manual"] as const;
 
 export const problemTestCaseSchema = z.object({
-  input: z.string().min(1, "testCaseInputRequired"),
+  input: z.string().default(""),
   expectedOutput: z.string().min(1, "testCaseOutputRequired"),
   isVisible: z.boolean().default(false),
 });

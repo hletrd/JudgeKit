@@ -28,10 +28,10 @@ describe("problemTestCaseSchema", () => {
     expect(parsed.isVisible).toBe(true);
   });
 
-  it("rejects empty input", () => {
+  it("accepts empty input (output-only problems)", () => {
     const result = problemTestCaseSchema.safeParse({ ...validTestCase, input: "" });
-    expect(result.success).toBe(false);
-    expect(result.error?.issues.map((i) => i.message)).toContain("testCaseInputRequired");
+    expect(result.success).toBe(true);
+    expect(result.data?.input).toBe("");
   });
 
   it("rejects empty expectedOutput", () => {
@@ -40,9 +40,10 @@ describe("problemTestCaseSchema", () => {
     expect(result.error?.issues.map((i) => i.message)).toContain("testCaseOutputRequired");
   });
 
-  it("rejects missing input", () => {
+  it("defaults missing input to empty string", () => {
     const result = problemTestCaseSchema.safeParse({ expectedOutput: "25\n" });
-    expect(result.success).toBe(false);
+    expect(result.success).toBe(true);
+    expect(result.data?.input).toBe("");
   });
 
   it("rejects missing expectedOutput", () => {
