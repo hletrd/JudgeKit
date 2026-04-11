@@ -159,7 +159,12 @@ export function ApiKeysClient() {
 
   async function copyCreatedKey() {
     if (!createdKey) return;
-    await navigator.clipboard.writeText(createdKey.key);
+    try {
+      await navigator.clipboard.writeText(createdKey.key);
+    } catch {
+      toast.error("Failed to copy — please select and copy manually");
+      return;
+    }
     setCreatedKeyCopied(true);
     toast.success(t("copied"));
     setTimeout(() => setCreatedKeyCopied(false), 2000);
