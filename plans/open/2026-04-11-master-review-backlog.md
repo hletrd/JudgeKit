@@ -109,6 +109,7 @@ Treat every item below as **needs revalidation against `HEAD` before code change
 - ✅ user list/create/detail/update/delete routes now gate privileged access through `users.*` capabilities instead of built-in admin-only role checks.
 - ✅ group detail email visibility now follows the shared async group-management permission helper instead of only primary-instructor/admin checks.
 - ✅ bulk-user creation now honors `users.create` for custom roles while preserving the legacy built-in instructor student-only carve-out.
+- ✅ exam-session routes now use the shared group-management permission model and `contests.view_analytics` for elevated reads instead of built-in admin-only branching.
 - ✅ submissions listing now uses `submissions.view_all` capability instead of a built-in admin-only branch.
 
 ### 4. Judge/worker runtime correctness

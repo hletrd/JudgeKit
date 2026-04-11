@@ -6,9 +6,11 @@ import { db } from "@/lib/db";
 import { assignments, enrollments, groups } from "@/lib/db/schema";
 import { recordAuditEvent } from "@/lib/audit/events";
 import { startExamSession, getExamSession } from "@/lib/assignments/exam-sessions";
-import { createApiHandler, isAdmin, forbidden, notFound } from "@/lib/api/handler";
+import { createApiHandler, forbidden, notFound } from "@/lib/api/handler";
+import { canManageGroupResourcesAsync } from "@/lib/assignments/management";
 import { canAccessGroup } from "@/lib/auth/permissions";
 import { isUserRole } from "@/lib/security/constants";
+import { resolveCapabilities } from "@/lib/capabilities/cache";
 
 export const POST = createApiHandler({
   rateLimit: "exam-session:start",
@@ -25,8 +27,20 @@ export const POST = createApiHandler({
     });
     if (!assignment || assignment.groupId !== id) return notFound("Assignment");
 
-    // Verify enrollment (non-admin)
-    if (!isAdmin(user.role)) {
+    const group = await db.query.groups.findFirst({
+      where: eq(groups.id, id),
+      columns: { instructorId: true },
+    });
+
+    const canManage = await canManageGroupResourcesAsync(
+      group?.instructorId ?? null,
+      user.id,
+      user.role,
+      id
+    );
+
+    // Verify enrollment for non-managers
+    if (!canManage) {
       const enrollment = await db.query.enrollments.findFirst({
         where: and(eq(enrollments.groupId, id), eq(enrollments.userId, user.id)),
         columns: { id: true },
@@ -79,6 +93,7 @@ export const GET = createApiHandler({
   handler: async (_req: NextRequest, { user, params }) => {
     const { id, assignmentId } = params;
     if (!isUserRole(user.role)) return forbidden();
+    const caps = await resolveCapabilities(user.role);
     const hasAccess = await canAccessGroup(id, user.id, user.role);
     if (!hasAccess) return forbidden();
 
@@ -94,8 +109,13 @@ export const GET = createApiHandler({
       where: eq(groups.id, id),
       columns: { instructorId: true },
     });
-    const isGroupOwner = group?.instructorId === user.id;
-    const targetUserId = (isAdmin(user.role) || isGroupOwner)
+    const canManage = await canManageGroupResourcesAsync(
+      group?.instructorId ?? null,
+      user.id,
+      user.role,
+      id
+    );
+    const targetUserId = (canManage || caps.has("contests.view_analytics"))
       ? (url.searchParams.get("userId") ?? user.id)
       : user.id;
 
