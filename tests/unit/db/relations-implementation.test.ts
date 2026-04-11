@@ -8,7 +8,13 @@ describe("relations.pg implementation guards", () => {
 
     expect(source).toContain("groupInstructorAssignments: many(groupInstructors)");
     expect(source).toContain("createdApiKeys: many(apiKeys)");
-    expect(source).toContain("createdRecruitingInvitations: many(recruitingInvitations)");
+    expect(source).toContain('scoreOverrides: many(scoreOverrides, {');
+    expect(source).toContain('relationName: "scoreOverride_user"');
+    expect(source).toContain('createdScoreOverrides: many(scoreOverrides, {');
+    expect(source).toContain('relationName: "scoreOverride_creator"');
+    expect(source).toContain("redeemedRecruitingInvitations: many(recruitingInvitations)");
+    expect(source).toContain('createdRecruitingInvitations: many(recruitingInvitations, {');
+    expect(source).toContain('relationName: "recruitingInvitation_creator"');
     expect(source).toContain("codeSnapshots: many(codeSnapshots)");
     expect(source).toContain("groupInstructors: many(groupInstructors)");
     expect(source).toContain("files: many(files)");

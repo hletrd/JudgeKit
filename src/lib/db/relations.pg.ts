@@ -45,6 +45,12 @@ export const usersRelations = relations(users, ({ many }) => ({
   authoredProblems: many(problems),
   submissions: many(submissions),
   submissionComments: many(submissionComments),
+  scoreOverrides: many(scoreOverrides, {
+    relationName: "scoreOverride_user",
+  }),
+  createdScoreOverrides: many(scoreOverrides, {
+    relationName: "scoreOverride_creator",
+  }),
   createdProblemSets: many(problemSets),
   chatMessages: many(chatMessages),
   examSessions: many(examSessions),
@@ -53,7 +59,10 @@ export const usersRelations = relations(users, ({ many }) => ({
   uploadedFiles: many(files),
   createdTags: many(tags),
   createdApiKeys: many(apiKeys),
-  createdRecruitingInvitations: many(recruitingInvitations),
+  redeemedRecruitingInvitations: many(recruitingInvitations),
+  createdRecruitingInvitations: many(recruitingInvitations, {
+    relationName: "recruitingInvitation_creator",
+  }),
   codeSnapshots: many(codeSnapshots),
 }));
 

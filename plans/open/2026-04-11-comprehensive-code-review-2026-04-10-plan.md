@@ -18,6 +18,7 @@ This is the freshest broad code review in the repo and currently has **no closur
 - ✅ Completed in this plan execution: assignment problem-lock enforcement is now rechecked inside `updateAssignmentWithProblems` so submissions that arrive after the route preflight cannot slip through the transaction boundary.
 - ✅ Completed in this plan execution: tag creation now only swallows insert-time unique races and rethrows any other insert failure instead of masking unrelated errors as if they were benign TOCTOU conflicts.
 - ✅ Completed in this plan execution: worker force-removal now reads and locks the worker row inside the final transaction, removing the stale pre-transaction lookup from the delete path.
+- ✅ Completed in this plan execution: reverse relation wiring for `scoreOverrides` and recruiting invitations is now explicit on `usersRelations`, closing the remaining ambiguous-relation gap in the Drizzle graph.
 - ✅ Completed in this plan execution: Docker image validation helpers are now centralized in `judge-worker-rs/src/validation.rs` instead of being duplicated inside the runner.
 
 ## Planning policy
@@ -94,7 +95,7 @@ Start every execution slice by revalidating the cited finding against `HEAD`; if
 - close all drift between `schema.pg.ts`, relations, and SQL migrations
 - simplify ambiguous relation naming before more logic depends on it
 - sanitize migrate/import envelope parsing before handing data to import code
-- **Status:** schema-derived import coercion and the missing high-value relations are now in place; remaining work in this phase is broader SQL migration drift and any still-reproducible ambiguous-relation issues.
+- **Status:** schema-derived import coercion, the missing high-value relations, and the ambiguous score-override / recruiting-invitation reverse relations are now in place; remaining work in this phase is broader SQL migration drift.
 
 ## Phase 4 — Route/UI/client correctness fixes
 ### Findings
