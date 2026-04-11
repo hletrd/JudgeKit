@@ -192,31 +192,39 @@ export function ApiKeysClient() {
   }
 
   async function handleToggle(key: ApiKey) {
-    const res = await fetch(`/api/v1/admin/api-keys/${key.id}`, {
-      method: "PATCH",
-      headers: {
-        "Content-Type": "application/json",
-        "X-Requested-With": "XMLHttpRequest",
-      },
-      body: JSON.stringify({ isActive: !key.isActive }),
-    });
-    if (res.ok) {
-      toast.success(key.isActive ? t("deactivateSuccess") : t("activateSuccess"));
-      fetchKeys();
-    } else {
+    try {
+      const res = await fetch(`/api/v1/admin/api-keys/${key.id}`, {
+        method: "PATCH",
+        headers: {
+          "Content-Type": "application/json",
+          "X-Requested-With": "XMLHttpRequest",
+        },
+        body: JSON.stringify({ isActive: !key.isActive }),
+      });
+      if (res.ok) {
+        toast.success(key.isActive ? t("deactivateSuccess") : t("activateSuccess"));
+        fetchKeys();
+      } else {
+        toast.error(t("toggleFailed"));
+      }
+    } catch {
       toast.error(t("toggleFailed"));
     }
   }
 
   async function handleDelete(key: ApiKey) {
-    const res = await fetch(`/api/v1/admin/api-keys/${key.id}`, {
-      method: "DELETE",
-      headers: { "X-Requested-With": "XMLHttpRequest" },
-    });
-    if (res.ok) {
-      toast.success(t("deleteSuccess"));
-      fetchKeys();
-    } else {
+    try {
+      const res = await fetch(`/api/v1/admin/api-keys/${key.id}`, {
+        method: "DELETE",
+        headers: { "X-Requested-With": "XMLHttpRequest" },
+      });
+      if (res.ok) {
+        toast.success(t("deleteSuccess"));
+        fetchKeys();
+      } else {
+        toast.error(t("deleteFailed"));
+      }
+    } catch {
       toast.error(t("deleteFailed"));
     }
   }
