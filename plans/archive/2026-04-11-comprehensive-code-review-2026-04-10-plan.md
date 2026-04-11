@@ -1,7 +1,7 @@
 # Implementation plan — `.context/reviews/comprehensive-code-review-2026-04-10.md`
 
 ## Source review status
-This is the freshest broad code review in the repo and currently has **no closure addendum**, so it is the highest-priority open review plan.
+This plan has now been fully revalidated and implemented at `HEAD` on 2026-04-12, so it is archived for reference rather than kept in the active queue.
 
 ## Progress updates
 - ✅ Revalidated at `HEAD`: all six Phase 1 critical findings from this review are already fixed in the current codebase (`deregister` status filter, seccomp retry logic, full-date timestamp parsing, honest import transaction note, `recruitingInvitations.createdBy` delete behavior, and boolean coercion set cleanup).
