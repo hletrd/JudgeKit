@@ -105,7 +105,7 @@ Use this plan for findings that are still unique after dedupe.
 - move uniqueness/existence checks plus writes into the same transaction
 - standardize conflict handling (`23505` / no-op outcomes / partial-success reporting)
 - verify role cache invalidation and refresh semantics after mutations
-- **Status:** role-create conflict handling, role delete locking, recruiting-invitation duplicate-email races, and group member removal TOCTOU are now robust; additional role/member/invite mutation paths still need revalidation or fixes.
+- **Status:** role-create conflict handling, role delete locking, recruiting-invitation duplicate-email races, and group member removal TOCTOU are now robust, and role create/update/delete routes now have regression coverage that they invalidate the role cache after successful mutations. Additional role/member/invite mutation paths still need revalidation or fixes.
 
 ### Tests
 - concurrent invite creation

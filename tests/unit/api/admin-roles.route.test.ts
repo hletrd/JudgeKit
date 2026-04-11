@@ -7,12 +7,14 @@ const {
   execTransactionMock,
   dbSelectMock,
   recordAuditEventMock,
+  invalidateRoleCacheMock,
 } = vi.hoisted(() => ({
   getApiUserMock: vi.fn(),
   resolveCapabilitiesMock: vi.fn(),
   execTransactionMock: vi.fn(),
   dbSelectMock: vi.fn(),
   recordAuditEventMock: vi.fn(),
+  invalidateRoleCacheMock: vi.fn(),
 }));
 
 vi.mock("@/lib/api/auth", () => ({
@@ -26,7 +28,7 @@ vi.mock("@/lib/api/auth", () => ({
 
 vi.mock("@/lib/capabilities/cache", () => ({
   resolveCapabilities: resolveCapabilitiesMock,
-  invalidateRoleCache: vi.fn(),
+  invalidateRoleCache: invalidateRoleCacheMock,
 }));
 
 vi.mock("@/lib/audit/events", () => ({
@@ -99,6 +101,127 @@ describe("POST /api/v1/admin/roles", () => {
     const body = await res.json();
     expect(body.error).toBe("roleNameExists");
   });
+
+  it("invalidates the role cache after a successful create", async () => {
+    execTransactionMock.mockImplementation(async (fn: (tx: any) => Promise<unknown>) => {
+      const tx = {
+        select: vi.fn(() => ({
+          from: vi.fn(() => ({
+            where: vi.fn(() => ({
+              limit: vi.fn().mockResolvedValue([]),
+            })),
+          })),
+        })),
+        insert: vi.fn(() => ({
+          values: vi.fn().mockResolvedValue(undefined),
+        })),
+      };
+      return fn(tx);
+    });
+    dbSelectMock.mockReturnValue({
+      from: vi.fn(() => ({
+        where: vi.fn().mockResolvedValue([
+          {
+            id: "role-1",
+            name: "reviewer_plus",
+            displayName: "Reviewer+",
+            description: "Can review",
+            isBuiltin: false,
+            level: 1,
+            capabilities: ["submissions.view_all"],
+            createdAt: new Date(),
+            updatedAt: new Date(),
+          },
+        ]),
+      })),
+    });
+
+    const { POST } = await import("@/app/api/v1/admin/roles/route");
+    const res = await POST(
+      makeRequest({
+        name: "reviewer_plus",
+        displayName: "Reviewer+",
+        description: "Can review",
+        level: 1,
+        capabilities: ["submissions.view_all"],
+      }),
+      { params: Promise.resolve({}) }
+    );
+
+    expect(res.status).toBe(201);
+    expect(invalidateRoleCacheMock).toHaveBeenCalledTimes(1);
+  });
+});
+
+describe("PATCH /api/v1/admin/roles/[id]", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    getApiUserMock.mockResolvedValue({
+      id: "admin-1",
+      role: "admin",
+      username: "admin",
+      email: "admin@example.com",
+      name: "Admin",
+      className: null,
+      mustChangePassword: false,
+    });
+    resolveCapabilitiesMock.mockResolvedValue(new Set(["users.manage_roles"]));
+  });
+
+  it("invalidates the role cache after a successful update", async () => {
+    dbSelectMock
+      .mockReturnValueOnce({
+        from: vi.fn(() => ({
+          where: vi.fn().mockResolvedValue([
+            {
+              id: "role-1",
+              name: "reviewer_plus",
+              displayName: "Reviewer+",
+              description: "Can review",
+              isBuiltin: false,
+              level: 1,
+              capabilities: ["submissions.view_all"],
+              createdAt: new Date(),
+              updatedAt: new Date(),
+            },
+          ]),
+        })),
+      })
+      .mockReturnValueOnce({
+        from: vi.fn(() => ({
+          where: vi.fn().mockResolvedValue([
+            {
+              id: "role-1",
+              name: "reviewer_plus",
+              displayName: "Reviewer Updated",
+              description: "Updated",
+              isBuiltin: false,
+              level: 1,
+              capabilities: ["submissions.view_all"],
+              createdAt: new Date(),
+              updatedAt: new Date(),
+            },
+          ]),
+        })),
+      });
+
+    const updateWhereMock = vi.fn().mockResolvedValue(undefined);
+    const setMock = vi.fn(() => ({ where: updateWhereMock }));
+    const dbModule = await import("@/lib/db");
+    (dbModule.db as any).update = vi.fn(() => ({ set: setMock }));
+
+    const { PATCH } = await import("@/app/api/v1/admin/roles/[id]/route");
+    const res = await PATCH(
+      makeRequest(
+        { displayName: "Reviewer Updated", description: "Updated" },
+        { method: "PATCH", url: "http://localhost:3000/api/v1/admin/roles/role-1" }
+      ),
+      { params: Promise.resolve({ id: "role-1" }) }
+    );
+
+    expect(res.status).toBe(200);
+    expect(invalidateRoleCacheMock).toHaveBeenCalledTimes(1);
+  });
 });
 
 describe("DELETE /api/v1/admin/roles/[id]", () => {
@@ -141,5 +264,49 @@ describe("DELETE /api/v1/admin/roles/[id]", () => {
     expect(res.status).toBe(404);
     const body = await res.json();
     expect(body.error).toBe("notFound");
+  });
+
+  it("invalidates the role cache after a successful delete", async () => {
+    execTransactionMock.mockImplementation(async (fn: (tx: any) => Promise<unknown>) => {
+      const selectMock = vi
+        .fn()
+        .mockReturnValueOnce({
+          from: vi.fn(() => ({
+            where: vi.fn(() => ({
+              limit: vi.fn(() => ({
+                for: vi.fn().mockResolvedValue([
+                  {
+                    id: "role-1",
+                    name: "reviewer_plus",
+                    displayName: "Reviewer+",
+                    isBuiltin: false,
+                  },
+                ]),
+              })),
+            })),
+          })),
+        })
+        .mockReturnValueOnce({
+          from: vi.fn(() => ({
+            where: vi.fn().mockResolvedValue([{ count: 0 }]),
+          })),
+        });
+      const tx = {
+        select: selectMock,
+        delete: vi.fn(() => ({
+          where: vi.fn().mockResolvedValue(undefined),
+        })),
+      };
+      return fn(tx);
+    });
+
+    const { DELETE } = await import("@/app/api/v1/admin/roles/[id]/route");
+    const res = await DELETE(
+      makeRequest({}, { method: "DELETE", url: "http://localhost:3000/api/v1/admin/roles/role-1" }),
+      { params: Promise.resolve({ id: "role-1" }) }
+    );
+
+    expect(res.status).toBe(200);
+    expect(invalidateRoleCacheMock).toHaveBeenCalledTimes(1);
   });
 });
