@@ -104,7 +104,10 @@ struct DockerBuildResponse {
     logs: String,
 }
 
-use crate::validation::{validate_docker_image, validate_extension};
+use crate::validation::{
+    validate_admin_image_tag, validate_docker_image, validate_dockerfile_path_for_build,
+    validate_extension, validate_image_filter,
+};
 
 fn validate_shell_command(cmd: &str) -> bool {
     if cmd.is_empty() || cmd.len() > 10_000 {
@@ -125,26 +128,6 @@ fn validate_shell_command(cmd: &str) -> bool {
         return false;
     }
     true
-}
-
-fn validate_admin_image_tag(image: &str) -> bool {
-    validate_docker_image(image) && (image.starts_with("judge-") || image.contains("/judge-"))
-}
-
-fn validate_image_filter(filter: &str) -> bool {
-    !filter.is_empty()
-        && filter.contains("judge-")
-        && filter
-            .chars()
-            .all(|c| c.is_ascii_alphanumeric() || matches!(c, '.' | '_' | '-' | '/' | ':' | '*'))
-}
-
-fn validate_dockerfile_path_for_build(path: &str) -> bool {
-    path.starts_with("docker/Dockerfile.judge-")
-        && !path.contains("..")
-        && path
-            .chars()
-            .all(|c| c.is_ascii_alphanumeric() || matches!(c, '.' | '_' | '-' | '/'))
 }
 
 async fn run_command(

@@ -48,6 +48,26 @@ pub fn validate_docker_image(image: &str) -> bool {
     validate_docker_image_with_trusted(image, &trusted)
 }
 
+pub fn validate_admin_image_tag(image: &str) -> bool {
+    validate_docker_image(image) && (image.starts_with("judge-") || image.contains("/judge-"))
+}
+
+pub fn validate_image_filter(filter: &str) -> bool {
+    !filter.is_empty()
+        && filter.contains("judge-")
+        && filter
+            .chars()
+            .all(|c| c.is_ascii_alphanumeric() || matches!(c, '.' | '_' | '-' | '/' | ':' | '*'))
+}
+
+pub fn validate_dockerfile_path_for_build(path: &str) -> bool {
+    path.starts_with("docker/Dockerfile.judge-")
+        && !path.contains("..")
+        && path
+            .chars()
+            .all(|c| c.is_ascii_alphanumeric() || matches!(c, '.' | '_' | '-' | '/'))
+}
+
 /// Validate that a file extension is safe (starts with dot, alphanumeric + dots only).
 pub fn validate_extension(ext: &str) -> bool {
     !ext.is_empty()
@@ -101,5 +121,28 @@ mod tests {
         assert!(!validate_extension("py"));
         assert!(!validate_extension("/../../../etc"));
         assert!(!validate_extension(".a_very_long_extension_name"));
+    }
+
+    #[test]
+    fn admin_image_tag_must_stay_in_judge_namespace() {
+        assert!(validate_admin_image_tag("judge-python:latest"));
+        assert!(!validate_admin_image_tag("alpine:latest"));
+        assert!(!validate_admin_image_tag("library/judge-python:latest"));
+    }
+
+    #[test]
+    fn image_filter_accepts_only_judge_scoped_patterns() {
+        assert!(validate_image_filter("judge-*"));
+        assert!(validate_image_filter("registry.example.com/judge-*"));
+        assert!(!validate_image_filter(""));
+        assert!(!validate_image_filter("*"));
+        assert!(!validate_image_filter("python*"));
+    }
+
+    #[test]
+    fn dockerfile_build_path_stays_under_judge_dockerfiles() {
+        assert!(validate_dockerfile_path_for_build("docker/Dockerfile.judge-python"));
+        assert!(!validate_dockerfile_path_for_build("../docker/Dockerfile.judge-python"));
+        assert!(!validate_dockerfile_path_for_build("docker/Dockerfile.app"));
     }
 }

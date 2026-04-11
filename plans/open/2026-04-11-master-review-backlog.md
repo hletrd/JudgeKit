@@ -113,6 +113,7 @@ Treat every item below as **needs revalidation against `HEAD` before code change
 - ✅ seccomp retry, timestamp parsing, and verdict-preserving deregistration were already fixed at `HEAD`.
 - ✅ the polling worker executor now derives compile timeouts from submission limits instead of using a dead constant.
 - ✅ judge-worker dead-letter pruning now uses async filesystem calls instead of blocking `std::fs` in the async executor path.
+- ✅ Docker image validation helpers are now centralized in `judge-worker-rs/src/validation.rs` instead of being duplicated inside the runner.
 
 ### 5. Client/UI correctness and long-tail request-path cleanup
 **Why later:** important, but lower blast radius than integrity/security work.
