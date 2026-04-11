@@ -1,6 +1,6 @@
 import { NextRequest } from "next/server";
 import { db, execTransaction } from "@/lib/db";
-import { submissions, submissionResults } from "@/lib/db/schema";
+import { submissions, submissionResults, assignments } from "@/lib/db/schema";
 import { eq } from "drizzle-orm";
 import { forbidden, notFound, isInstructor } from "@/lib/api/auth";
 import { canAccessSubmission } from "@/lib/auth/permissions";
@@ -72,6 +72,18 @@ export const POST = createApiHandler({
       },
     });
 
+    // Check if this submission belongs to a finished contest — warn in audit log
+    let contestFinished = false;
+    if (submission.assignmentId) {
+      const assignment = await db.query.assignments.findFirst({
+        where: eq(assignments.id, submission.assignmentId),
+        columns: { id: true, deadline: true },
+      });
+      if (assignment?.deadline && new Date() > assignment.deadline) {
+        contestFinished = true;
+      }
+    }
+
     recordAuditEvent({
       actorId: user.id,
       actorRole: user.role,
@@ -79,11 +91,14 @@ export const POST = createApiHandler({
       resourceType: "submission",
       resourceId: id,
       resourceLabel: id,
-      summary: `Rejudged submission ${id}`,
+      summary: contestFinished
+        ? `Rejudged submission ${id} (WARNING: contest already finished)`
+        : `Rejudged submission ${id}`,
       details: {
         submissionId: id,
         problemId: submission.problemId,
         assignmentId: submission.assignmentId ?? null,
+        ...(contestFinished ? { warning: "contest_finished" } : {}),
       },
       request: req,
     });

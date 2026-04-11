@@ -118,6 +118,11 @@ describe("consumeApiRateLimit", () => {
 
     expect(response?.status).toBe(429);
     expect(response?.headers.get("Retry-After")).toBe("60");
+    expect(response?.headers.get("X-RateLimit-Limit")).toBe("2");
+    expect(response?.headers.get("X-RateLimit-Remaining")).toBe("0");
+    expect(Number(response?.headers.get("X-RateLimit-Reset"))).toBeGreaterThan(
+      Math.floor(Date.now() / 1000)
+    );
     await expect(response?.json()).resolves.toEqual({ error: "rateLimited" });
   });
 
@@ -159,6 +164,8 @@ describe("consumeUserApiRateLimit", () => {
 
     expect(response?.status).toBe(429);
     expect(response?.headers.get("Retry-After")).toBe("60");
+    expect(response?.headers.get("X-RateLimit-Limit")).toBe("2");
+    expect(response?.headers.get("X-RateLimit-Remaining")).toBe("0");
     await expect(response?.json()).resolves.toEqual({ error: "rateLimited" });
   });
 
