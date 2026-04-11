@@ -11,8 +11,14 @@ use tracing::Instrument;
 const COMPILATION_MEMORY_LIMIT_MB: u32 = 2048;
 const COMPILATION_TIMEOUT_MS: u64 = 600_000;
 const MIN_TIMEOUT_MS: u64 = 100;
-const MAX_TIME_LIMIT_MS: u64 = 30_000;
 const MAX_MEMORY_LIMIT_MB: u32 = 1024;
+
+fn max_time_limit_ms() -> u64 {
+    std::env::var("MAX_TIME_LIMIT_MS")
+        .ok()
+        .and_then(|v| v.parse().ok())
+        .unwrap_or(30_000)
+}
 const MAX_SOURCE_CODE_BYTES: usize = 256 * 1024; // 256 KB
 
 use crate::validation::validate_docker_image;
@@ -202,7 +208,7 @@ async fn execute_inner(client: &ApiClient, config: &Config, submission: Submissi
     let mut results: Vec<TestResult> = Vec::new();
 
     for test_case in &submission.test_cases {
-        let run_timeout_ms = MIN_TIMEOUT_MS.max(submission.time_limit_ms.min(MAX_TIME_LIMIT_MS));
+        let run_timeout_ms = MIN_TIMEOUT_MS.max(submission.time_limit_ms.min(max_time_limit_ms()));
 
         let run_opts = DockerRunOptions {
             image: docker_image.to_string(),
@@ -266,10 +272,10 @@ async fn execute_inner(client: &ApiClient, config: &Config, submission: Submissi
             Verdict::Accepted
         };
 
-        let memory_used_kb = if execution.oom_killed {
-            submission.memory_limit_mb.max(16) * 1024
+        let memory_used_kb: u64 = if execution.oom_killed {
+            (submission.memory_limit_mb.max(16) * 1024).into()
         } else {
-            0
+            execution.memory_peak_kb.unwrap_or(0)
         };
 
         results.push(TestResult {

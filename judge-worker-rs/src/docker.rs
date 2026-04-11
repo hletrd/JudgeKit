@@ -43,6 +43,8 @@ pub struct DockerRunResult {
     pub timed_out: bool,
     pub oom_killed: bool,
     pub duration_ms: u64,
+    /// Peak memory usage in KB from cgroup stats. None if unavailable.
+    pub memory_peak_kb: Option<u64>,
 }
 
 #[derive(Debug, thiserror::Error)]
@@ -66,6 +68,7 @@ fn get_memory_limit_mb(limit: u32) -> u32 {
 struct ContainerInspect {
     oom_killed: bool,
     duration_ms: Option<u64>,
+    memory_peak_kb: Option<u64>,
 }
 
 /// Parse a Docker RFC 3339 timestamp into epoch milliseconds.
@@ -107,15 +110,37 @@ fn parse_timestamp_epoch_ms(s: &str) -> Option<u64> {
     Some(total_ms as u64)
 }
 
-/// Inspect a stopped container for OOM status and actual runtime (from
-/// Docker's `State.StartedAt` / `State.FinishedAt` timestamps).  This
-/// excludes container creation and namespace/cgroup setup overhead.
+/// Try to read peak memory usage from the container's cgroup on the host.
+/// Works when the judge worker runs on bare metal (not inside Docker).
+/// Returns peak memory in KB, or None if cgroup files are inaccessible.
+async fn read_cgroup_memory_peak(container_id: &str) -> Option<u64> {
+    // cgroupv2: system.slice path (most Linux distros with systemd + Docker)
+    let paths = [
+        format!("/sys/fs/cgroup/system.slice/docker-{container_id}.scope/memory.peak"),
+        format!("/sys/fs/cgroup/docker/{container_id}/memory.peak"),
+        format!("/sys/fs/cgroup/memory/docker/{container_id}/memory.max_usage_in_bytes"),
+    ];
+
+    for path in &paths {
+        if let Ok(content) = tokio::fs::read_to_string(path).await {
+            if let Ok(bytes) = content.trim().parse::<u64>() {
+                return Some(bytes / 1024);
+            }
+        }
+    }
+
+    None
+}
+
+/// Inspect a stopped container for OOM status, actual runtime, and memory.
+/// Runtime is derived from Docker's `State.StartedAt` / `State.FinishedAt`
+/// timestamps, excluding container creation and cgroup setup overhead.
 async fn inspect_container_state(container_name: &str) -> ContainerInspect {
     let result = tokio::process::Command::new("docker")
         .args([
             "inspect",
             "--format",
-            "{{json .State.OOMKilled}} {{.State.StartedAt}} {{.State.FinishedAt}}",
+            "{{json .State.OOMKilled}} {{.State.StartedAt}} {{.State.FinishedAt}} {{.Id}}",
             container_name,
         ])
         .output()
@@ -124,7 +149,7 @@ async fn inspect_container_state(container_name: &str) -> ContainerInspect {
     match result {
         Ok(output) => {
             let stdout = String::from_utf8_lossy(&output.stdout);
-            let parts: Vec<&str> = stdout.trim().splitn(3, ' ').collect();
+            let parts: Vec<&str> = stdout.trim().splitn(4, ' ').collect();
 
             let oom_killed = parts.first().is_some_and(|s| s.trim() == "true");
 
@@ -142,14 +167,24 @@ async fn inspect_container_state(container_name: &str) -> ContainerInspect {
                 None
             };
 
+            // Try to read peak memory from cgroup (works on bare-metal workers)
+            let memory_peak_kb = if parts.len() >= 4 {
+                let container_id = parts[3].trim().trim_matches('"');
+                read_cgroup_memory_peak(container_id).await
+            } else {
+                None
+            };
+
             ContainerInspect {
                 oom_killed,
                 duration_ms,
+                memory_peak_kb,
             }
         }
         Err(_) => ContainerInspect {
             oom_killed: false,
             duration_ms: None,
+            memory_peak_kb: None,
         },
     }
 }
@@ -325,6 +360,7 @@ async fn run_docker_once(
                 timed_out: false,
                 oom_killed: state.oom_killed,
                 duration_ms: state.duration_ms.unwrap_or(wall_duration_ms),
+                memory_peak_kb: state.memory_peak_kb,
             })
         }
         Ok(Err(e)) => {
@@ -345,6 +381,7 @@ async fn run_docker_once(
                 timed_out: true,
                 oom_killed: state.oom_killed,
                 duration_ms: state.duration_ms.unwrap_or(wall_duration_ms),
+                memory_peak_kb: state.memory_peak_kb,
             })
         }
     }
