@@ -6,6 +6,7 @@ This review still appears to contain **open work**. It is broad and overlaps wit
 ## Progress updates
 - ✅ Completed in this plan execution: admin role creation now treats insert-time unique violations as `roleNameExists` instead of surfacing a raw 500, closing the concurrent create race on custom role names.
 - ✅ Completed in this plan execution: user creation now maps insert-time unique username/email races to the same conflict responses as the preflight checks instead of leaking a raw 500.
+- ✅ Completed in this plan execution: user updates now also translate insert-time username/email unique races into stable conflict responses instead of leaking a raw 500.
 
 ## Critical / high themes to address
 - auth and rate-limit races

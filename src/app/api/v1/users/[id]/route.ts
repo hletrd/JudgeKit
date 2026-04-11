@@ -328,6 +328,15 @@ export const PATCH = createApiHandler({
       if (err && typeof err === "object" && "status" in err && "body" in err) {
         return err as ReturnType<typeof apiError>;
       }
+      const pgErr = err as { code?: string; constraint?: string };
+      if (pgErr.code === "23505") {
+        if (pgErr.constraint?.includes("username")) {
+          return apiError("usernameInUse", 409);
+        }
+        if (pgErr.constraint?.includes("email")) {
+          return apiError("emailInUse", 409);
+        }
+      }
       throw err;
     }
 

@@ -646,6 +646,31 @@ describe("PATCH /api/v1/users/[id]", () => {
     expect(body.error).toBe("usernameInUse");
   });
 
+  it("maps update-time unique username races to 409 instead of leaking a 500", async () => {
+    getApiUserMock.mockResolvedValue(adminUser);
+    dbSelectMock
+      .mockReturnValueOnce(makeSelectChain([safeUser]));
+
+    dbUpdateMock.mockReturnValue({
+      set: vi.fn(() => ({
+        where: vi.fn().mockRejectedValue({
+          code: "23505",
+          constraint: "users_username_unique",
+        }),
+      })),
+    });
+
+    const req = makeRequest(
+      "http://localhost:3000/api/v1/users/student-id",
+      { method: "PATCH", body: { username: "racyname" } }
+    );
+    const res = await PATCH(req, makeCtx("student-id"));
+    const body = await res.json();
+
+    expect(res.status).toBe(409);
+    expect(body.error).toBe("usernameInUse");
+  });
+
   it("returns 404 when target user not found", async () => {
     getApiUserMock.mockResolvedValue(adminUser);
     dbSelectMock.mockReturnValue(makeSelectChain([]));
