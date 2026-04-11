@@ -1,5 +1,6 @@
 import { z } from "zod";
 import { normalizeOptionalString, trimString } from "@/lib/validators/preprocess";
+import { VALID_THEME_IDS } from "@/lib/code/problem-code-themes";
 
 export const updateProfileSchema = z.object({
   name: z.preprocess(
@@ -20,7 +21,7 @@ export const updateProfileSchema = z.object({
   ),
   editorTheme: z.preprocess(
     normalizeOptionalString,
-    z.string().max(50).optional()
+    z.enum(VALID_THEME_IDS).optional()
   ),
   editorFontSize: z.string().max(5).optional(),
   editorFontFamily: z.string().max(100).optional(),

@@ -18,6 +18,17 @@ type ThemeColors = {
   /** Dark theme? */           dark: boolean;
 };
 
+export const VALID_THEME_IDS = [
+  "material-lighter", "ayu-light", "clouds", "noctis-lilac", "rose-pine-dawn",
+  "solarized-light", "smoothy", "github-light", "catppuccin-latte", "vscode-light", "tomorrow",
+  "one-dark", "dracula", "darcula", "monokai", "tokyo-night", "nord", "night-owl",
+  "synthwave-84", "material-palenight", "ultraviolet", "kanagawa", "panda-syntax",
+  "solarized-dark", "vitesse-dark", "vscode-dark", "vscode-dark-modern", "catppuccin-mocha",
+  "gruvbox-dark", "ayu-dark", "cobalt", "amy", "cool-glow", "espresso",
+] as const;
+
+export type ValidThemeId = (typeof VALID_THEME_IDS)[number];
+
 const THEMES: Record<string, ThemeColors> = {
   // ── Light themes ────────────────────────────────────────────────────────
   "material-lighter": { bg: "#fafafa", fg: "#546e7a", kw: "#7c4dff", str: "#91b859", num: "#f76d47", cmt: "#90a4ae", fn: "#6182b8", dark: false },

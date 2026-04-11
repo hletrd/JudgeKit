@@ -10,6 +10,7 @@ import { checkServerActionRateLimit } from "@/lib/security/api-rate-limit";
 import { logger } from "@/lib/logger";
 import { z } from "zod";
 import { normalizeOptionalString } from "@/lib/validators/preprocess";
+import { VALID_THEME_IDS } from "@/lib/code/problem-code-themes";
 
 const updatePreferencesSchema = z.object({
   preferredLanguage: z.preprocess(
@@ -22,7 +23,7 @@ const updatePreferencesSchema = z.object({
   ),
   editorTheme: z.preprocess(
     normalizeOptionalString,
-    z.string().max(50).optional()
+    z.enum(VALID_THEME_IDS).optional()
   ),
   editorFontSize: z.preprocess(
     normalizeOptionalString,

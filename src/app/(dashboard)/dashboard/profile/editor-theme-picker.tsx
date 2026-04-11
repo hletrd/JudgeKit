@@ -14,6 +14,7 @@ import {
   DEFAULT_LIGHT_THEME,
 } from "@/lib/code/editor-themes";
 import { updatePreferences } from "@/lib/actions/update-preferences";
+import type { ValidThemeId } from "@/lib/code/problem-code-themes";
 import { toast } from "sonner";
 
 type EditorThemePickerProps = {
@@ -162,7 +163,7 @@ export function EditorThemePicker({ initialTheme }: EditorThemePickerProps) {
   async function handleSave() {
     setSaving(true);
     try {
-      const result = await updatePreferences({ editorTheme: selectedTheme });
+      const result = await updatePreferences({ editorTheme: selectedTheme as ValidThemeId });
       if (result.success) {
         toast.success(t("updateSuccess"));
         router.refresh();
