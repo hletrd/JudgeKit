@@ -4,11 +4,12 @@ import { apiSuccess, apiError } from "@/lib/api/responses";
 import { db, execTransaction } from "@/lib/db";
 import { assignmentProblems, problems, submissions, testCases, problemTags, tags } from "@/lib/db/schema";
 import { eq, sql } from "drizzle-orm";
-import { forbidden, notFound, isAdmin, createApiHandler } from "@/lib/api/handler";
+import { forbidden, notFound, createApiHandler } from "@/lib/api/handler";
 import { recordAuditEvent } from "@/lib/audit/events";
 import { canAccessProblem } from "@/lib/auth/permissions";
 import { mergeTestCasePatchIntoExisting, updateProblemWithTestCases } from "@/lib/problem-management";
 import { problemMutationSchema } from "@/lib/validators/problem-management";
+import { resolveCapabilities } from "@/lib/capabilities/cache";
 
 const problemPatchSchema = z.object({
   title: z.string().min(1).max(200).optional(),
@@ -43,11 +44,12 @@ export const GET = createApiHandler({
     const { id } = params;
     const problem = await db.query.problems.findFirst({ where: eq(problems.id, id) });
     if (!problem) return notFound("Problem");
+    const caps = await resolveCapabilities(user.role);
 
     const hasAccess = await canAccessProblem(id, user.id, user.role);
     if (!hasAccess) return forbidden();
 
-    const canManageProblem = isAdmin(user.role) || problem.authorId === user.id;
+    const canManageProblem = caps.has("problems.edit") || problem.authorId === user.id;
 
     if (!canManageProblem) {
       return apiSuccess(problem);
@@ -68,9 +70,12 @@ export const PATCH = createApiHandler({
     const { id } = params;
     const problem = await db.query.problems.findFirst({ where: eq(problems.id, id) });
     if (!problem) return notFound("Problem");
+    const caps = await resolveCapabilities(user.role);
 
     const isAuthor = problem.authorId === user.id;
-    if (!isAuthor && !isAdmin(user.role)) return forbidden();
+    const canEditProblem = caps.has("problems.edit");
+    const canBypassLockedTestCases = caps.has("problems.delete");
+    if (!isAuthor && !canEditProblem) return forbidden();
 
     const rawBody = await req.json();
     const parsedBody = problemPatchSchema.safeParse(rawBody);
@@ -89,7 +94,7 @@ export const PATCH = createApiHandler({
       })
     );
 
-    if (body.testCases !== undefined && hasExistingSubmissions && !(allowLockedTestCases && isAdmin(user.role))) {
+    if (body.testCases !== undefined && hasExistingSubmissions && !(allowLockedTestCases && canBypassLockedTestCases)) {
       return apiError("testCasesLocked", 409);
     }
 
@@ -164,7 +169,7 @@ export const PATCH = createApiHandler({
           timeLimitMs: updated.timeLimitMs,
           memoryLimitMb: updated.memoryLimitMb,
           testCasesChanged: body.testCases !== undefined,
-          testCaseOverrideUsed: allowLockedTestCases && isAdmin(user.role),
+          testCaseOverrideUsed: allowLockedTestCases && canBypassLockedTestCases,
           testCaseCount: updated.testCases.length,
         },
         request: req,
@@ -181,9 +186,11 @@ export const DELETE = createApiHandler({
     const { id } = params;
     const problem = await db.query.problems.findFirst({ where: eq(problems.id, id) });
     if (!problem) return notFound("Problem");
+    const caps = await resolveCapabilities(user.role);
 
     const isAuthor = problem.authorId === user.id;
-    if (!isAuthor && !isAdmin(user.role)) return forbidden();
+    const canDeleteProblem = caps.has("problems.delete");
+    if (!isAuthor && !canDeleteProblem) return forbidden();
 
     const force = req.nextUrl.searchParams.get("force") === "true";
 
@@ -204,7 +211,7 @@ export const DELETE = createApiHandler({
       const submissionCount = Number(submissionCountRow.total ?? 0);
       const assignmentLinkCount = Number(assignmentLinkCountRow.total ?? 0);
 
-      if ((submissionCount > 0 || assignmentLinkCount > 0) && !(force && isAdmin(user.role))) {
+      if ((submissionCount > 0 || assignmentLinkCount > 0) && !(force && canDeleteProblem)) {
         blocked = true;
         return;
       }

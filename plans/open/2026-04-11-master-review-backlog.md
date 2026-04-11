@@ -104,6 +104,7 @@ Treat every item below as **needs revalidation against `HEAD` before code change
 - ✅ server-action user-management privilege checks now resolve custom role levels through the capability cache instead of the built-in-only ROLE_LEVEL map.
 - ✅ group deletion now authorizes through `groups.delete` capability instead of built-in admin/super-admin role checks.
 - ✅ group assignment export now uses the shared async group-resource capability check instead of hard-coded admin/instructor logic.
+- ✅ problem detail/update/delete now use problem capabilities for the privileged path while still preserving author ownership access.
 - ✅ group list/create and problem list/create routes now use the corresponding capability checks instead of built-in admin/instructor branching.
 - ✅ user list/create/detail/update/delete routes now gate privileged access through `users.*` capabilities instead of built-in admin-only role checks.
 
