@@ -3,6 +3,11 @@
 ## Source review status
 This review still appears to contain **open work**. No later addendum in the source file marks it as fully remediated.
 
+## Progress updates
+- ✅ Revalidated at `HEAD`: the old hard `50`-member truncation finding is no longer reproducible in `GET /api/v1/groups/[id]`; the route now returns the full enrollment relation, though pagination-contract cleanup may still be worth a follow-up if large groups become expensive.
+- ✅ Revalidated at `HEAD`: `scripts/setup.sh` no longer uses raw `eval`, so the setup-wizard injection finding is already closed.
+- ✅ Completed in this plan execution: file download authorization no longer falls back to scanning problem descriptions; access now relies on explicit `files.problemId` linkage or normal owner/manage capabilities.
+
 ## Findings covered by this plan
 1. PostgreSQL-only runtime still documented as SQLite/MySQL-capable
 2. Group details endpoint truncates enrollments without pagination contract
@@ -75,6 +80,7 @@ Before changing code, re-check the current implementation for each numbered find
 - add an explicit relational attachment model or metadata field
 - migrate callers away from description scans
 - remove the brittle `LIKE` fallback once migration is complete
+- **Status:** done for the live read path — the file route now trusts only explicit `files.problemId` linkage plus owner/manage capabilities. Any historical rows missing linkage should be handled by existing problem save/import syncing or future backfill work, not runtime description scans.
 
 ### Track 2B — End redisclosure of stored secrets
 **Files**

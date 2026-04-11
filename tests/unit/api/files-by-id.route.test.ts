@@ -8,7 +8,6 @@ const {
   resolveCapabilitiesMock,
   getAccessibleProblemIdsMock,
   dbSelectMock,
-  dbUpdateMock,
   readUploadedFileMock,
 } = vi.hoisted(() => ({
   getApiUserMock: vi.fn(),
@@ -17,7 +16,6 @@ const {
   resolveCapabilitiesMock: vi.fn(),
   getAccessibleProblemIdsMock: vi.fn(),
   dbSelectMock: vi.fn(),
-  dbUpdateMock: vi.fn(),
   readUploadedFileMock: vi.fn(),
 }));
 
@@ -78,7 +76,6 @@ vi.mock("@/lib/logger", () => ({
 vi.mock("@/lib/db", () => ({
   db: {
     select: dbSelectMock,
-    update: dbUpdateMock,
     delete: vi.fn(),
   },
 }));
@@ -102,14 +99,17 @@ function makeRequest(id: string, headers?: Record<string, string>) {
 describe("GET /api/v1/files/[id]", () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    getApiUserMock.mockReset();
+    csrfForbiddenMock.mockReset();
+    consumeApiRateLimitMock.mockReset();
+    resolveCapabilitiesMock.mockReset();
+    getAccessibleProblemIdsMock.mockReset();
+    dbSelectMock.mockReset();
+    readUploadedFileMock.mockReset();
+
     csrfForbiddenMock.mockReturnValue(null);
     consumeApiRateLimitMock.mockResolvedValue(null);
     readUploadedFileMock.mockReturnValue(Buffer.from("hello"));
-    dbUpdateMock.mockReturnValue({
-      set: vi.fn(() => ({
-        where: vi.fn(async () => undefined),
-      })),
-    });
   });
 
   it("returns 401 when unauthenticated", async () => {
@@ -145,7 +145,7 @@ describe("GET /api/v1/files/[id]", () => {
     expect(getAccessibleProblemIdsMock).not.toHaveBeenCalled();
   });
 
-  it("allows access when the file is referenced by an accessible problem", async () => {
+  it("allows access when the file is explicitly linked to an accessible problem", async () => {
     getApiUserMock.mockResolvedValue({
       ...ownerUser,
       id: "student-2",
@@ -161,6 +161,7 @@ describe("GET /api/v1/files/[id]", () => {
             originalName: "diagram.png",
             mimeType: "image/webp",
             uploadedBy: "instructor-1",
+            problemId: "problem-1",
           },
         ])
       )
@@ -170,7 +171,6 @@ describe("GET /api/v1/files/[id]", () => {
             id: "problem-1",
             visibility: "private",
             authorId: "instructor-1",
-            description: '<img src="/api/v1/files/file-1" />',
           },
         ])
       );
@@ -180,7 +180,6 @@ describe("GET /api/v1/files/[id]", () => {
     const res = await GET(makeRequest("file-1"), { params: Promise.resolve({ id: "file-1" }) });
 
     expect(res.status).toBe(200);
-    expect(dbUpdateMock).toHaveBeenCalledTimes(1);
     const problemArg = getAccessibleProblemIdsMock.mock.calls[0]?.[2];
     expect(problemArg).toEqual(
       expect.arrayContaining([
@@ -189,7 +188,7 @@ describe("GET /api/v1/files/[id]", () => {
     );
   });
 
-  it("prefers explicit problem linkage without scanning descriptions", async () => {
+  it("does not scan problem descriptions when the file has no explicit problem link", async () => {
     getApiUserMock.mockResolvedValue({
       ...ownerUser,
       id: "student-4",
@@ -205,26 +204,16 @@ describe("GET /api/v1/files/[id]", () => {
             originalName: "linked.png",
             mimeType: "image/webp",
             uploadedBy: "instructor-1",
-            problemId: "problem-2",
-          },
-        ])
-      )
-      .mockReturnValueOnce(
-        makeWhereTerminalChain([
-          {
-            id: "problem-2",
-            visibility: "private",
-            authorId: "instructor-1",
+            problemId: null,
           },
         ])
       );
-    getAccessibleProblemIdsMock.mockResolvedValue(new Set(["problem-2"]));
 
     const { GET } = await import("@/app/api/v1/files/[id]/route");
     const res = await GET(makeRequest("file-2"), { params: Promise.resolve({ id: "file-2" }) });
 
-    expect(res.status).toBe(200);
-    expect(dbUpdateMock).not.toHaveBeenCalled();
+    expect(res.status).toBe(403);
+    expect(getAccessibleProblemIdsMock).not.toHaveBeenCalled();
   });
 
   it("returns 403 for unrelated users when the file is not accessible via ownership or problem access", async () => {
@@ -254,7 +243,7 @@ describe("GET /api/v1/files/[id]", () => {
     expect(res.status).toBe(403);
   });
 
-  it("does not authorize a file based on substring matches inside another file id", async () => {
+  it("does not authorize a file based on legacy description matching", async () => {
     getApiUserMock.mockResolvedValue({
       ...ownerUser,
       id: "student-5",
@@ -270,16 +259,7 @@ describe("GET /api/v1/files/[id]", () => {
             originalName: "secret.txt",
             mimeType: "text/plain",
             uploadedBy: "other-user",
-          },
-        ])
-      )
-      .mockReturnValueOnce(
-        makeWhereTerminalChain([
-          {
-            id: "problem-9",
-            visibility: "private",
-            authorId: "instructor-1",
-            description: '<img src="/api/v1/files/file-10" />',
+            problemId: null,
           },
         ])
       );

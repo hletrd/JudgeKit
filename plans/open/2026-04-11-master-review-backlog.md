@@ -72,6 +72,9 @@ Treat every item below as **needs revalidation against `HEAD` before code change
 - stop secret redisclosure flows (API keys, generated passwords)
 - finish custom-role consistency sweep on routes and actions
 
+**Progress**
+- ✅ Explicit file authorization has been moved off description-text scanning for the live `GET /api/v1/files/[id]` path; remaining work in this track is legacy HTML handling, secret redisclosure cleanup, and custom-role consistency.
+
 ### 4. Judge/worker runtime correctness
 **Why next:** the latest code review still has critical worker/runtime findings that can corrupt verdicts or mis-measure execution.
 
