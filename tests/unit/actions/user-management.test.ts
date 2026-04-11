@@ -29,6 +29,7 @@ const mocks = vi.hoisted(() => {
     execTransaction: vi.fn(),
 
     resolveCapabilitiesMock: vi.fn(),
+    getRoleLevelMock: vi.fn(),
   };
 });
 
@@ -148,7 +149,7 @@ vi.mock("next/cache", () => ({
 vi.mock("@/lib/capabilities/cache", () => ({
   resolveCapabilities: mocks.resolveCapabilitiesMock,
   invalidateRoleCache: vi.fn(),
-  getRoleLevel: vi.fn().mockResolvedValue(0),
+  getRoleLevel: mocks.getRoleLevelMock,
   isValidRole: vi.fn().mockResolvedValue(true),
 }));
 
@@ -213,6 +214,17 @@ beforeEach(async () => {
     const { DEFAULT_ROLE_CAPABILITIES } = await import("@/lib/capabilities/defaults");
     const caps = DEFAULT_ROLE_CAPABILITIES[role as keyof typeof DEFAULT_ROLE_CAPABILITIES];
     return new Set(caps ?? []);
+  });
+  mocks.getRoleLevelMock.mockImplementation(async (role: string) => {
+    const defaults: Record<string, number> = {
+      student: 1,
+      instructor: 2,
+      admin: 3,
+      super_admin: 4,
+      custom_low: 1,
+      custom_high: 5,
+    };
+    return defaults[role] ?? 0;
   });
 });
 
@@ -657,6 +669,25 @@ describe("editUser", () => {
         tokenInvalidatedAt: expect.any(Date),
       })
     );
+  });
+
+  it("blocks password reset when the target custom role is at or above the actor level", async () => {
+    const { editUser } = await import("@/lib/actions/user-management");
+    setupAuthorizedAdmin();
+    mocks.validateRoleChange.mockReturnValue(null);
+    mocks.dbQueryUsersFindFirst.mockResolvedValue({
+      id: "user-1",
+      username: "target",
+      role: "custom_high",
+    });
+
+    const result = await editUser("user-1", {
+      ...defaultUserInput,
+      role: "custom_high",
+      password: "StrongPass1",
+    });
+
+    expect(result).toEqual({ success: false, error: "unauthorized" });
   });
 
   it("returns updateUserFailed when isUserRole returns false for requestedRole", async () => {

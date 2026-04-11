@@ -9,19 +9,19 @@ import { hashPassword } from "@/lib/security/password-hash";
 import { nanoid } from "nanoid";
 import { buildServerActionAuditContext, recordAuditEvent } from "@/lib/audit/events";
 import { generateSecurePassword } from "@/lib/auth/generated-password";
-import type { UserRole } from "@/types";
 import {
   isUsernameTaken,
   isEmailTaken,
   validateAndHashPassword,
   validateRoleChange,
 } from "@/lib/users/core";
-import { isUserRole, ROLE_LEVEL } from "@/lib/security/constants";
+import { isUserRole } from "@/lib/security/constants";
 import { isInstructorOrAbove } from "@/lib/auth/role-helpers";
 import { adminUpdateUserSchema, userCreateSchema } from "@/lib/validators/profile";
 import { isTrustedServerActionOrigin } from "@/lib/security/server-actions";
 import { checkServerActionRateLimit } from "@/lib/security/api-rate-limit";
 import { logger } from "@/lib/logger";
+import { getRoleLevel } from "@/lib/capabilities/cache";
 
 type UserUpdates = Partial<typeof users.$inferInsert>;
 
@@ -248,8 +248,10 @@ export async function editUser(userId: string, data: ManagedUserInput): Promise<
 
     // Prevent password reset for users of equal or higher privilege
     if (data.password && targetUser.role) {
-      const actorLevel = ROLE_LEVEL[actorRole as UserRole] ?? 0;
-      const targetLevel = ROLE_LEVEL[targetUser.role as UserRole] ?? 0;
+      const [actorLevel, targetLevel] = await Promise.all([
+        getRoleLevel(actorRole),
+        getRoleLevel(targetUser.role),
+      ]);
       if (targetLevel >= actorLevel) {
         return { success: false, error: "unauthorized" };
       }

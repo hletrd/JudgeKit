@@ -20,6 +20,7 @@ This review still appears to contain **open work**. No later addendum in the sou
 - ✅ Completed in this plan execution: admin audit-log and login-log APIs now authorize through their existing `system.audit_logs` / `system.login_logs` capabilities instead of hard-coded admin-only gates.
 - ✅ Completed in this plan execution: problem-set routes plus submission comment/rejudge routes now authorize through `problem_sets.*` / `submissions.*` capabilities instead of built-in admin/instructor-only role gates.
 - ✅ Completed in this plan execution: admin tag routes, contest quick-create, and contest code-snapshot history now authorize through `system.settings`, `contests.create`, and `contests.view_analytics` capabilities instead of admin-only role checks.
+- ✅ Completed in this plan execution: server-action user management now uses dynamic role levels from the capability cache for password-reset privilege comparisons, so custom roles no longer collapse to the built-in `ROLE_LEVEL` fallback there.
 
 ## Findings covered by this plan
 1. PostgreSQL-only runtime still documented as SQLite/MySQL-capable
@@ -115,7 +116,7 @@ Before changing code, re-check the current implementation for each numbered find
 - inventory every route/page still using hard-coded role checks
 - decide whether to convert to capabilities or keep built-in-only intentionally
 - align UI gating and server enforcement
-- **Status:** recruiting invitation APIs, contest-management routes, admin log APIs, problem-set routes, submission moderation routes, admin tag routes, contest quick-create, and contest code-snapshot history now use capability-aware checks; additional hard-coded role clusters still need inventory and conversion or explicit justification.
+- **Status:** recruiting invitation APIs, contest-management routes, admin log APIs, problem-set routes, submission moderation routes, admin tag routes, contest quick-create, contest code-snapshot history, and server-action user-management privilege checks now use capability-aware or dynamic-role-aware logic; additional hard-coded role clusters still need inventory and conversion or explicit justification.
 
 ### Track 2D — Tighten legacy HTML rendering instead of trusting external media
 **Files**
