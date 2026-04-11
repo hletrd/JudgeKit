@@ -78,7 +78,7 @@ Start every execution slice by revalidating the cited finding against `HEAD`; if
 - standardize partial-success behavior for bulk endpoints
 - make worker capacity claim/deletion logic use the same authoritative state transitions
 - add concurrency regression tests rather than only happy-path tests
-- **Status:** bulk enrollment count drift, assignment PATCH lock revalidation, tag-create race handling, and worker-delete TOCTOU handling are now closed; remaining items in this phase are the other transactional integrity flows that still need revalidation or fixes.
+- **Status:** bulk enrollment count drift, assignment PATCH lock revalidation, tag-create race handling, worker-delete TOCTOU handling, atomic API-rate-limit consumption, and atomic worker-capacity reservation in the claim path are now all closed or revalidated at `HEAD`, so this phase's previously open transactional findings are closed for the reviewed surfaces.
 
 ## Phase 3 — Import/schema drift and metadata completeness
 ### Findings

@@ -42,6 +42,7 @@ Treat every item below as **needs revalidation against `HEAD` before code change
 - ✅ recruiting invitation create/bulk-create now takes assignment/email advisory locks and rechecks duplicates inside the transaction before inserting.
 - ✅ group member removal now locks the enrollment row inside the final transaction before deleting it.
 - ✅ role deletion now locks and reads the role row inside the final transaction before checking assigned users and deleting it.
+- ✅ atomic API-rate-limit consumption and judge claim worker-capacity reservation were revalidated at `HEAD` with existing tests, closing the remaining reviewed transactional concerns in those paths.
 
 ### 2. Import/export and schema-truth hardening
 **Why next:** multiple reviews still question whether DB import/export is correct, atomic, and aligned with schema/migrations.
