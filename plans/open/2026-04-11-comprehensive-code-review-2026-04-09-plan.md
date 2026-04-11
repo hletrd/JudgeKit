@@ -117,7 +117,7 @@ Before changing code, re-check the current implementation for each numbered find
 - inventory every route/page still using hard-coded role checks
 - decide whether to convert to capabilities or keep built-in-only intentionally
 - align UI gating and server enforcement
-- **Status:** recruiting invitation APIs, contest-management routes, admin log APIs, problem-set routes, submission moderation routes, admin tag routes, contest quick-create, contest code-snapshot history, group deletion, and server-action user-management privilege checks now use capability-aware or dynamic-role-aware logic; additional hard-coded role clusters still need inventory and conversion or explicit justification.
+- **Status:** recruiting invitation APIs, contest-management routes, admin log APIs, problem-set routes, submission moderation routes, admin tag routes, contest quick-create, contest code-snapshot history, group deletion, group assignment export, and server-action user-management privilege checks now use capability-aware or dynamic-role-aware logic; additional hard-coded role clusters still need inventory and conversion or explicit justification.
 
 ### Track 2D — Tighten legacy HTML rendering instead of trusting external media
 **Files**

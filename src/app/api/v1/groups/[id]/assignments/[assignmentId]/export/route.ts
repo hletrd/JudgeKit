@@ -3,7 +3,8 @@ import { apiError } from "@/lib/api/responses";
 import { eq } from "drizzle-orm";
 import { db } from "@/lib/db";
 import { assignments, groups } from "@/lib/db/schema";
-import { getApiUser, unauthorized, forbidden, notFound, isAdmin, isInstructor } from "@/lib/api/auth";
+import { getApiUser, unauthorized, forbidden, notFound } from "@/lib/api/auth";
+import { canManageGroupResourcesAsync } from "@/lib/assignments/management";
 import { getAssignmentStatusRows } from "@/lib/assignments/submissions";
 import { logger } from "@/lib/logger";
 
@@ -32,10 +33,6 @@ export async function GET(
 
     const { id, assignmentId } = await params;
 
-    if (!isInstructor(user.role)) {
-      return forbidden();
-    }
-
     const group = await db.query.groups.findFirst({
       where: eq(groups.id, id),
       columns: { id: true, instructorId: true },
@@ -43,7 +40,14 @@ export async function GET(
 
     if (!group) return notFound("Group");
 
-    if (!isAdmin(user.role) && group.instructorId !== user.id) {
+    const canManage = await canManageGroupResourcesAsync(
+      group.instructorId,
+      user.id,
+      user.role,
+      id
+    );
+
+    if (!canManage) {
       return forbidden();
     }
 
