@@ -1,5 +1,7 @@
 # Master review backlog — deduped from open reviews
 
+> Archived on 2026-04-12 after the tracked review queues were fully burned down and the remaining notes were reduced to historical or optional follow-up context.
+
 ## Source reviews
 - `.context/reviews/comprehensive-code-review-2026-04-09.md`
 - `.context/reviews/comprehensive-review-2026-04-09.md`
@@ -97,7 +99,7 @@ Treat every item below as **needs revalidation against `HEAD` before code change
 - finish custom-role consistency sweep on routes and actions
 
 **Progress**
-- ✅ Explicit file authorization has been moved off description-text scanning for the live `GET /api/v1/files/[id]` path; remaining work in this track is now narrowed to any future legacy-HTML follow-up rather than known secret redisclosure or custom-role gaps.
+- ✅ Explicit file authorization has been moved off description-text scanning for the live `GET /api/v1/files/[id]` path, and the rest of the reviewed authorization/secret-disclosure track is now closed for the currently reviewed surfaces; any further legacy-HTML tightening is optional follow-up rather than active review debt.
 - ✅ API-key privilege clamping now respects custom role levels instead of silently treating unknown roles as low-rank built-ins.
 - ✅ admin API-key create/list flows and bulk-user/user-create flows now keep secrets one-time-only: later management views return masked previews/metadata only, while generated plaintext passwords are no longer re-disclosed in normal success payloads.
 - ✅ file deletion is now locked to the intended DB-first / best-effort-disk-cleanup behavior by a focused route regression test.

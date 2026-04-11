@@ -1,7 +1,7 @@
 # Implementation plan — `.context/reviews/comprehensive-review-2026-04-09.md`
 
 ## Source review status
-This review still appears to contain **open work**. It is broad and overlaps with the 2026-04-10 code review, so execution should dedupe fixes instead of treating every item as isolated work.
+This plan has now been fully revalidated and implemented at `HEAD` on 2026-04-12, so it is archived for reference rather than kept in the active queue.
 
 ## Progress updates
 - ✅ Completed in this plan execution: admin role creation now treats insert-time unique violations as `roleNameExists` instead of surfacing a raw 500, closing the concurrent create race on custom role names.
@@ -43,7 +43,7 @@ Use this plan for findings that are still unique after dedupe.
 - make rate-limit check/consume flows atomic with row locking or a single transactional primitive
 - use the same atomic pattern for recruiting-token auth
 - collapse uniqueness checks and writes into the same transaction for user create/update flows
-- **Status:** password rehash, submission-rate limiting, and atomic login/recruit-token checks were already fixed at `HEAD`; API and server-action user create/update flows now both handle insert-time uniqueness races robustly, while any remaining auth/identity concurrency gaps still need revalidation.
+- **Status:** password rehash, submission-rate limiting, and atomic login/recruit-token checks were already fixed at `HEAD`; API and server-action user create/update flows now both handle insert-time uniqueness races robustly, and the reviewed login/create/update/bulk paths now have explicit evidence that email identity normalization is applied case-insensitively and stored in lowercase. This phase's previously open auth/identity findings are now closed for the reviewed surfaces.
 
 ### Tests
 - concurrent auth attempts
@@ -84,7 +84,7 @@ Use this plan for findings that are still unique after dedupe.
 
 ### Plan
 - constrain admin Docker image operations to allowed tags/namespaces
-- add CSRF/password reconfirmation where destructive export/import/admin flows still need it
+- verify CSRF/password reconfirmation stays enforced on destructive export/import/admin flows
 - replace fragile file-delete and raw-SQL helper behavior with safer primitives
 - close remaining stored-secret redisclosure and weak-key fallback paths
 - **Status:** stored-secret redisclosure is now revalidated as closed at `HEAD` for the reviewed user-management and admin API-key flows, the file-delete path now has regression coverage for the intended DB-first / best-effort-disk-cleanup ordering, backup/export/import/restore routes now have explicit password-reconfirmation coverage, the Docker image build route now rejects non-`judge-*` image tags before invoking Docker, and the reviewed raw-query helper usage remains parameterized through named placeholders instead of string interpolation. This phase's previously open review items are now closed for the currently reviewed surfaces.
@@ -105,7 +105,7 @@ Use this plan for findings that are still unique after dedupe.
 - move uniqueness/existence checks plus writes into the same transaction
 - standardize conflict handling (`23505` / no-op outcomes / partial-success reporting)
 - verify role cache invalidation and refresh semantics after mutations
-- **Status:** role-create conflict handling, role delete locking, recruiting-invitation duplicate-email races, and group member removal TOCTOU are now robust, and role create/update/delete routes now have regression coverage that they invalidate the role cache after successful mutations. Additional role/member/invite mutation paths still need revalidation or fixes.
+- **Status:** role-create conflict handling, role delete locking, recruiting-invitation duplicate-email races, group member removal TOCTOU handling, role-cache invalidation after successful role mutations, and bulk member-enrollment partial-success accounting are now all covered or revalidated at `HEAD`, so this phase's reviewed role/member/invite mutation findings are now closed for the currently reviewed surfaces.
 
 ### Tests
 - concurrent invite creation
