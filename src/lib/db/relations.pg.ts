@@ -40,6 +40,7 @@ export const usersRelations = relations(users, ({ many }) => ({
   loginEvents: many(loginEvents),
   auditEvents: many(auditEvents),
   enrollments: many(enrollments),
+  groupInstructorAssignments: many(groupInstructors),
   instructedGroups: many(groups),
   authoredProblems: many(problems),
   submissions: many(submissions),
@@ -50,6 +51,10 @@ export const usersRelations = relations(users, ({ many }) => ({
   contestAccessTokens: many(contestAccessTokens),
   antiCheatEvents: many(antiCheatEvents),
   uploadedFiles: many(files),
+  createdTags: many(tags),
+  createdApiKeys: many(apiKeys),
+  createdRecruitingInvitations: many(recruitingInvitations),
+  codeSnapshots: many(codeSnapshots),
 }));
 
 export const sessionsRelations = relations(sessions, ({ one }) => ({
@@ -86,6 +91,7 @@ export const groupsRelations = relations(groups, ({ one, many }) => ({
     references: [users.id],
   }),
   enrollments: many(enrollments),
+  groupInstructors: many(groupInstructors),
   assignments: many(assignments),
   problemAccess: many(problemGroupAccess),
   problemSetAccess: many(problemSetGroupAccess),
@@ -108,10 +114,13 @@ export const problemsRelations = relations(problems, ({ one, many }) => ({
     references: [users.id],
   }),
   testCases: many(testCases),
+  files: many(files),
   groupAccess: many(problemGroupAccess),
   assignmentProblems: many(assignmentProblems),
   submissions: many(submissions),
   problemSetProblems: many(problemSetProblems),
+  problemTags: many(problemTags),
+  codeSnapshots: many(codeSnapshots),
 }));
 
 export const testCasesRelations = relations(testCases, ({ one, many }) => ({
@@ -147,6 +156,8 @@ export const assignmentsRelations = relations(assignments, ({ one, many }) => ({
   examSessions: many(examSessions),
   contestAccessTokens: many(contestAccessTokens),
   antiCheatEvents: many(antiCheatEvents),
+  recruitingInvitations: many(recruitingInvitations),
+  codeSnapshots: many(codeSnapshots),
 }));
 
 export const assignmentProblemsRelations = relations(
@@ -349,7 +360,11 @@ export const codeSnapshotsRelations = relations(codeSnapshots, ({ one }) => ({
   }),
 }));
 
-export const tagsRelations = relations(tags, ({ many }) => ({
+export const tagsRelations = relations(tags, ({ one, many }) => ({
+  creator: one(users, {
+    fields: [tags.createdBy],
+    references: [users.id],
+  }),
   problemTags: many(problemTags),
 }));
 
@@ -390,6 +405,10 @@ export const antiCheatEventsRelations = relations(
 );
 
 export const filesRelations = relations(files, ({ one }) => ({
+  problem: one(problems, {
+    fields: [files.problemId],
+    references: [problems.id],
+  }),
   uploader: one(users, {
     fields: [files.uploadedBy],
     references: [users.id],
