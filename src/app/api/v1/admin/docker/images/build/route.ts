@@ -9,6 +9,7 @@ import { recordAuditEvent } from "@/lib/audit/events";
 import { db } from "@/lib/db";
 import { languageConfigs } from "@/lib/db/schema";
 import { eq } from "drizzle-orm";
+import { isAllowedJudgeDockerImage } from "@/lib/judge/docker-image-validation";
 
 const buildSchema = z.object({
   language: z.string().min(1).max(64),
@@ -27,6 +28,13 @@ export const POST = createApiHandler({
 
     if (!langConfig) {
       return NextResponse.json({ error: "Language not found" }, { status: 404 });
+    }
+
+    if (!isAllowedJudgeDockerImage(langConfig.dockerImage)) {
+      return NextResponse.json(
+        { error: "imageTagMustStartWithJudge", message: "Only judge-* images are allowed" },
+        { status: 400 }
+      );
     }
 
     // Derive dockerfile path from docker image name (e.g. "judge-python:latest" -> "docker/Dockerfile.judge-python")
