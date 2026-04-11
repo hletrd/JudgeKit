@@ -10,6 +10,11 @@ import {
 } from "@/lib/db/schema";
 import { and, eq, sql, count } from "drizzle-orm";
 import type { SQL } from "drizzle-orm";
+import type { TransactionClient } from "@/lib/db";
+
+type RecruitingInvitationExecutor =
+  Pick<TransactionClient, "insert" | "select" | "update" | "delete">
+  | typeof db;
 
 export function generateRecruitingToken(): string {
   return randomBytes(24).toString("base64url");
@@ -22,9 +27,9 @@ export async function createRecruitingInvitation(params: {
   metadata?: Record<string, string>;
   expiresAt?: Date | null;
   createdBy: string;
-}) {
+}, executor: RecruitingInvitationExecutor = db) {
   const token = generateRecruitingToken();
-  const [invitation] = await db
+  const [invitation] = await executor
     .insert(recruitingInvitations)
     .values({
       assignmentId: params.assignmentId,
@@ -48,7 +53,7 @@ export async function bulkCreateRecruitingInvitations(params: {
     expiresAt?: Date | null;
   }[];
   createdBy: string;
-}) {
+}, executor: RecruitingInvitationExecutor = db) {
   const values = params.invitations.map((inv) => ({
     assignmentId: params.assignmentId,
     token: generateRecruitingToken(),
@@ -58,7 +63,7 @@ export async function bulkCreateRecruitingInvitations(params: {
     expiresAt: inv.expiresAt ?? null,
     createdBy: params.createdBy,
   }));
-  const created = await db
+  const created = await executor
     .insert(recruitingInvitations)
     .values(values)
     .returning();
