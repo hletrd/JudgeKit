@@ -33,10 +33,14 @@ This directory contains **planning only**. No implementation is included here.
 | `.context/reviews/deep-code-review-2026-04-12-post-remediation.md` | Archived (implemented) | `plans/archive/2026-04-12-post-remediation-review-plan.md` | Archived follow-up plan records completion |
 | `.context/reviews/multi-perspective-review-2026-04-12.md` | Archived (implemented) | `plans/archive/2026-04-12-multi-perspective-readiness-plan.md` | The 2026-04-12 multi-perspective remediation slices were implemented and pushed on 2026-04-12 |
 | `.context/reviews/adversarial-security-review-2026-04-12.md` | Archived (implemented) | `plans/archive/2026-04-12-adversarial-security-plan.md` | The 2026-04-12 adversarial-security remediation slices were implemented and pushed on 2026-04-12 |
+| `.context/reviews/multi-perspective-review-2026-04-12-current-head.md` | Open plan | `plans/open/2026-04-12-current-head-multi-perspective-plan.md` | Current-HEAD re-review identifying what still blocks high-assurance recruiting, exams, and serious contests |
+| `.context/reviews/adversarial-security-review-2026-04-12-current-head.md` | Open plan | `plans/open/2026-04-12-current-head-adversarial-security-plan.md` | Current-HEAD attacker-minded review of the remaining identity, realtime, governance, and worker-boundary gaps |
 | `.context/reviews/_archive/*` | Historical | source archive | Already archived review context only |
 
 ## Currently actionable plan set
-- No active open review plans remain after the 2026-04-12 remediation pass.
+- `plans/open/2026-04-12-current-head-review-backlog.md` — deduped backlog for the current-HEAD re-review
+- `plans/open/2026-04-12-current-head-multi-perspective-plan.md` — product/readiness plan for the current-HEAD multi-perspective review
+- `plans/open/2026-04-12-current-head-adversarial-security-plan.md` — security/integrity plan for the current-HEAD adversarial review
 
 ## Archival note
 The older plan artifacts were **already archived** when their associated workstreams were closed. No additional historical implementation plans needed moving during this pass; instead, the review-status mapping was refreshed in `plans/archive/2026-04-12-review-status.md` and only the new still-open review lines received fresh plans.

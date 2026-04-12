@@ -28,3 +28,6 @@ This folder keeps **completed or historical planning artifacts**.
 
 ## Why copied instead of moved
 `.omx/plans/` is part of the OMX runtime/state surface. These files were copied here so the repo has a stable, user-facing archive without mutating runtime history.
+
+## Note on current-HEAD re-review plans
+The new current-HEAD re-review plans stay under `plans/open/` because they track what still blocks a higher assurance bar after the earlier 2026-04-12 remediation was completed.
