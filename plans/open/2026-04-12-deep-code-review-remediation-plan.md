@@ -110,6 +110,7 @@ If any finding has already changed, update this plan before implementation.
 - preserve a clear development escape hatch for local fallback
 - keep current production behavior unchanged or stricter
 - align docs/env comments with the new default
+- **Status:** completed at `HEAD` on 2026-04-12 — runner-configured environments now disable local fallback by default, with explicit opt-in for development.
 
 **Tests**
 - execution returns a controlled “runner unavailable” result when runner URL is configured and fallback is not explicitly enabled
@@ -127,6 +128,7 @@ If any finding has already changed, update this plan before implementation.
 - resolve/calculate seccomp profile availability once at module init or cache it behind a lazy singleton
 - preserve the current warning behavior when the profile is absent
 - keep fallback semantics unchanged
+- **Status:** completed at `HEAD` on 2026-04-12 — seccomp profile availability is now cached outside the per-run hot path, and missing-profile warnings are emitted only once per process.
 
 **Tests**
 - implementation guard proving the seccomp path is not checked synchronously per run

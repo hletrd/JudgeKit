@@ -226,7 +226,7 @@ Monitor workers at `/dashboard/admin/workers`.
 
 - **Docker socket proxy**: The deployment uses a dedicated `docker-proxy` service (`tecnativa/docker-socket-proxy`) as the only container with direct `/var/run/docker.sock` access. The **judge worker only** talks to Docker through `DOCKER_HOST=tcp://docker-proxy:2375`; the Next.js app uses the worker’s authenticated internal API instead of direct daemon access.
 - **`/judge-workspaces`**: Must exist on the host before starting the stack — used as the shared workspace volume between the judge worker and sibling judge containers.
-- **`COMPILER_RUNNER_URL`**: Set to `http://judge-worker:3001` in the app container to delegate interactive code execution to the Rust runner. In the shipped Docker compose files, `DISABLE_COMPILER_LOCAL_FALLBACK=1` keeps the app from retrying Docker locally if the runner is unavailable.
+- **`COMPILER_RUNNER_URL`**: Set to `http://judge-worker:3001` in the app container to delegate interactive code execution to the Rust runner. When a runner URL is configured, local Docker fallback is now disabled by default; set `ENABLE_COMPILER_LOCAL_FALLBACK=1` only for explicit development/debug scenarios.
 - **`TRUSTED_DOCKER_REGISTRIES`**: Optional comma-separated allowlist for externally qualified image references (for example `ghcr.io/your-org/,registry.example.com/`). Unqualified local images such as `judge-python:latest` remain allowed.
 - The `deploy-docker.sh` script handles setup automatically (server-side builds, architecture detection, nginx config). See [Deployment Guide](docs/deployment.md).
 

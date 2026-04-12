@@ -48,13 +48,21 @@ const WORKSPACE_BASE = process.env.COMPILER_WORKSPACE_DIR || tmpdir();
  * URL of the Rust runner HTTP endpoint (e.g. "http://judge-worker:3001").
  * When set, executeCompilerRun() delegates Docker execution to the Rust
  * sidecar instead of spawning containers from the Node.js process.
- * Falls back to local TS execution if the runner is unreachable.
+ * Local fallback is disabled by default whenever a runner URL is configured.
+ * Set ENABLE_COMPILER_LOCAL_FALLBACK=1 to opt back in for development.
  */
 const COMPILER_RUNNER_URL = process.env.COMPILER_RUNNER_URL || "";
 const JUDGE_AUTH_TOKEN = process.env.JUDGE_AUTH_TOKEN || "";
-const DISABLE_LOCAL_FALLBACK = /^(1|true|yes|on)$/i.test(
+const LEGACY_DISABLE_LOCAL_FALLBACK = /^(1|true|yes|on)$/i.test(
   process.env.DISABLE_COMPILER_LOCAL_FALLBACK || "",
 );
+const ENABLE_LOCAL_FALLBACK = /^(1|true|yes|on)$/i.test(
+  process.env.ENABLE_COMPILER_LOCAL_FALLBACK || "",
+);
+const SHOULD_ALLOW_LOCAL_FALLBACK =
+  !COMPILER_RUNNER_URL || (ENABLE_LOCAL_FALLBACK && !LEGACY_DISABLE_LOCAL_FALLBACK);
+const HAS_CUSTOM_SECCOMP_PROFILE = existsSync(SECCOMP_PROFILE_PATH);
+let hasLoggedMissingSeccompProfile = false;
 
 export interface CompilerRunOptions {
   /** Source code to compile/run */
@@ -234,9 +242,10 @@ async function runDocker(opts: {
   ];
 
   // Seccomp profile
-  if (existsSync(SECCOMP_PROFILE_PATH)) {
+  if (HAS_CUSTOM_SECCOMP_PROFILE) {
     args.push(`--security-opt=seccomp=${SECCOMP_PROFILE_PATH}`);
-  } else {
+  } else if (!hasLoggedMissingSeccompProfile) {
+    hasLoggedMissingSeccompProfile = true;
     logger.warn(
       { path: SECCOMP_PROFILE_PATH },
       "[compiler] Seccomp profile not found; container will run with default seccomp policy"
@@ -426,7 +435,7 @@ export async function executeCompilerRun(
   // Try Rust runner first
   const rustResult = await tryRustRunner(options);
   if (rustResult !== null) return rustResult;
-  if (COMPILER_RUNNER_URL && DISABLE_LOCAL_FALLBACK) {
+  if (!SHOULD_ALLOW_LOCAL_FALLBACK) {
     return {
       stdout: "",
       stderr: "Compiler runner unavailable",

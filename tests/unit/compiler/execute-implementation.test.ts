@@ -18,10 +18,22 @@ describe("compiler execute implementation", () => {
     expect(source).toContain("sudo chmod 0700 /compiler-workspaces");
   });
 
-  it("supports disabling the local compiler fallback when a worker runner is configured", () => {
+  it("makes local compiler fallback opt-in when a worker runner is configured", () => {
+    const source = readFileSync(join(process.cwd(), "src/lib/compiler/execute.ts"), "utf8");
+    const productionCompose = readFileSync(join(process.cwd(), "docker-compose.production.yml"), "utf8");
+    const readme = readFileSync(join(process.cwd(), "README.md"), "utf8");
+
+    expect(source).toContain("ENABLE_COMPILER_LOCAL_FALLBACK");
+    expect(source).toContain("SHOULD_ALLOW_LOCAL_FALLBACK");
+    expect(source).toContain('stderr: "Compiler runner unavailable"');
+    expect(productionCompose).not.toContain("DISABLE_COMPILER_LOCAL_FALLBACK=1");
+    expect(readme).toContain("ENABLE_COMPILER_LOCAL_FALLBACK=1");
+  });
+
+  it("caches seccomp profile availability instead of checking synchronously on every run", () => {
     const source = readFileSync(join(process.cwd(), "src/lib/compiler/execute.ts"), "utf8");
 
-    expect(source).toContain("DISABLE_COMPILER_LOCAL_FALLBACK");
-    expect(source).toContain('stderr: "Compiler runner unavailable"');
+    expect(source).toContain("const HAS_CUSTOM_SECCOMP_PROFILE = existsSync(SECCOMP_PROFILE_PATH);");
+    expect(source).not.toContain("if (existsSync(SECCOMP_PROFILE_PATH))");
   });
 });
