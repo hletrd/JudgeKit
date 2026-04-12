@@ -53,3 +53,5 @@ The 2026-04-12 multi-perspective and adversarial-security review plans were impl
 
 ## Post-completion verification note
 - 2026-04-12: restored the missing `db:push` package script expected by local Playwright/CI web-server flows and added `scripts/playwright-local-webserver.sh` so local Playwright starts against a fresh ephemeral PostgreSQL instance before seeding, syncing languages, building, and starting the app.
+
+- 2026-04-12 follow-up: added an admin-side resume-code reset path for redeemed recruiting invitations so candidates who lose their resume code can be recovered without reopening invite-link replay.

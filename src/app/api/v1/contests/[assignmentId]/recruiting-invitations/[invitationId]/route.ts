@@ -5,6 +5,7 @@ import {
   getRecruitingInvitation,
   updateRecruitingInvitation,
   deleteRecruitingInvitation,
+  resetRecruitingInvitationResumeCode,
 } from "@/lib/assignments/recruiting-invitations";
 import { updateRecruitingInvitationSchema } from "@/lib/validators/recruiting-invitations";
 import { recordAuditEvent } from "@/lib/audit/events";
@@ -25,6 +26,27 @@ export const PATCH = createApiHandler({
   handler: async (req: NextRequest, { user, params, body }) => {
     const invitation = await getRecruitingInvitation(params.invitationId);
     if (!invitation) return apiError("notFound", 404, "RecruitingInvitation");
+
+    if (body.resetResumeCode) {
+      if (invitation.status !== "redeemed") {
+        return apiError("resumeCodeResetRequiresRedeemed", 400);
+      }
+
+      const resumeCode = await resetRecruitingInvitationResumeCode(params.invitationId);
+
+      recordAuditEvent({
+        actorId: user.id,
+        actorRole: user.role,
+        action: "recruiting_invitation.resume_code_reset",
+        resourceType: "recruiting_invitation",
+        resourceId: params.invitationId,
+        resourceLabel: invitation.candidateName,
+        summary: `Reset resume code for "${invitation.candidateName}"`,
+        request: req,
+      });
+
+      return apiSuccess({ id: params.invitationId, resumeCode });
+    }
 
     // Validate status state machine transitions
     if (body.status !== undefined && body.status !== invitation.status) {

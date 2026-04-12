@@ -1861,7 +1861,16 @@
         "revoked": "취소됨",
         "expired": "만료됨"
       },
-      "fetchError": "초대 목록을 불러오지 못했습니다."
+      "fetchError": "초대 목록을 불러오지 못했습니다.",
+      "resetResumeCode": "재개 코드 재설정",
+      "resetResumeCodeConfirmTitle": "후보자 재개 코드를 재설정할까요?",
+      "resetResumeCodeConfirm": "{name} 후보자용 새 재개 코드를 발급합니다. 기존 재개 코드는 더 이상 사용할 수 없습니다.",
+      "resumeCodeResetSuccess": "새 재개 코드가 생성되어 복사되었습니다.",
+      "resumeCodeResetError": "재개 코드를 재설정하지 못했습니다.",
+      "resumeCodeRevealTitle": "{name} 후보자의 새 재개 코드",
+      "resumeCodeRevealHint": "이 코드는 여기서만 보여준다는 전제로 안전하게 전달하세요.",
+      "copyResumeCode": "재개 코드 복사",
+      "resumeCodeCopied": "재개 코드가 복사되었습니다."
     },
     "codeTimeline": {
       "title": "{name}의 코드 타임라인",

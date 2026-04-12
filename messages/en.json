@@ -1861,7 +1861,16 @@
         "revoked": "Revoked",
         "expired": "Expired"
       },
-      "fetchError": "Failed to load invitations."
+      "fetchError": "Failed to load invitations.",
+      "resetResumeCode": "Reset resume code",
+      "resetResumeCodeConfirmTitle": "Reset candidate resume code?",
+      "resetResumeCodeConfirm": "Generate a fresh resume code for {name}. The previous resume code will stop working.",
+      "resumeCodeResetSuccess": "A fresh resume code was generated and copied.",
+      "resumeCodeResetError": "Could not reset the resume code.",
+      "resumeCodeRevealTitle": "New resume code for {name}",
+      "resumeCodeRevealHint": "Share this code securely. It is shown here only so you can deliver it to the candidate.",
+      "copyResumeCode": "Copy resume code",
+      "resumeCodeCopied": "Resume code copied"
     },
     "codeTimeline": {
       "title": "Code timeline — {name}",

@@ -151,6 +151,30 @@ export async function updateRecruitingInvitation(
     .where(eq(recruitingInvitations.id, id));
 }
 
+
+export async function resetRecruitingInvitationResumeCode(id: string) {
+  const invitation = await getRecruitingInvitation(id);
+  if (!invitation || invitation.status !== "redeemed" || !invitation.userId) {
+    throw new Error("resumeCodeResetRequiresRedeemed");
+  }
+
+  const resumeCode = nanoid(16);
+  const resumeCodeHash = await hashPassword(resumeCode);
+
+  await db
+    .update(recruitingInvitations)
+    .set({
+      metadata: {
+        ...(invitation.metadata ?? {}),
+        resumeCodeHash,
+      },
+      updatedAt: new Date(),
+    })
+    .where(eq(recruitingInvitations.id, id));
+
+  return resumeCode;
+}
+
 export async function deleteRecruitingInvitation(id: string) {
   await db
     .delete(recruitingInvitations)
