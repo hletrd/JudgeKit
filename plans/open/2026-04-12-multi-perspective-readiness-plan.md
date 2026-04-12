@@ -60,6 +60,9 @@ The platform is powerful but dense. Too much of the real workflow is hidden behi
 - instructors do not need hidden system knowledge to understand mode-specific behavior
 - high-stakes caveats appear inline where configuration happens
 
+**Progress**
+- ✅ instructor dashboard now surfaces quick links for groups, contests, submissions, and problem sets so common workflows are one click away
+
 ## Workstream C — Admin / operator guardrails
 **Problem**
 The admin surface is broad and powerful, but the system still expects a technically strong operator. That is acceptable only if the product makes the sharp edges explicit.

@@ -165,7 +165,8 @@
     "viewChallenges": "View challenges",
     "viewAttempts": "View attempts",
     "viewAttempt": "View attempt",
-    "scoreLabel": "Score: {score}"
+    "scoreLabel": "Score: {score}",
+    "instructorQuickActions": "Quick actions"
   },
   "dashboardState": {
     "loadingDescription": "Loading dashboard...",

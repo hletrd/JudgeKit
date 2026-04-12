@@ -165,7 +165,8 @@
     "viewChallenges": "과제 문제 보기",
     "viewAttempts": "시도 내역 보기",
     "viewAttempt": "시도 보기",
-    "scoreLabel": "점수: {score}"
+    "scoreLabel": "점수: {score}",
+    "instructorQuickActions": "빠른 작업"
   },
   "dashboardState": {
     "loadingDescription": "대시보드를 불러오는 중...",

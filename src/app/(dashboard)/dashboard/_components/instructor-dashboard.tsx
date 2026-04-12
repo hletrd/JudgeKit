@@ -15,6 +15,7 @@ type InstructorDashboardProps = {
 export async function InstructorDashboard({ userId }: InstructorDashboardProps) {
   const t = await getTranslations("dashboard");
   const tCommon = await getTranslations("common");
+  const tNav = await getTranslations("nav");
 
   const instructorGroups = await db.query.groups.findMany({
     where: eq(groups.instructorId, userId),
@@ -96,6 +97,27 @@ export async function InstructorDashboard({ userId }: InstructorDashboardProps) 
           <CardContent className="text-3xl font-semibold">{pendingQueueCount}</CardContent>
         </Card>
       </div>
+
+
+      <Card>
+        <CardHeader>
+          <CardTitle>{t("instructorQuickActions")}</CardTitle>
+        </CardHeader>
+        <CardContent className="flex flex-wrap gap-2">
+          <Link href="/dashboard/groups">
+            <Button size="sm" variant="outline">{tNav("groups")}</Button>
+          </Link>
+          <Link href="/dashboard/contests">
+            <Button size="sm" variant="outline">{tNav("contests")}</Button>
+          </Link>
+          <Link href="/dashboard/submissions">
+            <Button size="sm" variant="outline">{tNav("submissions")}</Button>
+          </Link>
+          <Link href="/dashboard/problem-sets">
+            <Button size="sm" variant="outline">{tNav("problemSets")}</Button>
+          </Link>
+        </CardContent>
+      </Card>
 
       <Card>
         <CardHeader>
