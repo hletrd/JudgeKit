@@ -49,7 +49,7 @@ export default defineConfig({
   webServer: isRemoteRun
     ? undefined
     : {
-        command: "npm run db:push && npm run start -- --hostname localhost --port 3110",
+        command: "bash scripts/playwright-local-webserver.sh",
         env: {
           ...process.env,
           AUTH_URL: localBaseUrl,

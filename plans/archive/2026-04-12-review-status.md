@@ -50,3 +50,6 @@ This note records which review lines already remain covered by archived plan art
 None.
 
 The 2026-04-12 multi-perspective and adversarial-security review plans were implemented and archived on 2026-04-12, so there are currently no active open review plans under `plans/open/`.
+
+## Post-completion verification note
+- 2026-04-12: restored the missing `db:push` package script expected by local Playwright/CI web-server flows and added `scripts/playwright-local-webserver.sh` so local Playwright starts against a fresh ephemeral PostgreSQL instance before seeding, syncing languages, building, and starting the app.
