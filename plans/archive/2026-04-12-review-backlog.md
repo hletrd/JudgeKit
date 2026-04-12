@@ -1,5 +1,8 @@
 # Master review backlog — open items after reading the full current review set
 
+> Archived on 2026-04-12 after the 2026-04-12 review execution lane was implemented and pushed.
+
+
 ## Source reviews that still require action
 - `.context/reviews/multi-perspective-review-2026-04-12.md`
 - `.context/reviews/adversarial-security-review-2026-04-12.md`

@@ -47,8 +47,6 @@ This note records which review lines already remain covered by archived plan art
 - **Reason:** retained for reference, not for new implementation planning.
 
 ## Open review lines after this pass
-Only the following review artifacts still require fresh planning after comparing the full current set against archived plan evidence:
-- `.context/reviews/multi-perspective-review-2026-04-12.md`
-- `.context/reviews/adversarial-security-review-2026-04-12.md`
+None.
 
-Their actionable planning artifacts now live under `plans/open/`.
+The 2026-04-12 multi-perspective and adversarial-security review plans were implemented and archived on 2026-04-12, so there are currently no active open review plans under `plans/open/`.

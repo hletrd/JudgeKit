@@ -18,6 +18,9 @@ This folder keeps **completed or historical planning artifacts**.
 - `2026-04-11-master-review-backlog.md`
 - `2026-04-12-deep-code-review-remediation-plan.md`
 - `2026-04-12-post-remediation-review-plan.md`
+- `2026-04-12-review-backlog.md`
+- `2026-04-12-multi-perspective-readiness-plan.md`
+- `2026-04-12-adversarial-security-plan.md`
 
 ### Review-status notes
 - `2026-04-11-implemented-or-superseded-reviews.md`

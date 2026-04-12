@@ -1,5 +1,8 @@
 # Implementation plan — `.context/reviews/multi-perspective-review-2026-04-12.md`
 
+> Archived on 2026-04-12 after the planned remediation slices landed at `HEAD`.
+
+
 ## Source review status
 Open plan. No implementation is included here.
 

@@ -31,14 +31,12 @@ This directory contains **planning only**. No implementation is included here.
 | `.context/reviews/comprehensive-security-review-2026-04-10.md` | Archived (implemented) | `plans/archive/2026-04-12-review-status.md` | The review itself includes a remediation addendum saying actionable findings were addressed |
 | `.context/reviews/deep-code-review-2026-04-12.md` | Archived (implemented) | `plans/archive/2026-04-12-deep-code-review-remediation-plan.md` | Archived remediation plan records completion |
 | `.context/reviews/deep-code-review-2026-04-12-post-remediation.md` | Archived (implemented) | `plans/archive/2026-04-12-post-remediation-review-plan.md` | Archived follow-up plan records completion |
-| `.context/reviews/multi-perspective-review-2026-04-12.md` | Open plan | `plans/open/2026-04-12-multi-perspective-readiness-plan.md` | New product/readiness review; still-open recruiting/privacy/high-stakes boundary critiques |
-| `.context/reviews/adversarial-security-review-2026-04-12.md` | Open plan | `plans/open/2026-04-12-adversarial-security-plan.md` | New attacker-minded review; still-open identity/privacy/integrity hardening work |
+| `.context/reviews/multi-perspective-review-2026-04-12.md` | Archived (implemented) | `plans/archive/2026-04-12-multi-perspective-readiness-plan.md` | The 2026-04-12 multi-perspective remediation slices were implemented and pushed on 2026-04-12 |
+| `.context/reviews/adversarial-security-review-2026-04-12.md` | Archived (implemented) | `plans/archive/2026-04-12-adversarial-security-plan.md` | The 2026-04-12 adversarial-security remediation slices were implemented and pushed on 2026-04-12 |
 | `.context/reviews/_archive/*` | Historical | source archive | Already archived review context only |
 
 ## Currently actionable plan set
-- `plans/open/2026-04-12-review-backlog.md` — deduped shared backlog across the currently open reviews
-- `plans/open/2026-04-12-multi-perspective-readiness-plan.md` — role/product/readiness response plan
-- `plans/open/2026-04-12-adversarial-security-plan.md` — security/attacker response plan
+- No active open review plans remain after the 2026-04-12 remediation pass.
 
 ## Archival note
 The older plan artifacts were **already archived** when their associated workstreams were closed. No additional historical implementation plans needed moving during this pass; instead, the review-status mapping was refreshed in `plans/archive/2026-04-12-review-status.md` and only the new still-open review lines received fresh plans.
