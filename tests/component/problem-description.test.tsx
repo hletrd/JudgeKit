@@ -52,6 +52,20 @@ describe("ProblemDescription", () => {
     expect(screen.getByText("Hello world").tagName).toBe("P");
   });
 
+  it("renders the supported legacy HTML table subset without preserving wrapper classes", () => {
+    render(
+      <ProblemDescription
+        description={'<div class="outer"><table class="fancy"><tr><td class="cell">42</td></tr></table></div>'}
+      />
+    );
+
+    expect(screen.getByRole("table")).toBeInTheDocument();
+    expect(screen.getByText("42")).toBeInTheDocument();
+    expect(document.querySelector(".outer")).toBeNull();
+    expect(document.querySelector(".fancy")).toBeNull();
+    expect(document.querySelector(".cell")).toBeNull();
+  });
+
   it("renders markdown headings", () => {
     render(<ProblemDescription description="# Markdown Title" />);
 

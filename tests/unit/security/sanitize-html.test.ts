@@ -22,6 +22,27 @@ describe("sanitizeHtml", () => {
     expect(sanitized).not.toContain("onclick");
     expect(sanitized).toContain("<p>Safe</p>");
   });
+
+  it("removes generic wrapper tags and class-based styling hooks from legacy html", () => {
+    const sanitized = sanitizeHtml(
+      '<div class="outer"><span class="inner">Hello <strong>world</strong></span></div>'
+    );
+
+    expect(sanitized).toContain("Hello <strong>world</strong>");
+    expect(sanitized).not.toContain("<div");
+    expect(sanitized).not.toContain("<span");
+    expect(sanitized).not.toContain("class=");
+  });
+
+  it("still preserves table markup while stripping legacy class attributes", () => {
+    const sanitized = sanitizeHtml(
+      '<table class="fancy"><tr><td class="cell">42</td></tr></table>'
+    );
+
+    expect(sanitized).toContain("<table>");
+    expect(sanitized).toContain("<td>42</td>");
+    expect(sanitized).not.toContain("class=");
+  });
 });
 
 describe("OWASP XSS evasion vectors", () => {

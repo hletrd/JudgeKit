@@ -15,7 +15,10 @@ DOMPurify.addHook("afterSanitizeAttributes", (node) => {
   }
 });
 
-const ALLOWED_TAGS = [
+// Legacy HTML descriptions are kept on a narrow, formatting-focused subset.
+// Prefer markdown for new content. The allowed set intentionally excludes
+// generic layout wrappers such as div/span and class-based styling hooks.
+const LEGACY_HTML_ALLOWED_TAGS = [
   "a",
   "b",
   "blockquote",
@@ -23,7 +26,6 @@ const ALLOWED_TAGS = [
   "caption",
   "code",
   "del",
-  "div",
   "em",
   "h1",
   "h2",
@@ -38,7 +40,6 @@ const ALLOWED_TAGS = [
   "p",
   "pre",
   "s",
-  "span",
   "strong",
   "sub",
   "sup",
@@ -52,9 +53,8 @@ const ALLOWED_TAGS = [
   "ul",
 ];
 
-const ALLOWED_ATTR = [
+const LEGACY_HTML_ALLOWED_ATTR = [
   "alt",
-  "class",
   "colspan",
   "href",
   "rel",
@@ -66,8 +66,8 @@ const ALLOWED_ATTR = [
 
 export function sanitizeHtml(html: string) {
   return DOMPurify.sanitize(html, {
-    ALLOWED_ATTR,
-    ALLOWED_TAGS,
+    ALLOWED_ATTR: LEGACY_HTML_ALLOWED_ATTR,
+    ALLOWED_TAGS: LEGACY_HTML_ALLOWED_TAGS,
     ALLOW_DATA_ATTR: false,
     ALLOWED_URI_REGEXP: /^(?:(?:https?|mailto):|\/(?!\/))/i,
     ADD_ATTR: ["rel"],

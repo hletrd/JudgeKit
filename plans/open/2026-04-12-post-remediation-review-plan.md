@@ -178,6 +178,7 @@ Prefer option 1 + 2 first: reduce the allowed set where safe and add tests/docum
 - component tests for preserved allowed legacy formatting
 - sanitizer tests for stripped disallowed tags/attrs
 - explicit tests for external media stripping and safe anchor behavior
+- **Status:** completed at `HEAD` on 2026-04-12 — the legacy HTML sanitizer now excludes generic wrapper tags and class-based styling hooks while preserving the narrower formatting/table subset, with regression coverage for the supported contract.
 
 ## Acceptance criteria
 - realtime runtime behavior and docs no longer imply shared coordination where none exists
