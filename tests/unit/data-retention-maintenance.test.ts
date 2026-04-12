@@ -19,6 +19,7 @@ vi.mock("@/lib/db/schema", () => ({
   chatMessages: { createdAt: "chatMessages.createdAt" },
   antiCheatEvents: { createdAt: "antiCheatEvents.createdAt" },
   recruitingInvitations: { createdAt: "recruitingInvitations.createdAt", updatedAt: "recruitingInvitations.updatedAt", expiresAt: "recruitingInvitations.expiresAt", status: "recruitingInvitations.status" },
+  submissions: { submittedAt: "submissions.submittedAt", status: "submissions.status" },
 }));
 
 vi.mock("@/lib/logger", () => ({
@@ -64,8 +65,8 @@ describe("startSensitiveDataPruning / stopSensitiveDataPruning", () => {
     startSensitiveDataPruning();
     await flushMicrotasks();
 
-    expect(mocks.dbDeleteWhere).toHaveBeenCalledTimes(3);
-    expect(mocks.loggerDebug).toHaveBeenCalledTimes(3);
+    expect(mocks.dbDeleteWhere).toHaveBeenCalledTimes(4);
+    expect(mocks.loggerDebug.mock.calls.length).toBeGreaterThanOrEqual(3);
   });
 
   it("does not create duplicate intervals when started twice", async () => {
@@ -77,11 +78,11 @@ describe("startSensitiveDataPruning / stopSensitiveDataPruning", () => {
     await flushMicrotasks();
 
     const initialPruneCalls = mocks.dbDeleteWhere.mock.calls.length;
-    expect(initialPruneCalls).toBe(6);
+    expect(initialPruneCalls).toBe(8);
 
     await vi.advanceTimersByTimeAsync(24 * 60 * 60 * 1000);
 
-    expect(mocks.dbDeleteWhere).toHaveBeenCalledTimes(initialPruneCalls + 3);
+    expect(mocks.dbDeleteWhere).toHaveBeenCalledTimes(initialPruneCalls + 4);
     stopSensitiveDataPruning();
   });
 

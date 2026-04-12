@@ -17,7 +17,7 @@ This document defines the current default handling expectations for sensitive op
 | AI chat logs | 30 days | authorized staff with `system.chat_logs`, only for support, misuse review, or governance |
 | Anti-cheat events | 180 days | authorized instructors/admins reviewing assessment integrity telemetry |
 | Recruiting invitation records | 365 days | authorized recruiting/instructor/admin staff for assessment operations and dispute review |
-| Submissions and grading records | 365 days minimum | instructors/admins and the submitting user, subject to normal platform permissions |
+| Submissions and grading records | 365 days | instructors/admins and the submitting user, subject to normal platform permissions |
 
 ## Important interpretation notes
 - Anti-cheat signals are **review aids**, not proof of misconduct by themselves.
@@ -29,7 +29,8 @@ This document defines the current default handling expectations for sensitive op
 - AI chat-log pruning is automated in the app runtime
 - anti-cheat event pruning is automated in the app runtime
 - recruiting invitation records older than 365 days are pruned automatically once they are terminal (redeemed/revoked) or long-expired pending invites
-- submissions and grading records remain policy-bounded today; if a deployment needs stricter deletion or archival flows, add a dedicated retention/export workflow before high-stakes rollout
+- terminal submissions and grading records older than 365 days are pruned automatically; in-progress queue items are excluded from automatic deletion
+- if a deployment needs longer archival retention before deletion, add a dedicated export/archive workflow before changing the automated window
 
 ## Operator rules
 1. Grant chat-log access only to staff who actually need it.

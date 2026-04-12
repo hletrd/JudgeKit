@@ -56,3 +56,4 @@ The 2026-04-12 multi-perspective and adversarial-security review plans were impl
 
 - 2026-04-12 follow-up: added an admin-side resume-code reset path for redeemed recruiting invitations so candidates who lose their resume code can be recovered without reopening invite-link replay.
 - 2026-04-12 follow-up: automated pruning now also covers aged recruiting invitation records once they are terminal or long-expired.
+- 2026-04-12 follow-up: automated retention now prunes terminal submissions and grading records older than 365 days while excluding in-progress queue items.

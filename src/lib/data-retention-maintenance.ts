@@ -1,7 +1,7 @@
-import { and, inArray, lt, or } from "drizzle-orm";
+import { and, inArray, lt, notInArray, or } from "drizzle-orm";
 import { db } from "@/lib/db";
 import { logger } from "@/lib/logger";
-import { antiCheatEvents, chatMessages, recruitingInvitations } from "@/lib/db/schema";
+import { antiCheatEvents, chatMessages, recruitingInvitations, submissions } from "@/lib/db/schema";
 import { DATA_RETENTION_DAYS, getRetentionCutoff } from "@/lib/data-retention";
 
 async function pruneChatMessages() {
@@ -28,6 +28,18 @@ async function pruneRecruitingInvitations() {
   logger.debug({ cutoff: cutoff.toISOString() }, "Pruned expired recruiting invitations");
 }
 
+
+async function pruneSubmissions() {
+  const cutoff = getRetentionCutoff(DATA_RETENTION_DAYS.submissions);
+  await db.delete(submissions).where(
+    and(
+      lt(submissions.submittedAt, cutoff),
+      notInArray(submissions.status, ["pending", "queued", "judging"])
+    )
+  );
+  logger.debug({ cutoff: cutoff.toISOString() }, "Pruned expired terminal submissions");
+}
+
 async function pruneAntiCheatEvents() {
   const cutoff = getRetentionCutoff(DATA_RETENTION_DAYS.antiCheatEvents);
   await db.delete(antiCheatEvents).where(lt(antiCheatEvents.createdAt, cutoff));
@@ -39,6 +51,7 @@ async function pruneSensitiveOperationalData() {
     await pruneChatMessages();
     await pruneAntiCheatEvents();
     await pruneRecruitingInvitations();
+    await pruneSubmissions();
   } catch (error) {
     logger.warn({ err: error }, "Failed to prune sensitive operational data");
   }
