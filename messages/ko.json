@@ -1768,7 +1768,10 @@
       "similaritySkippedTooManySubmissions": "제출물 {count}건이 현재 검토 한도 {limit}건을 초과하여 유사도 스캔을 실행하지 않았습니다.",
       "similarityTimedOut": "유사도 스캔이 시간 안에 완료되지 않아 결과를 기록하지 않았습니다.",
       "participantNoticeTitle": "이 평가에서는 무결성 모니터링이 활성화되어 있습니다.",
-      "participantNoticeBody": "평가가 진행되는 동안 포커스 변경, 복사/붙여넣기 등 관련 이벤트가 사후 검토용으로 기록될 수 있습니다."
+      "participantNoticeBody": "평가가 진행되는 동안 포커스 변경, 복사/붙여넣기 등 관련 이벤트가 사후 검토용으로 기록될 수 있습니다.",
+      "reviewModelTelemetry": "브라우저 포커스, 복사/붙여넣기, 유사도 신호는 낮은 신뢰도의 참고 자료일 뿐 단독 증거가 아닙니다.",
+      "reviewModelCorroboration": "부정행위 판단 전에는 여러 신호, 제출 이력, 사람의 검토를 함께 사용하세요.",
+      "reviewModelSeriousActions": "정식 시험이나 대외 대회처럼 더 강한 무결성이 필요하면 별도의 운영 통제를 추가해야 합니다."
     },
     "analytics": {
       "title": "분석",

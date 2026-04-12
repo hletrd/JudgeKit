@@ -310,8 +310,13 @@ export function AntiCheatDashboard({ assignmentId }: AntiCheatDashboardProps) {
           </div>
         )}
 
-        <div className="rounded-lg border border-dashed px-3 py-2 text-xs text-muted-foreground">
-          {t("signalsDisclaimer")}
+        <div className="space-y-2 rounded-lg border border-dashed px-3 py-2 text-xs text-muted-foreground">
+          <p>{t("signalsDisclaimer")}</p>
+          <ul className="list-disc space-y-1 pl-4">
+            <li>{t("reviewModelTelemetry")}</li>
+            <li>{t("reviewModelCorroboration")}</li>
+            <li>{t("reviewModelSeriousActions")}</li>
+          </ul>
         </div>
 
         {/* Summary stat cards */}

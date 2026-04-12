@@ -74,6 +74,9 @@ The product is correct to describe anti-cheat as telemetry, but that also means 
 - the exam-integrity story is explicit and consistent across product, docs, and operator expectations
 - no one has to guess whether anti-cheat is merely advisory or intended as stronger enforcement
 
+**Progress**
+- ✅ published `docs/exam-integrity-model.md` and exposed the evidence model more explicitly in the anti-cheat dashboard
+
 ## Workstream D — Retention policy as a product/ops control surface
 **Problem**
 The system now prunes several data classes, but the current 365-day defaults may not match all schools or employers.

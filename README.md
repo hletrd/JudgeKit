@@ -266,6 +266,8 @@ Default: `homework`. Change in admin settings or directly in the database (`syst
 - [Judge Workers](docs/judge-workers.md) — multi-worker architecture, registration, deployment
 - [Privacy & Retention](docs/privacy-retention.md) — current retention windows and handling rules for sensitive operational data
 - [High-Stakes Operations](docs/high-stakes-operations.md) — operational truth and launch checks for recruiting, exams, and serious contests
+- [Exam Integrity Model](docs/exam-integrity-model.md) — what the current anti-cheat telemetry does and does not prove
+- [Judge Worker Incident Runbook](docs/judge-worker-incident-runbook.md) — operational response guide for the privileged worker boundary
 
 ## License
 

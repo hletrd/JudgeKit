@@ -84,6 +84,9 @@ Anti-cheat remains advisory telemetry, which is honest but insufficient for stro
 **Acceptance criteria**
 - the product and docs make a consistent, explicit promise about what anti-cheat does and does not mean
 
+**Progress**
+- ✅ anti-cheat now has an explicit evidence-model document and stronger operator-facing dashboard language
+
 ## Phase 4 — Sensitive-data governance tightening
 **Severity:** MEDIUM
 
@@ -123,6 +126,9 @@ The judge worker remains the highest-consequence technical boundary in the syste
 
 **Acceptance criteria**
 - worker compromise or abnormal behavior has a clearer operational response model than today
+
+**Progress**
+- ✅ published `docs/judge-worker-incident-runbook.md` to give operators a dedicated response guide for the privileged worker boundary
 
 ## Phase 6 — Verification environment reliability
 **Severity:** LOW

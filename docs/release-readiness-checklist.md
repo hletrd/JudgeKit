@@ -116,6 +116,7 @@ These must pass for **any** release.
 - [ ] exam session timing/window rules are regression tested
 - [ ] submission cutoffs are verified
 - [ ] anti-cheat wording is reviewed and accurate
+- [ ] exam integrity review model is accepted (`docs/exam-integrity-model.md`)
 - [ ] anti-cheat logging works in target browsers
 - [ ] internal dry-run exam completed successfully
 - [ ] exam incident runbook exists
@@ -208,6 +209,7 @@ These must pass for **any** release.
 - [ ] selected launch mode is correct
 - [ ] feature restrictions match use case
 - [ ] privacy/retention expectations are acceptable
+- [ ] judge worker incident runbook is reviewed for the target deployment (`docs/judge-worker-incident-runbook.md`)
 - [ ] user-facing copy matches real behavior
 - [ ] dry run completed where required
 

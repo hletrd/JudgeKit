@@ -66,6 +66,9 @@ After re-reading the full review set against the current codebase and archived r
 - stronger evidence taxonomy and operator guidance
 - possible future proctoring-adjacent controls if actually desired
 
+**Progress**
+- ✅ published `docs/exam-integrity-model.md` and surfaced the evidence model more explicitly in the anti-cheat dashboard
+
 ### 4. Sensitive-data governance tightening
 **Why next:** retention is better, but governance is still not “done.”
 
@@ -116,6 +119,9 @@ After re-reading the full review set against the current codebase and archived r
 - stronger worker-specific operational guidance
 - monitoring/runbook expectations for abnormal worker behavior or compromise
 - any future containment improvements split into their own implementation slices
+
+**Progress**
+- ✅ published `docs/judge-worker-incident-runbook.md` and linked it from the high-stakes/readiness surfaces
 
 ## Recommended execution order
 1. High-assurance recruiting identity

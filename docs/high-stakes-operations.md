@@ -34,3 +34,7 @@ Use anti-cheat signals as review aids only. They should support human review, no
 
 ## Recruiting truth
 Do not expose shared standings or peer-identifying ranking data to recruiting candidates. Recruiting flows should prioritize identity assurance, privacy, and self-scoped progress only.
+
+## See also
+- `docs/exam-integrity-model.md`
+- `docs/judge-worker-incident-runbook.md`

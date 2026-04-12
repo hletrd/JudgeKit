@@ -1768,7 +1768,10 @@
       "similaritySkippedTooManySubmissions": "Similarity scan not run because {count} submissions exceed the current review limit of {limit}.",
       "similarityTimedOut": "Similarity scan did not finish in time. No results were recorded.",
       "participantNoticeTitle": "Integrity monitoring is active for this assessment.",
-      "participantNoticeBody": "Focus changes, copy/paste activity, and related events may be logged for follow-up review while the assessment is open."
+      "participantNoticeBody": "Focus changes, copy/paste activity, and related events may be logged for follow-up review while the assessment is open.",
+      "reviewModelTelemetry": "Browser focus, copy/paste, and similarity signals are low-confidence telemetry, not standalone proof.",
+      "reviewModelCorroboration": "Use multiple signals, submission history, and human review before making any misconduct decision.",
+      "reviewModelSeriousActions": "For formal exams or public contests, add separate operational controls if you need stronger integrity guarantees."
     },
     "analytics": {
       "title": "Analytics",
