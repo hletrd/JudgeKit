@@ -127,6 +127,7 @@ Successful pulls are now audit logged, but denied or failed pull attempts still 
 - include the requested image tag and a concise reason/status
 - keep the action namespace consistent, e.g. `docker_image.pull_rejected` / `docker_image.pull_failed`
 - decide whether remove/build failure paths need the same consistency pass while touching this surface
+- **Status:** completed at `HEAD` on 2026-04-12 — rejected and failed pull attempts now emit dedicated audit events with the requested image tag and failure reason.
 
 **Tests**
 - invalid image pull emits rejection audit event
@@ -145,6 +146,7 @@ Successful pulls are now audit logged, but denied or failed pull attempts still 
 - replace `existsSync()` with `fs/promises.access()` or an equivalent async check
 - preserve the current 404 behavior and error payloads
 - keep the local-only build contract intact
+- **Status:** completed at `HEAD` on 2026-04-12 — the build route now uses async Dockerfile access checks and keeps the same 404 contract.
 
 **Tests**
 - missing Dockerfile still returns 404

@@ -1,18 +1,19 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { NextRequest } from "next/server";
+import { readFileSync } from "node:fs";
 
 const {
   getApiUserMock,
   dbSelectMock,
   buildDockerImageMock,
   recordAuditEventMock,
-  existsSyncMock,
+  accessMock,
 } = vi.hoisted(() => ({
   getApiUserMock: vi.fn(),
   dbSelectMock: vi.fn(),
   buildDockerImageMock: vi.fn(),
   recordAuditEventMock: vi.fn(),
-  existsSyncMock: vi.fn(),
+  accessMock: vi.fn(),
 }));
 
 vi.mock("@/lib/api/handler", () => ({
@@ -52,8 +53,8 @@ vi.mock("@/lib/audit/events", () => ({
   recordAuditEvent: recordAuditEventMock,
 }));
 
-vi.mock("fs", () => ({
-  existsSync: existsSyncMock,
+vi.mock("fs/promises", () => ({
+  access: accessMock,
 }));
 
 function makeRequest(body: unknown) {
@@ -94,7 +95,7 @@ describe("POST /api/v1/admin/docker/images/build", () => {
 
     expect(res.status).toBe(400);
     expect(body.error).toBe("imageTagMustStartWithJudge");
-    expect(existsSyncMock).not.toHaveBeenCalled();
+    expect(accessMock).not.toHaveBeenCalled();
   });
 
   it("rejects trusted-registry judge images because build only supports local Dockerfiles", async () => {
@@ -115,7 +116,7 @@ describe("POST /api/v1/admin/docker/images/build", () => {
 
     expect(res.status).toBe(400);
     expect(body.error).toBe("imageTagMustBeLocalJudge");
-    expect(existsSyncMock).not.toHaveBeenCalled();
+    expect(accessMock).not.toHaveBeenCalled();
     delete process.env.TRUSTED_DOCKER_REGISTRIES;
   });
 
@@ -129,7 +130,7 @@ describe("POST /api/v1/admin/docker/images/build", () => {
         })),
       })),
     });
-    existsSyncMock.mockReturnValue(false);
+    accessMock.mockRejectedValue(new Error("missing"));
 
     const { POST } = await import("@/app/api/v1/admin/docker/images/build/route");
     const res = await POST(makeRequest({ language: "python" }));
@@ -147,7 +148,7 @@ describe("POST /api/v1/admin/docker/images/build", () => {
         })),
       })),
     });
-    existsSyncMock.mockReturnValue(true);
+    accessMock.mockResolvedValue(undefined);
     buildDockerImageMock.mockResolvedValue({ success: true, logs: "built" });
 
     const { POST } = await import("@/app/api/v1/admin/docker/images/build/route");
@@ -166,5 +167,12 @@ describe("POST /api/v1/admin/docker/images/build", () => {
         resourceId: "judge-python:latest",
       })
     );
+  });
+
+  it("uses async dockerfile access checks instead of sync fs existence checks", async () => {
+    const source = readFileSync("src/app/api/v1/admin/docker/images/build/route.ts", "utf8");
+
+    expect(source).toContain("await access(dockerfilePath)");
+    expect(source).not.toContain("existsSync(");
   });
 });

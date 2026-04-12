@@ -67,6 +67,29 @@ describe("admin docker image mutation routes", () => {
     expect(res.status).toBe(400);
     expect(body.error).toBe("imageTagMustStartWithJudge");
     expect(pullDockerImageMock).not.toHaveBeenCalled();
+    expect(recordAuditEventMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        action: "docker_image.pull_rejected",
+        resourceId: "evil.example.com/team/judge-python:latest",
+      })
+    );
+  });
+
+  it("records a failure audit event when an allowed pull fails", async () => {
+    pullDockerImageMock.mockResolvedValue({ success: false, error: "registry timeout" });
+
+    const { POST } = await import("@/app/api/v1/admin/docker/images/route");
+    const res = await POST(makeRequest("POST", { imageTag: "judge-python:latest" }));
+    const body = await res.json();
+
+    expect(res.status).toBe(500);
+    expect(body.error).toBe("registry timeout");
+    expect(recordAuditEventMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        action: "docker_image.pull_failed",
+        resourceId: "judge-python:latest",
+      })
+    );
   });
 
   it("records an audit event after a successful pull", async () => {

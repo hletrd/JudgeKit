@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { z } from "zod";
-import { existsSync } from "fs";
+import { access } from "fs/promises";
 import { join } from "path";
 import { createApiHandler } from "@/lib/api/handler";
 import { apiSuccess } from "@/lib/api/responses";
@@ -47,7 +47,9 @@ export const POST = createApiHandler({
     const imageName = langConfig.dockerImage.split(":")[0];
     const dockerfilePath = join("docker", `Dockerfile.${imageName}`);
 
-    if (!existsSync(dockerfilePath)) {
+    try {
+      await access(dockerfilePath);
+    } catch {
       return NextResponse.json(
         { error: `Dockerfile not found: ${dockerfilePath}` },
         { status: 404 },

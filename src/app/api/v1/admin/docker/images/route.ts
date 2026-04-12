@@ -69,6 +69,16 @@ export const POST = createApiHandler({
   schema: pullSchema,
   handler: async (req: NextRequest, { body, user }) => {
     if (!isAllowedJudgeDockerImage(body.imageTag)) {
+      recordAuditEvent({
+        actorId: user.id,
+        actorRole: user.role,
+        action: "docker_image.pull_rejected",
+        resourceType: "docker_image",
+        resourceId: body.imageTag,
+        summary: `Rejected Docker image pull for ${body.imageTag}`,
+        details: { reason: "imageTagMustStartWithJudge" },
+        request: req,
+      });
       return NextResponse.json(
         { error: "imageTagMustStartWithJudge", message: "Only judge-* images are allowed" },
         { status: 400 }
@@ -76,6 +86,16 @@ export const POST = createApiHandler({
     }
     const result = await pullDockerImage(body.imageTag);
     if (!result.success) {
+      recordAuditEvent({
+        actorId: user.id,
+        actorRole: user.role,
+        action: "docker_image.pull_failed",
+        resourceType: "docker_image",
+        resourceId: body.imageTag,
+        summary: `Failed Docker image pull for ${body.imageTag}`,
+        details: { error: result.error ?? "pullFailed" },
+        request: req,
+      });
       return NextResponse.json(
         { error: result.error ?? "pullFailed" },
         { status: 500 }
