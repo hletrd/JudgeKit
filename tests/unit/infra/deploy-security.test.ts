@@ -65,11 +65,15 @@ describe("deployment security defaults", () => {
     const workersGuide = read("docs/judge-workers.md");
 
     expect(readme).toContain("single app instance");
+    expect(readme).toContain("REALTIME_SINGLE_INSTANCE_ACK");
+    expect(readme).toContain("reserved");
     expect(deploymentGuide).toContain("single instance");
     expect(workersGuide).toContain("process-local memory");
     expect(deploymentGuide).toContain("APP_INSTANCE_COUNT");
+    expect(deploymentGuide).toContain("REALTIME_SINGLE_INSTANCE_ACK");
     expect(deploymentGuide).toContain("REALTIME_COORDINATION_BACKEND");
     expect(workersGuide).toContain("APP_INSTANCE_COUNT");
+    expect(workersGuide).toContain("REALTIME_SINGLE_INSTANCE_ACK");
     expect(workersGuide).toContain("REALTIME_COORDINATION_BACKEND");
   });
 

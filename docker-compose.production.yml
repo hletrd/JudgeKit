@@ -90,6 +90,7 @@ services:
       - DB_DIALECT=postgresql
       - DATABASE_URL=postgres://judgekit:${POSTGRES_PASSWORD:?POSTGRES_PASSWORD is required}@db:5432/judgekit
       - HOSTNAME=0.0.0.0
+      - APP_INSTANCE_COUNT=1
       - COMPILER_RUNNER_URL=http://judge-worker:3001
       - RATE_LIMITER_URL=http://rate-limiter:3001
     depends_on:

@@ -160,12 +160,15 @@ docker compose -f docker-compose.worker.yml up -d
 > to scale horizontally, but the **web app is currently expected to run as a
 > single instance** for `/api/v1/submissions/[id]/events` SSE connection caps
 > and `/api/v1/contests/[assignmentId]/anti-cheat` heartbeat deduplication.
-> The app now enforces this at runtime when `APP_INSTANCE_COUNT>1` and
-> `REALTIME_COORDINATION_BACKEND` is unset/`none`, returning a 503 for those
-> routes instead of silently serving incorrect coordination semantics. Before
-> adding multiple app replicas, configure shared-state coordination
-> (`REALTIME_COORDINATION_BACKEND=redis` or `postgresql`) or keep
-> `APP_INSTANCE_COUNT=1`.
+> The app now enforces this at runtime whenever the deployment declaration is
+> incompatible with the current process-local implementation:
+> - `APP_INSTANCE_COUNT>1` without real shared coordination will return 503
+> - production deployments must declare `APP_INSTANCE_COUNT=1` (or
+>   `REALTIME_SINGLE_INSTANCE_ACK=1`) before using these routes
+> - `REALTIME_COORDINATION_BACKEND` is currently reserved for future shared
+>   coordination support and should stay unset/`none`
+> Before adding multiple app replicas, implement real shared-state coordination
+> rather than relying on the placeholder backend setting alone.
 
 See [Judge Workers](judge-workers.md) for full architecture and API reference.
 

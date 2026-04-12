@@ -220,7 +220,11 @@ Monitor workers at `/dashboard/admin/workers`.
 > connection caps and anti-cheat heartbeat deduplication. Do not run multiple
 > app replicas behind a load balancer unless you first add shared coordination
 > (for example Redis/PostgreSQL-backed connection and heartbeat state) or prove
-> an equivalent sticky-session design for those routes.
+> an equivalent sticky-session design for those routes. For the current
+> process-local implementation, declare `APP_INSTANCE_COUNT=1` (or
+> `REALTIME_SINGLE_INSTANCE_ACK=1` when replica count cannot be surfaced).
+> `REALTIME_COORDINATION_BACKEND` is currently reserved for future shared-state
+> support and must stay unset/`none`.
 
 ### Prerequisites
 
