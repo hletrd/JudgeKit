@@ -11,6 +11,7 @@ import { IN_PROGRESS_JUDGE_STATUSES } from "@/lib/judge/verdict";
 import { logger } from "@/lib/logger";
 import { consumeApiRateLimit } from "@/lib/security/api-rate-limit";
 import { getConfiguredSettings } from "@/lib/system-settings-config";
+import { getUnsupportedRealtimeGuard } from "@/lib/realtime/realtime-coordination";
 
 // ---------------------------------------------------------------------------
 // Connection tracking via Set<connectionId> to avoid TOCTOU races.
@@ -154,6 +155,11 @@ export async function GET(
   try {
     const user = await getApiUser(request);
     if (!user) return unauthorized();
+
+    const realtimeGuard = getUnsupportedRealtimeGuard("/api/v1/submissions/[id]/events");
+    if (realtimeGuard) {
+      return apiError(realtimeGuard.error, 503);
+    }
 
     const rateLimitResponse = await consumeApiRateLimit(request, "submissions:events");
     if (rateLimitResponse) return rateLimitResponse;

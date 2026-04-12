@@ -10,6 +10,7 @@ import { antiCheatEvents, users } from "@/lib/db/schema";
 import { eq, and, desc, sql } from "drizzle-orm";
 import { getContestAssignment, canManageContest } from "@/lib/assignments/contests";
 import { LRUCache } from "lru-cache";
+import { getUnsupportedRealtimeGuard } from "@/lib/realtime/realtime-coordination";
 
 /** last heartbeat insert time per "assignmentId:userId" — only insert once per 60s */
 const lastHeartbeatTime = new LRUCache<string, number>({ max: 10_000, ttl: 120_000 });
@@ -35,6 +36,11 @@ export const POST = createApiHandler({
   rateLimit: "anti-cheat:log",
   schema: antiCheatEventSchema,
   handler: async (req: NextRequest, { user, body, params }) => {
+    const realtimeGuard = getUnsupportedRealtimeGuard("/api/v1/contests/[assignmentId]/anti-cheat");
+    if (realtimeGuard) {
+      return apiError(realtimeGuard.error, 503);
+    }
+
     const { assignmentId } = params;
     const assignment = await getContestAssignment(assignmentId);
 

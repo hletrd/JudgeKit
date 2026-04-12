@@ -67,6 +67,10 @@ describe("deployment security defaults", () => {
     expect(readme).toContain("single app instance");
     expect(deploymentGuide).toContain("single instance");
     expect(workersGuide).toContain("process-local memory");
+    expect(deploymentGuide).toContain("APP_INSTANCE_COUNT");
+    expect(deploymentGuide).toContain("REALTIME_COORDINATION_BACKEND");
+    expect(workersGuide).toContain("APP_INSTANCE_COUNT");
+    expect(workersGuide).toContain("REALTIME_COORDINATION_BACKEND");
   });
 
   it("keeps Docker daemon access out of the app container in deployment compose files", () => {

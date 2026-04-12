@@ -159,6 +159,7 @@ Pick one of these explicit strategies:
 - if runtime guard is chosen:
   - add an explicit startup warning/fail-fast path tied to deployment config
   - document exactly what is unsupported and why
+- **Status:** completed at `HEAD` on 2026-04-12 via the runtime-guardrail strategy — realtime routes now fail closed when `APP_INSTANCE_COUNT>1` without `REALTIME_COORDINATION_BACKEND`, and docs/tests describe the required deployment knobs.
 
 **Tests**
 - implementation guard proving the chosen coordination model is present

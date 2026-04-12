@@ -156,9 +156,12 @@ docker compose -f docker-compose.worker.yml up -d
 > to scale horizontally, but the **web app is currently expected to run as a
 > single instance** for `/api/v1/submissions/[id]/events` SSE connection caps
 > and `/api/v1/contests/[assignmentId]/anti-cheat` heartbeat deduplication.
-> Before adding multiple app replicas, introduce shared-state coordination
-> (Redis/PostgreSQL/etc.) or document and validate an equivalent sticky-session
-> strategy for those routes.
+> The app now enforces this at runtime when `APP_INSTANCE_COUNT>1` and
+> `REALTIME_COORDINATION_BACKEND` is unset/`none`, returning a 503 for those
+> routes instead of silently serving incorrect coordination semantics. Before
+> adding multiple app replicas, configure shared-state coordination
+> (`REALTIME_COORDINATION_BACKEND=redis` or `postgresql`) or keep
+> `APP_INSTANCE_COUNT=1`.
 
 See [Judge Workers](judge-workers.md) for full architecture and API reference.
 

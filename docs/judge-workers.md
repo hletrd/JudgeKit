@@ -89,9 +89,11 @@ The dedicated worker compose file includes a local `docker-proxy` sidecar. The j
 
 > **Important:** this horizontal scaling guidance applies to **judge workers**.
 > The main Next.js app currently keeps SSE connection tracking and anti-cheat
-> heartbeat deduplication in process-local memory, so app-server replication
-> requires additional shared-state work (or a carefully validated sticky-session
-> design) before it is safe to run multiple app instances.
+> heartbeat deduplication in process-local memory. If `APP_INSTANCE_COUNT>1`
+> and `REALTIME_COORDINATION_BACKEND` is unset/`none`, the app now fails those
+> routes closed instead of silently serving incorrect cross-instance semantics.
+> App-server replication therefore still requires additional shared-state work
+> (or a carefully validated sticky-session design) before it is safe.
 
 ### Deploy script
 
