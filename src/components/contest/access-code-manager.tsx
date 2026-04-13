@@ -36,6 +36,27 @@ export function AccessCodeManager({ assignmentId }: AccessCodeManagerProps) {
     fetchCode();
   }, [fetchCode]);
 
+  async function copyValue(value: string, { showToast = false }: { showToast?: boolean } = {}) {
+    try {
+      await navigator.clipboard.writeText(value);
+    } catch {
+      // Fallback for insecure contexts
+      const textarea = document.createElement("textarea");
+      textarea.value = value;
+      document.body.appendChild(textarea);
+      textarea.select();
+      document.execCommand("copy");
+      document.body.removeChild(textarea);
+    }
+
+    setCopied(true);
+    setTimeout(() => setCopied(false), 2000);
+
+    if (showToast) {
+      toast.success(t("copied"));
+    }
+  }
+
   async function handleGenerate() {
     setIsLoading(true);
     try {
@@ -46,7 +67,9 @@ export function AccessCodeManager({ assignmentId }: AccessCodeManagerProps) {
       });
       if (res.ok) {
         const json = await res.json();
-        setCode(json.data.accessCode);
+        const nextCode = json.data.accessCode as string;
+        setCode(nextCode);
+        await copyValue(nextCode);
         toast.success(t("generateSuccess"));
       } else {
         toast.error(tCommon("error"));
@@ -78,28 +101,15 @@ export function AccessCodeManager({ assignmentId }: AccessCodeManagerProps) {
     }
   }
 
-  function handleCopy() {
+  async function handleCopy() {
     if (!code) return;
-    try {
-      navigator.clipboard.writeText(code);
-    } catch {
-      // Fallback for insecure contexts
-      const textarea = document.createElement("textarea");
-      textarea.value = code;
-      document.body.appendChild(textarea);
-      textarea.select();
-      document.execCommand("copy");
-      document.body.removeChild(textarea);
-    }
-    setCopied(true);
-    setTimeout(() => setCopied(false), 2000);
+    await copyValue(code);
   }
 
-  function handleCopyLink() {
+  async function handleCopyLink() {
     if (!code) return;
     const url = `${window.location.origin}/dashboard/contests/join?code=${code}`;
-    navigator.clipboard.writeText(url);
-    toast.success(t("copied"));
+    await copyValue(url, { showToast: true });
   }
 
   return (
