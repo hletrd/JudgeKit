@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import { useTranslations } from "next-intl";
 import { Loader2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import {
@@ -42,6 +43,7 @@ export function DestructiveActionDialog({
   triggerTestId,
   confirmTestId,
 }: DestructiveActionDialogProps) {
+  const tCommon = useTranslations("common");
   const [open, setOpen] = useState(false);
   const [isPending, setIsPending] = useState(false);
 
@@ -97,7 +99,7 @@ export function DestructiveActionDialog({
             {isPending && <Loader2 className="size-4 animate-spin" aria-hidden="true" />}
             {confirmLabel}
           </Button>
-          {isPending && <span className="sr-only" role="status" aria-live="polite">Processing...</span>}
+          {isPending && <span className="sr-only" role="status" aria-live="polite">{tCommon("loading")}</span>}
         </DialogFooter>
       </DialogContent>
     </Dialog>

@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useRef, useCallback } from "react";
+import { useTranslations } from "next-intl";
 import { toast } from "sonner";
 import { apiFetch } from "@/lib/api/client";
 
@@ -42,18 +43,15 @@ function savePendingEvents(assignmentId: string, events: PendingEvent[]) {
   }
 }
 
-/**
- * Client-side anti-cheat monitor.
- * Detects tab switches, copy, paste, blur, and contextmenu events.
- * Reports events to the server API with retry and localStorage persistence.
- */
 export function AntiCheatMonitor({
   assignmentId,
   enabled,
-  warningMessage = "Tab switch detected. An integrity signal has been recorded for review.",
+  warningMessage,
 }: AntiCheatMonitorProps) {
+  const t = useTranslations("contests.antiCheat");
+  const resolvedWarningMessage = warningMessage ?? t("warningTabSwitch");
   const lastEventRef = useRef<number>(0);
-  const MIN_INTERVAL_MS = 1000; // Rate limit client-side events
+  const MIN_INTERVAL_MS = 1000;
   const retryTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const sendEvent = useCallback(
@@ -82,11 +80,8 @@ export function AntiCheatMonitor({
     const remaining: PendingEvent[] = [];
     for (const event of pending) {
       const ok = await sendEvent(event);
-      if (!ok) {
-        if (event.retries < MAX_RETRIES) {
-          remaining.push({ ...event, retries: event.retries + 1 });
-        }
-        // Drop events that exceeded MAX_RETRIES
+      if (!ok && event.retries < MAX_RETRIES) {
+        remaining.push({ ...event, retries: event.retries + 1 });
       }
     }
     savePendingEvents(assignmentId, remaining);
@@ -107,16 +102,14 @@ export function AntiCheatMonitor({
 
       const ok = await sendEvent(event);
       if (!ok) {
-        // Queue for retry
         const pending = loadPendingEvents(assignmentId);
         pending.push({ ...event, retries: 1 });
         savePendingEvents(assignmentId, pending);
 
-        // Schedule retry with exponential backoff
         if (!retryTimerRef.current) {
           retryTimerRef.current = setTimeout(() => {
             retryTimerRef.current = null;
-            flushPendingEvents();
+            void flushPendingEvents();
           }, RETRY_BASE_DELAY_MS * 2);
         }
       }
@@ -124,10 +117,9 @@ export function AntiCheatMonitor({
     [assignmentId, sendEvent, flushPendingEvents]
   );
 
-  // Flush any events persisted from a previous session on mount
   useEffect(() => {
     if (!enabled) return;
-    flushPendingEvents();
+    void flushPendingEvents();
   }, [enabled, flushPendingEvents]);
 
   useEffect(() => {
@@ -135,30 +127,29 @@ export function AntiCheatMonitor({
 
     function handleVisibilityChange() {
       if (document.hidden) {
-        reportEvent("tab_switch");
-        toast.warning(warningMessage);
+        void reportEvent("tab_switch");
+        toast.warning(resolvedWarningMessage);
       }
     }
 
     function handleBlur() {
-      reportEvent("blur");
+      void reportEvent("blur");
     }
 
     function handleCopy(e: ClipboardEvent) {
-      reportEvent("copy", {
+      void reportEvent("copy", {
         target: (e.target as HTMLElement)?.tagName,
       });
     }
 
     function handlePaste(e: ClipboardEvent) {
-      reportEvent("paste", {
+      void reportEvent("paste", {
         target: (e.target as HTMLElement)?.tagName,
       });
     }
 
     function handleContextMenu() {
-      // Log the event but do not prevent default — preserves accessibility
-      reportEvent("contextmenu");
+      void reportEvent("contextmenu");
     }
 
     document.addEventListener("visibilitychange", handleVisibilityChange);
@@ -178,8 +169,7 @@ export function AntiCheatMonitor({
         retryTimerRef.current = null;
       }
     };
-  }, [enabled, reportEvent, warningMessage]);
+  }, [enabled, reportEvent, resolvedWarningMessage]);
 
-  // This component renders nothing — it's purely side-effect based
   return null;
 }

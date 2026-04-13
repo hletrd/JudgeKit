@@ -37,9 +37,9 @@ export interface AssignmentOverviewLabels {
   titleColumn: string;
   deadlineCountdown: string;
   lateDeadlineCountdown: string;
-  solved?: string;
-  attempted?: string;
-  untried?: string;
+  solved: string;
+  attempted: string;
+  untried: string;
   examBadgeScheduled?: string;
   examBadgeWindowed?: string;
   examDuration?: string;
@@ -77,7 +77,7 @@ function ProgressIcon({ progress, labels }: { progress: StudentProblemProgress; 
           className="size-4 shrink-0 text-green-700 dark:text-green-400"
           aria-hidden="true"
         />
-        <span className="sr-only">{labels.solved ?? "Solved"}</span>
+        <span className="sr-only">{labels.solved}</span>
       </>
     );
   }
@@ -88,7 +88,7 @@ function ProgressIcon({ progress, labels }: { progress: StudentProblemProgress; 
           className="size-4 shrink-0 text-amber-600 dark:text-amber-400"
           aria-hidden="true"
         />
-        <span className="sr-only">{labels.attempted ?? "Attempted"}</span>
+        <span className="sr-only">{labels.attempted}</span>
       </>
     );
   }
@@ -98,7 +98,7 @@ function ProgressIcon({ progress, labels }: { progress: StudentProblemProgress; 
         className="size-4 shrink-0 text-muted-foreground"
         aria-hidden="true"
       />
-      <span className="sr-only">{labels.untried ?? "Untried"}</span>
+      <span className="sr-only">{labels.untried}</span>
     </>
   );
 }

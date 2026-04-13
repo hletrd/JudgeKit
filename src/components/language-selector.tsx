@@ -2,6 +2,7 @@
 
 import * as React from "react";
 import { useMemo, useState } from "react";
+import { useTranslations } from "next-intl";
 import { Combobox as ComboboxPrimitive } from "@base-ui/react/combobox";
 import { cn } from "@/lib/utils";
 import { ChevronDownIcon, CheckIcon, SearchIcon } from "lucide-react";
@@ -54,12 +55,17 @@ export function LanguageSelector({
   value,
   onValueChange,
   preferredLanguage,
-  placeholder = "Select Language",
-  searchPlaceholder = "Search languages...",
-  recentlyUsedLabel = "Recently Used",
-  otherLabel = "Other",
+  placeholder,
+  searchPlaceholder,
+  recentlyUsedLabel,
+  otherLabel,
 }: LanguageSelectorProps) {
+  const t = useTranslations("problems");
   const [inputValue, setInputValue] = useState("");
+  const resolvedPlaceholder = placeholder ?? t("selectLanguage");
+  const resolvedSearchPlaceholder = searchPlaceholder ?? t("searchLanguages");
+  const resolvedRecentlyUsedLabel = recentlyUsedLabel ?? t("recentlyUsed");
+  const resolvedOtherLabel = otherLabel ?? t("otherLanguages");
 
   const labelMap = useMemo(
     () =>
@@ -94,11 +100,11 @@ export function LanguageSelector({
       .map((l) => ({ language: l.language, label: labelMap[l.language] ?? l.language }));
 
     if (otherEntries.length > 0) {
-      categoryEntries.push({ category: otherLabel, entries: otherEntries });
+      categoryEntries.push({ category: resolvedOtherLabel, entries: otherEntries });
     }
 
     return categoryEntries;
-  }, [languages, labelMap, otherLabel]);
+  }, [languages, labelMap, resolvedOtherLabel]);
 
   // Recently used: just the preferredLanguage if it's in the available languages
   const recentlyUsed = useMemo<LanguageEntry[]>(() => {
@@ -113,7 +119,7 @@ export function LanguageSelector({
 
     const allGroups: Array<{ category: string; entries: LanguageEntry[] }> = [
       ...(recentlyUsed.length > 0
-        ? [{ category: recentlyUsedLabel, entries: recentlyUsed }]
+        ? [{ category: resolvedRecentlyUsedLabel, entries: recentlyUsed }]
         : []),
       ...grouped,
     ];
@@ -130,10 +136,10 @@ export function LanguageSelector({
         ),
       }))
       .filter(({ entries }) => entries.length > 0);
-  }, [inputValue, grouped, recentlyUsed, recentlyUsedLabel]);
+  }, [inputValue, grouped, recentlyUsed, resolvedRecentlyUsedLabel]);
 
   const hasResults = groupsToRender.length > 0;
-  const displayLabel = labelMap[value] || value || placeholder;
+  const displayLabel = labelMap[value] || value || resolvedPlaceholder;
 
   return (
     <ComboboxPrimitive.Root
@@ -182,7 +188,7 @@ export function LanguageSelector({
               <SearchIcon className="mr-2 size-3.5 shrink-0 text-muted-foreground" />
               <ComboboxPrimitive.Input
                 className="flex-1 bg-transparent text-sm outline-none placeholder:text-muted-foreground"
-                placeholder={searchPlaceholder}
+                placeholder={resolvedSearchPlaceholder}
               />
             </div>
 
@@ -215,7 +221,7 @@ export function LanguageSelector({
                 ))
               ) : (
                 <ComboboxPrimitive.Empty className="px-3 py-6 text-center text-sm text-muted-foreground">
-                  No languages found.
+                  {t("noLanguagesFound")}
                 </ComboboxPrimitive.Empty>
               )}
             </ComboboxPrimitive.List>

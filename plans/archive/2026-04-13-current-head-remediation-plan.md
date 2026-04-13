@@ -98,6 +98,7 @@ The earlier 2026-04-13 acceptance note is now superseded by a newer user directi
 - confirmed the remaining higher-assurance asks are now explicit external prerequisites (for example stronger out-of-band identity factors and live failover/load rehearsal) rather than missing repository-local fixes
 - coverage: targeted recruiting-token, recruiting component, rankings, retention-maintenance, and high-stakes documentation/runtime tests
 - post-remediation follow-up: added a UI i18n literal-key audit test and filled the missing database-backup / recruit resume-session locale entries in both `en` and `ko`
+- post-remediation UI sweep: removed the remaining reviewed hardcoded English strings from dashboard error/not-found views, lecture-mode surfaces, anti-cheat warnings, copy-code aria labels, and language-selector fallbacks
 
 ## Verification matrix
 - per-slice: targeted `pnpm -s tsc --noEmit`, targeted Vitest, targeted eslint

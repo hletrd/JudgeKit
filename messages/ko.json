@@ -33,6 +33,7 @@
     "optional": "선택 사항",
     "copy": "복사",
     "copied": "복사됨",
+    "copyCode": "코드 복사",
     "confirm": "확인",
     "done": "완료",
     "close": "닫기",
@@ -393,6 +394,7 @@
     "searchLanguages": "언어 검색...",
     "recentlyUsed": "최근 사용",
     "otherLanguages": "기타",
+    "noLanguagesFound": "표시할 언어가 없습니다.",
     "allowAiAssistantRestricted": "현재 플랫폼 모드에서는 AI 도우미를 사용할 수 없습니다."
   },
   "problemSets": {
@@ -2111,6 +2113,27 @@
       "search": "언어 검색...",
       "noResults": "검색 결과가 없습니다."
     }
+  },
+  "lecture": {
+    "problemPanelLabel": "문제",
+    "codePanelLabel": "코드",
+    "themeTitle": "테마: {scheme}",
+    "problemOnlyTitle": "문제만 보기 ({key})",
+    "splitViewTitle": "분할 보기 ({key})",
+    "codeOnlyTitle": "코드만 보기 ({key})",
+    "fullscreenTitle": "전체 화면 ({key})",
+    "submissionStatsTitle": "제출 통계 ({key})",
+    "exitLectureModeTitle": "강의 모드 종료 ({key})",
+    "submissionStats": "제출 통계",
+    "closeStats": "제출 통계 닫기",
+    "acceptedLabel": "정답",
+    "acceptedSummary": "정답 {accepted} / 전체 {total}",
+    "acceptedCount": "정답: {count}",
+    "wrongCount": "오답: {count}",
+    "compileRuntimeCount": "컴파일/런타임 오류: {count}",
+    "timeLimitCount": "시간 초과: {count}",
+    "pendingCount": "채점 대기: {count}",
+    "recentLabel": "최근 제출"
   },
   "recruit": {
     "title": "코딩 평가",

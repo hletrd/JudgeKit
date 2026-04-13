@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useState, useRef } from "react";
+import { useTranslations } from "next-intl";
 import { Minus, Plus, Palette, Columns2, PanelLeft, PanelRight, Maximize, Minimize, BarChart3, X } from "lucide-react";
 import { useLectureMode } from "./lecture-mode-provider";
 import { Button } from "@/components/ui/button";
@@ -13,12 +14,12 @@ type FontScale = (typeof FONT_SCALES)[number];
 type ColorScheme = (typeof COLOR_SCHEMES)[number];
 
 export function LectureToolbar({ onToggleStats }: { onToggleStats?: () => void }) {
+  const t = useTranslations("lecture");
   const { active, toggle, fontScale, setFontScale, colorScheme, setColorScheme, panelLayout, setPanelLayout } = useLectureMode();
   const [isFullscreen, setIsFullscreen] = useState(false);
   const [visible, setVisible] = useState(true);
   const hideTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
-  // Auto-hide logic
   const resetHideTimer = useCallback(() => {
     setVisible(true);
     if (hideTimerRef.current) clearTimeout(hideTimerRef.current);
@@ -28,7 +29,6 @@ export function LectureToolbar({ onToggleStats }: { onToggleStats?: () => void }
   useEffect(() => {
     if (!active) return;
     const handleMove = (e: MouseEvent) => {
-      // Always show when mouse is near bottom 80px
       if (window.innerHeight - e.clientY < 80) {
         resetHideTimer();
       }
@@ -41,7 +41,6 @@ export function LectureToolbar({ onToggleStats }: { onToggleStats?: () => void }
     };
   }, [active, resetHideTimer]);
 
-  // Fullscreen
   const toggleFullscreen = useCallback(() => {
     if (document.fullscreenElement) {
       document.exitFullscreen().then(() => setIsFullscreen(false)).catch(() => {});
@@ -50,11 +49,9 @@ export function LectureToolbar({ onToggleStats }: { onToggleStats?: () => void }
     }
   }, []);
 
-  // Keyboard shortcuts
   useEffect(() => {
     if (!active) return;
     const handler = (e: KeyboardEvent) => {
-      // Don't capture when typing in inputs
       if (e.target instanceof HTMLInputElement || e.target instanceof HTMLTextAreaElement) return;
       if ((e.target as HTMLElement)?.closest?.(".cm-editor")) return;
 
@@ -95,7 +92,7 @@ export function LectureToolbar({ onToggleStats }: { onToggleStats?: () => void }
     };
     window.addEventListener("keydown", handler);
     return () => window.removeEventListener("keydown", handler);
-  }, [active, fontScale, setFontScale, toggle, setPanelLayout, onToggleStats, resetHideTimer, toggleFullscreen]);
+  }, [active, fontScale, onToggleStats, resetHideTimer, setFontScale, setPanelLayout, toggle, toggleFullscreen]);
 
   useEffect(() => {
     const handler = () => setIsFullscreen(!!document.fullscreenElement);
@@ -116,7 +113,6 @@ export function LectureToolbar({ onToggleStats }: { onToggleStats?: () => void }
       )}
       onMouseEnter={resetHideTimer}
     >
-      {/* Font size */}
       <Button variant="ghost" size="icon-sm" onClick={() => fontIdx > 0 && setFontScale(FONT_SCALES[fontIdx - 1])} disabled={fontIdx <= 0}>
         <Minus className="size-3.5" />
       </Button>
@@ -127,47 +123,42 @@ export function LectureToolbar({ onToggleStats }: { onToggleStats?: () => void }
 
       <div className="mx-1 h-5 w-px bg-border" />
 
-      {/* Color scheme cycle */}
       <Button
         variant="ghost"
         size="icon-sm"
         onClick={() => setColorScheme(COLOR_SCHEMES[(colorIdx + 1) % COLOR_SCHEMES.length])}
-        title={`Theme: ${colorScheme}`}
+        title={t("themeTitle", { scheme: colorScheme })}
       >
         <Palette className="size-3.5" />
       </Button>
 
       <div className="mx-1 h-5 w-px bg-border" />
 
-      {/* Panel layout */}
-      <Button variant={panelLayout === "problem" ? "secondary" : "ghost"} size="icon-sm" onClick={() => setPanelLayout("problem")} title="Problem only (1)">
+      <Button variant={panelLayout === "problem" ? "secondary" : "ghost"} size="icon-sm" onClick={() => setPanelLayout("problem")} title={t("problemOnlyTitle", { key: "1" })}>
         <PanelLeft className="size-3.5" />
       </Button>
-      <Button variant={panelLayout === "split" ? "secondary" : "ghost"} size="icon-sm" onClick={() => setPanelLayout("split")} title="Split view (2)">
+      <Button variant={panelLayout === "split" ? "secondary" : "ghost"} size="icon-sm" onClick={() => setPanelLayout("split")} title={t("splitViewTitle", { key: "2" })}>
         <Columns2 className="size-3.5" />
       </Button>
-      <Button variant={panelLayout === "code" ? "secondary" : "ghost"} size="icon-sm" onClick={() => setPanelLayout("code")} title="Code only (3)">
+      <Button variant={panelLayout === "code" ? "secondary" : "ghost"} size="icon-sm" onClick={() => setPanelLayout("code")} title={t("codeOnlyTitle", { key: "3" })}>
         <PanelRight className="size-3.5" />
       </Button>
 
       <div className="mx-1 h-5 w-px bg-border" />
 
-      {/* Fullscreen */}
-      <Button variant="ghost" size="icon-sm" onClick={toggleFullscreen} title="Fullscreen (F)">
+      <Button variant="ghost" size="icon-sm" onClick={toggleFullscreen} title={t("fullscreenTitle", { key: "F" })}>
         {isFullscreen ? <Minimize className="size-3.5" /> : <Maximize className="size-3.5" />}
       </Button>
 
-      {/* Submission stats */}
       {onToggleStats && (
-        <Button variant="ghost" size="icon-sm" onClick={onToggleStats} title="Submission stats (S)">
+        <Button variant="ghost" size="icon-sm" onClick={onToggleStats} title={t("submissionStatsTitle", { key: "S" })}>
           <BarChart3 className="size-3.5" />
         </Button>
       )}
 
       <div className="mx-1 h-5 w-px bg-border" />
 
-      {/* Exit lecture mode */}
-      <Button variant="ghost" size="icon-sm" onClick={toggle} title="Exit lecture mode (Esc)">
+      <Button variant="ghost" size="icon-sm" onClick={toggle} title={t("exitLectureModeTitle", { key: "Esc" })}>
         <X className="size-3.5" />
       </Button>
     </div>

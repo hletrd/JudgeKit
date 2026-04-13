@@ -33,6 +33,7 @@
     "optional": "Optional",
     "copy": "Copy",
     "copied": "Copied",
+    "copyCode": "Copy code",
     "confirm": "Confirm",
     "done": "Done",
     "close": "Close",
@@ -393,6 +394,7 @@
     "searchLanguages": "Search languages...",
     "recentlyUsed": "Recently Used",
     "otherLanguages": "Other",
+    "noLanguagesFound": "No languages found.",
     "allowAiAssistantRestricted": "AI assistance is forced off in the current platform mode."
   },
   "problemSets": {
@@ -2111,6 +2113,27 @@
       "search": "Search languages...",
       "noResults": "No languages match your search."
     }
+  },
+  "lecture": {
+    "problemPanelLabel": "Problem",
+    "codePanelLabel": "Code",
+    "themeTitle": "Theme: {scheme}",
+    "problemOnlyTitle": "Problem only ({key})",
+    "splitViewTitle": "Split view ({key})",
+    "codeOnlyTitle": "Code only ({key})",
+    "fullscreenTitle": "Fullscreen ({key})",
+    "submissionStatsTitle": "Submission stats ({key})",
+    "exitLectureModeTitle": "Exit lecture mode ({key})",
+    "submissionStats": "Submission Stats",
+    "closeStats": "Close submission stats",
+    "acceptedLabel": "accepted",
+    "acceptedSummary": "{accepted}/{total} accepted",
+    "acceptedCount": "Accepted: {count}",
+    "wrongCount": "Wrong: {count}",
+    "compileRuntimeCount": "CE/RE: {count}",
+    "timeLimitCount": "TLE: {count}",
+    "pendingCount": "Pending: {count}",
+    "recentLabel": "Recent"
   },
   "recruit": {
     "title": "Coding Assessment",
