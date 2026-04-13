@@ -65,6 +65,10 @@ export function GroupMembersManager({
   const [currentAvailableStudents, setCurrentAvailableStudents] = useState(
     sortStudents(availableStudents)
   );
+  const selectedStudent = currentAvailableStudents.find((student) => student.id === selectedStudentId);
+  const selectedStudentLabel = selectedStudent
+    ? `${selectedStudent.name} (@${selectedStudent.username})`
+    : t("availableStudentsPlaceholder");
 
   function getErrorMessage(error: unknown) {
     if (!(error instanceof Error)) {
@@ -260,7 +264,7 @@ export function GroupMembersManager({
             <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
               <Select value={selectedStudentId} onValueChange={(value) => setSelectedStudentId(value ?? "")}>
                 <SelectTrigger id={`group-member-select-${groupId}`} className="min-w-48 max-w-72 sm:max-w-none h-8">
-                  <SelectValue placeholder={t("availableStudentsPlaceholder")}>{(() => { const s = currentAvailableStudents.find((x) => x.id === selectedStudentId); return s ? s.name + " (@" + s.username + ")" : t("availableStudentsPlaceholder"); })()}</SelectValue>
+                  <SelectValue placeholder={t("availableStudentsPlaceholder")}>{selectedStudentLabel}</SelectValue>
                 </SelectTrigger>
                 <SelectContent>
                   {currentAvailableStudents.map((student) => (

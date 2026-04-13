@@ -254,6 +254,13 @@ export function RecruitingInvitationsPanel({ assignmentId }: { assignmentId: str
     "90d": t("expiry90d"),
     custom: t("expiryCustom"),
   };
+  const statusFilterLabels: Record<string, string> = {
+    all: t("filterAll"),
+    pending: t("statusPending"),
+    redeemed: t("statusRedeemed"),
+    revoked: t("statusRevoked"),
+  };
+  const selectedStatusFilterLabel = statusFilterLabels[statusFilter] ?? statusFilter;
 
   return (
     <div className="space-y-4">
@@ -279,7 +286,7 @@ export function RecruitingInvitationsPanel({ assignmentId }: { assignmentId: str
         />
         <Select value={statusFilter} onValueChange={(v) => { if (v) setStatusFilter(v); }}>
           <SelectTrigger className="w-[140px]">
-            <SelectValue />
+            <SelectValue>{selectedStatusFilterLabel}</SelectValue>
           </SelectTrigger>
           <SelectContent>
             <SelectItem value="all" label={t("filterAll")}>{t("filterAll")}</SelectItem>

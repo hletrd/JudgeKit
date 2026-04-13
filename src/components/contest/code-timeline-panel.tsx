@@ -63,6 +63,11 @@ export function CodeTimelinePanel({
   const problems = Array.from(
     new Map(snapshots.map((s) => [s.problemId, s.problemTitle ?? s.problemId])).entries()
   );
+  const problemLabels = Object.fromEntries([
+    ["all", t("allProblems")],
+    ...problems,
+  ]);
+  const selectedProblemLabel = problemLabels[filterProblem] ?? filterProblem;
 
   const current = snapshots[selectedIdx];
 
@@ -92,7 +97,7 @@ export function CodeTimelinePanel({
         {problems.length > 1 && (
           <Select value={filterProblem} onValueChange={(v) => { if (v) setFilterProblem(v); }}>
             <SelectTrigger className="w-[200px]">
-              <SelectValue />
+              <SelectValue>{selectedProblemLabel}</SelectValue>
             </SelectTrigger>
             <SelectContent>
               <SelectItem value="all" label={t("allProblems")}>{t("allProblems")}</SelectItem>
