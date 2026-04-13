@@ -6,6 +6,7 @@ import { useTranslations } from "next-intl";
 // i18n keys used from "contests.antiCheat" and "common"
 import { toast } from "sonner";
 import { apiFetch } from "@/lib/api/client";
+import { getAntiCheatReviewTier } from "@/lib/anti-cheat/review-model";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -68,6 +69,12 @@ const EVENT_TYPE_COLORS: Record<string, string> = {
   contextmenu: "bg-gray-100 text-gray-800 dark:bg-gray-900/30 dark:text-gray-400",
   ip_change: "bg-red-100 text-red-800 dark:bg-red-900/30 dark:text-red-400",
   code_similarity: "bg-red-100 text-red-800 dark:bg-red-900/30 dark:text-red-400",
+};
+
+const REVIEW_TIER_COLORS: Record<string, string> = {
+  context: "bg-slate-100 text-slate-800 dark:bg-slate-900/30 dark:text-slate-300",
+  signal: "bg-amber-100 text-amber-800 dark:bg-amber-900/30 dark:text-amber-300",
+  escalate: "bg-red-100 text-red-800 dark:bg-red-900/30 dark:text-red-300",
 };
 
 function formatDetailsJson(raw: string): string {
@@ -316,6 +323,7 @@ export function AntiCheatDashboard({ assignmentId }: AntiCheatDashboardProps) {
             <li>{t("reviewModelTelemetry")}</li>
             <li>{t("reviewModelCorroboration")}</li>
             <li>{t("reviewModelSeriousActions")}</li>
+            <li>{t("reviewModelTiers")}</li>
           </ul>
         </div>
 
@@ -436,6 +444,7 @@ export function AntiCheatDashboard({ assignmentId }: AntiCheatDashboardProps) {
                 <TableRow>
                   <TableHead>{t("student")}</TableHead>
                   <TableHead>{t("event")}</TableHead>
+                  <TableHead>{t("reviewTier")}</TableHead>
                   <TableHead>{t("details")}</TableHead>
                   <TableHead>{t("ipAddress")}</TableHead>
                   <TableHead>{t("time")}</TableHead>
@@ -461,6 +470,11 @@ export function AntiCheatDashboard({ assignmentId }: AntiCheatDashboardProps) {
                           className={EVENT_TYPE_COLORS[event.eventType] ?? ""}
                         >
                           {t(`eventTypes.${event.eventType}` as Parameters<typeof t>[0]) ?? event.eventType}
+                        </Badge>
+                      </TableCell>
+                      <TableCell>
+                        <Badge variant="outline" className={REVIEW_TIER_COLORS[getAntiCheatReviewTier(event.eventType)]}>
+                          {t(`reviewTiers.${getAntiCheatReviewTier(event.eventType)}` as Parameters<typeof t>[0])}
                         </Badge>
                       </TableCell>
                       <TableCell className="text-sm text-muted-foreground">

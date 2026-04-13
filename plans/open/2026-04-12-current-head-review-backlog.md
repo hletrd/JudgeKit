@@ -73,6 +73,7 @@ After re-reading the full review set against the current codebase and archived r
 
 **Progress**
 - ✅ published `docs/exam-integrity-model.md` and surfaced the evidence model more explicitly in the anti-cheat dashboard
+- ✅ added explicit context / signal / escalate review tiers for anti-cheat events
 
 ### 4. Sensitive-data governance tightening
 **Why next:** retention is better, but governance is still not “done.”

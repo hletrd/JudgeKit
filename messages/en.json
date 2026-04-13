@@ -1773,7 +1773,14 @@
       "participantNoticeBody": "Focus changes, copy/paste activity, and related events may be logged for follow-up review while the assessment is open.",
       "reviewModelTelemetry": "Browser focus, copy/paste, and similarity signals are low-confidence telemetry, not standalone proof.",
       "reviewModelCorroboration": "Use multiple signals, submission history, and human review before making any misconduct decision.",
-      "reviewModelSeriousActions": "For formal exams or public contests, add separate operational controls if you need stronger integrity guarantees."
+      "reviewModelSeriousActions": "For formal exams or public contests, add separate operational controls if you need stronger integrity guarantees.",
+      "reviewTier": "Review tier",
+      "reviewModelTiers": "Use context / signal / escalate tiers to separate ambient noise from events that deserve deeper investigation.",
+      "reviewTiers": {
+        "context": "Context",
+        "signal": "Signal",
+        "escalate": "Escalate"
+      }
     },
     "analytics": {
       "title": "Analytics",

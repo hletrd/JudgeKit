@@ -91,6 +91,7 @@ Anti-cheat remains advisory telemetry, which is honest but insufficient for stro
 
 **Progress**
 - ✅ anti-cheat now has an explicit evidence-model document and stronger operator-facing dashboard language
+- ✅ anti-cheat events now have explicit context / signal / escalate review tiers for operators
 
 ## Phase 4 — Sensitive-data governance tightening
 **Severity:** MEDIUM

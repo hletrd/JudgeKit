@@ -81,6 +81,7 @@ The product is correct to describe anti-cheat as telemetry, but that also means 
 
 **Progress**
 - ✅ published `docs/exam-integrity-model.md` and exposed the evidence model more explicitly in the anti-cheat dashboard
+- ✅ anti-cheat events now carry explicit context / signal / escalate review tiers in the dashboard layer
 
 ## Workstream D — Retention policy as a product/ops control surface
 **Problem**

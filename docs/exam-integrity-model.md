@@ -20,3 +20,8 @@ These signals are **advisory**. They are useful review inputs, but they are not 
 
 ## Implication for high-stakes use
 If you need stronger assurance for formal exams or public contests, you should add operational controls beyond the current browser-event telemetry model.
+
+## Review tiers
+- **Context** — ambient telemetry such as periodic heartbeats. Useful for timeline reconstruction, not suspicion on its own.
+- **Signal** — browser-behavior events such as tab switches or copy/paste that may justify closer review but still need corroboration.
+- **Escalate** — stronger anomalies such as code-similarity findings or IP-change patterns that merit deeper human investigation.

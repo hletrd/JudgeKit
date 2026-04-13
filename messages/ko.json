@@ -1773,7 +1773,14 @@
       "participantNoticeBody": "평가가 진행되는 동안 포커스 변경, 복사/붙여넣기 등 관련 이벤트가 사후 검토용으로 기록될 수 있습니다.",
       "reviewModelTelemetry": "브라우저 포커스, 복사/붙여넣기, 유사도 신호는 낮은 신뢰도의 참고 자료일 뿐 단독 증거가 아닙니다.",
       "reviewModelCorroboration": "부정행위 판단 전에는 여러 신호, 제출 이력, 사람의 검토를 함께 사용하세요.",
-      "reviewModelSeriousActions": "정식 시험이나 대외 대회처럼 더 강한 무결성이 필요하면 별도의 운영 통제를 추가해야 합니다."
+      "reviewModelSeriousActions": "정식 시험이나 대외 대회처럼 더 강한 무결성이 필요하면 별도의 운영 통제를 추가해야 합니다.",
+      "reviewTier": "검토 등급",
+      "reviewModelTiers": "맥락 / 신호 / 상향 검토 등급을 사용해 단순 잡음과 추가 조사가 필요한 이벤트를 구분하세요.",
+      "reviewTiers": {
+        "context": "맥락",
+        "signal": "신호",
+        "escalate": "상향 검토"
+      }
     },
     "analytics": {
       "title": "분석",
