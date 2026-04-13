@@ -326,7 +326,10 @@ async fn run_docker_once(
     let timeout_duration =
         std::time::Duration::from_millis(options.timeout_ms.max(MIN_TIMEOUT_MS));
 
-    const MAX_OUTPUT_BYTES: u64 = 1_048_576; // 1MB
+    // Keep aligned with the local compiler runner so stdout/stderr truncation
+    // behaves the same regardless of whether execution happens in Node or the
+    // Rust judge worker sidecar.
+    const MAX_OUTPUT_BYTES: u64 = 4_194_304; // 4 MiB
 
     let stdout_handle = {
         let stdout = child.stdout.take().expect("stdout not captured");

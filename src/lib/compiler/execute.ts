@@ -13,7 +13,9 @@ import { logger } from "@/lib/logger";
 const exec = promisify(execFile);
 
 const MEMORY_LIMIT_MB = 256;
-const MAX_OUTPUT_BYTES = 1_048_576; // 1MB
+// Keep aligned with the Rust judge worker so stdout/stderr truncation matches
+// between local compiler-run requests and remote judge execution.
+const MAX_OUTPUT_BYTES = 4_194_304; // 4 MiB
 const MAX_SOURCE_CODE_BYTES = 64 * 1024; // 64KB
 const COMPILE_TMPFS = "/tmp:rw,exec,nosuid,size=1024m";
 const RUN_TMPFS = "/tmp:rw,noexec,nosuid,size=64m";
