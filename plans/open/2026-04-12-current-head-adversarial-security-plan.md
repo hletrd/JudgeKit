@@ -69,6 +69,7 @@ Formal exams and serious contests still depend on single-instance assumptions th
 
 **Progress**
 - ✅ the realtime-sensitive routes now support a PostgreSQL-backed shared-coordination mode instead of treating shared coordination as entirely hypothetical
+- ✅ a high-stakes validation matrix and runtime-check script now make the remaining proof obligations explicit for operators
 
 ## Phase 3 — Anti-cheat evidence model
 **Severity:** MEDIUM

@@ -52,6 +52,7 @@ After re-reading the full review set against the current codebase and archived r
 **Progress**
 - ✅ the realtime-sensitive routes now support a PostgreSQL-backed coordination mode for SSE connection-cap enforcement and anti-cheat heartbeat deduplication
 - ✅ docs now distinguish single-instance process-local mode from shared PostgreSQL coordination mode instead of treating shared coordination as purely future work
+- ✅ published a high-stakes validation matrix plus a runtime-check script so the remaining proof bar is explicit instead of implicit
 
 ### 3. Anti-cheat / exam-integrity hardening
 **Why next:** the product still honestly calls anti-cheat telemetry, not proctoring.

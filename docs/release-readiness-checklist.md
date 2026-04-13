@@ -119,6 +119,7 @@ These must pass for **any** release.
 - [ ] exam integrity review model is accepted (`docs/exam-integrity-model.md`)
 - [ ] anti-cheat logging works in target browsers
 - [ ] internal dry-run exam completed successfully
+- [ ] `bash scripts/check-high-stakes-runtime.sh` passes for the target runtime
 - [ ] exam incident runbook exists
 
 ## Nice to have
@@ -209,6 +210,7 @@ These must pass for **any** release.
 - [ ] selected launch mode is correct
 - [ ] feature restrictions match use case
 - [ ] privacy/retention expectations are acceptable
+- [ ] high-stakes validation matrix reviewed (`docs/high-stakes-validation-matrix.md`)
 - [ ] judge worker incident runbook is reviewed for the target deployment (`docs/judge-worker-incident-runbook.md`)
 - [ ] user-facing copy matches real behavior
 - [ ] dry run completed where required

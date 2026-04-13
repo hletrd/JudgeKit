@@ -59,6 +59,7 @@ The product is still honestly not ready for formal exams or serious public conte
 **Progress**
 - ✅ a PostgreSQL-backed coordination path now exists for the realtime-sensitive routes most directly called out in the review
 - ✅ deployment and worker docs now describe the supported process-local vs shared-coordination modes explicitly
+- ✅ a high-stakes validation matrix and runtime-check script now define the remaining performance/load/recovery proof bar more explicitly
 
 ## Workstream C — Exam-integrity model beyond telemetry
 **Problem**
