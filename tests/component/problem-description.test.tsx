@@ -94,12 +94,13 @@ describe("ProblemDescription", () => {
     expect(wrapper.style.getPropertyValue("--problem-code-foreground")).toBe("#d4d4d4");
   });
 
-  it("keeps enough top padding for the floating code-copy button", () => {
+  it("keeps enough right padding for the floating code-copy button without adding extra top margin", () => {
     const { container } = render(
       <ProblemDescription description={"```js\nconst answer = 42;\n```"} />
     );
     const pre = container.querySelector("pre");
 
-    expect(pre).toHaveStyle({ paddingTop: "2.75rem" });
+    expect(pre).toHaveStyle({ paddingRight: "3rem" });
+    expect(pre?.style.paddingTop).toBe("");
   });
 });

@@ -14,7 +14,7 @@ type ProblemDescriptionProps = {
   editorTheme?: string | null;
 };
 
-const PROBLEM_CODE_COPY_BUTTON_CLEARANCE = "2.75rem";
+const PROBLEM_CODE_COPY_BUTTON_CLEARANCE = "3rem";
 
 function getCodeBlockText(children: ReactNode): string {
   return Children.toArray(children)
@@ -76,7 +76,7 @@ export function ProblemDescription({
                   {...props}
                   style={{
                     ...props.style,
-                    paddingTop: copyValue ? PROBLEM_CODE_COPY_BUTTON_CLEARANCE : props.style?.paddingTop,
+                    paddingRight: copyValue ? PROBLEM_CODE_COPY_BUTTON_CLEARANCE : props.style?.paddingRight,
                   }}
                 >
                   {children}
