@@ -93,7 +93,10 @@ The earlier 2026-04-13 acceptance note is now superseded by a newer user directi
 - remaining current-head criticism is either fixed or explicitly reduced to a genuinely external prerequisite
 
 **Progress**
-- ⏳ not started
+- ✅ completed 2026-04-13
+- revalidated the already-landed recruiting identity, recruiting isolation, retention, anti-cheat evidence-model, and worker-boundary operator docs against the current code/tests
+- confirmed the remaining higher-assurance asks are now explicit external prerequisites (for example stronger out-of-band identity factors and live failover/load rehearsal) rather than missing repository-local fixes
+- coverage: targeted recruiting-token, recruiting component, rankings, retention-maintenance, and high-stakes documentation/runtime tests
 
 ## Verification matrix
 - per-slice: targeted `pnpm -s tsc --noEmit`, targeted Vitest, targeted eslint
