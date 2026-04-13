@@ -10,40 +10,9 @@ const { pushMock, refreshMock, signInMock, signOutMock } = vi.hoisted(() => ({
   signOutMock: vi.fn(),
 }));
 
-vi.mock("next/navigation", () => ({
-  useRouter: () => ({
-    push: pushMock,
-    refresh: refreshMock,
-  }),
-}));
-
-vi.mock("next-intl", () => ({
-  useTranslations: () => (key: string) => {
-    const messages: Record<string, string> = {
-      startAssessment: "Start Assessment",
-      continueAssessment: "Continue Assessment",
-      starting: "Starting...",
-      startFailed: "Couldn't start. Try again.",
-      resumeCodeLabel: "Resume code",
-      resumeCodeSetupLabel: "Create a resume code",
-      accountPasswordLabel: "Account password",
-      accountPasswordPlaceholder: "Create your account password",
-      accountPasswordHint: "Use this password to sign in later with your recruiting email through the normal login page.",
-      accountPasswordMissing: "Create an account password to continue.",
-      resumeCodePlaceholder: "Enter your resume code",
-      resumeCodeSetupHint: "Create a private code you can use later.",
-      resumeCodeResumeHint: "Enter the code you created earlier.",
-      resumeCodeMissing: "Enter your resume code to continue.",
-      resumeCodeInvalid: "The resume code is incorrect. Try again or contact the organizer.",
-    };
-    return messages[key] ?? key;
-  },
-}));
-
-vi.mock("next-auth/react", () => ({
-  signIn: signInMock,
-  signOut: signOutMock,
-}));
+vi.mock("next/navigation", () => ({ useRouter: () => ({ push: pushMock, refresh: refreshMock }) }));
+vi.mock("next-intl", () => ({ useTranslations: () => (key: string) => ({ startAssessment: "Start Assessment", continueAssessment: "Continue Assessment", starting: "Starting...", startFailed: "Couldn't start. Try again.", accountPasswordLabel: "Account password", accountPasswordPlaceholder: "Create your account password", accountPasswordHint: "Use this password to sign in later with your recruiting email through the normal login page.", accountPasswordMissing: "Create an account password to continue." }[key] ?? key) }));
+vi.mock("next-auth/react", () => ({ signIn: signInMock, signOut: signOutMock }));
 
 describe("RecruitStartForm", () => {
   beforeEach(() => {
@@ -52,99 +21,35 @@ describe("RecruitStartForm", () => {
     signInMock.mockResolvedValue({ ok: true });
   });
 
-  it("requires creating a resume code on first claim and includes it in sign-in", async () => {
+  it("requires an account password on first claim and includes it in sign-in", async () => {
     const user = userEvent.setup();
+    render(<RecruitStartForm token="invite-token" assignmentId="assignment-1" isReentry={false} resumeWithCurrentSession={false} requiresAccountPassword />);
 
-    render(
-      <RecruitStartForm
-        token="invite-token"
-        assignmentId="assignment-1"
-        isReentry={false}
-        resumeWithCurrentSession={false}
-        requireResumeCode
-        resumeMode="setup"
-      />
-    );
-
-    await user.type(screen.getByLabelText("Create a resume code"), "resume-secret");
     await user.type(screen.getByLabelText("Account password"), "account-password");
     await user.click(screen.getByRole("button", { name: "Start Assessment" }));
 
     await waitFor(() => {
       expect(signOutMock).toHaveBeenCalledWith({ redirect: false });
-      expect(signInMock).toHaveBeenCalledWith("credentials", {
-        recruitToken: "invite-token",
-        recruitResumeCode: "resume-secret",
-        recruitAccountPassword: "account-password",
-        redirect: false,
-      });
+      expect(signInMock).toHaveBeenCalledWith("credentials", { recruitToken: "invite-token", recruitAccountPassword: "account-password", redirect: false });
       expect(pushMock).toHaveBeenCalledWith("/dashboard/contests/assignment-1");
       expect(refreshMock).toHaveBeenCalled();
     });
   });
 
-  it("requires the existing resume code for a resumed assessment", async () => {
+  it("shows a validation error when the account password is missing", async () => {
     const user = userEvent.setup();
+    render(<RecruitStartForm token="invite-token" assignmentId="assignment-claim" isReentry={false} resumeWithCurrentSession={false} requiresAccountPassword />);
 
-    render(
-      <RecruitStartForm
-        token="invite-token"
-        assignmentId="assignment-2"
-        isReentry
-        resumeWithCurrentSession={false}
-        requireResumeCode
-        resumeMode="resume"
-      />
-    );
+    await user.click(screen.getByRole("button", { name: "Start Assessment" }));
 
-    await user.type(screen.getByLabelText("Resume code"), "resume-secret");
-    await user.click(screen.getByRole("button", { name: "Continue Assessment" }));
-
-    await waitFor(() => {
-      expect(signInMock).toHaveBeenCalledWith("credentials", {
-        recruitToken: "invite-token",
-        recruitResumeCode: "resume-secret",
-        recruitAccountPassword: undefined,
-        redirect: false,
-      });
-      expect(pushMock).toHaveBeenCalledWith("/dashboard/contests/assignment-2");
-    });
-  });
-
-  it("shows a validation error when a required resume code is missing", async () => {
-    const user = userEvent.setup();
-
-    render(
-      <RecruitStartForm
-        token="invite-token"
-        assignmentId="assignment-3"
-        isReentry
-        resumeWithCurrentSession={false}
-        requireResumeCode
-        resumeMode="resume"
-      />
-    );
-
-    await user.click(screen.getByRole("button", { name: "Continue Assessment" }));
-
-    expect(screen.getByText("Enter your resume code to continue.")).toBeInTheDocument();
+    expect(screen.getByText("Create an account password to continue.")).toBeInTheDocument();
     expect(signOutMock).not.toHaveBeenCalled();
     expect(signInMock).not.toHaveBeenCalled();
   });
 
   it("reuses the current session without replaying the invite token", async () => {
     const user = userEvent.setup();
-
-    render(
-      <RecruitStartForm
-        token="invite-token"
-        assignmentId="assignment-4"
-        isReentry
-        resumeWithCurrentSession
-        requireResumeCode={false}
-        resumeMode="resume"
-      />
-    );
+    render(<RecruitStartForm token="invite-token" assignmentId="assignment-4" isReentry resumeWithCurrentSession requiresAccountPassword={false} />);
 
     await user.click(screen.getByRole("button", { name: "Continue Assessment" }));
 
@@ -154,29 +59,5 @@ describe("RecruitStartForm", () => {
     });
     expect(signOutMock).not.toHaveBeenCalled();
     expect(signInMock).not.toHaveBeenCalled();
-  });
-
-  it("shows a resume-code error when resumed sign-in fails", async () => {
-    const user = userEvent.setup();
-    signInMock.mockResolvedValueOnce({ ok: false });
-
-    render(
-      <RecruitStartForm
-        token="invite-token"
-        assignmentId="assignment-5"
-        isReentry
-        resumeWithCurrentSession={false}
-        requireResumeCode
-        resumeMode="resume"
-      />
-    );
-
-    await user.type(screen.getByLabelText("Resume code"), "wrong-code");
-    await user.click(screen.getByRole("button", { name: "Continue Assessment" }));
-
-    await waitFor(() => {
-      expect(screen.getByText("The resume code is incorrect. Try again or contact the organizer.")).toBeInTheDocument();
-    });
-    expect(pushMock).not.toHaveBeenCalled();
   });
 });

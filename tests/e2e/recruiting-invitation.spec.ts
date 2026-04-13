@@ -82,7 +82,6 @@ test("recruiting invitation candidates are scoped to their contest only", async 
 
   await candidatePage.goto(`${BASE_URL}/recruit/${token}`, { waitUntil: "networkidle" });
   await expect(candidatePage.getByRole("button", { name: /start|continue|시작|계속/i })).toBeVisible();
-  await candidatePage.getByLabel(/resume code|재개 코드/i).fill("candidate-resume-code");
   await candidatePage.getByLabel(/account password|계정 비밀번호/i).fill("CandidatePass123!");
 
   await candidatePage.getByRole("button", { name: /start|continue|시작|계속/i }).click();

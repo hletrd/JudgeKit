@@ -32,7 +32,7 @@ The invite-link + resume-code model is materially better than before, but it sti
 
 **Acceptance criteria**
 - candidate recovery no longer relies only on shared secrets under candidate/admin control
-- recruiting re-entry has a stronger identity assurance story than the current resume-code-only flow
+- recruiting re-entry has a stronger identity assurance story than the current claim-only + standard-login flow
 
 **Progress**
 - ✅ first-claim recruiting flows now create a real account password and persist the candidate email for later standard sign-in

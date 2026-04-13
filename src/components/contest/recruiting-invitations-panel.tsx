@@ -3,7 +3,7 @@
 import { useState, useEffect, useCallback } from "react";
 import { useTranslations } from "next-intl";
 import { toast } from "sonner";
-import { Plus, Check, Ban, Trash2, Link, KeyRound, Copy, ShieldAlert } from "lucide-react";
+import { Plus, Check, Ban, Trash2, Link, Copy, ShieldAlert } from "lucide-react";
 import { apiFetch } from "@/lib/api/client";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -75,7 +75,6 @@ export function RecruitingInvitationsPanel({ assignmentId }: { assignmentId: str
   const [search, setSearch] = useState("");
   const [statusFilter, setStatusFilter] = useState("all");
   const [copiedId, setCopiedId] = useState<string | null>(null);
-  const [revealedResumeCode, setRevealedResumeCode] = useState<{ candidateName: string; code: string } | null>(null);
   const [revealedTemporaryPassword, setRevealedTemporaryPassword] = useState<{ candidateName: string; password: string } | null>(null);
 
   // Create dialog state
@@ -218,35 +217,6 @@ export function RecruitingInvitationsPanel({ assignmentId }: { assignmentId: str
     }
   }
 
-  async function handleResetResumeCode(invitation: Invitation) {
-    const res = await apiFetch(
-      `/api/v1/contests/${assignmentId}/recruiting-invitations/${invitation.id}`,
-      {
-        method: "PATCH",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ resetResumeCode: true }),
-      }
-    );
-    if (!res.ok) {
-      toast.error(t("resumeCodeResetError"));
-      return;
-    }
-
-    const json = await res.json();
-    const code = json.data?.resumeCode as string | undefined;
-    if (!code) {
-      toast.error(t("resumeCodeResetError"));
-      return;
-    }
-
-    setRevealedResumeCode({ candidateName: invitation.candidateName, code });
-    try {
-      await navigator.clipboard.writeText(code);
-      toast.success(t("resumeCodeResetSuccess"));
-    } catch {
-      toast.success(t("resumeCodeResetSuccess"));
-    }
-  }
 
   async function handleDelete(invitation: Invitation) {
     const res = await apiFetch(
@@ -428,29 +398,6 @@ export function RecruitingInvitationsPanel({ assignmentId }: { assignmentId: str
         </div>
       </div>
 
-      {revealedResumeCode && (
-        <div className="rounded-lg border border-dashed px-4 py-3 text-sm">
-          <div className="flex flex-wrap items-center justify-between gap-3">
-            <div>
-              <p className="font-medium">{t("resumeCodeRevealTitle", { name: revealedResumeCode.candidateName })}</p>
-              <p className="mt-1 font-mono text-xs sm:text-sm">{revealedResumeCode.code}</p>
-              <p className="mt-1 text-xs text-muted-foreground">{t("resumeCodeRevealHint")}</p>
-            </div>
-            <Button
-              variant="outline"
-              size="sm"
-              onClick={async () => {
-                await navigator.clipboard.writeText(revealedResumeCode.code);
-                toast.success(t("resumeCodeCopied"));
-              }}
-            >
-              <Copy className="mr-2 h-4 w-4" />
-              {t("copyResumeCode")}
-            </Button>
-          </div>
-        </div>
-      )}
-
       {revealedTemporaryPassword && (
         <div className="rounded-lg border border-dashed px-4 py-3 text-sm">
           <div className="flex flex-wrap items-center justify-between gap-3">
@@ -517,29 +464,7 @@ export function RecruitingInvitationsPanel({ assignmentId }: { assignmentId: str
                         )}
                       </Button>
                       {inv.status === "redeemed" && (
-                        <>
-                          <AlertDialog>
-                            <AlertDialogTrigger render={
-                              <Button variant="ghost" size="sm" title={t("resetResumeCode")}>
-                                <KeyRound className="h-4 w-4" />
-                              </Button>
-                            } />
-                            <AlertDialogContent>
-                              <AlertDialogHeader>
-                                <AlertDialogTitle>{t("resetResumeCodeConfirmTitle")}</AlertDialogTitle>
-                                <AlertDialogDescription>
-                                  {t("resetResumeCodeConfirm", { name: inv.candidateName })}
-                                </AlertDialogDescription>
-                              </AlertDialogHeader>
-                              <AlertDialogFooter>
-                                <AlertDialogCancel>{t("cancel")}</AlertDialogCancel>
-                                <AlertDialogAction onClick={() => handleResetResumeCode(inv)}>
-                                  {t("resetResumeCode")}
-                                </AlertDialogAction>
-                              </AlertDialogFooter>
-                            </AlertDialogContent>
-                          </AlertDialog>
-                          <AlertDialog>
+                        <AlertDialog>
                             <AlertDialogTrigger render={
                               <Button variant="ghost" size="sm" title={t("resetAccountPassword")}>
                                 <ShieldAlert className="h-4 w-4" />
@@ -559,8 +484,7 @@ export function RecruitingInvitationsPanel({ assignmentId }: { assignmentId: str
                                 </AlertDialogAction>
                               </AlertDialogFooter>
                             </AlertDialogContent>
-                          </AlertDialog>
-                        </>
+                        </AlertDialog>
                       )}
                       {inv.status === "pending" && (
                         <>

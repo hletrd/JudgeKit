@@ -20,7 +20,7 @@ After re-reading the full review set against the current codebase and archived r
 - adversarial current-head review: `H1` recruiting identity still not strong enough for high-assurance hiring
 
 **Representative files / surfaces**
-- recruiting invite + resume-code flow
+- recruiting invite claim + account-password login flow
 - recruiting reset/recovery flow
 - recruiting operator docs and candidate-facing recovery text
 

@@ -11,7 +11,6 @@ export const updateRecruitingInvitationSchema = z.object({
   expiresAt: z.string().datetime().nullable().optional(),
   metadata: z.record(z.string(), z.string()).optional(),
   status: z.enum(["revoked"]).optional(),
-  resetResumeCode: z.literal(true).optional(),
   resetAccountPassword: z.literal(true).optional(),
 });
 

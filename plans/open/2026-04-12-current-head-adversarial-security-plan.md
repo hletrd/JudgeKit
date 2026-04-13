@@ -42,7 +42,7 @@ The current recruiting model is no longer obviously unsafe, but it still does no
 - ensure admin reset flows are logged and constrained tightly
 
 **Acceptance criteria**
-- external recruiting no longer depends only on shared secrets like invite URLs + resume codes
+- external recruiting no longer depends only on shared secrets like invite URLs and recruiting account credentials
 - recovery/reset workflows reduce impersonation risk rather than merely moving it
 
 **Progress**

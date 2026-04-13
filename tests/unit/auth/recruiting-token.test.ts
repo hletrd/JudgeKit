@@ -6,7 +6,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 const mocks = vi.hoisted(() => ({
   redeemRecruitingToken: vi.fn<
-    (token: string, ip?: string, resumeCode?: string, accountPassword?: string) => Promise<{ ok: boolean; userId?: string; assignmentId?: string; groupId?: string; alreadyRedeemed?: boolean; error?: string }>
+    (token: string, ip?: string, accountPassword?: string) => Promise<{ ok: boolean; userId?: string; assignmentId?: string; groupId?: string; alreadyRedeemed?: boolean; error?: string }>
   >(),
   dbQueryUsersFindFirst: vi.fn<(...args: unknown[]) => Promise<unknown>>(),
   extractClientIp: vi.fn<(headers: Headers) => string | null>(),
@@ -73,7 +73,7 @@ describe("authorizeRecruitingToken", () => {
       error: "invalidToken",
     });
 
-    const result = await authorizeRecruitingToken(validToken, undefined, undefined, mockRequest());
+    const result = await authorizeRecruitingToken(validToken, undefined, mockRequest());
 
     expect(result).toBeNull();
     expect(mocks.dbQueryUsersFindFirst).not.toHaveBeenCalled();
@@ -85,7 +85,7 @@ describe("authorizeRecruitingToken", () => {
       error: "tokenRevoked",
     });
 
-    const result = await authorizeRecruitingToken(validToken, undefined, undefined, mockRequest());
+    const result = await authorizeRecruitingToken(validToken, undefined, mockRequest());
 
     expect(result).toBeNull();
   });
@@ -96,7 +96,7 @@ describe("authorizeRecruitingToken", () => {
       error: "tokenExpired",
     });
 
-    const result = await authorizeRecruitingToken(validToken, undefined, undefined, mockRequest());
+    const result = await authorizeRecruitingToken(validToken, undefined, mockRequest());
 
     expect(result).toBeNull();
   });
@@ -121,9 +121,9 @@ describe("authorizeRecruitingToken", () => {
       mustChangePassword: false,
     });
 
-    await authorizeRecruitingToken(validToken, "resume-secret", undefined, mockRequest());
+    await authorizeRecruitingToken(validToken, undefined, mockRequest());
 
-    expect(mocks.redeemRecruitingToken).toHaveBeenCalledWith(validToken, "10.0.0.1", "resume-secret", undefined);
+    expect(mocks.redeemRecruitingToken).toHaveBeenCalledWith(validToken, "10.0.0.1", undefined);
   });
 
 
@@ -146,9 +146,9 @@ describe("authorizeRecruitingToken", () => {
       mustChangePassword: false,
     });
 
-    await authorizeRecruitingToken(validToken, "resume-secret", "account-password", mockRequest());
+    await authorizeRecruitingToken(validToken, "account-password", mockRequest());
 
-    expect(mocks.redeemRecruitingToken).toHaveBeenCalledWith(validToken, "10.0.0.1", "resume-secret", "account-password");
+    expect(mocks.redeemRecruitingToken).toHaveBeenCalledWith(validToken, "10.0.0.1", "account-password");
   });
 
   it("returns null when a claimed invite token is replayed", async () => {
@@ -157,7 +157,7 @@ describe("authorizeRecruitingToken", () => {
       error: "alreadyRedeemed",
     });
 
-    const result = await authorizeRecruitingToken(validToken, undefined, undefined, mockRequest());
+    const result = await authorizeRecruitingToken(validToken, undefined, mockRequest());
 
     expect(result).toBeNull();
     expect(mocks.dbQueryUsersFindFirst).not.toHaveBeenCalled();
@@ -170,7 +170,7 @@ describe("authorizeRecruitingToken", () => {
     } as any);
     mocks.dbQueryUsersFindFirst.mockResolvedValueOnce(undefined);
 
-    const result = await authorizeRecruitingToken(validToken, undefined, undefined, mockRequest());
+    const result = await authorizeRecruitingToken(validToken, undefined, mockRequest());
 
     expect(result).toBeNull();
   });
@@ -191,7 +191,7 @@ describe("authorizeRecruitingToken", () => {
       mustChangePassword: true,
     });
 
-    const result = await authorizeRecruitingToken(validToken, undefined, undefined, mockRequest());
+    const result = await authorizeRecruitingToken(validToken, undefined, mockRequest());
 
     expect(result).toBeNull();
   });
@@ -223,7 +223,7 @@ describe("authorizeRecruitingToken", () => {
     mocks.dbQueryUsersFindFirst.mockResolvedValueOnce(mockUser);
 
     const request = mockRequest();
-    const result = await authorizeRecruitingToken(validToken, undefined, undefined, request);
+    const result = await authorizeRecruitingToken(validToken, undefined, request);
 
     expect(result).not.toBeNull();
     expect(result!.id).toBe(mockUserId);
@@ -260,7 +260,7 @@ describe("authorizeRecruitingToken", () => {
       "user-agent": "Mozilla/5.0 TestAgent",
     });
 
-    const result = await authorizeRecruitingToken(validToken, undefined, undefined, request);
+    const result = await authorizeRecruitingToken(validToken, undefined, request);
 
     expect(result).not.toBeNull();
     expect(result!.loginEventContext).toBeDefined();
@@ -292,7 +292,7 @@ describe("authorizeRecruitingToken", () => {
     mocks.extractClientIp.mockReturnValue("203.0.113.42");
 
     const request = mockRequest();
-    await authorizeRecruitingToken(validToken, undefined, undefined, request);
+    await authorizeRecruitingToken(validToken, undefined, request);
 
     expect(mocks.extractClientIp).toHaveBeenCalledWith(request.headers);
   });
@@ -317,9 +317,9 @@ describe("authorizeRecruitingToken", () => {
     mocks.extractClientIp.mockReturnValue("198.51.100.10");
 
     const request = mockRequest();
-    await authorizeRecruitingToken(validToken, undefined, undefined, request);
+    await authorizeRecruitingToken(validToken, undefined, request);
 
-    expect(mocks.redeemRecruitingToken).toHaveBeenCalledWith(validToken, "198.51.100.10", undefined, undefined);
+    expect(mocks.redeemRecruitingToken).toHaveBeenCalledWith(validToken, "198.51.100.10", undefined);
   });
 
   it("handles null IP address gracefully by passing undefined to redeem", async () => {
@@ -342,9 +342,9 @@ describe("authorizeRecruitingToken", () => {
     mocks.extractClientIp.mockReturnValue(null);
 
     const request = mockRequest();
-    await authorizeRecruitingToken(validToken, undefined, undefined, request);
+    await authorizeRecruitingToken(validToken, undefined, request);
 
-    expect(mocks.redeemRecruitingToken).toHaveBeenCalledWith(validToken, undefined, undefined, undefined);
+    expect(mocks.redeemRecruitingToken).toHaveBeenCalledWith(validToken, undefined, undefined);
   });
 
   it("produces consistent token fingerprint (sha256 truncated to 8 hex chars)", async () => {
@@ -367,8 +367,8 @@ describe("authorizeRecruitingToken", () => {
 
     const request = mockRequest();
 
-    const result1 = await authorizeRecruitingToken("consistent-token-value", undefined, undefined, request);
-    const result2 = await authorizeRecruitingToken("consistent-token-value", undefined, undefined, request);
+    const result1 = await authorizeRecruitingToken("consistent-token-value", undefined, request);
+    const result2 = await authorizeRecruitingToken("consistent-token-value", undefined, request);
 
     expect(result1!.loginEventContext.attemptedIdentifier).toBe(
       result2!.loginEventContext.attemptedIdentifier
@@ -395,8 +395,8 @@ describe("authorizeRecruitingToken", () => {
 
     const request = mockRequest();
 
-    const result1 = await authorizeRecruitingToken("token-alpha", undefined, undefined, request);
-    const result2 = await authorizeRecruitingToken("token-beta", undefined, undefined, request);
+    const result1 = await authorizeRecruitingToken("token-alpha", undefined, request);
+    const result2 = await authorizeRecruitingToken("token-beta", undefined, request);
 
     expect(result1!.loginEventContext.attemptedIdentifier).not.toBe(
       result2!.loginEventContext.attemptedIdentifier
@@ -429,7 +429,7 @@ describe("authorizeRecruitingToken", () => {
       headers,
     });
 
-    const result = await authorizeRecruitingToken(validToken, undefined, undefined, request);
+    const result = await authorizeRecruitingToken(validToken, undefined, request);
 
     expect(result).not.toBeNull();
     expect(result!.loginEventContext.userAgent).toBeNull();
@@ -454,7 +454,7 @@ describe("authorizeRecruitingToken", () => {
     mocks.dbQueryUsersFindFirst.mockResolvedValueOnce(mockUser);
 
     const request = mockRequest();
-    const result = await authorizeRecruitingToken(validToken, undefined, undefined, request);
+    const result = await authorizeRecruitingToken(validToken, undefined, request);
 
     expect(result).not.toBeNull();
     expect(result!.mustChangePassword).toBe(false);

@@ -132,7 +132,6 @@ export const authConfig: NextAuthConfig = {
         username: { label: "Username or Email", type: "text" },
         password: { label: "Password", type: "password" },
         recruitToken: { label: "Recruiting Token", type: "text" },
-        recruitResumeCode: { label: "Recruiting Resume Code", type: "password" },
         recruitAccountPassword: { label: "Recruiting Account Password", type: "password" },
       },
       async authorize(credentials, request) {
@@ -150,9 +149,6 @@ export const authConfig: NextAuthConfig = {
 
           const result = await authorizeRecruitingToken(
             credentials.recruitToken,
-            typeof credentials?.recruitResumeCode === "string" && credentials.recruitResumeCode.length > 0
-              ? credentials.recruitResumeCode
-              : undefined,
             typeof credentials?.recruitAccountPassword === "string" && credentials.recruitAccountPassword.length > 0
               ? credentials.recruitAccountPassword
               : undefined,

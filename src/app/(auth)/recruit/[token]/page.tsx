@@ -102,18 +102,6 @@ export default async function RecruitPage({
     invitation.userId &&
     session?.user?.id === invitation.userId
   );
-  const supportsResumeCode = Boolean(isRedeemed && invitation.metadata?.resumeCodeHash);
-
-  if (isRedeemed && !resumeWithCurrentSession && !supportsResumeCode) {
-    return (
-      <Card className="w-full max-w-md">
-        <CardHeader className="text-center">
-          <CardTitle className="text-2xl">{t("claimed")}</CardTitle>
-          <CardDescription>{t("claimedDescription")}</CardDescription>
-        </CardHeader>
-      </Card>
-    );
-  }
 
   const [assignment] = await db
     .select({
@@ -134,6 +122,26 @@ export default async function RecruitPage({
           <CardTitle className="text-2xl">{t("invalidToken")}</CardTitle>
           <CardDescription>{t("invalidTokenDescription")}</CardDescription>
         </CardHeader>
+      </Card>
+    );
+  }
+
+  if (isRedeemed && !resumeWithCurrentSession) {
+    return (
+      <Card className="w-full max-w-md">
+        <CardHeader className="text-center">
+          <CardTitle className="text-2xl">{t("claimed")}</CardTitle>
+          <CardDescription>{t("claimedDescription")}</CardDescription>
+        </CardHeader>
+        <CardContent className="space-y-3">
+          <p className="text-sm text-muted-foreground">{t("accountPasswordLoginNotice")}</p>
+          <a
+            href={`/login?callbackUrl=${encodeURIComponent(`/dashboard/contests/${assignment.id}`)}`}
+            className="inline-flex w-full items-center justify-center rounded-lg bg-primary px-4 py-2 text-sm font-medium text-primary-foreground"
+          >
+            {t("goToLogin")}
+          </a>
+        </CardContent>
       </Card>
     );
   }
@@ -201,21 +209,29 @@ export default async function RecruitPage({
               {t("resumeSessionOnlyNotice")}
             </div>
           )}
-          {!resumeWithCurrentSession && supportsResumeCode && (
+        </div>
+        {isRedeemed && !resumeWithCurrentSession ? (
+          <div className="space-y-3">
             <div className="rounded-lg border border-sky-200 bg-sky-50 dark:border-sky-900 dark:bg-sky-950/30 p-3 text-sm text-sky-800 dark:text-sky-200 space-y-1">
-              <p>{t("resumeCodeNotice")}</p>
+              <p>{t("claimedDescription")}</p>
               <p>{t("accountPasswordLoginNotice")}</p>
             </div>
-          )}
-        </div>
-        <RecruitStartForm
-          token={token}
-          assignmentId={assignment.id}
-          isReentry={!!isRedeemed}
-          resumeWithCurrentSession={resumeWithCurrentSession}
-          requireResumeCode={!resumeWithCurrentSession}
-          resumeMode={isRedeemed ? "resume" : "setup"}
-        />
+            <a
+              href={`/login?callbackUrl=${encodeURIComponent(`/dashboard/contests/${assignment.id}`)}`}
+              className="inline-flex w-full items-center justify-center rounded-lg bg-primary px-4 py-2 text-sm font-medium text-primary-foreground"
+            >
+              {t("goToLogin")}
+            </a>
+          </div>
+        ) : (
+          <RecruitStartForm
+            token={token}
+            assignmentId={assignment.id}
+            isReentry={!!isRedeemed}
+            resumeWithCurrentSession={resumeWithCurrentSession}
+            requiresAccountPassword
+          />
+        )}
       </CardContent>
     </Card>
   );

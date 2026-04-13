@@ -1,6 +1,6 @@
 import { randomBytes } from "crypto";
 import { nanoid } from "nanoid";
-import { hashPassword, verifyPassword } from "@/lib/security/password-hash";
+import { hashPassword } from "@/lib/security/password-hash";
 import { getPasswordValidationError } from "@/lib/security/password";
 import { db } from "@/lib/db";
 import {
@@ -153,28 +153,6 @@ export async function updateRecruitingInvitation(
 }
 
 
-export async function resetRecruitingInvitationResumeCode(id: string) {
-  const invitation = await getRecruitingInvitation(id);
-  if (!invitation || invitation.status !== "redeemed" || !invitation.userId) {
-    throw new Error("resumeCodeResetRequiresRedeemed");
-  }
-
-  const resumeCode = nanoid(16);
-  const resumeCodeHash = await hashPassword(resumeCode);
-
-  await db
-    .update(recruitingInvitations)
-    .set({
-      metadata: {
-        ...(invitation.metadata ?? {}),
-        resumeCodeHash,
-      },
-      updatedAt: new Date(),
-    })
-    .where(eq(recruitingInvitations.id, id));
-
-  return resumeCode;
-}
 
 
 export async function resetRecruitingInvitationAccountPassword(id: string) {
@@ -249,7 +227,6 @@ type RedeemResult =
 export async function redeemRecruitingToken(
   token: string,
   ipAddress?: string,
-  resumeCode?: string,
   accountPassword?: string
 ): Promise<RedeemResult> {
   // Transaction: read invitation + validate + create user + enroll + claim (atomic)
@@ -265,34 +242,9 @@ export async function redeemRecruitingToken(
       if (!invitation) return { ok: false as const, error: "invalidToken" };
 
       // Already redeemed — the original invite URL is claim-only and can no
-      // longer be reused as a login credential. Resume requires the per-candidate
-      // resume code created on the first claim.
+      // longer be reused as a login credential.
       if (invitation.status === "redeemed" && invitation.userId) {
-        const storedResumeHash = invitation.metadata?.resumeCodeHash;
-        if (!storedResumeHash || typeof storedResumeHash !== "string") {
-          return { ok: false as const, error: "alreadyRedeemed" };
-        }
-        if (!resumeCode) {
-          return { ok: false as const, error: "resumeCodeRequired" };
-        }
-        const resumeCodeValid = await verifyPassword(resumeCode, storedResumeHash);
-        if (!resumeCodeValid.valid) {
-          return { ok: false as const, error: "invalidResumeCode" };
-        }
-
-        const [assignment] = await tx
-          .select({ id: assignments.id, groupId: assignments.groupId })
-          .from(assignments)
-          .where(eq(assignments.id, invitation.assignmentId))
-          .limit(1);
-        if (!assignment) return { ok: false as const, error: "assignmentNotFound" };
-        return {
-          ok: true as const,
-          userId: invitation.userId,
-          assignmentId: assignment.id,
-          groupId: assignment.groupId,
-          alreadyRedeemed: true,
-        };
+        return { ok: false as const, error: "alreadyRedeemed" };
       }
 
       if (invitation.status === "revoked") return { ok: false as const, error: "tokenRevoked" };
@@ -321,9 +273,7 @@ export async function redeemRecruitingToken(
         return { ok: false as const, error: "contestClosed" };
       }
 
-      if (!resumeCode) return { ok: false as const, error: "resumeCodeRequired" };
       if (!accountPassword) return { ok: false as const, error: "accountPasswordRequired" };
-      const resumeCodeHash = await hashPassword(resumeCode);
 
       // Create user + enroll + access token + atomically claim invitation
       const uid = nanoid();
@@ -371,10 +321,6 @@ export async function redeemRecruitingToken(
           redeemedAt: new Date(),
           ipAddress: ipAddress ?? null,
           updatedAt: new Date(),
-          metadata: {
-            ...(invitation.metadata ?? {}),
-            resumeCodeHash,
-          },
         })
         .where(
           and(
