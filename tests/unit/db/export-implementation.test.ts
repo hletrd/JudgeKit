@@ -23,13 +23,18 @@ describe("exportDatabase implementation guards", () => {
     expect(source).toContain("controller.desiredSize <= 0");
   });
 
-  it("does not redact required columns in restorable backups", () => {
+  it("keeps full-fidelity backup REDACTED_COLUMNS empty while providing SANITIZED_COLUMNS for portable exports", () => {
     const source = readFileSync(join(process.cwd(), "src/lib/db/export.ts"), "utf8");
 
-    expect(source).not.toContain('sessions: new Set(["sessionToken"])');
-    expect(source).not.toContain('apiKeys: new Set(["encryptedKey", "keyHash"])');
-    expect(source).not.toContain('recruitingInvitations: new Set(["token"])');
-    expect(source).not.toContain('users: new Set(["passwordHash"])');
+    // Full-fidelity backup path must NOT redact anything
+    expect(source).toContain("const REDACTED_COLUMNS: Record<string, Set<string>> = {};");
+
+    // Sanitized export path must redact sensitive columns
+    expect(source).toContain("SANITIZED_COLUMNS");
+    expect(source).toContain('users: new Set(["passwordHash"])');
+    expect(source).toContain('sessions: new Set(["sessionToken"])');
+    expect(source).toContain('apiKeys: new Set(["encryptedKey"])');
+    expect(source).toContain('judgeWorkers: new Set(["secretToken", "judgeClaimToken"])');
   });
 
   it("uses the streaming export helper in the migration script instead of materializing the whole export object", () => {

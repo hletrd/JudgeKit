@@ -6,6 +6,12 @@ const localServerUrl = localBaseUrl;
 const baseURL = process.env.PLAYWRIGHT_BASE_URL ?? localBaseUrl;
 const isRemoteRun = Boolean(process.env.PLAYWRIGHT_BASE_URL);
 const evidenceRoot = path.join(".sisyphus", "evidence", "playwright");
+
+/**
+ * Specs that are safe to execute against a live remote deployment.
+ * These tests do not mutate critical state, create heavy DB load, or
+ * require local-only fixtures.
+ */
 const remoteSafeSpecs = [
   "tests/e2e/admin-languages.spec.ts",
   "tests/e2e/admin-workers.spec.ts",
@@ -17,9 +23,20 @@ const remoteSafeSpecs = [
   "tests/e2e/rankings.spec.ts",
 ];
 
+/**
+ * Profile selection:
+ *
+ *  PLAYWRIGHT_PROFILE=smoke   — remote-safe subset only (post-deploy check)
+ *  PLAYWRIGHT_PROFILE=full    — all specs (full regression, local CI)
+ *
+ * Legacy behaviour: `PLAYWRIGHT_BASE_URL` alone still implies smoke.
+ */
+const profile = process.env.PLAYWRIGHT_PROFILE ?? (isRemoteRun ? "smoke" : "full");
+const testMatch = profile === "smoke" ? remoteSafeSpecs : undefined;
+
 export default defineConfig({
   testDir: "./tests/e2e",
-  testMatch: isRemoteRun ? remoteSafeSpecs : undefined,
+  testMatch,
   fullyParallel: false,
   workers: 1,
   timeout: 90_000,

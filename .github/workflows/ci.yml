@@ -59,8 +59,14 @@ jobs:
       - name: Run TypeScript check
         run: npx tsc --noEmit
 
-      - name: Run unit tests
-        run: npm run test:unit
+      - name: Run unit tests with coverage
+        run: npm run test:unit:coverage
+
+      - name: Run component tests
+        run: npm run test:component
+
+      - name: Run integration tests
+        run: npm run test:integration
 
       - name: Run judge worker tests
         run: cargo test --quiet --manifest-path judge-worker-rs/Cargo.toml

@@ -1,6 +1,6 @@
 # Release Readiness Checklist
 
-_Last updated: 2026-04-04_
+_Last updated: 2026-04-14_
 
 ## Purpose
 
@@ -21,11 +21,14 @@ These must pass for **any** release.
 
 ## 1.1 Build and verification
 - [ ] `npx tsc --noEmit` passes with zero errors
-- [ ] unit tests pass
-- [ ] integration tests pass
-- [ ] security-focused tests pass
-- [ ] judge worker tests pass
+- [ ] unit tests pass with coverage thresholds met (`npm run test:unit:coverage`)
+- [ ] component tests pass (`npm run test:component`)
+- [ ] integration tests pass (`npm run test:integration`)
+- [ ] security-focused tests pass (`npm run test:security`)
+- [ ] judge worker / code-similarity / rate-limiter Rust tests pass
 - [ ] no known critical failing E2E paths
+- [ ] E2E full regression passes locally (`PLAYWRIGHT_PROFILE=full`)
+- [ ] E2E smoke subset passes against staging (`PLAYWRIGHT_PROFILE=smoke`)
 
 ## 1.2 Security baseline
 - [ ] API keys are not stored/listed in plaintext
@@ -54,6 +57,13 @@ These must pass for **any** release.
 - [ ] admin UI does not overstate protections
 - [ ] known limitations are documented
 - [ ] use-case mode is explicit (homework / exam / contest / recruiting)
+
+## 1.6 Data governance
+- [ ] retention windows reviewed and configured for deployment context (see `docs/data-retention-policy.md`)
+- [ ] legal hold mechanism tested if needed (`DATA_RETENTION_LEGAL_HOLD`)
+- [ ] transcript access governed — `system.chat_logs` restricted to minimum admin set (see `docs/transcript-access-policy.md`)
+- [ ] sanitized exports used for sharing; full-fidelity backups restricted to disaster recovery
+- [ ] chat completion status tracked — partial/aborted assistant responses distinguishable from complete ones
 
 ---
 
