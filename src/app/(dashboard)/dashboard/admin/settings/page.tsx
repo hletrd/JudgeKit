@@ -126,6 +126,19 @@ export default async function AdminSettingsPage() {
     typeof stored?.aiAssistantEnabled === "boolean" ? stored.aiAssistantEnabled : true;
   const dbInfo = await getDbInfo();
 
+  type LocaleOverride = {
+    eyebrow?: string;
+    title?: string;
+    description?: string;
+    cards?: {
+      practice?: { title?: string; description?: string };
+      playground?: { title?: string; description?: string };
+      contests?: { title?: string; description?: string };
+      community?: { title?: string; description?: string };
+    };
+  };
+  const initialHomePageContent = (stored?.homePageContent as Record<string, LocaleOverride> | undefined) ?? null;
+
   const authUrlObj = getAuthUrlObject();
   const authUrlHost = authUrlObj ? normalizeHostForComparison(authUrlObj.host) : null;
 
@@ -335,17 +348,7 @@ export default async function AdminSettingsPage() {
           </CardHeader>
           <CardContent>
             <HomePageContentForm
-              initialContent={(stored?.homePageContent as Record<string, {
-                eyebrow?: string;
-                title?: string;
-                description?: string;
-                cards?: {
-                  practice?: { title?: string; description?: string };
-                  playground?: { title?: string; description?: string };
-                  contests?: { title?: string; description?: string };
-                  community?: { title?: string; description?: string };
-                };
-              }>) ?? null}
+              initialContent={initialHomePageContent}
               defaultContent={{
                 en: {
                   eyebrow: "Online judge platform",
