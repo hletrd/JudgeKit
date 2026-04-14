@@ -22,7 +22,7 @@ export default async function ControlLayout({ children }: { children: React.Reac
   const canModerate = capabilities.has("community.moderate");
 
   if (!canAccessControl) {
-    redirect("/workspace");
+    redirect("/dashboard");
   }
 
   const [tCommon, tNav, tShell] = await Promise.all([

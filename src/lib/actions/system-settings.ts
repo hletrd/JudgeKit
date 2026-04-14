@@ -75,7 +75,7 @@ export async function updateSystemSettings(
     };
   }
 
-  const { siteTitle, siteDescription, timeZone, platformMode, aiAssistantEnabled, defaultLanguage, allowedHosts } = parsedInput.data;
+  const { siteTitle, siteDescription, timeZone, platformMode, aiAssistantEnabled, defaultLanguage, allowedHosts, homePageContent } = parsedInput.data;
 
   // Build config fields — undefined means "not provided", null means "clear to default"
   const configValues: Record<string, number | null> = {};
@@ -94,6 +94,7 @@ export async function updateSystemSettings(
     platformMode: platformMode ?? DEFAULT_PLATFORM_MODE,
     aiAssistantEnabled: aiAssistantEnabled ?? true,
     defaultLanguage: defaultLanguage ?? null,
+    homePageContent: homePageContent ?? null,
     ...configValues,
     updatedAt: new Date(),
   };
@@ -131,6 +132,7 @@ export async function updateSystemSettings(
       platformMode: platformMode ?? DEFAULT_PLATFORM_MODE,
       aiAssistantEnabled: aiAssistantEnabled ?? true,
       defaultLanguage: defaultLanguage ?? null,
+      homePageContent: homePageContent ?? null,
       ...configValues,
     },
     context: auditContext,

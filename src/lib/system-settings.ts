@@ -23,6 +23,17 @@ export type SystemSettingsRecord = {
   defaultLanguage?: string | null;
   updatedAt: Date;
   allowedHosts?: string | null;
+  homePageContent?: Record<string, {
+    eyebrow?: string;
+    title?: string;
+    description?: string;
+    cards?: {
+      practice?: { title?: string; description?: string };
+      playground?: { title?: string; description?: string };
+      contests?: { title?: string; description?: string };
+      community?: { title?: string; description?: string };
+    };
+  }> | null;
 };
 
 export async function getSystemSettings(): Promise<SystemSettingsRecord | undefined> {
@@ -40,6 +51,7 @@ export async function getSystemSettings(): Promise<SystemSettingsRecord | undefi
         timeZone: systemSettings.timeZone,
         updatedAt: systemSettings.updatedAt,
         aiAssistantEnabled: systemSettings.aiAssistantEnabled,
+        homePageContent: systemSettings.homePageContent,
       })
       .from(systemSettings)
       .where(eq(systemSettings.id, GLOBAL_SETTINGS_ID))
@@ -62,6 +74,7 @@ export const getResolvedSystemSettings = cache(async (defaults: {
     platformMode: settings?.platformMode ?? DEFAULT_PLATFORM_MODE,
     aiAssistantEnabled: settings?.aiAssistantEnabled ?? true,
     defaultLanguage: settings?.defaultLanguage ?? null,
+    homePageContent: settings?.homePageContent ?? null,
   };
 });
 

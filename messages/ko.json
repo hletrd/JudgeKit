@@ -1024,6 +1024,19 @@
       "tabAdvanced": "고급",
       "tabUploads": "파일 업로드",
       "tabDatabase": "데이터베이스",
+      "tabHomepage": "홈페이지",
+      "homepageCardTitle": "홈페이지 콘텐츠",
+      "homepageCardDescription": "공개 홈페이지에 표시되는 점보트론과 섹션 카드를 편집합니다. 비워두면 기본 텍스트가 사용됩니다.",
+      "homepageLocaleTabEn": "영어",
+      "homepageLocaleTabKo": "한국어",
+      "homepageEyebrow": "상단 문구",
+      "homepageTitle": "제목",
+      "homepageDescription": "설명",
+      "homepageCards": "섹션 카드",
+      "homepageCardPractice": "연습 카드",
+      "homepageCardPlayground": "플레이그라운드 카드",
+      "homepageCardContests": "대회 카드",
+      "homepageCardCommunity": "커뮤니티 카드",
       "databaseCardTitle": "데이터베이스 정보",
       "databaseCardDescription": "PostgreSQL 데이터베이스 상태 및 설정.",
       "dbDialect": "데이터베이스 유형",
@@ -2195,27 +2208,27 @@
       "workspace": "워크스페이스"
     },
     "home": {
-      "eyebrow": "공개 우선 전환 단계",
-      "title": "JudgeKit의 새로운 구조를 준비하고 있습니다.",
-      "description": "JudgeKit은 단일 대시보드 중심 구조에서 공개 탐색, 개인 워크스페이스, 운영 제어 영역으로 더 명확하게 분리된 구조로 전환 중입니다. 이번 단계에서는 새로운 계층과 진입점을 먼저 도입합니다.",
+      "eyebrow": "온라인 저지 플랫폼",
+      "title": "코드를 작성하고, 제출하고, 채점받으세요.",
+      "description": "JudgeKit은 프로그래밍 연습, 대회, 과제를 위한 최신 온라인 저지 플랫폼입니다. 문제를 풀고, 대회에 참가하고, 성장 과정을 추적하세요.",
       "primaryCta": "워크스페이스 열기",
       "secondaryCta": "로그인",
       "cards": {
         "practice": {
           "title": "연습",
-          "description": "공개 연습 영역을 준비하고 있으며, 이후 공개 문제 탐색이 이어집니다."
+          "description": "원하는 속도로 문제를 풀고 알고리즘 실력을 키우세요."
         },
         "playground": {
           "title": "플레이그라운드",
-          "description": "비로그인 사용자를 위한 ideone 스타일의 빠른 코드 실행 환경이 다음 핵심 단계로 예정되어 있습니다."
+          "description": "로그인 없이 코드를 작성하고 바로 실행하세요."
         },
         "contests": {
           "title": "대회",
-          "description": "대회 탐색은 공개 읽기와 비공개 참여 흐름을 분리하는 방향으로 재구성됩니다."
+          "description": "진행 중인 프로그래밍 대회를 탐색하고 참여하세요."
         },
         "community": {
           "title": "커뮤니티",
-          "description": "일반 게시판과 문제별 토론이 제품의 핵심 영역으로 추가될 예정입니다."
+          "description": "질문하고, 팁을 공유하고, 다른 사용자와 소통하세요."
         }
       }
     },
@@ -2295,6 +2308,9 @@
       "secondaryCta": "로그인",
       "liveTitle": "커뮤니티 게시판",
       "liveDescription": "질문을 올리고 힌트를 나누며 플랫폼 전반의 토론을 확인할 수 있습니다. 게스트는 읽을 수 있고, 로그인 사용자는 스레드와 답글을 작성할 수 있습니다.",
+      "createThread": "스레드 만들기",
+      "newThreadTitle": "새 스레드 만들기",
+      "newThreadDescription": "커뮤니티 전체에 공유할 토론을 시작하세요.",
       "empty": "아직 스레드가 없습니다. 첫 토론을 시작해 보세요.",
       "openThread": "스레드 열기",
       "unknownAuthor": "알 수 없는 작성자",

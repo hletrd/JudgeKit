@@ -1,7 +1,8 @@
+import Link from "next/link";
 import { getTranslations } from "next-intl/server";
 import { auth } from "@/lib/auth";
+import { Button } from "@/components/ui/button";
 import { DiscussionThreadList } from "@/components/discussions/discussion-thread-list";
-import { DiscussionThreadForm } from "@/components/discussions/discussion-thread-form";
 import { listGeneralDiscussionThreads } from "@/lib/discussions/data";
 
 export default async function CommunityPage() {
@@ -13,16 +14,19 @@ export default async function CommunityPage() {
 
   return (
     <div className="space-y-6">
-      <DiscussionThreadForm
-        scopeType="general"
-        titleLabel={t("community.form.titleLabel")}
-        contentLabel={t("community.form.contentLabel")}
-        submitLabel={t("community.form.submitLabel")}
-        successLabel={t("community.form.success")}
-        signInLabel={t("community.form.signIn")}
-        canPost={Boolean(session?.user)}
-        signInHref="/login?callbackUrl=%2Fcommunity"
-      />
+      {session?.user ? (
+        <div className="flex justify-end">
+          <Link href="/community/new">
+            <Button>{t("community.createThread")}</Button>
+          </Link>
+        </div>
+      ) : (
+        <div className="rounded-2xl border border-dashed bg-muted/30 p-4 text-sm text-muted-foreground">
+          <a href="/login?callbackUrl=%2Fcommunity" className="font-medium text-primary hover:underline">
+            {t("community.form.signIn")}
+          </a>
+        </div>
+      )}
       <DiscussionThreadList
         title={t("community.liveTitle")}
         description={t("community.liveDescription")}

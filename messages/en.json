@@ -1024,6 +1024,19 @@
       "tabAdvanced": "Advanced",
       "tabUploads": "File Uploads",
       "tabDatabase": "Database",
+      "tabHomepage": "Home page",
+      "homepageCardTitle": "Home page content",
+      "homepageCardDescription": "Customize the jumbotron and section cards shown on the public landing page. Leave fields blank to use the default text.",
+      "homepageLocaleTabEn": "English",
+      "homepageLocaleTabKo": "Korean",
+      "homepageEyebrow": "Eyebrow",
+      "homepageTitle": "Title",
+      "homepageDescription": "Description",
+      "homepageCards": "Section cards",
+      "homepageCardPractice": "Practice card",
+      "homepageCardPlayground": "Playground card",
+      "homepageCardContests": "Contests card",
+      "homepageCardCommunity": "Community card",
       "databaseCardTitle": "Database Information",
       "databaseCardDescription": "PostgreSQL database status and configuration.",
       "dbDialect": "Database Type",
@@ -2195,27 +2208,27 @@
       "workspace": "Workspace"
     },
     "home": {
-      "eyebrow": "Public-first phase",
-      "title": "A new JudgeKit structure is underway.",
-      "description": "JudgeKit is moving from a single dashboard-first shell to a clearer split between public discovery, personal workspace, and staff control surfaces. This phase introduces the new hierarchy and entry points.",
+      "eyebrow": "Online judge platform",
+      "title": "Write code. Submit. Get judged.",
+      "description": "JudgeKit is a modern online judge for programming practice, contests, and coursework. Solve problems, compete in contests, and track your progress.",
       "primaryCta": "Open workspace",
       "secondaryCta": "Sign in",
       "cards": {
         "practice": {
           "title": "Practice",
-          "description": "Browse the upcoming public practice surface and prepare for public problem discovery."
+          "description": "Solve problems and sharpen your algorithm skills at your own pace."
         },
         "playground": {
           "title": "Playground",
-          "description": "Guest compiler access is planned as the next major milestone, with ideone-style quick code runs."
+          "description": "Write and run code instantly — no sign-in required."
         },
         "contests": {
           "title": "Contests",
-          "description": "Contest discovery is being separated from private participation flows so public visitors can explore safely."
+          "description": "Browse and join upcoming programming competitions."
         },
         "community": {
           "title": "Community",
-          "description": "A general forum and per-problem discussion system are planned as first-class product surfaces."
+          "description": "Ask questions, share tips, and discuss with other users."
         }
       }
     },
@@ -2295,6 +2308,9 @@
       "secondaryCta": "Sign in",
       "liveTitle": "Community board",
       "liveDescription": "Ask questions, share hints, and follow platform-wide discussions. Guests can read everything; signed-in users can start threads and reply.",
+      "createThread": "Create thread",
+      "newThreadTitle": "Create a new thread",
+      "newThreadDescription": "Start a discussion visible to the whole community.",
       "empty": "No threads yet. Start the first discussion.",
       "openThread": "Open thread",
       "unknownAuthor": "Unknown author",

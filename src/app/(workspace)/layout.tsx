@@ -28,7 +28,7 @@ export default async function WorkspaceLayout({ children }: { children: React.Re
         sectionLabel={tShell("sectionLabel")}
         userLabel={`${session.user.name ?? session.user.username} · ${session.user.role}`}
         items={[
-          { href: "/workspace", label: tShell("nav.home"), description: tShell("nav.homeDescription") },
+          { href: "/dashboard", label: tNav("dashboard"), description: tShell("nav.homeDescription") },
           { href: "/workspace/discussions", label: tShell("nav.discussions"), description: tShell("nav.discussionsDescription") },
           { href: "/dashboard/problems", label: tNav("problems"), description: tShell("nav.problemsDescription") },
           { href: "/dashboard/contests", label: tNav("contests"), description: tShell("nav.contestsDescription") },

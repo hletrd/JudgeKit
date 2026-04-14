@@ -3,7 +3,7 @@
 import { useState, type ReactNode } from "react";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 
-const VALID_TABS = ["general", "security", "submissions", "judge", "session", "advanced", "uploads", "database"];
+const VALID_TABS = ["general", "security", "submissions", "judge", "session", "advanced", "uploads", "database", "homepage"];
 
 interface SettingsTabsProps {
   tabs: { value: string; label: string; content: ReactNode }[];

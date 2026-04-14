@@ -534,6 +534,18 @@ export const systemSettings = pgTable("system_settings", {
   defaultLanguage: text("default_language"),
   // Allowed Hosts (JSON array of domain strings)
   allowedHosts: text("allowed_hosts"),
+  // Home Page Content (locale-keyed JSON overrides for jumbotron + section cards)
+  homePageContent: jsonb("home_page_content").$type<Record<string, {
+    eyebrow?: string;
+    title?: string;
+    description?: string;
+    cards?: {
+      practice?: { title?: string; description?: string };
+      playground?: { title?: string; description?: string };
+      contests?: { title?: string; description?: string };
+      community?: { title?: string; description?: string };
+    };
+  }>>(),
   updatedAt: timestamp("updated_at", { withTimezone: true })
     .notNull()
     .$defaultFn(() => new Date(Date.now())),

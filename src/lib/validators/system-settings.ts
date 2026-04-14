@@ -23,6 +23,25 @@ function optionalInt(min: number, max: number) {
     .optional();
 }
 
+const homePageCardSchema = z.object({
+  title: z.string().max(100).optional(),
+  description: z.string().max(300).optional(),
+}).optional();
+
+const homePageLocaleSchema = z.object({
+  eyebrow: z.string().max(100).optional(),
+  title: z.string().max(200).optional(),
+  description: z.string().max(500).optional(),
+  cards: z.object({
+    practice: homePageCardSchema,
+    playground: homePageCardSchema,
+    contests: homePageCardSchema,
+    community: homePageCardSchema,
+  }).optional(),
+}).optional();
+
+export type HomePageLocaleContent = z.infer<typeof homePageLocaleSchema>;
+
 export const systemSettingsSchema = z.object({
   siteTitle: z.preprocess(
     normalizeOptionalString,
@@ -88,6 +107,8 @@ export const systemSettingsSchema = z.object({
     )
     .max(50, "tooManyAllowedHosts")
     .optional(),
+  // Home Page Content (locale-keyed overrides)
+  homePageContent: z.record(homePageLocaleSchema).nullable().optional(),
 });
 
 export type SystemSettingsInput = z.infer<typeof systemSettingsSchema>;

@@ -13,6 +13,7 @@ import type { ConfiguredSettings } from "@/lib/system-settings-config";
 import { SystemSettingsForm } from "./system-settings-form";
 import { ConfigSettingsForm } from "./config-settings-form";
 import { AllowedHostsForm } from "./allowed-hosts-form";
+import { HomePageContentForm } from "./home-page-content-form";
 import { DatabaseBackupRestore } from "./database-backup-restore";
 import { DatabaseInfo } from "./database-info";
 import { SettingsTabs } from "./settings-tabs";
@@ -323,9 +324,58 @@ export default async function AdminSettingsPage() {
         </Card>
       ),
     },
+    {
+      value: "homepage",
+      label: t("tabHomepage"),
+      content: (
+        <Card>
+          <CardHeader>
+            <CardTitle>{t("homepageCardTitle")}</CardTitle>
+            <CardDescription>{t("homepageCardDescription")}</CardDescription>
+          </CardHeader>
+          <CardContent>
+            <HomePageContentForm
+              initialContent={(stored?.homePageContent as Record<string, {
+                eyebrow?: string;
+                title?: string;
+                description?: string;
+                cards?: {
+                  practice?: { title?: string; description?: string };
+                  playground?: { title?: string; description?: string };
+                  contests?: { title?: string; description?: string };
+                  community?: { title?: string; description?: string };
+                };
+              }>) ?? null}
+              defaultContent={{
+                en: {
+                  eyebrow: "Online judge platform",
+                  title: "Write code. Submit. Get judged.",
+                  description: "JudgeKit is a modern online judge for programming practice, contests, and coursework. Solve problems, compete in contests, and track your progress.",
+                  cards: {
+                    practice: { title: "Practice", description: "Solve problems and sharpen your algorithm skills at your own pace." },
+                    playground: { title: "Playground", description: "Write and run code instantly — no sign-in required." },
+                    contests: { title: "Contests", description: "Browse and join upcoming programming competitions." },
+                    community: { title: "Community", description: "Ask questions, share tips, and discuss with other users." },
+                  },
+                },
+                ko: {
+                  eyebrow: "온라인 저지 플랫폼",
+                  title: "코드를 작성하고, 제출하고, 채점받으세요.",
+                  description: "JudgeKit은 프로그래밍 연습, 대회, 과제를 위한 최신 온라인 저지 플랫폼입니다. 문제를 풀고, 대회에 참가하고, 성장 과정을 추적하세요.",
+                  cards: {
+                    practice: { title: "연습", description: "원하는 속도로 문제를 풀고 알고리즘 실력을 키우세요." },
+                    playground: { title: "플레이그라운드", description: "로그인 없이 코드를 작성하고 바로 실행하세요." },
+                    contests: { title: "대회", description: "진행 중인 프로그래밍 대회를 탐색하고 참여하세요." },
+                    community: { title: "커뮤니티", description: "질문하고, 팁을 공유하고, 다른 사용자와 소통하세요." },
+                  },
+                },
+              }}
+            />
+          </CardContent>
+        </Card>
+      ),
+    },
   ];
-
-  return (
     <div className="space-y-6">
       <div>
         <h2 className="text-2xl font-bold">{t("title")}</h2>
