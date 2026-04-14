@@ -232,6 +232,7 @@ export const POST = createApiHandler({
     const globalEnabled = await isAiAssistantEnabledForContext({
       userId: session.user.id,
       assignmentId: context?.assignmentId ?? null,
+      problemId: context?.problemId ?? null,
     });
     if (!globalEnabled) {
       return NextResponse.json({ error: "aiDisabled" }, { status: 403 });

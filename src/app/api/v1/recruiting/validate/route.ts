@@ -70,11 +70,7 @@ export async function POST(req: Request) {
     data: {
       valid: true,
       status: invitation.status,
-      candidateName: invitation.candidateName,
-      assignmentTitle: assignment.title,
-      examDurationMinutes: assignment.examDurationMinutes,
       expiresAt: invitation.expiresAt,
-      hasUser: invitation.userId != null,
     },
   });
 }

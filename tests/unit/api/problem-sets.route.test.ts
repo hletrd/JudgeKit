@@ -9,18 +9,20 @@ const {
   csrfForbiddenMock,
   consumeApiRateLimitMock,
   recordAuditEventMock,
-  problemSetsFindManyMock,
   problemSetsFindFirstMock,
   createProblemSetMock,
+  listVisibleProblemSetsForUserMock,
+  resolveCapabilitiesMock,
   loggerErrorMock,
 } = vi.hoisted(() => ({
   getApiUserMock: vi.fn(),
   csrfForbiddenMock: vi.fn<() => NextResponse | null>(() => null),
   consumeApiRateLimitMock: vi.fn<() => NextResponse | null>(() => null),
   recordAuditEventMock: vi.fn(),
-  problemSetsFindManyMock: vi.fn(),
   problemSetsFindFirstMock: vi.fn(),
   createProblemSetMock: vi.fn(),
+  listVisibleProblemSetsForUserMock: vi.fn(),
+  resolveCapabilitiesMock: vi.fn(),
   loggerErrorMock: vi.fn(),
 }));
 
@@ -60,6 +62,10 @@ vi.mock("@/lib/security/constants", () => ({
     ["student", "instructor", "admin", "super_admin"].includes(role),
 }));
 
+vi.mock("@/lib/capabilities/cache", () => ({
+  resolveCapabilities: resolveCapabilitiesMock,
+}));
+
 vi.mock("@/lib/logger", () => ({
   logger: {
     error: loggerErrorMock,
@@ -73,11 +79,14 @@ vi.mock("@/lib/problem-sets/management", () => ({
   createProblemSet: createProblemSetMock,
 }));
 
+vi.mock("@/lib/problem-sets/visibility", () => ({
+  listVisibleProblemSetsForUser: listVisibleProblemSetsForUserMock,
+}));
+
 vi.mock("@/lib/db", () => ({
   db: {
     query: {
       problemSets: {
-        findMany: problemSetsFindManyMock,
         findFirst: problemSetsFindFirstMock,
       },
     },
@@ -138,9 +147,27 @@ beforeEach(() => {
   csrfForbiddenMock.mockReturnValue(null);
   consumeApiRateLimitMock.mockReturnValue(null);
   getApiUserMock.mockResolvedValue(ADMIN_USER);
-  problemSetsFindManyMock.mockResolvedValue([PROBLEM_SET]);
+  listVisibleProblemSetsForUserMock.mockResolvedValue([PROBLEM_SET]);
   problemSetsFindFirstMock.mockResolvedValue(PROBLEM_SET);
   createProblemSetMock.mockReturnValue("ps-1");
+  resolveCapabilitiesMock.mockImplementation((role: string) => {
+    const capabilityMap: Record<string, Set<string>> = {
+      admin: new Set([
+        "problem_sets.create",
+        "problem_sets.edit",
+        "problem_sets.delete",
+        "problem_sets.assign_groups",
+      ]),
+      instructor: new Set([
+        "problem_sets.create",
+        "problem_sets.edit",
+        "problem_sets.delete",
+        "problem_sets.assign_groups",
+      ]),
+      student: new Set(),
+    };
+    return Promise.resolve(capabilityMap[role] ?? new Set());
+  });
 });
 
 // ---------------------------------------------------------------------------
@@ -183,18 +210,19 @@ describe("GET /api/v1/problem-sets", () => {
     expect(body.data).toHaveLength(1);
   });
 
-  it("calls findMany with problems, groupAccess and creator relations", async () => {
+  it("uses the shared visibility helper to load visible problem sets", async () => {
     await GET(makeGetRequest());
 
-    expect(problemSetsFindManyMock).toHaveBeenCalledOnce();
-    const callArg = problemSetsFindManyMock.mock.calls[0][0];
-    expect(callArg).toHaveProperty("with.problems");
-    expect(callArg).toHaveProperty("with.groupAccess");
-    expect(callArg).toHaveProperty("with.creator");
+    expect(listVisibleProblemSetsForUserMock).toHaveBeenCalledOnce();
+    expect(listVisibleProblemSetsForUserMock).toHaveBeenCalledWith(
+      "admin-1",
+      "admin",
+      {}
+    );
   });
 
   it("returns empty array when no problem sets exist", async () => {
-    problemSetsFindManyMock.mockResolvedValue([]);
+    listVisibleProblemSetsForUserMock.mockResolvedValue([]);
 
     const res = await GET(makeGetRequest());
     expect(res.status).toBe(200);
@@ -203,7 +231,7 @@ describe("GET /api/v1/problem-sets", () => {
   });
 
   it("returns 500 on unexpected error", async () => {
-    problemSetsFindManyMock.mockRejectedValue(new Error("DB error"));
+    listVisibleProblemSetsForUserMock.mockRejectedValue(new Error("DB error"));
 
     const res = await GET(makeGetRequest());
     expect(res.status).toBe(500);

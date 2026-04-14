@@ -291,6 +291,7 @@ describe("POST /api/v1/plugins/chat-widget/chat", () => {
     expect(isAiAssistantEnabledForContextMock).toHaveBeenCalledWith({
       userId: "student-1",
       assignmentId: null,
+      problemId: null,
     });
   });
 

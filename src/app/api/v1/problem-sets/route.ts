@@ -1,10 +1,9 @@
 import { NextRequest } from "next/server";
 import { apiSuccess, apiError } from "@/lib/api/responses";
-import { desc } from "drizzle-orm";
 import { db } from "@/lib/db";
-import { problemSets } from "@/lib/db/schema";
 import { recordAuditEvent } from "@/lib/audit/events";
 import { createProblemSet } from "@/lib/problem-sets/management";
+import { listVisibleProblemSetsForUser } from "@/lib/problem-sets/visibility";
 import { problemSetMutationSchema } from "@/lib/validators/problem-sets";
 import { createApiHandler } from "@/lib/api/handler";
 
@@ -18,29 +17,8 @@ export const GET = createApiHandler({
     ],
     requireAllCapabilities: false,
   },
-  handler: async () => {
-    const allSets = await db.query.problemSets.findMany({
-      orderBy: [desc(problemSets.createdAt)],
-      with: {
-        problems: {
-          with: {
-            problem: {
-              columns: { id: true, title: true },
-            },
-          },
-        },
-        groupAccess: {
-          with: {
-            group: {
-              columns: { id: true, name: true },
-            },
-          },
-        },
-        creator: {
-          columns: { id: true, name: true, username: true },
-        },
-      },
-    });
+  handler: async (_req, { user }) => {
+    const allSets = await listVisibleProblemSetsForUser(user.id, user.role, {});
 
     return apiSuccess(allSets);
   },

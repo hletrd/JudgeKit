@@ -3,10 +3,12 @@ import { getTranslations } from "next-intl/server";
 import { auth } from "@/lib/auth";
 import { isInstructorOrAbove } from "@/lib/auth/role-helpers";
 import { redirect, notFound } from "next/navigation";
-import { db } from "@/lib/db";
-import { eq } from "drizzle-orm";
-import { problemSets, problems } from "@/lib/db/schema";
 import ProblemSetForm from "../_components/problem-set-form";
+import {
+  getAvailableGroupsForProblemSetUser,
+  getAvailableProblemsForProblemSetUser,
+  getVisibleProblemSetByIdForUser,
+} from "@/lib/problem-sets/visibility";
 
 export async function generateMetadata(): Promise<Metadata> {
   const t = await getTranslations("problemSets");
@@ -24,35 +26,14 @@ export default async function ProblemSetDetailPage({
 
   const { id } = await params;
 
-  const ps = await db.query.problemSets.findFirst({
-    where: eq(problemSets.id, id),
-    with: {
-      problems: {
-        with: {
-          problem: {
-            columns: { id: true, title: true },
-          },
-        },
-      },
-      groupAccess: {
-        with: {
-          group: {
-            columns: { id: true, name: true },
-          },
-        },
-      },
-    },
-  });
+  const ps = await getVisibleProblemSetByIdForUser(id, session.user.id, session.user.role);
 
   if (!ps) notFound();
 
-  const allProblems = await db
-    .select({ id: problems.id, title: problems.title })
-    .from(problems);
-
-  const allGroups = await db.query.groups.findMany({
-    columns: { id: true, name: true },
-  });
+  const [allProblems, allGroups] = await Promise.all([
+    getAvailableProblemsForProblemSetUser(session.user.id, session.user.role),
+    getAvailableGroupsForProblemSetUser(session.user.id, session.user.role),
+  ]);
 
   return (
     <ProblemSetForm

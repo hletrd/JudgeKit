@@ -1,6 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
-const { dbMock, resolveCapabilitiesMock } = vi.hoisted(() => ({
+const { dbMock, resolveCapabilitiesMock, hasGroupInstructorRoleMock } = vi.hoisted(() => ({
   dbMock: {
     query: {
       assignments: {
@@ -21,6 +21,7 @@ const { dbMock, resolveCapabilitiesMock } = vi.hoisted(() => ({
     },
   },
   resolveCapabilitiesMock: vi.fn(),
+  hasGroupInstructorRoleMock: vi.fn(),
 }));
 
 vi.mock("@/lib/db", () => ({
@@ -32,6 +33,10 @@ vi.mock("@/lib/capabilities/cache", () => ({
   invalidateRoleCache: vi.fn(),
   getRoleLevel: vi.fn().mockResolvedValue(0),
   isValidRole: vi.fn().mockResolvedValue(true),
+}));
+
+vi.mock("@/lib/assignments/management", () => ({
+  hasGroupInstructorRole: hasGroupInstructorRoleMock,
 }));
 
 import {
@@ -64,6 +69,7 @@ beforeEach(async () => {
     const caps = DEFAULT_ROLE_CAPABILITIES[role as keyof typeof DEFAULT_ROLE_CAPABILITIES];
     return new Set(caps ?? []);
   });
+  hasGroupInstructorRoleMock.mockResolvedValue(false);
 });
 
 describe("validateAssignmentSubmission", () => {
@@ -211,6 +217,7 @@ describe("canViewAssignmentSubmissions", () => {
     dbMock.query.assignments.findFirst
       .mockResolvedValueOnce(createAssignmentRecord({ instructorId: "instructor-1" }))
       .mockResolvedValueOnce(createAssignmentRecord({ instructorId: "instructor-1" }));
+    hasGroupInstructorRoleMock.mockResolvedValue(true);
 
     await expect(
       canViewAssignmentSubmissions("assignment-1", "admin-1", "admin")
@@ -224,9 +231,22 @@ describe("canViewAssignmentSubmissions", () => {
     dbMock.query.assignments.findFirst.mockResolvedValue(
       createAssignmentRecord({ instructorId: "instructor-2" })
     );
+    hasGroupInstructorRoleMock.mockResolvedValue(false);
 
     await expect(
       canViewAssignmentSubmissions("assignment-1", "instructor-1", "instructor")
     ).resolves.toBe(false);
+  });
+
+  it("allows co-instructors or TAs with assignment visibility capability", async () => {
+    dbMock.query.assignments.findFirst.mockResolvedValue(
+      createAssignmentRecord({ instructorId: "instructor-2" })
+    );
+    resolveCapabilitiesMock.mockResolvedValue(new Set(["assignments.view_status"]));
+    hasGroupInstructorRoleMock.mockResolvedValue(true);
+
+    await expect(
+      canViewAssignmentSubmissions("assignment-1", "ta-1", "custom_ta")
+    ).resolves.toBe(true);
   });
 });

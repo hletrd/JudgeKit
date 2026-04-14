@@ -7,16 +7,48 @@ import {
   deleteRecruitingInvitation,
   resetRecruitingInvitationAccountPassword,
 } from "@/lib/assignments/recruiting-invitations";
+import { canManageContest, getContestAssignment } from "@/lib/assignments/contests";
 import { updateRecruitingInvitationSchema } from "@/lib/validators/recruiting-invitations";
 import { recordAuditEvent } from "@/lib/audit/events";
 
+type AuthorizedInvitationResult =
+  | {
+      error: ReturnType<typeof apiError>;
+      invitation: null;
+    }
+  | {
+      error: null;
+      invitation: NonNullable<Awaited<ReturnType<typeof getRecruitingInvitation>>>;
+    };
+
+async function getAuthorizedInvitation(
+  assignmentId: string,
+  invitationId: string,
+  user: { id: string; role: string }
+): Promise<AuthorizedInvitationResult> {
+  const assignment = await getContestAssignment(assignmentId);
+  if (!assignment) {
+    return { error: apiError("notFound", 404, "Assignment"), invitation: null };
+  }
+  if (!(await canManageContest(user, assignment))) {
+    return { error: apiError("forbidden", 403), invitation: null };
+  }
+
+  const invitation = await getRecruitingInvitation(invitationId);
+  if (!invitation || invitation.assignmentId !== assignmentId) {
+    return { error: apiError("notFound", 404, "RecruitingInvitation"), invitation: null };
+  }
+
+  return { error: null, invitation };
+}
+
 export const GET = createApiHandler({
   auth: { capabilities: ["recruiting.manage_invitations"] },
-  handler: async (_req: NextRequest, { params }) => {
-    const invitation = await getRecruitingInvitation(params.invitationId);
-    if (!invitation) return apiError("notFound", 404, "RecruitingInvitation");
+  handler: async (_req: NextRequest, { user, params }) => {
+    const result = await getAuthorizedInvitation(params.assignmentId, params.invitationId, user);
+    if (result.error) return result.error;
 
-    return apiSuccess(invitation);
+    return apiSuccess(result.invitation);
   },
 });
 
@@ -24,8 +56,9 @@ export const PATCH = createApiHandler({
   auth: { capabilities: ["recruiting.manage_invitations"] },
   schema: updateRecruitingInvitationSchema,
   handler: async (req: NextRequest, { user, params, body }) => {
-    const invitation = await getRecruitingInvitation(params.invitationId);
-    if (!invitation) return apiError("notFound", 404, "RecruitingInvitation");
+    const result = await getAuthorizedInvitation(params.assignmentId, params.invitationId, user);
+    if (result.error) return result.error;
+    const invitation = result.invitation;
 
     if (body.resetAccountPassword) {
       if (invitation.status !== "redeemed") {
@@ -100,8 +133,9 @@ export const PATCH = createApiHandler({
 export const DELETE = createApiHandler({
   auth: { capabilities: ["recruiting.manage_invitations"] },
   handler: async (req: NextRequest, { user, params }) => {
-    const invitation = await getRecruitingInvitation(params.invitationId);
-    if (!invitation) return apiError("notFound", 404, "RecruitingInvitation");
+    const result = await getAuthorizedInvitation(params.assignmentId, params.invitationId, user);
+    if (result.error) return result.error;
+    const invitation = result.invitation;
 
     if (invitation.status !== "pending") {
       return apiError("cannotDeleteNonPending", 400);

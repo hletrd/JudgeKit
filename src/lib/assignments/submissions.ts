@@ -17,6 +17,7 @@ import type { SubmissionStatus } from "@/types";
 import { isAdmin } from "@/lib/api/auth";
 import { resolveCapabilities } from "@/lib/capabilities/cache";
 import { getRecruitingAccessContext } from "@/lib/recruiting/access";
+import { hasGroupInstructorRole } from "@/lib/assignments/management";
 
 type AssignmentValidationError =
   | "invalidAssignmentId"
@@ -286,10 +287,8 @@ export async function canViewAssignmentSubmissions(
     return false;
   }
 
+  const caps = await resolveCapabilities(role);
   if (!isAdmin(role) && role !== "instructor") {
-    // Check if a custom role has the needed capability
-    const { resolveCapabilities } = await import("@/lib/capabilities/cache");
-    const caps = await resolveCapabilities(role);
     if (!caps.has("submissions.view_all") && !caps.has("assignments.view_status")) {
       return false;
     }
@@ -305,18 +304,17 @@ export async function canViewAssignmentSubmissions(
     return true;
   }
 
-  // Built-in instructor or custom role with capability — check group ownership
-  if (role === "instructor") {
-    return assignment.instructorId === userId;
+  if (role !== "instructor" && caps.has("submissions.view_all")) return true;
+
+  if (role === "instructor" || caps.has("assignments.view_status")) {
+    return hasGroupInstructorRole(
+      assignment.groupId,
+      userId,
+      assignment.instructorId
+    );
   }
 
-  // Custom role with submissions.view_all: allow access to all assignments
-  const { resolveCapabilities: resolveCaps } = await import("@/lib/capabilities/cache");
-  const caps = await resolveCaps(role);
-  if (caps.has("submissions.view_all")) return true;
-
-  // Custom role with assignments.view_status only: scoped to own group
-  return assignment.instructorId === userId;
+  return false;
 }
 
 export type StudentProblemProgress = "solved" | "attempted" | "untried";

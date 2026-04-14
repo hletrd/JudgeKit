@@ -5,6 +5,7 @@ import { db } from "@/lib/db";
 import { problemSets } from "@/lib/db/schema";
 import { recordAuditEvent } from "@/lib/audit/events";
 import { updateProblemSet, deleteProblemSet } from "@/lib/problem-sets/management";
+import { getVisibleProblemSetByIdForUser } from "@/lib/problem-sets/visibility";
 import { problemSetMutationSchema } from "@/lib/validators/problem-sets";
 import { createApiHandler, forbidden, notFound } from "@/lib/api/handler";
 
@@ -18,30 +19,9 @@ export const GET = createApiHandler({
     ],
     requireAllCapabilities: false,
   },
-  handler: async (_req: NextRequest, { params }) => {
+  handler: async (_req: NextRequest, { user, params }) => {
     const { id } = params;
-    const ps = await db.query.problemSets.findFirst({
-      where: eq(problemSets.id, id),
-      with: {
-        problems: {
-          with: {
-            problem: {
-              columns: { id: true, title: true },
-            },
-          },
-        },
-        groupAccess: {
-          with: {
-            group: {
-              columns: { id: true, name: true },
-            },
-          },
-        },
-        creator: {
-          columns: { id: true, name: true, username: true },
-        },
-      },
-    });
+    const ps = await getVisibleProblemSetByIdForUser(id, user.id, user.role);
 
     if (!ps) return notFound("ProblemSet");
     return apiSuccess(ps);

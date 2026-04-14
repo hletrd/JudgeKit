@@ -8,13 +8,18 @@ import {
   createRecruitingInvitation,
   getRecruitingInvitations,
 } from "@/lib/assignments/recruiting-invitations";
+import { canManageContest, getContestAssignment } from "@/lib/assignments/contests";
 import { createRecruitingInvitationSchema } from "@/lib/validators/recruiting-invitations";
 import { recordAuditEvent } from "@/lib/audit/events";
 
 export const GET = createApiHandler({
   auth: { capabilities: ["recruiting.manage_invitations"] },
-  handler: async (req: NextRequest, { params }) => {
+  handler: async (req: NextRequest, { user, params }) => {
     const { assignmentId } = params;
+    const assignment = await getContestAssignment(assignmentId);
+    if (!assignment) return apiError("notFound", 404, "Assignment");
+    if (!(await canManageContest(user, assignment))) return apiError("forbidden", 403);
+
     const url = new URL(req.url);
     const status = url.searchParams.get("status") ?? undefined;
     const search = url.searchParams.get("search") ?? undefined;
@@ -30,6 +35,9 @@ export const POST = createApiHandler({
   schema: createRecruitingInvitationSchema,
   handler: async (req: NextRequest, { user, params, body }) => {
     const { assignmentId } = params;
+    const assignment = await getContestAssignment(assignmentId);
+    if (!assignment) return apiError("notFound", 404, "Assignment");
+    if (!(await canManageContest(user, assignment))) return apiError("forbidden", 403);
 
     try {
       const invitation = await execTransaction(async (tx) => {

@@ -3,12 +3,18 @@ import { db } from "@/lib/db";
 import { codeSnapshots, problems } from "@/lib/db/schema";
 import { and, eq, asc } from "drizzle-orm";
 import { createApiHandler } from "@/lib/api/handler";
-import { apiSuccess } from "@/lib/api/responses";
+import { apiError, apiSuccess } from "@/lib/api/responses";
+import { canViewAssignmentSubmissions } from "@/lib/assignments/submissions";
 
 export const GET = createApiHandler({
   auth: { capabilities: ["contests.view_analytics"] },
-  handler: async (req: NextRequest, { params }) => {
+  handler: async (req: NextRequest, { user, params }) => {
     const { assignmentId, userId } = params;
+    const canView = await canViewAssignmentSubmissions(assignmentId, user.id, user.role);
+    if (!canView) {
+      return apiError("forbidden", 403);
+    }
+
     const url = new URL(req.url);
     const problemId = url.searchParams.get("problemId");
 

@@ -10,9 +10,6 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import { Badge } from "@/components/ui/badge";
-import { db } from "@/lib/db";
-import { desc, sql } from "drizzle-orm";
-import { problemSets } from "@/lib/db/schema";
 import { auth } from "@/lib/auth";
 import { isInstructorOrAbove } from "@/lib/auth/role-helpers";
 import { redirect } from "next/navigation";
@@ -20,6 +17,10 @@ import Link from "next/link";
 import { Button } from "@/components/ui/button";
 import { PaginationControls } from "@/components/pagination-controls";
 import { getResolvedPlatformMode } from "@/lib/system-settings";
+import {
+  countVisibleProblemSetsForUser,
+  listVisibleProblemSetsForUser,
+} from "@/lib/problem-sets/visibility";
 
 export async function generateMetadata(): Promise<Metadata> {
   const t = await getTranslations("problemSets");
@@ -44,27 +45,17 @@ export default async function ProblemSetsPage({
   const t = await getTranslations("problemSets");
   const tCommon = await getTranslations("common");
 
-  const [countRow] = await db.select({ count: sql<number>`count(*)` }).from(problemSets);
-  const totalCount = Number(countRow?.count ?? 0);
+  const totalCount = await countVisibleProblemSetsForUser(
+    session.user.id,
+    session.user.role
+  );
   const totalPages = Math.max(1, Math.ceil(totalCount / PAGE_SIZE));
   const clampedPage = Math.min(currentPage, totalPages);
   const offset = (clampedPage - 1) * PAGE_SIZE;
 
-  const allSets = await db.query.problemSets.findMany({
-    orderBy: [desc(problemSets.createdAt)],
+  const allSets = await listVisibleProblemSetsForUser(session.user.id, session.user.role, {
     limit: PAGE_SIZE,
     offset,
-    with: {
-      problems: {
-        columns: { id: true },
-      },
-      groupAccess: {
-        columns: { id: true },
-      },
-      creator: {
-        columns: { id: true, name: true, username: true },
-      },
-    },
   });
 
   return (

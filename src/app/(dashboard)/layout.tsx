@@ -18,6 +18,7 @@ import { resolveCapabilities } from "@/lib/capabilities/cache";
 import { isPluginEnabled } from "@/lib/plugins/data";
 import { EditorContentProvider } from "@/contexts/editor-content-context";
 import { getRecruitingAccessContext } from "@/lib/recruiting/access";
+import { isInstructorOrAboveAsync } from "@/lib/auth/role-helpers";
 
 export default async function DashboardLayout({ children }: { children: React.ReactNode }) {
   const session = await auth();
@@ -41,7 +42,7 @@ export default async function DashboardLayout({ children }: { children: React.Re
     siteDescription: t("appDescription"),
   });
 
-  const canUseLectureMode = ["instructor", "admin", "super_admin"].includes(session.user.role);
+  const canUseLectureMode = await isInstructorOrAboveAsync(session.user.role);
 
   return (
     <EditorContentProvider>

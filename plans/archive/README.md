@@ -22,6 +22,19 @@ This folder keeps **completed or historical planning artifacts**.
 - `2026-04-12-multi-perspective-readiness-plan.md`
 - `2026-04-12-adversarial-security-plan.md`
 
+### Archived current-head / later remediation plans
+- `2026-04-12-current-head-review-backlog.md`
+- `2026-04-12-current-head-multi-perspective-plan.md`
+- `2026-04-12-current-head-adversarial-security-plan.md`
+- `2026-04-13-current-head-acceptance.md`
+- `2026-04-13-current-head-master-backlog.md`
+- `2026-04-13-current-head-remediation-plan.md`
+- `2026-04-13-e1051e9-master-review-backlog.md`
+- `2026-04-13-e1051e9-contest-integrity-plan.md`
+- `2026-04-13-e1051e9-role-and-authorization-consistency-plan.md`
+- `2026-04-13-e1051e9-access-code-and-chat-scope-plan.md`
+- `2026-04-13-e1051e9-select-contract-plan.md`
+
 ### Review-status notes
 - `2026-04-11-implemented-or-superseded-reviews.md`
 - `2026-04-12-review-status.md`
@@ -29,9 +42,5 @@ This folder keeps **completed or historical planning artifacts**.
 ## Why copied instead of moved
 `.omx/plans/` is part of the OMX runtime/state surface. These files were copied here so the repo has a stable, user-facing archive without mutating runtime history.
 
-## Note on current-HEAD re-review plans
-The new current-HEAD re-review plans stay under `plans/open/` because they track what still blocks a higher assurance bar after the earlier 2026-04-12 remediation was completed.
-- `2026-04-12-current-head-review-backlog.md`
-- `2026-04-12-current-head-multi-perspective-plan.md`
-- `2026-04-12-current-head-adversarial-security-plan.md`
-- `2026-04-13-current-head-acceptance.md`
+## Note on the current planning pass
+The historical current-head remediation plans listed above remain archived because their associated work was already completed or explicitly closed in earlier passes. The fresh actionable backlog now lives under `plans/open/` in the dated `2026-04-14-*` plan set.

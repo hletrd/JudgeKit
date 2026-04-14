@@ -3,6 +3,7 @@ import { assignments, submissions } from "@/lib/db/schema";
 import { eq } from "drizzle-orm";
 import { auth } from "@/lib/auth";
 import { canAccessSubmission } from "@/lib/auth/permissions";
+import { canViewAssignmentSubmissions } from "@/lib/assignments/submissions";
 import { resolveCapabilities } from "@/lib/capabilities/cache";
 import { getResolvedSystemTimeZone } from "@/lib/system-settings";
 import { redirect, notFound } from "next/navigation";
@@ -59,10 +60,14 @@ export default async function SubmissionDetailPage({ params, searchParams }: { p
   }
 
   const caps = await resolveCapabilities(session.user.role);
-  const isPrivileged =
-    session.user.role === "admin" ||
-    session.user.role === "super_admin" ||
-    session.user.role === "instructor";
+  const canReviewAssignment =
+    submission.assignmentId !== null &&
+    await canViewAssignmentSubmissions(
+      submission.assignmentId,
+      session.user.id,
+      session.user.role
+    );
+  const isPrivileged = caps.has("submissions.view_all") || canReviewAssignment;
 
   // Check if scores should be hidden from candidates
   let hideScore = false;
