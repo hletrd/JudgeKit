@@ -124,7 +124,7 @@ export default async function PracticePage({
         acceptedCount: sql<number>`count(case when ${submissions.status} = 'accepted' then 1 end)`,
       })
       .from(submissions)
-      .where(sql`${submissions.problemId} = any(${problemIds})`)
+      .where(sql`${submissions.problemId} IN (${sql.join(problemIds.map((id) => sql`${id}`), sql`, `)})`)
       .groupBy(submissions.problemId);
 
     for (const row of stats) {
