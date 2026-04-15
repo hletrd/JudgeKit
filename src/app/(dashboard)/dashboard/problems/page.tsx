@@ -244,7 +244,7 @@ export default async function ProblemsPage({
       .from(problems)
       .leftJoin(users, eq(problems.authorId, users.id))
       .where(baseWhereClause)
-      .orderBy(desc(problems.createdAt))
+      .orderBy(asc(problems.sequenceNumber), asc(problems.createdAt))
       .limit(PAGE_SIZE)
       .offset(offset);
 
@@ -308,7 +308,7 @@ export default async function ProblemsPage({
       .from(problems)
       .leftJoin(users, eq(problems.authorId, users.id))
       .where(baseWhereClause)
-      .orderBy(desc(problems.createdAt));
+      .orderBy(asc(problems.sequenceNumber), asc(problems.createdAt));
     const allIds = idRows.map((r) => r.id);
 
     const problemStatuses = new Map<string, Array<string | null>>();
