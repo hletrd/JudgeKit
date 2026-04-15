@@ -26,6 +26,7 @@ type SystemSettingsFormProps = {
   initialTimeZone: string;
   initialPlatformMode: PlatformMode;
   initialDefaultLanguage: string;
+  initialDefaultLocale: string;
   defaultSiteTitle: string;
   defaultSiteDescription: string;
   defaultTimeZone: string;
@@ -65,6 +66,7 @@ export function SystemSettingsForm({
   initialSignupHcaptchaEnabled,
   signupHcaptchaAvailable,
   initialDefaultLanguage,
+  initialDefaultLocale,
 }: SystemSettingsFormProps) {
   const router = useRouter();
   const t = useTranslations("admin.settings");
@@ -77,6 +79,7 @@ export function SystemSettingsForm({
   const [publicSignupEnabled, setPublicSignupEnabled] = useState(initialPublicSignupEnabled);
   const [signupHcaptchaEnabled, setSignupHcaptchaEnabled] = useState(initialSignupHcaptchaEnabled);
   const [defaultLanguage, setDefaultLanguage] = useState(initialDefaultLanguage);
+  const [defaultLocale, setDefaultLocale] = useState(initialDefaultLocale);
   const [isLoading, setIsLoading] = useState(false);
   const platformPolicy = useMemo(() => getPlatformModePolicy(platformMode), [platformMode]);
   const ianaTimeZones = useMemo(() => {
@@ -110,6 +113,7 @@ export function SystemSettingsForm({
         publicSignupEnabled,
         signupHcaptchaEnabled,
         defaultLanguage: normalizedDefaultLanguage || undefined,
+        defaultLocale: (defaultLocale || undefined) as "en" | "ko" | undefined,
       });
 
       if (!result.success) {
@@ -236,6 +240,27 @@ export function SystemSettingsForm({
           placeholder="python"
         />
         <p className="text-xs text-muted-foreground">{t("defaultLanguageHint")}</p>
+      </div>
+
+      <div className="space-y-2">
+        <Label htmlFor="default-locale">{t("defaultLocale")}</Label>
+        <Select value={defaultLocale || "_auto"} onValueChange={(value) => setDefaultLocale(value === "_auto" || !value ? "" : String(value))}>
+          <SelectTrigger id="default-locale">
+            <SelectValue />
+          </SelectTrigger>
+          <SelectContent>
+            <SelectItem value="_auto" label={t("defaultLocaleAuto")}>
+              {t("defaultLocaleAuto")}
+            </SelectItem>
+            <SelectItem value="en" label="English">
+              English
+            </SelectItem>
+            <SelectItem value="ko" label="한국어">
+              한국어
+            </SelectItem>
+          </SelectContent>
+        </Select>
+        <p className="text-xs text-muted-foreground">{t("defaultLocaleHint")}</p>
       </div>
 
       <div className="space-y-2">

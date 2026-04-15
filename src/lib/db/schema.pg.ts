@@ -534,6 +534,8 @@ export const systemSettings = pgTable("system_settings", {
   uploadMaxImageDimension: integer("upload_max_image_dimension"),
   // Default Language
   defaultLanguage: text("default_language"),
+  // Default UI Locale (fallback when no cookie/accept-language match)
+  defaultLocale: text("default_locale"),
   // Allowed Hosts (JSON array of domain strings)
   allowedHosts: text("allowed_hosts"),
   // Home Page Content (locale-keyed JSON overrides for jumbotron + section cards)

@@ -23,6 +23,7 @@ export type SystemSettingsRecord = {
   publicSignupEnabled?: boolean | null;
   signupHcaptchaEnabled?: boolean | null;
   defaultLanguage?: string | null;
+  defaultLocale?: string | null;
   updatedAt: Date;
   allowedHosts?: string | null;
   homePageContent?: Record<string, {
@@ -83,6 +84,7 @@ export const getResolvedSystemSettings = cache(async (defaults: {
     publicSignupEnabled: settings?.publicSignupEnabled ?? false,
     signupHcaptchaEnabled: settings?.signupHcaptchaEnabled ?? false,
     defaultLanguage: settings?.defaultLanguage ?? null,
+    defaultLocale: settings?.defaultLocale ?? null,
     homePageContent: settings?.homePageContent ?? null,
     footerContent: settings?.footerContent ?? null,
   };

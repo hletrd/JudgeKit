@@ -88,6 +88,7 @@ export async function updateSystemSettings(
     allowedHosts,
     homePageContent,
     footerContent,
+    defaultLocale,
   } = parsedInput.data;
 
   if (signupHcaptchaEnabled && !isHcaptchaConfigured()) {
@@ -140,6 +141,9 @@ export async function updateSystemSettings(
   }
   if (hasOwnInput("footerContent")) {
     baseValues.footerContent = footerContent ?? null;
+  }
+  if (hasOwnInput("defaultLocale")) {
+    baseValues.defaultLocale = defaultLocale ?? null;
   }
 
   if (allowedHosts !== undefined) {

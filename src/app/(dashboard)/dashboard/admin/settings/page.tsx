@@ -184,6 +184,7 @@ export default async function AdminSettingsPage() {
                 initialTimeZone={storedSettings?.timeZone ?? ""}
                 initialPlatformMode={storedSettings?.platformMode ?? "homework"}
                 initialDefaultLanguage={(stored?.defaultLanguage as string) ?? ""}
+                initialDefaultLocale={(stored?.defaultLocale as string) ?? ""}
                 defaultSiteTitle={tCommon("appName")}
                 defaultSiteDescription={tCommon("appDescription")}
                 defaultTimeZone={DEFAULT_SYSTEM_TIME_ZONE}

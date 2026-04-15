@@ -67,6 +67,10 @@ export const systemSettingsSchema = z.object({
     normalizeOptionalString,
     z.string().max(50, "defaultLanguageTooLong").optional()
   ),
+  defaultLocale: z.preprocess(
+    normalizeOptionalString,
+    z.enum(["en", "ko"]).optional()
+  ),
   // Rate Limiting (Login)
   loginRateLimitMaxAttempts: optionalInt(1, 100),
   loginRateLimitWindowMs: optionalInt(1_000, 3_600_000),
