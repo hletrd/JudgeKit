@@ -29,6 +29,9 @@ test-results/
 .omc/
 .sisyphus/
 
+# algo problems scripts
+scripts/algo-problems/
+
 # debug
 npm-debug.log*
 yarn-debug.log*
