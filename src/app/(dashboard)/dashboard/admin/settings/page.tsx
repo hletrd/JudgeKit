@@ -14,6 +14,7 @@ import { SystemSettingsForm } from "./system-settings-form";
 import { ConfigSettingsForm } from "./config-settings-form";
 import { AllowedHostsForm } from "./allowed-hosts-form";
 import { HomePageContentForm } from "./home-page-content-form";
+import { FooterContentForm } from "./footer-content-form";
 import { DatabaseBackupRestore } from "./database-backup-restore";
 import { DatabaseInfo } from "./database-info";
 import { SettingsTabs } from "./settings-tabs";
@@ -144,6 +145,12 @@ export default async function AdminSettingsPage() {
     };
   };
   const initialHomePageContent = (stored?.homePageContent as Record<string, LocaleOverride> | undefined) ?? null;
+
+  type FooterLocaleContent = {
+    copyrightText?: string;
+    links?: { label: string; url: string }[];
+  };
+  const initialFooterContent = (stored?.footerContent as Record<string, FooterLocaleContent> | undefined) ?? null;
 
   const authUrlObj = getAuthUrlObject();
   const authUrlHost = authUrlObj ? normalizeHostForComparison(authUrlObj.host) : null;
@@ -383,6 +390,21 @@ export default async function AdminSettingsPage() {
                 },
               }}
             />
+          </CardContent>
+        </Card>
+      ),
+    },
+    {
+      value: "footer",
+      label: t("tabFooter"),
+      content: (
+        <Card>
+          <CardHeader>
+            <CardTitle>{t("footerCardTitle")}</CardTitle>
+            <CardDescription>{t("footerCardDescription")}</CardDescription>
+          </CardHeader>
+          <CardContent>
+            <FooterContentForm initialContent={initialFooterContent} />
           </CardContent>
         </Card>
       ),

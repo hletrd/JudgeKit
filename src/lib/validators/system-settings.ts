@@ -111,6 +111,8 @@ export const systemSettingsSchema = z.object({
     .optional(),
   // Home Page Content (locale-keyed overrides)
   homePageContent: z.any().nullable().optional(),
+  // Footer Content (locale-keyed overrides)
+  footerContent: z.any().nullable().optional(),
 });
 
 export type SystemSettingsInput = z.infer<typeof systemSettingsSchema>;

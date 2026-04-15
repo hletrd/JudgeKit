@@ -36,6 +36,10 @@ export type SystemSettingsRecord = {
       community?: { title?: string; description?: string };
     };
   }> | null;
+  footerContent?: Record<string, {
+    copyrightText?: string;
+    links?: { label: string; url: string }[];
+  }> | null;
 };
 
 export async function getSystemSettings(): Promise<SystemSettingsRecord | undefined> {
@@ -54,6 +58,7 @@ export async function getSystemSettings(): Promise<SystemSettingsRecord | undefi
         updatedAt: systemSettings.updatedAt,
         aiAssistantEnabled: systemSettings.aiAssistantEnabled,
         homePageContent: systemSettings.homePageContent,
+        footerContent: systemSettings.footerContent,
       })
       .from(systemSettings)
       .where(eq(systemSettings.id, GLOBAL_SETTINGS_ID))
@@ -79,6 +84,7 @@ export const getResolvedSystemSettings = cache(async (defaults: {
     signupHcaptchaEnabled: settings?.signupHcaptchaEnabled ?? false,
     defaultLanguage: settings?.defaultLanguage ?? null,
     homePageContent: settings?.homePageContent ?? null,
+    footerContent: settings?.footerContent ?? null,
   };
 });
 

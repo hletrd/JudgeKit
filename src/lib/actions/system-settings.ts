@@ -87,6 +87,7 @@ export async function updateSystemSettings(
     defaultLanguage,
     allowedHosts,
     homePageContent,
+    footerContent,
   } = parsedInput.data;
 
   if (signupHcaptchaEnabled && !isHcaptchaConfigured()) {
@@ -136,6 +137,9 @@ export async function updateSystemSettings(
   }
   if (hasOwnInput("homePageContent")) {
     baseValues.homePageContent = homePageContent ?? null;
+  }
+  if (hasOwnInput("footerContent")) {
+    baseValues.footerContent = footerContent ?? null;
   }
 
   if (allowedHosts !== undefined) {

@@ -548,6 +548,11 @@ export const systemSettings = pgTable("system_settings", {
       community?: { title?: string; description?: string };
     };
   }>>(),
+  // Footer Content (locale-keyed JSON overrides for copyright text and custom links)
+  footerContent: jsonb("footer_content").$type<Record<string, {
+    copyrightText?: string;
+    links?: { label: string; url: string }[];
+  }>>(),
   updatedAt: timestamp("updated_at", { withTimezone: true })
     .notNull()
     .$defaultFn(() => new Date(Date.now())),

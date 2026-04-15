@@ -1,5 +1,6 @@
 import { getTranslations } from "next-intl/server";
 import { PublicHeader } from "@/components/layout/public-header";
+import { PublicFooter } from "@/components/layout/public-footer";
 import { getResolvedSystemSettings } from "@/lib/system-settings";
 import { auth } from "@/lib/auth";
 
@@ -33,6 +34,7 @@ export default async function PublicLayout({ children }: { children: React.React
         loggedInUser={session?.user ? { name: session.user.name, href: "/dashboard", label: tShell("nav.workspace") } : null}
       />
       <main className="mx-auto w-full max-w-6xl px-4 py-10 sm:px-6 lg:px-8">{children}</main>
+      <PublicFooter footerContent={settings.footerContent} />
     </div>
   );
 }
