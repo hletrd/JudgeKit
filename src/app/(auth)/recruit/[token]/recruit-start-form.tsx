@@ -52,11 +52,11 @@ export function RecruitStartForm({
         redirect: false,
       });
 
-      if (result?.ok) {
+      if (result?.error || !result?.ok) {
+        setError(t("startFailed"));
+      } else {
         router.push(`/dashboard/contests/${assignmentId}`);
         router.refresh();
-      } else {
-        setError(t("startFailed"));
       }
     } catch {
       setError(t("startFailed"));
