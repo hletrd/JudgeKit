@@ -1,12 +1,12 @@
 import type { Metadata } from "next";
-import { asc, count, eq, sql } from "drizzle-orm";
+import { asc, count, eq } from "drizzle-orm";
 import { getLocale, getTranslations } from "next-intl/server";
 import { db } from "@/lib/db";
 import { problems } from "@/lib/db/schema";
 import { PublicProblemList } from "../_components/public-problem-list";
 import { JsonLd } from "@/components/seo/json-ld";
 import { PaginationControls } from "@/components/pagination-controls";
-import { buildAbsoluteUrl, buildLocalePath, buildPublicMetadata, summarizeTextForMetadata } from "@/lib/seo";
+import { buildAbsoluteUrl, buildLocalePath, buildPublicMetadata } from "@/lib/seo";
 import { getResolvedSystemSettings } from "@/lib/system-settings";
 
 const PAGE_SIZE = 30;
@@ -114,7 +114,7 @@ export default async function PracticePage({
         problemTitleLabel={tProblems("table.title")}
         difficultyLabel={tProblems("table.difficulty")}
         tagLabel={tProblems("table.tags")}
-        problems={publicProblems.map((problem, index) => ({
+        problems={publicProblems.map((problem) => ({
           id: problem.id,
           sequenceNumber: problem.sequenceNumber ?? null,
           title: problem.title,

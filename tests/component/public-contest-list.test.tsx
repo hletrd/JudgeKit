@@ -8,13 +8,12 @@ vi.mock("next/link", () => ({
 }));
 
 describe("PublicContestList", () => {
-  it("renders public contest cards", () => {
+  it("renders public contests in a list layout", () => {
     render(
       <PublicContestList
         title="Public contest catalog"
         description="Browse public contests"
         noContestsLabel="No public contests"
-        openContestLabel="Open contest"
         contests={[
           {
             id: "contest-1",
@@ -22,10 +21,15 @@ describe("PublicContestList", () => {
             description: "A public contest.",
             groupName: "Algorithms 101",
             statusLabel: "Upcoming",
+            statusKey: "upcoming",
             problemCountLabel: "3 total problems",
             publicProblemCountLabel: "2 public problems",
             modeLabel: "Scheduled",
+            modeKey: "scheduled",
             scoringLabel: "IOI",
+            scoringKey: "ioi",
+            startsAtLabel: "Starts: Apr 16, 2026",
+            deadlineLabel: "Deadline: Apr 17, 2026",
           },
         ]}
       />
@@ -35,6 +39,7 @@ describe("PublicContestList", () => {
     expect(screen.getByText("Spring Challenge")).toBeInTheDocument();
     expect(screen.getByText("Algorithms 101")).toBeInTheDocument();
     expect(screen.getByText("Upcoming")).toBeInTheDocument();
-    expect(screen.getByText("Open contest")).toBeInTheDocument();
+    expect(screen.getByText("Starts: Apr 16, 2026")).toBeInTheDocument();
+    expect(screen.getByText("Deadline: Apr 17, 2026")).toBeInTheDocument();
   });
 });

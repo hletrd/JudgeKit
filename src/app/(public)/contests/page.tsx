@@ -6,6 +6,12 @@ import { JsonLd } from "@/components/seo/json-ld";
 import { buildAbsoluteUrl, buildLocalePath, buildPublicMetadata } from "@/lib/seo";
 import { getResolvedSystemSettings } from "@/lib/system-settings";
 
+function formatDateLabel(value: Date | null, fallback: string, locale: string) {
+  return value
+    ? new Intl.DateTimeFormat(locale, { dateStyle: "medium", timeStyle: "short" }).format(value)
+    : fallback;
+}
+
 export async function generateMetadata(): Promise<Metadata> {
   const [tCommon, tShell, locale] = await Promise.all([
     getTranslations("common"),
@@ -71,17 +77,25 @@ export default async function PublicContestsPage() {
         title={t("contests.catalogTitle")}
         description={t("contests.catalogDescription")}
         noContestsLabel={t("contests.noContests")}
-        openContestLabel={t("contests.openContest")}
         contests={contests.map((contest) => ({
           id: contest.id,
           title: contest.title,
           description: contest.description,
           groupName: contest.groupName,
           statusLabel: statusLabels[contest.status],
+          statusKey: contest.status,
           problemCountLabel: t("contests.problemCount", { count: contest.problemCount }),
           publicProblemCountLabel: t("contests.publicProblemCount", { count: contest.publicProblemCount }),
           modeLabel: contest.examMode === "scheduled" ? t("contests.modeScheduled") : t("contests.modeWindowed"),
+          modeKey: contest.examMode === "scheduled" ? "scheduled" : "windowed",
           scoringLabel: contest.scoringModel === "icpc" ? t("contests.scoringModelIcpc") : t("contests.scoringModelIoi"),
+          scoringKey: contest.scoringModel === "icpc" ? "icpc" : "ioi",
+          startsAtLabel: t("contests.startsAt", {
+            value: formatDateLabel(contest.startsAt, t("contests.notScheduled"), locale),
+          }),
+          deadlineLabel: t("contests.deadline", {
+            value: formatDateLabel(contest.deadline, t("contests.noDeadline"), locale),
+          }),
         }))}
       />
     </>
