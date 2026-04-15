@@ -357,6 +357,14 @@ async fn main() {
     let cleanup_interval = std::time::Duration::from_secs(300);
     let mut last_cleanup_at = std::time::Instant::now();
 
+    // Exponential backoff for idle polling.
+    // After consecutive empty polls the sleep doubles up to MAX_BACKOFF,
+    // reducing CPU and network overhead when no submissions are queued.
+    // Resets immediately when work is claimed.
+    let mut consecutive_empty_polls: u32 = 0;
+    const MAX_BACKOFF_SECS: u64 = 30;
+    const BACKOFF_SHIFT_LIMIT: u32 = 5; // 2^5 = 32x base interval
+
     loop {
         // Reap completed tasks to avoid unbounded handle accumulation
         task_handles.retain(|h| !h.is_finished());
@@ -406,6 +414,7 @@ async fn main() {
 
         match submission {
             Some(submission) => {
+                consecutive_empty_polls = 0;
                 tracing::info!(submission_id = %submission.id, "Processing submission");
                 let client = Arc::clone(&client);
                 let config = Arc::clone(&config);
@@ -426,13 +435,23 @@ async fn main() {
                 // No work available — release the permit and sleep before next poll
                 drop(permit);
 
+                consecutive_empty_polls += 1;
+                let sleep_duration = if consecutive_empty_polls <= 1 {
+                    config.poll_interval
+                } else {
+                    let base_secs = config.poll_interval.as_secs().max(1);
+                    let multiplier = 1u64 << (consecutive_empty_polls - 1).min(BACKOFF_SHIFT_LIMIT);
+                    let backoff_secs = base_secs.saturating_mul(multiplier).min(MAX_BACKOFF_SECS);
+                    std::time::Duration::from_secs(backoff_secs)
+                };
+
                 // Sleep before next poll, but still respect shutdown
                 tokio::select! {
                     _ = &mut shutdown => {
                         tracing::info!("Shutdown signal received, stopping polling");
                         break;
                     }
-                    _ = tokio::time::sleep(config.poll_interval) => {}
+                    _ = tokio::time::sleep(sleep_duration) => {}
                 }
             }
         }

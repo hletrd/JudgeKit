@@ -484,18 +484,23 @@ pub async fn cleanup_orphaned_containers() {
 
     if let Ok(output) = output {
         let ids = String::from_utf8_lossy(&output.stdout);
-        for id in ids.lines().filter(|l| !l.is_empty()) {
-            match tokio::process::Command::new("docker")
-                .args(["rm", id])
-                .output()
-                .await
-            {
-                Ok(_) => {
-                    tracing::debug!(container_id = %id, "Cleaned up orphaned container");
-                }
-                Err(e) => {
-                    tracing::warn!(error = %e, container_id = %id, "Failed to remove orphaned container");
-                }
+        let container_ids: Vec<&str> = ids.lines().filter(|l| !l.is_empty()).collect();
+        if container_ids.is_empty() {
+            return;
+        }
+        // Batch remove all orphaned containers in a single docker rm call
+        let mut args = vec!["rm".to_string()];
+        args.extend(container_ids.iter().map(|s| s.to_string()));
+        match tokio::process::Command::new("docker")
+            .args(&args)
+            .output()
+            .await
+        {
+            Ok(_) => {
+                tracing::debug!(count = container_ids.len(), "Cleaned up orphaned containers");
+            }
+            Err(e) => {
+                tracing::warn!(error = %e, "Failed to batch-remove orphaned containers");
             }
         }
     }
