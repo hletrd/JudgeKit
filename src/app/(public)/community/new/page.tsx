@@ -1,6 +1,10 @@
+import type { Metadata } from "next";
 import { getTranslations } from "next-intl/server";
 import { auth } from "@/lib/auth";
 import { DiscussionThreadForm } from "@/components/discussions/discussion-thread-form";
+import { NO_INDEX_METADATA } from "@/lib/seo";
+
+export const metadata: Metadata = NO_INDEX_METADATA;
 
 export default async function CommunityNewPage() {
   const [t, session] = await Promise.all([

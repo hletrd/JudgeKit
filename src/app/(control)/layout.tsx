@@ -1,3 +1,4 @@
+import type { Metadata } from "next";
 import { redirect } from "next/navigation";
 import { getTranslations } from "next-intl/server";
 import { auth } from "@/lib/auth";
@@ -7,6 +8,9 @@ import { LocaleSwitcher } from "@/components/layout/locale-switcher";
 import { ThemeToggle } from "@/components/layout/theme-toggle";
 import { getResolvedSystemSettings } from "@/lib/system-settings";
 import { Toaster } from "@/components/ui/sonner";
+import { NO_INDEX_METADATA } from "@/lib/seo";
+
+export const metadata: Metadata = NO_INDEX_METADATA;
 
 export default async function ControlLayout({ children }: { children: React.ReactNode }) {
   const session = await auth();

@@ -1,7 +1,7 @@
 "use client";
 
 import { useLocale, useTranslations } from "next-intl";
-import { useRouter } from "next/navigation";
+import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -11,16 +11,27 @@ import {
 } from "@/components/ui/dropdown-menu";
 import { Button } from "@/components/ui/button";
 import { Languages } from "lucide-react";
-import { LOCALE_COOKIE_NAME } from "@/lib/i18n/constants";
+import { DEFAULT_LOCALE, LOCALE_COOKIE_NAME, LOCALE_QUERY_PARAM } from "@/lib/i18n/constants";
 
 export function LocaleSwitcher() {
   const t = useTranslations("common");
   const router = useRouter();
+  const pathname = usePathname();
+  const searchParams = useSearchParams();
   const currentLocale = useLocale();
 
   function setLocale(locale: string) {
     document.cookie = `${LOCALE_COOKIE_NAME}=${locale}; Path=/; SameSite=Lax; ${location.protocol === "https:" ? "Secure; " : ""}Max-Age=${60 * 60 * 24 * 365}`;
-    router.refresh();
+    const params = new URLSearchParams(searchParams.toString());
+
+    if (locale === DEFAULT_LOCALE) {
+      params.delete(LOCALE_QUERY_PARAM);
+    } else {
+      params.set(LOCALE_QUERY_PARAM, locale);
+    }
+
+    const nextUrl = params.size > 0 ? `${pathname}?${params.toString()}` : pathname;
+    router.replace(nextUrl, { scroll: false });
   }
 
   return (

@@ -1,9 +1,13 @@
+import type { Metadata } from "next";
 import { getTranslations } from "next-intl/server";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { auth } from "@/lib/auth";
 import { findSessionUserWithPassword } from "@/lib/auth/find-session-user";
 import { ChangePasswordForm } from "./change-password-form";
 import { InvalidChangePasswordSession } from "./invalid-change-password-session";
+import { NO_INDEX_METADATA } from "@/lib/seo";
+
+export const metadata: Metadata = NO_INDEX_METADATA;
 
 export default async function ChangePasswordPage() {
   const t = await getTranslations("changePassword");

@@ -1,3 +1,4 @@
+import type { Metadata } from "next";
 import { redirect } from "next/navigation";
 import { auth } from "@/lib/auth";
 import { getTranslations } from "next-intl/server";
@@ -20,6 +21,9 @@ import { EditorContentProvider } from "@/contexts/editor-content-context";
 import { getRecruitingAccessContext } from "@/lib/recruiting/access";
 import { isInstructorOrAboveAsync } from "@/lib/auth/role-helpers";
 import { getActiveTimedAssignmentsForSidebar } from "@/lib/assignments/active-timed-assignments";
+import { NO_INDEX_METADATA } from "@/lib/seo";
+
+export const metadata: Metadata = NO_INDEX_METADATA;
 
 export default async function DashboardLayout({ children }: { children: React.ReactNode }) {
   const session = await auth();

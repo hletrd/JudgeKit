@@ -27,6 +27,24 @@ test.describe("Public shell", () => {
     await expect(page.getByRole("heading", { name: /Public problem catalog|공개 문제 카탈로그/i })).toBeVisible();
   });
 
+  test("public routes expose crawlable SEO metadata and robots directives", async ({ page, request }) => {
+    const robotsResponse = await request.get("/robots.txt");
+    const robotsText = await robotsResponse.text();
+    expect(robotsResponse.ok()).toBeTruthy();
+    expect(robotsText).toContain("Disallow: /dashboard");
+    expect(robotsText).toContain("Sitemap:");
+
+    const sitemapResponse = await request.get("/sitemap.xml");
+    const sitemapText = await sitemapResponse.text();
+    expect(sitemapResponse.ok()).toBeTruthy();
+    expect(sitemapText).toContain("/practice");
+    expect(sitemapText).toContain("/community");
+
+    await page.goto("/practice", { waitUntil: "networkidle" });
+    await expect(page).toHaveTitle(/Public problem catalog|공개 문제 카탈로그/i);
+    await expect(page.locator('link[rel="canonical"]')).toHaveAttribute("href", "/practice");
+  });
+
   test("guest can open the community board", async ({ page }) => {
     await page.goto("/community", { waitUntil: "networkidle" });
 
