@@ -24,6 +24,8 @@ export default async function PublicLayout({ children }: { children: React.React
           { href: "/practice", label: tShell("nav.practice") },
           { href: "/playground", label: tShell("nav.playground") },
           { href: "/contests", label: tShell("nav.contests") },
+          { href: "/rankings", label: tShell("nav.rankings") },
+          { href: "/submissions", label: tShell("nav.submissions") },
           { href: "/community", label: tShell("nav.community") },
         ]}
         actions={[

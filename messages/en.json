@@ -2249,6 +2249,7 @@
     "accountPasswordTooShort": "Password must be at least {min} characters.",
     "accountPasswordLoginNotice": "After your first start, you can sign in later with your recruiting email and account password through the normal login page.",
     "resumeSessionOnlyNotice": "This invitation is already linked to your current signed-in account. Continue with this session to resume the assessment safely.",
+    "signInRequired": "Please sign in to view your submissions.",
     "goToLogin": "Go to login"
   },
   "publicShell": {
@@ -2257,6 +2258,8 @@
       "playground": "Playground",
       "contests": "Contests",
       "community": "Community",
+      "rankings": "Rankings",
+      "submissions": "Submissions",
       "workspace": "Workspace"
     },
     "home": {
