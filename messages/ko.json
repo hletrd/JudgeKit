@@ -2239,8 +2239,8 @@
   },
   "publicShell": {
     "nav": {
-      "practice": "연습",
-      "playground": "플레이그라운드",
+      "practice": "문제 풀기",
+      "playground": "컴파일러",
       "contests": "대회",
       "community": "커뮤니티",
       "workspace": "워크스페이스"
@@ -2253,11 +2253,11 @@
       "secondaryCta": "로그인",
       "cards": {
         "practice": {
-          "title": "연습",
+          "title": "문제 풀기",
           "description": "원하는 속도로 문제를 풀고 알고리즘 실력을 키우세요."
         },
         "playground": {
-          "title": "플레이그라운드",
+          "title": "컴파일러",
           "description": "로그인 없이 코드를 작성하고 바로 실행하세요."
         },
         "contests": {
