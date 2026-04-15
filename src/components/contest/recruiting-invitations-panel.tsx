@@ -85,6 +85,7 @@ export function RecruitingInvitationsPanel({ assignmentId }: { assignmentId: str
   const [customExpiryDate, setCustomExpiryDate] = useState("");
   const [metadataFields, setMetadataFields] = useState<{ key: string; value: string }[]>([]);
   const [creating, setCreating] = useState(false);
+  const [createdLink, setCreatedLink] = useState<string | null>(null);
 
   const baseUrl = typeof window !== "undefined" ? window.location.origin : "";
 
@@ -147,11 +148,18 @@ export function RecruitingInvitationsPanel({ assignmentId }: { assignmentId: str
       });
 
       if (res.ok) {
+        const json = await res.json();
+        const token = json.data?.token as string | undefined;
         setCreateOpen(false);
         setCreateName("");
         setCreateEmail("");
         setCreateExpiry("none");
         setMetadataFields([]);
+        if (token) {
+          const link = `${baseUrl}/recruit/${token}`;
+          setCreatedLink(link);
+          try { await navigator.clipboard.writeText(link); } catch { /* ignore */ }
+        }
         toast.success(t("createSuccess"));
         fetchData();
       } else {
@@ -274,6 +282,31 @@ export function RecruitingInvitationsPanel({ assignmentId }: { assignmentId: str
 
   return (
     <div className="space-y-4">
+      {/* Created link dialog */}
+      <Dialog open={!!createdLink} onOpenChange={(open) => { if (!open) setCreatedLink(null); }}>
+        <DialogContent className="max-w-md">
+          <DialogHeader>
+            <DialogTitle>{t("linkCreatedTitle")}</DialogTitle>
+            <DialogDescription>{t("linkCreatedDescription")}</DialogDescription>
+          </DialogHeader>
+          <div className="flex items-center gap-2 rounded-lg border bg-muted/50 p-3">
+            <code className="flex-1 truncate text-xs">{createdLink}</code>
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={async () => {
+                if (createdLink) {
+                  await navigator.clipboard.writeText(createdLink);
+                  toast.success(t("linkCopied"));
+                }
+              }}
+            >
+              <Copy className="mr-1 h-3.5 w-3.5" />
+              {t("copyLink")}
+            </Button>
+          </div>
+        </DialogContent>
+      </Dialog>
       {/* Stats */}
       <div className="grid grid-cols-5 gap-3">
         {(["total", "pending", "redeemed", "revoked", "expired"] as const).map((key) => (

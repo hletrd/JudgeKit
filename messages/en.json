@@ -1884,6 +1884,8 @@
       "createSuccess": "Invitation created",
       "createError": "Failed to create invitation",
       "emailAlreadyInvited": "An invitation with this email already exists for this contest.",
+      "linkCreatedTitle": "Invitation Link Created",
+      "linkCreatedDescription": "The link has been copied to your clipboard. You can also copy it below.",
       "noInvitations": "No invitations yet.",
       "searchPlaceholder": "Search by name or email...",
       "filterAll": "All",

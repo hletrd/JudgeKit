@@ -1884,6 +1884,8 @@
       "createSuccess": "초대를 만들었습니다",
       "createError": "초대를 만들지 못했습니다",
       "emailAlreadyInvited": "이 이메일로 이미 초대가 생성되어 있습니다.",
+      "linkCreatedTitle": "초대 링크가 생성되었습니다",
+      "linkCreatedDescription": "링크가 클립보드에 복사되었습니다. 아래에서 다시 복사할 수도 있습니다.",
       "noInvitations": "아직 초대가 없습니다.",
       "searchPlaceholder": "이름 또는 이메일로 검색...",
       "filterAll": "전체",
