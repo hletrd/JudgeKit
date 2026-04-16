@@ -2,10 +2,12 @@ import type { Metadata } from "next";
 import { getLocale, getTranslations } from "next-intl/server";
 import { notFound } from "next/navigation";
 import { PublicContestDetail } from "@/app/(public)/_components/public-contest-detail";
+import { ContestReplay } from "@/components/contest/contest-replay";
 import { ContestStatistics } from "@/components/contest/contest-statistics";
 import { JsonLd } from "@/components/seo/json-ld";
 import { getPublicContestById } from "@/lib/assignments/public-contests";
 import { computeContestAnalytics } from "@/lib/assignments/contest-analytics";
+import { computeContestReplay } from "@/lib/assignments/contest-replay";
 import { computeLeaderboard } from "@/lib/assignments/leaderboard";
 import { buildAbsoluteUrl, buildLocalePath, buildPublicMetadata, buildSocialImageUrl, NO_INDEX_METADATA, summarizeTextForMetadata } from "@/lib/seo";
 import { getResolvedSystemSettings } from "@/lib/system-settings";
@@ -86,12 +88,13 @@ export default async function PublicContestDetailPage({ params }: { params: Prom
     notFound();
   }
   const showArchiveInsights = contest.status === "expired" || contest.status === "closed";
-  const [analytics, leaderboard] = showArchiveInsights
+  const [analytics, leaderboard, replay] = showArchiveInsights
     ? await Promise.all([
         computeContestAnalytics(contest.id),
         computeLeaderboard(contest.id, true),
+        computeContestReplay(contest.id),
       ])
-    : [null, null];
+    : [null, null, null];
   const solveRateByProblem = new Map(
     analytics?.problemSolveRates.map((problem) => [problem.problemId, problem]) ?? []
   );
@@ -233,6 +236,38 @@ export default async function PublicContestDetailPage({ params }: { params: Prom
         workspaceHref={buildLocalePath("/workspace", locale)}
         workspaceLabel={t("contests.openWorkspace")}
       />
+
+      {showArchiveInsights && replay ? (
+        <ContestReplay
+          title={tContest("replay.title")}
+          description={tContest("replay.description")}
+          noDataLabel={tContest("replay.noData")}
+          timelineLabel={tContest("replay.timeline")}
+          playLabel={tContest("replay.play")}
+          pauseLabel={tContest("replay.pause")}
+          speedLabel={tContest("replay.speed")}
+          rankLabel={tContest("leaderboard.rank")}
+          nameLabel={tContest("leaderboard.name")}
+          totalScoreLabel={tContest("leaderboard.totalScore")}
+          penaltyLabel={contest.scoringModel === "icpc" ? tContest("leaderboard.penalty") : null}
+          snapshots={replay.snapshots.map((snapshot) => ({
+            label: contest.startsAt
+              ? tContest("replay.elapsed", {
+                  value: `${Math.floor((snapshot.cutoffMs - contest.startsAt.getTime()) / 60_000)}m`,
+                })
+              : new Intl.DateTimeFormat(locale, { dateStyle: "short", timeStyle: "short" }).format(snapshot.cutoffMs),
+            entries: snapshot.entries.map((entry) => ({
+              userId: entry.userId,
+              name: entry.name,
+              rank: entry.rank,
+              totalScoreLabel: contest.scoringModel === "icpc"
+                ? `${entry.totalScore}`
+                : `${Math.round(entry.totalScore * 100) / 100}`,
+              penaltyLabel: contest.scoringModel === "icpc" ? `${entry.totalPenalty}` : null,
+            })),
+          }))}
+        />
+      ) : null}
 
       {showArchiveInsights && analytics ? (
         <ContestStatistics

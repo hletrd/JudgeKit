@@ -760,6 +760,16 @@
     "scoringModelLabel": "Scoring Model",
     "scoringModelIoi": "Partial Scoring",
     "scoringModelIcpc": "Pass/Fail",
+    "replay": {
+      "title": "Contest replay",
+      "description": "Scrub through the leaderboard as submissions changed the standings over time.",
+      "noData": "No replay data is available yet.",
+      "timeline": "Timeline",
+      "play": "Play",
+      "pause": "Pause",
+      "speed": "Speed",
+      "elapsed": "{value} elapsed"
+    },
     "scoringModelDescription_ioi": "Partial credit by test cases passed. Best score kept.",
     "scoringModelDescription_icpc": "Problems are either fully accepted or rejected. Ranking by problems solved, then penalty time.",
     "freezeLeaderboardLabel": "Freeze Leaderboard At",

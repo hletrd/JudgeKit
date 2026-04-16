@@ -757,6 +757,16 @@
     "scoringModelLabel": "채점 방식",
     "scoringModelIoi": "부분 점수",
     "scoringModelIcpc": "합격/불합격",
+    "replay": {
+      "title": "대회 리플레이",
+      "description": "제출에 따라 순위표가 어떻게 바뀌었는지 시간축으로 다시 살펴보세요.",
+      "noData": "리플레이 데이터가 아직 없습니다.",
+      "timeline": "타임라인",
+      "play": "재생",
+      "pause": "일시정지",
+      "speed": "속도",
+      "elapsed": "{value} 경과"
+    },
     "scoringModelDescription_ioi": "테스트 케이스 기준 부분 점수. 최고 점수 유지.",
     "scoringModelDescription_icpc": "문제를 완전히 풀거나 실패. 풀이 수 기준 순위, 동점 시 패널티 시간.",
     "freezeLeaderboardLabel": "리더보드 동결 시점",
