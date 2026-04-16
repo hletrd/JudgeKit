@@ -72,7 +72,9 @@
       "exam": "Exam",
       "contest": "Contest",
       "recruiting": "Recruiting"
-    }
+    },
+    "paginationPageSize": "Page size",
+    "paginationPageSizeOption": "Show {size} items per page"
   },
   "auth": {
     "signIn": "Sign in",
@@ -109,7 +111,8 @@
     "createUserFailed": "Failed to create your account. Please try again.",
     "signUpNotice": "New public accounts are created as user accounts.",
     "hcaptchaPrompt": "Spam protection",
-    "confirmPasswordRequired": "Please confirm your password."
+    "confirmPasswordRequired": "Please confirm your password.",
+    "signInRequired": "Please sign in to view your submissions."
   },
   "nav": {
     "navigation": "Navigation",
@@ -546,6 +549,23 @@
     "rejudgeSuccess": "Submission queued for rejudging.",
     "rejudgeFailed": "Failed to rejudge submission.",
     "resubmit": "Resubmit",
+    "statusFilter": {
+      "all": "All statuses",
+      "accepted": "AC",
+      "wrong_answer": "WA",
+      "time_limit": "TLE",
+      "memory_limit": "MLE",
+      "runtime_error": "RE",
+      "compile_error": "CE"
+    },
+    "periodFilter": {
+      "all": "All time",
+      "today": "Today",
+      "week": "This week",
+      "month": "This month"
+    },
+    "forProblem": "My submissions for this problem",
+    "noOtherSubmissions": "No other submissions for this problem.",
     "pagination": {
       "showingRange": "Showing {start}-{end}"
     }
@@ -1690,7 +1710,20 @@
     "submittedAt": "Submitted",
     "noProblemRankings": "No accepted submissions yet.",
     "viewRankings": "Rankings",
-    "bestPerUser": "Best per user"
+    "bestPerUser": "Best per user",
+    "tiers": {
+      "bronze": "Bronze",
+      "silver": "Silver",
+      "gold": "Gold",
+      "platinum": "Platinum",
+      "diamond": "Diamond",
+      "ruby": "Ruby"
+    },
+    "periodFilter": {
+      "all": "All time",
+      "week": "This week",
+      "month": "This month"
+    }
   },
   "contests": {
     "title": "Contests",
@@ -2318,6 +2351,55 @@
       "successRate": "Success",
       "createdAt": "Added",
       "problemTab": "Problem",
+      "searchLabel": "Search",
+      "searchPlaceholder": "Search by problem title…",
+      "filterByTag": "Tag",
+      "allTags": "All tags",
+      "sortBy": "Sort by",
+      "sortOptions": {
+        "number_asc": "Number",
+        "difficulty_asc": "Difficulty (easy first)",
+        "difficulty_desc": "Difficulty (hard first)",
+        "successRate_desc": "Success rate (high first)",
+        "newest": "Newest first"
+      },
+      "applyFilters": "Apply",
+      "resetFilters": "Reset",
+      "progressLabel": "Progress",
+      "progress": {
+        "solved": "Solved",
+        "attempted": "Attempted",
+        "untried": "Untried"
+      },
+      "progressFilter": {
+        "all": "All",
+        "solved": "Solved",
+        "unsolved": "Unsolved",
+        "attempted": "Attempted"
+      },
+      "showingRange": "Showing {start}–{end} of {total}",
+      "stats": {
+        "title": "Problem Statistics",
+        "totalSubmissions": "Total submissions",
+        "acceptedCount": "Accepted",
+        "acceptanceRate": "Acceptance rate",
+        "uniqueSolvers": "Unique solvers"
+      },
+      "similarProblems": "Similar Problems",
+      "mySubmissionsTab": "My Submissions",
+      "noMySubmissions": "You haven't submitted to this problem yet.",
+      "editorial": {
+        "tab": "Editorial",
+        "title": "Problem Editorial",
+        "description": "Official solution explanation and approach.",
+        "empty": "No editorial has been posted yet.",
+        "createLabel": "Write Editorial",
+        "createTitle": "Create an editorial",
+        "createContent": "Explain the approach, algorithm, and key insights for solving this problem.",
+        "submitLabel": "Publish Editorial",
+        "success": "Editorial published",
+        "signIn": "Sign in to view the editorial"
+      },
       "discussion": {
         "title": "Problem discussion",
         "description": "Discuss approaches and ask clarifying questions about this problem.",
@@ -2362,6 +2444,9 @@
       "noPublicProblems": "This contest does not expose any public problems yet.",
       "signInToJoin": "Sign in to join",
       "openWorkspace": "Open workspace",
+      "archiveTitle": "Past Contests",
+      "virtualPractice": "Practice Problems",
+      "virtualPracticeDescription": "This contest has ended, but you can still practice the public problems.",
       "status": {
         "upcoming": "Upcoming",
         "open": "Open",
@@ -2416,6 +2501,16 @@
         "replyDeleteSuccess": "Reply removed"
       }
     }
+  },
+  "userProfile": {
+    "title": "User Profile",
+    "solvedCount": "Solved",
+    "submissionCount": "Submissions",
+    "accuracy": "Accuracy",
+    "solvedProblems": "Solved Problems",
+    "noSolvedProblems": "No solved problems yet.",
+    "activityHeatmap": "Activity",
+    "notFound": "User not found."
   },
   "workspaceShell": {
     "sectionLabel": "Workspace",
@@ -2492,6 +2587,17 @@
         "open": "Open",
         "locked": "Locked",
         "pinned": "Pinned"
+      }
+    },
+    "community": {
+      "moderation": {
+        "lock": "Lock thread",
+        "unlock": "Unlock thread",
+        "pin": "Pin thread",
+        "unpin": "Unpin thread",
+        "deleteThread": "Delete thread",
+        "success": "Discussion status updated",
+        "deleteSuccess": "Discussion removed"
       }
     }
   }

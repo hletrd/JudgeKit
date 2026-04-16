@@ -21,6 +21,8 @@ describe("PublicProblemList", () => {
         solverCountLabel="Solved by"
         successRateLabel="Success"
         createdAtLabel="Added"
+        progressLabel="Progress"
+        progressLabels={{ solved: "Solved", attempted: "Attempted", untried: "Untried" }}
         problems={[
           {
             id: "problem-1",
@@ -28,10 +30,11 @@ describe("PublicProblemList", () => {
             sequenceNumber: 1000,
             title: "A + B",
             difficultyLabel: "1.00",
-            tags: [{ name: "math", color: null }],
+            tags: [{ name: "math", color: null, href: "/practice?tag=math" }],
             solverCount: 42,
             submissionCount: 100,
             successRate: 42.0,
+            progress: "solved",
             createdAt: "Jan 1, 2026",
           },
         ]}
@@ -61,6 +64,8 @@ describe("PublicProblemList", () => {
         solverCountLabel="Solved by"
         successRateLabel="Success"
         createdAtLabel="Added"
+        progressLabel="Progress"
+        progressLabels={{ solved: "Solved", attempted: "Attempted", untried: "Untried" }}
         problems={[
           {
             id: "problem-2",
@@ -72,6 +77,7 @@ describe("PublicProblemList", () => {
             solverCount: 0,
             submissionCount: 0,
             successRate: null,
+            progress: null,
             createdAt: null,
           },
         ]}

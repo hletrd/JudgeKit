@@ -1,11 +1,13 @@
 import type { Metadata } from "next";
 import { getLocale, getTranslations } from "next-intl/server";
 import { notFound } from "next/navigation";
+import { auth } from "@/lib/auth";
 import { PublicContestDetail } from "@/app/(public)/_components/public-contest-detail";
 import { JsonLd } from "@/components/seo/json-ld";
 import { getPublicContestById } from "@/lib/assignments/public-contests";
 import { buildAbsoluteUrl, buildLocalePath, buildPublicMetadata, NO_INDEX_METADATA, summarizeTextForMetadata } from "@/lib/seo";
 import { getResolvedSystemSettings } from "@/lib/system-settings";
+import Link from "next/link";
 
 export async function generateMetadata({ params }: { params: Promise<{ id: string }> }): Promise<Metadata> {
   const { id } = await params;
@@ -37,7 +39,7 @@ export async function generateMetadata({ params }: { params: Promise<{ id: strin
       "programming contest",
       contest.groupName,
     ],
-    section: locale === "ko" ? "대회" : "Contest",
+    section: tShell("nav.contests"),
     socialBadge: contest.examMode === "scheduled" ? tShell("contests.modeScheduled") : tShell("contests.modeWindowed"),
     socialMeta: contest.groupName,
   });
@@ -49,10 +51,11 @@ function formatDateLabel(value: Date | null, fallback: string, locale: string) {
 
 export default async function PublicContestDetailPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
-  const [t, tCommon, tProblems, locale] = await Promise.all([
+  const [t, tCommon, tProblems, session, locale] = await Promise.all([
     getTranslations("publicShell"),
     getTranslations("common"),
     getTranslations("problems"),
+    auth(),
     getLocale(),
   ]);
   const statusLabels = {
@@ -140,6 +143,26 @@ export default async function PublicContestDetailPage({ params }: { params: Prom
         workspaceHref={buildLocalePath("/workspace", locale)}
         workspaceLabel={t("contests.openWorkspace")}
       />
+
+      {/* Virtual Practice for expired/closed contests */}
+      {(contest.status === "expired" || contest.status === "closed") && contest.publicProblems.length > 0 && (
+        <div className="mt-6 space-y-3">
+          <h2 className="text-lg font-semibold">{t("contests.virtualPractice")}</h2>
+          <p className="text-sm text-muted-foreground">{t("contests.virtualPracticeDescription")}</p>
+          <div className="space-y-2">
+            {contest.publicProblems.map((problem, index) => (
+              <Link
+                key={problem.id}
+                href={buildLocalePath(`/practice/problems/${problem.id}`, locale)}
+                className="flex items-center gap-2 rounded-md border p-3 text-sm hover:bg-accent transition-colors"
+              >
+                <span className="font-mono text-muted-foreground">{index + 1}.</span>
+                <span className="font-medium">{problem.title}</span>
+              </Link>
+            ))}
+          </div>
+        </div>
+      )}
     </>
   );
 }

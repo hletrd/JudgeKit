@@ -17,17 +17,36 @@ import { JsonLd } from "@/components/seo/json-ld";
 import { buildAbsoluteUrl, buildLocalePath, buildPublicMetadata } from "@/lib/seo";
 import { getResolvedSystemSettings } from "@/lib/system-settings";
 import { getLocale as getLocaleServer } from "next-intl/server";
+import { normalizePage, normalizePageSize, setPaginationParams } from "@/lib/pagination";
+import { calculateTier } from "@/lib/ratings";
+import { TierBadge } from "@/components/tier-badge";
+import Link from "next/link";
+import { Button } from "@/components/ui/button";
 
-const PAGE_SIZE = 50;
 const PAGE_PATH = "/rankings";
+
+type PeriodFilter = "all" | "week" | "month";
+const PERIOD_FILTER_VALUES: readonly PeriodFilter[] = ["all", "week", "month"];
+
+function getPeriodClause(period: PeriodFilter): string {
+  switch (period) {
+    case "week":
+      return "AND s.submitted_at >= NOW() - INTERVAL '7 days'";
+    case "month":
+      return "AND s.submitted_at >= DATE_TRUNC('month', NOW())";
+    default:
+      return "";
+  }
+}
 
 export async function generateMetadata({
   searchParams,
 }: {
-  searchParams?: Promise<{ page?: string }>;
+  searchParams?: Promise<{ page?: string; pageSize?: string }>;
 } = {}): Promise<Metadata> {
   const resolvedSearchParams = searchParams ? await searchParams : undefined;
-  const requestedPage = Math.max(1, Math.floor(Number(resolvedSearchParams?.page ?? "1")) || 1);
+  const pageSize = normalizePageSize(resolvedSearchParams?.pageSize);
+  const requestedPage = normalizePage(resolvedSearchParams?.page);
 
   const [tCommon, t, locale, countRow] = await Promise.all([
     getTranslations("common"),
@@ -54,7 +73,7 @@ export async function generateMetadata({
     siteDescription: tCommon("appDescription"),
   });
   const totalCount = countRow?.total ?? 0;
-  const totalPages = Math.max(1, Math.ceil(totalCount / PAGE_SIZE));
+  const totalPages = Math.max(1, Math.ceil(totalCount / pageSize));
   const currentPage = Math.min(requestedPage, totalPages);
 
   const pageLabel = currentPage > 1 ? tCommon("paginationPage", { page: currentPage }) : null;
@@ -64,7 +83,12 @@ export async function generateMetadata({
   return buildPublicMetadata({
     title,
     description,
-    path: currentPage > 1 ? `${PAGE_PATH}?page=${currentPage}` : PAGE_PATH,
+    path: (() => {
+      const params = new URLSearchParams();
+      setPaginationParams(params, currentPage, pageSize);
+      const qs = params.toString();
+      return qs ? `${PAGE_PATH}?${qs}` : PAGE_PATH;
+    })(),
     siteTitle: settings.siteTitle,
     locale,
   });
@@ -73,13 +97,20 @@ export async function generateMetadata({
 export default async function RankingsPage({
   searchParams,
 }: {
-  searchParams?: Promise<{ page?: string }>;
+  searchParams?: Promise<{ page?: string; pageSize?: string; period?: string }>;
 }) {
   const resolvedSearchParams = searchParams ? await searchParams : undefined;
-  const currentPage = Math.max(1, Math.floor(Number(resolvedSearchParams?.page ?? "1")) || 1);
+  const pageSize = normalizePageSize(resolvedSearchParams?.pageSize);
+  const currentPage = normalizePage(resolvedSearchParams?.page);
+  const rawPeriod = resolvedSearchParams?.period ?? "all";
+  const currentPeriod: PeriodFilter = PERIOD_FILTER_VALUES.includes(rawPeriod as PeriodFilter)
+    ? (rawPeriod as PeriodFilter)
+    : "all";
 
   const t = await getTranslations("rankings");
   const locale = await getLocale();
+
+  const periodClause = getPeriodClause(currentPeriod);
 
   const countRow = await rawQueryOne<{ total: number }>(
     `
@@ -88,20 +119,21 @@ export default async function RankingsPage({
         user_id,
         problem_id,
         MIN(submitted_at) as first_accepted_at
-      FROM submissions
-      WHERE status = 'accepted'
+      FROM submissions s
+      WHERE s.status = 'accepted'
+      ${periodClause}
       GROUP BY user_id, problem_id
     )
     SELECT COUNT(DISTINCT fa.user_id)::int as total
     FROM first_accepts fa
     INNER JOIN users u ON u.id = fa.user_id
     WHERE u.is_active = true
-    `
+    `,
   );
   const totalCount = countRow?.total ?? 0;
-  const totalPages = Math.max(1, Math.ceil(totalCount / PAGE_SIZE));
+  const totalPages = Math.max(1, Math.ceil(totalCount / pageSize));
   const clampedPage = Math.min(currentPage, totalPages);
-  const clampedOffset = (clampedPage - 1) * PAGE_SIZE;
+  const clampedOffset = (clampedPage - 1) * pageSize;
 
   const rankingRows = await rawQueryAll<{
     userId: string;
@@ -117,8 +149,9 @@ export default async function RankingsPage({
         user_id,
         problem_id,
         MIN(submitted_at) as first_accepted_at
-      FROM submissions
-      WHERE status = 'accepted'
+      FROM submissions s
+      WHERE s.status = 'accepted'
+      ${periodClause}
       GROUP BY user_id, problem_id
     )
     SELECT
@@ -135,14 +168,19 @@ export default async function RankingsPage({
     ORDER BY "solvedCount" DESC, "lastSolveTime" ASC
     LIMIT @limit OFFSET @offset
     `,
-    { limit: PAGE_SIZE, offset: clampedOffset }
+    { limit: pageSize, offset: clampedOffset }
   );
   const rankingsJsonLd = {
     "@context": "https://schema.org",
     "@type": "CollectionPage",
     name: t("title"),
     description: t("description"),
-    url: buildAbsoluteUrl(buildLocalePath(clampedPage > 1 ? `${PAGE_PATH}?page=${clampedPage}` : PAGE_PATH, locale)),
+    url: buildAbsoluteUrl((() => {
+      const params = new URLSearchParams();
+      setPaginationParams(params, clampedPage, pageSize);
+      const qs = params.toString();
+      return buildLocalePath(qs ? `${PAGE_PATH}?${qs}` : PAGE_PATH, locale);
+    })()),
     inLanguage: locale,
     mainEntity: {
       "@type": "ItemList",
@@ -154,12 +192,34 @@ export default async function RankingsPage({
     },
   };
 
+  const periodFilterLabels: Record<PeriodFilter, string> = {
+    all: t("periodFilter.all"),
+    week: t("periodFilter.week"),
+    month: t("periodFilter.month"),
+  };
+
   return (
     <div className="space-y-6">
       <JsonLd data={rankingsJsonLd} />
       <div>
         <h1 className="text-3xl font-semibold tracking-tight">{t("title")}</h1>
         <p className="mt-2 text-sm text-muted-foreground">{t("description")}</p>
+      </div>
+
+      {/* Period filter tabs */}
+      <div className="flex flex-wrap gap-2">
+        {PERIOD_FILTER_VALUES.map((filter) => {
+          const params = new URLSearchParams();
+          if (filter !== "all") params.set("period", filter);
+          const qs = params.toString();
+          return (
+            <Link key={filter} href={qs ? `${PAGE_PATH}?${qs}` : PAGE_PATH}>
+              <Button variant={currentPeriod === filter ? "default" : "outline"} size="sm">
+                {periodFilterLabels[filter]}
+              </Button>
+            </Link>
+          );
+        })}
       </div>
 
       <Card>
@@ -194,7 +254,13 @@ export default async function RankingsPage({
                         </Badge>
                       </TableCell>
                       <TableCell className="font-mono text-sm">
-                        {row.username}
+                        <div className="flex items-center gap-1.5">
+                          {row.username}
+                          {(() => {
+                            const tier = calculateTier(row.solvedCount);
+                            return tier ? <TierBadge tier={tier} label={t(`tiers.${tier}`)} /> : null;
+                          })()}
+                        </div>
                       </TableCell>
                       <TableCell>{row.name}</TableCell>
                       <TableCell className="text-muted-foreground">
@@ -222,7 +288,13 @@ export default async function RankingsPage({
                     {clampedOffset + index + 1}
                   </Badge>
                   <div className="min-w-0 flex-1">
-                    <div className="truncate font-medium">{row.name}</div>
+                    <div className="truncate font-medium">
+                      {row.name}
+                      {(() => {
+                        const tier = calculateTier(row.solvedCount);
+                        return tier ? <TierBadge tier={tier} label={t(`tiers.${tier}`)} /> : null;
+                      })()}
+                    </div>
                     <div className="text-sm text-muted-foreground">
                       @{row.username}{row.className ? ` · ${row.className}` : ""}
                     </div>
@@ -243,7 +315,14 @@ export default async function RankingsPage({
       <PaginationControls
         currentPage={clampedPage}
         totalPages={totalPages}
-        buildHref={(page) => buildLocalePath(page > 1 ? `${PAGE_PATH}?page=${page}` : PAGE_PATH, locale)}
+        pageSize={pageSize}
+        buildHref={(page, nextPageSize) => {
+          const params = new URLSearchParams();
+          setPaginationParams(params, page, nextPageSize);
+          if (currentPeriod !== "all") params.set("period", currentPeriod);
+          const qs = params.toString();
+          return buildLocalePath(qs ? `${PAGE_PATH}?${qs}` : PAGE_PATH, locale);
+        }}
       />
     </div>
   );

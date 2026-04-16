@@ -1,10 +1,10 @@
 {
   "common": {
     "appName": "JudgeKit",
-    "appDescription": "프로그래밍 온라인 저지",
+    "appDescription": "온라인 프로그래밍 저지",
     "comingSoon": "준비 중",
     "underConstruction": "이 페이지는 준비 중입니다.",
-    "loading": "로딩 중...",
+    "loading": "불러오는 중",
     "error": "오류",
     "save": "저장",
     "add": "추가",
@@ -64,7 +64,7 @@
     "paginationPage": "{page}페이지",
     "mainNavigation": "메인 내비게이션",
     "errorId": "오류 ID: {digest}",
-    "signingOut": "로그아웃 중...",
+    "signingOut": "로그아웃 중",
     "retry": "다시 시도",
     "viewAll": "전체 보기",
     "platformModes": {
@@ -72,12 +72,14 @@
       "exam": "시험",
       "contest": "대회",
       "recruiting": "채용"
-    }
+    },
+    "paginationPageSize": "페이지 크기",
+    "paginationPageSizeOption": "페이지당 {size}개 보기"
   },
   "auth": {
     "signIn": "로그인",
     "signOut": "로그아웃",
-    "signingIn": "로그인 중...",
+    "signingIn": "로그인 중",
     "signInDescription": "계정에 로그인하세요",
     "email": "이메일",
     "password": "비밀번호",
@@ -88,7 +90,7 @@
     "username": "사용자명",
     "usernamePlaceholder": "admin",
     "signUp": "회원가입",
-    "signingUp": "계정 생성 중...",
+    "signingUp": "계정 생성 중",
     "signUpDescription": "공개 사용자 계정을 만듭니다",
     "confirmPassword": "비밀번호 확인",
     "name": "이름",
@@ -109,7 +111,8 @@
     "createUserFailed": "계정을 생성하지 못했습니다. 다시 시도해주세요.",
     "signUpNotice": "공개 회원가입으로 생성되는 계정은 사용자 계정입니다.",
     "hcaptchaPrompt": "스팸 방지",
-    "confirmPasswordRequired": "비밀번호 확인을 입력하세요."
+    "confirmPasswordRequired": "비밀번호 확인을 입력하세요.",
+    "signInRequired": "제출 내역을 보려면 로그인하세요."
   },
   "nav": {
     "navigation": "메뉴",
@@ -199,11 +202,11 @@
     "adminQuickActions": "관리자 빠른 작업"
   },
   "dashboardState": {
-    "loadingDescription": "대시보드를 불러오는 중...",
+    "loadingDescription": "대시보드를 불러오는 중입니다.",
     "errorTitle": "문제가 발생했습니다",
     "errorDescription": "페이지를 불러오지 못했습니다. 다시 시도해 주세요.",
     "notFoundTitle": "페이지를 찾을 수 없습니다",
-    "notFoundDescription": "존재하지 않는 페이지입니다.",
+    "notFoundDescription": "해당 페이지가 없습니다.",
     "tryAgain": "다시 시도",
     "backToDashboard": "대시보드로 돌아가기"
   },
@@ -241,7 +244,7 @@
     "uploadSourceFile": "소스 파일 업로드",
     "sourceFileLoaded": "\"{name}\" 파일을 에디터로 불러왔습니다.",
     "sourceFileLoadFailed": "선택한 소스 파일을 읽지 못했습니다.",
-    "writeCodePlaceholder": "여기에 코드를 작성하세요...",
+    "writeCodePlaceholder": "여기에 코드를 입력하세요",
     "descriptionTitle": "설명",
     "noDescription": "설명이 없습니다.",
     "createTitle": "새 문제 생성",
@@ -321,9 +324,9 @@
     "memoryLimitValue": "{value} MB",
     "sourceCodeLabel": "소스 코드",
     "stdinLabel": "표준 입력 (stdin)",
-    "stdinPlaceholder": "프로그램의 입력을 입력하세요...",
+    "stdinPlaceholder": "프로그램 입력을 적어 보세요",
     "run": "실행",
-    "running": "실행 중...",
+    "running": "실행 중",
     "runResult": "실행 결과",
     "stdout": "출력 (stdout)",
     "stderr": "오류 출력 (stderr)",
@@ -385,14 +388,14 @@
     "assignmentDeadlineNotice": "과제 마감",
     "assignmentLateDeadlineNotice": "지각 제출 가능 기간",
     "insertImage": "이미지 삽입",
-    "imageUploading": "업로드 중...",
+    "imageUploading": "이미지 업로드 중",
     "imageUploadSuccess": "이미지가 삽입되었습니다",
     "imageUploadError": "이미지 업로드에 실패했습니다",
     "writeTab": "작성",
     "previewTab": "미리보기",
     "filtersTitle": "검색 및 필터",
     "searchLabel": "검색",
-    "searchPlaceholder": "제목 또는 작성자로 검색...",
+    "searchPlaceholder": "제목 또는 작성자로 검색",
     "filterByVisibility": "공개 여부",
     "applyFilters": "적용",
     "resetFilters": "초기화",
@@ -412,13 +415,13 @@
     "invalidDifficulty": "난이도는 0에서 10 사이여야 합니다",
     "difficultyValue": "{value} / 10",
     "tagsLabel": "태그",
-    "tagsPlaceholder": "태그 추가...",
+    "tagsPlaceholder": "태그 추가",
     "tagsHint": "Enter 또는 쉼표로 태그를 추가합니다. 최대 20개.",
     "tooManyTags": "문제당 태그는 최대 20개까지 추가할 수 있습니다",
     "filterByTag": "태그 필터",
     "allTags": "전체 태그",
     "noTags": "태그 없음",
-    "searchLanguages": "언어 검색...",
+    "searchLanguages": "언어 검색",
     "recentlyUsed": "최근 사용",
     "otherLanguages": "기타",
     "noLanguagesFound": "표시할 언어가 없습니다.",
@@ -500,7 +503,7 @@
     "noSubmissions": "아직 제출한 내역이 없습니다.",
     "search": "검색",
     "searchLabel": "제출 검색",
-    "searchPlaceholder": "문제 제목 또는 사용자 이름으로 검색...",
+    "searchPlaceholder": "문제 제목 또는 사용자 이름으로 검색",
     "resetSearch": "초기화",
     "submissionId": "제출 #{id}",
     "sourceCode": "소스 코드",
@@ -508,7 +511,7 @@
     "testCaseResults": "테스트 케이스 결과",
     "testCaseResultsDesc": "각 테스트 케이스의 결과입니다.",
     "liveUpdatesActive": "채점 중 결과가 자동으로 갱신됩니다.",
-    "liveUpdatesDelayed": "자동 새로고침이 일시적으로 느려졌습니다. 재시도 중...",
+    "liveUpdatesDelayed": "자동 새로고침이 잠시 느려졌습니다. 다시 시도하는 중입니다.",
     "testCaseTable": {
       "testCase": "테스트 케이스",
       "status": "상태",
@@ -546,6 +549,23 @@
     "rejudgeSuccess": "재채점 대기열에 추가되었습니다.",
     "rejudgeFailed": "재채점 요청에 실패했습니다.",
     "resubmit": "수정 제출",
+    "statusFilter": {
+      "all": "전체 상태",
+      "accepted": "AC",
+      "wrong_answer": "WA",
+      "time_limit": "TLE",
+      "memory_limit": "MLE",
+      "runtime_error": "RE",
+      "compile_error": "CE"
+    },
+    "periodFilter": {
+      "all": "전체 기간",
+      "today": "오늘",
+      "week": "이번 주",
+      "month": "이번 달"
+    },
+    "forProblem": "이 문제의 내 제출 목록",
+    "noOtherSubmissions": "이 문제에 대한 다른 제출이 없습니다.",
     "pagination": {
       "showingRange": "{start}-{end}개 표시 중"
     }
@@ -602,7 +622,7 @@
     "studentInactive": "비활성화된 사용자 계정은 그룹에 등록할 수 없습니다.",
     "studentRoleInvalid": "활성 상태의 사용자 계정만 그룹에 등록할 수 있습니다.",
     "studentAlreadyEnrolled": "이 사용자는 이미 그룹에 등록되어 있습니다.",
-    "studentEnrollmentNotFound": "이 등록 정보가 더 이상 존재하지 않습니다.",
+    "studentEnrollmentNotFound": "이 등록 정보는 더 이상 없습니다.",
     "groupInstructors": "공동 강사 및 조교",
     "coInstructor": "공동 강사",
     "teachingAssistant": "조교",
@@ -868,7 +888,7 @@
         "roleLabel": "역할"
       },
       "pagination": {
-        "results": "전체 {total}명 중 {start}–{end}번째 표시",
+        "results": "전체 {total}명 중 {start}~{end}번째",
         "page": "{total}페이지 중 {current}페이지"
       },
       "noUsersFound": "검색 결과가 없습니다.",
@@ -883,14 +903,14 @@
       "bulkRowInvalidUsername": "행 {row}: 사용자명이 없거나 올바르지 않습니다",
       "bulkRowMissingName": "행 {row}: 이름이 없습니다",
       "bulkRowMissingPassword": "행 {row}: 비밀번호가 없습니다",
-      "bulkMoreErrors": "... 외 {count}건",
+      "bulkMoreErrors": "외 {count}건 더",
       "bulkTooManyRows": "행이 너무 많습니다: {count}개. 최대 {max}개까지 가능합니다.",
       "bulkFailedSuffix": "({count}건 실패)",
       "bulkCreatedUsersTitle": "생성된 사용자 ({count}명)",
       "bulkFailedTitle": "실패 ({count}건)",
       "bulkReason": "사유",
       "bulkCsvHint": "필수 열: username, name, password. 선택: email, role, affiliation. 최대 200행.",
-      "bulkMoreRows": "... 외 {count}행",
+      "bulkMoreRows": "외 {count}행 더",
       "deleteUser": "사용자 삭제",
       "deleteDialogTitle": "이 사용자를 영구적으로 삭제할까요?",
       "deleteDialogDescription": "@{username} 사용자와 모든 제출, 수강 등록, 댓글이 영구적으로 삭제됩니다. 이 작업은 되돌릴 수 없습니다.",
@@ -917,7 +937,7 @@
       "noSubmissions": "제출 내역이 없습니다.",
       "search": "검색",
       "searchLabel": "제출 검색",
-      "searchPlaceholder": "사용자 이름 또는 문제 제목으로 검색...",
+      "searchPlaceholder": "사용자 이름 또는 문제 제목으로 검색",
       "resetSearch": "초기화"
     },
     "loginLogs": {
@@ -1038,7 +1058,7 @@
       "enterPassword": "비밀번호를 입력하세요",
       "restoreTitle": "데이터베이스 복원",
       "restoreWarning": "데이터베이스를 복원하면 현재 모든 데이터가 교체됩니다. 복원 전 자동 백업이 저장됩니다. 복원 후 애플리케이션을 재시작해야 할 수 있습니다. 최고 관리자만 복원할 수 있습니다.",
-      "restoreDatabase": "파일에서 복원...",
+      "restoreDatabase": "파일에서 복원",
       "confirmRestore": "복원 확인",
       "restoreSuccess": "데이터베이스가 복원되었습니다. 애플리케이션을 재시작하세요.",
       "restoreFailed": "데이터베이스 복원에 실패했습니다.",
@@ -1170,7 +1190,7 @@
       "platformModeAiAvailable": "AI 보조는 전역 설정과 문제별 설정에 따라 사용할 수 있습니다.",
       "platformModeCompilerRestricted": "이 모드에서는 대상 사용자에게 독립 컴파일러가 차단됩니다.",
       "platformModeCompilerAvailable": "더 좁은 문맥에서 막지 않는 한 독립 컴파일러를 계속 사용할 수 있습니다.",
-      "platformModeHighStakesNotice": "현재 배포와 정책 체크리스트를 충족하기 전에는 시험·대회·채용 모드를 고위험 평가 준비 완료로 간주하지 마세요.",
+      "platformModeHighStakesNotice": "현재 배포와 운영 체크리스트를 모두 갖추기 전에는 시험, 대회, 채용 모드를 고위험 평가용으로 보지 마세요.",
       "publicSignupTitle": "공개 회원가입",
       "publicSignupEnabled": "누구나 사용자 계정을 만들 수 있도록 허용",
       "publicSignupEnabledHint": "활성화하면 로그인 페이지와 공개 화면에 사용자용 회원가입 흐름이 표시됩니다.",
@@ -1186,8 +1206,8 @@
       "uploadDialogTitle": "파일 업로드",
       "uploadDialogDescription": "이미지와 첨부파일을 업로드합니다. 이미지는 자동으로 최적화됩니다.",
       "dropzoneHint": "클릭하거나 파일을 여기에 드래그하세요",
-      "dropzoneActive": "파일을 놓으세요...",
-      "uploading": "업로드 중...",
+      "dropzoneActive": "파일을 여기에 놓으세요",
+      "uploading": "업로드 중",
       "upload": "업로드",
       "uploadSuccess": "{count}개 파일이 업로드되었습니다",
       "uploadError": "업로드 실패",
@@ -1214,7 +1234,7 @@
       },
       "filters": {
         "searchLabel": "검색",
-        "searchPlaceholder": "파일명으로 검색...",
+        "searchPlaceholder": "파일명으로 검색",
         "categoryLabel": "분류",
         "categoryAll": "전체",
         "categoryImage": "이미지",
@@ -1259,7 +1279,7 @@
       "cannotDeleteBuiltin": "기본 제공 역할은 삭제할 수 없습니다.",
       "cannotDeleteWithUsers": "이 역할에 {count}명의 사용자가 할당되어 있습니다. 삭제하기 전에 다른 역할로 변경하세요.",
       "roleNameReserved": "이 역할 이름은 예약되어 있습니다.",
-      "roleNameExists": "이미 같은 이름의 역할이 존재합니다.",
+      "roleNameExists": "같은 이름의 역할이 이미 있습니다.",
       "cannotReduceSuperAdmin": "최고 관리자 권한은 축소할 수 없습니다.",
       "cannotChangeBuiltinLevel": "기본 제공 역할의 레벨은 변경할 수 없습니다.",
       "noRoles": "역할이 없습니다.",
@@ -1279,7 +1299,7 @@
       "title": "언어 관리",
       "description": "지원 프로그래밍 언어, 컴파일 옵션, Docker 이미지를 설정합니다.",
       "languageCount": "{total}개 언어 중 {enabled}개 활성화",
-      "search": "언어 검색...",
+      "search": "언어 검색",
       "noResults": "언어를 찾을 수 없습니다.",
       "noCompileCommand": "컴파일 없음",
       "enabled": "활성화됨",
@@ -1298,7 +1318,7 @@
         "resetAllConfirm": "모든 언어를 기본 설정으로 초기화하시겠습니까? 이 작업은 되돌릴 수 없습니다.",
         "build": "이미지 빌드",
         "remove": "이미지 삭제",
-        "building": "빌드 중...",
+        "building": "빌드 중",
         "removeConfirm": "이 Docker 이미지를 삭제하시겠습니까? 나중에 다시 빌드할 수 있습니다.",
         "more": "더보기",
         "pruneStale": "오래된 이미지 정리",
@@ -1365,7 +1385,7 @@
       "tableTitle": "워커 목록",
       "tableDescription": "등록된 워커 {count}개",
       "refresh": "새로고침",
-      "loading": "로딩 중...",
+      "loading": "불러오는 중",
       "noWorkers": "등록된 채점 워커가 없습니다.",
       "colAlias": "별칭",
       "colHostname": "호스트명",
@@ -1390,7 +1410,7 @@
       "addWorkerScript": "방법 2: 배포 스크립트",
       "addWorkerNote": "<your-judge-auth-token>을 .env.production 파일의 JUDGE_AUTH_TOKEN으로 교체하세요. 워커가 시작되면 이 목록에 표시됩니다.",
       "copied": "클립보드에 복사됨",
-      "aliasPlaceholder": "별칭...",
+      "aliasPlaceholder": "별칭",
       "auditNotice": "워커 목록 및 통계 열람은 감사 로그에 기록됩니다."
     },
     "apiKeys": {
@@ -1528,7 +1548,7 @@
     "newPassword": "새 비밀번호",
     "confirmPassword": "새 비밀번호 확인",
     "changeButton": "비밀번호 변경",
-    "changing": "변경 중...",
+    "changing": "변경 중",
     "passwordMismatch": "비밀번호가 일치하지 않습니다",
     "passwordTooShort": "비밀번호는 8자 이상이어야 합니다",
     "passwordTooLong": "비밀번호는 128자 이하여야 합니다",
@@ -1536,11 +1556,11 @@
     "changePasswordRateLimited": "비밀번호 변경 시도가 너무 많습니다. 잠시 후 다시 시도해주세요.",
     "error": "오류가 발생했습니다",
     "userNotFound": "사용자를 찾을 수 없습니다",
-    "sessionExpired": "세션이 만료되었습니다. 로그인 페이지로 이동합니다..."
+    "sessionExpired": "세션이 만료되어 로그인 페이지로 이동합니다."
   },
   "comments": {
     "title": "피드백",
-    "placeholder": "이 제출에 대한 피드백을 작성하세요...",
+    "placeholder": "이 제출에 대한 피드백을 남겨 보세요",
     "submit": "댓글 추가",
     "noComments": "아직 피드백이 없습니다.",
     "by": "{author} 작성",
@@ -1548,7 +1568,7 @@
     "loadError": "댓글을 불러오지 못했습니다",
     "submitError": "댓글 제출에 실패했습니다",
     "commentingOnLine": "줄에 댓글 작성 중",
-    "linePlaceholder": "{line}번째 줄에 피드백을 작성하세요..."
+    "linePlaceholder": "{line}번째 줄에 남길 피드백을 적어 보세요"
   },
   "judge": {
     "title": "채점 환경",
@@ -1621,11 +1641,11 @@
     "chatWidget": {
       "name": "AI 도우미",
       "description": "사용자들을 돕는 AI 도우미",
-      "placeholder": "질문을 입력하세요...",
+      "placeholder": "질문을 입력하세요",
       "send": "보내기",
       "close": "닫기",
       "minimize": "최소화",
-      "thinking": "답변 생성 중...",
+      "thinking": "답변 작성 중",
       "errorGeneric": "문제가 발생했습니다. 다시 시도해주세요.",
       "errorRateLimit": "메시지를 너무 빨리 보냈습니다. 잠시 후 다시 시도해주세요.",
       "errorNotConfigured": "채팅이 설정되지 않았습니다. 관리자에게 문의하세요.",
@@ -1641,7 +1661,7 @@
       "assistantNamePlaceholder": "예: JudgeKit AI 도우미",
       "assistantNameHint": "AI 도우미의 표시 이름입니다. 비워두면 기본값이 사용됩니다.",
       "systemPrompt": "시스템 프롬프트",
-      "systemPromptHint": "AI 도우미에게 전달할 지시사항입니다.",
+      "systemPromptHint": "AI 도우미에 전달할 지시문입니다.",
       "knowledgeBase": "지식 베이스",
       "knowledgeBaseHint": "모든 대화에 포함되는 참고 자료입니다 (최대 50,000자).",
       "maxTokens": "최대 토큰",
@@ -1653,8 +1673,8 @@
       "configError": "설정 저장에 실패했습니다.",
       "aiDisabledGlobally": "AI 도우미가 현재 비활성화되어 있습니다.",
       "aiDisabledForProblem": "이 문제에서는 AI 도우미를 사용할 수 없습니다.",
-      "autoAnalysisError": "제출 오류를 분석하는 중...",
-      "autoAnalysisReview": "정답 코드를 리뷰하는 중...",
+      "autoAnalysisError": "제출 오류 분석 중",
+      "autoAnalysisReview": "정답 코드 검토 중",
       "providerOptions": {
         "openai": "OpenAI",
         "claude": "Claude (Anthropic)",
@@ -1665,7 +1685,7 @@
       "viewChatLogs": "채팅 로그 보기",
       "noLogs": "아직 채팅 로그가 없습니다.",
       "noMessages": "이 대화에 메시지가 없습니다.",
-      "loggingNotice": "메시지는 지원 품질 개선 및 오남용 조사를 위해 권한이 있는 운영자가 저장·검토할 수 있습니다.",
+      "loggingNotice": "메시지는 지원 품질을 높이고 오남용을 조사하기 위해 권한이 있는 운영자가 저장하고 검토할 수 있습니다.",
       "chatLogsRetentionNotice": "채팅 기록은 다른 검토 절차로 별도 보관되지 않는 한 {days}일 후 자동 삭제됩니다.",
       "chatLogsAccessNotice": "채팅 로그 권한이 있는 운영자만 지원, 안전, 평가 거버넌스 목적에서 필요한 범위로 검토해야 합니다.",
       "chatLogsAuditNotice": "채팅 로그 세션 열람은 감사 로그에 기록됩니다."
@@ -1690,7 +1710,20 @@
     "submittedAt": "제출 시간",
     "noProblemRankings": "아직 맞은 제출이 없습니다.",
     "viewRankings": "랭킹",
-    "bestPerUser": "사용자별 최고 기록"
+    "bestPerUser": "사용자별 최고 기록",
+    "tiers": {
+      "bronze": "브론즈",
+      "silver": "실버",
+      "gold": "골드",
+      "platinum": "플래티넘",
+      "diamond": "다이아몬드",
+      "ruby": "루비"
+    },
+    "periodFilter": {
+      "all": "전체 기간",
+      "week": "이번 주",
+      "month": "이번 달"
+    }
   },
   "contests": {
     "title": "대회",
@@ -1708,7 +1741,7 @@
       "assessmentTitle": "제목",
       "titlePlaceholder": "예: 백엔드 엔지니어 평가",
       "assessmentDescription": "설명 (선택)",
-      "descriptionPlaceholder": "평가에 대한 간단한 설명...",
+      "descriptionPlaceholder": "평가 설명을 간단히 적어 보세요",
       "duration": "소요 시간",
       "minutes": "분",
       "antiCheat": "부정행위 방지",
@@ -1718,7 +1751,7 @@
       "addProblem": "문제 추가",
       "pts": "점",
       "createAssessment": "평가 만들기",
-      "creating": "생성 중...",
+      "creating": "생성 중",
       "createSuccess": "평가를 만들었습니다",
       "createError": "평가를 만들지 못했습니다"
     },
@@ -1759,7 +1792,7 @@
       "attempts": "{count}회 시도",
       "acAfter": "+{count}",
       "failedAttempts": "-{count}",
-      "refreshing": "새로고침 중...",
+      "refreshing": "새로고침 중",
       "fetchError": "데이터를 불러오지 못했습니다.",
       "retry": "다시 시도"
     },
@@ -1782,12 +1815,12 @@
       "generateSuccess": "접속 코드가 생성되었습니다",
       "revokeSuccess": "접속 코드가 폐기되었습니다",
       "revokeConfirm": "접속 코드를 폐기하시겠습니까? 기존 참가자의 접근 권한은 유지됩니다.",
-      "joining": "참가 중...",
-      "successRedirect": "대회로 이동 중..."
+      "joining": "참가 처리 중",
+      "successRedirect": "대회로 이동하는 중"
     },
     "invite": {
       "title": "참가자 초대",
-      "searchPlaceholder": "사용자명 또는 이름으로 검색...",
+      "searchPlaceholder": "사용자명 또는 이름으로 검색",
       "invite": "초대",
       "invited": "초대됨",
       "alreadyEnrolled": "이미 등록됨",
@@ -1813,7 +1846,7 @@
       },
       "warningTabSwitch": "탭 전환이 감지되었습니다. 검토용 신호가 기록됩니다.",
       "similarityCheck": "유사도 스캔 실행",
-      "similarityRunning": "유사도 스캔 진행 중...",
+      "similarityRunning": "유사도 검사 중",
       "similarityComplete": "유사도 스캔이 완료되었습니다. {count}쌍이 검토 대상으로 표시되었습니다.",
       "flaggedPairs": "표절 의심 쌍",
       "student1": "사용자 1",
@@ -1840,7 +1873,7 @@
       "retry": "다시 시도",
       "showingEvents": "{total}건 중 {shown}건 표시",
       "loadMore": "더 보기",
-      "signalsDisclaimer": "여기 표시된 신호는 참고용입니다. 이것만으로 부정행위를 단정할 수 없으며, 반드시 다른 정보와 함께 종합적으로 판단해야 합니다.",
+      "signalsDisclaimer": "여기에 보이는 신호는 참고용입니다. 이것만으로 부정행위를 단정하면 안 됩니다. 다른 정보와 함께 봐야 합니다.",
       "similarityNoSubmissions": "비교할 제출물이 없어 유사도 스캔을 실행하지 않았습니다.",
       "similaritySkippedTooManySubmissions": "제출물 {count}건이 현재 검토 한도 {limit}건을 초과하여 유사도 스캔을 실행하지 않았습니다.",
       "similarityTimedOut": "유사도 스캔이 시간 안에 완료되지 않아 결과를 기록하지 않았습니다.",
@@ -1935,7 +1968,7 @@
       "linkCreatedTitle": "초대 링크가 생성되었습니다",
       "linkCreatedDescription": "링크가 클립보드에 복사되었습니다. 아래에서 다시 복사할 수도 있습니다.",
       "noInvitations": "아직 초대가 없습니다.",
-      "searchPlaceholder": "이름 또는 이메일로 검색...",
+      "searchPlaceholder": "이름 또는 이메일로 검색",
       "filterAll": "전체",
       "colName": "이름",
       "colEmail": "이메일",
@@ -1971,13 +2004,13 @@
       "title": "지원자 현황",
       "candidateCount": "{count}명의 지원자",
       "exportCsv": "CSV 내보내기",
-      "searchPlaceholder": "이름 또는 사용자명으로 검색...",
+      "searchPlaceholder": "이름 또는 사용자명으로 검색",
       "name": "이름",
       "score": "점수",
       "solved": "풀이",
       "flags": "경고",
       "noCandidates": "지원자가 없습니다.",
-      "loading": "지원자 정보를 불러오는 중...",
+      "loading": "지원자 정보를 불러오는 중",
       "fetchError": "지원자 정보를 불러오지 못했습니다."
     },
     "mySubmissions": {
@@ -2034,18 +2067,18 @@
     "stderr": "표준 에러 (stderr)",
     "compileOutput": "컴파일 출력",
     "run": "실행",
-    "running": "실행 중...",
+    "running": "실행 중",
     "output": "출력",
     "noOutput": "아직 출력이 없습니다. 코드를 작성하고 실행을 클릭하세요.",
     "timedOut": "실행 시간 초과",
     "exitCode": "종료 코드: {code}",
     "executionTime": "실행 시간: {time}ms",
     "compileError": "컴파일 실패",
-    "alreadyRunning": "이미 실행 중입니다. 잠시 기다려 주세요...",
+    "alreadyRunning": "이미 실행 중입니다. 잠시만 기다려 주세요.",
     "runFailed": "코드 실행에 실패했습니다",
     "networkError": "네트워크 오류가 발생했습니다",
     "codeEditorLabel": "코드 편집기",
-    "loadingLanguages": "언어 로드 중...",
+    "loadingLanguages": "언어 목록을 불러오는 중",
     "noLanguagesTitle": "사용 가능한 언어 없음",
     "noLanguagesDescription": "현재 활성화된 프로그래밍 언어가 없습니다. 관리자에게 문의해 주세요."
   },
@@ -2186,7 +2219,7 @@
       "noCompileCommand": "없음 (인터프리터)",
       "runtimeInfo": "런타임 정보",
       "languageCount": "{total}개 언어 중 {enabled}개 활성화",
-      "search": "언어 검색...",
+      "search": "언어 검색",
       "noResults": "검색 결과가 없습니다."
     }
   },
@@ -2227,7 +2260,7 @@
     "noteCompletion": "인터넷 연결과 시간 여유가 있는지 확인하고 시작하세요.",
     "startAssessment": "평가 시작",
     "continueAssessment": "평가 계속하기",
-    "starting": "시작 중...",
+    "starting": "시작 중",
     "startFailed": "시작하지 못했습니다. 다시 시도해 주세요.",
     "claimed": "이미 사용된 초대",
     "claimedDescription": "이 초대 링크는 이미 사용되었습니다. 이 기기에서 기존 세션을 이어가거나 채용 이메일과 계정 비밀번호로 로그인하세요.",
@@ -2264,8 +2297,8 @@
     },
     "home": {
       "eyebrow": "온라인 저지 플랫폼",
-      "title": "코드를 작성하고, 제출하고, 채점받으세요.",
-      "description": "JudgeKit은 프로그래밍 연습, 대회, 과제를 위한 최신 온라인 저지 플랫폼입니다. 문제를 풀고, 대회에 참가하고, 성장 과정을 추적하세요.",
+      "title": "코드를 제출하고 바로 결과를 확인하세요.",
+      "description": "JudgeKit은 프로그래밍 연습, 대회, 과제를 한곳에서 다룰 수 있는 온라인 저지입니다. 문제를 풀고 제출 결과를 확인하면서 실력을 쌓아 보세요.",
       "primaryCta": "워크스페이스 열기",
       "secondaryCta": "로그인",
       "workersTitle": "채점 워커 현황",
@@ -2290,18 +2323,18 @@
         },
         "contests": {
           "title": "대회",
-          "description": "진행 중인 프로그래밍 대회를 탐색하고 참여하세요."
+          "description": "진행 중이거나 예정된 대회를 둘러보고 참가해 보세요."
         },
         "community": {
           "title": "커뮤니티",
-          "description": "질문하고, 팁을 공유하고, 다른 사용자와 소통하세요."
+          "description": "질문을 올리고 팁을 나누며 다른 사용자와 이야기해 보세요."
         }
       }
     },
     "practice": {
       "title": "연습 영역 미리보기",
-      "description": "공개 연습 탐색은 다음 단계에서 도입됩니다. 이번 단계에서는 새로운 정보 구조를 먼저 마련합니다.",
-      "note": "1단계에서는 공개 경로와 계층 구조를 먼저 만듭니다. 공개 문제 탐색과 게스트 접근 정책은 다음 단계에서 구현됩니다.",
+      "description": "공개 연습 화면은 아직 다듬는 중입니다. 이번 단계에서는 새 정보 구조부터 정리합니다.",
+      "note": "1단계에서는 공개 경로와 화면 구조만 먼저 잡습니다. 공개 문제 탐색과 게스트 접근 정책은 다음 단계에서 붙입니다.",
       "primaryCta": "워크스페이스 열기",
       "secondaryCta": "로그인",
       "catalogTitle": "공개 문제 카탈로그",
@@ -2318,6 +2351,55 @@
       "successRate": "정답률",
       "createdAt": "등록일",
       "problemTab": "문제",
+      "searchLabel": "검색",
+      "searchPlaceholder": "문제 제목으로 검색",
+      "filterByTag": "태그",
+      "allTags": "전체 태그",
+      "sortBy": "정렬",
+      "sortOptions": {
+        "number_asc": "번호순",
+        "difficulty_asc": "난이도 (쉬운 순)",
+        "difficulty_desc": "난이도 (어려운 순)",
+        "successRate_desc": "정답률 (높은 순)",
+        "newest": "최신순"
+      },
+      "applyFilters": "적용",
+      "resetFilters": "초기화",
+      "progressLabel": "진행",
+      "progress": {
+        "solved": "해결",
+        "attempted": "시도",
+        "untried": "미시도"
+      },
+      "progressFilter": {
+        "all": "전체",
+        "solved": "해결",
+        "unsolved": "미해결",
+        "attempted": "시도"
+      },
+      "showingRange": "전체 {total}개 중 {start}~{end}",
+      "stats": {
+        "title": "문제 통계",
+        "totalSubmissions": "전체 제출",
+        "acceptedCount": "정답",
+        "acceptanceRate": "정답률",
+        "uniqueSolvers": "정답자 수"
+      },
+      "similarProblems": "비슷한 문제",
+      "mySubmissionsTab": "내 제출",
+      "noMySubmissions": "이 문제에 아직 제출하지 않았습니다.",
+      "editorial": {
+        "tab": "해설",
+        "title": "문제 해설",
+        "description": "공식 풀이 설명과 접근법입니다.",
+        "empty": "아직 해설이 등록되지 않았습니다.",
+        "createLabel": "해설 작성",
+        "createTitle": "해설 작성하기",
+        "createContent": "문제의 접근법, 알고리즘, 핵심 아이디어를 설명해 주세요.",
+        "submitLabel": "해설 게시",
+        "success": "해설이 게시되었습니다",
+        "signIn": "해설을 보려면 로그인하세요"
+      },
       "discussion": {
         "title": "문제 토론",
         "description": "풀이 방법이나 궁금한 점을 자유롭게 나눠 보세요.",
@@ -2335,7 +2417,7 @@
     "playground": {
       "title": "공개 플레이그라운드",
       "description": "로그인 없이 코드를 바로 실행해 볼 수 있습니다.",
-      "note": "이제 빠른 테스트를 위한 게스트 플레이그라운드 실행이 가능합니다. 채점 제출과 대회 참여는 계속 인증이 필요합니다.",
+      "note": "게스트 플레이그라운드에서 빠르게 테스트할 수 있습니다. 채점 제출이나 대회 참여는 계속 로그인이 필요합니다.",
       "primaryCta": "워크스페이스 열기",
       "secondaryCta": "로그인",
       "liveTitle": "공개 플레이그라운드",
@@ -2343,8 +2425,8 @@
     },
     "contests": {
       "title": "대회 카탈로그 미리보기",
-      "description": "대회 탐색은 공개 읽기, 보호된 참여 구조로 재설계되고 있습니다.",
-      "note": "1단계에서는 공개 경로를 먼저 마련합니다. 공개 대회 탐색과 참가/시작 경계는 다음 단계에서 구현됩니다.",
+      "description": "대회 화면은 공개 열람과 보호된 참여 흐름을 기준으로 다시 다듬고 있습니다.",
+      "note": "1단계에서는 공개 경로만 먼저 엽니다. 공개 대회 탐색과 참가, 시작 구분은 다음 단계에서 다듬습니다.",
       "primaryCta": "워크스페이스 열기",
       "secondaryCta": "로그인",
       "catalogTitle": "공개 대회 카탈로그",
@@ -2362,6 +2444,9 @@
       "noPublicProblems": "이 대회에는 아직 공개된 문제가 없습니다.",
       "signInToJoin": "로그인 후 참가",
       "openWorkspace": "워크스페이스 열기",
+      "archiveTitle": "지난 대회",
+      "virtualPractice": "문제 연습",
+      "virtualPracticeDescription": "대회가 종료되었지만, 공개 문제는 계속 연습할 수 있습니다.",
       "status": {
         "upcoming": "예정",
         "open": "진행 가능",
@@ -2372,8 +2457,8 @@
     },
     "community": {
       "title": "커뮤니티 미리보기",
-      "description": "JudgeKit은 일반 게시판과 문제별 토론 기능을 핵심 표면으로 추가할 예정입니다.",
-      "note": "1단계에서는 공개 커뮤니티 경로를 먼저 확보합니다. 스레드, 답글, 운영 기능은 이후 단계에서 추가됩니다.",
+      "description": "JudgeKit에 일반 게시판과 문제별 토론을 차근차근 붙이고 있습니다.",
+      "note": "1단계에서는 공개 커뮤니티 경로만 먼저 엽니다. 스레드, 답글, 운영 기능은 다음 단계에서 더합니다.",
       "primaryCta": "워크스페이스 열기",
       "secondaryCta": "로그인",
       "liveTitle": "커뮤니티 게시판",
@@ -2417,36 +2502,46 @@
       }
     }
   },
+  "userProfile": {
+    "title": "사용자 프로필",
+    "solvedCount": "해결",
+    "submissionCount": "제출",
+    "accuracy": "정답률",
+    "solvedProblems": "해결한 문제",
+    "noSolvedProblems": "아직 해결한 문제가 없습니다.",
+    "activityHeatmap": "활동",
+    "notFound": "사용자를 찾을 수 없습니다."
+  },
   "workspaceShell": {
     "sectionLabel": "워크스페이스",
     "title": "워크스페이스 홈",
-    "description": "새 워크스페이스 셸이 이제 인증 사용자용 기본 진입점입니다. 기존 기능 페이지는 계층 구조가 완전히 전환될 때까지 계속 사용할 수 있습니다.",
+    "description": "새 워크스페이스 셸이 인증 사용자용 기본 진입점이 되었습니다. 기존 기능 페이지도 구조 전환이 끝날 때까지 그대로 쓸 수 있습니다.",
     "openLink": "열기",
     "nav": {
       "home": "워크스페이스 홈",
-      "homeDescription": "새 인증 진입점으로 워크스페이스 셸을 사용합니다.",
-      "problemsDescription": "전환 기간 동안 기존 문제 흐름을 이어서 사용합니다.",
-      "contestsDescription": "새 워크스페이스 셸에서 기존 대회 흐름으로 이동합니다.",
+      "homeDescription": "새 워크스페이스 진입점입니다.",
+      "problemsDescription": "전환 기간에는 기존 문제 풀이 화면으로 이어집니다.",
+      "contestsDescription": "새 워크스페이스 셸에서 기존 대회 화면으로 이어집니다.",
       "submissionsDescription": "제출 기록과 결과를 확인합니다.",
       "profileDescription": "프로필과 환경설정을 관리합니다.",
       "discussions": "내 토론",
-      "discussionsDescription": "내가 작성했거나 참여한 토론을 다시 확인합니다."
+      "discussionsDescription": "내가 쓴 글이나 참여한 토론을 다시 봅니다."
     },
     "cards": {
-      "problems": "현재 문제 풀이 흐름으로 이동합니다.",
-      "contests": "기존 대회 경험으로 계속 이동합니다.",
+      "problems": "지금 쓰는 문제 풀이 화면으로 이동합니다.",
+      "contests": "기존 대회 화면으로 이동합니다.",
       "submissions": "제출 기록과 상태를 확인합니다.",
       "profile": "계정과 에디터 환경설정을 관리합니다.",
       "discussions": "내가 시작했거나 참여한 토론 스레드를 확인합니다."
     },
     "controlCard": {
       "title": "컨트롤 센터",
-      "description": "교수자나 상위 권한 역할은 여기서 새 제어 셸로 이동할 수 있으며, 기존 운영 경로도 계속 사용 가능합니다.",
+      "description": "교수자나 상위 권한 역할은 여기서 새 제어 셸로 이동할 수 있고, 기존 운영 화면도 계속 쓸 수 있습니다.",
       "link": "컨트롤 센터 열기"
     },
     "discussions": {
       "title": "내 토론",
-      "description": "내가 시작했거나 답글을 남긴 토론을 여기에서 다시 확인할 수 있습니다.",
+      "description": "내가 글을 쓰거나 답글을 남긴 토론을 다시 볼 수 있습니다.",
       "empty": "아직 참여한 토론이 없습니다.",
       "openThread": "스레드 열기",
       "authored": "내가 시작함",
@@ -2456,31 +2551,31 @@
   "controlShell": {
     "sectionLabel": "제어",
     "title": "컨트롤 센터",
-    "description": "컨트롤 셸은 교수, 운영, 관리 기능의 새 진입점입니다. 기존 운영 경로는 계층 전환이 끝날 때까지 계속 유지됩니다.",
+    "description": "컨트롤 셸은 교수자, 운영자, 관리자를 위한 새 진입점입니다. 기존 운영 화면도 구조 전환이 끝날 때까지 그대로 유지됩니다.",
     "openLink": "열기",
     "nav": {
       "home": "컨트롤 홈",
-      "homeDescription": "새 운영 진입점으로 컨트롤 셸을 사용합니다.",
-      "groupsDescription": "기존 그룹/수업 관리 도구를 엽니다.",
-      "usersDescription": "사용자, 역할, 감사 관련 관리 화면을 엽니다.",
-      "languagesDescription": "언어 및 워커 설정 도구를 엽니다.",
-      "settingsDescription": "핵심 시스템 설정과 운영 제어를 엽니다.",
+      "homeDescription": "새 운영 진입점입니다.",
+      "groupsDescription": "그룹과 수업 관리 도구를 엽니다.",
+      "usersDescription": "사용자, 역할, 감사 관련 화면을 엽니다.",
+      "languagesDescription": "언어와 워커 설정 화면을 엽니다.",
+      "settingsDescription": "핵심 시스템 설정과 운영 제어 화면을 엽니다.",
       "discussions": "토론 관리",
-      "discussionsDescription": "공개 토론 스레드를 검토하고 고정, 잠금, 삭제할 수 있습니다."
+      "discussionsDescription": "공개 토론을 살펴보고 고정, 잠금, 삭제를 처리합니다."
     },
     "cards": {
-      "groups": "기존 그룹 및 수업 관리 흐름으로 이동합니다.",
+      "groups": "기존 그룹과 수업 관리 화면으로 이동합니다.",
       "users": "사용자, 역할, 관리 도구를 엽니다.",
-      "settings": "컨트롤 계층이 도입되는 동안 시스템 설정을 엽니다.",
+      "settings": "컨트롤 계층 전환 중에도 시스템 설정 화면을 엽니다.",
       "discussions": "토론 관리 큐를 열어 공개 스레드를 관리합니다."
     },
     "moderation": {
       "title": "토론 관리",
-      "description": "공개 토론 스레드를 검토하고 범위/상태별로 필터링한 뒤 관리 작업을 수행합니다.",
+      "description": "공개 토론 글을 살펴보고 범위와 상태로 걸러 본 뒤 필요한 관리 작업을 합니다.",
       "empty": "현재 필터에 맞는 토론 스레드가 없습니다.",
       "openThread": "스레드 열기",
       "unknownAuthor": "알 수 없는 작성자",
-      "problemMeta": "{title} · 답글 {replies}개",
+      "problemMeta": "{title}, 답글 {replies}개",
       "generalMeta": "답글 {replies}개",
       "scope": {
         "all": "전체 범위",
@@ -2492,6 +2587,17 @@
         "open": "열림",
         "locked": "잠김",
         "pinned": "고정됨"
+      }
+    },
+    "community": {
+      "moderation": {
+        "lock": "스레드 잠금",
+        "unlock": "잠금 해제",
+        "pin": "스레드 고정",
+        "unpin": "고정 해제",
+        "deleteThread": "스레드 삭제",
+        "success": "토론 상태가 업데이트되었습니다",
+        "deleteSuccess": "토론이 삭제되었습니다"
       }
     }
   }

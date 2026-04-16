@@ -14,6 +14,7 @@ describe("PublicContestList", () => {
         title="Public contest catalog"
         description="Browse public contests"
         noContestsLabel="No public contests"
+        archiveTitle="Past Contests"
         contests={[
           {
             id: "contest-1",

@@ -39,6 +39,21 @@ export async function listProblemDiscussionThreads(problemId: string) {
   });
 }
 
+export async function listProblemEditorials(problemId: string) {
+  return db.query.discussionThreads.findMany({
+    where: and(eq(discussionThreads.scopeType, "editorial"), eq(discussionThreads.problemId, problemId)),
+    with: {
+      author: { columns: { id: true, name: true, role: true } },
+      posts: {
+        with: { author: { columns: { id: true, name: true, role: true } } },
+        orderBy: [discussionPosts.createdAt],
+      },
+    },
+    orderBy: [desc(discussionThreads.pinnedAt), desc(discussionThreads.updatedAt)],
+    limit: 10,
+  });
+}
+
 export async function getDiscussionThreadById(threadId: string) {
   return db.query.discussionThreads.findFirst({
     where: eq(discussionThreads.id, threadId),

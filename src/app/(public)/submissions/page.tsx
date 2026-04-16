@@ -12,7 +12,7 @@ import {
 import { SubmissionStatusBadge } from "@/components/submission-status-badge";
 import { db } from "@/lib/db";
 import { problems, submissions, users } from "@/lib/db/schema";
-import { and, count, desc, eq, like, or } from "drizzle-orm";
+import { and, count, desc, eq, gte, like, or } from "drizzle-orm";
 import { auth } from "@/lib/auth";
 import Link from "next/link";
 import { Button } from "@/components/ui/button";
@@ -27,9 +27,15 @@ import { getLanguageDisplayLabel } from "@/lib/judge/languages";
 import { buildLocalePath, NO_INDEX_METADATA } from "@/lib/seo";
 import { getResolvedSystemSettings } from "@/lib/system-settings";
 import { LogInIcon } from "lucide-react";
+import { normalizePage, normalizePageSize, setPaginationParams } from "@/lib/pagination";
 
-const PAGE_SIZE = 25;
 const PAGE_PATH = "/submissions";
+
+type StatusFilter = "all" | "accepted" | "wrong_answer" | "time_limit" | "memory_limit" | "runtime_error" | "compile_error";
+type PeriodFilter = "all" | "today" | "week" | "month";
+
+const STATUS_FILTER_VALUES: readonly StatusFilter[] = ["all", "accepted", "wrong_answer", "time_limit", "memory_limit", "runtime_error", "compile_error"];
+const PERIOD_FILTER_VALUES: readonly PeriodFilter[] = ["all", "today", "week", "month"];
 
 type SubmissionRow = {
   id: string;
@@ -54,6 +60,30 @@ function escapeLike(value: string) {
   return value.replaceAll("\\", "\\\\").replaceAll("%", "\\%").replaceAll("_", "\\_");
 }
 
+function getPeriodStart(period: PeriodFilter): Date | null {
+  if (period === "all") return null;
+  const now = new Date();
+  switch (period) {
+    case "today": {
+      const start = new Date(now);
+      start.setHours(0, 0, 0, 0);
+      return start;
+    }
+    case "week": {
+      const start = new Date(now);
+      start.setDate(start.getDate() - start.getDay());
+      start.setHours(0, 0, 0, 0);
+      return start;
+    }
+    case "month": {
+      const start = new Date(now.getFullYear(), now.getMonth(), 1);
+      return start;
+    }
+    default:
+      return null;
+  }
+}
+
 export async function generateMetadata(): Promise<Metadata> {
   const [tCommon, t] = await Promise.all([
     getTranslations("common"),
@@ -75,7 +105,7 @@ export async function generateMetadata(): Promise<Metadata> {
 export default async function SubmissionsPage({
   searchParams,
 }: {
-  searchParams?: Promise<{ page?: string; search?: string }>;
+  searchParams?: Promise<{ page?: string; search?: string; status?: string; period?: string; pageSize?: string }>;
 }) {
   const session = await auth();
   const t = await getTranslations("submissions");
@@ -105,8 +135,18 @@ export default async function SubmissionsPage({
   }
 
   const resolvedSearchParams = searchParams ? await searchParams : undefined;
-  const currentPage = Math.max(1, Number(resolvedSearchParams?.page ?? "1") || 1);
+  const pageSize = normalizePageSize(resolvedSearchParams?.pageSize);
+  const currentPage = normalizePage(resolvedSearchParams?.page);
   const searchQuery = (resolvedSearchParams?.search ?? "").trim().slice(0, 200);
+  const rawStatus = resolvedSearchParams?.status ?? "all";
+  const currentStatus: StatusFilter = STATUS_FILTER_VALUES.includes(rawStatus as StatusFilter)
+    ? (rawStatus as StatusFilter)
+    : "all";
+  const rawPeriod = resolvedSearchParams?.period ?? "all";
+  const currentPeriod: PeriodFilter = PERIOD_FILTER_VALUES.includes(rawPeriod as PeriodFilter)
+    ? (rawPeriod as PeriodFilter)
+    : "all";
+
   const statusLabels = buildStatusLabels(t);
 
   const searchFilter = searchQuery
@@ -116,10 +156,18 @@ export default async function SubmissionsPage({
       )
     : undefined;
 
+  const statusDbFilter = currentStatus !== "all"
+    ? eq(submissions.status, currentStatus)
+    : undefined;
+
+  const periodStart = getPeriodStart(currentPeriod);
+  const periodFilter = periodStart
+    ? gte(submissions.submittedAt, periodStart)
+    : undefined;
+
   const userFilter = eq(submissions.userId, session.user.id);
-  const whereClause = userFilter && searchFilter
-    ? and(userFilter, searchFilter)
-    : userFilter ?? searchFilter ?? undefined;
+  const filters = [userFilter, searchFilter, statusDbFilter, periodFilter].filter(Boolean);
+  const whereClause = filters.length > 0 ? and(...filters) : undefined;
 
   const [countRow] = await db
     .select({ count: count() })
@@ -128,9 +176,9 @@ export default async function SubmissionsPage({
     .leftJoin(users, eq(submissions.userId, users.id))
     .where(whereClause);
   const totalCount = Number(countRow?.count ?? 0);
-  const totalPages = Math.max(1, Math.ceil(totalCount / PAGE_SIZE));
+  const totalPages = Math.max(1, Math.ceil(totalCount / pageSize));
   const clampedPage = Math.min(currentPage, totalPages);
-  const clampedOffset = (clampedPage - 1) * PAGE_SIZE;
+  const clampedOffset = (clampedPage - 1) * pageSize;
 
   const visibleSubmissions: SubmissionRow[] = await db
     .select({
@@ -156,7 +204,7 @@ export default async function SubmissionsPage({
     .leftJoin(users, eq(submissions.userId, users.id))
     .where(whereClause)
     .orderBy(desc(submissions.submittedAt))
-    .limit(PAGE_SIZE)
+    .limit(pageSize)
     .offset(clampedOffset);
   const rangeStart = visibleSubmissions.length === 0 ? 0 : clampedOffset + 1;
   const rangeEnd = clampedOffset + visibleSubmissions.length;
@@ -164,12 +212,31 @@ export default async function SubmissionsPage({
     (sub) => sub.status === "pending" || sub.status === "queued" || sub.status === "judging"
   );
 
-  const buildPageHref = (page: number) => {
+  function buildPageHref(page: number, overridePageSize = pageSize) {
     const params = new URLSearchParams();
-    if (page > 1) params.set("page", String(page));
     if (searchQuery) params.set("search", searchQuery);
+    if (currentStatus !== "all") params.set("status", currentStatus);
+    if (currentPeriod !== "all") params.set("period", currentPeriod);
+    setPaginationParams(params, page, overridePageSize);
     const qs = params.toString();
     return qs ? `${PAGE_PATH}?${qs}` : PAGE_PATH;
+  }
+
+  const statusFilterLabels: Record<StatusFilter, string> = {
+    all: t("statusFilter.all"),
+    accepted: t("statusFilter.accepted"),
+    wrong_answer: t("statusFilter.wrong_answer"),
+    time_limit: t("statusFilter.time_limit"),
+    memory_limit: t("statusFilter.memory_limit"),
+    runtime_error: t("statusFilter.runtime_error"),
+    compile_error: t("statusFilter.compile_error"),
+  };
+
+  const periodFilterLabels: Record<PeriodFilter, string> = {
+    all: t("periodFilter.all"),
+    today: t("periodFilter.today"),
+    week: t("periodFilter.week"),
+    month: t("periodFilter.month"),
   };
 
   return (
@@ -178,6 +245,45 @@ export default async function SubmissionsPage({
       <h1 className="text-3xl font-semibold tracking-tight">
         {t("title")}
       </h1>
+
+      {/* Status filter tabs */}
+      <div className="flex flex-wrap gap-2">
+        {STATUS_FILTER_VALUES.map((filter) => {
+          const params = new URLSearchParams();
+          if (searchQuery) params.set("search", searchQuery);
+          if (filter !== "all") params.set("status", filter);
+          if (currentPeriod !== "all") params.set("period", currentPeriod);
+          setPaginationParams(params, 1, pageSize);
+          const qs = params.toString();
+          return (
+            <Link key={filter} href={qs ? `${PAGE_PATH}?${qs}` : PAGE_PATH}>
+              <Button variant={currentStatus === filter ? "default" : "outline"} size="sm">
+                {statusFilterLabels[filter]}
+              </Button>
+            </Link>
+          );
+        })}
+      </div>
+
+      {/* Period filter tabs */}
+      <div className="flex flex-wrap gap-2">
+        {PERIOD_FILTER_VALUES.map((filter) => {
+          const params = new URLSearchParams();
+          if (searchQuery) params.set("search", searchQuery);
+          if (currentStatus !== "all") params.set("status", currentStatus);
+          if (filter !== "all") params.set("period", filter);
+          setPaginationParams(params, 1, pageSize);
+          const qs = params.toString();
+          return (
+            <Link key={filter} href={qs ? `${PAGE_PATH}?${qs}` : PAGE_PATH}>
+              <Button variant={currentPeriod === filter ? "default" : "outline"} size="sm">
+                {periodFilterLabels[filter]}
+              </Button>
+            </Link>
+          );
+        })}
+      </div>
+
       <Card>
         <CardContent>
           <form className="flex flex-col gap-4 md:flex-row md:items-end" method="get">
@@ -193,6 +299,14 @@ export default async function SubmissionsPage({
                 placeholder={t("searchPlaceholder")}
               />
             </div>
+            {/* Preserve status and period filters */}
+            {currentStatus !== "all" && (
+              <input type="hidden" name="status" value={currentStatus} />
+            )}
+            {currentPeriod !== "all" && (
+              <input type="hidden" name="period" value={currentPeriod} />
+            )}
+            <input type="hidden" name="pageSize" value={String(pageSize)} />
             <div className="flex gap-2 items-end">
               <Button type="submit">{tCommon("search")}</Button>
               <Link href={buildLocalePath(PAGE_PATH, locale)}>
@@ -326,7 +440,8 @@ export default async function SubmissionsPage({
       <PaginationControls
         currentPage={clampedPage}
         totalPages={totalPages}
-        buildHref={(page) => buildLocalePath(buildPageHref(page), locale)}
+        pageSize={pageSize}
+        buildHref={(page, nextPageSize) => buildLocalePath(buildPageHref(page, nextPageSize), locale)}
       />
     </div>
   );

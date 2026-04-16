@@ -1,27 +1,39 @@
 import type { Metadata } from "next";
-import { eq } from "drizzle-orm";
+import { and, count, eq, inArray, sql } from "drizzle-orm";
 import { getLocale, getTranslations } from "next-intl/server";
 import { notFound } from "next/navigation";
 import { auth } from "@/lib/auth";
 import { db } from "@/lib/db";
-import { problems } from "@/lib/db/schema";
+import { problems, submissions, problemTags, tags } from "@/lib/db/schema";
 import { PublicProblemDetail } from "@/app/(public)/_components/public-problem-detail";
 import { JsonLd } from "@/components/seo/json-ld";
-import { listProblemDiscussionThreads } from "@/lib/discussions/data";
+import { listProblemDiscussionThreads, listProblemEditorials } from "@/lib/discussions/data";
 import { DiscussionThreadForm } from "@/components/discussions/discussion-thread-form";
 import { DiscussionThreadList } from "@/components/discussions/discussion-thread-list";
+import { SubmissionStatusBadge } from "@/components/submission-status-badge";
+import { buildStatusLabels } from "@/lib/judge/status-labels";
+import { getLanguageDisplayLabel } from "@/lib/judge/languages";
+import { formatDateTimeInTimeZone } from "@/lib/datetime";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
+import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
 import { buildAbsoluteUrl, buildLocalePath, buildPublicMetadata, NO_INDEX_METADATA, summarizeTextForMetadata } from "@/lib/seo";
 import { getResolvedSystemSettings } from "@/lib/system-settings";
+import { getResolvedSystemTimeZone } from "@/lib/system-settings";
+import { formatSubmissionIdPrefix } from "@/lib/submissions/format";
+import Link from "next/link";
 
 export async function generateMetadata({ params }: { params: Promise<{ id: string }> }): Promise<Metadata> {
   const { id } = await params;
-  const [problem, t, locale] = await Promise.all([
+  const [problem, t, tProblems, locale] = await Promise.all([
     db.query.problems.findFirst({
       where: eq(problems.id, id),
       columns: { title: true, description: true, visibility: true, sequenceNumber: true, difficulty: true },
     }),
     getTranslations("common"),
+    getTranslations("problems"),
     getLocale(),
   ]);
 
@@ -47,10 +59,10 @@ export async function generateMetadata({ params }: { params: Promise<{ id: strin
       "programming problem",
       "algorithm challenge",
     ],
-    section: locale === "ko" ? "문제" : "Problem",
+    section: tProblems("title"),
     socialBadge: problem.sequenceNumber != null ? `#${problem.sequenceNumber}` : undefined,
     socialMeta: problem.difficulty != null
-      ? `${locale === "ko" ? "난이도" : "Difficulty"} ${problem.difficulty.toFixed(2)}`
+      ? `${tProblems("table.difficulty")} ${problem.difficulty.toFixed(2)}`
       : undefined,
     type: "article",
   });
@@ -58,10 +70,11 @@ export async function generateMetadata({ params }: { params: Promise<{ id: strin
 
 export default async function PublicProblemDetailPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
-  const [t, tCommon, tProblems, session, locale] = await Promise.all([
+  const [t, tCommon, tProblems, tSubmissions, session, locale] = await Promise.all([
     getTranslations("publicShell"),
     getTranslations("common"),
     getTranslations("problems"),
+    getTranslations("submissions"),
     auth(),
     getLocale(),
   ]);
@@ -71,7 +84,7 @@ export default async function PublicProblemDetailPage({ params }: { params: Prom
     with: {
       author: { columns: { name: true } },
       problemTags: {
-        with: { tag: { columns: { name: true, color: true } } },
+        with: { tag: { columns: { id: true, name: true, color: true } } },
       },
     },
   });
@@ -80,7 +93,83 @@ export default async function PublicProblemDetailPage({ params }: { params: Prom
     notFound();
   }
 
+  const timeZone = await getResolvedSystemTimeZone();
   const threads = await listProblemDiscussionThreads(problem.id);
+  const editorials = await listProblemEditorials(problem.id);
+
+  // Problem statistics
+  const [statsRow] = await db
+    .select({
+      totalSubmissions: count(),
+      acceptedCount: sql<number>`count(case when ${submissions.status} = 'accepted' then 1 end)`,
+      uniqueSolvers: sql<number>`count(distinct case when ${submissions.status} = 'accepted' then ${submissions.userId} end)`,
+    })
+    .from(submissions)
+    .where(eq(submissions.problemId, problem.id));
+
+  const totalSubmissions = Number(statsRow?.totalSubmissions ?? 0);
+  const acceptedCount = Number(statsRow?.acceptedCount ?? 0);
+  const uniqueSolvers = Number(statsRow?.uniqueSolvers ?? 0);
+  const acceptanceRate = totalSubmissions > 0 ? ((acceptedCount / totalSubmissions) * 100).toFixed(1) : "0.0";
+
+  // Similar problems (share at least one tag, exclude current)
+  const tagIds = problem.problemTags.map((pt) => pt.tag.id);
+  let similarProblems: Array<{ id: string; title: string; sequenceNumber: number | null; difficulty: number | null }> = [];
+  if (tagIds.length > 0) {
+    similarProblems = await db
+      .selectDistinct({
+        id: problems.id,
+        title: problems.title,
+        sequenceNumber: problems.sequenceNumber,
+        difficulty: problems.difficulty,
+      })
+      .from(problemTags)
+      .innerJoin(problems, eq(problemTags.problemId, problems.id))
+      .where(
+        and(
+          inArray(problemTags.tagId, tagIds),
+          eq(problems.visibility, "public"),
+          sql`${problems.id} != ${problem.id}`
+        )
+      )
+      .limit(5);
+  }
+
+  // User's submissions for this problem (when logged in)
+  let userSubmissions: Array<{
+    id: string;
+    language: string;
+    status: string | null;
+    score: number | null;
+    executionTimeMs: number | null;
+    memoryUsedKb: number | null;
+    submittedAt: Date | null;
+  }> = [];
+
+  if (session?.user) {
+    userSubmissions = await db
+      .select({
+        id: submissions.id,
+        language: submissions.language,
+        status: submissions.status,
+        score: submissions.score,
+        executionTimeMs: submissions.executionTimeMs,
+        memoryUsedKb: submissions.memoryUsedKb,
+        submittedAt: submissions.submittedAt,
+      })
+      .from(submissions)
+      .where(
+        and(
+          eq(submissions.userId, session.user.id),
+          eq(submissions.problemId, problem.id)
+        )
+      )
+      .orderBy(sql`${submissions.submittedAt} DESC`)
+      .limit(20);
+  }
+
+  const statusLabels = buildStatusLabels(tSubmissions);
+
   const problemJsonLd = {
     "@context": "https://schema.org",
     "@type": "TechArticle",
@@ -134,9 +223,13 @@ export default async function PublicProblemDetailPage({ params }: { params: Prom
         <Tabs defaultValue="problem">
           <TabsList>
             <TabsTrigger value="problem">{t("practice.problemTab")}</TabsTrigger>
+            <TabsTrigger value="editorial">{t("practice.editorial.tab")}</TabsTrigger>
+            {session?.user && (
+              <TabsTrigger value="my-submissions">{t("practice.mySubmissionsTab")}</TabsTrigger>
+            )}
             <TabsTrigger value="discussion">{t("practice.discussion.title")}</TabsTrigger>
           </TabsList>
-          <TabsContent value="problem" className="mt-4">
+          <TabsContent value="problem" className="mt-4 space-y-6">
             <PublicProblemDetail
               backHref={buildLocalePath("/practice", locale)}
               backLabel={tCommon("back")}
@@ -156,7 +249,195 @@ export default async function PublicProblemDetailPage({ params }: { params: Prom
               signInHref={signInHref}
               signInLabel={t("practice.signInToSubmit")}
             />
+
+            {/* Problem Statistics */}
+            <Card>
+              <CardHeader>
+                <CardTitle className="text-lg">{t("practice.stats.title")}</CardTitle>
+              </CardHeader>
+              <CardContent>
+                <div className="grid grid-cols-2 gap-4 sm:grid-cols-4">
+                  <div className="text-center">
+                    <div className="text-2xl font-bold">{totalSubmissions}</div>
+                    <div className="text-xs text-muted-foreground">{t("practice.stats.totalSubmissions")}</div>
+                  </div>
+                  <div className="text-center">
+                    <div className="text-2xl font-bold text-green-600">{acceptedCount}</div>
+                    <div className="text-xs text-muted-foreground">{t("practice.stats.acceptedCount")}</div>
+                  </div>
+                  <div className="text-center">
+                    <div className="text-2xl font-bold">{acceptanceRate}%</div>
+                    <div className="text-xs text-muted-foreground">{t("practice.stats.acceptanceRate")}</div>
+                  </div>
+                  <div className="text-center">
+                    <div className="text-2xl font-bold">{uniqueSolvers}</div>
+                    <div className="text-xs text-muted-foreground">{t("practice.stats.uniqueSolvers")}</div>
+                  </div>
+                </div>
+                <div className="mt-4 flex justify-center">
+                  <Link href={buildLocalePath(`/practice/problems/${problem.id}/rankings`, locale)}>
+                    <Button variant="outline" size="sm">Rankings</Button>
+                  </Link>
+                </div>
+              </CardContent>
+            </Card>
+
+            {/* Similar Problems */}
+            {similarProblems.length > 0 && (
+              <Card>
+                <CardHeader>
+                  <CardTitle className="text-lg">{t("practice.similarProblems")}</CardTitle>
+                </CardHeader>
+                <CardContent>
+                  <ul className="space-y-2">
+                    {similarProblems.map((sp) => (
+                      <li key={sp.id} className="flex items-center gap-2">
+                        <span className="font-mono text-sm text-muted-foreground w-10">
+                          {sp.sequenceNumber ?? ""}
+                        </span>
+                        <Link
+                          href={buildLocalePath(`/practice/problems/${sp.id}`, locale)}
+                          className="text-sm font-medium hover:text-primary hover:underline"
+                        >
+                          {sp.title}
+                        </Link>
+                        {sp.difficulty != null && (
+                          <Badge variant="secondary" className="text-xs">
+                            {sp.difficulty.toFixed(2).replace(/\.?0+$/, "")}
+                          </Badge>
+                        )}
+                      </li>
+                    ))}
+                  </ul>
+                </CardContent>
+              </Card>
+            )}
           </TabsContent>
+
+          {/* Editorial tab */}
+          <TabsContent value="editorial" className="mt-4 space-y-6">
+            <h2 className="text-lg font-semibold">{t("practice.editorial.title")}</h2>
+            <p className="text-sm text-muted-foreground">{t("practice.editorial.description")}</p>
+
+            {editorials.length === 0 ? (
+              <Card>
+                <CardContent className="py-6 text-sm text-muted-foreground">
+                  {t("practice.editorial.empty")}
+                </CardContent>
+              </Card>
+            ) : (
+              editorials.map((editorial) => (
+                <Card key={editorial.id}>
+                  <CardHeader>
+                    <CardTitle className="text-base">{editorial.title}</CardTitle>
+                    <div className="text-xs text-muted-foreground">
+                      {editorial.author?.name ?? t("practice.unknownAuthor")}
+                      {editorial.createdAt && (
+                        <> · {new Date(editorial.createdAt).toLocaleDateString(locale, { year: "numeric", month: "long", day: "numeric" })}</>
+                      )}
+                    </div>
+                  </CardHeader>
+                  <CardContent>
+                    <div className="prose prose-sm dark:prose-invert max-w-none whitespace-pre-wrap">
+                      {editorial.content}
+                    </div>
+                    {editorial.posts.length > 0 && (
+                      <div className="mt-6 border-t pt-4">
+                        <h3 className="text-sm font-semibold mb-2">{t("community.repliesTitle")} ({editorial.posts.length})</h3>
+                        <div className="space-y-3">
+                          {editorial.posts.map((post) => (
+                            <div key={post.id} className="rounded-md bg-muted/50 p-3">
+                              <div className="text-xs text-muted-foreground mb-1">
+                                {post.author?.name ?? t("community.unknownAuthor")}
+                              </div>
+                              <div className="text-sm whitespace-pre-wrap">{post.content}</div>
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+                    )}
+                  </CardContent>
+                </Card>
+              ))
+            )}
+
+            {/* Create editorial form for admin/instructor */}
+            {session?.user && (session.user.role === "admin" || session.user.role === "super_admin" || session.user.role === "instructor") && (
+              <DiscussionThreadForm
+                scopeType="editorial"
+                problemId={problem.id}
+                titleLabel={t("practice.editorial.createTitle")}
+                contentLabel={t("practice.editorial.createContent")}
+                submitLabel={t("practice.editorial.submitLabel")}
+                successLabel={t("practice.editorial.success")}
+                signInLabel=""
+                canPost={true}
+                signInHref=""
+              />
+            )}
+          </TabsContent>
+
+          {/* My Submissions tab */}
+          {session?.user && (
+            <TabsContent value="my-submissions" className="mt-4 space-y-4">
+              <h2 className="text-lg font-semibold">{t("practice.mySubmissionsTab")}</h2>
+              {userSubmissions.length === 0 ? (
+                <p className="text-sm text-muted-foreground">{t("practice.noMySubmissions")}</p>
+              ) : (
+                <Card>
+                  <CardContent className="p-0">
+                    <div className="overflow-x-auto">
+                      <Table>
+                        <TableHeader>
+                          <TableRow>
+                            <TableHead>{tSubmissions("table.id")}</TableHead>
+                            <TableHead>{tSubmissions("table.language")}</TableHead>
+                            <TableHead>{tSubmissions("table.status")}</TableHead>
+                            <TableHead>{tSubmissions("table.score")}</TableHead>
+                            <TableHead>{tSubmissions("table.submittedAt")}</TableHead>
+                            <TableHead>{tSubmissions("table.action")}</TableHead>
+                          </TableRow>
+                        </TableHeader>
+                        <TableBody>
+                          {userSubmissions.map((sub) => (
+                            <TableRow key={sub.id}>
+                              <TableCell className="font-mono text-xs">
+                                <Link href={buildLocalePath(`/submissions/${sub.id}`, locale)} className="text-primary hover:underline">
+                                  {formatSubmissionIdPrefix(sub.id)}
+                                </Link>
+                              </TableCell>
+                              <TableCell>{getLanguageDisplayLabel(sub.language)}</TableCell>
+                              <TableCell>
+                                <SubmissionStatusBadge
+                                  label={statusLabels[sub.status as keyof typeof statusLabels] ?? sub.status}
+                                  status={sub.status}
+                                  executionTimeMs={sub.executionTimeMs}
+                                  memoryUsedKb={sub.memoryUsedKb}
+                                  score={sub.score}
+                                />
+                              </TableCell>
+                              <TableCell>{sub.score !== null ? Math.round(sub.score * 100) / 100 : "-"}</TableCell>
+                              <TableCell>
+                                {sub.submittedAt
+                                  ? formatDateTimeInTimeZone(sub.submittedAt, locale, timeZone)
+                                  : "-"}
+                              </TableCell>
+                              <TableCell>
+                                <Link href={buildLocalePath(`/submissions/${sub.id}`, locale)}>
+                                  <Button variant="outline" size="sm">{tCommon("view")}</Button>
+                                </Link>
+                              </TableCell>
+                            </TableRow>
+                          ))}
+                        </TableBody>
+                      </Table>
+                    </div>
+                  </CardContent>
+                </Card>
+              )}
+            </TabsContent>
+          )}
+
           <TabsContent value="discussion" className="mt-4 space-y-6">
             <DiscussionThreadForm
               scopeType="problem"
