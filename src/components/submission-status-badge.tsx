@@ -96,6 +96,7 @@ export function SubmissionStatusBadge({
     <Badge
       variant={variant ?? getSubmissionStatusVariant(status)}
       className={cn("inline-flex items-center gap-1.5", className)}
+      aria-label={label}
     >
       <SubmissionStatusIcon status={status} />
       {showLivePulse && isActiveSubmissionStatus(status) && (

@@ -121,7 +121,7 @@ export function SubmissionDetailClient(props: SubmissionDetailClientProps) {
               <ArrowLeft className="size-4" />
               {tCommon("back")}
             </Link>
-            <h2 className="mb-2 text-2xl font-bold">{t("submissionId", { id: formatSubmissionIdPrefix(submission.id) })}</h2>
+            <h1 className="mb-2 text-2xl font-bold">{t("submissionId", { id: formatSubmissionIdPrefix(submission.id) })}</h1>
             <div className="flex flex-wrap items-center gap-2" role="status" aria-live="polite">
               <Badge variant="outline">
                 {t("user")}: {submission.user?.name ?? "-"}

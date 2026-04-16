@@ -80,7 +80,6 @@ export function ThemeToggle({ className, dbTheme }: { className?: string; dbThem
         )}
       >
         <ThemeTriggerIcon className="size-4" theme={selectedTheme} />
-        <span className="sr-only">{t("theme")}</span>
       </DropdownMenuTrigger>
       <DropdownMenuContent align="end" className="w-40">
         <DropdownMenuGroup>

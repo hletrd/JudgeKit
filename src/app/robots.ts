@@ -1,17 +1,28 @@
 import type { MetadataRoute } from "next";
-import { getAuthUrlObject } from "@/lib/security/env";
-import { ROBOTS_DISALLOWED_PATHS } from "@/lib/public-route-seo";
+import { buildAbsoluteUrl } from "@/lib/seo";
 
 export default function robots(): MetadataRoute.Robots {
-  const siteUrl = getAuthUrlObject();
+  const siteUrl = buildAbsoluteUrl("/").replace(/\/$/, "");
+  const sitemapUrl = buildAbsoluteUrl("/sitemap.xml");
 
   return {
+    host: siteUrl,
     rules: {
       userAgent: "*",
       allow: "/",
-      disallow: [...ROBOTS_DISALLOWED_PATHS],
+      disallow: [
+        "/api",
+        "/dashboard",
+        "/workspace",
+        "/control",
+        "/login",
+        "/signup",
+        "/change-password",
+        "/recruit",
+        "/community/new",
+        "/submissions",
+      ],
     },
-    host: siteUrl?.origin,
-    sitemap: siteUrl ? `${siteUrl.origin}/sitemap.xml` : undefined,
+    sitemap: sitemapUrl,
   };
 }

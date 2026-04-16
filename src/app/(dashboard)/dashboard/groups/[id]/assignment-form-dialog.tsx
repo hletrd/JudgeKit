@@ -21,6 +21,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Textarea } from "@/components/ui/textarea";
+import { Checkbox } from "@/components/ui/checkbox";
 
 type AvailableProblem = {
   id: string;
@@ -483,40 +484,43 @@ export default function AssignmentFormDialog({
                   <p className="text-sm text-muted-foreground">{t("freezeLeaderboardDescription")}</p>
                 </div>
 
-                <div className="flex items-center gap-3">
-                  <input
-                    type="checkbox"
-                    id="enable-anti-cheat"
-                    checked={enableAntiCheat}
-                    onChange={(e) => setEnableAntiCheat(e.target.checked)}
-                    disabled={isLoading}
-                    className="size-4 rounded border-gray-300"
-                  />
-                  <Label htmlFor="enable-anti-cheat">{t("enableAntiCheatLabel")}</Label>
+                <div className="space-y-2">
+                  <div className="flex items-center gap-3">
+                    <Checkbox
+                      id="enable-anti-cheat"
+                      checked={enableAntiCheat}
+                      onCheckedChange={setEnableAntiCheat}
+                      disabled={isLoading}
+                    />
+                    <Label htmlFor="enable-anti-cheat">{t("enableAntiCheatLabel")}</Label>
+                  </div>
+                  <p className="text-sm text-muted-foreground">{t("enableAntiCheatDescription")}</p>
                 </div>
 
-                <div className="flex items-center gap-3">
-                  <input
-                    type="checkbox"
-                    id="show-results-to-candidate"
-                    checked={showResultsToCandidate}
-                    onChange={(e) => setShowResultsToCandidate(e.target.checked)}
-                    disabled={isLoading}
-                    className="size-4 rounded border-gray-300"
-                  />
-                  <Label htmlFor="show-results-to-candidate">{t("showResultsToCandidateLabel")}</Label>
+                <div className="space-y-2">
+                  <div className="flex items-center gap-3">
+                    <Checkbox
+                      id="show-results-to-candidate"
+                      checked={showResultsToCandidate}
+                      onCheckedChange={setShowResultsToCandidate}
+                      disabled={isLoading}
+                    />
+                    <Label htmlFor="show-results-to-candidate">{t("showResultsToCandidateLabel")}</Label>
+                  </div>
+                  <p className="text-sm text-muted-foreground">{t("showResultsToCandidateDescription")}</p>
                 </div>
 
-                <div className="flex items-center gap-3">
-                  <input
-                    type="checkbox"
-                    id="hide-scores-from-candidates"
-                    checked={hideScoresFromCandidates}
-                    onChange={(e) => setHideScoresFromCandidates(e.target.checked)}
-                    disabled={isLoading}
-                    className="size-4 rounded border-gray-300"
-                  />
-                  <Label htmlFor="hide-scores-from-candidates">{t("hideScoresFromCandidatesLabel")}</Label>
+                <div className="space-y-2">
+                  <div className="flex items-center gap-3">
+                    <Checkbox
+                      id="hide-scores-from-candidates"
+                      checked={hideScoresFromCandidates}
+                      onCheckedChange={setHideScoresFromCandidates}
+                      disabled={isLoading}
+                    />
+                    <Label htmlFor="hide-scores-from-candidates">{t("hideScoresFromCandidatesLabel")}</Label>
+                  </div>
+                  <p className="text-sm text-muted-foreground">{t("hideScoresFromCandidatesDescription")}</p>
                 </div>
               </>
             )}

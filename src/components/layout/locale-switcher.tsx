@@ -1,7 +1,7 @@
 "use client";
 
 import { useLocale, useTranslations } from "next-intl";
-import { usePathname, useRouter, useSearchParams } from "next/navigation";
+import { usePathname, useSearchParams } from "next/navigation";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -12,15 +12,19 @@ import {
 import { Button } from "@/components/ui/button";
 import { Languages } from "lucide-react";
 import { DEFAULT_LOCALE, LOCALE_COOKIE_NAME, LOCALE_QUERY_PARAM } from "@/lib/i18n/constants";
+import { forceNavigate } from "@/lib/navigation/client";
 
 export function LocaleSwitcher() {
   const t = useTranslations("common");
-  const router = useRouter();
   const pathname = usePathname();
   const searchParams = useSearchParams();
   const currentLocale = useLocale();
 
   function setLocale(locale: string) {
+    if (locale === currentLocale) {
+      return;
+    }
+
     document.cookie = `${LOCALE_COOKIE_NAME}=${locale}; Path=/; SameSite=Lax; ${location.protocol === "https:" ? "Secure; " : ""}Max-Age=${60 * 60 * 24 * 365}`;
     const params = new URLSearchParams(searchParams.toString());
 
@@ -31,7 +35,7 @@ export function LocaleSwitcher() {
     }
 
     const nextUrl = params.size > 0 ? `${pathname}?${params.toString()}` : pathname;
-    router.replace(nextUrl, { scroll: false });
+    forceNavigate(nextUrl);
   }
 
   return (
@@ -40,15 +44,11 @@ export function LocaleSwitcher() {
         render={
           <Button variant="ghost" size="icon" aria-label={t("language")}>
             <Languages className="size-4" aria-hidden="true" />
-            <span className="sr-only">{t("language")}</span>
           </Button>
         }
       />
       <DropdownMenuContent align="end">
-        <DropdownMenuRadioGroup
-          value={currentLocale}
-          onValueChange={(value) => setLocale(value)}
-        >
+        <DropdownMenuRadioGroup value={currentLocale} onValueChange={(value) => setLocale(value)}>
           <DropdownMenuRadioItem value="en">
             {t("english")}
           </DropdownMenuRadioItem>
