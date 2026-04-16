@@ -44,6 +44,29 @@ describe("ProblemDescription", () => {
     );
   });
 
+  it("keeps copy buttons on fenced sample input and output sections", () => {
+    render(
+      <ProblemDescription
+        description={`## 예제 입력 1
+
+\`\`\`
+1 2
+\`\`\`
+
+## 예제 출력 1
+
+\`\`\`
+3
+\`\`\``}
+      />
+    );
+
+    const buttons = screen.getAllByTestId("copy-code-button");
+    expect(buttons).toHaveLength(2);
+    expect(buttons[0]).toHaveAttribute("data-value", "1 2");
+    expect(buttons[1]).toHaveAttribute("data-value", "3");
+  });
+
   it("renders HTML content safely through ReactMarkdown", () => {
     const html = "<p>Hello world</p>";
     render(<ProblemDescription description={html} />);
