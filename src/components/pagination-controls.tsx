@@ -6,11 +6,13 @@ import {
   ChevronsRight,
 } from "lucide-react";
 import { getTranslations } from "next-intl/server";
+import { DEFAULT_PAGE_SIZE, PAGE_SIZE_OPTIONS } from "@/lib/pagination";
 
 interface PaginationControlsProps {
   currentPage: number;
   totalPages: number;
-  buildHref: (page: number) => string;
+  pageSize?: number;
+  buildHref: (page: number, pageSize: number) => string;
 }
 
 const navBtn = "inline-flex items-center justify-center rounded-md text-sm font-medium transition-colors hover:bg-accent hover:text-accent-foreground size-8 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring";
@@ -48,81 +50,102 @@ function getPageNumbers(current: number, total: number): (number | "...")[] {
 export async function PaginationControls({
   currentPage,
   totalPages,
+  pageSize = DEFAULT_PAGE_SIZE,
   buildHref,
 }: PaginationControlsProps) {
   const t = await getTranslations("common");
+  const shouldRenderPageNav = totalPages > 1;
+  const shouldRenderSizeSelector = PAGE_SIZE_OPTIONS.length > 1;
 
-  if (totalPages <= 1) return null;
+  if (!shouldRenderPageNav && !shouldRenderSizeSelector) return null;
 
   const pages = getPageNumbers(currentPage, totalPages);
 
   return (
-    <nav role="navigation" aria-label={t("paginationNav")} className="flex items-center justify-center gap-1 mt-4">
-      {/* First */}
-      {currentPage > 1 ? (
-        <Link href={buildHref(1)} aria-label={t("paginationFirst")} className={navBtn}>
-          <ChevronsLeft className="size-4" aria-hidden="true" />
-        </Link>
-      ) : (
-        <button disabled aria-disabled="true" aria-label={t("paginationFirst")} className={navBtnDisabled}>
-          <ChevronsLeft className="size-4" aria-hidden="true" />
-        </button>
+    <div className="mt-4 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+      {shouldRenderSizeSelector && (
+        <div className="flex flex-wrap items-center gap-2 text-sm">
+          <span className="text-muted-foreground">{t("paginationPageSize")}</span>
+          <div className="flex flex-wrap gap-1">
+            {PAGE_SIZE_OPTIONS.map((size) => (
+              <Link
+                key={size}
+                href={buildHref(1, size)}
+                aria-current={size === pageSize ? "page" : undefined}
+                aria-label={t("paginationPageSizeOption", { size })}
+                className={size === pageSize ? pageBtnActive : pageBtn}
+              >
+                {size}
+              </Link>
+            ))}
+          </div>
+        </div>
       )}
 
-      {/* Prev */}
-      {currentPage > 1 ? (
-        <Link href={buildHref(currentPage - 1)} aria-label={t("paginationPrevious")} className={navBtn}>
-          <ChevronLeft className="size-4" aria-hidden="true" />
-        </Link>
-      ) : (
-        <button disabled aria-disabled="true" aria-label={t("paginationPrevious")} className={navBtnDisabled}>
-          <ChevronLeft className="size-4" aria-hidden="true" />
-        </button>
-      )}
+      {shouldRenderPageNav && (
+        <nav role="navigation" aria-label={t("paginationNav")} className="flex items-center justify-center gap-1">
+          {currentPage > 1 ? (
+            <Link href={buildHref(1, pageSize)} aria-label={t("paginationFirst")} className={navBtn}>
+              <ChevronsLeft className="size-4" aria-hidden="true" />
+            </Link>
+          ) : (
+            <button disabled aria-disabled="true" aria-label={t("paginationFirst")} className={navBtnDisabled}>
+              <ChevronsLeft className="size-4" aria-hidden="true" />
+            </button>
+          )}
 
-      {/* Page numbers */}
-      {pages.map((p, i) =>
-        p === "..." ? (
-          <span
-            key={`ellipsis-${i}`}
-            className="flex size-8 items-center justify-center text-sm text-muted-foreground select-none"
-          >
-            ...
-          </span>
-        ) : (
-          <Link
-            key={p}
-            href={buildHref(p)}
-            aria-label={t("paginationPage", { page: p })}
-            aria-current={p === currentPage ? "page" : undefined}
-            className={p === currentPage ? pageBtnActive : pageBtn}
-          >
-            {p}
-          </Link>
-        )
-      )}
+          {currentPage > 1 ? (
+            <Link href={buildHref(currentPage - 1, pageSize)} aria-label={t("paginationPrevious")} className={navBtn}>
+              <ChevronLeft className="size-4" aria-hidden="true" />
+            </Link>
+          ) : (
+            <button disabled aria-disabled="true" aria-label={t("paginationPrevious")} className={navBtnDisabled}>
+              <ChevronLeft className="size-4" aria-hidden="true" />
+            </button>
+          )}
 
-      {/* Next */}
-      {currentPage < totalPages ? (
-        <Link href={buildHref(currentPage + 1)} aria-label={t("paginationNext")} className={navBtn}>
-          <ChevronRight className="size-4" aria-hidden="true" />
-        </Link>
-      ) : (
-        <button disabled aria-disabled="true" aria-label={t("paginationNext")} className={navBtnDisabled}>
-          <ChevronRight className="size-4" aria-hidden="true" />
-        </button>
-      )}
+          {pages.map((p, i) =>
+            p === "..." ? (
+              <span
+                key={`ellipsis-${i}`}
+                className="flex size-8 select-none items-center justify-center text-sm text-muted-foreground"
+              >
+                ...
+              </span>
+            ) : (
+              <Link
+                key={p}
+                href={buildHref(p, pageSize)}
+                aria-label={t("paginationPage", { page: p })}
+                aria-current={p === currentPage ? "page" : undefined}
+                className={p === currentPage ? pageBtnActive : pageBtn}
+              >
+                {p}
+              </Link>
+            )
+          )}
 
-      {/* Last */}
-      {currentPage < totalPages ? (
-        <Link href={buildHref(totalPages)} aria-label={t("paginationLast")} className={navBtn}>
-          <ChevronsRight className="size-4" aria-hidden="true" />
-        </Link>
-      ) : (
-        <button disabled aria-disabled="true" aria-label={t("paginationLast")} className={navBtnDisabled}>
-          <ChevronsRight className="size-4" aria-hidden="true" />
-        </button>
+          {currentPage < totalPages ? (
+            <Link href={buildHref(currentPage + 1, pageSize)} aria-label={t("paginationNext")} className={navBtn}>
+              <ChevronRight className="size-4" aria-hidden="true" />
+            </Link>
+          ) : (
+            <button disabled aria-disabled="true" aria-label={t("paginationNext")} className={navBtnDisabled}>
+              <ChevronRight className="size-4" aria-hidden="true" />
+            </button>
+          )}
+
+          {currentPage < totalPages ? (
+            <Link href={buildHref(totalPages, pageSize)} aria-label={t("paginationLast")} className={navBtn}>
+              <ChevronsRight className="size-4" aria-hidden="true" />
+            </Link>
+          ) : (
+            <button disabled aria-disabled="true" aria-label={t("paginationLast")} className={navBtnDisabled}>
+              <ChevronsRight className="size-4" aria-hidden="true" />
+            </button>
+          )}
+        </nav>
       )}
-    </nav>
+    </div>
   );
 }

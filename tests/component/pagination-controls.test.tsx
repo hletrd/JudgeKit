@@ -2,7 +2,6 @@ import { render, screen } from "@testing-library/react";
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import { PaginationControls } from "@/components/pagination-controls";
 
-// Mock next/link — render as a plain anchor so href is testable
 vi.mock("next/link", () => ({
   default: ({ href, children, className, "aria-label": ariaLabel, "aria-current": ariaCurrent }: {
     href: string;
@@ -17,7 +16,6 @@ vi.mock("next/link", () => ({
   ),
 }));
 
-// Mock lucide-react icons as minimal svgs
 vi.mock("lucide-react", () => ({
   ChevronLeft: ({ className }: { className?: string }) => (
     <svg data-testid="icon-chevron-left" className={className} aria-hidden="true" />
@@ -33,12 +31,8 @@ vi.mock("lucide-react", () => ({
   ),
 }));
 
-vi.mock("@/lib/utils", () => ({
-  cn: (...args: unknown[]) => args.filter(Boolean).join(" "),
-}));
-
 vi.mock("next-intl/server", () => ({
-  getTranslations: async () => (key: string, values?: { page?: number }) => {
+  getTranslations: async () => (key: string, values?: { page?: number; size?: number }) => {
     switch (key) {
       case "paginationNav":
         return "Pagination";
@@ -52,16 +46,26 @@ vi.mock("next-intl/server", () => ({
         return "Last page";
       case "paginationPage":
         return `Page ${values?.page ?? ""}`;
+      case "paginationPageSize":
+        return "Page size";
+      case "paginationPageSizeOption":
+        return `Show ${values?.size ?? ""} items per page`;
       default:
         return key;
     }
   },
 }));
 
-const buildHref = (page: number) => `/submissions?page=${page}`;
+const buildHref = (page: number, pageSize: number) => {
+  const params = new URLSearchParams();
+  if (page > 1) params.set("page", String(page));
+  if (pageSize !== 50) params.set("pageSize", String(pageSize));
+  const qs = params.toString();
+  return qs ? `/submissions?${qs}` : "/submissions";
+};
 
-async function renderPagination(currentPage: number, totalPages: number) {
-  render(await PaginationControls({ currentPage, totalPages, buildHref }));
+async function renderPagination(currentPage: number, totalPages: number, pageSize = 50) {
+  render(await PaginationControls({ currentPage, totalPages, pageSize, buildHref }));
 }
 
 describe("PaginationControls", () => {
@@ -69,18 +73,20 @@ describe("PaginationControls", () => {
     vi.restoreAllMocks();
   });
 
-  it("returns null when totalPages is 1", async () => {
-    const { container } = render(
-      await PaginationControls({ currentPage: 1, totalPages: 1, buildHref })
-    );
-    expect(container.firstChild).toBeNull();
+  it("renders page size controls even when only one page exists", async () => {
+    await renderPagination(1, 1);
+
+    expect(screen.getByText("Page size")).toBeInTheDocument();
+    expect(screen.getByRole("link", { name: "Show 10 items per page" })).toBeInTheDocument();
+    expect(screen.queryByRole("navigation", { name: "Pagination" })).not.toBeInTheDocument();
   });
 
-  it("returns null when totalPages is 0", async () => {
-    const { container } = render(
-      await PaginationControls({ currentPage: 1, totalPages: 0, buildHref })
-    );
-    expect(container.firstChild).toBeNull();
+  it("renders page size controls even when there are zero results", async () => {
+    await renderPagination(1, 0);
+
+    expect(screen.getByText("Page size")).toBeInTheDocument();
+    expect(screen.getByRole("link", { name: "Show 100 items per page" })).toBeInTheDocument();
+    expect(screen.queryByRole("navigation", { name: "Pagination" })).not.toBeInTheDocument();
   });
 
   it("renders page number links for small total (5 pages)", async () => {
@@ -96,10 +102,9 @@ describe("PaginationControls", () => {
     expect(currentLink).toHaveAttribute("aria-current", "page");
   });
 
-  it("other pages do not have aria-current set", async () => {
-    await renderPagination(3, 5);
-    const page2Link = screen.getByRole("link", { name: "Page 2" });
-    expect(page2Link).not.toHaveAttribute("aria-current");
+  it("marks current page size with aria-current=page", async () => {
+    await renderPagination(1, 5, 20);
+    expect(screen.getByRole("link", { name: "Show 20 items per page" })).toHaveAttribute("aria-current", "page");
   });
 
   it("renders first/prev as disabled buttons on page 1", async () => {
@@ -124,39 +129,23 @@ describe("PaginationControls", () => {
     expect(screen.getByRole("button", { name: "Last page" })).toBeDisabled();
   });
 
-  it("renders first/prev as links on last page", async () => {
-    await renderPagination(5, 5);
-    expect(screen.getByRole("link", { name: "First page" })).toBeInTheDocument();
-    expect(screen.getByRole("link", { name: "Previous page" })).toBeInTheDocument();
-  });
-
   it("shows ellipsis for large page counts (20 pages, current=10)", async () => {
     await renderPagination(10, 20);
     const ellipsisItems = screen.getAllByText("...");
     expect(ellipsisItems.length).toBeGreaterThanOrEqual(1);
   });
 
-  it("first page link has correct href", async () => {
-    await renderPagination(3, 5);
-    const firstLink = screen.getByRole("link", { name: "First page" });
-    expect(firstLink).toHaveAttribute("href", "/submissions?page=1");
+  it("page size links reset to the first page when changing size", async () => {
+    await renderPagination(3, 5, 50);
+    expect(screen.getByRole("link", { name: "Show 10 items per page" })).toHaveAttribute("href", "/submissions?pageSize=10");
+    expect(screen.getByRole("link", { name: "Show 50 items per page" })).toHaveAttribute("href", "/submissions");
   });
 
-  it("next page link has correct href", async () => {
-    await renderPagination(3, 5);
-    const nextLink = screen.getByRole("link", { name: "Next page" });
-    expect(nextLink).toHaveAttribute("href", "/submissions?page=4");
-  });
-
-  it("previous page link has correct href", async () => {
-    await renderPagination(3, 5);
-    const prevLink = screen.getByRole("link", { name: "Previous page" });
-    expect(prevLink).toHaveAttribute("href", "/submissions?page=2");
-  });
-
-  it("last page link has correct href", async () => {
-    await renderPagination(3, 5);
-    const lastLink = screen.getByRole("link", { name: "Last page" });
-    expect(lastLink).toHaveAttribute("href", "/submissions?page=5");
+  it("page navigation links preserve the selected page size", async () => {
+    await renderPagination(3, 5, 20);
+    expect(screen.getByRole("link", { name: "First page" })).toHaveAttribute("href", "/submissions?pageSize=20");
+    expect(screen.getByRole("link", { name: "Previous page" })).toHaveAttribute("href", "/submissions?page=2&pageSize=20");
+    expect(screen.getByRole("link", { name: "Next page" })).toHaveAttribute("href", "/submissions?page=4&pageSize=20");
+    expect(screen.getByRole("link", { name: "Last page" })).toHaveAttribute("href", "/submissions?page=5&pageSize=20");
   });
 });
