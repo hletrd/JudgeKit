@@ -141,3 +141,29 @@ describe("SubmissionStatusBadge", () => {
     expect(badge).toHaveAttribute("data-variant", "secondary");
   });
 });
+
+
+  it("shows the TLE tooltip with execution time compared against the limit", () => {
+    render(
+      <SubmissionStatusBadge
+        status="time_limit"
+        label="Time Limit"
+        executionTimeMs={2013}
+        timeLimitMs={2000}
+      />
+    );
+
+    expect(screen.getByTestId("tooltip-content")).toHaveTextContent("2,013 ms / 2,000 ms");
+  });
+
+  it("shows the runtime error label in the tooltip when provided", () => {
+    render(
+      <SubmissionStatusBadge
+        status="runtime_error"
+        label="Runtime Error"
+        runtimeErrorType="SIGSEGV"
+      />
+    );
+
+    expect(screen.getByTestId("tooltip-content")).toHaveTextContent("Segmentation fault");
+  });

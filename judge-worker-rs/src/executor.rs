@@ -15,6 +15,7 @@ const COMPILATION_TIMEOUT_MS: u64 = 600_000;
 const MIN_COMPILE_TIMEOUT_MS: u64 = 30_000;
 const MIN_TIMEOUT_MS: u64 = 100;
 const MAX_MEMORY_LIMIT_MB: u32 = 1024;
+const RUNTIME_ERROR_OUTPUT_LIMIT: usize = 500;
 
 fn max_time_limit_ms() -> u64 {
     std::env::var("MAX_TIME_LIMIT_MS")
@@ -43,6 +44,17 @@ fn reported_memory_used_kb(
     }
 
     memory_peak_kb.unwrap_or(0).min(memory_limit_kb)
+}
+
+fn reportable_test_case_output(verdict: Verdict, stdout: &[u8], stderr: &str) -> String {
+    if verdict == Verdict::RuntimeError {
+        let trimmed_stderr = stderr.trim();
+        if !trimmed_stderr.is_empty() {
+            return trimmed_stderr.chars().take(RUNTIME_ERROR_OUTPUT_LIMIT).collect();
+        }
+    }
+
+    String::from_utf8_lossy(stdout).into_owned()
 }
 
 fn runtime_error_type(stderr: &str, exit_code: Option<i32>) -> Option<String> {
@@ -334,9 +346,6 @@ async fn execute_inner(client: &ApiClient, config: &Config, submission: Submissi
             )
         };
 
-        // Convert to string for reporting (separate from comparison)
-        let actual_output = String::from_utf8_lossy(&execution.stdout).into_owned();
-
         // Determine test case status
         let verdict = if execution.timed_out {
             Verdict::TimeLimit
@@ -349,6 +358,8 @@ async fn execute_inner(client: &ApiClient, config: &Config, submission: Submissi
         } else {
             Verdict::Accepted
         };
+
+        let actual_output = reportable_test_case_output(verdict, &execution.stdout, &execution.stderr);
 
         let memory_used_kb = reported_memory_used_kb(
             execution.memory_peak_kb,
@@ -397,9 +408,10 @@ async fn execute_inner(client: &ApiClient, config: &Config, submission: Submissi
 #[cfg(test)]
 mod tests {
     use super::{
-        compile_timeout_ms_for_submission, prune_dead_letter_dir, reported_memory_used_kb,
-        runtime_error_type, COMPILATION_TIMEOUT_MS, MIN_COMPILE_TIMEOUT_MS,
+        compile_timeout_ms_for_submission, prune_dead_letter_dir, reportable_test_case_output, reported_memory_used_kb,
+        runtime_error_type, COMPILATION_TIMEOUT_MS, MIN_COMPILE_TIMEOUT_MS, RUNTIME_ERROR_OUTPUT_LIMIT,
     };
+    use crate::types::Verdict;
     use tempfile::tempdir;
     use tokio::fs;
 
@@ -437,6 +449,16 @@ mod tests {
         assert_eq!(runtime_error_type("", Some(139)).as_deref(), Some("SIGSEGV"));
         assert_eq!(runtime_error_type("", Some(136)).as_deref(), Some("SIGFPE"));
         assert_eq!(runtime_error_type("stack overflow", Some(1)).as_deref(), Some("stack_overflow"));
+    }
+
+    #[test]
+    fn reportable_test_case_output_prefers_truncated_stderr_for_runtime_errors() {
+        let stderr = "x".repeat(RUNTIME_ERROR_OUTPUT_LIMIT + 50);
+        let output = reportable_test_case_output(Verdict::RuntimeError, b"stdout", &stderr);
+
+        assert_eq!(output.len(), RUNTIME_ERROR_OUTPUT_LIMIT);
+        assert!(output.chars().all(|ch| ch == 'x'));
+        assert_eq!(reportable_test_case_output(Verdict::WrongAnswer, b"stdout", "stderr"), "stdout");
     }
 
     #[tokio::test]

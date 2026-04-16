@@ -54,7 +54,7 @@ export default async function PublicSubmissionDetailPage({ params, searchParams 
         columns: { name: true },
       },
       problem: {
-        columns: { id: true, title: true, showCompileOutput: true, showDetailedResults: true, showRuntimeErrors: true },
+        columns: { id: true, title: true, timeLimitMs: true, showCompileOutput: true, showDetailedResults: true, showRuntimeErrors: true },
       },
       results: {
         with: {
@@ -174,6 +174,7 @@ export default async function PublicSubmissionDetailPage({ params, searchParams 
         userRole={session.user.role}
         userId={session.user.id}
         capabilities={[]}
+        problemTimeLimitMs={submission.problem?.timeLimitMs ?? null}
         canViewSource={isOwner}
         isOwner={isOwner}
       />

@@ -32,6 +32,7 @@ type SubmissionDetailClientProps = {
   userRole: string;
   userId: string;
   capabilities: string[];
+  problemTimeLimitMs?: number | null;
   canViewSource?: boolean;
   isOwner?: boolean;
 };
@@ -231,6 +232,7 @@ export function SubmissionDetailClient(props: SubmissionDetailClientProps) {
                 score={submission.score}
                 failedTestCaseIndex={submission.failedTestCaseIndex}
                 runtimeErrorType={submission.runtimeErrorType}
+                timeLimitMs={props.problemTimeLimitMs ?? null}
               />
             </div>
           </div>
