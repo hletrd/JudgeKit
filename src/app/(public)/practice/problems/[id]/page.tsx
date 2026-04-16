@@ -7,6 +7,7 @@ import { db } from "@/lib/db";
 import { languageConfigs, problems, submissions, problemTags } from "@/lib/db/schema";
 import { PublicProblemDetail } from "@/app/(public)/_components/public-problem-detail";
 import { JsonLd } from "@/components/seo/json-ld";
+import { AssistantMarkdown } from "@/components/assistant-markdown";
 import { listProblemDiscussionThreads, listProblemEditorials } from "@/lib/discussions/data";
 import { DiscussionThreadForm } from "@/components/discussions/discussion-thread-form";
 import { DiscussionThreadList } from "@/components/discussions/discussion-thread-list";
@@ -467,7 +468,7 @@ export default async function PublicProblemDetailPage({ params }: { params: Prom
                   </CardHeader>
                   <CardContent>
                     <div className="prose prose-sm dark:prose-invert max-w-none whitespace-pre-wrap">
-                      {editorial.content}
+                      <AssistantMarkdown content={editorial.content} />
                     </div>
                     {editorial.posts.length > 0 && (
                       <div className="mt-6 border-t pt-4">
@@ -478,7 +479,9 @@ export default async function PublicProblemDetailPage({ params }: { params: Prom
                               <div className="text-xs text-muted-foreground mb-1">
                                 {post.author?.name ?? t("community.unknownAuthor")}
                               </div>
-                              <div className="text-sm whitespace-pre-wrap">{post.content}</div>
+                              <div className="prose prose-sm dark:prose-invert max-w-none text-sm">
+                                <AssistantMarkdown content={post.content} />
+                              </div>
                             </div>
                           ))}
                         </div>
