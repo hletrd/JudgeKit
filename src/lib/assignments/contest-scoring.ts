@@ -306,7 +306,12 @@ async function _computeContestRankingInner(assignmentId: string, cutoffSec?: num
         problems: problemResults,
       });
     } else {
-      const totalScore = problemResults.reduce((s, p) => s + p.score, 0);
+      // Normalize to 2 decimals after summing to avoid JS float drift
+      // (e.g. 50.3 + 30.1 -> 80.40000000000001). This matches the SQL-level
+      // ROUND(..., 2) applied to each problem's bestScore and keeps downstream
+      // equality checks (tie detection on line 351) exact.
+      const rawTotal = problemResults.reduce((s, p) => s + p.score, 0);
+      const totalScore = Math.round(rawTotal * 100) / 100;
 
       entries.push({
         userId,
