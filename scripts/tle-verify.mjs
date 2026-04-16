@@ -9,228 +9,256 @@ const headers = {
   'Content-Type': 'application/json',
 };
 
-// Target problems with their naive C++ implementations
+// C++ newline helper: \\n in template literal = \n in JS string = C++ newline escape
+const NL = '"\\n"';
+
+// Target problems with naive C++ implementations
 const problems = [
   {
     id: 'KRRAZxJ1k01iXwgr1_yTy',
     title: '구간 합 구하기 (세그먼트 트리)',
-    // O(NM) naive: each update O(1), each query O(N) full rescan
-    code: `#include <bits/stdc++.h>
-using namespace std;
-int main() {
-  ios::sync_with_stdio(false);
-  cin.tie(nullptr);
-  int N, M;
-  cin >> N >> M;
-  vector<long long> a(N+1);
-  for (int i = 1; i <= N; i++) cin >> a[i];
-  while (M--) {
-    int op; cin >> op;
-    if (op == 1) {
-      int i; long long v; cin >> i >> v;
-      a[i] = v;
-    } else {
-      int l, r; cin >> l >> r;
-      long long s = 0;
-      for (int i = l; i <= r; i++) s += a[i];
-      cout << s << "\n";
-    }
-  }
-}`,
+    code: [
+      '#include <bits/stdc++.h>',
+      'using namespace std;',
+      'int main() {',
+      '  ios::sync_with_stdio(false);',
+      '  cin.tie(nullptr);',
+      '  int N, M;',
+      '  cin >> N >> M;',
+      '  vector<long long> a(N+1);',
+      '  for (int i = 1; i <= N; i++) cin >> a[i];',
+      '  while (M--) {',
+      '    int op; cin >> op;',
+      '    if (op == 1) {',
+      '      int i; long long v; cin >> i >> v;',
+      '      a[i] = v;',
+      '    } else {',
+      '      int l, r; cin >> l >> r;',
+      '      long long s = 0;',
+      '      for (int i = l; i <= r; i++) s += a[i];',
+      '      cout << s << "\\n";',
+      '    }',
+      '  }',
+      '}',
+    ].join('\n'),
   },
   {
     id: 'GIdZ060iKjkBy4GKucenm',
     title: '구간 최솟값 쿼리 (RMQ)',
-    // O(N) per query linear scan
-    code: `#include <bits/stdc++.h>
-using namespace std;
-int main() {
-  ios::sync_with_stdio(false);
-  cin.tie(nullptr);
-  int N; cin >> N;
-  vector<int> a(N);
-  for (auto& x : a) cin >> x;
-  int M; cin >> M;
-  while (M--) {
-    int l, r; cin >> l >> r;
-    int m = INT_MAX;
-    for (int i = l-1; i < r; i++) m = min(m, a[i]);
-    cout << m << "\n";
-  }
-}`,
+    code: [
+      '#include <bits/stdc++.h>',
+      'using namespace std;',
+      'int main() {',
+      '  ios::sync_with_stdio(false);',
+      '  cin.tie(nullptr);',
+      '  int N, M; cin >> N >> M;',
+      '  vector<int> a(N);',
+      '  for (auto& x : a) cin >> x;',
+      '  while (M--) {',
+      '    int l, r; cin >> l >> r;',
+      '    int m = INT_MAX;',
+      '    for (int i = l-1; i < r; i++) m = min(m, a[i]);',
+      '    cout << m << "\\n";',
+      '  }',
+      '}',
+    ].join('\n'),
   },
   {
     id: 'ut1daWAIYcoHIisZ99Kou',
     title: '구간 최댓값 쿼리',
-    // O(N) per query linear scan
-    code: `#include <bits/stdc++.h>
-using namespace std;
-int main() {
-  ios::sync_with_stdio(false);
-  cin.tie(nullptr);
-  int N; cin >> N;
-  vector<int> a(N);
-  for (auto& x : a) cin >> x;
-  int M; cin >> M;
-  while (M--) {
-    int l, r; cin >> l >> r;
-    int m = INT_MIN;
-    for (int i = l-1; i < r; i++) m = max(m, a[i]);
-    cout << m << "\n";
-  }
-}`,
+    code: [
+      '#include <bits/stdc++.h>',
+      'using namespace std;',
+      'int main() {',
+      '  ios::sync_with_stdio(false);',
+      '  cin.tie(nullptr);',
+      '  int N, M; cin >> N >> M;',
+      '  vector<int> a(N);',
+      '  for (auto& x : a) cin >> x;',
+      '  while (M--) {',
+      '    int l, r; cin >> l >> r;',
+      '    int m = INT_MIN;',
+      '    for (int i = l-1; i < r; i++) m = max(m, a[i]);',
+      '    cout << m << "\\n";',
+      '  }',
+      '}',
+    ].join('\n'),
   },
   {
     id: 'xPfU_OaUs14uC9yl5_27N',
     title: '펜윅 트리 (구간 합)',
-    // O(N) per prefix sum query (naive prefix sum recomputed each time)
-    code: `#include <bits/stdc++.h>
-using namespace std;
-int main() {
-  ios::sync_with_stdio(false);
-  cin.tie(nullptr);
-  int N, M;
-  cin >> N >> M;
-  vector<long long> a(N+1);
-  for (int i = 1; i <= N; i++) cin >> a[i];
-  while (M--) {
-    int op; cin >> op;
-    if (op == 1) {
-      int i; long long v; cin >> i >> v;
-      a[i] += v;
-    } else {
-      int l, r; cin >> l >> r;
-      long long s = 0;
-      for (int i = l; i <= r; i++) s += a[i];
-      cout << s << "\n";
-    }
-  }
-}`,
+    code: [
+      '#include <bits/stdc++.h>',
+      'using namespace std;',
+      'int main() {',
+      '  ios::sync_with_stdio(false);',
+      '  cin.tie(nullptr);',
+      '  int N, M;',
+      '  cin >> N >> M;',
+      '  vector<long long> a(N+1);',
+      '  for (int i = 1; i <= N; i++) cin >> a[i];',
+      '  while (M--) {',
+      '    int op; cin >> op;',
+      '    if (op == 1) {',
+      '      int i; long long v; cin >> i >> v;',
+      '      a[i] = v;',
+      '    } else {',
+      '      int l, r; cin >> l >> r;',
+      '      long long s = 0;',
+      '      for (int i = l; i <= r; i++) s += a[i];',
+      '      cout << s << "\\n";',
+      '    }',
+      '  }',
+      '}',
+    ].join('\n'),
   },
   {
     id: 'y3Zf3N9EdoeUzAYkdw76Q',
     title: '역전 수 세기 (BIT)',
-    // O(N^2) naive: count inversions by brute force
-    code: `#include <bits/stdc++.h>
-using namespace std;
-int main() {
-  ios::sync_with_stdio(false);
-  cin.tie(nullptr);
-  int N; cin >> N;
-  vector<int> a(N);
-  for (auto& x : a) cin >> x;
-  long long cnt = 0;
-  for (int i = 0; i < N; i++)
-    for (int j = i+1; j < N; j++)
-      if (a[i] > a[j]) cnt++;
-  cout << cnt << "\n";
-}`,
+    code: [
+      '#include <bits/stdc++.h>',
+      'using namespace std;',
+      'int main() {',
+      '  ios::sync_with_stdio(false);',
+      '  cin.tie(nullptr);',
+      '  int N; cin >> N;',
+      '  vector<int> a(N);',
+      '  for (auto& x : a) cin >> x;',
+      '  long long cnt = 0;',
+      '  for (int i = 0; i < N; i++)',
+      '    for (int j = i+1; j < N; j++)',
+      '      if (a[i] > a[j]) cnt++;',
+      '  cout << cnt << "\\n";',
+      '}',
+    ].join('\n'),
   },
   {
     id: 'tFmWkN1KiZNmff2VDCPsN',
     title: '슬라이딩 윈도우 최솟값',
-    // O(NK) naive: scan each window
-    code: `#include <bits/stdc++.h>
-using namespace std;
-int main() {
-  ios::sync_with_stdio(false);
-  cin.tie(nullptr);
-  int N, K; cin >> N >> K;
-  vector<int> a(N);
-  for (auto& x : a) cin >> x;
-  for (int i = 0; i <= N-K; i++) {
-    int m = INT_MAX;
-    for (int j = i; j < i+K; j++) m = min(m, a[j]);
-    cout << m << "\n";
-  }
-}`,
+    code: [
+      '#include <bits/stdc++.h>',
+      'using namespace std;',
+      'int main() {',
+      '  ios::sync_with_stdio(false);',
+      '  cin.tie(nullptr);',
+      '  int N, K; cin >> N >> K;',
+      '  vector<int> a(N);',
+      '  for (auto& x : a) cin >> x;',
+      '  for (int i = 0; i <= N-K; i++) {',
+      '    int m = INT_MAX;',
+      '    for (int j = i; j < i+K; j++) m = min(m, a[j]);',
+      '    if (i > 0) cout << " ";',
+      '    cout << m;',
+      '  }',
+      '  cout << "\\n";',
+      '}',
+    ].join('\n'),
   },
   {
     id: 'RDj63-A0NmyW5u1a3BKCf',
     title: '슬라이딩 윈도우 최댓값',
-    // O(NK) naive: scan each window
-    code: `#include <bits/stdc++.h>
-using namespace std;
-int main() {
-  ios::sync_with_stdio(false);
-  cin.tie(nullptr);
-  int N, K; cin >> N >> K;
-  vector<int> a(N);
-  for (auto& x : a) cin >> x;
-  for (int i = 0; i <= N-K; i++) {
-    int m = INT_MIN;
-    for (int j = i; j < i+K; j++) m = max(m, a[j]);
-    cout << m << "\n";
-  }
-}`,
+    code: [
+      '#include <bits/stdc++.h>',
+      'using namespace std;',
+      'int main() {',
+      '  ios::sync_with_stdio(false);',
+      '  cin.tie(nullptr);',
+      '  int N, K; cin >> N >> K;',
+      '  vector<int> a(N);',
+      '  for (auto& x : a) cin >> x;',
+      '  for (int i = 0; i <= N-K; i++) {',
+      '    int m = INT_MIN;',
+      '    for (int j = i; j < i+K; j++) m = max(m, a[j]);',
+      '    if (i > 0) cout << " ";',
+      '    cout << m;',
+      '  }',
+      '  cout << "\\n";',
+      '}',
+    ].join('\n'),
   },
   {
     id: 'hptq8VQPJ78TZjgcsT3ze',
     title: '오큰수 (NGE)',
-    // O(N^2) nested loop
-    code: `#include <bits/stdc++.h>
-using namespace std;
-int main() {
-  ios::sync_with_stdio(false);
-  cin.tie(nullptr);
-  int N; cin >> N;
-  vector<int> a(N);
-  for (auto& x : a) cin >> x;
-  for (int i = 0; i < N; i++) {
-    int res = -1;
-    for (int j = i+1; j < N; j++) {
-      if (a[j] > a[i]) { res = a[j]; break; }
-    }
-    cout << res;
-    if (i < N-1) cout << " ";
-  }
-  cout << "\n";
-}`,
+    code: [
+      '#include <bits/stdc++.h>',
+      'using namespace std;',
+      'int main() {',
+      '  ios::sync_with_stdio(false);',
+      '  cin.tie(nullptr);',
+      '  int N; cin >> N;',
+      '  vector<int> a(N);',
+      '  for (auto& x : a) cin >> x;',
+      '  for (int i = 0; i < N; i++) {',
+      '    int res = -1;',
+      '    for (int j = i+1; j < N; j++) {',
+      '      if (a[j] > a[i]) { res = a[j]; break; }',
+      '    }',
+      '    cout << res;',
+      '    if (i < N-1) cout << " ";',
+      '  }',
+      '  cout << "\\n";',
+      '}',
+    ].join('\n'),
   },
   {
     id: 'nfZCBk2KRRoQgtyFWEzP6',
     title: '히스토그램에서 가장 큰 직사각형',
-    // O(N^2) nested loop
-    code: `#include <bits/stdc++.h>
-using namespace std;
-int main() {
-  ios::sync_with_stdio(false);
-  cin.tie(nullptr);
-  int N; cin >> N;
-  vector<long long> h(N);
-  for (auto& x : h) cin >> x;
-  long long ans = 0;
-  for (int i = 0; i < N; i++) {
-    long long mn = h[i];
-    for (int j = i; j < N; j++) {
-      mn = min(mn, h[j]);
-      ans = max(ans, mn * (j - i + 1));
-    }
-  }
-  cout << ans << "\n";
-}`,
+    code: [
+      '#include <bits/stdc++.h>',
+      'using namespace std;',
+      'int main() {',
+      '  ios::sync_with_stdio(false);',
+      '  cin.tie(nullptr);',
+      '  int N; cin >> N;',
+      '  vector<long long> h(N);',
+      '  for (auto& x : h) cin >> x;',
+      '  long long ans = 0;',
+      '  for (int i = 0; i < N; i++) {',
+      '    long long mn = h[i];',
+      '    for (int j = i; j < N; j++) {',
+      '      mn = min(mn, h[j]);',
+      '      ans = max(ans, mn * (j - i + 1));',
+      '    }',
+      '  }',
+      '  cout << ans << "\\n";',
+      '}',
+    ].join('\n'),
   },
   {
     id: 'XRHZxCyY0H_keXwWRWCO1',
     title: 'K번째 수 (세그먼트 트리)',
-    // O(NQ) naive: sort subarray for each query
-    code: `#include <bits/stdc++.h>
-using namespace std;
-int main() {
-  ios::sync_with_stdio(false);
-  cin.tie(nullptr);
-  int N, Q; cin >> N >> Q;
-  vector<int> a(N);
-  for (auto& x : a) cin >> x;
-  while (Q--) {
-    int l, r, k; cin >> l >> r >> k;
-    vector<int> sub(a.begin()+l-1, a.begin()+r);
-    sort(sub.begin(), sub.end());
-    cout << sub[k-1] << "\n";
-  }
-}`,
+    code: [
+      '#include <bits/stdc++.h>',
+      'using namespace std;',
+      'int main() {',
+      '  ios::sync_with_stdio(false);',
+      '  cin.tie(nullptr);',
+      '  int N, Q; cin >> N >> Q;',
+      '  vector<int> a(N);',
+      '  for (auto& x : a) cin >> x;',
+      '  while (Q--) {',
+      '    int op; cin >> op;',
+      '    if (op == 1) {',
+      '      int i, v; cin >> i >> v;',
+      '      a[i-1] = v;',
+      '    } else {',
+      '      int k; cin >> k;',
+      '      vector<int> sorted_a = a;',
+      '      sort(sorted_a.begin(), sorted_a.end());',
+      '      cout << sorted_a[k-1] << "\\n";',
+      '    }',
+      '  }',
+      '}',
+    ].join('\n'),
   },
 ];
+
+// Verify no actual newlines snuck into the C++ string literals
+for (const p of problems) {
+  if (p.code.includes('"' + '\n' + '"')) {
+    throw new Error(`Problem ${p.title} has literal newline in string literal!`);
+  }
+}
 
 async function sleep(ms) {
   return new Promise(resolve => setTimeout(resolve, ms));
@@ -263,7 +291,6 @@ async function submit(problem) {
       const retryAfter = Number(resp.headers.get('retry-after') ?? 60);
       console.log(`  429 ${body.error ?? 'rateLimited'}, waiting ${retryAfter + 5}s...`);
       await sleep((retryAfter + 5) * 1000);
-      // Reset lastSubmitTime so next iteration doesn't double-wait
       lastSubmitTime = 0;
       continue;
     }
@@ -326,13 +353,10 @@ async function main() {
     }
 
     const verdict = result.status ?? result.verdict ?? result.result ?? 'UNKNOWN';
-    const time = result.timeMs ?? result.executionTime ?? result.time ?? result.runtimeMs ?? '?';
+    const time = result.executionTimeMs ?? result.timeMs ?? result.executionTime ?? '?';
     console.log(`\n  Verdict: ${verdict}  Time: ${time}ms`);
-    console.log(`  Full response keys: ${Object.keys(result).join(', ')}`);
 
     results.push({ title: problem.title, verdict, time, submissionId: subId });
-
-    // rate limit enforced at start of next submit() call
   }
 
   console.log('\n\n=== SUMMARY ===');
