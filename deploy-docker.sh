@@ -292,6 +292,7 @@ remote_rsync -az --delete \
     --exclude='.claude/' \
     --exclude='.agent/' \
     --exclude='.sisyphus/' \
+    --exclude='.context/' \
     --exclude='tests/' \
     --exclude='.playwright/' \
     --exclude='backups/' \
