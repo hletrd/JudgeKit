@@ -2688,7 +2688,11 @@
     "solvedProblems": "Solved Problems",
     "noSolvedProblems": "No solved problems yet.",
     "activityHeatmap": "Activity",
-    "notFound": "User not found."
+    "notFound": "User not found.",
+    "difficultyBreakdown": "Difficulty Breakdown",
+    "categoryBreakdown": "Category Breakdown",
+    "languageBreakdown": "Language Breakdown",
+    "noStats": "No stats yet."
   },
   "workspaceShell": {
     "sectionLabel": "Workspace",

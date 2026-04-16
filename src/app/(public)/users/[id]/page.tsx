@@ -2,15 +2,16 @@ import type { Metadata } from "next";
 import { getLocale, getTranslations } from "next-intl/server";
 import { notFound } from "next/navigation";
 import { db } from "@/lib/db";
-import { problems, submissions } from "@/lib/db/schema";
-import { eq, and, count, sql } from "drizzle-orm";
+import { eq, sql } from "drizzle-orm";
 import { rawQueryAll, rawQueryOne } from "@/lib/db/queries";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { Badge } from "@/components/ui/badge";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { calculateTier } from "@/lib/ratings";
 import { TierBadge } from "@/components/tier-badge";
 import { buildLocalePath, NO_INDEX_METADATA } from "@/lib/seo";
+import { getProblemTierInfo } from "@/lib/problem-tiers";
+import { getLanguageDisplayLabel } from "@/lib/judge/languages";
+import { UserStatsDashboard } from "@/components/user/user-stats-dashboard";
 import Link from "next/link";
 
 export async function generateMetadata({
@@ -80,6 +81,101 @@ export default async function UserProfilePage({
 
   const tier = calculateTier(solvedCount);
 
+  const solvedProblemMetaRows = await rawQueryAll<{
+    problemId: string;
+    difficulty: number | null;
+    tagName: string | null;
+  }>(
+    `
+    WITH solved_problem_ids AS (
+      SELECT DISTINCT s.problem_id
+      FROM submissions s
+      INNER JOIN problems p ON p.id = s.problem_id
+      WHERE s.user_id = @id
+        AND s.status = 'accepted'
+        AND p.visibility = 'public'
+    )
+    SELECT
+      p.id as "problemId",
+      p.difficulty,
+      t.name as "tagName"
+    FROM solved_problem_ids sp
+    INNER JOIN problems p ON p.id = sp.problem_id
+    LEFT JOIN problem_tags pt ON pt.problem_id = p.id
+    LEFT JOIN tags t ON t.id = pt.tag_id
+    `,
+    { id }
+  );
+
+  const languageUsageRows = await rawQueryAll<{
+    language: string;
+    count: number;
+  }>(
+    `
+    SELECT
+      s.language,
+      COUNT(*)::int as count
+    FROM submissions s
+    WHERE s.user_id = @id
+    GROUP BY s.language
+    ORDER BY count DESC, s.language ASC
+    LIMIT 8
+    `,
+    { id }
+  );
+
+  const activityRows = await rawQueryAll<{
+    day: string;
+    count: number;
+  }>(
+    `
+    SELECT
+      TO_CHAR(DATE(s.submitted_at), 'YYYY-MM-DD') as day,
+      COUNT(*)::int as count
+    FROM submissions s
+    WHERE s.user_id = @id
+      AND s.status = 'accepted'
+      AND s.submitted_at >= NOW() - INTERVAL '90 days'
+    GROUP BY DATE(s.submitted_at)
+    ORDER BY DATE(s.submitted_at) ASC
+    `,
+    { id }
+  );
+
+  const difficultyCounts = new Map<string, { tier: NonNullable<ReturnType<typeof getProblemTierInfo>>["tier"]; label: string; count: number }>();
+  const seenSolvedProblems = new Set<string>();
+  const categoryCounts = new Map<string, number>();
+
+  for (const row of solvedProblemMetaRows) {
+    if (!seenSolvedProblems.has(row.problemId)) {
+      seenSolvedProblems.add(row.problemId);
+      const tierInfo = getProblemTierInfo(row.difficulty);
+      if (tierInfo) {
+        const existing = difficultyCounts.get(tierInfo.label);
+        difficultyCounts.set(tierInfo.label, {
+          tier: tierInfo.tier,
+          label: tierInfo.label,
+          count: (existing?.count ?? 0) + 1,
+        });
+      }
+    }
+
+    if (row.tagName) {
+      categoryCounts.set(row.tagName, (categoryCounts.get(row.tagName) ?? 0) + 1);
+    }
+  }
+
+  const activityMap = new Map(activityRows.map((row) => [row.day, row.count]));
+  const activityDays = Array.from({ length: 90 }, (_, index) => {
+    const day = new Date();
+    day.setDate(day.getDate() - (89 - index));
+    const key = day.toISOString().slice(0, 10);
+    return {
+      date: key,
+      count: activityMap.get(key) ?? 0,
+    };
+  });
+
   // Get solved problems
   const solvedProblems = await rawQueryAll<{
     problemId: string;
@@ -142,6 +238,25 @@ export default async function UserProfilePage({
           </CardContent>
         </Card>
       </div>
+
+      <UserStatsDashboard
+        title={t("activityHeatmap")}
+        difficultyTitle={t("difficultyBreakdown")}
+        categoryTitle={t("categoryBreakdown")}
+        languageTitle={t("languageBreakdown")}
+        activityTitle={t("activityHeatmap")}
+        emptyLabel={t("noStats")}
+        tierStats={Array.from(difficultyCounts.values()).sort((left, right) => right.count - left.count)}
+        categoryStats={Array.from(categoryCounts.entries())
+          .map(([label, count]) => ({ label, count }))
+          .sort((left, right) => right.count - left.count)
+          .slice(0, 12)}
+        languageStats={languageUsageRows.map((row) => ({
+          label: getLanguageDisplayLabel(row.language),
+          count: row.count,
+        }))}
+        activityDays={activityDays}
+      />
 
       {/* Solved problems */}
       <Card>
