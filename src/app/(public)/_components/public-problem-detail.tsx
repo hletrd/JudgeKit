@@ -44,7 +44,7 @@ export function PublicProblemDetail({
             <div>
               <Link
                 href={backHref}
-                className="mb-1 inline-flex items-center gap-1 text-sm text-muted-foreground hover:text-foreground"
+                className="mb-1 inline-flex items-center gap-1 text-sm text-muted-foreground hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 rounded-md"
               >
                 <ArrowLeft className="size-4" />
                 {backLabel}

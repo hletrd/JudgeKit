@@ -72,14 +72,12 @@ export default async function CommunityPage() {
             </Link>
           </div>
         ) : (
-          <div className="rounded-2xl border border-dashed bg-muted/30 p-4 text-sm text-muted-foreground">
-            <a
-              href={buildLocalePath(`/login?callbackUrl=${encodeURIComponent(buildLocalePath("/community", locale))}`, locale)}
-              className="font-medium text-primary hover:underline"
-            >
-              {t("community.form.signIn")}
-            </a>
-          </div>
+          <Link
+            href={buildLocalePath(`/login?callbackUrl=${encodeURIComponent(buildLocalePath("/community", locale))}`, locale)}
+            className="block rounded-2xl border border-dashed bg-muted/30 p-4 text-sm text-muted-foreground hover:bg-accent/40 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
+          >
+            <span className="font-medium text-primary hover:underline">{t("community.form.signIn")}</span>
+          </Link>
         )}
         <DiscussionThreadList
           title={t("community.liveTitle")}
