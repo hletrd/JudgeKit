@@ -34,6 +34,7 @@ type LeaderboardEntry = {
   name: string;
   className: string | null;
   rank: number;
+  liveRank?: number | null;
   totalScore: number;
   totalPenalty: number;
   problems: LeaderboardProblemResult[];
@@ -368,6 +369,13 @@ export function LeaderboardTable({
                     {getRankIcon(entry.rank)}
                     {entry.rank}
                   </span>
+                  {data.frozen && entry.isCurrentUser && entry.liveRank != null ? (
+                    <div className="mt-1">
+                      <Badge variant="secondary" className="text-[10px]">
+                        {t("liveRank", { rank: entry.liveRank })}
+                      </Badge>
+                    </div>
+                  ) : null}
                 </TableCell>
                 <TableCell
                   className={cn(
@@ -383,6 +391,11 @@ export function LeaderboardTable({
                     ) : (
                       <span className="font-medium">{entry.name}</span>
                     )}
+                    {data.frozen && entry.isCurrentUser ? (
+                      <Badge variant="outline" className="ml-2 text-[10px]">
+                        {t("live")}
+                      </Badge>
+                    ) : null}
                     {entry.className && (
                       <span className="ml-2 text-xs text-muted-foreground">
                         {entry.className}

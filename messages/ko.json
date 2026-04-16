@@ -1843,6 +1843,8 @@
       "penalty": "페널티",
       "frozen": "리더보드가 동결되었습니다",
       "frozenDescription": "리더보드가 동결되어 최신 순위가 반영되지 않을 수 있습니다.",
+      "live": "실시간",
+      "liveRank": "실시간 {rank}위",
       "noEntries": "아직 제출이 없습니다.",
       "attempts": "{count}회 시도",
       "acAfter": "+{count}",

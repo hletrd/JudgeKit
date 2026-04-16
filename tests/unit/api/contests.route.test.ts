@@ -585,6 +585,32 @@ describe("GET /api/v1/contests/[assignmentId]/leaderboard", () => {
     expect(body.data.entries[0].isCurrentUser).toBe(true);
   });
 
+  it("adds a live rank for the current student when the leaderboard is frozen", async () => {
+    getApiUserMock.mockResolvedValue(STUDENT_USER);
+    rawQueryOneMock
+      .mockResolvedValueOnce({ groupId: "g-1", instructorId: "inst-1", examMode: "scheduled", anonymousLeaderboard: 0 })
+      .mockResolvedValueOnce({ one: 1 });
+    computeLeaderboardMock
+      .mockResolvedValueOnce({
+        ...LEADERBOARD_DATA,
+        frozen: true,
+        entries: [{ userId: "student-1", username: "alice", name: "Alice", className: null, rank: 5, totalScore: 2, totalPenalty: 120, problems: [] }],
+      })
+      .mockResolvedValueOnce({
+        ...LEADERBOARD_DATA,
+        frozen: false,
+        entries: [{ userId: "student-1", username: "alice", name: "Alice", className: null, rank: 3, totalScore: 3, totalPenalty: 90, problems: [] }],
+      });
+
+    const res = await leaderboardGET(makeLeaderboardRequest(), { params: PARAMS() });
+    const body = await res.json();
+
+    expect(res.status).toBe(200);
+    expect(body.data.entries[0].liveRank).toBe(3);
+    expect(computeLeaderboardMock).toHaveBeenNthCalledWith(1, "assign-1", false);
+    expect(computeLeaderboardMock).toHaveBeenNthCalledWith(2, "assign-1", true);
+  });
+
   it("returns problems list alongside leaderboard", async () => {
     const res = await leaderboardGET(makeLeaderboardRequest(), { params: PARAMS() });
     const body = await res.json();

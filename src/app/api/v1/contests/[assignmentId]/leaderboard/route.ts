@@ -55,6 +55,10 @@ export const GET = createApiHandler({
 
     const problems = await getLeaderboardProblems(assignmentId);
     const leaderboard = await computeLeaderboard(assignmentId, isInstructorView);
+    const liveCurrentEntry =
+      !isInstructorView && leaderboard.frozen
+        ? (await computeLeaderboard(assignmentId, true)).entries.find((entry) => entry.userId === user.id) ?? null
+        : null;
 
     // Anonymize in exam mode for non-instructors, but not in recruiting mode
     const isExamMode = assignment.examMode !== "none";
@@ -69,6 +73,7 @@ export const GET = createApiHandler({
           ...rest,
           userId: "",
           isCurrentUser: _userId === user.id,
+          liveRank: _userId === user.id ? liveCurrentEntry?.rank ?? null : null,
           ...(isAnonymous && {
             username: `Participant ${rest.rank}`,
             name: "",

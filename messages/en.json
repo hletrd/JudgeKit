@@ -1843,6 +1843,8 @@
       "penalty": "Penalty",
       "frozen": "Leaderboard is frozen",
       "frozenDescription": "The leaderboard was frozen and may not reflect the latest standings.",
+      "live": "Live",
+      "liveRank": "Live #{rank}",
       "noEntries": "No submissions yet.",
       "attempts": "{count} attempts",
       "acAfter": "+{count}",
