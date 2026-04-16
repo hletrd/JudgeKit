@@ -110,4 +110,13 @@ describe("deployment security defaults", () => {
     expect(algoDeploy).toContain("--skip-worker-build");
     expect(algoDeploy).toContain("COMPILER_RUNNER_URL=");
   });
+
+  it("supports a narrow algo worker-runtime rebuild path for judge-worker plus judge-node", () => {
+    const algoDeploy = read("scripts/deploy-algo.sh");
+
+    expect(algoDeploy).toContain("./scripts/deploy-algo.sh worker-runtime");
+    expect(algoDeploy).toContain('docker build --no-cache --platform ${WORKER_PLATFORM} -t judgekit-judge-worker:latest -f Dockerfile.judge-worker .');
+    expect(algoDeploy).toContain('docker build --no-cache --platform ${WORKER_PLATFORM} -t judge-node:latest -f docker/Dockerfile.judge-node .');
+    expect(algoDeploy).toContain("do_deploy_worker_runtime");
+  });
 });

@@ -10,6 +10,7 @@
 #   ./scripts/deploy-algo.sh                  # Full deploy (web + worker)
 #   ./scripts/deploy-algo.sh web              # Web server only
 #   ./scripts/deploy-algo.sh worker           # Worker only
+#   ./scripts/deploy-algo.sh worker-runtime   # Worker runtime only (judge-worker + judge-node)
 #   ./scripts/deploy-algo.sh bootstrap        # Bootstrap both instances only
 #   ./scripts/deploy-algo.sh bootstrap-web    # Bootstrap web instance only
 #   ./scripts/deploy-algo.sh bootstrap-worker # Bootstrap worker instance only
@@ -54,7 +55,7 @@ SKIP_LANGUAGES=false
 
 for arg in "$@"; do
   case "$arg" in
-    web|worker|bootstrap|bootstrap-web|bootstrap-worker|worker-languages)
+    web|worker|worker-runtime|bootstrap|bootstrap-web|bootstrap-worker|worker-languages)
       PHASE="$arg" ;;
     --skip-bootstrap)    SKIP_BOOTSTRAP=true ;;
     --skip-languages)    SKIP_LANGUAGES=true ;;
@@ -99,6 +100,106 @@ worker_sudo() {
   ssh $SSH_OPTS "${WORKER_USER}@${WORKER_HOST}" "sudo bash -c $(printf '%q' "$cmd")"
 }
 worker_rsync() { rsync -e "ssh $SSH_OPTS" "$@"; }
+
+resolve_worker_platform() {
+  local arch="$1"
+  case "$arch" in
+    x86_64)  echo "linux/amd64" ;;
+    aarch64) echo "linux/arm64" ;;
+    *)       echo "linux/amd64" ;;
+  esac
+}
+
+prepare_worker_context() {
+  info "Testing worker SSH connectivity..."
+  worker_ssh "echo ok" >/dev/null 2>&1 || die "Cannot SSH to ${WORKER_USER}@${WORKER_HOST}"
+  success "Worker SSH connection verified"
+
+  WORKER_ARCH=$(worker_ssh "uname -m")
+  WORKER_PLATFORM=$(resolve_worker_platform "$WORKER_ARCH")
+  APP_URL="https://${WEB_DOMAIN}/api/v1"
+  info "Worker architecture: ${WORKER_ARCH}"
+
+  info "Reading JUDGE_AUTH_TOKEN from web server..."
+  WEB_REMOTE_DIR="/home/${WEB_USER}/judgekit"
+  JUDGE_AUTH_TOKEN=$(web_ssh "grep '^JUDGE_AUTH_TOKEN=' ${WEB_REMOTE_DIR}/.env.production | cut -d= -f2-" 2>/dev/null)
+  if [[ -z "${JUDGE_AUTH_TOKEN}" ]]; then
+    die "Could not read JUDGE_AUTH_TOKEN from ${WEB_HOST}:${WEB_REMOTE_DIR}/.env.production — deploy web first"
+  fi
+  success "Got JUDGE_AUTH_TOKEN from web server"
+}
+
+sync_worker_source() {
+  info "Syncing source code to worker ${WORKER_HOST}:${WORKER_DIR}..."
+  worker_sudo "mkdir -p ${WORKER_DIR} && chown ${WORKER_USER}:${WORKER_USER} ${WORKER_DIR}"
+  worker_rsync -az --delete \
+    --exclude='node_modules/' \
+    --exclude='.next/' \
+    --exclude='.git/' \
+    --exclude='data/' \
+    --exclude='.env*' \
+    --exclude='*.db' \
+    --exclude='judge-worker-rs/target/' \
+    --exclude='rate-limiter-rs/target/' \
+    --exclude='code-similarity-rs/target/' \
+    --exclude='.omc/' \
+    --exclude='.omx/' \
+    --exclude='.claude/' \
+    --exclude='.agent/' \
+    --exclude='.sisyphus/' \
+    --exclude='tests/' \
+    --exclude='.playwright/' \
+    --exclude='backups/' \
+    --exclude='._*' \
+    "${PROJECT_DIR}/" \
+    "${WORKER_USER}@${WORKER_HOST}:${WORKER_DIR}/"
+  success "Source synced to worker"
+}
+
+build_worker_core_images() {
+  info "Building judge-worker image on ${WORKER_HOST} (${WORKER_ARCH})..."
+  worker_ssh "cd ${WORKER_DIR} && docker build --no-cache --platform ${WORKER_PLATFORM} -t judgekit-judge-worker:latest -f Dockerfile.judge-worker ."
+  success "Judge worker image built on worker"
+
+  info "Building judge-node image on ${WORKER_HOST} (${WORKER_ARCH})..."
+  worker_ssh "cd ${WORKER_DIR} && docker build --no-cache --platform ${WORKER_PLATFORM} -t judge-node:latest -f docker/Dockerfile.judge-node ."
+  success "judge-node image built on worker"
+}
+
+write_worker_env() {
+  info "Creating worker environment file..."
+  worker_ssh "cat > ${WORKER_DIR}/.env <<'ENVEOF'
+JUDGE_BASE_URL=${APP_URL}
+JUDGE_AUTH_TOKEN=${JUDGE_AUTH_TOKEN}
+JUDGE_CONCURRENCY=4
+JUDGE_WORKER_HOSTNAME=${WORKER_HOST}
+RUNNER_PORT=3001
+RUST_LOG=info
+ENVEOF
+chmod 600 ${WORKER_DIR}/.env"
+  success "Worker environment configured"
+}
+
+start_worker_stack() {
+  info "Setting up docker-compose on worker..."
+  worker_ssh "cp -f ${WORKER_DIR}/docker-compose.worker.yml ${WORKER_DIR}/docker-compose.yml"
+
+  info "Starting worker containers..."
+  worker_ssh "cd ${WORKER_DIR} && docker compose --env-file .env down --remove-orphans 2>/dev/null || true"
+  worker_ssh "cd ${WORKER_DIR} && docker compose --env-file .env up -d"
+
+  info "Waiting for worker to be healthy..."
+  for i in $(seq 1 30); do
+    if worker_ssh "docker inspect --format='{{.State.Health.Status}}' judgekit-judge-worker 2>/dev/null" | grep -q "healthy"; then
+      break
+    fi
+    if [[ $i -eq 30 ]]; then
+      warn "Worker did not become healthy in 30s — check logs"
+    fi
+    sleep 1
+  done
+  success "Worker deployed and running on ${WORKER_HOST}"
+}
 
 # ---------------------------------------------------------------------------
 # Pre-flight
@@ -205,59 +306,9 @@ do_bootstrap_worker() {
 do_deploy_worker() {
   phase "Phase 4: Deploy Worker (${WORKER_HOST})"
 
-  # 4a. Verify connectivity
-  info "Testing worker SSH connectivity..."
-  worker_ssh "echo ok" >/dev/null 2>&1 || die "Cannot SSH to ${WORKER_USER}@${WORKER_HOST}"
-  success "Worker SSH connection verified"
-
-  WORKER_ARCH=$(worker_ssh "uname -m")
-  info "Worker architecture: ${WORKER_ARCH}"
-
-  # 4b. Read JUDGE_AUTH_TOKEN from the web server's .env.production
-  info "Reading JUDGE_AUTH_TOKEN from web server..."
-  WEB_REMOTE_DIR="/home/${WEB_USER}/judgekit"
-  JUDGE_AUTH_TOKEN=$(web_ssh "grep '^JUDGE_AUTH_TOKEN=' ${WEB_REMOTE_DIR}/.env.production | cut -d= -f2-" 2>/dev/null)
-  if [[ -z "${JUDGE_AUTH_TOKEN}" ]]; then
-    die "Could not read JUDGE_AUTH_TOKEN from ${WEB_HOST}:${WEB_REMOTE_DIR}/.env.production — deploy web first"
-  fi
-  success "Got JUDGE_AUTH_TOKEN from web server"
-
-  # 4c. Sync source code to worker (needed for building images)
-  info "Syncing source code to worker ${WORKER_HOST}:${WORKER_DIR}..."
-  worker_sudo "mkdir -p ${WORKER_DIR} && chown ${WORKER_USER}:${WORKER_USER} ${WORKER_DIR}"
-  worker_rsync -az --delete \
-    --exclude='node_modules/' \
-    --exclude='.next/' \
-    --exclude='.git/' \
-    --exclude='data/' \
-    --exclude='.env*' \
-    --exclude='*.db' \
-    --exclude='judge-worker-rs/target/' \
-    --exclude='rate-limiter-rs/target/' \
-    --exclude='code-similarity-rs/target/' \
-    --exclude='.omc/' \
-    --exclude='.omx/' \
-    --exclude='.claude/' \
-    --exclude='.agent/' \
-    --exclude='.sisyphus/' \
-    --exclude='tests/' \
-    --exclude='.playwright/' \
-    --exclude='backups/' \
-    --exclude='._*' \
-    "${PROJECT_DIR}/" \
-    "${WORKER_USER}@${WORKER_HOST}:${WORKER_DIR}/"
-  success "Source synced to worker"
-
-  # 4d. Build judge-worker image on the worker
-  info "Building judge-worker image on ${WORKER_HOST} (${WORKER_ARCH})..."
-  case "$WORKER_ARCH" in
-    x86_64)  WORKER_PLATFORM="linux/amd64" ;;
-    aarch64) WORKER_PLATFORM="linux/arm64" ;;
-    *)       WORKER_PLATFORM="linux/amd64" ;;
-  esac
-
-  worker_ssh "cd ${WORKER_DIR} && docker build --no-cache --platform ${WORKER_PLATFORM} -t judgekit-judge-worker:latest -f Dockerfile.judge-worker ."
-  success "Judge worker image built on worker"
+  prepare_worker_context
+  sync_worker_source
+  build_worker_core_images
 
   # 4e. Build ALL language images on the worker
   if [[ "${SKIP_LANGUAGES}" == "false" ]]; then
@@ -266,42 +317,22 @@ do_deploy_worker() {
     info "Skipping language image builds (--skip-languages)"
   fi
 
-  # 4f. Create .env file on the worker
-  info "Creating worker environment file..."
-  APP_URL="https://${WEB_DOMAIN}/api/v1"
-
-  worker_ssh "cat > ${WORKER_DIR}/.env <<'ENVEOF'
-JUDGE_BASE_URL=${APP_URL}
-JUDGE_AUTH_TOKEN=${JUDGE_AUTH_TOKEN}
-JUDGE_CONCURRENCY=4
-JUDGE_WORKER_HOSTNAME=${WORKER_HOST}
-RUST_LOG=info
-ENVEOF
-chmod 600 ${WORKER_DIR}/.env"
-  success "Worker environment configured"
-
-  # 4g. Copy compose file and start the worker
-  info "Setting up docker-compose on worker..."
-  worker_ssh "cp -f ${WORKER_DIR}/docker-compose.worker.yml ${WORKER_DIR}/docker-compose.yml"
-
-  info "Starting worker containers..."
-  worker_ssh "cd ${WORKER_DIR} && docker compose --env-file .env down --remove-orphans 2>/dev/null || true"
-  worker_ssh "cd ${WORKER_DIR} && docker compose --env-file .env up -d"
-
-  # Wait for health
-  info "Waiting for worker to be healthy..."
-  for i in $(seq 1 30); do
-    if worker_ssh "docker inspect --format='{{.State.Health.Status}}' judgekit-judge-worker 2>/dev/null" | grep -q "healthy"; then
-      break
-    fi
-    if [[ $i -eq 30 ]]; then
-      warn "Worker did not become healthy in 30s — check logs"
-    fi
-    sleep 1
-  done
-  success "Worker deployed and running on ${WORKER_HOST}"
+  write_worker_env
+  start_worker_stack
 
   # Clean up dangling images
+  worker_ssh "docker image prune -f" >/dev/null 2>&1 || true
+}
+
+do_deploy_worker_runtime() {
+  phase "Phase 4R: Deploy Worker Runtime (${WORKER_HOST})"
+
+  prepare_worker_context
+  sync_worker_source
+  build_worker_core_images
+  write_worker_env
+  start_worker_stack
+
   worker_ssh "docker image prune -f" >/dev/null 2>&1 || true
 }
 
@@ -371,6 +402,12 @@ case "$PHASE" in
       do_bootstrap_worker
     fi
     do_deploy_worker
+    ;;
+  worker-runtime)
+    if [[ "$SKIP_BOOTSTRAP" == "false" ]]; then
+      do_bootstrap_worker
+    fi
+    do_deploy_worker_runtime
     ;;
   bootstrap)
     do_bootstrap_web
