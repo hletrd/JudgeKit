@@ -50,6 +50,7 @@ import { AntiCheatDashboard } from "@/components/contest/anti-cheat-dashboard";
 import { AnalyticsCharts } from "@/components/contest/analytics-charts";
 import { ExportButton } from "@/components/contest/export-button";
 import { ContestAnnouncements } from "@/components/contest/contest-announcements";
+import { ContestClarifications } from "@/components/contest/contest-clarifications";
 import { RecruiterCandidatesPanel } from "@/components/contest/recruiter-candidates-panel";
 import { RecruitingInvitationsPanel } from "@/components/contest/recruiting-invitations-panel";
 import AssignmentFormDialog, { type AssignmentEditorValue } from "../../groups/[id]/assignment-form-dialog";
@@ -372,6 +373,14 @@ export default async function ContestDetailPage({
               }}
               problemStatuses={studentProblemStatuses}
             />
+            <ContestClarifications
+              assignmentId={assignmentId}
+              currentUserId={session.user.id}
+              problems={sortedProblems.map((problem) => ({
+                id: problem.problem?.id ?? problem.problemId,
+                title: problem.problem?.title ?? "",
+              }))}
+            />
             {!isRecruitingCandidate && (
               <LeaderboardTable assignmentId={assignmentId} currentUserId={session.user.id} />
             )}
@@ -650,6 +659,15 @@ export default async function ContestDetailPage({
         {/* Overview Tab */}
         <TabsContent value="overview" className="mt-6 space-y-6">
           <ContestAnnouncements assignmentId={assignmentId} canManage={canManage} />
+          <ContestClarifications
+            assignmentId={assignmentId}
+            currentUserId={session.user.id}
+            canManage={canManage}
+            problems={sortedProblems.map((problem) => ({
+              id: problem.problem?.id ?? problem.problemId,
+              title: problem.problem?.title ?? "",
+            }))}
+          />
           <AssignmentOverview
             assignment={assignment}
             sortedProblems={sortedProblems}

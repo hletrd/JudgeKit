@@ -648,6 +648,43 @@ export const contestAnnouncements = mysqlTable(
   ]
 );
 
+export const contestClarifications = mysqlTable(
+  "contest_clarifications",
+  {
+    id: varchar("id", { length: 36 })
+      .primaryKey()
+      .$defaultFn(() => nanoid()),
+    assignmentId: varchar("assignment_id", { length: 36 })
+      .notNull()
+      .references(() => assignments.id, { onDelete: "cascade" }),
+    problemId: varchar("problem_id", { length: 36 }).references(() => problems.id, {
+      onDelete: "set null",
+    }),
+    userId: varchar("user_id", { length: 36 })
+      .notNull()
+      .references(() => users.id, { onDelete: "cascade" }),
+    question: text("question").notNull(),
+    answer: text("answer"),
+    answerType: varchar("answer_type", { length: 32 }),
+    answeredBy: varchar("answered_by", { length: 36 }).references(() => users.id, {
+      onDelete: "set null",
+    }),
+    answeredAt: timestamp("answered_at"),
+    isPublic: boolean("is_public").notNull().default(false),
+    createdAt: timestamp("created_at")
+      .notNull()
+      .$defaultFn(() => new Date(Date.now())),
+    updatedAt: timestamp("updated_at")
+      .notNull()
+      .$defaultFn(() => new Date(Date.now())),
+  },
+  (table) => [
+    index("contest_clarifications_assignment_idx").on(table.assignmentId, table.createdAt),
+    index("contest_clarifications_problem_idx").on(table.problemId),
+    index("contest_clarifications_user_idx").on(table.userId),
+  ]
+);
+
 export const problemSets = mysqlTable("problem_sets", {
   id: varchar("id", { length: 36 })
     .primaryKey()

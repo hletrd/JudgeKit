@@ -670,6 +670,39 @@ export const contestAnnouncements = pgTable(
   ]
 );
 
+export const contestClarifications = pgTable(
+  "contest_clarifications",
+  {
+    id: text("id")
+      .primaryKey()
+      .$defaultFn(() => nanoid()),
+    assignmentId: text("assignment_id")
+      .notNull()
+      .references(() => assignments.id, { onDelete: "cascade" }),
+    problemId: text("problem_id").references(() => problems.id, { onDelete: "set null" }),
+    userId: text("user_id")
+      .notNull()
+      .references(() => users.id, { onDelete: "cascade" }),
+    question: text("question").notNull(),
+    answer: text("answer"),
+    answerType: text("answer_type"),
+    answeredBy: text("answered_by").references(() => users.id, { onDelete: "set null" }),
+    answeredAt: timestamp("answered_at", { withTimezone: true }),
+    isPublic: boolean("is_public").notNull().default(false),
+    createdAt: timestamp("created_at", { withTimezone: true })
+      .notNull()
+      .$defaultFn(() => new Date(Date.now())),
+    updatedAt: timestamp("updated_at", { withTimezone: true })
+      .notNull()
+      .$defaultFn(() => new Date(Date.now())),
+  },
+  (table) => [
+    index("contest_clarifications_assignment_idx").on(table.assignmentId, table.createdAt),
+    index("contest_clarifications_problem_idx").on(table.problemId),
+    index("contest_clarifications_user_idx").on(table.userId),
+  ]
+);
+
 export const problemSets = pgTable("problem_sets", {
   id: text("id")
     .primaryKey()
