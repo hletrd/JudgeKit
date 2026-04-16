@@ -1,5 +1,5 @@
 import type { Metadata } from "next";
-import { and, asc, count, desc, eq, like, or, sql, inArray } from "drizzle-orm";
+import { and, asc, count, desc, eq, gte, inArray, like, lte, or, sql } from "drizzle-orm";
 import { getLocale, getTranslations } from "next-intl/server";
 import { db } from "@/lib/db";
 import { problems, submissions, tags, problemTags } from "@/lib/db/schema";
@@ -16,6 +16,8 @@ import { FilterSelect } from "@/components/filter-select";
 import Link from "next/link";
 import { normalizePage, normalizePageSize, setPaginationParams } from "@/lib/pagination";
 import { getProblemTierInfo } from "@/lib/problem-tiers";
+import { DifficultyRangeFilter } from "@/components/problem/difficulty-range-filter";
+import { hasCustomDifficultyRange, normalizeDifficultyRange, serializeDifficultyRange } from "@/lib/practice/difficulty-range";
 import { escapePracticeLike, getPracticeSearchMatchKinds, normalizePracticeSearch, type PracticeSearchMatchKind } from "@/lib/practice/search";
 
 type ProblemProgress = "solved" | "attempted" | "untried";
@@ -51,12 +53,14 @@ function buildPageHref(
   tag: string,
   sort: SortOption,
   progressFilter: ProgressFilter,
+  difficulty: string,
 ) {
   const params = new URLSearchParams();
   if (search) params.set("search", search);
   if (tag) params.set("tag", tag);
   if (sort !== "number_asc") params.set("sort", sort);
   if (progressFilter !== "all") params.set("progress", progressFilter);
+  if (difficulty) params.set("difficulty", difficulty);
   setPaginationParams(params, page, pageSize);
   const qs = params.toString();
   return qs ? `${PAGE_PATH}?${qs}` : PAGE_PATH;
@@ -65,7 +69,7 @@ function buildPageHref(
 export async function generateMetadata({
   searchParams,
 }: {
-  searchParams?: Promise<{ page?: string; pageSize?: string }>;
+  searchParams?: Promise<{ page?: string; pageSize?: string; difficulty?: string }>;
 } = {}): Promise<Metadata> {
   const resolvedSearchParams = searchParams ? await searchParams : undefined;
   const pageSize = normalizePageSize(resolvedSearchParams?.pageSize);
@@ -96,7 +100,7 @@ export async function generateMetadata({
   return buildPublicMetadata({
     title,
     description,
-    path: buildPageHref(currentPage, pageSize, "", "", "number_asc", "all"),
+    path: buildPageHref(currentPage, pageSize, "", "", "number_asc", "all", ""),
     siteTitle: settings.siteTitle,
     locale,
     keywords: [
@@ -111,7 +115,7 @@ export async function generateMetadata({
 export default async function PracticePage({
   searchParams,
 }: {
-  searchParams?: Promise<{ page?: string; pageSize?: string; search?: string; tag?: string; sort?: string; progress?: string }>;
+  searchParams?: Promise<{ page?: string; pageSize?: string; search?: string; tag?: string; sort?: string; progress?: string; difficulty?: string }>;
 }) {
   const resolvedSearchParams = searchParams ? await searchParams : undefined;
   const pageSize = normalizePageSize(resolvedSearchParams?.pageSize);
@@ -125,6 +129,8 @@ export default async function PracticePage({
   const currentProgressFilter: ProgressFilter = PROGRESS_FILTER_VALUES.includes(rawProgressFilter as ProgressFilter)
     ? (rawProgressFilter as ProgressFilter)
     : "all";
+  const currentDifficultyRange = normalizeDifficultyRange(resolvedSearchParams?.difficulty);
+  const currentDifficultyParam = serializeDifficultyRange(currentDifficultyRange);
 
   const [t, tProblems, locale] = await Promise.all([
     getTranslations("publicShell"),
@@ -168,8 +174,14 @@ export default async function PracticePage({
           and ${tags.name} = ${currentTag}
       )`
     : undefined;
+  const difficultyFilter = hasCustomDifficultyRange(currentDifficultyRange)
+    ? and(
+        gte(problems.difficulty, currentDifficultyRange.min),
+        lte(problems.difficulty, currentDifficultyRange.max),
+      )
+    : undefined;
 
-  const baseWhereClause = combineFilters(visibilityFilter, searchFilter, tagFilter);
+  const baseWhereClause = combineFilters(visibilityFilter, searchFilter, tagFilter, difficultyFilter);
   const submissionStatsSubquery = db
     .select({
       problemId: submissions.problemId,
@@ -525,7 +537,7 @@ export default async function PracticePage({
     "@type": "CollectionPage",
     name: t("practice.catalogTitle"),
     description: t("practice.catalogDescription"),
-    url: buildAbsoluteUrl(buildLocalePath(buildPageHref(clampedPage, pageSize, searchQuery, currentTag, currentSort, currentProgressFilter), locale)),
+    url: buildAbsoluteUrl(buildLocalePath(buildPageHref(clampedPage, pageSize, searchQuery, currentTag, currentSort, currentProgressFilter, currentDifficultyParam), locale)),
     inLanguage: locale,
     mainEntity: {
       "@type": "ItemList",
@@ -576,6 +588,18 @@ export default async function PracticePage({
 
             <div className="space-y-1.5">
               <label className="block text-sm font-medium">
+                {t("practice.difficultyRange")}
+              </label>
+              <DifficultyRangeFilter
+                name="difficulty"
+                defaultValue={currentDifficultyParam}
+                minLabel={t("practice.minDifficulty")}
+                maxLabel={t("practice.maxDifficulty")}
+              />
+            </div>
+
+            <div className="space-y-1.5">
+              <label className="block text-sm font-medium">
                 {t("practice.sortBy")}
               </label>
               <FilterSelect
@@ -609,7 +633,7 @@ export default async function PracticePage({
       {userId && (
         <div className="mb-4 flex flex-wrap gap-2">
           {PROGRESS_FILTER_VALUES.map((filter) => (
-            <Link key={filter} href={buildPageHref(1, pageSize, searchQuery, currentTag, currentSort, filter)} aria-current={currentProgressFilter === filter ? "page" : undefined}>
+            <Link key={filter} href={buildPageHref(1, pageSize, searchQuery, currentTag, currentSort, filter, currentDifficultyParam)} aria-current={currentProgressFilter === filter ? "page" : undefined}>
               <Button variant={currentProgressFilter === filter ? "default" : "outline"} size="sm">
                 {progressFilterLabels[filter]}
               </Button>
@@ -659,7 +683,7 @@ export default async function PracticePage({
             tags: problem.problemTags.map((tag) => ({
               name: tag.name,
               color: tag.color,
-              href: buildPageHref(1, pageSize, searchQuery, tag.name, currentSort, currentProgressFilter),
+              href: buildPageHref(1, pageSize, searchQuery, tag.name, currentSort, currentProgressFilter, currentDifficultyParam),
             })),
             solverCount: problem.solverCount,
             submissionCount: problem.submissionCount,
@@ -675,7 +699,7 @@ export default async function PracticePage({
         currentPage={clampedPage}
         totalPages={totalPages}
         pageSize={pageSize}
-        buildHref={(page, nextPageSize) => buildPageHref(page, nextPageSize, searchQuery, currentTag, currentSort, currentProgressFilter)}
+        buildHref={(page, nextPageSize) => buildPageHref(page, nextPageSize, searchQuery, currentTag, currentSort, currentProgressFilter, currentDifficultyParam)}
       />
     </>
   );

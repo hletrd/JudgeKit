@@ -2513,6 +2513,9 @@
       },
       "filterByTag": "Tag",
       "allTags": "All tags",
+      "difficultyRange": "Difficulty range",
+      "minDifficulty": "Min",
+      "maxDifficulty": "Max",
       "sortBy": "Sort by",
       "sortOptions": {
         "number_asc": "Number",

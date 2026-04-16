@@ -2513,6 +2513,9 @@
       },
       "filterByTag": "태그",
       "allTags": "전체 태그",
+      "difficultyRange": "난이도 범위",
+      "minDifficulty": "최소",
+      "maxDifficulty": "최대",
       "sortBy": "정렬",
       "sortOptions": {
         "number_asc": "번호순",
