@@ -215,29 +215,6 @@ Or use the deploy script:
 
 Monitor workers at `/dashboard/admin/workers`.
 
-### Split app/worker topology for `algo.xylolabs.com`
-
-Production `algo.xylolabs.com` runs the web stack on the app host and the judge
-runtime on `worker-0.algo.xylolabs.com`.
-
-```bash
-# App host only
-./scripts/deploy-algo.sh web --skip-bootstrap
-
-# Worker runtime only (judge-worker + shared judge-node image)
-./scripts/deploy-algo.sh worker-runtime --skip-bootstrap
-
-# Full worker flow, including optional language-image rebuilds
-./scripts/deploy-algo.sh worker --skip-bootstrap
-
-# Language images only
-./scripts/deploy-algo.sh worker-languages
-```
-
-Use `worker-runtime` for judge-worker runtime changes, output-only runner
-changes, and shared `judge-node` updates. Reserve `worker` for deliberate full
-language-image rebuilds.
-
 > **App-instance scaling note:** judge workers can scale horizontally. The
 > Next.js app now supports two realtime modes for the routes that previously
 > required a single instance:

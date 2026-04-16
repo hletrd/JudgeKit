@@ -7,12 +7,9 @@
 #
 # Usage:
 #   ./scripts/bootstrap-instance.sh \
-#     --host=algo.xylolabs.com \
-#     --ssh-key=~/.ssh/xylolabs-algo.pem \
 #     [--ssh-user=ubuntu] \
 #     [--swap=8G] \
 #     [--nginx] \
-#     [--certbot --domain=algo.xylolabs.com] \
 #     [--email=admin@example.com]
 #
 # Phases (each idempotent):

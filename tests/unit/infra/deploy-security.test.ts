@@ -99,24 +99,4 @@ describe("deployment security defaults", () => {
     expect(workerCompose).toContain("- BUILD=1");
     expect(workerCompose).toContain('127.0.0.1:${RUNNER_PORT:-3001}:3001');
   });
-
-  it("keeps the algo web deploy in app-only mode with an external runner URL", () => {
-    const algoDeploy = read("scripts/deploy-algo.sh");
-
-    expect(algoDeploy).toContain('REMOTE_RUNNER_URL="http://172.17.0.1:3001"');
-    expect(algoDeploy).toContain("INCLUDE_WORKER=false");
-    expect(algoDeploy).toContain("--skip-languages");
-    expect(algoDeploy).toContain("--no-worker");
-    expect(algoDeploy).toContain("--skip-worker-build");
-    expect(algoDeploy).toContain("COMPILER_RUNNER_URL=");
-  });
-
-  it("supports a narrow algo worker-runtime rebuild path for judge-worker plus judge-node", () => {
-    const algoDeploy = read("scripts/deploy-algo.sh");
-
-    expect(algoDeploy).toContain("./scripts/deploy-algo.sh worker-runtime");
-    expect(algoDeploy).toContain('docker build --no-cache --platform ${WORKER_PLATFORM} -t judgekit-judge-worker:latest -f Dockerfile.judge-worker .');
-    expect(algoDeploy).toContain('docker build --no-cache --platform ${WORKER_PLATFORM} -t judge-node:latest -f docker/Dockerfile.judge-node .');
-    expect(algoDeploy).toContain("do_deploy_worker_runtime");
-  });
 });

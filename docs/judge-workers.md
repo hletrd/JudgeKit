@@ -94,8 +94,8 @@ It also publishes the Rust runner on host loopback:
 ```
 
 That loopback port is useful for split app/worker topologies such as
-`algo.xylolabs.com`, where the app host reaches the worker runner through an SSH
-tunnel / host bridge path instead of running a co-located judge worker.
+the app host reaching the worker runner through an SSH tunnel / host bridge
+path instead of running a co-located judge worker.
 
 > **Important:** this horizontal scaling guidance applies to **judge workers**.
 > The main Next.js app now supports two realtime modes for the routes that need
@@ -131,23 +131,6 @@ Options:
 The deploy script now copies the worker `.env` file with mode `0600` instead of embedding the shared judge token directly into a remote shell heredoc.
 - `--sync-images` — Also transfer judge language Docker images
 - `--ssh-user=<user>` — SSH user (default: root)
-
-### Algo-specific deploy script
-
-The repository also ships `scripts/deploy-algo.sh` for the split production
-topology:
-
-```bash
-./scripts/deploy-algo.sh web --skip-bootstrap
-./scripts/deploy-algo.sh worker-runtime --skip-bootstrap
-./scripts/deploy-algo.sh worker --skip-bootstrap
-./scripts/deploy-algo.sh worker-languages
-```
-
-- `web` updates only the app host
-- `worker-runtime` rebuilds only `judgekit-judge-worker` and `judge-node`
-- `worker` performs the full worker flow, including optional language-image rebuilds
-- `worker-languages` only rebuilds the language-image fleet
 
 ### Docker Image Distribution
 
