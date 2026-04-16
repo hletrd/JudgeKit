@@ -20,6 +20,7 @@ import type { SubmissionDetailView } from "@/hooks/use-submission-polling";
 import { SubmissionResultPanel } from "./_components/submission-result-panel";
 import { getLanguageDisplayLabel } from "@/lib/judge/languages";
 import { CommentSection } from "./_components/comment-section";
+import { LiveSubmissionStatus } from "./_components/live-submission-status";
 
 type SubmissionDetailClientProps = {
   showCompileOutput: boolean;
@@ -91,6 +92,20 @@ export function SubmissionDetailClient(props: SubmissionDetailClientProps) {
     };
     localStorage.setItem(key, JSON.stringify(payload));
     router.push(problemHref);
+  }
+
+  function handleRetryRefresh() {
+    apiFetch(`/api/v1/submissions/${submission.id}`)
+      .then((res) => res.json())
+      .then((payload: { data?: Record<string, unknown> }) => {
+        if (payload.data) {
+          const updated = normalizeSubmission(payload.data);
+          setSubmission((prev) => ({ ...updated, sourceCode: updated.sourceCode || prev.sourceCode }));
+        }
+      })
+      .catch(() => {
+        toast.error(tCommon("error"));
+      });
   }
 
   useEffect(() => {
@@ -221,43 +236,19 @@ export function SubmissionDetailClient(props: SubmissionDetailClientProps) {
           </div>
 
           {isLive && (
-            <div className="space-y-1 text-sm text-muted-foreground">
-              <p>{t("liveUpdatesActive")}</p>
-              {(submission.status === "pending" || submission.status === "queued") && queuePosition !== null && queuePosition > 0 ? (
-                <p>{t("queueAhead", { count: queuePosition })}</p>
-              ) : null}
-              {submission.status === "judging" ? (
-                <p>
-                  {gradingTestCase
-                    ? t("judgingProgress", { progress: gradingTestCase })
-                    : t("judgingInProgress")}
-                </p>
-              ) : null}
-              {pollingError && (
-                <div aria-live="polite" className="flex items-center gap-2 text-amber-600 dark:text-amber-400">
-                  <p>{t("liveUpdatesDelayed")}</p>
-                  <Button
-                    variant="outline"
-                    size="xs"
-                    onClick={() => {
-                      apiFetch(`/api/v1/submissions/${submission.id}`)
-                        .then((res) => res.json())
-                        .then((payload: { data?: Record<string, unknown> }) => {
-                          if (payload.data) {
-                            const updated = normalizeSubmission(payload.data);
-                            setSubmission((prev) => ({ ...updated, sourceCode: updated.sourceCode || prev.sourceCode }));
-                          }
-                        })
-                        .catch(() => {
-                          toast.error(tCommon("error"));
-                        });
-                    }}
-                  >
-                    {tCommon("retry")}
-                  </Button>
-                </div>
-              )}
-            </div>
+            <LiveSubmissionStatus
+              status={submission.status}
+              queuePosition={queuePosition}
+              gradingTestCase={gradingTestCase}
+              pollingError={pollingError}
+              liveUpdatesActiveLabel={t("liveUpdatesActive")}
+              queueAheadLabel={t("queueAhead", { count: queuePosition ?? 0 })}
+              judgingProgressLabel={t("judgingProgress", { progress: gradingTestCase ?? "" })}
+              judgingInProgressLabel={t("judgingInProgress")}
+              liveUpdatesDelayedLabel={t("liveUpdatesDelayed")}
+              retryLabel={tCommon("retry")}
+              onRetry={handleRetryRefresh}
+            />
           )}
         </div>
 
