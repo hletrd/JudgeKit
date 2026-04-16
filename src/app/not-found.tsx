@@ -1,4 +1,3 @@
-import type { Metadata } from "next";
 import Link from "next/link";
 import { getLocale, getTranslations } from "next-intl/server";
 import { PublicHeader } from "@/components/layout/public-header";
@@ -8,10 +7,14 @@ import { auth } from "@/lib/auth";
 import { buildLocalePath, NO_INDEX_METADATA } from "@/lib/seo";
 import { getResolvedSystemSettings } from "@/lib/system-settings";
 
-export const metadata: Metadata = {
-  title: "Page not found",
-  ...NO_INDEX_METADATA,
-};
+export async function generateMetadata() {
+  const tState = await getTranslations("dashboardState");
+
+  return {
+    title: tState("notFoundTitle"),
+    ...NO_INDEX_METADATA,
+  };
+}
 
 export default async function NotFoundPage() {
   const [tCommon, tAuth, tShell, tState, session, locale] = await Promise.all([
@@ -75,7 +78,7 @@ export default async function NotFoundPage() {
           </div>
         </div>
       </main>
-      <PublicFooter footerContent={settings.footerContent} />
+      <PublicFooter siteTitle={settings.siteTitle} footerContent={settings.footerContent} />
     </div>
   );
 }

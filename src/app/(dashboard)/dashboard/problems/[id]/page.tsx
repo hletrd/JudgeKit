@@ -32,12 +32,13 @@ function formatDifficultyValue(value: number) {
 
 export async function generateMetadata({ params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
+  const t = await getTranslations("problems");
   const problem = await db.query.problems.findFirst({
     where: eq(problems.id, id),
     columns: { title: true, description: true, visibility: true },
   });
-  if (!problem) return { title: "Problem" };
-  if (problem.visibility !== "public") return { title: "Problem" };
+  if (!problem) return { title: t("detail") };
+  if (problem.visibility !== "public") return { title: t("detail") };
 
   const { stripMarkdownForMeta } = await import("@/lib/utils");
   const desc = stripMarkdownForMeta(problem.description ?? "").slice(0, 160);

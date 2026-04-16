@@ -68,6 +68,59 @@ describe("UI hardcoded-string guards", () => {
         forbidden: ['"Copy code"'],
         required: ['useTranslations("common")'],
       },
+      {
+        path: "src/components/layout/public-footer.tsx",
+        forbidden: ['aria-label="Footer"'],
+        required: ['getTranslations("common")', 'footerNavigation'],
+      },
+      {
+        path: "src/components/contest/leaderboard-table.tsx",
+        forbidden: ['aria-label="frozen"'],
+        required: ['useTranslations("contests.leaderboard")'],
+      },
+      {
+        path: "src/app/(dashboard)/dashboard/admin/languages/language-config-table.tsx",
+        forbidden: [
+          'placeholder="e.g. My Language"',
+          'placeholder="e.g. C++20"',
+          'placeholder="e.g. .ml"',
+        ],
+        required: ['useTranslations("admin.languages")'],
+      },
+      {
+        path: "src/app/(dashboard)/dashboard/admin/settings/system-settings-form.tsx",
+        forbidden: ['placeholder="python"', '<SelectValue />', 'label="English"', 'label="한국어"'],
+        required: ['useTranslations("admin.settings")', 'useTranslations("common")', 'defaultLanguagePlaceholder'],
+      },
+      {
+        path: "src/app/page.tsx",
+        forbidden: ['section: locale === "ko" ? "온라인 저지" : "Online judge"'],
+        required: ['tShell("home.eyebrow")'],
+      },
+      {
+        path: "src/app/layout.tsx",
+        forbidden: ['section: locale === "ko" ? "온라인 저지" : "Online judge"'],
+        required: ['getTranslations("publicShell")', 'tShell("home.eyebrow")'],
+      },
+      {
+        path: "src/app/not-found.tsx",
+        forbidden: ['title: "Page not found"'],
+        required: ['getTranslations("dashboardState")'],
+      },
+      {
+        path: "src/app/(dashboard)/dashboard/problems/[id]/page.tsx",
+        forbidden: ['title: "Problem"'],
+        required: ['getTranslations("problems")'],
+      },
+      {
+        path: "src/app/(public)/community/threads/[id]/page.tsx",
+        forbidden: [
+          'title: "Discussion"',
+          'locale === "ko" ? "커뮤니티" : "Community"',
+          'locale === "ko" ? "게시판" : "Forum"',
+        ],
+        required: ['getTranslations("publicShell")', 'tShell("nav.community")', 'tShell("community.scopeProblem")'],
+      },
     ];
 
     for (const check of checks) {

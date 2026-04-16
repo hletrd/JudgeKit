@@ -36,7 +36,7 @@ export async function generateMetadata(): Promise<Metadata> {
       "online coding contests",
       "computer science coursework",
     ],
-    section: locale === "ko" ? "온라인 저지" : "Online judge",
+    section: pick(tShell("home.eyebrow"), overrides?.eyebrow),
   });
 }
 
@@ -129,7 +129,7 @@ export default async function HomePage() {
           secondaryCta={session?.user ? null : { href: buildLocalePath("/login", locale), label: tShell("home.secondaryCta") }}
         />
       </main>
-      <PublicFooter footerContent={settings.footerContent} />
+      <PublicFooter siteTitle={settings.siteTitle} footerContent={settings.footerContent} />
     </div>
   );
 }

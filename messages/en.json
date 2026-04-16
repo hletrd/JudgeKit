@@ -820,9 +820,7 @@
     "assignmentVisibilityPrivate": "Private contest",
     "assignmentVisibilityPublic": "Public contest",
     "assignmentVisibilityDescription_private": "Visible only to enrolled participants and staff. Guests cannot browse it from the public contest catalog.",
-    "assignmentVisibilityDescription_public": "Visible in the public contest catalog. Joining and starting still require authentication.",
-    "showResultsToCandidateLabel": "Show per-problem results to candidates",
-    "hideScoresFromCandidatesLabel": "Hide scores from candidates"
+    "assignmentVisibilityDescription_public": "Visible in the public contest catalog. Joining and starting still require authentication."
   },
   "admin": {
     "users": {

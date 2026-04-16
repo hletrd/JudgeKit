@@ -24,7 +24,7 @@ export async function generateMetadata({ params }: { params: Promise<{ id: strin
 
   if (!thread || (thread.scopeType === "problem" && thread.problem?.visibility !== "public")) {
     return {
-      title: "Discussion",
+      title: tShell("community.liveTitle"),
       ...NO_INDEX_METADATA,
     };
   }
@@ -44,8 +44,11 @@ export async function generateMetadata({ params }: { params: Promise<{ id: strin
       "programming discussion",
       thread.scopeType === "general" ? "community forum" : "problem discussion",
     ],
-    section: thread.scopeType === "general" ? (locale === "ko" ? "커뮤니티" : "Community") : (locale === "ko" ? "문제 토론" : "Problem discussion"),
-    socialBadge: thread.scopeType === "general" ? (locale === "ko" ? "게시판" : "Forum") : (locale === "ko" ? "문제 토론" : "Problem discussion"),
+    section: thread.scopeType === "general" ? tShell("nav.community") : tShell("community.scopeProblem"),
+    socialBadge:
+      thread.scopeType === "general"
+        ? tShell("community.scopeGeneral")
+        : tShell("community.scopeProblem"),
     socialMeta: [thread.author?.name, tShell("community.replyCount", { count: thread.posts.length })].filter(Boolean).join(" · "),
     type: "article",
   });

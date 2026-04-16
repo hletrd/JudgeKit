@@ -517,7 +517,7 @@ export function LanguageConfigTable({ languages }: { languages: LanguageConfig[]
               <Input
                 value={addForm.displayName}
                 onChange={(e) => setAddForm(prev => ({ ...prev, displayName: e.target.value }))}
-                placeholder="e.g. My Language"
+                placeholder={t("add.displayNamePlaceholder")}
               />
             </div>
 
@@ -526,7 +526,7 @@ export function LanguageConfigTable({ languages }: { languages: LanguageConfig[]
               <Input
                 value={addForm.standard}
                 onChange={(e) => setAddForm(prev => ({ ...prev, standard: e.target.value }))}
-                placeholder="e.g. C++20"
+                placeholder={t("add.standardPlaceholder")}
               />
             </div>
 
@@ -535,7 +535,7 @@ export function LanguageConfigTable({ languages }: { languages: LanguageConfig[]
               <Input
                 value={addForm.extension}
                 onChange={(e) => setAddForm(prev => ({ ...prev, extension: e.target.value }))}
-                placeholder="e.g. .ml"
+                placeholder={t("add.extensionPlaceholder")}
               />
             </div>
 

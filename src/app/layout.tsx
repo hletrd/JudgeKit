@@ -25,8 +25,9 @@ export const viewport: Viewport = {
 };
 
 export async function generateMetadata(): Promise<Metadata> {
-  const [t, locale] = await Promise.all([
+  const [t, tShell, locale] = await Promise.all([
     getTranslations("common"),
+    getTranslations("publicShell"),
     getLocale(),
   ]);
   const settings = await getResolvedSystemSettings({
@@ -42,7 +43,7 @@ export async function generateMetadata(): Promise<Metadata> {
     description: siteDescription,
     locale,
     siteTitle,
-    section: locale === "ko" ? "온라인 저지" : "Online judge",
+    section: tShell("home.eyebrow"),
   });
 
   return {

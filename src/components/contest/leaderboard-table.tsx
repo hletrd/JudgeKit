@@ -308,7 +308,7 @@ export function LeaderboardTable({
                 className="flex items-center gap-1.5 rounded-full border border-blue-300 bg-blue-100 px-2.5 py-0.5 text-xs font-medium text-blue-700 dark:border-blue-700 dark:bg-blue-950/40 dark:text-blue-300"
                 title={t("frozen")}
               >
-                <span className="text-sm" aria-label="frozen">❄️</span>
+                <span className="text-sm" aria-label={t("frozen")}>❄️</span>
                 {t("frozen")}
               </span>
             )}

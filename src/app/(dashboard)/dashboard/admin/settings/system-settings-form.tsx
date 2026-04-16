@@ -89,6 +89,15 @@ export function SystemSettingsForm({
       return [];
     }
   }, []);
+  const defaultLocaleLabels = useMemo(
+    (): Record<string, string> => ({
+      _auto: t("defaultLocaleAuto"),
+      en: tCommon("english"),
+      ko: tCommon("korean"),
+    }),
+    [t, tCommon]
+  );
+  const defaultLocaleLabel = defaultLocaleLabels[defaultLocale || "_auto"] || defaultLocale || "_auto";
 
   async function handleSubmit(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -237,7 +246,7 @@ export function SystemSettingsForm({
           id="default-language"
           value={defaultLanguage}
           onChange={(e) => setDefaultLanguage(e.target.value)}
-          placeholder="python"
+          placeholder={t("defaultLanguagePlaceholder")}
         />
         <p className="text-xs text-muted-foreground">{t("defaultLanguageHint")}</p>
       </div>
@@ -246,17 +255,17 @@ export function SystemSettingsForm({
         <Label htmlFor="default-locale">{t("defaultLocale")}</Label>
         <Select value={defaultLocale || "_auto"} onValueChange={(value) => setDefaultLocale(value === "_auto" || !value ? "" : String(value))}>
           <SelectTrigger id="default-locale">
-            <SelectValue />
+            <SelectValue>{defaultLocaleLabel}</SelectValue>
           </SelectTrigger>
           <SelectContent>
             <SelectItem value="_auto" label={t("defaultLocaleAuto")}>
               {t("defaultLocaleAuto")}
             </SelectItem>
-            <SelectItem value="en" label="English">
-              English
+            <SelectItem value="en" label={tCommon("english")}>
+              {tCommon("english")}
             </SelectItem>
-            <SelectItem value="ko" label="한국어">
-              한국어
+            <SelectItem value="ko" label={tCommon("korean")}>
+              {tCommon("korean")}
             </SelectItem>
           </SelectContent>
         </Select>
