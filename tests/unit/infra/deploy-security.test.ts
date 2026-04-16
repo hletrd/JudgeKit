@@ -82,7 +82,7 @@ describe("deployment security defaults", () => {
     const productionAppSection = production.split("judge-worker:")[0] ?? production;
 
     expect(productionAppSection).not.toContain("DOCKER_HOST=tcp://docker-proxy:2375");
-    expect(testBackends).toContain("COMPILER_RUNNER_URL=http://judge-worker:3001");
+    expect(testBackends).toContain("COMPILER_RUNNER_URL=${COMPILER_RUNNER_URL:-http://judge-worker:3001}");
     expect(dockerfile).not.toContain("docker-cli");
     expect(dockerfile).not.toContain("addgroup nextjs docker");
   });
@@ -97,5 +97,17 @@ describe("deployment security defaults", () => {
     expect(production).toContain("- BUILD=1");
     expect(workerCompose).toContain("- IMAGES=1");
     expect(workerCompose).toContain("- BUILD=1");
+    expect(workerCompose).toContain('127.0.0.1:${RUNNER_PORT:-3001}:3001');
+  });
+
+  it("keeps the algo web deploy in app-only mode with an external runner URL", () => {
+    const algoDeploy = read("scripts/deploy-algo.sh");
+
+    expect(algoDeploy).toContain('REMOTE_RUNNER_URL="http://172.17.0.1:3001"');
+    expect(algoDeploy).toContain("INCLUDE_WORKER=false");
+    expect(algoDeploy).toContain("--skip-languages");
+    expect(algoDeploy).toContain("--no-worker");
+    expect(algoDeploy).toContain("--skip-worker-build");
+    expect(algoDeploy).toContain("COMPILER_RUNNER_URL=");
   });
 });

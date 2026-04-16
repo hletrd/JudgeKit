@@ -8,7 +8,7 @@ const {
   dbSelectMock,
   dbInsertMock,
   recordAuditEventMock,
-  getStudentAssignmentContextsForProblemMock,
+  getRequiredAssignmentContextsForProblemMock,
   validateAssignmentSubmissionMock,
   canAccessProblemMock,
   generateSubmissionIdMock,
@@ -20,7 +20,7 @@ const {
   dbSelectMock: vi.fn(),
   dbInsertMock: vi.fn(),
   recordAuditEventMock: vi.fn(),
-  getStudentAssignmentContextsForProblemMock: vi.fn(),
+  getRequiredAssignmentContextsForProblemMock: vi.fn(),
   validateAssignmentSubmissionMock: vi.fn(),
   canAccessProblemMock: vi.fn(),
   generateSubmissionIdMock: vi.fn(),
@@ -44,7 +44,7 @@ vi.mock("@/lib/audit/events", () => ({
 }));
 
 vi.mock("@/lib/assignments/submissions", () => ({
-  getStudentAssignmentContextsForProblem: getStudentAssignmentContextsForProblemMock,
+  getRequiredAssignmentContextsForProblem: getRequiredAssignmentContextsForProblemMock,
   validateAssignmentSubmission: validateAssignmentSubmissionMock,
 }));
 
@@ -143,7 +143,7 @@ describe("POST /api/v1/submissions", () => {
     csrfForbiddenMock.mockReturnValue(null);
     consumeApiRateLimitMock.mockResolvedValue(null);
     getApiUserMock.mockResolvedValue(VALID_USER);
-    getStudentAssignmentContextsForProblemMock.mockResolvedValue([]);
+    getRequiredAssignmentContextsForProblemMock.mockResolvedValue([]);
     validateAssignmentSubmissionMock.mockResolvedValue({ ok: true });
     canAccessProblemMock.mockResolvedValue(true);
     generateSubmissionIdMock.mockReturnValue("submission-abc123");
@@ -200,6 +200,24 @@ describe("POST /api/v1/submissions", () => {
     });
     expect(recordAuditEventMock).toHaveBeenCalledOnce();
   });
+
+  it.each(["plaintext", "verilog", "systemverilog", "vhdl"])(
+    "accepts %s as a supported output-only language when it is enabled",
+    async (language) => {
+      const { POST } = await import("@/app/api/v1/submissions/route");
+
+      const response = await POST(makeRequest({
+        ...VALID_BODY,
+        language,
+        sourceCode: "output only",
+      }));
+
+      expect(response.status).toBe(201);
+      expect(dbInsertMock).toHaveBeenCalledWith(expect.objectContaining({
+        language,
+      }));
+    }
+  );
 
   it("returns 401 when not authenticated", async () => {
     getApiUserMock.mockResolvedValue(null);
@@ -352,7 +370,7 @@ describe("POST /api/v1/submissions", () => {
   });
 
   it("returns 409 when a student submits without assignmentId but has active assignments", async () => {
-    getStudentAssignmentContextsForProblemMock.mockResolvedValue([
+    getRequiredAssignmentContextsForProblemMock.mockResolvedValue([
       { assignmentId: "assign-1", title: "HW1", groupId: "group-1" },
     ]);
     const { POST } = await import("@/app/api/v1/submissions/route");
@@ -434,7 +452,7 @@ describe("POST /api/v1/submissions", () => {
     expect(payload.error).toBe("assignmentClosed");
   });
 
-  it("does not call assignment context check for admin users", async () => {
+  it("still allows admin users to submit without assignment context errors", async () => {
     getApiUserMock.mockResolvedValue({
       id: "admin-1",
       role: "admin",
@@ -449,7 +467,11 @@ describe("POST /api/v1/submissions", () => {
     const response = await POST(makeRequest(VALID_BODY));
 
     expect(response.status).toBe(201);
-    expect(getStudentAssignmentContextsForProblemMock).not.toHaveBeenCalled();
+    expect(getRequiredAssignmentContextsForProblemMock).toHaveBeenCalledWith(
+      "problem-1",
+      "admin-1",
+      "admin"
+    );
   });
 
   it("does not fire audit event when post-insert findFirst returns null", async () => {

@@ -10,4 +10,11 @@ describe("getCodeSurfaceLanguage", () => {
   it("falls back to plaintext for unknown languages", () => {
     expect(getCodeSurfaceLanguage("unknown-language")).toBe("plaintext");
   });
+
+  it("keeps output-only judge languages on plaintext highlighting", () => {
+    expect(getCodeSurfaceLanguage("plaintext")).toBe("plaintext");
+    expect(getCodeSurfaceLanguage("verilog")).toBe("plaintext");
+    expect(getCodeSurfaceLanguage("systemverilog")).toBe("plaintext");
+    expect(getCodeSurfaceLanguage("vhdl")).toBe("plaintext");
+  });
 });

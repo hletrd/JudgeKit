@@ -1,6 +1,6 @@
-# Supported Languages (120 variants)
+# Supported Languages (124 variants)
 
-Multi-arch Docker images covering 120 language variants. Deployed on both AMD64 (test) and ARM64 (production).
+Multi-arch Docker images covering 124 language variants. Deployed on both AMD64 (test) and ARM64 (production).
 
 | # | Language ID | Description | Docker Image | amd64 | arm64 | amd64 E2E | arm64 E2E |
 |---|-------------|-------------|--------------|-------|-------|-----------|-----------|
@@ -124,6 +124,12 @@ Multi-arch Docker images covering 120 language variants. Deployed on both AMD64 
 | 118 | `idris2` | Idris 2 0.8.0 (Chez Scheme) | `judge-idris2` | ✅ | ✅ | ✅ | ✅ |
 | 119 | `rescript` | ReScript 12.2 (Node.js) | `judge-rescript` | ✅ | ✅ | ✅ | ✅ |
 | 120 | `elm` | Elm 0.19.1 (Node.js) | `judge-elm` | ✅ | ✅ | ✅ | ✅ |
+| 121 | `plaintext` | Plaintext (output-only passthrough) | `judge-node` | ✅ | ✅ | — | — |
+| 122 | `verilog` | Verilog (literal `$display` / `$write` only) | `judge-node` | ✅ | ✅ | — | — |
+| 123 | `systemverilog` | SystemVerilog (literal `$display` / `$write` only) | `judge-node` | ✅ | ✅ | — | — |
+| 124 | `vhdl` | VHDL (literal `report` only) | `judge-node` | ✅ | ✅ | — | — |
+
+> Note: `plaintext`, `verilog`, `systemverilog`, and `vhdl` are new output-only additions that reuse the shared `judge-node` image. They are not included in the historical March 29 remote E2E totals below yet.
 
 ### ARM64 Build Summary
 

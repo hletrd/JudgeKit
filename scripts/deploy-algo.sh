@@ -37,6 +37,7 @@ SSH_KEY="${HOME}/.ssh/xylolabs-algo.pem"
 WORKER_HOST="worker-0.algo.xylolabs.com"
 WORKER_USER="ubuntu"
 WORKER_DIR="/opt/judgekit-worker"
+REMOTE_RUNNER_URL="http://172.17.0.1:3001"
 
 SWAP_SIZE="8G"
 WEB_LANGUAGE_PRESET="popular"
@@ -146,16 +147,41 @@ do_deploy_web() {
   phase "Phase 2: Deploy Web Stack (${WEB_HOST})"
 
   info "Deploying JudgeKit web stack to ${WEB_HOST}..."
-  info "Language preset for local worker: ${WEB_LANGUAGE_PRESET}"
+  info "Judge execution is delegated to ${WORKER_HOST}; disabling local worker build on ${WEB_HOST}"
+
+  if web_ssh "test -f /home/${WEB_USER}/judgekit/.env.production" 2>/dev/null; then
+    info "Ensuring remote COMPILER_RUNNER_URL points at the host-level runner tunnel (${REMOTE_RUNNER_URL})..."
+    web_ssh "python3 - <<'PY'
+from pathlib import Path
+path = Path('/home/${WEB_USER}/judgekit/.env.production')
+text = path.read_text()
+line = 'COMPILER_RUNNER_URL=${REMOTE_RUNNER_URL}'
+if 'COMPILER_RUNNER_URL=' in text:
+    import re
+    text = re.sub(r'^COMPILER_RUNNER_URL=.*$', line, text, flags=re.M)
+else:
+    if text and not text.endswith('\\n'):
+        text += '\\n'
+    text += line + '\\n'
+path.write_text(text)
+PY
+chmod 600 /home/${WEB_USER}/judgekit/.env.production"
+  else
+    warn "Remote .env.production does not exist yet; deploy-docker.sh will require it to be provisioned before INCLUDE_WORKER=false deploys."
+  fi
 
   # Use deploy-docker.sh with algo env vars
   cd "${PROJECT_DIR}"
+  INCLUDE_WORKER=false \
+  BUILD_WORKER_IMAGE=false \
   REMOTE_HOST="${WEB_HOST}" \
   REMOTE_USER="${WEB_USER}" \
   DOMAIN="${WEB_DOMAIN}" \
   SSH_KEY="${SSH_KEY}" \
     "${PROJECT_DIR}/deploy-docker.sh" \
-      --languages="${WEB_LANGUAGE_PRESET}"
+      --skip-languages \
+      --no-worker \
+      --skip-worker-build
 
   success "Web stack deployed to ${WEB_HOST}"
 }

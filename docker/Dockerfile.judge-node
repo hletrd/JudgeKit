@@ -3,8 +3,10 @@ FROM node:24-alpine
 RUN npm install --global typescript@6.0 @types/node@24.12.0 coffeescript && \
     npm cache clean --force && \
     adduser -D -s /bin/false judge && \
-    mkdir -p /workspace && \
+    mkdir -p /workspace /opt/judge-output && \
     chown judge:judge /workspace
+
+COPY docker/output-only/runner.mjs /opt/judge-output/runner.mjs
 
 WORKDIR /workspace
 

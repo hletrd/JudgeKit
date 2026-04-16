@@ -18,6 +18,7 @@ const LANGUAGE_CATEGORIES: Record<string, string[]> = {
   "Go": ["go"],
   "Swift": ["swift"],
   ".NET": ["csharp", "fsharp", "vbnet"],
+  "HDL / Output-only": ["verilog", "systemverilog", "vhdl", "plaintext"],
   "Haskell / ML": ["haskell", "ocaml", "sml", "flix", "purescript", "idris2"],
   "Functional": ["elixir", "erlang", "gleam", "racket", "scheme", "commonlisp", "hy", "fennel", "clean", "mercury", "curry", "koka", "lean", "grain", "pony", "factor"],
   "Scripting": ["perl", "ruby", "php", "lua", "bash", "awk", "tcl", "powershell", "r"],

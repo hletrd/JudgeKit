@@ -63,6 +63,34 @@ static TYPESCRIPT_COMPILE: &[&str] = &[
 ];
 static TYPESCRIPT_RUN: &[&str] = &["node", "/workspace/dist/solution.js"];
 
+static PLAINTEXT_RUN: &[&str] = &[
+    "node",
+    "/opt/judge-output/runner.mjs",
+    "plaintext",
+    "/workspace/solution.txt",
+];
+
+static VERILOG_RUN: &[&str] = &[
+    "node",
+    "/opt/judge-output/runner.mjs",
+    "verilog",
+    "/workspace/solution.v",
+];
+
+static SYSTEMVERILOG_RUN: &[&str] = &[
+    "node",
+    "/opt/judge-output/runner.mjs",
+    "systemverilog",
+    "/workspace/solution.sv",
+];
+
+static VHDL_RUN: &[&str] = &[
+    "node",
+    "/opt/judge-output/runner.mjs",
+    "vhdl",
+    "/workspace/solution.vhd",
+];
+
 static KOTLIN_COMPILE: &[&str] = &[
     "kotlinc", "-J-Djava.io.tmpdir=/workspace", "/workspace/solution.kt",
     "-include-runtime", "-d", "/workspace/solution.jar",
@@ -259,6 +287,38 @@ static TYPESCRIPT_CONFIG: LanguageConfig = LanguageConfig {
     docker_image: "judge-node:latest",
     compile_command: Some(TYPESCRIPT_COMPILE),
     run_command: TYPESCRIPT_RUN,
+    needs_exec_tmp: false,
+};
+
+static PLAINTEXT_CONFIG: LanguageConfig = LanguageConfig {
+    extension: ".txt",
+    docker_image: "judge-node:latest",
+    compile_command: None,
+    run_command: PLAINTEXT_RUN,
+    needs_exec_tmp: false,
+};
+
+static VERILOG_CONFIG: LanguageConfig = LanguageConfig {
+    extension: ".v",
+    docker_image: "judge-node:latest",
+    compile_command: None,
+    run_command: VERILOG_RUN,
+    needs_exec_tmp: false,
+};
+
+static SYSTEMVERILOG_CONFIG: LanguageConfig = LanguageConfig {
+    extension: ".sv",
+    docker_image: "judge-node:latest",
+    compile_command: None,
+    run_command: SYSTEMVERILOG_RUN,
+    needs_exec_tmp: false,
+};
+
+static VHDL_CONFIG: LanguageConfig = LanguageConfig {
+    extension: ".vhd",
+    docker_image: "judge-node:latest",
+    compile_command: None,
+    run_command: VHDL_RUN,
     needs_exec_tmp: false,
 };
 
@@ -1461,6 +1521,10 @@ pub fn get_config(language: &Language) -> Option<&'static LanguageConfig> {
         Language::Python => Some(&PYTHON_CONFIG),
         Language::Javascript => Some(&JAVASCRIPT_CONFIG),
         Language::Typescript => Some(&TYPESCRIPT_CONFIG),
+        Language::Plaintext => Some(&PLAINTEXT_CONFIG),
+        Language::Verilog => Some(&VERILOG_CONFIG),
+        Language::Systemverilog => Some(&SYSTEMVERILOG_CONFIG),
+        Language::Vhdl => Some(&VHDL_CONFIG),
         Language::Kotlin => Some(&KOTLIN_CONFIG),
         Language::Rust => Some(&RUST_CONFIG),
         Language::Go => Some(&GO_CONFIG),
@@ -1595,6 +1659,10 @@ mod tests {
             Language::Python,
             Language::Javascript,
             Language::Typescript,
+            Language::Plaintext,
+            Language::Verilog,
+            Language::Systemverilog,
+            Language::Vhdl,
             Language::Kotlin,
             Language::Rust,
             Language::Go,

@@ -15,7 +15,7 @@
 
 <p align="center">
   A secure, cross-platform code evaluation platform for programming assignments.<br/>
-  Docker-sandboxed execution for <a href="docs/languages.md">120 language variants</a> on both AMD64 and ARM64.
+  Docker-sandboxed execution for <a href="docs/languages.md">124 language variants</a> on both AMD64 and ARM64.
 </p>
 
 ---
@@ -23,7 +23,7 @@
 ## Features
 
 - **Cross-platform (AMD64 + ARM64)** — Full stack runs natively on both architectures: Next.js app, Rust judge worker, Rust sidecars, and the full supported judge-image set. Deploy on x86-64 servers or ARM64 (AWS Graviton, Ampere Altra, Apple Silicon) with automatic architecture detection — no emulation, no cross-compilation
-- **120 languages** — C/C++, Java, Python, Rust, Go, Deno, Bun, Gleam, Lean 4, Hare, Koka, Chapel, Elm, Idris 2, and [106 more](docs/languages.md), all with multi-arch Docker images and admin-customizable compile/run settings
+- **124 languages** — C/C++, Java, Python, Rust, Go, Deno, Bun, Gleam, Lean 4, Hare, Koka, Chapel, Elm, Idris 2, plaintext, HDL output-only modes, and [many more](docs/languages.md), all with multi-arch Docker images and admin-customizable compile/run settings
 - **Scalable judging** — Distributed judge workers with automatic registration and heartbeats. Live admin dashboard. Deploy across multiple machines with a single script
 - **Secure execution** — Docker containers with no network, seccomp, memory/CPU limits
 - **Role-based access** — Super admin, admin, instructor, student

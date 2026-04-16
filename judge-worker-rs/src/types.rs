@@ -64,6 +64,11 @@ pub enum Language {
     Javascript,
     Kotlin,
     Typescript,
+    Plaintext,
+    Verilog,
+    #[serde(rename = "systemverilog")]
+    Systemverilog,
+    Vhdl,
     Rust,
     Go,
     Swift,

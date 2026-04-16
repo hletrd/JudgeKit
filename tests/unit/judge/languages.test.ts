@@ -17,7 +17,7 @@ describe("judge language definitions", () => {
     const supported = [
       "c17", "c23", "cpp20", "cpp23", "cpp26",
       "java", "kotlin",
-      "python", "javascript", "typescript",
+      "python", "javascript", "typescript", "plaintext", "verilog", "systemverilog", "vhdl",
       "rust", "go", "swift", "csharp",
       "r", "perl", "php",
       "ruby", "lua", "haskell", "dart",
@@ -181,6 +181,46 @@ describe("judge language definitions", () => {
     expect(compile).toContain("/workspace/solution.ts");
     expect(compile).toContain("/workspace/dist");
     expect(def?.runCommand).toEqual(["node", "/workspace/dist/solution.js"]);
+  });
+
+  it("plaintext: exists as an output-only passthrough language", () => {
+    const def = getJudgeLanguageDefinition("plaintext");
+    expect(def).not.toBeNull();
+    expect(def).toMatchObject({
+      displayName: "Plaintext",
+      extension: ".txt",
+      dockerImage: "judge-node:latest",
+      compileCommand: null,
+      runCommand: ["node", "/opt/judge-output/runner.mjs", "plaintext", "/workspace/solution.txt"],
+    });
+  });
+
+  it("hdl languages route through the output-only runner", () => {
+    const verilog = getJudgeLanguageDefinition("verilog");
+    const systemverilog = getJudgeLanguageDefinition("systemverilog");
+    const vhdl = getJudgeLanguageDefinition("vhdl");
+
+    expect(verilog).toMatchObject({
+      displayName: "Verilog",
+      extension: ".v",
+      dockerImage: "judge-node:latest",
+      compileCommand: null,
+      runCommand: ["node", "/opt/judge-output/runner.mjs", "verilog", "/workspace/solution.v"],
+    });
+    expect(systemverilog).toMatchObject({
+      displayName: "SystemVerilog",
+      extension: ".sv",
+      dockerImage: "judge-node:latest",
+      compileCommand: null,
+      runCommand: ["node", "/opt/judge-output/runner.mjs", "systemverilog", "/workspace/solution.sv"],
+    });
+    expect(vhdl).toMatchObject({
+      displayName: "VHDL",
+      extension: ".vhd",
+      dockerImage: "judge-node:latest",
+      compileCommand: null,
+      runCommand: ["node", "/opt/judge-output/runner.mjs", "vhdl", "/workspace/solution.vhd"],
+    });
   });
 
   // ── Systems / native ──────────────────────────────────────────────────────
