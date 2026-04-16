@@ -131,6 +131,61 @@ Multi-arch Docker images covering 124 language variants. Deployed on both AMD64 
 
 > Note: `plaintext`, `verilog`, `systemverilog`, and `vhdl` are new output-only additions that reuse the shared `judge-node` image. They are not included in the historical March 29 remote E2E totals below yet.
 
+## Output-only Language Behavior
+
+The following languages are intentionally **output-only**. They do not use a
+full HDL simulator or compiler toolchain:
+
+| Language | Behavior | Supported output syntax |
+|----------|----------|-------------------------|
+| `plaintext` | Emits the submission source verbatim | Raw file contents |
+| `verilog` | Extracts literal output strings | `$display`, `$write`, `$strobe` |
+| `systemverilog` | Extracts literal output strings | `$display`, `$write`, `$strobe` |
+| `vhdl` | Extracts literal output strings | `report` |
+
+### Important limitations
+
+- These languages are meant for **display/report-style output checks only**.
+- They are **not** a general Verilog/SystemVerilog/VHDL simulation environment.
+- Only **literal string output statements** are supported.
+- Comments are ignored before output extraction.
+- If no supported output statement is found, the submission fails with a clear
+  error instead of silently passing.
+
+### Practical examples
+
+#### `plaintext`
+
+```text
+Hello, JudgeKit!
+```
+
+#### `verilog` / `systemverilog`
+
+```verilog
+module solution;
+initial begin
+  $display("Hello, JudgeKit!");
+end
+endmodule
+```
+
+#### `vhdl`
+
+```vhdl
+entity solution is
+end solution;
+
+architecture beh of solution is
+begin
+  process
+  begin
+    report "Hello, JudgeKit!";
+    wait;
+  end process;
+end beh;
+```
+
 ### ARM64 Build Summary
 
 **100 of 100 images build on ARM64** (production, Ampere Altra).
