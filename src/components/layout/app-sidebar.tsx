@@ -32,6 +32,7 @@ interface AppSidebarProps {
     role: string;
   };
   siteTitle: string;
+  siteIconUrl?: string | null;
   platformMode: PlatformMode;
   capabilities?: string[];
   activeTimedAssignments?: ActiveTimedAssignmentSummary[];
@@ -172,6 +173,7 @@ function NavItems({
 export function AppSidebar({
   user,
   siteTitle,
+  siteIconUrl,
   platformMode,
   capabilities = [],
   activeTimedAssignments = [],
@@ -227,12 +229,16 @@ export function AppSidebar({
   return (
     <Sidebar>
       <SidebarHeader className="border-b p-4">
-        <div className="flex items-center gap-2">
-          <GraduationCap className="h-6 w-6" aria-hidden="true" />
+        <Link href="/" className="flex items-center gap-2">
+          {siteIconUrl ? (
+            <img src={siteIconUrl} alt="" className="h-6 w-6 rounded object-contain" />
+          ) : (
+            <GraduationCap className="h-6 w-6" aria-hidden="true" />
+          )}
           <div className="min-w-0">
             <span className="block truncate text-lg font-bold">{siteTitle}</span>
           </div>
-        </div>
+        </Link>
       </SidebarHeader>
       <SidebarContent>
         <ActiveTimedAssignmentSidebarPanel assignments={activeTimedAssignments} />

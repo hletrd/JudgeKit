@@ -30,6 +30,7 @@ export const PUT = createApiHandler({
     const {
       siteTitle,
       siteDescription,
+      siteIconUrl,
       timeZone,
       platformMode,
       aiAssistantEnabled,
@@ -67,6 +68,7 @@ export const PUT = createApiHandler({
     const baseValues: Record<string, unknown> = {
       siteTitle: siteTitle ?? null,
       siteDescription: siteDescription ?? null,
+      siteIconUrl: siteIconUrl ?? null,
       timeZone: timeZone ?? null,
       platformMode: platformMode ?? DEFAULT_PLATFORM_MODE,
       aiAssistantEnabled: aiAssistantEnabled ?? true,

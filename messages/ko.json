@@ -1070,6 +1070,9 @@
       "siteTitleHint": "비워 두면 기본 앱 이름을 사용합니다. 현재 적용 제목: {current}",
       "siteDescription": "사이트 설명",
       "siteDescriptionHint": "비워 두면 기본 사이트 설명을 사용합니다. 현재 적용 설명: {current}",
+      "siteIconUrlLabel": "사이트 아이콘 URL",
+      "siteIconUrlPlaceholder": "https://example.com/icon.png",
+      "siteIconUrlHint": "사이드바 상단에 표시할 사이트 아이콘의 URL입니다. 비워 두면 기본 아이콘을 사용합니다.",
       "timeZone": "시간대",
       "timeZoneHint": "비워 두면 기본 애플리케이션 시간대를 사용합니다. 현재 적용 시간대: {current}",
       "aiAssistantTitle": "AI 도우미",
@@ -2377,6 +2380,20 @@
           "title": "커뮤니티",
           "description": "질문을 올리고 팁을 나누며 다른 사용자와 이야기해 보세요."
         }
+      },
+      "insights": {
+        "problems": {
+          "label": "공개 문제 수",
+          "description": "지금 바로 풀 수 있는 공개 문제 카탈로그를 확인해 보세요."
+        },
+        "submissions": {
+          "label": "총 제출 수",
+          "description": "플랫폼 전체에서 누적된 제출 활동 규모를 한눈에 볼 수 있습니다."
+        },
+        "languages": {
+          "label": "지원 언어 수",
+          "description": "다양한 언어로 실행·제출할 수 있는 채점 환경을 제공합니다."
+        }
       }
     },
     "practice": {
@@ -2400,7 +2417,12 @@
       "createdAt": "등록일",
       "problemTab": "문제",
       "searchLabel": "검색",
-      "searchPlaceholder": "문제 제목으로 검색",
+      "searchPlaceholder": "문제 번호, 제목, 내용으로 검색",
+      "searchMatches": {
+        "number": "번호 일치",
+        "title": "제목 일치",
+        "content": "내용 일치"
+      },
       "filterByTag": "태그",
       "allTags": "전체 태그",
       "sortBy": "정렬",

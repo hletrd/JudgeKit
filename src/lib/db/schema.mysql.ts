@@ -476,6 +476,7 @@ export const systemSettings = mysqlTable("system_settings", {
     .$defaultFn(() => "global"),
   siteTitle: varchar("site_title", { length: 255 }),
   siteDescription: text("site_description"),
+  siteIconUrl: varchar("site_icon_url", { length: 2048 }),
   timeZone: varchar("time_zone", { length: 255 }),
   defaultLanguage: varchar("default_language", { length: 255 }),
   platformMode: varchar("platform_mode", { length: 255 }).$type<PlatformMode>().notNull().default("homework"),

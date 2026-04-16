@@ -498,6 +498,7 @@ export const systemSettings = pgTable("system_settings", {
     .default("global"),
   siteTitle: text("site_title"),
   siteDescription: text("site_description"),
+  siteIconUrl: text("site_icon_url"),
   timeZone: text("time_zone"),
   platformMode: text("platform_mode").$type<PlatformMode>().notNull().default("homework"),
   aiAssistantEnabled: boolean("ai_assistant_enabled").notNull().default(true),

@@ -79,6 +79,7 @@ export async function updateSystemSettings(
   const {
     siteTitle,
     siteDescription,
+    siteIconUrl,
     timeZone,
     platformMode,
     aiAssistantEnabled,
@@ -121,6 +122,9 @@ export async function updateSystemSettings(
   }
   if (hasOwnInput("siteDescription")) {
     baseValues.siteDescription = siteDescription ?? null;
+  }
+  if (hasOwnInput("siteIconUrl")) {
+    baseValues.siteIconUrl = siteIconUrl ?? null;
   }
   if (hasOwnInput("timeZone")) {
     baseValues.timeZone = timeZone ?? null;

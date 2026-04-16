@@ -1,0 +1,1 @@
+ALTER TABLE "system_settings" ADD COLUMN "site_icon_url" text;

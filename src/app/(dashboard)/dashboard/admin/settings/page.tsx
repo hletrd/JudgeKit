@@ -181,6 +181,7 @@ export default async function AdminSettingsPage() {
               <SystemSettingsForm
                 initialSiteTitle={storedSettings?.siteTitle ?? ""}
                 initialSiteDescription={storedSettings?.siteDescription ?? ""}
+                initialSiteIconUrl={(stored?.siteIconUrl as string) ?? ""}
                 initialTimeZone={storedSettings?.timeZone ?? ""}
                 initialPlatformMode={storedSettings?.platformMode ?? "homework"}
                 initialDefaultLanguage={(stored?.defaultLanguage as string) ?? ""}

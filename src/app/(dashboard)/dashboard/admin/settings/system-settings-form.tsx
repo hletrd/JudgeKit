@@ -23,6 +23,7 @@ import type { PlatformMode } from "@/types";
 type SystemSettingsFormProps = {
   initialSiteTitle: string;
   initialSiteDescription: string;
+  initialSiteIconUrl: string;
   initialTimeZone: string;
   initialPlatformMode: PlatformMode;
   initialDefaultLanguage: string;
@@ -53,6 +54,7 @@ function isValidTimeZone(value: string) {
 export function SystemSettingsForm({
   initialSiteTitle,
   initialSiteDescription,
+  initialSiteIconUrl,
   initialTimeZone,
   initialPlatformMode,
   defaultSiteTitle,
@@ -75,6 +77,7 @@ export function SystemSettingsForm({
   const tCommon = useTranslations("common");
   const [siteTitle, setSiteTitle] = useState(initialSiteTitle);
   const [siteDescription, setSiteDescription] = useState(initialSiteDescription);
+  const [siteIconUrl, setSiteIconUrl] = useState(initialSiteIconUrl);
   const [timeZone, setTimeZone] = useState(initialTimeZone);
   const [platformMode, setPlatformMode] = useState<PlatformMode>(initialPlatformMode);
   const [aiAssistantEnabled, setAiAssistantEnabled] = useState(initialAiAssistantEnabled);
@@ -120,6 +123,7 @@ export function SystemSettingsForm({
       const result = await updateSystemSettings({
         siteTitle,
         siteDescription,
+        siteIconUrl,
         timeZone: normalizedTimeZone,
         platformMode,
         aiAssistantEnabled,
@@ -172,6 +176,19 @@ export function SystemSettingsForm({
         />
         <p className="text-xs text-muted-foreground">
           {t("siteDescriptionHint", { current: currentSiteDescription })}
+        </p>
+      </div>
+
+      <div className="space-y-2">
+        <Label htmlFor="site-icon-url">{t("siteIconUrlLabel")}</Label>
+        <Input
+          id="site-icon-url"
+          value={siteIconUrl}
+          onChange={(event) => setSiteIconUrl(event.target.value)}
+          placeholder={t("siteIconUrlPlaceholder")}
+        />
+        <p className="text-xs text-muted-foreground">
+          {t("siteIconUrlHint")}
         </p>
       </div>
 

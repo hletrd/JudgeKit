@@ -77,6 +77,7 @@ export default async function DashboardLayout({ children }: { children: React.Re
         <AppSidebar
           user={session.user}
           siteTitle={settings.siteTitle}
+          siteIconUrl={settings.siteIconUrl}
           platformMode={effectivePlatformMode}
           capabilities={capabilities}
           activeTimedAssignments={activeTimedAssignments}

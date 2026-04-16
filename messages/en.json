@@ -1070,6 +1070,9 @@
       "siteTitleHint": "Leave blank to use the localized default. Current effective title: {current}",
       "siteDescription": "Site Description",
       "siteDescriptionHint": "Leave blank to use the localized default. Current effective description: {current}",
+      "siteIconUrlLabel": "Site Icon URL",
+      "siteIconUrlPlaceholder": "https://example.com/icon.png",
+      "siteIconUrlHint": "URL of the site icon displayed in the sidebar header. Leave blank to use the default icon.",
       "timeZone": "Timezone",
       "timeZoneHint": "Leave blank to use the default application timezone. Current effective timezone: {current}",
       "aiAssistantTitle": "AI Assistant",
@@ -2377,6 +2380,20 @@
           "title": "Community",
           "description": "Ask questions, share tips, and discuss with other users."
         }
+      },
+      "insights": {
+        "problems": {
+          "label": "Public problems",
+          "description": "Solve from a growing catalog of publicly available challenges."
+        },
+        "submissions": {
+          "label": "Total submissions",
+          "description": "See the scale of activity already flowing through the judge."
+        },
+        "languages": {
+          "label": "Supported languages",
+          "description": "Run and submit code across a broad multi-language toolchain."
+        }
       }
     },
     "practice": {
@@ -2400,7 +2417,12 @@
       "createdAt": "Added",
       "problemTab": "Problem",
       "searchLabel": "Search",
-      "searchPlaceholder": "Search by problem title…",
+      "searchPlaceholder": "Search by number, title, or content…",
+      "searchMatches": {
+        "number": "Number match",
+        "title": "Title match",
+        "content": "Content match"
+      },
       "filterByTag": "Tag",
       "allTags": "All tags",
       "sortBy": "Sort by",

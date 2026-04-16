@@ -17,6 +17,7 @@ export type SystemSettingsRecord = {
   id: string;
   siteTitle: string | null;
   siteDescription: string | null;
+  siteIconUrl: string | null;
   timeZone: string | null;
   platformMode?: PlatformMode | null;
   aiAssistantEnabled?: boolean | null;
@@ -78,6 +79,7 @@ export const getResolvedSystemSettings = cache(async (defaults: {
   return {
     siteTitle: settings?.siteTitle ?? defaults.siteTitle,
     siteDescription: settings?.siteDescription ?? defaults.siteDescription,
+    siteIconUrl: (settings as Record<string, unknown> | undefined)?.siteIconUrl as string | null ?? null,
     timeZone: settings?.timeZone ?? defaults.timeZone ?? DEFAULT_SYSTEM_TIME_ZONE,
     platformMode: settings?.platformMode ?? DEFAULT_PLATFORM_MODE,
     aiAssistantEnabled: settings?.aiAssistantEnabled ?? true,

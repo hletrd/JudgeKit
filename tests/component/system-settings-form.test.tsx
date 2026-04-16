@@ -70,6 +70,7 @@ function renderForm(initialTimeZone = "UTC") {
     <SystemSettingsForm
       initialSiteTitle="JudgeKit"
       initialSiteDescription="Description"
+      initialSiteIconUrl=""
       initialTimeZone={initialTimeZone}
       initialPlatformMode="homework"
       initialDefaultLanguage="python"

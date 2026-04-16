@@ -51,6 +51,10 @@ export const systemSettingsSchema = z.object({
     normalizeOptionalString,
     z.string().max(255, "siteDescriptionTooLong").optional()
   ),
+  siteIconUrl: z.preprocess(
+    normalizeOptionalString,
+    z.string().max(2048, "siteIconUrlTooLong").optional()
+  ),
   timeZone: z.preprocess(
     normalizeOptionalString,
     z
