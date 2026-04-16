@@ -847,6 +847,31 @@ export const discussionPosts = mysqlTable(
   ]
 );
 
+export const communityVotes = mysqlTable(
+  "community_votes",
+  {
+    id: varchar("id", { length: 36 })
+      .primaryKey()
+      .$defaultFn(() => nanoid()),
+    targetType: varchar("target_type", { length: 32 }).notNull(),
+    targetId: varchar("target_id", { length: 36 }).notNull(),
+    userId: varchar("user_id", { length: 36 })
+      .notNull()
+      .references(() => users.id, { onDelete: "cascade" }),
+    voteType: varchar("vote_type", { length: 16 }).notNull(),
+    createdAt: timestamp("created_at")
+      .notNull()
+      .$defaultFn(() => new Date(Date.now())),
+    updatedAt: timestamp("updated_at")
+      .notNull()
+      .$defaultFn(() => new Date(Date.now())),
+  },
+  (table) => [
+    index("cv_target_idx").on(table.targetType, table.targetId),
+    uniqueIndex("cv_target_user_idx").on(table.targetType, table.targetId, table.userId),
+  ]
+);
+
 export const recruitingInvitations = mysqlTable(
   "recruiting_invitations",
   {

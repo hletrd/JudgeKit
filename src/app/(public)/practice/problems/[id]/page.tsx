@@ -11,6 +11,7 @@ import { AssistantMarkdown } from "@/components/assistant-markdown";
 import { listProblemDiscussionThreads, listProblemEditorials } from "@/lib/discussions/data";
 import { DiscussionThreadForm } from "@/components/discussions/discussion-thread-form";
 import { DiscussionThreadList } from "@/components/discussions/discussion-thread-list";
+import { DiscussionVoteButtons } from "@/components/discussions/discussion-vote-buttons";
 import { AcceptedSolutions } from "@/components/problem/accepted-solutions";
 import { SubmissionStatusBadge } from "@/components/submission-status-badge";
 import { buildStatusLabels } from "@/lib/judge/status-labels";
@@ -139,8 +140,8 @@ export default async function PublicProblemDetailPage({ params }: { params: Prom
       standard: definition.standard,
     }];
   });
-  const threads = await listProblemDiscussionThreads(problem.id);
-  const editorials = await listProblemEditorials(problem.id);
+  const threads = await listProblemDiscussionThreads(problem.id, session?.user?.id ?? null);
+  const editorials = await listProblemEditorials(problem.id, session?.user?.id ?? null);
 
   // Problem statistics
   const [statsRow] = await db
@@ -458,12 +459,25 @@ export default async function PublicProblemDetailPage({ params }: { params: Prom
               editorials.map((editorial) => (
                 <Card key={editorial.id}>
                   <CardHeader>
-                    <CardTitle className="text-base">{editorial.title}</CardTitle>
-                    <div className="text-xs text-muted-foreground">
-                      {editorial.author?.name ?? t("practice.unknownAuthor")}
-                      {editorial.createdAt && (
-                        <> · {new Date(editorial.createdAt).toLocaleDateString(locale, { year: "numeric", month: "long", day: "numeric" })}</>
-                      )}
+                    <div className="flex flex-wrap items-start justify-between gap-3">
+                      <div>
+                        <CardTitle className="text-base">{editorial.title}</CardTitle>
+                        <div className="text-xs text-muted-foreground">
+                          {editorial.author?.name ?? t("practice.unknownAuthor")}
+                          {editorial.createdAt && (
+                            <> · {new Date(editorial.createdAt).toLocaleDateString(locale, { year: "numeric", month: "long", day: "numeric" })}</>
+                          )}
+                        </div>
+                      </div>
+                      <DiscussionVoteButtons
+                        targetType="thread"
+                        targetId={editorial.id}
+                        score={editorial.voteScore}
+                        currentUserVote={editorial.currentUserVote}
+                        canVote={Boolean(session?.user) && editorial.authorId !== session?.user?.id}
+                        upvoteLabel={t("community.upvote")}
+                        downvoteLabel={t("community.downvote")}
+                      />
                     </div>
                   </CardHeader>
                   <CardContent>
@@ -476,8 +490,19 @@ export default async function PublicProblemDetailPage({ params }: { params: Prom
                         <div className="space-y-3">
                           {editorial.posts.map((post) => (
                             <div key={post.id} className="rounded-md bg-muted/50 p-3">
-                              <div className="text-xs text-muted-foreground mb-1">
-                                {post.author?.name ?? t("community.unknownAuthor")}
+                              <div className="mb-2 flex items-center justify-between gap-3">
+                                <div className="text-xs text-muted-foreground">
+                                  {post.author?.name ?? t("community.unknownAuthor")}
+                                </div>
+                                <DiscussionVoteButtons
+                                  targetType="post"
+                                  targetId={post.id}
+                                  score={post.voteScore}
+                                  currentUserVote={post.currentUserVote}
+                                  canVote={Boolean(session?.user) && post.author?.id !== session?.user?.id}
+                                  upvoteLabel={t("community.upvote")}
+                                  downvoteLabel={t("community.downvote")}
+                                />
                               </div>
                               <div className="prose prose-sm dark:prose-invert max-w-none text-sm">
                                 <AssistantMarkdown content={post.content} />
@@ -606,11 +631,22 @@ export default async function PublicProblemDetailPage({ params }: { params: Prom
                 content: thread.content,
                 authorName: thread.author?.name ?? t("community.unknownAuthor"),
                 replyCountLabel: t("community.replyCount", { count: thread.posts.length }),
-                locked: Boolean(thread.lockedAt),
-                pinned: Boolean(thread.pinnedAt),
-                href: buildLocalePath(`/community/threads/${thread.id}`, locale),
-              }))}
-            />
+              locked: Boolean(thread.lockedAt),
+              pinned: Boolean(thread.pinnedAt),
+              href: buildLocalePath(`/community/threads/${thread.id}`, locale),
+              actions: (
+                <DiscussionVoteButtons
+                  targetType="thread"
+                  targetId={thread.id}
+                  score={thread.voteScore}
+                  currentUserVote={thread.currentUserVote}
+                  canVote={Boolean(session?.user) && thread.authorId !== session?.user?.id}
+                  upvoteLabel={t("community.upvote")}
+                  downvoteLabel={t("community.downvote")}
+                />
+              ),
+            }))}
+          />
           </TabsContent>
         </Tabs>
       </div>

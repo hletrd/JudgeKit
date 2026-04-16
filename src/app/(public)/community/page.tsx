@@ -4,6 +4,7 @@ import { getLocale, getTranslations } from "next-intl/server";
 import { auth } from "@/lib/auth";
 import { Button } from "@/components/ui/button";
 import { DiscussionThreadList } from "@/components/discussions/discussion-thread-list";
+import { DiscussionVoteButtons } from "@/components/discussions/discussion-vote-buttons";
 import { listGeneralDiscussionThreads } from "@/lib/discussions/data";
 import { JsonLd } from "@/components/seo/json-ld";
 import { buildAbsoluteUrl, buildLocalePath, buildPublicMetadata, summarizeTextForMetadata } from "@/lib/seo";
@@ -35,13 +36,21 @@ export async function generateMetadata(): Promise<Metadata> {
   });
 }
 
-export default async function CommunityPage() {
-  const [t, session, threads, locale] = await Promise.all([
+export default async function CommunityPage({
+  searchParams,
+}: {
+  searchParams?: Promise<{ sort?: string }>;
+}) {
+  const resolvedSearchParams = searchParams ? await searchParams : undefined;
+  const sort = resolvedSearchParams?.sort === "popular" ? "popular" : "newest";
+  const [t, session, locale] = await Promise.all([
     getTranslations("publicShell"),
     auth(),
-    listGeneralDiscussionThreads(),
     getLocale(),
   ]);
+  const threads = await listGeneralDiscussionThreads(sort, session?.user?.id ?? null);
+  const communityHref = buildLocalePath("/community", locale);
+  const popularHref = `${communityHref}?sort=popular`;
   const communityJsonLd = {
     "@context": "https://schema.org",
     "@type": "CollectionPage",
@@ -65,6 +74,18 @@ export default async function CommunityPage() {
     <>
       <JsonLd data={communityJsonLd} />
       <div className="space-y-6">
+        <div className="flex flex-wrap gap-2">
+          <Link href={communityHref}>
+            <Button variant={sort === "newest" ? "default" : "outline"} size="sm">
+              {t("community.sortNewest")}
+            </Button>
+          </Link>
+          <Link href={popularHref}>
+            <Button variant={sort === "popular" ? "default" : "outline"} size="sm">
+              {t("community.sortPopular")}
+            </Button>
+          </Link>
+        </div>
         {session?.user ? (
           <div className="flex justify-end">
             <Link href={buildLocalePath("/community/new", locale)}>
@@ -95,6 +116,17 @@ export default async function CommunityPage() {
             locked: Boolean(thread.lockedAt),
             pinned: Boolean(thread.pinnedAt),
             href: buildLocalePath(`/community/threads/${thread.id}`, locale),
+            actions: (
+              <DiscussionVoteButtons
+                targetType="thread"
+                targetId={thread.id}
+                score={thread.voteScore}
+                currentUserVote={thread.currentUserVote}
+                canVote={Boolean(session?.user) && thread.authorId !== session?.user?.id}
+                upvoteLabel={t("community.upvote")}
+                downvoteLabel={t("community.downvote")}
+              />
+            ),
           }))}
         />
       </div>

@@ -40,6 +40,7 @@ const TABLE_MAP: Record<string, any> = {
   problemTags: schema.problemTags,
   chatMessages: schema.chatMessages,
   discussionThreads: schema.discussionThreads,
+  communityVotes: schema.communityVotes,
   discussionPosts: schema.discussionPosts,
   assignmentProblems: schema.assignmentProblems,
   recruitingInvitations: schema.recruitingInvitations,

@@ -866,6 +866,31 @@ export const discussionPosts = pgTable(
   ]
 );
 
+export const communityVotes = pgTable(
+  "community_votes",
+  {
+    id: text("id")
+      .primaryKey()
+      .$defaultFn(() => nanoid()),
+    targetType: text("target_type").notNull(),
+    targetId: text("target_id").notNull(),
+    userId: text("user_id")
+      .notNull()
+      .references(() => users.id, { onDelete: "cascade" }),
+    voteType: text("vote_type").notNull(),
+    createdAt: timestamp("created_at", { withTimezone: true })
+      .notNull()
+      .$defaultFn(() => new Date(Date.now())),
+    updatedAt: timestamp("updated_at", { withTimezone: true })
+      .notNull()
+      .$defaultFn(() => new Date(Date.now())),
+  },
+  (table) => [
+    index("cv_target_idx").on(table.targetType, table.targetId),
+    uniqueIndex("cv_target_user_idx").on(table.targetType, table.targetId, table.userId),
+  ]
+);
+
 export const recruitingInvitations = pgTable(
   "recruiting_invitations",
   {

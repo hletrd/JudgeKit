@@ -13,7 +13,7 @@ export const POST = createApiHandler({
   rateLimit: "community:threads:create",
   schema: discussionThreadCreateSchema,
   handler: async (req: NextRequest, { user, body }) => {
-    if (body.scopeType === "problem") {
+    if (body.scopeType === "problem" || body.scopeType === "editorial") {
       const problem = await db.query.problems.findFirst({
         where: (table, { eq }) => eq(table.id, body.problemId!),
         columns: { id: true },
@@ -28,9 +28,16 @@ export const POST = createApiHandler({
       }
     }
 
+    if (
+      body.scopeType === "editorial" &&
+      !["admin", "super_admin", "instructor"].includes(user.role)
+    ) {
+      return forbidden();
+    }
+
     const [created] = await db.insert(discussionThreads).values({
       scopeType: body.scopeType,
-      problemId: body.scopeType === "problem" ? body.problemId ?? null : null,
+      problemId: body.scopeType === "problem" || body.scopeType === "editorial" ? body.problemId ?? null : null,
       authorId: user.id,
       title: body.title,
       content: sanitizeMarkdown(body.content),

@@ -2647,7 +2647,11 @@
         "success": "Discussion updated",
         "deleteSuccess": "Discussion removed",
         "replyDeleteSuccess": "Reply removed"
-      }
+      },
+      "sortNewest": "Newest",
+      "sortPopular": "Popular",
+      "upvote": "Upvote",
+      "downvote": "Downvote"
     }
   },
   "userProfile": {

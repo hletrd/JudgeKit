@@ -113,4 +113,44 @@ describe("POST /api/v1/community/threads", () => {
     });
     expect(recordAuditEventMock).toHaveBeenCalledOnce();
   });
+
+  it("allows instructors to create editorial threads for a problem", async () => {
+    getApiUserMock.mockResolvedValue({
+      id: "inst-1",
+      role: "instructor",
+      username: "inst",
+      email: "i@example.com",
+      name: "Instructor",
+      className: null,
+      mustChangePassword: false,
+    });
+    problemsFindFirstMock.mockResolvedValue({ id: "problem-1" });
+    insertReturningMock.mockResolvedValue([
+      {
+        id: "thread-2",
+        scopeType: "editorial",
+        problemId: "problem-1",
+        title: "Editorial",
+        content: "Use prefix sums",
+      },
+    ]);
+
+    const { POST } = await import("@/app/api/v1/community/threads/route");
+    const request = new NextRequest("http://localhost:3000/api/v1/community/threads", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        "X-Requested-With": "XMLHttpRequest",
+      },
+      body: JSON.stringify({
+        scopeType: "editorial",
+        problemId: "problem-1",
+        title: "Editorial",
+        content: "Use prefix sums",
+      }),
+    });
+
+    const response = await POST(request);
+    expect(response.status).toBe(201);
+  });
 });

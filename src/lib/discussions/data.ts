@@ -1,6 +1,6 @@
-import { and, desc, eq } from "drizzle-orm";
+import { and, desc, eq, inArray, sql } from "drizzle-orm";
 import { db } from "@/lib/db";
-import { discussionPosts, discussionThreads, problems } from "@/lib/db/schema";
+import { communityVotes, discussionPosts, discussionThreads, problems } from "@/lib/db/schema";
 import { canAccessProblem } from "@/lib/auth/permissions";
 
 export async function canReadProblemDiscussion(problemId: string, viewer?: { userId: string; role: string } | null) {
@@ -15,8 +15,62 @@ export async function canReadProblemDiscussion(problemId: string, viewer?: { use
   return canAccessProblem(problemId, viewer.userId, viewer.role);
 }
 
-export async function listGeneralDiscussionThreads() {
-  return db.query.discussionThreads.findMany({
+type VoteSummary = {
+  score: number;
+  currentUserVote: "up" | "down" | null;
+};
+
+async function listVoteSummaries(targetType: "thread" | "post", targetIds: string[], viewerUserId?: string | null) {
+  if (targetIds.length === 0) {
+    return new Map<string, VoteSummary>();
+  }
+
+  const rows = await db
+    .select({
+      targetId: communityVotes.targetId,
+      score: sql<number>`coalesce(sum(case when ${communityVotes.voteType} = 'up' then 1 when ${communityVotes.voteType} = 'down' then -1 else 0 end), 0)`,
+      currentUserVote: viewerUserId
+        ? sql<"up" | "down" | null>`max(case when ${communityVotes.userId} = ${viewerUserId} then ${communityVotes.voteType} else null end)`
+        : sql<"up" | "down" | null>`null`,
+    })
+    .from(communityVotes)
+    .where(
+      and(
+        eq(communityVotes.targetType, targetType),
+        inArray(communityVotes.targetId, targetIds),
+      ),
+    )
+    .groupBy(communityVotes.targetId);
+
+  return new Map(
+    rows.map((row) => [
+      row.targetId,
+      {
+        score: Number(row.score ?? 0),
+        currentUserVote: row.currentUserVote ?? null,
+      },
+    ]),
+  );
+}
+
+function withThreadVotes<T extends { id: string }>(threads: T[], summaries: Map<string, VoteSummary>) {
+  return threads.map((thread) => ({
+    ...thread,
+    voteScore: summaries.get(thread.id)?.score ?? 0,
+    currentUserVote: summaries.get(thread.id)?.currentUserVote ?? null,
+  }));
+}
+
+function withPostVotes<T extends { id: string }>(posts: T[], summaries: Map<string, VoteSummary>) {
+  return posts.map((post) => ({
+    ...post,
+    voteScore: summaries.get(post.id)?.score ?? 0,
+    currentUserVote: summaries.get(post.id)?.currentUserVote ?? null,
+  }));
+}
+
+export async function listGeneralDiscussionThreads(sort: "newest" | "popular" = "newest", viewerUserId?: string | null) {
+  const threads = await db.query.discussionThreads.findMany({
     where: eq(discussionThreads.scopeType, "general"),
     with: {
       author: { columns: { id: true, name: true, role: true } },
@@ -25,10 +79,25 @@ export async function listGeneralDiscussionThreads() {
     orderBy: [desc(discussionThreads.pinnedAt), desc(discussionThreads.updatedAt)],
     limit: 50,
   });
+
+  const voteSummaries = await listVoteSummaries("thread", threads.map((thread) => thread.id), viewerUserId);
+  const withVotes = withThreadVotes(threads, voteSummaries);
+
+  if (sort === "popular") {
+    return withVotes.sort((left, right) => {
+      const leftPinned = left.pinnedAt ? 1 : 0;
+      const rightPinned = right.pinnedAt ? 1 : 0;
+      if (leftPinned !== rightPinned) return rightPinned - leftPinned;
+      if (left.voteScore !== right.voteScore) return right.voteScore - left.voteScore;
+      return new Date(right.updatedAt).getTime() - new Date(left.updatedAt).getTime();
+    });
+  }
+
+  return withVotes;
 }
 
-export async function listProblemDiscussionThreads(problemId: string) {
-  return db.query.discussionThreads.findMany({
+export async function listProblemDiscussionThreads(problemId: string, viewerUserId?: string | null) {
+  const threads = await db.query.discussionThreads.findMany({
     where: and(eq(discussionThreads.scopeType, "problem"), eq(discussionThreads.problemId, problemId)),
     with: {
       author: { columns: { id: true, name: true, role: true } },
@@ -37,10 +106,19 @@ export async function listProblemDiscussionThreads(problemId: string) {
     orderBy: [desc(discussionThreads.pinnedAt), desc(discussionThreads.updatedAt)],
     limit: 50,
   });
+
+  const voteSummaries = await listVoteSummaries("thread", threads.map((thread) => thread.id), viewerUserId);
+  return withThreadVotes(threads, voteSummaries).sort((left, right) => {
+    const leftPinned = left.pinnedAt ? 1 : 0;
+    const rightPinned = right.pinnedAt ? 1 : 0;
+    if (leftPinned !== rightPinned) return rightPinned - leftPinned;
+    if (left.voteScore !== right.voteScore) return right.voteScore - left.voteScore;
+    return new Date(right.updatedAt).getTime() - new Date(left.updatedAt).getTime();
+  });
 }
 
-export async function listProblemEditorials(problemId: string) {
-  return db.query.discussionThreads.findMany({
+export async function listProblemEditorials(problemId: string, viewerUserId?: string | null) {
+  const threads = await db.query.discussionThreads.findMany({
     where: and(eq(discussionThreads.scopeType, "editorial"), eq(discussionThreads.problemId, problemId)),
     with: {
       author: { columns: { id: true, name: true, role: true } },
@@ -52,10 +130,32 @@ export async function listProblemEditorials(problemId: string) {
     orderBy: [desc(discussionThreads.pinnedAt), desc(discussionThreads.updatedAt)],
     limit: 10,
   });
+
+  const [threadVotes, postVotes] = await Promise.all([
+    listVoteSummaries("thread", threads.map((thread) => thread.id), viewerUserId),
+    listVoteSummaries(
+      "post",
+      threads.flatMap((thread) => thread.posts.map((post) => post.id)),
+      viewerUserId,
+    ),
+  ]);
+
+  return withThreadVotes(threads, threadVotes)
+    .map((thread) => ({
+      ...thread,
+      posts: withPostVotes(thread.posts, postVotes),
+    }))
+    .sort((left, right) => {
+      const leftPinned = left.pinnedAt ? 1 : 0;
+      const rightPinned = right.pinnedAt ? 1 : 0;
+      if (leftPinned !== rightPinned) return rightPinned - leftPinned;
+      if (left.voteScore !== right.voteScore) return right.voteScore - left.voteScore;
+      return new Date(right.updatedAt).getTime() - new Date(left.updatedAt).getTime();
+    });
 }
 
-export async function getDiscussionThreadById(threadId: string) {
-  return db.query.discussionThreads.findFirst({
+export async function getDiscussionThreadById(threadId: string, viewerUserId?: string | null) {
+  const thread = await db.query.discussionThreads.findFirst({
     where: eq(discussionThreads.id, threadId),
     with: {
       author: { columns: { id: true, name: true, role: true } },
@@ -68,6 +168,20 @@ export async function getDiscussionThreadById(threadId: string) {
       },
     },
   });
+
+  if (!thread) {
+    return null;
+  }
+
+  const [threadVotes, postVotes] = await Promise.all([
+    listVoteSummaries("thread", [thread.id], viewerUserId),
+    listVoteSummaries("post", thread.posts.map((post) => post.id), viewerUserId),
+  ]);
+
+  return {
+    ...withThreadVotes([thread], threadVotes)[0],
+    posts: withPostVotes(thread.posts, postVotes),
+  };
 }
 
 export async function listUserDiscussionThreads(userId: string) {

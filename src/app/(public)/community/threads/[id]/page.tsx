@@ -7,6 +7,7 @@ import { DiscussionThreadView } from "@/components/discussions/discussion-thread
 import { DiscussionPostForm } from "@/components/discussions/discussion-post-form";
 import { DiscussionThreadModerationControls } from "@/components/discussions/discussion-thread-moderation-controls";
 import { DiscussionPostDeleteButton } from "@/components/discussions/discussion-post-delete-button";
+import { DiscussionVoteButtons } from "@/components/discussions/discussion-vote-buttons";
 import { JsonLd } from "@/components/seo/json-ld";
 import { canReadProblemDiscussion, getDiscussionThreadById } from "@/lib/discussions/data";
 import { canModerateDiscussions } from "@/lib/discussions/permissions";
@@ -59,17 +60,17 @@ export async function generateMetadata({ params }: { params: Promise<{ id: strin
 
 export default async function CommunityThreadDetailPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
-  const [t, tCommon, session, thread, locale, settings] = await Promise.all([
+  const [t, tCommon, session, locale, settings] = await Promise.all([
     getTranslations("publicShell"),
     getTranslations("common"),
     auth(),
-    getDiscussionThreadById(id),
     getLocale(),
     getResolvedSystemSettings({
       siteTitle: "JudgeKit",
       siteDescription: "Online judge",
     }),
   ]);
+  const thread = await getDiscussionThreadById(id, session?.user?.id ?? null);
 
   if (!thread) {
     notFound();
@@ -183,17 +184,41 @@ export default async function CommunityThreadDetailPage({ params }: { params: Pr
           scopeLabel={thread.scopeType === "general" ? t("community.scopeGeneral") : t("community.scopeProblem")}
           repliesTitle={t("community.repliesTitle")}
           noRepliesLabel={t("community.noReplies")}
+          actions={(
+            <DiscussionVoteButtons
+              targetType="thread"
+              targetId={thread.id}
+              score={thread.voteScore}
+              currentUserVote={thread.currentUserVote}
+              canVote={Boolean(session?.user) && thread.authorId !== session?.user?.id}
+              upvoteLabel={t("community.upvote")}
+              downvoteLabel={t("community.downvote")}
+            />
+          )}
           posts={thread.posts.map((post) => ({
             id: post.id,
             content: post.content,
             authorName: post.author?.name ?? t("community.unknownAuthor"),
-            actions: canModerate ? (
-              <DiscussionPostDeleteButton
-                postId={post.id}
-                deleteLabel={t("community.moderation.deletePost")}
-                successLabel={t("community.moderation.replyDeleteSuccess")}
-              />
-            ) : undefined,
+            actions: (
+              <div className="flex items-center gap-2">
+                <DiscussionVoteButtons
+                  targetType="post"
+                  targetId={post.id}
+                  score={post.voteScore}
+                  currentUserVote={post.currentUserVote}
+                  canVote={Boolean(session?.user) && post.author?.id !== session?.user?.id}
+                  upvoteLabel={t("community.upvote")}
+                  downvoteLabel={t("community.downvote")}
+                />
+                {canModerate ? (
+                  <DiscussionPostDeleteButton
+                    postId={post.id}
+                    deleteLabel={t("community.moderation.deletePost")}
+                    successLabel={t("community.moderation.replyDeleteSuccess")}
+                  />
+                ) : null}
+              </div>
+            ),
           }))}
         />
         <DiscussionPostForm

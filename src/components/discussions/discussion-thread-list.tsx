@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import type { ReactNode } from "react";
 
 type ThreadListItem = {
   id: string;
@@ -11,6 +12,7 @@ type ThreadListItem = {
   locked: boolean;
   pinned: boolean;
   href: string;
+  actions?: ReactNode;
 };
 
 type DiscussionThreadListProps = {
@@ -53,7 +55,10 @@ export function DiscussionThreadList({ title, description, emptyLabel, openLabel
               <CardContent className="space-y-3">
                 <p className="text-sm text-muted-foreground">{summarize(thread.content)}</p>
                 <div className="flex items-center justify-between gap-4 text-xs text-muted-foreground">
-                  <span>{thread.replyCountLabel}</span>
+                  <div className="flex items-center gap-3">
+                    <span>{thread.replyCountLabel}</span>
+                    {thread.actions}
+                  </div>
                   <Link href={thread.href} className="font-medium text-primary hover:underline">
                     {openLabel}
                   </Link>

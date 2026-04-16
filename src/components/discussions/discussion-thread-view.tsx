@@ -15,15 +15,19 @@ type DiscussionThreadViewProps = {
   scopeLabel: string;
   repliesTitle: string;
   noRepliesLabel: string;
+  actions?: ReactNode;
   posts: PostView[];
 };
 
-export function DiscussionThreadView({ title, content, authorName, scopeLabel, repliesTitle, noRepliesLabel, posts }: DiscussionThreadViewProps) {
+export function DiscussionThreadView({ title, content, authorName, scopeLabel, repliesTitle, noRepliesLabel, actions, posts }: DiscussionThreadViewProps) {
   return (
     <div className="space-y-6">
       <Card>
         <CardHeader>
-          <CardDescription>{scopeLabel}</CardDescription>
+          <div className="flex items-center justify-between gap-4">
+            <CardDescription>{scopeLabel}</CardDescription>
+            {actions}
+          </div>
           <CardTitle>{title}</CardTitle>
           <CardDescription>{authorName}</CardDescription>
         </CardHeader>

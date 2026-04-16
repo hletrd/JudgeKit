@@ -2647,7 +2647,11 @@
         "success": "토론 상태가 업데이트되었습니다",
         "deleteSuccess": "토론이 삭제되었습니다",
         "replyDeleteSuccess": "답글이 삭제되었습니다"
-      }
+      },
+      "sortNewest": "최신순",
+      "sortPopular": "인기순",
+      "upvote": "추천",
+      "downvote": "비추천"
     }
   },
   "userProfile": {
