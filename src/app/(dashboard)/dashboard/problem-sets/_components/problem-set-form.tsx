@@ -8,6 +8,7 @@ import { toast } from "sonner";
 import { apiFetch } from "@/lib/api/client";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
+import { Checkbox } from "@/components/ui/checkbox";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
@@ -36,6 +37,7 @@ type ProblemSetEditorValue = {
   id: string;
   name: string;
   description: string;
+  isPublic: boolean;
   problemIds: string[];
   groupIds: string[];
   assignedGroups: { id: string; name: string }[];
@@ -61,6 +63,7 @@ export default function ProblemSetForm({
   const [deleteOpen, setDeleteOpen] = useState(false);
   const [name, setName] = useState(problemSet?.name ?? "");
   const [description, setDescription] = useState(problemSet?.description ?? "");
+  const [isPublic, setIsPublic] = useState(problemSet?.isPublic ?? false);
   const [selectedProblemIds, setSelectedProblemIds] = useState<string[]>(
     problemSet?.problemIds ?? []
   );
@@ -173,6 +176,7 @@ export default function ProblemSetForm({
         body: JSON.stringify({
           name,
           description,
+          isPublic,
           problemIds: selectedProblemIds,
         }),
       });
@@ -268,6 +272,13 @@ export default function ProblemSetForm({
                 className="min-h-[100px]"
                 disabled={isLoading}
               />
+            </div>
+            <div className="flex items-start gap-3 rounded-lg border p-4">
+              <Checkbox id="ps-public" checked={isPublic} onCheckedChange={setIsPublic} />
+              <div className="space-y-1">
+                <Label htmlFor="ps-public">{t("publicLabel")}</Label>
+                <p className="text-sm text-muted-foreground">{t("publicDescription")}</p>
+              </div>
             </div>
           </CardContent>
         </Card>

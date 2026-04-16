@@ -20,6 +20,7 @@ export type VisibleProblemSetListItem = {
   id: string;
   name: string;
   description: string | null;
+  isPublic: boolean;
   createdBy: string | null;
   createdAt: Date;
   updatedAt: Date;
@@ -32,6 +33,7 @@ export type VisibleProblemSetDetail = {
   id: string;
   name: string;
   description: string | null;
+  isPublic: boolean;
   createdBy: string | null;
   createdAt: Date;
   updatedAt: Date;

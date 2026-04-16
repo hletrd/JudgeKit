@@ -2575,6 +2575,15 @@
         "expand": "펼치기",
         "collapse": "접기",
         "pagination": "{page} / {totalPages} 페이지"
+      },
+      "sets": {
+        "title": "문제집",
+        "description": "공개 문제집을 둘러보고 순서대로 풀어 보세요.",
+        "empty": "공개된 문제집이 아직 없습니다.",
+        "open": "문제집 열기",
+        "problemCount": "문제 {count}개",
+        "problemsTitle": "이 문제집의 문제",
+        "solveNext": "다음 문제 풀기"
       }
     },
     "playground": {

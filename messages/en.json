@@ -2575,6 +2575,15 @@
         "expand": "Expand",
         "collapse": "Collapse",
         "pagination": "Page {page} of {totalPages}"
+      },
+      "sets": {
+        "title": "Problem Sets",
+        "description": "Browse curated public problem sets and solve them in order.",
+        "empty": "No public problem sets yet.",
+        "open": "Open set",
+        "problemCount": "{count} problems",
+        "problemsTitle": "Problems in this set",
+        "solveNext": "Solve next"
       }
     },
     "playground": {

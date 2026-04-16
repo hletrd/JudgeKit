@@ -693,6 +693,7 @@ export const problemSets = mysqlTable("problem_sets", {
     .$defaultFn(() => nanoid()),
   name: varchar("name", { length: 255 }).notNull(),
   description: text("description"),
+  isPublic: boolean("is_public").notNull().default(false),
   createdBy: varchar("created_by", { length: 36 }).references(() => users.id, {
     onDelete: "set null",
   }),

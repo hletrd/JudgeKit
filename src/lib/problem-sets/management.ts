@@ -90,6 +90,7 @@ export async function createProblemSet(input: ProblemSetMutationInput, createdBy
         id,
         name: input.name,
         description: input.description ?? null,
+        isPublic: input.isPublic ?? false,
         createdBy,
         createdAt: now,
         updatedAt: now,
@@ -111,6 +112,7 @@ export async function updateProblemSet(problemSetId: string, input: ProblemSetMu
       .set({
         name: input.name,
         description: input.description ?? null,
+        isPublic: input.isPublic ?? false,
         updatedAt: now,
       })
       .where(eq(problemSets.id, problemSetId));

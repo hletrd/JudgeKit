@@ -41,6 +41,7 @@ export default async function ProblemSetDetailPage({
         id: ps.id,
         name: ps.name,
         description: ps.description ?? "",
+        isPublic: ps.isPublic ?? false,
         problemIds: ps.problems
           .sort((a, b) => (a.sortOrder ?? 0) - (b.sortOrder ?? 0))
           .map((p) => p.problemId),

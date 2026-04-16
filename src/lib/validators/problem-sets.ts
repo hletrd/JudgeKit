@@ -11,6 +11,7 @@ export const problemSetMutationSchema = z
       normalizeOptionalString,
       z.string().max(2000, "problemSetDescriptionTooLong").optional()
     ),
+    isPublic: z.boolean().optional(),
     problemIds: z
       .array(z.preprocess(trimString, z.string().min(1)))
       .max(200, "tooManyProblemSetProblems")

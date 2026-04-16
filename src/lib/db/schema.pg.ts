@@ -711,6 +711,7 @@ export const problemSets = pgTable("problem_sets", {
     .$defaultFn(() => nanoid()),
   name: text("name").notNull(),
   description: text("description"),
+  isPublic: boolean("is_public").notNull().default(false),
   createdBy: text("created_by").references(() => users.id, {
     onDelete: "set null",
   }),
