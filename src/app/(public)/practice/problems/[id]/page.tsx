@@ -19,9 +19,10 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { buildAbsoluteUrl, buildLocalePath, buildPublicMetadata, NO_INDEX_METADATA, summarizeTextForMetadata } from "@/lib/seo";
+import { buildAbsoluteUrl, buildLocalePath, buildPublicMetadata, buildSocialImageUrl, NO_INDEX_METADATA, summarizeTextForMetadata } from "@/lib/seo";
 import { getResolvedSystemSettings } from "@/lib/system-settings";
 import { getResolvedSystemTimeZone } from "@/lib/system-settings";
+import { ProblemKeyboardNav } from "./problem-keyboard-nav";
 import { formatSubmissionIdPrefix } from "@/lib/submissions/format";
 import Link from "next/link";
 
@@ -30,7 +31,21 @@ export async function generateMetadata({ params }: { params: Promise<{ id: strin
   const [problem, t, tProblems, locale] = await Promise.all([
     db.query.problems.findFirst({
       where: eq(problems.id, id),
-      columns: { title: true, description: true, visibility: true, sequenceNumber: true, difficulty: true },
+      columns: {
+        title: true,
+        description: true,
+        visibility: true,
+        sequenceNumber: true,
+        difficulty: true,
+        timeLimitMs: true,
+        memoryLimitMb: true,
+      },
+      with: {
+        author: { columns: { name: true } },
+        problemTags: {
+          with: { tag: { columns: { name: true } } },
+        },
+      },
     }),
     getTranslations("common"),
     getTranslations("problems"),
@@ -58,12 +73,17 @@ export async function generateMetadata({ params }: { params: Promise<{ id: strin
     keywords: [
       "programming problem",
       "algorithm challenge",
+      ...problem.problemTags.map((entry) => entry.tag.name),
+      ...(problem.author?.name ? [problem.author.name] : []),
     ],
     section: tProblems("title"),
     socialBadge: problem.sequenceNumber != null ? `#${problem.sequenceNumber}` : undefined,
-    socialMeta: problem.difficulty != null
-      ? `${tProblems("table.difficulty")} ${problem.difficulty.toFixed(2)}`
-      : undefined,
+    socialMeta: [
+      problem.difficulty != null ? `${tProblems("table.difficulty")} ${problem.difficulty.toFixed(2)}` : null,
+      problem.timeLimitMs != null ? `${problem.timeLimitMs} ms` : null,
+      problem.memoryLimitMb != null ? `${problem.memoryLimitMb} MB` : null,
+    ].filter(Boolean).join(" • ") || undefined,
+    socialFooter: problem.problemTags.slice(0, 3).map((entry) => entry.tag.name).join(" • ") || undefined,
     type: "article",
   });
 }
@@ -94,6 +114,10 @@ export default async function PublicProblemDetailPage({ params }: { params: Prom
   }
 
   const timeZone = await getResolvedSystemTimeZone();
+  const settings = await getResolvedSystemSettings({
+    siteTitle: tCommon("appName"),
+    siteDescription: tCommon("appDescription"),
+  });
   const threads = await listProblemDiscussionThreads(problem.id);
   const editorials = await listProblemEditorials(problem.id);
 
@@ -135,6 +159,34 @@ export default async function PublicProblemDetailPage({ params }: { params: Prom
       .limit(5);
   }
 
+  // Previous / next problem navigation (by sequenceNumber)
+  let prevProblem: { id: string } | null = null;
+  let nextProblem: { id: string } | null = null;
+  if (problem.sequenceNumber != null) {
+    [prevProblem, nextProblem] = await Promise.all([
+      db.select({ id: problems.id })
+        .from(problems)
+        .where(and(
+          eq(problems.visibility, "public"),
+          sql`${problems.sequenceNumber} < ${problem.sequenceNumber}`,
+          sql`${problems.sequenceNumber} IS NOT NULL`
+        ))
+        .orderBy(sql`${problems.sequenceNumber} DESC`)
+        .limit(1)
+        .then(rows => rows[0] ?? null),
+      db.select({ id: problems.id })
+        .from(problems)
+        .where(and(
+          eq(problems.visibility, "public"),
+          sql`${problems.sequenceNumber} > ${problem.sequenceNumber}`,
+          sql`${problems.sequenceNumber} IS NOT NULL`
+        ))
+        .orderBy(sql`${problems.sequenceNumber} ASC`)
+        .limit(1)
+        .then(rows => rows[0] ?? null),
+    ]);
+  }
+
   // User's submissions for this problem (when logged in)
   let userSubmissions: Array<{
     id: string;
@@ -169,6 +221,20 @@ export default async function PublicProblemDetailPage({ params }: { params: Prom
   }
 
   const statusLabels = buildStatusLabels(tSubmissions);
+  const socialImageUrl = buildSocialImageUrl({
+    title: problem.title,
+    description: summarizeTextForMetadata(problem.description),
+    locale,
+    siteTitle: settings.siteTitle,
+    section: tProblems("title"),
+    badge: problem.sequenceNumber != null ? `#${problem.sequenceNumber}` : undefined,
+    meta: [
+      problem.difficulty != null ? `${tProblems("table.difficulty")} ${problem.difficulty.toFixed(2)}` : null,
+      problem.timeLimitMs != null ? `${problem.timeLimitMs} ms` : null,
+      problem.memoryLimitMb != null ? `${problem.memoryLimitMb} MB` : null,
+    ].filter(Boolean).join(" • ") || undefined,
+    footer: problem.problemTags.slice(0, 3).map((entry) => entry.tag.name).join(" • ") || undefined,
+  });
 
   const problemJsonLd = {
     "@context": "https://schema.org",
@@ -176,13 +242,23 @@ export default async function PublicProblemDetailPage({ params }: { params: Prom
     headline: problem.title,
     description: summarizeTextForMetadata(problem.description),
     url: buildAbsoluteUrl(buildLocalePath(`/practice/problems/${problem.id}`, locale)),
+    mainEntityOfPage: buildAbsoluteUrl(buildLocalePath(`/practice/problems/${problem.id}`, locale)),
     inLanguage: locale,
+    image: [socialImageUrl],
     author: problem.author?.name
       ? {
           "@type": "Person",
           name: problem.author.name,
         }
       : undefined,
+    publisher: {
+      "@type": "Organization",
+      name: settings.siteTitle,
+    },
+    about: problem.problemTags.map((entry) => ({
+      "@type": "Thing",
+      name: entry.tag.name,
+    })),
     keywords: problem.problemTags.map((entry) => entry.tag.name).join(", "),
   };
   const breadcrumbJsonLd = {
@@ -219,6 +295,11 @@ export default async function PublicProblemDetailPage({ params }: { params: Prom
   return (
     <>
       <JsonLd data={[problemJsonLd, breadcrumbJsonLd]} />
+      <ProblemKeyboardNav
+        prevProblemId={prevProblem?.id ?? null}
+        nextProblemId={nextProblem?.id ?? null}
+        locale={locale}
+      />
       <div className="space-y-6">
         <Tabs defaultValue="problem">
           <TabsList>
