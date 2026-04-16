@@ -173,9 +173,9 @@ export default async function PracticePage({
   const submissionStatsSubquery = db
     .select({
       problemId: submissions.problemId,
-      submissionCount: count(),
-      solverCount: sql<number>`count(distinct case when ${submissions.status} = 'accepted' then ${submissions.userId} end)`,
-      acceptedCount: sql<number>`count(case when ${submissions.status} = 'accepted' then 1 end)`,
+      submissionCount: sql<number>`count(*)`.as("submissionCount"),
+      solverCount: sql<number>`count(distinct case when ${submissions.status} = 'accepted' then ${submissions.userId} end)`.as("solverCount"),
+      acceptedCount: sql<number>`count(case when ${submissions.status} = 'accepted' then 1 end)`.as("acceptedCount"),
     })
     .from(submissions)
     .groupBy(submissions.problemId)

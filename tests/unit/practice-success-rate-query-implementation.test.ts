@@ -11,6 +11,9 @@ describe("practice success-rate query implementation", () => {
     const source = read("src/app/(public)/practice/page.tsx");
 
     expect(source).toContain('const submissionStatsSubquery = db');
+    expect(source).toContain('sql<number>`count(*)`.as("submissionCount")');
+    expect(source).toContain('.as("solverCount")');
+    expect(source).toContain('.as("acceptedCount")');
     expect(source).toContain(".leftJoin(submissionStatsSubquery");
     expect(source).toContain("coalesce(cast(${submissionStatsSubquery.acceptedCount} as double precision)");
     expect(source).not.toContain("withRate.sort(");
