@@ -310,6 +310,7 @@ export function ProblemSubmissionForm({
           editorTheme={editorTheme}
           onValueChange={setSourceCode}
           onSubmitShortcut={() => void handleSubmit()}
+          showFullscreen
         />
       </div>
       <div className="space-y-2">
