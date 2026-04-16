@@ -26,8 +26,25 @@ describe("PublicContestDetail", () => {
         publicProblemsTitle="Public problem set"
         noPublicProblemsLabel="No public problems"
         problemTitleLabel="Title"
+        difficultyLabel="Difficulty"
+        solverCountLabel="Solved by"
+        successRateLabel="Success"
         actionLabel="Open problem"
-        publicProblems={[{ id: "problem-1", title: "A + B", href: "/practice/problems/problem-1" }]}
+        publicProblems={[{
+          id: "problem-1",
+          title: "A + B",
+          href: "/practice/problems/problem-1",
+          difficultyLabel: "1.00",
+          solverCount: 42,
+          successRateLabel: "84%",
+        }]}
+        finalRankingsTitle="Leaderboard"
+        noFinalRankingsLabel="No entries"
+        rankLabel="Rank"
+        nameLabel="Name"
+        totalScoreLabel="Score"
+        penaltyLabel="Penalty"
+        finalRankings={[{ userId: "user-1", name: "Alice", rank: 1, totalScoreLabel: "300", penaltyLabel: "42" }]}
         signInHref="/login"
         signInLabel="Sign in to join"
         workspaceHref="/workspace"
@@ -41,6 +58,11 @@ describe("PublicContestDetail", () => {
     expect(screen.getByText("Overview")).toBeInTheDocument();
     expect(screen.getByText("Public problem set")).toBeInTheDocument();
     expect(screen.getByText("A + B")).toBeInTheDocument();
+    expect(screen.getByText("1.00")).toBeInTheDocument();
+    expect(screen.getAllByText("42").length).toBeGreaterThan(0);
+    expect(screen.getByText("84%")).toBeInTheDocument();
+    expect(screen.getByText("Leaderboard")).toBeInTheDocument();
+    expect(screen.getByText("Alice")).toBeInTheDocument();
     expect(screen.getAllByText("Open problem").length).toBeGreaterThan(0);
     expect(screen.getByText("Sign in to join")).toBeInTheDocument();
   });

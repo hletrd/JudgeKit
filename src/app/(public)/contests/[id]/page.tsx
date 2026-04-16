@@ -1,10 +1,11 @@
 import type { Metadata } from "next";
 import { getLocale, getTranslations } from "next-intl/server";
 import { notFound } from "next/navigation";
-import { auth } from "@/lib/auth";
 import { PublicContestDetail } from "@/app/(public)/_components/public-contest-detail";
 import { JsonLd } from "@/components/seo/json-ld";
 import { getPublicContestById } from "@/lib/assignments/public-contests";
+import { computeContestAnalytics } from "@/lib/assignments/contest-analytics";
+import { computeLeaderboard } from "@/lib/assignments/leaderboard";
 import { buildAbsoluteUrl, buildLocalePath, buildPublicMetadata, buildSocialImageUrl, NO_INDEX_METADATA, summarizeTextForMetadata } from "@/lib/seo";
 import { getResolvedSystemSettings } from "@/lib/system-settings";
 import Link from "next/link";
@@ -60,11 +61,11 @@ function formatDateLabel(value: Date | null, fallback: string, locale: string) {
 
 export default async function PublicContestDetailPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
-  const [t, tCommon, tProblems, session, locale, settings] = await Promise.all([
+  const [t, tCommon, tProblems, tContest, locale, settings] = await Promise.all([
     getTranslations("publicShell"),
     getTranslations("common"),
     getTranslations("problems"),
-    auth(),
+    getTranslations("contests"),
     getLocale(),
     getResolvedSystemSettings({
       siteTitle: "JudgeKit",
@@ -83,6 +84,16 @@ export default async function PublicContestDetailPage({ params }: { params: Prom
   if (!contest) {
     notFound();
   }
+  const showArchiveInsights = contest.status === "expired" || contest.status === "closed";
+  const [analytics, leaderboard] = showArchiveInsights
+    ? await Promise.all([
+        computeContestAnalytics(contest.id),
+        computeLeaderboard(contest.id, true),
+      ])
+    : [null, null];
+  const solveRateByProblem = new Map(
+    analytics?.problemSolveRates.map((problem) => [problem.problemId, problem]) ?? []
+  );
   const socialImageUrl = buildSocialImageUrl({
     title: contest.title,
     description: summarizeTextForMetadata(contest.description),
@@ -182,10 +193,36 @@ export default async function PublicContestDetailPage({ params }: { params: Prom
         publicProblemsTitle={t("contests.publicProblemsTitle")}
         noPublicProblemsLabel={t("contests.noPublicProblems")}
         problemTitleLabel={tProblems("table.title")}
+        difficultyLabel={tProblems("table.difficulty")}
+        solverCountLabel={t("practice.solverCount")}
+        successRateLabel={t("practice.successRate")}
         actionLabel={t("contests.openContest")}
         publicProblems={contest.publicProblems.map((problem) => ({
-          ...problem,
+          id: problem.id,
+          title: problem.title,
           href: buildLocalePath(`/practice/problems/${problem.id}`, locale),
+          difficultyLabel: problem.difficulty != null
+            ? problem.difficulty.toFixed(2).replace(/\.?0+$/, "")
+            : null,
+          solverCount: solveRateByProblem.get(problem.id)?.solved ?? null,
+          successRateLabel: solveRateByProblem.has(problem.id)
+            ? `${solveRateByProblem.get(problem.id)?.solvedPercent ?? 0}%`
+            : null,
+        }))}
+        finalRankingsTitle={showArchiveInsights ? tContest("leaderboard.title") : null}
+        noFinalRankingsLabel={showArchiveInsights ? tContest("leaderboard.noEntries") : null}
+        rankLabel={showArchiveInsights ? tContest("leaderboard.rank") : null}
+        nameLabel={showArchiveInsights ? tContest("leaderboard.name") : null}
+        totalScoreLabel={showArchiveInsights ? tContest("leaderboard.totalScore") : null}
+        penaltyLabel={showArchiveInsights && contest.scoringModel === "icpc" ? tContest("leaderboard.penalty") : null}
+        finalRankings={(leaderboard?.entries ?? []).slice(0, 10).map((entry) => ({
+          userId: entry.userId,
+          name: entry.name || entry.username,
+          rank: entry.rank,
+          totalScoreLabel: contest.scoringModel === "icpc"
+            ? `${entry.totalScore}`
+            : `${Math.round(entry.totalScore * 100) / 100}`,
+          penaltyLabel: contest.scoringModel === "icpc" ? `${entry.totalPenalty}` : null,
         }))}
         signInHref={buildLocalePath(
           `/login?callbackUrl=${encodeURIComponent(buildLocalePath(`/dashboard/contests/${contest.id}`, locale))}`,

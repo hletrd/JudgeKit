@@ -28,8 +28,31 @@ type PublicContestDetailProps = {
   publicProblemsTitle: string;
   noPublicProblemsLabel: string;
   problemTitleLabel: string;
+  difficultyLabel: string;
+  solverCountLabel: string;
+  successRateLabel: string;
   actionLabel: string;
-  publicProblems: Array<{ id: string; title: string; href: string }>;
+  publicProblems: Array<{
+    id: string;
+    title: string;
+    href: string;
+    difficultyLabel: string | null;
+    solverCount: number | null;
+    successRateLabel: string | null;
+  }>;
+  finalRankingsTitle?: string | null;
+  noFinalRankingsLabel?: string | null;
+  rankLabel?: string | null;
+  nameLabel?: string | null;
+  totalScoreLabel?: string | null;
+  penaltyLabel?: string | null;
+  finalRankings?: Array<{
+    userId: string;
+    name: string;
+    rank: number;
+    totalScoreLabel: string;
+    penaltyLabel: string | null;
+  }>;
   signInHref: string;
   signInLabel: string;
   workspaceHref: string;
@@ -52,8 +75,18 @@ export function PublicContestDetail({
   publicProblemsTitle,
   noPublicProblemsLabel,
   problemTitleLabel,
+  difficultyLabel,
+  solverCountLabel,
+  successRateLabel,
   actionLabel,
   publicProblems,
+  finalRankingsTitle = null,
+  noFinalRankingsLabel = null,
+  rankLabel = null,
+  nameLabel = null,
+  totalScoreLabel = null,
+  penaltyLabel = null,
+  finalRankings = [],
   signInHref,
   signInLabel,
   workspaceHref,
@@ -121,6 +154,9 @@ export function PublicContestDetail({
               <TableHeader>
                 <TableRow>
                   <TableHead>{problemTitleLabel}</TableHead>
+                  <TableHead className="w-28 text-center">{difficultyLabel}</TableHead>
+                  <TableHead className="w-24 text-center">{solverCountLabel}</TableHead>
+                  <TableHead className="w-28 text-center">{successRateLabel}</TableHead>
                   <TableHead className="w-32">{actionLabel}</TableHead>
                 </TableRow>
               </TableHeader>
@@ -131,6 +167,15 @@ export function PublicContestDetail({
                       <Link href={problem.href} className="hover:underline">
                         {problem.title}
                       </Link>
+                    </TableCell>
+                    <TableCell className="text-center text-sm text-muted-foreground">
+                      {problem.difficultyLabel ?? "-"}
+                    </TableCell>
+                    <TableCell className="text-center text-sm text-muted-foreground">
+                      {problem.solverCount ?? "-"}
+                    </TableCell>
+                    <TableCell className="text-center text-sm text-muted-foreground">
+                      {problem.successRateLabel ?? "-"}
                     </TableCell>
                     <TableCell>
                       <Link href={problem.href}>
@@ -146,6 +191,42 @@ export function PublicContestDetail({
           )}
         </CardContent>
       </Card>
+
+      {finalRankingsTitle ? (
+        <Card>
+          <CardHeader>
+            <CardTitle>{finalRankingsTitle}</CardTitle>
+          </CardHeader>
+          <CardContent>
+            {finalRankings.length === 0 ? (
+              <p className="text-sm text-muted-foreground">{noFinalRankingsLabel}</p>
+            ) : (
+              <Table>
+                <TableHeader>
+                  <TableRow>
+                    <TableHead className="w-16 text-center">{rankLabel}</TableHead>
+                    <TableHead>{nameLabel}</TableHead>
+                    <TableHead className="w-28 text-center">{totalScoreLabel}</TableHead>
+                    {penaltyLabel ? <TableHead className="w-28 text-center">{penaltyLabel}</TableHead> : null}
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  {finalRankings.map((entry) => (
+                    <TableRow key={entry.userId}>
+                      <TableCell className="text-center font-medium">{entry.rank}</TableCell>
+                      <TableCell>{entry.name}</TableCell>
+                      <TableCell className="text-center">{entry.totalScoreLabel}</TableCell>
+                      {penaltyLabel ? (
+                        <TableCell className="text-center">{entry.penaltyLabel ?? "-"}</TableCell>
+                      ) : null}
+                    </TableRow>
+                  ))}
+                </TableBody>
+              </Table>
+            )}
+          </CardContent>
+        </Card>
+      ) : null}
     </div>
   );
 }

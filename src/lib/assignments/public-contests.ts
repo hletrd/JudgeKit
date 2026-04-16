@@ -22,6 +22,7 @@ export type PublicContestDetail = PublicContestEntry & {
   publicProblems: Array<{
     id: string;
     title: string;
+    difficulty: number | null;
   }>;
 };
 
@@ -86,7 +87,7 @@ export async function getPublicContestById(assignmentId: string): Promise<Public
       assignmentProblems: {
         with: {
           problem: {
-            columns: { id: true, title: true, visibility: true },
+            columns: { id: true, title: true, visibility: true, difficulty: true },
           },
         },
       },
@@ -128,6 +129,7 @@ export async function getPublicContestById(assignmentId: string): Promise<Public
       .map((entry) => ({
         id: entry.problem?.id ?? entry.problemId,
         title: entry.problem?.title ?? "",
+        difficulty: entry.problem?.difficulty ?? null,
       })),
   };
 }
