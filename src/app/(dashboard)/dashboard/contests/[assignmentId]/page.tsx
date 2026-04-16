@@ -49,6 +49,7 @@ import { AntiCheatMonitor } from "@/components/exam/anti-cheat-monitor";
 import { AntiCheatDashboard } from "@/components/contest/anti-cheat-dashboard";
 import { AnalyticsCharts } from "@/components/contest/analytics-charts";
 import { ExportButton } from "@/components/contest/export-button";
+import { ContestAnnouncements } from "@/components/contest/contest-announcements";
 import { RecruiterCandidatesPanel } from "@/components/contest/recruiter-candidates-panel";
 import { RecruitingInvitationsPanel } from "@/components/contest/recruiting-invitations-panel";
 import AssignmentFormDialog, { type AssignmentEditorValue } from "../../groups/[id]/assignment-form-dialog";
@@ -648,6 +649,7 @@ export default async function ContestDetailPage({
 
         {/* Overview Tab */}
         <TabsContent value="overview" className="mt-6 space-y-6">
+          <ContestAnnouncements assignmentId={assignmentId} canManage={canManage} />
           <AssignmentOverview
             assignment={assignment}
             sortedProblems={sortedProblems}

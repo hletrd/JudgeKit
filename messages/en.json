@@ -2086,6 +2086,28 @@
       "problemsSolved": "Problems with AC"
     },
     "manageContest": "Manage Contest",
+    "announcements": {
+      "title": "Announcements",
+      "titleLabel": "Title",
+      "contentLabel": "Content",
+      "pinned": "Pinned",
+      "create": "Post announcement",
+      "update": "Update announcement",
+      "cancelEdit": "Cancel edit",
+      "edit": "Edit",
+      "pin": "Pin",
+      "unpin": "Unpin",
+      "delete": "Delete",
+      "empty": "No announcements yet.",
+      "loading": "Loading announcements...",
+      "postedAt": "Posted: {value}",
+      "createSuccess": "Announcement posted.",
+      "updateSuccess": "Announcement updated.",
+      "deleteSuccess": "Announcement deleted.",
+      "saveFailed": "Failed to save announcement.",
+      "deleteFailed": "Failed to delete announcement.",
+      "fetchError": "Failed to load announcements."
+    },
     "participantAudit": {
       "title": "Participant Audit",
       "backToContest": "Back to Contest",

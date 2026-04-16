@@ -2086,6 +2086,28 @@
       "problemsSolved": "AC된 문제"
     },
     "manageContest": "대회 관리",
+    "announcements": {
+      "title": "공지",
+      "titleLabel": "제목",
+      "contentLabel": "내용",
+      "pinned": "상단 고정",
+      "create": "공지 등록",
+      "update": "공지 수정",
+      "cancelEdit": "수정 취소",
+      "edit": "수정",
+      "pin": "고정",
+      "unpin": "고정 해제",
+      "delete": "삭제",
+      "empty": "등록된 공지가 없습니다.",
+      "loading": "공지를 불러오는 중...",
+      "postedAt": "게시: {value}",
+      "createSuccess": "공지가 등록되었습니다.",
+      "updateSuccess": "공지가 수정되었습니다.",
+      "deleteSuccess": "공지가 삭제되었습니다.",
+      "saveFailed": "공지를 저장하지 못했습니다.",
+      "deleteFailed": "공지를 삭제하지 못했습니다.",
+      "fetchError": "공지를 불러오지 못했습니다."
+    },
     "participantAudit": {
       "title": "참가자 감사 로그",
       "backToContest": "대회로 돌아가기",

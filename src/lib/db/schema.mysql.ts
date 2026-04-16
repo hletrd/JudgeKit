@@ -620,6 +620,34 @@ export const scoreOverrides = mysqlTable(
   ]
 );
 
+export const contestAnnouncements = mysqlTable(
+  "contest_announcements",
+  {
+    id: varchar("id", { length: 36 })
+      .primaryKey()
+      .$defaultFn(() => nanoid()),
+    assignmentId: varchar("assignment_id", { length: 36 })
+      .notNull()
+      .references(() => assignments.id, { onDelete: "cascade" }),
+    title: text("title").notNull(),
+    content: text("content").notNull(),
+    isPinned: boolean("is_pinned").notNull().default(false),
+    createdBy: varchar("created_by", { length: 36 }).references(() => users.id, {
+      onDelete: "set null",
+    }),
+    createdAt: timestamp("created_at")
+      .notNull()
+      .$defaultFn(() => new Date(Date.now())),
+    updatedAt: timestamp("updated_at")
+      .notNull()
+      .$defaultFn(() => new Date(Date.now())),
+  },
+  (table) => [
+    index("contest_announcements_assignment_idx").on(table.assignmentId),
+    index("contest_announcements_pinned_idx").on(table.assignmentId, table.isPinned, table.createdAt),
+  ]
+);
+
 export const problemSets = mysqlTable("problem_sets", {
   id: varchar("id", { length: 36 })
     .primaryKey()

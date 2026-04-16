@@ -644,6 +644,32 @@ export const scoreOverrides = pgTable(
   ]
 );
 
+export const contestAnnouncements = pgTable(
+  "contest_announcements",
+  {
+    id: text("id")
+      .primaryKey()
+      .$defaultFn(() => nanoid()),
+    assignmentId: text("assignment_id")
+      .notNull()
+      .references(() => assignments.id, { onDelete: "cascade" }),
+    title: text("title").notNull(),
+    content: text("content").notNull(),
+    isPinned: boolean("is_pinned").notNull().default(false),
+    createdBy: text("created_by").references(() => users.id, { onDelete: "set null" }),
+    createdAt: timestamp("created_at", { withTimezone: true })
+      .notNull()
+      .$defaultFn(() => new Date(Date.now())),
+    updatedAt: timestamp("updated_at", { withTimezone: true })
+      .notNull()
+      .$defaultFn(() => new Date(Date.now())),
+  },
+  (table) => [
+    index("contest_announcements_assignment_idx").on(table.assignmentId),
+    index("contest_announcements_pinned_idx").on(table.assignmentId, table.isPinned, table.createdAt),
+  ]
+);
+
 export const problemSets = pgTable("problem_sets", {
   id: text("id")
     .primaryKey()
