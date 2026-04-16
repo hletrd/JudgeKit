@@ -42,7 +42,7 @@ export default async function PublicLayout({ children }: { children: React.React
         loggedInUser={session?.user ? { name: session.user.name, href: "/dashboard", label: tShell("nav.workspace") } : null}
       />
       <main id="main-content" className="mx-auto w-full max-w-6xl px-4 py-10 sm:px-6 lg:px-8">{children}</main>
-      <PublicFooter footerContent={settings.footerContent} />
+      <PublicFooter siteTitle={settings.siteTitle} footerContent={settings.footerContent} />
     </div>
   );
 }
