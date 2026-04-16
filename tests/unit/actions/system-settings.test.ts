@@ -51,7 +51,7 @@ vi.mock("@/lib/system-settings-config", () => ({
 }));
 
 vi.mock("@/lib/security/hcaptcha", () => ({
-  isHcaptchaConfigured: vi.fn(() => true),
+  isHcaptchaConfigured: vi.fn(() => Promise.resolve(true)),
 }));
 
 vi.mock("next/cache", () => ({
@@ -210,7 +210,7 @@ describe("updateSystemSettings", () => {
   it("rejects enabling sign-up hCaptcha when credentials are unavailable", async () => {
     const { updateSystemSettings } = await import("@/lib/actions/system-settings");
     const { isHcaptchaConfigured } = await import("@/lib/security/hcaptcha");
-    vi.mocked(isHcaptchaConfigured).mockReturnValue(false);
+    vi.mocked(isHcaptchaConfigured).mockResolvedValue(false);
     setupAuthorizedAdmin();
 
     const result = await updateSystemSettings({

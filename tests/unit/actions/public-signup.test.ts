@@ -73,7 +73,7 @@ beforeEach(() => {
     signupHcaptchaEnabled: false,
     defaultLanguage: "python",
   });
-  mocks.isHcaptchaConfigured.mockReturnValue(true);
+  mocks.isHcaptchaConfigured.mockResolvedValue(true);
   mocks.verifyHcaptchaToken.mockResolvedValue({ success: true, errorCodes: [] });
   mocks.validateAndHashPassword.mockResolvedValue({ hash: "hashed-password" });
   mocks.isUsernameTaken.mockResolvedValue(false);

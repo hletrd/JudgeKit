@@ -85,6 +85,8 @@ function renderForm(initialTimeZone = "UTC") {
       initialPublicSignupEnabled={false}
       initialSignupHcaptchaEnabled={false}
       signupHcaptchaAvailable={true}
+      initialHcaptchaSiteKey=""
+      initialHcaptchaSecretMasked=""
     />
   );
 }

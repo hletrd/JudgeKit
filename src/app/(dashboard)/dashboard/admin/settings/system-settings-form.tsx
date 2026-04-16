@@ -38,6 +38,8 @@ type SystemSettingsFormProps = {
   initialPublicSignupEnabled: boolean;
   initialSignupHcaptchaEnabled: boolean;
   signupHcaptchaAvailable: boolean;
+  initialHcaptchaSiteKey: string;
+  initialHcaptchaSecretMasked: string;
 };
 
 function isValidTimeZone(value: string) {
@@ -65,6 +67,8 @@ export function SystemSettingsForm({
   initialPublicSignupEnabled,
   initialSignupHcaptchaEnabled,
   signupHcaptchaAvailable,
+  initialHcaptchaSiteKey,
+  initialHcaptchaSecretMasked,
   initialDefaultLanguage,
   initialDefaultLocale,
 }: SystemSettingsFormProps) {
@@ -78,6 +82,8 @@ export function SystemSettingsForm({
   const [aiAssistantEnabled, setAiAssistantEnabled] = useState(initialAiAssistantEnabled);
   const [publicSignupEnabled, setPublicSignupEnabled] = useState(initialPublicSignupEnabled);
   const [signupHcaptchaEnabled, setSignupHcaptchaEnabled] = useState(initialSignupHcaptchaEnabled);
+  const [hcaptchaSiteKey, setHcaptchaSiteKey] = useState(initialHcaptchaSiteKey);
+  const [hcaptchaSecret, setHcaptchaSecret] = useState(initialHcaptchaSecretMasked);
   const [defaultLanguage, setDefaultLanguage] = useState(initialDefaultLanguage);
   const [defaultLocale, setDefaultLocale] = useState(initialDefaultLocale);
   const [isLoading, setIsLoading] = useState(false);
@@ -121,6 +127,9 @@ export function SystemSettingsForm({
         aiAssistantEnabled,
         publicSignupEnabled,
         signupHcaptchaEnabled,
+        hcaptchaSiteKey,
+        // Only send secret if user actually changed it from the masked placeholder
+        ...(hcaptchaSecret !== initialHcaptchaSecretMasked ? { hcaptchaSecret } : {}),
         defaultLanguage: normalizedDefaultLanguage || undefined,
         defaultLocale: (defaultLocale || undefined) as "en" | "ko" | undefined,
       });
@@ -291,14 +300,42 @@ export function SystemSettingsForm({
           <Checkbox
             id="signup-hcaptcha-enabled"
             checked={signupHcaptchaEnabled}
-            disabled={!signupHcaptchaAvailable && !signupHcaptchaEnabled}
             onCheckedChange={(checked) => setSignupHcaptchaEnabled(checked === true)}
           />
           <span>{t("signupHcaptchaEnabled")}</span>
         </label>
         <p className="text-xs text-muted-foreground">
-          {signupHcaptchaAvailable ? t("signupHcaptchaEnabledHint") : t("signupHcaptchaUnavailable")}
+          {t("signupHcaptchaEnabledHint")}
         </p>
+      </div>
+
+      <div className="space-y-2 pl-4 border-l-2 border-muted">
+        <div className="space-y-2">
+          <Label htmlFor="hcaptcha-site-key">{t("hcaptchaSiteKeyLabel")}</Label>
+          <Input
+            id="hcaptcha-site-key"
+            value={hcaptchaSiteKey}
+            onChange={(event) => setHcaptchaSiteKey(event.target.value)}
+            placeholder={t("hcaptchaSiteKeyPlaceholder")}
+          />
+          <p className="text-xs text-muted-foreground">
+            {t("hcaptchaSiteKeyHint")}
+          </p>
+        </div>
+
+        <div className="space-y-2">
+          <Label htmlFor="hcaptcha-secret">{t("hcaptchaSecretLabel")}</Label>
+          <Input
+            id="hcaptcha-secret"
+            type="password"
+            value={hcaptchaSecret}
+            onChange={(event) => setHcaptchaSecret(event.target.value)}
+            placeholder={t("hcaptchaSecretPlaceholder")}
+          />
+          <p className="text-xs text-muted-foreground">
+            {t("hcaptchaSecretHint")}
+          </p>
+        </div>
       </div>
 
       <Button type="submit" disabled={isLoading}>

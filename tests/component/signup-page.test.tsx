@@ -33,8 +33,8 @@ vi.mock("@/lib/system-settings", () => ({
 }));
 
 vi.mock("@/lib/security/hcaptcha", () => ({
-  getHcaptchaSiteKey: () => "site-key",
-  isHcaptchaConfigured: () => true,
+  getHcaptchaSiteKey: () => Promise.resolve("site-key"),
+  isHcaptchaConfigured: () => Promise.resolve(true),
 }));
 
 vi.mock("@/app/(auth)/signup/signup-form", () => ({

@@ -62,7 +62,7 @@ export async function registerPublicUser(input: PublicSignupInput): Promise<Publ
     return { success: false, error: "signupDisabled" };
   }
 
-  if (settings.signupHcaptchaEnabled && !isHcaptchaConfigured()) {
+  if (settings.signupHcaptchaEnabled && !(await isHcaptchaConfigured())) {
     return { success: false, error: "hcaptchaUnavailable" };
   }
 

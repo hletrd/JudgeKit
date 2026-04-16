@@ -1234,8 +1234,14 @@
       "publicSignupEnabledHint": "활성화하면 로그인 페이지와 공개 화면에 사용자용 회원가입 흐름이 표시됩니다.",
       "signupHcaptchaTitle": "회원가입 hCaptcha",
       "signupHcaptchaEnabled": "공개 회원가입 시 hCaptcha 요구",
-      "signupHcaptchaEnabledHint": "봇 회원가입을 줄이기 위해 hCaptcha를 사용합니다. NEXT_PUBLIC_HCAPTCHA_SITE_KEY와 HCAPTCHA_SECRET이 필요합니다.",
+      "signupHcaptchaEnabledHint": "봇 회원가입을 줄이기 위해 hCaptcha를 사용합니다. 아래에 사이트 키와 시크릿을 설정하세요.",
       "signupHcaptchaUnavailable": "hCaptcha를 켜기 전에 NEXT_PUBLIC_HCAPTCHA_SITE_KEY와 HCAPTCHA_SECRET을 설정하세요.",
+      "hcaptchaSiteKeyLabel": "hCaptcha 사이트 키",
+      "hcaptchaSiteKeyPlaceholder": "hCaptcha 사이트 키를 입력하세요",
+      "hcaptchaSiteKeyHint": "hCaptcha 대시보드에서 발급받은 사이트 키입니다. NEXT_PUBLIC_HCAPTCHA_SITE_KEY 환경변수를 대체합니다.",
+      "hcaptchaSecretLabel": "hCaptcha 시크릿",
+      "hcaptchaSecretPlaceholder": "hCaptcha 시크릿 키를 입력하세요",
+      "hcaptchaSecretHint": "hCaptcha 대시보드에서 발급받은 시크릿 키입니다. HCAPTCHA_SECRET 환경변수를 대체합니다. 기존 값을 유지하려면 비워두세요.",
       "defaultLanguagePlaceholder": "python"
     },
     "files": {

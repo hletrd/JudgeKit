@@ -1234,8 +1234,14 @@
       "publicSignupEnabledHint": "When enabled, the login page and public shells expose a sign-up flow for user accounts.",
       "signupHcaptchaTitle": "Sign-up hCaptcha",
       "signupHcaptchaEnabled": "Require hCaptcha during public sign-up",
-      "signupHcaptchaEnabledHint": "Use hCaptcha to reduce bot sign-ups. Requires NEXT_PUBLIC_HCAPTCHA_SITE_KEY and HCAPTCHA_SECRET.",
+      "signupHcaptchaEnabledHint": "Use hCaptcha to reduce bot sign-ups. Configure the Site Key and Secret below.",
       "signupHcaptchaUnavailable": "Configure NEXT_PUBLIC_HCAPTCHA_SITE_KEY and HCAPTCHA_SECRET before enabling hCaptcha.",
+      "hcaptchaSiteKeyLabel": "hCaptcha Site Key",
+      "hcaptchaSiteKeyPlaceholder": "Enter your hCaptcha site key",
+      "hcaptchaSiteKeyHint": "The site key from your hCaptcha dashboard. Overrides the NEXT_PUBLIC_HCAPTCHA_SITE_KEY env var.",
+      "hcaptchaSecretLabel": "hCaptcha Secret",
+      "hcaptchaSecretPlaceholder": "Enter your hCaptcha secret key",
+      "hcaptchaSecretHint": "The secret key from your hCaptcha dashboard. Overrides the HCAPTCHA_SECRET env var. Leave blank to keep the current value.",
       "defaultLanguagePlaceholder": "python"
     },
     "files": {

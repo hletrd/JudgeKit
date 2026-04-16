@@ -27,8 +27,8 @@ export default async function SignupPage() {
       </CardHeader>
       <CardContent>
         <SignupForm
-          hcaptchaEnabled={settings.signupHcaptchaEnabled && isHcaptchaConfigured()}
-          hcaptchaSiteKey={getHcaptchaSiteKey()}
+          hcaptchaEnabled={settings.signupHcaptchaEnabled && await isHcaptchaConfigured()}
+          hcaptchaSiteKey={await getHcaptchaSiteKey()}
         />
       </CardContent>
     </Card>
