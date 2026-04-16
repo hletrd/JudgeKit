@@ -217,11 +217,11 @@ function readDraftPayload(storageKey: string, languages: readonly string[]) {
 }
 
 export function useSourceDraft({ userId, problemId, languages, initialLanguage }: UseSourceDraftOptions): UseSourceDraftResult {
-  const serializedLanguages = useMemo(() => JSON.stringify(languages), [languages]);
-  const availableLanguages = useMemo(() => {
-    const parsedLanguages = JSON.parse(serializedLanguages) as string[];
-    return parsedLanguages.length > 0 ? parsedLanguages : [initialLanguage];
-  }, [initialLanguage, serializedLanguages]);
+  const languagesSignature = useMemo(() => languages.join("\u0000"), [languages]);
+  const availableLanguages = useMemo(
+    () => (languages.length > 0 ? [...languages] : [initialLanguage]),
+    [initialLanguage, languagesSignature],
+  );
   const fallbackLanguage = useMemo(
     () => initialLanguage ?? availableLanguages[0],
     [availableLanguages, initialLanguage],
