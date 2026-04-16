@@ -11,9 +11,11 @@ const TIER_THRESHOLDS: Array<{ tier: Tier; minSolved: number }> = [
 
 export function calculateTier(solvedCount: number): Tier | null {
   if (solvedCount < 1) return null;
+
   for (const { tier, minSolved } of TIER_THRESHOLDS) {
     if (solvedCount >= minSolved) return tier;
   }
+
   return null;
 }
 
