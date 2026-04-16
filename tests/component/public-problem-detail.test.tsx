@@ -23,7 +23,8 @@ describe("PublicProblemDetail", () => {
         tags={[{ name: "math", color: null }]}
         timeLimitLabel="Time Limit: 2000 ms"
         memoryLimitLabel="Memory Limit: 256 MB"
-        difficultyLabel="Difficulty: 1 / 10"
+        difficultyTier={{ tier: "bronze", label: "Bronze V" }}
+        difficultyLabel="1"
         playgroundHref="/playground"
         playgroundLabel="Try in playground"
         signInHref="/login"
@@ -36,7 +37,8 @@ describe("PublicProblemDetail", () => {
     expect(screen.getByText("Author: JudgeKit")).toBeInTheDocument();
     expect(screen.getByText("Time Limit: 2000 ms")).toBeInTheDocument();
     expect(screen.getByText("Memory Limit: 256 MB")).toBeInTheDocument();
-    expect(screen.getByText("Difficulty: 1 / 10")).toBeInTheDocument();
+    expect(screen.getByText("Bronze V")).toBeInTheDocument();
+    expect(screen.getByText("1")).toBeInTheDocument();
     expect(screen.getByText("Try in playground")).toBeInTheDocument();
     expect(screen.getByText("Sign in to submit")).toBeInTheDocument();
   });

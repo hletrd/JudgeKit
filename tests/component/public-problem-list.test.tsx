@@ -30,6 +30,7 @@ describe("PublicProblemList", () => {
             sequenceNumber: 1000,
             title: "A + B",
             difficultyLabel: "1.00",
+            difficultyTier: { tier: "bronze", label: "Bronze V" },
             searchMatchLabels: ["Title match", "Content match"],
             tags: [{ name: "math", color: null, href: "/practice?tag=math" }],
             solverCount: 42,
@@ -46,6 +47,7 @@ describe("PublicProblemList", () => {
     expect(screen.getByText("A + B")).toBeInTheDocument();
     expect(screen.getByText("1000")).toBeInTheDocument();
     expect(screen.getByText("1.00")).toBeInTheDocument();
+    expect(screen.getByText("Bronze V")).toBeInTheDocument();
     expect(screen.getByText("Title match")).toBeInTheDocument();
     expect(screen.getByText("Content match")).toBeInTheDocument();
     expect(screen.getByText("math")).toBeInTheDocument();
@@ -76,6 +78,7 @@ describe("PublicProblemList", () => {
             sequenceNumber: null,
             title: "Empty problem",
             difficultyLabel: null,
+            difficultyTier: null,
             searchMatchLabels: [],
             tags: [],
             solverCount: 0,

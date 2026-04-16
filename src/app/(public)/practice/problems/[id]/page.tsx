@@ -4,7 +4,7 @@ import { getLocale, getTranslations } from "next-intl/server";
 import { notFound } from "next/navigation";
 import { auth } from "@/lib/auth";
 import { db } from "@/lib/db";
-import { problems, submissions, problemTags, tags } from "@/lib/db/schema";
+import { problems, submissions, problemTags } from "@/lib/db/schema";
 import { PublicProblemDetail } from "@/app/(public)/_components/public-problem-detail";
 import { JsonLd } from "@/components/seo/json-ld";
 import { listProblemDiscussionThreads, listProblemEditorials } from "@/lib/discussions/data";
@@ -22,6 +22,8 @@ import { Button } from "@/components/ui/button";
 import { buildAbsoluteUrl, buildLocalePath, buildPublicMetadata, buildSocialImageUrl, NO_INDEX_METADATA, summarizeTextForMetadata } from "@/lib/seo";
 import { getResolvedSystemSettings } from "@/lib/system-settings";
 import { getResolvedSystemTimeZone } from "@/lib/system-settings";
+import { TierBadge } from "@/components/tier-badge";
+import { getProblemTierInfo } from "@/lib/problem-tiers";
 import { ProblemKeyboardNav } from "./problem-keyboard-nav";
 import { formatSubmissionIdPrefix } from "@/lib/submissions/format";
 import Link from "next/link";
@@ -324,9 +326,10 @@ export default async function PublicProblemDetailPage({ params }: { params: Prom
               tags={problem.problemTags.map((entry) => ({ name: entry.tag.name, color: entry.tag.color }))}
               timeLimitLabel={tProblems("badges.timeLimit", { value: problem.timeLimitMs ?? 2000 })}
               memoryLimitLabel={tProblems("badges.memoryLimit", { value: problem.memoryLimitMb ?? 256 })}
+              difficultyTier={getProblemTierInfo(problem.difficulty)}
               difficultyLabel={
                 problem.difficulty != null
-                  ? tProblems("badges.difficulty", { value: problem.difficulty.toFixed(2).replace(/\.?0+$/, "") })
+                  ? problem.difficulty.toFixed(2).replace(/\.?0+$/, "")
                   : null
               }
               playgroundHref={contestlessPlaygroundHref}
@@ -375,24 +378,33 @@ export default async function PublicProblemDetailPage({ params }: { params: Prom
                 </CardHeader>
                 <CardContent>
                   <ul className="space-y-2">
-                    {similarProblems.map((sp) => (
-                      <li key={sp.id} className="flex items-center gap-2">
-                        <span className="font-mono text-sm text-muted-foreground w-10">
-                          {sp.sequenceNumber ?? ""}
-                        </span>
-                        <Link
-                          href={buildLocalePath(`/practice/problems/${sp.id}`, locale)}
-                          className="text-sm font-medium hover:text-primary hover:underline"
-                        >
-                          {sp.title}
-                        </Link>
-                        {sp.difficulty != null && (
-                          <Badge variant="secondary" className="text-xs">
-                            {sp.difficulty.toFixed(2).replace(/\.?0+$/, "")}
-                          </Badge>
-                        )}
-                      </li>
-                    ))}
+                    {similarProblems.map((sp) => {
+                      const problemTier = getProblemTierInfo(sp.difficulty);
+
+                      return (
+                        <li key={sp.id} className="flex items-center gap-2">
+                          <span className="font-mono text-sm text-muted-foreground w-10">
+                            {sp.sequenceNumber ?? ""}
+                          </span>
+                          <Link
+                            href={buildLocalePath(`/practice/problems/${sp.id}`, locale)}
+                            className="text-sm font-medium hover:text-primary hover:underline"
+                          >
+                            {sp.title}
+                          </Link>
+                          {sp.difficulty != null && (
+                            <div className="flex items-center gap-1">
+                              {problemTier ? (
+                                <TierBadge tier={problemTier.tier} label={problemTier.label} />
+                              ) : null}
+                              <Badge variant="secondary" className="text-xs">
+                                {sp.difficulty.toFixed(2).replace(/\.?0+$/, "")}
+                              </Badge>
+                            </div>
+                          )}
+                        </li>
+                      );
+                    })}
                   </ul>
                 </CardContent>
               </Card>

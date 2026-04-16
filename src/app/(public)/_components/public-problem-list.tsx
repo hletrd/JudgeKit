@@ -1,6 +1,8 @@
 import Link from "next/link";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent } from "@/components/ui/card";
+import { TierBadge } from "@/components/tier-badge";
+import type { ProblemTierInfo } from "@/lib/problem-tiers";
 import {
   Table,
   TableBody,
@@ -19,6 +21,7 @@ type PublicProblemListItem = {
   sequenceNumber: number | null;
   title: string;
   difficultyLabel: string | null;
+  difficultyTier: ProblemTierInfo | null;
   searchMatchLabels?: string[];
   tags: Array<{ name: string; color: string | null; href: string }>;
   solverCount: number;
@@ -163,7 +166,14 @@ export function PublicProblemList({
                         )}
                       </TableCell>
                       <TableCell className="text-center text-sm text-muted-foreground">
-                        {problem.difficultyLabel ?? "-"}
+                        {problem.difficultyTier ? (
+                          <div className="flex flex-col items-center gap-1">
+                            <TierBadge tier={problem.difficultyTier.tier} label={problem.difficultyTier.label} />
+                            {problem.difficultyLabel ? <span>{problem.difficultyLabel}</span> : null}
+                          </div>
+                        ) : (
+                          problem.difficultyLabel ?? "-"
+                        )}
                       </TableCell>
                       <TableCell>
                         <div className="flex flex-wrap gap-1">

@@ -4,6 +4,8 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { ProblemDescription } from "@/components/problem-description";
+import { TierBadge } from "@/components/tier-badge";
+import type { ProblemTierInfo } from "@/lib/problem-tiers";
 
 type PublicProblemDetailProps = {
   backHref: string;
@@ -15,6 +17,7 @@ type PublicProblemDetailProps = {
   timeLimitLabel: string;
   memoryLimitLabel: string;
   difficultyLabel?: string | null;
+  difficultyTier?: ProblemTierInfo | null;
   playgroundHref: string;
   playgroundLabel: string;
   signInHref: string;
@@ -31,6 +34,7 @@ export function PublicProblemDetail({
   timeLimitLabel,
   memoryLimitLabel,
   difficultyLabel,
+  difficultyTier = null,
   playgroundHref,
   playgroundLabel,
   signInHref,
@@ -63,6 +67,7 @@ export function PublicProblemDetail({
           <div className="mb-4 flex flex-wrap gap-2 text-sm text-muted-foreground">
             <Badge variant="outline">{timeLimitLabel}</Badge>
             <Badge variant="outline">{memoryLimitLabel}</Badge>
+            {difficultyTier ? <TierBadge tier={difficultyTier.tier} label={difficultyTier.label} /> : null}
             {difficultyLabel ? <Badge variant="outline">{difficultyLabel}</Badge> : null}
             <Badge variant="secondary">{authorLabel}</Badge>
             {tags.map((tag) => (

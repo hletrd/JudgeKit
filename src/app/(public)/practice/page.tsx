@@ -15,6 +15,7 @@ import { Button } from "@/components/ui/button";
 import { FilterSelect } from "@/components/filter-select";
 import Link from "next/link";
 import { normalizePage, normalizePageSize, setPaginationParams } from "@/lib/pagination";
+import { getProblemTierInfo } from "@/lib/problem-tiers";
 import { escapePracticeLike, getPracticeSearchMatchKinds, normalizePracticeSearch, type PracticeSearchMatchKind } from "@/lib/practice/search";
 
 type ProblemProgress = "solved" | "attempted" | "untried";
@@ -644,8 +645,9 @@ export default async function PracticePage({
             sequenceNumber: problem.sequenceNumber ?? null,
             title: problem.title,
             difficultyLabel: problem.difficulty != null
-              ? tProblems("badges.difficulty", { value: problem.difficulty.toFixed(2).replace(/\.?0+$/, "") })
+              ? problem.difficulty.toFixed(2).replace(/\.?0+$/, "")
               : null,
+            difficultyTier: getProblemTierInfo(problem.difficulty),
             searchMatchLabels: problem.searchMatchLabels,
             tags: problem.problemTags.map((tag) => ({
               name: tag.name,
