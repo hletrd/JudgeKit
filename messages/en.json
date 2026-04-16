@@ -26,6 +26,7 @@
     "korean": "Korean",
     "unknown": "Unknown",
     "action": "Action",
+    "submissions": "Submissions",
     "system": "System",
     "active": "Active",
     "inactive": "Inactive",
@@ -591,6 +592,12 @@
       "week": "This week",
       "month": "This month"
     },
+    "scopeFilter": {
+      "all": "Everyone",
+      "mine": "Mine only"
+    },
+    "noSubmissionsAll": "No submissions yet.",
+    "sourceHidden": "The source code is only visible to the author of this submission.",
     "forProblem": "My submissions for this problem",
     "noOtherSubmissions": "No other submissions for this problem.",
     "pagination": {

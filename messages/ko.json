@@ -26,6 +26,7 @@
     "korean": "한국어",
     "unknown": "알 수 없음",
     "action": "작업",
+    "submissions": "제출 내역",
     "system": "시스템",
     "active": "활성",
     "inactive": "비활성",
@@ -591,6 +592,12 @@
       "week": "이번 주",
       "month": "이번 달"
     },
+    "scopeFilter": {
+      "all": "모두의 제출",
+      "mine": "내 제출만"
+    },
+    "noSubmissionsAll": "아직 제출 내역이 없습니다.",
+    "sourceHidden": "소스 코드는 제출자 본인에게만 공개됩니다.",
     "forProblem": "이 문제의 내 제출 목록",
     "noOtherSubmissions": "이 문제에 대한 다른 제출이 없습니다.",
     "pagination": {
