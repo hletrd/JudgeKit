@@ -3,6 +3,7 @@
 import React, { useMemo } from "react";
 import { CodeViewer } from "@/components/code/code-viewer";
 import { SubmissionStatusBadge } from "@/components/submission-status-badge";
+import { OutputDiffView } from "@/components/submissions/output-diff-view";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { useTranslations } from "next-intl";
@@ -100,16 +101,10 @@ export function SubmissionResultPanel({ showCompileOutput, showDetailedResults, 
                     {result.status === "wrong_answer" && result.testCase?.expectedOutput != null && result.actualOutput != null && (
                       <TableRow>
                         <TableCell colSpan={4} className="p-0 px-4 py-3">
-                          <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
-                            <div>
-                              <p className="mb-1 text-xs font-medium text-muted-foreground">{t("expectedOutput")}</p>
-                              <pre className="max-h-40 overflow-auto rounded border bg-green-50 p-2 text-xs whitespace-pre-wrap dark:bg-green-950/30">{result.testCase.expectedOutput}</pre>
-                            </div>
-                            <div>
-                              <p className="mb-1 text-xs font-medium text-muted-foreground">{t("actualOutput")}</p>
-                              <pre className="max-h-40 overflow-auto rounded border bg-red-50 p-2 text-xs whitespace-pre-wrap dark:bg-red-950/30">{result.actualOutput}</pre>
-                            </div>
-                          </div>
+                          <OutputDiffView
+                            expectedOutput={result.testCase.expectedOutput}
+                            actualOutput={result.actualOutput}
+                          />
                         </TableCell>
                       </TableRow>
                     )}
