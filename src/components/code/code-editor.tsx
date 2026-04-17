@@ -93,9 +93,10 @@ export function CodeEditor(props: CodeEditorProps) {
             type="button"
             onClick={toggleFullscreen}
             className="inline-flex items-center gap-1 rounded-md px-2 py-1 text-xs text-muted-foreground hover:text-foreground hover:bg-muted transition-colors"
-            title="Fullscreen (Esc to exit)"
+            title="Fullscreen (F) · Exit (Esc)"
           >
             <Maximize2 className="size-3.5" />
+            <span>F</span>
           </button>
         </div>
       )}

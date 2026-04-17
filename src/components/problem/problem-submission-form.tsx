@@ -256,6 +256,8 @@ export function ProblemSubmissionForm({
         return;
       }
 
+
+      toast.success(t("submissionCreated"));
       allowNextNavigation();
       clearAllDrafts();
       if (onSubmitted) {
