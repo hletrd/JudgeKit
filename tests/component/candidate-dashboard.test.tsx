@@ -26,6 +26,9 @@ vi.mock("next-intl/server", () => ({
       candidateResultsAssignments: `${values?.count ?? 0} assignments in scope`,
       candidateResultsCompletedAssignments: `${values?.count ?? 0} assignments completed or closed`,
       candidateResultsClosedAssignments: `${values?.count ?? 0} windows closed`,
+      candidateScoreSummaryValue: `${values?.score ?? 0} / ${values?.total ?? 0} visible points`,
+      candidateScoreVisibleAssignments: `${values?.count ?? 0} score-visible assignments`,
+      candidateScoreHiddenAssignments: `${values?.count ?? 0} assessments still hide score details`,
       recentAttempts: "Recent attempts",
       supportedLanguages: "Supported languages",
       supportedLanguagesDescription: "Supported languages description",
@@ -33,6 +36,8 @@ vi.mock("next-intl/server", () => ({
       candidateAssignmentActive: "In progress",
       candidateAssignmentComplete: "All attempted",
       candidateAssignmentClosed: "Window closed",
+      candidateAssignmentScore: `Score: ${values?.score ?? 0} / ${values?.total ?? 0}`,
+      candidateAssignmentResultsHidden: "Results aren't available for this assessment.",
       candidateProblemBreakdownTitle: "Per-problem progress",
       candidateProblemSolved: "Solved",
       candidateProblemAttempted: "Attempted",
@@ -137,11 +142,15 @@ describe("CandidateDashboard", () => {
             assignmentId: "assign-1",
             title: "Round 1",
             deadline: new Date("2099-01-02T00:00:00.000Z"),
+            showResultsToCandidate: true,
+            hideScoresFromCandidates: false,
           },
           {
             assignmentId: "assign-2",
             title: "Round 2",
             deadline: new Date("2000-01-03T00:00:00.000Z"),
+            showResultsToCandidate: false,
+            hideScoresFromCandidates: true,
           },
         ])
       )
@@ -164,17 +173,17 @@ describe("CandidateDashboard", () => {
       )
       .mockReturnValueOnce(
         makeSelectChain([
-          { assignmentId: "assign-1", problemId: "p-1", title: "A + B", sortOrder: 0 },
-          { assignmentId: "assign-1", problemId: "p-2", title: "Prefix Sum", sortOrder: 1 },
-          { assignmentId: "assign-2", problemId: "p-3", title: "Graph Paths", sortOrder: 0 },
-          { assignmentId: "assign-2", problemId: "p-4", title: "Intervals", sortOrder: 1 },
+          { assignmentId: "assign-1", problemId: "p-1", title: "A + B", sortOrder: 0, points: 100 },
+          { assignmentId: "assign-1", problemId: "p-2", title: "Prefix Sum", sortOrder: 1, points: 100 },
+          { assignmentId: "assign-2", problemId: "p-3", title: "Graph Paths", sortOrder: 0, points: 100 },
+          { assignmentId: "assign-2", problemId: "p-4", title: "Intervals", sortOrder: 1, points: 100 },
         ])
       )
       .mockReturnValueOnce(
         makeSelectChain([
-          { assignmentId: "assign-1", problemId: "p-1", status: "accepted" },
-          { assignmentId: "assign-1", problemId: "p-2", status: "wrong_answer" },
-          { assignmentId: "assign-2", problemId: "p-3", status: "accepted" },
+          { assignmentId: "assign-1", problemId: "p-1", status: "accepted", score: 100 },
+          { assignmentId: "assign-1", problemId: "p-2", status: "wrong_answer", score: 0 },
+          { assignmentId: "assign-2", problemId: "p-3", status: "accepted", score: 100 },
         ])
       );
   });
@@ -194,6 +203,9 @@ describe("CandidateDashboard", () => {
 
     expect(screen.getByText("Solved challenges")).toBeInTheDocument();
     expect(screen.getByText("Assessment status")).toBeInTheDocument();
+    expect(screen.getByText("100 / 200 visible points")).toBeInTheDocument();
+    expect(screen.getByText("1 score-visible assignments")).toBeInTheDocument();
+    expect(screen.getByText("1 assessments still hide score details")).toBeInTheDocument();
     expect(
       screen.getByText(
         "Results continue to update as your submissions finish and active assessment windows remain open."
@@ -213,6 +225,8 @@ describe("CandidateDashboard", () => {
     expect(screen.getByText("Untried")).toBeInTheDocument();
     expect(screen.getByText("In progress")).toBeInTheDocument();
     expect(screen.getByText("Window closed")).toBeInTheDocument();
+    expect(screen.getByText("Score: 100 / 200")).toBeInTheDocument();
+    expect(screen.getByText("Results aren't available for this assessment.")).toBeInTheDocument();
     expect(screen.getByTestId("countdown-timer")).toBeInTheDocument();
     expect(screen.getAllByText("Open assessment")).toHaveLength(2);
   });

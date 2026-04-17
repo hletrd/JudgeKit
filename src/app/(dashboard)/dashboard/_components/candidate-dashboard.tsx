@@ -34,6 +34,9 @@ type AssignmentProgressSummary = {
   problemCount: number;
   attemptedCount: number;
   solvedCount: number;
+  resultsVisible: boolean;
+  bestScore: number;
+  maxScore: number;
 };
 
 type AssignmentProblemProgressItem = {
@@ -175,6 +178,8 @@ export async function CandidateDashboard({
             assignmentId: assignments.id,
             title: assignments.title,
             deadline: sql<Date | null>`coalesce(${examSessions.personalDeadline}, ${assignments.deadline})`,
+            showResultsToCandidate: assignments.showResultsToCandidate,
+            hideScoresFromCandidates: assignments.hideScoresFromCandidates,
           })
           .from(assignments)
           .leftJoin(
@@ -182,7 +187,15 @@ export async function CandidateDashboard({
             and(eq(examSessions.assignmentId, assignments.id), eq(examSessions.userId, userId))
           )
           .where(inArray(assignments.id, assignmentIds))
-      : Promise.resolve([] as Array<{ assignmentId: string; title: string; deadline: Date | null }>),
+      : Promise.resolve(
+          [] as Array<{
+            assignmentId: string;
+            title: string;
+            deadline: Date | null;
+            showResultsToCandidate: boolean;
+            hideScoresFromCandidates: boolean;
+          }>
+        ),
     restrictToAssignmentIds
       ? db
           .select({ count: sql<number>`count(distinct ${submissions.problemId})` })
@@ -254,6 +267,7 @@ export async function CandidateDashboard({
             problemId: assignmentProblems.problemId,
             title: problems.title,
             sortOrder: assignmentProblems.sortOrder,
+            points: assignmentProblems.points,
           })
           .from(assignmentProblems)
           .innerJoin(problems, eq(problems.id, assignmentProblems.problemId))
@@ -264,6 +278,7 @@ export async function CandidateDashboard({
             problemId: string;
             title: string;
             sortOrder: number | null;
+            points: number;
           }>
         ),
     restrictToAssignmentIds
@@ -272,6 +287,7 @@ export async function CandidateDashboard({
             assignmentId: submissions.assignmentId,
             problemId: submissions.problemId,
             status: submissions.status,
+            score: submissions.score,
           })
           .from(submissions)
           .where(
@@ -280,7 +296,14 @@ export async function CandidateDashboard({
               inArray(submissions.assignmentId, assignmentIds)
             )
           )
-      : Promise.resolve([] as Array<{ assignmentId: string | null; problemId: string; status: string | null }>),
+      : Promise.resolve(
+          [] as Array<{
+            assignmentId: string | null;
+            problemId: string;
+            status: string | null;
+            score: number | null;
+          }>
+        ),
   ]);
 
   const totalAttempts = Number(submissionCountRows[0]?.count ?? 0);
@@ -300,14 +323,14 @@ export async function CandidateDashboard({
       .filter((row) => row.assignmentId)
       .map((row) => [row.assignmentId as string, Number(row.count ?? 0)])
   );
-  const assignmentProgress: AssignmentProgressSummary[] = assignmentRows.map((assignment) => ({
-    assignmentId: assignment.assignmentId,
-    title: assignment.title,
-    deadline: assignment.deadline ? new Date(assignment.deadline) : null,
-    problemCount: assignmentProblemCountMap.get(assignment.assignmentId) ?? 0,
-    attemptedCount: assignmentAttemptedCountMap.get(assignment.assignmentId) ?? 0,
-    solvedCount: assignmentSolvedCountMap.get(assignment.assignmentId) ?? 0,
-  }));
+  const assignmentMaxScoreMap = new Map<string, number>();
+  for (const row of assignmentProblemRows) {
+    assignmentMaxScoreMap.set(
+      row.assignmentId,
+      (assignmentMaxScoreMap.get(row.assignmentId) ?? 0) + Number(row.points ?? 0)
+    );
+  }
+  const assignmentBestProblemScoreMap = new Map<string, number>();
   const submissionStatusMap = new Map<string, Set<string>>();
   for (const row of assignmentSubmissionRows) {
     if (!row.assignmentId) continue;
@@ -315,7 +338,25 @@ export async function CandidateDashboard({
     const statuses = submissionStatusMap.get(key) ?? new Set<string>();
     if (row.status) statuses.add(row.status);
     submissionStatusMap.set(key, statuses);
+    const currentBest = assignmentBestProblemScoreMap.get(key) ?? 0;
+    assignmentBestProblemScoreMap.set(key, Math.max(currentBest, Number(row.score ?? 0)));
   }
+  const assignmentBestScoreMap = new Map<string, number>();
+  for (const [key, score] of assignmentBestProblemScoreMap) {
+    const assignmentId = key.split(":")[0] ?? "";
+    assignmentBestScoreMap.set(assignmentId, (assignmentBestScoreMap.get(assignmentId) ?? 0) + score);
+  }
+  const assignmentProgress: AssignmentProgressSummary[] = assignmentRows.map((assignment) => ({
+    assignmentId: assignment.assignmentId,
+    title: assignment.title,
+    deadline: assignment.deadline ? new Date(assignment.deadline) : null,
+    problemCount: assignmentProblemCountMap.get(assignment.assignmentId) ?? 0,
+    attemptedCount: assignmentAttemptedCountMap.get(assignment.assignmentId) ?? 0,
+    solvedCount: assignmentSolvedCountMap.get(assignment.assignmentId) ?? 0,
+    resultsVisible: Boolean(assignment.showResultsToCandidate) && !Boolean(assignment.hideScoresFromCandidates),
+    bestScore: assignmentBestScoreMap.get(assignment.assignmentId) ?? 0,
+    maxScore: assignmentMaxScoreMap.get(assignment.assignmentId) ?? 0,
+  }));
   const assignmentProblemProgressMap = new Map<string, AssignmentProblemProgressItem[]>();
   for (const row of assignmentProblemRows) {
     const key = `${row.assignmentId}:${row.problemId}`;
@@ -359,6 +400,16 @@ export async function CandidateDashboard({
     assignmentProgress.length > 0 && closedAssignmentCount === assignmentProgress.length
       ? t("candidateResultsReady")
       : t("candidateResultsPending");
+  const visibleScoreAssignments = assignmentProgress.filter((assignment) => assignment.resultsVisible);
+  const aggregateVisibleScore = visibleScoreAssignments.reduce(
+    (sum, assignment) => sum + assignment.bestScore,
+    0
+  );
+  const aggregateVisibleMaxScore = visibleScoreAssignments.reduce(
+    (sum, assignment) => sum + assignment.maxScore,
+    0
+  );
+  const hiddenScoreAssignmentCount = assignmentProgress.length - visibleScoreAssignments.length;
 
   return (
     <div className="space-y-6">
@@ -433,6 +484,14 @@ export async function CandidateDashboard({
             <CardTitle>{t("candidateResultsTitle")}</CardTitle>
           </CardHeader>
           <CardContent className="space-y-2">
+            {visibleScoreAssignments.length > 0 ? (
+              <div className="text-2xl font-semibold">
+                {t("candidateScoreSummaryValue", {
+                  score: aggregateVisibleScore,
+                  total: aggregateVisibleMaxScore,
+                })}
+              </div>
+            ) : null}
             <div className="flex flex-wrap gap-2 text-xs text-muted-foreground">
               <Badge variant="outline">
                 {t("candidateResultsAssignments", { count: assignmentProgress.length })}
@@ -445,8 +504,20 @@ export async function CandidateDashboard({
               <Badge variant="outline">
                 {t("candidateResultsClosedAssignments", { count: closedAssignmentCount })}
               </Badge>
+              {visibleScoreAssignments.length > 0 ? (
+                <Badge variant="outline">
+                  {t("candidateScoreVisibleAssignments", {
+                    count: visibleScoreAssignments.length,
+                  })}
+                </Badge>
+              ) : null}
             </div>
             <p className="text-sm text-muted-foreground">{resultsSummaryMessage}</p>
+            {hiddenScoreAssignmentCount > 0 ? (
+              <p className="text-xs text-muted-foreground">
+                {t("candidateScoreHiddenAssignments", { count: hiddenScoreAssignmentCount })}
+              </p>
+            ) : null}
           </CardContent>
         </Card>
       )}
@@ -505,6 +576,14 @@ export async function CandidateDashboard({
                     <Badge variant="outline">
                       {t("candidateProgressRemaining", { count: remainingCount })}
                     </Badge>
+                  </div>
+                  <div className="mt-2 text-xs text-muted-foreground">
+                    {assignment.resultsVisible
+                      ? t("candidateAssignmentScore", {
+                          score: assignment.bestScore,
+                          total: assignment.maxScore,
+                        })
+                      : t("candidateAssignmentResultsHidden")}
                   </div>
                   {assignmentProblemProgressMap.get(assignment.assignmentId)?.length ? (
                     <div className="mt-4 space-y-2">
