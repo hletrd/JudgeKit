@@ -29,15 +29,37 @@ describe("admin log route capability guards", () => {
       join(process.cwd(), "src/app/(dashboard)/dashboard/admin/login-logs/page.tsx"),
       "utf8"
     );
+    const auditLogsRoute = readFileSync(
+      join(process.cwd(), "src/app/api/v1/admin/audit-logs/route.ts"),
+      "utf8"
+    );
+    const auditLogsPage = readFileSync(
+      join(process.cwd(), "src/app/(dashboard)/dashboard/admin/audit-logs/page.tsx"),
+      "utf8"
+    );
 
     expect(loginLogsRoute).toContain('searchParams.get("dateFrom")');
     expect(loginLogsRoute).toContain('searchParams.get("dateTo")');
     expect(loginLogsRoute).toContain("gte(loginEvents.createdAt, fromDate)");
     expect(loginLogsRoute).toContain("lte(loginEvents.createdAt, endOfDay)");
+    expect(loginLogsRoute).toContain('searchParams.get("format")');
+    expect(loginLogsRoute).toContain('"text/csv; charset=utf-8"');
 
     expect(loginLogsPage).toContain('name="dateFrom"');
     expect(loginLogsPage).toContain('name="dateTo"');
     expect(loginLogsPage).toContain('t("filters.dateFromLabel")');
     expect(loginLogsPage).toContain('t("filters.dateToLabel")');
+    expect(loginLogsPage).toContain('t("exportCsv")');
+    expect(loginLogsPage).toContain("buildExportHref(");
+
+    expect(auditLogsRoute).toContain('searchParams.get("action")');
+    expect(auditLogsRoute).toContain('searchParams.get("dateFrom")');
+    expect(auditLogsRoute).toContain('searchParams.get("dateTo")');
+    expect(auditLogsRoute).toContain('searchParams.get("format")');
+    expect(auditLogsRoute).toContain('"text/csv; charset=utf-8"');
+    expect(auditLogsRoute).toContain("like(auditEvents.action");
+
+    expect(auditLogsPage).toContain('t("exportCsv")');
+    expect(auditLogsPage).toContain("buildExportHref(");
   });
 });

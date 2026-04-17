@@ -1061,6 +1061,7 @@
       "resultsTitle": "최근 로그인 이벤트",
       "applyFilters": "필터 적용",
       "resetFilters": "초기화",
+      "exportCsv": "CSV 내보내기",
       "unresolvedUser": "확인 불가",
       "noEvents": "현재 필터와 일치하는 로그인 이벤트가 없습니다.",
       "table": {
@@ -1097,6 +1098,7 @@
       "resultsTitle": "최근 감사 이벤트",
       "applyFilters": "필터 적용",
       "resetFilters": "초기화",
+      "exportCsv": "CSV 내보내기",
       "noEvents": "현재 필터와 일치하는 감사 이벤트가 없습니다.",
       "unknownActor": "알 수 없는 작업자",
       "systemGeneratedActor": "시스템 생성 이벤트",

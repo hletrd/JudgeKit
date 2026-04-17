@@ -1,4 +1,4 @@
-import { NextRequest } from "next/server";
+import { NextRequest, NextResponse } from "next/server";
 import { createApiHandler } from "@/lib/api/handler";
 import { apiSuccess } from "@/lib/api/responses";
 import { db } from "@/lib/db";
@@ -17,6 +17,17 @@ function normalizeDateFilter(value?: string | null) {
   return isNaN(parsed.getTime()) ? "" : value;
 }
 
+function escapeCsvField(value: string | number | null | undefined) {
+  let str = value == null ? "" : String(value);
+  if (/^[=+\-@\t\r]/.test(str)) {
+    str = "\t" + str;
+  }
+  if (str.includes(",") || str.includes('"') || str.includes("\n") || str.includes("\r")) {
+    return '"' + str.replace(/"/g, '""') + '"';
+  }
+  return str;
+}
+
 export const GET = createApiHandler({
   auth: { capabilities: ["system.login_logs"] },
   handler: async (req: NextRequest) => {
@@ -27,6 +38,7 @@ export const GET = createApiHandler({
     const search = searchParams.get("search")?.trim().slice(0, 100) ?? "";
     const dateFrom = normalizeDateFilter(searchParams.get("dateFrom"));
     const dateTo = normalizeDateFilter(searchParams.get("dateTo"));
+    const format = searchParams.get("format") ?? "json";
 
     const filters: SQL[] = [];
 
@@ -84,6 +96,42 @@ export const GET = createApiHandler({
       .leftJoin(users, eq(loginEvents.userId, users.id));
 
     const filteredQuery = whereClause ? eventsQuery.where(whereClause) : eventsQuery;
+    if (format === "csv") {
+      const rows = await filteredQuery.orderBy(desc(loginEvents.createdAt));
+      const BOM = "\uFEFF";
+      const header = [
+        "Timestamp",
+        "Outcome",
+        "Identifier",
+        "Resolved User Name",
+        "Resolved Username",
+        "IP Address",
+        "User Agent",
+      ]
+        .map(escapeCsvField)
+        .join(",");
+      const csvRows = rows.map((row) =>
+        [
+          row.createdAt?.toISOString() ?? "",
+          row.outcome,
+          row.attemptedIdentifier ?? "",
+          row.userName ?? "",
+          row.userUsername ?? "",
+          row.ipAddress ?? "",
+          row.userAgent ?? "",
+        ]
+          .map(escapeCsvField)
+          .join(",")
+      );
+
+      return new NextResponse(BOM + [header, ...csvRows].join("\r\n") + "\r\n", {
+        headers: {
+          "Content-Type": "text/csv; charset=utf-8",
+          "Content-Disposition": 'attachment; filename="login-logs.csv"',
+        },
+      });
+    }
+
     const data = await filteredQuery
       .orderBy(desc(loginEvents.createdAt))
       .limit(limit)

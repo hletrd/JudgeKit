@@ -121,6 +121,35 @@ function buildPageHref(page: number, resourceType: ResourceFilter, search: strin
   return queryString ? `${PAGE_PATH}?${queryString}` : PAGE_PATH;
 }
 
+function buildExportHref(resourceType: ResourceFilter, search: string, actionType: ActionFilter, dateFrom: string, dateTo: string) {
+  const params = new URLSearchParams({
+    format: "csv",
+    download: "1",
+  });
+
+  if (resourceType !== "all") {
+    params.set("resource", resourceType);
+  }
+
+  if (search) {
+    params.set("search", search);
+  }
+
+  if (actionType !== "all") {
+    params.set("action", actionType);
+  }
+
+  if (dateFrom) {
+    params.set("dateFrom", dateFrom);
+  }
+
+  if (dateTo) {
+    params.set("dateTo", dateTo);
+  }
+
+  return `/api/v1/admin/audit-logs?${params.toString()}`;
+}
+
 function buildGroupMemberScopeFilter(groupIds: string[]) {
   if (groupIds.length === 0) {
     return sql`0`;
@@ -423,6 +452,9 @@ export default async function AdminAuditLogsPage({
               <Button type="submit">{t("applyFilters")}</Button>
               <Link href={PAGE_PATH}>
                 <Button type="button" variant="outline">{t("resetFilters")}</Button>
+              </Link>
+              <Link href={buildExportHref(resourceTypeFilter, searchQuery, actionTypeFilter, dateFrom, dateTo)} prefetch={false}>
+                <Button type="button" variant="outline">{t("exportCsv")}</Button>
               </Link>
             </div>
           </form>

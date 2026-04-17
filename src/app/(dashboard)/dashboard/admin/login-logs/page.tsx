@@ -124,6 +124,31 @@ function buildPageHref(page: number, outcome: OutcomeFilter, search: string, dat
   return queryString ? `${PAGE_PATH}?${queryString}` : PAGE_PATH;
 }
 
+function buildExportHref(outcome: OutcomeFilter, search: string, dateFrom: string, dateTo: string) {
+  const params = new URLSearchParams({
+    format: "csv",
+    download: "1",
+  });
+
+  if (outcome !== "all") {
+    params.set("outcome", outcome);
+  }
+
+  if (search) {
+    params.set("search", search);
+  }
+
+  if (dateFrom) {
+    params.set("dateFrom", dateFrom);
+  }
+
+  if (dateTo) {
+    params.set("dateTo", dateTo);
+  }
+
+  return `/api/v1/admin/login-logs?${params.toString()}`;
+}
+
 export default async function AdminLoginLogsPage({
   searchParams,
 }: {
@@ -291,6 +316,9 @@ export default async function AdminLoginLogsPage({
               <Button type="submit">{t("applyFilters")}</Button>
               <Link href={PAGE_PATH}>
                 <Button type="button" variant="outline">{t("resetFilters")}</Button>
+              </Link>
+              <Link href={buildExportHref(outcomeFilter, searchQuery, dateFrom, dateTo)} prefetch={false}>
+                <Button type="button" variant="outline">{t("exportCsv")}</Button>
               </Link>
             </div>
           </form>

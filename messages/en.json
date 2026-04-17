@@ -1061,6 +1061,7 @@
       "resultsTitle": "Recent Login Events",
       "applyFilters": "Apply Filters",
       "resetFilters": "Reset",
+      "exportCsv": "Export CSV",
       "unresolvedUser": "Unresolved",
       "noEvents": "No login events matched the current filters.",
       "table": {
@@ -1097,6 +1098,7 @@
       "resultsTitle": "Recent Audit Events",
       "applyFilters": "Apply Filters",
       "resetFilters": "Reset",
+      "exportCsv": "Export CSV",
       "noEvents": "No audit events matched the current filters.",
       "unknownActor": "Unknown actor",
       "systemGeneratedActor": "System-generated event",
