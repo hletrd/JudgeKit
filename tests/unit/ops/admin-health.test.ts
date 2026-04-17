@@ -46,7 +46,7 @@ describe("getAdminHealthSnapshot", () => {
     });
     rawQueryOneMock
       .mockResolvedValueOnce({ one: 1 })
-      .mockResolvedValueOnce({ online: "3", stale: "1", offline: "2" })
+      .mockResolvedValueOnce({ online: "3", stale: "0", offline: "2" })
       .mockResolvedValueOnce({ pending: "17" });
 
     const { getAdminHealthSnapshot } = await import("@/lib/ops/admin-health");
@@ -59,7 +59,7 @@ describe("getAdminHealthSnapshot", () => {
       },
       judgeWorkers: {
         online: 3,
-        stale: 1,
+        stale: 0,
         offline: 2,
       },
       submissionQueue: {
@@ -71,6 +71,24 @@ describe("getAdminHealthSnapshot", () => {
       appVersion: expect.any(String),
       status: "ok",
     });
+  });
+
+  it("degrades health when stale workers exist even if the database is reachable", async () => {
+    getAuditEventHealthSnapshotMock.mockReturnValue({
+      status: "ok",
+      failedWrites: 0,
+      lastFailureAt: null,
+    });
+    rawQueryOneMock
+      .mockResolvedValueOnce({ one: 1 })
+      .mockResolvedValueOnce({ online: "2", stale: "1", offline: "0" })
+      .mockResolvedValueOnce({ pending: "0" });
+
+    const { getAdminHealthSnapshot } = await import("@/lib/ops/admin-health");
+    const snapshot = await getAdminHealthSnapshot();
+
+    expect(snapshot.status).toBe("degraded");
+    expect(snapshot.judgeWorkers.stale).toBe(1);
   });
 
   it("returns an error snapshot instead of throwing when the database probe fails", async () => {

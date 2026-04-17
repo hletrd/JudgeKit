@@ -79,24 +79,33 @@ export async function getAdminHealthSnapshot(): Promise<AdminHealthSnapshot> {
       FROM submissions`
     );
 
+    const online = toCount(workerStats?.online);
+    const stale = toCount(workerStats?.stale);
+    const offline = toCount(workerStats?.offline);
+    const pending = toCount(queueStats?.pending);
+    const overallStatus =
+      auditEvents.status === "degraded" || stale > 0 || (pending > 0 && online === 0)
+        ? "degraded"
+        : "ok";
+
     return {
       checks: {
         auditEvents: auditEvents.status,
         database: "ok",
       },
       judgeWorkers: {
-        online: toCount(workerStats?.online),
-        stale: toCount(workerStats?.stale),
-        offline: toCount(workerStats?.offline),
+        online,
+        stale,
+        offline,
       },
       submissionQueue: {
-        pending: toCount(queueStats?.pending),
+        pending,
         limit: settings.submissionGlobalQueueLimit,
       },
       uptimeSeconds: Math.floor((Date.now() - PROCESS_STARTED_AT_MS) / 1000),
       responseTimeMs: Date.now() - probeStartedAt,
       appVersion: process.env.npm_package_version ?? "unknown",
-      status: auditEvents.status === "ok" ? "ok" : "degraded",
+      status: overallStatus,
       timestamp,
       ...(auditEvents.failedWrites > 0
         ? {
