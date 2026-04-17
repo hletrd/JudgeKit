@@ -19,5 +19,13 @@ describe("admin submissions implementation", () => {
     expect(source).toContain('eq(submissions.language, languageFilter)');
     expect(source).toContain('if (languageFilter) params.set("language", languageFilter);');
     expect(source).toContain('tSubmissions("allLanguages")');
+    expect(source).toContain('name="dateFrom"');
+    expect(source).toContain('name="dateTo"');
+    expect(source).toContain('gte(submissions.submittedAt, new Date(dateFrom))');
+    expect(source).toContain('lte(submissions.submittedAt, endOfDay)');
+    expect(source).toContain('if (dateFrom) params.set("dateFrom", dateFrom);');
+    expect(source).toContain('if (dateTo) params.set("dateTo", dateTo);');
+    expect(source).toContain('t("dateFromLabel")');
+    expect(source).toContain('t("dateToLabel")');
   });
 });

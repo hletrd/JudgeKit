@@ -12,7 +12,7 @@ import {
 import { SubmissionStatusBadge } from "@/components/submission-status-badge";
 import { db } from "@/lib/db";
 import { submissions, users, problems } from "@/lib/db/schema";
-import { and, asc, count, desc, eq, like, or } from "drizzle-orm";
+import { and, asc, count, desc, eq, gte, like, lte, or } from "drizzle-orm";
 import { auth } from "@/lib/auth";
 import { resolveCapabilities } from "@/lib/capabilities/cache";
 import { redirect } from "next/navigation";
@@ -56,10 +56,16 @@ function normalizeLanguageFilter(value?: string) {
   return typeof value === "string" ? value.trim().slice(0, 50) : "";
 }
 
+function normalizeDateFilter(value?: string) {
+  if (typeof value !== "string" || !value) return "";
+  const parsed = new Date(value);
+  return isNaN(parsed.getTime()) ? "" : value;
+}
+
 export default async function AdminSubmissionsPage({
   searchParams,
 }: {
-  searchParams?: Promise<{ page?: string; search?: string; sort?: string; dir?: string; status?: string; language?: string }>;
+  searchParams?: Promise<{ page?: string; search?: string; sort?: string; dir?: string; status?: string; language?: string; dateFrom?: string; dateTo?: string }>;
 }) {
   const session = await auth();
   if (!session?.user) redirect("/login");
@@ -73,6 +79,8 @@ export default async function AdminSubmissionsPage({
     ? ((resolvedSearchParams?.status ?? "all") as StatusFilter)
     : "all";
   const languageFilter = normalizeLanguageFilter(resolvedSearchParams?.language);
+  const dateFrom = normalizeDateFilter(resolvedSearchParams?.dateFrom);
+  const dateTo = normalizeDateFilter(resolvedSearchParams?.dateTo);
   const sortColumn = resolvedSearchParams?.sort ?? "submittedAt";
   const sortDir = resolvedSearchParams?.dir === "asc" ? "asc" : "desc";
   const validSortColumns = new Set(["submittedAt", "score", "status", "language"]);
@@ -97,6 +105,14 @@ export default async function AdminSubmissionsPage({
   const whereClause = and(
     statusFilter !== "all" ? eq(submissions.status, statusFilter) : undefined,
     languageFilter ? eq(submissions.language, languageFilter) : undefined,
+    dateFrom ? gte(submissions.submittedAt, new Date(dateFrom)) : undefined,
+    dateTo
+      ? (() => {
+          const endOfDay = new Date(dateTo);
+          endOfDay.setHours(23, 59, 59, 999);
+          return lte(submissions.submittedAt, endOfDay);
+        })()
+      : undefined,
     searchWhereClause
   );
 
@@ -165,6 +181,8 @@ export default async function AdminSubmissionsPage({
     if (searchQuery) params.set("search", searchQuery);
     if (statusFilter !== "all") params.set("status", statusFilter);
     if (languageFilter) params.set("language", languageFilter);
+    if (dateFrom) params.set("dateFrom", dateFrom);
+    if (dateTo) params.set("dateTo", dateTo);
     if (effectiveSort !== "submittedAt") params.set("sort", effectiveSort);
     if (sortDir === "asc") params.set("dir", "asc");
     const qs = params.toString();
@@ -176,6 +194,8 @@ export default async function AdminSubmissionsPage({
     if (searchQuery) params.set("search", searchQuery);
     if (statusFilter !== "all") params.set("status", statusFilter);
     if (languageFilter) params.set("language", languageFilter);
+    if (dateFrom) params.set("dateFrom", dateFrom);
+    if (dateTo) params.set("dateTo", dateTo);
     if (column === effectiveSort) {
       params.set("dir", sortDir === "desc" ? "asc" : "desc");
     } else {
@@ -254,6 +274,28 @@ export default async function AdminSubmissionsPage({
                       label: getLanguageDisplayLabel(language),
                     })),
                 ]}
+              />
+            </div>
+            <div className="space-y-1.5">
+              <label className="block text-sm font-medium" htmlFor="submissions-date-from">
+                {t("dateFromLabel")}
+              </label>
+              <Input
+                id="submissions-date-from"
+                name="dateFrom"
+                type="date"
+                defaultValue={dateFrom}
+              />
+            </div>
+            <div className="space-y-1.5">
+              <label className="block text-sm font-medium" htmlFor="submissions-date-to">
+                {t("dateToLabel")}
+              </label>
+              <Input
+                id="submissions-date-to"
+                name="dateTo"
+                type="date"
+                defaultValue={dateTo}
               />
             </div>
             <div className="flex gap-2 items-end">

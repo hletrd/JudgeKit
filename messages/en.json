@@ -1075,7 +1075,9 @@
       "search": "Search",
       "searchLabel": "Search submissions",
       "searchPlaceholder": "Search by user name or problem title...",
-      "resetSearch": "Reset"
+      "resetSearch": "Reset",
+      "dateFromLabel": "From date",
+      "dateToLabel": "To date"
     },
     "loginLogs": {
       "title": "Login Logs",
