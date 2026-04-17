@@ -1,5 +1,5 @@
 /**
- * Default capability sets for the 4 built-in roles.
+ * Default capability sets for the 5 built-in roles.
  *
  * These mirror the existing hardcoded permissions so the shim layer
  * produces identical behavior.

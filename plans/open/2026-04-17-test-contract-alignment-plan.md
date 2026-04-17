@@ -15,6 +15,7 @@ Restore trust in the full repository quality gates by reconciling stale tests, s
 - completed in the current pass:
   - root review backlog ownership was consolidated into a single roadmap/index set
   - targeted typecheck + eslint regressions blocking the latest remediation slice were cleared
+  - built-in role/type constants were realigned with the shipped `assistant` role so contract tests can assert the real role roster
 - still open:
   - full-suite contract drift across built-in role tests, judge auth mocks, backup docs tests, and brittle source-grep inventories
 

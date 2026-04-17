@@ -1,8 +1,8 @@
 /** Built-in role names. Custom roles use arbitrary strings validated at runtime. */
-export type BuiltinUserRole = "super_admin" | "admin" | "instructor" | "student";
+export type BuiltinUserRole = "super_admin" | "admin" | "instructor" | "assistant" | "student";
 
 /**
- * UserRole is kept as the 4-value union for backward compatibility.
+ * UserRole is kept as the built-in-role union for backward compatibility.
  * Custom roles are validated at runtime via the capability cache.
  * Use `string` in function signatures that need to accept custom roles.
  */

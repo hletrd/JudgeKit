@@ -3,8 +3,8 @@ import { DEFAULT_ROLE_CAPABILITIES, DEFAULT_ROLE_LEVELS } from "@/lib/capabiliti
 import { ALL_CAPABILITIES, BUILTIN_ROLE_NAMES, isBuiltinRole, isCapability } from "@/lib/capabilities/types";
 
 describe("DEFAULT_ROLE_CAPABILITIES", () => {
-  it("defines capabilities for all 4 built-in roles", () => {
-    expect(Object.keys(DEFAULT_ROLE_CAPABILITIES)).toHaveLength(4);
+  it("defines capabilities for all 5 built-in roles", () => {
+    expect(Object.keys(DEFAULT_ROLE_CAPABILITIES)).toHaveLength(5);
     for (const role of BUILTIN_ROLE_NAMES) {
       expect(DEFAULT_ROLE_CAPABILITIES[role]).toBeDefined();
       expect(Array.isArray(DEFAULT_ROLE_CAPABILITIES[role])).toBe(true);
@@ -22,6 +22,14 @@ describe("DEFAULT_ROLE_CAPABILITIES", () => {
     expect(studentCaps).not.toContain("users.view");
     expect(studentCaps).not.toContain("system.settings");
     expect(studentCaps).not.toContain("problems.create");
+  });
+
+  it("assistant extends student capabilities without full instructor access", () => {
+    const assistantCaps = DEFAULT_ROLE_CAPABILITIES.assistant;
+    expect(assistantCaps).toContain("submissions.view_all");
+    expect(assistantCaps).toContain("problems.view_all");
+    expect(assistantCaps).not.toContain("problems.create");
+    expect(assistantCaps).not.toContain("users.delete");
   });
 
   it("instructor has problem and submission capabilities", () => {
@@ -57,12 +65,17 @@ describe("DEFAULT_ROLE_CAPABILITIES", () => {
 
   it("each role's capabilities are a subset of the next level", () => {
     const studentSet = new Set(DEFAULT_ROLE_CAPABILITIES.student);
+    const assistantSet = new Set(DEFAULT_ROLE_CAPABILITIES.assistant);
     const instructorSet = new Set(DEFAULT_ROLE_CAPABILITIES.instructor);
     const adminSet = new Set(DEFAULT_ROLE_CAPABILITIES.admin);
     const superAdminSet = new Set(DEFAULT_ROLE_CAPABILITIES.super_admin);
 
-    // Every student cap should be in instructor
+    // Every student cap should be in assistant
     for (const cap of studentSet) {
+      expect(assistantSet.has(cap)).toBe(true);
+    }
+    // Every assistant cap should be in instructor
+    for (const cap of assistantSet) {
       expect(instructorSet.has(cap)).toBe(true);
     }
     // Every instructor cap should be in admin
@@ -85,12 +98,13 @@ describe("DEFAULT_ROLE_CAPABILITIES", () => {
 });
 
 describe("DEFAULT_ROLE_LEVELS", () => {
-  it("defines levels for all 4 built-in roles", () => {
-    expect(Object.keys(DEFAULT_ROLE_LEVELS)).toHaveLength(4);
+  it("defines levels for all 5 built-in roles", () => {
+    expect(Object.keys(DEFAULT_ROLE_LEVELS)).toHaveLength(5);
   });
 
-  it("maintains hierarchy: student < instructor < admin < super_admin", () => {
-    expect(DEFAULT_ROLE_LEVELS.student).toBeLessThan(DEFAULT_ROLE_LEVELS.instructor);
+  it("maintains hierarchy: student < assistant < instructor < admin < super_admin", () => {
+    expect(DEFAULT_ROLE_LEVELS.student).toBeLessThan(DEFAULT_ROLE_LEVELS.assistant);
+    expect(DEFAULT_ROLE_LEVELS.assistant).toBeLessThan(DEFAULT_ROLE_LEVELS.instructor);
     expect(DEFAULT_ROLE_LEVELS.instructor).toBeLessThan(DEFAULT_ROLE_LEVELS.admin);
     expect(DEFAULT_ROLE_LEVELS.admin).toBeLessThan(DEFAULT_ROLE_LEVELS.super_admin);
   });
@@ -99,6 +113,7 @@ describe("DEFAULT_ROLE_LEVELS", () => {
 describe("isBuiltinRole", () => {
   it("returns true for built-in roles", () => {
     expect(isBuiltinRole("student")).toBe(true);
+    expect(isBuiltinRole("assistant")).toBe(true);
     expect(isBuiltinRole("instructor")).toBe(true);
     expect(isBuiltinRole("admin")).toBe(true);
     expect(isBuiltinRole("super_admin")).toBe(true);

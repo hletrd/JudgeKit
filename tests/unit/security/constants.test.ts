@@ -30,9 +30,10 @@ vi.mock("@/lib/capabilities/cache", () => ({
   getRoleLevel: vi.fn(async (role: string) => {
     const levels: Record<string, number> = {
       student: 0,
-      instructor: 1,
-      admin: 2,
-      super_admin: 3,
+      assistant: 1,
+      instructor: 2,
+      admin: 3,
+      super_admin: 4,
     };
     return levels[role] ?? -1;
   }),
@@ -48,6 +49,7 @@ describe("security constants", () => {
   describe("isUserRole", () => {
     it("returns true for valid built-in roles", () => {
       expect(isUserRole("student")).toBe(true);
+      expect(isUserRole("assistant")).toBe(true);
       expect(isUserRole("instructor")).toBe(true);
       expect(isUserRole("admin")).toBe(true);
       expect(isUserRole("super_admin")).toBe(true);
@@ -133,9 +135,10 @@ describe("security constants", () => {
   describe("getBuiltinRoleLevel", () => {
     it("returns correct level for built-in roles", () => {
       expect(getBuiltinRoleLevel("student")).toBe(0);
-      expect(getBuiltinRoleLevel("instructor")).toBe(1);
-      expect(getBuiltinRoleLevel("admin")).toBe(2);
-      expect(getBuiltinRoleLevel("super_admin")).toBe(3);
+      expect(getBuiltinRoleLevel("assistant")).toBe(1);
+      expect(getBuiltinRoleLevel("instructor")).toBe(2);
+      expect(getBuiltinRoleLevel("admin")).toBe(3);
+      expect(getBuiltinRoleLevel("super_admin")).toBe(4);
     });
 
     it("returns -1 for unknown roles", () => {
@@ -160,14 +163,15 @@ describe("security constants", () => {
     it("has correct role hierarchy", () => {
       expect(ROLE_LEVEL).toEqual({
         student: 0,
-        instructor: 1,
-        admin: 2,
-        super_admin: 3,
+        assistant: 1,
+        instructor: 2,
+        admin: 3,
+        super_admin: 4,
       });
     });
 
     it("has all built-in user roles", () => {
-      expect(USER_ROLES).toEqual(["student", "instructor", "admin", "super_admin"]);
+      expect(USER_ROLES).toEqual(["student", "assistant", "instructor", "admin", "super_admin"]);
     });
   });
 

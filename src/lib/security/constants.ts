@@ -31,6 +31,7 @@ export const SUBMISSION_GLOBAL_QUEUE_LIMIT = parseInt(
 
 export const USER_ROLES: readonly UserRole[] = [
   "student",
+  "assistant",
   "instructor",
   "admin",
   "super_admin",
@@ -39,9 +40,10 @@ export const USER_ROLES: readonly UserRole[] = [
 /** Canonical role hierarchy — higher number = more privilege. */
 export const ROLE_LEVEL: Record<UserRole, number> = {
   student: 0,
-  instructor: 1,
-  admin: 2,
-  super_admin: 3,
+  assistant: 1,
+  instructor: 2,
+  admin: 3,
+  super_admin: 4,
 };
 
 export const SUBMISSION_STATUSES: readonly SubmissionStatus[] = [
