@@ -56,7 +56,7 @@ prompt_secret() {
 CORE_LANGS="cpp python jvm"
 POPULAR_LANGS="$CORE_LANGS node rust go"
 EXTENDED_LANGS="$POPULAR_LANGS ruby lua bash csharp php perl swift r haskell dart zig"
-ALL_LANGS="cpp clang python node jvm rust go swift csharp r perl php ruby lua
+ALL_LANGS="cpp clang python pypy node jvm rust go swift csharp r perl php ruby lua
   haskell dart zig nim ocaml elixir julia d racket v fortran pascal cobol
   brainfuck scala erlang commonlisp bash esoteric ada clojure prolog tcl awk
   scheme groovy octave crystal powershell postscript fsharp apl freebasic

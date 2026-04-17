@@ -20,6 +20,7 @@ Restore trust in the full repository quality gates by reconciling stale tests, s
   - backup docs/tests now describe the shipped ZIP backup plus JSON-or-ZIP restore contract
   - stale source-grep assertions for the submission runtime path now point at the current component/file contracts
   - system settings and public contest helper tests now match the current helper return shapes
+  - setup/deploy language inventory presets now stay aligned with the source-referenced `judge-pypy` image set
 - still open:
   - full-suite contract drift across built-in role tests, judge auth mocks, backup docs tests, and brittle source-grep inventories
 
