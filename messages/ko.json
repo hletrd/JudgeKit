@@ -1081,6 +1081,11 @@
       "searchPlaceholder": "사용자 이름 또는 문제 제목으로 검색",
       "resetSearch": "초기화",
       "exportCsv": "CSV 내보내기",
+      "bulkRejudge": "현재 목록 재채점",
+      "bulkRejudgeDialogTitle": "현재 보이는 제출을 재채점할까요?",
+      "bulkRejudgeDialogDescription": "현재 보이는 제출 {count}건을 대기 상태로 되돌리고 다시 채점 대기열에 넣습니다.",
+      "bulkRejudgeSuccess": "{count}건의 제출을 재채점 대기열에 넣었습니다.",
+      "bulkRejudgeFailed": "선택한 제출을 재채점하지 못했습니다.",
       "dateFromLabel": "시작일",
       "dateToLabel": "종료일"
     },

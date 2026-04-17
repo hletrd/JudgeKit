@@ -29,5 +29,7 @@ describe("admin submissions implementation", () => {
     expect(source).toContain('t("dateToLabel")');
     expect(source).toContain('buildExportHref()');
     expect(source).toContain('t("exportCsv")');
+    expect(source).toContain("AdminSubmissionsBulkRejudge");
+    expect(source).toContain("canBulkRejudge");
   });
 });

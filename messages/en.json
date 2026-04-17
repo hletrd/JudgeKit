@@ -1081,6 +1081,11 @@
       "searchPlaceholder": "Search by user name or problem title...",
       "resetSearch": "Reset",
       "exportCsv": "Export CSV",
+      "bulkRejudge": "Rejudge visible",
+      "bulkRejudgeDialogTitle": "Rejudge visible submissions?",
+      "bulkRejudgeDialogDescription": "This will reset {count} visible submissions to pending and queue them for fresh judging.",
+      "bulkRejudgeSuccess": "{count} submissions queued for rejudging.",
+      "bulkRejudgeFailed": "Failed to rejudge the selected submissions.",
       "dateFromLabel": "From date",
       "dateToLabel": "To date"
     },

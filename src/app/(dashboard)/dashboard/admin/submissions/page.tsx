@@ -30,6 +30,7 @@ import { EmptyState } from "@/components/empty-state";
 import { formatScore } from "@/lib/formatting";
 import { InboxIcon } from "lucide-react";
 import { FilterSelect } from "@/components/filter-select";
+import { AdminSubmissionsBulkRejudge } from "./admin-submissions-bulk-rejudge";
 
 export async function generateMetadata(): Promise<Metadata> {
   const t = await getTranslations("admin.submissions");
@@ -71,6 +72,7 @@ export default async function AdminSubmissionsPage({
   if (!session?.user) redirect("/login");
   const caps = await resolveCapabilities(session.user.role);
   if (!caps.has("submissions.view_all")) redirect("/dashboard");
+  const canBulkRejudge = caps.has("submissions.rejudge");
 
   const resolvedSearchParams = searchParams ? await searchParams : undefined;
   const currentPage = Math.max(1, Number(resolvedSearchParams?.page ?? "1") || 1);
@@ -317,6 +319,9 @@ export default async function AdminSubmissionsPage({
               <Link href={buildExportHref()} prefetch={false}>
                 <Button type="button" variant="outline">{t("exportCsv")}</Button>
               </Link>
+              {canBulkRejudge ? (
+                <AdminSubmissionsBulkRejudge submissionIds={visibleSubmissions.map((submission) => submission.id)} />
+              ) : null}
             </div>
           </form>
         </CardContent>
