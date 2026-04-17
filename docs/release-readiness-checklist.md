@@ -206,6 +206,7 @@ These must pass for **any** release.
 - [ ] deployment tested in target environment
 - [ ] backups/restores verified
 - [ ] monitoring and alerts active
+- [ ] monitoring baseline reviewed (`docs/monitoring.md`)
 - [ ] rollback plan available
 - [ ] runbooks accessible to operators
 - [ ] admin security operations guidance reviewed (`docs/admin-security-operations.md`)
