@@ -77,8 +77,13 @@ function ipMatchesAllowlistEntry(clientIp: string, entry: string): boolean {
 export function isJudgeIpAllowed(request: NextRequest): boolean {
   const allowlist = getAllowlist();
 
-  // No allowlist configured — allow all (backward compatible)
-  if (!allowlist) return true;
+  // No allowlist configured — deny in production, allow all in development
+  if (!allowlist) {
+    if (process.env.NODE_ENV === "production") {
+      return false;
+    }
+    return true;
+  }
 
   const clientIp = extractClientIp(request.headers);
 

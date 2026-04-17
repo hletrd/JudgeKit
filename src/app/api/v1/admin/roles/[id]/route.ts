@@ -66,6 +66,13 @@ export const PATCH = createApiHandler({
       return apiError("cannotChangeBuiltinRoleLevel", 403);
     }
 
+    // Cannot update a role's level above your own
+    const ROLE_LEVELS: Record<string, number> = { student: 0, assistant: 0, ta: 1, instructor: 1, admin: 2, super_admin: 3 };
+    const creatorLevel = ROLE_LEVELS[user.role] ?? -1;
+    if (updates.level !== undefined && updates.level > creatorLevel) {
+      return apiError("cannotSetRoleLevelAboveOwnLevel", 403);
+    }
+
     const updateData: Record<string, unknown> = {};
     if (updates.displayName !== undefined) updateData.displayName = updates.displayName;
     if (updates.description !== undefined) updateData.description = updates.description;

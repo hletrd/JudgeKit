@@ -7,9 +7,10 @@ import { createHmac, randomBytes, timingSafeEqual } from "node:crypto";
  * always compares two fixed-length digests, regardless of input lengths.
  */
 export function safeTokenCompare(provided: string, expected: string): boolean {
-  // Token length is not secret information; checking first avoids HMAC timing
-  // that would otherwise vary with input length and create a side-channel.
-  if (provided.length !== expected.length) return false;
+  // Both inputs are HMAC'd with an ephemeral key so that `timingSafeEqual`
+  // always compares two fixed-length digests, regardless of input lengths.
+  // No early length check: removing it prevents a timing side-channel that
+  // would leak the expected token's length.
   const key = randomBytes(32);
   const a = createHmac("sha256", key).update(provided).digest();
   const b = createHmac("sha256", key).update(expected).digest();

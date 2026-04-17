@@ -22,95 +22,97 @@ export async function startExamSession(
   userId: string,
   ipAddress?: string | null
 ): Promise<ExamSession> {
-  const assignment = await db.query.assignments.findFirst({
-    where: eq(assignments.id, assignmentId),
-    columns: {
-      id: true,
-      examMode: true,
-      examDurationMinutes: true,
-      startsAt: true,
-      deadline: true,
-    },
-  });
+  return db.transaction(async (tx) => {
+    const assignment = await tx.query.assignments.findFirst({
+      where: eq(assignments.id, assignmentId),
+      columns: {
+        id: true,
+        examMode: true,
+        examDurationMinutes: true,
+        startsAt: true,
+        deadline: true,
+      },
+    });
 
-  if (!assignment) {
-    throw new Error("assignmentNotFound");
-  }
+    if (!assignment) {
+      throw new Error("assignmentNotFound");
+    }
 
-  if (assignment.examMode !== "windowed") {
-    throw new Error("examModeInvalid");
-  }
+    if (assignment.examMode !== "windowed") {
+      throw new Error("examModeInvalid");
+    }
 
-  if (!assignment.examDurationMinutes || assignment.examDurationMinutes <= 0) {
-    throw new Error("examDurationInvalid");
-  }
+    if (!assignment.examDurationMinutes || assignment.examDurationMinutes <= 0) {
+      throw new Error("examDurationInvalid");
+    }
 
-  const now = new Date();
+    const now = new Date();
 
-  if (assignment.startsAt && now < assignment.startsAt) {
-    throw new Error("assignmentNotStarted");
-  }
+    if (assignment.startsAt && now < assignment.startsAt) {
+      throw new Error("assignmentNotStarted");
+    }
 
-  if (assignment.deadline && now >= assignment.deadline) {
-    throw new Error("assignmentClosed");
-  }
+    if (assignment.deadline && now >= assignment.deadline) {
+      throw new Error("assignmentClosed");
+    }
 
-  // Check for existing session (idempotent)
-  const existing = await db.query.examSessions.findFirst({
-    where: and(
-      eq(examSessions.assignmentId, assignmentId),
-      eq(examSessions.userId, userId)
-    ),
-  });
+    // Check for existing session (idempotent)
+    const existing = await tx.query.examSessions.findFirst({
+      where: and(
+        eq(examSessions.assignmentId, assignmentId),
+        eq(examSessions.userId, userId)
+      ),
+    });
 
-  if (existing) {
+    if (existing) {
+      return {
+        id: existing.id,
+        assignmentId: existing.assignmentId,
+        userId: existing.userId,
+        startedAt: existing.startedAt,
+        personalDeadline: existing.personalDeadline,
+      };
+    }
+
+    const durationMs = (assignment.examDurationMinutes ?? 0) * 60_000;
+    const personalDeadlineMs = now.getTime() + durationMs;
+    const personalDeadline =
+      assignment.deadline && assignment.deadline.getTime() < personalDeadlineMs
+        ? assignment.deadline
+        : new Date(personalDeadlineMs);
+
+    const id = nanoid();
+    const startedAt = now;
+
+    await tx.insert(examSessions).values({
+      id,
+      assignmentId,
+      userId,
+      startedAt,
+      personalDeadline,
+      ipAddress: ipAddress ?? null,
+    }).onConflictDoNothing();
+
+    // Re-fetch the authoritative row (covers both newly-inserted and race-condition existing)
+    const session = await tx.query.examSessions.findFirst({
+      where: and(
+        eq(examSessions.assignmentId, assignmentId),
+        eq(examSessions.userId, userId)
+      ),
+    });
+
+    if (!session) {
+      throw new Error("assignmentClosed");
+    }
+
     return {
-      id: existing.id,
-      assignmentId: existing.assignmentId,
-      userId: existing.userId,
-      startedAt: existing.startedAt,
-      personalDeadline: existing.personalDeadline,
+      id: session.id,
+      assignmentId: session.assignmentId,
+      userId: session.userId,
+      startedAt: session.startedAt,
+      personalDeadline: session.personalDeadline,
     };
-  }
-
-  const durationMs = (assignment.examDurationMinutes ?? 0) * 60_000;
-  const personalDeadlineMs = now.getTime() + durationMs;
-  const personalDeadline =
-    assignment.deadline && assignment.deadline.getTime() < personalDeadlineMs
-      ? assignment.deadline
-      : new Date(personalDeadlineMs);
-
-  const id = nanoid();
-  const startedAt = now;
-
-  await db.insert(examSessions).values({
-    id,
-    assignmentId,
-    userId,
-    startedAt,
-    personalDeadline,
-    ipAddress: ipAddress ?? null,
-  }).onConflictDoNothing();
-
-  // Re-fetch the authoritative row (covers both newly-inserted and race-condition existing)
-  const session = await db.query.examSessions.findFirst({
-    where: and(
-      eq(examSessions.assignmentId, assignmentId),
-      eq(examSessions.userId, userId)
-    ),
   });
-
-  if (!session) {
-    throw new Error("assignmentClosed");
-  }
-
-  return {
-    id: session.id,
-    assignmentId: session.assignmentId,
-    userId: session.userId,
-    startedAt: session.startedAt,
-    personalDeadline: session.personalDeadline,
-  };
 }
 
 export async function getExamSession(

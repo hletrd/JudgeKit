@@ -3,6 +3,7 @@ function isTrustedRegistryImage(image: string, trustedRegistries: string[]) {
 }
 
 function hasValidJudgeImageName(image: string) {
+  if (image.includes("..")) return false;
   const pattern = /^[a-zA-Z0-9][a-zA-Z0-9._\-\/:]*$/;
   if (!pattern.test(image) || image.includes("://")) {
     return false;
@@ -31,7 +32,7 @@ export function isAllowedJudgeDockerImage(
   }
   const segments = image.split("/");
   const firstSegment = segments[0] ?? "";
-  const hasRegistryPrefix = segments.length > 1 && firstSegment.includes(".");
+  const hasRegistryPrefix = segments.length > 1 && (firstSegment.includes(".") || firstSegment === "localhost");
 
   if (hasRegistryPrefix) {
     return isTrustedRegistryImage(image, trustedRegistries);

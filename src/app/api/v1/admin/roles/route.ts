@@ -59,6 +59,13 @@ export const POST = createApiHandler({
 
     const { name, displayName, description, level, capabilities } = body;
 
+    // Cannot create roles with level higher than own level
+    const ROLE_LEVELS: Record<string, number> = { student: 0, assistant: 0, ta: 1, instructor: 1, admin: 2, super_admin: 3 };
+    const creatorLevel = ROLE_LEVELS[user.role] ?? -1;
+    if (level > creatorLevel) {
+      return apiError("cannotCreateRoleAboveOwnLevel", 403);
+    }
+
     // Cannot use built-in role names
     if (isBuiltinRole(name)) {
       return apiError("roleNameReserved", 400);
