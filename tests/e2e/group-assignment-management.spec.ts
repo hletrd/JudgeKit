@@ -507,7 +507,7 @@ test("group assignment management supports member add, assignment CRUD, and stud
     await adminPage.goto(`/dashboard/admin/audit-logs?search=${assignmentSubmission.id}`, {
       waitUntil: "networkidle",
     });
-    const auditLogsTable = adminPage.locator("#dashboard-main-content table:visible").first();
+    const auditLogsTable = adminPage.locator("#main-content table:visible").first();
     await expect(auditLogsTable).toContainText("submission.judged");
     await expect(auditLogsTable).toContainText("System");
     await expect(auditLogsTable).toContainText("System-generated event");

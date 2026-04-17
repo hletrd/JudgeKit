@@ -87,14 +87,14 @@ test.describe.serial("Rankings Page", () => {
     await loginAsAdmin(page);
     const foundPath = await navigateToRankings(page);
 
-    const mainContent = page.locator("#dashboard-main-content");
+    const mainContent = page.locator("#main-content");
     const mainContentCount = await mainContent.count();
 
     if (mainContentCount > 0) {
       await expect(mainContent).toBeVisible();
 
       // Look for table or list structure
-      const table = page.locator("#dashboard-main-content table");
+      const table = page.locator("#main-content table");
       const tableCount = await table.count();
 
       if (tableCount > 0) {

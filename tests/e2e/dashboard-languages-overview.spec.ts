@@ -22,7 +22,7 @@ test("dashboard root exposes judge status tabs and full languages catalog", asyn
   await loginAsAdmin(page);
   await expect(page).toHaveURL(/\/dashboard/);
 
-  const mainContent = page.locator("#dashboard-main-content");
+  const mainContent = page.locator("#main-content");
   await expect(mainContent).toBeVisible();
 
   await expect(
@@ -40,5 +40,5 @@ test("dashboard root exposes judge status tabs and full languages catalog", asyn
   await expect(
     page.getByRole("heading", { name: /Supported languages|지원 언어/i })
   ).toBeVisible();
-  await expect(page.locator("#dashboard-main-content table")).toBeVisible();
+  await expect(page.locator("#main-content table")).toBeVisible();
 });

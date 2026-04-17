@@ -65,7 +65,7 @@ test("admin can navigate, filter, and paginate login logs safely", async ({
   runtimeAdminPage: page,
   runtimeSuffix,
 }, testInfo) => {
-  const loginLogsTable = page.locator("#dashboard-main-content table:visible").first();
+  const loginLogsTable = page.locator("#main-content table:visible").first();
   const prefix = `pw-task11-${runtimeSuffix}`;
   const paginationPrefix = `${prefix}-page-`;
   const literalNeedle = `${prefix}-literal%_needle`;

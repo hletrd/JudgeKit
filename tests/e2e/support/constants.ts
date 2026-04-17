@@ -30,5 +30,5 @@ export const SELECTORS = {
   usernameInput: "#username",
   passwordInput: "#password",
   signInButton: '[role="button"]',
-  dashboardMainContent: "#dashboard-main-content",
+  dashboardMainContent: "#main-content",
 } as const;

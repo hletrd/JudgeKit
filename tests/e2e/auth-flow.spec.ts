@@ -32,7 +32,7 @@ test.describe.serial("Auth Flow", () => {
   test("Login with valid credentials redirects to dashboard", async ({ page }) => {
     await loginAsAdmin(page);
     await expect(page).toHaveURL(/\/dashboard/);
-    await expect(page.locator("#dashboard-main-content")).toBeVisible();
+    await expect(page.locator("#main-content")).toBeVisible();
   });
 
   test("Login with invalid credentials shows error", async ({ page }) => {

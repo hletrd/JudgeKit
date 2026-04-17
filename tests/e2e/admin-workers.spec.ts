@@ -44,7 +44,7 @@ test.describe.serial("Admin Workers Dashboard", () => {
     await page.goto(WORKERS_PATH, { waitUntil: "networkidle" });
 
     // Stats cards should render (even if counts are zero)
-    const mainContent = page.locator("#dashboard-main-content");
+    const mainContent = page.locator("#main-content");
     await expect(mainContent).toBeVisible();
 
     // Look for numeric stat indicators — cards typically show counts
@@ -63,12 +63,12 @@ test.describe.serial("Admin Workers Dashboard", () => {
     await loginAsAdmin(page);
     await page.goto(WORKERS_PATH, { waitUntil: "networkidle" });
 
-    const mainContent = page.locator("#dashboard-main-content");
+    const mainContent = page.locator("#main-content");
     await expect(mainContent).toBeVisible();
 
     // Either a table or an empty-state message should be present
-    const table = page.locator("#dashboard-main-content table");
-    const emptyState = page.locator("#dashboard-main-content").filter({
+    const table = page.locator("#main-content table");
+    const emptyState = page.locator("#main-content").filter({
       hasText: /no workers|등록된 워커|empty|없음/i,
     });
 

@@ -1902,7 +1902,8 @@
       "inviteSuccess": "사용자를 초대했습니다",
       "inviteFailed": "사용자 초대에 실패했습니다",
       "userNotFound": "사용자를 찾을 수 없습니다",
-      "noResults": "사용자를 찾을 수 없습니다"
+      "noResults": "사용자를 찾을 수 없습니다",
+      "searching": "검색 중..."
     },
     "antiCheat": {
       "title": "부정행위 신호 모니터",

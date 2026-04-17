@@ -1902,7 +1902,8 @@
       "inviteSuccess": "User invited",
       "inviteFailed": "Failed to invite user",
       "userNotFound": "User not found",
-      "noResults": "No users found"
+      "noResults": "No users found",
+      "searching": "Searching..."
     },
     "antiCheat": {
       "title": "Anti-Cheat Signals",

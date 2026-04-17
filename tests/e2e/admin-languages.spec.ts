@@ -43,11 +43,11 @@ test.describe.serial("Admin Languages", () => {
     await loginAsAdmin(page);
     await page.goto(LANGUAGES_PATH, { waitUntil: "networkidle" });
 
-    const mainContent = page.locator("#dashboard-main-content");
+    const mainContent = page.locator("#main-content");
     await expect(mainContent).toBeVisible();
 
     // Table or list of languages should be present
-    const table = page.locator("#dashboard-main-content table");
+    const table = page.locator("#main-content table");
     const tableCount = await table.count();
 
     if (tableCount > 0) {
@@ -58,7 +58,7 @@ test.describe.serial("Admin Languages", () => {
       expect(rowCount).toBeGreaterThan(0);
     } else {
       // Fallback: any list items
-      const listItems = page.locator("#dashboard-main-content li");
+      const listItems = page.locator("#main-content li");
       const liCount = await listItems.count();
       expect(liCount).toBeGreaterThan(0);
     }
@@ -79,11 +79,11 @@ test.describe.serial("Admin Languages", () => {
       await searchInput.first().fill("Python");
       await page.waitForLoadState("networkidle");
 
-      const mainContent = page.locator("#dashboard-main-content");
+      const mainContent = page.locator("#main-content");
       await expect(mainContent).toBeVisible();
 
       // If there is a table, Python-related rows should appear (or zero results)
-      const table = page.locator("#dashboard-main-content table");
+      const table = page.locator("#main-content table");
       const tableCount = await table.count();
       if (tableCount > 0) {
         // The table content should at minimum be visible
@@ -96,7 +96,7 @@ test.describe.serial("Admin Languages", () => {
       await expect(mainContent).toBeVisible();
     } else {
       // No search input present — skip gracefully
-      const mainContent = page.locator("#dashboard-main-content");
+      const mainContent = page.locator("#main-content");
       await expect(mainContent).toBeVisible();
     }
   });
@@ -105,7 +105,7 @@ test.describe.serial("Admin Languages", () => {
     await loginAsAdmin(page);
     await page.goto(LANGUAGES_PATH, { waitUntil: "networkidle" });
 
-    const mainContent = page.locator("#dashboard-main-content");
+    const mainContent = page.locator("#main-content");
     await expect(mainContent).toBeVisible();
 
     // Look for toggle switches, checkboxes, or enable/disable buttons
@@ -133,7 +133,7 @@ test.describe.serial("Admin Languages", () => {
       await expect(heading.first()).toBeVisible();
     } else {
       // Fallback: main content area is visible
-      await expect(page.locator("#dashboard-main-content")).toBeVisible();
+      await expect(page.locator("#main-content")).toBeVisible();
     }
   });
 });

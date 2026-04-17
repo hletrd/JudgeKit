@@ -102,7 +102,7 @@ test("admin audit logs render server-action and route mutation events", async ({
     });
 
     await test.step("search and filter the audit-log page", async () => {
-      const auditLogsTable = page.locator("#dashboard-main-content table:visible").first();
+      const auditLogsTable = page.locator("#main-content table:visible").first();
 
       await page.goto(AUDIT_LOGS_PATH, { waitUntil: "networkidle" });
       await expect(page.getByRole("link", { name: "Audit Logs" })).toBeVisible();
