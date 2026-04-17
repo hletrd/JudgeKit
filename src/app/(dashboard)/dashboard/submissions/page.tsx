@@ -26,6 +26,7 @@ import { formatSubmissionIdPrefix } from "@/lib/submissions/format";
 import { buildStatusLabels } from "@/lib/judge/status-labels";
 import { SubmissionListAutoRefresh } from "@/components/submission-list-auto-refresh";
 import { getLanguageDisplayLabel } from "@/lib/judge/languages";
+import { formatScore } from "@/lib/formatting";
 
 export async function generateMetadata(): Promise<Metadata> {
   const t = await getTranslations("submissions");
@@ -227,7 +228,7 @@ export default async function SubmissionsPage({
                       score={sub.score}
                     />
                   </TableCell>
-                  <TableCell>{sub.score !== null ? Math.round(sub.score * 100) / 100 : "-"}</TableCell>
+                  <TableCell>{formatScore(sub.score)}</TableCell>
                   <TableCell>
                     {sub.submittedAt
                       ? formatDateTimeInTimeZone(sub.submittedAt, locale, timeZone)

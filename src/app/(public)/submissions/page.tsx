@@ -24,6 +24,7 @@ import { formatSubmissionIdPrefix } from "@/lib/submissions/format";
 import { buildStatusLabels } from "@/lib/judge/status-labels";
 import { SubmissionListAutoRefresh } from "@/components/submission-list-auto-refresh";
 import { getLanguageDisplayLabel } from "@/lib/judge/languages";
+import { formatScore } from "@/lib/formatting";
 import { buildLocalePath, NO_INDEX_METADATA } from "@/lib/seo";
 import { getResolvedSystemSettings } from "@/lib/system-settings";
 import { LogInIcon } from "lucide-react";
@@ -447,7 +448,7 @@ export default async function SubmissionsPage({
                       score={sub.score}
                     />
                   </TableCell>
-                  <TableCell>{sub.score !== null ? Math.round(sub.score * 100) / 100 : "-"}</TableCell>
+                  <TableCell>{formatScore(sub.score)}</TableCell>
                   <TableCell>
                     {sub.submittedAt
                       ? formatDateTimeInTimeZone(sub.submittedAt, locale, timeZone)
@@ -501,7 +502,7 @@ export default async function SubmissionsPage({
                     <span>{sub.user?.name ?? tCommon("unknown")}</span>
                     <span>·</span>
                     <span>{getLanguageDisplayLabel(sub.language)}</span>
-                    {sub.score !== null && <span>{Math.round(sub.score * 100) / 100}pt</span>}
+                    {sub.score !== null && <span>{formatScore(sub.score)}pt</span>}
                     {sub.submittedAt && <span>{formatDateTimeInTimeZone(sub.submittedAt, locale, timeZone)}</span>}
                   </div>
                 </div>
