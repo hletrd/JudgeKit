@@ -5,6 +5,10 @@ import pLimit from "p-limit";
 const exec = promisify(execFile);
 const JUDGE_WORKER_URL = process.env.COMPILER_RUNNER_URL || "";
 const RUNNER_AUTH_TOKEN = process.env.RUNNER_AUTH_TOKEN || process.env.JUDGE_AUTH_TOKEN || "";
+const WORKER_DOCKER_API_CONFIG_ERROR =
+  JUDGE_WORKER_URL && !RUNNER_AUTH_TOKEN
+    ? "COMPILER_RUNNER_URL is set but RUNNER_AUTH_TOKEN/JUDGE_AUTH_TOKEN is missing"
+    : null;
 const USE_WORKER_DOCKER_API = Boolean(JUDGE_WORKER_URL && RUNNER_AUTH_TOKEN);
 
 export interface DockerImage {
@@ -49,6 +53,10 @@ async function callWorkerJson<T>(path: string, init?: RequestInit): Promise<T> {
   }
 
   return response.json() as Promise<T>;
+}
+
+function getWorkerDockerApiConfigError(): string | null {
+  return WORKER_DOCKER_API_CONFIG_ERROR;
 }
 
 async function callWorkerNoContent(path: string, init?: RequestInit): Promise<void> {
@@ -201,6 +209,10 @@ async function removeDockerImageLocal(imageTag: string): Promise<{ success: bool
 
 /** List local Docker images, optionally filtered by reference pattern */
 export async function listDockerImages(filter?: string): Promise<DockerImage[]> {
+  const configError = getWorkerDockerApiConfigError();
+  if (configError) {
+    throw new Error(configError);
+  }
   if (!USE_WORKER_DOCKER_API) {
     return listDockerImagesLocal(filter);
   }
@@ -213,6 +225,10 @@ export async function listDockerImages(filter?: string): Promise<DockerImage[]> 
 
 /** Pull a Docker image by tag. Returns success/error */
 export async function pullDockerImage(imageTag: string): Promise<{ success: boolean; error?: string }> {
+  const configError = getWorkerDockerApiConfigError();
+  if (configError) {
+    return { success: false, error: configError };
+  }
   if (!USE_WORKER_DOCKER_API) {
     return pullDockerImageLocal(imageTag);
   }
@@ -234,6 +250,10 @@ export async function pullDockerImage(imageTag: string): Promise<{ success: bool
 
 /** Inspect a Docker image */
 export async function inspectDockerImage(imageTag: string): Promise<Record<string, unknown> | null> {
+  const configError = getWorkerDockerApiConfigError();
+  if (configError) {
+    throw new Error(configError);
+  }
   if (!USE_WORKER_DOCKER_API) {
     return inspectDockerImageLocal(imageTag);
   }
@@ -257,6 +277,10 @@ export async function buildDockerImage(
   imageName: string,
   dockerfilePath: string,
 ): Promise<{ success: boolean; error?: string; logs?: string }> {
+  const configError = getWorkerDockerApiConfigError();
+  if (configError) {
+    return { success: false, error: configError };
+  }
   if (!USE_WORKER_DOCKER_API) {
     return buildDockerImageLocal(imageName, dockerfilePath);
   }
@@ -281,6 +305,10 @@ export async function buildDockerImage(
 
 /** Get disk usage info */
 export async function getDiskUsage(): Promise<{ total: string; used: string; available: string; usePercent: string } | null> {
+  const configError = getWorkerDockerApiConfigError();
+  if (configError) {
+    throw new Error(configError);
+  }
   if (!USE_WORKER_DOCKER_API) {
     return getDiskUsageLocal();
   }
@@ -296,6 +324,10 @@ export async function getDiskUsage(): Promise<{ total: string; used: string; ava
 
 /** Remove a Docker image */
 export async function removeDockerImage(imageTag: string): Promise<{ success: boolean; error?: string }> {
+  const configError = getWorkerDockerApiConfigError();
+  if (configError) {
+    return { success: false, error: configError };
+  }
   if (!USE_WORKER_DOCKER_API) {
     return removeDockerImageLocal(imageTag);
   }

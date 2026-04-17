@@ -60,4 +60,18 @@ describe("buildDockerImage implementation", () => {
     const headers = init?.headers as Headers | undefined;
     expect(headers?.get("Authorization")).toBe(`Bearer ${"y".repeat(32)}`);
   });
+
+  it("fails closed when a runner URL is configured without any runner auth token", async () => {
+    process.env.COMPILER_RUNNER_URL = "http://judge-worker:3001";
+
+    const { listDockerImages, pullDockerImage } = await import("@/lib/docker/client");
+
+    await expect(listDockerImages("judge-*")).rejects.toThrow(
+      "COMPILER_RUNNER_URL is set but RUNNER_AUTH_TOKEN/JUDGE_AUTH_TOKEN is missing"
+    );
+    await expect(pullDockerImage("judge-python:latest")).resolves.toEqual({
+      success: false,
+      error: "COMPILER_RUNNER_URL is set but RUNNER_AUTH_TOKEN/JUDGE_AUTH_TOKEN is missing",
+    });
+  });
 });
