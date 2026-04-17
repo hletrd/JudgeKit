@@ -121,13 +121,19 @@ export async function computeContestAnalytics(assignmentId: string, includeTimel
   }
 
   // 2. Per-problem solve rates
+  // Build a lookup map from entry.problems for O(1) access
+  const entryProblemMaps = entries.map((entry) => {
+    const map = new Map(entry.problems.map((ep) => [ep.problemId, ep]));
+    return map;
+  });
+
   const problemSolveRates: ProblemSolveRate[] = problems.map((p) => {
     let solved = 0;
     let partial = 0;
     let zero = 0;
 
-    for (const entry of entries) {
-      const pr = entry.problems.find((ep) => ep.problemId === p.problemId);
+    for (const epMap of entryProblemMaps) {
+      const pr = epMap.get(p.problemId);
       if (!pr || pr.attempts === 0) {
         zero++;
       } else if (pr.score >= p.points) {

@@ -1,6 +1,6 @@
-import { eq } from "drizzle-orm";
+import { eq, and, isNull } from "drizzle-orm";
 import { db } from "@/lib/db";
-import { submissions, submissionComments, users } from "@/lib/db/schema";
+import { submissions, submissionComments } from "@/lib/db/schema";
 import { isPluginEnabled, getPluginState } from "@/lib/plugins/data";
 import { getProvider } from "@/lib/plugins/chat-widget/providers";
 import { isAiAssistantEnabledForContext } from "@/lib/platform-mode-context";
@@ -24,6 +24,9 @@ export async function triggerAutoCodeReview(submissionId: string): Promise<void>
         assignmentId: true,
       },
       with: {
+        user: {
+          columns: { preferredLanguage: true },
+        },
         problem: {
           columns: { title: true, description: true, allowAiAssistant: true },
         },
@@ -83,21 +86,16 @@ export async function triggerAutoCodeReview(submissionId: string): Promise<void>
     if (submission.problem && !submission.problem.allowAiAssistant) return;
 
     // Determine review language from user preference, default to Korean
-    let reviewLanguage = "ko";
-    if (submission.userId) {
-      const submissionUser = await db.query.users.findFirst({
-        where: eq(users.id, submission.userId),
-        columns: { preferredLanguage: true },
-      });
-      reviewLanguage = submissionUser?.preferredLanguage ?? "ko";
-    }
+    const reviewLanguage = submission.user?.preferredLanguage ?? "ko";
 
     // Check if we already have an AI comment for this submission
-    const existingComments = await db.query.submissionComments.findMany({
-      where: eq(submissionComments.submissionId, submissionId),
+    const existingAiComment = await db.query.submissionComments.findFirst({
+      where: and(
+        eq(submissionComments.submissionId, submissionId),
+        isNull(submissionComments.authorId),
+      ),
     });
-    const hasAiComment = existingComments.some((c) => c.authorId === null);
-    if (hasAiComment) return;
+    if (existingAiComment) return;
 
     const provider = getProvider(config.provider);
 
