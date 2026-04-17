@@ -75,7 +75,7 @@ export async function syncLanguageConfigsOnStartup() {
     } catch {
       if (attempt >= MAX_SYNC_RETRIES) {
         console.error("[sync] Max retries exceeded, giving up");
-        return;
+        throw new Error("[sync] Failed to sync language configs after max retries");
       }
       // Table may not exist yet (pre-migration). Retry with exponential backoff.
       const delay = Math.min(1000 * Math.pow(2, attempt), MAX_BACKOFF_MS);

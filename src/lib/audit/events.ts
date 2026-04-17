@@ -114,6 +114,10 @@ export async function flushAuditBuffer(): Promise<void> {
     auditEventWriteFailures += batch.length;
     consecutiveAuditFailures += 1;
     lastAuditEventWriteFailureAt = new Date().toISOString();
+    // Re-buffer lost events (cap at 2x threshold to prevent unbounded growth)
+    if (_auditBuffer.length < FLUSH_SIZE_THRESHOLD * 2) {
+      _auditBuffer = [...batch, ..._auditBuffer];
+    }
     if (consecutiveAuditFailures >= MAX_SILENT_FAILURES) {
       logger.error({ count: batch.length, err: error, consecutiveFailures: consecutiveAuditFailures }, `CRITICAL: failed to flush ${batch.length} audit events`);
     } else {

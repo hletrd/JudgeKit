@@ -29,13 +29,21 @@ function maybeEvict() {
       store.delete(key);
     }
   }
-  // FIFO eviction if over capacity
+  // FIFO eviction if over capacity: evict expired entries first, then oldest
   if (store.size > MAX_ENTRIES) {
-    const excess = store.size - MAX_ENTRIES;
-    const keys = store.keys();
-    for (let i = 0; i < excess; i++) {
-      const { value } = keys.next();
-      if (value) store.delete(value);
+    // First pass: evict expired entries
+    for (const [key, entry] of store) {
+      if (now - entry.lastAttempt > EVICTION_AGE_MS) {
+        store.delete(key);
+      }
+    }
+    // Second pass: if still over capacity, evict oldest by lastAttempt
+    if (store.size > MAX_ENTRIES) {
+      const sorted = [...store.entries()].sort((a, b) => a[1].lastAttempt - b[1].lastAttempt);
+      const excess = store.size - MAX_ENTRIES;
+      for (let i = 0; i < excess && i < sorted.length; i++) {
+        store.delete(sorted[i][0]);
+      }
     }
   }
 }

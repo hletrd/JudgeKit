@@ -11,6 +11,17 @@ import { isTrustedServerActionOrigin } from "@/lib/security/server-actions";
 import { checkServerActionRateLimit } from "@/lib/security/api-rate-limit";
 import { JUDGE_LANGUAGE_CONFIGS, serializeJudgeCommand } from "@/lib/judge/languages";
 import { logger } from "@/lib/logger";
+import { z } from "zod";
+
+const updateLanguageConfigSchema = z.object({
+  dockerImage: z.string().min(1).max(500).refine(
+    (img) => /^[a-zA-Z0-9][a-zA-Z0-9._\-\/:]*$/.test(img) && !img.includes("..") && !img.includes("://"),
+    { message: "invalidDockerImage" }
+  ),
+  compileCommand: z.string().max(5000),
+  runCommand: z.string().min(1).max(5000),
+  dockerfile: z.string().max(50000).optional(),
+});
 
 type LanguageConfigActionResult =
   | { success: true }
@@ -88,6 +99,11 @@ export async function updateLanguageConfig(
 
   const rateLimit = await checkServerActionRateLimit(session.user.id, "languageConfig", 30, 60);
   if (rateLimit) return { success: false, error: "rateLimited" };
+
+  const parsed = updateLanguageConfigSchema.safeParse(data);
+  if (!parsed.success) {
+    return { success: false, error: parsed.error.issues[0]?.message ?? "invalidInput" };
+  }
 
   try {
     await db

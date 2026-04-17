@@ -40,7 +40,7 @@ export async function authorizeRecruitingToken(
   const result = await redeemRecruitingToken(token, ipAddress ?? undefined, accountPassword);
 
   if (!result.ok) {
-    logger.warn({ error: result.error, hasPassword: !!accountPassword, passwordLength: accountPassword?.length ?? 0 }, "[recruit] redeemRecruitingToken failed");
+    logger.warn({ error: result.error, hasPassword: !!accountPassword }, "[recruit] redeemRecruitingToken failed");
     return null;
   }
 

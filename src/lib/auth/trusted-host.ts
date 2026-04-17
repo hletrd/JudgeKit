@@ -24,7 +24,23 @@ export async function validateTrustedAuthHost(request: NextRequest) {
   const requestHost = getRequestHost(request);
   const trustedHosts = await getTrustedAuthHosts();
 
-  if (!requestHost || trustedHosts.size === 0 || trustedHosts.has(requestHost)) {
+  // In production, reject requests with no determinable host
+  if (!requestHost) {
+    if (process.env.NODE_ENV === "production") {
+      return NextResponse.json({ error: "MissingHostHeader" }, { status: 400 });
+    }
+    return null;
+  }
+
+  // In production, fail closed when no trusted hosts configured
+  if (trustedHosts.size === 0) {
+    if (process.env.NODE_ENV === "production") {
+      return NextResponse.json({ error: "NoTrustedHostsConfigured" }, { status: 500 });
+    }
+    return null;
+  }
+
+  if (trustedHosts.has(requestHost)) {
     return null;
   }
 
