@@ -7,6 +7,8 @@ import { Button } from "@/components/ui/button";
 import { Download, Upload } from "lucide-react";
 import { apiFetch } from "@/lib/api/client";
 
+type DownloadMode = "portable" | "backup";
+
 export function DatabaseBackupRestore({ isSuperAdmin }: { isSuperAdmin: boolean }) {
   const t = useTranslations("admin.settings");
   const tCommon = useTranslations("common");
@@ -14,26 +16,33 @@ export function DatabaseBackupRestore({ isSuperAdmin }: { isSuperAdmin: boolean 
   const [isRestoring, setIsRestoring] = useState(false);
   const [confirmRestore, setConfirmRestore] = useState(false);
   const [restorePassword, setRestorePassword] = useState("");
-  const [showPasswordPrompt, setShowPasswordPrompt] = useState(false);
+  const [downloadMode, setDownloadMode] = useState<DownloadMode | null>(null);
   const [backupPassword, setBackupPassword] = useState("");
   const fileInputRef = useRef<HTMLInputElement>(null);
 
-  async function handleBackup() {
+  async function handleDownload() {
     if (!backupPassword) {
       toast.error(t("passwordRequired"));
+      return;
+    }
+    if (!downloadMode) {
       return;
     }
 
     setIsDownloading(true);
     try {
-      const response = await apiFetch("/api/v1/admin/backup?includeFiles=true", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ password: backupPassword }),
-      });
+      const isPortableExport = downloadMode === "portable";
+      const response = await apiFetch(
+        isPortableExport ? "/api/v1/admin/migrate/export" : "/api/v1/admin/backup?includeFiles=true",
+        {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ password: backupPassword }),
+        }
+      );
       if (!response.ok) {
         const data = await response.json().catch(() => ({}));
-        toast.error(t(data.error ?? "backupFailed"));
+        toast.error(t(data.error ?? (isPortableExport ? "portableExportFailed" : "backupFailed")));
         return;
       }
       const blob = await response.blob();
@@ -41,17 +50,63 @@ export function DatabaseBackupRestore({ isSuperAdmin }: { isSuperAdmin: boolean 
       const a = document.createElement("a");
       a.href = url;
       const timestamp = new Date().toISOString().replace(/[:.]/g, "-");
-      a.download = `judgekit-backup-${timestamp}.zip`;
+      a.download = isPortableExport
+        ? `judgekit-export-${timestamp}.json`
+        : `judgekit-backup-${timestamp}.zip`;
       a.click();
       URL.revokeObjectURL(url);
-      toast.success(t("backupSuccess"));
-      setShowPasswordPrompt(false);
+      toast.success(t(isPortableExport ? "portableExportSuccess" : "backupSuccess"));
+      setDownloadMode(null);
       setBackupPassword("");
     } catch {
-      toast.error(t("backupFailed"));
+      toast.error(t(downloadMode === "portable" ? "portableExportFailed" : "backupFailed"));
     } finally {
       setIsDownloading(false);
     }
+  }
+
+  function renderDownloadSection(mode: DownloadMode, title: string, description: string, buttonLabel: string) {
+    const isActive = downloadMode === mode;
+
+    return (
+      <div className="space-y-3">
+        <div className="space-y-1">
+          <p className="text-sm font-medium">{title}</p>
+          <p className="text-xs text-muted-foreground">{description}</p>
+        </div>
+        {!isActive ? (
+          <Button variant="outline" onClick={() => setDownloadMode(mode)}>
+            <Download className="mr-2 h-4 w-4" />
+            {buttonLabel}
+          </Button>
+        ) : (
+          <div className="flex items-center gap-2">
+            <input
+              type="password"
+              value={backupPassword}
+              onChange={(e) => setBackupPassword(e.target.value)}
+              onKeyDown={(e) => e.key === "Enter" && handleDownload()}
+              placeholder={t("enterPassword")}
+              className="h-9 rounded-md border border-input bg-background px-3 text-sm"
+              autoFocus
+            />
+            <Button variant="outline" onClick={handleDownload} disabled={isDownloading || !backupPassword}>
+              <Download className="mr-2 h-4 w-4" />
+              {isDownloading ? tCommon("loading") : tCommon("confirm")}
+            </Button>
+            <Button
+              variant="ghost"
+              onClick={() => {
+                setDownloadMode(null);
+                setBackupPassword("");
+              }}
+            >
+              {tCommon("cancel")}
+            </Button>
+          </div>
+        )}
+      </div>
+    );
   }
 
   async function handleRestore() {
@@ -98,38 +153,21 @@ export function DatabaseBackupRestore({ isSuperAdmin }: { isSuperAdmin: boolean 
   return (
     <div className="space-y-4">
       {isSuperAdmin && (
-        <div className="space-y-3">
-          {!showPasswordPrompt ? (
-            <Button variant="outline" onClick={() => setShowPasswordPrompt(true)}>
-              <Download className="mr-2 h-4 w-4" />
-              {t("downloadBackup")}
-            </Button>
-          ) : (
-            <div className="flex items-center gap-2">
-              <input
-                type="password"
-                value={backupPassword}
-                onChange={(e) => setBackupPassword(e.target.value)}
-                onKeyDown={(e) => e.key === "Enter" && handleBackup()}
-                placeholder={t("enterPassword")}
-                className="h-9 rounded-md border border-input bg-background px-3 text-sm"
-                autoFocus
-              />
-              <Button variant="outline" onClick={handleBackup} disabled={isDownloading || !backupPassword}>
-                <Download className="mr-2 h-4 w-4" />
-                {isDownloading ? tCommon("loading") : tCommon("confirm")}
-              </Button>
-              <Button
-                variant="ghost"
-                onClick={() => {
-                  setShowPasswordPrompt(false);
-                  setBackupPassword("");
-                }}
-              >
-                {tCommon("cancel")}
-              </Button>
-            </div>
+        <div className="space-y-4">
+          {renderDownloadSection(
+            "portable",
+            t("portableExportTitle"),
+            t("portableExportDescription"),
+            t("downloadPortableExport")
           )}
+          <div className="border-t pt-4">
+            {renderDownloadSection(
+              "backup",
+              t("fullBackupTitle"),
+              t("fullBackupDescription"),
+              t("downloadBackup")
+            )}
+          </div>
         </div>
       )}
 
@@ -168,7 +206,14 @@ export function DatabaseBackupRestore({ isSuperAdmin }: { isSuperAdmin: boolean 
                 <Button variant="destructive" onClick={handleRestore} disabled={isRestoring || !restorePassword}>
                   {isRestoring ? tCommon("loading") : t("confirmRestore")}
                 </Button>
-                <Button variant="outline" onClick={() => { setConfirmRestore(false); setRestorePassword(""); }} disabled={isRestoring}>
+                <Button
+                  variant="outline"
+                  onClick={() => {
+                    setConfirmRestore(false);
+                    setRestorePassword("");
+                  }}
+                  disabled={isRestoring}
+                >
                   {tCommon("cancel")}
                 </Button>
               </div>
