@@ -19,6 +19,7 @@ import Link from "next/link";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import CreateGroupDialog from "./create-group-dialog";
+import EditGroupDialog from "./edit-group-dialog";
 import { PaginationControls } from "@/components/pagination-controls";
 import { resolveCapabilities } from "@/lib/capabilities/cache";
 import { getRecruitingAccessContext } from "@/lib/recruiting/access";
@@ -51,6 +52,7 @@ export default async function GroupsPage({
   ) {
     redirect("/dashboard");
   }
+  const canEditGroups = caps.has("groups.edit") || isInstructorOrAbove(session.user.role);
   
   let myGroups;
 
@@ -60,6 +62,7 @@ export default async function GroupsPage({
         id: groups.id,
         name: groups.name,
         description: groups.description,
+        instructorId: groups.instructorId,
         isArchived: groups.isArchived,
         instructor: {
           name: users.name,
@@ -73,6 +76,7 @@ export default async function GroupsPage({
         id: groups.id,
         name: groups.name,
         description: groups.description,
+        instructorId: groups.instructorId,
         isArchived: groups.isArchived,
         instructor: {
           name: users.name,
@@ -116,6 +120,7 @@ export default async function GroupsPage({
       description: string | null;
       isArchived: boolean | null;
       instructor: { name: string };
+      instructorId: string | null;
     }>();
 
     for (const group of instructionalGroups) {
@@ -133,6 +138,7 @@ export default async function GroupsPage({
         id: enrollment.group.id,
         name: enrollment.group.name,
         description: enrollment.group.description,
+        instructorId: enrollment.group.instructorId,
         isArchived: enrollment.group.isArchived ?? false,
         instructor: {
           name: enrollment.instructor?.name || tCommon("unknown"),
@@ -187,9 +193,20 @@ export default async function GroupsPage({
                   </TableCell>
                   <TableCell>{group.instructor?.name || tCommon("unknown")}</TableCell>
                   <TableCell>
-                    <Link href={`/dashboard/groups/${group.id}`}>
-                      <Button variant="outline" size="sm">{tCommon("view")}</Button>
-                    </Link>
+                    <div className="flex flex-wrap gap-2">
+                      <Link href={`/dashboard/groups/${group.id}`}>
+                        <Button variant="outline" size="sm">{tCommon("view")}</Button>
+                      </Link>
+                      {canEditGroups ? (
+                        <EditGroupDialog
+                          group={{
+                            id: group.id,
+                            name: group.name,
+                            description: group.description,
+                          }}
+                        />
+                      ) : null}
+                    </div>
                   </TableCell>
                 </TableRow>
               ))}
