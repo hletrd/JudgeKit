@@ -200,11 +200,12 @@ export interface RoleRecord {
   updatedAt: Date;
 }
 
-/** The 4 built-in role names */
-export type BuiltinRoleName = "super_admin" | "admin" | "instructor" | "student";
+/** The 5 built-in role names */
+export type BuiltinRoleName = "super_admin" | "admin" | "instructor" | "assistant" | "student";
 
 export const BUILTIN_ROLE_NAMES: readonly BuiltinRoleName[] = [
   "student",
+  "assistant",
   "instructor",
   "admin",
   "super_admin",

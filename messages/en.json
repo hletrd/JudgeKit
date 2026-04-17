@@ -48,6 +48,7 @@
     "notSet": "Not set",
     "roles": {
       "student": "User",
+      "assistant": "Assistant",
       "instructor": "Instructor",
       "admin": "Admin",
       "super_admin": "Super Admin"
@@ -634,6 +635,7 @@
     "table": {
       "name": "Name",
       "description": "Description",
+      "assistant": "Assistant",
       "instructor": "Instructor",
       "action": "Action"
     },
@@ -923,7 +925,8 @@
       },
       "roleOptions": {
         "student": "User",
-        "instructor": "Instructor",
+        "assistant": "Assistant",
+      "instructor": "Instructor",
         "admin": "Admin",
         "super_admin": "Super Admin"
       },

@@ -12,6 +12,23 @@ const STUDENT_CAPABILITIES: readonly Capability[] = [
   "content.view_own_submissions",
 ];
 
+const ASSISTANT_CAPABILITIES: readonly Capability[] = [
+  ...STUDENT_CAPABILITIES,
+  // Submissions (view only)
+  "submissions.view_all",
+  "submissions.view_source",
+  // Assignments (view only)
+  "assignments.view_status",
+  // Users (view only)
+  "users.view",
+  // Problems (view only)
+  "problems.view_all",
+  // Anti-Cheat (view only)
+  "anti_cheat.view_events",
+  // Files
+  "files.upload",
+];
+
 const INSTRUCTOR_CAPABILITIES: readonly Capability[] = [
   ...STUDENT_CAPABILITIES,
   // Problems
@@ -84,6 +101,7 @@ const SUPER_ADMIN_CAPABILITIES: readonly Capability[] = [...ALL_CAPABILITIES];
 
 export const DEFAULT_ROLE_CAPABILITIES: Record<BuiltinRoleName, readonly Capability[]> = {
   student: STUDENT_CAPABILITIES,
+  assistant: ASSISTANT_CAPABILITIES,
   instructor: INSTRUCTOR_CAPABILITIES,
   admin: ADMIN_CAPABILITIES,
   super_admin: SUPER_ADMIN_CAPABILITIES,
@@ -91,13 +109,15 @@ export const DEFAULT_ROLE_CAPABILITIES: Record<BuiltinRoleName, readonly Capabil
 
 export const DEFAULT_ROLE_LEVELS: Record<BuiltinRoleName, number> = {
   student: 0,
-  instructor: 1,
-  admin: 2,
-  super_admin: 3,
+  assistant: 1,
+  instructor: 2,
+  admin: 3,
+  super_admin: 4,
 };
 
 export const DEFAULT_ROLE_DISPLAY_NAMES: Record<BuiltinRoleName, string> = {
   student: "Student",
+  assistant: "Assistant",
   instructor: "Instructor",
   admin: "Admin",
   super_admin: "Super Admin",
