@@ -137,7 +137,7 @@ function buildGroupMemberScopeFilter(groupIds: string[]) {
 export default async function AdminAuditLogsPage({
   searchParams,
 }: {
-  searchParams?: Promise<{ page?: string; resource?: string; search?: string }>;
+  searchParams?: Promise<{ page?: string; resource?: string; search?: string; action?: string; dateFrom?: string; dateTo?: string }>;
 }) {
   const session = await auth();
   if (!session?.user) redirect("/login");
@@ -149,7 +149,10 @@ export default async function AdminAuditLogsPage({
   const resolvedSearchParams = searchParams ? await searchParams : undefined;
   const requestedPage = normalizePage(resolvedSearchParams?.page);
   const resourceTypeFilter = normalizeResourceFilter(resolvedSearchParams?.resource);
+  const actionTypeFilter = normalizeActionFilter(resolvedSearchParams?.action);
   const searchQuery = normalizeSearchQuery(resolvedSearchParams?.search);
+  const dateFrom = normalizeDateFilter(resolvedSearchParams?.dateFrom);
+  const dateTo = normalizeDateFilter(resolvedSearchParams?.dateTo);
   const normalizedSearch = searchQuery.toLowerCase();
   const [t, tCommon, locale, timeZone] = await Promise.all([
     getTranslations("admin.auditLogs"),
@@ -261,6 +264,27 @@ export default async function AdminAuditLogsPage({
     filters.push(eq(auditEvents.resourceType, resourceTypeFilter));
   }
 
+  if (actionTypeFilter !== "all") {
+    filters.push(like(auditEvents.action, `${actionTypeFilter}%`));
+  }
+
+  if (dateFrom) {
+    const fromDate = new Date(dateFrom);
+    if (!isNaN(fromDate.getTime())) {
+      filters.push(gte(auditEvents.createdAt, fromDate));
+    }
+  }
+
+  if (dateTo) {
+    const toDate = new Date(dateTo);
+    if (!isNaN(toDate.getTime())) {
+      // Include the entire end day by advancing to the next day at midnight
+      const endOfDay = new Date(toDate);
+      endOfDay.setDate(endOfDay.getDate() + 1);
+      filters.push(lte(auditEvents.createdAt, endOfDay));
+    }
+  }
+
   if (normalizedSearch) {
     const likePattern = `%${escapeLikePattern(normalizedSearch)}%`;
 
@@ -353,6 +377,45 @@ export default async function AdminAuditLogsPage({
                   value,
                   label: resourceLabels[value],
                 }))}
+              />
+            </div>
+
+            <div className="space-y-1.5">
+              <label className="block text-sm font-medium" htmlFor="audit-log-action">
+                {t("filters.actionTypeLabel")}
+              </label>
+              <FilterSelect
+                name="action"
+                defaultValue={actionTypeFilter}
+                placeholder={t("filters.allActions")}
+                options={ACTION_FILTER_VALUES.map((value) => ({
+                  value,
+                  label: t(`actionTypes.${value === "all" ? "all" : value}`),
+                }))}
+              />
+            </div>
+
+            <div className="space-y-1.5">
+              <label className="block text-sm font-medium" htmlFor="audit-log-date-from">
+                {t("filters.dateFromLabel")}
+              </label>
+              <Input
+                id="audit-log-date-from"
+                name="dateFrom"
+                type="date"
+                defaultValue={dateFrom}
+              />
+            </div>
+
+            <div className="space-y-1.5">
+              <label className="block text-sm font-medium" htmlFor="audit-log-date-to">
+                {t("filters.dateToLabel")}
+              </label>
+              <Input
+                id="audit-log-date-to"
+                name="dateTo"
+                type="date"
+                defaultValue={dateTo}
               />
             </div>
 
@@ -490,7 +553,7 @@ export default async function AdminAuditLogsPage({
       <PaginationControls
         currentPage={currentPage}
         totalPages={totalPages}
-        buildHref={(page) => buildPageHref(page, resourceTypeFilter, searchQuery)}
+        buildHref={(page) => buildPageHref(page, resourceTypeFilter, searchQuery, actionTypeFilter, dateFrom, dateTo)}
       />
     </div>
   );
