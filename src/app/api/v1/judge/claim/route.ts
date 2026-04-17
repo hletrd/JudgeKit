@@ -8,7 +8,7 @@ import { eq, asc } from "drizzle-orm";
 import { nanoid } from "nanoid";
 import { z } from "zod";
 import { recordAuditEvent } from "@/lib/audit/events";
-import { isJudgeAuthorized } from "@/lib/judge/auth";
+import { isJudgeAuthorized, isJudgeAuthorizedForWorker } from "@/lib/judge/auth";
 import { logger } from "@/lib/logger";
 import { deserializeStoredJudgeCommand } from "@/lib/judge/languages";
 
@@ -49,10 +49,6 @@ const claimRequestSchema = z.object({
 
 export async function POST(request: NextRequest) {
   try {
-    if (!isJudgeAuthorized(request)) {
-      return apiError("unauthorized", 401);
-    }
-
     const contentType = request.headers.get("content-type");
     if (!contentType?.includes("application/json")) {
       return apiError("unsupportedMediaType", 415);
@@ -65,6 +61,20 @@ export async function POST(request: NextRequest) {
 
     const workerId = parsed.data.workerId ?? null;
     const workerSecret = parsed.data.workerSecret ?? null;
+
+    // Per-worker auth: when a workerId is provided, validate the Bearer token
+    // against the worker's secretToken (or fall back to shared JUDGE_AUTH_TOKEN).
+    // Without a workerId, use the shared token.
+    if (workerId) {
+      const workerAuth = await isJudgeAuthorizedForWorker(request, workerId);
+      if (!workerAuth.authorized) {
+        return apiError(workerAuth.error ?? "unauthorized", 401);
+      }
+    } else {
+      if (!isJudgeAuthorized(request)) {
+        return apiError("unauthorized", 401);
+      }
+    }
 
     // Validate that the worker exists and is online before attempting an
     // atomic capacity-gated claim below.
@@ -82,14 +92,14 @@ export async function POST(request: NextRequest) {
         return apiError("workerNotFound", 403);
       }
 
-      if (!worker.secretToken) {
-        return apiError("workerSecretNotConfigured", 403);
-      }
-
-      const provided = Buffer.from(workerSecret ?? "");
-      const expected = Buffer.from(worker.secretToken);
-      if (provided.length !== expected.length || !timingSafeEqual(provided, expected)) {
-        return apiError("invalidWorkerSecret", 403);
+      // Defense-in-depth: also validate the workerSecret from the request body
+      // against the worker's stored secretToken.
+      if (worker.secretToken && workerSecret) {
+        const provided = Buffer.from(workerSecret);
+        const expected = Buffer.from(worker.secretToken);
+        if (provided.length !== expected.length || !timingSafeEqual(provided, expected)) {
+          return apiError("invalidWorkerSecret", 403);
+        }
       }
     }
 
