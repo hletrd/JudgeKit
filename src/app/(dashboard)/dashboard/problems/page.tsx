@@ -410,6 +410,11 @@ export default async function ProblemsPage({
   const rangeStart = totalCount === 0 ? 0 : offset + 1;
   const rangeEnd = offset + filteredProblems.length;
 
+  // Quick stats: count solved/attempted/untried across all visible problems
+  const solvedCount = filteredProblems.filter((p) => p.progress === "solved").length;
+  const attemptedCount = filteredProblems.filter((p) => p.progress === "attempted").length;
+  const untriedCount = filteredProblems.filter((p) => p.progress === "untried").length;
+
   const progressLabels = {
     solved: t("progress.solved"),
     attempted: t("progress.attempted"),
@@ -481,6 +486,31 @@ export default async function ProblemsPage({
             </Link>
           </div>
         )}
+      </div>
+
+      {/* Quick stats summary */}
+      <div className="mb-4 grid gap-3 sm:grid-cols-3">
+        <div className="rounded-lg border bg-emerald-50/50 p-3 dark:bg-emerald-950/20">
+          <div className="flex items-center gap-2 text-xs text-muted-foreground">
+            <CheckCircle2 className="size-3.5 text-emerald-600" />
+            {progressLabels.solved}
+          </div>
+          <div className="text-lg font-semibold">{solvedCount}</div>
+        </div>
+        <div className="rounded-lg border bg-amber-50/50 p-3 dark:bg-amber-950/20">
+          <div className="flex items-center gap-2 text-xs text-muted-foreground">
+            <XCircle className="size-3.5 text-amber-600" />
+            {progressLabels.attempted}
+          </div>
+          <div className="text-lg font-semibold">{attemptedCount}</div>
+        </div>
+        <div className="rounded-lg border bg-muted/30 p-3">
+          <div className="flex items-center gap-2 text-xs text-muted-foreground">
+            <CircleDashed className="size-3.5" />
+            {progressLabels.untried}
+          </div>
+          <div className="text-lg font-semibold">{untriedCount}</div>
+        </div>
       </div>
 
       {/* Search & Filter card - matching admin users style */}
