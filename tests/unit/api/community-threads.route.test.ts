@@ -5,10 +5,12 @@ const {
   getApiUserMock,
   consumeApiRateLimitMock,
   recordAuditEventMock,
+  resolveCapabilitiesMock,
 } = vi.hoisted(() => ({
   getApiUserMock: vi.fn(),
   consumeApiRateLimitMock: vi.fn(),
   recordAuditEventMock: vi.fn(),
+  resolveCapabilitiesMock: vi.fn(),
 }));
 
 vi.mock("@/lib/api/auth", () => ({
@@ -53,6 +55,11 @@ vi.mock("@/lib/auth/permissions", () => ({
   canAccessProblem: vi.fn(async () => true),
 }));
 
+vi.mock("@/lib/capabilities", () => ({
+  resolveCapabilities: resolveCapabilitiesMock,
+  hasCapability: (caps: Set<string>, capability: string) => caps.has(capability),
+}));
+
 vi.mock("@/lib/security/sanitize-html", () => ({
   sanitizeMarkdown: vi.fn((s: string) => s),
 }));
@@ -65,6 +72,9 @@ describe("POST /api/v1/community/threads", () => {
   beforeEach(() => {
     vi.clearAllMocks();
     consumeApiRateLimitMock.mockResolvedValue(null);
+    resolveCapabilitiesMock.mockImplementation((role: string) =>
+      Promise.resolve(new Set(role === "instructor" ? ["community.moderate"] : []))
+    );
     getApiUserMock.mockResolvedValue({
       id: "user-1",
       role: "student",

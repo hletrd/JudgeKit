@@ -5,7 +5,10 @@ const bulkUserItemSchema = z.object({
   name: z.string().min(1).max(100).trim(),
   password: z.string().min(8).max(128).trim(),
   email: z.string().email().optional().or(z.literal("")),
-  role: z.string().min(1).max(100).trim().default("student"),
+  role: z.preprocess(
+    (value) => (typeof value === "string" ? value.trim() : value),
+    z.string().min(1).max(100)
+  ).default("student"),
   className: z.string().max(50).trim().optional().or(z.literal("")),
 });
 

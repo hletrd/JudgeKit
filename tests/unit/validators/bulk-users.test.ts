@@ -151,9 +151,16 @@ describe("bulkUserCreateSchema", () => {
     expect(result.success).toBe(true);
   });
 
-  it("rejects invalid role values", () => {
+  it("accepts custom role values for runtime-managed roles", () => {
     const result = bulkUserCreateSchema.safeParse({
-      users: [{ ...validUser, role: "admin" }],
+      users: [{ ...validUser, role: "custom_reviewer" }],
+    });
+    expect(result.success).toBe(true);
+  });
+
+  it("rejects empty role values after trimming", () => {
+    const result = bulkUserCreateSchema.safeParse({
+      users: [{ ...validUser, role: "   " }],
     });
     expect(result.success).toBe(false);
   });
