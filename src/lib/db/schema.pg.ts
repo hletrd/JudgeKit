@@ -799,23 +799,29 @@ export const plugins = pgTable("plugins", {
     .$defaultFn(() => new Date(Date.now())),
 });
 
-export const chatMessages = pgTable("chat_messages", {
-  id: text("id")
-    .primaryKey()
-    .$defaultFn(() => nanoid()),
-  userId: text("user_id").references(() => users.id, { onDelete: "cascade" }),
-  sessionId: text("session_id").notNull(),
-  role: text("role").notNull(), // "user" | "assistant" | "system"
-  content: text("content").notNull(),
-  /** Tracks whether the assistant response completed fully or was interrupted. */
-  completionStatus: text("completion_status"), // "complete" | "partial" | "error" — null for user messages
-  problemId: text("problem_id"),
-  model: text("model"),
-  provider: text("provider"),
-  createdAt: timestamp("created_at", { withTimezone: true })
-    .notNull()
-    .$defaultFn(() => new Date(Date.now())),
-});
+export const chatMessages = pgTable(
+  "chat_messages",
+  {
+    id: text("id")
+      .primaryKey()
+      .$defaultFn(() => nanoid()),
+    userId: text("user_id").references(() => users.id, { onDelete: "cascade" }),
+    sessionId: text("session_id").notNull(),
+    role: text("role").notNull(), // "user" | "assistant" | "system"
+    content: text("content").notNull(),
+    /** Tracks whether the assistant response completed fully or was interrupted. */
+    completionStatus: text("completion_status"), // "complete" | "partial" | "error" — null for user messages
+    problemId: text("problem_id"),
+    model: text("model"),
+    provider: text("provider"),
+    createdAt: timestamp("created_at", { withTimezone: true })
+      .notNull()
+      .$defaultFn(() => new Date(Date.now())),
+  },
+  (table) => [
+    index("chat_messages_session_id_idx").on(table.sessionId),
+  ]
+);
 
 export const discussionThreads = pgTable(
   "discussion_threads",

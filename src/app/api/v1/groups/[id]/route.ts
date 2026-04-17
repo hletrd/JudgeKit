@@ -14,17 +14,6 @@ import { createApiHandler, notFound, forbidden } from "@/lib/api/handler";
 export const GET = createApiHandler({
   handler: async (_req: NextRequest, { user, params }) => {
     const { id } = params;
-    const existingGroup = await db.query.groups.findFirst({
-      where: eq(groups.id, id),
-      columns: { id: true },
-    });
-
-    if (!existingGroup) return notFound("Group");
-
-    const hasAccess = await canAccessGroup(id, user.id, user.role);
-
-    if (!hasAccess) return forbidden();
-
     const group = await db.query.groups.findFirst({
       where: eq(groups.id, id),
       columns: {
@@ -57,6 +46,10 @@ export const GET = createApiHandler({
     });
 
     if (!group) return notFound("Group");
+
+    const hasAccess = await canAccessGroup(id, user.id, user.role);
+
+    if (!hasAccess) return forbidden();
 
     // Get total member count for pagination
     const memberCountResult = await db
