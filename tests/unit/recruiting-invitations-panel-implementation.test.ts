@@ -7,12 +7,12 @@ function read(relativePath: string) {
 }
 
 describe("recruiting invitations panel implementation", () => {
-  it("lets admins reset a redeemed candidate account password and reveal the fresh value once", () => {
+  it("lets admins invalidate a redeemed candidate password without revealing a new secret", () => {
     const source = read("src/components/contest/recruiting-invitations-panel.tsx");
 
     expect(source).toContain('handleResetAccountPassword(invitation: Invitation)');
     expect(source).toContain('JSON.stringify({ resetAccountPassword: true })');
-    expect(source).toContain('setRevealedTemporaryPassword({ candidateName: invitation.candidateName, password });');
+    expect(source).not.toContain("temporaryPassword");
     expect(source).toContain('title={t("resetAccountPassword")}');
     expect(source).toContain('t("resetAccountPasswordConfirmTitle")');
   });

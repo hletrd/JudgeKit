@@ -30,6 +30,7 @@ vi.mock("next-intl/server", () => ({
       claimed: "Assessment already claimed",
       claimedDescription: "This invitation has already been used. Continue from your existing assessment session on this device, or sign in with your recruiting email and account password.",
       accountPasswordLoginNotice: "After your first start, you can sign in later with your recruiting email and account password through the normal login page.",
+      accountPasswordResetRequiredNotice: "Your previous recruiting password was invalidated. Choose a new account password below to continue this assessment.",
       goToLogin: "Go to login",
     };
 
@@ -77,16 +78,15 @@ describe("RecruitPage", () => {
     expect(screen.getByTestId("recruit-start-form")).toHaveAttribute("data-requires-account-password", "true");
   });
 
-  it("requires standard login when the invite was already claimed on another session", async () => {
+  it("keeps claimed invites on the original link with password-based re-entry", async () => {
     getRecruitingInvitationByTokenMock.mockResolvedValue({ id: "invite-2", status: "redeemed", assignmentId: "assignment-2", candidateName: "Candidate Two", candidateEmail: "candidate@example.com", expiresAt: null, userId: "user-2", metadata: {} });
     mockSelectQueue([{ id: "assignment-2", title: "Recruiting Assignment", description: "Assessment details", examDurationMinutes: 90, deadline: null }],[{ count: 2 }]);
 
     render(await RecruitPage({ params: Promise.resolve({ token: "invite-token" }) }));
 
-    expect(screen.getByText("Assessment already claimed")).toBeInTheDocument();
-    expect(screen.getByText(/sign in with your recruiting email and account password/i)).toBeInTheDocument();
-    expect(screen.getByRole("link", { name: "Go to login" })).toHaveAttribute("href", "/login?callbackUrl=%2Fdashboard%2Fcontests%2Fassignment-2");
-    expect(screen.queryByTestId("recruit-start-form")).not.toBeInTheDocument();
+    expect(screen.getByText("Welcome, Candidate Two")).toBeInTheDocument();
+    expect(screen.getByText(/sign in later with your recruiting email and account password/i)).toBeInTheDocument();
+    expect(screen.getByTestId("recruit-start-form")).toHaveAttribute("data-reentry", "true");
   });
 
   it("lets the claimed candidate continue with their current session", async () => {
@@ -98,5 +98,37 @@ describe("RecruitPage", () => {
 
     expect(screen.getByText("Welcome, Candidate Three")).toBeInTheDocument();
     expect(screen.getByTestId("recruit-start-form")).toHaveAttribute("data-resume", "true");
+  });
+
+  it("shows the password-reset re-entry flow when the organizer invalidated the old password", async () => {
+    getRecruitingInvitationByTokenMock.mockResolvedValue({
+      id: "invite-4",
+      status: "redeemed",
+      assignmentId: "assignment-4",
+      candidateName: "Candidate Four",
+      candidateEmail: "candidate@example.com",
+      expiresAt: null,
+      userId: "user-4",
+      metadata: { accountPasswordResetRequired: "true" },
+    });
+    mockSelectQueue(
+      [{
+        id: "assignment-4",
+        title: "Reset Assessment",
+        description: "Assessment details",
+        examDurationMinutes: 45,
+        deadline: null,
+      }],
+      [{ count: 1 }]
+    );
+
+    render(await RecruitPage({ params: Promise.resolve({ token: "invite-token" }) }));
+
+    expect(screen.getByText(/previous recruiting password was invalidated/i)).toBeInTheDocument();
+    expect(screen.getByTestId("recruit-start-form")).toHaveAttribute(
+      "data-requires-account-password",
+      "true"
+    );
+    expect(screen.queryByRole("link", { name: "Go to login" })).not.toBeInTheDocument();
   });
 });

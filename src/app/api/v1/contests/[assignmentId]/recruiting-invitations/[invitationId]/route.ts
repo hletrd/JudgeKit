@@ -65,7 +65,7 @@ export const PATCH = createApiHandler({
         return apiError("accountPasswordResetRequiresRedeemed", 400);
       }
 
-      const temporaryPassword = await resetRecruitingInvitationAccountPassword(params.invitationId);
+      await resetRecruitingInvitationAccountPassword(params.invitationId);
 
       recordAuditEvent({
         actorId: user.id,
@@ -78,7 +78,7 @@ export const PATCH = createApiHandler({
         request: req,
       });
 
-      return apiSuccess({ id: params.invitationId, temporaryPassword });
+      return apiSuccess({ id: params.invitationId, passwordResetRequired: true });
     }
 
 

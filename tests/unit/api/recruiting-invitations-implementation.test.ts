@@ -17,4 +17,23 @@ describe("recruiting invitation route capability guards", () => {
       expect(source).not.toContain("isAdmin(user.role)");
     }
   });
+
+  it("keeps password resets in self-service mode instead of returning fresh secrets to recruiters", () => {
+    const detailRoute = readFileSync(
+      join(
+        process.cwd(),
+        "src/app/api/v1/contests/[assignmentId]/recruiting-invitations/[invitationId]/route.ts"
+      ),
+      "utf8"
+    );
+    const helper = readFileSync(
+      join(process.cwd(), "src/lib/assignments/recruiting-invitations.ts"),
+      "utf8"
+    );
+
+    expect(detailRoute).toContain("passwordResetRequired: true");
+    expect(detailRoute).not.toContain("temporaryPassword");
+    expect(helper).toContain("accountPasswordResetRequired");
+    expect(helper).not.toContain("Recruit-");
+  });
 });

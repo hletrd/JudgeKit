@@ -79,7 +79,7 @@ describe("PATCH /api/v1/contests/[assignmentId]/recruiting-invitations/[invitati
   });
 
   it("resets the recruiting account password for redeemed invitations", async () => {
-    resetAccountPasswordMock.mockResolvedValue("TempPass123!");
+    resetAccountPasswordMock.mockResolvedValue(undefined);
 
     const { PATCH } = await import("@/app/api/v1/contests/[assignmentId]/recruiting-invitations/[invitationId]/route");
     const res = await PATCH(makePatchRequest({ resetAccountPassword: true }), {
@@ -88,7 +88,7 @@ describe("PATCH /api/v1/contests/[assignmentId]/recruiting-invitations/[invitati
     const body = await res.json();
 
     expect(res.status).toBe(200);
-    expect(body.data).toEqual({ id: "invite-1", temporaryPassword: "TempPass123!" });
+    expect(body.data).toEqual({ id: "invite-1", passwordResetRequired: true });
     expect(resetAccountPasswordMock).toHaveBeenCalledWith("invite-1");
     expect(recordAuditEventMock).toHaveBeenCalledWith(
       expect.objectContaining({ action: "recruiting_invitation.account_password_reset" })

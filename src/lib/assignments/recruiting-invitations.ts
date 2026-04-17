@@ -18,6 +18,8 @@ type RecruitingInvitationExecutor =
   Pick<TransactionClient, "insert" | "select" | "update" | "delete">
   | typeof db;
 
+const ACCOUNT_PASSWORD_RESET_REQUIRED_KEY = "accountPasswordResetRequired";
+
 export function generateRecruitingToken(): string {
   return randomBytes(24).toString("base64url");
 }
@@ -161,20 +163,31 @@ export async function resetRecruitingInvitationAccountPassword(id: string) {
     throw new Error("accountPasswordResetRequiresRedeemed");
   }
 
-  const temporaryPassword = `Recruit-${nanoid(16)}`;
-  const passwordHash = await hashPassword(temporaryPassword);
+  const invalidatedPasswordHash = await hashPassword(randomBytes(32).toString("hex"));
+  const nextMetadata = {
+    ...(invitation.metadata ?? {}),
+    [ACCOUNT_PASSWORD_RESET_REQUIRED_KEY]: "true",
+  };
 
-  await db
-    .update(users)
-    .set({
-      passwordHash,
-      mustChangePassword: false,
-      tokenInvalidatedAt: new Date(),
-      updatedAt: new Date(),
-    })
-    .where(eq(users.id, invitation.userId));
+  await db.transaction(async (tx) => {
+    await tx
+      .update(users)
+      .set({
+        passwordHash: invalidatedPasswordHash,
+        mustChangePassword: false,
+        tokenInvalidatedAt: new Date(),
+        updatedAt: new Date(),
+      })
+      .where(eq(users.id, invitation.userId!));
 
-  return temporaryPassword;
+    await tx
+      .update(recruitingInvitations)
+      .set({
+        metadata: nextMetadata,
+        updatedAt: new Date(),
+      })
+      .where(eq(recruitingInvitations.id, invitation.id));
+  });
 }
 
 export async function deleteRecruitingInvitation(id: string) {
@@ -244,9 +257,17 @@ export async function redeemRecruitingToken(
       // Already redeemed — verify password for re-entry
       if (invitation.status === "redeemed" && invitation.userId) {
         if (!accountPassword) return { ok: false as const, error: "accountPasswordRequired" };
+        const passwordResetRequired =
+          invitation.metadata?.[ACCOUNT_PASSWORD_RESET_REQUIRED_KEY] === "true";
 
         const [existingUser] = await tx
-          .select({ id: users.id, passwordHash: users.passwordHash, isActive: users.isActive })
+          .select({
+            id: users.id,
+            username: users.username,
+            email: users.email,
+            passwordHash: users.passwordHash,
+            isActive: users.isActive,
+          })
           .from(users)
           .where(eq(users.id, invitation.userId))
           .limit(1);
@@ -255,9 +276,41 @@ export async function redeemRecruitingToken(
           return { ok: false as const, error: "invalidToken" };
         }
 
-        const { valid } = await verifyPassword(accountPassword, existingUser.passwordHash);
-        if (!valid) {
-          return { ok: false as const, error: "accountPasswordIncorrect" };
+        if (passwordResetRequired) {
+          const passwordValidationError = getPasswordValidationError(accountPassword, {
+            username: existingUser.username,
+            email: existingUser.email ?? null,
+          });
+          if (passwordValidationError) {
+            return { ok: false as const, error: passwordValidationError };
+          }
+
+          const nextPasswordHash = await hashPassword(accountPassword);
+          await tx
+            .update(users)
+            .set({
+              passwordHash: nextPasswordHash,
+              mustChangePassword: false,
+              tokenInvalidatedAt: new Date(),
+              updatedAt: new Date(),
+            })
+            .where(eq(users.id, existingUser.id));
+
+          await tx
+            .update(recruitingInvitations)
+            .set({
+              metadata: {
+                ...(invitation.metadata ?? {}),
+                [ACCOUNT_PASSWORD_RESET_REQUIRED_KEY]: "false",
+              },
+              updatedAt: new Date(),
+            })
+            .where(eq(recruitingInvitations.id, invitation.id));
+        } else {
+          const { valid } = await verifyPassword(accountPassword, existingUser.passwordHash);
+          if (!valid) {
+            return { ok: false as const, error: "accountPasswordIncorrect" };
+          }
         }
 
         // Verify assignment still exists and isn't closed

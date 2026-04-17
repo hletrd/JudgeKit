@@ -97,6 +97,8 @@ export default async function RecruitPage({
   }
 
   const isRedeemed = invitation.status === "redeemed" && invitation.userId;
+  const accountPasswordResetRequired =
+    invitation.metadata?.accountPasswordResetRequired === "true";
   const resumeWithCurrentSession = Boolean(
     isRedeemed &&
     invitation.userId &&
@@ -126,7 +128,7 @@ export default async function RecruitPage({
     );
   }
 
-  if (isRedeemed && !resumeWithCurrentSession) {
+  if (isRedeemed && !resumeWithCurrentSession && !accountPasswordResetRequired) {
     // Show re-entry form with password — link stays valid for returning users
     return (
       <Card className="w-full max-w-lg">
@@ -184,15 +186,20 @@ export default async function RecruitPage({
         </CardDescription>
       </CardHeader>
       <CardContent className="space-y-4">
-        <div className="space-y-3">
-          <p className="font-semibold text-foreground text-lg text-center">{assignment.title}</p>
-          {assignment.description && (
-            <p className="text-sm text-muted-foreground">{assignment.description}</p>
-          )}
-          <div className="rounded-lg bg-muted/50 p-3 space-y-1.5 text-sm">
-            {problemCount > 0 && (
-              <p>{t("problemCount", { count: problemCount })}</p>
+          <div className="space-y-3">
+            <p className="font-semibold text-foreground text-lg text-center">{assignment.title}</p>
+            {assignment.description && (
+              <p className="text-sm text-muted-foreground">{assignment.description}</p>
             )}
+            {accountPasswordResetRequired && (
+              <div className="rounded-lg border border-amber-200 bg-amber-50 dark:border-amber-800 dark:bg-amber-950/30 p-3 text-sm text-amber-800 dark:text-amber-200">
+                {t("accountPasswordResetRequiredNotice")}
+              </div>
+            )}
+            <div className="rounded-lg bg-muted/50 p-3 space-y-1.5 text-sm">
+              {problemCount > 0 && (
+                <p>{t("problemCount", { count: problemCount })}</p>
+              )}
             {assignment.examDurationMinutes && (
               <p>{t("durationDetail", { minutes: assignment.examDurationMinutes })}</p>
             )}
@@ -222,28 +229,13 @@ export default async function RecruitPage({
             </div>
           )}
         </div>
-        {isRedeemed && !resumeWithCurrentSession ? (
-          <div className="space-y-3">
-            <div className="rounded-lg border border-sky-200 bg-sky-50 dark:border-sky-900 dark:bg-sky-950/30 p-3 text-sm text-sky-800 dark:text-sky-200 space-y-1">
-              <p>{t("claimedDescription")}</p>
-              <p>{t("accountPasswordLoginNotice")}</p>
-            </div>
-            <a
-              href={`/login?callbackUrl=${encodeURIComponent(`/dashboard/contests/${assignment.id}`)}`}
-              className="inline-flex w-full items-center justify-center rounded-lg bg-primary px-4 py-2 text-sm font-medium text-primary-foreground"
-            >
-              {t("goToLogin")}
-            </a>
-          </div>
-        ) : (
-          <RecruitStartForm
-            token={token}
-            assignmentId={assignment.id}
-            isReentry={!!isRedeemed}
-            resumeWithCurrentSession={resumeWithCurrentSession}
-            requiresAccountPassword
-          />
-        )}
+        <RecruitStartForm
+          token={token}
+          assignmentId={assignment.id}
+          isReentry={!!isRedeemed}
+          resumeWithCurrentSession={resumeWithCurrentSession}
+          requiresAccountPassword
+        />
       </CardContent>
     </Card>
   );

@@ -75,7 +75,6 @@ export function RecruitingInvitationsPanel({ assignmentId }: { assignmentId: str
   const [search, setSearch] = useState("");
   const [statusFilter, setStatusFilter] = useState("all");
   const [copiedId, setCopiedId] = useState<string | null>(null);
-  const [revealedTemporaryPassword, setRevealedTemporaryPassword] = useState<{ candidateName: string; password: string } | null>(null);
 
   // Create dialog state
   const [createOpen, setCreateOpen] = useState(false);
@@ -219,20 +218,7 @@ export function RecruitingInvitationsPanel({ assignmentId }: { assignmentId: str
       return;
     }
 
-    const json = await res.json();
-    const password = json.data?.temporaryPassword as string | undefined;
-    if (!password) {
-      toast.error(t("accountPasswordResetError"));
-      return;
-    }
-
-    setRevealedTemporaryPassword({ candidateName: invitation.candidateName, password });
-    try {
-      await navigator.clipboard.writeText(password);
-      toast.success(t("accountPasswordResetSuccess"));
-    } catch {
-      toast.success(t("accountPasswordResetSuccess"));
-    }
+    toast.success(t("accountPasswordResetSuccess"));
   }
 
 
@@ -447,30 +433,6 @@ export function RecruitingInvitationsPanel({ assignmentId }: { assignmentId: str
           </Dialog>
         </div>
       </div>
-
-      {revealedTemporaryPassword && (
-        <div className="rounded-lg border border-dashed px-4 py-3 text-sm">
-          <div className="flex flex-wrap items-center justify-between gap-3">
-            <div>
-              <p className="font-medium">{t("accountPasswordRevealTitle", { name: revealedTemporaryPassword.candidateName })}</p>
-              <p className="mt-1 font-mono text-xs sm:text-sm">{revealedTemporaryPassword.password}</p>
-              <p className="mt-1 text-xs text-muted-foreground">{t("accountPasswordRevealHint")}</p>
-            </div>
-            <Button
-              variant="outline"
-              size="sm"
-              onClick={async () => {
-                await navigator.clipboard.writeText(revealedTemporaryPassword.password);
-                toast.success(t("accountPasswordCopied"));
-              }}
-            >
-              <Copy className="mr-2 h-4 w-4" />
-              {t("copyAccountPassword")}
-            </Button>
-          </div>
-        </div>
-      )}
-
       {/* Table */}
       {loading ? (
         <p className="text-sm text-muted-foreground">Loading...</p>
