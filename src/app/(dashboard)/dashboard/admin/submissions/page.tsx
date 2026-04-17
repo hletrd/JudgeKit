@@ -12,7 +12,7 @@ import {
 import { SubmissionStatusBadge } from "@/components/submission-status-badge";
 import { db } from "@/lib/db";
 import { submissions, users, problems } from "@/lib/db/schema";
-import { count, desc, eq, like, or, asc } from "drizzle-orm";
+import { and, asc, count, desc, eq, like, or } from "drizzle-orm";
 import { auth } from "@/lib/auth";
 import { resolveCapabilities } from "@/lib/capabilities/cache";
 import { redirect } from "next/navigation";
@@ -29,6 +29,7 @@ import { getLanguageDisplayLabel } from "@/lib/judge/languages";
 import { EmptyState } from "@/components/empty-state";
 import { formatScore } from "@/lib/formatting";
 import { InboxIcon } from "lucide-react";
+import { FilterSelect } from "@/components/filter-select";
 
 export async function generateMetadata(): Promise<Metadata> {
   const t = await getTranslations("admin.submissions");
@@ -36,11 +37,25 @@ export async function generateMetadata(): Promise<Metadata> {
 }
 
 const PAGE_SIZE = 50;
+const STATUS_FILTER_VALUES = [
+  "all",
+  "pending",
+  "queued",
+  "judging",
+  "accepted",
+  "wrong_answer",
+  "time_limit",
+  "memory_limit",
+  "runtime_error",
+  "compile_error",
+] as const;
+
+type StatusFilter = (typeof STATUS_FILTER_VALUES)[number];
 
 export default async function AdminSubmissionsPage({
   searchParams,
 }: {
-  searchParams?: Promise<{ page?: string; search?: string; sort?: string; dir?: string }>;
+  searchParams?: Promise<{ page?: string; search?: string; sort?: string; dir?: string; status?: string }>;
 }) {
   const session = await auth();
   if (!session?.user) redirect("/login");
@@ -50,6 +65,9 @@ export default async function AdminSubmissionsPage({
   const resolvedSearchParams = searchParams ? await searchParams : undefined;
   const currentPage = Math.max(1, Number(resolvedSearchParams?.page ?? "1") || 1);
   const searchQuery = (resolvedSearchParams?.search ?? "").trim().slice(0, 200);
+  const statusFilter = STATUS_FILTER_VALUES.includes((resolvedSearchParams?.status ?? "all") as StatusFilter)
+    ? ((resolvedSearchParams?.status ?? "all") as StatusFilter)
+    : "all";
   const sortColumn = resolvedSearchParams?.sort ?? "submittedAt";
   const sortDir = resolvedSearchParams?.dir === "asc" ? "asc" : "desc";
   const validSortColumns = new Set(["submittedAt", "score", "status", "language"]);
@@ -71,13 +89,17 @@ export default async function AdminSubmissionsPage({
         like(problems.title, `%${escapeLike(searchQuery)}%`)
       )
     : undefined;
+  const whereClause = and(
+    statusFilter !== "all" ? eq(submissions.status, statusFilter) : undefined,
+    searchWhereClause
+  );
 
   const [countRow] = await db
     .select({ count: count() })
     .from(submissions)
     .leftJoin(users, eq(submissions.userId, users.id))
     .leftJoin(problems, eq(submissions.problemId, problems.id))
-    .where(searchWhereClause);
+    .where(whereClause);
   const totalCount = Number(countRow?.count ?? 0);
   const totalPages = Math.max(1, Math.ceil(totalCount / PAGE_SIZE));
   const clampedPage = Math.min(currentPage, totalPages);
@@ -105,7 +127,7 @@ export default async function AdminSubmissionsPage({
     .from(submissions)
     .leftJoin(users, eq(submissions.userId, users.id))
     .leftJoin(problems, eq(submissions.problemId, problems.id))
-    .where(searchWhereClause)
+    .where(whereClause)
     .orderBy(
       ...(effectiveSort === "score"
         ? [sortDir === "asc" ? asc(submissions.score) : desc(submissions.score)]
@@ -129,6 +151,7 @@ export default async function AdminSubmissionsPage({
     const params = new URLSearchParams();
     if (page > 1) params.set("page", String(page));
     if (searchQuery) params.set("search", searchQuery);
+    if (statusFilter !== "all") params.set("status", statusFilter);
     if (effectiveSort !== "submittedAt") params.set("sort", effectiveSort);
     if (sortDir === "asc") params.set("dir", "asc");
     const qs = params.toString();
@@ -138,6 +161,7 @@ export default async function AdminSubmissionsPage({
   function getSortHref(column: string) {
     const params = new URLSearchParams();
     if (searchQuery) params.set("search", searchQuery);
+    if (statusFilter !== "all") params.set("status", statusFilter);
     if (column === effectiveSort) {
       params.set("dir", sortDir === "desc" ? "asc" : "desc");
     } else {
@@ -179,6 +203,23 @@ export default async function AdminSubmissionsPage({
                 type="search"
                 defaultValue={searchQuery}
                 placeholder={t("searchPlaceholder")}
+              />
+            </div>
+            <div className="space-y-1.5">
+              <label className="block text-sm font-medium" htmlFor="submissions-status">
+                {tSubmissions("statusLabel")}
+              </label>
+              <FilterSelect
+                name="status"
+                defaultValue={statusFilter}
+                placeholder={tSubmissions("statusFilter.all")}
+                options={STATUS_FILTER_VALUES.map((value) => ({
+                  value,
+                  label:
+                    value === "all"
+                      ? tSubmissions("statusFilter.all")
+                      : statusLabels[value as keyof typeof statusLabels] ?? value,
+                }))}
               />
             </div>
             <div className="flex gap-2 items-end">

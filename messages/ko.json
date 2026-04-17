@@ -608,6 +608,7 @@
     "timeValue": "{value} ms",
     "memory": "메모리",
     "memoryValue": "{value} KB",
+    "statusLabel": "상태",
     "submitted": "제출",
     "user": "사용자",
     "status": {

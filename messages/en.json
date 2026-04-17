@@ -608,6 +608,7 @@
     "timeValue": "{value} ms",
     "memory": "Memory",
     "memoryValue": "{value} KB",
+    "statusLabel": "Status",
     "submitted": "Submitted",
     "user": "User",
     "status": {
