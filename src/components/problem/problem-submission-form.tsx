@@ -14,7 +14,7 @@ import { DEFAULT_TEMPLATES, isTemplateLike } from "@/lib/judge/code-templates";
 import { useSourceDraft } from "@/hooks/use-source-draft";
 import { useUnsavedChangesGuard } from "@/hooks/use-unsaved-changes-guard";
 import { useEditorContent } from "@/contexts/editor-content-context";
-import { ChevronDown, ChevronRight, Loader2, Play, RotateCcw } from "lucide-react";
+import { ChevronDown, ChevronRight, Loader2, Play, RotateCcw, Send } from "lucide-react";
 
 type SubmissionLanguage = {
   id: string;
@@ -134,6 +134,14 @@ export function ProblemSubmissionForm({
     oomKilled: boolean;
     compileOutput: string | null;
   } | null>(null);
+  const [showFullOutput, setShowFullOutput] = useState(false);
+
+  const MAX_OUTPUT_CHARS = 2000;
+  function truncateOutput(text: string): { display: string; truncated: boolean } {
+    if (text.length <= MAX_OUTPUT_CHARS) return { display: text, truncated: false };
+    if (!showFullOutput) return { display: text.slice(0, MAX_OUTPUT_CHARS), truncated: true };
+    return { display: text, truncated: true };
+  }
 
   const translateSubmissionError = useCallback((error: unknown) => {
     if (typeof error !== "string") {
@@ -354,6 +362,7 @@ export function ProblemSubmissionForm({
           {isRunning ? t("running") : t("run")}
         </Button>
         <Button type="submit" className="flex-1" disabled={isSubmitting || isRunning}>
+          {isSubmitting ? <Loader2 className="mr-2 size-4 animate-spin" /> : <Send className="mr-2 size-4" />}
           {isSubmitting ? tCommon("loading") : `${tCommon("submit")} (Ctrl+Enter)`}
         </Button>
       </div>
@@ -375,20 +384,36 @@ export function ProblemSubmissionForm({
               <pre className="mt-1 max-h-40 overflow-auto rounded bg-background p-2 text-xs whitespace-pre-wrap">{runResult.compileOutput}</pre>
             </div>
           )}
-          {!runResult.compileOutput && (
-            <>
-              <div>
-                <Label className="text-xs">{t("stdout")}</Label>
-                <pre className="mt-1 max-h-40 overflow-auto rounded bg-background p-2 text-xs whitespace-pre-wrap">{runResult.stdout || t("noOutput")}</pre>
-              </div>
-              {runResult.stderr && (
+          {!runResult.compileOutput && (() => {
+            const stdout = truncateOutput(runResult.stdout);
+            const stderr = truncateOutput(runResult.stderr);
+            const anyTruncated = stdout.truncated || stderr.truncated;
+            return (
+              <>
                 <div>
-                  <Label className="text-xs text-yellow-600 dark:text-yellow-400">{t("stderr")}</Label>
-                  <pre className="mt-1 max-h-40 overflow-auto rounded bg-background p-2 text-xs whitespace-pre-wrap">{runResult.stderr}</pre>
+                  <Label className="text-xs">{t("stdout")}</Label>
+                  <pre className="mt-1 max-h-40 overflow-auto rounded bg-background p-2 text-xs whitespace-pre-wrap">{stdout.display || t("noOutput")}</pre>
                 </div>
-              )}
-            </>
-          )}
+                {runResult.stderr && (
+                  <div>
+                    <Label className="text-xs text-yellow-600 dark:text-yellow-400">{t("stderr")}</Label>
+                    <pre className="mt-1 max-h-40 overflow-auto rounded bg-background p-2 text-xs whitespace-pre-wrap">{stderr.display}</pre>
+                  </div>
+                )}
+                {anyTruncated && (
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    size="sm"
+                    className="w-full text-xs"
+                    onClick={() => setShowFullOutput((prev) => !prev)}
+                  >
+                    {showFullOutput ? t("showLess") : t("showMore")}
+                  </Button>
+                )}
+              </>
+            );
+          })()}
         </div>
       )}
     </form>
