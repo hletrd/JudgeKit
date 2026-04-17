@@ -36,6 +36,14 @@ type AssignmentProgressSummary = {
   solvedCount: number;
 };
 
+type AssignmentProblemProgressItem = {
+  assignmentId: string;
+  problemId: string;
+  title: string;
+  sortOrder: number | null;
+  progress: "solved" | "attempted" | "untried";
+};
+
 export async function CandidateDashboard({
   userId,
   role,
@@ -70,6 +78,8 @@ export async function CandidateDashboard({
     assignmentProblemCountRows,
     assignmentAttemptedRows,
     assignmentSolvedRows,
+    assignmentProblemRows,
+    assignmentSubmissionRows,
   ] = await Promise.all([
     canViewAll
       ? db.select({ count: sql<number>`count(*)` }).from(problems).then((r) => Number(r[0]?.count ?? 0))
@@ -235,6 +245,40 @@ export async function CandidateDashboard({
           )
           .groupBy(submissions.assignmentId)
       : Promise.resolve([] as Array<{ assignmentId: string | null; count: number }>),
+    restrictToAssignmentIds
+      ? db
+          .select({
+            assignmentId: assignmentProblems.assignmentId,
+            problemId: assignmentProblems.problemId,
+            title: problems.title,
+            sortOrder: assignmentProblems.sortOrder,
+          })
+          .from(assignmentProblems)
+          .innerJoin(problems, eq(problems.id, assignmentProblems.problemId))
+          .where(inArray(assignmentProblems.assignmentId, assignmentIds))
+      : Promise.resolve(
+          [] as Array<{
+            assignmentId: string;
+            problemId: string;
+            title: string;
+            sortOrder: number | null;
+          }>
+        ),
+    restrictToAssignmentIds
+      ? db
+          .select({
+            assignmentId: submissions.assignmentId,
+            problemId: submissions.problemId,
+            status: submissions.status,
+          })
+          .from(submissions)
+          .where(
+            and(
+              eq(submissions.userId, userId),
+              inArray(submissions.assignmentId, assignmentIds)
+            )
+          )
+      : Promise.resolve([] as Array<{ assignmentId: string | null; problemId: string; status: string | null }>),
   ]);
 
   const totalAttempts = Number(submissionCountRows[0]?.count ?? 0);
@@ -262,6 +306,34 @@ export async function CandidateDashboard({
     attemptedCount: assignmentAttemptedCountMap.get(assignment.assignmentId) ?? 0,
     solvedCount: assignmentSolvedCountMap.get(assignment.assignmentId) ?? 0,
   }));
+  const submissionStatusMap = new Map<string, Set<string>>();
+  for (const row of assignmentSubmissionRows) {
+    if (!row.assignmentId) continue;
+    const key = `${row.assignmentId}:${row.problemId}`;
+    const statuses = submissionStatusMap.get(key) ?? new Set<string>();
+    if (row.status) statuses.add(row.status);
+    submissionStatusMap.set(key, statuses);
+  }
+  const assignmentProblemProgressMap = new Map<string, AssignmentProblemProgressItem[]>();
+  for (const row of assignmentProblemRows) {
+    const key = `${row.assignmentId}:${row.problemId}`;
+    const statuses = submissionStatusMap.get(key);
+    const progress: AssignmentProblemProgressItem["progress"] =
+      !statuses || statuses.size === 0
+        ? "untried"
+        : statuses.has("accepted")
+          ? "solved"
+          : "attempted";
+    const items = assignmentProblemProgressMap.get(row.assignmentId) ?? [];
+    items.push({
+      assignmentId: row.assignmentId,
+      problemId: row.problemId,
+      title: row.title,
+      sortOrder: row.sortOrder,
+      progress,
+    });
+    assignmentProblemProgressMap.set(row.assignmentId, items);
+  }
   const nextDeadline = assignmentProgress
     .map((assignment) => assignment.deadline)
     .filter((deadline): deadline is Date => Boolean(deadline && deadline.getTime() > Date.now()))
@@ -380,6 +452,33 @@ export async function CandidateDashboard({
                       {t("candidateProgressRemaining", { count: remainingCount })}
                     </Badge>
                   </div>
+                  {assignmentProblemProgressMap.get(assignment.assignmentId)?.length ? (
+                    <div className="mt-4 space-y-2">
+                      <div className="text-xs font-medium text-muted-foreground">
+                        {t("candidateProblemBreakdownTitle")}
+                      </div>
+                      <div className="grid gap-2">
+                        {assignmentProblemProgressMap
+                          .get(assignment.assignmentId)!
+                          .sort((a, b) => (a.sortOrder ?? 0) - (b.sortOrder ?? 0))
+                          .map((problem) => (
+                            <div
+                              key={problem.problemId}
+                              className="flex items-center justify-between gap-3 rounded-md border px-3 py-2"
+                            >
+                              <span className="text-sm">{problem.title}</span>
+                              <Badge variant="outline">
+                                {problem.progress === "solved"
+                                  ? t("candidateProblemSolved")
+                                  : problem.progress === "attempted"
+                                    ? t("candidateProblemAttempted")
+                                    : t("candidateProblemUntried")}
+                              </Badge>
+                            </div>
+                          ))}
+                      </div>
+                    </div>
+                  ) : null}
                 </div>
               );
             })}

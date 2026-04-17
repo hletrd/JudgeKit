@@ -24,6 +24,10 @@ vi.mock("next-intl/server", () => ({
       supportedLanguages: "Supported languages",
       supportedLanguagesDescription: "Supported languages description",
       candidateProgressTitle: "Progress snapshot",
+      candidateProblemBreakdownTitle: "Per-problem progress",
+      candidateProblemSolved: "Solved",
+      candidateProblemAttempted: "Attempted",
+      candidateProblemUntried: "Untried",
       viewChallengeProgress: "Open assessment",
       viewChallenges: "View challenges",
       viewAttempts: "View attempts",
@@ -87,6 +91,7 @@ function makeSelectChain(rows: unknown[]) {
   const chain = {
     from: vi.fn(() => chain),
     leftJoin: vi.fn(() => chain),
+    innerJoin: vi.fn(() => chain),
     where: vi.fn(() => chain),
     orderBy: vi.fn(() => chain),
     limit: vi.fn(() => chain),
@@ -147,6 +152,21 @@ describe("CandidateDashboard", () => {
       )
       .mockReturnValueOnce(
         makeSelectChain([{ assignmentId: "assign-1", count: 1 }])
+      )
+      .mockReturnValueOnce(
+        makeSelectChain([
+          { assignmentId: "assign-1", problemId: "p-1", title: "A + B", sortOrder: 0 },
+          { assignmentId: "assign-1", problemId: "p-2", title: "Prefix Sum", sortOrder: 1 },
+          { assignmentId: "assign-2", problemId: "p-3", title: "Graph Paths", sortOrder: 0 },
+          { assignmentId: "assign-2", problemId: "p-4", title: "Intervals", sortOrder: 1 },
+        ])
+      )
+      .mockReturnValueOnce(
+        makeSelectChain([
+          { assignmentId: "assign-1", problemId: "p-1", status: "accepted" },
+          { assignmentId: "assign-1", problemId: "p-2", status: "wrong_answer" },
+          { assignmentId: "assign-2", problemId: "p-3", status: "accepted" },
+        ])
       );
   });
 
@@ -166,8 +186,16 @@ describe("CandidateDashboard", () => {
     expect(screen.getByText("Solved challenges")).toBeInTheDocument();
     expect(screen.getByText("1 solved • 2 attempted • 4 total")).toBeInTheDocument();
     expect(screen.getByText("Progress snapshot")).toBeInTheDocument();
+    expect(screen.getAllByText("Per-problem progress")).toHaveLength(2);
     expect(screen.getByText("Round 1")).toBeInTheDocument();
     expect(screen.getByText("Round 2")).toBeInTheDocument();
+    expect(screen.getAllByText("A + B").length).toBeGreaterThan(0);
+    expect(screen.getByText("Prefix Sum")).toBeInTheDocument();
+    expect(screen.getByText("Graph Paths")).toBeInTheDocument();
+    expect(screen.getByText("Intervals")).toBeInTheDocument();
+    expect(screen.getAllByText("Solved").length).toBeGreaterThan(0);
+    expect(screen.getByText("Attempted")).toBeInTheDocument();
+    expect(screen.getByText("Untried")).toBeInTheDocument();
     expect(screen.getByTestId("countdown-timer")).toBeInTheDocument();
     expect(screen.getAllByText("Open assessment")).toHaveLength(2);
   });
