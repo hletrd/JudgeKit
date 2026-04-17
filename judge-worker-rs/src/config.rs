@@ -14,6 +14,7 @@ pub struct Config {
     pub auth_token: SecretString,
     pub runner_auth_token: SecretString,
     pub disable_custom_seccomp: bool,
+    pub allow_default_compile_seccomp: bool,
     pub seccomp_profile_path: PathBuf,
     /// Directory where failed result payloads are written as JSON for manual recovery.
     /// Defaults to `./dead-letter`. Configurable via `DEAD_LETTER_DIR` env var.
@@ -185,6 +186,22 @@ impl Config {
             );
         }
 
+        let allow_default_compile_seccomp = match env::var("JUDGE_ALLOW_DEFAULT_COMPILE_SECCOMP")
+        {
+            Ok(val) => {
+                let lower = val.trim().to_lowercase();
+                matches!(lower.as_str(), "1" | "true" | "yes" | "on")
+            }
+            Err(_) => false,
+        };
+
+        if allow_default_compile_seccomp {
+            tracing::warn!(
+                "JUDGE_ALLOW_DEFAULT_COMPILE_SECCOMP is enabled — compile containers will use Docker's default seccomp profile. \
+                This should be an explicit compatibility escape hatch, not the production default."
+            );
+        }
+
         let seccomp_profile_path = match std::env::var("JUDGE_SECCOMP_PROFILE") {
             Ok(path) => validate_runtime_path(&path, "JUDGE_SECCOMP_PROFILE")?,
             Err(_) => std::env::current_dir()
@@ -269,6 +286,7 @@ impl Config {
             auth_token,
             runner_auth_token,
             disable_custom_seccomp,
+            allow_default_compile_seccomp,
             seccomp_profile_path,
             dead_letter_dir,
             judge_concurrency,

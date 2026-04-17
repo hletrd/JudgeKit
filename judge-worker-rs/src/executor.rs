@@ -244,6 +244,7 @@ async fn execute_inner(client: &ApiClient, config: &Config, submission: Submissi
             &compile_opts,
             &config.seccomp_profile_path,
             config.disable_custom_seccomp,
+            config.allow_default_compile_seccomp,
         )
         .await
         {
@@ -316,6 +317,7 @@ async fn execute_inner(client: &ApiClient, config: &Config, submission: Submissi
             &run_opts,
             &config.seccomp_profile_path,
             config.disable_custom_seccomp,
+            config.allow_default_compile_seccomp,
         )
         .await
         {

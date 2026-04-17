@@ -42,6 +42,7 @@ JUDGE_DISABLE_CUSTOM_SECCOMP=0
 | `JUDGE_WORKER_HOSTNAME` | No | System hostname | Worker name shown in admin dashboard |
 | `POLL_INTERVAL` | No | `2000` | Worker poll interval in ms |
 | `JUDGE_DISABLE_CUSTOM_SECCOMP` | No | `0` | Set `1` on Docker 28+/modern kernels |
+| `JUDGE_ALLOW_DEFAULT_COMPILE_SECCOMP` | No | `0` | Set `1` only when a compile toolchain is incompatible with the repository seccomp profile |
 | `TRUSTED_DOCKER_REGISTRIES` | No | — | Comma-separated allowlist for fully qualified external judge image registries |
 | `PG_SHARED_BUFFERS` | No | `512MB` | Postgres `shared_buffers`. Set lower on small instances (e.g. `128MB` for 4GB RAM) |
 | `PG_EFFECTIVE_CACHE_SIZE` | No | `2GB` | Postgres `effective_cache_size`. Match to available RAM minus other services |
@@ -49,6 +50,7 @@ JUDGE_DISABLE_CUSTOM_SECCOMP=0
 | `PG_MAINTENANCE_WORK_MEM` | No | `128MB` | Postgres `maintenance_work_mem`. Lower on constrained hosts (e.g. `64MB`) |
 
 - Set `JUDGE_DISABLE_CUSTOM_SECCOMP=1` on hosts where Docker 28+/modern kernels reject the repository seccomp profile
+- Set `JUDGE_ALLOW_DEFAULT_COMPILE_SECCOMP=1` only as an explicit compatibility escape hatch when a compile toolchain cannot run under the repository seccomp profile
 
 ## Initial Provisioning
 

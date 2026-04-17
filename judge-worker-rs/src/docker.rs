@@ -215,11 +215,16 @@ fn resolve_seccomp_profile<'a>(
     phase: Phase,
     seccomp_profile_path: &'a Path,
     disable_custom_seccomp: bool,
+    allow_default_compile_seccomp: bool,
 ) -> Result<Option<&'a Path>, JudgeEnvironmentError> {
-    // Compile containers stay on Docker's default seccomp profile because some
-    // toolchains (for example .NET/MSBuild) trip over the custom sandbox while
-    // still being constrained by the rest of the compile-phase isolation.
-    if disable_custom_seccomp || phase == Phase::Compile {
+    // Compile containers now use the custom seccomp profile by default.
+    // If a toolchain genuinely requires Docker's default compile seccomp,
+    // operators must opt in explicitly with JUDGE_ALLOW_DEFAULT_COMPILE_SECCOMP.
+    if disable_custom_seccomp {
+        return Ok(None);
+    }
+
+    if phase == Phase::Compile && allow_default_compile_seccomp {
         return Ok(None);
     }
 
@@ -398,11 +403,13 @@ pub async fn run_docker(
     options: &DockerRunOptions,
     seccomp_profile_path: &Path,
     disable_custom_seccomp: bool,
+    allow_default_compile_seccomp: bool,
 ) -> Result<DockerRunResult, JudgeEnvironmentError> {
     let seccomp_profile = resolve_seccomp_profile(
         options.phase,
         seccomp_profile_path,
         disable_custom_seccomp,
+        allow_default_compile_seccomp,
     )?;
 
     let result = run_docker_once(options, seccomp_profile)
@@ -430,10 +437,19 @@ mod tests {
     use tempfile::NamedTempFile;
 
     #[test]
-    fn compile_phase_uses_default_seccomp_even_when_custom_profile_exists() {
+    fn compile_phase_uses_custom_seccomp_by_default() {
         let profile = NamedTempFile::new().expect("temp seccomp profile");
-        let resolved = resolve_seccomp_profile(Phase::Compile, profile.path(), false)
-            .expect("compile phase should not require custom seccomp");
+        let resolved = resolve_seccomp_profile(Phase::Compile, profile.path(), false, false)
+            .expect("compile phase should accept the custom seccomp profile by default");
+
+        assert_eq!(resolved, Some(profile.path()));
+    }
+
+    #[test]
+    fn compile_phase_can_opt_out_to_default_seccomp() {
+        let profile = NamedTempFile::new().expect("temp seccomp profile");
+        let resolved = resolve_seccomp_profile(Phase::Compile, profile.path(), false, true)
+            .expect("compile phase should allow explicit default-seccomp opt-out");
 
         assert!(resolved.is_none());
     }
@@ -441,7 +457,7 @@ mod tests {
     #[test]
     fn run_phase_requires_existing_profile_when_custom_seccomp_is_enabled() {
         let missing = PathBuf::from("/tmp/nonexistent-seccomp-profile.json");
-        let result = resolve_seccomp_profile(Phase::Run, &missing, false);
+        let result = resolve_seccomp_profile(Phase::Run, &missing, false, false);
 
         assert!(matches!(result, Err(JudgeEnvironmentError(message)) if message.contains("Seccomp profile not found")));
     }
@@ -449,7 +465,7 @@ mod tests {
     #[test]
     fn run_phase_uses_profile_when_available() {
         let profile = NamedTempFile::new().expect("temp seccomp profile");
-        let resolved = resolve_seccomp_profile(Phase::Run, profile.path(), false)
+        let resolved = resolve_seccomp_profile(Phase::Run, profile.path(), false, false)
             .expect("run phase should accept an existing seccomp profile");
 
         assert_eq!(resolved, Some(profile.path()));
@@ -458,7 +474,7 @@ mod tests {
     #[test]
     fn disabled_custom_seccomp_skips_profile_for_run_phase() {
         let missing = PathBuf::from("/tmp/nonexistent-seccomp-profile.json");
-        let resolved = resolve_seccomp_profile(Phase::Run, &missing, true)
+        let resolved = resolve_seccomp_profile(Phase::Run, &missing, true, false)
             .expect("disabled seccomp should skip profile lookup");
 
         assert!(resolved.is_none());

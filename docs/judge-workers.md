@@ -58,6 +58,7 @@ Workers poll `/api/v1/judge/claim` to claim submissions. The claim request inclu
 | `JUDGE_BASE_URL` | `http://localhost:3000/api/v1` | App server API URL |
 | `JUDGE_AUTH_TOKEN` | (required) | Bearer token for judge API auth |
 | `RUNNER_AUTH_TOKEN` | Falls back to `JUDGE_AUTH_TOKEN` | Bearer token for runner/docker-admin endpoints |
+| `JUDGE_ALLOW_DEFAULT_COMPILE_SECCOMP` | `false` | Explicitly let compile containers fall back to Docker's default seccomp profile |
 | `JUDGE_CONCURRENCY` | `1` | Max concurrent submissions (1-16) |
 | `JUDGE_WORKER_HOSTNAME` | System hostname | Hostname reported to app server |
 | `POLL_INTERVAL` | `2000` | Polling interval in ms |
@@ -111,6 +112,8 @@ path instead of running a co-located judge worker.
 Outside containerized deployments, the Rust runner now defaults to `127.0.0.1` unless `RUNNER_HOST` is set explicitly. The Docker compose files still set `RUNNER_HOST=0.0.0.0` where container port publishing is required.
 
 > **Recommended:** set `RUNNER_AUTH_TOKEN` separately from `JUDGE_AUTH_TOKEN` in production so a leaked judge polling token does not automatically authorize the runner's Docker-management endpoints. The worker still falls back to `JUDGE_AUTH_TOKEN` for backward compatibility when `RUNNER_AUTH_TOKEN` is unset.
+
+> **Compile seccomp:** compile containers now use the repository seccomp profile by default too. If a specific toolchain is incompatible with that profile, set `JUDGE_ALLOW_DEFAULT_COMPILE_SECCOMP=1` explicitly as a compatibility escape hatch instead of relying on the weaker default implicitly.
 
 > **Important:** this horizontal scaling guidance applies to **judge workers**.
 > The main Next.js app now supports two realtime modes for the routes that need

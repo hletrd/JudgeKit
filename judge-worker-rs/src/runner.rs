@@ -708,6 +708,7 @@ async fn execute_run(config: &Config, req: &RunRequest) -> Result<RunResponse, S
             &compile_opts,
             &config.seccomp_profile_path,
             config.disable_custom_seccomp,
+            config.allow_default_compile_seccomp,
         )
         .await
         .map_err(|e| format!("Docker error during compilation: {e}"))?;
@@ -782,6 +783,7 @@ async fn execute_run(config: &Config, req: &RunRequest) -> Result<RunResponse, S
         &run_opts,
         &config.seccomp_profile_path,
         config.disable_custom_seccomp,
+        config.allow_default_compile_seccomp,
     )
     .await
     .map_err(|e| format!("Docker error during execution: {e}"))?;
