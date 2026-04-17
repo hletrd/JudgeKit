@@ -8,7 +8,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
-import { UserPlus, Check } from "lucide-react";
+import { UserPlus, Check, Loader2 } from "lucide-react";
 
 interface InviteParticipantsProps {
   assignmentId: string;
@@ -100,6 +100,12 @@ export function InviteParticipants({ assignmentId }: InviteParticipantsProps) {
           onChange={(e) => setQuery(e.target.value)}
           placeholder={t("searchPlaceholder")}
         />
+        {isSearching && (
+          <div className="flex items-center justify-center gap-2 py-4 text-sm text-muted-foreground">
+            <Loader2 className="size-4 animate-spin" aria-hidden="true" />
+            {t("searching")}
+          </div>
+        )}
         {results.length > 0 && (
           <div className="max-h-60 overflow-y-auto rounded-md border divide-y">
             {results.map((user) => {

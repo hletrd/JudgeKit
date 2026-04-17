@@ -15,6 +15,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Badge } from "@/components/ui/badge";
 import { apiFetch } from "@/lib/api/client";
 import { toast } from "sonner";
+import { useUnsavedChangesGuard } from "@/hooks/use-unsaved-changes-guard";
 import { ProblemDescription } from "@/components/problem-description";
 import {
   createEmptyProblemTestCaseDraft,
@@ -413,6 +414,7 @@ export default function CreateProblemForm({
             id="title"
             value={title}
             onChange={(e) => setTitle(e.target.value)}
+            maxLength={200}
             required
           />
         </div>

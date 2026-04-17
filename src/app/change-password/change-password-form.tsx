@@ -4,6 +4,7 @@ import { useState, useTransition } from "react";
 import { signIn, signOut } from "next-auth/react";
 import { useRouter } from "next/navigation";
 import { useTranslations } from "next-intl";
+import { Check, X } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -14,6 +15,8 @@ export function ChangePasswordForm({ username }: { username: string }) {
   const t = useTranslations("changePassword");
   const [error, setError] = useState<string | null>(null);
   const [isPending, startTransition] = useTransition();
+  const [newPasswordValue, setNewPasswordValue] = useState("");
+  const [confirmPasswordValue, setConfirmPasswordValue] = useState("");
 
   function handleSubmit(e: React.FormEvent<HTMLFormElement>) {
     e.preventDefault();
@@ -69,6 +72,9 @@ export function ChangePasswordForm({ username }: { username: string }) {
     });
   }
 
+  const passwordsMatch = confirmPasswordValue.length > 0 && newPasswordValue === confirmPasswordValue;
+  const passwordsMismatch = confirmPasswordValue.length > 0 && newPasswordValue !== confirmPasswordValue;
+
   return (
     <form onSubmit={handleSubmit} className="space-y-4">
       <div className="space-y-2">
@@ -77,6 +83,7 @@ export function ChangePasswordForm({ username }: { username: string }) {
           id="currentPassword"
           name="currentPassword"
           type="password"
+          autoFocus
           required
         />
       </div>
@@ -88,6 +95,8 @@ export function ChangePasswordForm({ username }: { username: string }) {
           type="password"
           minLength={8}
           required
+          value={newPasswordValue}
+          onChange={(e) => setNewPasswordValue(e.target.value)}
         />
       </div>
       <div className="space-y-2">
@@ -98,7 +107,21 @@ export function ChangePasswordForm({ username }: { username: string }) {
           type="password"
           minLength={8}
           required
+          value={confirmPasswordValue}
+          onChange={(e) => setConfirmPasswordValue(e.target.value)}
         />
+        {passwordsMatch && (
+          <p className="flex items-center gap-1 text-sm text-green-600 dark:text-green-400">
+            <Check className="size-3.5" aria-hidden="true" />
+            Passwords match
+          </p>
+        )}
+        {passwordsMismatch && (
+          <p className="flex items-center gap-1 text-sm text-destructive">
+            <X className="size-3.5" aria-hidden="true" />
+            {t("passwordMismatch")}
+          </p>
+        )}
       </div>
       {error && (
         <p className="text-sm text-destructive" role="alert">{error}</p>

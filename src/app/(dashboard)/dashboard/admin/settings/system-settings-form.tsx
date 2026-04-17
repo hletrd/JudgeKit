@@ -88,6 +88,7 @@ export function SystemSettingsForm({
   const [defaultLanguage, setDefaultLanguage] = useState(initialDefaultLanguage);
   const [defaultLocale, setDefaultLocale] = useState(initialDefaultLocale);
   const [isLoading, setIsLoading] = useState(false);
+  const [timeZoneError, setTimeZoneError] = useState(false);
   const platformPolicy = useMemo(() => getPlatformModePolicy(platformMode), [platformMode]);
   const ianaTimeZones = useMemo(() => {
     try {
@@ -113,9 +114,12 @@ export function SystemSettingsForm({
     const normalizedDefaultLanguage = defaultLanguage.trim();
 
     if (normalizedTimeZone && !isValidTimeZone(normalizedTimeZone)) {
+      setTimeZoneError(true);
       toast.error(t("invalidTimeZone"));
       return;
     }
+
+    setTimeZoneError(false);
 
     setIsLoading(true);
 
@@ -198,9 +202,16 @@ export function SystemSettingsForm({
           id="time-zone"
           list="iana-timezones"
           value={timeZone}
-          onChange={(event) => setTimeZone(event.target.value)}
+          onChange={(event) => { setTimeZone(event.target.value); setTimeZoneError(false); }}
           placeholder={defaultTimeZone}
+          aria-invalid={timeZoneError || undefined}
+          aria-describedby={timeZoneError ? "time-zone-error" : undefined}
         />
+        {timeZoneError && (
+          <p id="time-zone-error" className="text-sm text-destructive" role="alert">
+            {t("invalidTimeZone")}
+          </p>
+        )}
         {ianaTimeZones.length > 0 && (
           <datalist id="iana-timezones">
             {ianaTimeZones.map((tz) => (
