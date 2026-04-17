@@ -1,12 +1,13 @@
 import type { Metadata } from "next";
 import { getTranslations } from "next-intl/server";
 import { auth } from "@/lib/auth";
-import { isInstructorOrAbove } from "@/lib/auth/role-helpers";
 import { redirect, notFound } from "next/navigation";
 import ProblemSetForm from "../_components/problem-set-form";
 import {
+  canManageProblemSetForUser,
   getAvailableGroupsForProblemSetUser,
   getAvailableProblemsForProblemSetUser,
+  getProblemSetCapabilityFlags,
   getVisibleProblemSetByIdForUser,
 } from "@/lib/problem-sets/visibility";
 
@@ -22,7 +23,9 @@ export default async function ProblemSetDetailPage({
 }) {
   const session = await auth();
   if (!session?.user) redirect("/login");
-  if (!isInstructorOrAbove(session.user.role)) redirect("/dashboard");
+
+  const caps = await getProblemSetCapabilityFlags(session.user.role);
+  if (!caps.canAccess) redirect("/dashboard");
 
   const { id } = await params;
 
@@ -30,10 +33,29 @@ export default async function ProblemSetDetailPage({
 
   if (!ps) notFound();
 
-  const [allProblems, allGroups] = await Promise.all([
+  const canManage = await canManageProblemSetForUser(
+    ps.createdBy,
+    ps.groupAccess.map((groupAccess) => groupAccess.groupId),
+    session.user.id,
+    session.user.role
+  );
+
+  const [editableProblems, allGroups] = await Promise.all([
     getAvailableProblemsForProblemSetUser(session.user.id, session.user.role),
     getAvailableGroupsForProblemSetUser(session.user.id, session.user.role),
   ]);
+
+  const availableProblems = [
+    ...new Map(
+      [
+        ...ps.problems.map((entry) => ({
+          id: entry.problemId,
+          title: entry.problem.title,
+        })),
+        ...editableProblems,
+      ].map((problem) => [problem.id, problem])
+    ).values(),
+  ];
 
   return (
     <ProblemSetForm
@@ -51,8 +73,11 @@ export default async function ProblemSetDetailPage({
           name: ga.group.name,
         })),
       }}
-      availableProblems={allProblems}
+      availableProblems={availableProblems}
       availableGroups={allGroups}
+      canEditMetadata={caps.canEdit && canManage}
+      canDelete={caps.canDelete && canManage}
+      canAssignGroups={caps.canAssignGroups && canManage}
     />
   );
 }

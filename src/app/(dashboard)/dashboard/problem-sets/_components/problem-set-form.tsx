@@ -47,17 +47,26 @@ type ProblemSetFormProps = {
   problemSet?: ProblemSetEditorValue;
   availableProblems: AvailableProblem[];
   availableGroups: AvailableGroup[];
+  canEditMetadata?: boolean;
+  canDelete?: boolean;
+  canAssignGroups?: boolean;
 };
 
 export default function ProblemSetForm({
   problemSet,
   availableProblems,
   availableGroups,
+  canEditMetadata = true,
+  canDelete,
+  canAssignGroups,
 }: ProblemSetFormProps) {
   const router = useRouter();
   const t = useTranslations("problemSets");
   const tCommon = useTranslations("common");
   const isEditing = Boolean(problemSet);
+  const canEdit = canEditMetadata;
+  const canDeleteProblemSet = canDelete ?? isEditing;
+  const canManageGroups = canAssignGroups ?? isEditing;
 
   const [isLoading, setIsLoading] = useState(false);
   const [deleteOpen, setDeleteOpen] = useState(false);
@@ -67,26 +76,33 @@ export default function ProblemSetForm({
   const [selectedProblemIds, setSelectedProblemIds] = useState<string[]>(
     problemSet?.problemIds ?? []
   );
+  const [selectedProblemToAdd, setSelectedProblemToAdd] = useState("");
   const [assignedGroups, setAssignedGroups] = useState<{ id: string; name: string }[]>(
     problemSet?.assignedGroups ?? []
   );
   const [selectedGroupToAdd, setSelectedGroupToAdd] = useState("");
 
   const problemMap = new Map(availableProblems.map((p) => [p.id, p]));
+  const groupLabelMap = new Map(
+    [...availableGroups, ...assignedGroups].map((group) => [group.id, group.name])
+  );
   const unassignedGroups = availableGroups.filter(
     (g) => !assignedGroups.some((ag) => ag.id === g.id)
   );
 
   function addProblem(problemId: string) {
+    if (!canEdit) return;
     if (!problemId || selectedProblemIds.includes(problemId)) return;
     setSelectedProblemIds((prev) => [...prev, problemId]);
   }
 
   function removeProblem(index: number) {
+    if (!canEdit) return;
     setSelectedProblemIds((prev) => prev.filter((_, i) => i !== index));
   }
 
   function moveProblem(index: number, direction: "up" | "down") {
+    if (!canEdit) return;
     setSelectedProblemIds((prev) => {
       const targetIndex = direction === "up" ? index - 1 : index + 1;
       if (targetIndex < 0 || targetIndex >= prev.length) {
@@ -100,7 +116,7 @@ export default function ProblemSetForm({
   }
 
   async function handleAssignGroup() {
-    if (!selectedGroupToAdd || !problemSet) return;
+    if (!canManageGroups || !selectedGroupToAdd || !problemSet) return;
 
     setIsLoading(true);
     try {
@@ -129,7 +145,7 @@ export default function ProblemSetForm({
   }
 
   async function handleRemoveGroup(groupId: string) {
-    if (!problemSet) return;
+    if (!canManageGroups || !problemSet) return;
 
     setIsLoading(true);
     try {
@@ -153,7 +169,7 @@ export default function ProblemSetForm({
   }
 
   async function handleDelete() {
-    if (!problemSet) return;
+    if (!canDeleteProblemSet || !problemSet) return;
 
     setIsLoading(true);
     try {
@@ -176,6 +192,7 @@ export default function ProblemSetForm({
 
   async function handleSubmit(event: React.FormEvent) {
     event.preventDefault();
+    if (!canEdit) return;
     setIsLoading(true);
 
     try {
@@ -231,7 +248,7 @@ export default function ProblemSetForm({
         <h2 className="text-2xl font-bold">
           {isEditing ? t("editTitle") : t("createTitle")}
         </h2>
-        {isEditing && (
+        {isEditing && canDeleteProblemSet && (
           <Dialog open={deleteOpen} onOpenChange={setDeleteOpen}>
             <DialogTrigger
               render={
@@ -272,7 +289,7 @@ export default function ProblemSetForm({
                 id="ps-name"
                 value={name}
                 onChange={(e) => setName(e.target.value)}
-                disabled={isLoading}
+                disabled={isLoading || !canEdit}
                 required
               />
             </div>
@@ -283,11 +300,16 @@ export default function ProblemSetForm({
                 value={description}
                 onChange={(e) => setDescription(e.target.value)}
                 className="min-h-[100px]"
-                disabled={isLoading}
+                disabled={isLoading || !canEdit}
               />
             </div>
             <div className="flex items-start gap-3 rounded-lg border p-4">
-              <Checkbox id="ps-public" checked={isPublic} onCheckedChange={setIsPublic} />
+              <Checkbox
+                id="ps-public"
+                checked={isPublic}
+                onCheckedChange={setIsPublic}
+                disabled={isLoading || !canEdit}
+              />
               <div className="space-y-1">
                 <Label htmlFor="ps-public">{t("publicLabel")}</Label>
                 <p className="text-sm text-muted-foreground">{t("publicDescription")}</p>
@@ -305,11 +327,18 @@ export default function ProblemSetForm({
             <div className="flex gap-2">
               <Select
                 key={selectedProblemIds.length}
-                onValueChange={(value) => addProblem(value as string)}
-                disabled={isLoading || availableProblems.length === 0}
+                onValueChange={(value) => {
+                  const nextValue = value as string;
+                  setSelectedProblemToAdd(nextValue);
+                  addProblem(nextValue);
+                  setSelectedProblemToAdd("");
+                }}
+                disabled={isLoading || !canEdit || availableProblems.length === 0}
               >
                 <SelectTrigger className="flex-1">
-                  <SelectValue placeholder={t("selectProblem")} />
+                  <SelectValue placeholder={t("selectProblem")}>
+                    {problemMap.get(selectedProblemToAdd)?.title || selectedProblemToAdd}
+                  </SelectValue>
                 </SelectTrigger>
                 <SelectContent>
                   {availableProblems
@@ -343,7 +372,7 @@ export default function ProblemSetForm({
                           variant="ghost"
                           size="sm"
                           onClick={() => moveProblem(index, "up")}
-                          disabled={isLoading || index === 0}
+                          disabled={isLoading || !canEdit || index === 0}
                           aria-label={t("moveProblemUp")}
                         >
                           <ArrowUp className="size-4" aria-hidden="true" />
@@ -353,7 +382,9 @@ export default function ProblemSetForm({
                           variant="ghost"
                           size="sm"
                           onClick={() => moveProblem(index, "down")}
-                          disabled={isLoading || index === selectedProblemIds.length - 1}
+                          disabled={
+                            isLoading || !canEdit || index === selectedProblemIds.length - 1
+                          }
                           aria-label={t("moveProblemDown")}
                         >
                           <ArrowDown className="size-4" aria-hidden="true" />
@@ -363,7 +394,7 @@ export default function ProblemSetForm({
                           variant="ghost"
                           size="sm"
                           onClick={() => removeProblem(index)}
-                          disabled={isLoading}
+                          disabled={isLoading || !canEdit}
                           aria-label={t("removeProblem")}
                         >
                           <Trash2 className="size-4" aria-hidden="true" />
@@ -386,9 +417,11 @@ export default function ProblemSetForm({
           >
             {tCommon("cancel")}
           </Button>
-          <Button type="submit" disabled={isLoading}>
-            {isLoading ? tCommon("loading") : isEditing ? tCommon("save") : tCommon("create")}
-          </Button>
+          {canEdit && (
+            <Button type="submit" disabled={isLoading}>
+              {isLoading ? tCommon("loading") : isEditing ? tCommon("save") : tCommon("create")}
+            </Button>
+          )}
         </div>
       </form>
 
@@ -403,10 +436,12 @@ export default function ProblemSetForm({
               <Select
                 value={selectedGroupToAdd}
                 onValueChange={(value) => setSelectedGroupToAdd((value as string) ?? "")}
-                disabled={isLoading || unassignedGroups.length === 0}
+                disabled={isLoading || !canManageGroups || unassignedGroups.length === 0}
               >
                 <SelectTrigger className="flex-1">
-                  <SelectValue placeholder={t("selectGroupsPlaceholder")}>{unassignedGroups.find((g) => g.id === selectedGroupToAdd)?.name || selectedGroupToAdd}</SelectValue>
+                  <SelectValue placeholder={t("selectGroupsPlaceholder")}>
+                    {groupLabelMap.get(selectedGroupToAdd) || selectedGroupToAdd}
+                  </SelectValue>
                 </SelectTrigger>
                 <SelectContent>
                   {unassignedGroups.map((group) => (
@@ -416,15 +451,17 @@ export default function ProblemSetForm({
                   ))}
                 </SelectContent>
               </Select>
-              <Button
-                type="button"
-                onClick={handleAssignGroup}
-                disabled={isLoading || !selectedGroupToAdd}
-                size="sm"
-              >
-                <Plus className="size-4" aria-hidden="true" />
-                {t("assignGroups")}
-              </Button>
+              {canManageGroups && (
+                <Button
+                  type="button"
+                  onClick={handleAssignGroup}
+                  disabled={isLoading || !selectedGroupToAdd}
+                  size="sm"
+                >
+                  <Plus className="size-4" aria-hidden="true" />
+                  {t("assignGroups")}
+                </Button>
+              )}
             </div>
 
             {assignedGroups.length === 0 ? (
@@ -434,15 +471,17 @@ export default function ProblemSetForm({
                 {assignedGroups.map((group) => (
                   <Badge key={group.id} variant="secondary" className="gap-1 pr-1">
                     {group.name}
-                    <button
-                      type="button"
-                      onClick={() => handleRemoveGroup(group.id)}
-                      disabled={isLoading}
-                      className="ml-1 rounded-full p-0.5 hover:bg-muted"
-                      aria-label={`${t("removeGroup")} ${group.name}`}
-                    >
-                      <X className="size-3" aria-hidden="true" />
-                    </button>
+                    {canManageGroups && (
+                      <button
+                        type="button"
+                        onClick={() => handleRemoveGroup(group.id)}
+                        disabled={isLoading}
+                        className="ml-1 rounded-full p-0.5 hover:bg-muted"
+                        aria-label={`${t("removeGroup")} ${group.name}`}
+                      >
+                        <X className="size-3" aria-hidden="true" />
+                      </button>
+                    )}
                   </Badge>
                 ))}
               </div>

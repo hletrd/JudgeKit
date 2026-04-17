@@ -49,10 +49,43 @@ export type VisibleProblemSetDetail = {
   creator: { id: string; name: string | null; username: string | null } | null;
 };
 
+const PROBLEM_SET_CAPABILITIES = [
+  "problem_sets.create",
+  "problem_sets.edit",
+  "problem_sets.delete",
+  "problem_sets.assign_groups",
+] as const;
+
+export type ProblemSetCapabilityFlags = {
+  canAccess: boolean;
+  canCreate: boolean;
+  canEdit: boolean;
+  canDelete: boolean;
+  canAssignGroups: boolean;
+};
+
 async function canViewAllProblemSets(role: string) {
   if (await isAtLeastRoleAsync(role, "admin")) return true;
   const caps = await resolveCapabilities(role);
-  return caps.has("groups.view_all") && caps.has("problem_sets.edit");
+  return caps.has("groups.view_all") && PROBLEM_SET_CAPABILITIES.some((capability) => caps.has(capability));
+}
+
+export async function getProblemSetCapabilityFlags(
+  role: string
+): Promise<ProblemSetCapabilityFlags> {
+  const caps = await resolveCapabilities(role);
+  const canCreate = caps.has("problem_sets.create");
+  const canEdit = caps.has("problem_sets.edit");
+  const canDelete = caps.has("problem_sets.delete");
+  const canAssignGroups = caps.has("problem_sets.assign_groups");
+
+  return {
+    canAccess: canCreate || canEdit || canDelete || canAssignGroups,
+    canCreate,
+    canEdit,
+    canDelete,
+    canAssignGroups,
+  };
 }
 
 export async function getManageableProblemSetGroupIds(userId: string, role: string) {
@@ -239,4 +272,44 @@ export async function getAvailableGroupsForProblemSetUser(
     where: inArray(groups.id, manageableGroupIds),
     orderBy: [asc(groups.name)],
   });
+}
+
+export async function canManageProblemSetForUser(
+  createdBy: string | null,
+  groupIds: string[],
+  userId: string,
+  role: string
+) {
+  if (await canViewAllProblemSets(role)) return true;
+  if (createdBy && createdBy === userId) return true;
+  if (groupIds.length === 0) return false;
+
+  const manageableGroupIds = new Set(await getManageableProblemSetGroupIds(userId, role));
+  return groupIds.every((groupId) => manageableGroupIds.has(groupId));
+}
+
+export async function findInaccessibleProblemIdsForProblemSetUser(
+  problemIds: string[],
+  userId: string,
+  role: string
+) {
+  if (problemIds.length === 0) return [];
+
+  const availableProblemIds = new Set(
+    (await getAvailableProblemsForProblemSetUser(userId, role)).map((problem) => problem.id)
+  );
+  return problemIds.filter((problemId) => !availableProblemIds.has(problemId));
+}
+
+export async function findInaccessibleGroupIdsForProblemSetUser(
+  groupIds: string[],
+  userId: string,
+  role: string
+) {
+  if (groupIds.length === 0) return [];
+
+  const availableGroupIds = new Set(
+    (await getAvailableGroupsForProblemSetUser(userId, role)).map((group) => group.id)
+  );
+  return groupIds.filter((groupId) => !availableGroupIds.has(groupId));
 }

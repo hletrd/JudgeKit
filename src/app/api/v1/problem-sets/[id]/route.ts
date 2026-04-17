@@ -5,7 +5,11 @@ import { db } from "@/lib/db";
 import { problemSets } from "@/lib/db/schema";
 import { recordAuditEvent } from "@/lib/audit/events";
 import { updateProblemSet, deleteProblemSet } from "@/lib/problem-sets/management";
-import { getVisibleProblemSetByIdForUser } from "@/lib/problem-sets/visibility";
+import {
+  canManageProblemSetForUser,
+  findInaccessibleProblemIdsForProblemSetUser,
+  getVisibleProblemSetByIdForUser,
+} from "@/lib/problem-sets/visibility";
 import { problemSetMutationSchema } from "@/lib/validators/problem-sets";
 import { createApiHandler, forbidden, notFound } from "@/lib/api/handler";
 
@@ -36,12 +40,22 @@ export const PATCH = createApiHandler({
     const existing = await db.query.problemSets.findFirst({
       where: eq(problemSets.id, id),
       columns: { id: true, name: true, createdBy: true },
+      with: {
+        groupAccess: {
+          columns: { groupId: true },
+        },
+      },
     });
 
     if (!existing) return notFound("ProblemSet");
-
-    // Instructors can only edit their own problem sets
-    if (user.role === "instructor" && existing.createdBy !== user.id) {
+    if (
+      !(await canManageProblemSetForUser(
+        existing.createdBy,
+        existing.groupAccess.map((groupAccess) => groupAccess.groupId),
+        user.id,
+        user.role
+      ))
+    ) {
       return forbidden();
     }
 
@@ -51,6 +65,13 @@ export const PATCH = createApiHandler({
     if (!parsed.success) {
       return apiError(parsed.error.issues[0]?.message ?? "problemSetUpdateFailed", 400);
     }
+
+    const inaccessibleProblemIds = await findInaccessibleProblemIdsForProblemSetUser(
+      parsed.data.problemIds,
+      user.id,
+      user.role
+    );
+    if (inaccessibleProblemIds.length > 0) return forbidden();
 
     await updateProblemSet(id, parsed.data);
 
@@ -102,11 +123,22 @@ export const DELETE = createApiHandler({
     const existing = await db.query.problemSets.findFirst({
       where: eq(problemSets.id, id),
       columns: { id: true, name: true, createdBy: true },
+      with: {
+        groupAccess: {
+          columns: { groupId: true },
+        },
+      },
     });
 
     if (!existing) return notFound("ProblemSet");
-
-    if (user.role === "instructor" && existing.createdBy !== user.id) {
+    if (
+      !(await canManageProblemSetForUser(
+        existing.createdBy,
+        existing.groupAccess.map((groupAccess) => groupAccess.groupId),
+        user.id,
+        user.role
+      ))
+    ) {
       return forbidden();
     }
 

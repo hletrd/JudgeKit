@@ -30,6 +30,8 @@ Close the remaining object-level authorization gaps and remove the last places w
   - bulk user creation now preserves valid custom requested roles instead of narrowing inserts to built-in student/instructor values
   - admin API-key creation UI now lists manageable custom roles instead of only hard-coded built-in admin/instructor targets
   - capability-cache bootstrap now restores the built-in assistant role even when the roles table is empty or stale
+  - problem-set dashboard pages now gate on problem-set capabilities instead of instructor-only role checks, and the edit form degrades to read-only when the actor lacks edit/delete/group-assignment permissions
+  - problem-set create/update/group-assignment routes now reject out-of-scope problem/group IDs and reuse a shared object-level management helper instead of built-in instructor ownership checks
 
 ## Workstream A — Problem-set visibility and scope isolation
 **Targets**

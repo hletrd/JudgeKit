@@ -12,6 +12,7 @@ const {
   problemSetsFindFirstMock,
   createProblemSetMock,
   listVisibleProblemSetsForUserMock,
+  findInaccessibleProblemIdsForProblemSetUserMock,
   resolveCapabilitiesMock,
   loggerErrorMock,
 } = vi.hoisted(() => ({
@@ -22,6 +23,7 @@ const {
   problemSetsFindFirstMock: vi.fn(),
   createProblemSetMock: vi.fn(),
   listVisibleProblemSetsForUserMock: vi.fn(),
+  findInaccessibleProblemIdsForProblemSetUserMock: vi.fn(),
   resolveCapabilitiesMock: vi.fn(),
   loggerErrorMock: vi.fn(),
 }));
@@ -81,6 +83,8 @@ vi.mock("@/lib/problem-sets/management", () => ({
 
 vi.mock("@/lib/problem-sets/visibility", () => ({
   listVisibleProblemSetsForUser: listVisibleProblemSetsForUserMock,
+  findInaccessibleProblemIdsForProblemSetUser:
+    findInaccessibleProblemIdsForProblemSetUserMock,
 }));
 
 vi.mock("@/lib/db", () => ({
@@ -148,6 +152,7 @@ beforeEach(() => {
   consumeApiRateLimitMock.mockReturnValue(null);
   getApiUserMock.mockResolvedValue(ADMIN_USER);
   listVisibleProblemSetsForUserMock.mockResolvedValue([PROBLEM_SET]);
+  findInaccessibleProblemIdsForProblemSetUserMock.mockResolvedValue([]);
   problemSetsFindFirstMock.mockResolvedValue(PROBLEM_SET);
   createProblemSetMock.mockReturnValue("ps-1");
   resolveCapabilitiesMock.mockImplementation((role: string) => {
@@ -297,6 +302,16 @@ describe("POST /api/v1/problem-sets", () => {
     expect(res.status).toBe(201);
     const body = await res.json();
     expect(body.data.id).toBe("ps-1");
+  });
+
+  it("returns 403 when the request includes inaccessible problems", async () => {
+    getApiUserMock.mockResolvedValue(INSTRUCTOR_USER);
+    findInaccessibleProblemIdsForProblemSetUserMock.mockResolvedValue(["p-9"]);
+
+    const res = await POST(makePostRequest(VALID_POST_BODY));
+
+    expect(res.status).toBe(403);
+    expect(createProblemSetMock).not.toHaveBeenCalled();
   });
 
   it("returns 400 when name is empty", async () => {

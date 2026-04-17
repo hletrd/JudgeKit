@@ -3,9 +3,12 @@ import { apiSuccess, apiError } from "@/lib/api/responses";
 import { db } from "@/lib/db";
 import { recordAuditEvent } from "@/lib/audit/events";
 import { createProblemSet } from "@/lib/problem-sets/management";
-import { listVisibleProblemSetsForUser } from "@/lib/problem-sets/visibility";
+import {
+  findInaccessibleProblemIdsForProblemSetUser,
+  listVisibleProblemSetsForUser,
+} from "@/lib/problem-sets/visibility";
 import { problemSetMutationSchema } from "@/lib/validators/problem-sets";
-import { createApiHandler } from "@/lib/api/handler";
+import { createApiHandler, forbidden } from "@/lib/api/handler";
 
 export const GET = createApiHandler({
   auth: {
@@ -34,6 +37,13 @@ export const POST = createApiHandler({
     if (!parsed.success) {
       return apiError(parsed.error.issues[0]?.message ?? "problemSetCreateFailed", 400);
     }
+
+    const inaccessibleProblemIds = await findInaccessibleProblemIdsForProblemSetUser(
+      parsed.data.problemIds,
+      user.id,
+      user.role
+    );
+    if (inaccessibleProblemIds.length > 0) return forbidden();
 
     const id = await createProblemSet(parsed.data, user.id);
 

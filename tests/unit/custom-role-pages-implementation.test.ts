@@ -17,6 +17,9 @@ describe("custom-role page/runtime implementation guards", () => {
       "src/app/(dashboard)/dashboard/groups/[id]/assignments/[assignmentId]/student/[userId]/page.tsx",
       "src/app/(dashboard)/dashboard/groups/[id]/assignments/[assignmentId]/page.tsx",
       "src/app/(dashboard)/dashboard/groups/[id]/page.tsx",
+      "src/app/(dashboard)/dashboard/problem-sets/page.tsx",
+      "src/app/(dashboard)/dashboard/problem-sets/new/page.tsx",
+      "src/app/(dashboard)/dashboard/problem-sets/[id]/page.tsx",
       "src/app/(dashboard)/dashboard/problems/page.tsx",
       "src/app/(dashboard)/dashboard/problems/[id]/page.tsx",
       "src/app/(dashboard)/dashboard/problems/[id]/edit/page.tsx",
@@ -37,12 +40,25 @@ describe("custom-role page/runtime implementation guards", () => {
 
   it("keeps problem and dashboard affordances capability-aware for custom roles", () => {
     const dashboardLayout = read("src/app/(dashboard)/layout.tsx");
+    const problemSetsPage = read("src/app/(dashboard)/dashboard/problem-sets/page.tsx");
+    const newProblemSetPage = read("src/app/(dashboard)/dashboard/problem-sets/new/page.tsx");
+    const problemSetDetailPage = read("src/app/(dashboard)/dashboard/problem-sets/[id]/page.tsx");
     const problemsPage = read("src/app/(dashboard)/dashboard/problems/page.tsx");
     const problemDetail = read("src/app/(dashboard)/dashboard/problems/[id]/page.tsx");
     const publicPracticeDetail = read("src/app/(public)/practice/problems/[id]/page.tsx");
 
     expect(dashboardLayout).toContain('capsSet.has("assignments.view_status")');
     expect(dashboardLayout).not.toContain('session.user.role === "admin"');
+
+    expect(problemSetsPage).toContain("getProblemSetCapabilityFlags");
+    expect(problemSetsPage).not.toContain("isInstructorOrAbove");
+
+    expect(newProblemSetPage).toContain("getProblemSetCapabilityFlags");
+    expect(newProblemSetPage).not.toContain("isInstructorOrAbove");
+
+    expect(problemSetDetailPage).toContain("getProblemSetCapabilityFlags");
+    expect(problemSetDetailPage).toContain("canManageProblemSetForUser");
+    expect(problemSetDetailPage).not.toContain("isInstructorOrAbove");
 
     expect(problemsPage).toContain("resolveCapabilities");
     expect(problemsPage).toContain('caps.has("problems.edit")');

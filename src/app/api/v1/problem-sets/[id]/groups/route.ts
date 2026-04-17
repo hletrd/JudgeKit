@@ -8,6 +8,10 @@ import {
   assignProblemSetToGroups,
   removeProblemSetFromGroup,
 } from "@/lib/problem-sets/management";
+import {
+  canManageProblemSetForUser,
+  findInaccessibleGroupIdsForProblemSetUser,
+} from "@/lib/problem-sets/visibility";
 import { problemSetGroupAssignSchema } from "@/lib/validators/problem-sets";
 import { createApiHandler, forbidden, notFound } from "@/lib/api/handler";
 
@@ -19,11 +23,22 @@ export const POST = createApiHandler({
     const existing = await db.query.problemSets.findFirst({
       where: eq(problemSets.id, id),
       columns: { id: true, name: true, createdBy: true },
+      with: {
+        groupAccess: {
+          columns: { groupId: true },
+        },
+      },
     });
 
     if (!existing) return notFound("ProblemSet");
-
-    if (user.role === "instructor" && existing.createdBy !== user.id) {
+    if (
+      !(await canManageProblemSetForUser(
+        existing.createdBy,
+        existing.groupAccess.map((groupAccess) => groupAccess.groupId),
+        user.id,
+        user.role
+      ))
+    ) {
       return forbidden();
     }
 
@@ -33,6 +48,13 @@ export const POST = createApiHandler({
     if (!parsed.success) {
       return apiError(parsed.error.issues[0]?.message ?? "problemSetAssignFailed", 400);
     }
+
+    const inaccessibleGroupIds = await findInaccessibleGroupIdsForProblemSetUser(
+      parsed.data.groupIds,
+      user.id,
+      user.role
+    );
+    if (inaccessibleGroupIds.length > 0) return forbidden();
 
     await assignProblemSetToGroups(id, parsed.data.groupIds);
 
@@ -75,11 +97,22 @@ export const DELETE = createApiHandler({
     const existing = await db.query.problemSets.findFirst({
       where: eq(problemSets.id, id),
       columns: { id: true, name: true, createdBy: true },
+      with: {
+        groupAccess: {
+          columns: { groupId: true },
+        },
+      },
     });
 
     if (!existing) return notFound("ProblemSet");
-
-    if (user.role === "instructor" && existing.createdBy !== user.id) {
+    if (
+      !(await canManageProblemSetForUser(
+        existing.createdBy,
+        existing.groupAccess.map((groupAccess) => groupAccess.groupId),
+        user.id,
+        user.role
+      ))
+    ) {
       return forbidden();
     }
 
@@ -89,6 +122,13 @@ export const DELETE = createApiHandler({
     if (!groupId || typeof groupId !== "string") {
       return apiError("problemSetGroupRequired", 400);
     }
+
+    const inaccessibleGroupIds = await findInaccessibleGroupIdsForProblemSetUser(
+      [groupId],
+      user.id,
+      user.role
+    );
+    if (inaccessibleGroupIds.length > 0) return forbidden();
 
     await removeProblemSetFromGroup(id, groupId);
 

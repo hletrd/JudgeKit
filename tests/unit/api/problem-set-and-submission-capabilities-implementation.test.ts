@@ -41,6 +41,7 @@ describe("problem-set and submission moderation routes use capability auth", () 
       }
       expect(source).not.toContain("isAdmin(user.role)");
       expect(source).not.toContain('user.role !== "instructor"');
+      expect(source).not.toContain('user.role === "instructor"');
       expect(source).not.toContain("isInstructor(user.role)");
     }
   });

@@ -11,7 +11,6 @@ import {
 } from "@/components/ui/table";
 import { Badge } from "@/components/ui/badge";
 import { auth } from "@/lib/auth";
-import { isInstructorOrAbove } from "@/lib/auth/role-helpers";
 import { redirect } from "next/navigation";
 import Link from "next/link";
 import { Button } from "@/components/ui/button";
@@ -19,6 +18,7 @@ import { PaginationControls } from "@/components/pagination-controls";
 import { getResolvedPlatformMode } from "@/lib/system-settings";
 import {
   countVisibleProblemSetsForUser,
+  getProblemSetCapabilityFlags,
   listVisibleProblemSetsForUser,
 } from "@/lib/problem-sets/visibility";
 
@@ -34,9 +34,11 @@ export default async function ProblemSetsPage({
 }) {
   const session = await auth();
   if (!session?.user) redirect("/login");
-  if (!isInstructorOrAbove(session.user.role)) redirect("/dashboard");
   const platformMode = await getResolvedPlatformMode();
   if (platformMode === "recruiting") redirect("/dashboard");
+
+  const caps = await getProblemSetCapabilityFlags(session.user.role);
+  if (!caps.canAccess) redirect("/dashboard");
 
   const resolvedSearchParams = searchParams ? await searchParams : undefined;
   const PAGE_SIZE = 25;
@@ -62,9 +64,11 @@ export default async function ProblemSetsPage({
     <div>
       <div className="flex justify-between items-center mb-4">
         <h2 className="text-2xl font-bold">{t("title")}</h2>
-        <Link href="/dashboard/problem-sets/new">
-          <Button size="sm">{t("create")}</Button>
-        </Link>
+        {caps.canCreate && (
+          <Link href="/dashboard/problem-sets/new">
+            <Button size="sm">{t("create")}</Button>
+          </Link>
+        )}
       </div>
       <Card>
         <CardContent>

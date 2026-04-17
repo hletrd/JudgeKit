@@ -35,6 +35,7 @@ vi.mock("next-intl", () => ({
       moveProblemUp: "Move problem up",
       moveProblemDown: "Move problem down",
       noProblems: "No problems in this set.",
+      assignGroups: "Assign Groups",
       createSuccess: "Problem set created",
       createFailed: "Failed to create problem set",
       cancel: "Cancel",
@@ -125,6 +126,7 @@ describe("ProblemSetForm", () => {
           { id: "p-3", title: "Graph Paths" },
         ]}
         availableGroups={[]}
+        canEditMetadata
       />
     );
 
@@ -172,5 +174,32 @@ describe("ProblemSetForm", () => {
     expect(toastSuccessMock).toHaveBeenCalledWith("Problem set created");
     expect(pushMock).toHaveBeenCalledWith("/dashboard/problem-sets/ps-1");
     expect(refreshMock).toHaveBeenCalled();
+  });
+
+  it("renders edit screens read-only when metadata and group management capabilities are disabled", () => {
+    render(
+      <ProblemSetForm
+        problemSet={{
+          id: "ps-1",
+          name: "Locked Set",
+          description: "Read only",
+          isPublic: false,
+          problemIds: ["p-1"],
+          groupIds: ["g-1"],
+          assignedGroups: [{ id: "g-1", name: "CS101" }],
+        }}
+        availableProblems={[{ id: "p-1", title: "A + B" }]}
+        availableGroups={[{ id: "g-1", name: "CS101" }, { id: "g-2", name: "CS102" }]}
+        canEditMetadata={false}
+        canDelete={false}
+        canAssignGroups={false}
+      />
+    );
+
+    expect(screen.getByDisplayValue("Locked Set")).toBeDisabled();
+    expect(screen.queryByRole("button", { name: "Save" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Delete" })).not.toBeInTheDocument();
+    expect(screen.getByText("CS101")).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Assign Groups" })).not.toBeInTheDocument();
   });
 });
