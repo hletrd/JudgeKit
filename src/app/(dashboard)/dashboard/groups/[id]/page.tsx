@@ -12,6 +12,7 @@ import { Badge } from "@/components/ui/badge";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import {
+  canManageGroupMembersAsync,
   canManageGroupResourcesAsync,
   getManageableProblemsForGroup,
 } from "@/lib/assignments/management";
@@ -103,6 +104,12 @@ export default async function GroupDetailPage({ params }: { params: Promise<{ id
   }
 
   const canManageGroup = await canManageGroupResourcesAsync(
+    group.instructorId,
+    session.user.id,
+    role,
+    groupId
+  );
+  const canManageMembers = await canManageGroupMembersAsync(
     group.instructorId,
     session.user.id,
     role,
@@ -249,7 +256,7 @@ export default async function GroupDetailPage({ params }: { params: Promise<{ id
 
       <GroupMembersManager
         groupId={groupId}
-        canManage={canManageGroup}
+        canManage={canManageMembers}
         members={memberRows}
         availableStudents={availableStudentOptions}
       />

@@ -63,6 +63,33 @@ export async function canManageGroupResourcesAsync(
 }
 
 /**
+ * Narrower helper for group member management. Owners, co-instructors, and
+ * global group managers can always manage memberships. TAs may do so only
+ * when their role also carries the explicit groups.manage_members capability.
+ */
+export async function canManageGroupMembersAsync(
+  groupInstructorId: string | null,
+  userId: string,
+  role: string,
+  groupId?: string
+): Promise<boolean> {
+  if (await canManageGroupResourcesAsync(groupInstructorId, userId, role, groupId)) {
+    return true;
+  }
+
+  if (!groupId) {
+    return false;
+  }
+
+  const caps = await resolveCapabilities(role);
+  if (!caps.has("groups.manage_members")) {
+    return false;
+  }
+
+  return isGroupTA(groupId, userId);
+}
+
+/**
  * Check if a user is a TA (not co-instructor) for a group.
  * TAs have limited permissions (view submissions, add comments) but
  * cannot delete problems or modify system settings.

@@ -2,7 +2,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 import { NextRequest } from "next/server";
 
 const {
-  canManageGroupResourcesAsyncMock,
+  canManageGroupMembersAsyncMock,
   recordAuditEventMock,
   consumeApiRateLimitMock,
   getApiUserMock,
@@ -11,7 +11,7 @@ const {
   enrollmentsFindManyMock,
   insertReturningMock,
 } = vi.hoisted(() => ({
-  canManageGroupResourcesAsyncMock: vi.fn(),
+  canManageGroupMembersAsyncMock: vi.fn(),
   recordAuditEventMock: vi.fn(),
   consumeApiRateLimitMock: vi.fn(),
   getApiUserMock: vi.fn(),
@@ -22,7 +22,7 @@ const {
 }));
 
 vi.mock("@/lib/assignments/management", () => ({
-  canManageGroupResourcesAsync: canManageGroupResourcesAsyncMock,
+  canManageGroupMembersAsync: canManageGroupMembersAsyncMock,
 }));
 
 vi.mock("@/lib/audit/events", () => ({
@@ -87,7 +87,7 @@ describe("POST /api/v1/groups/[id]/members/bulk", () => {
       mustChangePassword: false,
     });
     groupsFindFirstMock.mockResolvedValue({ id: "group-1", instructorId: "instructor-1" });
-    canManageGroupResourcesAsyncMock.mockResolvedValue(true);
+    canManageGroupMembersAsyncMock.mockResolvedValue(true);
     enrollmentsFindManyMock.mockResolvedValue([]);
     insertReturningMock.mockResolvedValue([]);
   });

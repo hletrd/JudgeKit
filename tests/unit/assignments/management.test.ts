@@ -21,6 +21,7 @@ vi.mock("nanoid", () => ({
 }));
 
 import {
+  canManageGroupMembersAsync,
   canManageGroupResources,
   canManageGroupResourcesAsync,
   getManageableProblemsForGroup,
@@ -97,6 +98,24 @@ describe("group management helpers", () => {
 
     await expect(
       canManageGroupResourcesAsync("owner-1", "ta-1", "instructor", "group-1")
+    ).resolves.toBe(false);
+  });
+
+  it("allows TAs to manage group members only with the explicit groups.manage_members capability", async () => {
+    mockGroupInstructorRow({ role: "ta" });
+    resolveCapabilitiesMock.mockResolvedValue(new Set(["groups.manage_members"]));
+
+    await expect(
+      canManageGroupMembersAsync("owner-1", "ta-1", "custom_ta", "group-1")
+    ).resolves.toBe(true);
+  });
+
+  it("does not allow unscoped roles to manage group members without the explicit capability", async () => {
+    mockGroupInstructorRow({ role: "ta" });
+    resolveCapabilitiesMock.mockResolvedValue(new Set());
+
+    await expect(
+      canManageGroupMembersAsync("owner-1", "ta-1", "custom_ta", "group-1")
     ).resolves.toBe(false);
   });
 

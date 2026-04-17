@@ -4,7 +4,7 @@ import { and, eq } from "drizzle-orm";
 import { recordAuditEvent } from "@/lib/audit/events";
 import { db, execTransaction } from "@/lib/db";
 import { assignments, enrollments, submissions, users } from "@/lib/db/schema";
-import { canManageGroupResourcesAsync } from "@/lib/assignments/management";
+import { canManageGroupMembersAsync } from "@/lib/assignments/management";
 import { forbidden, notFound, createApiHandler } from "@/lib/api/handler";
 
 export const DELETE = createApiHandler({
@@ -18,7 +18,7 @@ export const DELETE = createApiHandler({
 
     if (!group) return notFound("Group");
 
-    const canManage = await canManageGroupResourcesAsync(
+    const canManage = await canManageGroupMembersAsync(
       group.instructorId,
       user.id,
       user.role,

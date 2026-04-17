@@ -5,7 +5,7 @@ import { nanoid } from "nanoid";
 import { recordAuditEvent } from "@/lib/audit/events";
 import { db } from "@/lib/db";
 import { enrollments, users } from "@/lib/db/schema";
-import { canManageGroupResourcesAsync } from "@/lib/assignments/management";
+import { canManageGroupMembersAsync } from "@/lib/assignments/management";
 import { groupMembershipSchema } from "@/lib/validators/groups";
 import { canAccessGroup } from "@/lib/auth/permissions";
 import { createApiHandler, forbidden, notFound } from "@/lib/api/handler";
@@ -62,7 +62,7 @@ export const POST = createApiHandler({
 
     if (!group) return notFound("Group");
 
-    const canManage = await canManageGroupResourcesAsync(
+    const canManage = await canManageGroupMembersAsync(
       group.instructorId,
       user.id,
       user.role,
