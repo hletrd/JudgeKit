@@ -2,8 +2,18 @@ import Link from "next/link";
 import { and, desc, eq, inArray, sql } from "drizzle-orm";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
+import { CountdownTimer } from "@/components/exam/countdown-timer";
 import { db } from "@/lib/db";
-import { assignmentProblems, enrollments, languageConfigs, problemGroupAccess, problems, submissions } from "@/lib/db/schema";
+import {
+  assignmentProblems,
+  assignments,
+  enrollments,
+  examSessions,
+  languageConfigs,
+  problemGroupAccess,
+  problems,
+  submissions,
+} from "@/lib/db/schema";
 import { getTranslations } from "next-intl/server";
 import { resolveCapabilities } from "@/lib/capabilities/cache";
 import { formatDateTimeInTimeZone } from "@/lib/datetime";
@@ -15,6 +25,15 @@ type CandidateDashboardProps = {
   userId: string;
   role: string;
   assignmentIds: string[];
+};
+
+type AssignmentProgressSummary = {
+  assignmentId: string;
+  title: string;
+  deadline: Date | null;
+  problemCount: number;
+  attemptedCount: number;
+  solvedCount: number;
 };
 
 export async function CandidateDashboard({
@@ -40,7 +59,18 @@ export async function CandidateDashboard({
 
   const isRecruitingMode = (await getEffectivePlatformMode({ userId })) === "recruiting";
 
-  const [accessibleProblemCount, submissionCountRows, enabledLanguagesRows, recentSubmissions] = await Promise.all([
+  const [
+    accessibleProblemCount,
+    submissionCountRows,
+    enabledLanguagesRows,
+    recentSubmissions,
+    assignmentRows,
+    attemptedProblemCountRows,
+    solvedProblemCountRows,
+    assignmentProblemCountRows,
+    assignmentAttemptedRows,
+    assignmentSolvedRows,
+  ] = await Promise.all([
     canViewAll
       ? db.select({ count: sql<number>`count(*)` }).from(problems).then((r) => Number(r[0]?.count ?? 0))
       : restrictToAssignmentIds
@@ -127,10 +157,115 @@ export async function CandidateDashboard({
       )
       .orderBy(desc(submissions.submittedAt))
       .limit(5),
+    restrictToAssignmentIds
+      ? db
+          .select({
+            assignmentId: assignments.id,
+            title: assignments.title,
+            deadline: sql<Date | null>`coalesce(${examSessions.personalDeadline}, ${assignments.deadline})`,
+          })
+          .from(assignments)
+          .leftJoin(
+            examSessions,
+            and(eq(examSessions.assignmentId, assignments.id), eq(examSessions.userId, userId))
+          )
+          .where(inArray(assignments.id, assignmentIds))
+      : Promise.resolve([] as Array<{ assignmentId: string; title: string; deadline: Date | null }>),
+    restrictToAssignmentIds
+      ? db
+          .select({ count: sql<number>`count(distinct ${submissions.problemId})` })
+          .from(submissions)
+          .where(
+            and(
+              eq(submissions.userId, userId),
+              inArray(submissions.assignmentId, assignmentIds)
+            )
+          )
+      : Promise.resolve([] as Array<{ count: number }>),
+    restrictToAssignmentIds
+      ? db
+          .select({ count: sql<number>`count(distinct ${submissions.problemId})` })
+          .from(submissions)
+          .where(
+            and(
+              eq(submissions.userId, userId),
+              inArray(submissions.assignmentId, assignmentIds),
+              eq(submissions.status, "accepted")
+            )
+          )
+      : Promise.resolve([] as Array<{ count: number }>),
+    restrictToAssignmentIds
+      ? db
+          .select({
+            assignmentId: assignmentProblems.assignmentId,
+            count: sql<number>`count(distinct ${assignmentProblems.problemId})`,
+          })
+          .from(assignmentProblems)
+          .where(inArray(assignmentProblems.assignmentId, assignmentIds))
+          .groupBy(assignmentProblems.assignmentId)
+      : Promise.resolve([] as Array<{ assignmentId: string; count: number }>),
+    restrictToAssignmentIds
+      ? db
+          .select({
+            assignmentId: submissions.assignmentId,
+            count: sql<number>`count(distinct ${submissions.problemId})`,
+          })
+          .from(submissions)
+          .where(
+            and(
+              eq(submissions.userId, userId),
+              inArray(submissions.assignmentId, assignmentIds)
+            )
+          )
+          .groupBy(submissions.assignmentId)
+      : Promise.resolve([] as Array<{ assignmentId: string | null; count: number }>),
+    restrictToAssignmentIds
+      ? db
+          .select({
+            assignmentId: submissions.assignmentId,
+            count: sql<number>`count(distinct ${submissions.problemId})`,
+          })
+          .from(submissions)
+          .where(
+            and(
+              eq(submissions.userId, userId),
+              inArray(submissions.assignmentId, assignmentIds),
+              eq(submissions.status, "accepted")
+            )
+          )
+          .groupBy(submissions.assignmentId)
+      : Promise.resolve([] as Array<{ assignmentId: string | null; count: number }>),
   ]);
 
   const totalAttempts = Number(submissionCountRows[0]?.count ?? 0);
   const enabledLanguages = Number(enabledLanguagesRows[0]?.count ?? 0);
+  const attemptedProblemCount = Number(attemptedProblemCountRows[0]?.count ?? 0);
+  const solvedProblemCount = Number(solvedProblemCountRows[0]?.count ?? 0);
+  const assignmentProblemCountMap = new Map(
+    assignmentProblemCountRows.map((row) => [row.assignmentId, Number(row.count ?? 0)])
+  );
+  const assignmentAttemptedCountMap = new Map(
+    assignmentAttemptedRows
+      .filter((row) => row.assignmentId)
+      .map((row) => [row.assignmentId as string, Number(row.count ?? 0)])
+  );
+  const assignmentSolvedCountMap = new Map(
+    assignmentSolvedRows
+      .filter((row) => row.assignmentId)
+      .map((row) => [row.assignmentId as string, Number(row.count ?? 0)])
+  );
+  const assignmentProgress: AssignmentProgressSummary[] = assignmentRows.map((assignment) => ({
+    assignmentId: assignment.assignmentId,
+    title: assignment.title,
+    deadline: assignment.deadline ? new Date(assignment.deadline) : null,
+    problemCount: assignmentProblemCountMap.get(assignment.assignmentId) ?? 0,
+    attemptedCount: assignmentAttemptedCountMap.get(assignment.assignmentId) ?? 0,
+    solvedCount: assignmentSolvedCountMap.get(assignment.assignmentId) ?? 0,
+  }));
+  const nextDeadline = assignmentProgress
+    .map((assignment) => assignment.deadline)
+    .filter((deadline): deadline is Date => Boolean(deadline && deadline.getTime() > Date.now()))
+    .sort((a, b) => a.getTime() - b.getTime())[0] ?? null;
 
   return (
     <div className="space-y-6">
@@ -139,7 +274,7 @@ export async function CandidateDashboard({
         <p className="text-sm text-muted-foreground">{t("candidateOverviewDescription")}</p>
       </div>
 
-      <div className="grid gap-4 md:grid-cols-3">
+      <div className="grid gap-4 md:grid-cols-4">
         <Card>
           <CardHeader>
             <CardTitle>{t("availableChallenges")}</CardTitle>
@@ -149,6 +284,21 @@ export async function CandidateDashboard({
             <Link href="/dashboard/problems" className="mt-2 inline-block text-xs text-muted-foreground hover:text-foreground">
               {t("viewChallenges")}
             </Link>
+          </CardContent>
+        </Card>
+        <Card>
+          <CardHeader>
+            <CardTitle>{t("solvedChallenges")}</CardTitle>
+          </CardHeader>
+          <CardContent>
+            <div className="text-3xl font-semibold">{solvedProblemCount}</div>
+            <p className="mt-2 text-xs text-muted-foreground">
+              {t("candidateProgressSummary", {
+                solved: solvedProblemCount,
+                attempted: attemptedProblemCount,
+                total: accessibleProblemCount,
+              })}
+            </p>
           </CardContent>
         </Card>
         <Card>
@@ -164,14 +314,78 @@ export async function CandidateDashboard({
         </Card>
         <Card>
           <CardHeader>
-            <CardTitle>{t("supportedLanguages")}</CardTitle>
+            <CardTitle>{t("candidateTimeRemaining")}</CardTitle>
           </CardHeader>
           <CardContent>
-            <div className="text-3xl font-semibold">{enabledLanguages}</div>
-            <p className="mt-2 text-xs text-muted-foreground">{t("supportedLanguagesDescription")}</p>
+            {nextDeadline ? (
+              <div className="space-y-2">
+                <CountdownTimer deadline={nextDeadline.getTime()} />
+                <p className="text-xs text-muted-foreground">
+                  {formatDateTimeInTimeZone(nextDeadline, locale, settings.timeZone)}
+                </p>
+              </div>
+            ) : (
+              <>
+                <div className="text-3xl font-semibold">{enabledLanguages}</div>
+                <p className="mt-2 text-xs text-muted-foreground">{t("timeRemainingUnavailable")}</p>
+              </>
+            )}
           </CardContent>
         </Card>
       </div>
+
+      {assignmentProgress.length > 0 && (
+        <Card>
+          <CardHeader>
+            <CardTitle>{t("candidateProgressTitle")}</CardTitle>
+          </CardHeader>
+          <CardContent className="space-y-3">
+            {assignmentProgress.map((assignment) => {
+              const remainingCount = Math.max(
+                assignment.problemCount - assignment.attemptedCount,
+                0
+              );
+
+              return (
+                <div key={assignment.assignmentId} className="rounded-lg border p-3">
+                  <div className="flex items-start justify-between gap-3">
+                    <div>
+                      <div className="font-medium">{assignment.title}</div>
+                      {assignment.deadline && (
+                        <div className="mt-1 text-xs text-muted-foreground">
+                          {t("deadlineInfo", {
+                            date: formatDateTimeInTimeZone(
+                              assignment.deadline,
+                              locale,
+                              settings.timeZone
+                            ),
+                          })}
+                        </div>
+                      )}
+                    </div>
+                    <Link href={`/dashboard/contests/${assignment.assignmentId}`}>
+                      <Badge variant="secondary">{t("viewChallengeProgress")}</Badge>
+                    </Link>
+                  </div>
+                  <div className="mt-3 flex flex-wrap gap-2 text-xs text-muted-foreground">
+                    <Badge variant="outline">
+                      {t("candidateProgressSolved", { count: assignment.solvedCount })}
+                    </Badge>
+                    <Badge variant="outline">
+                      {t("candidateProgressAttempted", {
+                        count: Math.max(assignment.attemptedCount - assignment.solvedCount, 0),
+                      })}
+                    </Badge>
+                    <Badge variant="outline">
+                      {t("candidateProgressRemaining", { count: remainingCount })}
+                    </Badge>
+                  </div>
+                </div>
+              );
+            })}
+          </CardContent>
+        </Card>
+      )}
 
       <Card>
         <CardHeader>

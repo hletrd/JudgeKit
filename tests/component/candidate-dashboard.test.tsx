@@ -1,0 +1,174 @@
+import { render, screen } from "@testing-library/react";
+import { beforeEach, describe, expect, it, vi } from "vitest";
+
+const {
+  dbSelectMock,
+  resolveCapabilitiesMock,
+  getEffectivePlatformModeMock,
+} = vi.hoisted(() => ({
+  dbSelectMock: vi.fn(),
+  resolveCapabilitiesMock: vi.fn(),
+  getEffectivePlatformModeMock: vi.fn(),
+}));
+
+vi.mock("next-intl/server", () => ({
+  getTranslations: async (_namespace: string) => (key: string, values?: Record<string, string | number>) => {
+    const messages: Record<string, string> = {
+      candidateOverviewTitle: "Candidate overview",
+      candidateOverviewDescription: "Overview description",
+      availableChallenges: "Available challenges",
+      solvedChallenges: "Solved challenges",
+      totalAttempts: "Total attempts",
+      candidateTimeRemaining: "Time remaining",
+      recentAttempts: "Recent attempts",
+      supportedLanguages: "Supported languages",
+      supportedLanguagesDescription: "Supported languages description",
+      candidateProgressTitle: "Progress snapshot",
+      viewChallengeProgress: "Open assessment",
+      viewChallenges: "View challenges",
+      viewAttempts: "View attempts",
+      viewAttempt: "View attempt",
+      unknown: "Unknown",
+      appName: "JudgeKit",
+      appDescription: "JudgeKit description",
+    };
+    if (key === "scoreLabel") return `Score: ${values?.score ?? 0}`;
+    if (key === "candidateProgressSummary") {
+      return `${values?.solved ?? 0} solved • ${values?.attempted ?? 0} attempted • ${values?.total ?? 0} total`;
+    }
+    if (key === "candidateProgressSolved") return `${values?.count ?? 0} solved`;
+    if (key === "candidateProgressAttempted") return `${values?.count ?? 0} attempted`;
+    if (key === "candidateProgressRemaining") return `${values?.count ?? 0} remaining`;
+    if (key === "deadlineInfo") return `Deadline: ${values?.date ?? ""}`;
+    return messages[key] ?? key;
+  },
+  getLocale: async () => "en",
+}));
+
+vi.mock("next/link", () => ({
+  default: ({ href, children }: { href: string; children: React.ReactNode }) => (
+    <a href={href}>{children}</a>
+  ),
+}));
+
+vi.mock("@/lib/db", () => ({
+  db: {
+    select: dbSelectMock,
+  },
+}));
+
+vi.mock("@/lib/capabilities/cache", () => ({
+  resolveCapabilities: resolveCapabilitiesMock,
+}));
+
+vi.mock("@/lib/system-settings", () => ({
+  getResolvedSystemSettings: async () => ({
+    siteTitle: "JudgeKit",
+    siteDescription: "JudgeKit description",
+    timeZone: "UTC",
+  }),
+}));
+
+vi.mock("@/lib/platform-mode-context", () => ({
+  getEffectivePlatformMode: getEffectivePlatformModeMock,
+}));
+
+vi.mock("@/lib/datetime", () => ({
+  formatDateTimeInTimeZone: (date: Date) => `FMT:${date.toISOString()}`,
+}));
+
+vi.mock("@/components/exam/countdown-timer", () => ({
+  CountdownTimer: ({ deadline }: { deadline: number }) => (
+    <div data-testid="countdown-timer">{deadline}</div>
+  ),
+}));
+
+function makeSelectChain(rows: unknown[]) {
+  const chain = {
+    from: vi.fn(() => chain),
+    leftJoin: vi.fn(() => chain),
+    where: vi.fn(() => chain),
+    orderBy: vi.fn(() => chain),
+    limit: vi.fn(() => chain),
+    groupBy: vi.fn(() => chain),
+    then: vi.fn((cb: (value: unknown[]) => unknown) => Promise.resolve(cb(rows))),
+  };
+  return chain;
+}
+
+describe("CandidateDashboard", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    resolveCapabilitiesMock.mockResolvedValue(new Set());
+    getEffectivePlatformModeMock.mockResolvedValue("recruiting");
+
+    dbSelectMock
+      .mockReturnValueOnce(makeSelectChain([{ count: 4 }]))
+      .mockReturnValueOnce(makeSelectChain([{ count: 3 }]))
+      .mockReturnValueOnce(makeSelectChain([{ count: 12 }]))
+      .mockReturnValueOnce(
+        makeSelectChain([
+          {
+            id: "sub-1",
+            status: "accepted",
+            submittedAt: new Date("2099-01-01T00:00:00.000Z"),
+            score: 100,
+            problemTitle: "A + B",
+          },
+        ])
+      )
+      .mockReturnValueOnce(
+        makeSelectChain([
+          {
+            assignmentId: "assign-1",
+            title: "Round 1",
+            deadline: new Date("2099-01-02T00:00:00.000Z"),
+          },
+          {
+            assignmentId: "assign-2",
+            title: "Round 2",
+            deadline: new Date("2099-01-03T00:00:00.000Z"),
+          },
+        ])
+      )
+      .mockReturnValueOnce(makeSelectChain([{ count: 2 }]))
+      .mockReturnValueOnce(makeSelectChain([{ count: 1 }]))
+      .mockReturnValueOnce(
+        makeSelectChain([
+          { assignmentId: "assign-1", count: 2 },
+          { assignmentId: "assign-2", count: 2 },
+        ])
+      )
+      .mockReturnValueOnce(
+        makeSelectChain([
+          { assignmentId: "assign-1", count: 1 },
+          { assignmentId: "assign-2", count: 1 },
+        ])
+      )
+      .mockReturnValueOnce(
+        makeSelectChain([{ assignmentId: "assign-1", count: 1 }])
+      );
+  });
+
+  it("shows time remaining and a per-assignment progress snapshot for recruiting candidates", async () => {
+    const { CandidateDashboard } = await import(
+      "@/app/(dashboard)/dashboard/_components/candidate-dashboard"
+    );
+
+    render(
+      await CandidateDashboard({
+        userId: "candidate-1",
+        role: "student",
+        assignmentIds: ["assign-1", "assign-2"],
+      })
+    );
+
+    expect(screen.getByText("Solved challenges")).toBeInTheDocument();
+    expect(screen.getByText("1 solved • 2 attempted • 4 total")).toBeInTheDocument();
+    expect(screen.getByText("Progress snapshot")).toBeInTheDocument();
+    expect(screen.getByText("Round 1")).toBeInTheDocument();
+    expect(screen.getByText("Round 2")).toBeInTheDocument();
+    expect(screen.getByTestId("countdown-timer")).toBeInTheDocument();
+    expect(screen.getAllByText("Open assessment")).toHaveLength(2);
+  });
+});
