@@ -181,6 +181,26 @@ Returns `503` if database is unreachable (admin only).
 
 ---
 
+#### `GET /api/metrics`
+
+Prometheus-style metrics endpoint. Accessible to:
+- authenticated admin users, or
+- requests with `Authorization: Bearer $CRON_SECRET`
+
+**Response:** `text/plain; version=0.0.4`
+
+Exports gauges for:
+- overall health status
+- database / audit pipeline checks
+- judge worker counts by status
+- submission queue depth and limit
+- uptime and health probe latency
+- failed audit-event writes
+
+Returns `503` if `CRON_SECRET` is required for scraping but not configured.
+
+---
+
 #### `GET /api/v1/time`
 
 Returns the server's current timestamp. No authentication required.

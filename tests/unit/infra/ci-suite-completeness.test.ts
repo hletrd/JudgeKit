@@ -42,4 +42,9 @@ describe("CI suite completeness", () => {
     expect(qualityBlock).toContain("npm audit --audit-level=high");
     expect(qualityBlock).toContain("cargo audit");
   });
+
+  it("keeps a metrics route under test coverage expectations", () => {
+    const apiRef = read("docs/api.md");
+    expect(apiRef).toContain("#### `GET /api/metrics`");
+  });
 });
