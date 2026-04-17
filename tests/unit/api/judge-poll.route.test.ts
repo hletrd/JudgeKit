@@ -11,6 +11,7 @@ const { rawQueryOneMock, problemsFindFirstMock, dbSelectMock, recordAuditEventMo
 
 vi.mock("@/lib/judge/auth", () => ({
   isJudgeAuthorized: vi.fn(() => true),
+  isJudgeAuthorizedForWorker: vi.fn(async () => ({ authorized: true })),
 }));
 
 vi.mock("@/lib/audit/events", () => ({
