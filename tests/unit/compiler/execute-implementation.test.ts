@@ -35,6 +35,7 @@ describe("compiler execute implementation", () => {
 
     expect(source).toContain("const RUNNER_AUTH_TOKEN");
     expect(source).toContain("process.env.RUNNER_AUTH_TOKEN || process.env.JUDGE_AUTH_TOKEN");
+    expect(source).toContain("COMPILER_RUNNER_URL is set but RUNNER_AUTH_TOKEN/JUDGE_AUTH_TOKEN is missing");
     expect(source).toContain("&&|\\|\\||;|\\||>|<|\\n|\\r");
   });
 

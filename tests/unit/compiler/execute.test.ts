@@ -107,4 +107,14 @@ describe("executeCompilerRun", () => {
       exitCode: null,
     });
   });
+
+  it("fails closed with an explicit config error when a runner URL is set without any runner auth token", async () => {
+    process.env.COMPILER_RUNNER_URL = "http://judge-worker:3001";
+
+    const { executeCompilerRun } = await import("@/lib/compiler/execute");
+    await expect(executeCompilerRun(VALID_OPTIONS)).resolves.toMatchObject({
+      stderr: "COMPILER_RUNNER_URL is set but RUNNER_AUTH_TOKEN/JUDGE_AUTH_TOKEN is missing",
+      exitCode: null,
+    });
+  });
 });

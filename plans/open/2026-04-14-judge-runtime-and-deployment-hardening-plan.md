@@ -30,6 +30,7 @@ Repair the current judge/worker/deploy invariants so long-running jobs, split-ho
 - worker config now rejects traversal-style seccomp/dead-letter override paths and covers that helper with Rust unit tests
 - runner/docker-admin endpoints now support a separate `RUNNER_AUTH_TOKEN` so deployments can split them from `JUDGE_AUTH_TOKEN`
 - Node compiler-run delegation now prefers `RUNNER_AUTH_TOKEN` for `/run` requests, and the local fallback rejects the same shell metacharacter chains that the Rust runner already blocks
+- compiler-run now fails closed with an explicit config error when `COMPILER_RUNNER_URL` is set without `RUNNER_AUTH_TOKEN`/`JUDGE_AUTH_TOKEN`, instead of downgrading to a generic runner-unavailable message
 - docker image-management now fails closed when `COMPILER_RUNNER_URL` is configured without `RUNNER_AUTH_TOKEN`/`JUDGE_AUTH_TOKEN`, instead of silently falling back to empty local Docker results
 - oversized similarity scans now report `service_unavailable` explicitly when the Rust sidecar is unavailable, instead of misreporting the condition as a generic submission-count limit
 - compile containers now use the repository seccomp profile by default too; falling back to Docker's default compile seccomp requires the explicit `JUDGE_ALLOW_DEFAULT_COMPILE_SECCOMP=1` compatibility flag
