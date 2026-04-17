@@ -147,6 +147,8 @@ export default async function RecruitPage({
             isReentry
             resumeWithCurrentSession={false}
             requiresAccountPassword
+            assessmentTitle={assignment.title}
+            examDurationMinutes={assignment.examDurationMinutes}
           />
         </CardContent>
       </Card>
@@ -253,6 +255,8 @@ export default async function RecruitPage({
           isReentry={!!isRedeemed}
           resumeWithCurrentSession={resumeWithCurrentSession}
           requiresAccountPassword
+          assessmentTitle={assignment.title}
+          examDurationMinutes={assignment.examDurationMinutes}
         />
       </CardContent>
     </Card>

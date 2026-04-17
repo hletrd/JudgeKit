@@ -6,6 +6,16 @@ import { useTranslations } from "next-intl";
 import { signIn, signOut } from "next-auth/react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
 
 const MIN_PASSWORD_LENGTH = 8;
 
@@ -15,20 +25,40 @@ export function RecruitStartForm({
   isReentry,
   resumeWithCurrentSession,
   requiresAccountPassword,
+  assessmentTitle,
+  examDurationMinutes,
 }: {
   token: string;
   assignmentId: string;
   isReentry: boolean;
   resumeWithCurrentSession: boolean;
   requiresAccountPassword: boolean;
+  assessmentTitle?: string;
+  examDurationMinutes?: number | null;
 }) {
   const t = useTranslations("recruit");
   const router = useRouter();
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [accountPassword, setAccountPassword] = useState("");
+  const [confirmOpen, setConfirmOpen] = useState(false);
 
-  async function handleStart() {
+  function validateStartInput() {
+    const normalizedAccountPassword = accountPassword.trim();
+    if (requiresAccountPassword && !normalizedAccountPassword) {
+      setError(t("accountPasswordMissing"));
+      return null;
+    }
+
+    if (requiresAccountPassword && normalizedAccountPassword.length < MIN_PASSWORD_LENGTH) {
+      setError(t("accountPasswordTooShort", { min: MIN_PASSWORD_LENGTH }));
+      return null;
+    }
+
+    return normalizedAccountPassword;
+  }
+
+  async function executeStart() {
     setLoading(true);
     setError(null);
 
@@ -39,14 +69,8 @@ export function RecruitStartForm({
         return;
       }
 
-      const normalizedAccountPassword = accountPassword.trim();
+      const normalizedAccountPassword = validateStartInput();
       if (requiresAccountPassword && !normalizedAccountPassword) {
-        setError(t("accountPasswordMissing"));
-        return;
-      }
-
-      if (requiresAccountPassword && normalizedAccountPassword.length < MIN_PASSWORD_LENGTH) {
-        setError(t("accountPasswordTooShort", { min: MIN_PASSWORD_LENGTH }));
         return;
       }
 
@@ -72,6 +96,21 @@ export function RecruitStartForm({
     }
   }
 
+  async function handlePrimaryAction() {
+    setError(null);
+
+    if (resumeWithCurrentSession || isReentry) {
+      await executeStart();
+      return;
+    }
+
+    if (!validateStartInput()) {
+      return;
+    }
+
+    setConfirmOpen(true);
+  }
+
   return (
     <div className="space-y-3">
       {requiresAccountPassword && (
@@ -94,7 +133,7 @@ export function RecruitStartForm({
       <Button
         className="w-full"
         size="lg"
-        onClick={handleStart}
+        onClick={handlePrimaryAction}
         disabled={loading}
       >
         {loading
@@ -106,6 +145,36 @@ export function RecruitStartForm({
       {error && (
         <p className="text-sm text-destructive text-center">{error}</p>
       )}
+      <AlertDialog open={confirmOpen} onOpenChange={setConfirmOpen}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>{t("startConfirmTitle")}</AlertDialogTitle>
+            <AlertDialogDescription>
+              {assessmentTitle
+                ? t("startConfirmDescription", { title: assessmentTitle })
+                : t("startConfirmDescriptionFallback")}
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <div className="space-y-2 text-sm text-muted-foreground">
+            {examDurationMinutes ? (
+              <p>{t("durationDetail", { minutes: examDurationMinutes })}</p>
+            ) : null}
+            <p>{t("noteTimer")}</p>
+            <p>{t("startConfirmConnection")}</p>
+          </div>
+          <AlertDialogFooter>
+            <AlertDialogCancel>{t("cancel")}</AlertDialogCancel>
+            <AlertDialogAction
+              onClick={async () => {
+                setConfirmOpen(false);
+                await executeStart();
+              }}
+            >
+              {t("startConfirmButton")}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   );
 }
