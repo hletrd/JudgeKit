@@ -4,7 +4,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { auth } from "@/lib/auth";
 import { getRecruitingInvitationByToken } from "@/lib/assignments/recruiting-invitations";
 import { db } from "@/lib/db";
-import { assignmentProblems, assignments } from "@/lib/db/schema";
+import { assignmentProblems, assignments, languageConfigs } from "@/lib/db/schema";
 import { eq, sql } from "drizzle-orm";
 import { RecruitStartForm } from "./recruit-start-form";
 
@@ -163,11 +163,20 @@ export default async function RecruitPage({
     );
   }
 
-  const [problemCountRow] = await db
-    .select({ count: sql<number>`count(*)` })
-    .from(assignmentProblems)
-    .where(eq(assignmentProblems.assignmentId, assignment.id));
+  const [problemCountRow, enabledLanguagesRow] = await Promise.all([
+    db
+      .select({ count: sql<number>`count(*)` })
+      .from(assignmentProblems)
+      .where(eq(assignmentProblems.assignmentId, assignment.id))
+      .then((rows) => rows[0]),
+    db
+      .select({ count: sql<number>`count(*)` })
+      .from(languageConfigs)
+      .where(eq(languageConfigs.isEnabled, true))
+      .then((rows) => rows[0]),
+  ]);
   const problemCount = Number(problemCountRow?.count ?? 0);
+  const enabledLanguageCount = Number(enabledLanguagesRow?.count ?? 0);
 
   return (
     <Card className="w-full max-w-lg">
@@ -196,6 +205,7 @@ export default async function RecruitPage({
             {assignment.deadline && (
               <p>{t("deadlineInfo", { date: new Date(assignment.deadline).toLocaleString() })}</p>
             )}
+            <p>{t("languageCountDetail", { count: enabledLanguageCount })}</p>
           </div>
           <div className="rounded-lg border border-amber-200 bg-amber-50 dark:border-amber-800 dark:bg-amber-950/30 p-3 space-y-1 text-sm">
             <p className="font-medium text-amber-800 dark:text-amber-200">{t("importantNotes")}</p>

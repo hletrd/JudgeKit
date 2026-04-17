@@ -32,6 +32,7 @@ vi.mock("next-intl/server", () => ({
       claimedDescription: "This invitation has already been used. Continue from your existing assessment session on this device, or sign in with your recruiting email and account password.",
       accountPasswordLoginNotice: "After your first start, you can sign in later with your recruiting email and account password through the normal login page.",
       accountPasswordResetRequiredNotice: "Your previous recruiting password was invalidated. Choose a new account password below to continue this assessment.",
+      languageCountDetail: "{count} languages available in the editor",
       goToLogin: "Go to login",
     };
 
@@ -39,6 +40,7 @@ vi.mock("next-intl/server", () => ({
     if (key === "problemCount") return `${values?.count ?? 0} problems`;
     if (key === "durationDetail") return `Time limit: ${values?.minutes ?? 0} minutes`;
     if (key === "deadlineInfo") return `Deadline: ${values?.date ?? ""}`;
+    if (key === "languageCountDetail") return `${values?.count ?? 0} languages available in the editor`;
     return messages[key] ?? key;
   },
 }));
@@ -71,17 +73,26 @@ describe("RecruitPage", () => {
 
   it("renders the first-claim flow with an account password requirement", async () => {
     getRecruitingInvitationByTokenMock.mockResolvedValue({ id: "invite-1", status: "pending", assignmentId: "assignment-1", candidateName: "Candidate One", candidateEmail: "candidate@example.com", expiresAt: null, userId: null, metadata: {} });
-    mockSelectQueue([{ id: "assignment-1", title: "Recruiting Assignment", description: "Assessment details", examDurationMinutes: 90, deadline: null }],[{ count: 2 }]);
+    mockSelectQueue(
+      [{ id: "assignment-1", title: "Recruiting Assignment", description: "Assessment details", examDurationMinutes: 90, deadline: null }],
+      [{ count: 2 }],
+      [{ count: 12 }]
+    );
 
     render(await RecruitPage({ params: Promise.resolve({ token: "invite-token" }) }));
 
     expect(screen.getByText("You're invited to a coding assessment.")).toBeInTheDocument();
+    expect(screen.getByText("12 languages available in the editor")).toBeInTheDocument();
     expect(screen.getByTestId("recruit-start-form")).toHaveAttribute("data-requires-account-password", "true");
   });
 
   it("keeps claimed invites on the original link with password-based re-entry", async () => {
     getRecruitingInvitationByTokenMock.mockResolvedValue({ id: "invite-2", status: "redeemed", assignmentId: "assignment-2", candidateName: "Candidate Two", candidateEmail: "candidate@example.com", expiresAt: null, userId: "user-2", metadata: {} });
-    mockSelectQueue([{ id: "assignment-2", title: "Recruiting Assignment", description: "Assessment details", examDurationMinutes: 90, deadline: null }],[{ count: 2 }]);
+    mockSelectQueue(
+      [{ id: "assignment-2", title: "Recruiting Assignment", description: "Assessment details", examDurationMinutes: 90, deadline: null }],
+      [{ count: 2 }],
+      [{ count: 12 }]
+    );
 
     render(await RecruitPage({ params: Promise.resolve({ token: "invite-token" }) }));
 
@@ -93,7 +104,11 @@ describe("RecruitPage", () => {
   it("lets the claimed candidate continue with their current session", async () => {
     authMock.mockResolvedValue({ user: { id: "user-3" } });
     getRecruitingInvitationByTokenMock.mockResolvedValue({ id: "invite-3", status: "redeemed", assignmentId: "assignment-3", candidateName: "Candidate Three", candidateEmail: "candidate@example.com", expiresAt: null, userId: "user-3", metadata: {} });
-    mockSelectQueue([{ id: "assignment-3", title: "Claimed Assessment", description: "Assessment details", examDurationMinutes: 60, deadline: null }],[{ count: 1 }]);
+    mockSelectQueue(
+      [{ id: "assignment-3", title: "Claimed Assessment", description: "Assessment details", examDurationMinutes: 60, deadline: null }],
+      [{ count: 1 }],
+      [{ count: 12 }]
+    );
 
     render(await RecruitPage({ params: Promise.resolve({ token: "invite-token" }) }));
 
@@ -120,7 +135,8 @@ describe("RecruitPage", () => {
         examDurationMinutes: 45,
         deadline: null,
       }],
-      [{ count: 1 }]
+      [{ count: 1 }],
+      [{ count: 12 }]
     );
 
     render(await RecruitPage({ params: Promise.resolve({ token: "invite-token" }) }));

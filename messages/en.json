@@ -2451,6 +2451,7 @@
     "problemCount": "{count, plural, one {# problem} other {# problems}}",
     "durationDetail": "Time limit: {minutes} minutes",
     "deadlineInfo": "Deadline: {date}",
+    "languageCountDetail": "{count} languages available in the editor",
     "importantNotes": "Before you start",
     "noteTimer": "The timer begins when you click Start and cannot be paused or restarted.",
     "noteSubmissions": "You may submit multiple times; your best score counts.",
