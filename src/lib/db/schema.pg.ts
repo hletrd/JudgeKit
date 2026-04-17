@@ -27,7 +27,10 @@ export const users = pgTable(
     name: text("name").notNull(),
     className: text("class_name"),
     passwordHash: text("password_hash"),
-    role: text("role").notNull().default("student"),
+    role: text("role")
+      .notNull()
+      .default("student")
+      .references(() => roles.name, { onDelete: "restrict" }),
     isActive: boolean("is_active").default(true),
     mustChangePassword: boolean("must_change_password").default(false),
     tokenInvalidatedAt: timestamp("token_invalidated_at", { withTimezone: true }),

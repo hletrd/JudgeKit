@@ -24,7 +24,10 @@ export const users = mysqlTable("users", {
   name: text("name").notNull(),
   className: varchar("class_name", { length: 255 }),
   passwordHash: text("password_hash"),
-  role: varchar("role", { length: 255 }).notNull().default("student"),
+  role: varchar("role", { length: 255 })
+    .notNull()
+    .default("student")
+    .references(() => roles.name, { onDelete: "restrict" }),
   isActive: boolean("is_active").default(true),
   mustChangePassword: boolean("must_change_password").default(false),
   tokenInvalidatedAt: timestamp("token_invalidated_at"),

@@ -120,6 +120,13 @@
       "when": 1776444916037,
       "tag": "0016_wandering_snowbird",
       "breakpoints": true
+    },
+    {
+      "idx": 17,
+      "version": "7",
+      "when": 1776445738004,
+      "tag": "0017_stale_captain_midlands",
+      "breakpoints": true
     }
   ]
 }
