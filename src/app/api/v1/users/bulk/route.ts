@@ -72,7 +72,7 @@ export const POST = createApiHandler({
       email: string | null;
       className: string | null;
       passwordHash: string;
-      role: "student" | "instructor";
+      role: string;
     };
     type PreparedFailureEntry = {
       username: string;
@@ -110,7 +110,7 @@ export const POST = createApiHandler({
             email: normalizedEmail,
             className: normalizedClassName,
             passwordHash: passwordResult.hash,
-            role: item.role ?? ("student" as const),
+            role: item.role ?? "student",
           };
         })
       )

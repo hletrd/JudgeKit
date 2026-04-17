@@ -27,6 +27,7 @@ Close the remaining object-level authorization gaps and remove the last places w
   - dashboard/problem editing affordances now use capabilities instead of built-in admin/instructor role-name checks
   - problem detail contest-start access now honors custom privileged roles via capability checks
   - admin user-management affordances now derive create/edit/delete options from capabilities and manageable role levels instead of built-in admin role-name checks
+  - bulk user creation now preserves valid custom requested roles instead of narrowing inserts to built-in student/instructor values
 
 ## Workstream A — Problem-set visibility and scope isolation
 **Targets**

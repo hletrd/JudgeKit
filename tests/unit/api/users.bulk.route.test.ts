@@ -136,4 +136,33 @@ describe("POST /api/v1/users/bulk", () => {
 
     expect(res.status).toBe(201);
   });
+
+  it("allows assigning a valid custom role during bulk creation", async () => {
+    validateRoleChangeAsyncMock.mockResolvedValue(null);
+
+    const inserted: Array<Record<string, unknown>> = [];
+    execTransactionMock.mockImplementation(async (callback: (tx: {
+      execute: (query: unknown) => Promise<void>;
+      insert: (table: unknown) => { values: (value: Record<string, unknown>) => Promise<void> };
+    }) => Promise<void>) =>
+      callback({
+        execute: async () => undefined,
+        insert: () => ({
+          values: async (value) => {
+            inserted.push(value);
+          },
+        }),
+      })
+    );
+
+    const { POST } = await import("@/app/api/v1/users/bulk/route");
+    const res = await POST(makeRequest({
+      users: [{ username: "reviewer1", name: "Reviewer One", password: "StrongPass123!", role: "custom_reviewer" }],
+    }));
+    const body = await res.json();
+
+    expect(res.status).toBe(201);
+    expect(inserted[0]?.role).toBe("custom_reviewer");
+    expect(body.created[0]).toMatchObject({ username: "reviewer1", name: "Reviewer One" });
+  });
 });

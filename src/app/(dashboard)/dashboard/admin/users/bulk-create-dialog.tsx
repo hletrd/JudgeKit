@@ -66,10 +66,19 @@ function mapHeaders(rawHeaders: string[]): Record<string, string> {
   return mapping;
 }
 
-function normalizeRole(raw?: string): "student" | "instructor" {
+function normalizeRole(raw?: string): string {
   const lower = (raw ?? "").trim().toLowerCase();
   if (lower === "instructor" || lower === "teacher" || lower === "prof" || lower === "professor") {
     return "instructor";
+  }
+  if (lower === "assistant" || lower === "ta" || lower === "teachingassistant") {
+    return "assistant";
+  }
+  if (lower === "admin" || lower === "super_admin" || lower === "superadmin") {
+    return lower === "superadmin" ? "super_admin" : lower;
+  }
+  if (lower) {
+    return lower;
   }
   return "student";
 }
