@@ -3,6 +3,7 @@ import { apiSuccess, apiError } from "@/lib/api/responses";
 import { db } from "@/lib/db";
 import { judgeWorkers } from "@/lib/db/schema";
 import { isJudgeAuthorized } from "@/lib/judge/auth";
+import { isJudgeIpAllowed } from "@/lib/judge/ip-allowlist";
 import { extractClientIp } from "@/lib/security/ip";
 import { logger } from "@/lib/logger";
 import { z } from "zod";
@@ -22,6 +23,10 @@ const STALE_CLAIM_TIMEOUT_MS = 300_000;
 
 export async function POST(request: NextRequest) {
   try {
+    if (!isJudgeIpAllowed(request)) {
+      return apiError("ipNotAllowed", 403);
+    }
+
     if (!isJudgeAuthorized(request)) {
       return apiError("unauthorized", 401);
     }

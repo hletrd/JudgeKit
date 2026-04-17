@@ -9,6 +9,7 @@ import { nanoid } from "nanoid";
 import { z } from "zod";
 import { recordAuditEvent } from "@/lib/audit/events";
 import { isJudgeAuthorized, isJudgeAuthorizedForWorker } from "@/lib/judge/auth";
+import { isJudgeIpAllowed } from "@/lib/judge/ip-allowlist";
 import { logger } from "@/lib/logger";
 import { deserializeStoredJudgeCommand } from "@/lib/judge/languages";
 
@@ -49,6 +50,10 @@ const claimRequestSchema = z.object({
 
 export async function POST(request: NextRequest) {
   try {
+    if (!isJudgeIpAllowed(request)) {
+      return apiError("ipNotAllowed", 403);
+    }
+
     const contentType = request.headers.get("content-type");
     if (!contentType?.includes("application/json")) {
       return apiError("unsupportedMediaType", 415);

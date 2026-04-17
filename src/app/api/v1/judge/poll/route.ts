@@ -10,6 +10,7 @@ import { submissions, submissionResults, judgeWorkers } from "@/lib/db/schema";
 import { eq, and, sql } from "drizzle-orm";
 import { recordAuditEvent } from "@/lib/audit/events";
 import { isJudgeAuthorized } from "@/lib/judge/auth";
+import { isJudgeIpAllowed } from "@/lib/judge/ip-allowlist";
 import {
   buildSubmissionResultRows,
   computeFinalJudgeMetrics,
@@ -23,6 +24,10 @@ import { logger } from "@/lib/logger";
 
 export async function POST(request: NextRequest) {
   try {
+    if (!isJudgeIpAllowed(request)) {
+      return apiError("ipNotAllowed", 403);
+    }
+
     if (!isJudgeAuthorized(request)) {
       return apiError("unauthorized", 401);
     }

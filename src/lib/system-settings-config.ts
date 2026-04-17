@@ -30,6 +30,7 @@ export type ConfiguredSettings = {
   uploadMaxImageSizeBytes: number;
   uploadMaxFileSizeBytes: number;
   uploadMaxImageDimension: number;
+  uploadMaxZipDecompressedSizeBytes: number;
 };
 
 const DEFAULTS: ConfiguredSettings = {
@@ -56,6 +57,7 @@ const DEFAULTS: ConfiguredSettings = {
   uploadMaxImageSizeBytes: 10 * 1024 * 1024,
   uploadMaxFileSizeBytes: 50 * 1024 * 1024,
   uploadMaxImageDimension: 4096,
+  uploadMaxZipDecompressedSizeBytes: 100 * 1024 * 1024,
 };
 
 /** Environment variable overrides — maps setting key to env var name */
@@ -73,6 +75,7 @@ const ENV_OVERRIDES: Partial<Record<keyof ConfiguredSettings, string>> = {
   uploadMaxImageSizeBytes: "UPLOAD_MAX_IMAGE_SIZE_BYTES",
   uploadMaxFileSizeBytes: "UPLOAD_MAX_FILE_SIZE_BYTES",
   uploadMaxImageDimension: "UPLOAD_MAX_IMAGE_DIMENSION",
+  uploadMaxZipDecompressedSizeBytes: "UPLOAD_MAX_ZIP_DECOMPRESSED_SIZE_BYTES",
 };
 
 let cached: ConfiguredSettings | null = null;

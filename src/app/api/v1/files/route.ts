@@ -12,7 +12,7 @@ import { resolveCapabilities } from "@/lib/capabilities/cache";
 import { recordAuditEvent } from "@/lib/audit/events";
 import { getConfiguredSettings } from "@/lib/system-settings-config";
 import { isImageMimeType, processImage } from "@/lib/files/image-processing";
-import { isAllowedMimeType, validateFileSize, getExtensionForMime } from "@/lib/files/validation";
+import { isAllowedMimeType, validateFileSize, getExtensionForMime, isZipMimeType, validateZipDecompressedSize } from "@/lib/files/validation";
 import { writeUploadedFile } from "@/lib/files/storage";
 import { logger } from "@/lib/logger";
 
@@ -52,6 +52,17 @@ export async function POST(request: NextRequest) {
     }
 
     const rawBuffer = Buffer.from(await file.arrayBuffer());
+
+    // ZIP bomb protection: validate total decompressed size for ZIP uploads
+    if (isZipMimeType(file.type)) {
+      const zipError = await validateZipDecompressedSize(
+        rawBuffer,
+        settings.uploadMaxZipDecompressedSizeBytes,
+      );
+      if (zipError) {
+        return apiError(zipError, 400);
+      }
+    }
 
     let finalBuffer: Buffer;
     let width: number | null = null;

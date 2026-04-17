@@ -5,6 +5,7 @@ import { db } from "@/lib/db";
 import { judgeWorkers } from "@/lib/db/schema";
 import { eq, lt, and } from "drizzle-orm";
 import { isJudgeAuthorized } from "@/lib/judge/auth";
+import { isJudgeIpAllowed } from "@/lib/judge/ip-allowlist";
 import { logger } from "@/lib/logger";
 import { z } from "zod";
 
@@ -21,6 +22,10 @@ const STALE_MULTIPLIER = 3;
 
 export async function POST(request: NextRequest) {
   try {
+    if (!isJudgeIpAllowed(request)) {
+      return apiError("ipNotAllowed", 403);
+    }
+
     if (!isJudgeAuthorized(request)) {
       return apiError("unauthorized", 401);
     }
