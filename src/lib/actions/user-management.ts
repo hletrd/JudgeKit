@@ -69,8 +69,7 @@ export async function toggleUserActive(userId: string, isActive: boolean): Promi
     return { success: false, error: "unauthorized" };
   }
   const actorCaps = await resolveCapabilities(session.user.role);
-  const canEditUsers = actorCaps.has("users.edit") || session.user.role === "instructor";
-  if (!canEditUsers) {
+  if (!actorCaps.has("users.edit")) {
     return { success: false, error: "unauthorized" };
   }
 
@@ -88,14 +87,20 @@ export async function toggleUserActive(userId: string, isActive: boolean): Promi
   });
 
   if (!targetUser) return { success: false, error: "userNotFound" };
-
-  // Instructors can only toggle students
-  if (session.user.role === "instructor" && targetUser.role !== "student") {
-    return { success: false, error: "unauthorized" };
+  if (targetUser.role === "super_admin") {
+    if (!isActive) {
+      return { success: false, error: "cannotDeactivateSuperAdmin" };
+    }
+    if (session.user.role !== "super_admin") {
+      return { success: false, error: "unauthorized" };
+    }
   }
-
-  if (targetUser.role === "super_admin" && !isActive) {
-    return { success: false, error: "cannotDeactivateSuperAdmin" };
+  const [actorLevel, targetLevel] = await Promise.all([
+    getRoleLevel(session.user.role),
+    getRoleLevel(targetUser.role),
+  ]);
+  if (targetLevel >= actorLevel && targetUser.role !== "super_admin") {
+    return { success: false, error: "unauthorized" };
   }
 
   try {
@@ -164,9 +169,16 @@ export async function deleteUserPermanently(userId: string, confirmUsername: str
   if (targetUser.username.toLowerCase() !== confirmUsername.toLowerCase()) {
     return { success: false, error: "confirmUsernameMismatch" };
   }
-
   if (targetUser.role === "super_admin") {
     return { success: false, error: "cannotDeleteSuperAdmin" };
+  }
+
+  const [actorLevel, targetLevel] = await Promise.all([
+    getRoleLevel(session.user.role),
+    getRoleLevel(targetUser.role),
+  ]);
+  if (targetLevel >= actorLevel) {
+    return { success: false, error: "unauthorized" };
   }
 
   // Block deletion if user owns groups — must reassign or delete groups first
@@ -214,8 +226,7 @@ export async function editUser(userId: string, data: ManagedUserInput): Promise<
     return { success: false, error: "unauthorized" };
   }
   const actorCaps = await resolveCapabilities(session.user.role);
-  const canEditUsers = actorCaps.has("users.edit") || session.user.role === "instructor";
-  if (!canEditUsers) {
+  if (!actorCaps.has("users.edit")) {
     return { success: false, error: "unauthorized" };
   }
 
@@ -243,9 +254,11 @@ export async function editUser(userId: string, data: ManagedUserInput): Promise<
     });
 
     if (!targetUser) return { success: false, error: "userNotFound" };
-
-    // Instructors can only edit students
-    if (session.user.role === "instructor" && targetUser.role !== "student") {
+    const [actorLevel, targetLevel] = await Promise.all([
+      getRoleLevel(actorRole),
+      getRoleLevel(targetUser.role),
+    ]);
+    if (targetUser.id !== session.user.id && targetLevel >= actorLevel) {
       return { success: false, error: "unauthorized" };
     }
 
@@ -254,10 +267,6 @@ export async function editUser(userId: string, data: ManagedUserInput): Promise<
     if (roleError) return { success: false, error: roleError };
     // Prevent password reset for users of equal or higher privilege
     if (data.password && targetUser.role) {
-      const [actorLevel, targetLevel] = await Promise.all([
-        getRoleLevel(actorRole),
-        getRoleLevel(targetUser.role),
-      ]);
       if (targetLevel >= actorLevel) {
         return { success: false, error: "unauthorized" };
       }
@@ -361,8 +370,7 @@ export async function createUser(data: ManagedUserInput): Promise<UserManagement
     return { success: false, error: "unauthorized" };
   }
   const actorCaps = await resolveCapabilities(session.user.role);
-  const canCreateUsers = actorCaps.has("users.create") || session.user.role === "instructor";
-  if (!canCreateUsers) {
+  if (!actorCaps.has("users.create")) {
     return { success: false, error: "unauthorized" };
   }
 
@@ -379,11 +387,6 @@ export async function createUser(data: ManagedUserInput): Promise<UserManagement
     const normalizedEmail = data.email?.trim().toLowerCase() || null;
     const normalizedClassName = data.className?.trim() || null;
     const requestedRole = data.role.trim();
-
-    // Instructors can only create students
-    if (session.user.role === "instructor" && requestedRole !== "student") {
-      return { success: false, error: "unauthorized" };
-    }
 
     const roleError = await validateRoleChangeAsync(actorRole, requestedRole);
     if (roleError === "invalidRole") return { success: false, error: "createUserFailed" };

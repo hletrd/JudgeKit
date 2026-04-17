@@ -327,6 +327,19 @@ describe("toggleUserActive", () => {
     expect(result).toEqual({ success: false, error: "cannotDeactivateSuperAdmin" });
   });
 
+  it("prevents toggling a user at or above the actor privilege level", async () => {
+    const { toggleUserActive } = await import("@/lib/actions/user-management");
+    setupAuthorizedAdmin();
+    mocks.dbQueryUsersFindFirst.mockResolvedValue({
+      id: "admin-2",
+      username: "peer-admin",
+      role: "admin",
+    });
+
+    const result = await toggleUserActive("admin-2", false);
+    expect(result).toEqual({ success: false, error: "unauthorized" });
+  });
+
   it("allows reactivating a super_admin", async () => {
     const { toggleUserActive } = await import("@/lib/actions/user-management");
     setupAuthorizedAdmin("super_admin");
@@ -499,6 +512,19 @@ describe("deleteUserPermanently", () => {
 
     const result = await deleteUserPermanently("user-2", "targetuser");
     expect(result).toEqual({ success: true });
+  });
+
+  it("prevents deleting a user at or above the actor privilege level", async () => {
+    const { deleteUserPermanently } = await import("@/lib/actions/user-management");
+    setupAuthorizedAdmin();
+    mocks.dbQueryUsersFindFirst.mockResolvedValue({
+      id: "admin-2",
+      username: "peer-admin",
+      role: "admin",
+    });
+
+    const result = await deleteUserPermanently("admin-2", "peer-admin");
+    expect(result).toEqual({ success: false, error: "unauthorized" });
   });
 
   it("returns deleteUserFailed when db throws", async () => {
@@ -708,6 +734,24 @@ describe("editUser", () => {
     const result = await editUser("user-1", defaultUserInput);
 
     expect(result).toEqual({ success: true });
+  });
+
+  it("prevents editing a user at or above the actor privilege level", async () => {
+    const { editUser } = await import("@/lib/actions/user-management");
+    setupAuthorizedAdmin();
+    mocks.validateRoleChangeAsync.mockResolvedValue(null);
+    mocks.dbQueryUsersFindFirst.mockResolvedValue({
+      id: "admin-2",
+      username: "peer-admin",
+      role: "admin",
+    });
+
+    const result = await editUser("admin-2", {
+      ...defaultUserInput,
+      role: "admin",
+    });
+
+    expect(result).toEqual({ success: false, error: "unauthorized" });
   });
 
   it("allows a valid custom requested role during user update", async () => {
