@@ -73,6 +73,7 @@ export function LoginForm() {
           type="text"
           placeholder={t("identifierPlaceholder")}
           autoComplete="username"
+          autoFocus
           required
         />
       </div>

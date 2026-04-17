@@ -1,10 +1,11 @@
 "use client";
 
+import { useCallback, useState } from "react";
 import { useRouter } from "next/navigation";
-import { useState } from "react";
+import { useTranslations } from "next-intl";
 import { toast } from "sonner";
 import { apiFetch } from "@/lib/api/client";
-import { Button } from "@/components/ui/button";
+import { DestructiveActionDialog } from "@/components/destructive-action-dialog";
 
 type DiscussionPostDeleteButtonProps = {
   postId: string;
@@ -14,10 +15,9 @@ type DiscussionPostDeleteButtonProps = {
 
 export function DiscussionPostDeleteButton({ postId, deleteLabel, successLabel }: DiscussionPostDeleteButtonProps) {
   const router = useRouter();
-  const [isSubmitting, setIsSubmitting] = useState(false);
+  const tCommon = useTranslations("common");
 
-  async function handleDelete() {
-    setIsSubmitting(true);
+  const handleDelete = useCallback(async () => {
     try {
       const response = await apiFetch(`/api/v1/community/posts/${postId}`, {
         method: "DELETE",
@@ -28,16 +28,22 @@ export function DiscussionPostDeleteButton({ postId, deleteLabel, successLabel }
       }
       toast.success(successLabel);
       router.refresh();
+      return true;
     } catch (error) {
       toast.error(error instanceof Error ? error.message : "discussionReplyDeleteFailed");
-    } finally {
-      setIsSubmitting(false);
+      return false;
     }
-  }
+  }, [postId, successLabel, router]);
 
   return (
-    <Button type="button" variant="ghost" size="sm" onClick={() => void handleDelete()} disabled={isSubmitting}>
-      {deleteLabel}
-    </Button>
+    <DestructiveActionDialog
+      triggerLabel={deleteLabel}
+      title={deleteLabel}
+      description="This action cannot be undone. The reply will be permanently removed."
+      confirmLabel={tCommon("delete")}
+      cancelLabel={tCommon("cancel")}
+      onConfirmAction={handleDelete}
+      triggerVariant="ghost"
+    />
   );
 }

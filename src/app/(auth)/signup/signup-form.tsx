@@ -6,6 +6,7 @@ import { useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { signIn } from "next-auth/react";
 import { useTranslations } from "next-intl";
+import { Check, X } from "lucide-react";
 import { registerPublicUser } from "@/lib/actions/public-signup";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -30,12 +31,16 @@ export function SignupForm({
   const searchParams = useSearchParams();
   const t = useTranslations("auth");
   const [error, setError] = useState<string | null>(null);
+  const [fieldErrors, setFieldErrors] = useState<Record<string, string>>({});
   const [loading, setLoading] = useState(false);
+  const [confirmPasswordValue, setConfirmPasswordValue] = useState("");
+  const [passwordValue, setPasswordValue] = useState("");
 
   async function handleSubmit(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault();
     setLoading(true);
     setError(null);
+    setFieldErrors({});
 
     const formData = new FormData(event.currentTarget);
     const username = String(formData.get("username") ?? "");
@@ -70,7 +75,20 @@ export function SignupForm({
     if (!result.success) {
       const hcaptcha = (window as typeof window & { hcaptcha?: { reset?: () => void } }).hcaptcha;
       hcaptcha?.reset?.();
-      setError(t(result.error ?? "createUserFailed"));
+
+      const errorCode = result.error ?? "createUserFailed";
+      // Map known server field errors to field-specific state
+      if (errorCode === "usernameInUse") {
+        setFieldErrors((prev) => ({ ...prev, username: t("usernameInUse") }));
+      } else if (errorCode === "emailInUse") {
+        setFieldErrors((prev) => ({ ...prev, email: t("emailInUse") }));
+      } else if (errorCode === "invalidEmail") {
+        setFieldErrors((prev) => ({ ...prev, email: t("invalidEmail") }));
+      } else if (errorCode === "nameRequired") {
+        setFieldErrors((prev) => ({ ...prev, name: t("nameRequired") }));
+      } else {
+        setError(t(errorCode));
+      }
       setLoading(false);
       return;
     }
@@ -102,6 +120,9 @@ export function SignupForm({
     }
   }
 
+  const passwordsMatch = confirmPasswordValue.length > 0 && passwordValue === confirmPasswordValue;
+  const passwordsMismatch = confirmPasswordValue.length > 0 && passwordValue !== confirmPasswordValue;
+
   return (
     <>
       {hcaptchaEnabled && hcaptchaSiteKey ? (
@@ -116,8 +137,19 @@ export function SignupForm({
             type="text"
             placeholder={t("usernamePlaceholder")}
             autoComplete="username"
+            autoFocus
             required
+            minLength={3}
+            maxLength={32}
+            pattern="[a-zA-Z0-9_]+"
+            aria-invalid={!!fieldErrors.username || undefined}
+            aria-describedby={fieldErrors.username ? "username-error" : undefined}
           />
+          {fieldErrors.username && (
+            <p id="username-error" className="text-sm text-destructive" role="alert">
+              {fieldErrors.username}
+            </p>
+          )}
         </div>
         <div className="space-y-2">
           <Label htmlFor="name">{t("name")}</Label>
@@ -128,7 +160,14 @@ export function SignupForm({
             placeholder={t("namePlaceholder")}
             autoComplete="name"
             required
+            aria-invalid={!!fieldErrors.name || undefined}
+            aria-describedby={fieldErrors.name ? "name-error" : undefined}
           />
+          {fieldErrors.name && (
+            <p id="name-error" className="text-sm text-destructive" role="alert">
+              {fieldErrors.name}
+            </p>
+          )}
         </div>
         <div className="space-y-2">
           <Label htmlFor="email">{t("email")}</Label>
@@ -138,7 +177,14 @@ export function SignupForm({
             type="email"
             placeholder={t("emailPlaceholder")}
             autoComplete="email"
+            aria-invalid={!!fieldErrors.email || undefined}
+            aria-describedby={fieldErrors.email ? "email-error" : undefined}
           />
+          {fieldErrors.email && (
+            <p id="email-error" className="text-sm text-destructive" role="alert">
+              {fieldErrors.email}
+            </p>
+          )}
         </div>
         <div className="space-y-2">
           <Label htmlFor="password">{t("password")}</Label>
@@ -148,6 +194,8 @@ export function SignupForm({
             type="password"
             autoComplete="new-password"
             required
+            value={passwordValue}
+            onChange={(e) => setPasswordValue(e.target.value)}
           />
         </div>
         <div className="space-y-2">
@@ -158,7 +206,21 @@ export function SignupForm({
             type="password"
             autoComplete="new-password"
             required
+            value={confirmPasswordValue}
+            onChange={(e) => setConfirmPasswordValue(e.target.value)}
           />
+          {passwordsMatch && (
+            <p className="flex items-center gap-1 text-sm text-green-600 dark:text-green-400">
+              <Check className="size-3.5" aria-hidden="true" />
+              Passwords match
+            </p>
+          )}
+          {passwordsMismatch && (
+            <p className="flex items-center gap-1 text-sm text-destructive">
+              <X className="size-3.5" aria-hidden="true" />
+              {t("passwordsDoNotMatch")}
+            </p>
+          )}
         </div>
         {hcaptchaEnabled && hcaptchaSiteKey ? (
           <div className="space-y-2">

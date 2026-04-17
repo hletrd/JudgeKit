@@ -382,13 +382,13 @@ export default async function AdminSettingsPage() {
                 },
                 ko: {
                   eyebrow: "온라인 저지 플랫폼",
-                  title: "코드를 작성하고, 제출하고, 채점받으세요.",
-                  description: "JudgeKit은 프로그래밍 연습, 대회, 과제를 위한 최신 온라인 저지 플랫폼입니다. 문제를 풀고, 대회에 참가하고, 성장 과정을 추적하세요.",
+                  title: "코드를 쓰고, 제출하고, 채점받으세요.",
+                  description: "JudgeKit은 프로그래밍 연습, 대회, 과제를 위한 온라인 저지입니다. 문제를 풀고 대회에 참가하세요.",
                   cards: {
                     practice: { title: "연습", description: "원하는 속도로 문제를 풀고 알고리즘 실력을 키우세요." },
-                    playground: { title: "플레이그라운드", description: "로그인 없이 코드를 작성하고 바로 실행하세요." },
-                    contests: { title: "대회", description: "진행 중인 프로그래밍 대회를 탐색하고 참여하세요." },
-                    community: { title: "커뮤니티", description: "질문하고, 팁을 공유하고, 다른 사용자와 소통하세요." },
+                    playground: { title: "플레이그라운드", description: "로그인 없이도 코드를 쓰고 바로 실행할 수 있습니다." },
+                    contests: { title: "대회", description: "진행 중인 프로그래밍 대회를 찾고 참가하세요." },
+                    community: { title: "커뮤니티", description: "질문하고 팁을 나누고 다른 사용자와 이야기하세요." },
                   },
                 },
               }}
