@@ -3,8 +3,9 @@ import { getTranslations } from "next-intl/server";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { auth } from "@/lib/auth";
 import { getRecruitingInvitationByToken } from "@/lib/assignments/recruiting-invitations";
+import { getEnabledCompilerLanguages } from "@/lib/compiler/catalog";
 import { db } from "@/lib/db";
-import { assignmentProblems, assignments, languageConfigs } from "@/lib/db/schema";
+import { assignmentProblems, assignments } from "@/lib/db/schema";
 import { eq, sql } from "drizzle-orm";
 import { RecruitStartForm } from "./recruit-start-form";
 
@@ -169,14 +170,14 @@ export default async function RecruitPage({
       .from(assignmentProblems)
       .where(eq(assignmentProblems.assignmentId, assignment.id))
       .then((rows) => rows[0]),
-    db
-      .select({ count: sql<number>`count(*)` })
-      .from(languageConfigs)
-      .where(eq(languageConfigs.isEnabled, true))
-      .then((rows) => rows[0]),
+    getEnabledCompilerLanguages(),
   ]);
   const problemCount = Number(problemCountRow?.count ?? 0);
-  const enabledLanguageCount = Number(enabledLanguagesRow?.count ?? 0);
+  const enabledLanguageCount = enabledLanguagesRow.length;
+  const visibleLanguages = enabledLanguagesRow.slice(0, 6).map((language) =>
+    language.standard ? `${language.displayName} (${language.standard})` : language.displayName
+  );
+  const hiddenLanguageCount = Math.max(enabledLanguageCount - visibleLanguages.length, 0);
 
   return (
     <Card className="w-full max-w-lg">
@@ -206,6 +207,23 @@ export default async function RecruitPage({
               <p>{t("deadlineInfo", { date: new Date(assignment.deadline).toLocaleString() })}</p>
             )}
             <p>{t("languageCountDetail", { count: enabledLanguageCount })}</p>
+            {visibleLanguages.length > 0 && (
+              <div className="flex flex-wrap gap-2 pt-1">
+                {visibleLanguages.map((language) => (
+                  <span
+                    key={language}
+                    className="rounded-full border px-2 py-0.5 text-xs text-muted-foreground"
+                  >
+                    {language}
+                  </span>
+                ))}
+                {hiddenLanguageCount > 0 && (
+                  <span className="rounded-full border px-2 py-0.5 text-xs text-muted-foreground">
+                    {t("languageListMore", { count: hiddenLanguageCount })}
+                  </span>
+                )}
+              </div>
+            )}
           </div>
           <div className="rounded-lg border border-amber-200 bg-amber-50 dark:border-amber-800 dark:bg-amber-950/30 p-3 space-y-1 text-sm">
             <p className="font-medium text-amber-800 dark:text-amber-200">{t("importantNotes")}</p>

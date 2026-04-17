@@ -2456,6 +2456,7 @@
     "durationDetail": "제한 시간: {minutes}분",
     "deadlineInfo": "마감일: {date}",
     "languageCountDetail": "에디터에서 사용 가능한 언어 {count}개",
+    "languageListMore": "외 {count}개",
     "importantNotes": "시작 전 안내",
     "noteTimer": "시작하면 타이머가 돌아갑니다. 멈추거나 다시 시작할 수 없습니다.",
     "noteSubmissions": "제출은 여러 번 가능하고, 최고 점수로 반영됩니다.",
