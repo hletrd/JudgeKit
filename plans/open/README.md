@@ -8,7 +8,6 @@ This directory contains **planning only** for repository-level findings that are
 - `2026-04-14-master-review-backlog.md`
 - `2026-04-14-authorization-and-context-hardening-plan.md`
 - `2026-04-14-judge-runtime-and-deployment-hardening-plan.md`
-- `2026-04-17-test-contract-alignment-plan.md`
 
 ## Source review set driving the backlog
 - `.context/reviews/multi-agent-comprehensive-review-2026-04-13-current-head.md`
@@ -24,4 +23,4 @@ The 2026-04-14 privacy/high-stakes and verification/readiness plans remain archi
 ## Planned execution order
 1. Authorization / trusted-context hardening
 2. Judge runtime / deployment hardening
-3. Test, docs, and contract alignment
+3. Test, docs, and contract alignment ✅ archived after full suite + typecheck recovery

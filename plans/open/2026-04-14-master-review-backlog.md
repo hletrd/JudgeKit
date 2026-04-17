@@ -31,14 +31,13 @@ Remaining driver lines include:
 - compile sandbox hardening and split-host runtime truth
 
 ### 3. Test, docs, and contract alignment
-**Plan:** `plans/open/2026-04-17-test-contract-alignment-plan.md`  
-**Status:** new open lane
+**Plan:** `plans/archive/2026-04-17-test-contract-alignment-plan.md`  
+**Status:** implemented and archived
 
-Driver lines include:
-- stale built-in-role assumptions in tests/docs
-- judge auth/judge-poll mock drift
-- backup/export contract tests that no longer match the shipped product
-- brittle source-grep implementation tests and obsolete baselines
+Completed in this pass:
+- full unit suite passes from a clean tracked state
+- TypeScript check passes from a clean tracked state
+- built-in role, judge auth, backup docs, i18n, source-grep, metadata, and guest-playground contract drift were all re-aligned
 
 ### 4. Product / UX / security feature planning tracked under `.context/plans/`
 **Status:** open in the feature-plan surface, not duplicated here

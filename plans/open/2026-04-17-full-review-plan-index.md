@@ -45,4 +45,5 @@ Track how the full review corpus maps to current implementation plans, including
 
 ## Archive action taken in this pass
 - archived the fully implemented `.context/plans/cp-plan-03-contest-workflow.md` into `.context/plans/_archive/`
-- left other active plans open because they still contain unresolved work or need revalidation before closure
+- archived `plans/archive/2026-04-17-test-contract-alignment-plan.md` after full-suite and typecheck verification succeeded
+- left the remaining active plans open because they still contain unresolved work or need revalidation before closure

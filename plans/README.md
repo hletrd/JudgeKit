@@ -14,7 +14,6 @@ This directory contains **planning only**. No implementation is included here.
 - `plans/open/2026-04-14-master-review-backlog.md`
 - `plans/open/2026-04-14-authorization-and-context-hardening-plan.md`
 - `plans/open/2026-04-14-judge-runtime-and-deployment-hardening-plan.md`
-- `plans/open/2026-04-17-test-contract-alignment-plan.md`
 
 ## Review inventory and status
 
@@ -30,8 +29,11 @@ This directory contains **planning only**. No implementation is included here.
 | `.context/reviews/adversarial-security-review-2026-04-12-current-head.md` | Open (repo-local subset) | `plans/open/2026-04-14-judge-runtime-and-deployment-hardening-plan.md` + `.context/plans/review-gap-index-2026-04-17.md` | Remaining worker/integrity issues still actionable |
 | `.context/reviews/comprehensive-code-review-2026-04-13-current-head.md` | Open (partially revalidated) | `plans/open/2026-04-14-authorization-and-context-hardening-plan.md` | Some findings were fixed; remaining custom-role/current-head defects stay open |
 | `.context/reviews/multi-agent-comprehensive-review-2026-04-13-current-head.md` | Open plan | `plans/open/2026-04-14-master-review-backlog.md` | Main current-head defect inventory |
-| `.context/reviews/comprehensive-code-review-2026-04-17-current-head.md` | Open plan | `plans/open/2026-04-17-test-contract-alignment-plan.md` | Fixed code issues landed; remaining task is suite/doc/contract stabilization |
-| `.context/reviews/comprehensive-security-review-2026-04-17-current-head.md` | Open plan | `plans/open/2026-04-17-test-contract-alignment-plan.md` | Remaining risk is verification-contract drift, not a fresh product vulnerability |
+| `.context/reviews/comprehensive-code-review-2026-04-17-current-head.md` | Archived (implemented) | `plans/archive/2026-04-17-test-contract-alignment-plan.md` | Suite/doc/contract stabilization completed with green full-suite evidence |
+| `.context/reviews/comprehensive-security-review-2026-04-17-current-head.md` | Archived (implemented) | `plans/archive/2026-04-17-test-contract-alignment-plan.md` | Verification-contract drift was burned down and reverified with a green full suite |
+
+## Archived in this pass
+- `plans/archive/2026-04-17-test-contract-alignment-plan.md` — archived after `npx vitest run` and `npx tsc --noEmit` both passed from a clean tracked state
 
 ## Archival note for this pass
-No additional repository-level open plans were moved into `plans/archive/` in this pass. The only archival movement was in `.context/plans/`, where the fully implemented contest-workflow plan was moved into that feature-plan archive.
+The test-contract alignment plan was moved into `plans/archive/` after full-suite verification succeeded. The earlier `.context/plans/` contest-workflow archival remains valid as well.
