@@ -1534,7 +1534,7 @@ Restore from backup. Requires the `system.backup` capability. Rate limit: `admin
 
 **Request:** `multipart/form-data` with `file` and `password` fields. Max 100 MB.
 
-Accepts either a JudgeKit JSON export or a ZIP backup archive (`database.json` + `uploads/`). Validates and imports it via the migration system.
+Accepts either a JudgeKit JSON export or a ZIP backup archive (`database.json` + `uploads/`). ZIP backups include a checksum manifest and are integrity-checked before import.
 
 Portable sanitized exports are rejected here. Use a full-fidelity backup for disaster recovery restores.
 

@@ -76,9 +76,19 @@ export async function POST(request: NextRequest) {
       const arrayBuffer = await file.arrayBuffer();
       const zipBuffer = Buffer.from(arrayBuffer);
 
-      const result = await restoreFilesFromZip(zipBuffer);
-      data = result.dbExport;
-      filesRestored = result.filesRestored;
+      try {
+        const result = await restoreFilesFromZip(zipBuffer);
+        data = result.dbExport;
+        filesRestored = result.filesRestored;
+      } catch (error) {
+        if (
+          error instanceof Error &&
+          (error.message === "invalidBackupManifest" || error.message === "backupIntegrityMismatch")
+        ) {
+          return NextResponse.json({ error: "invalidBackupIntegrity" }, { status: 400 });
+        }
+        throw error;
+      }
     } else {
       // Legacy JSON format
       const isJsonFile = file.name?.endsWith(".json") || file.type === "application/json";

@@ -1193,6 +1193,7 @@
       "confirmRestore": "Confirm Restore",
       "restoreSuccess": "Database restored. Please restart the application.",
       "restoreFailed": "Failed to restore database.",
+      "invalidBackupIntegrity": "Backup integrity verification failed. Upload the original full backup again.",
       "sanitizedExportNotRestorable": "Portable sanitized exports cannot be restored. Use a full-fidelity backup instead.",
       "noFileSelected": "Please select a backup file.",
       "noFileProvided": "No file was provided.",

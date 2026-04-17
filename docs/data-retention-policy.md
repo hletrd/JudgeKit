@@ -44,7 +44,7 @@ The export endpoint (`POST /api/v1/admin/migrate/export`) supports two modes:
 
 **Full-fidelity** (`?full=true`) — all fields included. Use only for disaster-recovery backups. Treat the output as a secret; store with encryption and access controls equivalent to the live database.
 
-The backup route (`POST /api/v1/admin/backup`) always produces a full-fidelity copy. Every export is recorded in the audit log with an entry noting whether the export was sanitized or full-fidelity.
+The backup route (`POST /api/v1/admin/backup`) always produces a full-fidelity copy. ZIP backups embed a checksum manifest so the restore route can reject tampered archives before import. Every export is recorded in the audit log with an entry noting whether the export was sanitized or full-fidelity.
 
 ---
 

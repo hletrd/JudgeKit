@@ -25,8 +25,10 @@ describe("backup/export docs consistency", () => {
 
   it("uses ZIP backup downloads with JSON+ZIP restore inputs for PostgreSQL backups", () => {
     const component = read("src/app/(dashboard)/dashboard/admin/settings/database-backup-restore.tsx");
+    const docs = read("docs/api.md");
     expect(component).toContain("judgekit-backup-${timestamp}.zip");
     expect(component).toContain('accept=".json,.zip,application/json,application/zip"');
+    expect(docs).toContain("checksum manifest");
     expect(component).not.toContain(".sqlite");
   });
 

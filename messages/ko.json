@@ -1193,6 +1193,7 @@
       "confirmRestore": "복원 확인",
       "restoreSuccess": "데이터베이스가 복원되었습니다. 애플리케이션을 재시작하세요.",
       "restoreFailed": "데이터베이스 복원에 실패했습니다.",
+      "invalidBackupIntegrity": "백업 무결성 검증에 실패했습니다. 원본 전체 백업을 다시 업로드하세요.",
       "sanitizedExportNotRestorable": "민감정보를 제거한 이식용 내보내기는 복원할 수 없습니다. 전체 백업을 사용하세요.",
       "noFileSelected": "백업 파일을 선택해주세요.",
       "noFileProvided": "파일이 제공되지 않았습니다.",

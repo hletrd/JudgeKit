@@ -12,6 +12,7 @@ const {
   readUploadedJsonFileWithLimitMock,
   validateExportMock,
   importDatabaseMock,
+  restoreFilesFromZipMock,
 } = vi.hoisted(() => ({
   getApiUserMock: vi.fn(),
   csrfForbiddenMock: vi.fn(),
@@ -23,6 +24,7 @@ const {
   readUploadedJsonFileWithLimitMock: vi.fn(),
   validateExportMock: vi.fn(),
   importDatabaseMock: vi.fn(),
+  restoreFilesFromZipMock: vi.fn(),
 }));
 
 vi.mock("@/lib/api/auth", () => ({
@@ -78,6 +80,10 @@ vi.mock("@/lib/audit/events", () => ({
   recordAuditEvent: vi.fn(),
 }));
 
+vi.mock("@/lib/db/export-with-files", () => ({
+  restoreFilesFromZip: restoreFilesFromZipMock,
+}));
+
 vi.mock("@/lib/logger", () => ({
   logger: { error: vi.fn() },
 }));
@@ -131,6 +137,17 @@ describe("destructive backup/import route password confirmation", () => {
     verifyPasswordMock.mockResolvedValue({ valid: false });
     dbSelectMock.mockReturnValue(makeLimitChain([{ passwordHash: "stored-hash" }]));
     validateExportMock.mockReturnValue([]);
+    restoreFilesFromZipMock.mockResolvedValue({
+      dbExport: {
+        version: 1,
+        exportedAt: "2026-04-12T00:00:00.000Z",
+        sourceDialect: "postgresql",
+        appVersion: "test",
+        redactionMode: "full-fidelity",
+        tables: {},
+      },
+      filesRestored: 0,
+    });
     readUploadedJsonFileWithLimitMock.mockResolvedValue({
       version: 1,
       exportedAt: "2026-04-12T00:00:00.000Z",
@@ -300,6 +317,21 @@ describe("backup restore semantic safety", () => {
 
     expect(res.status).toBe(400);
     expect(body.error).toBe("sanitizedExportNotRestorable");
+    expect(importDatabaseMock).not.toHaveBeenCalled();
+  });
+
+  it("rejects ZIP backups whose integrity manifest fails validation", async () => {
+    restoreFilesFromZipMock.mockRejectedValue(new Error("backupIntegrityMismatch"));
+
+    const { POST } = await import("@/app/api/v1/admin/restore/route");
+    const form = new FormData();
+    form.set("password", "correct-password");
+    form.set("file", new File([new Uint8Array([1, 2, 3])], "backup.zip", { type: "application/zip" }));
+    const res = await POST(makeFormRequest("http://localhost:3000/api/v1/admin/restore", form));
+    const body = await res.json();
+
+    expect(res.status).toBe(400);
+    expect(body.error).toBe("invalidBackupIntegrity");
     expect(importDatabaseMock).not.toHaveBeenCalled();
   });
 });
