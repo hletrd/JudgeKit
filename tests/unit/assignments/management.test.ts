@@ -60,9 +60,9 @@ describe("group management helpers", () => {
     mockGroupInstructorRow(undefined);
   });
 
-  it("keeps built-in owner/admin behavior", async () => {
-    expect(canManageGroupResources("owner-1", "owner-1", "instructor")).toBe(true);
-    expect(canManageGroupResources("owner-1", "admin-1", "admin")).toBe(true);
+  it("treats group ownership as the built-in synchronous management baseline", async () => {
+    expect(canManageGroupResources("owner-1", "owner-1")).toBe(true);
+    expect(canManageGroupResources("owner-1", "admin-1")).toBe(false);
     await expect(
       canManageGroupResourcesAsync("owner-1", "owner-1", "instructor", "group-1")
     ).resolves.toBe(true);

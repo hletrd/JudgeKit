@@ -32,6 +32,7 @@ describe("custom-role page/runtime implementation guards", () => {
 
   it("keeps contest discovery capability-aware for custom roles", () => {
     const contestsHelper = read("src/lib/assignments/contests.ts");
+    const managementHelper = read("src/lib/assignments/management.ts");
 
     expect(contestsHelper).toContain("resolveCapabilities");
     expect(contestsHelper).toContain("group_instructors gi");
@@ -39,6 +40,11 @@ describe("custom-role page/runtime implementation guards", () => {
     expect(contestsHelper).not.toContain('role === "admin"');
     expect(contestsHelper).not.toContain('role === "super_admin"');
     expect(contestsHelper).not.toContain('role === "instructor"');
+
+    expect(managementHelper).toContain("caps.has(\"groups.view_all\")");
+    expect(managementHelper).not.toContain('role === "super_admin"');
+    expect(managementHelper).not.toContain('role === "admin"');
+    expect(managementHelper).not.toContain('role === "instructor"');
   });
 
   it("keeps problem and dashboard affordances capability-aware for custom roles", () => {

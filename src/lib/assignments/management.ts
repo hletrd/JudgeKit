@@ -24,12 +24,9 @@ type AssignmentManagerProblem = {
 
 export function canManageGroupResources(
   groupInstructorId: string | null,
-  userId: string,
-  role: string
+  userId: string
 ) {
-  if (role === "super_admin" || role === "admin") return true;
-  if (role === "instructor" && groupInstructorId === userId) return true;
-  return false;
+  return groupInstructorId === userId;
 }
 
 async function getGroupInstructorAssignmentRole(
@@ -55,7 +52,7 @@ export async function canManageGroupResourcesAsync(
   role: string,
   groupId?: string
 ): Promise<boolean> {
-  if (canManageGroupResources(groupInstructorId, userId, role)) return true;
+  if (canManageGroupResources(groupInstructorId, userId)) return true;
   const caps = await resolveCapabilities(role);
   if (caps.has("groups.view_all")) return true;
   if (groupId) {
