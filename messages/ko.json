@@ -111,10 +111,10 @@
     "invalidEmail": "올바른 이메일 주소를 입력하세요.",
     "nameRequired": "이름을 입력하세요.",
     "registrationClosed": "현재 공개 회원가입이 비활성화되어 있습니다.",
-    "hcaptchaRequired": "hCaptcha 인증을 완료해주세요.",
-    "hcaptchaVerificationFailed": "hCaptcha 인증에 실패했습니다. 다시 시도해주세요.",
+    "hcaptchaRequired": "hCaptcha 인증을 완료하세요.",
+    "hcaptchaVerificationFailed": "hCaptcha 인증에 실패했습니다. 다시 시도하세요.",
     "hcaptchaUnavailable": "이 배포에는 hCaptcha가 설정되어 있지 않습니다.",
-    "createUserFailed": "계정을 생성하지 못했습니다. 다시 시도해주세요.",
+    "createUserFailed": "계정을 생성하지 못했습니다. 다시 시도하세요.",
     "signUpNotice": "공개 회원가입으로 생성되는 계정은 사용자 계정입니다.",
     "hcaptchaPrompt": "스팸 방지",
     "confirmPasswordRequired": "비밀번호 확인을 입력하세요.",
@@ -275,7 +275,7 @@
   "dashboardState": {
     "loadingDescription": "대시보드를 불러오는 중입니다.",
     "errorTitle": "문제가 발생했습니다",
-    "errorDescription": "페이지를 불러오지 못했습니다. 다시 시도해 주세요.",
+    "errorDescription": "페이지를 불러오지 못했습니다. 다시 시도하세요.",
     "notFoundTitle": "페이지를 찾을 수 없습니다",
     "notFoundDescription": "해당 페이지가 없습니다.",
     "tryAgain": "다시 시도",
@@ -430,9 +430,9 @@
       "languageNotSupported": "현재 제출에 사용할 수 없는 언어입니다.",
       "sourceCodeRequired": "소스 코드를 입력하세요.",
       "sourceCodeTooLarge": "소스 코드가 크기 제한을 넘었습니다.",
-      "submissionRateLimited": "제출이 너무 빠릅니다. 잠시 후 다시 시도해주세요.",
-      "tooManyPendingSubmissions": "채점 대기 중인 제출이 너무 많습니다. 완료될 때까지 기다려주세요.",
-      "judgeQueueFull": "채점 대기열이 가득 찼습니다. 잠시 후 다시 시도해주세요.",
+      "submissionRateLimited": "제출이 너무 빠릅니다. 잠시 후 다시 시도하세요.",
+      "tooManyPendingSubmissions": "채점 대기 중인 제출이 너무 많습니다. 완료될 때까지 기다리세요.",
+      "judgeQueueFull": "채점 대기열이 가득 찼습니다. 잠시 후 다시 시도하세요.",
       "invalidSubmissionStatus": "잘못된 제출 상태입니다.",
       "submissionLoadFailed": "제출 내역을 불러오지 못했습니다.",
       "submissionCreateFailed": "솔루션 제출에 실패했습니다.",
@@ -1036,7 +1036,7 @@
       "cannotChangeSuperAdminRole": "최고 관리자 역할은 변경할 수 없습니다",
       "passwordTooShort": "비밀번호는 8자 이상이어야 합니다",
       "passwordTooLong": "비밀번호는 128자 이하여야 합니다",
-      "rateLimited": "요청이 너무 많습니다. 잠시 후 다시 시도해주세요.",
+      "rateLimited": "요청이 너무 많습니다. 잠시 후 다시 시도하세요.",
       "updateUserFailed": "사용자 정보를 수정하지 못했습니다",
       "createUserFailed": "사용자를 생성하지 못했습니다",
       "filters": {
@@ -1075,7 +1075,7 @@
       "deleteFailed": "사용자를 삭제하지 못했습니다",
       "cannotDeleteSuperAdmin": "최고 관리자 계정은 삭제할 수 없습니다",
       "cannotDeleteSelf": "자신의 계정은 삭제할 수 없습니다",
-      "deleteUserFailed": "사용자 삭제에 실패했습니다. 다시 시도해 주세요.",
+      "deleteUserFailed": "사용자 삭제에 실패했습니다. 다시 시도하세요.",
       "confirmUsernameMismatch": "사용자명 확인이 일치하지 않습니다"
     },
     "submissions": {
@@ -1234,7 +1234,7 @@
       "defaultLocaleAuto": "자동 감지 (브라우저 언어)",
       "updateSuccess": "시스템 설정이 저장되었습니다",
       "updateError": "시스템 설정을 저장하지 못했습니다",
-      "rateLimited": "요청이 너무 많습니다. 잠시 후 다시 시도해주세요.",
+      "rateLimited": "요청이 너무 많습니다. 잠시 후 다시 시도하세요.",
       "siteTitleTooLong": "사이트 제목은 100자 이하여야 합니다",
       "siteDescriptionTooLong": "사이트 설명은 255자 이하여야 합니다",
       "invalidTimeZone": "Asia/Seoul 같은 올바른 IANA 시간대를 입력하세요",
@@ -1251,7 +1251,7 @@
       "downloadBackup": "전체 백업 다운로드",
       "backupSuccess": "백업이 다운로드되었습니다.",
       "backupFailed": "백업 다운로드에 실패했습니다.",
-      "passwordRequired": "비밀번호를 입력해 주세요.",
+      "passwordRequired": "비밀번호를 입력하세요.",
       "enterPassword": "비밀번호를 입력하세요",
       "restoreTitle": "데이터베이스 복원",
       "restoreWarning": "데이터베이스를 복원하면 현재 모든 데이터가 교체됩니다. 복원 전 자동 백업이 저장됩니다. 복원 후 애플리케이션을 재시작해야 할 수 있습니다. 최고 관리자만 복원할 수 있습니다.",
@@ -1261,7 +1261,7 @@
       "restoreFailed": "데이터베이스 복원에 실패했습니다.",
       "invalidBackupIntegrity": "백업 무결성 검증에 실패했습니다. 원본 전체 백업을 다시 업로드하세요.",
       "sanitizedExportNotRestorable": "민감정보를 제거한 이식용 내보내기는 복원할 수 없습니다. 전체 백업을 사용하세요.",
-      "noFileSelected": "백업 파일을 선택해주세요.",
+      "noFileSelected": "백업 파일을 선택하세요.",
       "noFileProvided": "파일이 제공되지 않았습니다.",
       "fileTooLarge": "파일이 너무 큽니다 (최대 100 MB).",
       "invalidBackupFile": "잘못된 파일입니다. 유효한 데이터베이스 백업 파일을 업로드하세요.",
@@ -1678,7 +1678,7 @@
       "viewKey": "키 보기",
       "viewKeyTitle": "API 키",
       "viewKeyDescription": "\"{name}\" 키의 전체 내용입니다.",
-      "noEncryptedKey": "이전에 만든 키라 조회할 수 없습니다. 새로 만들어 주세요.",
+      "noEncryptedKey": "이전에 만든 키라 조회할 수 없습니다. 새로 만드세요.",
       "viewKeyFailed": "키를 불러올 수 없습니다"
     },
     "tags": {
@@ -1726,7 +1726,7 @@
     "changePasswordBtn": "비밀번호 변경",
     "updateSuccess": "프로필이 저장되었습니다",
     "updateError": "프로필 저장에 실패했습니다",
-    "rateLimited": "요청이 너무 많습니다. 잠시 후 다시 시도해주세요.",
+    "rateLimited": "요청이 너무 많습니다. 잠시 후 다시 시도하세요.",
     "notAuthenticated": "인증되지 않았습니다",
     "nameRequired": "이름은 필수입니다",
     "nameTooLong": "이름은 100자 이하여야 합니다",
@@ -1771,11 +1771,11 @@
     "passwordTooShort": "비밀번호는 8자 이상이어야 합니다",
     "passwordTooLong": "비밀번호는 128자 이하여야 합니다",
     "currentPasswordIncorrect": "현재 비밀번호가 올바르지 않습니다",
-    "changePasswordRateLimited": "비밀번호 변경 시도가 너무 많습니다. 잠시 후 다시 시도해주세요.",
+    "changePasswordRateLimited": "비밀번호 변경 시도가 너무 많습니다. 잠시 후 다시 시도하세요.",
     "error": "오류가 발생했습니다",
     "userNotFound": "사용자를 찾을 수 없습니다",
     "sessionExpired": "세션이 만료되어 로그인 페이지로 이동합니다.",
-    "reauthFailed": "비밀번호는 변경되었지만 자동 로그인에 실패했습니다. 새 비밀번호로 다시 로그인해주세요.",
+    "reauthFailed": "비밀번호는 변경되었지만 자동 로그인에 실패했습니다. 새 비밀번호로 다시 로그인하세요.",
     "signInAgain": "다시 로그인"
   },
   "comments": {
@@ -1866,8 +1866,8 @@
       "close": "닫기",
       "minimize": "최소화",
       "thinking": "답변 작성 중",
-      "errorGeneric": "문제가 발생했습니다. 다시 시도해주세요.",
-      "errorRateLimit": "메시지를 너무 빨리 보냈습니다. 잠시 후 다시 시도해주세요.",
+      "errorGeneric": "문제가 발생했습니다. 다시 시도하세요.",
+      "errorRateLimit": "메시지를 너무 빨리 보냈습니다. 잠시 후 다시 시도하세요.",
       "errorNotConfigured": "채팅이 설정되지 않았습니다. 관리자에게 문의하세요.",
       "provider": "AI 제공자",
       "apiKey": "API 키",
@@ -2030,7 +2030,7 @@
       "joinDescription": "접속 코드를 입력하여 대회에 참가하세요.",
       "joinButton": "참가",
       "joinSuccess": "대회에 참가했습니다",
-      "joinFailed": "참가에 실패했습니다. 접속 코드를 확인해주세요.",
+      "joinFailed": "참가에 실패했습니다. 접속 코드를 확인하세요.",
       "alreadyEnrolled": "이미 이 대회에 참가하고 있습니다.",
       "codeLabel": "접속 코드",
       "codePlaceholder": "접속 코드 입력",
@@ -2071,7 +2071,7 @@
       },
       "warningTabSwitch": "탭 전환이 감지되었습니다. 검토용 신호가 기록됩니다.",
       "privacyNoticeTitle": "활동 모니터링 안내",
-      "privacyNoticeDescription": "이 시험은 학업 정직성을 보장하기 위해 활동 모니터링을 사용합니다. 다음 활동이 기록될 수 있습니다:",
+      "privacyNoticeDescription": "이 시험은 정직성 검토를 위해 활동을 기록합니다. 다음 활동이 기록될 수 있습니다:",
       "privacyNoticeTabSwitch": "탭 또는 창 전환",
       "privacyNoticeCopyPaste": "복사 및 붙여넣기",
       "privacyNoticeIpAddress": "IP 주소 변경",
@@ -2357,7 +2357,7 @@
     "exitCode": "종료 코드: {code}",
     "executionTime": "실행 시간: {time}ms",
     "compileError": "컴파일 실패",
-    "alreadyRunning": "이미 실행 중입니다. 잠시만 기다려 주세요.",
+    "alreadyRunning": "이미 실행 중입니다.",
     "runFailed": "코드 실행에 실패했습니다",
     "networkError": "네트워크 오류가 발생했습니다",
     "codeEditorLabel": "코드 편집기",
@@ -2366,7 +2366,7 @@
     "testCaseLabel": "테스트 케이스 {number}",
     "loadingLanguages": "언어 목록을 불러오는 중",
     "noLanguagesTitle": "사용 가능한 언어 없음",
-    "noLanguagesDescription": "현재 활성화된 프로그래밍 언어가 없습니다. 관리자에게 문의해 주세요."
+    "noLanguagesDescription": "현재 활성화된 프로그래밍 언어가 없습니다. 관리자에게 문의하세요."
   },
   "capabilities": {
     "groups": {
@@ -2555,7 +2555,7 @@
     "startConfirmButton": "지금 시작",
     "cancel": "취소",
     "starting": "시작 중",
-    "startFailed": "시작하지 못했습니다. 다시 시도해 주세요.",
+    "startFailed": "시작하지 못했습니다. 다시 시도하세요.",
     "claimed": "이미 사용된 초대",
     "claimedDescription": "이 초대 링크는 이미 사용되었습니다. 이 기기에서 기존 세션을 이어가거나 채용 이메일과 계정 비밀번호로 로그인하세요.",
     "invalidToken": "잘못된 링크",
@@ -2577,7 +2577,7 @@
     "accountPasswordTooShort": "비밀번호는 최소 {min}자 이상이어야 합니다.",
     "accountPasswordLoginNotice": "처음 시작한 뒤에는 일반 로그인 페이지에서 채용용 이메일과 계정 비밀번호로 다시 로그인할 수 있습니다.",
     "resumeSessionOnlyNotice": "현재 로그인한 계정으로 이 초대가 이미 연결되어 있습니다. 그대로 진행하면 평가를 이어갈 수 있습니다.",
-    "signInRequired": "제출내역을 보려면 로그인해주세요.",
+    "signInRequired": "제출내역을 보려면 로그인하세요.",
     "goToLogin": "로그인으로 이동"
   },
   "publicShell": {
@@ -2739,7 +2739,7 @@
         "empty": "아직 해설이 등록되지 않았습니다.",
         "createLabel": "해설 작성",
         "createTitle": "해설 작성하기",
-        "createContent": "문제의 접근법, 알고리즘, 핵심 아이디어를 설명해 주세요.",
+        "createContent": "문제의 접근법, 알고리즘, 핵심 아이디어를 설명하세요.",
         "submitLabel": "해설 게시",
         "success": "해설이 게시되었습니다",
         "signIn": "해설을 보려면 로그인하세요"
@@ -2809,7 +2809,7 @@
       "primaryCta": "워크스페이스 열기",
       "secondaryCta": "로그인",
       "liveTitle": "공개 플레이그라운드",
-      "liveDescription": "로그인 없이 코드를 실행하고 결과를 바로 확인할 수 있습니다. 채점이나 대회 참여 시에만 로그인이 필요합니다."
+      "liveDescription": "로그인 없이 코드를 실행하고 결과를 확인합니다. 채점이나 대회 참여에는 로그인이 필요합니다."
     },
     "contests": {
       "title": "대회 카탈로그 미리보기",
@@ -2818,7 +2818,7 @@
       "primaryCta": "워크스페이스 열기",
       "secondaryCta": "로그인",
       "catalogTitle": "공개 대회 카탈로그",
-      "catalogDescription": "공개된 대회 목록입니다. 로그인 없이도 대회 정보를 미리 확인할 수 있습니다.",
+      "catalogDescription": "공개된 대회 목록입니다. 로그인 없이 대회 정보를 확인할 수 있습니다.",
       "noContests": "아직 공개된 대회가 없습니다.",
       "openContest": "대회 열기",
       "hostedBy": "{name} 주최",
@@ -2913,7 +2913,7 @@
   "workspaceShell": {
     "sectionLabel": "워크스페이스",
     "title": "워크스페이스 홈",
-    "description": "새 워크스페이스 셸이 인증 사용자용 기본 진입점이 되었습니다. 기존 기능 페이지도 구조 전환이 끝날 때까지 그대로 쓸 수 있습니다.",
+    "description": "워크스페이스 셸이 인증 사용자용 진입점입니다. 기존 기능 페이지도 전환 기간 동안 그대로 사용할 수 있습니다.",
     "openLink": "열기",
     "nav": {
       "home": "워크스페이스 홈",

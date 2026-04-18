@@ -855,7 +855,7 @@
     "freezeLeaderboardLabel": "Freeze Leaderboard At",
     "freezeLeaderboardDescription": "Users see frozen standings after this time. Instructors see live data.",
     "enableAntiCheatLabel": "Enable anti-cheat monitoring",
-    "enableAntiCheatDescription": "Logs browser focus changes, copy/paste, and similar signals as review aids. This is low-confidence telemetry, not proctoring or proof of misconduct. For formal exams, add separate operational controls.",
+    "enableAntiCheatDescription": "Logs browser focus changes, copy/paste, and similar signals for review. Low-confidence telemetry, not proctoring or proof of misconduct. For formal exams, add operational controls.",
     "showResultsToCandidateLabel": "Show grading results to participants",
     "showResultsToCandidateDescription": "When enabled, participants can see their grading details including test case results. When disabled, only instructors and admins can view results.",
     "hideScoresFromCandidatesLabel": "Hide scores from participants",
@@ -2071,7 +2071,7 @@
       },
       "warningTabSwitch": "Tab switch detected. An integrity signal has been recorded for review.",
       "privacyNoticeTitle": "Activity Monitoring Notice",
-      "privacyNoticeDescription": "This exam uses activity monitoring to help ensure academic integrity. The following activities may be recorded:",
+      "privacyNoticeDescription": "This exam records activity signals for integrity review. The following may be recorded:",
       "privacyNoticeTabSwitch": "Tab or window switches",
       "privacyNoticeCopyPaste": "Copy and paste actions",
       "privacyNoticeIpAddress": "IP address changes",
@@ -2357,7 +2357,7 @@
     "exitCode": "Exit code: {code}",
     "executionTime": "Execution time: {time}ms",
     "compileError": "Compilation failed",
-    "alreadyRunning": "Already running, please wait...",
+    "alreadyRunning": "Already running.",
     "runFailed": "Failed to run code",
     "networkError": "Network error occurred",
     "codeEditorLabel": "Code editor",
@@ -2804,12 +2804,12 @@
     },
     "playground": {
       "title": "Public playground",
-      "description": "Run simple code in a guest-safe environment without signing in.",
+      "description": "Run code in a guest-safe environment without signing in.",
       "note": "Guest playground execution is now enabled for quick testing. Judged submissions and contest participation still require authentication.",
       "primaryCta": "Open workspace",
       "secondaryCta": "Sign in",
       "liveTitle": "Public playground",
-      "liveDescription": "Run quick experiments with stdin/stdout just like an online scratch compiler. Sign in only when you need judged submissions or contest participation."
+      "liveDescription": "Run code with stdin/stdout. Sign in for judged submissions or contest participation."
     },
     "contests": {
       "title": "Contest catalog preview",
@@ -2818,7 +2818,7 @@
       "primaryCta": "Open workspace",
       "secondaryCta": "Sign in",
       "catalogTitle": "Public contest catalog",
-      "catalogDescription": "Browse contests that are explicitly marked as public. Guests can review the overview safely before signing in to participate.",
+      "catalogDescription": "Browse contests marked public. Guests can review the overview before signing in to participate.",
       "noContests": "No public contests are available yet.",
       "openContest": "Open contest",
       "hostedBy": "Hosted by {name}",
@@ -2913,7 +2913,7 @@
   "workspaceShell": {
     "sectionLabel": "Workspace",
     "title": "Workspace home",
-    "description": "The new workspace shell is now the preferred authenticated entry point. Existing feature pages remain available while the hierarchy transitions away from the old dashboard-first model.",
+    "description": "The workspace shell is the authenticated entry point. Existing feature pages remain available during migration.",
     "openLink": "Open",
     "nav": {
       "home": "Workspace home",
