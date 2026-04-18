@@ -60,31 +60,31 @@ Tracked in `.context/reviews/comprehensive-code-review-2026-04-18.md` §3.* and 
 | Story | Status | Commit |
 |---|---|---|
 | CRIT-1 | Open | — |
-| CRIT-2 | Open | — |
-| CRIT-3 | Open | — |
-| CRIT-4 | Open | — |
-| CRIT-5 | Open | — |
+| CRIT-2 | Done | `test(seed): 🧪 localhost gate now derives IP via extractClientIp()` |
+| CRIT-3 | Done | `fix(accepted-solutions): 🔐 require auth and hide anonymous userId` |
+| CRIT-4 | Done | `fix(files): 🛡️ authenticate API-key deletes before CSRF` |
+| CRIT-5 | Done | `fix(judge-runner): 🛡️ cap runner HTTP body at 4 MiB` |
 | CRIT-6 | Open | — |
-| CRIT-7 | Open | — |
-| CRIT-8 | Open | — |
+| CRIT-7 | Done | `fix(retention): 🔒 prune loginEvents and honor legal hold for audit` |
+| CRIT-8 | Done | `fix(sidecars): 🛡️ add bearer auth + body-size limits to Rust sidecars` |
 | CRIT-9 | Done | key.pem removed from working tree; `*.pem`/`*.key`/`*.p12`/`*.pfx` added to `.dockerignore`. **Operator action:** rotate any TLS/private key that was present at `/key.pem` before this change, because it may have been copied into prior docker builder layers. |
 | HIGH-1 | Done | `fix(submissions): 🐛 align terminal SSE payloads with submission visibility` |
 | HIGH-2 | Open | — |
 | HIGH-3 | Open | — |
-| HIGH-4 | Open | — |
+| HIGH-4 | Done | `fix(judge): 🐛 heartbeat no longer clobbers the atomic active_tasks counter` |
 | HIGH-5 | Open | — |
 | HIGH-6 | Open | — |
-| HIGH-7 | Open | — |
+| HIGH-7 | Done | `fix(db): 🐛 add missing communityVotes Drizzle relation` |
 | HIGH-8 | Open | — |
 | HIGH-9 | Open | — |
 | HIGH-10 | Open | — |
-| HIGH-11 | Open | — |
+| HIGH-11 | Done | `fix(groups): 🛡️ move assignment overrides route under createApiHandler` |
 | HIGH-12 | Open | — |
 | HIGH-13 | Open (closed by CRIT-3) | — |
 | HIGH-14 | Open | — |
 | HIGH-15 | Open | — |
 | HIGH-16 | Open | — |
-| HIGH-17 | Open | — |
+| HIGH-17 | Done | `chore(test-compose): 🔒 drop BUILD/DELETE from test-backends docker-proxy` |
 | HIGH-18 | Open | — |
 | HIGH-19 | Open | — |
 | HIGH-20 | Open | — |
