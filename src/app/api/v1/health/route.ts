@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { pool } from "@/lib/db";
 import { consumeApiRateLimit } from "@/lib/security/api-rate-limit";
+import { logger } from "@/lib/logger";
 
 export const dynamic = "force-dynamic";
 
@@ -17,7 +18,8 @@ export async function GET(request: NextRequest) {
       const result = await pool.query("SELECT 1");
       dbStatus = result.rows.length > 0 ? "ok" : "error";
     }
-  } catch {
+  } catch (err) {
+    logger.warn({ err }, "[health] database connectivity check failed");
     dbStatus = "error";
   }
 

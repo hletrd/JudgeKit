@@ -286,10 +286,13 @@ const ALWAYS_REDACT: Record<string, Set<string>> = {
 /** Empty redaction set for full-fidelity backup exports (minus ALWAYS_REDACT). */
 const REDACTED_COLUMNS: Record<string, Set<string>> = {};
 
+type ColumnRef = Parameters<typeof asc>[0];
+
 function getOrderClauses(table: PgTable, orderColumns: string[]) {
+  const columns = table as unknown as Record<string, ColumnRef | undefined>;
   return orderColumns
-    .map((column) => table[column])
-    .filter(Boolean)
+    .map((column) => columns[column])
+    .filter((c): c is ColumnRef => c != null)
     .map((column) => asc(column));
 }
 
