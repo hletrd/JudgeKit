@@ -48,8 +48,6 @@ export function ChangePasswordForm({ username }: { username: string }) {
 
         setError(t(result.error ?? "error"));
       } else {
-        await signOut({ redirect: false });
-
         const refreshedSession = await signIn("credentials", {
           username,
           password: newPassword,
@@ -61,7 +59,9 @@ export function ChangePasswordForm({ username }: { username: string }) {
           // Password was already changed server-side, but automatic re-login
           // failed (rate limit, network blip, etc.). Surface a clear notice
           // and a fallback link so the user is never left with a dead UI.
-          await signOut({ redirect: false });
+          // Do NOT call signOut here — it clears the next-auth session which
+          // triggers a server-component re-render that replaces this form with
+          // InvalidChangePasswordSession (auto-redirect), hiding the error.
           setReauthFailed(true);
           return;
         }
