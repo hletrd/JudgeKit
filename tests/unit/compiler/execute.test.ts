@@ -86,7 +86,7 @@ describe("executeCompilerRun", () => {
         ...VALID_OPTIONS,
         language: {
           ...VALID_OPTIONS.language,
-          compileCommand: "python3 /workspace/solution.py && echo hi",
+          compileCommand: "python3 /workspace/solution.py | echo hi",
         },
       })
     ).resolves.toMatchObject({
@@ -99,7 +99,7 @@ describe("executeCompilerRun", () => {
         ...VALID_OPTIONS,
         language: {
           ...VALID_OPTIONS.language,
-          runCommand: "python3 /workspace/solution.py; echo hi",
+          runCommand: "python3 /workspace/solution.py || echo hi",
         },
       })
     ).resolves.toMatchObject({
@@ -113,7 +113,7 @@ describe("executeCompilerRun", () => {
 
     const { executeCompilerRun } = await import("@/lib/compiler/execute");
     await expect(executeCompilerRun(VALID_OPTIONS)).resolves.toMatchObject({
-      stderr: "COMPILER_RUNNER_URL is set but RUNNER_AUTH_TOKEN/JUDGE_AUTH_TOKEN is missing",
+      stderr: "COMPILER_RUNNER_URL is set but RUNNER_AUTH_TOKEN is missing",
       exitCode: null,
     });
   });

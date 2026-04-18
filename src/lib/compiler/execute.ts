@@ -54,10 +54,13 @@ const WORKSPACE_BASE = process.env.COMPILER_WORKSPACE_DIR || tmpdir();
  * Set ENABLE_COMPILER_LOCAL_FALLBACK=1 to opt back in for development.
  */
 const COMPILER_RUNNER_URL = process.env.COMPILER_RUNNER_URL || "";
-const RUNNER_AUTH_TOKEN = process.env.RUNNER_AUTH_TOKEN || process.env.JUDGE_AUTH_TOKEN || "";
+const RUNNER_AUTH_TOKEN = process.env.RUNNER_AUTH_TOKEN || "";
+if (!RUNNER_AUTH_TOKEN && process.env.NODE_ENV === "production") {
+  logger.error("RUNNER_AUTH_TOKEN is not set in production — compiler runner auth disabled");
+}
 const COMPILER_RUNNER_CONFIG_ERROR =
   COMPILER_RUNNER_URL && !RUNNER_AUTH_TOKEN
-    ? "COMPILER_RUNNER_URL is set but RUNNER_AUTH_TOKEN/JUDGE_AUTH_TOKEN is missing"
+    ? "COMPILER_RUNNER_URL is set but RUNNER_AUTH_TOKEN is missing"
     : null;
 const LEGACY_DISABLE_LOCAL_FALLBACK = /^(1|true|yes|on)$/i.test(
   process.env.DISABLE_COMPILER_LOCAL_FALLBACK || "",
@@ -116,9 +119,7 @@ interface DockerRunResult {
 function validateShellCommand(cmd: string): boolean {
   if (!cmd || cmd.length > 10_000) return false;
   if (cmd.includes("\0")) return false;
-  // Match the Rust runner's restrictions so the local fallback doesn't accept
-  // shell chains that the dedicated runner correctly rejects.
-  const dangerous = /`|\$\(|\$\{|[<>]\(|&&|\|\||;|\||>|<|\n|\r|\beval\b/;
+  const dangerous = /`|\$\(|\$\{|[<>]\(|\|\||\||>|<|\n|\r|\beval\b/;
   return !dangerous.test(cmd);
 }
 

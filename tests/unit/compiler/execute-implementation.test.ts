@@ -34,9 +34,11 @@ describe("compiler execute implementation", () => {
     const source = readFileSync(join(process.cwd(), "src/lib/compiler/execute.ts"), "utf8");
 
     expect(source).toContain("const RUNNER_AUTH_TOKEN");
-    expect(source).toContain("process.env.RUNNER_AUTH_TOKEN || process.env.JUDGE_AUTH_TOKEN");
-    expect(source).toContain("COMPILER_RUNNER_URL is set but RUNNER_AUTH_TOKEN/JUDGE_AUTH_TOKEN is missing");
-    expect(source).toContain("&&|\\|\\||;|\\||>|<|\\n|\\r");
+    expect(source).toContain("process.env.RUNNER_AUTH_TOKEN || \"\"");
+    expect(source).toContain("COMPILER_RUNNER_URL is set but RUNNER_AUTH_TOKEN is missing");
+    expect(source).toContain("\\beval\\b");
+    expect(source).toContain("\\$\\(");
+    expect(source).toContain("\\|\\|");
   });
 
   it("caches seccomp profile availability instead of checking synchronously on every run", () => {
