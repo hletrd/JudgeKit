@@ -6,6 +6,7 @@ import { toast } from "sonner";
 import { Plus, Trash2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Input } from "@/components/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Badge } from "@/components/ui/badge";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
@@ -41,8 +42,18 @@ export function GroupInstructorsManager({
   const t = useTranslations("groups");
   const [instructors, setInstructors] = useState(initialInstructors);
   const [selectedUserId, setSelectedUserId] = useState("");
+  const [userSearchQuery, setUserSearchQuery] = useState("");
   const [selectedRole, setSelectedRole] = useState<"co_instructor" | "ta">("ta");
   const [isAdding, setIsAdding] = useState(false);
+  const normalizedUserSearch = userSearchQuery.trim().toLowerCase();
+  const filteredAvailableUsers = normalizedUserSearch
+    ? availableUsers.filter((user) =>
+        [user.name, user.username]
+          .join(" ")
+          .toLowerCase()
+          .includes(normalizedUserSearch)
+      )
+    : availableUsers;
   const selectedUser = availableUsers.find((user) => user.id === selectedUserId);
   const selectedUserLabel = selectedUser
     ? `${selectedUser.name} (${selectedUser.username})`
@@ -112,6 +123,12 @@ export function GroupInstructorsManager({
       <CardContent className="space-y-4">
         {canManage && (
           <div className="flex flex-col gap-2 sm:flex-row sm:items-end">
+            <Input
+              value={userSearchQuery}
+              onChange={(event) => setUserSearchQuery(event.target.value)}
+              placeholder={t("availableInstructorSearchPlaceholder")}
+              className="flex-1"
+            />
             <Select value={selectedUserId} onValueChange={(value) => setSelectedUserId(value ?? "")}>
               <SelectTrigger className="flex-1">
                 <SelectValue placeholder={t("selectUser")}>
@@ -119,7 +136,7 @@ export function GroupInstructorsManager({
                 </SelectValue>
               </SelectTrigger>
               <SelectContent>
-                {availableUsers
+                {filteredAvailableUsers
                   .filter((u) => !instructors.some((i) => i.userId === u.id))
                   .map((user) => (
                     <SelectItem key={user.id} value={user.id} label={`${user.name} (${user.username})`}>
@@ -143,6 +160,9 @@ export function GroupInstructorsManager({
             </Button>
           </div>
         )}
+        {canManage && availableUsers.length > 0 && filteredAvailableUsers.length === 0 ? (
+          <p className="text-sm text-muted-foreground">{t("availableInstructorSearchEmpty")}</p>
+        ) : null}
 
         {instructors.length === 0 ? (
           <p className="text-sm text-muted-foreground">{t("noGroupInstructors")}</p>

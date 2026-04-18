@@ -732,6 +732,8 @@
     "coInstructor": "Co-Instructor",
     "teachingAssistant": "TA",
     "selectUser": "Select a user",
+    "availableInstructorSearchPlaceholder": "Filter staff users...",
+    "availableInstructorSearchEmpty": "No staff users match the current filter.",
     "addInstructor": "Add",
     "instructorAdded": "Instructor/TA added to group.",
     "addInstructorFailed": "Failed to add instructor/TA.",
