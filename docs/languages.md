@@ -189,7 +189,7 @@ end beh;
 
 ### ARM64 Build Summary
 
-**100 of 100 images build on ARM64** (production, Ampere Altra).
+**102 of 102 images build on ARM64** (production, Ampere Altra).
 
 ### amd64 E2E Summary (2026-03-29)
 
@@ -216,7 +216,7 @@ end beh;
 | `core` | C/C++, Python, Java/Kotlin | ~0.8 GB |
 | `popular` | Core + Node.js, Rust, Go | ~2.5 GB |
 | `extended` | Popular + Ruby, Lua, Bash, C#, PHP, Perl, Swift, R, Haskell, Dart, Zig | ~8 GB |
-| `all` | All 100 images | ~35 GB |
+| `all` | All 102 images | ~35 GB |
 
 ## Admin Language Management
 

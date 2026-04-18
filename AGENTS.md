@@ -17,7 +17,7 @@ JudgeKit is a secure online judge platform for programming assignments. Next.js 
 
 ## Supported Languages
 
-JudgeKit currently defines 120 language variants. Treat `src/lib/judge/languages.ts` and `docs/languages.md` as the source of truth when the static table below drifts.
+JudgeKit currently defines 125 language variants. Treat `src/lib/judge/languages.ts` and `docs/languages.md` as the source of truth when the static table below drifts.
 
 | # | Language ID | Description | Docker Image |
 |---|-------------|-------------|--------------|
@@ -27,8 +27,10 @@ JudgeKit currently defines 120 language variants. Treat `src/lib/judge/languages
 | 4 | `c23` | C (C23, GCC) | `judge-cpp` |
 | 5 | `cpp20` | C++ (C++20, GCC) | `judge-cpp` |
 | 6 | `cpp23` | C++ (C++23, GCC) | `judge-cpp` |
+| 6b | `cpp26` | C++ (C++26, GCC) | `judge-cpp` |
 | 7 | `clang_c23` | C (C23, Clang) | `judge-clang` |
 | 8 | `clang_cpp23` | C++ (C++23, Clang) | `judge-clang` |
+| 8b | `clang_cpp26` | C++ (C++26, Clang) | `judge-clang` |
 | 9 | `llvm_ir` | LLVM IR | `judge-clang` |
 | 10 | `java` | Java 25 | `judge-jvm` |
 | 11 | `kotlin` | Kotlin 2.3 | `judge-jvm` |
@@ -135,6 +137,16 @@ JudgeKit currently defines 120 language variants. Treat `src/lib/judge/languages
 | 112 | `arturo` | Arturo | `judge-arturo` |
 | 113 | `squirrel` | Squirrel 3.2 | `judge-squirrel` |
 | 114 | `vala` | Vala 0.56 | `judge-vala` |
+| 115 | `chapel` | Chapel 2.8 | `judge-chapel` |
+| 116 | `elm` | Elm 0.19.1 | `judge-elm` |
+| 117 | `idris2` | Idris 2 0.8.0 | `judge-idris2` |
+| 118 | `moonbit` | MoonBit 0.8 | `judge-moonbit` |
+| 119 | `rescript` | ReScript 12.2 | `judge-rescript` |
+| 120 | `plaintext` | Plaintext (output-only) | `judge-node` |
+| 121 | `verilog` | Verilog (output-only) | `judge-node` |
+| 122 | `systemverilog` | SystemVerilog (output-only) | `judge-node` |
+| 123 | `vhdl` | VHDL (output-only) | `judge-node` |
+| 124 | `pypy` | PyPy 3.10 | `judge-pypy` |
 
 ## Adding a New Language
 
@@ -164,7 +176,7 @@ See `.context/development/problem-descriptions.md` for full specification.
 
 Changes take effect immediately for new submissions without restarting services.
 
-## Docker Image Sizes (amd64, 2026-03-20)
+## Docker Image Sizes (amd64, 2026-04-18)
 
 | Image | Size | Base | Change |
 |-------|------|------|--------|
@@ -213,7 +225,7 @@ Changes take effect immediately for new submissions without restarting services.
 | `judge-lua` | 14 MB | Alpine 3.21 | — |
 | `judge-awk` | 13 MB | Alpine 3.21 | — |
 
-**Total: ~24 GB** across 68 images (down from ~31.1 GB, saved **~7.1 GB / 23%**)
+**Total: ~25 GB** across 102 images (down from ~31.1 GB, saved **~6.1 GB / 20%**)
 
 ## Docker Image Management API
 
@@ -277,7 +289,7 @@ JudgeKit supports full contest management with two scoring models and two schedu
 
 ### ARM64 Support
 
-All 95 Docker images build and run on arm64 (Ampere Altra). Previously problematic images have been fixed:
+All 102 Docker images build and run on arm64 (Ampere Altra). Previously problematic images have been fixed:
 - **powershell**: Now uses Microsoft's arm64 packages
 - **apl**: Builds with SIMD disabled (`PERFORMANCE_WANTED=no`)
 - **b**: Uses bext-lang/b compiler on arm64 (BCause on amd64) with `-hist` flag for traditional B escape sequences

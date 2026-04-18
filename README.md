@@ -15,7 +15,7 @@
 
 <p align="center">
   A secure, cross-platform code evaluation platform for programming assignments.<br/>
-  Docker-sandboxed execution for <a href="docs/languages.md">124 language variants</a> on both AMD64 and ARM64.
+  Docker-sandboxed execution for <a href="docs/languages.md">125 language variants</a> on both AMD64 and ARM64.
 </p>
 
 ---
@@ -23,7 +23,7 @@
 ## Features
 
 - **Cross-platform (AMD64 + ARM64)** — Full stack runs natively on both architectures: Next.js app, Rust judge worker, Rust sidecars, and the full supported judge-image set. Deploy on x86-64 servers or ARM64 (AWS Graviton, Ampere Altra, Apple Silicon) with automatic architecture detection — no emulation, no cross-compilation
-- **124 languages** — C/C++, Java, Python, Rust, Go, Deno, Bun, Gleam, Lean 4, Hare, Koka, Chapel, Elm, Idris 2, plaintext, HDL output-only modes, and [many more](docs/languages.md), all with multi-arch Docker images and admin-customizable compile/run settings
+- **125 languages** — C/C++, Java, Python, Rust, Go, Deno, Bun, Gleam, Lean 4, Hare, Koka, Chapel, Elm, Idris 2, plaintext, HDL output-only modes, and [many more](docs/languages.md), all with multi-arch Docker images and admin-customizable compile/run settings
 - **Scalable judging** — Distributed judge workers with automatic registration and heartbeats. Live admin dashboard. Deploy across multiple machines with a single script
 - **Secure execution** — Docker containers with no network, seccomp, memory/CPU limits
 - **Role-based access** — Super admin, admin, instructor, student
@@ -73,7 +73,7 @@ See [Language presets](docs/languages.md#docker-image-presets) for preset option
 
 ## Docker Judge Images
 
-100 language-specific Docker images for sandboxed code execution on both AMD64 and ARM64.
+102 language-specific Docker images for sandboxed code execution on both AMD64 and ARM64.
 
 | Image | amd64 | arm64 | Image | amd64 | arm64 |
 |-------|-------|-------|-------|-------|-------|
@@ -128,7 +128,7 @@ See [Language presets](docs/languages.md#docker-image-presets) for preset option
 | `judge-chapel` | 2.39 GB | 1.60 GB | `judge-pony` | 2.62 GB | 1.22 GB |
 | `judge-swift` | 2.79 GB | 2.11 GB | `judge-lean` | 3.87 GB | 3.02 GB |
 
-All 100 images build on both amd64 and arm64.
+All 102 images build on both amd64 and arm64.
 
 ## Tech Stack
 
@@ -269,7 +269,7 @@ Default: `homework`. Change in admin settings or directly in the database (`syst
 - [Monitoring & Alerting](docs/monitoring.md) — health surfaces, metrics, and minimum operator alerting guidance
 - [Authentication](docs/authentication.md) — sign-in flow, cookie architecture, API smoke test
 - [Admin Security Operations](docs/admin-security-operations.md) — lockout policy, MFA/SSO integration guidance, and dependency scanning baseline
-- [Languages](docs/languages.md) — all 124 variants, Docker image presets, admin management
+- [Languages](docs/languages.md) — all 125 variants, Docker image presets, admin management
 - [Judge Workers](docs/judge-workers.md) — multi-worker architecture, registration, deployment
 - [Privacy & Retention](docs/privacy-retention.md) — current retention windows and handling rules for sensitive operational data
 - [High-Stakes Operations](docs/high-stakes-operations.md) — operational truth and launch checks for recruiting, exams, and serious contests
