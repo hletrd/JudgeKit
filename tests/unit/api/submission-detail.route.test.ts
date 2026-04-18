@@ -128,4 +128,51 @@ describe("GET /api/v1/submissions/[id]", () => {
     expect(body.data.results[0].actualOutput).toBe("hidden answer\n");
     expect(body.data.results[0].testCase).toEqual({ sortOrder: 2, isVisible: false });
   });
+
+  it("hides scores and result payloads when the assignment keeps results hidden", async () => {
+    resolveCapabilitiesMock.mockResolvedValue(new Set());
+    assignmentsFindFirstMock.mockResolvedValue({
+      showResultsToCandidate: false,
+      hideScoresFromCandidates: true,
+    });
+    submissionsFindFirstMock.mockResolvedValueOnce({
+      id: "sub-1",
+      userId: "student-1",
+      assignmentId: "assignment-1",
+      sourceCode: 'print("secret")',
+      compileOutput: "warning",
+      executionTimeMs: 12,
+      memoryUsedKb: 256,
+      score: 100,
+      failedTestCaseIndex: 3,
+      runtimeErrorType: "SIGSEGV",
+      problem: {
+        showCompileOutput: true,
+        showDetailedResults: true,
+        showRuntimeErrors: true,
+      },
+      results: [
+        {
+          status: "wrong_answer",
+          actualOutput: "hidden answer\n",
+          executionTimeMs: 12,
+          memoryUsedKb: 256,
+          testCase: { sortOrder: 2, isVisible: true },
+        },
+      ],
+    });
+
+    const { GET } = await import("@/app/api/v1/submissions/[id]/route");
+    const response = await GET(makeRequest(), { params: Promise.resolve({ id: "sub-1" }) });
+    const body = await response.json();
+
+    expect(response.status).toBe(200);
+    expect(body.data.compileOutput).toBeNull();
+    expect(body.data.executionTimeMs).toBeNull();
+    expect(body.data.memoryUsedKb).toBeNull();
+    expect(body.data.score).toBeNull();
+    expect(body.data.failedTestCaseIndex).toBeNull();
+    expect(body.data.runtimeErrorType).toBeNull();
+    expect(body.data.results).toEqual([]);
+  });
 });
