@@ -277,8 +277,9 @@ export async function GET(
           }
           try {
             controller.close();
-          } catch {
+          } catch (err) {
             // stream already closed
+            logger.debug({ err }, "[sse] controller.close() failed, stream likely already closed");
           }
         }
 

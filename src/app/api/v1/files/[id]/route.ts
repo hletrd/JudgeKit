@@ -8,8 +8,8 @@ import { apiSuccess, apiError } from "@/lib/api/responses";
 import { resolveCapabilities } from "@/lib/capabilities/cache";
 import { recordAuditEvent } from "@/lib/audit/events";
 import { readUploadedFile, deleteUploadedFile } from "@/lib/files/storage";
-import { isImageMimeType } from "@/lib/files/image-processing";
 import { logger } from "@/lib/logger";
+import { isImageMimeType } from "@/lib/files/image-processing";
 import { getAccessibleProblemIds } from "@/lib/auth/permissions";
 
 async function canAccessFile(
@@ -91,7 +91,8 @@ export async function GET(
     let buffer: Buffer;
     try {
       buffer = await readUploadedFile(file.storedName);
-    } catch {
+    } catch (err) {
+      logger.warn({ err, fileId: file.id, storedName: file.storedName }, "[files] failed to read uploaded file");
       return apiError("notFound", 404);
     }
 

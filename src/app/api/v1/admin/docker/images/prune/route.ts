@@ -5,6 +5,7 @@ import { createApiHandler } from "@/lib/api/handler";
 import { apiSuccess } from "@/lib/api/responses";
 import { listDockerImages, inspectDockerImage, removeDockerImages } from "@/lib/docker/client";
 import { recordAuditEvent } from "@/lib/audit/events";
+import { logger } from "@/lib/logger";
 
 export const POST = createApiHandler({
   auth: { capabilities: ["system.settings"] },
@@ -30,8 +31,9 @@ export const POST = createApiHandler({
         if (fileStat.mtimeMs > imageCreated) {
           staleTags.push(tag);
         }
-      } catch {
+      } catch (err) {
         // Dockerfile doesn't exist or inspect failed - skip
+        logger.debug({ err, tag, dockerfilePath }, "[docker:prune] stale check failed for image, skipping");
       }
     }));
 

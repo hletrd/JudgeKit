@@ -126,7 +126,8 @@ export async function POST(req: NextRequest) {
   let raw: unknown;
   try {
     raw = await req.json();
-  } catch {
+  } catch (err) {
+    logger.warn({ err }, "[seed] failed to parse request body as JSON");
     return apiError("invalidJson", 400);
   }
 

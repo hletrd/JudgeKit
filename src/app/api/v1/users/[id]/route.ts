@@ -11,6 +11,7 @@ import { getRoleLevel, resolveCapabilities } from "@/lib/capabilities/cache";
 import { safeUserSelect } from "@/lib/db/selects";
 import { updateProfileSchema, adminUpdateUserSchema } from "@/lib/validators/profile";
 import { withUpdatedAt } from "@/lib/db/helpers";
+import { logger } from "@/lib/logger";
 import {
   isUsernameTaken,
   isEmailTaken,

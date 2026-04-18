@@ -10,6 +10,7 @@ import { db } from "@/lib/db";
 import { languageConfigs } from "@/lib/db/schema";
 import { eq } from "drizzle-orm";
 import { isAllowedJudgeDockerImage, isLocalJudgeDockerImage } from "@/lib/judge/docker-image-validation";
+import { logger } from "@/lib/logger";
 
 const buildSchema = z.object({
   language: z.string().min(1).max(64),
@@ -49,7 +50,8 @@ export const POST = createApiHandler({
 
     try {
       await access(dockerfilePath);
-    } catch {
+    } catch (err) {
+      logger.info({ err, dockerfilePath }, "[docker] Dockerfile not found for build request");
       return NextResponse.json(
         { error: `Dockerfile not found: ${dockerfilePath}` },
         { status: 404 },

@@ -7,6 +7,7 @@ import { apiSuccess } from "@/lib/api/responses";
 import { listDockerImages, inspectDockerImage, pullDockerImage, removeDockerImage, getDiskUsage } from "@/lib/docker/client";
 import { recordAuditEvent } from "@/lib/audit/events";
 import { isAllowedJudgeDockerImage } from "@/lib/judge/docker-image-validation";
+import { logger } from "@/lib/logger";
 
 /** Check if Docker images are stale (Dockerfile modified after image was built) */
 async function getStaleImages(images: { repository: string; tag: string }[]): Promise<Set<string>> {
@@ -29,8 +30,9 @@ async function getStaleImages(images: { repository: string; tag: string }[]): Pr
       if (dockerfileMtime > imageCreated) {
         stale.add(tag);
       }
-    } catch {
+    } catch (err) {
       // Dockerfile doesn't exist or inspect failed - not stale
+      logger.debug({ err, tag, dockerfilePath }, "[docker:images] stale check failed for image, skipping");
     }
   }));
 

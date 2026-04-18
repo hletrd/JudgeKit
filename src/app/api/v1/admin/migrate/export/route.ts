@@ -28,7 +28,8 @@ export async function POST(request: NextRequest) {
     let body: { password?: string };
     try {
       body = await request.json();
-    } catch {
+    } catch (err) {
+      logger.warn({ err }, "[export] failed to parse request body");
       return NextResponse.json({ error: "invalidRequestBody" }, { status: 400 });
     }
     const password = body?.password;
