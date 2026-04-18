@@ -41,6 +41,7 @@ services:
     environment:
       - JUDGE_BASE_URL=${JUDGE_BASE_URL:?Set JUDGE_BASE_URL to the app server API URL}
       - JUDGE_AUTH_TOKEN=${JUDGE_AUTH_TOKEN:?Set JUDGE_AUTH_TOKEN to match the app server}
+      - RUNNER_AUTH_TOKEN=${RUNNER_AUTH_TOKEN:-}
       - JUDGE_CONCURRENCY=${JUDGE_CONCURRENCY:-4}
       - JUDGE_WORKER_HOSTNAME=${JUDGE_WORKER_HOSTNAME:-}
       - JUDGE_SECCOMP_PROFILE=/etc/judge/seccomp-profile.json

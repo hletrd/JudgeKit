@@ -25,8 +25,8 @@ This lane owns repo-level current-head issues that are not already fully covered
 | F-11 | `/api/health` eagerly computes the admin snapshot for public callers | Done | `fix(ops): 🩺 gate admin health details by capability before computing the full snapshot` |
 | F-12 | `AdminDashboard` eagerly computes health for roles that cannot view it | Done | `fix(ops): 🩺 gate admin health details by capability before computing the full snapshot` |
 | F-13 | Bulk user creation is fail-all on disallowed per-row roles | Done | `fix(users): 🔧 treat disallowed bulk-create roles as per-row failures` |
-| F-14 | Sidecar auth tokens are documented but not wired in compose | Pending | — |
-| F-15 | Dedicated worker compose does not forward `RUNNER_AUTH_TOKEN` | Pending | — |
+| F-14 | Sidecar auth tokens are documented but not wired in compose | Done | `fix(deploy): 🔒 wire the sidecar and dedicated-worker auth tokens through compose` |
+| F-15 | Dedicated worker compose does not forward `RUNNER_AUTH_TOKEN` | Done | `fix(deploy): 🔒 wire the sidecar and dedicated-worker auth tokens through compose` |
 | F-16 | `/api/health` and `/api/metrics` still use built-in-only `isAdmin()` | Done | `fix(ops): 🩺 gate admin health details by capability before computing the full snapshot` |
 | F-17 | `public-detail-seo-metadata` times out only under the full suite load | Done | `test(seo): 🧪 give the public-detail metadata suite a full-run timeout budget` |
 

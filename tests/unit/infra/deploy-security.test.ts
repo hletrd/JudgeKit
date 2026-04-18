@@ -57,10 +57,20 @@ describe("deployment security defaults", () => {
     );
     expect(rateLimiterBlock).toBeDefined();
     expect(rateLimiterBlock!).not.toMatch(/^\s*ports:/m);
+    expect(rateLimiterBlock!).toContain("RATE_LIMITER_AUTH_TOKEN=${RATE_LIMITER_AUTH_TOKEN:-}");
 
     // Reset endpoint must NOT be enabled explicitly.
     expect(production).not.toContain("RATE_LIMITER_ENABLE_RESET=1");
     expect(dockerfile).not.toContain("RATE_LIMITER_ENABLE_RESET=1");
+  });
+
+  it("wires sidecar bearer tokens into the compose services that enforce them", () => {
+    const production = read("docker-compose.production.yml");
+    const testBackends = read("docker-compose.test-backends.yml");
+
+    expect(production).toContain("CODE_SIMILARITY_AUTH_TOKEN=${CODE_SIMILARITY_AUTH_TOKEN:-}");
+    expect(production).toContain("RATE_LIMITER_AUTH_TOKEN=${RATE_LIMITER_AUTH_TOKEN:-}");
+    expect(testBackends).toContain("CODE_SIMILARITY_AUTH_TOKEN=${CODE_SIMILARITY_AUTH_TOKEN:-}");
   });
 
   it("documents both process-local and postgresql-backed realtime coordination modes", () => {
@@ -106,6 +116,7 @@ describe("deployment security defaults", () => {
     expect(workerCompose).toContain("WORKER_DOCKER_PROXY_POST:-0");
     expect(workerCompose).toContain("WORKER_DOCKER_PROXY_DELETE:-0");
     expect(workerCompose).toContain('127.0.0.1:${RUNNER_PORT:-3001}:3001');
+    expect(workerCompose).toContain("RUNNER_AUTH_TOKEN=${RUNNER_AUTH_TOKEN:-}");
     expect(workerDocs).toContain("WORKER_DOCKER_PROXY_IMAGES=1");
     expect(workerDocs).toContain("runner now defaults to `127.0.0.1`");
   });
