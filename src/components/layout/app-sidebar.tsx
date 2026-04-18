@@ -223,6 +223,14 @@ export function AppSidebar({
       if (hideStandaloneCompiler && item.href === "/dashboard/compiler" && !canBypassModeRestrictions) {
         return false;
       }
+      if (item.href === "/dashboard/problem-sets") {
+        return (
+          capsSet.has("problem_sets.create")
+          || capsSet.has("problem_sets.edit")
+          || capsSet.has("problem_sets.delete")
+          || capsSet.has("problem_sets.assign_groups")
+        );
+      }
       return !item.capability || capsSet.has(item.capability);
     });
   }

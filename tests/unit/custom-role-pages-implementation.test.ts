@@ -55,6 +55,7 @@ describe("custom-role page/runtime implementation guards", () => {
     const problemsPage = read("src/app/(dashboard)/dashboard/problems/page.tsx");
     const problemDetail = read("src/app/(dashboard)/dashboard/problems/[id]/page.tsx");
     const publicPracticeDetail = read("src/app/(public)/practice/problems/[id]/page.tsx");
+    const appSidebar = read("src/components/layout/app-sidebar.tsx");
 
     expect(dashboardLayout).toContain('capsSet.has("assignments.view_status")');
     expect(dashboardLayout).not.toContain('session.user.role === "admin"');
@@ -68,6 +69,10 @@ describe("custom-role page/runtime implementation guards", () => {
     expect(problemSetDetailPage).toContain("getProblemSetCapabilityFlags");
     expect(problemSetDetailPage).toContain("canManageProblemSetForUser");
     expect(problemSetDetailPage).not.toContain("isInstructorOrAbove");
+
+    expect(appSidebar).toContain('item.href === "/dashboard/problem-sets"');
+    expect(appSidebar).toContain('capsSet.has("problem_sets.edit")');
+    expect(appSidebar).not.toContain('capability: "problem_sets.view"');
 
     expect(problemsPage).toContain("resolveCapabilities");
     expect(problemsPage).toContain('caps.has("problems.edit")');

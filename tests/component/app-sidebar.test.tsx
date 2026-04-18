@@ -130,4 +130,20 @@ describe("AppSidebar", () => {
       "/dashboard/admin/submissions"
     );
   });
+
+  it("shows problem sets navigation for scoped staff who can edit but not create problem sets", () => {
+    render(
+      <AppSidebar
+        user={{ id: "user-3", username: "editor", name: "Editor", role: "assistant" }}
+        siteTitle="JudgeKit"
+        platformMode="homework"
+        capabilities={["problem_sets.edit"]}
+      />
+    );
+
+    expect(screen.getByRole("link", { name: "problemSets" })).toHaveAttribute(
+      "href",
+      "/dashboard/problem-sets"
+    );
+  });
 });
