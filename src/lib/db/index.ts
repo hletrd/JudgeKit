@@ -7,6 +7,7 @@ const isBuildPhase = process.env.NEXT_PHASE === "phase-production-build";
 
 /**
  * The active database dialect. Always "postgresql".
+ * @deprecated Multi-dialect support has been removed. Use "postgresql" directly.
  */
 export const activeDialect = "postgresql" as const;
 
@@ -47,9 +48,6 @@ if (isBuildPhase) {
  * Connection pool for PostgreSQL.
  */
 export const pool: Pool | null = _pool;
-
-/** @deprecated SQLite support removed. Always null. */
-export const sqlite: null = null;
 
 /**
  * Transaction client type inferred from Drizzle's transaction callback.
