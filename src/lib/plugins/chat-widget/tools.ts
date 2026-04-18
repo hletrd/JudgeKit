@@ -178,6 +178,7 @@ async function handleGetSubmissionDetail(
       executionTimeMs: true,
       memoryUsedKb: true,
       problemId: true,
+      runtimeErrorType: true,
     },
   });
 
@@ -213,6 +214,11 @@ async function handleGetSubmissionDetail(
     } else {
       result.compileOutput = "(Compile output is hidden for this problem)";
     }
+  }
+
+  // Respect showRuntimeErrors visibility flag
+  if (problem?.showRuntimeErrors && submission.runtimeErrorType) {
+    result.runtimeErrorType = submission.runtimeErrorType;
   }
 
   if (problem?.showDetailedResults) {
