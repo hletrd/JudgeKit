@@ -11,8 +11,8 @@ export function isEncryptedPluginSecret(value: unknown): value is string {
   return typeof value === "string" && value.startsWith(`${ENCRYPTION_VERSION}:`);
 }
 
-export function encryptPluginSecret(plaintext: string) {
-  if (!plaintext) return "";
+export function encryptPluginSecret(plaintext: string | null | undefined): string | null {
+  if (!plaintext) return null;
 
   const iv = randomBytes(12);
   const cipher = createCipheriv("aes-256-gcm", deriveEncryptionKey(PLUGIN_DOMAIN), iv);
@@ -120,13 +120,19 @@ export function preparePluginConfigForStorage(
     }
 
     if (incomingValue.length === 0) {
-      prepared[key] = typeof existingValue === "string" ? existingValue : "";
+      // Empty string means "keep existing value if it's a real secret, otherwise clear"
+      if (typeof existingValue === "string" && existingValue.length > 0) {
+        prepared[key] = existingValue;
+      } else {
+        prepared[key] = null;
+      }
       continue;
     }
 
+    const encrypted = encryptPluginSecret(incomingValue);
     prepared[key] = isEncryptedPluginSecret(incomingValue)
       ? incomingValue
-      : encryptPluginSecret(incomingValue);
+      : (encrypted ?? incomingValue);
   }
 
   return prepared;

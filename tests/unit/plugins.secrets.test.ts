@@ -36,7 +36,7 @@ describe("plugin secret helpers", () => {
     );
 
     expect(prepared.openaiApiKey).toBe(existingSecret);
-    expect(prepared.claudeApiKey).toBe("");
+    expect(prepared.claudeApiKey).toBeNull();
     expect(typeof prepared.geminiApiKey).toBe("string");
     expect(String(prepared.geminiApiKey)).not.toBe("new-gemini-key");
   });
