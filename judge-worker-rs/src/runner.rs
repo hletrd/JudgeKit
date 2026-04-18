@@ -124,9 +124,27 @@ fn validate_shell_command(cmd: &str) -> bool {
     // characters, and the `eval` word. `&&` and `;` are intentionally permitted:
     // trust-boundary note — compile/run commands come from admin-configured
     // language_configs rows and frequently legitimately chain steps
-    // (e.g. `mkdir -p out && javac …`). Aligned with
-    // src/lib/compiler/execute.ts#validateShellCommand so the TS and Rust
-    // paths accept the same set of admin-supplied commands.
+    // (e.g. `mkdir -p out && javac …`).
+    //
+    // Denylist (must match src/lib/compiler/execute.ts#validateShellCommand):
+    //   Backtick: `
+    //   Command substitution: $(
+    //   Variable substitution: ${
+    //   Process substitution: <( >(
+    //   Logical OR: ||
+    //   Pipe: |
+    //   I/O redirect: > <
+    //   Control chars: \n \r
+    //   Null byte: \0
+    //   eval keyword (exact whitespace-delimited token)
+    //
+    // Minor divergence from TS: split_whitespace only rejects the exact token
+    // "eval", whereas the TS \beval\b regex also rejects "eval-xxx" (hyphen
+    // is a word boundary). This is a safe false-positive on the TS side; no
+    // legitimate compile/run command begins with "eval-".
+    //
+    // Kept in lock-step with src/lib/compiler/execute.ts#validateShellCommand
+    // so the TS and Rust paths accept the same set of admin-supplied commands.
     let dangerous_patterns = [
         "`", "$(", "${", "<(", ">(", "||", "|", ">", "<", "\n", "\r",
     ];
