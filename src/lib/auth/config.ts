@@ -37,26 +37,7 @@ import {
 } from "@/lib/auth/login-events";
 import { extractClientIp } from "@/lib/security/ip";
 import { authorizeRecruitingToken } from "@/lib/auth/recruiting-token";
-
-type AuthUserRecord = {
-  id: string;
-  username: string;
-  email: string | null;
-  name: string;
-  className: string | null;
-  role: string;
-  mustChangePassword: boolean | null;
-  preferredLanguage?: string | null;
-  preferredTheme?: string | null;
-  shareAcceptedSolutions?: boolean;
-  acceptedSolutionsAnonymous?: boolean;
-  editorTheme?: string | null;
-  editorFontSize?: string | null;
-  editorFontFamily?: string | null;
-  lectureMode?: string | null;
-  lectureFontScale?: string | null;
-  lectureColorScheme?: string | null;
-};
+import type { AuthUserRecord } from "@/lib/auth/types";
 
 type AuthenticatedLoginUser = Omit<AuthUserRecord, "mustChangePassword"> & {
   mustChangePassword: boolean;
