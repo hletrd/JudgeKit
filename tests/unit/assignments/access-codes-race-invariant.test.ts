@@ -32,4 +32,22 @@ describe("redeemAccessCode source invariants", () => {
   it("uses onConflictDoNothing on the enrollment insert to avoid double-enroll", () => {
     expect(source).toMatch(/onConflictDoNothing\s*\(\s*\{/);
   });
+
+  it("catches unique constraint violation (23505) on contestAccessTokens and returns alreadyEnrolled", () => {
+    // When two concurrent transactions both pass the existing-token check,
+    // the DB unique constraint on (assignmentId, userId) guarantees only one
+    // insert succeeds. The loser must get a graceful alreadyEnrolled response.
+    const catchBlock = source.slice(source.indexOf("catch (err: unknown)"));
+    expect(catchBlock).toContain('"23505"');
+    expect(catchBlock).toMatch(/alreadyEnrolled:\s*true/);
+  });
+
+  it("reads assignment inside the transaction for a consistent snapshot (TOCTOU-safe)", () => {
+    const txBlock = source.slice(source.indexOf("await db.transaction("));
+    // The assignment SELECT must happen inside tx, not before it
+    const beforeTx = source.slice(0, source.indexOf("await db.transaction("));
+    expect(beforeTx).not.toMatch(/await\s+tx\.select.*assignments/);
+    expect(txBlock).toMatch(/await\s+tx\.select/);
+    expect(txBlock).toMatch(/assignments\.\w+/);
+  });
 });
