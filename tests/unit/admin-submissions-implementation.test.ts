@@ -19,6 +19,10 @@ describe("admin submissions implementation", () => {
     expect(source).toContain('eq(submissions.language, languageFilter)');
     expect(source).toContain('if (languageFilter) params.set("language", languageFilter);');
     expect(source).toContain('tSubmissions("allLanguages")');
+    expect(source).toContain('name="group"');
+    expect(source).toContain('eq(assignments.groupId, groupFilter)');
+    expect(source).toContain('if (groupFilter) params.set("group", groupFilter);');
+    expect(source).toContain('t("allGroups")');
     expect(source).toContain('name="dateFrom"');
     expect(source).toContain('name="dateTo"');
     expect(source).toContain('gte(submissions.submittedAt, new Date(dateFrom))');

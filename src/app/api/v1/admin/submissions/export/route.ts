@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createApiHandler } from "@/lib/api/handler";
 import { db } from "@/lib/db";
-import { submissions, users, problems } from "@/lib/db/schema";
+import { assignments, groups, problems, submissions, users } from "@/lib/db/schema";
 import { and, eq, gte, like, lte, or } from "drizzle-orm";
 
 const STATUS_FILTER_VALUES = [
@@ -24,6 +24,10 @@ function normalizeDateFilter(value?: string | null) {
 
 function normalizeLanguageFilter(value?: string | null) {
   return typeof value === "string" ? value.trim().slice(0, 50) : "";
+}
+
+function normalizeGroupFilter(value?: string | null) {
+  return typeof value === "string" ? value.trim().slice(0, 64) : "";
 }
 
 function escapeLike(value: string) {
@@ -49,6 +53,7 @@ export const GET = createApiHandler({
     const statusFilter = STATUS_FILTER_VALUES.includes((searchParams.get("status") ?? "") as (typeof STATUS_FILTER_VALUES)[number])
       ? ((searchParams.get("status") ?? "") as (typeof STATUS_FILTER_VALUES)[number])
       : "";
+    const groupFilter = normalizeGroupFilter(searchParams.get("group"));
     const languageFilter = normalizeLanguageFilter(searchParams.get("language"));
     const dateFrom = normalizeDateFilter(searchParams.get("dateFrom"));
     const dateTo = normalizeDateFilter(searchParams.get("dateTo"));
@@ -62,6 +67,7 @@ export const GET = createApiHandler({
 
     const whereClause = and(
       statusFilter ? eq(submissions.status, statusFilter) : undefined,
+      groupFilter ? eq(assignments.groupId, groupFilter) : undefined,
       languageFilter ? eq(submissions.language, languageFilter) : undefined,
       dateFrom ? gte(submissions.submittedAt, new Date(dateFrom)) : undefined,
       dateTo
@@ -82,9 +88,12 @@ export const GET = createApiHandler({
         submittedAt: submissions.submittedAt,
         score: submissions.score,
         userName: users.name,
+        groupName: groups.name,
         problemTitle: problems.title,
       })
       .from(submissions)
+      .leftJoin(assignments, eq(submissions.assignmentId, assignments.id))
+      .leftJoin(groups, eq(assignments.groupId, groups.id))
       .leftJoin(users, eq(submissions.userId, users.id))
       .leftJoin(problems, eq(submissions.problemId, problems.id))
       .where(whereClause);
@@ -93,6 +102,7 @@ export const GET = createApiHandler({
     const header = [
       "Submission ID",
       "User",
+      "Group",
       "Problem",
       "Language",
       "Status",
@@ -105,6 +115,7 @@ export const GET = createApiHandler({
       [
         row.id,
         row.userName ?? "",
+        row.groupName ?? "",
         row.problemTitle ?? "",
         row.language,
         row.status,

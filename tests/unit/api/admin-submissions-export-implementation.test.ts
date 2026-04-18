@@ -13,9 +13,11 @@ describe("admin submissions export implementation", () => {
     expect(source).toContain('auth: { capabilities: ["submissions.view_all"] }');
     expect(source).toContain('searchParams.get("search")');
     expect(source).toContain('searchParams.get("status")');
+    expect(source).toContain('searchParams.get("group")');
     expect(source).toContain('searchParams.get("language")');
     expect(source).toContain('searchParams.get("dateFrom")');
     expect(source).toContain('searchParams.get("dateTo")');
+    expect(source).toContain("groupName: groups.name");
     expect(source).toContain('"text/csv; charset=utf-8"');
     expect(source).toContain('"submissions-export.csv"');
   });

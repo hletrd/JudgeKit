@@ -11,7 +11,7 @@ import {
 } from "@/components/ui/table";
 import { SubmissionStatusBadge } from "@/components/submission-status-badge";
 import { db } from "@/lib/db";
-import { submissions, users, problems } from "@/lib/db/schema";
+import { assignments, groups, problems, submissions, users } from "@/lib/db/schema";
 import { and, asc, count, desc, eq, gte, like, lte, or } from "drizzle-orm";
 import { auth } from "@/lib/auth";
 import { resolveCapabilities } from "@/lib/capabilities/cache";
@@ -53,6 +53,10 @@ const STATUS_FILTER_VALUES = [
 
 type StatusFilter = (typeof STATUS_FILTER_VALUES)[number];
 
+function normalizeGroupFilter(value?: string) {
+  return typeof value === "string" ? value.trim().slice(0, 64) : "";
+}
+
 function normalizeLanguageFilter(value?: string) {
   return typeof value === "string" ? value.trim().slice(0, 50) : "";
 }
@@ -66,7 +70,7 @@ function normalizeDateFilter(value?: string) {
 export default async function AdminSubmissionsPage({
   searchParams,
 }: {
-  searchParams?: Promise<{ page?: string; search?: string; sort?: string; dir?: string; status?: string; language?: string; dateFrom?: string; dateTo?: string }>;
+  searchParams?: Promise<{ page?: string; search?: string; sort?: string; dir?: string; status?: string; group?: string; language?: string; dateFrom?: string; dateTo?: string }>;
 }) {
   const session = await auth();
   if (!session?.user) redirect("/login");
@@ -80,6 +84,7 @@ export default async function AdminSubmissionsPage({
   const statusFilter = STATUS_FILTER_VALUES.includes((resolvedSearchParams?.status ?? "all") as StatusFilter)
     ? ((resolvedSearchParams?.status ?? "all") as StatusFilter)
     : "all";
+  const groupFilter = normalizeGroupFilter(resolvedSearchParams?.group);
   const languageFilter = normalizeLanguageFilter(resolvedSearchParams?.language);
   const dateFrom = normalizeDateFilter(resolvedSearchParams?.dateFrom);
   const dateTo = normalizeDateFilter(resolvedSearchParams?.dateTo);
@@ -106,6 +111,7 @@ export default async function AdminSubmissionsPage({
     : undefined;
   const whereClause = and(
     statusFilter !== "all" ? eq(submissions.status, statusFilter) : undefined,
+    groupFilter ? eq(assignments.groupId, groupFilter) : undefined,
     languageFilter ? eq(submissions.language, languageFilter) : undefined,
     dateFrom ? gte(submissions.submittedAt, new Date(dateFrom)) : undefined,
     dateTo
@@ -124,9 +130,18 @@ export default async function AdminSubmissionsPage({
     .groupBy(submissions.language)
     .orderBy(asc(submissions.language));
 
+  const availableGroups = await db
+    .select({
+      id: groups.id,
+      name: groups.name,
+    })
+    .from(groups)
+    .orderBy(asc(groups.name));
+
   const [countRow] = await db
     .select({ count: count() })
     .from(submissions)
+    .leftJoin(assignments, eq(submissions.assignmentId, assignments.id))
     .leftJoin(users, eq(submissions.userId, users.id))
     .leftJoin(problems, eq(submissions.problemId, problems.id))
     .where(whereClause);
@@ -149,12 +164,18 @@ export default async function AdminSubmissionsPage({
         id: users.id,
         name: users.name,
       },
+      group: {
+        id: groups.id,
+        name: groups.name,
+      },
       problem: {
         id: problems.id,
         title: problems.title,
       },
     })
     .from(submissions)
+    .leftJoin(assignments, eq(submissions.assignmentId, assignments.id))
+    .leftJoin(groups, eq(assignments.groupId, groups.id))
     .leftJoin(users, eq(submissions.userId, users.id))
     .leftJoin(problems, eq(submissions.problemId, problems.id))
     .where(whereClause)
@@ -182,6 +203,7 @@ export default async function AdminSubmissionsPage({
     if (page > 1) params.set("page", String(page));
     if (searchQuery) params.set("search", searchQuery);
     if (statusFilter !== "all") params.set("status", statusFilter);
+    if (groupFilter) params.set("group", groupFilter);
     if (languageFilter) params.set("language", languageFilter);
     if (dateFrom) params.set("dateFrom", dateFrom);
     if (dateTo) params.set("dateTo", dateTo);
@@ -195,6 +217,7 @@ export default async function AdminSubmissionsPage({
     const params = new URLSearchParams();
     if (searchQuery) params.set("search", searchQuery);
     if (statusFilter !== "all") params.set("status", statusFilter);
+    if (groupFilter) params.set("group", groupFilter);
     if (languageFilter) params.set("language", languageFilter);
     if (dateFrom) params.set("dateFrom", dateFrom);
     if (dateTo) params.set("dateTo", dateTo);
@@ -206,6 +229,7 @@ export default async function AdminSubmissionsPage({
     const params = new URLSearchParams();
     if (searchQuery) params.set("search", searchQuery);
     if (statusFilter !== "all") params.set("status", statusFilter);
+    if (groupFilter) params.set("group", groupFilter);
     if (languageFilter) params.set("language", languageFilter);
     if (dateFrom) params.set("dateFrom", dateFrom);
     if (dateTo) params.set("dateTo", dateTo);
@@ -267,6 +291,23 @@ export default async function AdminSubmissionsPage({
                       ? tSubmissions("statusFilter.all")
                       : statusLabels[value as keyof typeof statusLabels] ?? value,
                 }))}
+              />
+            </div>
+            <div className="space-y-1.5">
+              <label className="block text-sm font-medium" htmlFor="submissions-group">
+                {t("groupFilterLabel")}
+              </label>
+              <FilterSelect
+                name="group"
+                defaultValue={groupFilter || "all"}
+                placeholder={t("allGroups")}
+                options={[
+                  { value: "all", label: t("allGroups") },
+                  ...availableGroups.map((group) => ({
+                    value: group.id,
+                    label: group.name,
+                  })),
+                ]}
               />
             </div>
             <div className="space-y-1.5">
@@ -343,6 +384,7 @@ export default async function AdminSubmissionsPage({
               <TableRow>
                 <TableHead>{t("table.id")}</TableHead>
                 <TableHead>{t("table.user")}</TableHead>
+                <TableHead>{t("table.group")}</TableHead>
                 <TableHead>{t("table.problem")}</TableHead>
                 {renderSortableHeader("language", t("table.language"))}
                 {renderSortableHeader("status", t("table.status"))}
@@ -363,6 +405,15 @@ export default async function AdminSubmissionsPage({
                     {sub.user ? (
                       <Link href={`/dashboard/admin/users/${sub.user.id}`} className="text-primary hover:underline">
                         {sub.user.name}
+                      </Link>
+                    ) : (
+                      tCommon("unknown")
+                    )}
+                  </TableCell>
+                  <TableCell>
+                    {sub.group ? (
+                      <Link href={`/dashboard/groups/${sub.group.id}`} className="text-primary hover:underline">
+                        {sub.group.name}
                       </Link>
                     ) : (
                       tCommon("unknown")
@@ -403,7 +454,7 @@ export default async function AdminSubmissionsPage({
               ))}
               {visibleSubmissions.length === 0 && (
                 <TableRow>
-                  <TableCell colSpan={8}>
+                  <TableCell colSpan={9}>
                     <EmptyState icon={InboxIcon} title={t("noSubmissions")} />
                   </TableCell>
                 </TableRow>

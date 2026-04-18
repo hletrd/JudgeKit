@@ -1074,6 +1074,7 @@
       "table": {
         "id": "ID",
         "user": "User",
+        "group": "Group",
         "problem": "Problem",
         "language": "Language",
         "status": "Status",
@@ -1086,6 +1087,8 @@
       "searchPlaceholder": "Search by user name or problem title...",
       "resetSearch": "Reset",
       "exportCsv": "Export CSV",
+      "groupFilterLabel": "Group",
+      "allGroups": "All groups",
       "bulkRejudge": "Rejudge visible",
       "bulkRejudgeDialogTitle": "Rejudge visible submissions?",
       "bulkRejudgeDialogDescription": "This will reset {count} visible submissions to pending and queue them for fresh judging.",
