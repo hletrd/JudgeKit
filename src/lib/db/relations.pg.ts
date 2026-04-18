@@ -34,6 +34,7 @@ import {
   apiKeys,
   discussionThreads,
   discussionPosts,
+  communityVotes,
 } from "./schema.pg";
 
 export const usersRelations = relations(users, ({ many }) => ({
@@ -68,6 +69,14 @@ export const usersRelations = relations(users, ({ many }) => ({
     relationName: "recruitingInvitation_creator",
   }),
   codeSnapshots: many(codeSnapshots),
+  communityVotes: many(communityVotes),
+}));
+
+export const communityVotesRelations = relations(communityVotes, ({ one }) => ({
+  user: one(users, {
+    fields: [communityVotes.userId],
+    references: [users.id],
+  }),
 }));
 
 export const sessionsRelations = relations(sessions, ({ one }) => ({
