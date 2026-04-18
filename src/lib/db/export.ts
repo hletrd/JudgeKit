@@ -97,7 +97,7 @@ export function streamDatabaseExport(options: { signal?: AbortSignal; sanitize?:
             )
           );
 
-          const activeRedactionMap = options.sanitize ? SANITIZED_COLUMNS : REDACTED_COLUMNS;
+          const activeRedactionMap = options.sanitize ? { ...SANITIZED_COLUMNS, ...ALWAYS_REDACT } : ALWAYS_REDACT;
 
           for (const [tableIndex, { name, table, orderColumns }] of TABLE_ORDER.entries()) {
             if (cancelled) return;
@@ -277,7 +277,12 @@ const SANITIZED_COLUMNS: Record<string, Set<string>> = {
   contestAccessTokens: new Set(["token"]),
 };
 
-/** Empty redaction set for full-fidelity backup exports. */
+/** Columns that are ALWAYS redacted, even in full-fidelity backup exports. */
+const ALWAYS_REDACT: Record<string, Set<string>> = {
+  users: new Set(["passwordHash"]),
+};
+
+/** Empty redaction set for full-fidelity backup exports (minus ALWAYS_REDACT). */
 const REDACTED_COLUMNS: Record<string, Set<string>> = {};
 
 function getOrderClauses(table: any, orderColumns: string[]) {
