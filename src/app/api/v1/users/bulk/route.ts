@@ -13,18 +13,12 @@ import pLimit from "p-limit";
 
 export const POST = createApiHandler({
   rateLimit: "users:bulk-create",
-  handler: async (req: NextRequest, { user }) => {
+  schema: bulkUserCreateSchema,
+  handler: async (req: NextRequest, { user, body }) => {
     const caps = await resolveCapabilities(user.role);
     if (!caps.has("users.create")) return forbidden();
 
-    const body = await req.json();
-    const parsed = bulkUserCreateSchema.safeParse(body);
-
-    if (!parsed.success) {
-      return apiError(parsed.error.issues[0]?.message ?? "invalidInput", 400);
-    }
-
-    const { users: userList } = parsed.data;
+    const { users: userList } = body;
 
     // Validate role escalation for each user
     for (const entry of userList) {

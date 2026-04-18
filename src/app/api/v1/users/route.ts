@@ -54,17 +54,12 @@ export const GET = createApiHandler({
 
 export const POST = createApiHandler({
   rateLimit: "users:create",
-  handler: async (req: NextRequest, { user }) => {
+  schema: userCreateSchema,
+  handler: async (req: NextRequest, { user, body }) => {
     const caps = await resolveCapabilities(user.role);
     if (!caps.has("users.create")) return forbidden();
 
-    const parsed = userCreateSchema.safeParse(await req.json());
-
-    if (!parsed.success) {
-      return apiError(parsed.error.issues[0]?.message ?? "createUserFailed", 400);
-    }
-
-    const { username, email, name, className, password, role } = parsed.data;
+    const { username, email, name, className, password, role } = body;
     const normalizedEmail = email?.trim().toLowerCase() || null;
     const normalizedClassName = className ?? null;
     const requestedRole = role.trim() || "student";
