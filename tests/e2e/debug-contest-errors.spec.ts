@@ -28,9 +28,8 @@ test('capture all contest page errors', async ({ page }) => {
   await page.waitForURL(/\/(dashboard|change-password)/, { timeout: 15000 });
   console.log('Logged in:', page.url());
 
-  // Contest list
+  // Contest list (goto already waits for networkidle)
   await page.goto(`${BASE_URL}/dashboard/contests`, { waitUntil: 'networkidle' });
-  await page.waitForTimeout(3000);
   console.log(`After list page: ${errors.length} errors`);
 
   // Discover contest links
@@ -50,7 +49,6 @@ test('capture all contest page errors', async ({ page }) => {
     const before = errors.length;
 
     await page.goto(url, { waitUntil: 'networkidle', timeout: 20000 });
-    await page.waitForTimeout(3000);
 
     const body = await page.textContent('body');
     if (body?.includes('Application error')) {
@@ -64,7 +62,7 @@ test('capture all contest page errors', async ({ page }) => {
       console.log(`  Tab: "${label}"`);
       try {
         await tab.click();
-        await page.waitForTimeout(2000);
+        await page.waitForLoadState("networkidle", { timeout: 5000 }).catch(() => undefined);
       } catch {}
     }
     console.log(`  Errors on this page: ${errors.length - before}`);

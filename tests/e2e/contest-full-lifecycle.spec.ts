@@ -499,19 +499,24 @@ test.describe.serial("Contest Full Lifecycle", () => {
     await adminPage.goto(`/dashboard/contests/${ioiAssignmentId}`);
     await adminPage.waitForLoadState("networkidle");
 
-    // Wait for analytics to load
-    await adminPage.waitForTimeout(3000);
+    // Wait deterministically for at least one SVG chart to appear instead of
+    // a blind 3s sleep. The analytics panel renders at least one chart.
+    const firstSvg = adminPage.locator("svg").first();
+    await firstSvg.waitFor({ state: "visible", timeout: 15_000 });
 
-    // SVG charts should render
-    const svgs = adminPage.locator("svg");
-    const svgCount = await svgs.count();
+    const svgCount = await adminPage.locator("svg").count();
     expect(svgCount).toBeGreaterThanOrEqual(1);
   });
 
   test("Step 32: Admin anti-cheat dashboard shows events", async () => {
     await adminPage.goto(`/dashboard/contests/${ioiAssignmentId}`);
     await adminPage.waitForLoadState("networkidle");
-    await adminPage.waitForTimeout(2000);
+    // Wait for the anti-cheat section to render before scraping body text.
+    await adminPage
+      .getByText(/Anti-Cheat|부정행위|event|이벤트/i)
+      .first()
+      .waitFor({ state: "visible", timeout: 10_000 })
+      .catch(() => undefined);
 
     // Should show anti-cheat related content somewhere on the page
     const content = await adminPage.textContent("body");

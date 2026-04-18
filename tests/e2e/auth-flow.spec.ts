@@ -41,8 +41,17 @@ test.describe.serial("Auth Flow", () => {
     await page.locator("#password").fill(`wrong-password-${Date.now()}`);
     await page.getByRole("button", { name: /sign in|로그인/i }).click();
 
-    // Should stay on login page or show an error — not redirect to dashboard
-    await page.waitForTimeout(3_000);
+    // Should stay on login page or show an error — not redirect to dashboard.
+    // Wait deterministically for either the error alert/toast to appear or the
+    // navigation to settle (whichever happens first) instead of a blind sleep.
+    await Promise.race([
+      page
+        .locator('[role="alert"], [data-sonner-toast], .toast, [role="status"]')
+        .first()
+        .waitFor({ state: "visible", timeout: 5_000 })
+        .catch(() => undefined),
+      page.waitForLoadState("networkidle", { timeout: 5_000 }).catch(() => undefined),
+    ]);
     const url = page.url();
     const isOnLogin = url.includes("/login") || !url.includes("/dashboard");
     expect(isOnLogin).toBeTruthy();
