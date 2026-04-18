@@ -41,8 +41,8 @@ describe("admin dashboard implementation", () => {
     const source = read("src/app/(dashboard)/dashboard/_components/admin-dashboard.tsx");
     const dashboardPage = read("src/app/(dashboard)/dashboard/page.tsx");
 
-    expect(source).toContain('getAdminHealthSnapshot()');
-    expect(source).toContain("{canViewHealth ? (");
+    expect(source).toContain('canViewHealth ? getAdminHealthSnapshot() : Promise.resolve(null)');
+    expect(source).toContain("{canViewHealth && health ? (");
     expect(source).toContain('CardTitle>{t("systemHealthTitle")}');
     expect(source).toContain('t("databaseStatusTitle")');
     expect(source).toContain('t("auditPipelineStatusTitle")');

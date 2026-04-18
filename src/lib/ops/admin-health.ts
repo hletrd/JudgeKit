@@ -144,3 +144,13 @@ export async function getAdminHealthSnapshot(): Promise<AdminHealthSnapshot> {
     };
   }
 }
+
+export async function getPublicHealthStatus(): Promise<"ok" | "error"> {
+  try {
+    await rawQueryOne("select 1");
+    return "ok";
+  } catch (error) {
+    logger.warn({ err: error }, "Public health check failed");
+    return "error";
+  }
+}

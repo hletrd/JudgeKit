@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
-import { getApiUser, isAdmin } from "@/lib/api/auth";
+import { getApiUser } from "@/lib/api/auth";
+import { resolveCapabilities } from "@/lib/capabilities/cache";
 import { getAdminHealthSnapshot } from "@/lib/ops/admin-health";
 import { formatAdminMetrics } from "@/lib/ops/admin-metrics";
 import { safeTokenCompare } from "@/lib/security/timing";
@@ -21,9 +22,11 @@ function isCronAuthorized(request: NextRequest) {
 
 export async function GET(request: NextRequest) {
   const user = await getApiUser(request).catch(() => null);
-  const isAdminUser = user && isAdmin(user.role);
+  const canViewAdminMetrics = user
+    ? (await resolveCapabilities(user.role)).has("system.settings")
+    : false;
 
-  if (!isAdminUser) {
+  if (!canViewAdminMetrics) {
     const cronAuth = isCronAuthorized(request);
     if (!cronAuth.ok) {
       if (cronAuth.missingSecret) {

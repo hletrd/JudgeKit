@@ -22,12 +22,12 @@ This lane owns repo-level current-head issues that are not already fully covered
 | F-08 | Assistant roles can browse the global user directory | Pending | — |
 | F-09 | Profile `className` restrictions are UI-only | Pending | — |
 | F-10 | Profile page cannot render assistant/custom role labels correctly | Pending | — |
-| F-11 | `/api/health` eagerly computes the admin snapshot for public callers | Pending | — |
-| F-12 | `AdminDashboard` eagerly computes health for roles that cannot view it | Pending | — |
+| F-11 | `/api/health` eagerly computes the admin snapshot for public callers | Done | `fix(ops): 🩺 gate admin health details by capability before computing the full snapshot` |
+| F-12 | `AdminDashboard` eagerly computes health for roles that cannot view it | Done | `fix(ops): 🩺 gate admin health details by capability before computing the full snapshot` |
 | F-13 | Bulk user creation is fail-all on disallowed per-row roles | Pending | — |
 | F-14 | Sidecar auth tokens are documented but not wired in compose | Pending | — |
 | F-15 | Dedicated worker compose does not forward `RUNNER_AUTH_TOKEN` | Pending | — |
-| F-16 | `/api/health` and `/api/metrics` still use built-in-only `isAdmin()` | Pending | — |
+| F-16 | `/api/health` and `/api/metrics` still use built-in-only `isAdmin()` | Done | `fix(ops): 🩺 gate admin health details by capability before computing the full snapshot` |
 | F-17 | `public-detail-seo-metadata` times out only under the full suite load | Done | `test(seo): 🧪 give the public-detail metadata suite a full-run timeout budget` |
 
 ## Verification floor
