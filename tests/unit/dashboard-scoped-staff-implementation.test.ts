@@ -13,8 +13,9 @@ describe("dashboard scoped staff implementation", () => {
     expect(source).toContain(
       'const canReviewAssignments = caps.has("submissions.view_all") || caps.has("assignments.view_status");'
     );
-    expect(source).toContain('const isInstructorView = canReviewAssignments && !caps.has("system.settings");');
-    expect(source).toContain("{!canReviewAssignments && !isCandidateView && (");
+    expect(source).toContain("const hasAdminWorkspace =");
+    expect(source).toContain('const isInstructorView = canReviewAssignments && !hasAdminWorkspace;');
+    expect(source).toContain("{!canReviewAssignments && !isCandidateView && !isAdminView && (");
     expect(source).not.toContain('{!caps.has("submissions.view_all") && !isCandidateView && (');
   });
 

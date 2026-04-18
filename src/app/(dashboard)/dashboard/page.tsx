@@ -21,16 +21,25 @@ export default async function DashboardPage() {
   const platformMode = accessContext.effectivePlatformMode;
   const canReviewAssignments = caps.has("submissions.view_all") || caps.has("assignments.view_status");
   const capabilityList = [...caps];
+  const hasAdminWorkspace =
+    caps.has("system.settings")
+    || caps.has("users.view")
+    || caps.has("users.manage_roles")
+    || caps.has("system.audit_logs")
+    || caps.has("system.login_logs")
+    || caps.has("system.chat_logs")
+    || caps.has("system.plugins")
+    || caps.has("files.manage");
 
-  const isAdminView = caps.has("system.settings");
-  const isInstructorView = canReviewAssignments && !caps.has("system.settings");
-  const isCandidateView = platformMode === "recruiting" && !canReviewAssignments;
+  const isAdminView = hasAdminWorkspace;
+  const isInstructorView = canReviewAssignments && !hasAdminWorkspace;
+  const isCandidateView = platformMode === "recruiting" && !canReviewAssignments && !hasAdminWorkspace;
 
   return (
     <div className="space-y-6">
       <h2 className="text-2xl font-bold">{t("title")}</h2>
 
-      {!canReviewAssignments && !isCandidateView && (
+      {!canReviewAssignments && !isCandidateView && !isAdminView && (
         <Suspense
           fallback={
             <div className="space-y-6">

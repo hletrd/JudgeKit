@@ -12,6 +12,7 @@ describe("admin dashboard implementation", () => {
     const dashboardPage = read("src/app/(dashboard)/dashboard/page.tsx");
 
     expect(source).toContain("const caps = new Set(capabilities);");
+    expect(source).toContain('const canViewHealth = caps.has("system.settings");');
     expect(source).toContain('caps.has("system.settings")');
     expect(source).toContain('caps.has("users.view")');
     expect(source).toContain('caps.has("system.audit_logs")');
@@ -23,10 +24,12 @@ describe("admin dashboard implementation", () => {
     expect(dashboardPage).toContain("<AdminDashboard capabilities={capabilityList} />");
   });
 
-  it("renders a system health snapshot using the shared admin health helper", () => {
+  it("renders the system health snapshot only for roles with system.settings", () => {
     const source = read("src/app/(dashboard)/dashboard/_components/admin-dashboard.tsx");
+    const dashboardPage = read("src/app/(dashboard)/dashboard/page.tsx");
 
     expect(source).toContain('getAdminHealthSnapshot()');
+    expect(source).toContain("{canViewHealth ? (");
     expect(source).toContain('CardTitle>{t("systemHealthTitle")}');
     expect(source).toContain('t("databaseStatusTitle")');
     expect(source).toContain('t("auditPipelineStatusTitle")');
@@ -34,5 +37,10 @@ describe("admin dashboard implementation", () => {
     expect(source).toContain('t("workerFleetStatusTitle")');
     expect(source).toContain('t("uptimeStatusTitle")');
     expect(source).toContain('t("responseTimeStatusTitle")');
+    expect(dashboardPage).toContain("const hasAdminWorkspace =");
+    expect(dashboardPage).toContain('caps.has("users.view")');
+    expect(dashboardPage).toContain('caps.has("system.audit_logs")');
+    expect(dashboardPage).toContain('const isAdminView = hasAdminWorkspace;');
+    expect(dashboardPage).toContain('const isCandidateView = platformMode === "recruiting" && !canReviewAssignments && !hasAdminWorkspace;');
   });
 });
