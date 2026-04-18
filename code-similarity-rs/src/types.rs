@@ -23,6 +23,7 @@ pub struct Submission {
     pub user_id: String,
     #[serde(alias = "problemId")]
     pub problem_id: String,
+    pub language: String,
     #[serde(alias = "sourceCode")]
     pub source_code: String,
 }
@@ -35,6 +36,7 @@ pub struct SimilarityPair {
     pub user_id_2: String,
     #[serde(rename = "problemId")]
     pub problem_id: String,
+    pub language: String,
     pub similarity: f64,
 }
 
