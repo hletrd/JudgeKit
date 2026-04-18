@@ -28,6 +28,7 @@ This lane owns repo-level current-head issues that are not already fully covered
 | F-14 | Sidecar auth tokens are documented but not wired in compose | Pending | — |
 | F-15 | Dedicated worker compose does not forward `RUNNER_AUTH_TOKEN` | Pending | — |
 | F-16 | `/api/health` and `/api/metrics` still use built-in-only `isAdmin()` | Pending | — |
+| F-17 | `public-detail-seo-metadata` times out only under the full suite load | Done | `test(seo): 🧪 give the public-detail metadata suite a full-run timeout budget` |
 
 ## Verification floor
 - target the narrowest relevant Vitest / TypeScript / Rust evidence per slice

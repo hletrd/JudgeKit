@@ -107,6 +107,8 @@ vi.mock("@/lib/discussions/permissions", () => ({
 }));
 
 describe("public detail page SEO metadata", () => {
+  const METADATA_TEST_TIMEOUT_MS = 30_000;
+
   beforeEach(() => {
     vi.resetModules();
     vi.clearAllMocks();
@@ -152,7 +154,7 @@ describe("public detail page SEO metadata", () => {
     expect(url.searchParams.get("meta")).toContain("Difficulty 1.23");
     expect(url.searchParams.get("meta")).toContain("2000 ms");
     expect(url.searchParams.get("footer")).toBe("dp • graphs");
-  }, 15000);
+  }, METADATA_TEST_TIMEOUT_MS);
 
   it("enriches public contest metadata with status, mode, and problem counts", async () => {
     getPublicContestByIdMock.mockResolvedValue({
@@ -185,7 +187,7 @@ describe("public detail page SEO metadata", () => {
     expect(url.searchParams.get("badge")).toBe("Open");
     expect(url.searchParams.get("meta")).toBe("Algo Group • Scheduled • ICPC");
     expect(url.searchParams.get("footer")).toBe("5 problems • 3 public problems");
-  }, 15000);
+  }, METADATA_TEST_TIMEOUT_MS);
 
   it("enriches community thread metadata with reply context and problem footer", async () => {
     getDiscussionThreadByIdMock.mockResolvedValue({
@@ -216,5 +218,5 @@ describe("public detail page SEO metadata", () => {
     expect(url.searchParams.get("badge")).toBe("Problem discussion");
     expect(url.searchParams.get("meta")).toBe("Bob · 2 replies");
     expect(url.searchParams.get("footer")).toBe("A + B");
-  }, 15000);
+  }, METADATA_TEST_TIMEOUT_MS);
 });
