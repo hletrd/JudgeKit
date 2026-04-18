@@ -280,7 +280,8 @@ export const GET = createApiHandler({
 
 export const PATCH = createApiHandler({
   rateLimit: "users:update",
-  handler: async (req: NextRequest, { user, params }) => {
+  schema: adminPatchUserSchema,
+  handler: async (req: NextRequest, { user, body, params }) => {
     const { id } = params;
     const caps = await resolveCapabilities(user.role);
     const isAdminActor = caps.has("users.edit");
@@ -292,12 +293,6 @@ export const PATCH = createApiHandler({
 
     if (!found) return notFound("User");
 
-    const rawBody = await req.json();
-    const parsed = adminPatchUserSchema.safeParse(rawBody);
-    if (!parsed.success) {
-      return apiError(parsed.error.issues[0]?.message ?? "invalidInput", 400);
-    }
-    const body = parsed.data;
     const { error: profileValidationError, data: validatedProfileFields } = validateProfileFields(body, isAdminActor);
     if (profileValidationError) return profileValidationError;
 

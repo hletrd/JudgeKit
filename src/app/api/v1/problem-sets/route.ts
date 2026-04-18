@@ -1,5 +1,5 @@
 import { NextRequest } from "next/server";
-import { apiSuccess, apiError } from "@/lib/api/responses";
+import { apiSuccess } from "@/lib/api/responses";
 import { db } from "@/lib/db";
 import { recordAuditEvent } from "@/lib/audit/events";
 import { createProblemSet } from "@/lib/problem-sets/management";
@@ -30,22 +30,16 @@ export const GET = createApiHandler({
 export const POST = createApiHandler({
   auth: { capabilities: ["problem_sets.create"] },
   rateLimit: "problem-sets:create",
-  handler: async (req: NextRequest, { user }) => {
-    const body = await req.json();
-    const parsed = problemSetMutationSchema.safeParse(body);
-
-    if (!parsed.success) {
-      return apiError(parsed.error.issues[0]?.message ?? "problemSetCreateFailed", 400);
-    }
-
+  schema: problemSetMutationSchema,
+  handler: async (req: NextRequest, { user, body }) => {
     const inaccessibleProblemIds = await findInaccessibleProblemIdsForProblemSetUser(
-      parsed.data.problemIds,
+      body.problemIds,
       user.id,
       user.role
     );
     if (inaccessibleProblemIds.length > 0) return forbidden();
 
-    const id = await createProblemSet(parsed.data, user.id);
+    const id = await createProblemSet(body, user.id);
 
     const created = await db.query.problemSets.findFirst({
       where: (ps, { eq }) => eq(ps.id, id),

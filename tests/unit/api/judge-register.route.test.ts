@@ -108,13 +108,13 @@ describe("POST /api/v1/judge/register", () => {
     expect(payload.data.staleClaimTimeoutMs).toBe(300_000);
   });
 
-  it("stores a hashed worker secret alongside the plaintext registration response", async () => {
+  it("persists only the hashed worker secret and returns the plaintext once", async () => {
     const response = await POST(makeRequest(VALID_BODY));
     const payload = await response.json();
 
     expect(response.status).toBe(200);
     const valuesArg = valuesMock.mock.calls[0]?.[0];
-    expect(valuesArg.secretToken).toBe(payload.data.workerSecret);
+    expect(valuesArg.secretToken).toBeNull();
     expect(valuesArg.secretTokenHash).toBe(`hashed:${payload.data.workerSecret}`);
     expect(valuesArg.secretTokenHash).not.toBe(payload.data.workerSecret);
   });

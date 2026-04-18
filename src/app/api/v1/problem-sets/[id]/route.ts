@@ -1,5 +1,5 @@
 import { NextRequest } from "next/server";
-import { apiSuccess, apiError } from "@/lib/api/responses";
+import { apiSuccess } from "@/lib/api/responses";
 import { eq } from "drizzle-orm";
 import { db } from "@/lib/db";
 import { problemSets } from "@/lib/db/schema";
@@ -35,7 +35,8 @@ export const GET = createApiHandler({
 export const PATCH = createApiHandler({
   auth: { capabilities: ["problem_sets.edit"] },
   rateLimit: "problem-sets:update",
-  handler: async (req: NextRequest, { user, params }) => {
+  schema: problemSetMutationSchema,
+  handler: async (req: NextRequest, { user, body, params }) => {
     const { id } = params;
     const existing = await db.query.problemSets.findFirst({
       where: eq(problemSets.id, id),
@@ -59,21 +60,14 @@ export const PATCH = createApiHandler({
       return forbidden();
     }
 
-    const body = await req.json();
-    const parsed = problemSetMutationSchema.safeParse(body);
-
-    if (!parsed.success) {
-      return apiError(parsed.error.issues[0]?.message ?? "problemSetUpdateFailed", 400);
-    }
-
     const inaccessibleProblemIds = await findInaccessibleProblemIdsForProblemSetUser(
-      parsed.data.problemIds,
+      body.problemIds,
       user.id,
       user.role
     );
     if (inaccessibleProblemIds.length > 0) return forbidden();
 
-    await updateProblemSet(id, parsed.data);
+    await updateProblemSet(id, body);
 
     const updated = await db.query.problemSets.findFirst({
       where: eq(problemSets.id, id),

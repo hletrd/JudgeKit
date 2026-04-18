@@ -1,6 +1,6 @@
 import { NextRequest } from "next/server";
 import { z } from "zod";
-import { apiSuccess, apiError } from "@/lib/api/responses";
+import { apiSuccess } from "@/lib/api/responses";
 import { eq } from "drizzle-orm";
 import { db } from "@/lib/db";
 import { problemSets } from "@/lib/db/schema";
@@ -19,7 +19,8 @@ import { createApiHandler, forbidden, notFound } from "@/lib/api/handler";
 export const POST = createApiHandler({
   auth: { capabilities: ["problem_sets.assign_groups"] },
   rateLimit: "problem-sets:assign",
-  handler: async (req: NextRequest, { user, params }) => {
+  schema: problemSetGroupAssignSchema,
+  handler: async (req: NextRequest, { user, body, params }) => {
     const { id } = params;
     const existing = await db.query.problemSets.findFirst({
       where: eq(problemSets.id, id),
@@ -43,21 +44,14 @@ export const POST = createApiHandler({
       return forbidden();
     }
 
-    const body = await req.json();
-    const parsed = problemSetGroupAssignSchema.safeParse(body);
-
-    if (!parsed.success) {
-      return apiError(parsed.error.issues[0]?.message ?? "problemSetAssignFailed", 400);
-    }
-
     const inaccessibleGroupIds = await findInaccessibleGroupIdsForProblemSetUser(
-      parsed.data.groupIds,
+      body.groupIds,
       user.id,
       user.role
     );
     if (inaccessibleGroupIds.length > 0) return forbidden();
 
-    await assignProblemSetToGroups(id, parsed.data.groupIds);
+    await assignProblemSetToGroups(id, body.groupIds);
 
     const updated = await db.query.problemSets.findFirst({
       where: eq(problemSets.id, id),
@@ -79,9 +73,9 @@ export const POST = createApiHandler({
       resourceType: "problem_set",
       resourceId: existing.id,
       resourceLabel: existing.name,
-      summary: `Assigned problem set "${existing.name}" to ${parsed.data.groupIds.length} group(s)`,
+      summary: `Assigned problem set "${existing.name}" to ${body.groupIds.length} group(s)`,
       details: {
-        groupIds: parsed.data.groupIds,
+        groupIds: body.groupIds,
       },
       request: req,
     });

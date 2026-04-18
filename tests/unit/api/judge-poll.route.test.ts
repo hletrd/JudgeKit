@@ -163,7 +163,7 @@ describe("POST /api/v1/judge/claim", () => {
         makeSelectChain([
           {
             status: "online",
-            secretToken: "worker-secret",
+            secretTokenHash: "hashed:worker-secret",
           },
         ])
       )
@@ -204,7 +204,7 @@ describe("POST /api/v1/judge/claim", () => {
         makeSelectChain([
           {
             status: "online",
-            secretToken: "worker-secret",
+            secretTokenHash: "hashed:worker-secret",
           },
         ])
       )
@@ -300,7 +300,7 @@ describe("POST /api/v1/judge/claim", () => {
       makeSelectChain([
         {
           status: "online",
-          secretToken: "expected-secret",
+          secretTokenHash: "hashed:expected-secret",
         },
       ])
     );
