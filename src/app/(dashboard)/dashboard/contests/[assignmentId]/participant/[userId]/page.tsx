@@ -21,6 +21,7 @@ import { getLanguageDisplayLabel } from "@/lib/judge/languages";
 import { getParticipantAuditData } from "@/lib/assignments/participant-audit";
 import { SubmissionStatusBadge } from "@/components/submission-status-badge";
 import { ParticipantAntiCheatTimeline } from "@/components/contest/participant-anti-cheat-timeline";
+import { CodeTimelinePanel } from "@/components/contest/code-timeline-panel";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -366,6 +367,12 @@ export default async function ParticipantAuditPage({
           })}
         </CardContent>
       </Card>
+
+      <CodeTimelinePanel
+        assignmentId={assignmentId}
+        userId={userId}
+        userName={student.name}
+      />
 
       {/* Anti-Cheat Timeline */}
       {assignment.enableAntiCheat && (
