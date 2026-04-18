@@ -36,4 +36,9 @@ describe("admin capability alignment", () => {
     expect(read("src/app/api/v1/admin/languages/[language]/route.ts")).toContain('auth: { capabilities: ["system.settings"] }');
     expect(read("src/lib/actions/language-configs.ts")).toContain('caps.has("system.settings")');
   });
+
+  it("keeps tag pages and actions aligned on system.settings", () => {
+    expect(read("src/app/(dashboard)/dashboard/admin/tags/page.tsx")).toContain('caps.has("system.settings")');
+    expect(read("src/lib/actions/tag-management.ts")).toContain('caps.has("system.settings")');
+  });
 });

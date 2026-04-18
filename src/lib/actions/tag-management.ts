@@ -9,12 +9,17 @@ import { eq } from "drizzle-orm";
 import { isTrustedServerActionOrigin } from "@/lib/security/server-actions";
 import { checkServerActionRateLimit } from "@/lib/security/api-rate-limit";
 import { logger } from "@/lib/logger";
+import { resolveCapabilities } from "@/lib/capabilities/cache";
 
 type TagActionResult = { success: true } | { success: false; error: string };
 
 async function getAuthorizedSession() {
   const session = await auth();
-  if (!session?.user || (session.user.role !== "admin" && session.user.role !== "super_admin")) {
+  if (!session?.user) {
+    return null;
+  }
+  const caps = await resolveCapabilities(session.user.role);
+  if (!caps.has("system.settings")) {
     return null;
   }
   return session;
