@@ -270,7 +270,8 @@ export const authConfig: NextAuthConfig = {
             requestPath: (() => {
               try {
                 return new URL(request.url).pathname;
-              } catch {
+              } catch (err) {
+                logger.debug({ err, url: request.url }, "[auth] failed to parse request URL for login event");
                 return null;
               }
             })(),

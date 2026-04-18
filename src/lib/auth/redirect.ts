@@ -1,3 +1,5 @@
+import { logger } from "@/lib/logger";
+
 /**
  * Shared helper for validating post-auth callbackUrl values.
  *
@@ -51,7 +53,8 @@ export function getSafeRedirectUrl(callbackUrl: string | null | undefined): stri
     if (resolved.username.length > 0 || resolved.password.length > 0) {
       return DEFAULT_POST_AUTH_REDIRECT;
     }
-  } catch {
+  } catch (err) {
+    logger.warn({ err, callbackUrl }, "[redirect] failed to parse callbackUrl, using default");
     return DEFAULT_POST_AUTH_REDIRECT;
   }
 

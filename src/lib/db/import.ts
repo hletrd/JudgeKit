@@ -116,7 +116,7 @@ function convertValue(val: unknown, colName: string): unknown {
   // JSON columns: parse string to native object for PostgreSQL jsonb
   if (JSON_COLUMNS.has(colName)) {
     if (typeof val === "string") {
-      try { return JSON.parse(val); } catch { return val; }
+      try { return JSON.parse(val); } catch (err) { logger.debug({ err, colName }, "[import] JSON parse failed for column, returning raw value"); return val; }
     }
     return val;
   }
@@ -245,7 +245,8 @@ export async function getDatabaseSummary(): Promise<Record<string, number>> {
     try {
       const [row] = await db.select({ count: sql<number>`count(*)` }).from(table);
       summary[name] = Number(row?.count ?? 0);
-    } catch {
+    } catch (err) {
+      logger.warn({ err, tableName: name }, "[import] failed to read row count for table summary");
       summary[name] = -1; // error reading
     }
   }

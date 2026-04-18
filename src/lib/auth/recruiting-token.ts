@@ -78,7 +78,8 @@ export async function authorizeRecruitingToken(
       requestPath: (() => {
         try {
           return new URL(request.url).pathname;
-        } catch {
+        } catch (err) {
+          logger.debug({ err, url: request.url }, "[recruit-token] failed to parse request URL");
           return null;
         }
       })(),
