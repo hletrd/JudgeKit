@@ -69,8 +69,8 @@ Tracked in `.context/reviews/comprehensive-code-review-2026-04-18.md` §3.* and 
 | CRIT-8 | Done | `fix(sidecars): 🛡️ add bearer auth + body-size limits to Rust sidecars` |
 | CRIT-9 | Done | key.pem removed from working tree; `*.pem`/`*.key`/`*.p12`/`*.pfx` added to `.dockerignore`. **Operator action:** rotate any TLS/private key that was present at `/key.pem` before this change, because it may have been copied into prior docker builder layers. |
 | HIGH-1 | Done | `fix(submissions): 🐛 align terminal SSE payloads with submission visibility` |
-| HIGH-2 | Open | — |
-| HIGH-3 | Open | — |
+| HIGH-2 | Done | `fix(auth): 🛡️ harden getSafeRedirectUrl against open-redirect tricks` |
+| HIGH-3 | Done | `fix(change-password): 🩹 surface clear recovery UI when re-auth fails` |
 | HIGH-4 | Done | `fix(judge): 🐛 heartbeat no longer clobbers the atomic active_tasks counter` |
 | HIGH-5 | Open | — |
 | HIGH-6 | Open | — |
