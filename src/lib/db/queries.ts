@@ -72,6 +72,9 @@ function namedToPositional(
   const values: unknown[] = [];
   const paramNames: string[] = [];
   const text = sql.replace(/@(\w+)/g, (_, name) => {
+    if (!/^[a-zA-Z_]\w*$/.test(name)) {
+      throw new Error(`Invalid SQL parameter name: ${name}`);
+    }
     if (!Object.prototype.hasOwnProperty.call(params, name)) {
       throw new Error(`Missing SQL parameter: ${name}`);
     }
