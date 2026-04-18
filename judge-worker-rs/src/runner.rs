@@ -670,10 +670,10 @@ async fn execute_run(config: &Config, req: &RunRequest) -> Result<RunResponse, S
     let temp_dir = tempfile::TempDir::new().map_err(|e| format!("Failed to create temp dir: {e}"))?;
     let workspace_dir = temp_dir.path();
 
-    // Set permissions to 0o777 for sibling container access
+    // Set permissions to 0o770 — restrict to owner/group for sibling container access
     tokio::fs::set_permissions(
         workspace_dir,
-        std::os::unix::fs::PermissionsExt::from_mode(0o777),
+        std::os::unix::fs::PermissionsExt::from_mode(0o770),
     )
     .await
     .map_err(|e| format!("Failed to set workspace permissions: {e}"))?;

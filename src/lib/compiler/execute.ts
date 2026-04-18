@@ -55,8 +55,14 @@ const WORKSPACE_BASE = process.env.COMPILER_WORKSPACE_DIR || tmpdir();
  */
 const COMPILER_RUNNER_URL = process.env.COMPILER_RUNNER_URL || "";
 const RUNNER_AUTH_TOKEN = process.env.RUNNER_AUTH_TOKEN || "";
-if (!RUNNER_AUTH_TOKEN && process.env.NODE_ENV === "production") {
-  logger.error("RUNNER_AUTH_TOKEN is not set in production — compiler runner auth disabled");
+if (!RUNNER_AUTH_TOKEN && COMPILER_RUNNER_URL && process.env.NODE_ENV === "production") {
+  throw new Error(
+    "RUNNER_AUTH_TOKEN must be set in production when COMPILER_RUNNER_URL is configured. " +
+    "Generate one with: openssl rand -hex 32",
+  );
+}
+if (!RUNNER_AUTH_TOKEN && !COMPILER_RUNNER_URL && process.env.NODE_ENV === "production") {
+  logger.warn("RUNNER_AUTH_TOKEN is not set — compiler runner auth disabled");
 }
 const COMPILER_RUNNER_CONFIG_ERROR =
   COMPILER_RUNNER_URL && !RUNNER_AUTH_TOKEN
@@ -125,6 +131,57 @@ function validateShellCommand(cmd: string): boolean {
   if (cmd.includes("\0")) return false;
   const dangerous = /`|\$\(|\$\{|[<>]\(|\|\||\||>|<|\n|\r|\beval\b/;
   return !dangerous.test(cmd);
+}
+
+/**
+ * Known compiler/tool prefixes that may appear as the first command in a
+ * compile or run command string. Used by validateShellCommandStrict as a
+ * secondary defense-in-depth check on top of validateShellCommand.
+ */
+const ALLOWED_COMMAND_PREFIXES = [
+  "gcc", "g++", "clang", "clang++", "cc", "c++",
+  "javac", "java", "jar",
+  "go",
+  "rustc", "cargo",
+  "python3", "python", "pypy3",
+  "node",
+  "dotnet", "mcs", "mono",
+  "ghc", "runhaskell",
+  "dart",
+  "swiftc",
+  "fpc",
+  "ruby",
+  "kotlinc", "kotlin",
+  "scalac", "scala",
+  "gdc", "ldc2",
+  "vbnc", "vbc",
+  "racket",
+  "gs",
+  "bash", "sh",
+  "csc",
+  "octave",
+  "Rscript",
+  "php",
+  "perl",
+  "lua",
+  "awk",
+  "sed",
+  "powershell", "pwsh",
+];
+
+/**
+ * Stricter shell command validation that also verifies the first command
+ * in each chained segment starts with a known compiler/tool prefix.
+ * This is a defense-in-depth layer on top of validateShellCommand.
+ */
+function validateShellCommandStrict(cmd: string): boolean {
+  if (!validateShellCommand(cmd)) return false;
+  const segments = cmd.split(/&&|;/);
+  return segments.every((segment) => {
+    const firstToken = segment.trim().split(/\s+/)[0] || "";
+    const baseName = firstToken.split("/").pop() || firstToken;
+    return ALLOWED_COMMAND_PREFIXES.some((prefix) => baseName === prefix || baseName.startsWith(prefix));
+  });
 }
 
 /**
@@ -500,7 +557,7 @@ export async function executeCompilerRun(
   }
 
   // Validate shell commands (basic sanity check)
-  if (options.language.compileCommand && !validateShellCommand(options.language.compileCommand)) {
+  if (options.language.compileCommand && !validateShellCommandStrict(options.language.compileCommand)) {
     return {
       stdout: "",
       stderr: "Invalid compile command",
@@ -511,7 +568,7 @@ export async function executeCompilerRun(
       compileOutput: null,
     };
   }
-  if (!validateShellCommand(options.language.runCommand)) {
+  if (!validateShellCommandStrict(options.language.runCommand)) {
     return {
       stdout: "",
       stderr: "Invalid run command",
@@ -533,7 +590,7 @@ export async function executeCompilerRun(
   if (!workspaceStat.isDirectory() || workspaceStat.isSymbolicLink()) {
     throw new Error("Compiler workspace path is invalid");
   }
-  await chmod(workspaceDir, 0o777);
+  await chmod(workspaceDir, 0o770);
 
   try {
     // Write source file (world-readable for sibling container access)

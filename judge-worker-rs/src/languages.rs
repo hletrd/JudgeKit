@@ -754,7 +754,7 @@ static POWERSHELL_CONFIG: LanguageConfig = LanguageConfig {
 };
 
 // PostScript
-static POSTSCRIPT_RUN: &[&str] = &["gs", "-q", "-dNODISPLAY", "-dBATCH", "-dNOPAUSE", "-dNOSAFER", "/workspace/solution.ps"];
+static POSTSCRIPT_RUN: &[&str] = &["gs", "-q", "-dNODISPLAY", "-dBATCH", "-dNOPAUSE", "-dSAFER", "-sPermitFileReading=/workspace", "/workspace/solution.ps"];
 
 static POSTSCRIPT_CONFIG: LanguageConfig = LanguageConfig {
     extension: ".ps",

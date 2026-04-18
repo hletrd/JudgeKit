@@ -234,10 +234,10 @@ async fn execute_inner(
 
     let workspace_dir = temp_dir.path();
 
-    // Set permissions to 0o777 so the container judge user can write compiled output
+    // Set permissions to 0o770 so the container judge user can write compiled output
     if let Err(e) = fs::set_permissions(
         workspace_dir,
-        std::os::unix::fs::PermissionsExt::from_mode(0o777),
+        std::os::unix::fs::PermissionsExt::from_mode(0o770),
     )
     .await
     {

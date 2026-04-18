@@ -96,13 +96,11 @@ export function decrypt(encoded: string): string {
 
 /**
  * Redact a secret value for display in API responses.
- * Encrypted values (prefixed with `enc:`) are fully redacted as `••••••••`
- * since showing chars of the ciphertext would be meaningless.
- * Plaintext values show last 4 characters with bullet prefix.
+ * All values are fully redacted — never expose any characters of secrets
+ * regardless of encryption status, as partial disclosure reduces brute-force
+ * search space.
  */
 export function redactSecret(value: string | null | undefined): string | null {
   if (!value || value.length === 0) return null;
-  if (value.startsWith("enc:")) return "\u2022\u2022\u2022\u2022\u2022\u2022\u2022\u2022";
-  if (value.length <= 4) return "\u2022\u2022\u2022\u2022";
-  return `\u2022\u2022\u2022\u2022${value.slice(-4)}`;
+  return "\u2022\u2022\u2022\u2022\u2022\u2022\u2022\u2022";
 }
