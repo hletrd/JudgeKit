@@ -7,6 +7,7 @@ import { assignments, groups, submissions, users } from "@/lib/db/schema";
 import { and, desc, eq, inArray, sql } from "drizzle-orm";
 import { SubmissionStatusBadge } from "@/components/submission-status-badge";
 import { getTranslations } from "next-intl/server";
+import { getAssignedTeachingGroupIds } from "@/lib/assignments/management";
 
 type InstructorDashboardProps = {
   userId: string;
@@ -17,11 +18,15 @@ export async function InstructorDashboard({ userId }: InstructorDashboardProps) 
   const tCommon = await getTranslations("common");
   const tNav = await getTranslations("nav");
 
-  const instructorGroups = await db.query.groups.findMany({
-    where: eq(groups.instructorId, userId),
-    columns: { id: true, name: true },
-  });
-  const instructorGroupIds = instructorGroups.map((group) => group.id);
+  const instructorGroupIds = await getAssignedTeachingGroupIds(userId);
+  const instructorGroups =
+    instructorGroupIds.length > 0
+      ? await db.query.groups.findMany({
+          where: (groups, { inArray: inArrayOperator }) =>
+            inArrayOperator(groups.id, instructorGroupIds),
+          columns: { id: true, name: true },
+        })
+      : [];
 
   const instructorAssignments =
     instructorGroupIds.length > 0

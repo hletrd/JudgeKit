@@ -24,6 +24,7 @@ import {
   canManageGroupMembersAsync,
   canManageGroupResources,
   canManageGroupResourcesAsync,
+  getAssignedTeachingGroupIds,
   getManageableProblemsForGroup,
   hasGroupInstructorRole,
   isGroupTA,
@@ -52,6 +53,18 @@ function mockProblemSelectRows(rows: unknown[]) {
   chain.then.mockImplementation((cb: (value: unknown[]) => unknown) => Promise.resolve(cb(rows)));
   dbMock.select.mockReturnValue(chain);
   dbMock.selectDistinct.mockReturnValue(chain);
+}
+
+function mockTeachingGroupRows(rows: Array<{ id: string }>) {
+  const chain = {
+    from: vi.fn(),
+    leftJoin: vi.fn(),
+    where: vi.fn(),
+  };
+  chain.from.mockReturnValue(chain);
+  chain.leftJoin.mockReturnValue(chain);
+  chain.where.mockResolvedValue(rows);
+  dbMock.select.mockReturnValue(chain);
 }
 
 describe("group management helpers", () => {
@@ -124,6 +137,19 @@ describe("group management helpers", () => {
 
     await expect(isGroupTA("group-1", "ta-1")).resolves.toBe(true);
     await expect(hasGroupInstructorRole("group-1", "ta-1", "owner-1")).resolves.toBe(true);
+  });
+
+  it("collects owned and assigned teaching groups without duplicating overlaps", async () => {
+    mockTeachingGroupRows([
+      { id: "group-1" },
+      { id: "group-2" },
+      { id: "group-1" },
+    ]);
+
+    await expect(getAssignedTeachingGroupIds("staff-1")).resolves.toEqual([
+      "group-1",
+      "group-2",
+    ]);
   });
 
   it("lets roles with problems.view_all load the full problem list", async () => {

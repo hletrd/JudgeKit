@@ -19,16 +19,17 @@ export default async function DashboardPage() {
   const caps = await resolveCapabilities(session.user.role);
   const accessContext = await getRecruitingAccessContext(session.user.id);
   const platformMode = accessContext.effectivePlatformMode;
+  const canReviewAssignments = caps.has("submissions.view_all") || caps.has("assignments.view_status");
 
   const isAdminView = caps.has("system.settings");
-  const isInstructorView = caps.has("submissions.view_all") && !caps.has("system.settings");
-  const isCandidateView = platformMode === "recruiting" && !caps.has("submissions.view_all");
+  const isInstructorView = canReviewAssignments && !caps.has("system.settings");
+  const isCandidateView = platformMode === "recruiting" && !canReviewAssignments;
 
   return (
     <div className="space-y-6">
       <h2 className="text-2xl font-bold">{t("title")}</h2>
 
-      {!caps.has("submissions.view_all") && !isCandidateView && (
+      {!canReviewAssignments && !isCandidateView && (
         <Suspense
           fallback={
             <div className="space-y-6">

@@ -7,6 +7,7 @@ import {
   assignments,
   examSessions,
   groupInstructors,
+  groups,
   problemGroupAccess,
   problems,
   submissions,
@@ -40,6 +41,27 @@ async function getGroupInstructorAssignmentRole(
     .limit(1);
 
   return row?.role ?? null;
+}
+
+export async function getAssignedTeachingGroupIds(userId: string): Promise<string[]> {
+  const rows = await db
+    .select({ id: groups.id })
+    .from(groups)
+    .leftJoin(
+      groupInstructors,
+      and(
+        eq(groupInstructors.groupId, groups.id),
+        eq(groupInstructors.userId, userId)
+      )
+    )
+    .where(
+      or(
+        eq(groups.instructorId, userId),
+        eq(groupInstructors.userId, userId)
+      )
+    );
+
+  return Array.from(new Set(rows.map((row) => row.id)));
 }
 
 /**
