@@ -25,6 +25,7 @@ type PublicQuickSubmitProps = {
   problemTitle: string;
   siteDefaultLanguage?: string | null;
   userId: string;
+  layout?: "dialog" | "inline";
 };
 
 export function PublicQuickSubmit({
@@ -36,6 +37,7 @@ export function PublicQuickSubmit({
   problemTitle,
   siteDefaultLanguage = null,
   userId,
+  layout = "dialog",
 }: PublicQuickSubmitProps) {
   const router = useRouter();
   const tProblems = useTranslations("problems");
@@ -58,6 +60,10 @@ export function PublicQuickSubmit({
       }}
     />
   );
+
+  if (layout === "inline") {
+    return form;
+  }
 
   const trigger = (
     <Button type="button" onClick={() => setOpen(true)}>

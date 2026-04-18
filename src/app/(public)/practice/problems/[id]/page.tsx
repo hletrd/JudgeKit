@@ -335,116 +335,194 @@ export default async function PublicProblemDetailPage({ params }: { params: Prom
             <TabsTrigger value="problem">{t("practice.problemTab")}</TabsTrigger>
             <TabsTrigger value="editorial">{t("practice.editorial.tab")}</TabsTrigger>
             <TabsTrigger value="accepted-solutions">{t("practice.acceptedSolutions.title")}</TabsTrigger>
-            {session?.user && (
-              <TabsTrigger value="my-submissions">{t("practice.mySubmissionsTab")}</TabsTrigger>
-            )}
             <TabsTrigger value="discussion">{t("practice.discussion.title")}</TabsTrigger>
           </TabsList>
-          <TabsContent value="problem" className="mt-4 space-y-6">
-            <PublicProblemDetail
-              backHref={buildLocalePath("/practice", locale)}
-              backLabel={tCommon("back")}
-              title={problem.title}
-              description={problem.description}
-              authorLabel={tProblems("badges.author", { name: problem.author?.name ?? t("practice.unknownAuthor") })}
-              tags={problem.problemTags.map((entry) => ({ name: entry.tag.name, color: entry.tag.color }))}
-              timeLimitLabel={tProblems("badges.timeLimit", { value: problem.timeLimitMs ?? 2000 })}
-              memoryLimitLabel={tProblems("badges.memoryLimit", { value: problem.memoryLimitMb ?? 256 })}
-              difficultyTier={getProblemTierInfo(problem.difficulty)}
-              difficultyLabel={
-                problem.difficulty != null
-                  ? problem.difficulty.toFixed(2).replace(/\.?0+$/, "")
-                  : null
-              }
-              submitAction={session?.user ? (
-                <PublicQuickSubmit
-                  userId={session.user.id}
-                  problemId={problem.id}
-                  problemTitle={problem.title}
-                  languages={enabledLanguages}
-                  preferredLanguage={session.user.preferredLanguage ?? null}
-                  problemDefaultLanguage={problem.defaultLanguage ?? null}
-                  siteDefaultLanguage={settings.defaultLanguage ?? null}
-                  editorTheme={session.user.editorTheme ?? null}
+          <TabsContent value="problem" className="mt-4">
+            <div className={session?.user ? "grid grid-cols-1 gap-6 lg:grid-cols-2" : "space-y-6"}>
+              <div className="space-y-6">
+                <PublicProblemDetail
+                  backHref={buildLocalePath("/practice", locale)}
+                  backLabel={tCommon("back")}
+                  title={problem.title}
+                  description={problem.description}
+                  authorLabel={tProblems("badges.author", { name: problem.author?.name ?? t("practice.unknownAuthor") })}
+                  tags={problem.problemTags.map((entry) => ({ name: entry.tag.name, color: entry.tag.color }))}
+                  timeLimitLabel={tProblems("badges.timeLimit", { value: problem.timeLimitMs ?? 2000 })}
+                  memoryLimitLabel={tProblems("badges.memoryLimit", { value: problem.memoryLimitMb ?? 256 })}
+                  difficultyTier={getProblemTierInfo(problem.difficulty)}
+                  difficultyLabel={
+                    problem.difficulty != null
+                      ? problem.difficulty.toFixed(2).replace(/\.?0+$/, "")
+                      : null
+                  }
+                  submitAction={session?.user ? (
+                    <Link href="#public-submit-panel">
+                      <Button>{tProblems("submitSolution")}</Button>
+                    </Link>
+                  ) : null}
+                  playgroundHref={contestlessPlaygroundHref}
+                  playgroundLabel={t("practice.tryInPlayground")}
+                  signInHref={signInHref}
+                  signInLabel={t("practice.signInToSubmit")}
                 />
+
+                {/* Problem Statistics */}
+                <Card>
+                  <CardHeader>
+                    <CardTitle className="text-lg">{t("practice.stats.title")}</CardTitle>
+                  </CardHeader>
+                  <CardContent>
+                    <div className="grid grid-cols-2 gap-4 sm:grid-cols-4">
+                      <div className="text-center">
+                        <div className="text-2xl font-bold">{totalSubmissions}</div>
+                        <div className="text-xs text-muted-foreground">{t("practice.stats.totalSubmissions")}</div>
+                      </div>
+                      <div className="text-center">
+                        <div className="text-2xl font-bold text-primary">{acceptedCount}</div>
+                        <div className="text-xs text-muted-foreground">{t("practice.stats.acceptedCount")}</div>
+                      </div>
+                      <div className="text-center">
+                        <div className="text-2xl font-bold">{acceptanceRate}%</div>
+                        <div className="text-xs text-muted-foreground">{t("practice.stats.acceptanceRate")}</div>
+                      </div>
+                      <div className="text-center">
+                        <div className="text-2xl font-bold">{uniqueSolvers}</div>
+                        <div className="text-xs text-muted-foreground">{t("practice.stats.uniqueSolvers")}</div>
+                      </div>
+                    </div>
+                    <div className="mt-4 flex justify-center">
+                      <Link href={buildLocalePath(`/practice/problems/${problem.id}/rankings`, locale)}>
+                        <Button variant="outline" size="sm">Rankings</Button>
+                      </Link>
+                    </div>
+                  </CardContent>
+                </Card>
+
+                {/* Similar Problems */}
+                {similarProblems.length > 0 && (
+                  <Card>
+                    <CardHeader>
+                      <CardTitle className="text-lg">{t("practice.similarProblems")}</CardTitle>
+                    </CardHeader>
+                    <CardContent>
+                      <ul className="space-y-2">
+                        {similarProblems.map((sp) => {
+                          const problemTier = getProblemTierInfo(sp.difficulty);
+
+                          return (
+                            <li key={sp.id} className="flex items-center gap-2">
+                              <span className="font-mono text-sm text-muted-foreground w-10">
+                                {sp.sequenceNumber ?? ""}
+                              </span>
+                              <Link
+                                href={buildLocalePath(`/practice/problems/${sp.id}`, locale)}
+                                className="text-sm font-medium hover:text-primary hover:underline"
+                              >
+                                {sp.title}
+                              </Link>
+                              {sp.difficulty != null && (
+                                <div className="flex items-center gap-1">
+                                  {problemTier ? (
+                                    <TierBadge tier={problemTier.tier} label={problemTier.label} />
+                                  ) : null}
+                                  <Badge variant="secondary" className="text-xs">
+                                    {sp.difficulty.toFixed(2).replace(/\.?0+$/, "")}
+                                  </Badge>
+                                </div>
+                              )}
+                            </li>
+                          );
+                        })}
+                      </ul>
+                    </CardContent>
+                  </Card>
+                )}
+              </div>
+
+              {session?.user ? (
+                <div className="space-y-6">
+                  <Card id="public-submit-panel" className="sticky top-6">
+                    <CardHeader>
+                      <CardTitle>{tProblems("submitSolution")}</CardTitle>
+                    </CardHeader>
+                    <CardContent>
+                      <PublicQuickSubmit
+                        userId={session.user.id}
+                        problemId={problem.id}
+                        problemTitle={problem.title}
+                        languages={enabledLanguages}
+                        preferredLanguage={session.user.preferredLanguage ?? null}
+                        problemDefaultLanguage={problem.defaultLanguage ?? null}
+                        siteDefaultLanguage={settings.defaultLanguage ?? null}
+                        editorTheme={session.user.editorTheme ?? null}
+                        layout="inline"
+                      />
+                    </CardContent>
+                  </Card>
+
+                  <Card>
+                    <CardHeader>
+                      <CardTitle className="text-lg">{t("practice.mySubmissionsTab")}</CardTitle>
+                    </CardHeader>
+                    <CardContent className="p-0">
+                      {userSubmissions.length === 0 ? (
+                        <p className="px-6 py-5 text-sm text-muted-foreground">{t("practice.noMySubmissions")}</p>
+                      ) : (
+                        <div className="overflow-x-auto">
+                          <Table>
+                            <TableHeader>
+                              <TableRow>
+                                <TableHead>{tSubmissions("table.id")}</TableHead>
+                                <TableHead>{tSubmissions("table.language")}</TableHead>
+                                <TableHead>{tSubmissions("table.status")}</TableHead>
+                                <TableHead>{tSubmissions("table.score")}</TableHead>
+                                <TableHead>{tSubmissions("table.submittedAt")}</TableHead>
+                                <TableHead>{tSubmissions("table.action")}</TableHead>
+                              </TableRow>
+                            </TableHeader>
+                            <TableBody>
+                              {userSubmissions.map((sub) => (
+                                <TableRow key={sub.id}>
+                                  <TableCell className="font-mono text-xs">
+                                    <Link href={buildLocalePath(`/submissions/${sub.id}`, locale)} className="text-primary hover:underline">
+                                      {formatSubmissionIdPrefix(sub.id)}
+                                    </Link>
+                                  </TableCell>
+                                  <TableCell>{getLanguageDisplayLabel(sub.language)}</TableCell>
+                                  <TableCell>
+                                    <SubmissionStatusBadge
+                                      label={statusLabels[sub.status as keyof typeof statusLabels] ?? sub.status}
+                                      status={sub.status}
+                                      executionTimeMs={sub.executionTimeMs}
+                                      memoryUsedKb={sub.memoryUsedKb}
+                                      score={sub.score}
+                                      failedTestCaseIndex={sub.failedTestCaseIndex}
+                                      runtimeErrorType={sub.runtimeErrorType}
+                                      timeLimitMs={problem.timeLimitMs ?? null}
+                                    />
+                                  </TableCell>
+                                  <TableCell>{sub.score !== null ? Math.round(sub.score * 100) / 100 : "-"}</TableCell>
+                                  <TableCell>
+                                    {sub.submittedAt
+                                      ? formatDateTimeInTimeZone(sub.submittedAt, locale, timeZone)
+                                      : "-"}
+                                  </TableCell>
+                                  <TableCell>
+                                    <Link href={buildLocalePath(`/submissions/${sub.id}`, locale)}>
+                                      <Button variant="outline" size="sm">{tCommon("view")}</Button>
+                                    </Link>
+                                  </TableCell>
+                                </TableRow>
+                              ))}
+                            </TableBody>
+                          </Table>
+                        </div>
+                      )}
+                    </CardContent>
+                  </Card>
+                </div>
               ) : null}
-              playgroundHref={contestlessPlaygroundHref}
-              playgroundLabel={t("practice.tryInPlayground")}
-              signInHref={signInHref}
-              signInLabel={t("practice.signInToSubmit")}
-            />
-
-            {/* Problem Statistics */}
-            <Card>
-              <CardHeader>
-                <CardTitle className="text-lg">{t("practice.stats.title")}</CardTitle>
-              </CardHeader>
-              <CardContent>
-                <div className="grid grid-cols-2 gap-4 sm:grid-cols-4">
-                  <div className="text-center">
-                    <div className="text-2xl font-bold">{totalSubmissions}</div>
-                    <div className="text-xs text-muted-foreground">{t("practice.stats.totalSubmissions")}</div>
-                  </div>
-                  <div className="text-center">
-                    <div className="text-2xl font-bold text-primary">{acceptedCount}</div>
-                    <div className="text-xs text-muted-foreground">{t("practice.stats.acceptedCount")}</div>
-                  </div>
-                  <div className="text-center">
-                    <div className="text-2xl font-bold">{acceptanceRate}%</div>
-                    <div className="text-xs text-muted-foreground">{t("practice.stats.acceptanceRate")}</div>
-                  </div>
-                  <div className="text-center">
-                    <div className="text-2xl font-bold">{uniqueSolvers}</div>
-                    <div className="text-xs text-muted-foreground">{t("practice.stats.uniqueSolvers")}</div>
-                  </div>
-                </div>
-                <div className="mt-4 flex justify-center">
-                  <Link href={buildLocalePath(`/practice/problems/${problem.id}/rankings`, locale)}>
-                    <Button variant="outline" size="sm">Rankings</Button>
-                  </Link>
-                </div>
-              </CardContent>
-            </Card>
-
-            {/* Similar Problems */}
-            {similarProblems.length > 0 && (
-              <Card>
-                <CardHeader>
-                  <CardTitle className="text-lg">{t("practice.similarProblems")}</CardTitle>
-                </CardHeader>
-                <CardContent>
-                  <ul className="space-y-2">
-                    {similarProblems.map((sp) => {
-                      const problemTier = getProblemTierInfo(sp.difficulty);
-
-                      return (
-                        <li key={sp.id} className="flex items-center gap-2">
-                          <span className="font-mono text-sm text-muted-foreground w-10">
-                            {sp.sequenceNumber ?? ""}
-                          </span>
-                          <Link
-                            href={buildLocalePath(`/practice/problems/${sp.id}`, locale)}
-                            className="text-sm font-medium hover:text-primary hover:underline"
-                          >
-                            {sp.title}
-                          </Link>
-                          {sp.difficulty != null && (
-                            <div className="flex items-center gap-1">
-                              {problemTier ? (
-                                <TierBadge tier={problemTier.tier} label={problemTier.label} />
-                              ) : null}
-                              <Badge variant="secondary" className="text-xs">
-                                {sp.difficulty.toFixed(2).replace(/\.?0+$/, "")}
-                              </Badge>
-                            </div>
-                          )}
-                        </li>
-                      );
-                    })}
-                  </ul>
-                </CardContent>
-              </Card>
-            )}
+            </div>
           </TabsContent>
 
           {/* Editorial tab */}
@@ -544,70 +622,6 @@ export default async function PublicProblemDetailPage({ params }: { params: Prom
               languages={enabledLanguages}
             />
           </TabsContent>
-
-          {/* My Submissions tab */}
-          {session?.user && (
-            <TabsContent value="my-submissions" className="mt-4 space-y-4">
-              <h2 className="text-lg font-semibold">{t("practice.mySubmissionsTab")}</h2>
-              {userSubmissions.length === 0 ? (
-                <p className="text-sm text-muted-foreground">{t("practice.noMySubmissions")}</p>
-              ) : (
-                <Card>
-                  <CardContent className="p-0">
-                    <div className="overflow-x-auto">
-                      <Table>
-                        <TableHeader>
-                          <TableRow>
-                            <TableHead>{tSubmissions("table.id")}</TableHead>
-                            <TableHead>{tSubmissions("table.language")}</TableHead>
-                            <TableHead>{tSubmissions("table.status")}</TableHead>
-                            <TableHead>{tSubmissions("table.score")}</TableHead>
-                            <TableHead>{tSubmissions("table.submittedAt")}</TableHead>
-                            <TableHead>{tSubmissions("table.action")}</TableHead>
-                          </TableRow>
-                        </TableHeader>
-                        <TableBody>
-                          {userSubmissions.map((sub) => (
-                            <TableRow key={sub.id}>
-                              <TableCell className="font-mono text-xs">
-                                <Link href={buildLocalePath(`/submissions/${sub.id}`, locale)} className="text-primary hover:underline">
-                                  {formatSubmissionIdPrefix(sub.id)}
-                                </Link>
-                              </TableCell>
-                              <TableCell>{getLanguageDisplayLabel(sub.language)}</TableCell>
-                              <TableCell>
-                                <SubmissionStatusBadge
-                                  label={statusLabels[sub.status as keyof typeof statusLabels] ?? sub.status}
-                                  status={sub.status}
-                                  executionTimeMs={sub.executionTimeMs}
-                                  memoryUsedKb={sub.memoryUsedKb}
-                                  score={sub.score}
-                                  failedTestCaseIndex={sub.failedTestCaseIndex}
-                                  runtimeErrorType={sub.runtimeErrorType}
-                                  timeLimitMs={problem.timeLimitMs ?? null}
-                                />
-                              </TableCell>
-                              <TableCell>{sub.score !== null ? Math.round(sub.score * 100) / 100 : "-"}</TableCell>
-                              <TableCell>
-                                {sub.submittedAt
-                                  ? formatDateTimeInTimeZone(sub.submittedAt, locale, timeZone)
-                                  : "-"}
-                              </TableCell>
-                              <TableCell>
-                                <Link href={buildLocalePath(`/submissions/${sub.id}`, locale)}>
-                                  <Button variant="outline" size="sm">{tCommon("view")}</Button>
-                                </Link>
-                              </TableCell>
-                            </TableRow>
-                          ))}
-                        </TableBody>
-                      </Table>
-                    </div>
-                  </CardContent>
-                </Card>
-              )}
-            </TabsContent>
-          )}
 
           <TabsContent value="discussion" className="mt-4 space-y-6">
             <Tabs defaultValue="questions">

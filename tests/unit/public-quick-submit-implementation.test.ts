@@ -22,4 +22,12 @@ describe("public quick submit implementation", () => {
     expect(source).toContain("<Sheet");
     expect(source).toContain("<Dialog");
   });
+  it("supports an inline workspace mode that renders the shared submission form without dialog chrome", () => {
+    const source = read("src/components/problem/public-quick-submit.tsx");
+
+    expect(source).toContain('layout?: "dialog" | "inline"');
+    expect(source).toContain('if (layout === "inline")');
+    expect(source).toContain("return form;");
+  });
+
 });
