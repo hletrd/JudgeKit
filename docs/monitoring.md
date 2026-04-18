@@ -8,13 +8,13 @@ This guide describes the monitoring surfaces JudgeKit currently ships and the mi
 
 ### `GET /api/health`
 - public callers receive a coarse `{ status }`
-- admin callers receive database, audit-pipeline, queue, worker, uptime, and probe-latency detail
+- callers with the `system.settings` capability receive database, audit-pipeline, queue, worker, uptime, and probe-latency detail
 - shared source of truth: `src/lib/ops/admin-health.ts`
 
 ### `GET /api/metrics`
 - Prometheus-style plaintext metrics
 - accessible to:
-  - authenticated admin sessions, or
+  - authenticated sessions whose role resolves to `system.settings`, or
   - `Authorization: Bearer $CRON_SECRET`
 - exposes gauges for:
   - overall health

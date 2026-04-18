@@ -157,7 +157,7 @@ Some endpoints enforce per-user rate limits. When exceeded, the response is:
 
 #### `GET /api/health`
 
-Health check endpoint. No authentication required, but admin users see extended diagnostics.
+Health check endpoint. No authentication required, but callers whose role resolves to the `system.settings` capability see extended diagnostics.
 
 **Public Response:**
 ```json
@@ -177,14 +177,14 @@ Health check endpoint. No authentication required, but admin users see extended 
 }
 ```
 
-Returns `503` if database is unreachable (admin only).
+Returns `503` if database is unreachable (detailed view only).
 
 ---
 
 #### `GET /api/metrics`
 
 Prometheus-style metrics endpoint. Accessible to:
-- authenticated admin users, or
+- authenticated callers whose role resolves to the `system.settings` capability, or
 - requests with `Authorization: Bearer $CRON_SECRET`
 
 **Response:** `text/plain; version=0.0.4`
