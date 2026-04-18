@@ -209,12 +209,14 @@ type SimilarityPair = {
   userId1: string;
   userId2: string;
   problemId: string;
+  language: string;
   similarity: number;
 };
 
 type SubmissionRow = {
   userId: string;
   problemId: string;
+  language: string;
   sourceCode: string;
 };
 
@@ -250,20 +252,21 @@ async function runSimilarityCheckTS(
   ngramSize: number,
   signal?: AbortSignal,
 ): Promise<SimilarityPair[]> {
-  // Group by problemId
-  const byProblem = new Map<string, { userId: string; ngrams: Set<string> }[]>();
+  // Group by (problemId, language) so cross-language pairs are never compared
+  const byKey = new Map<string, { userId: string; ngrams: Set<string>; problemId: string; language: string }[]>();
   for (const row of rows) {
     const normalized = normalizeIdentifiersForSimilarity(normalizeSource(row.sourceCode));
     const ngrams = generateNgrams(normalized, ngramSize);
-    const arr = byProblem.get(row.problemId) ?? [];
-    arr.push({ userId: row.userId, ngrams });
-    byProblem.set(row.problemId, arr);
+    const key = `${row.problemId}\0${row.language}`;
+    const arr = byKey.get(key) ?? [];
+    arr.push({ userId: row.userId, ngrams, problemId: row.problemId, language: row.language });
+    byKey.set(key, arr);
   }
 
   const pairs: SimilarityPair[] = [];
   let lastYield = Date.now();
 
-  for (const [problemId, entries] of byProblem) {
+  for (const [, entries] of byKey) {
     for (let i = 0; i < entries.length; i++) {
       for (let j = i + 1; j < entries.length; j++) {
         if (signal?.aborted) {
@@ -274,7 +277,8 @@ async function runSimilarityCheckTS(
           pairs.push({
             userId1: entries[i].userId,
             userId2: entries[j].userId,
-            problemId,
+            problemId: entries[i].problemId,
+            language: entries[i].language,
             similarity: sim,
           });
         }
@@ -310,12 +314,12 @@ export async function runSimilarityCheck(
   // Get best submission per (user, problem, language) — compare only same-language attempts and keep the highest-scoring/latest row within each language bucket
   const rows = await rawQueryAll<SubmissionRow>(
     `WITH best AS (
-      SELECT user_id AS "userId", problem_id AS "problemId", source_code AS "sourceCode",
+      SELECT user_id AS "userId", problem_id AS "problemId", language, source_code AS "sourceCode",
              ROW_NUMBER() OVER (PARTITION BY user_id, problem_id, language ORDER BY score DESC, submitted_at DESC) AS rn
       FROM submissions
       WHERE assignment_id = @assignmentId
     )
-    SELECT "userId", "problemId", "sourceCode" FROM best WHERE rn = 1`,
+    SELECT "userId", "problemId", "language", "sourceCode" FROM best WHERE rn = 1`,
     { assignmentId }
   );
 

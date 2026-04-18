@@ -5,6 +5,7 @@ const CODE_SIMILARITY_AUTH_TOKEN = process.env.CODE_SIMILARITY_AUTH_TOKEN ?? "";
 interface RustSubmission {
   userId: string;
   problemId: string;
+  language: string;
   sourceCode: string;
 }
 
@@ -12,6 +13,7 @@ interface RustSimilarityPair {
   userId1: string;
   userId2: string;
   problemId: string;
+  language: string;
   similarity: number;
 }
 
