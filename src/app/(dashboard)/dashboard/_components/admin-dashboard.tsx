@@ -115,7 +115,7 @@ export async function AdminDashboard({ capabilities }: AdminDashboardProps) {
         </Card>
       ) : null}
 
-      <DashboardJudgeSystemSection />
+      {canViewHealth ? <DashboardJudgeSystemSection /> : null}
     </div>
   );
 }

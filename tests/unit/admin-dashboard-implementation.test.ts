@@ -37,6 +37,7 @@ describe("admin dashboard implementation", () => {
     expect(source).toContain('t("workerFleetStatusTitle")');
     expect(source).toContain('t("uptimeStatusTitle")');
     expect(source).toContain('t("responseTimeStatusTitle")');
+    expect(source).toContain('{canViewHealth ? <DashboardJudgeSystemSection /> : null}');
     expect(dashboardPage).toContain("const hasAdminWorkspace =");
     expect(dashboardPage).toContain('caps.has("users.view")');
     expect(dashboardPage).toContain('caps.has("system.audit_logs")');
