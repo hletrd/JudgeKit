@@ -19,7 +19,7 @@ This lane owns repo-level current-head issues that are not already fully covered
 | F-05 | `users.bulk` route test harness bypasses parsed request body | Done | `test(users): 🧪 make the bulk-create route harness respect schema-parsed bodies` |
 | F-06 | `compiler/execute` implementation test still asserts pre-hardening `0o777` | Done | `test(compiler): 🧪 align the workspace-permission contract with the hardened 0o770 mode` |
 | F-07 | `source-grep` documented baseline is stale | Done | `test(infra): 🧪 refresh the documented source-grep baseline after intentional suite growth` |
-| F-08 | Assistant roles can browse the global user directory | Pending | — |
+| F-08 | Assistant roles can browse the global user directory | Done | `fix(role): 🛡️ remove global user-directory visibility from the built-in assistant role` |
 | F-09 | Profile `className` restrictions are UI-only | Done | `fix(profile): 🛡️ enforce class-name edit rules in the server action and make the profile label custom-role-aware` |
 | F-10 | Profile page cannot render assistant/custom role labels correctly | Done | `fix(profile): 🛡️ enforce class-name edit rules in the server action and make the profile label custom-role-aware` |
 | F-11 | `/api/health` eagerly computes the admin snapshot for public callers | Done | `fix(ops): 🩺 gate admin health details by capability before computing the full snapshot` |

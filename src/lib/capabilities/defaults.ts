@@ -19,8 +19,6 @@ const ASSISTANT_CAPABILITIES: readonly Capability[] = [
   "submissions.view_source",
   // Assignments (view only)
   "assignments.view_status",
-  // Users (view only)
-  "users.view",
   // Problems (view only)
   "problems.view_all",
   // Anti-Cheat (view only)

@@ -28,6 +28,7 @@ describe("DEFAULT_ROLE_CAPABILITIES", () => {
     const assistantCaps = DEFAULT_ROLE_CAPABILITIES.assistant;
     expect(assistantCaps).toContain("submissions.view_all");
     expect(assistantCaps).toContain("problems.view_all");
+    expect(assistantCaps).not.toContain("users.view");
     expect(assistantCaps).not.toContain("problems.create");
     expect(assistantCaps).not.toContain("users.delete");
   });
