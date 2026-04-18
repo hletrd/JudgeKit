@@ -1,4 +1,5 @@
 {
+  "_comment": "Judge-worker seccomp profile. Default-deny; only the allowlisted syscalls below are permitted. Network-family socket syscalls (socket, socketpair, bind, listen, accept*, connect, send*, recv*) remain in the allowlist because containers are launched with --network=none (see judge-worker-rs/src/docker.rs), which already removes TCP/IP reachability. AF_UNIX sockets remain possible inside the container but each submission runs in its own tempdir (tempfile::TempDir) with no cross-container bridges, so AF_UNIX-based IPC is bounded to the submission's own process tree. Language runtimes (python multiprocessing, jvm-based runtimes, etc.) routinely depend on AF_UNIX; narrowing to specific families would break broad swaths of the supported language set without a corresponding security gain. See HIGH-8 in plans/open/2026-04-18-comprehensive-review-remediation.md.",
   "defaultAction": "SCMP_ACT_ERRNO",
   "defaultErrnoRet": 1,
   "architectures": [

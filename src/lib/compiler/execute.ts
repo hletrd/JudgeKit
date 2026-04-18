@@ -115,6 +115,10 @@ interface DockerRunResult {
  * strict character restrictions (needed for legitimate compiler flags).
  * Allow && and ; since trusted admin-configured compile commands legitimately
  * chain steps (e.g. "javac ... && jar ...").
+ *
+ * Kept in lock-step with judge-worker-rs/src/runner.rs#validate_shell_command.
+ * Both validators share the same denylist so a command the Rust runner
+ * accepts is also accepted here, and vice versa.
  */
 function validateShellCommand(cmd: string): boolean {
   if (!cmd || cmd.length > 10_000) return false;

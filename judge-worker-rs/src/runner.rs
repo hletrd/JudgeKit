@@ -120,10 +120,15 @@ fn validate_shell_command(cmd: &str) -> bool {
     if cmd.contains('\0') {
         return false;
     }
-    // Block shell metacharacters, command/process substitution, and eval.
-    // The runner intentionally supports only simple one-command invocations.
+    // Block command/process substitution, I/O redirection, piping, control
+    // characters, and the `eval` word. `&&` and `;` are intentionally permitted:
+    // trust-boundary note — compile/run commands come from admin-configured
+    // language_configs rows and frequently legitimately chain steps
+    // (e.g. `mkdir -p out && javac …`). Aligned with
+    // src/lib/compiler/execute.ts#validateShellCommand so the TS and Rust
+    // paths accept the same set of admin-supplied commands.
     let dangerous_patterns = [
-        "`", "$(", "${", "<(", ">(", "&&", "||", ";", "|", ">", "<", "\n", "\r",
+        "`", "$(", "${", "<(", ">(", "||", "|", ">", "<", "\n", "\r",
     ];
     for pat in &dangerous_patterns {
         if cmd.contains(pat) {
@@ -151,8 +156,6 @@ mod tests {
     #[test]
     fn rejects_shell_metacharacters() {
         for cmd in [
-            "python3 main.py; rm -rf /",
-            "python3 main.py && echo hi",
             "python3 main.py || echo hi",
             "python3 main.py | cat",
             "python3 main.py > out.txt",
@@ -166,6 +169,14 @@ mod tests {
                 "expected command to be rejected: {cmd}"
             );
         }
+    }
+
+    #[test]
+    fn allows_admin_chained_compile_steps() {
+        // && and ; are permitted because admin-configured compile commands
+        // frequently chain steps (e.g., `mkdir -p out && javac …`).
+        assert!(validate_shell_command("mkdir -p out && javac Main.java"));
+        assert!(validate_shell_command("cd /workspace; make"));
     }
 
     #[test]
