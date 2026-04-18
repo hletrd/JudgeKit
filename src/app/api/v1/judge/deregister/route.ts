@@ -35,19 +35,13 @@ export async function POST(request: NextRequest) {
     // Validate per-worker secret (mandatory)
     const worker = await db.query.judgeWorkers.findFirst({
       where: eq(judgeWorkers.id, workerId),
-      columns: { secretToken: true, secretTokenHash: true },
+      columns: { secretTokenHash: true },
     });
     if (!worker) return apiError("workerNotFound", 404);
-    if (!worker.secretTokenHash && !worker.secretToken) return apiError("workerSecretNotConfigured", 403);
-    if (worker.secretTokenHash) {
+    if (!worker.secretTokenHash) return apiError("workerSecretNotConfigured", 403);
+    {
       const a = Buffer.from(hashToken(workerSecret));
       const b = Buffer.from(worker.secretTokenHash);
-      if (a.length !== b.length || !timingSafeEqual(a, b)) {
-        return apiError("invalidWorkerSecret", 403);
-      }
-    } else {
-      const a = Buffer.from(workerSecret);
-      const b = Buffer.from(worker.secretToken!);
       if (a.length !== b.length || !timingSafeEqual(a, b)) {
         return apiError("invalidWorkerSecret", 403);
       }

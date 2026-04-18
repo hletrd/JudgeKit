@@ -69,7 +69,7 @@ beforeEach(() => {
   vi.clearAllMocks();
 
   isJudgeAuthorizedForWorkerMock.mockResolvedValue({ authorized: true });
-  findFirstMock.mockResolvedValue({ secretToken: "secret-abc" });
+  findFirstMock.mockResolvedValue({ secretTokenHash: "hashed:secret-abc" });
   updateWhereMock.mockResolvedValue({ rowCount: 1 });
 });
 
@@ -132,7 +132,7 @@ describe("POST /api/v1/judge/deregister", () => {
 
   it("returns 404 when update affects zero rows", async () => {
     updateWhereMock.mockResolvedValue({ rowCount: 0 });
-    findFirstMock.mockResolvedValue({ secretToken: "secret-abc" });
+    findFirstMock.mockResolvedValue({ secretTokenHash: "hashed:secret-abc" });
 
     const response = await POST(
       makeRequest({ workerId: "nonexistent", workerSecret: "secret-abc" })
