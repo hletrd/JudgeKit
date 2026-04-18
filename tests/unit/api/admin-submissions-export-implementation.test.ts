@@ -7,10 +7,13 @@ function read(relativePath: string) {
 }
 
 describe("admin submissions export implementation", () => {
-  it("uses submissions.view_all capability auth and honors current filter dimensions in CSV export", () => {
+  it("allows scoped assignment reviewers and honors their current filter dimensions in CSV export", () => {
     const source = read("src/app/api/v1/admin/submissions/export/route.ts");
 
-    expect(source).toContain('auth: { capabilities: ["submissions.view_all"] }');
+    expect(source).toContain('capabilities: ["submissions.view_all", "assignments.view_status"]');
+    expect(source).toContain("requireAllCapabilities: false");
+    expect(source).toContain("getSubmissionReviewGroupIds(user.id, user.role)");
+    expect(source).toContain("const scopedGroupFilter =");
     expect(source).toContain('searchParams.get("search")');
     expect(source).toContain('searchParams.get("status")');
     expect(source).toContain('searchParams.get("group")');

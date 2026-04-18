@@ -6,13 +6,14 @@ import {
   contestAccessTokens,
   enrollments,
   examSessions,
+  groupInstructors,
   groups,
   problems,
   scoreOverrides,
   submissions,
   users,
 } from "@/lib/db/schema";
-import { and, asc, eq, inArray } from "drizzle-orm";
+import { and, asc, eq, inArray, or } from "drizzle-orm";
 import type { SubmissionStatus } from "@/types";
 import { isAdmin } from "@/lib/api/auth";
 import { resolveCapabilities } from "@/lib/capabilities/cache";
@@ -157,6 +158,39 @@ async function getAssignmentAccessRecord(
     examMode: assignment.examMode ?? "none",
     examDurationMinutes: assignment.examDurationMinutes ?? null,
   };
+}
+
+export async function getSubmissionReviewGroupIds(
+  userId: string,
+  role: string
+): Promise<string[] | null> {
+  const caps = await resolveCapabilities(role);
+  if (caps.has("submissions.view_all")) {
+    return null;
+  }
+
+  if (!caps.has("assignments.view_status")) {
+    return [];
+  }
+
+  const rows = await db
+    .select({ id: groups.id })
+    .from(groups)
+    .leftJoin(
+      groupInstructors,
+      and(
+        eq(groupInstructors.groupId, groups.id),
+        eq(groupInstructors.userId, userId)
+      )
+    )
+    .where(
+      or(
+        eq(groups.instructorId, userId),
+        eq(groupInstructors.userId, userId)
+      )
+    );
+
+  return Array.from(new Set(rows.map((row) => row.id)));
 }
 
 export async function validateAssignmentSubmission(

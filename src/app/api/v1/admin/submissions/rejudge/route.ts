@@ -1,10 +1,12 @@
 import { NextRequest } from "next/server";
 import { z } from "zod";
-import { inArray } from "drizzle-orm";
-import { createApiHandler } from "@/lib/api/handler";
+import { and, eq, inArray } from "drizzle-orm";
+import { createApiHandler, forbidden } from "@/lib/api/handler";
 import { apiSuccess } from "@/lib/api/responses";
 import { execTransaction } from "@/lib/db";
-import { submissions, submissionResults } from "@/lib/db/schema";
+import { getSubmissionReviewGroupIds } from "@/lib/assignments/submissions";
+import { db } from "@/lib/db";
+import { assignments, submissions, submissionResults } from "@/lib/db/schema";
 import { recordAuditEvent } from "@/lib/audit/events";
 
 const bulkRejudgeSchema = z.object({
@@ -13,12 +15,33 @@ const bulkRejudgeSchema = z.object({
 
 export const POST = createApiHandler({
   auth: {
-    capabilities: ["submissions.view_all", "submissions.rejudge"],
+    capabilities: ["submissions.rejudge"],
   },
   rateLimit: "submissions.bulk-rejudge",
   schema: bulkRejudgeSchema,
   handler: async (req: NextRequest, { user, body }) => {
     const uniqueSubmissionIds = Array.from(new Set(body.submissionIds));
+    const submissionReviewGroupIds = await getSubmissionReviewGroupIds(user.id, user.role);
+    const scopedGroupFilter =
+      submissionReviewGroupIds !== null
+        ? submissionReviewGroupIds.length > 0
+          ? inArray(assignments.groupId, submissionReviewGroupIds)
+          : eq(assignments.id, "__no_access__")
+        : undefined;
+    const permittedSubmissionRows = await db
+      .select({ id: submissions.id })
+      .from(submissions)
+      .leftJoin(assignments, eq(submissions.assignmentId, assignments.id))
+      .where(
+        and(
+          inArray(submissions.id, uniqueSubmissionIds),
+          scopedGroupFilter
+        )
+      );
+
+    if (permittedSubmissionRows.length !== uniqueSubmissionIds.length) {
+      return forbidden();
+    }
 
     await execTransaction(async (tx) => {
       await tx.delete(submissionResults).where(inArray(submissionResults.submissionId, uniqueSubmissionIds));

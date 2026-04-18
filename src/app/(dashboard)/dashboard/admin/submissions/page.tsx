@@ -12,7 +12,7 @@ import {
 import { SubmissionStatusBadge } from "@/components/submission-status-badge";
 import { db } from "@/lib/db";
 import { assignments, groups, problems, submissions, users } from "@/lib/db/schema";
-import { and, asc, count, desc, eq, gte, like, lte, or } from "drizzle-orm";
+import { and, asc, count, desc, eq, gte, inArray, like, lte, or } from "drizzle-orm";
 import { auth } from "@/lib/auth";
 import { resolveCapabilities } from "@/lib/capabilities/cache";
 import { redirect } from "next/navigation";
@@ -28,6 +28,7 @@ import { SubmissionListAutoRefresh } from "@/components/submission-list-auto-ref
 import { getLanguageDisplayLabel } from "@/lib/judge/languages";
 import { EmptyState } from "@/components/empty-state";
 import { formatScore } from "@/lib/formatting";
+import { getSubmissionReviewGroupIds } from "@/lib/assignments/submissions";
 import { InboxIcon } from "lucide-react";
 import { FilterSelect } from "@/components/filter-select";
 import { AdminSubmissionsBulkRejudge } from "./admin-submissions-bulk-rejudge";
@@ -75,7 +76,9 @@ export default async function AdminSubmissionsPage({
   const session = await auth();
   if (!session?.user) redirect("/login");
   const caps = await resolveCapabilities(session.user.role);
-  if (!caps.has("submissions.view_all")) redirect("/dashboard");
+  const canViewAllSubmissions = caps.has("submissions.view_all");
+  const canViewScopedAssignments = caps.has("assignments.view_status");
+  if (!canViewAllSubmissions && !canViewScopedAssignments) redirect("/dashboard");
   const canBulkRejudge = caps.has("submissions.rejudge");
 
   const resolvedSearchParams = searchParams ? await searchParams : undefined;
@@ -109,7 +112,17 @@ export default async function AdminSubmissionsPage({
         like(problems.title, `%${escapeLike(searchQuery)}%`)
       )
     : undefined;
+  const submissionReviewGroupIds = await getSubmissionReviewGroupIds(session.user.id, session.user.role);
+
+  const scopedGroupFilter =
+    submissionReviewGroupIds !== null
+      ? submissionReviewGroupIds.length > 0
+        ? inArray(assignments.groupId, submissionReviewGroupIds)
+        : eq(assignments.id, "__no_access__")
+      : undefined;
+
   const whereClause = and(
+    scopedGroupFilter,
     statusFilter !== "all" ? eq(submissions.status, statusFilter) : undefined,
     groupFilter ? eq(assignments.groupId, groupFilter) : undefined,
     languageFilter ? eq(submissions.language, languageFilter) : undefined,
@@ -124,19 +137,40 @@ export default async function AdminSubmissionsPage({
     searchWhereClause
   );
 
-  const availableLanguages = await db
-    .select({ language: submissions.language })
-    .from(submissions)
-    .groupBy(submissions.language)
-    .orderBy(asc(submissions.language));
+  const availableLanguages = submissionReviewGroupIds === null
+    ? await db
+        .select({ language: submissions.language })
+        .from(submissions)
+        .groupBy(submissions.language)
+        .orderBy(asc(submissions.language))
+    : await db
+        .select({ language: submissions.language })
+        .from(submissions)
+        .leftJoin(assignments, eq(submissions.assignmentId, assignments.id))
+        .where(scopedGroupFilter)
+        .groupBy(submissions.language)
+        .orderBy(asc(submissions.language));
 
-  const availableGroups = await db
-    .select({
-      id: groups.id,
-      name: groups.name,
-    })
-    .from(groups)
-    .orderBy(asc(groups.name));
+  const availableGroups = canViewAllSubmissions
+    ? await db
+        .select({
+          id: groups.id,
+          name: groups.name,
+        })
+        .from(groups)
+        .orderBy(asc(groups.name))
+    : await db
+        .select({
+          id: groups.id,
+          name: groups.name,
+        })
+        .from(groups)
+        .where(
+          submissionReviewGroupIds && submissionReviewGroupIds.length > 0
+            ? inArray(groups.id, submissionReviewGroupIds)
+            : eq(groups.id, "__no_access__")
+        )
+        .orderBy(asc(groups.name));
 
   const [countRow] = await db
     .select({ count: count() })

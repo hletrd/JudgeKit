@@ -1,8 +1,9 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createApiHandler } from "@/lib/api/handler";
+import { getSubmissionReviewGroupIds } from "@/lib/assignments/submissions";
 import { db } from "@/lib/db";
 import { assignments, groups, problems, submissions, users } from "@/lib/db/schema";
-import { and, eq, gte, like, lte, or } from "drizzle-orm";
+import { and, eq, gte, inArray, like, lte, or } from "drizzle-orm";
 
 const STATUS_FILTER_VALUES = [
   "pending",
@@ -46,8 +47,11 @@ function escapeCsvField(value: string | number | null | undefined) {
 }
 
 export const GET = createApiHandler({
-  auth: { capabilities: ["submissions.view_all"] },
-  handler: async (req: NextRequest) => {
+  auth: {
+    capabilities: ["submissions.view_all", "assignments.view_status"],
+    requireAllCapabilities: false,
+  },
+  handler: async (req: NextRequest, { user }) => {
     const searchParams = req.nextUrl.searchParams;
     const searchQuery = (searchParams.get("search") ?? "").trim().slice(0, 200);
     const statusFilter = STATUS_FILTER_VALUES.includes((searchParams.get("status") ?? "") as (typeof STATUS_FILTER_VALUES)[number])
@@ -65,7 +69,16 @@ export const GET = createApiHandler({
         )
       : undefined;
 
+    const submissionReviewGroupIds = await getSubmissionReviewGroupIds(user.id, user.role);
+    const scopedGroupFilter =
+      submissionReviewGroupIds !== null
+        ? submissionReviewGroupIds.length > 0
+          ? inArray(assignments.groupId, submissionReviewGroupIds)
+          : eq(assignments.id, "__no_access__")
+        : undefined;
+
     const whereClause = and(
+      scopedGroupFilter,
       statusFilter ? eq(submissions.status, statusFilter) : undefined,
       groupFilter ? eq(assignments.groupId, groupFilter) : undefined,
       languageFilter ? eq(submissions.language, languageFilter) : undefined,

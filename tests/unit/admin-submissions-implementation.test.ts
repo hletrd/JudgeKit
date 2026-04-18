@@ -7,10 +7,15 @@ function read(relativePath: string) {
 }
 
 describe("admin submissions implementation", () => {
-  it("supports a status filter and preserves it across sort/pagination links", () => {
+  it("supports queue filters while constraining scoped reviewers to their assignment groups", () => {
     const source = read("src/app/(dashboard)/dashboard/admin/submissions/page.tsx");
 
     expect(source).toContain("STATUS_FILTER_VALUES");
+    expect(source).toContain('const canViewScopedAssignments = caps.has("assignments.view_status");');
+    expect(source).toContain("getSubmissionReviewGroupIds(session.user.id, session.user.role)");
+    expect(source).toContain("const scopedGroupFilter =");
+    expect(source).toContain("submissionReviewGroupIds !== null");
+    expect(source).toContain("inArray(assignments.groupId, submissionReviewGroupIds)");
     expect(source).toContain('name="status"');
     expect(source).toContain('eq(submissions.status, statusFilter)');
     expect(source).toContain('if (statusFilter !== "all") params.set("status", statusFilter);');
@@ -33,6 +38,7 @@ describe("admin submissions implementation", () => {
     expect(source).toContain('t("dateToLabel")');
     expect(source).toContain('buildExportHref()');
     expect(source).toContain('t("exportCsv")');
+    expect(source).toContain("availableLanguages = submissionReviewGroupIds === null");
     expect(source).toContain("AdminSubmissionsBulkRejudge");
     expect(source).toContain("canBulkRejudge");
   });

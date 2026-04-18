@@ -7,10 +7,14 @@ function read(relativePath: string) {
 }
 
 describe("admin submissions bulk rejudge implementation", () => {
-  it("uses submissions.view_all + submissions.rejudge auth and resets results in bulk", () => {
+  it("requires submissions.rejudge and rejects bulk requests outside the caller's submission-review scope", () => {
     const source = read("src/app/api/v1/admin/submissions/rejudge/route.ts");
 
-    expect(source).toContain('capabilities: ["submissions.view_all", "submissions.rejudge"]');
+    expect(source).toContain('capabilities: ["submissions.rejudge"]');
+    expect(source).toContain("getSubmissionReviewGroupIds(user.id, user.role)");
+    expect(source).toContain("const permittedSubmissionRows = await db");
+    expect(source).toContain("if (permittedSubmissionRows.length !== uniqueSubmissionIds.length)");
+    expect(source).toContain("return forbidden();");
     expect(source).toContain('rateLimit: "submissions.bulk-rejudge"');
     expect(source).toContain("submissionResults");
     expect(source).toContain('status: "pending"');
