@@ -1,4 +1,4 @@
-import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { NextRequest } from "next/server";
 import { isJudgeIpAllowed, resetIpAllowlistCache } from "@/lib/judge/ip-allowlist";
 
@@ -12,35 +12,32 @@ function requestWithIp(ip: string | null): NextRequest {
 }
 
 describe("isJudgeIpAllowed", () => {
-  const originalEnv = { ...process.env };
-
   beforeEach(() => {
     resetIpAllowlistCache();
-    delete process.env.JUDGE_ALLOWED_IPS;
-    delete process.env.NODE_ENV;
+    vi.unstubAllEnvs();
   });
 
   afterEach(() => {
-    process.env = { ...originalEnv };
+    vi.unstubAllEnvs();
     resetIpAllowlistCache();
   });
 
   describe("with no allowlist configured", () => {
     it("allows every request in development", () => {
-      process.env.NODE_ENV = "development";
+      vi.stubEnv("NODE_ENV", "development");
       expect(isJudgeIpAllowed(requestWithIp("203.0.113.9"))).toBe(true);
       expect(isJudgeIpAllowed(requestWithIp("127.0.0.1"))).toBe(true);
     });
 
     it("denies every request in production (fail closed)", () => {
-      process.env.NODE_ENV = "production";
+      vi.stubEnv("NODE_ENV", "production");
       expect(isJudgeIpAllowed(requestWithIp("127.0.0.1"))).toBe(false);
     });
   });
 
   describe("with an exact-IP allowlist", () => {
     beforeEach(() => {
-      process.env.JUDGE_ALLOWED_IPS = "10.0.0.5, 192.168.1.10";
+      vi.stubEnv("JUDGE_ALLOWED_IPS", "10.0.0.5, 192.168.1.10");
       resetIpAllowlistCache();
     });
 
@@ -57,7 +54,7 @@ describe("isJudgeIpAllowed", () => {
 
   describe("with a CIDR allowlist", () => {
     beforeEach(() => {
-      process.env.JUDGE_ALLOWED_IPS = "192.168.1.0/24";
+      vi.stubEnv("JUDGE_ALLOWED_IPS", "192.168.1.0/24");
       resetIpAllowlistCache();
     });
 
@@ -74,12 +71,12 @@ describe("isJudgeIpAllowed", () => {
 
   describe("when the client IP cannot be extracted", () => {
     beforeEach(() => {
-      process.env.JUDGE_ALLOWED_IPS = "10.0.0.5";
+      vi.stubEnv("JUDGE_ALLOWED_IPS", "10.0.0.5");
       resetIpAllowlistCache();
     });
 
     it("denies requests without a determinable IP (fail closed)", () => {
-      process.env.NODE_ENV = "production";
+      vi.stubEnv("NODE_ENV", "production");
       expect(isJudgeIpAllowed(requestWithIp(null))).toBe(false);
     });
   });
