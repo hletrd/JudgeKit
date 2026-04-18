@@ -28,7 +28,7 @@ export default async function CompilerPage() {
         <div className="max-w-md text-center">
           <h1 className="mb-2 text-2xl font-bold">{t("noLanguagesTitle", { defaultValue: "No Languages Available" })}</h1>
           <p className="text-muted-foreground">
-            {t("noLanguagesDescription", { defaultValue: "Please enable at least one language in the settings." })}
+            {t("noLanguagesDescription", { defaultValue: "Enable at least one language in settings." })}
           </p>
         </div>
       </div>

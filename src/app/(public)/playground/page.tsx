@@ -66,7 +66,7 @@ export default async function PlaygroundPage() {
             </h1>
             <p className="text-muted-foreground">
               {tCompiler("noLanguagesDescription", {
-                defaultValue: "Please enable at least one language in the settings.",
+                defaultValue: "Enable at least one language in settings.",
               })}
             </p>
           </div>

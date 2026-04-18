@@ -226,7 +226,7 @@ export function CompilerClient({ languages, title, description, preferredLanguag
   const handleRun = useCallback(async () => {
     // HIGH FIX: Check ref to prevent concurrent runs
     if (isRunningRef.current) {
-      toast.info(t("alreadyRunning", { defaultValue: "Already running, please wait..." }));
+      toast.info(t("alreadyRunning", { defaultValue: "Already running." }));
       return;
     }
 
