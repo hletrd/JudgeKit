@@ -55,7 +55,6 @@ export function extractClientIp(headers: HeaderCarrier): string | null {
       if (isValidIp(candidate)) {
         return candidate;
       }
-      // Extracted value is not a valid IP — fall through to fallbacks
     }
   }
 

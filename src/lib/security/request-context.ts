@@ -18,7 +18,7 @@ export function normalizeText(value: string | null | undefined, maxLength = MAX_
 
 export function getClientIp(headersList: Headers): string | null {
   const clientIp = extractClientIp(headersList);
-  if (!clientIp || clientIp === "unknown") {
+  if (!clientIp) {
     return null;
   }
 
