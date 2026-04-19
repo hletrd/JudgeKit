@@ -55,10 +55,22 @@ function sanitizeSubmissionResults(
   });
 }
 
+/**
+ * Sanitize a submission record for a given viewer, removing sensitive fields
+ * based on the viewer's role, the problem's visibility settings, and the
+ * assignment's result-display configuration.
+ *
+ * **Hidden DB query:** When `assignmentVisibility` is not provided and the
+ * submission has an `assignmentId`, this function queries the `assignments`
+ * table to determine `showResultsToCandidate` and `hideScoresFromCandidates`.
+ * Callers that already have this data should pass it via `assignmentVisibility`
+ * to avoid the extra DB query and prevent N+1 patterns in bulk contexts.
+ */
 export async function sanitizeSubmissionForViewer(
   submission: SubmissionVisibilityRecord,
   viewerId: string,
-  capabilities: ReadonlySet<string>
+  capabilities: ReadonlySet<string>,
+  assignmentVisibility?: { showResultsToCandidate?: boolean; hideScoresFromCandidates?: boolean }
 ) {
   const isOwner = submission.userId === viewerId;
   const canViewSource = capabilities.has("submissions.view_source");
@@ -71,16 +83,21 @@ export async function sanitizeSubmissionForViewer(
   let hideScores = false;
 
   if (!canViewAllResults && submission.assignmentId) {
-    const assignmentRow = await db.query.assignments.findFirst({
-      where: eq(assignments.id, submission.assignmentId),
-      columns: {
-        showResultsToCandidate: true,
-        hideScoresFromCandidates: true,
-      },
-    });
+    if (assignmentVisibility) {
+      hideResults = !(assignmentVisibility.showResultsToCandidate ?? false);
+      hideScores = assignmentVisibility.hideScoresFromCandidates ?? false;
+    } else {
+      const assignmentRow = await db.query.assignments.findFirst({
+        where: eq(assignments.id, submission.assignmentId),
+        columns: {
+          showResultsToCandidate: true,
+          hideScoresFromCandidates: true,
+        },
+      });
 
-    hideResults = !(assignmentRow?.showResultsToCandidate ?? false);
-    hideScores = assignmentRow?.hideScoresFromCandidates ?? false;
+      hideResults = !(assignmentRow?.showResultsToCandidate ?? false);
+      hideScores = assignmentRow?.hideScoresFromCandidates ?? false;
+    }
   }
 
   const sanitized: SubmissionVisibilityRecord = {
