@@ -37,10 +37,20 @@ function generateConnectionId(userId: string): string {
 }
 
 function addConnection(connId: string, userId: string): void {
-  // Evict oldest entries if tracking map exceeds cap
+  // Evict oldest-by-age entries if tracking map exceeds cap.
+  // Must evict by createdAt, not by insertion order, to avoid removing
+  // tracking entries for active long-lived connections while keeping
+  // entries for newer connections that may already be closed.
   while (connectionInfoMap.size >= MAX_TRACKED_CONNECTIONS) {
-    const oldest = connectionInfoMap.keys().next().value;
-    if (oldest) removeConnection(oldest);
+    let oldestKey: string | null = null;
+    let oldestTime = Infinity;
+    for (const [key, info] of connectionInfoMap) {
+      if (info.createdAt < oldestTime) {
+        oldestTime = info.createdAt;
+        oldestKey = key;
+      }
+    }
+    if (oldestKey) removeConnection(oldestKey);
     else break;
   }
   activeConnectionSet.add(connId);
