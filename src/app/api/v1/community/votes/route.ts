@@ -69,55 +69,57 @@ export const POST = createApiHandler({
       }, { status: 409 });
     }
 
-    // Atomic vote toggle using upsert to avoid race conditions on concurrent
-    // requests. The unique index (target_type, target_id, user_id) guarantees
-    // at most one vote row per user per target.
+    // Atomic vote toggle inside a transaction to prevent TOCTOU races on
+    // concurrent requests. The unique index (target_type, target_id, user_id)
+    // guarantees at most one vote row per user per target.
     // - Same vote type → delete (toggle off)
     // - Different vote type → update (change vote)
     // - No existing vote → insert (new vote)
-    const existing = await db.query.communityVotes.findFirst({
-      where: and(
-        eq(communityVotes.targetType, body.targetType),
-        eq(communityVotes.targetId, body.targetId),
-        eq(communityVotes.userId, user.id),
-      ),
-      columns: { id: true, voteType: true },
-    });
-
-    if (existing?.voteType === body.voteType) {
-      await db.delete(communityVotes).where(eq(communityVotes.id, existing.id));
-    } else if (existing) {
-      await db
-        .update(communityVotes)
-        .set({
-          voteType: body.voteType,
-          updatedAt: new Date(),
-        })
-        .where(eq(communityVotes.id, existing.id));
-    } else {
-      await db.insert(communityVotes).values({
-        targetType: body.targetType,
-        targetId: body.targetId,
-        userId: user.id,
-        voteType: body.voteType,
-      }).onConflictDoUpdate({
-        target: [communityVotes.targetType, communityVotes.targetId, communityVotes.userId],
-        set: { voteType: body.voteType, updatedAt: new Date() },
-      });
-    }
-
-    const [summary] = await db
-      .select({
-        score: sql<number>`coalesce(sum(case when ${communityVotes.voteType} = 'up' then 1 when ${communityVotes.voteType} = 'down' then -1 else 0 end), 0)`,
-        currentUserVote: sql<"up" | "down" | null>`max(case when ${communityVotes.userId} = ${user.id} then ${communityVotes.voteType} else null end)`,
-      })
-      .from(communityVotes)
-      .where(
-        and(
+    const [summary] = await db.transaction(async (tx) => {
+      const existing = await tx.query.communityVotes.findFirst({
+        where: and(
           eq(communityVotes.targetType, body.targetType),
           eq(communityVotes.targetId, body.targetId),
+          eq(communityVotes.userId, user.id),
         ),
-      );
+        columns: { id: true, voteType: true },
+      });
+
+      if (existing?.voteType === body.voteType) {
+        await tx.delete(communityVotes).where(eq(communityVotes.id, existing.id));
+      } else if (existing) {
+        await tx
+          .update(communityVotes)
+          .set({
+            voteType: body.voteType,
+            updatedAt: new Date(),
+          })
+          .where(eq(communityVotes.id, existing.id));
+      } else {
+        await tx.insert(communityVotes).values({
+          targetType: body.targetType,
+          targetId: body.targetId,
+          userId: user.id,
+          voteType: body.voteType,
+        }).onConflictDoUpdate({
+          target: [communityVotes.targetType, communityVotes.targetId, communityVotes.userId],
+          set: { voteType: body.voteType, updatedAt: new Date() },
+        });
+      }
+
+      return tx
+        .select({
+          score: sql<number>`coalesce(sum(case when ${communityVotes.voteType} = 'up' then 1 when ${communityVotes.voteType} = 'down' then -1 else 0 end), 0)`,
+          currentUserVote: sql<"up" | "down" | null>`max(case when ${communityVotes.userId} = ${user.id} then ${communityVotes.voteType} else null end)`,
+        })
+        .from(communityVotes)
+        .where(
+          and(
+            eq(communityVotes.targetType, body.targetType),
+            eq(communityVotes.targetId, body.targetId),
+          ),
+        );
+    });
 
     return apiSuccess({
       targetType: body.targetType,

@@ -29,6 +29,42 @@ const {
   selectMock: vi.fn(),
 }));
 
+/** Builds a mock transaction object that mirrors the db mock's query interface. */
+function buildTxMock() {
+  const txSelectMock = vi.fn();
+  const txInsertValuesMock = vi.fn();
+  const txInsertOnConflictDoUpdateMock = vi.fn();
+  const txUpdateSetMock = vi.fn();
+  const txUpdateWhereMock = vi.fn();
+  const txDeleteWhereMock = vi.fn();
+
+  txInsertValuesMock.mockReturnValue({ returning: insertReturningMock, onConflictDoUpdate: txInsertOnConflictDoUpdateMock });
+  txInsertOnConflictDoUpdateMock.mockResolvedValue(undefined);
+  txUpdateSetMock.mockReturnValue({ where: txUpdateWhereMock });
+  txUpdateWhereMock.mockResolvedValue(undefined);
+  txDeleteWhereMock.mockResolvedValue(undefined);
+
+  const txSelectChain = {
+    from: vi.fn(),
+    where: vi.fn(),
+  };
+  txSelectChain.from.mockReturnValue(txSelectChain);
+  txSelectChain.where.mockResolvedValue([{ score: 1, currentUserVote: "up" }]);
+  txSelectMock.mockReturnValue(txSelectChain);
+
+  return {
+    query: {
+      discussionThreads: { findFirst: threadFindFirstMock },
+      discussionPosts: { findFirst: postFindFirstMock },
+      communityVotes: { findFirst: voteFindFirstMock },
+    },
+    insert: vi.fn(() => ({ values: txInsertValuesMock })),
+    update: vi.fn(() => ({ set: txUpdateSetMock })),
+    delete: vi.fn(() => ({ where: txDeleteWhereMock })),
+    select: txSelectMock,
+  };
+}
+
 vi.mock("@/lib/api/auth", () => ({
   getApiUser: getApiUserMock,
   csrfForbidden: vi.fn(() => null),
@@ -71,6 +107,10 @@ vi.mock("@/lib/db", () => ({
     update: vi.fn(() => ({ set: updateSetMock })),
     delete: vi.fn(() => ({ where: deleteWhereMock })),
     select: selectMock,
+    transaction: vi.fn(async (fn: (tx: unknown) => Promise<unknown>) => {
+      const tx = buildTxMock();
+      return fn(tx);
+    }),
   },
 }));
 
