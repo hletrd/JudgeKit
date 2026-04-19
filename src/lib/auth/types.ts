@@ -1,4 +1,24 @@
 /**
+ * Auth-relevant preference field names on the DB `users` table.
+ * Central definition shared by config.ts (DB columns, mapUserToAuthFields)
+ * and session-security.ts (AUTH_TOKEN_FIELDS derivation).
+ * When adding a new preference field, add it HERE and to `AuthUserRecord`
+ * — the rest is derived automatically.
+ */
+export const AUTH_PREFERENCE_FIELDS = [
+  "preferredLanguage",
+  "preferredTheme",
+  "shareAcceptedSolutions",
+  "acceptedSolutionsAnonymous",
+  "editorTheme",
+  "editorFontSize",
+  "editorFontFamily",
+  "lectureMode",
+  "lectureFontScale",
+  "lectureColorScheme",
+] as const;
+
+/**
  * Shared type for authenticated user data extracted from the database
  * during login/token authorization flows. Used by both config.ts and
  * recruiting-token.ts to ensure consistency.

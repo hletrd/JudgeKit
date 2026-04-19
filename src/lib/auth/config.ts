@@ -38,6 +38,7 @@ import {
 import { extractClientIp } from "@/lib/security/ip";
 import { authorizeRecruitingToken } from "@/lib/auth/recruiting-token";
 import type { AuthUserRecord, AuthUserInput } from "@/lib/auth/types";
+import { AUTH_PREFERENCE_FIELDS } from "@/lib/auth/types";
 
 type AuthenticatedLoginUser = Omit<AuthUserRecord, "mustChangePassword"> & {
   mustChangePassword: boolean;
@@ -48,25 +49,6 @@ type AuthenticatedLoginUser = Omit<AuthUserRecord, "mustChangePassword"> & {
 // via response-time differences).
 const DUMMY_PASSWORD_HASH =
   "$argon2id$v=19$m=19456,t=2,p=1$Y2xhdWRlZHVtbXloYXNo$KQH6bMKH3t2fGK8qMJzrOGmG5bNRVZ0bQfO7aDVz0Zk";
-
-/**
- * Auth-relevant preference field names on the DB `users` table.
- * Used to derive the DB query column list and the token-clearing field set.
- * When adding a new preference field, add it HERE, to `AuthUserRecord`,
- * and to `mapUserToAuthFields` — the rest is derived automatically.
- */
-const AUTH_PREFERENCE_FIELDS = [
-  "preferredLanguage",
-  "preferredTheme",
-  "shareAcceptedSolutions",
-  "acceptedSolutionsAnonymous",
-  "editorTheme",
-  "editorFontSize",
-  "editorFontFamily",
-  "lectureMode",
-  "lectureFontScale",
-  "lectureColorScheme",
-] as const;
 
 /** Core (non-preference) auth fields returned by every auth query. */
 const AUTH_CORE_FIELDS = [
