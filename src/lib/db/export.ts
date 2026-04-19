@@ -248,6 +248,7 @@ const SANITIZED_COLUMNS: Record<string, Set<string>> = {
 /** Columns that are ALWAYS redacted, even in full-fidelity backup exports. */
 const ALWAYS_REDACT: Record<string, Set<string>> = {
   users: new Set(["passwordHash"]),
+  apiKeys: new Set(["encryptedKey"]),
 };
 
 type ColumnRef = Parameters<typeof asc>[0];
