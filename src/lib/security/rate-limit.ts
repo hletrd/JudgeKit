@@ -192,6 +192,13 @@ export async function consumeRateLimitAttemptMulti(...keys: string[]) {
   });
 }
 
+/**
+ * Record a failed attempt for the given key.
+ *
+ * NOTE: This function is not atomic — the check (isRateLimited) and this
+ * increment run in separate transactions. Callers that need check+increment
+ * in one transaction should use `consumeRateLimitAttemptMulti` instead.
+ */
 export async function recordRateLimitFailure(key: string) {
   await execTransaction(async (tx) => {
     const { now, entry, exists } = await getEntry(key, tx);

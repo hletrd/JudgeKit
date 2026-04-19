@@ -4,6 +4,9 @@
  * and session-security.ts (AUTH_TOKEN_FIELDS derivation).
  * When adding a new preference field, add it HERE and to `AuthUserRecord`
  * — the rest is derived automatically.
+ *
+ * Security fields (mustChangePassword, isActive, tokenInvalidatedAt) are
+ * NOT preference fields and are handled separately in AUTH_CORE_FIELDS.
  */
 export const AUTH_PREFERENCE_FIELDS = [
   "preferredLanguage",

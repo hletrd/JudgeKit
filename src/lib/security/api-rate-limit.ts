@@ -68,6 +68,10 @@ async function atomicConsumeRateLimit(key: string): Promise<boolean> {
       .limit(1);
 
     if (!existing) {
+      // API rate limits use fixed blocking without exponential backoff
+      // (consecutiveBlocks is always 0). Login rate limits use backoff,
+      // but API endpoints typically have much higher thresholds and the
+      // escalation is not needed.
       await tx.insert(rateLimits)
         .values({
           id: nanoid(),
