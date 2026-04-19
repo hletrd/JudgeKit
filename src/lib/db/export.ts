@@ -214,6 +214,7 @@ export function getReversedTableOrder(): string[] {
  */
 function normalizeValue(val: unknown): unknown {
   if (val === null || val === undefined) return null;
+  if (typeof val === "bigint") return val.toString();
   if (val instanceof Date) return val.toISOString();
   // SQLite stores booleans as 0/1 integers — leave numbers as-is
   // since we can't distinguish boolean columns from integer columns
@@ -283,7 +284,7 @@ export function validateExport(data: unknown): string[] {
     errors.push("Missing or invalid exportedAt field");
   }
 
-  if (!exp.sourceDialect || !["sqlite", "postgresql", "mysql"].includes(exp.sourceDialect as string)) {
+  if (!exp.sourceDialect || !["sqlite", "postgresql"].includes(exp.sourceDialect as string)) {
     errors.push(`Invalid sourceDialect: ${exp.sourceDialect}`);
   }
 
