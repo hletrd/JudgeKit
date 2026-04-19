@@ -2695,7 +2695,14 @@
       "variantCount": "{count} variants",
       "additionalLanguages": "…and {count} more languages",
       "noLanguages": "No languages are currently enabled.",
-      "backToHome": "Back to home"
+      "backToHome": "Back to home",
+      "gradingEnvironment": "Grading Environment",
+      "gradingEnvironmentDescription": "Hardware and software environment where your code is executed and judged.",
+      "gradingCpu": "CPU",
+      "gradingOs": "Operating System",
+      "gradingArchitecture": "Architecture",
+      "defaultTimeLimit": "Default Time Limit",
+      "defaultMemoryLimit": "Default Memory Limit"
     },
     "practice": {
       "title": "Practice surface preview",

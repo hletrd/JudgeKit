@@ -6,6 +6,7 @@ import {
   buildJudgeLanguageCatalog,
   type EnabledJudgeLanguageRecord,
 } from "@/lib/judge/dashboard-catalog";
+import { getRuntimeSystemInfo } from "@/lib/system-info";
 
 export type JudgeSystemSnapshot = ReturnType<typeof buildJudgeLanguageCatalog> & {
   onlineWorkerCount: number;
@@ -14,10 +15,13 @@ export type JudgeSystemSnapshot = ReturnType<typeof buildJudgeLanguageCatalog> &
   architectureSummary: string | null;
   defaultTimeLimitMs: number;
   defaultMemoryLimitMb: number;
+  gradingCpu: string | null;
+  gradingOs: string | null;
+  gradingArchitecture: string | null;
 };
 
 export async function getJudgeSystemSnapshot(): Promise<JudgeSystemSnapshot> {
-  const [enabledLanguages, onlineWorkers] = await Promise.all([
+  const [enabledLanguages, onlineWorkers, systemInfo] = await Promise.all([
     db
       .select({
         id: languageConfigs.id,
@@ -41,6 +45,7 @@ export async function getJudgeSystemSnapshot(): Promise<JudgeSystemSnapshot> {
       })
       .from(judgeWorkers)
       .where(eq(judgeWorkers.status, "online")),
+    getRuntimeSystemInfo(),
   ]);
 
   const settings = getConfiguredSettings();
@@ -57,5 +62,8 @@ export async function getJudgeSystemSnapshot(): Promise<JudgeSystemSnapshot> {
     architectureSummary: architectures.length > 0 ? architectures.join(", ") : null,
     defaultTimeLimitMs: settings.defaultTimeLimitMs,
     defaultMemoryLimitMb: settings.defaultMemoryLimitMb,
+    gradingCpu: systemInfo.cpu,
+    gradingOs: systemInfo.os,
+    gradingArchitecture: systemInfo.architecture,
   };
 }

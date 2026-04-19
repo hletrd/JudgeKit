@@ -2695,7 +2695,14 @@
       "variantCount": "{count}개 변형",
       "additionalLanguages": "…외 {count}개 언어 추가 지원",
       "noLanguages": "현재 활성화된 언어가 없습니다.",
-      "backToHome": "홈으로 돌아가기"
+      "backToHome": "홈으로 돌아가기",
+      "gradingEnvironment": "채점 환경",
+      "gradingEnvironmentDescription": "코드가 실행되고 채점되는 하드웨어 및 소프트웨어 환경입니다.",
+      "gradingCpu": "CPU",
+      "gradingOs": "운영체제",
+      "gradingArchitecture": "아키텍처",
+      "defaultTimeLimit": "기본 시간 제한",
+      "defaultMemoryLimit": "기본 메모리 제한"
     },
     "practice": {
       "title": "연습 영역 미리보기",

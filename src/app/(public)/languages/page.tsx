@@ -51,6 +51,43 @@ export default async function PublicLanguagesPage() {
         </Link>
       </div>
 
+      <Card>
+        <CardHeader>
+          <CardTitle>{t("languages.gradingEnvironment")}</CardTitle>
+          <CardDescription>{t("languages.gradingEnvironmentDescription")}</CardDescription>
+        </CardHeader>
+        <CardContent>
+          <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+            {snapshot.gradingCpu ? (
+              <div>
+                <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">{t("languages.gradingCpu")}</p>
+                <p className="mt-1 text-sm font-medium">{snapshot.gradingCpu}</p>
+              </div>
+            ) : null}
+            {snapshot.gradingOs ? (
+              <div>
+                <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">{t("languages.gradingOs")}</p>
+                <p className="mt-1 text-sm font-medium">{snapshot.gradingOs}</p>
+              </div>
+            ) : null}
+            {snapshot.gradingArchitecture ? (
+              <div>
+                <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">{t("languages.gradingArchitecture")}</p>
+                <p className="mt-1 text-sm font-medium">{snapshot.gradingArchitecture}</p>
+              </div>
+            ) : null}
+            <div>
+              <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">{t("languages.defaultTimeLimit")}</p>
+              <p className="mt-1 text-sm font-medium">{(snapshot.defaultTimeLimitMs / 1000).toFixed(1)}s</p>
+            </div>
+            <div>
+              <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">{t("languages.defaultMemoryLimit")}</p>
+              <p className="mt-1 text-sm font-medium">{snapshot.defaultMemoryLimitMb} MB</p>
+            </div>
+          </div>
+        </CardContent>
+      </Card>
+
       {snapshot.featuredEnvironments.length > 0 ? (
         <Card>
           <CardHeader>
