@@ -29,7 +29,7 @@
 
 ### M3: Fix `PublicHeader.handleSignOut` error handling — add try/catch to reset `isSigningOut` on failure
 - **File**: `src/components/layout/public-header.tsx:183-186`
-- **Status**: PENDING
+- **Status**: DONE (commit 89f0b4f9)
 - **Source**: AGG-1 (cycle 16 aggregate)
 - **Plan**:
   1. Wrap `await signOut({ callbackUrl: "/login" })` in a try/catch block
@@ -40,7 +40,7 @@
 
 ### M4: Fix `AppSidebar` "ADMINISTRATION" label `tracking-wider` to be locale-conditional
 - **File**: `src/components/layout/app-sidebar.tsx:290`
-- **Status**: PENDING
+- **Status**: DONE (commit 39593760)
 - **Source**: AGG-2 (cycle 16 aggregate), CLAUDE.md Korean letter-spacing rule
 - **Plan**:
   1. Import `useLocale` from `next-intl` in `app-sidebar.tsx`
@@ -80,7 +80,7 @@
 
 ### L6: Parse `CreatedAt` from `docker ps` output instead of making redundant `docker inspect` calls
 - **File**: `src/lib/compiler/execute.ts:746-786`
-- **Status**: PENDING
+- **Status**: DONE (commit 7966ca69)
 - **Source**: AGG-4 (cycle 16 aggregate), carried from AGG-8 (cycle 15)
 - **Plan**:
   1. Change the destructuring from `const [container, status] = line.split("\t")` to `const [container, status, createdAtStr] = line.split("\t")`
@@ -91,7 +91,7 @@
 
 ### L7: Extract shared sign-out utility for PublicHeader and AppSidebar
 - **File**: `src/components/layout/public-header.tsx:183-186`, `src/components/layout/app-sidebar.tsx:229-245`
-- **Status**: PENDING
+- **Status**: DONE (commit 39593760)
 - **Source**: AGG-6 (cycle 16 aggregate)
 - **Plan**:
   1. Create a shared `handleSignOutWithCleanup` utility function in a new file or an existing shared module (e.g., `src/lib/auth/sign-out.ts`)
@@ -102,7 +102,7 @@
 
 ### L8: Remove redundant JS-side deadline checks in `redeemRecruitingToken`
 - **File**: `src/lib/assignments/recruiting-invitations.ts:405,440`
-- **Status**: PENDING
+- **Status**: DONE (commit b42a7fe4)
 - **Source**: AGG-7 (cycle 16 aggregate)
 - **Plan**:
   1. Remove the `if (assignment.deadline && assignment.deadline < new Date())` checks at lines 405 and 440
@@ -113,7 +113,7 @@
 
 ### L9: Extract SSE terminal-state-fetch into a shared helper
 - **File**: `src/app/api/v1/submissions/[id]/events/route.ts:316-428`
-- **Status**: PENDING
+- **Status**: DONE (commit 117bd143)
 - **Source**: AGG-8 (cycle 16 aggregate)
 - **Plan**:
   1. Extract the terminal-state handling (fetch full submission, sanitize, enqueue result event, close) into a helper function
