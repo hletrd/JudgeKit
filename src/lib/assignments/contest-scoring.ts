@@ -58,6 +58,10 @@ const rankingCache = new LRUCache<string, CacheEntry>({ max: 50, ttl: CACHE_TTL_
 /** Tracks which cache keys currently have a background refresh in progress. */
 const _refreshingKeys = new Set<string>();
 
+/** Per-key cooldown after a background refresh failure. Prevents amplifying DB failures. */
+const REFRESH_FAILURE_COOLDOWN_MS = 5_000;
+const _lastRefreshFailureAt = new Map<string, number>();
+
 type RawLeaderboardRow = {
   userId: string;
   username: string;
@@ -98,13 +102,17 @@ export async function computeContestRanking(assignmentId: string, cutoffSec?: nu
       return cached.data;
     }
     // Stale but still within TTL — return stale data and trigger ONE background refresh
-    if (!_refreshingKeys.has(cacheKey)) {
+    // (unless a refresh failed recently — avoid amplifying DB failures)
+    const lastFailure = _lastRefreshFailureAt.get(cacheKey) ?? 0;
+    if (!_refreshingKeys.has(cacheKey) && Date.now() - lastFailure >= REFRESH_FAILURE_COOLDOWN_MS) {
       _refreshingKeys.add(cacheKey);
       _computeContestRankingInner(assignmentId, cutoffSec)
         .then((fresh) => {
           rankingCache.set(cacheKey, { data: fresh, createdAt: Date.now() });
+          _lastRefreshFailureAt.delete(cacheKey);
         })
         .catch((err) => {
+          _lastRefreshFailureAt.set(cacheKey, Date.now());
           logger.error({ err }, "[contest-scoring] Failed to refresh ranking cache");
         })
         .finally(() => {
