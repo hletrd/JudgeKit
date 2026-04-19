@@ -1,9 +1,9 @@
-# Aggregate Review — Cycle 18 Deep Code Review
+# Aggregate Review — Cycle 19 Deep Code Review
 
 **Date:** 2026-04-19
 **Source reviews:**
-- `cycle-18-comprehensive-review.md` (comprehensive multi-angle review covering code quality, security, performance, architecture, correctness, data integrity)
-- `cycle-17-comprehensive-review.md` (previous cycle — all findings addressed or deferred)
+- `cycle-19-comprehensive-review.md` (comprehensive multi-angle review covering code quality, security, performance, architecture, correctness, data integrity, UI/UX)
+- `cycle-18-comprehensive-review.md` (previous cycle — all findings addressed or deferred)
 - Prior cycles 1-16 reviews (findings already addressed or deferred in prior plan documents)
 
 ---
@@ -22,64 +22,43 @@ None.
 
 ## MEDIUM (Should Fix Soon)
 
-### M1: Conflicting audit retention env vars — `db/cleanup.ts` uses `AUDIT_RETENTION_DAYS` while `data-retention.ts` uses `AUDIT_EVENT_RETENTION_DAYS`
-- **Source**: cycle-18 F1
-- **Files**: `src/lib/db/cleanup.ts:5`, `src/lib/data-retention.ts:18`
+### M1: `computeSingleUserLiveRank` returns rank 1 for users with no submissions — misleading frozen leaderboard badge
+- **Source**: cycle-19 F1
+- **Files**: `src/lib/assignments/leaderboard.ts:131-137` (ICPC), `src/lib/assignments/leaderboard.ts:161-166` (IOI)
 - **Confidence**: HIGH
-- **Description**: Two separate audit retention mechanisms use different env var names. The cron endpoint at `/api/internal/cleanup` reads `AUDIT_RETENTION_DAYS` (in `db/cleanup.ts`), while the in-process pruner uses `AUDIT_EVENT_RETENTION_DAYS` (in `data-retention.ts`). An operator setting one var has no effect on the other path, leading to inconsistent retention behavior.
-- **Fix**: Consolidate `db/cleanup.ts` to use `DATA_RETENTION_DAYS` from `data-retention.ts`, or deprecate it entirely.
-
-### M2: `db/cleanup.ts` does not respect `DATA_RETENTION_LEGAL_HOLD` — can delete data under legal hold
-- **Source**: cycle-18 F3
-- **Files**: `src/lib/db/cleanup.ts:9-39`
-- **Confidence**: HIGH
-- **Description**: The `cleanupOldEvents()` function (called by the cron endpoint) deletes audit and login events without checking `DATA_RETENTION_LEGAL_HOLD`. The in-process pruners in `audit/events.ts` and `data-retention-maintenance.ts` correctly check this flag. A litigation hold can be silently violated by the cron endpoint.
-- **Fix**: Add `DATA_RETENTION_LEGAL_HOLD` check at the top of `cleanupOldEvents()`.
+- **Description**: Both ICPC and IOI branches use a `target` CTE that returns zero rows for users with no submissions. The cross-join `FROM user_totals ut, target t` then produces zero rows, and `COALESCE(1 + COUNT(*), 1)` returns 1. A student with zero submissions sees "Live Rank: #1" on the frozen leaderboard.
+- **Fix**: Check if the target user appears in the scoring CTE before computing rank. Return `null` if the user has no scored submissions.
 
 ---
 
 ## LOW (Best Effort / Track)
 
-### L1: `needsRehash` flag from `verifyPassword` is ignored in most call sites — bcrypt-to-argon2 migration stalls for non-login paths
-- **Source**: cycle-18 F2
-- **Files**: `src/lib/assignments/recruiting-invitations.ts:375`, `src/lib/actions/change-password.ts:46`, and 4 admin routes
+### L1: `computeContestAnalytics` student progression does not apply IOI late penalties
+- **Source**: cycle-19 F2
+- **Files**: `src/lib/assignments/contest-analytics.ts:236`
 - **Confidence**: HIGH
-- **Description**: Only the login flow in `auth/config.ts` checks `needsRehash`. The recruiting re-entry flow and change-password flow discard the flag, meaning bcrypt hashes persist for users who authenticate through these paths.
-- **Fix**: Add rehash logic to `recruiting-invitations.ts` and `change-password.ts`.
+- **Description**: The student progression calculation uses raw scores without late penalties, while the leaderboard uses adjusted scores. For IOI contests with late penalties, the progression graph can show higher scores than the leaderboard.
+- **Fix**: Either include late penalty computation in the progression query/JS, or document that progression shows raw scores.
 
-### L2: Leaderboard route computes ranking twice when frozen — redundant expensive computation
-- **Source**: cycle-18 F4
-- **Files**: `src/app/api/v1/contests/[assignmentId]/leaderboard/route.ts:57-61`
-- **Confidence**: HIGH
-- **Description**: When the leaderboard is frozen and the viewer is a student, the route computes the leaderboard twice (frozen + live) to show the student their live rank. The second computation runs the full ranking function but only uses one user's result.
-- **Fix**: Query only the requesting user's rank directly instead of computing the full live leaderboard.
-
-### L3: `countUserConnections()` in SSE events route is O(n) — should be O(1) with a per-user index
-- **Source**: cycle-18 F5
-- **Files**: `src/app/api/v1/submissions/[id]/events/route.ts:37-44`
+### L2: `participant-timeline.ts` uses `status === "accepted"` for first AC — misses IOI full-score submissions
+- **Source**: cycle-19 F3
+- **Files**: `src/lib/assignments/participant-timeline.ts:195`
 - **Confidence**: MEDIUM
-- **Description**: The function iterates over all connections to count per-user connections. A `userConnectionCountMap` would make this O(1). Not a practical problem with current limits (500 max connections) but doesn't scale.
-- **Fix**: Add a `userConnectionCountMap = new Map<string, number>()` maintained alongside the existing maps.
+- **Description**: IOI submissions typically have status "scored" rather than "accepted", so `firstAcAt`, `timeToFirstAc`, and `wrongBeforeAc` are always null/0 for IOI contests even when students achieve maximum score.
+- **Fix**: For IOI, use `score >= problemPoints` as the "first AC" condition, consistent with `contest-scoring.ts`.
 
-### L4: `db/cleanup.ts` is redundant with in-process pruners — duplicate deletion with different configs
-- **Source**: cycle-18 F6
-- **Files**: `src/lib/db/cleanup.ts:9-39`, `src/lib/audit/events.ts:179-200`, `src/lib/data-retention-maintenance.ts:74-78`
+### L3: `LeaderboardTable` uses O(n*m^2) `find()` per problem cell
+- **Source**: cycle-19 F4
+- **Files**: `src/components/contest/leaderboard-table.tsx:433-434`
 - **Confidence**: HIGH
-- **Description**: Three separate mechanisms delete old audit/login events with different configurations. The cron endpoint is redundant because the in-process pruners already handle both with correct config and legal hold checks.
-- **Fix**: Deprecate `db/cleanup.ts:cleanupOldEvents()` or refactor it to use canonical pruners.
+- **Description**: `entry.problems.find()` is called for every cell in the problem grid. Not a practical issue for typical contest sizes but could slow rendering for very large contests.
+- **Fix**: Pre-build a `Map` or `Record` per entry for O(1) lookup.
 
-### L5: Contest analytics `firstAcMap` query uses `ROUND(s.score, 2) = 100` — may not reflect IOI scoring with late penalties
-- **Source**: cycle-18 F7
-- **Files**: `src/lib/assignments/contest-analytics.ts:171`
-- **Confidence**: MEDIUM
-- **Description**: For IOI scoring with late penalties, a submission with raw score 100 can have an adjusted score < 100 after penalty. The first-AC query checks the raw score, so it may include or exclude entries inconsistently with the adjusted scoring model. The main leaderboard is not affected.
-- **Fix**: Document that the first-AC filter is ICPC-oriented, or adjust for IOI scoring context.
-
-### L6: `sanitizeSubmissionForViewer` DB query risk for list endpoints (carried forward)
-- **Source**: cycle-16 F8, cycle-15 F3/L2/D16
-- **Files**: `src/lib/submissions/visibility.ts:73-84`
-- **Description**: The function makes a DB query for assignment visibility settings. If added to a list endpoint in the future, it would create N+1 queries.
-- **Fix**: Accept assignment visibility settings as an optional parameter and skip the DB query when provided.
+### L4: `code-similarity.ts` uses JS `new Date()` for batch `createdAt` — already covered by deferred A19
+- **Source**: cycle-19 F5
+- **Files**: `src/lib/assignments/code-similarity.ts:397`
+- **Confidence**: LOW
+- **Description**: Minor clock skew between JS-side `new Date()` and actual DB insert time. Already tracked as deferred A19. No new action needed.
 
 ---
 
