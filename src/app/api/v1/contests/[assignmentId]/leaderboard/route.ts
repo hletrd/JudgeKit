@@ -71,6 +71,9 @@ export const GET = createApiHandler({
       ? leaderboard.entries
       : leaderboard.entries.map(({ userId: _userId, ...rest }) => ({
           ...rest,
+          // Always clear userId for non-instructors to prevent PII leakage
+          // even in non-anonymous mode. The client identifies the current
+          // user's row via isCurrentUser and liveRank fields instead.
           userId: "",
           isCurrentUser: _userId === user.id,
           liveRank: _userId === user.id ? liveRank : null,
