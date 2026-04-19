@@ -1,7 +1,7 @@
 # Workspace-to-Public Page Migration Plan
 
 **Date:** 2026-04-19
-**Status:** Phase 1 COMPLETE, Phase 2 COMPLETE, Phase 3 IN PROGRESS (cycle 14 — add contests to dropdown, continue sidebar refinement), Phase 4 PENDING
+**Status:** Phase 1 COMPLETE, Phase 2 COMPLETE, Phase 3 IN PROGRESS (cycle 15 — Korean tracking-wide fix in PublicHeader, AppSidebar sign-out error handling), Phase 4 PENDING
 **Source:** User-injected TODO #2, AGG-13
 
 ## Goal
@@ -213,6 +213,10 @@ Same as instructor, with additional "Admin" dropdown entry that navigates to `/d
 
 **Cycle 14 improvements:**
 - Add "contests" to PublicHeader dropdown (navigation gap — students need an extra click to reach contests from public pages)
+
+**Cycle 15 improvements:**
+- Fix `tracking-wide` on PublicHeader mobile menu dashboard label — now conditional, skipped for Korean locale (commit 1416cbce)
+- Fix `handleSignOut` in AppSidebar — added try/catch to reset `isSigningOut` on failure (commit 50f84172)
 
 **Remaining Phase 3 work:**
 - Further slim down `AppSidebar` to icon-only mode or contextual sub-navigation
