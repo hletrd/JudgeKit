@@ -122,6 +122,8 @@ export function PublicHeader({ siteTitle, items, actions, loggedInUser, leadingS
 
     const frame = window.requestAnimationFrame(() => {
       setMobileOpen(false);
+      // Restore focus to the toggle button so keyboard users don't lose their place
+      toggleRef.current?.focus();
     });
 
     return () => window.cancelAnimationFrame(frame);
