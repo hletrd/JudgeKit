@@ -10,6 +10,9 @@
 import { ALL_CAPABILITIES, isBuiltinRole } from "./types";
 import { DEFAULT_ROLE_CAPABILITIES, DEFAULT_ROLE_LEVELS } from "./defaults";
 
+/** Numeric level for the super_admin role — roles at or above this level are protected. */
+export const SUPER_ADMIN_LEVEL = DEFAULT_ROLE_LEVELS.super_admin;
+
 /** Cached role data: name → { capabilities Set, level } */
 let roleCache: Map<string, { capabilities: Set<string>; level: number }> | null = null;
 let loadPromise: Promise<void> | null = null;
@@ -109,6 +112,14 @@ export async function getRoleLevel(roleName: string): Promise<number> {
 
   await ensureLoaded();
   return roleCache?.get(roleName)?.level ?? -1;
+}
+
+/**
+ * Check whether a role has super_admin-level privileges.
+ * Uses the numeric level so custom roles with equivalent privileges are also protected.
+ */
+export async function isSuperAdminRole(roleName: string): Promise<boolean> {
+  return (await getRoleLevel(roleName)) >= SUPER_ADMIN_LEVEL;
 }
 
 /**

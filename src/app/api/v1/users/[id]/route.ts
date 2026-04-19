@@ -7,7 +7,7 @@ import { eq } from "drizzle-orm";
 import { forbidden, notFound, createApiHandler } from "@/lib/api/handler";
 import type { AuthUser } from "@/lib/api/handler";
 import { recordAuditEvent } from "@/lib/audit/events";
-import { getRoleLevel, resolveCapabilities } from "@/lib/capabilities/cache";
+import { getRoleLevel, isSuperAdminRole, resolveCapabilities } from "@/lib/capabilities/cache";
 import { safeUserSelect } from "@/lib/db/selects";
 import { updateProfileSchema, adminUpdateUserSchema } from "@/lib/validators/profile";
 import { withUpdatedAt } from "@/lib/db/helpers";
@@ -139,7 +139,7 @@ function applyBasicFieldUpdates(
   return { normalizedEmail };
 }
 
-function applyActiveStatusUpdate(
+async function applyActiveStatusUpdate(
   updates: UserUpdates,
   body: Record<string, unknown>,
   found: ExistingUserRecord,
@@ -154,7 +154,7 @@ function applyActiveStatusUpdate(
     return apiError("cannotDeactivateSelf", 403);
   }
 
-  if (body.isActive === false && found.role === "super_admin") {
+  if (body.isActive === false && (await isSuperAdminRole(found.role))) {
     return apiError("cannotDeactivateSuperAdmin", 403);
   }
 
@@ -316,7 +316,7 @@ export const PATCH = createApiHandler({
     const updates: Record<string, unknown> = {};
     const { normalizedEmail } = applyBasicFieldUpdates(updates, body, isAdminActor);
 
-    const activeStatusError = applyActiveStatusUpdate(updates, body, found, user.id, isAdminActor);
+    const activeStatusError = await applyActiveStatusUpdate(updates, body, found, user.id, isAdminActor);
     if (activeStatusError) return activeStatusError;
 
     const mustChangePasswordError = applyMustChangePasswordUpdate(updates, body, isAdminActor);
@@ -415,7 +415,7 @@ export const DELETE = createApiHandler({
       return apiError(permanent ? "cannotDeleteSelf" : "cannotDeactivateSelf", 403);
     }
 
-    if (found.role === "super_admin") {
+    if (await isSuperAdminRole(found.role)) {
       return apiError(permanent ? "cannotDeleteSuperAdmin" : "cannotDeactivateSuperAdmin", 403);
     }
 
@@ -429,15 +429,17 @@ export const DELETE = createApiHandler({
 
     if (permanent) {
       // Require username confirmation for permanent deletion
-      let body: { confirmUsername?: string } = {};
+      const confirmSchema = z.object({ confirmUsername: z.string().min(1) });
+      let raw: unknown;
       try {
-        body = await req.json();
+        raw = await req.json();
       } catch (err) {
         logger.warn({ err, userId: found.id }, "[users] failed to parse request body for permanent deletion confirmation");
         return apiError("confirmUsernameRequired", 400);
       }
 
-      if (!body.confirmUsername || body.confirmUsername.toLowerCase() !== found.username.toLowerCase()) {
+      const parsed = confirmSchema.safeParse(raw);
+      if (!parsed.success || parsed.data.confirmUsername.toLowerCase() !== found.username.toLowerCase()) {
         return apiError("confirmUsernameRequired", 400);
       }
 

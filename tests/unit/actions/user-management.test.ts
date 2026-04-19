@@ -154,6 +154,7 @@ vi.mock("@/lib/capabilities/cache", () => ({
   resolveCapabilities: mocks.resolveCapabilitiesMock,
   invalidateRoleCache: vi.fn(),
   getRoleLevel: mocks.getRoleLevelMock,
+  isSuperAdminRole: async (role: string) => (await mocks.getRoleLevelMock(role)) >= 4,
   isValidRole: vi.fn().mockResolvedValue(true),
 }));
 

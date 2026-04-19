@@ -130,6 +130,7 @@ vi.mock("@/lib/capabilities/cache", () => ({
   resolveCapabilities: resolveCapabilitiesMock,
   invalidateRoleCache: vi.fn(),
   getRoleLevel: getRoleLevelMock,
+  isSuperAdminRole: async (role: string) => (await getRoleLevelMock(role)) >= 4,
   isValidRole: vi.fn().mockResolvedValue(true),
 }));
 
@@ -143,16 +144,17 @@ beforeEach(() => {
   getRoleLevelMock.mockImplementation(async (role: string) => {
     const defaults: Record<string, number> = {
       student: 0,
-      instructor: 1,
-      admin: 2,
-      super_admin: 3,
-      custom_creator: 2,
-      custom_editor: 2,
+      assistant: 1,
+      instructor: 2,
+      admin: 3,
+      super_admin: 4,
+      custom_creator: 3,
+      custom_editor: 3,
       custom_viewer: 1,
       custom_low: 0,
-      custom_high: 3,
+      custom_high: 4,
     };
-    return defaults[role] ?? 0;
+    return defaults[role] ?? -1;
   });
 });
 

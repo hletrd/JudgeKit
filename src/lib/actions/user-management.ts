@@ -19,7 +19,7 @@ import { adminUpdateUserSchema, userCreateSchema } from "@/lib/validators/profil
 import { isTrustedServerActionOrigin } from "@/lib/security/server-actions";
 import { checkServerActionRateLimit } from "@/lib/security/api-rate-limit";
 import { logger } from "@/lib/logger";
-import { getRoleLevel, resolveCapabilities } from "@/lib/capabilities/cache";
+import { getRoleLevel, isSuperAdminRole, resolveCapabilities } from "@/lib/capabilities/cache";
 
 type UserUpdates = Partial<typeof users.$inferInsert>;
 
@@ -87,7 +87,7 @@ export async function toggleUserActive(userId: string, isActive: boolean): Promi
   });
 
   if (!targetUser) return { success: false, error: "userNotFound" };
-  if (targetUser.role === "super_admin") {
+  if (await isSuperAdminRole(targetUser.role)) {
     if (!isActive) {
       return { success: false, error: "cannotDeactivateSuperAdmin" };
     }
@@ -169,7 +169,7 @@ export async function deleteUserPermanently(userId: string, confirmUsername: str
   if (targetUser.username.toLowerCase() !== confirmUsername.toLowerCase()) {
     return { success: false, error: "confirmUsernameMismatch" };
   }
-  if (targetUser.role === "super_admin") {
+  if (await isSuperAdminRole(targetUser.role)) {
     return { success: false, error: "cannotDeleteSuperAdmin" };
   }
 
