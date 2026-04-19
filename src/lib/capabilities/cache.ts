@@ -96,12 +96,12 @@ export async function resolveCapabilities(roleName: string): Promise<Set<string>
   // Any role at super_admin level or above always has ALL capabilities,
   // regardless of what is stored in the DB. This protects against
   // misconfigured custom roles at the super_admin level.
+  //
+  // The built-in "super_admin" is always guaranteed to have level >= SUPER_ADMIN_LEVEL
+  // because loadRolesFromDb() populates built-in defaults (including "super_admin")
+  // and overrides its capabilities to ALL_CAPABILITIES. The level-based check alone
+  // is sufficient — no separate hardcoded name check is needed.
   if (entry && entry.level >= SUPER_ADMIN_LEVEL) {
-    return new Set(ALL_CAPABILITIES);
-  }
-
-  // Built-in super_admin shortcut (cache may not be loaded yet during bootstrap)
-  if (roleName === "super_admin") {
     return new Set(ALL_CAPABILITIES);
   }
 
