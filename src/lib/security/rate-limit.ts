@@ -212,7 +212,7 @@ export async function recordRateLimitFailure(key: string) {
         .set({
           attempts,
           windowStartedAt: entry.windowStartedAt,
-          blockedUntil: blockedUntil || null,
+          blockedUntil: blockedUntil > 0 ? blockedUntil : null,
           consecutiveBlocks,
           lastAttempt: now,
         })
@@ -223,7 +223,7 @@ export async function recordRateLimitFailure(key: string) {
           key,
           attempts,
           windowStartedAt: entry.windowStartedAt,
-          blockedUntil: blockedUntil || null,
+          blockedUntil: blockedUntil > 0 ? blockedUntil : null,
           consecutiveBlocks,
           lastAttempt: now,
         });
