@@ -16,6 +16,17 @@ function getRateLimitConfig() {
 }
 
 const RATE_LIMIT_EVICTION_AGE_MS = 24 * 60 * 60 * 1000;
+const BACKOFF_CAP = 5; // max exponent: 2^5 = 32x
+
+/**
+ * Calculate the block duration using exponential backoff.
+ * @param consecutiveBlocks - number of consecutive blocks (before this increment)
+ * @param blockMs - base block duration in ms
+ * @returns block duration in ms
+ */
+function calculateBlockDuration(consecutiveBlocks: number, blockMs: number): number {
+  return blockMs * Math.pow(2, Math.min(consecutiveBlocks, BACKOFF_CAP));
+}
 
 export function getRateLimitKey(action: string, headers: Headers) {
   return `${action}:${extractClientIp(headers) ?? "unknown"}`;
@@ -45,7 +56,9 @@ export function startRateLimitEviction() {
   evictionTimer = setInterval(() => {
     void evictStaleEntries();
   }, EVICTION_INTERVAL_MS);
-  // Allow the process to exit even if the timer is still active
+  // Allow the process to exit even if the timer is still active.
+  // In Node.js, setInterval returns a Timeout object with unref();
+  // in some environments (jsdom/Vitest) it returns a number.
   if (evictionTimer && typeof evictionTimer === "object" && "unref" in evictionTimer) {
     evictionTimer.unref();
   }
@@ -151,7 +164,7 @@ export async function consumeRateLimitAttemptMulti(...keys: string[]) {
 
       if (attempts >= config.maxAttempts) {
         consecutiveBlocks += 1;
-        const blockMs = config.blockMs * Math.pow(2, Math.min(consecutiveBlocks - 1, 5));
+        const blockMs = calculateBlockDuration(consecutiveBlocks - 1, config.blockMs);
         blockedUntil = now + blockMs;
         shouldBlock = true;
       }
@@ -190,8 +203,7 @@ export async function recordRateLimitFailure(key: string) {
 
     const cfg = getRateLimitConfig();
     if (attempts >= cfg.maxAttempts) {
-      const multiplier = Math.pow(2, Math.min(consecutiveBlocks, 4));
-      const blockDuration = cfg.blockMs * multiplier;
+      const blockDuration = calculateBlockDuration(consecutiveBlocks, cfg.blockMs);
       blockedUntil = now + blockDuration;
       consecutiveBlocks += 1;
     }
@@ -232,7 +244,7 @@ export async function recordRateLimitFailureMulti(...keys: string[]) {
 
       if (newAttempts >= config.maxAttempts) {
         consecutiveBlocks += 1;
-        const blockMs = config.blockMs * Math.pow(2, Math.min(consecutiveBlocks - 1, 5));
+        const blockMs = calculateBlockDuration(consecutiveBlocks - 1, config.blockMs);
         blockedUntil = now + blockMs;
       }
 
