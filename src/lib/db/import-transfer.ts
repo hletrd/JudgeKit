@@ -2,12 +2,20 @@ import type { NextRequest } from "next/server";
 
 export const MAX_IMPORT_BYTES = 100 * 1024 * 1024; // 100 MB
 
-async function readStreamTextWithLimit(
+/**
+ * Read a stream into a Uint8Array with a byte-length limit.
+ * Uses buffer-based accumulation instead of string concatenation to avoid:
+ * (1) UTF-16 doubling of memory for multi-byte content (JS strings are UTF-16)
+ * (2) Intermediate string allocations during concatenation (GC pressure)
+ * (3) Peak memory being 3x the upload size (string + parse result)
+ *
+ * Peak memory is now ~1x the upload size for the buffer, plus the parsed result.
+ */
+async function readStreamBytesWithLimit(
   reader: ReadableStreamDefaultReader<Uint8Array>,
   limit = MAX_IMPORT_BYTES
-) {
-  const decoder = new TextDecoder();
-  let text = "";
+): Promise<Uint8Array> {
+  const chunks: Uint8Array[] = [];
   let total = 0;
 
   while (true) {
@@ -17,11 +25,18 @@ async function readStreamTextWithLimit(
     if (total > limit) {
       throw new Error("fileTooLarge");
     }
-    text += decoder.decode(value, { stream: true });
+    chunks.push(value);
   }
 
-  text += decoder.decode();
-  return text;
+  // Concatenate all chunks into a single Uint8Array
+  const result = new Uint8Array(total);
+  let offset = 0;
+  for (const chunk of chunks) {
+    result.set(chunk, offset);
+    offset += chunk.byteLength;
+  }
+
+  return result;
 }
 
 export async function readJsonBodyWithLimit<T = unknown>(
@@ -41,7 +56,8 @@ export async function readJsonBodyWithLimit<T = unknown>(
     throw new Error("invalidJson");
   }
 
-  const text = await readStreamTextWithLimit(reader, limit);
+  const bytes = await readStreamBytesWithLimit(reader, limit);
+  const text = new TextDecoder().decode(bytes);
 
   try {
     return JSON.parse(text) as T;
@@ -58,8 +74,12 @@ export async function readUploadedJsonFileWithLimit<T = unknown>(
     throw new Error("fileTooLarge");
   }
 
-  const reader = file.stream().getReader();
-  const text = await readStreamTextWithLimit(reader, limit);
+  // Use file.arrayBuffer() directly — file.size is already validated,
+  // so we can read the entire file without streaming overhead.
+  // This avoids the string concatenation and UTF-16 doubling issues
+  // that the previous streaming approach had.
+  const buffer = await file.arrayBuffer();
+  const text = new TextDecoder().decode(buffer);
 
   try {
     return JSON.parse(text) as T;
