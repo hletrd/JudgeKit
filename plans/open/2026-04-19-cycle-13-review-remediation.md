@@ -1,82 +1,100 @@
 # Cycle 13 Review Remediation Plan
 
 **Date:** 2026-04-19
-**Source:** `.context/reviews/cycle-13-comprehensive-review.md` and `.context/reviews/_aggregate.md`
-**Status:** Complete
+**Source:** `.context/reviews/cycle-13-aggregate.md`
+**Status:** COMPLETE
 
 ---
 
-## MEDIUM Priority
+## Schedule (this cycle)
 
-### M1: Fix community votes race condition with transaction
-- **File**: `src/app/api/v1/community/votes/route.ts:78-107`
-- **Status**: DONE (commit c7510e10)
-- **Fix applied**:
-  1. Wrapped the read-check-write logic in `db.transaction()`
-  2. Moved `findFirst`, `delete`, `update`, `insert` branch logic inside the transaction
-  3. Moved the score summary query to run within the same transaction for consistent read
-  4. Updated test mock to include `db.transaction` that delegates to a mock `tx` object
-- **Exit criterion**: Met — No TOCTOU race in community votes route; all operations run atomically within a transaction.
+### S1 — [MEDIUM] Fix dashboard layout i18n namespace — nav items use `common.practice` which doesn't exist
 
-### M2: Remove or harden deprecated `validateRoleChange` sync function
-- **File**: `src/lib/users/core.ts:83-101`
-- **Status**: DONE (commit d28f804c)
-- **Fix applied**:
-  1. Verified no production callers import `validateRoleChange` (all use `validateRoleChangeAsync`)
-  2. Removed the deprecated function entirely
-  3. Removed the `canManageRole` import (only used by the removed sync function)
-  4. Updated all test mocks that referenced the removed function (`core.test.ts`, `user-management.test.ts`, `users.bulk.route.test.ts`, `users.route.test.ts`)
-- **Exit criterion**: Met — No exported `validateRoleChange` function with hardcoded `=== "super_admin"` check exists in the codebase.
+- **From:** AGG-1 (CR13-CR1, CR13-SR1, CR13-AR1, CR13-CT1, CR13-V1, CR13-TE1, CR13-D1)
+- **Files:** `src/app/(dashboard)/layout.tsx:33-81`
+- **Evidence:** The dashboard layout uses `getTranslations("common")` and passes `t("practice")`, `t("playground")`, etc. as PublicHeader item labels. But these keys don't exist in the `common` namespace — they're under `publicShell.nav`. This means the dashboard's PublicHeader nav items are rendering with untranslated i18n keys instead of actual labels.
+- **Fix:**
+  1. Add `getTranslations("publicShell")` alongside `getTranslations("common")` in the dashboard layout
+  2. Change the `items` labels to use `tShell("nav.practice")`, `tShell("nav.playground")`, etc. (matching the public layout)
+  3. Change the `actions` labels to use `tAuth("signIn")` and `tAuth("signUp")` (matching the public layout)
+- **Status:** COMPLETE (4389523c)
 
----
+- **From:** AGG-1 (same as S1 — addressing the root cause)
+- **Files:** Create `src/lib/navigation/public-nav.ts`, modify `src/app/(public)/layout.tsx`, `src/app/(dashboard)/layout.tsx`
+- **Fix:**
+  1. Create a shared `getPublicNavItems(tShell)` function that returns the items array
+  2. Create a shared `getPublicNavActions(tAuth, signupEnabled)` function that returns the actions array
+  3. Use these in both public and dashboard layouts
+- **Status:** COMPLETE (4389523c)
 
-## LOW Priority
+- **From:** AGG-2 (CR13-DB1, CR13-V2/V3, tracer Flow 2)
+- **Files:** `src/lib/auth/config.ts:119-137`
+- **Fix:**
+  1. Replace the manual `token.fieldName = fields.fieldName` assignments with `Object.assign(token, fields)`
+  2. Preserve `token.authenticatedAt = authenticatedAtSeconds` after the Object.assign
+  3. Verify `tsc --noEmit` passes
+- **Status:** COMPLETE (8dc88e08)
 
-### L1: Refactor analytics page raw SQL to use Drizzle subquery
-- **File**: `src/app/(dashboard)/dashboard/groups/[id]/analytics/page.tsx:71`
-- **Status**: DONE (commit 6b5919f9)
-- **Fix applied**:
-  1. Replaced raw `sql`ANY (${subquery})`` with two-step: fetch assignment IDs first, then use `inArray()`
-  2. Replaced `sql`... NOT IN ('pending', 'queued', 'judging')`` with Drizzle `notInArray()` using `ACTIVE_SUBMISSION_STATUSES` from `@/lib/submissions/status`
-  3. Added empty-array guard to avoid `IN ()` SQL error
-- **Exit criterion**: Met — No raw `sql` template with hardcoded status strings in analytics page; uses Drizzle query builder and shared constant.
+- **From:** AGG-2 (CR13-DB2, CR13-V3)
+- **Files:** `src/lib/auth/config.ts:147-168`
+- **Fix:**
+  1. Use a loop over `AUTH_PREFERENCE_FIELDS` for preference field assignments in `mapTokenToSession`
+  2. Keep core field assignments (id, role, username, etc.) explicit since they have different default patterns
+  3. Verify `tsc --noEmit` passes
+- **Status:** COMPLETE (8dc88e08)
 
-### L2: Document anti-cheat LRU cache single-instance limitation
-- **File**: `src/app/api/v1/contests/[assignmentId]/anti-cheat/route.ts:16`
-- **Status**: DEFERRED
-- **Reason**: The `getUnsupportedRealtimeGuard` at line 37 already blocks the endpoint in multi-instance deployments without shared coordination. The LRU cache is only used when running single-instance (which is the documented deployment model). No production impact.
-- **Exit criterion**: Re-open if multi-instance deployment without shared coordination becomes a supported configuration for anti-cheat routes.
+- **From:** AGG-3 (CR13-CR2, CR13-SR1, tracer Flow 3)
+- **Files:** `src/components/layout/public-header.tsx:67-72`
+- **Fix:**
+  1. Remove the fallback `role === "instructor" || ...` checks from `getDropdownItems`
+  2. If `capabilities` is undefined/null, return only items that don't require any capability (dashboard, submissions, profile)
+  3. Add a comment explaining that capabilities are always provided when the user is logged in
+- **Status:** COMPLETE (cb2ec48c)
 
-### L3: Replace hardcoded `role?.name === "super_admin"` with level check in role editor dialog
-- **File**: `src/app/(dashboard)/dashboard/admin/roles/role-editor-dialog.tsx:83,114`
-- **Status**: DONE (commit 6d9431ef)
-- **Fix applied**:
-  1. Added `superAdminLevel` prop to `RoleEditorDialogProps` (defaults to 4)
-  2. Replaced `role?.name === "super_admin"` at line 83 with `(role && role.level >= superAdminLevel)`
-  3. Replaced `role?.name === "super_admin"` at line 114 with `role != null && role.level >= superAdminLevel`
-- **Exit criterion**: Met — Role editor dialog uses level-based check instead of hardcoded role name.
+- **From:** AGG-5 (CR13-CR4, CR13-CT3)
+- **Files:** `src/lib/security/rate-limit.ts:251-252`
+- **Fix:**
+  1. Replace `entry.windowStartedAt === now ? now : entry.windowStartedAt` with `entry.windowStartedAt`
+- **Status:** COMPLETE (0105c4d3)
 
-### L4: Replace hardcoded `userRole === "super_admin"` with level check in user actions
-- **File**: `src/app/(dashboard)/dashboard/admin/users/user-actions.tsx:80`
-- **Status**: DONE (commit 6d9431ef)
-- **Fix applied**:
-  1. Replaced `userRole` prop with `userLevel` (optional number) in `UserActions` component
-  2. Replaced `userRole === "super_admin"` with `userLevel != null && userLevel >= 4`
-  3. Updated both parent components (`users/page.tsx` and `users/[id]/page.tsx`) to pass `userLevel` from the role record
-  4. Added `level` to the role query columns in `users/[id]/page.tsx`
-- **Exit criterion**: Met — User actions component uses level-based check instead of hardcoded role name.
-
-### L5: Add warning for elevated roles in bulk create dialog
-- **File**: `src/app/(dashboard)/dashboard/admin/users/bulk-create-dialog.tsx:77-79`
-- **Status**: DEFERRED
-- **Reason**: The bulk create API route validates role assignments server-side. The client-side normalization merely maps CSV input to known role names. Adding a warning would be a UX enhancement but the server already protects against unauthorized role assignments. Low risk of confusion in practice since only super_admins can use the bulk create dialog.
-- **Exit criterion**: Re-open if bulk user creation is made available to non-super-admin roles.
+- **From:** AGG-4 (CR13-AR2, CR13-CT2, CR13-D1), migration plan Phase 3
+- **Files:** `src/components/layout/app-sidebar.tsx`, `src/app/(dashboard)/layout.tsx`
+- **Fix:**
+  1. Evaluate whether to convert AppSidebar to icon-only mode or remove items that are already in PublicHeader
+  2. At minimum, remove the duplicate navigation items from AppSidebar that are already accessible via PublicHeader dropdown (dashboard, problems, groups, submissions, profile, admin)
+  3. Keep AppSidebar items that are NOT in PublicHeader (contests, compiler, rankings, problem sets)
+- **Status:** COMPLETE (9bba87d3)
 
 ---
 
-## Deferred Items
+## Progress Ledger
 
-| Finding | Severity | Reason | Exit Criterion |
-|---------|----------|--------|----------------|
-| L2 (anti-cheat LRU cache) | LOW | Already guarded by `getUnsupportedRealtimeGuard`; single-instance is documented deployment model | Re-open if multi-instance becomes supported for anti-cheat |
-| L5 (bulk create elevated roles) | LOW | Server validates role assignments; only super_admins can use the dialog | Re-open if bulk create is available to non-super-admin roles |
+| Story | Status | Commit |
+|---|---|---|
+| S1 | COMPLETE | 4389523c |
+| S2 | COMPLETE | 4389523c |
+| S3 | COMPLETE | 8dc88e08 |
+| S4 | COMPLETE | 8dc88e08 |
+| S5 | COMPLETE | cb2ec48c |
+| S6 | COMPLETE | 0105c4d3 |
+| S7 | COMPLETE | 9bba87d3 |
+
+---
+
+## Deferred (not this cycle)
+
+### D1-D26 from cycle 12b (carried forward unchanged)
+
+See `plans/open/2026-04-19-cycle-12b-review-remediation.md` for the full list.
+
+### D27 — [LOW] `handleSignOut` in `AppSidebar` fires async with `void` — errors silently swallowed (AGG-6)
+
+- **From:** AGG-6 (CR13-CR5, CR13-DB3)
+- **Reason:** `next-auth/react` `signOut` is well-behaved. Adding `.catch()` is a minor robustness improvement.
+- **Exit criterion:** Next time the AppSidebar component is significantly refactored
+
+### D28 — [LOW] `(control)` route group should merge into `(dashboard)` (AGG-4, CR13-AR2)
+
+- **From:** AGG-4 (CR13-AR2, CR13-CT2)
+- **Reason:** Part of workspace-to-public migration Phase 3. Larger scope that should be planned separately.
+- **Exit criterion:** Phase 3 sidebar work is complete; then plan the control group merge

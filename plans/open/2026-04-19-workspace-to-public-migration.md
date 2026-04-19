@@ -1,7 +1,7 @@
 # Workspace-to-Public Page Migration Plan
 
 **Date:** 2026-04-19
-**Status:** Phase 1 COMPLETE, Phase 2 COMPLETE, Phase 3 IN PROGRESS (cycle 12b — sidebar trigger + lecture toggle merge), Phase 4 PENDING
+**Status:** Phase 1 COMPLETE, Phase 2 COMPLETE, Phase 3 IN PROGRESS (cycle 13 — AppSidebar deduplication + shared nav config), Phase 4 PENDING
 **Source:** User-injected TODO #2, AGG-13
 
 ## Goal
@@ -192,12 +192,12 @@ Same as instructor, with additional "Admin" dropdown entry that navigates to `/d
 
 ### Phase 3 — Dashboard layout refinement (Medium risk)
 
-**Status:** IN PROGRESS (cycle 11)
+**Status:** IN PROGRESS (cycle 13)
 
 **Goal:** Simplify the dashboard layout to complement the top navbar.
 
 1. ~~Ensure the top navbar is visible on dashboard pages (currently it is not — dashboard has its own header).~~ DONE (commit bbf36ec2 — PublicHeader added to dashboard layout)
-2. Consider converting `AppSidebar` from a full sidebar to a slimmer icon rail or contextual sub-navigation within each section.
+2. ~~Consider converting `AppSidebar` from a full sidebar to a slimmer icon rail or contextual sub-navigation within each section.~~ PARTIALLY DONE (cycle 13 — removed duplicate items from AppSidebar that are already in PublicHeader dropdown; remaining items: problems, submissions, contests, compiler, rankings, groups, problem sets, admin)
 3. Move breadcrumb to top navbar area.
 4. Evaluate whether `(control)` route group should merge into `(dashboard)/admin` or remain separate.
 
@@ -205,8 +205,14 @@ Same as instructor, with additional "Admin" dropdown entry that navigates to `/d
 - ~~Refactor `PublicHeader.getDropdownItems()` to use capability-based filtering instead of hardcoded role checks (AGG-4)~~ DONE (commit 3a2b56d7)
 - ~~Remove `tracking-tight` from site title if locale is Korean (CLAUDE.md compliance).~~ DONE (commit 79204982)
 
+**Cycle 13 improvements:**
+- ~~Fix dashboard layout i18n namespace — nav items were using common.practice which doesn't exist~~ DONE (commit 4389523c — dashboard now uses publicShell.nav namespace)
+- ~~Extract shared navigation config (getPublicNavItems/getPublicNavActions)~~ DONE (commit 4389523c — both layouts use shared helper)
+- ~~Remove hardcoded role fallback in getDropdownItems~~ DONE (commit cb2ec48c — capability-based filtering only)
+- ~~Remove duplicate AppSidebar items already in PublicHeader dropdown~~ DONE (commit 9bba87d3 — dashboard, profile removed from sidebar)
+
 **Remaining Phase 3 work:**
-- Slim down `AppSidebar` to icon-only mode or contextual sub-navigation
+- Further slim down `AppSidebar` to icon-only mode or contextual sub-navigation
 - Move breadcrumb to top navbar area
 - Evaluate `(control)` route group merge into `(dashboard)/admin`
 
