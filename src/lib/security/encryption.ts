@@ -1,17 +1,35 @@
 import { createCipheriv, createDecipheriv, randomBytes } from "node:crypto";
-import { logger } from "@/lib/logger";
 
 const ALGORITHM = "aes-256-gcm";
 const IV_LENGTH = 12; // 96-bit IV recommended for GCM
 const AUTH_TAG_LENGTH = 16; // 128-bit tag
 
 /**
- * Get the 32-byte encryption key from the NODE_ENCRYPTION_KEY env var.
- * Returns null if the key is not set (dev mode).
+ * Fixed development-only encryption key. NOT secure — only used when
+ * NODE_ENCRYPTION_KEY is not set in non-production environments so that
+ * the encrypt/decrypt round-trip works consistently in development.
+ * Data encrypted with this key must NOT be used in production.
  */
-function getKey(): Buffer | null {
+const DEV_ENCRYPTION_KEY = Buffer.from(
+  "000102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f",
+  "hex"
+);
+
+/**
+ * Get the 32-byte encryption key from the NODE_ENCRYPTION_KEY env var.
+ * Returns the fixed development key if the env var is not set in non-production.
+ * Throws in production if the key is missing.
+ */
+function getKey(): Buffer {
   const hex = process.env.NODE_ENCRYPTION_KEY?.trim();
-  if (!hex) return null;
+  if (!hex) {
+    if (process.env.NODE_ENV === "production") {
+      throw new Error(
+        "NODE_ENCRYPTION_KEY must be set in production. Generate: openssl rand -hex 32"
+      );
+    }
+    return DEV_ENCRYPTION_KEY;
+  }
   const buf = Buffer.from(hex, "hex");
   if (buf.length !== 32) {
     throw new Error(
@@ -23,22 +41,12 @@ function getKey(): Buffer | null {
 
 /**
  * Encrypt a plaintext string using AES-256-GCM.
- * Returns `iv:ciphertext:authTag` as a hex-encoded string, prefixed with `enc:`.
- * If NODE_ENCRYPTION_KEY is not set, logs a warning and returns plaintext (dev mode).
+ * Returns `enc:iv:ciphertext:authTag` as a hex-encoded string.
+ * In development without NODE_ENCRYPTION_KEY, uses a fixed dev key.
+ * In production, throws if NODE_ENCRYPTION_KEY is not set.
  */
 export function encrypt(plaintext: string): string {
   const key = getKey();
-  if (!key) {
-    if (process.env.NODE_ENV === "production") {
-      throw new Error(
-        "NODE_ENCRYPTION_KEY must be set in production. Generate: openssl rand -hex 32"
-      );
-    }
-    logger.warn(
-      "[encryption] NODE_ENCRYPTION_KEY not set — skipping encryption (dev only)"
-    );
-    return plaintext;
-  }
 
   const iv = randomBytes(IV_LENGTH);
   const cipher = createCipheriv(ALGORITHM, key, iv, { authTagLength: AUTH_TAG_LENGTH });
@@ -53,8 +61,10 @@ export function encrypt(plaintext: string): string {
 
 /**
  * Decrypt a value encrypted by `encrypt()`.
- * If the value does not start with `enc:`, it is returned as-is (plaintext fallback).
- * If NODE_ENCRYPTION_KEY is not set, logs a warning and returns the value as-is (dev mode).
+ * If the value does not start with `enc:`, it is returned as-is (plaintext fallback
+ * for data that was stored before encryption was enabled).
+ * In development without NODE_ENCRYPTION_KEY, uses the fixed dev key.
+ * In production, throws if NODE_ENCRYPTION_KEY is not set.
  */
 export function decrypt(encoded: string): string {
   if (!encoded.startsWith("enc:")) {
@@ -62,17 +72,6 @@ export function decrypt(encoded: string): string {
   }
 
   const key = getKey();
-  if (!key) {
-    if (process.env.NODE_ENV === "production") {
-      throw new Error(
-        "NODE_ENCRYPTION_KEY must be set in production to decrypt values"
-      );
-    }
-    logger.warn(
-      "[encryption] NODE_ENCRYPTION_KEY not set — cannot decrypt (dev only)"
-    );
-    return encoded;
-  }
 
   const parts = encoded.split(":");
   // enc:iv:ciphertext:authTag
