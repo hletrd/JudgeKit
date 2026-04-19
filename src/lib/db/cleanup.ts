@@ -7,6 +7,17 @@ import { logger } from "@/lib/logger";
 const BATCH_SIZE = 5000;
 const BATCH_DELAY_MS = 100;
 
+/**
+ * Clean up old audit and login events based on the canonical retention config.
+ *
+ * @deprecated This function is superseded by the in-process pruners in
+ * `audit/events.ts` (pruneOldAuditEvents) and `data-retention-maintenance.ts`
+ * (pruneLoginEvents). Those pruners run on 24-hour intervals, use the same
+ * canonical `DATA_RETENTION_DAYS` config, respect `DATA_RETENTION_LEGAL_HOLD`,
+ * and cover all six retention categories. This function is kept for the
+ * `/api/internal/cleanup` cron endpoint, which may be referenced by external
+ * cron jobs. New deployments should rely on the in-process pruners instead.
+ */
 export async function cleanupOldEvents(): Promise<{
   auditDeleted: number;
   loginDeleted: number;
