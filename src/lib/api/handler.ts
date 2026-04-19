@@ -174,11 +174,18 @@ export function createApiHandler<T = undefined>(config: HandlerConfig<T>) {
         return unauthorized();
       }
 
-      return await handler(req, {
+      const result = await handler(req, {
         user: user as AuthUser,
         body,
         params,
       });
+
+      // Prevent caching of authenticated API responses
+      if (!result.headers.has("Cache-Control")) {
+        result.headers.set("Cache-Control", "no-store");
+      }
+
+      return result;
     } catch (error) {
       logger.error({ err: error, method: req.method, path: req.nextUrl.pathname }, "Unhandled error");
       return NextResponse.json({ error: "internalServerError" }, { status: 500 });

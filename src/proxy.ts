@@ -159,6 +159,17 @@ function createSecuredNextResponse(request: NextRequest) {
     },
   });
   response.headers.set("Content-Language", resolvedLocale);
+  // Prevent caching of authenticated API responses at the proxy level.
+  // Protected API routes (those requiring auth) must never be cached by
+  // intermediary proxies or CDNs. Public API routes (languages, playground)
+  // and non-API pages may be cacheable.
+  const pathname = request.nextUrl.pathname;
+  const isApi = pathname.startsWith("/api/v1");
+  const isPublicApi = pathname === "/api/v1/languages" || pathname === "/api/v1/playground/run";
+  const isJudgeWorker = pathname.startsWith("/api/v1/judge/");
+  if (isApi && !isPublicApi && !isJudgeWorker) {
+    response.headers.set("Cache-Control", "no-store");
+  }
   if (!deterministicPublicLocale) {
     appendVaryHeader(response.headers, "Accept-Language");
     appendVaryHeader(response.headers, "Cookie");
