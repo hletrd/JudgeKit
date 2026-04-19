@@ -5,9 +5,22 @@ import { apiSuccess, apiError } from "@/lib/api/responses";
 import { computeContestAnalytics } from "@/lib/assignments/contest-analytics";
 import { canViewAssignmentSubmissions } from "@/lib/assignments/submissions";
 import { rawQueryOne } from "@/lib/db/queries";
+import { logger } from "@/lib/logger";
 
 type ContestAnalytics = Awaited<ReturnType<typeof computeContestAnalytics>>;
-const analyticsCache = new LRUCache<string, ContestAnalytics>({ max: 100, ttl: 60_000 });
+
+const CACHE_TTL_MS = 60_000;
+const STALE_AFTER_MS = 30_000;
+
+type CacheEntry = { data: ContestAnalytics; createdAt: number };
+const analyticsCache = new LRUCache<string, CacheEntry>({ max: 100, ttl: CACHE_TTL_MS });
+
+/** Tracks which cache keys currently have a background refresh in progress. */
+const _refreshingKeys = new Set<string>();
+
+/** Per-key cooldown after a background refresh failure. */
+const REFRESH_FAILURE_COOLDOWN_MS = 5_000;
+const _lastRefreshFailureAt = new Map<string, number>();
 
 type AssignmentRow = {
   groupId: string;
@@ -38,10 +51,36 @@ export const GET = createApiHandler({
 
     const cacheKey = assignmentId;
     const cached = analyticsCache.get(cacheKey);
-    if (cached) return apiSuccess(cached);
+    if (cached) {
+      const age = Date.now() - cached.createdAt;
+      if (age <= STALE_AFTER_MS) {
+        // Fresh — return immediately
+        return apiSuccess(cached.data);
+      }
+      // Stale but still within TTL — return stale data and trigger ONE background
+      // refresh (unless a refresh failed recently — avoid amplifying DB failures).
+      const lastFailure = _lastRefreshFailureAt.get(cacheKey) ?? 0;
+      if (!_refreshingKeys.has(cacheKey) && Date.now() - lastFailure >= REFRESH_FAILURE_COOLDOWN_MS) {
+        _refreshingKeys.add(cacheKey);
+        computeContestAnalytics(assignmentId, true)
+          .then((fresh) => {
+            analyticsCache.set(cacheKey, { data: fresh, createdAt: Date.now() });
+            _lastRefreshFailureAt.delete(cacheKey);
+          })
+          .catch((err) => {
+            _lastRefreshFailureAt.set(cacheKey, Date.now());
+            logger.error({ err, assignmentId }, "[analytics] Failed to refresh analytics cache");
+          })
+          .finally(() => {
+            _refreshingKeys.delete(cacheKey);
+          });
+      }
+      return apiSuccess(cached.data);
+    }
 
+    // Cache miss — compute fresh and populate cache
     const analytics = await computeContestAnalytics(assignmentId, true);
-    analyticsCache.set(cacheKey, analytics);
+    analyticsCache.set(cacheKey, { data: analytics, createdAt: Date.now() });
     return apiSuccess(analytics);
   },
 });
