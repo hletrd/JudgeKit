@@ -12,7 +12,7 @@ export default function UserActions({
   username,
   isActive,
   isSelf,
-  userRole,
+  userLevel,
   actorCanEdit,
   actorCanDelete,
   triggerVariant,
@@ -21,7 +21,7 @@ export default function UserActions({
   username: string;
   isActive: boolean;
   isSelf: boolean;
-  userRole: string;
+  userLevel?: number;
   actorCanEdit?: boolean;
   actorCanDelete?: boolean;
   triggerVariant?: "default" | "destructive" | "outline" | "secondary" | "ghost" | "link";
@@ -77,7 +77,7 @@ export default function UserActions({
     });
   }
 
-  if (isSelf || userRole === "super_admin" || (!actorCanEdit && !actorCanDelete)) return null;
+  if (isSelf || (userLevel != null && userLevel >= 4) || (!actorCanEdit && !actorCanDelete)) return null;
 
   return (
     <div className="flex items-center gap-2">

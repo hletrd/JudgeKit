@@ -57,7 +57,7 @@ export default async function AdminUserDetailPage({
   };
   const roleRecord = await db.query.roles.findFirst({
     where: eq(roles.name, user.role),
-    columns: { displayName: true },
+    columns: { displayName: true, level: true },
   });
   const roleLabel = builtinRoleLabels[user.role as keyof typeof builtinRoleLabels]
     ?? roleRecord?.displayName
@@ -80,7 +80,7 @@ export default async function AdminUserDetailPage({
             username={user.username}
             isActive={!!user.isActive}
             isSelf={user.id === session.user.id}
-            userRole={user.role}
+            userLevel={roleRecord?.level}
             actorCanEdit={canEditUsers}
             actorCanDelete={canDeleteUsers}
             triggerVariant={user.isActive ? "destructive" : "outline"}

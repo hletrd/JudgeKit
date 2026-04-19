@@ -262,7 +262,7 @@ export default async function UserManagementPage({
                         username={user.username}
                         isActive={!!user.isActive}
                         isSelf={user.id === session.user.id}
-                        userRole={user.role}
+                        userLevel={availableRoles.find((r) => r.name === user.role)?.level}
                         actorCanEdit={canEditUsers}
                         actorCanDelete={canDeleteUsers}
                       />

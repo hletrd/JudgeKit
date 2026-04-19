@@ -33,9 +33,10 @@ interface RoleData {
 interface RoleEditorDialogProps {
   mode: "create" | "edit";
   role?: RoleData;
+  superAdminLevel?: number;
 }
 
-export default function RoleEditorDialog({ mode, role }: RoleEditorDialogProps) {
+export default function RoleEditorDialog({ mode, role, superAdminLevel = 4 }: RoleEditorDialogProps) {
   const [open, setOpen] = useState(false);
   const [loading, setLoading] = useState(false);
   const [name, setName] = useState(role?.name ?? "");
@@ -80,7 +81,7 @@ export default function RoleEditorDialog({ mode, role }: RoleEditorDialogProps) 
               displayName,
               description: description || null,
               ...(role?.isBuiltin ? {} : { level }),
-              ...(role?.name === "super_admin" ? {} : { capabilities }),
+              ...((role && role.level >= superAdminLevel) ? {} : { capabilities }),
             };
 
       const res = await fetch(url, {
@@ -111,7 +112,7 @@ export default function RoleEditorDialog({ mode, role }: RoleEditorDialogProps) 
     }
   }
 
-  const isSuperAdmin = role?.name === "super_admin";
+  const isSuperAdmin = role != null && role.level >= superAdminLevel;
 
   return (
     <Dialog open={open} onOpenChange={(v) => { setOpen(v); if (v) resetForm(); }}>
