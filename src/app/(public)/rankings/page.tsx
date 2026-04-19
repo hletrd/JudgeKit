@@ -112,29 +112,18 @@ export default async function RankingsPage({
 
   const periodClause = getPeriodClause(currentPeriod);
 
-  const countRow = await rawQueryOne<{ total: number }>(
-    `
-    WITH first_accepts AS (
-      SELECT
-        user_id,
-        problem_id,
-        MIN(submitted_at) as first_accepted_at
-      FROM submissions s
-      WHERE s.status = 'accepted'
-      ${periodClause}
-      GROUP BY user_id, problem_id
-    )
-    SELECT COUNT(DISTINCT fa.user_id)::int as total
-    FROM first_accepts fa
-    INNER JOIN users u ON u.id = fa.user_id
-    WHERE u.is_active = true
-    `,
-  );
-  const totalCount = countRow?.total ?? 0;
-  const totalPages = Math.max(1, Math.ceil(totalCount / pageSize));
-  const clampedPage = Math.min(currentPage, totalPages);
+  // Estimate total from an unfiltered count to clamp the page offset.
+  // The actual per-period total is derived from the window function below.
+  const estimatedCountRow = await rawQueryOne<{ total: number }>(`
+    SELECT COUNT(*)::int as total FROM users WHERE is_active = true
+  `);
+  const estimatedTotal = estimatedCountRow?.total ?? 0;
+  const estimatedPages = Math.max(1, Math.ceil(estimatedTotal / pageSize));
+  const clampedPage = Math.min(currentPage, estimatedPages);
   const clampedOffset = (clampedPage - 1) * pageSize;
 
+  // Single query: the first_accepts CTE is computed once, and COUNT(*) OVER()
+  // provides the total row count without a separate round-trip.
   const rankingRows = await rawQueryAll<{
     userId: string;
     username: string;
@@ -142,6 +131,7 @@ export default async function RankingsPage({
     className: string | null;
     solvedCount: number;
     lastSolveTime: Date;
+    total: number;
   }>(
     `
     WITH first_accepts AS (
@@ -160,7 +150,8 @@ export default async function RankingsPage({
       u.name as name,
       u.class_name as "className",
       COUNT(fa.problem_id)::int as "solvedCount",
-      MAX(fa.first_accepted_at) as "lastSolveTime"
+      MAX(fa.first_accepted_at) as "lastSolveTime",
+      COUNT(*) OVER()::int as "total"
     FROM users u
     INNER JOIN first_accepts fa ON fa.user_id = u.id
     WHERE u.is_active = true
@@ -170,6 +161,8 @@ export default async function RankingsPage({
     `,
     { limit: pageSize, offset: clampedOffset }
   );
+  const totalCount = rankingRows.length > 0 ? rankingRows[0].total : 0;
+  const totalPages = Math.max(1, Math.ceil(totalCount / pageSize));
   const rankingsJsonLd = {
     "@context": "https://schema.org",
     "@type": "CollectionPage",
