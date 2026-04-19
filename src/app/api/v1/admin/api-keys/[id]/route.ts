@@ -46,7 +46,7 @@ export const PATCH = createApiHandler({
   schema: updateSchema,
   handler: async (req: NextRequest, { user, params, body }) => {
     const { id } = params;
-    const [existing] = await db.select().from(apiKeys).where(eq(apiKeys.id, id)).limit(1);
+    const [existing] = await db.select({ id: apiKeys.id, name: apiKeys.name }).from(apiKeys).where(eq(apiKeys.id, id)).limit(1);
     if (!existing) return apiError("notFound", 404, "ApiKey");
 
     const updates: Record<string, unknown> = { updatedAt: new Date() };
@@ -96,7 +96,7 @@ export const DELETE = createApiHandler({
   auth: { capabilities: ["system.settings"] },
   handler: async (req: NextRequest, { user, params }) => {
     const { id } = params;
-    const [existing] = await db.select().from(apiKeys).where(eq(apiKeys.id, id)).limit(1);
+    const [existing] = await db.select({ id: apiKeys.id, name: apiKeys.name }).from(apiKeys).where(eq(apiKeys.id, id)).limit(1);
     if (!existing) return apiError("notFound", 404, "ApiKey");
 
     await db.delete(apiKeys).where(eq(apiKeys.id, id));
