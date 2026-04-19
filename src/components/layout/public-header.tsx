@@ -60,16 +60,17 @@ function isActivePath(pathname: string, href: string) {
 /**
  * Build dropdown menu items for the authenticated user.
  *
- * Uses capability-based filtering when `capabilities` is available,
- * falling back to role-based checks otherwise.
+ * Uses capability-based filtering when `capabilities` is available.
+ * When capabilities are absent (e.g. session not yet resolved), only
+ * items that require no specific capability are shown.
  * Capability checks must stay aligned with AppSidebar's filterItems().
  */
-function getDropdownItems(role?: string, capabilities?: string[]): DropdownItem[] {
+function getDropdownItems(_role?: string, capabilities?: string[]): DropdownItem[] {
   const capsSet = capabilities ? new Set(capabilities) : null;
 
-  const canCreateProblems = capsSet ? capsSet.has("problems.create") : (role === "instructor" || role === "admin" || role === "super_admin");
-  const canViewAllGroups = capsSet ? capsSet.has("groups.view_all") : (role === "instructor" || role === "admin" || role === "super_admin");
-  const canAdminSystem = capsSet ? capsSet.has("system.settings") : (role === "admin" || role === "super_admin");
+  const canCreateProblems = capsSet?.has("problems.create") ?? false;
+  const canViewAllGroups = capsSet?.has("groups.view_all") ?? false;
+  const canAdminSystem = capsSet?.has("system.settings") ?? false;
 
   const items: DropdownItem[] = [
     { href: "/dashboard", label: "dashboard", icon: <LayoutDashboard className="size-4" /> },
