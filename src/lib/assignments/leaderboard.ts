@@ -98,9 +98,11 @@ export async function computeSingleUserLiveRank(
 
   // Use the same scoring query structure as computeContestRanking for consistency,
   // but filtered to a single user + count of users ranked above them.
+  // Returns null when the user has no scored submissions (they are not on the
+  // leaderboard, so "rank 1" would be misleading).
   if (scoringModel === "icpc") {
     // ICPC: rank = 1 + count of users with more problems solved OR (same solved + less penalty)
-    type IcpcRankRow = { rank: number };
+    type IcpcRankRow = { rank: number | null; hasSubmissions: boolean };
     const result = await rawQueryOne<IcpcRankRow>(
       `WITH user_score AS (
         SELECT
@@ -128,17 +130,24 @@ export async function computeSingleUserLiveRank(
       target AS (
         SELECT solved_count, total_penalty FROM user_totals WHERE user_id = @userId
       )
-      SELECT COALESCE(1 + COUNT(*), 1) AS rank
+      SELECT
+        CASE WHEN t.solved_count IS NULL THEN NULL ELSE COALESCE(1 + COUNT(*), 1) END AS rank,
+        t.solved_count IS NOT NULL AS "hasSubmissions"
       FROM user_totals ut, target t
       WHERE ut.solved_count > t.solved_count
-         OR (ut.solved_count = t.solved_count AND ut.total_penalty < t.total_penalty)`,
+         OR (ut.solved_count = t.solved_count AND ut.total_penalty < t.total_penalty)
+      GROUP BY t.solved_count, t.total_penalty`,
       { assignmentId, userId },
     );
-    return result?.rank ?? null;
+    // When the cross-join target is empty (user has no submissions), the query
+    // returns no rows — result is undefined. Fall back to an explicit check.
+    if (!result) return null;
+    if (!result.hasSubmissions) return null;
+    return result.rank;
   }
 
   // IOI: rank = 1 + count of users with higher total adjusted score
-  type IoiRankRow = { rank: number };
+  type IoiRankRow = { rank: number | null; hasSubmissions: boolean };
   const result = await rawQueryOne<IoiRankRow>(
     `WITH user_scores AS (
       SELECT
@@ -161,9 +170,12 @@ export async function computeSingleUserLiveRank(
     target AS (
       SELECT total_score FROM user_scores WHERE user_id = @userId
     )
-    SELECT COALESCE(1 + COUNT(*), 1) AS rank
+    SELECT
+      CASE WHEN t.total_score IS NULL THEN NULL ELSE COALESCE(1 + COUNT(*), 1) END AS rank,
+      t.total_score IS NOT NULL AS "hasSubmissions"
     FROM user_scores us, target t
-    WHERE us.total_score > t.total_score`,
+    WHERE us.total_score > t.total_score
+    GROUP BY t.total_score`,
     {
       assignmentId,
       userId,
@@ -172,5 +184,7 @@ export async function computeSingleUserLiveRank(
       examMode: meta.examMode ?? "none",
     },
   );
-  return result?.rank ?? null;
+  if (!result) return null;
+  if (!result.hasSubmissions) return null;
+  return result.rank;
 }
