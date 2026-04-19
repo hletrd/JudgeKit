@@ -37,4 +37,20 @@ describe("DiscussionThreadList", () => {
     expect(screen.getByText("Pinned")).toBeInTheDocument();
     expect(screen.getByText("Open thread")).toBeInTheDocument();
   });
+
+  it("supports a page-level heading when requested", () => {
+    render(
+      <DiscussionThreadList
+        title="Community board"
+        titleAs="h1"
+        emptyLabel="No threads"
+        openLabel="Open thread"
+        pinnedLabel="Pinned"
+        lockedLabel="Locked"
+        threads={[]}
+      />
+    );
+
+    expect(screen.getByRole("heading", { level: 1, name: "Community board" })).toBeInTheDocument();
+  });
 });

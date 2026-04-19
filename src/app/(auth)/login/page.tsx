@@ -1,6 +1,6 @@
 import Link from "next/link";
 import { getTranslations } from "next-intl/server";
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { getResolvedSystemSettings } from "@/lib/system-settings";
 import { LoginForm } from "./login-form";
 
@@ -15,8 +15,10 @@ export default async function LoginPage() {
   return (
     <Card className="w-full max-w-md">
       <CardHeader className="text-center">
-        <CardTitle className="text-2xl">{settings.siteTitle}</CardTitle>
-        <CardDescription>{t("signInDescription")}</CardDescription>
+        <p className="text-2xl font-medium">{settings.siteTitle}</p>
+        <CardTitle className="text-2xl">
+          <h1>{t("signInDescription")}</h1>
+        </CardTitle>
       </CardHeader>
       <CardContent>
         <LoginForm />

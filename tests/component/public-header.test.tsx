@@ -50,5 +50,7 @@ describe("PublicHeader", () => {
     expect(container.querySelector('a[href="/?locale=ko"]')).toBeTruthy();
     expect(container.querySelector('a[href="/practice?locale=ko"]')).toBeTruthy();
     expect(container.querySelector('a[href="/login?locale=ko"]')).toBeTruthy();
+    expect(screen.getByRole("navigation", { name: "mainNavigation" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "toggleNavigationMenu" })).toBeInTheDocument();
   });
 });

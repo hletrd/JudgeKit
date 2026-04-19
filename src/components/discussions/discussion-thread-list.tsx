@@ -23,17 +23,29 @@ type DiscussionThreadListProps = {
   pinnedLabel: string;
   lockedLabel: string;
   threads: ThreadListItem[];
+  titleAs?: "h1" | "h2";
 };
 
 function summarize(text: string) {
   return text.replace(/\s+/g, " ").trim().slice(0, 220);
 }
 
-export function DiscussionThreadList({ title, description, emptyLabel, openLabel, pinnedLabel, lockedLabel, threads }: DiscussionThreadListProps) {
+export function DiscussionThreadList({
+  title,
+  description,
+  emptyLabel,
+  openLabel,
+  pinnedLabel,
+  lockedLabel,
+  threads,
+  titleAs = "h2",
+}: DiscussionThreadListProps) {
+  const TitleTag = titleAs;
+
   return (
     <div className="space-y-4">
       <div>
-        <h2 className="text-2xl font-semibold tracking-tight">{title}</h2>
+        <TitleTag className="text-2xl font-semibold tracking-tight">{title}</TitleTag>
         {description ? <p className="mt-2 text-sm text-muted-foreground">{description}</p> : null}
       </div>
       {threads.length === 0 ? (

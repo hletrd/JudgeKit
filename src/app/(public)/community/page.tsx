@@ -102,6 +102,7 @@ export default async function CommunityPage({
         )}
         <DiscussionThreadList
           title={t("community.liveTitle")}
+          titleAs="h1"
           description={t("community.liveDescription")}
           emptyLabel={t("community.empty")}
           openLabel={t("community.openThread")}

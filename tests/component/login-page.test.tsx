@@ -16,6 +16,7 @@ vi.mock("next-intl/server", () => ({
     const translations: Record<string, Record<string, string>> = {
       auth: {
         signInDescription: "Sign in to your account",
+        identifier: "Username or Email",
         needAccount: "Need an account?",
         createAccount: "Create account",
       },
@@ -52,6 +53,7 @@ describe("LoginPage", () => {
 
     expect(screen.getByText("JudgeKit")).toBeInTheDocument();
     expect(screen.getByText("login-form")).toBeInTheDocument();
+    expect(screen.getByRole("heading", { level: 1, name: "Sign in to your account" })).toBeInTheDocument();
     expect(screen.getByRole("link", { name: "Create account" })).toHaveAttribute("href", "/signup");
   });
 

@@ -18,6 +18,7 @@ vi.mock("next-intl/server", () => ({
     const translations: Record<string, Record<string, string>> = {
       auth: {
         signUpDescription: "Create a public user account",
+        createAccount: "Create account",
       },
       common: {
         appName: "JudgeKit",
@@ -57,7 +58,7 @@ describe("SignupPage", () => {
     render(await SignupPage());
 
     expect(screen.getByText("JudgeKit")).toBeInTheDocument();
-    expect(screen.getByText("Create a public user account")).toBeInTheDocument();
+    expect(screen.getByRole("heading", { level: 1, name: "Create a public user account" })).toBeInTheDocument();
     expect(screen.getByText("signup-form")).toBeInTheDocument();
   });
 

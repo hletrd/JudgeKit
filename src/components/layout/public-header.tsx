@@ -129,7 +129,7 @@ export function PublicHeader({ siteTitle, items, actions, loggedInUser }: Public
           <span className="block truncate">{siteTitle}</span>
         </Link>
 
-        <nav aria-label="Main navigation" className="hidden min-w-0 flex-1 items-center gap-1 md:flex">
+        <nav aria-label={tCommon("mainNavigation")} className="hidden min-w-0 flex-1 items-center gap-1 md:flex">
           {items.map((item) => {
             const active = isActivePath(pathname, item.href);
             const localizedHref = buildLocalizedHref(item.href, locale);
@@ -184,7 +184,7 @@ export function PublicHeader({ siteTitle, items, actions, loggedInUser }: Public
             type="button"
             onClick={() => setMobileOpen((v) => !v)}
             className="inline-flex size-8 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-accent hover:text-accent-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
-            aria-label="Toggle navigation menu"
+            aria-label={tCommon("toggleNavigationMenu")}
             aria-controls={menuId}
             aria-expanded={mobileOpen}
           >
@@ -202,12 +202,12 @@ export function PublicHeader({ siteTitle, items, actions, loggedInUser }: Public
           ref={panelRef}
           id={menuId}
           role="region"
-          aria-label="Mobile navigation"
+          aria-label={tCommon("mobileNavigation")}
           data-state="open"
           className="max-h-[calc(100dvh-56px)] overflow-y-auto border-t md:hidden"
         >
           <div className="mx-auto max-w-6xl px-4 py-2">
-            <nav aria-label="Mobile menu" className="flex flex-col gap-0.5">
+            <nav aria-label={tCommon("mobileMenu")} className="flex flex-col gap-0.5">
               {items.map((item) => {
                 const active = isActivePath(pathname, item.href);
                 return (
