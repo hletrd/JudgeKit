@@ -145,8 +145,8 @@ export const GET = createApiHandler({
     const searchParams = req.nextUrl.searchParams;
     const userIdFilter = searchParams.get("userId");
     const eventTypeFilter = searchParams.get("eventType");
-    const limit = Math.max(1, Math.min(Number(searchParams.get("limit") ?? 100), 500));
-    const offset = Math.max(0, Number(searchParams.get("offset") ?? 0) || 0);
+    const limit = Math.max(1, Math.min(parseInt(searchParams.get("limit") ?? "100", 10) || 100, 500));
+    const offset = Math.max(0, parseInt(searchParams.get("offset") ?? "0", 10) || 0);
 
     // Build filters using Drizzle
     const filters = [eq(antiCheatEvents.assignmentId, assignmentId)];
