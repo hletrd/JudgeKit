@@ -9,11 +9,16 @@ export const dynamic = "force-dynamic";
 
 export async function POST(request: NextRequest) {
   try {
-    const csrfError = csrfForbidden(request);
-    if (csrfError) return csrfError;
-
     const user = await getApiUser(request);
     if (!user) return unauthorized();
+
+    // Skip CSRF for API key auth (no cookies involved)
+    const isApiKeyAuth = "_apiKeyAuth" in user;
+    if (!isApiKeyAuth) {
+      const csrfError = csrfForbidden(request);
+      if (csrfError) return csrfError;
+    }
+
     const caps = await resolveCapabilities(user.role);
     if (!caps.has("system.backup")) return forbidden();
 

@@ -76,14 +76,18 @@ export async function POST(
   { params }: { params: Promise<{ id: string }> }
 ) {
   try {
-    const csrfError = csrfForbidden(request);
-    if (csrfError) return csrfError;
-
     const rateLimitResponse = await consumeApiRateLimit(request, "assignments:create");
     if (rateLimitResponse) return rateLimitResponse;
 
     const user = await getApiUser(request);
     if (!user) return unauthorized();
+
+    // Skip CSRF for API key auth (no cookies involved)
+    const isApiKeyAuth = "_apiKeyAuth" in user;
+    if (!isApiKeyAuth) {
+      const csrfError = csrfForbidden(request);
+      if (csrfError) return csrfError;
+    }
 
     const { id } = await params;
     const group = await db.query.groups.findFirst({
