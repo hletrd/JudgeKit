@@ -2,7 +2,8 @@ import type { Metadata } from "next";
 import { getLocale, getTranslations } from "next-intl/server";
 import { notFound } from "next/navigation";
 import { db } from "@/lib/db";
-import { eq, sql } from "drizzle-orm";
+import { users } from "@/lib/db/schema";
+import { eq } from "drizzle-orm";
 import { rawQueryAll, rawQueryOne } from "@/lib/db/queries";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
@@ -23,7 +24,7 @@ export async function generateMetadata({
   const { id } = await params;
 
   const user = await db.query.users.findFirst({
-    where: eq(db._.fullSchema.users.id, id),
+    where: eq(users.id, id),
     columns: { name: true },
   });
 
@@ -49,7 +50,7 @@ export default async function UserProfilePage({
   const tProblems = await getTranslations("problems");
 
   const user = await db.query.users.findFirst({
-    where: eq(sql`id`, id),
+    where: eq(users.id, id),
     columns: { id: true, name: true, username: true },
   });
 
