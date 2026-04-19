@@ -29,6 +29,13 @@ vi.mock("@/lib/api/auth", () => ({
 vi.mock("@/lib/capabilities/cache", () => ({
   resolveCapabilities: resolveCapabilitiesMock,
   invalidateRoleCache: invalidateRoleCacheMock,
+  isSuperAdminRole: vi.fn(async (role: string) => role === "super_admin"),
+  getRoleLevel: vi.fn(async (role: string) => {
+    const levels: Record<string, number> = {
+      student: 0, assistant: 1, instructor: 2, admin: 3, super_admin: 4,
+    };
+    return levels[role] ?? -1;
+  }),
 }));
 
 vi.mock("@/lib/audit/events", () => ({
