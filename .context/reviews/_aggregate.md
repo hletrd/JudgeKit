@@ -1,8 +1,9 @@
-# Aggregate Review — Cycle 17 Deep Code Review
+# Aggregate Review — Cycle 18 Deep Code Review
 
 **Date:** 2026-04-19
 **Source reviews:**
-- `cycle-17-comprehensive-review.md` (comprehensive multi-angle review covering code quality, security, performance, architecture, correctness, testing)
+- `cycle-18-comprehensive-review.md` (comprehensive multi-angle review covering code quality, security, performance, architecture, correctness, data integrity)
+- `cycle-17-comprehensive-review.md` (previous cycle — all findings addressed or deferred)
 - Prior cycles 1-16 reviews (findings already addressed or deferred in prior plan documents)
 
 ---
@@ -21,51 +22,58 @@ None.
 
 ## MEDIUM (Should Fix Soon)
 
-### M1: `firstAcMap` key lookup uses `endsWith` which can match wrong problem IDs
-- **Source**: cycle-17 F1
-- **Files**: `src/lib/assignments/contest-analytics.ts:187,251`
-- **Description**: The `firstAcMap` is keyed by `"userId:problemId"`. When looking up entries for a specific problem, the code uses `key.endsWith(`:${p.problemId}`)`. This can produce false matches if one problem ID is a suffix of another (e.g., `"p1"` matches `"step1"`). With nanoid IDs the practical risk is negligible, but the logic is semantically wrong.
-- **Fix**: Restructure `firstAcMap` as `Map<problemId, Map<userId, number>>` for O(1) per-problem lookups, or use exact key decomposition.
+### M1: Conflicting audit retention env vars — `db/cleanup.ts` uses `AUDIT_RETENTION_DAYS` while `data-retention.ts` uses `AUDIT_EVENT_RETENTION_DAYS`
+- **Source**: cycle-18 F1
+- **Files**: `src/lib/db/cleanup.ts:5`, `src/lib/data-retention.ts:18`
+- **Confidence**: HIGH
+- **Description**: Two separate audit retention mechanisms use different env var names. The cron endpoint at `/api/internal/cleanup` reads `AUDIT_RETENTION_DAYS` (in `db/cleanup.ts`), while the in-process pruner uses `AUDIT_EVENT_RETENTION_DAYS` (in `data-retention.ts`). An operator setting one var has no effect on the other path, leading to inconsistent retention behavior.
+- **Fix**: Consolidate `db/cleanup.ts` to use `DATA_RETENTION_DAYS` from `data-retention.ts`, or deprecate it entirely.
 
-### M2: `getParticipantTimeline` fetches all code snapshots without a limit — potential memory/response spike
-- **Source**: cycle-17 F2
-- **Files**: `src/lib/assignments/participant-timeline.ts:151-161`
-- **Description**: The participant timeline query fetches ALL code snapshots for a user in an assignment with no limit. A student active throughout a long contest could have thousands of snapshots, producing a very large API response.
-- **Fix**: Add a `LIMIT` to the code snapshots query (e.g., most recent 200 per problem, or 1000 total). For the timeline view, only the most recent snapshots are typically relevant.
+### M2: `db/cleanup.ts` does not respect `DATA_RETENTION_LEGAL_HOLD` — can delete data under legal hold
+- **Source**: cycle-18 F3
+- **Files**: `src/lib/db/cleanup.ts:9-39`
+- **Confidence**: HIGH
+- **Description**: The `cleanupOldEvents()` function (called by the cron endpoint) deletes audit and login events without checking `DATA_RETENTION_LEGAL_HOLD`. The in-process pruners in `audit/events.ts` and `data-retention-maintenance.ts` correctly check this flag. A litigation hold can be silently violated by the cron endpoint.
+- **Fix**: Add `DATA_RETENTION_LEGAL_HOLD` check at the top of `cleanupOldEvents()`.
 
 ---
 
 ## LOW (Best Effort / Track)
 
-### L1: `getParticipantTimeline` fetches all anti-cheat events without a limit — should use aggregation
-- **Source**: cycle-17 F3
-- **Files**: `src/lib/assignments/participant-timeline.ts:161-168`
-- **Description**: The anti-cheat events query fetches all events for a user just to count by type. A `GROUP BY eventType, COUNT(*)` aggregation would be more efficient.
-- **Fix**: Replace the full SELECT with an aggregation query.
+### L1: `needsRehash` flag from `verifyPassword` is ignored in most call sites — bcrypt-to-argon2 migration stalls for non-login paths
+- **Source**: cycle-18 F2
+- **Files**: `src/lib/assignments/recruiting-invitations.ts:375`, `src/lib/actions/change-password.ts:46`, and 4 admin routes
+- **Confidence**: HIGH
+- **Description**: Only the login flow in `auth/config.ts` checks `needsRehash`. The recruiting re-entry flow and change-password flow discard the flag, meaning bcrypt hashes persist for users who authenticate through these paths.
+- **Fix**: Add rehash logic to `recruiting-invitations.ts` and `change-password.ts`.
 
-### L2: Contest analytics cache has no stale-while-revalidate — cache miss causes blocking compute
-- **Source**: cycle-17 F4
-- **Files**: `src/app/api/v1/contests/[assignmentId]/analytics/route.ts:39-45`
-- **Description**: Unlike `computeContestRanking`, the analytics cache has no background refresh mechanism. On cache expiry, the next request blocks until analytics are recomputed. Multiple concurrent requests can trigger duplicate computations.
-- **Fix**: Add stale-while-revalidate or a `_refreshingKeys`-like deduplication mechanism.
+### L2: Leaderboard route computes ranking twice when frozen — redundant expensive computation
+- **Source**: cycle-18 F4
+- **Files**: `src/app/api/v1/contests/[assignmentId]/leaderboard/route.ts:57-61`
+- **Confidence**: HIGH
+- **Description**: When the leaderboard is frozen and the viewer is a student, the route computes the leaderboard twice (frozen + live) to show the student their live rank. The second computation runs the full ranking function but only uses one user's result.
+- **Fix**: Query only the requesting user's rank directly instead of computing the full live leaderboard.
 
-### L3: `redeemRecruitingToken` uses `new Date()` for expiry check instead of relying solely on SQL `NOW()`
-- **Source**: cycle-17 F5
-- **Files**: `src/lib/assignments/recruiting-invitations.ts:410`
-- **Description**: The JS-side expiry check at line 410 uses `new Date()` while the atomic claim at line 485 uses `NOW()`. Clock skew between app and DB can cause confusing error messages (e.g., `"alreadyRedeemed"` when the token actually expired).
-- **Fix**: Remove the JS-side expiry check and rely solely on the SQL WHERE clause. Differentiate the error message for expired vs already-redeemed.
+### L3: `countUserConnections()` in SSE events route is O(n) — should be O(1) with a per-user index
+- **Source**: cycle-18 F5
+- **Files**: `src/app/api/v1/submissions/[id]/events/route.ts:37-44`
+- **Confidence**: MEDIUM
+- **Description**: The function iterates over all connections to count per-user connections. A `userConnectionCountMap` would make this O(1). Not a practical problem with current limits (500 max connections) but doesn't scale.
+- **Fix**: Add a `userConnectionCountMap = new Map<string, number>()` maintained alongside the existing maps.
 
-### L4: IOI score tie detection uses floating-point strict equality
-- **Source**: cycle-17 F6
-- **Files**: `src/lib/assignments/contest-scoring.ts:375`
-- **Description**: Tie detection uses `prev.totalScore === curr.totalScore`. While currently safe due to Math.round normalization, this is fragile. Using an epsilon comparison would be more robust.
-- **Fix**: Use `Math.abs(prev.totalScore - curr.totalScore) < 0.01` for tie detection.
+### L4: `db/cleanup.ts` is redundant with in-process pruners — duplicate deletion with different configs
+- **Source**: cycle-18 F6
+- **Files**: `src/lib/db/cleanup.ts:9-39`, `src/lib/audit/events.ts:179-200`, `src/lib/data-retention-maintenance.ts:74-78`
+- **Confidence**: HIGH
+- **Description**: Three separate mechanisms delete old audit/login events with different configurations. The cron endpoint is redundant because the in-process pruners already handle both with correct config and legal hold checks.
+- **Fix**: Deprecate `db/cleanup.ts:cleanupOldEvents()` or refactor it to use canonical pruners.
 
-### L5: `triggerAutoCodeReview` has no concurrency control — burst AI API calls
-- **Source**: cycle-17 F7
-- **Files**: `src/lib/judge/auto-review.ts:13`
-- **Description**: No concurrency limiter for auto-review calls. A burst of accepted submissions triggers parallel AI API calls, potentially hitting provider rate limits or consuming API budget.
-- **Fix**: Add `pLimit(1)` or `pLimit(2)` concurrency limiter for auto-review calls.
+### L5: Contest analytics `firstAcMap` query uses `ROUND(s.score, 2) = 100` — may not reflect IOI scoring with late penalties
+- **Source**: cycle-18 F7
+- **Files**: `src/lib/assignments/contest-analytics.ts:171`
+- **Confidence**: MEDIUM
+- **Description**: For IOI scoring with late penalties, a submission with raw score 100 can have an adjusted score < 100 after penalty. The first-AC query checks the raw score, so it may include or exclude entries inconsistently with the adjusted scoring model. The main leaderboard is not affected.
+- **Fix**: Document that the first-AC filter is ICPC-oriented, or adjust for IOI scoring context.
 
 ### L6: `sanitizeSubmissionForViewer` DB query risk for list endpoints (carried forward)
 - **Source**: cycle-16 F8, cycle-15 F3/L2/D16
