@@ -309,6 +309,56 @@ export async function GET(
 
         let lastAuthCheck = Date.now();
 
+        // Shared helper: fetch full submission, sanitize, and send the terminal
+        // result event. Used from both the re-auth path and the fast path to
+        // avoid duplicating the terminal-state logic.
+        async function sendTerminalResult() {
+          // user is guaranteed non-null here — the SSE stream is only opened
+          // after the auth check at the top of GET(), but TypeScript cannot
+          // infer this across the closure boundary.
+          const viewerId = user!.id;
+          try {
+            const fullSubmission = await queryFullSubmission(id);
+            if (closed) return;
+            const sanitized = fullSubmission
+              ? await sanitizeSubmissionForViewer(fullSubmission, viewerId, caps)
+              : null;
+            if (closed) return;
+            controller.enqueue(
+              encoder.encode(`event: result\ndata: ${JSON.stringify(sanitized)}\n\n`)
+            );
+          } catch (err) {
+            if (!closed) {
+              logger.error({ err }, "SSE final fetch error for submission %s", id);
+              // Send an error event so the client knows the fetch failed
+              try {
+                controller.enqueue(encoder.encode(`event: error\ndata: {"error":"fetch_failed"}\n\n`));
+              } catch {
+                // enqueue failed — stream likely already closed
+              }
+            }
+          } finally {
+            close();
+          }
+        }
+
+        // Emit a status heartbeat so the client knows the connection is alive.
+        // Returns true if enqueued successfully, false on error (triggers close).
+        function emitStatusHeartbeat(status: string): boolean {
+          try {
+            controller.enqueue(
+              encoder.encode(`event: status\ndata: ${JSON.stringify({ status })}\n\n`)
+            );
+            return true;
+          } catch (err) {
+            if (!closed) {
+              logger.error({ err }, "SSE enqueue error for submission %s", id);
+              close();
+            }
+            return false;
+          }
+        }
+
         // Callback invoked by the shared poll timer with the latest status.
         // The callback is async to allow awaiting the re-auth check before
         // processing the status event, preventing data leakage after account
@@ -348,38 +398,11 @@ export async function GET(
               }
 
               if (!IN_PROGRESS_JUDGE_STATUSES.has(status)) {
-                // Terminal state reached -- fetch full submission and send final event
-                try {
-                  const fullSubmission = await queryFullSubmission(id);
-                  if (closed) return;
-                  const sanitized = fullSubmission
-                    ? await sanitizeSubmissionForViewer(fullSubmission, user.id, caps)
-                    : null;
-                  if (closed) return;
-                  controller.enqueue(
-                    encoder.encode(`event: result\ndata: ${JSON.stringify(sanitized)}\n\n`)
-                  );
-                } catch (err) {
-                  if (!closed) {
-                    logger.error({ err }, "SSE final fetch error for submission %s", id);
-                  }
-                } finally {
-                  close();
-                }
+                await sendTerminalResult();
                 return;
               }
 
-              // Emit a status heartbeat so the client knows the connection is alive
-              try {
-                controller.enqueue(
-                  encoder.encode(`event: status\ndata: ${JSON.stringify({ status })}\n\n`)
-                );
-              } catch (err) {
-                if (!closed) {
-                  logger.error({ err }, "SSE enqueue error for submission %s", id);
-                  close();
-                }
-              }
+              emitStatusHeartbeat(status);
             })();
             return; // Don't process the event synchronously — the async IIFE handles it
           }
@@ -391,40 +414,11 @@ export async function GET(
           }
 
           if (!IN_PROGRESS_JUDGE_STATUSES.has(status)) {
-            // Terminal state reached -- fetch full submission and send final event
-            void (async () => {
-              try {
-                const fullSubmission = await queryFullSubmission(id);
-                if (closed) return;
-                const sanitized = fullSubmission
-                  ? await sanitizeSubmissionForViewer(fullSubmission, user.id, caps)
-                  : null;
-                controller.enqueue(
-                  encoder.encode(`event: result\ndata: ${JSON.stringify(sanitized)}\n\n`)
-                );
-              } catch (err) {
-                if (!closed) {
-                  logger.error({ err }, "SSE final fetch error for submission %s", id);
-                  controller.enqueue(encoder.encode(`event: error\ndata: {"error":"fetch_failed"}\n\n`));
-                }
-              } finally {
-                close();
-              }
-            })();
+            void sendTerminalResult();
             return;
           }
 
-          // Emit a status heartbeat so the client knows the connection is alive
-          try {
-            controller.enqueue(
-              encoder.encode(`event: status\ndata: ${JSON.stringify({ status })}\n\n`)
-            );
-          } catch (err) {
-            if (!closed) {
-              logger.error({ err }, "SSE enqueue error for submission %s", id);
-              close();
-            }
-          }
+          emitStatusHeartbeat(status);
         };
 
         subscribeToPoll(id, onPollResult);
