@@ -194,6 +194,24 @@ const ALLOWED_COMMAND_PREFIXES = [
 ];
 
 /**
+ * Check whether a command basename matches an allowed prefix.
+ * Allows exact matches and version-style suffixes (e.g., python3.11, gcc-12,
+ * node20) but rejects unrelated strings that merely start with a prefix
+ * (e.g., "nodemalicious" must not match "node").
+ */
+function isValidCommandPrefix(baseName: string): boolean {
+  return ALLOWED_COMMAND_PREFIXES.some((prefix) => {
+    if (baseName === prefix) return true;
+    // Allow version suffixes: digits, dots, dashes, underscores after the prefix
+    if (baseName.length > prefix.length) {
+      const suffix = baseName.slice(prefix.length);
+      return /^[0-9.\-_]+$/.test(suffix);
+    }
+    return false;
+  });
+}
+
+/**
  * Stricter shell command validation that also verifies the first command
  * in each chained segment starts with a known compiler/tool prefix.
  * This is a defense-in-depth layer on top of validateShellCommand.
@@ -204,7 +222,7 @@ function validateShellCommandStrict(cmd: string): boolean {
   return segments.every((segment) => {
     const firstToken = segment.trim().split(/\s+/)[0] || "";
     const baseName = firstToken.split("/").pop() || firstToken;
-    return ALLOWED_COMMAND_PREFIXES.some((prefix) => baseName === prefix || baseName.startsWith(prefix));
+    return isValidCommandPrefix(baseName);
   });
 }
 
