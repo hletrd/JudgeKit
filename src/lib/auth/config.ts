@@ -1,4 +1,4 @@
-import type { NextAuthConfig } from "next-auth";
+import type { NextAuthConfig, Session } from "next-auth";
 import type { JWT } from "next-auth/jwt";
 import Credentials from "next-auth/providers/credentials";
 import crypto from "crypto";
@@ -49,10 +49,13 @@ type AuthenticatedLoginUser = Omit<AuthUserRecord, "mustChangePassword"> & {
 const DUMMY_PASSWORD_HASH =
   "$argon2id$v=19$m=19456,t=2,p=1$Y2xhdWRlZHVtbXloYXNo$KQH6bMKH3t2fGK8qMJzrOGmG5bNRVZ0bQfO7aDVz0Zk";
 
-function createSuccessfulLoginResponse(
-  user: AuthUserRecord,
-  loginEventContext: LoginEventRequestSummary
-): AuthenticatedLoginUser {
+/**
+ * Map an AuthUserRecord to a plain object with all auth-relevant fields
+ * and their canonical defaults. Used by createSuccessfulLoginResponse,
+ * syncTokenWithUser, and the jwt callback to avoid maintaining three
+ * separate field lists. Add new preference fields HERE ONLY.
+ */
+function mapUserToAuthFields(user: AuthUserRecord) {
   return {
     id: user.id,
     username: user.username,
@@ -71,6 +74,15 @@ function createSuccessfulLoginResponse(
     lectureMode: user.lectureMode ?? null,
     lectureFontScale: user.lectureFontScale ?? null,
     lectureColorScheme: user.lectureColorScheme ?? null,
+  };
+}
+
+function createSuccessfulLoginResponse(
+  user: AuthUserRecord,
+  loginEventContext: LoginEventRequestSummary
+): AuthenticatedLoginUser {
+  return {
+    ...mapUserToAuthFields(user),
     loginEventContext,
   };
 }
@@ -80,27 +92,56 @@ function syncTokenWithUser(
   user: AuthUserRecord,
   authenticatedAtSeconds = getTokenAuthenticatedAtSeconds(token) ?? Math.trunc(Date.now() / 1000)
 ) {
-  token.sub = user.id;
-  token.id = user.id;
-  token.role = user.role;
-  token.username = user.username;
-  token.email = user.email;
-  token.name = user.name;
-  token.className = user.className;
-  token.mustChangePassword = user.mustChangePassword ?? false;
-  token.preferredLanguage = user.preferredLanguage ?? null;
-  token.preferredTheme = user.preferredTheme ?? null;
-  token.shareAcceptedSolutions = user.shareAcceptedSolutions ?? true;
-  token.acceptedSolutionsAnonymous = user.acceptedSolutionsAnonymous ?? false;
-  token.editorTheme = user.editorTheme ?? null;
-  token.editorFontSize = user.editorFontSize ?? null;
-  token.editorFontFamily = user.editorFontFamily ?? null;
-  token.lectureMode = user.lectureMode ?? null;
-  token.lectureFontScale = user.lectureFontScale ?? null;
-  token.lectureColorScheme = user.lectureColorScheme ?? null;
+  const fields = mapUserToAuthFields(user);
+  token.sub = fields.id;
+  token.id = fields.id;
+  token.role = fields.role;
+  token.username = fields.username;
+  token.email = fields.email;
+  token.name = fields.name;
+  token.className = fields.className;
+  token.mustChangePassword = fields.mustChangePassword;
+  token.preferredLanguage = fields.preferredLanguage;
+  token.preferredTheme = fields.preferredTheme;
+  token.shareAcceptedSolutions = fields.shareAcceptedSolutions;
+  token.acceptedSolutionsAnonymous = fields.acceptedSolutionsAnonymous;
+  token.editorTheme = fields.editorTheme;
+  token.editorFontSize = fields.editorFontSize;
+  token.editorFontFamily = fields.editorFontFamily;
+  token.lectureMode = fields.lectureMode;
+  token.lectureFontScale = fields.lectureFontScale;
+  token.lectureColorScheme = fields.lectureColorScheme;
   token.authenticatedAt = authenticatedAtSeconds;
 
   return token;
+}
+
+/**
+ * Map JWT token fields to the NextAuth session.user object.
+ * Mirrors the fields set by syncTokenWithUser so the session
+ * stays in sync with the JWT payload.
+ */
+function mapTokenToSession(token: JWT, session: Session) {
+  session.user.id = token.id ?? "";
+  session.user.role = token.role ?? "";
+  session.user.username = token.username ?? "";
+  session.user.name = token.name ?? session.user.name ?? "";
+  session.user.className = token.className ?? null;
+  session.user.mustChangePassword = token.mustChangePassword ?? false;
+  session.user.preferredLanguage = token.preferredLanguage ?? null;
+  session.user.preferredTheme = token.preferredTheme ?? null;
+  session.user.shareAcceptedSolutions = token.shareAcceptedSolutions ?? true;
+  session.user.acceptedSolutionsAnonymous = token.acceptedSolutionsAnonymous ?? false;
+  session.user.editorTheme = token.editorTheme ?? null;
+  session.user.editorFontSize = token.editorFontSize ?? null;
+  session.user.editorFontFamily = token.editorFontFamily ?? null;
+  session.user.lectureMode = token.lectureMode ?? null;
+  session.user.lectureFontScale = token.lectureFontScale ?? null;
+  session.user.lectureColorScheme = token.lectureColorScheme ?? null;
+
+  if (typeof token.email === "string") {
+    session.user.email = token.email;
+  }
 }
 
 validateAuthUrl();
@@ -402,42 +443,23 @@ export const authConfig: NextAuthConfig = {
         className: freshUser.className,
         role: freshUser.role,
         mustChangePassword: freshUser.mustChangePassword ?? false,
-        preferredLanguage: freshUser.preferredLanguage,
-        preferredTheme: freshUser.preferredTheme,
-        shareAcceptedSolutions: freshUser.shareAcceptedSolutions,
-        acceptedSolutionsAnonymous: freshUser.acceptedSolutionsAnonymous,
-        editorTheme: freshUser.editorTheme,
-        editorFontSize: freshUser.editorFontSize,
-        editorFontFamily: freshUser.editorFontFamily,
-        lectureMode: freshUser.lectureMode,
-        lectureFontScale: freshUser.lectureFontScale,
-        lectureColorScheme: freshUser.lectureColorScheme,
+        preferredLanguage: freshUser.preferredLanguage ?? null,
+        preferredTheme: freshUser.preferredTheme ?? null,
+        shareAcceptedSolutions: freshUser.shareAcceptedSolutions ?? true,
+        acceptedSolutionsAnonymous: freshUser.acceptedSolutionsAnonymous ?? false,
+        editorTheme: freshUser.editorTheme ?? null,
+        editorFontSize: freshUser.editorFontSize ?? null,
+        editorFontFamily: freshUser.editorFontFamily ?? null,
+        lectureMode: freshUser.lectureMode ?? null,
+        lectureFontScale: freshUser.lectureFontScale ?? null,
+        lectureColorScheme: freshUser.lectureColorScheme ?? null,
       });
     },
     async session({ session, token }) {
       const userId = getTokenUserId(token);
 
       if (userId && token.role) {
-        session.user.id = userId;
-        session.user.role = token.role;
-        session.user.username = token.username ?? "";
-        session.user.name = token.name ?? session.user.name ?? "";
-        session.user.className = token.className ?? null;
-        session.user.mustChangePassword = token.mustChangePassword ?? false;
-        session.user.preferredLanguage = token.preferredLanguage ?? null;
-        session.user.preferredTheme = token.preferredTheme ?? null;
-        session.user.shareAcceptedSolutions = token.shareAcceptedSolutions ?? true;
-        session.user.acceptedSolutionsAnonymous = token.acceptedSolutionsAnonymous ?? false;
-        session.user.editorTheme = token.editorTheme ?? null;
-        session.user.editorFontSize = token.editorFontSize ?? null;
-        session.user.editorFontFamily = token.editorFontFamily ?? null;
-        session.user.lectureMode = token.lectureMode ?? null;
-        session.user.lectureFontScale = token.lectureFontScale ?? null;
-        session.user.lectureColorScheme = token.lectureColorScheme ?? null;
-
-        if (typeof token.email === "string") {
-          session.user.email = token.email;
-        }
+        mapTokenToSession(token, session);
       }
       return session;
     },
