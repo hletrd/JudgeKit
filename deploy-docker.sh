@@ -270,6 +270,11 @@ ensure_env_secret() {
     || warn "Failed to backfill ${key} — please add it manually before the app starts"
 }
 ensure_env_secret PLUGIN_CONFIG_ENCRYPTION_KEY hex
+# AUTH_TRUST_HOST must be true in production when behind a reverse proxy.
+# Without it, validateTrustedAuthHost() rejects auth callbacks with UntrustedHost
+# because the Host header may be the internal container hostname (e.g., localhost:3000)
+# rather than the external domain.
+ensure_env_secret AUTH_TRUST_HOST true
 
 # ---------------------------------------------------------------------------
 # Step 2: Sync source code to remote host
