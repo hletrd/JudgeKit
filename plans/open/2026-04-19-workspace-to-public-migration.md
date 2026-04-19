@@ -1,7 +1,7 @@
 # Workspace-to-Public Page Migration Plan
 
 **Date:** 2026-04-19
-**Status:** Phase 1 COMPLETE, Phase 2 COMPLETE, Phase 3 IN PROGRESS (cycle 16 — AppSidebar tracking-wider Korean fix pending, PublicHeader sign-out error handling pending, shared sign-out utility pending), Phase 4 PENDING
+**Status:** Phase 1 COMPLETE, Phase 2 COMPLETE, Phase 3 IN PROGRESS (cycle 17 — remaining: slim down AppSidebar, move breadcrumb to top navbar, evaluate control route merge), Phase 4 PENDING
 **Source:** User-injected TODO #2, AGG-13
 
 ## Goal
