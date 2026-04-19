@@ -13,8 +13,9 @@ describe("public problem-set search implementation", () => {
 
     expect(helperSource).toContain("buildPublicProblemSetSearchFilter");
     expect(helperSource).toContain("normalizePracticeSearch");
-    expect(helperSource).toContain("like(problemSets.name");
-    expect(helperSource).toContain("like(problemSets.description");
+    expect(helperSource).toContain("problemSets.name");
+    expect(helperSource).toContain("problemSets.description");
+    expect(helperSource).toContain("ESCAPE");
     expect(helperSource).toContain("problemSetProblems");
     expect(helperSource).toContain("tags.name");
     expect(pageSource).toContain("searchParams?: Promise<{ page?: string; search?: string; tag?: string }>");

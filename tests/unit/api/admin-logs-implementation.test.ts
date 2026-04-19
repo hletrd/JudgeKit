@@ -57,7 +57,7 @@ describe("admin log route capability guards", () => {
     expect(auditLogsRoute).toContain('searchParams.get("dateTo")');
     expect(auditLogsRoute).toContain('searchParams.get("format")');
     expect(auditLogsRoute).toContain('"text/csv; charset=utf-8"');
-    expect(auditLogsRoute).toContain("like(auditEvents.action");
+    expect(auditLogsRoute).toContain("auditEvents.action");
 
     expect(auditLogsPage).toContain('t("exportCsv")');
     expect(auditLogsPage).toContain("buildExportHref(");
