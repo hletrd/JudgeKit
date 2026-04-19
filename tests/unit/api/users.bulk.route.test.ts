@@ -56,9 +56,6 @@ vi.mock("@/lib/audit/events", () => ({
 }));
 
 vi.mock("@/lib/users/core", () => ({
-  validateRoleChange: vi.fn(() => {
-    throw new Error("bulk user route should use validateRoleChangeAsync");
-  }),
   validateRoleChangeAsync: validateRoleChangeAsyncMock,
   validateAndHashPassword: validateAndHashPasswordMock,
 }));

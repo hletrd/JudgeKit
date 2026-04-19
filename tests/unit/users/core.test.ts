@@ -9,7 +9,6 @@ const mocks = vi.hoisted(() => {
     getPasswordValidationError: vi.fn<() => string | null>(),
     isUserRole: vi.fn<(v: string) => boolean>(),
     isValidRole: vi.fn<() => Promise<boolean>>(),
-    canManageRole: vi.fn<() => boolean>(),
     canManageRoleAsync: vi.fn<() => Promise<boolean>>(),
     isSuperAdminRole: vi.fn<(role: string) => Promise<boolean>>(),
     eq: vi.fn((_field: unknown, value: unknown) => ({ _eq: value })),
@@ -48,7 +47,6 @@ vi.mock("@/lib/security/password-hash", () => ({
 
 vi.mock("@/lib/security/constants", () => ({
   isUserRole: mocks.isUserRole,
-  canManageRole: mocks.canManageRole,
   canManageRoleAsync: mocks.canManageRoleAsync,
 }));
 
@@ -221,56 +219,6 @@ describe("validateAndHashPassword", () => {
     const ctx = { username: "bob", email: "bob@example.com" };
     await validateAndHashPassword("Password1!", ctx);
     expect(mocks.getPasswordValidationError).toHaveBeenCalledWith("Password1!", ctx);
-  });
-});
-
-// ─────────────────────────────────────────────────────────────────────────────
-// validateRoleChange
-// ─────────────────────────────────────────────────────────────────────────────
-
-describe("validateRoleChange", () => {
-  it("returns null for a valid role change", async () => {
-    const { validateRoleChange } = await import("@/lib/users/core");
-    mocks.isUserRole.mockReturnValue(true);
-    mocks.canManageRole.mockReturnValue(true);
-
-    const result = validateRoleChange("admin", "student");
-    expect(result).toBeNull();
-  });
-
-  it("returns invalidRole for an invalid role string", async () => {
-    const { validateRoleChange } = await import("@/lib/users/core");
-    mocks.isUserRole.mockReturnValue(false);
-
-    const result = validateRoleChange("admin", "bogus_role");
-    expect(result).toBe("invalidRole");
-  });
-
-  it("returns onlySuperAdminCanChangeSuperAdminRole when actor cannot manage role", async () => {
-    const { validateRoleChange } = await import("@/lib/users/core");
-    mocks.isUserRole.mockReturnValue(true);
-    mocks.canManageRole.mockReturnValue(false);
-
-    const result = validateRoleChange("admin", "super_admin");
-    expect(result).toBe("onlySuperAdminCanChangeSuperAdminRole");
-  });
-
-  it("returns cannotChangeSuperAdminRole when trying to demote a super_admin", async () => {
-    const { validateRoleChange } = await import("@/lib/users/core");
-    mocks.isUserRole.mockReturnValue(true);
-    mocks.canManageRole.mockReturnValue(true);
-
-    const result = validateRoleChange("super_admin", "admin", "super_admin");
-    expect(result).toBe("cannotChangeSuperAdminRole");
-  });
-
-  it("returns null when super_admin keeps super_admin role for a super_admin target", async () => {
-    const { validateRoleChange } = await import("@/lib/users/core");
-    mocks.isUserRole.mockReturnValue(true);
-    mocks.canManageRole.mockReturnValue(true);
-
-    const result = validateRoleChange("super_admin", "super_admin", "super_admin");
-    expect(result).toBeNull();
   });
 });
 

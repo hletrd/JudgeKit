@@ -56,9 +56,6 @@ vi.mock("@/lib/users/core", () => ({
   isUsernameTaken: mocks.isUsernameTaken,
   isEmailTaken: mocks.isEmailTaken,
   validateAndHashPassword: mocks.validateAndHashPassword,
-  validateRoleChange: vi.fn(() => {
-    throw new Error("user-management actions should use validateRoleChangeAsync");
-  }),
   validateRoleChangeAsync: mocks.validateRoleChangeAsync,
 }));
 

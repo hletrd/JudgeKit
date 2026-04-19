@@ -2,7 +2,7 @@ import { sql } from "drizzle-orm";
 import { hashPassword } from "@/lib/security/password-hash";
 import { db, type TransactionClient } from "@/lib/db";
 import { users } from "@/lib/db/schema";
-import { canManageRole, canManageRoleAsync, isUserRole } from "@/lib/security/constants";
+import { canManageRoleAsync, isUserRole } from "@/lib/security/constants";
 import { isValidRole, isSuperAdminRole } from "@/lib/capabilities/cache";
 import { getPasswordValidationError, type PasswordValidationError } from "@/lib/security/password";
 
@@ -74,34 +74,6 @@ export type RoleValidationError =
 /**
  * Validates that `actorRole` is allowed to assign `requestedRole`,
  * and (when provided) that the target user's current role can be changed.
- *
- * @deprecated Use validateRoleChangeAsync instead, which supports custom roles
- * via the capability cache. This sync version only handles built-in roles.
- *
- * Returns an error key on failure, or null on success.
- */
-export function validateRoleChange(
-  actorRole: string,
-  requestedRole: string,
-  targetCurrentRole?: string
-): RoleValidationError | null {
-  if (!isUserRole(requestedRole)) {
-    return "invalidRole";
-  }
-
-  if (!canManageRole(actorRole, requestedRole)) {
-    return "onlySuperAdminCanChangeSuperAdminRole";
-  }
-
-  if (targetCurrentRole === "super_admin" && requestedRole !== "super_admin") {
-    return "cannotChangeSuperAdminRole";
-  }
-
-  return null;
-}
-
-/**
- * Async version of validateRoleChange that supports custom roles via DB cache.
  * Uses capability-based role level comparison to properly handle custom roles.
  */
 export async function validateRoleChangeAsync(
