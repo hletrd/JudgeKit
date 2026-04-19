@@ -8,7 +8,7 @@ import { isJudgeLanguage, getJudgeLanguageDefinition, serializeJudgeCommand } fr
 import { executeCompilerRun } from "@/lib/compiler/execute";
 
 const MAX_SOURCE_CODE_LENGTH = 64 * 1024;
-const MAX_STDIN_LENGTH = 64 * 1024;
+const MAX_STDIN_LENGTH = 64 * 1024 - 1; // -1 to account for the appended newline in executeCompilerRun
 
 const playgroundRunSchema = z.object({
   language: z.string().min(1),
