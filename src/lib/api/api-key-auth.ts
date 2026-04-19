@@ -5,6 +5,7 @@ import { apiKeys, users } from "@/lib/db/schema";
 import { authUserSelect } from "@/lib/db/selects";
 import { deriveEncryptionKey, legacyEncryptionKey } from "@/lib/security/derive-key";
 import { getRoleLevel } from "@/lib/capabilities/cache";
+import { logger } from "@/lib/logger";
 
 export const API_KEY_PREFIX = "jk_";
 const KEY_RANDOM_BYTES = 20; // 20 bytes = 40 hex chars → total key = "jk_" + 40 = 43 chars
@@ -87,10 +88,13 @@ export async function authenticateApiKey(authHeader: string | null) {
 
   if (!user?.isActive) return null;
 
-  // Update lastUsedAt (fire-and-forget)
+  // Update lastUsedAt (fire-and-forget with error logging)
   void db.update(apiKeys)
     .set({ lastUsedAt: new Date() })
-    .where(eq(apiKeys.id, candidate.id));
+    .where(eq(apiKeys.id, candidate.id))
+    .catch((err) => {
+      logger.warn({ err, apiKeyId: candidate.id }, "[api-key-auth] Failed to update lastUsedAt");
+    });
 
   // Use the lesser of the API key's declared role and the creator's current
   // role. This must resolve custom-role levels through the capability cache,
