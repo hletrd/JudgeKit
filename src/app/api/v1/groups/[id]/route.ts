@@ -104,7 +104,10 @@ export const PATCH = createApiHandler({
   schema: updateGroupSchema,
   handler: async (req: NextRequest, { user, body, params }) => {
     const { id } = params;
-    const group = await db.query.groups.findFirst({ where: eq(groups.id, id) });
+    const group = await db.query.groups.findFirst({
+      where: eq(groups.id, id),
+      columns: { id: true, instructorId: true, name: true },
+    });
     if (!group) return notFound("Group");
 
     const caps = await resolveCapabilities(user.role);

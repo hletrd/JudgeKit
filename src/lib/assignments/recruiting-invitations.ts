@@ -114,7 +114,21 @@ export async function getRecruitingInvitations(
   const offset = Math.max(filters?.offset ?? 0, 0);
 
   return db
-    .select()
+    .select({
+      id: recruitingInvitations.id,
+      assignmentId: recruitingInvitations.assignmentId,
+      candidateName: recruitingInvitations.candidateName,
+      candidateEmail: recruitingInvitations.candidateEmail,
+      status: recruitingInvitations.status,
+      metadata: recruitingInvitations.metadata,
+      userId: recruitingInvitations.userId,
+      expiresAt: recruitingInvitations.expiresAt,
+      redeemedAt: recruitingInvitations.redeemedAt,
+      ipAddress: recruitingInvitations.ipAddress,
+      createdBy: recruitingInvitations.createdBy,
+      createdAt: recruitingInvitations.createdAt,
+      updatedAt: recruitingInvitations.updatedAt,
+    })
     .from(recruitingInvitations)
     .where(and(...conditions))
     .orderBy(recruitingInvitations.createdAt)
@@ -124,7 +138,21 @@ export async function getRecruitingInvitations(
 
 export async function getRecruitingInvitation(id: string) {
   const [invitation] = await db
-    .select()
+    .select({
+      id: recruitingInvitations.id,
+      assignmentId: recruitingInvitations.assignmentId,
+      candidateName: recruitingInvitations.candidateName,
+      candidateEmail: recruitingInvitations.candidateEmail,
+      status: recruitingInvitations.status,
+      metadata: recruitingInvitations.metadata,
+      userId: recruitingInvitations.userId,
+      expiresAt: recruitingInvitations.expiresAt,
+      redeemedAt: recruitingInvitations.redeemedAt,
+      ipAddress: recruitingInvitations.ipAddress,
+      createdBy: recruitingInvitations.createdBy,
+      createdAt: recruitingInvitations.createdAt,
+      updatedAt: recruitingInvitations.updatedAt,
+    })
     .from(recruitingInvitations)
     .where(eq(recruitingInvitations.id, id))
     .limit(1);
