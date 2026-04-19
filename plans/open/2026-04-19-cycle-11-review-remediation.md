@@ -2,7 +2,7 @@
 
 **Date:** 2026-04-19
 **Source:** `.context/reviews/cycle-11-comprehensive-review.md`, `.context/reviews/_aggregate.md`
-**Status:** IN PROGRESS
+**Status:** COMPLETE
 
 ## Deduplication note
 Cycles 1-10 plans are all COMPLETE. This plan covers findings that are genuinely NEW from the cycle 11 review.
@@ -161,9 +161,9 @@ These findings are explicitly deferred per the review. Each records the file+lin
 
 | Story | Status | Commit |
 |---|---|---|
-| DATA-09 | Pending | |
-| AUTH-02 | Pending | |
-| AUTH-03 | Pending | |
-| DATA-10 | Pending | |
-| DATA-11 | Pending | |
-| DATA-12 | Pending | |
+| DATA-09 | Done | `04e0284e` |
+| AUTH-02 | Done | `54f8faeb` |
+| AUTH-03 | Done | `54f8faeb` |
+| DATA-10 | Done | `80187837` |
+| DATA-11 | Done | `9cb361fc` |
+| DATA-12 | By Design | N/A — all columns are settings keys; large JSONB columns are single-row overhead |
