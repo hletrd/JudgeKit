@@ -1,90 +1,134 @@
 # Cycle 14 Review Remediation Plan
 
 **Date:** 2026-04-19
-**Source:** `.context/reviews/cycle-14-comprehensive-review.md` and `.context/reviews/_aggregate.md`
-**Status:** Complete
+**Source:** `.context/reviews/cycle-14-aggregate.md`
+**Status:** COMPLETE
 
 ---
 
-## MEDIUM Priority
+## Schedule (this cycle)
 
-### M1: Remove redundant `roleName === "super_admin"` shortcut in `resolveCapabilities`
-- **File**: `src/lib/capabilities/cache.ts:103-106`
-- **Status**: DONE (commit 2154208f)
-- **Plan**:
-  1. Remove lines 103-106 (the `if (roleName === "super_admin")` block)
-  2. Add a code comment explaining why the level-based check at line 99 is sufficient (the `loadRolesFromDb` built-in fallback and the super_admin safety override in that function already guarantee ALL_CAPABILITIES for "super_admin")
-  3. Verify no other code relies on this specific shortcut (grep for comments referencing it)
-- **Exit criterion**: No `roleName === "super_admin"` string comparison exists in `resolveCapabilities`. The function only uses level-based checks.
+### S1 — [MEDIUM] Fix `changePassword` TOCTOU race — replace check-then-record with atomic `consumeRateLimitAttemptMulti`
 
-### M2: Replace `isAdmin()` sync calls with async capability check in assignment route
-- **File**: `src/app/api/v1/groups/[id]/assignments/[assignmentId]/route.ts:109,181,223`
-- **Status**: DONE (commit ad529177)
-- **Plan**:
-  1. Import `resolveCapabilities` (already imported in this file or add it)
-  2. Replace `isAdmin(user.role)` at line 109 with `caps.has("content.manage")` where `caps` is obtained from `resolveCapabilities(user.role)` — but note: this is inside a transaction callback. Need to resolve caps before the transaction to avoid async inside sync-looking transaction code.
-  3. Alternative: Import `isAdminAsync` and use `await isAdminAsync(user.role)` before the transaction, store the result in a boolean variable, and use the variable inside the transaction.
-  4. Replace all 3 occurrences consistently.
-  5. Verify the route tests still pass.
-- **Exit criterion**: Met — No `isAdmin(user.role)` sync calls in the assignment route. Custom admin-level roles can override problem locks via `isAdminAsync()`.
+- **From:** AGG-1 (CR14-CR1, CR14-SR1/SR2, CR14-CT1, CR14-DB1, CR14-TE1, tracer Flow 1)
+- **Files:** `src/lib/actions/change-password.ts:40-53`
+- **Plan:**
+  1. Replace `isRateLimited(rateLimitKey)` + `recordRateLimitFailure(rateLimitKey)` with `consumeRateLimitAttemptMulti(rateLimitKey)` at the start of the function
+  2. If `consumeRateLimitAttemptMulti` returns `true`, return `{ success: false, error: "changePasswordRateLimited" }` immediately
+  3. Remove the `recordRateLimitFailure` call after wrong password — the attempt was already consumed atomically
+  4. Keep `clearRateLimit(rateLimitKey)` on success (already present at line 80)
+  5. Verify the change-password tests still pass
+- **Exit criterion:** No `isRateLimited` or `recordRateLimitFailure` calls in `changePassword`. Rate limit check and increment happen atomically in a single transaction.
 
-### M3: Remove unused `canManageRole` sync function
-- **File**: `src/lib/security/constants.ts:73-81`
-- **Status**: DONE (commit 9640860f)
-- **Plan**:
-  1. Verify zero callers with grep (confirmed: only the definition and the JSDoc comment reference it)
-  2. Remove the function and its JSDoc comment (lines 70-81)
-  3. Run tests to ensure nothing breaks
-- **Exit criterion**: Met — No `canManageRole` sync function exported from constants.ts. Only `canManageRoleAsync` remains.
+### S2 — [MEDIUM] Fix API key auth `mustChangePassword: false` — read actual DB value
 
-### M4: Add limit to anti-cheat heartbeat gap detection query
-- **File**: `src/app/api/v1/contests/[assignmentId]/anti-cheat/route.ts:185-193`
-- **Status**: DONE (commit e359123c)
-- **Plan**:
-  1. Add `.limit(5000)` to the heartbeat query at line 193
-  2. Add a code comment explaining the limit (prevents memory spikes for very long contests)
-  3. The gap detection algorithm still works correctly with a limit — it only detects gaps in the most recent 5000 heartbeats, which covers ~83 hours at 60s intervals
-- **Exit criterion**: Met — Heartbeat gap detection query has a LIMIT 5000 clause.
+- **From:** AGG-2 (CR14-SR3, CR14-AR3, tracer Flow 2)
+- **Files:** `src/lib/api/api-key-auth.ts:121`
+- **Plan:**
+  1. The DB query at lines 89-93 already fetches `authUserSelect` which includes `mustChangePassword`
+  2. Replace `mustChangePassword: false` with `mustChangePassword: Boolean(user.mustChangePassword)` at line 121
+  3. Verify the middleware's forced-password-change check works for API key auth
+  4. Consider whether API key requests should be blocked by mustChangePassword (they should — it's a security policy)
+- **Exit criterion:** `authenticateApiKey` returns the actual `mustChangePassword` value from the DB, not hardcoded `false`.
+
+### S3 — [MEDIUM] Extend NextAuth `Session` type to include preference fields — remove unsafe cast in `mapTokenToSession`
+
+- **From:** AGG-3 (CR14-V1)
+- **Files:** `src/lib/auth/config.ts:148-158`, create or extend `src/types/next-auth.d.ts`
+- **Plan:**
+  1. Check if a `next-auth.d.ts` or module augmentation already exists for `Session["user"]`
+  2. Add a module augmentation that extends `Session["user"]` with all preference fields from `AUTH_PREFERENCE_FIELDS` plus `className` and `mustChangePassword`
+  3. In `mapTokenToSession`, replace `(session.user as Record<string, unknown>)[field]` with direct assignment to the typed `session.user` fields
+  4. Verify `tsc --noEmit` passes
+- **Exit criterion:** No `Record<string, unknown>` cast in `mapTokenToSession`. All preference fields are properly typed on `session.user`.
+
+### S4 — [LOW] Normalize `recordRateLimitFailureMulti` insert to use `entry.windowStartedAt`
+
+- **From:** AGG-4 (CR14-CR2, CR14-CT2, CR14-DB3, tracer Flow 3)
+- **Files:** `src/lib/security/rate-limit.ts:261`
+- **Plan:**
+  1. Change `windowStartedAt: now` to `windowStartedAt: entry.windowStartedAt` at line 261
+  2. This matches the pattern in `recordRateLimitFailure` (line 225) and `consumeRateLimitAttemptMulti` (line 184)
+- **Exit criterion:** All three rate-limit functions use `entry.windowStartedAt` consistently for inserts.
+
+### S5 — [LOW] Remove dead-code sync role-helper functions: `isAtLeastRole`, `canManageUsers`, `isInstructorOrAbove`
+
+- **From:** AGG-5 (CR14-CR3/CR4, CR14-AR2)
+- **Files:** `src/lib/auth/role-helpers.ts:11-13,30-32,46-48`
+- **Plan:**
+  1. Verify zero callers with grep (confirmed: only definitions and internal references)
+  2. Remove `isAtLeastRole` (lines 11-13), `canManageUsers` (lines 30-32), `isInstructorOrAbove` (lines 46-48)
+  3. Keep async versions: `isAtLeastRoleAsync`, `canManageUsersAsync`, `isInstructorOrAboveAsync`
+  4. Verify `tsc --noEmit` passes
+- **Exit criterion:** No sync `isAtLeastRole`, `canManageUsers`, or `isInstructorOrAbove` functions exported from `role-helpers.ts`.
+
+### S6 — [LOW] Add documentation: API rate limit `consecutiveBlocks`, `AUTH_PREFERENCE_FIELDS` exclusion, `recordRateLimitFailure` non-atomic warning
+
+- **From:** AGG-6 (CR14-CR6, CR14-CT3, CR14-TE4, CR14-DOC3), AGG-8 (CR14-V2, CR14-DOC1), AGG-9 (CR14-DOC2)
+- **Files:** `src/lib/security/api-rate-limit.ts:70-81`, `src/lib/auth/types.ts:1-7`, `src/lib/security/rate-limit.ts:195`
+- **Plan:**
+  1. Add comment in `api-rate-limit.ts` atomicConsumeRateLimit: "API rate limits use fixed blocking without exponential backoff (consecutiveBlocks is always 0)."
+  2. Add note in `AUTH_PREFERENCE_FIELDS` JSDoc: "Security fields (mustChangePassword, isActive, tokenInvalidatedAt) are NOT preference fields and are handled separately in AUTH_CORE_FIELDS."
+  3. Add JSDoc to `recordRateLimitFailure`: "Record a failed attempt for the given key. NOTE: This function is not atomic — callers that need check+increment in one transaction should use `consumeRateLimitAttemptMulti` instead."
+- **Exit criterion:** All three documentation gaps addressed.
+
+### S7 — [LOW] Normalize `api-rate-limit.ts` insert pattern — remove explicit `id: nanoid()`, rely on schema default
+
+- **From:** AGG-7 (CR14-DB2)
+- **Files:** `src/lib/security/api-rate-limit.ts:71`
+- **Plan:**
+  1. Remove `id: nanoid()` from the insert values in `atomicConsumeRateLimit` (line 71)
+  2. The schema `$defaultFn(() => nanoid())` will provide the ID automatically
+  3. This matches the pattern used in `rate-limit.ts` which does NOT include `id` in inserts
+  4. Verify tests pass
+- **Exit criterion:** `api-rate-limit.ts` inserts do not include explicit `id` field.
+
+### S8 — [LOW] Add "contests" to PublicHeader dropdown items
+
+- **From:** AGG-10 (CR14-D1, CR14-V4)
+- **Files:** `src/components/layout/public-header.tsx:75-93`
+- **Plan:**
+  1. Add a "contests" entry after the "mySubmissions" entry in `getDropdownItems`
+  2. No capability check needed — all authenticated users can see contests
+  3. Use the Timer icon (already imported)
+  4. The i18n key `nav.contests` should already exist in `publicShell` namespace
+- **Exit criterion:** PublicHeader dropdown includes "contests" link for authenticated users.
 
 ---
 
-## LOW Priority
+## Progress Ledger
 
-### L1: Replace `console.error` with structured logger in error boundaries
-- **Files**: `src/app/(dashboard)/dashboard/admin/error.tsx:17`, `submissions/error.tsx:17`, `problems/error.tsx:17`, `groups/error.tsx:17`
-- **Status**: DONE (commit 13a23941)
-- **Plan**:
-  1. Check if the structured logger works in client components (these are "use client" error boundaries)
-  2. If not, use `console.error` but wrap in a more descriptive message: `console.error("[error-boundary] Uncaught error:", error)`
-  3. If the logger works client-side, replace with `logger.error({ err: error }, "Uncaught error in error boundary")`
-- **Exit criterion**: Met — Error boundaries have descriptive prefix in console.error.
-
-### L2: Add debug logging to `use-source-draft` localStorage catch blocks
-- **File**: `src/hooks/use-source-draft.ts:63,70`
-- **Status**: DONE (commit 11c8acaf)
-- **Plan**:
-  1. Replace `catch {}` at line 63 with `catch { /* localStorage unavailable (private browsing, quota) */ }`
-  2. Replace `catch {}` at line 70 with same pattern
-  3. These are client-side hooks where logging is not critical — a comment is sufficient
-- **Exit criterion**: Met — No bare `catch {}` blocks in use-source-draft.ts.
-
-### L3: Shell command validator blocks redirect operators (intentional — documentation only)
-- **File**: `src/lib/compiler/execute.ts:156`
-- **Status**: DEFERRED
-- **Reason**: The denylist is intentionally strict and kept in lock-step with the Rust judge worker. Changing it could create a divergence. Admins can use `&&` for chaining (which is allowed). I/O redirects are a security concern in Docker commands even with sandboxing.
-- **Exit criterion**: Re-open if a legitimate compile command requires I/O redirects and cannot be expressed with the current allowed set.
-
-### L4: Add comment to community votes transaction about isolation semantics
-- **File**: `src/app/api/v1/community/votes/route.ts:110-121`
-- **Status**: DONE (commit ad8539d1)
-- **Plan**:
-  1. Add a brief comment above the summary query explaining that READ COMMITTED isolation means the returned score includes concurrent votes from other transactions.
-- **Exit criterion**: Met — Score summary query has an isolation semantics comment.
+| Story | Status | Commit |
+|---|---|---|
+| S1 | COMPLETE | 076c08ae |
+| S2 | COMPLETE | 433e481b |
+| S3 | COMPLETE | eb68b0b9 |
+| S4 | COMPLETE | fa32dab7 |
+| S5 | COMPLETE | 20a9be25 |
+| S6 | COMPLETE | 759bcf77 |
+| S7 | COMPLETE | cc4b37fd |
+| S8 | COMPLETE | a0dddfde |
 
 ---
 
-## Deferred Items
+## Deferred (not this cycle)
 
-| Finding | Severity | Reason | Exit Criterion |
-|---------|----------|--------|----------------|
-| L3 (shell command validator) | LOW | Intentionally strict denylist; kept in lock-step with Rust worker | Re-open if legitimate compile command needs redirects |
+### D1-D26 from cycle 12b (carried forward unchanged)
+
+See `plans/archive/2026-04-19-cycle-12b-review-remediation.md` for the full list.
+
+### D27 — [LOW] `handleSignOut` in `AppSidebar` fires async with `void` — errors silently swallowed (carried from cycle 13)
+
+### D28 — [LOW] `(control)` route group should merge into `(dashboard)` (carried from cycle 13)
+
+### D29 — [LOW] SSE onPollResult duplicate terminal-state-fetch logic (CR14-CR5)
+
+- **From:** CR14-CR5
+- **Reason:** Code duplication, not a bug. Extracting a helper is a nice cleanup but not urgent.
+- **Exit criterion:** Next time the SSE route is significantly refactored
+
+### D30 — [LOW] `getActiveAuthUserById` returns `role` as `UserRole` via cast — custom roles not properly typed (CR14-V3)
+
+- **From:** CR14-V3
+- **Reason:** The `UserRole` type is used throughout the codebase. Changing it would be a larger refactor.
+- **Exit criterion:** Custom role type system is designed and implemented

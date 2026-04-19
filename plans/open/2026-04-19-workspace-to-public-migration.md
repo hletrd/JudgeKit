@@ -1,7 +1,7 @@
 # Workspace-to-Public Page Migration Plan
 
 **Date:** 2026-04-19
-**Status:** Phase 1 COMPLETE, Phase 2 COMPLETE, Phase 3 IN PROGRESS (cycle 13 — AppSidebar deduplication + shared nav config), Phase 4 PENDING
+**Status:** Phase 1 COMPLETE, Phase 2 COMPLETE, Phase 3 IN PROGRESS (cycle 14 — add contests to dropdown, continue sidebar refinement), Phase 4 PENDING
 **Source:** User-injected TODO #2, AGG-13
 
 ## Goal
@@ -210,6 +210,9 @@ Same as instructor, with additional "Admin" dropdown entry that navigates to `/d
 - ~~Extract shared navigation config (getPublicNavItems/getPublicNavActions)~~ DONE (commit 4389523c — both layouts use shared helper)
 - ~~Remove hardcoded role fallback in getDropdownItems~~ DONE (commit cb2ec48c — capability-based filtering only)
 - ~~Remove duplicate AppSidebar items already in PublicHeader dropdown~~ DONE (commit 9bba87d3 — dashboard, profile removed from sidebar)
+
+**Cycle 14 improvements:**
+- Add "contests" to PublicHeader dropdown (navigation gap — students need an extra click to reach contests from public pages)
 
 **Remaining Phase 3 work:**
 - Further slim down `AppSidebar` to icon-only mode or contextual sub-navigation
