@@ -407,13 +407,15 @@ export default async function PracticePage({
     }
   } else {
     // --- Path B: Progress filter active (requires auth) ---
+    // NOTE: This path fetches all matching problem IDs and user submissions
+    // for progress filtering in JavaScript. For large problem sets (10k+),
+    // this should be moved to a SQL CTE or subquery for better performance.
+    // Only the `id` column is needed here; full data is fetched for the
+    // page slice below.
     const allProblemRows = await db.query.problems.findMany({
       where: baseWhereClause,
       columns: {
         id: true,
-        sequenceNumber: true,
-        title: true,
-        description: true,
       },
     });
     const allIds = allProblemRows.map((p) => p.id);
