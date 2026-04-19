@@ -143,8 +143,15 @@ function createSecuredNextResponse(request: NextRequest) {
   requestHeaders.set("x-public-locale-mode", deterministicPublicLocale ? "deterministic" : "standard");
   // Next.js 16 RSC bug: X-Forwarded-Host from nginx corrupts RSC streaming
   // during client-side navigation, causing React #300/#310 errors.
-  // Auth routes (/api/auth/) are NOT in the proxy matcher, so they keep
-  // the header for proper callback URL resolution.
+  //
+  // IMPORTANT SAFETY CONSTRAINT: Auth routes (/api/auth/) are NOT in the
+  // proxy matcher (see `config.matcher` below), so they keep this header
+  // for proper callback URL resolution via `validateTrustedAuthHost()`.
+  // Deleting x-forwarded-host from auth routes would cause UntrustedHost
+  // rejections because the fallback `host` header may be the internal
+  // container hostname (e.g., localhost:3000) rather than the external
+  // domain. See cycle 2 aggregate AGG-1 for historical context.
+  // DO NOT add /api/auth/ to the proxy matcher without addressing this.
   requestHeaders.delete("x-forwarded-host");
   const response = NextResponse.next({
     request: {
@@ -310,6 +317,7 @@ export const config = {
     "/community/:path*",
     "/rankings/:path*",
     "/submissions/:path*",
+    "/languages/:path*",
     "/api/v1/:path*",
     "/login",
     "/signup",
