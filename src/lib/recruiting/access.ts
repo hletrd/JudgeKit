@@ -1,3 +1,4 @@
+import { cache } from "react";
 import { and, eq, inArray } from "drizzle-orm";
 import type { PlatformMode } from "@/types";
 import { db } from "@/lib/db";
@@ -11,6 +12,17 @@ export type RecruitingAccessContext = {
   effectivePlatformMode: PlatformMode;
 };
 
+/**
+ * Load the recruiting access context for a user.
+ *
+ * Wrapped with React `cache()` so that repeated calls within the same server
+ * component render return the cached result without hitting the database again.
+ * This eliminates the N+1 pattern where the dashboard layout AND individual page
+ * components each call `getRecruitingAccessContext` for the same user.
+ *
+ * The cache is request-scoped (per React Server Component render) and does not
+ * persist across requests, so stale data is not a concern.
+ */
 async function loadRecruitingAccessContext(
   userId: string
 ): Promise<RecruitingAccessContext> {
@@ -59,12 +71,19 @@ async function loadRecruitingAccessContext(
   };
 }
 
-export async function getRecruitingAccessContext(
-  userId: string
-): Promise<RecruitingAccessContext> {
-  return loadRecruitingAccessContext(userId);
-}
+/**
+ * Get the recruiting access context for a user, cached per-request.
+ * Uses React `cache()` to deduplicate DB queries within a single server
+ * component render. Call sites do not need any changes.
+ */
+export const getRecruitingAccessContext = cache(
+  async function getRecruitingAccessContextInner(
+    userId: string
+  ): Promise<RecruitingAccessContext> {
+    return loadRecruitingAccessContext(userId);
+  }
+);
 
 export async function isRecruitingCandidateUser(userId: string): Promise<boolean> {
-  return (await loadRecruitingAccessContext(userId)).isRecruitingCandidate;
+  return (await getRecruitingAccessContext(userId)).isRecruitingCandidate;
 }
