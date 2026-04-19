@@ -14,7 +14,7 @@ export async function GET(request: NextRequest) {
 
     const searchParams = request.nextUrl.searchParams;
     const query = searchParams.get("q")?.trim() ?? "";
-    const limit = Math.min(Number(searchParams.get("limit") ?? "50"), 100);
+    const limit = Math.min(parseInt(searchParams.get("limit") ?? "50", 10) || 50, 100);
 
     const whereClause = query
       ? sql`${tags.name} LIKE ${`%${escapeLikePattern(query)}%`} ESCAPE '\\'`
