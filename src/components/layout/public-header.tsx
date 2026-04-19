@@ -37,6 +37,7 @@ type PublicHeaderProps = {
     name: string;
     href: string;
     label: string;
+    /** User role — may be a built-in UserRole or a custom role string */
     role?: string;
   } | null;
 };
