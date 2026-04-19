@@ -57,7 +57,11 @@ async function atomicConsumeRateLimit(key: string): Promise<boolean> {
 
   return execTransaction(async (tx) => {
     const [existing] = await tx
-      .select()
+      .select({
+        attempts: rateLimits.attempts,
+        windowStartedAt: rateLimits.windowStartedAt,
+        blockedUntil: rateLimits.blockedUntil,
+      })
       .from(rateLimits)
       .where(eq(rateLimits.key, key))
       .for("update")
