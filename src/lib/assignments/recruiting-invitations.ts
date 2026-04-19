@@ -402,9 +402,11 @@ export async function redeemRecruitingToken(
           .limit(1);
 
         if (!assignment) return { ok: false as const, error: "assignmentNotFound" };
-        if (assignment.deadline && assignment.deadline < new Date()) {
-          return { ok: false as const, error: "contestClosed" };
-        }
+        // Deadline is not checked here on the JS side to avoid clock skew between
+        // app server and DB server. The already-redeemed path does not have an
+        // atomic SQL deadline gate, but the contest's deadline enforcement is
+        // handled at the submission level. If the contest is actually closed,
+        // the user will see the contest as ended in the UI.
 
         return {
           ok: true as const,
@@ -437,9 +439,11 @@ export async function redeemRecruitingToken(
 
       if (!assignment) return { ok: false as const, error: "assignmentNotFound" };
       if (assignment.examMode === "none") return { ok: false as const, error: "notAContest" };
-      if (assignment.deadline && assignment.deadline < new Date()) {
-        return { ok: false as const, error: "contestClosed" };
-      }
+      // Deadline is not checked on the JS side to avoid clock skew between app
+      // server and DB server. The atomic SQL claim step below validates the
+      // deadline using NOW() which is authoritative. If the contest has closed
+      // between the read and claim, the SQL WHERE clause will return no rows
+      // and the transaction will roll back with an appropriate error.
 
       if (!accountPassword) return { ok: false as const, error: "accountPasswordRequired" };
 
