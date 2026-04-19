@@ -43,6 +43,10 @@ export async function changePassword(
     return { success: false, error: "changePasswordRateLimited" };
   }
 
+  // needsRehash is intentionally not handled here: the user is about to set
+  // a new password which will be hashed with argon2id via hashPassword() below.
+  // There is no benefit to rehashing the current password when it is about to
+  // be replaced.
   const { valid: isValid } = await verifyPassword(currentPassword, user.passwordHash);
   if (!isValid) {
     await recordRateLimitFailure(rateLimitKey);

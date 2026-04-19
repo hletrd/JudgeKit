@@ -372,9 +372,21 @@ export async function redeemRecruitingToken(
             })
             .where(eq(recruitingInvitations.id, invitation.id));
         } else {
-          const { valid } = await verifyPassword(accountPassword, existingUser.passwordHash);
+          const { valid, needsRehash } = await verifyPassword(accountPassword, existingUser.passwordHash);
           if (!valid) {
             return { ok: false as const, error: "accountPasswordIncorrect" };
+          }
+
+          // Transparent rehash: migrate legacy bcrypt hashes to Argon2id when
+          // the candidate re-enters the contest. This accelerates the
+          // bcrypt-to-argon2 migration for recruiting candidates who may
+          // rarely use the main login flow.
+          if (needsRehash) {
+            const newHash = await hashPassword(accountPassword);
+            await tx
+              .update(users)
+              .set({ passwordHash: newHash, updatedAt: new Date() })
+              .where(eq(users.id, existingUser.id));
           }
         }
 
