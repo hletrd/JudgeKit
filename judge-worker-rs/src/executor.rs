@@ -237,7 +237,7 @@ async fn execute_inner(
     // Set permissions to 0o770 so the container judge user can write compiled output
     if let Err(e) = fs::set_permissions(
         workspace_dir,
-        std::os::unix::fs::PermissionsExt::from_mode(0o770),
+        std::os::unix::fs::PermissionsExt::from_mode(0o777),
     )
     .await
     {
@@ -287,7 +287,7 @@ async fn execute_inner(
     // Ensure source file is world-readable regardless of host umask
     if let Err(e) = fs::set_permissions(
         &source_path,
-        std::os::unix::fs::PermissionsExt::from_mode(0o644),
+        std::os::unix::fs::PermissionsExt::from_mode(0o666),
     )
     .await
     {
