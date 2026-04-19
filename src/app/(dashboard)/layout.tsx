@@ -23,6 +23,7 @@ import { getRecruitingAccessContext } from "@/lib/recruiting/access";
 import { isInstructorOrAboveAsync } from "@/lib/auth/role-helpers";
 import { getActiveTimedAssignmentsForSidebar } from "@/lib/assignments/active-timed-assignments";
 import { NO_INDEX_METADATA } from "@/lib/seo";
+import { getPublicNavItems, getPublicNavActions } from "@/lib/navigation/public-nav";
 
 export const metadata: Metadata = NO_INDEX_METADATA;
 
@@ -30,9 +31,11 @@ export default async function DashboardLayout({ children }: { children: React.Re
   const session = await auth();
   if (!session?.user) redirect("/login");
 
-  const [{ effectivePlatformMode }, t, capabilities] = await Promise.all([
+  const [{ effectivePlatformMode }, tCommon, tShell, tAuth, capabilities] = await Promise.all([
     getRecruitingAccessContext(session.user.id),
     getTranslations("common"),
+    getTranslations("publicShell"),
+    getTranslations("auth"),
     (async () => {
       const [caps, chatPluginOn, aiOn] = await Promise.all([
         resolveCapabilities(session.user.role),
@@ -51,8 +54,8 @@ export default async function DashboardLayout({ children }: { children: React.Re
 
   const [settings, canUseLectureMode, activeTimedAssignments] = await Promise.all([
     getResolvedSystemSettings({
-      siteTitle: t("appName"),
-      siteDescription: t("appDescription"),
+      siteTitle: tCommon("appName"),
+      siteDescription: tCommon("appDescription"),
     }),
     isInstructorOrAboveAsync(session.user.role),
     canBypassTimedAssignmentPanel
@@ -71,18 +74,8 @@ export default async function DashboardLayout({ children }: { children: React.Re
       <SidebarProvider>
         <PublicHeader
           siteTitle={settings.siteTitle}
-          items={[
-            { href: "/practice", label: t("practice") },
-            { href: "/playground", label: t("playground") },
-            { href: "/contests", label: t("contests") },
-            { href: "/rankings", label: t("rankings") },
-            { href: "/community", label: t("community") },
-            { href: "/languages", label: t("languages") },
-          ]}
-          actions={[
-            { href: "/login", label: t("signIn") },
-            { href: "/signup", label: t("signUp") },
-          ]}
+          items={getPublicNavItems(tShell)}
+          actions={getPublicNavActions(tAuth, settings.publicSignupEnabled)}
           loggedInUser={{
             name: session.user.name || session.user.username || "",
             href: "/dashboard/profile",
@@ -93,7 +86,7 @@ export default async function DashboardLayout({ children }: { children: React.Re
           leadingSlot={<SidebarTrigger />}
           trailingSlot={canUseLectureMode ? <LectureModeToggle /> : undefined}
         />
-        <SkipToContent targetId="main-content" label={t("skipToContent")} />
+        <SkipToContent targetId="main-content" label={tCommon("skipToContent")} />
         <AppSidebar
           user={session.user}
           siteTitle={settings.siteTitle}
