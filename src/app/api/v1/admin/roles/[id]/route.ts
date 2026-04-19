@@ -10,6 +10,18 @@ import { updateRoleSchema } from "@/lib/validators/roles";
 import { withUpdatedAt } from "@/lib/db/helpers";
 import { createApiHandler } from "@/lib/api/handler";
 
+const ROLE_COLUMNS = {
+  id: roles.id,
+  name: roles.name,
+  displayName: roles.displayName,
+  description: roles.description,
+  isBuiltin: roles.isBuiltin,
+  level: roles.level,
+  capabilities: roles.capabilities,
+  createdAt: roles.createdAt,
+  updatedAt: roles.updatedAt,
+} as const;
+
 export const GET = createApiHandler({
   handler: async (req: NextRequest, { user, params }) => {
     const caps = await resolveCapabilities(user.role);
@@ -17,7 +29,7 @@ export const GET = createApiHandler({
 
     const { id } = params;
     const role = await db
-      .select()
+      .select(ROLE_COLUMNS)
       .from(roles)
       .where(eq(roles.id, id))
       .then((rows) => rows[0] ?? null);
@@ -44,7 +56,7 @@ export const PATCH = createApiHandler({
 
     const { id } = params;
     const role = await db
-      .select()
+      .select(ROLE_COLUMNS)
       .from(roles)
       .where(eq(roles.id, id))
       .then((rows) => rows[0] ?? null);
@@ -102,7 +114,7 @@ export const PATCH = createApiHandler({
     });
 
     const updated = await db
-      .select()
+      .select(ROLE_COLUMNS)
       .from(roles)
       .where(eq(roles.id, id))
       .then((rows) => rows[0]);
@@ -119,7 +131,7 @@ export const DELETE = createApiHandler({
     const { id } = params;
     const txResult = await execTransaction(async (tx) => {
       const [role] = await tx
-        .select()
+        .select(ROLE_COLUMNS)
         .from(roles)
         .where(eq(roles.id, id))
         .limit(1)
