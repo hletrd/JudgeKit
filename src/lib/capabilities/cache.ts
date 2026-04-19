@@ -90,13 +90,22 @@ export function invalidateRoleCache(): void {
  * Returns an empty set for unknown roles.
  */
 export async function resolveCapabilities(roleName: string): Promise<Set<string>> {
-  // super_admin shortcut — always all capabilities
+  await ensureLoaded();
+  const entry = roleCache?.get(roleName);
+
+  // Any role at super_admin level or above always has ALL capabilities,
+  // regardless of what is stored in the DB. This protects against
+  // misconfigured custom roles at the super_admin level.
+  if (entry && entry.level >= SUPER_ADMIN_LEVEL) {
+    return new Set(ALL_CAPABILITIES);
+  }
+
+  // Built-in super_admin shortcut (cache may not be loaded yet during bootstrap)
   if (roleName === "super_admin") {
     return new Set(ALL_CAPABILITIES);
   }
 
-  await ensureLoaded();
-  return roleCache?.get(roleName)?.capabilities ?? new Set();
+  return entry?.capabilities ?? new Set();
 }
 
 /**
