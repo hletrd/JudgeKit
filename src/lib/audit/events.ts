@@ -222,3 +222,23 @@ export function stopAuditEventPruning() {
     pruneTimer = null;
   }
 }
+
+// --- Graceful shutdown: flush audit buffer before process exits ---
+
+function handleGracefulShutdown() {
+  // Flush synchronously-ish: fire the flush and give it a brief window.
+  // This is best-effort — SIGKILL cannot be caught.
+  void flushAuditBuffer().then(() => {
+    process.exit(0);
+  }).catch(() => {
+    process.exit(1);
+  });
+}
+
+process.on("SIGTERM", () => handleGracefulShutdown());
+process.on("SIGINT", () => handleGracefulShutdown());
+process.on("beforeExit", () => {
+  // beforeExit fires when the event loop is empty but before the process exits.
+  // No exit is forced, so we just flush without calling process.exit().
+  void flushAuditBuffer();
+});
