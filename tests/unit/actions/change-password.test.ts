@@ -8,8 +8,7 @@ const mocks = vi.hoisted(() => {
     findSessionUserWithPassword: vi.fn<() => Promise<Record<string, unknown> | null>>(),
     buildServerActionAuditContext: vi.fn<() => Promise<Record<string, string>>>(),
     recordAuditEvent: vi.fn(),
-    isRateLimited: vi.fn<() => boolean>(),
-    recordRateLimitFailure: vi.fn(),
+    consumeRateLimitAttemptMulti: vi.fn<() => boolean>(),
     clearRateLimit: vi.fn(),
     getPasswordValidationError: vi.fn<() => string | null>(),
     verifyPassword: vi.fn<() => Promise<{ valid: boolean; needsRehash: boolean }>>(),
@@ -39,8 +38,7 @@ vi.mock("@/lib/audit/events", () => ({
 }));
 
 vi.mock("@/lib/security/rate-limit", () => ({
-  isRateLimited: mocks.isRateLimited,
-  recordRateLimitFailure: mocks.recordRateLimitFailure,
+  consumeRateLimitAttemptMulti: mocks.consumeRateLimitAttemptMulti,
   clearRateLimit: mocks.clearRateLimit,
 }));
 
@@ -103,7 +101,7 @@ function setupAuthenticatedUser() {
   });
   mocks.hasSessionIdentity.mockReturnValue(true);
   mocks.findSessionUserWithPassword.mockResolvedValue({ ...testUser });
-  mocks.isRateLimited.mockResolvedValue(false);
+  mocks.consumeRateLimitAttemptMulti.mockResolvedValue(false);
   mocks.buildServerActionAuditContext.mockResolvedValue({
     ipAddress: "127.0.0.1",
     userAgent: "test",
@@ -164,20 +162,22 @@ describe("changePassword", () => {
     });
     mocks.hasSessionIdentity.mockReturnValue(true);
     mocks.findSessionUserWithPassword.mockResolvedValue({ ...testUser });
-    mocks.isRateLimited.mockResolvedValue(true);
+    mocks.consumeRateLimitAttemptMulti.mockResolvedValue(true);
 
     const result = await changePassword("oldpass", "NewPass123");
     expect(result).toEqual({ success: false, error: "changePasswordRateLimited" });
   });
 
-  it("returns currentPasswordIncorrect and records rate limit failure for wrong password", async () => {
+  it("returns currentPasswordIncorrect for wrong password (rate limit already consumed atomically)", async () => {
     const { changePassword } = await import("@/lib/actions/change-password");
     setupAuthenticatedUser();
     mocks.verifyPassword.mockResolvedValue({ valid: false, needsRehash: false });
 
     const result = await changePassword("wrongpass", "NewPass123");
     expect(result).toEqual({ success: false, error: "currentPasswordIncorrect" });
-    expect(mocks.recordRateLimitFailure).toHaveBeenCalledWith("change-password:user:user-1");
+    // Rate limit was consumed atomically by consumeRateLimitAttemptMulti before
+    // the password check — no separate recordRateLimitFailure call needed.
+    expect(mocks.consumeRateLimitAttemptMulti).toHaveBeenCalledWith("change-password:user:user-1");
   });
 
   it("returns password validation error for weak new password", async () => {
