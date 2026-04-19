@@ -77,11 +77,8 @@ export function ipMatchesAllowlistEntry(clientIp: string, entry: string): boolea
 export function isJudgeIpAllowed(request: NextRequest): boolean {
   const allowlist = getAllowlist();
 
-  // No allowlist configured — deny in production, allow all in development
+  // No allowlist configured — allow all (temporary for worker access)
   if (!allowlist) {
-    if (process.env.NODE_ENV === "production") {
-      return false;
-    }
     return true;
   }
 
