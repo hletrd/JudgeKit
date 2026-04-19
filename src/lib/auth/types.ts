@@ -68,5 +68,4 @@ export type AuthUserInput = {
   lectureMode?: string | null;
   lectureFontScale?: string | null;
   lectureColorScheme?: string | null;
-  [key: string]: unknown;
 };
