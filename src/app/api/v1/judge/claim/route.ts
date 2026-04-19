@@ -299,7 +299,13 @@ export async function POST(request: NextRequest) {
 
     // Fetch test cases for the problem
     const cases = await db
-      .select()
+      .select({
+        id: testCases.id,
+        input: testCases.input,
+        expectedOutput: testCases.expectedOutput,
+        isVisible: testCases.isVisible,
+        sortOrder: testCases.sortOrder,
+      })
       .from(testCases)
       .where(eq(testCases.problemId, claimed.problemId))
       .orderBy(asc(testCases.sortOrder));
