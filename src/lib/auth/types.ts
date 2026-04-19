@@ -22,3 +22,31 @@ export type AuthUserRecord = {
   lectureFontScale?: string | null;
   lectureColorScheme?: string | null;
 };
+
+/**
+ * Looser input type accepted by mapUserToAuthFields and syncTokenWithUser.
+ * Allows null/undefined on fields where the DB or NextAuth types may differ
+ * from AuthUserRecord (e.g., mustChangePassword is boolean|null in the DB
+ * but boolean in AuthUserRecord; id is string|undefined in NextAuth User).
+ * Defaults are applied inside mapUserToAuthFields.
+ */
+export type AuthUserInput = {
+  id?: string;
+  username?: string;
+  email?: string | null;
+  name?: string | null;
+  className?: string | null;
+  role?: string;
+  mustChangePassword?: boolean | null;
+  preferredLanguage?: string | null;
+  preferredTheme?: string | null;
+  shareAcceptedSolutions?: boolean | null;
+  acceptedSolutionsAnonymous?: boolean | null;
+  editorTheme?: string | null;
+  editorFontSize?: string | null;
+  editorFontFamily?: string | null;
+  lectureMode?: string | null;
+  lectureFontScale?: string | null;
+  lectureColorScheme?: string | null;
+  [key: string]: unknown;
+};

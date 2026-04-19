@@ -37,7 +37,7 @@ import {
 } from "@/lib/auth/login-events";
 import { extractClientIp } from "@/lib/security/ip";
 import { authorizeRecruitingToken } from "@/lib/auth/recruiting-token";
-import type { AuthUserRecord } from "@/lib/auth/types";
+import type { AuthUserRecord, AuthUserInput } from "@/lib/auth/types";
 
 type AuthenticatedLoginUser = Omit<AuthUserRecord, "mustChangePassword"> & {
   mustChangePassword: boolean;
@@ -93,14 +93,14 @@ const AUTH_USER_COLUMNS: Record<string, true> = Object.fromEntries(
  * separate field lists. Add new preference fields to AUTH_PREFERENCE_FIELDS
  * and HERE — the DB query columns and clearAuthToken are derived automatically.
  */
-function mapUserToAuthFields(user: AuthUserRecord) {
+function mapUserToAuthFields(user: AuthUserInput) {
   return {
-    id: user.id,
-    username: user.username,
-    email: user.email,
-    name: user.name,
-    className: user.className,
-    role: user.role,
+    id: user.id ?? "",
+    username: user.username ?? "",
+    email: user.email ?? null,
+    name: user.name ?? "",
+    className: user.className ?? null,
+    role: user.role ?? "",
     mustChangePassword: user.mustChangePassword ?? false,
     preferredLanguage: user.preferredLanguage ?? null,
     preferredTheme: user.preferredTheme ?? null,
@@ -116,7 +116,7 @@ function mapUserToAuthFields(user: AuthUserRecord) {
 }
 
 function createSuccessfulLoginResponse(
-  user: AuthUserRecord,
+  user: AuthUserInput,
   loginEventContext: LoginEventRequestSummary
 ): AuthenticatedLoginUser {
   return {
@@ -127,7 +127,7 @@ function createSuccessfulLoginResponse(
 
 function syncTokenWithUser(
   token: JWT,
-  user: AuthUserRecord,
+  user: AuthUserInput,
   authenticatedAtSeconds = getTokenAuthenticatedAtSeconds(token) ?? Math.trunc(Date.now() / 1000)
 ) {
   const fields = mapUserToAuthFields(user);
@@ -315,25 +315,7 @@ export const authConfig: NextAuthConfig = {
         await clearRateLimitMulti(...rateLimitKeys);
 
         return createSuccessfulLoginResponse(
-          {
-            id: user.id,
-            username: user.username,
-            email: user.email,
-            name: user.name,
-            className: user.className,
-            role: user.role,
-            mustChangePassword: user.mustChangePassword ?? false,
-            preferredLanguage: user.preferredLanguage,
-            preferredTheme: user.preferredTheme,
-            shareAcceptedSolutions: user.shareAcceptedSolutions,
-            acceptedSolutionsAnonymous: user.acceptedSolutionsAnonymous,
-            editorTheme: user.editorTheme,
-            editorFontSize: user.editorFontSize,
-            editorFontFamily: user.editorFontFamily,
-            lectureMode: user.lectureMode,
-            lectureFontScale: user.lectureFontScale,
-            lectureColorScheme: user.lectureColorScheme,
-          },
+          user,
           {
             attemptedIdentifier: identifier,
             ipAddress: extractClientIp(request.headers),
@@ -407,25 +389,7 @@ export const authConfig: NextAuthConfig = {
 
         const updatedToken = syncTokenWithUser(
           token,
-          {
-            id: user.id ?? token.sub ?? "",
-            username: user.username ?? "",
-            email: user.email ?? null,
-            name: user.name ?? "",
-            className: user.className ?? null,
-            role: user.role ?? "",
-            mustChangePassword: user.mustChangePassword ?? false,
-            preferredLanguage: user.preferredLanguage ?? null,
-            preferredTheme: user.preferredTheme ?? null,
-            shareAcceptedSolutions: user.shareAcceptedSolutions ?? true,
-            acceptedSolutionsAnonymous: user.acceptedSolutionsAnonymous ?? false,
-            editorTheme: user.editorTheme ?? null,
-            editorFontSize: user.editorFontSize ?? null,
-            editorFontFamily: user.editorFontFamily ?? null,
-            lectureMode: user.lectureMode ?? null,
-            lectureFontScale: user.lectureFontScale ?? null,
-            lectureColorScheme: user.lectureColorScheme ?? null,
-          },
+          user as unknown as AuthUserInput,
           authenticatedAtSeconds,
         );
 
@@ -459,25 +423,7 @@ export const authConfig: NextAuthConfig = {
         return clearAuthToken(token);
       }
 
-      return syncTokenWithUser(token, {
-        id: freshUser.id,
-        username: freshUser.username,
-        email: freshUser.email,
-        name: freshUser.name,
-        className: freshUser.className,
-        role: freshUser.role,
-        mustChangePassword: freshUser.mustChangePassword ?? false,
-        preferredLanguage: freshUser.preferredLanguage ?? null,
-        preferredTheme: freshUser.preferredTheme ?? null,
-        shareAcceptedSolutions: freshUser.shareAcceptedSolutions ?? true,
-        acceptedSolutionsAnonymous: freshUser.acceptedSolutionsAnonymous ?? false,
-        editorTheme: freshUser.editorTheme ?? null,
-        editorFontSize: freshUser.editorFontSize ?? null,
-        editorFontFamily: freshUser.editorFontFamily ?? null,
-        lectureMode: freshUser.lectureMode ?? null,
-        lectureFontScale: freshUser.lectureFontScale ?? null,
-        lectureColorScheme: freshUser.lectureColorScheme ?? null,
-      });
+      return syncTokenWithUser(token, freshUser);
     },
     async session({ session, token }) {
       const userId = getTokenUserId(token);
