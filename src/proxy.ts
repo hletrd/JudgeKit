@@ -18,7 +18,7 @@ import {
 // In-process FIFO cache for proxy auth lookups (Map preserves insertion order;
 // eviction deletes the oldest entry first, making this FIFO rather than LRU).
 // Security tradeoff: revoked or deactivated users may retain access for up to
-// AUTH_CACHE_TTL_MS (2 seconds) after the change is applied to the database.
+// AUTH_CACHE_TTL_MS (default: 2 seconds via AUTH_CACHE_TTL_MS env var) after the change is applied to the database.
 // Negative results (user not found / inactive / token invalidated) are NOT cached.
 const authUserCache = new Map<string, { user: Awaited<ReturnType<typeof getActiveAuthUserById>>; expiresAt: number }>();
 const AUTH_CACHE_TTL_MS = (() => {
@@ -279,7 +279,11 @@ export async function proxy(request: NextRequest) {
 
   if ((isProtectedRoute || isChangePasswordPage) && !activeUser) {
     // Let API key-bearing requests pass through to route handlers
-    // (middleware can't do DB lookups for API key validation in Edge runtime)
+    // (middleware can't do DB lookups for API key validation in Edge runtime).
+    // API key requests with mustChangePassword=true are blocked by the route
+    // handler via authenticateApiKey(), which returns a 403. API keys cannot
+    // perform web redirects, so proxy-level mustChangePassword enforcement
+    // (which redirects to /change-password) is intentionally skipped here.
     const hasApiKeyAuth = isApiRoute && request.headers.get("authorization")?.startsWith("Bearer ");
     if (hasApiKeyAuth) {
       return createSecuredNextResponse(request);
