@@ -1,9 +1,9 @@
-# Aggregate Review — Cycle 16 Deep Code Review
+# Aggregate Review — Cycle 17 Deep Code Review
 
 **Date:** 2026-04-19
 **Source reviews:**
-- `cycle-16-comprehensive-review.md` (comprehensive multi-angle review covering code quality, security, performance, architecture, correctness, testing)
-- Prior cycles 1-15 reviews (findings already addressed or deferred in prior plan documents)
+- `cycle-17-comprehensive-review.md` (comprehensive multi-angle review covering code quality, security, performance, architecture, correctness, testing)
+- Prior cycles 1-16 reviews (findings already addressed or deferred in prior plan documents)
 
 ---
 
@@ -21,53 +21,53 @@ None.
 
 ## MEDIUM (Should Fix Soon)
 
-### M1: Contest replay pLimit(4) concurrency can starve DB connection pool under load
-- **Source**: cycle-16 F1
-- **Files**: `src/lib/assignments/contest-replay.ts:61-80`
-- **Description**: With 4 concurrent snapshot computations, each executing up to 3 SQL queries, a cold-cache replay can hold 12 DB connections simultaneously. Multiple instructors opening replays simultaneously can exhaust the connection pool.
-- **Fix**: Reduce concurrency to 2 and add documentation about expected pool sizing. Longer-term: batch all snapshots in a single query.
+### M1: `firstAcMap` key lookup uses `endsWith` which can match wrong problem IDs
+- **Source**: cycle-17 F1
+- **Files**: `src/lib/assignments/contest-analytics.ts:187,251`
+- **Description**: The `firstAcMap` is keyed by `"userId:problemId"`. When looking up entries for a specific problem, the code uses `key.endsWith(`:${p.problemId}`)`. This can produce false matches if one problem ID is a suffix of another (e.g., `"p1"` matches `"step1"`). With nanoid IDs the practical risk is negligible, but the logic is semantically wrong.
+- **Fix**: Restructure `firstAcMap` as `Map<problemId, Map<userId, number>>` for O(1) per-problem lookups, or use exact key decomposition.
 
-### M2: `resetRecruitingInvitationAccountPassword` sets `mustChangePassword: false` instead of `true`
-- **Source**: cycle-16 F3
-- **Files**: `src/lib/assignments/recruiting-invitations.ts:233-252`
-- **Description**: When an admin resets a recruiting candidate's password, `mustChangePassword` is set to `false`. The intended security flow relies on the `ACCOUNT_PASSWORD_RESET_REQUIRED_KEY` metadata flag and session invalidation via `tokenInvalidatedAt`, but if session invalidation has a race condition or gap, the candidate is not prompted to change their password. Setting `mustChangePassword: true` provides a defense-in-depth guarantee.
-- **Fix**: Change `mustChangePassword: false` to `mustChangePassword: true` at line 237.
+### M2: `getParticipantTimeline` fetches all code snapshots without a limit — potential memory/response spike
+- **Source**: cycle-17 F2
+- **Files**: `src/lib/assignments/participant-timeline.ts:151-161`
+- **Description**: The participant timeline query fetches ALL code snapshots for a user in an assignment with no limit. A student active throughout a long contest could have thousands of snapshots, producing a very large API response.
+- **Fix**: Add a `LIMIT` to the code snapshots query (e.g., most recent 200 per problem, or 1000 total). For the timeline view, only the most recent snapshots are typically relevant.
 
 ---
 
 ## LOW (Best Effort / Track)
 
-### L1: `computeContestRanking` stale-while-revalidate has no failure backoff
-- **Source**: cycle-16 F2
-- **Files**: `src/lib/assignments/contest-scoring.ts:101-113`
-- **Description**: Background refresh failures are only logged, with no cooldown. If the DB is temporarily down, every request during the stale window triggers a new failed DB query, amplifying the failure rate.
-- **Fix**: Add a "recently failed" timestamp that prevents re-triggering the background refresh for a short cooldown period (e.g., 5 seconds) after a failure.
+### L1: `getParticipantTimeline` fetches all anti-cheat events without a limit — should use aggregation
+- **Source**: cycle-17 F3
+- **Files**: `src/lib/assignments/participant-timeline.ts:161-168`
+- **Description**: The anti-cheat events query fetches all events for a user just to count by type. A `GROUP BY eventType, COUNT(*)` aggregation would be more efficient.
+- **Fix**: Replace the full SELECT with an aggregation query.
 
-### L2: `isAdmin()` sync function still exported and available for misuse
-- **Source**: cycle-16 F5 (same class as cycle-15 F2/L1 for `isInstructor`)
-- **Files**: `src/lib/api/auth.ts:97`, `src/lib/api/handler.ts:191`
-- **Description**: The sync `isAdmin()` is still exported and re-exported from `handler.ts`. Like `isInstructor()` (which was fixed in cycle 15), if a developer imports `isAdmin` directly, custom admin-level roles will be silently denied.
-- **Fix**: Remove the export of `isAdmin` from both `auth.ts` and `handler.ts`. Keep it as a module-private function used only inside `isAdminAsync()`.
+### L2: Contest analytics cache has no stale-while-revalidate — cache miss causes blocking compute
+- **Source**: cycle-17 F4
+- **Files**: `src/app/api/v1/contests/[assignmentId]/analytics/route.ts:39-45`
+- **Description**: Unlike `computeContestRanking`, the analytics cache has no background refresh mechanism. On cache expiry, the next request blocks until analytics are recomputed. Multiple concurrent requests can trigger duplicate computations.
+- **Fix**: Add stale-while-revalidate or a `_refreshingKeys`-like deduplication mechanism.
 
-### L3: Code snapshot POST has no per-user rate limit
-- **Source**: cycle-16 F6
-- **Files**: `src/app/api/v1/code-snapshots/route.ts:20-68`
-- **Description**: The code snapshot endpoint only has IP-based rate limiting. A buggy client could flood the `code_snapshots` table with large rows (up to 256KB each).
-- **Fix**: Add a per-user rate limit (e.g., max 60 per hour per user per problem). Consider a cleanup policy for old snapshots.
+### L3: `redeemRecruitingToken` uses `new Date()` for expiry check instead of relying solely on SQL `NOW()`
+- **Source**: cycle-17 F5
+- **Files**: `src/lib/assignments/recruiting-invitations.ts:410`
+- **Description**: The JS-side expiry check at line 410 uses `new Date()` while the atomic claim at line 485 uses `NOW()`. Clock skew between app and DB can cause confusing error messages (e.g., `"alreadyRedeemed"` when the token actually expired).
+- **Fix**: Remove the JS-side expiry check and rely solely on the SQL WHERE clause. Differentiate the error message for expired vs already-redeemed.
 
-### L4: Anti-cheat heartbeat gap detection fetches oldest heartbeats, may miss recent gaps
-- **Source**: cycle-16 F7
-- **Files**: `src/app/api/v1/contests/[assignmentId]/anti-cheat/route.ts:187-196`
-- **Description**: The heartbeat gap query uses `ORDER BY created_at ASC LIMIT 5000`, which fetches the oldest heartbeats. For very long contests, this may miss recent gaps.
-- **Fix**: Change to `ORDER BY created_at DESC LIMIT 5000` and reverse the array, or add a date range filter.
+### L4: IOI score tie detection uses floating-point strict equality
+- **Source**: cycle-17 F6
+- **Files**: `src/lib/assignments/contest-scoring.ts:375`
+- **Description**: Tie detection uses `prev.totalScore === curr.totalScore`. While currently safe due to Math.round normalization, this is fragile. Using an epsilon comparison would be more robust.
+- **Fix**: Use `Math.abs(prev.totalScore - curr.totalScore) < 0.01` for tie detection.
 
-### L5: `getInvitationStats` can produce negative pending count and uses inconsistent time source
-- **Source**: cycle-16 F4
-- **Files**: `src/lib/assignments/recruiting-invitations.ts:260-295`
-- **Description**: The stats computation uses two separate queries without transactional consistency. The `stats.pending -= stats.expired` subtraction can produce a negative count if invitations transition between queries. Also uses `new Date()` instead of `NOW()`.
-- **Fix**: Use a single SQL query with conditional aggregation (SUM(CASE WHEN ...)) to atomically compute all status counts. Use `NOW()` for expiry comparison.
+### L5: `triggerAutoCodeReview` has no concurrency control — burst AI API calls
+- **Source**: cycle-17 F7
+- **Files**: `src/lib/judge/auto-review.ts:13`
+- **Description**: No concurrency limiter for auto-review calls. A burst of accepted submissions triggers parallel AI API calls, potentially hitting provider rate limits or consuming API budget.
+- **Fix**: Add `pLimit(1)` or `pLimit(2)` concurrency limiter for auto-review calls.
 
-### L6: `sanitizeSubmissionForViewer` DB query risk for list endpoints (re-iteration of D16)
+### L6: `sanitizeSubmissionForViewer` DB query risk for list endpoints (carried forward)
 - **Source**: cycle-16 F8, cycle-15 F3/L2/D16
 - **Files**: `src/lib/submissions/visibility.ts:73-84`
 - **Description**: The function makes a DB query for assignment visibility settings. If added to a list endpoint in the future, it would create N+1 queries.
