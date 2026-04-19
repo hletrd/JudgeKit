@@ -72,7 +72,13 @@ export async function POST(request: NextRequest) {
     let category: string;
 
     if (isImageMimeType(file.type)) {
-      const processed = await processImage(rawBuffer, settings.uploadMaxImageDimension);
+      let processed;
+      try {
+        processed = await processImage(rawBuffer, settings.uploadMaxImageDimension);
+      } catch (imgErr) {
+        logger.info({ err: imgErr, mimeType: file.type, fileName: file.name }, "[files] Image processing failed — likely invalid format");
+        return apiError("invalidImageFormat", 400);
+      }
       finalBuffer = processed.buffer;
       width = processed.width;
       height = processed.height;
