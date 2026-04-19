@@ -34,6 +34,7 @@ type UserManagementErrorKey =
   | "usernameInUse"
   | "emailInUse"
   | "onlySuperAdminCanChangeSuperAdminRole"
+  | "roleAssignmentNotAllowed"
   | "cannotChangeSuperAdminRole"
   | "passwordTooShort"
   | "passwordTooCommon"

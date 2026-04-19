@@ -69,6 +69,7 @@ export async function validateAndHashPassword(
 export type RoleValidationError =
   | "invalidRole"
   | "onlySuperAdminCanChangeSuperAdminRole"
+  | "roleAssignmentNotAllowed"
   | "cannotChangeSuperAdminRole";
 
 /**
@@ -86,7 +87,11 @@ export async function validateRoleChangeAsync(
   }
 
   if (!(await canManageRoleAsync(actorRole, requestedRole))) {
-    return "onlySuperAdminCanChangeSuperAdminRole";
+    // Return a specific error for super-admin level escalation attempts,
+    // and a generic error for all other role escalation failures.
+    return (await isSuperAdminRole(requestedRole))
+      ? "onlySuperAdminCanChangeSuperAdminRole"
+      : "roleAssignmentNotAllowed";
   }
 
   if (targetCurrentRole && (await isSuperAdminRole(targetCurrentRole)) && !(await isSuperAdminRole(requestedRole))) {

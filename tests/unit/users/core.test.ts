@@ -250,12 +250,23 @@ describe("validateRoleChangeAsync", () => {
     expect(result).toBe("invalidRole");
   });
 
-  it("returns onlySuperAdminCanChangeSuperAdminRole when actor level is too low", async () => {
+  it("returns roleAssignmentNotAllowed when actor level is too low for non-super-admin role", async () => {
     const { validateRoleChangeAsync } = await import("@/lib/users/core");
     mocks.isUserRole.mockReturnValue(true);
     mocks.canManageRoleAsync.mockResolvedValue(false);
+    mocks.isSuperAdminRole.mockResolvedValue(false);
 
     const result = await validateRoleChangeAsync("custom_editor", "admin");
+    expect(result).toBe("roleAssignmentNotAllowed");
+  });
+
+  it("returns onlySuperAdminCanChangeSuperAdminRole when actor level is too low for super_admin role", async () => {
+    const { validateRoleChangeAsync } = await import("@/lib/users/core");
+    mocks.isUserRole.mockReturnValue(true);
+    mocks.canManageRoleAsync.mockResolvedValue(false);
+    mocks.isSuperAdminRole.mockImplementation(async (role: string) => role === "super_admin");
+
+    const result = await validateRoleChangeAsync("custom_editor", "super_admin");
     expect(result).toBe("onlySuperAdminCanChangeSuperAdminRole");
   });
 

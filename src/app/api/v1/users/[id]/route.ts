@@ -209,7 +209,7 @@ async function applyRoleUpdate(
 
   const roleError = await validateRoleChangeAsync(actor.role, body.role, found.role);
   if (roleError) {
-    return apiError("superAdminRoleRestricted", 403);
+    return apiError(roleError === "onlySuperAdminCanChangeSuperAdminRole" ? "superAdminRoleRestricted" : "roleAssignmentNotAllowed", 403);
   }
 
   updates.role = body.role;
