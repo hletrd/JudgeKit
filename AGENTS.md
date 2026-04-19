@@ -186,7 +186,7 @@ Changes take effect immediately for new submissions without restarting services.
 | `judge-r` | 1.27 GB | r-base:4.5.0 | — |
 | `judge-rust` | 1.21 GB | rust:1.94-slim-bookworm | — |
 | `judge-csharp` | 1.07 GB | mono:6.12 | — |
-| `judge-clang` | 879 MB | Alpine 3.21 | — |
+| `judge-clang` | 1.02 GB | Alpine 3.21 | — |
 | `judge-octave` | 830 MB | Alpine 3.21 | **-94 MB** |
 | `judge-scala` | 780 MB | temurin:21-jdk-alpine | **-111 MB** |
 | `judge-nim` | 727 MB | Alpine 3.21 | — |

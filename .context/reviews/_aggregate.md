@@ -1,114 +1,126 @@
-# Cycle 9 Aggregate Review (review-plan-fix loop)
+# Cycle 10 Aggregate Review (review-plan-fix loop)
 
 ## Scope
-- Aggregated from: `cycle-9-code-reviewer.md`, `cycle-9-security-reviewer.md`, `cycle-9-perf-reviewer.md`, `cycle-9-architect.md`, `cycle-9-critic.md`, `cycle-9-verifier.md`, `cycle-9-test-engineer.md`, `cycle-9-debugger.md`, `cycle-9-tracer.md`, `cycle-9-designer.md`
-- Base commit: 63a31dc0
+- Aggregated from: `cycle-10-code-reviewer.md`, `cycle-10-security-reviewer.md`, `cycle-10-perf-reviewer.md`, `cycle-10-architect.md`, `cycle-10-critic.md`, `cycle-10-verifier.md`, `cycle-10-test-engineer.md`, `cycle-10-debugger.md`, `cycle-10-tracer.md`, `cycle-10-designer.md`
+- Base commit: 56e78d62
 
 ## Deduped findings
 
-### AGG-1 — [MEDIUM] Triple auth field mapping violates DRY — silent regression risk
+### AGG-1 — [HIGH/MEDIUM] Auth field mapping has 6 separate field lists with no compile-time enforcement
 
-- **Severity:** MEDIUM
+- **Severity:** HIGH (maintenance hazard with silent failure mode)
 - **Confidence:** HIGH
-- **Cross-agent agreement:** code-reviewer CR9-CR1, architect CR9-AR1, critic CR9-CT1, test-engineer CR9-TE1
-- **File:** `src/lib/auth/config.ts:52-104, 327-345, 397-415`
-- **Evidence:** ~15 user fields are mapped in three separate code blocks: `createSuccessfulLoginResponse`, `syncTokenWithUser`, and the `jwt` callback inline. The `session` callback also mirrors these fields. Adding a new user preference requires coordinated changes in 4 places. A missed update breaks auth silently (no compile error, no test failure).
-- **Failure scenario:** A developer adds a new preference field to `createSuccessfulLoginResponse` and `syncTokenWithUser` but forgets the `jwt` callback. The field is present on login but lost on JWT refresh.
-- **Suggested fix:** Extract a shared `mapUserToAuthFields(user: AuthUserRecord)` function and a `mapTokenToSession(token)` function. All four locations should call the shared function. Add a unit test that verifies field consistency.
+- **Cross-agent agreement:** code-reviewer CR10-CR1, architect CR10-AR1, critic CR10-CT1, verifier CR10-V2
+- **Files:** `src/lib/auth/config.ts`, `src/lib/auth/session-security.ts`, `src/lib/db/selects.ts`
+- **Evidence:** Six locations must be updated when adding a new auth preference field:
+  1. `mapUserToAuthFields` (line 58-78) — centralized mapping
+  2. `authorize()` inline object (line 280-296) — **MISSING `shareAcceptedSolutions` and `acceptedSolutionsAnonymous`**
+  3. `jwt` callback `if (user)` branch (line 368-386)
+  4. `jwt` callback `freshUser` branch (line 438-456)
+  5. `clearAuthToken` (session-security.ts line 37-60)
+  6. `jwt` callback DB query `columns` list (line 407-427)
+  
+  The `mapUserToAuthFields` extraction partially addressed this but the root cause remains. Two fields (`shareAcceptedSolutions`, `acceptedSolutionsAnonymous`) are already missing from the `authorize()` inline object, causing their DB values to be replaced by defaults on login.
 
-### AGG-2 — [MEDIUM] SSE re-auth check is fire-and-forget — deactivated user can receive one more status event, and terminal result can be lost in race
+### AGG-2 — [MEDIUM] `clearAuthToken` fallback to `token.iat` could bypass token revocation
 
-- **Severity:** MEDIUM
-- **Confidence:** HIGH
-- **Cross-agent agreement:** code-reviewer CR9-CR2, security-reviewer CR9-SR1, critic CR9-CT2, tracer (Flow 2)
-- **File:** `src/app/api/v1/submissions/[id]/events/route.ts:302-317`
-- **Evidence:** The re-auth check is initiated with `void (async () => { ... })()` and does not block the current status event. If the re-auth fails and `close()` runs before a terminal result is enqueued, the submission result is silently lost. Conversely, if a terminal result is being enqueued, the deactivated user receives it.
-- **Failure scenario:** User account is deactivated while a submission is being judged. The re-auth check fires `close()`, but the terminal status is also reached. The `close()` from re-auth wins the race, and the client never receives the submission result.
-- **Suggested fix:** Await the re-auth check before processing the status event. If re-auth fails, close immediately without processing. Alternatively, set a `revoked` flag and check it before enqueuing events.
-
-### AGG-3 — [MEDIUM] SSE connection tracking eviction removes oldest tracking entry, not the oldest actual connection — userConnectionCounts can become permanently inflated
-
-- **Severity:** MEDIUM
-- **Confidence:** HIGH
-- **Cross-agent agreement:** verifier CR9-V2, debugger CR9-DB1
-- **File:** `src/app/api/v1/submissions/[id]/events/route.ts:41-45`
-- **Evidence:** When `connectionInfoMap.size >= MAX_TRACKED_CONNECTIONS` (2000), eviction takes `connectionInfoMap.keys().next().value` (first in insertion order). This evicts the tracking entry for the first-inserted connection, which may still be active. When that connection later closes, `removeConnection` skips the `userConnectionCounts` decrement because the info is already gone. The user's connection count becomes permanently inflated.
-- **Failure scenario:** Under heavy SSE load, a user's tracking entry is evicted while their connection is still active. Their `userConnectionCounts` is permanently inflated. They can never open another SSE connection until the server restarts.
-- **Suggested fix:** Evict the entry with the oldest `createdAt` from `ConnectionInfo`. When evicting, also call `removeConnection` to properly decrement counts.
-
-### AGG-4 — [MEDIUM] JWT `authenticatedAt` uses app-server clock but `tokenInvalidatedAt` uses DB-server clock — potential clock skew mismatch
-
-- **Severity:** MEDIUM
+- **Severity:** MEDIUM (security — token revocation bypass)
 - **Confidence:** MEDIUM
-- **Cross-agent agreement:** verifier CR9-V1
-- **File:** `src/lib/auth/config.ts:325,392`
-- **Evidence:** `authenticatedAtSeconds` is computed as `Math.trunc(Date.now() / 1000)` (app server time). `isTokenInvalidated` compares against `freshUser.tokenInvalidatedAt` (DB server time). If clocks are not synchronized, a newly authenticated user could have their token incorrectly invalidated on the next request.
-- **Failure scenario:** App server clock is 5 seconds ahead of DB clock. A new login sets `authenticatedAt` to a future time from the DB's perspective. The `isTokenInvalidated` check could incorrectly invalidate the token.
-- **Suggested fix:** Use the DB server's `NOW()` for `authenticatedAt` comparisons, or add a small grace period (e.g., 5s) to the `isTokenInvalidated` comparison.
+- **Cross-agent agreement:** security-reviewer CR10-SR1, debugger CR10-DB1, verifier CR10-V1
+- **File:** `src/lib/auth/session-security.ts:37-60`
+- **Evidence:** `clearAuthToken` deletes `authenticatedAt`, causing `getTokenAuthenticatedAtSeconds` to fall back to `token.iat`. If `iat > tokenInvalidatedAt`, the token would not be detected as invalidated.
+- **Suggested fix:** Set `token.authenticatedAt = 0` instead of deleting it.
 
-### AGG-5 — [MEDIUM] JWT callback DB query on every authenticated request (deferred D3 — still present)
+### AGG-3 — [MEDIUM] `authorize()` function missing `shareAcceptedSolutions` and `acceptedSolutionsAnonymous` — DB values lost on login
 
-- **Severity:** MEDIUM
+- **Severity:** MEDIUM (correctness — user preferences silently lost)
 - **Confidence:** HIGH
-- **Cross-agent agreement:** perf-reviewer CR9-PR1
-- **File:** `src/lib/auth/config.ts:364-387`
-- **Evidence:** The `jwt()` callback queries `db.query.users.findFirst` on every request to refresh the token with the latest user data. At moderate traffic (100 req/s), this is 100 DB queries/s just for auth refresh.
-- **Suggested fix:** Cache user data for a short TTL (e.g., 30s) keyed by userId. Only re-query when the cache expires or when `tokenInvalidatedAt` changes.
+- **Cross-agent agreement:** verifier CR10-V4, tracer Flow 2
+- **File:** `src/lib/auth/config.ts:280-296`
+- **Evidence:** The inline `AuthUserRecord` in `authorize()` (line 280-296) is missing `shareAcceptedSolutions` and `acceptedSolutionsAnonymous`. These fields default to `true` and `false` respectively via `mapUserToAuthFields`, overwriting whatever the user had set in the DB. This means:
+  - A user who sets `shareAcceptedSolutions = false` will have it reset to `true` on every login
+  - A user who sets `acceptedSolutionsAnonymous = true` will have it reset to `false` on every login
+- **Suggested fix:** Add the missing fields to the inline object, or refactor `authorize()` to use `mapUserToAuthFields`.
 
-### AGG-6 — [LOW] `normalizeValue` does not handle BigInt values from PostgreSQL
+### AGG-4 — [MEDIUM] PublicHeader uses hardcoded role checks while AppSidebar uses capability-based filtering
 
-- **Severity:** LOW
-- **Confidence:** MEDIUM
-- **Cross-agent agreement:** verifier CR9-V3, test-engineer CR9-TE3
-- **File:** `src/lib/db/export.ts:215-222`
-- **Evidence:** PostgreSQL BIGINT columns may be returned as `BigInt` by some PG drivers. `JSON.stringify` throws a TypeError for BigInt values. The function has no BigInt handling.
-- **Suggested fix:** Add `typeof val === "bigint"` check that converts to `Number` or `String`.
-
-### AGG-7 — [LOW] `validateExport` accepts `mysql` as valid `sourceDialect` but no MySQL support exists
-
-- **Severity:** LOW
-- **Confidence:** LOW
-- **Cross-agent agreement:** verifier CR9-V4
-- **File:** `src/lib/db/export.ts:286`
-- **Suggested fix:** Remove `"mysql"` from the valid dialect list.
-
-### AGG-8 — [LOW] Tags route still lacks rate limiting (carried forward from cycle 6b AGG-6)
-
-- **Severity:** LOW
+- **Severity:** MEDIUM (UX inconsistency that will worsen with custom roles)
 - **Confidence:** HIGH
-- **Cross-agent agreement:** security-reviewer CR9-SR3
+- **Cross-agent agreement:** critic CR10-CT2, designer CR10-D1, tracer Flow 3
+- **File:** `src/components/layout/public-header.tsx:50-71`, `src/components/layout/app-sidebar.tsx:198-233`
+- **Evidence:** `PublicHeader.getDropdownItems()` uses `role === "instructor"` checks. `AppSidebar.filterItems()` uses `capsSet.has(capability)`. Custom roles will see different navigation items.
+- **Suggested fix:** Refactor `getDropdownItems` to accept capabilities and use capability-based filtering.
+
+### AGG-5 — [MEDIUM] JWT callback DB query on every request — no TTL cache
+
+- **Severity:** MEDIUM (performance)
+- **Confidence:** HIGH
+- **Cross-agent agreement:** perf-reviewer CR10-PR1, cycle-9 findings D3
+- **File:** `src/lib/auth/config.ts:405-456`
+- **Evidence:** The `jwt()` callback queries the DB on every authenticated request. At 100 req/s, this is 100 DB queries/s for auth alone. The proxy middleware already has a 2s TTL cache but it's not shared.
+- **Suggested fix:** Add a short TTL cache (5-10s) keyed by userId inside the jwt callback, or share the proxy's auth cache.
+
+### AGG-6 — [MEDIUM] SSE route is 475 lines with duplicated terminal-result-fetch logic
+
+- **Severity:** MEDIUM (maintainability)
+- **Confidence:** HIGH
+- **Cross-agent agreement:** architect CR10-AR2, perf-reviewer CR10-PR2
+- **File:** `src/app/api/v1/submissions/[id]/events/route.ts`
+- **Evidence:** The file has two nearly-identical terminal-result-fetch blocks (lines 346-366 and 389-410). Connection tracking, polling, and route handler logic are all in one file.
+- **Suggested fix:** Extract connection tracking and polling into separate modules. Deduplicate the terminal-result-fetch logic.
+
+### AGG-7 — [LOW] Tags route lacks rate limiting
+
+- **Severity:** LOW (security — no rate limiting)
+- **Confidence:** HIGH
+- **Cross-agent agreement:** security-reviewer CR10-SR3, cycle-9 CR9-SR3
 - **File:** `src/app/api/v1/tags/route.ts`
-- **Suggested fix:** Wrap in `createApiHandler` with `rateLimit: "tags:read"`.
+- **Suggested fix:** Add `rateLimit: "tags:read"`.
 
-### AGG-9 — [LOW] Playground `stdin` length off-by-one with newline append
+### AGG-8 — [LOW] `validateShellCommand` denylist does not block `exec` and `source`
 
-- **Severity:** LOW
+- **Severity:** LOW (defense-in-depth)
+- **Confidence:** LOW
+- **Cross-agent agreement:** security-reviewer CR10-SR4, cycle-9 CR9-SR4
+- **File:** `src/lib/compiler/execute.ts:156`
+- **Suggested fix:** Add `\bexec\b` and `\bsource\b` to the denylist.
+
+### AGG-9 — [LOW] `localStorage.clear()` in sign-out clears all storage for the origin
+
+- **Severity:** LOW (data loss in multi-app dev environments)
 - **Confidence:** MEDIUM
-- **Cross-agent agreement:** code-reviewer CR9-CR4
-- **File:** `src/app/api/v1/playground/run/route.ts:13-17`
-- **Suggested fix:** Reduce Zod max by 1 byte or add Buffer.byteLength check after appending.
+- **Cross-agent agreement:** code-reviewer CR10-CR5
+- **File:** `src/components/layout/app-sidebar.tsx:240-241`
+- **Suggested fix:** Remove only namespaced keys instead of clearing all storage.
 
-### AGG-10 — [LOW] SSE shared poll timer interval not adjustable at runtime
+### AGG-10 — [LOW] `recordRateLimitFailure` backoff exponent pattern differs from `consumeRateLimitAttemptMulti`
 
-- **Severity:** LOW
+- **Severity:** LOW (code clarity)
+- **Confidence:** HIGH
+- **Cross-agent agreement:** code-reviewer CR10-CR4, debugger CR10-DB3
+- **File:** `src/lib/security/rate-limit.ts:204, 166`
+- **Suggested fix:** Normalize both functions to use the same pattern.
+
+### AGG-11 — [LOW] Korean letter spacing violation — `tracking-tight` on site title, `tracking-wide` on labels
+
+- **Severity:** LOW (CLAUDE.md rule violation)
 - **Confidence:** MEDIUM
-- **Cross-agent agreement:** perf-reviewer CR9-PR2
-- **File:** `src/app/api/v1/submissions/[id]/events/route.ts:129-139`
-- **Suggested fix:** On each poll tick, check if the configured interval has changed and restart the timer if needed.
+- **Cross-agent agreement:** designer CR10-D2, CR10-D3
+- **File:** `src/components/layout/public-header.tsx:176, 301`, `src/components/layout/app-sidebar.tsx:291`
+- **Suggested fix:** Remove `tracking-tight`/`tracking-wide` from elements that may contain Korean text, or make them locale-conditional.
 
-### AGG-11 — [LOW] Export abort does not cancel in-flight DB queries
+### AGG-12 — [LOW] `rateLimits` table used for SSE connections and heartbeats — semantic mismatch
 
-- **Severity:** LOW
+- **Severity:** LOW (architectural)
 - **Confidence:** MEDIUM
-- **Cross-agent agreement:** debugger CR9-DB3, tracer (Flow 3)
-- **File:** `src/lib/db/export.ts:45-144`
-- **Suggested fix:** Pass abort signal to DB queries or set a statement timeout.
+- **Cross-agent agreement:** architect CR10-AR3, cycle-9 CR9-AR3
+- **File:** `src/lib/realtime/realtime-coordination.ts`
+- **Suggested fix:** Consider a dedicated `realtimeConnections` table.
 
-## Deferred items carried forward from prior cycles
+## Previously Deferred Items (Carried Forward)
 
 - D1: SSE submission events route capability check incomplete (MEDIUM)
-- D2: Compiler workspace directory mode 0o770 (MEDIUM)
-- D3: JWT callback DB query on every request (MEDIUM) — same as AGG-5
+- D3: JWT callback DB query on every request (MEDIUM) — now AGG-5
 - D4: Test coverage gaps for workspace-to-public migration Phase 2 (MEDIUM)
 - D5: Backup/restore/migrate routes use manual auth pattern (LOW)
 - D6: Files/[id] DELETE/PATCH manual auth (LOW)
@@ -116,13 +128,24 @@
 - D8: PublicHeader click-outside-to-close (LOW)
 - D9: `namedToPositional` regex alignment (LOW)
 
-## Prior-cycle findings verified as fixed
+## Previously Fixed (Verified This Cycle)
 
-- AGG-2 (cycle 8): Backup `body` shadowing — FIXED (commit 8217a80d)
-- AGG-3 (cycle 8): Encryption key caching — FIXED (commit d6497263)
-- AGG-4 (cycle 8): Export polling interval — FIXED (commit 55d9cd3f)
-- AGG-6 (cycle 8): `processImage` 500 error — FIXED (commit 9e654740)
-- AGG-10 (cycle 8): `bytesToBase64` Edge Runtime comment — FIXED (commit 66290994)
+- Cycle-9 AGG-2: SSE re-auth race — FIXED (commit 908b12a1)
+- Cycle-9 AGG-3: SSE eviction by insertion — FIXED (commit 832f9902)
+- Cycle-9 CR9-V3: BigInt in normalizeValue — FIXED (commit 434b94ba)
+- Cycle-9 CR9-V4: MySQL in validDialects — VERIFIED FIXED
+- Cycle-9 CR9-CR4: Playground stdin length — FIXED (commit 1ca7a88c)
+- Cycle-9 AGG-6: BigInt normalizeValue — FIXED (commit 434b94ba)
 
-## Agent failures
-- No agent failures — all reviews completed successfully
+## Test Coverage Gaps (Priority Order)
+
+1. `clearAuthToken` vs `syncTokenWithUser` field consistency test (AGG-1)
+2. `mapUserToAuthFields` vs `authorize()` inline object field consistency test (AGG-3)
+3. SSE re-auth integration test (from cycle 9)
+4. Playground run route tests (from cycle 9)
+5. PublicHeader vs AppSidebar capability consistency test (AGG-4)
+6. Internal cleanup endpoint auth tests (CR10-TE4)
+
+## Agent Failures
+
+None — all reviews completed successfully.

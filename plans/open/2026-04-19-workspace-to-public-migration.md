@@ -1,7 +1,7 @@
 # Workspace-to-Public Page Migration Plan
 
 **Date:** 2026-04-19
-**Status:** Phase 1 COMPLETE, Phase 2 COMPLETE, Phase 3-4 PENDING
+**Status:** Phase 1 COMPLETE, Phase 2 COMPLETE, Phase 3 IN PROGRESS, Phase 4 PENDING
 **Source:** User-injected TODO #2, AGG-13
 
 ## Goal
@@ -192,12 +192,18 @@ Same as instructor, with additional "Admin" dropdown entry that navigates to `/d
 
 ### Phase 3 — Dashboard layout refinement (Medium risk)
 
+**Status:** IN PROGRESS (cycle 10)
+
 **Goal:** Simplify the dashboard layout to complement the top navbar.
 
-1. Consider converting `AppSidebar` from a full sidebar to a slimmer icon rail or contextual sub-navigation within each section.
-2. Move breadcrumb to top navbar area.
-3. Ensure the top navbar is visible on dashboard pages (currently it is not — dashboard has its own header).
+1. Ensure the top navbar is visible on dashboard pages (currently it is not — dashboard has its own header). **[STARTING THIS CYCLE]**
+2. Consider converting `AppSidebar` from a full sidebar to a slimmer icon rail or contextual sub-navigation within each section.
+3. Move breadcrumb to top navbar area.
 4. Evaluate whether `(control)` route group should merge into `(dashboard)/admin` or remain separate.
+
+**Additional Phase 3 improvements identified in cycle 10 review:**
+- Refactor `PublicHeader.getDropdownItems()` to use capability-based filtering instead of hardcoded role checks (AGG-4) — ensures consistency with `AppSidebar` and supports custom roles.
+- Remove `tracking-tight` from site title if locale is Korean (CLAUDE.md compliance).
 
 **Estimated files changed:** ~15-20
 
