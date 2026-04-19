@@ -264,12 +264,12 @@ describe("authorizeRecruitingToken", () => {
 
     expect(result).not.toBeNull();
     expect(result!.loginEventContext).toBeDefined();
-    expect(result!.loginEventContext.ipAddress).toBe("192.168.1.50");
-    expect(result!.loginEventContext.userAgent).toBe("Mozilla/5.0 TestAgent");
-    expect(result!.loginEventContext.requestMethod).toBe("POST");
-    expect(result!.loginEventContext.requestPath).toBe("/api/recruit/auth");
+    expect(result!.loginEventContext!.ipAddress).toBe("192.168.1.50");
+    expect(result!.loginEventContext!.userAgent).toBe("Mozilla/5.0 TestAgent");
+    expect(result!.loginEventContext!.requestMethod).toBe("POST");
+    expect(result!.loginEventContext!.requestPath).toBe("/api/recruit/auth");
     // attemptedIdentifier should start with "recruit:" prefix
-    expect(result!.loginEventContext.attemptedIdentifier).toMatch(/^recruit:[a-f0-9]{8}$/);
+    expect(result!.loginEventContext!.attemptedIdentifier).toMatch(/^recruit:[a-f0-9]{8}$/);
   });
 
   it("extracts client IP from request headers", async () => {
@@ -370,8 +370,8 @@ describe("authorizeRecruitingToken", () => {
     const result1 = await authorizeRecruitingToken("consistent-token-value", undefined, request);
     const result2 = await authorizeRecruitingToken("consistent-token-value", undefined, request);
 
-    expect(result1!.loginEventContext.attemptedIdentifier).toBe(
-      result2!.loginEventContext.attemptedIdentifier
+    expect(result1!.loginEventContext!.attemptedIdentifier).toBe(
+      result2!.loginEventContext!.attemptedIdentifier
     );
   });
 
@@ -398,8 +398,8 @@ describe("authorizeRecruitingToken", () => {
     const result1 = await authorizeRecruitingToken("token-alpha", undefined, request);
     const result2 = await authorizeRecruitingToken("token-beta", undefined, request);
 
-    expect(result1!.loginEventContext.attemptedIdentifier).not.toBe(
-      result2!.loginEventContext.attemptedIdentifier
+    expect(result1!.loginEventContext!.attemptedIdentifier).not.toBe(
+      result2!.loginEventContext!.attemptedIdentifier
     );
   });
 
@@ -432,10 +432,10 @@ describe("authorizeRecruitingToken", () => {
     const result = await authorizeRecruitingToken(validToken, undefined, request);
 
     expect(result).not.toBeNull();
-    expect(result!.loginEventContext.userAgent).toBeNull();
+    expect(result!.loginEventContext!.userAgent).toBeNull();
   });
 
-  it("sets mustChangePassword to false regardless of user's actual value", async () => {
+  it("reads mustChangePassword from the DB user record", async () => {
     const mockUser = {
       id: mockUserId,
       username: "recruit_mcp",
@@ -457,6 +457,8 @@ describe("authorizeRecruitingToken", () => {
     const result = await authorizeRecruitingToken(validToken, undefined, request);
 
     expect(result).not.toBeNull();
-    expect(result!.mustChangePassword).toBe(false);
+    // After refactoring to use mapUserToAuthFields, mustChangePassword is read
+    // from the DB user object instead of being hardcoded to false.
+    expect(result!.mustChangePassword).toBe(true);
   });
 });

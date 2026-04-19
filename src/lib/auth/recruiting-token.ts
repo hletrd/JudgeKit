@@ -6,17 +6,13 @@ import { redeemRecruitingToken } from "@/lib/assignments/recruiting-invitations"
 import { extractClientIp } from "@/lib/security/ip";
 import { logger } from "@/lib/logger";
 import type { LoginEventRequestSummary } from "@/lib/auth/login-events";
-import type { AuthUserRecord } from "@/lib/auth/types";
-
-type AuthenticatedLoginUser = AuthUserRecord & {
-  loginEventContext: LoginEventRequestSummary;
-};
+import { mapUserToAuthFields, createSuccessfulLoginResponse } from "@/lib/auth/config";
 
 export async function authorizeRecruitingToken(
   token: string,
   accountPassword: string | undefined,
   request: Request
-): Promise<AuthenticatedLoginUser | null> {
+): Promise<Awaited<ReturnType<typeof createSuccessfulLoginResponse>> | null> {
   const ipAddress = extractClientIp(request.headers);
   const result = await redeemRecruitingToken(token, ipAddress ?? undefined, accountPassword);
 
@@ -27,62 +23,24 @@ export async function authorizeRecruitingToken(
 
   const user = await db.query.users.findFirst({
     where: eq(users.id, result.userId),
-    columns: {
-      id: true,
-      username: true,
-      email: true,
-      name: true,
-      className: true,
-      role: true,
-      isActive: true,
-      preferredLanguage: true,
-      preferredTheme: true,
-      shareAcceptedSolutions: true,
-      acceptedSolutionsAnonymous: true,
-      editorTheme: true,
-      editorFontSize: true,
-      editorFontFamily: true,
-      lectureMode: true,
-      lectureFontScale: true,
-      lectureColorScheme: true,
-    },
   });
 
   if (!user || !user.isActive) return null;
 
   const tokenFingerprint = createHash("sha256").update(token).digest("hex").slice(0, 8);
 
-  return {
-    id: user.id,
-    username: user.username,
-    email: user.email,
-    name: user.name,
-    className: user.className,
-    role: user.role,
-    mustChangePassword: false,
-    preferredLanguage: user.preferredLanguage,
-    preferredTheme: user.preferredTheme,
-    shareAcceptedSolutions: user.shareAcceptedSolutions,
-    acceptedSolutionsAnonymous: user.acceptedSolutionsAnonymous,
-    editorTheme: user.editorTheme,
-    editorFontSize: user.editorFontSize,
-    editorFontFamily: user.editorFontFamily,
-    lectureMode: user.lectureMode,
-    lectureFontScale: user.lectureFontScale,
-    lectureColorScheme: user.lectureColorScheme,
-    loginEventContext: {
-      attemptedIdentifier: `recruit:${tokenFingerprint}`,
-      ipAddress,
-      userAgent: request.headers.get("user-agent")?.trim() || null,
-      requestMethod: request.method?.trim().toUpperCase() || null,
-      requestPath: (() => {
-        try {
-          return new URL(request.url).pathname;
-        } catch (err) {
-          logger.debug({ err, url: request.url }, "[recruit-token] failed to parse request URL");
-          return null;
-        }
-      })(),
-    },
-  };
+  return createSuccessfulLoginResponse(user, {
+    attemptedIdentifier: `recruit:${tokenFingerprint}`,
+    ipAddress,
+    userAgent: request.headers.get("user-agent")?.trim() || null,
+    requestMethod: request.method?.trim().toUpperCase() || null,
+    requestPath: (() => {
+      try {
+        return new URL(request.url).pathname;
+      } catch (err) {
+        logger.debug({ err, url: request.url }, "[recruit-token] failed to parse request URL");
+        return null;
+      }
+    })(),
+  });
 }

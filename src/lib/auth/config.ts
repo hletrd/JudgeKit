@@ -75,7 +75,7 @@ const AUTH_USER_COLUMNS: Record<string, true> = Object.fromEntries(
  * separate field lists. Add new preference fields to AUTH_PREFERENCE_FIELDS
  * and HERE — the DB query columns and clearAuthToken are derived automatically.
  */
-function mapUserToAuthFields(user: AuthUserInput) {
+export function mapUserToAuthFields(user: AuthUserInput) {
   return {
     id: user.id ?? "",
     username: user.username ?? "",
@@ -100,7 +100,7 @@ function mapUserToAuthFields(user: AuthUserInput) {
   };
 }
 
-function createSuccessfulLoginResponse(
+export function createSuccessfulLoginResponse(
   user: AuthUserInput,
   loginEventContext: LoginEventRequestSummary
 ): AuthenticatedLoginUser {
