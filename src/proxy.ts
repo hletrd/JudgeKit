@@ -21,7 +21,10 @@ import {
 // AUTH_CACHE_TTL_MS (2 seconds) after the change is applied to the database.
 // Negative results (user not found / inactive / token invalidated) are NOT cached.
 const authUserCache = new Map<string, { user: Awaited<ReturnType<typeof getActiveAuthUserById>>; expiresAt: number }>();
-const AUTH_CACHE_TTL_MS = parseInt(process.env.AUTH_CACHE_TTL_MS ?? '2000', 10);
+const AUTH_CACHE_TTL_MS = (() => {
+  const parsed = parseInt(process.env.AUTH_CACHE_TTL_MS ?? '2000', 10);
+  return Number.isFinite(parsed) && parsed > 0 ? parsed : 2000;
+})();
 const AUTH_CACHE_MAX_SIZE = 500;
 
 function bytesToBase64(bytes: Uint8Array) {
