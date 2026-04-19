@@ -1,9 +1,9 @@
-# Aggregate Review — Cycle 14 Deep Code Review
+# Aggregate Review — Cycle 16 Deep Code Review
 
 **Date:** 2026-04-19
 **Source reviews:**
-- `cycle-14-comprehensive-review.md` (comprehensive multi-angle review covering code quality, security, performance, architecture, correctness, UI/UX, testing)
-- Prior cycles 1-13 reviews (findings already addressed or deferred in prior plan documents)
+- `cycle-16-comprehensive-review.md` (comprehensive multi-angle review covering code quality, security, performance, architecture, correctness, testing)
+- Prior cycles 1-15 reviews (findings already addressed or deferred in prior plan documents)
 
 ---
 
@@ -21,57 +21,57 @@ None.
 
 ## MEDIUM (Should Fix Soon)
 
-### M1: Redundant `roleName === "super_admin"` shortcut in `resolveCapabilities`
-- **Source**: cycle-14 F1
-- **Files**: `src/lib/capabilities/cache.ts:103-106`
-- **Description**: After the level-based check at line 99, there is a hardcoded `roleName === "super_admin"` fallback at line 104. This is documented as a bootstrap shortcut, but `ensureLoaded()` (called at line 93) always populates the built-in roles (including "super_admin") from either DB or the hardcoded fallback in `loadRolesFromDb`. The redundant check creates an inconsistent code path that undermines the level-based design pattern. Custom roles at super_admin level only go through the level check; the built-in name has a second shortcut.
-- **Fix**: Remove lines 103-106. The level-based check at line 99 and the built-in fallback in `loadRolesFromDb` already guarantee "super_admin" always gets ALL_CAPABILITIES.
+### M1: Contest replay pLimit(4) concurrency can starve DB connection pool under load
+- **Source**: cycle-16 F1
+- **Files**: `src/lib/assignments/contest-replay.ts:61-80`
+- **Description**: With 4 concurrent snapshot computations, each executing up to 3 SQL queries, a cold-cache replay can hold 12 DB connections simultaneously. Multiple instructors opening replays simultaneously can exhaust the connection pool.
+- **Fix**: Reduce concurrency to 2 and add documentation about expected pool sizing. Longer-term: batch all snapshots in a single query.
 
-### M2: `isAdmin()` sync function used in assignment route, silently fails for custom admin-level roles
-- **Source**: cycle-14 F2
-- **Files**: `src/app/api/v1/groups/[id]/assignments/[assignmentId]/route.ts:109,181,223`; `src/lib/api/auth.ts:97-99`
-- **Description**: The synchronous `isAdmin()` function uses the hardcoded `ROLE_LEVEL` map which only knows 5 built-in roles. A custom role with admin-equivalent capabilities would get `isAdmin() === false`. The assignment route uses `isAdmin(user.role)` to gate assignment problem modifications for contests with existing submissions. Custom admin-level users would be blocked from editing assignment problems despite having the necessary capabilities.
-- **Fix**: Replace the 3 calls to `isAdmin(user.role)` with `isAdminAsync(user.role)` or a capability check (`resolveCapabilities(user.role).has("content.manage")`). The route is already async.
-
-### M3: Unbounded `canManageRole` sync function is exported but has zero callers and is unsafe for custom roles
-- **Source**: cycle-14 F5
-- **Files**: `src/lib/security/constants.ts:73-81`
-- **Description**: The synchronous `canManageRole()` uses `getBuiltinRoleLevel()` which returns -1 for custom roles. When an actor has a built-in role (e.g., admin, level 3) and the target is a custom role with level 4, `canManageRole("admin", "ultra_admin")` returns `3 > -1 = true`, allowing the admin to assign a role with higher privileges. The async `canManageRoleAsync` correctly uses `getRoleLevel()` from the cache. Currently has zero callers.
-- **Fix**: Remove the unused `canManageRole` sync function entirely, or add a runtime guard that throws when either role is not a built-in role.
-
-### M4: Anti-cheat heartbeat gap detection fetches all rows without limit
-- **Source**: cycle-14 F3
-- **Files**: `src/app/api/v1/contests/[assignmentId]/anti-cheat/route.ts:185-193`
-- **Description**: When a userId filter is provided, the GET handler fetches ALL heartbeat events for that user in the contest. For long-running contests (24h+), this could return thousands of rows per request. Multiple concurrent requests could cause memory pressure.
-- **Fix**: Add a reasonable `LIMIT` to the heartbeat query (e.g., 5000 most recent events), or compute gaps server-side with a SQL window function.
+### M2: `resetRecruitingInvitationAccountPassword` sets `mustChangePassword: false` instead of `true`
+- **Source**: cycle-16 F3
+- **Files**: `src/lib/assignments/recruiting-invitations.ts:233-252`
+- **Description**: When an admin resets a recruiting candidate's password, `mustChangePassword` is set to `false`. The intended security flow relies on the `ACCOUNT_PASSWORD_RESET_REQUIRED_KEY` metadata flag and session invalidation via `tokenInvalidatedAt`, but if session invalidation has a race condition or gap, the candidate is not prompted to change their password. Setting `mustChangePassword: true` provides a defense-in-depth guarantee.
+- **Fix**: Change `mustChangePassword: false` to `mustChangePassword: true` at line 237.
 
 ---
 
 ## LOW (Best Effort / Track)
 
-### L1: Error boundary components use `console.error` instead of structured logger
-- **Source**: cycle-14 F7
-- **Files**: `src/app/(dashboard)/dashboard/admin/error.tsx:17`, `submissions/error.tsx:17`, `problems/error.tsx:17`, `groups/error.tsx:17`
-- **Description**: Four error boundary components use `console.error(error)` instead of the structured logger. In production, these errors may not be captured by the logging infrastructure.
-- **Fix**: Replace with `logger.error()` or a client-safe logging approach.
+### L1: `computeContestRanking` stale-while-revalidate has no failure backoff
+- **Source**: cycle-16 F2
+- **Files**: `src/lib/assignments/contest-scoring.ts:101-113`
+- **Description**: Background refresh failures are only logged, with no cooldown. If the DB is temporarily down, every request during the stale window triggers a new failed DB query, amplifying the failure rate.
+- **Fix**: Add a "recently failed" timestamp that prevents re-triggering the background refresh for a short cooldown period (e.g., 5 seconds) after a failure.
 
-### L2: `use-source-draft` hook silently swallows localStorage errors
-- **Source**: cycle-14 F9
-- **Files**: `src/hooks/use-source-draft.ts:63,70`
-- **Description**: Two `catch {}` blocks silently swallow all errors from localStorage operations. Makes debugging impossible when storage fails (Safari private mode, quota exceeded).
-- **Fix**: Add `console.debug` or `logger.debug` in the catch blocks.
+### L2: `isAdmin()` sync function still exported and available for misuse
+- **Source**: cycle-16 F5 (same class as cycle-15 F2/L1 for `isInstructor`)
+- **Files**: `src/lib/api/auth.ts:97`, `src/lib/api/handler.ts:191`
+- **Description**: The sync `isAdmin()` is still exported and re-exported from `handler.ts`. Like `isInstructor()` (which was fixed in cycle 15), if a developer imports `isAdmin` directly, custom admin-level roles will be silently denied.
+- **Fix**: Remove the export of `isAdmin` from both `auth.ts` and `handler.ts`. Keep it as a module-private function used only inside `isAdminAsync()`.
 
-### L3: Shell command validator blocks legitimate redirect operators (intentional)
-- **Source**: cycle-14 F4
-- **Files**: `src/lib/compiler/execute.ts:156`
-- **Description**: The regex includes bare `>` and `<` which block I/O redirect operators like `2>/dev/null`. This appears intentional per the denylist comment, but could surprise admins configuring compile commands.
-- **Fix**: Document in the admin UI that redirect operators are not allowed in compile/run commands.
+### L3: Code snapshot POST has no per-user rate limit
+- **Source**: cycle-16 F6
+- **Files**: `src/app/api/v1/code-snapshots/route.ts:20-68`
+- **Description**: The code snapshot endpoint only has IP-based rate limiting. A buggy client could flood the `code_snapshots` table with large rows (up to 256KB each).
+- **Fix**: Add a per-user rate limit (e.g., max 60 per hour per user per problem). Consider a cleanup policy for old snapshots.
 
-### L4: Community votes transaction isolation semantics (documentation only)
-- **Source**: cycle-14 F8
-- **Files**: `src/app/api/v1/community/votes/route.ts:110-121`
-- **Description**: The score summary query inside the transaction uses READ COMMITTED isolation, so the returned count may include concurrent votes from other users. This is correct behavior but could benefit from a code comment.
-- **Fix**: Add a comment explaining the isolation semantics.
+### L4: Anti-cheat heartbeat gap detection fetches oldest heartbeats, may miss recent gaps
+- **Source**: cycle-16 F7
+- **Files**: `src/app/api/v1/contests/[assignmentId]/anti-cheat/route.ts:187-196`
+- **Description**: The heartbeat gap query uses `ORDER BY created_at ASC LIMIT 5000`, which fetches the oldest heartbeats. For very long contests, this may miss recent gaps.
+- **Fix**: Change to `ORDER BY created_at DESC LIMIT 5000` and reverse the array, or add a date range filter.
+
+### L5: `getInvitationStats` can produce negative pending count and uses inconsistent time source
+- **Source**: cycle-16 F4
+- **Files**: `src/lib/assignments/recruiting-invitations.ts:260-295`
+- **Description**: The stats computation uses two separate queries without transactional consistency. The `stats.pending -= stats.expired` subtraction can produce a negative count if invitations transition between queries. Also uses `new Date()` instead of `NOW()`.
+- **Fix**: Use a single SQL query with conditional aggregation (SUM(CASE WHEN ...)) to atomically compute all status counts. Use `NOW()` for expiry comparison.
+
+### L6: `sanitizeSubmissionForViewer` DB query risk for list endpoints (re-iteration of D16)
+- **Source**: cycle-16 F8, cycle-15 F3/L2/D16
+- **Files**: `src/lib/submissions/visibility.ts:73-84`
+- **Description**: The function makes a DB query for assignment visibility settings. If added to a list endpoint in the future, it would create N+1 queries.
+- **Fix**: Accept assignment visibility settings as an optional parameter and skip the DB query when provided.
 
 ---
 
@@ -88,3 +88,6 @@ None.
 | A26 | Polling-based backpressure wait | LOW | Deferred — no production reports |
 | L2(c13) | Anti-cheat LRU cache single-instance limitation | LOW | Deferred — already guarded by getUnsupportedRealtimeGuard |
 | L5(c13) | Bulk create elevated roles warning | LOW | Deferred — server validates role assignments |
+| D16 | `sanitizeSubmissionForViewer` unexpected DB query | LOW | Deferred — only called from one place, no N+1 risk |
+| D17 | Exam session `new Date()` clock skew | LOW | Deferred — same as A19 |
+| D18 | Contest replay top-10 limit | LOW | Deferred — likely intentional, requires design input |
