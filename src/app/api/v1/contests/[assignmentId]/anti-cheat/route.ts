@@ -8,7 +8,7 @@ import { db } from "@/lib/db";
 import { rawQueryOne } from "@/lib/db/queries";
 import { antiCheatEvents, users } from "@/lib/db/schema";
 import { eq, and, desc, sql } from "drizzle-orm";
-import { parsePositiveInt } from "@/lib/validators/query-params";
+import { parsePositiveInt, parseNonNegativeInt } from "@/lib/validators/query-params";
 import { getContestAssignment, canManageContest } from "@/lib/assignments/contests";
 import { LRUCache } from "lru-cache";
 import { getUnsupportedRealtimeGuard, shouldRecordSharedHeartbeat, usesSharedRealtimeCoordination } from "@/lib/realtime/realtime-coordination";
@@ -147,8 +147,7 @@ export const GET = createApiHandler({
     const userIdFilter = searchParams.get("userId");
     const eventTypeFilter = searchParams.get("eventType");
     const limit = Math.min(parsePositiveInt(searchParams.get("limit"), 100), 500);
-    const rawOffset = parseInt(searchParams.get("offset") ?? "0", 10);
-    const offset = Math.max(0, Number.isFinite(rawOffset) ? rawOffset : 0);
+    const offset = parseNonNegativeInt(searchParams.get("offset"), 0);
 
     // Build filters using Drizzle
     const filters = [eq(antiCheatEvents.assignmentId, assignmentId)];

@@ -40,3 +40,30 @@ export function parsePositiveInt(
 
   return parsed;
 }
+
+/**
+ * Parse a query parameter value as a non-negative integer (>= 0) with a fallback default.
+ *
+ * Like `parsePositiveInt` but accepts 0 as a valid value. Useful for `offset`
+ * parameters where 0 is the natural starting value.
+ *
+ * @param value - The raw query parameter value
+ * @param defaultValue - The fallback when the value is invalid (must be >= 0)
+ */
+export function parseNonNegativeInt(
+  value: string | null | undefined,
+  defaultValue: number,
+): number {
+  if (typeof value !== "string" || value.trim() === "") {
+    return defaultValue;
+  }
+
+  const trimmed = value.trim();
+  const parsed = parseInt(trimmed, 10);
+
+  if (!Number.isFinite(parsed) || parsed < 0) {
+    return defaultValue;
+  }
+
+  return parsed;
+}
