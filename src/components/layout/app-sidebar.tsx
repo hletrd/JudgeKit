@@ -287,6 +287,7 @@ export function AppSidebar({
 
         {adminGroups.some(g => filterItems(g.items).length > 0) && (
           <>
+            {/* tracking-wider is for English uppercase text only (e.g. "ADMINISTRATION") — do not apply to Korean labels */}
             <SidebarGroup>
               <SidebarGroupLabel className="text-xs font-semibold uppercase tracking-wider text-muted-foreground/70">
                 {t("administration")}
