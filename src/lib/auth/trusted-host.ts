@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { getTrustedAuthHosts, normalizeHostForComparison } from "@/lib/security/env";
+import { getTrustedAuthHosts, normalizeHostForComparison, shouldTrustAuthHost } from "@/lib/security/env";
 
 function getRequestHost(request: NextRequest) {
   const forwardedHost = request.headers.get("x-forwarded-host");
@@ -21,6 +21,10 @@ function getRequestHost(request: NextRequest) {
 }
 
 export async function validateTrustedAuthHost(request: NextRequest) {
+  if (shouldTrustAuthHost()) {
+    return null;
+  }
+
   const requestHost = getRequestHost(request);
   const trustedHosts = await getTrustedAuthHosts();
 

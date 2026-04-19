@@ -1,14 +1,16 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { NextRequest } from "next/server";
 
-const { getTrustedAuthHostsMock, normalizeHostMock } = vi.hoisted(() => ({
+const { getTrustedAuthHostsMock, normalizeHostMock, shouldTrustAuthHostMock } = vi.hoisted(() => ({
   getTrustedAuthHostsMock: vi.fn(),
   normalizeHostMock: vi.fn(),
+  shouldTrustAuthHostMock: vi.fn(),
 }));
 
 vi.mock("@/lib/security/env", () => ({
   getTrustedAuthHosts: getTrustedAuthHostsMock,
   normalizeHostForComparison: normalizeHostMock,
+  shouldTrustAuthHost: shouldTrustAuthHostMock,
 }));
 
 import { validateTrustedAuthHost } from "@/lib/auth/trusted-host";
@@ -22,6 +24,7 @@ function makeRequest(headers: Record<string, string> = {}) {
 beforeEach(() => {
   vi.clearAllMocks();
   normalizeHostMock.mockImplementation((h: string) => h.toLowerCase().replace(/:\d+$/, ""));
+  shouldTrustAuthHostMock.mockReturnValue(false);
 });
 
 describe("validateTrustedAuthHost", () => {
@@ -39,6 +42,15 @@ describe("validateTrustedAuthHost", () => {
     const result = await validateTrustedAuthHost(makeRequest({ host: "example.com" }));
 
     expect(result).toBeNull();
+  });
+
+  it("returns null when AUTH_TRUST_HOST mode is enabled", async () => {
+    shouldTrustAuthHostMock.mockReturnValue(true);
+
+    const result = await validateTrustedAuthHost(makeRequest({ host: "evil.com" }));
+
+    expect(result).toBeNull();
+    expect(getTrustedAuthHostsMock).not.toHaveBeenCalled();
   });
 
   it("returns null when no host header is present", async () => {
