@@ -14,7 +14,20 @@ export default async function AdminLanguagesPage() {
   if (!caps.has("system.settings")) redirect("/dashboard");
 
   const t = await getTranslations("admin.languages");
-  const languages = await db.select().from(languageConfigs).orderBy(asc(languageConfigs.displayName), asc(languageConfigs.standard));
+  const languages = await db.select({
+    id: languageConfigs.id,
+    language: languageConfigs.language,
+    displayName: languageConfigs.displayName,
+    standard: languageConfigs.standard,
+    extension: languageConfigs.extension,
+    dockerImage: languageConfigs.dockerImage,
+    compiler: languageConfigs.compiler,
+    compileCommand: languageConfigs.compileCommand,
+    runCommand: languageConfigs.runCommand,
+    dockerfile: languageConfigs.dockerfile,
+    isEnabled: languageConfigs.isEnabled,
+    updatedAt: languageConfigs.updatedAt,
+  }).from(languageConfigs).orderBy(asc(languageConfigs.displayName), asc(languageConfigs.standard));
 
   // Enrich with runtime info
   const enrichedLanguages = languages.map(lang => ({
