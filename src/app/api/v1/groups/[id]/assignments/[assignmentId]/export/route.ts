@@ -8,21 +8,7 @@ import { canManageGroupResourcesAsync } from "@/lib/assignments/management";
 import { getAssignmentStatusRows } from "@/lib/assignments/submissions";
 import { logger } from "@/lib/logger";
 import { contentDispositionAttachment } from "@/lib/http/content-disposition";
-
-function escapeCsvField(value: string | null | undefined): string {
-  let str = value == null ? "" : String(value);
-  if (/^[=+\-@\t\r]/.test(str)) {
-    str = "\t" + str;
-  }
-  if (str.includes(",") || str.includes('"') || str.includes("\n") || str.includes("\r")) {
-    return '"' + str.replace(/"/g, '""') + '"';
-  }
-  return str;
-}
-
-function buildCsvRow(fields: (string | null | undefined)[]): string {
-  return fields.map(escapeCsvField).join(",");
-}
+import { escapeCsvField } from "@/lib/csv/escape-field";
 
 export async function GET(
   request: NextRequest,
@@ -70,14 +56,9 @@ export async function GET(
     // BOM for Excel UTF-8 compatibility
     const BOM = "\uFEFF";
 
-    const header = buildCsvRow([
-      "Student Name",
-      "Username",
-      "Class",
-      "Status",
-      "Score",
-      "Submitted At",
-    ]);
+    const header = ["Student Name", "Username", "Class", "Status", "Score", "Submitted At"]
+      .map(escapeCsvField)
+      .join(",");
 
     const dataRows = statusData.rows.map((row) => {
       const submittedAt = row.latestSubmittedAt
@@ -86,14 +67,9 @@ export async function GET(
       const status = row.latestStatus ?? "";
       const score = String(row.bestTotalScore);
 
-      return buildCsvRow([
-        row.name,
-        row.username,
-        row.className,
-        status,
-        score,
-        submittedAt,
-      ]);
+      return [row.name, row.username, row.className, status, score, submittedAt]
+        .map(escapeCsvField)
+        .join(",");
     });
 
     const csv = BOM + [header, ...dataRows].join("\r\n") + "\r\n";
