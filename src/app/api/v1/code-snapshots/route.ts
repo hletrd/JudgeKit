@@ -5,6 +5,7 @@ import { codeSnapshots } from "@/lib/db/schema";
 import { createApiHandler } from "@/lib/api/handler";
 import { apiError, apiSuccess } from "@/lib/api/responses";
 import { canAccessProblem } from "@/lib/auth/permissions";
+import { consumeUserApiRateLimit } from "@/lib/security/api-rate-limit";
 import {
   getRequiredAssignmentContextsForProblem,
   validateAssignmentSubmission,
@@ -22,6 +23,11 @@ export const POST = createApiHandler({
   rateLimit: "code-snapshot",
   schema: snapshotSchema,
   handler: async (_req: NextRequest, { user, body }) => {
+    // Per-user rate limit in addition to the IP-based limit above.
+    // Prevents a single user from flooding the code_snapshots table.
+    const userRateLimitResponse = await consumeUserApiRateLimit(_req, user.id, "code-snapshot:user");
+    if (userRateLimitResponse) return userRateLimitResponse;
+
     const normalizedAssignmentId = body.assignmentId ?? null;
 
     if (!normalizedAssignmentId) {

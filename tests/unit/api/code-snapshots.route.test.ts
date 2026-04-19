@@ -4,6 +4,7 @@ import { NextRequest, NextResponse } from "next/server";
 const {
   getApiUserMock,
   consumeApiRateLimitMock,
+  consumeUserApiRateLimitMock,
   canAccessProblemMock,
   getStudentAssignmentContextsForProblemMock,
   validateAssignmentSubmissionMock,
@@ -11,6 +12,7 @@ const {
 } = vi.hoisted(() => ({
   getApiUserMock: vi.fn(),
   consumeApiRateLimitMock: vi.fn(),
+  consumeUserApiRateLimitMock: vi.fn(),
   canAccessProblemMock: vi.fn(),
   getStudentAssignmentContextsForProblemMock: vi.fn(),
   validateAssignmentSubmissionMock: vi.fn(),
@@ -26,6 +28,7 @@ vi.mock("@/lib/api/auth", () => ({
 
 vi.mock("@/lib/security/api-rate-limit", () => ({
   consumeApiRateLimit: consumeApiRateLimitMock,
+  consumeUserApiRateLimit: consumeUserApiRateLimitMock,
 }));
 
 vi.mock("@/lib/auth/permissions", () => ({
@@ -72,6 +75,7 @@ describe("POST /api/v1/code-snapshots", () => {
     vi.clearAllMocks();
     getApiUserMock.mockResolvedValue(studentUser);
     consumeApiRateLimitMock.mockResolvedValue(null);
+    consumeUserApiRateLimitMock.mockResolvedValue(null);
     canAccessProblemMock.mockResolvedValue(true);
     getStudentAssignmentContextsForProblemMock.mockResolvedValue([]);
     validateAssignmentSubmissionMock.mockResolvedValue({ ok: true });
