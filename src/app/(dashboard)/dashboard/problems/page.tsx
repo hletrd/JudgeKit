@@ -13,8 +13,9 @@ import {
 import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
 import { db } from "@/lib/db";
+import { escapeLikePattern } from "@/lib/db/like";
 import { enrollments, problemGroupAccess, problems, submissions, users, tags, problemTags } from "@/lib/db/schema";
-import { eq, and, like, or, sql, inArray, asc } from "drizzle-orm";
+import { eq, and, or, sql, inArray, asc } from "drizzle-orm";
 import { auth } from "@/lib/auth";
 import { redirect } from "next/navigation";
 import Link from "next/link";
@@ -65,9 +66,6 @@ function normalizeSearch(value?: string) {
   return value.trim().slice(0, 200);
 }
 
-function escapeLike(value: string) {
-  return value.replaceAll("\\", "\\\\").replaceAll("%", "\\%").replaceAll("_", "\\_");
-}
 
 function formatDifficultyValue(value: number) {
   return value.toFixed(2).replace(/\.?0+$/, "");
@@ -169,8 +167,8 @@ export default async function ProblemsPage({
   const searchFilter =
     searchQuery
       ? or(
-          like(problems.title, `%${escapeLike(searchQuery)}%`),
-          like(users.name, `%${escapeLike(searchQuery)}%`)
+          sql`${problems.title} LIKE ${`%${escapeLikePattern(searchQuery)}%`} ESCAPE '\\'`,
+          sql`${users.name} LIKE ${`%${escapeLikePattern(searchQuery)}%`} ESCAPE '\\'`
         )
       : undefined;
 

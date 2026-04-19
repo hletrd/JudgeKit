@@ -11,8 +11,9 @@ import {
 } from "@/components/ui/table";
 import { SubmissionStatusBadge } from "@/components/submission-status-badge";
 import { db } from "@/lib/db";
+import { escapeLikePattern } from "@/lib/db/like";
 import { problems, submissions, users } from "@/lib/db/schema";
-import { and, asc, count, desc, eq, gte, like, or } from "drizzle-orm";
+import { and, asc, count, desc, eq, gte, or, sql } from "drizzle-orm";
 import { auth } from "@/lib/auth";
 import Link from "next/link";
 import { Button } from "@/components/ui/button";
@@ -60,9 +61,6 @@ type SubmissionRow = {
   } | null;
 };
 
-function escapeLike(value: string) {
-  return value.replaceAll("\\", "\\\\").replaceAll("%", "\\%").replaceAll("_", "\\_");
-}
 
 function getPeriodStart(period: PeriodFilter): Date | null {
   if (period === "all") return null;
@@ -168,8 +166,8 @@ export default async function SubmissionsPage({
 
   const searchFilter = searchQuery
     ? or(
-        like(problems.title, `%${escapeLike(searchQuery)}%`),
-        like(users.name, `%${escapeLike(searchQuery)}%`)
+        sql`${problems.title} LIKE ${`%${escapeLikePattern(searchQuery)}%`} ESCAPE '\\'`,
+        sql`${users.name} LIKE ${`%${escapeLikePattern(searchQuery)}%`} ESCAPE '\\'`
       )
     : undefined;
 

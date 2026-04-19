@@ -11,8 +11,9 @@ import {
 } from "@/components/ui/table";
 import { SubmissionStatusBadge } from "@/components/submission-status-badge";
 import { db } from "@/lib/db";
+import { escapeLikePattern } from "@/lib/db/like";
 import { assignments, groups, problems, submissions, users } from "@/lib/db/schema";
-import { and, asc, count, desc, eq, gte, inArray, like, lte, or } from "drizzle-orm";
+import { and, asc, count, desc, eq, gte, inArray, lte, or, sql } from "drizzle-orm";
 import { auth } from "@/lib/auth";
 import { resolveCapabilities } from "@/lib/capabilities/cache";
 import { redirect } from "next/navigation";
@@ -102,14 +103,10 @@ export default async function AdminSubmissionsPage({
   const timeZone = await getResolvedSystemTimeZone();
   const statusLabels = buildStatusLabels(tSubmissions);
 
-  function escapeLike(value: string) {
-    return value.replaceAll("\\", "\\\\").replaceAll("%", "\\%").replaceAll("_", "\\_");
-  }
-
   const searchWhereClause = searchQuery
     ? or(
-        like(users.name, `%${escapeLike(searchQuery)}%`),
-        like(problems.title, `%${escapeLike(searchQuery)}%`)
+        sql`${users.name} LIKE ${`%${escapeLikePattern(searchQuery)}%`} ESCAPE '\\'`,
+        sql`${problems.title} LIKE ${`%${escapeLikePattern(searchQuery)}%`} ESCAPE '\\'`
       )
     : undefined;
   const submissionReviewGroupIds = await getSubmissionReviewGroupIds(session.user.id, session.user.role);

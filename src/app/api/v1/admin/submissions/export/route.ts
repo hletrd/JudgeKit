@@ -3,7 +3,7 @@ import { createApiHandler } from "@/lib/api/handler";
 import { getSubmissionReviewGroupIds } from "@/lib/assignments/submissions";
 import { db } from "@/lib/db";
 import { assignments, groups, problems, submissions, users } from "@/lib/db/schema";
-import { and, eq, gte, inArray, like, lte, or } from "drizzle-orm";
+import { and, eq, gte, inArray, lte, or, sql } from "drizzle-orm";
 
 const STATUS_FILTER_VALUES = [
   "pending",
@@ -31,7 +31,7 @@ function normalizeGroupFilter(value?: string | null) {
   return typeof value === "string" ? value.trim().slice(0, 64) : "";
 }
 
-import { escapeLikePattern as escapeLike } from "@/lib/db/like";
+import { escapeLikePattern } from "@/lib/db/like";
 
 function escapeCsvField(value: string | number | null | undefined) {
   let str = value == null ? "" : String(value);
@@ -62,8 +62,8 @@ export const GET = createApiHandler({
 
     const searchWhereClause = searchQuery
       ? or(
-          like(users.name, `%${escapeLike(searchQuery)}%`),
-          like(problems.title, `%${escapeLike(searchQuery)}%`)
+          sql`${users.name} LIKE ${`%${escapeLikePattern(searchQuery)}%`} ESCAPE '\\'`,
+          sql`${problems.title} LIKE ${`%${escapeLikePattern(searchQuery)}%`} ESCAPE '\\'`
         )
       : undefined;
 

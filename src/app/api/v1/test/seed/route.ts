@@ -17,6 +17,7 @@ import { z } from "zod";
 import { hashPassword } from "@/lib/security/password-hash";
 import { sql } from "drizzle-orm";
 import { db } from "@/lib/db";
+import { escapeLikePattern } from "@/lib/db/like";
 import { users, problems } from "@/lib/db/schema";
 import { apiSuccess, apiError } from "@/lib/api/responses";
 import { logger } from "@/lib/logger";
@@ -186,13 +187,10 @@ export async function POST(req: NextRequest) {
       case "cleanup": {
         const { usernamePrefix, titlePrefix } = body.data ?? {};
 
-        // Escape LIKE metacharacters to prevent wildcard injection.
-        const escapeLike = (s: string) => s.replace(/[%_\\]/g, "\\$&");
-
         // Delete users whose username starts with the given prefix (default "e2e-").
         // Cascade rules in the schema will remove their sessions, submissions, etc.
         const effectiveUserPrefix = usernamePrefix ?? "e2e-";
-        const escapedUserPrefix = escapeLike(effectiveUserPrefix);
+        const escapedUserPrefix = escapeLikePattern(effectiveUserPrefix);
         const deletedUsers = await db
           .delete(users)
           .where(sql`${users.username} LIKE ${escapedUserPrefix + '%'} ESCAPE '\\'`)
@@ -200,7 +198,7 @@ export async function POST(req: NextRequest) {
 
         // Delete problems whose title starts with the given prefix (default "[E2E]").
         const effectiveTitlePrefix = titlePrefix ?? "[E2E]";
-        const escapedTitlePrefix = escapeLike(effectiveTitlePrefix);
+        const escapedTitlePrefix = escapeLikePattern(effectiveTitlePrefix);
         const deletedProblems = await db
           .delete(problems)
           .where(sql`${problems.title} LIKE ${escapedTitlePrefix + '%'} ESCAPE '\\'`)

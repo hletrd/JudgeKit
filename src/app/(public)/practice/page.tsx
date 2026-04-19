@@ -1,7 +1,8 @@
 import type { Metadata } from "next";
-import { and, asc, count, desc, eq, gte, inArray, like, lte, or, sql } from "drizzle-orm";
+import { and, asc, count, desc, eq, gte, inArray, lte, or, sql } from "drizzle-orm";
 import { getLocale, getTranslations } from "next-intl/server";
 import { db } from "@/lib/db";
+import { escapeLikePattern } from "@/lib/db/like";
 import { problems, submissions, tags, problemTags } from "@/lib/db/schema";
 import { PublicProblemList } from "../_components/public-problem-list";
 import { JsonLd } from "@/components/seo/json-ld";
@@ -18,7 +19,7 @@ import { normalizePage, normalizePageSize, setPaginationParams } from "@/lib/pag
 import { getProblemTierInfo } from "@/lib/problem-tiers";
 import { DifficultyRangeFilter } from "@/components/problem/difficulty-range-filter";
 import { hasCustomDifficultyRange, normalizeDifficultyRange, serializeDifficultyRange } from "@/lib/practice/difficulty-range";
-import { escapePracticeLike, getPracticeSearchMatchKinds, normalizePracticeSearch, type PracticeSearchMatchKind } from "@/lib/practice/search";
+import { getPracticeSearchMatchKinds, normalizePracticeSearch, type PracticeSearchMatchKind } from "@/lib/practice/search";
 
 type ProblemProgress = "solved" | "attempted" | "untried";
 type ProgressFilter = "all" | "solved" | "unsolved" | "attempted";
@@ -159,9 +160,9 @@ export default async function PracticePage({
   // Search filter
   const searchFilter = searchQuery
     ? or(
-        like(problems.title, `%${escapePracticeLike(searchQuery)}%`),
-        like(problems.description, `%${escapePracticeLike(searchQuery)}%`),
-        sql`CAST(${problems.sequenceNumber} AS TEXT) LIKE ${`%${escapePracticeLike(searchQuery)}%`} ESCAPE '\\'`
+        sql`${problems.title} LIKE ${`%${escapeLikePattern(searchQuery)}%`} ESCAPE '\\'`,
+        sql`${problems.description} LIKE ${`%${escapeLikePattern(searchQuery)}%`} ESCAPE '\\'`,
+        sql`CAST(${problems.sequenceNumber} AS TEXT) LIKE ${`%${escapeLikePattern(searchQuery)}%`} ESCAPE '\\'`
       )
     : undefined;
 
