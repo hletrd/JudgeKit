@@ -23,10 +23,16 @@ export async function isTrustedServerActionOrigin() {
   const originHost = getOriginHost(headerStore.get("origin"));
 
   if (!originHost) {
+    if (process.env.NODE_ENV !== "production") {
+      logger.warn("[server-actions] Origin header missing — bypassing origin check in development mode. Set NODE_ENV=production or configure TRUSTED_AUTH_HOSTS to prevent this.");
+    }
     return process.env.NODE_ENV !== "production";
   }
 
   if (trustedHosts.size === 0) {
+    if (process.env.NODE_ENV !== "production") {
+      logger.warn({ originHost }, "[server-actions] No trusted hosts configured — bypassing origin check in development mode. Configure TRUSTED_AUTH_HOSTS to prevent this.");
+    }
     return process.env.NODE_ENV !== "production";
   }
 
