@@ -7,7 +7,7 @@
 
 import { asc, sql } from "drizzle-orm";
 import type { PgTable } from "drizzle-orm/pg-core";
-import { db, type TransactionClient, activeDialect } from "./index";
+import { db, activeDialect } from "./index";
 import type { DbDialect } from "./config";
 import * as schema from "./schema";
 
@@ -27,39 +27,6 @@ export interface JudgeKitExport {
       rowCount: number;
     }
   >;
-}
-
-export function createExportJsonStream(data: JudgeKitExport): ReadableStream<Uint8Array> {
-  const encoder = new TextEncoder();
-  const redactionMode = data.redactionMode ?? "full-fidelity";
-
-  return new ReadableStream({
-    start(controller) {
-      controller.enqueue(
-        encoder.encode(
-          `{"version":${data.version},"exportedAt":${JSON.stringify(data.exportedAt)},"sourceDialect":${JSON.stringify(data.sourceDialect)},"appVersion":${JSON.stringify(data.appVersion)},"redactionMode":${JSON.stringify(redactionMode)},"tables":{`
-        )
-      );
-
-      const entries = Object.entries(data.tables);
-      entries.forEach(([tableName, tableData], tableIndex) => {
-        controller.enqueue(
-          encoder.encode(
-            `${tableIndex === 0 ? "" : ","}${JSON.stringify(tableName)}:{"columns":${JSON.stringify(tableData.columns)},"rows":[`
-          )
-        );
-
-        tableData.rows.forEach((row, rowIndex) => {
-          controller.enqueue(encoder.encode(`${rowIndex === 0 ? "" : ","}${JSON.stringify(row)}`));
-        });
-
-        controller.enqueue(encoder.encode(`],"rowCount":${tableData.rowCount}}`));
-      });
-
-      controller.enqueue(encoder.encode("}}"));
-      controller.close();
-    },
-  });
 }
 
 async function waitForReadableStreamDemand(
@@ -283,9 +250,6 @@ const ALWAYS_REDACT: Record<string, Set<string>> = {
   users: new Set(["passwordHash"]),
 };
 
-/** Empty redaction set for full-fidelity backup exports (minus ALWAYS_REDACT). */
-const REDACTED_COLUMNS: Record<string, Set<string>> = {};
-
 type ColumnRef = Parameters<typeof asc>[0];
 
 function getOrderClauses(table: PgTable, orderColumns: string[]) {
@@ -294,73 +258,6 @@ function getOrderClauses(table: PgTable, orderColumns: string[]) {
     .map((column) => columns[column])
     .filter((c): c is ColumnRef => c != null)
     .map((column) => asc(column));
-}
-
-async function selectTableChunks(
-  tx: TransactionClient,
-  table: PgTable,
-  orderColumns: string[]
-): Promise<Record<string, unknown>[]> {
-  const rows: Record<string, unknown>[] = [];
-  let offset = 0;
-
-  while (true) {
-    const chunk = await tx
-      .select()
-      .from(table)
-      .orderBy(...getOrderClauses(table, orderColumns))
-      .limit(EXPORT_CHUNK_SIZE)
-      .offset(offset);
-
-    if (chunk.length === 0) break;
-    rows.push(...chunk);
-    if (chunk.length < EXPORT_CHUNK_SIZE) break;
-    offset += chunk.length;
-  }
-
-  return rows;
-}
-
-/**
- * Export the entire database to a portable JSON format.
- * Uses cursor-based pagination to avoid loading entire tables into memory.
- */
-/**
- * @deprecated Use streamDatabaseExport() instead — this function loads entire
- * tables into memory via offset-based pagination and may OOM on large databases.
- */
-export async function exportDatabase(options: { sanitize?: boolean } = {}): Promise<JudgeKitExport> {
-  const redactionMap = options.sanitize ? SANITIZED_COLUMNS : REDACTED_COLUMNS;
-
-  return db.transaction(async (tx) => {
-    await tx.execute(sql.raw("SET TRANSACTION ISOLATION LEVEL REPEATABLE READ READ ONLY"));
-
-    const result: JudgeKitExport = {
-      version: 1,
-      exportedAt: new Date().toISOString(),
-      sourceDialect: activeDialect,
-      appVersion: process.env.npm_package_version ?? "unknown",
-      redactionMode: getExportRedactionMode(options.sanitize),
-      tables: {},
-    };
-
-    for (const { name, table, orderColumns } of TABLE_ORDER) {
-      const orderedRows = await selectTableChunks(tx as TransactionClient, table, orderColumns);
-      const columns = orderedRows.length > 0 ? Object.keys(orderedRows[0] as object) : [];
-      const redactSet = redactionMap[name];
-      const rows = orderedRows.map((row) =>
-        columns.map((col) => (redactSet?.has(col) ? null : normalizeValue((row as Record<string, unknown>)[col])))
-      );
-
-      result.tables[name] = {
-        columns,
-        rows,
-        rowCount: rows.length,
-      };
-    }
-
-    return result;
-  });
 }
 
 /**

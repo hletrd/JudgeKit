@@ -46,18 +46,13 @@ describe("export.ts sanitization", () => {
     expect(source).toContain('return sanitize ? "sanitized" : "full-fidelity"');
   });
 
-  it("exportDatabase accepts a sanitize option", () => {
-    const source = readFileSync(join(process.cwd(), EXPORT_PATH), "utf8");
-    expect(source).toMatch(/exportDatabase\s*\([^)]*sanitize\??\s*:/);
-  });
-
   it("streamDatabaseExport uses SANITIZED_COLUMNS when sanitize is true", () => {
     const source = readFileSync(join(process.cwd(), EXPORT_PATH), "utf8");
-    expect(source).toContain("options.sanitize ? SANITIZED_COLUMNS");
+    expect(source).toContain("options.sanitize ? { ...SANITIZED_COLUMNS, ...ALWAYS_REDACT }");
   });
 
-  it("exportDatabase uses SANITIZED_COLUMNS when sanitize is true", () => {
+  it("does not export the deprecated OOM-prone exportDatabase function", () => {
     const source = readFileSync(join(process.cwd(), EXPORT_PATH), "utf8");
-    expect(source).toContain("options.sanitize ? SANITIZED_COLUMNS");
+    expect(source).not.toContain("export async function exportDatabase");
   });
 });
