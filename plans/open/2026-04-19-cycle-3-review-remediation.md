@@ -2,7 +2,7 @@
 
 **Date:** 2026-04-19  
 **Source:** `.context/reviews/cycle-3-comprehensive-review.md`, `.context/reviews/_aggregate.md`  
-**Status:** IN PROGRESS
+**Status:** COMPLETE
 
 ## Deduplication note
 Cycle 1 and Cycle 2 plans are both COMPLETE. This plan covers findings that are genuinely NEW from the cycle 3 review.
@@ -167,10 +167,10 @@ These findings are explicitly deferred per the review. Each records the file+lin
 
 | Story | Status | Commit |
 |---|---|---|
-| LOG-01 | Pending | — |
-| DATA-01 | Pending | — |
-| AUTH-01 | Pending | — |
-| LOGIC-01 | Pending | — |
-| TEST-01 | Pending | — |
-| VALID-01 | Pending | — |
-| VALID-02 | Pending | — |
+| LOG-01 | Done | `66c8e9b2` |
+| DATA-01 | Done | `56fc0d00` |
+| AUTH-01 | Done | `5119f49c` |
+| LOGIC-01 | Done | `56fc0d00` (included in DATA-01 commit) |
+| TEST-01 | Done | `895286b3` |
+| VALID-01 | Done | `53359b03` |
+| VALID-02 | Done | `5119f49c` (included in AUTH-01 commit) |
