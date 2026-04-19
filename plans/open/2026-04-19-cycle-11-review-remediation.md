@@ -1,159 +1,73 @@
-# Cycle 11 Review Remediation Plan
+# Cycle 11 Review Remediation Plan (RPF Loop)
 
 **Date:** 2026-04-19
-**Source:** `.context/reviews/cycle-11-comprehensive-review.md`, `.context/reviews/_aggregate.md`
 **Status:** COMPLETE
-
-## Deduplication note
-Cycles 1-10 plans are all COMPLETE. This plan covers findings that are genuinely NEW from the cycle 11 review.
+**Source:** `cycle-11-code-reviewer.md`, `cycle-11-security-reviewer.md`, `cycle-11-perf-reviewer.md`, `cycle-11-architect.md`, `cycle-11-critic.md`, `cycle-11-verifier.md`, `cycle-11-test-engineer.md`, `cycle-11-debugger.md`, `cycle-11-designer.md`, `cycle-11-tracer.md`, `cycle-11-aggregate.md`
 
 ---
 
-## Implementation Stories
+## Schedule (this cycle)
 
-### DATA-09: Restrict column selection in `authenticateApiKey()`
-**Severity:** MEDIUM | **Confidence:** HIGH | **Effort:** Quick win
+### S1 — [MEDIUM] Eliminate inline AuthUserRecord construction — pass DB user directly to mapUserToAuthFields
 
-**Files:**
-- `src/lib/api/api-key-auth.ts:71-75`
+- **From:** AGG-1 (CR11-CR1, CR11-AR3, CR11-CT1, CR11-V1, CR11-V2, CR11-DB2, tracer Flow 1/2)
+- **Files:** `src/lib/auth/config.ts:317-336, 408-430, 462-480`
+- **Fix:**
+  1. Refactor `authorize()`: pass the DB `user` object directly to `createSuccessfulLoginResponse` instead of constructing an inline `AuthUserRecord`. The DB query in `authorize()` has no `columns` filter, so `user` already has all fields.
+  2. Refactor `jwt` callback `if (user)` branch: pass `user` directly to `syncTokenWithUser` via `mapUserToAuthFields`.
+  3. Refactor `jwt` callback `freshUser` branch: pass `freshUser` directly to `syncTokenWithUser` via `mapUserToAuthFields`.
+  4. Update `mapUserToAuthFields` type signature if needed — the DB user type has extra fields (`passwordHash`, `isActive`, `tokenInvalidatedAt`) that are not in `AuthUserRecord`. These are simply ignored by `mapUserToAuthFields`.
+- **Status:** COMPLETE (commit 55415a98)
 
-**Problem:** `db.select().from(apiKeys)` without column restriction loads `encryptedKey` and `keyHash` on every API key auth request. Only `id`, `role`, `createdById`, `expiresAt`, `isActive` are needed.
+### S2 — [MEDIUM] Derive AUTH_TOKEN_FIELDS from AUTH_PREFERENCE_FIELDS — compile-time sync enforcement
 
-**Fix:**
-Replace with:
-```ts
-const [candidate] = await db
-  .select({
-    id: apiKeys.id,
-    role: apiKeys.role,
-    createdById: apiKeys.createdById,
-    expiresAt: apiKeys.expiresAt,
-    isActive: apiKeys.isActive,
-  })
-  .from(apiKeys)
-  .where(and(eq(apiKeys.keyHash, keyHash), eq(apiKeys.isActive, true)))
-  .limit(1);
-```
+- **From:** AGG-2 (CR11-CR2, CR11-SR2, CR11-AR1)
+- **Files:** `src/lib/auth/session-security.ts:42-63`, `src/lib/auth/config.ts:58-69`
+- **Fix:**
+  1. Export `AUTH_PREFERENCE_FIELDS` from `src/lib/auth/config.ts`
+  2. Import `AUTH_PREFERENCE_FIELDS` into `src/lib/auth/session-security.ts`
+  3. Build `AUTH_TOKEN_FIELDS` from it: `const AUTH_TOKEN_FIELDS = ['sub', ...AUTH_PREFERENCE_FIELDS, 'mustChangePassword', 'authenticatedAt', 'uaHash'] as const`
+  4. Add a unit test that verifies all fields set by `syncTokenWithUser` are covered by `AUTH_TOKEN_FIELDS`
+- **Status:** COMPLETE (commit d1b8ed39)
 
-**Verification:** `npx tsc --noEmit`, `npx vitest run`
+### S3 — [LOW] Add JSDoc to authUserSelect noting preference fields are intentionally excluded
 
----
+- **From:** AGG-8 (CR11-CR4)
+- **File:** `src/lib/db/selects.ts:3-13`
+- **Fix:** Add JSDoc comment to `authUserSelect` noting that preference fields (`preferredLanguage`, `preferredTheme`, etc.) are intentionally excluded because they're carried by the JWT token, not the API auth context.
+- **Status:** COMPLETE (commit 392bec3e)
 
-### AUTH-02: Replace hardcoded `role.name === "super_admin"` in roles PATCH with `isSuperAdminRole()`
-**Severity:** MEDIUM | **Confidence:** HIGH | **Effort:** Quick win
+### S4 — [LOW] Add comment documenting shareAcceptedSolutions default-true rationale
 
-**Files:**
-- `src/app/api/v1/admin/roles/[id]/route.ts:59`
+- **From:** AGG-11 (CR11-CT3, cycle-10 CR10-CT4)
+- **File:** `src/lib/auth/config.ts:107`
+- **Fix:** Add a comment in `mapUserToAuthFields` explaining why `shareAcceptedSolutions` defaults to `true` (opt-out default for educational use case).
+- **Status:** COMPLETE (commit 392bec3e)
 
-**Problem:** Same class of bug fixed in cycle 3 AUTH-01 for `user-management.ts` and `users/[id]/route.ts`. Custom roles with super_admin-level privileges bypass this safety rail.
+### S5 — [LOW] Add `if (closed) return` guard before controller.enqueue in SSE onPollResult
 
-**Fix:**
-1. Import `isSuperAdminRole` from `@/lib/capabilities/cache`
-2. Replace `role.name === "super_admin"` with `isSuperAdminRole(role.name)`
+- **From:** AGG-6 (CR11-DB1)
+- **File:** `src/app/api/v1/submissions/[id]/events/route.ts:354, 399`
+- **Fix:** Add `if (closed) return` before each `controller.enqueue` call in the terminal-result-fetch paths.
+- **Status:** COMPLETE (commit 392bec3e)
 
-**Verification:** `npx tsc --noEmit`, `npx vitest run`
+### S6 — [LOW] Add early return in SSE cleanup timer when no connections
 
----
+- **From:** AGG-7 (CR11-DB3)
+- **File:** `src/app/api/v1/submissions/[id]/events/route.ts:82-90`
+- **Fix:** Add `if (connectionInfoMap.size === 0) return;` at the start of the cleanup callback.
+- **Status:** COMPLETE (commit 392bec3e)
 
-### AUTH-03: Replace duplicated `ROLE_LEVELS` map with `getRoleLevel()` and fix `canManageRole`/`canManageRoleAsync`
-**Severity:** LOW | **Confidence:** HIGH | **Effort:** Moderate
+### S7 — [MEDIUM] Workspace-to-public migration Phase 3: Add PublicHeader to dashboard layout
 
-**Files:**
-- `src/app/api/v1/admin/roles/[id]/route.ts:70` — replace local `ROLE_LEVELS` with `getRoleLevel()`
-- `src/lib/security/constants.ts:78,87` — replace `requestedRole === "super_admin"` with `isSuperAdminRole()`
-
-**Problem:**
-1. The roles PATCH route has a local `ROLE_LEVELS` map with **different values** from the canonical `ROLE_LEVEL` in constants.ts. The local map also doesn't support custom roles.
-2. `canManageRole` and `canManageRoleAsync` still use hardcoded `=== "super_admin"` instead of `isSuperAdminRole()`.
-
-**Fix:**
-1. In roles PATCH route: Remove `ROLE_LEVELS` map. Use `await getRoleLevel(user.role)` for `creatorLevel` and `await getRoleLevel(role.name)` for target role level. Since `getRoleLevel` is async, make the comparison async.
-2. In constants.ts: Import `isSuperAdminRole` from `@/lib/capabilities/cache` and replace both `requestedRole === "super_admin"` checks. For the sync `canManageRole()`, use `getBuiltinRoleLevel(requestedRole) >= (DEFAULT_ROLE_LEVELS.super_admin ?? 4)`.
-
-**Verification:** `npx tsc --noEmit`, `npx vitest run`
-
----
-
-### DATA-10: Replace `encryptedKey` column load with SQL IS NOT NULL expression in admin API keys GET
-**Severity:** LOW | **Confidence:** HIGH | **Effort:** Quick win
-
-**Files:**
-- `src/app/api/v1/admin/api-keys/route.ts:33,39-42`
-
-**Problem:** Loads potentially large `encryptedKey` data from DB for every API key row just to check if it's non-null. Should use SQL expression instead.
-
-**Fix:**
-Replace the select field and simplify the response mapping:
-```ts
-const rows = await db
-  .select({
-    id: apiKeys.id,
-    name: apiKeys.name,
-    keyPrefix: apiKeys.keyPrefix,
-    role: apiKeys.role,
-    createdById: apiKeys.createdById,
-    createdByName: users.name,
-    lastUsedAt: apiKeys.lastUsedAt,
-    expiresAt: apiKeys.expiresAt,
-    isActive: apiKeys.isActive,
-    createdAt: apiKeys.createdAt,
-    hasEncryptedKey: sql<boolean>`${apiKeys.encryptedKey} IS NOT NULL`,
-  })
-  .from(apiKeys)
-  .leftJoin(users, eq(apiKeys.createdById, users.id))
-  .orderBy(desc(apiKeys.createdAt));
-
-return apiSuccess(rows);
-```
-
-**Verification:** `npx tsc --noEmit`, `npx vitest run`
-
----
-
-### DATA-11: Restrict column selection in docker image build route
-**Severity:** LOW | **Confidence:** HIGH | **Effort:** Quick win
-
-**Files:**
-- `src/app/api/v1/admin/docker/images/build/route.ts:25`
-
-**Problem:** `db.select().from(languageConfigs)` without column restriction. Only `dockerImage` is needed.
-
-**Fix:**
-Replace with:
-```ts
-const [langConfig] = await db
-  .select({ dockerImage: languageConfigs.dockerImage })
-  .from(languageConfigs)
-  .where(eq(languageConfigs.language, body.language))
-  .limit(1);
-```
-
-**Verification:** `npx tsc --noEmit`, `npx vitest run`
-
----
-
-### DATA-12: Verify and potentially restrict column selection in `system-settings-config.ts`
-**Severity:** LOW | **Confidence:** MEDIUM | **Effort:** Quick win
-
-**Files:**
-- `src/lib/system-settings-config.ts:109-113`
-
-**Problem:** `db.select().from(systemSettings)` without column restriction. Need to verify if all columns are settings keys.
-
-**Fix:**
-Check the `systemSettings` schema to confirm whether all columns are settings keys. If there are non-settings columns, add explicit column selection. If all columns are settings keys, document this as by-design and close.
-
-**Verification:** `npx tsc --noEmit`
-
----
-
-## Deferred Items
-
-These findings are explicitly deferred per the review. Each records the file+line citation, original severity/confidence, concrete reason, and exit criterion.
-
-| ID | Finding | Severity | Confidence | Reason for deferral | Exit criterion |
-|----|---------|----------|------------|---------------------|----------------|
-| F8 | `exam-sessions.ts` uses `new Date()` for deadline comparison | LOW | MEDIUM | Already tracked as deferred A19 (cycle 4). Same class of clock-skew concern; exam sessions are typically started well before the deadline. | Critical ordering uses PostgreSQL `NOW()` |
+- **From:** AGG-12 (CR11-AR4, CR11-CT2), migration plan Phase 3
+- **File:** `src/app/(dashboard)/layout.tsx`, `src/components/layout/public-header.tsx`
+- **Fix:**
+  1. Import and render `PublicHeader` at the top of the dashboard layout (above the sidebar)
+  2. Pass `loggedInUser` with `role` and `capabilities` from the session
+  3. Ensure the dashboard layout still renders `AppSidebar` below the header
+  4. Test that the header and sidebar coexist without layout conflicts
+- **Status:** COMPLETE (commit bbf36ec2)
 
 ---
 
@@ -161,9 +75,128 @@ These findings are explicitly deferred per the review. Each records the file+lin
 
 | Story | Status | Commit |
 |---|---|---|
-| DATA-09 | Done | `04e0284e` |
-| AUTH-02 | Done | `54f8faeb` |
-| AUTH-03 | Done | `54f8faeb` |
-| DATA-10 | Done | `80187837` |
-| DATA-11 | Done | `9cb361fc` |
-| DATA-12 | By Design | N/A — all columns are settings keys; large JSONB columns are single-row overhead |
+| S1 | COMPLETE | 55415a98 |
+| S2 | COMPLETE | d1b8ed39 |
+| S3 | COMPLETE | 392bec3e |
+| S4 | COMPLETE | 392bec3e |
+| S5 | COMPLETE | 392bec3e |
+| S6 | COMPLETE | 392bec3e |
+| S7 | COMPLETE | bbf36ec2 |
+
+---
+
+## Deferred (not this cycle)
+
+### D1 — [MEDIUM] JWT `authenticatedAt` clock skew with DB `tokenInvalidatedAt` (carried from cycle 10 D1)
+
+- **From:** cycle-9 AGG-4 (CR9-V1)
+- **File:** `src/lib/auth/config.ts:325,392`
+- **Reason:** Requires careful design — using DB server time means extra DB round-trip on login. Grace period is simpler but reduces security slightly. Needs product decision.
+- **Exit criterion:** Performance profiling shows this as actual problem; design decision on grace period vs DB-time approach
+
+### D2 — [MEDIUM] JWT callback DB query on every request — add TTL cache (AGG-3)
+
+- **From:** AGG-3 (CR11-PR1, cycle-10 AGG-5/D3)
+- **File:** `src/lib/auth/config.ts:448-452`
+- **Reason:** Caching the JWT callback requires careful invalidation. A proper solution needs shared cache design (in-memory LRU with TTL keyed by userId, invalidated when `tokenInvalidatedAt` changes). This is a larger refactor that should be done in a dedicated cycle.
+- **Exit criterion:** Performance profiling shows JWT callback as bottleneck; shared cache design approved
+
+### D3 — [MEDIUM] SSE route refactoring — extract connection tracking and polling into separate modules (AGG-4)
+
+- **From:** AGG-4 (CR11-AR2, CR11-PR2, CR11-CR3)
+- **File:** `src/app/api/v1/submissions/[id]/events/route.ts`
+- **Reason:** The SSE route refactoring is a significant change (475 lines -> 3 files). Should be done in a dedicated cycle with thorough testing.
+- **Exit criterion:** SSE integration tests in place; dedicated refactoring cycle
+
+### D4 — [MEDIUM] SSE submission events route capability check incomplete (carried from cycle 10 D4)
+
+- **File:** `src/app/api/v1/submissions/[id]/events/route.ts`
+- **Reason:** Requires understanding the full SSE auth flow and testing with custom roles.
+- **Exit criterion:** Custom role test coverage in place; SSE route tests available
+
+### D5 — [MEDIUM] Test coverage gaps for workspace-to-public migration (carried from cycle 10 D5)
+
+- **Reason:** Requires component test infrastructure for PublicHeader.
+- **Exit criterion:** Phase 3 header changes finalized; component test harness ready
+
+### D6 — [MEDIUM] Metrics endpoint dual auth paths without rate limiting (AGG-5)
+
+- **From:** AGG-5 (CR11-SR1)
+- **File:** `src/app/api/metrics/route.ts:23-48`
+- **Reason:** Requires either migrating to `createApiHandler` with custom auth or adding a standalone rate limiter. Low urgency since CRON_SECRET is not publicly exposed.
+- **Exit criterion:** CRON_SECRET exposure risk assessment; or migration to `createApiHandler`
+
+### D7 — [LOW] Internal cleanup endpoint has no rate limiting (AGG-9)
+
+- **From:** AGG-9 (CR11-SR3)
+- **File:** `src/app/api/internal/cleanup/route.ts`
+- **Reason:** CRON_SECRET is not publicly exposed. Rate limiting is defense-in-depth.
+- **Exit criterion:** CRON_SECRET exposure risk assessment; or migration to `createApiHandler`
+
+### D8 — [LOW] `localStorage.clear()` clears all storage for the origin (carried from cycle 10 D6)
+
+- **File:** `src/components/layout/app-sidebar.tsx:240-241`
+- **Reason:** Only affects multi-app dev environments sharing the same origin. Production is single-app per origin.
+- **Exit criterion:** Multi-app dev environment reported as issue
+
+### D9 — [LOW] `rateLimits` table used for SSE connections and heartbeats (carried from cycle 10 D7)
+
+- **File:** `src/lib/realtime/realtime-coordination.ts`
+- **Reason:** Requires a database migration and is a larger architectural change.
+- **Exit criterion:** SSE connection tracking scales beyond current limits; dedicated refactoring cycle
+
+### D10 — [LOW] Backup/restore/migrate routes use manual auth pattern (carried from cycle 10 D8)
+
+- **Reason:** Low risk since they already have all security checks.
+- **Exit criterion:** `createApiHandler` gains streaming response support
+
+### D11 — [LOW] Files/[id] DELETE/PATCH manual auth (carried from cycle 10 D9)
+
+- **Reason:** Low priority consistency fix.
+- **Exit criterion:** Next time these routes are touched
+
+### D12 — [LOW] SSE re-auth rate limiting (carried from cycle 10 D10)
+
+- **Reason:** The re-auth endpoint requires the user's current session password.
+- **Exit criterion:** Rate-limit infrastructure supports per-user key on SSE routes
+
+### D13 — [LOW] PublicHeader click-outside-to-close (carried from cycle 10 D11)
+
+- **Reason:** UX enhancement, not a bug.
+- **Exit criterion:** UX review of mobile menu behavior
+
+### D14 — [LOW] `namedToPositional` regex alignment (carried from cycle 10 D12)
+
+- **Reason:** No actual vulnerability; validation regex catches the edge case.
+- **Exit criterion:** Next time the file is touched
+
+### D15 — [LOW] `tracking-wide`/`tracking-wider` on labels may affect Korean text (AGG-10)
+
+- **From:** AGG-10 (CR11-D1)
+- **Files:** `src/components/layout/app-sidebar.tsx:291`, `src/components/layout/public-header.tsx:320`
+- **Reason:** The labels are currently English uppercase text (e.g., "DASHBOARD"). If i18n translations change to Korean, the tracking classes would need to be made locale-conditional.
+- **Exit criterion:** Korean i18n for dashboard/admin section headings is implemented; then make tracking locale-conditional
+
+### D16 — [LOW] SSE shared poll timer interval not adjustable at runtime (carried from cycle 10 D14)
+
+- **File:** `src/app/api/v1/submissions/[id]/events/route.ts:129-139`
+- **Reason:** Low impact — timer restarts when connections close and reopen.
+- **Exit criterion:** Runtime config changes become more frequent; polling interval needs to be dynamic
+
+### D17 — [LOW] Export abort does not cancel in-flight DB queries (carried from cycle 10 D15)
+
+- **File:** `src/lib/db/export.ts:45-144`
+- **Reason:** The abort is cooperative. DB query must complete before abort takes effect.
+- **Exit criterion:** Large-table export is a user-reported issue; PG driver supports query cancellation
+
+### D18 — [LOW] Deprecated `recruitingInvitations.token` column still has unique index (carried from cycle 10 D16)
+
+- **File:** `src/lib/db/schema.pg.ts:937,961`
+- **Reason:** Requires a database migration.
+- **Exit criterion:** Next schema migration cycle
+
+### D19 — [LOW] `validateExport` missing duplicate table name check (carried from cycle 10 D17)
+
+- **File:** `src/lib/db/export.ts:306-311`
+- **Reason:** Validation gap only — import would handle duplicates gracefully.
+- **Exit criterion:** Next time the export/import module is touched

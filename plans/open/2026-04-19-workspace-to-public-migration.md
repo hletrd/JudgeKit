@@ -192,18 +192,23 @@ Same as instructor, with additional "Admin" dropdown entry that navigates to `/d
 
 ### Phase 3 — Dashboard layout refinement (Medium risk)
 
-**Status:** IN PROGRESS (cycle 10)
+**Status:** IN PROGRESS (cycle 11)
 
 **Goal:** Simplify the dashboard layout to complement the top navbar.
 
-1. Ensure the top navbar is visible on dashboard pages (currently it is not — dashboard has its own header). **[STARTING THIS CYCLE]**
+1. ~~Ensure the top navbar is visible on dashboard pages (currently it is not — dashboard has its own header).~~ DONE (commit bbf36ec2 — PublicHeader added to dashboard layout)
 2. Consider converting `AppSidebar` from a full sidebar to a slimmer icon rail or contextual sub-navigation within each section.
 3. Move breadcrumb to top navbar area.
 4. Evaluate whether `(control)` route group should merge into `(dashboard)/admin` or remain separate.
 
 **Additional Phase 3 improvements identified in cycle 10 review:**
-- Refactor `PublicHeader.getDropdownItems()` to use capability-based filtering instead of hardcoded role checks (AGG-4) — ensures consistency with `AppSidebar` and supports custom roles.
-- Remove `tracking-tight` from site title if locale is Korean (CLAUDE.md compliance).
+- ~~Refactor `PublicHeader.getDropdownItems()` to use capability-based filtering instead of hardcoded role checks (AGG-4)~~ DONE (commit 3a2b56d7)
+- ~~Remove `tracking-tight` from site title if locale is Korean (CLAUDE.md compliance).~~ DONE (commit 79204982)
+
+**Remaining Phase 3 work:**
+- Slim down `AppSidebar` to icon-only mode or contextual sub-navigation
+- Move breadcrumb to top navbar area
+- Evaluate `(control)` route group merge into `(dashboard)/admin`
 
 **Estimated files changed:** ~15-20
 
