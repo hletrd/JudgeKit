@@ -1,48 +1,32 @@
-# Designer Review — UI/UX Review
+# Designer
 
-## Scope
-This is a Next.js web application with a full frontend (TSX components, Tailwind CSS, React components for contests, submissions, code editing, discussions, admin panels). The review covers accessibility, UX patterns, and UI concerns.
+**Date:** 2026-04-19
+**Base commit:** b91dac5b
+**Angle:** UI/UX review — accessibility, responsiveness, i18n, perceived performance
 
-## Finding UX1: Error Boundary Components Use `console.error`
-- **File**: `src/app/(dashboard)/dashboard/groups/error.tsx:17`, `src/app/(dashboard)/dashboard/problems/error.tsx:17`, `src/app/(dashboard)/dashboard/submissions/error.tsx:17`, `src/app/(dashboard)/dashboard/admin/error.tsx:17`
-- **Severity**: Low | **Confidence**: High
-- **Description**: All error boundary components use `console.error(error)` which is not captured in production logging. Users see a generic error message but the details are lost unless someone checks the browser console.
-- **Fix**: Send error details to the server-side logging system via an API endpoint, or use the existing logger infrastructure.
+---
 
-## Finding UX2: No Skip-to-Content Focus Management
-- **File**: `src/components/layout/skip-to-content.tsx`
-- **Severity**: Low | **Confidence**: Medium
-- **Description**: A skip-to-content component exists (good), but it needs to be verified that focus actually moves to the main content area when activated. The target element must have `tabindex="-1"` and receive `.focus()` for keyboard users.
-- **Fix**: Verify the skip-to-content target element has proper focus handling.
+## F1: Proxy matcher does not include `/languages` public route — missing CSP headers
 
-## Finding UX3: Countdown Timer Accessibility
-- **File**: `src/components/exam/countdown-timer.tsx`
-- **Severity**: Low | **Confidence**: Medium
-- **Description**: Exam countdown timers need `aria-live="polite"` or `aria-live="assertive"` for screen reader users to be notified of time remaining. Without this, visually impaired users may not know when time is running out.
-- **Fix**: Add `aria-live` region for the countdown timer with periodic announcements.
+- **File**: `src/proxy.ts:301-319`
+- **Severity**: LOW
+- **Confidence**: MEDIUM
+- **Description**: The proxy matcher includes `/practice/:path*`, `/rankings`, and other public routes, but does not include `/languages` (the public languages page at `src/app/(public)/languages/page.tsx`). This means the `/languages` page does not receive the CSP headers, HSTS, or other security headers set by `createSecuredNextResponse`. Same finding as code-reviewer F5.
+- **Concrete failure scenario**: The `/languages` page loads without CSP headers, making it slightly less protected against XSS attacks than other public pages.
+- **Fix**: Add `/languages` to the proxy matcher config.
 
-## Finding UX4: Korean Letter Spacing Correctly Handled
-- **File**: Per CLAUDE.md project rules
-- **Severity**: N/A | **Confidence**: High
-- **Description**: The project rules explicitly state to keep Korean text at default letter spacing. Reviewed a sample of Korean-containing components; no custom `tracking-*` or `letter-spacing` was found applied to Korean text. This rule is being followed.
-- **Verdict**: PASS
+## F2: SSE connection tracking eviction may cause "too many connections" errors for legitimate users
 
-## Finding UX5: Dark/Light Mode Support
-- **File**: `src/components/layout/theme-toggle.tsx`, `src/components/theme-provider.tsx`
-- **Severity**: N/A | **Confidence**: High
-- **Description**: Theme switching is implemented via `next-themes`. The code editor theme picker (`src/app/(dashboard)/dashboard/profile/editor-theme-picker.tsx`) allows selecting editor themes. This appears well-implemented.
-- **Verdict**: PASS
+- **File**: `src/app/api/v1/submissions/[id]/events/route.ts:41-44`
+- **Severity**: LOW
+- **Confidence**: MEDIUM
+- **Description**: Same finding as debugger F2. If the tracking map evicts an active connection's entry, the per-user count is decremented, which could lead to users exceeding the connection limit. From a UX perspective, this means a user who already has max connections might see "too many connections" errors on subsequent requests, or conversely, might be allowed to exceed the limit.
+- **Concrete failure scenario**: During a contest with many simultaneous SSE connections, a user's tracking entry is evicted. They see inconsistent connection management behavior.
+- **Fix**: Same as debugger F2.
 
-## Finding UX6: Code Editor Loading States
-- **File**: `src/components/code/code-editor-skeleton.tsx`
-- **Severity**: Low | **Confidence**: Medium
-- **Description**: A skeleton component exists for the code editor loading state. Good pattern. Need to verify it matches the actual editor dimensions to avoid layout shift (CLS).
-- **Fix**: Verify skeleton dimensions match the loaded editor component.
+## Previously Verified Safe (Prior Cycles)
 
-## Browser audit supplement (cycle 2)
-- **Auth flow**: `https://algo.xylolabs.com/login` submits to `https://algo.xylolabs.com/api/auth/error` and renders `{"error":"UntrustedHost"}` after clicking the `Sign in` button with safe credentials from local `.env`.
-- **Playground i18n leak**: on `https://algo.xylolabs.com/playground`, selector `label[for="stdin-case-name"]` renders raw text `compiler.testCaseLabel`.
-- **Public page failures**:
-  - `https://algo.xylolabs.com/practice` → `h1` = `This page couldn’t load`
-  - `https://algo.xylolabs.com/rankings` → `h1` = `This page couldn’t load`
-  - `https://algo.xylolabs.com/languages` remains in `Loading...` state after a 3s wait
+- Semantic headings on public/auth routes — fixed in cycle 1 (UX-01)
+- Public-header ARIA labels — localized in cycle 1 (UX-02)
+- `FilterSelect` compliance — fixed in cycle 1 (UI-01)
+- IOI cell dark mode contrast — improved in cycle 21 (L8)
