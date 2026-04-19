@@ -174,13 +174,19 @@ Same as instructor, with additional "Admin" dropdown entry that navigates to `/d
 
 ### Phase 2 — Unify navigation into PublicHeader (Medium risk)
 
+**Status:** IN PROGRESS (dropdown added, needs bug fix)
+
 **Goal:** Replace the dual PublicHeader/Dashboard sidebar with a single top navbar that adapts by role.
 
-1. Extend `PublicHeader` to accept optional `session` and `capabilities` props.
-2. When authenticated, add a "Dashboard" dropdown menu with role-appropriate links (Problems, Groups, Submissions, Profile, Admin).
-3. The dropdown replaces the current "Workspace" action link.
+1. ~~Extend `PublicHeader` to accept optional `session` and `capabilities` props.~~ DONE
+2. ~~When authenticated, add a "Dashboard" dropdown menu with role-appropriate links (Problems, Groups, Submissions, Profile, Admin).~~ DONE
+3. ~~The dropdown replaces the current "Workspace" action link.~~ DONE
 4. Keep `(dashboard)` route group and its `AppSidebar` for now — Phase 2 only changes the top nav on public pages.
 5. Add a "back to public site" link in the `(dashboard)` layout header.
+
+**Phase 2 bug fix needed:**
+- The `DropdownItem` type has `adminOnly` and `instructorOnly` flags that are dead code (set but never read during rendering). The actual filtering works correctly via `if (isInstructor)` / `if (isAdmin)` blocks in `getDropdownItems()`, so students do NOT see admin items. However, the dead flags should be removed for clarity. See AGG-1 / rpf-cycle-5 aggregate for details.
+- Mobile menu lacks visual grouping for authenticated navigation items. See L5 in cycle 5 remediation plan.
 
 **Estimated files changed:** ~5-8
 
