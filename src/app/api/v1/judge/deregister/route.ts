@@ -1,11 +1,11 @@
 import { NextRequest } from "next/server";
-import { timingSafeEqual } from "node:crypto";
 import { apiSuccess, apiError } from "@/lib/api/responses";
 import { db } from "@/lib/db";
 import { judgeWorkers, submissions } from "@/lib/db/schema";
 import { and, eq, inArray } from "drizzle-orm";
 import { isJudgeAuthorizedForWorker, hashToken } from "@/lib/judge/auth";
 import { isJudgeIpAllowed } from "@/lib/judge/ip-allowlist";
+import { safeTokenCompare } from "@/lib/security/timing";
 import { logger } from "@/lib/logger";
 import { z } from "zod";
 
@@ -39,12 +39,8 @@ export async function POST(request: NextRequest) {
     });
     if (!worker) return apiError("workerNotFound", 404);
     if (!worker.secretTokenHash) return apiError("workerSecretNotConfigured", 403);
-    {
-      const a = Buffer.from(hashToken(workerSecret));
-      const b = Buffer.from(worker.secretTokenHash);
-      if (a.length !== b.length || !timingSafeEqual(a, b)) {
-        return apiError("invalidWorkerSecret", 403);
-      }
+    if (!safeTokenCompare(hashToken(workerSecret), worker.secretTokenHash)) {
+      return apiError("invalidWorkerSecret", 403);
     }
 
     const result = await db
