@@ -212,7 +212,10 @@ export async function checkServerActionRateLimit(
   return execTransaction(async (tx) => {
     const now = Date.now();
     const [existing] = await tx
-      .select()
+      .select({
+        attempts: rateLimits.attempts,
+        windowStartedAt: rateLimits.windowStartedAt,
+      })
       .from(rateLimits)
       .where(eq(rateLimits.key, key))
       .for("update")
