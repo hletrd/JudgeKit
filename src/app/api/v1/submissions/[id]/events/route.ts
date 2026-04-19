@@ -403,7 +403,16 @@ export async function GET(
               }
 
               emitStatusHeartbeat(status);
-            })();
+            })().catch((err) => {
+              // Catch any unexpected errors from the IIFE to prevent unhandled
+              // promise rejections (e.g., OOM in JSON.stringify of a very large
+              // submission). sendTerminalResult has its own try/catch but this
+              // guards against errors outside that scope.
+              if (!closed) {
+                logger.error({ err }, "[sse] Unexpected error in re-auth IIFE for submission %s", id);
+                close();
+              }
+            });
             return; // Don't process the event synchronously — the async IIFE handles it
           }
 
@@ -414,7 +423,12 @@ export async function GET(
           }
 
           if (!IN_PROGRESS_JUDGE_STATUSES.has(status)) {
-            void sendTerminalResult();
+            void sendTerminalResult().catch((err) => {
+              if (!closed) {
+                logger.error({ err }, "[sse] Unexpected error in sendTerminalResult for submission %s", id);
+                close();
+              }
+            });
             return;
           }
 
