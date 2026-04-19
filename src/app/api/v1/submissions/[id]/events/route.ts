@@ -76,17 +76,10 @@ globalThis.__sseCleanupTimer = setInterval(() => {
   }
 }, CLEANUP_INTERVAL_MS);
 
-// Graceful shutdown: clear connection tracking on SIGTERM
-declare global {
-  var __sseShutdownHandler: boolean | undefined;
-}
-if (!globalThis.__sseShutdownHandler) {
-  globalThis.__sseShutdownHandler = true;
-  process.on("SIGTERM", () => {
-    activeConnectionSet.clear();
-    connectionInfoMap.clear();
-  });
-}
+// Graceful shutdown: in-memory connection tracking is cleaned up on process
+// exit automatically. The audit-buffer flush is handled by
+// registerAuditFlushOnShutdown() in node-shutdown.ts (called from
+// instrumentation.ts).
 
 // ---------------------------------------------------------------------------
 // Shared polling manager: one setInterval queries ALL active submission IDs
