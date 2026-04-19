@@ -3,6 +3,7 @@ import { logger } from "@/lib/logger";
 import { LRUCache } from "lru-cache";
 import type { ScoringModel } from "@/types";
 import { TERMINAL_SUBMISSION_STATUSES_SQL_LIST } from "@/lib/submissions/status";
+import { buildIoiLatePenaltyCaseExpr } from "./scoring";
 
 /**
  * ICPC penalty: minutes from contest start to first AC + 20 min per wrong attempt before AC.
@@ -169,22 +170,7 @@ async function _computeContestRankingInner(assignmentId: string, cutoffSec?: num
         points,
         COUNT(*) AS "attemptCount",
         MAX(
-          CASE
-            WHEN score IS NOT NULL THEN
-              CASE
-                -- Non-windowed: late penalty against the global deadline
-                WHEN @deadline::bigint IS NOT NULL AND @latePenalty::double precision > 0 AND @examMode::text != 'windowed'
-                     AND submitted_at IS NOT NULL AND EXTRACT(EPOCH FROM submitted_at)::bigint > @deadline::bigint
-                THEN ROUND(((LEAST(GREATEST(score, 0), 100) / 100.0 * points) * (1.0 - @latePenalty::double precision / 100.0))::numeric, 2)
-                -- Windowed: late penalty against the per-user personal_deadline
-                WHEN @examMode::text = 'windowed' AND @latePenalty::double precision > 0
-                     AND personal_deadline IS NOT NULL
-                     AND submitted_at IS NOT NULL AND submitted_at > personal_deadline
-                THEN ROUND(((LEAST(GREATEST(score, 0), 100) / 100.0 * points) * (1.0 - @latePenalty::double precision / 100.0))::numeric, 2)
-                ELSE ROUND((LEAST(GREATEST(score, 0), 100) / 100.0 * points)::numeric, 2)
-              END
-            ELSE NULL
-          END
+          ${buildIoiLatePenaltyCaseExpr("score", "points")}
         ) AS "bestScore",
         MAX(CASE WHEN ROUND(score, 2) = 100 THEN 1 ELSE 0 END) AS "hasAc",
         MIN(CASE WHEN ROUND(score, 2) = 100 THEN submitted_at ELSE NULL END) AS "firstAcAt",
