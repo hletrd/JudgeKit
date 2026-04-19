@@ -345,6 +345,13 @@ async function _computeContestRankingInner(assignmentId: string, cutoffSec?: num
     }
   }
 
+  // Epsilon comparison for IOI score ties — avoids floating-point strict equality
+  // issues (e.g., 80.03000000000001 !== 80.03). 0.01 matches the SQL ROUND(..., 2)
+  // precision applied to each problem's bestScore.
+  function isScoreTied(a: number, b: number): boolean {
+    return Math.abs(a - b) < 0.01;
+  }
+
   // Sort and assign ranks
   if (scoringModel === "icpc") {
     entries.sort((a, b) => {
@@ -372,7 +379,7 @@ async function _computeContestRankingInner(assignmentId: string, cutoffSec?: num
       const tied =
         scoringModel === "icpc"
           ? prev.totalScore === curr.totalScore && prev.totalPenalty === curr.totalPenalty
-          : prev.totalScore === curr.totalScore;
+          : isScoreTied(prev.totalScore, curr.totalScore);
       if (!tied) {
         currentRank = i + 1;
       }
