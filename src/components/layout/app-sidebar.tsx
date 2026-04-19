@@ -70,18 +70,10 @@ const navGroups: NavGroup[] = [
         icon: Send,
         titleKeyByMode: { recruiting: "attempts" },
       },
-      {
-        titleKey: "contests",
-        href: "/dashboard/contests",
-        icon: Timer,
-      },
+      // Contests and Rankings are available in the PublicHeader dropdown,
+      // so they are omitted from the sidebar to reduce navigation overlap.
+      // Students can still reach them from the top navbar.
       { titleKey: "compiler", href: "/dashboard/compiler", icon: Play, hiddenInModes: ["recruiting"] },
-      {
-        titleKey: "rankings",
-        href: "/dashboard/rankings",
-        icon: Trophy,
-        hiddenInModes: ["recruiting"],
-      },
     ],
   },
   {
