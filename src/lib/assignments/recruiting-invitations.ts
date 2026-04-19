@@ -506,10 +506,15 @@ export async function redeemRecruitingToken(
       if (!updated) {
         // The atomic update returned no rows — either the invitation was
         // claimed by another request or it expired between our read and the
-        // claim. Differentiate the error for a better user experience.
-        if (invitation.expiresAt && invitation.expiresAt < new Date()) {
-          throw new Error("tokenExpired");
-        }
+        // claim. Default to "alreadyRedeemed" because:
+        // (1) The SQL WHERE clause is the authoritative check — it already
+        //     validated the deadline via NOW() and the status via "pending".
+        // (2) Using new Date() to differentiate would introduce the same
+        //     clock-skew risk that was removed from the pre-check paths
+        //     (see commit b42a7fe4). The app server and DB server clocks
+        //     may not be synchronized, so a JS-side date comparison could
+        //     produce a misleading "tokenExpired" error when the real cause
+        //     was a concurrent claim.
         throw new Error("alreadyRedeemed");
       }
 
