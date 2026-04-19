@@ -14,7 +14,8 @@ function makeSelectChain(rows: unknown[]) {
   };
   chain.from.mockReturnValue(chain);
   chain.where.mockReturnValue(chain);
-  chain.limit.mockReturnValue(rows);
+  // limit() must return a thenable so `await db.select()...limit(1)` resolves
+  chain.limit.mockReturnValue(chain);
   chain.then.mockImplementation((cb: (value: unknown) => unknown) => Promise.resolve(cb(rows)));
   return chain;
 }
@@ -88,7 +89,7 @@ describe("api-key-auth helpers", () => {
       .mockReturnValueOnce(candidateChain)
       .mockReturnValueOnce(userChain);
 
-    const updateWhereMock = vi.fn();
+    const updateWhereMock = vi.fn().mockReturnValue(Promise.resolve());
     const updateSetMock = vi.fn(() => ({ where: updateWhereMock }));
     dbUpdateMock.mockReturnValue({ set: updateSetMock });
 
@@ -141,7 +142,7 @@ describe("api-key-auth helpers", () => {
       .mockReturnValueOnce(candidateChain)
       .mockReturnValueOnce(userChain);
 
-    const updateWhereMock = vi.fn();
+    const updateWhereMock = vi.fn().mockReturnValue(Promise.resolve());
     const updateSetMock = vi.fn(() => ({ where: updateWhereMock }));
     dbUpdateMock.mockReturnValue({ set: updateSetMock });
 
