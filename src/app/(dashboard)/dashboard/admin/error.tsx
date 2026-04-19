@@ -14,7 +14,7 @@ export default function AdminError({
   const t = useTranslations("dashboardState");
 
   useEffect(() => {
-    console.error(error);
+    console.error("[admin-error-boundary]", error);
   }, [error]);
 
   return (

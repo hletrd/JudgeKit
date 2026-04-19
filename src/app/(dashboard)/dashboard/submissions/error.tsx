@@ -14,7 +14,7 @@ export default function SubmissionsError({
   const t = useTranslations("dashboardState");
 
   useEffect(() => {
-    console.error(error);
+    console.error("[submissions-error-boundary]", error);
   }, [error]);
 
   return (

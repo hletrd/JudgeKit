@@ -14,7 +14,7 @@ export default function GroupsError({
   const t = useTranslations("dashboardState");
 
   useEffect(() => {
-    console.error(error);
+    console.error("[groups-error-boundary]", error);
   }, [error]);
 
   return (

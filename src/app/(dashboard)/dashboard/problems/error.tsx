@@ -14,7 +14,7 @@ export default function ProblemsError({
   const t = useTranslations("dashboardState");
 
   useEffect(() => {
-    console.error(error);
+    console.error("[problems-error-boundary]", error);
   }, [error]);
 
   return (
