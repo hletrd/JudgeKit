@@ -8,7 +8,7 @@ import {
   ChevronsLeft,
   ChevronsRight,
 } from "lucide-react";
-import { getTranslations } from "next-intl/server";
+import { useTranslations } from "next-intl";
 import { DEFAULT_PAGE_SIZE, PAGE_SIZE_OPTIONS } from "@/lib/pagination";
 import { Input } from "@/components/ui/input";
 
@@ -51,13 +51,13 @@ function getPageNumbers(current: number, total: number): (number | "...")[] {
   return pages;
 }
 
-export async function PaginationControls({
+export function PaginationControls({
   currentPage,
   totalPages,
   pageSize = DEFAULT_PAGE_SIZE,
   buildHref,
 }: PaginationControlsProps) {
-  const t = await getTranslations("common");
+  const t = useTranslations("common");
   const shouldRenderPageNav = totalPages > 1;
   const shouldRenderSizeSelector = PAGE_SIZE_OPTIONS.length > 1;
 
