@@ -61,6 +61,10 @@ export const POST = createApiHandler({
               expiresAt = new Date(dbNow.getTime() + inv.expiryDays * 86400000);
             } else if (inv.expiryDate) {
               expiresAt = new Date(`${inv.expiryDate}T23:59:59Z`);
+              // Validate the date is in the future (relative to DB time)
+              if (expiresAt <= dbNow) {
+                throw new Error("expiryDateInPast");
+              }
               // Reject unreasonably far-future expiry (consistent with expiryDays max 3650)
               if ((expiresAt.getTime() - dbNow.getTime()) > MAX_EXPIRY_MS) {
                 throw new Error("expiryDateTooFar");
@@ -93,6 +97,9 @@ export const POST = createApiHandler({
     } catch (error) {
       if (error instanceof Error && error.message === "emailAlreadyInvited") {
         return apiError("emailAlreadyInvited", 409);
+      }
+      if (error instanceof Error && error.message === "expiryDateInPast") {
+        return apiError("expiryDateInPast", 400);
       }
       if (error instanceof Error && error.message === "expiryDateTooFar") {
         return apiError("expiryDateTooFar", 400);
