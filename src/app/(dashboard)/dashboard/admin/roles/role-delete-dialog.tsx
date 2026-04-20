@@ -14,6 +14,7 @@ import {
 } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
 import { toast } from "sonner";
+import { apiFetch } from "@/lib/api/client";
 import { Trash2 } from "lucide-react";
 
 interface RoleDeleteDialogProps {
@@ -41,9 +42,8 @@ export default function RoleDeleteDialog({
     setLoading(true);
 
     try {
-      const res = await fetch(`/api/v1/admin/roles/${roleId}`, {
+      const res = await apiFetch(`/api/v1/admin/roles/${roleId}`, {
         method: "DELETE",
-        headers: { "X-Requested-With": "XMLHttpRequest" },
       });
 
       if (!res.ok) {

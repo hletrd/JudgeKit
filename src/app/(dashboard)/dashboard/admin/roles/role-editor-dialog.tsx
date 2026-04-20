@@ -17,6 +17,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { toast } from "sonner";
+import { apiFetch } from "@/lib/api/client";
 import { Plus, Pencil } from "lucide-react";
 import CapabilityMatrix from "./capability-matrix";
 
@@ -84,11 +85,10 @@ export default function RoleEditorDialog({ mode, role, superAdminLevel = 4 }: Ro
               ...((role && role.level >= superAdminLevel) ? {} : { capabilities }),
             };
 
-      const res = await fetch(url, {
+      const res = await apiFetch(url, {
         method: mode === "create" ? "POST" : "PATCH",
         headers: {
           "Content-Type": "application/json",
-          "X-Requested-With": "XMLHttpRequest",
         },
         body: JSON.stringify(body),
       });

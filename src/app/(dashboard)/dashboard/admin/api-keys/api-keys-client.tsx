@@ -51,6 +51,7 @@ import {
   DialogFooter,
 } from "@/components/ui/dialog";
 import { toast } from "sonner";
+import { apiFetch } from "@/lib/api/client";
 import { Plus, Copy, Trash2, Check } from "lucide-react";
 
 interface ApiKey {
@@ -135,9 +136,7 @@ export function ApiKeysClient({ roleOptions }: { roleOptions?: RoleOption[] }) {
 
   const fetchKeys = useCallback(async () => {
     try {
-      const res = await fetch("/api/v1/admin/api-keys", {
-        headers: { "X-Requested-With": "XMLHttpRequest" },
-      });
+      const res = await apiFetch("/api/v1/admin/api-keys");
       if (res.ok) {
         const json = await res.json();
         setKeys(json.data ?? []);
@@ -166,11 +165,10 @@ export function ApiKeysClient({ roleOptions }: { roleOptions?: RoleOption[] }) {
         expiryDays = createExpiry === "30d" ? 30 : createExpiry === "90d" ? 90 : 365;
       }
 
-      const res = await fetch("/api/v1/admin/api-keys", {
+      const res = await apiFetch("/api/v1/admin/api-keys", {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
-          "X-Requested-With": "XMLHttpRequest",
         },
         body: JSON.stringify({ name: createName.trim(), role: createRole, expiryDays }),
       });
@@ -243,11 +241,10 @@ export function ApiKeysClient({ roleOptions }: { roleOptions?: RoleOption[] }) {
 
   async function handleToggle(key: ApiKey) {
     try {
-      const res = await fetch(`/api/v1/admin/api-keys/${key.id}`, {
+      const res = await apiFetch(`/api/v1/admin/api-keys/${key.id}`, {
         method: "PATCH",
         headers: {
           "Content-Type": "application/json",
-          "X-Requested-With": "XMLHttpRequest",
         },
         body: JSON.stringify({ isActive: !key.isActive }),
       });
@@ -264,9 +261,8 @@ export function ApiKeysClient({ roleOptions }: { roleOptions?: RoleOption[] }) {
 
   async function handleDelete(key: ApiKey) {
     try {
-      const res = await fetch(`/api/v1/admin/api-keys/${key.id}`, {
+      const res = await apiFetch(`/api/v1/admin/api-keys/${key.id}`, {
         method: "DELETE",
-        headers: { "X-Requested-With": "XMLHttpRequest" },
       });
       if (res.ok) {
         toast.success(t("deleteSuccess"));
