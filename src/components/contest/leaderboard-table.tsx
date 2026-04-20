@@ -322,6 +322,8 @@ export function LeaderboardTable({
       </CardHeader>
       <CardContent className="overflow-x-auto p-0">
         <Table>
+          {/* Z-index layering: z-[5] = sticky columns (rank, name), z-10 = sticky header row,
+              z-50+ = overlays (dialogs, dropdowns). Keep these in ascending order. */}
           <TableHeader>
             <TableRow className="sticky top-0 z-10 bg-background shadow-sm">
               <TableHead className="sticky left-0 z-[5] w-16 bg-background text-center shadow-[1px_0_0_0_hsl(var(--border))]">
@@ -378,7 +380,7 @@ export function LeaderboardTable({
                     {entry.rank}
                   </span>
                   {data.frozen && (entry.isCurrentUser || (currentUserId && entry.userId === currentUserId)) && entry.liveRank != null ? (
-                    <div className="mt-1">
+                    <div className="mt-1" aria-live="polite">
                       <Badge variant="secondary" className="text-[10px]">
                         {t("liveRank", { rank: entry.liveRank })}
                       </Badge>
