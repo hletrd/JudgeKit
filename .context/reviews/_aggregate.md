@@ -1,98 +1,49 @@
-# Cycle 20 Aggregate Review
+# Cycle 22 Aggregate Review
 
-**Date:** 2026-04-19
-**Aggregated from:** code-reviewer, security-reviewer, perf-reviewer, architect, test-engineer, debugger, critic, verifier, designer
-**Base commit:** 95f06e5b
+**Date:** 2026-04-20
+**Base commit:** 52d81f9d
+**Review artifacts:** `code-reviewer.md`, `security-reviewer.md`, `critic.md`, `verifier.md`, `test-engineer.md`, `architect.md`, `debugger.md`, `designer.md`, `document-specialist.md`, `perf-reviewer.md`, `tracer.md`
 
----
+## Deduped Findings (sorted by severity then signal)
 
-## Deduped Findings
+### AGG-1: `PaginationControls` is an invalid async client component, and it matches the live `/practice` + `/rankings` outage [HIGH/HIGH]
 
-### AGG-1 — [HIGH] ALS recruiting cache is dead code — `withRecruitingContextCache` never called, N+1 DB queries persist in API routes
+**Flagged by:** code-reviewer, critic, verifier, architect, debugger, designer, perf-reviewer, tracer  
+**Files:** `src/components/pagination-controls.tsx:1-60`, `src/app/(public)/practice/page.tsx:701`, `src/app/(public)/rankings/page.tsx:312`  
+**Description:** `PaginationControls` is marked `"use client"` but exported as `async` and awaits `getTranslations` from `next-intl/server`. That is an invalid client/server boundary in Next.js. Both failing live routes render this shared primitive.  
+**Browser evidence:**
+- `https://algo.xylolabs.com/practice` rendered the public server-error shell with heading `"This page couldn’t load"` and error ID `199745080`
+- `https://algo.xylolabs.com/rankings` rendered the same shell with error ID `3036685368`
+**Concrete failure scenario:** Any route that imports the broken primitive can crash at render time instead of showing paginated content.  
+**Fix:** Convert `PaginationControls` into a synchronous client component using `useTranslations` from `next-intl`.
 
-- **Severity:** HIGH (performance + architecture — the most critical fix from cycle 19 is non-functional)
-- **Confidence:** HIGH
-- **Cross-agent agreement:** code-reviewer F1, security-reviewer F1, perf-reviewer F1, architect F1, test-engineer F1, debugger F1, critic F1, verifier F1 (8/9 agents)
-- **Files:** `src/lib/recruiting/request-cache.ts:67`, `src/lib/recruiting/access.ts:38,50,88`, `src/lib/api/handler.ts` (missing initialization)
-- **Evidence:** The `withRecruitingContextCache` function is defined but never called from any production code. Grep confirms zero callers outside the test file. Without calling `withRecruitingContextCache.run()`, `AsyncLocalStorage.getStore()` always returns `undefined`, making `getCachedRecruitingContext` always return `undefined` and `setCachedRecruitingContext` silently no-op. The ALS cache added in cycle 19 (commit a5628451) to fix AGG-1 from cycle 19 is completely non-functional in production. The test suite passes because tests manually initialize the ALS context, giving a false sense of correctness.
-- **Failure scenario:** An API route handler calls `canAccessProblem` for each item in a list of 20 problems. Each call triggers `loadRecruitingAccessContext`, which calls `getCachedRecruitingContext` (always returns undefined), queries the DB twice for recruiting context, then calls `setCachedRecruitingContext` (silently no-ops). This results in 40+ redundant DB queries — the exact problem the ALS cache was supposed to solve.
-- **Suggested fix:** Wire `withRecruitingContextCache` into the API handler pipeline. The cleanest approach is to wrap the handler execution in `createApiHandler` (in `src/lib/api/handler.ts`) with the ALS context. This ensures the cache is always available for API routes without requiring changes to individual route handlers. Additionally, add a dev-mode warning log in `setCachedRecruitingContext` when the store is not active (debugger F2).
+### AGG-2: The home and 404 entry points still bypass the shared public-nav path and expose the stale workspace label [MEDIUM/HIGH]
 
-### AGG-2 — [LOW] `setCachedRecruitingContext` silently no-ops when store is not active — should warn in dev mode
+**Flagged by:** code-reviewer, critic, verifier, architect, debugger, designer, tracer, document-specialist  
+**Files:** `src/app/page.tsx:88-103`, `src/app/not-found.tsx:45-60`, `src/app/(public)/layout.tsx:22-31`, `src/lib/navigation/public-nav.ts:1-36`  
+**Description:** The normal public layout already moved to the shared public-nav path and `tShell("nav.dashboard")`, but the home and 404 pages still inline their own `PublicHeader` configuration and use `tShell("nav.workspace")`.  
+**Browser evidence:** `https://algo.xylolabs.com/` rendered a visible header link with text `publicShell.nav.workspace` (accessibility snapshot ref `e6`).  
+**Concrete failure scenario:** The highest-traffic public entry point visibly leaks a raw i18n key, and future nav changes have to be made in multiple places.  
+**Fix:** Reuse the shared public-nav builders / label strategy in the home and 404 pages and stop hard-coding the old workspace label.
 
-- **Severity:** LOW (developer experience — masks critical integration bugs)
-- **Confidence:** HIGH
-- **Cross-agent agreement:** debugger F2
-- **Files:** `src/lib/recruiting/request-cache.ts:51-55`
-- **Evidence:** When `recruitingContextStore.getStore()` returns `undefined`, the function silently returns without setting anything. This is documented as "graceful degradation" but it masks the critical bug where the store is never initialized.
-- **Suggested fix:** Add a `logger.warn` call when `store` is undefined and `NODE_ENV !== "production"`, similar to `isTrustedServerActionOrigin` in server-actions.ts.
+### AGG-3: Regression coverage did not protect the real rendering contract for public pagination routes [MEDIUM/HIGH]
 
-### AGG-3 — [LOW] Dashboard layout has two sequential `Promise.all` blocks — some calls can be parallelized
+**Flagged by:** test-engineer, document-specialist  
+**Files:** `tests/component/pagination-controls.test.tsx:34-68`, `tests/e2e/public-shell.spec.ts:24-45`  
+**Description:** The component test suite normalized the broken API by `await`-ing `PaginationControls(...)` directly and mocking `next-intl/server`, while public E2E coverage checks `/practice` only and does not assert that the server-error shell is absent. `/rankings` is not covered at all in the public-shell suite.  
+**Concrete failure scenario:** A live outage ships even though the component and E2E tests keep passing.  
+**Fix:** Update the component test to render the real client component contract and extend public-shell E2E coverage to `/rankings` plus explicit checks that the server-error shell is absent.
 
-- **Severity:** LOW (performance — ~50-100ms unnecessary latency on dashboard page loads)
-- **Confidence:** MEDIUM
-- **Cross-agent agreement:** perf-reviewer F2, architect F3
-- **Files:** `src/app/(dashboard)/layout.tsx:34-48,55-64`
-- **Evidence:** The first `Promise.all` block resolves `getRecruitingAccessContext`, translations, and capabilities. The second block resolves system settings and lecture mode check. `getResolvedSystemSettings` and `isInstructorOrAboveAsync` do not depend on the first block's results but are not included in it.
-- **Suggested fix:** Move `getResolvedSystemSettings` and `isInstructorOrAboveAsync` into the first `Promise.all` block since they don't depend on its results. Keep `getActiveTimedAssignmentsForSidebar` in the second block since it depends on `canBypassTimedAssignmentPanel`.
+## Verified Safe / No Regression Found
 
-### AGG-4 — [LOW] Breadcrumb sticky header adds ~44px of chrome on mobile — consider hiding on small viewports
-
-- **Severity:** LOW (UX — 33% of viewport height consumed by chrome on small phones)
-- **Confidence:** MEDIUM
-- **Cross-agent agreement:** designer F1
-- **Files:** `src/app/(dashboard)/layout.tsx:99-101`
-- **Evidence:** On a 375px mobile viewport, the PublicHeader (~56px) + breadcrumb header (~44px) + content padding (24px) = ~124px before any content. Mobile users navigate via hamburger menu and back button, not breadcrumbs.
-- **Suggested fix:** Consider adding `hidden md:block` to the breadcrumb header container on mobile, since breadcrumbs are not useful on mobile navigation patterns.
-
-### AGG-5 — [LOW] ALS cache tests give false confidence — no integration test verifying cache is wired into request pipeline
-
-- **Severity:** LOW (test coverage — critical integration gap)
-- **Confidence:** HIGH
-- **Cross-agent agreement:** test-engineer F1, F2
-- **Files:** `tests/unit/recruiting/request-cache.test.ts`, `src/lib/api/handler.ts`
-- **Evidence:** The unit tests pass because they manually call `withRecruitingContextCache` to set up the ALS context. No integration test verifies that the cache is actually wired into the API handler pipeline. This allowed a critical integration bug (AGG-1) to go undetected.
-- **Suggested fix:** Add an integration test that verifies `getRecruitingAccessContext` returns the same context when called twice within a simulated API request handler pipeline (using `createApiHandler`).
-
----
-
-## Carry-Forward Items (Unchanged from Cycle 19)
-
-| ID | Finding | Severity | Status |
-|----|---------|----------|--------|
-| AGG-2(c19) | Admin import/restore `needsRehash` | LOW | **FIXED** in cycle 19 (commit bdee3c23) |
-| AGG-3(c19) | `updateRecruitingInvitation` uses `Record<string, unknown>` | LOW | Deferred — no runtime impact |
-| AGG-4(c19) | Server action origin bypass warning | LOW | **FIXED** in cycle 19 (commit 267fbafd) |
-| AGG-6(c19) | Breadcrumb in main content instead of top navbar | LOW | **FIXED** in cycle 19 (commit a06bd712) |
-| AGG-7(c19) | Mobile menu focus not restored on route change | LOW | **FIXED** in cycle 19 (commit 74560445) |
-| AGG-8(c19) | `canAccessProblem` not batched for API list endpoints | LOW | Deferred — `getAccessibleProblemIds` exists as alternative |
-| AGG-9(c19) | `eslint-disable` for `no-explicit-any` in users route | LOW | **FIXED** in cycle 19 (commit 401dd117) |
-
-## Previously Deferred Items (Carried Forward)
-
-| ID | Finding | Severity | Status |
-|----|---------|----------|--------|
-| A7 | Dual encryption key management | MEDIUM | Deferred — consolidation requires migration |
-| A12 | Inconsistent auth/authorization patterns | MEDIUM | Deferred — existing routes work correctly |
-| A2 | Rate limit eviction could delete SSE slots | MEDIUM | Deferred — unlikely with heartbeat refresh |
-| A17 | JWT contains excessive UI preference data | LOW | Deferred — requires session restructure |
-| A25 | Timing-unsafe bcrypt fallback | LOW | Deferred — bcrypt-to-argon2 migration in progress |
-| A26 | Polling-based backpressure wait | LOW | Deferred — no production reports |
-| L2(c13) | Anti-cheat LRU cache single-instance limitation | LOW | Deferred — already guarded by getUnsupportedRealtimeGuard |
-| L5(c13) | Bulk create elevated roles warning | LOW | Deferred — server validates role assignments |
-| D16 | `sanitizeSubmissionForViewer` unexpected DB query | LOW | Deferred — only called from one place, no N+1 risk |
-| D17 | Exam session `new Date()` clock skew | LOW | Deferred — same as A19 |
-| D18 | Contest replay top-10 limit | LOW | Deferred — likely intentional, requires design input |
-| L6(c16) | `sanitizeSubmissionForViewer` N+1 risk for list endpoints | LOW | Deferred — re-open if added to list endpoints |
-| AGG-7(c18-prev) | IOI tie sort non-deterministic within tied entries | LOW | Deferred — tied entries get same rank per IOI convention |
-| AGG-8(c18-prev) | ROUND(score,2)=100 may miss edge-case ACs | LOW | Deferred — PostgreSQL ROUND is exact for decimal values |
-| AGG-4(c18) | Admin route DRY violation | LOW | Deferred — all routes work correctly |
-| AGG-5(c18) | updateRecruitingInvitation uses JS new Date() | LOW | Deferred — only affects distributed deployments |
-| AGG-7(c18) | contest-analytics progression raw scores | LOW | Deferred — already documented in code comments |
-| AGG-4(c18b) | Admin route DRY violation (same as AGG-4(c18)) | LOW | Deferred — next time admin routes are modified |
-| AGG-3(c19) | updateRecruitingInvitation Record<string, unknown> | LOW | Deferred — no runtime impact |
-| AGG-8(c19) | canAccessProblem not batched for list endpoints | LOW | Deferred — getAccessibleProblemIds exists as alternative |
+- The invalid-login flow now shows the in-form `Invalid username or password` alert; the earlier `UntrustedHost` symptom was not reproduced in this cycle.
+- Public routes `/playground`, `/contests`, `/community`, `/submissions`, and `/languages` loaded successfully during the same-host browser audit.
 
 ## Agent Failures
 
-None — all review angles completed successfully.
+The requested reviewer fan-out was attempted twice, but Codex native reviewer agents either hit the runtime thread limit or remained unavailable/slow long enough to block the cycle. The stalled reviewer attempts were shut down after retry so the cycle could continue. The final per-agent review files above were completed directly in-repo to preserve Prompt 1 artifacts and browser-audit evidence.
+
+## Browser Audit Notes / Blockers
+
+- Same-host browser audit completed for all publicly reachable top-level nav pages on `algo.xylolabs.com`.
+- Authenticated browser audit was attempted using the safe `.env` credentials but blocked because the live login form returned `Invalid username or password`.

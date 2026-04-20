@@ -1,7 +1,7 @@
 # Workspace-to-Public Page Migration Plan
 
 **Date:** 2026-04-19
-**Status:** Phase 1 COMPLETE, Phase 2 COMPLETE, Phase 3 IN PROGRESS (cycle 21 — breadcrumb on mobile already hidden, contests already in PublicHeader dropdown; remaining: slim down AppSidebar, evaluate control route merge), Phase 4 PENDING
+**Status:** Phase 1 COMPLETE, Phase 2 COMPLETE, Phase 3 COMPLETE, Phase 4 IN PROGRESS (cycle 22 — rankings/languages/compiler routes consolidated; remaining: merge control route group into dashboard)
 **Source:** User-injected TODO #2, AGG-13
 
 ## Goal

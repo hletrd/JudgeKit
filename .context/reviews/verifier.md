@@ -1,35 +1,35 @@
 # Verifier
 
-**Date:** 2026-04-19
-**Base commit:** b91dac5b
+**Date:** 2026-04-20
+**Base commit:** 52d81f9d
 **Angle:** Evidence-based correctness check against stated behavior
 
----
+## Inventory
+- Live browser audit on `https://algo.xylolabs.com/`, `/practice`, `/rankings`, `/login`, `/playground`, `/contests`, `/community`, `/submissions`, `/languages`
+- Repo-side inspection of `src/components/pagination-controls.tsx`, `src/app/page.tsx`, `src/app/not-found.tsx`
+- Test coverage review in `tests/component/pagination-controls.test.tsx` and `tests/e2e/public-shell.spec.ts`
 
-## F1: Tags API `limit` NaN — verified against code, bug confirmed
+## F1: The live `/practice` and `/rankings` failures map directly to a confirmed repo-side bug in `PaginationControls`
+- **File:** `src/components/pagination-controls.tsx:1-60`
+- **Severity:** HIGH
+- **Confidence:** HIGH
+- **Status:** confirmed issue
+- **Evidence:** Live browser audit showed `https://algo.xylolabs.com/practice` and `https://algo.xylolabs.com/rankings` rendering the public server-error shell (`heading "This page couldn’t load"`, reload button, error IDs `199745080` and `3036685368`). Both routes render `PaginationControls`. The component is a client component that is declared `async` and awaits `getTranslations` from `next-intl/server`.
+- **Concrete failure scenario:** Practice and rankings crash during render even though the rest of the public shell is healthy.
+- **Suggested fix:** Convert `PaginationControls` to a synchronous client component that uses `useTranslations`.
 
-- **File**: `src/app/api/v1/tags/route.ts:17`
-- **Severity**: MEDIUM
-- **Confidence**: HIGH
-- **Description**: Verified: `Math.min(Number(searchParams.get("limit") ?? "50"), 100)` produces `NaN` when `limit` param is non-numeric. The `?? "50"` only handles null/undefined, not non-numeric strings. `Number("abc")` is `NaN`, and `Math.min(NaN, 100)` is `NaN`. Drizzle ORM's `.limit(NaN)` is undefined behavior.
-- **Fix**: Same as code-reviewer F1.
+## F2: The home page still uses the stale workspace label path that the rest of the public shell already replaced
+- **File:** `src/app/page.tsx:98-103`, `src/app/not-found.tsx:55-60`
+- **Severity:** MEDIUM
+- **Confidence:** HIGH
+- **Status:** confirmed issue
+- **Evidence:** Live home snapshot exposed a header link with label text `publicShell.nav.workspace`. In the repo, the public layout has already switched to `tShell("nav.dashboard")`, but the home and 404 pages still use `tShell("nav.workspace")`.
+- **Concrete failure scenario:** The most visible page in the product shows a raw i18n key instead of a user-facing label.
+- **Suggested fix:** Align the home / 404 pages with the shared public-layout label strategy.
 
-## F2: Proxy `x-forwarded-host` deletion is safe for current matcher — verified
+## Verified safe this cycle
+- Invalid login flow now produces the in-form `Invalid username or password` alert instead of `UntrustedHost`; no regression was found there.
+- Public routes `/playground`, `/contests`, `/community`, `/submissions`, and `/languages` loaded successfully during the same-host browser audit.
 
-- **File**: `src/proxy.ts:148, 301-319`
-- **Severity**: INFO
-- **Confidence**: HIGH
-- **Description**: Verified that auth routes (`/api/auth/`) are NOT in the proxy matcher, so the `x-forwarded-host` deletion at line 148 does not affect auth callbacks. The proxy matcher includes `/api/v1/:path*` but not `/api/auth/:path*`. This is safe by construction but fragile (see security-reviewer F1).
-
-## F3: SSE connection tracking eviction may cause per-user count undercount — verified
-
-- **File**: `src/app/api/v1/submissions/[id]/events/route.ts:41-44`
-- **Severity**: LOW
-- **Confidence**: MEDIUM
-- **Description**: Verified the eviction logic: when `connectionInfoMap.size >= MAX_TRACKED_CONNECTIONS`, the oldest entry is removed. The `removeConnection` function decrements `userConnectionCounts` and deletes from `activeConnectionSet`. If the evicted connection is still active (the SSE stream is still open), the per-user count is decremented incorrectly. This means `userConnectionCounts` can become inconsistent with actual active connections.
-- **Fix**: Same as debugger F2.
-
-## Previously Verified Safe (Prior Cycles)
-
-- `ROUND` in `computeSingleUserLiveRank` IOI rank query — added in cycle 21 (commit 71b2c3c1)
-- Anti-cheat `limit`/`offset` NaN — fixed in cycle 21
+## Final sweep
+- The observed live failures are explained by repo-side causes; no contradictory evidence surfaced in the inspected code.
