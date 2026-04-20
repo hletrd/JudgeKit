@@ -60,6 +60,7 @@ interface ApiKey {
   createdByName: string | null;
   lastUsedAt: string | null;
   expiresAt: string | null;
+  isExpired: boolean;
   isActive: boolean;
   createdAt: string;
   hasEncryptedKey?: boolean;
@@ -84,6 +85,7 @@ function buildMaskedApiKeyPreview(keyPrefix: string) {
 
 export function ApiKeysClient({ roleOptions }: { roleOptions?: RoleOption[] }) {
   const t = useTranslations("admin.apiKeys");
+  const tCommon = useTranslations("common");
   const locale = useLocale();
   const [keys, setKeys] = useState<ApiKey[]>([]);
   const [loading, setLoading] = useState(true);
@@ -267,7 +269,7 @@ export function ApiKeysClient({ roleOptions }: { roleOptions?: RoleOption[] }) {
   }
 
   function getStatus(key: ApiKey) {
-    if (key.expiresAt && new Date(key.expiresAt) < new Date()) {
+    if (key.isExpired) {
       return { label: t("expired"), variant: "destructive" as const };
     }
     if (!key.isActive) {
@@ -404,7 +406,7 @@ export function ApiKeysClient({ roleOptions }: { roleOptions?: RoleOption[] }) {
       </CardHeader>
       <CardContent>
         {loading ? (
-          <p className="text-sm text-muted-foreground">Loading...</p>
+          <p className="text-sm text-muted-foreground">{tCommon("loading")}</p>
         ) : keys.length === 0 ? (
           <p className="text-sm text-muted-foreground">{t("noKeys")}</p>
         ) : (

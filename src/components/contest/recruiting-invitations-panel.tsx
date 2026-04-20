@@ -56,6 +56,7 @@ type Invitation = {
   status: string;
   userId: string | null;
   expiresAt: string | null;
+  isExpired: boolean;
   redeemedAt: string | null;
   createdAt: string;
 };
@@ -70,6 +71,7 @@ type Stats = {
 
 export function RecruitingInvitationsPanel({ assignmentId }: { assignmentId: string }) {
   const t = useTranslations("contests.invitations");
+  const tCommon = useTranslations("common");
   const locale = useLocale();
   const [invitations, setInvitations] = useState<Invitation[]>([]);
   const [stats, setStats] = useState<Stats>({ total: 0, pending: 0, redeemed: 0, revoked: 0, expired: 0 });
@@ -245,7 +247,7 @@ export function RecruitingInvitationsPanel({ assignmentId }: { assignmentId: str
   function getStatusBadge(inv: Invitation) {
     if (inv.status === "revoked") return <Badge variant="destructive">{t("statusRevoked")}</Badge>;
     if (inv.status === "redeemed") return <Badge variant="default">{t("statusRedeemed")}</Badge>;
-    if (inv.expiresAt && new Date(inv.expiresAt) < new Date()) return <Badge variant="secondary">{t("statusExpired")}</Badge>;
+    if (inv.isExpired) return <Badge variant="secondary">{t("statusExpired")}</Badge>;
     return <Badge variant="outline">{t("statusPending")}</Badge>;
   }
 
@@ -438,7 +440,7 @@ export function RecruitingInvitationsPanel({ assignmentId }: { assignmentId: str
       </div>
       {/* Table */}
       {loading ? (
-        <p className="text-sm text-muted-foreground">Loading...</p>
+        <p className="text-sm text-muted-foreground">{tCommon("loading")}</p>
       ) : invitations.length === 0 ? (
         <p className="text-sm text-muted-foreground">{t("noInvitations")}</p>
       ) : (
