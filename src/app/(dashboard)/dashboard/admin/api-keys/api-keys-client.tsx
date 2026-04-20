@@ -102,7 +102,7 @@ export function ApiKeysClient({ roleOptions }: { roleOptions?: RoleOption[] }) {
     if (copiedKeyIdTimer.current) {
       clearTimeout(copiedKeyIdTimer.current);
     }
-  }, [t]);
+  }, []);
 
   // Create dialog state
   const [createOpen, setCreateOpen] = useState(false);
@@ -156,10 +156,11 @@ export function ApiKeysClient({ roleOptions }: { roleOptions?: RoleOption[] }) {
     if (!createName.trim()) return;
     setCreating(true);
     try {
-      let expiresAt: string | null = null;
+      // Send expiryDays instead of a client-computed timestamp so the server
+      // can compute expiresAt using authoritative DB time.
+      let expiryDays: number | null = null;
       if (createExpiry !== "none") {
-        const days = createExpiry === "30d" ? 30 : createExpiry === "90d" ? 90 : 365;
-        expiresAt = new Date(Date.now() + days * 86400000).toISOString();
+        expiryDays = createExpiry === "30d" ? 30 : createExpiry === "90d" ? 90 : 365;
       }
 
       const res = await fetch("/api/v1/admin/api-keys", {
@@ -168,7 +169,7 @@ export function ApiKeysClient({ roleOptions }: { roleOptions?: RoleOption[] }) {
           "Content-Type": "application/json",
           "X-Requested-With": "XMLHttpRequest",
         },
-        body: JSON.stringify({ name: createName.trim(), role: createRole, expiresAt }),
+        body: JSON.stringify({ name: createName.trim(), role: createRole, expiryDays }),
       });
 
       if (res.ok) {

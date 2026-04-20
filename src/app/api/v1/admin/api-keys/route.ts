@@ -8,11 +8,12 @@ import { apiSuccess, apiError } from "@/lib/api/responses";
 import { generateApiKey, encryptApiKey } from "@/lib/api/api-key-auth";
 import { recordAuditEvent } from "@/lib/audit/events";
 import { canManageRoleAsync, isUserRole } from "@/lib/security/constants";
+import { getDbNowUncached } from "@/lib/db-time";
 
 const createSchema = z.object({
   name: z.string().min(1).max(100),
   role: z.string().min(1).max(50),
-  expiresAt: z.string().datetime().nullable().optional(),
+  expiryDays: z.number().int().min(1).max(3650).nullable().optional(),
 });
 
 export const GET = createApiHandler({
@@ -69,6 +70,14 @@ export const POST = createApiHandler({
     const { rawKey, keyPrefix, keyHash } = generateApiKey();
     const encryptedKey = encryptApiKey(rawKey);
 
+    // Compute expiresAt server-side using DB time instead of accepting a
+    // client-computed timestamp. This ensures the stored expiry is
+    // consistent with the NOW()-based isExpired check in the GET endpoint.
+    const dbNow = await getDbNowUncached();
+    const expiresAt = body.expiryDays
+      ? new Date(dbNow.getTime() + body.expiryDays * 86400000)
+      : null;
+
     const [created] = await db
       .insert(apiKeys)
       .values({
@@ -78,7 +87,7 @@ export const POST = createApiHandler({
         encryptedKey,
         createdById: user.id,
         role: body.role,
-        expiresAt: body.expiresAt ? new Date(body.expiresAt) : null,
+        expiresAt,
       })
       .returning({ id: apiKeys.id, name: apiKeys.name, keyPrefix: apiKeys.keyPrefix });
 

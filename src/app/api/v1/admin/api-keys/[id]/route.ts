@@ -13,7 +13,7 @@ const updateSchema = z.object({
   name: z.string().min(1).max(100).optional(),
   role: z.string().min(1).max(50).optional(),
   isActive: z.boolean().optional(),
-  expiresAt: z.string().datetime().nullable().optional(),
+  expiryDays: z.number().int().min(1).max(3650).nullable().optional(),
 });
 
 export const GET = createApiHandler({
@@ -53,7 +53,14 @@ export const PATCH = createApiHandler({
     const updates: Record<string, unknown> = { updatedAt: await getDbNowUncached() };
     if (body.name !== undefined) updates.name = body.name;
     if (body.isActive !== undefined) updates.isActive = body.isActive;
-    if (body.expiresAt !== undefined) updates.expiresAt = body.expiresAt ? new Date(body.expiresAt) : null;
+    if (body.expiryDays !== undefined) {
+      // Compute expiresAt server-side using DB time for consistency with
+      // the NOW()-based isExpired check in the GET endpoint.
+      const dbNow = await getDbNowUncached();
+      updates.expiresAt = body.expiryDays
+        ? new Date(dbNow.getTime() + body.expiryDays * 86400000)
+        : null;
+    }
 
     if (body.role !== undefined) {
       // Validate role exists

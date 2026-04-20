@@ -59,6 +59,10 @@ vi.mock("@/lib/api/api-key-auth", () => ({
   encryptApiKey: encryptApiKeyMock,
 }));
 
+vi.mock("@/lib/db-time", () => ({
+  getDbNowUncached: vi.fn(() => Promise.resolve(new Date("2026-04-20T12:00:00Z"))),
+}));
+
 function makeSelectChain(rows: unknown[]) {
   const chain = {
     from: vi.fn(),
@@ -173,7 +177,7 @@ describe("admin api keys routes", () => {
     const res = await POST(
       makeRequest("http://localhost:3000/api/v1/admin/api-keys", {
         method: "POST",
-        body: { name: "Deploy Key", role: "admin", expiresAt: null },
+        body: { name: "Deploy Key", role: "admin", expiryDays: null },
       })
     );
     const body = await res.json();
