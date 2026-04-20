@@ -13,8 +13,8 @@ import {
 import { and, eq, sql, count } from "drizzle-orm";
 import type { SQL } from "drizzle-orm";
 import type { TransactionClient } from "@/lib/db";
-import { escapeLikePattern } from "@/lib/db/like";
 import { getDbNowUncached } from "@/lib/db-time";
+import { escapeLikePattern } from "@/lib/db/like";
 
 type RecruitingInvitationExecutor =
   Pick<TransactionClient, "insert" | "select" | "update" | "delete">
@@ -191,7 +191,7 @@ export async function updateRecruitingInvitation(
     status?: "revoked";
   }
 ) {
-  const updates: Record<string, unknown> = { updatedAt: new Date() };
+  const updates: Record<string, unknown> = { updatedAt: await getDbNowUncached() };
   if (data.expiresAt !== undefined) updates.expiresAt = data.expiresAt;
   if (data.metadata !== undefined) updates.metadata = data.metadata;
   if (data.status !== undefined) {
@@ -232,6 +232,7 @@ export async function resetRecruitingInvitationAccountPassword(id: string) {
   };
 
   await db.transaction(async (tx) => {
+    const now = await getDbNowUncached();
     await tx
       .update(users)
       .set({
@@ -240,8 +241,8 @@ export async function resetRecruitingInvitationAccountPassword(id: string) {
         // invalidation via tokenInvalidatedAt has a race condition or gap,
         // the candidate will be forced to change their password on next login.
         mustChangePassword: true,
-        tokenInvalidatedAt: await getDbNowUncached(),
-        updatedAt: new Date(),
+        tokenInvalidatedAt: now,
+        updatedAt: now,
       })
       .where(eq(users.id, invitation.userId!));
 
@@ -249,7 +250,7 @@ export async function resetRecruitingInvitationAccountPassword(id: string) {
       .update(recruitingInvitations)
       .set({
         metadata: nextMetadata,
-        updatedAt: new Date(),
+        updatedAt: now,
       })
       .where(eq(recruitingInvitations.id, invitation.id));
   });
