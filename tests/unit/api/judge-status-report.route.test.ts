@@ -68,6 +68,10 @@ vi.mock("@/lib/validators/api", () => ({
   },
 }));
 
+vi.mock("@/lib/db-time", () => ({
+  getDbNowUncached: vi.fn().mockResolvedValue(new Date("2026-04-20T12:00:00Z")),
+}));
+
 vi.mock("@/lib/db/schema", () => ({
   submissions: { id: "submissions.id", judgeClaimToken: "submissions.claim", judgeWorkerId: "submissions.worker" },
   submissionResults: { submissionId: "submission_results.submission_id" },

@@ -43,6 +43,10 @@ vi.mock("@/lib/db", () => ({
   },
 }));
 
+vi.mock("@/lib/db-time", () => ({
+  getDbNowUncached: vi.fn().mockResolvedValue(new Date("2026-04-20T12:00:00Z")),
+}));
+
 vi.mock("@/lib/api/responses", async () => {
   const { NextResponse } = await import("next/server");
   return {

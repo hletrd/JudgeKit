@@ -39,6 +39,10 @@ const txUpdateWhereMock = vi.fn();
 const txUpdateSetMock = vi.fn(() => ({ where: txUpdateWhereMock }));
 const txInsertMock = vi.fn(() => ({ values: txInsertValuesMock }));
 const txUpdateMock = vi.fn(() => ({ set: txUpdateSetMock }));
+vi.mock("@/lib/db-time", () => ({
+  getDbNowUncached: vi.fn().mockResolvedValue(new Date("2026-04-20T12:00:00Z")),
+}));
+
 vi.mock("@/lib/db", () => ({
   db: {
     query: {

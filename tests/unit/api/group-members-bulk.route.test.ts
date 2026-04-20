@@ -42,6 +42,10 @@ vi.mock("@/lib/api/auth", () => ({
   isInstructor: (role: string) => role === "instructor" || role === "admin" || role === "super_admin",
 }));
 
+vi.mock("@/lib/db-time", () => ({
+  getDbNowUncached: vi.fn().mockResolvedValue(new Date("2026-04-20T12:00:00Z")),
+}));
+
 vi.mock("@/lib/db", () => ({
   db: {
     query: {

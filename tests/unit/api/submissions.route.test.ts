@@ -70,6 +70,10 @@ const dbMockObj = {
   execute: vi.fn().mockResolvedValue(undefined),
 };
 
+vi.mock("@/lib/db-time", () => ({
+  getDbNowUncached: vi.fn().mockResolvedValue(new Date("2026-04-20T12:00:00Z")),
+}));
+
 vi.mock("@/lib/db", () => ({
   db: dbMockObj,
   execTransaction: vi.fn(async (fn: (tx: typeof dbMockObj) => unknown) => fn(dbMockObj)),
