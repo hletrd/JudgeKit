@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useRef } from "react";
 import { useTranslations, useLocale } from "next-intl";
 import { toast } from "sonner";
 import { Plus, Check, Ban, Trash2, Link, Copy, ShieldAlert } from "lucide-react";
@@ -79,6 +79,7 @@ export function RecruitingInvitationsPanel({ assignmentId }: { assignmentId: str
   const [search, setSearch] = useState("");
   const [statusFilter, setStatusFilter] = useState("all");
   const [copiedId, setCopiedId] = useState<string | null>(null);
+  const copiedIdTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const [revealedTemporaryPassword, setRevealedTemporaryPassword] = useState<{ candidateName: string; password: string } | null>(null);
 
   // Create dialog state
@@ -98,6 +99,13 @@ export function RecruitingInvitationsPanel({ assignmentId }: { assignmentId: str
     const timer = setTimeout(() => setRevealedTemporaryPassword(null), 60_000);
     return () => clearTimeout(timer);
   }, [revealedTemporaryPassword]);
+
+  // Clean up copy-feedback timer on unmount
+  useEffect(() => () => {
+    if (copiedIdTimer.current) {
+      clearTimeout(copiedIdTimer.current);
+    }
+  }, []);
 
   const fetchData = useCallback(async () => {
     try {
@@ -196,10 +204,18 @@ export function RecruitingInvitationsPanel({ assignmentId }: { assignmentId: str
 
   async function handleCopyLink(invitation: Invitation) {
     const url = `${baseUrl}/recruit/${invitation.token}`;
-    await navigator.clipboard.writeText(url);
+    try {
+      await navigator.clipboard.writeText(url);
+    } catch {
+      toast.error(t("copyError"));
+      return;
+    }
+    if (copiedIdTimer.current) {
+      clearTimeout(copiedIdTimer.current);
+    }
     setCopiedId(invitation.id);
     toast.success(t("linkCopied"));
-    setTimeout(() => setCopiedId(null), 2000);
+    copiedIdTimer.current = setTimeout(() => setCopiedId(null), 2000);
   }
 
   async function handleRevoke(invitation: Invitation) {
@@ -379,12 +395,15 @@ export function RecruitingInvitationsPanel({ assignmentId }: { assignmentId: str
                     </SelectContent>
                   </Select>
                   {createExpiry === "custom" && (
-                    <Input
-                      type="date"
-                      value={customExpiryDate}
-                      onChange={(e) => setCustomExpiryDate(e.target.value)}
-                      min={new Date().toISOString().split("T")[0]}
-                    />
+                    <div className="space-y-1">
+                      <Input
+                        type="date"
+                        value={customExpiryDate}
+                        onChange={(e) => setCustomExpiryDate(e.target.value)}
+                        min={new Date().toISOString().split("T")[0]}
+                      />
+                      <p className="text-xs text-muted-foreground">{t("expiryDateUtcHint")}</p>
+                    </div>
                   )}
                 </div>
                 {/* Dynamic metadata fields */}
