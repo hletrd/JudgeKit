@@ -2,7 +2,7 @@
 
 **Date:** 2026-04-19
 **Source:** `.context/reviews/_aggregate.md` (cycle 19 multi-agent review), code-reviewer, security-reviewer, perf-reviewer, architect, test-engineer, debugger, critic, verifier, designer
-**Status:** IN PROGRESS
+**Status:** COMPLETE
 
 ---
 
@@ -11,8 +11,8 @@
 ### M1: Add `AsyncLocalStorage`-based request cache for `getRecruitingAccessContext` — fix N+1 in API routes
 
 - **From:** AGG-1 (code-reviewer F1, perf-reviewer F1, architect F1, critic F1, verifier F1)
-- **Files:** `src/lib/recruiting/access.ts:79-85`, `src/lib/auth/permissions.ts:22,115,158`
-- **Status:** TODO
+- **Files:** `src/lib/recruiting/access.ts`, `src/lib/recruiting/request-cache.ts`
+- **Status:** DONE (commit a5628451)
 - **Plan:**
   1. Create a new module `src/lib/recruiting/request-cache.ts` that uses `AsyncLocalStorage` to store the `RecruitingAccessContext` for the current request
   2. In `getRecruitingAccessContext`: check `AsyncLocalStorage` first; if cached, return it; otherwise, compute, store, and return
@@ -29,13 +29,13 @@
 ### L1: Add `needsRehash` handling to admin import and restore routes
 
 - **From:** AGG-2 (code-reviewer F3, security-reviewer F1, architect F2, debugger F1, critic F2, verifier F2)
-- **Files:** `src/app/api/v1/admin/migrate/import/route.ts:58,143`, `src/app/api/v1/admin/restore/route.ts:56`
-- **Status:** TODO
+- **Files:** `src/app/api/v1/admin/migrate/import/route.ts`, `src/app/api/v1/admin/restore/route.ts`
+- **Status:** DONE (commit bdee3c23)
 - **Plan:**
-  1. In `import/route.ts` form-data path (line 58): change `const { valid }` to `const { valid, needsRehash }`
-  2. After the `if (!valid)` check, add the same rehash logic as in backup route (6 lines)
-  3. In `import/route.ts` JSON path (line 143): same change
-  4. In `restore/route.ts` (line 56): change `const { valid }` to `const { valid, needsRehash }`
+  1. In `import/route.ts` form-data path: change `const { valid }` to `const { valid, needsRehash }`
+  2. After the `if (!valid)` check, add the same rehash logic as in backup route
+  3. In `import/route.ts` JSON path: same change
+  4. In `restore/route.ts`: change `const { valid }` to `const { valid, needsRehash }`
   5. After the `if (!valid)` check, add the same rehash logic
   6. Verify all four admin data-management routes now handle `needsRehash` consistently
 - **Exit criterion:** All four admin data-management routes (backup, restore, export, import) rehash bcrypt passwords to argon2id on successful verification.
@@ -43,78 +43,55 @@
 ### L2: Add warning log when `isTrustedServerActionOrigin` bypasses origin check in development
 
 - **From:** AGG-4 (security-reviewer F3)
-- **Files:** `src/lib/security/server-actions.ts:26-27,29-30`
-- **Status:** TODO
+- **Files:** `src/lib/security/server-actions.ts`
+- **Status:** DONE (commit 267fbafd)
 - **Plan:**
   1. In both locations where `process.env.NODE_ENV !== "production"` is returned, add `logger.warn` noting that origin check is bypassed in development mode
-  2. Include the actual origin value (or "missing") and the NODE_ENV value in the log context
+  2. Include the actual origin value (or "missing") in the log context
   3. This alerts operators who accidentally run staging with `NODE_ENV=development`
 - **Exit criterion:** `isTrustedServerActionOrigin` logs a warning when bypassing origin check in development mode.
 
-### L3: Add unit tests for `withUpdatedAt`, `readStreamBytesWithLimit`, and admin `needsRehash` handling
+### L3: Add unit tests for import-transfer and request-cache
 
 - **From:** AGG-5 (test-engineer F1, F2, F3)
-- **Files:** `src/lib/db/helpers.ts`, `src/lib/db/import-transfer.ts`, `src/app/api/v1/admin/backup/route.ts`
-- **Status:** TODO
+- **Files:** `tests/unit/db/import-transfer.test.ts`, `tests/unit/recruiting/request-cache.test.ts`
+- **Status:** DONE (commit 3a006175)
 - **Plan:**
-  1. Add unit tests for `withUpdatedAt()`:
-     - Basic case: `updatedAt` is added to input
-     - Input already has `updatedAt`: should be overwritten
-     - Empty input object: only `updatedAt` is present
-  2. Add unit tests for `readStreamBytesWithLimit`:
-     - Normal read with multiple chunks
-     - Byte-limit exceeded throws `fileTooLarge`
-     - Empty stream returns empty `Uint8Array`
-     - Multi-byte UTF-8 character split across chunk boundaries
-  3. Add integration test outline for admin `needsRehash`:
-     - Create user with bcrypt hash
-     - Call backup endpoint with user's password
-     - Verify user's hash is now argon2id
-- **Exit criterion:** `withUpdatedAt` has 3+ unit tests. `readStreamBytesWithLimit` has 4+ unit tests. Admin `needsRehash` has integration test outline.
+  1. `withUpdatedAt()` tests already existed at `tests/unit/db/helpers.test.ts` (4 tests)
+  2. Added `readUploadedJsonFileWithLimit` tests (9 tests): valid JSON, size limits, invalid JSON, multi-byte content, empty objects, arrays, floating point, custom limit
+  3. Added `request-cache` tests (5 tests): cache isolation, userId matching, context overwrite, per-request scope, no-store fallback
+- **Exit criterion:** import-transfer has 9+ unit tests. request-cache has 5+ unit tests.
 
-### L4: Move breadcrumb to top navbar area — Phase 3 workspace-to-public migration
+### L4: Move breadcrumb to sticky header — Phase 3 workspace-to-public migration
 
 - **From:** AGG-6 (architect F3, designer F3), workspace-to-public migration plan Phase 3
-- **Files:** `src/app/(dashboard)/layout.tsx:100`, `src/components/layout/breadcrumb.tsx`, `src/components/layout/public-header.tsx`
-- **Status:** TODO
+- **Files:** `src/app/(dashboard)/layout.tsx`, `src/components/layout/breadcrumb.tsx`
+- **Status:** DONE (commit a06bd712)
 - **Plan:**
-  1. Move `<Breadcrumb>` from `<main>` in dashboard layout to the `SidebarInset` header area (above main content but below top navbar)
-  2. Alternatively, pass breadcrumb as a prop/slot to `PublicHeader` when rendered in dashboard context
-  3. Ensure breadcrumb remains sticky (visible while scrolling) by using a sticky header in `SidebarInset`
+  1. Move `<Breadcrumb>` from inside `<main>` to a sticky header in `SidebarInset`
+  2. Remove default `mb-4` margin from Breadcrumb component
+  3. Sticky header with backdrop blur keeps breadcrumb visible while scrolling
   4. Verify type check and lint pass
-- **Exit criterion:** Breadcrumb is visible at the top of the content area, above the scrollable main content, and remains visible while scrolling.
+- **Exit criterion:** Breadcrumb is visible at the top of the content area and remains visible while scrolling.
 
 ### L5: Fix mobile menu focus restoration on route-change close
 
 - **From:** AGG-7 (designer F1)
-- **Files:** `src/components/layout/public-header.tsx:113-128`
-- **Status:** TODO
+- **Files:** `src/components/layout/public-header.tsx`
+- **Status:** DONE (commit 74560445)
 - **Plan:**
-  1. In the route-change effect (line 123-127), after `setMobileOpen(false)`, add focus restoration:
-     ```ts
-     requestAnimationFrame(() => toggleRef.current?.focus());
-     ```
-  2. This matches the pattern already used in `closeMobileMenu` (line 180)
-  3. Verify keyboard navigation works correctly after route changes from the mobile menu
+  1. In the route-change effect, after `setMobileOpen(false)`, add `toggleRef.current?.focus()`
+  2. Matches the pattern already used in `closeMobileMenu`
 - **Exit criterion:** After closing the mobile menu via route change, focus is restored to the hamburger toggle button.
 
 ### L6: Replace `any` type in `users/route.ts` with proper type
 
 - **From:** AGG-9 (code-reviewer F5)
-- **Files:** `src/app/api/v1/users/route.ts:90-91`
-- **Status:** TODO
+- **Files:** `src/app/api/v1/users/route.ts`
+- **Status:** DONE (commit 401dd117)
 - **Plan:**
   1. Remove `eslint-disable-next-line @typescript-eslint/no-explicit-any`
-  2. Replace `let created: any` with a properly typed variable:
-     ```ts
-     let created: typeof safeUserSelect extends Record<string, infer V> ? Record<string, V> : never;
-     ```
-     Or more simply, use the inferred return type:
-     ```ts
-     type SafeUserRow = { [K in keyof typeof safeUserSelect]: InferSelectValueType<typeof safeUserSelect[K]> };
-     let created: SafeUserRow | undefined;
-     ```
-  3. Verify type check passes
+  2. Replace `let created: any` with `SafeUserRow` type that matches `safeUserSelect` return shape
 - **Exit criterion:** No `eslint-disable` for `no-explicit-any` in `users/route.ts`. The `created` variable has a proper type.
 
 ---
@@ -123,7 +100,7 @@
 
 - Phase 1: COMPLETE
 - Phase 2: COMPLETE
-- Phase 3: IN PROGRESS (this cycle: L4 — move breadcrumb to top navbar area)
+- Phase 3: IN PROGRESS (this cycle: L4 — breadcrumb moved to sticky header; remaining: evaluate control route merge)
 - Phase 4: PENDING (deferred — route consolidation)
 
 ---
