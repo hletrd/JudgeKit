@@ -2,7 +2,7 @@
 
 **Date:** 2026-04-20
 **Source:** `.context/reviews/cycle-21-aggregate.md`
-**Status:** Priority items pending implementation
+**Status:** All priority items DONE
 
 ## Scope
 
@@ -40,7 +40,7 @@ No cycle-21 review finding is silently dropped. No new refactor-only work is add
   3. Remove the manual `X-Requested-With` header from each call.
   4. Verify that `apiClient` preserves the existing `Content-Type` and other headers.
   5. Verify all gates pass.
-- **Status:** PENDING
+- **Status:** DONE
 
 ### H2: Fix `language-config-table.tsx` `fetchImageStatus` error handling and add loading state (AGG-2)
 
@@ -57,7 +57,7 @@ No cycle-21 review finding is silently dropped. No new refactor-only work is add
   3. In the catch block and non-OK else branch, show a toast error: `toast.error(t("toast.fetchImageStatusError"))` (add i18n key if needed).
   4. When `imageStatusLoading` is true and `imageInfo.size === 0`, show skeleton badges or "Loading..." instead of "Not Built".
   5. Verify all gates pass.
-- **Status:** PENDING
+- **Status:** DONE
 
 ### M1: Fix disk usage bar accessibility and CSS width validation (AGG-3)
 
@@ -72,7 +72,7 @@ No cycle-21 review finding is silently dropped. No new refactor-only work is add
   2. Add `role="progressbar"`, `aria-valuenow={parseInt(diskUsage.usePercent) || 0}`, `aria-valuemin={0}`, `aria-valuemax={100}`, `aria-label={t("diskUsage")}` to the progress bar container div.
   3. Use the parsed value for the color logic as well (replace inline `parseInt` with the same `aria-valuenow` value).
   4. Verify all gates pass.
-- **Status:** PENDING
+- **Status:** DONE
 
 ### M2: Clean up dead code in `AppSidebar` after submissions removal (AGG-4)
 
@@ -89,7 +89,7 @@ No cycle-21 review finding is silently dropped. No new refactor-only work is add
   3. Review `canBypassModeRestrictions` -- keep `submissions.view_all` because it still gates the ability to bypass platform mode restrictions for viewing all submissions, which is a broader permission than just the sidebar item. The sidebar item was removed, but the capability still matters for mode restriction bypassing (e.g., seeing problems in recruiting mode).
   4. Simplify `resolveItemHref` if it now only returns `item.href` -- remove the function entirely and use `item.href` directly.
   5. Verify all gates pass.
-- **Status:** PENDING
+- **Status:** DONE
 
 ### M3: Make `formatScore` locale-aware and add unit tests (AGG-5)
 
@@ -102,7 +102,7 @@ No cycle-21 review finding is silently dropped. No new refactor-only work is add
   2. Add `locale` parameter to `formatScore` signature (optional, defaults to DEFAULT_LOCALE).
   3. Add unit tests for `formatScore`: null/undefined returns "-", zero returns "0", large numbers get grouping, locale parameter works, rounding is correct.
   4. Verify all gates pass.
-- **Status:** PENDING
+- **Status:** DONE
 
 ### M4: Replace `confirmAction` unsafe type casting with discriminated union (AGG-6)
 
@@ -137,7 +137,7 @@ No cycle-21 review finding is silently dropped. No new refactor-only work is add
   2. Remove `role: session.user.role` from the `loggedInUser` object in `(dashboard)/layout.tsx`.
   3. Remove `role: session.user.role` from the `loggedInUser` object in `(public)/layout.tsx`.
   4. Verify all gates pass.
-- **Status:** PENDING
+- **Status:** DONE
 
 ---
 
@@ -244,3 +244,4 @@ This directly supports the migration plan Phase 3 goal of slimming down AppSideb
 ## Progress log
 
 - 2026-04-20: Plan created from cycle-21 aggregate review. Archived completed cycle-20 plan.
+- 2026-04-20: All priority items implemented. H1 (apiFetch migration), H2 (fetchImageStatus error handling), M1 (disk usage accessibility), M2 (AppSidebar dead code), M3 (formatScore locale-aware), M4 (discriminated union ConfirmAction), M5 (remove unused role prop) -- all DONE.
