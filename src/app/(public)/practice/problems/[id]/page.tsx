@@ -98,11 +98,12 @@ export async function generateMetadata({ params }: { params: Promise<{ id: strin
 
 export default async function PublicProblemDetailPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
-  const [t, tCommon, tProblems, tSubmissions, session, locale] = await Promise.all([
+  const [t, tCommon, tProblems, tSubmissions, tRankings, session, locale] = await Promise.all([
     getTranslations("publicShell"),
     getTranslations("common"),
     getTranslations("problems"),
     getTranslations("submissions"),
+    getTranslations("rankings"),
     auth(),
     getLocale(),
   ]);
@@ -397,7 +398,7 @@ export default async function PublicProblemDetailPage({ params }: { params: Prom
                     </div>
                     <div className="mt-4 flex justify-center">
                       <Link href={buildLocalePath(`/practice/problems/${problem.id}/rankings`, locale)}>
-                        <Button variant="outline" size="sm">Rankings</Button>
+                        <Button variant="outline" size="sm">{tRankings("viewRankings")}</Button>
                       </Link>
                     </div>
                   </CardContent>
