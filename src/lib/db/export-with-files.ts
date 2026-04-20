@@ -39,12 +39,12 @@ function createBackupIntegrityManifest(
   dbJson: string,
   dbExport: JudgeKitExport,
   uploads: BackupIntegrityManifest["uploads"],
-  dbNow?: Date
+  dbNow: Date
 ): BackupIntegrityManifest {
   return {
     version: 1,
     format: "judgekit-backup-integrity",
-    createdAt: (dbNow ?? new Date()).toISOString(),
+    createdAt: dbNow.toISOString(),
     database: {
       path: "database.json",
       sha256: sha256Hex(dbJson),
@@ -109,14 +109,16 @@ function parseBackupIntegrityManifest(raw: string): BackupIntegrityManifest {
  *   database.json  – standard JudgeKitExport
  *   uploads/       – uploaded files keyed by their storedName
  */
-export async function streamBackupWithFiles(signal?: AbortSignal): Promise<ReadableStream<Uint8Array>> {
-  // Fetch DB time once so the manifest createdAt matches the export snapshot
-  const dbNow = await getDbNowUncached();
+export async function streamBackupWithFiles(signal?: AbortSignal, dbNow?: Date): Promise<ReadableStream<Uint8Array>> {
+  // Use caller-provided DB time or fetch once so the manifest createdAt
+  // matches the export snapshot. Passing dbNow from the route handler avoids
+  // redundant SELECT NOW() round-trips across the backup pipeline.
+  const resolvedDbNow = dbNow ?? await getDbNowUncached();
   const zip = new JSZip();
 
   // 1. Collect database export as JSON
   const dbChunks: Uint8Array[] = [];
-  const dbStream = streamDatabaseExport({ signal });
+  const dbStream = streamDatabaseExport({ signal, dbNow: resolvedDbNow });
 
   const dbReader = dbStream.getReader();
   while (true) {
@@ -164,7 +166,7 @@ export async function streamBackupWithFiles(signal?: AbortSignal): Promise<Reada
   logger.info({ included, skipped, total: fileRecords.length }, "Backup file upload collection complete");
   zip.file(
     BACKUP_MANIFEST_PATH,
-    JSON.stringify(createBackupIntegrityManifest(dbJson, dbExport, manifestUploads, dbNow), null, 2)
+    JSON.stringify(createBackupIntegrityManifest(dbJson, dbExport, manifestUploads, resolvedDbNow), null, 2)
   );
 
   // 4. Generate ZIP as a Web ReadableStream
