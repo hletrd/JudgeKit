@@ -156,6 +156,8 @@
     "roleManagement": "역할 관리",
     "languages": "언어 관리",
     "tagManagement": "태그 관리",
+    "discussionModeration": "토론 관리",
+    "discussionModerationDescription": "토론 고정, 잠금, 삭제.",
     "judgeWorkers": "채점 워커",
     "compiler": "컴파일러",
     "apiKeys": "API 키",
@@ -2619,7 +2621,6 @@
       "community": "커뮤니티",
       "rankings": "랭킹",
       "submissions": "제출내역",
-      "workspace": "워크스페이스",
       "dashboard": "대시보드",
       "problems": "문제 관리",
       "groups": "그룹 관리",
@@ -2627,6 +2628,26 @@
       "profile": "프로필",
       "admin": "관리자",
       "languages": "언어"
+    },
+    "moderation": {
+      "title": "토론 관리",
+      "description": "공개 토론을 범위와 상태로 걸러 보고 처리합니다.",
+      "empty": "현재 필터에 맞는 토론 스레드가 없습니다.",
+      "openThread": "스레드 열기",
+      "unknownAuthor": "알 수 없는 작성자",
+      "problemMeta": "{title}, 답글 {replies}개",
+      "generalMeta": "답글 {replies}개",
+      "scope": {
+        "all": "전체 범위",
+        "general": "일반",
+        "problem": "문제"
+      },
+      "state": {
+        "all": "전체 상태",
+        "open": "열림",
+        "locked": "잠김",
+        "pinned": "고정됨"
+      }
     },
     "home": {
       "eyebrow": "온라인 저지 플랫폼",
@@ -2964,58 +2985,5 @@
     "categoryBreakdown": "카테고리 분포",
     "languageBreakdown": "언어 분포",
     "noStats": "아직 통계가 없습니다."
-  },
-  "controlShell": {
-    "sectionLabel": "제어",
-    "title": "컨트롤 센터",
-    "description": "교수자, 운영자, 관리자를 위한 운영 화면입니다. 구조 전환 중에는 기존 경로도 그대로 유지됩니다.",
-    "openLink": "열기",
-    "nav": {
-      "home": "컨트롤 홈",
-      "homeDescription": "운영 진입점입니다.",
-      "groupsDescription": "그룹과 수업 관리.",
-      "usersDescription": "사용자, 역할, 감사 관리.",
-      "languagesDescription": "언어와 워커 설정.",
-      "settingsDescription": "시스템 설정과 운영 제어.",
-      "discussions": "토론 관리",
-      "discussionsDescription": "토론 고정, 잠금, 삭제."
-    },
-    "cards": {
-      "groups": "그룹과 수업 관리.",
-      "users": "사용자, 역할, 관리 도구.",
-      "settings": "시스템 설정.",
-      "discussions": "토론 관리 대기열."
-    },
-    "moderation": {
-      "title": "토론 관리",
-      "description": "공개 토론을 범위와 상태로 걸러 보고 처리합니다.",
-      "empty": "현재 필터에 맞는 토론 스레드가 없습니다.",
-      "openThread": "스레드 열기",
-      "unknownAuthor": "알 수 없는 작성자",
-      "problemMeta": "{title}, 답글 {replies}개",
-      "generalMeta": "답글 {replies}개",
-      "scope": {
-        "all": "전체 범위",
-        "general": "일반",
-        "problem": "문제"
-      },
-      "state": {
-        "all": "전체 상태",
-        "open": "열림",
-        "locked": "잠김",
-        "pinned": "고정됨"
-      }
-    },
-    "community": {
-      "moderation": {
-        "lock": "스레드 잠금",
-        "unlock": "잠금 해제",
-        "pin": "스레드 고정",
-        "unpin": "고정 해제",
-        "deleteThread": "스레드 삭제",
-        "success": "토론 상태가 업데이트되었습니다",
-        "deleteSuccess": "토론이 삭제되었습니다"
-      }
-    }
   }
 }

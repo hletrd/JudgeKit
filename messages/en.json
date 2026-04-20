@@ -156,6 +156,8 @@
     "roleManagement": "Role Management",
     "languages": "Languages",
     "tagManagement": "Tag Management",
+    "discussionModeration": "Discussion Moderation",
+    "discussionModerationDescription": "Review, pin, lock, and remove discussion threads.",
     "judgeWorkers": "Judge Workers",
     "compiler": "Compiler",
     "apiKeys": "API Keys",
@@ -2619,7 +2621,6 @@
       "community": "Community",
       "rankings": "Rankings",
       "submissions": "Submissions",
-      "workspace": "Workspace",
       "dashboard": "Dashboard",
       "problems": "Problems",
       "groups": "Groups",
@@ -2627,6 +2628,26 @@
       "profile": "Profile",
       "admin": "Admin",
       "languages": "Languages"
+    },
+    "moderation": {
+      "title": "Discussion moderation",
+      "description": "Review public discussion threads, filter by scope or moderation state, and apply moderation actions.",
+      "empty": "No discussion threads match the current filters.",
+      "openThread": "Open thread",
+      "unknownAuthor": "Unknown author",
+      "problemMeta": "{title} · {replies} replies",
+      "generalMeta": "{replies} replies",
+      "scope": {
+        "all": "All scopes",
+        "general": "General",
+        "problem": "Problem"
+      },
+      "state": {
+        "all": "All states",
+        "open": "Open",
+        "locked": "Locked",
+        "pinned": "Pinned"
+      }
     },
     "home": {
       "eyebrow": "Online judge platform",
@@ -2964,58 +2985,5 @@
     "categoryBreakdown": "Category Breakdown",
     "languageBreakdown": "Language Breakdown",
     "noStats": "No stats yet."
-  },
-  "controlShell": {
-    "sectionLabel": "Control",
-    "title": "Control center",
-    "description": "Teaching, moderation, and administration. Existing staff routes remain active during migration.",
-    "openLink": "Open",
-    "nav": {
-      "home": "Control home",
-      "homeDescription": "Operational entry point.",
-      "groupsDescription": "Teaching and group management.",
-      "usersDescription": "Users, roles, and audit administration.",
-      "languagesDescription": "Language and worker configuration.",
-      "settingsDescription": "System settings and operational controls.",
-      "discussions": "Discussion moderation",
-      "discussionsDescription": "Review, pin, lock, and remove discussion threads."
-    },
-    "cards": {
-      "groups": "Teaching and group management.",
-      "users": "User, role, and admin management.",
-      "settings": "System-level settings.",
-      "discussions": "Discussion moderation queue and thread management."
-    },
-    "moderation": {
-      "title": "Discussion moderation",
-      "description": "Review public discussion threads, filter by scope or moderation state, and apply moderation actions.",
-      "empty": "No discussion threads match the current filters.",
-      "openThread": "Open thread",
-      "unknownAuthor": "Unknown author",
-      "problemMeta": "{title} · {replies} replies",
-      "generalMeta": "{replies} replies",
-      "scope": {
-        "all": "All scopes",
-        "general": "General",
-        "problem": "Problem"
-      },
-      "state": {
-        "all": "All states",
-        "open": "Open",
-        "locked": "Locked",
-        "pinned": "Pinned"
-      }
-    },
-    "community": {
-      "moderation": {
-        "lock": "Lock thread",
-        "unlock": "Unlock thread",
-        "pin": "Pin thread",
-        "unpin": "Unpin thread",
-        "deleteThread": "Delete thread",
-        "success": "Discussion status updated",
-        "deleteSuccess": "Discussion removed"
-      }
-    }
   }
 }
