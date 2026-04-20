@@ -1,10 +1,11 @@
 "use client";
 
 import { useState, useEffect, useCallback, useRef } from "react";
-import { useTranslations } from "next-intl";
+import { useLocale, useTranslations } from "next-intl";
 import { toast } from "sonner";
 // i18n keys used from "contests.accessCode" and "common"
 import { apiFetch } from "@/lib/api/client";
+import { buildLocalizedHref } from "@/lib/locale-paths";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Copy, Key, Link2, Trash2 } from "lucide-react";
@@ -27,6 +28,7 @@ interface AccessCodeManagerProps {
 export function AccessCodeManager({ assignmentId }: AccessCodeManagerProps) {
   const t = useTranslations("contests.accessCode");
   const tCommon = useTranslations("common");
+  const locale = useLocale();
   const [code, setCode] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(false);
   const [copied, setCopied] = useState(false);
@@ -123,7 +125,7 @@ export function AccessCodeManager({ assignmentId }: AccessCodeManagerProps) {
 
   async function handleCopyLink() {
     if (!code) return;
-    const url = `${window.location.origin}/dashboard/contests/join?code=${code}`;
+    const url = `${window.location.origin}${buildLocalizedHref("/dashboard/contests/join", locale)}?code=${code}`;
     await copyValue(url, { showToast: true });
   }
 
