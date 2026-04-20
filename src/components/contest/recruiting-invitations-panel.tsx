@@ -180,7 +180,7 @@ export function RecruitingInvitationsPanel({ assignmentId }: { assignmentId: str
         if (token) {
           const link = `${baseUrl}/recruit/${token}`;
           setCreatedLink(link);
-          try { await navigator.clipboard.writeText(link); } catch { /* ignore */ }
+          try { await navigator.clipboard.writeText(link); } catch { toast.error(t("copyError")); }
         }
         toast.success(t("createSuccess"));
         fetchData();
