@@ -246,7 +246,7 @@ Same as instructor, with additional "Admin" dropdown entry that navigates to `/d
 - ~~Centralize dropdown items in shared nav module~~ DONE (commit 4bbc65aa)
 
 **Remaining Phase 4 work:**
-1. Make public pages auth-aware: render additional sections or edit buttons when the user is authenticated and has the right capabilities.
+1. ~~Make public pages auth-aware: render additional sections or edit buttons when the user is authenticated and has the right capabilities.~~ STARTED — "Edit Problem" button added to `/practice/problems/[id]` for users with `problems.create` capability (commit 167fa41c)
 2. Remove redundant page components under `(dashboard)` where public counterparts exist.
 
 **Estimated files changed:** ~20-30
