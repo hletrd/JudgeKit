@@ -10,6 +10,7 @@ import type { PgTable } from "drizzle-orm/pg-core";
 import { db, activeDialect } from "./index";
 import type { DbDialect } from "./config";
 import * as schema from "./schema";
+import { getDbNowUncached } from "@/lib/db-time";
 
 export type JudgeKitExportRedactionMode = "full-fidelity" | "sanitized";
 
@@ -59,9 +60,13 @@ export function streamDatabaseExport(options: { signal?: AbortSignal; sanitize?:
           await tx.execute(sql.raw("SET TRANSACTION ISOLATION LEVEL REPEATABLE READ READ ONLY"));
           await waitForReadableStreamDemand(controller, () => cancelled);
 
+          // Use DB server time for exportedAt so the timestamp matches the
+          // REPEATABLE READ snapshot, not the app server clock.
+          const dbNow = await getDbNowUncached();
+
           controller.enqueue(
             encoder.encode(
-              `{"version":1,"exportedAt":${JSON.stringify(new Date().toISOString())},"sourceDialect":${JSON.stringify(activeDialect)},"appVersion":${JSON.stringify(process.env.npm_package_version ?? "unknown")},"redactionMode":${JSON.stringify(redactionMode)},"tables":{`
+              `{"version":1,"exportedAt":${JSON.stringify(dbNow.toISOString())},"sourceDialect":${JSON.stringify(activeDialect)},"appVersion":${JSON.stringify(process.env.npm_package_version ?? "unknown")},"redactionMode":${JSON.stringify(redactionMode)},"tables":{`
             )
           );
 
