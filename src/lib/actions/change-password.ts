@@ -8,6 +8,7 @@ import { buildServerActionAuditContext, recordAuditEvent } from "@/lib/audit/eve
 import { db } from "@/lib/db";
 import { users } from "@/lib/db/schema";
 import { withUpdatedAt } from "@/lib/db/helpers";
+import { getDbNowUncached } from "@/lib/db-time";
 import { clearRateLimit, consumeRateLimitAttemptMulti } from "@/lib/security/rate-limit";
 import { getPasswordValidationError } from "@/lib/security/password";
 import { isTrustedServerActionOrigin } from "@/lib/security/server-actions";
@@ -72,7 +73,7 @@ export async function changePassword(
       .set(withUpdatedAt({
         passwordHash: newHash,
         mustChangePassword: false,
-        tokenInvalidatedAt: new Date(),
+        tokenInvalidatedAt: await getDbNowUncached(),
       }))
       .where(eq(users.id, user.id));
   } catch (error) {

@@ -14,6 +14,7 @@ import { and, eq, sql, count } from "drizzle-orm";
 import type { SQL } from "drizzle-orm";
 import type { TransactionClient } from "@/lib/db";
 import { escapeLikePattern } from "@/lib/db/like";
+import { getDbNowUncached } from "@/lib/db-time";
 
 type RecruitingInvitationExecutor =
   Pick<TransactionClient, "insert" | "select" | "update" | "delete">
@@ -239,7 +240,7 @@ export async function resetRecruitingInvitationAccountPassword(id: string) {
         // invalidation via tokenInvalidatedAt has a race condition or gap,
         // the candidate will be forced to change their password on next login.
         mustChangePassword: true,
-        tokenInvalidatedAt: new Date(),
+        tokenInvalidatedAt: await getDbNowUncached(),
         updatedAt: new Date(),
       })
       .where(eq(users.id, invitation.userId!));
@@ -356,7 +357,7 @@ export async function redeemRecruitingToken(
             .set({
               passwordHash: nextPasswordHash,
               mustChangePassword: false,
-              tokenInvalidatedAt: new Date(),
+              tokenInvalidatedAt: await getDbNowUncached(),
               updatedAt: new Date(),
             })
             .where(eq(users.id, existingUser.id));

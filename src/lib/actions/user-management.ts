@@ -8,6 +8,7 @@ import { auth } from "@/lib/auth";
 import { hashPassword } from "@/lib/security/password-hash";
 import { nanoid } from "nanoid";
 import { buildServerActionAuditContext, recordAuditEvent } from "@/lib/audit/events";
+import { getDbNowUncached } from "@/lib/db-time";
 import { generateSecurePassword } from "@/lib/auth/generated-password";
 import {
   isUsernameTaken,
@@ -111,7 +112,7 @@ export async function toggleUserActive(userId: string, isActive: boolean): Promi
     const updates: UserUpdates = { isActive };
 
     if (!isActive) {
-      updates.tokenInvalidatedAt = new Date();
+      updates.tokenInvalidatedAt = await getDbNowUncached();
     }
 
     await db.update(users)
@@ -305,7 +306,7 @@ export async function editUser(userId: string, data: ManagedUserInput): Promise<
     }
 
     if (shouldInvalidateExistingSessions) {
-      updates.tokenInvalidatedAt = new Date();
+      updates.tokenInvalidatedAt = await getDbNowUncached();
     }
 
     try {

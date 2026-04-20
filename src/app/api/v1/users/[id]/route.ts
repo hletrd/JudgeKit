@@ -12,6 +12,7 @@ import { safeUserSelect } from "@/lib/db/selects";
 import { updateProfileSchema, adminUpdateUserSchema } from "@/lib/validators/profile";
 import { withUpdatedAt } from "@/lib/db/helpers";
 import { logger } from "@/lib/logger";
+import { getDbNowUncached } from "@/lib/db-time";
 import {
   isUsernameTaken,
   isEmailTaken,
@@ -144,7 +145,8 @@ async function applyActiveStatusUpdate(
   body: Record<string, unknown>,
   found: ExistingUserRecord,
   actorId: string,
-  isAdminActor: boolean
+  isAdminActor: boolean,
+  dbNow: Date
 ) {
   if (body.isActive === undefined || !isAdminActor) {
     return null;
@@ -161,7 +163,7 @@ async function applyActiveStatusUpdate(
   updates.isActive = body.isActive;
 
   if (body.isActive === false) {
-    updates.tokenInvalidatedAt = new Date();
+    updates.tokenInvalidatedAt = dbNow;
   }
 
   return null;
@@ -170,7 +172,8 @@ async function applyActiveStatusUpdate(
 function applyMustChangePasswordUpdate(
   updates: UserUpdates,
   body: Record<string, unknown>,
-  isAdminActor: boolean
+  isAdminActor: boolean,
+  dbNow: Date
 ) {
   if (body.mustChangePassword === undefined) {
     return null;
@@ -182,7 +185,7 @@ function applyMustChangePasswordUpdate(
 
   updates.mustChangePassword = body.mustChangePassword;
   if (body.mustChangePassword === false) {
-    updates.tokenInvalidatedAt = new Date();
+    updates.tokenInvalidatedAt = dbNow;
   }
 
   return null;
@@ -193,7 +196,8 @@ async function applyRoleUpdate(
   body: Record<string, unknown>,
   actor: AuthUser,
   found: ExistingUserRecord,
-  isAdminActor: boolean
+  isAdminActor: boolean,
+  dbNow: Date
 ): Promise<ReturnType<typeof apiError> | ReturnType<typeof forbidden> | null> {
   if (body.role === undefined) {
     return null;
@@ -215,7 +219,7 @@ async function applyRoleUpdate(
   updates.role = body.role;
 
   if (body.role !== found.role) {
-    updates.tokenInvalidatedAt = new Date();
+    updates.tokenInvalidatedAt = dbNow;
   }
 
   return null;
@@ -227,7 +231,8 @@ async function applyPasswordUpdate(
   actorRole: string,
   isSelf: boolean,
   targetRole: string,
-  isAdminActor: boolean
+  isAdminActor: boolean,
+  dbNow: Date
 ): Promise<ReturnType<typeof apiError> | null> {
   if (password === undefined) {
     return null;
@@ -257,7 +262,7 @@ async function applyPasswordUpdate(
 
   updates.passwordHash = passwordResult.hash;
   updates.mustChangePassword = true;
-  updates.tokenInvalidatedAt = new Date();
+  updates.tokenInvalidatedAt = dbNow;
 
   return null;
 }
@@ -316,13 +321,19 @@ export const PATCH = createApiHandler({
     const updates: Record<string, unknown> = {};
     const { normalizedEmail } = applyBasicFieldUpdates(updates, body, isAdminActor);
 
-    const activeStatusError = await applyActiveStatusUpdate(updates, body, found, user.id, isAdminActor);
+    // Fetch DB server time once for all tokenInvalidatedAt assignments in this
+    // request. Using DB time instead of new Date() ensures session revocation
+    // timestamps are in the same reference frame as the proxy's user lookup,
+    // preventing clock-skew bypass of isTokenInvalidated().
+    const dbNow = await getDbNowUncached();
+
+    const activeStatusError = await applyActiveStatusUpdate(updates, body, found, user.id, isAdminActor, dbNow);
     if (activeStatusError) return activeStatusError;
 
-    const mustChangePasswordError = applyMustChangePasswordUpdate(updates, body, isAdminActor);
+    const mustChangePasswordError = applyMustChangePasswordUpdate(updates, body, isAdminActor, dbNow);
     if (mustChangePasswordError) return mustChangePasswordError;
 
-    const roleUpdateError = await applyRoleUpdate(updates, body, user, found, isAdminActor);
+    const roleUpdateError = await applyRoleUpdate(updates, body, user, found, isAdminActor, dbNow);
     if (roleUpdateError) return roleUpdateError;
 
     const passwordUpdateError = await applyPasswordUpdate(
@@ -331,7 +342,8 @@ export const PATCH = createApiHandler({
       user.role,
       isSelf,
       found.role,
-      isAdminActor
+      isAdminActor,
+      dbNow
     );
     if (passwordUpdateError) return passwordUpdateError;
 
@@ -463,7 +475,7 @@ export const DELETE = createApiHandler({
       return apiSuccess({ id, deleted: true });
     }
 
-    await db.update(users).set(withUpdatedAt({ isActive: false, tokenInvalidatedAt: new Date() })).where(eq(users.id, id));
+    await db.update(users).set(withUpdatedAt({ isActive: false, tokenInvalidatedAt: await getDbNowUncached() })).where(eq(users.id, id));
 
     recordAuditEvent({
       actorId: user.id,
