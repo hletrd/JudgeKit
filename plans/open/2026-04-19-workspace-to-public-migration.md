@@ -1,7 +1,7 @@
 # Workspace-to-Public Page Migration Plan
 
 **Date:** 2026-04-19
-**Status:** Phase 1 COMPLETE, Phase 2 COMPLETE, Phase 3 COMPLETE, Phase 4 IN PROGRESS (cycle 16 — auth-aware edit button DONE, problem sets in dropdown DONE; remaining: remove dashboard duplicate pages)
+**Status:** Phase 1 COMPLETE, Phase 2 COMPLETE, Phase 3 COMPLETE, Phase 4 IN PROGRESS (cycle 18 — locale-aware number formatting, access code share link locale, clipboard i18n fixes; remaining: remove dashboard duplicate pages)
 **Source:** User-injected TODO #2, AGG-13
 
 ## Goal
