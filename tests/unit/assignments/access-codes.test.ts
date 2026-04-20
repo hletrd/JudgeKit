@@ -195,4 +195,63 @@ describe("access code helpers", () => {
       groupId: "group-1",
     });
   });
+
+  it("uses DB-sourced time for enrolledAt and redeemedAt in redeemAccessCode", async () => {
+    const tx = {
+      select: txSelectMock,
+      insert: txInsertMock,
+    };
+
+    // Assignment exists, no existing token, no existing enrollment
+    txLimitMock
+      .mockResolvedValueOnce([{
+        id: "assignment-1",
+        groupId: "group-1",
+        accessCode: "TESTCODE",
+        examMode: "scheduled",
+        deadline: null,
+        lateDeadline: null,
+      }])
+      .mockResolvedValueOnce([]) // no existing token
+      .mockResolvedValueOnce([]); // no existing enrollment
+
+    dbTransactionMock.mockImplementation(async (callback: (client: typeof tx) => Promise<unknown>) => callback(tx));
+
+    const accessCodesModule = await import("@/lib/assignments/access-codes");
+    const result = await accessCodesModule.redeemAccessCode("TESTCODE", "user-1");
+    expect(result).toMatchObject({ ok: true, assignmentId: "assignment-1", groupId: "group-1" });
+
+    // Verify rawQueryOne was called for DB-sourced time (SELECT NOW())
+    const { rawQueryOne } = await import("@/lib/db/queries");
+    expect(rawQueryOne).toHaveBeenCalled();
+  });
+
+  it("uses DB-sourced time for setAccessCode and revokeAccessCode", async () => {
+    const { getDbNowUncached } = await import("@/lib/db-time");
+
+    updateWhereMock.mockResolvedValue(undefined);
+    updateSetMock.mockReturnValue({ where: updateWhereMock });
+    dbUpdateMock.mockReturnValue({ set: updateSetMock });
+
+    const accessCodesModule = await import("@/lib/assignments/access-codes");
+
+    // setAccessCode should call getDbNowUncached
+    vi.mocked(getDbNowUncached).mockClear();
+    randomBytesMock
+      .mockReturnValue(Buffer.from([0]))
+      .mockReturnValue(Buffer.from([0]))
+      .mockReturnValue(Buffer.from([0]))
+      .mockReturnValue(Buffer.from([0]))
+      .mockReturnValue(Buffer.from([0]))
+      .mockReturnValue(Buffer.from([0]))
+      .mockReturnValue(Buffer.from([0]))
+      .mockReturnValue(Buffer.from([0]));
+    await accessCodesModule.setAccessCode("assignment-1", "FIXEDCODE");
+    expect(getDbNowUncached).toHaveBeenCalled();
+
+    // revokeAccessCode should call getDbNowUncached
+    vi.mocked(getDbNowUncached).mockClear();
+    await accessCodesModule.revokeAccessCode("assignment-1");
+    expect(getDbNowUncached).toHaveBeenCalled();
+  });
 });
