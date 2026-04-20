@@ -1,6 +1,6 @@
 "use client";
 
-import { useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import Image from "next/image";
 import { useRouter } from "next/navigation";
 import { useTranslations } from "next-intl";
@@ -44,6 +44,10 @@ export function FileManagementClient({ files, rangeStart, rangeEnd, totalCount, 
   const [deleteTargets, setDeleteTargets] = useState<{ id: string; name: string }[]>([]);
   const [copiedId, setCopiedId] = useState<string | null>(null);
   const copiedIdTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  useEffect(() => () => {
+    if (copiedIdTimer.current) clearTimeout(copiedIdTimer.current);
+  }, []);
 
   function toggleSelect(id: string) {
     setSelected((prev) => {

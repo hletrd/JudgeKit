@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useRef } from "react";
 import { useTranslations } from "next-intl";
 import { toast } from "sonner";
 // i18n keys used from "contests.accessCode" and "common"
@@ -19,6 +19,7 @@ export function AccessCodeManager({ assignmentId }: AccessCodeManagerProps) {
   const [code, setCode] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(false);
   const [copied, setCopied] = useState(false);
+  const copiedTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const fetchCode = useCallback(async () => {
     try {
@@ -36,6 +37,10 @@ export function AccessCodeManager({ assignmentId }: AccessCodeManagerProps) {
     fetchCode();
   }, [fetchCode]);
 
+  useEffect(() => () => {
+    if (copiedTimer.current) clearTimeout(copiedTimer.current);
+  }, []);
+
   async function copyValue(value: string, { showToast = false }: { showToast?: boolean } = {}) {
     try {
       await navigator.clipboard.writeText(value);
@@ -45,7 +50,10 @@ export function AccessCodeManager({ assignmentId }: AccessCodeManagerProps) {
     }
 
     setCopied(true);
-    setTimeout(() => setCopied(false), 2000);
+    if (copiedTimer.current) {
+      clearTimeout(copiedTimer.current);
+    }
+    copiedTimer.current = setTimeout(() => setCopied(false), 2000);
 
     if (showToast) {
       toast.success(t("copied"));
