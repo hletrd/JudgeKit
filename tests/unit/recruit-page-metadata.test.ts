@@ -1,7 +1,8 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
-const { getRecruitingInvitationByTokenMock } = vi.hoisted(() => ({
+const { getRecruitingInvitationByTokenMock, getDbNowMock } = vi.hoisted(() => ({
   getRecruitingInvitationByTokenMock: vi.fn(),
+  getDbNowMock: vi.fn(),
 }));
 
 vi.mock("next-intl/server", () => ({
@@ -46,7 +47,7 @@ vi.mock("@/lib/compiler/catalog", () => ({
 vi.mock("@/lib/db-time", () => ({
   // getDbNow uses React.cache() which calls rawQueryOne internally;
   // mock it to return a fixed date so tests don't need a DB pool.
-  getDbNow: vi.fn().mockResolvedValue(new Date("2026-04-20T12:00:00Z")),
+  getDbNow: getDbNowMock,
 }));
 
 vi.mock("@/lib/db/schema", () => ({
@@ -64,6 +65,8 @@ import RecruitPage, { generateMetadata } from "@/app/(auth)/recruit/[token]/page
 describe("recruit page metadata", () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    // Default: DB time is a fixed reference point
+    getDbNowMock.mockResolvedValue(new Date("2026-04-20T12:00:00Z"));
   });
 
   it("uses generic metadata for valid public invite tokens instead of leaking assignment titles", async () => {
@@ -100,5 +103,39 @@ describe("recruit page metadata", () => {
 
     expect(metadata.title).toBe("Assessment already claimed");
     expect(metadata.description).toContain("already been used");
+  });
+
+  it("uses DB-sourced time for expiry checks instead of new Date()", async () => {
+    // Verify that getDbNow is called by generateMetadata, ensuring temporal
+    // comparisons use the DB server clock (not the app server clock) to
+    // avoid clock-skew inconsistency with the API validation route.
+    getRecruitingInvitationByTokenMock.mockResolvedValue({
+      id: "invite-3",
+      status: "pending",
+      assignmentId: "assignment-3",
+      candidateName: "Candidate Three",
+      expiresAt: null,
+    });
+
+    await generateMetadata({ params: Promise.resolve({ token: "invite-token" }) });
+
+    expect(getDbNowMock).toHaveBeenCalled();
+  });
+
+  it("shows expired metadata when DB time is past the invitation expiry", async () => {
+    // Invitation expires at 11:00 UTC, DB time is 12:00 UTC
+    getRecruitingInvitationByTokenMock.mockResolvedValue({
+      id: "invite-4",
+      status: "pending",
+      assignmentId: "assignment-4",
+      candidateName: "Candidate Four",
+      expiresAt: new Date("2026-04-20T11:00:00Z"),
+    });
+
+    const metadata = await generateMetadata({
+      params: Promise.resolve({ token: "invite-token" }),
+    });
+
+    expect(metadata.title).toBe("Link expired");
   });
 });
