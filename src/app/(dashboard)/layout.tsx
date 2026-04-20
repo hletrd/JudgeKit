@@ -31,7 +31,7 @@ export default async function DashboardLayout({ children }: { children: React.Re
   const session = await auth();
   if (!session?.user) redirect("/login");
 
-  const [{ effectivePlatformMode }, tCommon, tShell, tAuth, capabilities] = await Promise.all([
+  const [{ effectivePlatformMode }, tCommon, tShell, tAuth, capabilities, canUseLectureMode] = await Promise.all([
     getRecruitingAccessContext(session.user.id),
     getTranslations("common"),
     getTranslations("publicShell"),
@@ -45,6 +45,7 @@ export default async function DashboardLayout({ children }: { children: React.Re
       const arr = [...caps];
       return (!chatPluginOn || !aiOn) ? arr.filter(c => c !== "system.chat_logs") : arr;
     })(),
+    isInstructorOrAboveAsync(session.user.role),
   ]);
   const capsSet = new Set(capabilities);
   const canBypassTimedAssignmentPanel =
@@ -52,12 +53,11 @@ export default async function DashboardLayout({ children }: { children: React.Re
     || capsSet.has("submissions.view_all")
     || capsSet.has("assignments.view_status");
 
-  const [settings, canUseLectureMode, activeTimedAssignments] = await Promise.all([
+  const [settings, activeTimedAssignments] = await Promise.all([
     getResolvedSystemSettings({
       siteTitle: tCommon("appName"),
       siteDescription: tCommon("appDescription"),
     }),
-    isInstructorOrAboveAsync(session.user.role),
     canBypassTimedAssignmentPanel
       ? Promise.resolve([])
       : getActiveTimedAssignmentsForSidebar(session.user.id, session.user.role),
@@ -96,7 +96,7 @@ export default async function DashboardLayout({ children }: { children: React.Re
           activeTimedAssignments={activeTimedAssignments}
         />
         <SidebarInset>
-          <header className="sticky top-0 z-10 border-b bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/80 px-6 py-3">
+          <header className="hidden md:block sticky top-0 z-10 border-b bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/80 px-6 py-3">
             <Breadcrumb />
           </header>
           <main id="main-content" className="min-w-0 flex-1 p-6">
