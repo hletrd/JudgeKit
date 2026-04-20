@@ -105,7 +105,6 @@ export const ROBOTS_DISALLOWED_PATHS = [
   "/api",
   "/dashboard",
   "/workspace",
-  "/control",
   "/login",
   "/signup",
   "/change-password",

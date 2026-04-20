@@ -90,6 +90,7 @@ vi.mock("lucide-react", () => {
     Blocks: Icon,
     Trophy: Icon,
     MessageCircle: Icon,
+    MessageCircleWarning: Icon,
     Timer: Icon,
     KeyRound: Icon,
     Code: Icon,

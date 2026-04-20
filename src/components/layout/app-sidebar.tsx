@@ -18,7 +18,7 @@ import {
   SidebarFooter,
   SidebarHeader,
 } from "@/components/ui/sidebar";
-import { BookOpen, FileCode, Send, Users, User, GraduationCap, Shield, LogOut, LogIn, History, FolderOpen, Blocks, MessageCircle, KeyRound, Code, Settings, Server, Play, Upload, Tags, Loader2 } from "lucide-react";
+import { BookOpen, FileCode, Send, Users, User, GraduationCap, Shield, LogOut, LogIn, History, FolderOpen, Blocks, MessageCircle, MessageCircleWarning, KeyRound, Code, Settings, Server, Play, Upload, Tags, Loader2 } from "lucide-react";
 import type { PlatformMode } from "@/types";
 import type { ActiveTimedAssignmentSummary } from "@/lib/assignments/active-timed-assignments";
 import { getPlatformModePolicy } from "@/lib/platform-mode";
@@ -106,6 +106,7 @@ const adminGroups: NavGroup[] = [
       { titleKey: "auditLogs", href: "/dashboard/admin/audit-logs", icon: History, capability: "system.audit_logs" },
       { titleKey: "loginLogs", href: "/dashboard/admin/login-logs", icon: LogIn, capability: "system.login_logs" },
       { titleKey: "chatLogs", href: "/dashboard/admin/plugins/chat-logs", icon: MessageCircle, capability: "system.chat_logs" },
+      { titleKey: "discussionModeration", href: "/dashboard/admin/discussions", icon: MessageCircleWarning, capability: "community.moderate" },
     ],
   },
   {

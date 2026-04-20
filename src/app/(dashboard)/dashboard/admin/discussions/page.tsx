@@ -23,10 +23,10 @@ function buildFilterHref(scope: DiscussionModerationScope, state: DiscussionMode
   if (scope !== "all") params.set("scope", scope);
   if (state !== "all") params.set("state", state);
   const query = params.toString();
-  return query ? `/control/discussions?${query}` : "/control/discussions";
+  return query ? `/dashboard/admin/discussions?${query}` : "/dashboard/admin/discussions";
 }
 
-export default async function ControlDiscussionsPage({
+export default async function AdminDiscussionsPage({
   searchParams,
 }: {
   searchParams?: Promise<{ scope?: string; state?: string }>;
@@ -37,26 +37,29 @@ export default async function ControlDiscussionsPage({
   }
 
   if (!(await canModerateDiscussions(session.user.role))) {
-    redirect("/control");
+    redirect("/dashboard");
   }
 
   const resolvedSearchParams = searchParams ? await searchParams : undefined;
   const scope = normalizeScope(resolvedSearchParams?.scope);
   const state = normalizeState(resolvedSearchParams?.state);
 
-  const t = await getTranslations("controlShell");
+  const [tModeration, tCommunity] = await Promise.all([
+    getTranslations("publicShell.moderation"),
+    getTranslations("publicShell.community"),
+  ]);
   const threads = await listModerationDiscussionThreads({ scope, state });
 
   const scopeLabels: Record<DiscussionModerationScope, string> = {
-    all: t("moderation.scope.all"),
-    general: t("moderation.scope.general"),
-    problem: t("moderation.scope.problem"),
+    all: tModeration("scope.all"),
+    general: tModeration("scope.general"),
+    problem: tModeration("scope.problem"),
   };
   const stateLabels: Record<DiscussionModerationState, string> = {
-    all: t("moderation.state.all"),
-    open: t("moderation.state.open"),
-    locked: t("moderation.state.locked"),
-    pinned: t("moderation.state.pinned"),
+    all: tModeration("state.all"),
+    open: tModeration("state.open"),
+    locked: tModeration("state.locked"),
+    pinned: tModeration("state.pinned"),
   };
 
   return (
@@ -75,34 +78,34 @@ export default async function ControlDiscussionsPage({
       </div>
 
       <DiscussionModerationList
-        title={t("moderation.title")}
-        description={t("moderation.description")}
-        emptyLabel={t("moderation.empty")}
+        title={tModeration("title")}
+        description={tModeration("description")}
+        emptyLabel={tModeration("empty")}
         items={threads.map((thread) => ({
           id: thread.id,
           title: thread.title,
-          authorName: thread.author?.name ?? t("moderation.unknownAuthor"),
-          scopeLabel: thread.scopeType === "general" ? t("moderation.scope.general") : t("moderation.scope.problem"),
+          authorName: thread.author?.name ?? tModeration("unknownAuthor"),
+          scopeLabel: thread.scopeType === "general" ? tModeration("scope.general") : tModeration("scope.problem"),
           statusLabels: [
-            ...(thread.pinnedAt ? [t("moderation.state.pinned")] : []),
-            ...(thread.lockedAt ? [t("moderation.state.locked")] : []),
+            ...(thread.pinnedAt ? [tModeration("state.pinned")] : []),
+            ...(thread.lockedAt ? [tModeration("state.locked")] : []),
           ],
           metadataLabel:
             thread.scopeType === "problem" && thread.problem
-              ? t("moderation.problemMeta", { title: thread.problem.title, replies: thread.posts.length })
-              : t("moderation.generalMeta", { replies: thread.posts.length }),
+              ? tModeration("problemMeta", { title: thread.problem.title, replies: thread.posts.length })
+              : tModeration("generalMeta", { replies: thread.posts.length }),
           openHref: `/community/threads/${thread.id}`,
-          openLabel: t("moderation.openThread"),
+          openLabel: tModeration("openThread"),
           moderation: {
             isLocked: Boolean(thread.lockedAt),
             isPinned: Boolean(thread.pinnedAt),
-            lockLabel: t("community.moderation.lock"),
-            unlockLabel: t("community.moderation.unlock"),
-            pinLabel: t("community.moderation.pin"),
-            unpinLabel: t("community.moderation.unpin"),
-            deleteLabel: t("community.moderation.deleteThread"),
-            successLabel: t("community.moderation.success"),
-            deleteSuccessLabel: t("community.moderation.deleteSuccess"),
+            lockLabel: tCommunity("moderation.lock"),
+            unlockLabel: tCommunity("moderation.unlock"),
+            pinLabel: tCommunity("moderation.pin"),
+            unpinLabel: tCommunity("moderation.unpin"),
+            deleteLabel: tCommunity("moderation.deleteThread"),
+            successLabel: tCommunity("moderation.success"),
+            deleteSuccessLabel: tCommunity("moderation.deleteSuccess"),
           },
         }))}
       />

@@ -42,6 +42,17 @@ const nextConfig: NextConfig = {
         destination: "/playground",
         permanent: false,
       },
+      // Control route group merged into dashboard (Phase 4)
+      {
+        source: "/control",
+        destination: "/dashboard",
+        permanent: false,
+      },
+      {
+        source: "/control/discussions",
+        destination: "/dashboard/admin/discussions",
+        permanent: false,
+      },
     ];
   },
   webpack: disableMinify
