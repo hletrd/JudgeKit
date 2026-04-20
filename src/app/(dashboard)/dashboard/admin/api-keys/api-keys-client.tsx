@@ -221,7 +221,14 @@ export function ApiKeysClient({ roleOptions }: { roleOptions?: RoleOption[] }) {
       document.body.appendChild(textarea);
       try {
         textarea.select();
-        document.execCommand("copy");
+        const ok = document.execCommand("copy");
+        if (!ok) {
+          toast.error(t("copyFailed"));
+          return;
+        }
+      } catch {
+        toast.error(t("copyFailed"));
+        return;
       } finally {
         document.body.removeChild(textarea);
       }
