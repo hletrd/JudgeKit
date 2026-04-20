@@ -84,7 +84,7 @@ No cycle-5 review finding is silently dropped. No new refactor-only work is adde
   1. The function already receives a `tx` transaction parameter. Execute `SELECT NOW()` within the transaction for transaction-consistent time.
   2. Replace `const now = new Date()` with the DB-sourced time.
   3. Fix the misleading comment on line 127.
-- **Status:** TODO
+- **Status:** DONE
 
 ### M3: Fix anti-cheat route clock-skew — use DB-sourced time for contest boundary checks (AGG-1, SEC-4)
 
@@ -119,7 +119,7 @@ No cycle-5 review finding is silently dropped. No new refactor-only work is adde
   1. Add `const viewerId = user.id` right after the `if (!user) return unauthorized()` check on line ~195, where TypeScript has narrowed `user` to non-null.
   2. Remove `const viewerId = user!.id;` on line 315.
   3. Verify tsc --noEmit passes — `viewerId` is now in scope via closure for `start()` and `sendTerminalResult()`.
-- **Status:** TODO
+- **Status:** DONE
 
 ### L1: Add unit tests for `escapeLikePattern` (AGG-5)
 
