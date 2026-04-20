@@ -7,6 +7,7 @@ import { useTranslations, useLocale } from "next-intl";
 import { Timer } from "lucide-react";
 import type { ActiveTimedAssignmentSummary } from "@/lib/assignments/active-timed-assignments";
 import { cn } from "@/lib/utils";
+import { formatNumber } from "@/lib/formatting";
 
 interface ActiveTimedAssignmentSidebarPanelProps {
   assignments: ActiveTimedAssignmentSummary[];
@@ -149,7 +150,7 @@ export function ActiveTimedAssignmentSidebarPanel({
         <div className="mt-3">
           <div className={`mb-1 flex items-center justify-between text-[11px] font-medium uppercase${smallLabelTracking} text-sidebar-foreground/65`}>
             <span>{tNav("progress")}</span>
-            <span data-testid="active-timed-assignment-progress-label">{progressPercent.toFixed(1)}%</span>
+            <span data-testid="active-timed-assignment-progress-label">{formatNumber(progressPercent, { maximumFractionDigits: 1 })}%</span>
           </div>
           <div className="h-2 overflow-hidden rounded-full bg-sidebar-border/80" role="progressbar" aria-valuemin={0} aria-valuemax={100} aria-valuenow={Math.round(progressPercent)}>
             <div

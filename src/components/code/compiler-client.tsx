@@ -10,6 +10,7 @@ import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
 import { Label } from "@/components/ui/label";
 import { Input } from "@/components/ui/input";
 import { apiFetch } from "@/lib/api/client";
+import { formatBytes } from "@/lib/formatting";
 import { Loader2, Play, AlertTriangle, Maximize2, Plus, X } from "lucide-react";
 
 // Layout constants
@@ -108,7 +109,7 @@ function TruncatedOutput({ content, className }: { content: string; className?: 
         className="mt-2 flex items-center gap-1 text-xs text-muted-foreground hover:text-foreground"
       >
         <Maximize2 className="size-3" />
-        Show full output ({(content.length / 1024).toFixed(1)} KB)
+        Show full output ({formatBytes(content.length)})
       </button>
     </div>
   );

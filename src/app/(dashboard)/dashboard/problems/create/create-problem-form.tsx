@@ -14,6 +14,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Badge } from "@/components/ui/badge";
 import { apiFetch } from "@/lib/api/client";
+import { formatBytes } from "@/lib/formatting";
 import { toast } from "sonner";
 import { useUnsavedChangesGuard } from "@/hooks/use-unsaved-changes-guard";
 import { ProblemDescription } from "@/components/problem-description";
@@ -869,7 +870,7 @@ export default function CreateProblemForm({
                     </div>
                     {testCase.input.length > LARGE_TESTCASE_THRESHOLD && !expandedTestCases.has(`input-${index}`) ? (
                       <div className="flex items-center justify-between rounded-lg border bg-muted/40 p-3 min-h-[140px]">
-                        <span className="text-sm text-muted-foreground">{(testCase.input.length / 1024).toFixed(1)} KB</span>
+                        <span className="text-sm text-muted-foreground">{formatBytes(testCase.input.length)}</span>
                         <Button type="button" variant="outline" size="sm" onClick={() => setExpandedTestCases((s) => new Set(s).add(`input-${index}`))}>
                           {t("showContent")}
                         </Button>
@@ -910,7 +911,7 @@ export default function CreateProblemForm({
                     </div>
                     {testCase.expectedOutput.length > LARGE_TESTCASE_THRESHOLD && !expandedTestCases.has(`output-${index}`) ? (
                       <div className="flex items-center justify-between rounded-lg border bg-muted/40 p-3 min-h-[140px]">
-                        <span className="text-sm text-muted-foreground">{(testCase.expectedOutput.length / 1024).toFixed(1)} KB</span>
+                        <span className="text-sm text-muted-foreground">{formatBytes(testCase.expectedOutput.length)}</span>
                         <Button type="button" variant="outline" size="sm" onClick={() => setExpandedTestCases((s) => new Set(s).add(`output-${index}`))}>
                           {t("showContent")}
                         </Button>

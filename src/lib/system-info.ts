@@ -2,6 +2,7 @@ import { execFile } from "node:child_process";
 import { readFile } from "node:fs/promises";
 import os from "node:os";
 import { promisify } from "node:util";
+import { formatNumber } from "@/lib/formatting";
 
 const execFileAsync = promisify(execFile);
 const COMMAND_TIMEOUT_MS = 1000;
@@ -59,7 +60,7 @@ function formatFrequency(speedMHz: number | undefined) {
   }
 
   if (speedMHz >= 1000) {
-    return `${(speedMHz / 1000).toFixed(1)} GHz`;
+    return `${formatNumber(speedMHz / 1000, { maximumFractionDigits: 1 })} GHz`;
   }
 
   return `${Math.round(speedMHz)} MHz`;
