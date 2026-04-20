@@ -5,6 +5,7 @@ import { useTranslations, useLocale } from "next-intl";
 import { toast } from "sonner";
 import { Plus, Check, Ban, Trash2, Link, Copy, ShieldAlert } from "lucide-react";
 import { apiFetch } from "@/lib/api/client";
+import { formatDateTimeInTimeZone } from "@/lib/datetime";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent } from "@/components/ui/card";
@@ -250,13 +251,7 @@ export function RecruitingInvitationsPanel({ assignmentId }: { assignmentId: str
 
   function formatDate(dateStr: string | null) {
     if (!dateStr) return "-";
-    return new Date(dateStr).toLocaleDateString(locale, {
-      year: "numeric",
-      month: "short",
-      day: "numeric",
-      hour: "2-digit",
-      minute: "2-digit",
-    });
+    return formatDateTimeInTimeZone(dateStr, locale);
   }
 
   const expiryLabels: Record<string, string> = {
