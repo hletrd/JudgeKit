@@ -108,7 +108,7 @@ describe("selectActiveTimedAssignments", () => {
     expect(
       selectActiveTimedAssignments([
         createContest({ id: "missing-start", startsAt: null, deadline: new Date("2026-04-15T05:30:00.000Z") }),
-      ])
+      ], new Date())
     ).toEqual([]);
   });
 });

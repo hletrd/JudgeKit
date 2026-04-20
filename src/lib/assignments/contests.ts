@@ -28,9 +28,17 @@ export type ContestStatus =
   | "expired"
   | "closed";
 
+/**
+ * Determine the current status of a contest based on its temporal properties.
+ *
+ * IMPORTANT: The `now` parameter should come from `getDbNow()` in server
+ * components and API routes to avoid clock skew between the app server and
+ * the database server. Using `new Date()` here will produce incorrect status
+ * labels under clock skew.
+ */
 export function getContestStatus(
   contest: ContestEntry,
-  now: Date = new Date()
+  now: Date
 ): ContestStatus {
   const nowMs = now.getTime();
 
