@@ -45,7 +45,7 @@ No rpf-15 review finding is silently dropped. No new refactor-only work is added
   6. Add test case for date within 10-year limit (e.g., today + 1 year → 201)
   7. Verify tsc --noEmit passes
   8. Verify existing tests pass
-- **Status:** PENDING
+- **Status:** DONE
 
 ### H2: Consolidate duplicate `getDbNowUncached()` in recruiting invitation routes (AGG-2)
 
@@ -59,7 +59,7 @@ No rpf-15 review finding is silently dropped. No new refactor-only work is added
   3. Verify the bulk route already fetches once (line 29) — confirmed correct
   4. Verify tsc --noEmit passes
   5. Verify existing tests pass
-- **Status:** PENDING
+- **Status:** DONE
 
 ### M1: Add error handling to `handleCopyLink` in recruiting invitations panel (AGG-3)
 
@@ -71,7 +71,7 @@ No rpf-15 review finding is silently dropped. No new refactor-only work is added
   1. Wrap `navigator.clipboard.writeText(url)` in try/catch
   2. On failure, show error toast (consistent with API keys client pattern)
   3. Verify the copy functionality still works
-- **Status:** PENDING
+- **Status:** DONE
 
 ### M2: Track copy-feedback timer with ref in recruiting invitations panel (AGG-4)
 
@@ -84,7 +84,7 @@ No rpf-15 review finding is silently dropped. No new refactor-only work is added
   2. Track the timeout with the ref
   3. Add cleanup in the existing `useEffect` (or create a new one for the timer)
   4. Verify no state leak on unmount
-- **Status:** PENDING
+- **Status:** DONE
 
 ### M3: Add timezone hint to custom expiry date picker (AGG-5)
 
@@ -96,7 +96,7 @@ No rpf-15 review finding is silently dropped. No new refactor-only work is added
   1. Add a `<p className="text-xs text-muted-foreground">` hint below the date picker
   2. Add i18n key `expiryDateUtcHint` with value like "Expires at end of day (UTC)"
   3. Verify the hint renders correctly in both English and Korean
-- **Status:** PENDING
+- **Status:** DONE
 
 ### L1: Update `streamBackupWithFiles` JSDoc to document `dbNow` parameter (AGG-7)
 
@@ -122,7 +122,7 @@ No rpf-15 review finding is silently dropped. No new refactor-only work is added
   2. If the user has `problems.create` capability, render an "Edit" link/button pointing to `/dashboard/problems/[id]/edit`
   3. Style consistently with existing UI patterns
   4. Verify Korean text does not use custom letter-spacing
-- **Status:** PENDING
+- **Status:** DONE
 
 ---
 
@@ -178,3 +178,4 @@ No rpf-15 review finding is silently dropped. No new refactor-only work is added
 ## Progress log
 
 - 2026-04-20: Plan created from rpf-15 aggregate review. 7 findings, 6 scheduled for implementation (H1, H2, M1, M2, M3, L1), 1 carry-over deferred (AGG-6/DEFER-2). Plus 1 workspace-to-public migration item (W1). Previous DEFER-1, DEFER-3, DEFER-4 carried forward. New DEFER-5 added.
+- 2026-04-20: All scheduled items implemented. H1 (expiryDate upper-bound), H2 (consolidate getDbNowUncached), M1 (clipboard error handling), M2 (timer cleanup), M3 (timezone hint), L1 (JSDoc), W1 (edit button). All gates green.
