@@ -1,4 +1,5 @@
 import type { Metadata } from "next";
+import { cache } from "react";
 import { getTranslations } from "next-intl/server";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { auth } from "@/lib/auth";
@@ -9,6 +10,14 @@ import { assignmentProblems, assignments } from "@/lib/db/schema";
 import { eq, sql } from "drizzle-orm";
 import { RecruitStartForm } from "./recruit-start-form";
 
+/**
+ * Cached version of getRecruitingInvitationByToken for use within a single
+ * server render. Both generateMetadata and the page component need the same
+ * invitation data, so React.cache() deduplicates the DB query within one
+ * request, eliminating the duplicate lookup and ensuring consistency.
+ */
+const getCachedInvitation = cache(getRecruitingInvitationByToken);
+
 export async function generateMetadata({
   params,
 }: {
@@ -16,7 +25,7 @@ export async function generateMetadata({
 }): Promise<Metadata> {
   const { token } = await params;
   const t = await getTranslations("recruit");
-  const invitation = await getRecruitingInvitationByToken(token);
+  const invitation = await getCachedInvitation(token);
 
   if (!invitation || invitation.status === "revoked") {
     return { title: t("invalidToken") };
@@ -53,7 +62,7 @@ export default async function RecruitPage({
   const t = await getTranslations("recruit");
   const session = await auth();
 
-  const invitation = await getRecruitingInvitationByToken(token);
+  const invitation = await getCachedInvitation(token);
 
   if (!invitation) {
     return (
