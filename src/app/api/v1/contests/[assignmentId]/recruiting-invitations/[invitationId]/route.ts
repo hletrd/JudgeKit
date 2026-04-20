@@ -107,12 +107,17 @@ export const PATCH = createApiHandler({
     let expiresAtUpdate: Date | null | undefined = undefined;
     if (body.expiryDays !== undefined || body.expiryDate !== undefined) {
       const dbNow = await getDbNowUncached();
+      const MAX_EXPIRY_MS = 10 * 365.25 * 24 * 60 * 60 * 1000; // ~10 years
       if (body.expiryDays) {
         expiresAtUpdate = new Date(dbNow.getTime() + body.expiryDays * 86400000);
       } else if (body.expiryDate) {
         expiresAtUpdate = new Date(`${body.expiryDate}T23:59:59Z`);
         if (expiresAtUpdate <= dbNow) {
           return apiError("expiryDateInPast", 400);
+        }
+        // Reject unreasonably far-future expiry (consistent with expiryDays max 3650)
+        if ((expiresAtUpdate.getTime() - dbNow.getTime()) > MAX_EXPIRY_MS) {
+          return apiError("expiryDateTooFar", 400);
         }
       } else {
         // expiryDays: null or expiryDate: null means remove the expiry
