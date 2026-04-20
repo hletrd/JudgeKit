@@ -668,6 +668,7 @@ export default async function PracticePage({
           attempted: t("practice.progress.attempted"),
           untried: t("practice.progress.untried"),
         }}
+        locale={locale}
         problems={filteredProblems.map((problem) => {
           const successRate = problem.submissionCount > 0
             ? (problem.acceptedCount / problem.submissionCount) * 100

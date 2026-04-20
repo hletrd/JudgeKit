@@ -648,6 +648,7 @@ export default async function PublicProblemDetailPage({ params }: { params: Prom
                   openLabel={t("practice.discussion.openThread")}
                   pinnedLabel={t("community.pinned")}
                   lockedLabel={t("community.locked")}
+                  locale={locale}
                   threads={threads.map((thread) => ({
                     id: thread.id,
                     title: thread.title,
@@ -690,6 +691,7 @@ export default async function PublicProblemDetailPage({ params }: { params: Prom
                   openLabel={t("practice.discussion.openThread")}
                   pinnedLabel={t("community.pinned")}
                   lockedLabel={t("community.locked")}
+                  locale={locale}
                   threads={solutionThreads.map((thread) => ({
                     id: thread.id,
                     title: thread.title,

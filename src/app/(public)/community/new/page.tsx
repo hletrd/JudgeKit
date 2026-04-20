@@ -16,7 +16,7 @@ export default async function CommunityNewPage() {
   return (
     <div className="space-y-6">
       <div>
-        <h1 className="text-2xl font-semibold tracking-tight">{t("community.newThreadTitle")}</h1>
+        <h1 className={`text-2xl font-semibold${locale !== "ko" ? " tracking-tight" : ""}`}>{t("community.newThreadTitle")}</h1>
         <p className="mt-1 text-sm text-muted-foreground">{t("community.newThreadDescription")}</p>
       </div>
       <DiscussionThreadForm

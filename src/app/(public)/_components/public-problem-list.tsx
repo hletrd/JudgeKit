@@ -44,6 +44,7 @@ type PublicProblemListProps = {
   createdAtLabel: string;
   progressLabel: string;
   progressLabels: { solved: string; attempted: string; untried: string };
+  locale: string;
   problems: PublicProblemListItem[];
 };
 
@@ -88,12 +89,13 @@ export function PublicProblemList({
   createdAtLabel,
   progressLabel,
   progressLabels,
+  locale,
   problems,
 }: PublicProblemListProps) {
   return (
     <div className="space-y-6">
       <div>
-        <h1 className="text-3xl font-semibold tracking-tight">{title}</h1>
+        <h1 className={`text-3xl font-semibold${locale !== "ko" ? " tracking-tight" : ""}`}>{title}</h1>
         <p className="mt-2 text-sm text-muted-foreground">{description}</p>
       </div>
 

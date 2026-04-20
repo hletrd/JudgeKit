@@ -73,6 +73,7 @@ export default async function CommunityPage({
           description={t("community.myDiscussions.description")}
           emptyLabel={t("community.myDiscussions.empty")}
           openLabel={t("community.myDiscussions.openThread")}
+          locale={locale}
           items={myThreads.map((thread) => ({
             id: thread.id,
             title: thread.title,
@@ -149,6 +150,7 @@ export default async function CommunityPage({
           openLabel={t("community.openThread")}
           pinnedLabel={t("community.pinned")}
           lockedLabel={t("community.locked")}
+          locale={locale}
           threads={threads.map((thread) => ({
             id: thread.id,
             title: thread.title,

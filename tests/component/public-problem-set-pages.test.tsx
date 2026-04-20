@@ -16,6 +16,7 @@ describe("public problem set pages", () => {
         description="Browse curated sets"
         emptyLabel="Empty"
         openLabel="Open set"
+        locale="en"
         items={[
           {
             id: "set-1",
@@ -50,6 +51,9 @@ describe("public problem set pages", () => {
         noProblemsLabel="No problems"
         solveNextHref="/practice/problems/problem-1"
         solveNextLabel="Solve next"
+        solvedLabel="Solved"
+        openLabel="Open"
+        locale="en"
         problems={[
           {
             id: "problem-1",

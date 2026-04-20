@@ -23,6 +23,7 @@ describe("PublicProblemList", () => {
         createdAtLabel="Added"
         progressLabel="Progress"
         progressLabels={{ solved: "Solved", attempted: "Attempted", untried: "Untried" }}
+        locale="en"
         problems={[
           {
             id: "problem-1",
@@ -71,6 +72,7 @@ describe("PublicProblemList", () => {
         createdAtLabel="Added"
         progressLabel="Progress"
         progressLabels={{ solved: "Solved", attempted: "Attempted", untried: "Untried" }}
+        locale="en"
         problems={[
           {
             id: "problem-2",

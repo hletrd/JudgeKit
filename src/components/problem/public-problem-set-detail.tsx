@@ -23,6 +23,8 @@ type PublicProblemSetDetailProps = {
   solveNextHref?: string | null;
   solveNextLabel: string;
   solvedLabel: string;
+  openLabel: string;
+  locale: string;
   problems: ProblemSetProblem[];
 };
 
@@ -38,6 +40,8 @@ export function PublicProblemSetDetail({
   solveNextHref = null,
   solveNextLabel,
   solvedLabel,
+  openLabel,
+  locale,
   problems,
 }: PublicProblemSetDetailProps) {
   return (
@@ -48,7 +52,7 @@ export function PublicProblemSetDetail({
         </Link>
         <div className="flex flex-wrap items-start justify-between gap-3">
           <div>
-            <h1 className="text-3xl font-semibold tracking-tight">{title}</h1>
+            <h1 className={`text-3xl font-semibold${locale !== "ko" ? " tracking-tight" : ""}`}>{title}</h1>
             <p className="mt-1 text-sm text-muted-foreground">{creatorLabel}</p>
           </div>
           <div className="flex gap-2">
@@ -85,7 +89,7 @@ export function PublicProblemSetDetail({
                   </div>
                   <Link href={problem.href}>
                     <Button variant="outline" size="sm">
-                      Open
+                      {openLabel}
                     </Button>
                   </Link>
                 </div>

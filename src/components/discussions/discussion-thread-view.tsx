@@ -17,10 +17,11 @@ type DiscussionThreadViewProps = {
   repliesTitle: string;
   noRepliesLabel: string;
   actions?: ReactNode;
+  locale?: string;
   posts: PostView[];
 };
 
-export function DiscussionThreadView({ title, content, authorName, scopeLabel, repliesTitle, noRepliesLabel, actions, posts }: DiscussionThreadViewProps) {
+export function DiscussionThreadView({ title, content, authorName, scopeLabel, repliesTitle, noRepliesLabel, actions, locale, posts }: DiscussionThreadViewProps) {
   return (
     <div className="space-y-6">
       <Card>
@@ -38,7 +39,7 @@ export function DiscussionThreadView({ title, content, authorName, scopeLabel, r
       </Card>
 
       <div className="space-y-4">
-        <h2 className="text-2xl font-semibold tracking-tight">{repliesTitle}</h2>
+        <h2 className={`text-2xl font-semibold${locale && locale !== "ko" ? " tracking-tight" : ""}`}>{repliesTitle}</h2>
         {posts.length === 0 ? (
           <Card>
             <CardContent className="py-6 text-sm text-muted-foreground">{noRepliesLabel}</CardContent>

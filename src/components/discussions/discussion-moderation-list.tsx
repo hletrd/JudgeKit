@@ -29,14 +29,16 @@ type DiscussionModerationListProps = {
   title: string;
   description: string;
   emptyLabel: string;
+  locale?: string;
   items: ModerationItem[];
 };
 
-export function DiscussionModerationList({ title, description, emptyLabel, items }: DiscussionModerationListProps) {
+export function DiscussionModerationList({ title, description, emptyLabel, locale, items }: DiscussionModerationListProps) {
+  const headingTracking = locale && locale !== "ko" ? " tracking-tight" : "";
   return (
     <div className="space-y-6">
       <div>
-        <h1 className="text-3xl font-semibold tracking-tight">{title}</h1>
+        <h1 className={`text-3xl font-semibold${headingTracking}`}>{title}</h1>
         <p className="mt-2 text-sm text-muted-foreground">{description}</p>
       </div>
 

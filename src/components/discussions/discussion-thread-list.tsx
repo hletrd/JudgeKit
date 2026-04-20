@@ -24,6 +24,7 @@ type DiscussionThreadListProps = {
   lockedLabel: string;
   threads: ThreadListItem[];
   titleAs?: "h1" | "h2";
+  locale?: string;
 };
 
 function summarize(text: string) {
@@ -39,13 +40,15 @@ export function DiscussionThreadList({
   lockedLabel,
   threads,
   titleAs = "h2",
+  locale,
 }: DiscussionThreadListProps) {
   const TitleTag = titleAs;
+  const headingTracking = locale && locale !== "ko" ? " tracking-tight" : "";
 
   return (
     <div className="space-y-4">
       <div>
-        <TitleTag className="text-2xl font-semibold tracking-tight">{title}</TitleTag>
+        <TitleTag className={`text-2xl font-semibold${headingTracking}`}>{title}</TitleTag>
         {description ? <p className="mt-2 text-sm text-muted-foreground">{description}</p> : null}
       </div>
       {threads.length === 0 ? (

@@ -120,7 +120,7 @@ export default async function SubmissionsPage({
     return (
       <div className="space-y-6">
         <div>
-          <h1 className="text-3xl font-semibold tracking-tight">{tCommon("submissions")}</h1>
+          <h1 className={`text-3xl font-semibold${locale !== "ko" ? " tracking-tight" : ""}`}>{tCommon("submissions")}</h1>
         </div>
         <Card>
           <CardContent className="flex flex-col items-center gap-4 py-12">
@@ -272,7 +272,7 @@ export default async function SubmissionsPage({
   return (
     <div className="space-y-4">
       <SubmissionListAutoRefresh hasActiveSubmissions={hasActiveSubmissions} />
-      <h1 className="text-3xl font-semibold tracking-tight">
+      <h1 className={`text-3xl font-semibold${locale !== "ko" ? " tracking-tight" : ""}`}>
         {tCommon("submissions")}
       </h1>
 

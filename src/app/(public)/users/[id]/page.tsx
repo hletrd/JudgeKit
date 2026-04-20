@@ -212,7 +212,7 @@ export default async function UserProfilePage({
     <div className="space-y-6">
       <div className="flex items-center gap-3">
         <div>
-          <h1 className="text-3xl font-semibold tracking-tight">{user.name}</h1>
+          <h1 className={`text-3xl font-semibold${locale !== "ko" ? " tracking-tight" : ""}`}>{user.name}</h1>
           <p className="text-sm text-muted-foreground">@{user.username}</p>
         </div>
         {tier && <TierBadge tier={tier} label={tRankings(`tiers.${tier}`)} />}
@@ -247,6 +247,7 @@ export default async function UserProfilePage({
         languageTitle={t("languageBreakdown")}
         activityTitle={t("activityHeatmap")}
         emptyLabel={t("noStats")}
+        locale={locale}
         tierStats={Array.from(difficultyCounts.values()).sort((left, right) => right.count - left.count)}
         categoryStats={Array.from(categoryCounts.entries())
           .map(([label, count]) => ({ label, count }))

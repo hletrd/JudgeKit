@@ -194,6 +194,7 @@ export default async function CommunityThreadDetailPage({ params }: { params: Pr
           }
           repliesTitle={tShell("community.repliesTitle")}
           noRepliesLabel={tShell("community.noReplies")}
+          locale={locale}
           actions={(
             <DiscussionVoteButtons
               targetType="thread"

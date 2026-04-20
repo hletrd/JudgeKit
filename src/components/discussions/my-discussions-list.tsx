@@ -16,14 +16,16 @@ type MyDiscussionsListProps = {
   description: string;
   emptyLabel: string;
   openLabel: string;
+  locale?: string;
   items: MyDiscussionItem[];
 };
 
-export function MyDiscussionsList({ title, description, emptyLabel, openLabel, items }: MyDiscussionsListProps) {
+export function MyDiscussionsList({ title, description, emptyLabel, openLabel, locale, items }: MyDiscussionsListProps) {
+  const headingTracking = locale && locale !== "ko" ? " tracking-tight" : "";
   return (
     <div className="space-y-6">
       <div>
-        <h1 className="text-3xl font-semibold tracking-tight">{title}</h1>
+        <h1 className={`text-3xl font-semibold${headingTracking}`}>{title}</h1>
         <p className="mt-2 text-sm text-muted-foreground">{description}</p>
       </div>
       {items.length === 0 ? (

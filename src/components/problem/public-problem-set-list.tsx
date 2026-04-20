@@ -17,6 +17,7 @@ type PublicProblemSetListProps = {
   description: string;
   emptyLabel: string;
   openLabel: string;
+  locale: string;
   items: ProblemSetListItem[];
 };
 
@@ -25,12 +26,13 @@ export function PublicProblemSetList({
   description,
   emptyLabel,
   openLabel,
+  locale,
   items,
 }: PublicProblemSetListProps) {
   return (
     <div className="space-y-6">
       <div>
-        <h1 className="text-3xl font-semibold tracking-tight">{title}</h1>
+        <h1 className={`text-3xl font-semibold${locale !== "ko" ? " tracking-tight" : ""}`}>{title}</h1>
         <p className="mt-2 text-sm text-muted-foreground">{description}</p>
       </div>
 

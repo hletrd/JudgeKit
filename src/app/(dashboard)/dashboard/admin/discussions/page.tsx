@@ -1,5 +1,5 @@
 import Link from "next/link";
-import { getTranslations } from "next-intl/server";
+import { getLocale, getTranslations } from "next-intl/server";
 import { redirect } from "next/navigation";
 import { auth } from "@/lib/auth";
 import { DiscussionModerationList } from "@/components/discussions/discussion-moderation-list";
@@ -44,9 +44,10 @@ export default async function AdminDiscussionsPage({
   const scope = normalizeScope(resolvedSearchParams?.scope);
   const state = normalizeState(resolvedSearchParams?.state);
 
-  const [tModeration, tCommunity] = await Promise.all([
+  const [tModeration, tCommunity, locale] = await Promise.all([
     getTranslations("publicShell.moderation"),
     getTranslations("publicShell.community"),
+    getLocale(),
   ]);
   const threads = await listModerationDiscussionThreads({ scope, state });
 
@@ -81,6 +82,7 @@ export default async function AdminDiscussionsPage({
         title={tModeration("title")}
         description={tModeration("description")}
         emptyLabel={tModeration("empty")}
+        locale={locale}
         items={threads.map((thread) => ({
           id: thread.id,
           title: thread.title,

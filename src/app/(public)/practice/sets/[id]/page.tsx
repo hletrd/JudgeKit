@@ -67,6 +67,8 @@ export default async function PracticeSetDetailPage({
       solveNextHref={firstUnsolved ? buildLocalePath(`/practice/problems/${firstUnsolved.id}`, locale) : null}
       solveNextLabel={t("practice.sets.solveNext")}
       solvedLabel={t("practice.sets.solved")}
+      openLabel={t("practice.sets.open")}
+      locale={locale}
       problems={set.problems.map((problem) => ({
         id: problem.id,
         href: buildLocalePath(`/practice/problems/${problem.id}`, locale),

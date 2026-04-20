@@ -106,6 +106,7 @@ export default async function PracticeSetsPage({
         description={t("practice.sets.description")}
         emptyLabel={t("practice.sets.empty")}
         openLabel={t("practice.sets.open")}
+        locale={locale}
         items={items.map((item) => ({
           id: item.id,
           href: buildLocalePath(`/practice/sets/${item.id}`, locale),

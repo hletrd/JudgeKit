@@ -26,6 +26,7 @@ type UserStatsDashboardProps = {
   languageTitle: string;
   activityTitle: string;
   emptyLabel: string;
+  locale?: string;
   tierStats: TierStat[];
   categoryStats: NamedStat[];
   languageStats: NamedStat[];
@@ -47,6 +48,7 @@ export function UserStatsDashboard({
   languageTitle,
   activityTitle,
   emptyLabel,
+  locale,
   tierStats,
   categoryStats,
   languageStats,
@@ -55,7 +57,7 @@ export function UserStatsDashboard({
   return (
     <div className="space-y-6">
       <div>
-        <h2 className="text-2xl font-semibold tracking-tight">{title}</h2>
+        <h2 className={`text-2xl font-semibold${locale && locale !== "ko" ? " tracking-tight" : ""}`}>{title}</h2>
       </div>
 
       <div className="grid gap-4 lg:grid-cols-3">
