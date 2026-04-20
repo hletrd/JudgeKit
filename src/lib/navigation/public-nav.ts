@@ -53,6 +53,8 @@ export function getPublicNavActions(
  * The `capability` field, when set, gates the item behind the
  * corresponding user capability. When absent, the item is always shown.
  * Capability checks must stay aligned with AppSidebar's filterItems().
+ * Icons for each item are defined in DROPDOWN_ICONS in public-header.tsx —
+ * keep both in sync when adding or removing items.
  */
 const DROPDOWN_ITEM_DEFINITIONS: DropdownItem[] = [
   { href: "/dashboard", label: "dashboard" },
