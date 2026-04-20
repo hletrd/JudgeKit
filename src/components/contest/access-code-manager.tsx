@@ -8,6 +8,17 @@ import { apiFetch } from "@/lib/api/client";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Copy, Key, Link2, Trash2 } from "lucide-react";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+  AlertDialogTrigger,
+} from "@/components/ui/alert-dialog";
 
 interface AccessCodeManagerProps {
   assignmentId: string;
@@ -20,6 +31,7 @@ export function AccessCodeManager({ assignmentId }: AccessCodeManagerProps) {
   const [isLoading, setIsLoading] = useState(false);
   const [copied, setCopied] = useState(false);
   const copiedTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const [revokeConfirmOpen, setRevokeConfirmOpen] = useState(false);
 
   const fetchCode = useCallback(async () => {
     try {
@@ -85,7 +97,7 @@ export function AccessCodeManager({ assignmentId }: AccessCodeManagerProps) {
   }
 
   async function handleRevoke() {
-    if (!confirm(t("revokeConfirm"))) return;
+    setRevokeConfirmOpen(false);
     setIsLoading(true);
     try {
       const res = await apiFetch(`/api/v1/contests/${assignmentId}/access-code`, {
@@ -145,10 +157,24 @@ export function AccessCodeManager({ assignmentId }: AccessCodeManagerProps) {
                 <Key className="size-4" />
                 {t("generate")}
               </Button>
-              <Button variant="destructive" size="sm" onClick={handleRevoke} disabled={isLoading}>
-                <Trash2 className="size-4" />
-                {t("revoke")}
-              </Button>
+              <AlertDialog open={revokeConfirmOpen} onOpenChange={setRevokeConfirmOpen}>
+                <AlertDialogTrigger render={
+                  <Button variant="destructive" size="sm" disabled={isLoading}>
+                    <Trash2 className="size-4" />
+                    {t("revoke")}
+                  </Button>
+                } />
+                <AlertDialogContent>
+                  <AlertDialogHeader>
+                    <AlertDialogTitle>{t("revoke")}</AlertDialogTitle>
+                    <AlertDialogDescription>{t("revokeConfirm")}</AlertDialogDescription>
+                  </AlertDialogHeader>
+                  <AlertDialogFooter>
+                    <AlertDialogCancel>{tCommon("cancel")}</AlertDialogCancel>
+                    <AlertDialogAction onClick={handleRevoke}>{t("revoke")}</AlertDialogAction>
+                  </AlertDialogFooter>
+                </AlertDialogContent>
+              </AlertDialog>
             </div>
           </div>
         ) : (
