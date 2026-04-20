@@ -414,6 +414,9 @@ export default async function PracticePage({
     // this should be moved to a SQL CTE or subquery for better performance.
     // Only the `id` column is needed here; full data is fetched for the
     // page slice below.
+    // userId is guaranteed non-null because this branch is only reached when
+    // currentProgressFilter !== "all" && userId is truthy (see the if check above).
+    const uid = userId!;
     const allProblemRows = await db.query.problems.findMany({
       where: baseWhereClause,
       columns: {
@@ -428,7 +431,7 @@ export default async function PracticePage({
       const subRows = await db
         .select({ problemId: submissions.problemId, status: submissions.status })
         .from(submissions)
-        .where(and(eq(submissions.userId, userId!), inArray(submissions.problemId, allIds)));
+        .where(and(eq(submissions.userId, uid), inArray(submissions.problemId, allIds)));
       for (const row of subRows) {
         const arr = progressMap.get(row.problemId) ?? [];
         arr.push(row.status);
