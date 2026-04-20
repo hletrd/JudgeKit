@@ -80,8 +80,12 @@ export function formatDifficulty(
 /**
  * Round a score value to two decimal places for display.
  * Returns "-" for null/undefined values.
+ * Uses locale-aware digit grouping via formatNumber.
  */
-export function formatScore(score: number | null | undefined): string {
+export function formatScore(
+  score: number | null | undefined,
+  locale: string | string[] = DEFAULT_LOCALE
+): string {
   if (score == null) return "-";
-  return String(Math.round(score * 100) / 100);
+  return formatNumber(Math.round(score * 100) / 100, { locale, maximumFractionDigits: 2 });
 }

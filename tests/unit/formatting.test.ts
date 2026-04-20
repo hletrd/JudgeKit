@@ -94,8 +94,17 @@ describe("formatScore", () => {
     expect(formatScore(-1.5)).toBe("-1.5");
   });
 
-  it("handles large scores", () => {
-    expect(formatScore(9999.999)).toBe("10000");
+  it("handles large scores with locale grouping", () => {
+    expect(formatScore(9999.999)).toBe("10,000");
+  });
+
+  it("formats scores with locale grouping", () => {
+    expect(formatScore(1234.5)).toBe("1,234.5");
+  });
+
+  it("respects locale parameter", () => {
+    const result = formatScore(1234.5, "ko-KR");
+    expect(result).toContain("234.5");
   });
 });
 
