@@ -1560,14 +1560,16 @@
         "removeError": "Docker 이미지 삭제에 실패했습니다.",
         "pruneSuccess": "오래된 이미지 {count}개가 삭제되었습니다.",
         "pruneNone": "정리할 오래된 이미지가 없습니다.",
-        "pruneError": "오래된 이미지 정리에 실패했습니다."
+        "pruneError": "오래된 이미지 정리에 실패했습니다.",
+        "fetchImageStatusError": "이미지 상태를 불러오지 못했습니다."
       },
       "diskUsage": "디스크",
       "diskAvailable": "사용 가능",
       "imageStatus": {
         "available": "사용 가능",
         "stale": "재빌드 필요",
-        "notBuilt": "미빌드"
+        "notBuilt": "미빌드",
+        "loadError": "불러오기 실패"
       },
       "edit": {
         "title": "언어 설정 편집",

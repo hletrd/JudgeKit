@@ -1560,14 +1560,16 @@
         "removeError": "Failed to remove Docker image.",
         "pruneSuccess": "{count} stale image(s) removed.",
         "pruneNone": "No stale images to clean up.",
-        "pruneError": "Failed to prune stale images."
+        "pruneError": "Failed to prune stale images.",
+        "fetchImageStatusError": "Failed to load image status."
       },
       "diskUsage": "Disk",
       "diskAvailable": "available",
       "imageStatus": {
         "available": "Available",
         "stale": "Stale",
-        "notBuilt": "Not built"
+        "notBuilt": "Not built",
+        "loadError": "Failed to load"
       },
       "edit": {
         "title": "Edit Language Configuration",

@@ -24,6 +24,7 @@ import {
 import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetDescription } from "@/components/ui/sheet";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
 import { toggleLanguage, updateLanguageConfig, resetLanguageToDefaults, resetAllLanguagesToDefaults, addLanguageConfig } from "@/lib/actions/language-configs";
+import { apiFetch } from "@/lib/api/client";
 import { RotateCcw, Pencil, Hammer, Trash2, Loader2, Plus, MoreHorizontal, Eraser } from "lucide-react";
 
 // Recommended Docker images for the combobox dropdown
@@ -37,6 +38,12 @@ const RECOMMENDED_IMAGES = [
   "golang:1.26-alpine",
   "openjdk:21-slim",
 ];
+
+type ConfirmAction =
+  | { type: "removeImage"; payload: LanguageConfig }
+  | { type: "prune" }
+  | { type: "reset"; payload: string }
+  | { type: "resetAll" };
 
 interface LanguageConfig {
   id: string;
@@ -74,11 +81,15 @@ export function LanguageConfigTable({ languages }: { languages: LanguageConfig[]
   });
   const [isPruning, setIsPruning] = useState(false);
   const [staleCount, setStaleCount] = useState(0);
-  const [confirmAction, setConfirmAction] = useState<{ type: string; payload?: unknown } | null>(null);
+  const [confirmAction, setConfirmAction] = useState<ConfirmAction | null>(null);
+  const [imageStatusLoading, setImageStatusLoading] = useState(true);
+  const [imageStatusError, setImageStatusError] = useState(false);
 
   const fetchImageStatus = useCallback(async () => {
+    setImageStatusLoading(true);
+    setImageStatusError(false);
     try {
-      const res = await fetch("/api/v1/admin/docker/images");
+      const res = await apiFetch("/api/v1/admin/docker/images");
       if (res.ok) {
         const json = await res.json();
         const data = json.data ?? {};
@@ -96,17 +107,25 @@ export function LanguageConfigTable({ languages }: { languages: LanguageConfig[]
         setImageInfo(info);
         setStaleCount(staleSet.size);
         if (data.disk) setDiskUsage(data.disk);
+      } else {
+        setImageStatusError(true);
+        toast.error(t("toast.fetchImageStatusError"));
       }
-    } catch { /* ignore */ }
-  }, []);
+    } catch {
+      setImageStatusError(true);
+      toast.error(t("toast.fetchImageStatusError"));
+    } finally {
+      setImageStatusLoading(false);
+    }
+  }, [t]);
 
   useEffect(() => { fetchImageStatus(); }, [fetchImageStatus]);
 
   function handleBuild(lang: LanguageConfig) {
     setBuildingLangs(prev => new Set(prev).add(lang.language));
-    fetch("/api/v1/admin/docker/images/build", {
+    apiFetch("/api/v1/admin/docker/images/build", {
       method: "POST",
-      headers: { "Content-Type": "application/json", "X-Requested-With": "XMLHttpRequest" },
+      headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ language: lang.language }),
     })
       .then(async (res) => {
@@ -127,9 +146,9 @@ export function LanguageConfigTable({ languages }: { languages: LanguageConfig[]
   }
 
   function confirmRemoveImage(lang: LanguageConfig) {
-    fetch("/api/v1/admin/docker/images", {
+    apiFetch("/api/v1/admin/docker/images", {
       method: "DELETE",
-      headers: { "Content-Type": "application/json", "X-Requested-With": "XMLHttpRequest" },
+      headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ imageTag: lang.dockerImage }),
     })
       .then(async (res) => {
@@ -150,9 +169,9 @@ export function LanguageConfigTable({ languages }: { languages: LanguageConfig[]
 
   function confirmPrune() {
     setIsPruning(true);
-    fetch("/api/v1/admin/docker/images/prune", {
+    apiFetch("/api/v1/admin/docker/images/prune", {
       method: "POST",
-      headers: { "Content-Type": "application/json", "X-Requested-With": "XMLHttpRequest" },
+      headers: { "Content-Type": "application/json" },
     })
       .then(async (res) => {
         const data = await res.json().catch(() => ({}));
@@ -288,20 +307,31 @@ export function LanguageConfigTable({ languages }: { languages: LanguageConfig[]
 
   return (
     <>
-      {diskUsage && (
+      {diskUsage && (() => {
+        const usagePercent = parseInt(diskUsage.usePercent) || 0;
+        const widthValue = diskUsage.usePercent.includes('%') ? diskUsage.usePercent : `${diskUsage.usePercent}%`;
+        return (
         <div className="flex items-center gap-3 rounded-lg border p-3 text-sm mb-4">
           <span className="font-medium">{t("diskUsage")}</span>
           <span>{diskUsage.used} / {diskUsage.total} ({diskUsage.usePercent})</span>
           <span className="text-muted-foreground">·</span>
           <span className="text-green-600">{diskUsage.available} {t("diskAvailable")}</span>
-          <div className="ml-auto h-2 w-32 rounded-full bg-muted overflow-hidden">
+          <div
+            className="ml-auto h-2 w-32 rounded-full bg-muted overflow-hidden"
+            role="progressbar"
+            aria-valuenow={usagePercent}
+            aria-valuemin={0}
+            aria-valuemax={100}
+            aria-label={t("diskUsage")}
+          >
             <div
-              className={`h-full rounded-full ${parseInt(diskUsage.usePercent) > 90 ? "bg-red-500" : parseInt(diskUsage.usePercent) > 70 ? "bg-yellow-500" : "bg-green-500"}`}
-              style={{ width: diskUsage.usePercent }}
+              className={`h-full rounded-full ${usagePercent > 90 ? "bg-red-500" : usagePercent > 70 ? "bg-yellow-500" : "bg-green-500"}`}
+              style={{ width: widthValue }}
             />
           </div>
         </div>
-      )}
+        );
+      })()}
       <div className="flex items-center gap-2 mb-4">
         <Input
           value={search}
@@ -378,19 +408,23 @@ export function LanguageConfigTable({ languages }: { languages: LanguageConfig[]
                   <div className="flex flex-col gap-0.5">
                     <span className="text-sm font-mono">{lang.dockerImage}</span>
                     <span className="text-xs text-muted-foreground">{lang.runtimeInfo}</span>
-                    {imageInfo.size > 0 && (
-                      imageInfo.has(lang.dockerImage)
-                        ? <div className="flex flex-col gap-0.5">
-                            {imageInfo.get(lang.dockerImage)?.stale
-                              ? <Badge variant="outline" className="w-fit text-xs text-yellow-600 border-yellow-300">{t("imageStatus.stale")}{imageInfo.get(lang.dockerImage)?.size ? ` (${imageInfo.get(lang.dockerImage)?.size})` : ""}</Badge>
-                              : <Badge variant="outline" className="w-fit text-xs text-green-600 border-green-300">{t("imageStatus.available")}{imageInfo.get(lang.dockerImage)?.size ? ` (${imageInfo.get(lang.dockerImage)?.size})` : ""}</Badge>
-                            }
-                            {imageInfo.get(lang.dockerImage)?.created && (
-                              <span className="text-xs text-muted-foreground">{imageInfo.get(lang.dockerImage)?.created}</span>
-                            )}
-                          </div>
-                        : <Badge variant="outline" className="w-fit text-xs text-muted-foreground">{t("imageStatus.notBuilt")}</Badge>
-                    )}
+                    {imageStatusLoading && imageInfo.size === 0
+                      ? <Badge variant="outline" className="w-fit text-xs text-muted-foreground">{tCommon("loading")}</Badge>
+                      : imageStatusError && imageInfo.size === 0
+                        ? <Badge variant="outline" className="w-fit text-xs text-yellow-600 border-yellow-300">{t("imageStatus.loadError")}</Badge>
+                      : imageInfo.size > 0 && (
+                        imageInfo.has(lang.dockerImage)
+                          ? <div className="flex flex-col gap-0.5">
+                              {imageInfo.get(lang.dockerImage)?.stale
+                                ? <Badge variant="outline" className="w-fit text-xs text-yellow-600 border-yellow-300">{t("imageStatus.stale")}{imageInfo.get(lang.dockerImage)?.size ? ` (${imageInfo.get(lang.dockerImage)?.size})` : ""}</Badge>
+                                : <Badge variant="outline" className="w-fit text-xs text-green-600 border-green-300">{t("imageStatus.available")}{imageInfo.get(lang.dockerImage)?.size ? ` (${imageInfo.get(lang.dockerImage)?.size})` : ""}</Badge>
+                              }
+                              {imageInfo.get(lang.dockerImage)?.created && (
+                                <span className="text-xs text-muted-foreground">{imageInfo.get(lang.dockerImage)?.created}</span>
+                              )}
+                            </div>
+                          : <Badge variant="outline" className="w-fit text-xs text-muted-foreground">{t("imageStatus.notBuilt")}</Badge>
+                      )}
                   </div>
                 </TableCell>
                 <TableCell className="hidden lg:table-cell">
@@ -638,9 +672,9 @@ export function LanguageConfigTable({ languages }: { languages: LanguageConfig[]
           <AlertDialogFooter>
             <AlertDialogCancel>{tCommon("cancel")}</AlertDialogCancel>
             <AlertDialogAction onClick={() => {
-              if (confirmAction?.type === "removeImage") confirmRemoveImage(confirmAction.payload as LanguageConfig);
+              if (confirmAction?.type === "removeImage") confirmRemoveImage(confirmAction.payload);
               else if (confirmAction?.type === "prune") confirmPrune();
-              else if (confirmAction?.type === "reset") confirmReset(confirmAction.payload as string);
+              else if (confirmAction?.type === "reset") confirmReset(confirmAction.payload);
               else if (confirmAction?.type === "resetAll") confirmResetAll();
               setConfirmAction(null);
             }}>
