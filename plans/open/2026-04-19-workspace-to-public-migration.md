@@ -1,7 +1,7 @@
 # Workspace-to-Public Page Migration Plan
 
 **Date:** 2026-04-19
-**Status:** Phase 1 COMPLETE, Phase 2 COMPLETE, Phase 3 COMPLETE, Phase 4 IN PROGRESS (cycle 22 — rankings/languages/compiler routes consolidated; remaining: merge control route group into dashboard)
+**Status:** Phase 1 COMPLETE, Phase 2 COMPLETE, Phase 3 COMPLETE, Phase 4 IN PROGRESS (cycle 23 — control route group merge into dashboard in progress)
 **Source:** User-injected TODO #2, AGG-13
 
 ## Goal
@@ -225,13 +225,27 @@ Same as instructor, with additional "Admin" dropdown entry that navigates to `/d
 
 **Estimated files changed:** ~15-20
 
-### Phase 4 — Route consolidation (Higher risk, defer)
+### Phase 4 — Route consolidation and control group merge
 
-**Goal:** Merge duplicate routes (dashboard rankings -> public rankings, dashboard languages -> public languages, etc.).
+**Status:** IN PROGRESS (cycle 23)
 
+**Goal:** Merge duplicate routes (dashboard rankings -> public rankings, dashboard languages -> public languages, etc.) and merge the `(control)` route group into `(dashboard)`.
+
+**Cycle 22 progress (rankings/languages/compiler consolidation):**
+- ~~Redirect `/dashboard/rankings` to `/rankings`~~ DONE (commit 662b71ec)
+- ~~Redirect `/dashboard/languages` to `/languages`~~ DONE (commit 662b71ec)
+- ~~Redirect `/dashboard/compiler` to `/playground`~~ DONE (commit 662b71ec)
+
+**Cycle 23 progress (control group merge):**
+- Move `/control/discussions` to `/dashboard/admin/discussions` with `community.moderate` capability check
+- Migrate `controlShell` i18n keys to `publicShell` and `nav` namespaces
+- Add `/control` and `/control/discussions` redirects
+- Remove `(control)` route group directory, `ControlNav` component, and `controlShell` namespace
+- Add "Discussion Moderation" to `AppSidebar` admin section
+
+**Remaining Phase 4 work:**
 1. Make public pages auth-aware: render additional sections or edit buttons when the user is authenticated and has the right capabilities.
-2. Redirect dashboard duplicate routes to their public counterparts with a query param or client-side state to show the authenticated view.
-3. Remove redundant page components under `(dashboard)`.
+2. Remove redundant page components under `(dashboard)` where public counterparts exist.
 
 **Estimated files changed:** ~20-30
 
