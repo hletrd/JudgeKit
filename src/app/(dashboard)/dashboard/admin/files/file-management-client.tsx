@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useRef, useState } from "react";
 import Image from "next/image";
 import { useRouter } from "next/navigation";
 import { useTranslations } from "next-intl";
@@ -43,6 +43,7 @@ export function FileManagementClient({ files, rangeStart, rangeEnd, totalCount, 
   const [deleteOpen, setDeleteOpen] = useState(false);
   const [deleteTargets, setDeleteTargets] = useState<{ id: string; name: string }[]>([]);
   const [copiedId, setCopiedId] = useState<string | null>(null);
+  const copiedIdTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   function toggleSelect(id: string) {
     setSelected((prev) => {
@@ -89,10 +90,18 @@ export function FileManagementClient({ files, rangeStart, rangeEnd, totalCount, 
 
   async function copyUrl(id: string) {
     const url = `${window.location.origin}/api/v1/files/${id}`;
-    await navigator.clipboard.writeText(url);
+    try {
+      await navigator.clipboard.writeText(url);
+    } catch {
+      toast.error(t("copyFailed", { defaultValue: "Failed to copy" }));
+      return;
+    }
+    if (copiedIdTimer.current) {
+      clearTimeout(copiedIdTimer.current);
+    }
     setCopiedId(id);
     toast.success(t("urlCopied"));
-    setTimeout(() => setCopiedId(null), 2000);
+    copiedIdTimer.current = setTimeout(() => setCopiedId(null), 2000);
   }
 
   return (

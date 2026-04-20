@@ -165,8 +165,13 @@ docker compose -f docker-compose.worker.yml up -d`;
   --concurrency=4 \\
   --sync-images`;
 
-  function copyToClipboard(text: string) {
-    navigator.clipboard.writeText(text);
+  async function copyToClipboard(text: string) {
+    try {
+      await navigator.clipboard.writeText(text);
+    } catch {
+      toast.error(t("copyFailed", { defaultValue: "Failed to copy" }));
+      return;
+    }
     toast.success(t("copied"));
   }
 

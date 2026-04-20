@@ -307,7 +307,12 @@ export function RecruitingInvitationsPanel({ assignmentId }: { assignmentId: str
               size="sm"
               onClick={async () => {
                 if (createdLink) {
-                  await navigator.clipboard.writeText(createdLink);
+                  try {
+                    await navigator.clipboard.writeText(createdLink);
+                  } catch {
+                    toast.error(t("copyError"));
+                    return;
+                  }
                   toast.success(t("linkCopied"));
                 }
               }}
