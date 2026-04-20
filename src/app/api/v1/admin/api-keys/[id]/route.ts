@@ -7,6 +7,7 @@ import { createApiHandler } from "@/lib/api/handler";
 import { apiSuccess, apiError } from "@/lib/api/responses";
 import { recordAuditEvent } from "@/lib/audit/events";
 import { canManageRoleAsync, isUserRole } from "@/lib/security/constants";
+import { getDbNowUncached } from "@/lib/db-time";
 
 const updateSchema = z.object({
   name: z.string().min(1).max(100).optional(),
@@ -49,7 +50,7 @@ export const PATCH = createApiHandler({
     const [existing] = await db.select({ id: apiKeys.id, name: apiKeys.name }).from(apiKeys).where(eq(apiKeys.id, id)).limit(1);
     if (!existing) return apiError("notFound", 404, "ApiKey");
 
-    const updates: Record<string, unknown> = { updatedAt: new Date() };
+    const updates: Record<string, unknown> = { updatedAt: await getDbNowUncached() };
     if (body.name !== undefined) updates.name = body.name;
     if (body.isActive !== undefined) updates.isActive = body.isActive;
     if (body.expiresAt !== undefined) updates.expiresAt = body.expiresAt ? new Date(body.expiresAt) : null;

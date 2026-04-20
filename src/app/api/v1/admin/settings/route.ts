@@ -8,6 +8,7 @@ import { invalidateSettingsCache } from "@/lib/system-settings-config";
 import { isHcaptchaConfigured } from "@/lib/security/hcaptcha";
 import { encrypt, redactSecret } from "@/lib/security/encryption";
 import { systemSettingsSchema } from "@/lib/validators/system-settings";
+import { getDbNowUncached } from "@/lib/db-time";
 import { recordAuditEvent } from "@/lib/audit/events";
 
 export const GET = createApiHandler({
@@ -79,7 +80,7 @@ export const PUT = createApiHandler({
       signupHcaptchaEnabled: signupHcaptchaEnabled ?? false,
       hcaptchaSiteKey: hcaptchaSiteKey ?? null,
       hcaptchaSecret: hcaptchaSecret ? encrypt(hcaptchaSecret) : null,
-      updatedAt: new Date(),
+      updatedAt: await getDbNowUncached(),
     };
 
     // Add numeric config values (undefined = not in payload, null = clear to default)

@@ -13,6 +13,7 @@ import { safeUserSelect } from "@/lib/db/selects";
 import { isUserRole } from "@/lib/security/constants";
 import { isValidRole, resolveCapabilities } from "@/lib/capabilities/cache";
 import { userCreateSchema } from "@/lib/validators/profile";
+import { getDbNowUncached } from "@/lib/db-time";
 import { parsePagination } from "@/lib/api/pagination";
 import {
   validateAndHashPassword,
@@ -85,6 +86,7 @@ export const POST = createApiHandler({
       passwordHash = await hashPassword(generateSecurePassword());
     }
     const id = nanoid();
+    const now = await getDbNowUncached();
 
     // Atomic uniqueness check + insert in a single transaction to prevent TOCTOU races
     type SafeUserRow = { id: string; username: string; email: string | null; name: string | null; className: string | null; role: string; isActive: boolean | null; createdAt: Date; updatedAt: Date };
@@ -123,8 +125,8 @@ export const POST = createApiHandler({
           role: requestedRole,
           isActive: true,
           mustChangePassword: true,
-          createdAt: new Date(),
-          updatedAt: new Date(),
+          createdAt: now,
+          updatedAt: now,
         }).returning(safeUserSelect);
       });
       created = result[0];

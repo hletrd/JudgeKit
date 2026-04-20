@@ -4,6 +4,7 @@ import { eq } from "drizzle-orm";
 import { nanoid } from "nanoid";
 import { DEFAULT_JUDGE_LANGUAGES, serializeJudgeCommand } from "./languages";
 import { logger } from "@/lib/logger";
+import { getDbNowUncached } from "@/lib/db-time";
 
 
 async function doSync(): Promise<boolean> {
@@ -34,7 +35,7 @@ async function doSync(): Promise<boolean> {
         compiler: lang.compiler ?? null,
         runCommand: runCmd,
         isEnabled: true,
-        updatedAt: new Date(),
+        updatedAt: await getDbNowUncached(),
         ...(lang.standard ? { standard: lang.standard } : {}),
         ...(compileCmd ? { compileCommand: compileCmd } : {}),
       });
@@ -48,7 +49,7 @@ async function doSync(): Promise<boolean> {
         .set({
           runCommand: runCmd,
           compileCommand: compileCmd ?? null,
-          updatedAt: new Date(),
+          updatedAt: await getDbNowUncached(),
         })
         .where(eq(languageConfigs.language, lang.language));
       updated++;

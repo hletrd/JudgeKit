@@ -6,6 +6,7 @@ import { db } from "@/lib/db";
 import { languageConfigs } from "@/lib/db/schema";
 import { asc, eq } from "drizzle-orm";
 import { recordAuditEvent } from "@/lib/audit/events";
+import { getDbNowUncached } from "@/lib/db-time";
 
 const addLanguageSchema = z.object({
   language: z.string().min(1).max(50).regex(/^[a-z0-9_]+$/, "invalidLanguageKey"),
@@ -59,7 +60,7 @@ export const POST = createApiHandler({
         runCommand: body.runCommand.trim(),
         dockerfile: body.dockerfile?.trim() || null,
         isEnabled: true,
-        updatedAt: new Date(),
+        updatedAt: await getDbNowUncached(),
       })
       .returning();
 

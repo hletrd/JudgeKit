@@ -8,6 +8,7 @@ import { recordAuditEvent } from "@/lib/audit/events";
 import { canManageGroupResourcesAsync } from "@/lib/assignments/management";
 import { createApiHandler, forbidden, notFound } from "@/lib/api/handler";
 import type { AuthUser } from "@/lib/api/handler";
+import { getDbNowUncached } from "@/lib/db-time";
 
 const scoreOverrideBodySchema = z.object({
   problemId: z.string().min(1),
@@ -113,7 +114,7 @@ export const POST = createApiHandler({
           overrideScore,
           reason: reason ?? null,
           createdBy: user.id,
-          createdAt: new Date(),
+          createdAt: await getDbNowUncached(),
         });
     });
 

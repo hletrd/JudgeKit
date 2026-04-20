@@ -10,6 +10,7 @@ import { bulkUserCreateSchema } from "@/lib/validators/bulk-users";
 import { validateAndHashPassword, validateRoleChangeAsync } from "@/lib/users/core";
 import { resolveCapabilities } from "@/lib/capabilities/cache";
 import pLimit from "p-limit";
+import { getDbNowUncached } from "@/lib/db-time";
 
 export const POST = createApiHandler({
   rateLimit: "users:bulk-create",
@@ -109,6 +110,7 @@ export const POST = createApiHandler({
 
     // Insert users individually with savepoints so one failure doesn't abort the whole batch.
     // PostgreSQL aborts a transaction on error unless a savepoint is used.
+    const now = await getDbNowUncached();
     await execTransaction(async (tx) => {
       for (const entry of validEntries) {
         try {
@@ -123,8 +125,8 @@ export const POST = createApiHandler({
             role: entry.role,
             isActive: true,
             mustChangePassword: true,
-            createdAt: new Date(),
-            updatedAt: new Date(),
+            createdAt: now,
+            updatedAt: now,
           });
           await tx.execute(sql`RELEASE SAVEPOINT user_insert`);
           created.push({

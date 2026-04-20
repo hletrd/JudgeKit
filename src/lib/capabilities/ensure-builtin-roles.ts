@@ -1,5 +1,6 @@
 import { db } from "@/lib/db";
 import { roles } from "@/lib/db/schema";
+import { getDbNowUncached } from "@/lib/db-time";
 import { nanoid } from "nanoid";
 import { BUILTIN_ROLE_NAMES } from "./types";
 import {
@@ -15,6 +16,7 @@ import {
  */
 export async function ensureBuiltinRoles(): Promise<void> {
   for (const roleName of BUILTIN_ROLE_NAMES) {
+    const now = await getDbNowUncached();
     await db.insert(roles).values({
       id: nanoid(),
       name: roleName,
@@ -23,15 +25,15 @@ export async function ensureBuiltinRoles(): Promise<void> {
       isBuiltin: true,
       level: DEFAULT_ROLE_LEVELS[roleName],
       capabilities: DEFAULT_ROLE_CAPABILITIES[roleName] as string[],
-      createdAt: new Date(),
-      updatedAt: new Date(),
+      createdAt: now,
+      updatedAt: now,
     }).onConflictDoUpdate({
       target: roles.name,
       set: {
         displayName: DEFAULT_ROLE_DISPLAY_NAMES[roleName],
         level: DEFAULT_ROLE_LEVELS[roleName],
         capabilities: DEFAULT_ROLE_CAPABILITIES[roleName] as string[],
-        updatedAt: new Date(),
+        updatedAt: now,
       },
     });
   }

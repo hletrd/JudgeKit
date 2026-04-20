@@ -8,6 +8,7 @@ import { withUpdatedAt } from "@/lib/db/helpers";
 import { getPluginDefinition } from "@/lib/plugins/registry";
 import { getPluginState } from "@/lib/plugins/data";
 import { recordAuditEvent } from "@/lib/audit/events";
+import { getDbNowUncached } from "@/lib/db-time";
 import { preparePluginConfigForStorage, redactPluginConfigForAudit } from "@/lib/plugins/secrets";
 import { eq } from "drizzle-orm";
 
@@ -67,7 +68,7 @@ export const PATCH = createApiHandler({
           id: params.id,
           enabled: body.enabled ?? existingRow?.enabled ?? false,
           config: storedConfig,
-          updatedAt: new Date(),
+          updatedAt: await getDbNowUncached(),
         })
         .onConflictDoUpdate({
           target: plugins.id,
@@ -98,7 +99,7 @@ export const PATCH = createApiHandler({
         .values({
           id: params.id,
           enabled: body.enabled,
-          updatedAt: new Date(),
+          updatedAt: await getDbNowUncached(),
         })
         .onConflictDoUpdate({
           target: plugins.id,

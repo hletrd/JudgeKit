@@ -1,6 +1,7 @@
 import { eq, inArray, and } from "drizzle-orm";
 import { nanoid } from "nanoid";
 import { db, execTransaction, type TransactionClient } from "@/lib/db";
+import { getDbNowUncached } from "@/lib/db-time";
 import {
   problemSets,
   problemSetProblems,
@@ -82,7 +83,7 @@ export async function syncGroupAccessRows(
 
 export async function createProblemSet(input: ProblemSetMutationInput, createdBy: string) {
   const id = nanoid();
-  const now = new Date();
+  const now = await getDbNowUncached();
 
   await execTransaction(async (tx) => {
     await tx.insert(problemSets)
@@ -105,7 +106,7 @@ export async function createProblemSet(input: ProblemSetMutationInput, createdBy
 }
 
 export async function updateProblemSet(problemSetId: string, input: ProblemSetMutationInput) {
-  const now = new Date();
+  const now = await getDbNowUncached();
 
   await execTransaction(async (tx) => {
     await tx.update(problemSets)
@@ -161,7 +162,7 @@ export async function deleteProblemSet(problemSetId: string) {
 }
 
 export async function assignProblemSetToGroups(problemSetId: string, groupIds: string[]) {
-  const now = new Date();
+  const now = await getDbNowUncached();
 
   await execTransaction(async (tx) => {
     // Get existing assignments to avoid duplicates

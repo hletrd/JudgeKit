@@ -10,6 +10,7 @@ import { nanoid } from "nanoid";
 import { createRoleSchema } from "@/lib/validators/roles";
 import { isBuiltinRole } from "@/lib/capabilities/types";
 import { createApiHandler } from "@/lib/api/handler";
+import { getDbNowUncached } from "@/lib/db-time";
 
 export const GET = createApiHandler({
   handler: async (req: NextRequest, { user }) => {
@@ -71,7 +72,7 @@ export const POST = createApiHandler({
     }
 
     const id = nanoid();
-    const now = new Date();
+    const now = await getDbNowUncached();
 
     // Atomic uniqueness check + insert to prevent TOCTOU race
     try {

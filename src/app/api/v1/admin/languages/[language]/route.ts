@@ -6,6 +6,7 @@ import { db } from "@/lib/db";
 import { languageConfigs } from "@/lib/db/schema";
 import { eq } from "drizzle-orm";
 import { recordAuditEvent } from "@/lib/audit/events";
+import { getDbNowUncached } from "@/lib/db-time";
 
 const updateLanguageSchema = z.object({
   dockerImage: z.string().min(1).max(200).optional(),
@@ -41,7 +42,7 @@ export const PATCH = createApiHandler({
 
     if (existing.length === 0) return notFound("language");
 
-    const updateValues: Record<string, unknown> = { updatedAt: new Date() };
+    const updateValues: Record<string, unknown> = { updatedAt: await getDbNowUncached() };
     if (body.dockerImage !== undefined) updateValues.dockerImage = body.dockerImage;
     if (body.compileCommand !== undefined) updateValues.compileCommand = body.compileCommand;
     if (body.runCommand !== undefined) updateValues.runCommand = body.runCommand;
