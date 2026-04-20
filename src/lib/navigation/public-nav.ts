@@ -11,6 +11,12 @@ type HeaderItem = {
   label: string;
 };
 
+type DropdownItem = {
+  href: string;
+  label: string;
+  capability?: string;
+};
+
 /**
  * Build the public navigation items for PublicHeader.
  * Uses the `publicShell.nav.*` i18n namespace.
@@ -39,4 +45,38 @@ export function getPublicNavActions(
     { href: "/login", label: tAuth("signIn") },
     ...(publicSignupEnabled ? [{ href: "/signup", label: tAuth("signUp") }] : []),
   ];
+}
+
+/**
+ * Dropdown menu item definitions for the authenticated user.
+ *
+ * The `label` field is a `publicShell.nav.*` i18n key suffix.
+ * The `capability` field, when set, gates the item behind the
+ * corresponding user capability. When absent, the item is always shown.
+ * Capability checks must stay aligned with AppSidebar's filterItems().
+ */
+const DROPDOWN_ITEM_DEFINITIONS: DropdownItem[] = [
+  { href: "/dashboard", label: "dashboard" },
+  { href: "/dashboard/problems", label: "problems", capability: "problems.create" },
+  { href: "/dashboard/groups", label: "groups", capability: "groups.view_all" },
+  { href: "/dashboard/submissions", label: "mySubmissions" },
+  { href: "/dashboard/contests", label: "contests" },
+  { href: "/dashboard/profile", label: "profile" },
+  { href: "/dashboard/admin", label: "admin", capability: "system.settings" },
+];
+
+/**
+ * Build the dropdown menu items for the authenticated user.
+ *
+ * Uses capability-based filtering when `capabilities` is available.
+ * When capabilities are absent (e.g. session not yet resolved), only
+ * items that require no specific capability are shown.
+ */
+export function getDropdownItems(capabilities?: string[]): DropdownItem[] {
+  const capsSet = capabilities ? new Set(capabilities) : null;
+
+  return DROPDOWN_ITEM_DEFINITIONS.filter((item) => {
+    if (!item.capability) return true;
+    return capsSet?.has(item.capability) ?? false;
+  });
 }

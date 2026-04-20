@@ -16,17 +16,12 @@ import {
 import { cn } from "@/lib/utils";
 import { handleSignOutWithCleanup } from "@/lib/auth/sign-out";
 import { buildLocalizedHref } from "@/lib/locale-paths";
+import { getDropdownItems } from "@/lib/navigation/public-nav";
 import { Menu, X, ChevronDown, LogOut, LayoutDashboard, FileText, Users, ClipboardList, Settings, Shield, Timer } from "lucide-react";
 
 type HeaderItem = {
   href: string;
   label: string;
-};
-
-type DropdownItem = {
-  href: string;
-  label: string;
-  icon?: React.ReactNode;
 };
 
 type PublicHeaderProps = {
@@ -58,41 +53,18 @@ function isActivePath(pathname: string, href: string) {
 }
 
 /**
- * Build dropdown menu items for the authenticated user.
- *
- * Uses capability-based filtering when `capabilities` is available.
- * When capabilities are absent (e.g. session not yet resolved), only
- * items that require no specific capability are shown.
- * Capability checks must stay aligned with AppSidebar's filterItems().
+ * Map dropdown item hrefs to icons for rendering in the header.
+ * Must stay aligned with DROPDOWN_ITEM_DEFINITIONS in public-nav.ts.
  */
-function getDropdownItems(_role?: string, capabilities?: string[]): DropdownItem[] {
-  const capsSet = capabilities ? new Set(capabilities) : null;
-
-  const canCreateProblems = capsSet?.has("problems.create") ?? false;
-  const canViewAllGroups = capsSet?.has("groups.view_all") ?? false;
-  const canAdminSystem = capsSet?.has("system.settings") ?? false;
-
-  const items: DropdownItem[] = [
-    { href: "/dashboard", label: "dashboard", icon: <LayoutDashboard className="size-4" /> },
-  ];
-
-  if (canCreateProblems) {
-    items.push({ href: "/dashboard/problems", label: "problems", icon: <FileText className="size-4" /> });
-  }
-  if (canViewAllGroups) {
-    items.push({ href: "/dashboard/groups", label: "groups", icon: <Users className="size-4" /> });
-  }
-
-  items.push({ href: "/dashboard/submissions", label: "mySubmissions", icon: <ClipboardList className="size-4" /> });
-  items.push({ href: "/dashboard/contests", label: "contests", icon: <Timer className="size-4" /> });
-  items.push({ href: "/dashboard/profile", label: "profile", icon: <Settings className="size-4" /> });
-
-  if (canAdminSystem) {
-    items.push({ href: "/dashboard/admin", label: "admin", icon: <Shield className="size-4" /> });
-  }
-
-  return items;
-}
+const DROPDOWN_ICONS: Record<string, React.ReactNode> = {
+  "/dashboard": <LayoutDashboard className="size-4" />,
+  "/dashboard/problems": <FileText className="size-4" />,
+  "/dashboard/groups": <Users className="size-4" />,
+  "/dashboard/submissions": <ClipboardList className="size-4" />,
+  "/dashboard/contests": <Timer className="size-4" />,
+  "/dashboard/profile": <Settings className="size-4" />,
+  "/dashboard/admin": <Shield className="size-4" />,
+};
 
 export function PublicHeader({ siteTitle, items, actions, loggedInUser, leadingSlot, trailingSlot }: PublicHeaderProps) {
   const pathname = usePathname();
@@ -107,7 +79,7 @@ export function PublicHeader({ siteTitle, items, actions, loggedInUser, leadingS
   const panelRef = useRef<HTMLDivElement>(null);
   const previousPathnameRef = useRef(pathname);
 
-  const dropdownItems = getDropdownItems(loggedInUser?.role, loggedInUser?.capabilities);
+  const dropdownItems = getDropdownItems(loggedInUser?.capabilities);
 
   // Close menu on route change
   useEffect(() => {
@@ -240,7 +212,7 @@ export function PublicHeader({ siteTitle, items, actions, loggedInUser, leadingS
                       href={buildLocalizedHref(item.href, locale)}
                       className="flex w-full items-center gap-2"
                     >
-                      {item.icon}
+                      {DROPDOWN_ICONS[item.href]}
                       {tShell(`nav.${item.label}`)}
                     </Link>
                   </DropdownMenuItem>
@@ -337,7 +309,7 @@ export function PublicHeader({ siteTitle, items, actions, loggedInUser, leadingS
                     onClick={closeMobileMenu}
                     className="flex items-center gap-2 rounded-md px-3 py-2 text-sm text-muted-foreground transition-colors hover:bg-accent hover:text-accent-foreground"
                   >
-                    {item.icon}
+                    {DROPDOWN_ICONS[item.href]}
                     {tShell(`nav.${item.label}`)}
                   </Link>
                 ))}
