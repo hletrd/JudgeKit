@@ -4,6 +4,7 @@ import { db } from "@/lib/db";
 import { assignments, contestAccessTokens, enrollments } from "@/lib/db/schema";
 import { and, eq } from "drizzle-orm";
 import { withUpdatedAt } from "@/lib/db/helpers";
+import { getDbNowUncached } from "@/lib/db-time";
 import { rawQueryOne } from "@/lib/db/queries";
 
 /**
@@ -28,9 +29,10 @@ export function generateAccessCode(): string {
  * Set or regenerate an access code for an assignment.
  */
 export async function setAccessCode(assignmentId: string, code?: string): Promise<string> {
+  const now = await getDbNowUncached();
   const persistAccessCode = async (accessCode: string) => {
     await db.update(assignments)
-      .set(withUpdatedAt({ accessCode }))
+      .set(withUpdatedAt({ accessCode }, now))
       .where(eq(assignments.id, assignmentId));
     return accessCode;
   };
@@ -65,8 +67,9 @@ export async function setAccessCode(assignmentId: string, code?: string): Promis
  * Revoke (clear) the access code for an assignment.
  */
 export async function revokeAccessCode(assignmentId: string): Promise<void> {
+  const now = await getDbNowUncached();
   await db.update(assignments)
-    .set(withUpdatedAt({ accessCode: null }))
+    .set(withUpdatedAt({ accessCode: null }, now))
     .where(eq(assignments.id, assignmentId));
 }
 
@@ -167,7 +170,7 @@ export async function redeemAccessCode(
               id: nanoid(),
               userId,
               groupId: assignment.groupId,
-              enrolledAt: new Date(),
+              enrolledAt: now,
             })
             .onConflictDoNothing({
               target: [enrollments.userId, enrollments.groupId],
@@ -186,7 +189,7 @@ export async function redeemAccessCode(
           id: nanoid(),
           assignmentId: assignment.id,
           userId,
-          redeemedAt: new Date(),
+          redeemedAt: now,
           ipAddress: ipAddress ?? null,
         });
 

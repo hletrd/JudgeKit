@@ -38,8 +38,12 @@ vi.mock("@/lib/db/queries", () => ({
   rawQueryOne: vi.fn().mockResolvedValue({ now: new Date("2026-04-20T12:00:00Z") }),
 }));
 
+vi.mock("@/lib/db-time", () => ({
+  getDbNowUncached: vi.fn().mockResolvedValue(new Date("2026-04-20T12:00:00Z")),
+}));
+
 vi.mock("@/lib/db/helpers", () => ({
-  withUpdatedAt: <T extends Record<string, unknown>>(value: T) => value,
+  withUpdatedAt: <T extends Record<string, unknown>>(value: T, _now?: Date) => value,
 }));
 
 vi.mock("@/lib/db/schema", () => ({
