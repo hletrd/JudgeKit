@@ -11,6 +11,7 @@ import {
 import { canManageContest, getContestAssignment } from "@/lib/assignments/contests";
 import { createRecruitingInvitationSchema } from "@/lib/validators/recruiting-invitations";
 import { recordAuditEvent } from "@/lib/audit/events";
+import { getDbNowUncached } from "@/lib/db-time";
 
 export const GET = createApiHandler({
   auth: { capabilities: ["recruiting.manage_invitations"] },
@@ -61,12 +62,30 @@ export const POST = createApiHandler({
           }
         }
 
+        // Compute expiresAt server-side using DB time instead of accepting a
+        // client-computed timestamp. This ensures the stored expiry is
+        // consistent with the NOW()-based isExpired check.
+        let expiresAt: Date | null = null;
+        if (body.expiryDays) {
+          const dbNow = await getDbNowUncached();
+          expiresAt = new Date(dbNow.getTime() + body.expiryDays * 86400000);
+        } else if (body.expiryDate) {
+          // Custom date: compute end-of-day UTC to avoid timezone-dependent results.
+          // The client sends a bare date (YYYY-MM-DD); we set 23:59:59 UTC.
+          expiresAt = new Date(`${body.expiryDate}T23:59:59Z`);
+          // Validate the date is in the future (relative to DB time)
+          const dbNow = await getDbNowUncached();
+          if (expiresAt <= dbNow) {
+            throw new Error("expiryDateInPast");
+          }
+        }
+
         return createRecruitingInvitation({
           assignmentId,
           candidateName: body.candidateName,
           candidateEmail: body.candidateEmail,
           metadata: body.metadata,
-          expiresAt: body.expiresAt ? new Date(body.expiresAt) : null,
+          expiresAt,
           createdBy: user.id,
         }, tx);
       });

@@ -10,6 +10,7 @@ import {
 import { canManageContest, getContestAssignment } from "@/lib/assignments/contests";
 import { updateRecruitingInvitationSchema } from "@/lib/validators/recruiting-invitations";
 import { recordAuditEvent } from "@/lib/audit/events";
+import { getDbNowUncached } from "@/lib/db-time";
 
 type AuthorizedInvitationResult =
   | {
@@ -102,10 +103,25 @@ export const PATCH = createApiHandler({
       }
     }
 
+    // Compute expiresAt server-side from expiryDays or expiryDate using DB time
+    let expiresAtUpdate: Date | null | undefined = undefined;
+    if (body.expiryDays !== undefined || body.expiryDate !== undefined) {
+      const dbNow = await getDbNowUncached();
+      if (body.expiryDays) {
+        expiresAtUpdate = new Date(dbNow.getTime() + body.expiryDays * 86400000);
+      } else if (body.expiryDate) {
+        expiresAtUpdate = new Date(`${body.expiryDate}T23:59:59Z`);
+        if (expiresAtUpdate <= dbNow) {
+          return apiError("expiryDateInPast", 400);
+        }
+      } else {
+        // expiryDays: null or expiryDate: null means remove the expiry
+        expiresAtUpdate = null;
+      }
+    }
+
     await updateRecruitingInvitation(params.invitationId, {
-      expiresAt: body.expiresAt !== undefined
-        ? (body.expiresAt ? new Date(body.expiresAt) : null)
-        : undefined,
+      expiresAt: expiresAtUpdate,
       metadata: body.metadata,
       status: body.status,
     });

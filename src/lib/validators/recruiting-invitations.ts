@@ -4,11 +4,15 @@ export const createRecruitingInvitationSchema = z.object({
   candidateName: z.string().min(1).max(255),
   candidateEmail: z.string().email().max(255),
   metadata: z.record(z.string(), z.string()).optional().default({}),
-  expiresAt: z.string().datetime().nullable().optional(),
+  expiryDays: z.number().int().min(1).max(3650).nullable().optional(),
+  // For custom date selection: the client sends the date (YYYY-MM-DD) and the
+  // server computes the end-of-day UTC timestamp.
+  expiryDate: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).nullable().optional(),
 });
 
 export const updateRecruitingInvitationSchema = z.object({
-  expiresAt: z.string().datetime().nullable().optional(),
+  expiryDays: z.number().int().min(1).max(3650).nullable().optional(),
+  expiryDate: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).nullable().optional(),
   metadata: z.record(z.string(), z.string()).optional(),
   status: z.enum(["revoked"]).optional(),
   resetAccountPassword: z.literal(true).optional(),

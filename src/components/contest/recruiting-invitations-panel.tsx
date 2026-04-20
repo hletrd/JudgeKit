@@ -133,12 +133,15 @@ export function RecruitingInvitationsPanel({ assignmentId }: { assignmentId: str
     if (!createName.trim()) return;
     setCreating(true);
     try {
-      let expiresAt: string | null = null;
+      // Send expiryDays or expiryDate instead of a client-computed timestamp
+      // so the server computes expiresAt using authoritative DB time.
+      let expiryDays: number | null = null;
+      let expiryDate: string | null = null;
       if (createExpiry === "custom" && customExpiryDate) {
-        expiresAt = new Date(customExpiryDate + "T23:59:59").toISOString();
+        // Send the bare date; server computes end-of-day UTC.
+        expiryDate = customExpiryDate;
       } else if (createExpiry !== "none" && createExpiry !== "custom") {
-        const days = createExpiry === "7d" ? 7 : createExpiry === "30d" ? 30 : 90;
-        expiresAt = new Date(Date.now() + days * 86400000).toISOString();
+        expiryDays = createExpiry === "7d" ? 7 : createExpiry === "30d" ? 30 : 90;
       }
 
       const metadata: Record<string, string> = {};
@@ -153,7 +156,8 @@ export function RecruitingInvitationsPanel({ assignmentId }: { assignmentId: str
           candidateName: createName.trim(),
           candidateEmail: createEmail.trim() || undefined,
           metadata: Object.keys(metadata).length > 0 ? metadata : undefined,
-          expiresAt,
+          expiryDays,
+          expiryDate,
         }),
       });
 
