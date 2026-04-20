@@ -298,6 +298,10 @@ export async function redeemRecruitingToken(
   // Transaction: read invitation + validate + create user + enroll + claim (atomic)
   try {
     return await db.transaction(async (tx) => {
+      // All timestamps in this transaction use DB server time (dbNow) for
+      // consistency with the atomic NOW() expiry check at the claim step.
+      const dbNow = await getDbNowUncached();
+
       // Read invitation inside transaction for consistent snapshot
       const [invitation] = await tx
         .select({
@@ -358,8 +362,8 @@ export async function redeemRecruitingToken(
             .set({
               passwordHash: nextPasswordHash,
               mustChangePassword: false,
-              tokenInvalidatedAt: await getDbNowUncached(),
-              updatedAt: new Date(),
+              tokenInvalidatedAt: dbNow,
+              updatedAt: dbNow,
             })
             .where(eq(users.id, existingUser.id));
 
@@ -370,7 +374,7 @@ export async function redeemRecruitingToken(
                 ...(invitation.metadata ?? {}),
                 [ACCOUNT_PASSWORD_RESET_REQUIRED_KEY]: "false",
               },
-              updatedAt: new Date(),
+              updatedAt: dbNow,
             })
             .where(eq(recruitingInvitations.id, invitation.id));
         } else {
@@ -387,7 +391,7 @@ export async function redeemRecruitingToken(
             const newHash = await hashPassword(accountPassword);
             await tx
               .update(users)
-              .set({ passwordHash: newHash, updatedAt: new Date() })
+              .set({ passwordHash: newHash, updatedAt: dbNow })
               .where(eq(users.id, existingUser.id));
           }
         }
@@ -475,14 +479,14 @@ export async function redeemRecruitingToken(
         id: nanoid(),
         userId: uid,
         groupId: assignment.groupId,
-        enrolledAt: new Date(),
+        enrolledAt: dbNow,
       });
 
       await tx.insert(contestAccessTokens).values({
         id: nanoid(),
         assignmentId: assignment.id,
         userId: uid,
-        redeemedAt: new Date(),
+        redeemedAt: dbNow,
         ipAddress: ipAddress ?? null,
       });
 
@@ -492,9 +496,9 @@ export async function redeemRecruitingToken(
         .set({
           status: "redeemed",
           userId: uid,
-          redeemedAt: new Date(),
+          redeemedAt: dbNow,
           ipAddress: ipAddress ?? null,
-          updatedAt: new Date(),
+          updatedAt: dbNow,
         })
         .where(
           and(
