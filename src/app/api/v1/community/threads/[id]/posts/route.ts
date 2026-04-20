@@ -8,6 +8,7 @@ import { canAccessProblem } from "@/lib/auth/permissions";
 import { sanitizeMarkdown } from "@/lib/security/sanitize-html";
 import { eq } from "drizzle-orm";
 import { recordAuditEvent } from "@/lib/audit/events";
+import { getDbNowUncached } from "@/lib/db-time";
 
 export const POST = createApiHandler({
   auth: true,
@@ -49,7 +50,7 @@ export const POST = createApiHandler({
       }).returning();
 
       await tx.update(discussionThreads)
-        .set({ updatedAt: new Date() })
+        .set({ updatedAt: await getDbNowUncached() })
         .where(eq(discussionThreads.id, thread.id));
 
       return [post];

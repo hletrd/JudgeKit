@@ -7,6 +7,7 @@ import { discussionThreads } from "@/lib/db/schema";
 import { canModerateDiscussions } from "@/lib/discussions/permissions";
 import { eq } from "drizzle-orm";
 import { recordAuditEvent } from "@/lib/audit/events";
+import { getDbNowUncached } from "@/lib/db-time";
 
 const discussionThreadModerationSchema = z
   .object({
@@ -36,11 +37,12 @@ export const PATCH = createApiHandler({
       return notFound("Discussion thread");
     }
 
+    const now = await getDbNowUncached();
     const [updated] = await db.update(discussionThreads)
       .set({
-        lockedAt: body.locked === undefined ? thread.lockedAt : body.locked ? new Date() : null,
-        pinnedAt: body.pinned === undefined ? thread.pinnedAt : body.pinned ? new Date() : null,
-        updatedAt: new Date(),
+        lockedAt: body.locked === undefined ? thread.lockedAt : body.locked ? now : null,
+        pinnedAt: body.pinned === undefined ? thread.pinnedAt : body.pinned ? now : null,
+        updatedAt: now,
       })
       .where(eq(discussionThreads.id, id))
       .returning();

@@ -6,6 +6,7 @@ import { canAccessProblem } from "@/lib/auth/permissions";
 import { db } from "@/lib/db";
 import { communityVotes, discussionPosts, discussionThreads } from "@/lib/db/schema";
 import { communityVoteSchema } from "@/lib/validators/discussions";
+import { getDbNowUncached } from "@/lib/db-time";
 
 export const POST = createApiHandler({
   auth: true,
@@ -75,6 +76,7 @@ export const POST = createApiHandler({
     // - Same vote type → delete (toggle off)
     // - Different vote type → update (change vote)
     // - No existing vote → insert (new vote)
+    const now = await getDbNowUncached();
     const [summary] = await db.transaction(async (tx) => {
       const existing = await tx.query.communityVotes.findFirst({
         where: and(
@@ -92,7 +94,7 @@ export const POST = createApiHandler({
           .update(communityVotes)
           .set({
             voteType: body.voteType,
-            updatedAt: new Date(),
+            updatedAt: now,
           })
           .where(eq(communityVotes.id, existing.id));
       } else {
@@ -103,7 +105,7 @@ export const POST = createApiHandler({
           voteType: body.voteType,
         }).onConflictDoUpdate({
           target: [communityVotes.targetType, communityVotes.targetId, communityVotes.userId],
-          set: { voteType: body.voteType, updatedAt: new Date() },
+          set: { voteType: body.voteType, updatedAt: now },
         });
       }
 
