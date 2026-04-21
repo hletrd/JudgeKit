@@ -55,6 +55,7 @@ export default async function NotFoundPage() {
       />
       <main id="main-content" className="mx-auto flex min-h-[calc(100dvh-80px)] w-full max-w-6xl items-center justify-center px-4 py-10 sm:px-6 lg:px-8">
         <div className="w-full max-w-xl rounded-3xl border bg-background p-8 text-center shadow-sm sm:p-10">
+          {/* "404" is a numeric status code — tracking-[0.2em] is safe for Korean locale */}
           <p className="text-sm font-medium uppercase tracking-[0.2em] text-muted-foreground">404</p>
           {/* tracking-tight is for Latin headings — skip for Korean to preserve readability */}
           <h1 className={`mt-4 text-3xl font-semibold${locale !== "ko" ? " tracking-tight" : ""} sm:text-4xl`}>
