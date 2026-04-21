@@ -5,6 +5,7 @@ import { useTranslations } from "next-intl";
 import { toast } from "sonner";
 import { ShieldAlert } from "lucide-react";
 import { apiFetch } from "@/lib/api/client";
+import { Button } from "@/components/ui/button";
 
 interface AntiCheatMonitorProps {
   assignmentId: string;
@@ -241,12 +242,12 @@ export function AntiCheatMonitor({
             <li>{t("privacyNoticeIpAddress")}</li>
             <li>{t("privacyNoticeCodeSnapshots")}</li>
           </ul>
-          <button
-            className="w-full rounded-md bg-primary px-4 py-2 text-sm font-medium text-primary-foreground hover:bg-primary/90"
+          <Button variant="default" className="w-full"
+            
             onClick={() => setShowPrivacyNotice(false)}
           >
             {t("privacyNoticeAccept")}
-          </button>
+          </Button>
         </div>
       </div>
     );
