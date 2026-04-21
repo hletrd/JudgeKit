@@ -1930,7 +1930,8 @@
       "loggingNotice": "메시지는 지원 품질을 높이고 오남용을 조사하기 위해 권한이 있는 운영자가 저장하고 검토할 수 있습니다.",
       "chatLogsRetentionNotice": "채팅 기록은 다른 검토 절차로 별도 보관되지 않는 한 {days}일 후 자동 삭제됩니다.",
       "chatLogsAccessNotice": "채팅 로그 권한이 있는 운영자만 지원, 안전, 평가 거버넌스 목적에서 필요한 범위로 검토해야 합니다.",
-      "chatLogsAuditNotice": "채팅 로그 세션 열람은 감사 로그에 기록됩니다."
+      "chatLogsAuditNotice": "채팅 로그 세션 열람은 감사 로그에 기록됩니다.",
+      "fetchError": "채팅 로그를 불러오지 못했습니다."
     }
   },
   "rankings": {
@@ -2075,7 +2076,8 @@
       "inviteFailed": "사용자 초대에 실패했습니다",
       "userNotFound": "사용자를 찾을 수 없습니다",
       "noResults": "사용자를 찾을 수 없습니다",
-      "searching": "검색 중..."
+      "searching": "검색 중...",
+      "searchFailed": "검색에 실패했습니다. 다시 시도해 주세요."
     },
     "antiCheat": {
       "title": "부정행위 신호 모니터",
@@ -2290,6 +2292,7 @@
       "problemsSolved": "AC된 문제"
     },
     "manageContest": "대회 관리",
+    "fetchError": "대회 데이터를 불러오지 못했습니다.",
     "announcements": {
       "title": "공지",
       "titleLabel": "제목",
@@ -2571,7 +2574,8 @@
     "compileRuntimeCount": "컴파일/런타임 오류: {count}",
     "timeLimitCount": "시간 초과: {count}",
     "pendingCount": "채점 대기: {count}",
-    "recentLabel": "최근 제출"
+    "recentLabel": "최근 제출",
+    "fetchError": "제출 통계를 불러오지 못했습니다."
   },
   "recruit": {
     "title": "코딩 평가",

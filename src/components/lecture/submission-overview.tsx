@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useState } from "react";
 import { useTranslations } from "next-intl";
 import { X, CheckCircle2, XCircle, AlertTriangle, Clock3, RefreshCw } from "lucide-react";
+import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 import { buildStatusLabels } from "@/lib/judge/status-labels";
@@ -99,19 +100,38 @@ export function SubmissionOverview({
       setStats(newStats);
       setRecent(submissions.slice(0, 10));
     } catch {
-      // ignore
+      toast.error(t("fetchError"));
     } finally {
       setLoading(false);
     }
-  }, [assignmentId, problemId]);
+  }, [assignmentId, problemId, t]);
 
   useEffect(() => {
     if (!open) return;
+    let interval: ReturnType<typeof setInterval> | null = null;
+
+    const syncVisibility = () => {
+      if (document.visibilityState === "visible") {
+        void fetchStats();
+        if (!interval) {
+          interval = setInterval(() => {
+            void fetchStats();
+          }, POLL_INTERVAL_MS);
+        }
+      } else if (interval) {
+        clearInterval(interval);
+        interval = null;
+      }
+    };
+
     void fetchStats();
-    const interval = setInterval(() => {
-      void fetchStats();
-    }, POLL_INTERVAL_MS);
-    return () => clearInterval(interval);
+    syncVisibility();
+    document.addEventListener("visibilitychange", syncVisibility);
+
+    return () => {
+      document.removeEventListener("visibilitychange", syncVisibility);
+      if (interval) clearInterval(interval);
+    };
   }, [open, fetchStats]);
 
   if (!open) return null;

@@ -63,7 +63,8 @@ const navGroups: NavGroup[] = [
         titleKey: "problems",
         href: "/dashboard/problems",
         icon: BookOpen,
-        titleKeyByMode: { recruiting: "challenges" },
+        // Hidden in recruiting mode — no need for titleKeyByMode since
+        // hiddenInModes takes precedence and the item is never rendered.
         hiddenInModes: ["recruiting"],
       },
     ],

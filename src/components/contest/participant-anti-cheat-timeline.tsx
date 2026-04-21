@@ -2,6 +2,7 @@
 
 import { useState, useEffect, useCallback, useMemo } from "react";
 import { useTranslations, useLocale } from "next-intl";
+import { toast } from "sonner";
 import { useSystemTimezone } from "@/contexts/timezone-context";
 import { formatDateTimeInTimeZone } from "@/lib/datetime";
 import { apiFetch } from "@/lib/api/client";
@@ -118,11 +119,11 @@ export function ParticipantAntiCheatTimeline({
         setOffset((prev) => prev + json.data.events.length);
       }
     } catch {
-      // silently fail on load-more
+      toast.error(t("fetchError"));
     } finally {
       setLoadingMore(false);
     }
-  }, [assignmentId, userId, offset]);
+  }, [assignmentId, userId, offset, t]);
 
   useEffect(() => {
     fetchEvents();

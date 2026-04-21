@@ -2,6 +2,7 @@
 
 import { useState, useEffect, useCallback } from "react";
 import { useTranslations, useLocale } from "next-intl";
+import { toast } from "sonner";
 import { useSystemTimezone } from "@/contexts/timezone-context";
 import { formatDateTimeInTimeZone } from "@/lib/datetime";
 import { AssistantMarkdown } from "@/components/assistant-markdown";
@@ -59,11 +60,11 @@ export function ChatLogsClient() {
       setTotal(data.total ?? 0);
       setPage(p);
     } catch {
-      // ignore
+      toast.error(t("fetchError"));
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, [t]);
 
   const fetchMessages = useCallback(async (sessionId: string) => {
     setLoading(true);
@@ -73,11 +74,11 @@ export function ChatLogsClient() {
       setMessages(data.messages ?? []);
       setSelectedSession(sessionId);
     } catch {
-      // ignore
+      toast.error(t("fetchError"));
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, [t]);
 
   useEffect(() => {
     void fetchSessions(1);

@@ -47,12 +47,12 @@ export function InviteParticipants({ assignmentId }: InviteParticipantsProps) {
           setResults(data.data ?? []);
         }
       } catch {
-        // ignore
+        toast.error(t("searchFailed"));
       } finally {
         setIsSearching(false);
       }
     },
-    [assignmentId]
+    [assignmentId, t]
   );
 
   useEffect(() => {

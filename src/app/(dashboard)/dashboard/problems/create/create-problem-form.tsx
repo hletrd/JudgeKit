@@ -221,7 +221,8 @@ export default function CreateProblemForm({
         setTagSuggestions(data.data ?? []);
       }
     } catch {
-      // ignore
+      // Tag suggestions are non-critical — log a warning instead of surfacing to user.
+      console.warn("Tag suggestions fetch failed");
     }
   }, []);
 

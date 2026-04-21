@@ -1930,7 +1930,8 @@
       "loggingNotice": "Messages may be stored and reviewed by authorized staff to improve support and investigate misuse.",
       "chatLogsRetentionNotice": "Chat transcripts are pruned after {days} days unless exported through other review workflows.",
       "chatLogsAccessNotice": "Only authorized staff with chat-log access should review transcripts, and only for support, safety, or assessment-governance reasons.",
-      "chatLogsAuditNotice": "Chat-log session views are audit logged."
+      "chatLogsAuditNotice": "Chat-log session views are audit logged.",
+      "fetchError": "Failed to load chat logs."
     }
   },
   "rankings": {
@@ -2075,7 +2076,8 @@
       "inviteFailed": "Failed to invite user",
       "userNotFound": "User not found",
       "noResults": "No users found",
-      "searching": "Searching..."
+      "searching": "Searching...",
+      "searchFailed": "Search failed. Please try again."
     },
     "antiCheat": {
       "title": "Anti-Cheat Signals",
@@ -2290,6 +2292,7 @@
       "problemsSolved": "Problems with AC"
     },
     "manageContest": "Manage Contest",
+    "fetchError": "Failed to load contest data.",
     "announcements": {
       "title": "Announcements",
       "titleLabel": "Title",
@@ -2571,7 +2574,8 @@
     "compileRuntimeCount": "CE/RE: {count}",
     "timeLimitCount": "TLE: {count}",
     "pendingCount": "Pending: {count}",
-    "recentLabel": "Recent"
+    "recentLabel": "Recent",
+    "fetchError": "Failed to load submission stats."
   },
   "recruit": {
     "title": "Coding Assessment",

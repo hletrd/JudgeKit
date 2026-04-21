@@ -6,8 +6,12 @@ import { usePathname } from "next/navigation";
 /**
  * Next.js 16 RSC streaming bug: Host/X-Forwarded-Host headers from nginx
  * corrupt RSC payloads during client-side navigation on contest routes.
- * This layout intercepts all <a> clicks within contest pages and forces
+ * This layout intercepts internal <a> clicks within contest pages and forces
  * full page navigation (which always works) instead of client-side RSC.
+ *
+ * TODO: Remove this workaround once the upstream Next.js bug is fixed.
+ * Track: https://github.com/vercel/next.js/issues (search for RSC streaming
+ * corruption with proxy headers). If no issue exists, one should be filed.
  */
 export default function ContestsLayout({ children }: { children: React.ReactNode }) {
   const pathname = usePathname();
@@ -19,11 +23,10 @@ export default function ContestsLayout({ children }: { children: React.ReactNode
       if (!anchor) return;
 
       const href = anchor.getAttribute("href");
-      if (!href || href.startsWith("#") || href.startsWith("mailto:") || href.startsWith("http")) return;
+      if (!href || href.startsWith("#") || href.startsWith("mailto:") || href.startsWith("http") || href.startsWith("javascript:") || href.startsWith("data:")) return;
 
       // Force full page navigation for internal links
       me.preventDefault();
-      me.stopPropagation();
       window.location.href = href;
     };
 
