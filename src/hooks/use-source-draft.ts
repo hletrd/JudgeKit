@@ -185,12 +185,12 @@ function readDraftPayload(storageKey: string, languages: readonly string[]) {
     const parsedValue = JSON.parse(rawValue) as Partial<DraftPayload>;
 
     if (parsedValue.version !== STORAGE_VERSION || typeof parsedValue.updatedAt !== "number") {
-      window.localStorage.removeItem(storageKey);
+      try { window.localStorage.removeItem(storageKey); } catch {}
       return createEmptyDraftState();
     }
 
     if (Date.now() - parsedValue.updatedAt > DRAFT_TTL_MS) {
-      window.localStorage.removeItem(storageKey);
+      try { window.localStorage.removeItem(storageKey); } catch {}
       return createEmptyDraftState();
     }
 
@@ -202,7 +202,7 @@ function readDraftPayload(storageKey: string, languages: readonly string[]) {
     );
 
     if (Object.keys(drafts).length === 0) {
-      window.localStorage.removeItem(storageKey);
+      try { window.localStorage.removeItem(storageKey); } catch {}
       return createEmptyDraftState();
     }
 
@@ -211,7 +211,7 @@ function readDraftPayload(storageKey: string, languages: readonly string[]) {
       latestLanguage,
     };
   } catch {
-    window.localStorage.removeItem(storageKey);
+    try { window.localStorage.removeItem(storageKey); } catch {}
     return createEmptyDraftState();
   }
 }
@@ -271,7 +271,7 @@ export function useSourceDraft({ userId, problemId, languages, initialLanguage }
         const drafts = normalizeDrafts(state.drafts, availableLanguages);
 
         if (Object.keys(drafts).length === 0) {
-          window.localStorage.removeItem(storageKey);
+          try { window.localStorage.removeItem(storageKey); } catch {}
           return;
         }
 
@@ -406,7 +406,7 @@ export function useSourceDraft({ userId, problemId, languages, initialLanguage }
         isReady: true,
       }),
     );
-    window.localStorage.removeItem(storageKey);
+    try { window.localStorage.removeItem(storageKey); } catch {}
   }, [availableLanguages, draftState.hydratedFallbackLanguage, draftStore, storageKey]);
 
   const isDirty = useMemo(() => {
