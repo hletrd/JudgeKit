@@ -211,3 +211,9 @@ The ConfirmAction discriminated union was already implemented in commit c89d7432
 ## Progress log
 
 - 2026-04-20: Plan created from cycle-22 aggregate review.
+- 2026-04-20: H1 (apiFetch migration for chat widget) DONE.
+- 2026-04-20: M1 (access-code-manager fetchCode error handling) DONE.
+- 2026-04-20: M2 (formatNumber re-export removal) DONE.
+- 2026-04-20: M3 (apiFetch unit tests) DONE.
+- 2026-04-20: M4 (workers page visibility polling) DONE.
+- 2026-04-20: All priority items implemented. Deployed successfully.
