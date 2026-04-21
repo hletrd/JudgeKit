@@ -55,7 +55,9 @@ type NavGroup = {
 
 const navGroups: NavGroup[] = [
   {
-    labelKey: "learning",
+    // No group label: "Learning" group had only one remaining item after
+    // Submissions/Contests/Rankings/Compiler moved to PublicHeader dropdown.
+    labelKey: "",
     items: [
       {
         titleKey: "problems",
@@ -64,9 +66,6 @@ const navGroups: NavGroup[] = [
         titleKeyByMode: { recruiting: "challenges" },
         hiddenInModes: ["recruiting"],
       },
-      // Submissions is available in the PublicHeader dropdown ("My Submissions"),
-      // so it is omitted from the sidebar to reduce navigation overlap.
-      // Contests, Rankings, and Compiler are also in the PublicHeader top nav.
     ],
   },
   {
