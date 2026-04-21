@@ -52,14 +52,6 @@ export function formatDateInTimeZone(
   });
 }
 
-/**
- * Locale-aware number formatting.
- * @deprecated Import from `@/lib/formatting` instead. This re-export exists
- * for backward compatibility during the migration and will be removed in a
- * future release.
- */
-export { formatNumber } from "@/lib/formatting";
-
 export function formatRelativeTimeFromNow(
   value: number | string | Date,
   locale: string | string[] = DEFAULT_LOCALE,
