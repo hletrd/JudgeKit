@@ -14,6 +14,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
+import { apiFetch } from "@/lib/api/client";
 import type { PluginAdminProps } from "@/lib/plugins/types";
 
 type Provider = "openai" | "claude" | "gemini";
@@ -86,9 +87,9 @@ export default function ChatWidgetAdminConfig({ config, onSave }: PluginAdminPro
     setIsTesting(true);
     setTestResult(null);
     try {
-      const response = await fetch("/api/v1/plugins/chat-widget/test-connection", {
+      const response = await apiFetch("/api/v1/plugins/chat-widget/test-connection", {
         method: "POST",
-        headers: { "Content-Type": "application/json", "X-Requested-With": "XMLHttpRequest" },
+        headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           provider,
           apiKey: currentApiKey,

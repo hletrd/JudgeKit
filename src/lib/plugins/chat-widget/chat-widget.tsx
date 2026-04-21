@@ -4,6 +4,7 @@ import { useState, useRef, useEffect, useCallback } from "react";
 import { useTranslations } from "next-intl";
 import { usePathname, useSearchParams } from "next/navigation";
 import { MessageCircle, X, Minus, Send } from "lucide-react";
+import { apiFetch } from "@/lib/api/client";
 import { AssistantMarkdown } from "@/components/assistant-markdown";
 import { useEditorContent } from "@/contexts/editor-content-context";
 
@@ -149,9 +150,9 @@ export default function ChatWidget() {
       const controller = new AbortController();
       abortControllerRef.current = controller;
 
-      const response = await fetch("/api/v1/plugins/chat-widget/chat", {
+      const response = await apiFetch("/api/v1/plugins/chat-widget/chat", {
         method: "POST",
-        headers: { "Content-Type": "application/json", "X-Requested-With": "XMLHttpRequest" },
+        headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           messages: recentMessages.map((m) => ({ role: m.role, content: m.content })),
           context: problemContext ? {
