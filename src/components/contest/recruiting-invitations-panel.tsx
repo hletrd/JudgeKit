@@ -402,7 +402,7 @@ export function RecruitingInvitationsPanel({ assignmentId }: { assignmentId: str
                     <div className="space-y-1">
                       <Input
                         type="date"
-                        aria-label={t("expiryDate")}
+                        aria-label={t("expiresAt")}
                         value={customExpiryDate}
                         onChange={(e) => setCustomExpiryDate(e.target.value)}
                         min={new Date(new Date().getTime() - new Date().getTimezoneOffset() * 60000).toISOString().split("T")[0]}
