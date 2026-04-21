@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useState } from "react";
 import { useLocale, useTranslations } from "next-intl";
 import { toast } from "sonner";
 import { apiFetch } from "@/lib/api/client";
@@ -11,6 +11,7 @@ import { Checkbox } from "@/components/ui/checkbox";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
+import { useVisibilityPolling } from "@/hooks/use-visibility-polling";
 
 type ContestAnnouncement = {
   id: string;
@@ -68,31 +69,7 @@ export function ContestAnnouncements({
     }
   }, [assignmentId, t]);
 
-  useEffect(() => {
-    let interval: ReturnType<typeof setInterval> | null = null;
-
-    const syncVisibility = () => {
-      if (document.visibilityState === "visible") {
-        void loadAnnouncements();
-        if (!interval) {
-          interval = setInterval(() => {
-            void loadAnnouncements();
-          }, refreshInterval);
-        }
-      } else if (interval) {
-        clearInterval(interval);
-        interval = null;
-      }
-    };
-
-    syncVisibility();
-    document.addEventListener("visibilitychange", syncVisibility);
-
-    return () => {
-      document.removeEventListener("visibilitychange", syncVisibility);
-      if (interval) clearInterval(interval);
-    };
-  }, [loadAnnouncements, refreshInterval]);
+  useVisibilityPolling(() => { void loadAnnouncements(); }, refreshInterval);
 
   async function handleSubmit(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault();

@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useMemo, useState } from "react";
 import { useLocale, useTranslations } from "next-intl";
 import { toast } from "sonner";
 import { apiFetch } from "@/lib/api/client";
@@ -8,6 +8,7 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Label } from "@/components/ui/label";
+import { useVisibilityPolling } from "@/hooks/use-visibility-polling";
 import {
   Select,
   SelectContent,
@@ -91,37 +92,7 @@ export function ContestClarifications({
     }
   }, [assignmentId, t]);
 
-  useEffect(() => {
-    let intervalId: ReturnType<typeof setInterval> | null = null;
-
-    function clearPollingInterval() {
-      if (intervalId !== null) {
-        clearInterval(intervalId);
-        intervalId = null;
-      }
-    }
-
-    const syncVisibility = () => {
-      if (document.visibilityState === "visible") {
-        void loadClarifications();
-        // Always clear before creating to prevent duplicate intervals
-        clearPollingInterval();
-        intervalId = setInterval(() => {
-          void loadClarifications();
-        }, refreshInterval);
-      } else {
-        clearPollingInterval();
-      }
-    };
-
-    syncVisibility();
-    document.addEventListener("visibilitychange", syncVisibility);
-
-    return () => {
-      document.removeEventListener("visibilitychange", syncVisibility);
-      clearPollingInterval();
-    };
-  }, [loadClarifications, refreshInterval]);
+  useVisibilityPolling(() => { void loadClarifications(); }, refreshInterval);
 
   async function handleCreate(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault();

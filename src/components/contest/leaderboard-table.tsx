@@ -1,12 +1,13 @@
 "use client";
 
-import { useState, useEffect, useCallback } from "react";
+import { useState, useCallback } from "react";
 import Link from "next/link";
 import { useTranslations } from "next-intl";
 import { apiFetch } from "@/lib/api/client";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
+import { useVisibilityPolling } from "@/hooks/use-visibility-polling";
 import {
   Table,
   TableBody,
@@ -240,32 +241,7 @@ export function LeaderboardTable({
     [assignmentId]
   );
 
-  useEffect(() => {
-    let interval: ReturnType<typeof setInterval> | null = null;
-
-    const syncVisibility = () => {
-      if (document.visibilityState === "visible") {
-        void fetchLeaderboard(true);
-        if (!interval) {
-          interval = setInterval(() => {
-            void fetchLeaderboard(true);
-          }, refreshInterval);
-        }
-      } else if (interval) {
-        clearInterval(interval);
-        interval = null;
-      }
-    };
-
-    fetchLeaderboard();
-    syncVisibility();
-    document.addEventListener("visibilitychange", syncVisibility);
-
-    return () => {
-      document.removeEventListener("visibilitychange", syncVisibility);
-      if (interval) clearInterval(interval);
-    };
-  }, [fetchLeaderboard, refreshInterval]);
+  useVisibilityPolling(() => { void fetchLeaderboard(true); }, refreshInterval);
 
   if (loading && !data) {
     return <SkeletonTable />;
