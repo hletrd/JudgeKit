@@ -2,6 +2,7 @@
 
 import { useState, useEffect, useCallback } from "react";
 import { useTranslations } from "next-intl";
+import { toast } from "sonner";
 import { apiFetch } from "@/lib/api/client";
 import { Card, CardContent } from "@/components/ui/card";
 import { Users, FileText, BarChart3, Trophy } from "lucide-react";
@@ -74,9 +75,9 @@ export function ContestQuickStats({
 
       setStats((prev) => ({ ...prev, submittedCount, avgScore, problemsSolvedCount }));
     } catch {
-      // ignore
+      toast.error(t("fetchError"));
     }
-  }, [assignmentId]);
+  }, [assignmentId, t]);
 
   useEffect(() => {
     let interval: ReturnType<typeof setInterval> | null = null;
