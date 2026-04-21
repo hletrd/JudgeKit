@@ -158,7 +158,6 @@ export default async function SubmissionDetailPage({ params, searchParams }: { p
       }
       showDetailedResults={hideResults ? false : showDetailedResults}
       showRuntimeErrors={hideResults ? false : showRuntimeErrors}
-      userRole={session.user.role}
       userId={session.user.id}
       capabilities={[...caps]}
       problemTimeLimitMs={submission.problem?.timeLimitMs ?? null}

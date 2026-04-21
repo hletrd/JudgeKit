@@ -30,7 +30,6 @@ type SubmissionDetailClientProps = {
   initialSubmission: SubmissionDetailView;
   backHref: string;
   timeZone: string;
-  userRole: string;
   userId: string;
   capabilities: string[];
   problemTimeLimitMs?: number | null;

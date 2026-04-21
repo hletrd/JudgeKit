@@ -171,7 +171,6 @@ export default async function PublicSubmissionDetailPage({ params, searchParams 
         showCompileOutput={showCompileOutput}
         showDetailedResults={showDetailedResults}
         showRuntimeErrors={showRuntimeErrors}
-        userRole={session.user.role}
         userId={session.user.id}
         capabilities={[]}
         problemTimeLimitMs={submission.problem?.timeLimitMs ?? null}
