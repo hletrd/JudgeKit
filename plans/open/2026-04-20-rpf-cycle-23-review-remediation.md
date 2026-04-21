@@ -2,7 +2,7 @@
 
 **Date:** 2026-04-20
 **Source:** `.context/reviews/cycle-23-aggregate.md`
-**Status:** In Progress
+**Status:** All priority items DONE
 
 ## Scope
 
@@ -32,7 +32,7 @@ No cycle-23 review finding is silently dropped. No new refactor-only work is add
   1. Import `apiFetch` from `@/lib/api/client` in `countdown-timer.tsx`.
   2. Replace `fetch("/api/v1/time", { signal: controller.signal })` with `apiFetch("/api/v1/time", { signal: controller.signal })`.
   3. Verify all gates pass.
-- **Status:** PENDING
+- **Status:** DONE
 
 ### M1: Fix `contest-quick-stats.tsx` silent error swallowing (AGG-2)
 
@@ -44,7 +44,7 @@ No cycle-23 review finding is silently dropped. No new refactor-only work is add
   1. Add `toast.error(t("fetchError"))` in the catch block, matching the pattern in `contest-clarifications.tsx` and `contest-announcements.tsx`.
   2. Verify the `contests` i18n namespace has a `fetchError` key (it likely shares the same namespace as other contest components).
   3. Verify all gates pass.
-- **Status:** PENDING
+- **Status:** DONE
 
 ### M2: Refactor `leaderboard-table.tsx` polling to visibility-aware pause/resume (AGG-3, partial)
 
@@ -56,7 +56,7 @@ No cycle-23 review finding is silently dropped. No new refactor-only work is add
   1. Refactor the leaderboard's `useEffect` to pause/resume the interval on visibility change, matching the pattern in `contest-clarifications.tsx`.
   2. Note: The full shared `useVisibilityAwarePolling` hook extraction (ARCH-1) is deferred to avoid a large refactor. This item only fixes the inconsistency in the leaderboard component.
   3. Verify all gates pass.
-- **Status:** PENDING
+- **Status:** DONE
 
 ### M3: Remove AppSidebar "Learning" group label for single-item group (AGG-4)
 
@@ -79,7 +79,7 @@ No cycle-23 review finding is silently dropped. No new refactor-only work is add
   1. Audit remaining dashboard routes against public routes.
   2. Confirm that all dashboard routes with public counterparts have already been redirected (rankings, languages, compiler).
   3. Update the migration plan to enumerate the audit results and mark Phase 4 remaining item as complete or list specific items.
-- **Status:** PENDING
+- **Status:** DONE
 
 ---
 
@@ -227,3 +227,9 @@ The migration plan's Phase 4 remaining work needs clarification. This cycle will
 ## Progress log
 
 - 2026-04-20: Plan created from cycle-23 aggregate review.
+- 2026-04-20: H1 (countdown-timer apiFetch migration) DONE.
+- 2026-04-20: M1 (contest-quick-stats error feedback) DONE.
+- 2026-04-20: M2 (leaderboard visibility-aware polling) DONE.
+- 2026-04-20: M3 (AppSidebar Learning group label removal) DONE.
+- 2026-04-20: M4 (migration plan Phase 4 status update) DONE.
+- 2026-04-20: All priority items implemented. Awaiting deploy.
