@@ -225,7 +225,12 @@ export function LeaderboardTable({
         );
         if (res.ok) {
           const json = await res.json();
-          setData(json.data);
+          // Validate the response shape before setting state
+          if (json.data && typeof json.data === "object" && Array.isArray(json.data.entries)) {
+            setData(json.data);
+          } else if (!isRefresh) {
+            setError(true);
+          }
         } else if (!isRefresh) {
           setError(true);
         }
