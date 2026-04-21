@@ -98,7 +98,7 @@ function AliasCell({ worker, onUpdate }: { worker: Worker; onUpdate: () => void 
       setEditing(false);
       onUpdate();
     } else {
-      toast.error(t("saveFailed"));
+      toast.error(t("fetchError"));
     }
   }
 
