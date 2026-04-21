@@ -12,6 +12,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { apiFetch } from "@/lib/api/client";
 import { toast } from "sonner";
 import { formatDateTimeInTimeZone } from "@/lib/datetime";
+import { formatScore } from "@/lib/formatting";
 import { ACTIVE_SUBMISSION_STATUSES } from "@/lib/submissions/status";
 import { formatSubmissionIdPrefix } from "@/lib/submissions/format";
 import { useTranslations, useLocale } from "next-intl";
@@ -91,7 +92,7 @@ export function SubmissionDetailClient(props: SubmissionDetailClientProps) {
         [submission.language]: submission.sourceCode,
       },
     };
-    localStorage.setItem(key, JSON.stringify(payload));
+    try { localStorage.setItem(key, JSON.stringify(payload)); } catch { /* quota exceeded or private browsing */ }
     router.push(problemHref);
   }
 
@@ -260,7 +261,7 @@ export function SubmissionDetailClient(props: SubmissionDetailClientProps) {
               {t("submitted")}: {submission.submittedAt ? formatDateTimeInTimeZone(submission.submittedAt, locale, props.timeZone) : "-"}
             </p>
             <p>
-              {t("score")}: {submission.score !== null ? Math.round(submission.score * 100) / 100 : "-"}
+              {t("score")}: {submission.score !== null ? formatScore(submission.score, locale) : "-"}
             </p>
             <p>
               {t("time")}: {submission.executionTimeMs !== null ? t("timeValue", { value: submission.executionTimeMs }) : "-"}
