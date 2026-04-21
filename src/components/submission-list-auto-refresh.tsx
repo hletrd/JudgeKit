@@ -37,6 +37,9 @@ export function SubmissionListAutoRefresh({
         // router.refresh() never throws on errors, so we cannot rely on it
         // for backoff. We fetch /api/v1/time (a tiny endpoint) first; only
         // on success do we trigger the actual page revalidation.
+        // Note: /api/v1/time is unauthenticated, so this backoff only
+        // activates for network/server errors, not session expiry. Session
+        // expiry is correctly handled by the middleware redirect.
         const res = await fetch("/api/v1/time", { cache: "no-store" });
         if (!res.ok) throw new Error(`time endpoint returned ${res.status}`);
         router.refresh();
