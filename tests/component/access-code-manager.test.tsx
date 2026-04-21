@@ -80,7 +80,7 @@ describe("AccessCodeManager", () => {
     });
   });
 
-  it("shows an explicit error when clipboard access fails instead of using execCommand fallback", async () => {
+  it("shows an error toast when clipboard access fails", async () => {
     apiFetchMock.mockResolvedValueOnce({
       ok: true,
       json: async () => ({ data: { accessCode: "ABCD1234" } }),
