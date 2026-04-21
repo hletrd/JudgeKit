@@ -269,7 +269,7 @@ No redundant page components remain under `(dashboard)`.
 
 ### Phase 5 — AppSidebar slim-down and non-admin sidebar removal
 
-**Status:** IN PROGRESS (cycle 26)
+**Status:** COMPLETE
 
 **Goal:** Remove the AppSidebar for non-admin users since all their navigation items are now in the PublicHeader dropdown. The sidebar remains essential for admin users who need access to 14 admin-specific nav items.
 
@@ -281,11 +281,12 @@ No redundant page components remain under `(dashboard)`.
 - ~~Remove unused imports (Users, FolderOpen) and getPlatformModePolicy~~ DONE (commit 69c5c62b)
 - Both changes align the PublicHeader dropdown with the AppSidebar's visibility behavior, ensuring no nav items are lost during the transition
 
-**Remaining Phase 5 work:**
-- Evaluate icon-rail mode for admin sidebar (collapsed by default, expand on hover/click)
-- Mobile UX audit: verify admin sidebar behavior on small screens
-- Consider moving remaining non-admin sidebar items (Problems, Groups, Problem Sets) out of sidebar code entirely since the sidebar is now hidden for non-admin users
-- Clean up the `navGroups` constant in AppSidebar — the non-admin group items are now unreachable for non-admin users and redundant with the dropdown for admin users
+**Cycle 27 evaluation:**
+- Mobile UX audit: Admin sidebar already uses the shadcn/ui Sheet (drawer) component on mobile viewports (below 768px). The `SidebarProvider` context properly switches between desktop sidebar and mobile sheet. No changes needed.
+- navGroups cleanup: The `navGroups` constant was already cleaned up in cycle 26 — only `adminGroups` remains with admin-specific items. Non-admin items were removed. No further cleanup needed.
+- Icon-rail mode for admin sidebar: Evaluated but deferred — the current full sidebar provides better usability for 14 admin items. Icon-rail mode would require tooltip-only labels and make the admin section harder to navigate. Can be revisited if admin feedback requests it.
+
+**All Phase 5 remaining work is either complete or evaluated and deferred.**
 
 **Estimated files changed:** ~5-10
 
