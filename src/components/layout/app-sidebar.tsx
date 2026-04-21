@@ -181,6 +181,19 @@ export function AppSidebar({
     || capsSet.has("submissions.view_all")
     || capsSet.has("assignments.view_status");
 
+  // Determine if the user has any admin capabilities that would render
+  // sidebar items. Non-admin users (students) have all their navigation
+  // in the PublicHeader dropdown, so the sidebar is unnecessary clutter.
+  const hasAdminCapabilities = adminGroups.some((group) =>
+    group.items.some((item) => !item.capability || capsSet.has(item.capability))
+  );
+
+  // Hide sidebar entirely for non-admin users — all their nav items
+  // are available in the PublicHeader dropdown.
+  if (!hasAdminCapabilities) {
+    return null;
+  }
+
   function filterItems(items: NavItem[]) {
     return items.filter((item) => {
       if (item.hiddenInModes?.includes(platformMode) && !canBypassModeRestrictions) {
