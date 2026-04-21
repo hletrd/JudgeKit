@@ -8,6 +8,7 @@ import { resolveCapabilities } from "@/lib/capabilities/cache";
 import { db } from "@/lib/db";
 import { assignments, submissions, users } from "@/lib/db/schema";
 import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { formatDateTimeInTimeZone } from "@/lib/datetime";
@@ -27,9 +28,10 @@ export default async function StudentDetailPage({
   if (!caps.has("contests.view_analytics")) redirect("/dashboard/contests");
 
   const { assignmentId, userId } = await params;
-  const [t, tSub, locale, timeZone] = await Promise.all([
+  const [t, tSub, tCommon, locale, timeZone] = await Promise.all([
     getTranslations("contests"),
     getTranslations("submissions"),
+    getTranslations("common"),
     getLocale(),
     getResolvedSystemTimeZone(),
   ]);
@@ -145,12 +147,13 @@ export default async function StudentDetailPage({
                 <TableHead>{tSub("status.label")}</TableHead>
                 <TableHead className="text-right">{tSub("score")}</TableHead>
                 <TableHead>{tSub("submittedAt")}</TableHead>
+                <TableHead className="text-right pr-6">{tCommon("action")}</TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
               {studentSubmissions.length === 0 ? (
                 <TableRow>
-                  <TableCell colSpan={5} className="text-center text-muted-foreground py-8">
+                  <TableCell colSpan={6} className="text-center text-muted-foreground py-8">
                     No submissions
                   </TableCell>
                 </TableRow>
@@ -158,7 +161,12 @@ export default async function StudentDetailPage({
                 studentSubmissions.map((sub) => (
                   <TableRow key={sub.id}>
                     <TableCell className="font-medium text-sm">
-                      {sub.problem?.title ?? sub.problemId}
+                      <Link
+                        href={`/dashboard/submissions/${sub.id}`}
+                        className="text-primary hover:underline"
+                      >
+                        {sub.problem?.title ?? sub.problemId}
+                      </Link>
                     </TableCell>
                     <TableCell>
                       <Badge variant="outline" className="text-xs font-mono">
@@ -166,15 +174,25 @@ export default async function StudentDetailPage({
                       </Badge>
                     </TableCell>
                     <TableCell>
-                      <span className={`inline-flex items-center rounded-full px-2 py-0.5 text-xs font-medium ${statusColors[sub.status ?? ""] ?? ""}`}>
+                      <Link
+                        href={`/dashboard/submissions/${sub.id}`}
+                        className={`inline-flex items-center rounded-full px-2 py-0.5 text-xs font-medium hover:opacity-80 ${statusColors[sub.status ?? ""] ?? ""}`}
+                      >
                         {tSub(`status.${sub.status}`)}
-                      </span>
+                      </Link>
                     </TableCell>
                     <TableCell className="text-right font-mono text-sm">
                       {sub.score ?? 0}
                     </TableCell>
                     <TableCell className="text-sm text-muted-foreground">
                       {formatDateTimeInTimeZone(sub.submittedAt, locale, timeZone)}
+                    </TableCell>
+                    <TableCell className="text-right pr-6">
+                      <Link href={`/dashboard/submissions/${sub.id}`}>
+                        <Button variant="outline" size="sm">
+                          {tCommon("view")}
+                        </Button>
+                      </Link>
                     </TableCell>
                   </TableRow>
                 ))
