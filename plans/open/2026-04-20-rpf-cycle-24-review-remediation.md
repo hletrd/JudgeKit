@@ -37,7 +37,7 @@ No cycle-24 review finding is silently dropped. No new refactor-only work is add
   4. `create-problem-form.tsx`: Add `console.warn("Tag suggestions fetch failed")` — tag suggestions are non-critical, console.warn is acceptable.
   5. `participant-anti-cheat-timeline.tsx`: Add `toast.error(...)` using the `contests.antiCheat` namespace.
   6. Verify all gates pass.
-- **Status:** PENDING
+- **Status:** DONE
 
 ### M1: Remove dead `titleKeyByMode` from AppSidebar nav item (AGG-2)
 
@@ -48,7 +48,7 @@ No cycle-24 review finding is silently dropped. No new refactor-only work is add
 - **Plan:**
   1. Remove `titleKeyByMode: { recruiting: "challenges" }` from the Problems nav item.
   2. Verify all gates pass.
-- **Status:** PENDING
+- **Status:** DONE
 
 ### M2: Fix `ContestsLayout` click interception issues (AGG-3)
 
@@ -61,7 +61,7 @@ No cycle-24 review finding is silently dropped. No new refactor-only work is add
   2. Add scheme check: skip interception if href starts with `javascript:` or `data:`.
   3. Add a comment with a Next.js GitHub issue reference (or note that one should be filed).
   4. Verify all gates pass.
-- **Status:** PENDING
+- **Status:** DONE
 
 ### M3: Add visibility-aware polling to `submission-overview.tsx` (AGG-4)
 
@@ -72,7 +72,7 @@ No cycle-24 review finding is silently dropped. No new refactor-only work is add
 - **Plan:**
   1. Add visibility-based pause/resume to the interval, matching the pattern in `leaderboard-table.tsx`.
   2. Verify all gates pass.
-- **Status:** PENDING
+- **Status:** DONE
 
 ---
 
@@ -117,3 +117,8 @@ The migration plan currently defines Phases 1-4. Phase 5 should be defined as th
 ## Progress log
 
 - 2026-04-20: Plan created from cycle-24 aggregate review.
+- 2026-04-20: H1 (silent error swallowing) DONE — all 5 catch blocks fixed with toast.error or console.warn.
+- 2026-04-20: M1 (dead titleKeyByMode) DONE — removed from AppSidebar Problems nav item.
+- 2026-04-20: M2 (ContestsLayout click interception) DONE — removed stopPropagation, added scheme checks, added bug tracker TODO.
+- 2026-04-20: M3 (submission-overview visibility-aware polling) DONE — added pause/resume on visibility change.
+- 2026-04-20: All priority items implemented. Gates green (eslint, tsc --noEmit, vitest 294/2104, next build).
