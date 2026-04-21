@@ -1,54 +1,58 @@
-# Code Reviewer — Cycle 24
+# Cycle 24 Code Reviewer
 
 **Date:** 2026-04-20
-**Base commit:** 2af713d3
+**Base commit:** f1b478bc
 
----
+## Findings
 
-## CR-1: Contest detail page still links to `/workspace` instead of `/dashboard` [HIGH/HIGH]
+### CR-1: Dead code — `titleKeyByMode` on hidden sidebar nav item [LOW/HIGH]
 
-**Files:** `src/app/(public)/contests/[id]/page.tsx:236`, `src/app/(public)/_components/public-contest-detail.tsx:58-59,92-93,117-118`
-**Description:** The public contest detail page passes `workspaceHref={buildLocalePath("/workspace", locale)}` and `workspaceLabel={t("contests.openWorkspace")}` to `PublicContestDetail`. While `next.config.ts` has a redirect from `/workspace` to `/dashboard`, this creates a confusing UX: users click "Open workspace" (a label that references a removed concept), get redirected, and land on the dashboard. The workspace-to-public migration explicitly replaced workspace references everywhere else, but this contest detail link was missed.
-**Concrete failure scenario:** A user viewing a public contest page clicks "Open workspace" and is redirected via 302 to `/dashboard`. The button label still says "Open workspace" / "워크스페이스 열기" which references a removed navigation concept.
-**Fix:** Change `workspaceHref` to `buildLocalePath("/dashboard", locale)`, rename the prop to `dashboardHref`/`dashboardLabel`, and update the i18n key `contests.openWorkspace` to something like `contests.openDashboard` in both `en.json` and `ko.json`.
+**Files:** `src/components/layout/app-sidebar.tsx:66-67`
+**Description:** The "Problems" nav item in `navGroups` has both `titleKeyByMode: { recruiting: "challenges" }` and `hiddenInModes: ["recruiting"]`. When `platformMode === "recruiting"`, `filterItems()` hides the item entirely due to `hiddenInModes`, so `titleKeyByMode` is dead code that can never execute. This is confusing for maintainers who may think the item is visible in recruiting mode with an alternate label.
+**Concrete failure scenario:** A developer reading the code assumes "Problems" shows as "Challenges" in recruiting mode, but it's actually hidden.
+**Fix:** Remove `titleKeyByMode: { recruiting: "challenges" }` from the "Problems" nav item definition.
+**Confidence:** HIGH
 
-## CR-2: `robots.ts` still disallows `/workspace` — stale entry from removed route [MEDIUM/HIGH]
+### CR-2: Silent error swallowing in `submission-overview.tsx` fetchStats [MEDIUM/MEDIUM]
 
-**Files:** `src/app/robots.ts:17`
-**Description:** The robots.txt disallow list includes `"/workspace"` but the `/workspace` route no longer exists (it redirects to `/dashboard` which is already in the disallow list). The `/workspace` entry is dead code and misleading.
-**Concrete failure scenario:** Crawlers see a disallow for `/workspace` which is a dead route. Developers reading robots.ts may think `/workspace` is still an active route.
-**Fix:** Remove `"/workspace"` from the disallow list in `src/app/robots.ts`.
+**Files:** `src/components/lecture/submission-overview.tsx:101-102`
+**Description:** The `fetchStats` callback catches all errors with `catch { // ignore }`. Per the project convention documented in `src/lib/api/client.ts` ("Never silently swallow errors — always surface them to the user"), this violates the project standard. If the API is down or returns malformed data, the instructor sees stale stats with no indication of failure. The similar `contest-quick-stats.tsx` was fixed in cycle 23 to show a toast error.
+**Concrete failure scenario:** An instructor is monitoring live submission stats during a contest. The API returns a 500 error. The UI continues showing stale stats with no error feedback, leading the instructor to believe the stats are current.
+**Fix:** Add `toast.error(...)` in the catch block, matching the pattern established in `contest-quick-stats.tsx`.
+**Confidence:** MEDIUM
 
-## CR-3: Korean letter-spacing violations in multiple components [MEDIUM/MEDIUM]
+### CR-3: Silent error swallowing in `invite-participants.tsx` search [MEDIUM/MEDIUM]
 
-**Files:**
-- `src/app/not-found.tsx:58` — `tracking-[0.2em]` on "404" text (always numeric, but the component renders Korean content below it; the `tracking-tight` on h1 line 59 also applies to Korean)
-- `src/app/(public)/_components/public-home-page.tsx:67` — `tracking-[0.2em]` on `{eyebrow}` which can be Korean text
-- `src/app/(dashboard)/dashboard/_components/dashboard-judge-system-tabs.tsx:88` — `tracking-[0.16em]` on `{featuredEnvironmentsTitle}` which can be Korean
-- `src/components/layout/active-timed-assignment-sidebar-panel.tsx:118` — `tracking-[0.16em]` on assignment name (Korean content)
-- `src/app/(public)/languages/page.tsx:69,75,81,86,90,95` — `tracking-wide` on column headers that render Korean text when locale is Korean
-- `src/app/(public)/_components/public-contest-list.tsx:118` — `tracking-wide` on `{groupLabel}` which can be Korean
-- `src/app/(dashboard)/dashboard/admin/settings/home-page-content-form.tsx:153` — `tracking-wide` on label text
-- `src/components/layout/active-timed-assignment-sidebar-panel.tsx:132,138,146` — `tracking-wide` on "remaining"/"elapsed" labels (these use `tNav()` which returns Korean when locale is ko)
+**Files:** `src/components/contest/invite-participants.tsx:49-50`
+**Description:** The `search` callback catches all errors with `catch { // ignore }`. If the search API fails, the user sees no results with no indication that an error occurred. The `handleInvite` function in the same file correctly shows `toast.error(t("inviteFailed"))` on error, but the search function does not.
+**Concrete failure scenario:** An instructor searches for a student to invite to a contest. The API call fails. The UI shows "No results" with no error feedback, leading the instructor to believe the student doesn't exist rather than that the search failed.
+**Fix:** Add `toast.error(t("searchFailed"))` or a generic search error toast in the catch block.
+**Confidence:** MEDIUM
 
-**Description:** Per CLAUDE.md: "Keep Korean text at the browser/font default letter spacing. Do not apply custom `letter-spacing` (or `tracking-*` Tailwind utilities) to Korean content." Several components still apply hardcoded `tracking-[0.2em]`, `tracking-[0.16em]`, or `tracking-wide` to text that may be Korean. The `AppSidebar` and `PublicHeader` correctly use locale-conditional tracking (e.g., `locale !== "ko" ? " tracking-wider" : ""`), but many other components do not.
-**Concrete failure scenario:** Korean users see cramped or overly-spaced text in sidebar panel labels, page headings, column headers, and form labels.
-**Fix:** Apply the same locale-conditional pattern used in `AppSidebar` and `PublicHeader` to all the above locations. For `tracking-[0.Xem]` on uppercase-only text (like "404" or uppercase English labels), add a comment explaining it's Latin-only. For text that can be Korean, conditionally apply tracking based on locale.
+### CR-4: Silent error swallowing in `create-problem-form.tsx` tag fetch [LOW/MEDIUM]
 
-## CR-4: `public-route-seo.ts` still references `/workspace` in SEO disallow list [MEDIUM/MEDIUM]
+**Files:** `src/app/(dashboard)/dashboard/problems/create/create-problem-form.tsx:223-224`
+**Description:** The tag suggestion fetch catches all errors with `catch { // ignore }`. Tag suggestions are a non-critical enhancement, so swallowing the error is more defensible here, but it still violates the project convention.
+**Concrete failure scenario:** A problem author types in the tag field and gets no suggestions. They don't know if there are no matching tags or if the fetch failed.
+**Fix:** Add a `console.warn` at minimum, or show a subtle indicator that suggestions are unavailable.
+**Confidence:** MEDIUM
 
-**Files:** `src/lib/public-route-seo.ts:107`
-**Description:** The SEO module that determines which public routes use deterministic locale includes `/workspace` in its disallow/routing logic. Since `/workspace` is now a redirect-only route, this reference is stale.
-**Concrete failure scenario:** The module may incorrectly classify or handle requests to `/workspace` in its SEO logic.
-**Fix:** Remove the `/workspace` reference from `public-route-seo.ts`.
+### CR-5: Silent error swallowing in `chat-logs-client.tsx` (2 instances) [MEDIUM/MEDIUM]
 
----
+**Files:** `src/app/(dashboard)/dashboard/admin/plugins/chat-logs/chat-logs-client.tsx:61-62,75-76`
+**Description:** Two `catch { // ignore }` blocks: one for `fetchLogs` (line 61) and one for `fetchMore` (line 75). Both swallow errors silently. For an admin tool, this is problematic because the admin has no way to know if the data is stale or the fetch failed.
+**Concrete failure scenario:** An admin reviewing chat logs sees a partial list. They don't know if there are no more logs or if the fetch failed.
+**Fix:** Add toast.error in both catch blocks, matching the pattern used in other admin pages.
+**Confidence:** MEDIUM
 
-## Verified Safe
+### CR-6: `ContestsLayout` intercepts ALL internal link clicks [MEDIUM/MEDIUM]
 
-- `(control)` route group directory has been fully removed.
-- `controlShell` i18n namespace has been fully removed from both locale files.
-- `ControlNav` component has been removed.
-- `PaginationControls` is a synchronous client component (cycle 22 fix confirmed).
-- No remaining `controlShell` references in source code.
-- `next.config.ts` correctly has `/control` and `/control/discussions` redirects.
+**Files:** `src/app/(dashboard)/dashboard/contests/layout.tsx:16-28`
+**Description:** The layout uses a click event handler on `#main-content` and `[data-slot='sidebar']` that intercepts ALL internal `<a>` clicks and forces `window.location.href` navigation. This is a workaround for a Next.js 16 RSC streaming bug. However, this approach has several problems:
+1. It breaks Next.js client-side navigation for ALL links on contest pages, not just problematic ones.
+2. It uses `me.stopPropagation()` which can prevent other click handlers from firing.
+3. The `href.startsWith("http")` check only excludes absolute URLs, not protocol-relative URLs.
+4. The `getElementById("main-content")` and `querySelector("[data-slot='sidebar']")` may return null if the DOM isn't ready, silently failing to attach the handler.
+**Concrete failure scenario:** A custom button with an `<a>` wrapper inside contest pages has its own onClick handler. The layout's handler calls `stopPropagation()`, preventing the custom handler from running.
+**Fix:** This is a workaround for a Next.js bug. Add a comment explaining the specific bug and consider scoping the interception to only `<Link>` components from Next.js, or using a data attribute to opt specific links out. At minimum, add a JSDoc explaining the tradeoff and when the workaround can be removed.
+**Confidence:** MEDIUM

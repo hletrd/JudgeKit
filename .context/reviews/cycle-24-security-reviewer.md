@@ -1,30 +1,35 @@
 # Security Reviewer — Cycle 24
 
 **Date:** 2026-04-20
-**Base commit:** 2af713d3
+**Base commit:** f1b478bc
 
----
+## Findings
 
-## SEC-1: Contest detail "Open workspace" link uses stale label that could enable phishing [LOW/MEDIUM]
+### SEC-1: Silent error handlers hide API failures from admin users [MEDIUM/MEDIUM]
 
-**Files:** `src/app/(public)/contests/[id]/page.tsx:236-237`, `src/app/(public)/_components/public-contest-detail.tsx:117-118`
-**Description:** The contest detail page has a button labeled "Open workspace" / "워크스페이스 열기" that links to `/workspace`. The `/workspace` route performs a 302 redirect to `/dashboard`. While not a direct security vulnerability, a 302 redirect from a stale label creates a minor phishing surface: a user expecting "workspace" lands on "dashboard" and may not notice the URL change. This is a defense-in-depth concern.
-**Concrete failure scenario:** Low risk, but the redirect adds an unnecessary hop that could be exploited in redirect-based phishing scenarios.
-**Fix:** Update the link to point directly to `/dashboard` and update the label to match.
+**Files:**
+- `src/app/(dashboard)/dashboard/admin/plugins/chat-logs/chat-logs-client.tsx:61-62,75-76`
+- `src/components/lecture/submission-overview.tsx:101-102`
+- `src/components/contest/invite-participants.tsx:49-50`
 
-## SEC-2: Auth cache FIFO eviction has no TTL-based purge for stale entries [LOW/LOW]
+**Description:** Multiple `catch { // ignore }` blocks in admin and instructor-facing components silently swallow API errors. While not directly a security vulnerability, this can mask service degradation or interception. An admin who cannot see chat logs (due to a MITM or API failure) has no indication that something is wrong.
+**Concrete failure scenario:** A network interceptor blocks admin API calls. The admin sees empty lists instead of error messages, unaware that data is being suppressed.
+**Fix:** Replace silent catch blocks with toast.error feedback. This aligns with the project convention in `src/lib/api/client.ts`.
+**Confidence:** MEDIUM
 
-**Files:** `src/proxy.ts:23-71`
-**Description:** The auth user cache uses FIFO eviction based on size (`AUTH_CACHE_MAX_SIZE = 500`) with per-entry TTL (`AUTH_CACHE_TTL_MS`). However, there is no periodic purge of expired entries — they are only evicted on read (`getCachedAuthUser` removes expired entries when accessed). If many unique users make a single request and never return, their expired entries remain in the map until the size limit forces FIFO eviction. This is a minor memory concern, not a security vulnerability.
-**Concrete failure scenario:** Under unusual traffic patterns with many unique single-visit users, expired cache entries accumulate until the 500-entry limit is hit, at which point FIFO eviction clears old entries. The TTL is only 2 seconds so practical impact is minimal.
-**Fix:** Low priority. Could add a periodic sweep or use a more aggressive eviction strategy.
+### SEC-2: `ContestsLayout` click interception bypasses Next.js navigation security [LOW/MEDIUM]
 
----
+**Files:** `src/app/(dashboard)/dashboard/contests/layout.tsx:16-28`
+**Description:** The contests layout intercepts all internal `<a>` clicks and forces `window.location.href = href`. This bypasses Next.js router's security checks (e.g., same-origin validation) and could potentially be exploited if a malicious href is injected into the DOM. However, since the href comes from the `getAttribute("href")` of an `<a>` element in the React virtual DOM, the risk is low.
+**Concrete failure scenario:** An XSS vulnerability in contest page content injects an `<a href="javascript:alert(1)">` element. The layout's handler would call `me.preventDefault()` but then `window.location.href = "javascript:alert(1)"` would not execute (browsers block javascript: URLs set via location.href), so this specific vector is safe. But the pattern of bypassing Next.js navigation is a defense-in-depth concern.
+**Fix:** Add an explicit check for `javascript:` and `data:` scheme URLs before setting `window.location.href`.
+**Confidence:** MEDIUM
 
 ## Verified Safe
 
-- CSP headers are properly set with nonce-based script-src in proxy middleware.
-- Auth cookie clearing on invalid sessions works correctly.
-- API key bypass for Bearer auth in middleware is correctly limited to API routes.
-- `canModerateDiscussions` properly checks capabilities, not just role strings.
-- Judge worker routes are excluded from auth requirement in middleware.
+- All API routes use `apiFetch` for client-side calls (except server-side routes which use `fetch` directly — correct).
+- CSRF protection via `X-Requested-With` header is centralized in `apiFetch`.
+- Secret values (AUTH_SECRET, JUDGE_AUTH_TOKEN) are validated for minimum length and against placeholder values.
+- `dangerouslySetInnerHTML` uses `sanitizeHtml()` for problem descriptions and `safeJsonForScript()` for JSON-LD.
+- No secrets in client-side code (all `process.env` references for secrets are server-only).
+- Security headers (CSP, HSTS, X-Frame-Options, etc.) are properly configured in `next.config.ts` and `proxy.ts`.

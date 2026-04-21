@@ -1,26 +1,41 @@
 # Tracer — Cycle 24
 
 **Date:** 2026-04-20
-**Base commit:** 2af713d3
+**Base commit:** f1b478bc
 
----
+## Findings
 
-## TR-1: Workspace-to-dashboard redirect chain traces through contest detail -> /workspace -> 302 -> /dashboard [MEDIUM/HIGH]
+### TR-1: Silent catch blocks in fetch flows hide error propagation [MEDIUM/MEDIUM]
 
-**Files:** `src/app/(public)/contests/[id]/page.tsx:236` -> `next.config.ts:19-23` -> `(dashboard)/dashboard/page.tsx`
-**Description:** Tracing the user flow: User views contest at `/contests/[id]` -> clicks "Open workspace" button -> browser navigates to `/workspace` -> Next.js redirect middleware returns 302 to `/dashboard` -> browser loads `/dashboard` page. The redirect adds an unnecessary hop and the label is semantically incorrect after the migration.
-**Concrete failure scenario:** The redirect chain is visible in browser DevTools and adds ~50-100ms latency per click. The "back" button trap (pressing back goes to `/workspace` which redirects forward again) is a UX regression.
-**Fix:** Link directly to `/dashboard` from the contest detail page.
+**Files:**
+- `src/components/lecture/submission-overview.tsx:101-102`
+- `src/components/contest/invite-participants.tsx:49-50`
+- `src/app/(dashboard)/dashboard/admin/plugins/chat-logs/chat-logs-client.tsx:61-62,75-76`
+- `src/components/contest/participant-anti-cheat-timeline.tsx:120-121`
 
-## TR-2: robots.txt /workspace entry traces to a redirect-only route [LOW/MEDIUM]
+**Description:** Traced the error flow: `apiFetch` -> response handling -> catch block -> `// ignore`. The `apiFetch` wrapper adds the `X-Requested-With` header but does not throw on non-ok responses (it returns the Response object). The individual components are responsible for checking `res.ok` and handling errors. When they catch exceptions and silently ignore them, the error is completely lost — no console log, no toast, no error state.
 
-**Files:** `src/app/robots.ts:17` -> `next.config.ts:19-23`
-**Description:** Tracing the robots.txt disallow entry: `"/workspace"` -> no route handler exists -> only a redirect to `/dashboard` exists. The disallow entry is for a route that never serves content.
-**Fix:** Remove `/workspace` from robots.txt disallow list.
+Causal trace for `submission-overview.tsx`:
+1. `fetchStats()` calls `apiFetch("/api/v1/submissions?...")`
+2. If `res.ok` is false, the function returns early (line 76) — no error feedback
+3. If `apiFetch` throws (network error), the catch block ignores it (line 101-102)
+4. `setLoading(false)` runs in finally, hiding any loading indicator
+5. The UI shows the previous (stale) stats with no indication of failure
 
----
+**Fix:** Add toast.error in catch blocks and consider showing an error indicator when `!res.ok`.
+**Confidence:** MEDIUM
 
-## Verified Safe
+### TR-2: `ContestsLayout` click handler capture phase intercepts before React's delegation [MEDIUM/MEDIUM]
 
-- Auth flow traces correctly through proxy middleware.
-- CSP nonce traces correctly through the request lifecycle.
+**Files:** `src/app/(dashboard)/dashboard/contests/layout.tsx:32-33`
+**Description:** Traced the event flow:
+1. User clicks an `<a>` element inside `#main-content`
+2. The capture-phase listener fires first (before React's synthetic event system)
+3. `me.preventDefault()` prevents the default navigation
+4. `me.stopPropagation()` prevents the event from reaching any React onClick handlers
+5. `window.location.href = href` triggers full page navigation
+6. The page reloads, destroying all React state
+
+The `stopPropagation()` in capture phase is the key issue: it prevents React's delegation system from ever seeing the event. This means any `onClick` handlers on child elements will never fire.
+**Fix:** Remove `stopPropagation()` and rely only on `preventDefault()`.
+**Confidence:** MEDIUM

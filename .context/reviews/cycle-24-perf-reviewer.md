@@ -1,28 +1,33 @@
 # Performance Reviewer — Cycle 24
 
 **Date:** 2026-04-20
-**Base commit:** 2af713d3
+**Base commit:** f1b478bc
 
----
+## Findings
 
-## PERF-1: Contest detail page `/workspace` link creates unnecessary 302 redirect [LOW/MEDIUM]
+### PERF-1: `ContestsLayout` forces full page reload on every internal navigation [MEDIUM/MEDIUM]
 
-**Files:** `src/app/(public)/contests/[id]/page.tsx:236`
-**Description:** The contest detail page links to `/workspace` which triggers a 302 redirect to `/dashboard`. This adds an extra HTTP round-trip on every click. While the latency impact is small (same-origin redirect), it's avoidable.
-**Concrete failure scenario:** Every user click on "Open workspace" incurs an extra redirect hop.
-**Fix:** Link directly to `/dashboard`.
+**Files:** `src/app/(dashboard)/dashboard/contests/layout.tsx:27`
+**Description:** Every internal link click within contest pages triggers `window.location.href = href`, which forces a full page reload instead of Next.js client-side navigation. This means:
+1. No RSC payload streaming — the entire page must be fetched from scratch.
+2. All JavaScript bundles are re-parsed and re-executed.
+3. All API calls (session, settings, capabilities) are re-made on every navigation.
+4. The browser loses React state for all components on the page.
+**Concrete failure scenario:** An instructor navigating between contest sub-pages (e.g., from contest list to contest detail) experiences a full page reload each time, taking 2-5 seconds instead of <500ms for client-side navigation.
+**Fix:** This is a workaround for a Next.js bug. Monitor Next.js releases for the fix and remove the workaround as soon as possible. Consider adding a performance metric to track navigation time on contest pages.
+**Confidence:** MEDIUM
 
-## PERF-2: Auth cache in proxy.ts lacks periodic purge of expired entries [LOW/LOW]
+### PERF-2: `submission-overview.tsx` polling interval continues when tab is hidden [LOW/MEDIUM]
 
-**Files:** `src/proxy.ts:23-71`
-**Description:** The in-process auth user cache uses FIFO eviction by size (500 entries max) with per-entry TTL (2 seconds). Expired entries are only cleaned up when accessed (`getCachedAuthUser`). There's no periodic sweep. With the small TTL and reasonable traffic, this is unlikely to cause memory issues in practice.
-**Concrete failure scenario:** Under burst traffic with many unique users, up to 500 expired entries could remain in memory until evicted by new entries.
-**Fix:** Low priority. The 2-second TTL and 500-entry limit make this safe in practice.
+**Files:** `src/components/lecture/submission-overview.tsx:108-114`
+**Description:** The `SubmissionOverview` component uses `setInterval(fetchStats, 5000)` but does not pause the interval when the tab is hidden. This is the same pattern that was fixed for `leaderboard-table.tsx` in cycle 23 (visibility-aware polling). The component already uses `apiFetch` but lacks the visibility-based pause/resume.
+**Concrete failure scenario:** An instructor leaves the lecture stats panel open in a background tab. The interval continues firing every 5 seconds, making unnecessary API calls.
+**Fix:** Add visibility-aware pause/resume to the interval, matching the pattern established in `leaderboard-table.tsx` and `contest-clarifications.tsx`.
+**Confidence:** MEDIUM
 
----
+## Verified Performant
 
-## Verified Safe
-
-- Next.js standalone output mode is correctly configured.
-- Server external packages are properly listed.
-- CSP nonce generation uses efficient crypto API.
+- `leaderboard-table.tsx` now properly pauses polling when tab is hidden (cycle 23 fix confirmed).
+- `workers-client.tsx` now properly pauses polling when tab is hidden (cycle 22 fix confirmed).
+- `authUserCache` in proxy.ts has a 2-second TTL with max 500 entries — reasonable.
+- No N+1 query patterns found in server-side page components.

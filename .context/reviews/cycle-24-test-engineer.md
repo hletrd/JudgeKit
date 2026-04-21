@@ -1,27 +1,35 @@
 # Test Engineer — Cycle 24
 
 **Date:** 2026-04-20
-**Base commit:** 2af713d3
+**Base commit:** f1b478bc
 
----
+## Findings
 
-## TE-1: No test coverage for contest detail page workspace-to-dashboard link migration [MEDIUM/MEDIUM]
+### TE-1: No tests for error feedback in catch blocks [LOW/MEDIUM]
 
-**Files:** `src/app/(public)/contests/[id]/page.tsx:236-237`, `src/app/(public)/_components/public-contest-detail.tsx:58-59,117-118`
-**Description:** The contest detail component (`PublicContestDetail`) accepts `workspaceHref` and `workspaceLabel` props and renders a button linking to `workspaceHref`. There is no test verifying that this link points to the correct destination. If the workspace-to-dashboard migration is completed, there should be a test confirming the link targets `/dashboard` (not `/workspace`).
-**Concrete failure scenario:** The contest detail link could regress back to `/workspace` without any test catching it.
-**Fix:** Add a unit test for `PublicContestDetail` that verifies the workspace/dashboard button's href and label. After the migration, update the test to expect `/dashboard` as the target.
+**Files:** `tests/unit/` — no test coverage for error toast feedback in:
+- `src/components/lecture/submission-overview.tsx`
+- `src/components/contest/invite-participants.tsx`
+- `src/app/(dashboard)/dashboard/admin/plugins/chat-logs/chat-logs-client.tsx`
 
-## TE-2: No test verifying robots.txt does not contain stale route entries [LOW/LOW]
+**Description:** These components have catch blocks that silently swallow errors. Once they are fixed to show toast errors (per CRI-1), there should be tests verifying the toast is called. The `apiFetch` tests (`tests/unit/api/client.test.ts`) cover the wrapper itself, but not the component-level error handling.
+**Fix:** Add component-level tests for error feedback after the catch blocks are fixed.
+**Confidence:** MEDIUM
 
-**Files:** `src/app/robots.ts`, `tests/unit/robots.test.ts`
-**Description:** The robots.txt generation function is tested but there is no assertion ensuring that disallow entries correspond to real routes (not redirect-only stale entries like `/workspace`).
-**Concrete failure scenario:** Stale entries accumulate in robots.txt without any test to flag them.
-**Fix:** Consider adding a test that cross-references disallow entries against the Next.js route configuration.
+### TE-2: No test for `ContestsLayout` click interception behavior [LOW/LOW]
 
----
+**Files:** `src/app/(dashboard)/dashboard/contests/layout.tsx`
+**Description:** The contests layout has a critical click interception behavior that forces full page navigation. There are no tests verifying that:
+1. Internal links are intercepted and forced to `window.location.href`
+2. External links and hash links are NOT intercepted
+3. The handler is properly cleaned up on unmount
+**Fix:** Add integration tests for the ContestsLayout click behavior.
+**Confidence:** LOW
 
-## Verified Safe
+## Test Coverage Summary
 
-- The existing `robots.test.ts` does verify the `/control` route is disallowed.
-- The existing `proxy.test.ts` covers the middleware matcher configuration.
+- `tests/unit/api/client.test.ts` — covers `apiFetch` wrapper (6 tests)
+- `tests/unit/formatting.test.ts` — covers locale-aware formatting
+- `tests/unit/actions/` — covers server actions
+- `tests/unit/assignments/` — covers assignment logic
+- Component-level tests exist for some admin and contest components but are not comprehensive for error handling paths.

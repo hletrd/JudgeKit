@@ -1,73 +1,75 @@
 # Cycle 24 Aggregate Review
 
 **Date:** 2026-04-20
-**Base commit:** 2af713d3
+**Base commit:** f1b478bc
 **Review artifacts:** `cycle-24-code-reviewer.md`, `cycle-24-security-reviewer.md`, `cycle-24-critic.md`, `cycle-24-architect.md`, `cycle-24-verifier.md`, `cycle-24-test-engineer.md`, `cycle-24-debugger.md`, `cycle-24-perf-reviewer.md`, `cycle-24-designer.md`, `cycle-24-tracer.md`, `cycle-24-document-specialist.md`
 
 ## Deduped Findings (sorted by severity then signal)
 
-### AGG-1: Contest detail page still links to `/workspace` with stale "Open workspace" label — workspace-to-public migration is incomplete [HIGH/HIGH]
+### AGG-1: Systematic silent error swallowing across multiple components [MEDIUM/HIGH]
 
-**Flagged by:** code-reviewer (CR-1), security-reviewer (SEC-1), critic (CRI-1), architect (ARCH-1), verifier (V-1), debugger (DBG-1), perf-reviewer (PERF-1), designer (DES-2), tracer (TR-1), document-specialist (DOC-1)
-**Files:** `src/app/(public)/contests/[id]/page.tsx:236-237`, `src/app/(public)/_components/public-contest-detail.tsx:58-59,92-93,117-118`, `messages/en.json:2901`, `messages/ko.json:2901`
-**Description:** The public contest detail page passes `workspaceHref={buildLocalePath("/workspace", locale)}` and `workspaceLabel={t("contests.openWorkspace")}` to `PublicContestDetail`. While `next.config.ts` has a redirect from `/workspace` to `/dashboard`, this creates multiple problems:
-1. **UX inconsistency:** The nav says "Dashboard" but the contest page says "Open workspace"
-2. **Unnecessary redirect:** Every click incurs a 302 redirect hop adding latency
-3. **Back button trap:** Pressing "back" from `/dashboard` goes to `/workspace` which redirects forward again
-4. **Stale i18n:** The key `contests.openWorkspace` ("Open workspace" / "워크스페이스 열기") references a deprecated concept
-5. **Incomplete migration:** The workspace-to-public migration replaced workspace terminology everywhere else
-**Concrete failure scenario:** A user viewing a public contest page clicks "Open workspace" and is redirected via 302 to `/dashboard`. The button label still says "workspace" but the destination is "dashboard".
-**Fix:**
-1. Change `workspaceHref` to `buildLocalePath("/dashboard", locale)` in the contest page
-2. Rename the props from `workspaceHref`/`workspaceLabel` to `dashboardHref`/`dashboardLabel` in `PublicContestDetail`
-3. Rename i18n key `contests.openWorkspace` to `contests.openDashboard` with values "Open dashboard" / "대시보드 열기"
-4. Update the component to use the new prop names
-
-### AGG-2: robots.ts still disallows stale `/workspace` route [MEDIUM/HIGH]
-
-**Flagged by:** code-reviewer (CR-2), critic (CRI-1), verifier (V-2), debugger (DBG-2), tracer (TR-2), document-specialist (DOC-2)
-**Files:** `src/app/robots.ts:17`
-**Description:** The robots.txt disallow list includes `"/workspace"` but the `/workspace` route no longer exists as a real page — it only redirects to `/dashboard` which is already disallowed. The entry is dead code.
-**Concrete failure scenario:** Crawlers see a disallow for a dead route. Developers reading robots.ts may think `/workspace` is still an active route.
-**Fix:** Remove `"/workspace"` from the disallow list.
-
-### AGG-3: `public-route-seo.ts` still references `/workspace` [MEDIUM/MEDIUM]
-
-**Flagged by:** code-reviewer (CR-4), critic (CRI-1), architect (ARCH-1), debugger (DBG-2)
-**Files:** `src/lib/public-route-seo.ts:107`
-**Description:** The SEO route classification function includes `/workspace` in its route list. Since `/workspace` is now redirect-only, classifying it for SEO purposes is meaningless.
-**Concrete failure scenario:** The function may waste processing on a route that no longer serves content.
-**Fix:** Remove `/workspace` from the route classification list.
-
-### AGG-4: Korean letter-spacing violations in multiple components [MEDIUM/MEDIUM]
-
-**Flagged by:** code-reviewer (CR-3), designer (DES-1)
+**Flagged by:** code-reviewer (CR-2, CR-3, CR-4, CR-5), security-reviewer (SEC-1), critic (CRI-1), verifier (V-1), designer (DES-1), tracer (TR-1), document-specialist (DOC-1)
 **Files:**
-- `src/app/(public)/_components/public-home-page.tsx:67` — `tracking-[0.2em]` on `{eyebrow}` (can be Korean)
-- `src/app/(dashboard)/dashboard/_components/dashboard-judge-system-tabs.tsx:88` — `tracking-[0.16em]` on `{featuredEnvironmentsTitle}` (can be Korean)
-- `src/components/layout/active-timed-assignment-sidebar-panel.tsx:118,132,138,146` — tracking on labels rendered via `tNav()` (Korean when locale is ko)
-- `src/app/(public)/languages/page.tsx:69,75,81,86,90,95` — `tracking-wide` on column headers (Korean when locale is ko)
-- `src/app/(public)/_components/public-contest-list.tsx:118` — `tracking-wide` on `{groupLabel}` (can be Korean)
-- `src/app/(dashboard)/dashboard/admin/settings/home-page-content-form.tsx:153` — `tracking-wide` on label text
-- `src/app/not-found.tsx:59` — `tracking-tight` on h1 that renders Korean text
-- `src/app/(public)/_components/public-home-page.tsx:68,87,108,116,138` — `tracking-tight` on headings that may contain Korean
+- `src/components/lecture/submission-overview.tsx:101-102` — fetchStats catch
+- `src/components/contest/invite-participants.tsx:49-50` — search catch
+- `src/app/(dashboard)/dashboard/admin/plugins/chat-logs/chat-logs-client.tsx:61-62,75-76` — fetchLogs and fetchMore catch (2 instances)
+- `src/app/(dashboard)/dashboard/problems/create/create-problem-form.tsx:223-224` — tag suggestion catch
+- `src/components/contest/participant-anti-cheat-timeline.tsx:120-121` — loadMore catch
 
-**Description:** Per CLAUDE.md: "Keep Korean text at the browser/font default letter spacing. Do not apply custom `letter-spacing` (or `tracking-*` Tailwind utilities) to Korean content." The `AppSidebar` and `PublicHeader` correctly use locale-conditional tracking, but many other components apply hardcoded tracking to text that may be Korean.
-**Concrete failure scenario:** Korean users see inconsistent letter spacing across the app — cramped or over-spaced text in headings, labels, and sidebar items.
-**Fix:** Apply the locale-conditional pattern (`locale !== "ko" ? " tracking-wider" : ""`) to all affected locations. For `tracking-tight` on headings that contain Korean text, remove it or make it locale-conditional. For `tracking-[0.Xem]` on uppercase English-only text (like "404"), add a comment explaining it's Latin-only.
+**Description:** There is a systematic pattern of `catch { // ignore }` blocks across the codebase that violates the project's own convention documented in `src/lib/api/client.ts`: "Never silently swallow errors — always surface them to the user." Cycle 23 fixed two instances (`contest-quick-stats.tsx` and `contest-clarifications.tsx`), but at least five more remain. When API calls fail, these components show stale or empty data with no error feedback.
 
-## Verified Safe / No Regression Found
+**Concrete failure scenario:** An instructor monitoring submission stats during a contest sees stale data after an API 500 error, with no indication the stats are not current. They make decisions based on incorrect information.
 
-- `(control)` route group has been fully removed from the codebase.
-- `controlShell` i18n namespace has been fully removed from both locale files.
-- `ControlNav` component has been removed.
-- `PaginationControls` is a synchronous client component (cycle 22 fix confirmed).
-- Admin discussions page at `/dashboard/admin/discussions` correctly checks `canModerateDiscussions`.
-- `AppSidebar` shows discussion moderation link for users with `community.moderate` capability.
-- `next.config.ts` correctly has `/control` and `/control/discussions` redirects.
-- No `console.log` calls in production source code.
-- Only 3 `eslint-disable` / `@ts-ignore` usages found, all with legitimate justification comments.
+**Fix:**
+1. Replace each `catch { // ignore }` with toast.error feedback, matching the pattern in `contest-quick-stats.tsx`.
+2. For `submission-overview.tsx`: add `toast.error(...)` using the `lecture` i18n namespace.
+3. For `invite-participants.tsx`: add `toast.error(t("searchFailed"))` — add i18n key if missing.
+4. For `chat-logs-client.tsx`: add `toast.error(...)` using the `admin.chatLogs` i18n namespace.
+5. For `create-problem-form.tsx`: add `console.warn("Tag suggestions fetch failed")` (non-critical, console.warn is acceptable).
+6. For `participant-anti-cheat-timeline.tsx`: add `toast.error(...)` using the `contests.antiCheat` i18n namespace.
+
+### AGG-2: Dead code — `titleKeyByMode` on hidden AppSidebar nav item [LOW/HIGH]
+
+**Flagged by:** code-reviewer (CR-1), critic (CRI-2), verifier (V-2), document-specialist (DOC-3)
+**Files:** `src/components/layout/app-sidebar.tsx:66-67`
+**Description:** The "Problems" nav item in `navGroups` has both `titleKeyByMode: { recruiting: "challenges" }` and `hiddenInModes: ["recruiting"]`. When `platformMode === "recruiting"`, `filterItems()` hides the item entirely, so `titleKeyByMode` is dead code.
+**Concrete failure scenario:** A developer reading the code assumes "Problems" shows as "Challenges" in recruiting mode, but it's actually hidden.
+**Fix:** Remove `titleKeyByMode: { recruiting: "challenges" }` from the "Problems" nav item definition.
+
+### AGG-3: `ContestsLayout` click interception has multiple issues [MEDIUM/MEDIUM]
+
+**Flagged by:** code-reviewer (CR-6), security-reviewer (SEC-2), critic (CRI-3), architect (ARCH-1), debugger (DBG-1), perf-reviewer (PERF-1), designer (DES-2), tracer (TR-2), document-specialist (DOC-2)
+**Files:** `src/app/(dashboard)/dashboard/contests/layout.tsx:16-28`
+**Description:** The contests layout intercepts all internal `<a>` clicks and forces `window.location.href` navigation as a workaround for a Next.js 16 RSC streaming bug. Multiple issues identified:
+1. **stopPropagation breaks React event delegation** (DBG-1, TR-2): Capture-phase `stopPropagation()` prevents React onClick handlers from firing on child elements.
+2. **Performance impact** (PERF-1, DES-2): Full page reload on every navigation loses React state and bfcache.
+3. **No bug tracker reference** (DOC-2): The comment mentions the bug but doesn't link to a specific issue.
+4. **Missing scheme check** (SEC-2): No check for `javascript:` or `data:` scheme URLs before setting `window.location.href`.
+5. **Fragile DOM dependencies** (CR-6): Depends on `getElementById("main-content")` and `querySelector("[data-slot='sidebar']")` which may be null.
+
+**Concrete failure scenario:** A contest page has a button with onClick inside an `<a>` tag. The layout's capture-phase listener calls `stopPropagation()`, preventing the button's handler from firing. The user is navigated away instead of seeing the expected action.
+
+**Fix:**
+1. Remove `me.stopPropagation()` — rely only on `me.preventDefault()`.
+2. Add `javascript:` and `data:` scheme checks before setting `window.location.href`.
+3. Add a Next.js GitHub issue link to the comment.
+4. Consider adding a `data-force-navigation` attribute to opt specific links into forced navigation.
+
+### AGG-4: `submission-overview.tsx` polling continues when tab is hidden [LOW/MEDIUM]
+
+**Flagged by:** perf-reviewer (PERF-2)
+**Files:** `src/components/lecture/submission-overview.tsx:108-114`
+**Description:** The `SubmissionOverview` component uses `setInterval(fetchStats, 5000)` but does not pause the interval when the tab is hidden. This is the same pattern fixed for `leaderboard-table.tsx` in cycle 23.
+**Concrete failure scenario:** An instructor leaves the lecture stats panel open in a background tab. The interval continues firing every 5 seconds, making unnecessary API calls.
+**Fix:** Add visibility-aware pause/resume to the interval, matching the pattern in `leaderboard-table.tsx`.
+
+### AGG-5: Inconsistent error handling patterns lack architectural enforcement [MEDIUM/MEDIUM]
+
+**Flagged by:** architect (ARCH-3), document-specialist (DOC-1)
+**Files:** N/A (cross-cutting concern)
+**Description:** The codebase has no centralized error handling convention for client-side `apiFetch` calls. Some components show toast errors, some silently swallow, and some set error state flags. The convention documented in `apiFetch` is not enforced by code.
+**Fix:** Create a `useApiFetch` hook or wrapper that standardizes error handling. At minimum, add an ESLint rule that flags `catch { // ignore }` patterns.
 
 ## Agent Failures
 
-None. All requested review perspectives completed successfully.
+None. All review perspectives completed successfully.
