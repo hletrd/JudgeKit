@@ -8,6 +8,13 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Label } from "@/components/ui/label";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 import { Textarea } from "@/components/ui/textarea";
 
 type ContestClarification = {
@@ -200,21 +207,20 @@ export function ContestClarifications({
         {!canManage ? (
           <form onSubmit={handleCreate} className="space-y-3 rounded-2xl border bg-background p-4">
             <div className="space-y-2">
-              <Label htmlFor="contest-clarification-problem">{t("problemLabel")}</Label>
-              <select
-                id="contest-clarification-problem"
-                className="h-8 w-full rounded-lg border border-input bg-transparent px-2.5 py-1 text-sm"
-                value={problemId}
-                onChange={(event) => setProblemId(event.target.value)}
-                disabled={submitting}
-              >
-                <option value="general">{t("generalOption")}</option>
-                {problems.map((problem) => (
-                  <option key={problem.id} value={problem.id}>
-                    {problem.title}
-                  </option>
-                ))}
-              </select>
+              <Label>{t("problemLabel")}</Label>
+              <Select value={problemId} onValueChange={(v) => { if (v) setProblemId(v); }} disabled={submitting}>
+                <SelectTrigger>
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="general" label={t("generalOption")}>{t("generalOption")}</SelectItem>
+                  {problems.map((problem) => (
+                    <SelectItem key={problem.id} value={problem.id} label={problem.title}>
+                      {problem.title}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
             </div>
             <div className="space-y-2">
               <Label htmlFor="contest-clarification-question">{t("questionLabel")}</Label>
