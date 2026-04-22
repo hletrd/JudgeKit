@@ -141,12 +141,13 @@ export function DatabaseBackupRestore({ isSuperAdmin }: { isSuperAdmin: boolean 
         body: formData,
       });
 
-      const data = await response.json();
-
       if (!response.ok) {
-        toast.error(t(data.error ?? "restoreFailed"));
+        const data = await response.json().catch(() => ({}));
+        toast.error(t((data as { error?: string }).error ?? "restoreFailed"));
         return;
       }
+
+      const data = await response.json();
 
       toast.success(t("restoreSuccess"));
       setConfirmRestore(false);
