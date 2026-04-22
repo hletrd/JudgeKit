@@ -1,11 +1,12 @@
 "use client";
 
-import { useState, useEffect, useCallback, useMemo } from "react";
+import { useState, useCallback, useMemo } from "react";
 import { useTranslations, useLocale } from "next-intl";
 import { toast } from "sonner";
 import { useSystemTimezone } from "@/contexts/timezone-context";
 import { formatDateTimeInTimeZone } from "@/lib/datetime";
 import { apiFetch } from "@/lib/api/client";
+import { useVisibilityPolling } from "@/hooks/use-visibility-polling";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -125,9 +126,7 @@ export function ParticipantAntiCheatTimeline({
     }
   }, [assignmentId, userId, offset, t]);
 
-  useEffect(() => {
-    fetchEvents();
-  }, [fetchEvents]);
+  useVisibilityPolling(() => { void fetchEvents(); }, 30_000);
 
   const eventTypes = useMemo(
     () => Array.from(new Set(events.map((e) => e.eventType))).sort(),
