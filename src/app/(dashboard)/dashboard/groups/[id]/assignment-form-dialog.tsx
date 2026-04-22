@@ -268,11 +268,12 @@ export default function AssignmentFormDialog({
         }
       );
 
-      const payload = await response.json();
-
       if (!response.ok) {
-        throw new Error(payload.error || (isEditing ? "assignmentUpdateFailed" : "assignmentCreateFailed"));
+        const errorBody = await response.json().catch(() => ({}));
+        throw new Error((errorBody as { error?: string }).error || (isEditing ? "assignmentUpdateFailed" : "assignmentCreateFailed"));
       }
+
+      const payload = await response.json() as { data?: { id?: string } };
 
       toast.success(
         t(

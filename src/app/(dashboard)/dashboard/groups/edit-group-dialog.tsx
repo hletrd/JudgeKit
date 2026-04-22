@@ -83,11 +83,13 @@ export default function EditGroupDialog({ group }: { group: EditableGroup }) {
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({ name, description, instructorId: instructorId || null }),
         });
-        const data = await response.json();
 
         if (!response.ok) {
-          throw new Error(data.error || "updateError");
+          const errorBody = await response.json().catch(() => ({}));
+          throw new Error((errorBody as { error?: string }).error || "updateError");
         }
+
+        await response.json();
 
         toast.success(t("updateSuccess"));
         await handleOpenChange(false);
