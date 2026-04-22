@@ -2,6 +2,13 @@
 
 import { useMemo, useState } from "react";
 import { Label } from "@/components/ui/label";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 
 type StudentProgression = {
   userId: string;
@@ -54,18 +61,18 @@ export function ScoreTimelineChart({
     <div className="space-y-3">
       <div className="space-y-2">
         <Label htmlFor="score-timeline-participant">{participantLabel}</Label>
-        <select
-          id="score-timeline-participant"
-          className="h-8 w-full rounded-lg border border-input bg-transparent px-2.5 py-1 text-sm"
-          value={selected.userId}
-          onChange={(event) => setSelectedUserId(event.target.value)}
-        >
-          {progressions.map((progression) => (
-            <option key={progression.userId} value={progression.userId}>
-              {progression.name}
-            </option>
-          ))}
-        </select>
+        <Select value={selected.userId} onValueChange={(v) => { if (v) setSelectedUserId(v); }}>
+          <SelectTrigger id="score-timeline-participant" className="w-full">
+            <SelectValue />
+          </SelectTrigger>
+          <SelectContent>
+            {progressions.map((progression) => (
+              <SelectItem key={progression.userId} value={progression.userId} label={progression.name}>
+                {progression.name}
+              </SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
       </div>
 
       <div className="rounded-lg border p-3">

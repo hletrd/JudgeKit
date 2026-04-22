@@ -1,8 +1,16 @@
 "use client";
 
+import { useState } from "react";
 import Link from "next/link";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 import {
   ASSIGNMENT_PARTICIPANT_STATUS_VALUES,
   type AssignmentParticipantStatus,
@@ -42,6 +50,8 @@ export function FilterForm({
   labels,
   resetHref,
 }: FilterFormProps) {
+  const [statusValue, setStatusValue] = useState<StatusFilterValue>(currentStatusFilter);
+
   return (
     <Card>
       <CardContent>
@@ -65,20 +75,20 @@ export function FilterForm({
             <label className="block text-sm font-medium" htmlFor="status-filter">
               {labels.status}
             </label>
-            <select
-              id="status-filter"
-              name="status"
-              defaultValue={currentStatusFilter}
-              data-testid="assignment-status-filter"
-              className="flex h-10 min-w-48 rounded-md border border-input bg-background px-3 py-2 text-sm shadow-xs outline-none focus-visible:border-ring focus-visible:ring-[3px] focus-visible:ring-ring/50"
-            >
-              <option value="all">{labels.allStatuses}</option>
-              {STATUS_FILTER_VALUES.filter((value) => value !== "all").map((value) => (
-                <option key={value} value={value}>
-                  {statusLabels[value]}
-                </option>
-              ))}
-            </select>
+            <input type="hidden" name="status" value={statusValue} data-testid="assignment-status-filter" />
+            <Select value={statusValue} onValueChange={(v) => { if (v) setStatusValue(v as StatusFilterValue); }}>
+              <SelectTrigger id="status-filter" className="h-10 min-w-48">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all" label={labels.allStatuses}>{labels.allStatuses}</SelectItem>
+                {STATUS_FILTER_VALUES.filter((value) => value !== "all").map((value) => (
+                  <SelectItem key={value} value={value} label={statusLabels[value]}>
+                    {statusLabels[value]}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
           </div>
 
           <div className="flex gap-2 items-end">

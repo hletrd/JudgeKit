@@ -5,6 +5,13 @@ import { useTranslations } from "next-intl";
 import { apiFetch } from "@/lib/api/client";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 import { CodeViewer } from "@/components/code/code-viewer";
 import { getLanguageDisplayLabel } from "@/lib/judge/languages";
 
@@ -101,40 +108,34 @@ export function AcceptedSolutions({ problemId, languages }: AcceptedSolutionsPro
           <label className="text-sm font-medium" htmlFor="accepted-solutions-sort">
             {t("sortLabel")}
           </label>
-          <select
-            id="accepted-solutions-sort"
-            className="h-8 rounded-lg border border-input bg-transparent px-2.5 py-1 text-sm"
-            value={sort}
-            onChange={(event) => {
-              setSort(event.target.value as SortOption);
-              setPage(1);
-            }}
-          >
-            <option value="newest">{t("sortNewest")}</option>
-            <option value="shortest">{t("sortShortest")}</option>
-            <option value="fastest">{t("sortFastest")}</option>
-          </select>
+          <Select value={sort} onValueChange={(v) => { if (v) { setSort(v as SortOption); setPage(1); } }}>
+            <SelectTrigger id="accepted-solutions-sort" className="w-[140px]">
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="newest" label={t("sortNewest")}>{t("sortNewest")}</SelectItem>
+              <SelectItem value="shortest" label={t("sortShortest")}>{t("sortShortest")}</SelectItem>
+              <SelectItem value="fastest" label={t("sortFastest")}>{t("sortFastest")}</SelectItem>
+            </SelectContent>
+          </Select>
         </div>
         <div className="space-y-2">
           <label className="text-sm font-medium" htmlFor="accepted-solutions-language">
             {t("languageLabel")}
           </label>
-          <select
-            id="accepted-solutions-language"
-            className="h-8 rounded-lg border border-input bg-transparent px-2.5 py-1 text-sm"
-            value={language}
-            onChange={(event) => {
-              setLanguage(event.target.value);
-              setPage(1);
-            }}
-          >
-            <option value="all">{t("allLanguages")}</option>
-            {languageOptions.map((option) => (
-              <option key={option.value} value={option.value}>
-                {option.label}
-              </option>
-            ))}
-          </select>
+          <Select value={language} onValueChange={(v) => { if (v) { setLanguage(v); setPage(1); } }}>
+            <SelectTrigger id="accepted-solutions-language" className="w-[180px]">
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="all" label={t("allLanguages")}>{t("allLanguages")}</SelectItem>
+              {languageOptions.map((option) => (
+                <SelectItem key={option.value} value={option.value} label={option.label}>
+                  {option.label}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
         </div>
       </div>
 
