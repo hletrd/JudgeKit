@@ -1,5 +1,6 @@
 import { act, render, screen, waitFor } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { useEffect } from "react";
 import { SubmissionOverview } from "@/components/lecture/submission-overview";
 
 const apiFetchMock = vi.fn();
@@ -16,6 +17,7 @@ vi.mock("next-intl", () => ({
     if (key === "pendingCount") return `pending:${values?.count ?? 0}`;
     return key;
   },
+  useLocale: () => "en-US",
 }));
 
 vi.mock("@/lib/api/client", () => ({
@@ -32,6 +34,23 @@ vi.mock("@/lib/judge/status-labels", () => ({
     queued: "Queued",
     judging: "Judging",
   }),
+}));
+
+vi.mock("@/hooks/use-visibility-polling", () => ({
+  useVisibilityPolling: (callback: () => void, intervalMs: number) => {
+    // Simulate the real hook: call once immediately, then set interval.
+    // Uses useEffect to avoid calling during render.
+    useEffect(() => {
+      callback();
+      const id = setInterval(callback, intervalMs);
+      return () => clearInterval(id);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, []);
+  },
+}));
+
+vi.mock("@/lib/formatting", () => ({
+  formatNumber: (n: number) => String(n),
 }));
 
 describe("SubmissionOverview", () => {
