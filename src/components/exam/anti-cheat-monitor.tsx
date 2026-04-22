@@ -64,11 +64,6 @@ export function AntiCheatMonitor({
   const resolvedWarningMessage = warningMessage ?? t("warningTabSwitch");
   const [showPrivacyNotice, setShowPrivacyNotice] = useState(true);
   const lastEventRef = useRef<Record<string, number>>({});
-  const reportEventRef = useRef(reportEvent);
-  const flushPendingEventsRef = useRef(flushPendingEvents);
-  // Keep refs in sync so event handlers always call the latest version
-  useEffect(() => { reportEventRef.current = reportEvent; }, [reportEvent]);
-  useEffect(() => { flushPendingEventsRef.current = flushPendingEvents; }, [flushPendingEvents]);
   const MIN_INTERVAL_MS = 1000;
   const retryTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
@@ -135,6 +130,12 @@ export function AntiCheatMonitor({
     },
     [assignmentId, sendEvent, flushPendingEvents]
   );
+
+  // Refs for stable access in event handlers — prevents listener re-registration
+  const reportEventRef = useRef(reportEvent);
+  const flushPendingEventsRef = useRef(flushPendingEvents);
+  useEffect(() => { reportEventRef.current = reportEvent; }, [reportEvent]);
+  useEffect(() => { flushPendingEventsRef.current = flushPendingEvents; }, [flushPendingEvents]);
 
   useEffect(() => {
     if (!enabled || showPrivacyNotice) return;
