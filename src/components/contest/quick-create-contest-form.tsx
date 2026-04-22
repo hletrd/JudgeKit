@@ -77,9 +77,11 @@ export function QuickCreateContestForm({ problems }: { problems: Problem[] }) {
       });
 
       if (res.ok) {
-        const json = await res.json();
+        const json = await res.json().catch(() => ({}));
         toast.success(t("createSuccess"));
-        router.push(`/dashboard/contests/${json.data.assignmentId}`);
+        if (json.data?.assignmentId) {
+          router.push(`/dashboard/contests/${json.data.assignmentId}`);
+        }
       } else {
         toast.error(t("createError"));
       }

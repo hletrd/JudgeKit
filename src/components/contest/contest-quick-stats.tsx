@@ -49,7 +49,7 @@ export function ContestQuickStats({
     try {
       const res = await apiFetch(`/api/v1/contests/${assignmentId}/stats`);
       if (!res.ok) return;
-      const json = await res.json();
+      const json = await res.json().catch(() => ({}));
       if (json.data && typeof json.data === "object") {
         setStats((prev) => ({
           participantCount: Number.isFinite(Number(json.data.participantCount)) ? Number(json.data.participantCount) : prev.participantCount,

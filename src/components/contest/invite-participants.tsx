@@ -43,7 +43,7 @@ export function InviteParticipants({ assignmentId }: InviteParticipantsProps) {
           `/api/v1/contests/${assignmentId}/invite?q=${encodeURIComponent(q.trim())}`
         );
         if (res.ok) {
-          const data = await res.json();
+          const data = await res.json().catch(() => ({}));
           setResults(data.data ?? []);
         }
       } catch {

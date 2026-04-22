@@ -84,7 +84,7 @@ export function SubmissionOverview({
       }
       const res = await apiFetch(`/api/v1/submissions?${params.toString()}`);
       if (!res.ok) return;
-      const json = await res.json();
+      const json = await res.json().catch(() => ({ data: {} }));
       const submissions: Array<{ id: string; status: string; language: string; submittedAt: string; userId: string }> =
         json.data?.submissions ?? json.data ?? [];
       const summary = json.data?.summary as Record<string, number> | undefined;

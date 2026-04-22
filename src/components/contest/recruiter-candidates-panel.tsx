@@ -51,7 +51,7 @@ export function RecruiterCandidatesPanel({ assignmentId }: { assignmentId: strin
         `/api/v1/contests/${assignmentId}/export?format=json`
       );
       if (res.ok) {
-        const data = await res.json();
+        const data = await res.json().catch(() => []);
         setCandidates(Array.isArray(data) ? data : []);
       }
     } catch {

@@ -54,7 +54,7 @@ export function CodeTimelinePanel({
         `/api/v1/contests/${assignmentId}/code-snapshots/${userId}${query}`
       );
       if (res.ok) {
-        const json = await res.json();
+        const json = await res.json().catch(() => ({ data: [] }));
         setSnapshots(json.data ?? []);
         setSelectedIdx(0);
         setError(false);
