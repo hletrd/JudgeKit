@@ -44,7 +44,6 @@ export function DiscussionPostForm({
         const errorBody = await response.json().catch(() => ({}));
         throw new Error((errorBody as { error?: string }).error || "discussionReplyCreateFailed");
       }
-      await response.json();
       setContent("");
       toast.success(successLabel);
       router.refresh();

@@ -89,8 +89,6 @@ export default function EditGroupDialog({ group }: { group: EditableGroup }) {
           throw new Error((errorBody as { error?: string }).error || "updateError");
         }
 
-        await response.json();
-
         toast.success(t("updateSuccess"));
         await handleOpenChange(false);
         router.refresh();

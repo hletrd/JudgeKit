@@ -26,7 +26,6 @@ export function DiscussionPostDeleteButton({ postId, deleteLabel, successLabel }
         const errorBody = await response.json().catch(() => ({}));
         throw new Error((errorBody as { error?: string }).error || "discussionReplyDeleteFailed");
       }
-      await response.json();
       toast.success(successLabel);
       router.refresh();
       return true;

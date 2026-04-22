@@ -50,7 +50,6 @@ export function DiscussionThreadForm({
         const errorBody = await response.json().catch(() => ({}));
         throw new Error((errorBody as { error?: string }).error || "discussionThreadCreateFailed");
       }
-      await response.json();
       setTitle("");
       setContent("");
       toast.success(successLabel);
