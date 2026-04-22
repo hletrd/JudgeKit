@@ -227,18 +227,22 @@ export function RecruitingInvitationsPanel({ assignmentId }: { assignmentId: str
   }
 
   async function handleRevoke(invitation: Invitation) {
-    const res = await apiFetch(
-      `/api/v1/contests/${assignmentId}/recruiting-invitations/${invitation.id}`,
-      {
-        method: "PATCH",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ status: "revoked" }),
+    try {
+      const res = await apiFetch(
+        `/api/v1/contests/${assignmentId}/recruiting-invitations/${invitation.id}`,
+        {
+          method: "PATCH",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ status: "revoked" }),
+        }
+      );
+      if (res.ok) {
+        toast.success(t("revokeSuccess"));
+        await Promise.all([fetchInvitations(), fetchStats()]);
+      } else {
+        toast.error(t("revokeError"));
       }
-    );
-    if (res.ok) {
-      toast.success(t("revokeSuccess"));
-      await Promise.all([fetchInvitations(), fetchStats()]);
-    } else {
+    } catch {
       toast.error(t("revokeError"));
     }
   }
@@ -268,14 +272,18 @@ export function RecruitingInvitationsPanel({ assignmentId }: { assignmentId: str
 
 
   async function handleDelete(invitation: Invitation) {
-    const res = await apiFetch(
-      `/api/v1/contests/${assignmentId}/recruiting-invitations/${invitation.id}`,
-      { method: "DELETE" }
-    );
-    if (res.ok) {
-      toast.success(t("deleteSuccess"));
-      await Promise.all([fetchInvitations(), fetchStats()]);
-    } else {
+    try {
+      const res = await apiFetch(
+        `/api/v1/contests/${assignmentId}/recruiting-invitations/${invitation.id}`,
+        { method: "DELETE" }
+      );
+      if (res.ok) {
+        toast.success(t("deleteSuccess"));
+        await Promise.all([fetchInvitations(), fetchStats()]);
+      } else {
+        toast.error(t("deleteError"));
+      }
+    } catch {
       toast.error(t("deleteError"));
     }
   }
