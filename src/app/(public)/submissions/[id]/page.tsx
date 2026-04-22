@@ -8,6 +8,7 @@ import { getResolvedSystemTimeZone } from "@/lib/system-settings";
 import { redirect, notFound } from "next/navigation";
 import { SubmissionDetailClient } from "@/app/(dashboard)/dashboard/submissions/[id]/submission-detail-client";
 import { buildLocalePath, NO_INDEX_METADATA } from "@/lib/seo";
+import { formatScore } from "@/lib/formatting";
 import { SubmissionStatusBadge } from "@/components/submission-status-badge";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
@@ -220,7 +221,7 @@ export default async function PublicSubmissionDetailPage({ params, searchParams 
                             runtimeErrorType={sub.runtimeErrorType}
                           />
                         </TableCell>
-                        <TableCell>{sub.score !== null ? Math.round(sub.score * 100) / 100 : "-"}</TableCell>
+                        <TableCell>{formatScore(sub.score, locale)}</TableCell>
                         <TableCell>
                           {sub.submittedAt
                             ? formatDateTimeInTimeZone(sub.submittedAt, locale, timeZone)
