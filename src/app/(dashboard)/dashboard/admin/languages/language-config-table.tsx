@@ -91,7 +91,7 @@ export function LanguageConfigTable({ languages }: { languages: LanguageConfig[]
     try {
       const res = await apiFetch("/api/v1/admin/docker/images");
       if (res.ok) {
-        const json = await res.json();
+        const json = await res.json().catch(() => ({ data: {} }));
         const data = json.data ?? {};
         const images = data.images ?? data ?? [];
         const staleSet = new Set<string>(data.staleImages ?? []);
