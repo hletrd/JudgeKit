@@ -120,7 +120,7 @@ export function SubmissionOverview({
     }
   }, [assignmentId, problemId, t]);
 
-  useVisibilityPolling(() => { void fetchStats(); }, POLL_INTERVAL_MS);
+  useVisibilityPolling(() => { void fetchStats(); }, POLL_INTERVAL_MS, !open);
 
   // Reset initialLoadDoneRef when the dialog opens so error toasts work correctly
   // on the next initial load.

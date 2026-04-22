@@ -17,6 +17,7 @@ import { useEffect, useCallback, useRef } from "react";
 export function useVisibilityPolling(
   callback: () => void,
   intervalMs: number,
+  paused = false,
 ) {
   const savedCallback = useRef(callback);
 
@@ -30,6 +31,8 @@ export function useVisibilityPolling(
   }, []);
 
   useEffect(() => {
+    if (paused) return;
+
     let intervalId: ReturnType<typeof setInterval> | null = null;
 
     function clearPollingInterval() {
@@ -62,5 +65,5 @@ export function useVisibilityPolling(
       document.removeEventListener("visibilitychange", syncVisibility);
       clearPollingInterval();
     };
-  }, [tick, intervalMs]);
+  }, [tick, intervalMs, paused]);
 }
