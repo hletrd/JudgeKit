@@ -1,47 +1,49 @@
-# Performance Review — RPF Cycle 8
+# Performance Review — RPF Cycle 11
 
 **Date:** 2026-04-22
 **Reviewer:** perf-reviewer
-**Base commit:** 55ce822b
+**Base commit:** 42ca4c9a
 
 ## Findings
 
-### PERF-1: `participant-anti-cheat-timeline.tsx` `fetchEvents` replaces entire event list on every poll — loses loaded pages [MEDIUM/MEDIUM]
+### PERF-1: `accepted-solutions.tsx` useEffect re-runs on every render due to `pageSize` in dependency array — `pageSize` is state that never changes [LOW/LOW]
 
-**File:** `src/components/contest/participant-anti-cheat-timeline.tsx:90-108, 129`
+**File:** `src/components/problem/accepted-solutions.tsx:102`
 
-**Description:** The `fetchEvents` callback (triggered by `useVisibilityPolling` every 30 seconds) always fetches from offset 0 and replaces the `events` state with only the first page of results. If the user has loaded additional pages via `loadMore`, those pages are lost on the next polling refresh. This causes unnecessary re-fetching and poor UX — the user sees their expanded list "jump back" to the first page every 30 seconds.
+**Description:** The `useEffect` on line 58-101 depends on `[problemId, sort, language, page, pageSize]`. However, `pageSize` is declared as `const [pageSize] = useState(10)` — it is never changed. Including it in the dependency array is harmless but unnecessary. More importantly, the effect has no `loading` state in its dependency array, which means `setLoading(true)` on line 62 could cause a re-render loop if `loading` were used in a selector. Currently this is benign.
 
-**Fix:** When events are already loaded beyond the first page, use a diff/merge strategy or skip the refresh if the first page matches.
-
-**Confidence:** HIGH
-
----
-
-### PERF-2: `submission-overview.tsx` continues polling even when dialog is closed [LOW/LOW]
-
-**File:** `src/components/lecture/submission-overview.tsx:123`
-
-**Description:** `useVisibilityPolling` runs continuously with a 5-second interval, even when the dialog is closed. The `fetchStats` callback has a ref-based guard (`openRef.current`) that prevents the actual API call, but the `setTimeout` scheduling still happens every 5 seconds. This is wasteful but low impact since the actual network call is skipped.
-
-**Fix:** Conditionally enable/disable the polling based on the `open` prop.
+**Fix:** Remove `pageSize` from the dependency array or add an eslint-disable comment explaining it is intentionally constant.
 
 **Confidence:** LOW
 
 ---
 
-### PERF-3: `database-backup-restore.tsx` restore success path makes unnecessary `response.json()` call [LOW/LOW]
+### PERF-2: `recruiting-invitations-panel.tsx` fetches stats and invitations separately — could be parallelized [LOW/LOW]
 
-**File:** `src/app/(dashboard)/dashboard/admin/settings/database-backup-restore.tsx:150`
+**File:** `src/components/contest/recruiting-invitations-panel.tsx:160-162`
 
-**Description:** After a successful database restore, the code calls `await response.json()` on line 150 and discards the result. For a large restore response, this unnecessarily parses JSON that is never used. The restore endpoint returns a simple status — the body is not needed.
+**Description:** The `fetchData` callback on line 160 uses `Promise.all` which is correct. However, the individual fetch functions (`fetchInvitations` and `fetchStats`) each create their own `apiFetch` call independently. The invitations fetch includes an abort controller for cancellation, but the stats fetch does not. If the component unmounts during the stats fetch, the request continues unnecessarily. This is minor since the stats endpoint is lightweight.
 
-**Fix:** Remove the `await response.json()` call or replace with `await response.text().catch(() => "")` to drain the body without parsing.
+**Fix:** Add abort signal support to `fetchStats` as well, or use a shared abort controller.
 
 **Confidence:** LOW
+
+---
+
+### PERF-3: `contest-clarifications.tsx:79` and `contest-announcements.tsx:56` call `response.json()` on success path after `response.ok` check — no `.catch()` guard [LOW/MEDIUM]
+
+**Files:**
+- `src/components/contest/contest-clarifications.tsx:79`
+- `src/components/contest/contest-announcements.tsx:56`
+
+**Description:** After checking `response.ok`, these polling endpoints call `await response.json()` without a `.catch()` guard. On a 200 with a non-JSON body, `response.json()` throws SyntaxError. The outer catch block silently fails (only showing a toast on initial load), so the user experience impact is low. However, the thrown SyntaxError is an unnecessary exception that could be avoided.
+
+**Fix:** Wrap in `.catch(() => ({ data: [] }))` to match the expected type structure.
+
+**Confidence:** MEDIUM
 
 ---
 
 ## Final Sweep
 
-The `useVisibilityPolling` hook is used consistently across contest monitoring components. The `useSubmissionPolling` hook properly implements SSE-to-fetch-polling fallback with exponential backoff. The code snapshot timer in `problem-submission-form.tsx` adapts its interval based on user activity. The execution limiter in `execute.ts` caps concurrent Docker containers. The rate-limiter client properly fails open with circuit breaker. The main performance concern is the anti-cheat timeline resetting on polling refresh.
+The cycle 9 fixes are all in place and working correctly. The anti-cheat timeline polling fix properly preserves loaded pages. The `useVisibilityPolling` hook is efficient with its shared polling approach. The `normalizePage` upper bound prevents DoS via extremely large offsets. The `setTimeout`-based countdown timer is correct. The SSE events route has proper shared polling. Performance of the codebase is generally good. The findings this cycle are low severity — no critical performance regressions.

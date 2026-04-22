@@ -1,75 +1,74 @@
-# Code Quality Review — RPF Cycle 8
+# Code Quality Review — RPF Cycle 11
 
 **Date:** 2026-04-22
 **Reviewer:** code-reviewer
-**Base commit:** 55ce822b
+**Base commit:** 42ca4c9a
 
 ## Findings
 
-### CR-1: `comment-section.tsx` silently swallows error responses — `response.ok` check passes but `response.json()` can still fail [MEDIUM/MEDIUM]
+### CR-1: `problem-submission-form.tsx` displays raw API error in toast on compiler run failure — inconsistent with submission error path [MEDIUM/HIGH]
 
-**File:** `src/app/(dashboard)/dashboard/submissions/[id]/_components/comment-section.tsx:43-49`
+**File:** `src/components/problem/problem-submission-form.tsx:185`
 
-**Description:** The `fetchComments` function checks `if (response.ok)` then calls `response.json()`, but if `response.json()` throws (e.g., truncated JSON from a proxy timeout), the error is caught by the generic `catch` block which shows a toast. However, the `handleCommentSubmit` function (line 64-79) checks `if (response.ok)` on line 70 but does NOT show any error feedback when `response.ok` is false. The user submits a comment, the server returns an error (e.g., 403 forbidden), and the comment is silently lost — no toast, no feedback.
+**Description:** On the compiler run error path, line 185 displays the raw API error string directly to the user: `toast.error((errorBody as { error?: string }).error ?? tCommon("error"))`. In contrast, the submission error path on line 248 properly uses `toast.error(translateSubmissionError((errorBody as { error?: string }).error))` to map API errors to i18n keys. This is the same anti-pattern that was fixed across all discussion components in cycle 9 (AGG-4). The `translateSubmissionError` function already exists and maps known error codes — line 185 should use it too.
 
-**Concrete failure scenario:** A student submits a comment on a submission. The API returns 403 (they lost comment permission). `response.ok` is false, the code enters the `if (response.ok)` branch which is empty, does nothing. The comment text is NOT cleared (no `setCommentContent("")`), but the user gets no feedback that the submission failed.
+**Concrete failure scenario:** The compiler run API returns `{ error: "language_not_supported" }`. Line 185 displays the raw string "language_not_supported" to the user instead of a localized error message. The submission path on line 248 would correctly map this through `translateSubmissionError`.
 
-**Fix:** Add an `else` branch to the `response.ok` check in `handleCommentSubmit` that shows a toast error, similar to the catch block.
-
-**Confidence:** HIGH
-
----
-
-### CR-2: `participant-anti-cheat-timeline.tsx` `loadMore` resets the event list on polling refresh [MEDIUM/HIGH]
-
-**File:** `src/components/contest/participant-anti-cheat-timeline.tsx:90-108, 129`
-
-**Description:** The `fetchEvents` function (line 90) always fetches from offset 0 and replaces `events` state with `setEvents(json.data.events)`. It is called by `useVisibilityPolling` on line 129 every 30 seconds. When a user has scrolled and loaded more events via `loadMore` (which appends to events), the next polling refresh will reset the list back to only the first page. The user's expanded view is lost.
-
-**Concrete failure scenario:** An instructor views the anti-cheat timeline for a participant with 200 events. They click "Load More" twice to see 150 events. 30 seconds later, the polling refresh fires `fetchEvents`, which resets `events` to the first 50. The instructor loses their scroll position and the expanded data.
-
-**Fix:** In `fetchEvents`, when `events.length > PAGE_SIZE`, use a diff/merge strategy instead of replacing. Or at minimum, do not reset if the user has already loaded more data.
+**Fix:** Replace `toast.error((errorBody as { error?: string }).error ?? tCommon("error"))` with `toast.error(translateSubmissionError((errorBody as { error?: string }).error))` on line 185.
 
 **Confidence:** HIGH
 
 ---
 
-### CR-3: `submission-overview.tsx` fetches data even when the dialog is closed — `openRef` guard may be stale [LOW/MEDIUM]
+### CR-2: Unguarded `response.json()` on success paths — `response.ok` checked but no `.catch()` on the `.json()` call (result IS used) [MEDIUM/MEDIUM]
 
-**File:** `src/components/lecture/submission-overview.tsx:72-74, 123`
+**Files:**
+- `src/components/problem/problem-submission-form.tsx:188`
+- `src/components/problem/problem-submission-form.tsx:252`
+- `src/components/contest/contest-clarifications.tsx:79`
+- `src/components/contest/contest-announcements.tsx:56`
+- `src/components/problem/accepted-solutions.tsx:78`
+- `src/components/contest/invite-participants.tsx:46`
+- `src/lib/plugins/chat-widget/admin-config.tsx:104`
+- `src/lib/plugins/chat-widget/providers.ts:138, 258, 398`
 
-**Description:** The `fetchStats` callback checks `openRef.current` before fetching, which is a ref-based guard. The `useVisibilityPolling` hook on line 123 calls the callback every 5 seconds regardless of whether the dialog is open. The ref guard should work, but there is a race: `useVisibilityPolling` schedules a `setTimeout`, and the callback reference is captured at callback creation time. The ref is always up-to-date since refs are mutable, but the polling continues to fire `setTimeout` calls even when the dialog is closed, which is wasteful.
+**Description:** After checking `response.ok`, these files call `await response.json()` without a `.catch()` guard. Unlike the previously fixed AGG-9 instances where the result was discarded, these calls DO use the result. However, if the server returns a non-JSON body on a 200 response (e.g., due to a proxy truncation, misconfiguration, or empty body), `response.json()` throws SyntaxError. The outer catch blocks show a generic error toast even though the request may have succeeded. This is a variant of AGG-9 from the previous aggregate.
 
-**Fix:** Pass the `open` state to `useVisibilityPolling` and have it skip scheduling when the dialog is closed, or use a conditional hook pattern.
+**Concrete failure scenario:** A user submits code to the compiler. The API returns 200 with the run results. A reverse proxy truncates the response body due to a size limit. `response.json()` throws SyntaxError. The catch block shows `toast.error(tCommon("error"))`. The user thinks the run failed, but the code was actually compiled. They click "Run" again.
 
-**Confidence:** LOW
+**Fix:** Wrap the `.json()` call in a try-catch within the success path, or use a helper function like `tryParseJson(response)` that returns `null` on parse failure. If `null`, show a specific "response parse error" toast.
 
----
-
-### CR-4: `database-backup-restore.tsx` restore path calls `response.json()` unnecessarily on success [LOW/LOW]
-
-**File:** `src/app/(dashboard)/dashboard/admin/settings/database-backup-restore.tsx:150`
-
-**Description:** After a successful restore (line 149-150), the code calls `await response.json()` but discards the result. This is unnecessary I/O — the server may return an empty body or a confirmation object, but neither is used. This is a minor inefficiency.
-
-**Fix:** Remove the `await response.json()` call on line 150, or use it if the server returns useful data.
-
-**Confidence:** LOW
+**Confidence:** MEDIUM
 
 ---
 
-### CR-5: `assignment-form-dialog.tsx` `Number(event.target.value)` for latePenalty can produce NaN [LOW/LOW]
+### CR-3: `group-members-manager.tsx:225` dead `await response.json().catch(() => ({}))` call on remove success path [LOW/MEDIUM]
 
-**File:** `src/app/(dashboard)/dashboard/groups/[id]/assignment-form-dialog.tsx:407`
+**File:** `src/app/(dashboard)/dashboard/groups/[id]/group-members-manager.tsx:225`
 
-**Description:** `setLatePenalty(Number(event.target.value))` can produce `NaN` if the input contains non-numeric characters. While `<input type="number">` normally prevents this, the `value` can be an empty string when the user clears the field. `Number("")` returns `0`, which is acceptable, but if the user types "e" (allowed in number inputs for scientific notation in some browsers), `Number("e")` returns `NaN`. The `min`/`max` attributes only prevent form submission, not the onChange event. NaN would be sent to the API.
+**Description:** After a successful DELETE, line 225 calls `await response.json().catch(() => ({}))` and discards the result. This is dead code that was partially addressed in AGG-11 (the success-first pattern was fixed), but the dead `.json()` call remains. It serves no purpose — the response body is not needed after a successful member removal.
 
-**Fix:** Use `parseFloat(event.target.value) || 0` or validate before setting state.
+**Concrete failure scenario:** No user-visible failure, but the unnecessary await adds latency and the discarded result is confusing for maintainers.
 
-**Confidence:** LOW
+**Fix:** Remove line 225.
+
+**Confidence:** HIGH
+
+---
+
+### CR-4: `chat-widget/admin-config.tsx:97` sends `apiKey` in request body to test-connection endpoint — server-side SSRF risk [HIGH/HIGH]
+
+**File:** `src/lib/plugins/chat-widget/admin-config.tsx:97`
+**Server route:** `src/app/api/v1/plugins/chat-widget/test-connection/route.ts:39`
+
+**Description:** The admin config component sends the `apiKey` in the request body to the test-connection endpoint. The server route then uses this key directly to make outbound API calls (to OpenAI, Anthropic, or Google). An attacker with admin access (or via CSRF) could supply an arbitrary URL in the `model` field or manipulate the `apiKey` to make the server issue requests to internal services. While the endpoint validates the provider enum, the `model` field is a free-form string that could contain URLs or other injection payloads. The `gemini` case constructs a URL from the model: ``https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent``. A malicious model like `../../some-internal-service` would construct a different URL.
+
+**Fix:** The test-connection endpoint should use the stored encrypted API key from the database rather than accepting it from the request body. The `model` field should be validated against a strict allowlist pattern per provider.
+
+**Confidence:** MEDIUM
 
 ---
 
 ## Final Sweep
 
-The cycle 7 fixes for the `response.json()` before `response.ok` pattern are all correctly implemented. The 5 files fixed in cycle 7 (`create-group-dialog.tsx`, `bulk-create-dialog.tsx`, `database-backup-restore.tsx`, `admin-config.tsx`, `submission-detail-client.tsx`) now properly check `response.ok` before parsing JSON. The main new finding is the silent failure in `comment-section.tsx` where `!response.ok` gives no user feedback.
+The cycle 9 fixes (discussion i18n, discarded response.json(), pagination upper bound, dialog semantics) are all properly implemented and verified. The main new findings this cycle are: (1) the raw API error display in `problem-submission-form.tsx` compiler run path — the same class of bug fixed in discussion components but missed here; (2) unguarded `response.json()` on success paths in multiple components where the result is used (a wider variant of AGG-9); (3) a dead `.json()` call in group-members-manager; and (4) the SSRF risk in the chat-widget test-connection endpoint carried from SEC-1.

@@ -1,30 +1,30 @@
-# Document Specialist Review — RPF Cycle 8
+# Document Specialist Review — RPF Cycle 11
 
 **Date:** 2026-04-22
 **Reviewer:** document-specialist
-**Base commit:** 55ce822b
+**Base commit:** 42ca4c9a
 
 ## Findings
 
-### DOC-1: `comment-section.tsx` `handleCommentSubmit` has no comment explaining the missing error handling [LOW/LOW]
+### DOC-1: `apiFetch` JSDoc example shows raw error display pattern — contradicts established i18n convention [LOW/MEDIUM]
 
-**File:** `src/app/(dashboard)/dashboard/submissions/[id]/_components/comment-section.tsx:59-79`
+**File:** `src/lib/api/client.ts:37`
 
-**Description:** The `handleCommentSubmit` function checks `if (response.ok)` but has no else branch. There is no comment explaining why the error case is silently ignored (or whether it's intentional). A developer reading the code might assume the error handling was accidentally omitted.
+**Description:** The `apiFetch` JSDoc example on line 37 shows: `toast.error((errorBody as { error?: string }).error ?? "Request failed")`. This displays the raw API error string to the user. The established convention in the codebase (after cycle 9 fixes) is to use i18n keys for user-facing error messages and log the raw API error to the console. The JSDoc example should reflect the recommended pattern.
 
-**Fix:** Either add error handling (recommended), or add a comment explaining why errors are silently swallowed.
+**Fix:** Update the JSDoc example to show the i18n-first pattern: `toast.error(errorLabel)` with a `console.error` for the raw API error.
 
-**Confidence:** MEDIUM
+**Confidence:** HIGH
 
 ---
 
-### DOC-2: `database-backup-restore.tsx` line 150 has no comment explaining why `response.json()` result is discarded [LOW/LOW]
+### DOC-2: `translateSubmissionError` function in `problem-submission-form.tsx` not documented — missed by reviewers in prior cycles [LOW/LOW]
 
-**File:** `src/app/(dashboard)/dashboard/admin/settings/database-backup-restore.tsx:150`
+**File:** `src/components/problem/problem-submission-form.tsx` (function definition not visible in the read range)
 
-**Description:** The `await response.json()` call on line 150 has its result discarded with no explanation. Is it to drain the response body? Was the result previously used? Without a comment, developers may remove it (thinking it's dead code) or keep it (not knowing its purpose).
+**Description:** The `translateSubmissionError` function is used in the submit path but not documented with JSDoc. Its existence and purpose should be documented so that future developers know to use it for the run path as well. The fact that it was not used on the run path suggests that its purpose was not clear to the developer who added the run feature.
 
-**Fix:** Either remove the call (if truly unnecessary) or add a comment explaining its purpose (e.g., "drain response body to prevent connection leaks").
+**Fix:** Add JSDoc to `translateSubmissionError` explaining that it should be used for ALL API error display in the component, including both the submit and run paths.
 
 **Confidence:** MEDIUM
 
@@ -32,4 +32,4 @@
 
 ## Final Sweep
 
-The `apiFetch` JSDoc is well-maintained with the anti-pattern example. The `useVisibilityPolling` JSDoc now includes the callback error handling note (fixed in cycle 7). The code documentation is generally good. The main gaps are the missing comments on silent error paths and dead code.
+The code documentation is generally good. The `apiFetch` JSDoc is well-maintained but the example now contradicts the established convention. The `useVisibilityPolling` JSDoc is comprehensive. The `normalizePage` function has clear documentation. The main gap is the JSDoc example showing a now-discouraged pattern.

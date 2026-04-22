@@ -1,47 +1,53 @@
-# Architectural Review — RPF Cycle 8
+# Architectural Review — RPF Cycle 11
 
 **Date:** 2026-04-22
 **Reviewer:** architect
-**Base commit:** 55ce822b
+**Base commit:** 42ca4c9a
 
 ## Findings
 
-### ARCH-1: `comment-section.tsx` has asymmetric error handling between fetch and submit — fetch shows toast on error but submit silently swallows `!response.ok` [MEDIUM/MEDIUM]
+### ARCH-1: `problem-submission-form.tsx` has inconsistent error handling between "Run" and "Submit" paths — same component, different patterns [MEDIUM/HIGH]
 
-**File:** `src/app/(dashboard)/dashboard/submissions/[id]/_components/comment-section.tsx:41-53 vs 59-79`
+**File:** `src/components/problem/problem-submission-form.tsx:183-191` vs `246-257`
 
-**Description:** The `fetchComments` function (line 41-53) properly shows a toast on error. The `handleCommentSubmit` function (line 59-79) checks `response.ok` on line 70 but has no else branch — when `!response.ok`, it does nothing. The user gets no feedback. This is an architectural inconsistency in error handling within the same component.
+**Description:** The compiler run error path (handleRun, line 185) displays raw API error strings to the user, while the submission error path (handleSubmit, line 248) uses `translateSubmissionError()` to map API errors to i18n keys. Within the same component, two similar API calls follow different error handling architectures. This violates the principle of consistent error handling within a single component. The `translateSubmissionError` function is already available in the component — it should be used for both paths.
 
-**Fix:** Add an `else` branch after line 73 to show a toast error when `!response.ok`, following the same pattern as the catch block.
-
-**Confidence:** HIGH
-
----
-
-### ARCH-2: `participant-anti-cheat-timeline.tsx` `fetchEvents` replaces state on every poll — contradicts the incremental loading pattern established by `loadMore` [MEDIUM/HIGH]
-
-**File:** `src/components/contest/participant-anti-cheat-timeline.tsx:90-108`
-
-**Description:** The component implements two patterns: (1) `fetchEvents` replaces the entire event list, and (2) `loadMore` appends to the list. These patterns are architecturally in conflict. When `useVisibilityPolling` triggers `fetchEvents`, it resets the list to the first page, undoing any `loadMore` expansions. The component's two data-fetching strategies are inconsistent — one is replace, the other is append.
-
-**Fix:** Make `fetchEvents` preserve already-loaded pages when refreshing. Only replace the first page of data (which is what the server returns for offset=0), and keep any additional pages loaded by `loadMore`.
+**Fix:** Replace `(errorBody as { error?: string }).error ?? tCommon("error")` on line 185 with `translateSubmissionError((errorBody as { error?: string }).error)`.
 
 **Confidence:** HIGH
 
 ---
 
-### ARCH-3: `database-backup-restore.tsx` restore path calls `response.json()` without using result — dead code [LOW/LOW]
+### ARCH-2: `group-members-manager.tsx:225` dead `await response.json().catch(() => ({}))` call on remove success path — leftover from partial fix [LOW/MEDIUM]
 
-**File:** `src/app/(dashboard)/dashboard/admin/settings/database-backup-restore.tsx:150`
+**File:** `src/app/(dashboard)/dashboard/groups/[id]/group-members-manager.tsx:225`
 
-**Description:** Line 150 `await response.json()` is called after a successful restore but the result is discarded. This is dead code that suggests either: (1) the response was originally used but the usage was removed, or (2) it was added to drain the response body. If the intent is to drain the body, `response.text()` or `response.body?.cancel()` would be more appropriate.
+**Description:** After a successful DELETE, line 221-223 properly checks `response.ok` and throws on error (success-first pattern, fixed in a prior cycle). However, line 225 still has `await response.json().catch(() => ({}))` which is dead code — the response body is not used after a member removal. This was partially addressed in AGG-11 but the dead `.json()` call was not removed.
 
-**Fix:** Remove the dead `await response.json()` call or document its purpose.
+**Fix:** Remove line 225.
 
 **Confidence:** HIGH
+
+---
+
+### ARCH-3: No centralized error-to-i18n mapping utility — each component implements its own pattern [MEDIUM/LOW]
+
+**Files:** Multiple components across the codebase
+
+**Description:** The codebase has at least four distinct patterns for mapping API errors to user-facing i18n strings:
+1. `translateSubmissionError()` in problem-submission-form.tsx (custom mapping function)
+2. `getErrorMessage()` in edit-group-dialog.tsx (switch-case mapping)
+3. Direct `throw new Error(errorLabel)` pattern in discussion components (props-based i18n)
+4. Raw API error display in some components
+
+This architectural inconsistency makes it harder to maintain and update error messages across the application. A centralized error code mapping utility would provide a single source of truth.
+
+**Fix:** Consider extracting a shared `mapApiError(errorCode: string, fallbackKey: string): string` utility that components can use consistently. This is a refactor suggestion, not a bug.
+
+**Confidence:** LOW
 
 ---
 
 ## Final Sweep
 
-The auth layer, CSRF protection, and permission system remain well-layered. The `useVisibilityPolling` hook provides a good shared abstraction. The Docker execution sandbox has proper defense-in-depth. The rate-limiter circuit breaker correctly fails open. The cycle 7 `response.json()` before `response.ok` fixes are properly implemented. The main new architectural issue is the conflicting replace/append patterns in the anti-cheat timeline.
+The cycle 9 fixes are properly implemented. The discussion components now use i18n keys consistently. The `normalizePage` function has proper bounds. The `DestructiveActionDialog` and `AlertDialog` patterns are consistently applied. The auth layer, CSRF protection, and permission system remain well-layered. The proxy middleware properly handles locale resolution, CSP headers, and auth state. The main architectural concern this cycle is the inconsistent error handling within `problem-submission-form.tsx` — a single component should not have two different error handling patterns.
