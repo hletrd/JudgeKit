@@ -95,18 +95,21 @@ export function SubmissionDetailClient(props: SubmissionDetailClientProps) {
     router.push(problemHref);
   }
 
-  function handleRetryRefresh() {
-    apiFetch(`/api/v1/submissions/${submission.id}`)
-      .then((res) => res.json())
-      .then((payload: { data?: Record<string, unknown> }) => {
-        if (payload.data) {
-          const updated = normalizeSubmission(payload.data);
-          setSubmission((prev) => ({ ...updated, sourceCode: updated.sourceCode || prev.sourceCode }));
-        }
-      })
-      .catch(() => {
+  async function handleRetryRefresh() {
+    try {
+      const res = await apiFetch(`/api/v1/submissions/${submission.id}`);
+      if (!res.ok) {
         toast.error(tCommon("error"));
-      });
+        return;
+      }
+      const payload = (await res.json()) as { data?: Record<string, unknown> };
+      if (payload.data) {
+        const updated = normalizeSubmission(payload.data);
+        setSubmission((prev) => ({ ...updated, sourceCode: updated.sourceCode || prev.sourceCode }));
+      }
+    } catch {
+      toast.error(tCommon("error"));
+    }
   }
 
   useEffect(() => {
