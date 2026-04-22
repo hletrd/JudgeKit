@@ -46,6 +46,8 @@ export function CommentSection({ submissionId, canComment, targetLine = null, on
         if (payload.data) {
           setComments(payload.data);
         }
+      } else {
+        toast.error(tComments("loadError"));
       }
     } catch {
       toast.error(tComments("loadError"));
