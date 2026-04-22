@@ -43,7 +43,8 @@ export function DiscussionVoteButtons({
       });
       if (!response.ok) {
         const errorBody = await response.json().catch(() => ({}));
-        toast.error((errorBody as { error?: string }).error ?? voteFailedLabel);
+        console.error("Vote failed:", (errorBody as { error?: string }).error);
+        toast.error(voteFailedLabel);
         return;
       }
       const payload = await response.json() as {
