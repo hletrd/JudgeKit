@@ -10,6 +10,9 @@ import { useEffect, useCallback, useRef } from "react";
  * - Pauses polling when the page is hidden.
  * - Resumes polling (with an immediate fetch) when the page becomes visible again.
  * - Always clears the existing interval before creating a new one to prevent duplicates.
+ *
+ * Note: The callback must handle its own errors (e.g., try/catch with toast).
+ * The hook does not catch errors thrown by the callback.
  */
 export function useVisibilityPolling(
   callback: () => void,
