@@ -434,7 +434,7 @@ export function LanguageConfigTable({ languages }: { languages: LanguageConfig[]
                 </TableCell>
                 <TableCell>
                   <div className="flex items-center gap-0.5">
-                    <Button variant="ghost" size="icon-sm" onClick={() => openEdit(lang)}>
+                    <Button variant="ghost" size="icon-sm" onClick={() => openEdit(lang)} aria-label={t("edit.title")}>
                       <Pencil className="size-3.5" />
                     </Button>
                     <Button
@@ -443,6 +443,7 @@ export function LanguageConfigTable({ languages }: { languages: LanguageConfig[]
                       onClick={() => handleBuild(lang)}
                       disabled={buildingLangs.has(lang.language)}
                       title={t("actions.build")}
+                      aria-label={t("actions.build")}
                     >
                       {buildingLangs.has(lang.language)
                         ? <Loader2 className="size-3.5 animate-spin" />
@@ -454,6 +455,7 @@ export function LanguageConfigTable({ languages }: { languages: LanguageConfig[]
                         size="icon-sm"
                         onClick={() => handleRemoveImage(lang)}
                         title={t("actions.remove")}
+                        aria-label={t("actions.remove")}
                         className="text-destructive"
                       >
                         <Trash2 className="size-3.5" />
