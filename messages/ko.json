@@ -2571,6 +2571,8 @@
     "fullscreenTitle": "전체 화면 ({key})",
     "submissionStatsTitle": "제출 통계 ({key})",
     "exitLectureModeTitle": "강의 모드 종료 ({key})",
+    "decreaseFontSize": "글꼴 크기 줄이기",
+    "increaseFontSize": "글꼴 크기 늘리기",
     "submissionStats": "제출 통계",
     "closeStats": "제출 통계 닫기",
     "acceptedLabel": "정답",

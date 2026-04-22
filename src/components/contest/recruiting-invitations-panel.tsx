@@ -527,6 +527,7 @@ export function RecruitingInvitationsPanel({ assignmentId }: { assignmentId: str
                         size="sm"
                         onClick={() => handleCopyLink(inv)}
                         title={t("copyLink")}
+                        aria-label={t("copyLink")}
                       >
                         {copiedId === inv.id ? (
                           <Check className="h-4 w-4" />
@@ -537,7 +538,7 @@ export function RecruitingInvitationsPanel({ assignmentId }: { assignmentId: str
                       {inv.status === "redeemed" && (
                         <AlertDialog>
                             <AlertDialogTrigger render={
-                              <Button variant="ghost" size="sm" title={t("resetAccountPassword")}>
+                              <Button variant="ghost" size="sm" title={t("resetAccountPassword")} aria-label={t("resetAccountPassword")}>
                                 <ShieldAlert className="h-4 w-4" />
                               </Button>
                             } />
@@ -561,7 +562,7 @@ export function RecruitingInvitationsPanel({ assignmentId }: { assignmentId: str
                         <>
                           <AlertDialog>
                             <AlertDialogTrigger render={
-                              <Button variant="ghost" size="sm" title={t("revoke")}>
+                              <Button variant="ghost" size="sm" title={t("revoke")} aria-label={t("revoke")}>
                                 <Ban className="h-4 w-4" />
                               </Button>
                             } />
@@ -582,7 +583,7 @@ export function RecruitingInvitationsPanel({ assignmentId }: { assignmentId: str
                           </AlertDialog>
                           <AlertDialog>
                             <AlertDialogTrigger render={
-                              <Button variant="ghost" size="sm" title={t("delete")}>
+                              <Button variant="ghost" size="sm" title={t("delete")} aria-label={t("delete")}>
                                 <Trash2 className="h-4 w-4" />
                               </Button>
                             } />

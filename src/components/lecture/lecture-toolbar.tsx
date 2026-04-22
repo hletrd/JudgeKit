@@ -132,11 +132,11 @@ export function LectureToolbar() {
       )}
       onMouseEnter={resetHideTimer}
     >
-      <Button variant="ghost" size="icon-sm" onClick={() => fontIdx > 0 && setFontScale(FONT_SCALES[fontIdx - 1])} disabled={fontIdx <= 0}>
+      <Button variant="ghost" size="icon-sm" onClick={() => fontIdx > 0 && setFontScale(FONT_SCALES[fontIdx - 1])} disabled={fontIdx <= 0} aria-label={t("decreaseFontSize")}>
         <Minus className="size-3.5" />
       </Button>
       <span className="min-w-[3rem] text-center text-xs font-mono tabular-nums">{fontScale}x</span>
-      <Button variant="ghost" size="icon-sm" onClick={() => fontIdx < FONT_SCALES.length - 1 && setFontScale(FONT_SCALES[fontIdx + 1])} disabled={fontIdx >= FONT_SCALES.length - 1}>
+      <Button variant="ghost" size="icon-sm" onClick={() => fontIdx < FONT_SCALES.length - 1 && setFontScale(FONT_SCALES[fontIdx + 1])} disabled={fontIdx >= FONT_SCALES.length - 1} aria-label={t("increaseFontSize")}>
         <Plus className="size-3.5" />
       </Button>
 
@@ -147,37 +147,38 @@ export function LectureToolbar() {
         size="icon-sm"
         onClick={() => setColorScheme(COLOR_SCHEMES[(colorIdx + 1) % COLOR_SCHEMES.length])}
         title={t("themeTitle", { scheme: colorScheme })}
+        aria-label={t("themeTitle", { scheme: colorScheme })}
       >
         <Palette className="size-3.5" />
       </Button>
 
       <div className="mx-1 h-5 w-px bg-border" />
 
-      <Button variant={panelLayout === "problem" ? "secondary" : "ghost"} size="icon-sm" onClick={() => setPanelLayout("problem")} title={t("problemOnlyTitle", { key: "1" })}>
+      <Button variant={panelLayout === "problem" ? "secondary" : "ghost"} size="icon-sm" onClick={() => setPanelLayout("problem")} title={t("problemOnlyTitle", { key: "1" })} aria-label={t("problemOnlyTitle", { key: "1" })}>
         <PanelLeft className="size-3.5" />
       </Button>
-      <Button variant={panelLayout === "split" ? "secondary" : "ghost"} size="icon-sm" onClick={() => setPanelLayout("split")} title={t("splitViewTitle", { key: "2" })}>
+      <Button variant={panelLayout === "split" ? "secondary" : "ghost"} size="icon-sm" onClick={() => setPanelLayout("split")} title={t("splitViewTitle", { key: "2" })} aria-label={t("splitViewTitle", { key: "2" })}>
         <Columns2 className="size-3.5" />
       </Button>
-      <Button variant={panelLayout === "code" ? "secondary" : "ghost"} size="icon-sm" onClick={() => setPanelLayout("code")} title={t("codeOnlyTitle", { key: "3" })}>
+      <Button variant={panelLayout === "code" ? "secondary" : "ghost"} size="icon-sm" onClick={() => setPanelLayout("code")} title={t("codeOnlyTitle", { key: "3" })} aria-label={t("codeOnlyTitle", { key: "3" })}>
         <PanelRight className="size-3.5" />
       </Button>
 
       <div className="mx-1 h-5 w-px bg-border" />
 
-      <Button variant="ghost" size="icon-sm" onClick={toggleFullscreen} title={t("fullscreenTitle", { key: "F" })}>
+      <Button variant="ghost" size="icon-sm" onClick={toggleFullscreen} title={t("fullscreenTitle", { key: "F" })} aria-label={t("fullscreenTitle", { key: "F" })}>
         {isFullscreen ? <Minimize className="size-3.5" /> : <Maximize className="size-3.5" />}
       </Button>
 
       {statsAvailable && (
-        <Button variant="ghost" size="icon-sm" onClick={toggleStats} title={t("submissionStatsTitle", { key: "S" })}>
+        <Button variant="ghost" size="icon-sm" onClick={toggleStats} title={t("submissionStatsTitle", { key: "S" })} aria-label={t("submissionStatsTitle", { key: "S" })}>
           <BarChart3 className="size-3.5" />
         </Button>
       )}
 
       <div className="mx-1 h-5 w-px bg-border" />
 
-      <Button variant="ghost" size="icon-sm" onClick={toggle} title={t("exitLectureModeTitle", { key: "Esc" })}>
+      <Button variant="ghost" size="icon-sm" onClick={toggle} title={t("exitLectureModeTitle", { key: "Esc" })} aria-label={t("exitLectureModeTitle", { key: "Esc" })}>
         <X className="size-3.5" />
       </Button>
     </div>
