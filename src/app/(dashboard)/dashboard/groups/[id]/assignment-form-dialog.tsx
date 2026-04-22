@@ -404,7 +404,7 @@ export default function AssignmentFormDialog({
                   max={100}
                   step="0.1"
                   value={latePenalty}
-                  onChange={(event) => setLatePenalty(Number(event.target.value))}
+                  onChange={(event) => setLatePenalty(parseFloat(event.target.value) || 0)}
                   disabled={isLoading}
                 />
               </div>
