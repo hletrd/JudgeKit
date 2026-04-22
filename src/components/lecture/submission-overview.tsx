@@ -8,6 +8,9 @@ import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 import { buildStatusLabels } from "@/lib/judge/status-labels";
 import { apiFetch } from "@/lib/api/client";
+import { useVisibilityPolling } from "@/hooks/use-visibility-polling";
+import { formatNumber } from "@/lib/formatting";
+import { useLocale } from "next-intl";
 
 type SubmissionStats = {
   total: number;
@@ -55,6 +58,7 @@ export function SubmissionOverview({
 }) {
   const t = useTranslations("lecture");
   const tSubmissions = useTranslations("submissions");
+  const locale = useLocale();
   const [stats, setStats] = useState<SubmissionStats>({
     total: 0, accepted: 0, wrongAnswer: 0, compileError: 0,
     runtimeError: 0, timeLimit: 0, pending: 0, other: 0,
@@ -62,8 +66,12 @@ export function SubmissionOverview({
   const [recent, setRecent] = useState<RecentSubmission[]>([]);
   const [loading, setLoading] = useState(false);
   const initialLoadDoneRef = useRef(false);
+  const openRef = useRef(open);
+  openRef.current = open;
 
   const fetchStats = useCallback(async () => {
+    // Guard: only fetch when the dialog is open
+    if (!openRef.current) return;
     try {
       setLoading(true);
       const params = new URLSearchParams({
@@ -80,7 +88,7 @@ export function SubmissionOverview({
       const submissions: Array<{ id: string; status: string; language: string; submittedAt: string; userId: string }> =
         json.data?.submissions ?? json.data ?? [];
       const summary = json.data?.summary as Record<string, number> | undefined;
-      const total = typeof json.data?.total === "number" ? json.data.total : submissions.length;
+      const total = typeof json.data?.total === "number" && Number.isFinite(json.data.total) ? json.data.total : submissions.length;
 
       const newStats: SubmissionStats = {
         total, accepted: 0, wrongAnswer: 0, compileError: 0,
@@ -112,38 +120,15 @@ export function SubmissionOverview({
     }
   }, [assignmentId, problemId, t]);
 
+  useVisibilityPolling(() => { void fetchStats(); }, POLL_INTERVAL_MS);
+
+  // Reset initialLoadDoneRef when the dialog opens so error toasts work correctly
+  // on the next initial load.
   useEffect(() => {
-    if (!open) return;
-    let interval: ReturnType<typeof setInterval> | null = null;
-
-    const syncVisibility = () => {
-      if (document.visibilityState === "visible") {
-        // Add a small random jitter (0-500ms) to prevent all polling
-        // components from firing simultaneously on tab switch.
-        const jitter = Math.floor(Math.random() * 500);
-        setTimeout(() => {
-          void fetchStats();
-        }, jitter);
-        if (!interval) {
-          interval = setInterval(() => {
-            void fetchStats();
-          }, POLL_INTERVAL_MS);
-        }
-      } else if (interval) {
-        clearInterval(interval);
-        interval = null;
-      }
-    };
-
-    void fetchStats();
-    syncVisibility();
-    document.addEventListener("visibilitychange", syncVisibility);
-
-    return () => {
-      document.removeEventListener("visibilitychange", syncVisibility);
-      if (interval) clearInterval(interval);
-    };
-  }, [open, fetchStats]);
+    if (open) {
+      initialLoadDoneRef.current = false;
+    }
+  }, [open]);
 
   if (!open) return null;
 
@@ -165,7 +150,7 @@ export function SubmissionOverview({
       <div className="p-4 space-y-4">
         <div>
           <div className="flex items-baseline justify-between mb-1.5">
-            <span className="text-3xl font-bold text-green-500">{acceptedPct}%</span>
+            <span className="text-3xl font-bold text-green-500">{formatNumber(acceptedPct, { locale, maximumFractionDigits: 0 })}%</span>
             <span className="text-sm text-muted-foreground">{t("acceptedSummary", { accepted: stats.accepted, total: stats.total })}</span>
           </div>
           <div className="h-3 w-full rounded-full bg-muted overflow-hidden">
