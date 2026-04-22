@@ -60,7 +60,12 @@ export function ActiveTimedAssignmentSidebarPanel({
   const [nowMs, setNowMs] = useState(() => Date.now());
 
   useEffect(() => {
-    if (assignments.length === 0) {
+    // Only start the timer if at least one assignment hasn't expired yet.
+    // If all assignments are past their deadline, there's no need to tick.
+    const hasActiveAssignment = assignments.some(
+      (assignment) => new Date(assignment.deadline).getTime() > Date.now()
+    );
+    if (!hasActiveAssignment) {
       return undefined;
     }
 
@@ -71,7 +76,7 @@ export function ActiveTimedAssignmentSidebarPanel({
     return () => {
       window.clearInterval(interval);
     };
-  }, [assignments.length]);
+  }, [assignments]);
 
   const activeAssignments = useMemo(
     () => assignments.filter((assignment) => new Date(assignment.deadline).getTime() > nowMs),
