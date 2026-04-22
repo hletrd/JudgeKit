@@ -77,7 +77,7 @@ export function CountdownTimer({ deadline, label, onExpired }: CountdownTimerPro
     apiFetch("/api/v1/time", { signal: controller.signal })
       .then((res) => {
         if (!res.ok) return null;
-        return res.json() as Promise<{ timestamp: number }>;
+        return res.json().catch(() => null) as Promise<{ timestamp: number } | null>;
       })
       .then((data) => {
         if (!data) return;
