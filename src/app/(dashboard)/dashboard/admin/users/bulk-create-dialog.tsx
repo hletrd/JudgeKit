@@ -209,12 +209,13 @@ export default function BulkCreateDialog() {
         body: JSON.stringify({ users: parsedRows }),
       });
 
-      const data = await response.json();
-
       if (!response.ok) {
-        toast.error(data.error ?? tCommon("error"));
+        const errorBody = await response.json().catch(() => ({}));
+        toast.error((errorBody as { error?: string }).error ?? tCommon("error"));
         return;
       }
+
+      const data = await response.json();
 
       setResults({ created: data.created ?? [], failed: data.failed ?? [] });
       router.refresh();
