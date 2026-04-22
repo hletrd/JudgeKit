@@ -2,7 +2,7 @@
 
 **Date:** 2026-04-22
 **Source:** `.context/reviews/_aggregate.md`
-**Status:** IN PROGRESS
+**Status:** COMPLETED
 
 ## Task List
 
@@ -11,12 +11,12 @@
 **Files:** `src/lib/api/client.ts`
 **Severity:** MEDIUM/HIGH (9-agent signal)
 
-- [ ] Add an `apiJson<T>(response: Response): Promise<{ ok: true; data: T } | { ok: false; error: string }>` helper function
-- [ ] The helper must check `response.ok` first
-- [ ] On success, parse JSON and return `{ ok: true, data }`
-- [ ] On failure, attempt to parse error from JSON body (with `.catch()`), return `{ ok: false, error }`
-- [ ] Add JSDoc documentation for the helper [AGG-5]
-- [ ] Update the error handling convention table in `apiFetch` JSDoc to mention the `response.ok` before `.json()` pattern [AGG-5]
+- [x] Add an `apiJson<T>(response: Response): Promise<{ ok: true; data: T } | { ok: false; error: string }>` helper function
+- [x] The helper must check `response.ok` first
+- [x] On success, parse JSON and return `{ ok: true, data }`
+- [x] On failure, attempt to parse error from JSON body (with `.catch()`), return `{ ok: false, error }`
+- [x] Add JSDoc documentation for the helper [AGG-5]
+- [x] Update the error handling convention table in `apiFetch` JSDoc to mention the `response.ok` before `.json()` pattern [AGG-5]
 
 ---
 
@@ -25,10 +25,10 @@
 **Files:** `src/components/problem/problem-submission-form.tsx`
 **Severity:** MEDIUM/HIGH (9-agent signal, most user-impactful file)
 
-- [ ] `handleRun` (line 183): Move `response.json()` after `!response.ok` check
-- [ ] `handleSubmit` (line 245): Move `response.json()` after `!response.ok` check
-- [ ] On error, attempt to extract error message with `.json().catch(() => ({}))`
-- [ ] Ensure error toasts show meaningful messages from the API
+- [x] `handleRun` (line 183): Move `response.json()` after `!response.ok` check
+- [x] `handleSubmit` (line 245): Move `response.json()` after `!response.ok` check
+- [x] On error, attempt to extract error message with `.json().catch(() => ({}))`
+- [x] Ensure error toasts show meaningful messages from the API
 
 ---
 
@@ -37,10 +37,10 @@
 **Files:** `src/components/discussions/discussion-vote-buttons.tsx`
 **Severity:** MEDIUM/MEDIUM (7-agent signal)
 
-- [ ] Add try/catch around the API call in `handleVote`
-- [ ] Check `response.ok` before calling `.json()`
-- [ ] Add `toast.error()` for `!response.ok` case
-- [ ] Add `toast.error()` for catch (network error) case
+- [x] Add try/catch around the API call in `handleVote`
+- [x] Check `response.ok` before calling `.json()`
+- [x] Add `toast.error()` for `!response.ok` case
+- [x] Add `toast.error()` for catch (network error) case
 
 ---
 
@@ -53,9 +53,9 @@
 
 **Severity:** MEDIUM/MEDIUM
 
-- [ ] `discussion-post-form.tsx:43`: Wrap `.json()` in `.catch()` for error responses
-- [ ] `discussion-thread-form.tsx:49`: Wrap `.json()` in `.catch()` for error responses
-- [ ] `discussion-thread-moderation-controls.tsx:45,64`: Wrap `.json()` in `.catch()` for error responses
+- [x] `discussion-post-form.tsx:43`: Wrap `.json()` in `.catch()` for error responses
+- [x] `discussion-thread-form.tsx:49`: Wrap `.json()` in `.catch()` for error responses
+- [x] `discussion-thread-moderation-controls.tsx:45,64`: Wrap `.json()` in `.catch()` for error responses
 
 ---
 
@@ -67,8 +67,8 @@
 
 **Severity:** MEDIUM/MEDIUM
 
-- [ ] `edit-group-dialog.tsx:86`: Move `.json()` after `response.ok` check
-- [ ] `assignment-form-dialog.tsx:271`: Move `.json()` after `response.ok` check
+- [x] `edit-group-dialog.tsx:86`: Move `.json()` after `response.ok` check
+- [x] `assignment-form-dialog.tsx:271`: Move `.json()` after `response.ok` check
 
 ---
 
@@ -77,8 +77,8 @@
 **Files:** `src/app/(dashboard)/dashboard/groups/[id]/group-members-manager.tsx`
 **Severity:** LOW/MEDIUM
 
-- [ ] Line 122: Apply `.json().catch(() => ({}))` pattern like the delete handler already does
-- [ ] Line 177: Apply `.json().catch(() => ({}))` pattern like the delete handler already does
+- [x] Line 122: Apply `.json().catch(() => ({}))` pattern like the delete handler already does
+- [x] Line 177: Apply `.json().catch(() => ({}))` pattern like the delete handler already does
 
 ---
 
@@ -87,9 +87,9 @@
 **Files:** `src/components/contest/participant-anti-cheat-timeline.tsx`
 **Severity:** MEDIUM/MEDIUM (3-agent signal)
 
-- [ ] Import `useVisibilityPolling` from `@/hooks/use-visibility-polling`
-- [ ] Replace the manual `useEffect` fetch with `useVisibilityPolling(() => { void fetchEvents(); }, 30_000)`
-- [ ] Keep the initial `fetchEvents()` call in the existing `useEffect` for the initial load
+- [x] Import `useVisibilityPolling` from `@/hooks/use-visibility-polling`
+- [x] Replace the manual `useEffect` fetch with `useVisibilityPolling(() => { void fetchEvents(); }, 30_000)`
+- [x] Keep the initial `fetchEvents()` call in the existing `useEffect` for the initial load
 
 ---
 
@@ -98,9 +98,9 @@
 **Files:** `src/components/contest/contest-replay.tsx`
 **Severity:** LOW/LOW (3-agent signal)
 
-- [ ] Import `Select`, `SelectContent`, `SelectItem`, `SelectTrigger`, `SelectValue` from `@/components/ui/select`
-- [ ] Replace the native `<select>` on lines 177-188 with the project's `Select` component
-- [ ] Keep the same visual appearance and functionality
+- [x] Import `Select`, `SelectContent`, `SelectItem`, `SelectTrigger`, `SelectValue` from `@/components/ui/select`
+- [x] Replace the native `<select>` on lines 177-188 with the project's `Select` component
+- [x] Keep the same visual appearance and functionality
 
 ---
 
@@ -109,9 +109,9 @@
 **Files:** `src/components/submission-status-badge.tsx`, `src/app/(public)/practice/problems/[id]/page.tsx`, `src/app/(public)/contests/[id]/page.tsx`
 **Severity:** LOW/MEDIUM (7-agent signal in cycle 1 review)
 
-- [ ] Replace `Math.round(score * 100) / 100` in `submission-status-badge.tsx:89` with `formatScore(score, locale)`
-- [ ] Replace `Math.round(sub.score * 100) / 100` in `practice/problems/[id]/page.tsx:523` with `formatScore(sub.score, locale)`
-- [ ] Replace `Math.round(entry.totalScore * 100) / 100` in `contests/[id]/page.tsx:229,266` with `formatScore(entry.totalScore, locale)`
+- [x] Replace `Math.round(score * 100) / 100` in `submission-status-badge.tsx:89` with `formatScore(score, locale)`
+- [x] Replace `Math.round(sub.score * 100) / 100` in `practice/problems/[id]/page.tsx:523` with `formatScore(sub.score, locale)`
+- [x] Replace `Math.round(entry.totalScore * 100) / 100` in `contests/[id]/page.tsx:229,266` with `formatScore(entry.totalScore, locale)`
 
 ---
 
