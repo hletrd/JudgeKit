@@ -97,7 +97,7 @@ export function CountdownTimer({ deadline, label, onExpired }: CountdownTimerPro
   }, []);
 
   useEffect(() => {
-    const interval = setInterval(() => {
+    function recalculate() {
       const diff = deadline - (Date.now() + offsetRef.current);
       setRemaining(diff);
 
@@ -117,10 +117,25 @@ export function CountdownTimer({ deadline, label, onExpired }: CountdownTimerPro
 
       if (diff <= 0) {
         handleExpired();
-        clearInterval(interval);
       }
-    }, 1000);
-    return () => clearInterval(interval);
+    }
+
+    const interval = setInterval(recalculate, 1000);
+
+    // Immediately recalculate when the tab becomes visible to prevent
+    // timer drift caused by browser throttling of setInterval in
+    // background tabs. Students rely on accurate countdown during exams.
+    function handleVisibilityChange() {
+      if (document.visibilityState === "visible") {
+        recalculate();
+      }
+    }
+    document.addEventListener("visibilitychange", handleVisibilityChange);
+
+    return () => {
+      clearInterval(interval);
+      document.removeEventListener("visibilitychange", handleVisibilityChange);
+    };
   }, [deadline, handleExpired, t]);
 
   const textColor = getTextColor(remaining);
