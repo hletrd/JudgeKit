@@ -20,6 +20,7 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import { copyToClipboard } from "@/lib/clipboard";
+import { formatNumber } from "@/lib/formatting";
 import {
   Dialog,
   DialogContent,
@@ -245,20 +246,24 @@ export function RecruitingInvitationsPanel({ assignmentId }: { assignmentId: str
 
 
   async function handleResetAccountPassword(invitation: Invitation) {
-    const res = await apiFetch(
-      `/api/v1/contests/${assignmentId}/recruiting-invitations/${invitation.id}`,
-      {
-        method: "PATCH",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ resetAccountPassword: true }),
+    try {
+      const res = await apiFetch(
+        `/api/v1/contests/${assignmentId}/recruiting-invitations/${invitation.id}`,
+        {
+          method: "PATCH",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ resetAccountPassword: true }),
+        }
+      );
+      if (!res.ok) {
+        toast.error(t("accountPasswordResetError"));
+        return;
       }
-    );
-    if (!res.ok) {
-      toast.error(t("accountPasswordResetError"));
-      return;
-    }
 
-    toast.success(t("accountPasswordResetSuccess"));
+      toast.success(t("accountPasswordResetSuccess"));
+    } catch {
+      toast.error(t("accountPasswordResetError"));
+    }
   }
 
 
@@ -337,7 +342,7 @@ export function RecruitingInvitationsPanel({ assignmentId }: { assignmentId: str
         {(["total", "pending", "redeemed", "revoked", "expired"] as const).map((key) => (
           <Card key={key}>
             <CardContent className="p-4 text-center">
-              <p className="text-2xl font-bold">{stats[key]}</p>
+              <p className="text-2xl font-bold">{formatNumber(stats[key], locale)}</p>
               <p className="text-xs text-muted-foreground">{t(`stats.${key}`)}</p>
             </CardContent>
           </Card>
