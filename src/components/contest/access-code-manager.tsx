@@ -5,6 +5,7 @@ import { useLocale, useTranslations } from "next-intl";
 import { toast } from "sonner";
 // i18n keys used from "contests.accessCode" and "common"
 import { apiFetch } from "@/lib/api/client";
+import { copyToClipboard } from "@/lib/clipboard";
 import { buildLocalizedHref } from "@/lib/locale-paths";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -39,8 +40,8 @@ export function AccessCodeManager({ assignmentId }: AccessCodeManagerProps) {
     try {
       const res = await apiFetch(`/api/v1/contests/${assignmentId}/access-code`);
       if (res.ok) {
-        const json = await res.json();
-        setCode(json.data.accessCode);
+        const json = await res.json().catch(() => ({})) as { data?: { accessCode?: string } };
+        setCode(json.data?.accessCode ?? null);
       } else {
         toast.error(tCommon("error"));
       }
@@ -58,7 +59,6 @@ export function AccessCodeManager({ assignmentId }: AccessCodeManagerProps) {
   }, []);
 
   async function copyValue(value: string, { showToast = false }: { showToast?: boolean } = {}) {
-    const { copyToClipboard } = await import("@/lib/clipboard");
     const ok = await copyToClipboard(value);
     if (!ok) {
       toast.error(t("copyFailed"));
@@ -85,8 +85,12 @@ export function AccessCodeManager({ assignmentId }: AccessCodeManagerProps) {
         body: JSON.stringify({}),
       });
       if (res.ok) {
-        const json = await res.json();
-        const nextCode = json.data.accessCode as string;
+        const json = await res.json().catch(() => ({})) as { data?: { accessCode?: string } };
+        const nextCode = json.data?.accessCode ?? null;
+        if (!nextCode) {
+          toast.error(tCommon("error"));
+          return;
+        }
         setCode(nextCode);
         await copyValue(nextCode);
         toast.success(t("generateSuccess"));

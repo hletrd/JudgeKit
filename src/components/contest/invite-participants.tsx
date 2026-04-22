@@ -75,8 +75,8 @@ export function InviteParticipants({ assignmentId }: InviteParticipantsProps) {
         setInvitedIds((prev) => new Set(prev).add(userId));
         toast.success(t("inviteSuccess"));
       } else {
-        const data = await res.json();
-        toast.error(data.error === "userNotFound" ? t("userNotFound") : t("inviteFailed"));
+        const data = await res.json().catch(() => ({}));
+        toast.error((data as { error?: string }).error === "userNotFound" ? t("userNotFound") : t("inviteFailed"));
       }
     } catch {
       toast.error(t("inviteFailed"));
