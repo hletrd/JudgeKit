@@ -1640,7 +1640,13 @@
       "copyFailed": "Failed to copy to clipboard",
       "aliasPlaceholder": "Alias...",
       "fetchError": "Failed to load worker data.",
-      "auditNotice": "Worker inventory and stats access is audit logged."
+      "auditNotice": "Worker inventory and stats access is audit logged.",
+      "saveAlias": "Save alias",
+      "cancelEdit": "Cancel editing",
+      "editAlias": "Edit alias",
+      "copyDockerCommand": "Copy Docker Compose command",
+      "copyDeployScript": "Copy deploy script command",
+      "removeWorker": "Remove worker"
     },
     "apiKeys": {
       "title": "API Keys",

@@ -117,10 +117,10 @@ function AliasCell({ worker, onUpdate }: { worker: Worker; onUpdate: () => void 
             if (e.key === "Escape") setEditing(false);
           }}
         />
-        <Button variant="ghost" size="icon" className="h-6 w-6" onClick={handleSave}>
+        <Button variant="ghost" size="icon" className="h-6 w-6" onClick={handleSave} aria-label={t("saveAlias")}>
           <Check className="h-3 w-3" />
         </Button>
-        <Button variant="ghost" size="icon" className="h-6 w-6" onClick={() => setEditing(false)}>
+        <Button variant="ghost" size="icon" className="h-6 w-6" onClick={() => setEditing(false)} aria-label={t("cancelEdit")}>
           <X className="h-3 w-3" />
         </Button>
       </div>
@@ -135,6 +135,7 @@ function AliasCell({ worker, onUpdate }: { worker: Worker; onUpdate: () => void 
         size="icon"
         className="h-6 w-6 opacity-0 group-hover:opacity-100 transition-opacity"
         onClick={() => { setValue(worker.alias ?? ""); setEditing(true); }}
+        aria-label={t("editAlias")}
       >
         <Pencil className="h-3 w-3" />
       </Button>
@@ -189,6 +190,7 @@ docker compose -f docker-compose.worker.yml up -d`;
                 size="icon"
                 className="absolute top-1 right-1 h-6 w-6"
                 onClick={() => copyText(dockerCmd)}
+                aria-label={t("copyDockerCommand")}
               >
                 <Copy className="h-3 w-3" />
               </Button>
@@ -203,6 +205,7 @@ docker compose -f docker-compose.worker.yml up -d`;
                 size="icon"
                 className="absolute top-1 right-1 h-6 w-6"
                 onClick={() => copyText(deployCmd)}
+                aria-label={t("copyDeployScript")}
               >
                 <Copy className="h-3 w-3" />
               </Button>
@@ -369,7 +372,7 @@ export function WorkersPageClient() {
                       <AlertDialog>
                         <AlertDialogTrigger
                           render={
-                            <Button variant="ghost" size="icon">
+                            <Button variant="ghost" size="icon" aria-label={t("removeWorker")}>
                               <Trash2 className="h-4 w-4" />
                             </Button>
                           }

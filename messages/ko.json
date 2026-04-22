@@ -1640,7 +1640,13 @@
       "copyFailed": "클립보드 복사에 실패했습니다",
       "aliasPlaceholder": "별칭",
       "fetchError": "워커 데이터를 불러오지 못했습니다.",
-      "auditNotice": "워커 목록 및 통계 열람은 감사 로그에 기록됩니다."
+      "auditNotice": "워커 목록 및 통계 열람은 감사 로그에 기록됩니다.",
+      "saveAlias": "별칭 저장",
+      "cancelEdit": "편집 취소",
+      "editAlias": "별칭 편집",
+      "copyDockerCommand": "Docker Compose 명령 복사",
+      "copyDeployScript": "배포 스크립트 명령 복사",
+      "removeWorker": "워커 제거"
     },
     "apiKeys": {
       "title": "API 키",
