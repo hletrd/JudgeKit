@@ -1,30 +1,32 @@
-# Critic Review — RPF Cycle 7
+# Critic Review — RPF Cycle 8
 
 **Date:** 2026-04-22
 **Reviewer:** critic
-**Base commit:** b3147a98
+**Base commit:** 55ce822b
 
 ## Findings
 
-### CRI-1: The `response.json()` before `response.ok` pattern keeps re-appearing — JSDoc warning alone is insufficient [MEDIUM/HIGH]
+### CRI-1: `comment-section.tsx` handles POST errors inconsistently — `!response.ok` is silently swallowed [MEDIUM/MEDIUM]
 
-**Description:** This is the fourth cycle where this pattern is flagged. The JSDoc anti-pattern example was added in a prior cycle, yet 4 new instances were found this cycle (`create-group-dialog.tsx`, `bulk-create-dialog.tsx`, `database-backup-restore.tsx` restore path, `admin-config.tsx`). Documentation-only approaches do not prevent the pattern — developers copy existing code or write from habit. A structural solution (shared helper, ESLint rule, or linter plugin) is needed.
+**File:** `src/app/(dashboard)/dashboard/submissions/[id]/_components/comment-section.tsx:59-79`
 
-**Concrete failure scenario:** A developer adds a new API-consuming component. They read the JSDoc, forget the pattern 5 minutes later, and naturally write `const data = await response.json()` then `if (!response.ok)`. The same bug reappears.
+**Description:** The `handleCommentSubmit` function checks `if (response.ok)` on line 70 but has no corresponding `else` branch. When the server returns a non-OK response (403, 413, 500, etc.), the user receives zero feedback. The catch block only handles network errors, not HTTP errors. This is a UX failure — the user types a comment, clicks submit, and nothing visible happens. They may retry, not realizing the first attempt was rejected by the server.
 
-**Fix:** Implement either a shared `apiJson<T>()` helper or an ESLint custom rule that enforces `response.ok` checks before `.json()`.
+**Concrete failure scenario:** A student writes a long comment that exceeds the server's body size limit. The API returns 413 Payload Too Large. The student sees no error. They think the comment was submitted. They navigate away, losing the comment text.
+
+**Fix:** Add an else branch after the `if (response.ok)` check that shows a toast error.
 
 **Confidence:** HIGH
 
 ---
 
-### CRI-2: `database-backup-restore.tsx` has inconsistent error handling within the same component [LOW/MEDIUM]
+### CRI-2: `participant-anti-cheat-timeline.tsx` polling refresh destroys user's loaded data — UX regression on every 30-second refresh [MEDIUM/HIGH]
 
-**File:** `src/app/(dashboard)/dashboard/admin/settings/database-backup-restore.tsx`
+**File:** `src/components/contest/participant-anti-cheat-timeline.tsx:90-108, 129`
 
-**Description:** The backup handler uses `.json().catch(() => ({}))` but the restore handler does not. Same component, different patterns. This is a code quality issue that makes maintenance harder — a developer looking at one path assumes the other follows the same pattern.
+**Description:** The anti-cheat timeline uses `useVisibilityPolling` to refresh data every 30 seconds. But `fetchEvents` always calls `setEvents(json.data.events)` which replaces the entire list. If the instructor has loaded multiple pages via `loadMore`, the next polling refresh resets the view. This creates a jarring user experience where the data "jumps back" every 30 seconds.
 
-**Fix:** Unify both paths to use the same error handling pattern.
+**Fix:** Make `fetchEvents` merge with existing data or only refresh the first page without clearing loaded data.
 
 **Confidence:** HIGH
 
@@ -32,4 +34,4 @@
 
 ## Final Sweep
 
-The codebase is in good shape overall. The fixes from prior cycles were properly implemented. The main systemic issue is the recurring `response.json()` anti-pattern, which needs a structural solution rather than continued one-file-at-a-time patches.
+The codebase is in good shape overall. The cycle 7 fixes were properly implemented — the `response.json()` before `response.ok` anti-pattern is now correctly handled in all 5 files that were fixed. The main systemic issues this cycle are: (1) silent error swallowing in `comment-section.tsx`, and (2) the replace-vs-append conflict in the anti-cheat timeline.

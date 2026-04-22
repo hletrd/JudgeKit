@@ -1,35 +1,35 @@
-# Document Specialist Review — RPF Cycle 7
+# Document Specialist Review — RPF Cycle 8
 
 **Date:** 2026-04-22
 **Reviewer:** document-specialist
-**Base commit:** b3147a98
+**Base commit:** 55ce822b
 
 ## Findings
 
-### DOC-1: `useVisibilityPolling` JSDoc still missing note about callback error handling responsibility [LOW/LOW]
+### DOC-1: `comment-section.tsx` `handleCommentSubmit` has no comment explaining the missing error handling [LOW/LOW]
 
-**File:** `src/hooks/use-visibility-polling.ts:6-13`
+**File:** `src/app/(dashboard)/dashboard/submissions/[id]/_components/comment-section.tsx:59-79`
 
-**Description:** This was flagged as DOC-2 in cycle 3 but was not addressed. The JSDoc for `useVisibilityPolling` does not document the expectation that the callback function should handle its own errors (try/catch with toast). Without this documentation, developers may assume the hook handles errors, leading to unhandled rejections when the callback throws.
+**Description:** The `handleCommentSubmit` function checks `if (response.ok)` but has no else branch. There is no comment explaining why the error case is silently ignored (or whether it's intentional). A developer reading the code might assume the error handling was accidentally omitted.
 
-**Fix:** Add a note to the JSDoc: "The callback must handle its own errors. The hook does not catch errors thrown by the callback."
+**Fix:** Either add error handling (recommended), or add a comment explaining why errors are silently swallowed.
 
 **Confidence:** MEDIUM
 
 ---
 
-### DOC-2: `database-backup-restore.tsx` has no inline comment explaining the inconsistent error handling between backup and restore [LOW/LOW]
+### DOC-2: `database-backup-restore.tsx` line 150 has no comment explaining why `response.json()` result is discarded [LOW/LOW]
 
-**File:** `src/app/(dashboard)/dashboard/admin/settings/database-backup-restore.tsx:44 vs 144`
+**File:** `src/app/(dashboard)/dashboard/admin/settings/database-backup-restore.tsx:150`
 
-**Description:** The backup handler uses `.json().catch(() => ({}))` but the restore handler does not. There is no comment explaining why the patterns differ or whether this is intentional. A developer reading one path would naturally assume the other follows the same pattern.
+**Description:** The `await response.json()` call on line 150 has its result discarded with no explanation. Is it to drain the response body? Was the result previously used? Without a comment, developers may remove it (thinking it's dead code) or keep it (not knowing its purpose).
 
-**Fix:** Either unify the patterns, or add a comment explaining the difference.
+**Fix:** Either remove the call (if truly unnecessary) or add a comment explaining its purpose (e.g., "drain response body to prevent connection leaks").
 
-**Confidence:** LOW
+**Confidence:** MEDIUM
 
 ---
 
 ## Final Sweep
 
-The `apiFetch` JSDoc was updated in a prior cycle with the anti-pattern example, which is good. The shell command validation comments in `execute.ts` are thorough and well-maintained. The rate-limiter client has excellent documentation of its circuit breaker contract. The main doc gap is the `useVisibilityPolling` callback error handling note, which was identified but not addressed in cycle 3.
+The `apiFetch` JSDoc is well-maintained with the anti-pattern example. The `useVisibilityPolling` JSDoc now includes the callback error handling note (fixed in cycle 7). The code documentation is generally good. The main gaps are the missing comments on silent error paths and dead code.

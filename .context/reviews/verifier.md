@@ -1,47 +1,41 @@
-# Verifier Review — RPF Cycle 7
+# Verifier Review — RPF Cycle 8
 
 **Date:** 2026-04-22
 **Reviewer:** verifier
-**Base commit:** b3147a98
+**Base commit:** 55ce822b
 
 ## Findings
 
-### V-1: Verified: Cycle 3/5 fixes (AGG-1 through AGG-5) are correctly implemented [N/A]
+### V-1: Verified: Cycle 7 fixes (AGG-1 through AGG-5) are correctly implemented [N/A]
 
 **Verification:**
-- AGG-1 (systematic response.json() before response.ok): CONFIRMED fixed in problem-submission-form.tsx (lines 183-188, 246-252 both check response.ok first), discussion-vote-buttons.tsx (lines 42-47), discussion-post-form.tsx (lines 43-47), discussion-thread-form.tsx (lines 49-53), discussion-thread-moderation-controls.tsx (lines 45-47, 64-66), edit-group-dialog.tsx (lines 87-92), assignment-form-dialog.tsx (lines 271-276), group-members-manager.tsx (lines 123-128, 180-185)
-- AGG-2 (discussion-vote-buttons silent failure): CONFIRMED fixed — now shows toast.error on !response.ok (line 44) and has try/catch (lines 36, 56-58)
-- AGG-3 (anti-cheat timeline polling): CONFIRMED — component uses useVisibilityPolling (commit ba3dcf0d)
-- AGG-4 (contest-replay native select): CONFIRMED — replaced with project Select component (commit fa826df7)
-- AGG-5 (apiFetch JSDoc): CONFIRMED — anti-pattern example added (commit 13c84706)
+- AGG-1 (response.json() before response.ok in 4 files): CONFIRMED fixed.
+  - `create-group-dialog.tsx:70-74`: Now checks `!response.ok` first, uses `.json().catch(() => ({}))` on error path.
+  - `bulk-create-dialog.tsx:213-218`: Now checks `!response.ok` first, uses `.json().catch(() => ({}))` on error path.
+  - `database-backup-restore.tsx:144-147`: Now checks `!response.ok` first, uses `.json().catch(() => ({}))` on error path. Both backup and restore paths now use the same pattern.
+  - `admin-config.tsx:99-104`: Now checks `!response.ok` first, uses `.json().catch(() => ({}))` on error path.
+- AGG-2 (database-backup-restore inconsistent error handling): CONFIRMED fixed — both paths now use `.json().catch(() => ({}))`.
+- AGG-3 (admin-config hardcoded "Network error"): Verified — the hardcoded "Network error" string was replaced with `tCommon("error")` on the error path.
+- AGG-4 (useVisibilityPolling JSDoc): CONFIRMED fixed — JSDoc now includes note about callback error handling responsibility.
+- AGG-5 (submission-detail-client retry refresh): CONFIRMED fixed — `handleRetryRefresh` now checks `!res.ok` before parsing JSON.
 
 ---
 
-### V-2: `create-group-dialog.tsx` still parses JSON before `response.ok` — verified [MEDIUM/HIGH]
+### V-2: `comment-section.tsx` `handleCommentSubmit` has no error handling for `!response.ok` — verified [MEDIUM/MEDIUM]
 
-**File:** `src/app/(dashboard)/dashboard/groups/create-group-dialog.tsx:64-68`
+**File:** `src/app/(dashboard)/dashboard/submissions/[id]/_components/comment-section.tsx:59-79`
 
-**Description:** Evidence-based verification: line 64 `const data = await response.json()` is called unconditionally. Line 66 `if (!response.ok)` is checked AFTER the JSON parse. This is the same class of bug verified as fixed in other files, but NOT fixed in this file.
+**Description:** Evidence-based verification: line 70 `if (response.ok)` enters the success branch. There is no `else` branch after line 73. When `!response.ok`, execution falls through to the `finally` block which only sets `setCommentSubmitting(false)`. The user receives no feedback. The comment text is preserved in state (not cleared), so the user could try again, but they have no indication that the first attempt failed.
 
 **Confidence:** HIGH
 
 ---
 
-### V-3: `bulk-create-dialog.tsx` still parses JSON before `response.ok` — verified [MEDIUM/MEDIUM]
+### V-3: `participant-anti-cheat-timeline.tsx` `fetchEvents` replaces entire events state — verified [MEDIUM/MEDIUM]
 
-**File:** `src/app/(dashboard)/dashboard/admin/users/bulk-create-dialog.tsx:212-214`
+**File:** `src/components/contest/participant-anti-cheat-timeline.tsx:97`
 
-**Description:** Verified by reading the code: line 212 `const data = await response.json()` is called unconditionally. Line 214 `if (!response.ok)` is checked after the parse.
-
-**Confidence:** HIGH
-
----
-
-### V-4: `database-backup-restore.tsx` restore handler parses JSON before `response.ok` — verified [MEDIUM/MEDIUM]
-
-**File:** `src/app/(dashboard)/dashboard/admin/settings/database-backup-restore.tsx:144-146`
-
-**Description:** Verified: line 144 `const data = await response.json()` before line 146 `if (!response.ok)`. The backup handler on line 44 correctly uses `.json().catch(() => ({}))`, but the restore handler does not. Inconsistent within the same file.
+**Description:** Verified: line 97 `setEvents(json.data.events)` replaces the entire events array. The `loadMore` function (line 117) appends with `setEvents((prev) => [...prev, ...json.data.events])`. When `useVisibilityPolling` triggers `fetchEvents`, any previously loaded additional pages are lost.
 
 **Confidence:** HIGH
 
@@ -49,4 +43,4 @@
 
 ## Final Sweep
 
-All previously identified and claimed-fixed items from cycles 1-5 were verified as correctly implemented. The remaining issues are in files that were not part of prior fix cycles: `create-group-dialog.tsx`, `bulk-create-dialog.tsx`, and the restore path of `database-backup-restore.tsx`.
+All previously claimed-fixed items from cycles 1-7 were verified as correctly implemented. The two new findings (comment-section silent failure, anti-cheat timeline polling reset) are verified by reading the actual code.

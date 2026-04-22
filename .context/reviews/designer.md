@@ -1,42 +1,42 @@
-# UI/UX Review — RPF Cycle 7
+# UI/UX Review — RPF Cycle 8
 
 **Date:** 2026-04-22
 **Reviewer:** designer
-**Base commit:** b3147a98
+**Base commit:** 55ce822b
 
 ## Findings
 
-### DES-1: `admin-config.tsx` test connection button gives no feedback for non-JSON server errors [MEDIUM/MEDIUM]
+### DES-1: `comment-section.tsx` gives no feedback on failed comment submission — violates form UX principle [MEDIUM/MEDIUM]
 
-**File:** `src/lib/plugins/chat-widget/admin-config.tsx:86-106`
+**File:** `src/app/(dashboard)/dashboard/submissions/[id]/_components/comment-section.tsx:59-79`
 
-**Description:** The `handleTestConnection` function calls `response.json()` without checking `response.ok` first. When the test-connection endpoint returns a non-JSON error (e.g., 502 from proxy), SyntaxError is thrown and the catch on line 101 shows "Network error". The admin sees "Network error" when the actual problem might be an invalid API key or a proxy issue. This is confusing UX — the error message is misleading.
+**Description:** When a comment POST returns a non-OK response, the user sees no error feedback. This violates the fundamental UX principle that every user action should receive feedback. The submit button is re-enabled (via `setCommentSubmitting(false)`), but no toast or inline error is shown. The user may believe the comment was submitted or may be confused about why nothing happened.
 
-**Fix:** Check `response.ok` before `.json()`. On error, extract the server's error message. Show a specific error message (e.g., "Server error" vs "Network error" vs "Invalid API key").
+**Fix:** Add a toast error in an else branch after the `if (response.ok)` check. Use the appropriate i18n key.
 
 **Confidence:** HIGH
 
 ---
 
-### DES-2: `bulk-create-dialog.tsx` shows generic "Error" on API failure — no actionable feedback for partial results [LOW/LOW]
+### DES-2: `participant-anti-cheat-timeline.tsx` events "disappear" on polling refresh — poor perceived stability [MEDIUM/MEDIUM]
 
-**File:** `src/app/(dashboard)/dashboard/admin/users/bulk-create-dialog.tsx:212-227`
+**File:** `src/components/contest/participant-anti-cheat-timeline.tsx:90-108, 129`
 
-**Description:** When the bulk creation API returns a non-JSON error, the admin sees a generic error toast. For bulk operations, the admin needs to know which users were created and which failed. The current error handling does not provide this information for non-JSON errors.
+**Description:** When the anti-cheat timeline polls for updates every 30 seconds, it replaces the event list with only the first page. If the user has loaded additional pages, those events visually "disappear." This creates a jarring, unstable UX where content unexpectedly vanishes. The user may think the data was deleted or there is a bug.
 
-**Fix:** Improve error messaging for bulk operations to indicate partial success or suggest checking the user list.
+**Fix:** Preserve loaded pages during polling refresh. Only update the first page of data or use a merge strategy.
 
-**Confidence:** LOW
+**Confidence:** HIGH
 
 ---
 
-### DES-3: `chat-widget.tsx` error messages are hardcoded English strings, not i18n keys [LOW/LOW]
+### DES-3: `database-backup-restore.tsx` restore path shows "restore failed" toast on success if server returns non-JSON body [LOW/LOW]
 
-**File:** `src/lib/plugins/chat-widget/chat-widget.tsx:170-171`
+**File:** `src/app/(dashboard)/dashboard/admin/settings/database-backup-restore.tsx:150`
 
-**Description:** The error messages "rateLimit" and "errorGeneric" appear to be i18n keys from `t("errorRateLimit")` and `t("errorGeneric")`, which is correct. However, the `admin-config.tsx` test result on line 102 shows the hardcoded string "Network error" instead of using an i18n key.
+**Description:** The unnecessary `await response.json()` call on line 150 could throw SyntaxError if the server returns a non-JSON success body. The catch block would show "Restore failed" even though the restore succeeded. This is confusing UX for an admin-level destructive operation.
 
-**Fix:** Use an i18n key for the "Network error" string in `admin-config.tsx`.
+**Fix:** Remove the unnecessary `response.json()` call or add a `.catch()` guard.
 
 **Confidence:** LOW
 
@@ -44,4 +44,4 @@
 
 ## Final Sweep
 
-The UI components generally follow the project's design system with consistent use of Select, Button, Dialog, and Card components. The accepted solutions page has proper loading and empty states. The submission detail page has proper accessibility with `aria-live="polite"` on the status badges. The main UX gaps are in error messaging consistency for admin operations.
+The UI components generally follow the project's design system. The contest clarifications and announcements components have proper loading, empty, and error states. The comment section has good structure but the missing error feedback is a UX gap. The anti-cheat timeline's pagination is well-implemented but conflicts with the polling refresh pattern.

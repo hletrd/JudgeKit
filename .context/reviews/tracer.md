@@ -1,47 +1,47 @@
-# Tracer Review — RPF Cycle 7
+# Tracer Review — RPF Cycle 8
 
 **Date:** 2026-04-22
 **Reviewer:** tracer
-**Base commit:** b3147a98
+**Base commit:** 55ce822b
 
 ## Findings
 
-### TR-1: Causal trace of `response.json()` before `response.ok` in `bulk-create-dialog.tsx` — SyntaxError propagates to generic catch, hides partial results [MEDIUM/HIGH]
+### TR-1: Causal trace of `comment-section.tsx` POST failure — `!response.ok` path leads to silent user experience [MEDIUM/MEDIUM]
 
-**Trace path:** `handleSubmit` -> `apiFetch("/api/v1/users/bulk")` -> server returns 502 with HTML -> `response.json()` throws SyntaxError -> catch block on line 222 -> `toast.error(tCommon("error"))` -> admin sees "Error"
+**Trace path:** `handleCommentSubmit` -> `apiFetch("/api/v1/submissions/${submissionId}/comments", {method: "POST"})` -> server returns 403 -> `response.ok` is false -> if-block on line 70 skipped -> no else branch -> falls to `finally` block -> `setCommentSubmitting(false)` -> user sees no feedback
 
-**Description:** The SyntaxError from `response.json()` on a non-JSON body bypasses the intended error path (lines 214-217 which extract `data.error`). For a bulk operation, the server may have partially succeeded before returning the error. The admin gets a generic "Error" toast and has no visibility into which users were created.
+**Description:** The comment submission has two error paths: (1) network error caught by catch block, which shows a toast, and (2) HTTP error (!response.ok), which is silently swallowed. The two paths should behave identically from the user's perspective.
 
-**Fix:** Check `response.ok` before calling `.json()`. On error, use `.json().catch(() => ({}))` to extract error details.
-
-**Confidence:** HIGH
-
----
-
-### TR-2: Causal trace of `create-group-dialog.tsx` SyntaxError path — raw "SyntaxError" shown to user [MEDIUM/MEDIUM]
-
-**Trace path:** `handleSubmit` -> `apiFetch("/api/v1/groups")` -> server returns 502 with HTML -> `response.json()` throws SyntaxError -> catch on line 74 -> `getErrorMessage(error)` -> default case returns `error.message` -> toast shows "SyntaxError" or JSON parse error string
-
-**Description:** The `getErrorMessage` function maps known error codes to i18n keys, but the default case on line 43 returns `error.message` verbatim. When `response.json()` throws SyntaxError, the Error object's message is "SyntaxError" or a JSON parse error description. This raw string is shown to the user in a toast.
-
-**Fix:** Check `response.ok` before `.json()`, and change `getErrorMessage` default case to return a generic i18n key for SyntaxError instances.
+**Fix:** Add an else branch after the `if (response.ok)` check on line 70 that shows a toast error.
 
 **Confidence:** HIGH
 
 ---
 
-### TR-3: Causal trace of `database-backup-restore.tsx` restore path — `.json()` throws on non-JSON error, different behavior from backup path [MEDIUM/MEDIUM]
+### TR-2: Causal trace of anti-cheat timeline polling reset — `fetchEvents` called by `useVisibilityPolling` replaces `events` state [MEDIUM/HIGH]
 
-**Trace path:** `handleRestore` -> `apiFetch` -> server returns non-JSON error -> `response.json()` throws SyntaxError -> catch shows generic error toast
+**Trace path:** `useVisibilityPolling` timer fires -> `fetchEvents()` called -> `apiFetch` returns page 1 data -> `setEvents(json.data.events)` replaces entire array -> previously loaded pages 2+ are discarded -> user's scroll position and expanded rows are lost
 
-**Description:** Tracing both paths in the same component: the backup handler (line 44) correctly uses `.json().catch(() => ({}))` and shows a specific error from the response body. The restore handler (line 144) calls `.json()` unconditionally, which throws SyntaxError on non-JSON responses. The same operation type (database admin action) has different error behavior depending on which path is taken.
+**Description:** The component has two state mutations for events: `setEvents(json.data.events)` (replace) and `setEvents((prev) => [...prev, ...json.data.events])` (append). The replace mutation in `fetchEvents` is correct for the initial load but incorrect for subsequent refreshes when more pages have been loaded.
 
-**Fix:** Unify both paths to use `.json().catch(() => ({}))`.
+**Fix:** When events already has more items than the first page, preserve the additional items during refresh.
 
 **Confidence:** HIGH
+
+---
+
+### TR-3: Causal trace of `database-backup-restore.tsx` restore success with non-JSON body — SyntaxError on success path [LOW/LOW]
+
+**Trace path:** `handleRestore` -> `apiFetch("/api/v1/admin/restore", {method: "POST"})` -> server returns 200 with empty body -> `await response.json()` on line 150 throws SyntaxError -> catch block on line 156 shows `toast.error(t("restoreFailed"))` -> admin sees failure toast even though restore succeeded
+
+**Description:** If the restore endpoint returns a 200 with a non-JSON body, line 150's `response.json()` throws SyntaxError. The catch block shows a "restore failed" toast, but the restore actually succeeded. This is a low-probability scenario since the endpoint likely returns JSON, but the dead code is a latent bug.
+
+**Fix:** Remove the `await response.json()` call or use `.json().catch(() => ({}))`.
+
+**Confidence:** MEDIUM
 
 ---
 
 ## Final Sweep
 
-The prior cycle fixes were properly traced and verified. The `submission-detail-client.tsx` retry handler uses a `.then()` chain that also skips `res.ok` check, but this is a lower-risk path since it's a manual user action. The main tracing concern is the 3 remaining files where `response.json()` before `response.ok` produces confusing error messages.
+The prior cycle fixes were properly traced and verified. The main tracing concern this cycle is the two silent failure paths: comment-section's `!response.ok` and the anti-cheat timeline's polling reset.

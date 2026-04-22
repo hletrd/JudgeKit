@@ -1,47 +1,35 @@
-# Test Engineer Review — RPF Cycle 7
+# Test Engineer Review — RPF Cycle 8
 
 **Date:** 2026-04-22
 **Reviewer:** test-engineer
-**Base commit:** b3147a98
+**Base commit:** 55ce822b
 
 ## Findings
 
-### TE-1: No unit tests for `create-group-dialog.tsx` — response.json() before response.ok untested [LOW/MEDIUM]
+### TE-1: No unit tests for `comment-section.tsx` — silent failure on `!response.ok` is untested [LOW/MEDIUM]
 
-**File:** `src/app/(dashboard)/dashboard/groups/create-group-dialog.tsx`
+**File:** `src/app/(dashboard)/dashboard/submissions/[id]/_components/comment-section.tsx`
 
-**Description:** The create group dialog has no unit tests. The `response.json()` before `response.ok` pattern means that when the server returns non-JSON, the catch block shows a raw SyntaxError message via `getErrorMessage`. This specific failure path is untested.
+**Description:** The comment section component has no unit tests. The `handleCommentSubmit` function silently swallows `!response.ok` responses, but this bug is not caught by tests because no tests exist. The fetch error path (network error) and the submit error path (non-OK response) should both be tested.
 
-**Fix:** Add unit tests covering: successful creation, non-JSON error response (502), validation error response (400 with JSON), network error.
-
-**Confidence:** HIGH
-
----
-
-### TE-2: No unit tests for `bulk-create-dialog.tsx` response handling — partial success and error paths untested [LOW/MEDIUM]
-
-**File:** `src/app/(dashboard)/dashboard/admin/users/bulk-create-dialog.tsx`
-
-**Description:** The bulk create dialog has no unit tests for the API response handling. The partial-success case (some users created, some failed) and the non-JSON error case are both untested.
-
-**Fix:** Add unit tests covering: successful bulk creation, partial success, non-JSON error response, empty CSV, validation errors.
+**Fix:** Add unit tests covering: successful comment submission, 403 forbidden response, 413 payload too large, network error, successful fetch, failed fetch.
 
 **Confidence:** HIGH
 
 ---
 
-### TE-3: No unit tests for `database-backup-restore.tsx` restore path — inconsistent error handling untested [LOW/LOW]
+### TE-2: No tests for `participant-anti-cheat-timeline.tsx` polling reset behavior [LOW/LOW]
 
-**File:** `src/app/(dashboard)/dashboard/admin/settings/database-backup-restore.tsx`
+**File:** `src/components/contest/participant-anti-cheat-timeline.tsx`
 
-**Description:** The restore path has different error handling from the backup path (no `.json().catch()`), but this inconsistency is not caught by tests.
+**Description:** The anti-cheat timeline has no unit tests for the interaction between `fetchEvents` and `loadMore`. The polling reset bug (fetchEvents replacing events loaded by loadMore) is not caught by tests.
 
-**Fix:** Add tests that verify both backup and restore error handling produce consistent user feedback.
+**Fix:** Add integration tests that verify: (1) loadMore appends events, (2) subsequent fetchEvents call does not discard loaded events.
 
-**Confidence:** LOW
+**Confidence:** MEDIUM
 
 ---
 
 ## Final Sweep
 
-Test coverage for core hooks (useSubmissionPolling, useVisibilityPolling) remains a deferred item from cycle 1. The most impactful new test gaps are in the admin operations (bulk create, group create) and the database restore path, where the response.json() before response.ok pattern can cause confusing error messages.
+Test coverage for core hooks (useSubmissionPolling, useVisibilityPolling) remains a deferred item from cycle 1. The most impactful test gap is the comment section, where the silent failure on `!response.ok` could be caught by a unit test.

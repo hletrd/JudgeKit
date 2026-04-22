@@ -1,34 +1,42 @@
-# Architectural Review — RPF Cycle 7
+# Architectural Review — RPF Cycle 8
 
 **Date:** 2026-04-22
 **Reviewer:** architect
-**Base commit:** b3147a98
+**Base commit:** 55ce822b
 
 ## Findings
 
-### ARCH-1: `response.json()` before `response.ok` anti-pattern persists in 4 more files — centralized helper still not created [MEDIUM/HIGH]
+### ARCH-1: `comment-section.tsx` has asymmetric error handling between fetch and submit — fetch shows toast on error but submit silently swallows `!response.ok` [MEDIUM/MEDIUM]
 
-**Files:**
-- `src/app/(dashboard)/dashboard/groups/create-group-dialog.tsx:64`
-- `src/app/(dashboard)/dashboard/admin/users/bulk-create-dialog.tsx:212`
-- `src/app/(dashboard)/dashboard/admin/settings/database-backup-restore.tsx:144`
-- `src/lib/plugins/chat-widget/admin-config.tsx:99`
+**File:** `src/app/(dashboard)/dashboard/submissions/[id]/_components/comment-section.tsx:41-53 vs 59-79`
 
-**Description:** This is the fourth cycle where this pattern is flagged. Cycles 1-3 fixed 12+ instances. Cycle 3's aggregate (AGG-1) recommended creating a centralized `apiJson<T>()` helper. The `apiFetch` JSDoc was updated with the anti-pattern example (commit 13c84706), and a prior `apiJson` helper was added then removed (commit 25586070). Yet 4 more files still use the anti-pattern. The root cause remains: without a shared utility that enforces the correct pattern, each new component naturally writes `const data = await response.json()` before checking `response.ok`.
+**Description:** The `fetchComments` function (line 41-53) properly shows a toast on error. The `handleCommentSubmit` function (line 59-79) checks `response.ok` on line 70 but has no else branch — when `!response.ok`, it does nothing. The user gets no feedback. This is an architectural inconsistency in error handling within the same component.
 
-**Fix:** Either (a) create a typed `apiJson<T>(response)` helper that checks `response.ok` first and returns a discriminated union, then migrate these 4 files, or (b) accept the pattern and add an ESLint rule that enforces checking `response.ok` before `.json()`.
+**Fix:** Add an `else` branch after line 73 to show a toast error when `!response.ok`, following the same pattern as the catch block.
 
 **Confidence:** HIGH
 
 ---
 
-### ARCH-2: `database-backup-restore.tsx` has inconsistent error handling between backup and restore paths [LOW/LOW]
+### ARCH-2: `participant-anti-cheat-timeline.tsx` `fetchEvents` replaces state on every poll — contradicts the incremental loading pattern established by `loadMore` [MEDIUM/HIGH]
 
-**File:** `src/app/(dashboard)/dashboard/admin/settings/database-backup-restore.tsx:44 vs 144`
+**File:** `src/components/contest/participant-anti-cheat-timeline.tsx:90-108`
 
-**Description:** The backup handler (line 44) correctly uses `.json().catch(() => ({}))` when parsing error bodies, but the restore handler (line 144) calls `response.json()` unconditionally before checking `response.ok`. This inconsistency within the same component suggests the restore path was added or modified after the backup path was fixed.
+**Description:** The component implements two patterns: (1) `fetchEvents` replaces the entire event list, and (2) `loadMore` appends to the list. These patterns are architecturally in conflict. When `useVisibilityPolling` triggers `fetchEvents`, it resets the list to the first page, undoing any `loadMore` expansions. The component's two data-fetching strategies are inconsistent — one is replace, the other is append.
 
-**Fix:** Apply the same error-handling pattern to both paths.
+**Fix:** Make `fetchEvents` preserve already-loaded pages when refreshing. Only replace the first page of data (which is what the server returns for offset=0), and keep any additional pages loaded by `loadMore`.
+
+**Confidence:** HIGH
+
+---
+
+### ARCH-3: `database-backup-restore.tsx` restore path calls `response.json()` without using result — dead code [LOW/LOW]
+
+**File:** `src/app/(dashboard)/dashboard/admin/settings/database-backup-restore.tsx:150`
+
+**Description:** Line 150 `await response.json()` is called after a successful restore but the result is discarded. This is dead code that suggests either: (1) the response was originally used but the usage was removed, or (2) it was added to drain the response body. If the intent is to drain the body, `response.text()` or `response.body?.cancel()` would be more appropriate.
+
+**Fix:** Remove the dead `await response.json()` call or document its purpose.
 
 **Confidence:** HIGH
 
@@ -36,4 +44,4 @@
 
 ## Final Sweep
 
-The codebase architecture is sound. The auth layer, CSRF protection, and permission system are well-layered. The `useVisibilityPolling` hook provides a good shared abstraction. The Docker execution sandbox has proper defense-in-depth. The rate-limiter circuit breaker correctly fails open. The main architectural debt is the lack of a centralized API response handler, which continues to produce the same bug pattern.
+The auth layer, CSRF protection, and permission system remain well-layered. The `useVisibilityPolling` hook provides a good shared abstraction. The Docker execution sandbox has proper defense-in-depth. The rate-limiter circuit breaker correctly fails open. The cycle 7 `response.json()` before `response.ok` fixes are properly implemented. The main new architectural issue is the conflicting replace/append patterns in the anti-cheat timeline.

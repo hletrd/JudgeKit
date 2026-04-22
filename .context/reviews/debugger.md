@@ -1,53 +1,51 @@
-# Debugger Review — RPF Cycle 7
+# Debugger Review — RPF Cycle 8
 
 **Date:** 2026-04-22
 **Reviewer:** debugger
-**Base commit:** b3147a98
+**Base commit:** 55ce822b
 
 ## Findings
 
-### DBG-1: `bulk-create-dialog.tsx` — SyntaxError on non-JSON error body masks partial creation results [MEDIUM/HIGH]
+### DBG-1: `comment-section.tsx` — POST comment silently fails on `!response.ok`, user believes comment was not submitted [MEDIUM/MEDIUM]
 
-**File:** `src/app/(dashboard)/dashboard/admin/users/bulk-create-dialog.tsx:212-215`
+**File:** `src/app/(dashboard)/dashboard/submissions/[id]/_components/comment-section.tsx:59-79`
 
-**Description:** The bulk user creation endpoint is a partial-success operation — some users may be created even when the overall response is an error. When `response.json()` throws SyntaxError (e.g., on a 502 from proxy), the catch block on line 222 shows a generic `tCommon("error")` toast. The admin loses visibility into which users were created. This is more impactful than a single-record operation because the admin needs to know the partial state.
+**Description:** The `handleCommentSubmit` function checks `response.ok` on line 70 but has no else branch. When the server returns a non-OK response, the function does nothing. The `commentSubmitting` state is reset in the `finally` block, and the comment text remains in the input. But the user has no idea why nothing happened.
 
-**Concrete failure scenario:** Admin uploads CSV with 50 users. The API creates 30 users successfully but then returns 502 due to a proxy timeout. `response.json()` throws SyntaxError. The admin sees "Error" and has no idea that 30 users were already created. They may retry the entire batch, causing duplicate users.
+**Concrete failure scenario:** A student posts a comment with 2001 characters (exceeding the `maxLength={2000}` on the textarea, but the browser may not enforce this on programmatic submissions). The API returns 400. The student sees no error. They click submit again. Same result. They're confused.
 
-**Fix:** Check `response.ok` before `response.json()`. On error, try to parse the error body with `.catch()` to extract partial results.
-
-**Confidence:** HIGH
-
----
-
-### DBG-2: `create-group-dialog.tsx` — SyntaxError on non-JSON error body leads to generic error toast [MEDIUM/MEDIUM]
-
-**File:** `src/app/(dashboard)/dashboard/groups/create-group-dialog.tsx:64-68`
-
-**Description:** Line 64 calls `response.json()` before checking `response.ok`. The catch block (line 74) shows a generic error via `getErrorMessage`. But when `response.json()` throws SyntaxError, the error is an `Error` instance with `message` equal to "SyntaxError" or a parse error string. The `getErrorMessage` function's default case returns `error.message`, which would show the raw "SyntaxError" string to the user.
-
-**Concrete failure scenario:** Admin creates a group. API returns 502 HTML. SyntaxError thrown. Admin sees "SyntaxError" in a toast instead of a meaningful error.
-
-**Fix:** Check `response.ok` before `response.json()`, and map SyntaxError to a generic i18n key.
+**Fix:** Add an else branch after line 73 with a toast error.
 
 **Confidence:** HIGH
 
 ---
 
-### DBG-3: `database-backup-restore.tsx` restore path — `.json()` before `response.ok` throws SyntaxError on non-JSON error [MEDIUM/MEDIUM]
+### DBG-2: `participant-anti-cheat-timeline.tsx` — polling refresh resets loaded pages, creating a "data disappearing" illusion [MEDIUM/HIGH]
 
-**File:** `src/app/(dashboard)/dashboard/admin/settings/database-backup-restore.tsx:144-146`
+**File:** `src/components/contest/participant-anti-cheat-timeline.tsx:90-108, 129`
 
-**Description:** The restore handler calls `response.json()` on line 144 unconditionally, then checks `response.ok` on line 146. If the restore endpoint returns a non-JSON error, SyntaxError is thrown. The catch block shows a generic error, losing the server's actual error message.
+**Description:** The `fetchEvents` function replaces `events` state with only the first page. When `useVisibilityPolling` triggers this every 30 seconds, any events loaded by `loadMore` are discarded. The user sees their data shrink from 150 events to 50, which looks like a bug rather than a refresh.
 
-**Concrete failure scenario:** Admin restores a database backup. The API returns 502 from the reverse proxy. SyntaxError thrown. The admin sees a generic error instead of the specific restore failure reason.
+**Concrete failure scenario:** An instructor reviews 200 anti-cheat events for a participant. They load 3 pages (150 events). They are reading event #127 when the polling refresh fires. The events list resets to 50. The instructor is confused — "where did the other events go?"
 
-**Fix:** Use `.json().catch(() => ({}))` before checking `response.ok`, matching the backup handler pattern.
+**Fix:** Preserve loaded pages when polling refreshes. Only update the first page of data.
 
 **Confidence:** HIGH
+
+---
+
+### DBG-3: `database-backup-restore.tsx` restore path — unnecessary `response.json()` on success could throw SyntaxError [LOW/LOW]
+
+**File:** `src/app/(dashboard)/dashboard/admin/settings/database-backup-restore.tsx:150`
+
+**Description:** After a successful restore, line 150 calls `await response.json()` but discards the result. If the restore endpoint returns an empty body (204 No Content with no body, or a non-JSON success response), `response.json()` throws SyntaxError. This would be caught by the catch block on line 156, which shows `toast.error(t("restoreFailed"))` — but the restore actually succeeded. The admin sees a failure toast for a successful restore.
+
+**Fix:** Remove the `await response.json()` call on line 150, or use `.json().catch(() => ({}))` if the intent is to drain the body.
+
+**Confidence:** MEDIUM
 
 ---
 
 ## Final Sweep
 
-The prior cycle fixes were properly implemented. The `problem-submission-form.tsx` now correctly checks `response.ok` before `.json()` in both `handleRun` and `handleSubmit`. The discussion components all use the correct pattern. The anti-cheat timeline now uses `useVisibilityPolling`. The remaining issues are all in files that were not previously addressed.
+The cycle 7 fixes were properly implemented and verified. The `submission-detail-client.tsx` retry handler now correctly checks `res.ok` before parsing JSON. The anti-cheat timeline's `useVisibilityPolling` integration is functional but has the replace-vs-append conflict. The comment section's silent failure on `!response.ok` is the most impactful new finding.

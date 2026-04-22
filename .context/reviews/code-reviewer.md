@@ -1,86 +1,70 @@
-# Code Quality Review — RPF Cycle 7
+# Code Quality Review — RPF Cycle 8
 
 **Date:** 2026-04-22
 **Reviewer:** code-reviewer
-**Base commit:** b3147a98
+**Base commit:** 55ce822b
 
 ## Findings
 
-### CR-1: `create-group-dialog.tsx` still parses JSON before checking `response.ok` — error-first anti-pattern [MEDIUM/HIGH]
+### CR-1: `comment-section.tsx` silently swallows error responses — `response.ok` check passes but `response.json()` can still fail [MEDIUM/MEDIUM]
 
-**File:** `src/app/(dashboard)/dashboard/groups/create-group-dialog.tsx:64-68`
+**File:** `src/app/(dashboard)/dashboard/submissions/[id]/_components/comment-section.tsx:43-49`
 
-**Description:** Line 64 calls `const data = await response.json()` unconditionally, then line 66 checks `if (!response.ok)`. This is the exact `response.json()` before `response.ok` anti-pattern documented in `client.ts`. When the server returns a non-JSON body (e.g., 502 from a reverse proxy), `response.json()` throws SyntaxError, which is caught by the generic catch on line 74 and surfaces as `tCommon("error")` instead of a meaningful error.
+**Description:** The `fetchComments` function checks `if (response.ok)` then calls `response.json()`, but if `response.json()` throws (e.g., truncated JSON from a proxy timeout), the error is caught by the generic `catch` block which shows a toast. However, the `handleCommentSubmit` function (line 64-79) checks `if (response.ok)` on line 70 but does NOT show any error feedback when `response.ok` is false. The user submits a comment, the server returns an error (e.g., 403 forbidden), and the comment is silently lost — no toast, no feedback.
 
-**Concrete failure scenario:** Admin creates a group while the API server is restarting. The reverse proxy returns a 502 HTML page. `response.json()` throws SyntaxError. The catch block shows a generic "Error" toast. The admin has no idea whether the group was created.
+**Concrete failure scenario:** A student submits a comment on a submission. The API returns 403 (they lost comment permission). `response.ok` is false, the code enters the `if (response.ok)` branch which is empty, does nothing. The comment text is NOT cleared (no `setCommentContent("")`), but the user gets no feedback that the submission failed.
 
-**Fix:** Check `response.ok` before calling `response.json()`. Use `.json().catch(() => ({}))` for error bodies.
-
-**Confidence:** HIGH
-
----
-
-### CR-2: `bulk-create-dialog.tsx` parses JSON before checking `response.ok` [MEDIUM/MEDIUM]
-
-**File:** `src/app/(dashboard)/dashboard/admin/users/bulk-create-dialog.tsx:212-215`
-
-**Description:** Same anti-pattern as CR-1. Line 212 calls `const data = await response.json()`, then line 214 checks `if (!response.ok)`. The `.json()` call can throw SyntaxError on non-JSON error responses.
-
-**Concrete failure scenario:** Bulk user creation hits a proxy timeout. The 502 response body is HTML. `response.json()` throws SyntaxError. Admin sees a generic error toast with no indication of how many users were actually created.
-
-**Fix:** Check `response.ok` before `response.json()`.
+**Fix:** Add an `else` branch to the `response.ok` check in `handleCommentSubmit` that shows a toast error, similar to the catch block.
 
 **Confidence:** HIGH
 
 ---
 
-### CR-3: `database-backup-restore.tsx` restore handler parses JSON before `response.ok` [MEDIUM/MEDIUM]
+### CR-2: `participant-anti-cheat-timeline.tsx` `loadMore` resets the event list on polling refresh [MEDIUM/HIGH]
 
-**File:** `src/app/(dashboard)/dashboard/admin/settings/database-backup-restore.tsx:144-146`
+**File:** `src/components/contest/participant-anti-cheat-timeline.tsx:90-108, 129`
 
-**Description:** The restore handler on line 144 calls `const data = await response.json()` unconditionally, then checks `if (!response.ok)` on line 146. The backup handler (line 44) correctly uses `.json().catch(() => ({}))` before the check, but the restore handler does not.
+**Description:** The `fetchEvents` function (line 90) always fetches from offset 0 and replaces `events` state with `setEvents(json.data.events)`. It is called by `useVisibilityPolling` on line 129 every 30 seconds. When a user has scrolled and loaded more events via `loadMore` (which appends to events), the next polling refresh will reset the list back to only the first page. The user's expanded view is lost.
 
-**Concrete failure scenario:** Database restore hits a proxy error. SyntaxError thrown. Admin sees generic error instead of specific restore failure message.
+**Concrete failure scenario:** An instructor views the anti-cheat timeline for a participant with 200 events. They click "Load More" twice to see 150 events. 30 seconds later, the polling refresh fires `fetchEvents`, which resets `events` to the first 50. The instructor loses their scroll position and the expanded data.
 
-**Fix:** Apply the same `.json().catch(() => ({}))` pattern used in the backup handler.
+**Fix:** In `fetchEvents`, when `events.length > PAGE_SIZE`, use a diff/merge strategy instead of replacing. Or at minimum, do not reset if the user has already loaded more data.
 
 **Confidence:** HIGH
 
 ---
 
-### CR-4: `admin-config.tsx` test-connection handler calls `response.json()` with no `response.ok` check [MEDIUM/MEDIUM]
+### CR-3: `submission-overview.tsx` fetches data even when the dialog is closed — `openRef` guard may be stale [LOW/MEDIUM]
 
-**File:** `src/lib/plugins/chat-widget/admin-config.tsx:99-100`
+**File:** `src/components/lecture/submission-overview.tsx:72-74, 123`
 
-**Description:** The `handleTestConnection` function calls `const data = await response.json()` on line 99 without checking `response.ok` first. When the test-connection endpoint returns an error (e.g., invalid API key returns 400), the error body is still parsed and set as `testResult`, which might work if the error body has `{success: false, error: "..."}`. But if the server returns non-JSON (502), it throws SyntaxError and the catch on line 101 shows a generic "Network error" instead of the actual failure.
+**Description:** The `fetchStats` callback checks `openRef.current` before fetching, which is a ref-based guard. The `useVisibilityPolling` hook on line 123 calls the callback every 5 seconds regardless of whether the dialog is open. The ref guard should work, but there is a race: `useVisibilityPolling` schedules a `setTimeout`, and the callback reference is captured at callback creation time. The ref is always up-to-date since refs are mutable, but the polling continues to fire `setTimeout` calls even when the dialog is closed, which is wasteful.
 
-**Fix:** Check `response.ok` before parsing, or use `.json().catch(() => ({}))` and validate the response structure.
+**Fix:** Pass the `open` state to `useVisibilityPolling` and have it skip scheduling when the dialog is closed, or use a conditional hook pattern.
 
-**Confidence:** MEDIUM
-
----
-
-### CR-5: `submission-detail-client.tsx` handleRetryRefresh calls `res.json()` without checking `res.ok` [MEDIUM/MEDIUM]
-
-**File:** `src/app/(dashboard)/dashboard/submissions/[id]/submission-detail-client.tsx:100`
-
-**Description:** `handleRetryRefresh` uses a `.then((res) => res.json())` chain without checking `res.ok` first. If the submission API returns a non-JSON error, this throws and the catch shows a generic error toast. This is a less critical path since it's a manual retry action, but it still violates the documented error handling convention.
-
-**Fix:** Check `res.ok` before calling `.json()`, or restructure to use async/await with the standard pattern.
-
-**Confidence:** MEDIUM
+**Confidence:** LOW
 
 ---
 
-### CR-6: `admin-config.tsx` `Number(e.target.value)` can produce NaN for `maxTokens` and `rateLimitPerMinute` [LOW/LOW]
+### CR-4: `database-backup-restore.tsx` restore path calls `response.json()` unnecessarily on success [LOW/LOW]
 
-**File:** `src/lib/plugins/chat-widget/admin-config.tsx:290,301`
+**File:** `src/app/(dashboard)/dashboard/admin/settings/database-backup-restore.tsx:150`
 
-**Description:** `setMaxTokens(Number(e.target.value))` and `setRateLimitPerMinute(Number(e.target.value))` can produce `NaN` if the input is empty or contains non-numeric characters. While HTML `<input type="number">` normally prevents this, the `value` can be an empty string when the user clears the field, producing `NaN` via `Number("")`.
+**Description:** After a successful restore (line 149-150), the code calls `await response.json()` but discards the result. This is unnecessary I/O — the server may return an empty body or a confirmation object, but neither is used. This is a minor inefficiency.
 
-**Concrete failure scenario:** Admin clears the maxTokens field. `Number("")` returns `0`, not `NaN`, but if a user types "e" (scientific notation allowed in number inputs in some browsers), `Number("e")` returns `NaN`. The `min`/`max` attributes only prevent form submission, not the onChange event.
+**Fix:** Remove the `await response.json()` call on line 150, or use it if the server returns useful data.
 
-**Fix:** Use `parseInt(e.target.value, 10) || defaultValue` or validate before setting state.
+**Confidence:** LOW
+
+---
+
+### CR-5: `assignment-form-dialog.tsx` `Number(event.target.value)` for latePenalty can produce NaN [LOW/LOW]
+
+**File:** `src/app/(dashboard)/dashboard/groups/[id]/assignment-form-dialog.tsx:407`
+
+**Description:** `setLatePenalty(Number(event.target.value))` can produce `NaN` if the input contains non-numeric characters. While `<input type="number">` normally prevents this, the `value` can be an empty string when the user clears the field. `Number("")` returns `0`, which is acceptable, but if the user types "e" (allowed in number inputs for scientific notation in some browsers), `Number("e")` returns `NaN`. The `min`/`max` attributes only prevent form submission, not the onChange event. NaN would be sent to the API.
+
+**Fix:** Use `parseFloat(event.target.value) || 0` or validate before setting state.
 
 **Confidence:** LOW
 
@@ -88,4 +72,4 @@
 
 ## Final Sweep
 
-The systematic `response.json()` before `response.ok` anti-pattern identified in cycles 1-3 was partially fixed. The main submission form, discussion components, group member manager, and assignment form dialog were all fixed. However, 4 additional files still use the anti-pattern: `create-group-dialog.tsx`, `bulk-create-dialog.tsx`, `database-backup-restore.tsx` (restore handler only), and `admin-config.tsx`. The `submission-detail-client.tsx` also has the pattern via a `.then()` chain. These are all newly identified instances not previously flagged.
+The cycle 7 fixes for the `response.json()` before `response.ok` pattern are all correctly implemented. The 5 files fixed in cycle 7 (`create-group-dialog.tsx`, `bulk-create-dialog.tsx`, `database-backup-restore.tsx`, `admin-config.tsx`, `submission-detail-client.tsx`) now properly check `response.ok` before parsing JSON. The main new finding is the silent failure in `comment-section.tsx` where `!response.ok` gives no user feedback.
