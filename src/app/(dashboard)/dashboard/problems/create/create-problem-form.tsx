@@ -419,11 +419,12 @@ export default function CreateProblemForm({
         }),
       });
 
-      const data = await res.json();
-
       if (!res.ok) {
-        throw new Error(data.error || (isEditing ? "updateError" : "createError"));
+        const data = await res.json().catch(() => ({}));
+        throw new Error((data as { error?: string }).error || (isEditing ? "updateError" : "createError"));
       }
+
+      const data = await res.json();
 
       const nextProblemId = data.data?.id ?? initialProblem?.id;
 
