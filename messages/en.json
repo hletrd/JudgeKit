@@ -2257,7 +2257,9 @@
       "accountPasswordRevealTitle": "New account password for {name}",
       "accountPasswordRevealHint": "Share this password securely. It is shown here only so you can deliver it to the candidate.",
       "copyAccountPassword": "Copy account password",
-      "accountPasswordCopied": "Account password copied"
+      "accountPasswordCopied": "Account password copied",
+      "revokeError": "Failed to revoke invitation",
+      "deleteError": "Failed to delete invitation"
     },
     "codeTimeline": {
       "title": "Code timeline: {name}",

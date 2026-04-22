@@ -229,6 +229,8 @@ export function RecruitingInvitationsPanel({ assignmentId }: { assignmentId: str
     if (res.ok) {
       toast.success(t("revokeSuccess"));
       fetchData();
+    } else {
+      toast.error(t("revokeError"));
     }
   }
 
@@ -260,6 +262,8 @@ export function RecruitingInvitationsPanel({ assignmentId }: { assignmentId: str
     if (res.ok) {
       toast.success(t("deleteSuccess"));
       fetchData();
+    } else {
+      toast.error(t("deleteError"));
     }
   }
 
