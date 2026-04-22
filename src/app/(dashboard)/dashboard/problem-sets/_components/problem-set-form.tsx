@@ -126,8 +126,8 @@ export default function ProblemSetForm({
         body: JSON.stringify({ groupIds: [selectedGroupToAdd] }),
       });
 
-      const payload = await response.json();
-      if (!response.ok) throw new Error(payload.error || "assignFailed");
+      const payload = await response.json().catch(() => ({}));
+      if (!response.ok) throw new Error((payload as { error?: string }).error || "assignFailed");
 
       const group = availableGroups.find((g) => g.id === selectedGroupToAdd);
       if (group) {
@@ -155,8 +155,8 @@ export default function ProblemSetForm({
         body: JSON.stringify({ groupId }),
       });
 
-      const payload = await response.json();
-      if (!response.ok) throw new Error(payload.error || "removeGroupFailed");
+      const payload = await response.json().catch(() => ({}));
+      if (!response.ok) throw new Error((payload as { error?: string }).error || "removeGroupFailed");
 
       setAssignedGroups((prev) => prev.filter((g) => g.id !== groupId));
       toast.success(t("removeGroupSuccess"));
@@ -177,8 +177,8 @@ export default function ProblemSetForm({
         method: "DELETE",
       });
 
-      const payload = await response.json();
-      if (!response.ok) throw new Error(payload.error || "deleteFailed");
+      const payload = await response.json().catch(() => ({}));
+      if (!response.ok) throw new Error((payload as { error?: string }).error || "deleteFailed");
 
       toast.success(t("deleteSuccess"));
       router.push("/dashboard/problem-sets");
@@ -211,9 +211,9 @@ export default function ProblemSetForm({
         }),
       });
 
-      const payload = await response.json();
+      const payload = await response.json().catch(() => ({}));
       if (!response.ok) {
-        throw new Error(payload.error || (isEditing ? "updateFailed" : "createFailed"));
+        throw new Error((payload as { error?: string }).error || (isEditing ? "updateFailed" : "createFailed"));
       }
 
       toast.success(t(isEditing ? "updateSuccess" : "createSuccess"));
