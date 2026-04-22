@@ -52,10 +52,10 @@ export function ContestQuickStats({
       const json = await res.json();
       if (json.data && typeof json.data === "object") {
         setStats((prev) => ({
-          participantCount: typeof json.data.participantCount === "number" ? json.data.participantCount : prev.participantCount,
-          submittedCount: typeof json.data.submittedCount === "number" ? json.data.submittedCount : prev.submittedCount,
-          avgScore: typeof json.data.avgScore === "number" ? json.data.avgScore : prev.avgScore,
-          problemsSolvedCount: typeof json.data.problemsSolvedCount === "number" ? json.data.problemsSolvedCount : prev.problemsSolvedCount,
+          participantCount: Number.isFinite(Number(json.data.participantCount)) ? Number(json.data.participantCount) : prev.participantCount,
+          submittedCount: Number.isFinite(Number(json.data.submittedCount)) ? Number(json.data.submittedCount) : prev.submittedCount,
+          avgScore: Number.isFinite(Number(json.data.avgScore)) ? Number(json.data.avgScore) : prev.avgScore,
+          problemsSolvedCount: Number.isFinite(Number(json.data.problemsSolvedCount)) ? Number(json.data.problemsSolvedCount) : prev.problemsSolvedCount,
         }));
       }
     } catch {

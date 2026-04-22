@@ -88,7 +88,7 @@ export const GET = createApiHandler({
       )
       SELECT
         COUNT(*)::int AS "submittedCount",
-        COALESCE(ROUND(AVG(ut.total_score), 1), 0) AS "avgScore"
+        COALESCE(ROUND(AVG(ut.total_score), 1), 0)::float AS "avgScore"
       FROM user_totals ut`,
       { assignmentId }
     );
