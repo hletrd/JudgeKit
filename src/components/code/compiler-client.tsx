@@ -268,15 +268,15 @@ export function CompilerClient({ languages, title, description, preferredLanguag
       const data = await res.json().catch(() => ({ data: null })) as { error?: string; message?: string; data?: unknown };
 
       if (!res.ok) {
-        const errorMessage = data.error || data.message || res.statusText || "Request failed";
+        // Ensure errorMessage is always a string — data.error/data.message could be objects
+        const rawError = data.error || data.message || res.statusText || "Request failed";
+        const errorMessage = String(rawError);
         updateTestCase(runningTestCaseId, (testCase) => ({
           ...testCase,
           error: errorMessage,
           result: null,
         }));
-        toast.error(t("runFailed"), {
-          description: errorMessage,
-        });
+        toast.error(t("runFailed"));
         return;
       }
 
@@ -295,9 +295,7 @@ export function CompilerClient({ languages, title, description, preferredLanguag
         error: errorMessage,
         result: null,
       }));
-      toast.error(t("networkError"), {
-        description: errorMessage,
-      });
+      toast.error(t("networkError"));
     } finally {
       isRunningRef.current = false;
       abortControllerRef.current = null;
