@@ -1,62 +1,66 @@
-# Performance Review — RPF Cycle 13
+# Performance Review — RPF Cycle 14
 
 **Date:** 2026-04-22
 **Reviewer:** perf-reviewer
-**Base commit:** 38206415
+**Base commit:** 023ae5d4
 
 ## Previously Fixed Items (Verified)
 
-All cycle 12 performance findings are carried or addressed:
-- PERF-1 (language-config-table unguarded res.json() on success path): Fixed
+- PERF-2 from cycle 13 (submission-overview.tsx unguarded res.json()): Fixed — now uses `.catch(() => ({ data: {} }))`
 
 ## Findings
 
-### PERF-1: `anti-cheat-dashboard.tsx` and `participant-anti-cheat-timeline.tsx` polling fetches replace all data on every tick [MEDIUM/LOW]
+### PERF-1: Anti-cheat dashboard polling replaces all data on every tick [MEDIUM/LOW]
 
-**Files:**
-- `src/components/contest/anti-cheat-dashboard.tsx:118-152`
-- `src/components/contest/participant-anti-cheat-timeline.tsx:90-122`
+**File:** `src/components/contest/anti-cheat-dashboard.tsx:124-135`
 
-**Description:** Both anti-cheat components use `useVisibilityPolling` with a 30-second interval. On every tick, `fetchEvents()` replaces the entire events array with the first page from the API. While the merge logic preserves pages loaded via loadMore, the polling request always fetches `offset=0` and replaces the first page. This means:
-1. On every 30-second tick, the entire first page (100 events) is re-fetched and re-rendered.
-2. If the user has loaded multiple pages, only the first page is refreshed — later pages become stale.
-3. State updates trigger re-renders of the entire table even when data has not changed.
+**Description:** Carried from cycle 13. The `fetchEvents` callback replaces the entire events array on every polling tick. When the user has loaded beyond the first page, extra pages are preserved via `prev.slice(PAGE_SIZE)`, but the entire array is still recreated, causing unnecessary React re-renders even when data hasn't changed.
 
-This is not a critical performance issue but could cause noticeable jank on large datasets with frequent re-renders.
+**Fix:** Add shallow comparison before `setEvents()` to avoid re-renders when data is identical.
 
-**Fix:** Consider:
-1. Using a conditional re-render (e.g., shallow-compare the events array before setting state).
-2. Adding an `If-Modified-Since` or `ETag` header to avoid re-fetching unchanged data.
-3. The polling interval of 30s is reasonable for anti-cheat monitoring.
+**Confidence:** MEDIUM
+
+---
+
+### PERF-2: `problem-import-button.tsx` parses uploaded JSON without size limit [MEDIUM/MEDIUM]
+
+**File:** `src/app/(dashboard)/dashboard/problems/problem-import-button.tsx:22-23`
+
+**Description:** Carried from cycle 13 (PERF-3). No file size check before `file.text()` loads the entire file into memory. A large file would freeze the browser tab.
+
+**Fix:** Add client-side file size limit (e.g., 10MB).
+
+**Confidence:** HIGH
+
+---
+
+### PERF-3: `contest-join-client.tsx` uses 1-second `setTimeout` delay before navigation [LOW/LOW]
+
+**File:** `src/app/(dashboard)/dashboard/contests/join/contest-join-client.tsx:57`
+
+**Description:** After a successful contest join, the code waits 1 second with `await new Promise((resolve) => setTimeout(resolve, 1000))` before navigating. This adds a full second of perceived latency. The success animation is shown during this time.
+
+**Fix:** Consider reducing to 500ms or using `startTransition` for the navigation.
 
 **Confidence:** LOW
 
 ---
 
-### PERF-2: `submission-overview.tsx:87` unguarded `res.json()` on success path — potential unnecessary exception [LOW/MEDIUM]
+### PERF-4: `compiler-client.tsx:287` — unguarded `res.json()` adds exception overhead [LOW/LOW]
 
-**File:** `src/components/lecture/submission-overview.tsx:87`
+**File:** `src/components/code/compiler-client.tsx:287`
 
-**Description:** After checking `res.ok` is true (line 86 returns early on `!res.ok`), line 87 calls `const json = await res.json()` without `.catch()`. On the success path, if the server returns a non-JSON body, this throws SyntaxError. The catch block handles it, but the exception is avoidable.
+**Description:** After a successful compile request, `res.json()` is called without `.catch()`. If the response is non-JSON, a SyntaxError is thrown and caught by the outer catch. The exception path has measurable overhead.
 
-**Fix:** Add `.catch(() => ({ data: {} }))` or wrap in try-catch.
+**Fix:** Add `.catch(() => ({}))` for consistency.
 
-**Confidence:** MEDIUM
-
----
-
-### PERF-3: `problem-import-button.tsx` parses uploaded JSON without size limit — client-side memory pressure [LOW/MEDIUM]
-
-**File:** `src/app/(dashboard)/dashboard/problems/problem-import-button.tsx:22-23`
-
-**Description:** Carried from PERF-2 (cycle 12). Line 22-23 reads the entire file content and parses it with `JSON.parse()` without any size validation. A very large JSON file could cause client-side memory pressure and potentially freeze the UI.
-
-**Fix:** Add a client-side file size check (e.g., `if (file.size > 10 * 1024 * 1024) { toast.error(...); return; }`).
-
-**Confidence:** MEDIUM
+**Confidence:** LOW
 
 ---
 
 ## Final Sweep
 
-No critical performance findings this cycle. The main areas of concern are: (1) anti-cheat dashboard polling could be optimized to avoid full-data replacement on every tick, (2) several unguarded `res.json()` calls on success paths that could cause unnecessary exceptions, and (3) the problem import button still lacks a file size check.
+No critical performance findings. Main concerns:
+1. Anti-cheat dashboard polling (carried from cycle 13).
+2. Problem import file size validation (carried from cycle 13).
+3. Minor: 1-second delay in contest join, exception overhead from unguarded `res.json()`.

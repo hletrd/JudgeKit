@@ -1,74 +1,68 @@
-# Verifier Review — RPF Cycle 13
+# Verifier Review — RPF Cycle 14
 
 **Date:** 2026-04-22
 **Reviewer:** verifier
-**Base commit:** 38206415
+**Base commit:** 023ae5d4
 
 ## Previously Fixed Items (Verified)
 
-All cycle 12 verifier findings are fixed:
-- V-1 through V-4: Verified fixed — aria-label added to language-config-table buttons and shortcuts-help
+All cycle 13 verifier findings are fixed:
+- V-1 (workers-client.tsx icon-only buttons): Fixed — all six buttons now have `aria-label`
+- V-2 (chat-logs-client.tsx missing res.ok check): Fixed — `res.ok` check and `.catch()` added
+- V-3 (recruiter-candidates-panel.tsx unguarded res.json()): Fixed — now uses `.catch(() => [])`
+- V-4 (group-instructors-manager.tsx remove button): Fixed — `aria-label` added
 
 ## Findings
 
-### V-1: `workers-client.tsx` icon-only buttons missing `aria-label` — WCAG 4.1.2 violation (6 instances) [MEDIUM/HIGH]
+### V-1: Multiple components still have unguarded `res.json()` — verified 11+ instances remain [MEDIUM/HIGH]
 
-**File:** `src/app/(dashboard)/dashboard/admin/workers/workers-client.tsx`
+**Files:** (verified by code inspection)
+- `src/components/contest/anti-cheat-dashboard.tsx:124,161,238` — no `.catch()`
+- `src/components/contest/analytics-charts.tsx:542` — no `.catch()`
+- `src/components/contest/leaderboard-table.tsx:231` — no `.catch()`
+- `src/components/contest/participant-anti-cheat-timeline.tsx:96,131` — no `.catch()`
+- `src/components/contest/recruiting-invitations-panel.tsx:202,218` — no `.catch()`
+- `src/components/code/compiler-client.tsx:287` — no `.catch()`
+- `src/app/(dashboard)/dashboard/admin/api-keys/api-keys-client.tsx:141,177` — no `.catch()`
+- `src/app/(dashboard)/dashboard/problems/[id]/problem-export-button.tsx:19` — no `.catch()`
+- `src/app/(dashboard)/dashboard/contests/join/contest-join-client.tsx:49` — no `.catch()`
+- `src/app/(dashboard)/dashboard/problems/create/create-problem-form.tsx:220,336,427` — no `.catch()`
+- `src/app/(dashboard)/dashboard/submissions/[id]/submission-detail-client.tsx:105` — no `.catch()`
 
-**Description:** Six icon-only buttons in the workers admin page lack `aria-label` attributes. Verified by checking the source:
-- Line 120: `<Button variant="ghost" size="icon" className="h-6 w-6" onClick={handleSave}>` — no aria-label
-- Line 123: `<Button variant="ghost" size="icon" className="h-6 w-6" onClick={() => setEditing(false)}>` — no aria-label
-- Lines 133-140: Pencil edit button — no aria-label
-- Lines 187-194: Copy docker command button — no aria-label
-- Lines 201-208: Copy deploy script button — no aria-label
-- Line 372: Trash2 delete worker button — no aria-label
+**Description:** Verified by reading each file. Despite three cycles of partial fixes, 11+ components still have unguarded `res.json()` calls. Each cycle fixes 5-6 files but new instances keep appearing because the pattern is not codified.
 
-This is the same class of issue fixed in cycle 12 for language-config-table (AGG-1) and shortcuts-help (AGG-3).
-
-**Fix:** Add `aria-label` to all six buttons.
-
-**Confidence:** HIGH
-
----
-
-### V-2: `chat-logs-client.tsx` — API calls without `res.ok` check [MEDIUM/MEDIUM]
-
-**File:** `src/app/(dashboard)/dashboard/admin/plugins/chat-logs/chat-logs-client.tsx:58,73`
-
-**Description:** Verified that both `fetchSessions` and `fetchMessages` call `await res.json()` without checking `res.ok` first. This means error responses (4xx/5xx) are parsed as if they were successful responses. The code then tries to use `data.sessions` or `data.messages` which may not exist on error responses.
-
-**Concrete failure scenario:** The admin chat-logs API returns 500 with `{"error":"internal"}`. `res.json()` parses it. `setSessions(data.sessions ?? [])` sets sessions to `[]`. The user sees an empty list with no error indication.
-
-**Fix:** Add `if (!res.ok) { toast.error(...); return; }` before calling `.json()`.
+**Fix:** Create a centralized `apiFetchJson` helper and refactor all instances.
 
 **Confidence:** HIGH
 
 ---
 
-### V-3: `recruiter-candidates-panel.tsx` unguarded `res.json()` on success path [LOW/MEDIUM]
+### V-2: `create-problem-form.tsx:332,336` — double `res.json()` consumes response body [MEDIUM/MEDIUM]
 
-**File:** `src/components/contest/recruiter-candidates-panel.tsx:54`
+**File:** `src/app/(dashboard)/dashboard/problems/create/create-problem-form.tsx:332,336`
 
-**Description:** Verified: after `res.ok` check, `const data = await res.json()` is called without `.catch()`. The code then does `setCandidates(Array.isArray(data) ? data : [])` which handles non-array data gracefully, but if `res.json()` throws SyntaxError on a non-JSON 200 response, the catch block displays a generic error.
+**Description:** Verified by reading the code. On line 332, `await res.json().catch(() => ({}))` is called for the error check. On line 336, `await res.json()` is called again for the success path. The first call consumes the response body. If the error path doesn't throw, the second call would fail with "body already consumed". Currently safe because the error path always throws, but fragile.
 
-**Fix:** Add `.catch(() => [])` on the `.json()` call.
+Same pattern at lines 423,427.
+
+**Fix:** Parse response once: `const data = await res.json().catch(() => ({}))` and branch on `res.ok`.
+
+**Confidence:** HIGH
+
+---
+
+### V-3: `problem-export-button.tsx` — no null-safety on `data.data.problem.title` [LOW/MEDIUM]
+
+**File:** `src/app/(dashboard)/dashboard/problems/[id]/problem-export-button.tsx:19-24`
+
+**Description:** Verified: line 24 accesses `data.data.problem.title` without checking if `data.data` or `data.data.problem` exist. If the API returns an unexpected shape, this throws TypeError.
+
+**Fix:** Add null-safe access or guard.
 
 **Confidence:** MEDIUM
 
 ---
 
-### V-4: `group-instructors-manager.tsx` remove instructor button missing `aria-label` [LOW/MEDIUM]
-
-**File:** `src/app/(dashboard)/dashboard/groups/[id]/group-instructors-manager.tsx:191-196`
-
-**Description:** Verified: the remove instructor button at line 191-196 contains only a Trash2 icon with no text label. It uses `size="sm"` but is effectively icon-only. No `aria-label` is present.
-
-**Fix:** Add `aria-label={t("removeInstructor")}`.
-
-**Confidence:** HIGH
-
----
-
 ## Final Sweep
 
-The cycle 12 fixes are properly verified. The workers admin page has a cluster of accessibility issues that were missed in prior cycles. The chat-logs client has a concerning pattern of not checking `res.ok` before parsing JSON. Several components still have unguarded `res.json()` calls on success paths.
+The cycle 13 fixes are properly verified. The main remaining issue is the persistent unguarded `res.json()` pattern across 11+ components. The double `res.json()` in create-problem-form.tsx is a verified latent bug.

@@ -1,122 +1,127 @@
-# Code Quality Review — RPF Cycle 13
+# Code Quality Review — RPF Cycle 14
 
 **Date:** 2026-04-22
 **Reviewer:** code-reviewer
-**Base commit:** 38206415
+**Base commit:** 023ae5d4
 
 ## Previously Fixed Items (Verified in Current Code)
 
-All cycle 12 findings are fixed:
-- AGG-1 (language-config-table icon-only buttons missing aria-label): Fixed — all three buttons now have `aria-label`
-- AGG-2 (unguarded res.json() on error paths in group-instructors-manager and problem-import-button): Fixed — both use `.catch(() => ({}))` now
-- AGG-3 (shortcuts-help icon-only button missing aria-label): Fixed — now has `aria-label={t("shortcutsTitle")}`
-- AGG-4 (language-config-table unguarded res.json() on success path): Fixed — now uses `.catch(() => ({ data: {} }))`
+All cycle 13 findings are fixed:
+- AGG-1 (workers-client.tsx icon-only buttons missing aria-label): Fixed — all six buttons now have `aria-label`
+- AGG-2 (chat-logs-client.tsx unguarded res.json() without res.ok check): Fixed — both `res.ok` check and `.catch()` guard added
+- AGG-3 (group-instructors-manager.tsx remove instructor button missing aria-label): Fixed — `aria-label={t("removeInstructor")}` added
+- AGG-4 (multiple components unguarded res.json() on success paths): Partially fixed — several components now have `.catch()` guards, but some remain
 
 ## Findings
 
-### CR-1: `workers-client.tsx` multiple icon-only buttons missing `aria-label` — WCAG 4.1.2 [MEDIUM/HIGH]
+### CR-1: Multiple components still have unguarded `res.json()` on success paths [MEDIUM/HIGH]
 
 **Files:**
-- `src/app/(dashboard)/dashboard/admin/workers/workers-client.tsx:120`
-- `src/app/(dashboard)/dashboard/admin/workers/workers-client.tsx:123`
-- `src/app/(dashboard)/dashboard/admin/workers/workers-client.tsx:133-140`
-- `src/app/(dashboard)/dashboard/admin/workers/workers-client.tsx:187-194`
-- `src/app/(dashboard)/dashboard/admin/workers/workers-client.tsx:201-208`
-- `src/app/(dashboard)/dashboard/admin/workers/workers-client.tsx:372`
+- `src/components/contest/anti-cheat-dashboard.tsx:124,161,238` — success path, no `.catch()`
+- `src/components/contest/analytics-charts.tsx:542` — success path, no `.catch()`
+- `src/components/contest/leaderboard-table.tsx:231` — success path, no `.catch()`
+- `src/components/contest/participant-anti-cheat-timeline.tsx:96,131` — success path, no `.catch()`
+- `src/components/contest/recruiting-invitations-panel.tsx:202,218` — success and error paths, no `.catch()`
+- `src/components/code/compiler-client.tsx:287` — success path, no `.catch()`
+- `src/app/(dashboard)/dashboard/admin/api-keys/api-keys-client.tsx:141,177` — success path, no `.catch()`
+- `src/app/(dashboard)/dashboard/problems/[id]/problem-export-button.tsx:19` — success path, no `.catch()`
+- `src/app/(dashboard)/dashboard/contests/join/contest-join-client.tsx:49` — success path, no `.catch()`
+- `src/app/(dashboard)/dashboard/problems/create/create-problem-form.tsx:220,336,427` — success path, no `.catch()`
+- `src/app/(dashboard)/dashboard/submissions/[id]/submission-detail-client.tsx:105` — success path, no `.catch()`
 
-**Description:** Six icon-only buttons in the workers admin page lack `aria-label` attributes:
-1. Line 120: Save (Check icon) button in editable alias field — no `aria-label`
-2. Line 123: Cancel (X icon) button in editable alias field — no `aria-label`
-3. Lines 133-140: Edit (Pencil icon) button for alias — no `aria-label`
-4. Lines 187-194: Copy docker command button — no `aria-label`
-5. Lines 201-208: Copy deploy script button — no `aria-label`
-6. Line 372: Delete worker (Trash2 icon) button — no `aria-label`
+**Description:** This is a continuation of the same class of issue identified in cycles 11-13 (AGG-4/AGG-5). While cycle 13 added `.catch()` guards to several files (recruiter-candidates-panel, quick-create-contest-form, invite-participants, code-timeline-panel, contest-quick-stats, submission-overview), many files still have unguarded `res.json()` calls on their success paths. If the server returns a non-JSON 200 body, `res.json()` throws SyntaxError. The outer catch blocks handle it, but the SyntaxError is an unnecessary exception path.
 
-This is the same class of WCAG 4.1.2 violation fixed in cycle 12 for the language-config-table. The pattern is inconsistent with other icon-only buttons in the codebase (e.g., lecture toolbar, api-keys copy button, language config table).
+**Concrete failure scenario:** API returns 200 with empty body due to proxy misconfiguration. `res.json()` throws SyntaxError. The error is caught and a generic error toast is shown, but the user has no idea what went wrong. With a `.catch()` guard, the component would gracefully fall back to empty data.
 
-**Concrete failure scenario:** A screen reader user navigates the workers admin page. Icon-only buttons are announced as "button" with no description.
-
-**Fix:** Add `aria-label` to all six icon-only buttons:
-- Line 120: `aria-label={t("save")}`
-- Line 123: `aria-label={t("cancel")}`
-- Line 140: `aria-label={t("editAlias")}`
-- Line 192: `aria-label={t("copyDockerCommand")}`
-- Line 207: `aria-label={t("copyDeployScript")}`
-- Line 372: `aria-label={t("removeWorker")}`
+**Fix:** Add `.catch()` guards on all success-path `.json()` calls. Consider a centralized `apiFetchJson` helper.
 
 **Confidence:** HIGH
 
 ---
 
-### CR-2: `chat-logs-client.tsx` unguarded `res.json()` — no `.catch()` and no `res.ok` check [MEDIUM/MEDIUM]
+### CR-2: `problem-import-button.tsx` parses uploaded JSON without size limit [MEDIUM/MEDIUM]
 
-**File:** `src/app/(dashboard)/dashboard/admin/plugins/chat-logs/chat-logs-client.tsx:58,73`
+**File:** `src/app/(dashboard)/dashboard/problems/problem-import-button.tsx:22-23`
 
-**Description:** Two `fetchSessions` and `fetchMessages` calls use `await res.json()` without first checking `res.ok` and without `.catch()`. Line 58: `const data = await res.json()` in fetchSessions — no `res.ok` check. Line 73: `const data = await res.json()` in fetchMessages — no `res.ok` check. If the server returns a non-JSON body or a non-OK status, this throws SyntaxError or processes invalid data.
+**Description:** Line 22 calls `await file.text()` and line 23 calls `JSON.parse(text)` without any file size validation. A user could upload a multi-gigabyte JSON file that crashes the browser tab. The server-side route has proper Zod validation, but the client-side parsing happens before the API call.
 
-**Concrete failure scenario:** The admin chat-logs API returns 503 with HTML. `res.json()` throws SyntaxError. The outer catch displays a generic error toast. The exception path is unnecessary.
+**Concrete failure scenario:** User selects a 2GB JSON file. `file.text()` loads the entire file into memory, crashing the browser tab with an out-of-memory error before the API call is ever made.
 
-**Fix:** Add `res.ok` check before calling `.json()`, and use `.catch(() => ({}))` as a safety guard.
-
-**Confidence:** HIGH
-
----
-
-### CR-3: `recruiter-candidates-panel.tsx:54` unguarded `res.json()` — no `.catch()` on success path [MEDIUM/MEDIUM]
-
-**File:** `src/components/contest/recruiter-candidates-panel.tsx:54`
-
-**Description:** After checking `res.ok`, line 54 calls `const data = await res.json()` without a `.catch()` guard. If the server returns a non-JSON 200 response (e.g., empty body), this throws SyntaxError. The outer catch displays `t("fetchError")`, which is correct UX, but the SyntaxError is avoidable.
-
-**Fix:** Use `await res.json().catch(() => [])` since `setCandidates(Array.isArray(data) ? data : [])` already handles non-array data.
+**Fix:** Add a file size check (e.g., 10MB limit) before calling `file.text()`:
+```ts
+if (file.size > 10 * 1024 * 1024) {
+  toast.error(t("fileTooLarge"));
+  return;
+}
+```
 
 **Confidence:** HIGH
 
 ---
 
-### CR-4: `quick-create-contest-form.tsx:80` unguarded `res.json()` on success path [MEDIUM/MEDIUM]
+### CR-3: `contest-join-client.tsx` — variable shadowing of `payload` [LOW/MEDIUM]
 
-**File:** `src/components/contest/quick-create-contest-form.tsx:80`
+**File:** `src/app/(dashboard)/dashboard/contests/join/contest-join-client.tsx:45,49`
 
-**Description:** After checking `res.ok`, line 80 calls `const json = await res.json()` without `.catch()`. If the server returns a non-JSON 200 body, this throws SyntaxError. The error path (line 83-84) doesn't have `.catch()` either.
+**Description:** On line 45, a `const payload` is declared inside the `!res.ok` block for error handling. On line 49, another `const payload` is declared in the same scope for the success path. While this works because the error path throws before reaching line 49, the variable shadowing is confusing and could lead to bugs if the control flow changes.
 
-**Fix:** Add `.catch()` guards on both paths: success and error.
+**Fix:** Rename one of the variables, e.g., `const errorPayload` on line 45.
 
 **Confidence:** MEDIUM
 
 ---
 
-### CR-5: `group-instructors-manager.tsx:191-196` icon-only remove button missing `aria-label` [LOW/MEDIUM]
+### CR-4: `create-problem-form.tsx` — double `res.json()` on success path [MEDIUM/MEDIUM]
 
-**File:** `src/app/(dashboard)/dashboard/groups/[id]/group-instructors-manager.tsx:191-196`
+**File:** `src/app/(dashboard)/dashboard/problems/create/create-problem-form.tsx:332,336`
 
-**Description:** The remove instructor button uses a Trash2 icon inside a `Button` with `size="sm"`, not `size="icon"`. However, the button contains only an icon with no text content, so it is effectively icon-only. It lacks an `aria-label`. Screen readers would announce "button" with no description.
+**Description:** At line 331-336, the code first calls `const data = await res.json().catch(() => ({}))` for the error check, then immediately calls `const { data } = await res.json()` on line 336 for the success path. The error-path `.json()` consumes the response body, so the second `.json()` call on line 336 would throw a "body already consumed" error if the code ever reached it after the error path. However, in the current flow, the `!res.ok` block throws before line 336, so this is a latent bug rather than an active one.
 
-**Fix:** Add `aria-label={t("removeInstructor")}` to the Button.
+Similarly at lines 423-427: `const data = await res.json().catch(() => ({}))` on the error path, then `const data = await res.json()` on the success path.
 
-**Confidence:** HIGH
+**Concrete failure scenario:** If someone refactors the code to remove the `throw` from the error path, the second `res.json()` call would fail because the response body was already consumed by the first call.
 
----
-
-### CR-6: `invite-participants.tsx:46` unguarded `res.json()` on success path [LOW/MEDIUM]
-
-**File:** `src/components/contest/invite-participants.tsx:46`
-
-**Description:** After checking `res.ok`, line 46 calls `const data = await res.json()` without `.catch()`. The error path (line 78) correctly uses `.catch()`, but the success path does not. Same pattern as other unguarded success-path `.json()` calls.
-
-**Fix:** Add `.catch(() => ({}))` on the success path as well.
+**Fix:** Restructure to use a single `.json()` call:
+```ts
+const data = await res.json().catch(() => ({}));
+if (!res.ok) {
+  throw new Error(data.error || "uploadFailed");
+}
+// Use data for success path
+```
 
 **Confidence:** MEDIUM
 
 ---
 
-### CR-7: `recruiting-invitations-panel.tsx:218` unguarded `res.json()` on error path [LOW/MEDIUM]
+### CR-5: `problem-export-button.tsx` — unguarded `res.json()` + no `.catch()` + no null check on `data.data` [MEDIUM/MEDIUM]
+
+**File:** `src/app/(dashboard)/dashboard/problems/[id]/problem-export-button.tsx:19-24`
+
+**Description:** Line 19 calls `const data = await res.json()` without `.catch()`. Then line 24 accesses `data.data.problem.title` without checking if `data.data` or `data.data.problem` exists. If the API returns a valid 200 response with an unexpected shape, this throws a TypeError.
+
+**Concrete failure scenario:** API returns 200 with `{"data": {}}` (missing `problem`). Line 24 throws `Cannot read properties of undefined (reading 'title')`.
+
+**Fix:** Add `.catch()` guard and null checks:
+```ts
+const data = await res.json().catch(() => null);
+if (!data?.data?.problem) {
+  toast.error(t("exportFailed"));
+  return;
+}
+```
+
+**Confidence:** HIGH
+
+---
+
+### CR-6: `recruiting-invitations-panel.tsx:218` — unguarded `res.json()` on error path [LOW/MEDIUM]
 
 **File:** `src/components/contest/recruiting-invitations-panel.tsx:218`
 
-**Description:** In the `else` block (after `!res.ok`), line 218 calls `const json = await res.json()` without `.catch()`. The code wraps it in a try-catch, but it would be more consistent with the established pattern to use `.catch(() => ({}))`.
+**Description:** In the `else` block (after `!res.ok`), line 218 calls `const json = await res.json()` without `.catch()`. This is wrapped in a try-catch, but it would be more consistent with the established pattern to use `.catch(() => ({}))`.
 
-**Fix:** Change to `const json = await res.json().catch(() => ({}))` and remove the surrounding try-catch if it only guards the `.json()` call.
+**Fix:** Change to `const json = await res.json().catch(() => ({}))`.
 
 **Confidence:** MEDIUM
 
@@ -124,7 +129,9 @@ This is the same class of WCAG 4.1.2 violation fixed in cycle 12 for the languag
 
 ## Final Sweep
 
-The cycle 12 fixes are properly implemented. The main new findings this cycle are:
-1. Workers admin page has 6 icon-only buttons missing `aria-label` — the same class of WCAG 4.1.2 issue fixed in prior cycles for other pages.
-2. Several components still have unguarded `res.json()` calls on both error and success paths.
-3. The chat-logs client is particularly concerning because it lacks both the `res.ok` check AND the `.catch()` guard.
+The cycle 13 fixes for workers-client.tsx, chat-logs-client.tsx, and group-instructors-manager.tsx are properly implemented. The main remaining issues are:
+1. **Unguarded `res.json()` calls** — still present in 11+ components despite three cycles of partial fixes. This needs a systematic approach (e.g., centralized helper).
+2. **Problem import file size validation** — no client-side protection against oversized files.
+3. **Double `res.json()` calls** in create-problem-form.tsx — latent bug from consuming the response body twice.
+4. **Variable shadowing** in contest-join-client.tsx — confusing but not currently broken.
+5. **Missing null checks** after `res.json()` in problem-export-button.tsx.

@@ -1,88 +1,99 @@
-# RPF Cycle 13 — Aggregate Review
+# RPF Cycle 14 — Aggregate Review
 
 **Date:** 2026-04-22
-**Base commit:** 38206415
+**Base commit:** 023ae5d4
 **Review artifacts:** code-reviewer.md, perf-reviewer.md, security-reviewer.md, architect.md, critic.md, verifier.md, debugger.md, test-engineer.md, tracer.md, designer.md, document-specialist.md
 
 ## Previously Fixed Items (Verified in Current Code)
 
-All cycle 12 aggregate findings have been addressed:
-- AGG-1 from cycle 12 (language-config-table icon-only buttons missing aria-label): Fixed — all three buttons now have `aria-label`
-- AGG-2 from cycle 12 (unguarded res.json() on error paths in group-instructors-manager and problem-import-button): Fixed — both use `.catch(() => ({}))` now
-- AGG-3 from cycle 12 (shortcuts-help icon-only button missing aria-label): Fixed — now has `aria-label={t("shortcutsTitle")}`
-- AGG-4 from cycle 12 (language-config-table unguarded res.json() on success path): Fixed — now uses `.catch(() => ({ data: {} }))`
+All cycle 13 aggregate findings have been addressed:
+- AGG-1 from cycle 13 (workers-client.tsx icon-only buttons missing aria-label): Fixed — all six buttons now have `aria-label`
+- AGG-2 from cycle 13 (chat-logs-client.tsx API calls without res.ok check): Fixed — both `res.ok` check and `.catch()` guard added
+- AGG-3 from cycle 13 (group-instructors-manager.tsx remove instructor button missing aria-label): Fixed — `aria-label` added
+- AGG-4 from cycle 13 (multiple components unguarded res.json() on success paths): Partially fixed — 5 of 10+ files now have `.catch()` guards
 
 ## Deduped Findings (sorted by severity then signal)
 
-### AGG-1: `workers-client.tsx` icon-only buttons missing `aria-label` — WCAG 4.1.2 violation (6 instances) [MEDIUM/HIGH]
+### AGG-1: Systemic unguarded `res.json()` pattern — 4 cycles of partial fixes without root-cause resolution [MEDIUM/HIGH]
 
-**Flagged by:** code-reviewer (CR-1), critic (CRI-1), verifier (V-1), debugger (DBG-4), tracer (TR-2), designer (DES-1), architect (ARCH-2)
+**Flagged by:** code-reviewer (CR-1), critic (CRI-1), verifier (V-1), debugger (DBG-1 implicit), tracer (TR-1 implicit), architect (ARCH-1), document-specialist (DOC-1, DOC-3)
 **Signal strength:** 7 of 11 review perspectives
 
-**File:** `src/app/(dashboard)/dashboard/admin/workers/workers-client.tsx:120,123,133-140,187-194,201-208,372`
+**Files:** 11+ components across the codebase:
+- `src/components/contest/anti-cheat-dashboard.tsx:124,161,238`
+- `src/components/contest/analytics-charts.tsx:542`
+- `src/components/contest/leaderboard-table.tsx:231`
+- `src/components/contest/participant-anti-cheat-timeline.tsx:96,131`
+- `src/components/contest/recruiting-invitations-panel.tsx:202,218`
+- `src/components/code/compiler-client.tsx:287`
+- `src/app/(dashboard)/dashboard/admin/api-keys/api-keys-client.tsx:141,177`
+- `src/app/(dashboard)/dashboard/problems/[id]/problem-export-button.tsx:19`
+- `src/app/(dashboard)/dashboard/contests/join/contest-join-client.tsx:49`
+- `src/app/(dashboard)/dashboard/problems/create/create-problem-form.tsx:220,336,427`
+- `src/app/(dashboard)/dashboard/submissions/[id]/submission-detail-client.tsx:105`
 
-**Description:** Six icon-only buttons in the workers admin page lack `aria-label` attributes:
-1. Line 120: Save (Check icon) button — no `aria-label`
-2. Line 123: Cancel (X icon) button — no `aria-label`
-3. Lines 133-140: Edit (Pencil icon) button — no `aria-label`
-4. Lines 187-194: Copy docker command button — no `aria-label`
-5. Lines 201-208: Copy deploy script button — no `aria-label`
-6. Line 372: Delete worker (Trash2 icon) button — no `aria-label`
+**Description:** Despite three cycles (11-13) of fixing unguarded `res.json()` calls file-by-file, 11+ components still have the same pattern. Each cycle fixes 5-6 files but the pattern keeps appearing in reviews because there is no centralized, enforced approach. The root cause is architectural: no codified `apiFetchJson` helper exists.
 
-This is the same class of WCAG 4.1.2 issue fixed in cycle 12 for the language-config-table (AGG-1). The pattern is inconsistent with other icon-only buttons in the codebase (e.g., lecture toolbar, api-keys copy button, language config table).
-
-**Fix:** Add `aria-label` to all six icon-only buttons.
+**Fix:** Create a centralized `apiFetchJson<T>(url, options, fallback): Promise<T>` helper that combines `apiFetch` + `res.ok` check + `.json().catch()` parsing. Refactor all instances to use it. Update `apiFetch` JSDoc to document the success-path pattern and the double-read anti-pattern.
 
 ---
 
-### AGG-2: `chat-logs-client.tsx` — API calls without `res.ok` check, processes error responses as data [MEDIUM/MEDIUM]
+### AGG-2: `create-problem-form.tsx` double `res.json()` — response body consumed on first read [MEDIUM/MEDIUM]
 
-**Flagged by:** code-reviewer (CR-2), security-reviewer (SEC-2), critic (CRI-2), verifier (V-2), debugger (DBG-1), tracer (TR-1)
+**Flagged by:** code-reviewer (CR-4), critic (CRI-2), verifier (V-2), debugger (DBG-1), tracer (TR-1), architect (ARCH-2)
 **Signal strength:** 6 of 11 review perspectives
 
-**File:** `src/app/(dashboard)/dashboard/admin/plugins/chat-logs/chat-logs-client.tsx:58,73`
+**File:** `src/app/(dashboard)/dashboard/problems/create/create-problem-form.tsx:332,336` and `423,427`
 
-**Description:** Both `fetchSessions` and `fetchMessages` call `await res.json()` without first checking `res.ok`. If the server returns an error status (e.g., 403 session expired), the error response body is parsed and the code tries to access `data.sessions` or `data.messages` which would be undefined. The `?? []` and `?? 0` fallbacks prevent a crash, but the user sees an empty state instead of an error message. This masks authentication failures.
+**Description:** The code calls `await res.json()` twice on the same Response object at two locations. The first call (on the error path with `.catch()`) consumes the response body. The second call (on the success path without `.catch()`) would fail with "body already consumed" if the error path didn't throw first. This is a latent bug — currently safe because the error path always throws, but fragile.
 
-**Concrete failure scenario:** Admin's session expires. Chat-logs API returns 403 with `{"error":"forbidden"}`. `res.json()` parses it. `setSessions(data.sessions ?? [])` sets sessions to `[]`. User sees empty list with no error indication.
+**Concrete failure scenario:** Developer refactors the error path to not throw (e.g., adding a fallback). The second `res.json()` throws "body already consumed" TypeError.
 
-**Fix:** Add `if (!res.ok) { toast.error(...); return; }` before calling `.json()`.
-
----
-
-### AGG-3: `group-instructors-manager.tsx` remove instructor button missing `aria-label` [LOW/MEDIUM]
-
-**Flagged by:** code-reviewer (CR-5), critic (CRI-3), verifier (V-4), designer (DES-2)
-**Signal strength:** 4 of 11 review perspectives
-
-**File:** `src/app/(dashboard)/dashboard/groups/[id]/group-instructors-manager.tsx:191-196`
-
-**Description:** The remove instructor button contains only a Trash2 icon with no text content. It uses `size="sm"` but is effectively icon-only. No `aria-label` is present.
-
-**Fix:** Add `aria-label={t("removeInstructor")}` to the Button.
+**Fix:** Parse response once and branch on `res.ok`:
+```ts
+const data = await res.json().catch(() => ({}));
+if (!res.ok) throw new Error(...);
+// use data for success
+```
 
 ---
 
-### AGG-4: Multiple components have unguarded `res.json()` on success paths [LOW/MEDIUM]
+### AGG-3: `problem-import-button.tsx` parses uploaded JSON without size limit [MEDIUM/MEDIUM]
 
-**Flagged by:** code-reviewer (CR-3, CR-4, CR-6, CR-7), critic (CRI-2), debugger (DBG-2, DBG-3), tracer (TR-3), perf-reviewer (PERF-2)
+**Flagged by:** code-reviewer (CR-2), perf-reviewer (PERF-2), security-reviewer (SEC-2), debugger (DBG-4), tracer (TR-3)
 **Signal strength:** 5 of 11 review perspectives
 
-**Files:**
-- `src/components/contest/recruiter-candidates-panel.tsx:54` — success path, no `.catch()`
-- `src/components/contest/quick-create-contest-form.tsx:80` — success path, no `.catch()`
-- `src/components/contest/invite-participants.tsx:46` — success path, no `.catch()`
-- `src/components/contest/code-timeline-panel.tsx:57` — success path, no `.catch()`
-- `src/components/contest/analytics-charts.tsx:542` — success path, no `.catch()`
-- `src/components/contest/leaderboard-table.tsx:231` — success path, no `.catch()`
-- `src/components/contest/anti-cheat-dashboard.tsx:124,161` — success path, no `.catch()`
-- `src/components/contest/contest-quick-stats.tsx:52` — success path, no `.catch()`
-- `src/components/lecture/submission-overview.tsx:87` — success path, no `.catch()`
-- `src/app/(dashboard)/dashboard/submissions/[id]/submission-detail-client.tsx:105` — success path, no `.catch()`
+**File:** `src/app/(dashboard)/dashboard/problems/problem-import-button.tsx:22-23`
 
-**Description:** These components call `await res.json()` on the success path (`res.ok`) without a `.catch()` guard. If the server returns a non-JSON 200 body, `res.json()` throws SyntaxError. The outer catch blocks handle it, but the SyntaxError is an unnecessary exception path. This is a continuation of the same pattern identified in cycle 11 (AGG-5) and cycle 12 (AGG-4).
+**Description:** Carried from SEC-3 (cycle 13) and PERF-3 (cycle 13). No file size check before `file.text()` loads the entire file into memory. A large file would freeze the browser tab or cause an out-of-memory crash.
 
-**Fix:** Add `.catch()` guards on success-path `.json()` calls. Consider a centralized `apiFetchJson` helper.
+**Fix:** Add `if (file.size > 10 * 1024 * 1024) { toast.error(t("fileTooLarge")); return; }` before `file.text()`.
+
+---
+
+### AGG-4: `problem-export-button.tsx` — unguarded `res.json()` + no null check on nested property access [LOW/MEDIUM]
+
+**Flagged by:** code-reviewer (CR-5), critic (CRI-4), verifier (V-3), debugger (DBG-2), tracer (TR-2)
+**Signal strength:** 5 of 11 review perspectives
+
+**File:** `src/app/(dashboard)/dashboard/problems/[id]/problem-export-button.tsx:19-24`
+
+**Description:** Line 19 calls `res.json()` without `.catch()`. Line 24 accesses `data.data.problem.title` without null checks. If the API returns an unexpected shape, this throws TypeError.
+
+**Fix:** Add `.catch()` guard and null-safe access.
+
+---
+
+### AGG-5: `contest-join-client.tsx` variable shadowing — `payload` declared twice [LOW/LOW]
+
+**Flagged by:** code-reviewer (CR-3), critic (CRI-3), debugger (DBG-3)
+**Signal strength:** 3 of 11 review perspectives
+
+**File:** `src/app/(dashboard)/dashboard/contests/join/contest-join-client.tsx:45,49`
+
+**Description:** `const payload` is declared on line 45 (error path) and again on line 49 (success path). Currently safe because the error path throws, but the shadowing is confusing.
+
+**Fix:** Rename the error-path variable to `errorPayload`.
 
 ---
 
@@ -94,31 +105,27 @@ This is the same class of WCAG 4.1.2 issue fixed in cycle 12 for the language-co
 
 **Fix:** Add integrity check or HMAC. Monitor plaintext fallback hits in production.
 
-### SEC-2: `chat-logs-client.tsx` missing `res.ok` check — covered by AGG-2 above
+### SEC-2: `problem-import-button.tsx` parses uploaded JSON without size limit — covered by AGG-3 above
 
-### SEC-3: `problem-import-button.tsx` parses uploaded JSON without size limit — carried from PERF-2 (cycle 12) [LOW/MEDIUM]
-
-### SEC-4: `window.location.origin` for URL construction — carried from DEFER-24 [MEDIUM/MEDIUM]
+### SEC-3: `window.location.origin` for URL construction — carried from DEFER-24 [MEDIUM/MEDIUM]
 
 ---
 
 ## Performance Findings (from perf-reviewer)
 
-No critical performance findings this cycle.
+### PERF-1: Anti-cheat dashboard polling replaces all data on every tick — carried from PERF-1 (cycle 13) [MEDIUM/LOW]
 
-### PERF-1: Anti-cheat dashboard polling replaces all data on every tick [MEDIUM/LOW]
+### PERF-2: `problem-import-button.tsx` parses uploaded JSON without size limit — covered by AGG-3 above
 
-### PERF-2: `submission-overview.tsx:87` unguarded `res.json()` — covered by AGG-4 above
-
-### PERF-3: `problem-import-button.tsx` parses uploaded JSON without size limit — carried [LOW/MEDIUM]
+### PERF-3: `contest-join-client.tsx` 1-second setTimeout delay before navigation [LOW/LOW]
 
 ---
 
 ## Architectural Findings (from architect)
 
-### ARCH-1: No centralized `res.json()` safety pattern — inconsistent error handling [MEDIUM/MEDIUM]
+### ARCH-1: No centralized `res.json()` safety pattern — covered by AGG-1 above [MEDIUM/HIGH]
 
-### ARCH-2: Icon-only buttons missing `aria-label` — systemic pattern — covered by AGG-1 above
+### ARCH-2: `create-problem-form.tsx` double `res.json()` — covered by AGG-2 above
 
 ### ARCH-3: `language-config-table.tsx` is 688 lines — should be decomposed [LOW/LOW]
 
@@ -132,7 +139,9 @@ No critical performance findings this cycle.
 
 ### TE-3: Encryption module still untested — carried from TE-3 (cycle 11) [MEDIUM/HIGH]
 
-### TE-4: No unit tests for `recruiter-candidates-panel.tsx` [LOW/LOW]
+### TE-4: No unit tests for `create-problem-form.tsx` [LOW/MEDIUM]
+
+### TE-5: No unit tests for `problem-export-button.tsx` [LOW/LOW]
 
 ---
 
@@ -141,6 +150,8 @@ No critical performance findings this cycle.
 ### DOC-1: `apiFetch` JSDoc does not document success-path `.json()` safety pattern [LOW/MEDIUM]
 
 ### DOC-2: `encryption.ts` plaintext fallback lacks migration guidance [LOW/LOW]
+
+### DOC-3: `apiFetch` JSDoc does not mention the double-read anti-pattern [LOW/MEDIUM]
 
 ---
 

@@ -1,50 +1,47 @@
-# Architectural Review — RPF Cycle 13
+# Architectural Review — RPF Cycle 14
 
 **Date:** 2026-04-22
 **Reviewer:** architect
-**Base commit:** 38206415
+**Base commit:** 023ae5d4
 
 ## Previously Fixed Items (Verified)
 
-- ARCH-1 (centralized error-to-i18n mapping utility): Acknowledged as a refactor suggestion
-- ARCH-2 (language-config-table.tsx decompose): Acknowledged as LOW/LOW
+- ARCH-2 (icon-only buttons missing aria-label): Fixed — workers-client.tsx and group-instructors-manager.tsx now have `aria-label`
 
 ## Findings
 
-### ARCH-1: No centralized `res.json()` safety pattern — inconsistent error handling across client components [MEDIUM/MEDIUM]
+### ARCH-1: No centralized `res.json()` safety pattern — 4 cycles of piecemeal fixes [MEDIUM/HIGH]
 
-**Files:** Multiple components across the codebase
+**Files:** 11+ components across the codebase (see code-reviewer CR-1 for full list)
 
-**Description:** The codebase has at least three distinct patterns for handling `res.json()` on API responses:
-1. **With `.catch()` on error paths only** (e.g., `group-instructors-manager.tsx:72`, `problem-import-button.tsx:32`, `invite-participants.tsx:78`) — the established pattern documented in `apiFetch` JSDoc
-2. **Without `.catch()` on success paths** (e.g., `submission-overview.tsx:87`, `recruiter-candidates-panel.tsx:54`, `quick-create-contest-form.tsx:80`, `code-timeline-panel.tsx:57`, `analytics-charts.tsx:542`, `leaderboard-table.tsx:231`, `anti-cheat-dashboard.tsx:124,161`, `contest-quick-stats.tsx:52`, `submission-detail-client.tsx:105`)
-3. **Without `res.ok` check at all** (e.g., `chat-logs-client.tsx:58,73`)
+**Description:** This is the fourth cycle where unguarded `res.json()` calls are being identified and fixed piecemeal. The pattern keeps recurring because there is no codified, enforced approach. The codebase has three distinct patterns:
+1. With `.catch()` on error paths only (documented in `apiFetch` JSDoc)
+2. Without `.catch()` on success paths (most components)
+3. Without `res.ok` check at all (rare, but found in chat-logs-client)
 
-This inconsistency is a code smell that suggests the pattern is not well-enforced. New developers following existing examples in the codebase may pick up the wrong pattern.
+The root cause is architectural: there is no centralized helper that combines `apiFetch` + `res.ok` check + `.json()` parsing into a single, safe operation. Each component implements its own pattern, leading to inconsistency.
 
-**Fix:** Consider:
-1. Creating a typed `apiFetch` wrapper that returns parsed JSON with type safety: `const { data, error } = await apiFetchJson<T>(url, options)`.
-2. Adding an ESLint rule or convention that `.json()` should always be guarded with `.catch()`.
-3. Updating the `apiFetch` JSDoc to document the success-path pattern as well.
+**Fix:** Create an `apiFetchJson<T>(url, options, fallback): Promise<T>` helper that:
+1. Calls `apiFetch(url, options)`
+2. Checks `res.ok` and throws a typed error if not OK
+3. Calls `res.json().catch(() => fallback)` for safe parsing
+4. Returns typed data
 
-**Confidence:** MEDIUM
+This would eliminate the entire class of unguarded `.json()` bugs in one refactor.
+
+**Confidence:** HIGH
 
 ---
 
-### ARCH-2: Icon-only buttons missing `aria-label` — systemic pattern across admin pages [MEDIUM/LOW]
+### ARCH-2: `create-problem-form.tsx` double `res.json()` — response body consumed pattern [MEDIUM/MEDIUM]
 
-**Files:**
-- `src/app/(dashboard)/dashboard/admin/workers/workers-client.tsx` (6 instances)
-- `src/app/(dashboard)/dashboard/groups/[id]/group-instructors-manager.tsx` (1 instance)
+**File:** `src/app/(dashboard)/dashboard/problems/create/create-problem-form.tsx:332,336` and `423,427`
 
-**Description:** This is a recurring architectural issue. The codebase has been fixing icon-only buttons missing `aria-label` on a page-by-page basis (discussion components in cycle 9, compiler client in cycle 10, language config table in cycle 12). Each review cycle finds new instances in different pages. This suggests a systemic issue rather than isolated oversights.
+**Description:** The code calls `await res.json()` twice on the same Response object. The first call consumes the body, making the second call fail. This is currently safe because the error path throws before the second call, but it is a latent bug. This is a consequence of the lack of a centralized response handling pattern (ARCH-1).
 
-**Fix:** Consider:
-1. Creating a custom `IconButton` component that requires `aria-label` as a prop.
-2. Adding an ESLint rule that flags `Button` components with `size="icon"` or `size="icon-sm"` that lack `aria-label`.
-3. Running an accessibility audit tool (e.g., axe-core) in CI.
+**Fix:** Parse response once and branch on `res.ok`. A centralized `apiFetchJson` helper would prevent this pattern entirely.
 
-**Confidence:** MEDIUM
+**Confidence:** HIGH
 
 ---
 
@@ -52,7 +49,7 @@ This inconsistency is a code smell that suggests the pattern is not well-enforce
 
 **File:** `src/app/(dashboard)/dashboard/admin/languages/language-config-table.tsx`
 
-**Description:** Carried from ARCH-2 (cycle 12). This component contains: the main table, edit sheet, add sheet, confirmation dialog, image status fetching, build/remove/prune handlers, search filtering, and disk usage display. At 688 lines it is difficult to maintain.
+**Description:** Carried from ARCH-3 (cycle 13). This component contains: the main table, edit sheet, add sheet, confirmation dialog, image status fetching, build/remove/prune handlers, search filtering, and disk usage display. At 688 lines it is difficult to maintain.
 
 **Fix:** Extract `LanguageEditSheet`, `LanguageAddSheet`, and `LanguageConfirmDialog` as separate components.
 
@@ -62,4 +59,4 @@ This inconsistency is a code smell that suggests the pattern is not well-enforce
 
 ## Final Sweep
 
-The cycle 12 fixes are properly implemented. The main architectural concerns this cycle are: (1) the lack of a centralized `res.json()` safety pattern, which leads to inconsistent error handling across client components, and (2) the systemic pattern of icon-only buttons missing `aria-label`, which keeps appearing on different pages in each review cycle. Both suggest a need for a more structural fix rather than continued page-by-page remediation.
+The key architectural concern is the lack of a centralized `res.json()` safety pattern (ARCH-1), which has led to four cycles of piecemeal fixes. The double `res.json()` in create-problem-form.tsx (ARCH-2) is a direct consequence of this gap. Creating a centralized helper would eliminate both the unguarded `.json()` class of bugs and the double-read pattern in one refactor.

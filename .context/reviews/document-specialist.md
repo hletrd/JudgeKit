@@ -1,8 +1,8 @@
-# Document Specialist Review — RPF Cycle 13
+# Document Specialist Review — RPF Cycle 14
 
 **Date:** 2026-04-22
 **Reviewer:** document-specialist
-**Base commit:** 38206415
+**Base commit:** 023ae5d4
 
 ## Previously Fixed Items (Verified)
 
@@ -14,7 +14,9 @@
 
 **File:** `src/lib/api/client.ts` (apiFetch JSDoc)
 
-**Description:** The `apiFetch` JSDoc documents the error-path pattern (use `.json().catch(() => ({}))` on error paths) but does not provide guidance for the success path. The codebase has inconsistent success-path handling — some components use `.catch()` and others don't. The JSDoc should document the recommended pattern for both paths.
+**Description:** Carried from DOC-1 (cycle 13). The `apiFetch` JSDoc documents the error-path pattern (use `.json().catch(() => ({}))` on error paths) but does not provide guidance for the success path. The codebase has inconsistent success-path handling — some components use `.catch()` and others don't. The JSDoc should document the recommended pattern for both paths.
+
+This documentation gap directly contributes to the recurring unguarded `res.json()` findings across cycles 11-14.
 
 **Fix:** Update the JSDoc to include a success-path example:
 ```typescript
@@ -23,20 +25,15 @@ const { data } = await res.json().catch(() => ({ data: null }));
 if (!data) { /* handle parse failure */ }
 ```
 
-**Confidence:** MEDIUM
+**Confidence:** HIGH
 
 ---
 
-### DOC-2: `encryption.ts` plaintext fallback is documented but lacks migration guidance [LOW/LOW]
+### DOC-2: `encryption.ts` plaintext fallback lacks migration guidance [LOW/LOW]
 
 **File:** `src/lib/security/encryption.ts:73-76`
 
-**Description:** The JSDoc for `decrypt()` documents the plaintext fallback: "If the value does not start with `enc:`, it is returned as-is (plaintext fallback for data that was stored before encryption was enabled)." However, there is no documentation about:
-1. When the plaintext fallback can be deprecated
-2. How to migrate existing plaintext data
-3. What security implications the fallback has
-
-This is a documentation gap that makes it harder for future developers to understand the security trade-offs.
+**Description:** Carried from DOC-2 (cycle 13). The JSDoc for `decrypt()` documents the plaintext fallback but does not document when the fallback can be deprecated, how to migrate existing plaintext data, or what security implications the fallback has.
 
 **Fix:** Add migration guidance to the JSDoc or create a separate migration document.
 
@@ -44,6 +41,26 @@ This is a documentation gap that makes it harder for future developers to unders
 
 ---
 
+### DOC-3: `apiFetch` JSDoc does not mention the double-read anti-pattern [LOW/MEDIUM]
+
+**File:** `src/lib/api/client.ts` (apiFetch JSDoc)
+
+**Description:** The codebase has instances of calling `res.json()` twice on the same response (e.g., `create-problem-form.tsx:332,336`). The `apiFetch` JSDoc should explicitly warn against this anti-pattern since the Response body can only be consumed once.
+
+**Fix:** Add a warning to the JSDoc:
+```typescript
+// WARNING: Response body can only be read once.
+// Do NOT call res.json() twice on the same response.
+// Parse once and branch on res.ok:
+const data = await res.json().catch(() => ({}));
+if (!res.ok) { /* handle error */ }
+// use data for success
+```
+
+**Confidence:** MEDIUM
+
+---
+
 ## Final Sweep
 
-The documentation is generally good. The main gap is the lack of success-path `.json()` guidance in the `apiFetch` JSDoc, which contributes to the inconsistent patterns found by the code-reviewer and critic. The encryption module documentation could benefit from migration guidance.
+The documentation gaps in `apiFetch` JSDoc (DOC-1, DOC-3) directly contribute to the recurring unguarded `res.json()` and double-read findings. Updating the JSDoc with both success-path guidance and the double-read warning would help prevent future instances of these patterns.

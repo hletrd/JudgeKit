@@ -1,66 +1,73 @@
-# Critic Review — RPF Cycle 13
+# Critic Review — RPF Cycle 14
 
 **Date:** 2026-04-22
 **Reviewer:** critic
-**Base commit:** 38206415
+**Base commit:** 023ae5d4
 
 ## Previously Fixed Items (Verified)
 
-All cycle 12 critic findings are fixed.
+All cycle 13 critic findings are fixed:
+- CRI-1 (workers-client.tsx icon-only buttons): Fixed — all six buttons now have `aria-label`
+- CRI-2 (inconsistent res.json() error handling — chat-logs): Fixed — `res.ok` check and `.catch()` added
+- CRI-3 (group-instructors-manager.tsx remove button): Fixed — `aria-label` added
 
 ## Findings
 
-### CRI-1: `workers-client.tsx` icon-only buttons missing `aria-label` — same pattern as cycle 12 language-config-table [MEDIUM/HIGH]
+### CRI-1: Systemic unguarded `res.json()` pattern — three cycles of partial fixes without systematic resolution [MEDIUM/HIGH]
 
-**File:** `src/app/(dashboard)/dashboard/admin/workers/workers-client.tsx:120,123,133-140,187-194,201-208,372`
+**Files:** See CR-1 in code-reviewer.md for full list (11+ components)
 
-**Description:** Six icon-only buttons in the workers admin page lack `aria-label` attributes. This is the same class of WCAG 4.1.2 issue that was fixed in cycle 12 for the language-config-table. The pattern is inconsistent with other icon-only buttons in the codebase. The cycle 12 fix addressed the language table but missed the workers page.
+**Description:** This is the fourth cycle where unguarded `res.json()` calls are being identified. Cycle 11 found the pattern, cycle 12 fixed some, cycle 13 fixed more, and cycle 14 still finds 11+ components with the same issue. The piecemeal approach is not working. The codebase needs a systematic solution — either a centralized `apiFetchJson` helper or a linter rule that enforces `.catch()` on `res.json()` calls.
 
-**Concrete failure scenario:** A screen reader user navigates the workers admin page. Icon-only buttons are announced as "button" with no description.
+The fact that this keeps recurring as new findings in each cycle suggests the root cause — lack of a codified pattern — has not been addressed. Individual fixes keep being made but new instances appear in each review.
 
-**Fix:** Add `aria-label` to all six icon-only buttons.
-
-**Confidence:** HIGH
-
----
-
-### CRI-2: Inconsistent `res.json()` error handling — some components have `.catch()`, others don't [MEDIUM/MEDIUM]
-
-**Files:**
-- `src/app/(dashboard)/dashboard/admin/plugins/chat-logs/chat-logs-client.tsx:58,73` — no `res.ok` check, no `.catch()`
-- `src/components/contest/recruiter-candidates-panel.tsx:54` — success path, no `.catch()`
-- `src/components/contest/quick-create-contest-form.tsx:80` — success path, no `.catch()`
-- `src/components/contest/invite-participants.tsx:46` — success path, no `.catch()`
-- `src/components/contest/code-timeline-panel.tsx:57` — success path, no `.catch()`
-- `src/components/contest/analytics-charts.tsx:542` — success path, no `.catch()`
-- `src/components/contest/leaderboard-table.tsx:231` — success path, no `.catch()`
-- `src/components/contest/anti-cheat-dashboard.tsx:124,161` — success path, no `.catch()`
-- `src/components/contest/contest-quick-stats.tsx:52` — success path, no `.catch()`
-- `src/components/lecture/submission-overview.tsx:87` — success path, no `.catch()`
-- `src/app/(dashboard)/dashboard/submissions/[id]/submission-detail-client.tsx:105` — success path, no `.catch()`
-
-**Description:** The codebase has an established pattern (documented in `apiFetch` JSDoc) of using `.json().catch(() => ({}))` on error paths. However, there is no consistent pattern for success paths. Some components use `.catch()` on success paths (e.g., `language-config-table.tsx:94`) while many others do not. This inconsistency makes it hard for developers to know which pattern to follow.
-
-The `chat-logs-client.tsx` is particularly concerning because it lacks BOTH the `res.ok` check AND the `.catch()` guard.
-
-**Fix:** Establish a consistent pattern: always use `.catch()` on error paths, and consider adding `.catch()` on success paths as a defensive measure. The chat-logs client needs both a `res.ok` check and `.catch()`.
+**Fix:** Create a centralized `apiFetchJson<T>(res: Response, fallback: T): Promise<T>` helper that handles `.json()` + `.catch()` in one call. Refactor all `res.json()` calls to use it. This would also make the code more DRY.
 
 **Confidence:** HIGH
 
 ---
 
-### CRI-3: `group-instructors-manager.tsx` remove instructor button effectively icon-only but missing `aria-label` [LOW/MEDIUM]
+### CRI-2: `create-problem-form.tsx` consumes response body twice with `res.json()` [MEDIUM/MEDIUM]
 
-**File:** `src/app/(dashboard)/dashboard/groups/[id]/group-instructors-manager.tsx:191-196`
+**File:** `src/app/(dashboard)/dashboard/problems/create/create-problem-form.tsx:332,336` and `423,427`
 
-**Description:** The remove instructor button contains only a `<Trash2>` icon with no visible text. While it uses `size="sm"` instead of `size="icon"`, it is effectively an icon-only button that needs `aria-label` for accessibility.
+**Description:** The code calls `await res.json()` on the error path (with `.catch()`), then calls `await res.json()` again on the success path. The first call consumes the response body. If the error path doesn't throw, the second call would fail with "body already consumed". This is a latent bug — currently the error path always throws, so the second `.json()` is reached only on success. But the dual-read pattern is fragile and could break with future refactoring.
 
-**Fix:** Add `aria-label={t("removeInstructor")}`.
+**Fix:** Parse the response once and branch based on `res.ok`:
+```ts
+const data = await res.json().catch(() => ({}));
+if (!res.ok) throw new Error(...);
+// use data for success
+```
 
 **Confidence:** HIGH
+
+---
+
+### CRI-3: `contest-join-client.tsx` variable shadowing — `payload` declared twice in same scope [LOW/MEDIUM]
+
+**File:** `src/app/(dashboard)/dashboard/contests/join/contest-join-client.tsx:45,49`
+
+**Description:** `const payload` is declared on line 45 (error path) and again on line 49 (success path). The error path throws, so there's no runtime issue, but the shadowing is confusing and violates clean code principles.
+
+**Fix:** Rename the error-path variable to `errorPayload`.
+
+**Confidence:** MEDIUM
+
+---
+
+### CRI-4: `problem-export-button.tsx` — no null-safety on nested property access after `res.json()` [LOW/MEDIUM]
+
+**File:** `src/app/(dashboard)/dashboard/problems/[id]/problem-export-button.tsx:19-24`
+
+**Description:** After calling `res.json()` on line 19, the code accesses `data.data.problem.title` on line 24 without any null checks. If the API returns a valid 200 with an unexpected shape (e.g., missing `problem` field), this throws a TypeError that gets caught by the generic catch, showing "exportFailed" with no diagnostic detail.
+
+**Fix:** Add null-safe access: `data?.data?.problem?.title ?? "problem"` and validate before proceeding.
+
+**Confidence:** MEDIUM
 
 ---
 
 ## Final Sweep
 
-The codebase is in good shape overall. The cycle 12 fixes are properly implemented. The main systemic issues this cycle are: (1) workers admin page has 6 icon-only buttons missing `aria-label`, continuing the pattern from prior cycles where different pages are fixed in each pass, and (2) the inconsistent `res.json()` handling across the codebase — particularly the chat-logs client that lacks both the `res.ok` check and the `.catch()` guard.
+The cycle 13 fixes are properly implemented. The key systemic issue this cycle is the recurring unguarded `res.json()` pattern — four cycles of partial fixes without addressing the root cause. The double `res.json()` in create-problem-form.tsx is a latent bug worth fixing. Variable shadowing and missing null checks are lower priority but improve code quality.
