@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useRef, useState } from "react";
-import { useTranslations } from "next-intl";
+import { useTranslations, useLocale } from "next-intl";
 import { X, CheckCircle2, XCircle, AlertTriangle, Clock3, RefreshCw } from "lucide-react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
@@ -10,7 +10,12 @@ import { buildStatusLabels } from "@/lib/judge/status-labels";
 import { apiFetch } from "@/lib/api/client";
 import { useVisibilityPolling } from "@/hooks/use-visibility-polling";
 import { formatNumber } from "@/lib/formatting";
-import { useLocale } from "next-intl";
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
 
 type SubmissionStats = {
   total: number;
@@ -130,93 +135,83 @@ export function SubmissionOverview({
     }
   }, [open]);
 
-  // Handle Escape key to close the dialog
-  useEffect(() => {
-    if (!open) return;
-    function handleEscape(e: KeyboardEvent) {
-      if (e.key === "Escape") {
-        e.preventDefault();
-        onClose();
-      }
-    }
-    document.addEventListener("keydown", handleEscape);
-    return () => document.removeEventListener("keydown", handleEscape);
-  }, [open, onClose]);
-
-  if (!open) return null;
-
   const acceptedPct = stats.total > 0 ? Math.round((stats.accepted / stats.total) * 100) : 0;
   const statusLabels = buildStatusLabels(tSubmissions);
 
   return (
-    <div role="dialog" aria-modal="true" aria-label={t("submissionStats")} className="fixed right-4 top-16 z-50 w-80 rounded-lg border bg-background/95 shadow-xl backdrop-blur-md">
-      <div className="flex items-center justify-between border-b px-4 py-3">
-        <div className="flex items-center gap-2 font-semibold">
-          <RefreshCw className={cn("size-3.5", loading && "animate-spin")} />
-          {t("submissionStats")}
-        </div>
-        <Button variant="ghost" size="icon-sm" onClick={onClose} aria-label={t("closeStats")}> 
-          <X className="size-3.5" />
-        </Button>
-      </div>
+    <Dialog open={open} onOpenChange={(nextOpen) => { if (!nextOpen) onClose(); }}>
+      <DialogContent
+        className="fixed right-4 top-16 left-auto w-80 translate-x-0 translate-y-0 rounded-lg bg-background/95 shadow-xl backdrop-blur-md"
+        aria-label={t("submissionStats")}
+      >
+        <DialogHeader className="flex flex-row items-center justify-between border-b px-4 py-3 space-y-0">
+          <div className="flex items-center gap-2 font-semibold">
+            <RefreshCw className={cn("size-3.5", loading && "animate-spin")} />
+            <DialogTitle>{t("submissionStats")}</DialogTitle>
+          </div>
+          <Button variant="ghost" size="icon-sm" onClick={onClose} aria-label={t("closeStats")}>
+            <X className="size-3.5" />
+          </Button>
+        </DialogHeader>
 
-      <div className="p-4 space-y-4">
-        <div>
-          <div className="flex items-baseline justify-between mb-1.5">
-            <span className="text-3xl font-bold text-green-500">{formatNumber(acceptedPct, { locale, maximumFractionDigits: 0 })}%</span>
-            <span className="text-sm text-muted-foreground">{t("acceptedSummary", { accepted: stats.accepted, total: stats.total })}</span>
+        <div className="p-4 space-y-4">
+          <div>
+            <div className="flex items-baseline justify-between mb-1.5">
+              <span className="text-3xl font-bold text-green-500">{formatNumber(acceptedPct, { locale, maximumFractionDigits: 0 })}%</span>
+              <span className="text-sm text-muted-foreground">{t("acceptedSummary", { accepted: stats.accepted, total: stats.total })}</span>
+            </div>
+            <div className="h-3 w-full rounded-full bg-muted overflow-hidden">
+              <div className="h-full rounded-full bg-green-500 transition-all duration-500" style={{ width: `${acceptedPct}%` }} />
+            </div>
           </div>
-          <div className="h-3 w-full rounded-full bg-muted overflow-hidden">
-            <div className="h-full rounded-full bg-green-500 transition-all duration-500" style={{ width: `${acceptedPct}%` }} />
-          </div>
-        </div>
 
-        <div className="grid grid-cols-2 gap-2 text-sm">
-          <div className="flex items-center gap-1.5">
-            <CheckCircle2 className="size-3.5 text-green-500" />
-            <span>{t("acceptedCount", { count: stats.accepted })}</span>
+          <div className="grid grid-cols-2 gap-2 text-sm">
+            <div className="flex items-center gap-1.5">
+              <CheckCircle2 className="size-3.5 text-green-500" />
+              <span>{t("acceptedCount", { count: stats.accepted })}</span>
+            </div>
+            <div className="flex items-center gap-1.5">
+              <XCircle className="size-3.5 text-red-500" />
+              <span>{t("wrongCount", { count: stats.wrongAnswer })}</span>
+            </div>
+            <div className="flex items-center gap-1.5">
+              <AlertTriangle className="size-3.5 text-orange-500" />
+              <span>{t("compileRuntimeCount", { count: stats.compileError + stats.runtimeError })}</span>
+            </div>
+            <div className="flex items-center gap-1.5">
+              <Clock3 className="size-3.5 text-yellow-500" />
+              <span>{t("timeLimitCount", { count: stats.timeLimit })}</span>
+            </div>
+            {stats.pending > 0 && (
+              <div className="flex items-center gap-1.5 col-span-2">
+                <Clock3 className="size-3.5 text-blue-500 animate-pulse" />
+                <span>{t("pendingCount", { count: stats.pending })}</span>
+              </div>
+            )}
           </div>
-          <div className="flex items-center gap-1.5">
-            <XCircle className="size-3.5 text-red-500" />
-            <span>{t("wrongCount", { count: stats.wrongAnswer })}</span>
-          </div>
-          <div className="flex items-center gap-1.5">
-            <AlertTriangle className="size-3.5 text-orange-500" />
-            <span>{t("compileRuntimeCount", { count: stats.compileError + stats.runtimeError })}</span>
-          </div>
-          <div className="flex items-center gap-1.5">
-            <Clock3 className="size-3.5 text-yellow-500" />
-            <span>{t("timeLimitCount", { count: stats.timeLimit })}</span>
-          </div>
-          {stats.pending > 0 && (
-            <div className="flex items-center gap-1.5 col-span-2">
-              <Clock3 className="size-3.5 text-blue-500 animate-pulse" />
-              <span>{t("pendingCount", { count: stats.pending })}</span>
+
+          {recent.length > 0 && (
+            <div>
+              <div className="text-xs font-medium text-muted-foreground mb-2">{t("recentLabel")}</div>
+              <div className="space-y-1 max-h-40 overflow-y-auto">
+                {recent.map((sub) => (
+                  <div key={sub.id} className="flex items-center justify-between text-xs py-1 border-b border-border/50 last:border-0">
+                    <span className={cn(
+                      "font-medium",
+                      sub.status === "accepted" ? "text-green-500" :
+                      sub.status === "pending" || sub.status === "judging" || sub.status === "queued" ? "text-blue-500" :
+                      "text-red-500"
+                    )}>
+                      {statusLabels[sub.status] ?? sub.status}
+                    </span>
+                    <span className="text-muted-foreground">{sub.language}</span>
+                  </div>
+                ))}
+              </div>
             </div>
           )}
         </div>
-
-        {recent.length > 0 && (
-          <div>
-            <div className="text-xs font-medium text-muted-foreground mb-2">{t("recentLabel")}</div>
-            <div className="space-y-1 max-h-40 overflow-y-auto">
-              {recent.map((sub) => (
-                <div key={sub.id} className="flex items-center justify-between text-xs py-1 border-b border-border/50 last:border-0">
-                  <span className={cn(
-                    "font-medium",
-                    sub.status === "accepted" ? "text-green-500" :
-                    sub.status === "pending" || sub.status === "judging" || sub.status === "queued" ? "text-blue-500" :
-                    "text-red-500"
-                  )}>
-                    {statusLabels[sub.status] ?? sub.status}
-                  </span>
-                  <span className="text-muted-foreground">{sub.language}</span>
-                </div>
-              ))}
-            </div>
-          </div>
-        )}
-      </div>
-    </div>
+      </DialogContent>
+    </Dialog>
   );
 }
