@@ -30,6 +30,9 @@ export default function ChatWidget() {
   const messagesRef = useRef(messages);
   useEffect(() => { messagesRef.current = messages; }, [messages]);
 
+  // Ref for stable access to sendMessage in effects without triggering re-runs
+  const sendMessageRef = useRef<(text: string, displayText?: string) => Promise<void>>(null!);
+
   const pathname = usePathname();
   const searchParams = useSearchParams();
 
@@ -73,18 +76,36 @@ export default function ChatWidget() {
     }
   }, [pathname]);
 
+  const scrollRafRef = useRef<number | null>(null);
+
   const scrollToBottom = useCallback(() => {
     const container = messagesContainerRef.current;
     if (!container) return;
 
-    container.scrollTo({
-      top: container.scrollHeight,
-      behavior: isStreaming ? "auto" : "smooth",
-    });
+    if (isStreaming) {
+      // During streaming, batch scroll updates via requestAnimationFrame to avoid layout thrash
+      if (scrollRafRef.current != null) return; // already scheduled
+      scrollRafRef.current = requestAnimationFrame(() => {
+        scrollRafRef.current = null;
+        const c = messagesContainerRef.current;
+        if (c) c.scrollTo({ top: c.scrollHeight, behavior: "auto" });
+      });
+    } else {
+      container.scrollTo({
+        top: container.scrollHeight,
+        behavior: "smooth",
+      });
+    }
   }, [isStreaming]);
 
   useEffect(() => {
     scrollToBottom();
+    return () => {
+      if (scrollRafRef.current != null) {
+        cancelAnimationFrame(scrollRafRef.current);
+        scrollRafRef.current = null;
+      }
+    };
   }, [messages, scrollToBottom]);
 
   useEffect(() => {
@@ -129,10 +150,9 @@ export default function ChatWidget() {
         ? t("autoAnalysisError")
         : t("autoAnalysisReview");
       setPendingAutoAnalysis(null);
-      void sendMessage(apiPrompt, displayText);
+      void sendMessageRef.current(apiPrompt, displayText);
     }
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [pendingAutoAnalysis, isStreaming, problemContext]);
+  }, [pendingAutoAnalysis, isStreaming, problemContext, t]);
 
   const sendMessage = useCallback(async (text: string, displayText?: string) => {
     if (!text || isStreaming) return;
@@ -215,6 +235,9 @@ export default function ChatWidget() {
       abortControllerRef.current = null;
     }
   }, [editorContent?.code, editorContent?.language, isStreaming, problemContext, sessionId, t]);
+
+  // Keep sendMessageRef synchronized so effects always call the latest sendMessage
+  useEffect(() => { sendMessageRef.current = sendMessage; }, [sendMessage]);
 
   const handleSend = useCallback(async () => {
     void sendMessage(input.trim());
@@ -313,9 +336,9 @@ export default function ChatWidget() {
               )}
               {msg.role === "assistant" && !msg.content && isStreaming && i === messages.length - 1 && (
                 <span className="inline-flex gap-1">
-                  <span className="animate-bounce" style={{ animationDelay: "0ms" }}>.</span>
-                  <span className="animate-bounce" style={{ animationDelay: "150ms" }}>.</span>
-                  <span className="animate-bounce" style={{ animationDelay: "300ms" }}>.</span>
+                  <span className="motion-safe:animate-bounce" style={{ animationDelay: "0ms" }}>.</span>
+                  <span className="motion-safe:animate-bounce" style={{ animationDelay: "150ms" }}>.</span>
+                  <span className="motion-safe:animate-bounce" style={{ animationDelay: "300ms" }}>.</span>
                 </span>
               )}
             </div>
