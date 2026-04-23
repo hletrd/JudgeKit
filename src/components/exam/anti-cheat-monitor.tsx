@@ -6,6 +6,13 @@ import { toast } from "sonner";
 import { ShieldAlert } from "lucide-react";
 import { apiFetch } from "@/lib/api/client";
 import { Button } from "@/components/ui/button";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
 
 interface AntiCheatMonitorProps {
   assignmentId: string;
@@ -251,29 +258,28 @@ export function AntiCheatMonitor({
 
   if (showPrivacyNotice) {
     return (
-      <div role="dialog" aria-modal="true" aria-label={t("privacyNoticeTitle")} className="fixed inset-0 z-[60] flex items-center justify-center bg-background/80 backdrop-blur-sm">
-        <div className="mx-4 max-w-md rounded-lg border bg-card p-6 shadow-lg">
-          <div className="flex items-center gap-2 mb-3">
-            <ShieldAlert className="size-5 text-muted-foreground" />
-            <h3 className="font-semibold">{t("privacyNoticeTitle")}</h3>
-          </div>
-          <p className="text-sm text-muted-foreground mb-3">
-            {t("privacyNoticeDescription")}
-          </p>
-          <ul className="text-sm text-muted-foreground mb-4 space-y-1 list-disc list-inside">
+      <Dialog open={true} onOpenChange={(open) => { if (!open) setShowPrivacyNotice(false); }}>
+        <DialogContent onInteractOutside={(e) => e.preventDefault()} onEscapeKeyDown={(e) => e.preventDefault()}>
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <ShieldAlert className="size-5 text-muted-foreground" />
+              {t("privacyNoticeTitle")}
+            </DialogTitle>
+            <DialogDescription>
+              {t("privacyNoticeDescription")}
+            </DialogDescription>
+          </DialogHeader>
+          <ul className="text-sm text-muted-foreground space-y-1 list-disc list-inside">
             <li>{t("privacyNoticeTabSwitch")}</li>
             <li>{t("privacyNoticeCopyPaste")}</li>
             <li>{t("privacyNoticeIpAddress")}</li>
             <li>{t("privacyNoticeCodeSnapshots")}</li>
           </ul>
-          <Button variant="default" className="w-full"
-            
-            onClick={() => setShowPrivacyNotice(false)}
-          >
+          <Button variant="default" className="w-full" onClick={() => setShowPrivacyNotice(false)}>
             {t("privacyNoticeAccept")}
           </Button>
-        </div>
-      </div>
+        </DialogContent>
+      </Dialog>
     );
   }
 
