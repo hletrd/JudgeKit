@@ -182,7 +182,7 @@ export function ContestReplay({
           </Button>
           <div className="space-y-2 text-sm">
             <Label>{speedLabel}</Label>
-            <Select value={String(speed)} onValueChange={(v) => setSpeed(parseInt(v, 10) as (typeof PLAYBACK_SPEEDS)[number])}>
+            <Select value={String(speed)} onValueChange={(v) => { if (v) setSpeed(parseInt(v, 10) as (typeof PLAYBACK_SPEEDS)[number]); }}>
               <SelectTrigger className="w-24">
                 <SelectValue />
               </SelectTrigger>
