@@ -201,6 +201,7 @@ export function FileManagementClient({ files, rangeStart, rangeEnd, totalCount, 
                           size="sm"
                           onClick={() => copyUrl(file.id)}
                           title={t("copyUrl")}
+                          aria-label={t("copyUrl")}
                         >
                           {copiedId === file.id ? (
                             <Check className="size-4" />
@@ -213,6 +214,7 @@ export function FileManagementClient({ files, rangeStart, rangeEnd, totalCount, 
                           size="sm"
                           onClick={() => handleDeleteSingle(file)}
                           title={t("delete")}
+                          aria-label={t("delete")}
                         >
                           <Trash2 className="size-4 text-destructive" />
                         </Button>
