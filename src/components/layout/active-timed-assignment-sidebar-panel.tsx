@@ -60,32 +60,41 @@ export function ActiveTimedAssignmentSidebarPanel({
       return undefined;
     }
 
-    const interval = window.setInterval(() => {
-      const now = Date.now();
-      setNowMs(now);
+    let timerId: ReturnType<typeof setTimeout> | null = null;
+    let cancelled = false;
 
-      // Stop the timer when all assignments have expired, avoiding
-      // unnecessary 1-second ticks after the last deadline passes.
-      const allExpired = assignments.every(
-        (assignment) => new Date(assignment.deadline).getTime() <= now
-      );
-      if (allExpired) {
-        window.clearInterval(interval);
-      }
-    }, 1000);
+    function scheduleNext() {
+      timerId = setTimeout(() => {
+        if (cancelled) return;
+        const now = Date.now();
+        setNowMs(now);
+
+        // Stop the timer when all assignments have expired, avoiding
+        // unnecessary 1-second ticks after the last deadline passes.
+        const allExpired = assignments.every(
+          (assignment) => new Date(assignment.deadline).getTime() <= now
+        );
+        if (!allExpired) {
+          scheduleNext();
+        }
+      }, 1000);
+    }
 
     // Immediately recalculate when the tab becomes visible to prevent
-    // stale timer values caused by browser throttling of setInterval in
+    // stale timer values caused by browser throttling of setTimeout in
     // background tabs. This matches the pattern in countdown-timer.tsx.
     function handleVisibilityChange() {
       if (document.visibilityState === "visible") {
         setNowMs(Date.now());
       }
     }
+
+    scheduleNext();
     document.addEventListener("visibilitychange", handleVisibilityChange);
 
     return () => {
-      window.clearInterval(interval);
+      cancelled = true;
+      if (timerId !== null) clearTimeout(timerId);
       document.removeEventListener("visibilitychange", handleVisibilityChange);
     };
   }, [assignments]);
