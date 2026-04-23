@@ -17,6 +17,7 @@ import type { SubmissionStatus } from "@/types";
 import { resolveCapabilities } from "@/lib/capabilities/cache";
 import { getRecruitingAccessContext } from "@/lib/recruiting/access";
 import { getAssignedTeachingGroupIds, hasGroupInstructorRole } from "@/lib/assignments/management";
+import { getDbNowUncached } from "@/lib/db-time";
 import { TERMINAL_SUBMISSION_STATUSES_SQL_LIST } from "@/lib/submissions/status";
 
 type AssignmentValidationError =
@@ -204,8 +205,11 @@ export async function validateAssignmentSubmission(
   const caps = await resolveCapabilities(role);
   const isAdminLevel = caps.has("system.settings");
 
+  // Use DB server time for deadline checks to avoid clock skew
+  // between app and DB servers, consistent with other schedule checks.
+  const now = isAdminLevel ? 0 : (await getDbNowUncached()).getTime();
+
   if (!isAdminLevel) {
-    const now = Date.now();
     const startsAt = assignment.startsAt?.valueOf() ?? null;
     const effectiveCloseAt = assignment.lateDeadline?.valueOf() ?? assignment.deadline?.valueOf() ?? null;
 
@@ -265,7 +269,7 @@ export async function validateAssignmentSubmission(
         return { ok: false, status: 403, error: "examNotStarted" };
       }
 
-      if (examSession.personalDeadline && examSession.personalDeadline.valueOf() < Date.now()) {
+      if (examSession.personalDeadline && examSession.personalDeadline.valueOf() < now) {
         return { ok: false, status: 403, error: "examTimeExpired" };
       }
     }
@@ -362,7 +366,10 @@ export async function getStudentProblemStatuses(
     if (!submissionsByProblem.has(sub.problemId)) {
       submissionsByProblem.set(sub.problemId, new Set());
     }
-    submissionsByProblem.get(sub.problemId)!.add(sub.status ?? "");
+    const entry = submissionsByProblem.get(sub.problemId);
+    if (entry) {
+      entry.add(sub.status ?? "");
+    }
   }
 
   return assignmentProblemRows.map((row) => {
