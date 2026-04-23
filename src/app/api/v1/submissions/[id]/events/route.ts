@@ -82,7 +82,10 @@ if (globalThis.__sseCleanupTimer) clearInterval(globalThis.__sseCleanupTimer);
 globalThis.__sseCleanupTimer = setInterval(() => {
   if (connectionInfoMap.size === 0) return;
   const now = Date.now();
-  const staleThreshold = Math.min(getConfiguredSettings().sseTimeoutMs + 30_000, 2 * 60 * 60 * 1000);
+  const sseTimeout = getConfiguredSettings().sseTimeoutMs;
+  const staleThreshold = Number.isFinite(sseTimeout)
+    ? Math.min(sseTimeout + 30_000, 2 * 60 * 60 * 1000)
+    : 30_030_000; // 30min + 30s fallback
   for (const [connId, info] of connectionInfoMap) {
     if (now - info.createdAt > staleThreshold) {
       removeConnection(connId)
