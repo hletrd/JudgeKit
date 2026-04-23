@@ -44,12 +44,20 @@ export function ContestQuickStats({
   });
 
   const initialLoadDoneRef = useRef(false);
+  const abortControllerRef = useRef<AbortController | null>(null);
 
   const fetchStats = useCallback(async () => {
+    // Abort any in-flight request before starting a new one
+    if (abortControllerRef.current) {
+      abortControllerRef.current.abort();
+    }
+    const controller = new AbortController();
+    abortControllerRef.current = controller;
+
     try {
       const { ok, data } = await apiFetchJson<{ data?: { participantCount?: number; submittedCount?: number; avgScore?: number | null; problemsSolvedCount?: number } }>(
         `/api/v1/contests/${assignmentId}/stats`,
-        undefined,
+        { signal: controller.signal },
         { data: undefined }
       );
       if (ok && data.data && typeof data.data === "object") {
@@ -60,7 +68,9 @@ export function ContestQuickStats({
           problemsSolvedCount: Number.isFinite(Number(data.data!.problemsSolvedCount)) ? Number(data.data!.problemsSolvedCount) : prev.problemsSolvedCount,
         }));
       }
-    } catch {
+    } catch (err) {
+      // AbortError means the request was cancelled — not a real error
+      if (err instanceof DOMException && err.name === "AbortError") return;
       // Only show toast on the initial load — polling refreshes should fail
       // silently to avoid spamming the user with error toasts.
       if (!initialLoadDoneRef.current) {

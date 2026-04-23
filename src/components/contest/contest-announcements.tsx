@@ -44,12 +44,20 @@ export function ContestAnnouncements({
   const [editingId, setEditingId] = useState<string | null>(null);
 
   const initialLoadDoneRef = useRef(false);
+  const abortControllerRef = useRef<AbortController | null>(null);
 
   const loadAnnouncements = useCallback(async () => {
+    // Abort any in-flight request before starting a new one
+    if (abortControllerRef.current) {
+      abortControllerRef.current.abort();
+    }
+    const controller = new AbortController();
+    abortControllerRef.current = controller;
+
     try {
       const { ok, data } = await apiFetchJson<{ data?: ContestAnnouncement[] }>(
         `/api/v1/contests/${assignmentId}/announcements`,
-        { cache: "no-store" },
+        { cache: "no-store", signal: controller.signal },
         { data: [] }
       );
       if (ok) {
@@ -57,7 +65,9 @@ export function ContestAnnouncements({
       } else if (!initialLoadDoneRef.current) {
         toast.error(t("fetchError"));
       }
-    } catch {
+    } catch (err) {
+      // AbortError means the request was cancelled — not a real error
+      if (err instanceof DOMException && err.name === "AbortError") return;
       // Only show toast on the initial load — polling refreshes should fail
       // silently to avoid spamming the user with error toasts every 30 seconds.
       if (!initialLoadDoneRef.current) {
