@@ -63,7 +63,9 @@ export default function EditGroupDialog({ group }: { group: EditableGroup }) {
       case "updateError":
         return t("updateError");
       default:
-        console.error("Unmapped error in edit-group-dialog:", error);
+        if (process.env.NODE_ENV === "development") {
+          console.error("Unmapped error in edit-group-dialog:", error);
+        }
         return tCommon("error");
     }
   }

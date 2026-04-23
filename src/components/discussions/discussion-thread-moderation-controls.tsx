@@ -74,13 +74,17 @@ export function DiscussionThreadModerationControls({
         if (payload.pinned !== undefined) setIsPinned(!payload.pinned);
         if (payload.locked !== undefined) setIsLocked(!payload.locked);
         const errorBody = await response.json().catch(() => ({}));
-        console.error("Discussion moderation failed:", (errorBody as { error?: string }).error);
+        if (process.env.NODE_ENV === "development") {
+          console.error("Discussion moderation failed:", (errorBody as { error?: string }).error);
+        }
         throw new Error(errorLabel);
       }
       toast.success(successLabel);
       router.refresh();
     } catch (error) {
-      console.error("Discussion moderation failed:", error);
+      if (process.env.NODE_ENV === "development") {
+        console.error("Discussion moderation failed:", error);
+      }
       toast.error(errorLabel);
     } finally {
       setIsSubmitting(false);
@@ -95,14 +99,18 @@ export function DiscussionThreadModerationControls({
       });
       if (!response.ok) {
         const errorBody = await response.json().catch(() => ({}));
-        console.error("Discussion thread deletion failed:", (errorBody as { error?: string }).error);
+        if (process.env.NODE_ENV === "development") {
+          console.error("Discussion thread deletion failed:", (errorBody as { error?: string }).error);
+        }
         throw new Error(deleteErrorLabel);
       }
       toast.success(deleteSuccessLabel);
       router.push("/community");
       router.refresh();
     } catch (error) {
-      console.error("Discussion thread deletion failed:", error);
+      if (process.env.NODE_ENV === "development") {
+        console.error("Discussion thread deletion failed:", error);
+      }
       toast.error(deleteErrorLabel);
     } finally {
       setIsSubmitting(false);

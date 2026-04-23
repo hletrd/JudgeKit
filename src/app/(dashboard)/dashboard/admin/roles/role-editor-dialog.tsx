@@ -103,7 +103,9 @@ export default function RoleEditorDialog({ mode, role, superAdminLevel = 4 }: Ro
       resetForm();
       router.refresh();
     } catch (error) {
-      console.error("Role editor failed:", error);
+      if (process.env.NODE_ENV === "development") {
+        console.error("Role editor failed:", error);
+      }
       toast.error(mode === "create" ? t("createFailed") : t("updateFailed"));
     } finally {
       setLoading(false);

@@ -40,7 +40,9 @@ export default function CreateGroupDialog() {
       case "createError":
         return t("createError");
       default:
-        console.error("Unmapped error in create-group-dialog:", error);
+        if (process.env.NODE_ENV === "development") {
+          console.error("Unmapped error in create-group-dialog:", error);
+        }
         return tCommon("error");
     }
   }

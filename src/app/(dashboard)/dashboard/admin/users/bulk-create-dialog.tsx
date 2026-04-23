@@ -211,7 +211,9 @@ export default function BulkCreateDialog() {
 
       if (!response.ok) {
         const errorBody = await response.json().catch(() => ({}));
-        console.error("Bulk create failed:", (errorBody as { error?: string }).error);
+        if (process.env.NODE_ENV === "development") {
+          console.error("Bulk create failed:", (errorBody as { error?: string }).error);
+        }
         toast.error(tCommon("error"));
         return;
       }

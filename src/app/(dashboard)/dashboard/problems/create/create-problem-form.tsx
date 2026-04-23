@@ -307,7 +307,9 @@ export default function CreateProblemForm({
       case "createError":
         return t("createError");
       default:
-        console.error("Unmapped error in create-problem-form:", error);
+        if (process.env.NODE_ENV === "development") {
+          console.error("Unmapped error in create-problem-form:", error);
+        }
         return tCommon("error");
     }
   }

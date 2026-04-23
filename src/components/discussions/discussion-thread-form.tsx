@@ -50,7 +50,9 @@ export function DiscussionThreadForm({
       });
       if (!response.ok) {
         const errorBody = await response.json().catch(() => ({}));
-        console.error("Discussion thread creation failed:", (errorBody as { error?: string }).error);
+        if (process.env.NODE_ENV === "development") {
+          console.error("Discussion thread creation failed:", (errorBody as { error?: string }).error);
+        }
         throw new Error(errorLabel);
       }
       setTitle("");
@@ -58,7 +60,9 @@ export function DiscussionThreadForm({
       toast.success(successLabel);
       router.refresh();
     } catch (error) {
-      console.error("Discussion thread creation failed:", error);
+      if (process.env.NODE_ENV === "development") {
+        console.error("Discussion thread creation failed:", error);
+      }
       toast.error(errorLabel);
     } finally {
       setIsSubmitting(false);

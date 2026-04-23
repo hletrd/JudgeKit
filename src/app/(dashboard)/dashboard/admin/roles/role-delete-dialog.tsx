@@ -55,7 +55,9 @@ export default function RoleDeleteDialog({
       setOpen(false);
       router.refresh();
     } catch (error) {
-      console.error("Role delete failed:", error);
+      if (process.env.NODE_ENV === "development") {
+        console.error("Role delete failed:", error);
+      }
       toast.error(t("deleteFailed"));
     } finally {
       setLoading(false);

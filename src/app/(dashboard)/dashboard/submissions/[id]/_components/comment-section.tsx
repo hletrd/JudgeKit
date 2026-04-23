@@ -75,7 +75,9 @@ export function CommentSection({ submissionId, canComment, targetLine = null, on
         void fetchComments();
       } else {
         const errorBody = await response.json().catch(() => ({}));
-        console.error("Comment submit failed:", (errorBody as { error?: string }).error);
+        if (process.env.NODE_ENV === "development") {
+          console.error("Comment submit failed:", (errorBody as { error?: string }).error);
+        }
         toast.error(tComments("submitError"));
       }
     } catch {

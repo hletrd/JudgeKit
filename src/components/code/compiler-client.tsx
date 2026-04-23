@@ -289,7 +289,9 @@ export function CompilerClient({ languages, title, description, preferredLanguag
       if (err instanceof Error && err.name === "AbortError") {
         return;
       }
-      console.error("Compiler run failed:", err);
+      if (process.env.NODE_ENV === "development") {
+        console.error("Compiler run failed:", err);
+      }
       updateTestCase(runningTestCaseId, (testCase) => ({
         ...testCase,
         error: t("networkError"),

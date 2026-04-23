@@ -26,14 +26,18 @@ export function DiscussionPostDeleteButton({ postId, deleteLabel, deleteDescript
       });
       if (!response.ok) {
         const errorBody = await response.json().catch(() => ({}));
-        console.error("Discussion post deletion failed:", (errorBody as { error?: string }).error);
+        if (process.env.NODE_ENV === "development") {
+          console.error("Discussion post deletion failed:", (errorBody as { error?: string }).error);
+        }
         throw new Error(errorLabel);
       }
       toast.success(successLabel);
       router.refresh();
       return true;
     } catch (error) {
-      console.error("Discussion post deletion failed:", error);
+      if (process.env.NODE_ENV === "development") {
+        console.error("Discussion post deletion failed:", error);
+      }
       toast.error(errorLabel);
       return false;
     }

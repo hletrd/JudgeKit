@@ -238,7 +238,9 @@ export default function ProblemSetForm({
           ? "updateFailed"
           : "createFailed";
       if (!knownKeys.includes(msg)) {
-        console.error("Unmapped error in problem-set-form:", error);
+        if (process.env.NODE_ENV === "development") {
+          console.error("Unmapped error in problem-set-form:", error);
+        }
       }
       toast.error(t(key));
     } finally {
