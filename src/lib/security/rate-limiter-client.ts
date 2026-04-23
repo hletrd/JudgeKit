@@ -76,10 +76,15 @@ async function callRateLimiter<T>(path: string, body: Record<string, unknown>): 
       circuitOpenUntil = Date.now() + RECOVERY_WINDOW_MS;
       return null;
     }
-    const data = (await response.json()) as T;
-    if (data !== null && data !== undefined) {
-      consecutiveFailures = 0;
+    const data = (await response.json().catch(() => null)) as T | null;
+    if (data === null) {
+      // Non-JSON response body (e.g., HTML from a misconfigured proxy).
+      // Treat as a sidecar error but log separately from network failures.
+      consecutiveFailures++;
+      circuitOpenUntil = Date.now() + RECOVERY_WINDOW_MS;
+      return null;
     }
+    consecutiveFailures = 0;
     return data;
   } catch (err) {
     consecutiveFailures++;
