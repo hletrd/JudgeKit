@@ -353,7 +353,9 @@ async function _computeContestRankingInner(assignmentId: string, cutoffSec?: num
       const aLastAc = aSolvedTimes.length > 0 ? Math.max(...aSolvedTimes) : 0;
       const bSolvedTimes = b.problems.filter((p) => p.solved).map((p) => p.firstAcAt ?? 0);
       const bLastAc = bSolvedTimes.length > 0 ? Math.max(...bSolvedTimes) : 0;
-      return aLastAc - bLastAc;
+      if (aLastAc !== bLastAc) return aLastAc - bLastAc;
+      // Final tie-breaker: userId for deterministic ordering (matches IOI pattern)
+      return a.userId.localeCompare(b.userId);
     });
   } else {
     entries.sort((a, b) => b.totalScore - a.totalScore || a.userId.localeCompare(b.userId));
