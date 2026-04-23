@@ -591,8 +591,7 @@ export async function CandidateDashboard({
                         {t("candidateProblemBreakdownTitle")}
                       </div>
                       <div className="grid gap-2">
-                        {assignmentProblemProgressMap
-                          .get(assignment.assignmentId)!
+                        {(assignmentProblemProgressMap.get(assignment.assignmentId) ?? [])
                           .sort((a, b) => (a.sortOrder ?? 0) - (b.sortOrder ?? 0))
                           .map((problem) => (
                             <div

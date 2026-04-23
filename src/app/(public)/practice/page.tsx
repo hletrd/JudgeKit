@@ -126,7 +126,7 @@ export default async function PracticePage({
   const searchQuery = normalizeSearch(resolvedSearchParams?.search);
   const currentTag = resolvedSearchParams?.tag?.trim() ?? "";
   const currentSort: SortOption = SORT_VALUES.includes(resolvedSearchParams?.sort as SortOption)
-    ? (resolvedSearchParams!.sort as SortOption)
+    ? (resolvedSearchParams?.sort as SortOption)
     : "number_asc";
   const rawProgressFilter = resolvedSearchParams?.progress;
   const currentProgressFilter: ProgressFilter = PROGRESS_FILTER_VALUES.includes(rawProgressFilter as ProgressFilter)
