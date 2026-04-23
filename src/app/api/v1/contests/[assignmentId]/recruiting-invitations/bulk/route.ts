@@ -61,6 +61,11 @@ export const POST = createApiHandler({
               expiresAt = new Date(dbNow.getTime() + inv.expiryDays * 86400000);
             } else if (inv.expiryDate) {
               expiresAt = new Date(`${inv.expiryDate}T23:59:59Z`);
+              // Defense-in-depth: reject Invalid Date construction even though the
+              // Zod schema enforces YYYY-MM-DD format.
+              if (!Number.isFinite(expiresAt.getTime())) {
+                throw new Error("invalidExpiryDate");
+              }
               // Validate the date is in the future (relative to DB time)
               if (expiresAt <= dbNow) {
                 throw new Error("expiryDateInPast");
@@ -100,6 +105,9 @@ export const POST = createApiHandler({
       }
       if (error instanceof Error && error.message === "expiryDateInPast") {
         return apiError("expiryDateInPast", 400);
+      }
+      if (error instanceof Error && error.message === "invalidExpiryDate") {
+        return apiError("invalidExpiryDate", 400);
       }
       if (error instanceof Error && error.message === "expiryDateTooFar") {
         return apiError("expiryDateTooFar", 400);

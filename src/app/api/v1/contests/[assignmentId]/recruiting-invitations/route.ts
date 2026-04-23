@@ -74,6 +74,13 @@ export const POST = createApiHandler({
           // Custom date: compute end-of-day UTC to avoid timezone-dependent results.
           // The client sends a bare date (YYYY-MM-DD); we set 23:59:59 UTC.
           expiresAt = new Date(`${body.expiryDate}T23:59:59Z`);
+          // Defense-in-depth: reject Invalid Date construction even though the
+          // Zod schema enforces YYYY-MM-DD format. If the schema is ever
+          // loosened or reused without the regex guard, NaN comparisons would
+          // silently bypass the "in past" and "too far" checks below.
+          if (!Number.isFinite(expiresAt.getTime())) {
+            throw new Error("invalidExpiryDate");
+          }
           // Validate the date is in the future (relative to DB time)
           if (expiresAt <= dbNow) {
             throw new Error("expiryDateInPast");
@@ -113,6 +120,9 @@ export const POST = createApiHandler({
       }
       if (error instanceof Error && error.message === "expiryDateInPast") {
         return apiError("expiryDateInPast", 400);
+      }
+      if (error instanceof Error && error.message === "invalidExpiryDate") {
+        return apiError("invalidExpiryDate", 400);
       }
       if (error instanceof Error && error.message === "expiryDateTooFar") {
         return apiError("expiryDateTooFar", 400);
