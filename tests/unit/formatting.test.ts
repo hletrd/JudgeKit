@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { formatNumber, formatBytes, formatScore, formatDifficulty } from "@/lib/formatting";
+import { formatNumber, formatBytes, formatScore, formatDifficulty, formatDuration } from "@/lib/formatting";
 
 describe("formatNumber", () => {
   it("formats integers with locale grouping", () => {
@@ -157,5 +157,44 @@ describe("formatDifficulty", () => {
 
   it("preserves one significant decimal when other is zero", () => {
     expect(formatDifficulty(3.5)).toBe("3.5");
+  });
+});
+
+describe("formatDuration", () => {
+  it("formats zero milliseconds", () => {
+    expect(formatDuration(0)).toBe("00:00:00");
+  });
+
+  it("formats seconds only", () => {
+    expect(formatDuration(30000)).toBe("00:00:30");
+  });
+
+  it("formats minutes and seconds", () => {
+    expect(formatDuration(90000)).toBe("00:01:30");
+  });
+
+  it("formats hours, minutes, and seconds", () => {
+    expect(formatDuration(3661000)).toBe("01:01:01");
+  });
+
+  it("formats negative values as zero", () => {
+    expect(formatDuration(-1000)).toBe("00:00:00");
+  });
+
+  it("formats NaN as zero", () => {
+    expect(formatDuration(NaN)).toBe("00:00:00");
+  });
+
+  it("formats Infinity as zero", () => {
+    expect(formatDuration(Infinity)).toBe("00:00:00");
+  });
+
+  it("formats a typical exam duration", () => {
+    // 2 hours, 30 minutes, 0 seconds
+    expect(formatDuration(9000000)).toBe("02:30:00");
+  });
+
+  it("pads single-digit values with zeros", () => {
+    expect(formatDuration(3661000)).toBe("01:01:01");
   });
 });

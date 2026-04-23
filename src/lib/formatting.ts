@@ -109,3 +109,18 @@ export function formatContestTimestamp(
     { dateStyle: "medium", timeStyle: "short" }
   ).format(date);
 }
+
+/**
+ * Format a duration in milliseconds as HH:MM:SS.
+ *
+ * Returns "00:00:00" for non-finite, zero, or negative values.
+ * Used for countdown timers and elapsed time displays.
+ */
+export function formatDuration(ms: number): string {
+  if (!Number.isFinite(ms) || ms <= 0) return "00:00:00";
+  const totalSeconds = Math.floor(ms / 1000);
+  const hours = Math.floor(totalSeconds / 3600);
+  const minutes = Math.floor((totalSeconds % 3600) / 60);
+  const seconds = totalSeconds % 60;
+  return `${String(hours).padStart(2, "0")}:${String(minutes).padStart(2, "0")}:${String(seconds).padStart(2, "0")}`;
+}

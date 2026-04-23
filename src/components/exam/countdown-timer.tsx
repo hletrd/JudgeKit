@@ -4,6 +4,7 @@ import { useState, useEffect, useCallback, useRef } from "react";
 import { useTranslations } from "next-intl";
 import { toast } from "sonner";
 import { apiFetch } from "@/lib/api/client";
+import { formatDuration } from "@/lib/formatting";
 import { Badge } from "@/components/ui/badge";
 
 interface CountdownTimerProps {
@@ -13,15 +14,6 @@ interface CountdownTimerProps {
 }
 
 const THRESHOLDS_MS = [15 * 60 * 1000, 5 * 60 * 1000, 1 * 60 * 1000] as const;
-
-function formatCountdown(ms: number): string {
-  if (!Number.isFinite(ms) || ms <= 0) return "00:00:00";
-  const totalSeconds = Math.floor(ms / 1000);
-  const hours = Math.floor(totalSeconds / 3600);
-  const minutes = Math.floor((totalSeconds % 3600) / 60);
-  const seconds = totalSeconds % 60;
-  return `${String(hours).padStart(2, "0")}:${String(minutes).padStart(2, "0")}:${String(seconds).padStart(2, "0")}`;
-}
 
 function getTimerVariant(ms: number): "destructive" | "secondary" | "success" {
   if (!Number.isFinite(ms) || ms <= 0) return "destructive";
@@ -147,7 +139,7 @@ export function CountdownTimer({ deadline, label, onExpired }: CountdownTimerPro
       <Badge role="timer" className={`font-mono text-sm`} variant={getTimerVariant(remaining)}>
         {label && <span className="mr-1">{label}:</span>}
         <span className={textColor || undefined}>
-          {expired ? "00:00:00" : formatCountdown(remaining)}
+          {expired ? "00:00:00" : formatDuration(remaining)}
         </span>
       </Badge>
       <span aria-live={thresholdUrgent ? "assertive" : "polite"} className="sr-only">
