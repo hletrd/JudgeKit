@@ -33,7 +33,8 @@ export function DiscussionPostDeleteButton({ postId, deleteLabel, deleteDescript
       router.refresh();
       return true;
     } catch (error) {
-      toast.error(error instanceof Error ? error.message : errorLabel);
+      console.error("Discussion post deletion failed:", error);
+      toast.error(errorLabel);
       return false;
     }
   }, [postId, successLabel, errorLabel, router]);

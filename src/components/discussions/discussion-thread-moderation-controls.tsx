@@ -80,7 +80,8 @@ export function DiscussionThreadModerationControls({
       toast.success(successLabel);
       router.refresh();
     } catch (error) {
-      toast.error(error instanceof Error ? error.message : errorLabel);
+      console.error("Discussion moderation failed:", error);
+      toast.error(errorLabel);
     } finally {
       setIsSubmitting(false);
     }
@@ -101,7 +102,8 @@ export function DiscussionThreadModerationControls({
       router.push("/community");
       router.refresh();
     } catch (error) {
-      toast.error(error instanceof Error ? error.message : deleteErrorLabel);
+      console.error("Discussion thread deletion failed:", error);
+      toast.error(deleteErrorLabel);
     } finally {
       setIsSubmitting(false);
     }

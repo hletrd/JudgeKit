@@ -58,7 +58,8 @@ export function DiscussionThreadForm({
       toast.success(successLabel);
       router.refresh();
     } catch (error) {
-      toast.error(error instanceof Error ? error.message : errorLabel);
+      console.error("Discussion thread creation failed:", error);
+      toast.error(errorLabel);
     } finally {
       setIsSubmitting(false);
     }

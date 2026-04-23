@@ -51,7 +51,8 @@ export function DiscussionPostForm({
       toast.success(successLabel);
       router.refresh();
     } catch (error) {
-      toast.error(error instanceof Error ? error.message : errorLabel);
+      console.error("Discussion post creation failed:", error);
+      toast.error(errorLabel);
     } finally {
       setIsSubmitting(false);
     }
