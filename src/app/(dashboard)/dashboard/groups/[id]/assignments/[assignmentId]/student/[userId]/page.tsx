@@ -125,10 +125,12 @@ export default async function StudentSubmissionsPage({
   // Group submissions by problemId
   const submissionsByProblem = new Map<string, typeof studentSubmissions>();
   for (const sub of studentSubmissions) {
-    if (!submissionsByProblem.has(sub.problemId)) {
-      submissionsByProblem.set(sub.problemId, []);
+    const entry = submissionsByProblem.get(sub.problemId);
+    if (entry) {
+      entry.push(sub);
+    } else {
+      submissionsByProblem.set(sub.problemId, [sub]);
     }
-    submissionsByProblem.get(sub.problemId)!.push(sub);
   }
 
   const statusLabels: Record<string, string> = buildStatusLabels(tSubmissions);

@@ -73,7 +73,7 @@ export default function RoleEditorDialog({ mode, role, superAdminLevel = 4 }: Ro
       const url =
         mode === "create"
           ? "/api/v1/admin/roles"
-          : `/api/v1/admin/roles/${role!.id}`;
+          : `/api/v1/admin/roles/${role?.id ?? ""}`;
 
       const body =
         mode === "create"

@@ -81,8 +81,8 @@ export function SubmissionDetailClient(props: SubmissionDetailClientProps) {
         : `/dashboard/problems/${submission.problem.id}`;
 
   function handleResubmit() {
-    if (!problemHref) return;
-    const key = `oj:submission-draft:${props.userId}:${submission.problem!.id}`;
+    if (!problemHref || !submission.problem) return;
+    const key = `oj:submission-draft:${props.userId}:${submission.problem.id}`;
     const payload = {
       version: 1,
       updatedAt: Date.now(),

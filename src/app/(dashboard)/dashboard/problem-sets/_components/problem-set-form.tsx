@@ -197,7 +197,7 @@ export default function ProblemSetForm({
 
     try {
       const url = isEditing
-        ? `/api/v1/problem-sets/${problemSet!.id}`
+        ? `/api/v1/problem-sets/${problemSet?.id ?? ""}`
         : "/api/v1/problem-sets";
 
       const response = await apiFetch(url, {
