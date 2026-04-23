@@ -1,94 +1,101 @@
-# Code Review — RPF Cycle 24
+# Code Review — RPF Cycle 25
 
 **Date:** 2026-04-22
-**Base commit:** dbc0b18f
+**Base commit:** ac51baaa
 
-## CR-1: `handleBulkAddMembers` calls `.json()` twice on same Response [HIGH/HIGH]
+## CR-1: `compiler-client.tsx` exposes raw error messages from API response in toast and UI [MEDIUM/HIGH]
 
-**File:** `src/app/(dashboard)/dashboard/groups/[id]/group-members-manager.tsx:181-185`
+**File:** `src/components/code/compiler-client.tsx:271-279`
 
-**Description:** After checking `!response.ok` on line 180, the error branch calls `response.json()` on line 181. Then on line 185, the success path calls `response.json()` again on the same Response. The Response body can only be consumed once. While the if/else branching prevents the "body already consumed" error today, this is the documented anti-pattern from `src/lib/api/client.ts`. The `apiFetchJson` utility was created specifically to eliminate this pattern.
-
-**Concrete failure scenario:** A developer moves the error handling to not throw, then both `.json()` calls execute, causing `TypeError: Body has already been consumed`.
-
-**Fix:** Use `apiFetchJson` or parse the body once before branching.
-
----
-
-## CR-2: Discussion components expose raw `error.message` to users via toast [MEDIUM/MEDIUM]
-
-**Files:**
-- `src/components/discussions/discussion-post-form.tsx:54`
-- `src/components/discussions/discussion-thread-form.tsx:61`
-- `src/components/discussions/discussion-post-delete-button.tsx:36`
-- `src/components/discussions/discussion-thread-moderation-controls.tsx:83,104`
-
-**Description:** These components use `toast.error(error instanceof Error ? error.message : errorLabel)`. While the `throw new Error(errorLabel)` on the preceding line means `error.message` will be the i18n label in the normal error path, the catch block catches ALL errors including network errors and SyntaxErrors. If a `TypeError` or `SyntaxError` slips through, the raw error message is displayed to the user.
-
-**Concrete failure scenario:** A network error with message "Failed to fetch" or SyntaxError "Unexpected token < in JSON" shown directly to user.
-
-**Fix:** Always use the `errorLabel` in the toast, log raw error to console:
+The `handleRun` catch block on line 292 does:
 ```ts
-catch (error) {
-  console.error("Operation failed:", error);
-  toast.error(errorLabel);
-}
+const errorMessage = err instanceof Error ? err.message : "Network error";
+updateTestCase(runningTestCaseId, (testCase) => ({ ...testCase, error: errorMessage, result: null }));
+toast.error(t("runFailed"), { description: errorMessage });
 ```
 
----
+And similarly the `!res.ok` branch on line 271 does:
+```ts
+const errorMessage = data.error || data.message || res.statusText || "Request failed";
+```
 
-## CR-3: `group-members-manager.tsx` default error handler leaks raw error messages [MEDIUM/MEDIUM]
+Both expose raw API error messages directly to the user. The `client.ts` convention says "Use i18n keys for all user-facing error messages." While server-side errors are typically i18n keys thrown by `createApiHandler`, the `res.statusText` fallback and any unexpected `data.error`/`data.message` values could expose internal error text. Additionally, if `data.error` is an object instead of a string, `errorMessage` would be `[object Object]`.
 
-**File:** `src/app/(dashboard)/dashboard/groups/[id]/group-members-manager.tsx:102`
-
-**Description:** The `getErrorMessage` function has a `default` case that returns `error.message || tCommon("error")`. Any unexpected error (e.g., TypeError from failed `.json()`) will have its raw message shown to the user. Only the explicit cases are i18n-safe.
-
-**Fix:** Change the default to always return `tCommon("error")` and log raw error.
-
----
-
-## CR-4: `submission-overview.tsx` silently swallows non-OK responses [MEDIUM/MEDIUM]
-
-**File:** `src/components/lecture/submission-overview.tsx:91`
-
-**Description:** When the API returns a non-OK response, the code simply `return`s with no user feedback. The `src/lib/api/client.ts` convention states: "Never silently swallow errors — always surface them to the user."
-
-**Fix:** Add toast error for non-OK responses on initial load.
+**Fix:** Use i18n keys in toasts. Show raw errors only in the inline error display (for debugging compiler output), not in toast descriptions. Ensure `errorMessage` is always a string.
 
 ---
 
-## CR-5: `problem-submission-form.tsx` double `.json()` in handleRun [MEDIUM/MEDIUM]
+## CR-2: `contest-quick-stats.tsx` double-wraps `Number()` on already-typed values [LOW/MEDIUM]
 
-**File:** `src/components/problem/problem-submission-form.tsx:184-188`
+**File:** `src/components/contest/contest-quick-stats.tsx:65-68`
 
-**Description:** Same double `.json()` anti-pattern. Error branch (line 184) and success branch (line 188) each call `.json()` on the same Response.
+```ts
+participantCount: Number.isFinite(Number(data.data!.participantCount)) ? Number(data.data!.participantCount) : prev.participantCount,
+```
 
-**Fix:** Parse the body once before branching, or use `apiFetchJson`.
+The `Number()` call is applied to values that are already numbers from JSON parsing. `Number(someNumber)` is a no-op. The double-wrapping is misleading and suggests the developer was unsure about the type.
 
----
-
-## CR-6: `problem-submission-form.tsx` double `.json()` in handleSubmit [MEDIUM/MEDIUM]
-
-**File:** `src/components/problem/problem-submission-form.tsx:247-252`
-
-**Description:** Same pattern as CR-5 in the `handleSubmit` function.
-
-**Fix:** Same as CR-5.
+**Fix:** Use `typeof data.data!.participantCount === "number" && Number.isFinite(data.data!.participantCount) ? data.data!.participantCount : prev.participantCount` for type-safe validation without unnecessary coercion.
 
 ---
 
-## CR-7: `compiler-client.tsx` double `.json()` on same Response [MEDIUM/MEDIUM]
+## CR-3: `create-problem-form.tsx` default error handler leaks raw error.message [MEDIUM/MEDIUM]
 
-**File:** `src/components/code/compiler-client.tsx:270-287`
+**File:** `src/app/(dashboard)/dashboard/problems/create/create-problem-form.tsx:310`
 
-**Description:** After checking `!res.ok`, error branch calls `res.json()` on line 270, then success branch calls `res.json()` on line 287. Same anti-pattern.
+The `getErrorMessage` switch/case has:
+```ts
+default:
+  return error.message || tCommon("error");
+```
 
-**Fix:** Parse the body once before branching.
+This falls through to showing `error.message` for any unhandled error type. If a `SyntaxError` from a `.json()` parse failure gets here, the raw `"Unexpected token <..."` message is shown.
+
+**Fix:** Change default to `return tCommon("error")` and log the raw error with `console.error()`.
 
 ---
 
-## Summary
+## CR-4: `assignment-form-dialog.tsx` default error handler leaks raw error.message [MEDIUM/MEDIUM]
 
-- HIGH: 1 (CR-1)
-- MEDIUM: 6 (CR-2 through CR-7)
-- Total findings: 7
+**File:** `src/app/(dashboard)/dashboard/groups/[id]/assignment-form-dialog.tsx:206`
+
+Same pattern as CR-3:
+```ts
+default:
+  return error.message || tCommon("error");
+```
+
+**Fix:** Same as CR-3.
+
+---
+
+## CR-5: `start-exam-button.tsx` catches raw `error.message` for branching logic [LOW/LOW]
+
+**File:** `src/components/exam/start-exam-button.tsx:49-54`
+
+The catch block checks `error.message === "assignmentClosed"` and `error.message === "assignmentNotStarted"`. This is a server-contract pattern where the server throws known error strings. It's functional but fragile -- if the server changes the error string, the client silently falls through to the generic error.
+
+**Fix:** Consider using error codes (e.g., in the response body) instead of matching on error.message text. Low priority since this is an existing pattern used consistently across the codebase.
+
+---
+
+## CR-6: `recruiting-invitations-panel.tsx` constructs invitation URLs with `window.location.origin` [LOW/HIGH]
+
+**File:** `src/components/contest/recruiting-invitations-panel.tsx:99,216,239`
+
+```ts
+const baseUrl = typeof window !== "undefined" ? window.location.origin : "";
+const link = `${baseUrl}/recruit/${token}`;
+```
+
+This is already tracked as DEFER-24 / SEC-3. Carried forward.
+
+---
+
+## CR-7: `problem-submission-form.tsx` `translateSubmissionError` uses a legacy error map with string matching [LOW/MEDIUM]
+
+**File:** `src/components/problem/problem-submission-form.tsx:146-168`
+
+The `legacyErrorMap` maps hardcoded English strings to i18n keys. This is fragile -- if the API changes error messages, the mapping silently breaks and falls through to the generic error. The `try { return t(translationKey as never) }` with `as never` also suppresses TypeScript type checking on the i18n key.
+
+**Fix:** Long-term, the API should return error codes instead of English strings, and the client should map codes to i18n keys. Short-term, add a TypeScript type for valid i18n keys to replace `as never`.

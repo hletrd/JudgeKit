@@ -1,48 +1,57 @@
-# Tracer Review — RPF Cycle 24
+# Tracer Review — RPF Cycle 25
 
 **Date:** 2026-04-22
-**Base commit:** dbc0b18f
+**Base commit:** ac51baaa
 
-## TR-1: `handleBulkAddMembers` double `.json()` — causal trace [HIGH/MEDIUM]
+## TR-1: Trace raw error.message leak through `getErrorMessage` default cases
 
-**File:** `src/app/(dashboard)/dashboard/groups/[id]/group-members-manager.tsx:181-185`
+**Hypothesis:** A `SyntaxError` from `.json()` on a non-JSON response body could reach the `getErrorMessage` default case and leak its message to the user.
 
-**Causal trace:**
-1. User clicks "Bulk Add" button -> `handleBulkAddMembers()` called
-2. `apiFetch()` returns a Response with `ok: false` (e.g., 403 Forbidden)
-3. Line 181: `response.json().catch(() => ({}))` consumes the body -> returns error object
-4. Line 182: `throw new Error(...)` exits the function
-5. Response body is now consumed
+**Trace:**
+1. User submits form (e.g., create-problem-form)
+2. `apiFetch()` returns a Response with `!response.ok`
+3. `.json().catch(() => ({}))` catches the SyntaxError if body is not JSON -- returns `{}`
+4. `throw new Error(({} as {error?:string}).error || "createFailed")` -- throws `new Error("createFailed")`
+5. In catch block, `getErrorMessage(error)` is called
+6. `error.message === "createFailed"` doesn't match any case
+7. Falls to `default: return error.message || tCommon("error")`
+8. Returns `"createFailed"` -- which is a known i18n key, not a raw server error
 
-**Hypothesis 1 (current behavior):** The throw exits before line 185 runs. No bug today.
-**Hypothesis 2 (regression risk):** If the throw is removed (e.g., to show a toast instead), line 185 would call `.json()` on the already-consumed body, throwing `TypeError: Body has already been consumed`. This would be caught by the outer catch and show a confusing error.
+**Verdict:** In this specific flow, the `error.message` value is actually a server-thrown error string that gets used as an i18n key lookup. The leak risk is lower than initially assessed because the throw always uses known error strings. However, if a completely unexpected error (e.g., TypeError from a network disconnection) reaches the catch block, `error.message` would be a raw browser error string like `"Failed to fetch"`.
 
-**Fix:** Parse once before branching.
-
----
-
-## TR-2: Discussion error toast trace — raw message leak path [MEDIUM/MEDIUM]
-
-**File:** `src/components/discussions/discussion-post-form.tsx:44-54`
-
-**Causal trace:**
-1. User submits post -> `handleSubmit()` called
-2. `apiFetch()` returns Response with `ok: false` and HTML body (502 from proxy)
-3. Line 46: `response.json().catch(() => ({}))` -> `.json()` throws SyntaxError, `.catch()` returns `{}`
-4. Line 47: `console.error(...)` logs the empty error
-5. Line 48: `throw new Error(errorLabel)` throws i18n label
-6. Line 53-54: catch block catches the thrown Error, `error.message === errorLabel`, toast shows i18n label. Correct.
-
-**BUT:** If `.catch()` itself somehow fails (extremely rare edge case: `response.body` already locked by a prior read), the SyntaxError propagates to the catch block:
-- `error.message` = `"Body has already been consumed"` or similar
-- `toast.error(error.message)` shows raw JS error to user
-
-**Fix:** Always use i18n label in toast.
+**Confidence:** MEDIUM -- the most likely failure mode (server errors) are safe, but unexpected client-side errors could leak.
 
 ---
 
-## Summary
+## TR-2: Trace `compiler-client.tsx` error flow for non-string error values
 
-- HIGH: 1 (TR-1)
-- MEDIUM: 1 (TR-2)
-- Total new findings: 2
+**Hypothesis:** If `data.error` is an object instead of a string, the toast would show `[object Object]`.
+
+**Trace:**
+1. API returns `{ error: { code: "rate_limited" } }` with `!res.ok`
+2. `data.error` is `{ code: "rate_limited" }`
+3. `errorMessage = data.error || data.message || res.statusText || "Request failed"`
+4. `errorMessage` is now `{ code: "rate_limited" }` (an object)
+5. `toast.error(t("runFailed"), { description: errorMessage })` -- shows `[object Object]`
+6. `updateTestCase(..., { error: errorMessage, ... })` -- React renders `[object Object]` in the error alert
+
+**Verdict:** Confirmed. The `errorMessage` variable is not guaranteed to be a string. Any object-valued `data.error` or `data.message` would be coerced to `[object Object]`.
+
+**Confidence:** HIGH -- this is a real bug that can occur with non-standard API responses.
+
+---
+
+## TR-3: Trace `contest-quick-stats.tsx` avgScore null handling
+
+**Hypothesis:** `avgScore: null` from the API could become `0` in the UI.
+
+**Trace:**
+1. API returns `{ data: { avgScore: null } }`
+2. `data.data!.avgScore !== null` -- false
+3. Falls to `null` in the ternary
+4. `stats.avgScore` is `null`
+5. UI renders `stats.avgScore !== null ? formatNumber(...) : "---"` -- shows "---"
+
+**Verdict:** Correctly handled. The null check is explicit and the UI shows "---" for null avgScore.
+
+**Confidence:** HIGH -- the fix from cycle 23 is working correctly.

@@ -1,46 +1,88 @@
-# Security Review — RPF Cycle 24
+# Security Review — RPF Cycle 25
 
 **Date:** 2026-04-22
-**Base commit:** dbc0b18f
+**Base commit:** ac51baaa
 
-## SEC-1: Raw `error.message` leaked to users in discussion components [MEDIUM/MEDIUM]
+## SEC-1: `compiler-client.tsx` exposes raw API error messages in toast descriptions [MEDIUM/HIGH]
+
+**File:** `src/components/code/compiler-client.tsx:277-279`
+
+```ts
+toast.error(t("runFailed"), { description: errorMessage });
+```
+
+Where `errorMessage = data.error || data.message || res.statusText || "Request failed"`. The `res.statusText` and any unexpected `data.error`/`data.message` values could leak server internals (version numbers, stack traces if debug mode is on, etc.) to the user.
+
+**Fix:** Use i18n keys only in toast descriptions. Log raw errors to console.
+
+---
+
+## SEC-2: `create-problem-form.tsx` and `assignment-form-dialog.tsx` default error cases leak `error.message` [MEDIUM/MEDIUM]
 
 **Files:**
-- `src/components/discussions/discussion-post-form.tsx:54`
-- `src/components/discussions/discussion-thread-form.tsx:61`
-- `src/components/discussions/discussion-post-delete-button.tsx:36`
-- `src/components/discussions/discussion-thread-moderation-controls.tsx:83,104`
+- `src/app/(dashboard)/dashboard/problems/create/create-problem-form.tsx:310`
+- `src/app/(dashboard)/dashboard/groups/[id]/assignment-form-dialog.tsx:206`
 
-**Description:** These components use `toast.error(error instanceof Error ? error.message : errorLabel)`. When unexpected errors occur (e.g., a SyntaxError from a non-JSON response body), the raw JavaScript error message is displayed to the user. This can leak internal implementation details (file paths, stack fragments, API structure) to attackers.
+Both have `default: return error.message || tCommon("error")` in their error message mappers. Any unexpected error (TypeError, SyntaxError from `.json()` parse failure, etc.) will have its raw message shown to the user.
 
-**Concrete failure scenario:** A proxy returns HTML on a 502 error. The `.json()` parse fails with `SyntaxError: Unexpected token < in JSON at position 0`. This exact message is shown in the toast, revealing that the app uses JSON APIs and that a reverse proxy is in front.
-
-**Fix:** Always display i18n labels in toasts. Log raw errors to console only.
+**Fix:** Default case should return `tCommon("error")` and log the raw error.
 
 ---
 
-## SEC-2: `group-members-manager.tsx` default error handler leaks raw error messages [MEDIUM/MEDIUM]
+## SEC-3: `window.location.origin` for URL construction -- carried from DEFER-24 [MEDIUM/MEDIUM]
 
-**File:** `src/app/(dashboard)/dashboard/groups/[id]/group-members-manager.tsx:102`
+**File:** `src/components/contest/recruiting-invitations-panel.tsx:99`
 
-**Description:** The `getErrorMessage` default case returns `error.message || tCommon("error")`. Any unexpected error has its raw message displayed to the user.
-
-**Fix:** Return `tCommon("error")` always in the default case.
+Carried from DEFER-24. Two instances still present in recruiting-invitations-panel and access-code-manager.
 
 ---
 
-## SEC-3: `window.location.origin` used for URL construction — carried as DEFER-24 [LOW/MEDIUM]
+## SEC-4: Encryption plaintext fallback -- carried from cycle 11 [MEDIUM/MEDIUM]
 
-**Files:**
-- `src/components/contest/access-code-manager.tsx:137`
-- `src/components/contest/recruiting-invitations-panel.tsx:99`
+**File:** `src/lib/security/encryption.ts:79-81`
 
-**Description:** Already tracked as DEFER-24. Still present. The `access-code-manager.tsx:137` constructs a share link using `window.location.origin`. If the page is served over HTTP or on an unexpected host, the invitation link uses the wrong origin.
+The `decrypt()` function returns plaintext as-is if the value doesn't start with `enc:`. This means any old unencrypted data is silently readable, and an attacker who can write to the database could inject plaintext values that would be treated as valid.
+
+Carried from DEFER-39.
 
 ---
 
-## Summary
+## SEC-5: `AUTH_CACHE_TTL_MS` has no upper bound [LOW/MEDIUM]
 
-- MEDIUM: 2 (SEC-1, SEC-2)
-- LOW: 1 (SEC-3, carried)
-- Total new findings: 2
+**File:** `src/proxy.ts:24-27`
+
+```ts
+const AUTH_CACHE_TTL_MS = (() => {
+  const parsed = parseInt(process.env.AUTH_CACHE_TTL_MS ?? '2000', 10);
+  return Number.isFinite(parsed) && parsed > 0 ? parsed : 2000;
+})();
+```
+
+An operator could set `AUTH_CACHE_TTL_MS=3600000` (1 hour), meaning revoked users retain access for up to an hour. There's no upper bound validation.
+
+Carried from DEFER-40.
+
+---
+
+## SEC-6: `anti-cheat-monitor.tsx` stores event details in localStorage unencrypted [LOW/LOW]
+
+**File:** `src/components/exam/anti-cheat-monitor.tsx:41-63`
+
+Pending anti-cheat events are stored in localStorage as JSON. The `details` field contains element descriptions including text snippets from the page (line 209: `const text = (el.textContent ?? "").trim().slice(0, 80)`). While this is a client-side-only concern and localStorage is same-origin, it means exam content snippets could persist in localStorage after the exam.
+
+**Fix:** Clear localStorage keys on exam completion or use sessionStorage instead. Low severity since exam content is visible to the student anyway.
+
+---
+
+## SEC-7: `sanitizeHtml` allows `img` tags with root-relative src -- potential for local resource enumeration [LOW/LOW]
+
+**File:** `src/lib/security/sanitize-html.ts:11-14`
+
+```ts
+const isRootRelative = src.startsWith("/") && !src.startsWith("//");
+if (!isRootRelative) { node.removeAttribute("src"); }
+```
+
+Root-relative image URLs are allowed. An admin could inject `<img src="/api/v1/admin/backup">` to check if the endpoint exists (though the response wouldn't render as an image). This is extremely low risk since only admins can set problem descriptions, and CSP's `img-src 'self' data: blob:` already restricts to same-origin.
+
+**Fix:** Consider restricting img src to only allow specific patterns (e.g., `/api/v1/files/`). Very low priority.

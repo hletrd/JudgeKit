@@ -1,24 +1,47 @@
-# Architecture Review — RPF Cycle 24
+# Architecture Review — RPF Cycle 25
 
 **Date:** 2026-04-22
-**Base commit:** dbc0b18f
+**Base commit:** ac51baaa
 
-## ARCH-1: Systemic double `.json()` anti-pattern persists in 4 components [MEDIUM/HIGH]
+## ARCH-1: Error message mapping pattern is inconsistent across components [MEDIUM/MEDIUM]
 
 **Files:**
-- `src/app/(dashboard)/dashboard/groups/[id]/group-members-manager.tsx:181-185`
-- `src/components/problem/problem-submission-form.tsx:184-188,247-252`
-- `src/components/code/compiler-client.tsx:270-287`
+- `src/app/(dashboard)/dashboard/groups/[id]/group-members-manager.tsx:84-103`
+- `src/app/(dashboard)/dashboard/groups/edit-group-dialog.tsx:47-71`
+- `src/app/(dashboard)/dashboard/groups/[id]/assignment-form-dialog.tsx:184-206`
+- `src/app/(dashboard)/dashboard/problems/create/create-problem-form.tsx:286-310`
+- `src/components/exam/start-exam-button.tsx:48-55`
 
-**Description:** Despite the creation of `apiFetchJson` and fixes to contest-join-client and create-problem-form, 3 components still use the double `.json()` pattern (error branch + success branch on same Response). This is a recurring architectural issue — the `apiFetchJson` utility exists but adoption is incomplete. The handler.ts `createApiHandler` on the server side addresses server routes, but client-side adoption is piecemeal.
+Each component implements its own `getErrorMessage` function with a switch/case on `error.message`. This creates several problems:
+1. **Inconsistent default handling** -- some use `error.message || tCommon("error")` (leaks raw messages), others use `tCommon("error")` (safe).
+2. **Fragile server-client coupling** -- matching on `error.message` string values means server-side error string changes break client-side mapping silently.
+3. **Code duplication** -- similar switch/case logic repeated across 5+ components.
 
-**Concrete risk:** Each new component that copies the old pattern introduces the same vulnerability. Without a lint rule or enforced convention, this will keep recurring.
-
-**Fix:** Migrate remaining components to `apiFetchJson` or parse-once-before-branch pattern. Consider adding an ESLint rule to detect double `.json()` calls on the same identifier.
+**Fix:** Create a shared `mapServerErrorCode(message: string, i18nMap: Record<string, string>, fallback: string)` utility that:
+- Maps known error strings to i18n keys
+- Always returns the fallback for unknown errors
+- Logs unmapped errors to console for debugging
+- Can be extended with a lint rule to enforce usage
 
 ---
 
-## Summary
+## ARCH-2: `apiFetchJson` adoption is incomplete -- most components still use manual `apiFetch` + `.json()` pattern [LOW/MEDIUM]
 
-- MEDIUM: 1 (ARCH-1)
-- Total new findings: 1
+**Files:** Many across `src/components/` and `src/app/`
+
+The `apiFetchJson` helper in `src/lib/api/client.ts` was created to eliminate the double-`.json()` and missing-`.catch()` anti-patterns. However, the majority of components still use the raw `apiFetch` + manual `.json().catch()` pattern. This means:
+1. The anti-pattern surface area remains large
+2. Future developers must remember the manual pattern
+3. No compile-time enforcement of safe patterns
+
+**Fix:** Incrementally migrate components to `apiFetchJson`. Consider adding a lint rule that flags `apiFetch(...).json()` without `.catch()`. Tracked as DEFER-1/DEFER-38.
+
+---
+
+## ARCH-3: `useVisibilityPolling` hook has no mechanism for exponential backoff on repeated failures [LOW/LOW]
+
+**File:** `src/hooks/use-visibility-polling.ts`
+
+The hook polls at a fixed interval regardless of whether previous fetches succeeded or failed. For components that experience persistent failures (e.g., server is down), this creates a steady stream of failed requests.
+
+**Fix:** Consider adding optional failure-count tracking that increases the interval on consecutive failures. Low priority since all current consumers handle their own errors.
