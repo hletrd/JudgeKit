@@ -11,6 +11,7 @@ import { canManageContest, getContestAssignment } from "@/lib/assignments/contes
 import { updateRecruitingInvitationSchema } from "@/lib/validators/recruiting-invitations";
 import { recordAuditEvent } from "@/lib/audit/events";
 import { getDbNowUncached } from "@/lib/db-time";
+import { MAX_EXPIRY_MS } from "@/lib/assignments/recruiting-constants";
 
 type AuthorizedInvitationResult =
   | {
@@ -107,7 +108,6 @@ export const PATCH = createApiHandler({
     let expiresAtUpdate: Date | null | undefined = undefined;
     if (body.expiryDays !== undefined || body.expiryDate !== undefined) {
       const dbNow = await getDbNowUncached();
-      const MAX_EXPIRY_MS = 10 * 365.25 * 24 * 60 * 60 * 1000; // ~10 years
       if (body.expiryDays) {
         expiresAtUpdate = new Date(dbNow.getTime() + body.expiryDays * 86400000);
       } else if (body.expiryDate) {

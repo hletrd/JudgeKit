@@ -8,6 +8,7 @@ import { bulkCreateRecruitingInvitations } from "@/lib/assignments/recruiting-in
 import { bulkCreateRecruitingInvitationsSchema } from "@/lib/validators/recruiting-invitations";
 import { recordAuditEvent } from "@/lib/audit/events";
 import { getDbNowUncached } from "@/lib/db-time";
+import { MAX_EXPIRY_MS } from "@/lib/assignments/recruiting-constants";
 
 export const POST = createApiHandler({
   auth: { capabilities: ["recruiting.manage_invitations"] },
@@ -27,7 +28,6 @@ export const POST = createApiHandler({
     try {
       // Fetch DB time once for all invitations in the batch.
       const dbNow = await getDbNowUncached();
-      const MAX_EXPIRY_MS = 10 * 365.25 * 24 * 60 * 60 * 1000; // ~10 years
 
       const created = await execTransaction(async (tx) => {
         const orderedEmails = [...uniqueEmails].sort();

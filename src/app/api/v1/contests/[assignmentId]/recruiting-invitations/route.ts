@@ -12,6 +12,7 @@ import { canManageContest, getContestAssignment } from "@/lib/assignments/contes
 import { createRecruitingInvitationSchema } from "@/lib/validators/recruiting-invitations";
 import { recordAuditEvent } from "@/lib/audit/events";
 import { getDbNowUncached } from "@/lib/db-time";
+import { MAX_EXPIRY_MS } from "@/lib/assignments/recruiting-constants";
 
 export const GET = createApiHandler({
   auth: { capabilities: ["recruiting.manage_invitations"] },
@@ -66,7 +67,6 @@ export const POST = createApiHandler({
         // client-computed timestamp. This ensures the stored expiry is
         // consistent with the NOW()-based isExpired check.
         const dbNow = await getDbNowUncached();
-        const MAX_EXPIRY_MS = 10 * 365.25 * 24 * 60 * 60 * 1000; // ~10 years
         let expiresAt: Date | null = null;
         if (body.expiryDays) {
           expiresAt = new Date(dbNow.getTime() + body.expiryDays * 86400000);
