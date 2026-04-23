@@ -4,7 +4,7 @@ import { useState, useEffect } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { useTranslations } from "next-intl";
 import { toast } from "sonner";
-import { apiFetch } from "@/lib/api/client";
+import { apiFetchJson } from "@/lib/api/client";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
@@ -35,18 +35,20 @@ export function ContestJoinClient() {
 
     setIsLoading(true);
     try {
-      const res = await apiFetch("/api/v1/contests/join", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ code: codeToUse }),
-      });
+      const { ok, data: payload } = await apiFetchJson<{ data?: { assignmentId?: string; alreadyEnrolled?: boolean } }>(
+        "/api/v1/contests/join",
+        {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ code: codeToUse }),
+        },
+        { data: {} }
+      );
 
-      if (!res.ok) {
-        const errorPayload = await res.json().catch(() => ({}));
-        throw new Error((errorPayload as { error?: string }).error ?? "joinFailed");
+      if (!ok) {
+        const errorMessage = (payload as { error?: string }).error ?? "joinFailed";
+        throw new Error(errorMessage);
       }
-
-      const payload = await res.json().catch(() => ({ data: {} })) as { data?: { assignmentId?: string; alreadyEnrolled?: boolean } };
 
       if (!payload.data?.assignmentId) {
         toast.error(t("joinFailed"));
