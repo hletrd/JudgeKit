@@ -1,27 +1,29 @@
-# Tracer Review — RPF Cycle 43
+# Tracer Review — RPF Cycle 44
 
 **Date:** 2026-04-23
 **Reviewer:** tracer
-**Base commit:** b0d843e7
+**Base commit:** e2043115
 
 ## Causal Tracing of Suspicious Flows
 
-### TR-1: Submission rate-limit `Date.now()` vs DB-stored `submittedAt` — two different time sources in one comparison [MEDIUM/MEDIUM]
+### TR-1: `validateAssignmentSubmission` uses `Date.now()` while DB stores deadlines — two different time sources for access-control comparison [MEDIUM/MEDIUM]
 
-**File:** `src/app/api/v1/submissions/route.ts:249,257,318`
+**File:** `src/lib/assignments/submissions.ts:208,220,268`
 
 **Causal trace:**
-1. User sends POST /api/v1/submissions at app-server wall-clock time T_app
-2. Line 249: `oneMinuteAgo = new Date(Date.now() - 60_000)` — threshold computed from T_app
-3. Line 257: SQL `CASE WHEN submittedAt > ${oneMinuteAgo}` — DB timestamps compared against T_app threshold
-4. Line 318: `submittedAt: await getDbNowUncached()` — new submission stored with T_db time
+1. User sends POST /api/v1/submissions with `assignmentId` and `problemId`
+2. Line 194: `assignment = await getAssignmentAccessRecord(...)` — fetches assignment from DB (timestamps stored in DB time)
+3. Line 208: `now = Date.now()` — threshold computed from app-server wall clock
+4. Line 212: `startsAt && startsAt > now` — DB-stored `startsAt` compared against app-server time
+5. Line 220: `effectiveCloseAt && effectiveCloseAt < now` — DB-stored deadline compared against app-server time
+6. Line 268: `examSession.personalDeadline.valueOf() < Date.now()` — DB-stored personal deadline compared against app-server time
 
-The comparison at step 3 crosses a trust boundary: T_app (untrusted relative to DB) is compared against T_db (authoritative). Under clock skew where T_app < T_db, the effective rate-limit window widens, allowing more submissions than intended.
+The comparisons at steps 4, 5, and 6 cross a trust boundary: app-server time (untrusted relative to DB) is compared against DB-stored timestamps (authoritative). Under clock skew where `T_app < T_db`, the effective deadline window widens, allowing post-deadline submissions.
 
 **Competing hypotheses:**
-- H1: Clock skew is negligible in production (container orchestration syncs NTP). **Rejected:** The codebase has previously fixed clock-skew bugs in assignment PATCH, recruiting invitations, and exam session routes, indicating skew is a real production concern.
-- H2: The advisory lock prevents true concurrent bypass. **Partially accepted:** The advisory lock serializes concurrent submissions from the same user, but it doesn't prevent a user from making rapid sequential submissions that each pass the rate check.
+- H1: Clock skew is negligible in production (container NTP syncs). **Rejected:** The codebase has fixed clock-skew bugs in at least 5 previous cycles, indicating it is a real production concern.
+- H2: The assignment PATCH route was fixed but this validation path was missed. **Accepted:** This function is called from the submission creation route, but the clock-skew fix in cycle 43 only addressed the rate-limit check, not the validation check.
 
-**Fix:** Use `getDbNowUncached()` for the `oneMinuteAgo` computation.
+**Fix:** Use `getDbNowUncached()` for all deadline comparisons.
 
 **Confidence:** Medium

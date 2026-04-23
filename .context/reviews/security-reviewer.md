@@ -1,60 +1,59 @@
-# Security Review — RPF Cycle 43
+# Security Review — RPF Cycle 44
 
 **Date:** 2026-04-23
 **Reviewer:** security-reviewer
-**Base commit:** b0d843e7
+**Base commit:** e2043115
 
 ## Inventory of Files Reviewed
 
-- All API routes (`src/app/api/v1/`)
-- Auth framework (`src/lib/api/handler.ts`, `src/lib/api/auth.ts`)
-- Security modules (`src/lib/security/`)
-- Recruiting invitations (`src/lib/assignments/recruiting-invitations.ts`)
-- Access codes (`src/lib/assignments/access-codes.ts`)
-- Compiler execution (`src/lib/compiler/execute.ts`)
-- Database backup/restore/export/import
-- Admin routes (backup, restore, migrate, api-keys)
+- `src/lib/assignments/submissions.ts` — Assignment submission validation (clock-skew analysis)
+- `src/lib/assignments/leaderboard.ts` — Leaderboard freeze logic
+- `src/lib/realtime/realtime-coordination.ts` — SSE connection management
+- `src/app/api/v1/judge/claim/route.ts` — Judge claim (Date.now usage)
+- `src/lib/security/rate-limit.ts` — In-memory rate limiting
+- `src/lib/security/api-rate-limit.ts` — API rate limiting
+- `src/lib/security/in-memory-rate-limit.ts` — In-memory rate limiting
+- `src/lib/auth/config.ts` — Auth configuration
+- `src/proxy.ts` — Auth proxy cache
+- `src/lib/docker/client.ts` — Docker client (env var handling)
 
 ## Previously Fixed Items (Verified)
 
-- problemPoints/refine validation: Verified at line 21-24
-- Access-code capability auth: Verified at lines 9, 23, 37
-- Date.now() replaced with getDbNowUncached() in assignment PATCH: Verified at line 103
-- LIKE pattern escaping: Verified — `escapeLikePattern` used consistently
-- Password rehash consolidation: Verified
-- Compiler spawn error leak: Verified — sanitized messages
-- Import JSON body deprecation: Verified — Sunset header
+- Submission route rate-limit uses `getDbNowUncached()`: PASS
+- Contest join route explicit `auth: true`: PASS
+- Access-code capability auth: PASS
+- LIKE pattern escaping: PASS
 
 ## New Findings
 
-### SEC-1: Submission rate-limit `oneMinuteAgo` uses app-server `Date.now()` in SQL comparison — clock-skew bypass potential [MEDIUM/MEDIUM]
+### SEC-1: `validateAssignmentSubmission` uses `Date.now()` for deadline enforcement — clock-skew allows post-deadline submissions [MEDIUM/MEDIUM]
 
-**File:** `src/app/api/v1/submissions/route.ts:249`
+**File:** `src/lib/assignments/submissions.ts:208-226,268`
 
-**Description:** The submission creation route computes `oneMinuteAgo = new Date(Date.now() - 60_000)` using the app server's clock, then passes this value as a SQL parameter for `SUM(CASE WHEN submittedAt > ${oneMinuteAgo})`. The `submittedAt` column is stored using DB server time (via `getDbNowUncached()` at line 318). If the app server clock is behind the DB server clock, the `oneMinuteAgo` threshold will be too far in the past, allowing users to exceed the intended rate limit.
+**Description:** The submission validation function compares app-server `Date.now()` against DB-stored assignment deadlines (`startsAt`, `deadline`, `lateDeadline`, `examSession.personalDeadline`). This is the same clock-skew class previously fixed in the assignment PATCH route and submission rate-limit. The difference is this is a more impactful boundary: it controls whether users can submit at all, not just rate-limiting.
 
-This is the same class of clock-skew issue that was identified and fixed in the assignment PATCH route (cycle 40) and recruiting invitation routes.
+**Concrete failure scenario:** App server clock is 60 seconds behind DB. A contest with a deadline of 10:00:00 (DB time) will still accept submissions until 10:01:00 DB time, because the app server doesn't see the deadline as passed until its clock reaches 10:00:00. Users gain 60 extra seconds to submit solutions.
 
-**Concrete failure scenario:** App server clock is 30 seconds behind DB server clock. The `oneMinuteAgo` window is effectively 90 seconds in DB time. A user can submit 50% more submissions per minute than intended.
-
-**Fix:** Use `getDbNowUncached()` for the threshold computation:
-```typescript
-const dbNow = await getDbNowUncached();
-const oneMinuteAgo = new Date(dbNow.getTime() - 60_000);
-```
+**Fix:** Use `getDbNowUncached()` for all deadline comparisons in `validateAssignmentSubmission`.
 
 **Confidence:** Medium
 
 ---
 
-### SEC-2: Anti-cheat heartbeat deduplication uses `Date.now()` instead of DB time — inconsistent with contest boundary checks [LOW/LOW]
+### SEC-2: `leaderboard.ts` freeze check uses `Date.now()` — freeze boundary is approximate [LOW/LOW]
 
-**File:** `src/app/api/v1/contests/[assignmentId]/anti-cheat/route.ts:92-95`
+**File:** `src/lib/assignments/leaderboard.ts:52-53`
 
-**Description:** The non-shared heartbeat path uses `Date.now()` for the LRU cache deduplication check, while the contest start/end checks at lines 68-73 use DB time (`rawQueryOne("SELECT NOW()")`). The `Date.now()` here is used only for in-memory deduplication (prevent writing a heartbeat DB row more than once per 60 seconds), not for a security-critical comparison. The DB row's `createdAt` is correctly set using DB time (the `now` variable from line 67). This is a consistency concern rather than a security vulnerability.
+**Description:** The leaderboard freeze decision compares `Date.now()` against the DB-stored `freezeLeaderboardAt` timestamp. Under clock skew, the freeze boundary is slightly inaccurate. This is a display-only concern — the frozen leaderboard data itself is correct. Students might see the leaderboard frozen slightly early or late (seconds).
 
-**Concrete failure scenario:** If app server clock is 5 seconds behind DB, a heartbeat could be recorded slightly more frequently than every 60 seconds (up to 55s intervals), causing extra DB writes but no data corruption.
-
-**Fix:** Low priority — the LRU cache is inherently approximate and the DB-stored timestamps are correct.
+**Fix:** Low priority — use `getDbNowUncached()` for consistency if the function is refactored.
 
 **Confidence:** Low
+
+---
+
+### Carry-Over Items
+
+- **SEC-2 (from cycle 43):** Anti-cheat heartbeat dedup uses `Date.now()` for LRU cache (LOW/LOW, deferred — approximate by design)
+- **Prior SEC-3:** Anti-cheat copies text content (LOW/LOW, deferred)
+- **Prior SEC-4:** Docker build error leaks paths (LOW/LOW, deferred)

@@ -1,24 +1,23 @@
-# Test Engineer Review — RPF Cycle 43
+# Test Engineer Review — RPF Cycle 44
 
 **Date:** 2026-04-23
 **Reviewer:** test-engineer
-**Base commit:** b0d843e7
+**Base commit:** e2043115
 
 ## Inventory of Files Reviewed
 
-- `src/app/api/v1/submissions/route.ts` — Submission creation + listing
-- `src/app/api/v1/contests/[assignmentId]/anti-cheat/route.ts` — Anti-cheat
-- `src/app/api/v1/community/votes/route.ts` — Vote toggle
-- `src/app/api/v1/compiler/run/route.ts` — Compiler run
-- `src/app/api/v1/playground/run/route.ts` — Playground run
+- `src/lib/assignments/submissions.ts` — Submission validation (testability)
+- `src/lib/assignments/participant-status.ts` — Participant status (good testability pattern)
+- `src/lib/assignments/contest-scoring.ts` — Contest ranking
+- `src/lib/assignments/contest-analytics.ts` — Contest analytics
 
 ## New Findings
 
-### TE-1: Submission rate-limit clock source is not testable under clock-skew conditions — `Date.now()` is non-deterministic in tests [MEDIUM/MEDIUM]
+### TE-1: `validateAssignmentSubmission` uses `Date.now()` making deadline enforcement untestable under simulated clock skew [MEDIUM/MEDIUM]
 
-**File:** `src/app/api/v1/submissions/route.ts:249`
+**File:** `src/lib/assignments/submissions.ts:208,220,268`
 
-**Description:** The rate-limit window uses `Date.now()` which makes it impossible to write deterministic tests that verify the rate-limit behavior under simulated clock skew. If the code used `getDbNowUncached()`, tests could mock the DB time function to verify both the nominal and clock-skew scenarios. This is the same testing gap that existed in the assignment PATCH route before its fix.
+**Description:** The function uses `Date.now()` directly, making it impossible to write deterministic tests that verify deadline enforcement behavior under simulated clock skew. If the code used `getDbNowUncached()`, tests could mock the DB time function. The `participant-status.ts` module is a good example of the testable pattern — it accepts an injectable `now` parameter defaulting to `Date.now()`.
 
 **Fix:** Use `getDbNowUncached()` so the time source is mockable in tests.
 
@@ -26,12 +25,15 @@
 
 ---
 
-### TE-2: Contest join route lacks explicit `auth: true` — testing requires knowledge of handler defaults [LOW/LOW]
+### TE-2: Non-null assertions on Map.get() after has() guards — three locations [LOW/LOW]
 
-**File:** `src/app/api/v1/contests/join/route.ts:9-11`
+**Files:**
+- `src/lib/assignments/contest-scoring.ts:243`
+- `src/lib/assignments/submissions.ts:365`
+- `src/lib/assignments/contest-analytics.ts:259`
 
-**Description:** The contest join route relies on the `createApiHandler` default of `auth: true` without explicitly specifying it. This makes test coverage less self-documenting — a test reviewer must know the factory defaults to confirm auth is checked.
+**Description:** These locations use the `!.get()` pattern after a `has()` guard. While safe due to the guard, the pattern was recently removed from the anti-cheat route (cycle 41). Inconsistent patterns make it harder to write comprehensive lint rules for non-null assertions.
 
-**Fix:** Add `auth: true` explicitly for test clarity.
+**Fix:** Use explicit null-guard pattern for consistency.
 
 **Confidence:** Low

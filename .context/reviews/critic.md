@@ -1,29 +1,29 @@
-# Critic Review — RPF Cycle 43
+# Critic Review — RPF Cycle 44
 
 **Date:** 2026-04-23
 **Reviewer:** critic
-**Base commit:** b0d843e7
+**Base commit:** e2043115
 
 ## Inventory of Files Reviewed
 
-- All API routes and core libraries
-- Focus on cross-cutting concerns: auth consistency, time source consistency, error handling patterns
+- All API routes and core libraries (cross-cutting concern analysis)
+- Focus: clock-skew consistency, non-null assertion patterns, error handling
 
 ## Previously Fixed Items (Verified)
 
-- All cycle 42 fixes verified and intact
+- All cycle 43 fixes verified and intact
 
 ## New Findings
 
-### CRI-1: Submission rate-limit uses `Date.now()` for time window — cross-cutting consistency risk [MEDIUM/MEDIUM]
+### CRI-1: `validateAssignmentSubmission` is the last server-side access-control function using `Date.now()` — pattern inconsistency [MEDIUM/MEDIUM]
 
-**File:** `src/app/api/v1/submissions/route.ts:249`
+**File:** `src/lib/assignments/submissions.ts:208,220,268`
 
-**Description:** The submission route is the only remaining API route that uses `Date.now()` for a comparison against DB-stored data. Every other schedule-related comparison in the codebase has been migrated to `getDbNowUncached()`. This creates a maintenance risk: developers seeing `Date.now()` in this file may assume it is the correct pattern for new code, reintroducing clock-skew risks that were previously fixed across the codebase.
+**Description:** The codebase has established a clear convention: use `getDbNowUncached()` for all schedule comparisons against DB-stored timestamps. This convention was applied to the assignment PATCH route, the submission rate-limit route, and the recruiting invitation routes. The `validateAssignmentSubmission` function is the only remaining server-side code that uses `Date.now()` for an access-control decision.
 
-The rate limit is not a hard security boundary (the advisory lock prevents true concurrent bypass), but the inconsistency is a pattern hazard.
+The pattern inconsistency is a maintenance risk: new developers seeing `Date.now()` in this function may assume it's the correct pattern for deadline enforcement, perpetuating the clock-skew problem.
 
-**Fix:** Replace `new Date(Date.now() - 60_000)` with `new Date((await getDbNowUncached()).getTime() - 60_000)`.
+**Fix:** Use `getDbNowUncached()` for all deadline comparisons in `validateAssignmentSubmission`.
 
 **Confidence:** Medium
 
@@ -31,8 +31,7 @@ The rate limit is not a hard security boundary (the advisory lock prevents true 
 
 ### Positive Observations
 
-- The compiler/playground run routes are well-structured with consistent Docker image validation and capability checks.
-- The community votes route uses an atomic transaction with `onConflictDoUpdate` for TOCTOU-safe vote toggling.
-- The backup/restore routes properly require password re-confirmation and CSRF checks.
-- The access code generation uses unbiased random bytes with rejection sampling.
-- The recruiting invitation library correctly stores only token hashes, never plaintext tokens.
+- The `active-timed-assignments.ts` module correctly documents the requirement to use DB time with a clear comment.
+- The `participant-status.ts` module correctly uses an injectable `now` parameter with `Date.now()` default, allowing testability.
+- The submission route rate-limit fix (cycle 43) properly caches `dbNow` and reuses it for `submittedAt`, eliminating an extra DB round-trip.
+- No new security regressions introduced since cycle 43.

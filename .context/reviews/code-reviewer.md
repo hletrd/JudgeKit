@@ -1,86 +1,78 @@
-# Code Review — RPF Cycle 43
+# Code Review — RPF Cycle 44
 
 **Date:** 2026-04-23
 **Reviewer:** code-reviewer
-**Base commit:** b0d843e7
+**Base commit:** e2043115
 
 ## Inventory of Files Reviewed
 
-- `src/app/api/v1/contests/quick-create/route.ts` — Verified problemPoints refine (FIXED in cycle 42)
-- `src/app/api/v1/contests/[assignmentId]/access-code/route.ts` — Verified capability auth (FIXED in cycle 42)
-- `src/app/api/v1/contests/[assignmentId]/anti-cheat/route.ts` — Anti-cheat event logging + heartbeat
-- `src/app/api/v1/contests/[assignmentId]/recruiting-invitations/route.ts` — Invitation CRUD
-- `src/app/api/v1/contests/[assignmentId]/recruiting-invitations/bulk/route.ts` — Bulk invitation creation
-- `src/app/api/v1/contests/join/route.ts` — Access code redemption
-- `src/app/api/v1/community/threads/route.ts` — Thread creation
-- `src/app/api/v1/community/threads/[id]/route.ts` — Thread moderation
-- `src/app/api/v1/community/threads/[id]/posts/route.ts` — Post creation
-- `src/app/api/v1/community/posts/[id]/route.ts` — Post deletion
-- `src/app/api/v1/community/votes/route.ts` — Vote toggle
-- `src/app/api/v1/submissions/route.ts` — Submission creation + listing
-- `src/app/api/v1/submissions/[id]/rejudge/route.ts` — Rejudge
-- `src/app/api/v1/judge/poll/route.ts` — Judge result reporting
-- `src/app/api/v1/judge/claim/route.ts` — Judge claim
-- `src/app/api/v1/compiler/run/route.ts` — Compiler run
-- `src/app/api/v1/playground/run/route.ts` — Playground run
-- `src/app/api/v1/admin/backup/route.ts` — Database backup
-- `src/app/api/v1/admin/restore/route.ts` — Database restore
-- `src/app/api/v1/admin/migrate/import/route.ts` — Database import
-- `src/app/api/v1/admin/migrate/export/route.ts` — Database export
-- `src/app/api/v1/admin/api-keys/route.ts` — API key management
-- `src/app/api/v1/groups/[id]/members/[userId]/route.ts` — Member removal
-- `src/app/api/v1/groups/[id]/assignments/[assignmentId]/route.ts` — Assignment PATCH (verified Date.now fix)
-- `src/app/api/v1/users/[id]/route.ts` — User management
-- `src/app/api/v1/files/[id]/route.ts` — File serving
-- `src/app/api/v1/admin/submissions/export/route.ts` — Submission CSV export
-- `src/lib/assignments/recruiting-invitations.ts` — Invitation library (verified userId fix)
-- `src/lib/assignments/access-codes.ts` — Access code library
-- `src/lib/compiler/execute.ts` — Compiler execution
-- `src/lib/db/export.ts` — Database export engine
-- `src/lib/api/handler.ts` — API handler factory
+- `src/lib/assignments/submissions.ts` — Assignment submission validation (lines 190-280)
+- `src/lib/assignments/contest-scoring.ts` — Contest ranking + leaderboard (lines 85-130, 228-245)
+- `src/lib/assignments/contest-analytics.ts` — Contest analytics (lines 240-275)
+- `src/lib/assignments/leaderboard.ts` — Leaderboard freeze logic (lines 40-77)
+- `src/lib/realtime/realtime-coordination.ts` — SSE connection management (lines 80-180)
+- `src/app/api/v1/submissions/route.ts` — Submission creation (verified cycle 43 fix)
+- `src/app/api/v1/judge/claim/route.ts` — Judge claim (lines 110-160)
+- `src/lib/assignments/participant-status.ts` — Participant status (lines 30-80)
+- `src/lib/datetime.ts` — Date formatting utilities
+- `src/lib/assignments/active-timed-assignments.ts` — Active timed assignments sidebar
 
 ## Previously Fixed Items (Verified)
 
-- problemPoints/refine validation: Fixed at line 21-24
-- Access-code capability auth: Fixed at lines 9, 23, 37
-- Redundant non-null assertion on userId: Fixed (local const capture)
-- Date.now() replaced with getDbNowUncached() in assignment PATCH: Fixed at line 103
-- Non-null assertions removed from anti-cheat: Fixed at lines 211-213
+- Submission route rate-limit uses `getDbNowUncached()` for `oneMinuteAgo`: PASS (line 251)
+- Submission route `submittedAt` reuses `dbNow`: PASS (line 321)
+- Contest join route has explicit `auth: true`: PASS
 
 ## New Findings
 
-### CR-1: Submission rate-limit check uses `Date.now()` for `oneMinuteAgo` boundary inside DB transaction — clock-skew inconsistency [MEDIUM/MEDIUM]
+### CR-1: `validateAssignmentSubmission` uses `Date.now()` for deadline comparisons — clock-skew bypass [MEDIUM/MEDIUM]
 
-**File:** `src/app/api/v1/submissions/route.ts:249`
+**File:** `src/lib/assignments/submissions.ts:208,220,268`
 
-**Description:** The submission creation route computes `oneMinuteAgo` using `new Date(Date.now() - 60_000)` inside a transaction, then passes this JS-computed timestamp as a parameter to compare against `submissions.submittedAt` (a DB-stored timestamp). The rest of the codebase has consistently moved to using DB server time (`getDbNowUncached()`) for schedule comparisons to avoid clock skew. While this is a rate-limit check (not a security boundary), if the app server clock is ahead of the DB server, users could be incorrectly rate-limited for submissions that are older in DB time. Conversely, if the app server clock is behind, users could submit more frequently than intended.
+**Description:** The `validateAssignmentSubmission` function compares `Date.now()` against DB-stored assignment timestamps (`startsAt`, `deadline`, `lateDeadline`) at lines 208-226, and against `examSession.personalDeadline` at line 268. These are the same class of clock-skew issues that were previously fixed in the assignment PATCH route (cycle 40) and the submission route rate-limit (cycle 43). If the app server clock is behind the DB server clock, users can submit after the actual deadline. If the app server clock is ahead, users are blocked before the deadline.
 
-**Concrete failure scenario:** App server clock is 10 seconds ahead of DB server. A user submits at DB time 10:00:50. The `oneMinuteAgo` threshold is computed as 09:59:50 (app time). But in DB time, `submittedAt` values between 09:59:50 and 09:59:60 (DB time) would be counted as "recent" even though they are actually more than 60 seconds old in DB time. The user is incorrectly rate-limited.
+**Concrete failure scenario:** App server clock is 30 seconds behind DB. A contest deadline is 10:00:00 (DB time). At 10:00:30 DB time, the app server thinks it's 10:00:00 and allows a submission that is past the deadline. Conversely, if the app server is 30 seconds ahead, a submission at 9:59:30 DB time would be rejected even though it's 30 seconds before the deadline.
 
-**Fix:** Use `getDbNowUncached()` instead:
+**Fix:** Use `getDbNowUncached()` for the time comparison:
 ```typescript
-const dbNow = await getDbNowUncached();
-const oneMinuteAgo = new Date(dbNow.getTime() - 60_000);
+const now = (await getDbNowUncached()).getTime();
 ```
+Note: This function is synchronous (`validateAssignmentSubmission`) but already performs async DB operations, so making it async is consistent.
 
-**Confidence:** Medium — the impact is on rate-limit accuracy, not a security boundary. The advisory lock serializes concurrent submissions so the worst case is slightly inaccurate throttling.
+**Confidence:** Medium
 
 ---
 
-### CR-2: `contest/join` route lacks `auth: true` — relies on default but inconsistent with similar routes [LOW/LOW]
+### CR-2: Non-null assertions on `Map.get()` after `has()` guard — inconsistent with recent fixes [LOW/LOW]
 
-**File:** `src/app/api/v1/contests/join/route.ts:9-11`
+**Files:**
+- `src/lib/assignments/contest-scoring.ts:243` — `userMap.get(row.userId)!.problems.set(...)`
+- `src/lib/assignments/submissions.ts:365` — `submissionsByProblem.get(sub.problemId)!.add(...)`
+- `src/lib/assignments/contest-analytics.ts:259` — `userProgressMap.get(sub.userId)!`
 
-**Description:** The contest join route uses `createApiHandler({ rateLimit: ..., schema: ..., handler: ... })` without explicitly setting `auth: true`. The `createApiHandler` factory defaults `auth` to `true`, so this works correctly. However, most routes that require authentication explicitly set `auth: true` or `auth: { capabilities: [...] }` for clarity. The implicit default makes it harder to audit routes for auth coverage — a reader must know the factory's default behavior.
+**Description:** These three locations use the `!.get()` pattern after a `has()` guard on the preceding line. While the `has()` check makes the non-null assertion technically safe (the Map entry was just created), this pattern was removed from other files in recent cycles (e.g., the anti-cheat route at lines 211-213 in cycle 41). The codebase is converging on explicit null-guard patterns rather than non-null assertions.
 
-**Concrete failure scenario:** A future developer refactoring `createApiHandler` to change the default to `false` for safety (or reading the code without knowing the default) could introduce an auth bypass.
-
-**Fix:** Add `auth: true` for explicit clarity:
+**Fix:** Replace with a pattern that captures the result of `get()` and checks for null:
 ```typescript
-export const POST = createApiHandler({
-  auth: true,
-  rateLimit: "contest:join",
-  ...
+const entry = userMap.get(row.userId);
+if (!entry) continue;
+entry.problems.set(row.problemId, row);
 ```
 
-**Confidence:** Low — the current behavior is correct by default; this is a code-clarity concern.
+**Confidence:** Low — the current code is technically safe due to the `has()` guard, but it's inconsistent with the codebase trend.
+
+---
+
+### CR-3: `computeLeaderboard` uses `Date.now()` for freeze-leaderboard check — display inconsistency under clock skew [LOW/LOW]
+
+**File:** `src/lib/assignments/leaderboard.ts:52`
+
+**Description:** The `computeLeaderboard` function computes `nowMs = Date.now()` and compares it against `freezeAt` (a DB-stored `freezeLeaderboardAt` timestamp) to decide whether the leaderboard is frozen. Under clock skew, the leaderboard could appear frozen slightly before or after the intended freeze time. However, this is a display-only concern — the frozen leaderboard shows submissions up to the freeze time, and the actual submission data is correct. The freeze decision timing is at most slightly inaccurate.
+
+**Fix:** Use `getDbNowUncached()` for consistency:
+```typescript
+const nowMs = (await getDbNowUncached()).getTime();
+```
+Note: This requires making the function async, which it already is.
+
+**Confidence:** Low — the freeze timing inaccuracy is cosmetic, not a data integrity issue.

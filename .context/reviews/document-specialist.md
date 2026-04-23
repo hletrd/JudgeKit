@@ -1,37 +1,36 @@
-# Document Specialist Review — RPF Cycle 43
+# Document Specialist Review — RPF Cycle 44
 
 **Date:** 2026-04-23
 **Reviewer:** document-specialist
-**Base commit:** b0d843e7
+**Base commit:** e2043115
 
 ## Inventory of Documentation Reviewed
 
 - `CLAUDE.md` — Project rules
-- `AGENTS.md` — Agent guide
-- `.context/` — Context directory
-- `src/app/api/v1/submissions/route.ts` — Submission route (missing comment about Date.now)
-- `src/lib/compiler/execute.ts` — Shell command validation comments (verified)
-- `src/lib/assignments/recruiting-constants.ts` — Shared constants (verified JSDoc)
+- `src/lib/assignments/submissions.ts` — Missing comment about Date.now clock-skew risk
+- `src/lib/assignments/active-timed-assignments.ts` — Good example of clock-skew documentation
+- `src/lib/datetime.ts` — Date formatting utilities
+- `src/lib/assignments/participant-status.ts` — Injectable `now` parameter documented
 
 ## Previously Fixed Items (Verified)
 
 - Import TABLE_MAP drift warning comment: Fixed
 - Recruiting-constants JSDoc: Present
+- Submission route rate-limit comment: Present (added in cycle 43)
 
 ## New Findings
 
-### DOC-1: Submission route rate-limit `Date.now()` lacks comment about clock-skew risk [LOW/LOW]
+### DOC-1: `validateAssignmentSubmission` uses `Date.now()` without comment about clock-skew risk [LOW/LOW]
 
-**File:** `src/app/api/v1/submissions/route.ts:249`
+**File:** `src/lib/assignments/submissions.ts:208`
 
-**Description:** The submission route uses `Date.now()` for the rate-limit window without a comment explaining the inconsistency with the codebase convention of using `getDbNowUncached()`. Every other schedule comparison in the codebase that was using `Date.now()` has been migrated to `getDbNowUncached()` with comments about clock skew. This missing documentation could mislead future developers.
+**Description:** The `validateAssignmentSubmission` function uses `Date.now()` at line 208 without any comment explaining the inconsistency with the codebase convention of using `getDbNowUncached()`. The `active-timed-assignments.ts` module has an excellent comment: "IMPORTANT: The `now` parameter should come from `getDbNow()` in server components to avoid clock skew." A similar comment should exist here, or preferably the code should be fixed.
 
 **Fix:** If the clock-skew issue is fixed, add a comment:
 ```typescript
-// Use DB server time for the rate-limit window to avoid clock skew
+// Use DB server time for deadline checks to avoid clock skew
 // between app and DB servers, consistent with other schedule checks.
-const dbNow = await getDbNowUncached();
-const oneMinuteAgo = new Date(dbNow.getTime() - 60_000);
+const now = (await getDbNowUncached()).getTime();
 ```
 
 **Confidence:** Low

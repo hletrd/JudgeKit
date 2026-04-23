@@ -1,16 +1,16 @@
-# UI/UX Review — RPF Cycle 43
+# UI/UX Review — RPF Cycle 44
 
 **Date:** 2026-04-23
 **Reviewer:** designer
-**Base commit:** b0d843e7
+**Base commit:** e2043115
 
 ## Inventory of UI Files Reviewed
 
-- `src/app/(dashboard)/dashboard/admin/api-keys/api-keys-client.tsx` — API key management (verified countdown)
-- `src/app/(dashboard)/dashboard/contests/join/page.tsx` — Contest join page
-- `src/components/contest/export-button.tsx` — Contest export
-- `src/app/(dashboard)/dashboard/groups/[id]/assignment-delete-button.tsx` — Delete confirmation
-- `src/components/destructive-action-dialog.tsx` — Destructive action dialog
+- `src/components/exam/anti-cheat-monitor.tsx` — Anti-cheat monitoring (verified countdown)
+- `src/components/exam/countdown-timer.tsx` — Exam countdown timer
+- `src/components/problem/problem-submission-form.tsx` — Submission form
+- `src/components/layout/active-timed-assignment-sidebar-panel.tsx` — Active assignment sidebar
+- `src/components/layout/app-sidebar.tsx` — Main sidebar
 
 ## Previously Fixed Items (Verified)
 

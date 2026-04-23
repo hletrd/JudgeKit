@@ -1,16 +1,15 @@
-# Debugger Review — RPF Cycle 43
+# Debugger Review — RPF Cycle 44
 
 **Date:** 2026-04-23
 **Reviewer:** debugger
-**Base commit:** b0d843e7
+**Base commit:** e2043115
 
 ## Inventory of Files Reviewed
 
-- `src/app/api/v1/submissions/route.ts` — Submission creation transaction
-- `src/app/api/v1/contests/[assignmentId]/anti-cheat/route.ts` — Anti-cheat event logging
-- `src/app/api/v1/judge/poll/route.ts` — Judge result reporting
+- `src/lib/assignments/submissions.ts` — Submission validation (failure mode analysis)
+- `src/lib/assignments/leaderboard.ts` — Leaderboard freeze logic
+- `src/lib/realtime/realtime-coordination.ts` — SSE connection management
 - `src/app/api/v1/judge/claim/route.ts` — Judge claim
-- `src/lib/compiler/execute.ts` — Docker execution
 
 ## Previously Fixed Items (Verified)
 
@@ -18,14 +17,20 @@
 
 ## New Findings
 
-### DBG-1: Submission rate-limit window uses `Date.now()` — potential inaccurate throttling under clock skew [MEDIUM/MEDIUM]
+### DBG-1: `validateAssignmentSubmission` deadline enforcement uses `Date.now()` — inaccurate under clock skew [MEDIUM/MEDIUM]
 
-**File:** `src/app/api/v1/submissions/route.ts:249`
+**File:** `src/lib/assignments/submissions.ts:208,220,268`
 
-**Description:** The `oneMinuteAgo` variable at line 249 is computed using `Date.now()`, while the `submissions.submittedAt` column it compares against is populated using DB server time via `getDbNowUncached()`. This means the rate-limit boundary is computed from one clock and compared against data stored using a different clock.
+**Description:** The `validateAssignmentSubmission` function uses `Date.now()` to compute the current time for comparing against DB-stored deadline timestamps. Under clock skew between the app server and DB server, the deadline check is inaccurate.
 
-**Failure mode:** Under clock skew (app server ahead of DB), users are rate-limited too aggressively. Under reverse skew, rate-limiting is too lenient. The advisory lock prevents concurrent bypass, but sequential submissions can exceed the per-minute limit.
+**Failure mode:** If the app server clock is behind the DB server clock:
+- `startsAt > now` check at line 212: Users can access assignments that have already started in DB time (false negative — allows access when it shouldn't, but this is less harmful).
+- `effectiveCloseAt < now` check at line 220: Users can submit after the actual deadline (more harmful — allows late submissions).
+- `personalDeadline < Date.now()` check at line 268: Exam time appears unexpired longer than it should (allows extra exam time).
 
-**Fix:** Use `getDbNowUncached()` for the window boundary computation.
+If the app server clock is ahead:
+- Users are blocked from submitting before the actual deadline (more harmful — blocks legitimate submissions).
+
+**Fix:** Use `getDbNowUncached()` for the time computation.
 
 **Confidence:** Medium

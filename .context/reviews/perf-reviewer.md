@@ -1,25 +1,23 @@
-# Performance Review — RPF Cycle 43
+# Performance Review — RPF Cycle 44
 
 **Date:** 2026-04-23
 **Reviewer:** perf-reviewer
-**Base commit:** b0d843e7
+**Base commit:** e2043115
 
 ## Inventory of Files Reviewed
 
-- `src/app/api/v1/submissions/route.ts` — Submission creation + listing
-- `src/app/api/v1/contests/[assignmentId]/anti-cheat/route.ts` — Anti-cheat heartbeat + gap detection
-- `src/app/api/v1/contests/[assignmentId]/analytics/route.ts` — Contest analytics caching
-- `src/app/api/v1/compiler/run/route.ts` — Compiler execution
-- `src/app/api/v1/playground/run/route.ts` — Playground execution
-- `src/lib/compiler/execute.ts` — Docker container management
-- `src/app/api/v1/judge/claim/route.ts` — Judge claim with raw SQL
-- `src/app/api/v1/submissions/[id]/events/route.ts` — SSE connection management
+- `src/lib/assignments/contest-scoring.ts` — Contest ranking + stale-while-revalidate cache
+- `src/lib/assignments/contest-analytics.ts` — Analytics caching
+- `src/app/api/v1/contests/[assignmentId]/analytics/route.ts` — Analytics route caching
+- `src/lib/assignments/submissions.ts` — Submission validation (potential extra DB round-trip)
+- `src/lib/realtime/realtime-coordination.ts` — SSE connection management
+- `src/app/api/v1/submissions/[id]/events/route.ts` — SSE events route
 
 ## Previously Fixed Items (Verified)
 
-- SSE stale threshold caching: Fixed — 5-minute TTL
-- Contest stats CTE optimization: Fixed — `user_best` reused in `solved_problems`
-- Compiler execution concurrency limiter: Working — `pLimit(Math.max(cpus().length - 1, 1))`
+- SSE stale threshold caching (5-minute TTL): PASS
+- Contest stats CTE optimization: PASS
+- Compiler execution concurrency limiter: PASS
 
 ## New Findings
 
@@ -29,4 +27,10 @@ No new performance findings. The existing deferred items remain accurate:
 
 - **PERF-1:** SSE shared poll timer reads `getConfiguredSettings()` on restart (LOW/LOW, deferred)
 - **PERF-2:** SSE connection eviction scan uses linear search (LOW/LOW, deferred — bounded by 1000 cap)
-- **PERF-3 (from cycle 39):** Anti-cheat heartbeat gap query transfers up to 5000 rows (MEDIUM/MEDIUM, deferred — could use SQL window function)
+- **PERF-3:** Anti-cheat heartbeat gap query transfers up to 5000 rows (MEDIUM/MEDIUM, deferred — could use SQL window function)
+
+---
+
+### Note on `validateAssignmentSubmission` clock-skew fix
+
+The recommended fix for `validateAssignmentSubmission` (replacing `Date.now()` with `getDbNowUncached()`) adds one extra DB round-trip per submission validation call. However, this function already performs multiple DB queries (assignment lookup, enrollment check, exam session lookup), so the additional latency is negligible (<1ms over a typical DB connection). The correctness benefit outweighs the minimal latency cost.
