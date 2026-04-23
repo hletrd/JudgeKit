@@ -66,6 +66,20 @@ async function doSync(): Promise<boolean> {
 }
 
 export async function syncLanguageConfigsOnStartup() {
+  // Explicit opt-out for local dev and sandboxed runtime review lanes
+  // (e.g. the RPF loop's designer runtime review). Requires the literal
+  // string "1" to avoid accidentally skipping in production where the env
+  // loader may coerce other truthy values. Not a production concern:
+  // production uses DATABASE_URL pointing at a real DB and should never
+  // set this flag. See plans/open/2026-04-23-rpf-cycle-55-review-remediation.md
+  // (lane A2) and .context/reviews/designer-runtime-cycle-3.md.
+  if (process.env.SKIP_INSTRUMENTATION_SYNC === "1") {
+    logger.warn(
+      "[sync] SKIP_INSTRUMENTATION_SYNC=1 — skipping language-config startup sync. DO NOT use this in production."
+    );
+    return;
+  }
+
   const MAX_SYNC_RETRIES = 10;
   const MAX_BACKOFF_MS = 30_000;
 
