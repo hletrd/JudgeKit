@@ -20,12 +20,13 @@ export const POST = createApiHandler({
     const hasAccess = await canAccessGroup(id, user.id, user.role);
     if (!hasAccess) return forbidden();
 
-    // Verify assignment belongs to group
+    // Verify assignment belongs to group and has a valid exam mode
     const assignment = await db.query.assignments.findFirst({
       where: eq(assignments.id, assignmentId),
-      columns: { id: true, groupId: true },
+      columns: { id: true, groupId: true, examMode: true },
     });
     if (!assignment || assignment.groupId !== id) return notFound("Assignment");
+    if (assignment.examMode === "none") return apiError("examModeInvalid", 400);
 
     const group = await db.query.groups.findFirst({
       where: eq(groups.id, id),
