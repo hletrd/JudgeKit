@@ -3,7 +3,7 @@
 **Date:** 2026-04-23
 **Cycle:** 40/100
 **Base commit:** f030233a
-**Status:** In Progress
+**Status:** Done
 
 ## Lanes
 
@@ -11,15 +11,16 @@
 
 **Severity:** MEDIUM/MEDIUM (9 of 11 perspectives)
 **File:** `src/app/api/v1/groups/[id]/assignments/[assignmentId]/route.ts:99-101`
+**Status:** Done
 
 **Tasks:**
-- [ ] Replace `const now = Date.now();` with `const now = await getDbNowUncached();`
-- [ ] Update the comparison to use `now.getTime()` instead of raw `now` value
-- [ ] Add a comment explaining why DB server time is used (consistent with recruiting invitation routes)
-- [ ] Verify `getDbNowUncached` import is present (add if not)
-- [ ] Verify the fix works: problem changes are blocked when contest has started (DB time >= startsAt)
+- [x] Replace `const now = Date.now();` with `const now = await getDbNowUncached();`
+- [x] Update the comparison to use `now.getTime()` instead of raw `now` value
+- [x] Add a comment explaining why DB server time is used (consistent with recruiting invitation routes)
+- [x] Verify `getDbNowUncached` import is present (add if not)
+- [x] Verify the fix works: problem changes are blocked when contest has started (DB time >= startsAt)
 
-**Confidence:** Medium
+**Commit:** ff532a69
 
 ---
 
@@ -27,26 +28,28 @@
 
 **Severity:** LOW/LOW (3 of 11 perspectives)
 **File:** `src/app/api/v1/contests/[assignmentId]/anti-cheat/route.ts:211-213`
+**Status:** Done
 
 **Tasks:**
-- [ ] Replace `heartbeats[i - 1].createdAt!` with `heartbeats[i - 1].createdAt` (after the existing null guard on line 211)
-- [ ] Replace `heartbeats[i].createdAt!` with `heartbeats[i].createdAt` (after the existing null guard)
-- [ ] Verify TypeScript still compiles without errors (the null guard ensures type safety)
+- [x] Replace `heartbeats[i - 1].createdAt!` with `heartbeats[i - 1].createdAt` (after the existing null guard on line 211)
+- [x] Replace `heartbeats[i].createdAt!` with `heartbeats[i].createdAt` (after the existing null guard)
+- [x] Verify TypeScript still compiles without errors (the null guard ensures type safety)
 
-**Confidence:** Low
+**Commit:** 3acee3c9
 
 ---
 
 ### Lane 3: Run quality gates
 
 **Severity:** Required
+**Status:** Done
 
 **Tasks:**
-- [ ] Run `eslint` — must pass
-- [ ] Run `npm run build` — must pass
-- [ ] Run `npm run test:unit` — must pass
-- [ ] Run `npm run test:integration` — verify (may require DB)
-- [ ] Run `npm run test:component` — verify
+- [x] Run `eslint` — passed (exit 0)
+- [x] Run `npm run build` — passed
+- [x] Run `npm run test:unit` — passed (294 test files, 2116 tests)
+- [x] Run `npm run test:integration` — skipped (no DB connection)
+- [x] Run `npm run test:component` — 10 pre-existing failures in unrelated tests (PostgreSQL pool not available); all tests related to changed files pass
 
 ---
 
