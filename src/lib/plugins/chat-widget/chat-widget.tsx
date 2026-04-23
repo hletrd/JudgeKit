@@ -278,7 +278,7 @@ export default function ChatWidget() {
       <button
         onClick={() => setIsMinimized(false)}
         className="fixed bottom-6 right-6 z-50 flex h-14 w-14 items-center justify-center rounded-full bg-primary text-primary-foreground shadow-lg transition-transform hover:scale-110 focus:outline-none focus:ring-2 focus:ring-primary focus:ring-offset-2"
-        aria-label="Chat"
+        aria-label={messages.length > 0 ? `${t("name")} - ${messages.filter((m) => m.role === "assistant").length} ${t("placeholder")}` : t("name")}
       >
         <MessageCircle className="h-6 w-6" />
         {messages.length > 0 && (
