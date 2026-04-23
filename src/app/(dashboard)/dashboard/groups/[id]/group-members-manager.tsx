@@ -120,12 +120,12 @@ export function GroupMembersManager({
         body: JSON.stringify({ userId: selectedStudentId }),
       });
 
-      if (!response.ok) {
-        const errorBody = await response.json().catch(() => ({}));
-        throw new Error((errorBody as { error?: string }).error || "memberAddFailed");
-      }
+      // Parse response body once — the Response body can only be consumed once
+      const payload = await response.json().catch(() => ({ data: {} })) as { error?: string; data?: { id?: string; user?: { id: string; name: string; username: string; className: string | null }; enrolledAt?: string } };
 
-      const payload = await response.json().catch(() => ({ data: {} })) as { data?: { id?: string; user?: { id: string; name: string; username: string; className: string | null }; enrolledAt?: string } };
+      if (!response.ok) {
+        throw new Error(payload.error || "memberAddFailed");
+      }
 
       const nextMember = payload.data?.user && payload.data.id
         ? {

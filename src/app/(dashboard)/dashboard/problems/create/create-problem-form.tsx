@@ -429,12 +429,14 @@ export default function CreateProblemForm({
         }),
       });
 
+      // Parse response body once — the Response body can only be consumed once
+      const payload = await res.json().catch(() => ({ data: {} })) as { error?: string; data?: { id?: string } };
+
       if (!res.ok) {
-        const errData = await res.json().catch(() => ({}));
-        throw new Error((errData as { error?: string }).error || (isEditing ? "updateError" : "createError"));
+        throw new Error(payload.error || (isEditing ? "updateError" : "createError"));
       }
 
-      const resultData = await res.json().catch(() => ({ data: {} })) as { data?: { id?: string } };
+      const resultData = payload;
 
       const nextProblemId = resultData.data?.id ?? initialProblem?.id;
 
