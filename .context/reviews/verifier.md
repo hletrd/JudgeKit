@@ -1,49 +1,43 @@
-# Verifier Review — RPF Cycle 29
+# Verifier Review — RPF Cycle 30
 
 **Date:** 2026-04-23
 **Reviewer:** verifier
-**Base commit:** a51772ae
+**Base commit:** 31afd19b
 
 ## Previously Fixed Items (Verified)
 
-- Code editor i18n (AGG-1 from cycle 28): Verified fixed in commit 5c387c7b. The `CodeEditor` now accepts `fullscreenLabel`, `exitFullscreenLabel`, `exitButtonLabel`, and `languageFallbackLabel` props from the parent `CompilerClient`, which provides `t(...)` calls. English and Korean message files updated.
-- Contest replay setInterval (PERF-CARRIED-1): Verified fixed in commit 9cc30d51. The auto-play effect now uses recursive `setTimeout` with a `cancelled` flag.
+- AGG-1 (clarification i18n, commit 7e0b3bb8): Verified. Lines 290, 293, 296 now use `t("quickYesAnswer")`, `t("quickNoAnswer")`, `t("quickNoCommentAnswer")`. English and Korean translations confirmed in `messages/en.json` (lines 2356-2358) and `messages/ko.json` (lines 2356-2358).
+- AGG-2 (provider error sanitization, commit 93beb49d): Verified. All 6 provider error sites in `providers.ts` now throw `new Error(`...API error ${status}`)` without response body. Full body logged via `logger.warn()` at lines 102, 137, 206, 259, 340, 402.
+- AGG-3 (useVisibilityPolling setTimeout, commit 60f24288): Verified. `use-visibility-polling.ts` uses recursive `setTimeout` with `cancelled` flag pattern.
+- AGG-4 (progress bar aria-label, commit 3530a989): Verified. `active-timed-assignment-sidebar-panel.tsx:172` has `aria-label={tNav("progress")}`.
 
-## V-1: Hardcoded English answer text in clarifications — evidence-based verification [MEDIUM/HIGH]
+## V-1: `countdown-timer.tsx` uses `setInterval` — evidence-based verification of inconsistency [MEDIUM/MEDIUM]
 
-**File:** `src/components/contest/contest-clarifications.tsx:290-296`
+**File:** `src/components/exam/countdown-timer.tsx:117`
 
-**Evidence:** The `handleAnswer` function (line 133) accepts an `answerText` parameter. On line 134: `const answer = answerText ?? answerDrafts[id] ?? ""`. The quick-answer buttons invoke:
+**Evidence:** Line 117 contains `const interval = setInterval(recalculate, 1000)`. This is the only client-side timer still using `setInterval`. All others have been migrated:
 
-```
-handleAnswer(clarification.id, "yes", "Yes")       // line 290
-handleAnswer(clarification.id, "no", "No")           // line 293
-handleAnswer(clarification.id, "no_comment", "No comment")  // line 296
-```
+| Component | Pattern | Migration |
+|-----------|---------|-----------|
+| useVisibilityPolling | recursive setTimeout | commit 60f24288 |
+| contest-replay | recursive setTimeout | commit 9cc30d51 |
+| anti-cheat heartbeat | recursive setTimeout | already correct |
+| countdown-timer | setInterval | **NOT migrated** |
+| active-timed-assignment-sidebar | setInterval | deferred (LOW/LOW) |
 
-The `answer` variable is sent to the API as `body: JSON.stringify({ answer, answerType, isPublic: true })` (line 141-143). This means "Yes", "No", and "No comment" are stored as the answer text in the database.
+**Verification of stated behavior:** The `visibilitychange` handler on line 122-127 calls `recalculate()` when the tab becomes visible. This corrects the displayed time after tab switches. However, it does NOT prevent `setInterval` catch-up behavior — pending interval callbacks can still fire before the visibility change handler runs.
 
-**Verification of stated behavior:** The i18n keys for button labels exist (`quickYes`, `quickNo`, `quickNoComment`) but there are no i18n keys for the answer *content*. The button labels are displayed in Korean when locale is "ko", but clicking them produces English answer text.
-
-**Fix:** Add i18n keys for answer content and use them in the `handleAnswer` calls.
+**Fix:** Migrate to recursive `setTimeout` to eliminate the catch-up window.
 
 ---
 
-## V-2: Chat widget provider error messages may leak API details [MEDIUM/MEDIUM]
+## V-2: `rate-limiter-client.ts` unguarded `.json()` on success path [LOW/MEDIUM]
 
-**File:** `src/lib/plugins/chat-widget/providers.ts:101,134-135,202`
+**File:** `src/lib/security/rate-limiter-client.ts:79`
 
-**Evidence:** The provider `stream()` and `chatWithTools()` methods include the full API response body in thrown errors:
+**Evidence:** Line 79 contains `const data = (await response.json()) as T;` without a `.catch()` guard. If the sidecar returns a non-JSON body (e.g., HTML from a proxy), this throws `SyntaxError`. The outer try/catch catches it but incorrectly increments the circuit breaker, treating a parse error the same as a network failure.
 
-- OpenAI stream (line 101): `throw new Error(`OpenAI API error ${response.status}: ${text}`)`
-- OpenAI chatWithTools (line 134-135): same pattern
-- Claude stream (line 202): `throw new Error(`Claude API error ${response.status}: ${text}`)`
-
-The `${text}` variable contains the full response body from the API provider. These errors propagate through the chat route handler to the client.
-
-**Verification needed:** The chat route handler (`src/app/api/v1/plugins/chat-widget/chat/route.ts`) catches these errors. Need to verify whether the raw error message is sanitized before being sent to the client.
-
-**Fix:** Strip the response body from thrown errors and only include the HTTP status code. Log the full response server-side.
+**Fix:** Add `.catch()` to the `.json()` call and handle parse errors separately from network errors.
 
 ---
 

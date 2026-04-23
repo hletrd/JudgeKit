@@ -1,36 +1,42 @@
-# Test Engineer Review — RPF Cycle 29
+# Test Engineer Review — RPF Cycle 30
 
 **Date:** 2026-04-23
 **Reviewer:** test-engineer
-**Base commit:** a51772ae
+**Base commit:** 31afd19b
 
 ## Previously Fixed Items (Verified)
 
 - All prior cycle test findings remain as deferred items (DEFER-36, DEFER-37)
 
-## TE-1: No test coverage for clarification quick-answer i18n behavior [LOW/MEDIUM]
+## TE-1: No test coverage for countdown timer timer mechanism [LOW/MEDIUM]
 
-**File:** `src/components/contest/contest-clarifications.tsx:290-296`
+**File:** `src/components/exam/countdown-timer.tsx`
 
-The clarification component has no tests verifying that quick-answer buttons send localized answer text. A regression test should verify:
+The countdown timer component has no tests verifying:
+1. The timer mechanism correctly counts down
+2. The `visibilitychange` handler corrects drift
+3. The `handleExpired` callback fires when time reaches zero
+4. Threshold warnings (15min, 5min, 1min) fire correctly
 
-1. Clicking quick-answer buttons sends the correct `answerType` and localized `answer` text
-2. The answer text in the API payload matches the expected i18n key value
+If the timer is migrated from `setInterval` to recursive `setTimeout` (as recommended by other reviewers), tests should verify the new mechanism works correctly, especially:
+- Timer pauses when tab is hidden
+- Timer resumes when tab becomes visible
+- Timer self-corrects on tab switch
 
-**Fix:** Add unit/integration tests for the `handleAnswer` function that verify both `answerType` and `answer` content.
+**Fix:** Add component tests for the countdown timer covering these scenarios.
 
 ---
 
-## TE-2: No test coverage for chat widget provider error sanitization [LOW/MEDIUM]
+## TE-2: No test coverage for rate-limiter client circuit breaker behavior [LOW/LOW]
 
-**File:** `src/lib/plugins/chat-widget/providers.ts:101,134-135,202`
+**File:** `src/lib/security/rate-limiter-client.ts`
 
-The provider error messages currently include full API response bodies. There are no tests verifying that these errors are sanitized before reaching the client. A test should verify:
+The rate-limiter client's circuit breaker has no tests verifying:
+1. Circuit opens after 3 consecutive failures
+2. Circuit closes after recovery window (30 seconds)
+3. Non-JSON responses are handled gracefully (currently they trip the circuit breaker)
 
-1. Provider errors thrown with API response details are caught by the route handler
-2. The route handler strips sensitive details before sending the error to the client
-
-**Fix:** Add unit tests for the chat route handler's error handling chain.
+**Fix:** Add unit tests for circuit breaker behavior.
 
 ---
 

@@ -1,31 +1,41 @@
-# Document Specialist Review — RPF Cycle 29
+# Document Specialist Review — RPF Cycle 30
 
 **Date:** 2026-04-23
 **Reviewer:** document-specialist
-**Base commit:** a51772ae
+**Base commit:** 31afd19b
 
 ## Previously Fixed Items (Verified)
 
-- Code editor i18n: Fixed (commit 5c387c7b)
-- Contest replay setInterval: Fixed (commit 9cc30d51)
+- useVisibilityPolling doc comment: Updated (commit 60f24288). Now correctly states "Uses recursive `setTimeout` instead of `setInterval`"
+- Clarification i18n: Fixed (commit 7e0b3bb8)
+- Provider error sanitization: Fixed (commit 93beb49d)
 
-## DOC-1: Quick-answer text in clarifications not documented as i18n-requiring [LOW/LOW]
+## DOC-1: `countdown-timer.tsx` comment says "browser throttling of setInterval" but does not note the architectural inconsistency [LOW/LOW]
 
-**File:** `src/components/contest/contest-clarifications.tsx:290-296`
+**File:** `src/components/exam/countdown-timer.tsx:119-121`
 
-The `apiFetchJson` client documentation in `src/lib/api/client.ts` documents the pattern for error handling, but there is no documentation about the convention that *all* user-facing strings passed to API calls must be localized. The quick-answer text ("Yes", "No", "No comment") passed to the API is a data string, not a label, which makes it less obvious that it needs i18n treatment.
+The comments on lines 119-121 say:
+```
+// timer drift caused by browser throttling of setInterval in
+// background tabs. Students rely on accurate countdown during exams.
+```
 
-**Fix:** This is a code issue, not a documentation issue. The strings should be localized. No doc change needed.
+This acknowledges the `setInterval` issue but does not note that the rest of the codebase has migrated to recursive `setTimeout`. A future developer reading this code might not realize the timer is the last holdout.
+
+**Fix:** Minor doc improvement — note that this timer should be migrated to `setTimeout` for consistency.
 
 ---
 
-## DOC-2: `useVisibilityPolling` doc comment doesn't mention `setInterval` vs `setTimeout` convention [LOW/LOW]
+## DOC-2: `apiFetchJson` JSDoc is excellent — no changes needed [NO ISSUE]
 
-**File:** `src/hooks/use-visibility-polling.ts:1-16`
+**File:** `src/lib/api/client.ts:88-101`
 
-The hook's doc comment says "Starts polling immediately when the page is visible" and "Pauses polling when the page is hidden." It does not mention that the codebase convention is to use recursive `setTimeout` instead of `setInterval`, and that this hook is the exception.
+The JSDoc for `apiFetchJson` thoroughly documents the `.json()` safety pattern, including:
+- Always check `response.ok` before calling `.json()`
+- Use `.catch()` on `.json()` calls
+- Never call `.json()` twice on the same response
 
-**Fix:** Minor doc improvement — note the setInterval usage and the reason it has not yet been migrated.
+This is well-documented and no changes are needed.
 
 ---
 

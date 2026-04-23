@@ -1,37 +1,43 @@
-# Performance Review — RPF Cycle 29
+# Performance Review — RPF Cycle 30
 
 **Date:** 2026-04-23
 **Reviewer:** perf-reviewer
-**Base commit:** a51772ae
+**Base commit:** 31afd19b
 
 ## Previously Fixed Items (Verified)
 
+- useVisibilityPolling setInterval -> recursive setTimeout (commit 60f24288): Verified
 - Contest replay setInterval -> recursive setTimeout (commit 9cc30d51): Verified
-- Sidebar interval re-entry: Deferred (LOW/LOW)
 
-## PERF-1: `useVisibilityPolling` uses `setInterval` instead of recursive `setTimeout` [LOW/MEDIUM]
+## PERF-1: `countdown-timer.tsx` uses `setInterval` — last remaining client-side timer with old pattern [MEDIUM/MEDIUM]
 
-**File:** `src/hooks/use-visibility-polling.ts:55`
+**File:** `src/components/exam/countdown-timer.tsx:117`
 
-The shared polling hook uses `setInterval(tick, intervalMs)`. While this is the centralized implementation and works correctly for most use cases, `setInterval` can cause drift and catch-up behavior in background tabs. The codebase has already migrated `contest-replay.tsx`, `countdown-timer.tsx`, and `anti-cheat-monitor.tsx` to recursive `setTimeout`. The same pattern should be applied to this shared hook since it is used by 10+ components.
+The exam countdown timer uses `setInterval(recalculate, 1000)`. This is the last remaining client-side timer using `setInterval` instead of the established recursive `setTimeout` pattern. The codebase has already migrated:
+- `useVisibilityPolling` hook (cycle 29, commit 60f24288)
+- Contest replay (cycle 28, commit 9cc30d51)
+- Anti-cheat heartbeat (already used recursive setTimeout)
 
-**Concrete failure scenario:** A user switches to another tab for 30 seconds while a polling component is active. When they return, `setInterval` may fire multiple catch-up ticks rapidly, causing a burst of API requests.
+The countdown timer has a `visibilitychange` handler that recalculates on tab switch, which mitigates most drift. However, `setInterval` can still cause catch-up behavior in background tabs because browsers throttle intervals to at most once per second. When the tab becomes visible again, all pending intervals may fire rapidly before the visibility change handler runs.
 
-**Fix:** Replace `setInterval(tick, intervalMs)` with a recursive `setTimeout` pattern that schedules the next tick only after the current one completes. This also naturally handles the case where `tick()` is slow.
+**Concrete failure scenario:** A student switches tabs for 30 seconds during an exam. When they return, the throttled `setInterval` may fire multiple accumulated ticks, causing the remaining time display to briefly flash through intermediate values before the visibility change handler corrects it.
 
-**Note:** This is a low-severity issue since the hook already pauses on visibility change. The jitter mechanism (line 49) partially mitigates thundering herd on tab switch. However, it only applies to the initial tick after visibility change, not to ongoing polling.
+**Fix:** Migrate to recursive `setTimeout` for consistency with the codebase convention and to eliminate the catch-up edge case entirely.
 
 ---
 
-## PERF-2: `active-timed-assignment-sidebar-panel` uses `setInterval` with `assignments` dependency [LOW/LOW]
+## PERF-2: `active-timed-assignment-sidebar-panel.tsx` uses `setInterval` for countdown [LOW/LOW]
 
-**File:** `src/components/layout/active-timed-assignment-sidebar-panel.tsx:53-91`
+**File:** `src/components/layout/active-timed-assignment-sidebar-panel.tsx:63`
 
-This component uses `setInterval` for its countdown timer with `[assignments]` as the effect dependency. While the cleanup function correctly clears the interval, this follows the same pattern as the already-fixed contest-replay issue. The `setInterval` can accumulate drift in background tabs.
+This component uses `window.setInterval` for its 1-second countdown tick. This follows the same pattern as the countdown-timer but is lower severity because:
+1. It already has a `visibilitychange` handler that corrects drift on tab switch
+2. The sidebar timer is informational, not safety-critical like exam countdown
+3. The interval self-terminates when all assignments expire
 
-However, the component already handles this correctly on line 80-84 by listening for `visibilitychange` and immediately updating `nowMs` when the tab becomes visible. This effectively corrects any drift on tab switch, making the issue lower severity than the contest-replay case was.
+This was previously noted in cycle 29 (PERF-2) and deferred. Listing again for completeness.
 
-**Fix:** Could be migrated to recursive `setTimeout` for consistency, but the existing `visibilitychange` handler makes this a low priority.
+**Fix:** Could be migrated to recursive `setTimeout` for consistency, but low priority.
 
 ---
 

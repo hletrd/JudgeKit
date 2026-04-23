@@ -1,41 +1,52 @@
-# Debugger Review — RPF Cycle 29
+# Debugger Review — RPF Cycle 30
 
 **Date:** 2026-04-23
 **Reviewer:** debugger
-**Base commit:** a51772ae
+**Base commit:** 31afd19b
 
 ## Previously Fixed Items (Verified)
 
-- Contest replay setInterval: Fixed (commit 9cc30d51)
+- Provider error sanitization: Verified (commit 93beb49d)
+- useVisibilityPolling setTimeout: Verified (commit 60f24288)
 - console.error gating: Verified
 - All prior cycle findings verified as fixed
 
-## DBG-1: Hardcoded English answer text in clarifications — persistent data corruption bug [MEDIUM/HIGH]
+## DBG-1: Exam countdown timer `setInterval` catch-up in backgrounded tabs [MEDIUM/MEDIUM]
 
-**File:** `src/components/contest/contest-clarifications.tsx:290-296`
+**File:** `src/components/exam/countdown-timer.tsx:117`
 
-**Failure mode:** When a Korean-speaking contest organizer clicks a quick-answer button, the hardcoded English text ("Yes", "No", "No comment") is stored in the database as the answer. This data is then shown to all participants. Unlike the previous code-editor i18n issue (which only affected runtime display), this bug **persists data in the wrong language** to the database. Even after fixing the code, previously submitted English answers will remain in the database.
+**Failure mode:** When a student switches to another tab during an exam, browsers throttle `setInterval` to at most once per second (and often less frequently). When the student returns, the browser may fire all accumulated interval callbacks in rapid succession before the `visibilitychange` handler runs.
 
 **Concrete failure scenario:**
-1. Contest organizer clicks "Yes" quick-answer button
-2. API receives `answer: "Yes"`, `answerType: "yes"`, `isPublic: true`
-3. Database stores `answer: "Yes"`
-4. Korean participants see "Yes" instead of "네" as the answer
-5. After fix, only new answers will be Korean; old answers remain English
+1. Student has 5 minutes remaining on exam countdown
+2. Student switches to another tab for 30 seconds
+3. Browser throttles `setInterval` — only a few ticks fire during the 30 seconds
+4. When student returns, the throttled `setInterval` fires multiple catch-up ticks rapidly
+5. Each tick calls `setRemaining(diff)` — React batches these, but the intermediate values flash briefly
+6. The `visibilitychange` handler fires and recalculates correctly, but the student may have seen an incorrect time display for a brief moment
 
-**Fix:** Add i18n keys for answer content. Note: existing database records with English answers will need a migration or will remain in English. The `answerType` field could be used to display the localized string at render time instead of relying on the stored `answer` text.
+This is a latent bug — it doesn't cause data corruption but can cause momentary display inconsistency in the most critical timer in the application.
+
+**Fix:** Migrate to recursive `setTimeout` which inherently avoids catch-up behavior since the next tick is only scheduled after the current one completes.
 
 ---
 
-## DBG-2: `useVisibilityPolling` setInterval catch-up behavior [LOW/LOW]
+## DBG-2: Rate-limiter client circuit breaker trip on non-JSON response [LOW/MEDIUM]
 
-**File:** `src/hooks/use-visibility-polling.ts:55`
+**File:** `src/lib/security/rate-limiter-client.ts:79`
 
-**Failure mode:** When a tab is backgrounded, browsers throttle `setInterval` to at most once per second (and often less). When the tab regains focus, all pending interval callbacks may fire in rapid succession. The hook's `syncVisibility` handler (line 45-58) mitigates this by clearing and recreating the interval on visibility change, but the interval callback itself may still accumulate drift during the brief period between the interval firing and the visibility change handler running.
+**Failure mode:** If the rate-limiter sidecar returns a non-JSON body (e.g., an HTML error page from a reverse proxy like nginx), the `response.json()` call on line 79 throws `SyntaxError`. The outer catch (line 84) increments `consecutiveFailures` and opens the circuit breaker for 30 seconds. After 3 such failures, the circuit breaker stays open, and all rate-limit checks fall through to the DB-backed limiter.
 
-**Concrete failure scenario:** A user leaves a polling tab in the background for 2 minutes. The `setInterval` is throttled by the browser. When the user returns, the visibility change handler fires and creates a new interval, but there's a small window where the old throttled interval may still fire before being cleared.
+This is incorrect behavior — a transient proxy error should not degrade the rate limiter. The circuit breaker should only open for genuine sidecar unreachability, not for parse errors on successful HTTP responses.
 
-**Fix:** Migrate to recursive `setTimeout` which inherently avoids catch-up behavior.
+**Concrete failure scenario:**
+1. Rate-limiter sidecar is behind nginx
+2. nginx temporarily returns 502 HTML page instead of proxying to the sidecar
+3. The `response.ok` check on line 74 fails, but wait — 502 means `response.ok` is `false`, so line 75-77 handles it correctly
+4. However, if the sidecar returns a 200 with non-JSON body (misconfigured), line 79 throws
+5. Circuit breaker opens for 30 seconds
+
+**Fix:** Add `.catch()` to `.json()` and treat parse errors separately from network failures.
 
 ---
 

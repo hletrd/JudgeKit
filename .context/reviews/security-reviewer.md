@@ -1,48 +1,40 @@
-# Security Review — RPF Cycle 29
+# Security Review — RPF Cycle 30
 
 **Date:** 2026-04-23
 **Reviewer:** security-reviewer
-**Base commit:** a51772ae
+**Base commit:** 31afd19b
 
 ## Previously Fixed Items (Verified)
 
+- Chat widget provider error sanitization (commit 93beb49d): Verified. All 6 provider error sites now use `throw new Error(`...API error ${response.status}`)` without `${text}`. Full response body logged server-side via `logger.warn()`.
 - console.error gating (14 components): Verified
 - bulk-create raw err.message truncation: Verified
 - SSRF via test-connection endpoint: Mitigated (uses stored keys, model validation)
 - `sanitizeHtml` root-relative img src: Deferred (LOW/LOW)
 
-## SEC-1: Chat widget provider `stream()` functions leak API error details to client [MEDIUM/MEDIUM]
+## SEC-1: `rate-limiter-client.ts` has unguarded `.json()` on success path [LOW/MEDIUM]
 
-**Files:**
-- `src/lib/plugins/chat-widget/providers.ts:101` — OpenAI: `throw new Error(`OpenAI API error ${response.status}: ${text}`)`
-- `src/lib/plugins/chat-widget/providers.ts:134-135` — OpenAI chatWithTools: same pattern
-- `src/lib/plugins/chat-widget/providers.ts:202` — Claude: `throw new Error(`Claude API error ${response.status}: ${text}`)`
+**File:** `src/lib/security/rate-limiter-client.ts:79`
 
-The `stream()` and `chatWithTools()` methods throw errors containing the full API response body. When the chat widget's route handler catches these errors, the raw error text could be forwarded to the client. The OpenAI/Claude error response bodies can contain sensitive information such as:
-- Account/organization IDs
-- Rate limit details
-- Internal error messages
+The `callRateLimiter` function calls `response.json()` without a `.catch()` guard on line 79:
 
-**Concrete failure scenario:** An OpenAI API call fails with a 403. The error response includes the organization ID and billing details. This information propagates up through the chat widget route handler and is sent to the client browser.
-
-**Fix:** Sanitize error messages before throwing. Replace the full response body with a generic message:
 ```typescript
-throw new Error(`OpenAI API error ${response.status}`);
-// Instead of:
-throw new Error(`OpenAI API error ${response.status}: ${text}`);
+const data = (await response.json()) as T;
 ```
 
-Log the full error server-side for debugging, but only expose the status code to the client.
+If the rate-limiter sidecar returns a non-JSON body (e.g., an HTML error page from a reverse proxy), this will throw a `SyntaxError`. The surrounding try/catch (line 63-89) catches this, but it increments `consecutiveFailures` and opens the circuit breaker as a result. A transient proxy error (returning HTML) would trip the circuit breaker, degrading the rate limiter for 30 seconds.
 
----
+This is the same class of issue tracked as DEFER-38 (unguarded `.json()` on success paths). The server-side API route handlers in `createApiHandler` already wrap `req.json()` in try/catch. The rate-limiter client is server-side code calling an internal sidecar, so the risk is lower than client-side `.json()` calls, but it still produces incorrect circuit-breaker behavior.
 
-## SEC-2: Chat widget error propagation chain may expose provider error details [LOW/MEDIUM]
-
-**File:** `src/app/api/v1/plugins/chat-widget/chat/route.ts`
-
-Following from SEC-1, the chat route handler catches errors from provider methods and may include the raw error message in the client-facing error response. Need to verify that the error handling chain properly sanitizes provider error messages before sending them to the client.
-
-**Fix:** Ensure the chat route handler wraps provider errors in generic user-facing messages and only logs the detailed error server-side.
+**Fix:** Add `.catch()` to the `.json()` call:
+```typescript
+const data = (await response.json().catch(() => null)) as T | null;
+if (data === null) {
+  consecutiveFailures++;
+  circuitOpenUntil = Date.now() + RECOVERY_WINDOW_MS;
+  return null;
+}
+```
 
 ---
 

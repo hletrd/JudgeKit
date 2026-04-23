@@ -1,35 +1,39 @@
-# Architecture Review — RPF Cycle 29
+# Architecture Review — RPF Cycle 30
 
 **Date:** 2026-04-23
 **Reviewer:** architect
-**Base commit:** a51772ae
+**Base commit:** 31afd19b
 
 ## Previously Fixed Items (Verified)
 
-- Code editor i18n: Fixed (commit 5c387c7b)
-- Contest replay setInterval: Fixed (commit 9cc30d51)
+- Clarification i18n: Fixed (commit 7e0b3bb8)
+- Provider error sanitization: Fixed (commit 93beb49d)
+- useVisibilityPolling setTimeout: Fixed (commit 60f24288)
+- Progress bar aria-label: Fixed (commit 3530a989)
 
-## ARCH-1: Hardcoded English answer text in clarifications breaks i18n architectural consistency [MEDIUM/HIGH]
+## ARCH-1: `countdown-timer.tsx` is the last client-side timer using `setInterval` — architectural inconsistency [MEDIUM/MEDIUM]
 
-**File:** `src/components/contest/contest-clarifications.tsx:290-296`
+**File:** `src/components/exam/countdown-timer.tsx:117`
 
-The codebase has a strong architectural convention of i18n-first design — all user-facing strings go through `useTranslations()`. The quick-answer buttons ("Yes", "No", "No comment") violate this convention by passing hardcoded English strings as API payloads. This is architecturally worse than the previous code-editor issue (AGG-1 from cycle 28) because:
+The codebase has converged on recursive `setTimeout` as the architectural standard for all timer-based effects. The `useVisibilityPolling` hook was migrated in cycle 29, and the contest-replay component in cycle 28. The countdown timer is now the only remaining client-side timer using `setInterval`.
 
-1. The strings are not just displayed — they are **persisted to the database** as answer content
-2. They become the canonical answer shown to all participants, regardless of locale
-3. The `answerType` enum ("yes", "no", "no_comment") already encodes the semantic meaning — the text is redundant display content that should be localized
+This is an exam countdown timer — arguably the most important timer in the application from a user impact perspective. Students rely on accurate time remaining during proctored exams. The architectural inconsistency is more concerning here than in the polling hook because:
 
-**Fix:** Add i18n keys for the answer text. The `answerType` field determines the semantic meaning; the `answer` field should contain the localized human-readable text.
+1. The countdown timer's accuracy directly affects student experience during high-stakes assessments
+2. `setInterval` catch-up behavior in background tabs can cause momentary incorrect display
+3. The `visibilitychange` handler provides a safety net but is reactive, not preventive
+
+**Fix:** Migrate to recursive `setTimeout` to complete the architectural convergence on this timer pattern.
 
 ---
 
-## ARCH-2: `useVisibilityPolling` is the only shared hook still using `setInterval` [LOW/LOW]
+## ARCH-2: Chat widget `sendMessage` has unstable `messages` dependency causing callback churn [LOW/LOW]
 
-**File:** `src/hooks/use-visibility-polling.ts:55`
+**File:** `src/lib/plugins/chat-widget/chat-widget.tsx:215`
 
-The codebase has established a convention of using recursive `setTimeout` for timer-based effects (contest-replay, countdown-timer, anti-cheat-monitor). The `useVisibilityPolling` hook is the exception, still using `setInterval`. While functionally correct (the visibility change handler mitigates drift), this creates an inconsistency in the timer architecture pattern.
+The `sendMessage` useCallback includes `messages` in its dependency array. Since `messages` state changes on every sent/received message, the callback is recreated frequently, causing downstream `handleSend` and `handleKeyDown` to also be recreated. This is a minor architectural concern about unnecessary re-renders, not a functional bug.
 
-**Fix:** Migrate to recursive `setTimeout` for architectural consistency. This also improves the jitter mechanism's effectiveness since each tick would independently schedule the next.
+**Fix:** Use a ref for messages within the callback to stabilize the dependency array.
 
 ---
 

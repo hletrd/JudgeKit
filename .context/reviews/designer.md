@@ -1,33 +1,38 @@
-# UI/UX Review — RPF Cycle 29
+# UI/UX Review — RPF Cycle 30
 
 **Date:** 2026-04-23
 **Reviewer:** designer
-**Base commit:** a51772ae
+**Base commit:** 31afd19b
 
 ## Previously Fixed Items (Verified)
 
-- Code editor i18n (fullscreen/exit labels): Fixed (commit 5c387c7b)
-- Korean letter-spacing compliance: Maintained across codebase
+- Clarification i18n (quick-answer text): Fixed (commit 7e0b3bb8). Verified Korean translations.
+- Progress bar aria-label: Fixed (commit 3530a989). Verified `aria-label={tNav("progress")}`.
+- Korean letter-spacing compliance: Maintained across codebase. Verified conditional tracking only applied when `locale !== "ko"`.
 
-## DES-1: Clarification quick-answer buttons produce English text for Korean users [MEDIUM/HIGH]
+## DES-1: Exam countdown timer `setInterval` may cause momentary display glitch on tab switch [MEDIUM/MEDIUM]
 
-**File:** `src/components/contest/contest-clarifications.tsx:290-296`
+**File:** `src/components/exam/countdown-timer.tsx:117`
 
-**UX impact:** When a Korean-speaking contest organizer clicks the "Yes" quick-answer button (which is labeled with the Korean `t("quickYes")` key), the answer stored and displayed to participants is the English word "Yes" instead of the Korean equivalent. This creates a jarring language-switch experience for Korean participants reading clarifications.
+**UX impact:** During an exam, the countdown timer is the most critical UI element. If a student switches tabs and returns, the `setInterval` catch-up behavior may cause the timer display to briefly show an incorrect value before correcting. While the correction happens quickly, seeing the time "jump" can cause anxiety during a high-stakes exam.
 
-**Accessibility concern:** Screen readers in Korean locale will announce the English answer text, creating a language-switch announcement that disrupts the reading flow. WCAG 2.2 SC 3.1.2 (Language of Parts) requires that the human language of each passage can be programmatically determined.
+**Accessibility concern:** The `aria-live` region on line 145-146 announces threshold warnings. If the `setInterval` catch-up causes the `remaining` state to briefly cross a threshold boundary (e.g., from 5:01 to 4:59), the threshold announcement and toast may fire prematurely or incorrectly before the correct value is recalculated.
 
-**Fix:** Add i18n keys for the answer content and use them in the `handleAnswer` calls.
+The countdown timer's `role="timer"` (line 139) means screen readers may also announce the incorrect intermediate value.
+
+**Fix:** Migrate to recursive `setTimeout` to prevent catch-up behavior entirely, ensuring the timer display is always accurate.
 
 ---
 
-## DES-2: `active-timed-assignment-sidebar-panel` progress bar missing accessible label update [LOW/LOW]
+## DES-2: Chat widget minimized state does not show notification for new assistant messages [LOW/LOW]
 
-**File:** `src/components/layout/active-timed-assignment-sidebar-panel.tsx:172`
+**File:** `src/lib/plugins/chat-widget/chat-widget.tsx:245-260`
 
-The progress bar has `aria-valuenow={progressPercent}` but the `aria-valuenow` value is a number (percentage) without context. The progress bar's purpose is not described in an `aria-label` or `aria-labelledby` attribute. A screen reader user would hear a percentage value without knowing what it represents.
+When the chat widget is minimized (line 245-260), it shows a badge with the count of assistant messages. However, when a new message arrives while minimized, there is no visual animation or notification beyond the count badge updating. Users who are not watching the minimized widget may not notice new responses.
 
-**Fix:** Add `aria-label={tNav("progress")}` to the progress bar div to provide context for the percentage value.
+This is a minor UX improvement — not a functional bug.
+
+**Fix:** Could add a brief pulse animation on the minimized button when a new message arrives.
 
 ---
 
