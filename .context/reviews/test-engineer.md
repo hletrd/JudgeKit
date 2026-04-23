@@ -1,42 +1,39 @@
-# Test Engineer Review — RPF Cycle 46
+# Test Engineer Review — RPF Cycle 47
 
 **Date:** 2026-04-23
 **Reviewer:** test-engineer
-**Base commit:** 54cb92ed
+**Base commit:** f8ba7334
 
 ## Inventory of Files Reviewed
 
-- `src/lib/assignments/submissions.ts` — Submission validation (testability)
-- `src/lib/assignments/contest-scoring.ts` — Contest ranking (cache testability)
-- `src/lib/assignments/contest-analytics.ts` — Contest analytics
-- `src/lib/realtime/realtime-coordination.ts` — SSE coordination (testability)
-- `src/app/api/v1/submissions/route.ts` — Submission creation
-- `src/app/(dashboard)/dashboard/contests/page.tsx` — Contests page
+- `src/lib/security/api-rate-limit.ts` — Rate limiting (testability)
+- `src/lib/realtime/realtime-coordination.ts` — Verified cycle 46 fix
+- `src/app/(dashboard)/dashboard/problems/create/create-problem-form.tsx` — Zip import
 
 ## Previously Fixed Items (Verified)
 
-- `getDbNowUncached` mocked in submissions unit tests (commit fd39f76d): PASS
+- `getDbNowUncached` mocked in submissions unit tests: PASS
 
 ## New Findings
 
-### TE-1: Contests page `statusMap.get()!` pattern is not covered by null-guard tests [MEDIUM/LOW]
+### TE-1: `checkServerActionRateLimit` uses `Date.now()` making it untestable under simulated clock skew [MEDIUM/MEDIUM]
 
-**File:** `src/app/(dashboard)/dashboard/contests/page.tsx:109,178`
+**File:** `src/lib/security/api-rate-limit.ts:215`
 
-**Description:** The `statusMap.get(c.id)!` pattern in the contests page has no null guard, meaning there is no test for what happens if the map lookup returns undefined. While the map is constructed from the same data source, this means any future refactoring that changes the map construction or filtering order could silently introduce a runtime error with no test coverage.
+**Description:** `checkServerActionRateLimit` uses `Date.now()` directly inside a transaction, making it impossible to write deterministic tests for clock-skew scenarios. If this function used `getDbNowUncached()`, tests could mock the DB time function to verify behavior under various clock-skew conditions, consistent with the pattern applied to `realtime-coordination.ts` in cycle 46.
 
-**Fix:** Replace with null-safe alternatives and add a test case for empty/missing status.
+**Fix:** Use `getDbNowUncached()` at the start of the transaction.
 
 **Confidence:** Medium
 
 ---
 
-### TE-2: `realtime-coordination.ts` functions use `Date.now()` making them untestable under simulated clock skew [MEDIUM/MEDIUM]
+### TE-2: Zip import `fileMap.get(key)!` not tested for null guard [LOW/LOW]
 
-**File:** `src/lib/realtime/realtime-coordination.ts:88,148`
+**File:** `src/app/(dashboard)/dashboard/problems/create/create-problem-form.tsx:196`
 
-**Description:** Both `acquireSharedSseConnectionSlot` and `shouldRecordSharedHeartbeat` use `Date.now()` directly inside transactions, making it impossible to write deterministic tests for clock-skew scenarios. If these functions used `getDbNowUncached()`, tests could mock the DB time function to verify behavior under various clock-skew conditions.
+**Description:** The only remaining `Map.get()!` in the codebase. While technically safe (key comes from the map's own keys iterator), no test covers what happens if the map lookup returns undefined.
 
-**Fix:** Use `getDbNowUncached()` at the start of each transaction, consistent with the pattern already applied to `validateAssignmentSubmission`, the submission rate-limit, and the assignment PATCH route.
+**Fix:** Replace with null guard.
 
-**Confidence:** Medium
+**Confidence:** Low

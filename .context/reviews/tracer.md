@@ -1,30 +1,28 @@
-# Tracer Review — RPF Cycle 46
+# Tracer Review — RPF Cycle 47
 
 **Date:** 2026-04-23
 **Reviewer:** tracer
-**Base commit:** 54cb92ed
+**Base commit:** f8ba7334
 
 ## Causal Tracing of Suspicious Flows
 
-### TR-1: `acquireSharedSseConnectionSlot` uses `Date.now()` for DB-timestamp comparisons — clock-skew in SSE slot management [MEDIUM/MEDIUM]
+### TR-1: `checkServerActionRateLimit` uses `Date.now()` for DB-timestamp comparisons — clock-skew in server action rate limiting [MEDIUM/MEDIUM]
 
-**File:** `src/lib/realtime/realtime-coordination.ts:88-131`
+**File:** `src/lib/security/api-rate-limit.ts:215-234`
 
 **Causal trace:**
-1. Client opens SSE connection to `/api/v1/submissions/[id]/events`
-2. `acquireSharedSseConnectionSlot` is called
-3. Line 88: `const nowMs = Date.now();` — app-server wall clock
-4. Line 89: `const expiresAt = nowMs + timeoutMs + 30_000;` — computed from app-server time
-5. Line 95: `lt(rateLimits.blockedUntil, nowMs)` — DB-stored `blockedUntil` compared against app-server time
-6. Line 108: `gte(rateLimits.blockedUntil, nowMs)` — same comparison for active slot count
-7. Line 120-128: New slot inserted with `expiresAt` computed from app-server time
+1. User invokes a server action (e.g., role edit)
+2. `checkServerActionRateLimit` is called
+3. Line 215: `const now = Date.now();` — app-server wall clock
+4. Line 234: `existing.windowStartedAt + windowMs <= now` — DB-stored `windowStartedAt` compared against app-server time
+5. Line 252: `windowStartedAt: now` — app-server time written to DB
 
-Steps 5-6 cross a trust boundary: app-server time (untrusted relative to DB) is compared against DB-stored timestamps. Step 7 writes a `blockedUntil` and `windowStartedAt` computed from app-server time into the DB, mixing clock sources.
+Steps 4-5 cross a trust boundary: app-server time is compared against and then written to DB-stored timestamps, mixing clock sources within a transaction.
 
 **Competing hypotheses:**
-- H1: Clock skew is negligible in production (container NTP syncs). **Rejected:** The codebase has fixed clock-skew bugs in at least 6 previous cycles, indicating it is a real production concern.
-- H2: SSE slot expiry is approximate and a few seconds of skew is acceptable. **Partially accepted:** The 30-second buffer on line 89 (`timeoutMs + 30_000`) mitigates some skew, but stale slot eviction (step 5) could incorrectly evict valid slots or retain expired ones.
+- H1: Clock skew is negligible in production. **Rejected:** The codebase has fixed clock-skew bugs in at least 7 previous cycles.
+- H2: Server actions are low-frequency, so the impact is minimal. **Partially accepted:** Server actions are called less frequently than API endpoints, but role/group management actions are security-sensitive — an extra allowance could permit unauthorized privilege escalation within the window.
 
-**Fix:** Use `getDbNowUncached()` for `nowMs` inside the transaction, consistent with the pattern in `validateAssignmentSubmission` and `atomicConsumeRateLimit`.
+**Fix:** Use `getDbNowUncached()` for `now` inside the transaction, consistent with the pattern in `realtime-coordination.ts` and `validateAssignmentSubmission`.
 
 **Confidence:** Medium

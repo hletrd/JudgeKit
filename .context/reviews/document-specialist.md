@@ -1,33 +1,29 @@
-# Document Specialist Review — RPF Cycle 46
+# Document Specialist Review — RPF Cycle 47
 
 **Date:** 2026-04-23
 **Reviewer:** document-specialist
-**Base commit:** 54cb92ed
+**Base commit:** f8ba7334
 
 ## Inventory of Documentation Reviewed
 
-- `CLAUDE.md` — Project rules
-- `src/lib/assignments/submissions.ts` — Comment on clock-skew fix (verified)
-- `src/lib/assignments/active-timed-assignments.ts` — Good example of clock-skew documentation
-- `src/lib/realtime/realtime-coordination.ts` — Missing comment about Date.now clock-skew risk
-- `src/lib/security/api-rate-limit.ts` — Missing comment about Date.now vs DB time
+- `src/lib/realtime/realtime-coordination.ts` — Clock-skew comment (verified)
+- `src/lib/security/api-rate-limit.ts` — Missing clock-skew comment for checkServerActionRateLimit
+- `src/lib/assignments/submissions.ts` — Clock-skew comment (verified)
 
 ## Previously Fixed Items (Verified)
 
-- Import TABLE_MAP drift warning comment: Fixed
-- Recruiting-constants JSDoc: Present
-- Submission route rate-limit comment: Present
 - `validateAssignmentSubmission` clock-skew comment: Present (added in cycle 45)
+- `realtime-coordination.ts` clock-skew comments: Present (added in cycle 46)
 
 ## New Findings
 
-### DOC-1: `realtime-coordination.ts` uses `Date.now()` without comment about clock-skew risk [LOW/LOW]
+### DOC-1: `checkServerActionRateLimit` uses `Date.now()` without comment about clock-skew risk [LOW/LOW]
 
-**File:** `src/lib/realtime/realtime-coordination.ts:88,148`
+**File:** `src/lib/security/api-rate-limit.ts:215`
 
-**Description:** The `acquireSharedSseConnectionSlot` and `shouldRecordSharedHeartbeat` functions use `Date.now()` at lines 88 and 148 to compare against DB-stored timestamps without any comment explaining the inconsistency with the codebase convention of using `getDbNowUncached()`. The `submissions.ts` module now has an excellent comment: "Use DB server time for deadline checks to avoid clock skew between app and DB servers, consistent with other schedule checks." A similar comment should exist here, or preferably the code should be fixed.
+**Description:** The function uses `Date.now()` at line 215 to compare against DB-stored timestamps without any comment explaining the inconsistency with the codebase convention of using `getDbNowUncached()`. If the clock-skew issue is fixed, a comment similar to those in `realtime-coordination.ts` should be added.
 
-**Fix:** If the clock-skew issue is fixed, add a comment. If deferred, add a `// TODO(clock-skew)` comment for visibility.
+**Fix:** If fixed, add a comment. If deferred, add a `// TODO(clock-skew)` comment for visibility.
 
 **Confidence:** Low
 

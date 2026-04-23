@@ -1,103 +1,76 @@
-# Code Review — RPF Cycle 46
+# Code Review — RPF Cycle 47
 
 **Date:** 2026-04-23
 **Reviewer:** code-reviewer
-**Base commit:** 54cb92ed
+**Base commit:** f8ba7334
 
 ## Inventory of Files Reviewed
 
-- `src/lib/assignments/submissions.ts` — Submission validation (verified cycle 45 fix)
-- `src/lib/assignments/contest-scoring.ts` — Contest ranking
-- `src/lib/assignments/contest-analytics.ts` — Contest analytics
-- `src/lib/assignments/recruiting-invitations.ts` — Recruiting token flow
-- `src/lib/assignments/leaderboard.ts` — Leaderboard freeze
-- `src/lib/security/api-rate-limit.ts` — API rate limiting
-- `src/lib/realtime/realtime-coordination.ts` — SSE connection management
-- `src/app/api/v1/submissions/route.ts` — Submission creation
-- `src/app/api/v1/submissions/[id]/events/route.ts` — SSE events
-- `src/app/api/v1/contests/[assignmentId]/anti-cheat/route.ts` — Anti-cheat events
-- `src/app/(dashboard)/dashboard/contests/page.tsx` — Contests page
-- `src/app/(dashboard)/dashboard/_components/candidate-dashboard.tsx` — Candidate dashboard
-- `src/app/(public)/practice/page.tsx` — Practice page
-- `src/app/(dashboard)/dashboard/problems/create/create-problem-form.tsx` — Problem import
-- `src/proxy.ts` — Auth proxy
-- `src/lib/security/password-hash.ts` — Password hashing
-- `src/lib/security/encryption.ts` — Encryption utilities
+- `src/lib/realtime/realtime-coordination.ts` — Verified cycle 46 fix (getDbNowUncached)
+- `src/app/(dashboard)/dashboard/contests/page.tsx` — Verified cycle 46 fix (null guards)
+- `src/lib/assignments/contest-scoring.ts` — Verified cycle 46 fix (deterministic tie-breaking)
+- `src/app/(dashboard)/dashboard/_components/candidate-dashboard.tsx` — Verified cycle 46 fix (null guards)
+- `src/app/(public)/practice/page.tsx` — Reviewed remaining pattern
+- `src/app/(dashboard)/dashboard/problems/create/create-problem-form.tsx` — Zip import non-null assertion
+- `src/lib/assignments/contest-analytics.ts` — Student progression uses raw scores without late penalty
+- `src/lib/assignments/leaderboard.ts` — Date.now() for freeze comparison
+- `src/lib/security/api-rate-limit.ts` — checkServerActionRateLimit Date.now() in DB transaction
+- `src/lib/assignments/submissions.ts` — Verified cycle 45 fix
 
 ## Previously Fixed Items (Verified)
 
-- `validateAssignmentSubmission` uses `getDbNowUncached()` for deadline enforcement: PASS (line 210)
-- Non-null assertions replaced with null guards in client components: PASS (cycle 45)
-- Map.get() non-null assertions replaced in contest-scoring, submissions, contest-analytics: PASS
-- Submission rate-limit uses `getDbNowUncached()` for clock-skew consistency: PASS
-- Contest join route has explicit `auth: true`: PASS
+- `realtime-coordination.ts` uses `getDbNowUncached()` for SSE slot and heartbeat: PASS
+- Contests page uses `statusMap.get(c.id) ?? "closed"` null guards: PASS
+- `contest-scoring.ts` IOI sort uses deterministic tie-breaking: PASS
+- Candidate dashboard uses `?? []` null guard: PASS
+- `validateAssignmentSubmission` uses `getDbNowUncached()`: PASS
 
 ## New Findings
 
-### CR-1: Non-null assertions on `Map.get()` in contests page — two instances [MEDIUM/MEDIUM]
+### CR-1: `checkServerActionRateLimit` uses `Date.now()` inside a DB transaction — clock-skew risk [MEDIUM/MEDIUM]
 
-**Files:**
-1. `src/app/(dashboard)/dashboard/contests/page.tsx:109` — `statusMatchesFilter(statusMap.get(c.id)!, filter)`
-2. `src/app/(dashboard)/dashboard/contests/page.tsx:178` — `const status = statusMap.get(contest.id)!;`
+**File:** `src/lib/security/api-rate-limit.ts:215`
 
-**Description:** The contests page builds a `statusMap` from the contests array and then uses non-null assertions to look up each contest's status. While the map is built from the same array being iterated, this pattern is inconsistent with the codebase's recent migration away from `!.get()` patterns (cycles 43-45 replaced these in contest-scoring.ts, submissions.ts, contest-analytics.ts, and multiple client components).
+**Description:** The `checkServerActionRateLimit` function captures `const now = Date.now()` at line 215 and uses it inside an `execTransaction` to compare against DB-stored `windowStartedAt` (line 234). This is the same clock-skew class that was fixed in `atomicConsumeRateLimit` (noted as prior AGG-2 in cycle 45 aggregate, deferred for that function due to hot-path concerns) and `realtime-coordination.ts` (fixed in cycle 46).
 
-These are technically safe because the map is populated immediately before use from the same data source, but they are fragile — if a contest were removed between the map construction and the iteration (e.g., due to a React re-render), the assertion would throw.
+Unlike `atomicConsumeRateLimit` (which is called on every API request and runs on the hot path), `checkServerActionRateLimit` is called for server actions with much lower frequency (role edits, group management). The DB round-trip cost of `getDbNowUncached()` is acceptable here.
 
-**Fix:** Use optional chaining with a fallback:
+**Concrete failure scenario:** App server clock is 5 seconds behind DB. A user performs a server action at DB time 10:00:55. Their previous `windowStartedAt` was set at DB time 10:00:00. The check `existing.windowStartedAt + windowMs <= now` becomes `10:00:00 + 60000 <= (10:00:50 * 1000)` which evaluates as `60000 <= 50000` — false. The old window is not expired yet (correct). But if the app is ahead by 5 seconds: `60000 <= 65000` — true, the window is expired prematurely, and the user's rate-limit counter resets, allowing more requests than configured.
+
+**Fix:** Use `getDbNowUncached()` at the start of the transaction:
 ```typescript
-statusMatchesFilter(statusMap.get(c.id) ?? "closed", filter)
+const now = (await getDbNowUncached()).getTime();
 ```
 
 **Confidence:** Medium
 
 ---
 
-### CR-2: Non-null assertion on `Map.get()` in candidate dashboard [LOW/LOW]
+### CR-2: Zip import uses `fileMap.get(key)!` non-null assertion — technically safe but inconsistent [LOW/LOW]
 
-**File:** `src/app/(dashboard)/dashboard/_components/candidate-dashboard.tsx:595`
+**File:** `src/app/(dashboard)/dashboard/problems/create/create-problem-form.tsx:196`
 
-**Description:** `assignmentProblemProgressMap.get(assignment.assignmentId)!` is guarded by the conditional on line 588 that checks `.length`, which implies the map entry exists. This is technically safe but inconsistent with the codebase trend.
+**Description:** `const pair = fileMap.get(key)!;` — the key comes from iterating `fileMap.keys()`, so the assertion is technically safe. However, the codebase has systematically replaced `Map.get()!` patterns with null-safe alternatives across cycles 43-46. This is the only remaining instance.
 
-**Fix:** Use optional chaining with fallback:
-```typescript
-const problems = assignmentProblemProgressMap.get(assignment.assignmentId) ?? [];
-```
+**Fix:** Use null guard: `const pair = fileMap.get(key); if (!pair) continue;`
 
 **Confidence:** Low
 
 ---
 
-### CR-3: Non-null assertion on `resolvedSearchParams!.sort` in practice page [LOW/LOW]
+### CR-3: Practice page `resolvedSearchParams?.sort as SortOption` — unsafe type assertion [LOW/LOW]
 
-**File:** `src/app/(public)/practice/page.tsx:129`
+**File:** `src/app/(public)/practice/page.tsx:128-129`
 
-**Description:** `resolvedSearchParams!.sort as SortOption` — the non-null assertion is used because the preceding `SORT_VALUES.includes()` check already validated the value is a valid sort option. However, the `!` assertion bypasses null/undefined checks even though `resolvedSearchParams` could be undefined (it's typed as `Promise<...> | undefined`).
+**Description:** The code `SORT_VALUES.includes(resolvedSearchParams?.sort as SortOption) ? (resolvedSearchParams?.sort as SortOption) : "number_asc"` casts `resolvedSearchParams?.sort` (which is `string | undefined`) as `SortOption` before the `includes` check validates it. The `as SortOption` assertion tells TypeScript the value is a `SortOption` when it may not be. The `includes` check does validate the runtime value, so this is safe in practice, but the type assertion is misleading.
 
-The logic is technically safe because if `resolvedSearchParams` is undefined, the `includes` check returns false and the ternary falls through to `"number_asc"`. But the `!` is unnecessary and misleading.
-
-**Fix:** Remove the `!` and use optional chaining:
+**Fix:** Use a type-safe approach:
 ```typescript
-const currentSort: SortOption = SORT_VALUES.includes(resolvedSearchParams?.sort as SortOption)
-  ? (resolvedSearchParams?.sort as SortOption)
+const sortValue = resolvedSearchParams?.sort;
+const currentSort: SortOption = SORT_VALUES.includes(sortValue as SortOption)
+  ? (sortValue as SortOption)
   : "number_asc";
 ```
-
-**Confidence:** Low
-
----
-
-### CR-4: IOI leaderboard sort uses subtraction for floating-point scores — potential sort instability [LOW/LOW]
-
-**File:** `src/lib/assignments/contest-scoring.ts:359`
-
-**Description:** `entries.sort((a, b) => b.totalScore - a.totalScore)` uses subtraction for sorting IOI scores. While the scores are rounded to 2 decimal places (line 322), floating-point subtraction can still produce tiny non-zero differences for mathematically equal values (e.g., `80.03 - 80.03` could be `1.42e-14` instead of `0`). The `isScoreTied()` function at line 340 handles this for rank assignment, but the sort itself may place tied entries in a non-deterministic order.
-
-This is cosmetic — tied entries get the same rank regardless of sort order. But it could cause the leaderboard order to change between requests for tied users, which may confuse students.
-
-**Fix:** Add a secondary sort key (e.g., user ID) for deterministic tie-breaking:
-```typescript
-entries.sort((a, b) => b.totalScore - a.totalScore || a.userId.localeCompare(b.userId));
-```
+Or better, use a type guard. This is a cosmetic inconsistency, not a bug.
 
 **Confidence:** Low
