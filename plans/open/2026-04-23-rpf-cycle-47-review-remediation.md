@@ -48,5 +48,5 @@ All prior deferred items from cycles 37-46 remain deferred as documented in `_ag
 
 ## Progress
 
-- [ ] Lane 1: checkServerActionRateLimit clock-skew fix
-- [ ] Lane 2: Zip import fileMap.get()! null guard
+- [x] Lane 1: checkServerActionRateLimit clock-skew fix (commit cbe83435)
+- [x] Lane 2: Zip import fileMap.get()! null guard (commit 4a497b7d)
