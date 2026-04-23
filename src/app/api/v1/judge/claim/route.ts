@@ -16,6 +16,7 @@ import { extractClientIp } from "@/lib/security/ip";
 import { deserializeStoredJudgeCommand } from "@/lib/judge/languages";
 
 import { getConfiguredSettings } from "@/lib/system-settings-config";
+import { getDbNowUncached } from "@/lib/db-time";
 
 const claimedSubmissionRowSchema = z.object({
   id: z.string(),
@@ -119,7 +120,10 @@ export async function POST(request: NextRequest) {
     }
 
     const claimToken = nanoid();
-    const claimCreatedAt = Date.now();
+    // Use DB server time for claimCreatedAt to avoid clock skew between app
+    // and DB servers. The stale claim detection compares judge_claimed_at
+    // against NOW() in SQL, so the timestamp must be DB-consistent.
+    const claimCreatedAt = (await getDbNowUncached()).getTime();
 
     const staleClaimTimeoutMs = getConfiguredSettings().staleClaimTimeoutMs;
     const claimSql = workerId
