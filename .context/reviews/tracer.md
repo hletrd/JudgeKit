@@ -1,80 +1,69 @@
-# Tracer Review — RPF Cycle 14
+# Tracer Review — RPF Cycle 15
 
 **Date:** 2026-04-22
 **Reviewer:** tracer
-**Base commit:** 023ae5d4
+**Base commit:** 6c07a08d
 
 ## Previously Fixed Items (Verified)
 
-All cycle 13 tracer findings are fixed:
-- TR-1 (chat-logs-client.tsx missing res.ok check): Fixed
-- TR-2 (workers-client.tsx icon-only buttons): Fixed
-- TR-3 (recruiter-candidates-panel.tsx unguarded res.json()): Fixed
+All cycle 14 tracer findings are fixed:
+- TR-1 (double `res.json()` in create-problem-form): Fixed — single parse + `.catch()` guard
+- TR-2 (problem-export-button null-safety): Fixed — null-safe access
+- TR-3 (problem-import-button file size validation): Fixed — 10MB limit
 
 ## Findings
 
-### TR-1: `create-problem-form.tsx` — causal trace: double `res.json()` consumes response body [MEDIUM/MEDIUM]
+### TR-1: `recruiting-invitations-panel.tsx:137` — causal trace: unguarded `res.json()` on success path [MEDIUM/MEDIUM]
 
-**File:** `src/app/(dashboard)/dashboard/problems/create/create-problem-form.tsx:332,336` and `423,427`
+**Description:** Causal trace when the API returns a non-JSON 200 response:
 
-**Description:** Causal trace of what happens if the error path is refactored to not throw:
+1. User opens the recruiting invitations panel
+2. `fetchInvitations` calls `apiFetch(...)` on line 133
+3. Server returns 200 but with HTML body (e.g., CDN injects error page)
+4. Line 136: `invRes.ok` is `true`
+5. Line 137: `await invRes.json()` throws SyntaxError: "Unexpected token <"
+6. Line 140: catch block shows `t("fetchError")` toast
+7. User sees generic "fetch error" with no indication that the response was malformed
+8. User refreshes — same error persists until CDN is fixed
 
-1. User uploads an image on the problem create form
-2. API returns 200 with valid JSON on line 332: `const data = await res.json().catch(() => ({}))`
-3. Response body is now consumed
-4. Code reaches line 336: `const { data } = await res.json()`
-5. `res.json()` throws "body already consumed" TypeError
-6. Outer catch shows "imageUploadError" toast
-7. Image upload appears to fail even though the server succeeded
+**Hypothesis 1 (confirmed):** The unguarded `.json()` on the success path can throw when the response is non-JSON, even though `res.ok` is true.
 
-**Hypothesis 1 (confirmed):** The dual-read pattern is a latent bug. The error path's `throw` currently prevents the second read, but this is fragile.
+**Alternative hypothesis (rejected):** The CDN would return a non-200 status. Rejected — CDNs often return 200 with HTML error pages.
 
-**Alternative hypothesis (rejected):** The `.catch()` on line 332 prevents the body from being consumed. Rejected — `.catch()` only catches the parsing error, not the consumption.
-
-**Fix:** Parse response once and branch on `res.ok`.
+**Fix:** Add `.catch(() => ({ data: [] }))` or use `apiFetchJson`.
 
 **Confidence:** HIGH
 
 ---
 
-### TR-2: `problem-export-button.tsx` — causal trace: null dereference on unexpected API response shape [LOW/MEDIUM]
+### TR-2: `workers-client.tsx:235,241` — causal trace: unguarded `res.json()` on success paths [MEDIUM/MEDIUM]
 
-**File:** `src/app/(dashboard)/dashboard/problems/[id]/problem-export-button.tsx:19-24`
+**Description:** Same causal trace as TR-1, but for the workers admin page. If the workers API or stats API returns a 200 with non-JSON body, both `.json()` calls throw SyntaxError. The catch block shows generic "fetchError" toast.
 
-**Description:** Causal trace when the export API returns valid 200 but unexpected shape:
+**Fix:** Add `.catch()` guards or use `apiFetchJson`.
 
-1. User clicks "Export Problem"
-2. API returns 200 with `{"data": {"id": "123"}}` (missing `problem` field)
-3. Line 19: `const data = await res.json()` — succeeds
-4. Line 20: `const blob = new Blob([JSON.stringify(data.data, null, 2)])` — works (data.data exists)
-5. Line 24: `data.data.problem.title` — `data.data.problem` is `undefined`
-6. TypeError: "Cannot read properties of undefined (reading 'title')"
-7. Outer catch shows "exportFailed" toast
+**Confidence:** HIGH
 
-**Fix:** Add null-safe access: `data?.data?.problem?.title ?? "problem"`.
+---
+
+### TR-3: `recruiting-invitations-panel.tsx:99` — causal trace: `window.location.origin` for invitation URLs [MEDIUM/MEDIUM]
+
+**Description:** Carried from cycle 14. Causal trace when the app is behind a reverse proxy:
+
+1. App is deployed behind nginx at `algo.xylolabs.com`
+2. Nginx proxies to Next.js on `localhost:3000`
+3. `window.location.origin` resolves to `http://localhost:3000` on the client
+4. Wait — on the client side, `window.location.origin` would resolve to the public URL since the browser sees the public domain
+5. BUT if the app uses SSR with a misconfigured proxy that doesn't set `X-Forwarded-Host`, the client could see the internal URL in some edge cases
+
+**Revised hypothesis:** The risk is lower than initially assessed because `window.location.origin` resolves on the client side (browser), which sees the public URL. The risk only applies in unusual proxy configurations where the browser sees an internal hostname.
+
+**Fix:** Use server-provided `appUrl` for consistency and to handle edge cases.
 
 **Confidence:** MEDIUM
 
 ---
 
-### TR-3: `problem-import-button.tsx` — causal trace: oversized file crashes browser tab [MEDIUM/MEDIUM]
-
-**File:** `src/app/(dashboard)/dashboard/problems/problem-import-button.tsx:22-23`
-
-**Description:** Carried from cycle 13. Causal trace when a user uploads a large file:
-
-1. User selects a 500MB JSON file
-2. Line 22: `const text = await file.text()` — starts reading 500MB into memory
-3. Browser memory usage spikes
-4. Tab becomes unresponsive or crashes with out-of-memory
-5. No error is shown — the tab simply freezes
-
-**Fix:** Add file size check before `file.text()`.
-
-**Confidence:** HIGH
-
----
-
 ## Final Sweep
 
-The cycle 13 fixes are properly implemented. The key new finding is the double `res.json()` latent bug in create-problem-form.tsx — a causal trace shows it would break if the error path were refactored. The file size validation issue is carried from cycle 13.
+The 4 remaining unguarded `.json()` calls in 2 files are the primary concern. The causal traces show they can fail when a 200 response has a non-JSON body. The `window.location.origin` risk is lower than initially assessed since it resolves on the client side, but using a server-provided config remains the safer approach.

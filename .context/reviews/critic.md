@@ -1,68 +1,54 @@
-# Critic Review — RPF Cycle 14
+# Critic Review — RPF Cycle 15
 
 **Date:** 2026-04-22
 **Reviewer:** critic
-**Base commit:** 023ae5d4
+**Base commit:** 6c07a08d
 
 ## Previously Fixed Items (Verified)
 
-All cycle 13 critic findings are fixed:
-- CRI-1 (workers-client.tsx icon-only buttons): Fixed — all six buttons now have `aria-label`
-- CRI-2 (inconsistent res.json() error handling — chat-logs): Fixed — `res.ok` check and `.catch()` added
-- CRI-3 (group-instructors-manager.tsx remove button): Fixed — `aria-label` added
+All cycle 14 critic findings are fixed:
+- CRI-1 (systemic unguarded `res.json()` pattern): Partially fixed — `apiFetchJson` helper created, 4 components migrated, but 2 components remain
+- CRI-2 (double `res.json()` in create-problem-form): Fixed
+- CRI-3 (contest-join-client variable shadowing): Fixed
+- CRI-4 (problem-export-button null-safety): Fixed
 
 ## Findings
 
-### CRI-1: Systemic unguarded `res.json()` pattern — three cycles of partial fixes without systematic resolution [MEDIUM/HIGH]
+### CRI-1: `apiFetchJson` adoption incomplete — 4 success-path `.json()` calls remain [MEDIUM/MEDIUM]
 
-**Files:** See CR-1 in code-reviewer.md for full list (11+ components)
+**Files:**
+- `src/components/contest/recruiting-invitations-panel.tsx:137,152`
+- `src/app/(dashboard)/dashboard/admin/workers/workers-client.tsx:235,241`
 
-**Description:** This is the fourth cycle where unguarded `res.json()` calls are being identified. Cycle 11 found the pattern, cycle 12 fixed some, cycle 13 fixed more, and cycle 14 still finds 11+ components with the same issue. The piecemeal approach is not working. The codebase needs a systematic solution — either a centralized `apiFetchJson` helper or a linter rule that enforces `.catch()` on `res.json()` calls.
+**Description:** The cycle 14 `apiFetchJson` refactor addressed the root cause identified across cycles 11-14 by creating a centralized helper. However, the refactor was not fully applied — 4 `.json()` calls in 2 components were missed. This means the systemic issue identified across 4 cycles is not fully resolved.
 
-The fact that this keeps recurring as new findings in each cycle suggests the root cause — lack of a codified pattern — has not been addressed. Individual fixes keep being made but new instances appear in each review.
+The `recruiting-invitations-panel.tsx` is in the same feature area as the 4 refactored components, making the inconsistency particularly jarring. A developer working on contest features would see two different patterns in adjacent components.
 
-**Fix:** Create a centralized `apiFetchJson<T>(res: Response, fallback: T): Promise<T>` helper that handles `.json()` + `.catch()` in one call. Refactor all `res.json()` calls to use it. This would also make the code more DRY.
-
-**Confidence:** HIGH
-
----
-
-### CRI-2: `create-problem-form.tsx` consumes response body twice with `res.json()` [MEDIUM/MEDIUM]
-
-**File:** `src/app/(dashboard)/dashboard/problems/create/create-problem-form.tsx:332,336` and `423,427`
-
-**Description:** The code calls `await res.json()` on the error path (with `.catch()`), then calls `await res.json()` again on the success path. The first call consumes the response body. If the error path doesn't throw, the second call would fail with "body already consumed". This is a latent bug — currently the error path always throws, so the second `.json()` is reached only on success. But the dual-read pattern is fragile and could break with future refactoring.
-
-**Fix:** Parse the response once and branch based on `res.ok`:
-```ts
-const data = await res.json().catch(() => ({}));
-if (!res.ok) throw new Error(...);
-// use data for success
-```
+**Fix:** Complete the `apiFetchJson` migration for these 2 remaining components.
 
 **Confidence:** HIGH
 
 ---
 
-### CRI-3: `contest-join-client.tsx` variable shadowing — `payload` declared twice in same scope [LOW/MEDIUM]
+### CRI-2: `recruiting-invitations-panel.tsx` metadata remove button lacks `aria-label` [LOW/MEDIUM]
 
-**File:** `src/app/(dashboard)/dashboard/contests/join/contest-join-client.tsx:45,49`
+**File:** `src/components/contest/recruiting-invitations-panel.tsx:479-485`
 
-**Description:** `const payload` is declared on line 45 (error path) and again on line 49 (success path). The error path throws, so there's no runtime issue, but the shadowing is confusing and violates clean code principles.
+**Description:** The "remove metadata field" button is icon-only (Trash2 icon) but has no `aria-label`. This is the same class of accessibility issue that was fixed in cycles 11-13 for icon-only buttons. While this button uses `size="sm"` instead of `size="icon"`, it is functionally an icon-only button with no visible text label.
 
-**Fix:** Rename the error-path variable to `errorPayload`.
+**Fix:** Add `aria-label={t("removeField")}` or similar i18n key.
 
-**Confidence:** MEDIUM
+**Confidence:** HIGH
 
 ---
 
-### CRI-4: `problem-export-button.tsx` — no null-safety on nested property access after `res.json()` [LOW/MEDIUM]
+### CRI-3: Anti-cheat dashboard polling re-renders on every tick without data comparison — carried from CRI-1 (cycle 14) [MEDIUM/LOW]
 
-**File:** `src/app/(dashboard)/dashboard/problems/[id]/problem-export-button.tsx:19-24`
+**File:** `src/components/contest/anti-cheat-dashboard.tsx:128-136`
 
-**Description:** After calling `res.json()` on line 19, the code accesses `data.data.problem.title` on line 24 without any null checks. If the API returns a valid 200 with an unexpected shape (e.g., missing `problem` field), this throws a TypeError that gets caught by the generic catch, showing "exportFailed" with no diagnostic detail.
+**Description:** Carried from cycle 14. The polling callback always creates a new events array via `setEvents()`, even when the server data is identical. This causes unnecessary React re-renders and DOM updates every 30 seconds.
 
-**Fix:** Add null-safe access: `data?.data?.problem?.title ?? "problem"` and validate before proceeding.
+**Fix:** Add shallow comparison in the `setEvents` updater to skip updates when data is unchanged.
 
 **Confidence:** MEDIUM
 
@@ -70,4 +56,4 @@ if (!res.ok) throw new Error(...);
 
 ## Final Sweep
 
-The cycle 13 fixes are properly implemented. The key systemic issue this cycle is the recurring unguarded `res.json()` pattern — four cycles of partial fixes without addressing the root cause. The double `res.json()` in create-problem-form.tsx is a latent bug worth fixing. Variable shadowing and missing null checks are lower priority but improve code quality.
+The `apiFetchJson` helper was the right architectural fix, but its incomplete adoption means the systemic unguarded `.json()` issue is not fully resolved. The remaining 4 calls in 2 components should be a quick migration. A minor accessibility regression (icon-only button without `aria-label`) was found in the recruiting invitations panel's metadata section.
