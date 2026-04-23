@@ -648,7 +648,7 @@ export default function AssignmentFormDialog({
                           max={10000}
                           value={row.points}
                           onChange={(event) =>
-                            updateProblemRow(index, { points: Number(event.target.value) })
+                            updateProblemRow(index, { points: parseFloat(event.target.value) || 0 })
                           }
                           disabled={isLoading || !areProblemsEditable}
                         />
