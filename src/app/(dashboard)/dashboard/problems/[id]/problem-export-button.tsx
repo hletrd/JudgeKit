@@ -16,7 +16,11 @@ export function ProblemExportButton({ problemId }: { problemId: string }) {
         toast.error(t("exportFailed"));
         return;
       }
-      const data = await res.json();
+      const data = await res.json().catch(() => null);
+      if (!data?.data?.problem) {
+        toast.error(t("exportFailed"));
+        return;
+      }
       const blob = new Blob([JSON.stringify(data.data, null, 2)], { type: "application/json" });
       const url = URL.createObjectURL(blob);
       const a = document.createElement("a");
