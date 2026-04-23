@@ -27,6 +27,8 @@ export default function ChatWidget() {
   const inputRef = useRef<HTMLTextAreaElement>(null);
   const abortControllerRef = useRef<AbortController | null>(null);
   const [sessionId, setSessionId] = useState<string | null>(null);
+  const messagesRef = useRef(messages);
+  useEffect(() => { messagesRef.current = messages; }, [messages]);
 
   const pathname = usePathname();
   const searchParams = useSearchParams();
@@ -137,7 +139,7 @@ export default function ChatWidget() {
 
     setError(null);
     const userMessage: Message = { role: "user", content: text, displayContent: displayText };
-    const newMessages = [...messages, userMessage];
+    const newMessages = [...messagesRef.current, userMessage];
     setMessages(newMessages);
     setInput("");
     setIsStreaming(true);
@@ -212,7 +214,7 @@ export default function ChatWidget() {
       setIsStreaming(false);
       abortControllerRef.current = null;
     }
-  }, [editorContent?.code, editorContent?.language, isStreaming, messages, problemContext, sessionId, t]);
+  }, [editorContent?.code, editorContent?.language, isStreaming, problemContext, sessionId, t]);
 
   const handleSend = useCallback(async () => {
     void sendMessage(input.trim());
