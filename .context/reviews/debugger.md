@@ -1,69 +1,50 @@
-# Debugger Review — RPF Cycle 16
+# Debugger Review — RPF Cycle 18
 
 **Date:** 2026-04-22
 **Reviewer:** debugger
-**Base commit:** 9379c26b
+**Base commit:** d32f2517
 
-## Inventory of Review-Relevant Files
+## DBG-1: `participant-anti-cheat-timeline.tsx` polling replaces first page but may duplicate events if `loadMore` was used [MEDIUM/MEDIUM]
 
-Focus: latent bug surface, failure modes, unhandled exceptions, edge cases that could cause runtime errors.
+**File:** `src/components/contest/participant-anti-cheat-timeline.tsx:96-114`
+**Confidence:** MEDIUM
 
-## Findings
+When polling refreshes the first page of events, the code preserves events beyond `PAGE_SIZE` (from `loadMore`). However, if the total number of events increases between polls, the boundary between the first page and subsequent pages may overlap. The code assumes events at indices `0..PAGE_SIZE-1` come from the fresh fetch, and `PAGE_SIZE..end` from previous `loadMore` calls. If new events were added server-side that shift the offset boundary, the displayed events could have duplicates at the boundary.
 
-### DBG-1: `compiler-client.tsx:270` unguarded `res.json()` can throw SyntaxError in error handler [MEDIUM/HIGH]
+**Concrete failure:** If 5 new anti-cheat events are created between polls and the user has previously loaded 2 pages (100 events), the refreshed first 50 events will overlap with the previous first 50 events that are now at offset positions 55-104 on the server. The `slice(PAGE_SIZE)` preserves stale events 51-100, but these are now actually events 56-105 on the server.
 
-**File:** `src/components/code/compiler-client.tsx:267-275`
-**Confidence:** HIGH
-
-Also flagged by code-reviewer (CR-1), critic (CRI-2), verifier (V-1).
-
-When the server returns a non-JSON error body, the inner `try` block throws SyntaxError. The outer `catch` block then produces a generic error message:
-
-```
-Error path: res.ok = false -> try { res.json() } -> SyntaxError -> outer catch -> "Network error"
-```
-
-The failure mode is: user submits code, compiler runner is down (502), user sees "Network error" toast instead of something useful. The `res.statusText` is available but never used when the inner `.json()` throws.
-
-**Fix:** Add `.catch(() => ({}))` to the `res.json()` call at line 270.
+**Fix:** When polling, reset the full event list to just the first page instead of trying to preserve loaded-more pages. Alternatively, track event IDs and deduplicate.
 
 ---
 
-### DBG-2: `invite-participants.tsx` race condition on rapid search input [MEDIUM/MEDIUM]
+## DBG-2: `active-timed-assignment-sidebar-panel.tsx` timer doesn't account for clock drift in background tabs [LOW/LOW]
 
-**File:** `src/components/contest/invite-participants.tsx:34-64`
-**Confidence:** HIGH
-
-Also flagged by perf-reviewer (PERF-1), critic (CRI-3), verifier (V-4).
-
-The search function has no request cancellation. Rapid typing causes multiple overlapping requests. The last one to resolve wins, which may not correspond to the current search query. This can produce confusing UX where the displayed results don't match what the user typed.
-
-**Fix:** Add AbortController to cancel previous in-flight search requests.
-
----
-
-### DBG-3: `recruiter-candidates-panel.tsx` exports open `window.open` to `_blank` [LOW/LOW]
-
-**File:** `src/components/contest/recruiter-candidates-panel.tsx:90-98`
+**File:** `src/components/layout/active-timed-assignment-sidebar-panel.tsx:72-84`
 **Confidence:** LOW
 
-The CSV download uses `window.open(url, "_blank")` without `noopener,noreferrer`. This is a minor tab-napping risk where the opened page could access `window.opener`. Since these are same-origin API URLs, the risk is negligible.
+Unlike `countdown-timer.tsx` which recalculates on `visibilitychange`, the sidebar timer uses a simple `setInterval` without visibility awareness. When a user switches tabs and comes back, the timer may have drifted because browsers throttle `setInterval` in background tabs.
 
-**Fix:** Add `noopener,noreferrer` as a security best practice, or use `<a>` element with `download` attribute instead.
+**Concrete failure:** User switches tabs for 5 minutes, comes back, and the sidebar timer shows a stale value until it catches up on the next tick. Low severity because the timer auto-corrects within 1 second of returning.
+
+**Fix:** Add a `visibilitychange` listener to immediately recalculate `nowMs` when the tab becomes visible, similar to `countdown-timer.tsx`.
 
 ---
 
-### DBG-4: `anti-cheat-monitor.tsx` retry logic may accumulate timers if multiple events fail simultaneously [LOW/LOW]
+## DBG-3: `quick-create-contest-form.tsx` error path silently succeeds — no error feedback on `res.json()` failure [LOW/MEDIUM]
 
-**File:** `src/components/exam/anti-cheat-monitor.tsx:122-129`
-**Confidence:** LOW
+**File:** `src/components/contest/quick-create-contest-form.tsx:80-81`
+**Confidence:** MEDIUM
 
-When `sendEvent` fails, a retry timer is set. If multiple events fail in quick succession, only one timer is created (due to `if (!retryTimerRef.current)`), and `flushPendingEvents` is called once. This is actually correct behavior — it batches retries. However, if `flushPendingEvents` itself fails for all events, the timer is cleared but no new timer is set for the remaining events. The events stay in localStorage and will be retried on next mount (via `flushPendingEventsRef.current()` in the `useEffect`), so no data is lost. This is acceptable behavior.
+After a successful `res.ok`, the code calls `res.json().catch(() => ({ data: {} }))`. If the JSON parse fails on a success response (unlikely but possible if the server returns malformed JSON), the code falls through to `json.data?.assignmentId` which is undefined. The user sees a "createSuccess" toast but is NOT redirected to the contest page.
 
-**Fix:** No fix needed. Current behavior is correct for the use case.
+**Fix:** If `json.data?.assignmentId` is falsy on a success response, show an error toast or fall back to navigating to the contests list.
 
-## Final Sweep
+---
 
-- No new crash-inducing bugs found
-- The `compiler-client.tsx` unguarded `.json()` is the highest-severity latent bug
-- Previously fixed items from cycles 11-15 remain intact
+## Verified Safe
+
+- All `res.json()` calls have `.catch()` guards
+- No unguarded `innerHTML` assignments
+- `apiFetchJson` safely handles both ok and non-ok responses
+- Anti-cheat monitor properly uses refs for stable event handlers
+- Countdown timer validates `Number.isFinite(data.timestamp)` before using

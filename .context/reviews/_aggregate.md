@@ -1,161 +1,187 @@
-# RPF Cycle 16 — Aggregate Review
+# RPF Cycle 18 — Aggregate Review
 
 **Date:** 2026-04-22
-**Base commit:** 9379c26b
+**Base commit:** d32f2517
 **Review artifacts:** code-reviewer.md, perf-reviewer.md, security-reviewer.md, architect.md, critic.md, verifier.md, debugger.md, test-engineer.md, tracer.md, designer.md, document-specialist.md
 
 ## Previously Fixed Items (Verified in Current Code)
 
-All cycle 15 aggregate findings have been addressed:
-- AGG-1 (4 remaining unguarded `res.json()` calls): Fixed — migrated to `apiFetchJson`
-- AGG-2 (metadata remove button `aria-label`): Fixed — added i18n keys
-- AGG-3 (anti-cheat dashboard polling re-renders): Fixed — shallow comparison added
+All cycle-16/17 aggregate findings have been addressed:
+- AGG-1 (last unguarded `res.json()` in compiler-client): Fixed — `.catch()` added
+- AGG-2 (incomplete `apiFetchJson` adoption): Substantially fixed — 5 more components migrated
+- AGG-3 (invite-participants AbortController): Fixed — AbortController added
+- AGG-4 (test-connection 500 for malformed JSON): Fixed — returns 400
+- AGG-5 (file-management aria-label): Fixed — `aria-label` added
+- AGG-6 (anti-cheat privacy notice Dialog): Fixed — uses Dialog component
+- AGG-7 (countdown-timer aria-live): Fixed — uses `polite` for non-1-minute thresholds
 
 ## Deduped Findings (sorted by severity then signal)
 
-### AGG-1: `compiler-client.tsx` unguarded `res.json()` on error path — last remaining unguarded call [MEDIUM/HIGH]
+### AGG-1: `participant-anti-cheat-timeline.tsx` `formatDetailsJson` hardcoded English strings — i18n violation [MEDIUM/HIGH]
 
-**Flagged by:** code-reviewer (CR-1), critic (CRI-2), verifier (V-1), debugger (DBG-1), tracer (TR-1, revised)
+**Flagged by:** code-reviewer (CR-4), architect (ARCH-3), critic (CRI-1), verifier (V-3), document-specialist (DOC-1), tracer (partial — TR-3 related)
 **Signal strength:** 5 of 11 review perspectives
 
-**File:** `src/components/code/compiler-client.tsx:270`
+**File:** `src/components/contest/participant-anti-cheat-timeline.tsx:45-63`
 
-**Description:** The error path calls `await res.json()` without `.catch()`. The tracer analysis revealed that the inner `catch` block does handle the SyntaxError by falling back to `res.statusText`, so the actual runtime behavior is correct — the user will see "Bad Gateway" or similar. However, the pattern violates the `apiFetch` JSDoc convention and represents the last remaining unguarded `.json()` call in the entire codebase.
+**Description:** The `formatDetailsJson` helper function returns hardcoded English strings ("Target: Code editor", "Target: Problem description") in a component that otherwise uses `useTranslations`. The function is defined outside the component scope and cannot access the `t()` function.
 
-**Revised severity:** LOW/MEDIUM (behavior is correct due to inner catch, but pattern is inconsistent)
+**Concrete failure scenario:** A Korean locale user expands anti-cheat event details and sees "Target: Code editor" in English instead of the localized Korean string.
 
-**Fix:** Add `.catch(() => ({}))` to the `res.json()` call at line 270 for pattern consistency.
-
----
-
-### AGG-2: Incomplete `apiFetchJson` adoption — remaining components use raw pattern [MEDIUM/HIGH]
-
-**Flagged by:** code-reviewer (CR-2, CR-3, CR-4), architect (ARCH-1), critic (CRI-1)
-**Signal strength:** 5 of 11 review perspectives
-
-**Files:**
-- `src/components/contest/recruiter-candidates-panel.tsx:50-54`
-- `src/components/contest/invite-participants.tsx:42-47, 68-78`
-- `src/components/contest/access-code-manager.tsx:41-43, 82-88`
-- `src/components/code/compiler-client.tsx:270,287`
-- Plus 12+ additional components listed in ARCH-1
-
-**Description:** After cycles 14-15 introduced and adopted `apiFetchJson` in 6 components, 17+ components still use the raw `apiFetch` + `res.json().catch()` pattern. While all have `.catch()` guards (safe), the inconsistency creates a two-pattern codebase. New developers may copy the old pattern from existing code.
-
-**Fix:** Systematically migrate remaining GET-pattern fetches to `apiFetchJson`. Priority components: recruiter-candidates-panel, invite-participants, access-code-manager, compiler-client.
+**Fix:** Convert to a component method that uses `t()`, or pass `t` as a parameter. Move the labels mapping to i18n keys.
 
 ---
 
-### AGG-3: `invite-participants.tsx` search has no AbortController — race condition [MEDIUM/MEDIUM]
+### AGG-2: `recruiter-candidates-panel.tsx` fetches full export endpoint for display — no pagination, no server-side filtering [MEDIUM/MEDIUM]
 
-**Flagged by:** perf-reviewer (PERF-1), critic (CRI-3), verifier (V-4), debugger (DBG-2), tracer (TR-2)
-**Signal strength:** 5 of 11 review perspectives
-
-**File:** `src/components/contest/invite-participants.tsx:34-64`
-
-**Description:** The search function is debounced at 300ms but has no AbortController. Rapid typing causes multiple overlapping requests where the last one to resolve (not the last one sent) sets the results. This can produce stale results that don't match the current search query. Compare with `recruiting-invitations-panel.tsx` which properly uses AbortController.
-
-**Fix:** Add AbortController to the search function, aborting the previous request before starting a new one.
-
----
-
-### AGG-4: `test-connection/route.ts` manual `req.json()` bypasses `createApiHandler` safety — returns 500 for malformed JSON [MEDIUM/MEDIUM]
-
-**Flagged by:** security-reviewer (SEC-1), architect (ARCH-2), critic (CRI-5), tracer (TR-3)
-**Signal strength:** 4 of 11 review perspectives
-
-**File:** `src/app/api/v1/plugins/chat-widget/test-connection/route.ts:37`
-
-**Description:** The route uses `createApiHandler` with `auth: false` but manually calls `req.json()` inside the handler body instead of using the `schema` option. When the request body is malformed JSON, `req.json()` throws SyntaxError, and the outer `createApiHandler` catch returns a 500 error instead of the expected 400 "invalidJson" error. This is a concrete bug: the wrong HTTP status code is returned.
-
-**Fix:** Use the `schema` option in `createApiHandler` to delegate body parsing, or wrap `req.json()` in a try/catch that returns 400 on parse failure.
-
----
-
-### AGG-5: `file-management-client.tsx` icon-only buttons missing `aria-label` [LOW/MEDIUM]
-
-**Flagged by:** code-reviewer (CR-5), critic (CRI-4), designer (DES-1)
+**Flagged by:** code-reviewer (CR-1), perf-reviewer (PERF-1), critic (CRI-4)
 **Signal strength:** 3 of 11 review perspectives
 
-**File:** `src/app/(dashboard)/dashboard/admin/files/file-management-client.tsx:199-210`
+**File:** `src/components/contest/recruiter-candidates-panel.tsx:50-53`
 
-**Description:** The "Copy URL" and "Delete" buttons use `variant="ghost" size="sm"` with only `title` attributes but no `aria-label`. The `title` attribute is not reliably announced by screen readers. Same class of accessibility issue that was fixed in cycles 11-13 for `size="icon"` buttons.
+**Description:** The component fetches the full export endpoint (`/api/v1/contests/${assignmentId}/export?format=json`) for display purposes. The export endpoint is designed for bulk data download, not for paginated display. All candidates are loaded into browser memory, then searched and sorted client-side.
 
-**Fix:** Add `aria-label` to both buttons.
+**Concrete failure scenario:** A contest with 5000+ candidates causes a large JSON payload download, full in-memory sort on every search keystroke, and no way to paginate.
 
----
-
-### AGG-6: Anti-cheat monitor privacy notice dialog lacks focus trap [LOW/MEDIUM]
-
-**Flagged by:** designer (DES-4)
-**Signal strength:** 1 of 11 review perspectives
-
-**File:** `src/components/exam/anti-cheat-monitor.tsx:252-278`
-
-**Description:** The privacy notice uses raw `div` elements with `role="dialog"` and `aria-modal="true"` instead of the project's `Dialog` component which handles focus trapping. The user can tab out of the dialog to elements behind the overlay, violating WCAG 2.2 SC 2.4.3.
-
-**Fix:** Use the `Dialog` component from the UI library, which handles focus trapping automatically.
+**Fix:** Create a dedicated server-side paginated endpoint with search and sort parameters. Previously identified as DEFER-29.
 
 ---
 
-### AGG-7: `countdown-timer.tsx` uses `aria-live="assertive"` for all threshold announcements [LOW/LOW]
+### AGG-3: `participant-anti-cheat-timeline.tsx` polling offset drift causes duplicate or missing events [MEDIUM/MEDIUM]
 
-**Flagged by:** designer (DES-5)
-**Signal strength:** 1 of 11 review perspectives
+**Flagged by:** debugger (DBG-1), verifier (V-1), tracer (TR-1)
+**Signal strength:** 3 of 11 review perspectives
 
-**File:** `src/components/exam/countdown-timer.tsx:151-153`
+**File:** `src/components/contest/participant-anti-cheat-timeline.tsx:96-114`
 
-**Description:** All threshold announcements use `aria-live="assertive"`, which interrupts screen readers. Only the 1-minute warning warrants assertive; 15-minute and 5-minute warnings should use `polite`.
+**Description:** When polling refreshes the first page of events, the code preserves events beyond `PAGE_SIZE` from previous `loadMore` calls. If new events are created server-side between polls, the boundary between the fresh first page and the preserved second page may overlap (duplicates) or have a gap (missing events).
 
-**Fix:** Use `aria-live="polite"` for non-critical announcements, reserving `assertive` for the 1-minute warning.
+**Concrete failure scenario:** 5 new anti-cheat events are created between polls. The user has loaded 2 pages (100 events). The refreshed first 50 events overlap with the previous first 50 events at the boundary. Events at positions 51-60 on the server are missing from the display.
+
+**Fix:** On poll refresh, reset to just the first page and invalidate the `loadMore` offset, or deduplicate by event ID.
 
 ---
 
-### AGG-8: `recruiter-candidates-panel.tsx` CSV download uses `window.open` without `noopener` [LOW/LOW]
+### AGG-4: `api-keys-client.tsx` not migrated to `apiFetchJson` — last raw-pattern admin component [MEDIUM/MEDIUM]
 
-**Flagged by:** debugger (DBG-3), designer (DES-3)
+**Flagged by:** code-reviewer (CR-2), architect (ARCH-1), verifier (V-2)
+**Signal strength:** 3 of 11 review perspectives
+
+**File:** `src/app/(dashboard)/dashboard/admin/api-keys/api-keys-client.tsx:137-191`
+
+**Description:** The API keys admin component is the last remaining admin component using raw `apiFetch` + `res.json().catch()` for both GET and POST patterns. All other admin components have been migrated to `apiFetchJson`. This creates a maintenance hazard.
+
+**Fix:** Migrate `fetchKeys` and `handleCreate` to use `apiFetchJson`.
+
+---
+
+### AGG-5: `window.location.origin` used for invitation/URL construction — may be incorrect behind reverse proxy [MEDIUM/MEDIUM]
+
+**Flagged by:** security-reviewer (SEC-1, SEC-2)
+**Signal strength:** 2 of 11 review perspectives (carried from DEFER-24)
+
+**Files:**
+- `src/components/contest/access-code-manager.tsx:137`
+- `src/components/contest/recruiting-invitations-panel.tsx:99`
+
+**Description:** Both components construct invitation URLs using `window.location.origin`. If the app is accessed through a reverse proxy that rewrites the Host header, the origin may differ from the intended public URL. Carried from DEFER-24.
+
+**Fix:** Use a server-provided public URL or a configurable base URL for invitation links.
+
+---
+
+### AGG-6: `active-timed-assignment-sidebar-panel.tsx` timer lacks visibility awareness — continues ticking in background [LOW/MEDIUM]
+
+**Flagged by:** perf-reviewer (PERF-3), debugger (DBG-2)
 **Signal strength:** 2 of 11 review perspectives
 
-**File:** `src/components/contest/recruiter-candidates-panel.tsx:90-98`
+**File:** `src/components/layout/active-timed-assignment-sidebar-panel.tsx:72-84`
 
-**Description:** The CSV download uses `window.open(url, "_blank")` without `noopener,noreferrer`. Minor tab-napping risk. Also no loading/progress feedback for the download.
+**Description:** The sidebar timer uses `window.setInterval` with 1-second ticks without visibility awareness. Unlike `countdown-timer.tsx` which recalculates on `visibilitychange`, this timer continues firing when the tab is hidden. This wastes CPU cycles and may show stale values on tab return.
 
-**Fix:** Add `noopener,noreferrer` or use `<a>` element with `download` attribute.
+**Fix:** Add a `visibilitychange` listener to pause/resume the interval and immediately recalculate on tab return.
+
+---
+
+### AGG-7: Duplicate `formatDuration` function in two components — should be shared utility [LOW/MEDIUM]
+
+**Flagged by:** architect (ARCH-4), critic (CRI-2)
+**Signal strength:** 2 of 11 review perspectives
+
+**Files:**
+- `src/components/exam/countdown-timer.tsx:17-24`
+- `src/components/layout/active-timed-assignment-sidebar-panel.tsx:16-23`
+
+**Description:** Two identical `formatDuration` functions exist. The `formatting.ts` module already centralizes `formatNumber`, `formatScore`, `formatBytes`, `formatDifficulty` — `formatDuration` should live there too.
+
+**Fix:** Move `formatDuration` to `src/lib/formatting.ts` and import it in both components.
+
+---
+
+### AGG-8: `code-timeline-panel.tsx` mini-timeline buttons lack `aria-label` [LOW/MEDIUM]
+
+**Flagged by:** code-reviewer (CR-3), designer (DES-1)
+**Signal strength:** 2 of 11 review perspectives
+
+**File:** `src/components/contest/code-timeline-panel.tsx:170-179`
+
+**Description:** The snapshot mini-timeline uses `<button>` elements with only `title` attributes. Screen readers do not reliably announce `title` attributes. Each dot should have an `aria-label` describing which snapshot it represents.
+
+**Fix:** Add `aria-label` to each timeline dot button.
+
+---
+
+### AGG-9: `quick-create-contest-form.tsx` success path silently fails when `assignmentId` is missing [LOW/MEDIUM]
+
+**Flagged by:** debugger (DBG-3), tracer (TR-3)
+**Signal strength:** 2 of 11 review perspectives
+
+**File:** `src/components/contest/quick-create-contest-form.tsx:79-84`
+
+**Description:** After a successful API response, if `json.data?.assignmentId` is undefined (malformed success response), the user sees a "createSuccess" toast but is not redirected to the contest page. No error feedback is shown.
+
+**Fix:** If `assignmentId` is missing on a success response, show an error toast or redirect to the contests list.
+
+---
+
+### AGG-10: `participant-anti-cheat-timeline.tsx` expand/collapse buttons lack `aria-controls` [LOW/LOW]
+
+**Flagged by:** designer (DES-2)
+**Signal strength:** 1 of 11 review perspectives
+
+**File:** `src/components/contest/participant-anti-cheat-timeline.tsx:275-292`
+
+**Description:** The expand/collapse buttons use `aria-expanded` but don't have `aria-controls` pointing to the panel they control.
+
+**Fix:** Add an `id` to the expanded `<pre>` element and reference it via `aria-controls`.
+
+---
 
 ## Security Findings (from security-reviewer)
 
-### SEC-1: `test-connection/route.ts` unguarded `req.json()` — covered by AGG-4 above
-
-### SEC-2: Plaintext fallback in encryption module — carried from SEC-2 (cycle 11) [MEDIUM/MEDIUM]
-
-### SEC-3: `window.location.origin` for URL construction — carried from DEFER-24 [MEDIUM/MEDIUM]
-
-### SEC-4: Gemini model name interpolation into URL path — defense-in-depth concern [LOW/MEDIUM]
+### SEC-1/SEC-2: `window.location.origin` for URL construction — covered by AGG-5 above
+### SEC-3: Gemini model name interpolation into URL path — defense-in-depth concern [LOW/MEDIUM]
+### SEC-4: Plaintext fallback in encryption module — carried from SEC-2 (cycle 11) [MEDIUM/MEDIUM]
 
 ## Performance Findings (from perf-reviewer)
 
-### PERF-1: `invite-participants.tsx` search no AbortController — covered by AGG-3 above
-
-### PERF-2: `recruiter-candidates-panel.tsx` fetches full export — covered by DEFER-29
-
-### PERF-3: Anti-cheat dashboard uniqueStudents computation — LOW/LOW, no action needed
-
-### PERF-4: `countdown-timer.tsx` uses setInterval — LOW/LOW, no action needed
+### PERF-1: `recruiter-candidates-panel.tsx` full export fetch — covered by AGG-2 above
+### PERF-2: Practice page Path B progress filter — carried from cycle 18/19 AGG-5 [MEDIUM/MEDIUM]
+### PERF-3: Sidebar timer visibility awareness — covered by AGG-6 above
+### PERF-4: Code timeline all snapshots fetch — LOW/MEDIUM, no immediate action needed
 
 ## Test Coverage Gaps (from test-engineer)
 
-### TE-1: No unit tests for `compiler-client.tsx` — new [MEDIUM/MEDIUM]
-### TE-2: No unit tests for `invite-participants.tsx` — new [MEDIUM/MEDIUM]
-### TE-3: No unit tests for `recruiter-candidates-panel.tsx` — new [LOW/MEDIUM]
-### TE-4: No unit tests for `access-code-manager.tsx` — new [LOW/MEDIUM]
+### TE-1: No unit tests for `formatDetailsJson` — new [LOW/MEDIUM]
+### TE-2: No unit tests for `formatDuration` — new (add when consolidating) [LOW/MEDIUM]
+### TE-3: No component tests for `quick-create-contest-form.tsx` — new [LOW/MEDIUM]
+### TE-4: No component tests for `api-keys-client.tsx` — new [LOW/MEDIUM]
 ### TE-5: `apiFetchJson` helper untested — carried from DEFER-56 [LOW/MEDIUM]
 ### TE-6: Encryption module untested — carried from DEFER-50 [MEDIUM/HIGH]
 
 ## Documentation Findings (from document-specialist)
 
-### DOC-1: `apiFetchJson` signal option — RESOLVED in cycle 15
-### DOC-2: Encryption plaintext fallback migration guidance — carried from cycle 14 [LOW/LOW]
-### DOC-3: `compiler-client.tsx` error path comment could be improved [LOW/LOW]
+### DOC-1: `formatDetailsJson` labels not documented for localization — covered by AGG-1 above
 
 ## Previously Deferred Items (Carried Forward)
 
@@ -169,14 +195,12 @@ All cycle 15 aggregate findings have been addressed:
 - DEFER-21: Duplicated visibility-aware polling pattern (partially addressed)
 - DEFER-22: copyToClipboard dynamic import inconsistency
 - DEFER-23: Practice page Path B progress filter
-- DEFER-24: Invitation URL uses window.location.origin
+- DEFER-24: Invitation URL uses window.location.origin (same as AGG-5)
 - DEFER-25: Duplicate formatTimestamp utility
-- DEFER-1 (cycle 1): Add unit tests for useVisibilityPolling, SubmissionListAutoRefresh, and stats endpoint
-- DEFER-2 (cycle 1): Standardize error handling pattern in useVisibilityPolling
 - DEFER-26: Unit tests for create-group-dialog.tsx and bulk-create-dialog.tsx
 - DEFER-27: Unit tests for comment-section.tsx
 - DEFER-28: Unit tests for participant-anti-cheat-timeline.tsx polling behavior
-- DEFER-29: Add dedicated candidates summary endpoint for recruiter-candidates-panel
+- DEFER-29: Add dedicated candidates summary endpoint for recruiter-candidates-panel (same as AGG-2)
 - DEFER-30: Remove unnecessary `router.refresh()` from discussion-vote-buttons
 - ARCH-1: Centralized error-to-i18n mapping utility (refactor suggestion)
 - DEFER-50: Encryption module unit tests (from TE-3)

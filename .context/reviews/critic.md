@@ -1,75 +1,59 @@
-# Critic Review — RPF Cycle 16
+# Critic Review — RPF Cycle 18
 
 **Date:** 2026-04-22
 **Reviewer:** critic
-**Base commit:** 9379c26b
+**Base commit:** d32f2517
 
-## Inventory of Review-Relevant Files
+## CRI-1: `participant-anti-cheat-timeline.tsx` `formatDetailsJson` hardcoded English — i18n violation [MEDIUM/HIGH]
 
-Full repo review from a multi-perspective critique angle, focusing on: consistency, pattern adherence, user-facing behavior, edge cases, and cross-cutting concerns.
-
-## Findings
-
-### CRI-1: Incomplete `apiFetchJson` adoption creates a two-pattern codebase [MEDIUM/HIGH]
-
-**Signal strength:** Also flagged by code-reviewer (CR-2, CR-3, CR-4), architect (ARCH-1)
-
-After cycles 14-15 introduced and adopted `apiFetchJson` in 6 components, the codebase now has two coexisting patterns for the same operation (fetch + parse JSON). This is worse than having a single consistent pattern, because:
-1. Developers copying code from an existing component may copy the old pattern
-2. The helper's bug-prevention value is only realized for the components that use it
-3. Code reviewers must check both patterns for correctness
-
-The migration was started but not completed, creating a "partial refactor" — widely considered one of the worst states for a codebase to be in.
-
-**Fix:** Complete the migration systematically. Every component that does `apiFetch` + `res.json()` for GET requests should be migrated to `apiFetchJson`.
-
----
-
-### CRI-2: `compiler-client.tsx` unguarded `res.json()` is the last remaining unguarded call [MEDIUM/HIGH]
-
-**File:** `src/components/code/compiler-client.tsx:270`
+**File:** `src/components/contest/participant-anti-cheat-timeline.tsx:45-63`
 **Confidence:** HIGH
 
-Also flagged by code-reviewer (CR-1). This is the only remaining call in the entire codebase where `res.json()` is called without a `.catch()` guard. The cycle 14-15 effort to add `.catch()` guards missed this one. This is a real bug: if the server returns a non-JSON error body, the SyntaxError propagates and the user sees a generic "Network error" toast instead of the actual error message from the server.
+This is the most impactful finding this cycle. The `formatDetailsJson` function returns hardcoded English strings ("Target: Code editor", "Target: Problem description") in a component that otherwise uses `useTranslations`. This is a functional i18n bug, not just a style concern.
 
-**Fix:** Add `.catch(() => ({}))` to line 270.
+**Concrete failure:** Korean locale users see English strings in the anti-cheat timeline details expansion.
+
+**Fix:** Convert to a component method that uses `t()`, or pass `t` as a parameter.
 
 ---
 
-### CRI-3: `invite-participants.tsx` has no AbortController for search [MEDIUM/MEDIUM]
+## CRI-2: Duplicate `formatDuration` in two components — shared utility gap [LOW/MEDIUM]
 
-**File:** `src/components/contest/invite-participants.tsx:34-56`
+**Files:**
+- `src/components/exam/countdown-timer.tsx:17-24`
+- `src/components/layout/active-timed-assignment-sidebar-panel.tsx:16-23`
+
 **Confidence:** HIGH
 
-Also flagged by perf-reviewer (PERF-1). The search function is debounced at 300ms but does not cancel in-flight requests. This is a race condition where stale results can overwrite newer results. Compare with `recruiting-invitations-panel.tsx` which properly uses AbortController for its fetch.
+Two identical `formatDuration` functions exist. The `formatting.ts` module already centralizes other formatting utilities but doesn't include duration formatting. This is a DRY violation.
 
-**Fix:** Add AbortController to the search function, aborting the previous request before starting a new one.
+**Fix:** Add `formatDuration` to `src/lib/formatting.ts`.
 
 ---
 
-### CRI-4: `file-management-client.tsx` icon-only buttons missing `aria-label` [LOW/MEDIUM]
+## CRI-3: Stale plan files continue to accumulate — process debt [LOW/HIGH]
 
-**File:** `src/app/(dashboard)/dashboard/admin/files/file-management-client.tsx:199-210`
+**Files:** `plans/open/` directory
 **Confidence:** HIGH
 
-Also flagged by code-reviewer (CR-5). The copy URL and delete buttons use `variant="ghost" size="sm"` with only `title` attributes. The same class of issue that was fixed in cycles 11-13 for `size="icon"` buttons. The `size="sm"` variant with an icon and no visible text is functionally identical to an icon-only button.
+Multiple plan files in `plans/open/` have been present since cycles 8-17 and may have items already implemented. While cycle 16 plan was updated, older plans may still have inaccurate status. This wastes review effort and creates confusion about what remains.
 
-**Fix:** Add `aria-label` attributes.
+**Fix:** Audit all open plan files and archive those where all items are DONE. This was previously flagged as AGG-6 in cycle 19 and remains relevant.
 
 ---
 
-### CRI-5: `test-connection/route.ts` manual body parsing bypasses `createApiHandler` safety net [MEDIUM/MEDIUM]
+## CRI-4: `recruiter-candidates-panel.tsx` uses export endpoint for display — architectural mismatch [MEDIUM/MEDIUM]
 
-Also flagged by architect (ARCH-2) and security-reviewer (SEC-1). The route manually calls `req.json()` inside the handler body instead of using the `schema` option. This means:
-1. Malformed JSON produces a 500 instead of 400
-2. The body is parsed before CSRF checks complete (actually CSRF is done first in this case, so this is fine)
-3. The Zod validation is done manually after parsing, duplicating what `createApiHandler` does
+**File:** `src/components/contest/recruiter-candidates-panel.tsx:50-53`
+**Confidence:** HIGH
 
-**Fix:** Use the `schema` option in `createApiHandler`.
+Same finding as CR-1 and PERF-1. The export endpoint is designed for bulk data download, not for paginated display. This is an architectural concern because it couples the display component to the export API contract.
 
-## Final Sweep
+---
 
-- Reviewed all recently changed files for regression
-- Verified previously fixed items remain in place
-- No new security vulnerabilities introduced since cycle 15
-- The `apiFetchJson` migration is the dominant theme this cycle — completing it should be a priority
+## Verified Safe
+
+- All cycle-16/17 fixes confirmed working (apiFetchJson migration, AbortController, aria-labels)
+- Korean letter-spacing compliance maintained
+- No new `as any` or `@ts-ignore` introduced
+- i18n keys used consistently in new code except for `formatDetailsJson`

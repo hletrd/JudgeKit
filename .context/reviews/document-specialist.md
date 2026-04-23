@@ -1,64 +1,49 @@
-# Document Specialist Review — RPF Cycle 16
+# Document Specialist Review — RPF Cycle 18
 
 **Date:** 2026-04-22
 **Reviewer:** document-specialist
-**Base commit:** 9379c26b
+**Base commit:** d32f2517
 
-## Inventory of Review-Relevant Files
+## DOC-1: `formatDetailsJson` labels in `participant-anti-cheat-timeline.tsx` are not documented for localization [LOW/MEDIUM]
 
-Focus: JSDoc accuracy, code-comment correctness, documentation-code mismatches, README alignment.
+**File:** `src/components/contest/participant-anti-cheat-timeline.tsx:51-57`
+**Confidence:** HIGH
 
-## Findings
+The `formatDetailsJson` function contains a `labels` mapping from target identifiers to English display strings. This mapping is not documented in any localization guide and is not connected to the i18n system. New target types added in the future will show raw identifiers until this mapping is updated.
 
-### DOC-1: `apiFetchJson` JSDoc says `signal` option is supported but does not document `signal` in `@param` — carried from DOC-1 (cycle 15) [LOW/LOW]
-
-**File:** `src/lib/api/client.ts:95`
-
-The cycle 15 fix added a note in the `@param init` documentation: "Supports `signal` for AbortController-based cancellation." This is now documented. Marking as resolved.
-
-**Status:** RESOLVED (fixed in cycle 15, commit 4b487415)
+**Fix:** Move the labels to i18n keys and document the pattern for adding new target types.
 
 ---
 
-### DOC-2: `encryption.ts` plaintext fallback lacks migration guidance — carried from DOC-2 (cycle 14) [LOW/LOW]
+## DOC-2: `apiFetchJson` JSDoc is comprehensive and accurate [NO ISSUE]
 
-**File:** `src/lib/security/encryption.ts:78-81`
+**File:** `src/lib/api/client.ts:87-123`
+**Confidence:** HIGH
 
-Already tracked. No new finding.
-
----
-
-### DOC-3: `compiler-client.tsx` error path comment says "Server returned non-JSON error" but the catch doesn't actually produce the best error message [LOW/LOW]
-
-**File:** `src/components/code/compiler-client.tsx:273`
-
-The comment at line 273 says:
-```ts
-// Server returned non-JSON error (e.g., 502 HTML from reverse proxy)
-errorMessage = res.statusText || errorMessage;
-```
-
-This is accurate — the comment correctly describes what happens. The `res.statusText` fallback works correctly. However, the comment could be improved to note that `res.json()` throwing is expected in this case and that the fallback handles it. This is purely a documentation improvement, not a code issue.
-
-**Fix:** Low priority. Improve the comment to clarify the intentional fallback pattern.
+The JSDoc for `apiFetchJson` properly documents the `signal` option, the `fallback` parameter, and provides a clear example. The error handling convention documentation in `client.ts` is thorough and up-to-date with the current codebase patterns.
 
 ---
 
-### DOC-4: `test-connection/route.ts` comment says "CSRF check" but auth is disabled [LOW/LOW]
+## DOC-3: `formatting.ts` JSDoc is comprehensive — `formatNumber`, `formatBytes`, `formatDifficulty`, `formatScore`, `formatContestTimestamp` all documented [NO ISSUE]
 
-**File:** `src/app/api/v1/plugins/chat-widget/test-connection/route.ts:23`
+**File:** `src/lib/formatting.ts`
+**Confidence:** HIGH
 
-The comment says:
-```ts
-// CSRF check — auth:false disables the handler's built-in check
-```
+All formatting utilities have proper JSDoc with examples. The `formatDifficulty` function correctly documents the regex patterns used for zero-stripping.
 
-This is accurate — it explains why the manual CSRF check is needed. No mismatch.
+---
 
-**Status:** No issue.
+## DOC-4: `useVisibilityPolling` JSDoc is accurate [NO ISSUE]
 
-## Final Sweep
+**File:** `src/hooks/use-visibility-polling.ts:1-16`
+**Confidence:** HIGH
 
-- All JSDoc in `api/client.ts` verified against actual function signatures
-- No README/code mismatches found
-- Previously fixed documentation items remain in place
+The hook's JSDoc accurately describes its behavior: starts on visible, pauses on hidden, resumes with immediate fetch on visible. The note about callbacks handling their own errors is correct.
+
+---
+
+## Verified Safe
+
+- `apiFetch` JSDoc is accurate and up-to-date
+- `copyToClipboard` utility has proper JSDoc
+- Error handling convention table in `client.ts` is accurate

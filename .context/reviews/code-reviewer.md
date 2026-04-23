@@ -1,91 +1,79 @@
-# Code Quality Review — RPF Cycle 16
+# Code Quality Review — RPF Cycle 18
 
 **Date:** 2026-04-22
 **Reviewer:** code-reviewer
-**Base commit:** 9379c26b
+**Base commit:** d32f2517
 
-## Inventory of Review-Relevant Files
+## CR-1: `recruiter-candidates-panel.tsx` fetches full export endpoint just for display — mismatched API usage [MEDIUM/HIGH]
 
-All `src/` files under app, components, lib, hooks, contexts. Key focus areas: recently changed files (recruiting-invitations-panel, anti-cheat-dashboard, workers-client, api/client.ts) and common cross-cutting patterns (error handling, API consumption, i18n, accessibility).
-
-## Findings
-
-### CR-1: `compiler-client.tsx` unguarded `res.json()` on error path [MEDIUM/HIGH]
-
-**File:** `src/components/code/compiler-client.tsx:270`
+**File:** `src/components/contest/recruiter-candidates-panel.tsx:50-53`
 **Confidence:** HIGH
 
-The error path calls `await res.json()` without `.catch()`. If the server returns a non-JSON body (e.g., 502 HTML from a reverse proxy), this will throw a SyntaxError and the outer `catch` block will produce a generic "Network error" message instead of using the server's statusText.
+The component fetches `/api/v1/contests/${assignmentId}/export?format=json` to display a candidate table. The export endpoint is designed for data export (CSV/JSON download), not for in-memory display. This means:
+1. The full dataset is loaded into the browser even when paginated display would suffice.
+2. If the export endpoint returns additional fields or changes shape for export purposes, the display component breaks.
+3. No server-side pagination or filtering — all candidates loaded client-side.
 
-```ts
-// Line 270
-const errorData = await res.json();
-errorMessage = errorData.error || errorData.message || errorMessage;
-```
+**Concrete failure:** A contest with 5000 candidates loads all 5000 records into browser memory, then does client-side search and sort.
 
-**Fix:** Change to `const errorData = await res.json().catch(() => ({}));` to be consistent with the established pattern across the entire codebase.
+**Fix:** Create a dedicated `/api/v1/contests/${assignmentId}/candidates` endpoint with server-side pagination, search, and sorting. Previously identified as DEFER-29 but re-flagged because the current implementation directly impacts performance at scale.
 
 ---
 
-### CR-2: `recruiter-candidates-panel.tsx` uses raw `apiFetch` + `.json()` instead of `apiFetchJson` [MEDIUM/MEDIUM]
+## CR-2: `api-keys-client.tsx` uses raw `apiFetch` for GET/POST instead of `apiFetchJson` — inconsistent pattern [LOW/MEDIUM]
 
-**File:** `src/components/contest/recruiter-candidates-panel.tsx:50-54`
-**Confidence:** HIGH
+**File:** `src/app/(dashboard)/dashboard/admin/api-keys/api-keys-client.tsx:137-155, 176-191`
+**Confidence:** MEDIUM
 
-This component was not migrated to `apiFetchJson` during the cycle 14-15 refactor. It uses raw `apiFetch` + `res.json().catch(() => [])` which is the old pattern. The `.catch(() => [])` returns an array fallback but `setCandidates(Array.isArray(data) ? data : [])` guards it, so it works but is inconsistent with the rest of the codebase.
+The `fetchKeys` function uses raw `apiFetch` + manual `res.json().catch()`, while most other GET patterns have been migrated to `apiFetchJson`. The `handleCreate` function also uses raw `apiFetch` + `res.json().catch()` for the POST response. These should use `apiFetchJson` for consistency with the rest of the codebase.
 
-**Fix:** Migrate to `apiFetchJson` for consistency.
-
----
-
-### CR-3: `invite-participants.tsx` uses raw `apiFetch` + `.json()` instead of `apiFetchJson` [MEDIUM/MEDIUM]
-
-**File:** `src/components/contest/invite-participants.tsx:42-47, 68-78`
-**Confidence:** HIGH
-
-Same as CR-2. Two separate fetch calls using the old pattern. Both the search and invite functions could use `apiFetchJson` for consistency and safety.
-
-**Fix:** Migrate both fetch calls to `apiFetchJson`.
+**Fix:** Migrate `fetchKeys` and `handleCreate` to use `apiFetchJson`.
 
 ---
 
-### CR-4: `access-code-manager.tsx` uses raw `apiFetch` + `.json()` instead of `apiFetchJson` [MEDIUM/MEDIUM]
+## CR-3: `code-timeline-panel.tsx` mini-timeline buttons lack accessible labels [LOW/MEDIUM]
 
-**File:** `src/components/contest/access-code-manager.tsx:41-43, 82-88`
+**File:** `src/components/contest/code-timeline-panel.tsx:170-179`
 **Confidence:** HIGH
 
-Three fetch operations (fetchCode, handleGenerate) all use raw `apiFetch` + `.json()` with manual `.catch()`. Same class of inconsistency as CR-2/CR-3.
+The snapshot mini-timeline uses `<button>` elements with only `title` attributes for accessibility. Screen readers do not reliably announce `title` attributes. Each dot should have an `aria-label` describing which snapshot it represents (e.g., "Snapshot 3 of 10").
 
-**Fix:** Migrate to `apiFetchJson`.
+**Fix:** Add `aria-label` to each timeline dot button.
 
 ---
 
-### CR-5: `file-management-client.tsx` copy/delete buttons missing `aria-label` [LOW/MEDIUM]
+## CR-4: `participant-anti-cheat-timeline.tsx` `formatDetailsJson` has hardcoded English strings [MEDIUM/MEDIUM]
 
-**File:** `src/app/(dashboard)/dashboard/admin/files/file-management-client.tsx:199-210`
+**File:** `src/components/contest/participant-anti-cheat-timeline.tsx:51-57`
 **Confidence:** HIGH
 
-The "Copy URL" and "Delete" buttons use `variant="ghost" size="sm"` with only `title` attributes but no `aria-label`. The `title` attribute is not reliably announced by screen readers; `aria-label` is required for icon-only buttons.
+The `formatDetailsJson` function returns English strings like `"Target: Code editor"`. Since this is a display function, it should use i18n keys. The component already uses `useTranslations` but the helper function doesn't have access to the `t` function.
 
-**Fix:** Add `aria-label` to both buttons.
+**Concrete failure:** A Korean user sees "Target: Code editor" instead of the localized string.
+
+**Fix:** Pass `t` function to `formatDetailsJson` or convert to a component method.
 
 ---
 
-### CR-6: `recruiter-candidates-panel.tsx` `handleCsvDownload` uses `window.open` with no sanitization of assignmentId [LOW/LOW]
+## CR-5: `contest-announcements.tsx` and `contest-clarifications.tsx` throw Error with raw string instead of using structured approach [LOW/LOW]
 
-**File:** `src/components/contest/recruiter-candidates-panel.tsx:90-98`
-**Confidence:** LOW
+**Files:**
+- `src/components/contest/contest-announcements.tsx:97-98`
+- `src/components/contest/contest-clarifications.tsx:120-121`
 
-The `assignmentId` prop is used directly in `window.open()` URL construction. If `assignmentId` contained special characters, it could cause unexpected behavior. Since assignment IDs come from route params and are UUIDs, this is extremely unlikely.
+**Confidence:** HIGH
 
-**Fix:** Add `encodeURIComponent(assignmentId)` for defense-in-depth.
+Both components throw `new Error("contestAnnouncementSaveFailed")` and similar. While these errors are caught and the i18n toast is shown, the error message string is never used — only the catch block's toast.error matters. The thrown error is unnecessary ceremony; an early return would be cleaner.
 
-## Final Sweep
+---
 
-- All `src/` directories reviewed: app, components, lib, hooks, contexts
-- No SQL injection risks found (parameterized queries used throughout)
-- No `eval()` or `new Function()` usage found
-- No `innerHTML` usage found (only `dangerouslySetInnerHTML` with `sanitizeHtml` and `safeJsonForScript`)
-- No `@ts-ignore` or `@ts-expect-error` usage found
-- Only 2 `eslint-disable` comments, both justified
-- All previously fixed items from cycles 11-15 remain fixed
+## Verified Safe
+
+- All `res.json()` calls have `.catch()` guards
+- `apiFetchJson` is consistently used for GET polling patterns
+- All `dangerouslySetInnerHTML` uses are properly sanitized
+- No `innerHTML` assignments in the codebase
+- `copyToClipboard` utility properly handles execCommand fallback with return value check
+- All icon-only buttons have proper `aria-label` attributes
+- No `as any` or `@ts-ignore` found
+- Korean letter-spacing is properly conditional throughout
