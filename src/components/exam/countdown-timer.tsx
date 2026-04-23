@@ -56,6 +56,7 @@ export function CountdownTimer({ deadline, label, onExpired }: CountdownTimerPro
   const expiredRef = useRef(expired);
   const firedThresholds = useRef<Set<number>>(prePopulateThresholds(deadline - Date.now()));
   const [thresholdAnnouncement, setThresholdAnnouncement] = useState("");
+  const [thresholdUrgent, setThresholdUrgent] = useState(false);
   const t = useTranslations("groups");
 
   const handleExpired = useCallback(() => {
@@ -112,6 +113,7 @@ export function CountdownTimer({ deadline, label, onExpired }: CountdownTimerPro
                 : "examWarning1Min";
           toast.warning(t(messageKey));
           setThresholdAnnouncement(t(messageKey));
+          setThresholdUrgent(threshold === 1 * 60 * 1000);
         }
       }
 
@@ -148,7 +150,7 @@ export function CountdownTimer({ deadline, label, onExpired }: CountdownTimerPro
           {expired ? "00:00:00" : formatCountdown(remaining)}
         </span>
       </Badge>
-      <span aria-live="assertive" className="sr-only">
+      <span aria-live={thresholdUrgent ? "assertive" : "polite"} className="sr-only">
         {thresholdAnnouncement}
       </span>
     </>
