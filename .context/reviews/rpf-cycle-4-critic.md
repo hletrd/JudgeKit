@@ -1,50 +1,56 @@
-# RPF Cycle 4 — Critic
+# RPF Cycle 4 (Loop Cycle 4/100) — Critic
 
-**Date:** 2026-04-22
-**Base commit:** 5d89806d
+**Date:** 2026-04-23
+**Base commit:** d4b7a731
+**HEAD commit:** d4b7a731
+**Scope:** Multi-perspective critique of the whole change surface, looking for blind spots other reviewers typically miss.
 
-## Multi-Perspective Critique
+## Meta-observation
 
-### Architecture: Inconsistent `response.json()` error handling across the codebase
+This is now the **fifth consecutive loop cycle (cycles 51, 52, 53, 54, 55, 4)** where the aggregate result is "no new production-code findings." That is both a healthy signal (the codebase has been hammered through 40+ fix cycles and is converging) and a risk (reviewers may be settling into pattern-matching rather than actively critiquing).
 
-The cycle 3 remediation fixed the `response.json()` before `response.ok` pattern in ~10 files, but the fix was not applied consistently to all client components that use `apiFetch`. Specifically:
+Explicit blind-spot sweep conducted:
 
-- `invite-participants.tsx:78` — `res.json()` on error path without `.catch()`
-- `access-code-manager.tsx:42,88` — `res.json()` without `.catch()`
+### (a) Is the `SKIP_INSTRUMENTATION_SYNC` flag a foot-gun?
 
-While the `apiJson` helper was added in cycle 3, it is not used in any of the client components. The existing components still use the manual `response.ok` + `.json().catch(() => ({}))` pattern. The `apiJson` helper is a good abstraction but its adoption is zero, which means it's dead code that adds confusion about the "right" way to handle API responses.
+- **Criticism:** any env-gated production bypass is a hazard. What prevents an operator from setting it in prod?
+- **Defense (valid):** the flag is strict-literal-`"1"`, emits `logger.warn` on every process start when set, is called out in a large in-code comment, and the production deploy uses `.env.deploy.algo` (checked into repo) which does **not** include the flag. Downstream failure mode is fail-closed (empty `languageConfigs` table -> judge rejects all submissions) rather than fail-open.
+- **Verdict:** defensible. No issue.
 
-**Recommendation:** Either adopt `apiJson` consistently across client components, or remove it and standardize on the manual pattern. The current state of having both options is worse than having only one.
+### (b) Are we trusting test-skip status in integration tests?
 
----
+37/37 integration tests "pass" by skipping, because no DB is reachable in the sandbox. This could mask a real regression.
+- **Defense:** the skip is explicit (the integration suite independently skips when `DATABASE_URL` is absent), and the build still compiles TypeScript against those files. Unit + component suites still run against all the logic. Cycle 55 aggregate already records the skip as a sandbox limitation, not a silent pass.
+- **Verdict:** correctly documented. Not a new issue this cycle.
 
-### Consistency: Dynamic clipboard import inconsistency
+### (c) Are deferred items decaying into cruft?
 
-`recruiting-invitations-panel.tsx` was fixed in cycle 3 to use a static `import { copyToClipboard } from "@/lib/clipboard"`. However, `access-code-manager.tsx` still uses `await import("@/lib/clipboard")`. These two components are in the same feature area (contest management) and are maintained by the same developers. Having inconsistent import patterns makes the codebase harder to maintain.
+Looking at the 19 items on the deferred list:
+- Every item has a file+line citation OK
+- Every item has a severity/confidence with no downgrade OK
+- Every item has an exit criterion OK
+- But: several are LOW/LOW items that have persisted across 30+ cycles (e.g. DOC-2 Docker dual-path docs, ARCH-3 stale-while-revalidate cache pattern). Are exit criteria realistic?
+- **Criticism:** "when that module is next modified" is a never-reached criterion if the module is feature-complete.
+- **Defense:** these are LOW/LOW specifically because they're nice-to-haves; the severity protects against accidental promotion. The repo's own rules explicitly allow LOW-severity deferrals without a stricter criterion.
+- **Verdict:** not a new issue. Flagging for the architect to consider whether any should be closed as "won't fix" in a future cycle rather than indefinitely deferred.
 
----
+### (d) Untracked files in repo root
 
-### UX: Countdown timer drift is a real user-facing problem
+The working tree has ~20 untracked `.mjs` / `.py` / `.js` files at repo root (`auto-solver.mjs`, `fetch-problems.mjs`, `solve-all.mjs`, `solutions.js`, etc.) plus a stray `plans/open/2026-04-23-rpf-cycle-32-review-remediation.md` and `plans/open/_archive/2026-04-23-rpf-cycle-36-review-remediation.md`.
+- **Criticism:** these look like one-off generator / solver scripts that should either be in `scripts/` or excluded via `.gitignore`. They've been untracked through multiple RPF cycles.
+- **Defense:** they are not loaded by the Next.js build, not referenced by `package.json` scripts, not linted. They're user-local experimental artifacts.
+- **Verdict:** NOT-A-BUG. Not a reviewable finding. If the user wants them cleaned up, that's a housekeeping request, not a review finding.
 
-The `countdown-timer.tsx` timer drift issue (also flagged by PERF-1 and DBG-3) is particularly impactful in an exam context. Students rely on the countdown timer to manage their time. If the timer shows incorrect remaining time after switching tabs, this can cause unnecessary panic or incorrect time management. The fix is simple (add a visibilitychange listener) and should be prioritized.
+### (e) Stale cycle-4 review artifacts pre-existed at cycle start
 
----
+The `.context/reviews/rpf-cycle-4-*.md` files already existed on disk at cycle start, from an old RPF run at commit `5d89806d` (2026-04-22). All findings in those files have been remediated over the intervening 50+ cycles. For this loop cycle 4/100 review, the stale files have been overwritten with current-HEAD content reflecting today's state.
 
-### Testing: Missing unit tests for error-handling paths
+**Verdict:** housekeeping, not a code issue. The aggregate clearly records the overwrite.
 
-The deferred items from cycle 3 (DEFER-1, DEFER-2) about adding unit tests for `discussion-vote-buttons.tsx` and `problem-submission-form.tsx` error handling remain unaddressed. The test infrastructure exists (96+ test files in `tests/`), but the new error-handling code added in cycles 2-3 has no test coverage. This is a risk — future refactors could break the error handling without anyone noticing.
+## Re-sweep findings (this cycle)
 
----
+**Zero new production-code findings.**
 
-### Risk Assessment: Summary of remaining issues
+## Recommendation
 
-| Finding | Severity | Confidence | Agents Agreeing |
-|---------|----------|------------|-----------------|
-| `invite-participants.tsx` `.json()` without `.catch()` | MEDIUM | HIGH | 3 (CR, SEC, DBG) |
-| `access-code-manager.tsx` `.json()` without `.catch()` | MEDIUM | HIGH | 3 (CR, SEC, DBG) |
-| `access-code-manager.tsx` dynamic clipboard import | LOW | MEDIUM | 2 (CR, SEC) |
-| `countdown-timer.tsx` timer drift | MEDIUM | HIGH | 3 (PERF, DBG, CRITIC) |
-| `compiler-client.tsx` `sourceCode` dep in `handleLanguageChange` | LOW | MEDIUM | 2 (CR, PERF) |
-| `compiler-client.tsx` stdin no `maxLength` | LOW | LOW | 2 (CR, SEC) |
-| `anti-cheat-monitor.tsx` listener re-registration | LOW | MEDIUM | 3 (CR, SEC, DBG) |
-| `active-timed-assignment-sidebar-panel.tsx` timer continues after expiry | LOW | MEDIUM | 1 (PERF) |
+No action this cycle. Architect may want to schedule a "prune the deferred list" pass in a future cycle.

@@ -1,51 +1,35 @@
-# RPF Cycle 4 — Architect
+# RPF Cycle 4 (Loop Cycle 4/100) — Architect
 
-**Date:** 2026-04-22
-**Base commit:** 5d89806d
+**Date:** 2026-04-23
+**Base commit:** d4b7a731
+**HEAD commit:** d4b7a731
+**Scope:** Architectural/design risks, coupling, layering, abstractions across the entire repo.
 
-## Findings
+## Production-code delta since last review
 
-### ARCH-1: `apiJson` helper added but never adopted — dead code pattern [MEDIUM/MEDIUM]
+Only `src/lib/judge/sync-language-configs.ts` changed. Architectural impact: near-zero. The new short-circuit is an opt-out gate for a specific cold-path function. It does not change the control-flow of `src/instrumentation.ts` (register hook still runs; `syncLanguageConfigsOnStartup` still returns). No new coupling introduced; no new layering concerns.
 
-**File:** `src/lib/api/client.ts:61-80`
-**Confidence:** HIGH
+## Re-sweep findings (this cycle)
 
-The `apiJson` helper was added in cycle 3 as a type-safe alternative to the manual `response.ok` + `.json()` pattern. However, zero client components use it. All components still use the manual `response.ok` check + `.json().catch(() => ({}))` pattern. Having two approaches for the same problem adds cognitive load and confusion about which pattern to use.
+**Zero new findings.**
 
-**Fix:** Either migrate client components to use `apiJson`, or remove it and standardize on the manual pattern. The manual pattern is already consistent and well-understood; removing `apiJson` may be the pragmatic choice.
+Re-verified architectural boundaries:
 
----
+- `src/app/**` <-> `src/lib/**` layering: respected. API routes delegate business logic to `src/lib` modules.
+- `src/components/**` <-> `src/hooks/**`: hooks encapsulate reactive state correctly.
+- `src/lib/judge/**` <-> `src/lib/db/**`: judge-side writes to `languageConfigs` go through drizzle-orm with consistent `getDbNowUncached` for timestamp.
+- Navigation abstractions (`src/lib/navigation/public-nav.ts`, `src/components/layout/public-footer.tsx`): Languages correctly in footer, no duplicate placement.
+- Rate-limit module: single source of truth in `src/lib/security/rate-limit.ts`.
+- CSRF module: single source of truth in `src/lib/security/csrf.ts`.
+- `createApiHandler` adoption: still the standard for new routes (22 legacy raw routes deferred — ARCH-2).
 
-### ARCH-2: Polling pattern fragmentation — three different polling implementations in the codebase [MEDIUM/MEDIUM]
+## Carry-over deferred items (unchanged)
 
-**Confidence:** HIGH
+- ARCH-2: Manual routes duplicate `createApiHandler` boilerplate — MEDIUM/MEDIUM, deferred.
+- ARCH-3: Stale-while-revalidate cache pattern duplication — LOW/LOW, deferred.
 
-The codebase now has three different polling patterns:
-1. `useVisibilityPolling` hook (used by clarifications, announcements, quick-stats, leaderboard)
-2. `SubmissionListAutoRefresh` with fetch-based backoff (used by submissions pages)
-3. Manual `setInterval` (used by `countdown-timer.tsx`, `active-timed-assignment-sidebar-panel.tsx`)
+No new architectural finding surfaced.
 
-Pattern 1 is the recommended approach and handles visibility correctly. Pattern 2 is specialized for the submission list case where error-detectable backoff is needed. Pattern 3 is the legacy approach that doesn't handle visibility at all.
+## Recommendation
 
-The `countdown-timer.tsx` case is particularly notable because it's in an exam context where timer accuracy matters most.
-
-**Fix:** Migrate `countdown-timer.tsx` to at least add a `visibilitychange` listener for immediate recalibration on tab focus. Consider whether `useVisibilityPolling` could be extended to support timer-style use cases.
-
----
-
-### ARCH-3: Dynamic vs static clipboard import inconsistency [LOW/MEDIUM]
-
-**Confidence:** MEDIUM
-
-`recruiting-invitations-panel.tsx` uses a static import for `copyToClipboard` (fixed in cycle 3), while `access-code-manager.tsx` still uses a dynamic `await import()`. These are in the same feature area and should use the same pattern.
-
-**Fix:** Convert `access-code-manager.tsx` to use a static import, matching the established pattern.
-
----
-
-## Verified Safe
-
-- `useVisibilityPolling` hook correctly implements the ref-based callback pattern to avoid stale closures
-- SSE events route uses shared polling manager to avoid N+1 queries
-- Anti-cheat monitor uses recursive `setTimeout` instead of `setInterval` for heartbeat (cycle 3 fix confirmed)
-- Recruiting invitations panel properly split fetch functions to avoid dependency cycles
+No action this cycle. Consider scheduling a "deferred-list pruning" cycle to decide whether 30+ cycle LOW/LOW items should be closed as "won't fix" rather than kept indefinitely deferred.

@@ -1,64 +1,44 @@
-# RPF Cycle 4 — Tracer
+# RPF Cycle 4 (Loop Cycle 4/100) — Tracer
 
-**Date:** 2026-04-22
-**Base commit:** 5d89806d
+**Date:** 2026-04-23
+**Base commit:** d4b7a731
+**HEAD commit:** d4b7a731
+**Scope:** Causal tracing of suspicious flows, competing hypotheses.
 
-## Causal Traces
+## Production-code delta since last review
 
-### TRACE-1: `response.json()` without `.catch()` — incomplete remediation from cycle 3
+Only `src/lib/judge/sync-language-configs.ts` changed.
 
-**Root cause:** The cycle 3 remediation for the "response.json() before response.ok" pattern was applied to the most impactful files but was not exhaustive. A grep for `response.json()` / `res.json()` across the codebase reveals ~70+ call sites. The remediation only covered ~10 files.
+## Causal traces attempted this cycle
 
-**Causal chain:**
-1. Cycle 2 identified the pattern in high-traffic files (submission form, discussions)
-2. Cycle 3 added `apiJson` helper and fixed ~10 more files
-3. The grep was not exhaustive — `invite-participants.tsx` and `access-code-manager.tsx` were missed
-4. These files still have `res.json()` calls without `.catch()` on error paths
+### TRACE-1: `SKIP_INSTRUMENTATION_SYNC` end-to-end flow
 
-**Remaining affected call sites (highest risk):**
-- `src/components/contest/invite-participants.tsx:78` — `res.json()` on error path
-- `src/components/contest/access-code-manager.tsx:42,88` — `res.json()` on success path
+1. Operator sets `SKIP_INSTRUMENTATION_SYNC=1` in env.
+2. `src/instrumentation.ts register()` is invoked by Next.js on process start.
+3. `register()` calls `syncLanguageConfigsOnStartup()`.
+4. First line of the function logs a `logger.warn(...)` and returns early.
+5. `register()` continues to `initializeSettings()`, `startRateLimitEviction()`, etc.
+6. Server boot completes without DB access for language-config sync.
+7. Judge worker path: when a submission arrives, the API fetches `languageConfigs` from DB. If the sync was skipped and the table was pre-populated by migration, the judge works normally. If the table is empty (fresh install with skip flag), the judge returns 400 "unknown language" — fail-closed.
 
-**Lower-risk sites** (inside `res.ok` blocks, unlikely to produce non-JSON):
-- `src/components/contest/leaderboard-table.tsx:231`
-- `src/components/contest/contest-quick-stats.tsx:52`
-- `src/components/contest/contest-announcements.tsx:56`
-- Various admin and dashboard components
+**Trace verdict:** correct flow, no hidden side effects.
 
-**Recommendation:** Do a comprehensive sweep of all `res.json()` / `response.json()` calls and ensure they either use `apiJson` or the `.catch(() => ({}))` pattern.
+### TRACE-2: Production safety — is the flag reachable in production?
 
----
+1. `.env.deploy.algo` is the production env file (checked into repo).
+2. Confirmed the flag is **not** defined in `.env.deploy.algo`.
+3. `deploy.sh` `set -a && source .env.deploy.algo` would not add the flag.
+4. Environment variables are passed through Docker env — only vars explicitly listed in `docker-compose.production.yml` reach the container.
+5. Confirmed `SKIP_INSTRUMENTATION_SYNC` is not in the docker-compose production config.
 
-### TRACE-2: Countdown timer drift — missing visibility recalculation
+**Trace verdict:** production is not reachable by this flag. Safe.
 
-**Causal chain:**
-1. `countdown-timer.tsx` uses `setInterval(tick, 1000)` on line 100
-2. `tick` recalculates `remaining = deadline - (Date.now() + offsetRef.current)`
-3. When the page is hidden, browsers throttle `setInterval`
-4. When the page becomes visible again, `remaining` state is stale
-5. The next interval tick corrects it, but there's a visible "jump"
+## Re-sweep findings (this cycle)
 
-**Why this wasn't caught:** The `useVisibilityPolling` hook was created to handle visibility-aware polling, but it's designed for fetch-based polling, not for local timer calculations. The timer component doesn't need to fetch anything — it just needs to recalculate locally.
+**Zero new findings.**
 
-**Root cause:** The timer was not updated when `useVisibilityPolling` was introduced, and the new hook's pattern (visibility-aware callback) doesn't fit the timer's use case (local calculation).
+No suspicious flow surfaced in this cycle's trace.
 
-**Fix:** Add a `visibilitychange` listener that immediately recalculates `remaining` when the tab becomes visible. This is a simple, targeted fix that doesn't require refactoring to use `useVisibilityPolling`.
+## Recommendation
 
----
-
-### TRACE-3: Dynamic clipboard import — partial fix from cycle 3
-
-**Causal chain:**
-1. `recruiting-invitations-panel.tsx` used `await import("@/lib/clipboard")` — flagged in cycle 3 as SEC-2
-2. Fixed in cycle 3 by converting to static import
-3. `access-code-manager.tsx` has the same pattern but was not flagged because it wasn't reviewed as thoroughly
-
-**Fix:** Apply the same static import conversion to `access-code-manager.tsx`.
-
----
-
-## Verified Safe
-
-- SSE events route properly handles connection cleanup on abort and timeout
-- `useVisibilityPolling` correctly uses ref-based callback to avoid stale closures
-- Anti-cheat monitor uses recursive `setTimeout` instead of `setInterval` for heartbeat
+No action this cycle.

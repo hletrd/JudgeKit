@@ -1,67 +1,41 @@
-# RPF Cycle 4 — Debugger
+# RPF Cycle 4 (Loop Cycle 4/100) — Debugger
 
-**Date:** 2026-04-22
-**Base commit:** 5d89806d
+**Date:** 2026-04-23
+**Base commit:** d4b7a731
+**HEAD commit:** d4b7a731
+**Scope:** Latent bug surface, failure modes, regression risks across the entire repo.
 
-## Findings
+## Production-code delta since last review
 
-### DBG-1: `invite-participants.tsx` `handleInvite` — `res.json()` on error path can throw SyntaxError [MEDIUM/MEDIUM]
+Only `src/lib/judge/sync-language-configs.ts` changed (the `SKIP_INSTRUMENTATION_SYNC` short-circuit). No new bug surface introduced.
 
-**File:** `src/components/contest/invite-participants.tsx:78`
-**Confidence:** HIGH
+## Re-sweep findings (this cycle)
 
-When the server returns a non-JSON error response (e.g., 502 HTML), `await res.json()` throws a SyntaxError. The outer `catch` handles it generically but the user sees `t("inviteFailed")` instead of a more specific error. This is a latent bug of the same class fixed across many components in cycle 3.
+**Zero new findings.**
 
-**Concrete failure scenario:** nginx returns 502 Bad Gateway with HTML body when the upstream is restarting. User clicks "Invite" and sees "inviteFailed" toast with no actionable information.
+Traced bug-prone patterns across the codebase:
 
-**Fix:** Add `.catch(() => ({}))` after `res.json()` on line 78, then check the error code from the parsed object.
+- Async error boundaries in all client components — `.catch(() => ({}))` guards on `res.json()` are present across the codebase (verified via grep; no bare `await res.json()` remains in error paths).
+- Timer/interval cleanup — all `setInterval` / `setTimeout` callsites have corresponding `clearInterval` / `clearTimeout` in cleanup.
+- Event-listener cleanup — all `addEventListener` callsites have corresponding `removeEventListener` in cleanup.
+- SSE connection cleanup on abort + timeout — intact.
+- Judge claim race condition — guarded by atomic DB transaction with `FOR UPDATE SKIP LOCKED` (verified).
+- `getDbNowUncached` usage in clock-skew-sensitive paths — used consistently.
+- Recruiting token redemption — guarded by transactional `verifyAndRehashPassword` (cycle 36 Lane 2).
 
----
+## Prior cycle-4 findings (2026-04-22 RPF at 5d89806d) — all remediated at current HEAD
 
-### DBG-2: `access-code-manager.tsx` `res.json()` on success path — no `.catch()` for malformed JSON [MEDIUM/MEDIUM]
+Verified by direct file inspection:
+- `invite-participants.tsx:88` — `.catch(() => ({}))` present.
+- `access-code-manager.tsx:91` — `.catch(() => ({}))` present.
+- `countdown-timer.tsx:132-143` — `visibilitychange` listener recalculates on tab focus.
+- `anti-cheat-monitor.tsx` — ref-based callback pattern now in use (no listener re-registration gap).
+- `active-timed-assignment-sidebar-panel.tsx` — timer cleanup on assignment expiry now implemented.
 
-**File:** `src/components/contest/access-code-manager.tsx:42,88`
-**Confidence:** MEDIUM
+## Carry-over deferred items (unchanged)
 
-In `fetchCode` (line 42) and `handleGenerate` (line 88), `res.json()` is called after `res.ok` check but without `.catch()`. If the API returns a 200 with malformed JSON (e.g., truncated response due to connection issues), `res.json()` throws an unhandled SyntaxError within the try/catch block, resulting in a generic error toast.
+See cycle 55 aggregate. No debugger-angle additions this cycle.
 
-**Concrete failure scenario:** Server returns 200 but the JSON body is truncated due to a proxy timeout. User sees "Error" toast with no indication of what went wrong.
+## Recommendation
 
-**Fix:** Add `.catch(() => ({}))` after both `res.json()` calls.
-
----
-
-### DBG-3: `countdown-timer.tsx` — timer drift when tab is hidden and browser throttles `setInterval` [MEDIUM/MEDIUM]
-
-**File:** `src/components/exam/countdown-timer.tsx:100`
-**Confidence:** HIGH
-
-When the page is hidden, browsers commonly throttle `setInterval` to once per second or less. When the tab becomes visible again, the `remaining` state may be stale because the interval was throttled. The component calculates `remaining` from `deadline - (Date.now() + offsetRef.current)`, but the state update only happens when the interval fires.
-
-**Concrete failure scenario:** Student is in an exam, switches to a different tab for 5 minutes, then switches back. The displayed remaining time is 5 minutes behind (showing 25:00 instead of 20:00) until the next interval tick corrects it, which creates a visible "jump" in the countdown.
-
-**Fix:** Add a `visibilitychange` listener that recalculates `remaining` immediately when the tab becomes visible, using `deadline - (Date.now() + offsetRef.current)`.
-
----
-
-### DBG-4: `anti-cheat-monitor.tsx` — event listener gap during re-registration [LOW/MEDIUM]
-
-**File:** `src/components/exam/anti-cheat-monitor.tsx:162-242`
-**Confidence:** MEDIUM
-
-When `reportEvent` or `flushPendingEvents` change (due to `sendEvent` recreation), the `useEffect` cleanup runs and removes all event listeners, then re-adds them. During this gap, anti-cheat events like `tab_switch` or `copy` are not detected.
-
-**Concrete failure scenario:** Student switches tabs during the exact moment the event listeners are being re-registered. The tab-switch event is not captured, and no warning toast is shown.
-
-**Fix:** Use the ref-based callback pattern so event listeners are only registered once.
-
----
-
-## Verified Safe / No Bug Found
-
-- `SubmissionListAutoRefresh` properly handles errors with fetch-based detection (cycle 3 fix working)
-- `normalizeSubmission` properly validates all numeric fields with `Number.isFinite`
-- `leaderboard-table.tsx` validates response shape before setting state
-- SSE events route properly excludes `sourceCode` from query results
-- Anti-cheat event validation on server side uses Zod schema with `z.enum(CLIENT_EVENT_TYPES)`
-- `loadPendingEvents` in `anti-cheat-monitor.tsx` properly validates parsed JSON with `isValidPendingEvent` (cycle 3 fix confirmed)
+No action this cycle.

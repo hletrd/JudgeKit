@@ -1,37 +1,37 @@
-# RPF Cycle 4 — Document Specialist
+# RPF Cycle 4 (Loop Cycle 4/100) — Document Specialist
 
-**Date:** 2026-04-22
-**Base commit:** 5d89806d
+**Date:** 2026-04-23
+**Base commit:** d4b7a731
+**HEAD commit:** d4b7a731
+**Scope:** Doc/code mismatches against authoritative sources.
 
-## Findings
+## Production-code delta since last review
 
-### DOC-1: `apiJson` helper JSDoc says "Use this instead of the raw `await response.json()` pattern" but no component uses it [MEDIUM/LOW]
+Only `src/lib/judge/sync-language-configs.ts` changed. Doc-angle impact:
+- Large in-code comment (lines 69-74) documents the new flag, warns against production use, and references the plan + designer-runtime review for provenance.
+- Plan: `plans/open/2026-04-23-rpf-cycle-55-review-remediation.md` lane A2 is the authoritative record.
+- Designer runtime review: `.context/reviews/designer-runtime-cycle-3.md` lists the motivation.
 
-**File:** `src/lib/api/client.ts:44-60`
-**Confidence:** HIGH
+**Verdict:** documentation is complete and coherent.
 
-The `apiJson` helper's JSDoc encourages its use as a replacement for the raw `response.json()` pattern. However, no component in the codebase actually uses it. This creates a discrepancy between the documentation (which says to use `apiJson`) and the actual code (which uses the manual `response.ok` + `.json().catch()` pattern).
+## Re-sweep findings (this cycle)
 
-**Fix:** Either update the JSDoc to reflect the actual usage pattern, or migrate components to use `apiJson`. The manual pattern is consistent and well-understood, so updating the JSDoc may be the pragmatic choice.
+**Zero new findings.**
 
----
+Re-checked doc/code consistency:
+- `README.md`, `AGENTS.md`, `CLAUDE.md` — no stale references to removed/renamed symbols.
+- `.context/project/**` — no stale references.
+- `docs/**` — no stale references.
+- API route comments — match current behavior.
+- Library JSDoc — matches current signatures.
 
-### DOC-2: `apiFetch` JSDoc mentions "Always check `response.ok` before calling `response.json()`" but some components still don't follow this [LOW/LOW]
+## Carry-over deferred items (unchanged)
 
-**File:** `src/lib/api/client.ts:25`
+- DOC-1 (cycle 48): SSE route ADR — LOW/LOW, deferred.
+- DOC-2 (cycle 48): Docker client dual-path docs — LOW/LOW, deferred.
 
-The `apiFetch` JSDoc correctly documents the critical pattern of checking `response.ok` before calling `.json()`. However, `invite-participants.tsx:78` and `access-code-manager.tsx:42,88` don't follow this pattern with `.catch()`. The JSDoc should either explicitly mention the `.catch()` pattern or should reference `apiJson`.
+No new document-specialist finding surfaced.
 
----
+## Recommendation
 
-### DOC-3: Cycle 3 remediation plan is properly documented [VERIFIED]
-
-The cycle 3 remediation plan at `plans/open/2026-04-22-rpf-cycle-3-review-remediation.md` is properly marked as COMPLETED with all tasks checked off. The deferred items are clearly documented with severity, reason, and exit criterion.
-
----
-
-## Verified Safe
-
-- `useVisibilityPolling` hook has clear JSDoc explaining its behavior
-- `apiFetch` JSDoc is accurate about CSRF header handling
-- `SubmissionListAutoRefresh` has inline comment explaining the fetch-based backoff design
+No action this cycle.
