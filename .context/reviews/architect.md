@@ -1,24 +1,23 @@
-# Architectural Review — RPF Cycle 21
+# Architectural Review — RPF Cycle 22
 
 **Date:** 2026-04-22
 **Reviewer:** architect
-**Base commit:** 4b9d48f0
+**Base commit:** 88abca22
 
-## ARCH-1: `anti-cheat-dashboard.tsx` `formatDetailsJson` is a divergent copy of the timeline version — DRY violation [MEDIUM/MEDIUM]
+## ARCH-1: `create-problem-form.tsx` stores numeric fields as string state — inconsistent with established pattern [LOW/MEDIUM]
 
-**Files:**
-- `src/components/contest/anti-cheat-dashboard.tsx:91-97`
-- `src/components/contest/participant-anti-cheat-timeline.tsx:45-59`
+**File:** `src/app/(dashboard)/dashboard/problems/create/create-problem-form.tsx:92,108`
+**Confidence:** MEDIUM
 
-**Confidence:** HIGH
+The form stores `sequenceNumber` and `difficulty` as `string` state, converting to numbers only at submit time. Other numeric form inputs in the codebase store numeric state and use `parseInt(e.target.value, 10) || defaultValue` in their `onChange` handlers. The string-state approach works for partially-typed values but silently falls back to `null` on invalid input (no user feedback).
 
-Two `formatDetailsJson` functions exist with different behavior. The timeline version (fixed in cycle 18) uses i18n keys to render "Target: Code editor" from `{"target": "code-editor"}`. The dashboard version only pretty-prints JSON. Both components display the same anti-cheat event details data. This violates DRY and creates an inconsistency where the same data appears differently in two views.
+**Concrete failure scenario:** A user types "abc" in the sequence number field. The form submits successfully with `sequenceNumber: null`. No validation error is shown. The user may not realize the value was discarded.
 
-**Fix:** Extract a shared `formatDetailsJson(raw, t)` utility that both components import, or have the dashboard component pass `t` to its local copy.
+**Fix:** Either (a) add inline validation to show an error when the current value is non-empty and non-numeric, or (b) switch to numeric state with `parseInt` and fallback defaults, matching the established pattern.
 
 ---
 
-## ARCH-2: `ContestsLayout` uses event delegation with hardcoded DOM queries — fragile pattern [LOW/MEDIUM]
+## ARCH-2: `ContestsLayout` uses event delegation with hardcoded DOM queries — fragile pattern (carried from cycle 18) [LOW/MEDIUM]
 
 **File:** `src/app/(dashboard)/dashboard/contests/layout.tsx:40-43`
 **Confidence:** MEDIUM
@@ -29,20 +28,10 @@ Carried from cycle 18. The layout uses `document.getElementById("main-content")`
 
 ---
 
-## ARCH-3: Inconsistent numeric input handling — `Number()` vs `parseInt()` across forms [LOW/MEDIUM]
+## Previously Fixed — Verified
 
-**Files:**
-- `src/components/contest/quick-create-contest-form.tsx:133,172` — `Number()`
-- `src/app/(dashboard)/dashboard/admin/roles/role-editor-dialog.tsx:187` — `Number()`
-- `src/components/contest/contest-replay.tsx:166` — `Number()`
-- `src/lib/plugins/chat-widget/admin-config.tsx:294,305` — `parseInt()` (correct)
-- `src/app/(dashboard)/dashboard/groups/[id]/assignment-form-dialog.tsx:454` — `parseInt()` (correct)
-
-**Confidence:** HIGH
-
-Some form inputs use `Number()` while others use `parseInt()`. The established pattern in recent fixes is `parseInt()` with fallback defaults. `Number()` can produce `NaN` from non-numeric strings and parses the entire string (e.g., `Number("12abc")` is `NaN`), while `parseInt("12abc", 10)` returns `12`.
-
-**Fix:** Standardize all numeric form inputs to `parseInt(e.target.value, 10) || defaultValue`.
+- ARCH-1 from cycle 21 (formatDetailsJson DRY violation in anti-cheat-dashboard): Fixed — now uses i18n `t()` function
+- ARCH-3 from cycle 21 (inconsistent Number() vs parseInt()): Fixed — all form inputs now use `parseInt()`
 
 ---
 

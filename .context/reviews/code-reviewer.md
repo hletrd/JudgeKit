@@ -1,65 +1,57 @@
-# Code Quality Review — RPF Cycle 21
+# Code Quality Review — RPF Cycle 22
 
 **Date:** 2026-04-22
 **Reviewer:** code-reviewer
-**Base commit:** 4b9d48f0
+**Base commit:** 88abca22
 
-## CR-1: `anti-cheat-dashboard.tsx` `formatDetailsJson` not migrated to i18n — duplicate of fixed issue [MEDIUM/HIGH]
+## CR-1: `create-problem-form.tsx` stores `sequenceNumber` and `difficulty` as string state — no inline validation for invalid numeric input [LOW/MEDIUM]
 
-**File:** `src/components/contest/anti-cheat-dashboard.tsx:91-97`
-**Confidence:** HIGH
-
-The `participant-anti-cheat-timeline.tsx` `formatDetailsJson` was migrated in cycle 18 to use `t()` with i18n keys (`detailTargetLabel`, `detailTargets.*`). However, the `anti-cheat-dashboard.tsx` still has the old version that only pretty-prints JSON. When an anti-cheat event has a `target` field (e.g., `{"target": "code-editor"}`), the dashboard shows raw JSON `{"target": "code-editor"}` while the timeline shows "Target: Code editor" (localized). This is an i18n consistency violation.
-
-**Concrete failure:** An instructor viewing the anti-cheat dashboard sees `{"target": "code-editor"}` in expanded details, while the participant timeline shows the localized "Target: Code editor" / Korean equivalent. The same data is displayed differently in two views.
-
-**Fix:** Migrate `formatDetailsJson` in `anti-cheat-dashboard.tsx` to accept `t` as a parameter, matching the `participant-anti-cheat-timeline.tsx` implementation. The i18n keys already exist in both `en.json` and `ko.json`.
-
----
-
-## CR-2: `role-editor-dialog.tsx` uses `Number(e.target.value)` for level input — NaN risk [LOW/MEDIUM]
-
-**File:** `src/app/(dashboard)/dashboard/admin/roles/role-editor-dialog.tsx:187`
-**Confidence:** HIGH
-
-The role level input uses `Number(e.target.value)` which can produce `NaN` from non-numeric input or `0` from empty string. The `level` field is constrained to 0-2 in the HTML but `Number()` does not guarantee a valid integer in range.
-
-**Concrete failure:** If a user clears the input field, `Number("")` returns `0`, which is a valid level. But if they type non-numeric text, `Number("abc")` returns `NaN`, which could be sent to the server.
-
-**Fix:** Use `parseInt(e.target.value, 10) || 0` and clamp to 0-2 range, matching the pattern used in admin-config and assignment-form-dialog.
-
----
-
-## CR-3: `quick-create-contest-form.tsx` uses `Number(e.target.value)` for duration and points — NaN risk [LOW/LOW]
-
-**File:** `src/components/contest/quick-create-contest-form.tsx:133,172`
+**File:** `src/app/(dashboard)/dashboard/problems/create/create-problem-form.tsx:92,108,469,483`
 **Confidence:** MEDIUM
 
-Both `setDurationMinutes(Number(e.target.value) || 60)` and `updateProblemPoints(i, Number(e.target.value) || 100)` use `Number()`. The `|| 60` and `|| 100` fallbacks handle `NaN` (since `NaN || 60` is `60`), but `Number("12abc")` returns `NaN` rather than `12`. This differs from `parseInt` which would parse the leading digits.
+Unlike other numeric form inputs in the codebase which use `parseInt(e.target.value, 10) || defaultValue` in their `onChange` handlers and store numeric state, `create-problem-form.tsx` stores `sequenceNumber` and `difficulty` as `string` state (`useState<string>`) and passes `e.target.value` directly. The conversion to number only happens at submit time (lines 394, 411-413). While this works for controlled inputs that may be partially typed, the `sequenceNumber` input at line 469 sets `setSequenceNumber(e.target.value)` without any guard — a user could type "abc" and the form would still attempt submission (though `parseInt` at line 394 would produce `NaN`, caught by `Number.isFinite` at line 401, and silently set to `null`).
 
-**Fix:** Use `parseInt(e.target.value, 10) || 60` and `parseInt(e.target.value, 10) || 100` for consistency with other numeric inputs in the codebase.
+**Concrete failure scenario:** A user types "abc" into the sequence number field. The form shows no inline validation error. On submit, `parseInt("abc", 10)` returns `NaN`, `Number.isFinite(NaN)` is false, so `sequenceNumber` is set to `null`. The submission succeeds with a null sequence number. No user-facing error is shown about the invalid input.
+
+**Fix:** Add inline validation feedback (e.g., mark the field with error styling when the current value is non-empty and not a valid number) or show a toast.warning when submitting with invalid numeric input before the silent null fallback.
 
 ---
 
-## CR-4: `contest-replay.tsx` uses `Number(event.target.value)` for slider — no NaN guard [LOW/LOW]
+## CR-2: `contest-join-client.tsx` uses manual `apiFetch` + two-branch `.json()` instead of `apiFetchJson` [LOW/LOW]
 
-**File:** `src/components/contest/contest-replay.tsx:166`
+**File:** `src/app/(dashboard)/dashboard/contests/join/contest-join-client.tsx:38-49`
 **Confidence:** LOW
 
-The range slider `onChange` uses `Number(event.target.value)` without guard. While HTML range inputs always return valid numbers, this is inconsistent with the established pattern.
+The component uses `apiFetch` with manual two-branch `.json()` parsing (error branch at line 45, success at line 49) instead of the `apiFetchJson` utility. Other recently-migrated components use `apiFetchJson` for cleaner code.
 
-**Fix:** Use `parseInt(event.target.value, 10)` for consistency. Low priority because HTML range inputs are inherently safe.
+**Concrete failure scenario:** No failure — the code is correct. It is a style consistency issue only.
+
+**Fix:** Consider migrating to `apiFetchJson` for consistency with other recently-migrated components. Low priority.
+
+---
+
+## CR-3: `recruiting-invitations-panel.tsx` mutation handlers use `apiFetch` while read handlers use `apiFetchJson` — inconsistent API client usage [LOW/LOW]
+
+**File:** `src/components/contest/recruiting-invitations-panel.tsx:195,133`
+**Confidence:** LOW
+
+The `fetchInvitations` function was migrated to `apiFetchJson` (line 133) but `handleCreate` (line 195), `handleRevoke`, and other mutation handlers still use `apiFetch` with manual `.json().catch()`. This is a style consistency issue, not a bug.
+
+**Fix:** Migrate mutation handlers to `apiFetchJson` for consistency. Low priority.
 
 ---
 
 ## Verified Safe
 
-- All `res.json()` calls in client components have `.catch()` guards
-- `apiFetchJson` is consistently used for polling and data-fetching patterns
-- `formatDuration` properly consolidated into `src/lib/formatting.ts`
-- `participant-anti-cheat-timeline.tsx` `formatDetailsJson` properly uses i18n `t()` function
-- `api-keys-client.tsx` migrated to `apiFetchJson`
-- No `innerHTML` assignments in the codebase
-- No `as any` or `@ts-ignore` found
-- Korean letter-spacing is properly conditional throughout
-- Sidebar timer has visibility awareness (`visibilitychange` listener)
+- All `Number()` -> `parseInt()` migrations from cycle 21 are in place and correct
+- `anti-cheat-dashboard.tsx` `formatDetailsJson` properly uses i18n `t()` function (cycle 21 AGG-1 fix confirmed)
+- `role-editor-dialog.tsx` uses `parseInt(e.target.value, 10) || 0` correctly (cycle 21 AGG-3 fix confirmed)
+- `quick-create-contest-form.tsx` uses `parseInt(e.target.value, 10) || 60/100` correctly (cycle 21 AGG-5 fix confirmed)
+- `contest-replay.tsx` slider uses `parseInt(event.target.value, 10)` correctly (cycle 21 AGG-5 fix confirmed)
+- All client-side `.json()` calls have `.catch()` guards
+- `active-timed-assignment-sidebar-panel.tsx` `aria-valuenow` uses `progressPercent` (not rounded, cycle 21 AGG-8 fix confirmed)
+- `contest-replay.tsx` has `aria-valuetext` (cycle 21 AGG-7 fix confirmed)
+- `anti-cheat-dashboard.tsx` expand/collapse buttons have `aria-controls` (cycle 21 AGG-6 fix confirmed)
+- No `as any` or `@ts-ignore` found in production code
+- No `innerHTML` assignments (only `dangerouslySetInnerHTML` with sanitizers)
+- Korean letter-spacing properly conditional throughout

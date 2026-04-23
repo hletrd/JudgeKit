@@ -1,36 +1,37 @@
-# Verifier Review — RPF Cycle 21
+# Verifier Review — RPF Cycle 22
 
 **Date:** 2026-04-22
 **Reviewer:** verifier
-**Base commit:** 4b9d48f0
+**Base commit:** 88abca22
 
-## V-1: `anti-cheat-dashboard.tsx` `formatDetailsJson` not using i18n — confirmed inconsistent [MEDIUM/HIGH]
+## V-1: `create-problem-form.tsx` sequence number silently defaults to null on invalid input [LOW/MEDIUM]
 
-**File:** `src/components/contest/anti-cheat-dashboard.tsx:91-97`
+**File:** `src/app/(dashboard)/dashboard/problems/create/create-problem-form.tsx:394,401`
 **Confidence:** HIGH
 
-Verified that the dashboard's `formatDetailsJson` only pretty-prints JSON while the timeline version uses `t()` with i18n keys. The i18n keys (`detailTargetLabel`, `detailTargets.code-editor`, etc.) exist in both `en.json` and `ko.json`. The dashboard component already uses `useTranslations("contests.antiCheat")` at line 100 — the `t` function is available but not passed to `formatDetailsJson`.
+Verified the data flow:
+1. User types "abc" in sequence number field
+2. `setSequenceNumber("abc")` is called (line 469)
+3. On submit, `parseInt("abc", 10)` returns `NaN` (line 394)
+4. `Number.isFinite(NaN) && NaN > 0` is false (line 401)
+5. `parsedSeqNum` is set to `null`
+6. Problem is created with `sequenceNumber: null`
+7. No error toast, no inline validation warning
 
-**Evidence:** Line 91-97 shows `function formatDetailsJson(raw: string): string { try { return JSON.stringify(JSON.parse(raw), null, 2); } catch { return raw; } }` — no `t` parameter, no i18n keys. Line 550 calls `formatDetailsJson(event.details!)` without passing `t`.
+The server-side Zod schema accepts `null` for sequence number, so the submission succeeds. But the user receives no feedback that their input was discarded.
 
----
-
-## V-2: `role-editor-dialog.tsx` `Number(e.target.value)` for level — NaN risk confirmed [LOW/MEDIUM]
-
-**File:** `src/app/(dashboard)/dashboard/admin/roles/role-editor-dialog.tsx:187`
-**Confidence:** HIGH
-
-The level input uses `Number(e.target.value)`. While the HTML `<input type="number" min={0} max={2}>` constrains most input, the `Number()` call on an empty field returns `0` (valid but unintended), and on non-numeric paste returns `NaN`. The `parseInt` pattern with fallback is the established convention in this codebase.
+**Fix:** Add a toast.warning or inline error when the value is non-empty and non-numeric before the silent null fallback.
 
 ---
 
 ## Previously Fixed — Verified
 
-- `participant-anti-cheat-timeline.tsx` polling resets to first page on refresh (AGG-3 fix confirmed)
-- `api-keys-client.tsx` migrated to `apiFetchJson` (AGG-4 fix confirmed)
-- `formatDuration` consolidated into `src/lib/formatting.ts` (AGG-7 fix confirmed)
-- `code-timeline-panel.tsx` snapshot dots have `aria-label` (AGG-8 fix confirmed)
-- `quick-create-contest-form.tsx` navigates to contests list when `assignmentId` missing (AGG-9 fix confirmed)
-- `active-timed-assignment-sidebar-panel.tsx` has `visibilitychange` listener (AGG-6 fix confirmed)
-- All cycle-20 `.catch()` guards confirmed in place (create-group-dialog, admin-config, providers, comment-section)
-- All cycle-20 `parseInt` fixes confirmed (admin-config, assignment-form-dialog)
+- `anti-cheat-dashboard.tsx` `formatDetailsJson` now uses i18n `t()` function (cycle 21 AGG-1 fix confirmed)
+- `role-editor-dialog.tsx` uses `parseInt(e.target.value, 10) || 0` (cycle 21 AGG-3 fix confirmed)
+- `quick-create-contest-form.tsx` uses `parseInt(e.target.value, 10) || 60/100` (cycle 21 AGG-5 fix confirmed)
+- `contest-replay.tsx` slider uses `parseInt(event.target.value, 10)` (cycle 21 AGG-5 fix confirmed)
+- `active-timed-assignment-sidebar-panel.tsx` `aria-valuenow` uses `progressPercent` (cycle 21 AGG-8 fix confirmed)
+- `contest-replay.tsx` has `aria-valuetext` (cycle 21 AGG-7 fix confirmed)
+- `anti-cheat-dashboard.tsx` expand/collapse buttons have `aria-controls` (cycle 21 AGG-6 fix confirmed)
+- All cycle-20 `.catch()` guards confirmed in place
+- All cycle-20 `parseInt` fixes confirmed

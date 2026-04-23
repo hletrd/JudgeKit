@@ -1,43 +1,25 @@
-# Performance Review — RPF Cycle 21
+# Performance Review — RPF Cycle 22
 
 **Date:** 2026-04-22
 **Reviewer:** perf-reviewer
-**Base commit:** 4b9d48f0
+**Base commit:** 88abca22
 
-## PERF-1: `recruiter-candidates-panel.tsx` loads full export dataset into memory — no pagination [MEDIUM/HIGH]
+## PERF-1: `rate-limiter-client.ts` `consecutiveFailures` is module-level mutable state without atomicity — minor race in serverless [LOW/LOW]
 
-**File:** `src/components/contest/recruiter-candidates-panel.tsx:50-53`
-**Confidence:** HIGH
+**File:** `src/lib/security/rate-limiter-client.ts:43-46`
+**Confidence:** LOW
 
-Carried from cycle 18 (AGG-2, DEFER-29). The component fetches the entire candidate export dataset into the browser, then does client-side search and sort. No server-side pagination, filtering, or sorting is used.
+The circuit breaker state (`consecutiveFailures`, `circuitOpenUntil`) is module-level mutable state. In a serverless or multi-instance deployment, each instance has its own circuit breaker state. If the rate-limiter sidecar goes down, each instance independently trips its breaker — this is actually correct behavior (fail-open per instance). The concern is that in a single Node.js process, concurrent requests could race on `consecutiveFailures++`, but since Node.js is single-threaded, this is not a real issue.
 
-**Concrete failure:** A contest with 5000+ candidates causes a large JSON payload download and full in-memory sort/filter on every keystroke.
-
-**Fix:** Create a dedicated server-side paginated endpoint with search and sort parameters.
+**Fix:** No action needed. The current implementation is correct for the Node.js single-threaded model.
 
 ---
 
-## PERF-2: Practice page Path B progress filter — fetches all into memory [MEDIUM/MEDIUM]
+## Carried Items (Unchanged from Previous Cycles)
 
-**File:** `src/app/(public)/practice/page.tsx:410-519`
-**Confidence:** HIGH
-
-Carried from cycles 18-20. When a progress filter is active, Path B fetches ALL matching problem IDs and ALL user submissions into memory, filters in JavaScript, and paginates.
-
-**Fix:** Move the progress filter logic into a SQL CTE or subquery.
-
----
-
-## PERF-3: `contest-replay.tsx` `setInterval` without visibility awareness — wasted CPU in background [LOW/MEDIUM]
-
-**File:** `src/components/contest/contest-replay.tsx:77-87`
-**Confidence:** MEDIUM
-
-The replay playback uses `window.setInterval` for auto-advancing snapshots. Unlike `countdown-timer.tsx` and `active-timed-assignment-sidebar-panel.tsx` which have `visibilitychange` listeners, this component continues ticking when the tab is hidden. At 4x speed, the interval fires every 350ms.
-
-**Concrete failure:** User switches tabs while replay is playing. The interval continues firing in the background, advancing snapshots unnecessarily. When the user returns, the replay may have finished or be at a different point than expected.
-
-**Fix:** Add a `visibilitychange` listener to pause the interval when the tab is hidden and resume when visible. Alternatively, since this is a playback animation (not a timer), simply pausing on hide and resuming from the same position on show would be correct.
+- PERF-1 (from aggregate): `recruiter-candidates-panel.tsx` full export fetch — carried as DEFER-29
+- PERF-2 (from aggregate): Practice page Path B progress filter — carried from cycles 18-20
+- AGG-4 (from cycle 21): `contest-replay.tsx` `setInterval` without visibility awareness — carried as DEFER-3
 
 ---
 

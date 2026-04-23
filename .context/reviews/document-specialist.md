@@ -1,35 +1,33 @@
-# Document Specialist Review — RPF Cycle 21
+# Document Specialist Review — RPF Cycle 22
 
 **Date:** 2026-04-22
 **Reviewer:** document-specialist
-**Base commit:** 4b9d48f0
+**Base commit:** 88abca22
 
-## DOC-1: `anti-cheat-dashboard.tsx` `formatDetailsJson` not documented as needing i18n migration [LOW/MEDIUM]
+## DOC-1: `create-problem-form.tsx` sequence number and difficulty fields lack JSDoc on state management [LOW/LOW]
 
-**File:** `src/components/contest/anti-cheat-dashboard.tsx:91-97`
-**Confidence:** HIGH
+**File:** `src/app/(dashboard)/dashboard/problems/create/create-problem-form.tsx:92,108`
+**Confidence:** LOW
 
-The `formatDetailsJson` function in the dashboard component has no JSDoc or comment indicating it should display localized strings for the `target` field. The timeline version was migrated in cycle 18 but this copy was missed. Without documentation, future developers may not realize this function needs i18n support.
+The `sequenceNumber` and `difficulty` state variables are stored as strings, which is intentional for partially-typed controlled inputs. However, there is no comment explaining why string state is used instead of numeric state (which is the established pattern in other form inputs). This could lead future developers to "fix" the inconsistency by converting to numeric state without understanding the partial-input use case.
 
-**Fix:** When migrating to i18n-aware version, add JSDoc documenting the `t` parameter and the i18n key pattern (`detailTargets.*`).
+**Fix:** Add a brief comment explaining the design choice: "Stored as string to handle partial input during typing; converted to number at submit time."
 
 ---
 
-## DOC-2: `apiFetchJson` JSDoc is comprehensive and accurate [NO ISSUE]
+## DOC-2: `anti-cheat-dashboard.tsx` `formatDetailsJson` now documented via i18n keys — adequate [NO ISSUE]
+
+**File:** `src/components/contest/anti-cheat-dashboard.tsx`
+
+The cycle 21 AGG-1 fix migrated `formatDetailsJson` to use i18n keys. The function signature now accepts `t` and the i18n key pattern (`detailTargets.*`) is consistent with the timeline version. Documentation is adequate via the i18n key structure.
+
+---
+
+## DOC-3: `apiFetchJson` JSDoc is comprehensive and accurate [NO ISSUE]
 
 **File:** `src/lib/api/client.ts:87-123`
-**Confidence:** HIGH
 
-The JSDoc for `apiFetchJson` was updated in cycle 20 to explicitly mention both-path `.catch()` protection. The documentation is thorough and up-to-date.
-
----
-
-## DOC-3: `formatting.ts` JSDoc is comprehensive — `formatDuration` properly documented [NO ISSUE]
-
-**File:** `src/lib/formatting.ts:113-126`
-**Confidence:** HIGH
-
-The `formatDuration` function has proper JSDoc documenting its behavior: "Returns '00:00:00' for non-finite, zero, or negative values." The consolidation from two component-local functions was done correctly in cycle 18.
+Carried from cycle 21 (DOC-2). The JSDoc for `apiFetchJson` was updated in cycle 20 to explicitly mention both-path `.catch()` protection. The documentation is thorough and up-to-date.
 
 ---
 
@@ -39,3 +37,4 @@ The `formatDuration` function has proper JSDoc documenting its behavior: "Return
 - `copyToClipboard` utility has proper JSDoc
 - Error handling convention table in `client.ts` is accurate
 - `useVisibilityPolling` JSDoc accurately describes its behavior
+- `formatting.ts` functions have proper JSDoc

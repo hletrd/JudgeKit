@@ -1,45 +1,40 @@
-# Debugger Review — RPF Cycle 21
+# Debugger Review — RPF Cycle 22
 
 **Date:** 2026-04-22
 **Reviewer:** debugger
-**Base commit:** 4b9d48f0
+**Base commit:** 88abca22
 
-## DBG-1: `anti-cheat-dashboard.tsx` `formatDetailsJson` diverges from timeline version — data displayed differently [MEDIUM/MEDIUM]
+## DBG-1: `create-problem-form.tsx` sequence number silently null on invalid input — user-unfriendly [LOW/MEDIUM]
 
-**File:** `src/components/contest/anti-cheat-dashboard.tsx:91-97`
-**Confidence:** HIGH
-
-The dashboard's `formatDetailsJson` only pretty-prints JSON. The timeline version (fixed in cycle 18) renders the `target` field as "Target: Code editor". When an instructor looks at both views for the same student, they see different representations of the same data.
-
-**Concrete failure:** Instructor expands event details on the anti-cheat dashboard and sees `{"target": "code-editor"}`. They then switch to the participant timeline and see "Target: Code editor" for the exact same event. The inconsistency could confuse debugging efforts.
-
-**Fix:** Migrate the dashboard's `formatDetailsJson` to match the timeline's i18n-aware version.
-
----
-
-## DBG-2: `role-editor-dialog.tsx` `Number()` on level input can produce NaN [LOW/MEDIUM]
-
-**File:** `src/app/(dashboard)/dashboard/admin/roles/role-editor-dialog.tsx:187`
+**File:** `src/app/(dashboard)/dashboard/problems/create/create-problem-form.tsx:394,401,469`
 **Confidence:** MEDIUM
 
-`Number(e.target.value)` on the level input. If the user pastes non-numeric text, `NaN` is set as the level. When the form is submitted, the `level` field would be `NaN`, which is truthy but not a valid number. The server-side Zod schema (`z.number().int().min(0).max(2)`) would reject it, but the error message would be confusing.
+**Trace:**
+1. User types "abc" in the sequence number field
+2. `setSequenceNumber("abc")` — state is string "abc"
+3. User clicks submit
+4. `parseInt("abc", 10)` returns `NaN` (line 394)
+5. `Number.isFinite(NaN) && NaN > 0` is false (line 401)
+6. `parsedSeqNum` is set to `null`
+7. Problem is created with `sequenceNumber: null`
+8. No user-facing error about the invalid input
 
-**Concrete failure:** Admin pastes "abc" into the level field. `Number("abc")` is `NaN`. Form submission sends `NaN` as level. Server returns validation error with a generic message about level not being a valid integer.
+**Alternative trace (if using parseInt with inline validation):**
+1. User types "abc" — input shows red border or error message
+2. User corrects to "3" before submitting
+3. `parseInt("3", 10)` = 3, valid
+4. Problem created with `sequenceNumber: 3`
 
-**Fix:** Use `parseInt(e.target.value, 10) || 0` and rely on server-side validation for range.
+**Fix:** Add inline validation or a toast.warning when the sequence number or difficulty fields contain non-numeric, non-empty input.
 
 ---
 
-## DBG-3: `contest-replay.tsx` playback `setInterval` drifts in background tabs [LOW/LOW]
+## DBG-2: `contest-replay.tsx` playback `setInterval` drifts in background tabs (carried from cycle 21) [LOW/LOW]
 
 **File:** `src/components/contest/contest-replay.tsx:77-87`
 **Confidence:** LOW
 
-The replay playback uses `setInterval` without visibility awareness. When the tab is hidden, browsers throttle intervals. On tab return, the replay may have skipped frames or finished unexpectedly.
-
-**Concrete failure:** User starts replay at 4x speed, switches tabs for 30 seconds, returns. The replay may have finished or jumped to an unexpected snapshot due to throttled interval execution.
-
-**Fix:** Add `visibilitychange` listener to pause playback when tab is hidden. Low severity since this is a cosmetic playback feature.
+Carried from cycle 21 (DBG-3). The replay playback uses `setInterval` without visibility awareness. When the tab is hidden, browsers throttle intervals. On tab return, the replay may have skipped frames or finished unexpectedly. Low severity since this is a cosmetic playback feature.
 
 ---
 
@@ -51,3 +46,4 @@ The replay playback uses `setInterval` without visibility awareness. When the ta
 - Anti-cheat monitor properly uses refs for stable event handlers
 - Countdown timer validates `Number.isFinite(data.timestamp)` before using
 - `participant-anti-cheat-timeline.tsx` polling correctly resets to first page (no more offset drift)
+- `anti-cheat-dashboard.tsx` `formatDetailsJson` now uses i18n `t()` function (cycle 21 fix confirmed)

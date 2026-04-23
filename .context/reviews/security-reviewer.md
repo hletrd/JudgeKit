@@ -1,8 +1,8 @@
-# Security Review — RPF Cycle 21
+# Security Review — RPF Cycle 22
 
 **Date:** 2026-04-22
 **Reviewer:** security-reviewer
-**Base commit:** 4b9d48f0
+**Base commit:** 88abca22
 
 ## SEC-1: `window.location.origin` for URL construction — carried from DEFER-24 [MEDIUM/MEDIUM]
 
@@ -14,7 +14,7 @@
 
 **Confidence:** HIGH
 
-Four components construct invitation or app URLs using `window.location.origin`. If the app is accessed through a reverse proxy that rewrites the Host header, the origin may differ from the intended public URL. This was previously identified as DEFER-24 (access-code-manager, recruiting-invitations-panel) and remains unfixed. Two additional instances were found: `file-management-client.tsx` (copy URL) and `workers-client.tsx` (deploy command display).
+Four components construct invitation or app URLs using `window.location.origin`. If the app is accessed through a reverse proxy that rewrites the Host header, the origin may differ from the intended public URL. Carried from DEFER-24.
 
 **Fix:** Use a server-provided public URL or a configurable base URL for all external-facing links.
 
@@ -37,6 +37,19 @@ The encryption module falls back to plaintext when encryption keys are not confi
 
 ---
 
+## SEC-4: `create-problem-form.tsx` sequence number input accepts arbitrary string — no client-side validation [LOW/LOW]
+
+**File:** `src/app/(dashboard)/dashboard/problems/create/create-problem-form.tsx:469`
+**Confidence:** LOW
+
+The `sequenceNumber` input (`type="number"`) stores raw `e.target.value` as string state. While `type="number"` provides browser-level validation, a programmatic submission or browser with limited validation could send a non-numeric string. The server-side Zod schema (`z.number().int().positive().nullable()`) would reject it, but there's no client-side feedback about the invalid input.
+
+**Concrete failure scenario:** A user enters "abc" into the sequence number field. The browser's `type="number"` validation prevents form submission in most browsers, but the input could be modified via DevTools or accessibility tools. Server-side validation catches it, but the error message may be confusing.
+
+**Fix:** Add client-side validation feedback. Low priority since server-side validation is the primary safeguard.
+
+---
+
 ## Verified Safe
 
 - CSRF protection is consistent across all mutation routes
@@ -46,6 +59,6 @@ The encryption module falls back to plaintext when encryption keys are not confi
 - Model name validation patterns prevent path traversal
 - No secrets in client-side code
 - HTML sanitization uses DOMPurify with strict allowlists
-- `safeJsonForScript` escapes `<!--` sequences
+- `safeJsonForScript` escapes `<!--` and `</script` sequences
 - All clipboard operations use the shared `copyToClipboard` utility with proper error handling
 - `role-editor-dialog.tsx` error response properly uses `.catch()` on `.json()`
