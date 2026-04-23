@@ -135,9 +135,9 @@ const openaiProvider: ChatProvider = {
       throw new Error(`OpenAI API error ${response.status}: ${text}`);
     }
 
-    const data = await response.json();
-    const choice = data.choices?.[0];
-    const msg = choice?.message;
+    const data: Record<string, unknown> = await response.json().catch(() => ({}));
+    const choices = data.choices as Array<{ message?: { tool_calls?: unknown[]; content?: string } }> | undefined;
+    const msg = choices?.[0]?.message;
 
     if (msg?.tool_calls && msg.tool_calls.length > 0) {
       return {
@@ -255,9 +255,10 @@ const claudeProvider: ChatProvider = {
       throw new Error(`Claude API error ${response.status}: ${text}`);
     }
 
-    const data = await response.json();
-    const toolUseBlocks = (data.content ?? []).filter((raw: unknown) => ClaudeToolUseBlockSchema.safeParse(raw).success);
-    const textBlocks = (data.content ?? []).filter((raw: unknown) => ClaudeTextBlockSchema.safeParse(raw).success);
+    const data: Record<string, unknown> = await response.json().catch(() => ({}));
+    const content = (data.content ?? []) as unknown[];
+    const toolUseBlocks = content.filter((raw: unknown) => ClaudeToolUseBlockSchema.safeParse(raw).success);
+    const textBlocks = content.filter((raw: unknown) => ClaudeTextBlockSchema.safeParse(raw).success);
 
     if (toolUseBlocks.length > 0) {
       return {
@@ -395,8 +396,8 @@ const geminiProvider: ChatProvider = {
       throw new Error(`Gemini API error ${response.status}: ${text}`);
     }
 
-    const data = await response.json();
-    const parts = data.candidates?.[0]?.content?.parts ?? [];
+    const data: Record<string, unknown> = await response.json().catch(() => ({}));
+    const parts = ((data.candidates as Array<Record<string, unknown>> | undefined)?.[0]?.content as Record<string, unknown> | undefined)?.parts as unknown[] | undefined ?? [];
     const functionCalls = parts.filter((raw: unknown) => GeminiFunctionCallPartSchema.safeParse(raw).success);
     const textParts = parts.filter((raw: unknown) => GeminiTextPartSchema.safeParse(raw).success);
 
