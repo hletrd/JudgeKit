@@ -42,7 +42,7 @@ export function CommentSection({ submissionId, canComment, targetLine = null, on
     try {
       const response = await apiFetch(`/api/v1/submissions/${submissionId}/comments`);
       if (response.ok) {
-        const payload = (await response.json()) as { data?: CommentView[] };
+        const payload = (await response.json().catch(() => ({ data: [] }))) as { data?: CommentView[] };
         if (payload.data) {
           setComments(payload.data);
         }
