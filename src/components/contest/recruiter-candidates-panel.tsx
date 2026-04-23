@@ -4,7 +4,7 @@ import { useState, useEffect, useCallback } from "react";
 import { useTranslations } from "next-intl";
 import { toast } from "sonner";
 import { Download, ArrowUpDown } from "lucide-react";
-import { apiFetch } from "@/lib/api/client";
+import { apiFetchJson } from "@/lib/api/client";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -47,12 +47,15 @@ export function RecruiterCandidatesPanel({ assignmentId }: { assignmentId: strin
 
   const fetchCandidates = useCallback(async () => {
     try {
-      const res = await apiFetch(
-        `/api/v1/contests/${assignmentId}/export?format=json`
+      const { ok, data } = await apiFetchJson<CandidateEntry[]>(
+        `/api/v1/contests/${assignmentId}/export?format=json`,
+        undefined,
+        []
       );
-      if (res.ok) {
-        const data = await res.json().catch(() => []);
+      if (ok) {
         setCandidates(Array.isArray(data) ? data : []);
+      } else {
+        toast.error(t("fetchError"));
       }
     } catch {
       toast.error(t("fetchError"));

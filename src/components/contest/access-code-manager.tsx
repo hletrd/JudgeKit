@@ -4,7 +4,7 @@ import { useState, useEffect, useCallback, useRef } from "react";
 import { useLocale, useTranslations } from "next-intl";
 import { toast } from "sonner";
 // i18n keys used from "contests.accessCode" and "common"
-import { apiFetch } from "@/lib/api/client";
+import { apiFetch, apiFetchJson } from "@/lib/api/client";
 import { copyToClipboard } from "@/lib/clipboard";
 import { buildLocalizedHref } from "@/lib/locale-paths";
 import { Button } from "@/components/ui/button";
@@ -38,9 +38,12 @@ export function AccessCodeManager({ assignmentId }: AccessCodeManagerProps) {
 
   const fetchCode = useCallback(async () => {
     try {
-      const res = await apiFetch(`/api/v1/contests/${assignmentId}/access-code`);
-      if (res.ok) {
-        const json = await res.json().catch(() => ({})) as { data?: { accessCode?: string } };
+      const { ok, data: json } = await apiFetchJson<{ data?: { accessCode?: string } }>(
+        `/api/v1/contests/${assignmentId}/access-code`,
+        undefined,
+        { data: { accessCode: undefined } }
+      );
+      if (ok) {
         setCode(json.data?.accessCode ?? null);
       } else {
         toast.error(tCommon("error"));

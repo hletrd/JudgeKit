@@ -3,7 +3,7 @@
 import { useState, useCallback, useRef, useEffect } from "react";
 import { useTranslations } from "next-intl";
 import { toast } from "sonner";
-import { apiFetch } from "@/lib/api/client";
+import { apiFetch, apiFetchJson } from "@/lib/api/client";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -30,6 +30,7 @@ export function InviteParticipants({ assignmentId }: InviteParticipantsProps) {
   const [isSearching, setIsSearching] = useState(false);
   const [isInviting, setIsInviting] = useState<string | null>(null);
   const debounceRef = useRef<ReturnType<typeof setTimeout>>(undefined);
+  const abortControllerRef = useRef<AbortController | null>(null);
 
   const search = useCallback(
     async (q: string) => {
@@ -37,16 +38,25 @@ export function InviteParticipants({ assignmentId }: InviteParticipantsProps) {
         setResults([]);
         return;
       }
+      // Cancel any in-flight search request
+      if (abortControllerRef.current) {
+        abortControllerRef.current.abort();
+      }
+      const controller = new AbortController();
+      abortControllerRef.current = controller;
+
       setIsSearching(true);
       try {
-        const res = await apiFetch(
-          `/api/v1/contests/${assignmentId}/invite?q=${encodeURIComponent(q.trim())}`
+        const { ok, data } = await apiFetchJson<{ data: UserResult[] }>(
+          `/api/v1/contests/${assignmentId}/invite?q=${encodeURIComponent(q.trim())}`,
+          { signal: controller.signal },
+          { data: [] }
         );
-        if (res.ok) {
-          const data = await res.json().catch(() => ({}));
+        if (ok) {
           setResults(data.data ?? []);
         }
-      } catch {
+      } catch (err) {
+        if (err instanceof DOMException && err.name === "AbortError") return;
         toast.error(t("searchFailed"));
       } finally {
         setIsSearching(false);
@@ -75,8 +85,8 @@ export function InviteParticipants({ assignmentId }: InviteParticipantsProps) {
         setInvitedIds((prev) => new Set(prev).add(userId));
         toast.success(t("inviteSuccess"));
       } else {
-        const data = await res.json().catch(() => ({}));
-        toast.error((data as { error?: string }).error === "userNotFound" ? t("userNotFound") : t("inviteFailed"));
+        const data = await res.json().catch(() => ({})) as { error?: string };
+        toast.error(data.error === "userNotFound" ? t("userNotFound") : t("inviteFailed"));
       }
     } catch {
       toast.error(t("inviteFailed"));
