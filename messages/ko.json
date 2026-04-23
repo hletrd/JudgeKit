@@ -2209,6 +2209,7 @@
       "metadataKey": "항목명",
       "metadataValue": "값",
       "addField": "항목 추가",
+      "removeField": "항목 제거",
       "expiresAt": "만료일",
       "noExpiry": "만료 없음",
       "expiry7d": "7일",

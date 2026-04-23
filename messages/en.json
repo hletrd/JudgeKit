@@ -2209,6 +2209,7 @@
       "metadataKey": "Field Name",
       "metadataValue": "Value",
       "addField": "Add Field",
+      "removeField": "Remove Field",
       "expiresAt": "Expires At",
       "noExpiry": "No Expiry",
       "expiry7d": "7 days",
