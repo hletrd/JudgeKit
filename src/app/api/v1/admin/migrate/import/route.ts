@@ -180,7 +180,7 @@ export async function POST(request: NextRequest) {
         error: "importFailed",
         details: result.errors,
         partial: result.tableResults,
-      }, { status: 500, headers: { "Deprecation": "true", "Sunset": "Sat, 01 Nov 2025 00:00:00 GMT" } });
+      }, { status: 500, headers: { "Deprecation": "true", "Sunset": "Sun, 01 Nov 2026 00:00:00 GMT" } });
     }
 
     return NextResponse.json({
@@ -188,7 +188,7 @@ export async function POST(request: NextRequest) {
       tablesImported: result.tablesImported,
       totalRowsImported: result.totalRowsImported,
       tableResults: result.tableResults,
-    }, { headers: { "Deprecation": "true", "Sunset": "Sat, 01 Nov 2025 00:00:00 GMT" } });
+    }, { headers: { "Deprecation": "true", "Sunset": "Sun, 01 Nov 2026 00:00:00 GMT" } });
   } catch (error) {
     logger.error({ err: error }, "Database import error");
     return NextResponse.json({ error: "importFailed" }, { status: 500 });
