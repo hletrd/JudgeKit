@@ -1,6 +1,6 @@
 import { randomBytes, createHash } from "crypto";
 import { nanoid } from "nanoid";
-import { hashPassword, verifyPassword } from "@/lib/security/password-hash";
+import { hashPassword, verifyAndRehashPassword } from "@/lib/security/password-hash";
 import { getPasswordValidationError } from "@/lib/security/password";
 import { db } from "@/lib/db";
 import {
@@ -384,21 +384,9 @@ export async function redeemRecruitingToken(
             })
             .where(eq(recruitingInvitations.id, invitation.id));
         } else {
-          const { valid, needsRehash } = await verifyPassword(accountPassword, existingUser.passwordHash);
+          const { valid } = await verifyAndRehashPassword(accountPassword, existingUser.id, existingUser.passwordHash);
           if (!valid) {
             return { ok: false as const, error: "accountPasswordIncorrect" };
-          }
-
-          // Transparent rehash: migrate legacy bcrypt hashes to Argon2id when
-          // the candidate re-enters the contest. This accelerates the
-          // bcrypt-to-argon2 migration for recruiting candidates who may
-          // rarely use the main login flow.
-          if (needsRehash) {
-            const newHash = await hashPassword(accountPassword);
-            await tx
-              .update(users)
-              .set({ passwordHash: newHash, updatedAt: dbNow })
-              .where(eq(users.id, existingUser.id));
           }
         }
 

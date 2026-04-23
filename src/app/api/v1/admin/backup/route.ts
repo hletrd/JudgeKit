@@ -6,7 +6,7 @@ import { getApiUser, unauthorized, forbidden, csrfForbidden } from "@/lib/api/au
 import { consumeApiRateLimit } from "@/lib/security/api-rate-limit";
 import { resolveCapabilities } from "@/lib/capabilities/cache";
 import { recordAuditEvent } from "@/lib/audit/events";
-import { verifyPassword, hashPassword } from "@/lib/security/password-hash";
+import { verifyAndRehashPassword } from "@/lib/security/password-hash";
 import { logger } from "@/lib/logger";
 import { db } from "@/lib/db";
 import { users } from "@/lib/db/schema";
@@ -60,25 +60,9 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: "authenticationFailed" }, { status: 403 });
     }
 
-    const { valid, needsRehash } = await verifyPassword(body.password, dbUser.passwordHash);
+    const { valid } = await verifyAndRehashPassword(body.password, user.id, dbUser.passwordHash);
     if (!valid) {
       return NextResponse.json({ error: "invalidPassword" }, { status: 403 });
-    }
-
-    // Transparent rehash: migrate legacy bcrypt hashes to argon2id when the
-    // admin re-confirms their password for a sensitive operation. This
-    // accelerates the bcrypt-to-argon2 migration for admins who may rarely
-    // use the main login flow (e.g., API key auth for daily operations).
-    if (needsRehash) {
-      try {
-        const newHash = await hashPassword(body.password);
-        await db
-          .update(users)
-          .set({ passwordHash: newHash })
-          .where(eq(users.id, user.id));
-      } catch (err) {
-        logger.error({ err, userId: user.id }, "[backup] Failed to rehash password");
-      }
     }
 
     // Use DB server time for the backup filename so it matches the export snapshot

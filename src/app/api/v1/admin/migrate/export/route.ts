@@ -4,7 +4,7 @@ import { consumeApiRateLimit } from "@/lib/security/api-rate-limit";
 import { resolveCapabilities } from "@/lib/capabilities/cache";
 import { streamDatabaseExport } from "@/lib/db/export";
 import { recordAuditEvent } from "@/lib/audit/events";
-import { verifyPassword, hashPassword } from "@/lib/security/password-hash";
+import { verifyAndRehashPassword } from "@/lib/security/password-hash";
 import { db } from "@/lib/db";
 import { users } from "@/lib/db/schema";
 import { eq } from "drizzle-orm";
@@ -54,23 +54,9 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: "authenticationFailed" }, { status: 403 });
     }
 
-    const { valid, needsRehash } = await verifyPassword(password, dbUser.passwordHash);
+    const { valid } = await verifyAndRehashPassword(password, user.id, dbUser.passwordHash);
     if (!valid) {
       return NextResponse.json({ error: "invalidPassword" }, { status: 403 });
-    }
-
-    // Transparent rehash: migrate legacy bcrypt hashes to argon2id when the
-    // admin re-confirms their password for a sensitive operation.
-    if (needsRehash) {
-      try {
-        const newHash = await hashPassword(password);
-        await db
-          .update(users)
-          .set({ passwordHash: newHash })
-          .where(eq(users.id, user.id));
-      } catch (err) {
-        logger.error({ err, userId: user.id }, "[migrate-export] Failed to rehash password");
-      }
     }
 
     // Portable exports are sanitized by default — sensitive tokens/secrets

@@ -2,7 +2,7 @@ import type { NextAuthConfig, Session } from "next-auth";
 import type { JWT } from "next-auth/jwt";
 import Credentials from "next-auth/providers/credentials";
 import crypto from "crypto";
-import { verifyPassword, hashPassword } from "@/lib/security/password-hash";
+import { verifyPassword, verifyAndRehashPassword } from "@/lib/security/password-hash";
 import { logger } from "@/lib/logger";
 import {
   getSessionMaxAgeSeconds,
@@ -265,7 +265,7 @@ export const authConfig: NextAuthConfig = {
           return null;
         }
 
-        const { valid: isValid, needsRehash } = await verifyPassword(password, user.passwordHash);
+        const { valid: isValid } = await verifyAndRehashPassword(password, user.id, user.passwordHash);
         if (!isValid) {
           recordLoginEvent({
             outcome: "invalid_credentials",
@@ -274,20 +274,6 @@ export const authConfig: NextAuthConfig = {
             request,
           });
           return null;
-        }
-
-        // Transparent rehash: migrate legacy bcrypt hashes to Argon2id on
-        // successful login. Awaited to ensure the hash is actually updated.
-        if (needsRehash) {
-          try {
-            const newHash = await hashPassword(password);
-            await db
-              .update(users)
-              .set({ passwordHash: newHash })
-              .where(eq(users.id, user.id));
-          } catch (err) {
-            logger.error({ err, userId: user.id }, "[auth] Failed to rehash password");
-          }
         }
 
         await clearRateLimitMulti(...rateLimitKeys);
