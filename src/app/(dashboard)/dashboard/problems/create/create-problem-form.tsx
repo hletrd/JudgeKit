@@ -89,6 +89,7 @@ export default function CreateProblemForm({
   );
   const [description, setDescription] = useState(initialProblem?.description ?? "");
   const [descriptionTab, setDescriptionTab] = useState<"write" | "preview">("write");
+  // Stored as string to handle partial input during typing; converted to number at submit time
   const [sequenceNumber, setSequenceNumber] = useState<string>(
     initialProblem?.sequenceNumber?.toString() ?? ""
   );
@@ -105,6 +106,7 @@ export default function CreateProblemForm({
   const [comparisonMode, setComparisonMode] = useState<"exact" | "float">(initialProblem?.comparisonMode ?? "exact");
   const [floatAbsoluteError, setFloatAbsoluteError] = useState<string>(initialProblem?.floatAbsoluteError?.toString() ?? "1e-6");
   const [floatRelativeError, setFloatRelativeError] = useState<string>(initialProblem?.floatRelativeError?.toString() ?? "1e-6");
+  // Stored as string to handle partial input during typing; converted to number at submit time
   const [difficulty, setDifficulty] = useState<string>(initialProblem?.difficulty?.toString() ?? "");
   const [defaultLanguage, setDefaultLanguage] = useState<string>(initialProblem?.defaultLanguage ?? "");
   const [testCaseOverrideEnabled, setTestCaseOverrideEnabled] = useState(false);
@@ -392,6 +394,13 @@ export default function CreateProblemForm({
       const isEditing = mode === "edit" && Boolean(initialProblem);
       const editingProblemId = initialProblem?.id;
       const parsedSeqNum = sequenceNumber ? parseInt(sequenceNumber, 10) : null;
+      // Warn when non-empty fields contain invalid numeric input that will be silently omitted
+      if (sequenceNumber && (!Number.isFinite(parsedSeqNum) || parsedSeqNum! <= 0)) {
+        toast.warning(t("invalidSequenceNumberWarning"));
+      }
+      if (difficulty !== "" && !Number.isFinite(parseFloat(difficulty))) {
+        toast.warning(t("invalidDifficultyWarning"));
+      }
       const res = await apiFetch(isEditing && editingProblemId ? `/api/v1/problems/${editingProblemId}` : "/api/v1/problems", {
         method: isEditing ? "PATCH" : "POST",
         headers: { "Content-Type": "application/json" },
