@@ -408,6 +408,8 @@
     "floatAbsoluteErrorHint": "허용되는 최대 절대 오차 (예: 1e-6)",
     "floatRelativeError": "상대 오차",
     "floatRelativeErrorHint": "허용되는 최대 상대 오차 (예: 1e-6)",
+    "invalidSequenceNumberWarning": "잘못된 문제 번호 — 값이 생략됩니다",
+    "invalidDifficultyWarning": "잘못된 난이도 — 값이 생략됩니다",
     "createError": "문제 생성에 실패했습니다",
     "updateError": "문제 수정에 실패했습니다",
     "timeLimitValue": "{value} ms",

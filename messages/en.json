@@ -408,6 +408,8 @@
     "floatAbsoluteErrorHint": "Maximum allowed absolute difference (e.g. 1e-6)",
     "floatRelativeError": "Relative Error",
     "floatRelativeErrorHint": "Maximum allowed relative difference (e.g. 1e-6)",
+    "invalidSequenceNumberWarning": "Invalid sequence number — value will be omitted",
+    "invalidDifficultyWarning": "Invalid difficulty — value will be omitted",
     "createError": "Failed to create problem",
     "updateError": "Failed to update problem",
     "timeLimitValue": "{value} ms",
