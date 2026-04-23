@@ -289,10 +289,10 @@ export function CompilerClient({ languages, title, description, preferredLanguag
       if (err instanceof Error && err.name === "AbortError") {
         return;
       }
-      const errorMessage = err instanceof Error ? err.message : "Network error";
+      console.error("Compiler run failed:", err);
       updateTestCase(runningTestCaseId, (testCase) => ({
         ...testCase,
-        error: errorMessage,
+        error: t("networkError"),
         result: null,
       }));
       toast.error(t("networkError"));
