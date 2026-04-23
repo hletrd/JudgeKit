@@ -1,150 +1,94 @@
-# RPF Cycle 35 — Aggregate Review
+# RPF Cycle 36 — Aggregate Review
 
 **Date:** 2026-04-23
-**Base commit:** 218a1a93
-**Review artifacts:** rpf-cycle-35-code-reviewer.md, rpf-cycle-35-perf-reviewer.md, rpf-cycle-35-security-reviewer.md, rpf-cycle-35-architect.md, rpf-cycle-35-critic.md, rpf-cycle-35-verifier.md, rpf-cycle-35-debugger.md, rpf-cycle-35-test-engineer.md, rpf-cycle-35-tracer.md, rpf-cycle-35-designer.md, rpf-cycle-35-document-specialist.md
+**Base commit:** 601ff71a
+**Review artifacts:** rpf-cycle-36-code-reviewer.md, rpf-cycle-36-perf-reviewer.md, rpf-cycle-36-security-reviewer.md, rpf-cycle-36-architect.md, rpf-cycle-36-critic.md, rpf-cycle-36-verifier.md, rpf-cycle-36-debugger.md, rpf-cycle-36-test-engineer.md, rpf-cycle-36-tracer.md, rpf-cycle-36-designer.md, rpf-cycle-36-document-specialist.md
 
 ## Deduped Findings (sorted by severity then signal)
 
-### AGG-1: Import route Sunset header date is in the past — false deprecation signal [MEDIUM/HIGH]
+### AGG-1: PATCH invitation route missing NaN guard for expiryDate — incomplete cycle 35 fix [MEDIUM/HIGH]
 
-**Flagged by:** code-reviewer (CR-1), security-reviewer (SEC-1), critic (CRI-1), verifier (V-1)
-**Signal strength:** 4 of 11 review perspectives
+**Flagged by:** code-reviewer (CR-1), security-reviewer (SEC-1), critic (CRI-1), verifier (V-1), debugger (DBG-1), tracer (TR-1), test-engineer (TE-1), document-specialist (DOC-1)
+**Signal strength:** 8 of 11 review perspectives
 
-**File:** `src/app/api/v1/admin/migrate/import/route.ts:183, 191`
+**File:** `src/app/api/v1/contests/[assignmentId]/recruiting-invitations/[invitationId]/route.ts:114`
 
-**Description:** The `Sunset` header on the deprecated JSON body path reads `"Sat, 01 Nov 2025 00:00:00 GMT"`, which is over 5 months in the past. Per RFC 8594, a past Sunset date signals the endpoint has been retired, yet the route still accepts requests. This has security implications (the insecure password-in-JSON-body path remains active while signaling retirement), API contract implications (clients honoring RFC 8594 will stop using the endpoint), and monitoring implications (tools may exclude the endpoint from active checks).
+**Description:** The PATCH route constructs `expiresAtUpdate = new Date(\`${body.expiryDate}T23:59:59Z\`)` without the `Number.isFinite()` defense-in-depth check. The two POST routes (single and bulk) received this guard in cycle 35 as AGG-2, but the PATCH route was missed. If `body.expiryDate` contains a time component, the Date construction produces `Invalid Date`, and all subsequent numeric comparisons with NaN return false, bypassing both "date in past" and "too far future" validation checks.
 
-**Concrete failure scenario:** A security audit tool flags the Sunset date as past and marks the endpoint as "retired," removing it from ongoing monitoring. Meanwhile, the JSON body path continues accepting passwords in plaintext, creating an unmonitored attack surface.
+**Concrete failure scenario:** An attacker sends a PATCH request with `expiryDate: "2026-01-01T00:00:00Z"`. The constructed Date is invalid, but validation checks are bypassed. The invitation's expiry is set to an invalid/null value, effectively making it never-expiring.
 
-**Fix:** Update the Sunset date to a future date (e.g., `"Sat, 01 Nov 2026 00:00:00 GMT"`). If the JSON path should be removed now, remove it rather than setting a past Sunset date.
-
----
-
-### AGG-2: Recruiting invitation NaN bypass — Invalid Date construction skips all validation [MEDIUM/MEDIUM]
-
-**Flagged by:** security-reviewer (SEC-2), critic (CRI-2), verifier (V-2), debugger (DBG-1), tracer (TR-1)
-**Signal strength:** 5 of 11 review perspectives
-
-**File:** `src/app/api/v1/contests/[assignmentId]/recruiting-invitations/route.ts:73-83`
-
-**Description:** When `body.expiryDate` contains a time component (e.g., `"2026-01-01T00:00:00Z"`), `new Date(\`${body.expiryDate}T23:59:59Z\`)` produces `Invalid Date`. All subsequent numeric comparisons with NaN return false, bypassing both the "date in past" check (`expiresAt <= dbNow` → `NaN <= Date` → false) and the "too far future" check (`NaN > MAX_EXPIRY_MS` → false). The invitation is stored with an invalid/null expiry date, making it effectively never-expiring.
-
-**Concrete failure scenario:** An attacker sends `expiryDate: "2026-01-01T00:00:00Z"`. The constructed Date is invalid, but validation checks are bypassed. The invitation is stored with no expiry, granting permanent access.
-
-**Fix:** Add defense-in-depth after constructing the Date:
+**Fix:** Add the NaN guard after the Date construction:
 ```typescript
-if (expiresAt && !Number.isFinite(expiresAt.getTime())) {
+expiresAtUpdate = new Date(`${body.expiryDate}T23:59:59Z`);
+if (!Number.isFinite(expiresAtUpdate.getTime())) {
   return apiError("invalidExpiryDate", 400);
 }
 ```
-Also consider adding strict YYYY-MM-DD format validation in the Zod schema.
 
 ---
 
-### AGG-3: Contest stats query scans submissions table twice — unnecessary DB I/O [MEDIUM/MEDIUM]
+### AGG-2: Password rehash logic still duplicated in 4 files — incomplete DRY consolidation from cycle 34 [MEDIUM/MEDIUM]
 
-**Flagged by:** perf-reviewer (PERF-2), critic (CRI-4), verifier (V-3), tracer (TR-2)
+**Flagged by:** code-reviewer (CR-2), security-reviewer (implied), architect (ARCH-1), critic (CRI-2), verifier (V-2), tracer (TR-2)
+**Signal strength:** 6 of 11 review perspectives
+
+**Files:** `src/app/api/v1/admin/backup/route.ts:63-82`, `src/app/api/v1/admin/migrate/export/route.ts:57-74`, `src/lib/auth/config.ts:268-291`, `src/lib/assignments/recruiting-invitations.ts:387-402`
+
+**Description:** The `verifyAndRehashPassword` utility was extracted in cycle 34 but only used in import/route.ts and restore/route.ts. Four other locations still use the inline `verifyPassword` + manual rehash + `db.update` pattern. The centralized utility includes `logger.info` for audit logging of rehash events, but the inline versions do not, creating an audit trail gap. This was identified as CR-3/AGG-5 in cycles 33-34 but only partially fixed.
+
+**Concrete failure scenario:** A security auditor asks "how many passwords were transparently rehashed from bcrypt to argon2id?" — only the import/restore rehashes appear in logs, while backup, export, login, and recruiting-invitation rehashes are invisible.
+
+**Fix:** Replace all inline rehash blocks with `verifyAndRehashPassword`:
+- `backup/route.ts:63-82` — straightforward replacement
+- `migrate/export/route.ts:57-74` — straightforward replacement
+- `recruiting-invitations.ts:387-402` — can be called inside the existing transaction
+- `auth/config.ts:268-291` — may need special handling due to NextAuth callback context
+
+---
+
+### AGG-3: buildGroupMemberScopeFilter uses raw string interpolation in SQL LIKE without escaping [LOW/MEDIUM]
+
+**Flagged by:** code-reviewer (CR-3), security-reviewer (SEC-2), critic (CRI-3), tracer (TR-3)
 **Signal strength:** 4 of 11 review perspectives
 
-**File:** `src/app/api/v1/contests/[assignmentId]/stats/route.ts:80-119`
+**File:** `src/app/(dashboard)/dashboard/admin/audit-logs/page.tsx:150`
 
-**Description:** The `solved_problems` CTE independently scans the `submissions` table (with the same filters) instead of reusing the `user_best` CTE which already computed `MAX(score)` per user+problem. This doubles I/O and CPU cost for the stats query.
+**Description:** The LIKE pattern `%"groupId":"${groupId}"%` uses raw string interpolation without `escapeLikePattern()`. While `groupId` values originate from a server-side DB query (nanoid-generated, alphanumeric only), this bypasses the codebase-standard `escapeLikePattern` utility. The pattern is inconsistent with all other LIKE queries and fragile against future data changes.
 
-**Concrete failure scenario:** A contest with 500 participants and 10 problems generates ~5000 submissions. The stats endpoint scans all 5000 submissions twice, doubling query time from ~50ms to ~100ms.
+**Concrete failure scenario:** A new code path creates group IDs with underscore characters (e.g., `group_test_1`). The LIKE `%group_test_1%` matches `groupXtestY1` since `_` is a single-character wildcard.
 
-**Fix:** Refactor `solved_problems` to reference `user_best`:
-```sql
-solved_problems AS (
-  SELECT COUNT(DISTINCT ub.problem_id)::int AS solved_count
-  FROM user_best ub
-  INNER JOIN assignment_problems ap ON ap.assignment_id = @assignmentId AND ap.problem_id = ub.problem_id
-  WHERE ROUND(ub.best_score, 2) >= ROUND(COALESCE(ap.points, 100), 2)
-)
-```
+**Fix:** Use `escapeLikePattern(groupId)` in the LIKE pattern, or use PostgreSQL JSON operators instead of LIKE for JSON field matching.
 
 ---
 
-### AGG-4: Chat widget scrollToBottom uses isStreaming state instead of ref — inconsistent with sendMessage fix [LOW/LOW]
+### AGG-4: Chat widget textarea lacks explicit aria-label [LOW/LOW]
 
-**Flagged by:** perf-reviewer (PERF-3), critic (CRI-3), designer (DES-2), tracer (TR-3)
+**Flagged by:** code-reviewer (CR-4), debugger (DBG-2), designer (DES-1), test-engineer (TE-3)
 **Signal strength:** 4 of 11 review perspectives
 
-**File:** `src/lib/plugins/chat-widget/chat-widget.tsx:87-105`
+**File:** `src/lib/plugins/chat-widget/chat-widget.tsx:363`
 
-**Description:** The cycle 34 fix correctly moved `isStreaming` to a ref for the `sendMessage` callback. However, `scrollToBottom` still depends on `isStreaming` from state and has it in its dependency array, causing unnecessary callback recreation and scroll effect re-subscription. This is inconsistent with the ref-based approach adopted for `sendMessage`.
+**Description:** The textarea has `placeholder={t("placeholder")}` but no `aria-label`. WCAG 2.2 SC 1.3.1 recommends programmatic labels over placeholder text. This is a carry-over from prior cycles (DES-2). The placeholder provides some context but is not consistently announced by screen readers.
 
-**Fix:** Use `isStreamingRef.current` inside `scrollToBottom` and remove `isStreaming` from the dependency array.
-
----
-
-### AGG-5: Console.error in client components instead of structured logging [LOW/MEDIUM]
-
-**Flagged by:** code-reviewer (CR-2, CR-3), architect (ARCH-3)
-**Signal strength:** 3 of 11 review perspectives
-
-**Files:** `src/components/discussions/*.tsx`, `src/app/(dashboard)/dashboard/groups/*.tsx`
-
-**Description:** Multiple client components use `console.error` for error reporting instead of the structured `logger`. While client-side code cannot use the server-side logger directly, this creates a gap where client errors are invisible to the server-side observability pipeline.
-
-**Fix:** Consider adding a lightweight client-side error reporting mechanism or ensuring API routes log enough context to reconstruct failures.
-
----
-
-### AGG-6: SSE connection tracking O(n) eviction scan [LOW/MEDIUM]
-
-**Flagged by:** perf-reviewer (PERF-1), debugger (DBG-3)
-**Signal strength:** 2 of 11 review perspectives
-
-**File:** `src/app/api/v1/submissions/[id]/events/route.ts:44-55`
-
-**Description:** The eviction logic finds the oldest connection by scanning all entries, which is O(n). Under high connection churn near capacity, this adds latency. Additionally, the tracking map entries are not automatically removed when SSE connections close — they rely on the stale cleanup timer.
-
-**Fix:** Use a sorted data structure or maintain a separate sorted index for efficient eviction. Ensure tracking entries are removed when `close()` is called (which already happens).
-
----
-
-### AGG-7: Manual API routes duplicate createApiHandler boilerplate [MEDIUM/MEDIUM]
-
-**Flagged by:** architect (ARCH-1)
-**Signal strength:** 1 of 11 review perspectives
-
-**Files:** `src/app/api/v1/admin/migrate/import/route.ts`, `src/app/api/v1/admin/restore/route.ts`
-
-**Description:** The migrate/import and restore routes manually implement auth, CSRF, rate limiting, and error handling that `createApiHandler` already provides. The main reason they can't use `createApiHandler` is the multipart file upload path. This creates risk of missing security checks in new routes that follow the manual pattern.
-
-**Fix:** Extend `createApiHandler` to support multipart file upload, or document the architectural decision for why these routes remain manual.
-
----
-
-### AGG-8: Global timer HMR pattern duplicated across four modules [LOW/MEDIUM]
-
-**Flagged by:** architect (ARCH-2)
-**Signal strength:** 1 of 11 review perspectives
-
-**Files:** SSE events route, audit events, rate-limit, data-retention-maintenance
-
-**Description:** Four modules use the same `globalThis.__xxxTimer` pattern for HMR-safe timers, each with identical boilerplate (check exists, clear, create, unref). This is a DRY violation and there's no coordinated cleanup during graceful shutdown.
-
-**Fix:** Extract a `createManagedInterval(fn, ms, globalKey)` utility.
+**Fix:** Add `aria-label={t("placeholder")}` to the textarea element.
 
 ---
 
 ## Carry-Over Items (Still Unfixed from Prior Cycles)
 
-- **Prior AGG-6:** Chat widget scrolls on every streaming chunk (mitigated with rAF, may still need throttling)
-- **DES-2 (carry-over):** Chat widget textarea lacks explicit `aria-label` (placeholder present as fallback)
+- **Prior AGG-5:** Console.error in client components instead of structured logging (deferred)
+- **Prior AGG-6:** SSE O(n) eviction scan (deferred)
+- **Prior AGG-7:** Manual routes duplicate createApiHandler boilerplate (deferred)
+- **Prior AGG-8:** Global timer HMR pattern duplication (deferred)
+- **Prior SEC-3:** Anti-cheat copies user text content (deferred)
+- **Prior SEC-4:** Docker build error leaks paths (deferred)
+- **CR-4 (carry-over):** Chat widget entry animation not using motion-safe prefix (globals.css override is functional)
 
 ## Deferred Items
 
 | Finding | File+Line | Severity/Confidence | Reason for Deferral | Exit Criterion |
 |---------|-----------|-------------------|--------------------|---------------|
-| SEC-3: Anti-cheat copies user text content | `anti-cheat-monitor.tsx:206` | LOW/LOW | Privacy concern, not vulnerability; 80-char limit mitigates | Privacy audit or user complaint |
-| SEC-4: Docker build error leaks paths | `docker/client.ts:169` | LOW/LOW | Only visible to admin users; Docker output is expected | Admin role permission review |
-| CR-5: In-memory rate limiter eviction during iteration | `in-memory-rate-limit.ts:27-48` | LOW/LOW | Spec-safe; bounded by 10K cap | Performance profiling shows bottleneck |
-| CR-6: Problem import client/server size limit mismatch | `problem-import-button.tsx:22` | LOW/MEDIUM | Server returns clear error message; no data loss | User confusion report |
-| DOC-1: Import route lacks JSDoc for dual-path | `migrate/import/route.ts` | LOW/MEDIUM | Documentation-only; code comments present | Next documentation cycle |
-| DOC-2: Stats endpoint docs don't mention query structure | `stats/route.ts` | LOW/LOW | Documentation-only | Next documentation cycle |
-| DOC-3: Anti-cheat event types not documented | `anti-cheat/route.ts:19-26` | LOW/LOW | Documentation-only; code is self-explanatory | Next documentation cycle |
-| DBG-2: Anti-cheat fire-and-forget heartbeat on mount | `anti-cheat-monitor.tsx:155` | LOW/MEDIUM | React refs handle cleanup; no unmount error observed | Race condition observed in production |
-| TE-3: No test for contest stats edge cases | `stats/route.ts` | LOW/LOW | Functional correctness verified via manual testing | Next test coverage cycle |
+| SEC-3: Import route JSON body path with password | migrate/import/route.ts:113-191 | MEDIUM/MEDIUM | Deprecated with Sunset header; functional for backward compatibility | Sunset date reached (Nov 2026) or API clients migrated |
+| PERF-1: Chat widget scrollToBottom effect runs on every messages change | chat-widget.tsx:107-115 | LOW/LOW | rAF deduplication catches redundant calls; micro-optimization | Performance profiling shows bottleneck |
+| DOC-1: PATCH route lacks JSDoc for expiryDate | [invitationId]/route.ts | LOW/LOW | Documentation-only; inline comment present | Next documentation cycle |
+| DOC-2: Import route dual-path deprecation not in README | migrate/import/route.ts | LOW/LOW | Documentation-only | Next documentation cycle |
