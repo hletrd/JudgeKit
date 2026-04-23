@@ -477,10 +477,11 @@ async function runDocker(opts: {
         clearTimeout(timer);
         await cleanup(true);
         const durationMs = Math.round(performance.now() - start);
+        logger.error({ err }, "[compiler] Container spawn error");
 
         resolve({
           stdout: "",
-          stderr: err.message,
+          stderr: "Execution failed to start",
           exitCode: null,
           timedOut: false,
           oomKilled: false,
