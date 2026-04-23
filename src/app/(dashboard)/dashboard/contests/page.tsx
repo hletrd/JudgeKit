@@ -106,7 +106,7 @@ export default async function ContestsPage({
   );
 
   const filteredContests = contests.filter((c) =>
-    statusMatchesFilter(statusMap.get(c.id)!, filter)
+    statusMatchesFilter(statusMap.get(c.id) ?? "closed", filter)
   );
 
   const totalCount = filteredContests.length;
@@ -175,7 +175,7 @@ export default async function ContestsPage({
       ) : (
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
           {pagedContests.map((contest) => {
-            const status = statusMap.get(contest.id)!;
+            const status = statusMap.get(contest.id) ?? "closed";
             return (
               <Link key={contest.id} href={`/dashboard/contests/${contest.id}`} className="block">
                 <div className={`flex items-center gap-4 rounded-lg border p-4 transition-colors hover:bg-accent/50 ${getStatusBorderClass(status)}`}>
