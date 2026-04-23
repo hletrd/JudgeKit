@@ -71,11 +71,16 @@ export default function CreateGroupDialog() {
           throw new Error((errorBody as { error?: string }).error || "createError");
         }
 
-        const data = await response.json();
+        const data = await response.json().catch(() => ({ data: {} })) as { data?: { id?: string } };
 
         toast.success(t("createSuccess"));
         await handleOpenChange(false);
-        router.push(`/dashboard/groups/${data.data.id}`);
+        const groupId = data.data?.id;
+        if (groupId) {
+          router.push(`/dashboard/groups/${groupId}`);
+        } else {
+          router.push("/dashboard/groups");
+        }
         router.refresh();
       } catch (error) {
         toast.error(getErrorMessage(error));
