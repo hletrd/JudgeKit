@@ -63,6 +63,10 @@ export const POST = createApiHandler({
             let expiresAt: Date | null = null;
             if (inv.expiryDays) {
               expiresAt = computeExpiryFromDays(dbNow, inv.expiryDays);
+              // Reject unreasonably far-future expiry (consistent with single-create route)
+              if ((expiresAt.getTime() - dbNow.getTime()) > MAX_EXPIRY_MS) {
+                throw new Error("expiryDateTooFar");
+              }
             } else if (inv.expiryDate) {
               expiresAt = new Date(`${inv.expiryDate}T23:59:59Z`);
               // Defense-in-depth: reject Invalid Date construction even though the
