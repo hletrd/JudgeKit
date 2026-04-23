@@ -1,56 +1,48 @@
-# Tracer Review — RPF Cycle 23
+# Tracer Review — RPF Cycle 24
 
 **Date:** 2026-04-22
-**Reviewer:** tracer
-**Base commit:** 429d1b86
+**Base commit:** dbc0b18f
 
-## TR-1: DRY violation trace — how 5 local `normalizePage` copies diverged from the shared version [HIGH/HIGH]
+## TR-1: `handleBulkAddMembers` double `.json()` — causal trace [HIGH/MEDIUM]
 
-**Confidence:** HIGH
+**File:** `src/app/(dashboard)/dashboard/groups/[id]/group-members-manager.tsx:181-185`
 
 **Causal trace:**
+1. User clicks "Bulk Add" button -> `handleBulkAddMembers()` called
+2. `apiFetch()` returns a Response with `ok: false` (e.g., 403 Forbidden)
+3. Line 181: `response.json().catch(() => ({}))` consumes the body -> returns error object
+4. Line 182: `throw new Error(...)` exits the function
+5. Response body is now consumed
 
-1. The shared `normalizePage` was created in `src/lib/pagination.ts` and used by client components and public routes.
-2. Server components (admin pages, problems page) were written with local `normalizePage` functions, likely predating the shared utility or created by copy-paste.
-3. In RPF cycle 28, the shared `normalizePage` was fixed: `Number()` -> `parseInt()`, `MAX_PAGE = 10000` added.
-4. The 5 local copies were NOT updated at the same time because they are local functions, not imports.
+**Hypothesis 1 (current behavior):** The throw exits before line 185 runs. No bug today.
+**Hypothesis 2 (regression risk):** If the throw is removed (e.g., to show a toast instead), line 185 would call `.json()` on the already-consumed body, throwing `TypeError: Body has already been consumed`. This would be caught by the outer catch and show a confusing error.
 
-**Competing hypotheses:**
-- H1: The developer who fixed the shared version didn't realize local copies existed. (Most likely — no grep for `normalizePage` was done)
-- H2: The local copies were intentionally kept because server components can't import from `@/lib/pagination`. (Disproven — server components CAN import from shared modules)
-- H3: The local copies were left as-is with a plan to migrate later, but the plan was lost. (Possible)
-
-**Conclusion:** H1 is most likely. The fix is to replace all local copies with imports from the shared module.
+**Fix:** Parse once before branching.
 
 ---
 
-## TR-2: Double `.json()` pattern trace — recurring anti-pattern across codebase [MEDIUM/MEDIUM]
+## TR-2: Discussion error toast trace — raw message leak path [MEDIUM/MEDIUM]
 
-**Confidence:** MEDIUM
+**File:** `src/components/discussions/discussion-post-form.tsx:44-54`
 
-**Pattern occurrences found:**
-1. `contest-join-client.tsx:44-49` — error branch + success branch
-2. `create-problem-form.tsx:432-437` — error branch + success branch
-3. `group-members-manager.tsx:124-128` — error branch + success branch
-4. `recruiting-invitations-panel.tsx:207-208` — success branch (ok check, then json)
+**Causal trace:**
+1. User submits post -> `handleSubmit()` called
+2. `apiFetch()` returns Response with `ok: false` and HTML body (502 from proxy)
+3. Line 46: `response.json().catch(() => ({}))` -> `.json()` throws SyntaxError, `.catch()` returns `{}`
+4. Line 47: `console.error(...)` logs the empty error
+5. Line 48: `throw new Error(errorLabel)` throws i18n label
+6. Line 53-54: catch block catches the thrown Error, `error.message === errorLabel`, toast shows i18n label. Correct.
 
-These all follow the same pattern: check `res.ok`, call `.json()` on error, call `.json()` on success. The codebase's `apiFetchJson` utility was created to eliminate this pattern. The recurring nature suggests developers are copy-pasting from existing code rather than using the utility.
+**BUT:** If `.catch()` itself somehow fails (extremely rare edge case: `response.body` already locked by a prior read), the SyntaxError propagates to the catch block:
+- `error.message` = `"Body has already been consumed"` or similar
+- `toast.error(error.message)` shows raw JS error to user
 
-**Fix:** Systematically migrate these 4 files to `apiFetchJson` or the single-parse pattern documented in `client.ts`.
+**Fix:** Always use i18n label in toast.
 
 ---
 
-## TR-3: `contest-quick-stats.tsx` avgScore trace — null handling inconsistency [MEDIUM/MEDIUM]
+## Summary
 
-**Confidence:** MEDIUM
-
-**Data flow trace:**
-1. API returns `{ data: { avgScore: null } }` (no submissions)
-2. `apiFetchJson` parses this as `{ ok: true, data: { data: { avgScore: null } } }`
-3. Line 67: `data.data!.avgScore !== null && data.data!.avgScore !== undefined && ...` evaluates to false
-4. Fallback: `prev.avgScore` which is `0` from initial state (line 42)
-5. Display (line 110): `formatNumber(0, { locale, maximumFractionDigits: 1 })` -> "0.0"
-
-The issue is that the initial state uses `0` instead of `null` for `avgScore`. The `participantCount` and `submittedCount` fields default to `0` correctly (0 participants is a valid state), but `avgScore: 0` is semantically different from `avgScore: null`.
-
-**Fix:** Change initial `avgScore` to `null`, update type to `number | null`, handle null in display.
+- HIGH: 1 (TR-1)
+- MEDIUM: 1 (TR-2)
+- Total new findings: 2
