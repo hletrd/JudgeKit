@@ -95,7 +95,10 @@ export const PATCH = createApiHandler({
 
       const allowed: Record<string, string[]> = {
         pending: ["revoked", "redeemed"],
-        revoked: ["pending"],
+        // Revoked invitations cannot be un-revoked; the user must create a new
+        // invitation instead. The library function (updateRecruitingInvitation)
+        // only supports revoking pending invitations (WHERE status = 'pending'),
+        // so allowing un-revoke here would cause a silent failure + 500 error.
       };
 
       const permitted = allowed[current];
@@ -132,11 +135,18 @@ export const PATCH = createApiHandler({
       }
     }
 
-    await updateRecruitingInvitation(params.invitationId, {
-      expiresAt: expiresAtUpdate,
-      metadata: body.metadata,
-      status: body.status,
-    });
+    try {
+      await updateRecruitingInvitation(params.invitationId, {
+        expiresAt: expiresAtUpdate,
+        metadata: body.metadata,
+        status: body.status,
+      });
+    } catch (error) {
+      if (error instanceof Error && error.message === "invitationCannotBeRevoked") {
+        return apiError("invitationCannotBeRevoked", 400);
+      }
+      throw error;
+    }
 
     recordAuditEvent({
       actorId: user.id,
