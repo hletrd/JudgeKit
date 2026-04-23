@@ -46,7 +46,12 @@ export function ContestJoinClient() {
         throw new Error((errorPayload as { error?: string }).error ?? "joinFailed");
       }
 
-      const payload = await res.json().catch(() => ({ data: {} }));
+      const payload = await res.json().catch(() => ({ data: {} })) as { data?: { assignmentId?: string; alreadyEnrolled?: boolean } };
+
+      if (!payload.data?.assignmentId) {
+        toast.error(t("joinFailed"));
+        return;
+      }
 
       setSuccess(true);
       if (payload.data.alreadyEnrolled) {
