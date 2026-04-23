@@ -3,6 +3,7 @@ import { getRateLimitKey } from "./rate-limit";
 import { checkRateLimit as sidecarCheck } from "./rate-limiter-client";
 import { execTransaction } from "@/lib/db";
 import { rateLimits } from "@/lib/db/schema";
+import { getDbNowUncached } from "@/lib/db-time";
 import { getConfiguredSettings } from "@/lib/system-settings-config";
 import { eq } from "drizzle-orm";
 
@@ -212,7 +213,10 @@ export async function checkServerActionRateLimit(
   const windowMs = windowSeconds * 1000;
 
   return execTransaction(async (tx) => {
-    const now = Date.now();
+    // Use DB server time for rate-limit window comparisons to avoid clock skew
+    // between app and DB servers, consistent with other rate-limit checks
+    // (realtime-coordination.ts, submissions.ts, assignment PATCH route).
+    const now = (await getDbNowUncached()).getTime();
     const [existing] = await tx
       .select({
         attempts: rateLimits.attempts,

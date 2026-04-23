@@ -1,6 +1,12 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { NextRequest } from "next/server";
 
+// Fixed DB time used by the getDbNowUncached mock — tests for checkServerActionRateLimit
+// must use timestamps relative to this value since the function now uses DB time
+// instead of Date.now() for clock-skew consistency.
+const MOCK_DB_NOW = new Date("2026-04-20T12:00:00Z");
+const MOCK_DB_NOW_MS = MOCK_DB_NOW.getTime();
+
 type SidecarCheckResult = {
   allowed: boolean;
   remaining: number;
@@ -35,6 +41,10 @@ vi.mock("@/lib/security/rate-limiter-client", () => ({
 vi.mock("@/lib/db", () => ({
   db: dbMock,
   execTransaction: execTransactionMock,
+}));
+
+vi.mock("@/lib/db-time", () => ({
+  getDbNowUncached: vi.fn(() => Promise.resolve(new Date("2026-04-20T12:00:00Z"))),
 }));
 
 vi.mock("@/lib/system-settings-config", () => ({
@@ -263,10 +273,10 @@ describe("checkServerActionRateLimit", () => {
     mockSelectResult({
       key: "sa:user-1:deleteAccount",
       attempts: 5,
-      windowStartedAt: Date.now(),
+      windowStartedAt: MOCK_DB_NOW_MS,
       blockedUntil: null,
       consecutiveBlocks: 0,
-      lastAttempt: Date.now(),
+      lastAttempt: MOCK_DB_NOW_MS,
     });
 
     const result = await checkServerActionRateLimit("user-1", "deleteAccount", 20, 60);
@@ -281,10 +291,10 @@ describe("checkServerActionRateLimit", () => {
     mockSelectResult({
       key: "sa:user-1:deleteAccount",
       attempts: 20,
-      windowStartedAt: Date.now(),
+      windowStartedAt: MOCK_DB_NOW_MS,
       blockedUntil: null,
       consecutiveBlocks: 0,
-      lastAttempt: Date.now(),
+      lastAttempt: MOCK_DB_NOW_MS,
     });
 
     const result = await checkServerActionRateLimit("user-1", "deleteAccount", 20, 60);
@@ -300,10 +310,10 @@ describe("checkServerActionRateLimit", () => {
     mockSelectResult({
       key: "sa:user-1:deleteAccount",
       attempts: 20,
-      windowStartedAt: Date.now() - 120_000,
+      windowStartedAt: MOCK_DB_NOW_MS - 120_000,
       blockedUntil: null,
       consecutiveBlocks: 0,
-      lastAttempt: Date.now() - 120_000,
+      lastAttempt: MOCK_DB_NOW_MS - 120_000,
     });
 
     const result = await checkServerActionRateLimit("user-1", "deleteAccount", 20, 60);
@@ -334,10 +344,10 @@ describe("checkServerActionRateLimit", () => {
     mockSelectResult({
       key: "sa:user-1:someAction",
       attempts: 3,
-      windowStartedAt: Date.now(),
+      windowStartedAt: MOCK_DB_NOW_MS,
       blockedUntil: null,
       consecutiveBlocks: 0,
-      lastAttempt: Date.now(),
+      lastAttempt: MOCK_DB_NOW_MS,
     });
 
     const result = await checkServerActionRateLimit("user-1", "someAction", 10, 60);
