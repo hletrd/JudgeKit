@@ -3,7 +3,7 @@
 import { useState, useCallback, useRef } from "react";
 import { useTranslations, useLocale } from "next-intl";
 import { toast } from "sonner";
-import { apiFetch } from "@/lib/api/client";
+import { apiFetchJson } from "@/lib/api/client";
 import { formatNumber } from "@/lib/formatting";
 import { Card, CardContent } from "@/components/ui/card";
 import { Users, FileText, BarChart3, Trophy } from "lucide-react";
@@ -47,15 +47,17 @@ export function ContestQuickStats({
 
   const fetchStats = useCallback(async () => {
     try {
-      const res = await apiFetch(`/api/v1/contests/${assignmentId}/stats`);
-      if (!res.ok) return;
-      const json = await res.json().catch(() => ({}));
-      if (json.data && typeof json.data === "object") {
+      const { ok, data } = await apiFetchJson<{ data?: { participantCount?: number; submittedCount?: number; avgScore?: number | null; problemsSolvedCount?: number } }>(
+        `/api/v1/contests/${assignmentId}/stats`,
+        undefined,
+        { data: undefined }
+      );
+      if (ok && data.data && typeof data.data === "object") {
         setStats((prev) => ({
-          participantCount: Number.isFinite(Number(json.data.participantCount)) ? Number(json.data.participantCount) : prev.participantCount,
-          submittedCount: Number.isFinite(Number(json.data.submittedCount)) ? Number(json.data.submittedCount) : prev.submittedCount,
-          avgScore: json.data.avgScore !== null && json.data.avgScore !== undefined && Number.isFinite(Number(json.data.avgScore)) ? Number(json.data.avgScore) : prev.avgScore,
-          problemsSolvedCount: Number.isFinite(Number(json.data.problemsSolvedCount)) ? Number(json.data.problemsSolvedCount) : prev.problemsSolvedCount,
+          participantCount: Number.isFinite(Number(data.data!.participantCount)) ? Number(data.data!.participantCount) : prev.participantCount,
+          submittedCount: Number.isFinite(Number(data.data!.submittedCount)) ? Number(data.data!.submittedCount) : prev.submittedCount,
+          avgScore: data.data!.avgScore !== null && data.data!.avgScore !== undefined && Number.isFinite(Number(data.data!.avgScore)) ? Number(data.data!.avgScore) : prev.avgScore,
+          problemsSolvedCount: Number.isFinite(Number(data.data!.problemsSolvedCount)) ? Number(data.data!.problemsSolvedCount) : prev.problemsSolvedCount,
         }));
       }
     } catch {

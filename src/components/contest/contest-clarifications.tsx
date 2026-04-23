@@ -3,7 +3,7 @@
 import { useCallback, useMemo, useRef, useState } from "react";
 import { useLocale, useTranslations } from "next-intl";
 import { toast } from "sonner";
-import { apiFetch } from "@/lib/api/client";
+import { apiFetch, apiFetchJson } from "@/lib/api/client";
 import { formatContestTimestamp } from "@/lib/formatting";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -70,14 +70,16 @@ export function ContestClarifications({
 
   const loadClarifications = useCallback(async () => {
     try {
-      const response = await apiFetch(`/api/v1/contests/${assignmentId}/clarifications`, {
-        cache: "no-store",
-      });
-      if (!response.ok) {
-        throw new Error("contestClarificationsFetchFailed");
+      const { ok, data } = await apiFetchJson<{ data?: ContestClarification[] }>(
+        `/api/v1/contests/${assignmentId}/clarifications`,
+        { cache: "no-store" },
+        { data: [] }
+      );
+      if (ok) {
+        setClarifications(Array.isArray(data.data) ? data.data : []);
+      } else if (!initialLoadDoneRef.current) {
+        toast.error(t("fetchError"));
       }
-      const payload = await response.json() as { data?: ContestClarification[] };
-      setClarifications(Array.isArray(payload.data) ? payload.data : []);
     } catch {
       // Only show toast on the initial load — polling refreshes should fail
       // silently to avoid spamming the user with error toasts every 30 seconds.

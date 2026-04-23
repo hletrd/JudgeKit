@@ -77,7 +77,7 @@ export function QuickCreateContestForm({ problems }: { problems: Problem[] }) {
       });
 
       if (res.ok) {
-        const json = await res.json().catch(() => ({}));
+        const json = await res.json().catch(() => ({ data: {} }));
         toast.success(t("createSuccess"));
         if (json.data?.assignmentId) {
           router.push(`/dashboard/contests/${json.data.assignmentId}`);

@@ -273,7 +273,7 @@ export default function AssignmentFormDialog({
         throw new Error((errorBody as { error?: string }).error || (isEditing ? "assignmentUpdateFailed" : "assignmentCreateFailed"));
       }
 
-      const payload = await response.json() as { data?: { id?: string } };
+      const payload = await response.json().catch(() => ({ data: {} })) as { data?: { id?: string } };
 
       toast.success(
         t(

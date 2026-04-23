@@ -3,7 +3,7 @@
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { toast } from "sonner";
-import { apiFetch } from "@/lib/api/client";
+import { apiFetchJson } from "@/lib/api/client";
 import { Button } from "@/components/ui/button";
 
 type DiscussionVoteButtonsProps = {
@@ -36,25 +36,26 @@ export function DiscussionVoteButtons({
     if (!canVote || isSubmitting) return;
     setIsSubmitting(true);
     try {
-      const response = await apiFetch("/api/v1/community/votes", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ targetType, targetId, voteType }),
-      });
-      if (!response.ok) {
-        const errorBody = await response.json().catch(() => ({}));
-        console.error("Vote failed:", (errorBody as { error?: string }).error);
-        toast.error(voteFailedLabel);
-        return;
-      }
-      const payload = await response.json() as {
+      const { ok, data } = await apiFetchJson<{
         data?: {
           score?: number;
           currentUserVote?: "up" | "down" | null;
         };
-      };
-      setScore(typeof payload.data?.score === "number" ? payload.data.score : score);
-      setCurrentUserVote(payload.data?.currentUserVote ?? null);
+      }>(
+        "/api/v1/community/votes",
+        {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ targetType, targetId, voteType }),
+        },
+        { data: { score: undefined, currentUserVote: undefined } }
+      );
+      if (!ok) {
+        toast.error(voteFailedLabel);
+        return;
+      }
+      setScore(typeof data.data?.score === "number" ? data.data.score : score);
+      setCurrentUserVote(data.data?.currentUserVote ?? null);
       router.refresh();
     } catch {
       toast.error(voteFailedLabel);

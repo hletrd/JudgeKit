@@ -2,7 +2,7 @@
 
 import { useEffect, useMemo, useState } from "react";
 import { useTranslations } from "next-intl";
-import { apiFetch } from "@/lib/api/client";
+import { apiFetchJson } from "@/lib/api/client";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import {
@@ -69,18 +69,21 @@ export function AcceptedSolutions({ problemId, languages }: AcceptedSolutionsPro
         if (language !== "all") {
           params.set("language", language);
         }
-        const response = await apiFetch(`/api/v1/problems/${problemId}/accepted-solutions?${params.toString()}`, {
-          cache: "no-store",
-        });
-        if (!response.ok) {
-          throw new Error("acceptedSolutionsFetchFailed");
-        }
-        const payload = await response.json() as {
+        const { ok, data } = await apiFetchJson<{
           data?: { solutions?: AcceptedSolution[]; total?: number };
-        };
+        }>(
+          `/api/v1/problems/${problemId}/accepted-solutions?${params.toString()}`,
+          { cache: "no-store" },
+          { data: { solutions: [], total: 0 } }
+        );
         if (!cancelled) {
-          setSolutions(payload.data?.solutions ?? []);
-          setTotal(Number(payload.data?.total ?? 0));
+          if (ok) {
+            setSolutions(data.data?.solutions ?? []);
+            setTotal(Number(data.data?.total ?? 0));
+          } else {
+            setSolutions([]);
+            setTotal(0);
+          }
         }
       } catch {
         if (!cancelled) {

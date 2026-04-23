@@ -5,7 +5,7 @@ import { useTranslations, useLocale } from "next-intl";
 import { useSystemTimezone } from "@/contexts/timezone-context";
 import { formatDateTimeInTimeZone } from "@/lib/datetime";
 import { toast } from "sonner";
-import { apiFetch } from "@/lib/api/client";
+import { apiFetchJson } from "@/lib/api/client";
 import { Card, CardContent, CardHeader } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -50,12 +50,13 @@ export function CodeTimelinePanel({
   const fetchSnapshots = useCallback(async () => {
     try {
       const query = filterProblem !== "all" ? `?problemId=${filterProblem}` : "";
-      const res = await apiFetch(
-        `/api/v1/contests/${assignmentId}/code-snapshots/${userId}${query}`
+      const { ok, data } = await apiFetchJson<{ data?: Snapshot[] }>(
+        `/api/v1/contests/${assignmentId}/code-snapshots/${userId}${query}`,
+        undefined,
+        { data: [] }
       );
-      if (res.ok) {
-        const json = await res.json().catch(() => ({ data: [] }));
-        setSnapshots(json.data ?? []);
+      if (ok) {
+        setSnapshots(data.data ?? []);
         setSelectedIdx(0);
         setError(false);
       } else {

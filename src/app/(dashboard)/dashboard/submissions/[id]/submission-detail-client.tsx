@@ -135,7 +135,7 @@ export function SubmissionDetailClient(props: SubmissionDetailClientProps) {
           return;
         }
 
-        const payload = await response.json() as { data?: { queuePosition?: number | null; gradingTestCase?: string | null } };
+        const payload = await response.json().catch(() => ({})) as { data?: { queuePosition?: number | null; gradingTestCase?: string | null } };
         if (!cancelled) {
           setQueuePosition(typeof payload.data?.queuePosition === "number" ? payload.data.queuePosition : null);
           setGradingTestCase(typeof payload.data?.gradingTestCase === "string" ? payload.data.gradingTestCase : null);
