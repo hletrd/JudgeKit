@@ -163,7 +163,8 @@ export function ContestReplay({
               max={Math.max(snapshots.length - 1, 0)}
               step={1}
               value={safeIndex}
-              onChange={(event) => setCurrentIndex(Number(event.target.value))}
+              onChange={(event) => setCurrentIndex(parseInt(event.target.value, 10))}
+              aria-valuetext={selectedSnapshot.label}
               className="w-full"
             />
           </div>
