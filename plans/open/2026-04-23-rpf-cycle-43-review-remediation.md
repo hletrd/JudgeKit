@@ -3,7 +3,7 @@
 **Date:** 2026-04-23
 **Cycle:** 43/100
 **Base commit:** b0d843e7
-**Status:** Open
+**Status:** Done
 
 ## Lanes
 
@@ -11,15 +11,17 @@
 
 **Severity:** MEDIUM/MEDIUM (9 of 11 perspectives)
 **File:** `src/app/api/v1/submissions/route.ts:249,318`
-**Status:** Pending
+**Status:** Done
 
 **Tasks:**
-- [ ] Replace `new Date(Date.now() - 60_000)` at line 249 with `new Date((await getDbNowUncached()).getTime() - 60_000)`
-- [ ] Cache the `getDbNowUncached()` result and reuse it at line 318 for `submittedAt` (eliminates one redundant DB round-trip)
-- [ ] Add a comment explaining the use of DB time for rate-limit consistency
-- [ ] Verify TypeScript compiles without errors
-- [ ] Run existing tests to confirm no regressions
-- [ ] Commit with message: `fix(submissions): 🐛 use DB time for rate-limit window to avoid clock skew`
+- [x] Replace `new Date(Date.now() - 60_000)` at line 249 with `new Date((await getDbNowUncached()).getTime() - 60_000)`
+- [x] Cache the `getDbNowUncached()` result and reuse it at line 318 for `submittedAt` (eliminates one redundant DB round-trip)
+- [x] Add a comment explaining the use of DB time for rate-limit consistency
+- [x] Verify TypeScript compiles without errors
+- [x] Run existing tests to confirm no regressions
+- [x] Commit with message: `fix(submissions): 🐛 use DB time for rate-limit window to avoid clock skew`
+
+**Commit:** 1c5460bb
 
 ---
 
@@ -27,26 +29,28 @@
 
 **Severity:** LOW/LOW (2 of 11 perspectives)
 **File:** `src/app/api/v1/contests/join/route.ts:9-11`
-**Status:** Pending
+**Status:** Done
 
 **Tasks:**
-- [ ] Add `auth: true` to the `createApiHandler` config for the contest join route
-- [ ] Verify TypeScript compiles without errors
-- [ ] Commit with message: `refactor(contests): ♻️ add explicit auth:true to join route`
+- [x] Add `auth: true` to the `createApiHandler` config for the contest join route
+- [x] Verify TypeScript compiles without errors
+- [x] Commit with message: `refactor(contests): ♻️ add explicit auth:true to join route`
+
+**Commit:** 389feae0
 
 ---
 
 ### Lane 3: Run quality gates
 
 **Severity:** Required
-**Status:** Pending
+**Status:** Done
 
 **Tasks:**
-- [ ] Run `eslint` — must pass (exit 0)
-- [ ] Run `npm run build` — must pass
-- [ ] Run `npm run test:unit` — must pass
-- [ ] Run `npm run test:component` — best effort (may skip due to DB requirement)
-- [ ] Fix any gate failures before finishing
+- [x] Run `eslint` — passed (exit 0)
+- [x] Run `npm run build` — passed
+- [x] Run `npm run test:unit` — passed (294 test files, 2116 tests)
+- [x] Run `npm run test:component` — skipped (no DB connection)
+- [x] No gate failures
 
 ---
 
