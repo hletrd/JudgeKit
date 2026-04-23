@@ -287,13 +287,13 @@ export function ContestClarifications({
                       />
                     </div>
                     <div className="flex flex-wrap gap-2">
-                      <Button type="button" size="sm" onClick={() => void handleAnswer(clarification.id, "yes", "Yes")}>
+                      <Button type="button" size="sm" onClick={() => void handleAnswer(clarification.id, "yes", t("quickYesAnswer"))}>
                         {t("quickYes")}
                       </Button>
-                      <Button type="button" size="sm" variant="outline" onClick={() => void handleAnswer(clarification.id, "no", "No")}>
+                      <Button type="button" size="sm" variant="outline" onClick={() => void handleAnswer(clarification.id, "no", t("quickNoAnswer"))}>
                         {t("quickNo")}
                       </Button>
-                      <Button type="button" size="sm" variant="outline" onClick={() => void handleAnswer(clarification.id, "no_comment", "No comment")}>
+                      <Button type="button" size="sm" variant="outline" onClick={() => void handleAnswer(clarification.id, "no_comment", t("quickNoCommentAnswer"))}>
                         {t("quickNoComment")}
                       </Button>
                       <Button type="button" size="sm" variant="outline" onClick={() => void handleAnswer(clarification.id, "custom")}>
