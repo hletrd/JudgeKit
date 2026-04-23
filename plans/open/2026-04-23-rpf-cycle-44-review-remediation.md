@@ -3,7 +3,7 @@
 **Date:** 2026-04-23
 **Cycle:** 44/100
 **Base commit:** e2043115
-**Status:** In Progress
+**Status:** Done
 
 ## Lanes
 
@@ -11,17 +11,19 @@
 
 **Severity:** MEDIUM/MEDIUM (9 of 11 perspectives)
 **File:** `src/lib/assignments/submissions.ts:208,220,268`
-**Status:** Pending
+**Status:** Done
 
 **Tasks:**
-- [ ] Replace `const now = Date.now();` at line 208 with `const now = (await getDbNowUncached()).getTime();`
-- [ ] Replace inline `Date.now()` at line 268 with the same `now` variable
-- [ ] Add a comment explaining the use of DB time for deadline consistency
-- [ ] Ensure the function remains async (it already is)
-- [ ] Import `getDbNowUncached` from `@/lib/db-time` if not already imported
-- [ ] Verify TypeScript compiles without errors
-- [ ] Run existing tests to confirm no regressions
-- [ ] Commit with message: `fix(submissions): 🐛 use DB time for deadline enforcement to avoid clock skew`
+- [x] Replace `const now = Date.now();` at line 208 with `const now = (await getDbNowUncached()).getTime();`
+- [x] Replace inline `Date.now()` at line 268 with the same `now` variable
+- [x] Add a comment explaining the use of DB time for deadline consistency
+- [x] Ensure the function remains async (it already is)
+- [x] Import `getDbNowUncached` from `@/lib/db-time` if not already imported
+- [x] Verify TypeScript compiles without errors
+- [x] Run existing tests to confirm no regressions
+- [x] Commit with message: `fix(submissions): 🐛 use DB time for deadline enforcement to avoid clock skew`
+
+**Commit:** a2a5b20c
 
 ---
 
@@ -32,29 +34,31 @@
 - `src/lib/assignments/contest-scoring.ts:243`
 - `src/lib/assignments/submissions.ts:365`
 - `src/lib/assignments/contest-analytics.ts:259`
-**Status:** Pending
+**Status:** Done
 
 **Tasks:**
-- [ ] In `contest-scoring.ts:243`, replace `userMap.get(row.userId)!.problems.set(...)` with explicit null guard
-- [ ] In `submissions.ts:365`, replace `submissionsByProblem.get(sub.problemId)!.add(...)` with explicit null guard
-- [ ] In `contest-analytics.ts:259`, replace `userProgressMap.get(sub.userId)!` with explicit null guard
-- [ ] Verify TypeScript compiles without errors
-- [ ] Run existing tests to confirm no regressions
-- [ ] Commit with message: `refactor(assignments): ♻️ replace Map.get() non-null assertions with explicit null guards`
+- [x] In `contest-scoring.ts:243`, replace `userMap.get(row.userId)!.problems.set(...)` with explicit null guard
+- [x] In `submissions.ts:365`, replace `submissionsByProblem.get(sub.problemId)!.add(...)` with explicit null guard
+- [x] In `contest-analytics.ts:259`, replace `userProgressMap.get(sub.userId)!` with explicit null guard
+- [x] Verify TypeScript compiles without errors
+- [x] Run existing tests to confirm no regressions
+- [x] Commit with message: `refactor(assignments): ♻️ replace Map.get() non-null assertions with explicit null guards`
+
+**Commit:** ec00e252
 
 ---
 
 ### Lane 3: Run quality gates
 
 **Severity:** Required
-**Status:** Pending
+**Status:** Done
 
 **Tasks:**
-- [ ] Run `eslint` — must pass
-- [ ] Run `npm run build` — must pass
-- [ ] Run `npm run test:unit` — must pass
-- [ ] Run `npm run test:component` — must pass
-- [ ] Fix any gate failures
+- [x] Run `eslint` — passed (exit 0)
+- [x] Run `npm run build` — passed
+- [x] Run `npm run test:unit` — passed
+- [x] Run `npm run test:component` — passed
+- [x] No gate failures
 
 ---
 
