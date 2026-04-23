@@ -180,12 +180,12 @@ export function ProblemSubmissionForm({
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ language, sourceCode, stdin, assignmentId }),
       });
+      // Parse response body once — the Response body can only be consumed once
+      const payload = await response.json().catch(() => ({ data: null })) as { error?: string; data?: { stdout: string; stderr: string; executionTimeMs: number; timedOut: boolean; oomKilled: boolean; compileOutput: string | null } | null };
       if (!response.ok) {
-        const errorBody = await response.json().catch(() => ({}));
-        toast.error(translateSubmissionError((errorBody as { error?: string }).error));
+        toast.error(translateSubmissionError(payload.error));
         return;
       }
-      const payload = await response.json().catch(() => ({ data: null })) as { data?: { stdout: string; stderr: string; executionTimeMs: number; timedOut: boolean; oomKilled: boolean; compileOutput: string | null } | null };
       setRunResult(payload.data ?? null);
     } catch {
       toast.error(tCommon("error"));
@@ -243,13 +243,13 @@ export function ProblemSubmissionForm({
         }),
       });
 
+      // Parse response body once — the Response body can only be consumed once
+      const payload = await response.json().catch(() => ({ data: {} })) as { error?: string; data?: { id?: string } };
+
       if (!response.ok) {
-        const errorBody = await response.json().catch(() => ({}));
-        toast.error(translateSubmissionError((errorBody as { error?: string }).error));
+        toast.error(translateSubmissionError(payload.error));
         return;
       }
-
-      const payload = await response.json().catch(() => ({ data: {} })) as { data?: { id?: string } };
 
       const submissionId = payload.data?.id;
 
