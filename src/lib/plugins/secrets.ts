@@ -11,6 +11,28 @@ export function isEncryptedPluginSecret(value: unknown): value is string {
   return typeof value === "string" && value.startsWith(`${ENCRYPTION_VERSION}:`);
 }
 
+/**
+ * Validate that a value is a well-formed encrypted plugin secret.
+ *
+ * Unlike `isEncryptedPluginSecret()` which only checks the `enc:v1:` prefix,
+ * this function also verifies the full `enc:v1:iv:tag:ciphertext` structure
+ * — all three base64url components must be present and non-empty.
+ *
+ * Use this for storage gating (e.g. `preparePluginConfigForStorage`) to
+ * prevent malformed `enc:v1:` values from bypassing encryption. The
+ * prefix-only `isEncryptedPluginSecret()` is kept for the decryption path
+ * where malformed values should still reach the decrypt function so the
+ * error is properly handled.
+ */
+export function isValidEncryptedPluginSecret(value: string): boolean {
+  if (!isEncryptedPluginSecret(value)) return false;
+  const parts = value.split(":");
+  // Expected format: enc:v1:iv:tag:ciphertext — exactly 5 parts
+  if (parts.length !== 5) return false;
+  // All three payload components must be non-empty
+  return parts[2].length > 0 && parts[3].length > 0 && parts[4].length > 0;
+}
+
 export function encryptPluginSecret(plaintext: string | null | undefined): string | null {
   if (!plaintext) return null;
 
@@ -129,10 +151,11 @@ export function preparePluginConfigForStorage(
       continue;
     }
 
-    if (isEncryptedPluginSecret(incomingValue)) {
-      // Already encrypted (e.g. round-tripped from a previous save) — keep as-is.
-      // Check before encrypting to avoid unnecessary crypto work and to prevent
-      // a crafted `enc:v1:` prefix from bypassing encryption (CR11-1).
+    if (isValidEncryptedPluginSecret(incomingValue)) {
+      // Already encrypted with valid structure (e.g. round-tripped from a
+      // previous save) — keep as-is. Use isValidEncryptedPluginSecret()
+      // (not the prefix-only isEncryptedPluginSecret) to prevent malformed
+      // `enc:v1:` values from bypassing encryption (CR11-1, CR12-1).
       prepared[key] = incomingValue;
     } else {
       const encrypted = encryptPluginSecret(incomingValue);
