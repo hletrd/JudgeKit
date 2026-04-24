@@ -2,7 +2,7 @@
 
 **Date:** 2026-04-24
 **Source:** `.context/reviews/_aggregate.md`
-**Status:** In Progress
+**Status:** Completed
 
 ## Scope
 
@@ -30,7 +30,7 @@ No cycle-17 review finding is silently dropped. No new refactor-only work is add
 - **Plan:**
   1. Add `"hcaptchaSecret"` and `"body.hcaptchaSecret"` to `REDACT_PATHS` in `src/lib/logger.ts`
   2. Verify all gates pass
-- **Status:** Pending
+- **Status:** Done (492efa63)
 
 ### L1: Consolidate duplicate audit event pruning (AGG-2)
 
@@ -44,7 +44,7 @@ No cycle-17 review finding is silently dropped. No new refactor-only work is add
   2. Keep `startAuditEventPruning()` as a function that delegates to `startSensitiveDataPruning()` for backward compatibility, or remove if no callers need it
   3. Verify that `src/lib/data-retention-maintenance.ts` already prunes audit events (it does, via `pruneSensitiveOperationalData`)
   4. Verify all gates pass
-- **Status:** Pending
+- **Status:** Done (013e00ae)
 
 ### L2: Fix double serialization in `truncateObject` array branch (AGG-3)
 
@@ -57,7 +57,7 @@ No cycle-17 review finding is silently dropped. No new refactor-only work is add
   1. Compute the truncated item once, serialize it for the budget check, and push the already-computed truncated value
   2. Verify existing boundary tests still pass
   3. Verify all gates pass
-- **Status:** Pending
+- **Status:** Done (013e00ae — same commit as L1)
 
 ### L3: Add test for logger REDACT_PATHS coverage (AGG-4)
 
@@ -71,7 +71,7 @@ No cycle-17 review finding is silently dropped. No new refactor-only work is add
   2. For each column in `SANITIZED_COLUMNS` and `ALWAYS_REDACT`, assert the column name (or a reasonable path variant) appears in `REDACT_PATHS`
   3. Also assert `hcaptchaSecret` is in `REDACT_PATHS` (validates M1)
   4. Verify all gates pass
-- **Status:** Pending
+- **Status:** Done (8a453cd4)
 
 ### L4: Add unit test for `sanitizeMarkdown` control character stripping (AGG-6)
 
@@ -83,7 +83,7 @@ No cycle-17 review finding is silently dropped. No new refactor-only work is add
 - **Plan:**
   1. Add a unit test for `sanitizeMarkdown` that verifies: null bytes are stripped, other control characters are stripped, newlines/tabs/carriage returns are preserved, normal text passes through unchanged
   2. Verify all gates pass
-- **Status:** Pending
+- **Status:** Already covered — existing tests in `tests/unit/security/sanitize-html.test.ts` include control character stripping for `sanitizeMarkdown`
 
 ---
 
@@ -103,3 +103,4 @@ Carry-forward deferrals from prior cycles: DEFER-61 through DEFER-70 remain unch
 ## Progress log
 
 - 2026-04-24: Plan created from RPF cycle 17 aggregate review. 5 new tasks (M1, L1-L4). AGG-5 deferred as DEFER-71.
+- 2026-04-24: All tasks completed. M1 (492efa63), L1+L2 (013e00ae), L3 (8a453cd4), L4 already covered by existing tests. Test baseline updated (3f05614a). All gates pass: eslint 0, tsc 0, vitest 2138/2138, next build OK.
