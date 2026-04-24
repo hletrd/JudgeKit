@@ -1,155 +1,108 @@
-# Aggregate Review - Cycle 15
+# Aggregate Review — Cycle 16
 
 ## Meta
-- Reviewers: code-reviewer, security-reviewer, perf-reviewer, architect
+- Reviewers: code-reviewer, security-reviewer, perf-reviewer, architect, test-engineer, debugger, verifier, critic
 - Date: 2026-04-24
-- Total findings: 16 (deduplicated to 14)
+- Total findings: 15 (deduplicated to 6)
 
 ---
 
 ## Deduplicated Findings (sorted by severity)
 
-### AGG-1: [MEDIUM] Plaintext recruitingInvitations.token Column (Data-at-Rest)
-**Sources:** CR-3, S-1 | **Confidence:** High
+### AGG-1: [HIGH] Stale Column References in Export Sanitization — Schema-Export Drift
+**Sources:** CR-1, CR-2, S-1, S-2, A-1, D-1, D-2, V-2 | **Confidence:** High
+**Cross-agent signal:** 8 of 8 review perspectives
 
-The `recruitingInvitations` table retains both `token` (plaintext) and `tokenHash` columns. The unique index on `token` is still active. A DB compromise exposes all active recruiting tokens in cleartext.
+Two entries in `SANITIZED_COLUMNS` (`src/lib/db/export.ts:251-252`) reference columns that no longer exist:
 
-**Fix:** Drop the `token` column and `ri_token_idx` index after confirming no code path reads `token` from the DB.
+1. `recruitingInvitations.token` — dropped in cycle 15 (commit `7cd2c983`) but the export sanitization was not updated
+2. `contestAccessTokens.token` — this column never existed in the current schema
 
----
+The root cause is that `SANITIZED_COLUMNS` is manually maintained and not validated against the schema, creating a systemic drift risk with every migration.
 
-### AGG-2: [MEDIUM] Audit Buffer Data Loss on Process Crash
-**Sources:** CR-1 | **Confidence:** High
+**Concrete failure scenario:** An operator runs a sanitized export expecting sensitive columns to be redacted. The column names don't match any actual column, so `indexOf()` returns -1 and redaction is silently skipped. If a future migration re-adds a column with the same name, the redaction would resume without anyone noticing the gap.
 
-The audit event buffer accumulates events in memory and flushes every 5s/50 events. Hard process crashes (OOM, kill -9) lose buffered events, creating audit trail gaps.
-
-**Fix:** Reduce flush interval for high-priority events, or add write-ahead logging.
-
----
-
-### AGG-3: [MEDIUM] In-Memory Rate Limiter FIFO Eviction is O(n log n)
-**Sources:** P-1 | **Confidence:** Medium
-
-When over capacity, eviction sorts all entries to find the oldest. This is O(n log n) and allocates on every call that exceeds capacity.
-
-**Fix:** Replace the sorted eviction with simple FIFO eviction from Map's insertion order (O(1)).
+**Fix:**
+1. Remove `"token"` from the `recruitingInvitations` entry in `SANITIZED_COLUMNS`
+2. Remove the entire `contestAccessTokens` entry (the table has no sensitive columns)
+3. Add a unit test that validates `SANITIZED_COLUMNS` entries against actual schema columns
+4. Long-term: derive `SANITIZED_COLUMNS` from Drizzle schema types for compile-time safety
 
 ---
 
-### AGG-4: [MEDIUM] Dual Rate Limiting Systems Without Unified Interface
-**Sources:** A-1 | **Confidence:** Medium
+### AGG-2: [MEDIUM] `judgeWorkers.secretToken` Column Still Exists in Schema
+**Sources:** CR-3, S-3, C-2 | **Confidence:** High
+**Cross-agent signal:** 3 of 8 review perspectives
 
-Two independent rate limiting systems (DB-backed and in-memory) with different APIs and key formats make it hard to reason about rate limiting behavior globally.
+The `judgeWorkers.secretToken` column (schema.pg.ts:418) still exists despite being deprecated in favor of `secretTokenHash`. New registrations set it to `null` (register/route.ts:56), and auth rejects workers without `secretTokenHash` (judge/auth.ts:76-81). The column is listed in `SANITIZED_COLUMNS` and `ALWAYS_REDACT` (export.ts:250, 258), indicating awareness of the risk.
 
-**Fix:** Create a unified `RateLimiter` interface with pluggable backends.
+Legacy rows with plaintext tokens are exposed in a DB compromise. This is tracked as DEFER-66 but re-escalated due to the same pattern as the successfully-dropped `recruitingInvitations.token` in cycle 15.
 
----
-
-### AGG-5: [MEDIUM] Proxy Mixing Auth, CSP, Locale, and Caching Logic
-**Sources:** A-2 | **Confidence:** Medium
-
-The 340-line `proxy` function handles 6 different concerns. Changes to one concern risk breaking others.
-
-**Fix:** Split into composable middleware functions (`withAuth`, `withSecurityHeaders`, `withLocale`, `withCaching`).
+**Fix:**
+1. Drop `secretToken` column from schema
+2. Create a Drizzle migration
+3. Remove from `SANITIZED_COLUMNS` and `ALWAYS_REDACT` in export.ts
+4. Remove from logger `REDACT_PATHS` in logger.ts
 
 ---
 
-### AGG-6: [LOW] RUNNER_AUTH_TOKEN Falls Back to JUDGE_AUTH_TOKEN
-**Sources:** S-2 | **Confidence:** High
+### AGG-3: [LOW] Audit Event `claimTokenPresent: true` is Always True
+**Sources:** CR-4, D-3 | **Confidence:** High
+**Cross-agent signal:** 2 of 8 review perspectives
 
-Fallback in `docker/client.ts` violates unique-credentials-per-service principle.
+In `src/app/api/v1/judge/poll/route.ts:118`, the audit event includes `claimTokenPresent: true`. This field is always `true` because the code path is only reached after the claim token is validated. Not a bug or security issue — just a misleading audit trail entry.
 
-**Fix:** Remove the fallback, require `RUNNER_AUTH_TOKEN` explicitly when `COMPILER_RUNNER_URL` is set.
-
----
-
-### AGG-7: [LOW] Dev Encryption Key Hardcoded in Source
-**Sources:** S-3 | **Confidence:** High
-
-Hardcoded dev encryption key in `encryption.ts` could be used accidentally in non-production.
-
-**Fix:** Generate random dev key on first use and store locally, or require explicit opt-in env var.
+**Fix:** Remove the `claimTokenPresent` field from the audit details.
 
 ---
 
-### AGG-8: [LOW] Legacy secretToken Column in judgeWorkers Schema
-**Sources:** S-4 | **Confidence:** Medium
+### AGG-4: [LOW] DRY Violation — Duplicated `isExpired` SQL Expression
+**Sources:** CR-5, A-4, C-3 | **Confidence:** High
+**Cross-agent signal:** 3 of 8 review perspectives
 
-`judgeWorkers.secretToken` column still exists alongside `secretTokenHash`.
+The `isExpired` SQL expression appears verbatim 4 times in `src/lib/assignments/recruiting-invitations.ts` (lines 128, 153, 177, 284). If the business logic changes, all 4 must be updated in lockstep.
 
-**Fix:** Drop `secretToken` column after all workers are migrated.
-
----
-
-### AGG-9: [LOW] SEC-FETCH-SITE "none" Allowed in CSRF Check
-**Sources:** S-5 | **Confidence:** Medium
-
-CSRF check allows `sec-fetch-site: none`, reducing defense-in-depth value.
-
-**Fix:** Remove the exception or document the rationale.
+**Fix:** Extract into a shared Drizzle SQL fragment.
 
 ---
 
-### AGG-10: [LOW] Audit Event Serialization Truncates JSON String
-**Sources:** CR-4, P-5 | **Confidence:** High
+### AGG-5: [LOW] No Test for Export Sanitization Column Validity
+**Sources:** T-1 | **Confidence:** High
+**Cross-agent signal:** 1 of 8 review perspectives
 
-`JSON.stringify(details).slice(0, 4000)` can produce invalid JSON.
+There is no automated test that validates `SANITIZED_COLUMNS` entries against actual schema columns. This is how AGG-1 went undetected.
 
-**Fix:** Truncate the input object before serialization, not the serialized string.
-
----
-
-### AGG-11: [LOW] Module-Level Side Effects in authConfig
-**Sources:** CR-5 | **Confidence:** High
-
-`validateAuthUrl()` and `getValidatedAuthSecret()` called at module scope with no build-phase guard.
-
-**Fix:** Add build-phase guard or move validation into the NextAuth config factory.
+**Fix:** Add a test that imports the schema and `SANITIZED_COLUMNS`, then asserts every listed column exists in the corresponding schema table.
 
 ---
 
-### AGG-12: [LOW] In-Memory Rate Limiter TOCTOU Design Fragility
-**Sources:** CR-2 | **Confidence:** Medium
+### AGG-6: [LOW] Missing Boundary Tests for `truncateObject`
+**Sources:** T-2 | **Confidence:** Medium
+**Cross-agent signal:** 1 of 8 review perspectives
 
-`isRateLimitedInMemory` + `recordAttemptInMemory` are separate calls; API could lead to future race conditions.
+The `truncateObject` function (added in cycle 15) has 7 unit tests but is missing boundary conditions: nested objects that individually fit but together exceed budget, empty arrays/objects, non-ASCII strings, `undefined` values in arrays.
 
-**Fix:** Create a combined `checkAndRecord` atomic function.
-
----
-
-### AGG-13: [LOW] Encryption Key Management Spread Across Multiple Files
-**Sources:** A-3 | **Confidence:** Medium
-
-Two separate key derivation mechanisms with different env vars.
-
-**Fix:** Consolidate key management, or document why two keys are needed.
+**Fix:** Add boundary case tests.
 
 ---
 
-### AGG-14: [LOW] Auth User Cache Lacks TTL-Based Eviction
-**Sources:** P-2 | **Confidence:** Medium
+## Deferred Items (by policy — security/correctness findings are NOT deferrable)
 
-Expired entries only removed on read; cache could fill with stale entries under low traffic.
+All findings above are High, Medium, or Low severity. The High finding (AGG-1) should be implemented this cycle. The Medium finding (AGG-2) is a carry-over from DEFER-66 but re-escalated; implementing it is recommended. The Low findings can be addressed incrementally.
 
-**Fix:** Add periodic sweep for expired entries.
-
----
-
-## Deferred Items (by policy -- security/correctness findings are NOT deferrable)
-
-All findings above are Low or Medium severity. No High/Critical findings were discovered this cycle. The Medium findings (AGG-1 through AGG-5) should be scheduled for implementation. The Low findings can be addressed incrementally.
+Carry-forward deferrals from prior cycles: DEFER-61 through DEFER-70 remain unchanged.
 
 ## Positive Observations
 
-The codebase demonstrates strong engineering practices:
-- Comprehensive security posture (CSP, CSRF, encryption, sandboxing)
-- Well-structured DB schema with proper indexes and constraints
-- Consistent error handling and audit logging
-- Type-safe database queries via Drizzle ORM
-- Proper auth flow with timing-safe comparisons and user enumeration prevention
-- Data retention with legal hold support
-- Defense-in-depth approach to Docker sandboxing
+The codebase continues to demonstrate strong engineering practices:
+- Cycle 15 fixes were correctly implemented and verified
+- Timing-safe comparison used consistently
+- Atomic SQL claims prevent TOCTOU races
+- DOMPurify with strict allowlist for HTML sanitization
+- Proper AES-256-GCM encryption with auth tags
+- DB server time used for temporal consistency
+- Comprehensive audit logging with redaction
 
 ## No Agent Failures
 
-All review agents completed successfully.
+All 8 review agents completed successfully.
