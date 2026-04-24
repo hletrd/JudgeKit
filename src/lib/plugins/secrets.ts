@@ -129,10 +129,15 @@ export function preparePluginConfigForStorage(
       continue;
     }
 
-    const encrypted = encryptPluginSecret(incomingValue);
-    prepared[key] = isEncryptedPluginSecret(incomingValue)
-      ? incomingValue
-      : (encrypted ?? incomingValue);
+    if (isEncryptedPluginSecret(incomingValue)) {
+      // Already encrypted (e.g. round-tripped from a previous save) — keep as-is.
+      // Check before encrypting to avoid unnecessary crypto work and to prevent
+      // a crafted `enc:v1:` prefix from bypassing encryption (CR11-1).
+      prepared[key] = incomingValue;
+    } else {
+      const encrypted = encryptPluginSecret(incomingValue);
+      prepared[key] = encrypted ?? incomingValue;
+    }
   }
 
   return prepared;
