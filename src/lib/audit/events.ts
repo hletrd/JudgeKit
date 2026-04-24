@@ -1,10 +1,10 @@
 import { headers } from "next/headers";
 import { db } from "@/lib/db";
 import { auditEvents } from "@/lib/db/schema";
-import { sql } from "drizzle-orm";
+
 import { normalizeText, getClientIp, getRequestPath, MAX_TEXT_LENGTH, MAX_PATH_LENGTH } from "@/lib/security/request-context";
 import { logger } from "@/lib/logger";
-import { DATA_RETENTION_DAYS, DATA_RETENTION_LEGAL_HOLD, getRetentionCutoff } from "@/lib/data-retention";
+
 
 type RequestLike = {
   headers: Headers;
@@ -63,10 +63,11 @@ function truncateObject(obj: JsonValue, budget: number): JsonValue {
     const result: JsonValue[] = [];
     let remaining = budget - 2; // [ ]
     for (const item of obj) {
-      const serialized = JSON.stringify(truncateObject(item, remaining - 1));
+      const truncated = truncateObject(item, remaining - 1);
+      const serialized = JSON.stringify(truncated);
       if (!serialized) break;
       if (remaining - serialized.length - 1 < 0) break;
-      result.push(truncateObject(item, remaining - 1));
+      result.push(truncated);
       remaining -= serialized.length + 1; // +1 for comma
     }
     return result;
@@ -223,58 +224,20 @@ export function getAuditEventHealthSnapshot() {
   } as const;
 }
 
-const PRUNE_BATCH_SIZE = 5000;
-const PRUNE_BATCH_DELAY_MS = 100;
-
-async function pruneOldAuditEvents() {
-  if (DATA_RETENTION_LEGAL_HOLD) {
-    logger.info("Data retention legal hold is active — skipping audit event pruning");
-    return;
-  }
-  const cutoff = getRetentionCutoff(DATA_RETENTION_DAYS.auditEvents);
-  try {
-    let totalDeleted = 0;
-    while (true) {
-      const result = await db.execute(
-        sql`DELETE FROM ${auditEvents} WHERE ctid IN (SELECT ctid FROM ${auditEvents} WHERE ${auditEvents.createdAt} < ${cutoff} LIMIT ${PRUNE_BATCH_SIZE})`
-      );
-      const deleted = Number(result.rowCount ?? 0);
-      totalDeleted += deleted;
-      if (deleted < PRUNE_BATCH_SIZE) break;
-      await new Promise((r) => setTimeout(r, PRUNE_BATCH_DELAY_MS));
-    }
-    logger.debug({ cutoff: cutoff.toISOString(), deleted: totalDeleted }, "Pruned old audit events");
-  } catch (error) {
-    logger.warn({ err: error }, "Failed to prune old audit events");
-  }
-}
-
-// Run retention cleanup once per day
-let pruneTimer: ReturnType<typeof setInterval> | null = null;
-declare global {
-  var __auditPruneTimer: ReturnType<typeof setInterval> | undefined;
-}
-
+/**
+ * Audit event pruning is now consolidated into
+ * startSensitiveDataPruning() in src/lib/data-retention-maintenance.ts,
+ * which prunes audit events alongside other sensitive data types.
+ * These stubs are kept for backward compatibility with instrumentation.ts.
+ */
 export function startAuditEventPruning() {
-  if (globalThis.__auditPruneTimer) clearInterval(globalThis.__auditPruneTimer);
-  globalThis.__auditPruneTimer = setInterval(pruneOldAuditEvents, 24 * 60 * 60 * 1000);
-  // Allow the process to exit even if the timer is still active
-  if (globalThis.__auditPruneTimer && typeof globalThis.__auditPruneTimer === "object" && "unref" in globalThis.__auditPruneTimer) {
-    globalThis.__auditPruneTimer.unref();
-  }
-  pruneTimer = globalThis.__auditPruneTimer;
-
-  // Run an initial prune on startup so retention is enforced even if the app restarts frequently
-  pruneOldAuditEvents().catch(() => {
-    // Errors already logged inside pruneOldAuditEvents
-  });
+  // No-op: pruning is handled by startSensitiveDataPruning() in
+  // src/lib/data-retention-maintenance.ts. The call in instrumentation.ts
+  // is retained for clarity but this function does not start a separate timer.
 }
 
 export function stopAuditEventPruning() {
-  if (pruneTimer) {
-    clearInterval(pruneTimer);
-    pruneTimer = null;
-  }
+  // No-op: timer is managed by startSensitiveDataPruning/stopSensitiveDataPruning.
 }
 
 // Graceful shutdown is handled by registerAuditFlushOnShutdown() in
