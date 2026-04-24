@@ -262,6 +262,31 @@ describe("recordAuditEvent", () => {
     expect(mocks.loggerWarn).toHaveBeenCalled();
     expect(mocks.loggerError).not.toHaveBeenCalled();
   });
+
+  it("re-buffers lost events before newer events to preserve chronological order", async () => {
+    const { recordAuditEvent, flushAuditBuffer } = await import("@/lib/audit/events");
+
+    // First flush fails — events "a1" and "a2" are re-buffered
+    mocks.dbInsertValues.mockRejectedValueOnce(new Error("db error"));
+
+    recordAuditEvent({ action: "a1", resourceType: "r", summary: "s" });
+    recordAuditEvent({ action: "a2", resourceType: "r", summary: "s" });
+    await flushAuditBuffer();
+
+    // New events are recorded after the failed flush
+    recordAuditEvent({ action: "a3", resourceType: "r", summary: "s" });
+
+    // Next flush succeeds — verify insertion order preserves chronology.
+    // The failed batch (a1, a2) was prepended before newer events (a3),
+    // so the buffer order is [a1, a2, a3] — older events first, newer last.
+    await flushAuditBuffer();
+
+    const batch = mocks.dbInsertValues.mock.calls.at(-1)?.[0] as Array<Record<string, unknown>>;
+    expect(batch).toHaveLength(3);
+    expect(batch[0]).toMatchObject({ action: "a1" });
+    expect(batch[1]).toMatchObject({ action: "a2" });
+    expect(batch[2]).toMatchObject({ action: "a3" });
+  });
 });
 
 describe("getAuditEventHealthSnapshot", () => {

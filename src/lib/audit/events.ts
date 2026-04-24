@@ -166,8 +166,12 @@ export async function flushAuditBuffer(): Promise<void> {
     auditEventWriteFailures += batch.length;
     consecutiveAuditFailures += 1;
     lastAuditEventWriteFailureAt = new Date().toISOString();
-    // Re-buffer lost events (cap at 2x threshold to prevent unbounded growth)
-    if (_auditBuffer.length < FLUSH_SIZE_THRESHOLD * 2) {
+    // Re-buffer lost events, preserving chronological insertion order.
+    // `batch` contains events recorded before the flush started; `_auditBuffer`
+    // may contain events recorded during the await (by concurrent recordAuditEvent
+    // calls). Prepending the failed batch ensures older events stay before newer
+    // ones so the next successful flush inserts them in the correct order.
+    if (_auditBuffer.length + batch.length < FLUSH_SIZE_THRESHOLD * 2) {
       _auditBuffer = [...batch, ..._auditBuffer];
     }
     if (consecutiveAuditFailures >= MAX_SILENT_FAILURES) {
