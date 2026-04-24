@@ -62,7 +62,18 @@ function getCachedAuthUser(cacheKey: string) {
 }
 
 function setCachedAuthUser(cacheKey: string, user: Awaited<ReturnType<typeof getActiveAuthUserById>>) {
-  // Simple FIFO eviction when the cache is full
+  // Clean up expired entries before checking size to prevent stale entries
+  // from bloating the cache when tokens refresh (each refresh creates a new
+  // cache key with a different authenticatedAt, leaving the old entry orphaned).
+  if (authUserCache.size > 0) {
+    const now = Date.now();
+    for (const [key, entry] of authUserCache) {
+      if (entry.expiresAt <= now) {
+        authUserCache.delete(key);
+      }
+    }
+  }
+  // Simple FIFO eviction when the cache is still full after expired entry cleanup
   if (authUserCache.size >= AUTH_CACHE_MAX_SIZE) {
     const firstKey = authUserCache.keys().next().value;
     if (firstKey !== undefined) authUserCache.delete(firstKey);
