@@ -2,7 +2,7 @@
 
 **Date:** 2026-04-24
 **Source:** `.context/reviews/_aggregate.md`
-**Status:** In Progress
+**Status:** Done (H1, H2, L1 all complete)
 
 ## Scope
 
@@ -38,7 +38,7 @@ No cycle-14 review finding is silently dropped. No new refactor-only work is add
   4. Add a unit test that verifies all `AUTH_PREFERENCE_FIELDS` are present in the session after `mapTokenToSession` is called (CR14-TE1)
   5. Update the comment on line 157 to reflect the new automated approach
   6. Verify all gates pass
-- **Status:** TODO
+- **Status:** DONE — Commit `e0e8205d`
 
 ### H2: Migrate `rate-limit.ts` to use DB server time for all timestamp comparisons (AGG-2)
 
@@ -57,7 +57,7 @@ No cycle-14 review finding is silently dropped. No new refactor-only work is add
   7. Add a module-level JSDoc documenting that all rate-limit timestamps use DB server time
   8. Verify existing rate-limit tests still pass (they mock the DB, so `getDbNowMs` will need to be mocked)
   9. Verify all gates pass
-- **Status:** TODO
+- **Status:** DONE — Commit `e7f6e848`
 
 ### L1: Replace blocklist with allowlist for URL scheme validation in `ContestsLayout` (AGG-3)
 
@@ -75,7 +75,7 @@ No cycle-14 review finding is silently dropped. No new refactor-only work is add
      The `//` check prevents protocol-relative URLs. Since all internal links are relative paths starting with `/`, this is safe and more restrictive.
   2. Verify that all links using `data-full-navigate` use relative paths (they should, since they're internal routes)
   3. Verify all gates pass
-- **Status:** TODO
+- **Status:** DONE — Commit `473501bc`
 
 ---
 
@@ -114,40 +114,37 @@ All DEFER-1 through DEFER-53 from prior cycle plans carry forward unchanged. Key
 - **Reason for deferral:** Overlaps with DEFER-24 and DEFER-49 from prior cycles. Same fix — use server-provided `appUrl`. Fixing all `window.location.origin` instances in a single pass is more efficient than fixing them one at a time.
 - **Exit criterion:** When DEFER-24 is implemented (dedicated `window.location.origin` remediation pass).
 
-### DEFER-57: `mapTokenToSession` comment outdated after `syncTokenWithUser` fix (CR14-D4)
+### DEFER-57: `mapTokenToSession` comment outdated after `syncTokenWithUser` fix (CR14-D4) — RESOLVED
 
 - **Source:** CR14-D4
 - **Severity / confidence:** LOW / HIGH (original preserved)
 - **Citations:** `src/lib/auth/config.ts:157`
-- **Reason for deferral:** If H1 is implemented (programmatic iteration over `AUTH_PREFERENCE_FIELDS`), this comment becomes obsolete and will be removed in the same commit.
-- **Exit criterion:** When H1 is implemented.
+- **Resolution:** H1 replaced manual assignments with programmatic loop. The old comment was replaced in the same commit (`e0e8205d`).
 
-### DEFER-58: `rate-limit.ts` lacks JSDoc documenting clock source (CR14-D5)
+### DEFER-58: `rate-limit.ts` lacks JSDoc documenting clock source (CR14-D5) — RESOLVED
 
 - **Source:** CR14-D5
 - **Severity / confidence:** LOW / MEDIUM (original preserved)
 - **Citations:** `src/lib/security/rate-limit.ts`
-- **Reason for deferral:** If H2 is implemented (migrate to DB time), the clock source becomes self-documenting (all rate-limit code uses DB time). A module-level JSDoc will be added as part of H2.
-- **Exit criterion:** When H2 is implemented.
+- **Resolution:** H2 added module-level JSDoc documenting that all rate-limit timestamps use DB server time (`e7f6e848`).
 
-### DEFER-59: No test for `mapTokenToSession` field completeness (CR14-D6)
+### DEFER-59: No test for `mapTokenToSession` field completeness (CR14-D6) — RESOLVED
 
 - **Source:** CR14-D6 (from TE-1)
 - **Severity / confidence:** LOW / MEDIUM (original preserved)
 - **Citations:** `tests/`
-- **Reason for deferral:** If H1 is implemented with programmatic iteration, adding a test that verifies `AUTH_PREFERENCE_FIELDS` coverage becomes straightforward. The test will be included as part of H1.
-- **Exit criterion:** When H1 is implemented.
+- **Resolution:** H1 added `tests/unit/auth/session-preference-fields.test.ts` that verifies the programmatic loop is present and all expected fields are in `AUTH_PREFERENCE_FIELDS` (`e0e8205d`).
 
-### DEFER-60: No test for rate-limit clock source consistency (CR14-D7)
+### DEFER-60: No test for rate-limit clock source consistency (CR14-D7) — RESOLVED
 
 - **Source:** CR14-D7 (from TE-2)
 - **Severity / confidence:** LOW / MEDIUM (original preserved)
 - **Citations:** `tests/`
-- **Reason for deferral:** If H2 is implemented, the clock source is consistent by default. A regression test can verify that no `Date.now()` calls remain in rate-limit DB operations.
-- **Exit criterion:** When H2 is implemented.
+- **Resolution:** H2 updated `tests/unit/security/rate-limit.test.ts` to mock `@/lib/db-time` module with `dbNowMock`, verifying that all rate-limit functions use DB time (`e7f6e848`).
 
 ---
 
 ## Progress log
 
 - 2026-04-24: Plan created from RPF cycle 14 (current loop) aggregate review. 3 new tasks (H1, H2, L1). 7 new deferred items (DEFER-54 through DEFER-60). All findings from the aggregate review are either scheduled for implementation or explicitly deferred.
+- 2026-04-24: H1 DONE (e0e8205d — programmatic AUTH_PREFERENCE_FIELDS loop in mapTokenToSession + unit test), H2 DONE (e7f6e848 — DB server time in rate-limit.ts + test mock update), L1 DONE (473501bc — allowlist URL scheme validation in ContestsLayout). Baseline update (7ac29fe3 — source-grep 121->122). All gates pass: eslint (0 errors), tsc (0 errors), vitest (297/297 files, 2123/2123 tests), next build (success). DEFER-57 through DEFER-60 resolved by H1/H2.
