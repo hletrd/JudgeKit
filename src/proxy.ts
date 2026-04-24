@@ -62,10 +62,13 @@ function getCachedAuthUser(cacheKey: string) {
 }
 
 function setCachedAuthUser(cacheKey: string, user: Awaited<ReturnType<typeof getActiveAuthUserById>>) {
-  // Clean up expired entries before checking size to prevent stale entries
-  // from bloating the cache when tokens refresh (each refresh creates a new
-  // cache key with a different authenticatedAt, leaving the old entry orphaned).
-  if (authUserCache.size > 0) {
+  // Clean up expired entries when the cache is nearing capacity to prevent
+  // stale entries from bloating the cache when tokens refresh (each refresh
+  // creates a new cache key with a different authenticatedAt, leaving the
+  // old entry orphaned). Only run cleanup when size >= 90% of max to avoid
+  // iterating all entries on every set call under normal load — getCachedAuthUser
+  // already cleans up expired entries on read.
+  if (authUserCache.size >= Math.floor(AUTH_CACHE_MAX_SIZE * 0.9)) {
     const now = Date.now();
     for (const [key, entry] of authUserCache) {
       if (entry.expiresAt <= now) {
