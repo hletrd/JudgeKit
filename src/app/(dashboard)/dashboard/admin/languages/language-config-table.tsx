@@ -134,7 +134,8 @@ export function LanguageConfigTable({ languages }: { languages: LanguageConfig[]
           fetchImageStatus();
         } else {
           const data = await res.json().catch(() => ({}));
-          toast.error(data.error ?? t("toast.buildError"));
+          console.error(data.error);
+          toast.error(t("toast.buildError"));
         }
       })
       .catch(() => toast.error(t("toast.buildError")))
@@ -157,7 +158,8 @@ export function LanguageConfigTable({ languages }: { languages: LanguageConfig[]
           fetchImageStatus();
         } else {
           const data = await res.json().catch(() => ({}));
-          toast.error(data.error ?? t("toast.removeError"));
+          console.error(data.error);
+          toast.error(t("toast.removeError"));
         }
       })
       .catch(() => toast.error(t("toast.removeError")));
@@ -184,7 +186,8 @@ export function LanguageConfigTable({ languages }: { languages: LanguageConfig[]
           }
           fetchImageStatus();
         } else {
-          toast.error(data.error ?? t("toast.pruneError"));
+          console.error(data.error);
+          toast.error(t("toast.pruneError"));
         }
       })
       .catch(() => toast.error(t("toast.pruneError")))
