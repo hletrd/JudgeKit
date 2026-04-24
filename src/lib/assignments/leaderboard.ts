@@ -107,18 +107,34 @@ export async function computeSingleUserLiveRank(
   // leaderboard, so "rank 1" would be misleading).
   if (scoringModel === "icpc") {
     // ICPC: rank = 1 + count of users with more problems solved OR (same solved + less penalty)
+    // Uses wrong_before_ac (window-function-based, same as contest-scoring.ts) instead of
+    // attempt_count - has_ac to correctly exclude post-AC wrong submissions from penalty.
     type IcpcRankRow = { rank: number | null; hasSubmissions: boolean };
     const result = await rawQueryOne<IcpcRankRow>(
-      `WITH user_score AS (
+      `WITH base AS (
         SELECT
           s.user_id,
-          COUNT(*) AS attempt_count,
-          MAX(CASE WHEN ROUND(s.score, 2) = 100 THEN 1 ELSE 0 END) AS has_ac,
-          MIN(CASE WHEN ROUND(s.score, 2) = 100 THEN s.submitted_at ELSE NULL END) AS first_ac_at
+          s.problem_id,
+          s.score,
+          s.submitted_at,
+          COALESCE(ap.points, 100) AS points,
+          MIN(CASE WHEN ROUND(s.score, 2) = 100 THEN s.submitted_at ELSE NULL END)
+            OVER (PARTITION BY s.user_id, s.problem_id) AS first_ac_at
         FROM submissions s
         INNER JOIN assignment_problems ap ON ap.assignment_id = s.assignment_id AND ap.problem_id = s.problem_id
         WHERE s.assignment_id = @assignmentId AND s.status IN (${TERMINAL_SUBMISSION_STATUSES_SQL_LIST})
-        GROUP BY s.user_id
+      ),
+      user_score AS (
+        SELECT
+          user_id,
+          problem_id,
+          MAX(CASE WHEN ROUND(score, 2) = 100 THEN 1 ELSE 0 END) AS has_ac,
+          MIN(CASE WHEN ROUND(score, 2) = 100 THEN submitted_at ELSE NULL END) AS first_ac_at,
+          SUM(CASE WHEN (score IS NULL OR score < 100)
+                    AND EXTRACT(EPOCH FROM submitted_at)::bigint < COALESCE(EXTRACT(EPOCH FROM first_ac_at)::bigint, 9999999999)
+               THEN 1 ELSE 0 END) AS wrong_before_ac
+        FROM base
+        GROUP BY user_id, problem_id
       ),
       user_totals AS (
         SELECT
@@ -126,7 +142,7 @@ export async function computeSingleUserLiveRank(
           SUM(us.has_ac) AS solved_count,
           SUM(
             CASE WHEN us.has_ac = 1 THEN
-              EXTRACT(EPOCH FROM us.first_ac_at)::bigint / 60 + 20 * (us.attempt_count - us.has_ac)
+              EXTRACT(EPOCH FROM us.first_ac_at)::bigint / 60 + 20 * us.wrong_before_ac
             ELSE 0 END
           ) AS total_penalty
         FROM user_score us

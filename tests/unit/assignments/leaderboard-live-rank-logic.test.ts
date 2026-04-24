@@ -58,9 +58,19 @@ describe("computeSingleUserLiveRank implementation", () => {
       expect(source).toContain("ut.solved_count = t.solved_count AND ut.total_penalty < t.total_penalty");
     });
 
-    it("computes penalty as first_ac_time_in_minutes + 20 * wrong_attempts", () => {
+    it("computes penalty as first_ac_time_in_minutes + 20 * wrong_before_ac (matching main leaderboard)", () => {
       expect(source).toContain("EXTRACT(EPOCH FROM us.first_ac_at)::bigint / 60");
-      expect(source).toContain("20 * (us.attempt_count - us.has_ac)");
+      // wrong_before_ac uses a window function to count only pre-AC wrongs,
+      // not all wrongs (which attempt_count - has_ac would do).
+      expect(source).toContain("20 * us.wrong_before_ac");
+    });
+
+    it("uses a base CTE with first_ac_at window function for wrongBeforeAc calculation", () => {
+      // Matches the pattern in contest-scoring.ts: window function for first_ac_at,
+      // then wrongBeforeAc counts wrong submissions before first AC.
+      expect(source).toContain("OVER (PARTITION BY s.user_id, s.problem_id) AS first_ac_at");
+      expect(source).toContain("wrong_before_ac");
+      expect(source).toContain("EXTRACT(EPOCH FROM submitted_at)::bigint < COALESCE(EXTRACT(EPOCH FROM first_ac_at)::bigint, 9999999999)");
     });
 
     it("returns null when user has no submissions", () => {
