@@ -169,3 +169,6 @@ Per `CLAUDE.md` and `.context/development/conventions.md`:
 ## Progress Log
 
 - 2026-04-24: Plan created. 2 tasks scheduled (MEDIUM severity). 37-item deferred registry (21 carried + 16 new).
+- 2026-04-24: TASK-1 COMPLETED — Added `isValidEncryptedPluginSecret()` with full structural validation. Updated `preparePluginConfigForStorage` to use it, preventing malformed `enc:v1:` values from bypassing encryption. Commit `6a313f39`.
+- 2026-04-24: TASK-2 COMPLETED — Added `allowPlaintextFallback` option to `decrypt()`. In production, plaintext values now throw instead of being silently returned. Updated `hcaptcha.ts` caller to explicitly opt in to the legacy fallback during migration. Commit `f3a47690`.
+- 2026-04-24: ALL GATES PASS — eslint: 0 errors. tsc --noEmit: 0 errors. vitest: 2116 passed, 5 flaky timeouts (known deferred item #21). next build: success. All commits pushed.
