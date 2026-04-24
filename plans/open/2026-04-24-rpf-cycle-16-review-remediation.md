@@ -2,7 +2,7 @@
 
 **Date:** 2026-04-24
 **Source:** `.context/reviews/_aggregate.md`
-**Status:** In Progress
+**Status:** Done (H1-H2, L1-L4 all done)
 
 ## Scope
 
@@ -33,7 +33,7 @@ No cycle-16 review finding is silently dropped. No new refactor-only work is add
   1. Remove `"token"` from the `recruitingInvitations` entry in `SANITIZED_COLUMNS`
   2. Remove the entire `contestAccessTokens` entry from `SANITIZED_COLUMNS`
   3. Verify all gates pass
-- **Status:** Pending
+- **Status:** DONE — Commit `260939cc`
 
 ### H2: Drop `judgeWorkers.secretToken` column (AGG-2 / DEFER-66)
 
@@ -49,7 +49,7 @@ No cycle-16 review finding is silently dropped. No new refactor-only work is add
   4. Remove `secretToken` from `SANITIZED_COLUMNS` and `ALWAYS_REDACT` in `src/lib/db/export.ts`
   5. Remove `secretToken` from `REDACT_PATHS` in `src/lib/logger.ts`
   6. Verify all gates pass
-- **Status:** Pending
+- **Status:** DONE — Commit `2fc519f1`
 
 ### L1: Remove misleading `claimTokenPresent` from audit details (AGG-3)
 
@@ -61,7 +61,7 @@ No cycle-16 review finding is silently dropped. No new refactor-only work is add
 - **Plan:**
   1. Remove `claimTokenPresent: true` from the in-progress audit event details
   2. Verify all gates pass
-- **Status:** Pending
+- **Status:** DONE — Commit `ee62edc7`
 
 ### L2: Extract `isExpired` SQL expression into shared fragment (AGG-4)
 
@@ -74,7 +74,7 @@ No cycle-16 review finding is silently dropped. No new refactor-only work is add
   1. Extract the SQL expression into a reusable function/fragment in `recruiting-invitations.ts`
   2. Replace all 4 occurrences with the shared fragment
   3. Verify all gates pass
-- **Status:** Pending
+- **Status:** DONE — Commit `09aa6209`
 
 ### L3: Add test for export sanitization column validity (AGG-5)
 
@@ -88,7 +88,7 @@ No cycle-16 review finding is silently dropped. No new refactor-only work is add
   2. For each table in `SANITIZED_COLUMNS`, assert every listed column exists in the corresponding schema table
   3. Verify the test catches the stale references (before H1 fixes them)
   4. Verify all gates pass
-- **Status:** Pending
+- **Status:** DONE — Commit `4df4a5e8`
 
 ### L4: Add boundary tests for `truncateObject` (AGG-6)
 
@@ -100,7 +100,7 @@ No cycle-16 review finding is silently dropped. No new refactor-only work is add
 - **Plan:**
   1. Add tests for: nested objects that individually fit but together exceed budget, empty arrays/objects, non-ASCII strings, `undefined` values in arrays
   2. Verify all gates pass
-- **Status:** Pending
+- **Status:** DONE — Commit `359986b0`
 
 ---
 
@@ -108,14 +108,15 @@ No cycle-16 review finding is silently dropped. No new refactor-only work is add
 
 ### Carried from prior cycle plans
 
-All DEFER-61 through DEFER-70 from the cycle 15 plan carry forward unchanged.
+All DEFER-61 through DEFER-70 from the cycle 15 plan carry forward unchanged, except DEFER-66 which is now resolved.
 
-### DEFER-66 is being resolved this cycle
+### DEFER-66 resolved
 
-DEFER-66 (`judgeWorkers.secretToken` column) is resolved by H2 above. It will be removed from the deferred list upon completion.
+DEFER-66 (`judgeWorkers.secretToken` column) is resolved by H2 above.
 
 ---
 
 ## Progress log
 
 - 2026-04-24: Plan created from RPF cycle 16 aggregate review. 6 new tasks (H1, H2, L1-L4). DEFER-66 is being resolved this cycle.
+- 2026-04-24: H1 DONE (260939cc — remove stale SANITIZED_COLUMNS references), H2 DONE (2fc519f1 — drop judgeWorkers.secretToken column + Drizzle migration), L1 DONE (ee62edc7 — remove claimTokenPresent from audit), L2 DONE (09aa6209 — extract isExpiredExpr), L3 DONE (4df4a5e8 — export sanitization column validity test), L4 DONE (359986b0 — truncateObject boundary tests). All gates pass: eslint (0 errors), tsc (0 errors), vitest (298/298 files, 2136/2136 tests), next build (success).
