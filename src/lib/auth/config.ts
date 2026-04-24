@@ -168,11 +168,16 @@ function mapTokenToSession(token: JWT, session: Session) {
   }
 }
 
-validateAuthUrl();
+const isBuildPhase = process.env.NEXT_PHASE === "phase-production-build";
+
+if (!isBuildPhase) {
+  validateAuthUrl();
+}
+
 const secureSessionCookie = shouldUseSecureAuthCookie();
 
 export const authConfig: NextAuthConfig = {
-  secret: getValidatedAuthSecret(),
+  secret: isBuildPhase ? "build-phase-placeholder" : getValidatedAuthSecret(),
   useSecureCookies: secureSessionCookie,
   cookies: {
     sessionToken: {
