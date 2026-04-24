@@ -82,7 +82,7 @@ describe("source-grep test inventory", () => {
     // DOCUMENTED BASELINE — update this number intentionally when adding or
     // removing source-grep tests.  A change here is a signal to review whether
     // the new test should be a text-contract test or a behavioural test.
-    const DOCUMENTED_BASELINE = 123;
+    const DOCUMENTED_BASELINE = 124;
     expect(sourceGrepFiles.length).toBe(DOCUMENTED_BASELINE);
   });
 
