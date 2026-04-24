@@ -7,6 +7,23 @@ import { logger } from "@/lib/logger";
 export const dynamic = "force-dynamic";
 
 export async function POST(request: NextRequest) {
+  // Gate the deprecated cron endpoint behind an explicit opt-in.
+  // In-process pruners (data-retention-maintenance.ts + audit/events.ts)
+  // are the canonical cleanup mechanism and run on 24-hour intervals.
+  // Set ENABLE_CRON_CLEANUP=true only if you have an external cron job
+  // that depends on this endpoint.
+  if (process.env.ENABLE_CRON_CLEANUP !== "true" && process.env.ENABLE_CRON_CLEANUP !== "1") {
+    return NextResponse.json(
+      {
+        error: "endpointGone",
+        message: "The /api/internal/cleanup endpoint is disabled by default. " +
+          "In-process pruners handle all data retention cleanup automatically. " +
+          "Set ENABLE_CRON_CLEANUP=true to re-enable this endpoint if you have an external cron job that depends on it.",
+      },
+      { status: 410 },
+    );
+  }
+
   const cronSecret = process.env.CRON_SECRET;
   if (!cronSecret) {
     return NextResponse.json(
