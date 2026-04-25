@@ -73,8 +73,12 @@ describe("participant-timeline logic", () => {
   });
 
   describe("bestScore calculation", () => {
-    it("reduces over submissions using Math.max", () => {
-      expect(source).toContain("Math.max(best, submission.score)");
+    it("applies late-penalty adjustments using mapSubmissionPercentageToAssignmentPoints", () => {
+      expect(source).toContain("mapSubmissionPercentageToAssignmentPoints(submission.score, problemPoints,");
+    });
+
+    it("reduces over adjusted scores using Math.max", () => {
+      expect(source).toContain("Math.max(best, adjusted)");
     });
 
     it("returns null when all scores are null", () => {
