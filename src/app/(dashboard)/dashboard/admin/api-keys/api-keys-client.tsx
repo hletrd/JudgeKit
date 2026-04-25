@@ -112,6 +112,8 @@ export function ApiKeysClient({ roleOptions }: { roleOptions?: RoleOption[] }) {
   // Auto-dismiss the raw-key dialog after 5 minutes so the plaintext
   // key does not remain visible indefinitely if the admin walks away.
   // A visible countdown informs the admin how much time remains.
+  // Uses recursive setTimeout (not setInterval) to avoid burst re-renders
+  // when the browser throttles background tabs.
   useEffect(() => {
     if (!createdKey) {
       setKeyDismissCountdown(null);
@@ -121,7 +123,11 @@ export function ApiKeysClient({ roleOptions }: { roleOptions?: RoleOption[] }) {
     const startedAt = Date.now();
     setKeyDismissCountdown(DISMISS_MS);
 
-    const interval = setInterval(() => {
+    let cancelled = false;
+    let timeoutId: ReturnType<typeof setTimeout>;
+
+    function tick() {
+      if (cancelled) return;
       const elapsed = Date.now() - startedAt;
       const remaining = DISMISS_MS - elapsed;
       if (remaining <= 0) {
@@ -130,10 +136,16 @@ export function ApiKeysClient({ roleOptions }: { roleOptions?: RoleOption[] }) {
         setKeyDismissCountdown(null);
       } else {
         setKeyDismissCountdown(remaining);
+        timeoutId = setTimeout(tick, 1000);
       }
-    }, 1000);
+    }
 
-    return () => clearInterval(interval);
+    timeoutId = setTimeout(tick, 1000);
+
+    return () => {
+      cancelled = true;
+      clearTimeout(timeoutId);
+    };
   }, [createdKey]);
 
   // Create dialog state
