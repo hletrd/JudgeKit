@@ -11,6 +11,11 @@ import pLimit from "p-limit";
  *  when multiple submissions are judged and accepted simultaneously. */
 const reviewLimiter = pLimit(2);
 
+/** Maximum number of pending + active reviews in the queue. Prevents unbounded
+ *  memory and AI API cost accumulation when a large contest receives many
+ *  accepted submissions in a short window. Excess reviews are silently skipped. */
+const MAX_REVIEW_QUEUE_SIZE = 20;
+
 /** Maximum source code size (bytes) eligible for auto-review.
  *  Files exceeding this are silently skipped to avoid overflowing the AI
  *  provider's context window and incurring unnecessary token costs.
@@ -22,6 +27,16 @@ const AUTO_REVIEW_MAX_SOURCE_CODE_BYTES = 8192;
  * Runs in the background — errors are logged but do not affect the judge result.
  */
 export async function triggerAutoCodeReview(submissionId: string): Promise<void> {
+  // Skip if the review queue is already full — prevents unbounded memory and
+  // cost accumulation when many submissions are accepted simultaneously.
+  if (reviewLimiter.activeCount + reviewLimiter.pendingCount >= MAX_REVIEW_QUEUE_SIZE) {
+    logger.debug(
+      { submissionId, active: reviewLimiter.activeCount, pending: reviewLimiter.pendingCount, max: MAX_REVIEW_QUEUE_SIZE },
+      "[auto-review] Skipping — review queue is full",
+    );
+    return;
+  }
+
   return reviewLimiter(async () => {
   try {
     const submission = await db.query.submissions.findFirst({
