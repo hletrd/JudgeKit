@@ -235,7 +235,7 @@ export default function ChatWidgetAdminConfig({ config, onSave }: PluginAdminPro
           </div>
 
           <div className="flex items-center gap-2">
-            <Button type="button" variant="outline" size="sm" onClick={() => void handleTestConnection()} disabled={isTesting || !currentApiKey}>
+            <Button type="button" variant="outline" size="sm" onClick={() => void handleTestConnection()} disabled={isTesting || (!currentApiKey && !currentApiKeyConfigured)}>
               {isTesting ? tCommon("loading") : t("testConnection")}
             </Button>
             {testResult && (
