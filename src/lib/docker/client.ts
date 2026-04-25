@@ -87,15 +87,22 @@ async function listDockerImagesLocal(filter?: string): Promise<DockerImage[]> {
       .split("\n")
       .filter(Boolean)
       .map((line) => {
-        const parsed = JSON.parse(line);
-        return {
-          repository: parsed.Repository,
-          tag: parsed.Tag,
-          id: parsed.ID,
-          created: parsed.CreatedSince ?? parsed.CreatedAt,
-          size: parsed.Size,
-        };
-      });
+        try {
+          const parsed = JSON.parse(line);
+          return {
+            repository: parsed.Repository,
+            tag: parsed.Tag,
+            id: parsed.ID,
+            created: parsed.CreatedSince ?? parsed.CreatedAt,
+            size: parsed.Size,
+          };
+        } catch {
+          // Skip unparseable lines (e.g., Docker warnings, partial output)
+          logger.debug({ line }, "[docker] Skipping unparseable line in images output");
+          return null;
+        }
+      })
+      .filter((img): img is DockerImage => img !== null);
   } catch {
     return [];
   }
