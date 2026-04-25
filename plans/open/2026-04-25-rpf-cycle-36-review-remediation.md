@@ -1,7 +1,7 @@
 # RPF Cycle 36 — Review Remediation Plan
 
 **Date:** 2026-04-25
-**Status:** In Progress
+**Status:** DONE
 
 ---
 
@@ -16,9 +16,9 @@
 **Plan:** Replace the `.then(async ...)`/`.catch(async ...)`/`.finally(...)` chain with a standalone async IIFE wrapped in try/catch/finally. Add a defensive outer `.catch()` to swallow any failures from `getDbNowMs()` itself during DB connectivity degradation. This prevents unhandled promise rejections that could crash the Node.js process.
 
 **Progress:**
-- [ ] Fix analytics route
-- [ ] Fix contest-scoring route
-- [ ] Verify gates pass
+- [x] Fix analytics route
+- [x] Fix contest-scoring route
+- [x] Verify gates pass
 
 ---
 
@@ -29,8 +29,8 @@
 **Plan:** Replace `console.error(data)` with `console.error("Restore failed:", (data as { error?: string }).error)` to match the fix applied to `group-instructors-manager.tsx` in cycle 35.
 
 **Progress:**
-- [ ] Fix console.error
-- [ ] Verify gates pass
+- [x] Fix console.error
+- [x] Verify gates pass
 
 ---
 
@@ -41,8 +41,8 @@
 **Plan:** Replace `parseInt(e.target.value, 10) || defaultValue` with `Number.isFinite` pattern for consistency with cycle 35 fixes.
 
 **Progress:**
-- [ ] Fix maxTokens and rateLimitPerMinute onChange handlers
-- [ ] Verify gates pass
+- [x] Fix maxTokens and rateLimitPerMinute onChange handlers
+- [x] Verify gates pass
 
 ---
 
@@ -53,8 +53,8 @@
 **Plan:** Replace `parseInt(e.target.value, 10) || 0` with `Number.isFinite` pattern for consistency.
 
 **Progress:**
-- [ ] Fix level onChange handler
-- [ ] Verify gates pass
+- [x] Fix level onChange handler
+- [x] Verify gates pass
 
 ---
 
@@ -65,8 +65,8 @@
 **Plan:** Replace `parseInt(diskUsage.usePercent) || 0` with `Number.isFinite` pattern for consistency.
 
 **Progress:**
-- [ ] Fix diskUsage usePercent parsing
-- [ ] Verify gates pass
+- [x] Fix diskUsage usePercent parsing
+- [x] Verify gates pass
 
 ---
 
@@ -77,8 +77,8 @@
 **Plan:** Change `apiError("examModeInvalid", 400)` to `notFound("ExamSession")` for the GET route, consistent with the analytics route's handling of the same condition. A non-exam assignment has no exam session to GET, which is a "not found" semantic, not a "bad request".
 
 **Progress:**
-- [ ] Fix GET route error response
-- [ ] Verify gates pass
+- [x] Fix GET route error response
+- [x] Verify gates pass
 
 ---
 
