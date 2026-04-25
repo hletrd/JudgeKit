@@ -61,17 +61,21 @@ export function normalizeSource(source: string): string {
       }
     }
 
-    // Double-quoted strings: output quotes but strip content.
-    // Unclosed strings (no closing quote before end-of-line or end-of-file)
-    // are discarded entirely — the opening quote is NOT output, and the index
-    // is left at the newline (or end-of-file) so subsequent code is processed.
-    // Newline check prevents an unclosed string from consuming the rest of the
-    // file, which would cause identifiers after the unclosed string to be
-    // skipped by normalizeIdentifiersForSimilarity().
-    if (current === "\"") {
+    // String literals (double-quoted, single-quoted, backtick-delimited):
+    // output delimiters but strip content. Unclosed strings are discarded
+    // (opening quote NOT output) so subsequent code is still processed.
+    if (current === "\"" || current === "'" || current === "`") {
+      const delimiter = current;
+      // Template literals can span lines; regular strings cannot.
+      const newlineTerminates = delimiter !== "`";
       index += 1;
       let stringLength = 0;
-      while (index < source.length && source[index] !== "\"" && source[index] !== "\n" && stringLength < MAX_STRING_LITERAL_LENGTH) {
+      while (
+        index < source.length
+        && source[index] !== delimiter
+        && (!newlineTerminates || source[index] !== "\n")
+        && stringLength < MAX_STRING_LITERAL_LENGTH
+      ) {
         if (source[index] === "\\" && index + 1 < source.length) {
           index += 2;
           stringLength += 2;
@@ -80,63 +84,11 @@ export function normalizeSource(source: string): string {
         index += 1;
         stringLength += 1;
       }
-      if (index < source.length && source[index] === "\"") {
-        // Closed string — output opening and closing quotes, strip content
-        result += "\"\"";
+      if (index < source.length && source[index] === delimiter) {
+        result += delimiter + delimiter;
         index += 1;
       }
-      // Unclosed string: don't output the opening quote.
-      // If newline terminated the loop, index is at '\n' and the outer loop
-      // will handle it. If end-of-file, the outer loop exits.
-      continue;
-    }
-
-    // Single-quoted strings: same logic as double-quoted (newline terminates).
-    if (current === "'") {
-      index += 1;
-      let stringLength = 0;
-      while (index < source.length && source[index] !== "'" && source[index] !== "\n" && stringLength < MAX_STRING_LITERAL_LENGTH) {
-        if (source[index] === "\\" && index + 1 < source.length) {
-          index += 2;
-          stringLength += 2;
-          continue;
-        }
-        index += 1;
-        stringLength += 1;
-      }
-      if (index < source.length && source[index] === "'") {
-        // Closed string — output opening and closing quotes, strip content
-        result += "''";
-        index += 1;
-      }
-      // Unclosed string: don't output the opening quote.
-      continue;
-    }
-
-    // Template literals (backtick strings): output backticks but strip content.
-    // Handles both simple template literals (`hello`) and interpolated ones
-    // (`hello ${x}`) by scanning for the closing backtick. Interpolation
-    // markers (${...}) are treated as part of the string content and stripped.
-    // Template literals CAN span lines, so no newline check in the inner loop.
-    // Unclosed template literals: the opening backtick is NOT output.
-    if (current === "`") {
-      index += 1;
-      let stringLength = 0;
-      while (index < source.length && source[index] !== "`" && stringLength < MAX_STRING_LITERAL_LENGTH) {
-        if (source[index] === "\\" && index + 1 < source.length) {
-          index += 2;
-          stringLength += 2;
-          continue;
-        }
-        index += 1;
-        stringLength += 1;
-      }
-      if (index < source.length && source[index] === "`") {
-        // Closed template literal — output delimiters, strip content
-        result += "``";
-        index += 1;
-      }
-      // Unclosed template literal: don't output the opening backtick.
+      // Unclosed: don't output the opening delimiter.
       continue;
     }
 
