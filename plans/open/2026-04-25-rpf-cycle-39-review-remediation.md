@@ -26,6 +26,8 @@ All cycle 38 tasks are complete:
 1. Line 176: Replace `error: stderr.trim() || stdout.trim()` with `error: "Docker build failed"` — the full output is already logged server-side via the `proc.stdout.on('data', ...)` and `proc.stderr.on('data', ...)` handlers
 2. Verify all gates pass
 
+**Status:** DONE (commit 3268cd09)
+
 ---
 
 ### Task B: Fix `participant-status.ts` exam session deadline checks to use DB-consistent time [MEDIUM/HIGH]
@@ -44,6 +46,8 @@ All cycle 38 tasks are complete:
 4. Consider removing the `Date.now()` default to force callers to be intentional about time source
 5. Verify all gates pass
 
+**Status:** DONE (commit aa1fca67)
+
 ---
 
 ### Task C: Add `JUDGE_WORKER_URL` guard to `callWorkerJson` and `callWorkerNoContent` [LOW/MEDIUM]
@@ -58,6 +62,8 @@ All cycle 38 tasks are complete:
 **Plan:**
 1. Add a runtime check at the top of both functions: `if (!JUDGE_WORKER_URL) throw new Error("JUDGE_WORKER_URL is not configured");`
 2. Verify all gates pass
+
+**Status:** DONE (commit 3268cd09 — bundled with Task A)
 
 ---
 
@@ -112,3 +118,7 @@ Reason for deferral unchanged. See cycle 38 plan for details.
 ## Progress log
 
 - 2026-04-25: Plan created with 3 tasks (A-C). 3 new findings deferred (DEFER-50 through DEFER-52).
+- 2026-04-25: Task A DONE — sanitize Docker build error output (commit 3268cd09).
+- 2026-04-25: Task B DONE — remove Date.now() default from participant-status (commit aa1fca67).
+- 2026-04-25: Task C DONE — add JUDGE_WORKER_URL guard (bundled in commit 3268cd09).
+- 2026-04-25: All gates green (eslint 0, tsc clean, vitest 302/302 pass 2197 tests, next build success).
