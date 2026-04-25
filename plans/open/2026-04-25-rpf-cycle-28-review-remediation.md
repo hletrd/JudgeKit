@@ -27,7 +27,7 @@ No cycle-28 review finding is silently dropped. No new refactor-only work is add
   1. Add `sessions: new Set(["sessionToken"])` to `ALWAYS_REDACT` in `src/lib/db/export.ts`.
   2. Add a test that validates `ALWAYS_REDACT` includes entries for `passwordHash`, `encryptedKey`, `hcaptchaSecret`, and `sessionToken` — preventing future regressions where a secret is added to `SANITIZED_COLUMNS` but not `ALWAYS_REDACT`.
   3. Verify all gates pass.
-- **Status:** TODO
+- **Status:** DONE (commit 55abe120)
 
 ---
 
@@ -43,7 +43,7 @@ No cycle-28 review finding is silently dropped. No new refactor-only work is add
   2. Do NOT add `judgeWorkers: new Set(["secretTokenHash", "judgeClaimToken"])` to `ALWAYS_REDACT` — `secretTokenHash` is already a hash (not plaintext), and `judgeClaimToken` is needed for worker registration in disaster recovery.
   3. Add both to the consistency test from H1.
   4. Verify all gates pass.
-- **Status:** TODO
+- **Status:** DONE (commit 55abe120)
 
 ---
 
@@ -58,3 +58,5 @@ All prior deferred items (DEFER-1 through DEFER-21 from cycle 27 plan) remain un
 ## Progress log
 
 - 2026-04-25: Plan created from cycle-28 aggregate review. 2 findings, 2 fix tasks, 0 deferred.
+- 2026-04-25: H1 DONE — added `sessions.sessionToken` to `ALWAYS_REDACT` (commit 55abe120).
+- 2026-04-25: L1 DONE — added `accounts` OAuth tokens to `ALWAYS_REDACT`; kept `judgeWorkers` out (hashes, needed for DR). Both tests added (commit 55abe120). All gates green (eslint 0, tsc clean, vitest 302/302 2197 tests, next build success).
