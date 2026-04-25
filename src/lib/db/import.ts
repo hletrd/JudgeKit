@@ -156,6 +156,29 @@ export async function importDatabase(data: JudgeKitExport): Promise<ImportResult
         let imported = 0;
         let skipped = 0;
 
+        // Validate exported column names against the target schema to detect
+        // schema drift. If the export was produced by a version with different
+        // column ordering, the position-based mapping would silently corrupt
+        // data. Catch this before inserting.
+        const schemaColumns = new Set(Object.keys(getTableColumns(table)));
+        const unknownColumns = columns.filter((col: string) => !schemaColumns.has(col));
+        const missingColumns = [...schemaColumns].filter((col) => !columns.includes(col));
+        if (unknownColumns.length > 0 || missingColumns.length > 0) {
+          const details: string[] = [];
+          if (unknownColumns.length > 0) {
+            details.push(`unknown columns: ${unknownColumns.join(", ")}`);
+          }
+          if (missingColumns.length > 0) {
+            details.push(`missing columns: ${missingColumns.join(", ")}`);
+          }
+          const msg = `${tableName}: column mismatch — ${details.join("; ")}`;
+          logger.warn({ tableName, unknownColumns, missingColumns }, "[import] schema drift detected");
+          result.errors.push(msg);
+          // Continue importing other tables but mark this one as failed
+          result.tableResults[tableName] = { imported: 0, skipped: rows.length };
+          continue;
+        }
+
         // Insert in batches of 100 to avoid parameter limits
         const BATCH_SIZE = 100;
         for (let i = 0; i < rows.length; i += BATCH_SIZE) {
