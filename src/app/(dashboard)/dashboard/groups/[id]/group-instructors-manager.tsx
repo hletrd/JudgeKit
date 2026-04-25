@@ -71,7 +71,7 @@ export function GroupInstructorsManager({
       if (!res.ok) {
         const data = await res.json().catch(() => ({}));
         if (process.env.NODE_ENV === "development") {
-          console.error(data);
+          console.error("Instructor add failed:", (data as { error?: string }).error);
         }
         toast.error(t("addInstructorFailed"));
         return;
