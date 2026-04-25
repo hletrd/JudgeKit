@@ -77,6 +77,7 @@ vi.mock("@/lib/plugins/data", () => ({
 
 vi.mock("@/lib/security/api-rate-limit", () => ({
   checkServerActionRateLimit: checkServerActionRateLimitMock,
+  consumeApiRateLimit: vi.fn().mockResolvedValue(null),
 }));
 
 vi.mock("@/lib/system-settings", () => ({
@@ -112,6 +113,10 @@ vi.mock("@/lib/logger", () => ({
 
 vi.mock("nanoid", () => ({
   nanoid: vi.fn(() => "test-session-id"),
+}));
+
+vi.mock("@/lib/recruiting/request-cache", () => ({
+  withRecruitingContextCache: (_fn: () => Promise<unknown>) => _fn(),
 }));
 
 vi.mock("@/lib/db", () => ({
@@ -541,7 +546,7 @@ describe("POST /api/v1/plugins/chat-widget/chat", () => {
 
 describe("POST /api/v1/plugins/chat-widget/test-connection", () => {
   it("returns 401 when there is no session", async () => {
-    authMock.mockResolvedValue(null);
+    getApiUserMock.mockResolvedValue(null);
 
     const res = await testConnectionPOST(
       makeTestConnectionRequest({ provider: "openai", model: "gpt-4o" })
@@ -551,30 +556,31 @@ describe("POST /api/v1/plugins/chat-widget/test-connection", () => {
     expect(body.error).toBe("unauthorized");
   });
 
-  it("returns 401 for a non-admin user (student)", async () => {
-    authMock.mockResolvedValue(STUDENT_SESSION);
+  it("returns 403 for a non-admin user (student) lacking system.plugins capability", async () => {
+    getApiUserMock.mockResolvedValue({ id: "student-1", role: "student", username: "student" });
 
     const res = await testConnectionPOST(
       makeTestConnectionRequest({ provider: "openai", model: "gpt-4o" })
     );
-    expect(res.status).toBe(401);
+    expect(res.status).toBe(403);
     const body = await res.json();
-    expect(body.error).toBe("unauthorized");
+    expect(body.error).toBe("forbidden");
   });
 
   it("returns 400 when request body is invalid", async () => {
-    authMock.mockResolvedValue(ADMIN_SESSION);
+    getApiUserMock.mockResolvedValue({ id: "admin-1", role: "admin", username: "admin" });
 
     const res = await testConnectionPOST(
       makeTestConnectionRequest({ provider: "unknown", model: "" })
     );
     expect(res.status).toBe(400);
     const body = await res.json();
-    expect(body.error).toBe("invalidRequest");
+    // createApiHandler returns Zod validation error message
+    expect(body.error).toBeTruthy();
   });
 
   it("returns 400 when plugin is not configured", async () => {
-    authMock.mockResolvedValue(ADMIN_SESSION);
+    getApiUserMock.mockResolvedValue({ id: "admin-1", role: "admin", username: "admin" });
     getPluginStateMock.mockResolvedValue(null);
 
     const res = await testConnectionPOST(
@@ -586,7 +592,7 @@ describe("POST /api/v1/plugins/chat-widget/test-connection", () => {
   });
 
   it("returns 400 when API key is not configured for provider", async () => {
-    authMock.mockResolvedValue(ADMIN_SESSION);
+    getApiUserMock.mockResolvedValue({ id: "admin-1", role: "admin", username: "admin" });
     getPluginStateMock.mockResolvedValue({
       config: { ...PLUGIN_CONFIG, openaiApiKey: "" },
     });
@@ -600,7 +606,7 @@ describe("POST /api/v1/plugins/chat-widget/test-connection", () => {
   });
 
   it("returns success:true when OpenAI API call succeeds", async () => {
-    authMock.mockResolvedValue(ADMIN_SESSION);
+    getApiUserMock.mockResolvedValue({ id: "admin-1", role: "admin", username: "admin" });
     getPluginStateMock.mockResolvedValue({ config: PLUGIN_CONFIG });
     fetchMock.mockResolvedValue({ ok: true, text: vi.fn().mockResolvedValue("") });
 
@@ -620,7 +626,7 @@ describe("POST /api/v1/plugins/chat-widget/test-connection", () => {
   });
 
   it("returns success:true when Claude API call succeeds", async () => {
-    authMock.mockResolvedValue(ADMIN_SESSION);
+    getApiUserMock.mockResolvedValue({ id: "admin-1", role: "admin", username: "admin" });
     const claudeConfig = { ...PLUGIN_CONFIG, provider: "claude", claudeApiKey: "claude-key", claudeModel: "claude-3-opus" };
     getPluginStateMock.mockResolvedValue({ config: claudeConfig });
     fetchMock.mockResolvedValue({ ok: true, text: vi.fn().mockResolvedValue("") });
@@ -644,7 +650,7 @@ describe("POST /api/v1/plugins/chat-widget/test-connection", () => {
   });
 
   it("returns success:true when Gemini API call succeeds", async () => {
-    authMock.mockResolvedValue(ADMIN_SESSION);
+    getApiUserMock.mockResolvedValue({ id: "admin-1", role: "admin", username: "admin" });
     const geminiConfig = { ...PLUGIN_CONFIG, provider: "gemini", geminiApiKey: "gemini-key", geminiModel: "gemini-pro" };
     getPluginStateMock.mockResolvedValue({ config: geminiConfig });
     fetchMock.mockResolvedValue({ ok: true, text: vi.fn().mockResolvedValue("") });
@@ -665,7 +671,7 @@ describe("POST /api/v1/plugins/chat-widget/test-connection", () => {
   });
 
   it("returns success:false with error message when API call fails", async () => {
-    authMock.mockResolvedValue(ADMIN_SESSION);
+    getApiUserMock.mockResolvedValue({ id: "admin-1", role: "admin", username: "admin" });
     getPluginStateMock.mockResolvedValue({ config: PLUGIN_CONFIG });
     fetchMock.mockResolvedValue({
       ok: false,
@@ -682,8 +688,8 @@ describe("POST /api/v1/plugins/chat-widget/test-connection", () => {
     expect(body.error).toContain("401");
   });
 
-  it("returns success:false when fetch throws a network error", async () => {
-    authMock.mockResolvedValue(ADMIN_SESSION);
+  it("returns 500 when fetch throws a network error", async () => {
+    getApiUserMock.mockResolvedValue({ id: "admin-1", role: "admin", username: "admin" });
     getPluginStateMock.mockResolvedValue({ config: PLUGIN_CONFIG });
     fetchMock.mockRejectedValue(new Error("Network error"));
 
@@ -697,8 +703,8 @@ describe("POST /api/v1/plugins/chat-widget/test-connection", () => {
   });
 
   it("accepts super_admin role", async () => {
-    authMock.mockResolvedValue({
-      user: { id: "super-1", role: "super_admin", username: "superadmin" },
+    getApiUserMock.mockResolvedValue({
+      id: "super-1", role: "super_admin", username: "superadmin",
     });
     getPluginStateMock.mockResolvedValue({ config: PLUGIN_CONFIG });
     fetchMock.mockResolvedValue({ ok: true, text: vi.fn().mockResolvedValue("") });

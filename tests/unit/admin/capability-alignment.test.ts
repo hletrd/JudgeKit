@@ -12,7 +12,7 @@ describe("admin capability alignment", () => {
     expect(read("src/app/api/v1/admin/plugins/route.ts")).toContain('auth: { capabilities: ["system.plugins"] }');
     expect(read("src/app/api/v1/admin/plugins/[id]/route.ts")).toContain('auth: { capabilities: ["system.plugins"] }');
     expect(read("src/lib/actions/plugins.ts")).toContain('caps.has("system.plugins")');
-    expect(read("src/app/api/v1/plugins/chat-widget/test-connection/route.ts")).toContain('caps.has("system.plugins")');
+    expect(read("src/app/api/v1/plugins/chat-widget/test-connection/route.ts")).toContain('capabilities: ["system.plugins"]');
   });
 
   it("keeps API key pages and routes aligned on system.settings", () => {
