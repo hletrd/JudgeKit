@@ -85,8 +85,11 @@ export function CountdownTimer({ deadline, label, onExpired }: CountdownTimerPro
       })
       .catch(() => {
         // keep offset at 0 on error
-      })
-      .finally(() => clearTimeout(timeout));
+      });
+    return () => {
+      controller.abort();
+      clearTimeout(timeout);
+    };
   }, []);
 
   useEffect(() => {
