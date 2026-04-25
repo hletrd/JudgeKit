@@ -7,9 +7,10 @@
 ## Scope
 
 This cycle addresses the updated cycle-27 findings from the fresh multi-agent review:
-- AGG-1: Ungated `console.error` in 14 client-side components [MEDIUM/MEDIUM] -- NEW, to fix
-- AGG-2: `admin-config.tsx` double `.json()` anti-pattern [LOW/MEDIUM] -- NEW, to fix
-- AGG-3: `bulk-create-dialog.tsx` raw `err.message` in user-visible string [LOW/LOW] -- NEW, to fix
+- AGG-1: Ungated `console.error` in 14 client-side components [MEDIUM/MEDIUM] -- DONE
+- AGG-2: `admin-config.tsx` double `.json()` anti-pattern [LOW/MEDIUM] -- DONE
+- AGG-3: `bulk-create-dialog.tsx` raw `err.message` in user-visible string [LOW/LOW] -- DONE
+- AGG-4: Ungated `console.error` in 7 additional client-side call sites across 5 files [MEDIUM/MEDIUM] -- NEW, to fix
 
 Prior cycle-27 findings (AGG-1 through AGG-12 from the old review) are already fixed:
 - Old AGG-1 through AGG-3: Already fixed (clock-skew, toLocaleString, non-null assertion)
@@ -71,6 +72,31 @@ No cycle-27 review finding is silently dropped. No new refactor-only work is add
   1. Replace `err.message` with a truncated/sanitized version, or use a generic fallback like `tCommon("error")`.
   2. Verify all gates pass.
 - **Status:** DONE (commit 5928729c)
+
+---
+
+### H2: Gate 7 remaining ungated `console.error` calls in client components behind dev-only check (AGG-4 from cycle 27b)
+
+- **Source:** Cycle 27b AGG-1 (code-reviewer CR-1 through CR-5, security-reviewer SEC-1)
+- **Severity / confidence:** MEDIUM / MEDIUM
+- **Citations:**
+  - `src/app/(dashboard)/dashboard/groups/[id]/assignment-form-dialog.tsx:206`
+  - `src/app/(dashboard)/dashboard/groups/[id]/group-instructors-manager.tsx:73`
+  - `src/app/(dashboard)/dashboard/admin/languages/language-config-table.tsx:137`
+  - `src/app/(dashboard)/dashboard/admin/languages/language-config-table.tsx:161`
+  - `src/app/(dashboard)/dashboard/admin/languages/language-config-table.tsx:189`
+  - `src/app/(dashboard)/dashboard/problems/problem-import-button.tsx:38`
+  - `src/app/(dashboard)/dashboard/admin/settings/database-backup-restore.tsx:146`
+- **Problem:** 7 client-side `console.error()` calls across 5 files were missed by the previous cycle's AGG-1 fix (which covered 14 calls). These ungated calls write unstructured error data to browser DevTools in production, violating the "Log errors in development only" convention documented in `src/lib/api/client.ts:23`.
+- **Plan:**
+  1. Gate each `console.error` call behind `if (process.env.NODE_ENV === "development")`.
+  2. For `assignment-form-dialog.tsx`: wrap the default branch `console.error` with the guard.
+  3. For `group-instructors-manager.tsx`: wrap the `console.error(data)` with the guard.
+  4. For `language-config-table.tsx`: wrap all 3 `console.error(data.error)` calls with the guard.
+  5. For `problem-import-button.tsx`: wrap the `console.error(err)` with the guard.
+  6. For `database-backup-restore.tsx`: wrap the `console.error(data)` with the guard.
+  7. Verify all gates pass.
+- **Status:** DONE
 
 ---
 
@@ -167,3 +193,5 @@ See `plans/open/2026-04-20-rpf-cycle-23-review-remediation.md` for the full defe
 - 2026-04-22: M1 DONE — eliminated double .json() anti-pattern in admin-config.tsx (commits c469792c, ff66124d).
 - 2026-04-22: M2 DONE — truncated raw err.message in bulk-create-dialog.tsx (commit 5928729c).
 - 2026-04-22: All gates green (eslint 0 errors, tsc --noEmit clean, vitest 294/294 2114 tests, next build success).
+- 2026-04-25: Fresh cycle 27b review identified 7 additional ungated `console.error` calls across 5 files (AGG-4). Prior AGG-1/2/3 fixes verified as still in place. H2 added for new findings.
+- 2026-04-25: H2 DONE — gated 7 ungated console.error calls behind dev-only check in assignment-form-dialog, group-instructors-manager, language-config-table (3 calls), problem-import-button, database-backup-restore. All gates green (eslint 0, tsc clean, vitest 302/302 2195 tests, next build success).
