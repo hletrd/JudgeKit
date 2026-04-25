@@ -34,6 +34,8 @@ All cycle 38 tasks are complete:
 3. Verify all callers already pass the `now` parameter explicitly (no changes expected)
 4. Verify all gates pass
 
+**Status:** DONE (commit 2d4d9a62)
+
 ---
 
 ## Deferred Items
@@ -70,3 +72,5 @@ Reason for deferral unchanged. See cycle 39 plan for details.
 ## Progress log
 
 - 2026-04-25: Plan created with 1 task (A). No new deferred items this cycle.
+- 2026-04-25: Task A DONE — remove Date.now() default from getRetentionCutoff (commit 2d4d9a62).
+- 2026-04-25: All gates green (eslint 0, tsc clean, vitest 302/302 pass 2197 tests, next build success).
