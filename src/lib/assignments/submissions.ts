@@ -19,6 +19,7 @@ import { getRecruitingAccessContext } from "@/lib/recruiting/access";
 import { getAssignedTeachingGroupIds, hasGroupInstructorRole } from "@/lib/assignments/management";
 import { getDbNowUncached } from "@/lib/db-time";
 import { TERMINAL_SUBMISSION_STATUSES_SQL_LIST } from "@/lib/submissions/status";
+import { buildIoiLatePenaltyCaseExpr } from "@/lib/assignments/scoring";
 
 type AssignmentValidationError =
   | "invalidAssignmentId"
@@ -553,7 +554,10 @@ export async function getAssignmentStatusRows(
   const latePenalty = assignment.latePenalty ?? 0;
 
   // Build the per-problem adjusted-score expression via raw SQL.
-  // Uses named params (@name) for dialect-agnostic execution.
+  // Uses buildIoiLatePenaltyCaseExpr() as the canonical scoring source of truth
+  // (same function used by the leaderboard and stats endpoints) to ensure
+  // consistency across all views. This includes the windowed-exam branch that
+  // applies late penalties against the per-user personal_deadline.
   const problemAggRows = await rawQueryAll<ProblemAggRow>(`
     WITH scored AS (
       SELECT
@@ -564,19 +568,8 @@ export async function getAssignmentStatusRows(
         s.submitted_at,
         s.score,
         ap.points AS problem_points,
-        CASE
-          WHEN s.score IS NOT NULL THEN
-            CASE
-              WHEN @deadline::timestamptz IS NOT NULL AND @latePenalty::double precision > 0 AND @examMode::text != 'windowed' AND s.submitted_at IS NOT NULL AND s.submitted_at > @deadline::timestamptz
-              THEN ROUND(
-                (ROUND((LEAST(GREATEST(s.score, 0), 100) / 100.0 * COALESCE(ap.points, 100))::numeric, 2)
-                * (1.0 - @latePenalty::double precision / 100.0))::numeric,
-                2
-              )
-              ELSE ROUND((LEAST(GREATEST(s.score, 0), 100) / 100.0 * COALESCE(ap.points, 100))::numeric, 2)
-            END
-          ELSE NULL
-        END AS adjusted_score,
+        ${buildIoiLatePenaltyCaseExpr("s.score", "COALESCE(ap.points, 100)", "s.submitted_at", "es.personal_deadline")}
+          AS adjusted_score,
         ROW_NUMBER() OVER (
           PARTITION BY s.user_id, s.problem_id
           ORDER BY s.submitted_at DESC, s.id DESC
@@ -584,6 +577,8 @@ export async function getAssignmentStatusRows(
       FROM submissions s
       INNER JOIN assignment_problems ap
         ON ap.assignment_id = s.assignment_id AND ap.problem_id = s.problem_id
+      LEFT JOIN exam_sessions es
+        ON es.assignment_id = s.assignment_id AND es.user_id = s.user_id
       WHERE s.assignment_id = @assignmentId
         AND s.status IN (${TERMINAL_SUBMISSION_STATUSES_SQL_LIST})
     )
