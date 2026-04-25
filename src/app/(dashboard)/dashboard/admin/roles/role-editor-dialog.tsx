@@ -184,7 +184,7 @@ export default function RoleEditorDialog({ mode, role, superAdminLevel = 4 }: Ro
                 min={0}
                 max={2}
                 value={level}
-                onChange={(e) => setLevel(parseInt(e.target.value, 10) || 0)}
+                onChange={(e) => { const v = parseInt(e.target.value, 10); setLevel(Number.isFinite(v) ? v : 0); }}
               />
               <p className="text-xs text-muted-foreground">{t("levelHint")}</p>
             </div>
