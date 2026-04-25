@@ -46,8 +46,8 @@ export function ContestJoinClient() {
       );
 
       if (!ok) {
-        const errorMessage = (payload as { error?: string }).error ?? "joinFailed";
-        throw new Error(errorMessage);
+        toast.error(t("joinFailed"));
+        return;
       }
 
       if (!payload.data?.assignmentId) {
