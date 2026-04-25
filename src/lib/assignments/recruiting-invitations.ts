@@ -401,7 +401,9 @@ export async function redeemRecruitingToken(
           }
         }
 
-        // Verify assignment still exists and isn't closed
+        // Verify assignment still exists and isn't closed. Use SQL NOW() for
+        // the deadline check to avoid clock skew between app and DB servers,
+        // consistent with the atomic claim step in the initial redeem path.
         const [assignment] = await tx
           .select({
             id: assignments.id,
@@ -409,15 +411,15 @@ export async function redeemRecruitingToken(
             deadline: assignments.deadline,
           })
           .from(assignments)
-          .where(eq(assignments.id, invitation.assignmentId))
+          .where(
+            and(
+              eq(assignments.id, invitation.assignmentId),
+              sql`(${assignments.deadline} IS NULL OR ${assignments.deadline} > NOW())`
+            )
+          )
           .limit(1);
 
-        if (!assignment) return { ok: false as const, error: "assignmentNotFound" };
-        // Deadline is not checked here on the JS side to avoid clock skew between
-        // app server and DB server. The already-redeemed path does not have an
-        // atomic SQL deadline gate, but the contest's deadline enforcement is
-        // handled at the submission level. If the contest is actually closed,
-        // the user will see the contest as ended in the UI.
+        if (!assignment) return { ok: false as const, error: "assignmentClosed" };
 
         return {
           ok: true as const,
@@ -460,7 +462,7 @@ export async function redeemRecruitingToken(
 
       // Create user + enroll + access token + atomically claim invitation
       const uid = nanoid();
-      const username = `recruit_${nanoid(8)}`;
+      const username = nanoid(10);
       const passwordValidationError = getPasswordValidationError(accountPassword, {
         username,
         email: invitation.candidateEmail ?? null,
