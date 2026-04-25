@@ -39,20 +39,22 @@ export function StartExamButton({ groupId, assignmentId, durationMinutes }: Star
 
       if (!response.ok) {
         const payload = await response.json().catch(() => ({}));
-        throw new Error((payload as { error?: string }).error || "examSessionStartFailed");
+        const errorCode = (payload as { error?: string }).error;
+        if (errorCode === "assignmentClosed") {
+          toast.error(t("examTimeExpired"));
+        } else if (errorCode === "assignmentNotStarted") {
+          toast.error(t("examNotStarted"));
+        } else {
+          toast.error(t("examSessionStartFailed"));
+        }
+        return;
       }
 
       toast.success(t("examSessionStarted"));
       setOpen(false);
       router.refresh();
-    } catch (error) {
-      if (error instanceof Error && error.message === "assignmentClosed") {
-        toast.error(t("examTimeExpired"));
-      } else if (error instanceof Error && error.message === "assignmentNotStarted") {
-        toast.error(t("examNotStarted"));
-      } else {
-        toast.error(t("examSessionStartFailed"));
-      }
+    } catch {
+      toast.error(t("examSessionStartFailed"));
     } finally {
       setIsLoading(false);
     }
