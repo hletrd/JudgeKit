@@ -35,7 +35,7 @@ No cycle-23 review finding is silently dropped. No new refactor-only work is add
   3. Call the cleanup helper in the outer catch at line 467.
   4. Add a source-grep test to verify the outer catch includes connection cleanup.
   5. Verify all gates pass.
-- **Status:** TODO
+- **Status:** DONE
 
 ### M1: Fix SSE cleanup timer HMR double-registration risk (AGG-2)
 
@@ -47,7 +47,7 @@ No cycle-23 review finding is silently dropped. No new refactor-only work is add
   1. Wrap the timer setup in an atomic check-and-set using `globalThis.__sseCleanupInitialized` as a guard flag.
   2. Set the flag before `setInterval` and check it before clearing.
   3. Verify all gates pass.
-- **Status:** TODO
+- **Status:** DONE
 
 ### M2: Add contest access token deadline check (AGG-3)
 
@@ -61,7 +61,7 @@ No cycle-23 review finding is silently dropped. No new refactor-only work is add
   2. In the stats route access check (line 69-75), add a similar deadline check.
   3. Add source-grep tests verifying the deadline check is present.
   4. Verify all gates pass.
-- **Status:** TODO
+- **Status:** DONE
 
 ### L1: Add column-name validation to importDatabase (AGG-4)
 
@@ -75,7 +75,7 @@ No cycle-23 review finding is silently dropped. No new refactor-only work is add
   2. If there is a mismatch, log a warning and include it in the import result's error list.
   3. Add a source-grep test for the validation.
   4. Verify all gates pass.
-- **Status:** TODO
+- **Status:** DONE
 
 ### L2: Use Date.now() for ranking cache staleness check (AGG-5)
 
@@ -89,7 +89,7 @@ No cycle-23 review finding is silently dropped. No new refactor-only work is add
   2. Keep `getDbNowMs()` for cache-write timestamps (lines 114, 130) where authoritative time is needed.
   3. Add a code comment explaining the rationale.
   4. Verify all gates pass.
-- **Status:** TODO
+- **Status:** DONE
 
 ### L3: Add tie-breakers to ICPC live-rank query (AGG-6)
 
@@ -101,7 +101,7 @@ No cycle-23 review finding is silently dropped. No new refactor-only work is add
   1. Add `MAX(first_ac_at)` to the `user_totals` CTE.
   2. Add tie-breaker conditions to the WHERE clause matching `contest-scoring.ts:354-361`.
   3. Verify all gates pass.
-- **Status:** TODO
+- **Status:** DONE
 
 ---
 
@@ -134,3 +134,10 @@ All prior deferred items (DEFER-1 through DEFER-11 from cycle 22 plan) remain un
 ## Progress log
 
 - 2026-04-24: Plan created from cycle-23 aggregate review. 8 findings, 6 fix tasks, 2 deferred.
+- 2026-04-24: H1 DONE -- SSE connection slot leak fixed: outer catch now releases slot when acquired.
+- 2026-04-24: M1 DONE -- SSE cleanup timer uses atomic __sseCleanupInitialized guard; stale keys collected before deletion.
+- 2026-04-24: M2 DONE -- Stats route now enforces deadline for non-instructor access token holders.
+- 2026-04-24: L1 DONE -- Import validates column names against schema before inserting; skips mismatched tables.
+- 2026-04-24: L2 DONE -- Ranking cache uses Date.now() for staleness checks; getDbNowMs() retained for cache writes.
+- 2026-04-24: L3 DONE -- ICPC live-rank query now includes last_ac_at and userId tie-breakers matching main leaderboard.
+- 2026-04-24: All gates green (tsc, eslint, vitest, next build). 15 source-grep tests added.
