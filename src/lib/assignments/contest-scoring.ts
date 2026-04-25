@@ -115,18 +115,24 @@ export async function computeContestRanking(assignmentId: string, cutoffSec?: nu
     const lastFailure = _lastRefreshFailureAt.get(cacheKey) ?? 0;
     if (!_refreshingKeys.has(cacheKey) && nowMs - lastFailure >= REFRESH_FAILURE_COOLDOWN_MS) {
       _refreshingKeys.add(cacheKey);
-      _computeContestRankingInner(assignmentId, cutoffSec)
-        .then(async (fresh) => {
+      // Use an async IIFE instead of .then()/.catch()/.finally() chain to
+      // avoid unhandled-rejection risk: if getDbNowMs() throws inside a
+      // .catch() handler, the resulting rejection is not caught by .finally().
+      (async () => {
+        try {
+          const fresh = await _computeContestRankingInner(assignmentId, cutoffSec);
           rankingCache.set(cacheKey, { data: fresh, createdAt: await getDbNowMs() });
           _lastRefreshFailureAt.delete(cacheKey);
-        })
-        .catch(async () => {
+        } catch {
           _lastRefreshFailureAt.set(cacheKey, await getDbNowMs());
           logger.error({ assignmentId }, "[contest-scoring] Failed to refresh ranking cache");
-        })
-        .finally(() => {
+        } finally {
           _refreshingKeys.delete(cacheKey);
-        });
+        }
+      })().catch(() => {
+        // Defensive: if getDbNowMs() itself fails in catch/finally, swallow
+        // to prevent unhandled rejection that could crash the process.
+      });
     }
     return cached.data;
   }

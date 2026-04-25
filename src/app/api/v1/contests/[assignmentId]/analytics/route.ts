@@ -6,6 +6,7 @@ import { computeContestAnalytics } from "@/lib/assignments/contest-analytics";
 import { canViewAssignmentSubmissions } from "@/lib/assignments/submissions";
 import { rawQueryOne } from "@/lib/db/queries";
 import { logger } from "@/lib/logger";
+import { getDbNowMs } from "@/lib/db-time";
 
 type ContestAnalytics = Awaited<ReturnType<typeof computeContestAnalytics>>;
 
@@ -52,7 +53,8 @@ export const GET = createApiHandler({
     const cacheKey = assignmentId;
     const cached = analyticsCache.get(cacheKey);
     if (cached) {
-      const age = Date.now() - cached.createdAt;
+      const nowMs = await getDbNowMs();
+      const age = nowMs - cached.createdAt;
       if (age <= STALE_AFTER_MS) {
         // Fresh — return immediately
         return apiSuccess(cached.data);
@@ -60,27 +62,33 @@ export const GET = createApiHandler({
       // Stale but still within TTL — return stale data and trigger ONE background
       // refresh (unless a refresh failed recently — avoid amplifying DB failures).
       const lastFailure = _lastRefreshFailureAt.get(cacheKey) ?? 0;
-      if (!_refreshingKeys.has(cacheKey) && Date.now() - lastFailure >= REFRESH_FAILURE_COOLDOWN_MS) {
+      if (!_refreshingKeys.has(cacheKey) && nowMs - lastFailure >= REFRESH_FAILURE_COOLDOWN_MS) {
         _refreshingKeys.add(cacheKey);
-        computeContestAnalytics(assignmentId, true)
-          .then((fresh) => {
-            analyticsCache.set(cacheKey, { data: fresh, createdAt: Date.now() });
+        // Use an async IIFE instead of .then()/.catch()/.finally() chain to
+        // avoid unhandled-rejection risk: if getDbNowMs() throws inside a
+        // .catch() handler, the resulting rejection is not caught by .finally().
+        (async () => {
+          try {
+            const fresh = await computeContestAnalytics(assignmentId, true);
+            analyticsCache.set(cacheKey, { data: fresh, createdAt: await getDbNowMs() });
             _lastRefreshFailureAt.delete(cacheKey);
-          })
-          .catch((err) => {
-            _lastRefreshFailureAt.set(cacheKey, Date.now());
-            logger.error({ err, assignmentId }, "[analytics] Failed to refresh analytics cache");
-          })
-          .finally(() => {
+          } catch {
+            _lastRefreshFailureAt.set(cacheKey, await getDbNowMs());
+            logger.error({ assignmentId }, "[analytics] Failed to refresh analytics cache");
+          } finally {
             _refreshingKeys.delete(cacheKey);
-          });
+          }
+        })().catch(() => {
+          // Defensive: if getDbNowMs() itself fails in catch/finally, swallow
+          // to prevent unhandled rejection that could crash the process.
+        });
       }
       return apiSuccess(cached.data);
     }
 
     // Cache miss — compute fresh and populate cache
     const analytics = await computeContestAnalytics(assignmentId, true);
-    analyticsCache.set(cacheKey, { data: analytics, createdAt: Date.now() });
+    analyticsCache.set(cacheKey, { data: analytics, createdAt: await getDbNowMs() });
     return apiSuccess(analytics);
   },
 });
