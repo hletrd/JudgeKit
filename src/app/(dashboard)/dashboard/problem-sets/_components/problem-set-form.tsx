@@ -90,6 +90,22 @@ export default function ProblemSetForm({
     (g) => !assignedGroups.some((ag) => ag.id === g.id)
   );
 
+  // Known API error codes that map directly to i18n keys
+  const KNOWN_SUBMIT_ERRORS = new Set([
+    "problemSetNameRequired",
+    "problemSetNameTooLong",
+    "problemSetDescriptionTooLong",
+    "problemSetProblemDuplicate",
+    "tooManyProblemSetProblems",
+  ]);
+
+  function mapApiError(payload: unknown, fallback: string): string {
+    const code = typeof payload === "object" && payload !== null && "error" in payload
+      ? (payload as { error?: unknown }).error
+      : undefined;
+    return typeof code === "string" && KNOWN_SUBMIT_ERRORS.has(code) ? code : fallback;
+  }
+
   function addProblem(problemId: string) {
     if (!canEdit) return;
     if (!problemId || selectedProblemIds.includes(problemId)) return;
@@ -127,7 +143,10 @@ export default function ProblemSetForm({
       });
 
       const payload = await response.json().catch(() => ({}));
-      if (!response.ok) throw new Error((payload as { error?: string }).error || "assignFailed");
+      if (!response.ok) {
+        toast.error(t(mapApiError(payload, "assignFailed")));
+        return;
+      }
 
       const group = availableGroups.find((g) => g.id === selectedGroupToAdd);
       if (group) {
@@ -156,7 +175,10 @@ export default function ProblemSetForm({
       });
 
       const payload = await response.json().catch(() => ({}));
-      if (!response.ok) throw new Error((payload as { error?: string }).error || "removeGroupFailed");
+      if (!response.ok) {
+        toast.error(t(mapApiError(payload, "removeGroupFailed")));
+        return;
+      }
 
       setAssignedGroups((prev) => prev.filter((g) => g.id !== groupId));
       toast.success(t("removeGroupSuccess"));
@@ -178,7 +200,10 @@ export default function ProblemSetForm({
       });
 
       const payload = await response.json().catch(() => ({}));
-      if (!response.ok) throw new Error((payload as { error?: string }).error || "deleteFailed");
+      if (!response.ok) {
+        toast.error(t(mapApiError(payload, "deleteFailed")));
+        return;
+      }
 
       toast.success(t("deleteSuccess"));
       router.push("/dashboard/problem-sets");
@@ -213,36 +238,19 @@ export default function ProblemSetForm({
 
       const payload = await response.json().catch(() => ({}));
       if (!response.ok) {
-        throw new Error((payload as { error?: string }).error || (isEditing ? "updateFailed" : "createFailed"));
+        toast.error(t(mapApiError(payload, isEditing ? "updateFailed" : "createFailed")));
+        return;
       }
 
       toast.success(t(isEditing ? "updateSuccess" : "createSuccess"));
 
-      if (!isEditing && payload.data?.id) {
-        router.push(`/dashboard/problem-sets/${payload.data.id}`);
+      if (!isEditing && (payload as { data?: { id?: string } }).data?.id) {
+        router.push(`/dashboard/problem-sets/${(payload as { data: { id: string } }).data.id}`);
       }
 
       router.refresh();
-    } catch (error) {
-      const msg = error instanceof Error ? error.message : "";
-      const knownKeys = [
-        "problemSetNameRequired",
-        "problemSetNameTooLong",
-        "problemSetDescriptionTooLong",
-        "problemSetProblemDuplicate",
-        "tooManyProblemSetProblems",
-      ];
-      const key = knownKeys.includes(msg)
-        ? msg
-        : isEditing
-          ? "updateFailed"
-          : "createFailed";
-      if (!knownKeys.includes(msg)) {
-        if (process.env.NODE_ENV === "development") {
-          console.error("Unmapped error in problem-set-form:", error);
-        }
-      }
-      toast.error(t(key));
+    } catch {
+      toast.error(t(isEditing ? "updateFailed" : "createFailed"));
     } finally {
       setIsLoading(false);
     }
