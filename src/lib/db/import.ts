@@ -133,7 +133,7 @@ export async function importDatabase(data: JudgeKitExport): Promise<ImportResult
         } catch (err: unknown) {
           const message = err instanceof Error ? err.message : String(err);
           logger.error({ tableName, err: message }, "Failed to truncate table during import");
-          throw new Error(`Failed to truncate ${tableName}: ${message}`);
+          throw new Error(`Failed to truncate ${tableName}`);
         }
       }
 
@@ -197,10 +197,10 @@ export async function importDatabase(data: JudgeKitExport): Promise<ImportResult
           } catch (err: unknown) {
             const message = err instanceof Error ? err.message : String(err);
             logger.error({ tableName, batch: i, err: message }, "Failed to insert batch");
-            result.errors.push(`${tableName} batch ${i}: ${message}`);
+            result.errors.push(`${tableName} batch ${i}: import failed`);
             result.success = false;
             skipped += values.length;
-            throw new Error(`Failed to import ${tableName} batch ${i}: ${message}`);
+            throw new Error(`Failed to import ${tableName} batch ${i}`);
           }
         }
 
@@ -212,8 +212,9 @@ export async function importDatabase(data: JudgeKitExport): Promise<ImportResult
 
   } catch (err: unknown) {
     const message = err instanceof Error ? err.message : String(err);
+    logger.error({ err: message }, "Import failed");
     result.success = false;
-    result.errors.push(`Import failed: ${message}`);
+    result.errors.push("Import failed");
     // Transaction was rolled back — no partial data exists in the database.
     // Clear stale tableResults that reflect in-transaction state that was never committed.
     result.tableResults = {};

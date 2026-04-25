@@ -6,7 +6,9 @@ describe("importDatabase implementation guards", () => {
   it("aborts the transaction on batch insert failure instead of silently committing partial state", () => {
     const source = readFileSync(join(process.cwd(), "src/lib/db/import.ts"), "utf8");
 
-    expect(source).toContain('throw new Error(`Failed to import ${tableName} batch ${i}: ${message}`)');
+    expect(source).toContain('throw new Error(`Failed to import ${tableName} batch ${i}`)');
+    // Verify that DB error messages are NOT included in throw/errors (sanitized for API response)
+    expect(source).not.toContain('throw new Error(`Failed to truncate ${tableName}: ${message}`)');
     expect(source).not.toContain("result.success = false;\n            skipped += values.length;\n          }\n        }\n\n        result.tableResults");
   });
 
