@@ -120,9 +120,9 @@ async function atomicConsumeRateLimit(key: string): Promise<{ limited: boolean; 
   return { limited, nowMs: now };
 }
 
-function rateLimitedResponse(windowMs?: number, nowMs?: number) {
+function rateLimitedResponse(windowMs?: number, nowMs: number = Date.now()) {
   const retryAfter = windowMs ? Math.ceil(windowMs / 1000) : 60;
-  const resetMs = (nowMs ?? Date.now()) + (windowMs ?? 60_000);
+  const resetMs = nowMs + (windowMs ?? 60_000);
   return NextResponse.json(
     { error: "rateLimited" },
     { status: 429, headers: {
