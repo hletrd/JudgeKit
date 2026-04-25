@@ -33,7 +33,7 @@ No cycle-29 review finding is silently dropped. No new refactor-only work is add
   3. Use `editorContentRef.current?.code` and `editorContentRef.current?.language` in `sendMessage` instead of reading from closure.
   4. Remove `editorContent?.code` and `editorContent?.language` from `sendMessage` dependency array.
   5. Verify all gates pass.
-- **Status:** PENDING
+- **Status:** DONE (commit 02038ebf)
 
 ---
 
@@ -46,7 +46,7 @@ No cycle-29 review finding is silently dropped. No new refactor-only work is add
 - **Plan:**
   1. Add a return cleanup function to the `useEffect` that calls `controller.abort()` and `clearTimeout(timeout)`.
   2. Verify all gates pass.
-- **Status:** PENDING
+- **Status:** DONE (commit db799cc4)
 
 ---
 
@@ -61,7 +61,7 @@ No cycle-29 review finding is silently dropped. No new refactor-only work is add
   2. Update `getKey()` to throw if `NODE_ENCRYPTION_KEY` is not set, regardless of `NODE_ENV`.
   3. Add a startup-time log message guiding developers to set `NODE_ENCRYPTION_KEY` in `.env.local`.
   4. Verify all gates pass.
-- **Status:** PENDING
+- **Status:** DONE (commit 2e765321)
 
 ---
 
@@ -74,7 +74,7 @@ No cycle-29 review finding is silently dropped. No new refactor-only work is add
 - **Plan:**
   1. Replace the static import with a dynamic import inside `handleZipImport`: `const JSZip = (await import("jszip")).default;`
   2. Verify all gates pass.
-- **Status:** PENDING
+- **Status:** DONE (commit d4286f8b)
 
 ---
 
@@ -194,3 +194,8 @@ All prior deferred items (DEFER-1 through DEFER-21 from cycle 27 plan) remain un
 ## Progress log
 
 - 2026-04-26: Plan created from cycle-29 aggregate review. 4 implementation tasks (H1-H4), 15 new deferred items (DEFER-22 through DEFER-36).
+- 2026-04-26: H1 DONE — wrapped EditorContentContext.Provider value in useMemo, added editorContentRef to ChatWidget, removed editorContent from sendMessage deps (commit 02038ebf).
+- 2026-04-26: H2 DONE — added cleanup function to CountdownTimer server-time useEffect (commit db799cc4).
+- 2026-04-26: H3 DONE — removed DEV_ENCRYPTION_KEY, getKey() now always throws if NODE_ENCRYPTION_KEY is missing (commit 2e765321).
+- 2026-04-26: H4 DONE — replaced static JSZip import with dynamic import inside handleZipImport (commit d4286f8b).
+- 2026-04-26: All gates green (eslint 0, tsc clean, vitest 302/302 2197 tests, next build success).
