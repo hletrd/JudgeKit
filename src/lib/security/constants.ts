@@ -24,10 +24,10 @@ export const MIN_PASSWORD_LENGTH = 8;
 /** @deprecated Use getMaxSourceCodeSizeBytes() */
 export const MAX_SOURCE_CODE_SIZE_BYTES = 256 * 1024;
 /** @deprecated Use getSubmissionGlobalQueueLimit() */
-export const SUBMISSION_GLOBAL_QUEUE_LIMIT = parseInt(
-  process.env.SUBMISSION_GLOBAL_QUEUE_LIMIT || "100",
-  10
-);
+export const SUBMISSION_GLOBAL_QUEUE_LIMIT = (() => {
+  const parsed = parseInt(process.env.SUBMISSION_GLOBAL_QUEUE_LIMIT ?? "100", 10);
+  return Number.isNaN(parsed) ? 100 : Math.max(0, parsed);
+})();
 
 export const USER_ROLES: readonly UserRole[] = [
   "student",
