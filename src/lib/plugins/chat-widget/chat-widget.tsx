@@ -30,6 +30,12 @@ export default function ChatWidget() {
   const messagesRef = useRef(messages);
   useEffect(() => { messagesRef.current = messages; }, [messages]);
 
+  // Ref for editorContent so sendMessage can read it without being recreated on every keystroke.
+  // Without this, every keystroke in the code editor would recreate sendMessage (and thus handleSend/handleKeyDown),
+  // causing cascading unnecessary re-renders of the entire chat widget.
+  const editorContentRef = useRef(editorContent);
+  useEffect(() => { editorContentRef.current = editorContent; }, [editorContent]);
+
   // Ref for isStreaming so sendMessage can check it without being recreated on every state change.
   // This prevents the stale-closure race where an abort + rapid resend causes a false rejection,
   // and avoids unnecessary recreation of the entire callback chain (sendMessage -> handleSend -> handleKeyDown).
@@ -186,8 +192,8 @@ export default function ChatWidget() {
           context: problemContext ? {
             problemId: problemContext.problemId,
             assignmentId: problemContext.assignmentId,
-            editorCode: editorContent?.code,
-            editorLanguage: editorContent?.language,
+            editorCode: editorContentRef.current?.code,
+            editorLanguage: editorContentRef.current?.language,
             sessionId: sessionId ?? undefined,
           } : sessionId ? { sessionId } : undefined,
         }),
@@ -240,7 +246,7 @@ export default function ChatWidget() {
       setIsStreaming(false);
       abortControllerRef.current = null;
     }
-  }, [editorContent?.code, editorContent?.language, problemContext, sessionId, t]);
+  }, [problemContext, sessionId, t]);
 
   // Keep sendMessageRef synchronized so effects always call the latest sendMessage
   useEffect(() => { sendMessageRef.current = sendMessage; }, [sendMessage]);
