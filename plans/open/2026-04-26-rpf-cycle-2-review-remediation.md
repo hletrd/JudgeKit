@@ -10,13 +10,25 @@
 - `[x]` — Done
 - `[d]` — Deferred (with reason)
 
+## Cycle 2 Summary
+
+All 6 tasks completed:
+- Task A `[x]` commit `1c25cbed` — env.ts factory.
+- Task B `[x]` commit `214b8591` — proxy.ts uses factory.
+- Task C `[x]` commit `e897b0a5` — analytics Date.now() optimization + cooldown fallback.
+- Task D `[x]` commit `362200f3` — analytics IIFE refactored to named function with logged outer catch.
+- Task E `[x]` commit `df72d773` — analytics route tests (7 new, suite up from 2210 to 2217).
+- Task F `[x]` commit `a68b31c0` — anti-cheat retry-clamp comment clarified.
+
+Gates: lint 0 errors, test 2217/2217, build pass.
+
 ---
 
 ## Tasks
 
 ### Task A — [HIGH] Commit `getAuthSessionCookieNames` factory in `src/lib/security/env.ts` (AGG-1)
 
-**Status:** `[ ]`
+**Status:** `[x]`
 **Severity:** HIGH (production code that tests/proxy depend on is uncommitted at HEAD)
 **Reference:** AGG-1
 
@@ -33,7 +45,7 @@
 
 ### Task B — [HIGH] Commit `src/proxy.ts` to use the new factory in `clearAuthSessionCookies` (AGG-1)
 
-**Status:** `[ ]`
+**Status:** `[x]`
 **Severity:** HIGH
 **Reference:** AGG-1
 
@@ -50,7 +62,7 @@
 
 ### Task C — [HIGH] Commit analytics route Date.now() staleness optimization + cooldown fallback (AGG-2)
 
-**Status:** `[ ]`
+**Status:** `[x]`
 **Severity:** HIGH (working-tree-only behavioral change)
 **Reference:** AGG-2
 
@@ -69,7 +81,7 @@
 
 ### Task D — [MEDIUM] Refactor analytics IIFE to named function with logged outer catch (AGG-3, AGG-4, AGG-7)
 
-**Status:** `[ ]`
+**Status:** `[x]`
 **Severity:** MEDIUM
 **Reference:** AGG-3, AGG-4, AGG-7
 
@@ -90,7 +102,7 @@
 
 ### Task E — [MEDIUM] Add unit tests for analytics route staleness/cooldown behavior (AGG-5)
 
-**Status:** `[ ]`
+**Status:** `[x]`
 **Severity:** MEDIUM (carries cycle-1 AGG-5)
 **Reference:** AGG-5
 
@@ -118,7 +130,7 @@
 
 ### Task F — [LOW] Tighten misleading 30s clamp comment in anti-cheat monitor (AGG-8)
 
-**Status:** `[ ]`
+**Status:** `[x]`
 **Severity:** LOW
 **Reference:** AGG-8
 
