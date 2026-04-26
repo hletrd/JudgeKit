@@ -115,29 +115,27 @@ export function AntiCheatMonitor({
   // Schedule a retry via setTimeout if the remaining events contain retriable ones.
   // Uses performFlushRef (instead of directly referencing performFlush) to break
   // the circular dependency that would otherwise trigger react-hooks/immutability.
+  //
+  // Contract: the `remaining` argument is informational for backoff calculation
+  // only — the timer always reloads the latest pending events from localStorage
+  // via `performFlush`. Both flushPendingEvents and reportEvent are allowed to
+  // pass either the just-failed subset or the full pending list; the resulting
+  // backoff is `min(2^maxRetry * RETRY_BASE_DELAY_MS, 30s)`. The
+  // `!retryTimerRef.current` guard inside the body prevents duplicate timers.
   const scheduleRetryRef = useRef<(remaining: PendingEvent[]) => void>(() => {});
 
   const flushPendingEvents = useCallback(async () => {
     const remaining = await performFlush();
-    // If there are still retriable events after the flush, schedule another
-    // retry with exponential backoff (capped at 30 seconds) so pending events
-    // are not silently dropped when the user closes the tab before the next
-    // visibility change triggers another flush.
-    const hasRetriable = remaining.some((e) => e.retries < MAX_RETRIES);
-    if (hasRetriable && !retryTimerRef.current) {
-      const maxRetry = remaining.reduce((max, e) => Math.max(max, e.retries), 0);
-      const backoffDelay = Math.min(RETRY_BASE_DELAY_MS * Math.pow(2, maxRetry), 30_000);
-      retryTimerRef.current = setTimeout(async () => {
-        retryTimerRef.current = null;
-        const retryRemaining = await performFlush();
-        if (retryRemaining.some((e) => e.retries < MAX_RETRIES)) {
-          scheduleRetryRef.current(retryRemaining);
-        }
-      }, backoffDelay);
-    }
+    // Delegate retry scheduling to scheduleRetryRef, which encapsulates the
+    // exponential backoff logic in a single place. This avoids duplicating
+    // the scheduling code between this callback and the useEffect below.
+    scheduleRetryRef.current(remaining);
   }, [performFlush]);
 
-  // Keep scheduleRetryRef in sync so the retry timer always calls the latest version
+  // Keep scheduleRetryRef in sync so the retry timer always calls the latest version.
+  // This is the single source of truth for retry scheduling logic — both
+  // flushPendingEvents and reportEvent delegate here instead of duplicating
+  // the has-retriable check, backoff calculation, and timer setup.
   useEffect(() => {
     scheduleRetryRef.current = (remaining: PendingEvent[]) => {
       const hasRetriable = remaining.some((e) => e.retries < MAX_RETRIES);
@@ -147,9 +145,7 @@ export function AntiCheatMonitor({
         retryTimerRef.current = setTimeout(async () => {
           retryTimerRef.current = null;
           const retryRemaining = await performFlush();
-          if (retryRemaining.some((e) => e.retries < MAX_RETRIES)) {
-            scheduleRetryRef.current(retryRemaining);
-          }
+          scheduleRetryRef.current(retryRemaining);
         }, backoffDelay);
       }
     };
@@ -175,15 +171,16 @@ export function AntiCheatMonitor({
         pending.push({ ...event, retries: 1 });
         savePendingEvents(assignmentId, pending);
 
-        if (!retryTimerRef.current) {
-          retryTimerRef.current = setTimeout(() => {
-            retryTimerRef.current = null;
-            void flushPendingEvents();
-          }, RETRY_BASE_DELAY_MS * 2);
-        }
+        // Delegate retry scheduling to scheduleRetryRef instead of duplicating
+        // the timer logic. This ensures the backoff formula stays consistent.
+        scheduleRetryRef.current(pending);
       }
     },
-    [assignmentId, sendEvent, flushPendingEvents]
+    // `flushPendingEvents` was previously listed here but is no longer called
+    // in this body — retry scheduling is delegated to scheduleRetryRef.current.
+    // Removing it prevents needless re-creation of `reportEvent` whenever
+    // performFlush identity changes.
+    [assignmentId, sendEvent]
   );
 
   // Refs for stable access in event handlers — prevents listener re-registration
@@ -310,7 +307,7 @@ export function AntiCheatMonitor({
         <DialogContent showCloseButton={false}>
           <DialogHeader>
             <DialogTitle className="flex items-center gap-2">
-              <ShieldAlert className="size-5 text-muted-foreground" />
+              <ShieldAlert className="size-5 text-muted-foreground" aria-hidden="true" />
               {t("privacyNoticeTitle")}
             </DialogTitle>
             <DialogDescription>
