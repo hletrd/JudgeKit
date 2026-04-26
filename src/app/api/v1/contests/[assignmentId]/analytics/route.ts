@@ -89,16 +89,23 @@ async function refreshAnalyticsCacheInBackground(
 /**
  * Test-only accessor that exposes module-private state for unit tests.
  *
- * This export is `undefined` outside `NODE_ENV === "test"`. It enables
- * verification of cache + cooldown coupling (the `dispose` hook on
- * `analyticsCache` clears `_lastRefreshFailureAt`) without making the
- * maps themselves part of the public surface.
+ * This export is `undefined` outside `NODE_ENV === "test"`, and the type
+ * is `TestInternals | undefined` so callers MUST null-check (or
+ * non-null-assert in tests). Production code MUST NOT depend on this
+ * export — the type system now agrees with the runtime gate, so a
+ * future call from production code is a compile-time error.
  *
- * Production code MUST NOT depend on this export. The runtime gate below
- * makes accidental production access throw `Cannot read properties of
- * undefined` instead of silently working.
+ * `cacheClear` was intentionally dropped (cycle 5 AGG5-4 / CR5-1):
+ * no test consumed it, and shrinking the test-only surface area
+ * minimizes the production-vs-test API delta.
  */
-export const __test_internals =
+type TestInternals = {
+  hasCooldown: (key: string) => boolean;
+  setCooldown: (key: string, valueMs: number) => void;
+  cacheDelete: (key: string) => boolean;
+};
+
+export const __test_internals: TestInternals | undefined =
   process.env.NODE_ENV === "test"
     ? {
         hasCooldown: (key: string): boolean => _lastRefreshFailureAt.has(key),
@@ -106,16 +113,8 @@ export const __test_internals =
           _lastRefreshFailureAt.set(key, valueMs);
         },
         cacheDelete: (key: string): boolean => analyticsCache.delete(key),
-        cacheClear: (): void => {
-          analyticsCache.clear();
-        },
       }
-    : (undefined as unknown as {
-        hasCooldown: (key: string) => boolean;
-        setCooldown: (key: string, valueMs: number) => void;
-        cacheDelete: (key: string) => boolean;
-        cacheClear: () => void;
-      });
+    : undefined;
 
 export const GET = createApiHandler({
   rateLimit: "analytics",
