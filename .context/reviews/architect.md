@@ -1,127 +1,49 @@
-# Architect Lane - Cycle 1
+# Architect Pass — RPF Cycle 2/100
 
 **Date:** 2026-04-26
-**Angle:** Architectural/design risks, coupling, layering, abstraction quality
-
-## Finding ARCH-1: Time authority is now split across the codebase
-
-**File:** `src/app/api/v1/contests/[assignmentId]/analytics/route.ts:62`
-
-**Architectural concern:** The codebase has a well-defined time authority pattern: `getDbNowMs()` for server-side time. The `db-time.ts` module provides:
-- `getDbNow()` — React cached version for Server Components
-- `getDbNowUncached()` — for API routes
-- `getDbNowMs()` — convenience wrapper returning milliseconds
-
-These are used consistently in:
-- `api-rate-limit.ts` — rate limit window computation
-- Judge claim route — claim timestamp
-- `contest-scoring.ts` — ranking cache staleness
-
-Now `analytics/route.ts` introduces `Date.now()` for cache staleness. This breaks the architectural convention. While justified by performance, it creates a split time-source pattern.
-
-**Risk:** Future developers see `Date.now()` patterns and replicate them in correctness-critical contexts (e.g., rate limits, deadlines) where clock skew matters.
-
-**Mitigation:** The comments in the analytics route (lines 56-61, 82-86) carefully explain the rationale and explicitly state that DB time is still used where authoritative time is needed. This is good documentation.
-
-**Suggestion:** Consider adding a lightweight `getApproximateNowMs()` utility that uses `Date.now()` but with a JSDoc discouraging use in correctness-critical contexts.
-
----
-
-## Finding ARCH-2: Anti-cheat monitor component is architecturally complex
-
-**File:** `src/components/exam/anti-cheat-monitor.tsx`
-
-**Architectural assessment:** The component has grown to 321 lines handling:
-1. Privacy notice UI (dialog)
-2. Event recording (tab switch, blur, copy, paste, contextmenu)
-3. Event deduplication (MIN_INTERVAL_MS)
-4. LocalStorage persistence (load/save/flush)
-5. API reporting (sendEvent)
-6. Retry scheduling (exponential backoff)
-7. Heartbeat monitoring
-8. Visibility change handling
-9. Online/offline event handling
-10. Element description (describeElement)
-
-This violates the Single Responsibility Principle. The component manages state, I/O, scheduling, and UI rendering — all in one file.
-
-**Suggestion:** Decompose into:
-- `useAntiCheatEvents` — hook for event recording, deduplication, API sending
-- `useAntiCheatRetry` — hook for retry scheduling, localStorage persistence
-- `AntiCheatPrivacyNotice` — component for the privacy dialog
-- `AntiCheatMonitor` — thin orchestrator composing the above
-
-The current refactoring (extracting `performFlush` and `scheduleRetryRef`) is a step in the right direction but doesn't fully address the coupling.
-
----
-
-## Finding ARCH-3: Cookie name constants belong in auth config, not security/env
-
-**File:** `src/lib/security/env.ts:8-9,178-180`
-
-**Architectural concern:** `env.ts` is becoming a dumping ground for configuration constants that aren't necessarily environment-related.
-
-- `AUTH_SESSION_COOKIE_NAME` and `SECURE_AUTH_SESSION_COOKIE_NAME` are auth configuration constants
-- `getAuthSessionCookieNames()` is an auth utility
-- `shouldUseSecureSessionCookie()` uses AUTH_URL (environment) but is about auth behavior
-- `getAuthUrl()` / `getAuthUrlObject()` / `validateAuthUrl()` are true environment functions
-
-The module mixes two concerns: environment variable validation and auth cookie configuration.
-
-**Suggestion:** Move auth cookie name constants to `src/lib/auth/config.ts` (which already exists per CLAUDE.md line 5). The `getAuthSessionCookieName()` and `getAuthSessionCookieNames()` functions could live there too.
-
-**Note:** CLAUDE.md says "always use the current src/lib/auth/config.ts as-is" for deployment. Moving constants there would need careful handling.
-
----
-
-## Finding ARCH-4: Module coupling via proxy.ts imports
-
-**File:** `src/proxy.ts:1-16`
-
-**Architectural assessment:** `proxy.ts` imports from 10 different modules:
-- `next-auth/jwt` (external)
-- `@/lib/auth/secure-cookie`
-- `@/lib/auth/session-security`
-- `@/lib/api/auth`
-- `@/lib/security/env`
-- `@/lib/audit/events`
-- `@/lib/public-route-seo`
-- `@/lib/i18n/constants`
-
-This is the middleware layer — it's expected to be the integration point. The addition of `getAuthSessionCookieNames` adds one more import from `@/lib/security/env`, which is already imported. No increase in coupling.
-
-**Verdict:** No architectural regression.
-
----
-
-## Finding ARCH-5: Analytics cache uses module-level mutable state
-
-**File:** `src/app/api/v1/contests/[assignmentId]/analytics/route.ts:17,20,24`
-
-**Architectural concern:** Three pieces of module-level mutable state:
-```typescript
-const analyticsCache = new LRUCache<string, CacheEntry>({ max: 100, ttl: CACHE_TTL_MS });
-const _refreshingKeys = new Set<string>();
-const _lastRefreshFailureAt = new Map<string, number>();
-```
-
-This is a common Next.js App Router pattern (module-level state survives between requests in the same process). But:
-1. In serverless deployments (Vercel), each function instance has its own cache — not shared across instances
-2. The cache is per-process, so horizontal scaling reduces cache hit rate
-3. The `_refreshingKeys` guard only works within a single process
-
-**Assessment:** This is an acceptable tradeoff for a self-hosted Docker deployment (single process). For serverless, a Redis-backed cache would be needed. The current implementation is appropriate for the documented Docker deployment architecture.
-
----
+**Lane:** architect
+**Scope:** Cross-module coupling, layering, abstraction quality
 
 ## Summary
 
-| ID | Finding | Severity | Confidence |
-|----|---------|----------|------------|
-| ARCH-1 | Split time authority pattern | MEDIUM | HIGH |
-| ARCH-2 | Anti-cheat component complexity | LOW | MEDIUM |
-| ARCH-3 | Cookie constants in wrong module | LOW | LOW |
-| ARCH-4 | Proxy import coupling — no change | — | HIGH |
-| ARCH-5 | Module-level cache in serverless | LOW | MEDIUM |
+Architecture remains clean. Cycle-1 plan deferred AGG-7 (function-wrapped constant) but the cycle-2 introduction of `getAuthSessionCookieNames()` (returning both variants) actually justifies a function abstraction now since the proxy needs both names — single-callsite concern is now resolved. Recommendation: keep as function.
 
-Total: 3 architectural findings, 2 verification notes.
+## Findings
+
+### ARCH2-1: [HIGH] Working-tree contains 3 production-source changes that need to be committed or stashed
+**Files:** `src/proxy.ts`, `src/lib/security/env.ts`, `src/app/api/v1/contests/[assignmentId]/analytics/route.ts`
+**Confidence:** HIGH
+
+Cycle 1 committed test/refactor changes that depend on production source updates that were NOT committed. This is an architectural integrity issue: the test suite passes against the working tree but would fail against HEAD. Any developer who clones at HEAD and runs tests gets failures.
+
+**Fix:** Commit the source changes (one commit per concern: env.ts factory, proxy.ts cookie-clearing using factory, analytics time-reconciliation).
+
+### ARCH2-2: [LOW] Anti-cheat monitor is now 332 lines — borderline single-component complexity
+**File:** `src/components/exam/anti-cheat-monitor.tsx`
+**Confidence:** MEDIUM
+
+The component holds privacy notice dialog state, event reporting with debouncing, pending event persistence, retry scheduling with exponential backoff, heartbeat scheduling, and multiple event listeners (visibility, blur, copy, paste, contextmenu, online).
+
+Splitting into `useAntiCheatEventReporter`, `usePendingEventQueue`, `useAntiCheatListeners` hooks would clarify responsibilities. Tests would be easier to write per-hook.
+
+**Fix:** Defer — refactor without behavior change. Track for future cycle when refactor is needed for new feature.
+
+### ARCH2-3: [LOW] `_refreshingKeys` and `_lastRefreshFailureAt` should be in a `RefreshState` object for cohesion
+**File:** `src/app/api/v1/contests/[assignmentId]/analytics/route.ts:20-24`
+**Confidence:** LOW
+
+Two related module-level state variables. Single object would make their relationship explicit.
+
+**Fix:** Defer; cosmetic.
+
+### ARCH2-4: [INFO] Time-domain inconsistency in analytics route is the only architectural smell
+File: `src/app/api/v1/contests/[assignmentId]/analytics/route.ts:62,79,88,90`. Already covered in code-reviewer CR2-2 and cycle-1 AGG-2. Architectural fix: commit to one time domain throughout — proposed: `Date.now()` everywhere for in-process cache state; `getDbNowMs()` only when comparing against persisted DB rows.
+
+## Verification Notes
+
+- ARCH-2 from cycle 1 (anti-cheat 321→332 lines) — slight growth from doc comments and aria-hidden change. No functional explosion.
+- Cookie naming abstraction is now in the right place (`@/lib/security/env`) since production code (`proxy.ts`) imports it. Architectural consistency improved over cycle 1.
+
+## Confidence
+
+ARCH2-1 is the most actionable finding — uncommitted changes need to flow through.

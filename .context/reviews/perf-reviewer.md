@@ -1,92 +1,53 @@
-# Performance Reviewer Lane - Cycle 1
+# Perf-Reviewer Pass — RPF Cycle 2/100
 
 **Date:** 2026-04-26
-**Scope:** Performance analysis of 4 changed files and broader repo
-
-## Findings
-
-### Finding PERF-1: Analytics cache staleness optimization — improvement [HIGH/HIGH]
-
-**File:** `src/app/api/v1/contests/[assignmentId]/analytics/route.ts:56-62`
-
-Before: `const nowMs = await getDbNowMs()` on every cache-hit request (DB round-trip).
-After: `const nowMs = Date.now()` (no DB round-trip).
-
-This eliminates one DB query per cache-hit analytics request. For a contest with high traffic (e.g., 100+ students refreshing leaderboard), this saves 100+ DB queries per minute.
-
-**Verified:** `getDbNowMs()` calls `getDbNowUncached()` which executes `SELECT NOW()::timestamptz AS now` (line 34 of db-time.ts). Each call is a full DB round-trip.
-
----
-
-### Finding PERF-2: LRU Cache TTL already provides expiry; staleness check is optimization layer [LOW/HIGH]
-
-**File:** `src/app/api/v1/contests/[assignmentId]/analytics/route.ts:13-17`
-
-The `LRUCache` already has `ttl: CACHE_TTL_MS` (60s). The staleness-at-30s pattern is a CDN-style stale-while-revalidate: serve stale data while triggering async refresh. This is an appropriate performance pattern.
-
----
-
-### Finding PERF-3: Anti-cheat retry uses exponential backoff — good [MEDIUM/HIGH]
-
-**File:** `src/components/exam/anti-cheat-monitor.tsx:136-137`
-
-Retry backoff: `Math.min(1000 * 2^retry, 30000)`. Maximum 30s delay. This prevents aggressive retry storms on transient failures while ensuring eventual consistency.
-
----
-
-### Finding PERF-4: Anti-cheat event debouncing prevents spam [LOW/HIGH]
-
-**File:** `src/components/exam/anti-cheat-monitor.tsx:149-152`
-
-`MIN_INTERVAL_MS = 1000` — events of the same type within 1 second are suppressed. This prevents rapid-fire events (e.g., rapid tab switching) from flooding localStorage and the API.
-
----
-
-### Finding PERF-5: Heartbeat every 30 seconds — reasonable [LOW/HIGH]
-
-**File:** `src/components/exam/anti-cheat-monitor.tsx:26,199`
-
-`HEARTBEAT_INTERVAL_MS = 30_000`. 30-second heartbeat is a reasonable balance between monitoring granularity and network load.
-
----
-
-### Finding PERF-6: authUserCache in proxy uses FIFO eviction with cleanup [MEDIUM/HIGH]
-
-**File:** `src/proxy.ts:64-85`
-
-Cache cleanup runs lazily at 90% capacity, then FIFO evicts oldest if still full. TTL of 2 seconds (configurable via AUTH_CACHE_TTL_MS). This is a well-designed tradeoff between latency (no DB lookup per request) and staleness.
-
----
-
-### Finding PERF-7: Proxy middleware runs on every matched request — no regressions [LOW/HIGH]
-
-**File:** `src/proxy.ts:240-338`
-
-The `clearAuthSessionCookies` function is now slightly different (calls `getAuthSessionCookieNames()` instead of inline strings) but the performance impact is negligible — it reads two constants from a module-level scope. No additional I/O, no DB queries, no network calls.
-
----
-
-### Finding PERF-8: Unused dependency causes unnecessary re-render chain [LOW/LOW]
-
-**File:** `src/components/exam/anti-cheat-monitor.tsx:172`
-
-`reportEvent` has `flushPendingEvents` in deps but never calls it. When `flushPendingEvents` changes (which happens when `performFlush` changes), `reportEvent` is recreated and `reportEventRef.current` is reassigned. This triggers a minor, benign re-render via the useEffect at line 178.
-
-**Impact:** Minimal. `reportEventRef` reassignment doesn't cause DOM reconciliation unless the ref is used as a hook dependency (which it's not — it's only read in event handlers). The `useEffect` at 178 only runs `reportEventRef.current = reportEvent` — no component state change.
-
----
+**Lane:** perf-reviewer
+**Scope:** Full repo with focus on hot paths (proxy middleware, analytics endpoint, anti-cheat client, judge worker, SSE)
 
 ## Summary
 
-| ID | Finding | Severity | Confidence |
-|----|---------|----------|------------|
-| PERF-1 | Cache staleness optimization | HIGH | HIGH |
-| PERF-2 | Stale-while-revalidate pattern | LOW | HIGH |
-| PERF-3 | Exponential backoff retry | MEDIUM | HIGH |
-| PERF-4 | Event debouncing | LOW | HIGH |
-| PERF-5 | Heartbeat interval | LOW | HIGH |
-| PERF-6 | Auth cache design | MEDIUM | HIGH |
-| PERF-7 | Cookie name change — no perf impact | LOW | HIGH |
-| PERF-8 | Unused dependency re-render | LOW | LOW |
+Cycle-1 perf wins (Date.now() staleness, single-pass eviction, head+tail truncation, buffer-based size cap) all confirmed in HEAD. Working-tree changes preserve those wins. New low-priority finding around redundant DB calls in cooldown-fallback path.
 
-Total: 0 performance regressions. 1 confirmed improvement (PERF-1). 1 minor concern (PERF-8).
+## Findings
+
+### PERF2-1: [LOW] Cooldown fallback path makes 2 sequential DB calls when DB is sick
+**File:** `src/app/api/v1/contests/[assignmentId]/analytics/route.ts:79,87-91`
+**Confidence:** MEDIUM
+
+When `computeContestAnalytics` succeeds but `await getDbNowMs()` (line 79) fails, the inner catch block runs, which re-attempts `await getDbNowMs()` (line 88) inside another try, then falls back to `Date.now()` (line 90). Under DB pressure, this means the unhappy path makes one DB call that fails (line 79), enters catch, then retries the same call (line 88). Effectively a small DB-pressure amplifier.
+
+**Fix:** Use `Date.now()` directly in the cooldown-fallback path, avoiding the redundant DB attempt. Or apply the cycle-1 plan task-B Option 1 (use `Date.now()` consistently for cache/cooldown timestamps). 
+
+### PERF2-2: [LOW] `authUserCache` cleanup at 90% capacity iterates entire Map
+**File:** `src/proxy.ts:71-78`
+**Confidence:** LOW
+
+When cache hits 450 entries (90% of 500), every subsequent set triggers a full Map iteration to expire stale entries. Worst case: 500 iterations per `set` until eviction. In a steady state with light churn, this can run for many requests.
+
+**Fix:** Track expired count separately, trigger cleanup only when expired count > N. Or run cleanup async via `queueMicrotask`. Defer — current behaviour is bounded and infrequent.
+
+### PERF2-3: [LOW] `loadPendingEvents` parses JSON on every visibility / online / blur event
+**File:** `src/components/exam/anti-cheat-monitor.tsx:101,170`
+**Confidence:** LOW
+
+Each call to `performFlush` and `reportEvent` (when offline) reads and parses localStorage. Per-event cost is microseconds, not a real perf risk.
+
+**Fix:** Defer; not measurable.
+
+### PERF2-4: [LOW] Heartbeat self-rescheduling closure allocates new setTimeout per fire
+**File:** `src/components/exam/anti-cheat-monitor.tsx:204-210`
+**Confidence:** LOW
+
+`scheduleHeartbeat` creates a new closure on each call. Over a 60-minute exam with 30s interval, that's 120 timer allocations. Negligible per-call.
+
+**Fix:** Defer; current implementation is correct and cost is negligible.
+
+## Verification Notes
+
+- `getDbNowMs()` in cache-hit fast path is ELIMINATED (line 62 uses `Date.now()`). Confirmed perf win from cycle 1.
+- Anti-cheat `performFlush` is shared between manual flush and timer retry — no duplicated work.
+- Proxy CSP header construction allocates strings, but unavoidable for nonce-based CSP.
+
+## Confidence
+
+All findings LOW or MEDIUM with low impact. No HIGH-severity perf regressions.

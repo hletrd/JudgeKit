@@ -1,10 +1,10 @@
-# Aggregate Review — RPF Cycle 1/100
+# Aggregate Review — RPF Cycle 2/100
 
 **Date:** 2026-04-26
-**Cycle:** 1/100 of review-plan-fix loop
-**Reviewers:** architect, code-reviewer, critic, debugger, designer, document-specialist, perf-reviewer, security-reviewer, test-engineer, tracer, verifier (11 lanes)
-**Total findings:** 1 HIGH (blocking — test failure), 5 MEDIUM, 13 LOW, plus verification notes
-**Cross-agent agreement:** Test mock failure flagged by code-reviewer, debugger, test-engineer, verifier (4 lanes converged) → highest signal
+**Cycle:** 2/100 of review-plan-fix loop
+**Reviewers:** architect, code-reviewer, critic, debugger, designer, document-specialist, perf-reviewer, security-reviewer, test-engineer, tracer, verifier (11 lanes — designer covered as web frontend exists)
+**Total findings:** 3 HIGH (uncommitted source changes + Date.now() staleness uncommitted), 6 MEDIUM, 12 LOW, plus verification notes
+**Cross-agent agreement:** Uncommitted-source-code finding flagged by code-reviewer, architect, critic, debugger, verifier, tracer (6 lanes converged) → highest signal
 
 ---
 
@@ -12,199 +12,196 @@
 
 | Topic | Agents flagging | Severity peak |
 |-------|-----------------|---------------|
-| `tests/unit/proxy.test.ts` mock missing `getAuthSessionCookieNames` | CR-1, DBG-1, TE-1, VER-6 | **HIGH** |
-| Mixed time sources (`Date.now()` vs `getDbNowMs()`) in analytics | ARCH-1, CR-2, CRI-1 | MEDIUM |
-| Anti-cheat retry semantics inconsistency | CR-3, CR-5, CRI-2, DBG-4 | MEDIUM |
-| Anti-cheat unused dependency | CR-4, PERF-8 | LOW |
-| Cookie constants in wrong module | ARCH-3, CRI-3 | LOW |
-| Nested error handling complexity in analytics IIFE | CRI-4, DBG-2 | LOW |
-| Anti-cheat ARIA / loading-state gaps | DES-4, DES-6 | LOW |
-| Password validation doc/code mismatch (pre-existing) | DOC-6 | LOW |
+| Cycle-1 source changes uncommitted (env.ts, proxy.ts, analytics route) | CR2-1, ARCH2-1, CRIT2-1, DBG2-1, VER2-1, TRC2-1 | **HIGH** |
+| Analytics route Date.now() staleness optimization uncommitted | CR2-2, ARCH2-4, VER2-2, TRC2-2 | **HIGH** |
+| Analytics IIFE 4-deep error nesting | CR2-3, DBG2-2 | MEDIUM |
+| Analytics cooldown DB-call amplifier in failure path | PERF2-1, DBG2-2 | MEDIUM |
+| Analytics tests gap (cycle-1 AGG-5 carryover) | TE2-1 | MEDIUM |
+| Plan/code drift on Task B | DOC2-1, CRIT2-2 | LOW |
+| Misleading 30s clamp comment in retry | CR2-5 | LOW |
+| `__Secure-` cookie clear over HTTP no-op | SEC2-1 | LOW |
+| Anti-cheat online/timer race | DBG2-3 | LOW |
 
 ---
 
 ## Deduplicated Findings (sorted by severity)
 
-### AGG-1: [HIGH] proxy.test.ts mock missing `getAuthSessionCookieNames` export — 15 unit-test failures
+### AGG-1: [HIGH] Three production source changes from cycle 1 are uncommitted in working tree
 
-**Sources:** CR-1, DBG-1, TE-1, VER-6 | **Confidence:** HIGH
+**Sources:** CR2-1, ARCH2-1, CRIT2-1, DBG2-1, VER2-1, TRC2-1 | **Confidence:** HIGH
 
-`tests/unit/proxy.test.ts:51-53` — `vi.mock("@/lib/security/env")` only exports `getValidatedAuthSecret`. `proxy.ts` now imports and calls `getAuthSessionCookieNames()` (line 7, called at 92). Result: 15 tests reaching the 401 / redirect paths fail with: "No `getAuthSessionCookieNames` export is defined on the mock."
+`src/proxy.ts`, `src/lib/security/env.ts`, and `src/app/api/v1/contests/[assignmentId]/analytics/route.ts` have working-tree-only modifications that cycle 1's tests depend on. Without committing these:
 
-**Concrete failure scenario:** `npm run test:unit` reports 15 failures. CI pipeline fails. PROMPT 3 requires fixing this before commit/push.
+- `tests/unit/security/env.test.ts` would fail at HEAD (function doesn't exist).
+- `tests/unit/proxy.test.ts` mock would mock a non-existent function (mock noop, but production import would fail at build).
+- Cycle-1 plan AGG-1 fix is incomplete.
 
-**Fix:** Add `getAuthSessionCookieNames` to the `vi.mock` factory:
-
-```typescript
-vi.mock("@/lib/security/env", () => ({
-  getValidatedAuthSecret: getValidatedAuthSecretMock,
-  getAuthSessionCookieNames: vi.fn().mockReturnValue({
-    name: "authjs.session-token",
-    secureName: "__Secure-authjs.session-token",
-  }),
-}));
-```
-
----
-
-### AGG-2: [MEDIUM] Analytics route mixes `Date.now()` (read) with `getDbNowMs()` (write) — clock-skew brittleness
-
-**Sources:** ARCH-1, CR-2, CRI-1 | **Confidence:** MEDIUM
-
-`src/app/api/v1/contests/[assignmentId]/analytics/route.ts:62` reads `Date.now()` for cache-staleness check; lines 79 and 106 write `await getDbNowMs()` to `cached.createdAt`. If the DB and app server clocks diverge, the staleness comparison subtracts two different time domains. Within 30s tolerance this is acceptable, but the inconsistency is a design smell and creates risk of replication.
-
-**Concrete failure scenario:** NTP drift on app server → `Date.now()` lags 40s behind DB → `Date.now() - cached.createdAt` always < `STALE_AFTER_MS` → cache never refreshes; or the inverse → cache refreshes every request.
-
-**Fix options:**
-1. Always read `Date.now()` (matching write side too) — minimal DB hits, drops architectural consistency.
-2. Always read `await getDbNowMs()` for staleness — restores consistency, costs 1 DB query per cache hit.
-3. Add comment explicitly noting tolerance window and cap clock-skew tolerance via a guard.
-
-**Recommendation:** Option 1 — change cache writes to also use `Date.now()` so staleness math is internally consistent. The 30s window is well above any plausible clock drift in a well-NTP'd deployment.
-
----
-
-### AGG-3: [MEDIUM] Anti-cheat `scheduleRetryRef` has subtly inconsistent semantics between callers
-
-**Sources:** CR-3, CR-5, CRI-2, DBG-4 | **Confidence:** MEDIUM
-
-`src/components/exam/anti-cheat-monitor.tsx`:
-- Line 125: `flushPendingEvents` calls `scheduleRetryRef.current(remaining)` where `remaining` = the events that *just failed*.
-- Line 169: `reportEvent` calls `scheduleRetryRef.current(pending)` where `pending` = ALL pending events (including the one just added).
-
-The backoff uses `maxRetry` derived from the input list, so the two callers can produce different backoff values for the same underlying failure stream. Additionally, `reportEvent` lists `flushPendingEvents` in its `useCallback` dependency array (line 172) but no longer calls it post-refactor — causing unnecessary re-creation of `reportEvent` and `reportEventRef`.
-
-**Concrete failure scenario:** Two failures in quick succession. First triggers `scheduleRetryRef([failedA])` → backoff 2s. Second event added before timer fires; `reportEvent` calls `scheduleRetryRef([pendingA, pendingB])` → guard `!retryTimerRef.current` is false → no new timer. The original timer fires at 2s and uses `performFlush()` which loads all pending. So behavior is correct, but the semantic mismatch is confusing.
+**Concrete failure scenario:** Clean checkout of HEAD → run `npm run test:unit` → 51 env tests fail because `getAuthSessionCookieNames` is undefined. Production build would also fail because `proxy.ts` imports a non-existent function.
 
 **Fix:**
-1. Remove `flushPendingEvents` from `reportEvent`'s dependency array (it's no longer used in the body).
-2. Add a comment near `scheduleRetryRef` describing the contract: "the input list is informational for backoff calculation only; the timer always reloads pending events from localStorage via `performFlush`."
+1. Commit `src/lib/security/env.ts` `getAuthSessionCookieNames` factory.
+2. Commit `src/proxy.ts` updated `clearAuthSessionCookies` using the factory.
+3. Commit `src/app/api/v1/contests/[assignmentId]/analytics/route.ts` Date.now() staleness + cooldown fallback (or revert if reverting Task B).
 
 ---
 
-### AGG-4: [MEDIUM] Anti-cheat retry timer holds stale `performFlush` closure across `assignmentId` change
+### AGG-2: [HIGH] Analytics route Date.now() staleness optimization is uncommitted
 
-**Sources:** DBG-4 | **Confidence:** MEDIUM
+**Sources:** CR2-2, ARCH2-4, VER2-2, TRC2-2 | **Confidence:** HIGH
 
-`src/components/exam/anti-cheat-monitor.tsx:138-141` — when a retry timer is already pending and `performFlush` changes (e.g., `assignmentId` prop or `sendEvent` identity changes), the running timer keeps the old closure. The next-generation timer self-corrects but one fired retry can use stale state.
+Cycle-1 plan task B was deferred. Working tree contains a hybrid implementation:
+- `Date.now()` for staleness check (line 62) — ✅ matches Option 1 read side.
+- `getDbNowMs()` for cache writes (line 79, 106) — ✗ does not match Option 1.
+- Inner `try/catch` around cooldown set with `Date.now()` fallback (line 87-91) — partial mitigation for DB unreachable.
 
-**Concrete failure scenario:** In practice the `assignmentId` prop doesn't change in the lifetime of one mount (the component is keyed on it), so this is mostly theoretical. But if a future caller passes `assignmentId` as a changing prop, the bug becomes real.
+This is a different decision than what cycle-1 plan task B specified. Either commit and update plan, or fully apply Option 1.
 
-**Fix:** Document the assumption in a JSDoc comment, OR clear the retry timer in the `useEffect` that depends on `[performFlush]` so a fresh closure is always used. The latter is safer but slightly perturbs the retry schedule.
-
----
-
-### AGG-5: [MEDIUM] No tests cover the new analytics `Date.now()` staleness optimization or the `Date.now()` cooldown fallback
-
-**Sources:** TE-3, TE-5 | **Confidence:** HIGH
-
-`src/app/api/v1/contests/[assignmentId]/analytics/route.ts` — the new cache-staleness check (line 62) and the catch-block fallback (line 90) have no automated test coverage. The behavior is correct per code review, but regressions would slip through.
-
-**Concrete failure scenario:** A future refactor reverts `Date.now()` to `await getDbNowMs()` for staleness, reintroducing the per-request DB hit. No test would catch the regression.
-
-**Fix:** Add API-level vitest tests under `tests/unit/api/contests/analytics.test.ts` covering:
-1. Cache hit + within TTL → no DB call for staleness.
-2. Cache hit + stale → background refresh triggered exactly once.
-3. Background refresh failure → cooldown timestamp stored (DB or `Date.now()` fallback).
+**Recommendation:** Commit the hybrid approach as a deliberate decision (DB time for persistence-relevant timestamps) and update the plan. Then add tests covering the staleness behavior (carries cycle-1 AGG-5 forward).
 
 ---
 
-### AGG-6: [LOW] `reportEvent` declares unused `flushPendingEvents` dependency (also covered by AGG-3)
+### AGG-3: [MEDIUM] Analytics IIFE has 4-deep nested error handling
 
-**Sources:** CR-4, PERF-8 | **Confidence:** HIGH
+**Sources:** CR2-3, DBG2-2 | **Confidence:** HIGH
 
-See AGG-3. The dependency causes minor benign re-renders and signals intent that no longer matches the body.
+`src/app/api/v1/contests/[assignmentId]/analytics/route.ts:76-99` — async IIFE with 4 catch blocks (inner catch with nested try/catch, outer .catch). Hard to read; outer .catch swallows all errors silently (no logging).
 
-**Fix:** Drop `flushPendingEvents` from `reportEvent`'s dep array.
-
----
-
-### AGG-7: [LOW] `getAuthSessionCookieNames()` is a function-wrapped constant — abstraction without payoff
-
-**Sources:** ARCH-3, CRI-3 | **Confidence:** MEDIUM
-
-`src/lib/security/env.ts:178-180` exports a function that returns hardcoded object constants. Single callsite, no dynamic behavior. Could be `export const AUTH_SESSION_COOKIE_NAMES = { ... } as const`. Mild impedance mismatch with the dynamic `getAuthSessionCookieName()` (singular, HTTPS-aware).
-
-**Fix:** Either keep as-is (no harm done) or convert to a `const` object and update callers. Defer unless multiple callsites emerge.
+**Fix:**
+1. Extract refresh body into a named function `refreshAnalyticsCacheInBackground`.
+2. Replace outer `.catch(() => {})` with `.catch((err) => logger.warn({ err, assignmentId }, "..."))`.
+3. Drop inner cooldown-set try/catch — use `Date.now()` directly per PERF2-1.
 
 ---
 
-### AGG-8: [LOW] Analytics IIFE has 3-level nested error handling — readability cost
+### AGG-4: [MEDIUM] Analytics cooldown failure path makes 2 DB calls
 
-**Sources:** CRI-4, DBG-2 | **Confidence:** LOW
+**Sources:** PERF2-1 | **Confidence:** MEDIUM
 
-`src/app/api/v1/contests/[assignmentId]/analytics/route.ts:76-99` — async IIFE with try/catch (with nested try/catch inside catch) and an outer `.catch(() => {})`. Defensive but hard to read. Extracting to a named `async function refreshAnalyticsCache(...)` would clarify control flow.
+When `getDbNowMs()` fails on line 79, the inner catch retries `getDbNowMs()` on line 88, then falls back to `Date.now()`. Under DB pressure, this duplicates the failing call.
 
-**Fix:** Extract the refresh body into a named function.
-
----
-
-### AGG-9: [LOW] `ShieldAlert` icon in privacy notice lacks `aria-hidden="true"`
-
-**Sources:** DES-6 | **Confidence:** MEDIUM
-
-`src/components/exam/anti-cheat-monitor.tsx` — decorative icon on the privacy-consent dialog should be hidden from assistive tech.
-
-**Fix:** Add `aria-hidden="true"` to the `<ShieldAlert />` element.
+**Fix:** Use `Date.now()` directly in the cooldown-fallback path. Bundles with AGG-3.
 
 ---
 
-### AGG-10: [LOW] Anti-cheat monitor has no user-visible "events failing to send" indicator
+### AGG-5: [MEDIUM] Analytics route lacks tests for staleness/cooldown behavior
 
-**Sources:** DES-4 | **Confidence:** LOW
+**Sources:** TE2-1 (carries cycle-1 AGG-5) | **Confidence:** HIGH
 
-If the network is persistently down throughout an exam, the user has no feedback. Tradeoff: avoiding distraction. Could add a subtle "offline" indicator after N consecutive failures.
+Same finding as cycle-1 AGG-5; still open.
 
-**Fix:** Defer — design judgment call. Track as deferred enhancement.
-
----
-
-### AGG-11: [LOW] AGENTS.md says "only check minimum length" but `password.ts` has dictionary + similarity checks (pre-existing)
-
-**Sources:** DOC-6 | **Confidence:** MEDIUM
-
-`AGENTS.md:517-521` says password validation must "only check minimum length — exactly 8 characters minimum, no other rules." Code at `src/lib/security/password.ts` also performs:
-- Common-password dictionary check (line 45)
-- Username similarity check (line 50-55)
-- Email local-part similarity check (line 59-66)
-
-Pre-existing. The CLAUDE.md rule explicitly says "Do NOT add complexity requirements (uppercase, numbers, symbols), similarity checks, or dictionary checks."
-
-**Fix:** Either (a) remove the extra checks in code to match the documented rule, or (b) update AGENTS.md/CLAUDE.md to reflect the actual checks. This is a policy decision needing user input — DEFER.
+**Fix:** Create `tests/unit/api/contests/analytics.test.ts` with mocked `computeContestAnalytics` and `getDbNowMs`. Use `vi.useFakeTimers()` to advance clock through staleness window. Cover: cache hit (fresh), cache hit (stale → background refresh), refresh failure (cooldown set), in-cooldown (no refresh), post-cooldown (refresh resumed), getDbNowMs failure (Date.now fallback used).
 
 ---
 
-### AGG-12: [LOW] No unit test for `getAuthSessionCookieNames()`
+### AGG-6: [MEDIUM] Plan/code drift on Task B
 
-**Sources:** TE-2 | **Confidence:** HIGH
+**Sources:** DOC2-1, CRIT2-2 | **Confidence:** HIGH
 
-New exported function has no dedicated unit test. Trivial to add.
+Plan says Task B is `[d]` (deferred), but working tree contains partial implementation. Document or revert.
 
-**Fix:** Add a test in `tests/unit/security/env.test.ts` (or create the file).
+**Fix:** Bundles with AGG-1/AGG-2 commits — once committed, update Task B status.
+
+---
+
+### AGG-7: [LOW] Outer `.catch(() => {})` swallows all errors silently
+
+**Sources:** CR2-3 (also part of AGG-3) | **Confidence:** MEDIUM
+
+Bundled into AGG-3 fix.
+
+---
+
+### AGG-8: [LOW] Anti-cheat retry MAX_RETRIES=3 makes 30s clamp unreachable
+
+**Sources:** CR2-5 | **Confidence:** HIGH
+
+Comment claims clamp matters; with MAX_RETRIES=3 max delay is 8s. Tighten comment.
+
+**Fix:** Update doc comment.
+
+---
+
+### AGG-9: [LOW] `__Secure-` cookie clear over HTTP is no-op
+
+**Sources:** SEC2-1 | **Confidence:** MEDIUM
+
+Browser ignores Set-Cookie with `Secure` over HTTP. Dev-only nuisance.
+
+**Fix:** Defer; document if becomes a problem.
+
+---
+
+### AGG-10: [LOW] Anti-cheat online event handler can race with retry timer
+
+**Sources:** DBG2-3 | **Confidence:** LOW
+
+`flushPendingEventsRef.current()` and `retryTimerRef.current` can both fire concurrently after `online` event. Causes duplicate POSTs.
+
+**Fix:** Cancel `retryTimerRef.current` at start of `flushPendingEventsRef.current()`.
+
+---
+
+### AGG-11: [LOW] AGENTS.md vs `password.ts` mismatch (carried from cycle 1 AGG-11)
+
+Pre-existing policy ambiguity. Carried as deferred.
+
+---
+
+### AGG-12: [LOW] Privacy notice has no decline path
+
+**Sources:** DES2-3 | **Confidence:** LOW
+
+User must close tab to decline. UX judgment call.
+
+**Fix:** Defer.
+
+---
+
+### AGG-13: [LOW] Anti-cheat retry/backoff has only indirect test coverage
+
+**Sources:** TE2-3 | **Confidence:** LOW
+
+No direct tests for backoff timing.
+
+**Fix:** Defer; track for future cycle.
+
+---
+
+### AGG-14: [LOW] Anti-cheat monitor at 332 lines borders single-component complexity
+
+**Sources:** ARCH2-2 | **Confidence:** MEDIUM
+
+Refactor into hooks would help. No behavior change.
+
+**Fix:** Defer; track.
 
 ---
 
 ## Verification Notes (no action — informational)
 
-- ARCH-2: Anti-cheat component is 321 lines; SRP suggestion to decompose into hooks. Tracked but not actioned this cycle.
-- ARCH-4: Proxy import coupling unchanged; no regression.
-- ARCH-5: Module-level cache acceptable for Docker single-process deployment.
-- DBG-3: `scheduleRetryRef.current = () => {}` initial no-op never fires with real data. SAFE.
-- DBG-5: localStorage keyed by `assignmentId` — no cross-contest leakage. SAFE.
-- DES-1, DES-2, DES-3, DES-5: All UX/typography rules verified compliant.
-- PERF-1: `Date.now()` staleness check eliminates one DB query per cache hit — confirmed perf improvement.
-- PERF-2..7: All other perf observations verify good design.
-- SEC-1..7 + OBS-1..3: No security regressions, only improvements (cookie name single-source-of-truth).
-- DOC-1..5: Documentation matches code. Only DOC-6 (pre-existing) flagged.
+- `npm run lint`: 0 errors, 14 warnings (untracked .mjs scripts).
+- `npm run build`: passes.
+- `npm run test:unit`: 2210/2210 pass against working tree.
+- aria-hidden, anti-cheat dep array, env tests all verified per cycle 1 plan.
+- No security regressions; SEC2-1 only marginal.
+- No UI/UX regressions; designer findings are minor and deferred.
+- Workspace-to-public migration: no review opportunity surfaced this cycle.
 
 ---
 
-## Carried Deferred Items (cycle 48 → cycle 1, unchanged)
+## Carried Deferred Items (cycle 1 → cycle 2, unchanged)
 
-DEFER-22 through DEFER-57 carried forward from prior cycles. See `.context/reviews/_aggregate-cycle-48.md` for full list. None re-opened by this cycle's reviews.
+| Cycle 1 ID | Description | Reason for deferral |
+|------------|-------------|---------------------|
+| AGG-4 (cycle 1) | Anti-cheat retry timer holds stale `performFlush` closure | Theoretical only |
+| AGG-7 (cycle 1) | `getAuthSessionCookieNames()` is function-wrapped constant | Now justified — cycle 2 introduces second callsite (proxy.ts), keep as function |
+| AGG-8 (cycle 1) | Analytics IIFE 3-level nesting | Now 4-level — promoted to AGG-3 above |
+| AGG-10 (cycle 1) | Anti-cheat lacks user-visible offline indicator | Design tradeoff |
+| AGG-11 (cycle 1) | AGENTS.md / password.ts mismatch | Policy decision needed |
+| DEFER-22..57 | Carried from cycles 38-48 | See `_aggregate-cycle-48.md` |
 
 ---
 
 ## No Agent Failures
 
-All 11 lanes completed successfully. Aggregate written without retries.
+All 11 lanes (architect, code-reviewer, critic, debugger, designer, document-specialist, perf-reviewer, security-reviewer, test-engineer, tracer, verifier) completed successfully. Aggregate written without retries.

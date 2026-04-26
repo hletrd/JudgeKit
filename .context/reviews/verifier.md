@@ -1,116 +1,51 @@
-# Verifier Lane - Cycle 1
+# Verifier Pass — RPF Cycle 2/100
 
 **Date:** 2026-04-26
-**Angle:** Evidence-based correctness verification against stated behavior
+**Lane:** verifier
+**Scope:** Evidence-based correctness check
 
-## Verification Results
+## Verification Matrix
 
-### VER-1: Analytics staleness optimization — VERIFIED CORRECT
+| Claim | Source | Verification | Result |
+|-------|--------|--------------|--------|
+| `npm run test:unit` passes | cycle-1 plan task A | Ran command. Output: 302 files, 2210 tests, all pass. | PASS |
+| `npm run lint` zero errors | cycle-1 plan gate | Ran command. Output: 0 errors, 14 warnings in untracked .mjs. | PASS |
+| `npm run build` passes | gate | Ran command. Output: build complete. | PASS |
+| `getAuthSessionCookieNames` exported from `@/lib/security/env` | cycle-1 AGG-1 fix | `git show HEAD:src/lib/security/env.ts \| grep getAuthSessionCookieNames` returns nothing. Working tree has it. | **FAIL at HEAD** |
+| `proxy.ts` calls `getAuthSessionCookieNames` | cycle-1 AGG-1 | `git show HEAD:src/proxy.ts \| grep getAuthSessionCookieNames` returns nothing. Working tree has it. | **FAIL at HEAD** |
+| Analytics route uses `Date.now()` for staleness | cycle-1 PERF observation | Working tree at line 62 uses `Date.now()`; HEAD at the same line uses `await getDbNowMs()`. | **PARTIAL — only in working tree** |
+| Anti-cheat `aria-hidden` on ShieldAlert | cycle-1 task D | `git show 5cde234e` shows `aria-hidden="true"`. | PASS |
+| Anti-cheat `flushPendingEvents` removed from `reportEvent` deps | cycle-1 task C | `git show 5cde234e` removed it. | PASS |
+| New tests for `getAuthSessionCookieNames` | cycle-1 task E | `git show 000bdfe5` shows 3 new test cases. | PASS |
 
-**Stated behavior:** "Use Date.now() for the staleness check instead of getDbNowMs() to avoid a DB round-trip on every cache-hit request."
+## Findings
 
-**Evidence:**
-- Line 62: `const nowMs = Date.now()` — local time, no DB call. VERIFIED.
-- `getDbNowMs()` at `db-time.ts:51-52` calls `getDbNowUncached()` which executes `SELECT NOW()::timestamptz AS now`. VERIFIED it's a DB query.
-- Lines 79, 106: Cache writes still use `await getDbNowMs()`. VERIFIED.
-- Lines 88-90: Fallback pattern: try `await getDbNowMs()`, catch → `Date.now()`. VERIFIED.
+### VER2-1: [HIGH] HEAD does NOT contain `getAuthSessionCookieNames` definition or its proxy.ts call sites
+**File:** `src/lib/security/env.ts`, `src/proxy.ts`
+**Confidence:** HIGH
 
-**Behavior match:** Code matches stated behavior. The staleness check avoids DB round-trips. Cache writes (where authoritative time matters) still use DB time.
+Cycle-1 plan claims tests fix AGG-1 by adding the mock; but the production code that the mock is mocking is NOT in HEAD. Running `npm run test:unit` against a clean checkout of HEAD would fail because `proxy.ts` doesn't import a function that the test mock expects to be on the export.
 
----
+Empirical evidence: working tree passes 2210/2210 tests; HEAD-only would fail.
 
-### VER-2: Date.now() fallback on DB failure — VERIFIED CORRECT but implementation is nested
+**Required action:** commit the working-tree source changes before claiming AGG-1 is fully fixed.
 
-**Stated behavior:** "If the DB is unreachable, getDbNowMs() will also throw, leaving the cooldown unset and allowing a thundering herd on every subsequent request. Date.now() is acceptable here."
+### VER2-2: [HIGH] Analytics route working-tree changes implement Date.now() staleness optimization but uncommitted
+**File:** `src/app/api/v1/contests/[assignmentId]/analytics/route.ts`
+**Confidence:** HIGH
 
-**Evidence:**
-- Line 87-91: `try { _lastRefreshFailureAt.set(cacheKey, await getDbNowMs()); } catch { _lastRefreshFailureAt.set(cacheKey, Date.now()); }`
-- This nested try/catch is inside the outer `catch` block of the refresh IIFE.
+Working-tree implements:
+- Date.now() for staleness check (line 62).
+- getDbNowMs() for cache writes (line 79, 106).
+- Date.now() fallback for cooldown when getDbNowMs() fails (line 90).
 
-**Match:** The code does implement the stated fallback. If `getDbNowMs()` throws, `Date.now()` is used as the cooldown timestamp. VERIFIED.
+Cycle-1 plan task B specified Option 1 = "change cache writes to also use `Date.now()`". Working tree implements a hybrid (DB time for cache writes, Date.now() for in-process state).
 
-**Edge case:** What if both `computeContestAnalytics` AND `getDbNowMs()` fail? The outer IIFE's `.catch(() => {})` handles the rejection. The `_refreshingKeys` key is deleted in `finally`. This is correct — the guard is reset even on double-failure.
+**Required action:** either commit the hybrid as-is (with plan update reflecting the actual decision), or fully apply Option 1.
 
----
+### VER2-3: [LOW] Cycle 1 plan progress label is accurate
+Plan file currently says Task A, C, D, E are `[x]`, Task B is `[d]`. Matches commit history.
 
-### VER-3: scheduleRetryRef as single source of truth — VERIFIED CORRECT
+## Confidence
 
-**Stated behavior:** "This is the single source of truth for retry scheduling logic — both flushPendingEvents and reportEvent delegate here instead of duplicating the has-retriable check, backoff calculation, and timer setup."
-
-**Evidence:**
-- Line 125: `flushPendingEvents` calls `scheduleRetryRef.current(remaining)` after performFlush
-- Line 169: `reportEvent` calls `scheduleRetryRef.current(pending)` on send failure
-- Lines 132-145: `useEffect` updates `scheduleRetryRef.current` with the full retry logic
-- Both callers go through the same ref. There is no duplicated retry logic elsewhere.
-
-**Match:** VERIFIED. The retry scheduling logic exists in exactly one place (the useEffect at 132-145).
-
-**Check:** The ref is initialized as `() => {}` (line 118). If called before the useEffect runs, it's a no-op. Is this OK?
-- `flushPendingEvents` is called in `useEffect` at line 183 (`void flushPendingEventsRef.current()`)
-- `reportEvent` is called in event handlers (copy, paste, visibility change)
-- The `useEffect` at 132 runs after the initial render and sets `scheduleRetryRef.current`
-- `reportEvent` can't fire before the component mounts (event handlers are registered in useEffect at 209)
-- THEREFORE: the initial `() => {}` is never called with real events. VERIFIED SAFE.
-
----
-
-### VER-4: Cookie name identity — VERIFIED CORRECT
-
-**Stated behavior:** "The cookie names are derived from the same source as authConfig so they stay in sync if the naming convention ever changes."
-
-**Evidence:**
-- `env.ts:8-9`: `SECURE_AUTH_SESSION_COOKIE_NAME = "__Secure-authjs.session-token"`, `AUTH_SESSION_COOKIE_NAME = "authjs.session-token"`
-- `env.ts:178-179`: `getAuthSessionCookieNames()` returns `{ name: AUTH_SESSION_COOKIE_NAME, secureName: SECURE_AUTH_SESSION_COOKIE_NAME }`
-- Old code in proxy.ts (pre-change): `response.cookies.set("authjs.session-token", ...)`, `response.cookies.set("__Secure-authjs.session-token", ...)`
-- New code: `const { name, secureName } = getAuthSessionCookieNames()` then uses `name` and `secureName`
-
-**Identity check:**
-- `name` = `AUTH_SESSION_COOKIE_NAME` = `"authjs.session-token"` — matches old hardcoded string
-- `secureName` = `SECURE_AUTH_SESSION_COOKIE_NAME` = `"__Secure-authjs.session-token"` — matches old hardcoded string
-
-**Match:** VERIFIED. The function returns exactly the same values as the old hardcoded strings.
-
----
-
-### VER-5: authConfig cookie name source — VERIFIED CONSISTENT
-
-Let's check what authConfig uses for cookie names.
-
-**Evidence:**
-- `env.ts:166-169`: `getAuthSessionCookieName()` returns `shouldUseSecureSessionCookie() ? SECURE_AUTH_SESSION_COOKIE_NAME : AUTH_SESSION_COOKIE_NAME`
-- The same constants are used. authConfig picks one, proxy clears both.
-
-**Match:** VERIFIED. Both modules use the same source constants.
-
----
-
-### VER-6: Test suite status — 1 FAILURE (proxy.test.ts)
-
-**Unit tests:** 302 files, 2192 passed, 15 failed (all in proxy.test.ts)
-**Root cause:** Test mock at `tests/unit/proxy.test.ts:51-53` does not export `getAuthSessionCookieNames`.
-**Integration tests:** All 3 files skipped (no DB connection)
-**Component tests:** All passed
-
-**Match:** The code itself is correct, but the test mock needs updating. This is a test-configuration issue, not a code bug.
-
----
-
-### VER-7: TypeScript type check — PASSED
-
-`npx tsc --noEmit` completed with exit code 0. No type errors.
-
----
-
-## Summary
-
-| ID | Finding | Status |
-|----|---------|--------|
-| VER-1 | Analytics staleness optimization | VERIFIED CORRECT |
-| VER-2 | Date.now() fallback on DB failure | VERIFIED CORRECT |
-| VER-3 | scheduleRetryRef as single source of truth | VERIFIED CORRECT |
-| VER-4 | Cookie name identity with hardcoded strings | VERIFIED CORRECT |
-| VER-5 | authConfig source consistency | VERIFIED CONSISTENT |
-| VER-6 | Test suite — 15 failures | NEEDS FIX (mock) |
-| VER-7 | TypeScript check | PASSED |
-
-All 4 changed files behave as stated in their comments. The only issue is the test mock gap.
+VER2-1 and VER2-2 are HIGH; these are the dominant cycle-2 issues to resolve.
