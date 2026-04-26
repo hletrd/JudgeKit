@@ -53,7 +53,13 @@ export const GET = createApiHandler({
     const cacheKey = assignmentId;
     const cached = analyticsCache.get(cacheKey);
     if (cached) {
-      const nowMs = await getDbNowMs();
+      // Use Date.now() for the staleness check instead of getDbNowMs() to avoid
+      // a DB round-trip on every cache-hit request. The staleness tolerance is
+      // 30 seconds, so clock skew of 1-2 seconds between app and DB servers is
+      // acceptable for deciding whether to trigger a background refresh.
+      // getDbNowMs() is still used for cache-write timestamps (below) where
+      // authoritative time is needed.
+      const nowMs = Date.now();
       const age = nowMs - cached.createdAt;
       if (age <= STALE_AFTER_MS) {
         // Fresh — return immediately
@@ -73,7 +79,16 @@ export const GET = createApiHandler({
             analyticsCache.set(cacheKey, { data: fresh, createdAt: await getDbNowMs() });
             _lastRefreshFailureAt.delete(cacheKey);
           } catch {
-            _lastRefreshFailureAt.set(cacheKey, await getDbNowMs());
+            // Use Date.now() as fallback for the cooldown timestamp. If the DB
+            // is unreachable, getDbNowMs() will also throw, leaving the cooldown
+            // unset and allowing a thundering herd on every subsequent request.
+            // Date.now() is acceptable here because the cooldown is only 5s —
+            // 1-2s of clock skew is tolerable.
+            try {
+              _lastRefreshFailureAt.set(cacheKey, await getDbNowMs());
+            } catch {
+              _lastRefreshFailureAt.set(cacheKey, Date.now());
+            }
             logger.error({ assignmentId }, "[analytics] Failed to refresh analytics cache");
           } finally {
             _refreshingKeys.delete(cacheKey);
