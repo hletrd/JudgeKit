@@ -29,6 +29,33 @@ type AssignmentRow = {
   examMode: string;
 };
 
+/**
+ * Background refresh of the analytics cache for a single assignment.
+ * Called from the GET handler when the cached entry is stale-but-within-TTL.
+ *
+ * Failure handling: any failure (compute or DB-time fetch) sets the cooldown
+ * timestamp to suppress thundering-herd refresh attempts. The cooldown
+ * uses Date.now() directly — there's no DB call to fail here, simplifying
+ * the error path compared to the previous nested try/catch.
+ */
+async function refreshAnalyticsCacheInBackground(
+  assignmentId: string,
+  cacheKey: string,
+): Promise<void> {
+  try {
+    const fresh = await computeContestAnalytics(assignmentId, true);
+    analyticsCache.set(cacheKey, { data: fresh, createdAt: await getDbNowMs() });
+    _lastRefreshFailureAt.delete(cacheKey);
+  } catch (err) {
+    // Use Date.now() directly for the cooldown timestamp — no DB call needed,
+    // and 1-2s of clock skew is well within the 5s cooldown tolerance.
+    _lastRefreshFailureAt.set(cacheKey, Date.now());
+    logger.error({ err, assignmentId }, "[analytics] Failed to refresh analytics cache");
+  } finally {
+    _refreshingKeys.delete(cacheKey);
+  }
+}
+
 export const GET = createApiHandler({
   rateLimit: "analytics",
   handler: async (req: NextRequest, { user, params }) => {
@@ -70,32 +97,14 @@ export const GET = createApiHandler({
       const lastFailure = _lastRefreshFailureAt.get(cacheKey) ?? 0;
       if (!_refreshingKeys.has(cacheKey) && nowMs - lastFailure >= REFRESH_FAILURE_COOLDOWN_MS) {
         _refreshingKeys.add(cacheKey);
-        // Use an async IIFE instead of .then()/.catch()/.finally() chain to
-        // avoid unhandled-rejection risk: if getDbNowMs() throws inside a
-        // .catch() handler, the resulting rejection is not caught by .finally().
-        (async () => {
-          try {
-            const fresh = await computeContestAnalytics(assignmentId, true);
-            analyticsCache.set(cacheKey, { data: fresh, createdAt: await getDbNowMs() });
-            _lastRefreshFailureAt.delete(cacheKey);
-          } catch {
-            // Use Date.now() as fallback for the cooldown timestamp. If the DB
-            // is unreachable, getDbNowMs() will also throw, leaving the cooldown
-            // unset and allowing a thundering herd on every subsequent request.
-            // Date.now() is acceptable here because the cooldown is only 5s —
-            // 1-2s of clock skew is tolerable.
-            try {
-              _lastRefreshFailureAt.set(cacheKey, await getDbNowMs());
-            } catch {
-              _lastRefreshFailureAt.set(cacheKey, Date.now());
-            }
-            logger.error({ assignmentId }, "[analytics] Failed to refresh analytics cache");
-          } finally {
-            _refreshingKeys.delete(cacheKey);
-          }
-        })().catch(() => {
-          // Defensive: if getDbNowMs() itself fails in catch/finally, swallow
-          // to prevent unhandled rejection that could crash the process.
+        // Defensive outer catch logs (instead of silently swallowing) any
+        // unhandled rejection from refreshAnalyticsCacheInBackground —
+        // including unlikely failures inside the catch/finally blocks.
+        refreshAnalyticsCacheInBackground(assignmentId, cacheKey).catch((err) => {
+          logger.warn(
+            { err, assignmentId },
+            "[analytics] background refresh swallowed unhandled rejection",
+          );
         });
       }
       return apiSuccess(cached.data);
