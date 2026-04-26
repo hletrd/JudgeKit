@@ -30,3 +30,15 @@ The 2026-04-14 privacy/high-stakes and verification/readiness plans remain archi
 ## Planned execution order
 1. Repository-level stabilization lanes ✅ all archived
 2. Feature/domain plans under `.context/plans/`
+
+## RPF Per-Cycle Plan Convention
+
+The review-plan-fix loop adds a new plan per cycle named
+`YYYY-MM-DD-rpf-cycle-N-review-remediation.md`. Once **every** task in such a
+plan is `[x]` (or `[d]` with a recorded deferral exit criterion), the plan must
+be moved to `plans/done/` in the next cycle's housekeeping pass — typically by
+the cycle that follows it. Standing/master plans (workspace migration,
+execution roadmap, master backlog, comprehensive remediation) stay here.
+
+If two plans for the same cycle number end up in `plans/open/`, the older one
+goes to `plans/open/_archive/` and the newer continuation supersedes it.
