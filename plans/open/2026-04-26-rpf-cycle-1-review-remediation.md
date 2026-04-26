@@ -16,7 +16,7 @@
 
 ### Task A — [HIGH] Fix proxy.test.ts mock to export `getAuthSessionCookieNames` (AGG-1)
 
-**Status:** `[ ]`
+**Status:** `[x]` — done in commit `c915da0b` (2026-04-26). All 53 proxy tests pass; full suite passes 2210/2210.
 **Severity:** HIGH (blocks `npm run test:unit` — 15 failing tests)
 **Reference:** AGG-1 in aggregate
 
@@ -34,7 +34,7 @@
 
 ### Task B — [MEDIUM] Reconcile analytics time sources (AGG-2)
 
-**Status:** `[ ]`
+**Status:** `[d]` — deferred to cycle 2 alongside AGG-5 (analytics test coverage). Behavioural change paired with new tests is safer than touching just the production code without coverage. The 30s tolerance window protects against worst-case clock skew until then.
 **Severity:** MEDIUM
 **Reference:** AGG-2 in aggregate
 
@@ -55,7 +55,7 @@
 
 ### Task C — [MEDIUM] Tighten anti-cheat retry semantics (AGG-3, AGG-6)
 
-**Status:** `[ ]`
+**Status:** `[x]` — done in commit `5cde234e` (2026-04-26). Documented `scheduleRetryRef` contract, dropped unused `flushPendingEvents` dep from `reportEvent`. Anti-cheat unit + component tests still pass.
 **Severity:** MEDIUM (correctness/clarity)
 **Reference:** AGG-3, AGG-6 in aggregate
 
@@ -74,7 +74,7 @@
 
 ### Task D — [LOW] Add ARIA hidden to ShieldAlert icon (AGG-9)
 
-**Status:** `[ ]`
+**Status:** `[x]` — done in same commit `5cde234e` (2026-04-26). `aria-hidden="true"` added to the decorative ShieldAlert in the privacy notice dialog.
 **Severity:** LOW (a11y)
 **Reference:** AGG-9 in aggregate
 
@@ -90,7 +90,7 @@
 
 ### Task E — [LOW] Add unit test for `getAuthSessionCookieNames()` (AGG-12)
 
-**Status:** `[ ]`
+**Status:** `[x]` — done in commit `000bdfe5` (2026-04-26). Three new tests added in `tests/unit/security/env.test.ts`. Total env-test count up from 48 to 51.
 **Severity:** LOW (coverage gap)
 **Reference:** AGG-12 in aggregate
 
