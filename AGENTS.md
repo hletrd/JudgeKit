@@ -346,6 +346,21 @@ SSH_KEY=key.pem REMOTE_HOST=... REMOTE_USER=... DOMAIN=... ./deploy-docker.sh
 
 Language presets: `core` (~0.8 GB), `popular` (~2.5 GB), `extended` (~8 GB), `all` (~14 GB), `none`.
 
+### Database migration recovery (`DRIZZLE_PUSH_FORCE`)
+
+The deploy script uses `drizzle-kit push` (schema-vs-DB diff) for migrations. When push detects a destructive change (e.g., `DROP COLUMN`), it prompts interactively. In a non-interactive deploy shell the prompt is unanswered and the destructive change is NOT applied. The script captures push output, scans for the data-loss prompt markers, and downgrades the success log to a warn.
+
+When you see the warn:
+```
+[WARN] drizzle-kit push detected a destructive schema change but did NOT apply it ...
+```
+
+Recovery options:
+1. **`DRIZZLE_PUSH_FORCE=1`** — re-run the deploy with this env var set. The script passes `--force` to `drizzle-kit push`, which auto-applies destructive changes. **The Step 5b psql backfill (e.g., the `secret_token_hash` backfill in `0020_drop_judge_workers_secret_token.sql`) runs on every deploy regardless of this flag**, so push --force will not orphan judge workers. Always review the diff in the deploy log first.
+2. **Switch to `drizzle-kit migrate`** — change the `npx drizzle-kit push` line in `deploy-docker.sh` to `npx drizzle-kit migrate` for that one deploy. The journal SQL files (`drizzle/pg/<NN>_*.sql`) are then executed in order, including any safety backfills they embed. Verify `drizzle/pg/meta/_journal.json` and `meta/<NN>_snapshot.json` are in sync with `src/lib/db/schema.pg.ts` before doing this.
+
+**When NOT to use `DRIZZLE_PUSH_FORCE=1`:** if the journal contains a destructive SQL with embedded ad-hoc cleanup code that is NOT replicated as a Step 5b psql pre-step in `deploy-docker.sh`, push --force will skip it. Add a Step 5b pre-step before relying on the force flag.
+
 ### SSH Authentication
 
 The script supports two methods:
