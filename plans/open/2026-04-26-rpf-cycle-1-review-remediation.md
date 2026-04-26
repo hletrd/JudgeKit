@@ -34,7 +34,7 @@
 
 ### Task B — [MEDIUM] Reconcile analytics time sources (AGG-2)
 
-**Status:** `[d]` — deferred to cycle 2 alongside AGG-5 (analytics test coverage). Behavioural change paired with new tests is safer than touching just the production code without coverage. The 30s tolerance window protects against worst-case clock skew until then.
+**Status:** `[x]` — completed in RPF cycle 2. Hybrid decision: `Date.now()` for in-process state (staleness check, cooldown read, cooldown fallback when DB unreachable); `getDbNowMs()` for cache writes where DB-time consistency matters across instances. See cycle 2 commit `e897b0a5` (perf change) and `362200f3` (refactor to named function with logged outer catch). Cycle 2 also added test coverage for these paths (AGG-5 closed) in commit covering `tests/unit/api/contests-analytics-route.test.ts`.
 **Severity:** MEDIUM
 **Reference:** AGG-2 in aggregate
 
