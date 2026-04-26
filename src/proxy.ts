@@ -4,7 +4,7 @@ import { getToken } from "next-auth/jwt";
 import { shouldUseSecureAuthCookie } from "@/lib/auth/secure-cookie";
 import { getTokenAuthenticatedAtSeconds } from "@/lib/auth/session-security";
 import { getActiveAuthUserById, getTokenUserId } from "@/lib/api/auth";
-import { getValidatedAuthSecret } from "@/lib/security/env";
+import { getValidatedAuthSecret, getAuthSessionCookieNames } from "@/lib/security/env";
 import { recordAuditEvent, buildAuditRequestContext } from "@/lib/audit/events";
 import { usesDeterministicPublicLocale } from "@/lib/public-route-seo";
 import {
@@ -85,9 +85,13 @@ function setCachedAuthUser(cacheKey: string, user: Awaited<ReturnType<typeof get
 }
 
 function clearAuthSessionCookies(response: NextResponse) {
-  // Explicitly set path and secure to ensure cookies are actually cleared
-  response.cookies.set("authjs.session-token", "", { maxAge: 0, path: "/" });
-  response.cookies.set("__Secure-authjs.session-token", "", { maxAge: 0, path: "/", secure: true });
+  // Clear both the non-secure and secure session cookie variants to ensure
+  // the session is fully cleared regardless of the current security context.
+  // The cookie names are derived from the same source as authConfig so they
+  // stay in sync if the naming convention ever changes.
+  const { name, secureName } = getAuthSessionCookieNames();
+  response.cookies.set(name, "", { maxAge: 0, path: "/" });
+  response.cookies.set(secureName, "", { maxAge: 0, path: "/", secure: true });
 
   return response;
 }
