@@ -542,6 +542,60 @@ fi
 success "Database is ready"
 
 # ---------------------------------------------------------------------------
+# Step 5b: Pre-drop secret_token backfill (idempotent, MUST run before push)
+#
+# Why this runs BEFORE drizzle-kit push:
+#   The journal SQL file drizzle/pg/0020_drop_judge_workers_secret_token.sql
+#   contains both a safety backfill DO-block AND the destructive DROP COLUMN.
+#   But `drizzle-kit push` synthesizes its own DDL from schema.pg.ts and
+#   IGNORES SQL files in the journal — so the safety backfill is dead under
+#   the current deploy strategy. With DRIZZLE_PUSH_FORCE=1 the destructive
+#   drop is applied AND the backfill is skipped, which would silently lock
+#   out any judge_worker row with secret_token IS NOT NULL AND
+#   secret_token_hash IS NULL (src/lib/judge/auth.ts:75-82 rejects them).
+#
+# Solution: inline the same DO-block here so it runs on every deploy via
+# psql, regardless of the drizzle-kit push mode. The information_schema
+# guard makes it a no-op when the column has already been dropped, so this
+# can run safely on every deploy.
+#
+# Hash semantics: encode(sha256(secret_token::bytea), 'hex') matches the
+# hashToken() function at src/lib/judge/auth.ts:21-23 (Node createHash().
+# update(token).digest('hex')). Both produce the SHA-256 of the UTF-8 byte
+# sequence of the raw token. Do not change one without the other.
+#
+# See cycle-6 plan (plans/open/2026-04-26-rpf-cycle-6-review-remediation.md
+# Task A) and .context/reviews/_aggregate-cycle-5.md AGG5-1 for context.
+# ---------------------------------------------------------------------------
+info "Running pre-drop secret_token backfill (idempotent)..."
+
+# Determine the Docker network name (compose project name + _default)
+NETWORK_NAME=$(remote "docker network ls --format '{{.Name}}' | grep judgekit | head -1" 2>/dev/null)
+NETWORK_NAME="${NETWORK_NAME:-judgekit_default}"
+
+remote "PG_PASS=\$(grep '^POSTGRES_PASSWORD=' ${REMOTE_DIR}/.env.production | cut -d= -f2-) && \
+    export POSTGRES_PASSWORD=\"\${PG_PASS}\" && \
+    export PGPASSWORD=\"\${PG_PASS}\" && \
+    docker run --rm \
+    --network ${NETWORK_NAME} \
+    -e POSTGRES_PASSWORD -e PGPASSWORD \
+    postgres:18-alpine \
+    psql -h db -U judgekit -d judgekit <<'SQL'
+DO \$\$
+BEGIN
+  IF EXISTS (SELECT 1 FROM information_schema.columns
+             WHERE table_name = 'judge_workers' AND column_name = 'secret_token') THEN
+    EXECUTE \$sql\$
+      UPDATE judge_workers
+      SET secret_token_hash = encode(sha256(secret_token::bytea), 'hex')
+      WHERE secret_token_hash IS NULL AND secret_token IS NOT NULL
+    \$sql\$;
+  END IF;
+END\$\$;
+SQL" >/dev/null || die "secret_token backfill failed — aborting deploy"
+success "secret_token backfill complete"
+
+# ---------------------------------------------------------------------------
 # Step 6: Run database migrations before starting the app
 #
 # Strategy choice: we use `drizzle-kit push` (live schema-vs-DB diff, no
@@ -555,20 +609,20 @@ success "Database is ready"
 # markers; when detected, it downgrades the success log to a warning.
 #
 # To force-apply destructive changes via push, set DRIZZLE_PUSH_FORCE=1
-# (passes --force to drizzle-kit push). For journal-driven migrations
-# instead, change `drizzle-kit push` to `drizzle-kit migrate` here AND
-# verify drizzle/pg/meta/_journal.json + meta/<NN>_snapshot.json files
-# stay in sync with src/lib/db/schema.pg.ts.
+# (passes --force to drizzle-kit push). The Step 5b backfill above runs
+# regardless of this flag, so push --force will not orphan workers.
+# For journal-driven migrations instead, change `drizzle-kit push` to
+# `drizzle-kit migrate` here AND verify drizzle/pg/meta/_journal.json +
+# meta/<NN>_snapshot.json files stay in sync with src/lib/db/schema.pg.ts.
 #
-# Cycle 5 aggregate AGG5-1 documents the prior failure mode where the
-# success log was printed even though the destructive change was
-# unapplied, masking schema drift across deploys.
+# See .context/reviews/_aggregate-cycle-5.md AGG5-1 for the prior failure
+# mode where the success log was printed even though the destructive change
+# was unapplied, masking schema drift across deploys.
 # ---------------------------------------------------------------------------
 info "Running database migrations (drizzle-kit push)..."
 
-# Determine the Docker network name (compose project name + _default)
-NETWORK_NAME=$(remote "docker network ls --format '{{.Name}}' | grep judgekit | head -1" 2>/dev/null)
-NETWORK_NAME="${NETWORK_NAME:-judgekit_default}"
+# NETWORK_NAME was determined in Step 5b above (same network for both psql
+# and the drizzle-kit push container). Re-using here.
 
 # Run drizzle-kit push via a temporary Node container connected to the DB network.
 # This uses the source code already synced to the remote host (has drizzle.config.ts + schema).
