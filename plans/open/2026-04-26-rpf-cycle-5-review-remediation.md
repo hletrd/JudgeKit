@@ -16,13 +16,24 @@ The cycle-5 review surfaced **2 HIGH-severity findings** (one with 5-agent conve
 
 Per the deferred-fix rules, the HIGH cluster (security + correctness + data-loss) is NOT deferrable. The MEDIUM workspace-to-public migration directive freshness pass is also planned this cycle.
 
+**Implementation status (2026-04-26):**
+- Task A `[x]` — 4 phases: A.1+A.2 commit `abb2965d` (snapshot regen + safety backfill), A.3+A.4 commit `c8207c5d` (deploy log honesty + push-vs-migrate doc).
+- Task B `[x]` — commit `af838cf9` (workspace-to-public migration directive freshness pass).
+- Task C `[x]` — commit `c78acf23` (TestInternals | undefined + drop cacheClear).
+- Task D `[x]` — commit `dc37412e` (co-locate _refreshingKeys lifecycle).
+- Task E `[x]` — commit `a24340e6` (clearAuthSessionCookies dual-clear test).
+- Task F `[x]` — commit `ac052ba5` (production-mode __test_internals === undefined test).
+- Task G `[x]` — commit `30f13795` (cycle-4 plan moved to plans/done/).
+
+Gates: lint 0 errors (14 unchanged warnings in untracked dev .mjs scripts); test:unit 2232/2232 pass; build EXIT=0; deploy pending.
+
 ---
 
 ## Tasks
 
 ### Task A — [HIGH, 5-agent convergence] Resolve drizzle-kit journal/snapshot drift + deploy strategy + judge-worker auth safety (AGG5-1)
 
-**Status:** `[ ]` — not started
+**Status:** `[x]` — done
 **Severity:** HIGH (security + correctness + data-loss)
 **Confidence:** HIGH
 **Reference:** `.context/reviews/_aggregate.md` AGG5-1; per-agent: `architect.md` ARCH5-1, `security-reviewer.md` SEC5-1, `critic.md` CRIT5-1, `tracer.md` TRC5-1, `verifier.md` VER5-1
@@ -121,7 +132,7 @@ Add to `deploy-docker.sh:546` a short comment block:
 
 ### Task B — [MEDIUM, 3-agent convergence] Update workspace-to-public migration directive to reflect actual code state (AGG5-2)
 
-**Status:** `[ ]` — not started
+**Status:** `[x]` — done
 **Severity:** MEDIUM (process/prioritization)
 **Confidence:** HIGH
 **Reference:** `.context/reviews/_aggregate.md` AGG5-2; per-agent: `critic.md` CRIT5-2, `document-specialist.md` DOC5-1, `verifier.md` VER5-2
@@ -145,7 +156,7 @@ Add to `deploy-docker.sh:546` a short comment block:
 
 ### Task C — [LOW, 4-agent convergence] Fix `__test_internals` type contract: `TestInternals | undefined` (AGG5-3) + drop unused `cacheClear` (AGG5-4)
 
-**Status:** `[ ]` — not started
+**Status:** `[x]` — done
 **Severity:** LOW (4-agent convergence on the type-system gap)
 **Confidence:** HIGH
 **Reference:** `.context/reviews/_aggregate.md` AGG5-3, AGG5-4; per-agent: `architect.md` ARCH5-2, `code-reviewer.md` CR5-1, `critic.md` CRIT5-3, `security-reviewer.md` SEC5-5, `tracer.md` TRC5-2
@@ -192,7 +203,7 @@ Add to `deploy-docker.sh:546` a short comment block:
 
 ### Task D — [LOW, 2-agent convergence] Co-locate `_refreshingKeys` add+delete inside `refreshAnalyticsCacheInBackground` (AGG5-5)
 
-**Status:** `[ ]` — not started
+**Status:** `[x]` — done
 **Severity:** LOW
 **Confidence:** MEDIUM
 **Reference:** `.context/reviews/_aggregate.md` AGG5-5; per-agent: `code-reviewer.md` CR5-2, `debugger.md` DBG5-1
@@ -217,7 +228,7 @@ Add to `deploy-docker.sh:546` a short comment block:
 
 ### Task E — [LOW, 2-agent convergence] Add unit test for `clearAuthSessionCookies` dual-clear (AGG5-6)
 
-**Status:** `[ ]` — not started
+**Status:** `[x]` — done
 **Severity:** LOW
 **Confidence:** HIGH
 **Reference:** `.context/reviews/_aggregate.md` AGG5-6; per-agent: `security-reviewer.md` SEC5-2, `test-engineer.md` TE5-2
@@ -247,7 +258,7 @@ Add to `deploy-docker.sh:546` a short comment block:
 
 ### Task F — [LOW] Add unit test asserting `__test_internals === undefined` in production NODE_ENV (AGG5-7)
 
-**Status:** `[ ]` — not started
+**Status:** `[x]` — done
 **Severity:** LOW
 **Confidence:** HIGH
 **Reference:** `.context/reviews/_aggregate.md` AGG5-7; per-agent: `test-engineer.md` TE5-1
@@ -276,7 +287,7 @@ Add to `deploy-docker.sh:546` a short comment block:
 
 ### Task G — [LOW, housekeeping] Move cycle-4 plan to `plans/done/` if all tasks `[x]` (CRIT5-4)
 
-**Status:** `[ ]` — not started
+**Status:** `[x]` — done
 **Severity:** LOW (process)
 **Confidence:** HIGH
 
