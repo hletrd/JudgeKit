@@ -169,6 +169,16 @@ export function getAuthSessionCookieName() {
     : AUTH_SESSION_COOKIE_NAME;
 }
 
+/**
+ * Returns both the non-secure and secure session cookie names.
+ * Used by the proxy middleware to clear both variants on logout/invalidation,
+ * since the browser may hold a cookie set under a different security context
+ * (e.g., a non-secure cookie from before HTTPS was enabled).
+ */
+export function getAuthSessionCookieNames(): { name: string; secureName: string } {
+  return { name: AUTH_SESSION_COOKIE_NAME, secureName: SECURE_AUTH_SESSION_COOKIE_NAME };
+}
+
 export function getValidatedAuthSecret() {
   const authSecret = requireNonEmptyEnv("AUTH_SECRET", process.env.AUTH_SECRET);
 
