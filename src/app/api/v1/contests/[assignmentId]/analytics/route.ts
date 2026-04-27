@@ -81,6 +81,13 @@ async function refreshAnalyticsCacheInBackground(
   try {
     const fresh = await computeContestAnalytics(assignmentId, true);
     analyticsCache.set(cacheKey, { data: fresh, createdAt: await getDbNowMs() });
+    // Explicit delete here covers the "first set" case (no prior cache entry,
+    // so dispose does NOT fire on the analyticsCache.set call above). On
+    // overwrite of an existing entry, dispose has already cleared the cooldown
+    // synchronously before the .set commits, making this delete a no-op for
+    // that path. Either way, after this line _lastRefreshFailureAt is empty
+    // for cacheKey, so subsequent stale-revalidate triggers are not blocked
+    // by a stale cooldown timestamp.
     _lastRefreshFailureAt.delete(cacheKey);
   } catch (err) {
     // Use Date.now() directly for the cooldown timestamp — no DB call needed,
