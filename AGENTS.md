@@ -361,6 +361,23 @@ Recovery options:
 
 **When NOT to use `DRIZZLE_PUSH_FORCE=1`:** if the journal contains a destructive SQL with embedded ad-hoc cleanup code that is NOT replicated as a Step 5b psql pre-step in `deploy-docker.sh`, push --force will skip it. Add a Step 5b pre-step before relying on the force flag.
 
+#### Sunset criteria (when Step 5b can be removed)
+
+The Step 5b psql backfill in `deploy-docker.sh` runs unconditionally on every deploy, adding ~5-10s per deploy. It is correct (the `IF EXISTS` guard makes the DO-block a no-op when the `secret_token` column is absent), but it is intended as a transitional safety net, not a permanent fixture.
+
+The backfill can be REMOVED when BOTH conditions hold:
+
+1. The `secret_token` column is verified ABSENT from **all** deploy environments. Verification command (run against each environment's DB):
+   ```
+   psql ... -c "\d judge_workers" | grep -c secret_token
+   ```
+   The grep count must be `1` (only `secret_token_hash`, NOT the original `secret_token`). A count of `2` means the column still exists in that environment and Step 5b is still load-bearing there.
+2. At least 6 months have passed since the cycle-6 fix was deployed (commit `18d93273` on 2026-04-26).
+
+**Target re-evaluation date:** 2026-10-26.
+
+When both conditions hold, delete the Step 5b block from `deploy-docker.sh` (lines around 544-596) AND this subsection from `AGENTS.md`. Cross-reference: `.context/reviews/_aggregate.md` AGG7-1 (cycle-7 plan).
+
 ### SSH Authentication
 
 The script supports two methods:

@@ -564,8 +564,21 @@ success "Database is ready"
 # update(token).digest('hex')). Both produce the SHA-256 of the UTF-8 byte
 # sequence of the raw token. Do not change one without the other.
 #
-# See cycle-6 plan (plans/open/2026-04-26-rpf-cycle-6-review-remediation.md
+# See cycle-6 plan (plans/done/2026-04-26-rpf-cycle-6-review-remediation.md
 # Task A) and .context/reviews/_aggregate-cycle-5.md AGG5-1 for context.
+#
+# SUNSET CRITERION (cycle-7 AGG7-1, 2026-04-26):
+#   This Step 5b can be REMOVED when BOTH conditions hold:
+#     (a) The secret_token column is verified ABSENT from ALL deploy
+#         environments. Verification command (run in each env):
+#           psql ... -c "\d judge_workers" | grep -c secret_token
+#         The grep result must be 1 (only `secret_token_hash`, NOT
+#         `secret_token`).
+#     (b) At least 6 months have passed since the cycle-6 fix was
+#         deployed (commit 18d93273 on 2026-04-26).
+#   Target re-evaluation: 2026-10-26.
+#   See AGENTS.md "Database migration recovery (DRIZZLE_PUSH_FORCE)" >
+#   "Sunset criteria" subsection for the operator-facing version.
 # ---------------------------------------------------------------------------
 info "Running pre-drop secret_token backfill (idempotent)..."
 
