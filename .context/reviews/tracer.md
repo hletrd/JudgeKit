@@ -1,14 +1,14 @@
-# Tracer Review — RPF Cycle 8/100
+# Tracer Review — RPF Cycle 9/100
 
 **Date:** 2026-04-26
-**Cycle:** 8/100
+**Cycle:** 9/100
 **Lens:** causal tracing of suspicious flows, competing hypotheses, control-flow analysis
 
 ---
 
-## Cycle-7 carry-over verification
+## Cycle-8 carry-over verification
 
-The cycle-7 doc-only fixes (SUNSET CRITERION comment, plan archival, route.ts:84 explanatory comment) introduced no executable code changes. All cycle-7 traced control-flow paths remain valid:
+The cycle-8 process/docs-only commits (cycle-7 plan archival, plan-mark, review artifacts) introduced no executable code changes. All cycle-7 traced control-flow paths remain valid:
 
 1. **Step 5b backfill causal chain** (cycle-6 critical): trigger → DB ready → Step 5b psql container → DO-block IF EXISTS guard → conditional UPDATE. No state change since cycle-7.
 2. **`_lastRefreshFailureAt` mutation lifecycle** (TRC7-1): three mutation sites, dispose-coupling, TTL boundaries. No state change since cycle-7.
@@ -17,12 +17,12 @@ The cycle-7 doc-only fixes (SUNSET CRITERION comment, plan archival, route.ts:84
 
 ---
 
-## TRC8-1: [LOW, NEW] No new control-flow defects detected this cycle
+## TRC9-1: [LOW, NEW] No new control-flow defects detected this cycle
 
 **Severity:** LOW (verification — no findings)
 **Confidence:** HIGH
 
-**Evidence:** Re-traced all paths inspected in cycle-7. No defects. The cycle-7 doc-only commits cannot introduce control-flow changes.
+**Evidence:** Re-traced all paths inspected in cycles 7-8. No defects. The cycle-8 process-only commits cannot introduce control-flow changes.
 
 **Fix:** No action — no findings.
 
@@ -30,6 +30,6 @@ The cycle-7 doc-only fixes (SUNSET CRITERION comment, plan archival, route.ts:84
 
 ## Summary
 
-**Cycle-8 NEW findings:** 0 HIGH, 0 MEDIUM, 0 LOW.
-**Cycle-7 carry-over status:** All cycle-7 traced control flows remain sound.
+**Cycle-9 NEW findings:** 0 HIGH, 0 MEDIUM, 0 LOW.
+**Cycle-8 carry-over status:** All cycle-7 traced control flows remain sound.
 **Tracer verdict:** No control-flow defects at HEAD.

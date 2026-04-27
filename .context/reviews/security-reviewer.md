@@ -1,14 +1,14 @@
-# Security Reviewer — RPF Cycle 8/100
+# Security Reviewer — RPF Cycle 9/100
 
 **Date:** 2026-04-26
-**Cycle:** 8/100
+**Cycle:** 9/100
 **Lens:** OWASP Top 10, secrets handling, auth/authz, input validation, data integrity, audit/logging, CSRF, CSP
 
 ---
 
-## Cycle-7 carry-over verification
+## Cycle-8 carry-over verification
 
-All cycle-7 security findings remain accurate. The cycle-7 doc-only commits did not introduce executable code changes; security posture unchanged from cycle-7 baseline.
+All cycle-8 security findings remain accurate. Cycle-8 commits (`390cde9b`, `77a19336`, `c4b9d1ca`) did not introduce executable code changes; security posture unchanged from cycle-7/8 baseline.
 
 Cycle-6 critical security findings (4-agent convergence on AGG6-1 / SEC6-1) remain RESOLVED at HEAD:
 - `deploy-docker.sh` Step 5b backfill runs unconditionally before drizzle-kit push.
@@ -23,16 +23,17 @@ Cycle-7 deferred security items reverified:
 
 ---
 
-## SEC8-1: [LOW, NEW] No new security findings this cycle
+## SEC9-1: [LOW, NEW] No new security findings this cycle
 
 **Severity:** LOW (verification — no findings)
 **Confidence:** HIGH
 
-**Evidence:** Sweep of auth, session, cookie, audit, deploy-secrets, and CSP/CSRF surfaces. No new attack surface or weakness introduced by cycle-7's doc-only commits.
+**Evidence:** Sweep of auth, session, cookie, audit, deploy-secrets, and CSP/CSRF surfaces. No new attack surface or weakness introduced by cycle-8's process-only commits.
 
-Specific verification of cycle-7 added documentation:
-- The SUNSET CRITERION in `deploy-docker.sh` and `AGENTS.md` does NOT introduce any new attack surface. It is purely descriptive prose about when a security-relevant safety net (Step 5b backfill) can be removed.
-- The route.ts:84 explanatory comment does NOT change any code or behavior.
+Specific verification:
+- The cycle-8 archival commit `390cde9b` was a pure git mv of a markdown file; no executable code touched.
+- The cycle-8 plan-mark commit `77a19336` was a markdown-only edit; no executable code touched.
+- The cycle-8 review-artifacts commit `c4b9d1ca` only added/modified `.context/reviews/*` and `plans/open/*` files; no executable code touched.
 - All security-critical paths (cycle-6 Step 5b backfill, drizzle-kit push detection, PGPASSWORD handling) remain in place.
 
 **Fix:** No action — no findings.
@@ -41,6 +42,6 @@ Specific verification of cycle-7 added documentation:
 
 ## Summary
 
-**Cycle-8 NEW findings:** 0 HIGH, 0 MEDIUM, 0 LOW.
-**Cycle-7 carry-over status:** All cycle-7 security defers carried; cycle-6 critical fixes hold.
-**Security verdict:** No HIGH or MEDIUM security risks at HEAD. Doc-only changes from cycle-7 introduce no new attack surface.
+**Cycle-9 NEW findings:** 0 HIGH, 0 MEDIUM, 0 LOW.
+**Cycle-8 carry-over status:** All cycle-7 security defers carried; cycle-6 critical fixes hold.
+**Security verdict:** No HIGH or MEDIUM security risks at HEAD. Process-only changes from cycle-8 introduce no new attack surface.

@@ -1,47 +1,45 @@
-# Architect Review — RPF Cycle 8/100
+# Architect Review — RPF Cycle 9/100
 
 **Date:** 2026-04-26
-**Cycle:** 8/100 of review-plan-fix loop
+**Cycle:** 9/100 of review-plan-fix loop
 **Lens:** architectural / design risk, coupling, layering, schema lifecycle, deploy-script architecture
-**Files inventoried (review-relevant):** `deploy-docker.sh`, `drizzle/pg/0020_drop_judge_workers_secret_token.sql`, `drizzle/pg/0021_lethal_black_tom.sql`, `drizzle/pg/meta/_journal.json`, `src/lib/db/schema.pg.ts`, `src/lib/judge/auth.ts`, `src/app/api/v1/contests/[assignmentId]/analytics/route.ts`, `src/components/exam/anti-cheat-monitor.tsx`, `src/lib/security/env.ts`, `src/proxy.ts`, `AGENTS.md`, `.env.example`, `.env.production.example`, `tests/unit/api/contests-analytics-route.test.ts`, `tests/unit/db/schema-parity.test.ts`.
+**Files inventoried (review-relevant):** `deploy-docker.sh`, `drizzle/pg/0020_drop_judge_workers_secret_token.sql`, `drizzle/pg/0021_lethal_black_tom.sql`, `drizzle/pg/meta/_journal.json`, `src/lib/db/schema.pg.ts`, `src/lib/judge/auth.ts`, `src/app/api/v1/contests/[assignmentId]/analytics/route.ts`, `src/components/exam/anti-cheat-monitor.tsx`, `src/lib/security/env.ts`, `src/proxy.ts`, `AGENTS.md`, `.env.example`, `.env.production.example`, `tests/unit/api/contests-analytics-route.test.ts`, `tests/unit/db/schema-parity.test.ts`, `plans/open/`.
 
 ---
 
-## Cycle-7 carry-over verification
+## Cycle-8 carry-over verification
 
-All cycle-7 plan tasks are confirmed RESOLVED at HEAD:
+All cycle-8 plan tasks are confirmed RESOLVED at HEAD:
 
-- **Task A (AGG7-1, 3-agent convergence):** `deploy-docker.sh:570-581` now contains a "SUNSET CRITERION" comment block in Step 5b describing the conditions for removal (column absent in all environments AND 6-month retention; target re-evaluation 2026-10-26). `AGENTS.md:364-379` mirrors the criterion in a "Sunset criteria (when Step 5b can be removed)" subsection. Verified.
-- **Task B (AGG7-2, housekeeping):** `plans/done/2026-04-26-rpf-cycle-6-review-remediation.md` exists; `plans/open/` no longer contains the cycle-6 plan. Verified.
-- **Task C (AGG7-3, 3-agent convergence):** `route.ts:84-90` now contains the explanatory comment block describing first-set vs overwrite semantics. Verified.
+- **Task A (AGG8-1, 3-agent convergence):** `plans/done/2026-04-26-rpf-cycle-7-review-remediation.md` exists; `plans/open/` no longer contains the cycle-7 plan. Verified via `ls plans/done/ | grep cycle-7` and `ls plans/open/ | grep cycle-7` (returns empty). Commit `390cde9b` performed the move; commit `77a19336` marked Task A `[x]`.
 
-The cycle-7 plan all marked `[x]` in commit `c7be3927`. All 3 tasks delivered cleanly.
+The cycle-8 plan was a single-task housekeeping plan; it is fully complete and should itself be archived this cycle.
 
 ---
 
-## ARCH8-1: [LOW, NEW, housekeeping] Cycle-7 plan must be archived to `plans/done/` per the README convention
+## ARCH9-1: [LOW, NEW, housekeeping] Cycle-8 plan must be archived to `plans/done/` per the README convention
 
 **Severity:** LOW (process)
 **Confidence:** HIGH
 
 **Evidence:**
-- `plans/open/2026-04-26-rpf-cycle-7-review-remediation.md` exists with all tasks `[x]` done (Task A → `809446dc`, Task B → `2aab3a33`, Task C → `ea083609`).
+- `plans/open/2026-04-26-rpf-cycle-8-review-remediation.md` exists with its single task `[x]` done (Task A → commit `390cde9b`, plan-mark commit `77a19336`).
 - `plans/open/README.md:36-39`: "Once **every** task in such a plan is `[x]` (or `[d]` with a recorded deferral exit criterion), the plan must be moved to `plans/done/` in the next cycle's housekeeping pass — typically by the cycle that follows it."
-- This is the same housekeeping pattern that cycle-7 honored for cycle-6.
+- This is the same housekeeping pattern that cycle-8 honored for cycle-7, that cycle-7 honored for cycle-6, that cycle-6 honored for cycle-5, etc.
 
-**Fix:** `git mv plans/open/2026-04-26-rpf-cycle-7-review-remediation.md plans/done/`
+**Fix:** `git mv plans/open/2026-04-26-rpf-cycle-8-review-remediation.md plans/done/`
 
 **Exit criteria:**
-- Cycle-7 plan in `plans/done/`.
-- `plans/open/` contains only standing/master plans + the new cycle-8 plan.
+- Cycle-8 plan in `plans/done/`.
+- `plans/open/` contains only standing/master plans + the new cycle-9 plan.
 
 **Plannable:** YES (small move-only change). Pick up this cycle.
 
 ---
 
-## Cross-cycle re-validation (cycles 1-7 carried-deferred items)
+## Cross-cycle re-validation (cycles 1-8 carried-deferred items)
 
-All carried-deferred items from `_aggregate-cycle-48.md` and the cycle-7 deferred table are re-confirmed deferrable at HEAD with reasoning unchanged:
+All carried-deferred items from `_aggregate-cycle-48.md` and the cycle-7/8 deferred tables are re-confirmed deferrable at HEAD with reasoning unchanged:
 
 | Cycle 7 ID | Description | Status at HEAD |
 |------------|-------------|----------------|
@@ -50,13 +48,14 @@ All carried-deferred items from `_aggregate-cycle-48.md` and the cycle-7 deferre
 | AGG7-6 (ARCH7-3) | analyticsCache.dispose invariant in catch-block only | Still defer — code correct |
 | AGG7-7 (ARCH7-4) | getAuthSessionCookieName vs Names API confusion | Still defer — current callers correct |
 | AGG7-8 through AGG7-37 | All cosmetic/operational/process | All still defer per cycle-7 reasoning |
+| AGG8-3 (CRIT8-3) | SUNSET comment uses ephemeral SHA reference | Still defer — SHA stable under no-force-push policy |
 
-No regressions detected.
+No regressions detected. The cycle-8 commit `390cde9b` was a `git mv` only; commit `77a19336` was a plan-mark only. Both are pure process — zero source-tree change.
 
 ---
 
 ## Summary
 
-**Cycle-8 NEW findings:** 0 HIGH, 0 MEDIUM, 1 LOW (ARCH8-1 housekeeping — plannable).
-**Cycle-7 carry-over:** All 3 implemented tasks remain in place; all defers re-verified.
-**Architectural verdict:** No HIGH or MEDIUM architectural risks at HEAD. The cycle-7 fixes hold. Codebase is in steady-state; only the housekeeping archival is actionable this cycle.
+**Cycle-9 NEW findings:** 0 HIGH, 0 MEDIUM, 1 LOW (ARCH9-1 housekeeping — plannable).
+**Cycle-8 carry-over:** 1 implemented task remains in place; all defers re-verified.
+**Architectural verdict:** No HIGH or MEDIUM architectural risks at HEAD. The cycle-8 fix holds. Codebase is in continuing steady-state; only the housekeeping archival is actionable this cycle.
