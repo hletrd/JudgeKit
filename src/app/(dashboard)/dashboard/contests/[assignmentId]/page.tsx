@@ -38,7 +38,7 @@ import { notFound, redirect } from "next/navigation";
 import { getExamSession, getExamSessionsForAssignment } from "@/lib/assignments/exam-sessions";
 import { CountdownTimer } from "@/components/exam/countdown-timer";
 import { StartExamButton } from "@/components/exam/start-exam-button";
-import { AssignmentOverview } from "../../groups/[id]/assignments/[assignmentId]/assignment-overview";
+import { AssignmentOverview } from "@/components/assignment/assignment-overview";
 import { FilterForm } from "../../groups/[id]/assignments/[assignmentId]/filter-form";
 import { StatusBoard } from "../../groups/[id]/assignments/[assignmentId]/status-board";
 import { LeaderboardTable } from "@/components/contest/leaderboard-table";

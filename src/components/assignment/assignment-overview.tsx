@@ -67,6 +67,10 @@ export interface AssignmentOverviewProps {
   timeZone: string;
   labels: AssignmentOverviewLabels;
   problemStatuses?: StudentProblemStatus[];
+  /** Override the back button href. Defaults to `/dashboard/groups/${groupId}`. */
+  backHref?: string;
+  /** URL prefix for problem links. Defaults to `/dashboard/problems/`. */
+  problemHrefPrefix?: string;
 }
 
 function ProgressIcon({ progress, labels }: { progress: StudentProblemProgress; labels: AssignmentOverviewLabels }) {
@@ -114,10 +118,18 @@ export function AssignmentOverview({
   timeZone,
   labels,
   problemStatuses,
+  backHref,
+  problemHrefPrefix = "/dashboard/problems/",
 }: AssignmentOverviewProps) {
+  const resolvedBackHref = backHref ?? `/dashboard/groups/${groupId}`;
   const statusMap = new Map<string, StudentProblemProgress>(
     (problemStatuses ?? []).map((s) => [s.problemId, s.progress])
   );
+
+  function buildProblemHref(problemId: string) {
+    return `${problemHrefPrefix}${problemId}?assignmentId=${assignment.id}`;
+  }
+
   return (
     <>
       <div className="flex flex-wrap items-center justify-between gap-3">
@@ -140,7 +152,7 @@ export function AssignmentOverview({
           </p>
         </div>
 
-        <Link href={`/dashboard/groups/${groupId}`}>
+        <Link href={resolvedBackHref}>
           <Button variant="outline">{labels.back}</Button>
         </Link>
       </div>
@@ -249,7 +261,7 @@ export function AssignmentOverview({
                       )}
                       {problem.problem ? (
                         <Link
-                          href={`/dashboard/problems/${problem.problem.id}?assignmentId=${assignment.id}`}
+                          href={buildProblemHref(problem.problem.id)}
                           className="hover:underline"
                         >
                           {problem.problem.title}
@@ -260,7 +272,7 @@ export function AssignmentOverview({
                   <TableCell>{problem.points ?? 100}</TableCell>
                   <TableCell>
                     {problem.problem ? (
-                      <Link href={`/dashboard/problems/${problem.problem.id}?assignmentId=${assignment.id}`}>
+                      <Link href={buildProblemHref(problem.problem.id)}>
                         <Button variant="outline" size="sm">
                           {labels.openProblem}
                         </Button>

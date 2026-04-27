@@ -24,7 +24,7 @@ import { notFound, redirect } from "next/navigation";
 import { getExamSession, getExamSessionsForAssignment } from "@/lib/assignments/exam-sessions";
 import { CountdownTimer } from "@/components/exam/countdown-timer";
 import { StartExamButton } from "@/components/exam/start-exam-button";
-import { AssignmentOverview } from "./assignment-overview";
+import { AssignmentOverview } from "@/components/assignment/assignment-overview";
 import { FilterForm } from "./filter-form";
 import { StatusBoard } from "./status-board";
 
