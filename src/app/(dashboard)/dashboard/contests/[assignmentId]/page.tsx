@@ -1,26 +1,16 @@
 import Link from "next/link";
 import { ArrowLeft } from "lucide-react";
 import { getLocale, getTranslations } from "next-intl/server";
-import { and, desc, eq } from "drizzle-orm";
+import { eq } from "drizzle-orm";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import {
-  Table,
-  TableBody,
-  TableCell,
-  TableHead,
-  TableHeader,
-  TableRow,
-} from "@/components/ui/table";
 import { TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
 import { HashTabs } from "@/components/hash-tabs";
-import { SubmissionStatusBadge } from "@/components/submission-status-badge";
 import { auth } from "@/lib/auth";
 import {
   canViewAssignmentSubmissions,
   getAssignmentStatusRows,
-  getStudentProblemStatuses,
 } from "@/lib/assignments/submissions";
 import {
   ASSIGNMENT_PARTICIPANT_STATUS_VALUES,
@@ -32,12 +22,8 @@ import { resolveCapabilities } from "@/lib/capabilities/cache";
 import { db } from "@/lib/db";
 import { assignments, problems, submissions } from "@/lib/db/schema";
 import { getResolvedSystemTimeZone } from "@/lib/system-settings";
-import { formatDateTimeInTimeZone } from "@/lib/datetime";
-import { buildStatusLabels } from "@/lib/judge/status-labels";
 import { notFound, redirect } from "next/navigation";
-import { getExamSession, getExamSessionsForAssignment } from "@/lib/assignments/exam-sessions";
-import { CountdownTimer } from "@/components/exam/countdown-timer";
-import { StartExamButton } from "@/components/exam/start-exam-button";
+import { getExamSessionsForAssignment } from "@/lib/assignments/exam-sessions";
 import { AssignmentOverview } from "@/components/assignment/assignment-overview";
 import { FilterForm } from "../../groups/[id]/assignments/[assignmentId]/filter-form";
 import { StatusBoard } from "../../groups/[id]/assignments/[assignmentId]/status-board";
@@ -45,18 +31,15 @@ import { LeaderboardTable } from "@/components/contest/leaderboard-table";
 import { AccessCodeManager } from "@/components/contest/access-code-manager";
 import { InviteParticipants } from "@/components/contest/invite-participants";
 import { ContestQuickStats } from "@/components/contest/contest-quick-stats";
-import { AntiCheatMonitor } from "@/components/exam/anti-cheat-monitor";
 import { AntiCheatDashboard } from "@/components/contest/anti-cheat-dashboard";
 import { AnalyticsCharts } from "@/components/contest/analytics-charts";
 import { ExportButton } from "@/components/contest/export-button";
 import { ContestAnnouncements } from "@/components/contest/contest-announcements";
 import { ContestClarifications } from "@/components/contest/contest-clarifications";
-import { formatScore } from "@/lib/formatting";
 import { RecruiterCandidatesPanel } from "@/components/contest/recruiter-candidates-panel";
 import { RecruitingInvitationsPanel } from "@/components/contest/recruiting-invitations-panel";
 import AssignmentFormDialog, { type AssignmentEditorValue } from "../../groups/[id]/assignment-form-dialog";
 import { AssignmentDeleteButton } from "../../groups/[id]/assignment-delete-button";
-import { getRecruitingAccessContext } from "@/lib/recruiting/access";
 import { getDbNow } from "@/lib/db-time";
 
 const STATUS_FILTER_VALUES = ["all", ...ASSIGNMENT_PARTICIPANT_STATUS_VALUES] as const;
@@ -114,7 +97,6 @@ export default async function ContestDetailPage({
     tCommon,
     tSubmissions,
     tAssignment,
-    tMySubmissions,
   ] = await Promise.all([
     params,
     searchParams ?? Promise.resolve(undefined),
@@ -125,7 +107,6 @@ export default async function ContestDetailPage({
     getTranslations("common"),
     getTranslations("submissions"),
     getTranslations("groups.assignmentDetail"),
-    getTranslations("contests.mySubmissions"),
   ]);
 
   const role = session.user.role;
@@ -179,9 +160,6 @@ export default async function ContestDetailPage({
     groupId
   );
 
-  const recruitingAccess = await getRecruitingAccessContext(session.user.id);
-  const isRecruitingCandidate = recruitingAccess.isRecruitingCandidate;
-
   const sortedProblems = [...assignment.assignmentProblems].sort(
     (left, right) => (left.sortOrder ?? 0) - (right.sortOrder ?? 0)
   );
@@ -222,245 +200,9 @@ export default async function ContestDetailPage({
     examDuration: tAssignment("examDuration"),
   };
 
-  // Student view (not instructor/admin with board access)
+  // Student view — redirect to public contest page
   if (!canViewBoard) {
-    const [studentProblemStatuses, mySubmissions] = await Promise.all([
-      getStudentProblemStatuses(assignmentId, session.user.id),
-      db
-        .select({
-          id: submissions.id,
-          status: submissions.status,
-          score: submissions.score,
-          submittedAt: submissions.submittedAt,
-          compileOutput: submissions.compileOutput,
-          executionTimeMs: submissions.executionTimeMs,
-          memoryUsedKb: submissions.memoryUsedKb,
-          problem: {
-            id: problems.id,
-            title: problems.title,
-          },
-        })
-        .from(submissions)
-        .leftJoin(problems, eq(submissions.problemId, problems.id))
-        .where(
-          and(
-            eq(submissions.userId, session.user.id),
-            eq(submissions.assignmentId, assignmentId)
-          )
-        )
-        .orderBy(desc(submissions.submittedAt))
-        .limit(50),
-    ]);
-
-    const statusLabels = buildStatusLabels(tSubmissions);
-
-    let examSession = null;
-    if (assignment.examMode === "windowed") {
-      examSession = await getExamSession(assignmentId, session.user.id);
-    }
-
-    const isExamExpired = assignment.examMode === "windowed" && examSession != null
-      && new Date(examSession.personalDeadline) < now;
-
-    return (
-      <div className="space-y-6">
-        <AntiCheatMonitor
-          assignmentId={assignmentId}
-          enabled={Boolean(assignment.enableAntiCheat)}
-        />
-
-        <Link
-          href="/dashboard/contests"
-          className="inline-flex items-center gap-1 text-sm text-muted-foreground hover:text-foreground"
-        >
-          <ArrowLeft className="size-4" />
-          {tCommon("back")}
-        </Link>
-
-        <div className="overflow-hidden">
-          <div className="flex flex-wrap items-center gap-1.5 mb-2">
-            <Badge className={assignment.examMode === "scheduled" ? "bg-blue-500 text-white" : "bg-purple-500 text-white"}>
-              {assignment.examMode === "scheduled" ? t("modeScheduled") : t("modeWindowed")}
-            </Badge>
-            <Badge className={assignment.scoringModel === "icpc" ? "bg-orange-500 text-white" : "bg-teal-500 text-white"}>
-              {assignment.scoringModel === "icpc" ? t("scoringModelIcpc") : t("scoringModelIoi")}
-            </Badge>
-            <Badge variant="outline">{t("group")}: {assignment.group?.name}</Badge>
-          </div>
-          <h2 className="text-2xl font-bold sm:text-3xl truncate">{assignment.title}</h2>
-        </div>
-
-        {assignment.enableAntiCheat && (
-          <div className="rounded-lg border border-amber-200 bg-amber-50 dark:border-amber-900 dark:bg-amber-950/30 px-4 py-3">
-            <p className="text-sm font-medium text-amber-900 dark:text-amber-100">
-              {t("antiCheat.participantNoticeTitle")}
-            </p>
-            <p className="mt-1 text-sm text-amber-800 dark:text-amber-200">
-              {t("antiCheat.participantNoticeBody")}
-            </p>
-            <p className="mt-2 text-xs text-amber-700 dark:text-amber-300">
-              {t("antiCheat.signalsDisclaimer")}
-            </p>
-          </div>
-        )}
-
-        {isUpcoming && (
-          <Card>
-            <CardContent className="py-8 text-center space-y-2">
-              <p className="text-muted-foreground">{t("contestNotStarted")}</p>
-              {assignment.startsAt && (
-                <div className="flex justify-center">
-                  <CountdownTimer
-                    deadline={new Date(assignment.startsAt).getTime()}
-                    label={t("startsIn")}
-                  />
-                </div>
-              )}
-            </CardContent>
-          </Card>
-        )}
-
-        {!isUpcoming && !isPast && assignment.examMode === "scheduled" && assignment.deadline && (
-          <CountdownTimer deadline={new Date(assignment.deadline).getTime()} label={tGroups("examTimeRemaining")} />
-        )}
-
-        {!isUpcoming && !isPast && assignment.examMode === "windowed" && !examSession && (
-          <div className="rounded-lg border p-6 text-center space-y-4">
-            <p className="text-muted-foreground">{tGroups("examNotStarted")}</p>
-            <StartExamButton
-              groupId={groupId}
-              assignmentId={assignmentId}
-              durationMinutes={assignment.examDurationMinutes ?? 0}
-            />
-          </div>
-        )}
-
-        {!isUpcoming && assignment.examMode === "windowed" && examSession && (
-          <CountdownTimer
-            deadline={new Date(examSession.personalDeadline).getTime()}
-            label={tGroups("examTimeRemaining")}
-          />
-        )}
-
-        {isExamExpired && (
-          <div className="rounded-lg border border-red-200 bg-red-50 p-6 text-center space-y-2 dark:border-red-900 dark:bg-red-950">
-            <p className="font-medium text-red-600 dark:text-red-400">{tGroups("examTimeExpired")}</p>
-          </div>
-        )}
-
-        {isPast && !isExamExpired && (
-          <Card>
-            <CardContent className="py-8 text-center">
-              <p className="text-muted-foreground">{t("contestClosed")}</p>
-            </CardContent>
-          </Card>
-        )}
-
-        {!isUpcoming && (assignment.examMode !== "windowed" || (examSession && !isExamExpired)) && (
-          <>
-            <AssignmentOverview
-              assignment={assignment}
-              sortedProblems={sortedProblems}
-              totalPoints={totalPoints}
-              isUpcoming={isUpcoming}
-              isPast={isPast}
-              groupId={groupId}
-              locale={locale}
-              timeZone={timeZone}
-              labels={{
-                ...overviewLabels,
-                solved: tAssignment("solved"),
-                attempted: tAssignment("attempted"),
-                untried: tAssignment("untried"),
-              }}
-              problemStatuses={studentProblemStatuses}
-            />
-            <ContestClarifications
-              assignmentId={assignmentId}
-              currentUserId={session.user.id}
-              problems={sortedProblems.map((problem) => ({
-                id: problem.problem?.id ?? problem.problemId,
-                title: problem.problem?.title ?? "",
-              }))}
-            />
-            {!isRecruitingCandidate && (
-              <LeaderboardTable assignmentId={assignmentId} currentUserId={session.user.id} />
-            )}
-
-            {/* My Submissions */}
-            <Card>
-              <CardHeader>
-                <CardTitle>{tMySubmissions("title")}</CardTitle>
-              </CardHeader>
-              <CardContent className="p-0">
-                {mySubmissions.length === 0 ? (
-                  <p className="px-6 py-8 text-center text-sm text-muted-foreground">
-                    {tMySubmissions("noSubmissions")}
-                  </p>
-                ) : (
-                  <div className="overflow-x-auto">
-                    <Table>
-                      <TableHeader>
-                        <TableRow>
-                          <TableHead className="pl-6">{tMySubmissions("problem")}</TableHead>
-                          <TableHead>{tMySubmissions("status")}</TableHead>
-                          <TableHead>{tMySubmissions("score")}</TableHead>
-                          <TableHead>{tMySubmissions("submittedAt")}</TableHead>
-                          <TableHead className="pr-6">{tMySubmissions("action")}</TableHead>
-                        </TableRow>
-                      </TableHeader>
-                      <TableBody>
-                        {mySubmissions.map((sub) => (
-                          <TableRow key={sub.id}>
-                            <TableCell className="pl-6">
-                              {sub.problem?.title ? (
-                                <Link
-                                  href={`/dashboard/problems/${sub.problem.id}`}
-                                  className="text-primary hover:underline"
-                                >
-                                  {sub.problem.title}
-                                </Link>
-                              ) : (
-                                tCommon("unknown")
-                              )}
-                            </TableCell>
-                            <TableCell>
-                              <SubmissionStatusBadge
-                                status={sub.status}
-                                label={statusLabels[sub.status as keyof typeof statusLabels] ?? sub.status ?? ""}
-                                compileOutput={sub.compileOutput}
-                                executionTimeMs={sub.executionTimeMs}
-                                memoryUsedKb={sub.memoryUsedKb}
-                                score={sub.score}
-                              />
-                            </TableCell>
-                            <TableCell>
-                              {formatScore(sub.score)}
-                            </TableCell>
-                            <TableCell>
-                              {sub.submittedAt
-                                ? formatDateTimeInTimeZone(sub.submittedAt, locale, timeZone)
-                                : "-"}
-                            </TableCell>
-                            <TableCell className="pr-6">
-                              <Link href={`/submissions/${sub.id}`}>
-                                <Button variant="outline" size="sm">
-                                  {tCommon("view")}
-                                </Button>
-                              </Link>
-                            </TableCell>
-                          </TableRow>
-                        ))}
-                      </TableBody>
-                    </Table>
-                  </div>
-                )}
-              </CardContent>
-            </Card>
-          </>
-        )}
-      </div>
-    );
+    redirect(`/contests/${assignmentId}`);
   }
 
   // Instructor/Admin view with status board
