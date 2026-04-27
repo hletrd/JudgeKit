@@ -2320,6 +2320,7 @@
       "problemsSolved": "AC된 문제"
     },
     "manageContest": "대회 관리",
+    "privateContestNotice": "비공개 대회입니다. 대시보드에서 관리할 수 있습니다.",
     "fetchError": "대회 데이터를 불러오지 못했습니다.",
     "announcements": {
       "title": "공지",

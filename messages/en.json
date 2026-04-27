@@ -2320,6 +2320,7 @@
       "problemsSolved": "Problems with AC"
     },
     "manageContest": "Manage Contest",
+    "privateContestNotice": "This contest is private. You can manage it from the dashboard.",
     "fetchError": "Failed to load contest data.",
     "announcements": {
       "title": "Announcements",
