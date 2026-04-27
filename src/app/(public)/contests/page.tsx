@@ -2,19 +2,53 @@ import type { Metadata } from "next";
 import { getLocale, getTranslations } from "next-intl/server";
 import { PublicContestList } from "../_components/public-contest-list";
 import { getPublicContests } from "@/lib/assignments/public-contests";
+import { getContestsForUser } from "@/lib/assignments/contests";
+import { getContestStatus, type ContestStatus } from "@/lib/assignments/contests";
 import { JsonLd } from "@/components/seo/json-ld";
 import { buildAbsoluteUrl, buildLocalePath, buildPublicMetadata } from "@/lib/seo";
-import { getResolvedSystemSettings } from "@/lib/system-settings";
+import { getResolvedSystemSettings, getResolvedSystemTimeZone } from "@/lib/system-settings";
 import { auth } from "@/lib/auth";
 import { resolveCapabilities } from "@/lib/capabilities/cache";
 import { Button } from "@/components/ui/button";
 import { KeyRound, Plus } from "lucide-react";
+import { Badge } from "@/components/ui/badge";
+import { CountdownTimer } from "@/components/exam/countdown-timer";
+import { formatDateTimeInTimeZone } from "@/lib/datetime";
+import { getDbNow } from "@/lib/db-time";
 import Link from "next/link";
 
 function formatDateLabel(value: Date | null, fallback: string, locale: string) {
   return value
     ? new Intl.DateTimeFormat(locale, { dateStyle: "medium", timeStyle: "short" }).format(value)
     : fallback;
+}
+
+function getContestStatusBorderClass(status: ContestStatus): string {
+  switch (status) {
+    case "upcoming":
+      return "border-l-4 border-l-blue-500";
+    case "open":
+    case "in_progress":
+      return "border-l-4 border-l-green-500";
+    case "expired":
+    case "closed":
+      return "border-l-4 border-l-gray-400";
+  }
+}
+
+function getStatusBadgeVariant(status: ContestStatus) {
+  switch (status) {
+    case "upcoming":
+      return "secondary" as const;
+    case "open":
+      return "success" as const;
+    case "in_progress":
+      return "default" as const;
+    case "expired":
+      return "outline" as const;
+    case "closed":
+      return "outline" as const;
+  }
 }
 
 export async function generateMetadata(): Promise<Metadata> {
@@ -61,6 +95,16 @@ export default async function PublicContestsPage() {
     closed: t("contests.status.closed"),
   } as const;
 
+  // Fetch user's enrolled contests when authenticated
+  const now = await getDbNow();
+  const myContestsRaw = isAuthenticated && session?.user
+    ? await getContestsForUser(session.user.id, session.user.role)
+    : [];
+  const myContests = myContestsRaw.map((c) => ({
+    ...c,
+    status: getContestStatus(c, now),
+  }));
+
   const contests = await getPublicContests();
   const contestsJsonLd = {
     "@context": "https://schema.org",
@@ -103,6 +147,55 @@ export default async function PublicContestsPage() {
           )}
         </div>
       )}
+
+      {/* My Contests section for authenticated users */}
+      {myContests.length > 0 && (
+        <div className="mb-8">
+          <h2 className="mb-4 text-xl font-bold">{t("contests.myContestsTitle")}</h2>
+          <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+            {myContests.map((contest) => (
+              <Link key={contest.id} href={buildLocalePath(`/contests/${contest.id}`, locale)} className="block">
+                <div className={`flex items-center gap-4 rounded-lg border p-4 transition-colors hover:bg-accent/50 ${getContestStatusBorderClass(contest.status)}`}>
+                  <div className="flex-1 min-w-0">
+                    <div className="flex items-center gap-2 mb-1">
+                      <span className="font-medium truncate">{contest.title}</span>
+                    </div>
+                    <div className="flex flex-wrap items-center gap-1.5 text-sm text-muted-foreground">
+                      <span>{contest.groupName}</span>
+                      <span>·</span>
+                      <span>{tContests("problems")}: {contest.problemCount}</span>
+                      {contest.startsAt && (
+                        <>
+                          <span>·</span>
+                          <span>{formatDateLabel(contest.startsAt, t("contests.notScheduled"), locale)}</span>
+                        </>
+                      )}
+                      {contest.deadline && (contest.status === "open" || contest.status === "in_progress") && (
+                        <>
+                          <span>·</span>
+                          <CountdownTimer
+                            deadline={new Date(contest.personalDeadline ?? contest.deadline).getTime()}
+                            label={tContests("endsIn")}
+                          />
+                        </>
+                      )}
+                    </div>
+                  </div>
+                  <div className="flex items-center gap-2 shrink-0">
+                    <Badge variant={getStatusBadgeVariant(contest.status)} className="text-xs">
+                      {statusLabels[contest.status]}
+                    </Badge>
+                    <Badge className={`text-xs ${contest.examMode === "scheduled" ? "bg-blue-500 text-white" : "bg-purple-500 text-white"}`}>
+                      {contest.examMode === "scheduled" ? tContests("modeScheduled") : tContests("modeWindowed")}
+                    </Badge>
+                  </div>
+                </div>
+              </Link>
+            ))}
+          </div>
+        </div>
+      )}
+
       <PublicContestList
         title={t("contests.catalogTitle")}
         description={t("contests.catalogDescription")}
