@@ -1,5 +1,5 @@
 /**
- * Shared styling utilities for contest status indicators.
+ * Shared styling and formatting utilities for contest pages.
  *
  * Used by both the contest listing page and the public contest list component
  * to ensure consistent styling (including dark mode) across all contest views.
@@ -27,4 +27,14 @@ export function getContestStatusBorderClass(status: ContestStatusKey): string {
     case "closed":
       return "border-l-4 border-l-gray-400 dark:border-l-gray-500";
   }
+}
+
+/**
+ * Formats a date value for display in contest pages.
+ * Returns a localized date/time string, or the fallback if the value is null.
+ */
+export function formatDateLabel(value: Date | null, fallback: string, locale: string): string {
+  return value
+    ? new Intl.DateTimeFormat(locale, { dateStyle: "medium", timeStyle: "short" }).format(value)
+    : fallback;
 }

@@ -3,6 +3,7 @@ import { and, desc, eq } from "drizzle-orm";
 import { getLocale, getTranslations } from "next-intl/server";
 import { notFound } from "next/navigation";
 import { PublicContestDetail } from "@/app/(public)/_components/public-contest-detail";
+import { formatDateLabel } from "@/app/(public)/_components/contest-status-styles";
 import { ContestReplay } from "@/components/contest/contest-replay";
 import { ContestStatistics } from "@/components/contest/contest-statistics";
 import { ContestClarifications } from "@/components/contest/contest-clarifications";
@@ -83,10 +84,6 @@ export async function generateMetadata({ params }: { params: Promise<{ id: strin
       tShell("contests.publicProblemCount", { count: contest.publicProblemCount }),
     ].join(" • "),
   });
-}
-
-function formatDateLabel(value: Date | null, fallback: string, locale: string) {
-  return value ? new Intl.DateTimeFormat(locale, { dateStyle: "medium", timeStyle: "short" }).format(value) : fallback;
 }
 
 export default async function PublicContestDetailPage({ params }: { params: Promise<{ id: string }> }) {

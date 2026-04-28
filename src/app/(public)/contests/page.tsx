@@ -1,7 +1,7 @@
 import type { Metadata } from "next";
 import { getLocale, getTranslations } from "next-intl/server";
 import { PublicContestList } from "../_components/public-contest-list";
-import { getContestStatusBorderClass } from "../_components/contest-status-styles";
+import { getContestStatusBorderClass, formatDateLabel } from "../_components/contest-status-styles";
 import { getPublicContests } from "@/lib/assignments/public-contests";
 import { getContestsForUser } from "@/lib/assignments/contests";
 import { getContestStatus, type ContestStatus } from "@/lib/assignments/contests";
@@ -17,12 +17,6 @@ import { CountdownTimer } from "@/components/exam/countdown-timer";
 import { formatDateTimeInTimeZone } from "@/lib/datetime";
 import { getDbNow } from "@/lib/db-time";
 import Link from "next/link";
-
-function formatDateLabel(value: Date | null, fallback: string, locale: string) {
-  return value
-    ? new Intl.DateTimeFormat(locale, { dateStyle: "medium", timeStyle: "short" }).format(value)
-    : fallback;
-}
 
 function getStatusBadgeVariant(status: ContestStatus) {
   switch (status) {
