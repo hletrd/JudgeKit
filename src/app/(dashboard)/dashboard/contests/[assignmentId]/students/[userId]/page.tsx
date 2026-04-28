@@ -13,6 +13,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { formatDateTimeInTimeZone } from "@/lib/datetime";
 import { getResolvedSystemTimeZone } from "@/lib/system-settings";
+import { DEFAULT_PROBLEM_POINTS } from "@/lib/assignments/constants";
 import { getLanguageDisplayLabel } from "@/lib/judge/languages";
 import { CodeTimelinePanel } from "@/components/contest/code-timeline-panel";
 
@@ -121,7 +122,7 @@ export default async function StudentDetailPage({
                 <div className="flex items-center justify-between">
                   <span className="font-medium text-sm truncate">{ap.problem.title}</span>
                   <Badge variant={hasAccepted ? "success" : problemSubs.length > 0 ? "destructive" : "secondary"} className="text-xs">
-                    {bestScore}/{ap.points ?? 100}
+                    {bestScore}/{ap.points ?? DEFAULT_PROBLEM_POINTS}
                   </Badge>
                 </div>
                 <p className="text-xs text-muted-foreground mt-1">

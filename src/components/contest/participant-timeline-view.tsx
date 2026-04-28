@@ -9,6 +9,7 @@ import { getResolvedSystemTimeZone } from "@/lib/system-settings";
 import type { ParticipantAuditData } from "@/lib/assignments/participant-audit";
 import type { ParticipantTimeline } from "@/lib/assignments/participant-timeline";
 import { SubmissionStatusBadge } from "@/components/submission-status-badge";
+import { DEFAULT_PROBLEM_POINTS } from "@/lib/assignments/constants";
 import { ParticipantAntiCheatTimeline } from "@/components/contest/participant-anti-cheat-timeline";
 import { CodeTimelinePanel } from "@/components/contest/code-timeline-panel";
 import { Badge } from "@/components/ui/badge";
@@ -182,7 +183,7 @@ export async function ParticipantTimelineView({
                           {problem.title}
                         </Link>
                         <span className="ml-1 text-xs text-muted-foreground">
-                          {problem.points ?? 100} pt
+                          {problem.points ?? DEFAULT_PROBLEM_POINTS} pt
                         </span>
                       </TableCell>
                       <TableCell>
@@ -255,7 +256,7 @@ export async function ParticipantTimelineView({
                     {problem.title}
                   </Link>
                   <span className="text-xs font-normal text-muted-foreground">
-                    {problem.points ?? 100} pt
+                    {problem.points ?? DEFAULT_PROBLEM_POINTS} pt
                   </span>
                 </h4>
                 {summary ? (

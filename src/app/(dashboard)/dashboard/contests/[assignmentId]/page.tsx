@@ -41,6 +41,7 @@ import { RecruitingInvitationsPanel } from "@/components/contest/recruiting-invi
 import AssignmentFormDialog, { type AssignmentEditorValue } from "../../groups/[id]/assignment-form-dialog";
 import { AssignmentDeleteButton } from "../../groups/[id]/assignment-delete-button";
 import { getDbNow } from "@/lib/db-time";
+import { DEFAULT_PROBLEM_POINTS } from "@/lib/assignments/constants";
 
 const STATUS_FILTER_VALUES = ["all", ...ASSIGNMENT_PARTICIPANT_STATUS_VALUES] as const;
 
@@ -163,7 +164,7 @@ export default async function ContestDetailPage({
   const sortedProblems = [...assignment.assignmentProblems].sort(
     (left, right) => (left.sortOrder ?? 0) - (right.sortOrder ?? 0)
   );
-  const totalPoints = sortedProblems.reduce((sum, p) => sum + (p.points ?? 100), 0);
+  const totalPoints = sortedProblems.reduce((sum, p) => sum + (p.points ?? DEFAULT_PROBLEM_POINTS), 0);
   const now = await getDbNow();
   const isUpcoming = assignment.startsAt != null && new Date(assignment.startsAt) > now;
   const isPast =
@@ -243,7 +244,7 @@ export default async function ContestDetailPage({
     hasSubmissions: hasExistingSubmissions,
     problems: sortedProblems.map((p) => ({
       problemId: p.problem?.id ?? p.problemId,
-      points: p.points ?? 100,
+      points: p.points ?? DEFAULT_PROBLEM_POINTS,
     })),
     examMode: assignment.examMode as "none" | "scheduled" | "windowed",
     visibility: assignment.visibility ?? "private",

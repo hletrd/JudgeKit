@@ -19,6 +19,7 @@ import {
 } from "@/lib/assignments/management";
 import { canAccessGroup } from "@/lib/auth/permissions";
 import { resolveCapabilities, getAllRoleLevels } from "@/lib/capabilities/cache";
+import { DEFAULT_PROBLEM_POINTS } from "@/lib/assignments/constants";
 import AssignmentFormDialog, { type AssignmentEditorValue } from "./assignment-form-dialog";
 import { AssignmentDeleteButton } from "./assignment-delete-button";
 import { GroupMembersManager } from "./group-members-manager";
@@ -323,7 +324,7 @@ export default async function GroupDetailPage({ params }: { params: Promise<{ id
                     .sort((left, right) => (left.sortOrder ?? 0) - (right.sortOrder ?? 0))
                     .map((problem) => ({
                       problemId: problem.problemId,
-                      points: problem.points ?? 100,
+                      points: problem.points ?? DEFAULT_PROBLEM_POINTS,
                     })),
                   visibility: assignment.visibility ?? "private",
                   examMode: assignment.examMode ?? "none",

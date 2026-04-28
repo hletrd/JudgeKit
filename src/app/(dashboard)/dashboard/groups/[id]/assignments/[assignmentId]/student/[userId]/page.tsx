@@ -18,6 +18,7 @@ import { formatDateTimeInTimeZone } from "@/lib/datetime";
 import { formatSubmissionIdPrefix } from "@/lib/submissions/format";
 import { buildStatusLabels } from "@/lib/judge/status-labels";
 import { getLanguageDisplayLabel } from "@/lib/judge/languages";
+import { DEFAULT_PROBLEM_POINTS } from "@/lib/assignments/constants";
 import { SubmissionStatusBadge } from "@/components/submission-status-badge";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -174,7 +175,7 @@ export default async function StudentSubmissionsPage({
                       {problem.title}
                     </Link>
                     <span className="text-sm font-normal text-muted-foreground">
-                      {problem.points ?? 100} pt
+                      {problem.points ?? DEFAULT_PROBLEM_POINTS} pt
                     </span>
                   </CardTitle>
                 </CardHeader>

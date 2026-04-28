@@ -16,6 +16,7 @@ import {
 } from "@/lib/assignments/participant-status";
 import { canAccessGroup } from "@/lib/auth/permissions";
 import { canManageGroupResourcesAsync } from "@/lib/assignments/management";
+import { DEFAULT_PROBLEM_POINTS } from "@/lib/assignments/constants";
 import { db } from "@/lib/db";
 import { assignments } from "@/lib/db/schema";
 import { getResolvedSystemTimeZone } from "@/lib/system-settings";
@@ -117,7 +118,7 @@ export default async function GroupAssignmentDetailPage({
   const sortedProblems = [...assignment.assignmentProblems].sort(
     (left, right) => (left.sortOrder ?? 0) - (right.sortOrder ?? 0)
   );
-  const totalPoints = sortedProblems.reduce((sum, p) => sum + (p.points ?? 100), 0);
+  const totalPoints = sortedProblems.reduce((sum, p) => sum + (p.points ?? DEFAULT_PROBLEM_POINTS), 0);
   // Use DB server time for assignment status checks to avoid clock skew
   // between the app server and DB server (same rationale as recruit page fix).
   const now = await getDbNow();

@@ -8,6 +8,7 @@ import { createApiHandler } from "@/lib/api/handler";
 import { apiSuccess, apiError } from "@/lib/api/responses";
 import { recordAuditEvent } from "@/lib/audit/events";
 import { getDbNowUncached } from "@/lib/db-time";
+import { DEFAULT_PROBLEM_POINTS } from "@/lib/assignments/constants";
 
 const quickCreateSchema = z.object({
   title: z.string().min(1).max(255),
@@ -89,7 +90,7 @@ export const POST = createApiHandler({
         assignmentId,
         problemId,
         sortOrder: i,
-        points: body.problemPoints?.[i] ?? 100,
+        points: body.problemPoints?.[i] ?? DEFAULT_PROBLEM_POINTS,
       }));
       if (problemValues.length > 0) {
         await tx.insert(assignmentProblems).values(problemValues);
