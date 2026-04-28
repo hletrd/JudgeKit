@@ -393,7 +393,7 @@ export default async function PublicContestDetailPage({ params }: { params: Prom
                                 score={sub.score}
                               />
                             </TableCell>
-                            <TableCell>{formatScore(sub.score)}</TableCell>
+                            <TableCell>{formatScore(sub.score, locale)}</TableCell>
                             <TableCell>
                               {sub.submittedAt
                                 ? formatDateTimeInTimeZone(sub.submittedAt, locale, resolvedTimeZone)
@@ -662,7 +662,7 @@ export default async function PublicContestDetailPage({ params }: { params: Prom
             {contest.publicProblems.map((problem, index) => (
               <Link
                 key={problem.id}
-                href={buildLocalePath(`/practice/problems/${problem.id}`, locale)}
+                href={buildLocalePath(`/practice/problems/${problem.id}?assignmentId=${contest.id}`, locale)}
                 className="flex items-center gap-2 rounded-md border p-3 text-sm hover:bg-accent transition-colors"
               >
                 <span className="font-mono text-muted-foreground">{index + 1}.</span>
