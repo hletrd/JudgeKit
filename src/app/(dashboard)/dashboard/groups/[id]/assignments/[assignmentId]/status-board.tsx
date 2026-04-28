@@ -216,7 +216,7 @@ function MobileStudentCard({
                     <div className="flex items-center gap-1">
                       <span>{labels.bestScore}: {formatBoardScore(problemRow.bestScore ?? 0, locale)}/{formatBoardScore(problem.points, locale)}</span>
                       {problemRow.isOverridden && (
-                        <PenLine className="size-3 shrink-0 text-amber-500" />
+                        <PenLine className="size-3 shrink-0 text-amber-500 dark:text-amber-400" />
                       )}
                     </div>
                     <div className="text-muted-foreground">{labels.attempts}: {problemRow.attemptCount}</div>
@@ -461,7 +461,7 @@ export function StatusBoard({
                               <TooltipProvider>
                                 <Tooltip>
                                   <TooltipTrigger>
-                                    <PenLine className="size-3 shrink-0 text-amber-500" />
+                                    <PenLine className="size-3 shrink-0 text-amber-500 dark:text-amber-400" />
                                   </TooltipTrigger>
                                   <TooltipContent>{labels.overrideLabels.overrideIndicator}</TooltipContent>
                                 </Tooltip>

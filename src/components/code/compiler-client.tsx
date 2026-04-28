@@ -521,12 +521,12 @@ export function CompilerClient({ languages, title, description, preferredLanguag
             <div className="flex flex-1 flex-col gap-2 overflow-hidden">
               <div className="flex flex-wrap items-center gap-3 text-xs text-muted-foreground">
                 {result.timedOut && (
-                  <span className="font-medium text-yellow-600">
+                  <span className="font-medium text-yellow-600 dark:text-yellow-400">
                     {t("timedOut")}
                   </span>
                 )}
                 {result.compileOutput && (
-                  <span className="font-medium text-red-600">
+                  <span className="font-medium text-red-600 dark:text-red-400">
                     {t("compileError")}
                   </span>
                 )}
@@ -563,7 +563,7 @@ export function CompilerClient({ languages, title, description, preferredLanguag
                 <TabsContent value="stderr" className="flex-1 overflow-auto">
                   <TruncatedOutput
                     content={result.stderr}
-                    className="rounded-lg border bg-muted/50 p-3 font-mono text-sm whitespace-pre-wrap text-red-600"
+                    className="rounded-lg border bg-muted/50 p-3 font-mono text-sm whitespace-pre-wrap text-red-600 dark:text-red-400"
                     showFullOutputLabel={t("showFullOutput")}
                     outputEmptyLabel={t("outputEmpty")}
                     outputTruncatedLabel={t("outputTruncated")}
@@ -574,7 +574,7 @@ export function CompilerClient({ languages, title, description, preferredLanguag
                   <TabsContent value="compileOutput" className="flex-1 overflow-auto">
                     <TruncatedOutput
                       content={result.compileOutput}
-                      className="rounded-lg border bg-muted/50 p-3 font-mono text-sm whitespace-pre-wrap text-red-600"
+                      className="rounded-lg border bg-muted/50 p-3 font-mono text-sm whitespace-pre-wrap text-red-600 dark:text-red-400"
                       showFullOutputLabel={t("showFullOutput")}
                       outputEmptyLabel={t("outputEmpty")}
                       outputTruncatedLabel={t("outputTruncated")}
