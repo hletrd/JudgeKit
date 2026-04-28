@@ -480,7 +480,7 @@ export function ApiKeysClient({ roleOptions }: { roleOptions?: RoleOption[] }) {
                             title={t("copyMaskedKeyPreview")}
                           >
                             {copiedKeyId === key.id ? (
-                              <Check className="h-3.5 w-3.5 text-green-500" />
+                              <Check className="h-3.5 w-3.5 text-green-500 dark:text-green-400" />
                             ) : (
                               <Copy className="h-3.5 w-3.5 text-muted-foreground" />
                             )}

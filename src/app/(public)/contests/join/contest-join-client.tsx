@@ -88,7 +88,7 @@ export function ContestJoinClient() {
         <CardContent className="pt-4">
           {success ? (
             <div className="flex flex-col items-center gap-4 py-6 text-center">
-              <CheckCircle2 className="h-14 w-14 text-green-500 animate-pulse" />
+              <CheckCircle2 className="h-14 w-14 text-green-500 dark:text-green-400 animate-pulse" />
               <p className="text-base font-medium text-green-600 dark:text-green-400">{t("successRedirect")}</p>
             </div>
           ) : (

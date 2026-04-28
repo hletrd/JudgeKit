@@ -36,7 +36,7 @@ export function CopyCodeButton({ value }: { value: string }) {
       aria-label={copied ? t("copied") : t("copyCode")}
     >
       {copied ? (
-        <Check className="h-3.5 w-3.5 text-green-500" />
+        <Check className="h-3.5 w-3.5 text-green-500 dark:text-green-400" />
       ) : (
         <Copy className="h-3.5 w-3.5 text-[var(--problem-code-foreground,currentColor)]" />
       )}

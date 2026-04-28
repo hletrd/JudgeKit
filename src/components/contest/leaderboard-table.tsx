@@ -82,8 +82,8 @@ function formatIcpcCell(result: LeaderboardProblemResult, contestStartMs: number
 
 function getRankIcon(rank: number) {
   if (rank === 1) return <Trophy className="size-4 text-yellow-500 dark:text-yellow-400" />;
-  if (rank === 2) return <Trophy className="size-4 text-slate-400" />;
-  if (rank === 3) return <Trophy className="size-4 text-amber-600" />;
+  if (rank === 2) return <Trophy className="size-4 text-slate-400 dark:text-slate-300" />;
+  if (rank === 3) return <Trophy className="size-4 text-amber-600 dark:text-amber-400" />;
   return null;
 }
 
