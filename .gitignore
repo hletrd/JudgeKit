@@ -75,3 +75,23 @@ judge-worker-rs/dead-letter/
 .context/
 node-compile-cache/
 .agent/
+
+# one-off problem-solving / verification scratch scripts (not source-of-truth)
+/add-stress-tests.mjs
+/auto-solver.mjs
+/dedup-problems.mjs
+/fetch-problems.mjs
+/gen_test_cases.mjs
+/solutions.js
+/solve-all.mjs
+/solve-all2.mjs
+/solve-fixes.mjs
+/solve-problems.mjs
+/stress-tests.mjs
+/submit.mjs
+/verify-problems.mjs
+/verify_all_tc.py
+/verify_tc.py
+/scripts/fix-copyright.mjs
+/scripts/validate-enhance-201-300.mjs
+/scripts/validate-enhance-basic.mjs
