@@ -7,6 +7,7 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { getContestsForUser, getContestStatus } from "@/lib/assignments/contests";
 import type { ContestStatus } from "@/lib/assignments/contests";
+import { getContestStatusBorderClass } from "@/app/(public)/_components/contest-status-styles";
 import { formatDateTimeInTimeZone } from "@/lib/datetime";
 import { getDbNow } from "@/lib/db-time";
 import { CountdownTimer } from "@/components/exam/countdown-timer";
@@ -52,19 +53,6 @@ function buildContestPageHref(page: number, filter: FilterValue) {
   if (filter !== "all") params.set("filter", filter);
   const qs = params.toString();
   return qs ? `/dashboard/contests?${qs}` : "/dashboard/contests";
-}
-
-function getStatusBorderClass(status: ContestStatus): string {
-  switch (status) {
-    case "upcoming":
-      return "border-l-4 border-l-blue-500";
-    case "open":
-    case "in_progress":
-      return "border-l-4 border-l-green-500";
-    case "expired":
-    case "closed":
-      return "border-l-4 border-l-gray-400";
-  }
 }
 
 export default async function ContestsPage({
@@ -178,7 +166,7 @@ export default async function ContestsPage({
             const status = statusMap.get(contest.id) ?? "closed";
             return (
               <Link key={contest.id} href={`/dashboard/contests/${contest.id}`} className="block">
-                <div className={`flex items-center gap-4 rounded-lg border p-4 transition-colors hover:bg-accent/50 ${getStatusBorderClass(status)}`}>
+                <div className={`flex items-center gap-4 rounded-lg border p-4 transition-colors hover:bg-accent/50 ${getContestStatusBorderClass(status)}`}>
                   <div className="flex-1 min-w-0">
                     <div className="flex items-center gap-2 mb-1">
                       <span className="font-medium truncate">{contest.title}</span>
@@ -210,7 +198,7 @@ export default async function ContestsPage({
                         <>
                           <span>·</span>
                           <CountdownTimer
-                            deadline={new Date(contest.personalDeadline ?? contest.deadline as string | Date).getTime()}
+                            deadline={new Date(contest.personalDeadline ?? contest.deadline!).getTime()}
                             label={t("endsIn")}
                           />
                         </>
