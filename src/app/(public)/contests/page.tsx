@@ -1,7 +1,7 @@
 import type { Metadata } from "next";
 import { getLocale, getTranslations } from "next-intl/server";
 import { PublicContestList } from "../_components/public-contest-list";
-import { getContestStatusBorderClass, getContestStatusBadgeVariant, formatDateLabel, getExamModeBadgeClass, getScoringModelBadgeClass } from "../_components/contest-status-styles";
+import { getContestStatusBorderClass, getContestStatusBadgeVariant, formatDateLabel, getExamModeBadgeClass, getScoringModelBadgeClass, buildContestStatusLabels } from "../_components/contest-status-styles";
 import { getPublicContests } from "@/lib/assignments/public-contests";
 import { getContestsForUser } from "@/lib/assignments/contests";
 import { getContestStatus } from "@/lib/assignments/contests";
@@ -53,13 +53,13 @@ export default async function PublicContestsPage() {
   const caps = session?.user ? await resolveCapabilities(session.user.role) : null;
   const canCreateContest = caps?.has("contests.create") ?? false;
   const isAuthenticated = Boolean(session?.user);
-  const statusLabels = {
+  const statusLabels = buildContestStatusLabels({
     upcoming: t("contests.status.upcoming"),
     open: t("contests.status.open"),
     in_progress: t("contests.status.inProgress"),
     expired: t("contests.status.expired"),
     closed: t("contests.status.closed"),
-  } as const;
+  });
 
   // Fetch user's enrolled contests when authenticated
   const now = await getDbNow();

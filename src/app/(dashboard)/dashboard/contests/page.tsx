@@ -7,7 +7,7 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { getContestsForUser, getContestStatus } from "@/lib/assignments/contests";
 import type { ContestStatus } from "@/lib/assignments/contests";
-import { getContestStatusBorderClass, getContestStatusBadgeVariant, getExamModeBadgeClass, getScoringModelBadgeClass } from "@/app/(public)/_components/contest-status-styles";
+import { getContestStatusBorderClass, getContestStatusBadgeVariant, getExamModeBadgeClass, getScoringModelBadgeClass, buildContestStatusLabels } from "@/app/(public)/_components/contest-status-styles";
 import { formatDateTimeInTimeZone } from "@/lib/datetime";
 import { getDbNow } from "@/lib/db-time";
 import { CountdownTimer } from "@/components/exam/countdown-timer";
@@ -88,13 +88,13 @@ export default async function ContestsPage({
   const offset = (clampedPage - 1) * PAGE_SIZE;
   const pagedContests = filteredContests.slice(offset, offset + PAGE_SIZE);
 
-  const statusLabelMap: Record<ContestStatus, string> = {
+  const statusLabelMap = buildContestStatusLabels({
     upcoming: t("statusUpcoming"),
     open: t("statusOpen"),
     in_progress: t("statusInProgress"),
     expired: t("statusExpired"),
     closed: t("statusClosed"),
-  };
+  });
 
   const filterTabs: { value: FilterValue; label: string }[] = [
     { value: "all", label: t("filterAll") },

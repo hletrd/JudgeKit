@@ -5,23 +5,18 @@
  * to ensure consistent styling (including dark mode) across all contest views.
  */
 
-export type ContestStatusKey =
-  | "upcoming"
-  | "open"
-  | "in_progress"
-  | "expired"
-  | "closed";
+// Re-export the canonical contest status type so all UI modules reference
+// a single source of truth instead of defining a duplicate local type.
+export type { ContestStatus } from "@/lib/assignments/contests";
 
-/**
- * Returns the CSS class string for a contest card's left border,
- * color-coded by contest status. Includes dark mode variants.
- */
+import type { ContestStatus } from "@/lib/assignments/contests";
+
 /**
  * Returns the Badge variant for a contest status, color-coded by meaning.
  * Used by both dashboard and public contest listing pages for consistency.
  */
 export function getContestStatusBadgeVariant(
-  status: ContestStatusKey
+  status: ContestStatus
 ): "secondary" | "success" | "default" | "outline" {
   switch (status) {
     case "upcoming":
@@ -36,7 +31,11 @@ export function getContestStatusBadgeVariant(
   }
 }
 
-export function getContestStatusBorderClass(status: ContestStatusKey): string {
+/**
+ * Returns the CSS class string for a contest card's left border,
+ * color-coded by contest status. Includes dark mode variants.
+ */
+export function getContestStatusBorderClass(status: ContestStatus): string {
   switch (status) {
     case "upcoming":
       return "border-l-4 border-l-blue-500 dark:border-l-blue-400";
@@ -57,6 +56,47 @@ export function formatDateLabel(value: Date | null, fallback: string, locale: st
   return value
     ? new Intl.DateTimeFormat(locale, { dateStyle: "medium", timeStyle: "short" }).format(value)
     : fallback;
+}
+
+/**
+ * Build a localized map of contest status labels.
+ *
+ * Accepts explicit label strings for each status so that callers using
+ * different translation namespaces (e.g. `publicShell` with nested keys vs
+ * `contests` with flat keys) can both use this shared function.
+ *
+ * Centralises the status-to-label-key mapping so that adding a new contest
+ * status only requires updating this function and its callers.
+ *
+ * @example
+ * // Public pages using nested keys under "publicShell":
+ * const t = getTranslations("publicShell");
+ * const labels = buildContestStatusLabels({
+ *   upcoming: t("contests.status.upcoming"),
+ *   open: t("contests.status.open"),
+ *   in_progress: t("contests.status.inProgress"),
+ *   expired: t("contests.status.expired"),
+ *   closed: t("contests.status.closed"),
+ * });
+ *
+ * // Dashboard pages using flat keys under "contests":
+ * const t = getTranslations("contests");
+ * const labels = buildContestStatusLabels({
+ *   upcoming: t("statusUpcoming"),
+ *   open: t("statusOpen"),
+ *   in_progress: t("statusInProgress"),
+ *   expired: t("statusExpired"),
+ *   closed: t("statusClosed"),
+ * });
+ */
+export function buildContestStatusLabels(labels: {
+  upcoming: string;
+  open: string;
+  in_progress: string;
+  expired: string;
+  closed: string;
+}): Record<ContestStatus, string> {
+  return labels;
 }
 
 export type ExamModeKey = "none" | "scheduled" | "windowed";

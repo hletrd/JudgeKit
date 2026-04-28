@@ -3,7 +3,7 @@ import { and, desc, eq } from "drizzle-orm";
 import { getLocale, getTranslations } from "next-intl/server";
 import { notFound } from "next/navigation";
 import { PublicContestDetail } from "@/app/(public)/_components/public-contest-detail";
-import { formatDateLabel, getContestStatusBadgeVariant, getExamModeBadgeClass, getScoringModelBadgeClass } from "@/app/(public)/_components/contest-status-styles";
+import { formatDateLabel, getContestStatusBadgeVariant, getExamModeBadgeClass, getScoringModelBadgeClass, buildContestStatusLabels } from "@/app/(public)/_components/contest-status-styles";
 import { ContestReplay } from "@/components/contest/contest-replay";
 import { ContestStatistics } from "@/components/contest/contest-statistics";
 import { ContestClarifications } from "@/components/contest/contest-clarifications";
@@ -104,13 +104,13 @@ export default async function PublicContestDetailPage({ params }: { params: Prom
     }),
     auth(),
   ]);
-  const statusLabels = {
+  const statusLabels = buildContestStatusLabels({
     upcoming: t("contests.status.upcoming"),
     open: t("contests.status.open"),
     in_progress: t("contests.status.inProgress"),
     expired: t("contests.status.expired"),
     closed: t("contests.status.closed"),
-  } as const;
+  });
 
   // --- Auth-aware rendering ---
   // Check if the user is enrolled or can manage this contest
