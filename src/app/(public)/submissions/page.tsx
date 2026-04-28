@@ -446,7 +446,7 @@ export default async function SubmissionsPage({
                       score={sub.score}
                     />
                   </TableCell>
-                  <TableCell>{formatScore(sub.score)}</TableCell>
+                  <TableCell>{formatScore(sub.score, locale)}</TableCell>
                   <TableCell>
                     {sub.submittedAt
                       ? formatDateTimeInTimeZone(sub.submittedAt, locale, timeZone)
@@ -500,7 +500,7 @@ export default async function SubmissionsPage({
                     <span>{sub.user?.name ?? tCommon("unknown")}</span>
                     <span>·</span>
                     <span>{getLanguageDisplayLabel(sub.language)}</span>
-                    {sub.score !== null && <span>{formatScore(sub.score)}pt</span>}
+                    {sub.score !== null && <span>{formatScore(sub.score, locale)}pt</span>}
                     {sub.submittedAt && <span>{formatDateTimeInTimeZone(sub.submittedAt, locale, timeZone)}</span>}
                   </div>
                 </div>
