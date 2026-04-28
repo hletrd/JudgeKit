@@ -395,7 +395,7 @@ export function AntiCheatDashboard({ assignmentId }: AntiCheatDashboardProps) {
             </div>
           </div>
           <div className="flex items-center gap-3 rounded-lg border bg-card p-3">
-            <div className="flex size-8 shrink-0 items-center justify-center rounded-md bg-orange-500/10">
+            <div className="flex size-8 shrink-0 items-center justify-center rounded-md bg-orange-500/10 dark:bg-orange-500/15">
               <Users className="size-4 text-orange-500" />
             </div>
             <div className="min-w-0">
