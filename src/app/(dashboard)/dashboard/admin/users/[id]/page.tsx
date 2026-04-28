@@ -116,7 +116,7 @@ export default async function AdminUserDetailPage({
           <div className="space-y-1">
             <p className="text-sm text-muted-foreground">{t("table.status")}</p>
             {user.isActive ? (
-              <Badge className="bg-green-500">{tCommon("active")}</Badge>
+              <Badge className="bg-green-500 text-white dark:bg-green-600 dark:text-white">{tCommon("active")}</Badge>
             ) : (
               <Badge variant="destructive">{tCommon("inactive")}</Badge>
             )}
