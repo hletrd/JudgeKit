@@ -1,60 +1,133 @@
-# Cycle 3 Code-Quality Review
+# Cycle 3 Code Review — code-reviewer lane
 
-**Date:** 2026-04-19
-**Base commit:** f637c590
+**Date:** 2026-04-28
+**Scope:** Verify cycle 1-2 fixes; find new issues in the change surface
 **Reviewer:** code-reviewer
 
-## Findings
+---
 
-### F1 — Admin chat-logs route uses bare `parseInt` instead of shared `parsePositiveInt` utility
-- **Severity:** MEDIUM
-- **Confidence:** HIGH
-- **File:** `src/app/api/v1/admin/chat-logs/route.ts:19`
-- **Evidence:** `const page = Math.max(1, parseInt(url.searchParams.get("page") || "1", 10));`
-- **Why it matters:** This bypasses the shared `parsePositiveInt` utility introduced in cycle 2 (NAFIX-01) to prevent NaN propagation. While `Math.max(1, NaN)` returns `NaN` (not 1), the `parseInt` fallback to `"1"` means NaN only occurs with truly malformed inputs like `"abc"`. However, the inconsistency means the shared utility pattern is not being used project-wide, and `parseInt("abc", 10)` returns `NaN`, making `Math.max(1, NaN) === NaN` — a bug.
-- **Failure scenario:** Request to `/api/v1/admin/chat-logs?page=abc` produces `page=NaN`, causing `offset=NaN*50=NaN`, likely resulting in a SQL error or unexpected behavior.
-- **Suggested fix:** Replace with `parsePositiveInt(url.searchParams.get("page"), 1)`.
+## Cycle 1-2 Fix Verification
 
-### F2 — Admin submissions CSV export has no row limit (DoS risk)
-- **Severity:** HIGH
-- **Confidence:** HIGH
-- **File:** `src/app/api/v1/admin/submissions/export/route.ts:95-111`
-- **Evidence:** The query at line 95-111 has no `.limit()` or `.offset()`, fetching all matching rows. Unlike the admin audit-logs and login-logs CSV exports fixed in cycle 2 (CSV-01), this route was missed.
-- **Why it matters:** An admin user can request an unbounded CSV export that loads all submissions into memory, potentially millions of rows, causing OOM.
-- **Failure scenario:** Admin user hits `/api/v1/admin/submissions/export` on a deployment with 500K+ submissions; server runs out of memory and crashes.
-- **Suggested fix:** Apply `.limit()` with a maximum export row count (e.g., 10000). Add pagination or streaming if larger exports are needed.
+### Task A: totalPoints reduce initial value — VERIFIED
+`src/app/(public)/contests/[id]/page.tsx:184` — `sortedProblems.reduce((sum, p) => sum + p.points, 0)` correct. No off-by-100.
 
-### F3 — Admin submissions CSV export has duplicate `escapeCsvField` function
-- **Severity:** LOW
-- **Confidence:** HIGH
-- **File:** `src/app/api/v1/admin/submissions/export/route.ts:37-46`
-- **Evidence:** This file defines its own `escapeCsvField` locally, while `src/lib/csv/escape-field.ts` was extracted as a shared utility in cycle 2 (CSV-01).
-- **Why it matters:** CSV injection fixes must be applied in both places, and the two implementations could diverge.
-- **Suggested fix:** Import `escapeCsvField` from `@/lib/csv/escape-field`.
+### Task B: examDurationMinutes in assignmentContext — VERIFIED
+`src/app/(public)/practice/problems/[id]/page.tsx:158,184,207,481` — type, DB query, prop passing all correct.
 
-### F4 — Anti-cheat route uses bare `parseInt` instead of shared utility
-- **Severity:** LOW
-- **Confidence:** HIGH
-- **File:** `src/app/api/v1/contests/[assignmentId]/anti-cheat/route.ts:148-149`
-- **Evidence:** `parseInt(searchParams.get("limit") ?? "100", 10) || 100` — while the `|| 100` fallback handles NaN, it does not use the shared `parsePositiveInt` utility.
-- **Why it matters:** Inconsistent with the project-wide NaN fix pattern. The `|| 100` pattern does handle NaN correctly here, but maintaining two patterns increases maintenance burden.
-- **Suggested fix:** Replace with `parsePositiveInt(searchParams.get("limit"), 100, { strict: true })`.
+### Task C: Redundant getExamSession fallback — VERIFIED (enrolled flow)
+`src/app/(public)/contests/[id]/page.tsx:173` — uses `contest.examSession` directly.
 
-### F5 — Chat widget `get_submission_history` tool uses `Number(args.limit)` which can produce NaN
-- **Severity:** LOW
-- **Confidence:** MEDIUM
-- **File:** `src/lib/plugins/chat-widget/tools.ts:124`
-- **Evidence:** `const limit = Math.min(Math.max(Number(args.limit) || 5, 1), 10);` — `Number(undefined)` returns `NaN`, and `NaN || 5` returns `5`, so this is safe. However, `Number("abc")` also returns `NaN` which falls through correctly. The pattern is safe but inconsistent with the rest of the codebase.
-- **Suggested fix:** Use `parsePositiveInt(String(args.limit), 5)` for consistency.
+### Task D: Dark mode badges on contest detail page — VERIFIED
+`src/app/(public)/contests/[id]/page.tsx:233,236` — has `dark:bg-blue-600`, `dark:bg-purple-600`, `dark:bg-orange-600`, `dark:bg-teal-600`.
 
-### F6 — `workspaceShell` i18n keys will become orphaned when workspace layout is removed
-- **Severity:** MEDIUM
-- **Confidence:** HIGH
-- **File:** `src/app/(workspace)/layout.tsx:21`, `messages/en.json`, `messages/ko.json`
-- **Evidence:** The workspace layout uses `workspaceShell` translation keys. When the workspace-to-public migration (Phase 1) removes this layout, those keys become dead weight in the message files.
-- **Why it matters:** Orphaned i18n keys increase translation burden and confuse translators.
-- **Suggested fix:** Audit and remove `workspaceShell.*` keys as part of the migration, merging any unique ones into `publicShell` or `community`.
+### Task E: Layout comment — VERIFIED
+`src/app/(public)/contests/[id]/layout.tsx:17` — TODO note present.
 
-## Summary
+### Cycle 2 Task A: My Contests dark mode badges — VERIFIED
+`src/app/(public)/contests/page.tsx:177` — has `dark:bg-blue-600`/`dark:bg-purple-600`.
 
-Found 6 issues: 1 HIGH (unbounded CSV export), 2 MEDIUM (parseInt inconsistency, i18n orphan keys), 3 LOW (duplicate escapeCsvField, parseInt pattern inconsistency, Number() pattern in chat tools). The unbounded CSV export is the most critical.
+### Cycle 2 Task B: DEFAULT_PROBLEM_POINTS constant — PARTIALLY VERIFIED
+`src/lib/assignments/constants.ts` — constant exists and is used in 4 public/lib files. However, 6+ dashboard files still use raw `?? 100`:
+- `src/app/(dashboard)/dashboard/contests/[assignmentId]/page.tsx:166,246`
+- `src/app/(dashboard)/dashboard/groups/[id]/page.tsx:326`
+- `src/app/(dashboard)/dashboard/groups/[id]/assignments/[assignmentId]/page.tsx:120`
+- `src/app/(dashboard)/dashboard/contests/[assignmentId]/students/[userId]/page.tsx:124`
+- `src/app/(dashboard)/dashboard/groups/[id]/assignments/[assignmentId]/student/[userId]/page.tsx:177`
+- `src/components/contest/participant-timeline-view.tsx:185,258`
+
+### Cycle 2 Task C: Import route type guard — VERIFIED
+`src/app/api/v1/admin/migrate/import/route.ts:162` — type guard added.
+
+### Cycle 2 Task D: Regression tests — VERIFIED
+`tests/component/assignment-overview.test.tsx` — 4 tests covering totalPoints, DEFAULT_PROBLEM_POINTS, exam duration, empty problems.
+
+### Cycle 2 Task E: assignmentId on Virtual Practice links — VERIFIED
+`src/app/(public)/contests/[id]/page.tsx:665` — includes `?assignmentId=${contest.id}`.
+
+### Cycle 2 Task F: locale passed to formatScore — VERIFIED
+`src/app/(public)/contests/[id]/page.tsx:396` — uses `formatScore(sub.score, locale)`.
+
+### Cycle 2 Task G: Shared getContestStatusBorderClass — VERIFIED
+`src/app/(public)/_components/contest-status-styles.ts` — shared utility with dark mode support.
+
+### Cycle 2 Task H: Parallelized queries — VERIFIED
+`src/app/(public)/contests/page.tsx:88-93` — uses `Promise.all`.
+
+---
+
+## New Findings
+
+### C3-CR-1: [MEDIUM] Badge color inversion between My Contests and Catalog sections — light/dark shades swapped
+
+**Confidence:** HIGH
+
+The exam mode badge colors are inverted between the My Contests section and the PublicContestList component:
+
+- **My Contests** (`contests/page.tsx:177`): `bg-blue-500` light / `dark:bg-blue-600` dark for scheduled, `bg-purple-500` / `dark:bg-purple-600` for windowed
+- **Catalog** (`public-contest-list.tsx:93,136`): `bg-blue-600` light / `dark:bg-blue-500` dark for scheduled, `bg-purple-600` / `dark:bg-purple-500` for windowed
+- **Contest Detail** (`contests/[id]/page.tsx:233`): `bg-blue-500` light / `dark:bg-blue-600` dark (matches My Contests, not Catalog)
+
+The light/dark shade convention is inverted: My Contests uses lighter shades in light mode (500) and darker in dark mode (600), while Catalog does the opposite (600 light / 500 dark). Similarly the scoring model badges: contest detail uses `bg-orange-500`/`dark:bg-orange-600` while catalog uses `bg-orange-600`/`dark:bg-orange-500`.
+
+This is a visual inconsistency that creates a jarring transition when scrolling between sections on the same page. Users see blue-500 badges in My Contests and blue-600 badges in the catalog below.
+
+**Fix:** Standardize on one convention. The typical Tailwind dark mode pattern is `bg-{color}-500 dark:bg-{color}-600` (lighter in light mode, slightly darker in dark mode for contrast). Apply this consistently across all three files.
+
+---
+
+### C3-CR-2: [MEDIUM] Duplicate `formatDateLabel` function across two contest pages
+
+**Confidence:** HIGH
+
+`src/app/(public)/contests/page.tsx:21-24` and `src/app/(public)/contests/[id]/page.tsx:88-90` both define identical `formatDateLabel` functions. This is a DRY violation. If date formatting behavior needs to change, both must be updated.
+
+**Fix:** Extract to a shared utility (e.g., alongside `contest-status-styles.ts` or in `src/lib/formatting.ts`).
+
+---
+
+### C3-CR-3: [LOW] Dashboard contest pages still use raw `?? 100` instead of DEFAULT_PROBLEM_POINTS
+
+**Confidence:** HIGH
+
+Cycle 2 Task B extracted the constant but only applied it to the files listed in the plan. Six+ dashboard files still hardcode `?? 100`:
+- `src/app/(dashboard)/dashboard/contests/[assignmentId]/page.tsx:166,246`
+- `src/app/(dashboard)/dashboard/groups/[id]/page.tsx:326`
+- `src/app/(dashboard)/dashboard/groups/[id]/assignments/[assignmentId]/page.tsx:120`
+- `src/app/(dashboard)/dashboard/contests/[assignmentId]/students/[userId]/page.tsx:124`
+- `src/app/(dashboard)/dashboard/groups/[id]/assignments/[assignmentId]/student/[userId]/page.tsx:177`
+- `src/components/contest/participant-timeline-view.tsx:185,258`
+
+While these are dashboard (not public) files, the same data integrity concern applies: if the default ever changes, these would be missed.
+
+**Fix:** Replace `?? 100` with `?? DEFAULT_PROBLEM_POINTS` in all dashboard files.
+
+---
+
+### C3-CR-4: [LOW] Redundant `getExamSession` call in problem detail page — data already available in assignmentContext
+
+**Confidence:** MEDIUM
+
+`src/app/(public)/practice/problems/[id]/page.tsx:441` calls `await getExamSession(assignmentContext.id, session.user.id)` for the windowed exam countdown, but `assignmentContext.personalDeadline` (computed at line 194) already contains this data from a prior `getExamSession` call at line 193.
+
+The flow is:
+1. Line 193: `const examSession = await getExamSession(...)` — computes `personalDeadline`
+2. Line 194-195: `personalDeadline = examSession?.personalDeadline ?? null` — stored in `assignmentContext`
+3. Line 441: `const session_ = await getExamSession(...)` — same query again for the countdown
+
+This is the same class of issue as cycle 1 AGG-9 (redundant getExamSession).
+
+**Fix:** Use `assignmentContext.personalDeadline` directly for the countdown timer instead of re-querying.
+
+---
+
+### C3-CR-5: [LOW] Contest detail enrolled view has redundant `getDbNow()` call (same as C2-AGG-9, not fixed)
+
+**Confidence:** HIGH
+
+`src/app/(public)/contests/[id]/page.tsx:135` calls `getDbNow()` after `getEnrolledContestDetail` at line 126, which internally also calls `getDbNow()` (line 316 of `public-contests.ts`). This was identified in cycle 2 as C2-AGG-9 and deferred. Confirming it still exists.
+
+---
+
+## Final Sweep
+
+No files were skipped. All public-facing contest/practice pages reviewed. All cycle 1-2 modified files re-verified. Dashboard files checked for constant migration gaps. Badge color consistency checked across all three rendering locations.
