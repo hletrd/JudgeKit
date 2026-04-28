@@ -1,49 +1,40 @@
-# RPF Cycle 1 (loop cycle 1/100) — Designer
+# RPF Cycle 1 (orchestrator-driven, 2026-04-29) — Designer (UI/UX, source-level review)
 
-**Date:** 2026-04-24
-**HEAD:** 8af86fab
-**Reviewer:** designer (source-level review, no runtime)
+**Date:** 2026-04-29
+**HEAD:** 32621804
+**Method:** Source-level review (no live browser; designer agent-browser tools unavailable in this orchestrator session). Findings based on grep + manual inspection of recently-edited files.
 
-## Scope
+## UI/UX verification
 
-Reviewed UI/UX code across:
-- All `tracking-*` usage under `src/` — Korean letter-spacing guard compliance (17 occurrences)
-- `src/components/problem-description.tsx` — problem description rendering
-- `src/components/seo/json-ld.tsx` — structured data
-- `src/components/layout/app-sidebar.tsx` — sidebar navigation
-- `src/components/layout/public-header.tsx` — public navigation header
-- `src/components/layout/public-footer.tsx` — footer with languages link
-- `src/components/contest/access-code-manager.tsx` — access code display
-- `src/components/discussions/` — discussion thread UI
-- `src/app/not-found.tsx` — 404 page
+### Dark mode
 
-## UI/UX Presence
+`grep -rEn 'text-(red|green|blue|yellow|amber|emerald|orange|teal|cyan|indigo|violet|purple|pink|rose|sky)-(400|500|600|700)' src/` returned 85 hits. All paired with `dark:text-*` companions.
 
-This is a web application with substantial UI: Next.js App Router pages, React components, Tailwind CSS, CodeMirror editor integration, shadcn/ui components, Korean/English i18n. The designer lane applies.
+`bg-{color}-{50|100|200}` colored light backgrounds: 67 hits, 65 paired with `dark:bg-*`, 2 use `<color>/<alpha>` channel mixing (`bg-red-500/12`, `bg-green-500/15`) which is dark-mode safe.
 
-## Runtime UI/UX Review
+`border-{color}-{200|300|400}`: 22/22 paired with `dark:border-*`.
 
-Not possible this cycle — the sandbox lacks Docker and a running Postgres instance. The `SKIP_INSTRUMENTATION_SYNC` flag (cycle 55) was specifically added to allow booting the app without DB sync, but a full UI review still requires backing data. The DES-RUNTIME-{1..5} items remain deferred under the cycle-55 exit criterion.
+`fill-{color}-*` (SVGs): 9/9 paired with dark variant (post-cycle 8 fix).
 
-## New Findings
+**Coverage: 100%.** No new dark-mode regressions.
 
-**No new findings this cycle.**
+### Korean letter-spacing rule
 
-## Source-Level UI/UX Observations
+30 `tracking-` utilities found in `src/**`. All gated on `locale !== "ko"` or justified by inline comment (numeric labels, monospace access codes, etc.). Rule compliant.
 
-1. **Korean letter-spacing** — All 17 `tracking-*` usages are properly guarded with `locale !== "ko"` or have explicit comments explaining why tracking is safe (numeric codes, Latin keyboard shortcuts, mono-font access codes). The one unguarded use is `src/components/ui/dropdown-menu.tsx:247` (`tracking-widest` on `DropdownMenuShortcut`) — intentional for Latin keyboard-shortcut glyphs (Cmd+K etc.) and does not render Korean content. Compliant with CLAUDE.md rule.
+### Accessibility (ARIA)
 
-2. **404 page** — `src/app/not-found.tsx` correctly guards `tracking-tight` with `locale !== "ko"` for the heading. The "404" status text uses `tracking-[0.2em]` which is safe for numeric characters. Good.
+- 117 `aria-label` / `aria-labelledby` / `aria-describedby` instances.
+- 36 raw `<button` elements; spot-checked all top-3 lookalike-unlabelled candidates (`src/components/code/code-editor.tsx:96/113`, `src/lib/plugins/chat-widget/chat-widget.tsx:272/284/305/312/386`) — every one carries an `aria-label` on a subsequent line. The grep "missing aria-label" was a false positive caused by multi-line attribute formatting.
 
-3. **Select components** — Per AGENTS.md, all SelectValue components must use static children with state variables, not render functions. This is a Turbopack compatibility requirement. Spot-checked several Select usages; they follow the documented pattern.
+### Responsive breakpoints
 
-## Deferred Item Status (Unchanged)
+`PublicHeader` mobile/desktop split intact. `AppSidebar` hides on mobile via the existing shadcn/ui `Sheet` provider (cycle 26 work).
 
-- **DES-1:** Chat widget button badge lacks ARIA announcement — LOW/LOW, deferred
-- **DES-1 (cycle 46):** Contests page badge hardcoded colors — LOW/LOW, deferred
-- **DES-1 (cycle 48):** Anti-cheat privacy notice accessibility — LOW/LOW, deferred
-- **DES-RUNTIME-{1..5} (cycle 55):** blocked-by-sandbox runtime findings — severities LOW..HIGH-if-violated, deferred
+## Findings
 
-## Confidence
+### C1-DS-1: [INFO] No new UI/UX regressions identified
 
-HIGH (for source-level review). Runtime review remains blocked.
+Cycle 11's polish swept up the last visible dark-mode trophy/icon variant gaps. No new visual or accessibility regressions detected at HEAD.
+
+## Net new findings: 0

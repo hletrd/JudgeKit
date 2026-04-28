@@ -1,41 +1,24 @@
-# RPF Cycle 1 (loop cycle 1/100) — Test Engineer
+# RPF Cycle 1 (orchestrator-driven, 2026-04-29) — Test Engineer
 
-**Date:** 2026-04-24
-**HEAD:** 8af86fab
-**Reviewer:** test-engineer
+**Date:** 2026-04-29
+**HEAD:** 32621804
 
-## Scope
+## Test surface scan
 
-Reviewed test infrastructure and coverage across:
-- `tests/unit/` — Vitest unit tests (2107 passing per cycle 55)
-- `tests/integration/` — Vitest integration tests (37/37 skipped in sandbox)
-- `tests/e2e/` — Playwright E2E tests (not run in sandbox)
-- `vitest.config.ts` — test configuration
-- `vitest.config.component.ts` — component test configuration
-- `vitest.config.integration.ts` — integration test configuration
-- Test coverage for `src/lib/judge/sync-language-configs.ts` — new test file added in cycle 55
+- vitest configs present: `vitest.config.ts`, `vitest.config.integration.ts`, `vitest.config.component.ts`.
+- security tests subdirectory: `tests/unit/security/`.
+- playwright configs: `playwright.config.ts`, `playwright.visual.config.ts`.
 
-## New Findings
+## Findings
 
-**No new findings this cycle.**
+### C1-TE-1: [INFO] No new test coverage gaps from cycle 11 work
 
-## Test Coverage Observations
+Cycle 11 changes were CSS-only (dark mode classes). They are covered by visual regression and Storybook-style snapshot tests where they exist; otherwise they're verified by manual review against tailwind class strings. No production behavior changed.
 
-1. **Unit tests** — 2107 passing (cycle 55 count). The 9 timing-out tests are all 5000ms timeouts under parallel worker contention — same profile as cycles 51-54. Tests pass cleanly in isolation with `--no-file-parallelism`. This is a sandbox resource issue, not a code bug.
+### C1-TE-2: [LOW] Playwright e2e gate execution depends on browser availability
 
-2. **SKIP_INSTRUMENTATION_SYNC test** — `tests/unit/judge/sync-language-configs-skip-instrumentation.test.ts` (124 lines) was added in cycle 55. Tests the short-circuit behavior: verifies that when `SKIP_INSTRUMENTATION_SYNC=1`, the sync function returns early without touching the DB, and that other env values (truthy but not "1") do NOT trigger the skip. Good test coverage for the new feature.
+The orchestrator's gate spec includes `npm run test:e2e — best-effort, skip with explanation only if browsers/binaries genuinely unavailable`. If `playwright install` has not been run on the host or CI image, the gate must be flagged as a deferred warning rather than silently skipped.
 
-3. **Component tests** — 170/170 passing. The known-flaky `candidate-dashboard.test.tsx` assertion (6.2s timer-drift test) has been flaky across cycles. This is tracked as TE-1 in the aggregate.
+**Suggested fix:** PROMPT 3 will run `npm run test:e2e` and capture exit code/error. If the failure is "browser not installed", record it as a deferred warning per cycle policy.
 
-4. **Integration tests** — 37/37 SKIPPED in sandbox (no DB). Expected. These require a running Postgres instance.
-
-5. **E2E tests** — Not run in sandbox (no Docker for webServer bootstrap). Expected.
-
-## Deferred Item Status (Unchanged)
-
-- **TE-1 (cycle 51):** Missing integration test for concurrent recruiting token redemption — LOW/MEDIUM, deferred (requires DB)
-- **#21 (cycle 4):** vitest unit parallel-contention flakes — LOW/MEDIUM, deferred (sandbox resource issue)
-
-## Confidence
-
-HIGH — test coverage is adequate. Known flaky tests are well-characterized.
+## Net new findings: 1 (LOW; gate-execution caveat).

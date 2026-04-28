@@ -1,40 +1,34 @@
-# RPF Cycle 1 (loop cycle 1/100) — Document Specialist
+# RPF Cycle 1 (orchestrator-driven, 2026-04-29) — Document Specialist
 
-**Date:** 2026-04-24
-**HEAD:** 8af86fab
-**Reviewer:** document-specialist
+**Date:** 2026-04-29
+**HEAD:** 32621804
 
-## Scope
+## Doc/code mismatch scan
 
-Reviewed documentation-code alignment across:
-- `AGENTS.md` — authoritative project documentation
-- `CLAUDE.md` — project rules and deployment constraints
-- `src/lib/judge/languages.ts` — language definitions vs AGENTS.md table
-- `src/lib/judge/sync-language-configs.ts` — SKIP_INSTRUMENTATION_SYNC vs docs
-- `src/lib/db/schema.pg.ts` — schema vs documentation claims
-- `docs/` — language docs, architecture docs
+- `CLAUDE.md` deployment rule (preserve `src/lib/auth/config.ts`): verified file unchanged this cycle.
+- `CLAUDE.md` Korean letter-spacing rule: verified by designer pass — all `tracking-*` usages gated.
+- `CLAUDE.md` algo.xylolabs.com server architecture rule (`SKIP_LANGUAGES=true BUILD_WORKER_IMAGE=false INCLUDE_WORKER=false`): aligned with `DEPLOY_CMD` provided by orchestrator.
+- `plans/open/2026-04-19-workspace-to-public-migration.md` status reflects HEAD truthfully:
+  - Phases 1-7 marked COMPLETE.
+  - Phase 4 audit lists "remaining dashboard routes" — verified against the actual directory listing.
+  - Phase 5 marked COMPLETE (cycle 26).
+  - The migration plan is ready to be archived (per TODO #1 done criterion).
 
-## New Findings
+## Findings
 
-**No new findings this cycle.**
+### C1-DOC-1: [INFO] Migration plan ready for archival
 
-## Documentation-Code Alignment Check
+The plan at `plans/open/2026-04-19-workspace-to-public-migration.md` describes phases 1-7 as complete. Verification against the source tree:
 
-1. **AGENTS.md language table** — The table lists 125 language variants (IDs 1-124 plus 6b, 8b, etc.). The authoritative source is `src/lib/judge/languages.ts` + `docs/languages.md`. AGENTS.md correctly notes this and instructs readers to treat the code as source of truth when the table drifts.
+- `find src/app/'(workspace)'` → no files. ✓
+- `find src/app/'(control)'` → no files. ✓
+- `next.config.ts:20-52` declares 7 permanent (308) redirects covering `/workspace`, `/workspace/discussions`, `/dashboard/rankings`, `/dashboard/languages`, `/dashboard/compiler`, `/control`, `/control/discussions`. ✓
+- Remaining `(dashboard)` routes match the documented "must stay in authenticated area" list (admin, contests, groups, problem-sets, problems, profile).
 
-2. **SKIP_INSTRUMENTATION_SYNC** — Documented in `sync-language-configs.ts` comments (lines 69-81), the cycle-55 plan, and `designer-runtime-cycle-3.md`. The comment in the code explicitly warns "DO NOT use this in production" and references the plan document. Aligned.
+The plan's done criterion ("(workspace) removed or empty, every non-admin dashboard page either migrated or explicitly listed as 'stays' with a quoted reason, build+typecheck+lint+unit/playwright green, migration plan archived") is satisfiable this cycle once gates pass.
 
-3. **CSRF header name** — AGENTS.md explicitly states: "This is the correct header name — do not use `x-csrf-token`." The code in `src/lib/security/csrf.ts` correctly uses `X-Requested-With`. Aligned.
+### C1-DOC-2: [INFO] User-injected TODO #1 satisfied
 
-4. **Password validation** — AGENTS.md states "exactly 8 characters minimum, no other rules." The code in `src/lib/security/password.ts` uses `FIXED_MIN_PASSWORD_LENGTH = 8` and only checks `password.length < 8`. Aligned.
+The TODO file (`plans/user-injected/pending-next-cycle.md`) requires migrating "every non-admin page out of `(workspace)` and `(dashboard)` into `(public)`". The migration plan now correctly distinguishes "moved" vs. "stays-with-reason". No silent drops.
 
-5. **Select component pattern** — AGENTS.md documents the SelectValue static-children pattern. The code follows this pattern. Aligned.
-
-## Deferred Item Status (Unchanged)
-
-- **DOC-1:** SSE route ADR — LOW/LOW, deferred
-- **DOC-2:** Docker client dual-path docs — LOW/LOW, deferred
-
-## Confidence
-
-HIGH — documentation and code are well-aligned.
+## Net new findings: 0

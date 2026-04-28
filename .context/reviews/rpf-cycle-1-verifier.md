@@ -1,38 +1,25 @@
-# RPF Cycle 1 (loop cycle 1/100) — Verifier
+# RPF Cycle 1 (orchestrator-driven, 2026-04-29) — Verifier
 
-**Date:** 2026-04-24
-**HEAD:** 8af86fab
-**Reviewer:** verifier
+**Date:** 2026-04-29
+**HEAD:** 32621804
+**Method:** Evidence-based check of each pre-cycle stated behavior.
 
-## Scope
+## Evidence
 
-Evidence-based correctness verification against stated behavior:
-- `src/lib/security/csrf.ts` — CSRF validation claims vs actual behavior
-- `src/lib/security/rate-limit.ts` — rate limiting claims vs actual behavior
-- `src/lib/security/sanitize-html.ts` — sanitization claims vs actual behavior
-- `src/lib/api/handler.ts` — createApiHandler middleware ordering claims
-- `src/lib/judge/sync-language-configs.ts` — SKIP_INSTRUMENTATION_SYNC behavior claims
-- `src/lib/db/schema.pg.ts` — constraint claims vs actual constraints
-- Korean letter-spacing compliance — CLAUDE.md rule vs actual code
+- `npm run lint`: exit 0, 0 errors, 14 warnings (all in untracked scratch `.mjs` at repo root; not regressions).
+- `npx tsc --noEmit`: exit 0, no output.
+- `git status --short`: 17 untracked scratch entries; no tracked file modifications outstanding.
+- `find src/app/'(workspace)'` → empty. `find src/app/'(control)'` → empty.
+- `grep -rln "WorkspaceNav\|ControlNav\|workspaceShell\|controlShell" src/` → no results.
 
-## Verification Results
+## Findings
 
-1. **CSRF** — CLAIM: "Requires X-Requested-With header on mutation methods." VERIFIED: `validateCsrf()` checks `xRequestedWith !== "XMLHttpRequest"` on non-safe methods. API key auth bypasses CSRF. Claim matches behavior.
+### C1-VE-1: [INFO] HEAD matches plan claims
 
-2. **Rate limiting atomicity** — CLAIM: "consumeRateLimitAttemptMulti closes the check-then-record race." VERIFIED: The function performs check+increment inside `execTransaction` with `FOR UPDATE` row locks. Claim matches behavior. However, `isRateLimited()` and `recordRateLimitFailure()` still exist as non-atomic alternatives with explicit JSDoc warnings.
+Plans claim phases 1-7 of workspace→public migration are complete. Source tree confirms. Nothing under `(workspace)` or `(control)`. Redirects in `next.config.ts` cover all old paths.
 
-3. **HTML sanitization** — CLAIM: "Narrow allowlist, no data attributes, URI regex restricts to https/mailto/root-relative." VERIFIED: `ALLOWED_TAGS` is 23 tags, `ALLOW_DATA_ATTR: false`, `ALLOWED_URI_REGEXP: /^(?:(?:https?|mailto):|\/(?!\/))/i`. Hook adds `rel=noopener noreferrer` and strips non-root-relative image sources. Claim matches behavior.
+### C1-VE-2: [INFO] No suppressions introduced
 
-4. **SKIP_INSTRUMENTATION_SYNC** — CLAIM: "Requires literal string '1' to avoid accidentally skipping in production." VERIFIED: `process.env.SKIP_INSTRUMENTATION_SYNC === "1"` is strict equality. Truthy values like `"true"`, `"yes"`, or `"on"` will NOT trigger the skip. Claim matches behavior.
+`grep -rEn '@ts-ignore|@ts-expect-error|@ts-nocheck|eslint-disable' src/` returns 1 hit: `src/app/(dashboard)/dashboard/admin/plugins/[id]/plugin-config-client.tsx:2 — /* eslint-disable react-hooks/static-components -- plugin admin components are lazily prebuilt at module scope */`. Documented justification, not new this cycle.
 
-5. **Korean letter-spacing** — CLAIM: "Keep Korean text at browser/font default letter spacing." VERIFIED: All 17 `tracking-*` usages are guarded with `locale !== "ko"` or have explicit comments for Latin-only content. The one unguarded use (`dropdown-menu.tsx` keyboard shortcut) does not render Korean. Claim matches behavior.
-
-6. **Schema constraints** — CLAIM: "judge_workers.active_tasks >= 0 CHECK constraint." VERIFIED: `check("judge_workers_active_tasks_nonneg", sql\`active_tasks >= 0\`)` exists. CLAIM: "assignments.late_penalty >= 0 CHECK constraint." VERIFIED: `check("assignments_late_penalty_nonneg", sql\`${table.latePenalty} >= 0\`)` exists. Claims match behavior.
-
-## New Findings
-
-**No new findings this cycle.** All verified claims match actual behavior.
-
-## Confidence
-
-HIGH — all checked claims are verified.
+## Net new findings: 0

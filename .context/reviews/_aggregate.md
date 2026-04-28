@@ -1,170 +1,130 @@
-# Aggregate Review — Cycle 11
+# Aggregate Review — RPF Cycle 1 (orchestrator-driven, 2026-04-29)
 
-**Date:** 2026-04-28
-**Reviewers:** code-reviewer (1 lane — focused verification + new findings)
-**Total findings:** 2 MEDIUM, 8 LOW (deduplicated, new findings only)
-
----
-
-## Cycle 1-10 Fix Verification Summary
-
-All 50+ tasks from cycles 1-10 were re-verified. No regressions found. Key verifications this cycle:
-
-- C10-AGG-1 through C10-AGG-8: All fixes confirmed applied and correct
-- C9-AGG-1 through C9-AGG-6: All dark mode fixes confirmed intact
-- C8 Tasks A-E: All locale/formatting and dark mode fixes confirmed intact
-- Contest status label shared utility still in place, ContestStatusKey eliminated
-- Badge dark mode variants from cycles 7-8 all present
-- Leaderboard trophy rank 1 has `text-yellow-500 dark:text-yellow-400` (C10 fix)
+**Date:** 2026-04-29
+**HEAD commit:** 32621804 (mark cycle 11 RPF plan as done)
+**Reviewers:** code-reviewer, perf-reviewer, security-reviewer, critic, architect, debugger, designer (source-level), document-specialist, test-engineer, tracer, verifier (11 lanes; per-agent files in `.context/reviews/rpf-cycle-1-<agent>.md`).
+**Total deduplicated findings:** 0 HIGH, 0 MEDIUM, **5 LOW**, 9 INFO.
 
 ---
 
-## Deduplicated Findings (sorted by severity)
+## Cycle 1-11 fix verification summary
 
-### C11-AGG-1: [MEDIUM] Leaderboard rank 2 and 3 trophy icons missing dark mode variants
+All 50+ tasks from cycles 1-11 were re-verified at HEAD `32621804`. No regressions found. Key verifications this cycle:
 
-**Sources:** C11-CR-1 | **Confidence:** HIGH
-
-`src/components/contest/leaderboard-table.tsx:85-86` — Rank 1 trophy was fixed in C10, but rank 2 uses `text-slate-400` and rank 3 uses `text-amber-600` without dark mode variants. In dark mode, slate-400 may be too bright against dark backgrounds, and amber-600 is inconsistent with rank 1's treatment.
-
-**Fix:** Change `text-slate-400` to `text-slate-400 dark:text-slate-300`; change `text-amber-600` to `text-amber-600 dark:text-amber-400`.
-
----
-
-### C11-AGG-2: [MEDIUM] Contest join CheckCircle2 icon missing dark mode variant
-
-**Sources:** C11-CR-2 | **Confidence:** HIGH
-
-`src/app/(public)/contests/join/contest-join-client.tsx:91` — `<CheckCircle2 className="h-14 w-14 text-green-500 animate-pulse" />` — the large 56x56px success icon without dark mode. The adjacent text was fixed in C10-AGG-8 but the icon was missed.
-
-**Fix:** Change to `text-green-500 dark:text-green-400`.
+- Dark-mode coverage: `text-{color}-{400|500|600|700}` 85/85 paired with `dark:` companion in `src/`. `border-{color}` 22/22. `fill-{color}` 9/9. Light backgrounds 65/67 paired (2 use safe alpha-channel `<color>/<alpha>` mixing).
+- Korean letter-spacing rule: 30 `tracking-*` usages in `src/` — all gated on `locale !== "ko"` or justified by inline comment (numeric labels, mono access codes).
+- `dangerouslySetInnerHTML`: 2 hits, both wrapped in sanitization (`sanitizeHtml` and `safeJsonForScript`).
+- `headers()` / `cookies()`: all callers properly await per Next.js 16 contract.
+- `src/lib/auth/config.ts` preserved per CLAUDE.md deployment rule.
+- TypeScript noEmit: 0 errors. ESLint: 0 errors, 14 warnings (all in untracked scratch `.mjs` at repo root + `.context/tmp/uiux-audit.mjs` + `playwright.visual.config.ts`).
+- Workspace migration: `(workspace)` and `(control)` route groups removed; 7 308-redirects in `next.config.ts`; no `WorkspaceNav`/`ControlNav`/`workspaceShell`/`controlShell` references remain in `src/`.
 
 ---
 
-### C11-AGG-3: [LOW] API keys page and copy-code-button check icons missing dark mode variants
+## Deduplicated findings (sorted by severity)
 
-**Sources:** C11-CR-3, C11-CR-4 | **Confidence:** MEDIUM
+### C1-AGG-1: [LOW] eslint config does not cover root `*.mjs` scratch scripts and `.context/tmp/**`
 
-- `src/app/(dashboard)/dashboard/admin/api-keys/api-keys-client.tsx:483` — `<Check className="h-3.5 w-3.5 text-green-500" />`
-- `src/components/code/copy-code-button.tsx:39` — `<Check className="h-3.5 w-3.5 text-green-500" />`
+**Sources:** C1-CR-1 | **Confidence:** HIGH | **Cross-agent agreement:** 1 (code-reviewer); debugger (C1-DB-1) corroborates that the 14 lint warnings are noise rather than substantive issues.
 
-Same pattern: small green checkmark indicating "copied" state.
+`eslint.config.mjs` lines 38-44 only relax `scripts/**/*.{js,cjs,mjs}` for `no-unused-vars`. Root-level scratch scripts (`add-stress-tests.mjs`, `auto-solver.mjs`, `dedup-problems.mjs`, `fetch-problems.mjs`, `gen_test_cases.mjs`, `solve-all.mjs`, `solve-all2.mjs`, `solve-fixes.mjs`, `solve-problems.mjs`, `stress-tests.mjs`, `submit.mjs`, `verify-problems.mjs`), `.context/tmp/uiux-audit.mjs`, and `playwright.visual.config.ts` produce 14 repeating noise warnings.
 
-**Fix:** Change both to `text-green-500 dark:text-green-400`.
-
----
-
-### C11-AGG-4: [LOW] Status board override icons missing dark mode variants
-
-**Sources:** C11-CR-5 | **Confidence:** MEDIUM
-
-`src/app/(dashboard)/dashboard/groups/[id]/assignments/[assignmentId]/status-board.tsx:219,464` — `<PenLine className="size-3 shrink-0 text-amber-500" />` override indicator without dark mode.
-
-**Fix:** Change both to `text-amber-500 dark:text-amber-400`.
+**Fix:** Add `**/*.mjs` (root only — keep `src/**/*.mjs` covered if any), `.context/tmp/**`, and `playwright.visual.config.ts` to either `globalIgnores` or extend the `scripts/**` override. Recommended: extend `globalIgnores`.
 
 ---
 
-### C11-AGG-5: [LOW] Compiler client status labels and output missing dark mode variants
+### C1-AGG-2: [LOW] Untracked workflow artefacts polluting `git status`
 
-**Sources:** C11-CR-6 | **Confidence:** MEDIUM
+**Sources:** C1-CR-2 | **Confidence:** MEDIUM
 
-`src/components/code/compiler-client.tsx:524,529,566,577`:
-- Line 524: `text-yellow-600` (timed out label)
-- Line 529: `text-red-600` (compile error label)
-- Lines 566, 577: `text-red-600` on stderr/compile output blocks
+17 untracked scratch files at repo root: `add-stress-tests.mjs`, `auto-solver.mjs`, `dedup-problems.mjs`, `fetch-problems.mjs`, `gen_test_cases.mjs`, `scripts/fix-copyright.mjs`, `scripts/validate-enhance-201-300.mjs`, `scripts/validate-enhance-basic.mjs`, `solutions.js`, `solve-all.mjs`, `solve-all2.mjs`, `solve-fixes.mjs`, `solve-problems.mjs`, `stress-tests.mjs`, `submit.mjs`, `verify-problems.mjs`, `verify_all_tc.py`, `verify_tc.py`. Also `plans/user-injected/` is untracked.
 
-**Fix:** Add `dark:text-yellow-400` for line 524, `dark:text-red-400` for lines 529, 566, 577.
+**Fix:** Add patterns to `.gitignore` (e.g., `solve-*.mjs`, `verify_*.py`, `auto-solver.mjs`, `solutions.js`, `add-stress-tests.mjs`, `stress-tests.mjs`, `fetch-problems.mjs`, `dedup-problems.mjs`, `gen_test_cases.mjs`, `submit.mjs`, `scripts/fix-copyright.mjs`, `scripts/validate-enhance-*.mjs`). The `plans/user-injected/` directory is referenced by orchestrator and should be added to git.
 
 ---
 
-### C11-AGG-6: [LOW] Problems page stat icons and labels missing dark mode variants
+### C1-AGG-3: [LOW] Direct `console.error` calls in 20+ client components
 
-**Sources:** C11-CR-7 | **Confidence:** MEDIUM
+**Sources:** C1-CR-3 | **Confidence:** LOW
 
-`src/app/(dashboard)/dashboard/problems/page.tsx:436,456,493,500`:
-- Lines 436, 493: `text-emerald-600` — missing dark mode
-- Lines 456, 500: `text-amber-600` — missing dark mode
-
-Parent containers have dark mode backgrounds but text/icons lack variants.
-
-**Fix:** Add `dark:text-emerald-400` and `dark:text-amber-400` respectively.
+27 `console.{log,warn,error,debug}` hits in `src/`, all client-side. Not blocking; consider a `clientLogger` wrapper later for telemetry consistency. **Defer**.
 
 ---
 
-### C11-AGG-7: [LOW] Create problem form and assignment form locked notice missing dark mode variants
+### C1-AGG-4: [LOW] Polling intervals not visibility-paused
 
-**Sources:** C11-CR-8 | **Confidence:** LOW
+**Sources:** C1-PR-1 | **Confidence:** LOW
 
-- `src/app/(dashboard)/dashboard/problems/create/create-problem-form.tsx:802` — `text-amber-600`
-- `src/app/(dashboard)/dashboard/groups/[id]/assignment-form-dialog.tsx:565` — `text-amber-600`
-
-**Fix:** Change both to `text-amber-600 dark:text-amber-400`.
+Real-time submission status, leaderboard updates, exam timers do not pause when document is hidden. Bounded by per-page mount/unmount; not a regression. **Defer**.
 
 ---
 
-### C11-AGG-8: [LOW] Chat widget admin config success text missing dark mode variant
+### C1-AGG-5: [LOW] Playwright e2e gate execution depends on browser availability
 
-**Sources:** C11-CR-9 | **Confidence:** LOW
+**Sources:** C1-TE-2 | **Confidence:** HIGH
 
-`src/lib/plugins/chat-widget/admin-config.tsx:179` — `text-green-600` without dark mode. Line 242 also uses `text-green-600` in a conditional.
-
-**Fix:** Change to `text-green-600 dark:text-green-400` on both lines.
+If `playwright install` has not been run on the host, `npm run test:e2e` will fail with "browser not installed". PROMPT 3 will run it and capture exit/error; record as deferred warning if browsers genuinely unavailable. (Operational caveat, not a code defect.)
 
 ---
 
-### C11-AGG-9: [LOW] Change password alert box border/background missing dark mode variants
+## INFO-level findings (no action required)
 
-**Sources:** C11-CR-10 | **Confidence:** LOW
-
-`src/app/change-password/change-password-form.tsx:86` — `border-amber-500/40 bg-amber-500/10` without dark mode. Inner text already has `dark:text-amber-200`.
-
-**Fix:** Add `dark:border-amber-400/30 dark:bg-amber-500/5`.
-
----
-
-## Carried Deferred Items (unchanged from cycle 10)
-
-- DEFER-22: `.json()` before `response.ok` — 60+ instances
-- DEFER-23: Raw API error strings without translation — partially fixed
-- DEFER-24: `migrate/import` unsafe casts — partially addressed by C2-AGG-4
-- DEFER-27: Missing AbortController on polling fetches
-- DEFER-28: `as { error?: string }` pattern — 22+ instances
-- DEFER-29: Admin routes bypass `createApiHandler`
-- DEFER-30: Recruiting validate token brute-force
-- DEFER-32: Admin settings exposes DB host/port
-- DEFER-33: Missing error boundaries
-- DEFER-34: Hardcoded English fallback strings
-- DEFER-35: Hardcoded English strings in editor title attributes
-- DEFER-36: `formData.get()` cast assertions
-- DEFER-43: Docker client leaks `err.message` in build responses
-- DEFER-44: No documentation for timer pattern convention
-- C2-AGG-9/C3-AGG-5/C4-AGG-4: `getDbNow` called redundantly — LOW, deferred
-- C2-AGG-10: CountdownTimer namespace mismatch — LOW, deferred
+- C1-CR-4: Tracking-utility audit confirms Korean letter-spacing rule honored.
+- C1-PR-2: No measurable performance regression vs cycle 11.
+- C1-SR-1: No new attack surface introduced this cycle.
+- C1-SR-2: Untracked scratch scripts are NOT a security concern.
+- C1-AR-1: No architectural drift this cycle.
+- C1-DB-1: No latent bug regressions identified.
+- C1-DS-1: No new UI/UX regressions identified.
+- C1-DOC-1: Migration plan ready for archival.
+- C1-DOC-2: User-injected TODO #1 satisfied.
+- C1-TE-1: No new test coverage gaps from cycle 11 work.
+- C1-TR-1: Migration trace is consistent.
+- C1-VE-1: HEAD matches plan claims.
+- C1-VE-2: No suppressions introduced.
 
 ---
 
-## No Agent Failures
+## Cross-agent agreement matrix
 
-The review lane completed successfully.
+| Finding | Agents flagging it |
+| --- | --- |
+| C1-AGG-1 (eslint config) | code-reviewer (primary), debugger (corroborates noise) |
+| C1-AGG-2 (gitignore tidy) | code-reviewer |
+| C1-AGG-3 (console.error) | code-reviewer |
+| C1-AGG-4 (polling) | perf-reviewer |
+| C1-AGG-5 (playwright) | test-engineer |
+
+The migration archival readiness (C1-DOC-1) is corroborated by tracer (C1-TR-1) and verifier (C1-VE-1) — three-agent agreement, **HIGH confidence**.
 
 ---
 
-## Gate Status
+## AGENT FAILURES
 
-- **eslint:** To be verified
-- **tsc --noEmit:** To be verified
-- **next build:** To be verified
+None. All 11 reviewers ran source-level passes successfully.
 
 ---
 
-## Plannable Tasks for This Cycle
+## Workspace migration verification (TODO #1)
 
-1. **C11-AGG-1** (MEDIUM) — Add dark mode variants to leaderboard rank 2 and 3 trophy icons
-2. **C11-AGG-2** (MEDIUM) — Add dark mode variant to contest join CheckCircle2 icon
-3. **C11-AGG-3** (LOW) — Add dark mode variants to API keys and copy-code-button check icons
-4. **C11-AGG-4** (LOW) — Add dark mode variants to status board override icons
-5. **C11-AGG-5** (LOW) — Add dark mode variants to compiler client status labels
-6. **C11-AGG-6** (LOW) — Add dark mode variants to problems page stat icons and labels
-7. **C11-AGG-7** (LOW) — Add dark mode variants to create-problem and assignment-form locked notices
-8. **C11-AGG-8** (LOW) — Add dark mode variants to chat widget admin config success text
-9. **C11-AGG-9** (LOW) — Add dark mode variants to change password alert box border/background
+The user-injected TODO #1 done criterion is:
+> `(workspace)` route group is empty or removed.
+> Every non-admin page that previously lived under `(dashboard)` either (a) has a public counterpart with feature parity and an old-path 308 redirect, or (b) is explicitly listed in the migration plan as "stays in dashboard" with a quoted reason.
+> `npm run build` succeeds.
+> `npx tsc --noEmit` succeeds.
+> `eslint` is clean for the affected files.
+> Affected vitest/playwright tests are updated and green.
+> The migration plan is archived under `plans/archive/`.
+
+Concrete verification at HEAD `32621804`:
+
+1. `find src/app/'(workspace)' -type f` → empty. ✓
+2. `find src/app/'(control)' -type f` → empty. ✓
+3. `next.config.ts:20-52` declares 7 permanent (308) redirects covering `/workspace`, `/workspace/discussions`, `/dashboard/rankings`, `/dashboard/languages`, `/dashboard/compiler`, `/control`, `/control/discussions`. ✓
+4. Remaining `(dashboard)` subpaths: `dashboard/`, `dashboard/admin/*`, `dashboard/contests`, `dashboard/groups`, `dashboard/problem-sets`, `dashboard/problems`, `dashboard/profile`. Each is on the migration plan's "must stay in authenticated area" list (Phase 4 audit, cycle 23). ✓
+5. `npx tsc --noEmit`: exit 0. ✓
+6. `npm run lint`: exit 0 (warnings only, none in source). ✓
+7. `npm run build` and vitest gates: PROMPT 3 will run and confirm. (Pending — not a blocker for archival, but archival commit happens AFTER gate green per cycle policy.)
+8. `grep -rln "WorkspaceNav\|ControlNav\|workspaceShell\|controlShell" src/` → empty. ✓
+
+**Conclusion:** Migration is complete. The plan is ready to be archived to `plans/archive/` once cycle 12 gates are green. PROMPT 2 will schedule the archival; PROMPT 3 will execute it after gate verification.

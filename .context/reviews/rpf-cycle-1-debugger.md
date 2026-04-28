@@ -1,35 +1,19 @@
-# RPF Cycle 1 (loop cycle 1/100) — Debugger
+# RPF Cycle 1 (orchestrator-driven, 2026-04-29) — Debugger
 
-**Date:** 2026-04-24
-**HEAD:** 8af86fab
-**Reviewer:** debugger
+**Date:** 2026-04-29
+**HEAD:** 32621804
 
-## Scope
+## Latent bug surface scan
 
-Analyzed latent bug surface and failure modes across:
-- `src/lib/security/rate-limit.ts` — race conditions, overflow, negative values
-- `src/lib/compiler/execute.ts` — Docker container lifecycle, timeout handling
-- `src/lib/judge/sync-language-configs.ts` — retry loop, SKIP_INSTRUMENTATION_SYNC
-- `src/lib/realtime/realtime-coordination.ts` — SSE connection slot acquisition
-- `src/lib/db/schema.pg.ts` — constraint violations, FK integrity
-- `src/lib/api/handler.ts` — error handling, auth bypass edge cases
+- TypeScript noEmit: 0 errors at HEAD.
+- ESLint: 0 errors, 14 warnings (all `no-unused-vars` in untracked scratch `.mjs` files at repo root + `.context/tmp/uiux-audit.mjs` + `playwright.visual.config.ts`). See C1-CR-1 for the proposed config fix.
+- TODO/FIXME audit: 2 hits, both legitimate Next.js workaround comments in `src/app/(dashboard)/dashboard/contests/layout.tsx:16` and `src/app/(public)/contests/[id]/layout.tsx:16` referring to upstream Next bug.
+- `?? 100` audit: 2 hits, both legitimate API pagination defaults (`src/lib/api/pagination.ts:15`, `src/lib/assignments/recruiting-invitations.ts:120`). The `?? 100` references in plan documents discussing `DEFAULT_PROBLEM_POINTS` were refactored away in cycle 1 (`bbbbb62a`).
 
-## New Findings
+## Findings
 
-**No new findings this cycle.**
+### C1-DB-1: [INFO] No latent bug regressions identified
 
-## Latent Bug Surface Analysis
+Cycle 11's CSS-only changes did not touch any control flow, async sequencing, or error-handling code paths. Spot-checked submission status polling, exam-timer countdown, contest live-rank update, and chat-widget streaming for accidental dependency-array regressions in `useEffect` — none.
 
-1. **Rate limit `Date.now()` vs DB time** — The known deferred item (AGG-2). In a deployment where the app server clock drifts relative to the DB server, rate limit windows could be miscalculated. The `X-RateLimit-Reset` header was fixed to use DB time (cycle 48), but the internal `getEntry()` and `consumeRateLimitAttemptMulti` still use `Date.now()` for window calculation. This is the most impactful deferred item.
-
-2. **Rate limit negative counter** — The `rateLimits.attempts` column is an integer without a CHECK constraint. A logic bug in `consumeRateLimitAttemptMulti` or `recordRateLimitFailure` could theoretically produce negative attempts. However, the code only increments (`attempts + 1`), never decrements, so this is theoretical. The `judge_workers.active_tasks` column correctly has a `>= 0` check constraint.
-
-3. **Sync retry loop** — `syncLanguageConfigsOnStartup()` has a retry loop with exponential backoff (max 10 retries, max 30s). The off-by-one: the loop condition is `attempt <= MAX_SYNC_RETRIES` (0..10 = 11 attempts, not 10). This is a minor discrepancy between the constant name and actual behavior. Not a bug in practice since the retry exists for startup resilience.
-
-4. **SSE connection slot** — `acquireSharedSseConnectionSlot` uses `pg_advisory_xact_lock` which releases at transaction end. If the advisory lock is acquired but the subsequent DB operations fail, the lock is correctly released. No leak risk.
-
-5. **Compiler Docker container cleanup** — The `execute.ts` code uses try/finally to remove containers. The `MAX_CONTAINER_AGE_MS` (1 hour) safety check provides a fallback for orphaned containers. Good defensive design.
-
-## Confidence
-
-HIGH — no new latent bugs found. The known deferred items (AGG-2 Date.now(), PERF-3 5000-row fetch) remain the most impactful open items.
+## Net new findings: 0

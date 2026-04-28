@@ -1,25 +1,38 @@
-# RPF Cycle 1 (loop cycle 1/100) — Critic
+# RPF Cycle 1 (orchestrator-driven, 2026-04-29) — Critic
 
-**Date:** 2026-04-24
-**HEAD:** 8af86fab
-**Reviewer:** critic
+**Date:** 2026-04-29
+**HEAD:** 32621804
 
-## Observations
+## Multi-perspective critique
 
-Five consecutive cycles (51-55) plus cycle 4 all reported "no new findings" because the only commits between them are review documentation artifacts. The current cycle 1 (new RPF loop) starts from the same base state. The deferred-items list (19 items + #21 vitest flakes) has grown across cycles but is not being retired.
+### Maintainability
 
-## Critique
+After 11 RPF cycles + 50+ earlier cycles, the codebase has shifted from feature development to micro-polish. The signal-to-noise ratio of new findings is now LOW: most cycles produce LOW-severity dark-mode/i18n nits. This is not a problem per se — the codebase is mature — but it does suggest the review fan-out budget could be reallocated to broader sweeps.
 
-1. **Deferred item accumulation** — The 19+1 deferred items have been carried forward across many cycles without retirement criteria. LOW/LOW items specifically lack actionable exit criteria that would trigger resolution absent deliberate work. If the loop is to keep running for 100 cycles without a user-injected directive, consider a cycle-budget threshold after which deferred LOW/LOW items are explicitly retired or rolled up into a single "minor-backlog" bucket.
+### Cycle-budget critique
 
-2. **Review quality ceiling** — The self-referential steady state (reviews producing only review artifacts, which become the next cycle's input) limits the review's ability to find new issues. The codebase has been thoroughly reviewed across 55+ cycles. New findings are unlikely unless production code changes.
+Cycle 11 found 2 MEDIUM and 8 LOW dark-mode regressions. The MEDIUM ones (`leaderboard-table.tsx`, `contest-join-client.tsx`) were genuinely visible bugs. LOW ones were edge-case dark-mode polish. Returns are diminishing — but not yet zero.
 
-3. **Positive observation** — The repo's review discipline is strong. Prior fixes (cycles 41-49) are all intact. The codebase is genuinely in a mature, stable state. This is a positive critique of existing stability, not a bug.
+### Cycle 12 critique
 
-## New Findings
+This cycle's review surface is essentially clean. Dark-mode coverage is 100% across the 85 surveyed `text-color` instances; tracking utilities are correctly gated on locale; `dangerouslySetInnerHTML` is sanitized; lint/tsc are green for `src/`. The only real finding is config hygiene (eslint warning noise in C1-CR-1 / .gitignore in C1-CR-2).
 
-**None** beyond what is already tracked as deferred.
+### Workspace migration verification
 
-## Confidence
+The user-injected workspace migration TODO is largely complete:
+- `src/app/(workspace)/`: removed (verified `find` returns empty).
+- `src/app/(control)/`: removed.
+- All redirects (`next.config.ts:20-52`) in place: `/workspace`, `/workspace/discussions`, `/dashboard/rankings`, `/dashboard/languages`, `/dashboard/compiler`, `/control`, `/control/discussions`.
+- Remaining `(dashboard)` routes are the legitimately auth-gated ones documented in the migration plan: `dashboard/`, `dashboard/admin/*`, `dashboard/contests`, `dashboard/groups`, `dashboard/problem-sets`, `dashboard/problems`, `dashboard/profile`.
+- The migration plan's "stays in dashboard" list (Phase 4 audit, lines after `**Phase 4 audit (cycle 23):**`) covers exactly these routes.
 
-HIGH
+### Recommendation
+
+Spend cycle 12's implementation budget on:
+1. The eslint config polish (C1-CR-1).
+2. Workspace migration plan archival (TODO #1's "done" criterion).
+3. Optional gitignore tidy (C1-CR-2).
+
+Anything else risks gold-plating.
+
+## Net new findings: 0 critical; perspective only.

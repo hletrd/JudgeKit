@@ -1,42 +1,28 @@
-# RPF Cycle 1 (loop cycle 1/100) — Performance Reviewer
+# RPF Cycle 1 (orchestrator-driven, 2026-04-29) — Performance Reviewer
 
-**Date:** 2026-04-24
-**HEAD:** 8af86fab
-**Reviewer:** perf-reviewer
+**Date:** 2026-04-29
+**HEAD:** 32621804
+**Scope:** Hot paths, render cost, bundle size signals, query parallelism.
 
-## Scope
+## Performance verification
 
-Reviewed performance-relevant code across:
-- `src/lib/security/rate-limit.ts` — DB-backed rate limiting with `FOR UPDATE` row locks
-- `src/lib/security/in-memory-rate-limit.ts` — in-memory LRU rate limiter
-- `src/lib/security/api-rate-limit.ts` — API rate limiting with X-RateLimit headers
-- `src/lib/realtime/realtime-coordination.ts` — SSE connection coordination
-- `src/lib/compiler/execute.ts` — Docker container execution
-- `src/lib/db/schema.pg.ts` — index design for query performance
-- `src/lib/capabilities/cache.ts` — role capabilities caching with TTL
-- `src/lib/system-settings-config.ts` — settings cache with TTL
-- `src/proxy.ts` — auth user cache with TTL
+- `Promise.all` parallelism in `src/app/layout.tsx:91-96` (locale, messages, headers, timezone) is correct.
+- `src/lib/contests/list.ts` parallelizes `getContestsForUser` and `getPublicContests` (commit `1d17552b`, cycle 2). Verified intact at HEAD.
+- `src/app/(public)/practice/problems/[id]/page.tsx` removed redundant `getExamSession` call (commit `d365a50c`). Verified intact.
+- Client component count: 142 `"use client"` directives. Server component / action count: 10 `"use server"`. Ratio is healthy for an SSR-first Next.js 16 app with editors, real-time leaderboards, and admin dialogs.
 
-## New Findings
+## Findings
 
-**No new findings this cycle.** All previously identified performance items remain in the deferred list.
+### C1-PR-1: [LOW] Polling intervals not visibility-paused
 
-## Deferred Item Status (Unchanged)
+**Evidence:** `setInterval`/`setTimeout` exist in real-time submission status, leaderboard updates, exam timers. No global pause when document is hidden.
 
-- **AGG-2:** `atomicConsumeRateLimit` uses `Date.now()` in hot path — MEDIUM/MEDIUM, deferred
-- **AGG-6:** SSE O(n) eviction scan — LOW/LOW, deferred
-- **PERF-3:** Anti-cheat heartbeat gap query transfers up to 5000 rows — MEDIUM/MEDIUM, deferred
-- **ARCH-3:** Stale-while-revalidate cache pattern duplication — LOW/LOW, deferred
-- **AGG-8:** Global timer HMR pattern duplication — LOW/MEDIUM, deferred
+**Why minor:** Not regression. Bounded by per-page mount/unmount; tabs in background still consume polling cycles.
 
-## Performance Observations
+**Suggested:** Defer; candidate for SWR/visibility-based pause once usage telemetry shows it matters. Severity **LOW**.
 
-1. **Rate limit eviction** — `evictStaleEntries()` runs on a 60-second `setInterval` with `unref()`, not on every check. Good design to reduce write contention.
-2. **`FOR UPDATE` row locks** — `getEntry()` uses `.for("update")` which is correct for atomic check+increment in `consumeRateLimitAttemptMulti`. Per-key serialization under high contention is acceptable for login rate limiting.
-3. **Schema indexing** — The `submissions` table has 9 indexes appropriate for the query patterns. The `submissions_retention_idx` on `(submittedAt, status)` correctly places the range-scan column first.
-4. **SSE coordination** — Uses `pg_advisory_xact_lock` for global connection slot acquisition. Good pattern for distributed coordination without persistent lock rows.
-5. **Capability cache** — Module-level cache with TTL pattern. `Date.now()` vs DB time for TTL expiry is acceptable since it is a cache, not a security boundary.
+### C1-PR-2: [INFO] No measurable regression vs. cycle 11
 
-## Confidence
+Spot-checked key hot-path files (`src/components/code/compiler-client.tsx`, `src/components/contest/leaderboard-table.tsx`, `src/app/(dashboard)/dashboard/groups/[id]/assignments/[assignmentId]/status-board.tsx`, `src/components/lecture/submission-overview.tsx`) for new expensive operations. None found. Memoization patterns intact.
 
-HIGH
+## Net new findings: 1 (LOW; informational/deferred).

@@ -1,47 +1,74 @@
-# RPF Cycle 1 (loop cycle 1/100) — Code Reviewer
+# RPF Cycle 1 (orchestrator-driven, 2026-04-29) — Code Reviewer
 
-**Date:** 2026-04-24
-**Base commit:** 8af86fab (cycle 4 gate results + deferred finding #21)
-**HEAD commit:** 8af86fab
-**Reviewer:** code-reviewer
+**Date:** 2026-04-29
+**HEAD commit:** 32621804 (cycle 11 RPF plan archived)
+**Scope:** Whole repository (entire `src/`, root configs, plans, scripts).
+**Method:** Inventory of file types, programmatic class/util grep across `src/`, manual cross-cutting checks against latest aggregate (cycle 11).
 
-## Scope
+---
 
-Reviewed the full `src/**` tree plus generator scripts in the repo root and `scripts/**`. Specifically examined:
+## Verification of cycle 1-11 fixes (status report)
 
-- `src/lib/judge/sync-language-configs.ts` — the `SKIP_INSTRUMENTATION_SYNC` short-circuit (only production code change since cycle 55)
-- `src/lib/db/schema.pg.ts` — full schema integrity, indexes, constraints, foreign keys
-- `src/lib/security/rate-limit.ts` — rate limiting logic, `Date.now()` usage (deferred AGG-2)
-- `src/lib/security/csrf.ts` — CSRF validation, origin checking
-- `src/lib/api/handler.ts` — `createApiHandler` factory, middleware pipeline
-- `src/lib/auth/index.ts` — NextAuth + DrizzleAdapter setup
-- `src/lib/security/sanitize-html.ts` — DOMPurify sanitization with allowed tags/attributes
-- `src/lib/realtime/realtime-coordination.ts` — SSE coordination, pg_advisory_lock
-- All `tracking-*` usage under `src/` — Korean letter-spacing guard compliance
-- All `console.error/warn` in client components — (deferred AGG-5)
-- All `process.env` reads in production paths — no secrets leaked
-- `eslint-disable` / `@ts-ignore` usage — only one legitimate eslint-disable (plugin config)
+- All previously cited dark-mode missing variants (cycles 5-11) re-verified with grep across `src/**`. 85 occurrences of `text-{red|green|blue|yellow|amber|emerald|orange|teal|cyan|indigo|violet|purple|pink|rose|sky}-{400|500|600|700}` were sampled — every single one in `src/` carries a `dark:` companion. Two non-`dark:` occurrences (`bg-red-500/12` in `src/components/layout/active-timed-assignment-sidebar-panel.tsx:144`, `bg-green-500/15` in `src/components/ui/badge.tsx:24`) use `<color>/<alpha>` channel mixing which is dark-mode safe.
+- `border-{color}-{200|300|400}`: 22/22 paired with `dark:border-*` (or alpha mix).
+- `fill-{color}-*`: 9/9 paired with dark variant.
+- 2 instances of `dangerouslySetInnerHTML` (`src/components/problem-description.tsx:51`, `src/components/seo/json-ld.tsx:21`) — both passed through `sanitizeHtml` / `safeJsonForScript`. No XSS regression.
+- `Promise.all([... headers(), ...])` in `src/app/layout.tsx:91-96` is a valid Next.js 16 async pattern; all other `cookies()`/`headers()` callers (`src/i18n/request.ts`, `src/lib/audit/events.ts`, `src/lib/actions/public-signup.ts`, `src/lib/security/server-actions.ts`) await correctly.
 
-## New Findings
+## Findings
 
-**No new findings this cycle.** The diff from cycle 55 HEAD (`64522fe9`) to current HEAD (`8af86fab`) contains only docs (cycle 4 gate results + plan + user-injected cleanup) plus the `SKIP_INSTRUMENTATION_SYNC` short-circuit which was already reviewed and confirmed safe in cycle 55.
+### C1-CR-1: [LOW] eslint config missing root-level `*.mjs` and `.context/tmp/**` overrides
 
-## Code Quality Observations
+**Files:** `eslint.config.mjs` (lines 38-44 + 81-94); untracked scratch scripts at repo root (`add-stress-tests.mjs`, `auto-solver.mjs`, `dedup-problems.mjs`, `fetch-problems.mjs`, `gen_test_cases.mjs`, `solve-all.mjs`, `solve-all2.mjs`, `solve-fixes.mjs`, `solve-problems.mjs`, `stress-tests.mjs`, `submit.mjs`, `verify-problems.mjs`); `.context/tmp/uiux-audit.mjs`; `playwright.visual.config.ts:2`.
 
-1. **`createApiHandler` pattern** — well-structured factory with proper middleware ordering: rate-limit -> auth -> CSRF -> body parsing -> handler. Error handling wraps everything. Good.
-2. **Schema design** — comprehensive indexing strategy. The `submissions` table has 9 indexes including composite ones for leaderboard queries and data retention. Check constraints on `judge_workers.active_tasks >= 0` and `assignments.late_penalty >= 0` are good defensive measures.
-3. **CSRF protection** — multi-layered: `X-Requested-With` header check, `Sec-Fetch-Site` validation, origin/host verification. API key auth correctly skips CSRF. Well-designed.
-4. **HTML sanitization** — DOMPurify with narrow allowlist, `ALLOW_DATA_ATTR: false`, URI regex restricting to https/mailto/root-relative. Hook adds `rel=noopener noreferrer` and strips non-root-relative image sources. Solid.
-5. **Rate limiting** — proper use of `FOR UPDATE` row locks in `getEntry()`, exponential backoff for blocks, `consumeRateLimitAttemptMulti` for atomic check+increment. The `Date.now()` usage is the known deferred item (AGG-2).
+**Evidence:** `npm run lint` produces 14 warnings, all `@typescript-eslint/no-unused-vars` in untracked one-off scripts at the repo root and `.context/tmp/`. `eslint.config.mjs` lines 38-44 only relax `scripts/**/*.{js,cjs,mjs}` for the same rule. Nothing covers root-level scratch scripts or `.context/tmp/**`.
 
-## Verification of Prior Fixes (All Still Intact)
+**Why a problem:** Each cycle's `npm run lint` invocation re-emits the same 14 noise warnings, masking real future warnings. Cycle policy requires "warnings best-effort" — currently they accumulate.
 
-- `src/lib/leaderboard/icpc.ts` deterministic userId tie-breaker — intact (cycle 49)
-- `src/lib/leaderboard/ioi.ts` deterministic tie-breaker — intact (cycle 46)
-- `src/app/api/v1/judge/claim/route.ts` DB-time for claim — intact (cycle 47)
-- `src/lib/recruiting/token.ts` `computeExpiryFromDays` — intact (cycle 41)
-- `src/lib/judge/sync-language-configs.ts` SKIP_INSTRUMENTATION_SYNC — safe (strict-literal `"1"`)
+**Failure scenario:** When a real warning is introduced (e.g., a future unused import in `src/`), it gets buried in the noise from scratch scripts that aren't part of the production codebase.
 
-## Confidence
+**Suggested fix:** Either (a) add `**/*.mjs` (root only) and `.context/tmp/**` to `globalIgnores` in `eslint.config.mjs`, or (b) extend the `scripts/**` override to also cover `*.mjs` at root and `.context/tmp/**`. The scratch scripts at the repo root are not source-of-truth — they don't need lint coverage. Confidence: **HIGH**.
 
-HIGH — the codebase is in a mature, stable state. Five consecutive cycles (51-55) plus cycle 4 confirm no new production-code findings.
+---
+
+### C1-CR-2: [LOW] Untracked workflow artefacts polluting `git status`
+
+**Files:** repo root — 17 untracked scratch files (`add-stress-tests.mjs`, `auto-solver.mjs`, `dedup-problems.mjs`, `fetch-problems.mjs`, `gen_test_cases.mjs`, `scripts/fix-copyright.mjs`, `scripts/validate-enhance-201-300.mjs`, `scripts/validate-enhance-basic.mjs`, `solutions.js`, `solve-all.mjs`, `solve-all2.mjs`, `solve-fixes.mjs`, `solve-problems.mjs`, `stress-tests.mjs`, `submit.mjs`, `verify-problems.mjs`, `verify_all_tc.py`, `verify_tc.py`).
+
+**Evidence:** `git status --short` shows 17 untracked entries.
+
+**Why a problem:** These problem-solving exploratory scripts clutter the repo root and produce repeating lint noise. If their purpose is one-off, they should live in a `.gitignored` workspace. If they're useful tools, they should be committed under `scripts/`.
+
+**Suggested fix:** Add patterns to `.gitignore` (e.g., `solve-*.mjs`, `verify_*.py`, `auto-solver.mjs`, `solutions.js`, `add-stress-tests.mjs`, `stress-tests.mjs`, `fetch-problems.mjs`, `dedup-problems.mjs`, `gen_test_cases.mjs`, `submit.mjs`). Confidence: **MEDIUM** (judgement call on author intent).
+
+---
+
+### C1-CR-3: [LOW] Direct `console.error` calls in 20+ client components without structured logging
+
+**Files (sample):** `src/components/code/compiler-client.tsx:294`, `src/components/discussions/discussion-thread-form.tsx:54`, `src/app/(dashboard)/dashboard/admin/languages/language-config-table.tsx:138,164,194`.
+
+**Evidence:** `grep -rn 'console\.(log|warn|error|debug)' src/` returns 27 hits, all client-side.
+
+**Why minor:** In production browser, `console.error` is fine for non-PII debug aid. But for consistency with `src/lib/logger.ts` (pino) and to avoid accidentally logging tokens/PII, a small client-safe `clientLogger` wrapper would centralize this. Not blocking — these are bounded contexts already prefixed with descriptive labels.
+
+**Suggested fix:** Defer; document as a future refactor. Severity **LOW**. Confidence: **LOW**.
+
+---
+
+### C1-CR-4: [INFO] Tracking-utility audit confirms Korean letter-spacing rule honored
+
+`grep -rn 'tracking-' src/` returned 30 hits. Each one either:
+- Uses a conditional `${locale !== "ko" ? " tracking-tight" : ""}` pattern, or
+- Is gated by an inline comment explicitly justifying tracking for Korean (e.g., monospace access codes, numeric "404" labels, mono font on `tracking-[0.35em]` access-code input).
+
+No regressions. Repo policy compliant.
+
+---
+
+## Net new findings: 3 (all **LOW**)
+
+No HIGH/MEDIUM regressions surfaced this cycle. The codebase has been steadily polished by cycles 1-11; cycle 12's net surface is small.
+
+## Files reviewed
+
+`src/app/`, `src/components/`, `src/lib/`, `src/hooks/`, `src/contexts/`, `src/i18n/`, `eslint.config.mjs`, `next.config.ts`, `package.json`, `.gitignore`.
