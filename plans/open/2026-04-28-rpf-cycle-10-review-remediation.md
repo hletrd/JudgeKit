@@ -2,7 +2,7 @@
 
 **Date:** 2026-04-28
 **Source:** `.context/reviews/_aggregate.md` (cycle 10)
-**Status:** IN PROGRESS
+**Status:** DONE
 
 ---
 
@@ -16,7 +16,7 @@
 - **Fix:**
   1. Change `formatNumber(progressPercent, { maximumFractionDigits: 1 })` to `formatNumber(progressPercent, { locale, maximumFractionDigits: 1 })` (locale is already available via `useLocale()` on line 47)
 - **Exit criteria:** `formatNumber` call passes locale parameter
-- [ ] Done
+- [x] Done
 
 ### Task B: [MEDIUM] Add dark mode variant to sidebar panel progress bar
 
@@ -26,7 +26,7 @@
 - **Fix:**
   1. Change `isUrgent ? "bg-red-500" : "bg-sidebar-primary"` to `isUrgent ? "bg-red-500 dark:bg-red-600" : "bg-sidebar-primary"`
 - **Exit criteria:** Urgent progress bar has dark mode variant
-- [ ] Done
+- [x] Done
 
 ### Task C: [LOW] Add dark mode variants to submission overview icon colors
 
@@ -42,7 +42,7 @@
   3. Change `text-yellow-500` to `text-yellow-500 dark:text-yellow-400` (line 185)
   4. Change `text-blue-500` to `text-blue-500 dark:text-blue-400` (line 190)
 - **Exit criteria:** All icon color classes have dark mode variants for improved contrast
-- [ ] Done
+- [x] Done
 
 ### Task D: [LOW] Add dark mode variant to anti-cheat dashboard user icon
 
@@ -52,7 +52,7 @@
 - **Fix:**
   1. Change `text-orange-500` to `text-orange-500 dark:text-orange-400`
 - **Exit criteria:** User icon has dark mode text variant
-- [ ] Done
+- [x] Done
 
 ### Task E: [LOW] Add dark mode variant to leaderboard trophy icon
 
@@ -62,7 +62,7 @@
 - **Fix:**
   1. Change `text-yellow-500` to `text-yellow-500 dark:text-yellow-400`
 - **Exit criteria:** Rank 1 trophy icon has dark mode variant
-- [ ] Done
+- [x] Done
 
 ### Task F: [LOW] Add dark mode variants to language config table status badges
 
@@ -78,7 +78,7 @@
   3. Line 429: Add `dark:text-yellow-400 dark:border-yellow-700` to badge class
   4. Line 430: Add `dark:text-green-400 dark:border-green-700` to badge class
 - **Exit criteria:** Status badge text and border colors have dark mode variants
-- [ ] Done
+- [x] Done
 
 ### Task G: [LOW] Add dark mode variant to file upload dialog success text
 
@@ -88,7 +88,7 @@
 - **Fix:**
   1. Change `text-green-600` to `text-green-600 dark:text-green-400`
 - **Exit criteria:** Success text has dark mode variant
-- [ ] Done
+- [x] Done
 
 ### Task H: [LOW] Add dark mode variant to contest join success text
 
@@ -98,7 +98,7 @@
 - **Fix:**
   1. Change `text-green-600` to `text-green-600 dark:text-green-400`
 - **Exit criteria:** Success text has dark mode variant
-- [ ] Done
+- [x] Done
 
 ### Task I: Housekeeping — Mark C9 Task E as done in plan document
 
@@ -108,7 +108,7 @@
 - **Fix:**
   1. Update C9 Task E checkbox from `[ ]` to `[x]`
 - **Exit criteria:** C9 plan document matches codebase state
-- [ ] Done
+- [x] Done
 
 ---
 
