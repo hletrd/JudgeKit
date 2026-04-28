@@ -1,7 +1,7 @@
 # Workspace-to-Public Page Migration Plan
 
 **Date:** 2026-04-19
-**Status:** Phases 1-6 COMPLETE, Phase 7 COMPLETE (participation flow migrated to /contests/[id] and /practice/problems/[id]?assignmentId=...)
+**Status:** ALL PHASES COMPLETE — ready for archival (cycle 1 RPF orchestrator-driven, 2026-04-29). All 7 phases verified at HEAD `32621804`: `(workspace)` and `(control)` route groups removed; 7 308-redirects in `next.config.ts`; `WorkspaceNav`/`ControlNav`/`workspaceShell`/`controlShell` references purged from `src/`; remaining `(dashboard)` routes match the documented "must stay in authenticated area" list.
 **Source:** User-injected TODO #2, AGG-13
 
 ## Goal
@@ -192,7 +192,7 @@ Same as instructor, with additional "Admin" dropdown entry that navigates to `/d
 
 ### Phase 3 — Dashboard layout refinement (Medium risk)
 
-**Status:** IN PROGRESS (cycle 26 — AppSidebar hidden for non-admin users; remaining: evaluate control route merge, icon-rail mode for admin sidebar)
+**Status:** COMPLETE (cycle 1 RPF, 2026-04-29). All sub-items below are DONE or explicitly evaluated-and-deferred-with-reason. Control route merge happened in Phase 4 (cycle 23). Icon-rail mode for admin sidebar evaluated in cycle 27 and deferred — quote: "the current full sidebar provides better usability for 14 admin items. Icon-rail mode would require tooltip-only labels and make the admin section harder to navigate."
 
 **Goal:** Simplify the dashboard layout to complement the top navbar.
 
