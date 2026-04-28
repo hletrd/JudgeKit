@@ -74,10 +74,10 @@ resolve_languages() {
   esac
 }
 
-# Parse arguments
-SKIP_BUILD=false
-SKIP_LANGUAGES=false
-LANGUAGE_FILTER=""
+# Parse arguments. Env-var overrides are honored first, then CLI flags.
+SKIP_BUILD="${SKIP_BUILD:-false}"
+SKIP_LANGUAGES="${SKIP_LANGUAGES:-false}"
+LANGUAGE_FILTER="${LANGUAGE_FILTER:-}"
 INCLUDE_WORKER="${INCLUDE_WORKER:-true}"
 BUILD_WORKER_IMAGE="${BUILD_WORKER_IMAGE:-auto}"
 for arg in "$@"; do
