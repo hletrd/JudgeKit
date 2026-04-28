@@ -16,6 +16,26 @@ export type ContestStatusKey =
  * Returns the CSS class string for a contest card's left border,
  * color-coded by contest status. Includes dark mode variants.
  */
+/**
+ * Returns the Badge variant for a contest status, color-coded by meaning.
+ * Used by both dashboard and public contest listing pages for consistency.
+ */
+export function getContestStatusBadgeVariant(
+  status: ContestStatusKey
+): "secondary" | "success" | "default" | "outline" {
+  switch (status) {
+    case "upcoming":
+      return "secondary";
+    case "open":
+      return "success";
+    case "in_progress":
+      return "default";
+    case "expired":
+    case "closed":
+      return "outline";
+  }
+}
+
 export function getContestStatusBorderClass(status: ContestStatusKey): string {
   switch (status) {
     case "upcoming":

@@ -7,7 +7,7 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { getContestsForUser, getContestStatus } from "@/lib/assignments/contests";
 import type { ContestStatus } from "@/lib/assignments/contests";
-import { getContestStatusBorderClass } from "@/app/(public)/_components/contest-status-styles";
+import { getContestStatusBorderClass, getContestStatusBadgeVariant } from "@/app/(public)/_components/contest-status-styles";
 import { formatDateTimeInTimeZone } from "@/lib/datetime";
 import { getDbNow } from "@/lib/db-time";
 import { CountdownTimer } from "@/components/exam/countdown-timer";
@@ -30,21 +30,6 @@ function statusMatchesFilter(status: ContestStatus, filter: FilterValue): boolea
   if (filter === "active") return status === "open" || status === "in_progress";
   if (filter === "past") return status === "closed" || status === "expired";
   return true;
-}
-
-function getStatusBadgeVariant(status: ContestStatus) {
-  switch (status) {
-    case "upcoming":
-      return "secondary" as const;
-    case "open":
-      return "success" as const;
-    case "in_progress":
-      return "default" as const;
-    case "expired":
-      return "outline" as const;
-    case "closed":
-      return "outline" as const;
-  }
 }
 
 function buildContestPageHref(page: number, filter: FilterValue) {
@@ -206,7 +191,7 @@ export default async function ContestsPage({
                     </div>
                   </div>
                   <div className="flex items-center gap-2 shrink-0">
-                    <Badge variant={getStatusBadgeVariant(status)} className="text-xs">
+                    <Badge variant={getContestStatusBadgeVariant(status)} className="text-xs">
                       {statusLabelMap[status]}
                     </Badge>
                     <Badge className={`text-xs ${contest.examMode === "scheduled" ? "bg-blue-500 text-white dark:bg-blue-600 dark:text-white" : "bg-purple-500 text-white dark:bg-purple-600 dark:text-white"}`}>

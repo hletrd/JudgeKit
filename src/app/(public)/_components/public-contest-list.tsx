@@ -90,10 +90,10 @@ export function PublicContestList({
                       </div>
                       <div className="flex shrink-0 items-center gap-2">
                         <Badge variant="outline">{contest.statusLabel}</Badge>
-                        <Badge className={`text-xs ${contest.modeKey === "windowed" ? "bg-purple-500 text-white dark:bg-purple-600" : "bg-blue-500 text-white dark:bg-blue-600"}`}>
+                        <Badge className={`text-xs ${contest.modeKey === "windowed" ? "bg-purple-500 text-white dark:bg-purple-600 dark:text-white" : "bg-blue-500 text-white dark:bg-blue-600 dark:text-white"}`}>
                           {contest.modeLabel}
                         </Badge>
-                        <Badge className={`text-xs ${contest.scoringKey === "icpc" ? "bg-orange-500 text-white dark:bg-orange-600" : "bg-teal-500 text-white dark:bg-teal-600"}`}>
+                        <Badge className={`text-xs ${contest.scoringKey === "icpc" ? "bg-orange-500 text-white dark:bg-orange-600 dark:text-white" : "bg-teal-500 text-white dark:bg-teal-600 dark:text-white"}`}>
                           {contest.scoringLabel}
                         </Badge>
                       </div>
@@ -133,10 +133,10 @@ export function PublicContestList({
                               </div>
                               <div className="flex shrink-0 items-center gap-2">
                                 <Badge variant="outline">{contest.statusLabel}</Badge>
-                                <Badge className={`text-xs ${contest.modeKey === "windowed" ? "bg-purple-500 text-white dark:bg-purple-600" : "bg-blue-500 text-white dark:bg-blue-600"}`}>
+                                <Badge className={`text-xs ${contest.modeKey === "windowed" ? "bg-purple-500 text-white dark:bg-purple-600 dark:text-white" : "bg-blue-500 text-white dark:bg-blue-600 dark:text-white"}`}>
                                   {contest.modeLabel}
                                 </Badge>
-                                <Badge className={`text-xs ${contest.scoringKey === "icpc" ? "bg-orange-500 text-white dark:bg-orange-600" : "bg-teal-500 text-white dark:bg-teal-600"}`}>
+                                <Badge className={`text-xs ${contest.scoringKey === "icpc" ? "bg-orange-500 text-white dark:bg-orange-600 dark:text-white" : "bg-teal-500 text-white dark:bg-teal-600 dark:text-white"}`}>
                                   {contest.scoringLabel}
                                 </Badge>
                               </div>

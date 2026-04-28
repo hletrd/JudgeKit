@@ -1,10 +1,10 @@
 import type { Metadata } from "next";
 import { getLocale, getTranslations } from "next-intl/server";
 import { PublicContestList } from "../_components/public-contest-list";
-import { getContestStatusBorderClass, formatDateLabel } from "../_components/contest-status-styles";
+import { getContestStatusBorderClass, getContestStatusBadgeVariant, formatDateLabel } from "../_components/contest-status-styles";
 import { getPublicContests } from "@/lib/assignments/public-contests";
 import { getContestsForUser } from "@/lib/assignments/contests";
-import { getContestStatus, type ContestStatus } from "@/lib/assignments/contests";
+import { getContestStatus } from "@/lib/assignments/contests";
 import { JsonLd } from "@/components/seo/json-ld";
 import { buildAbsoluteUrl, buildLocalePath, buildPublicMetadata } from "@/lib/seo";
 import { getResolvedSystemSettings } from "@/lib/system-settings";
@@ -16,21 +16,6 @@ import { Badge } from "@/components/ui/badge";
 import { CountdownTimer } from "@/components/exam/countdown-timer";
 import { getDbNow } from "@/lib/db-time";
 import Link from "next/link";
-
-function getStatusBadgeVariant(status: ContestStatus) {
-  switch (status) {
-    case "upcoming":
-      return "secondary" as const;
-    case "open":
-      return "success" as const;
-    case "in_progress":
-      return "default" as const;
-    case "expired":
-      return "outline" as const;
-    case "closed":
-      return "outline" as const;
-  }
-}
 
 export async function generateMetadata(): Promise<Metadata> {
   const [tCommon, tShell, locale] = await Promise.all([
@@ -164,11 +149,14 @@ export default async function PublicContestsPage() {
                     </div>
                   </div>
                   <div className="flex items-center gap-2 shrink-0">
-                    <Badge variant={getStatusBadgeVariant(contest.status)} className="text-xs">
+                    <Badge variant={getContestStatusBadgeVariant(contest.status)} className="text-xs">
                       {statusLabels[contest.status]}
                     </Badge>
-                    <Badge className={`text-xs ${contest.examMode === "scheduled" ? "bg-blue-500 text-white dark:bg-blue-600" : "bg-purple-500 text-white dark:bg-purple-600"}`}>
+                    <Badge className={`text-xs ${contest.examMode === "scheduled" ? "bg-blue-500 text-white dark:bg-blue-600 dark:text-white" : "bg-purple-500 text-white dark:bg-purple-600 dark:text-white"}`}>
                       {contest.examMode === "scheduled" ? tContests("modeScheduled") : tContests("modeWindowed")}
+                    </Badge>
+                    <Badge className={`text-xs ${contest.scoringModel === "ioi" ? "bg-teal-500 text-white dark:bg-teal-600 dark:text-white" : "bg-orange-500 text-white dark:bg-orange-600 dark:text-white"}`}>
+                      {contest.scoringModel === "ioi" ? tContests("scoringModelIoi") : tContests("scoringModelIcpc")}
                     </Badge>
                   </div>
                 </div>
