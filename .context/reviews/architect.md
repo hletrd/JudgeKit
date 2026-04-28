@@ -1,61 +1,54 @@
-# Architect Review — RPF Cycle 9/100
+# Architecture Review — Cycle 1 (New Session)
 
-**Date:** 2026-04-26
-**Cycle:** 9/100 of review-plan-fix loop
-**Lens:** architectural / design risk, coupling, layering, schema lifecycle, deploy-script architecture
-**Files inventoried (review-relevant):** `deploy-docker.sh`, `drizzle/pg/0020_drop_judge_workers_secret_token.sql`, `drizzle/pg/0021_lethal_black_tom.sql`, `drizzle/pg/meta/_journal.json`, `src/lib/db/schema.pg.ts`, `src/lib/judge/auth.ts`, `src/app/api/v1/contests/[assignmentId]/analytics/route.ts`, `src/components/exam/anti-cheat-monitor.tsx`, `src/lib/security/env.ts`, `src/proxy.ts`, `AGENTS.md`, `.env.example`, `.env.production.example`, `tests/unit/api/contests-analytics-route.test.ts`, `tests/unit/db/schema-parity.test.ts`, `plans/open/`.
-
----
-
-## Cycle-8 carry-over verification
-
-All cycle-8 plan tasks are confirmed RESOLVED at HEAD:
-
-- **Task A (AGG8-1, 3-agent convergence):** `plans/done/2026-04-26-rpf-cycle-7-review-remediation.md` exists; `plans/open/` no longer contains the cycle-7 plan. Verified via `ls plans/done/ | grep cycle-7` and `ls plans/open/ | grep cycle-7` (returns empty). Commit `390cde9b` performed the move; commit `77a19336` marked Task A `[x]`.
-
-The cycle-8 plan was a single-task housekeeping plan; it is fully complete and should itself be archived this cycle.
+**Reviewer:** architect
+**Date:** 2026-04-28
+**Scope:** Architectural patterns, coupling, layering
 
 ---
 
-## ARCH9-1: [LOW, NEW, housekeeping] Cycle-8 plan must be archived to `plans/done/` per the README convention
+## Findings
 
-**Severity:** LOW (process)
+### ARCH-1: [MEDIUM] `getUserContestAccess` and `getEnrolledContestDetail` have significant query overlap
+
+**File:** `src/lib/assignments/public-contests.ts`
 **Confidence:** HIGH
 
-**Evidence:**
-- `plans/open/2026-04-26-rpf-cycle-8-review-remediation.md` exists with its single task `[x]` done (Task A → commit `390cde9b`, plan-mark commit `77a19336`).
-- `plans/open/README.md:36-39`: "Once **every** task in such a plan is `[x]` (or `[d]` with a recorded deferral exit criterion), the plan must be moved to `plans/done/` in the next cycle's housekeeping pass — typically by the cycle that follows it."
-- This is the same housekeeping pattern that cycle-8 honored for cycle-7, that cycle-7 honored for cycle-6, that cycle-6 honored for cycle-5, etc.
+Both functions query the same `assignments` row and check enrollment status. When called in sequence from the contest detail page, this results in:
+- 2 assignment queries roundtrips
+- 2 enrollment query roundtrips
+- 2 `resolveCapabilities` calls
+- 2 `canManageContest` calls
 
-**Fix:** `git mv plans/open/2026-04-26-rpf-cycle-8-review-remediation.md plans/done/`
+This violates the principle of composing data access at the right granularity. The caller (page component) should be able to get access + detail in a single pass.
 
-**Exit criteria:**
-- Cycle-8 plan in `plans/done/`.
-- `plans/open/` contains only standing/master plans + the new cycle-9 plan.
-
-**Plannable:** YES (small move-only change). Pick up this cycle.
+**Fix:** Create a unified `getContestDetailForUser(assignmentId, userId, role)` function that returns both the access level and the detail in one query, or at minimum returns the assignment row from `getUserContestAccess` so `getEnrolledContestDetail` can reuse it.
 
 ---
 
-## Cross-cycle re-validation (cycles 1-8 carried-deferred items)
+### ARCH-2: [LOW] Public contest detail page is a single 680-line server component with two distinct render paths
 
-All carried-deferred items from `_aggregate-cycle-48.md` and the cycle-7/8 deferred tables are re-confirmed deferrable at HEAD with reasoning unchanged:
+**File:** `src/app/(public)/contests/[id]/page.tsx`
+**Confidence:** MEDIUM
 
-| Cycle 7 ID | Description | Status at HEAD |
-|------------|-------------|----------------|
-| AGG7-4 (ARCH7-1) | 4x duplicate psql/node container boilerplate | Still defer — operational refactor |
-| AGG7-5 (ARCH7-2 / carries AGG6-3) | tags.updated_at nullable inconsistency | Still defer — zero consumers (re-verified by grep on this cycle: 0 `.updatedAt` references for tags table outside schema/migration) |
-| AGG7-6 (ARCH7-3) | analyticsCache.dispose invariant in catch-block only | Still defer — code correct |
-| AGG7-7 (ARCH7-4) | getAuthSessionCookieName vs Names API confusion | Still defer — current callers correct |
-| AGG7-8 through AGG7-37 | All cosmetic/operational/process | All still defer per cycle-7 reasoning |
-| AGG8-3 (CRIT8-3) | SUNSET comment uses ephemeral SHA reference | Still defer — SHA stable under no-force-push policy |
+The enrolled student view (lines 131-421) and the public view (lines 424-680) are completely different rendering paths within the same component. This is a common Next.js pattern for auth-aware pages, but at 680 lines, the file is becoming difficult to navigate and test independently.
 
-No regressions detected. The cycle-8 commit `390cde9b` was a `git mv` only; commit `77a19336` was a plan-mark only. Both are pure process — zero source-tree change.
+**Fix:** Consider extracting the enrolled view into a separate component (e.g., `EnrolledContestView`) and the public view into `PublicContestView`. The page component would handle auth routing and delegate rendering.
 
 ---
 
-## Summary
+### ARCH-3: [LOW] `assignmentContext` type in problem detail page is missing `examDurationMinutes`
 
-**Cycle-9 NEW findings:** 0 HIGH, 0 MEDIUM, 1 LOW (ARCH9-1 housekeeping — plannable).
-**Cycle-8 carry-over:** 1 implemented task remains in place; all defers re-verified.
-**Architectural verdict:** No HIGH or MEDIUM architectural risks at HEAD. The cycle-8 fix holds. Codebase is in continuing steady-state; only the housekeeping archival is actionable this cycle.
+**File:** `src/app/(public)/practice/problems/[id]/page.tsx:152-162`
+**Confidence:** HIGH (confirmed bug — see CR-2)
+
+The `assignmentContext` type deliberately omits `examDurationMinutes`, causing the `StartExamButton` to receive 0 instead of the actual duration. This is both a type design gap and a bug.
+
+**Fix:** Add `examDurationMinutes: number | null` to the `assignmentContext` type and populate it from the DB query.
+
+---
+
+## Architectural Observations (No Action Needed)
+
+- The public route structure (`/(public)/contests/[id]`, `/(public)/practice/problems/[id]`) is clean and follows Next.js App Router conventions.
+- The `public-contests.ts` module properly encapsulates data access for public contest pages.
+- The RSC streaming workaround in `layout.tsx` is appropriately scoped and documented with a TODO for removal.

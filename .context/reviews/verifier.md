@@ -1,71 +1,109 @@
-# Verifier Review — RPF Cycle 9/100
+# Verifier Review — Cycle 1 (New Session)
 
-**Date:** 2026-04-26
-**Cycle:** 9/100
-**Lens:** evidence-based correctness check against stated behavior
-
----
-
-## Cycle-8 verification
-
-Cycle-8 plan task verified complete at HEAD by direct evidence:
-
-### Task A — Cycle-7 plan archived (commit `390cde9b`)
-- `plans/done/2026-04-26-rpf-cycle-7-review-remediation.md` exists ✓
-- `plans/open/` does not contain cycle-7 plan ✓
-- Plan-mark commit `77a19336` set Task A `[x]` ✓
-
-The cycle-8 plan was a single-task plan and is now fully complete.
+**Reviewer:** verifier
+**Date:** 2026-04-28
+**Scope:** Evidence-based correctness check against stated behavior
 
 ---
 
-## VER9-1: [LOW, NEW] Verify gates state at cycle-9 start
+## Verification Results
 
-**Severity:** LOW (sanity check)
-**Confidence:** HIGH
+### VER-1: [HIGH, CONFIRMED BUG] `totalPoints` calculation is incorrect
+
+**File:** `src/app/(public)/contests/[id]/page.tsx:187`
 
 **Evidence:**
-- `npm run lint` exit 0; 14 warnings (untracked dev .mjs scripts) — verified.
-- `npm run test:unit` passed: 304 files, 2234 tests, 0 failures, 31s — verified.
-- `npm run build` exit 0 — verified (Next.js routes table printed; no compile errors).
+- Code: `sortedProblems.reduce((sum, p) => sum + p.points, 100)`
+- Expected behavior: Sum of all problem points
+- Actual behavior: Sum of all problem points + 100 (the reduce initial value)
+- The `AssignmentOverview` component receives `totalPoints={totalPoints}` at line 329
+- This is a data integrity bug on the student-facing contest detail page
 
-**Conclusion:** All gates green at cycle-9 start. Cycle-9 has no inherited gate failures.
+**Verdict:** CONFIRMED BUG. The initial value must be 0, not 100.
 
 ---
 
-## VER9-2: [LOW, NEW, housekeeping] Verify cycle-8 plan is ready for archival
+### VER-2: [MEDIUM, CONFIRMED] `StartExamButton` on problem detail page passes 0 for exam duration
 
-**Severity:** LOW (verification of housekeeping precondition)
-**Confidence:** HIGH
+**File:** `src/app/(public)/practice/problems/[id]/page.tsx:478`
 
 **Evidence:**
-- `plans/open/2026-04-26-rpf-cycle-8-review-remediation.md` exists with its single Task A `[x]` done (commit `390cde9b`, plan-mark `77a19336`).
-- Per `plans/open/README.md:36-39`, this plan must be moved to `plans/done/` in the next cycle's housekeeping pass — i.e., this cycle.
+- Code: `durationMinutes={0}` — hardcoded
+- The `assignmentContext` type definition (lines 152-162) does not include `examDurationMinutes`
+- The contest detail page correctly passes `contest.examDurationMinutes ?? 0` at line 288
+- The problem detail page should also pass the actual duration
 
-**Conclusion:** Cycle-8 plan satisfies the README archival precondition. Cycle-9 should perform the move.
-
-**Carried-deferred status:** Plannable for cycle-9 (single move-only commit).
+**Verdict:** CONFIRMED BUG. The `assignmentContext` type and DB query need to include `examDurationMinutes`.
 
 ---
 
-## VER9-3: [LOW, NEW] Verify no regressions introduced by cycle-8 process commits
+### VER-3: [VERIFIED OK] Anti-cheat monitor does not capture text content
 
-**Severity:** LOW (verification)
-**Confidence:** HIGH
+**File:** `src/components/exam/anti-cheat-monitor.tsx:207-228`
 
-**Evidence:** Re-inspected the cycle-8 commits:
-- `390cde9b` (cycle-7 plan archival) — git mv only; no source code change.
-- `77a19336` (plan-mark of cycle-8 Task A) — markdown checkbox flip; no source code change.
-- `c4b9d1ca` (cycle-8 review artifacts and remediation plan) — only `.context/reviews/*` and `plans/open/*` files; no source code change.
+**Evidence:**
+- The `describeElement` function (lines 207-228) explicitly does not capture `textContent`
+- Line 219-220 comment: "Note: text content is intentionally NOT captured to avoid storing copyrighted exam problem text in the audit log."
+- Copy/paste events only capture element type and CSS class identifier
+- Previous AGG-4 finding about text capture is now RESOLVED
 
-All gates pass. Cycle-8's commits introduce zero behavioral change.
+**Verdict:** VERIFIED OK. Previous finding is fixed.
 
-**Conclusion:** No regressions.
+---
+
+### VER-4: [VERIFIED OK] CountdownTimer uses server time sync with proper error handling
+
+**File:** `src/components/exam/countdown-timer.tsx:62-93`
+
+**Evidence:**
+- Uses `apiFetch("/api/v1/time", { signal: controller.signal })` with 5-second timeout
+- Validates `Number.isFinite(data.timestamp)` before using offset
+- Falls back to client time on error (offset stays at 0)
+- Previous AGG-5 about uncorrected initial render is a known trade-off documented in the code
+
+**Verdict:** VERIFIED OK with accepted trade-off (initial flash before server sync).
+
+---
+
+### VER-5: [VERIFIED OK] Auth configuration is secure
+
+**File:** `src/lib/auth/config.ts`
+
+**Evidence:**
+- Dummy password hash for timing-safe comparison on non-existent users
+- Rate limiting on IP + username for login attempts
+- Argon2id for password hashing with automatic rehashing
+- Token invalidation check on every JWT refresh cycle
+- Auth secret and judge auth token minimum length validation (32 chars)
+- Secure cookie detection based on AUTH_URL scheme
+
+**Verdict:** VERIFIED OK. No new auth security issues.
+
+---
+
+### VER-6: [VERIFIED OK] SSE connection tracking is correctly implemented
+
+**File:** `src/app/api/v1/submissions/[id]/events/route.ts`
+
+**Evidence:**
+- Two-phase eviction (stale cleanup + FIFO by insertion order) replaces previous O(n) scan
+- `userConnectionCounts` Map provides O(1) per-user count lookup
+- Per-user connection cap enforced
+- Shared polling reduces DB queries
+- Re-auth check every 30 seconds prevents data leakage after account deactivation
+- Cleanup timer with `unref()` to avoid blocking process exit
+
+**Verdict:** VERIFIED OK. Previous AGG-6 about O(n) eviction is now resolved.
 
 ---
 
 ## Summary
 
-**Cycle-9 NEW findings:** 0 HIGH, 0 MEDIUM, 3 LOW (all verification artifacts; VER9-2 is plannable housekeeping).
-**Cycle-8 carry-over status:** Cycle-8's single plan task fully verified by direct evidence; all defers re-verified.
-**Verifier verdict:** No regressions or unverified claims at HEAD. The cycle-8 fix is present and correct as committed.
+| ID | Finding | Verdict |
+|----|---------|---------|
+| VER-1 | totalPoints off by 100 | CONFIRMED BUG |
+| VER-2 | StartExamButton duration=0 | CONFIRMED BUG |
+| VER-3 | Anti-cheat text capture | VERIFIED OK (fixed) |
+| VER-4 | CountdownTimer server sync | VERIFIED OK (trade-off) |
+| VER-5 | Auth configuration | VERIFIED OK |
+| VER-6 | SSE connection tracking | VERIFIED OK (fixed) |

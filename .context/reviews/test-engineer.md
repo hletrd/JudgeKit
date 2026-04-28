@@ -1,42 +1,58 @@
-# Test Engineer Review — RPF Cycle 9/100
+# Test Engineering Review — Cycle 1 (New Session)
 
-**Date:** 2026-04-26
-**Cycle:** 9/100
-**Lens:** test coverage gaps, test-determinism, flaky tests, TDD opportunities, regression coverage
-
----
-
-## Cycle-8 carry-over verification
-
-All cycle-8 plan tasks confirmed at HEAD; gates green:
-- `npm run test:unit` — 304 test files, 2234 tests, 0 failures (verified at cycle-9 start, 31s).
-- `npm run lint` — 0 errors, 14 unchanged warnings (untracked dev .mjs scripts).
-- `npm run build` — exit 0.
-
-Cycle-7 carried-deferred test items reverified:
-- TE7-1 (hash semantics SQL-vs-JS not pinned) — still no test asserting equivalence. Carried.
-- TE7-2 (success-path cooldown clearing lacks regression test) — still no dedicated test. Carried.
-- TE7-3 (performFlush lacks dedicated unit test) — still no dedicated test. Carried.
-- TE7-4 (schema-parity only generic) — still 4 generic tests. Carried.
-- TE7-5 (no first-set delete-cooldown test) — still no test. Carried.
-
-The cycle-8 commits (`390cde9b`, `77a19336`, `c4b9d1ca`) did not change executable code (process-only), so test coverage is unchanged from cycle-7 baseline.
+**Reviewer:** test-engineer
+**Date:** 2026-04-28
+**Scope:** Test coverage analysis for recent changes and overall test health
 
 ---
 
-## TE9-1: [LOW, NEW] No new test coverage gaps this cycle
+## Findings
 
-**Severity:** LOW (verification — no findings)
+### TE-1: [MEDIUM] No tests for the new public contest detail enrolled view
+
+**File:** `src/app/(public)/contests/[id]/page.tsx`
 **Confidence:** HIGH
 
-**Evidence:** No new code introduced. All 2234 tests pass deterministically. No flaky tests identified. The cycle-7 carried-deferred test items remain accurate.
+The enrolled contest detail view (lines 131-421) is a significant new feature with complex conditional rendering (upcoming, past, exam modes, anti-cheat, countdown timer, leaderboard, submissions table). There are no component or integration tests for this view.
 
-**Fix:** No action — no findings.
+**Failure scenario:** The `totalPoints` bug (CR-1) would not be caught by any existing test. Similarly, the `StartExamButton` receiving 0 duration (CR-2) would not be caught.
+
+**Fix:** Add component tests covering:
+1. Enrolled student with upcoming contest (shows countdown)
+2. Enrolled student with active contest (shows problems, submit button)
+3. Enrolled student with past contest (shows closed message)
+4. Total points calculation with multiple problems
+5. Windowed exam flow (start button, countdown)
 
 ---
 
-## Summary
+### TE-2: [MEDIUM] No tests for the assignment context on problem detail page
 
-**Cycle-9 NEW findings:** 0 HIGH, 0 MEDIUM, 0 LOW.
-**Cycle-8 carry-over status:** All cycle-7 test defers carried unchanged.
-**Test verdict:** Test suite is healthy at HEAD (2234 passing). Cycle-9 introduced no test-coverage regressions; cycle-8 introduced none either.
+**File:** `src/app/(public)/practice/problems/[id]/page.tsx`
+**Confidence:** HIGH
+
+The `assignmentId` search parameter handling (lines 150-211) introduces new branching logic: validation redirect, exam session lookup, deadline checking, submission blocking, and anti-cheat activation. None of these paths have tests.
+
+**Failure scenario:** Changes to `validateAssignmentSubmission` could break the redirect behavior without any test catching it.
+
+**Fix:** Add integration tests for the assignment context flow:
+1. Problem with valid assignmentId (shows exam UI)
+2. Problem with invalid assignmentId (redirects)
+3. Problem with expired deadline (shows blocked state)
+4. Problem with windowed exam and no session (shows start button)
+
+---
+
+### TE-3: [LOW] Existing test suite is comprehensive for other areas
+
+The component test suite covers 50+ components. Unit tests cover 304 files with 2234 tests passing. The gap is specifically in the newly added public contest/problem detail pages, which makes sense given their recent addition.
+
+---
+
+## Test Infrastructure Notes
+
+- `vitest.config.ts` — unit tests
+- `vitest.config.component.ts` — component tests
+- `vitest.config.integration.ts` — integration tests
+- `playwright.config.ts` — e2e tests
+- All configs appear well-structured.

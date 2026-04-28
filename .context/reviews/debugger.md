@@ -1,43 +1,87 @@
-# Debugger Review — RPF Cycle 9/100
+# Debugger Review — Cycle 1 (New Session)
 
-**Date:** 2026-04-26
-**Cycle:** 9/100
-**Lens:** latent bugs, failure modes, regressions, error recovery, edge cases
-
----
-
-## Cycle-8 carry-over verification
-
-All cycle-8 plan tasks confirmed at HEAD; no regressions detected.
-
-Cycle-8 commits were process/docs only:
-- `390cde9b` (cycle-7 plan archival) — git mv only; no source code change.
-- `77a19336` (plan-mark of cycle-8 Task A) — markdown only; no source code change.
-- `c4b9d1ca` (cycle-8 review artifacts + plan) — only `.context/reviews/*` and `plans/open/*` files.
-
-The cycle-6 critical Step 5b backfill is still in place at `deploy-docker.sh:583-608`. Hash semantics still match `src/lib/judge/auth.ts:21-23`. Cycle-7 SUNSET CRITERION comment block at `deploy-docker.sh:570-581` still well-formed.
+**Reviewer:** debugger
+**Date:** 2026-04-28
+**Scope:** Latent bug surface, failure modes, regressions
 
 ---
 
-## DBG9-1: [LOW, NEW] No new latent bugs detected this cycle
+## Findings
 
-**Severity:** LOW (verification — no findings)
+### DBG-1: [HIGH] `totalPoints` always inflated by 100 — visible bug in student-facing UI
+
+**File:** `src/app/(public)/contests/[id]/page.tsx:187`
 **Confidence:** HIGH
 
-**Evidence:** Re-traced the same code paths cycle-7/8 inspected (Step 5b, drizzle-kit push, _lastRefreshFailureAt lifecycle, anti-cheat retry timer). No new latent bugs detected. The cycle-8 commits did not change any executable code (process-only).
+```tsx
+const totalPoints = sortedProblems.reduce((sum, p) => sum + p.points, 100);
+```
 
-**Verification:** All cycle-7 carried-deferred debugger items remain accurate:
-- DBG7-1 (Step 5b heredoc multi-layer escape) — still works correctly; comment doc improvement only.
-- DBG7-2/VER7-1 (NETWORK_NAME bare regex) — still works for single-project hosts; defer.
-- DBG7-3 (route.ts:84 redundant-on-overwrite) — RESOLVED via cycle-7 Task C comment.
-- DBG7-4/TRC7-2 (scheduleRetryRef stale-closure risk) — still theoretical; assignmentId stable.
+The reduce initial value is `100` instead of `0`. This is a definite logic error. The `totalPoints` value is passed to `AssignmentOverview` at line 329, which displays it to students.
 
-**Fix:** No action — no findings.
+**Concrete failure scenario:**
+- Contest has 3 problems, each worth 100 points
+- Expected total: 300
+- Actual total displayed: 400 (300 + 100 initial value)
+- Student sees "Total: 400 points" when the contest is actually 300 points
+
+**Fix:** Change initial value from `100` to `0`.
 
 ---
 
-## Summary
+### DBG-2: [MEDIUM] `StartExamButton` on problem detail page receives `durationMinutes={0}` for windowed exams
 
-**Cycle-9 NEW findings:** 0 HIGH, 0 MEDIUM, 0 LOW.
-**Cycle-8 carry-over status:** No regressions; all cycle-7 carries unchanged.
-**Debug verdict:** No latent bugs at HEAD. Cycle-8's process-only commits introduce no executable code change.
+**File:** `src/app/(public)/practice/problems/[id]/page.tsx:478`
+**Confidence:** HIGH
+
+The `assignmentContext` type doesn't include `examDurationMinutes`, so the button always gets 0. This could cause:
+1. The exam session to be created with a 0-minute duration
+2. The button UI to show "0 min" which is confusing
+3. Immediate expiration of the exam session
+
+**Concrete failure scenario:** Student navigates to a problem via `/practice/problems/123?assignmentId=abc`. The contest has `examMode: "windowed"` with `examDurationMinutes: 120`. The student clicks "Start Exam" and the exam session is created with 0 minutes, immediately expiring.
+
+**Fix:** Add `examDurationMinutes` to `assignmentContext` and pass it through.
+
+---
+
+### DBG-3: [LOW] Potential race condition in contest detail page — `getExamSession` called twice
+
+**File:** `src/app/(public)/contests/[id]/page.tsx:173-176`
+
+```tsx
+let examSession = contest.examSession;
+if (contest.examMode === "windowed" && !examSession) {
+  examSession = await getExamSession(contest.id, session.user.id);
+}
+```
+
+The `contest.examSession` comes from `getEnrolledContestDetail` (lines 302-313), which also queries `examSessions`. If the exam session is created between the two queries, the page could show inconsistent state. This is a low-probability race but worth noting for timed exam flows where session creation timing matters.
+
+**Fix:** Use a single query path. The `getEnrolledContestDetail` function already queries exam sessions — the fallback query on lines 173-176 should not be needed if `getEnrolledContestDetail` is correctly returning the session.
+
+---
+
+### DBG-4: [LOW] `ContestDetailLayout` workaround depends on `#main-content` element existing
+
+**File:** `src/app/(public)/contests/[id]/layout.tsx:36-37`
+
+```tsx
+const main = document.getElementById("main-content");
+main?.addEventListener("click", handler, true);
+```
+
+If the `#main-content` element does not exist (e.g., layout change, SSR hydration mismatch), the click handler is never attached. The workaround silently fails, and users on contest pages would experience broken client-side navigation (RSC payload corruption).
+
+**Fix:** Add a development-only warning if `#main-content` is not found.
+
+---
+
+## Regression Verification
+
+All recent commits were reviewed:
+- `1ee90015` (redirect dashboard contest pages to public URLs) — No regression risk; redirects are simple
+- `db9ddbc8` (My Contests section) — New feature; no regression
+- `565d68ad` (assignment context on problem detail) — Introduces CR-2/DBG-2 bug
+- `4df35c7f` (auth-aware contest detail) — Introduces CR-1/DBG-1 bug
+- `21671fdd` (assignmentId through PublicQuickSubmit) — No regression; passes prop through

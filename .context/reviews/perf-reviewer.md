@@ -1,44 +1,63 @@
-# Performance Reviewer — RPF Cycle 9/100
+# Performance Review — Cycle 1 (New Session)
 
-**Date:** 2026-04-26
-**Cycle:** 9/100
-**Lens:** performance, concurrency, memory, hot paths, GC, cache efficiency, deploy-time cost
-
----
-
-## Cycle-8 carry-over verification
-
-All cycle-8 plan tasks confirmed at HEAD; no performance regressions detected.
-
-Cycle-8 commits (`390cde9b`, `77a19336`, `c4b9d1ca`) introduced no executable code changes (process/docs only). Performance characteristics unchanged from cycle-7 baseline.
-
-Specific re-verification:
-- `_lastRefreshFailureAt` Map is bounded by `analyticsCache` capacity (LRU max=100) via dispose hook. ✓ No unbounded growth.
-- `analyticsCache` LRU max=100, TTL=60s — sufficient for typical workloads.
-- Rate-limiter cooldown is 5s — keeps thundering-herd attempts to ≤1 per 5s per cache key.
-- Step 5b backfill runtime cost ~5-10s per deploy. SUNSET CRITERION (cycle-7 Task A) documents the path to remove this cost after retention period.
+**Reviewer:** perf-reviewer
+**Date:** 2026-04-28
+**Scope:** Full repository performance analysis
 
 ---
 
-## PERF9-1: [LOW, NEW] No new performance findings this cycle
+## Findings
 
-**Severity:** LOW (verification — no findings)
-**Confidence:** HIGH
+### PERF-1: [MEDIUM] Public contest detail page makes N+1-style sequential queries for enrolled users
 
-**Evidence:** Hot paths (analytics route, anti-cheat flush, proxy cache) re-inspected. No new perf issues. All cycle-7 carried-deferred perf items remain accurate:
-- PERF7-1/CRIT7-1/CRIT7-2 (Step 5b backfill 5-10s per deploy) — RESOLVED via cycle-7 Task A SUNSET CRITERION comment (acknowledges the cost and provides removal path).
-- PERF7-2 (drizzle-kit npm install per-deploy) — still carried.
-- PERF7-3 (_lastRefreshFailureAt indirect bound) — still carried.
-- PERF7-4 (performFlush serial-await) — still carried.
-- PERF7-5 (proxy.ts authUserCache O(n) cleanup) — still carried.
-- PERF7-6 (cache-miss getDbNowMs round-trip) — still carried.
+**File:** `src/app/(public)/contests/[id]/page.tsx:123-169`
+**Confidence:** MEDIUM
 
-**Fix:** No action — no findings.
+For enrolled users, the page makes these sequential queries:
+1. `auth()` — session check
+2. `getUserContestAccess(id, ...)` — checks enrollment/management (queries assignment + enrollment + access tokens)
+3. `getEnrolledContestDetail(id, ...)` — queries assignment again + enrollment again + exam sessions
+4. `getStudentProblemStatuses(...)` — problem statuses
+5. `mySubmissions` query — submission history
+6. `getResolvedSystemTimeZone()` — timezone
+7. `getExamSession(...)` — exam session again
+
+Steps 2 and 3 both query the same assignment row and check enrollment. Step 6 queries exam session, and step 7 queries it again. This is 2-3 redundant DB roundtrips per page load.
+
+**Failure scenario:** Under load (e.g., 500 students starting a timed exam simultaneously), these redundant queries contribute to DB connection pool exhaustion.
+
+**Fix:** Merge `getUserContestAccess` and `getEnrolledContestDetail` into a single query that returns both access level and detail, or cache the assignment row between calls. The exam session query should also be deduplicated.
 
 ---
 
-## Summary
+### PERF-2: [LOW] SSE connection tracking FIFO eviction is already improved from previous reviews
 
-**Cycle-9 NEW findings:** 0 HIGH, 0 MEDIUM, 0 LOW.
-**Cycle-8 carry-over status:** All cycle-7 perf defers carried unchanged.
-**Performance verdict:** No hot-path performance issues at HEAD. Step 5b backfill cost is now documented with removal criteria.
+**File:** `src/app/api/v1/submissions/[id]/events/route.ts:39-75`
+
+Verified that the two-phase eviction (stale cleanup + FIFO by insertion order) has replaced the previous O(n) oldest-entry scan. The `userConnectionCounts` Map provides O(1) per-user count lookup. No further optimization needed at current scale.
+
+---
+
+### PERF-3: [LOW] Public problem detail page runs 4+ parallel query batches
+
+**File:** `src/app/(public)/practice/problems/[id]/page.tsx:225-252`
+
+The page correctly uses `Promise.all` for independent queries after the problem lookup, which is good. However, the first query batch (lines 125-133) includes `auth()`, `getLocale()`, and multiple `getTranslations()` calls that are independent of the problem data but block the problem query (line 136). These could be parallelized with the initial problem lookup.
+
+**Fix:** Move the problem query and translation queries into a single `Promise.all` batch, then do the access check and second query batch afterward.
+
+---
+
+### PERF-4: [LOW] `getEnrolledContestDetail` calls `resolveCapabilities` redundantly
+
+**File:** `src/lib/assignments/public-contests.ts:277-278`
+
+`getEnrolledContestDetail` calls `resolveCapabilities(role)` on line 277, but `getUserContestAccess` already called `resolveCapabilities(role)` on line 209 of the same file. When both functions are called in sequence (as in the contest detail page), the capabilities are resolved twice. The `resolveCapabilities` function has a cache, but the cache still incurs a function call + map lookup overhead.
+
+**Fix:** Pass the resolved capabilities set from `getUserContestAccess` to `getEnrolledContestDetail`, or return access info that includes the capabilities.
+
+---
+
+## No High-severity performance findings
+
+The codebase uses `Promise.all` appropriately in most server components. The main area for improvement is reducing redundant queries in the enrolled contest detail flow.

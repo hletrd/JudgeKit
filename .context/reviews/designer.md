@@ -1,41 +1,58 @@
-# Designer Review — RPF Cycle 9/100
+# Designer (UI/UX) Review — Cycle 1 (New Session)
 
-**Date:** 2026-04-26
-**Cycle:** 9/100
-**Lens:** UI/UX, accessibility (WCAG 2.2), responsive, dark/light mode, perceived performance, i18n, focus/keyboard
-
-**Runtime status:** No live runtime in sandbox per cycle-3 sandbox limitation (`src/instrumentation.ts` register hook requires live Postgres; no Docker available). Source-level fallback review.
+**Reviewer:** designer
+**Date:** 2026-04-28
+**Scope:** UI/UX review of public contest and problem detail pages
 
 ---
 
-## Cycle-8 carry-over verification
+## Findings
 
-UI-relevant cycle-7/8 items reverified (none were plannable; all deferred):
-- DES7-1 (privacy notice no decline path, carried from DES3-1) — still carried.
-- DES7-2 (privacy notice WCAG AA contrast borderline) — still carried; needs runtime.
-- DES7-3 (modal escape handler implicit) — still carried.
-- DES7-4 (heartbeat interval hardcoded) — still carried.
-- DES7-5 (smallest mobile dialog overflow) — still carried; needs runtime.
+### DES-1: [LOW] Enrolled contest detail page has inconsistent badge colors for exam modes
 
-Cycle-8 commits are process/docs only — no UI changes. No regressions to the privacy-notice surface or any other UI surface.
+**File:** `src/app/(public)/contests/[id]/page.tsx:236-237`
+**Confidence:** MEDIUM
 
----
+```tsx
+<Badge className={contest.examMode === "scheduled" ? "bg-blue-500 text-white" : "bg-purple-500 text-white"}>
+```
 
-## DES9-1: [LOW, NEW] No new UI/UX findings this cycle
+The exam mode badge uses hardcoded Tailwind color classes (`bg-blue-500`, `bg-purple-500`) that do not adapt to dark mode. While `text-white` provides contrast in light mode, in dark mode these saturated backgrounds may not have sufficient contrast against dark backgrounds. The project uses `next-themes` for dark mode support.
 
-**Severity:** LOW (verification — no findings)
-**Confidence:** HIGH
-
-**Evidence:** Re-inspected `src/components/exam/anti-cheat-monitor.tsx` and supporting Dialog/Button/Toast components. No code changes since cycle-7 (cycle-8 commits were docs/process only). The anti-cheat privacy notice surface remains the primary deferred a11y area, with reasoning unchanged (UX/legal call carried since cycle 3).
-
-**Note:** Live runtime review remains blocked per cycle-3 sandbox limitation. Once a runtime sandbox or staging environment becomes available, the deferred runtime-verification items (DES7-2, DES7-5) can be re-opened.
-
-**Fix:** No action — no findings.
+**Fix:** Use the Badge component's built-in variant system with appropriate dark-mode variants, or use `dark:` prefixed Tailwind classes.
 
 ---
 
-## Summary
+### DES-2: [LOW] "Virtual Practice" section for expired contests could confuse students
 
-**Cycle-9 NEW findings:** 0 HIGH, 0 MEDIUM, 0 LOW.
-**Cycle-8 carry-over status:** All cycle-7 designer defers carried unchanged.
-**Designer verdict:** No regressions at HEAD. The exam-only privacy notice surface remains the primary a11y deferred area. Runtime-required findings remain blocked by sandbox limitation.
+**File:** `src/app/(public)/contests/[id]/page.tsx:660-677`
+
+When a contest is expired/closed and has public problems, a "Virtual Practice" section is shown. This links directly to `/practice/problems/[id]` without the `assignmentId` parameter, so the student enters a different context (standalone practice vs. contest context). The transition is not clearly communicated.
+
+**Fix:** Add a brief note that virtual practice problems are outside the original contest context, or add the `assignmentId` parameter if the problems should retain contest context.
+
+---
+
+### DES-3: [INFO] Contest detail page has good responsive design
+
+The enrolled contest view uses proper responsive patterns:
+- `flex-wrap` for badge groups
+- `text-2xl sm:text-3xl` for responsive heading
+- `overflow-x-auto` for tables
+- `grid grid-cols-1 lg:grid-cols-2` in the problem detail page
+
+No significant responsive design issues found.
+
+---
+
+### DES-4: [INFO] Anti-cheat privacy notice dialog properly blocks interaction
+
+**File:** `src/components/exam/anti-cheat-monitor.tsx:274-299`
+
+The privacy notice dialog:
+- Cannot be dismissed without clicking "Accept" (`onOpenChange` is a no-op, `showCloseButton={false}`)
+- Lists specific data collection activities
+- Uses proper `DialogDescription` for screen readers
+- Follows accessibility best practices
+
+No accessibility issues found.
