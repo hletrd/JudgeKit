@@ -221,10 +221,10 @@ export default async function ContestsPage({
                     <Badge variant={getStatusBadgeVariant(status)} className="text-xs">
                       {statusLabelMap[status]}
                     </Badge>
-                    <Badge className={`text-xs ${contest.examMode === "scheduled" ? "bg-blue-500 text-white" : "bg-purple-500 text-white"}`}>
+                    <Badge className={`text-xs ${contest.examMode === "scheduled" ? "bg-blue-500 text-white dark:bg-blue-600 dark:text-white" : "bg-purple-500 text-white dark:bg-purple-600 dark:text-white"}`}>
                       {contest.examMode === "scheduled" ? t("modeScheduled") : t("modeWindowed")}
                     </Badge>
-                    <Badge className={`text-xs ${contest.scoringModel === "ioi" ? "bg-teal-500 text-white" : "bg-orange-500 text-white"}`}>
+                    <Badge className={`text-xs ${contest.scoringModel === "ioi" ? "bg-teal-500 text-white dark:bg-teal-600 dark:text-white" : "bg-orange-500 text-white dark:bg-orange-600 dark:text-white"}`}>
                       {contest.scoringModel === "ioi" ? t("scoringModelIoi") : t("scoringModelIcpc")}
                     </Badge>
                   </div>
