@@ -158,6 +158,7 @@ export default async function PublicProblemDetailPage({
     examDurationMinutes: number | null;
     enableAntiCheat: boolean;
     personalDeadline: Date | null;
+    examStartedAt: Date | null;
     isSubmissionBlocked: boolean;
     groupId: string;
   } | null = null;
@@ -189,9 +190,11 @@ export default async function PublicProblemDetailPage({
 
     if (assignment) {
       let personalDeadline: Date | null = null;
+      let examStartedAt: Date | null = null;
       if (assignment.examMode === "windowed") {
         const examSession = await getExamSession(normalizedAssignmentId, session.user.id);
         personalDeadline = examSession?.personalDeadline ?? null;
+        examStartedAt = examSession?.startedAt ?? null;
       }
 
       const now = await getDbNow();
@@ -207,6 +210,7 @@ export default async function PublicProblemDetailPage({
         examDurationMinutes: assignment.examDurationMinutes ?? null,
         enableAntiCheat: Boolean(assignment.enableAntiCheat),
         personalDeadline,
+        examStartedAt,
         isSubmissionBlocked,
         groupId: assignment.groupId,
       };
@@ -435,11 +439,10 @@ export default async function PublicProblemDetailPage({
     locale,
   );
 
-  // Exam session for windowed contests
+  // Exam session for windowed contests (derived from assignmentContext, no extra query)
   let examSession: { startedAt: Date; personalDeadline: Date } | null = null;
-  if (assignmentContext?.examMode === "windowed" && session?.user) {
-    const session_ = await getExamSession(assignmentContext.id, session.user.id);
-    examSession = session_ ? { startedAt: session_.startedAt, personalDeadline: session_.personalDeadline } : null;
+  if (assignmentContext?.examMode === "windowed" && assignmentContext.examStartedAt && assignmentContext.personalDeadline) {
+    examSession = { startedAt: assignmentContext.examStartedAt, personalDeadline: assignmentContext.personalDeadline };
   }
 
   const resolvedBackHref = assignmentContext
