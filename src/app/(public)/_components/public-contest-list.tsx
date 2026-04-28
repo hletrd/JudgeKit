@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent } from "@/components/ui/card";
+import { getContestStatusBorderClass } from "./contest-status-styles";
 
 type PublicContestListProps = {
   title: string;
@@ -27,19 +28,6 @@ type PublicContestListProps = {
     deadlineLabel: string;
   }>;
 };
-
-function getStatusBorderClass(status: PublicContestListProps["contests"][number]["statusKey"]) {
-  switch (status) {
-    case "upcoming":
-      return "border-l-4 border-l-blue-500 dark:border-l-blue-400";
-    case "open":
-    case "in_progress":
-      return "border-l-4 border-l-green-500 dark:border-l-green-400";
-    case "expired":
-    case "closed":
-      return "border-l-4 border-l-gray-400 dark:border-l-gray-500";
-  }
-}
 
 export function PublicContestList({
   title,
@@ -78,7 +66,7 @@ export function PublicContestList({
           <div className="space-y-2">
             {activeContests.map((contest) => (
               <Link key={contest.id} href={contest.href} className="block rounded-lg focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2">
-                <Card className={getStatusBorderClass(contest.statusKey)}>
+                <Card className={getContestStatusBorderClass(contest.statusKey)}>
                   <CardContent className="p-4">
                     <div className="flex items-center gap-4">
                       <div className="min-w-0 flex-1">
@@ -124,7 +112,7 @@ export function PublicContestList({
                   <div className="space-y-2">
                     {groupedContests.map((contest) => (
                       <Link key={contest.id} href={contest.href} className="block rounded-lg focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2">
-                        <Card className={getStatusBorderClass(contest.statusKey)}>
+                        <Card className={getContestStatusBorderClass(contest.statusKey)}>
                           <CardContent className="p-4">
                             <div className="flex items-center gap-4">
                               <div className="min-w-0 flex-1">

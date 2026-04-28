@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 import { getLocale, getTranslations } from "next-intl/server";
 import { PublicContestList } from "../_components/public-contest-list";
+import { getContestStatusBorderClass } from "../_components/contest-status-styles";
 import { getPublicContests } from "@/lib/assignments/public-contests";
 import { getContestsForUser } from "@/lib/assignments/contests";
 import { getContestStatus, type ContestStatus } from "@/lib/assignments/contests";
@@ -21,19 +22,6 @@ function formatDateLabel(value: Date | null, fallback: string, locale: string) {
   return value
     ? new Intl.DateTimeFormat(locale, { dateStyle: "medium", timeStyle: "short" }).format(value)
     : fallback;
-}
-
-function getContestStatusBorderClass(status: ContestStatus): string {
-  switch (status) {
-    case "upcoming":
-      return "border-l-4 border-l-blue-500 dark:border-l-blue-400";
-    case "open":
-    case "in_progress":
-      return "border-l-4 border-l-green-500 dark:border-l-green-400";
-    case "expired":
-    case "closed":
-      return "border-l-4 border-l-gray-400 dark:border-l-gray-500";
-  }
 }
 
 function getStatusBadgeVariant(status: ContestStatus) {
