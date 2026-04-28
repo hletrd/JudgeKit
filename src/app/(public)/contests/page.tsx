@@ -85,15 +85,16 @@ export default async function PublicContestsPage() {
 
   // Fetch user's enrolled contests when authenticated
   const now = await getDbNow();
-  const myContestsRaw = isAuthenticated && session?.user
-    ? await getContestsForUser(session.user.id, session.user.role)
-    : [];
+  const [myContestsRaw, contests] = await Promise.all([
+    isAuthenticated && session?.user
+      ? getContestsForUser(session.user.id, session.user.role)
+      : Promise.resolve([]),
+    getPublicContests(),
+  ]);
   const myContests = myContestsRaw.map((c) => ({
     ...c,
     status: getContestStatus(c, now),
   }));
-
-  const contests = await getPublicContests();
   const contestsJsonLd = {
     "@context": "https://schema.org",
     "@type": "CollectionPage",
