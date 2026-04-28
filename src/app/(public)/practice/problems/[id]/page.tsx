@@ -155,6 +155,7 @@ export default async function PublicProblemDetailPage({
     deadline: Date | null;
     lateDeadline: Date | null;
     examMode: string;
+    examDurationMinutes: number | null;
     enableAntiCheat: boolean;
     personalDeadline: Date | null;
     isSubmissionBlocked: boolean;
@@ -180,6 +181,7 @@ export default async function PublicProblemDetailPage({
         deadline: true,
         lateDeadline: true,
         examMode: true,
+        examDurationMinutes: true,
         enableAntiCheat: true,
         groupId: true,
       },
@@ -202,6 +204,7 @@ export default async function PublicProblemDetailPage({
         deadline: assignment.deadline ?? null,
         lateDeadline: assignment.lateDeadline ?? null,
         examMode: assignment.examMode ?? "none",
+        examDurationMinutes: assignment.examDurationMinutes ?? null,
         enableAntiCheat: Boolean(assignment.enableAntiCheat),
         personalDeadline,
         isSubmissionBlocked,
@@ -475,7 +478,7 @@ export default async function PublicProblemDetailPage({
           <StartExamButton
             groupId={assignmentContext.groupId}
             assignmentId={assignmentContext.id}
-            durationMinutes={0}
+            durationMinutes={assignmentContext.examDurationMinutes ?? 0}
           />
         </div>
       )}
