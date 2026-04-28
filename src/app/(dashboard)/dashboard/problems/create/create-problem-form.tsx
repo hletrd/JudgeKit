@@ -2,7 +2,7 @@
 
 import { useRef, useState, useEffect, useCallback } from "react";
 import { useRouter } from "next/navigation";
-import { useTranslations } from "next-intl";
+import { useTranslations, useLocale } from "next-intl";
 import { Plus, Trash2, X, ImageIcon, Upload } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
@@ -72,6 +72,7 @@ export default function CreateProblemForm({
 }: CreateProblemFormProps) {
   const t = useTranslations("problems");
   const tCommon = useTranslations("common");
+  const locale = useLocale();
   const router = useRouter();
   const isDuplicating = mode === "duplicate";
   const visibilityLabels = {
@@ -890,7 +891,7 @@ export default function CreateProblemForm({
                     </div>
                     {testCase.input.length > LARGE_TESTCASE_THRESHOLD && !expandedTestCases.has(`input-${index}`) ? (
                       <div className="flex items-center justify-between rounded-lg border bg-muted/40 p-3 min-h-[140px]">
-                        <span className="text-sm text-muted-foreground">{formatBytes(testCase.input.length)}</span>
+                        <span className="text-sm text-muted-foreground">{formatBytes(testCase.input.length, locale)}</span>
                         <Button type="button" variant="outline" size="sm" onClick={() => setExpandedTestCases((s) => new Set(s).add(`input-${index}`))}>
                           {t("showContent")}
                         </Button>
@@ -931,7 +932,7 @@ export default function CreateProblemForm({
                     </div>
                     {testCase.expectedOutput.length > LARGE_TESTCASE_THRESHOLD && !expandedTestCases.has(`output-${index}`) ? (
                       <div className="flex items-center justify-between rounded-lg border bg-muted/40 p-3 min-h-[140px]">
-                        <span className="text-sm text-muted-foreground">{formatBytes(testCase.expectedOutput.length)}</span>
+                        <span className="text-sm text-muted-foreground">{formatBytes(testCase.expectedOutput.length, locale)}</span>
                         <Button type="button" variant="outline" size="sm" onClick={() => setExpandedTestCases((s) => new Set(s).add(`output-${index}`))}>
                           {t("showContent")}
                         </Button>

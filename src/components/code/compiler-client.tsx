@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useRef, useState } from "react";
-import { useTranslations } from "next-intl";
+import { useTranslations, useLocale } from "next-intl";
 import { toast } from "sonner";
 import { CodeEditor } from "@/components/code/code-editor";
 import { LanguageSelector } from "@/components/language-selector";
@@ -92,7 +92,7 @@ function buildDefaultTestCaseName(index: number, label: string) {
 }
 
 // Component for truncated output display
-function TruncatedOutput({ content, className, showFullOutputLabel, outputEmptyLabel, outputTruncatedLabel }: { content: string; className?: string; showFullOutputLabel: string; outputEmptyLabel: string; outputTruncatedLabel: string }) {
+function TruncatedOutput({ content, className, showFullOutputLabel, outputEmptyLabel, outputTruncatedLabel, locale }: { content: string; className?: string; showFullOutputLabel: string; outputEmptyLabel: string; outputTruncatedLabel: string; locale: string }) {
   const [isExpanded, setIsExpanded] = useState(false);
   const isTruncated = content.length > LAYOUT_CONSTANTS.OUTPUT_TRUNCATE_THRESHOLD;
 
@@ -112,7 +112,7 @@ function TruncatedOutput({ content, className, showFullOutputLabel, outputEmptyL
         className="mt-2 flex items-center gap-1 text-xs text-muted-foreground hover:text-foreground p-0 h-auto"
       >
         <Maximize2 className="size-3" />
-        {showFullOutputLabel} ({formatBytes(content.length)})
+        {showFullOutputLabel} ({formatBytes(content.length, locale)})
       </Button>
     </div>
   );
@@ -120,6 +120,7 @@ function TruncatedOutput({ content, className, showFullOutputLabel, outputEmptyL
 
 export function CompilerClient({ languages, title, description, preferredLanguage, runEndpoint = "/api/v1/compiler/run" }: CompilerClientProps) {
   const t = useTranslations("compiler");
+  const locale = useLocale();
   const initialLanguage = resolveInitialCompilerLanguage(languages, preferredLanguage);
   const initialTestCaseRef = useRef<CompilerTestCase>({
     id: "tc-1",
@@ -555,6 +556,7 @@ export function CompilerClient({ languages, title, description, preferredLanguag
                       showFullOutputLabel={t("showFullOutput")}
                       outputEmptyLabel={t("outputEmpty")}
                       outputTruncatedLabel={t("outputTruncated")}
+                      locale={locale}
                     />
                   </div>
                 </TabsContent>
@@ -565,6 +567,7 @@ export function CompilerClient({ languages, title, description, preferredLanguag
                     showFullOutputLabel={t("showFullOutput")}
                     outputEmptyLabel={t("outputEmpty")}
                     outputTruncatedLabel={t("outputTruncated")}
+                    locale={locale}
                   />
                 </TabsContent>
                 {result.compileOutput && (
@@ -575,6 +578,7 @@ export function CompilerClient({ languages, title, description, preferredLanguag
                       showFullOutputLabel={t("showFullOutput")}
                       outputEmptyLabel={t("outputEmpty")}
                       outputTruncatedLabel={t("outputTruncated")}
+                      locale={locale}
                     />
                   </TabsContent>
                 )}
