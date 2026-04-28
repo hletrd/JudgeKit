@@ -15,6 +15,7 @@ import {
 } from "@/lib/db/schema";
 import { getResolvedSystemTimeZone } from "@/lib/system-settings";
 import { formatDateTimeInTimeZone } from "@/lib/datetime";
+import { formatScore } from "@/lib/formatting";
 import { formatSubmissionIdPrefix } from "@/lib/submissions/format";
 import { buildStatusLabels } from "@/lib/judge/status-labels";
 import { getLanguageDisplayLabel } from "@/lib/judge/languages";
@@ -222,9 +223,7 @@ export default async function StudentSubmissionsPage({
                               )}
                             </TableCell>
                             <TableCell>
-                              {sub.score !== null && sub.score !== undefined
-                                ? sub.score
-                                : "-"}
+                              {formatScore(sub.score, locale)}
                             </TableCell>
                             <TableCell>
                               {sub.executionTimeMs !== null && sub.executionTimeMs !== undefined

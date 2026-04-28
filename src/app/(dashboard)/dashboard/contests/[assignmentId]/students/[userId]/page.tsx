@@ -12,6 +12,7 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { formatDateTimeInTimeZone } from "@/lib/datetime";
+import { formatScore } from "@/lib/formatting";
 import { getResolvedSystemTimeZone } from "@/lib/system-settings";
 import { DEFAULT_PROBLEM_POINTS } from "@/lib/assignments/constants";
 import { getLanguageDisplayLabel } from "@/lib/judge/languages";
@@ -183,7 +184,7 @@ export default async function StudentDetailPage({
                       </Link>
                     </TableCell>
                     <TableCell className="text-right font-mono text-sm">
-                      {sub.score ?? 0}
+                      {formatScore(sub.score, locale)}
                     </TableCell>
                     <TableCell className="text-sm text-muted-foreground">
                       {formatDateTimeInTimeZone(sub.submittedAt, locale, timeZone)}

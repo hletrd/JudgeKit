@@ -2,6 +2,7 @@ import Link from "next/link";
 import { ArrowLeft, Clock, Trophy } from "lucide-react";
 import { getLocale, getTranslations } from "next-intl/server";
 import { formatDateTimeInTimeZone } from "@/lib/datetime";
+import { formatScore } from "@/lib/formatting";
 import { getLanguageDisplayLabel } from "@/lib/judge/languages";
 import { buildStatusLabels } from "@/lib/judge/status-labels";
 import { formatSubmissionIdPrefix } from "@/lib/submissions/format";
@@ -337,9 +338,7 @@ export async function ParticipantTimelineView({
                             )}
                           </TableCell>
                           <TableCell>
-                            {sub.score !== null && sub.score !== undefined
-                              ? sub.score
-                              : "-"}
+                            {formatScore(sub.score, locale)}
                           </TableCell>
                           <TableCell>
                             {sub.executionTimeMs !== null &&
