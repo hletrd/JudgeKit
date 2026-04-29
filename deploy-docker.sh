@@ -137,6 +137,41 @@ if [[ -n "${SSH_KEY:-}" ]]; then
     SSH_OPTS="$SSH_OPTS -i ${SSH_KEY}"
 fi
 
+# SSH connection multiplexing: reuse one TCP/SSH session for all subsequent
+# remote calls. Critical for password-auth targets (oj-internal at
+# 10.50.1.116 via sshpass) where rapid-fire short-lived sessions trip sshd
+# MaxStartups / fail2ban / PAM throttling and intermittently reject correct
+# credentials. sshpass only authenticates the master; multiplexed sessions
+# skip auth entirely. Helps key-auth targets too (faster handshake).
+SSH_CONTROL_DIR="$(mktemp -d "${TMPDIR:-/tmp}/judgekit-ssh.XXXXXX")"
+chmod 700 "$SSH_CONTROL_DIR"
+SSH_OPTS="$SSH_OPTS -o ControlMaster=auto -o ControlPath=${SSH_CONTROL_DIR}/cm-%C -o ControlPersist=60 -o ServerAliveInterval=30 -o ServerAliveCountMax=3 -o ConnectTimeout=15"
+
+_cleanup_ssh_master() {
+    if [[ -d "${SSH_CONTROL_DIR:-}" ]]; then
+        if [[ -n "${REMOTE_USER:-}" && -n "${REMOTE_HOST:-}" ]]; then
+            ssh -o ControlPath="${SSH_CONTROL_DIR}/cm-%C" -O exit "${REMOTE_USER}@${REMOTE_HOST}" 2>/dev/null || true
+        fi
+        rm -rf "$SSH_CONTROL_DIR"
+    fi
+}
+trap _cleanup_ssh_master EXIT
+
+_initial_ssh_check() {
+    local max_attempts=4
+    local delay=2
+    local attempt=1
+    while (( attempt <= max_attempts )); do
+        if remote "echo ok" >/dev/null 2>&1; then return 0; fi
+        if (( attempt == max_attempts )); then return 1; fi
+        warn "Initial SSH connectivity attempt ${attempt}/${max_attempts} failed; retrying in ${delay}s..."
+        sleep "$delay"
+        delay=$(( delay * 2 ))
+        attempt=$(( attempt + 1 ))
+    done
+    return 1
+}
+
 remote() {
     if [[ -n "${SSH_PASSWORD:-}" ]]; then
         sshpass -p "$SSH_PASSWORD" ssh $SSH_OPTS "${REMOTE_USER}@${REMOTE_HOST}" "$@"
@@ -189,7 +224,7 @@ fi
 command -v rsync >/dev/null 2>&1 || die "rsync is not installed locally"
 
 # Test SSH connectivity
-remote "echo ok" >/dev/null 2>&1 || die "Cannot SSH to ${REMOTE_USER}@${REMOTE_HOST}"
+_initial_ssh_check || die "Cannot SSH to ${REMOTE_USER}@${REMOTE_HOST}"
 success "SSH connection to ${REMOTE_HOST} verified"
 
 # Verify docker is available on the remote host
