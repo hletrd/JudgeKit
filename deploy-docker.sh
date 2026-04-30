@@ -62,6 +62,16 @@
 #   - _initial_ssh_check retries 4 times with exponential backoff (cycle 2).
 #   - Destructive drizzle-kit push diffs halt the deploy and escalate to
 #     the operator instead of auto-forcing (cycle 1 policy).
+#
+# C3-AGG-5 modular-extraction trigger (TRIPPED at cycle 8):
+#   - Touch counter on the SSH-helpers area is at 3 (cycles 5/6/8 modified
+#     `_initial_ssh_check` and adjacent helpers). Per `_aggregate.md`
+#     carry-forward registry (cycle-9 plan Task A), the next modification
+#     to SSH-helpers MUST schedule the modular extraction (split helpers
+#     into a separate sourced file) or document the deferral with a fresh
+#     exit criterion. The 1500-line file-size trigger is not yet hit
+#     (currently ~1100), but the touch-count trigger has been met. Do
+#     NOT silently bypass this when editing SSH-helpers in future cycles.
 # =============================================================================
 set -euo pipefail
 
