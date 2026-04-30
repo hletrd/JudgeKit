@@ -143,7 +143,12 @@ fi
 # MaxStartups / fail2ban / PAM throttling and intermittently reject correct
 # credentials. sshpass only authenticates the master; multiplexed sessions
 # skip auth entirely. Helps key-auth targets too (faster handshake).
-SSH_CONTROL_DIR="$(mktemp -d "${TMPDIR:-/tmp}/judgekit-ssh.XXXXXX")"
+# Hardcode /tmp (do NOT use $TMPDIR): macOS sets $TMPDIR to a long
+# /var/folders/.../T/ path which combined with the 40-char %C hash exceeds
+# the 104-byte Unix-domain socket path limit and breaks every SSH attempt.
+# /tmp is short and present on every Unix; mktemp -d still gives us a
+# unique 0700 directory so the socket is not world-accessible.
+SSH_CONTROL_DIR="$(mktemp -d /tmp/judgekit-ssh.XXXXXX)"
 chmod 700 "$SSH_CONTROL_DIR"
 SSH_OPTS="$SSH_OPTS -o ControlMaster=auto -o ControlPath=${SSH_CONTROL_DIR}/cm-%C -o ControlPersist=60 -o ServerAliveInterval=30 -o ServerAliveCountMax=3 -o ConnectTimeout=15"
 
