@@ -261,6 +261,16 @@ Four platform modes control what users see and can access. Switch modes from **S
 
 Default: `homework`. Change in admin settings or directly in the database (`system_settings.platform_mode`).
 
+## Time Synchronization
+
+The client uses `GET /api/v1/time` to align its clock with the database server before rendering exam countdowns and submission deadline UIs. The endpoint returns DB server time (`SELECT EXTRACT(EPOCH FROM NOW())`), not app-server time, so the countdown displayed to the user matches the time the server uses to enforce deadlines (which also uses DB `NOW()`).
+
+- **Endpoint:** `GET /api/v1/time`
+- **Response:** `{ "timestamp": <number> }` (ms since Unix epoch, DB server clock).
+- **Caching:** the route is `dynamic = "force-dynamic"` so Next.js does not serve stale timestamps from a static cache.
+- **Why DB time:** the app server and database may run on separate hosts with independent clocks. Using DB time on both sides eliminates the "submission rejected with N seconds remaining" UX bug class when the app-server clock drifts.
+- **Regression test:** `tests/unit/api/time-route-db-time.test.ts` (source-level guard against accidental reverts to `Date.now()` or removal of `force-dynamic`).
+
 ## Documentation
 
 - [API Reference](docs/api.md) — all REST endpoints, authentication, request/response formats
