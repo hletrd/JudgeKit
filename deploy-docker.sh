@@ -171,6 +171,8 @@ fi
 # /tmp is short and present on every Unix; mktemp -d still gives us a
 # unique 0700 directory so the socket is not world-accessible.
 SSH_CONTROL_DIR="$(mktemp -d /tmp/judgekit-ssh.XXXXXX)"
+# defense-in-depth — mktemp -d already creates 0700; this guards against an
+# unset/loose umask or a future maintainer changing the mktemp path
 chmod 700 "$SSH_CONTROL_DIR"
 SSH_OPTS="$SSH_OPTS -o ControlMaster=auto -o ControlPath=${SSH_CONTROL_DIR}/cm-%C -o ControlPersist=60 -o ServerAliveInterval=30 -o ServerAliveCountMax=3 -o ConnectTimeout=15"
 
