@@ -1,171 +1,155 @@
-# Aggregate Review — RPF Cycle 6/100
+# Aggregate Review — RPF Cycle 6 (orchestrator-driven, 2026-04-29)
 
-**Date:** 2026-04-26
-**Cycle:** 6/100 of review-plan-fix loop
-**Reviewers:** architect, code-reviewer, critic, debugger, designer, document-specialist, perf-reviewer, security-reviewer, test-engineer, tracer, verifier (11 lanes — designer covered as web frontend exists; no live runtime per cycle-3 sandbox limitation)
-**Total findings (cycle 6 NEW):** 0 HIGH, 3 MEDIUM (one is a 4-agent convergence on the same root cluster), ~16 LOW
-**Cross-agent agreement:** STRONG. Cycle-6's MEDIUM cluster (deploy-script `DRIZZLE_PUSH_FORCE` knob bypasses the journal-only safety backfill in 0020) is independently flagged by architect (ARCH6-2), security (SEC6-1), tracer (TRC6-1), and verifier (VER6-1) — four-agent convergence. The doc gap (DRIZZLE_PUSH_FORCE undocumented for operators) is flagged by architect (ARCH6-1), critic (CRIT6-1), document-specialist (DOC6-1), and verifier (VER6-3) — also four-agent convergence.
+**Date:** 2026-04-29
+**HEAD reviewed:** `a18302b8` (cycle-5 close-out: docs(plans) mark cycle 5 Tasks Z (gates+deploy) and ZZ (archive) done).
+**Reviewers:** code-reviewer, perf-reviewer, security-reviewer, critic, architect, debugger, designer (source-level), document-specialist, test-engineer, tracer, verifier (11 lanes; per-agent files in `.context/reviews/rpf-cycle-6-<agent>.md`).
+**Cycle change surface:** **None.** `git diff a18302b8 HEAD = 0 lines` (cycle-6 starts and stays at HEAD `a18302b8` = cycle-5 close-out).
 
----
+**Cycle-5 aggregate snapshot:** Preserved at `_aggregate-cycle-5.md` (copied before this overwrite).
 
-## Cross-Agent Convergence Map
-
-| Topic | Agents flagging | Severity peak |
-|-------|-----------------|---------------|
-| `0020` SQL safety backfill exists but is never executed (push-mode skips journal; `--force` skips backfill) | ARCH6-2, SEC6-1, TRC6-1, VER6-1 | **MEDIUM** (4-agent convergence — re-opening cycle-5 SEC5-1 root cluster from a different angle) |
-| `DRIZZLE_PUSH_FORCE` operator knob undocumented in AGENTS.md / .env.example | ARCH6-1, CRIT6-1, DOC6-1, VER6-3 | MEDIUM (4-agent convergence) |
-| `tags.updated_at` migration nullable inconsistency vs schema convention | CRIT6-4, SEC6-2, VER6-2 | LOW (3-agent convergence) |
-| `0021_lethal_black_tom.sql` filename is auto-generated nonsense | CR6-3, DOC6-3 | LOW (2-agent) |
-| Cycle-5 dispose-hook test name describes mechanism not invariant | CRIT6-2, TE6-2 | LOW (2-agent) |
-| `setCooldown(key, valueMs)` parameter naming ambiguous | CR6-1, TE6-3 | LOW (2-agent) |
-| `deploy-docker.sh` AGG5-1 reference will rot | CRIT6-3, DOC6-2 | LOW (2-agent) |
-| `deploy-docker.sh:596` data-loss regex is broad | CR6-4, DBG6-2 | LOW (2-agent) |
-| `_lastRefreshFailureAt` Map can leak in degenerate cases | PERF6-1, TRC6-2 | LOW (2-agent — current code is safe; defense-in-depth recommendation) |
-| `__test_internals` block expression-vs-block style inconsistency | CR6-2 | LOW (1-agent, cosmetic) |
-| `0020` backfill DO-block byte-encoding cross-references missing | DBG6-1 | LOW (1-agent) |
-| `analyticsCache.dispose` synchronous-only not documented | DBG6-3 | LOW (1-agent, future-proofing) |
-| Privacy notice ARIA hierarchy not explicit | DES6-2, DES6-3 | LOW |
-| Privacy notice has no decline path (carried) | DES6-1 | LOW (carried-deferred) |
-| Plans archive housekeeping (cycle-5 plan) | CRIT6-5 | LOW |
-| Deploy `Schema repairs applied` log doesn't distinguish no-op | TRC6-3 | LOW |
-| Deploy script holds full PUSH_OUT in shell variable | PERF6-3 | LOW |
-| `info "DRIZZLE_PUSH_FORCE=1 set"` lacks audit trail | SEC6-3 | LOW |
-| `0020` backfill idempotency not pinned by integration test | TE6-1 | LOW |
-| `0021` schema-parity test coverage uncertain | TE6-4 | LOW |
-| Carried-deferred items (AGENTS.md, `__Secure-` HTTP, retry timing tests, privacy decline) | various | LOW-MEDIUM (all carried; reasons unchanged) |
+**Note on stale prior cycle-6 reviews:** A pre-existing set of cycle-6 reviews rooted at base commit `d5980b35` (an earlier non-orchestrator run) was found at `.context/reviews/rpf-cycle-6-*.md`. Each reviewer overwrote those files with fresh orchestrator-driven cycle-6 reviews this cycle. The stale aggregate's 7 actionable AGG findings (AGG-1..AGG-7) were re-validated at HEAD `a18302b8` and ALL 7 are RESOLVED — see "Stale prior cycle-6 findings — RESOLVED at HEAD" below.
 
 ---
 
-## Deduplicated Findings (sorted by severity / actionability)
+## Total deduplicated NEW findings (still applicable at HEAD `a18302b8`)
 
-### AGG6-1: [MEDIUM, actionable, 4-agent convergence] `0020` SQL safety backfill is dead under the actual deploy strategy — `DRIZZLE_PUSH_FORCE=1` (or any `drizzle-kit push --force`) skips the backfill and re-opens the orphan-worker risk
-
-**Sources:** ARCH6-2, SEC6-1, TRC6-1, VER6-1 | **Confidence:** HIGH
-
-**Cluster summary:**
-
-The cycle-5 plan correctly addressed the schema drift + missing snapshot + safety backfill. BUT the safety backfill lives in `drizzle/pg/0020_drop_judge_workers_secret_token.sql`, and the deploy script runs `drizzle-kit push`, not `drizzle-kit migrate`. Drizzle-kit push synthesizes its own DDL from `schema.pg.ts`; it does NOT execute SQL files in the journal. So:
-
-1. Without `DRIZZLE_PUSH_FORCE`: push hits the data-loss prompt → cycle-5 detection downgrades the success log to warn → operator sees "manual intervention required". OK so far.
-2. With `DRIZZLE_PUSH_FORCE=1`: push synthesizes `ALTER TABLE judge_workers DROP COLUMN secret_token` and applies it. The DO-block backfill in 0020 is NEVER touched. Workers with `secret_token IS NOT NULL AND secret_token_hash IS NULL` are silently locked out. `src/lib/judge/auth.ts:75-82` rejects them.
-
-This is the EXACT failure mode cycle-5 SEC5-1 / ARCH5-1 was supposed to prevent. The fix exists in code; the runtime path is unprotected.
-
-**Repo-policy note:** Per the deferred-fix rules, "Security, correctness, and data-loss findings are NOT deferrable unless the repo's own rules explicitly allow it." Repo rules do NOT permit deferring this. AGG6-1 must be planned for cycle-6 implementation.
-
-**Fix (smallest change):** Modify `deploy-docker.sh` to ALWAYS pre-execute the backfill DO-block via psql BEFORE `drizzle-kit push`, regardless of force mode. The DO-block is idempotent (information_schema guard).
-
-**Exit criteria:**
-- A deploy with `DRIZZLE_PUSH_FORCE=1` against a DB with `secret_token IS NOT NULL` rows produces zero `secret_token_hash IS NULL AND secret_token IS NOT NULL` rows immediately before the DROP.
-- All gates green.
+**0 HIGH, 0 MEDIUM, 0 LOW NEW.** Empty change surface; no new issues introduced this cycle. The actionable item is **C6-CT-1**'s recommendation (echoed by code-reviewer, architect, security-reviewer, perf-reviewer, designer, document-specialist, verifier — 7-lane consensus) to pick **3 LOW deferred items** off the backlog and implement them this cycle, consistent with the orchestrator's "make forward progress on backlog, ideally 3" directive.
 
 ---
 
-### AGG6-2: [MEDIUM, actionable, 4-agent convergence] `DRIZZLE_PUSH_FORCE` is undocumented for operators — recovery path is opaque
+## Stale prior cycle-6 findings — RESOLVED at HEAD (verified by trace + grep)
 
-**Sources:** ARCH6-1, CRIT6-1, DOC6-1, VER6-3 | **Confidence:** HIGH
+The stale `d5980b35`-rooted cycle-6 reviews enumerated 7 actionable AGG findings. All 7 are silently fixed at HEAD `a18302b8` by intervening cycle-1..5 commits (and possibly out-of-loop maintainer commits between sessions). Verified:
 
-`DRIZZLE_PUSH_FORCE=1` is referenced only in `deploy-docker.sh` (script-internal comment + warn message + the `if` block). Operators have no entry in `AGENTS.md` / `CLAUDE.md` / `README.md` / `.env.example` / `.env.production.example` (verified via grep).
+| Stale ID | File | Fix evidence |
+|---|---|---|
+| AGG-1 (handleCreate missing catch) | `src/components/contest/recruiting-invitations-panel.tsx:185-240` | `try { ... } catch { toast.error(...) } finally { ... }` |
+| AGG-2 (anti-cheat polling clobbers loadMore) | `src/components/contest/anti-cheat-dashboard.tsx:127-160` | functional `setEvents((prev) => ...)` preserves `prev.slice(PAGE_SIZE)` when prev > PAGE_SIZE; functional `setOffset((prev) => ...)` preserves offset |
+| AGG-3 (email field incorrectly required) | `src/components/contest/recruiting-invitations-panel.tsx:516` | `disabled={creating || !createName.trim()}` — no email check |
+| AGG-4 (createdLink not cleared on error) | `src/components/contest/recruiting-invitations-panel.tsx:183` | `setCreatedLink(null)` at start of handleCreate |
+| AGG-5 (no loading text on Create button) | `src/components/contest/recruiting-invitations-panel.tsx:516-518` | `{creating ? tCommon("loading") : t("create")}` |
+| AGG-6 (countdown-timer .json() unguarded) | `src/components/exam/countdown-timer.tsx:75-90` | `if (!data) return;` + `Number.isFinite(data.timestamp)` + `.catch(() => {})` |
+| AGG-7 (SVG circles lack keyboard focus) | `src/components/contest/score-timeline-chart.tsx:88` | `<g tabIndex={0} role="img" aria-label=...>` wraps `<circle>` |
 
-The cycle-5 fix promised "[OK] Database migrated" no longer lies — TRUE. But operators who hit the warn at 3am have no documented recovery path except reading the bash script.
-
-**Fix:**
-1. Add a paragraph in `AGENTS.md` describing `DRIZZLE_PUSH_FORCE`: when to use, when NOT to use (because push --force skips the journal — the backfill won't run), and the recovery procedure.
-2. Add a commented `# DRIZZLE_PUSH_FORCE=0` to `.env.example` and `.env.production.example` (one-liner with description).
-3. Optionally reference the AGENTS.md section from the warn at `deploy-docker.sh:597`.
-
-**Exit criteria:**
-- `grep -rn "DRIZZLE_PUSH_FORCE" AGENTS.md` returns at least one operator-facing description.
-- `.env.example` / `.env.production.example` reference the knob.
-- Gates green.
+The stale aggregate also flagged 5 designer findings (DES-1..5); all RESOLVED. Stale ARCH-1 (recruiting panel 613-line component) is a maintainability concern, not a bug — NOT injected.
 
 ---
 
-### AGG6-3: [LOW, 3-agent convergence] `tags.updated_at` migration is nullable; every other `updated_at` column in the schema is `.notNull()` — inconsistency
+## Resolved at current HEAD (verified by inspection)
 
-**Sources:** CRIT6-4, SEC6-2, VER6-2 | **Confidence:** HIGH
+The cycle-5 aggregate already enumerated the resolved items from prior cycles. All remain resolved at HEAD `a18302b8`:
 
-`schema.pg.ts:1056-1057` defines `tags.updatedAt` without `.notNull()`. `drizzle/pg/0021_lethal_black_tom.sql` adds it as `timestamp with time zone` (no NOT NULL, no DEFAULT now()). All other `updated_at` columns (18 instances) are `.notNull()`.
+- **C2-AGG-1** (chmod 0600 .env.production): RESOLVED. `deploy-docker.sh:277` AND `:283` both apply `chmod 0600`.
+- **C2-AGG-2A** (sshpass deploy-blocker): RESOLVED via cycle-2 commits.
+- **C2-AGG-3** (drizzle-force policy in repo docs): RESOLVED in `AGENTS.md`.
+- **C3-AGG-1** (cycle-2 plan stale Task B status): RESOLVED via cycle-3 closure note.
+- **C3-AGG-7** (deploy-script env-var docs): RESOLVED in cycle 4 (commit `e657a96c`).
+- **C3-AGG-9** (chmod 700 redundancy comment): RESOLVED in cycle 4 (commit `f5ac57ff`).
+- **C3-AGG-10** (succeeded-after-N-attempts log): RESOLVED in cycle 4 (commit `5cae08af`).
+- **C3-AGG-8** (DEPLOY_INSTANCE log prefix): RESOLVED in cycle 5 (commit `39c26599`). Verified intact at HEAD: `deploy-docker.sh:34, 156-162`.
+- **C3-AGG-4** (lint:bash script): RESOLVED in cycle 5 (commit `08991d54`). Verified intact at HEAD: `package.json:10`.
+- **C2-AGG-7** (recruiting hardcoded appUrl): RESOLVED (silently). Verified at HEAD: `grep "judgekit.dev" src/components/contest/recruiting-invitations-panel.tsx` returns 0.
+- **Stale-cycle-6 AGG-1..AGG-7**: all RESOLVED (table above).
 
-**Fix (choose one):**
-1. Backfill + add `.notNull()`: emit a follow-up migration `UPDATE tags SET updated_at = created_at WHERE updated_at IS NULL; ALTER TABLE tags ALTER COLUMN updated_at SET NOT NULL;`. Update schema.pg.ts to `.notNull()`.
-2. Document explicitly why this column is intentionally nullable (with a code comment in `schema.pg.ts:1056`).
+## Plan-vs-implementation reconciliation (cycle 5 → cycle 6)
 
-Pick (2) if there's a real reason; pick (1) for consistency with the rest of the schema.
-
-**Exit criteria:** Schema and migration are consistent; consumers don't crash on NULL.
-
----
-
-### AGG6-4 through AGG6-N: [LOW, deferred / cosmetic / housekeeping]
-
-The remaining LOW findings are either cosmetic, opportunistically-deferred, or single-agent:
-
-| ID | Finding | Status |
-|----|---------|--------|
-| AGG6-4 | `0021_lethal_black_tom.sql` filename rename to `0021_add_tags_updated_at.sql` (CR6-3, DOC6-3) | LOW; pick up alongside AGG6-3 fix. |
-| AGG6-5 | Cycle-5 dispose-hook test name (CRIT6-2, TE6-2) | LOW; pick up opportunistically. |
-| AGG6-6 | `setCooldown(key, valueMs)` rename (CR6-1, TE6-3) | LOW; pick up alongside AGG6-5. |
-| AGG6-7 | `deploy-docker.sh` AGG5-1 reference rot (CRIT6-3, DOC6-2) | LOW; pick up alongside AGG6-1 / AGG6-2. |
-| AGG6-8 | `deploy-docker.sh:596` regex broadness (CR6-4, DBG6-2) | LOW; pick up alongside AGG6-1. |
-| AGG6-9 | `_lastRefreshFailureAt` Map independent bound (PERF6-1, TRC6-2) | LOW; deferred (current code correct). |
-| AGG6-10 | `__test_internals` style consistency (CR6-2) | LOW; pick up opportunistically. |
-| AGG6-11 | `0020` backfill UTF-8 encoding cross-references (DBG6-1) | LOW; pick up alongside AGG6-1. |
-| AGG6-12 | `analyticsCache.dispose` synchronous-only doc (DBG6-3) | LOW; pick up opportunistically. |
-| AGG6-13 | Privacy notice ARIA hierarchy (DES6-2, DES6-3) | LOW; defer. |
-| AGG6-14 | Privacy notice no decline path (DES6-1, carried) | LOW; deferred (UX/legal). |
-| AGG6-15 | Cycle-5 plan archive housekeeping (CRIT6-5) | LOW; pick up this cycle. |
-| AGG6-16 | Deploy "Schema repairs" log granularity (TRC6-3) | LOW; defer. |
-| AGG6-17 | Deploy PUSH_OUT memory (PERF6-3) | LOW; defer. |
-| AGG6-18 | DRIZZLE_PUSH_FORCE audit trail (SEC6-3) | LOW; defer. |
-| AGG6-19 | `0020` backfill idempotency integration test (TE6-1) | LOW; defer. |
-| AGG6-20 | `0021` schema-parity test coverage (TE6-4) | LOW; pick up opportunistically. |
+Cycle 5 produced 6 commits (3 fine-grained code/build fixes: `39c26599` DEPLOY_INSTANCE, `08991d54` lint:bash, `08991d54` C2-AGG-7-equivalent close-out + 3 plan/doc commits: `e1fa05c3` reviews, `863cde6b` plan + cycle-4 archive, `a18302b8` cycle-5 close-out). Cycle-5 plan (`plans/open/2026-04-29-rpf-cycle-5-review-remediation.md`) is internally consistent. Verifier-cycle-6 confirms all artifacts at HEAD. No reconciliation drift. Cycle-5 plan is ready to archive after cycle-6 plan publishes.
 
 ---
 
-## Carried Deferred Items (cycle 5 → cycle 6, unchanged)
+## NEW findings this cycle
 
-| Cycle 5 ID | Description | Reason for deferral | Repo-rule citation |
-|------------|-------------|---------------------|--------------------|
-| AGG5-8 | `MIN_INTERVAL_MS` constant placement (CR5-3) | Cosmetic | Default — non-functional. |
-| AGG5-9 | `lastEventRef` Record bound (CR5-4) | Closed-set in practice | Default. |
-| AGG5-10 | `formatEventTime` ms-vs-seconds (DBG5-2) | Number branch unreachable | Default. |
-| AGG5-11 | First-render burst of distinct event types (DBG5-3) | Server-side rate-limit handles | Default. |
-| AGG5-12 | `formatDetailsJson` re-parsing (PERF5-2) | Cosmetic perf | Default. |
-| AGG5-13 | Drizzle-kit `npm install` per-deploy (PERF5-1) | Deploy slow but reliable | Default. |
-| AGG5-14 | `vi.resetModules()` slow tests (PERF5-3) | Tests work correctly | Default. |
-| AGG5-15 | Filter chips not keyboard-accessible (DES5-1) | a11y on instructor-only surface | Default. |
-| AGG5-16 | Dark-mode contrast not verified (DES5-3) | No live runtime | Default. |
-| AGG5-19 | Storage-quota-exceeded test gap (TE5-5) | Source code has the catch | Default. |
-| AGG5-20 | Anti-cheat retry timer cross-assignment trace (TRC5-3) | Likely re-keyed by parent | Default. |
-| AGG3-5 / SEC3-3 | AGENTS.md vs `password.ts` mismatch | Needs PM/user decision | Default — docs/policy needs canonical declaration. |
-| AGG3-6 / SEC3-1 | `__Secure-` cookie clear over HTTP no-op | Dev-only nuisance; production HTTPS guaranteed | Default. |
-| AGG3-7 / TE3-2 | Anti-cheat retry/backoff lacks direct timing tests | Test setup non-trivial | Default. |
-| AGG3-8 / DES3-1 | Privacy notice has no decline path | UX/legal judgment call | Default. |
-| AGG3-9 / ARCH3-2 | Anti-cheat at 335 lines | Threshold 400 not breached | Default. |
-| DEFER-various | Other carried items from cycles 1-4, 38-48 | See `_aggregate-cycle-48.md` / `_aggregate-cycle-5.md` | Default. |
+**0 NEW (HIGH/MEDIUM/LOW).** Empty change surface. All 7 stale prior cycle-6 findings audit out as silently RESOLVED at HEAD.
 
 ---
 
-## Verification Notes
+## Path drift corrections (no severity change; carry-forward registry update)
 
-- `npm run lint`: 0 errors, 14 warnings (all in untracked dev `.mjs` scripts + `playwright.visual.config.ts` + `.context/tmp/uiux-audit.mjs`). No source-tree warnings.
-- `npm run test:unit`: 304 files passed, 2234 tests passed. EXIT=0. Duration 66.27s.
-- `npm run build`: EXIT=0.
-- All cycle-5 task exit criteria verified PASS (see verifier.md table).
-- The cycle-5 SEC5-1 cluster (drizzle data-loss) is reopened with cycle-6 evidence — the safety mechanism exists in code but is bypassed by the actual deploy path (push instead of migrate).
+The cycle-2..5 backlog cited several paths that have moved. Per critic's directive (cycle-6 critic findings #2 + #3), the cycle-6 plan must record corrected paths so future cycles don't re-investigate the drift:
 
----
+| Carry-forward ID | Original path | Corrected path at HEAD |
+|---|---|---|
+| AGG-2 | `src/lib/api-rate-limit.ts:56` | `src/lib/security/in-memory-rate-limit.ts` lines 22, 24, 56, 75, 100, 149 |
+| PERF-3 | `src/lib/anti-cheat/` (16-line tier mapping only) | `src/app/api/v1/contests/[assignmentId]/anti-cheat/route.ts:191-225` (gap query) |
+| ARCH-CARRY-1 | "22+ raw API handlers" | 20 raw of 104 total at HEAD (population shrinking organically) |
+| C1-AGG-3 | "27 client console.error sites" | 21 at HEAD (shrinking) |
 
-## Workspace-to-Public Migration Note
-
-**Source:** `user-injected/workspace-to-public-migration.md`
-**Confidence:** HIGH
-
-The migration is largely DONE per cycle-5 fix. Cycle-6 reviews surfaced no new migration findings. The directive remains a placeholder for opportunistic edge cases.
+Severity unchanged (no downgrade). Exit criteria preserved.
 
 ---
 
-## No Agent Failures
+## Cycle-6 implementation queue (LOW backlog draw-down)
 
-All 11 reviewer lanes completed. No retries needed.
+Per **C6-CT-1** (critic), code-reviewer, architect, security-reviewer, perf-reviewer, designer, document-specialist, verifier cross-agreement (8-lane consensus), and per the orchestrator's PROMPT 2 directive ("Pick 2-3 LOW deferred items, ideally 3"), the following three LOW deferred items are scheduled for implementation **this cycle**:
+
+1. **C5-SR-1** — `scripts/deploy-worker.sh:101-107` `sed -i` delimiter collision. Fix: switch to a less collision-prone delimiter or pre-escape `APP_URL`. ~5-10 line shell edit. Pure additive defense-in-depth.
+2. **C3-AGG-3** — `deploy-docker.sh:165-178` ControlSocket cleanup ordering. Fix: ensure ControlMaster socket is cleanly torn down before SSH `exit`. ~10 line shell edit.
+3. **C3-AGG-2** — `deploy-docker.sh:204-214` SSH credential-rotation footgun. Fix: add a per-target credential validation/clarification log line so credential mismatch produces a clear error before the operation. ~10 line shell edit.
+
+**Why these three:**
+- Combined diff < 50 lines, all deploy-script-side.
+- Naturally-met or near-met exit criteria.
+- Risk: very low — additive only; behavior preserved on default code paths.
+- Together they retire 3 of the remaining LOW carry-forwards (security/deploy-reliability bucket).
+
+**Repo-policy compliance for the implementation:**
+- GPG-signed commits with conventional commit + gitmoji (per CLAUDE.md "Git Commit Rules").
+- Fine-grained commits (one per finding).
+- `git pull --rebase` before `git push`.
+- No `--no-verify`.
+- No force-push to main.
+- No Korean text touched.
+- `src/lib/auth/config.ts` not touched.
+
+---
+
+## Carry-forward DEFERRED items (status verified at HEAD `a18302b8`)
+
+| ID | Severity | File+line (corrected for HEAD) | Status (this cycle) | Exit criterion |
+| --- | --- | --- | --- | --- |
+| C3-AGG-2 | LOW | `deploy-docker.sh:204-214` | **IMPLEMENTING THIS CYCLE** | Per-target credential-validation log; naturally met by additive change |
+| C3-AGG-3 | LOW | `deploy-docker.sh:165-178` | **IMPLEMENTING THIS CYCLE** | ControlSocket cleanup-before-exit; naturally met by additive change |
+| C3-AGG-5 | LOW | `deploy-docker.sh` (whole) + `deploy.sh:58-66` | DEFERRED | `deploy-docker.sh` >1500 lines OR `deploy.sh` invoked OR 3 indep cycles modify SSH-helpers |
+| C3-AGG-6 | LOW | `deploy-docker.sh:151` | DEFERRED | Multi-tenant deploy host added OR peer-user awareness reported |
+| C2-AGG-5 | LOW | 4-6 polling components | DEFERRED | Telemetry signal or 7th instance |
+| C2-AGG-6 | LOW | `src/app/(public)/practice/page.tsx:417` | DEFERRED | p99 > 1.5s OR > 5k matching problems |
+| C1-AGG-3 | LOW | client `console.error` sites | DEFERRED (pop. = 21, was 27) | Telemetry/observability cycle opens |
+| C5-SR-1 | LOW | `scripts/deploy-worker.sh:101-107` | **IMPLEMENTING THIS CYCLE** | Sed delimiter collision-resistance; naturally met by additive change |
+| DEFER-ENV-GATES | LOW | Env-blocked tests | DEFERRED | Fully provisioned CI/host with DATABASE_URL, Postgres, sidecar |
+| D1 | MEDIUM | `src/lib/auth/...` JWT clock-skew (NOT `src/lib/auth/config.ts` — frozen) | DEFERRED | Auth-perf cycle; **fix must live OUTSIDE `src/lib/auth/config.ts` per CLAUDE.md "Preserve Production config.ts"** |
+| D2 | MEDIUM | `src/lib/auth/...` JWT DB query per request (NOT `src/lib/auth/config.ts` — frozen) | DEFERRED | Auth-perf cycle; **fix must live OUTSIDE `src/lib/auth/config.ts`** |
+| AGG-2 | MEDIUM | `src/lib/security/in-memory-rate-limit.ts` (PATH UPDATED from `src/lib/api-rate-limit.ts:56`) | DEFERRED | Rate-limit-time cycle |
+| ARCH-CARRY-1 | MEDIUM | 20 raw API route handlers (down from 22+) | DEFERRED | API-handler refactor cycle |
+| ARCH-CARRY-2 | LOW | `src/lib/realtime/realtime-coordination.ts` | DEFERRED | SSE perf cycle OR > 500 concurrent connections |
+| PERF-3 | MEDIUM | `src/app/api/v1/contests/[assignmentId]/anti-cheat/route.ts:191-225` (PATH UPDATED from `src/lib/anti-cheat/`) | DEFERRED | Anti-cheat dashboard p99 > 800ms OR > 50 concurrent contests viewed simultaneously |
+
+No HIGH findings deferred. No security/correctness/data-loss findings deferred.
+
+---
+
+## Cross-agent agreement summary (cycle 6)
+
+- **Empty change surface**: 11 lanes agree.
+- **No new HIGH/MEDIUM/LOW findings**: 11 lanes agree.
+- **All 7 stale prior cycle-6 AGG-1..AGG-7 findings RESOLVED at HEAD**: code-reviewer + designer + tracer + critic + verifier (5-lane consensus, with debugger and document-specialist concurring).
+- **C5-SR-1, C3-AGG-3, C3-AGG-2 as the cycle-6 LOW draw-down picks**: code-reviewer + architect + critic + security-reviewer + perf-reviewer + designer + document-specialist + verifier (8-lane consensus).
+- **Path drift corrections for AGG-2 (rate-limit) and PERF-3 (anti-cheat)**: code-reviewer + perf-reviewer + critic + verifier (4 lanes).
+- **D1/D2 implementation-must-live-outside-config.ts annotation**: critic + security-reviewer + verifier (3 lanes).
+
+## Agent failures
+
+None. All 11 reviewer perspectives produced artifacts in `.context/reviews/rpf-cycle-6-<agent>.md`.
+
+---
+
+## Implementation queue for PROMPT 3
+
+Acted on this cycle (PROMPT 3 work):
+- **C5-SR-1** — `scripts/deploy-worker.sh:101-107` sed delimiter hardening.
+- **C3-AGG-3** — `deploy-docker.sh:165-178` ControlSocket cleanup ordering.
+- **C3-AGG-2** — `deploy-docker.sh:204-214` SSH credential-validation footgun.
+
+Deferrable (recorded in plan with exit criteria):
+- All other carry-forwards in the table above (path-corrected for AGG-2 and PERF-3; constraint-annotated for D1/D2).
+
+No HIGH or MEDIUM new findings this cycle. No security/correctness/data-loss findings deferred.
