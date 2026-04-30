@@ -271,6 +271,14 @@ The client uses `GET /api/v1/time` to align its clock with the database server b
 - **Why DB time:** the app server and database may run on separate hosts with independent clocks. Using DB time on both sides eliminates the "submission rejected with N seconds remaining" UX bug class when the app-server clock drifts.
 - **Regression test:** `tests/unit/api/time-route-db-time.test.ts` (source-level guard against accidental reverts to `Date.now()` or removal of `force-dynamic`).
 
+## Development Scripts
+
+- `npm run lint` — ESLint over the TypeScript / TSX sources.
+- `npm run lint:bash` — `bash -n` syntax check over `deploy-docker.sh` and `deploy.sh` (catches syntax errors before deploy invocation).
+- `npx tsc --noEmit` — Type-check without emitting JS.
+- `npm run build` — Next.js production build.
+- `npm run test:unit` / `:integration` / `:component` / `:security` / `:e2e` — Vitest and Playwright test suites (integration / e2e require a provisioned PostgreSQL + Playwright sidecar; see `docs/deployment.md`).
+
 ## Documentation
 
 - [API Reference](docs/api.md) — all REST endpoints, authentication, request/response formats
