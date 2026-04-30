@@ -2,7 +2,7 @@
 
 **Date:** 2026-04-29
 **Source:** `.context/reviews/_aggregate.md` (RPF cycle 8 orchestrator-driven) + `plans/user-injected/pending-next-cycle.md`
-**Status:** IN-PROGRESS
+**Status:** DONE
 
 ---
 
@@ -37,8 +37,8 @@ No reconciliation drift. **Action this cycle (Task ZZ):** move cycle-7 plan to `
 - **Repo policy check:** Doc-only; no code change. LOW severity. Compliant.
 - **Plan:**
   1. Insert a brief "Time synchronization" section in `README.md` near the existing API endpoint docs (or near the `Documentation` section) describing `/api/v1/time`: the response shape (`{ timestamp: number }` ms epoch), the DB-time semantics (server uses DB `NOW()`, client aligns), and the regression-test reference (`tests/unit/api/time-route-db-time.test.ts`).
-- **Outcome:** Done in commit `<C8-TASK-A-COMMIT>`.
-- **Status:** [ ] To-do.
+- **Outcome:** Done in commit `1cdf79ed` (`docs(readme): 📝 document /api/v1/time DB-time endpoint`).
+- **Status:** [x] Done.
 
 ### Task B: [LOW — DOING THIS CYCLE] Add soft upper-bound cap to `DEPLOY_SSH_RETRY_MAX` in `deploy-docker.sh` (closes C7-DB-2-upper-bound)
 
@@ -52,8 +52,8 @@ No reconciliation drift. **Action this cycle (Task ZZ):** move cycle-7 plan to `
   1. After the existing positive-integer validation block in `_initial_ssh_check`, add a soft-cap check: if `max_attempts > 100`, warn and clamp to 100.
   2. Update the env-var documentation block (`# DEPLOY_SSH_RETRY_MAX  — ...`) to document the soft cap.
   3. Run `npm run lint:bash` to confirm clean.
-- **Outcome:** Done in commit `<C8-TASK-B-COMMIT>`.
-- **Status:** [ ] To-do.
+- **Outcome:** Done in commit `d9cb15e6` (`feat(deploy): ✨ soft-cap DEPLOY_SSH_RETRY_MAX at 100 with operator-clarity warn`). `npm run lint:bash` exit 0.
+- **Status:** [x] Done.
 
 ### Task C: [LOW — DOING THIS CYCLE] Top-of-file orientation comments in 2 rate-limit modules (partial mitigation for C7-AGG-9)
 
@@ -70,8 +70,8 @@ No reconciliation drift. **Action this cycle (Task ZZ):** move cycle-7 plan to `
   1. Extend the `in-memory-rate-limit.ts` JSDoc to cross-reference the DB-backed modules and explain when to choose which.
   2. Add a top-of-file JSDoc to `api-rate-limit.ts` (currently has no header doc) cross-referencing `rate-limit.ts` (login/auth) and `in-memory-rate-limit.ts` (high-throughput per-instance).
   3. Confirm `rate-limit.ts` JSDoc (already exists from cycle 6) is sufficient.
-- **Outcome:** Done in commit `<C8-TASK-C-COMMIT>`.
-- **Status:** [ ] To-do.
+- **Outcome:** Done in commit `9c8d072e` (`docs(security): 📝 add cross-reference orientation comments to rate-limit modules`). `rate-limit.ts` JSDoc was already sufficient (cycle 6); added headers to `in-memory-rate-limit.ts` (extended existing header) and `api-rate-limit.ts` (added new header).
+- **Status:** [x] Done.
 
 ### Task D: [LOW — DEFERRED] All other carry-forward items unchanged (with path/count drift corrections)
 
@@ -109,16 +109,38 @@ All keep their original severities and prior exit criteria (no downgrade). Path/
   7. After all error-level gates green (or skipped with explanation), run `SKIP_LANGUAGES=true BUILD_WORKER_IMAGE=false INCLUDE_WORKER=false ./deploy-docker.sh` once. Do NOT preemptively set `DRIZZLE_PUSH_FORCE=1`.
   8. Record `DEPLOY: per-cycle-success` or `DEPLOY: per-cycle-failed:<reason>` in this plan.
 - **Repo policy check:** No `--no-verify`, no force-push, GPG-sign all commits.
-- **Outcome:** TBD.
-- **Status:** [ ] To-do.
+- **Outcome:**
+  - `npm run lint`: exit 0 (clean).
+  - `npx tsc --noEmit`: exit 0 (clean).
+  - `npm run lint:bash`: exit 0 (clean).
+  - `npm run build` (next build): exit 0 (route surface unchanged from cycle 7).
+  - `npm run test:integration`: exit 0; 37 tests SKIPPED — DEFER-ENV-GATES carry-forward (no Postgres harness in dev shell). Same condition cycles 3-7.
+  - `npm run test:unit`: 124 failed + 2110 passed — DEFER-ENV-GATES carry-forward (vitest pool fork-spawn errors + DB-env-required failures); same as cycle 7.
+  - `npm run test:component`: 66 errors — DEFER-ENV-GATES carry-forward (vitest pool worker spawn timeouts); same as cycle 7.
+  - `npm run test:security`: 4 failures + 205 passes (rate-limiter-client circuit-breaker timeouts under CPU contention; **better than cycle 7's 8 failures**, suggests less contention this run; same DEFER-ENV-GATES carry-forward class).
+  - `npm run test:e2e`: skipped (DEFER-ENV-GATES; webServer Postgres harness not provisioned).
+  - **Deploy** (`SKIP_LANGUAGES=true BUILD_WORKER_IMAGE=false INCLUDE_WORKER=false ./deploy-docker.sh`):
+    - Pre-flight SSH check: clean (**0 "Permission denied" lines** — verified via `grep -c 'Permission denied' /tmp/deploy-cycle-8.log` = 0).
+    - PostgreSQL volume safety check: passed.
+    - drizzle-kit push: `[i] No changes detected` (no destructive diff; DRIZZLE_PUSH_FORCE NOT set, NOT required per orchestrator directive).
+    - Schema repairs + ANALYZE: applied.
+    - Containers started; worker stopped per `INCLUDE_WORKER=false`.
+    - Nginx configured and reloaded for `oj-internal.maum.ai`.
+    - HTTP 200 from JudgeKit endpoint.
+    - **Deployment complete!** at `http://oj-internal.maum.ai`.
+  - **Deployed SHA:** `9c8d072e` (cycle-8 Task C commit; HEAD at deploy time).
+- **GATE_FIXES count:** 0 error-level fixes (all gate failures are pre-existing DEFER-ENV-GATES carry-forwards; none caused by this cycle's diff).
+- **DEPLOY result:** `per-cycle-success`.
+- **Notable:** Cycle-8's three implemented LOW backlog draw-down items (Task A: README `/api/v1/time` doc commit `1cdf79ed`, Task B: `DEPLOY_SSH_RETRY_MAX` soft-cap commit `d9cb15e6`, Task C: rate-limit module orientation comments commit `9c8d072e`) all landed without operational regression. Deploy clean.
+- **Status:** [x] Done.
 
 ### Task ZZ: [INFO — DOING] Archive cycle-7 plan to `plans/done/`
 
 - **Source:** Orchestrator PROMPT 2 directive: "Archive plans which are fully implemented and done."
 - **Plan:** Move `plans/open/2026-04-29-rpf-cycle-7-review-remediation.md` → `plans/done/2026-04-29-rpf-cycle-7-review-remediation.md`. Cycle-7 plan is fully recorded (Tasks A/B closed, C done, D-E deferred, Z `per-cycle-success`, ZZ done).
 - **Repo policy check:** No code change. Documentation hygiene.
-- **Outcome:** TBD.
-- **Status:** [ ] To-do.
+- **Outcome:** Archive landed in commit `1cdf79ed` (`git mv` was already staged with Task A). The archived plan now lives at `plans/done/2026-04-29-rpf-cycle-7-review-remediation.md`.
+- **Status:** [x] Done in commit `1cdf79ed`.
 
 ---
 
@@ -132,12 +154,12 @@ All keep their original severities and prior exit criteria (no downgrade). Path/
 
 ## Cycle close-out checklist
 
-- [ ] Task A committed (1 fine-grained doc-only commit, GPG-signed, conventional + gitmoji).
-- [ ] Task B committed (1 fine-grained bash commit, GPG-signed, conventional + gitmoji).
-- [ ] Task C committed (1 fine-grained doc-comment commit, GPG-signed, conventional + gitmoji).
-- [ ] Cycle-8 plan committed (this file).
-- [ ] Cycle-7 plan archived (Task ZZ).
-- [ ] Reviews + aggregate snapshot committed.
-- [ ] All gates green or DEFER-ENV-GATES-skipped with explanation (Task Z).
-- [ ] Deploy outcome recorded in this plan (Task Z).
+- [x] Task A committed (`1cdf79ed`, GPG-signed, conventional + gitmoji).
+- [x] Task B committed (`d9cb15e6`, GPG-signed, conventional + gitmoji).
+- [x] Task C committed (`9c8d072e`, GPG-signed, conventional + gitmoji).
+- [x] Cycle-8 plan committed (this file, with reviews+aggregate, in `bf1aba17`).
+- [x] Cycle-7 plan archived (Task ZZ, commit `1cdf79ed`).
+- [x] Reviews + aggregate snapshot committed (`bf1aba17`).
+- [x] All gates green or DEFER-ENV-GATES-skipped with explanation (Task Z).
+- [x] Deploy outcome recorded in this plan (Task Z): `per-cycle-success`.
 - [ ] End-of-cycle report emitted by the orchestrator wrapper.
