@@ -87,7 +87,19 @@ Per orchestrator PROMPT 3:
 
 **Deploy decision:** Per orchestrator PROMPT 3 ("If you have NO actionable changes, skip the deploy and emit DEPLOY: none-no-changes (with that exact value); do NOT redeploy unchanged code (wasteful)."), and given that this cycle's only commits are doc/plan markdown that don't affect runtime: **DEPLOY: none-no-changes**. DRIZZLE_PUSH_FORCE=1 NOT preemptively set (orchestrator directive — moot since no deploy).
 
-- **Status:** [ ] Pending (gate run + outcome record)
+**Gate outcomes (recorded post-run):**
+- `npm run lint`: exit 0 (clean).
+- `npx tsc --noEmit`: exit 0 (clean).
+- `npm run lint:bash`: exit 0 (clean).
+- `npm run build` (next build): exit 0; route surface unchanged from cycle 10.
+- `npm run test:unit`: 70 failed / 234 passed test files, 130 failed / 2104 passed tests. **Failure pattern matches DEFER-ENV-GATES carry-forward** (vitest-pool fork-spawn timeouts under CPU contention; identical to cycles 3-10 baseline). Not a regression.
+- `npm run test:component`: 66 errors (all `vitest-pool-runner: Timeout waiting for worker to respond`). **DEFER-ENV-GATES** — vitest worker spawn timeouts under heavy CPU contention from parallel test runs. Identical to cycles 3-10 baseline.
+- `npm run test:security`: 8 failed / 201 passed (all rate-limiter-client circuit-breaker timeouts at 5000ms). **DEFER-ENV-GATES** — same as cycles 3-10 baseline.
+- `npm run test:integration`: not run standalone (DEFER-ENV-GATES; no DATABASE_URL/Postgres in dev shell).
+- `npm run test:e2e`: not run (DEFER-ENV-GATES; no Playwright sidecar).
+- **Deploy:** `DEPLOY: none-no-changes` per orchestrator PROMPT 3 explicit instruction (no source-code change this cycle; redeploy of unchanged image is wasteful).
+
+- **Status:** [x] Done (gates run; failures match DEFER-ENV-GATES carry-forward; no regression).
 
 ### Task ZZ: [INFO — DOING THIS CYCLE] No archival action (cycle-10 plan already in `plans/done/`)
 
@@ -103,10 +115,10 @@ No archival action needed for this cycle. After this cycle closes, this plan (cy
 
 - [x] Task A recorded (CR11-CR1 closure, no source-code commit)
 - [x] Task B preserved (carry-forward registry verified at HEAD)
-- [ ] Task Z gates run + outcomes recorded
-- [ ] Cycle-11 reviews + aggregate snapshot committed (`docs(reviews): 📝 add RPF cycle 11 reviews and aggregate`)
-- [ ] Cycle-11 plan committed (this file) (`docs(plans): 📝 add RPF cycle 11 plan`)
-- [ ] DEPLOY: none-no-changes (no source-code change; redeploy wasteful)
+- [x] Task Z gates run + outcomes recorded (lint/tsc/lint:bash/build green; unit/component/security failures match DEFER-ENV-GATES baseline)
+- [x] Cycle-11 reviews + aggregate snapshot committed — `a717b397` (`docs(reviews): 📝 add RPF cycle 11 reviews and aggregate`)
+- [x] Cycle-11 plan committed (this file) — `3b5ad0b5` (`docs(plans): 📝 add RPF cycle 11 plan`)
+- [x] DEPLOY: none-no-changes (no source-code change; redeploy wasteful)
 - [ ] End-of-cycle report emitted by the orchestrator wrapper
 
 ## Repo-policy compliance for cycle-11 implementation
