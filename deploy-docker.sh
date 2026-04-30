@@ -48,7 +48,10 @@
 #                            4). Useful for slow-to-boot remote hosts where
 #                            the default 4-attempt × exponential-backoff
 #                            window (~30s) is too short. Non-integer or <1
-#                            values fall back to 4 with a warn line (cycle 6:
+#                            values fall back to 4 with a warn line. Values
+#                            above 100 are soft-capped at 100 with a warn
+#                            line to prevent operator-typo retry storms
+#                            (cycle 8: closes C7-DB-2-upper-bound). (cycle 6:
 #                            closes C3-AGG-3).
 #
 # Deploy hardening (cycle-1/2/3/5 fixes — see AGENTS.md "Deploy hardening"):
@@ -225,6 +228,15 @@ _initial_ssh_check() {
     if ! [[ "$max_attempts" =~ ^[0-9]+$ ]] || (( max_attempts < 1 )); then
         warn "DEPLOY_SSH_RETRY_MAX='${max_attempts}' is not a positive integer; falling back to 4"
         max_attempts=4
+    fi
+    # Soft upper-bound cap to mitigate operator-typo retry storms (e.g.
+    # an extra digit turning 10 into 10000). 100 attempts at the current
+    # 2..30s exponential-backoff schedule is already ~25min, well past
+    # any realistic boot-window. Override is preserved up to the cap.
+    # (cycle 8: closes C7-DB-2-upper-bound.)
+    if (( max_attempts > 100 )); then
+        warn "DEPLOY_SSH_RETRY_MAX='${max_attempts}' exceeds soft cap of 100; clamping to 100"
+        max_attempts=100
     fi
     local delay=2
     local attempt=1
