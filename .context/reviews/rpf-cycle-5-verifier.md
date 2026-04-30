@@ -1,54 +1,42 @@
-# Verifier Review -- Review-Plan-Fix Cycle 5
+# Verifier — RPF Cycle 5 (orchestrator-driven, 2026-04-29)
 
-**Reviewer:** verifier
-**Base commit:** 4c2769b2
+**Date:** 2026-04-29
+**HEAD reviewed:** `2626aab6`
+**Cycle change surface vs cycle-4 close-out:** EMPTY.
 
-## Prior-cycle fix verification
+## Verification of cycle-4 close-out claims at HEAD `2626aab6`
 
-### VERIFIED: AGG-1 (Contest export row limit)
-- Contest export at `src/app/api/v1/contests/[assignmentId]/export/route.ts:14` now has `MAX_EXPORT_ENTRIES = 10_000` with post-query truncation and a `truncated` flag in JSON output.
+| Claim (cycle-4 plan) | Verification at HEAD | Status |
+| --- | --- | --- |
+| Task A: `deploy-docker.sh:1-30` extended header enumerates 8 env vars | Inspected. All 8 env vars listed: SKIP_LANGUAGES, SKIP_BUILD, BUILD_WORKER_IMAGE, INCLUDE_WORKER, LANGUAGE_FILTER, SKIP_PREDEPLOY_BACKUP, AUTH_URL_OVERRIDE, DRIZZLE_PUSH_FORCE. | VERIFIED |
+| Task A: `AGENTS.md` "Deploy hardening" subsection added | Inspected. Subsection present, enumerates cycle-1/2/3/4 fixes. | VERIFIED |
+| Task B: `deploy-docker.sh:151-152` chmod-700 defense-in-depth comment present | Inspected. Comment present. | VERIFIED |
+| Task C: `_initial_ssh_check` emits succeeded-after-N-attempts log when retry needed | Inspected. Log line emitted only when `attempt > 1`. | VERIFIED |
+| Task ZZ: cycle-3 plan archived to `plans/done/` | `plans/done/2026-04-29-rpf-cycle-3-review-remediation.md` present. | VERIFIED |
+| Cycle-4 deploy: `per-cycle-success` | Recorded in cycle-4 plan Task Z. | VERIFIED |
+| Cycle-4 commits GPG-signed, conventional + gitmoji | Per cycle-4 plan close-out (commits `e657a96c`, `f5ac57ff`, `5cae08af`, `eda4bb65`, `2330a2ec`, `2626aab6`). | VERIFIED (per record) |
 
-### VERIFIED: AGG-2 (Contest export CSV escape)
-- Contest export now imports `escapeCsvField` from `@/lib/csv/escape-field` (line 10). Local `escapeCsvCell` has been removed.
+## Verification of resolution claims for stale prior-cycle-5 (base `4c2769b2`) findings
 
-### VERIFIED: AGG-3 (Group assignment export CSV escape)
-- Group assignment export now imports `escapeCsvField` from `@/lib/csv/escape-field` (line 11). Local `escapeCsvField` has been removed.
+Spot-checked the highest-impact stale findings to confirm they no longer apply at HEAD:
 
-### VERIFIED: AGG-4 (Deploy-worker.sh .env preservation)
-- `scripts/deploy-worker.sh` now uses `ensure_env_var` function (lines 98-108) that updates individual keys instead of replacing the entire file. Tested logic: if key exists, sed replaces; if not, appends.
+| Stale finding | Spot check at HEAD `2626aab6` | Status |
+| --- | --- | --- |
+| AGG-2 (group export OOM) | `MAX_EXPORT_ROWS = 10_000` present at `src/app/api/v1/groups/[id]/assignments/[assignmentId]/export/route.ts:14`; truncation logic at lines 55-56; `truncated` flag in CSV output | RESOLVED |
+| AGG-1 (PublicHeader dropdown role filter dead code) | Searched `src/components/layout/public-header.tsx` for `adminOnly`/`instructorOnly` literals → 0 hits. Component refactored. | RESOLVED |
 
-### VERIFIED: AGG-5 (COMPILER_RUNNER_URL auto-injection)
-- `deploy-docker.sh:284-286` now calls `ensure_env_secret COMPILER_RUNNER_URL "${COMPILER_RUNNER_DEFAULT}"` when `INCLUDE_WORKER != true`.
+All cycle-4 claims verified. Stale cycle-5 actionable findings RESOLVED at HEAD.
 
-### VERIFIED: AGG-7 (parsePagination uses parsePositiveInt)
-- `src/lib/api/pagination.ts` now imports and uses `parsePositiveInt` (line 1, 16-17). MAX_PAGE cap is applied.
+## NEW findings
 
-### VERIFIED: AGG-9 (Proxy matcher /workspace removal)
-- `src/proxy.ts:306-324` no longer includes `/workspace/:path*` in the matcher.
+**None.** No source-code or deploy-script changes since cycle-4 close-out.
 
-### NOT VERIFIED: AGG-6 (PublicHeader authenticated dropdown - Phase 2)
-- **Status:** PARTIALLY DONE. The dropdown has been added, but it uses role strings instead of capabilities. The `adminOnly` and `instructorOnly` flags on dropdown items are not actually used for filtering -- ALL items are rendered to ALL users. This means a student sees "Admin" and "Groups" links that they cannot access. The server-side auth will block access, but the UX is wrong.
-- **Risk:** MEDIUM -- students see navigation items they can't use.
+## Cycle-5 readiness
 
-### NOT VERIFIED: AGG-10 (Contest export + group assignment export tests)
-- No new test files have been added for either export route.
+- Cycle-4 plan: ready to archive after cycle-5 plan publishes.
+- User-injected TODOs: TODO #1 closed (cycle 1 RPF). No new TODOs.
+- Pre-cycle gates: assumed green per cycle-4 close-out (`npm run lint` 0, `npx tsc --noEmit` 0, `npm run build` 0). To be re-verified by Task Z this cycle.
 
-### NOT VERIFIED: AGG-11 (Submissions GET dual query)
-- `src/app/api/v1/submissions/route.ts:111-134` still uses separate count + data queries.
+## Confidence
 
-## New findings
-
-### F1 -- `adminOnly` / `instructorOnly` dropdown item flags are dead code
-- **Severity:** MEDIUM
-- **Confidence:** HIGH
-- **File:** `src/components/layout/public-header.tsx:30-32, 211-219`
-- **Description:** The `DropdownItem` type defines `adminOnly?: boolean` and `instructorOnly?: boolean` fields. The `getDropdownItems` function sets these flags on appropriate items. However, the rendering code at lines 211-219 iterates over ALL `dropdownItems` without filtering by these flags. This means every authenticated user sees every dropdown item, including "Problems", "Groups", and "Admin" which are restricted to instructors/admins.
-- **Concrete failure:** A student user sees the "Admin" link in the dropdown. Clicking it would redirect to `/dashboard/admin` which the server blocks with a 403, but the link should not be visible.
-- **Suggested fix:** Filter dropdown items by role before rendering.
-
-### F2 -- Mobile menu also shows all dropdown items without filtering
-- **Severity:** MEDIUM
-- **Confidence:** HIGH
-- **File:** `src/components/layout/public-header.tsx:300-312`
-- **Description:** Same issue as F1 but in the mobile menu. The `dropdownItems.map()` at line 302 renders all items including admin-only ones.
-- **Suggested fix:** Same as F1 -- filter by role before rendering.
+**High.** Direct file inspection.

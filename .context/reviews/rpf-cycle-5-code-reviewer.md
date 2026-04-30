@@ -1,58 +1,54 @@
-# Code Quality Review -- Review-Plan-Fix Cycle 5
+# Code Reviewer — RPF Cycle 5 (orchestrator-driven, 2026-04-29)
 
-**Reviewer:** code-reviewer
-**Base commit:** 4c2769b2
-**Scope:** Full `src/` TypeScript/TSX, API routes, lib modules
+**Date:** 2026-04-29
+**HEAD reviewed:** `2626aab6` (cycle-4 close-out: docs(plans) mark cycle 4 Task Z (gates+deploy) and Task ZZ (archive) done).
+**Cycle change surface vs cycle-4 close-out commit `2626aab6`:** EMPTY. Cycle-4 close-out is HEAD; we are re-reviewing the same HEAD as cycle-4. (Note: an earlier non-orchestrator cycle-5 run produced reviews against base commit `4c2769b2`; those findings (group-export OOM cap, PublicHeader dropdown role-filter, etc.) all subsequently RESOLVED at HEAD by intervening commits. Confirmed by direct file inspection: `MAX_EXPORT_ROWS = 10_000` present in `groups/[id]/assignments/[assignmentId]/export/route.ts:14`; PublicHeader no longer carries `adminOnly`/`instructorOnly` dead flags.)
 
-## Findings
+## Inventory
 
-### F1 -- Group assignment export has no row limit (OOM risk, carried from cycle 4 AGG-3)
-- **Severity:** MEDIUM
-- **Confidence:** HIGH
-- **File:** `src/app/api/v1/groups/[id]/assignments/[assignmentId]/export/route.ts:50`
-- **Description:** `getAssignmentStatusRows(assignmentId)` returns all student rows without a limit. The function queries all enrolled students and their per-problem aggregates via raw SQL. For a large group, this loads unbounded data into memory. While the contest export was fixed with `MAX_EXPORT_ENTRIES = 10_000`, this export route was not capped.
-- **Concrete failure:** A group with 5,000+ students each having submissions for 10+ problems generates 50,000+ aggregate rows in memory.
-- **Suggested fix:** Add a `MAX_EXPORT_ROWS` cap (e.g., 10,000) after the `getAssignmentStatusRows` call, similar to contest export.
+- `src/` tree: unchanged since cycle 3 (last touched by cycle-3 docs commits).
+- `deploy-docker.sh`: 1032 lines (cycle-4 added 31 lines via Task A header docstring + Task B chmod-700 comment + Task C succeeded-after-N-attempts log line).
+- `deploy.sh`: 289 lines (legacy entrypoint, unchanged since cycle-2 critique).
+- `AGENTS.md`: 565 lines (cycle-4 added "Deploy hardening" subsection per Task A).
 
-### F2 -- Anti-cheat GET uses dual queries instead of COUNT(*) OVER()
-- **Severity:** LOW
-- **Confidence:** HIGH
-- **File:** `src/app/api/v1/contests/[assignmentId]/anti-cheat/route.ts:158-180`
-- **Description:** The anti-cheat GET route issues two separate queries: one for paginated data and one for the total count. This is the same dual-query pattern that was fixed for chat-logs (cycle 3 CHAT-LOG-01), rankings, and admin routes using COUNT(*) OVER(). The anti-cheat route was not migrated.
-- **Concrete failure:** Under concurrent load, the total count can drift from the actual number of rows returned, leading to inaccurate pagination metadata.
-- **Suggested fix:** Use COUNT(*) OVER() in the data query and extract the total from the first row.
+## NEW findings this cycle
 
-### F3 -- Problems GET route uses dual count + data queries (both branches)
-- **Severity:** LOW
-- **Confidence:** HIGH
-- **File:** `src/app/api/v1/problems/route.ts:27-60` and `:77-108`
-- **Description:** Both the admin and non-admin branches of the problems GET route issue separate `count(*)` and data queries. Same dual-query pattern as F2.
-- **Suggested fix:** Use COUNT(*) OVER() in both branches.
+**None.** The change surface is empty. All cycle-4 fixes (Tasks A/B/C) verified at HEAD `2626aab6`:
 
-### F4 -- Users GET route uses dual count + data queries
-- **Severity:** LOW
-- **Confidence:** HIGH
-- **File:** `src/app/api/v1/users/route.ts:38-49`
-- **Description:** Same dual-query pattern as F2/F3.
-- **Suggested fix:** Use COUNT(*) OVER().
+1. **Task A artifacts present:** `deploy-docker.sh:1-30` header docstring enumerates 8 env vars (`SKIP_LANGUAGES`, `SKIP_BUILD`, `BUILD_WORKER_IMAGE`, `INCLUDE_WORKER`, `LANGUAGE_FILTER`, `SKIP_PREDEPLOY_BACKUP`, `AUTH_URL_OVERRIDE`, `DRIZZLE_PUSH_FORCE`). `AGENTS.md` "Deploy hardening" subsection enumerates each cycle-1/2/3/4 fix.
+2. **Task B artifact present:** `deploy-docker.sh:151-152` `# defense-in-depth — mktemp -d already creates 0700, this guards against unset umask` comment.
+3. **Task C artifact present:** `_initial_ssh_check` emits `info "SSH connection succeeded after ${attempt} attempts"` only when `attempt > 1`.
 
-### F5 -- Submissions GET route uses dual count + data + optional summary queries
-- **Severity:** MEDIUM
-- **Confidence:** HIGH
-- **File:** `src/app/api/v1/submissions/route.ts:111-159`
-- **Description:** The offset-based pagination path in submissions GET issues up to 3 separate queries: a count query (line 111), a data query (line 116), and an optional summary query (line 137). The count + data is the same dual-query pattern. When `includeSummary=1`, a third GROUP BY query is issued. The summary query could be merged with the count query since both scan the same WHERE clause.
-- **Suggested fix:** Use COUNT(*) OVER() for the data query. The summary query is independent enough to remain separate but could be merged with the count for efficiency.
+## Resolutions of prior cycle-5 (stale base) findings, verified at HEAD
 
-### F6 -- Tags route still uses manual `getApiUser` pattern
-- **Severity:** LOW
-- **Confidence:** HIGH
-- **File:** `src/app/api/v1/tags/route.ts:11-14`
-- **Description:** The tags GET route uses `getApiUser` directly instead of `createApiHandler`. This was noted in cycle 4 (AGG-12) but not yet fixed. The route lacks CSRF handling (acceptable for GET-only) but also lacks rate limiting and consistent error handling.
-- **Suggested fix:** Migrate to `createApiHandler`.
+The earlier (now-stale) cycle-5 review run was rooted at `4c2769b2`. Re-checked at current HEAD; all of its actionable findings either RESOLVED or DEFERRED:
 
-### F7 -- `getAssignmentStatusRows` has no limit on enrolled students query
-- **Severity:** LOW
-- **Confidence:** HIGH
-- **File:** `src/lib/assignments/submissions.ts:513-523`
-- **Description:** The `enrolledStudents` query fetches all enrolled students without limit. Combined with F1, this means the export route can load arbitrarily large student lists. The per-problem SQL aggregation query (lines 550-598) is efficient (uses GROUP BY), but the in-memory processing of `enrolledStudents` + `problemAggRows` to build the response is O(students * problems).
-- **Suggested fix:** Add a cap on enrolledStudents within `getAssignmentStatusRows`, or cap at the export route level.
+- AGG-1 (PublicHeader dropdown role filter): RESOLVED. Component refactored — `adminOnly`/`instructorOnly` dead flags no longer present in `src/components/layout/public-header.tsx`.
+- AGG-2 (Group assignment export OOM): RESOLVED. `MAX_EXPORT_ROWS = 10_000` cap at `src/app/api/v1/groups/[id]/assignments/[assignmentId]/export/route.ts:14`.
+- AGG-5 (Dual count + data queries on multiple routes): subsumed by **ARCH-CARRY-1** (22+ raw API route handlers) carry-forward, still DEFERRED with exit criterion (API-handler refactor cycle).
+- AGG-6 (Manual `getApiUser` routes): same as **ARCH-CARRY-1** — DEFERRED.
+- AGG-7 (Missing tests for export/dropdown/leaderboard): subsumed by **DEFER-ENV-GATES** (env-blocked test gates) plus follow-up test cycle. DEFERRED.
+
+## Carry-forward LOW backlog (severity preserved, no downgrade)
+
+- **C3-AGG-2** (LOW) `deploy-docker.sh:204-214` — `remote_sudo` SSH/sudo password decoupling.
+- **C3-AGG-3** (LOW) `deploy-docker.sh:165-178` — retry-count env-var override + ControlMaster keepalive auto-reconnect.
+- **C3-AGG-4** (LOW) `package.json` / CI surface — `bash -n` + `shellcheck` CI gate.
+- **C3-AGG-5** (LOW) `deploy-docker.sh` whole + `deploy.sh:58-66` — modular extraction + legacy `deploy.sh` cleanup.
+- **C3-AGG-6** (LOW) `deploy-docker.sh:151` — ControlMaster socket dir path-predictability.
+- **C3-AGG-8** (LOW) `deploy-docker.sh:129-133` — deploy-instance log prefix.
+- **C2-AGG-5/6/7**, **C1-AGG-3**, **DEFER-ENV-GATES**, **D1**, **D2**, **AGG-2** (Date.now), **ARCH-CARRY-1**, **ARCH-CARRY-2**, **PERF-3** — all unchanged.
+
+## Recommendation for this cycle
+
+Pick at least 2-3 LOW deferred items to draw down the backlog. Top candidates by minimum-risk × max-benefit:
+
+1. **C3-AGG-8** (deploy-instance log prefix) — Pure-additive shell-helper update; behavior unchanged when env var unset. ~10-line edit in `deploy-docker.sh:129-133`. Naturally meets exit criterion ("real-world incident" is not the only path; explicit operator-supplied `DEPLOY_INSTANCE` env var is sufficient even pre-incident).
+2. **C3-AGG-4** (bash lint script) — Add `lint:bash` npm script invoking `bash -n deploy-docker.sh deploy.sh`. Ships the script regardless of CI hosting; CI hosting is the next-step exit criterion. Local invocation works in any dev shell.
+3. **C2-AGG-7** (recruiting hardcoded appUrl) — Single-file fallback to `process.env.NEXT_PUBLIC_APP_URL` with the existing literal as default. Behavior preserved when env var unset.
+
+These three drawdowns retire 3 LOW backlog items in one cycle without functional regressions.
+
+## Confidence
+
+**High.** Direct file inspection at HEAD `2626aab6`.

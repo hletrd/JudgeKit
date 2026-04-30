@@ -1,42 +1,38 @@
-# Test Engineer Review -- Review-Plan-Fix Cycle 5
+# Test Engineer — RPF Cycle 5 (orchestrator-driven, 2026-04-29)
 
-**Reviewer:** test-engineer
-**Base commit:** 4c2769b2
+**Date:** 2026-04-29
+**HEAD reviewed:** `2626aab6`
+**Cycle change surface vs cycle-4 close-out:** EMPTY.
 
-## Findings
+## Inventory
 
-### F1 -- No tests for group assignment export route
-- **Severity:** MEDIUM
-- **Confidence:** HIGH
-- **File:** `src/app/api/v1/groups/[id]/assignments/[assignmentId]/export/route.ts`
-- **Description:** This export route has no test coverage. The unbounded data loading (F1 from code-reviewer) and the CSV generation logic would have been caught by basic tests. There is a test file `tests/unit/api/group-assignment-export-implementation.test.ts` but it tests the underlying data function, not the route itself.
-- **Concrete failure:** The CSV output format, BOM inclusion, content-disposition header, and auth checks are all untested.
-- **Suggested fix:** Add route-level tests covering: auth check, CSV format, BOM presence, content-disposition, empty group, large group.
+- Test directories: `tests/unit/`, `tests/integration/`, `tests/component/`, `tests/security/`, `tests/e2e/`. None changed since cycle 3.
+- Vitest configs: not changed.
+- Playwright config: not changed (still requires `bash scripts/playwright-local-webserver.sh` which boots Docker Postgres — sandbox-blocked).
 
-### F2 -- No tests for submissions GET offset pagination path
-- **Severity:** LOW
-- **Confidence:** HIGH
-- **File:** `src/app/api/v1/submissions/route.ts`
-- **Description:** The submissions GET route has both cursor-based and offset-based pagination, but there are no tests for the offset path specifically. The dual-query pattern (F5 from code-reviewer) and the includeSummary flag are untested.
-- **Suggested fix:** Add tests for offset pagination, includeSummary flag, and verify pagination metadata accuracy.
+## NEW findings this cycle
 
-### F3 -- No tests for PublicHeader authenticated dropdown
-- **Severity:** MEDIUM
-- **Confidence:** HIGH
-- **File:** `src/components/layout/public-header.tsx`
-- **Description:** The newly added authenticated dropdown (Phase 2 of workspace migration) has no component tests. The dropdown renders different items based on user role (student/instructor/admin), but this logic is untested. The mobile menu rendering of dropdown items is also untested.
-- **Concrete failure:** A regression in `getDropdownItems` could remove admin-only items or show instructor items to students without detection.
-- **Suggested fix:** Add component tests for `getDropdownItems` covering all role variants, and test the PublicHeader rendering in both desktop and mobile modes.
+**None.** No test or test-config changes; no source surface change to introduce regressions.
 
-### F4 -- Pagination tests only cover `parsePagination`, not route integration
-- **Severity:** LOW
-- **Confidence:** HIGH
-- **File:** `tests/unit/pagination.test.ts`
-- **Description:** The pagination utility has unit tests, but there are no integration tests verifying that API routes correctly pass pagination parameters to the database and return accurate total counts. The dual-query vs COUNT(*) OVER() discrepancy would not be caught by utility-level tests alone.
-- **Suggested fix:** Add API-level tests for at least one paginated route (e.g., problems or users) that verify pagination metadata accuracy.
+## Carry-forward DEFERRED test-related items
 
-### F5 -- Missing tests for leaderboard live rank and participant timeline (carried from cycle 21 plan M3/M4)
-- **Severity:** MEDIUM
-- **Confidence:** HIGH
-- **Description:** These tests were planned in the cycle 21 remediation plan (items M3 and M4) but never implemented. The `computeSingleUserLiveRank` and `getParticipantTimeline` functions have no test coverage.
-- **Suggested fix:** Implement the tests as described in the cycle 21 plan.
+- **DEFER-ENV-GATES** (LOW, env-blocked): unit/component/security/integration/e2e tests fail or skip in dev shell because no DATABASE_URL/Postgres/sidecar. Same condition cycle-3 and cycle-4 reported. Exit criterion: fully provisioned CI/host with required env.
+- **C3-AGG-4** (LOW): No `bash -n` / shellcheck gate over deploy scripts. Could be implemented this cycle as a `lint:bash` npm script.
+
+## Cycle-5 gate plan
+
+Run all gates verbatim per orchestrator directive:
+1. `npm run lint`
+2. `npx tsc --noEmit`
+3. `npm run build`
+4. `npm run test:unit` — env-blocked, expected to repeat cycle-4 outcome (some failures from missing Postgres / rate-limit sidecar).
+5. `npm run test:integration` — env-blocked, expected SKIP majority.
+6. `npm run test:component` — env-blocked.
+7. `npm run test:security` — env-blocked.
+8. `npm run test:e2e` — env-blocked (no Docker Postgres).
+
+Expectation: lint + tsc + build clean (0 errors). Test failures are pre-existing DEFER-ENV-GATES carry-forwards, NOT regressions of this cycle's work.
+
+## Confidence
+
+**High.** Same condition cycle-4.

@@ -1,35 +1,30 @@
-# Designer / UI-UX Review -- Review-Plan-Fix Cycle 5
+# Designer — RPF Cycle 5 (orchestrator-driven, 2026-04-29)
 
-**Reviewer:** designer
-**Base commit:** 4c2769b2
+**Date:** 2026-04-29
+**HEAD reviewed:** `2626aab6`
+**Cycle change surface vs cycle-4 close-out:** EMPTY.
 
-## Findings
+## Inventory
 
-### F1 -- PublicHeader dropdown shows admin/instructor-only items to all users (CRITICAL UX BUG)
-- **Severity:** HIGH
-- **Confidence:** HIGH
-- **File:** `src/components/layout/public-header.tsx:211-219, 300-312`
-- **Description:** The `adminOnly` and `instructorOnly` flags on dropdown items are defined in the type but never used for filtering during rendering. Every authenticated user sees "Problems", "Groups", and "Admin" links regardless of their role. This is both a UX issue (cluttered, confusing navigation for students) and an information disclosure issue (students know admin panel exists).
-- **Concrete failure:** Student logs in, sees "Admin" in dropdown, clicks it, gets 403 error. Bad user experience.
-- **Suggested fix:** Filter dropdown items by role before rendering. Use the same `loggedInUser.role` check that `getDropdownItems` already uses to decide which items to include.
+- UI components in `src/components/`, app pages in `src/app/`. Unchanged since cycle 3.
+- Korean letter-spacing rule (CLAUDE.md): no `tracking-*` utilities applied to Korean text.
+- Dark mode parity: cycle 11 RPF closed all known dark-mode regressions (per `git log` showing recent `fix(ui): dark mode variants` commits before cycle-1 RPF).
 
-### F2 -- Mobile menu lacks visual grouping for authenticated navigation items
-- **Severity:** LOW
-- **Confidence:** HIGH
-- **File:** `src/components/layout/public-header.tsx:300-312`
-- **Description:** On desktop, authenticated items are in a dropdown with a clear trigger ("Dashboard"). On mobile, they appear as a flat list with no heading or separator. The sign-out button is mixed in with navigation links without visual distinction beyond the icon.
-- **Suggested fix:** Add a small heading like "Dashboard" or a separator line above the authenticated items in the mobile menu, and visually distinguish the sign-out button (e.g., with a top border or different text color).
+## NEW findings
 
-### F3 -- No skip-to-content link targeting verification
-- **Severity:** LOW
-- **Confidence:** MEDIUM
-- **File:** `src/app/(public)/layout.tsx:22,39`
-- **Description:** The layout includes `<SkipToContent>` and `<main id="main-content">`. The skip link should target `#main-content`. This works correctly as long as the `SkipToContent` component renders an anchor with `href="#main-content"`. This is a minor accessibility point worth verifying in the component implementation.
-- **Suggested fix:** Verify that the `SkipToContent` component's `href` matches the main content `id`.
+**None.** No UI changes since cycle 3.
 
-### F4 -- Dropdown trigger lacks `aria-haspopup` and `aria-expanded` attributes
-- **Severity:** LOW
-- **Confidence:** HIGH
-- **File:** `src/components/layout/public-header.tsx:206`
-- **Description:** The `DropdownMenuTrigger` at line 206 is a custom styled button that opens a dropdown menu. The base-ui DropdownMenu component may handle ARIA attributes internally, but the custom `className` styling wraps the trigger in a way that may not automatically get `aria-haspopup="menu"` and `aria-expanded`. Screen reader users may not know the button opens a menu.
-- **Suggested fix:** Verify that the DropdownMenu component from base-ui/shadcn correctly sets `aria-haspopup` and `aria-expanded` on the trigger element. If not, add them manually.
+## Resolution of prior cycle-5 (stale base 4c2769b2) findings
+
+- F1 (PublicHeader dropdown role filter dead code): RESOLVED — `adminOnly`/`instructorOnly` flags removed by intervening refactor.
+- F2 (Mobile menu visual grouping): subsumed by general design polish queue. No regression at HEAD.
+- F3 (Skip-to-content link verification): not in cycle-4/5 scope. DEFERRED to a UI-focused cycle.
+- F4 (DropdownMenu ARIA attributes): not in cycle-4/5 scope. DEFERRED.
+
+## Notes (source-level designer review)
+
+UI/UX presence is high (Next.js app with React 19 + Tailwind). Full agent-browser snapshot review not run because no UI changes since cycle 3 — no delta to validate. Browser review will be re-run whenever UI changes land.
+
+## Confidence
+
+**High.** No design-surface delta.
