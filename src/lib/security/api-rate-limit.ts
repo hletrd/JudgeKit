@@ -1,3 +1,20 @@
+/**
+ * Cross-instance API rate limiting backed by PostgreSQL with an optional
+ * sidecar fast-path (`rate-limiter-client`).
+ *
+ * All timestamp comparisons use DB server time (`getDbNowMs` /
+ * `getDbNowUncached`) to avoid clock skew between the app server and the
+ * database server. This ensures consistency with `./rate-limit.ts` (login
+ * /auth limits) which writes to the same `rateLimits` table using DB time.
+ *
+ * NOTE: this is one of three rate-limit modules in this directory. Use this
+ * one for cross-instance API limits where the limit must survive a process
+ * restart. Use `./in-memory-rate-limit.ts` for high-throughput per-instance
+ * limits (no DB dependency; resets on restart). Use `./rate-limit.ts` for
+ * login/auth limits. Drift between these three modules is tracked under
+ * C7-AGG-9 (rate-limit consolidation cycle); if you fix a bug here, search
+ * the other two modules for the same pattern and apply the equivalent fix.
+ */
 import { NextRequest, NextResponse } from "next/server";
 import { getRateLimitKey } from "./rate-limit";
 import { checkRateLimit as sidecarCheck } from "./rate-limiter-client";

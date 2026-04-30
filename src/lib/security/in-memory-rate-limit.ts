@@ -2,6 +2,15 @@
  * Fast in-memory rate limiter using Map with automatic eviction.
  * Replaces SQLite queries for rate limiting in high-throughput paths.
  * Falls back gracefully — if the process restarts, all limits reset (acceptable trade-off).
+ *
+ * NOTE: this is one of three rate-limit modules in this directory. Use this
+ * one for high-throughput per-instance limits where a transient reset on
+ * process restart is acceptable. Use `./api-rate-limit.ts` for cross-instance
+ * API limits (DB-backed via the `rateLimits` table). Use `./rate-limit.ts`
+ * for login/auth limits (DB-backed via the same table). Drift between these
+ * three modules is tracked under C7-AGG-9 (rate-limit consolidation cycle);
+ * if you fix a bug here, search the other two modules for the same pattern
+ * and apply the equivalent fix there.
  */
 
 import { extractClientIp } from "@/lib/security/ip";
