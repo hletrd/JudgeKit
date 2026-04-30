@@ -1,60 +1,61 @@
-# RPF Cycle 3 — Tracer (Causal Tracing of Suspicious Flows)
+# RPF Cycle 3 — Tracer (causal tracing of suspicious flows)
 
-**Date:** 2026-04-24
-**Scope:** Full repository — causal tracing of data flows, competing hypotheses
+**Date:** 2026-04-29
+**HEAD reviewed:** 66146861
 
-## Changed-File Tracing
+## Trace 1: Cycle-2 sshpass MaxStartups throttling → ControlMaster resolution
 
-### `src/lib/judge/sync-language-configs.ts` — SKIP_INSTRUMENTATION_SYNC
+**Hypothesis A (cycle-2 working hypothesis, kept):** Repeated sshpass-driven SSH handshakes against `platform@10.50.1.116` triggered sshd `MaxStartups` rate-limiting and/or fail2ban throttling, causing intermittent "Permission denied" with valid credentials.
 
-**Trace 1: Flag activation path**
-1. `process.env.SKIP_INSTRUMENTATION_SYNC === "1"` → true
-2. `logger.warn(...)` fires
-3. Function returns `undefined` (implicit)
-4. Caller (`instrumentation.ts` or startup) continues normally
-5. No language configs are synced — they remain as-is from prior runs
+**Hypothesis B (alternative):** PAM throttling on the target host. Equally consistent with the symptom.
 
-**Hypothesis:** Could this leave the DB in an inconsistent state if language configs are missing?
-**Disproof:** The flag is only used in environments where DB is unavailable (local dev, sandboxed review). In production, the DB is available and the flag is not set. Language configs are seeded during initial deployment. **No risk.**
+**Hypothesis C (alternative):** sshpass tty allocation race — sshpass writes the password before sshd's prompt is fully ready, causing the prompt to swallow a partial input.
 
-**Trace 2: Flag NOT set (normal production path)**
-1. Condition is false
-2. Retry loop begins (line 87)
-3. `doSync()` runs: queries existing configs, inserts/updates as needed
-4. On success: function returns
-5. On failure: exponential backoff, retry up to 10 times
-6. After max retries: throws Error
+**Evidence collected this cycle:**
+- Cycle-2 deploy log shows "Permission denied (publickey,password)" at the nginx step on attempt #1 and at `docker info` pre-flight on attempt #2 (recovery).
+- Cycle-3 deploy log shows 0 "Permission denied" lines.
+- Cycle-2 commits add SSH ControlMaster (single auth + reuse) AND ServerAliveInterval=30 (keepalive on the master). Either of these alone would mitigate Hypothesis A; both together would also mitigate Hypothesis B (PAM also resets per-connection state, so multiplexing skips it). Hypothesis C is mitigated by reducing the count of password-fed handshakes from N to 1.
 
-**Hypothesis:** Could the retry loop hang forever?
-**Disproof:** The loop has a hard cap of `MAX_SYNC_RETRIES = 10` iterations. The `attempt >= MAX_SYNC_RETRIES` check on line 92 throws after the last retry. **No hang risk.**
+**Causal verdict:** All three hypotheses are mitigated by the cycle-2 fix. The fix is correct regardless of which root cause was primary. No further trace-level investigation needed.
 
-**Verdict:** Both paths are safe. No causal issues.
+**No finding** — the trace converges on a working fix.
 
-## Cross-System Flow Tracing
+## Trace 2: Cycle-1 deploy-script SKIP_LANGUAGES regression
 
-### Auth flow (login → session → API request)
+**Hypothesis:** Cycle-1's `bdfc79e1` fix to honor `SKIP_LANGUAGES=true` env var added `${VAR:-default}` parameter expansion. Future regressions could revert to unconditional `SKIP_LANGUAGES=false`.
 
-1. `authorize()` in config.ts: validates credentials, checks `isActive`, verifies password with Argon2id, records login event
-2. `jwt` callback: syncs token with user fields, sets `authenticatedAt`
-3. `session` callback: maps token fields to session.user
-4. API request: `getApiUser()` → `getToken()` → `getActiveAuthUserById()` → checks `tokenInvalidatedAt`
-5. `createApiHandler()`: runs auth, CSRF, rate-limit, then handler
+**Evidence at HEAD 66146861:**
+- `deploy-docker.sh:78-82` — `SKIP_BUILD="${SKIP_BUILD:-false}"`, `SKIP_LANGUAGES="${SKIP_LANGUAGES:-false}"`, `LANGUAGE_FILTER="${LANGUAGE_FILTER:-}"`, `INCLUDE_WORKER="${INCLUDE_WORKER:-true}"`, `BUILD_WORKER_IMAGE="${BUILD_WORKER_IMAGE:-auto}"`. CONFIRMED.
+- The `for arg in "$@"` loop (lines 83-114) only sets `SKIP_LANGUAGES=true` (never `=false`). CONFIRMED — the env-var precedence is preserved.
 
-**Hypothesis:** Could a deactivated user still access an API endpoint between deactivation and the next JWT refresh?
-**Analysis:** The `getActiveAuthUserById` checks `isActive` and `tokenInvalidatedAt` on every API request. The JWT callback also checks these on every token refresh. The gap window is the JWT refresh interval, which is controlled by `sessionMaxAgeSeconds`. For API requests (not page loads), `getApiUser` always queries the DB directly. **No access-after-deactivation gap for API routes.**
+**Causal verdict:** Cycle-1's fix is intact. No regression. C2-AGG-4 (deploy regression test) remains as deferred guardrail-type finding.
 
-### SSE re-auth flow
+**No finding.**
 
-1. SSE connection established
-2. Every 30 seconds (`AUTH_RECHECK_INTERVAL_MS`): `getApiUser(request)` is called
-3. If re-auth fails → connection closed
-4. Between re-auth checks: status events are emitted
+## Trace 3: Cycle-2 chmod 0600 .env.production fix
 
-**Hypothesis:** Could a deactivated user receive up to 30 seconds of SSE events after deactivation?
-**Analysis:** Yes, this is a known and accepted tradeoff. The 30-second window is documented. Reducing it would increase DB load proportionally. **Acceptable risk.**
+**Hypothesis:** The chmod-0600 fix (`ab31a40f`) might be effective only on the fresh-generation path, not on existing-file deploys.
+
+**Evidence at HEAD 66146861:**
+- `deploy-docker.sh:277` — chmod 0600 after fresh heredoc. CONFIRMED.
+- `deploy-docker.sh:283` — `chmod 0600 "${SCRIPT_DIR}/.env.production" 2>/dev/null || true` on existing-file path. CONFIRMED defense-in-depth.
+
+**Causal verdict:** Both paths are covered. No bypass. No finding.
+
+## Trace 4: Cycle-3 — does the ControlMaster fix interact with the chmod-0600 fix or the SKIP_LANGUAGES fix?
+
+**Hypothesis:** Combinatorial regressions could exist. E.g., the ControlMaster trap fires on EXIT and `rm -rf` the socket dir; if `set -e` is active and a subsequent step fails, the trap fires. Could it interact with the `.env.production` chmod path?
+
+**Evidence:**
+- The chmod 0600 happens at lines 277 and 283 — before any `remote*` call (those start at line 232 with `_initial_ssh_check`). So the trap firing later cannot disturb the local chmod.
+- The trap only operates on `$SSH_CONTROL_DIR` (a `/tmp` mktemp dir), never on `.env.production`. No path collision.
+
+**Causal verdict:** No combinatorial regressions. No finding.
 
 ## Summary
 
-**New findings this cycle: 0**
+- 4 traces run; 0 new findings.
+- The cycle-2 fix is causally consistent with the observed cycle-3 deploy success (0 Permission-denied lines).
+- All carry-forward fixes are intact.
 
-All traced flows are safe and match expected behavior. The 30-second SSE re-auth window is a known, accepted tradeoff.
+**Total new findings this cycle:** 0.

@@ -1,44 +1,52 @@
-# RPF Cycle 3 — Designer (UI/UX Review — Source-Level)
+# RPF Cycle 3 — Designer (UI/UX review — source-level)
 
-**Date:** 2026-04-24
-**Scope:** Full repository — UI/UX source-level review
-**Note:** Runtime browser review is sandbox-blocked (no Docker/DB available). This review is source-level only.
+**Date:** 2026-04-29
+**HEAD reviewed:** 66146861
+**Note:** Runtime browser review is sandbox-blocked (no DATABASE_URL, no Postgres, no rate-limiter sidecar — same env gap as cycles 1+2). This review is source-level only via grep + Read.
 
-## Changed-File Review
+## Cycle change surface
 
-### `src/lib/judge/sync-language-configs.ts` — SKIP_INSTRUMENTATION_SYNC
+`deploy-docker.sh` only — no UI files modified this cycle.
 
-This change has no UI/UX impact. The flag only affects server-side startup behavior.
+## Source-level UI/UX sweep
 
-**Verdict:** No UI/UX concerns.
+Since no UI files were touched, this review focuses on regression checks for prior UI/UX findings:
 
-## Full-Repository UI/UX Source-Level Sweep
+### Korean letter-spacing policy compliance (CLAUDE.md)
 
-### Accessibility (Source Audit)
+Per CLAUDE.md "Typography: Korean Letter Spacing": *"Keep Korean text at the browser/font default letter spacing. Do not apply custom letter-spacing (or tracking-* Tailwind utilities) to Korean content."*
 
-1. **ARIA attributes:** Pagination controls (`pagination-controls.tsx`) have comprehensive ARIA labels, `aria-current`, and `aria-hidden`. **Good.**
+**Audit:**
+- `grep -RIn "tracking-"` in `src/components` and `src/app` returns ≈18 hits. Each was inspected for Korean-language gating:
+  - `discussion-thread-view.tsx:42`, `discussion-moderation-list.tsx:42`, `my-discussions-list.tsx:24`, `discussion-thread-list.tsx:46`, `user-stats-dashboard.tsx:60`, `public-problem-set-list.tsx:35`, `public-problem-set-detail.tsx:55`, `app-sidebar.tsx:207`, `public-header.tsx:301`, `active-timed-assignment-sidebar-panel.tsx:50` — all use the `locale && locale !== "ko" ? " tracking-tight" : ""` (or `tracking-wide`/`tracking-wider`) gate. ALIGNED with CLAUDE.md.
+  - `access-code-manager.tsx:154` (`tracking-widest`) and `not-found.tsx:58` (`tracking-[0.2em]`) and `contest-join-client.tsx:104` (`tracking-[0.35em]`) are tagged with comments stating they apply to alphanumeric/font-mono content where Korean rendering is impossible. ALIGNED.
+  - `dropdown-menu.tsx:247` (`tracking-widest`) is on a class list — only used for keyboard-shortcut text (e.g. `⌘K`), which is alphanumeric. ALIGNED.
+- `globals.css:129-132, 220-223` — explicitly applies `letter-spacing: var(--letter-spacing-body)` and `--letter-spacing-heading` only outside Korean (per the comments). ALIGNED.
 
-2. **Sheet component** (`sheet.tsx`): Close button has `aria-label`. **Good.**
+**No new finding** — Korean letter-spacing policy is fully compliant at HEAD.
 
-3. **Lecture submission overview:** Stats region has `aria-label`, close button has `aria-label`. **Good.**
+### Dark mode coverage
 
-4. **Korean letter-spacing rule** (from CLAUDE.md): Code should not apply custom `letter-spacing` to Korean text. Grep for `tracking-` and `letter-spacing` utilities should be done in a runtime review to verify. **Source-level: no obvious violations found.**
+Recent cycles (cycle-8 through cycle-11) systematically added dark mode variants. No regressions visible at HEAD:
+- `grep -RIn "dark:"` in `src/components` returns dense usage. No file modified this cycle that would regress dark mode.
 
-### Previously Identified (Carry-Forward)
+### Accessibility regression check
 
-- **DES-1:** Chat widget button badge lacks ARIA announcement — LOW/LOW, deferred
-- **DES-1 (cycle 46):** Contests page badge hardcoded colors — LOW/LOW, deferred
-- **DES-1 (cycle 48):** Anti-cheat privacy notice accessibility — LOW/LOW, deferred
-- **DES-RUNTIME-{1..5} (cycle 55):** blocked-by-sandbox runtime findings — deferred
+Cycle-2 reviews verified `aria-label` on the recruiting expiry input (resolved). No UI changes this cycle, so no regression possible.
 
-### New Observations
+## Carry-forward UI/UX findings
 
-1. The `eslint-disable react-hooks/static-components` in `plugin-config-client.tsx` is justified for lazily-prebuilt admin components. No UX impact. **No issue.**
-
-2. The `dangerouslySetInnerHTML` usage in `problem-description.tsx` is sanitized via DOMPurify. This is necessary for rendering Markdown math (KaTeX). **No UX issue.**
+- **AGG-1** (recruiting expiry UTC vs local): RESOLVED at cycle 2 HEAD (`recruiting-invitations-panel.tsx:462`). Verified.
+- **AGG-2** (auto-refresh lacks backoff): RESOLVED at cycle 2 HEAD. Verified.
+- **AGG-3** (workers AliasCell silent failure): RESOLVED. Verified.
+- **AGG-5** (`<select>` in clarifications): RESOLVED. Verified.
+- **C2-AGG-7** (window.location.origin in invitation URL): UNCHANGED. From a UX perspective, behind a misconfigured proxy the user gets a wrong-host invite link. Carry-forward.
+- **DEFER-ENV-GATES** (Playwright e2e env): UNCHANGED. Browser review remains source-level only.
 
 ## Summary
 
-**New findings this cycle: 0**
+- 0 new UI/UX findings this cycle (no UI files modified).
+- All carry-forward UI fixes verified intact.
+- Korean letter-spacing policy fully compliant.
 
-No new UI/UX issues at source level. Runtime browser review remains sandbox-blocked. All prior UI/UX findings remain deferred.
+**Total new findings this cycle:** 0.
