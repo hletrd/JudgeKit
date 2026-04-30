@@ -1,131 +1,53 @@
-# Code Review — Cycle 9
+# RPF Cycle 9 — Code Reviewer
 
-**Date:** 2026-04-28
-**Reviewer:** code-reviewer
-**Scope:** Full codebase review focusing on cycle 1-8 fix verification, remaining issues, and new regressions
+**Date:** 2026-04-29
+**HEAD reviewed:** `1bcdd485` (cycle-8 close-out: docs(plans) mark cycle 8 Tasks A/B/C/Z/ZZ done with deploy outcome).
+**Change surface vs cycle-8 prior close `1c991812`:** 5 commits (`bf1aba17`, `1cdf79ed`, `d9cb15e6`, `9c8d072e`, `1bcdd485`); 18 files; +823 / -86 lines. Code/script touches: `README.md` (+10), `deploy-docker.sh` (+11/-3), `src/lib/security/api-rate-limit.ts` (+17 doc-only header), `src/lib/security/in-memory-rate-limit.ts` (+9 doc-only header).
 
----
+## Inventory of review-relevant files (cycle 9)
 
-## Cycle 1-8 Fix Verification
+- `README.md` — new "Time Synchronization" section (Task A close-out, cycle 8).
+- `deploy-docker.sh` — soft cap on `DEPLOY_SSH_RETRY_MAX` (Task B close-out, cycle 8); env-var doc updated.
+- `src/lib/security/api-rate-limit.ts` — top-of-file orientation comment added (Task C, cycle 8).
+- `src/lib/security/in-memory-rate-limit.ts` — extended top-of-file orientation comment (Task C, cycle 8).
+- `plans/done/2026-04-29-rpf-cycle-7-review-remediation.md` — archived.
+- `plans/open/2026-04-29-rpf-cycle-8-review-remediation.md` — cycle-8 plan, status DONE.
+- `.context/reviews/rpf-cycle-8-*.md` (11 files) and `_aggregate.md` — review artifacts.
 
-All 34 tasks from cycles 1-8 have been re-verified in the cycle 8 aggregate. No regressions found in any prior fixes. All locale-aware formatting calls (`formatBytes`, `formatScore`, `formatDifficulty`) now correctly pass locale. Contest status labels are unified via `buildContestStatusLabels`. `ContestStatusKey` type has been eliminated in favor of `ContestStatus`. Badge dark mode variants applied correctly.
+## Cross-file interactions checked
 
----
+- `deploy-docker.sh` cap interacts with the existing fallback: positive-integer fallback is at lines 226-229; cap is at lines 232-238. The order is correct — fallback first (forces `max_attempts=4` for non-integer/<1 inputs), cap second (clamps to 100 for excess values). A user setting `DEPLOY_SSH_RETRY_MAX=0` triggers fallback to 4 (not the cap), which is the correct behavior. A user setting `DEPLOY_SSH_RETRY_MAX=10000` triggers the cap to 100 with a clear log line.
+- `api-rate-limit.ts` and `in-memory-rate-limit.ts` orientation comments correctly cross-reference each other and `rate-limit.ts`. The "if you fix a bug here, search the other two modules for the same pattern and apply the equivalent fix" guidance is correct given the documented C7-AGG-9 deferral.
+- `README.md` "Time Synchronization" section correctly cites the regression test file path `tests/unit/api/time-route-db-time.test.ts` (verified to exist at HEAD).
 
-## New Findings
+## Findings
 
-### C9-CR-1: [MEDIUM] SVG stacked bar chart segments missing dark mode fill variants
+**0 NEW HIGH / MEDIUM / LOW.**
 
-**File:** `src/components/contest/analytics-charts.tsx:231,237`
-**Confidence:** HIGH
+The cycle-8 implementation correctly:
+1. Preserves the operator-override knob (cap is a *soft* cap; warn + clamp, not fail).
+2. Uses `(( max_attempts > 100 ))` arithmetic test (not string `[`), which is the correct bash idiom for integer comparison after the prior validation guarantees integer-ness.
+3. Adds the cap doc to the env-var documentation block at the top of the file (lines 48-54), keeping doc-and-implementation in sync.
+4. The orientation comments do not duplicate code; they only cross-reference. No drift introduced by this cycle's diff.
 
-The SVG `rect` elements in `SVGStackedBar` use `fill-green-500` and `fill-yellow-500` without dark mode variants, while the zero segment (line 248) correctly uses `fill-red-300 dark:fill-red-800`. This is inconsistent.
+## Path drift / count drift sweep (carry-forward registry)
 
-```tsx
-// Line 231: Missing dark variant
-<rect ... className="fill-green-500">
-// Line 237: Missing dark variant
-<rect ... className="fill-yellow-500">
-// Line 248: Correctly has dark variant
-className="fill-red-300 dark:fill-red-800"
-```
+Re-counted at HEAD `1bcdd485`:
+- C1-AGG-3 client `console.error` sites: **24** (unchanged from cycle 8). Verified via `grep -rn "console.error" src/components/ src/app/ | grep -v "/api/" | wc -l = 24`.
+- C2-AGG-5 polling sites: **5** distinct files unchanged (`submission-list-auto-refresh.tsx`, `submissions/submission-detail-client.tsx`, `layout/active-timed-assignment-sidebar-panel.tsx`, `exam/anti-cheat-monitor.tsx`, `exam/countdown-timer.tsx`).
+- `deploy-docker.sh` line count: **1088** (was 1076 cycle 8; +12 from Task B cap implementation). Trigger threshold is 1500 — gap closing slowly. Severity unchanged.
+- `deploy.sh` line count: **289** (unchanged).
 
-**Fix:** Add `dark:fill-green-600` and `dark:fill-yellow-600` variants.
+## Confidence
 
----
+- High on "0 NEW findings"; the diff is small and entirely additive (doc + soft cap + JSDoc).
+- Medium on "1088-line `deploy-docker.sh` cap-touches the SSH-helpers area for the third time" — this is the third independent cycle modifying SSH-helpers (cycle 5 added SSH retry telemetry; cycle 6 made initial-ssh-check max_attempts overridable; cycle 8 added the soft cap). Per the cycle-8 plan's Task D notes, three cycles is the trigger for scheduling the modular extraction (C3-AGG-5). However, given the orchestrator's guidance to be cautious about scope, recommend leaving the refactor scheduled for a dedicated next cycle rather than this one.
 
-### C9-CR-2: [MEDIUM] Legend swatches in analytics chart missing dark mode variants
+## Recommendation
 
-**File:** `src/components/contest/analytics-charts.tsx:612,616`
-**Confidence:** HIGH
+Cycle-9 is a clean status-quo cycle. Backlog draw-down candidates for this cycle (LOW severity, narrow scope):
+1. **DEFER-ENV-GATES test-runner pool tuning** — the gate output shows vitest pool fork-spawn errors and worker spawn timeouts on test:unit and test:component. These are environmental (limited fork capacity in dev shell) but a partial mitigation could be to lower vitest pool size in `vitest.config.ts` to reduce contention. Out-of-scope for this cycle unless explicitly picked.
+2. **C7-AGG-7 plaintext fallback in `encryption.ts:79-81`** — could add a unit test asserting the fallback path is unreachable for legitimately ciphertext-shaped inputs. Doc-only mitigation also possible. LOW.
+3. **C3-AGG-5 modular-extraction trigger** — third independent SSH-helpers touch landed; recommend explicit acknowledgment in cycle-9 plan that next SSH-helpers modification triggers refactor scheduling.
 
-The legend color swatches for "solved" and "partial" use `bg-green-500` and `bg-yellow-500` without dark mode variants, while the "zero" swatch (line 620) correctly uses `bg-red-300 dark:bg-red-800`.
-
-```tsx
-// Line 612: Missing dark variant
-<span className="inline-block size-3 rounded bg-green-500" />
-// Line 616: Missing dark variant
-<span className="inline-block size-3 rounded bg-yellow-500" />
-// Line 620: Correct
-<span className="inline-block size-3 rounded bg-red-300 dark:bg-red-800" />
-```
-
-**Fix:** Add `dark:bg-green-600` and `dark:bg-yellow-600` variants.
-
----
-
-### C9-CR-3: [LOW] Progress bar in submission overview missing dark mode variant
-
-**File:** `src/components/lecture/submission-overview.tsx:167`
-**Confidence:** HIGH
-
-The acceptance progress bar uses `bg-green-500` without dark mode variant:
-
-```tsx
-<div className="h-full rounded-full bg-green-500 transition-all duration-500" style={{ width: `${acceptedPct}%` }} />
-```
-
-This is the same pattern as C8-AGG-7 (language config table progress bar), which was fixed in cycle 8.
-
-**Fix:** Add `dark:bg-green-600` variant.
-
----
-
-### C9-CR-4: [LOW] Text color classes in submission overview missing dark mode variants
-
-**File:** `src/components/lecture/submission-overview.tsx:163,173,204-206`
-**Confidence:** MEDIUM
-
-Several `text-{color}-500` classes are used without dark mode variants:
-- Line 163: `text-green-500` for accepted percentage display
-- Line 173: `text-green-500` on CheckCircle2 icon
-- Lines 204-206: `text-green-500`, `text-blue-500`, `text-red-500` for status labels
-
-Tailwind's `text-green-500` may have insufficient contrast in dark mode against dark backgrounds. Adding `dark:text-green-400`, `dark:text-blue-400`, `dark:text-red-400` would improve accessibility.
-
-**Fix:** Add dark mode text color variants for improved contrast.
-
----
-
-### C9-CR-5: [LOW] Anti-cheat dashboard icon background missing dark mode variant
-
-**File:** `src/components/contest/anti-cheat-dashboard.tsx:398`
-**Confidence:** LOW
-
-The icon background uses `bg-orange-500/10` (10% opacity orange) without a dark mode variant. At 10% opacity, this is a very subtle effect and likely acceptable in both themes, but for consistency with the pattern used elsewhere:
-
-```tsx
-<div className="flex size-8 shrink-0 items-center justify-center rounded-md bg-orange-500/10">
-```
-
-**Fix:** Optional — add `dark:bg-orange-500/15` for slightly more visibility in dark mode.
-
----
-
-### C9-CR-6: [LOW] Anti-cheat event type SVG chart palette missing dark mode variants
-
-**File:** `src/components/contest/analytics-charts.tsx:418-425`
-**Confidence:** LOW
-
-The `SVGEventTypeBar` component uses a hardcoded palette of SVG fill classes without dark mode variants:
-
-```tsx
-const colors = [
-  "fill-orange-500",
-  "fill-red-500",
-  "fill-purple-500",
-  "fill-pink-500",
-  "fill-amber-500",
-  "fill-rose-600",
-];
-```
-
-These are used in SVG rect elements for anti-cheat event type visualization. While the 500-level colors are generally readable in both themes, `fill-orange-500` and `fill-amber-500` may be too bright in dark mode.
-
-**Fix:** Consider adding dark mode variants to the palette array or using conditional class application.
-
----
-
-## Carried Deferred Items (unchanged from cycle 8)
-
-All prior deferred items remain valid and unchanged. No new findings justify changing their deferral status.
+No HIGH/MEDIUM new findings. Recommend cycle-9 take a small, doc-leaning backlog draw-down.

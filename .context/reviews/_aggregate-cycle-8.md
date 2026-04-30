@@ -1,124 +1,140 @@
-# Aggregate Review — RPF Cycle 8/100
+# RPF Cycle 8 — Aggregate Review (orchestrator-driven, 2026-04-29)
 
-**Date:** 2026-04-26
-**Cycle:** 8/100 of review-plan-fix loop
-**Reviewers:** architect, code-reviewer, critic, debugger, designer, document-specialist, perf-reviewer, security-reviewer, test-engineer, tracer, verifier (11 lanes — designer covered as web frontend exists; no live runtime per cycle-3 sandbox limitation)
-**Total findings (cycle 8 NEW):** 0 HIGH, 0 MEDIUM, ~7 LOW (with significant overlap; only 1 plannable housekeeping action)
-**Cross-agent agreement:** STRONG. All cycle-7 plan tasks verified resolved across all 11 lanes. No new HIGH or MEDIUM findings emerged. Codebase is in convergent steady-state.
+**Date:** 2026-04-29
+**HEAD reviewed:** `1c991812` (cycle-7 close-out: docs(plans) mark cycle 7 Tasks Z (gates+deploy) and ZZ (archive) done).
+**Reviewers:** code-reviewer, perf-reviewer, security-reviewer, critic, architect, debugger, designer (source-level), document-specialist, test-engineer, tracer, verifier (11 lanes; per-agent files in `.context/reviews/rpf-cycle-8-<agent>.md`).
+**Cycle change surface:** **0 commits, 0 files, 0 lines** vs cycle-7 close-out HEAD `1c991812` (cycle 8 starts at HEAD = cycle-7 close-out).
 
----
-
-## Cross-Agent Convergence Map
-
-| Topic | Agents flagging | Severity peak |
-|-------|-----------------|---------------|
-| Cycle-7 plan must be archived to `plans/done/` (housekeeping) | ARCH8-1, CRIT8-1, VER8-2 | LOW (3-agent convergence — same housekeeping pattern as cycle-7) |
-| Convergence observation — repository in steady-state | CRIT8-2 | LOW (steady-state observation; not actionable) |
-| SUNSET comment uses ephemeral SHA reference | CRIT8-3 | LOW (defer; references stable under repo policy) |
-| Gates verification | VER8-1 | LOW (verification artifact) |
-| No regressions from cycle-7 doc-only commits | VER8-3 | LOW (verification artifact) |
-| Cycle-7 carried-deferred items re-verified accurate | All 11 lanes | LOW (carry-over — no change) |
+**Cycle-7 aggregate snapshot:** Preserved at `_aggregate-cycle-7.md` (snapshotted before this overwrite).
 
 ---
 
-## Deduplicated Findings (sorted by severity / actionability)
+## Total deduplicated NEW findings (still applicable at HEAD `1c991812`)
 
-### AGG8-1: [LOW, NEW, 3-agent convergence, housekeeping] Cycle-7 plan must be archived to `plans/done/` per the README convention
-
-**Sources:** ARCH8-1, CRIT8-1, VER8-2 | **Confidence:** HIGH
-
-**Cluster summary:**
-
-`plans/open/2026-04-26-rpf-cycle-7-review-remediation.md` exists with all 3 tasks `[x]` done:
-- Task A → commit `809446dc` (deploy-docker.sh Step 5b SUNSET CRITERION + AGENTS.md "Sunset criteria" subsection).
-- Task B → commit `2aab3a33` (cycle-6 plan archived).
-- Task C → commit `ea083609` (route.ts:84-90 first-set vs overwrite comment).
-
-Per `plans/open/README.md:36-39`: "Once **every** task in such a plan is `[x]` (or `[d]` with a recorded deferral exit criterion), the plan must be moved to `plans/done/` in the next cycle's housekeeping pass — typically by the cycle that follows it."
-
-This is the same housekeeping pattern that cycle-7 honored for cycle-6 (commit `2aab3a33`).
-
-**Fix:** `git mv plans/open/2026-04-26-rpf-cycle-7-review-remediation.md plans/done/`
-
-**Exit criteria:**
-- Cycle-7 plan in `plans/done/`.
-- `plans/open/` contains only standing/master plans + the new cycle-8 plan.
-
-**Plannable:** YES. Pick up this cycle as the only material commit.
+**0 HIGH, 0 MEDIUM, 0 LOW NEW.** Empty change surface; no new issues introduced this cycle. The actionable items are (a) drawing down 2-3 LOW deferred items per orchestrator directive, and (b) record-keeping path-drift / count-drift updates.
 
 ---
 
-### AGG8-2 through AGG8-N: [LOW, observational / carried-deferred]
+## Resolved at current HEAD (verified by inspection across multiple lanes)
 
-| ID | Source | Description | Status |
-|----|--------|-------------|--------|
-| AGG8-2 | CRIT8-2 | Convergence observation — repo in steady-state | Observation; no action |
-| AGG8-3 | CRIT8-3 | SUNSET comment uses ephemeral SHA reference | Defer; SHA stable under no-force-push policy |
-| AGG8-4 | VER8-1 | Gates green at cycle-8 start | Verification artifact; no action |
-| AGG8-5 | VER8-3 | Cycle-7 commits introduce no behavioral change | Verification artifact; no action |
+All cycle-7-resolved items remain resolved at HEAD `1c991812`:
 
-### Carried-deferred from cycle 7 (unchanged)
+- **C2-AGG-1** (chmod 0600 .env.production): RESOLVED.
+- **C2-AGG-2A** (sshpass deploy-blocker): RESOLVED.
+- **C2-AGG-3** (drizzle-force policy in repo docs): RESOLVED.
+- **C3-AGG-1** (cycle-2 plan stale Task B status): RESOLVED.
+- **C3-AGG-7** (deploy-script env-var docs): RESOLVED.
+- **C3-AGG-8** (DEPLOY_INSTANCE log prefix): RESOLVED.
+- **C3-AGG-4** (lint:bash script): RESOLVED.
+- **C3-AGG-9** (chmod 700 redundancy comment): RESOLVED.
+- **C3-AGG-10** (succeeded-after-N-attempts log): RESOLVED.
+- **C2-AGG-7** (recruiting hardcoded appUrl): RESOLVED.
+- **Cycle-5 stale findings** (AGG-1..AGG-7): all RESOLVED.
+- **C5-SR-1** (deploy-worker.sh sed-pattern collision): RESOLVED cycle-6.
+- **C3-AGG-2** (SUDO_PASSWORD decoupling): RESOLVED cycle-6 commit `72868cea`.
+- **C3-AGG-3** (DEPLOY_SSH_RETRY_MAX env override): RESOLVED cycle-6 commit `2791d9a3`.
+- **Stale-cycle-7 AGG-1** (`/api/v1/time` Date.now): RESOLVED at HEAD; closed cycle 7.
+- **Stale-cycle-7 AGG-2** (plaintext recruiting `token` column): RESOLVED at HEAD; closed cycle 7.
+- **Stale-cycle-7 AGG-5** (no test for `/api/v1/time`): RESOLVED cycle-7 commit `9e928fd1`.
 
-All cycle-7 carried-deferred items (~28 deduplicated LOW items) remain accurate and deferrable at HEAD. The cycle-7 doc-only commits did not change any executable code, so no defers had their preconditions altered. See `_aggregate-cycle-6.md` and the cycle-7 plan deferred table for the full list. Notable items confirmed:
+## Plan-vs-implementation reconciliation (cycle 7 → cycle 8)
 
-| Cycle 7 ID | Description | Status |
-|------------|-------------|--------|
-| AGG7-4 (ARCH7-1) | 4x duplicate psql/node container boilerplate | Carried |
-| AGG7-5 (ARCH7-2 / carries AGG6-3) | tags.updated_at nullable inconsistency | Carried (no consumer) |
-| AGG7-6 (ARCH7-3) | analyticsCache.dispose invariant in catch-block only | Carried |
-| AGG7-7 (ARCH7-4) | getAuthSessionCookieName vs Names API confusion | Carried |
-| AGG7-8 through AGG7-37 | Various LOW cosmetic/operational/process | All carried per cycle-7 reasoning |
-| AGG6-3, AGG6-4, AGG6-7-20 (cycle-6) | Various carried | All carried |
-| Cycles 1-5 carried-deferred (per `_aggregate-cycle-48.md`) | Various | All carried |
-
----
-
-## Verification Notes
-
-- `npm run lint`: 0 errors, 14 warnings (all in untracked dev `.mjs` scripts + `playwright.visual.config.ts` + `.context/tmp/uiux-audit.mjs`). No source-tree warnings.
-- `npm run test:unit`: 304 files passed, 2234 tests passed. EXIT=0. Duration ~31s.
-- `npm run build`: EXIT=0.
-- All cycle-7 task exit criteria verified PASS (see verifier.md table).
+Cycle 7 produced 4 commits: `33c294b5` (reviews+aggregate), `abebb843` (cycle-7 plan + cycle-6 archive), `9e928fd1` (test for `/api/v1/time`), `1c991812` (cycle-7 close-out). Cycle-7 plan (`plans/open/2026-04-29-rpf-cycle-7-review-remediation.md`) is internally consistent and marked DONE. Verifier-cycle-8 confirms all artifacts at HEAD. No reconciliation drift. Cycle-7 plan is ready to archive (Task ZZ this cycle).
 
 ---
 
-## No Agent Failures
+## NEW findings this cycle
 
-All 11 reviewer lanes completed. No retries needed.
-
----
-
-## Plannable Tasks for Cycle-8
-
-Only one finding is plannable for actual implementation this cycle:
-
-1. **AGG8-1** (3-agent housekeeping convergence: ARCH8-1, CRIT8-1, VER8-2) — Move `plans/open/2026-04-26-rpf-cycle-7-review-remediation.md` to `plans/done/`.
-
-All other cycle-8 findings are either steady-state observations (CRIT8-2), verification artifacts (VER8-1, VER8-3), or carried-deferred items (~28 from cycle 7, plus carries from cycles 1-6).
+**0 NEW (HIGH/MEDIUM/LOW).** Empty change surface. All carry-forwards re-validated; no new instances introduced.
 
 ---
 
-## Workspace-to-Public Migration Directive
+## Path drift / count drift corrections this cycle (no severity change; carry-forward registry update)
 
-Per cycle orchestrator instruction: "Make progress in this cycle ONLY where the review surfaces a relevant opportunity; do NOT force unrelated migration work."
+Per code-reviewer + verifier 2-lane consensus:
 
-**Status:** No workspace-to-public migration opportunity surfaced in any of the 11 review lanes this cycle. Per `user-injected/workspace-to-public-migration.md`, the migration is "substantially complete" and remains a "placeholder for opportunistic edge cases". Cycle-8 honors the surfacing rule by NOT taking migration action.
+| Carry-forward ID | Prior count/path | Updated at HEAD `1c991812` |
+|---|---|---|
+| C1-AGG-3 | "25 client console.error sites" (cycle 7) | **24 at HEAD** (cycle-8 grep across `src/components/` and `src/app/` non-API; -1 drift; severity unchanged; population variable) |
+| C2-AGG-5 | "4-6 polling components" (cycle 7) | **5 distinct files at HEAD**: `submission-list-auto-refresh.tsx`, `submissions/submission-detail-client.tsx`, `layout/active-timed-assignment-sidebar-panel.tsx`, `exam/anti-cheat-monitor.tsx`, `exam/countdown-timer.tsx` (count is firm at 5; under 7-trigger; severity unchanged) |
 
----
-
-## Convergence Observation
-
-Per orchestrator note for cycle-8: "If cycle 8 also produces 0 HIGH/MEDIUM findings AND 0 commits, the loop will stop on the convergence rule."
-
-Cycle 8 produces:
-- 0 HIGH findings
-- 0 MEDIUM findings
-- 1 plannable housekeeping commit (cycle-7 plan archival per README convention) + cycle-8 plan creation commit + plan-completion-mark commit
-
-The housekeeping commit is required by `plans/open/README.md` and is not a substantive code change. Per the orchestrator's spirit (no nit-padding to extend the loop), cycle-8 should still execute the housekeeping commit because it is mandatory per the repo's own README convention. The orchestrator can interpret 0-substantive-code-commits as convergence; this cycle's commits are pure process housekeeping + plan creation.
+Severity unchanged (no downgrade). Exit criteria preserved.
 
 ---
 
-## Verdict
+## Cycle-8 implementation queue (LOW backlog draw-down)
 
-**Cycle 8 verdict:** Code health at HEAD is high. All cycle-7 fixes hold. No HIGH or MEDIUM findings emerged. One small plannable housekeeping move (cycle-7 plan archival) and ~28 defensible carried-defers. Repository is in convergent steady-state.
+Per orchestrator's PROMPT 2 directive ("Pick at least 2-3 LOW deferred items, ideally 3"), and 5-lane cross-agent consensus (code-reviewer + perf-reviewer + security-reviewer + critic + document-specialist):
+
+1. **C7-DS-1** — `README.md` missing `/api/v1/time` endpoint doc. **Doc-only**, ≤ 30 lines.
+2. **C7-DB-2-upper-bound** — `deploy-docker.sh:224` `DEPLOY_SSH_RETRY_MAX` no upper bound. **≤ 15 lines bash**. Soft-cap at 100 with operator-clarity log warning.
+3. **Stale-cycle-7 AGG-9 partial** — top-of-file orientation comments in `src/lib/security/{in-memory-rate-limit,api-rate-limit}.ts` pointing at the canonical entrypoint and noting the 3-module duplication awaits a consolidation cycle. **Doc-only top-of-file comments**, ≤ 30 lines total. (Note: `rate-limit.ts` already has such a comment from cycle 6.)
+
+**Why these three:** combined diff < 100 lines; lightweight surface (README, one bash file, 2 file headers); two are pure-doc; one is small bash logic + log. All within repo policy.
+
+**Deferred-pick alternatives (rejected):**
+- `useVisibilityAwarePolling` hook extraction for C2-AGG-5 (5/7 trigger).
+- ARCH-CARRY-1 (raw API handlers): 20-handler refactor too large.
+- ARCH-CARRY-2 (SSE eviction): SSE perf cycle exit criterion not met.
+
+**Repo-policy compliance for the implementation:**
+- GPG-signed commits with conventional commit + gitmoji.
+- Fine-grained commits (one per finding).
+- `git pull --rebase` before `git push`. No `--no-verify`. No force-push to main.
+- No Korean text touched. `src/lib/auth/config.ts` not touched.
+
+---
+
+## Carry-forward DEFERRED items (status verified at HEAD `1c991812`)
+
+| ID | Severity | File+line (corrected for HEAD) | Status (this cycle) | Exit criterion |
+| --- | --- | --- | --- | --- |
+| C3-AGG-5 | LOW | `deploy-docker.sh` (whole, **1076 lines** at HEAD) + `deploy.sh:58-66` | DEFERRED | `deploy-docker.sh` >1500 lines OR `deploy.sh` invoked OR 3 indep cycles modify SSH-helpers (touch counter at 2; cycle 8 increments to 3 if cap implementation lands → may trigger refactor next cycle) |
+| C3-AGG-6 | LOW | `deploy-docker.sh:182-191` | DEFERRED | Multi-tenant deploy host added OR peer-user awareness reported |
+| C2-AGG-5 | LOW | 5 polling components | DEFERRED | Telemetry signal OR 7th instance |
+| C2-AGG-6 | LOW | `src/app/(public)/practice/page.tsx:417` | DEFERRED | p99 > 1.5s OR > 5k matching problems |
+| C1-AGG-3 | LOW | client `console.error` sites (**count = 24** at HEAD; was 25) | DEFERRED | Telemetry/observability cycle opens |
+| DEFER-ENV-GATES | LOW | Env-blocked tests | DEFERRED | Fully provisioned CI/host with DATABASE_URL, Postgres, sidecar |
+| D1 | MEDIUM | `src/lib/auth/...` JWT clock-skew (NOT `src/lib/auth/config.ts`) | DEFERRED | Auth-perf cycle; **fix must live OUTSIDE `src/lib/auth/config.ts`** |
+| D2 | MEDIUM | `src/lib/auth/...` JWT DB query per request (NOT `src/lib/auth/config.ts`) | DEFERRED | Auth-perf cycle; **fix must live OUTSIDE `src/lib/auth/config.ts`** |
+| AGG-2 | MEDIUM | `src/lib/security/in-memory-rate-limit.ts` lines 22, 24, 56, 75, 100, 149 (Date.now) + 41-47 (overflow sort) | DEFERRED | Rate-limit-time perf cycle |
+| ARCH-CARRY-1 | MEDIUM | 20 raw of 104 API route handlers | DEFERRED | API-handler refactor cycle |
+| ARCH-CARRY-2 | LOW | `src/lib/realtime/realtime-coordination.ts` AND `src/app/api/v1/submissions/[id]/events/route.ts:48-63` | DEFERRED | SSE perf cycle OR > 500 concurrent connections |
+| PERF-3 | MEDIUM | `src/app/api/v1/contests/[assignmentId]/anti-cheat/route.ts:191-225` | DEFERRED | Anti-cheat dashboard p99 > 800ms OR > 50 concurrent contests viewed simultaneously |
+| C7-AGG-6 (carry) | LOW | `src/lib/assignments/participant-status.ts` time-boundary tests | DEFERRED | Bug report on deadline boundary OR participant-status refactor cycle |
+| C7-AGG-7 (carry) | LOW | `src/lib/security/encryption.ts:79-81` decrypt plaintext fallback | DEFERRED | Production tampering incident OR audit cycle |
+| C7-AGG-9 (carry) | LOW | `src/lib/security/{in-memory,api-,}rate-limit.ts` 3-module duplication | DEFERRED-with-doc-mitigation (cycle 8 picking partial mitigation) | Rate-limit consolidation cycle |
+| C7-DS-1 (carry) | LOW | `README.md` missing `/api/v1/time` endpoint doc | **PICKING THIS CYCLE** | (will be closed) |
+| C7-DB-2-upper-bound (carry) | LOW | `deploy-docker.sh:224` `DEPLOY_SSH_RETRY_MAX` no upper bound | **PICKING THIS CYCLE** | (will be closed) |
+
+No HIGH findings deferred. No security/correctness/data-loss findings deferred.
+
+---
+
+## Cross-agent agreement summary (cycle 8)
+
+- **Empty change surface (0 commits, 0 files, 0 lines)**: 11 lanes agree.
+- **No new HIGH/MEDIUM/LOW findings**: 11 lanes agree.
+- **Cycle-7 work cleanly executed (Task A/B/C/Z/ZZ)**: code-reviewer + critic + verifier 3-lane.
+- **C7-DS-1 (README `/api/v1/time` doc) as cycle-8 pick**: code-reviewer + perf-reviewer + security-reviewer + critic + document-specialist 5-lane.
+- **C7-DB-2-upper-bound (`DEPLOY_SSH_RETRY_MAX` cap) as cycle-8 pick**: code-reviewer + perf-reviewer + security-reviewer + critic 4-lane.
+- **C7-AGG-9 partial (top-of-file orientation comments) as cycle-8 third pick**: critic + document-specialist 2-lane.
+- **Path drift corrections (C1-AGG-3 count = 24; C2-AGG-5 count firm = 5)**: code-reviewer + verifier 2-lane.
+- **D1/D2 implementation-must-live-outside-config.ts annotation preserved**: critic + security-reviewer + verifier 3-lane.
+
+## Agent failures
+
+None. All 11 reviewer perspectives produced artifacts in `.context/reviews/rpf-cycle-8-<agent>.md`.
+
+---
+
+## Implementation queue for PROMPT 3
+
+Acted on this cycle (PROMPT 3 work):
+- **C7-DS-1 implementation** — append `/api/v1/time` endpoint docs to `README.md`. ≤ 30 lines.
+- **C7-DB-2-upper-bound implementation** — soft-cap `DEPLOY_SSH_RETRY_MAX` at 100 in `deploy-docker.sh` (preserves override; logs warning if exceeded).
+- **C7-AGG-9 partial implementation** — top-of-file orientation comments in 2 rate-limit modules.
+
+Deferrable (recorded in plan with exit criteria): all carry-forwards above.
+
+No HIGH or MEDIUM new findings this cycle. No security/correctness/data-loss findings deferred.
