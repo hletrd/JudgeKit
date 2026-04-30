@@ -43,6 +43,13 @@
 #                            password independently of SSH credentials so the
 #                            two rotations stay decoupled (cycle 6: closes
 #                            C3-AGG-2).
+#   DEPLOY_SSH_RETRY_MAX  — Optional integer override for the
+#                            _initial_ssh_check retry attempt count (default
+#                            4). Useful for slow-to-boot remote hosts where
+#                            the default 4-attempt × exponential-backoff
+#                            window (~30s) is too short. Non-integer or <1
+#                            values fall back to 4 with a warn line (cycle 6:
+#                            closes C3-AGG-3).
 #
 # Deploy hardening (cycle-1/2/3/5 fixes — see AGENTS.md "Deploy hardening"):
 #   - .env.production is chmod 0600 by this script (cycle 2).
@@ -210,7 +217,15 @@ _cleanup_ssh_master() {
 trap _cleanup_ssh_master EXIT
 
 _initial_ssh_check() {
-    local max_attempts=4
+    # Retry attempt count is overridable via DEPLOY_SSH_RETRY_MAX env var
+    # for slow-to-boot remote hosts. Non-integer or <1 values fall back to
+    # the safe default of 4 with a warn line so a typo doesn't disable
+    # the retry. (cycle 6: closes C3-AGG-3.)
+    local max_attempts="${DEPLOY_SSH_RETRY_MAX:-4}"
+    if ! [[ "$max_attempts" =~ ^[0-9]+$ ]] || (( max_attempts < 1 )); then
+        warn "DEPLOY_SSH_RETRY_MAX='${max_attempts}' is not a positive integer; falling back to 4"
+        max_attempts=4
+    fi
     local delay=2
     local attempt=1
     while (( attempt <= max_attempts )); do
