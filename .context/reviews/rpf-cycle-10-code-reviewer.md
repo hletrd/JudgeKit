@@ -1,118 +1,67 @@
-# Code Reviewer — RPF Cycle 10
+# RPF Cycle 10 — Code Reviewer
 
-**Date:** 2026-04-28
-**Reviewer:** code-reviewer (focused verification + new findings)
-**Scope:** Verification of cycles 1-9 fixes and fresh sweep for remaining issues
+**Date:** 2026-04-29
+**HEAD:** `6ba729ed` (cycle-9 close-out: docs(plans) ✅ mark cycle 9 Tasks A/B/C/Z/ZZ done with deploy outcome)
+**Diff vs cycle-8 close `1bcdd485`:** 5 commits, 18 files, +968/-261 lines (mostly review/plan markdown). Code/script touches:
+- `README.md` (+8 lines): new "Development Scripts" section.
+- `deploy-docker.sh` (+10 lines): C3-AGG-5 trigger-trip head comment.
+- `src/lib/security/encryption.ts` (+24 lines): module-level JSDoc only; runtime code byte-identical.
 
----
+## Note on stale review file
 
-## Cycle 1-9 Fix Verification
+This review file at HEAD `b6151c2a` (dated 2026-04-24) listed 8 C10-CR-* findings (formatNumber missing locale, dark-mode variant gaps, etc.). All 8 were verified at current HEAD `6ba729ed` and **all 8 are already resolved**:
 
-All prior cycle fixes verified as complete and correct. Specific verification this cycle:
+| Stale finding | Current HEAD status |
+|---|---|
+| C10-CR-1 (sidebar formatNumber missing locale) | RESOLVED at `active-timed-assignment-sidebar-panel.tsx:179` (`{ locale, ... }` is passed) |
+| C10-CR-2 (sidebar bg-red-500 dark variant) | RESOLVED at `:185` (`bg-red-500 dark:bg-red-600`) |
+| C10-CR-3 (submission overview icon dark variants) | RESOLVED at `submission-overview.tsx:177,181,185,190` |
+| C10-CR-4 (anti-cheat user icon dark variant) | RESOLVED at `anti-cheat-dashboard.tsx:399` |
+| C10-CR-5 (leaderboard trophy dark variant) | RESOLVED at `leaderboard-table.tsx:84` |
+| C10-CR-6 (language config table badges) | RESOLVED at `language-config-table.tsx:328,424,429,430` |
+| C10-CR-7 (file upload dialog success text) | RESOLVED at `file-upload-dialog.tsx:189` |
+| C10-CR-8 (contest join success text) | RESOLVED at `contest-join-client.tsx:92` |
 
-- C9-AGG-1 (SVG stacked bar dark fills): `fill-green-500 dark:fill-green-600` and `fill-yellow-500 dark:fill-yellow-600` confirmed at `analytics-charts.tsx:231,237`
-- C9-AGG-2 (legend swatches dark variants): `bg-green-500 dark:bg-green-600` and `bg-yellow-500 dark:bg-yellow-600` confirmed at `analytics-charts.tsx:612,616`
-- C9-AGG-3 (submission overview progress bar): `bg-green-500 dark:bg-green-600` confirmed at `submission-overview.tsx:167`
-- C9-AGG-4 (submission overview text colors): `text-green-500 dark:text-green-400` at line 163, `text-green-500 dark:text-green-400` on icon line 173, `text-green-500 dark:text-green-400`, `text-blue-500 dark:text-blue-400`, `text-red-500 dark:text-red-400` at lines 204-206 — all confirmed
-- C9-AGG-5 (anti-cheat icon bg): `bg-orange-500/10 dark:bg-orange-500/15` confirmed at `anti-cheat-dashboard.tsx:398` (note: plan Task E was marked `[ ]` but the fix IS applied)
-- C9-AGG-6 (anti-cheat SVG palette): All 6 palette entries have `dark:fill-*` variants confirmed at `analytics-charts.tsx:418-425`
+The stale findings were addressed by intervening commits in an earlier loop (cycle 11 onward of the prior RPF run, see `.context/reviews/_aggregate-cycle-11.md` etc.). They are not active backlog items at current HEAD.
 
-**No regressions found.**
+## NEW findings (current cycle-10)
 
----
+**0 HIGH, 0 MEDIUM, 0 LOW NEW.** All cycle-9 changes are pure documentation. No control-flow or data-flow changes. No new lint or typecheck surface introduced.
 
-## New Findings
+## Path drift (no severity change)
 
-### C10-CR-1: [MEDIUM] `formatNumber` in sidebar panel missing locale parameter
+Verified at HEAD `6ba729ed`:
 
-**File:** `src/components/layout/active-timed-assignment-sidebar-panel.tsx:179`
-**Confidence:** HIGH
+| Carry-forward ID | Cycle-9 path/count | HEAD `6ba729ed` |
+|---|---|---|
+| AGG-2 | `in-memory-rate-limit.ts` lines 22, 24, 56, 75, 100, 149 | **lines 31, 33, 65, 84, 109, 158** (file grew with cycle-8 orientation comments) |
+| C1-AGG-3 | 24 client console.error | 24 unchanged (grep at HEAD) |
+| C2-AGG-5 | 5 polling components | 5 unchanged (narrow definition) |
+| C3-AGG-5 | `deploy-docker.sh` 1088 lines, touch counter 3 | **1098 lines, touch counter 3 unchanged** (cycle 9 head-comment add was the trigger-trip record itself, NOT a 4th SSH-helpers touch) |
+| ARCH-CARRY-1 | 20 raw of 104 API handlers | 20 of 104 unchanged (84 use `createApiHandler`) |
 
-`formatNumber(progressPercent, { maximumFractionDigits: 1 })` does not pass `locale`. The component already imports and uses `useLocale()` for `labelTracking`, so locale is available but not passed to `formatNumber`. This is the same bug class as C8-AGG-1 (formatBytes missing locale) and C8-AGG-2 (formatNumber in system-info.ts).
+**No severity downgrades. Exit criteria preserved.**
 
-**Fix:** Change to `formatNumber(progressPercent, { locale, maximumFractionDigits: 1 })`.
+## Resolved at HEAD
 
----
+All cycle-9 picks (LOW-DS-3 trigger-trip record; LOW-DS-1 lint:bash README; C7-AGG-7 partial JSDoc mitigation) verified resolved by inspection.
 
-### C10-CR-2: [MEDIUM] `bg-red-500` progress bar in sidebar panel missing dark mode variant
+## Cycle-9 implementation reconciliation
 
-**File:** `src/components/layout/active-timed-assignment-sidebar-panel.tsx:185`
-**Confidence:** HIGH
+Cycle-9 plan (`plans/done/2026-04-29-rpf-cycle-9-review-remediation.md`) Tasks A/B/C/Z/ZZ all marked DONE and verified at HEAD. Plan is in `done/`. No drift.
 
-The urgent progress bar uses `"bg-red-500"` without a dark mode variant. The non-urgent state uses `"bg-sidebar-primary"` which is a CSS variable that auto-adapts, but the red variant does not. Same bug class as C9-AGG-3.
+**Stale plan file (LOW housekeeping):** there is a duplicate cycle-9 plan still in `plans/open/2026-04-28-rpf-cycle-9-review-remediation.md` (timestamp predates the actual cycle execution). This appears to be a pre-existing stale artifact from an earlier orchestrator run. Same applies to `2026-04-28-rpf-cycle-{10,11}-review-remediation.md` files in `plans/open/`. Recommend cycle-10 plan task inspect and archive if redundant.
 
-**Fix:** Change to `"bg-red-500 dark:bg-red-600"`.
+## Confidence
 
----
+H: cycle-9 changes are doc-only and non-functional.
+H: AGG-2 line drift is the only path correction needed; severity unchanged.
+H: 8 stale C10-CR-* findings all already resolved at HEAD.
+M: cycle-9 stale plan in `plans/open/` may be a stale artifact (verify in plan task).
 
-### C10-CR-3: [LOW] Submission overview icon colors missing dark mode variants (residual)
+## Files reviewed
 
-**File:** `src/components/lecture/submission-overview.tsx`
-**Lines:** 177 (`text-red-500`), 181 (`text-orange-500`), 185 (`text-yellow-500`), 190 (`text-blue-500`)
-**Confidence:** MEDIUM
-
-While C9-AGG-4 fixed the text-label colors (lines 163, 173, 204-206), the Lucide icon colors on lines 177, 181, 185, 190 still use `text-{color}-500` without dark mode variants. These are small decorative icons, so contrast impact is lower than text labels, but for consistency with the text label fixes:
-
-**Fix:** Add dark mode variants: `text-red-500 dark:text-red-400`, `text-orange-500 dark:text-orange-400`, `text-yellow-500 dark:text-yellow-400`, `text-blue-500 dark:text-blue-400`.
-
----
-
-### C10-CR-4: [LOW] Anti-cheat dashboard user icon missing dark mode text variant
-
-**File:** `src/components/contest/anti-cheat-dashboard.tsx:399`
-**Confidence:** MEDIUM
-
-`<Users className="size-4 text-orange-500" />` — icon color without dark mode variant. Same pattern as C10-CR-3.
-
-**Fix:** Change to `text-orange-500 dark:text-orange-400`.
-
----
-
-### C10-CR-5: [LOW] Leaderboard trophy icon missing dark mode variant
-
-**File:** `src/components/contest/leaderboard-table.tsx:84`
-**Confidence:** LOW
-
-`<Trophy className="size-4 text-yellow-500" />` for rank 1 — no dark mode variant. Ranks 2 and 3 use `text-slate-400` and `text-amber-600` which have reasonable dark mode contrast. This is a decorative icon, low impact.
-
-**Fix:** Change to `text-yellow-500 dark:text-yellow-400`.
-
----
-
-### C10-CR-6: [LOW] Language config table status badges missing dark mode variants
-
-**File:** `src/app/(dashboard)/dashboard/admin/languages/language-config-table.tsx`
-**Lines:** 328, 424, 429, 430
-**Confidence:** MEDIUM
-
-Status badges use `text-green-600`, `text-yellow-600`, `border-green-300`, `border-yellow-300` without dark mode variants. In dark mode, these 600-level text colors and 300-level border colors may lack sufficient contrast against dark backgrounds.
-
-**Fix:** Add `dark:text-green-400 dark:border-green-700` and `dark:text-yellow-400 dark:border-yellow-700` variants to the badge classes.
-
----
-
-### C10-CR-7: [LOW] File upload dialog success text missing dark mode variant
-
-**File:** `src/app/(dashboard)/dashboard/admin/files/file-upload-dialog.tsx:189`
-**Confidence:** LOW
-
-`text-green-600` without dark mode variant. In dark mode, green-600 text against dark backgrounds may have reduced contrast.
-
-**Fix:** Change to `text-green-600 dark:text-green-400`.
-
----
-
-### C10-CR-8: [LOW] Contest join success text missing dark mode variant
-
-**File:** `src/app/(public)/contests/join/contest-join-client.tsx:92`
-**Confidence:** LOW
-
-`text-green-600` without dark mode variant for success message text.
-
-**Fix:** Change to `text-green-600 dark:text-green-400`.
-
----
-
-## Plan Status Note
-
-C9 Task E (`anti-cheat-dashboard.tsx:398` icon background dark variant) is marked `[ ] Done` in the plan but the fix IS already applied in the source code. The plan document needs to be updated to `[x] Done`.
+- `git diff 1bcdd485..6ba729ed -- README.md deploy-docker.sh src/lib/security/encryption.ts`
+- `src/lib/security/in-memory-rate-limit.ts` (Date.now line numbers)
+- `plans/open/`, `plans/done/` directory listings
+- All 8 C10-CR-* file targets verified at HEAD
