@@ -38,7 +38,7 @@ No reconciliation drift to fix. The cycle-3 plan can be archived after this cycl
 - **Plan:**
   1. Extend `deploy-docker.sh:1-21` header to enumerate every env var the script reads with default values: `SKIP_LANGUAGES`, `SKIP_BUILD`, `BUILD_WORKER_IMAGE`, `INCLUDE_WORKER`, `LANGUAGE_FILTER`, `SKIP_PREDEPLOY_BACKUP`, `AUTH_URL_OVERRIDE`, `DRIZZLE_PUSH_FORCE`. Add 1-line each.
   2. Add a "Deploy hardening" subsection to `AGENTS.md` citing each cycle-1/2/3 fix and its rationale: chmod 0600 `.env.production` (cycle 2), SSH ControlMaster + ControlPath /tmp (cycle 2), `_initial_ssh_check` retry (cycle 2), drizzle-force escalation policy (cycle 1, codified in cycle 2's existing `AGENTS.md` text).
-- **Status:** [ ] Pending. To be done in this cycle.
+- **Status:** [x] Done in commit `e657a96c`.
 
 ### Task B: [LOW — DOING THIS CYCLE] Clarify `chmod 700` redundancy after `mktemp -d` in `deploy-docker.sh` (closes C3-AGG-9)
 
@@ -49,7 +49,7 @@ No reconciliation drift to fix. The cycle-3 plan can be archived after this cycl
 - **Exit criterion (cycle 3):** "Future cycle touches `deploy-docker.sh:151-152`" — naturally met by this cycle's edit.
 - **Repo policy check:** Pure code-comment. Not security/correctness/data-loss. LOW severity.
 - **Plan:** Insert a `# defense-in-depth — mktemp -d already creates 0700, this guards against unset umask` comment immediately above the existing `chmod 700 "$SSH_CONTROL_DIR"` line. Keep the chmod (defense-in-depth has value); do NOT remove it.
-- **Status:** [ ] Pending. To be done in this cycle.
+- **Status:** [x] Done in commit `f5ac57ff`.
 
 ### Task C: [LOW — DOING THIS CYCLE] Log "SSH connection succeeded after N attempts" in `_initial_ssh_check` (closes C3-AGG-10)
 
@@ -60,7 +60,7 @@ No reconciliation drift to fix. The cycle-3 plan can be archived after this cycl
 - **Exit criterion (cycle 3):** "Future cycle touches `deploy-docker.sh:165-178`" — naturally met by this cycle's edit.
 - **Repo policy check:** One-line code change, additive only. Not security/correctness/data-loss. LOW severity.
 - **Plan:** Inside the `while` loop, after the `if remote "echo ok"` succeeds, emit `info "SSH connection succeeded after ${attempt} attempts"` only when `attempt -gt 1` (avoid log noise on happy path). One line of code, conditional on retry having been needed.
-- **Status:** [ ] Pending. To be done in this cycle.
+- **Status:** [x] Done in commit `5cae08af`.
 
 ### Task D: [LOW — DEFERRED] SSH/sudo password decoupling in `remote_sudo` (carry-forward C3-AGG-2 / C2-AGG-2B)
 
