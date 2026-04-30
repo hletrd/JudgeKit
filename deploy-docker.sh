@@ -191,7 +191,14 @@ _initial_ssh_check() {
     local delay=2
     local attempt=1
     while (( attempt <= max_attempts )); do
-        if remote "echo ok" >/dev/null 2>&1; then return 0; fi
+        if remote "echo ok" >/dev/null 2>&1; then
+            # Surface retry-recovery so a slowly-degrading host is observable
+            # before it hard-fails a future deploy. Silent on the happy path.
+            if (( attempt > 1 )); then
+                info "SSH connection succeeded after ${attempt} attempts"
+            fi
+            return 0
+        fi
         if (( attempt == max_attempts )); then return 1; fi
         warn "Initial SSH connectivity attempt ${attempt}/${max_attempts} failed; retrying in ${delay}s..."
         sleep "$delay"
