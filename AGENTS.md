@@ -392,6 +392,18 @@ The deploy script writes the nginx config to a local temp file, transfers it to 
 
 For hosts running services directly via systemd (not Docker). Pulls latest code, runs `npm ci`, `npm run languages:sync`, `npm run db:push`, `npm run build`, optionally builds the Rust worker with `cargo build --release`, then restarts systemd services.
 
+### Deploy hardening
+
+The Docker deploy script (`deploy-docker.sh`) applies several hardening measures introduced over the cycle-1/2/3 review-plan-fix cycles. They are all defense-in-depth and additive — never remove them without an explicit follow-up review:
+
+- **`.env.production` is chmod 0600** (cycle 2, commit `ab31a40f`). Both the fresh-generation path and the existing-file defense-in-depth path apply the mode. Rationale: `umask 0022` would otherwise leave the auto-generated secrets file world-readable on the deploy host. Per `CLAUDE.md` "Secrets & Credentials": writing secrets to unencrypted files is disallowed.
+- **SSH connection multiplexing** (cycle 2, commits `21125372` + `66146861`). `deploy-docker.sh` adds `ControlMaster=auto -o ControlPersist=60 -o ServerAliveInterval=30 -o ServerAliveCountMax=3 -o ConnectTimeout=15` to amortize the sshpass auth handshake across rapid-fire short-lived sessions (sshd `MaxStartups` / fail2ban / PAM throttling can otherwise reject correct credentials). The control socket dir is `mktemp -d /tmp/judgekit-ssh.XXXXXX` (NOT `$TMPDIR` — macOS sets that to a long `/var/folders/...` path which combined with the 40-char `%C` hash exceeds the 104-byte Unix-domain socket path limit and breaks every SSH attempt).
+- **`_initial_ssh_check` retry** (cycle 2, commit `21125372`). 4 attempts with exponential backoff 2 → 4 → 8 → 16 s. Catches transient sshd overload at deploy start. Trap on `EXIT` runs `_cleanup_ssh_master` to tear down the control socket.
+- **Destructive drizzle-kit push escalation policy** (cycle 1, codified per `### Database migration recovery (DRIZZLE_PUSH_FORCE)` above). Never auto-force; halt and escalate to the operator who must authorize via the explicit `DRIZZLE_PUSH_FORCE=1` env var with quoted-text consent. The orchestrator is forbidden from setting this preemptively.
+- **`SKIP_*` env vars are honored** (cycle 1, commit `bdfc79e1`). `SKIP_BUILD`, `SKIP_LANGUAGES`, `BUILD_WORKER_IMAGE`, `INCLUDE_WORKER`, `LANGUAGE_FILTER`, `SKIP_PREDEPLOY_BACKUP` all gate optional steps. The app-server target (`algo.xylolabs.com`) requires `SKIP_LANGUAGES=true BUILD_WORKER_IMAGE=false INCLUDE_WORKER=false` per the project rules in `CLAUDE.md`.
+
+Outstanding deferred deploy-script polish items are tracked in `plans/open/2026-04-29-rpf-cycle-4-review-remediation.md` (and prior cycle plans). They are LOW-severity defense-in-depth and observability improvements, all with concrete exit criteria.
+
 ## Build & Verify
 
 ```bash

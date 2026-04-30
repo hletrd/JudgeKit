@@ -13,11 +13,33 @@
 #   ./deploy-docker.sh --languages=cpp,python,jvm  # Build specific languages
 #
 # Environment:
-#   SSH_PASSWORD    — SSH password for the remote host (password auth)
-#   SSH_KEY         — Path to SSH private key (key auth, e.g. key.pem)
-#   REMOTE_HOST     — Target host IP or hostname (required, see .env)
-#   REMOTE_USER     — Target SSH user (required, see .env)
-#   DOMAIN          — Target domain name (required, see .env)
+#   SSH_PASSWORD          — SSH password for the remote host (password auth)
+#   SSH_KEY               — Path to SSH private key (key auth, e.g. key.pem)
+#   REMOTE_HOST           — Target host IP or hostname (required, see .env)
+#   REMOTE_USER           — Target SSH user (required, see .env)
+#   DOMAIN                — Target domain name (required, see .env)
+#   AUTH_URL_OVERRIDE     — Override AUTH_URL written to .env.production (optional)
+#   SKIP_BUILD            — "1"/"true" to reuse existing Docker images (default off)
+#   SKIP_LANGUAGES        — "1"/"true" to skip building judge language images
+#   LANGUAGE_FILTER       — Comma-separated language IDs or "core" to scope builds
+#   BUILD_WORKER_IMAGE    — "1"/"true" to build the dedicated judge worker image
+#                            (default false on the app server; see CLAUDE.md)
+#   INCLUDE_WORKER        — "1"/"true" to start the worker container in the
+#                            production stack (default false on the app server)
+#   SKIP_PREDEPLOY_BACKUP — "1"/"true" to skip the pg_dump pre-deploy backup
+#                            (escape hatch when DB host is unreachable; use with care)
+#   DRIZZLE_PUSH_FORCE    — "1" to allow drizzle-kit push --force on destructive
+#                            schema diffs. Reserved for explicit user authorization
+#                            with quoted-text consent; never set preemptively.
+#
+# Deploy hardening (cycle-1/2/3 fixes — see AGENTS.md "Deploy hardening"):
+#   - .env.production is chmod 0600 by this script (cycle 2).
+#   - SSH connections are multiplexed via ControlMaster + ControlPersist=60
+#     using a /tmp socket dir (cycle 2; macOS $TMPDIR exceeds 104-byte UNIX
+#     socket path limit).
+#   - _initial_ssh_check retries 4 times with exponential backoff (cycle 2).
+#   - Destructive drizzle-kit push diffs halt the deploy and escalate to
+#     the operator instead of auto-forcing (cycle 1 policy).
 # =============================================================================
 set -euo pipefail
 
