@@ -1,86 +1,46 @@
 # RPF Cycle 11 — Code Reviewer
 
-**Date:** 2026-04-24
-**Reviewer:** code-reviewer
-**Scope:** Full codebase — logic, maintainability, SOLID, cross-file interactions
+**Date:** 2026-04-29
+**HEAD reviewed:** `7073809b` (cycle-10 close-out: docs(plans) ✅ record cycle 10 task outcomes and deploy success in plan body)
+**Cycle change surface:** 6 commits (`8b5589df`, `a858069b`, `3b3e6fb0`, `e5e96d2c`, `0dec68e5`, `7073809b`) since cycle-9 close `6ba729ed`. All 6 commits are markdown-only: plan archives + plan body annotation. **Zero source code lines touched in the cycle 10 → 11 surface.**
 
-## Inventory of Files Reviewed
+## NEW findings
 
-- `src/lib/security/api-rate-limit.ts` — Rate limiting (API + server actions)
-- `src/lib/auth/index.ts`, `config.ts`, `permissions.ts` — Auth system
-- `src/lib/security/csrf.ts`, `env.ts`, `password.ts`, `password-hash.ts`, `timing.ts`, `ip.ts` — Security primitives
-- `src/lib/security/derive-key.ts`, `encryption.ts` — Encryption infrastructure
-- `src/lib/security/sanitize-html.ts` — HTML/Markdown sanitization
-- `src/lib/api/handler.ts`, `auth.ts`, `api-key-auth.ts` — API framework
-- `src/lib/plugins/secrets.ts`, `registry.ts` — Plugin system
-- `src/lib/assignments/recruiting-invitations.ts` — Recruiting token flow
-- `src/lib/auth/recruiting-token.ts` — Recruiting token auth
-- `src/lib/auth/session-security.ts` — Session invalidation
-- `src/lib/realtime/realtime-coordination.ts` — SSE coordination
-- `src/app/api/v1/submissions/[id]/events/route.ts` — SSE events
-- `src/app/api/v1/contests/[assignmentId]/anti-cheat/route.ts` — Anti-cheat
-- `src/proxy.ts` — Middleware (CSP, auth, locale)
-- `src/lib/db/schema.pg.ts`, `queries.ts`, `index.ts`, `export.ts`, `cleanup.ts` — DB layer
-- `src/lib/data-retention.ts`, `data-retention-maintenance.ts` — Data lifecycle
-- `src/lib/compiler/execute.ts` — Docker execution
-- `src/lib/judge/auth.ts` — Judge auth
-- `src/lib/files/storage.ts` — File I/O
-- `src/lib/submissions/visibility.ts` — Submission sanitization
-- `src/lib/recruiting/access.ts` — Recruiting access
-- `src/lib/db-time.ts` — DB time primitives
-- `src/components/seo/json-ld.tsx` — JSON-LD XSS surface
-- `src/lib/anti-cheat/review-model.ts` — Anti-cheat tiers
+**0 HIGH, 0 MEDIUM, 0 LOW NEW.** No source code changed since cycle 9 (the last code/script touch was cycle 9's encryption.ts JSDoc + deploy-docker.sh head comment + README dev-scripts). Cycle 10 added zero further code/script lines.
 
-## Findings
+## Silent-fix audit (cycle-2..10 deferred items vs. HEAD)
 
-### CR11-CR1: `preparePluginConfigForStorage` encryption bypass via crafted `enc:v1:` prefix
+I re-examined every active deferred item against current HEAD looking for silent fixes. **One silent fix detected and ready to close:**
 
-**File:** `src/lib/plugins/secrets.ts`, lines 132-136
-**Severity:** LOW
-**Confidence:** MEDIUM
+### CLOSE: Stale `CR11-CR1` (plugin secret `enc:v1:` prefix bypass) — already fixed at HEAD
+- **Stale source:** prior-loop file `.context/reviews/rpf-cycle-11-code-reviewer.md` (dated 2026-04-24) reported `preparePluginConfigForStorage` accepted any value beginning `enc:v1:` (prefix-only check), bypassing encryption.
+- **Current state at HEAD:** `src/lib/plugins/secrets.ts:154` uses `isValidEncryptedPluginSecret(incomingValue)` — a structural validator (lines 27-34) that requires exactly 5 colon-separated parts and non-empty `iv`, `tag`, `ciphertext`. Inline comment at line 158 explicitly cites "CR11-1, CR12-1" as the reason.
+- **Action:** the stale `rpf-cycle-11-*` file is being overwritten by this current file. No code action; the fix has long landed.
+- **Confidence:** H. Verified by source inspection at HEAD `7073809b`.
 
-```typescript
-const encrypted = encryptPluginSecret(incomingValue);
-prepared[key] = isEncryptedPluginSecret(incomingValue)
-  ? incomingValue
-  : (encrypted ?? incomingValue);
-```
+### Verified-still-deferred at HEAD (no silent fix):
 
-The function encrypts the value first (line 132), then checks whether the *original* `incomingValue` starts with the `enc:v1:` prefix (line 133). If it does, the original (unencrypted) value is kept instead of the newly encrypted one. The intent is to prevent double-encryption when an already-encrypted value is round-tripped.
+| ID | File | Line at HEAD | Match aggregate? |
+|---|---|---|---|
+| AGG-2 | `src/lib/security/in-memory-rate-limit.ts` | Date.now() at lines 31, 33, 65, 84, 109, 158 | EXACT MATCH |
+| C7-AGG-7 | `src/lib/security/encryption.ts` | plaintext-fallback path at line 99-100 | unchanged |
+| ARCH-CARRY-1 | `src/app/api/**/route.ts` | 84/104 use createApiHandler → 20 raw | EXACT MATCH |
+| C3-AGG-5 | `deploy-docker.sh` | 1098 lines | EXACT MATCH |
+| PERF-3 | `src/app/api/v1/contests/[assignmentId]/anti-cheat/route.ts` | 238 lines (file present) | unchanged |
+| ARCH-CARRY-2 | `src/lib/realtime/realtime-coordination.ts` (254 lines) + `src/app/api/v1/submissions/[id]/events/route.ts` (566 lines) | unchanged |
+| C1-AGG-3 | client console.error | 25 hits at HEAD (24 in registry, +1 drift; not regression) |
 
-However, if an admin or API caller submits a value that starts with `enc:v1:` but is NOT valid ciphertext, the value bypasses encryption and is stored as plaintext in the database. When `decryptPluginSecret()` later processes this row, it will fail (invalid IV/tag/ciphertext), causing the plugin to malfunction.
+## Cycle-10 surface dive (cross-file re-read, no findings)
 
-**Failure scenario:** Admin enters `enc:v1:not-real-ciphertext` in a plugin secret config field. The value is stored without encryption. Later, `decryptPluginSecret()` tries to parse it, fails the GCM authentication check, and throws. The plugin becomes unusable until the secret is re-entered.
+- `8b5589df` archive cycle-9 stale plan: `git mv` only.
+- `a858069b` archive cycle-10/11 stale plans: `git mv` only.
+- `3b3e6fb0` archive current-loop cycle-1+2 plans: `git mv` only.
+- `e5e96d2c` add cycle-10 plan + archive cycle-9 plan: markdown only; internally consistent.
+- `0dec68e5` cycle-10 task outcome marks: markdown only; commit hashes referenced exist; gate/deploy outcomes match log.
+- `7073809b` follow-up filling task body: markdown only; idempotent with `0dec68e5`.
 
-**Mitigating factors:**
-- Plugin configuration is admin-only
-- `redactPluginConfigForRead` clears secret fields to `""` before sending to the UI, so normal round-trips never produce `enc:v1:` prefixed input
-- No data exfiltration — only a denial-of-use for the specific plugin config key
-- The decrypt failure is caught and logged, not silently swallowed
+No code review concerns.
 
-**Fix:** Check `isEncryptedPluginSecret(incomingValue)` *before* encrypting, and skip the encryption call entirely for already-encrypted values. This avoids the unnecessary encryption work and makes the intent clearer:
+## Recommendation
 
-```typescript
-if (isEncryptedPluginSecret(incomingValue)) {
-  prepared[key] = incomingValue;
-} else {
-  const encrypted = encryptPluginSecret(incomingValue);
-  prepared[key] = encrypted ?? incomingValue;
-}
-```
-
-This preserves the double-encryption guard while ensuring that the encrypt call is only made when truly needed.
-
-## No Other New Findings
-
-The codebase is mature and well-hardened after 10 previous review cycles. All critical paths exhibit:
-
-- Consistent use of DB server time (`getDbNowUncached()`) for temporal comparisons in auth/rate-limiting/assignment flows
-- Proper timing-safe comparison (`safeTokenCompare`) for all token validation
-- Atomic SQL claims with `NOW()` for TOCTOU-safe recruiting token redemption
-- Proper path traversal protection in `resolveStoredPath()`
-- Well-structured `createApiHandler` wrapper ensuring auth, CSRF, and rate limiting on all API routes
-- Argon2id password hashing with bcrypt migration path
-- HKDF key derivation for encryption with legacy key fallback
-
-The 21-item deferred registry from cycle 4 is accurately carried forward. No code changes have been made since the last cycle.
+This cycle has one closeable LOW (stale CR11-CR1 confirmed silently fixed by the `isValidEncryptedPluginSecret` refactor that landed earlier in the codebase history). Otherwise nothing actionable at the code-review tier. Convergence likely; planner should still record the closure formally.

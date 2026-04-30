@@ -1,22 +1,33 @@
 # RPF Cycle 11 — Test Engineer
 
-**Date:** 2026-04-24
-**Reviewer:** test-engineer
-**Scope:** Test coverage gaps, flaky tests, TDD opportunities
+**Date:** 2026-04-29
+**HEAD:** `7073809b`. Cycle-10 surface: 6 commits, all markdown.
 
-## Findings
+## NEW findings
 
-**No new findings this cycle.** All previously identified test gaps remain in the deferred registry (items #18, #21).
+**0 HIGH/MEDIUM/LOW NEW.** No test code touched. No source code touched (so no test gap created).
 
-## Coverage Assessment
+## Carry-forward test items, status at HEAD
 
-- Core auth flow: covered by unit tests (`auth/generated-password.test.ts`, `auth/login-events.test.ts`, `auth/rate-limit-await.test.ts`, `auth/permissions.test.ts`)
-- Rate limiting: covered by `security/rate-limit.test.ts`, `security/rate-limiter-client.test.ts`
-- Security primitives: covered by `security/env.test.ts`, `security/ip.test.ts`, `security/timing.test.ts`, `security/sanitize-html.test.ts`
-- DB schema: covered by `db/schema-implementation.test.ts`, `db/relations-implementation.test.ts`
-- API handlers: covered by `api/handler.test.ts` and route-specific tests
-- Recruiting invitations: covered by `api/recruiting-invitations-race-implementation.test.ts`, `api/recruiting-invitations-auth.route.test.ts`, `api/recruiting-candidate-isolation-implementation.test.ts`
-- Compiler: covered by `compiler/output-limits-implementation.test.ts`
-- Anti-cheat: covered by `anti-cheat-review-model.test.ts`, `anti-cheat-dashboard-implementation.test.ts`
+| ID | Severity | Status | Notes |
+|---|---|---|---|
+| AGG-7 (carry, original cycle-1 list) | MEDIUM | DEFERRED | No tests for new public pages. Deferred until next feature iteration on those pages. |
+| C7-AGG-6 (carry) | LOW | DEFERRED | participant-status time-boundary tests. Trigger not met. |
+| DEFER-ENV-GATES | LOW | DEFERRED | Env-blocked tests (DATABASE_URL, Postgres, Playwright sidecar). dev-shell can't run these. Trigger: fully provisioned CI. |
 
-The deferred items #18 (concurrent recruiting token redemption integration test) and #21 (vitest parallel worker flake) are appropriately deferred.
+## Coverage assessment
+
+Coverage of security-critical paths is comprehensive and unchanged since cycle 10:
+- `src/lib/security/`: env, ip, timing, sanitize-html, rate-limit-client all have tests
+- `src/lib/auth/`: generated-password, login-events, rate-limit-await, permissions all covered
+- `src/lib/db/`: schema-implementation and relations-implementation tested
+- `src/lib/api/handler.ts` and route-specific tests
+- Recruiting invitations: race + auth + isolation tests
+- Compiler: output-limits implementation test
+- Anti-cheat: review-model + dashboard-implementation tests
+
+The `npm run test:unit` baseline shows 98-107 failures + ~2130 passes attributable to DEFER-ENV-GATES (vitest pool fork-spawn 5s timeouts + DB-env-required tests) — same as cycles 3-10, no regression.
+
+## Recommendation
+
+Nothing to fix at test-engineering tier this cycle. The DEFER-ENV-GATES carry-forward continues to require a fully-provisioned CI/host with `DATABASE_URL`, Postgres, and Playwright sidecar to retire — out of scope for the dev shell.
