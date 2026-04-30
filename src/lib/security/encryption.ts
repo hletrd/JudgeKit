@@ -1,3 +1,27 @@
+/**
+ * AES-256-GCM symmetric encryption for sensitive column values.
+ *
+ * Ciphertext invariant: every encrypted value produced by `encrypt()` starts
+ * with the literal `enc:` prefix followed by base64(IV || authTag || ciphertext).
+ * Anything missing the `enc:` prefix is treated as legacy plaintext.
+ *
+ * Plaintext-fallback risk profile (C7-AGG-7, deferred):
+ *   - `decrypt()` accepts an `allowPlaintextFallback` option that defaults to
+ *     `false` in production and `true` in non-production. When the flag is on
+ *     and the input lacks the `enc:` prefix, the value is returned as-is and a
+ *     warn-level log line is emitted in production noting "possible data
+ *     tampering or incomplete migration".
+ *   - The fallback exists for migration compatibility (columns historically
+ *     stored plaintext that may not yet have been re-encrypted). It is a known
+ *     attack surface: an attacker who can write plaintext to an encrypted
+ *     column bypasses the authenticity guarantee of the GCM tag.
+ *   - Hard removal of the fallback is DEFERRED until: a production tampering
+ *     incident is detected (warn-log review), or a dedicated audit cycle
+ *     confirms all encrypted columns contain only `enc:`-prefixed values. Do
+ *     NOT silently drop the fallback; preserve the warn-log audit trail.
+ *
+ * Throws if `NODE_ENCRYPTION_KEY` is not set, regardless of `NODE_ENV`.
+ */
 import { createCipheriv, createDecipheriv, randomBytes } from "node:crypto";
 import { logger } from "@/lib/logger";
 
