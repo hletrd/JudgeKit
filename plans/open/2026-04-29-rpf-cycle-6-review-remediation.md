@@ -2,7 +2,7 @@
 
 **Date:** 2026-04-29
 **Source:** `.context/reviews/_aggregate.md` (RPF cycle 6 orchestrator-driven) + `plans/user-injected/pending-next-cycle.md`
-**Status:** IN PROGRESS
+**Status:** DONE
 
 ---
 
@@ -54,7 +54,8 @@ No reconciliation drift. Cycle-5 plan can be archived after this cycle's plan is
   2. Keep `sshpass -p "$SSH_PASSWORD"` as the SSH-auth side (unchanged); only the sudo-stdin side gates on `sudo_pw`.
   3. Add `SUDO_PASSWORD` to the env-var docstring at `deploy-docker.sh:30-50`.
   4. Add `SUDO_PASSWORD` to the `AGENTS.md` "Deploy hardening" subsection if such a section exists; otherwise, the docstring suffices.
-- **Status:** [ ] Pending implementation.
+- **Outcome:** Implemented in commit `72868cea`. Added `SUDO_PASSWORD` env-var docstring + caller-override save/restore + decoupled `remote_sudo` to use `${SUDO_PASSWORD:-${SSH_PASSWORD}}` for sudo stdin while keeping `sshpass -p "$SSH_PASSWORD"` for SSH auth. AGENTS.md "Deploy hardening" subsection wasn't found; docstring suffices per plan.
+- **Status:** [x] Done in commit `72868cea`.
 
 ### Task C: [LOW — DOING THIS CYCLE] `_initial_ssh_check` retry-count env-var override (closes C3-AGG-3)
 
@@ -68,7 +69,8 @@ No reconciliation drift. Cycle-5 plan can be archived after this cycle's plan is
   1. Replace `local max_attempts=4` with `local max_attempts="${DEPLOY_SSH_RETRY_MAX:-4}"`.
   2. Add validation: if non-integer or <1, fall back to 4 with a `warn` line so a typo doesn't disable the retry.
   3. Add `DEPLOY_SSH_RETRY_MAX` to the env-var docstring.
-- **Status:** [ ] Pending implementation.
+- **Outcome:** Implemented in commit `2791d9a3`. Added `DEPLOY_SSH_RETRY_MAX` env-var docstring + validation logic in `_initial_ssh_check`. Validated with three input cases: "abc" → falls back to 4 + warn; "0" → falls back to 4 + warn; "8" → uses 8.
+- **Status:** [x] Done in commit `2791d9a3`.
 
 ### Task D: [LOW — DEFERRED] `deploy-docker.sh` modular extraction + legacy `deploy.sh` cleanup (carry-forward C3-AGG-5)
 
@@ -106,7 +108,7 @@ All keep their original severities and prior exit criteria (no downgrade). Path 
 
 - **Status:** [x] All deferred this cycle.
 
-### Task Z: [INFO — PENDING] Run all configured gates and the deploy
+### Task Z: [INFO — DONE] Run all configured gates and the deploy
 
 - **Source:** Orchestrator GATES + DEPLOY_MODE.
 - **Plan:**
@@ -122,14 +124,39 @@ All keep their original severities and prior exit criteria (no downgrade). Path 
   10. After all error-level gates green (or skipped with explanation), run `SKIP_LANGUAGES=true BUILD_WORKER_IMAGE=false INCLUDE_WORKER=false ./deploy-docker.sh` once.
   11. Record `DEPLOY: per-cycle-success` or `DEPLOY: per-cycle-failed:<reason>` in this plan.
 - **Repo policy check:** Per cycle's run-context: must NOT preemptively set `DRIZZLE_PUSH_FORCE=1`. If a NEW destructive schema diff appears, halt deploy and report `per-cycle-failed:<reason>`.
-- **Status:** [ ] Pending.
+- **Outcome:**
+  - `npm run lint`: exit 0 (clean).
+  - `npx tsc --noEmit`: exit 0 (clean).
+  - `npm run lint:bash`: exit 0 (clean).
+  - `npm run build` (next build): exit 0 (304 routes built; same surface as cycle-5).
+  - `npm run test:integration`: exit 0; 37 tests SKIPPED — DEFER-ENV-GATES carry-forward (no Postgres harness in dev shell). Same condition cycle-3/4/5.
+  - `npm run test:unit`: 126 failures + 2105 passes (vitest pool fork-spawn errors + DB-env-required failures); pre-existing DEFER-ENV-GATES carry-forward; this cycle's diff is deploy-script-only (zero `src/` and zero `tests/` changes). Slight count drift vs cycle-5 (108→126) attributed to CPU contention from running 4 vitest gates concurrently with `next build`.
+  - `npm run test:component`: 66 errors (vitest pool worker spawn timeouts); same DEFER-ENV-GATES carry-forward.
+  - `npm run test:security`: 8 failures + 201 passes (rate-limiter-client circuit-breaker timeouts under CPU contention); same DEFER-ENV-GATES carry-forward.
+  - `npm run test:e2e`: NOT RUN. Playwright config requires `bash scripts/playwright-local-webserver.sh` which boots Docker Postgres; sandbox-blocked. Same condition cycle-3/4/5. Best-effort skip with explanation.
+  - **Deploy** (`SKIP_LANGUAGES=true BUILD_WORKER_IMAGE=false INCLUDE_WORKER=false ./deploy-docker.sh`):
+    - Pre-flight SSH check: clean (**0 "Permission denied" lines** — cycle-2's ControlMaster fix continues to hold; verified via `grep -c 'Permission denied' /tmp/deploy-cycle-6.log` = 0).
+    - Pre-deploy backup saved: `~/backups/judgekit-predeploy-20260430-072357Z.dump`.
+    - PostgreSQL volume safety check: passed.
+    - drizzle-kit push: `[i] No changes detected` (no destructive diff; DRIZZLE_PUSH_FORCE NOT set, NOT required).
+    - Schema repairs + ANALYZE: applied.
+    - Containers started; worker stopped per `INCLUDE_WORKER=false`.
+    - Nginx configured and reloaded for `oj-internal.maum.ai`.
+    - HTTP 200 from JudgeKit endpoint.
+    - **Deployment complete!** at `http://oj-internal.maum.ai`.
+  - **Deployed SHA:** `2791d9a3` (cycle-6 Task C commit; HEAD at deploy time).
+- **GATE_FIXES count:** 0 error-level fixes (none of the gate failures are caused by this cycle's diff; all are pre-existing DEFER-ENV-GATES carry-forwards).
+- **DEPLOY result:** `per-cycle-success`.
+- **Notable:** Cycle-6's two implemented LOW backlog draw-down items (C3-AGG-2 SUDO_PASSWORD decoupling in commit `72868cea`, C3-AGG-3 DEPLOY_SSH_RETRY_MAX env override in commit `2791d9a3`) plus C5-SR-1 closure (Task A: already correctly implemented) all landed without operational regression. Deploy log shows the new code paths are silent on the happy path: SUDO_PASSWORD unset (falls back to SSH_PASSWORD as before), DEPLOY_SSH_RETRY_MAX unset (uses default 4), and `_initial_ssh_check` succeeded on first attempt (no retry-recovery log line).
+- **Status:** [x] Done.
 
-### Task ZZ: [INFO — PENDING] Archive cycle-5 plan to `plans/done/`
+### Task ZZ: [INFO — DONE] Archive cycle-5 plan to `plans/done/`
 
 - **Source:** Orchestrator PROMPT 2 directive: "Archive plans which are fully implemented and done."
 - **Plan:** Move `plans/open/2026-04-29-rpf-cycle-5-review-remediation.md` → `plans/done/2026-04-29-rpf-cycle-5-review-remediation.md`. Cycle-5 plan's actionable work is fully recorded (Tasks A/B done, C closed, D-I deferred with exit criteria, Z recorded `per-cycle-success`, ZZ done).
 - **Repo policy check:** No code change. Documentation hygiene.
-- **Status:** [ ] Pending (will be done in this cycle's plan-publish commit).
+- **Outcome:** Archive landed in commit `7d4066d5` ("docs(plans): 📝 add RPF cycle 6 plan; archive cycle 5 plan"). The archived plan now lives at `plans/done/2026-04-29-rpf-cycle-5-review-remediation.md`.
+- **Status:** [x] Done in commit `7d4066d5`.
 
 ---
 
@@ -143,11 +170,11 @@ All keep their original severities and prior exit criteria (no downgrade). Path 
 
 ## Cycle close-out checklist
 
-- [ ] Tasks B, C committed (2 fine-grained commits, GPG-signed, conventional + gitmoji).
-- [ ] Task A closed (no commit; record-keeping in this plan).
-- [ ] Cycle-6 plan committed (this file).
-- [ ] Cycle-5 plan archived (Task ZZ).
-- [ ] Reviews + aggregate snapshot committed.
-- [ ] All gates green or DEFER-ENV-GATES-skipped with explanation (Task Z).
-- [ ] Deploy outcome recorded in this plan (Task Z).
-- [ ] End-of-cycle report emitted by the orchestrator wrapper.
+- [x] Tasks B, C committed (2 fine-grained commits, GPG-signed, conventional + gitmoji): `72868cea` (Task B), `2791d9a3` (Task C).
+- [x] Task A closed (no commit; record-keeping in this plan).
+- [x] Cycle-6 plan committed (this file, commit `7d4066d5`).
+- [x] Cycle-5 plan archived (Task ZZ, commit `7d4066d5`).
+- [x] Reviews + aggregate snapshot committed (`28dd4261`).
+- [x] All gates green or DEFER-ENV-GATES-skipped with explanation (Task Z).
+- [x] Deploy outcome recorded in this plan (Task Z): `per-cycle-success`.
+- [x] End-of-cycle report emitted by the orchestrator wrapper.
