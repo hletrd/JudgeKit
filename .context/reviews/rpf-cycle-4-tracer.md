@@ -1,44 +1,39 @@
-# RPF Cycle 4 (Loop Cycle 4/100) — Tracer
+# RPF Cycle 4 — tracer perspective (orchestrator-driven, 2026-04-29)
 
-**Date:** 2026-04-23
-**Base commit:** d4b7a731
-**HEAD commit:** d4b7a731
-**Scope:** Causal tracing of suspicious flows, competing hypotheses.
+**Date:** 2026-04-29
+**HEAD reviewed:** `e61f8a91`
 
-## Production-code delta since last review
+## Causal traces
 
-Only `src/lib/judge/sync-language-configs.ts` changed.
+### Trace 1: cycle-3 deploy success → no `src/` regression
 
-## Causal traces attempted this cycle
+**Hypothesis A:** Cycle-3 deploy succeeded on first attempt because the SSH ControlMaster fix from cycle 2 stably handles the auth flake.
 
-### TRACE-1: `SKIP_INSTRUMENTATION_SYNC` end-to-end flow
+**Evidence:**
+- Orchestrator history: "Cycle 3 had clean deploy (0 Permission-denied lines)."
+- Code at HEAD `e61f8a91`: `deploy-docker.sh:153` still includes `ControlMaster=auto -o ControlPath=${SSH_CONTROL_DIR}/cm-%C -o ControlPersist=60`.
+- `deploy-docker.sh:151` still uses `mktemp -d /tmp/judgekit-ssh.XXXXXX` (the cycle-2 macOS path-length fix).
 
-1. Operator sets `SKIP_INSTRUMENTATION_SYNC=1` in env.
-2. `src/instrumentation.ts register()` is invoked by Next.js on process start.
-3. `register()` calls `syncLanguageConfigsOnStartup()`.
-4. First line of the function logs a `logger.warn(...)` and returns early.
-5. `register()` continues to `initializeSettings()`, `startRateLimitEviction()`, etc.
-6. Server boot completes without DB access for language-config sync.
-7. Judge worker path: when a submission arrives, the API fetches `languageConfigs` from DB. If the sync was skipped and the table was pre-populated by migration, the judge works normally. If the table is empty (fresh install with skip flag), the judge returns 400 "unknown language" — fail-closed.
+**Hypothesis A confirmed.**
 
-**Trace verdict:** correct flow, no hidden side effects.
+**Competing hypothesis B:** Cycle-3 deploy succeeded because the target sshd was less loaded that day.
+- **Counter-evidence:** Cycle-1 / cycle-2 deploys against the same target failed at the rapid-fire-auth boundary (the nginx config heredoc step). If the target were just less loaded, we'd expect non-deterministic behavior across cycles, not a clean transition from "always-failing" to "always-succeeding".
+- **Verdict:** Hypothesis A supported by deterministic transition; Hypothesis B refuted.
 
-### TRACE-2: Production safety — is the flag reachable in production?
+### Trace 2: cycle-3 plan reads "deferred to cycle 3 IN-PROGRESS" but commits show DONE in cycle-2 (resolved)
 
-1. `.env.deploy.algo` is the production env file (checked into repo).
-2. Confirmed the flag is **not** defined in `.env.deploy.algo`.
-3. `deploy.sh` `set -a && source .env.deploy.algo` would not add the flag.
-4. Environment variables are passed through Docker env — only vars explicitly listed in `docker-compose.production.yml` reach the container.
-5. Confirmed `SKIP_INSTRUMENTATION_SYNC` is not in the docker-compose production config.
+This is C3-AGG-1 from cycle-3, already addressed by the cycle-3 closure note in `plans/open/2026-04-29-rpf-cycle-2-review-remediation.md`. Tracer notes the closure note is correct and present at HEAD.
 
-**Trace verdict:** production is not reachable by this flag. Safe.
+### Trace 3: Are there latent SSH ControlMaster failure modes the trace missed?
 
-## Re-sweep findings (this cycle)
+**Hypothesis A:** The current ControlMaster setup is robust on the target.
 
-**Zero new findings.**
+**Evidence:**
+- `ControlPersist=60` keeps the master alive 60 s past the last child connection. Long-running deploy steps (e.g. `docker build` >5 min) re-use the master while it is alive, but if the master times out *during* a long step and a subsequent `remote*` call fires, the call must auth fresh — which is the cycle-2 sshpass flake recurring under a different timing pattern.
+- `ServerAliveInterval=30` + `ServerAliveCountMax=3` = 90 s of idle tolerance. This is shorter than a typical `docker build` that waits on a slow APT mirror.
 
-No suspicious flow surfaced in this cycle's trace.
+**Hypothesis A partially refuted.** The fix is robust *for short, sequential remote calls* but has a known failure mode for long-idle waits between calls. C3-AGG-3 already names this. No new tracer finding.
 
-## Recommendation
+## Confidence
 
-No action this cycle.
+High that no new tracer findings exist this cycle. Cycle-3's traces remain valid at HEAD.

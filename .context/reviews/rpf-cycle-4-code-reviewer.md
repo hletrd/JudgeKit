@@ -1,50 +1,55 @@
-# RPF Cycle 4 (Loop Cycle 4/100) — Code Reviewer
+# RPF Cycle 4 — code-reviewer perspective (orchestrator-driven, 2026-04-29)
 
-**Date:** 2026-04-23
-**Base commit:** d4b7a731 (cycle 55 tail)
-**HEAD commit:** d4b7a731 (docs-only cycle)
-**Scope:** Full repo re-sweep from the code-quality / SOLID / maintainability angle.
+**Date:** 2026-04-29
+**HEAD reviewed:** `e61f8a91` (per orchestrator history; no `src/` changes since cycle 3 working HEAD `66146861`)
+**Scope:** Whole repository, with focus on the same change surface cycle-3 reviewed (`deploy-docker.sh`) plus a sweep for issues cycle-3 may have missed.
+**Note:** Earlier `rpf-cycle-4-*.md` files on disk were from a prior unrelated RPF run dated 2026-04-23 at commit `d4b7a731`. Those have been superseded by this cycle's reviews at HEAD `e61f8a91`.
 
-## Production-code delta since last review
+## Findings
 
-Walked `git diff 64522fe9..HEAD -- src/` (cycle 54 base -> current HEAD). The only `src/**` change is:
+### C4-CR-1: [LOW, High confidence] `remote_sudo` printf piping leaks SSH password into a process pipeline (carry-forward)
 
-- `src/lib/judge/sync-language-configs.ts` — adds a 13-line opt-out short-circuit (`SKIP_INSTRUMENTATION_SYNC === "1"`).
+**File/lines:** `deploy-docker.sh:204-214`
 
-This was already fully reviewed in `.context/reviews/rpf-cycle-55-code-reviewer.md`. The short-circuit is correct, well-named, warnings-logged, production-safe (literal `"1"` comparison, not truthy coerce), and carries an in-code comment pointing to plan + designer-runtime review for provenance.
+The current shape:
+```bash
+printf '%s\n' "$SSH_PASSWORD" | sshpass -p "$SSH_PASSWORD" ssh $SSH_OPTS ...
+```
 
-## Verification of prior-cycle findings still in place
+Two issues compounded:
+1. `sshpass -p "$SSH_PASSWORD"` exposes the password in `argv` (`ps -ef` on the deploy host shows `sshpass -p XXXXX`).
+2. The leading `printf '%s\n' "$SSH_PASSWORD" |` adds a child process that holds the password in its own argv (briefly), and pipes it on stdin to ssh — so `sudo -S` reads the SSH password to authenticate the sudo step. This is the SSH/sudo coupling C3-AGG-2 already named.
 
-Spot-checked a sample of earlier (stale) cycle-4 findings from an RPF run at commit `5d89806d` (2026-04-22) and confirmed all are now remediated at HEAD:
-- `src/components/contest/invite-participants.tsx:88` — now uses `const data = await res.json().catch(() => ({})) as { error?: string };` — CR-1/DBG-1/SEC-1/V-1 FIXED.
-- `src/components/contest/access-code-manager.tsx:91` — now uses `await res.json().catch(() => ({}))`. CR-2/DBG-2/V-2 FIXED.
-- `src/components/contest/access-code-manager.tsx` — clipboard import is now static. CR-3/SEC-2/V-4/ARCH-3/TRACE-3 FIXED.
-- `src/components/exam/countdown-timer.tsx:132-143` — `visibilitychange` listener recalculates on tab focus. CR-4/PERF-1/DBG-3/DES-1/TRACE-2/V-3 FIXED.
+**Verification:** This finding is the same code path as C3-AGG-2 (LOW, deferred). No new severity. Logging here as confirmation.
 
-## Re-sweep findings (this cycle)
+**Status:** Carry-forward of C3-AGG-2; no new action.
 
-**Zero new findings.**
+### C4-CR-2: [LOW, Medium confidence] `_initial_ssh_check` ignores `remote()` exit code on transient sshpass non-auth errors (carry-forward)
 
-Systematically re-examined the entire `src/**` tree for the code-quality issue classes (logic bugs, missed edge cases, error-handling gaps, invariant violations, data-flow issues, maintainability risks):
+**File/lines:** `deploy-docker.sh:165-178`
 
-- `src/app/**` (104 API routes + all pages) — no new issues.
-- `src/lib/**` (judge, auth, db, contests, anti-cheat, rate-limit, plugins, i18n, analytics) — no new issues.
-- `src/components/**` (layout, forms, dashboards, UI primitives) — no new issues.
-- `src/instrumentation.ts`, `src/proxy.ts`, `src/hooks/**`, `src/contexts/**` — no new issues.
+```bash
+if remote "echo ok" >/dev/null 2>&1; then return 0; fi
+```
 
-All prior code-quality findings have been resolved in commits 6d59d2b7, 506f1e16, 39dcd495, 35bba344, 73dd32da, 750e5082, cb730300, 26180116, 4a497b7d, and the cycles 37-54 lineage. The codebase is in a mature, stable state.
+`remote` returns sshpass's exit code, which conflates auth failure (5), connection refused (255), and many others under "non-zero". The retry loop treats them all the same. Cycle-3's C3-AGG-3 already named this; same root cause.
 
-## Carry-over deferred items (still valid, unchanged from cycle 55 aggregate)
+**Status:** Carry-forward of C3-AGG-3 + C3-AGG-10 (no "succeeded after N attempts" log). No new action.
 
-Carry-over items recorded in cycle 55 aggregate remain correct:
-- AGG-5: `console.error` in client components — LOW/MEDIUM, deferred.
-- AGG-7/ARCH-2: Manual routes duplicate `createApiHandler` boilerplate — MEDIUM/MEDIUM, deferred.
-- AGG-8: Global timer HMR pattern duplication — LOW/MEDIUM, deferred.
-- AGG-3 (cycle 48): Practice page unsafe type assertion — LOW/LOW, deferred.
-- ARCH-3: Stale-while-revalidate cache pattern duplication — LOW/LOW, deferred.
+### C4-CR-3: [INFO, High confidence] No code-reviewer findings beyond cycle-3 carry-forwards
 
-None of these changed behavior or file-location in this cycle. No new code-quality finding to add to the deferred list.
+I re-walked `deploy-docker.sh` lines 1–250 and `deploy.sh` lines 1–289. No additional code-quality issues that cycle-3 missed. The two scripts remain the only files in the change surface.
 
-## Recommendation
+## Sweep for commonly missed issues
 
-No action this cycle. The codebase is code-quality-clean at the file+line level.
+- Logic bugs: none new.
+- Edge cases: covered by cycle-3.
+- Race conditions: cycle-3's tracer covered SSH connection ordering. Nothing new.
+- Error handling: cycle-3 covered `_initial_ssh_check` retry semantics.
+- Invariant violations: none new.
+- Data-flow: none new.
+- Documentation-code mismatch: cycle-3 already filed C3-AGG-7 for the header docstring.
+
+## Confidence
+
+High that the cycle-3 findings are still applicable at HEAD `e61f8a91`. High that there are no new HIGH/MEDIUM code-review findings.

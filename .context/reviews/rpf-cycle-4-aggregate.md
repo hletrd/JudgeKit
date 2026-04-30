@@ -1,84 +1,99 @@
-# RPF Cycle 4 (Loop Cycle 4/100) — Aggregate Review
+# RPF Cycle 4 — Aggregate Review (orchestrator-driven, 2026-04-29)
 
-**Date:** 2026-04-23
-**Base commit:** d4b7a731 (cycle 55 tail)
-**HEAD commit:** d4b7a731 (docs-only cycle)
-**Review artifacts:** code-reviewer, perf-reviewer, security-reviewer, architect, critic, verifier, debugger, test-engineer, tracer, designer (source-level fallback), document-specialist — 11 lanes.
+**Date:** 2026-04-29
+**HEAD reviewed:** `e61f8a91` (cycle 3 close-out: docs(plans) record cycle 3 deploy outcome — per-cycle-success).
+**Reviewers (10 perspectives, single-agent multi-pass):** code-reviewer, perf-reviewer, security-reviewer, critic, architect, debugger, designer (source-level), document-specialist, test-engineer, tracer, verifier (verifier merged into the lane list as the verification pass).
+**Cycle change surface:** None — cycle 3 made zero `src/` changes. The three cycle-3 commits were all `docs(plans)` / `docs(reviews)` only.
 
-## Note on stale cycle-4 artifacts
+This file is the dedicated aggregate for cycle 4. The repo-wide `_aggregate.md` is rebuilt below to match.
 
-Before this cycle started, `.context/reviews/rpf-cycle-4-*.md` files existed on disk from an older RPF run at commit `5d89806d` (2026-04-22). All findings in those stale files (AGG-1 through AGG-9) have been remediated over the intervening 50+ cycles:
-- `invite-participants.tsx:88`, `access-code-manager.tsx:91` now use `.catch(() => ({}))`.
-- `access-code-manager.tsx` clipboard import is static.
-- `countdown-timer.tsx:132-143` has `visibilitychange` listener.
-- Anti-cheat monitor uses ref-based callbacks.
-- `active-timed-assignment-sidebar-panel.tsx` cleans up timer on expiry.
+**Note on stale cycle-4 artifacts:** Earlier `rpf-cycle-4-*.md` files on disk dated 2026-04-23 at commit `d4b7a731` were from an unrelated prior RPF run. They have been overwritten with this cycle's reviews at HEAD `e61f8a91`. The cycle-3 aggregate has been preserved at `_aggregate-cycle-3.md` before the repo-wide `_aggregate.md` is rewritten.
 
-For the current loop cycle 4/100, the per-reviewer files have been rewritten at HEAD `d4b7a731`.
+---
 
-## Deduped Findings (sorted by severity then signal)
+## Total deduplicated findings
 
-**No new production-code findings this cycle.** All 11 review lanes agree: the only delta between the cycle-54 base and current HEAD is cycle 55's `SKIP_INSTRUMENTATION_SYNC` short-circuit plus review + plan documentation. No production-code change landed between cycle 55 and cycle 4.
+**0 HIGH, 0 MEDIUM, 0 LOW NEW**, plus 14+ carry-forward DEFERRED items unchanged in status. All finite-severity findings raised by every cycle-4 lane resolve to cycle-3 carry-forwards.
 
-## Cross-Agent Agreement (this cycle)
+The actionable item this cycle is C4-CT-1's recommendation to pick 1–2 LOW deferred items off the backlog and implement them this cycle (consistent with the orchestrator's "make forward progress on backlog, not just accumulate it" directive in PROMPT 2).
 
-All 11 reviewers confirm:
-1. No new production-code findings this cycle.
-2. All prior fixes from cycles 37-55 remain intact.
-3. The codebase is in a stable, mature state.
-4. The `SKIP_INSTRUMENTATION_SYNC` short-circuit is production-safe (strict-literal `"1"`, loud warning log, not reachable via `.env.deploy.algo` nor `docker-compose.production.yml`).
-5. Runtime UI/UX review is still sandbox-blocked pending a Docker-enabled sandbox or managed-Postgres sidecar.
+---
 
-## Carry-Over Deferred Items (unchanged from cycle 55 aggregate)
+## Resolved at current HEAD (verified by inspection)
 
-- **AGG-2 (cycle 45):** `atomicConsumeRateLimit` uses `Date.now()` in hot path — MEDIUM/MEDIUM, deferred.
-- **AGG-2:** Leaderboard freeze uses `Date.now()` — LOW/LOW, deferred.
-- **AGG-5:** Console.error in client components — LOW/MEDIUM, deferred.
-- **AGG-6:** SSE O(n) eviction scan — LOW/LOW, deferred.
-- **AGG-7 / ARCH-2:** Manual routes duplicate `createApiHandler` boilerplate — MEDIUM/MEDIUM, deferred.
-- **AGG-8:** Global timer HMR pattern duplication — LOW/MEDIUM, deferred.
-- **AGG-3 (cycle 48):** Practice page unsafe type assertion — LOW/LOW, deferred.
-- **SEC-2 (cycle 43):** Anti-cheat heartbeat dedup uses `Date.now()` for LRU cache — LOW/LOW, deferred.
-- **SEC-3:** Anti-cheat copies user text content — LOW/LOW, deferred.
-- **SEC-4:** Docker build error leaks paths — LOW/LOW, deferred.
-- **PERF-3:** Anti-cheat heartbeat gap query transfers up to 5000 rows — MEDIUM/MEDIUM, deferred.
-- **DES-1:** Chat widget button badge lacks ARIA announcement — LOW/LOW, deferred.
-- **DES-1 (cycle 46):** Contests page badge hardcoded colors — LOW/LOW, deferred.
-- **DES-1 (cycle 48):** Anti-cheat privacy notice accessibility — LOW/LOW, deferred.
-- **DOC-1:** SSE route ADR — LOW/LOW, deferred.
-- **DOC-2:** Docker client dual-path docs — LOW/LOW, deferred.
-- **ARCH-3:** Stale-while-revalidate cache pattern duplication — LOW/LOW, deferred.
-- **TE-1 (cycle 51):** Missing integration test for concurrent recruiting token redemption — LOW/MEDIUM, deferred (requires DB).
-- **I18N-JA-ASPIRATIONAL (cycle 55):** `messages/ja.json` absent — LOW/LOW, deferred.
-- **DES-RUNTIME-{1..5} (cycle 55):** blocked-by-sandbox runtime findings — severities LOW..HIGH-if-violated, deferred under documented exit criterion.
+The cycle-3 `_aggregate.md` already enumerated the resolved items from prior cycles. All remain resolved at HEAD `e61f8a91`:
 
-**Total deferred:** 19 items (unchanged count vs cycle 55).
+- **C2-AGG-1** (chmod 0600 .env.production): RESOLVED.
+- **C2-AGG-2A** (sshpass deploy-blocker): RESOLVED.
+- **C2-AGG-3** (drizzle-force policy in repo docs): RESOLVED.
+- All cycle-3 INFO claims verify (verifier C4-VER).
 
-## Verified Fixes From Prior Cycles (All Still Intact)
+---
 
-Spot-verified from cycle-4 stale artifacts + broader cycle-37..55 lineage:
-- cycle 55: `SKIP_INSTRUMENTATION_SYNC` short-circuit (commit 6d59d2b7) — intact with regression test.
-- cycle 54: Candidate dashboard component test fix (506f1e16) — intact.
-- cycle 51: ICPC leaderboard deterministic tie-break (39dcd495) — intact.
-- cycle 48/47/46: DB time consistency (`getDbNowUncached`) across judge claim, rate-limit — intact.
-- cycle 36: NaN guard on PATCH invitation expiryDate, password rehash consolidation, LIKE-wildcard escaping, chat widget aria-label — intact.
-- cycle 32: Chat widget stale closure fix, Docker error sanitization, prefers-reduced-motion, files POST via `createApiHandler`, chat widget rAF throttle — intact.
-- cycle 4 (stale 2026-04-22): `res.json().catch(() => ({}))` adoption, static clipboard import, `visibilitychange` on countdown-timer, anti-cheat ref-callback — intact.
+## Carry-forward DEFERRED items (status verified at HEAD `e61f8a91`)
 
-## Gate Results (Cycle 4 run)
+| ID | Severity | File+line | Status | Exit criterion |
+| --- | --- | --- | --- | --- |
+| C3-AGG-2 (= C2-AGG-2B) | LOW | `deploy-docker.sh:204-214` | DEFERRED — TARGETED FOR FUTURE | SSH/sudo credential rotation divergence on any target |
+| C3-AGG-3 | LOW | `deploy-docker.sh:165-178` | DEFERRED | Long-host wait OR ControlSocket connection refused on flaky-network long-build |
+| C3-AGG-4 (subsumes C2-AGG-4) | LOW | `package.json` / CI surface | DEFERRED | bash-lint CI gate added or another bash-syntax regression |
+| C3-AGG-5 | LOW | `deploy-docker.sh` whole + `deploy.sh:58-66` | DEFERRED | `deploy-docker.sh` >1500 lines OR `deploy.sh` invoked OR 3 indep cycles modify SSH-helpers |
+| C3-AGG-6 | LOW | `deploy-docker.sh:151` | DEFERRED | Multi-tenant deploy host added OR peer-user awareness reported |
+| C3-AGG-7 | LOW | `deploy-docker.sh:1-21` + `AGENTS.md` | **TARGETED FOR FIX THIS CYCLE** (per C4-CT-1) | Naturally met when any cycle touches deploy-script header or `AGENTS.md` |
+| C3-AGG-8 | LOW | `deploy-docker.sh:129-133` | DEFERRED | Real-world incident requiring multi-deploy log analysis |
+| C3-AGG-9 | LOW | `deploy-docker.sh:151-152` | **TARGETED FOR FIX THIS CYCLE** (per C4-CT-1) | Naturally met when any cycle touches that line range |
+| C3-AGG-10 | LOW | `deploy-docker.sh:165-178` | **TARGETED FOR FIX THIS CYCLE** (per C4-CT-1) | Naturally met when any cycle touches `_initial_ssh_check` |
+| C2-AGG-5 | LOW | 4-6 polling components | DEFERRED | Telemetry signal or 7th instance |
+| C2-AGG-6 | LOW | `src/app/(public)/practice/page.tsx:417` | DEFERRED | p99 > 1.5s OR > 5k matching problems |
+| C2-AGG-7 | LOW | `recruiting-invitations-panel.tsx:99` + others | DEFERRED | Wrong-host invite link reported, OR appUrl config added |
+| C1-AGG-3 | LOW | 27 client `console.error` sites | DEFERRED | Telemetry/observability cycle opens |
+| C1-AGG-4 | LOW | Polling sites (subsumed by C2-AGG-5) | DEFERRED | (same as C2-AGG-5) |
+| DEFER-ENV-GATES | LOW | Env-blocked tests | DEFERRED | Fully provisioned CI/host with DATABASE_URL, Postgres, sidecar |
+| D1 | MEDIUM | `src/lib/auth/` JWT clock-skew | DEFERRED | Auth-perf cycle |
+| D2 | MEDIUM | `src/lib/auth/` JWT DB query per request | DEFERRED | Auth-perf cycle |
+| AGG-2 | MEDIUM | `src/lib/api-rate-limit.ts:56` `Date.now()` | DEFERRED | Rate-limit-time cycle |
+| ARCH-CARRY-1 | MEDIUM | 22+ raw API route handlers | DEFERRED | API-handler refactor cycle |
+| ARCH-CARRY-2 | LOW | `src/lib/realtime/` SSE eviction | DEFERRED | SSE perf cycle |
+| PERF-3 | MEDIUM | `src/lib/anti-cheat/` heartbeat gap query | DEFERRED | Anti-cheat perf cycle |
 
-Running per the orchestrator's GATES list, with `SKIP_INSTRUMENTATION_SYNC=1` where relevant:
-- **eslint** (`npm run lint`): ran in background — see cycle log.
-- **next build** (`npm run build`): ran in background — see cycle log.
-- **vitest unit** (`npm run test:unit`): ran in background — expected PASS per cycle 55 parity (same commit).
-- **vitest component** (`npm run test:component`): ran in background — expected PASS per cycle 55 parity.
-- **vitest integration** (`npm run test:integration`): 37/37 SKIPPED — sandbox limitation, same as cycle 55.
-- **playwright e2e**: NOT RUN — webServer needs local Docker (sandbox limitation).
+No HIGH findings deferred. No security/correctness/data-loss findings deferred.
 
-## AGENT FAILURES
+---
 
-None. All 11 reviewer lanes completed and wrote artifacts.
+## Cycle-4 implementation queue
 
-## Runtime UI/UX (designer, cycle 4)
+Per C4-CT-1, this cycle should pick at least one LOW deferred item off the backlog. Selected items:
 
-Per carry-over from cycle 55's injected TODO and cycle 3 designer attempt, a runtime UI/UX review was considered again this cycle. Even with `SKIP_INSTRUMENTATION_SYNC=1` now in place (which allows the dev server to boot without Postgres), a realistic UI review still needs backing data (contests, problems, users) — which requires Postgres. Until the orchestrator runs the loop in a sandbox with Docker or a managed-Postgres sidecar, the runtime lane remains source-level only. The in-code flag plus the cycle 3 designer-runtime artifact document the unblock path.
+1. **C3-AGG-7** — Document deploy-script env vars in `deploy-docker.sh` header + add `AGENTS.md` "Deploy hardening" subsection. Pure docs.
+2. **C3-AGG-9** — Add a one-line comment on `chmod 700` after `mktemp -d` clarifying defense-in-depth. One line.
+3. **C3-AGG-10** — Add `info "SSH connection succeeded after ${attempt} attempts"` when attempt > 1. One-line code change.
+
+All three are LOW with naturally-met exit criteria. All three together are <30 lines of change concentrated in `deploy-docker.sh` and `AGENTS.md`. Risk: very low (additive only; no behavior change).
+
+---
+
+## Cross-agent agreement summary
+
+- **C3-AGG-7** as a target: 2 (critic C4-CT-1 + document-specialist C4-DOC-1/2).
+- **C3-AGG-9** as a target: 1 (critic C4-CT-1).
+- **C3-AGG-10** as a target: 2 (critic C4-CT-1 + debugger C4-DB-1).
+- **No new HIGH/MEDIUM findings**: 10 (all lanes agree).
+- **`src/` change surface empty**: 10 (all lanes agree).
+
+## Agent failures
+
+None. All 10 reviewer perspectives produced artifacts in `.context/reviews/rpf-cycle-4-<agent>.md`. The verifier perspective is recorded in `rpf-cycle-4-verifier.md` and merged into this aggregate.
+
+---
+
+## Implementation queue for PROMPT 3
+
+Acted on this cycle:
+- **C3-AGG-7** (deploy-script header + AGENTS.md "Deploy hardening" subsection).
+- **C3-AGG-9** (chmod 700 redundancy comment).
+- **C3-AGG-10** (succeeded-after-N-attempts log line).
+
+Remaining deferrable (no exit criterion newly met):
+- All other carry-forwards in the table above.
+
+No HIGH or MEDIUM new findings this cycle. No security/correctness/data-loss findings deferred.

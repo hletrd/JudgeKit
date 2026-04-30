@@ -1,56 +1,31 @@
-# RPF Cycle 4 (Loop Cycle 4/100) — Critic
+# RPF Cycle 4 — critic perspective (orchestrator-driven, 2026-04-29)
 
-**Date:** 2026-04-23
-**Base commit:** d4b7a731
-**HEAD commit:** d4b7a731
-**Scope:** Multi-perspective critique of the whole change surface, looking for blind spots other reviewers typically miss.
+**Date:** 2026-04-29
+**HEAD reviewed:** `e61f8a91`
 
-## Meta-observation
+## Multi-perspective critique
 
-This is now the **fifth consecutive loop cycle (cycles 51, 52, 53, 54, 55, 4)** where the aggregate result is "no new production-code findings." That is both a healthy signal (the codebase has been hammered through 40+ fix cycles and is converging) and a risk (reviewers may be settling into pattern-matching rather than actively critiquing).
+### C4-CT-1: [LOW] The cycle-3 deferred backlog is growing without a visible draw-down policy
 
-Explicit blind-spot sweep conducted:
+10 LOW findings carried into the deferred list this cycle (C3-AGG-2 through C3-AGG-10), plus 14 carry-forwards from earlier cycles. Without an explicit policy on "when does cycle N pick a deferred item up?", the backlog could accumulate indefinitely. The orchestrator's PROMPT 2 instruction to "Pick one or two LOW deferred items off the backlog and schedule them for implementation in this cycle if feasible" addresses this — but only if it is followed.
 
-### (a) Is the `SKIP_INSTRUMENTATION_SYNC` flag a foot-gun?
+**Concrete failure scenario:** Cycle 4 could record "no new findings, all carry-forwards still deferred" — a do-nothing cycle. The loop would not fail any gate, but it also would not make progress.
 
-- **Criticism:** any env-gated production bypass is a hazard. What prevents an operator from setting it in prod?
-- **Defense (valid):** the flag is strict-literal-`"1"`, emits `logger.warn` on every process start when set, is called out in a large in-code comment, and the production deploy uses `.env.deploy.algo` (checked into repo) which does **not** include the flag. Downstream failure mode is fail-closed (empty `languageConfigs` table -> judge rejects all submissions) rather than fail-open.
-- **Verdict:** defensible. No issue.
+**Fix this cycle:** Pick at least one LOW item from the cycle-3 deferred list whose exit criterion is naturally met by a small docs/code touch. Three viable candidates (low operational risk):
+- **C3-AGG-9** (chmod 700 redundancy comment): one-line code-comment change.
+- **C3-AGG-7** (`deploy-docker.sh` header docstring + `AGENTS.md` "Deploy hardening" subsection): documentation-only.
+- **C3-AGG-10** (`succeeded after N attempts` log line): one-line code change in `_initial_ssh_check`.
 
-### (b) Are we trusting test-skip status in integration tests?
+**Repo policy check:** All three are LOW with naturally-met exit criteria (the moment a cycle touches the file). Fixing them now removes them from the backlog without operational risk. This is consistent with the orchestrator's "make forward progress on backlog" directive.
 
-37/37 integration tests "pass" by skipping, because no DB is reachable in the sandbox. This could mask a real regression.
-- **Defense:** the skip is explicit (the integration suite independently skips when `DATABASE_URL` is absent), and the build still compiles TypeScript against those files. Unit + component suites still run against all the logic. Cycle 55 aggregate already records the skip as a sandbox limitation, not a silent pass.
-- **Verdict:** correctly documented. Not a new issue this cycle.
+### C4-CT-2: [INFO] Cycle-3 plan structure is sound; no process drift
 
-### (c) Are deferred items decaying into cruft?
+I read `plans/open/2026-04-29-rpf-cycle-3-review-remediation.md`. Each task has source, severity, files, scenario, deferral reason, repo-policy quote, and exit criterion. No process drift this cycle.
 
-Looking at the 19 items on the deferred list:
-- Every item has a file+line citation OK
-- Every item has a severity/confidence with no downgrade OK
-- Every item has an exit criterion OK
-- But: several are LOW/LOW items that have persisted across 30+ cycles (e.g. DOC-2 Docker dual-path docs, ARCH-3 stale-while-revalidate cache pattern). Are exit criteria realistic?
-- **Criticism:** "when that module is next modified" is a never-reached criterion if the module is feature-complete.
-- **Defense:** these are LOW/LOW specifically because they're nice-to-haves; the severity protects against accidental promotion. The repo's own rules explicitly allow LOW-severity deferrals without a stricter criterion.
-- **Verdict:** not a new issue. Flagging for the architect to consider whether any should be closed as "won't fix" in a future cycle rather than indefinitely deferred.
+### C4-CT-3: [INFO] No commit-message claim drift
 
-### (d) Untracked files in repo root
+I re-read the cycle-3 commit messages: `8d36398e` (cycle-3 plan), `fd5197fe` (cycle-3 reviews), `e61f8a91` (cycle-3 deploy outcome). All three are docs-only commits, conventional + gitmoji, GPG-signed. No drift.
 
-The working tree has ~20 untracked `.mjs` / `.py` / `.js` files at repo root (`auto-solver.mjs`, `fetch-problems.mjs`, `solve-all.mjs`, `solutions.js`, etc.) plus a stray `plans/open/2026-04-23-rpf-cycle-32-review-remediation.md` and `plans/open/_archive/2026-04-23-rpf-cycle-36-review-remediation.md`.
-- **Criticism:** these look like one-off generator / solver scripts that should either be in `scripts/` or excluded via `.gitignore`. They've been untracked through multiple RPF cycles.
-- **Defense:** they are not loaded by the Next.js build, not referenced by `package.json` scripts, not linted. They're user-local experimental artifacts.
-- **Verdict:** NOT-A-BUG. Not a reviewable finding. If the user wants them cleaned up, that's a housekeeping request, not a review finding.
+## Confidence
 
-### (e) Stale cycle-4 review artifacts pre-existed at cycle start
-
-The `.context/reviews/rpf-cycle-4-*.md` files already existed on disk at cycle start, from an old RPF run at commit `5d89806d` (2026-04-22). All findings in those files have been remediated over the intervening 50+ cycles. For this loop cycle 4/100 review, the stale files have been overwritten with current-HEAD content reflecting today's state.
-
-**Verdict:** housekeeping, not a code issue. The aggregate clearly records the overwrite.
-
-## Re-sweep findings (this cycle)
-
-**Zero new production-code findings.**
-
-## Recommendation
-
-No action this cycle. Architect may want to schedule a "prune the deferred list" pass in a future cycle.
+High that the only critic-perspective action this cycle is to pick 1–2 LOW deferred items off the backlog (C4-CT-1).

@@ -1,41 +1,28 @@
-# RPF Cycle 4 (Loop Cycle 4/100) — Debugger
+# RPF Cycle 4 — debugger perspective (orchestrator-driven, 2026-04-29)
 
-**Date:** 2026-04-23
-**Base commit:** d4b7a731
-**HEAD commit:** d4b7a731
-**Scope:** Latent bug surface, failure modes, regression risks across the entire repo.
+**Date:** 2026-04-29
+**HEAD reviewed:** `e61f8a91`
 
-## Production-code delta since last review
+## Latent bug surface
 
-Only `src/lib/judge/sync-language-configs.ts` changed (the `SKIP_INSTRUMENTATION_SYNC` short-circuit). No new bug surface introduced.
+### C4-DB-1: [LOW, High confidence] `_initial_ssh_check` emits no output when retry count = 1 and succeeds (carry-forward)
 
-## Re-sweep findings (this cycle)
+**File/lines:** `deploy-docker.sh:165-178`
 
-**Zero new findings.**
+If the very first `remote "echo ok"` succeeds, the function returns 0 without any log line. That's fine for the happy path. But if attempt 1 fails and attempt 2 succeeds, the operator sees a `[WARN]` line for the failure, then nothing — no "succeeded on attempt 2" confirmation. Cycle-3's C3-AGG-10 already names this. No new finding; carry-forward.
 
-Traced bug-prone patterns across the codebase:
+### C4-DB-2: [LOW, Medium confidence] `trap _cleanup_ssh_master EXIT` may run before async backgrounded sshpass-child output is flushed (future-risk)
 
-- Async error boundaries in all client components — `.catch(() => ({}))` guards on `res.json()` are present across the codebase (verified via grep; no bare `await res.json()` remains in error paths).
-- Timer/interval cleanup — all `setInterval` / `setTimeout` callsites have corresponding `clearInterval` / `clearTimeout` in cleanup.
-- Event-listener cleanup — all `addEventListener` callsites have corresponding `removeEventListener` in cleanup.
-- SSE connection cleanup on abort + timeout — intact.
-- Judge claim race condition — guarded by atomic DB transaction with `FOR UPDATE SKIP LOCKED` (verified).
-- `getDbNowUncached` usage in clock-skew-sensitive paths — used consistently.
-- Recruiting token redemption — guarded by transactional `verifyAndRehashPassword` (cycle 36 Lane 2).
+**File/lines:** `deploy-docker.sh:163`
 
-## Prior cycle-4 findings (2026-04-22 RPF at 5d89806d) — all remediated at current HEAD
+If a deploy step backgrounded an SSH operation (it does not currently) and the script's main flow hit `exit`, the trap could tear down the ControlMaster while the backgrounded child is still using it. Currently no backgrounded SSH calls exist, so this is a future-risk note only.
 
-Verified by direct file inspection:
-- `invite-participants.tsx:88` — `.catch(() => ({}))` present.
-- `access-code-manager.tsx:91` — `.catch(() => ({}))` present.
-- `countdown-timer.tsx:132-143` — `visibilitychange` listener recalculates on tab focus.
-- `anti-cheat-monitor.tsx` — ref-based callback pattern now in use (no listener re-registration gap).
-- `active-timed-assignment-sidebar-panel.tsx` — timer cleanup on assignment expiry now implemented.
+**Status:** Future-risk note only. Not a current bug. Not actionable this cycle.
 
-## Carry-over deferred items (unchanged)
+### C4-DB-3: [INFO] No active failure modes in cycle-3 deploy log
 
-See cycle 55 aggregate. No debugger-angle additions this cycle.
+Per orchestrator history: "Cycle 3 had clean deploy (0 Permission-denied lines)." No new failure-mode evidence to mine.
 
-## Recommendation
+## Confidence
 
-No action this cycle.
+High that no new debugger findings exist this cycle.

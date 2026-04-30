@@ -1,55 +1,52 @@
-# RPF Cycle 4 (Loop Cycle 4/100) — Security Reviewer
+# RPF Cycle 4 — security-reviewer perspective (orchestrator-driven, 2026-04-29)
 
-**Date:** 2026-04-23
-**Base commit:** d4b7a731
-**HEAD commit:** d4b7a731
-**Scope:** OWASP top 10, secrets, unsafe patterns, auth/authz angle across the entire repo.
+**Date:** 2026-04-29
+**HEAD reviewed:** `e61f8a91` (no `src/` changes since cycle 3 HEAD `66146861`)
+**Threat model:** OWASP Top 10 + secret handling + auth/authz + supply chain.
 
-## Production-code delta since last review
+## Findings
 
-Only `src/lib/judge/sync-language-configs.ts` changed.
+### C4-SR-1: [LOW, High confidence] `sshpass -p "$SSH_PASSWORD"` exposes secret in argv (carry-forward)
 
-### Security analysis of the delta
+**File/lines:** `deploy-docker.sh:175,184,191,201,209,212`
 
-The added short-circuit:
+Six call sites pass the password as `-p "$SSH_PASSWORD"`. On the deploy host (the operator's workstation), any local user can `ps -ef | grep sshpass` during the deploy and see the password.
 
-```ts
-if (process.env.SKIP_INSTRUMENTATION_SYNC === "1") {
-  logger.warn(
-    "[sync] SKIP_INSTRUMENTATION_SYNC=1 — skipping language-config startup sync. DO NOT use this in production."
-  );
-  return;
-}
-```
+**Mitigation precedent:** sshpass supports `-f <file>` and `-e` (read from `SSHPASS` env var, which is itself argv-invisible to other users on Linux).
 
-- Uses **strict equality with literal `"1"`** — not falsy coercion — preventing accidental opt-out under truthy-coerced values. Matches existing env-flag convention elsewhere in the repo.
-- Emits a loud `logger.warn` so production boot logs would surface any misconfiguration.
-- The in-code comment explicitly warns "DO NOT use this in production" and points at the plan + designer-runtime review for provenance.
-- The flag only *skips* a DB-write operation — it does not bypass authZ, authN, or any security-relevant path. The downstream judge/worker pipeline still reads `languageConfigs` from the DB; if the table is empty because sync was skipped, downstream reads return empty and the judge will refuse to execute — fail-closed behavior.
+**Concrete failure scenario:** Multi-user deploy workstation. Attacker user `alice` runs `while sleep 0.1; do ps -ef | grep -F sshpass; done` during a deploy by user `bob`. The password is visible for the duration of every SSH call (~50–200 ms each).
 
-**Verdict:** the delta introduces no security risk.
+**Repo policy check:** "writing secrets to unencrypted files or logs" applies. CLAUDE.md does not explicitly exempt `argv`. However, the deploy host is a single-operator developer workstation in current practice; `/proc/<pid>/cmdline` is readable only by the same user on a stock Linux installation (`hidepid=2` not assumed). LOW severity.
 
-## Re-sweep findings (this cycle)
+**Fix:** Switch to `-e` mode. One-line change per call site. This addresses C3-SR-2 (printf argv leak) at the same time.
 
-**Zero new findings.**
+**Status:** Carry-forward of C3-SR-2 / C3-AGG-2. No new severity.
 
-Systematically re-examined security-sensitive surfaces:
+### C4-SR-2: [INFO, High confidence] `.env.production` chmod 0600 fix from cycle 2 still in place
 
-- Auth config (`src/lib/auth/config.ts`) — **not modified this cycle**, as required by `CLAUDE.md` deployment rule. Verified password rehash consolidation from cycle 36 intact.
-- CSRF double-submit token validation in `createApiHandler` — intact.
-- Rate-limit + audit-event pruning background jobs — intact.
-- LIKE-pattern escaping in audit-logs page (`escapeLikePattern` usage) — intact since cycle 36 Lane 3.
-- Secret-handling paths (NextAuth callbacks, worker auth token, admin migrate/import) — unchanged.
-- Anti-cheat clipboard/text-copy privacy path — intact at 80-char cap (SEC-3, LOW/LOW, deferred).
-- Docker client error-sanitization (cycle 32 Task B) — intact.
-- `invite-participants.tsx` / `access-code-manager.tsx` — `.catch(() => ({}))` guards on `res.json()` verified in current HEAD.
+I verified `deploy-docker.sh:277` and `deploy-docker.sh:283`. Both apply `chmod 0600`. No regression.
 
-## Carry-over deferred items (unchanged)
+### C4-SR-3: [LOW, Medium confidence] `_cleanup_ssh_master` is well-bounded
 
-- SEC-2 (cycle 43): Anti-cheat heartbeat dedup `Date.now()` LRU — LOW/LOW, deferred.
-- SEC-3: Anti-cheat copies user text content — LOW/LOW, deferred.
-- SEC-4: Docker build error leaks paths (defense-in-depth beyond cycle 32) — LOW/LOW, deferred.
+**File/lines:** `deploy-docker.sh:155-162`
 
-## Recommendation
+The cleanup trap suppresses stderr and ignores exit code, and `rm -rf "$SSH_CONTROL_DIR"` is bounded to a `mktemp -d /tmp/judgekit-ssh.XXXXXX` directory. No path-injection risk.
 
-No action this cycle. `src/lib/auth/config.ts` preserved as-is per `CLAUDE.md` deployment rule.
+### C4-SR-4: [INFO, Medium confidence] No supply-chain / dependency churn this cycle
+
+Cycle-3 added zero `package.json` / `package-lock.json` changes. No new dependencies to vet.
+
+## Sweep for commonly missed security issues
+
+- Authn/authz: no `src/` changes; no new findings.
+- Crypto: no `src/` changes; argon2/bcryptjs unchanged.
+- Input validation: no `src/` changes.
+- Output encoding: no `src/` changes.
+- SSRF/path traversal in deploy script: confirmed `mktemp -d` boundary is safe.
+- Secrets: only the sshpass argv finding above (already deferred).
+- Logging: deploy script does not log raw secrets; `.env.production` is chmod 0600.
+- CSP/CORS: no `src/` changes.
+
+## Confidence
+
+High that no new HIGH/MEDIUM security findings are introduced this cycle. Cycle-3's LOW deferred items remain valid.

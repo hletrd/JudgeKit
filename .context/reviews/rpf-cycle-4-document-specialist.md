@@ -1,37 +1,28 @@
-# RPF Cycle 4 (Loop Cycle 4/100) — Document Specialist
+# RPF Cycle 4 — document-specialist perspective (orchestrator-driven, 2026-04-29)
 
-**Date:** 2026-04-23
-**Base commit:** d4b7a731
-**HEAD commit:** d4b7a731
-**Scope:** Doc/code mismatches against authoritative sources.
+**Date:** 2026-04-29
+**HEAD reviewed:** `e61f8a91`
 
-## Production-code delta since last review
+## Findings
 
-Only `src/lib/judge/sync-language-configs.ts` changed. Doc-angle impact:
-- Large in-code comment (lines 69-74) documents the new flag, warns against production use, and references the plan + designer-runtime review for provenance.
-- Plan: `plans/open/2026-04-23-rpf-cycle-55-review-remediation.md` lane A2 is the authoritative record.
-- Designer runtime review: `.context/reviews/designer-runtime-cycle-3.md` lists the motivation.
+### C4-DOC-1: [LOW, High confidence] `deploy-docker.sh` header docstring still missing `SKIP_PREDEPLOY_BACKUP`, `SKIP_LANGUAGES`, `SKIP_BUILD`, `LANGUAGE_FILTER`, `INCLUDE_WORKER`, `BUILD_WORKER_IMAGE`
 
-**Verdict:** documentation is complete and coherent.
+**File/lines:** `deploy-docker.sh:1-21`
 
-## Re-sweep findings (this cycle)
+Lines 14-20 enumerate `SSH_PASSWORD`, `SSH_KEY`, `REMOTE_HOST`, `REMOTE_USER`, `DOMAIN` only. The script reads at least these additional env vars (per `bdfc79e1`'s SKIP_* fix and the orchestrator's DEPLOY_CMD): `SKIP_LANGUAGES`, `SKIP_BUILD`, `BUILD_WORKER_IMAGE`, `INCLUDE_WORKER`, `LANGUAGE_FILTER`, `SKIP_PREDEPLOY_BACKUP`.
 
-**Zero new findings.**
+Cycle-3 filed C3-AGG-7. The exit criterion is "any cycle touches AGENTS.md or `deploy-docker.sh` header for any other reason" — naturally met if cycle 4 makes any deploy-script edit. **C4-CT-1 recommends picking this up this cycle.**
 
-Re-checked doc/code consistency:
-- `README.md`, `AGENTS.md`, `CLAUDE.md` — no stale references to removed/renamed symbols.
-- `.context/project/**` — no stale references.
-- `docs/**` — no stale references.
-- API route comments — match current behavior.
-- Library JSDoc — matches current signatures.
+**Repo policy check:** Pure documentation, no runtime impact. LOW severity. CLAUDE.md / AGENTS.md do not forbid documentation edits.
 
-## Carry-over deferred items (unchanged)
+### C4-DOC-2: [LOW, High confidence] `AGENTS.md` lacks a "Deploy hardening" subsection
 
-- DOC-1 (cycle 48): SSE route ADR — LOW/LOW, deferred.
-- DOC-2 (cycle 48): Docker client dual-path docs — LOW/LOW, deferred.
+Cycle-3's C3-AGG-7 named this. The exit criterion is the same as C4-DOC-1. Pick up this cycle if header docstring is updated.
 
-No new document-specialist finding surfaced.
+### C4-DOC-3: [INFO, High confidence] No commit-message vs code drift
 
-## Recommendation
+Cycle-3 commits all docs/plans only. No code claims to verify against. No drift.
 
-No action this cycle.
+## Confidence
+
+High that the only document-specialist action this cycle is to address C3-AGG-7 (header + AGENTS.md "Deploy hardening" subsection) — which C4-CT-1 already nominates as a backlog draw-down target.

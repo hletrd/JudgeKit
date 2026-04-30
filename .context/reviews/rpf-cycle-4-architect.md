@@ -1,35 +1,22 @@
-# RPF Cycle 4 (Loop Cycle 4/100) — Architect
+# RPF Cycle 4 — architect perspective (orchestrator-driven, 2026-04-29)
 
-**Date:** 2026-04-23
-**Base commit:** d4b7a731
-**HEAD commit:** d4b7a731
-**Scope:** Architectural/design risks, coupling, layering, abstractions across the entire repo.
+**Date:** 2026-04-29
+**HEAD reviewed:** `e61f8a91`
 
-## Production-code delta since last review
+## Findings
 
-Only `src/lib/judge/sync-language-configs.ts` changed. Architectural impact: near-zero. The new short-circuit is an opt-out gate for a specific cold-path function. It does not change the control-flow of `src/instrumentation.ts` (register hook still runs; `syncLanguageConfigsOnStartup` still returns). No new coupling introduced; no new layering concerns.
+### C4-AR-1: [LOW, High confidence] `deploy-docker.sh` line count unchanged at 1001 — exit criterion for modular split (1500 lines) not met
 
-## Re-sweep findings (this cycle)
+C3-AGG-5 set the exit criterion at "1501 lines OR `deploy.sh` invoked OR three independent cycles modify SSH-helpers block". Cycle 3 modified zero deploy-script lines; cycle 4 will modify at most a few lines (per C4-CT-1's recommended LOW-fix pickups). No exit criterion met. Continue deferring.
 
-**Zero new findings.**
+### C4-AR-2: [LOW, High confidence] `deploy.sh` (legacy entrypoint) still 289 lines, still no ControlMaster
 
-Re-verified architectural boundaries:
+I checked `deploy.sh:58-66`. Still uses bare `sshpass`. Same exit criterion as C3-AGG-5. Not invoked in cycle-3 deploy; continue deferring.
 
-- `src/app/**` <-> `src/lib/**` layering: respected. API routes delegate business logic to `src/lib` modules.
-- `src/components/**` <-> `src/hooks/**`: hooks encapsulate reactive state correctly.
-- `src/lib/judge/**` <-> `src/lib/db/**`: judge-side writes to `languageConfigs` go through drizzle-orm with consistent `getDbNowUncached` for timestamp.
-- Navigation abstractions (`src/lib/navigation/public-nav.ts`, `src/components/layout/public-footer.tsx`): Languages correctly in footer, no duplicate placement.
-- Rate-limit module: single source of truth in `src/lib/security/rate-limit.ts`.
-- CSRF module: single source of truth in `src/lib/security/csrf.ts`.
-- `createApiHandler` adoption: still the standard for new routes (22 legacy raw routes deferred — ARCH-2).
+### C4-AR-3: [INFO] Repository architecture unchanged
 
-## Carry-over deferred items (unchanged)
+The `src/` tree is identical to cycle-3's view (no commits). No new architectural risks.
 
-- ARCH-2: Manual routes duplicate `createApiHandler` boilerplate — MEDIUM/MEDIUM, deferred.
-- ARCH-3: Stale-while-revalidate cache pattern duplication — LOW/LOW, deferred.
+## Confidence
 
-No new architectural finding surfaced.
-
-## Recommendation
-
-No action this cycle. Consider scheduling a "deferred-list pruning" cycle to decide whether 30+ cycle LOW/LOW items should be closed as "won't fix" rather than kept indefinitely deferred.
+High that no new architect-perspective findings exist this cycle.
