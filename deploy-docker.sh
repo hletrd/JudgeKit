@@ -36,6 +36,13 @@
 #                            success/warn/error log line as "[host=...]" so
 #                            parallel deploys to different targets remain
 #                            disambiguable in shared log streams (cycle 5).
+#   SUDO_PASSWORD         — Optional sudo password used by remote_sudo. When
+#                            unset, falls back to SSH_PASSWORD (preserves the
+#                            current behavior on every existing target).
+#                            Set this when the target rotates the OS sudo
+#                            password independently of SSH credentials so the
+#                            two rotations stay decoupled (cycle 6: closes
+#                            C3-AGG-2).
 #
 # Deploy hardening (cycle-1/2/3/5 fixes — see AGENTS.md "Deploy hardening"):
 #   - .env.production is chmod 0600 by this script (cycle 2).
@@ -58,6 +65,7 @@ _CALLER_REMOTE_HOST="${REMOTE_HOST:-}"
 _CALLER_REMOTE_USER="${REMOTE_USER:-}"
 _CALLER_DOMAIN="${DOMAIN:-}"
 _CALLER_SSH_PASSWORD="${SSH_PASSWORD:-}"
+_CALLER_SUDO_PASSWORD="${SUDO_PASSWORD:-}"
 _CALLER_SSH_KEY="${SSH_KEY:-}"
 _CALLER_AUTH_URL_OVERRIDE="${AUTH_URL_OVERRIDE:-}"
 
@@ -74,6 +82,7 @@ fi
 [[ -n "$_CALLER_REMOTE_USER" ]] && REMOTE_USER="$_CALLER_REMOTE_USER"
 [[ -n "$_CALLER_DOMAIN" ]] && DOMAIN="$_CALLER_DOMAIN"
 [[ -n "$_CALLER_SSH_PASSWORD" ]] && SSH_PASSWORD="$_CALLER_SSH_PASSWORD"
+[[ -n "$_CALLER_SUDO_PASSWORD" ]] && SUDO_PASSWORD="$_CALLER_SUDO_PASSWORD"
 [[ -n "$_CALLER_SSH_KEY" ]] && SSH_KEY="$_CALLER_SSH_KEY"
 [[ -n "$_CALLER_AUTH_URL_OVERRIDE" ]] && AUTH_URL_OVERRIDE="$_CALLER_AUTH_URL_OVERRIDE"
 
@@ -252,7 +261,13 @@ remote_sudo() {
     printf -v quoted_cmd '%q' "$cmd"
 
     if [[ -n "${SSH_PASSWORD:-}" ]]; then
-        printf '%s\n' "$SSH_PASSWORD" | sshpass -p "$SSH_PASSWORD" ssh $SSH_OPTS "${REMOTE_USER}@${REMOTE_HOST}" "sudo -S -p '' bash -lc ${quoted_cmd}"
+        # Sudo password decoupled from SSH password: when SUDO_PASSWORD is set,
+        # use it for sudo; otherwise fall back to SSH_PASSWORD (preserves prior
+        # behavior on every existing target). This lets operators rotate the
+        # OS sudo password independently of SSH credentials (cycle 6: closes
+        # C3-AGG-2). sshpass continues to authenticate the SSH layer.
+        local sudo_pw="${SUDO_PASSWORD:-${SSH_PASSWORD}}"
+        printf '%s\n' "$sudo_pw" | sshpass -p "$SSH_PASSWORD" ssh $SSH_OPTS "${REMOTE_USER}@${REMOTE_HOST}" "sudo -S -p '' bash -lc ${quoted_cmd}"
     else
         ssh $SSH_OPTS "${REMOTE_USER}@${REMOTE_HOST}" "sudo bash -lc ${quoted_cmd}"
     fi
