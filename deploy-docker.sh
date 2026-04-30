@@ -31,8 +31,13 @@
 #   DRIZZLE_PUSH_FORCE    — "1" to allow drizzle-kit push --force on destructive
 #                            schema diffs. Reserved for explicit user authorization
 #                            with quoted-text consent; never set preemptively.
+#   DEPLOY_INSTANCE       — Optional human-readable host label (e.g. "algo" or
+#                            "worker-0"). When set, prepended to every info/
+#                            success/warn/error log line as "[host=...]" so
+#                            parallel deploys to different targets remain
+#                            disambiguable in shared log streams (cycle 5).
 #
-# Deploy hardening (cycle-1/2/3 fixes — see AGENTS.md "Deploy hardening"):
+# Deploy hardening (cycle-1/2/3/5 fixes — see AGENTS.md "Deploy hardening"):
 #   - .env.production is chmod 0600 by this script (cycle 2).
 #   - SSH connections are multiplexed via ControlMaster + ControlPersist=60
 #     using a /tmp socket dir (cycle 2; macOS $TMPDIR exceeds 104-byte UNIX
@@ -148,10 +153,19 @@ YELLOW='\033[1;33m'
 BLUE='\033[0;34m'
 NC='\033[0m'
 
-info()    { echo -e "${BLUE}[INFO]${NC} $*"; }
-success() { echo -e "${GREEN}[OK]${NC} $*"; }
-warn()    { echo -e "${YELLOW}[WARN]${NC} $*"; }
-error()   { echo -e "${RED}[ERROR]${NC} $*" >&2; }
+# Optional deploy-instance prefix: when DEPLOY_INSTANCE is set, every log line
+# is prefixed "[host=$DEPLOY_INSTANCE]" so parallel deploys to different targets
+# can be disambiguated in shared log streams (cycle 5: closes C3-AGG-8). When
+# unset, the prefix expands to the empty string and behavior is unchanged.
+_log_prefix() {
+  if [[ -n "${DEPLOY_INSTANCE:-}" ]]; then
+    printf '[host=%s] ' "${DEPLOY_INSTANCE}"
+  fi
+}
+info()    { echo -e "${BLUE}[INFO]${NC} $(_log_prefix)$*"; }
+success() { echo -e "${GREEN}[OK]${NC} $(_log_prefix)$*"; }
+warn()    { echo -e "${YELLOW}[WARN]${NC} $(_log_prefix)$*"; }
+error()   { echo -e "${RED}[ERROR]${NC} $(_log_prefix)$*" >&2; }
 die()     { error "$*"; exit 1; }
 
 SSH_OPTS="-o StrictHostKeyChecking=accept-new -o LogLevel=ERROR"
