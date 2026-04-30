@@ -1,39 +1,46 @@
-# Designer — RPF Cycle 6
+# RPF Cycle 6 — designer (orchestrator-driven, source-level review, 2026-04-29)
 
-## Scope
-UI/UX review of recently changed files. This repo has a Next.js frontend with shadcn/ui components.
+**Date:** 2026-04-29
+**HEAD reviewed:** `a18302b8`
+**Diff vs cycle-5 base:** 0 lines.
 
-## Findings
+## Methodology
 
-### DES-1: `recruiting-invitations-panel.tsx` — Email field incorrectly required in Create dialog
-- **Severity:** MEDIUM
-- **Confidence:** HIGH
-- **File:** `src/components/contest/recruiting-invitations-panel.tsx:484`
-- **Problem:** The Create button is `disabled={creating || !createName.trim() || !createEmail.trim()}`. This forces users to enter an email even though the API treats it as optional. This is a UX regression — invitations should be creatable with just a name.
-- **Fix:** Remove `!createEmail.trim()` from the disabled condition.
+Source-level (no-headless-browser) UI/UX audit on changed files. Diff is 0 lines this cycle, so this audit re-validates the stale prior cycle-6 designer findings + spot-checks new accessibility patterns.
 
-### DES-2: `recruiting-invitations-panel.tsx` — No loading indicator after Create button is clicked
-- **Severity:** LOW
-- **Confidence:** MEDIUM
-- **File:** `src/components/contest/recruiting-invitations-panel.tsx:484-487`
-- **Problem:** The Create button text doesn't change to "Creating..." when `creating` is true. The button is disabled, but there's no visual feedback that the creation is in progress.
-- **Fix:** Add a loading state: `{creating ? tCommon("loading") : t("create")}`.
+## Stale prior cycle-6 designer findings audit
 
-### DES-3: `anti-cheat-dashboard.tsx` — Data disappears during polling (confirms CRIT-2)
-- **Severity:** MEDIUM
-- **Confidence:** HIGH
-- **Problem:** When the 30-second poll fires, loaded events are replaced with only the first page. Users see a flash where their expanded data disappears and reappears. This breaks the principle of data stability — users should not see their content change unexpectedly.
-- **Fix:** Implement smarter polling that preserves loaded data.
+| Stale ID | File | Status at HEAD |
+|---|---|---|
+| DES-1 (email field incorrectly required) | `src/components/contest/recruiting-invitations-panel.tsx:516` | **RESOLVED.** Button is `disabled={creating || !createName.trim()}` — no email check. |
+| DES-2 (Create button no loading text) | `src/components/contest/recruiting-invitations-panel.tsx:516-518` | **RESOLVED.** Button content uses `{creating ? tCommon("loading") : t("create")}`. |
+| DES-3 (anti-cheat polling discards loaded events) | `src/components/contest/anti-cheat-dashboard.tsx` | **RESOLVED.** Functional setEvents+setOffset preserves loadMore state. |
+| DES-4 (SVG circles lack keyboard focus) | `src/components/contest/score-timeline-chart.tsx:88` | **RESOLVED.** `<g>` wrapper has `tabIndex={0} role="img" aria-label`. |
+| DES-5 (countdown-timer aria-live="assertive" vs "polite") | `src/components/exam/countdown-timer.tsx:160` | **RESOLVED.** Uses `aria-live={thresholdUrgent ? "assertive" : "polite"}` — context-aware. |
 
-### DES-4: `score-timeline-chart.tsx` — SVG chart lacks keyboard interaction for data points
-- **Severity:** LOW
-- **Confidence:** MEDIUM
-- **File:** `src/components/contest/score-timeline-chart.tsx:84-93`
-- **Problem:** The SVG data point circles (`<circle>`) have `<title>` for tooltips but are not keyboard-focusable. Adding `tabIndex={0}` and `role="img"` to each `<g>` element would improve accessibility.
-- **Fix:** Add `tabIndex={0}` and `role="img"` to the `<g>` wrapper, with an `aria-label` including the score.
+All 5 stale designer findings are silently fixed at HEAD `a18302b8`.
 
-### DES-5: `countdown-timer.tsx` — Uses `aria-live="assertive"` for threshold announcements
-- **Severity:** LOW
-- **Confidence:** LOW
-- **File:** `src/components/exam/countdown-timer.tsx:151-153`
-- **Problem:** `aria-live="assertive"` immediately interrupts screen readers. For time warnings during exams, "polite" might be more appropriate to avoid interrupting ongoing speech. However, given that exam time warnings are critical, "assertive" is arguably correct. This is a judgment call.
+## Korean letter-spacing rule audit
+
+Per `CLAUDE.md`: "Keep Korean text at the browser/font default letter spacing. Do not apply custom `letter-spacing` (or `tracking-*` Tailwind utilities) to Korean content."
+
+Spot checks (no diff this cycle, so this is a steady-state spot-check):
+- No new violations observable. The rule has been respected in cycle-2/3/4/5 close-out commits.
+
+## Dark/light mode parity (steady-state)
+
+- Recent commits `50c4dcc3`, `a25e36d6`, `ab201509` all add dark-mode variants to admin/UI panels (chat widget admin config, problems page stat icons, create-problem form locked notices). Dark mode parity is being actively maintained.
+
+## Carry-forward designer items
+
+None. All UI-side carry-forwards from cycle 2-5 (PublicHeader role-filter dead code, role badge, etc.) were resolved earlier.
+
+## NEW findings this cycle
+
+**0 HIGH, 0 MEDIUM, 0 LOW NEW.** Empty change surface; no new UI/UX issues.
+
+## Recommendation
+
+No designer-class items to draw down. The stale designer findings (DES-1..DES-5) are all resolved organically. Defer to architect/code-reviewer choice for cycle-6 LOW draw-down.
+
+Confidence: H.

@@ -1,35 +1,51 @@
-# Critic — RPF Cycle 6
+# RPF Cycle 6 — critic (orchestrator-driven, 2026-04-29)
 
-## Scope
-Multi-perspective critique of the current codebase state, focusing on recently changed files.
+**Date:** 2026-04-29
+**HEAD reviewed:** `a18302b8`
+**Diff vs cycle-5 base:** 0 lines.
 
-## Findings
+## Methodology
 
-### CRIT-1: `recruiting-invitations-panel.tsx` — `handleCreate` missing catch block is a real bug
-- **Severity:** MEDIUM
-- **Confidence:** HIGH
-- **Cross-agent agreement:** code-reviewer CR-2, security-reviewer SEC-1, architect ARCH-2
-- **Problem:** All other async handlers in this component have try/catch. `handleCreate` is the only one with try/finally and no catch. This is not a style issue — it's a functional bug where network errors produce no user feedback and the error silently disappears.
+Examined the cycle-5 plan's claims, the orchestrator's PROMPT-2 directive, the stale prior cycle-6 review aggregate's findings, and the live codebase. Looking for: things the loop is missing, items rationalized away too quickly, mismatches between claims and reality.
 
-### CRIT-2: `anti-cheat-dashboard.tsx` — Polling resets loaded events (perf-reviewer PERF-1 is correct and higher severity than stated)
-- **Severity:** MEDIUM
-- **Confidence:** HIGH
-- **File:** `src/components/contest/anti-cheat-dashboard.tsx:118-136`
-- **Problem:** The 30-second visibility polling replaces the entire event list with only the first page. If the user has loaded more events, the expanded data disappears on every poll cycle. This is a UX regression — the instructor sees data disappear and reappear. The `offset` state is also reset, breaking the `loadMore` pagination.
-- **Fix:** Either (a) only update total count on poll and keep events intact, or (b) preserve the loaded offset when polling, or (c) use a merge strategy that appends new events without resetting.
+## Critical observations
 
-### CRIT-3: `recruiting-invitations-panel.tsx` — `createEmail` field is required but shouldn't be
-- **Severity:** LOW
-- **Confidence:** HIGH
-- **File:** `src/components/contest/recruiting-invitations-panel.tsx:484`
-- **Problem:** The Create button is disabled when `!createEmail.trim()`. However, the API sends `candidateEmail: createEmail.trim() || undefined`, meaning the API treats email as optional. The UI incorrectly makes it required.
-- **Fix:** Remove `!createEmail.trim()` from the disabled condition, keeping only `!createName.trim()`.
+### 1. The loop is on a healthy slope, but the rate of carry-forward retirement is slow
 
-### CRIT-4: Carried from cycle 5 AGG-1 — PublicHeader dropdown role filtering
-- **Status:** FIXED — capability-based filtering is now implemented in `public-nav.ts:79-86`
-- **Evidence:** `getDropdownItems(capabilities)` filters items by capability. Items without a capability are always shown. This resolves the cycle 5 AGG-1 finding.
+Cycle 4 retired 3 items, cycle 5 retired 3, the orchestrator's directive for cycle 6 is to retire 2-3 more. At ~3/cycle, the 17 currently-deferred items would clear in ~6 cycles **assuming no new findings.** That's a realistic budget. The risk is that NEW findings outpace draw-down — but the empty change surface this cycle (0 lines) means no new findings, which means the loop CAN make progress.
 
-### CRIT-5: `parsePagination` silently caps at MAX_PAGE (carried from cycle 5 AGG-9)
-- **Severity:** LOW
-- **Confidence:** MEDIUM
-- **Status:** NOT FIXED
+**Critic's directive:** cycle 6 should pick **3 LOW items**, not 2. The orchestrator said "ideally 3"; the change surface is empty; no execution risk to bundling 3 fine-grained commits.
+
+### 2. Path drift creates silent staleness in deferred entries
+
+AGG-2 referenced `src/lib/api-rate-limit.ts:56`; that path doesn't exist at HEAD. The actual `Date.now()` calls are now in `src/lib/security/in-memory-rate-limit.ts`. Same kind of drift for PERF-3 (`src/lib/anti-cheat/` cited, but the actual gap query lives in `src/app/api/v1/contests/[assignmentId]/anti-cheat/route.ts`).
+
+**Action:** the cycle-6 plan MUST update the carry-forward registry with corrected paths so future cycles don't re-investigate the same drift.
+
+### 3. The stale prior cycle-6 reviews are an unexpected gift
+
+A previous run wrote `rpf-cycle-6-*.md` rooted at base `d5980b35`. Of its 7 actionable AGG findings (AGG-1..AGG-7), **all 7 are silently fixed at HEAD `a18302b8`.** That is real, organic progress — the maintainer has been fixing things in non-orchestrator commits between cycles.
+
+**Critic's directive:** treat this as concrete evidence that the team is healthy. The cycle-6 aggregate must **explicitly note all 7 stale findings as resolved** so they aren't re-observed in cycle 7+ as new.
+
+### 4. ARCH-CARRY-1 and C1-AGG-3 are silently shrinking
+
+ARCH-CARRY-1's "22+" threshold is now met at 20. C1-AGG-3's "27 client console.error sites" is now 21. Those drops happened between cycle 4 and cycle 6 with no targeted intervention. This is good news but exposes a question: **at what threshold do we close the deferred entry?**
+
+**Critic's directive:** keep the entries open with corrected counts; don't close them just because they shrunk. Close only when the population reaches 0 OR a dedicated cycle retires them in bulk.
+
+### 5. D1/D2 (auth JWT carry-forwards) are blocked by a repo policy that prevents direct fix
+
+`CLAUDE.md` says "Preserve Production config.ts" — `src/lib/auth/config.ts` (418 lines) cannot be modified. Any clock-skew or per-request-DB-query fix must live OUTSIDE that file. This is not a critique of the policy; it's a critique of the deferred entry, which doesn't currently note the constraint.
+
+**Critic's directive:** annotate D1/D2 in the cycle-6 plan with "implementation must be wrapper-based (not in src/lib/auth/config.ts) per CLAUDE.md repo policy".
+
+## NEW findings this cycle
+
+**0 HIGH, 0 MEDIUM, 0 LOW NEW.** No new code-class issues to inject.
+
+## Recommendation
+
+Pick **C5-SR-1**, **C3-AGG-3**, **C3-AGG-2** for cycle-6 LOW draw-down. Annotate D1/D2 with the config.ts constraint in the cycle-6 plan. Update AGG-2 and PERF-3 paths in the cycle-6 plan's carry-forward registry. Mark all 7 stale prior cycle-6 AGG-1..AGG-7 findings as "RESOLVED at HEAD" in the aggregate.
+
+Confidence: H.

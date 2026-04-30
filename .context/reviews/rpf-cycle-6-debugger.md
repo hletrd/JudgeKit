@@ -1,35 +1,73 @@
-# Debugger — RPF Cycle 6
+# RPF Cycle 6 — debugger (orchestrator-driven, 2026-04-29)
 
-## Scope
-Latent bug surface and failure mode analysis.
+**Date:** 2026-04-29
+**HEAD reviewed:** `a18302b8`
+**Diff vs cycle-5 base:** 0 lines.
 
-## Findings
+## Methodology
 
-### DBG-1: `anti-cheat-dashboard.tsx` — Polling replaces loaded data, breaking `loadMore` pagination
-- **Severity:** MEDIUM
-- **Confidence:** HIGH
-- **File:** `src/components/contest/anti-cheat-dashboard.tsx:118-136, 138-155`
-- **Problem:** `fetchEvents` always sets `offset` to `json.data.events.length` (line 127), which is at most `PAGE_SIZE` (100). If the user has already loaded 200+ events via `loadMore`, the next poll resets `offset` to 100. The next `loadMore` then fetches offset=100, which returns events the user already has (duplicates from offset 100-199) or skips events depending on timing.
-- **Failure scenario:**
-  1. Dashboard loads, fetches first 100 events, offset=100
-  2. User clicks "load more", fetches next 100, now shows 200 events, offset=200
-  3. 30-second poll fires, `fetchEvents` runs, replaces events with first 100, sets offset=100
-  4. User sees only 100 events instead of 200
-  5. User clicks "load more" again, fetches offset=100, which is a duplicate page
-- **Fix:** Either preserve offset across polls, or make polling only update the total count and prepend new events without replacing the entire list.
+Re-validated bug-class items from the cycle-5 carry-forward backlog and the stale prior cycle-6 aggregate. Looked for newly introduced bugs in `src/`. Checked invariant violations, race conditions, error-handling holes.
 
-### DBG-2: `recruiting-invitations-panel.tsx` — `handleCreate` no catch block (confirms CR-2, SEC-1)
-- **Severity:** MEDIUM
-- **Confidence:** HIGH
-- **File:** `src/components/contest/recruiting-invitations-panel.tsx:150-213`
-- **Failure scenario:** Network goes offline during invitation creation. `apiFetch` throws a TypeError. The `finally` block sets `creating=false`, but no error toast is shown. The user sees the dialog close silently with no feedback.
-- **Fix:** Add `catch { toast.error(t("createError")); }`.
+## Stale prior cycle-6 DBG findings audit
 
-### DBG-3: `countdown-timer.tsx` — Server time fetch has no timeout fallback for late responses
-- **Severity:** LOW
-- **Confidence:** LOW
-- **File:** `src/components/exam/countdown-timer.tsx:74-97`
-- **Problem:** The `/api/v1/time` fetch has a 5-second AbortController timeout. If the server is slow (>5s), the fetch is aborted and offset stays at 0. The timer then uses `Date.now()` without correction, which is the correct fallback behavior. No bug here — the fallback is sound.
+- **Stale DBG-1 (anti-cheat polling clobbers loadMore)** — RESOLVED at HEAD. `src/components/contest/anti-cheat-dashboard.tsx:127-160` preserves loaded-beyond-first-page rows via functional `setEvents((prev) => ...)` and preserves offset via functional `setOffset((prev) => ...)`.
+- **Stale DBG-2 (handleCreate missing catch)** — RESOLVED at HEAD. `recruiting-invitations-panel.tsx:185-240` has try/catch/finally.
 
-### DBG-4: Carried from cycle 28 — localStorage crashes in private browsing
-- **Status:** CONFIRMED FIXED
+## Carry-forward bug-class items at HEAD
+
+None of the cycle-5 carry-forwards are bug-class (HIGH-severity correctness issues). All carry-forwards are LOW (deploy-script ergonomics) or MEDIUM (perf, architecture, auth refactor) — no actionable bugs in the queue.
+
+## Spot checks for new bugs
+
+### Anti-cheat dashboard polling vs loadMore (re-checked at HEAD)
+
+```js
+// src/components/contest/anti-cheat-dashboard.tsx:130-160
+setEvents((prev) => {
+  const firstPageIds = firstPage.map((e) => e.id);
+  const prevFirstPageIds = prev.slice(0, PAGE_SIZE).map((e) => e.id);
+  const firstPageUnchanged = firstPageIds.length === prevFirstPageIds.length
+    && firstPageIds.every((id, i) => id === prevFirstPageIds[i]);
+  if (prev.length > PAGE_SIZE) {
+    return firstPageUnchanged ? prev : [...firstPage, ...prev.slice(PAGE_SIZE)];
+  }
+  return firstPageUnchanged ? prev : firstPage;
+});
+```
+
+**Edge case worth noting (informational, not a finding):** if a single new event arrives at the head (incrementing `total`) while user is at offset > PAGE_SIZE, the new event displaces the oldest first-page event into the "tail" slice. The tail slice (`prev.slice(PAGE_SIZE)`) keeps its content unchanged — so the displaced event is *also* present in the tail (one position lower). Visually: a duplicate may appear at row PAGE_SIZE if and only if one new event arrives between polls AND user has loaded more.
+
+**Confidence:** M. The fix is correct for the **most common** case (no new events) and for the **bulk-clobber** case (many new events), but produces transient single-row duplicate when exactly one event arrives. Not a regression vs. the prior behavior (which clobbered the entire list); arguably better. **Not a finding.** Just documenting the edge case for future reference.
+
+### Countdown timer NaN guard (re-checked at HEAD)
+
+```js
+// src/components/exam/countdown-timer.tsx:75-90
+.then((data) => {
+  if (!data) return;
+  if (Number.isFinite(data.timestamp)) {
+    const roundTrip = Date.now() - requestStart;
+    offsetRef.current = data.timestamp - (requestStart + roundTrip / 2);
+  }
+})
+.catch(() => {
+  // keep offset at 0 on error
+});
+```
+
+`Number.isFinite()` rejects `NaN`, `Infinity`, `-Infinity`, and any non-number. Combined with `if (!data) return;` defending against `null` from upstream `.catch(() => null)` (per stale-fix pattern), this is robust. **No finding.**
+
+## Concurrency / race-condition spot check
+
+- `lastHeartbeatTime: Map` in `src/app/api/v1/contests/[assignmentId]/anti-cheat/route.ts:16-110` uses module-level state per process. In a Node.js single-process deployment this is safe; if scaled horizontally (multiple Next.js workers), the per-user 60s dedup window resets per worker. **Severity: LOW.** **NOT injected** — this is the existing behavior, well-known, and bounded (worst case: one extra heartbeat per second per worker).
+- SSE fanout in `realtime-coordination.ts` is single-process; same caveat applies. ARCH-CARRY-2 already covers it.
+
+## NEW findings this cycle
+
+**0 HIGH, 0 MEDIUM, 0 LOW NEW.** Empty change surface; no new bugs.
+
+## Recommendation
+
+No bug-class items to draw down — all backlog items are LOW (deploy ergonomics) or MEDIUM (refactor). Defer to architect/code-reviewer choice.
+
+Confidence: H.

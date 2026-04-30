@@ -1,52 +1,60 @@
-# Code Reviewer — RPF Cycle 6
+# RPF Cycle 6 — code-reviewer (orchestrator-driven, 2026-04-29)
 
-## Scope
-Full codebase review with focus on recently changed files (last 10 commits) and carry-forward findings from cycle 5 aggregate.
+**Date:** 2026-04-29
+**HEAD reviewed:** `a18302b8` (cycle-5 close-out: docs(plans) mark cycle 5 Tasks Z and ZZ done).
+**Diff vs cycle-5 base:** `git diff a18302b8 HEAD` — 0 lines. Empty change surface this cycle.
+**Note on stale prior cycle-6 reviews:** A pre-existing `.context/reviews/rpf-cycle-6-*.md` set, rooted at base commit `d5980b35`, was found on disk. Its 7 AGG findings (AGG-1 through AGG-7) were re-validated at HEAD this cycle — see "Stale prior cycle-6 findings audit" below. Most are resolved; one (AGG-7-equivalent) was only partially relevant.
 
-## Findings
+## Methodology
 
-### CR-1: `recruiting-invitations-panel.tsx` — `handleCreate` does not reset `setCreatedLink` on error path
-- **Severity:** LOW
-- **Confidence:** HIGH
-- **File:** `src/components/contest/recruiting-invitations-panel.tsx:197-209`
-- **Problem:** When the POST to create an invitation returns a non-OK response, `createdLink` state is never cleared. If the user had a previously created link showing in the dialog, it remains visible after a failed creation attempt, potentially misleading the user into thinking the new invitation was created.
-- **Fix:** Add `setCreatedLink(null)` at the beginning of `handleCreate` or in the `else` branch.
+1. Re-validated cycle-5 carry-forward backlog at HEAD (paths may have drifted).
+2. Audited the prior stale cycle-6 review aggregate's findings (rooted at `d5980b35`) for HEAD applicability.
+3. Searched for newly-introduced bugs in `src/`.
 
-### CR-2: `recruiting-invitations-panel.tsx` — `handleCreate` missing catch for network errors
-- **Severity:** MEDIUM
-- **Confidence:** HIGH
-- **File:** `src/components/contest/recruiting-invitations-panel.tsx:150-213`
-- **Problem:** The `handleCreate` function has a `try/finally` but no `catch` block. If `apiFetch` throws a network error (not a bad response, but an actual exception like DNS failure), the error propagates unhandled. The `finally` sets `creating` to false, but no error toast is shown to the user. Other handlers like `handleRevoke` and `handleDelete` properly have `catch` blocks.
-- **Fix:** Add a `catch` block with `toast.error(t("createError"))`.
+## Stale prior cycle-6 findings audit (re-rooted at `a18302b8`)
 
-### CR-3: `access-code-manager.tsx` — `handleCopyLink` uses `window.location.origin` for share URL (DEFER-24 carry)
-- **Severity:** LOW
-- **Confidence:** MEDIUM
-- **File:** `src/components/contest/access-code-manager.tsx:134`
-- **Problem:** `window.location.origin` is used to construct the share link. This is client-side and cannot reflect the canonical server URL if accessed via a non-canonical hostname (e.g., IP address, alternate domain). The same pattern exists in `recruiting-invitations-panel.tsx:97` and `workers-client.tsx:147`.
-- **Note:** This is a carried finding (DEFER-24). No fix yet.
+| Stale ID | File | Status at HEAD | Evidence |
+|---|---|---|---|
+| AGG-1 (handleCreate missing catch) | `src/components/contest/recruiting-invitations-panel.tsx:181-240` | **RESOLVED** | Lines 185-240 contain `try { ... } catch { ... } finally { ... }`. catch toasts/clears state at line 238-239. |
+| AGG-2 (anti-cheat polling clobbers loadMore) | `src/components/contest/anti-cheat-dashboard.tsx:127-160` | **RESOLVED** | `setEvents((prev) => ...)` preserves `prev.slice(PAGE_SIZE)` when prev > PAGE_SIZE; `setOffset((prev) => ...)` preserves offset when user loaded more. Comment block at lines 130-138 explicitly documents the loadMore interaction. |
+| AGG-3 (email field incorrectly required) | `src/components/contest/recruiting-invitations-panel.tsx:516` | **RESOLVED** | Button disabled is `creating || !createName.trim()` — no email check. |
+| AGG-4 (createdLink not cleared on error) | `src/components/contest/recruiting-invitations-panel.tsx:183` | **RESOLVED** | Line 183 calls `setCreatedLink(null)` at the start of `handleCreate`. |
+| AGG-5 (no loading text on Create button) | `src/components/contest/recruiting-invitations-panel.tsx:516-518` | **RESOLVED** | Button content is `{creating ? tCommon("loading") : t("create")}`. |
+| AGG-6 (countdown-timer .json() unguarded) | `src/components/exam/countdown-timer.tsx:75-90` | **RESOLVED** | `Number.isFinite(data.timestamp)` guard plus `.catch(() => {})`. |
+| AGG-7 (SVG circles lack keyboard focus) | `src/components/contest/score-timeline-chart.tsx:88` | **RESOLVED** | `<g>` wrapper has `tabIndex={0} role="img" aria-label="${scoreLabel}: ${point.totalScore}"`. |
 
-### CR-4: `countdown-timer.tsx` — `/api/v1/time` response `.json()` called without `.catch()` guard
-- **Severity:** LOW
-- **Confidence:** MEDIUM
-- **File:** `src/components/exam/countdown-timer.tsx:80`
-- **Problem:** `res.json()` is called after checking `res.ok` but without a `.catch()`. If the server returns a 200 with a non-JSON body, this would throw. However, the outer `.then` chain has a `.catch(() => {})`, so the error is silently swallowed and offset stays at 0. The risk is low but inconsistent with the established pattern documented in `apiFetch` JSDoc.
-- **Fix:** Add `.catch(() => null)` after `.json()` and check for null in the next `.then`.
+All 7 stale cycle-6 findings are silently fixed at HEAD `a18302b8`. **No re-injection needed.**
 
-### CR-5: `filter-form.tsx` — hidden input for `status` can become stale before form submission
-- **Severity:** LOW
-- **Confidence:** LOW
-- **File:** `src/app/(dashboard)/dashboard/groups/[id]/assignments/[assignmentId]/filter-form.tsx:78`
-- **Problem:** The hidden input `<input type="hidden" name="status" value={statusValue}>` is kept in sync with the Select component via `onValueChange`. However, the Select's `onValueChange` updates `statusValue` state, which React batches. If the form is submitted before the re-render completes, the hidden input might have the old value. This is unlikely in practice due to React's synchronous state updates, but it's a subtle coupling.
-- **Fix:** This is very low risk. Could use `form.requestSubmit()` instead of native submission, or use `useRef` for the value. Not urgent.
+## Cycle-5 carry-forward backlog re-validation at HEAD `a18302b8`
 
-### CR-6: Carried from cycle 5 AGG-5 — Multiple API routes use dual count + data queries
-- **Severity:** LOW
-- **Confidence:** HIGH
-- **Status:** NOT FIXED
-- **Files:** `src/app/api/v1/contests/[assignmentId]/anti-cheat/route.ts`, `src/app/api/v1/problems/route.ts`, `src/app/api/v1/users/route.ts`, `src/app/api/v1/submissions/route.ts`
+| ID | File+line | Status | Note |
+|---|---|---|---|
+| C5-SR-1 | `scripts/deploy-worker.sh:101-107` | DEFERRED | sed delimiter unchanged; trusted operator input |
+| C3-AGG-2 | `deploy-docker.sh:204-214` | DEFERRED | SSH cred-rotation footgun |
+| C3-AGG-3 | `deploy-docker.sh:165-178` | DEFERRED | ControlSocket cleanup ordering |
+| C3-AGG-5 | `deploy-docker.sh` whole + `deploy.sh:58-66` | DEFERRED | Helper duplication |
+| C3-AGG-6 | `deploy-docker.sh:151` | DEFERRED | Single-tenant assumption |
+| C2-AGG-5 | 4-6 polling components | DEFERRED | Visibility-aware polling |
+| C2-AGG-6 | `src/app/(public)/practice/page.tsx:417` | DEFERRED | Practice page perf |
+| C1-AGG-3 | client `console.error` sites | DEFERRED | **Population: 21 (down from 27)** — silently shrinking |
+| ARCH-CARRY-1 | raw API handlers | DEFERRED | **Population: 20 (down from 22+)** — silently shrinking; threshold no longer met but item still applicable |
+| ARCH-CARRY-2 | `src/lib/realtime/realtime-coordination.ts` | DEFERRED | SSE eviction O(n) |
+| AGG-2 | `src/lib/security/in-memory-rate-limit.ts` (lines 22, 24, 56, 75, 100, 149) | DEFERRED + **PATH UPDATED** | Was `src/lib/api-rate-limit.ts:56`. File migrated; `Date.now()` is now in the new in-memory rate-limit module. |
+| PERF-3 | `src/app/api/v1/contests/[assignmentId]/anti-cheat/route.ts:191-225` | DEFERRED + **PATH UPDATED** | Was `src/lib/anti-cheat/`. The actual gap-query is in the API route; `src/lib/anti-cheat/` only holds a 16-line tier mapping. |
+| D1, D2 | `src/lib/auth/config.ts` | DEFERRED | File is repo-policy-locked ("Preserve Production config.ts") |
+| DEFER-ENV-GATES | env-blocked vitest gates | DEFERRED | Provisioning constraint |
+| C2-AGG-7 | `src/components/contest/recruiting-invitations-panel.tsx` | **RESOLVED** | Already noted in cycle-5 close-out. `judgekit.dev` literal absent. |
 
-### CR-7: Carried from cycle 5 AGG-6 — 11 API routes still use manual `getApiUser` pattern
-- **Severity:** LOW
-- **Confidence:** HIGH
-- **Status:** NOT FIXED
+## NEW findings this cycle
+
+**0 HIGH, 0 MEDIUM, 0 LOW NEW.** Empty change surface; no new code-review-class issues.
+
+## Recommendation
+
+Per orchestrator's PROMPT-2 directive ("pick 2-3 LOW deferred items, ideally 3"), three best draw-down candidates by **risk/effort ratio**:
+
+1. **C5-SR-1** — switch sed delimiter in `scripts/deploy-worker.sh:101-107`. Tiny, deterministic, no behavior change for current input.
+2. **C3-AGG-3** — add explicit ControlSocket cleanup ordering before SSH `exit` in `deploy-docker.sh:165-178`. Small additive change.
+3. **C3-AGG-2** — add per-target credential validation/clarification before SSH connect in `deploy-docker.sh:204-214`. Adds a sanity check; no behavior change for valid configs.
+
+Confidence: H for stale-finding audit, H for backlog re-validation, M for the 3-pick ordering.

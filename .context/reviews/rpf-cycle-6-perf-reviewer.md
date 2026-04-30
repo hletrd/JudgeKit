@@ -1,32 +1,60 @@
-# Performance Reviewer — RPF Cycle 6
+# RPF Cycle 6 — perf-reviewer (orchestrator-driven, 2026-04-29)
 
-## Scope
-Performance-focused review with attention to recently changed files and carry-forward items.
+**Date:** 2026-04-29
+**HEAD reviewed:** `a18302b8`
+**Diff vs cycle-5 base:** 0 lines.
 
-## Findings
+## Methodology
 
-### PERF-1: `anti-cheat-dashboard.tsx` — `useVisibilityPolling` resets to page 1 on every poll
-- **Severity:** MEDIUM
-- **Confidence:** HIGH
-- **File:** `src/components/contest/anti-cheat-dashboard.tsx:118-136`
-- **Problem:** `fetchEvents` always requests `offset=0&limit=${PAGE_SIZE}` and replaces the entire events list via `setEvents(json.data.events)`. If the user has loaded more events (via `loadMore`), polling resets to only the first page, losing the expanded view. Additionally, the `offset` state is reset to `json.data.events.length` on every poll, meaning the `loadMore` offset jumps backward.
-- **Failure scenario:** Instructor loads 200 events (2 pages), then polling fires and resets to showing only 100. The `loadMore` button then loads the second page again, duplicating events already loaded.
-- **Fix:** On poll, merge new events into the existing list rather than replacing. Or, preserve `offset` when polling and only update if the total changes.
+Inventoried perf-relevant hot paths, re-validated paths cited in carry-forward backlog (since refactors may have drifted them), and audited the stale prior cycle-6 PERF findings.
 
-### PERF-2: `score-timeline-chart.tsx` — SVG recalculation on every render for unchanged data
-- **Severity:** LOW
-- **Confidence:** LOW
-- **File:** `src/components/contest/score-timeline-chart.tsx:47-58`
-- **Problem:** The `polyline` string and point coordinates are recomputed on every render. While lightweight for small datasets, this could benefit from `useMemo`. However, the component already re-renders only when `selectedUserId` changes, so the practical impact is minimal.
-- **Fix:** Wrap polyline computation in `useMemo` keyed on `selected.points` and constants. Low priority.
+## Stale prior cycle-6 PERF findings audit
 
-### PERF-3: `active-timed-assignment-sidebar-panel.tsx` — `setInterval` timer does not stop when component unmounts during active assignment
-- **Severity:** LOW
-- **Confidence:** HIGH
-- **File:** `src/components/layout/active-timed-assignment-sidebar-panel.tsx:62-89`
-- **Problem:** The `useEffect` dependency is `[assignments]`, but when the timer's `clearInterval` is called inside the interval callback (when all assignments expire), it does not clear the React-side reference. If `assignments` prop changes after the self-clear, the effect cleanup would try to clear an already-cleared interval. This is harmless (clearing a cleared interval is a no-op), but the pattern is slightly fragile.
-- **Fix:** Use a ref for the interval ID to enable the cleanup to check before clearing. Very low priority.
+- **AGG-2 (anti-cheat polling discards loaded events)** — RESOLVED. The fix preserves `prev.slice(PAGE_SIZE)` and uses functional setOffset to avoid resetting when user has loaded more. Verified at `src/components/contest/anti-cheat-dashboard.tsx:118-160`.
+- **PERF-2 (score-timeline-chart SVG could useMemo)** — Not reproduced as actionable; SVG render cost is tiny.
+- **PERF-3 (active-timed-assignment-sidebar-panel interval clearing)** — Documented as "harmless no-op" in stale aggregate; not actionable.
 
-### PERF-4: Carried from cycle 5 AGG-5 — Dual count + data queries in API routes
-- **Status:** NOT FIXED
-- **Severity:** LOW
+## Carry-forward perf items — status at HEAD
+
+### AGG-2 — `Date.now()` in rate-limit hot path (MEDIUM, DEFERRED, PATH UPDATED)
+
+- **Original cited path:** `src/lib/api-rate-limit.ts:56` — **does not exist at HEAD.**
+- **Current path:** `src/lib/security/in-memory-rate-limit.ts:22, 24, 56, 75, 100, 149`. The module migrated from `src/lib/` to `src/lib/security/`.
+- **Severity:** MEDIUM unchanged. `Date.now()` is invoked at least once per `getRateLimitStatus()` call, which fires per inbound API request. Sub-microsecond per call is benign at current QPS.
+- **Action this cycle:** correct the carry-forward path. Implementation deferred to a dedicated rate-limit-time perf cycle.
+
+### PERF-3 — anti-cheat heartbeat gap query (MEDIUM, DEFERRED, PATH UPDATED)
+
+- **Cited path:** `src/lib/anti-cheat/`. **Note:** that directory contains only `review-model.ts` (16 lines, pure event-tier mapping). The gap query is in `src/app/api/v1/contests/[assignmentId]/anti-cheat/route.ts` lines ~182-225.
+- **Hot-path detail (validated at HEAD):** route fetches up to 5000 most-recent heartbeats DESC (limit explicitly documented at lines 195-198 to prevent OOM), reverses to chronological order, walks pairs to detect gaps >120s. Worst case O(5000) iteration = ~50µs CPU; bounded.
+- **Concrete cost driver:** the per-request DB filter scan on `(assignmentId, userId, eventType='heartbeat')`, ordered DESC by `createdAt`. Index health is the lever.
+- **Severity:** MEDIUM unchanged.
+- **Action this cycle:** correct the carry-forward path. Implementation deferred to a dedicated anti-cheat perf cycle.
+
+### C2-AGG-5 — polling without visibility awareness (LOW, DEFERRED)
+
+- 4-6 polling components still fire on hidden tabs. Component `src/components/contest/anti-cheat-dashboard.tsx:157` already uses a `useVisibilityPolling` hook (per stale review), suggesting that hook exists and could be retrofitted to other sites.
+- Exit criterion: telemetry signal OR 7th instance.
+- Status: DEFERRED.
+
+### C2-AGG-6 — practice page filter perf (LOW, DEFERRED)
+
+- `src/app/(public)/practice/page.tsx:417` — array-iteration filter on every keystroke.
+- Exit criterion: p99 > 1.5s OR > 5k matching problems.
+- Status: DEFERRED.
+
+### ARCH-CARRY-2 — SSE eviction O(n) (LOW, DEFERRED)
+
+- `src/lib/realtime/realtime-coordination.ts` line 10 declares `UNSUPPORTED_BACKENDS = new Set(["redis"])`. Eviction loop runs O(n) over connection map.
+- Exit criterion: SSE perf cycle OR > 500 concurrent connections.
+- Status: DEFERRED.
+
+## NEW findings this cycle
+
+**0 HIGH, 0 MEDIUM, 0 LOW NEW.** Empty change surface; no new perf risks introduced.
+
+## Recommendation
+
+Pick **C5-SR-1** + **C3-AGG-3** for cycle-6 LOW draw-down (perf-neutral, deploy-script-side). Avoid AGG-2 and PERF-3 without dedicated perf cycle and benchmarks.
+
+Confidence: H.
