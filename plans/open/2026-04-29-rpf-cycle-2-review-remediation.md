@@ -43,6 +43,21 @@
 - **Repo policy check:** Per the deferred-fix rules in PROMPT 2 ("Security, correctness, and data-loss findings are NOT deferrable unless the repo's own rules explicitly allow it"). This is NOT security/correctness/data-loss for the application surface — it's a deploy-script-only operational fragility. Severity preserved at LOW; deferral was permitted at the start of this cycle. The escalation now is per the cycle's own exit criterion, not a severity downgrade.
 - [x] Deferred this cycle (entry-state). Exit criterion MET this cycle (deploy attempts #1 and #2 both failed at sshpass-handled steps). Roll forward to cycle 3 as IN-PROGRESS.
 
+#### Cycle-3 closure note (2026-04-29)
+
+**Status reclassification:** The "roll forward to cycle 3 as IN-PROGRESS" wording above is stale. The implementation actually landed within cycle 2 itself, in two commits authored AFTER this plan was written but BEFORE cycle 2 closed:
+
+1. `21125372` — fix(deploy): 🔌 multiplex SSH connections to avoid sshpass auth flakes. Adds SSH ControlMaster + ControlPersist=60 + ServerAliveInterval=30 + ServerAliveCountMax=3 + ConnectTimeout=15. Adds `_initial_ssh_check` retry loop (4 attempts, exponential backoff 2-16s). Adds `_cleanup_ssh_master` and `EXIT` trap.
+2. `66146861` — fix(deploy): 🐛 use /tmp directly for SSH ControlPath socket dir. Reason: macOS `$TMPDIR` is `/var/folders/.../T/` which combined with the 40-char `%C` hash exceeds the 104-byte UNIX socket path limit. Hardcoding `/tmp/judgekit-ssh.XXXXXX` gives a 68-byte path well under the limit.
+
+**Verification:** Cycle-3 deploy log shows 0 "Permission denied" lines (per orchestrator history). Cycle-3 verifier reviewer (`.context/reviews/rpf-cycle-3-verifier.md`) confirms each commit-message claim against current HEAD `66146861`.
+
+**Splitting:** The original C2-AGG-2 finding is reclassified as two sub-findings:
+- **C2-AGG-2A** (sshpass deploy-blocker — Permission denied at nginx step): **DONE** in cycle-2 commits `21125372` + `66146861`. No further action.
+- **C2-AGG-2B** (SSH/sudo password decoupling — `remote_sudo` assumes SSH password = sudo password): **DEFERRED** as `C3-AGG-2` in `plans/open/2026-04-29-rpf-cycle-3-review-remediation.md` Task B. Exit criterion: SSH password rotation without sudo password rotation on any deploy target, OR a docker host with separate SSH/sudo credentials is added.
+
+This closure note resolves cycle-3 finding **C3-AGG-1** (process / docs hygiene — cycle-2 plan stale status).
+
 ### Task C: [LOW — DEFERRED] Drizzle destructive-schema-change policy not codified in repo rules
 
 - **Source:** C2-AGG-3 (critic C2-CT-2).
