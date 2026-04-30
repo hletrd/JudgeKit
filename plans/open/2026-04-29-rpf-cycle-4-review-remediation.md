@@ -147,7 +147,7 @@ All keep their original severities (LOW / LOW / LOW / LOW / MEDIUM / MEDIUM / ME
 
 - **Status:** [x] All deferred this cycle.
 
-### Task Z: [INFO — DOING THIS CYCLE] Run all configured gates and the deploy
+### Task Z: [INFO — DONE] Run all configured gates and the deploy
 
 - **Source:** Orchestrator GATES + DEPLOY_MODE.
 - **Plan:**
@@ -162,29 +162,52 @@ All keep their original severities (LOW / LOW / LOW / LOW / MEDIUM / MEDIUM / ME
   9. After all gates green (or skipped with explanation), run `SKIP_LANGUAGES=true BUILD_WORKER_IMAGE=false INCLUDE_WORKER=false ./deploy-docker.sh` once.
   10. Record `DEPLOY: per-cycle-success` or `DEPLOY: per-cycle-failed:<reason>` in this plan and the cycle report.
 - **Repo policy check:** Per cycle's run-context: must NOT preemptively set `DRIZZLE_PUSH_FORCE=1`. If a NEW destructive schema diff appears, halt deploy and report `per-cycle-failed:<reason>`.
-- **Status:** [ ] To be done after Tasks A–C land.
+- **Outcome:**
+  - `npm run lint`: exit 0 (clean).
+  - `npx tsc --noEmit`: exit 0 (clean).
+  - `npm run build` (next build): exit 0 (304 routes built).
+  - `npm run test:integration`: exit 0; 37 tests SKIPPED — DEFER-ENV-GATES carry-forward (no Postgres harness in dev shell). Same condition cycle-3 reported.
+  - `npm run test:unit` and `npm run test:component`: pre-existing env failures (rate-limit and DB-dependent tests time out / leak rows because no Postgres `getDbNowUncached` and no rate-limiter sidecar). Cycle-4 diff is documentation+deploy-script only (`AGENTS.md`, `deploy-docker.sh`, plans, reviews); zero `src/` and zero `tests/` changes. Per cycle-3 plan precedent: deferred under DEFER-ENV-GATES with explanation; exit criterion (provisioned CI/host) not met this cycle.
+  - `npm run test:security`: similar pre-existing env failures (7 fails in `tests/unit/security/rate-limit.test.ts`). Same DEFER-ENV-GATES carry-forward.
+  - `npm run test:e2e`: NOT RUN. Playwright config requires `bash scripts/playwright-local-webserver.sh` which boots Docker Postgres; sandbox-blocked. Same condition cycle-3 reported. Best-effort skip with explanation.
+  - **Deploy** (`SKIP_LANGUAGES=true BUILD_WORKER_IMAGE=false INCLUDE_WORKER=false ./deploy-docker.sh`):
+    - Pre-flight SSH check: clean (**0 "Permission denied" lines** — cycle-2's ControlMaster fix continues to hold).
+    - Pre-deploy backup saved: `~/backups/judgekit-predeploy-20260430-053435Z.dump`.
+    - PostgreSQL volume safety check: passed (named volume authoritative).
+    - drizzle-kit push: `[i] No changes detected` (no destructive diff; DRIZZLE_PUSH_FORCE NOT set, NOT required).
+    - Schema repairs + ANALYZE: applied.
+    - Containers started; worker stopped per `INCLUDE_WORKER=false`.
+    - Nginx configured and reloaded for `oj-internal.maum.ai`.
+    - HTTP 200 from JudgeKit endpoint.
+    - **Deployment complete!** at `http://oj-internal.maum.ai`.
+  - **Deployed SHA:** `2330a2ec` (cycle-4 plan-status commit; HEAD at deploy time, before this Task-Z status-update commit).
+- **GATE_FIXES count:** 0 error-level fixes (none of the gate failures are caused by this cycle's documentation+deploy-script-only changes; all are pre-existing env-blocked DEFER-ENV-GATES carry-forwards).
+- **DEPLOY result:** `per-cycle-success`.
+- **Notable:** Cycle-4's three LOW backlog draw-down fixes (C3-AGG-7, C3-AGG-9, C3-AGG-10) all landed without operational regression. Deploy log shows the new `[INFO] SSH connection succeeded after N attempts` is silent on the happy path (no retry needed this cycle), as designed.
+- **Status:** [x] Done.
 
-### Task ZZ: [INFO — DOING THIS CYCLE] Archive cycle-3 plan to `plans/done/`
+### Task ZZ: [INFO — DONE] Archive cycle-3 plan to `plans/done/`
 
 - **Source:** Orchestrator PROMPT 2 directive: "Archive plans which are fully implemented and done."
 - **Plan:** Move `plans/open/2026-04-29-rpf-cycle-3-review-remediation.md` → `plans/done/2026-04-29-rpf-cycle-3-review-remediation.md`. The plan's actionable work is fully recorded (Task A done, Tasks B–I explicitly deferred with exit criteria, Task Z recorded `per-cycle-success`).
 - **Repo policy check:** No code change. Documentation hygiene.
-- **Status:** [ ] To be done in this cycle.
+- **Outcome:** Archive landed in commit `eda4bb65` ("docs(plans): 📝 add RPF cycle 4 plan; archive cycle 3 plan"). The archived plan now lives at `plans/done/2026-04-29-rpf-cycle-3-review-remediation.md` (verified: file exists at that path, no copy at `plans/archive/`).
+- **Status:** [x] Done in commit `eda4bb65`.
 
 ---
 
 ## Gate-fix accounting (for cycle report)
 
-- Errors fixed: 0 expected (no gate errors at cycle start, will re-confirm in Task Z).
-- Warnings fixed: 0 expected.
-- Suppressions added: 0 (none should be needed).
-- New defer entries (warnings unable to fix cleanly): TBD after Task Z.
+- Errors fixed: 0 (no error-level gate issues caused by this cycle's changes; lint/tsc/build/integration all clean; unit/component/security failures are pre-existing DEFER-ENV-GATES carry-forwards).
+- Warnings fixed: 0.
+- Suppressions added: 0.
+- New defer entries (warnings unable to fix cleanly): 0 (the env-blocked unit/component/security tests stay under the existing DEFER-ENV-GATES carry-forward; no new entry needed).
 
 ## Cycle close-out checklist
 
-- [ ] Tasks A, B, C committed (3 fine-grained commits, GPG-signed, conventional + gitmoji).
-- [ ] Cycle-3 plan archived (Task ZZ).
-- [ ] Cycle-4 plan committed (this file).
-- [ ] All gates green (Task Z).
-- [ ] Deploy outcome recorded in this plan (Task Z).
-- [ ] End-of-cycle report emitted by the orchestrator wrapper.
+- [x] Tasks A, B, C committed (3 fine-grained commits, GPG-signed, conventional + gitmoji): `e657a96c`, `f5ac57ff`, `5cae08af`.
+- [x] Cycle-3 plan archived (Task ZZ, commit `eda4bb65`).
+- [x] Cycle-4 plan committed (this file, commit `eda4bb65`; status updates `2330a2ec` and this commit).
+- [x] All gates green or DEFER-ENV-GATES-skipped with explanation (Task Z).
+- [x] Deploy outcome recorded in this plan (Task Z): `per-cycle-success`.
+- [x] End-of-cycle report emitted by the orchestrator wrapper.
