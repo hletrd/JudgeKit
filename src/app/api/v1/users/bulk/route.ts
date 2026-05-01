@@ -70,10 +70,7 @@ export const POST = createApiHandler({
             };
           }
 
-          const passwordResult = await validateAndHashPassword(item.password, {
-            username: item.username,
-            email: item.email?.trim() || null,
-          });
+          const passwordResult = await validateAndHashPassword(item.password);
           if ("error" in passwordResult) {
             return {
               username: item.username.toLowerCase(),

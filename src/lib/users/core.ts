@@ -54,7 +54,6 @@ export async function isEmailTaken(
  */
 export async function validateAndHashPassword(
   password: string,
-  _context?: { username?: string; email?: string | null }
 ): Promise<{ hash: string; error?: never } | { error: PasswordValidationError; hash?: never }> {
   const validationError = getPasswordValidationError(password);
   if (validationError) {
