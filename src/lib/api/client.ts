@@ -81,6 +81,10 @@ export function apiFetch(
     headers.set("X-Requested-With", "XMLHttpRequest");
   }
 
+  if (!headers.has("Accept")) {
+    headers.set("Accept", "application/json");
+  }
+
   return fetch(input, { ...init, headers });
 }
 
