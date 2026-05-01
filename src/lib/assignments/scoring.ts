@@ -57,6 +57,30 @@ export function isSubmissionLate(submittedAt: Date | null, deadline: Date | null
 }
 
 /**
+ * Validate that a string is a safe SQL column reference or simple expression.
+ * Allows identifiers (alphanumeric, underscores, dots), SQL function calls
+ * (parentheses, commas, spaces), and numeric literals — the patterns used by
+ * current callers like `COALESCE(ap.points, 100)` and `s.score`.
+ * Blocks dangerous characters that could enable SQL injection.
+ * @security Column names are interpolated directly into SQL. This validation
+ *   ensures only safe SQL expression patterns are accepted. Callers MUST NOT
+ *   pass user-influenced input — only hardcoded string literals or Drizzle
+ *   column reference names.
+ */
+const SQL_COLUMN_NAME_RE = /^[a-zA-Z0-9_.,() ]+$/;
+const SQL_COLUMN_DANGEROUS_RE = /;|--|\/\*|\*\/|'|"|\\|\b(DELETE|DROP|INSERT|UPDATE|ALTER|CREATE|EXEC|EXECUTE)\b/i;
+function validateSqlColumnName(name: string, paramName: string): string {
+  if (!SQL_COLUMN_NAME_RE.test(name) || SQL_COLUMN_DANGEROUS_RE.test(name)) {
+    throw new Error(
+      `Invalid SQL column expression for ${paramName}: "${name}". ` +
+      "Only safe SQL identifier/expression patterns are allowed. " +
+      "Never pass user-influenced input as a column name."
+    );
+  }
+  return name;
+}
+
+/**
  * SQL fragment for the IOI late-penalty CASE expression.
  *
  * This is the single source of truth for the late-penalty scoring logic used
@@ -72,6 +96,11 @@ export function isSubmissionLate(submittedAt: Date | null, deadline: Date | null
  * - `score` and `points` (or an alias like `COALESCE(ap.points, 100)`) are
  *   available as column references.
  *
+ * @security Column name parameters are interpolated directly into SQL.
+ *   They are validated against a safe identifier pattern, but callers MUST
+ *   only pass trusted column names (hardcoded literals or Drizzle references)
+ *   and NEVER user-influenced input.
+ *
  * @param scoreCol  SQL column reference for the raw submission score (e.g. `score` or `s.score`).
  * @param pointsCol SQL column reference for the max points (e.g. `points` or `COALESCE(ap.points, 100)`).
  */
@@ -81,19 +110,24 @@ export function buildIoiLatePenaltyCaseExpr(
   submittedAtCol: string = "submitted_at",
   personalDeadlineCol: string = "personal_deadline",
 ): string {
+  // Validate column names before SQL interpolation to prevent injection.
+  const safeScoreCol = validateSqlColumnName(scoreCol, "scoreCol");
+  const safePointsCol = validateSqlColumnName(pointsCol, "pointsCol");
+  const safeSubmittedAtCol = validateSqlColumnName(submittedAtCol, "submittedAtCol");
+  const safePersonalDeadlineCol = validateSqlColumnName(personalDeadlineCol, "personalDeadlineCol");
   return `CASE
-    WHEN ${scoreCol} IS NOT NULL THEN
+    WHEN ${safeScoreCol} IS NOT NULL THEN
       CASE
         -- Non-windowed: late penalty against the global deadline
         WHEN @deadline::bigint IS NOT NULL AND @latePenalty::double precision > 0 AND @examMode::text != 'windowed'
-             AND ${submittedAtCol} IS NOT NULL AND EXTRACT(EPOCH FROM ${submittedAtCol})::bigint > @deadline::bigint
-        THEN ROUND(((LEAST(GREATEST(${scoreCol}, 0), 100) / 100.0 * ${pointsCol}) * (1.0 - @latePenalty::double precision / 100.0))::numeric, 2)
+             AND ${safeSubmittedAtCol} IS NOT NULL AND EXTRACT(EPOCH FROM ${safeSubmittedAtCol})::bigint > @deadline::bigint
+        THEN ROUND(((LEAST(GREATEST(${safeScoreCol}, 0), 100) / 100.0 * ${safePointsCol}) * (1.0 - @latePenalty::double precision / 100.0))::numeric, 2)
         -- Windowed: late penalty against the per-user personal_deadline
         WHEN @examMode::text = 'windowed' AND @latePenalty::double precision > 0
-             AND ${personalDeadlineCol} IS NOT NULL
-             AND ${submittedAtCol} IS NOT NULL AND ${submittedAtCol} > ${personalDeadlineCol}
-        THEN ROUND(((LEAST(GREATEST(${scoreCol}, 0), 100) / 100.0 * ${pointsCol}) * (1.0 - @latePenalty::double precision / 100.0))::numeric, 2)
-        ELSE ROUND((LEAST(GREATEST(${scoreCol}, 0), 100) / 100.0 * ${pointsCol})::numeric, 2)
+             AND ${safePersonalDeadlineCol} IS NOT NULL
+             AND ${safeSubmittedAtCol} IS NOT NULL AND ${safeSubmittedAtCol} > ${safePersonalDeadlineCol}
+        THEN ROUND(((LEAST(GREATEST(${safeScoreCol}, 0), 100) / 100.0 * ${safePointsCol}) * (1.0 - @latePenalty::double precision / 100.0))::numeric, 2)
+        ELSE ROUND((LEAST(GREATEST(${safeScoreCol}, 0), 100) / 100.0 * ${safePointsCol})::numeric, 2)
       END
     ELSE NULL
   END`;
