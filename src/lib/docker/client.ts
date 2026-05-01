@@ -152,7 +152,14 @@ async function buildDockerImageLocal(
   if (!isValidImageReference(imageName)) {
     return { success: false, error: "Invalid image name" };
   }
-  if (/\.\.|[/\\]/.test(dockerfilePath.replace(/^docker\/Dockerfile\./, ""))) {
+  // Validate that the dockerfilePath starts with the expected prefix before
+  // stripping it for traversal checks. Without anchoring, a path like
+  // "xdocker/Dockerfile.test" would pass validation with "xtest" remaining
+  // (harmless — Docker would fail — but defense-in-depth).
+  if (!dockerfilePath.startsWith("docker/Dockerfile.")) {
+    return { success: false, error: "Invalid dockerfile path" };
+  }
+  if (/\.\.|[/\\]/.test(dockerfilePath.slice("docker/Dockerfile.".length))) {
     return { success: false, error: "Invalid dockerfile path" };
   }
 
@@ -334,7 +341,10 @@ export async function buildDockerImage(
   if (!isValidImageReference(imageName)) {
     return { success: false, error: "Invalid image name" };
   }
-  if (/\.\.|[/\\]/.test(dockerfilePath.replace(/^docker\/Dockerfile\./, ""))) {
+  if (!dockerfilePath.startsWith("docker/Dockerfile.")) {
+    return { success: false, error: "Invalid dockerfile path" };
+  }
+  if (/\.\.|[/\\]/.test(dockerfilePath.slice("docker/Dockerfile.".length))) {
     return { success: false, error: "Invalid dockerfile path" };
   }
 
