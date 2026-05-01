@@ -2,7 +2,7 @@
  * AES-256-GCM symmetric encryption for sensitive column values.
  *
  * Ciphertext invariant: every encrypted value produced by `encrypt()` starts
- * with the literal `enc:` prefix followed by base64(IV || authTag || ciphertext).
+ * with the literal `enc:` prefix followed by hex(IV || authTag || ciphertext).
  * Anything missing the `enc:` prefix is treated as legacy plaintext.
  *
  * Plaintext-fallback risk profile (C7-AGG-7, deferred):
