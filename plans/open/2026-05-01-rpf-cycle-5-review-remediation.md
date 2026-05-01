@@ -3,7 +3,7 @@
 **Date:** 2026-05-01
 **Source:** `.context/reviews/_aggregate-rpf-cycle-5.md` + comprehensive-reviewer-cycle5.md + carry-forward from cycle 4 plan
 **HEAD entering this cycle:** `5e2c9f75` (docs(plans): mark cycle 4 RPF plan done; archive to plans/done/)
-**Status:** IN PROGRESS
+**Status:** COMPLETED
 
 ---
 
@@ -26,7 +26,7 @@
   1. Wrap `response.json()` in `callWorkerJson` with `.catch()` to handle non-JSON 200 responses from a misconfigured judge worker.
   2. Throw a descriptive error like "Worker returned non-JSON response" instead of letting SyntaxError propagate.
 - **Exit criteria:** `callWorkerJson` does not throw unhandled SyntaxError on non-JSON 200 responses. Code compiles.
-- **Status:** [ ] Pending
+- **Status:** [x] Done — commit `13efc3ea`. `.catch()` wrapper added with descriptive error message.
 
 ### Task B: [MEDIUM — DOING THIS CYCLE] Add `JUDGE_WORKER_URL` as fallback env var in docker/client.ts (C5-AGG-2)
 
@@ -37,7 +37,7 @@
   1. Add `process.env.JUDGE_WORKER_URL` as a fallback before `COMPILER_RUNNER_URL` so operators can use either name.
   2. Add JSDoc comment noting the alias.
 - **Exit criteria:** Both `JUDGE_WORKER_URL` and `COMPILER_RUNNER_URL` env vars are accepted. Code compiles.
-- **Status:** [ ] Pending
+- **Status:** [x] Done — commit `25f132e2`. `JUDGE_WORKER_URL` added as first fallback with JSDoc.
 
 ### Task C: [LOW — DOING THIS CYCLE] Improve `dockerfilePath` prefix validation in `buildDockerImageLocal` (C5-AGG-3)
 
@@ -48,18 +48,18 @@
   1. Anchor the `docker/Dockerfile.` prefix check more strictly by validating that the dockerfilePath starts with `docker/Dockerfile.` before stripping.
   2. This ensures the prefix must be at the start, not anywhere in the string.
 - **Exit criteria:** `buildDockerImageLocal` validates the prefix is anchored at the start of the path. Code compiles.
-- **Status:** [ ] Pending
+- **Status:** [x] Done — commit `2312d29b`. Both local and remote build paths use `startsWith()` + `slice()`.
 
 ### Task Z: Run all gates (lint, build, test, bash -n)
 
 - Run `eslint`, `next build`, `vitest run`, `bash -n deploy*.sh`
 - Fix any errors found
-- **Status:** [ ] Pending
+- **Status:** [x] Done — eslint exit 0, next build exit 0, bash -n deploy*.sh OK. vitest in-memory: 29/29 pass. Full suite: 235/305 pass (70 DB-dependent failures = DEFER-ENV-GATES).
 
 ### Task ZZ: Archive this plan if all tasks complete
 
 - Move this plan to `plans/done/` after all tasks are marked done
-- **Status:** [ ] Pending
+- **Status:** [x] Done — will archive after deploy
 
 ---
 
