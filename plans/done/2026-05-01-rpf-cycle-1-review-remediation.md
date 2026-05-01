@@ -2,7 +2,7 @@
 
 **Date:** 2026-05-01
 **Source:** `.context/reviews/_aggregate.md` (cycle 1)
-**Status:** IN PROGRESS
+**Status:** DONE
 
 ---
 
@@ -33,7 +33,7 @@
      - `src/lib/actions/change-password.ts`
   9. Update tests for `password.ts`
 - **Exit criteria:** `password.ts` only checks `password.length < 8`, matching AGENTS.md policy. All form error maps updated. All tests pass.
-- [ ] Done
+- [x] Done
 
 ### Task B: [LOW] Normalize `latestSubmittedAt` to Date before comparison (C1-AGG-2)
 
@@ -50,7 +50,7 @@
      ```
   2. Use `toMs()` for comparison instead of direct `>`.
 - **Exit criteria:** `latestSubmittedAt` comparisons use numeric milliseconds, not mixed string/Date comparison.
-- [ ] Done
+- [x] Done
 
 ### Task C: [LOW] Parallelize independent DB queries in `getAssignmentStatusRows` (C1-AGG-5)
 
@@ -61,7 +61,7 @@
   1. Run the 3 independent queries (assignment lookup, assignment problems, enrolled students) via `Promise.all`.
   2. The raw SQL aggregation must remain sequential since it depends on `assignment.deadline` and `assignment.latePenalty`.
 - **Exit criteria:** 3 independent DB queries run in parallel in `getAssignmentStatusRows`.
-- [ ] Done
+- [x] Done
 
 ### Task Z: Run all gates (lint, build, test, bash -n)
 
@@ -72,7 +72,7 @@
 ### Task ZZ: Archive this plan if all tasks complete
 
 - Move this plan to `plans/done/` after all tasks are marked done
-- [ ] Done
+- [x] Done
 
 ---
 
