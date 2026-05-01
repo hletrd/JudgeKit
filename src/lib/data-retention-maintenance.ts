@@ -124,4 +124,9 @@ export function stopSensitiveDataPruning() {
     clearInterval(pruneTimer);
     pruneTimer = null;
   }
+  // Also clear the global reference so external callers (e.g., monitoring
+  // endpoints) can tell that pruning is stopped. Without this, the global
+  // would retain a stale timer ID after clearInterval, producing a false
+  // "active" signal.
+  globalThis.__sensitiveDataPruneTimer = undefined;
 }
