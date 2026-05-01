@@ -507,29 +507,30 @@ export async function getAssignmentStatusRows(
     return null;
   }
 
-  const assignmentProblemRows = await db
-    .select({
-      problemId: assignmentProblems.problemId,
-      title: problems.title,
-      points: assignmentProblems.points,
-      sortOrder: assignmentProblems.sortOrder,
-    })
-    .from(assignmentProblems)
-    .innerJoin(problems, eq(problems.id, assignmentProblems.problemId))
-    .where(eq(assignmentProblems.assignmentId, assignmentId))
-    .orderBy(asc(assignmentProblems.sortOrder), asc(problems.title));
-
-  const enrolledStudents = await db
-    .select({
-      userId: users.id,
-      username: users.username,
-      name: users.name,
-      className: users.className,
-    })
-    .from(enrollments)
-    .innerJoin(users, eq(users.id, enrollments.userId))
-    .where(eq(enrollments.groupId, assignment.groupId))
-    .orderBy(asc(users.name), asc(users.username));
+  const [assignmentProblemRows, enrolledStudents] = await Promise.all([
+    db
+      .select({
+        problemId: assignmentProblems.problemId,
+        title: problems.title,
+        points: assignmentProblems.points,
+        sortOrder: assignmentProblems.sortOrder,
+      })
+      .from(assignmentProblems)
+      .innerJoin(problems, eq(problems.id, assignmentProblems.problemId))
+      .where(eq(assignmentProblems.assignmentId, assignmentId))
+      .orderBy(asc(assignmentProblems.sortOrder), asc(problems.title)),
+    db
+      .select({
+        userId: users.id,
+        username: users.username,
+        name: users.name,
+        className: users.className,
+      })
+      .from(enrollments)
+      .innerJoin(users, eq(users.id, enrollments.userId))
+      .where(eq(enrollments.groupId, assignment.groupId))
+      .orderBy(asc(users.name), asc(users.username)),
+  ]);
 
   const problemDefinitions = assignmentProblemRows.map((row) => ({
     problemId: row.problemId,
@@ -621,9 +622,11 @@ export async function getAssignmentStatusRows(
       });
     } else {
       existing.totalAttempts += row.attemptCount;
+      const rowDate = row.latestSubmittedAt != null ? new Date(row.latestSubmittedAt) : null;
+      const existDate = existing.latestSubmittedAt != null ? new Date(existing.latestSubmittedAt) : null;
       if (
-        row.latestSubmittedAt != null &&
-        (existing.latestSubmittedAt == null || row.latestSubmittedAt > existing.latestSubmittedAt)
+        rowDate != null &&
+        (existDate == null || rowDate > existDate)
       ) {
         existing.latestSubId = row.latestSubId;
         existing.latestStatus = row.latestStatus;

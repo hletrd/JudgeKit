@@ -365,10 +365,7 @@ export async function redeemRecruitingToken(
         }
 
         if (passwordResetRequired) {
-          const passwordValidationError = getPasswordValidationError(accountPassword, {
-            username: existingUser.username,
-            email: existingUser.email ?? null,
-          });
+          const passwordValidationError = getPasswordValidationError(accountPassword);
           if (passwordValidationError) {
             return { ok: false as const, error: passwordValidationError };
           }
@@ -463,10 +460,7 @@ export async function redeemRecruitingToken(
       // Create user + enroll + access token + atomically claim invitation
       const uid = nanoid();
       const username = nanoid(10);
-      const passwordValidationError = getPasswordValidationError(accountPassword, {
-        username,
-        email: invitation.candidateEmail ?? null,
-      });
+      const passwordValidationError = getPasswordValidationError(accountPassword);
       if (passwordValidationError) {
         return { ok: false as const, error: passwordValidationError };
       }
