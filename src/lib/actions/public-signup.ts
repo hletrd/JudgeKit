@@ -24,9 +24,6 @@ export type PublicSignupResult = {
     | "usernameInUse"
     | "emailInUse"
     | "passwordTooShort"
-    | "passwordTooCommon"
-    | "passwordMatchesUsername"
-    | "passwordMatchesEmail"
     | "invalidEmail"
     | "nameRequired"
     | "passwordsDoNotMatch"
@@ -90,7 +87,7 @@ export async function registerPublicUser(input: PublicSignupInput): Promise<Publ
     }
   }
 
-  const passwordResult = await validateAndHashPassword(password, { username, email: email ?? null });
+  const passwordResult = await validateAndHashPassword(password);
   if (passwordResult.error) {
     return { success: false, error: passwordResult.error };
   }

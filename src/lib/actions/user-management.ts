@@ -38,11 +38,7 @@ type UserManagementErrorKey =
   | "roleAssignmentNotAllowed"
   | "cannotChangeSuperAdminRole"
   | "passwordTooShort"
-  | "passwordTooCommon"
-  | "passwordMatchesUsername"
-  | "passwordMatchesEmail"
   | "passwordTooLong"
-  | "passwordTooSimilar"
   | "updateUserFailed"
   | "createUserFailed"
   | "cannotDeleteSelf"
@@ -279,10 +275,7 @@ export async function editUser(userId: string, data: ManagedUserInput): Promise<
 
     let passwordHash: string | undefined;
     if (data.password) {
-      const passwordResult = await validateAndHashPassword(data.password, {
-        username: data.username,
-        email: normalizedEmail,
-      });
+      const passwordResult = await validateAndHashPassword(data.password);
       if (passwordResult.error) {
         return { success: false, error: passwordResult.error };
       }
@@ -399,10 +392,7 @@ export async function createUser(data: ManagedUserInput): Promise<UserManagement
     const id = nanoid();
     let passwordHash: string;
     if (data.password) {
-      const result = await validateAndHashPassword(data.password, {
-        username: data.username,
-        email: normalizedEmail,
-      });
+      const result = await validateAndHashPassword(data.password);
       if (result.error) return { success: false, error: result.error };
       passwordHash = result.hash!;
     } else {
