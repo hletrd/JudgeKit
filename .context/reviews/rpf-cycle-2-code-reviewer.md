@@ -1,61 +1,54 @@
-# RPF Cycle 2 (loop cycle 2/100) — Code Reviewer
+# RPF Cycle 2 (2026-05-01) — Code Reviewer
 
-**Date:** 2026-04-24
-**Base commit:** fab30962 (cycle 1 multi-agent review — no new findings)
-**HEAD commit:** fab30962
-**Reviewer:** code-reviewer
+**Date:** 2026-05-01
+**HEAD reviewed:** `70c02a02` (docs(plans): mark cycle 1 RPF plan done; archive to plans/done/)
 
-## Scope
+## Review scope
 
-Reviewed the full `src/**` tree with focus on:
-- `src/lib/compiler/execute.ts` — Docker container execution, shell command validation, sandboxing
-- `src/lib/docker/client.ts` — Docker API wrapper, image validation, error sanitization
-- `src/lib/plugins/chat-widget/chat-widget.tsx` — chat widget state management, streaming
-- `src/app/api/v1/submissions/[id]/events/route.ts` — SSE route, connection tracking, stale eviction
-- `src/lib/realtime/realtime-coordination.ts` — PostgreSQL advisory locks, SSE connection slot management
-- `src/lib/data-retention.ts` — data retention policy, legal hold
-- `src/lib/auth/permissions.ts` — access control, IDOR prevention
-- `src/lib/security/api-rate-limit.ts` — rate limiting, `Date.now()` vs DB time
-- `src/proxy.ts` — CSP, auth caching, locale resolution
-- `src/lib/security/encryption.ts` — AES-256-GCM, key management
-- `src/lib/db/import.ts` — database import engine, TABLE_MAP typing
-- `src/lib/assignments/leaderboard.ts` — leaderboard freeze, rank computation
-- `src/lib/auth/config.ts` — NextAuth configuration, JWT token management
-- All `Date.now()` usage patterns across `src/` (60+ call sites)
-- All `console.error/warn` in client components (25+ instances)
-- All `process.env` reads (80+ call sites)
-- All `tracking-*`/`letter-spacing` usage — Korean letter-spacing compliance
-- All `dangerouslySetInnerHTML` usage (2 instances, both sanitized)
+Full codebase scan of 567 source files (87,697 lines). Focus: cycle-1 change surface (24 files), carry-forward verification, cross-file correctness.
 
-## New Findings
+## Findings
 
-**No new production-code findings this cycle.** The diff from cycle 1 HEAD to current HEAD contains only review/documentation files. No production source code has changed.
+### C2-CR-1: [MEDIUM] encryption.ts JSDoc says "base64" but code uses "hex" encoding
 
-## Code Quality Observations (Re-verified)
+- **File:** `src/lib/security/encryption.ts:5-6`
+- **Description:** Module-level JSDoc says "followed by base64(IV || authTag || ciphertext)" but the actual implementation (line 78) uses `toString("hex")`. The `decrypt()` function (lines 127-129) uses `Buffer.from(..., "hex")`. The code is internally consistent and works correctly, but the module-level JSDoc is wrong. Anyone reading the docs and implementing decryption in another language or tool would use base64 decoding on hex-encoded data, producing silent data corruption.
+- **Confidence:** HIGH
+- **Fix:** Change "base64(IV || authTag || ciphertext)" to "hex(IV || authTag || ciphertext)" in the module-level JSDoc.
 
-1. **Shell command validation** (`execute.ts:159-233`) — Two-layer defense: `validateShellCommand` (denylist) + `validateShellCommandStrict` (allowlist of known compiler prefixes). Well-designed. The `sh -c` trust boundary is clearly documented. Lock-step with Rust validator.
-2. **Docker client error sanitization** — All three remote catch blocks now use generic messages with `logger.error` for the real details. Local paths were already sanitized in prior cycles. Correct.
-3. **SSE stale threshold NaN guard** — Now uses `Number.isFinite(sseTimeout)` with a `30_030_000` fallback. Correct.
-4. **SSE stale threshold cache** — 5-minute TTL on the cached threshold value. Reduces `getConfiguredSettings()` DB queries. Correct.
-5. **Chat widget streaming stabilization** — `isStreamingRef` prevents stale-closure race. `sendMessageRef` provides stable access. The `motion-safe:animate-bounce` for typing dots respects `prefers-reduced-motion`. Correct.
-6. **Korean letter-spacing compliance** — All `tracking-*` utilities are guarded with `locale !== "ko"` conditional checks, with explicit comments referencing CLAUDE.md. `globals.css` uses CSS custom properties with separate `:lang(ko)` rules. Correct.
+### C2-CR-2: [LOW] Dead `_context` parameter still passed from bulk users route
 
-## Verification of Prior Fixes (All Still Intact)
+- **File:** `src/lib/users/core.ts:57` (definition), `src/app/api/v1/users/bulk/route.ts:73-76` (call site)
+- **Description:** `validateAndHashPassword` accepts `_context?: { username?: string; email?: string | null }` but it's prefixed `_` (unused). After cycle 1's removal of username/email/password checks, the parameter is dead code. However, `bulk/route.ts:73-76` still passes it:
+  ```ts
+  const passwordResult = await validateAndHashPassword(item.password, {
+    username: item.username,
+    email: item.email?.trim() || null,
+  });
+  ```
+  Other call sites (change-password.ts, public-signup.ts, users/route.ts) correctly omit it.
+- **Confidence:** HIGH
+- **Fix:** Remove `_context` parameter from `validateAndHashPassword` signature. Update bulk/route.ts call site.
 
-- Deterministic userId tie-breaker in leaderboard — intact
-- DB-time for judge claim — intact
-- `computeExpiryFromDays` — intact
-- SKIP_INSTRUMENTATION_SYNC — safe (strict-literal `"1"`)
-- Docker client remote error sanitization — intact
-- Compiler spawn error message sanitization — intact
-- SSE stale threshold NaN guard — intact
-- SSE stale threshold cache — intact
-- Chat widget `isStreamingRef` stabilization — intact
+### C2-CR-3: [LOW] Type assertion bypasses type safety in isNaN check
 
-## Carry-Over Deferred Items (Unchanged)
+- **File:** `src/lib/assignments/submissions.ts:664`
+- **Description:** `isNaN(bestScore as number)` uses a type assertion to bypass TypeScript. At this point `bestScore` is `number | null`. The `as number` cast hides the null possibility. While the NaN check would still work at runtime (isNaN(null) is false), the assertion is misleading.
+- **Confidence:** MEDIUM
+- **Fix:** Use explicit narrowing: `if (bestScore !== null && isNaN(bestScore)) bestScore = null;`
 
-All previously identified carry-over items remain unfixed and are still valid.
+### C2-CR-4: [LOW] Further parallelization opportunity in getAssignmentStatusRows
 
-## Confidence
+- **File:** `src/lib/assignments/submissions.ts:563-646`
+- **Description:** Cycle 1 parallelized the first 3 independent queries. The `overrideRows` query at line 639 is also independent of `problemAggRows` and could run in parallel with it.
+- **Confidence:** MEDIUM
+- **Fix:** Run `rawQueryAll` and the overrides query via `Promise.all`.
 
-HIGH — the codebase is in a mature, stable state. Six consecutive review cycles confirm no new production-code findings.
+## Carry-forward verification
+
+All carry-forward items from cycle 1 verified at HEAD `70c02a02`:
+- C1-AGG-1 (password validation): RESOLVED
+- C1-AGG-2 (latestSubmittedAt): RESOLVED
+- C1-AGG-3 (import.ts any types): still DEFERRED at `src/lib/db/import.ts:19`
+- C1-AGG-5 (query parallelization): RESOLVED
+- All other carry-forwards unchanged at HEAD

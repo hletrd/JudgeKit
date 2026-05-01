@@ -1,30 +1,31 @@
-# RPF Cycle 2 (loop cycle 2/100) — Critic
+# RPF Cycle 2 (2026-05-01) — Critic
 
-**Date:** 2026-04-24
-**HEAD:** fab30962
-**Reviewer:** critic
+**Date:** 2026-05-01
+**HEAD reviewed:** `70c02a02`
 
-## Multi-Perspective Critique
+## Findings
 
-### Correctness
-Strong correctness. All DB-time comparisons use getDbNowUncached() for transaction-scoped operations. Client-side Date.now() is used appropriately for UI-only timing. The beforeExit shutdown hook is correct.
+### C2-CT-1: [MEDIUM] encryption.ts doc-code mismatch is a real risk
 
-### Security
-CSRF, XSS, injection, and auth patterns are solid. Docker sandbox is the primary security boundary for code execution. Encryption module correctly throws in production if key is missing.
+- **Source:** Concur with C2-CR-1, C2-SR-1
+- **File:** `src/lib/security/encryption.ts:5-6`
+- **Description:** The module-level JSDoc says "base64" but the code uses "hex". While the code is internally consistent, this is a real risk: if someone writes a data migration tool, backup decryption utility, or monitoring sidecar based on the documentation, they would fail silently or produce corrupted data. The fix is trivial (one word change) and should be done this cycle.
+- **Confidence:** HIGH
 
-### Maintainability
-TABLE_MAP typing with Record<string, any> is the most notable gap — derived from TABLE_ORDER so it can't drift, but loses type safety. createApiHandler boilerplate duplication in manual routes is a moderate concern but not a bug.
+### C2-CT-2: [LOW] Dead _context parameter cleanup
 
-### Performance
-Two-tier rate limiting (sidecar + DB) is well-designed. SSE connection tracking with userConnectionCounts for O(1) lookup is a good optimization. Stale threshold caching with TTL reduces DB queries.
+- **Source:** Concur with C2-CR-2, C2-SR-2
+- **File:** `src/lib/users/core.ts:57`, `src/app/api/v1/users/bulk/route.ts:73-76`
+- **Description:** The `_context` parameter is dead code after cycle 1. It should be cleaned up to avoid future confusion about what validation is happening.
+- **Confidence:** HIGH
 
-### Documentation
-Well-documented with inline comments explaining security boundaries, trust models, and architectural decisions. The TODO in contests/layout.tsx references an upstream Next.js bug and is appropriately tracked.
+### C2-CT-3: [INFO] Cycle 1 implementation quality
 
-## New Findings
+- The password policy change (C1-AGG-1) was implemented cleanly
+- The `latestSubmittedAt` fix (C1-AGG-2) is correct
+- The parallelization fix (C1-AGG-5) is correct
+- The Korean letter-spacing CSS correctly uses CSS custom properties with `html:lang(ko)` override
 
-**No new findings this cycle.**
+## Carry-forward
 
-## Confidence
-
-HIGH — the codebase is mature and well-maintained.
+All carry-forward deferred items from cycle 1 are accurately tracked. No change in status.

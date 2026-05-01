@@ -1,28 +1,29 @@
-# RPF Cycle 2 (loop cycle 2/100) — Tracer
+# RPF Cycle 2 (2026-05-01) — Tracer
 
-**Date:** 2026-04-24
-**HEAD:** fab30962
-**Reviewer:** tracer
+**Date:** 2026-05-01
+**HEAD reviewed:** `70c02a02`
 
 ## Causal Tracing Analysis
 
-### Traced Flows
+### Traced Flows (Re-verified at HEAD)
 
-1. Login -> JWT -> Session -> Permission Check — No causal gap found.
-2. Submission -> SSE -> Judge -> Result — No causal gap found. All error paths handled.
-3. Docker Build -> Execute -> Cleanup — No causal gap found. Cleanup is comprehensive.
-4. Data Retention -> Legal Hold — No causal gap found. Legal hold correctly enforced.
+1. Login -> JWT -> Session -> Permission Check: No causal gap.
+2. Submission -> SSE -> Judge -> Result: No causal gap.
+3. Docker Build -> Execute -> Cleanup: No causal gap.
+4. Data Retention -> Legal Hold: No causal gap.
+5. Password validation (cycle-1 fix): getPasswordValidationError -> isStrongPassword -> validateAndHashPassword: No causal gap. The _context parameter is dead but harmless.
 
-### Hypothesis Testing
+### C2-TR-1: [MEDIUM] encryption.ts doc-code mismatch trace
 
-- H1: Rate limiter could allow double-spend — DB is authoritative. No double-spend.
-- H2: SSE connection tracking could leak on double close — if (closed) return guard. No leak.
-- H3: Import could leave partial data — Single transaction with FK ordering. No partial data.
+- **Source:** Concur with C2-CR-1, C2-SR-1
+- **File:** `src/lib/security/encryption.ts:5-6`
+- **Description:** Tracing the causal chain: Developer reads JSDoc -> implements external tool using base64 -> tool attempts to decode hex data as base64 -> produces wrong IV bytes -> GCM auth tag mismatch or silent data corruption. The code itself is correct; the documentation is the failure point.
+- **Confidence:** HIGH
 
 ## New Findings
 
-**No new findings this cycle.**
+C2-TR-1 (concurring with multi-lane finding).
 
 ## Confidence
 
-HIGH — all causal chains are complete with no gaps.
+HIGH

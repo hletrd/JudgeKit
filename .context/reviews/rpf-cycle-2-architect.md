@@ -1,41 +1,32 @@
-# RPF Cycle 2 (loop cycle 2/100) — Architect
+# RPF Cycle 2 (2026-05-01) — Architect
 
-**Date:** 2026-04-24
-**HEAD:** fab30962
-**Reviewer:** architect
+**Date:** 2026-05-01
+**HEAD reviewed:** `70c02a02`
 
-## Inventory of Reviewed Files
+## Findings
 
-- src/lib/compiler/execute.ts — Docker execution engine, concurrency, sandboxing
-- src/lib/docker/client.ts — Docker API wrapper, dual-path (local/remote)
-- src/lib/realtime/realtime-coordination.ts — PostgreSQL advisory locks, SSE slot management
-- src/app/api/v1/submissions/[id]/events/route.ts — SSE route, connection tracking
-- src/lib/data-retention.ts — data retention policy, legal hold
-- src/lib/db/import.ts — database import engine, TABLE_MAP
-- src/lib/security/api-rate-limit.ts — two-tier rate limiting
-- src/proxy.ts — middleware, CSP, auth cache
-- src/lib/auth/config.ts — NextAuth, JWT management
-- src/lib/auth/permissions.ts — access control layering
-- src/lib/submissions/visibility.ts — submission sanitization for viewer
-- src/lib/audit/node-shutdown.ts — graceful shutdown, audit flush
+### C2-AR-1: [MEDIUM] encryption.ts doc-code mismatch
 
-## New Findings
+- **Source:** Concur with C2-CR-1, C2-SR-1, C2-CT-1
+- **File:** `src/lib/security/encryption.ts:5-6`
+- **Description:** Module-level JSDoc says "base64" but code uses "hex". Architectural risk: any external tool built against the documented format will fail silently. This violates the principle that security-critical module documentation must be accurate.
+- **Confidence:** HIGH
 
-**No new findings this cycle.**
+### C2-AR-2: [LOW] Dead _context parameter in validateAndHashPassword
 
-## Architectural Observations (Re-verified)
+- **Source:** Concur with C2-CR-2
+- **File:** `src/lib/users/core.ts:57`
+- **Description:** The `_context` parameter is dead code after cycle 1's password policy simplification. While not an architectural issue, it represents an API surface that no longer has a purpose and should be cleaned up.
+- **Confidence:** HIGH
 
-1. Layered access control — capabilities (coarse) -> group membership (medium) -> object ownership (fine). Recruiting candidates are a separate access tier.
-2. Dual-path Docker API — local/remote path abstraction is clean. Error sanitization in both paths.
-3. Compiler sandbox — Multi-layered: Docker security options + shell command validation + concurrency limiter.
-4. Audit system — Buffer-based with unref() timer. Graceful shutdown hooks.
-5. Data retention — Legal hold as process-level boolean. Simple and effective.
+## Architectural Observations (Re-verified at HEAD)
 
-## Carry-Over Confirmations
+1. Layered access control: capabilities (coarse) -> group membership (medium) -> object ownership (fine)
+2. Dual-path Docker API: local/remote abstraction is clean
+3. Compiler sandbox: multi-layered defense
+4. Encryption module: two separate encryption systems (encryption.ts for columns, secrets.ts for plugins) with different encoding formats. This is intentional (column-level uses `enc:` hex, plugin-level uses `enc:v1:` base64url)
+5. The `createApiHandler` wrapper pattern is well-adopted (84 of 104 routes)
 
-- ARCH-2: Stale-while-revalidate cache pattern duplication — LOW/LOW, deferred
-- ARCH-3: Manual routes duplicate createApiHandler boilerplate — MEDIUM/MEDIUM, deferred
+## Carry-forward
 
-## Confidence
-
-HIGH — the architecture is sound, well-layered, and has good defense-in-depth.
+All carry-forward items unchanged at HEAD. ARCH-CARRY-1 (20 raw API handlers) still DEFERRED.

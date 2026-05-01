@@ -1,32 +1,30 @@
-# RPF Cycle 2 (loop cycle 2/100) — Document Specialist
+# RPF Cycle 2 (2026-05-01) — Document Specialist
 
-**Date:** 2026-04-24
-**HEAD:** fab30962
-**Reviewer:** document-specialist
+**Date:** 2026-05-01
+**HEAD reviewed:** `70c02a02`
 
 ## Doc-Code Mismatch Assessment
 
-### Checked Documentation Against Code
+### C2-DOC-1: [MEDIUM] encryption.ts module-level JSDoc says "base64" but code uses "hex"
 
-1. **CLAUDE.md: Korean Letter Spacing** — "Do not apply custom `letter-spacing` (or `tracking-*` Tailwind utilities) to Korean content." Verified: All `tracking-*` uses in `src/` are guarded with `locale !== "ko"` conditionals. `globals.css` has `:lang(ko)` rules setting `letter-spacing: normal`. **No mismatch.**
+- **File:** `src/lib/security/encryption.ts:5-6`
+- **Description:** The module-level JSDoc states: "followed by base64(IV || authTag || ciphertext)". The actual code at line 78 uses `toString("hex")` and `decrypt()` at lines 127-129 uses `Buffer.from(..., "hex")`. The function-level JSDoc at line 64 correctly says "hex-encoded string". This is a documentation-code mismatch in a security-critical module.
+- **Confidence:** HIGH
+- **Fix:** Change "base64(IV || authTag || ciphertext)" to "hex(IV || authTag || ciphertext)" on line 5-6.
 
-2. **CLAUDE.md: Preserve Production config.ts** — "always use the current `src/lib/auth/config.ts` as-is." Verified: The file contains production-specific logging as described. **No mismatch.**
+### Other Documentation Checks (Verified)
 
-3. **CLAUDE.md: Server Architecture** — "algo.xylolabs.com is the app server... worker-0.algo.xylolabs.com is the dedicated judge worker." Verified: `COMPILER_RUNNER_URL` and `RUNNER_AUTH_TOKEN` env vars support the remote runner pattern. **No mismatch.**
-
-4. **Inline documentation: Trust boundaries** — `execute.ts` documents the admin trust boundary for compile commands. `docker/client.ts` documents the dual-path local/remote pattern. `realtime-coordination.ts` documents the PG advisory lock coordination. All match code behavior. **No mismatch.**
-
-5. **Code comments referencing specific plans/issues** — Comments referencing cycle numbers and plan documents (e.g., "See HIGH-15 in plans/open/...") are consistent with the plan files. **No mismatch.**
-
-## Deferred Documentation Items (Carry-Over)
-
-- **DOC-1:** SSE route ADR — LOW/LOW, deferred
-- **DOC-2:** Docker client dual-path docs — LOW/LOW, deferred
+1. CLAUDE.md Korean Letter Spacing: Code compliant. `globals.css:127-137` has proper `:lang(ko)` rules.
+2. CLAUDE.md Preserve Production config.ts: File not touched this cycle. Good.
+3. CLAUDE.md Server Architecture: `COMPILER_RUNNER_URL` / `RUNNER_AUTH_TOKEN` env vars support remote runner. Good.
+4. Inline documentation: Trust boundaries in `execute.ts`, dual-path in `docker/client.ts`, PG advisory lock in `realtime-coordination.ts` all match code.
+5. Code comments referencing cycle numbers and plans are consistent.
+6. The `_context` parameter in `validateAndHashPassword` is documented but now dead code (per C2-CR-2).
 
 ## New Findings
 
-**No new findings this cycle.**
+C2-DOC-1 (see above) is the only new doc-code mismatch this cycle.
 
 ## Confidence
 
-HIGH — documentation and code are well-aligned.
+HIGH
