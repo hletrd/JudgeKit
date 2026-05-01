@@ -54,7 +54,10 @@ async function callWorkerJson<T>(path: string, init?: RequestInit): Promise<T> {
     throw new Error(await readError(response));
   }
 
-  return response.json() as Promise<T>;
+  const data = await response.json().catch(() => {
+    throw new Error("Worker returned non-JSON response");
+  }) as T;
+  return data;
 }
 
 function getWorkerDockerApiConfigError(): string | null {
