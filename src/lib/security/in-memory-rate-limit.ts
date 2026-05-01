@@ -11,6 +11,10 @@
  * three modules is tracked under C7-AGG-9 (rate-limit consolidation cycle);
  * if you fix a bug here, search the other two modules for the same pattern
  * and apply the equivalent fix there.
+ *
+ * BACKOFF_CAP matches `rate-limit.ts` (DB-backed module) at 5, so both
+ * modules cap the exponential backoff exponent at 2^5 = 32x. Keep them
+ * in sync — if you change one, change the other.
  */
 
 import { extractClientIp } from "@/lib/security/ip";
@@ -26,6 +30,7 @@ interface RateLimitEntry {
 const store = new Map<string, RateLimitEntry>();
 const MAX_ENTRIES = 10000;
 const EVICTION_AGE_MS = 24 * 60 * 60 * 1000; // 24 hours
+const BACKOFF_CAP = 5; // max exponent: 2^5 = 32x (matches rate-limit.ts)
 
 // Periodic eviction (runs every 60 seconds)
 let lastEviction = Date.now();
@@ -126,7 +131,7 @@ export function recordFailureInMemory(
 
   if (entry.attempts >= maxAttempts) {
     const MAX_BLOCK = 24 * 60 * 60 * 1000;
-    const duration = Math.min(blockMs * Math.pow(2, entry.consecutiveBlocks), MAX_BLOCK);
+    const duration = Math.min(blockMs * Math.pow(2, Math.min(entry.consecutiveBlocks, BACKOFF_CAP)), MAX_BLOCK);
     entry.blockedUntil = now + duration;
     entry.consecutiveBlocks++;
     return { blocked: true, blockedUntil: entry.blockedUntil };
