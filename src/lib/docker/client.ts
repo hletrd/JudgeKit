@@ -4,7 +4,11 @@ import pLimit from "p-limit";
 import { logger } from "@/lib/logger";
 
 const exec = promisify(execFile);
-const JUDGE_WORKER_URL = process.env.COMPILER_RUNNER_URL || "";
+// Accept JUDGE_WORKER_URL or COMPILER_RUNNER_URL — both map to the same
+// judge-worker sidecar. The COMPILER_RUNNER_URL name is the canonical env
+// var (shared with src/lib/compiler/execute.ts); JUDGE_WORKER_URL is accepted
+// as an alias for operators who find the name more intuitive.
+const JUDGE_WORKER_URL = process.env.JUDGE_WORKER_URL || process.env.COMPILER_RUNNER_URL || "";
 const RUNNER_AUTH_TOKEN = process.env.RUNNER_AUTH_TOKEN || process.env.JUDGE_AUTH_TOKEN || "";
 const WORKER_DOCKER_API_CONFIG_ERROR =
   JUDGE_WORKER_URL && !RUNNER_AUTH_TOKEN
