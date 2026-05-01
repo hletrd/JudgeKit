@@ -1,20 +1,38 @@
-# RPF Cycle 1 (orchestrator-driven, 2026-04-29) — Architect
+# Architect Review — RPF Cycle 1 (2026-05-01)
 
-**Date:** 2026-04-29
-**HEAD:** 32621804
+**Reviewer:** architect
+**HEAD reviewed:** `894320ff`
 
-## Architectural verification
+---
 
-- Route group hierarchy is now: `(auth)`, `(public)`, `(dashboard)`. The legacy `(workspace)` and `(control)` groups are removed. Architecture matches the migration plan's target end-state.
-- `PublicHeader` is shared between `(public)/layout.tsx` and `(dashboard)/layout.tsx` (per `grep -l "PublicHeader"`). Dashboard pages also render the `AppSidebar` (now hidden for non-admin users per cycle 26 work).
-- `next.config.ts:20-52` declares 7 permanent (308) redirects for the deprecated paths, preserving deep links.
-- API surface (`src/app/api/v1/*`) is unchanged this cycle.
-- Layering: `lib/` → `db/`, `auth/`, `security/`, `compiler/`, `judge/`, etc. No reverse coupling detected from `lib/` into `app/` or `components/`.
+## Architectural observations
+
+### API handler standardization
+
+134 of 218 API route handlers use `createApiHandler`. The remaining 84 are raw route handlers that manually implement auth, CSRF, and rate limiting. This is the ARCH-CARRY-1 deferred item. The `createApiHandler` wrapper is well-designed with proper middleware chaining (rate limit -> auth -> CSRF -> body validation -> handler). The raw routes should be migrated over time.
+
+### Layering
+
+`lib/` -> `db/`, `auth/`, `security/`, `compiler/`, `judge/` etc. No reverse coupling from `lib/` into `app/` or `components/`. Correct.
+
+### Route group hierarchy
+
+`(auth)`, `(public)`, `(dashboard)` is clean. No architectural drift.
+
+---
 
 ## Findings
 
-### C1-AR-1: [INFO] No architectural drift this cycle
+### C1-AR-1: [LOW] `rateLimits` table overloaded for SSE connection tracking
 
-Cycle 11 was UI-CSS-only. Architecture is stable. The route-group consolidation initiative (workspace→public migration) has reached its end-state; remaining work is bookkeeping (archive the migration plan).
+- **File:** `src/lib/realtime/realtime-coordination.ts:75-137`
+- **Confidence:** MEDIUM
+- **Description:** The `rateLimits` table is used both for actual rate limiting (login, API) and for SSE connection slot tracking. The `blockedUntil` column is repurposed as an "expires at" timestamp for SSE slots. While functionally correct, this conflation makes the table harder to reason about and query for analytics. Already tracked as ARCH-CARRY-2.
+- **Fix:** Defer; track under ARCH-CARRY-2.
 
-## Net new findings: 0
+### C1-AR-2: [LOW] `import.ts` uses `any` types bypassing compile-time safety
+
+- **File:** `src/lib/db/import.ts:19-24`
+- **Confidence:** MEDIUM (same as C1-CR-2)
+- **Description:** `TABLE_MAP: Record<string, any>` bypasses type safety for the entire import pipeline.
+- **Fix:** Use discriminated unions or `unknown` with type guards.

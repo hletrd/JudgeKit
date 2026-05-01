@@ -1,25 +1,48 @@
-# RPF Cycle 1 (orchestrator-driven, 2026-04-29) — Verifier
+# Verifier Review — RPF Cycle 1 (2026-05-01)
 
-**Date:** 2026-04-29
-**HEAD:** 32621804
-**Method:** Evidence-based check of each pre-cycle stated behavior.
+**Reviewer:** verifier
+**HEAD reviewed:** `894320ff`
 
-## Evidence
+---
 
-- `npm run lint`: exit 0, 0 errors, 14 warnings (all in untracked scratch `.mjs` at repo root; not regressions).
-- `npx tsc --noEmit`: exit 0, no output.
-- `git status --short`: 17 untracked scratch entries; no tracked file modifications outstanding.
-- `find src/app/'(workspace)'` → empty. `find src/app/'(control)'` → empty.
-- `grep -rln "WorkspaceNav\|ControlNav\|workspaceShell\|controlShell" src/` → no results.
+## Evidence-based correctness checks
+
+### Password validation vs AGENTS.md
+
+**Claim (AGENTS.md:562-568):** "Password validation MUST only check minimum length — exactly 8 characters minimum, no other rules."
+
+**Actual code (`src/lib/security/password.ts`):**
+- Line 40: checks `password.length < FIXED_MIN_PASSWORD_LENGTH` -- matches policy
+- Line 44-47: checks `COMMON_PASSWORDS.has(password.toLowerCase())` -- violates policy
+- Line 50-56: checks if password matches username -- violates policy
+- Line 59-67: checks if password contains email local part -- violates policy
+
+**Verdict:** Code does NOT match the documented policy. The policy says "no other rules" but the code enforces 3 additional rules beyond minimum length.
+
+### Rate limit timestamp consistency
+
+**Claim:** All rate-limit timestamp comparisons use DB server time.
+
+**Verified:** `atomicConsumeRateLimit` uses `getDbNowMs()`, `checkServerActionRateLimit` uses `getDbNowUncached()`, `realtime-coordination.ts` uses `getDbNowUncached()`, `validateAssignmentSubmission` uses `getDbNowUncached()`. Consistent.
+
+### Encryption plaintext fallback
+
+**Claim:** Plaintext fallback defaults to false in production.
+
+**Verified:** `src/lib/security/encryption.ts:99-100` — `allowPlaintext = options?.allowPlaintextFallback ?? (process.env.NODE_ENV !== "production")`. Correct.
+
+---
 
 ## Findings
 
-### C1-VE-1: [INFO] HEAD matches plan claims
+### C1-VE-1: [MEDIUM] Password validation code contradicts documented policy
 
-Plans claim phases 1-7 of workspace→public migration are complete. Source tree confirms. Nothing under `(workspace)` or `(control)`. Redirects in `next.config.ts` cover all old paths.
+- **File:** `src/lib/security/password.ts`
+- **Confidence:** HIGH
+- **Description:** Verified by direct comparison. The code enforces 3 additional checks that the AGENTS.md policy explicitly forbids.
+- **Fix:** Resolve the mismatch.
 
-### C1-VE-2: [INFO] No suppressions introduced
+### C1-VE-2: [INFO] Carry-forward deferred items verified as still deferred
 
-`grep -rEn '@ts-ignore|@ts-expect-error|@ts-nocheck|eslint-disable' src/` returns 1 hit: `src/app/(dashboard)/dashboard/admin/plugins/[id]/plugin-config-client.tsx:2 — /* eslint-disable react-hooks/static-components -- plugin admin components are lazily prebuilt at module scope */`. Documented justification, not new this cycle.
-
-## Net new findings: 0
+- All 17 deferred items from the cycle-5 aggregate remain accurately described in the backlog.
+- No deferred items have been silently resolved or silently worsened.

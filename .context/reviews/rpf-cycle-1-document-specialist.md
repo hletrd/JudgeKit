@@ -1,34 +1,39 @@
-# RPF Cycle 1 (orchestrator-driven, 2026-04-29) — Document Specialist
+# Document Specialist Review — RPF Cycle 1 (2026-05-01)
 
-**Date:** 2026-04-29
-**HEAD:** 32621804
+**Reviewer:** document-specialist
+**HEAD reviewed:** `894320ff`
+
+---
 
 ## Doc/code mismatch scan
 
-- `CLAUDE.md` deployment rule (preserve `src/lib/auth/config.ts`): verified file unchanged this cycle.
-- `CLAUDE.md` Korean letter-spacing rule: verified by designer pass — all `tracking-*` usages gated.
-- `CLAUDE.md` algo.xylolabs.com server architecture rule (`SKIP_LANGUAGES=true BUILD_WORKER_IMAGE=false INCLUDE_WORKER=false`): aligned with `DEPLOY_CMD` provided by orchestrator.
-- `plans/open/2026-04-19-workspace-to-public-migration.md` status reflects HEAD truthfully:
-  - Phases 1-7 marked COMPLETE.
-  - Phase 4 audit lists "remaining dashboard routes" — verified against the actual directory listing.
-  - Phase 5 marked COMPLETE (cycle 26).
-  - The migration plan is ready to be archived (per TODO #1 done criterion).
+### Password policy mismatch (CRITICAL)
+
+**AGENTS.md:562-568 states:**
+> Password validation MUST only check minimum length — exactly 8 characters minimum, no other rules. Do NOT add complexity requirements (uppercase, numbers, symbols), similarity checks, or dictionary checks.
+
+**`src/lib/security/password.ts` implements:**
+1. Minimum length check (8 chars) -- matches policy
+2. Common password check (20-entry deny list) -- violates policy ("dictionary checks")
+3. Username similarity check -- violates policy ("similarity checks")
+4. Email local part match check -- violates policy ("similarity checks")
+
+This is the most significant doc-code mismatch in the current codebase. The policy was presumably written to keep password validation simple, but the code diverged by adding "helpful" security checks.
+
+---
 
 ## Findings
 
-### C1-DOC-1: [INFO] Migration plan ready for archival
+### C1-DOC-1: [MEDIUM] Password validation docs vs code mismatch
 
-The plan at `plans/open/2026-04-19-workspace-to-public-migration.md` describes phases 1-7 as complete. Verification against the source tree:
+- **File:** `AGENTS.md:562-568` vs `src/lib/security/password.ts`
+- **Confidence:** HIGH
+- **Description:** AGENTS.md explicitly forbids the checks that password.ts implements. Either the documentation or the code must be updated.
+- **Fix:** Either (a) update AGENTS.md to document the actual policy including common-password rejection and similarity checks, or (b) remove the extra checks from the code. Option (b) aligns with the stated design intent; option (a) acknowledges the security improvement. The project owner should decide.
 
-- `find src/app/'(workspace)'` → no files. ✓
-- `find src/app/'(control)'` → no files. ✓
-- `next.config.ts:20-52` declares 7 permanent (308) redirects covering `/workspace`, `/workspace/discussions`, `/dashboard/rankings`, `/dashboard/languages`, `/dashboard/compiler`, `/control`, `/control/discussions`. ✓
-- Remaining `(dashboard)` routes match the documented "must stay in authenticated area" list (admin, contests, groups, problem-sets, problems, profile).
+### C1-DOC-2: [LOW] AGENTS.md references `PasswordValidationError` types that may not exist after fix
 
-The plan's done criterion ("(workspace) removed or empty, every non-admin dashboard page either migrated or explicitly listed as 'stays' with a quoted reason, build+typecheck+lint+unit/playwright green, migration plan archived") is satisfiable this cycle once gates pass.
-
-### C1-DOC-2: [INFO] User-injected TODO #1 satisfied
-
-The TODO file (`plans/user-injected/pending-next-cycle.md`) requires migrating "every non-admin page out of `(workspace)` and `(dashboard)` into `(public)`". The migration plan now correctly distinguishes "moved" vs. "stays-with-reason". No silent drops.
-
-## Net new findings: 0
+- **File:** `AGENTS.md:565-567`
+- **Confidence:** MEDIUM
+- **Description:** If the password checks are removed, the client-side form error message maps referencing `"passwordMatchesUsername"`, `"passwordMatchesEmail"`, and `"passwordTooCommon"` keys will have dead entries. The forms should be updated to remove these mappings.
+- **Fix:** Update all form components that reference the removed error types.

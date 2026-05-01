@@ -1,38 +1,37 @@
-# RPF Cycle 1 (orchestrator-driven, 2026-04-29) — Critic
+# Critic Review — RPF Cycle 1 (2026-05-01)
 
-**Date:** 2026-04-29
-**HEAD:** 32621804
+**Reviewer:** critic
+**HEAD reviewed:** `894320ff`
+
+---
 
 ## Multi-perspective critique
 
-### Maintainability
+### Policy-code alignment
 
-After 11 RPF cycles + 50+ earlier cycles, the codebase has shifted from feature development to micro-polish. The signal-to-noise ratio of new findings is now LOW: most cycles produce LOW-severity dark-mode/i18n nits. This is not a problem per se — the codebase is mature — but it does suggest the review fan-out budget could be reallocated to broader sweeps.
+The most substantive finding this cycle is the **password.ts vs AGENTS.md mismatch** (C1-CR-1 / C1-SR-1). The code enforces more restrictive password checks than the documented policy allows. This is a policy violation regardless of whether the extra checks are "better" security — the project explicitly chose minimum-length-only, and the code violates that choice. Either the policy or the code must be updated to match.
 
-### Cycle-budget critique
+### Carry-forward backlog health
 
-Cycle 11 found 2 MEDIUM and 8 LOW dark-mode regressions. The MEDIUM ones (`leaderboard-table.tsx`, `contest-join-client.tsx`) were genuinely visible bugs. LOW ones were edge-case dark-mode polish. Returns are diminishing — but not yet zero.
+The deferred backlog (17 items from prior cycles) has been well-maintained with exit criteria. However, several items (D1 JWT clock-skew, D2 JWT DB query per request, AGG-2 Date.now() in rate-limit, ARCH-CARRY-1 raw API handlers) are all MEDIUM items that have been deferred for 5+ cycles. The risk is that they become permanent residents. The recommendation is to schedule at least 1-2 MEDIUM deferred items per cycle going forward.
 
-### Cycle 12 critique
+### Test coverage
 
-This cycle's review surface is essentially clean. Dark-mode coverage is 100% across the 85 surveyed `text-color` instances; tracking utilities are correctly gated on locale; `dangerouslySetInnerHTML` is sanitized; lint/tsc are green for `src/`. The only real finding is config hygiene (eslint warning noise in C1-CR-1 / .gitignore in C1-CR-2).
+The test infrastructure is comprehensive (vitest unit/integration/component + playwright e2e). However, the `password.ts` policy violation has no test that would catch it — the tests validate the current behavior, not the documented policy. A policy-conformance test (e.g., "password matching username is accepted" per AGENTS.md rules) would have caught this drift.
 
-### Workspace migration verification
+---
 
-The user-injected workspace migration TODO is largely complete:
-- `src/app/(workspace)/`: removed (verified `find` returns empty).
-- `src/app/(control)/`: removed.
-- All redirects (`next.config.ts:20-52`) in place: `/workspace`, `/workspace/discussions`, `/dashboard/rankings`, `/dashboard/languages`, `/dashboard/compiler`, `/control`, `/control/discussions`.
-- Remaining `(dashboard)` routes are the legitimately auth-gated ones documented in the migration plan: `dashboard/`, `dashboard/admin/*`, `dashboard/contests`, `dashboard/groups`, `dashboard/problem-sets`, `dashboard/problems`, `dashboard/profile`.
-- The migration plan's "stays in dashboard" list (Phase 4 audit, lines after `**Phase 4 audit (cycle 23):**`) covers exactly these routes.
+## Findings
 
-### Recommendation
+### C1-CT-1: [MEDIUM] Password validation policy-code mismatch
 
-Spend cycle 12's implementation budget on:
-1. The eslint config polish (C1-CR-1).
-2. Workspace migration plan archival (TODO #1's "done" criterion).
-3. Optional gitignore tidy (C1-CR-2).
+- **File:** `src/lib/security/password.ts` vs `AGENTS.md:562-568`
+- **Confidence:** HIGH
+- **Description:** Cross-agreement with C1-CR-1 and C1-SR-1. The code implements checks that the documented policy explicitly forbids.
+- **Fix:** Resolve the mismatch by either updating the policy or the code.
 
-Anything else risks gold-plating.
+### C1-CT-2: [LOW] Deferred MEDIUM items should be scheduled for implementation
 
-## Net new findings: 0 critical; perspective only.
+- **Confidence:** HIGH
+- **Description:** 4 MEDIUM items (D1, D2, AGG-2, ARCH-CARRY-1) have been deferred for 5+ cycles with no forward progress. Recommend scheduling at least one per cycle.
+- **Fix:** Add a planning directive to pick at least 1 MEDIUM deferred item per cycle.

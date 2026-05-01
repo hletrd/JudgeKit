@@ -1,17 +1,29 @@
-# RPF Cycle 1 (orchestrator-driven, 2026-04-29) — Tracer
+# Tracer Review — RPF Cycle 1 (2026-05-01)
 
-**Date:** 2026-04-29
-**HEAD:** 32621804
+**Reviewer:** tracer
+**HEAD reviewed:** `894320ff`
+
+---
 
 ## Causal trace of suspicious flows
 
-- Workspace→public migration: cycle 7 (commit `2bfcbb89` and earlier) introduced the dual layout; cycle 13 unified i18n (`4389523c`); cycle 22 added redirects (`662b71ec`); cycle 23 merged `(control)`; cycle 26 hid AppSidebar for non-admins (`cc334546`/`69c5c62b`). HEAD reflects all of this; no orphaned imports of removed components (`WorkspaceNav`, `ControlNav`) remain.
-- `grep -rln "WorkspaceNav\|ControlNav\|workspaceShell\|controlShell" src/` returns nothing — the old shell types have been fully purged from source.
+### Password validation trace
+
+Tracing the password validation flow:
+1. `src/lib/security/password.ts:getPasswordValidationError()` — checks length, common passwords, username match, email match
+2. `src/lib/security/password.ts:isStrongPassword()` — wraps `getPasswordValidationError`
+3. Call sites: `src/app/(auth)/signup/signup-form.tsx`, `src/app/(dashboard)/dashboard/admin/users/add-user-dialog.tsx`, `src/app/(dashboard)/dashboard/admin/users/edit-user-dialog.tsx`, `src/app/(dashboard)/dashboard/admin/users/bulk-create-dialog.tsx`, `src/app/change-password/change-password-form.tsx`
+4. Server actions: `src/lib/actions/public-signup.ts`, `src/lib/actions/user-management.ts`, `src/lib/actions/change-password.ts`
+
+The `PasswordValidationError` type is used in client-side forms to display error messages. The keys `"passwordMatchesUsername"`, `"passwordMatchesEmail"`, and `"passwordTooCommon"` are mapped to localized error strings in the form components. Removing them from the type will require updating the form components' error message maps.
+
+---
 
 ## Findings
 
-### C1-TR-1: [INFO] Migration trace is consistent
+### C1-TR-1: [MEDIUM] Password validation policy mismatch — full trace
 
-No dangling references to removed shells/route groups in `src/`. Tracing closed.
-
-## Net new findings: 0
+- **File:** `src/lib/security/password.ts` and all call sites
+- **Confidence:** HIGH
+- **Description:** Tracing confirms the extra checks are wired through the entire stack: type definition -> validation function -> server actions -> client forms. The `PasswordValidationError` type union feeds into localized error message maps in 5+ client components. Removing the extra checks requires updating the type and all error message maps.
+- **Fix:** Remove `COMMON_PASSWORDS`, username match, and email match from `getPasswordValidationError`. Remove `passwordMatchesUsername`, `passwordMatchesEmail`, `passwordTooCommon` from the `PasswordValidationError` type. Remove corresponding error message entries from all form components. Update tests.

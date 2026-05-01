@@ -1,28 +1,32 @@
-# RPF Cycle 1 (orchestrator-driven, 2026-04-29) — Performance Reviewer
+# Performance Review — RPF Cycle 1 (2026-05-01)
 
-**Date:** 2026-04-29
-**HEAD:** 32621804
-**Scope:** Hot paths, render cost, bundle size signals, query parallelism.
+**Reviewer:** perf-reviewer
+**HEAD reviewed:** `894320ff`
+**Scope:** Hot paths, render cost, bundle size, query parallelism
 
-## Performance verification
-
-- `Promise.all` parallelism in `src/app/layout.tsx:91-96` (locale, messages, headers, timezone) is correct.
-- `src/lib/contests/list.ts` parallelizes `getContestsForUser` and `getPublicContests` (commit `1d17552b`, cycle 2). Verified intact at HEAD.
-- `src/app/(public)/practice/problems/[id]/page.tsx` removed redundant `getExamSession` call (commit `d365a50c`). Verified intact.
-- Client component count: 142 `"use client"` directives. Server component / action count: 10 `"use server"`. Ratio is healthy for an SSR-first Next.js 16 app with editors, real-time leaderboards, and admin dialogs.
+---
 
 ## Findings
 
 ### C1-PR-1: [LOW] Polling intervals not visibility-paused
 
-**Evidence:** `setInterval`/`setTimeout` exist in real-time submission status, leaderboard updates, exam timers. No global pause when document is hidden.
+- **File:** `src/hooks/use-submission-polling.ts`, `src/hooks/use-visibility-polling.ts`, `src/components/submission-list-auto-refresh.tsx`
+- **Confidence:** MEDIUM
+- **Description:** `setInterval`/`setTimeout` exist in real-time submission status, leaderboard updates, exam timers. No global pause when document is hidden. Background tabs still consume polling cycles.
+- **Fix:** Defer; candidate for visibility-based pause once usage telemetry shows it matters. Already tracked as C2-AGG-5 in deferred backlog.
 
-**Why minor:** Not regression. Bounded by per-page mount/unmount; tabs in background still consume polling cycles.
+### C1-PR-2: [LOW] `getAssignmentStatusRows` performs 4 sequential DB queries
 
-**Suggested:** Defer; candidate for SWR/visibility-based pause once usage telemetry shows it matters. Severity **LOW**.
+- **File:** `src/lib/assignments/submissions.ts:483-601`
+- **Confidence:** MEDIUM
+- **Description:** The function runs 4 DB queries sequentially: assignment lookup, assignment problems, enrolled students, and a raw SQL aggregation. The first 3 could run in parallel since they have no data dependency on each other (they all depend only on `assignmentId`). This is especially impactful for large groups.
+- **Fix:** Use `Promise.all` for the 3 independent queries. The raw SQL aggregation depends on `assignment.deadline` and `assignment.latePenalty` from the first query, so it must remain sequential.
 
-### C1-PR-2: [INFO] No measurable regression vs. cycle 11
+---
 
-Spot-checked key hot-path files (`src/components/code/compiler-client.tsx`, `src/components/contest/leaderboard-table.tsx`, `src/app/(dashboard)/dashboard/groups/[id]/assignments/[assignmentId]/status-board.tsx`, `src/components/lecture/submission-overview.tsx`) for new expensive operations. None found. Memoization patterns intact.
+## No-issue confirmations
 
-## Net new findings: 1 (LOW; informational/deferred).
+- `Promise.all` parallelism in `src/app/layout.tsx` is correct.
+- Client component count (149 "use client") is healthy for an SSR-first Next.js 16 app.
+- Rate limiting uses `SELECT FOR UPDATE` transactions to prevent TOCTOU races. Correct.
+- Compiler execution uses `pLimit` for concurrency control. Correct.
