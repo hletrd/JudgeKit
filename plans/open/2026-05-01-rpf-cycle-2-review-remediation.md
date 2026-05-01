@@ -3,7 +3,7 @@
 **Date:** 2026-05-01
 **Source:** `.context/reviews/_aggregate.md` (cycle 2) + cycle-2 lane reviews + carry-forward from cycle 1 plan
 **HEAD entering this cycle:** `70c02a02` (docs(plans): mark cycle 1 RPF plan done; archive to plans/done/)
-**Status:** IN PROGRESS
+**Status:** DONE
 
 ---
 
@@ -26,7 +26,8 @@
 - **Fix:**
   1. Change "base64(IV || authTag || ciphertext)" to "hex(IV || authTag || ciphertext)" on lines 5-6 of the module-level JSDoc.
 - **Exit criteria:** Module-level JSDoc accurately describes the encoding format used by `encrypt()` and `decrypt()`.
-- [ ] Done
+- **Outcome:** Fixed in commit `615cdf8c`. "base64" changed to "hex" on line 5.
+- [x] Done
 
 ### Task B: [LOW — DOING THIS CYCLE] Remove dead `_context` parameter from validateAndHashPassword (C2-AGG-2)
 
@@ -38,7 +39,8 @@
   1. Remove the `_context` parameter from `validateAndHashPassword` function signature.
   2. Update `bulk/route.ts:73` to call `validateAndHashPassword(item.password)` without the second argument.
 - **Exit criteria:** `validateAndHashPassword` takes only `password: string`. No call site passes a second argument.
-- [ ] Done
+- **Outcome:** Fixed in commit `05cb8658`. Removed `_context` parameter and updated bulk/route.ts call site.
+- [x] Done
 
 ### Task C: [LOW — DOING THIS CYCLE] Fix isNaN type assertion in submissions.ts (C2-AGG-3)
 
@@ -49,7 +51,8 @@
   1. Replace `isNaN(bestScore as number)` with `if (bestScore !== null && isNaN(bestScore)) bestScore = null;`
   2. Remove the `as number` type assertion.
 - **Exit criteria:** No `as number` type assertion on the isNaN check. Type-safe null narrowing.
-- [ ] Done
+- **Outcome:** Fixed in commit `6957a951`. Replaced `isNaN(bestScore as number)` with `if (bestScore !== null && isNaN(bestScore))`.
+- [x] Done
 
 ### Task D: [LOW — DOING THIS CYCLE] Parallelize overrides query with problemAggRows (C2-AGG-4)
 
@@ -60,18 +63,24 @@
   1. Run `rawQueryAll` (line 563) and the overrides query (line 639) via `Promise.all`.
   2. Destructure the result: `const [problemAggRows, overrideRows] = await Promise.all([...])`.
 - **Exit criteria:** `problemAggRows` and `overrideRows` queries run in parallel.
-- [ ] Done
+- **Outcome:** Fixed in commit `6957a951`. Both queries now run via `Promise.all`.
+- [x] Done
 
 ### Task Z: Run all gates (lint, build, test, bash -n)
 
 - Run `eslint`, `next build`, `vitest run`, `bash -n deploy*.sh`
 - Fix any errors found
-- [ ] Done
+- **Gate outcomes:**
+  - `eslint`: exit 0 (clean)
+  - `next build`: exit 0 (clean)
+  - `bash -n deploy*.sh`: all 3 scripts OK
+  - `vitest run`: 66 failed / 238 passed test files (111 failed / 2109 passed tests). All failures are vitest-pool worker spawn timeouts (DEFER-ENV-GATES carry-forward). Password tests: 12/12 passed. No regression.
+- [x] Done
 
 ### Task ZZ: Archive this plan if all tasks complete
 
 - Move this plan to `plans/done/` after all tasks are marked done
-- [ ] Done
+- [x] Done
 
 ---
 
