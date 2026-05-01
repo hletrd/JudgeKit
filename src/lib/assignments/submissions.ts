@@ -560,46 +560,58 @@ export async function getAssignmentStatusRows(
   // (same function used by the leaderboard and stats endpoints) to ensure
   // consistency across all views. This includes the windowed-exam branch that
   // applies late penalties against the per-user personal_deadline.
-  const problemAggRows = await rawQueryAll<ProblemAggRow>(`
-    WITH scored AS (
+  // Run the raw SQL aggregation and score overrides query in parallel since
+  // they are independent — both only need the assignmentId.
+  const [problemAggRows, overrideRows] = await Promise.all([
+    rawQueryAll<ProblemAggRow>(`
+      WITH scored AS (
+        SELECT
+          s.user_id,
+          s.problem_id,
+          s.id AS sub_id,
+          s.status,
+          s.submitted_at,
+          s.score,
+          ap.points AS problem_points,
+          ${buildIoiLatePenaltyCaseExpr("s.score", "COALESCE(ap.points, 100)", "s.submitted_at", "es.personal_deadline")}
+            AS adjusted_score,
+          ROW_NUMBER() OVER (
+            PARTITION BY s.user_id, s.problem_id
+            ORDER BY s.submitted_at DESC, s.id DESC
+          ) AS rn
+        FROM submissions s
+        INNER JOIN assignment_problems ap
+          ON ap.assignment_id = s.assignment_id AND ap.problem_id = s.problem_id
+        LEFT JOIN exam_sessions es
+          ON es.assignment_id = s.assignment_id AND es.user_id = s.user_id
+        WHERE s.assignment_id = @assignmentId
+          AND s.status IN (${TERMINAL_SUBMISSION_STATUSES_SQL_LIST})
+      )
       SELECT
-        s.user_id,
-        s.problem_id,
-        s.id AS sub_id,
-        s.status,
-        s.submitted_at,
-        s.score,
-        ap.points AS problem_points,
-        ${buildIoiLatePenaltyCaseExpr("s.score", "COALESCE(ap.points, 100)", "s.submitted_at", "es.personal_deadline")}
-          AS adjusted_score,
-        ROW_NUMBER() OVER (
-          PARTITION BY s.user_id, s.problem_id
-          ORDER BY s.submitted_at DESC, s.id DESC
-        ) AS rn
-      FROM submissions s
-      INNER JOIN assignment_problems ap
-        ON ap.assignment_id = s.assignment_id AND ap.problem_id = s.problem_id
-      LEFT JOIN exam_sessions es
-        ON es.assignment_id = s.assignment_id AND es.user_id = s.user_id
-      WHERE s.assignment_id = @assignmentId
-        AND s.status IN (${TERMINAL_SUBMISSION_STATUSES_SQL_LIST})
-    )
-    SELECT
-      user_id   AS "userId",
-      problem_id AS "problemId",
-      COUNT(*)  AS "attemptCount",
-      MAX(adjusted_score) AS "bestAdjustedScore",
-      MAX(CASE WHEN rn = 1 THEN sub_id END)       AS "latestSubId",
-      MAX(CASE WHEN rn = 1 THEN status END)        AS "latestStatus",
-      MAX(CASE WHEN rn = 1 THEN submitted_at END)  AS "latestSubmittedAt"
-    FROM scored
-    GROUP BY user_id, problem_id
-  `, {
-    deadline: deadlineVal,
-    latePenalty,
-    examMode: assignment.examMode ?? "none",
-    assignmentId,
-  });
+        user_id   AS "userId",
+        problem_id AS "problemId",
+        COUNT(*)  AS "attemptCount",
+        MAX(adjusted_score) AS "bestAdjustedScore",
+        MAX(CASE WHEN rn = 1 THEN sub_id END)       AS "latestSubId",
+        MAX(CASE WHEN rn = 1 THEN status END)        AS "latestStatus",
+        MAX(CASE WHEN rn = 1 THEN submitted_at END)  AS "latestSubmittedAt"
+      FROM scored
+      GROUP BY user_id, problem_id
+    `, {
+      deadline: deadlineVal,
+      latePenalty,
+      examMode: assignment.examMode ?? "none",
+      assignmentId,
+    }),
+    db
+      .select({
+        problemId: scoreOverrides.problemId,
+        userId: scoreOverrides.userId,
+        overrideScore: scoreOverrides.overrideScore,
+      })
+      .from(scoreOverrides)
+      .where(eq(scoreOverrides.assignmentId, assignmentId)),
+  ]);
 
   // ---- Build lookup maps from aggregated rows ----
   // Key: "userId:problemId" -> ProblemAggRow
@@ -635,16 +647,6 @@ export async function getAssignmentStatusRows(
     }
   }
 
-  // ---- Score overrides (small result set — one per user/problem at most) ----
-  const overrideRows = await db
-    .select({
-      problemId: scoreOverrides.problemId,
-      userId: scoreOverrides.userId,
-      overrideScore: scoreOverrides.overrideScore,
-    })
-    .from(scoreOverrides)
-    .where(eq(scoreOverrides.assignmentId, assignmentId));
-
   const overrideMap = new Map<string, number>();
   for (const o of overrideRows) {
     overrideMap.set(`${o.userId}:${o.problemId}`, o.overrideScore);
@@ -661,7 +663,7 @@ export async function getAssignmentStatusRows(
       const isOverridden = overrideScore !== undefined;
 
       let bestScore: number | null = agg?.bestAdjustedScore != null ? Number(agg.bestAdjustedScore) : null;
-      if (isNaN(bestScore as number)) bestScore = null;
+      if (bestScore !== null && isNaN(bestScore)) bestScore = null;
       if (isOverridden) {
         bestScore = overrideScore;
       }
