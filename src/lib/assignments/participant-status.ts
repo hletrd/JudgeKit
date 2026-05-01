@@ -96,7 +96,15 @@ export function getAssignmentParticipantStatus({
     return "not_submitted";
   }
 
-  if (latestStatus === "accepted" || latestStatus == null) {
+  // A null status with attempts means the submission exists but its status
+  // was never set (e.g., worker crash mid-judge). Returning "pending" is more
+  // accurate than "submitted" — the latter implies explicit system acceptance,
+  // while "pending" correctly signals the submission awaits processing.
+  if (latestStatus === null) {
+    return "pending";
+  }
+
+  if (latestStatus === "accepted") {
     return "submitted";
   }
 

@@ -73,6 +73,42 @@ describe("assignment participant status", () => {
     ).toBe("wrong_answer");
   });
 
+  it("returns 'pending' for null status with attempts (e.g., worker crash mid-judge)", () => {
+    expect(
+      getAssignmentParticipantStatus({
+        latestStatus: null,
+        attemptCount: 1,
+        bestTotalScore: 0,
+        totalPoints: 200,
+        now,
+      })
+    ).toBe("pending");
+  });
+
+  it("returns 'pending' for null status with multiple attempts", () => {
+    expect(
+      getAssignmentParticipantStatus({
+        latestStatus: null,
+        attemptCount: 3,
+        bestTotalScore: 50,
+        totalPoints: 200,
+        now,
+      })
+    ).toBe("pending");
+  });
+
+  it("returns 'submitted' for explicit accepted status with attempts", () => {
+    expect(
+      getAssignmentParticipantStatus({
+        latestStatus: "accepted",
+        attemptCount: 1,
+        bestTotalScore: 50,
+        totalPoints: 200,
+        now,
+      })
+    ).toBe("submitted");
+  });
+
   it("detects expired and future exam sessions correctly", () => {
     expect(
       hasActiveExamSession("2026-04-15T04:00:00.000Z", now, "2026-04-15T03:00:00.000Z")
