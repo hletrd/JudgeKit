@@ -3,7 +3,7 @@
 **Date:** 2026-05-01
 **Source:** `.context/reviews/_aggregate.md` (cycle 3) + cycle-3 lane reviews + carry-forward from cycle 2 plan
 **HEAD entering this cycle:** `894320ff` (docs(plans): mark cycle 11 RPF plan done; archive to plans/done/)
-**Status:** IN PROGRESS
+**Status:** COMPLETED
 
 ---
 
@@ -27,7 +27,7 @@
   2. Add a comment explaining the intended semantics of the null case.
   3. Add a test case for null status + positive attempts scenario in `tests/unit/assignments/participant-status.test.ts`.
 - **Exit criteria:** `latestStatus === null` with `attemptCount > 0` returns `"pending"`, not `"submitted"`. Test case passes.
-- [ ] Pending
+- [x] Done — commit `e9cfb762`. Null status with attempts now returns "pending". 3 new test cases pass.
 
 ### Task B: [MEDIUM — DOING THIS CYCLE] Add column name validation to buildIoiLatePenaltyCaseExpr (C3-AGG-2)
 
@@ -39,7 +39,7 @@
   2. Apply validation to all four column name parameters (`scoreCol`, `pointsCol`, `submittedAtCol`, `personalDeadlineCol`) at the top of `buildIoiLatePenaltyCaseExpr`.
   3. Add a `@security` JSDoc annotation warning about string interpolation and requiring trusted column names only.
 - **Exit criteria:** `buildIoiLatePenaltyCaseExpr` validates column names before interpolation. Invalid names throw. `@security` JSDoc present.
-- [ ] Pending
+- [x] Done — commit `3e075be8`. SQL column name validation with dual-regex approach (safe pattern + dangerous pattern blocklist). @security JSDoc added. All 18 scoring tests pass.
 
 ### Task C: [LOW — DOING THIS CYCLE] Add BACKOFF_CAP to in-memory rate limiter (C3-AGG-3)
 
@@ -51,7 +51,7 @@
   2. Change `Math.pow(2, entry.consecutiveBlocks)` to `Math.pow(2, Math.min(entry.consecutiveBlocks, BACKOFF_CAP))`.
   3. Update module header comment to note alignment with DB-backed module's BACKOFF_CAP.
 - **Exit criteria:** In-memory rate limiter uses `BACKOFF_CAP = 5` consistent with DB-backed module. Header comment updated.
-- [ ] Pending
+- [x] Done — commit `ab336b0a`. BACKOFF_CAP = 5 constant added, used in Math.min for exponent capping. Header comment updated.
 
 ### Task D: [LOW — DOING THIS CYCLE] Create unit tests for in-memory rate limiter (C3-AGG-4)
 
@@ -67,18 +67,18 @@
      - `resetInMemory` (clears entry)
      - Eviction logic (time-based, FIFO overflow at MAX_ENTRIES)
 - **Exit criteria:** All in-memory rate limiter functions have dedicated unit tests. Tests pass.
-- [ ] Pending
+- [x] Done — commit `f276dd64`. 15 unit tests covering all 5 exported functions. Tests pass.
 
 ### Task Z: Run all gates (lint, build, test, bash -n)
 
 - Run `eslint`, `next build`, `vitest run`, `bash -n deploy*.sh`
 - Fix any errors found
-- [ ] Pending
+- [x] Done — eslint clean, next build exit 0, vitest 24/24 pass, bash -n deploy*.sh clean.
 
 ### Task ZZ: Archive this plan if all tasks complete
 
 - Move this plan to `plans/done/` after all tasks are marked done
-- [ ] Pending
+- [x] Done — plan moved to plans/done/.
 
 ---
 
