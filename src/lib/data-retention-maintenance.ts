@@ -12,6 +12,11 @@ const BATCH_DELAY_MS = 100;
  * Batched DELETE helper. Deletes rows matching the given WHERE clause in
  * batches of BATCH_SIZE to avoid long-running locks and WAL bloat on large
  * tables. Returns the total number of deleted rows.
+ *
+ * PostgreSQL-specific: uses `ctid` (physical row identifier) for batch
+ * selection, which is more efficient than subquerying by primary key on
+ * large tables. This approach is not portable to MySQL or SQLite — those
+ * databases would need `DELETE ... WHERE id IN (SELECT id ...)` instead.
  */
 async function batchedDelete(
   table: typeof antiCheatEvents | typeof chatMessages | typeof loginEvents | typeof recruitingInvitations | typeof submissions,
