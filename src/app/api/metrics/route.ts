@@ -30,7 +30,12 @@ export async function GET(request: NextRequest) {
     const cronAuth = isCronAuthorized(request);
     if (!cronAuth.ok) {
       if (cronAuth.missingSecret) {
-        return NextResponse.json({ error: "CRON_SECRET not configured" }, { status: 503 });
+        // Don't leak the env-var name to anonymous callers; treat as unauthorized.
+        // Operators see the misconfiguration via the warn log + the
+        // instrumentation startup gate, not via the public response body.
+        console.warn(
+          "[metrics] CRON_SECRET is not configured; cron-authenticated callers cannot reach this endpoint",
+        );
       }
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
