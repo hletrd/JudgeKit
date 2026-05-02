@@ -29,6 +29,31 @@ The judge worker can start sibling judge containers through the Docker proxy pat
 - monitor it separately from the normal app tier
 - keep incident guidance specific to worker compromise or abnormal behavior
 
+## Judge worker fleet (capacity & availability)
+A single judge worker is a single point of failure during any timed event. A
+worker restart, OOM kill, or container crash leaves submissions queued for the
+duration of `STALE_WORKER_SECONDS` (default 300 seconds) before another worker
+can reclaim them. For a 100+-participant exam or contest this is a hard outage.
+
+Before any high-stakes event:
+
+- **Deploy at least two workers** on distinct physical hosts. Use
+  `docker-compose.worker.yml` plus the deploy script:
+  `./scripts/deploy-worker.sh --host=<second-host> --app-url=https://<app>/api/v1 --concurrency=4 --sync-images`
+- **Confirm both workers register** in `/dashboard/admin/workers` and are sending
+  heartbeats. Both should appear in the `Workers online` count on the homepage.
+- **Wire an alert** on `degraded` state from `/api/health` (the route reports
+  degraded when `pending > 0 && online === 0`). This requires `CRON_SECRET` to
+  be set so Prometheus can scrape `/api/metrics`.
+- **Freeze-before-restart procedure**: if a worker must be restarted during the
+  event window, first toggle the assignment / contest to a paused state via the
+  admin settings, drain the queue, restart the worker, then unpause. The
+  application does not yet have an automated drain — restarting a worker mid-event
+  without freezing the queue causes a visible 5-minute gap to participants.
+
+Reference: `.context/reviews/2026-05-03/00-overall-verdict.md` C-8,
+`.context/reviews/2026-05-03/03-admin.md` RISK-2.
+
 ## Anti-cheat truth
 Use anti-cheat signals as review aids only. They should support human review, not replace it, and should not be presented as standalone proof of misconduct.
 
