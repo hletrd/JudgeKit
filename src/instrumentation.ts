@@ -1,4 +1,5 @@
 import { getValidatedAuthSecret, getValidatedJudgeAuthToken } from "@/lib/security/env";
+import { assertProductionConfig } from "@/lib/security/production-config";
 import { startRateLimitEviction } from "@/lib/security/rate-limit";
 import { startAuditEventPruning } from "@/lib/audit/events";
 import { startSensitiveDataPruning } from "@/lib/data-retention-maintenance";
@@ -7,6 +8,7 @@ import { syncLanguageConfigsOnStartup } from "@/lib/judge/sync-language-configs"
 import { initializeSettings } from "@/lib/system-settings-config";
 
 export async function register() {
+  assertProductionConfig();
   getValidatedAuthSecret();
   getValidatedJudgeAuthToken();
 

@@ -22,9 +22,13 @@ services:
     environment:
       - CONTAINERS=1
       - IMAGES=${WORKER_DOCKER_PROXY_IMAGES:-0}
-      - BUILD=${WORKER_DOCKER_PROXY_BUILD:-0}
-      - POST=${WORKER_DOCKER_PROXY_POST:-0}
-      - DELETE=${WORKER_DOCKER_PROXY_DELETE:-0}
+      # BUILD / POST / DELETE are hardcoded off here. If a worker host genuinely
+      # needs to build images locally, use a dedicated overlay file (e.g.
+      # docker-compose.worker-build.override.yml) — not an env-driven toggle on
+      # the production compose, which is too easy to leave enabled accidentally.
+      - BUILD=0
+      - POST=0
+      - DELETE=0
       - LOG_LEVEL=warning
     volumes:
       - /var/run/docker.sock:/var/run/docker.sock:ro

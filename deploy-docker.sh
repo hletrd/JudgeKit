@@ -430,6 +430,16 @@ ensure_env_literal() {
     || warn "Failed to backfill ${key} — please add it manually before the app starts"
 }
 ensure_env_secret PLUGIN_CONFIG_ENCRYPTION_KEY hex
+# CRON_SECRET authenticates Prometheus / cron callers of /api/metrics.
+# Without it, the metrics endpoint returns 401 to all anonymous traffic and
+# operator monitoring is silently broken. Backfill once; do not rotate during
+# normal deploys (the scrape config on the operator side stays stable).
+ensure_env_secret CRON_SECRET hex
+# Sidecar auth tokens — the Rust code-similarity and rate-limiter sidecars
+# refuse to start in production without these (compose uses ${VAR:?}). Backfill
+# missing values automatically so a fresh deploy does not crash on first boot.
+ensure_env_secret CODE_SIMILARITY_AUTH_TOKEN hex
+ensure_env_secret RATE_LIMITER_AUTH_TOKEN hex
 # AUTH_TRUST_HOST must be true in production when behind a reverse proxy.
 # Without it, validateTrustedAuthHost() rejects auth callbacks with UntrustedHost
 # because the Host header may be the internal container hostname (e.g., localhost:3000)
