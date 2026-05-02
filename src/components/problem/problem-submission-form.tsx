@@ -54,6 +54,15 @@ export function ProblemSubmissionForm({
   const tCompiler = useTranslations("compiler");
   const fileInputRef = useRef<HTMLInputElement | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
+  // CodeMirror's keymap uses `Mod-Enter` which resolves to ⌘ on macOS and Ctrl
+  // elsewhere. Mirror that here for the visible label so Mac users see ⌘ Enter.
+  const [submitShortcutLabel, setSubmitShortcutLabel] = useState("Ctrl+Enter");
+  useEffect(() => {
+    if (typeof navigator === "undefined") return;
+    const ua = navigator.platform || navigator.userAgent || "";
+    const isMac = /Mac|iPhone|iPad|iPod/i.test(ua);
+    setSubmitShortcutLabel(isMac ? "⌘+Enter" : "Ctrl+Enter");
+  }, []);
   const availableLanguages = useMemo(() => languages.map((entry) => entry.language), [languages]);
   const { language, setLanguage, sourceCode, setSourceCode, isDirty, clearAllDrafts } = useSourceDraft({
     userId,
@@ -372,7 +381,7 @@ export function ProblemSubmissionForm({
         </Button>
         <Button type="submit" className="flex-1" disabled={isSubmitting || isRunning}>
           {isSubmitting ? <Loader2 className="mr-2 size-4 animate-spin" /> : <Send className="mr-2 size-4" />}
-          {isSubmitting ? tCommon("loading") : `${tCommon("submit")} (Ctrl+Enter)`}
+          {isSubmitting ? tCommon("loading") : `${tCommon("submit")} (${submitShortcutLabel})`}
         </Button>
       </div>
       {runResult && (
