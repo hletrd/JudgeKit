@@ -29,7 +29,6 @@ import { getLanguageDisplayLabel } from "@/lib/judge/languages";
 import { formatScore } from "@/lib/formatting";
 import { buildLocalePath, NO_INDEX_METADATA } from "@/lib/seo";
 import { getResolvedSystemSettings } from "@/lib/system-settings";
-import { LogInIcon } from "lucide-react";
 import { normalizePage, normalizePageSize, setPaginationParams } from "@/lib/pagination";
 import { FilterSelect } from "@/components/filter-select";
 
@@ -112,7 +111,6 @@ export default async function SubmissionsPage({
   const session = await auth();
   const t = await getTranslations("submissions");
   const tCommon = await getTranslations("common");
-  const tAuth = await getTranslations("auth");
   const locale = await getLocale();
   const timeZone = await getResolvedSystemTimeZone();
 
