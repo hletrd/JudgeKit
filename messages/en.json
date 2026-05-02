@@ -2660,6 +2660,8 @@
     "contestClosed": "Assessment closed",
     "contestClosedDescription": "This assessment is closed.",
     "resultsNotAvailable": "Results aren't available for this assessment.",
+    "issuedBy": "Issued by {organization}",
+    "contactPrompt": "Questions? Contact",
     "reviewNoticeTitle": "Assessment review notice",
     "reviewNoticeSubmissions": "Authorized reviewers may inspect submissions, timestamps, and assessment progress for hiring decisions and support.",
     "reviewNoticeSignals": "If integrity monitoring is enabled, focus changes, copy/paste events, IP-address changes, and periodic code snapshots may be recorded for review.",

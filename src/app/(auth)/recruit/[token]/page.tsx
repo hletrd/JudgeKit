@@ -126,6 +126,9 @@ export default async function RecruitPage({
       description: assignments.description,
       examDurationMinutes: assignments.examDurationMinutes,
       deadline: assignments.deadline,
+      organizationName: assignments.recruitingOrganizationName,
+      organizationLogoUrl: assignments.recruitingOrganizationLogoUrl,
+      contactEmail: assignments.recruitingContactEmail,
     })
     .from(assignments)
     .where(eq(assignments.id, invitation.assignmentId))
@@ -203,8 +206,33 @@ export default async function RecruitPage({
   return (
     <Card className="w-full max-w-lg">
       <CardHeader className="text-center">
+        {assignment.organizationLogoUrl && (
+          // Logo is admin-controlled — same trust level as siteTitle. The CSP
+          // `img-src 'self' data: blob:` blocks third-party hostnames, so the
+          // logo URL must point at an asset hosted on this origin (uploaded
+          // via /dashboard/admin/files or similar).
+          // eslint-disable-next-line @next/next/no-img-element
+          <img
+            src={assignment.organizationLogoUrl}
+            alt={assignment.organizationName ?? ""}
+            className="mx-auto mb-2 h-12 w-auto object-contain"
+          />
+        )}
         <CardTitle className="text-2xl">{t("title")}</CardTitle>
+        {assignment.organizationName && (
+          <p className="text-sm text-muted-foreground">
+            {t("issuedBy", { organization: assignment.organizationName })}
+          </p>
+        )}
         <CardDescription>{candidateGreeting}</CardDescription>
+        {assignment.contactEmail && (
+          <p className="text-xs text-muted-foreground">
+            {t("contactPrompt")}{" "}
+            <a className="underline" href={`mailto:${assignment.contactEmail}`}>
+              {assignment.contactEmail}
+            </a>
+          </p>
+        )}
       </CardHeader>
       <CardContent className="space-y-4">
           <div className="space-y-3">

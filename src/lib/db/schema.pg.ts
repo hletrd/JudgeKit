@@ -347,6 +347,13 @@ export const assignments = pgTable(
     anonymousLeaderboard: boolean("anonymous_leaderboard").default(false),
     showResultsToCandidate: boolean("show_results_to_candidate").notNull().default(false),
     hideScoresFromCandidates: boolean("hide_scores_from_candidates").notNull().default(false),
+    // Branding fields surfaced to candidates via the recruit page so they
+    // can verify the link is from the company that emailed them and know
+    // who to contact about the assessment. All optional — when null the
+    // recruit page falls back to the platform's siteTitle.
+    recruitingOrganizationName: text("recruiting_organization_name"),
+    recruitingOrganizationLogoUrl: text("recruiting_organization_logo_url"),
+    recruitingContactEmail: text("recruiting_contact_email"),
     createdAt: timestamp("created_at", { withTimezone: true })
       .notNull()
       .$defaultFn(() => new Date()),

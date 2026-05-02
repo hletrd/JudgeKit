@@ -2660,6 +2660,8 @@
     "contestClosed": "평가 마감",
     "contestClosedDescription": "마감된 평가입니다.",
     "resultsNotAvailable": "결과를 볼 수 없습니다.",
+    "issuedBy": "{organization} 발송",
+    "contactPrompt": "문의:",
     "reviewNoticeTitle": "평가 검토 안내",
     "reviewNoticeSubmissions": "검토 권한이 있는 담당자가 채용 판단을 위해 제출 코드, 소요 시간, 풀이 기록을 확인할 수 있습니다.",
     "reviewNoticeSignals": "무결성 모니터링이 켜져 있으면 탭 전환, 복사/붙여넣기, IP 주소 변경, 주기적 코드 스냅샷이 검토용으로 기록될 수 있습니다.",
