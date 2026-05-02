@@ -36,7 +36,12 @@ export function AssistantMarkdown({ className, content }: AssistantMarkdownProps
   return (
     <div className={cn("problem-description", className)}>
       <ReactMarkdown
-        rehypePlugins={[rehypeHighlight, rehypeKatex]}
+        rehypePlugins={[
+          rehypeHighlight,
+          // Same hardening as ProblemDescription — strict mode + capped macro
+          // expansion so an LLM-emitted nested \hbox cannot DoS the render.
+          [rehypeKatex, { strict: true, maxExpand: 100 }],
+        ]}
         remarkPlugins={[remarkGfm, remarkMath, remarkBreaks]}
         skipHtml
         components={{

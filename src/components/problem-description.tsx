@@ -56,7 +56,14 @@ export function ProblemDescription({
   return (
     <div className={cn("problem-description", className)} style={themeStyle}>
       <ReactMarkdown
-        rehypePlugins={[rehypeHighlight, rehypeKatex]}
+        rehypePlugins={[
+          rehypeHighlight,
+          // strict: throw on unrecognised macros / commands so a malicious
+          // problem statement cannot smuggle nested constructs that DoS the
+          // server-side render. maxExpand caps macro expansion to keep
+          // worst-case render time bounded.
+          [rehypeKatex, { strict: true, maxExpand: 100 }],
+        ]}
         remarkPlugins={[remarkGfm, remarkBreaks, remarkMath]}
         skipHtml
         components={{
