@@ -450,7 +450,8 @@
       "submissionLoadFailed": "Failed to load submissions.",
       "submissionCreateFailed": "Failed to submit your solution.",
       "examNotStarted": "You must start the exam before submitting.",
-      "examTimeExpired": "Your assessment time has ended."
+      "examTimeExpired": "Your assessment time has ended.",
+      "antiCheatHeartbeatRequired": "We can't verify a live exam session in this browser. Open the exam page in this tab and let it sit on the problem for a few seconds, then try submitting again."
     },
     "visibilityOptions": {
       "public": "Public",
