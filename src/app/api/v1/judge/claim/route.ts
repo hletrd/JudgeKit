@@ -319,14 +319,23 @@ export async function POST(request: NextRequest) {
         dockerImage: languageConfigs.dockerImage,
         compileCommand: languageConfigs.compileCommand,
         runCommand: languageConfigs.runCommand,
+        timeLimitMultiplier: languageConfigs.timeLimitMultiplier,
       })
       .from(languageConfigs)
       .where(eq(languageConfigs.language, claimed.language))
       .limit(1);
 
+    // Apply per-language time-limit multiplier so e.g. Python gets 3x the
+    // C++ TL on the same problem. Default multiplier 1.0 leaves the problem
+    // limit untouched. Round up so the displayed value matches what the
+    // judge actually enforces.
+    const baseTimeLimitMs = problem.timeLimitMs ?? 2000;
+    const multiplier = langConfig?.timeLimitMultiplier ?? 1.0;
+    const adjustedTimeLimitMs = Math.max(1, Math.ceil(baseTimeLimitMs * multiplier));
+
     return apiSuccess({
       ...claimed,
-      timeLimitMs: problem.timeLimitMs,
+      timeLimitMs: adjustedTimeLimitMs,
       memoryLimitMb: problem.memoryLimitMb,
       comparisonMode: problem.comparisonMode ?? "exact",
       floatAbsoluteError: problem.floatAbsoluteError ?? null,
