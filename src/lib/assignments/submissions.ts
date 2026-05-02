@@ -1,6 +1,7 @@
 import { db } from "@/lib/db";
 import { rawQueryAll } from "@/lib/db/queries";
 import {
+  antiCheatEvents,
   assignmentProblems,
   assignments,
   contestAccessTokens,
@@ -12,7 +13,7 @@ import {
   submissions,
   users,
 } from "@/lib/db/schema";
-import { and, asc, eq, inArray } from "drizzle-orm";
+import { and, asc, desc, eq, inArray } from "drizzle-orm";
 import type { SubmissionStatus } from "@/types";
 import { resolveCapabilities } from "@/lib/capabilities/cache";
 import { getRecruitingAccessContext } from "@/lib/recruiting/access";
@@ -30,7 +31,8 @@ type AssignmentValidationError =
   | "assignmentEnrollmentRequired"
   | "assignmentProblemMismatch"
   | "examNotStarted"
-  | "examTimeExpired";
+  | "examTimeExpired"
+  | "antiCheatHeartbeatRequired";
 
 type AssignmentAccessRecord = {
   id: string;
@@ -41,7 +43,15 @@ type AssignmentAccessRecord = {
   lateDeadline: Date | null;
   examMode: string;
   examDurationMinutes: number | null;
+  enableAntiCheat: boolean;
 };
+
+// Maximum age of the latest anti-cheat browser event before a submission is
+// rejected on an exam-mode assignment with anti-cheat enabled. Server-side
+// heartbeat throttle is 60 s; allow some clock skew + network jitter on top.
+// Tightening this further reduces the curl-only-submit window; loosening it
+// is friendlier to flaky wifi but defeats the purpose of the correlation.
+const ANTI_CHEAT_HEARTBEAT_FRESHNESS_MS = 90_000;
 
 type AssignmentValidationSuccess = {
   ok: true;
@@ -136,6 +146,7 @@ async function getAssignmentAccessRecord(
       lateDeadline: true,
       examMode: true,
       examDurationMinutes: true,
+      enableAntiCheat: true,
     },
     with: {
       group: {
@@ -159,6 +170,7 @@ async function getAssignmentAccessRecord(
     lateDeadline: assignment.lateDeadline ?? null,
     examMode: assignment.examMode ?? "none",
     examDurationMinutes: assignment.examDurationMinutes ?? null,
+    enableAntiCheat: assignment.enableAntiCheat ?? false,
   };
 }
 
@@ -273,6 +285,34 @@ export async function validateAssignmentSubmission(
 
       if (examSession.personalDeadline && examSession.personalDeadline.valueOf() < now) {
         return { ok: false, status: 403, error: "examTimeExpired" };
+      }
+    }
+
+    // Anti-cheat heartbeat correlation: when an assignment runs in any
+    // exam mode AND the instructor enabled anti-cheat, the candidate must
+    // have a recent browser-issued event before a submission is accepted.
+    // This blocks the curl-only attack path documented in
+    // .context/reviews/2026-05-03/07-security.md F1: a candidate with a
+    // valid session cookie cannot bypass the in-browser monitor and submit
+    // from a second device while their decoy tab sits idle.
+    if (assignment.enableAntiCheat && assignment.examMode !== "none") {
+      const latest = await db
+        .select({ createdAt: antiCheatEvents.createdAt })
+        .from(antiCheatEvents)
+        .where(
+          and(
+            eq(antiCheatEvents.assignmentId, assignment.id),
+            eq(antiCheatEvents.userId, userId),
+          ),
+        )
+        .orderBy(desc(antiCheatEvents.createdAt))
+        .limit(1);
+
+      const latestEventAt = latest[0]?.createdAt?.valueOf() ?? null;
+      const fresh =
+        latestEventAt !== null && now - latestEventAt <= ANTI_CHEAT_HEARTBEAT_FRESHNESS_MS;
+      if (!fresh) {
+        return { ok: false, status: 403, error: "antiCheatHeartbeatRequired" };
       }
     }
   }
