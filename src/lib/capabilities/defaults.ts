@@ -14,15 +14,21 @@ const STUDENT_CAPABILITIES: readonly Capability[] = [
 
 const ASSISTANT_CAPABILITIES: readonly Capability[] = [
   ...STUDENT_CAPABILITIES,
-  // Submissions (view only)
-  "submissions.view_all",
+  // Submissions:
+  // submissions.view_all is intentionally OMITTED so the group-scope filter
+  // at src/lib/assignments/submissions.ts:165-179 (getSubmissionReviewGroupIds)
+  // restricts the assistant to their assigned teaching groups.
+  // assignments.view_status (below) is what triggers the scoped path.
   "submissions.view_source",
-  // Assignments (view only)
+  "submissions.comment",
+  "submissions.rejudge",
+  // Assignments — drives the scope filter above
   "assignments.view_status",
   // Problems (view only)
   "problems.view_all",
-  // Anti-Cheat (view only)
+  // Anti-Cheat
   "anti_cheat.view_events",
+  "anti_cheat.run_similarity",
   // Files
   "files.upload",
 ];
