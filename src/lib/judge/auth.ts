@@ -39,11 +39,15 @@ export function isJudgeAuthorized(request: NextRequest) {
 
 /**
  * Validate that the request carries a valid judge Bearer token for a
- * specific worker. When the worker has a `secretTokenHash` stored in the DB,
- * the provided token is hashed and compared against it. When only a plaintext
- * `secretToken` exists (legacy — should be migrated), a deprecation warning
- * is logged and auth is rejected. Otherwise it falls back to the shared
- * JUDGE_AUTH_TOKEN.
+ * specific worker. The worker MUST exist with a `secretTokenHash`; the
+ * provided token is hashed and compared against the stored hash.
+ *
+ * The previous behaviour fell back to the shared JUDGE_AUTH_TOKEN for any
+ * worker not in the DB, which let a leaked shared token submit fabricated
+ * results for any worker id (including ones that never existed). The shared
+ * token is now only honoured by `isJudgeAuthorized` on the registration
+ * path; once a worker is registered it must authenticate with its own
+ * per-worker secret.
  *
  * Returns an object with `authorized` boolean and an optional error key
  * that can be returned directly to the client.
@@ -63,29 +67,31 @@ export async function isJudgeAuthorizedForWorker(
     columns: { secretTokenHash: true },
   });
 
-  // If the worker exists and has a hashed secret, validate against the hash
-  if (worker?.secretTokenHash) {
+  if (!worker) {
+    // Workers must register before claiming work. A request bearing a
+    // shared token for a non-existing workerId is suspicious — log the
+    // workerId so an operator can correlate with /api/v1/judge/register
+    // attempts during incident response.
+    logger.warn(
+      { workerId },
+      "[judge] auth attempted for unknown workerId — registration must precede claim",
+    );
+    return { authorized: false, error: "workerNotFound" };
+  }
+
+  if (worker.secretTokenHash) {
     if (safeTokenCompare(hashToken(providedToken), worker.secretTokenHash)) {
       return { authorized: true };
     }
-    // Token didn't match worker secret — don't fall through to shared token
     return { authorized: false, error: "invalidWorkerToken" };
   }
 
-  // Worker found but has no secretTokenHash — reject and log migration warning
-  if (worker) {
-    logger.warn(
-      { workerId },
-      "[judge] Worker %s has no secretTokenHash — rejecting auth. Migrate plaintext secretToken to hash.",
-    );
-    return { authorized: false, error: "workerSecretNotMigrated" };
-  }
-
-  // Worker not found: fall back to shared token
-  const expectedToken = getValidatedJudgeAuthToken();
-  if (safeTokenCompare(providedToken, expectedToken)) {
-    return { authorized: true };
-  }
-
-  return { authorized: false, error: "unauthorized" };
+  // Worker exists but has no secretTokenHash. This is a legacy state from
+  // before per-worker tokens were enforced; the operator must re-register
+  // the worker so it acquires a hash on the canonical path. Reject and log.
+  logger.warn(
+    { workerId },
+    "[judge] Worker %s has no secretTokenHash — rejecting auth. Re-register the worker so it acquires a per-worker secret.",
+  );
+  return { authorized: false, error: "workerSecretNotMigrated" };
 }
