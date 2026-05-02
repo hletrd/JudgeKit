@@ -264,8 +264,14 @@ async fn run_docker_once(
         format!("{}m", mem_limit),
         "--memory-swap".into(),
         if options.phase == Phase::Compile {
-            const MAX_COMPILE_SWAP_MB: u32 = 4096;
-            format!("{}m", (mem_limit * 2).min(MAX_COMPILE_SWAP_MB)) // cap swap to 2x with hard ceiling
+            // Match the runtime budget — same swap cap as memory. Earlier the
+            // compile phase allowed up to 4 GiB of swap (mem_limit * 2 capped
+            // at 4096 MiB), which let a malicious build (e.g. infinite C++
+            // template instantiation, Rust trait recursion) consume host
+            // swap and starve neighbouring containers. Special-cased VM-based
+            // toolchains (JVM / .NET / pwsh) can request more via memory_limit_mb
+            // upstream if their compile profile genuinely needs it.
+            format!("{}m", mem_limit)
         } else {
             format!("{}m", mem_limit) // strict limit during execution
         },
