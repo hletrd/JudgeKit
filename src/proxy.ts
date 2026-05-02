@@ -22,8 +22,15 @@ import {
 // Negative results (user not found / inactive / token invalidated) are NOT cached.
 const authUserCache = new Map<string, { user: Awaited<ReturnType<typeof getActiveAuthUserById>>; expiresAt: number }>();
 const AUTH_CACHE_TTL_MS = (() => {
+  // Cap operator-supplied values at 10 s to bound the post-deactivation
+  // access window. An accidental AUTH_CACHE_TTL_MS=3600000 (one hour) would
+  // otherwise let a revoked admin keep operating for an hour after their role
+  // was downgraded — far longer than the 2 s default contract advertised in
+  // the comment above.
+  const MAX_TTL_MS = 10_000;
   const parsed = parseInt(process.env.AUTH_CACHE_TTL_MS ?? '2000', 10);
-  return Number.isFinite(parsed) && parsed > 0 ? parsed : 2000;
+  if (!Number.isFinite(parsed) || parsed <= 0) return 2000;
+  return Math.min(parsed, MAX_TTL_MS);
 })();
 const AUTH_CACHE_MAX_SIZE = 500;
 
