@@ -116,24 +116,10 @@ export default async function SubmissionsPage({
   const locale = await getLocale();
   const timeZone = await getResolvedSystemTimeZone();
 
-  if (!session?.user) {
-    return (
-      <div className="space-y-6">
-        <div>
-          <h1 className={`text-3xl font-semibold${locale !== "ko" ? " tracking-tight" : ""}`}>{tCommon("submissions")}</h1>
-        </div>
-        <Card>
-          <CardContent className="flex flex-col items-center gap-4 py-12">
-            <LogInIcon className="size-10 text-muted-foreground" />
-            <p className="text-sm text-muted-foreground">{tAuth("signInRequired")}</p>
-            <Link href={buildLocalePath("/login", locale)}>
-              <Button>{tAuth("signIn")}</Button>
-            </Link>
-          </CardContent>
-        </Card>
-      </div>
-    );
-  }
+  // Guests see the public submission feed (verdicts only, restricted to
+  // submissions whose problem is `visibility = 'public'`). The list view
+  // never renders source code; the per-id detail page is its own gate.
+  const isGuest = !session?.user;
 
   const resolvedSearchParams = searchParams ? await searchParams : undefined;
   const pageSize = normalizePageSize(resolvedSearchParams?.pageSize);
@@ -180,13 +166,21 @@ export default async function SubmissionsPage({
     ? gte(submissions.submittedAt, periodStart)
     : undefined;
 
-  const userFilter = currentScope === "mine"
-    ? eq(submissions.userId, session.user.id)
+  // Scope=mine requires a logged-in user. For guests we force scope=all so
+  // the page renders something rather than 401-ing on a copy-pasted URL.
+  const effectiveScope: ScopeFilter = isGuest ? "all" : currentScope;
+  const userFilter = !isGuest && effectiveScope === "mine"
+    ? eq(submissions.userId, session!.user.id)
     : undefined;
   const languageFilter = currentLanguage !== "all"
     ? eq(submissions.language, currentLanguage)
     : undefined;
-  const filters = [userFilter, searchFilter, statusDbFilter, periodFilter, languageFilter].filter(Boolean);
+  // Guests must not see submissions targeting private problems — those are
+  // contest / homework / exam submissions whose visibility is not public.
+  const guestVisibilityFilter = isGuest
+    ? eq(problems.visibility, "public")
+    : undefined;
+  const filters = [userFilter, searchFilter, statusDbFilter, periodFilter, languageFilter, guestVisibilityFilter].filter(Boolean);
   const whereClause = filters.length > 0 ? and(...filters) : undefined;
 
   const [countRow] = await db
