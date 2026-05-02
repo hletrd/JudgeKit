@@ -70,6 +70,7 @@ export async function generateMetadata({
       FROM first_accepts fa
       INNER JOIN users u ON u.id = fa.user_id
       WHERE u.is_active = true
+        AND u.role NOT IN ('super_admin', 'admin', 'instructor')
         AND NOT EXISTS (
           SELECT 1 FROM recruiting_invitations ri
           WHERE ri.user_id = u.id AND ri.status = 'redeemed'
@@ -140,6 +141,7 @@ export default async function RankingsPage({
   const estimatedCountRow = await rawQueryOne<{ total: number }>(`
     SELECT COUNT(*)::int as total FROM users u
     WHERE u.is_active = true
+      AND u.role NOT IN ('super_admin', 'admin', 'instructor')
       AND NOT EXISTS (
         SELECT 1 FROM recruiting_invitations ri
         WHERE ri.user_id = u.id AND ri.status = 'redeemed'
@@ -183,6 +185,7 @@ export default async function RankingsPage({
     FROM users u
     INNER JOIN first_accepts fa ON fa.user_id = u.id
     WHERE u.is_active = true
+      AND u.role NOT IN ('super_admin', 'admin', 'instructor')
       AND NOT EXISTS (
         SELECT 1 FROM recruiting_invitations ri
         WHERE ri.user_id = u.id AND ri.status = 'redeemed'
