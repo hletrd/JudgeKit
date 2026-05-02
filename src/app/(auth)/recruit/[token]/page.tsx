@@ -259,7 +259,9 @@ export default async function RecruitPage({
             <ul className="list-disc list-inside text-xs text-sky-700 dark:text-sky-300 space-y-0.5">
               <li>{t("reviewNoticeSubmissions")}</li>
               <li>{t("reviewNoticeSignals")}</li>
+              <li>{t("reviewNoticeCorroboration")}</li>
               <li>{t("reviewNoticeAi")}</li>
+              <li>{t("reviewNoticeAiUndetectable")}</li>
             </ul>
           </div>
           {resumeWithCurrentSession && (
