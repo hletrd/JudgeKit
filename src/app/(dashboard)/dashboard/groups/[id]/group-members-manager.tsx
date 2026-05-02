@@ -12,7 +12,17 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
+import { Textarea } from "@/components/ui/textarea";
 import { useRouter } from "next/navigation";
+
+// Accept either newline-separated, comma-separated, semicolon-separated,
+// or tab-separated usernames. Useful for pasting a column from a class list.
+function parsePasteListUsernames(raw: string): string[] {
+  return raw
+    .split(/[\n,;\t]/)
+    .map((entry) => entry.trim().replace(/^@/, ""))
+    .filter((entry) => entry.length > 0);
+}
 
 type GroupMember = {
   id: string;
@@ -60,6 +70,8 @@ export function GroupMembersManager({
   const router = useRouter();
   const [isAdding, setIsAdding] = useState(false);
   const [isBulkAdding, setIsBulkAdding] = useState(false);
+  const [isPasteEnrolling, setIsPasteEnrolling] = useState(false);
+  const [pasteList, setPasteList] = useState("");
   const [selectedStudentId, setSelectedStudentId] = useState(availableStudents[0]?.id ?? "");
   const [selectedBulkIds, setSelectedBulkIds] = useState<Set<string>>(new Set());
   const [studentSearchQuery, setStudentSearchQuery] = useState("");
@@ -97,6 +109,8 @@ export function GroupMembersManager({
       case "memberAddFailed":
       case "memberRemoveFailed":
       case "bulkAddFailed":
+      case "atLeastOneIdentifierRequired":
+      case "tooManyIdentifiers":
         return t(error.message);
       default:
         return tCommon("error");
@@ -211,6 +225,75 @@ export function GroupMembersManager({
     }
   }
 
+  async function handlePasteEnroll() {
+    const usernames = parsePasteListUsernames(pasteList);
+    if (usernames.length === 0) {
+      toast.error(t("bulkPasteEmpty"));
+      return;
+    }
+    if (usernames.length > 500) {
+      toast.error(t("bulkPasteTooMany", { count: 500 }));
+      return;
+    }
+
+    setIsPasteEnrolling(true);
+
+    try {
+      const response = await apiFetch(`/api/v1/groups/${groupId}/members/bulk`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ usernames }),
+      });
+      const payload = (await response.json().catch(() => ({}))) as {
+        error?: string;
+        data?: {
+          enrolled?: number;
+          skipped?: number;
+          unresolvedUsernames?: string[];
+          nonStudentUsernames?: string[];
+        };
+        enrolled?: number;
+        skipped?: number;
+        unresolvedUsernames?: string[];
+        nonStudentUsernames?: string[];
+      };
+      if (!response.ok) {
+        throw new Error(payload.error || "bulkAddFailed");
+      }
+
+      const enrolled = payload.data?.enrolled ?? payload.enrolled ?? 0;
+      const skipped = payload.data?.skipped ?? payload.skipped ?? 0;
+      const unresolved =
+        payload.data?.unresolvedUsernames ?? payload.unresolvedUsernames ?? [];
+      const nonStudent =
+        payload.data?.nonStudentUsernames ?? payload.nonStudentUsernames ?? [];
+
+      toast.success(t("bulkAddSuccess", { count: enrolled, skipped }));
+      if (unresolved.length > 0) {
+        toast.error(
+          t("bulkPasteUnresolved", {
+            count: unresolved.length,
+            preview: unresolved.slice(0, 5).join(", "),
+          }),
+        );
+      }
+      if (nonStudent.length > 0) {
+        toast.error(
+          t("bulkPasteNonStudent", {
+            count: nonStudent.length,
+            preview: nonStudent.slice(0, 5).join(", "),
+          }),
+        );
+      }
+      setPasteList("");
+      router.refresh();
+    } catch (error) {
+      toast.error(getErrorMessage(error));
+    } finally {
+      setIsPasteEnrolling(false);
+    }
+  }
+
   async function handleRemoveMember(member: GroupMember) {
     try {
       const response = await apiFetch(`/api/v1/groups/${groupId}/members/${member.userId}`, {
@@ -319,6 +402,33 @@ export function GroupMembersManager({
         )}
       </CardHeader>
       <CardContent className="flex flex-col gap-6">
+        {canManage && (
+          <div className="flex flex-col gap-2 rounded-md border p-4">
+            <Label htmlFor={`group-paste-list-${groupId}`}>{t("bulkPasteTitle")}</Label>
+            <p className="text-xs text-muted-foreground">{t("bulkPasteHelp")}</p>
+            <Textarea
+              id={`group-paste-list-${groupId}`}
+              value={pasteList}
+              onChange={(event) => setPasteList(event.target.value)}
+              placeholder={t("bulkPastePlaceholder")}
+              rows={4}
+              className="font-mono text-xs"
+              disabled={isPasteEnrolling}
+            />
+            <div className="flex items-center justify-between gap-2">
+              <p className="text-xs text-muted-foreground">
+                {t("bulkPasteCount", { count: parsePasteListUsernames(pasteList).length })}
+              </p>
+              <Button
+                size="sm"
+                onClick={handlePasteEnroll}
+                disabled={isPasteEnrolling || parsePasteListUsernames(pasteList).length === 0}
+              >
+                {isPasteEnrolling ? tCommon("loading") : t("bulkPasteEnroll")}
+              </Button>
+            </div>
+          </div>
+        )}
         {canManage && currentAvailableStudents.length > 0 && (
           <div className="flex flex-col gap-3 rounded-md border p-4">
             <div className="flex items-center justify-between">

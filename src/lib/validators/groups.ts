@@ -21,9 +21,22 @@ export const updateGroupSchema = createGroupSchema.partial().extend({
   ),
 });
 
-export const bulkEnrollmentSchema = z.object({
-  userIds: z.array(z.string().min(1)).min(1).max(200),
-});
+// Bulk enrollment accepts either resolved userIds (legacy callers, dropdown
+// picker) or usernames (CSV / paste-list). One of the two must be present;
+// when both are provided usernames are resolved and merged with userIds.
+export const bulkEnrollmentSchema = z
+  .object({
+    userIds: z.array(z.string().min(1)).max(500).optional(),
+    usernames: z.array(z.string().min(1).max(50)).max(500).optional(),
+  })
+  .refine(
+    (val) => (val.userIds?.length ?? 0) + (val.usernames?.length ?? 0) > 0,
+    { message: "atLeastOneIdentifierRequired" },
+  )
+  .refine(
+    (val) => (val.userIds?.length ?? 0) + (val.usernames?.length ?? 0) <= 500,
+    { message: "tooManyIdentifiers" },
+  );
 
 export type CreateGroupInput = z.infer<typeof createGroupSchema>;
 export type UpdateGroupInput = z.infer<typeof updateGroupSchema>;

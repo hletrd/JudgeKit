@@ -30,8 +30,37 @@ export const POST = createApiHandler({
 
     if (!canManage) return forbidden();
 
-    const { userIds } = body;
-    const uniqueRequestedUserIds = Array.from(new Set(userIds));
+    const { userIds = [], usernames = [] } = body;
+    const trimmedUsernames = usernames
+      .map((u) => u.trim().toLowerCase())
+      .filter((u) => u.length > 0);
+
+    // Resolve usernames -> userIds.
+    let resolvedFromUsernames: string[] = [];
+    let unresolvedUsernames: string[] = [];
+    if (trimmedUsernames.length > 0) {
+      const lookup = await db.query.users.findMany({
+        where: (usersTable, { inArray: inArr }) => inArr(usersTable.username, trimmedUsernames),
+        columns: { id: true, username: true },
+      });
+      const foundUsernames = new Set(lookup.map((u) => u.username.toLowerCase()));
+      resolvedFromUsernames = lookup.map((u) => u.id);
+      unresolvedUsernames = trimmedUsernames.filter((u) => !foundUsernames.has(u));
+    }
+
+    const uniqueRequestedUserIds = Array.from(
+      new Set([...userIds, ...resolvedFromUsernames]),
+    );
+    const totalRequested = userIds.length + trimmedUsernames.length;
+
+    if (uniqueRequestedUserIds.length === 0) {
+      return apiSuccess({
+        enrolled: 0,
+        skipped: totalRequested,
+        unresolvedUsernames,
+        nonStudentUsernames: [],
+      });
+    }
 
     // Validate all users exist, are active, and have student role in a single query
     const validStudents = await db.query.users.findMany({
@@ -45,9 +74,19 @@ export const POST = createApiHandler({
     });
 
     const validStudentIds = new Set(validStudents.map((s) => s.id));
+    const validStudentUsernames = new Set(validStudents.map((s) => s.username.toLowerCase()));
+    // Usernames that resolved to a user but the user is not an active student
+    const nonStudentUsernames = trimmedUsernames.filter(
+      (u) => !validStudentUsernames.has(u) && !unresolvedUsernames.includes(u),
+    );
 
     if (validStudents.length === 0) {
-      return apiSuccess({ enrolled: 0, skipped: userIds.length });
+      return apiSuccess({
+        enrolled: 0,
+        skipped: totalRequested,
+        unresolvedUsernames,
+        nonStudentUsernames,
+      });
     }
 
     // Check existing enrollments to count skipped duplicates
@@ -79,7 +118,7 @@ export const POST = createApiHandler({
       enrolled = inserted.length;
     }
 
-    const skipped = userIds.length - enrolled;
+    const skipped = totalRequested - enrolled;
 
     recordAuditEvent({
       actorId: user.id,
@@ -91,13 +130,22 @@ export const POST = createApiHandler({
       summary: `Bulk enrolled ${enrolled} student(s) into group (${skipped} skipped)`,
       details: {
         groupId: id,
-        requested: userIds.length,
+        requested: totalRequested,
+        requestedUserIds: userIds.length,
+        requestedUsernames: trimmedUsernames.length,
         enrolled,
         skipped,
+        unresolvedUsernameCount: unresolvedUsernames.length,
+        nonStudentUsernameCount: nonStudentUsernames.length,
       },
       request: req,
     });
 
-    return apiSuccess({ enrolled, skipped });
+    return apiSuccess({
+      enrolled,
+      skipped,
+      unresolvedUsernames,
+      nonStudentUsernames,
+    });
   },
 });
