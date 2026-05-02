@@ -2,10 +2,15 @@ export const DEFAULT_PAGE_SIZE = 50;
 export const PAGE_SIZE_OPTIONS = [10, 20, 50, 100] as const;
 export const PAGE_SIZE_QUERY_PARAM = "pageSize";
 
-const MAX_PAGE = 10000;
+// Bounded to keep deep-pagination OFFSET queries away from production. With
+// the default 50-row pageSize this caps a deliberate scan at ~50k rows;
+// real users never reach this — most lists fit on the first ~50 pages.
+// Hot-path lists that genuinely need to walk further should switch to a
+// cursor-based pagination helper (see parseCursorParams in api/pagination).
+const MAX_PAGE = 1000;
 
 /** Normalizes a page number query parameter. Values below 1 default to 1;
- *  values above 10000 are capped to prevent unbounded DB OFFSET queries. */
+ *  values above MAX_PAGE are capped to prevent unbounded DB OFFSET queries. */
 export function normalizePage(value?: string) {
   const parsed = parseInt(value ?? "1", 10);
 

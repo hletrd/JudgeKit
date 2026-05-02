@@ -1,6 +1,9 @@
 import { parsePositiveInt } from "@/lib/validators/query-params";
 
-const MAX_PAGE = 10_000;
+// Bounded for the same reason as src/lib/pagination.ts: deep OFFSET pagination
+// is expensive at scale and only legitimate flows reach the first ~50 pages.
+// Use parseCursorParams for endpoints that genuinely need to walk further.
+const MAX_PAGE = 1000;
 
 type PaginationOptions = {
   defaultLimit?: number;
