@@ -325,6 +325,8 @@
     "sourceFileLoaded": "\"{name}\" loaded into the editor.",
     "sourceFileLoadFailed": "Failed to read the selected source file.",
     "submissionCreated": "Submission created successfully",
+    "submissionConfirming": "Submitting in 4 seconds...",
+    "submissionCancelHint": "Click Cancel to stop. Click Submit again to send now.",
     "resetToTemplate": "Reset to Template",
     "writeCodePlaceholder": "Write your code here...",
     "descriptionTitle": "Description",

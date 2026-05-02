@@ -229,15 +229,27 @@ export function ProblemSubmissionForm({
     }
   }
 
-  async function handleSubmit(event?: React.FormEvent<HTMLFormElement>) {
-    event?.preventDefault();
+  // Hold the actual POST behind a 4-second cancel window so an accidental
+  // ⌘/Ctrl+Enter does not eat a contest attempt or a limited-submission slot.
+  const SUBMIT_CONFIRM_DELAY_MS = 4000;
+  const pendingSubmitTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const pendingToastIdRef = useRef<string | number | null>(null);
 
-    if (!sourceCode) {
-      toast.error(translateSubmissionError("sourceCode is required"));
-      return;
+  function cancelPendingSubmit() {
+    if (pendingSubmitTimerRef.current !== null) {
+      clearTimeout(pendingSubmitTimerRef.current);
+      pendingSubmitTimerRef.current = null;
     }
+    if (pendingToastIdRef.current !== null) {
+      toast.dismiss(pendingToastIdRef.current);
+      pendingToastIdRef.current = null;
+    }
+    setIsSubmitting(false);
+  }
 
-    setIsSubmitting(true);
+  async function executeSubmit() {
+    pendingSubmitTimerRef.current = null;
+    pendingToastIdRef.current = null;
 
     try {
       const response = await apiFetch("/api/v1/submissions", {
@@ -283,6 +295,45 @@ export function ProblemSubmissionForm({
       setIsSubmitting(false);
     }
   }
+
+  async function handleSubmit(event?: React.FormEvent<HTMLFormElement>) {
+    event?.preventDefault();
+
+    if (!sourceCode) {
+      toast.error(translateSubmissionError("sourceCode is required"));
+      return;
+    }
+
+    if (pendingSubmitTimerRef.current !== null) {
+      // Already pending — second click confirms immediately.
+      cancelPendingSubmit();
+      setIsSubmitting(true);
+      void executeSubmit();
+      return;
+    }
+
+    setIsSubmitting(true);
+    pendingToastIdRef.current = toast(t("submissionConfirming"), {
+      description: t("submissionCancelHint"),
+      action: {
+        label: tCommon("cancel"),
+        onClick: () => cancelPendingSubmit(),
+      },
+      duration: SUBMIT_CONFIRM_DELAY_MS,
+    });
+    pendingSubmitTimerRef.current = setTimeout(() => {
+      void executeSubmit();
+    }, SUBMIT_CONFIRM_DELAY_MS);
+  }
+
+  // Clear any pending submit if the component unmounts mid-countdown.
+  useEffect(() => {
+    return () => {
+      if (pendingSubmitTimerRef.current !== null) {
+        clearTimeout(pendingSubmitTimerRef.current);
+      }
+    };
+  }, []);
 
   return (
     <form className="space-y-4" onSubmit={handleSubmit}>
