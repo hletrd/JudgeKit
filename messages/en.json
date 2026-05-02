@@ -2722,7 +2722,7 @@
         },
         "playground": {
           "title": "Playground",
-          "description": "Write and run code instantly, no sign-in required."
+          "description": "Write and run code in your browser. Sign in to submit and save your work."
         },
         "contests": {
           "title": "Contests",
@@ -2921,12 +2921,12 @@
     },
     "playground": {
       "title": "Public playground",
-      "description": "Run code in a guest-safe environment without signing in.",
-      "note": "Guest playground execution is now enabled for quick testing. Judged submissions and contest participation still require authentication.",
+      "description": "Write code in your browser. Sign in to run, submit, or join contests.",
+      "note": "Sign in to run code, submit solutions, or join contests. The editor is browseable without an account, but execution requires authentication.",
       "primaryCta": "Open workspace",
       "secondaryCta": "Sign in",
       "liveTitle": "Public playground",
-      "liveDescription": "Run code with stdin/stdout. Sign in for judged submissions or contest participation."
+      "liveDescription": "Write code with stdin/stdout. Sign in to run, submit, or join contests."
     },
     "contests": {
       "title": "Contest catalog preview",
