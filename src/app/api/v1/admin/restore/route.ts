@@ -13,6 +13,7 @@ import { importDatabase } from "@/lib/db/import";
 import { isSanitizedExport, validateExport, type JudgeKitExport } from "@/lib/db/export";
 import { MAX_IMPORT_BYTES, readUploadedJsonFileWithLimit } from "@/lib/db/import-transfer";
 import { restoreFilesFromZip } from "@/lib/db/export-with-files";
+import { takePreRestoreSnapshot } from "@/lib/db/pre-restore-snapshot";
 
 export const dynamic = "force-dynamic";
 
@@ -129,6 +130,17 @@ export async function POST(request: NextRequest) {
       );
     }
 
+    // Take a server-side full-fidelity snapshot of the live DB before any
+    // destructive change. importDatabase() truncates and re-inserts every
+    // table inside one transaction, so a partial mid-flight failure rolls
+    // back cleanly — but a successful import from a corrupt or wrong-version
+    // backup permanently replaces production data with no automatic
+    // rollback path. The snapshot below gives operators an emergency restore
+    // artifact in ~/data/pre-restore-snapshots/ even if the imported file
+    // turns out to be wrong. The 5 most recent snapshots are retained;
+    // older ones are pruned best-effort.
+    const preSnapshotPath = await takePreRestoreSnapshot(user.id);
+
     recordAuditEvent({
       actorId: user.id,
       actorRole: user.role,
@@ -139,6 +151,7 @@ export async function POST(request: NextRequest) {
       summary: isZipFile
         ? `Restoring from ZIP backup (source: ${data.sourceDialect}, ${filesRestored} files, ${(file.size / 1024 / 1024).toFixed(1)} MB)`
         : `Restoring from JSON export (source: ${data.sourceDialect}, ${(file.size / 1024 / 1024).toFixed(1)} MB)`,
+      details: { preRestoreSnapshotPath: preSnapshotPath },
       request,
     });
 
@@ -149,6 +162,7 @@ export async function POST(request: NextRequest) {
         error: "restoreFailed",
         details: result.errors,
         partial: result.tableResults,
+        preRestoreSnapshotPath: preSnapshotPath,
       }, { status: 500 });
     }
 
@@ -158,6 +172,7 @@ export async function POST(request: NextRequest) {
       tablesImported: result.tablesImported,
       totalRowsImported: result.totalRowsImported,
       filesRestored: isZipFile ? filesRestored : undefined,
+      preRestoreSnapshotPath: preSnapshotPath,
     });
   } catch (error) {
     logger.error({ err: error }, "Database restore error");
