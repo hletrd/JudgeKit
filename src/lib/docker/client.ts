@@ -156,10 +156,15 @@ async function buildDockerImageLocal(
   // stripping it for traversal checks. Without anchoring, a path like
   // "xdocker/Dockerfile.test" would pass validation with "xtest" remaining
   // (harmless — Docker would fail — but defense-in-depth).
-  if (!dockerfilePath.startsWith("docker/Dockerfile.")) {
+  if (!dockerfilePath.startsWith("docker/Dockerfile.judge-")) {
+    // Match the Rust validator (judge-worker-rs/src/validation.rs:63) which
+    // requires the `judge-` infix. This route only builds language judge
+    // images; admin-controlled `dockerfilePath` from a DB language entry
+    // can therefore not target Dockerfile.code-similarity, Dockerfile.app, or
+    // any other namespace.
     return { success: false, error: "Invalid dockerfile path" };
   }
-  if (/\.\.|[/\\]/.test(dockerfilePath.slice("docker/Dockerfile.".length))) {
+  if (/\.\.|[/\\]/.test(dockerfilePath.slice("docker/Dockerfile.judge-".length))) {
     return { success: false, error: "Invalid dockerfile path" };
   }
 
