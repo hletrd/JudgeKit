@@ -37,8 +37,12 @@ Use this when a backup download, restore import, or post-restore verification lo
 ## Scenario: credential leak
 Use this when any of the following may have been exposed:
 - `AUTH_SECRET`
-- `JUDGE_AUTH_TOKEN`
+- `JUDGE_AUTH_TOKEN` (bootstrap)
 - `RUNNER_AUTH_TOKEN`
+- `CRON_SECRET`
+- `CODE_SIMILARITY_AUTH_TOKEN`
+- `RATE_LIMITER_AUTH_TOKEN`
+- `PLUGIN_CONFIG_ENCRYPTION_KEY`
 - worker `workerSecret`
 - database credentials
 - exported backup artifacts containing live secrets
@@ -50,7 +54,10 @@ Use this when any of the following may have been exposed:
 
 ### Minimum rotation checklist
 - `AUTH_SECRET`: rotate only with a coordinated session-invalidation window
-- `JUDGE_AUTH_TOKEN` / `RUNNER_AUTH_TOKEN`: rotate app + worker together, then verify claim/report/docker paths
+- `JUDGE_AUTH_TOKEN` / `RUNNER_AUTH_TOKEN`: rotate app + worker together. Note that workers no longer fall back to `JUDGE_AUTH_TOKEN` for `claim`/`heartbeat`/`deregister`, so rotation only affects the registration path; existing workers keep authenticating via their per-worker `secretTokenHash` until they are explicitly re-registered.
+- `CRON_SECRET`: rotate, then verify `/api/metrics` is reachable from the Prometheus scrape job and `/api/internal/cleanup` is reachable from whatever cron / systemd timer drives it. The production startup gate (`src/lib/security/production-config.ts`) will refuse to start the app if the new value is empty in `.env.production`.
+- `CODE_SIMILARITY_AUTH_TOKEN` / `RATE_LIMITER_AUTH_TOKEN`: rotate, restart the matching sidecar (`judgekit-code-similarity`, `judgekit-rate-limiter`) plus the app container together. Compose enforces `${VAR:?}` so a missing value blocks `up -d`.
+- `PLUGIN_CONFIG_ENCRYPTION_KEY`: rotate only via the documented re-encryption flow (rotating without re-encrypting plugin secrets locks every plugin out).
 - worker `workerSecret`: re-register or replace the affected worker
 - database credentials: rotate, verify migrations/backup jobs/deploy jobs still authenticate
 

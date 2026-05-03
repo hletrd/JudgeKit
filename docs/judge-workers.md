@@ -56,7 +56,7 @@ Workers poll `/api/v1/judge/claim` to claim submissions. The claim request inclu
 | Variable | Default | Description |
 |----------|---------|-------------|
 | `JUDGE_BASE_URL` | `http://localhost:3000/api/v1` | App server API URL |
-| `JUDGE_AUTH_TOKEN` | (required) | Bearer token for judge API auth |
+| `JUDGE_AUTH_TOKEN` | (required) | Shared bootstrap token. Authorises **registration only**; once a worker is registered the app rejects `claim` / `heartbeat` / `deregister` calls that present this token instead of the per-worker `secretTokenHash` (since 2026-05). |
 | `RUNNER_AUTH_TOKEN` | Falls back to `JUDGE_AUTH_TOKEN` | Bearer token for runner/docker-admin endpoints |
 | `JUDGE_ALLOW_DEFAULT_COMPILE_SECCOMP` | `false` | Explicitly let compile containers fall back to Docker's default seccomp profile |
 | `JUDGE_CONCURRENCY` | `1` | Max concurrent submissions (1-16) |

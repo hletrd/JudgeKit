@@ -18,7 +18,14 @@ AUTH_URL=https://your-domain.example
 AUTH_TRUST_HOST=true
 PLUGIN_CONFIG_ENCRYPTION_KEY=<openssl rand -hex 32>
 
-# Judge worker (shared secret between app and worker)
+# Cron / monitoring auth (bearer for /api/metrics + /api/internal/cleanup)
+CRON_SECRET=<openssl rand -hex 32>
+
+# Sidecar auth (compose `${VAR:?}` requires both)
+CODE_SIMILARITY_AUTH_TOKEN=<openssl rand -hex 32>
+RATE_LIMITER_AUTH_TOKEN=<openssl rand -hex 32>
+
+# Judge worker bootstrap (registration only; per-worker secrets take over after register)
 JUDGE_AUTH_TOKEN=<openssl rand -hex 32>
 JUDGE_BASE_URL=http://localhost:3000/api/v1
 POLL_INTERVAL=2000
@@ -36,7 +43,10 @@ JUDGE_DISABLE_CUSTOM_SECCOMP=0
 | `AUTH_TRUST_HOST` | No | `false` | Set `true` behind a reverse proxy |
 | `PLUGIN_CONFIG_ENCRYPTION_KEY` | Yes | — | Dedicated AES-GCM key for plugin secrets and API key encryption (`openssl rand -hex 32`) |
 | `DATABASE_URL` | Yes | — | PostgreSQL connection string (e.g. `postgres://user:pass@host:5432/judgekit`) |
-| `JUDGE_AUTH_TOKEN` | Yes | — | Shared secret for worker auth (`openssl rand -hex 32`) |
+| `JUDGE_AUTH_TOKEN` | Yes | — | Shared bootstrap secret. Used by workers on the registration path only — once a worker is registered the app validates `claim`/`heartbeat`/`deregister` against the per-worker `secretTokenHash` and rejects the shared token. (`openssl rand -hex 32`) |
+| `CRON_SECRET` | Yes (production) | — | Bearer token for `/api/metrics` and `/api/internal/cleanup`. The production startup gate refuses to boot without it. (`openssl rand -hex 32`) |
+| `CODE_SIMILARITY_AUTH_TOKEN` | Yes (production) | — | Sidecar bearer token. `docker-compose.production.yml` uses `${VAR:?}` and refuses to start without it. (`openssl rand -hex 32`) |
+| `RATE_LIMITER_AUTH_TOKEN` | Yes (production) | — | Sidecar bearer token. Same compose contract as above. (`openssl rand -hex 32`) |
 | `JUDGE_BASE_URL` | No | `http://localhost:3000/api/v1` | App API URL for workers |
 | `JUDGE_CONCURRENCY` | No | `1` | Max parallel submissions per worker (1-16) |
 | `JUDGE_WORKER_HOSTNAME` | No | System hostname | Worker name shown in admin dashboard |

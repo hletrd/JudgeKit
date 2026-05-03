@@ -55,8 +55,12 @@ JudgeKit currently relies on environment variables rather than a built-in vault 
 
 ### Secrets that deserve the highest handling bar
 - `AUTH_SECRET`
-- `JUDGE_AUTH_TOKEN`
+- `JUDGE_AUTH_TOKEN` (bootstrap only — per-worker `secretTokenHash` is the steady-state credential)
 - `RUNNER_AUTH_TOKEN`
+- `CRON_SECRET` — bearer for `/api/metrics` and `/api/internal/cleanup`. Production startup gate refuses to boot without it.
+- `CODE_SIMILARITY_AUTH_TOKEN` — required by the similarity sidecar in `docker-compose.production.yml` (`${VAR:?}`). Compose refuses to start without it.
+- `RATE_LIMITER_AUTH_TOKEN` — required by the rate-limiter sidecar (same compose contract).
+- `PLUGIN_CONFIG_ENCRYPTION_KEY`
 - database credentials
 - backup artifacts that include full-fidelity secrets
 
