@@ -50,10 +50,23 @@ describe("UI i18n key coverage", () => {
       /(?:const|let|var)\s+(\w+)\s*=\s*(?:await\s+)?(?:useTranslations|getTranslations)\("([^"]+)"\)/g;
     const keyCallPattern = /(?<![A-Za-z0-9_])(\w+)\("([A-Za-z0-9_.-]+)"/g;
 
+    /**
+     * Strip comments before pattern-matching so JSDoc @example blocks don't
+     * register fake translation calls (e.g. contest-status-styles.ts has an
+     * example that aliases `t` to a different namespace inside a comment).
+     */
+    function stripComments(src: string): string {
+      return src
+        // Remove block comments (incl. JSDoc).
+        .replace(/\/\*[\s\S]*?\*\//g, "")
+        // Remove single-line comments.
+        .replace(/(^|[^:])\/\/.*$/gm, "$1");
+    }
+
     const missing: string[] = [];
 
     for (const file of uiFiles) {
-      const source = read(file);
+      const source = stripComments(read(file));
       const namespaces = new Map<string, string>();
 
       for (const match of source.matchAll(namespacePattern)) {

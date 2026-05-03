@@ -70,7 +70,7 @@ export async function generateMetadata({ params }: { params: Promise<{ id: strin
 
   if (!problem || problem.visibility !== "public") {
     return {
-      title: "Problem",
+      title: tProblems("detail"),
       ...NO_INDEX_METADATA,
     };
   }

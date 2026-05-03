@@ -49,10 +49,17 @@ describe("UI hardcoded-string guards", () => {
         forbidden: ['"Submission Stats"', '"Accepted:"', '"Wrong:"', '"Recent"'],
         required: ['useTranslations("lecture")'],
       },
-      {
-        path: "src/app/(dashboard)/dashboard/groups/[id]/assignments/[assignmentId]/assignment-overview.tsx",
-        forbidden: ['"Solved"', '"Attempted"', '"Untried"'],
-      },
+      // The assignment-overview component was refactored/renamed; the
+      // "Solved" / "Attempted" / "Untried" hardcoded English strings were
+      // moved to translated keys. Verify they no longer appear in any
+      // dashboard assignment-related TSX file rather than pinning a single
+      // file path that could go stale again.
+      ...["filter-form.tsx", "page.tsx", "score-override-dialog.tsx", "status-board.tsx"].map(
+        (file) => ({
+          path: `src/app/(dashboard)/dashboard/groups/[id]/assignments/[assignmentId]/${file}`,
+          forbidden: ['"Solved"', '"Attempted"', '"Untried"'],
+        }),
+      ),
       {
         path: "src/components/destructive-action-dialog.tsx",
         forbidden: ['"Processing..."'],
@@ -108,7 +115,10 @@ describe("UI hardcoded-string guards", () => {
         required: ['getTranslations("dashboardState")'],
       },
       {
-        path: "src/app/(dashboard)/dashboard/problems/[id]/page.tsx",
+        // Workspace→public migration: dashboard problem detail page is now
+        // a redirect-only shell. The capability/i18n surface lives on the
+        // public counterpart.
+        path: "src/app/(public)/practice/problems/[id]/page.tsx",
         forbidden: ['title: "Problem"'],
         required: ['getTranslations("problems")'],
       },
