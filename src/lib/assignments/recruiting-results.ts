@@ -15,11 +15,21 @@ import { mapSubmissionPercentageToAssignmentPoints } from "@/lib/assignments/sco
  */
 
 export interface RecruitProblemRow {
+  /** Problem identifier; the helper uses this only as a Map lookup key
+   *  against the per-candidate `bestByProblem` Map. Never rendered. */
   problemId: string;
+  /** Per-problem weight from `assignmentProblems.points`. When null, the
+   *  helper defaults to 100 (matches the legacy assumption everywhere
+   *  else in the codebase — see leaderboard / stats / assignment-status). */
   points: number | null;
 }
 
 export interface RecruitBestSubmission {
+  /** Submission score as a percentage (0-100, source `submissions.score`).
+   *  null means "no scored submission for this problem"; the helper skips
+   *  null-score entries entirely. The helper does not validate the
+   *  numeric range — `mapSubmissionPercentageToAssignmentPoints` clamps
+   *  out-of-range values via Math.min/Math.max + the cycle-3 NaN guard. */
   score: number | null;
 }
 
@@ -49,6 +59,17 @@ export interface RecruitResultsTotals {
  *   The page builds this map by `ORDER BY submittedAt ASC` and keeping the
  *   highest score (ties resolve to earliest submission).
  * @returns adjustedByProblem, totalScore, totalPossible.
+ *
+ * @remarks
+ * The helper reads only `points` from `RecruitProblemRow` and only `score`
+ * from `RecruitBestSubmission`. Callers may pass wider Map values
+ * (e.g., the page passes a Map of full submission rows that structurally
+ * fit `RecruitBestSubmission` because each row has a `score: number | null`
+ * field). If a future change to this helper reads additional fields from
+ * `RecruitBestSubmission`, callers MUST narrow the input Map to ensure
+ * the new fields are populated — TypeScript structural width-subtyping
+ * silently accepts wider Maps and would otherwise hide a missing-field
+ * regression. (cycle-4 CYC4-AGG-2.)
  */
 export function computeRecruitResultsTotals(
   assignmentProblemRows: ReadonlyArray<RecruitProblemRow>,
