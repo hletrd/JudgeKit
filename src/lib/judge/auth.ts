@@ -89,9 +89,12 @@ export async function isJudgeAuthorizedForWorker(
   // Worker exists but has no secretTokenHash. This is a legacy state from
   // before per-worker tokens were enforced; the operator must re-register
   // the worker so it acquires a hash on the canonical path. Reject and log.
+  // The %s placeholder was previously left unsubstituted (pino does not
+  // splice format specifiers from the binding object); rely on the structured
+  // workerId field instead.
   logger.warn(
     { workerId },
-    "[judge] Worker %s has no secretTokenHash — rejecting auth. Re-register the worker so it acquires a per-worker secret.",
+    "[judge] Worker has no secretTokenHash — rejecting auth. Re-register the worker so it acquires a per-worker secret.",
   );
   return { authorized: false, error: "workerSecretNotMigrated" };
 }
