@@ -234,7 +234,7 @@ describe("changePassword", () => {
     expect(mocks.recordAuditEvent).not.toHaveBeenCalled();
   });
 
-  it("passes correct context to getPasswordValidationError", async () => {
+  it("calls getPasswordValidationError with just the new password (no context arg)", async () => {
     const { changePassword } = await import("@/lib/actions/change-password");
     setupAuthenticatedUser();
     mocks.verifyPassword.mockResolvedValue({ valid: true, needsRehash: false });
@@ -243,10 +243,11 @@ describe("changePassword", () => {
 
     await changePassword("correctpass", "StrongNewPass1");
 
-    expect(mocks.getPasswordValidationError).toHaveBeenCalledWith("StrongNewPass1", {
-      username: "testuser",
-      email: "test@example.com",
-    });
+    // The optional context arg (username, email) was removed when the policy
+    // simplified to minimum-length-only — see AGENTS.md / password.ts. Guard
+    // against accidental reintroduction.
+    expect(mocks.getPasswordValidationError).toHaveBeenCalledWith("StrongNewPass1");
+    expect(mocks.getPasswordValidationError).toHaveBeenCalledTimes(1);
   });
 
   it("returns sessionExpired when findSessionUserWithPassword returns null", async () => {
