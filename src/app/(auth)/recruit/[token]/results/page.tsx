@@ -143,7 +143,7 @@ export default async function RecruitResultsPage({
     .from(assignmentProblems)
     .innerJoin(problems, eq(assignmentProblems.problemId, problems.id))
     .where(eq(assignmentProblems.assignmentId, assignment.id))
-    .orderBy(asc(problems.number));
+    .orderBy(asc(problems.sequenceNumber));
 
   const submissionRows = await db
     .select({
@@ -253,6 +253,7 @@ export default async function RecruitResultsPage({
                     {best ? (
                       <SubmissionStatusBadge
                         status={best.status ?? "pending"}
+                        label={best.status ?? "pending"}
                       />
                     ) : (
                       <Badge variant="secondary">{t("notAttempted")}</Badge>
