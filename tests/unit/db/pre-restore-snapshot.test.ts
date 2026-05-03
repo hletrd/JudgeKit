@@ -122,7 +122,7 @@ describe("takePreRestoreSnapshot", () => {
       // Stamps use ISO with millisecond resolution; sleep briefly to ensure
       // distinct mtime/ISO stamps so the prune sort order is deterministic.
       //
-      // The 5ms inter-snapshot sleep assumes the underlying filesystem has
+      // The inter-snapshot sleep assumes the underlying filesystem has
       // sub-second mtime resolution (macOS APFS, Linux ext4/btrfs/zfs,
       // modern Docker volumes — all satisfy this). On older NFS or FAT32
       // with second-resolution mtime, this test could flake by keeping 4
@@ -130,7 +130,15 @@ describe("takePreRestoreSnapshot", () => {
       // sub-second mtime; if a future CI changes to a slower-mtime
       // backend, sort by ISO stamp embedded in the filename instead.
       // (cycle-4 CYC4-AGG-4.)
-      await new Promise((r) => setTimeout(r, 5));
+      //
+      // 25ms (was 5ms) gives margin against the parallel-test scheduler:
+      // when the full suite runs ~307 test files concurrently, the event
+      // loop can be busy enough that two consecutive snapshots wrote the
+      // same millisecond ISO stamp, the same mtime ms, OR both. 25ms is
+      // comfortably above the millisecond-resolution boundary AND above
+      // any plausible scheduler jitter under load. Cycle-4 confirmed the
+      // 5ms version flaked under `npm run test:unit` parallel scheduling.
+      await new Promise((r) => setTimeout(r, 25));
     }
 
     const snapDir = join(tmpDataDir, "pre-restore-snapshots");
