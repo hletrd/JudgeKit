@@ -2661,6 +2661,49 @@
     "contestClosedDescription": "This assessment is closed.",
     "resultsNotAvailable": "Results aren't available for this assessment.",
     "issuedBy": "Issued by {organization}",
+    "privacy": {
+      "title": "Privacy and data retention",
+      "description": "How JudgeKit handles candidate, student, and operator data.",
+      "sectionDataClassesTitle": "Data classes and retention windows",
+      "sectionDataClassesIntro": "Default retention windows for each operational data class. Operators can shorten these via environment configuration; longer retention requires a dedicated archival workflow.",
+      "retentionWindow": "{days} days default retention",
+      "dataClasses": {
+        "auditLogs": {
+          "label": "Audit logs",
+          "description": "Authorized operators / admins reviewing platform actions."
+        },
+        "aiChatLogs": {
+          "label": "AI chat transcripts",
+          "description": "Authorized staff with system.chat_logs, used for support, misuse review, and governance."
+        },
+        "antiCheatEvents": {
+          "label": "Anti-cheat events",
+          "description": "Authorized instructors / admins reviewing assessment integrity telemetry. These signals are review aids — not standalone proof of misconduct."
+        },
+        "recruitingInvitations": {
+          "label": "Recruiting invitations and submissions",
+          "description": "Authorized recruiting / instructor / admin staff for assessment operations and dispute review."
+        },
+        "submissions": {
+          "label": "Submissions and grading records",
+          "description": "Instructors / admins and the submitting user, subject to platform permissions."
+        }
+      },
+      "sectionRightsTitle": "Your rights",
+      "sectionRightsIntro": "Subject to local law (including GDPR for EU users and PIPA for Korean users), you may request:",
+      "rights": {
+        "access": "Access to a copy of your account data and your submissions.",
+        "deletion": "Deletion of your account and associated submissions, subject to legal retention obligations.",
+        "objection": "Objection to specific processing — for example, opting out of public rankings."
+      },
+      "sectionRequestsTitle": "Making a request",
+      "sectionRequestsIntro": "Account holders can manage profile preferences from their dashboard. For data export or deletion requests, contact us via the email below; you should receive an acknowledgement within 30 days.",
+      "openProfileForRequest": "Open your profile preferences",
+      "sectionContactTitle": "Contact",
+      "sectionContactIntro": "Reach the platform operator at",
+      "sectionAntiCheatTitle": "Anti-cheat telemetry note",
+      "sectionAntiCheatIntro": "When an exam or recruiting assessment has integrity monitoring enabled, the browser-side monitor records tab-switch events, copy/paste actions, IP-address changes, and periodic code snapshots. These signals are review aids only and should be corroborated with submission history and human review before any decision."
+    },
     "contactPrompt": "Questions? Contact",
     "resultsTitle": "Your assessment results",
     "resultsNotYetTitle": "Results aren't ready yet",
@@ -2706,7 +2749,8 @@
       "profile": "Profile",
       "problemSets": "Problem Sets",
       "admin": "Admin",
-      "languages": "Languages"
+      "languages": "Languages",
+      "privacy": "Privacy"
     },
     "moderation": {
       "title": "Discussion moderation",

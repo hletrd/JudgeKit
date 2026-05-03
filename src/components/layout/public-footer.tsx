@@ -26,7 +26,14 @@ export async function PublicFooter({ siteTitle, footerContent }: PublicFooterPro
     label: tShell("nav.languages"),
     url: "/languages",
   };
-  const allLinks = [...links, languagesLink];
+  // Privacy notice — required for GDPR/PIPA-compliant deployments and for
+  // recruiting candidates to find their data-handling rights without an
+  // account.
+  const privacyLink: FooterLink = {
+    label: tShell("nav.privacy"),
+    url: "/privacy",
+  };
+  const allLinks = [...links, languagesLink, privacyLink];
 
   return (
     <footer className="border-t bg-muted/40">
