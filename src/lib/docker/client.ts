@@ -9,10 +9,23 @@ const exec = promisify(execFile);
 // var (shared with src/lib/compiler/execute.ts); JUDGE_WORKER_URL is accepted
 // as an alias for operators who find the name more intuitive.
 const JUDGE_WORKER_URL = process.env.JUDGE_WORKER_URL || process.env.COMPILER_RUNNER_URL || "";
-const RUNNER_AUTH_TOKEN = process.env.RUNNER_AUTH_TOKEN || process.env.JUDGE_AUTH_TOKEN || "";
+// RUNNER_AUTH_TOKEN is required for Docker API operations via the worker.
+// Unlike src/lib/compiler/execute.ts, this module does NOT fall back to
+// JUDGE_AUTH_TOKEN — the Docker API and judge submission API are separate
+// authorization domains. A single shared token would violate least privilege:
+// a compromised JUDGE_AUTH_TOKEN would grant both judge submission access
+// and Docker management access. See commit 909fcbf5 for the same hardening
+// applied to the judge routes.
+const RUNNER_AUTH_TOKEN = process.env.RUNNER_AUTH_TOKEN || "";
+if (!RUNNER_AUTH_TOKEN && JUDGE_WORKER_URL && process.env.NODE_ENV === "production") {
+  throw new Error(
+    "RUNNER_AUTH_TOKEN must be set in production when JUDGE_WORKER_URL is configured. " +
+    "Generate one with: openssl rand -hex 32"
+  );
+}
 const WORKER_DOCKER_API_CONFIG_ERROR =
   JUDGE_WORKER_URL && !RUNNER_AUTH_TOKEN
-    ? "COMPILER_RUNNER_URL is set but RUNNER_AUTH_TOKEN/JUDGE_AUTH_TOKEN is missing"
+    ? "COMPILER_RUNNER_URL is set but RUNNER_AUTH_TOKEN is missing"
     : null;
 const USE_WORKER_DOCKER_API = Boolean(JUDGE_WORKER_URL && RUNNER_AUTH_TOKEN);
 
