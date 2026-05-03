@@ -170,12 +170,12 @@ export function PublicHeader({ siteTitle, items, actions, loggedInUser, leadingS
         {leadingSlot}
         <Link
           href={buildLocalizedHref("/", locale)}
-          className="min-w-0 flex-1 text-base font-semibold md:flex-none md:shrink-0"
+          className="min-w-0 flex-1 text-base font-semibold lg:flex-none lg:shrink-0"
         >
           <span className="block truncate">{siteTitle}</span>
         </Link>
 
-        <nav aria-label={tCommon("mainNavigation")} className="hidden min-w-0 flex-1 items-center gap-1 md:flex">
+        <nav aria-label={tCommon("mainNavigation")} className="hidden min-w-0 flex-1 items-center gap-1 lg:flex">
           {items.map((item) => {
             const active = isActivePath(pathname, item.href);
             const localizedHref = buildLocalizedHref(item.href, locale);
@@ -194,7 +194,7 @@ export function PublicHeader({ siteTitle, items, actions, loggedInUser, leadingS
           })}
         </nav>
 
-        <div className="ml-auto hidden items-center gap-1 md:flex">
+        <div className="ml-auto hidden items-center gap-1 lg:flex">
           {trailingSlot}
           <ThemeToggle />
           <LocaleSwitcher />
@@ -243,7 +243,7 @@ export function PublicHeader({ siteTitle, items, actions, loggedInUser, leadingS
           )}
         </div>
 
-        <div className="ml-auto flex shrink-0 items-center gap-1 md:hidden">
+        <div className="ml-auto flex shrink-0 items-center gap-1 lg:hidden">
           {trailingSlot}
           <ThemeToggle />
           <LocaleSwitcher />
@@ -272,7 +272,7 @@ export function PublicHeader({ siteTitle, items, actions, loggedInUser, leadingS
           role="region"
           aria-label={tCommon("mobileNavigation")}
           data-state="open"
-          className="max-h-[calc(100dvh-56px)] overflow-y-auto border-t md:hidden"
+          className="max-h-[calc(100dvh-56px)] overflow-y-auto border-t lg:hidden"
         >
           <div className="mx-auto max-w-6xl px-4 py-2">
             <nav aria-label={tCommon("mobileMenu")} className="flex flex-col gap-0.5">

@@ -30,7 +30,11 @@ const isRemoteRun = (() => {
 
 const VIEWPORTS = {
   mobile: { width: 390, height: 844, isMobile: true, hasTouch: true, name: "Mobile (iPhone 13)" },
-  tablet: { width: 834, height: 1194, isMobile: false, hasTouch: true, name: "Tablet (iPad Pro 11)" },
+  // iPad Pro 11 portrait (834x1194) sits below the lg: 1024px breakpoint and now
+  // collapses to hamburger mode like a wide phone — the intentional behaviour after
+  // the md: → lg: nav switch. Use landscape orientation here so the tablet bucket
+  // exercises the desktop-nav code path (matching real-world tablet-as-laptop use).
+  tablet: { width: 1194, height: 834, isMobile: false, hasTouch: true, name: "Tablet (iPad Pro 11 landscape)" },
   desktop: { width: 1440, height: 900, isMobile: false, hasTouch: false, name: "Desktop (1440×900)" },
 } as const;
 
