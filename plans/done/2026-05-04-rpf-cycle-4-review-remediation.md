@@ -55,7 +55,7 @@ cycle.
   # (cycles 1-4 at HEAD `7a195b11`) supersedes its task list. Kept
   # for historical provenance only.
   ```
-- **Status:** [ ] To do
+- **Status:** [x] Done
 
 ### TASK-2 [CYC4-AGG-2, LOW]: Add field-level JSDoc + Map widening contract note to recruit-results helper
 
@@ -78,7 +78,7 @@ cycle.
    * subtyping silently accepts wider Maps and would otherwise hide a
    * missing-field regression.
   ```
-- **Status:** [ ] To do
+- **Status:** [x] Done
 
 ### TASK-3 [CYC4-AGG-3, LOW]: Add legal-hold test for `pruneSensitiveOperationalData`
 
@@ -96,7 +96,7 @@ cycle.
      `pruneSensitiveOperationalData` (driven via
      `startSensitiveDataPruning`) does NOT call `db.execute` and emits
      the legal-hold info-log line.
-- **Status:** [ ] To do
+- **Status:** [x] Done
 
 ### TASK-4 [CYC4-AGG-4, LOW]: Document mtime-resolution assumption in snapshot retention test
 
@@ -112,7 +112,7 @@ cycle.
   // with sub-second mtime; if a future CI changes to a slower-mtime
   // backend, sort by ISO stamp embedded in the filename instead.
   ```
-- **Status:** [ ] To do
+- **Status:** [x] Done
 
 ### TASK-5 [Gates] Run all configured gates
 
@@ -124,7 +124,7 @@ Per orchestrator PROMPT 3:
 - `npm run build` — error-blocking.
 - `npm run test:e2e` — best-effort; env-blocked → DEFER-ENV-GATES.
 
-- **Status:** [ ] To do
+- **Status:** [x] Done
 
 ---
 
@@ -200,10 +200,29 @@ before the next commit (unit + lint) to confirm no regression.
 
 ## Status
 
-- [ ] All 4 implementation tasks
-- [ ] All gates green
-- [ ] Plan archived to `plans/done/` after close-out
+- [x] All 4 implementation tasks
+- [x] All gates green
+- [x] Plan archived to `plans/done/` after close-out
 
-## Cycle close-out evidence (filled at close)
+## Cycle close-out evidence
 
-(to be populated post-implementation)
+- Commits landed this cycle (against pre-cycle HEAD `7a195b11`):
+  - `(docs commit)` docs(plans): add RPF loop cycle 4 reviews, aggregate, and remediation plan
+  - `1f0fa33f` docs(plans): mark stale cycle-11 plan superseded by current loop (TASK-1 / CYC4-AGG-1)
+  - `223bb524` test(restore): document mtime-resolution assumption in snapshot retention test (TASK-4 / CYC4-AGG-4)
+  - `44665aba` docs(recruit): pin recruit-results helper field contract + Map widening note (TASK-2 / CYC4-AGG-2)
+  - `7ed66ac2` test(retention): pin DATA_RETENTION_LEGAL_HOLD short-circuit contract (TASK-3 / CYC4-AGG-3)
+  - `c7f1ff1b` test(restore): widen snapshot-retention sleep from 5ms to 25ms (GATE_FIX — full-suite parallel scheduler flake)
+- Gate run at HEAD post-cycle:
+  - `npm run lint` — exit 0
+  - `npm run lint:bash` — exit 0
+  - `npx tsc --noEmit` — exit 0
+  - `npm run test:unit` — 307 files / **2257 tests passed** (+1 new vs cycle-3 close-out's 2256)
+  - `npm run test:security` — 11 files / 195 tests passed
+  - `npm run build` — exit 0 (next build succeeded)
+  - `npm run test:e2e` — env-blocked, deferred under DEFER-ENV-GATES
+- Deploy: `none` per orchestrator directive (DEPLOY_MODE=none).
+- GATE_FIX details: cycle-3 test pattern (5ms inter-snapshot sleep)
+  flaked under the full-suite parallel scheduler. Widened to 25ms;
+  precise GATE_FIX context recorded in the test inline comment and
+  in commit `c7f1ff1b` body.
