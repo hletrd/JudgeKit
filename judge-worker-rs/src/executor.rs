@@ -234,10 +234,32 @@ async fn execute_inner(
 
     let workspace_dir = temp_dir.path();
 
-    // Set permissions to 0o770 so the container judge user can write compiled output
+    // Tighten host-side workspace permissions:
+    //   1. Try to chown the dir to 65534:65534 — the same uid:gid the judge
+    //      container runs as (`docker.rs` uses `--user 65534:65534`). When
+    //      chown succeeds we can keep the dir at 0o700 so a non-root host
+    //      process running as a different uid cannot read in-flight compile
+    //      artifacts. The previous 0o777 made every file world-readable for
+    //      the lifetime of the temp dir.
+    //   2. If chown fails (typical for a worker process without CAP_CHOWN,
+    //      e.g. development on macOS or a rootless dev container) we fall
+    //      back to 0o777 so the existing flow keeps working. We log the
+    //      fallback so operators see it during deployment.
+    let chown_ok = match std::os::unix::fs::chown(workspace_dir, Some(65534), Some(65534)) {
+        Ok(()) => true,
+        Err(e) => {
+            tracing::warn!(
+                error = %e,
+                workspace = %workspace_dir.display(),
+                "chown(workspace_dir, 65534:65534) failed; falling back to 0o777 perms",
+            );
+            false
+        }
+    };
+    let target_mode = if chown_ok { 0o700 } else { 0o777 };
     if let Err(e) = fs::set_permissions(
         workspace_dir,
-        std::os::unix::fs::PermissionsExt::from_mode(0o777),
+        std::os::unix::fs::PermissionsExt::from_mode(target_mode),
     )
     .await
     {
