@@ -62,6 +62,20 @@ export function isSubmissionLate(submittedAt: Date | null, deadline: Date | null
  * (parentheses, commas, spaces), and numeric literals — the patterns used by
  * current callers like `COALESCE(ap.points, 100)` and `s.score`.
  * Blocks dangerous characters that could enable SQL injection.
+ *
+ * Rejected characters: semicolon, double-hyphen, slash-star, star-slash,
+ *   single quote, double quote, backslash.
+ * Rejected SQL keywords (case-insensitive, whole-word boundary):
+ *   `DELETE`, `DROP`, `INSERT`, `UPDATE`, `ALTER`, `CREATE`, `EXEC`,
+ *   `EXECUTE`.
+ *
+ * Note: identifiers that *contain* a keyword as a substring (e.g.
+ * `DROP_test`) are NOT rejected because the underscore is a word
+ * character, so `\bDROP\b` does not match. This is intentional —
+ * identifier substring collisions are acceptable; only standalone
+ * keyword payloads are blocked. The negative-path test suite in
+ * `tests/unit/assignments/scoring.test.ts` pins this contract.
+ *
  * @security Column names are interpolated directly into SQL. This validation
  *   ensures only safe SQL expression patterns are accepted. Callers MUST NOT
  *   pass user-influenced input — only hardcoded string literals or Drizzle
