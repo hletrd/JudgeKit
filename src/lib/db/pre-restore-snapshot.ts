@@ -2,7 +2,7 @@ import { mkdir, chmod, readdir, stat, unlink } from "node:fs/promises";
 import { createWriteStream } from "node:fs";
 import { Readable } from "node:stream";
 import { pipeline } from "node:stream/promises";
-import { ReadableStream as NodeReadableStream } from "node:stream/web";
+import type { ReadableStream as NodeReadableStream } from "node:stream/web";
 import { join } from "node:path";
 import { logger } from "@/lib/logger";
 import { streamDatabaseExport } from "./export";
@@ -41,7 +41,15 @@ function snapshotDir(): string {
  * The export is streamed directly to disk via node:stream/promises
  * pipeline so memory usage stays bounded; the previous implementation
  * buffered the entire dump into a single Uint8Array, which doubled
- * peak memory on production-sized databases.
+ * peak memory on production-sized databases. The on-disk file size
+ * is read back via fs.stat() for the success log line — a previous
+ * iteration counted bytes during the pipeline pump but the wrapper
+ * was unnecessary code for a single observability field (cycle-2
+ * C2-AGG-3 simplification).
+ *
+ * On pipeline failure we attempt to unlink the partial file so a
+ * later operator-initiated restore does not pick up a truncated
+ * artifact as the "latest snapshot" (cycle-2 C2-AGG-2).
  */
 export async function takePreRestoreSnapshot(actorId: string): Promise<string | null> {
   const dir = snapshotDir();
@@ -68,36 +76,22 @@ export async function takePreRestoreSnapshot(actorId: string): Promise<string | 
   const filename = `pre-restore-${stamp}-${actorId.slice(0, 8)}.json`;
   const fullPath = join(dir, filename);
 
-  let sizeBytes = 0;
   try {
-    const webStream = streamDatabaseExport({ sanitize: false });
-    // Wrap the web ReadableStream so we can count bytes during the pipeline
-    // (Readable.fromWeb does not surface the byte total). Backpressure is
-    // handled by the inner web reader's natural sequencing.
-    const counted = new NodeReadableStream<Uint8Array>({
-      async start(controller) {
-        const reader = webStream.getReader();
-        try {
-          while (true) {
-            const { done, value } = await reader.read();
-            if (done) {
-              controller.close();
-              return;
-            }
-            if (value) {
-              sizeBytes += value.length;
-              controller.enqueue(value);
-            }
-          }
-        } catch (err) {
-          controller.error(err);
-        }
-      },
-    });
+    // The streamDatabaseExport return type is the global Web ReadableStream;
+    // Readable.fromWeb expects the node:stream/web type. The two share the
+    // same runtime structure, so a typed cast is sufficient (matches the
+    // pre-cycle-2 pattern that imported the same NodeReadableStream type).
+    const exportStream = streamDatabaseExport({
+      sanitize: false,
+    }) as unknown as NodeReadableStream<Uint8Array>;
     await pipeline(
-      Readable.fromWeb(counted),
+      Readable.fromWeb(exportStream),
       createWriteStream(fullPath, { mode: 0o600 }),
     );
+    // Read the on-disk size after the pipeline closes. This is the
+    // authoritative byte count for the artifact and avoids the
+    // previous in-pipeline counter wrapper.
+    const sizeBytes = (await stat(fullPath).catch(() => null))?.size ?? 0;
     logger.info(
       { path: fullPath, sizeBytes, actorId },
       "[restore] pre-restore snapshot written",
@@ -107,6 +101,10 @@ export async function takePreRestoreSnapshot(actorId: string): Promise<string | 
     });
     return fullPath;
   } catch (err) {
+    // Clean up any partial write so a later restore cannot mistake a
+    // truncated file for a valid rollback artifact. Best-effort —
+    // failure to unlink is logged via the surrounding error log.
+    await unlink(fullPath).catch(() => {});
     logger.error({ err, fullPath }, "[restore] failed to write pre-restore snapshot");
     return null;
   }
