@@ -119,6 +119,107 @@ describe("buildIoiLatePenaltyCaseExpr", () => {
   });
 });
 
+describe("buildIoiLatePenaltyCaseExpr — column-name validation guard", () => {
+  // The validateSqlColumnName guard inside scoring.ts is security-critical:
+  // column names are interpolated directly into SQL and only callers passing
+  // hardcoded literals are safe. These tests pin the rejection contract so a
+  // future regex tweak cannot silently weaken the guard.
+  // See cycle-2 C2-AGG-1 / cycle-3 C3-AGG-2.
+
+  it("rejects column names containing semicolons", () => {
+    expect(() =>
+      buildIoiLatePenaltyCaseExpr("score; DROP TABLE users")
+    ).toThrow(/Invalid SQL column expression/);
+  });
+
+  it("rejects column names containing single quotes", () => {
+    expect(() =>
+      buildIoiLatePenaltyCaseExpr("score' OR 1=1")
+    ).toThrow(/Invalid SQL column expression/);
+  });
+
+  it("rejects column names containing double quotes", () => {
+    expect(() =>
+      buildIoiLatePenaltyCaseExpr("score\"injection")
+    ).toThrow(/Invalid SQL column expression/);
+  });
+
+  it("rejects column names containing SQL line-comment markers", () => {
+    expect(() =>
+      buildIoiLatePenaltyCaseExpr("score--injection")
+    ).toThrow(/Invalid SQL column expression/);
+  });
+
+  it("rejects column names containing SQL block-comment markers", () => {
+    expect(() =>
+      buildIoiLatePenaltyCaseExpr("score/*injection*/")
+    ).toThrow(/Invalid SQL column expression/);
+    expect(() =>
+      buildIoiLatePenaltyCaseExpr("score*/junk")
+    ).toThrow(/Invalid SQL column expression/);
+  });
+
+  it("rejects column names containing backslashes", () => {
+    expect(() =>
+      buildIoiLatePenaltyCaseExpr("score\\inject")
+    ).toThrow(/Invalid SQL column expression/);
+  });
+
+  it("rejects column names containing dangerous DDL/DML keywords as standalone words (case-insensitive)", () => {
+    // The blocklist uses \bKEYWORD\b so the keyword must appear as a
+    // standalone word — `DROP_test` is NOT rejected (the trailing `_` is a
+    // word character, so no \b boundary). This is intentional since
+    // identifiers may legitimately contain keyword-substrings, but every
+    // dangerous *space*-separated payload is rejected.
+    expect(() => buildIoiLatePenaltyCaseExpr("col DROP")).toThrow(/Invalid SQL column expression/);
+    expect(() => buildIoiLatePenaltyCaseExpr("col DELETE")).toThrow(/Invalid SQL column expression/);
+    expect(() => buildIoiLatePenaltyCaseExpr("col INSERT")).toThrow(/Invalid SQL column expression/);
+    expect(() => buildIoiLatePenaltyCaseExpr("col UPDATE")).toThrow(/Invalid SQL column expression/);
+    expect(() => buildIoiLatePenaltyCaseExpr("col ALTER")).toThrow(/Invalid SQL column expression/);
+    expect(() => buildIoiLatePenaltyCaseExpr("col CREATE")).toThrow(/Invalid SQL column expression/);
+    expect(() => buildIoiLatePenaltyCaseExpr("col EXEC")).toThrow(/Invalid SQL column expression/);
+    expect(() => buildIoiLatePenaltyCaseExpr("col EXECUTE")).toThrow(/Invalid SQL column expression/);
+    // Case-insensitive
+    expect(() => buildIoiLatePenaltyCaseExpr("col drop")).toThrow(/Invalid SQL column expression/);
+    expect(() => buildIoiLatePenaltyCaseExpr("col DrOp")).toThrow(/Invalid SQL column expression/);
+  });
+
+  it("propagates validation to every column-name parameter", () => {
+    // pointsCol
+    expect(() =>
+      buildIoiLatePenaltyCaseExpr("score", "points; DROP TABLE x")
+    ).toThrow(/Invalid SQL column expression/);
+    // submittedAtCol
+    expect(() =>
+      buildIoiLatePenaltyCaseExpr("score", "points", "submitted_at' OR 1=1")
+    ).toThrow(/Invalid SQL column expression/);
+    // personalDeadlineCol
+    expect(() =>
+      buildIoiLatePenaltyCaseExpr("score", "points", "submitted_at", "personal_deadline--")
+    ).toThrow(/Invalid SQL column expression/);
+  });
+
+  it("accepts safe baseline column references", () => {
+    // Plain identifier
+    expect(buildIoiLatePenaltyCaseExpr("score")).toMatch(/CASE/);
+    // Qualified identifier (table.column)
+    expect(buildIoiLatePenaltyCaseExpr("s.score")).toMatch(/CASE/);
+    // The COALESCE-form used by stats/route.ts and submissions.ts
+    expect(
+      buildIoiLatePenaltyCaseExpr("s.score", "COALESCE(ap.points, 100)", "s.submitted_at", "es.personal_deadline")
+    ).toMatch(/CASE/);
+  });
+
+  it("includes the parameter name in the rejection error", () => {
+    expect(() =>
+      buildIoiLatePenaltyCaseExpr("score; DROP TABLE x")
+    ).toThrow(/scoreCol/);
+    expect(() =>
+      buildIoiLatePenaltyCaseExpr("score", "points; DROP TABLE x")
+    ).toThrow(/pointsCol/);
+  });
+});
+
 describe("mapSubmissionPercentageToAssignmentPoints — windowed exam", () => {
   it("applies late penalty against personalDeadline for windowed exams", () => {
     const personalDeadline = new Date("2026-03-09T10:00:00.000Z");
