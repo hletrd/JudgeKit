@@ -296,8 +296,8 @@ describe("getAssignmentStatusRows scoring consistency", () => {
   });
 });
 
-describe("recruit results page scoring consistency (C1-AGG-2)", () => {
-  it("uses mapSubmissionPercentageToAssignmentPoints, not raw submissions.score, for the candidate total (source-grep)", () => {
+describe("recruit results page scoring consistency (C1-AGG-2 / CYC3-AGG-2)", () => {
+  it("delegates the candidate-facing total to computeRecruitResultsTotals (source-grep)", () => {
     const sourcePath = join(
       process.cwd(),
       "src",
@@ -310,21 +310,30 @@ describe("recruit results page scoring consistency (C1-AGG-2)", () => {
     );
     const source = readFileSync(sourcePath, "utf8");
 
-    // The canonical helper must be imported and called — without it the page
-    // falls into the units-mismatch bug where raw percentages were summed
-    // alongside per-problem points (a candidate scoring 80% on three
-    // 25-point problems would otherwise see "240 / 75").
+    // Cycle-3 CYC3-AGG-2 lifted the math out of the page into the typed
+    // helper `computeRecruitResultsTotals` (which uses the canonical scoring
+    // helper internally). Without this delegation the page falls back to the
+    // original units-mismatch bug where raw percentages were summed alongside
+    // per-problem points (a candidate scoring 80% on three 25-point problems
+    // would see `240 / 75`).
     expect(
       source,
-      "recruit/[token]/results/page.tsx must import the canonical scoring helper",
-    ).toContain("mapSubmissionPercentageToAssignmentPoints");
+      "recruit/[token]/results/page.tsx must import computeRecruitResultsTotals",
+    ).toContain("computeRecruitResultsTotals");
 
-    // The displayed total must accumulate the converted (points-scaled)
-    // value. The previous bug accumulated `best.score` directly.
+    // And the helper module itself must use the canonical scoring helper.
+    const helperPath = join(
+      process.cwd(),
+      "src",
+      "lib",
+      "assignments",
+      "recruiting-results.ts",
+    );
+    const helperSource = readFileSync(helperPath, "utf8");
     expect(
-      source,
-      "recruit/[token]/results/page.tsx must accumulate mapSubmissionPercentageToAssignmentPoints output",
-    ).toContain("totalScore += adjusted");
+      helperSource,
+      "recruiting-results.ts must use mapSubmissionPercentageToAssignmentPoints",
+    ).toContain("mapSubmissionPercentageToAssignmentPoints");
   });
 
   it("computes the correct candidate total: three 25-point problems at 80%/60%/100% → 60", () => {

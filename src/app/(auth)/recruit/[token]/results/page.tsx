@@ -16,7 +16,7 @@ import { formatDateTimeInTimeZone } from "@/lib/datetime";
 import { formatScore } from "@/lib/formatting";
 import { SubmissionStatusBadge } from "@/components/submission-status-badge";
 import { NO_INDEX_METADATA } from "@/lib/seo";
-import { mapSubmissionPercentageToAssignmentPoints } from "@/lib/assignments/scoring";
+import { computeRecruitResultsTotals } from "@/lib/assignments/recruiting-results";
 import Link from "next/link";
 
 /**
@@ -185,25 +185,16 @@ export default async function RecruitResultsPage({
     }
   }
 
-  // submissions.score is a percentage (0-100); assignmentProblems.points is the
-  // per-problem weight. The candidate-facing total must use weighted points,
-  // not raw percentages, otherwise three 25-point problems at 80%/60%/100%
-  // would render as `240 / 75` instead of the expected `60 / 75`. Use the
-  // canonical scoring helper so the recruit page stays in lockstep with the
-  // leaderboard / stats / assignment-status views.
-  const adjustedByProblem = new Map<string, number>();
-  let totalScore = 0;
-  let totalPossible = 0;
-  for (const ap of assignmentProblemRows) {
-    const points = ap.points ?? 100;
-    totalPossible += points;
-    const best = bestByProblem.get(ap.problemId);
-    if (best?.score !== null && best?.score !== undefined) {
-      const adjusted = mapSubmissionPercentageToAssignmentPoints(best.score, points);
-      adjustedByProblem.set(ap.problemId, adjusted);
-      totalScore += adjusted;
-    }
-  }
+  // submissions.score is a percentage (0-100); assignmentProblems.points is
+  // the per-problem weight. The candidate-facing total must use weighted
+  // points, not raw percentages, otherwise three 25-point problems at
+  // 80%/60%/100% would render as `240 / 75` instead of the expected
+  // `60 / 75` — see the cycle-1 C1-AGG-2 regression. The math now lives
+  // behind a typed helper boundary (cycle-3 CYC3-AGG-2) so the units
+  // contract is pinned by `tests/unit/assignments/recruiting-results.test.ts`
+  // and cannot quietly drift on the next page-level refactor.
+  const { adjustedByProblem, totalScore, totalPossible } =
+    computeRecruitResultsTotals(assignmentProblemRows, bestByProblem);
   const showScores = !assignment.hideScoresFromCandidates;
 
   return (
