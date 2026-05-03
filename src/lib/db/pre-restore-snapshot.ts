@@ -90,12 +90,24 @@ export async function takePreRestoreSnapshot(actorId: string): Promise<string | 
     );
     // Read the on-disk size after the pipeline closes. This is the
     // authoritative byte count for the artifact and avoids the
-    // previous in-pipeline counter wrapper.
-    const sizeBytes = (await stat(fullPath).catch(() => null))?.size ?? 0;
-    logger.info(
-      { path: fullPath, sizeBytes, actorId },
-      "[restore] pre-restore snapshot written",
-    );
+    // previous in-pipeline counter wrapper. Split the stat-failure
+    // case into a separate warn line so an operator reading the log
+    // can distinguish "stat failed" from "actually empty file"
+    // (cycle-3 CYC3-AGG-1). A single chained `?.size ?? 0` would
+    // log `sizeBytes: 0` on stat failure, indistinguishable from a
+    // genuinely empty (zero-byte) snapshot.
+    const stStat = await stat(fullPath).catch(() => null);
+    if (stStat === null) {
+      logger.warn(
+        { path: fullPath, actorId },
+        "[restore] pre-restore snapshot written but size unavailable (stat failed)",
+      );
+    } else {
+      logger.info(
+        { path: fullPath, sizeBytes: stStat.size, actorId },
+        "[restore] pre-restore snapshot written",
+      );
+    }
     void pruneOldSnapshots(dir).catch((err) => {
       logger.warn({ err, dir }, "[restore] failed to prune old snapshots");
     });
