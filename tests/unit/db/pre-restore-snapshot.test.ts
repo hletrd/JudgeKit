@@ -121,6 +121,15 @@ describe("takePreRestoreSnapshot", () => {
       }
       // Stamps use ISO with millisecond resolution; sleep briefly to ensure
       // distinct mtime/ISO stamps so the prune sort order is deterministic.
+      //
+      // The 5ms inter-snapshot sleep assumes the underlying filesystem has
+      // sub-second mtime resolution (macOS APFS, Linux ext4/btrfs/zfs,
+      // modern Docker volumes — all satisfy this). On older NFS or FAT32
+      // with second-resolution mtime, this test could flake by keeping 4
+      // or 6 files instead of 5. CI runs on Ubuntu containers with
+      // sub-second mtime; if a future CI changes to a slower-mtime
+      // backend, sort by ISO stamp embedded in the filename instead.
+      // (cycle-4 CYC4-AGG-4.)
       await new Promise((r) => setTimeout(r, 5));
     }
 
