@@ -7,11 +7,45 @@ import { useSourceDraft } from "@/hooks/use-source-draft";
 const STORAGE_KEY = "oj:submission-draft:user-1:problem-1";
 const PREFERENCE_KEY = "oj:preferred-language:user-1";
 
+/**
+ * jsdom 29 + vitest 4 ship a non-functional Storage on `window.localStorage`
+ * (calling `setItem`/`clear` throws "is not a function"). Install a
+ * minimal in-memory Storage shim so the hook's persistence path can be
+ * exercised in isolation. The shim implements the full Storage interface so
+ * `Object.keys`, `length`, and indexed access via `key()` all behave.
+ */
+function installLocalStorageShim() {
+  const store = new Map<string, string>();
+  const shim: Storage = {
+    get length() {
+      return store.size;
+    },
+    clear: () => {
+      store.clear();
+    },
+    getItem: (k: string) => (store.has(k) ? (store.get(k) as string) : null),
+    setItem: (k: string, v: string) => {
+      store.set(k, String(v));
+    },
+    removeItem: (k: string) => {
+      store.delete(k);
+    },
+    key: (index: number) => {
+      const keys = Array.from(store.keys());
+      return index >= 0 && index < keys.length ? keys[index] : null;
+    },
+  };
+  Object.defineProperty(window, "localStorage", {
+    configurable: true,
+    value: shim,
+  });
+}
+
 describe("useSourceDraft", () => {
   const languages = ["javascript", "python"];
 
   beforeEach(() => {
-    window.localStorage.clear();
+    installLocalStorageShim();
   });
 
   afterEach(() => {
