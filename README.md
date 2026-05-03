@@ -26,7 +26,7 @@
 - **125 languages** — C/C++, Java, Python, Rust, Go, Deno, Bun, Gleam, Lean 4, Hare, Koka, Chapel, Elm, Idris 2, plaintext, HDL output-only modes, and [many more](docs/languages.md), all with multi-arch Docker images and admin-customizable compile/run settings
 - **Scalable judging** — Distributed judge workers with automatic registration and heartbeats. Live admin dashboard. Deploy across multiple machines with a single script
 - **Secure execution** — Docker containers with no network, seccomp, memory/CPU limits
-- **Role-based access** — Super admin, admin, instructor, student
+- **Role-based access** — Super admin, admin, instructor, assistant (group-scoped TA), student. Capabilities are granular (43 of them) and admin-editable; the assistant role is intentionally view+comment-only and respects per-group `group_instructors.role` assignments.
 - **Classroom management** — Groups, enrollments, assignments with deadlines and late penalties
 - **Contest system** — IOI and ICPC scoring, scheduled and windowed modes, real-time leaderboard, anti-cheat
 - **Code similarity** — Rust-accelerated Jaccard n-gram analysis with TS fallback

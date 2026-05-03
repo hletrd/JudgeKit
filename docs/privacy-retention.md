@@ -9,6 +9,14 @@ This document defines the current default handling expectations for sensitive op
 - instructors/admins who need handling rules
 - operators preparing recruiting, exam, or contest rollouts
 
+## Public-facing surface
+The five data classes and the data-subject rights commitment from this document
+are surfaced to candidates and students at `/privacy` (`src/app/(public)/privacy/page.tsx`).
+The PublicFooter renders a "Privacy" link site-wide. The `/privacy` page is the
+canonical location for sharing this information with anyone who does not have a
+JudgeKit account; this document remains the operator-side reference. Keep them
+in sync when retention windows change.
+
 ## Data classes and retention windows
 
 | Data class | Default retention window | Intended access |
