@@ -29,6 +29,27 @@ const WORKER_DOCKER_API_CONFIG_ERROR =
     : null;
 const USE_WORKER_DOCKER_API = Boolean(JUDGE_WORKER_URL && RUNNER_AUTH_TOKEN);
 
+/**
+ * Validate a dockerfile path for build requests.
+ *
+ * Only allows paths under `docker/Dockerfile.judge-*` to match the Rust
+ * validator (judge-worker-rs/src/validation.rs:63). This prevents building
+ * non-judge images (e.g., Dockerfile.code-similarity, Dockerfile.app) through
+ * the admin API, which could leak internal configuration or consume worker
+ * resources. Both the local and remote code paths must use this same check.
+ */
+const DOCKERFILE_PREFIX = "docker/Dockerfile.judge-";
+
+function validateDockerfilePath(dockerfilePath: string): { valid: boolean; error?: string } {
+  if (!dockerfilePath.startsWith(DOCKERFILE_PREFIX)) {
+    return { valid: false, error: "Invalid dockerfile path" };
+  }
+  if (/\.\.|[/\\]/.test(dockerfilePath.slice(DOCKERFILE_PREFIX.length))) {
+    return { valid: false, error: "Invalid dockerfile path" };
+  }
+  return { valid: true };
+}
+
 export interface DockerImage {
   repository: string;
   tag: string;
@@ -165,20 +186,9 @@ async function buildDockerImageLocal(
   if (!isValidImageReference(imageName)) {
     return { success: false, error: "Invalid image name" };
   }
-  // Validate that the dockerfilePath starts with the expected prefix before
-  // stripping it for traversal checks. Without anchoring, a path like
-  // "xdocker/Dockerfile.test" would pass validation with "xtest" remaining
-  // (harmless — Docker would fail — but defense-in-depth).
-  if (!dockerfilePath.startsWith("docker/Dockerfile.judge-")) {
-    // Match the Rust validator (judge-worker-rs/src/validation.rs:63) which
-    // requires the `judge-` infix. This route only builds language judge
-    // images; admin-controlled `dockerfilePath` from a DB language entry
-    // can therefore not target Dockerfile.code-similarity, Dockerfile.app, or
-    // any other namespace.
-    return { success: false, error: "Invalid dockerfile path" };
-  }
-  if (/\.\.|[/\\]/.test(dockerfilePath.slice("docker/Dockerfile.judge-".length))) {
-    return { success: false, error: "Invalid dockerfile path" };
+  const pathValidation = validateDockerfilePath(dockerfilePath);
+  if (!pathValidation.valid) {
+    return { success: false, error: pathValidation.error };
   }
 
   const contextDir = ".";
@@ -359,11 +369,9 @@ export async function buildDockerImage(
   if (!isValidImageReference(imageName)) {
     return { success: false, error: "Invalid image name" };
   }
-  if (!dockerfilePath.startsWith("docker/Dockerfile.")) {
-    return { success: false, error: "Invalid dockerfile path" };
-  }
-  if (/\.\.|[/\\]/.test(dockerfilePath.slice("docker/Dockerfile.".length))) {
-    return { success: false, error: "Invalid dockerfile path" };
+  const pathValidation = validateDockerfilePath(dockerfilePath);
+  if (!pathValidation.valid) {
+    return { success: false, error: pathValidation.error };
   }
 
   try {
