@@ -64,11 +64,23 @@ export function isSubmissionLate(submittedAt: Date | null, deadline: Date | null
 }
 
 /**
- * Validate that a string is a safe SQL column reference or simple expression.
- * Allows identifiers (alphanumeric, underscores, dots), SQL function calls
- * (parentheses, commas, spaces), and numeric literals — the patterns used by
- * current callers like `COALESCE(ap.points, 100)` and `s.score`.
- * Blocks dangerous characters that could enable SQL injection.
+ * SECURITY CONTRACT (PRIMARY): Callers MUST pass only hardcoded string
+ * literals or Drizzle column reference names. NEVER pass user-influenced
+ * input. This validator is a **defence-in-depth backstop**, not the
+ * primary defence — column names are interpolated directly into SQL.
+ *
+ * The validator allows safe identifier patterns (alphanumeric, underscores,
+ * dots), SQL function calls (parentheses, commas, spaces), and numeric
+ * literals — the patterns used by current callers like
+ * `COALESCE(ap.points, 100)` and `s.score`.
+ *
+ * Defence-in-depth: rejects dangerous characters and a non-exhaustive
+ * blocklist of dangerous SQL keywords. The blocklist may NOT include every
+ * dangerous keyword — `TRUNCATE`, `GRANT`, `REVOKE`, `MERGE`, `CALL`,
+ * `LOCK` are intentionally NOT blocked because the primary defence is the
+ * caller-contract above. The negative-path test suite in
+ * `tests/unit/assignments/scoring.test.ts` pins the current rejection
+ * contract.
  *
  * Rejected characters: semicolon, double-hyphen, slash-star, star-slash,
  *   single quote, double quote, backslash.
@@ -80,13 +92,11 @@ export function isSubmissionLate(submittedAt: Date | null, deadline: Date | null
  * `DROP_test`) are NOT rejected because the underscore is a word
  * character, so `\bDROP\b` does not match. This is intentional —
  * identifier substring collisions are acceptable; only standalone
- * keyword payloads are blocked. The negative-path test suite in
- * `tests/unit/assignments/scoring.test.ts` pins this contract.
+ * keyword payloads are blocked.
  *
- * @security Column names are interpolated directly into SQL. This validation
- *   ensures only safe SQL expression patterns are accepted. Callers MUST NOT
- *   pass user-influenced input — only hardcoded string literals or Drizzle
- *   column reference names.
+ * @security If a future caller passes anything user-influenced, the
+ *   validator is INSUFFICIENT — tighten this regex to an allowlist before
+ *   permitting that caller pattern. See cycle-3 CYC3-AGG-4 / CYC3-AGG-7.
  */
 const SQL_COLUMN_NAME_RE = /^[a-zA-Z0-9_.,() ]+$/;
 const SQL_COLUMN_DANGEROUS_RE = /;|--|\/\*|\*\/|'|"|\\|\b(DELETE|DROP|INSERT|UPDATE|ALTER|CREATE|EXEC|EXECUTE)\b/i;
