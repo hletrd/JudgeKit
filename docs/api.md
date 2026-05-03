@@ -197,7 +197,7 @@ Exports gauges for:
 - uptime and health probe latency
 - failed audit-event writes
 
-Returns `503` if `CRON_SECRET` is required for scraping but not configured.
+Returns `401 Unauthorized` to anonymous callers and to callers whose bearer token does not match `CRON_SECRET`. The response body is the generic `{"error":"Unauthorized"}`; the `CRON_SECRET` env-var name is never disclosed (the missing-config branch is logged server-side via `console.warn` so operators see the gap, but the wire response is identical to a wrong-token response).
 
 ---
 
@@ -583,16 +583,30 @@ Remove a member. Rate limit: `members:remove`. Returns `409` if the member has s
 
 #### `POST /api/v1/groups/:id/members/bulk`
 
-Bulk add members. Rate limit: `members:bulk-add`.
+Bulk add members. Rate limit: `members:bulk-add`. Combined `userIds` + `usernames` capped at 500 per call.
 
-**Request Body:**
+**Request Body** (one of, or both, the two arrays):
 ```json
-{ "userIds": ["id1", "id2", ...] }
+{
+  "userIds": ["id1", "id2"],
+  "usernames": ["alice", "bob", "charlie"]
+}
 ```
+
+The route resolves each `usernames[i]` to a user row, deduplicates against
+`userIds`, and reports unresolved + non-student usernames so the operator
+can correct the input.
 
 **Response:**
 ```json
-{ "data": { "enrolled": 5, "skipped": 2 } }
+{
+  "data": {
+    "enrolled": 5,
+    "skipped": 2,
+    "unresolvedUsernames": ["typo-name"],
+    "nonStudentUsernames": ["existing-instructor"]
+  }
+}
 ```
 
 ---
@@ -1677,7 +1691,7 @@ Internal cleanup cron endpoint. Requires `CRON_SECRET` bearer token (not user au
 curl -X POST -H "Authorization: Bearer $CRON_SECRET" "$BASE_URL/api/internal/cleanup"
 ```
 
-Returns `503` if `CRON_SECRET` is not configured.
+Returns `401 Unauthorized` for any request without a valid bearer token. As with `/api/metrics`, the missing-config branch is silent on the wire (logged server-side only) so anonymous probers do not learn the env-var name.
 
 ---
 
