@@ -27,13 +27,13 @@
 - **Behaviour to assert:**
   - 6+ negative cases: `";DROP TABLE users"`, `"score' OR 1=1"`, `"score--inj"`, `"col/*x*/y"`, `"a\\b"`, `"DROP_test"`, `"col DELETE"`, `"col INSERT"`, `"col EXEC"`. All must cause `buildIoiLatePenaltyCaseExpr(<bad>, ...)` to **throw**.
   - 3 positive cases: `"score"`, `"s.score"`, `"COALESCE(ap.points, 100)"`. Must return a non-empty SQL string.
-- **Status:** [ ] Pending
+- **Status:** [x] Done
 
 ### TASK-2 [C2-AGG-2, LOW (data-loss-adjacent)]: Unlink partial pre-restore-snapshot file on pipeline failure
 
 - **File to edit:** `src/lib/db/pre-restore-snapshot.ts`
 - **Change:** In the outer `catch` block (currently lines 109-112), call `await unlink(fullPath).catch(() => {})` before `return null`. Add a comment explaining the unlink prevents future restore-time confusion if a later operator picks up a partial snapshot.
-- **Status:** [ ] Pending
+- **Status:** [x] Done
 
 ### TASK-3 [C2-AGG-3, LOW]: Replace byte-counter wrapper with `stat()` after pipeline
 
@@ -48,7 +48,7 @@
   ```
   Keep the `logger.info` call. Verify imports: `stat` is already imported from `node:fs/promises`.
 - **Note:** The cycle-1 inline JSDoc at lines 41-44 mentions the byte-counter wrapper; update the comment to describe the simpler approach.
-- **Status:** [ ] Pending
+- **Status:** [x] Done
 
 ### TASK-4 [C2-AGG-6, LOW]: Enumerate rejection patterns in `validateSqlColumnName` JSDoc
 
@@ -59,13 +59,13 @@
   Rejected SQL keywords (case-insensitive): DELETE, DROP, INSERT,
     UPDATE, ALTER, CREATE, EXEC, EXECUTE
   ```
-- **Status:** [ ] Pending
+- **Status:** [x] Done
 
 ### TASK-5 [C2-AGG-8, LOW]: Document `pruneSensitiveOperationalData` failure-isolation in JSDoc
 
 - **File to edit:** `src/lib/data-retention-maintenance.ts`
 - **Change:** Add a function-level JSDoc to `pruneSensitiveOperationalData` (or extend the existing comment block at lines 86-100 into a `/** ... */` JSDoc) that includes a `@remarks` block describing the `Promise.allSettled` failure-isolation contract.
-- **Status:** [ ] Pending
+- **Status:** [x] Done
 
 ### TASK-6 [C2-AGG-7, LOW]: Document pre-restore snapshot artefact in SECURITY.md
 
@@ -75,19 +75,19 @@
   - Mode: directory `0o700` (best-effort), file `0o600`
   - Retention: last 5 snapshots (`RETAIN_LAST_N`)
   - Contents: full-fidelity DB export including hashed credentials and encrypted column ciphertexts (this is intentionally non-portable; not for offsite archival)
-- **Status:** [ ] Pending
+- **Status:** [x] Done
 
 ### TASK-7 [C2-AGG-4, LOW (perf)]: Parallelize the two recruit-results SELECTs
 
 - **File to edit:** `src/app/(auth)/recruit/[token]/results/page.tsx`
 - **Change:** Wrap `assignmentProblemRows` and `submissionRows` in a single `Promise.all([...])` (currently lines 137-167). The destructuring tuple is straightforward — both queries depend only on `assignment.id` and `invitation.userId` (already in scope by the time of the calls).
-- **Status:** [ ] Pending
+- **Status:** [x] Done
 
 ### TASK-8 [C2-AGG-9, LOW (UX)]: Empty-state for "no problems" recruit results
 
 - **File to edit:** `src/app/(auth)/recruit/[token]/results/page.tsx`
 - **Change:** Wrap the score card render `{showScores && <div className="rounded-lg ...">...</div>}` in `{showScores && totalPossible > 0 && <div ...>}`. The per-problem list already renders an empty UL when `assignmentProblemRows` is empty — that is acceptable. The change is the score card guard only.
-- **Status:** [ ] Pending
+- **Status:** [x] Done
 
 ### TASK-9 [Gates] Run all gates per orchestrator directive
 
@@ -99,7 +99,7 @@
 - `npm run build` — error-blocking
 - `npm run test:e2e` — best-effort; env-blocked → DEFER-ENV-GATES.
 
-- **Status:** [ ] Pending
+- **Status:** [x] Done
 
 ---
 
@@ -174,6 +174,27 @@ Each task that mutates code will be followed by a fresh gate run before the next
 
 ## Status
 
-[ ] All 8 implementation tasks
-[ ] All gates green
-[ ] Plan archived to `plans/done/` after close-out
+- [x] All 8 implementation tasks (commits below)
+- [x] All gates green
+- [x] Plan archived to `plans/done/` after close-out
+
+## Cycle close-out evidence
+
+- Commits landed this cycle (against pre-cycle HEAD `ef102367`):
+  - `34a4e0fe` fix(restore): unlink partial snapshot + drop byte-counter wrapper (TASK-2 + TASK-3)
+  - `46c1fa58` test(scoring): pin validateSqlColumnName rejection contract (TASK-1)
+  - `3ec5734a` docs(scoring): enumerate validateSqlColumnName rejection patterns (TASK-4)
+  - `d5565c65` docs(retention): document failure-isolation contract for daily prune (TASK-5)
+  - `74e41029` docs(security): document pre-restore snapshot artefact (TASK-6)
+  - `313d9708` perf(recruit): run candidate-results SELECTs in parallel (TASK-7)
+  - `10c78d81` fix(recruit): hide score card when assignment has 0 problems (TASK-8)
+  - `7823607e` docs(plans): add RPF loop cycle 2 review aggregate + remediation plan
+- Gate run at HEAD post-cycle:
+  - `npm run lint` — exit 0
+  - `npm run lint:bash` — exit 0
+  - `npx tsc --noEmit` — exit 0
+  - `npm run test:unit` — 305 files / **2241 tests passed** (+10 new)
+  - `npm run test:security` — 11 files / 195 tests passed
+  - `npm run build` — exit 0 (next build succeeded)
+  - `npm run test:e2e` — env-blocked, deferred under DEFER-ENV-GATES
+- Deploy: `none` per orchestrator directive (DEPLOY_MODE=none).
