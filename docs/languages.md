@@ -224,6 +224,7 @@ end beh;
 - Docker image name, compile command, run command
 - Enable/disable toggle
 - Build and remove Docker images from the UI
+- **Time-limit multiplier** (`language_configs.time_limit_multiplier`, default `1.0`) — applied at judge claim time so the worker receives `problem.timeLimitMs * multiplier`. Use this to give slower runtimes a fair shake on the same problem (e.g. Python `2.5`, Ruby `4.0`, Java `1.5`) without forcing instructors to duplicate problems per language. Floor of 1 ms; the math runs in `src/app/api/v1/judge/claim/route.ts` next to the existing time-limit hand-off.
 
 Changes take effect immediately for new submissions without restarting services.
 
