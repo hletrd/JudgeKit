@@ -20,7 +20,7 @@ describe("buildDockerImage implementation", () => {
 
   it("routes Docker management through the worker API when a runner is configured", async () => {
     process.env.COMPILER_RUNNER_URL = "http://judge-worker:3001";
-    process.env.JUDGE_AUTH_TOKEN = "x".repeat(32);
+    process.env.RUNNER_AUTH_TOKEN = "y".repeat(32);
     global.fetch = vi.fn().mockResolvedValue({
       ok: true,
       json: async () => [],
@@ -37,9 +37,8 @@ describe("buildDockerImage implementation", () => {
     );
   });
 
-  it("prefers RUNNER_AUTH_TOKEN over JUDGE_AUTH_TOKEN for worker docker-management calls", async () => {
+  it("uses RUNNER_AUTH_TOKEN (not JUDGE_AUTH_TOKEN) for worker docker-management calls", async () => {
     process.env.COMPILER_RUNNER_URL = "http://judge-worker:3001";
-    process.env.JUDGE_AUTH_TOKEN = "x".repeat(32);
     process.env.RUNNER_AUTH_TOKEN = "y".repeat(32);
     global.fetch = vi.fn().mockResolvedValue({
       ok: true,
@@ -61,17 +60,56 @@ describe("buildDockerImage implementation", () => {
     expect(headers?.get("Authorization")).toBe(`Bearer ${"y".repeat(32)}`);
   });
 
-  it("fails closed when a runner URL is configured without any runner auth token", async () => {
+  it("fails closed when a runner URL is configured without RUNNER_AUTH_TOKEN", async () => {
     process.env.COMPILER_RUNNER_URL = "http://judge-worker:3001";
+    // JUDGE_AUTH_TOKEN is intentionally NOT used as a fallback for docker
+    // operations — the Docker API and judge submission API are separate
+    // authorization domains. See commit 909fcbf5 and the security hardening
+    // that removed the shared token fallback.
 
     const { listDockerImages, pullDockerImage } = await import("@/lib/docker/client");
 
     await expect(listDockerImages("judge-*")).rejects.toThrow(
-      "COMPILER_RUNNER_URL is set but RUNNER_AUTH_TOKEN/JUDGE_AUTH_TOKEN is missing"
+      "COMPILER_RUNNER_URL is set but RUNNER_AUTH_TOKEN is missing"
     );
     await expect(pullDockerImage("judge-python:latest")).resolves.toEqual({
       success: false,
-      error: "COMPILER_RUNNER_URL is set but RUNNER_AUTH_TOKEN/JUDGE_AUTH_TOKEN is missing",
+      error: "COMPILER_RUNNER_URL is set but RUNNER_AUTH_TOKEN is missing",
     });
+  });
+});
+
+describe("validateDockerfilePath", () => {
+  // The validateDockerfilePath function is not exported, so we test it
+  // indirectly through the source code assertions and by verifying that
+  // the DOCKERFILE_PREFIX constant is correctly defined.
+  it("requires docker/Dockerfile.judge- prefix (not just docker/Dockerfile.)", () => {
+    const source = readFileSync(join(process.cwd(), "src/lib/docker/client.ts"), "utf8");
+
+    // Verify the shared prefix constant
+    expect(source).toContain('const DOCKERFILE_PREFIX = "docker/Dockerfile.judge-";');
+
+    // Verify both build paths use the shared validation function
+    expect(source).toContain("validateDockerfilePath(dockerfilePath)");
+
+    // Verify the validation function checks the prefix
+    expect(source).toContain("dockerfilePath.startsWith(DOCKERFILE_PREFIX)");
+
+    // Verify path traversal check uses the prefix length
+    expect(source).toContain("dockerfilePath.slice(DOCKERFILE_PREFIX.length)");
+  });
+
+  it("does not accept non-judge Dockerfile paths", () => {
+    const source = readFileSync(join(process.cwd(), "src/lib/docker/client.ts"), "utf8");
+
+    // The local path previously used "docker/Dockerfile.judge-" (correct)
+    // and the remote path used "docker/Dockerfile." (too permissive).
+    // Both now use validateDockerfilePath() which enforces "judge-" infix.
+    // Verify there is no remaining "docker/Dockerfile." check that would
+    // allow non-judge builds.
+    const remoteBuildMatch = source.match(
+      /if\s*\(!dockerfilePath\.startsWith\("docker\/Dockerfile\."\)\)/
+    );
+    expect(remoteBuildMatch).toBeNull();
   });
 });
