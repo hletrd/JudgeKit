@@ -1,9 +1,23 @@
-import { mkdir, writeFile, readdir, stat, unlink } from "node:fs/promises";
+import { mkdir, chmod, readdir, stat, unlink } from "node:fs/promises";
+import { createWriteStream } from "node:fs";
+import { Readable } from "node:stream";
+import { pipeline } from "node:stream/promises";
+import { ReadableStream as NodeReadableStream } from "node:stream/web";
 import { join } from "node:path";
 import { logger } from "@/lib/logger";
 import { streamDatabaseExport } from "./export";
 
 const SNAPSHOT_DIR_NAME = "pre-restore-snapshots";
+/**
+ * Number of pre-restore snapshots to retain on disk before pruning.
+ *
+ * Sized for emergency rollback rather than long-term archival: 5 keeps
+ * roughly the last week of weekly restore exercises (or 5 ad-hoc rollbacks)
+ * before the operator must intervene. Increasing this consumes more disk;
+ * on a production-sized DB each snapshot can be hundreds of MB. Decreasing
+ * below 2 risks losing the prior snapshot if the most recent one is corrupt
+ * or incomplete.
+ */
 const RETAIN_LAST_N = 5;
 
 function snapshotDir(): string {
@@ -18,7 +32,16 @@ function snapshotDir(): string {
  * importDatabase() call. Returns the path on success, null on failure.
  *
  * The snapshot is full-fidelity (sanitize=false) — it is the operator's
- * own emergency rollback artifact, not a portable export.
+ * own emergency rollback artifact, not a portable export. Because it
+ * contains password hashes, encrypted column ciphertexts, and JWT
+ * secrets in their stored form, the file is created with mode 0o600
+ * and the parent directory is locked down to 0o700 (best-effort: chmod
+ * failures are logged but do not abort the snapshot).
+ *
+ * The export is streamed directly to disk via node:stream/promises
+ * pipeline so memory usage stays bounded; the previous implementation
+ * buffered the entire dump into a single Uint8Array, which doubled
+ * peak memory on production-sized databases.
  */
 export async function takePreRestoreSnapshot(actorId: string): Promise<string | null> {
   const dir = snapshotDir();
@@ -29,29 +52,54 @@ export async function takePreRestoreSnapshot(actorId: string): Promise<string | 
     return null;
   }
 
+  // Best-effort directory permission tightening. Do NOT abort the snapshot if
+  // chmod fails (e.g., directory owned by a different uid on a shared volume);
+  // the per-file 0o600 mode below is the primary safeguard.
+  try {
+    await chmod(dir, 0o700);
+  } catch (err) {
+    logger.warn(
+      { err, dir },
+      "[restore] could not chmod 0o700 snapshot dir; relying on per-file 0o600",
+    );
+  }
+
   const stamp = new Date().toISOString().replace(/[:.]/g, "-");
   const filename = `pre-restore-${stamp}-${actorId.slice(0, 8)}.json`;
   const fullPath = join(dir, filename);
 
+  let sizeBytes = 0;
   try {
-    const stream = streamDatabaseExport({ sanitize: false });
-    const chunks: Uint8Array[] = [];
-    const reader = stream.getReader();
-    while (true) {
-      const { done, value } = await reader.read();
-      if (done) break;
-      if (value) chunks.push(value);
-    }
-    const total = chunks.reduce((acc, chunk) => acc + chunk.length, 0);
-    const merged = new Uint8Array(total);
-    let offset = 0;
-    for (const chunk of chunks) {
-      merged.set(chunk, offset);
-      offset += chunk.length;
-    }
-    await writeFile(fullPath, merged);
+    const webStream = streamDatabaseExport({ sanitize: false });
+    // Wrap the web ReadableStream so we can count bytes during the pipeline
+    // (Readable.fromWeb does not surface the byte total). Backpressure is
+    // handled by the inner web reader's natural sequencing.
+    const counted = new NodeReadableStream<Uint8Array>({
+      async start(controller) {
+        const reader = webStream.getReader();
+        try {
+          while (true) {
+            const { done, value } = await reader.read();
+            if (done) {
+              controller.close();
+              return;
+            }
+            if (value) {
+              sizeBytes += value.length;
+              controller.enqueue(value);
+            }
+          }
+        } catch (err) {
+          controller.error(err);
+        }
+      },
+    });
+    await pipeline(
+      Readable.fromWeb(counted),
+      createWriteStream(fullPath, { mode: 0o600 }),
+    );
     logger.info(
-      { path: fullPath, sizeBytes: total, actorId },
+      { path: fullPath, sizeBytes, actorId },
       "[restore] pre-restore snapshot written",
     );
     void pruneOldSnapshots(dir).catch((err) => {
