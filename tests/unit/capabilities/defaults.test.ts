@@ -26,7 +26,17 @@ describe("DEFAULT_ROLE_CAPABILITIES", () => {
 
   it("assistant extends student capabilities without full instructor access", () => {
     const assistantCaps = DEFAULT_ROLE_CAPABILITIES.assistant;
-    expect(assistantCaps).toContain("submissions.view_all");
+    // Assistants intentionally do NOT have submissions.view_all — the
+    // group-scope filter at src/lib/assignments/submissions.ts:165-179
+    // (getSubmissionReviewGroupIds) restricts assistants to their assigned
+    // teaching groups when assignments.view_status is granted. Granting
+    // submissions.view_all would short-circuit that scope filter and let
+    // assistants see submissions for any group. See commit 246822fa.
+    expect(assistantCaps).not.toContain("submissions.view_all");
+    expect(assistantCaps).toContain("submissions.view_source");
+    expect(assistantCaps).toContain("submissions.comment");
+    expect(assistantCaps).toContain("submissions.rejudge");
+    expect(assistantCaps).toContain("assignments.view_status");
     expect(assistantCaps).toContain("problems.view_all");
     expect(assistantCaps).not.toContain("users.view");
     expect(assistantCaps).not.toContain("problems.create");
