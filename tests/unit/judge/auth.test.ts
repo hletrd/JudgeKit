@@ -151,13 +151,24 @@ describe("isJudgeAuthorizedForWorker", () => {
     });
   });
 
-  it("falls back to the shared token when no worker-specific secret exists", async () => {
+  it("rejects with workerNotFound when the workerId is unknown, even with a valid shared token", async () => {
+    // Security guarantee: the shared JUDGE_AUTH_TOKEN MUST NOT act as a
+    // fallback for unknown workerIds. A leaked shared token would otherwise
+    // let an attacker submit fabricated results for any workerId — including
+    // ones that never existed. See commit 909fcbf5 and
+    // src/lib/judge/auth.ts:70-80.
+    //
+    // This test deliberately replaces the historical "falls back to the
+    // shared token when no worker-specific secret exists" assertion. Do
+    // NOT revert: the previous behaviour was a privilege-escalation
+    // footgun.
     judgeWorkerFindFirstMock.mockResolvedValueOnce(null);
 
     const request = makeRequest(`Bearer ${EXPECTED_TOKEN}`);
 
     await expect(isJudgeAuthorizedForWorker(request, "worker-1")).resolves.toEqual({
-      authorized: true,
+      authorized: false,
+      error: "workerNotFound",
     });
   });
 

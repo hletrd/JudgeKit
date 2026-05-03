@@ -175,14 +175,17 @@ describe("bulkEnrollmentSchema", () => {
     expect(result.success).toBe(false);
   });
 
-  it("rejects more than 200 userIds", () => {
-    const userIds = Array.from({ length: 201 }, (_, i) => `user-${i}`);
+  it("rejects more than 500 userIds", () => {
+    // The bulk-enroll cap is 500 (raised from 200 when the username-paste
+    // path landed — commit 3b416d56). Stays in sync with
+    // bulkEnrollmentSchema.userIds.max(500) in src/lib/validators/groups.ts.
+    const userIds = Array.from({ length: 501 }, (_, i) => `user-${i}`);
     const result = bulkEnrollmentSchema.safeParse({ userIds });
     expect(result.success).toBe(false);
   });
 
-  it("accepts exactly 200 userIds", () => {
-    const userIds = Array.from({ length: 200 }, (_, i) => `user-${i}`);
+  it("accepts exactly 500 userIds", () => {
+    const userIds = Array.from({ length: 500 }, (_, i) => `user-${i}`);
     const result = bulkEnrollmentSchema.safeParse({ userIds });
     expect(result.success).toBe(true);
   });

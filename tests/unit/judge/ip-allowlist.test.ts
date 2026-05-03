@@ -164,12 +164,22 @@ describe("ipMatchesAllowlistEntry (low-level CIDR matching)", () => {
     expect(ipMatchesAllowlistEntry("192.168.1.1", "2001:db8::/64")).toBe(false);
   });
 
-  it("matches IPv6 exact addresses but not IPv6 CIDR", () => {
+  it("matches IPv6 exact addresses and IPv6 CIDR ranges", () => {
+    // Exact-match cases (the historical behaviour).
     expect(ipMatchesAllowlistEntry("::1", "::1")).toBe(true);
     expect(ipMatchesAllowlistEntry("2001:db8::1", "2001:db8::1")).toBe(true);
-    // IPv6 CIDR is not supported — the entry contains "/" but the split produces
-    // non-4-part addresses, so the function returns false.
-    expect(ipMatchesAllowlistEntry("2001:db8::1", "2001:db8::/64")).toBe(false);
+
+    // IPv6 CIDR is now supported — see commit 12417fa9 and
+    // ipv6ToBytes/bytesEqualUnderPrefix in src/lib/judge/ip-allowlist.ts.
+    expect(ipMatchesAllowlistEntry("2001:db8::1", "2001:db8::/32")).toBe(true);
+    expect(ipMatchesAllowlistEntry("2001:db8:0:1::5", "2001:db8::/32")).toBe(true);
+    // /128 host route — only the exact address matches.
+    expect(ipMatchesAllowlistEntry("::1", "::1/128")).toBe(true);
+    expect(ipMatchesAllowlistEntry("::2", "::1/128")).toBe(false);
+    // Outside the prefix.
+    expect(ipMatchesAllowlistEntry("2001:db9::1", "2001:db8::/32")).toBe(false);
+    // Mixed-family rejection (IPv4 client vs IPv6 CIDR and vice versa)
+    // already covered in the preceding "rejects non-4-part" test.
   });
 
   it("returns false for non-matching entry types", () => {
