@@ -222,7 +222,38 @@ These cycle-3 carryovers and cycle-1 LOWs are deferred this cycle. Each preserve
 
 ## Progress
 
-- [x] Plan written (this file).
-- [ ] TASK-1 (28 test fixes) — pending PROMPT 3.
-- [ ] TASK-2..TASK-14 — pending PROMPT 3.
-- [ ] All gates pass.
+- [x] Plan written.
+- [x] TASK-1 (28 test fixes) — DONE. All 305 test files / 2231 tests pass at HEAD.
+  - [x] TASK-1.1 (users/core 1-arg API) — commit `336f74da`.
+  - [x] TASK-1.2 (change-password 1-arg API) — commit `336f74da`.
+  - [x] TASK-1.3 (judge/auth shared-token rejection) — commit `ef261646`.
+  - [x] TASK-1.4 (bulkEnrollmentSchema 500 boundary) — commit `ef261646`.
+  - [x] TASK-1.5 (capabilities/defaults assistant scope) — commit `cfddfb4c`.
+  - [x] TASK-1.6 (ip-allowlist IPv6 CIDR) — commit `ef261646`.
+  - [x] TASK-1.7 (group-members-bulk new shape) — commit `216d2266`.
+  - [x] TASK-1.8 (use-source-draft jsdom shim) — commit `1f0644f2`.
+  - [x] TASK-1.9 (deploy-security :? + hardcoded BUILD/POST/DELETE) — commit `f2b48558`.
+  - [x] TASK-1.10 (12 source-grep tests, post-migration paths + i18n strip-comments + redirect-shell guards) — commits `2b8fd80b`, `812e2320`, `07f05b59`, `f2b48558`.
+- [x] TASK-2 (recruit results scoring + regression test) — commit `b60dc17a`.
+- [x] TASK-3 (pre-restore-snapshot 0o600 + streaming) — commit `6a6e7e75`.
+- [x] TASK-4 (judge/auth `%s` log fix) — commit `95855085`.
+- [x] TASK-5 (docker config-error containment) — commit `3ee75ef9`.
+- [x] TASK-6 (data-retention parallel prune) — commit `0d843d91`.
+- [x] TASK-11 (RETAIN_LAST_N rationale documented inline) — bundled with commit `6a6e7e75`.
+- [x] TASK-13 (recruit-scoring regression test) — bundled with commit `b60dc17a`.
+- [ ] TASK-7 (participant-status accepted→submitted comment) — DEFER per LOW priority below.
+- [ ] TASK-8 (await pruneOldSnapshots) — DEFER per LOW.
+- [ ] TASK-9 (reset lastSnapshotRef) — DEFER per LOW.
+- [ ] TASK-10 (SECURITY.md docs) — DEFER per LOW.
+- [ ] TASK-12 (pre-restore-snapshot unit test) — DEFER per LOW.
+- [ ] TASK-14 (findings-index.md) — DEFER per LOW.
+
+## Gate evidence (HEAD after all commits this cycle)
+
+- `npm run lint` — exit 0.
+- `npm run lint:bash` — exit 0.
+- `npx tsc --noEmit` — exit 0.
+- `npm run test:unit` — 305/305 files pass; 2231/2231 tests pass.
+- `npm run test:security` — 11/11 files pass; 195/195 tests pass.
+- `npm run build` — exit 0; production bundle generated.
+- `npm run test:e2e` — NOT RUN this cycle (Playwright requires browsers + dev server; environment-blocked in this sandbox; defer per CLAUDE.md / repo rules — same gate-status as the last few cycles, see `_aggregate-cycle-3.md`).
