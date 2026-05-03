@@ -185,3 +185,51 @@ describe("getAssignmentStatusRows scoring consistency", () => {
     );
   });
 });
+
+describe("recruit results page scoring consistency (C1-AGG-2)", () => {
+  it("uses mapSubmissionPercentageToAssignmentPoints, not raw submissions.score, for the candidate total (source-grep)", () => {
+    const sourcePath = join(
+      process.cwd(),
+      "src",
+      "app",
+      "(auth)",
+      "recruit",
+      "[token]",
+      "results",
+      "page.tsx",
+    );
+    const source = readFileSync(sourcePath, "utf8");
+
+    // The canonical helper must be imported and called — without it the page
+    // falls into the units-mismatch bug where raw percentages were summed
+    // alongside per-problem points (a candidate scoring 80% on three
+    // 25-point problems would otherwise see "240 / 75").
+    expect(
+      source,
+      "recruit/[token]/results/page.tsx must import the canonical scoring helper",
+    ).toContain("mapSubmissionPercentageToAssignmentPoints");
+
+    // The displayed total must accumulate the converted (points-scaled)
+    // value. The previous bug accumulated `best.score` directly.
+    expect(
+      source,
+      "recruit/[token]/results/page.tsx must accumulate mapSubmissionPercentageToAssignmentPoints output",
+    ).toContain("totalScore += adjusted");
+  });
+
+  it("computes the correct candidate total: three 25-point problems at 80%/60%/100% → 60", () => {
+    // Reproduces the original bug scenario in unit form. With the old
+    // (broken) arithmetic the total would have been 80+60+100=240 over a
+    // possible 75. With the canonical helper the total is the sum of the
+    // points-scaled values: 20 + 15 + 25 = 60 over 75.
+    const points = 25;
+    const percentages = [80, 60, 100];
+    const expectedAdjusted = percentages.map((pct) =>
+      mapSubmissionPercentageToAssignmentPoints(pct, points),
+    );
+    expect(expectedAdjusted).toEqual([20, 15, 25]);
+    const total = expectedAdjusted.reduce((acc, v) => acc + v, 0);
+    expect(total).toBe(60);
+    expect(points * percentages.length).toBe(75); // total possible
+  });
+});

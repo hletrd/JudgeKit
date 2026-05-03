@@ -16,6 +16,7 @@ import { formatDateTimeInTimeZone } from "@/lib/datetime";
 import { formatScore } from "@/lib/formatting";
 import { SubmissionStatusBadge } from "@/components/submission-status-badge";
 import { NO_INDEX_METADATA } from "@/lib/seo";
+import { mapSubmissionPercentageToAssignmentPoints } from "@/lib/assignments/scoring";
 import Link from "next/link";
 
 /**
@@ -180,13 +181,23 @@ export default async function RecruitResultsPage({
     }
   }
 
+  // submissions.score is a percentage (0-100); assignmentProblems.points is the
+  // per-problem weight. The candidate-facing total must use weighted points,
+  // not raw percentages, otherwise three 25-point problems at 80%/60%/100%
+  // would render as `240 / 75` instead of the expected `60 / 75`. Use the
+  // canonical scoring helper so the recruit page stays in lockstep with the
+  // leaderboard / stats / assignment-status views.
+  const adjustedByProblem = new Map<string, number>();
   let totalScore = 0;
   let totalPossible = 0;
   for (const ap of assignmentProblemRows) {
-    totalPossible += ap.points ?? 100;
+    const points = ap.points ?? 100;
+    totalPossible += points;
     const best = bestByProblem.get(ap.problemId);
     if (best?.score !== null && best?.score !== undefined) {
-      totalScore += best.score;
+      const adjusted = mapSubmissionPercentageToAssignmentPoints(best.score, points);
+      adjustedByProblem.set(ap.problemId, adjusted);
+      totalScore += adjusted;
     }
   }
   const showScores = !assignment.hideScoresFromCandidates;
@@ -260,7 +271,7 @@ export default async function RecruitResultsPage({
                     )}
                     {showScores && (
                       <span className="font-mono text-sm">
-                        {formatScore(best?.score ?? 0)} / {formatScore(ap.points ?? 100)}
+                        {formatScore(adjustedByProblem.get(ap.problemId) ?? 0)} / {formatScore(ap.points ?? 100)}
                       </span>
                     )}
                   </div>
