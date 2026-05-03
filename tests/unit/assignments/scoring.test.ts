@@ -54,6 +54,15 @@ describe("mapSubmissionPercentageToAssignmentPoints", () => {
     expect(mapSubmissionPercentageToAssignmentPoints(66.67, 3)).toBe(2);
   });
 
+  it("returns 0 for non-finite score inputs (NaN, +/-Infinity)", () => {
+    // CYC3-AGG-6 NaN guard: ensure non-finite scores never propagate to the
+    // candidate-facing renderer. The DB never stores NaN, but a future
+    // caller passing parsed-string output could trigger NaN propagation.
+    expect(mapSubmissionPercentageToAssignmentPoints(NaN, 50)).toBe(0);
+    expect(mapSubmissionPercentageToAssignmentPoints(Number.POSITIVE_INFINITY, 50)).toBe(0);
+    expect(mapSubmissionPercentageToAssignmentPoints(Number.NEGATIVE_INFINITY, 50)).toBe(0);
+  });
+
   it("handles IOI floating-point tie-breaking precision", () => {
     // Two scores that differ by less than 0.01 should map to the same result
     // when rounded to 2 decimal places. This validates the ROUND(..., 2) used

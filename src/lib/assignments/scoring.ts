@@ -25,6 +25,13 @@ export function mapSubmissionPercentageToAssignmentPoints(
     examMode?: string;
   }
 ) {
+  // Guard against NaN/Infinity propagation. Math.min/Math.max preserve NaN,
+  // which would produce a `NaN / N` rendering on the candidate-facing
+  // recruit-results page. Treat any non-finite input as zero so the page
+  // never displays a non-numeric total. (cycle-3 CYC3-AGG-6).
+  if (!Number.isFinite(score)) {
+    return 0;
+  }
   const normalizedPercentage = Math.min(Math.max(score, 0), 100);
   let earnedPoints = roundAssignmentScore((normalizedPercentage / 100) * points);
 
