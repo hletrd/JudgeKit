@@ -6,8 +6,10 @@
  * ensures consistency with api-rate-limit.ts, which writes to the same
  * rateLimits table using DB time.
  *
- * The in-memory rate limiter (in-memory-rate-limit.ts) uses Date.now() by
- * design since it is a single-process store with no DB dependency.
+ * The in-memory limiter that previously lived next to this module was removed
+ * (no production callers, and an authoritative rate limit that resets on
+ * process restart is a security footgun). All rate limiting now flows through
+ * this module or `./api-rate-limit.ts`, both DB-backed.
  */
 import { db, execTransaction, type TransactionClient } from "@/lib/db";
 import { rateLimits } from "@/lib/db/schema";

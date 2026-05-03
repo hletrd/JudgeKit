@@ -7,13 +7,15 @@
  * database server. This ensures consistency with `./rate-limit.ts` (login
  * /auth limits) which writes to the same `rateLimits` table using DB time.
  *
- * NOTE: this is one of three rate-limit modules in this directory. Use this
- * one for cross-instance API limits where the limit must survive a process
- * restart. Use `./in-memory-rate-limit.ts` for high-throughput per-instance
- * limits (no DB dependency; resets on restart). Use `./rate-limit.ts` for
- * login/auth limits. Drift between these three modules is tracked under
- * C7-AGG-9 (rate-limit consolidation cycle); if you fix a bug here, search
- * the other two modules for the same pattern and apply the equivalent fix.
+ * NOTE: there are two rate-limit modules in this directory. Use this one
+ * for cross-instance API limits. Use `./rate-limit.ts` for login/auth limits
+ * (writes to the same `rateLimits` table). Drift between the two is tracked
+ * under C7-AGG-9 (rate-limit consolidation cycle); if you fix a bug here,
+ * search the sibling module for the same pattern and apply the equivalent
+ * fix. The previous in-memory limiter (`in-memory-rate-limit.ts`) was
+ * removed because it had no production callers and exposed an authoritative
+ * store that resets on process restart — the DB-backed path is the only
+ * supported authority.
  */
 import { NextRequest, NextResponse } from "next/server";
 import { getRateLimitKey } from "./rate-limit";
