@@ -134,37 +134,41 @@ export default async function RecruitResultsPage({
   // Fetch the candidate's best submission per problem in this assignment.
   // We pick the highest score; ties resolve to the earliest submission so
   // the candidate sees the artifact that crossed the bar first.
-  const assignmentProblemRows = await db
-    .select({
-      problemId: assignmentProblems.problemId,
-      points: assignmentProblems.points,
-      problemTitle: problems.title,
-      problemNumber: problems.sequenceNumber,
-    })
-    .from(assignmentProblems)
-    .innerJoin(problems, eq(assignmentProblems.problemId, problems.id))
-    .where(eq(assignmentProblems.assignmentId, assignment.id))
-    .orderBy(asc(problems.sequenceNumber));
-
-  const submissionRows = await db
-    .select({
-      id: submissions.id,
-      problemId: submissions.problemId,
-      status: submissions.status,
-      score: submissions.score,
-      executionTimeMs: submissions.executionTimeMs,
-      memoryUsedKb: submissions.memoryUsedKb,
-      submittedAt: submissions.submittedAt,
-      language: submissions.language,
-    })
-    .from(submissions)
-    .where(
-      and(
-        eq(submissions.assignmentId, assignment.id),
-        eq(submissions.userId, invitation.userId),
-      ),
-    )
-    .orderBy(asc(submissions.submittedAt));
+  // Both SELECTs depend only on assignment.id (and invitation.userId for
+  // the second one), so we run them in parallel to halve the cold-start
+  // latency on this candidate-facing page (cycle-2 C2-AGG-4).
+  const [assignmentProblemRows, submissionRows] = await Promise.all([
+    db
+      .select({
+        problemId: assignmentProblems.problemId,
+        points: assignmentProblems.points,
+        problemTitle: problems.title,
+        problemNumber: problems.sequenceNumber,
+      })
+      .from(assignmentProblems)
+      .innerJoin(problems, eq(assignmentProblems.problemId, problems.id))
+      .where(eq(assignmentProblems.assignmentId, assignment.id))
+      .orderBy(asc(problems.sequenceNumber)),
+    db
+      .select({
+        id: submissions.id,
+        problemId: submissions.problemId,
+        status: submissions.status,
+        score: submissions.score,
+        executionTimeMs: submissions.executionTimeMs,
+        memoryUsedKb: submissions.memoryUsedKb,
+        submittedAt: submissions.submittedAt,
+        language: submissions.language,
+      })
+      .from(submissions)
+      .where(
+        and(
+          eq(submissions.assignmentId, assignment.id),
+          eq(submissions.userId, invitation.userId),
+        ),
+      )
+      .orderBy(asc(submissions.submittedAt)),
+  ]);
 
   // Reduce to best-by-score per problem
   const bestByProblem = new Map<string, (typeof submissionRows)[number]>();
