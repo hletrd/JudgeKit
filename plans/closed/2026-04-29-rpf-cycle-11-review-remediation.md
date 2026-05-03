@@ -1,9 +1,22 @@
+# SUPERSEDED (prior RPF loop, archived 2026-05-03 by cycle-4 CYC4-AGG-1)
+
+> This plan is from a prior RPF loop (loop cycle 11/100, HEAD
+> `7073809b`, no longer reachable from `main`). The current loop
+> (cycles 1-4 at HEAD `7a195b11`) supersedes its task list. Kept for
+> historical provenance only — do NOT act on the tasks below; they
+> reference deferral registries and HEADs that have moved on. See
+> `plans/done/2026-05-04-rpf-cycle-3-review-remediation.md` and
+> `plans/open/2026-05-04-rpf-cycle-4-review-remediation.md` for
+> the current loop's task lists.
+
+---
+
 # Cycle 11 Review Remediation Plan (RPF current loop)
 
 **Date:** 2026-04-29
 **Source:** `.context/reviews/_aggregate.md` (cycle 11) + cycle-11 lane reviews + `plans/user-injected/pending-next-cycle.md`
 **HEAD entering this cycle:** `7073809b` (cycle-10 close-out: docs(plans) ✅ record cycle 10 task outcomes and deploy success in plan body)
-**Status:** IN PROGRESS
+**Status:** IN PROGRESS (superseded — see header)
 
 ---
 
