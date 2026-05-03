@@ -31,7 +31,11 @@ describe("lecture stats wiring implementation", () => {
   it("scopes lecture submission stats by assignment and requests aggregated summary data", () => {
     const overview = read("src/components/lecture/submission-overview.tsx");
     const submissionsRoute = read("src/app/api/v1/submissions/route.ts");
-    const problemPage = read("src/app/(dashboard)/dashboard/problems/[id]/page.tsx");
+    // Workspace→public migration: the lecture-stats wiring on the problem
+    // page moved with the page from (dashboard)/problems/[id] to
+    // (public)/practice/problems/[id]. The assignmentId={...} prop binding
+    // is preserved at the new location.
+    const problemPage = read("src/app/(public)/practice/problems/[id]/page.tsx");
 
     expect(problemPage).toContain("assignmentId={assignmentContext?.id ?? null}");
     expect(overview).toContain("if (assignmentId) {");

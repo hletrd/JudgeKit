@@ -14,20 +14,32 @@ describe("recruiting candidate isolation implementation", () => {
     expect(source).toContain('return apiError("forbidden", 403);');
   });
 
-  it("keeps recruiting candidates out of shared standings on the contest detail page", () => {
-    const source = read("src/app/(dashboard)/dashboard/contests/[assignmentId]/page.tsx");
+  it("keeps recruiting candidates out of shared standings on the public contest detail page", () => {
+    // Workspace→public migration: the contest detail page moved from
+    // (dashboard)/contests/[assignmentId] to (public)/contests/[id]. The
+    // recruiting-candidate isolation moved with it.
+    const source = read("src/app/(public)/contests/[id]/page.tsx");
 
-    expect(source).toContain('const isRecruitingCandidate = recruitingAccess.isRecruitingCandidate;');
-    expect(source).toContain('{!isRecruitingCandidate && (');
-    expect(source).toContain('<LeaderboardTable assignmentId={assignmentId} currentUserId={session.user.id} />');
+    expect(source).toContain("const isRecruitingCandidate = recruitingAccess.isRecruitingCandidate");
+    expect(source).toContain("{!isRecruitingCandidate && (");
+    expect(source).toContain("<LeaderboardTable");
   });
 
-  it("prevents recruiting candidates from reaching per-problem rankings even via direct routes", () => {
-    const detailSource = read("src/app/(dashboard)/dashboard/problems/[id]/page.tsx");
+  it("excludes recruiting candidates from per-problem rankings via SQL", () => {
+    // The dashboard problem detail page is now a redirect-only shell, and
+    // the per-problem rankings page (public) excludes recruiting candidates
+    // from the rankings query directly via a NOT EXISTS subquery against
+    // recruiting_invitations.status = 'redeemed'. This is stronger than the
+    // previous redirect-on-candidate guard because candidates don't appear
+    // in the rankings even to other viewers.
+    const dashboardShell = read("src/app/(dashboard)/dashboard/problems/[id]/page.tsx");
     const rankingsSource = read("src/app/(public)/practice/problems/[id]/rankings/page.tsx");
 
-    expect(detailSource).toContain('{!isRecruitingCandidate && (');
-    expect(rankingsSource).toContain('const recruitingAccess = await getRecruitingAccessContext(session.user.id);');
-    expect(rankingsSource).toContain('if (recruitingAccess.isRecruitingCandidate) redirect(`/dashboard/problems/${id}`);');
+    expect(dashboardShell).toContain("redirect(");
+    expect(dashboardShell).toContain("/practice/problems/");
+
+    expect(rankingsSource).toContain("recruiting_invitations");
+    expect(rankingsSource).toMatch(/NOT EXISTS\s*\(\s*SELECT 1 FROM recruiting_invitations/);
+    expect(rankingsSource).toContain("ri.status = 'redeemed'");
   });
 });

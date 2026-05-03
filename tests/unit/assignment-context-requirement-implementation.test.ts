@@ -10,7 +10,13 @@ describe("assignment-context requirement implementation", () => {
   it("uses a shared helper instead of hard-coding the built-in student role", () => {
     const helperSource = read("src/lib/assignments/submissions.ts");
     const permissionsSource = read("src/lib/auth/permissions.ts");
-    const problemPage = read("src/app/(dashboard)/dashboard/problems/[id]/page.tsx");
+    // Workspace→public migration: the dashboard problem detail page is now
+    // a redirect-only shell. The capability-aware logic moved to the public
+    // counterpart at (public)/practice/problems/[id]/page.tsx, which builds
+    // assignmentContext from query params and the recruiting-access scope
+    // rather than the legacy getRequiredAssignmentContextsForProblem helper
+    // (which is still used by the API routes that mutate state). Verify the
+    // helper itself stays capability-driven and the API routes still call it.
     const submissionsRoute = read("src/app/api/v1/submissions/route.ts");
     const snapshotsRoute = read("src/app/api/v1/code-snapshots/route.ts");
 
@@ -20,9 +26,8 @@ describe("assignment-context requirement implementation", () => {
     expect(helperSource).not.toContain('role === "instructor"');
     expect(permissionsSource).not.toContain('role === "super_admin" || role === "admin"');
 
-    expect(problemPage).toContain("getRequiredAssignmentContextsForProblem(");
-    expect(problemPage).not.toContain('session.user.role === "student"');
-
+    // API routes that mutate state still use the shared helper to enforce
+    // the assignment-context requirement.
     expect(submissionsRoute).toContain("getRequiredAssignmentContextsForProblem(");
     expect(submissionsRoute).not.toContain('user.role === "student"');
 
