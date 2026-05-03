@@ -82,7 +82,16 @@ describe("source-grep test inventory", () => {
     // DOCUMENTED BASELINE — update this number intentionally when adding or
     // removing source-grep tests.  A change here is a signal to review whether
     // the new test should be a text-contract test or a behavioural test.
-    const DOCUMENTED_BASELINE = 126;
+    //
+    // Bumped 126 → 128 in cycle-1 RPF (2026-05-03):
+    //   - tests/unit/docker/client.test.ts (commit 6934f564, dockerfile path
+    //     validator regression — text contract on src/lib/docker/client.ts).
+    //   - tests/unit/assignments/scoring.test.ts gained a source-grep
+    //     regression for the recruit-results scoring helper (commit b60dc17a,
+    //     C1-AGG-2). The file already existed in the inventory but the
+    //     readFileSync call now fires from the new describe block too. The
+    //     net source-grep count increase is +2.
+    const DOCUMENTED_BASELINE = 128;
     expect(sourceGrepFiles.length).toBe(DOCUMENTED_BASELINE);
   });
 

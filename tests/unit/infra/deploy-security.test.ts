@@ -57,7 +57,11 @@ describe("deployment security defaults", () => {
     );
     expect(rateLimiterBlock).toBeDefined();
     expect(rateLimiterBlock!).not.toMatch(/^\s*ports:/m);
-    expect(rateLimiterBlock!).toContain("RATE_LIMITER_AUTH_TOKEN=${RATE_LIMITER_AUTH_TOKEN:-}");
+    // Production compose now uses bash :? "force-required" syntax so the
+    // service refuses to start when the token is unset, instead of the
+    // historical :- default-to-empty form (which was a footgun — the
+    // sidecar then ran unauthenticated). Pin the new pattern.
+    expect(rateLimiterBlock!).toMatch(/RATE_LIMITER_AUTH_TOKEN=\$\{RATE_LIMITER_AUTH_TOKEN:\?/);
 
     // Reset endpoint must NOT be enabled explicitly.
     expect(production).not.toContain("RATE_LIMITER_ENABLE_RESET=1");
@@ -68,8 +72,11 @@ describe("deployment security defaults", () => {
     const production = read("docker-compose.production.yml");
     const testBackends = read("docker-compose.test-backends.yml");
 
-    expect(production).toContain("CODE_SIMILARITY_AUTH_TOKEN=${CODE_SIMILARITY_AUTH_TOKEN:-}");
-    expect(production).toContain("RATE_LIMITER_AUTH_TOKEN=${RATE_LIMITER_AUTH_TOKEN:-}");
+    // Production compose now requires the tokens (:? syntax). test-backends
+    // (used for CI / dev rigs) keeps the lenient :- form so contributors
+    // without a generated token can still spin up the stack.
+    expect(production).toMatch(/CODE_SIMILARITY_AUTH_TOKEN=\$\{CODE_SIMILARITY_AUTH_TOKEN:\?/);
+    expect(production).toMatch(/RATE_LIMITER_AUTH_TOKEN=\$\{RATE_LIMITER_AUTH_TOKEN:\?/);
     expect(testBackends).toContain("CODE_SIMILARITY_AUTH_TOKEN=${CODE_SIMILARITY_AUTH_TOKEN:-}");
   });
 
@@ -111,10 +118,14 @@ describe("deployment security defaults", () => {
     expect(production).toContain("- IMAGES=1");
     expect(production).toContain("- BUILD=0");
     expect(production).toContain("- DELETE=0");
+    // Worker compose now hardcodes BUILD/POST/DELETE to 0 (instead of the
+    // historical ${WORKER_DOCKER_PROXY_*:-0} envars) so an operator cannot
+    // accidentally enable them via .env. IMAGES is still env-toggleable
+    // because legitimate workers may need it for `docker images` listings.
     expect(workerCompose).toContain("WORKER_DOCKER_PROXY_IMAGES:-0");
-    expect(workerCompose).toContain("WORKER_DOCKER_PROXY_BUILD:-0");
-    expect(workerCompose).toContain("WORKER_DOCKER_PROXY_POST:-0");
-    expect(workerCompose).toContain("WORKER_DOCKER_PROXY_DELETE:-0");
+    expect(workerCompose).toMatch(/^\s*-\s*BUILD=0\s*$/m);
+    expect(workerCompose).toMatch(/^\s*-\s*POST=0\s*$/m);
+    expect(workerCompose).toMatch(/^\s*-\s*DELETE=0\s*$/m);
     expect(workerCompose).toContain('127.0.0.1:${RUNNER_PORT:-3001}:3001');
     expect(workerCompose).toContain("RUNNER_AUTH_TOKEN=${RUNNER_AUTH_TOKEN:-}");
     expect(workerDocs).toContain("WORKER_DOCKER_PROXY_IMAGES=1");
