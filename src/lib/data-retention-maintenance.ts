@@ -83,6 +83,26 @@ async function pruneLoginEvents(nowMs: number) {
   logger.debug({ cutoff: cutoff.toISOString(), deleted }, "Pruned expired login events");
 }
 
+/**
+ * Run all sensitive-data retention prunes for one day's maintenance window.
+ *
+ * Five independent prunes (chatMessages, antiCheatEvents,
+ * recruitingInvitations, submissions, loginEvents) run concurrently against
+ * the DB. The cutoff is taken from `getDbNowMs()` so it is computed against
+ * the same clock as the data timestamps, avoiding app-vs-DB clock skew.
+ *
+ * @remarks Failure isolation: prunes are wrapped in `Promise.allSettled` so
+ *   a failure in one (e.g. lock contention on `submissions`) does NOT
+ *   short-circuit the others. Per-prune rejection reasons are logged via
+ *   `logger.warn`; the overall function never throws unless the surrounding
+ *   `getDbNowMs()` call itself fails. Operators auditing the daily window
+ *   should look for the "Failed to prune one of the sensitive data tables"
+ *   line in the logs.
+ *
+ * @remarks Legal hold: when `DATA_RETENTION_LEGAL_HOLD` is set the function
+ *   returns early without pruning anything. This is the operator escape
+ *   hatch for litigation holds.
+ */
 async function pruneSensitiveOperationalData() {
   if (DATA_RETENTION_LEGAL_HOLD) {
     logger.info("Data retention legal hold is active — skipping all automatic pruning");
