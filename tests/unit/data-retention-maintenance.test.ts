@@ -149,3 +149,83 @@ describe("startSensitiveDataPruning / stopSensitiveDataPruning", () => {
     );
   });
 });
+
+// Cycle-4 CYC4-AGG-3: pin the legal-hold escape hatch. Kept in a separate
+// describe block (with its own beforeEach/afterEach) because the test
+// uses vi.doMock to flip DATA_RETENTION_LEGAL_HOLD; that override
+// persists across vi.resetModules within the same describe and would
+// pollute the failure-isolation test above. Running this in its own
+// describe block ensures the doMock is fully torn down before any
+// other test sees the module again.
+describe("pruneSensitiveOperationalData — legal hold", () => {
+  beforeEach(() => {
+    vi.resetModules();
+    vi.clearAllMocks();
+    vi.useFakeTimers();
+    mocks.dbExecute.mockResolvedValue({ rowCount: 0 });
+  });
+
+  afterEach(() => {
+    delete (globalThis as { __sensitiveDataPruneTimer?: unknown }).__sensitiveDataPruneTimer;
+    vi.clearAllTimers();
+    vi.useRealTimers();
+    vi.doUnmock("@/lib/data-retention");
+    vi.doUnmock("@/lib/logger");
+    vi.resetModules();
+    vi.restoreAllMocks();
+  });
+
+  it("short-circuits all prunes when DATA_RETENTION_LEGAL_HOLD is true (CYC4-AGG-3)", async () => {
+    // The legal-hold flag is the operator's litigation-hold override; a
+    // regression that drops it (e.g., a refactor moving the check inside
+    // the try-block where a thrown DB error can still emit warn logs) is
+    // high-impact. Today the check is the first statement in
+    // pruneSensitiveOperationalData, before any DB call.
+    //
+    // Override @/lib/data-retention via vi.doMock so the legal-hold flag
+    // is true for the dynamic-imported module instance.
+    vi.doMock("@/lib/data-retention", () => ({
+      DATA_RETENTION_LEGAL_HOLD: true,
+      DATA_RETENTION_DAYS: {
+        auditEvents: 90,
+        chatMessages: 30,
+        antiCheatEvents: 180,
+        recruitingRecords: 365,
+        submissions: 365,
+        loginEvents: 180,
+      },
+      getRetentionCutoff: (days: number, now: number) =>
+        new Date(now - days * 24 * 60 * 60 * 1000),
+    }));
+    // Capture info-log calls separately for the legal-hold assertion;
+    // mocks.loggerInfo from the global bag is not used by the source.
+    const loggerInfo = vi.fn();
+    vi.doMock("@/lib/logger", () => ({
+      logger: {
+        info: loggerInfo,
+        debug: mocks.loggerDebug,
+        warn: mocks.loggerWarn,
+        error: vi.fn(),
+      },
+    }));
+
+    const { startSensitiveDataPruning, stopSensitiveDataPruning } = await import("@/lib/data-retention-maintenance");
+
+    stopSensitiveDataPruning();
+    startSensitiveDataPruning();
+    await flushMicrotasks();
+
+    // Legal-hold MUST short-circuit before any DB call.
+    expect(mocks.dbExecute).not.toHaveBeenCalled();
+    // The legal-hold info-log line must be emitted exactly so operators
+    // can confirm the hold from the daily maintenance window logs.
+    const legalHoldLogged = loggerInfo.mock.calls.some(
+      (call) =>
+        typeof call[0] === "string" &&
+        call[0] === "Data retention legal hold is active — skipping all automatic pruning",
+    );
+    expect(legalHoldLogged, "expected the legal-hold info-log line").toBe(true);
+
+    stopSensitiveDataPruning();
+  });
+});
