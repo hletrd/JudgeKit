@@ -95,11 +95,21 @@ async function pruneSensitiveOperationalData() {
     // stored using DB server time, so the cutoff must be computed against the
     // same clock to prevent premature deletion or delayed pruning.
     const nowMs = await getDbNowMs();
-    await pruneChatMessages(nowMs);
-    await pruneAntiCheatEvents(nowMs);
-    await pruneRecruitingInvitations(nowMs);
-    await pruneSubmissions(nowMs);
-    await pruneLoginEvents(nowMs);
+    // Each prune targets a distinct table; run them concurrently so the daily
+    // maintenance window does not balloon on large datasets. allSettled keeps
+    // a single table failure from short-circuiting the others.
+    const results = await Promise.allSettled([
+      pruneChatMessages(nowMs),
+      pruneAntiCheatEvents(nowMs),
+      pruneRecruitingInvitations(nowMs),
+      pruneSubmissions(nowMs),
+      pruneLoginEvents(nowMs),
+    ]);
+    for (const result of results) {
+      if (result.status === "rejected") {
+        logger.warn({ err: result.reason }, "Failed to prune one of the sensitive data tables");
+      }
+    }
   } catch (error) {
     logger.warn({ err: error }, "Failed to prune sensitive operational data");
   }
