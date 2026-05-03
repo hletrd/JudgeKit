@@ -57,7 +57,7 @@ with no per-cycle action required. Nothing new to ingest this cycle.
   This separates the "stat failed" log line from the "actually empty"
   log line so operators reading log output can distinguish the two
   cases.
-- **Status:** [ ] Pending
+- **Status:** [x] Done
 
 ### TASK-2 [CYC3-AGG-2, LOW]: Extract recruit-results scoring to a pure helper + unit test
 
@@ -98,7 +98,7 @@ with no per-cycle action required. Nothing new to ingest this cycle.
   loop (lines 194-206) with a single call. Keep the bestByProblem
   reduction inline (it's a separate concern and acceptable to keep
   in the page).
-- **Status:** [ ] Pending
+- **Status:** [x] Done
 
 ### TASK-3 [CYC3-AGG-3, LOW]: Add no-DB unit test for `pre-restore-snapshot.ts`
 
@@ -119,7 +119,7 @@ with no per-cycle action required. Nothing new to ingest this cycle.
   5. Mocked chmod failure on dir does not abort the snapshot
      (function still returns the path).
 - **Cleanup:** afterEach removes the tmpdir.
-- **Status:** [ ] Pending
+- **Status:** [x] Done
 
 ### TASK-4 [CYC3-AGG-4, LOW]: Restructure `validateSqlColumnName` JSDoc to lead with caller-contract
 
@@ -161,7 +161,7 @@ with no per-cycle action required. Nothing new to ingest this cycle.
    * keyword payloads are blocked.
    */
   ```
-- **Status:** [ ] Pending
+- **Status:** [x] Done
 
 ### TASK-5 [CYC3-AGG-5, LOW]: Add behavioural test for data-retention failure-isolation
 
@@ -178,7 +178,7 @@ with no per-cycle action required. Nothing new to ingest this cycle.
      `"Failed to prune one of the sensitive data tables"`.
   3. The other 4 prune helpers all completed (verify by counting
      successful db.execute calls).
-- **Status:** [ ] Pending
+- **Status:** [x] Done
 
 ### TASK-6 [CYC3-AGG-6, LOW]: Add NaN guard to `mapSubmissionPercentageToAssignmentPoints`
 
@@ -187,7 +187,7 @@ with no per-cycle action required. Nothing new to ingest this cycle.
   of the function (before `const normalizedPercentage`). Add a unit
   test asserting `mapSubmissionPercentageToAssignmentPoints(NaN, 50)
   === 0`.
-- **Status:** [ ] Pending
+- **Status:** [x] Done
 
 ### TASK-7 [Gates] Run all gates per orchestrator directive
 
@@ -198,7 +198,7 @@ with no per-cycle action required. Nothing new to ingest this cycle.
 - `npm run build` — error-blocking
 - `npm run test:e2e` — best-effort; env-blocked → DEFER-ENV-GATES.
 
-- **Status:** [ ] Pending
+- **Status:** [x] Done
 
 ---
 
@@ -290,6 +290,26 @@ before the next commit (unit + lint) to confirm no regression.
 
 ## Status
 
-- [ ] All 6 implementation tasks (commits to follow)
-- [ ] All gates green
-- [ ] Plan archived to `plans/done/` after close-out
+- [x] All 6 implementation tasks (commits below)
+- [x] All gates green
+- [x] Plan archived to `plans/done/` after close-out
+
+## Cycle close-out evidence
+
+- Commits landed this cycle (against pre-cycle HEAD `dafc0b24`):
+  - `3dae5022` docs(plans): add RPF loop cycle 3 review remediation plan
+  - `f8b3dee9` fix(restore): split stat-failure log from size-unavailable case (TASK-1)
+  - `e098aa27` fix(scoring): guard mapSubmissionPercentageToAssignmentPoints against NaN/Infinity (TASK-6)
+  - `6d8e2813` docs(scoring): lead validateSqlColumnName JSDoc with caller contract (TASK-4)
+  - `8825cc31` refactor(recruit): extract recruit-results scoring math into typed helper (TASK-2)
+  - `22507345` test(retention): pin failure-isolation contract for daily prune (TASK-5)
+  - `536db32b` test(restore): pin pre-restore-snapshot file mode, prune, and unlink-on-error (TASK-3)
+- Gate run at HEAD post-cycle:
+  - `npm run lint` — exit 0
+  - `npm run lint:bash` — exit 0
+  - `npx tsc --noEmit` — exit 0
+  - `npm run test:unit` — 307 files / **2256 tests passed** (+15 new)
+  - `npm run test:security` — 11 files / 195 tests passed
+  - `npm run build` — exit 0 (next build succeeded)
+  - `npm run test:e2e` — env-blocked, deferred under DEFER-ENV-GATES
+- Deploy: `none` per orchestrator directive (DEPLOY_MODE=none).
