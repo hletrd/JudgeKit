@@ -53,7 +53,11 @@ describe("custom-role page/runtime implementation guards", () => {
     const newProblemSetPage = read("src/app/(dashboard)/dashboard/problem-sets/new/page.tsx");
     const problemSetDetailPage = read("src/app/(dashboard)/dashboard/problem-sets/[id]/page.tsx");
     const problemsPage = read("src/app/(dashboard)/dashboard/problems/page.tsx");
-    const problemDetail = read("src/app/(dashboard)/dashboard/problems/[id]/page.tsx");
+    // The dashboard problem detail page was migrated to a redirect-only shell
+    // (workspace→public migration); the capability-aware page now lives at
+    // (public)/practice/problems/[id]/page.tsx. Verify the shell is just a
+    // redirect and assert the capability checks on the public counterpart.
+    const dashboardProblemRedirect = read("src/app/(dashboard)/dashboard/problems/[id]/page.tsx");
     const publicPracticeDetail = read("src/app/(public)/practice/problems/[id]/page.tsx");
     const appSidebar = read("src/components/layout/app-sidebar.tsx");
 
@@ -82,10 +86,12 @@ describe("custom-role page/runtime implementation guards", () => {
     expect(problemsPage).toContain('caps.has("problems.view_all")');
     expect(problemsPage).not.toContain('session.user.role === "admin"');
 
-    expect(problemDetail).toContain("resolveCapabilities");
-    expect(problemDetail).toContain('caps.has("problems.edit")');
-    expect(problemDetail).toContain('caps.has("assignments.view_status")');
-    expect(problemDetail).not.toContain('session.user.role === "admin"');
+    // The dashboard route is now a redirect shell — the capability checks
+    // live in the public counterpart. Make this explicit so a future
+    // contributor doesn't reintroduce duplicate checks here.
+    expect(dashboardProblemRedirect).toContain("redirect(");
+    expect(dashboardProblemRedirect).toContain("/practice/problems/");
+    expect(dashboardProblemRedirect).not.toContain("resolveCapabilities");
 
     expect(publicPracticeDetail).toContain("resolveCapabilities");
     expect(publicPracticeDetail).toContain('caps.has("problems.edit")');

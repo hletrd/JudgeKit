@@ -6,15 +6,28 @@ function read(relativePath: string) {
   return readFileSync(join(process.cwd(), relativePath), "utf8");
 }
 
-describe("personal submissions page implementation", () => {
-  it("redirects reviewer-capable users to the scoped review queue and keeps the page personal-only", () => {
-    const source = read("src/app/(dashboard)/dashboard/submissions/page.tsx");
+describe("public submissions page implementation", () => {
+  it("scopes the user filter to session userId only when scope=mine, and the dashboard route is a redirect", () => {
+    // Workspace→public migration: the dashboard /dashboard/submissions route
+    // is now a 308 redirect (in next.config.ts) to the public counterpart.
+    // The capability-aware logic moved with the page; reviewers no longer
+    // need a hard redirect away because the public page accepts ?scope=all
+    // and respects auth gating per row. Verify the migration is intact.
+    const source = read("src/app/(public)/submissions/page.tsx");
+    const nextConfig = read("next.config.ts");
 
-    expect(source).toContain("resolveCapabilities(session.user.role)");
-    expect(source).toContain('caps.has("submissions.view_all") || caps.has("assignments.view_status")');
-    expect(source).toContain('redirect("/dashboard/admin/submissions")');
-    expect(source).toContain("const userFilter = eq(submissions.userId, session.user.id);");
+    // Public submissions page: scope-based userFilter, guest visibility
+    // restriction, no hardcoded role check. The table.student column header
+    // is rendered for reviewer scope (the dashboard reviewer queue was
+    // unified into the public page with ?scope=all), so we do NOT assert
+    // its absence here — that was a holdover from the old "personal-only"
+    // page.
+    expect(source).toContain("eq(submissions.userId, session!.user.id)");
+    expect(source).toContain("eq(problems.visibility, \"public\")");
     expect(source).not.toContain("isInstructor(");
-    expect(source).not.toContain('t("table.student")');
+
+    // The 308 redirect from the legacy dashboard path is preserved so deep
+    // links in chat / email continue to work.
+    expect(nextConfig).toContain("/dashboard/submissions");
   });
 });

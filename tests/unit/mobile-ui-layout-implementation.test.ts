@@ -13,7 +13,10 @@ describe("mobile UI layout implementation", () => {
     expect(source).toContain("toggleNavigationMenu");
     expect(source).toContain("aria-controls={menuId}");
     expect(source).toContain("block truncate");
-    expect(source).toContain('md:hidden');
+    // Commit 37a4a8c3 widened the mobile-menu range from md to lg so the
+    // tablet breakpoint shows the hamburger instead of the cramped inline
+    // nav. Keep this assertion in sync with public-header.tsx.
+    expect(source).toContain('lg:hidden');
   });
 
   it("wraps public footer links instead of forcing a single mobile row", () => {

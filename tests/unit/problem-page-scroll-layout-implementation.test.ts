@@ -8,9 +8,17 @@ function read(relativePath: string) {
 
 describe("problem page scroll layout implementation", () => {
   it("keeps the submission panel sticky only on large screens so stacked mobile layouts can scroll normally", () => {
-    const source = read("src/app/(dashboard)/dashboard/problems/[id]/page.tsx");
+    // The dashboard route is now a redirect-only shell; the layout lives in
+    // the public counterpart at (public)/practice/problems/[id]/page.tsx.
+    const dashboardShell = read("src/app/(dashboard)/dashboard/problems/[id]/page.tsx");
+    const publicSource = read("src/app/(public)/practice/problems/[id]/page.tsx");
 
-    expect(source).toContain('<Card className="sticky top-6">');
-    expect(source).toContain("grid grid-cols-1 lg:grid-cols-2 gap-6");
+    expect(dashboardShell).toContain("redirect(");
+    expect(dashboardShell).toContain("/practice/problems/");
+
+    // The sticky panel keeps an id for downstream test selectors; the lg:
+    // breakpoint matches the rest of the public layout's responsive design.
+    expect(publicSource).toContain('className="sticky top-6"');
+    expect(publicSource).toContain("grid grid-cols-1 gap-6 lg:grid-cols-2");
   });
 });
