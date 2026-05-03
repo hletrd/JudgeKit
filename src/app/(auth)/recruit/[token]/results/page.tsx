@@ -218,7 +218,11 @@ export default async function RecruitResultsPage({
         )}
       </CardHeader>
       <CardContent className="space-y-5">
-        {showScores && (
+        {/* Hide the score card when the assignment has zero points to award
+            (e.g., recruiter-setup edge case before any problem is attached).
+            The "0 / 0" rendering is technically correct but hostile to the
+            candidate; cycle-2 C2-AGG-9 prefers an unset card over zero/zero. */}
+        {showScores && totalPossible > 0 && (
           <div className="rounded-lg border bg-muted/30 p-4 text-center">
             <p className="text-xs uppercase tracking-wide text-muted-foreground">
               {t("totalScore")}
