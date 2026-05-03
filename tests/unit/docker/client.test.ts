@@ -60,21 +60,25 @@ describe("buildDockerImage implementation", () => {
     expect(headers?.get("Authorization")).toBe(`Bearer ${"y".repeat(32)}`);
   });
 
-  it("fails closed when a runner URL is configured without RUNNER_AUTH_TOKEN", async () => {
+  it("fails closed with a generic error code when a runner URL is configured without RUNNER_AUTH_TOKEN", async () => {
     process.env.COMPILER_RUNNER_URL = "http://judge-worker:3001";
     // JUDGE_AUTH_TOKEN is intentionally NOT used as a fallback for docker
     // operations — the Docker API and judge submission API are separate
     // authorization domains. See commit 909fcbf5 and the security hardening
     // that removed the shared token fallback.
+    //
+    // The error returned to API callers is the generic "configError" code
+    // rather than the literal "COMPILER_RUNNER_URL is set but RUNNER_AUTH_TOKEN
+    // is missing" message — leaking env-var names to API responses is
+    // inconsistent with the no-leak hardening on /api/metrics (CRON_SECRET).
+    // The operator-facing detail is logged server-side instead.
 
     const { listDockerImages, pullDockerImage } = await import("@/lib/docker/client");
 
-    await expect(listDockerImages("judge-*")).rejects.toThrow(
-      "COMPILER_RUNNER_URL is set but RUNNER_AUTH_TOKEN is missing"
-    );
+    await expect(listDockerImages("judge-*")).rejects.toThrow("configError");
     await expect(pullDockerImage("judge-python:latest")).resolves.toEqual({
       success: false,
-      error: "COMPILER_RUNNER_URL is set but RUNNER_AUTH_TOKEN is missing",
+      error: "configError",
     });
   });
 });

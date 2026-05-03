@@ -23,11 +23,30 @@ if (!RUNNER_AUTH_TOKEN && JUDGE_WORKER_URL && process.env.NODE_ENV === "producti
     "Generate one with: openssl rand -hex 32"
   );
 }
-const WORKER_DOCKER_API_CONFIG_ERROR =
+// Operator-facing detail of the misconfiguration. NEVER returned to API
+// callers — the env-var name leaks deployment-fingerprint information,
+// inconsistent with the no-leak hardening already applied to /api/metrics
+// (commit d30c362b for CRON_SECRET). Logged server-side via emitConfigErrorLog.
+const WORKER_DOCKER_API_CONFIG_DETAIL =
   JUDGE_WORKER_URL && !RUNNER_AUTH_TOKEN
     ? "COMPILER_RUNNER_URL is set but RUNNER_AUTH_TOKEN is missing"
     : null;
+// Generic error returned to the API. The admin UI maps this i18n key
+// (errors.configError) to a "config error — see logs" message; operators
+// pick up the detail from the server log line emitted by getWorkerDockerApiConfigError.
+const WORKER_DOCKER_API_CONFIG_ERROR_CODE = "configError";
 const USE_WORKER_DOCKER_API = Boolean(JUDGE_WORKER_URL && RUNNER_AUTH_TOKEN);
+
+let configErrorLogged = false;
+function emitConfigErrorLog(): void {
+  if (configErrorLogged) return;
+  if (!WORKER_DOCKER_API_CONFIG_DETAIL) return;
+  configErrorLogged = true;
+  logger.error(
+    { detail: WORKER_DOCKER_API_CONFIG_DETAIL },
+    "[docker] worker Docker API misconfigured; rejecting requests with generic configError",
+  );
+}
 
 /**
  * Validate a dockerfile path for build requests.
@@ -99,7 +118,9 @@ async function callWorkerJson<T>(path: string, init?: RequestInit): Promise<T> {
 }
 
 function getWorkerDockerApiConfigError(): string | null {
-  return WORKER_DOCKER_API_CONFIG_ERROR;
+  if (!WORKER_DOCKER_API_CONFIG_DETAIL) return null;
+  emitConfigErrorLog();
+  return WORKER_DOCKER_API_CONFIG_ERROR_CODE;
 }
 
 async function callWorkerNoContent(path: string, init?: RequestInit): Promise<void> {
