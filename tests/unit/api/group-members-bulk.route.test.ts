@@ -110,7 +110,17 @@ describe("POST /api/v1/groups/[id]/members/bulk", () => {
 
     expect(res.status).toBe(200);
     const body = await res.json();
-    expect(body.data).toEqual({ enrolled: 1, skipped: 3 });
+    // The bulk-enroll route was extended to accept usernames as well as
+    // userIds (commit 3b416d56). The response shape now always includes
+    // `unresolvedUsernames` (paste-list inputs that didn't match a user)
+    // and `nonStudentUsernames` (matched but non-student-role users).
+    // For pure-userIds requests both arrays are empty.
+    expect(body.data).toEqual({
+      enrolled: 1,
+      skipped: 3,
+      unresolvedUsernames: [],
+      nonStudentUsernames: [],
+    });
   });
 
   it("skips the full request when no valid students remain after validation", async () => {
@@ -123,6 +133,11 @@ describe("POST /api/v1/groups/[id]/members/bulk", () => {
 
     expect(res.status).toBe(200);
     const body = await res.json();
-    expect(body.data).toEqual({ enrolled: 0, skipped: 2 });
+    expect(body.data).toEqual({
+      enrolled: 0,
+      skipped: 2,
+      unresolvedUsernames: [],
+      nonStudentUsernames: [],
+    });
   });
 });
