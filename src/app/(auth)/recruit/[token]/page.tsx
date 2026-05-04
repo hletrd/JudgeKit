@@ -109,7 +109,7 @@ export default async function RecruitPage({
 
   const isRedeemed = invitation.status === "redeemed" && invitation.userId;
   const accountPasswordResetRequired =
-    invitation.metadata?.accountPasswordResetRequired === "true";
+    invitation.metadata?.["_sys.accountPasswordResetRequired"] === "true";
   const resumeWithCurrentSession = Boolean(
     isRedeemed &&
     invitation.userId &&

@@ -23,9 +23,31 @@ type RecruitingInvitationExecutor =
   Pick<TransactionClient, "insert" | "select" | "update" | "delete">
   | typeof db;
 
-const ACCOUNT_PASSWORD_RESET_REQUIRED_KEY = "accountPasswordResetRequired";
-const FAILED_REDEEM_ATTEMPTS_KEY = "_failedRedeemAttempts";
+/**
+ * Internal metadata key prefix reserved for system use. Keys starting with
+ * this prefix are rejected at the API input boundary to prevent user-supplied
+ * metadata from colliding with internal flags (e.g., password-reset-required,
+ * failed-redeem counter). See C3-CRIT-3, C3-TR-3, C3-SEC-7.
+ */
+const INTERNAL_KEY_PREFIX = "_sys.";
+
+const ACCOUNT_PASSWORD_RESET_REQUIRED_KEY = `${INTERNAL_KEY_PREFIX}accountPasswordResetRequired`;
+const FAILED_REDEEM_ATTEMPTS_KEY = `${INTERNAL_KEY_PREFIX}failedRedeemAttempts`;
 const MAX_FAILED_REDEEM_ATTEMPTS = 5;
+
+/**
+ * Validate that user-supplied metadata does not contain keys with the
+ * internal prefix. Returns the first offending key, or null if valid.
+ */
+function findInternalKeyViolation(metadata: Record<string, string> | undefined): string | null {
+  if (!metadata) return null;
+  for (const key of Object.keys(metadata)) {
+    if (key.startsWith(INTERNAL_KEY_PREFIX)) {
+      return key;
+    }
+  }
+  return null;
+}
 
 /**
  * Atomically increment the per-invitation failed redeem attempt counter.
@@ -74,6 +96,10 @@ export async function createRecruitingInvitation(params: {
   expiresAt?: Date | null;
   createdBy: string;
 }, executor: RecruitingInvitationExecutor = db) {
+  const internalKey = findInternalKeyViolation(params.metadata);
+  if (internalKey) {
+    throw new Error(`Metadata key "${internalKey}" uses a reserved prefix (${INTERNAL_KEY_PREFIX})`);
+  }
   const token = generateRecruitingToken();
   const [invitation] = await executor
     .insert(recruitingInvitations)
@@ -102,6 +128,12 @@ export async function bulkCreateRecruitingInvitations(params: {
   }[];
   createdBy: string;
 }, executor: RecruitingInvitationExecutor = db) {
+  for (const inv of params.invitations) {
+    const internalKey = findInternalKeyViolation(inv.metadata);
+    if (internalKey) {
+      throw new Error(`Metadata key "${internalKey}" uses a reserved prefix (${INTERNAL_KEY_PREFIX})`);
+    }
+  }
   const prepared = params.invitations.map((inv) => {
     const token = generateRecruitingToken();
     return {
