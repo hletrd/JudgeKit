@@ -228,7 +228,7 @@ export default async function RecruitPage({
         {assignment.contactEmail && (
           <p className="text-xs text-muted-foreground">
             {t("contactPrompt")}{" "}
-            <a className="underline" href={`mailto:${assignment.contactEmail}`}>
+            <a className="underline" rel="nofollow" href={`mailto:${assignment.contactEmail}`}>
               {assignment.contactEmail}
             </a>
           </p>
