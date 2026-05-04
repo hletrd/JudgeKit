@@ -59,7 +59,16 @@ export async function getActiveAuthUserById(
 }
 
 export async function getApiUser(request: NextRequest) {
-  // 1. Try session cookie (standard web auth)
+  // 1. Fast path: if Authorization header has an API key prefix, skip JWT lookup.
+  // API-key-only clients (CI/CD, integrations) should not trigger an unnecessary
+  // JWT token extraction + DB query on every request.
+  const authHeader = request.headers.get("authorization");
+  if (authHeader?.startsWith("Bearer jk_")) {
+    const apiKeyUser = await authenticateApiKey(authHeader);
+    if (apiKeyUser) return apiKeyUser;
+  }
+
+  // 2. Try session cookie (standard web auth)
   const token = await getToken({
     req: request,
     secret: getValidatedAuthSecret(),
@@ -69,8 +78,8 @@ export async function getApiUser(request: NextRequest) {
   const sessionUser = await getActiveAuthUserById(getTokenUserId(token), getTokenAuthenticatedAtSeconds(token));
   if (sessionUser) return sessionUser;
 
-  // 2. Fallback: try API key (Bearer token)
-  return authenticateApiKey(request.headers.get("authorization"));
+  // 3. Fallback: try API key without prefix match (handles non-standard Bearer tokens)
+  return authenticateApiKey(authHeader);
 }
 
 export function csrfForbidden(request: NextRequest): NextResponse | null {
