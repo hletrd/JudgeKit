@@ -96,7 +96,15 @@ export default async function RecruitPage({
     );
   }
 
-  if (invitation.expiresAt && invitation.expiresAt < now) {
+  // A redeemed invitation represents an existing candidate account. Even if
+  // the invitation link has expired, the candidate should still be able to
+  // re-enter the contest via their account password. Skipping the expiry
+  // gate for redeemed tokens is correct because the assignment deadline
+  // (checked at line ~180) is the authoritative gate for contest access.
+  // See C6-3 (cycle 6 review).
+  const isRedeemed = invitation.status === "redeemed" && invitation.userId;
+
+  if (!isRedeemed && invitation.expiresAt && invitation.expiresAt < now) {
     return (
       <Card className="w-full max-w-md">
         <CardHeader className="text-center">
@@ -107,7 +115,8 @@ export default async function RecruitPage({
     );
   }
 
-  const isRedeemed = invitation.status === "redeemed" && invitation.userId;
+  // isRedeemed is already defined above (before the expiry check) so that
+  // redeemed tokens bypass the expired-token gate. See C6-3 (cycle 6 review).
   const accountPasswordResetRequired =
     invitation.metadata?.["_sys.accountPasswordResetRequired"] === "true";
   const resumeWithCurrentSession = Boolean(
