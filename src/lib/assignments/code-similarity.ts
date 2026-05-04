@@ -275,7 +275,10 @@ async function runSimilarityCheckTS(
   }
 
   const pairs: SimilarityPair[] = [];
-  let lastYield = Date.now();
+  // Use performance.now() instead of Date.now() for yield timing.
+  // performance.now() is monotonic and not affected by NTP clock adjustments,
+  // making it more reliable for measuring elapsed duration. See C12b-3.
+  let lastYield = performance.now();
 
   for (const [, entries] of byKey) {
     for (let i = 0; i < entries.length; i++) {
@@ -293,10 +296,12 @@ async function runSimilarityCheckTS(
             similarity: sim,
           });
         }
-        // Yield based on elapsed wall-clock time for predictable responsiveness
-        if (Date.now() - lastYield > YIELD_INTERVAL_MS) {
+        // Yield based on elapsed monotonic time for predictable responsiveness.
+        // performance.now() avoids NTP clock-adjustment jumps that Date.now()
+        // can suffer. See C12b-3.
+        if (performance.now() - lastYield > YIELD_INTERVAL_MS) {
           await new Promise<void>((r) => setTimeout(r, 0));
-          lastYield = Date.now();
+          lastYield = performance.now();
         }
       }
     }
