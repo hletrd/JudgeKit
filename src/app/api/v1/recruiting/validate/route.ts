@@ -1,10 +1,10 @@
 import { NextRequest, NextResponse } from "next/server";
-import { createHash } from "crypto";
 import { db } from "@/lib/db";
 import { recruitingInvitations, assignments } from "@/lib/db/schema";
 import { eq, and, sql } from "drizzle-orm";
 import { consumeApiRateLimit } from "@/lib/security/api-rate-limit";
 import { validateRecruitingTokenSchema } from "@/lib/validators/recruiting-invitations";
+import { hashToken } from "@/lib/security/token-hash";
 
 export async function POST(req: NextRequest) {
   const rateLimitResponse = await consumeApiRateLimit(req, "recruiting:validate");
@@ -18,7 +18,7 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: "invalidToken" }, { status: 400 });
   }
 
-  const tokenHash = createHash("sha256").update(parsed.data.token).digest("hex");
+  const tokenHash = hashToken(parsed.data.token);
 
   // Use SQL NOW() for expiry validation instead of new Date() to avoid
   // clock skew between app server and DB server. The SQL-level check is

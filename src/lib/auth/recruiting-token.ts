@@ -1,4 +1,3 @@
-import { createHash } from "crypto";
 import { db } from "@/lib/db";
 import { users } from "@/lib/db/schema";
 import { eq } from "drizzle-orm";
@@ -6,6 +5,7 @@ import { redeemRecruitingToken } from "@/lib/assignments/recruiting-invitations"
 import { extractClientIp } from "@/lib/security/ip";
 import { logger } from "@/lib/logger";
 import { createSuccessfulLoginResponse, AUTH_USER_COLUMNS } from "@/lib/auth/config";
+import { hashToken } from "@/lib/security/token-hash";
 
 export async function authorizeRecruitingToken(
   token: string,
@@ -30,7 +30,9 @@ export async function authorizeRecruitingToken(
 
   if (!user || !user.isActive) return null;
 
-  const tokenFingerprint = createHash("sha256").update(token).digest("hex").slice(0, 8);
+  // 8-hex-char fingerprint (32 bits) is sufficient for audit-log correlation
+  // but NOT for security comparisons.
+  const tokenFingerprint = hashToken(token).slice(0, 8);
 
   return createSuccessfulLoginResponse(user, {
     attemptedIdentifier: `recruit:${tokenFingerprint}`,
