@@ -1,11 +1,15 @@
 import type { NextRequest } from "next/server";
-import { createHash } from "node:crypto";
 import { getValidatedJudgeAuthToken } from "@/lib/security/env";
 import { safeTokenCompare } from "@/lib/security/timing";
 import { db } from "@/lib/db";
 import { judgeWorkers } from "@/lib/db/schema";
 import { eq } from "drizzle-orm";
 import { logger } from "@/lib/logger";
+import { hashToken } from "@/lib/security/token-hash";
+
+// Re-export hashToken for backward compatibility with routes that import it
+// from this module. New code should import directly from @/lib/security/token-hash.
+export { hashToken };
 
 function parseBearerToken(authHeader: string | null) {
   if (!authHeader?.startsWith("Bearer ")) {
@@ -13,13 +17,6 @@ function parseBearerToken(authHeader: string | null) {
   }
 
   return authHeader.slice(7);
-}
-
-/**
- * Hash a token with SHA-256 and return the hex digest.
- */
-export function hashToken(token: string): string {
-  return createHash("sha256").update(token).digest("hex");
 }
 
 /**

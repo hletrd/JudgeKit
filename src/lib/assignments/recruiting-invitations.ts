@@ -1,4 +1,4 @@
-import { randomBytes, createHash } from "crypto";
+import { randomBytes } from "crypto";
 import { nanoid } from "nanoid";
 import { hashPassword, verifyAndRehashPassword } from "@/lib/security/password-hash";
 import { getPasswordValidationError } from "@/lib/security/password";
@@ -17,6 +17,7 @@ import type { TransactionClient } from "@/lib/db";
 import { getDbNowUncached } from "@/lib/db-time";
 import { escapeLikePattern } from "@/lib/db/like";
 import { logger } from "@/lib/logger";
+import { hashToken } from "@/lib/security/token-hash";
 
 type RecruitingInvitationExecutor =
   Pick<TransactionClient, "insert" | "select" | "update" | "delete">
@@ -61,10 +62,6 @@ async function incrementFailedRedeemAttempt(token: string): Promise<void> {
  * browser clock.
  */
 const isExpiredExpr = sql<boolean>`CASE WHEN ${recruitingInvitations.status} = 'pending' AND ${recruitingInvitations.expiresAt} IS NOT NULL AND ${recruitingInvitations.expiresAt} < NOW() THEN true ELSE false END`;
-
-function hashToken(token: string): string {
-  return createHash("sha256").update(token).digest("hex");
-}
 
 export function generateRecruitingToken(): string {
   return randomBytes(24).toString("base64url");
