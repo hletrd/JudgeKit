@@ -223,7 +223,7 @@ describe("recruiting token DB-time consistency", () => {
         candidateName: "Test Candidate",
         candidateEmail: "test@example.com",
         status: "redeemed",
-        metadata: { accountPasswordResetRequired: "true" },
+        metadata: { "_sys.accountPasswordResetRequired": "true" },
         userId: "user-1",
         expiresAt: null,
         redeemedAt: new Date("2026-04-18T00:00:00Z"),

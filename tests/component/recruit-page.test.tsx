@@ -138,7 +138,7 @@ describe("RecruitPage", () => {
       candidateEmail: "candidate@example.com",
       expiresAt: null,
       userId: "user-4",
-      metadata: { accountPasswordResetRequired: "true" },
+      metadata: { "_sys.accountPasswordResetRequired": "true" },
     });
     mockSelectQueue(
       [{
