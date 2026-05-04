@@ -25,6 +25,8 @@ const {
   loggerWarnMock,
   loggerInfoMock,
   fetchMock,
+  decryptPluginSecretMock,
+  pluginsSelectMock,
 } = vi.hoisted(() => ({
   authMock: vi.fn(),
   getApiUserMock: vi.fn(),
@@ -46,6 +48,8 @@ const {
   loggerWarnMock: vi.fn(),
   loggerInfoMock: vi.fn(),
   fetchMock: vi.fn(),
+  decryptPluginSecretMock: vi.fn((v: string) => v),
+  pluginsSelectMock: vi.fn(),
 }));
 
 // ---------------------------------------------------------------------------
@@ -119,6 +123,10 @@ vi.mock("@/lib/recruiting/request-cache", () => ({
   withRecruitingContextCache: (_fn: () => Promise<unknown>) => _fn(),
 }));
 
+vi.mock("@/lib/plugins/secrets", () => ({
+  decryptPluginSecret: decryptPluginSecretMock,
+}));
+
 vi.mock("@/lib/db", () => ({
   db: {
     query: {
@@ -127,6 +135,13 @@ vi.mock("@/lib/db", () => ({
       assignments: { findFirst: assignmentsFindFirstMock },
     },
     insert: vi.fn(() => ({ values: dbInsertMock })),
+    select: vi.fn(() => ({
+      from: vi.fn(() => ({
+        where: vi.fn(() => ({
+          limit: pluginsSelectMock,
+        })),
+      })),
+    })),
   },
 }));
 
@@ -208,7 +223,16 @@ beforeEach(() => {
     Promise.resolve(new Set(role === "student" ? [] : ["system.plugins"]))
   );
   isPluginEnabledMock.mockResolvedValue(true);
-  getPluginStateMock.mockResolvedValue({ config: PLUGIN_CONFIG });
+  // getPluginState is called with includeSecrets:false, so API keys are redacted.
+  // The route uses this config only for non-secret fields (provider, model, etc.)
+  // and reads the encrypted key separately via getRawPluginConfig + decryptPluginSecret.
+  getPluginStateMock.mockResolvedValue({
+    config: { ...PLUGIN_CONFIG, openaiApiKey: "", claudeApiKey: "", geminiApiKey: "" },
+  });
+  // Mock the raw DB read of the encrypted plugin config
+  pluginsSelectMock.mockResolvedValue([{ config: PLUGIN_CONFIG }]);
+  // Mock decrypt to return the key as-is (tests pass plaintext keys)
+  decryptPluginSecretMock.mockImplementation((v: string) => v);
   checkServerActionRateLimitMock.mockReturnValue(null); // not rate limited
   isAiAssistantEnabledForContextMock.mockResolvedValue(true);
   resolvePlatformModeAssignmentContextDetailsMock.mockImplementation(
@@ -364,8 +388,9 @@ describe("POST /api/v1/plugins/chat-widget/chat", () => {
 
   it("returns 500 when API key is missing", async () => {
     getPluginStateMock.mockResolvedValue({
-      config: { ...PLUGIN_CONFIG, openaiApiKey: "" },
+      config: { ...PLUGIN_CONFIG, openaiApiKey: "", claudeApiKey: "", geminiApiKey: "" },
     });
+    pluginsSelectMock.mockResolvedValue([{ config: { ...PLUGIN_CONFIG, openaiApiKey: "" } }]);
 
     const res = await chatPOST(makeChatRequest(VALID_CHAT_BODY));
     expect(res.status).toBe(500);
@@ -387,7 +412,10 @@ describe("POST /api/v1/plugins/chat-widget/chat", () => {
       claudeApiKey: "claude-key-123",
       claudeModel: "claude-3-opus",
     };
-    getPluginStateMock.mockResolvedValue({ config: claudeConfig });
+    getPluginStateMock.mockResolvedValue({
+      config: { ...claudeConfig, openaiApiKey: "", claudeApiKey: "", geminiApiKey: "" },
+    });
+    pluginsSelectMock.mockResolvedValue([{ config: claudeConfig }]);
 
     const provider = {
       stream: vi.fn().mockResolvedValue(new ReadableStream()),
@@ -411,7 +439,10 @@ describe("POST /api/v1/plugins/chat-widget/chat", () => {
       geminiApiKey: "gemini-key-456",
       geminiModel: "gemini-pro",
     };
-    getPluginStateMock.mockResolvedValue({ config: geminiConfig });
+    getPluginStateMock.mockResolvedValue({
+      config: { ...geminiConfig, openaiApiKey: "", claudeApiKey: "", geminiApiKey: "" },
+    });
+    pluginsSelectMock.mockResolvedValue([{ config: geminiConfig }]);
 
     const provider = {
       stream: vi.fn().mockResolvedValue(new ReadableStream()),
