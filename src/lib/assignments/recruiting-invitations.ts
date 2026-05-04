@@ -74,8 +74,11 @@ async function incrementFailedRedeemAttempt(token: string): Promise<void> {
       })
       .where(eq(recruitingInvitations.tokenHash, tokenHashValue));
   } catch (err) {
-    // Best-effort: don't let counter update failures block the auth flow
-    logger.warn({ err }, "[recruiting] Failed to increment failed redeem attempt counter");
+    // Best-effort: don't let counter update failures block the auth flow,
+    // but log at error level since a failed counter update is security-relevant
+    // — an attacker could brute-force more than MAX_FAILED_REDEEM_ATTEMPTS
+    // if the counter consistently fails to increment. See C9-4 (cycle 9 review).
+    logger.error({ err }, "[recruiting] Failed to increment failed redeem attempt counter");
   }
 }
 
@@ -100,8 +103,11 @@ async function resetFailedRedeemAttempt(token: string): Promise<void> {
       })
       .where(eq(recruitingInvitations.tokenHash, tokenHashValue));
   } catch (err) {
-    // Best-effort: don't let counter reset failures block the auth flow
-    logger.warn({ err }, "[recruiting] Failed to reset failed redeem attempt counter");
+    // Best-effort: don't let counter reset failures block the auth flow,
+    // but log at error level since a failed counter reset means the brute-force
+    // counter won't go back to zero, potentially locking out the candidate.
+    // See C9-4 (cycle 9 review).
+    logger.error({ err }, "[recruiting] Failed to reset failed redeem attempt counter");
   }
 }
 
