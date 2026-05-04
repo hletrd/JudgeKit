@@ -80,6 +80,32 @@ async function incrementFailedRedeemAttempt(token: string): Promise<void> {
 }
 
 /**
+ * Reset the per-invitation failed redeem attempt counter to 0.
+ *
+ * Called after successful authentication so that the counter does not
+ * accumulate across successful sessions. Without this reset, a candidate
+ * who fails 4 times, succeeds, then fails once more would be permanently
+ * locked out (counter = 5) with no admin recovery path. See AGG-3
+ * (cycle 7 review).
+ *
+ * Uses the same atomic SQL pattern as incrementFailedRedeemAttempt.
+ */
+async function resetFailedRedeemAttempt(token: string): Promise<void> {
+  try {
+    const tokenHashValue = hashToken(token);
+    await db
+      .update(recruitingInvitations)
+      .set({
+        metadata: sql`jsonb_set(COALESCE(${recruitingInvitations.metadata}, '{}'), '{${sql.raw(FAILED_REDEEM_ATTEMPTS_KEY)}}', '0')`,
+      })
+      .where(eq(recruitingInvitations.tokenHash, tokenHashValue));
+  } catch (err) {
+    // Best-effort: don't let counter reset failures block the auth flow
+    logger.warn({ err }, "[recruiting] Failed to reset failed redeem attempt counter");
+  }
+}
+
+/**
  * Shared SQL expression: a pending invitation is expired when its
  * expiresAt is before NOW(). Computed server-side using DB time so
  * the client doesn't need to compare raw timestamps against the
@@ -509,6 +535,11 @@ export async function redeemRecruitingToken(
 
         if (!assignment) return { ok: false as const, error: "assignmentClosed" };
 
+        // Reset the brute-force counter on successful re-entry so that
+        // occasional typos don't accumulate across sessions and eventually
+        // lock out the candidate permanently. See AGG-3 (cycle 7 review).
+        void resetFailedRedeemAttempt(token);
+
         return {
           ok: true as const,
           userId: existingUser.id,
@@ -619,6 +650,11 @@ export async function redeemRecruitingToken(
         //     was a concurrent claim.
         throw new Error("alreadyRedeemed");
       }
+
+      // Reset the brute-force counter on successful initial redeem so that
+      // any failed attempts during the password setup step don't persist and
+      // accumulate toward a future lockout. See AGG-3 (cycle 7 review).
+      void resetFailedRedeemAttempt(token);
 
       return {
         ok: true as const,
