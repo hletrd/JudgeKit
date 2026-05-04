@@ -60,6 +60,16 @@ type ManagedUserInput = {
   password?: string;
 };
 
+/**
+ * Activate or deactivate a user account.
+ *
+ * Super_admin restriction: super_admins cannot be deactivated by any role
+ * (including other super_admins), and super_admins cannot re-activate other
+ * super_admins. This prevents a single super_admin from destroying or
+ * restoring the highest-privilege access in the system. Deactivation is
+ * blocked by `cannotDeactivateSuperAdmin`, and re-activation is blocked by
+ * the targetLevel >= actorLevel guard (both super_admins have the same level).
+ */
 export async function toggleUserActive(userId: string, isActive: boolean): Promise<UserManagementResult> {
   if (!(await isTrustedServerActionOrigin())) {
     return { success: false, error: "unauthorized" };
@@ -239,6 +249,10 @@ export async function editUser(userId: string, data: ManagedUserInput): Promise<
   const rateLimit = await checkServerActionRateLimit(session.user.id, "editUser", 20, 60);
   if (rateLimit) return { success: false, error: "rateLimited" };
 
+  // Validate input schema AFTER authorization checks so that unauthorized
+  // callers cannot use Zod error differences to probe the expected schema
+  // structure. Both authorization and validation failures return the same
+  // "updateUserFailed" error to avoid information leakage.
   const editParsed = adminUpdateUserSchema.safeParse(data);
   if (!editParsed.success) {
     return { success: false, error: "updateUserFailed" };
@@ -271,7 +285,10 @@ export async function editUser(userId: string, data: ManagedUserInput): Promise<
     const roleError = await validateRoleChangeAsync(actorRole, requestedRole, targetUser.role);
     if (roleError === "invalidRole") return { success: false, error: "updateUserFailed" };
     if (roleError) return { success: false, error: roleError };
-    // Prevent password reset for users of equal or higher privilege (excluding self-edit)
+    // Prevent password reset for users of equal or higher privilege (excluding self-edit).
+    // Defense-in-depth: this re-verifies the same privilege-level check from line 267
+    // specifically for the password-reset path, ensuring that a future refactoring of
+    // the general edit guard cannot silently remove password-reset protection.
     if (data.password && targetUser.role && targetUser.id !== session.user.id) {
       if (targetLevel >= actorLevel) {
         return { success: false, error: "unauthorized" };
