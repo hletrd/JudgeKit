@@ -86,7 +86,7 @@ async function atomicConsumeRateLimit(key: string): Promise<{ limited: boolean; 
         blockedUntil: rateLimits.blockedUntil,
       })
       .from(rateLimits)
-      .where(eq(rateLimits.key, key))
+      .where(eq(rateLimits.key, rateLimitKey))
       .for("update")
       .limit(1);
 
@@ -97,7 +97,7 @@ async function atomicConsumeRateLimit(key: string): Promise<{ limited: boolean; 
       // escalation is not needed.
       await tx.insert(rateLimits)
         .values({
-          key,
+          key: rateLimitKey,
           attempts: 1,
           windowStartedAt: now,
           blockedUntil: null,
@@ -114,7 +114,7 @@ async function atomicConsumeRateLimit(key: string): Promise<{ limited: boolean; 
     if (existing.windowStartedAt + windowMs <= now) {
       await tx.update(rateLimits)
         .set({ attempts: 1, windowStartedAt: now, lastAttempt: now, blockedUntil: null })
-        .where(eq(rateLimits.key, key));
+        .where(eq(rateLimits.key, rateLimitKey));
       return false;
     }
 
@@ -131,7 +131,7 @@ async function atomicConsumeRateLimit(key: string): Promise<{ limited: boolean; 
         lastAttempt: now,
         blockedUntil: blocked,
       })
-      .where(eq(rateLimits.key, key));
+      .where(eq(rateLimits.key, rateLimitKey));
 
     return false;
   });
@@ -234,16 +234,17 @@ export async function consumeUserApiRateLimit(
 
 /**
  * Check and record a rate limit for a server action.
- * Keyed on userId + actionName so each user has their own counter.
+ * Keyed on the provided key + actionName so each key has its own counter.
+ * Use a userId for per-user limits, or a client IP for per-IP limits.
  * Returns { error: "rateLimited" } if the limit is exceeded, or null if allowed.
  */
 export async function checkServerActionRateLimit(
-  userId: string,
+  key: string,
   actionName: string,
   maxRequests: number = 20,
   windowSeconds: number = 60,
 ): Promise<{ error: string } | null> {
-  const key = `sa:${userId}:${actionName}`;
+  const rateLimitKey = `sa:${key}:${actionName}`;
   const windowMs = windowSeconds * 1000;
 
   return execTransaction(async (tx) => {
@@ -257,7 +258,7 @@ export async function checkServerActionRateLimit(
         windowStartedAt: rateLimits.windowStartedAt,
       })
       .from(rateLimits)
-      .where(eq(rateLimits.key, key))
+      .where(eq(rateLimits.key, rateLimitKey))
       .for("update")
       .limit(1);
 
@@ -288,11 +289,11 @@ export async function checkServerActionRateLimit(
     if (exists) {
       await tx.update(rateLimits)
         .set({ attempts: newAttempts, windowStartedAt, lastAttempt: now })
-        .where(eq(rateLimits.key, key));
+        .where(eq(rateLimits.key, rateLimitKey));
     } else {
       await tx.insert(rateLimits)
         .values({
-          key,
+          key: rateLimitKey,
           attempts: newAttempts,
           windowStartedAt,
           blockedUntil: null,
