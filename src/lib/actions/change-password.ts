@@ -57,6 +57,14 @@ export async function changePassword(
     return { success: false, error: "currentPasswordIncorrect" };
   }
 
+  // Clear the rate limit once the current password is verified correct.
+  // If the user then fails new-password validation, they should not accumulate
+  // toward lockout — they already proved they know the current password.
+  // Previously, the rate limit was only cleared after a full successful change,
+  // meaning a valid-auth-but-invalid-new-password would increment the counter.
+  // See C9-5 (cycle 9 review).
+  await clearRateLimit(rateLimitKey);
+
   const passwordValidationError = getPasswordValidationError(newPassword);
 
   if (passwordValidationError) {
@@ -78,8 +86,6 @@ export async function changePassword(
     logger.error({ err: error }, "Failed to change password");
     return { success: false, error: "error" };
   }
-
-  await clearRateLimit(rateLimitKey);
 
   const auditContext = await buildServerActionAuditContext("/change-password");
   recordAuditEvent({
