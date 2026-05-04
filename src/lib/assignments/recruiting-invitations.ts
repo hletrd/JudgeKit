@@ -263,6 +263,12 @@ export async function updateRecruitingInvitation(
     status?: "revoked";
   }
 ) {
+  if (data.metadata !== undefined) {
+    const internalKey = findInternalKeyViolation(data.metadata);
+    if (internalKey) {
+      throw new Error(`Metadata key "${internalKey}" uses a reserved prefix (${INTERNAL_KEY_PREFIX})`);
+    }
+  }
   const updates: Record<string, unknown> = { updatedAt: await getDbNowUncached() };
   if (data.expiresAt !== undefined) updates.expiresAt = data.expiresAt;
   if (data.metadata !== undefined) updates.metadata = data.metadata;

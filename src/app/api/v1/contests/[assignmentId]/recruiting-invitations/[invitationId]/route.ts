@@ -150,6 +150,9 @@ export const PATCH = createApiHandler({
       if (error instanceof Error && error.message === "invitationCannotBeRevoked") {
         return apiError("invitationCannotBeRevoked", 400);
       }
+      if (error instanceof Error && error.message.includes("reserved prefix")) {
+        return apiError("invalidMetadata", 400, error.message);
+      }
       throw error;
     }
 
