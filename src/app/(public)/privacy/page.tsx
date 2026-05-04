@@ -31,6 +31,10 @@ export default async function PrivacyPage() {
     getLocale(),
   ]);
 
+  // IMPORTANT: These retention periods must be kept in sync with the system
+  // settings in src/lib/data-retention.ts and the maintenance thresholds in
+  // src/lib/data-retention-maintenance.ts. If an operator changes a retention
+  // period in the admin settings, this page must be updated to match.
   const dataClasses = [
     { key: "auditLogs", retention: "90" },
     { key: "aiChatLogs", retention: "30" },
