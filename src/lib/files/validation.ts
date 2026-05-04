@@ -155,7 +155,9 @@ const MAGIC_SIGNATURES: Record<string, Array<{ offset: number; bytes: Buffer }>>
 /**
  * Verify that the file content matches the declared MIME type by checking
  * magic-byte signatures. Returns true if the content matches, false if it
- * does not match or if verification is not supported for the given MIME type.
+ * does not match or if the MIME type has no defined signature (reject by
+ * default — add new signatures to MAGIC_SIGNATURES when adding new types
+ * to ALLOWED_ATTACHMENT_TYPES).
  *
  * Images are verified by `sharp` during processing (not here).
  * Text types (text/plain, text/csv, text/markdown) have no binary signature,
@@ -178,9 +180,12 @@ export function verifyFileMagicBytes(buffer: Buffer, declaredMimeType: string): 
   // Check known magic-byte signatures
   const signatures = MAGIC_SIGNATURES[declaredMimeType];
   if (!signatures) {
-    // No signature defined for this MIME type — allow by default
-    // (future signatures can be added to MAGIC_SIGNATURES)
-    return true;
+    // No signature defined for this MIME type — reject by default.
+    // When adding a new MIME type to ALLOWED_ATTACHMENT_TYPES, you MUST also
+    // add a corresponding signature to MAGIC_SIGNATURES (or document why the
+    // type cannot be verified). This prevents accidentally allowing
+    // unverified content through the upload pipeline.
+    return false;
   }
 
   for (const sig of signatures) {
