@@ -1,29 +1,36 @@
-# RPF Cycle 2 (2026-05-01) — Tracer
+# Tracer Review — RPF Cycle 2 (2026-05-04)
 
-**Date:** 2026-05-01
-**HEAD reviewed:** `70c02a02`
+**Reviewer:** tracer
+**HEAD reviewed:** `767b1fee`
 
-## Causal Tracing Analysis
+---
 
-### Traced Flows (Re-verified at HEAD)
+## Causal trace of recent changes
 
-1. Login -> JWT -> Session -> Permission Check: No causal gap.
-2. Submission -> SSE -> Judge -> Result: No causal gap.
-3. Docker Build -> Execute -> Cleanup: No causal gap.
-4. Data Retention -> Legal Hold: No causal gap.
-5. Password validation (cycle-1 fix): getPasswordValidationError -> isStrongPassword -> validateAndHashPassword: No causal gap. The _context parameter is dead but harmless.
+### ConditionalHeader flow
+1. `src/app/(dashboard)/layout.tsx:75` — renders `<ConditionalHeader>`
+2. `src/components/layout/conditional-header.tsx` — checks `usePathname().startsWith("/dashboard/admin")`
+3. If admin: renders minimal header with only `<SidebarTrigger />`
+4. If non-admin: renders full `<PublicHeader />` with nav items and actions
 
-### C2-TR-1: [MEDIUM] encryption.ts doc-code mismatch trace
+**Trace result:** Clean flow. No competing paths. The `SidebarTrigger` is present in both branches, so sidebar toggle works on all dashboard pages.
 
-- **Source:** Concur with C2-CR-1, C2-SR-1
-- **File:** `src/lib/security/encryption.ts:5-6`
-- **Description:** Tracing the causal chain: Developer reads JSDoc -> implements external tool using base64 -> tool attempts to decode hex data as base64 -> produces wrong IV bytes -> GCM auth tag mismatch or silent data corruption. The code itself is correct; the documentation is the failure point.
-- **Confidence:** HIGH
+### i18n metadata flow (contest page)
+1. `src/app/(public)/contests/[id]/page.tsx:44-58` — `generateMetadata()` fetches contest
+2. If no contest: returns `tContest("metadataFallbackTitle")` with `NO_INDEX_METADATA`
+3. If contest exists: builds full metadata with `tContest("keywords.*")` keys
 
-## New Findings
+**Trace result:** Clean. No missing error paths. The `metadataFallbackTitle` key exists in both `en.json` and `ko.json`.
 
-C2-TR-1 (concurring with multi-lane finding).
+### Recruiting validate flow
+1. `src/app/api/v1/recruiting/validate/route.ts` — POST handler
+2. Rate limit check → CSRF validation → body parse → token hash → DB lookup (SQL NOW() for expiry) → uniform `invalid()` response
+3. Two DB queries: invitation lookup, then assignment deadline check
 
-## Confidence
+**Trace result:** Clean. No information leakage via uniform response. SQL NOW() avoids clock skew.
 
-HIGH
+---
+
+## Findings
+
+No new tracer findings this cycle. All recent changes have clean causal flows with no competing hypotheses or suspicious paths.

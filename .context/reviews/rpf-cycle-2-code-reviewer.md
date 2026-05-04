@@ -1,54 +1,65 @@
-# RPF Cycle 2 (2026-05-01) — Code Reviewer
+# Code Review — RPF Cycle 2 (2026-05-04)
 
-**Date:** 2026-05-01
-**HEAD reviewed:** `70c02a02` (docs(plans): mark cycle 1 RPF plan done; archive to plans/done/)
+**Reviewer:** code-reviewer
+**HEAD reviewed:** `767b1fee`
+**Scope:** Full codebase — recent changes + carry-forward verification
 
-## Review scope
+---
 
-Full codebase scan of 567 source files (87,697 lines). Focus: cycle-1 change surface (24 files), carry-forward verification, cross-file correctness.
+## Recent changes verification
 
-## Findings
+### ConditionalHeader component (commit `767b1fee`)
+- **File:** `src/components/layout/conditional-header.tsx`
+- **Status:** CLEAN — Properly uses `usePathname()` for client-side route detection. The `startsWith("/dashboard/admin")` check correctly hides the top navbar on admin pages. Type props are well-defined.
 
-### C2-CR-1: [MEDIUM] encryption.ts JSDoc says "base64" but code uses "hex" encoding
+### i18n hardcoded string fixes (commit `95cbcf6a`)
+- **File:** `messages/en.json`, `messages/ko.json`, contest and community pages
+- **Status:** CLEAN — `metadataFallbackTitle` and `keywords.*` keys added. Contest page now uses `tContest("metadataFallbackTitle")` and `tContest("keywords.programmingContest")` etc.
 
-- **File:** `src/lib/security/encryption.ts:5-6`
-- **Description:** Module-level JSDoc says "followed by base64(IV || authTag || ciphertext)" but the actual implementation (line 78) uses `toString("hex")`. The `decrypt()` function (lines 127-129) uses `Buffer.from(..., "hex")`. The code is internally consistent and works correctly, but the module-level JSDoc is wrong. Anyone reading the docs and implementing decryption in another language or tool would use base64 decoding on hex-encoded data, producing silent data corruption.
-- **Confidence:** HIGH
-- **Fix:** Change "base64(IV || authTag || ciphertext)" to "hex(IV || authTag || ciphertext)" in the module-level JSDoc.
+### Discussions data refactor (commit `82e1ea9e`)
+- **File:** `src/lib/discussions/data.ts`
+- **Status:** CLEAN — `compareThreadsByPinnedVoteScoreDate` shared comparator eliminates duplication. SQL WHERE filters replace JS-side filtering for scope/state.
 
-### C2-CR-2: [LOW] Dead `_context` parameter still passed from bulk users route
+### Code similarity performance (commit `7f29d897`)
+- **File:** `src/lib/assignments/code-similarity.ts`
+- **Status:** CLEAN — `performance.now()` replaces `Date.now()` for yield timing. Monotonic clock avoids NTP jump issues.
 
-- **File:** `src/lib/users/core.ts:57` (definition), `src/app/api/v1/users/bulk/route.ts:73-76` (call site)
-- **Description:** `validateAndHashPassword` accepts `_context?: { username?: string; email?: string | null }` but it's prefixed `_` (unused). After cycle 1's removal of username/email/password checks, the parameter is dead code. However, `bulk/route.ts:73-76` still passes it:
-  ```ts
-  const passwordResult = await validateAndHashPassword(item.password, {
-    username: item.username,
-    email: item.email?.trim() || null,
-  });
-  ```
-  Other call sites (change-password.ts, public-signup.ts, users/route.ts) correctly omit it.
-- **Confidence:** HIGH
-- **Fix:** Remove `_context` parameter from `validateAndHashPassword` signature. Update bulk/route.ts call site.
+---
 
-### C2-CR-3: [LOW] Type assertion bypasses type safety in isNaN check
+## New findings
 
-- **File:** `src/lib/assignments/submissions.ts:664`
-- **Description:** `isNaN(bestScore as number)` uses a type assertion to bypass TypeScript. At this point `bestScore` is `number | null`. The `as number` cast hides the null possibility. While the NaN check would still work at runtime (isNaN(null) is false), the assertion is misleading.
-- **Confidence:** MEDIUM
-- **Fix:** Use explicit narrowing: `if (bestScore !== null && isNaN(bestScore)) bestScore = null;`
+### C2-CR-1: [LOW] `import.ts` TABLE_MAP still typed as `Record<string, any>`
 
-### C2-CR-4: [LOW] Further parallelization opportunity in getAssignmentStatusRows
+- **File:** `src/lib/db/import.ts:19-24`
+- **Confidence:** MEDIUM (carry-forward from C1-CR-2)
+- **Description:** `TABLE_MAP` is still typed as `Record<string, any>` and `buildImportColumnSets` takes `Record<string, any>`. This bypasses type safety for the import pipeline.
+- **Fix:** Use `Record<string, unknown>` with type guards, or define a proper table schema type.
+- **Status:** Carry-forward. No regression.
 
-- **File:** `src/lib/assignments/submissions.ts:563-646`
-- **Description:** Cycle 1 parallelized the first 3 independent queries. The `overrideRows` query at line 639 is also independent of `problemAggRows` and could run in parallel with it.
-- **Confidence:** MEDIUM
-- **Fix:** Run `rawQueryAll` and the overrides query via `Promise.all`.
+### C2-CR-2: [LOW] 25 `console.error`/`console.log` sites in app/components
 
-## Carry-forward verification
+- **File:** Multiple files under `src/app/` and `src/components/`
+- **Confidence:** HIGH (carry-forward from C1-AGG-3)
+- **Description:** 25 client-side console sites remain. No new sites added this cycle. Previously tracked as deferred.
+- **Status:** Carry-forward. No regression.
 
-All carry-forward items from cycle 1 verified at HEAD `70c02a02`:
-- C1-AGG-1 (password validation): RESOLVED
-- C1-AGG-2 (latestSubmittedAt): RESOLVED
-- C1-AGG-3 (import.ts any types): still DEFERRED at `src/lib/db/import.ts:19`
-- C1-AGG-5 (query parallelization): RESOLVED
-- All other carry-forwards unchanged at HEAD
+---
+
+## Carry-forward from cycle 1
+
+### C1-CR-1 [RESOLVED]: Password policy-code mismatch
+- `src/lib/security/password.ts` now only checks minimum length. Matches AGENTS.md policy. RESOLVED.
+
+### C1-CR-3 [CARRY]: `latestSubmittedAt` mixed-type comparison
+- `src/lib/assignments/submissions.ts:625-627` — still uses `>` on `string | Date | null`. Carry-forward.
+
+---
+
+## No-issue confirmations
+
+- Auth flow uses timing-safe comparison with dummy hash for user enumeration prevention. Correct.
+- CSRF validation properly checks origin, sec-fetch-site, X-Requested-With. Correct.
+- `createApiHandler` wrapper chains rate limiting, auth, CSRF, body validation. Correct.
+- AES-256-GCM encryption with proper IV/auth tag handling. Correct.
+- `sanitizeHtml` uses DOMPurify with narrow allow-list. Correct.
+- `rawQueryAll`/`rawQueryOne` use parameterized queries. No SQL injection. Correct.

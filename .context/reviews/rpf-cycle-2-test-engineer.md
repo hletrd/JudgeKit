@@ -1,34 +1,58 @@
-# RPF Cycle 2 (2026-05-01) — Test Engineer
+# Test Engineer Review — RPF Cycle 2 (2026-05-04)
 
-**Date:** 2026-05-01
-**HEAD reviewed:** `70c02a02`
+**Reviewer:** test-engineer
+**HEAD reviewed:** `767b1fee`
 
-## Test Coverage Assessment
+---
 
-### Cycle-1 Test Changes
+## Test coverage analysis
 
-The password tests in `tests/unit/security/password.test.ts` were updated in cycle 1 to match the new minimum-length-only policy. The old tests for common passwords, username match, and email match were removed.
+### Recent changes test coverage
 
-### Coverage Gaps
+#### ConditionalHeader (commit `767b1fee`)
+- **Coverage:** No dedicated test for `ConditionalHeader`.
+- **Risk:** LOW — Component is a simple path-based conditional renderer. Behavior is deterministic and easily verified visually.
 
-1. **C2-TE-1: [LOW] No test verifying encryption.ts doc format matches code encoding**
-   - **File:** Test coverage for `src/lib/security/encryption.ts`
-   - **Description:** There is no test that verifies the format described in the JSDoc matches the actual encoding. If such a test existed, the "base64" vs "hex" mismatch (C2-CR-1) would have been caught. A format-documentation round-trip test would help prevent future drift.
-   - **Confidence:** MEDIUM
-   - **Fix:** Add a test that encrypts a value and verifies the format is `enc:` + hex-encoded components (not base64).
+#### i18n fixes (commit `95cbcf6a`)
+- **Coverage:** `tests/unit/public-detail-seo-metadata.test.ts` updated. Existing tests cover metadata generation.
+- **Status:** Adequate.
 
-2. **C2-TE-2: [LOW] No test enforcing that _context parameter is removed from validateAndHashPassword**
-   - **File:** `src/lib/users/core.ts:57`
-   - **Description:** After cycle 1's password policy change, the `_context` parameter is dead code. No test would catch this since the parameter is optional and prefixed `_`.
-   - **Confidence:** LOW (test gap, not a correctness issue)
+#### Discussions refactor (commit `82e1ea9e`)
+- **Coverage:** Existing integration tests cover discussion thread listing. The SQL filter push-down is transparent to callers.
+- **Status:** Adequate.
 
-### Carry-Forward Gaps
+#### Code similarity `performance.now()` (commit `7f29d897`)
+- **Coverage:** 33 unit tests exist for `normalizeSource`, `normalizeIdentifiersForSimilarity`, `jaccardSimilarity`.
+- **Status:** Good coverage.
 
-- Missing integration test for concurrent recruiting token redemption: still DEFERRED
-- Vitest parallel-contention flakes: still DEFERRED (DEFER-ENV-GATES)
-- No E2E test for SSE reconnection behavior: still DEFERRED
-- No component test for chat widget auto-analysis flow: still DEFERRED
+#### Recruiting validate endpoint (uncommitted)
+- **Coverage:** `tests/unit/api/recruiting-validate.route.test.ts` — 4 tests covering valid, revoked, invalid, and rate-limited scenarios.
+- **Status:** Good coverage.
 
-## Confidence
+---
 
-MEDIUM
+## Findings
+
+### C2-TE-1: [LOW] No unit test for ConditionalHeader component
+
+- **File:** `src/components/layout/conditional-header.tsx`
+- **Confidence:** MEDIUM
+- **Description:** The new ConditionalHeader component has no dedicated test. A component test verifying the admin vs non-admin rendering branches would catch regressions.
+- **Fix:** Add a component test that mocks `usePathname()` and verifies the correct header variant renders for `/dashboard/admin/*` vs other paths.
+- **Exit criteria:** Component test exists covering both branches.
+
+### C2-TE-2: [LOW] Recruiting validate test missing expired invitation case
+
+- **File:** `tests/unit/api/recruiting-validate.route.test.ts`
+- **Confidence:** LOW
+- **Description:** Test covers valid, revoked, invalid token, and rate-limited scenarios. Missing: expired invitation (expiresAt in the past) and expired assignment deadline.
+- **Fix:** Add test cases for expired invitation and expired assignment deadline.
+- **Exit criteria:** Test suite covers the `invalid()` return path for expired invitations and deadlines.
+
+---
+
+## Test infrastructure health
+
+- 379 test files across unit, integration, component, e2e, and visual suites.
+- Vitest configuration appears healthy.
+- No flaky test patterns detected in recent commits.

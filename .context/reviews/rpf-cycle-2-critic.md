@@ -1,31 +1,34 @@
-# RPF Cycle 2 (2026-05-01) — Critic
+# Critic Review — RPF Cycle 2 (2026-05-04)
 
-**Date:** 2026-05-01
-**HEAD reviewed:** `70c02a02`
+**Reviewer:** critic
+**HEAD reviewed:** `767b1fee`
+
+---
+
+## Multi-perspective critique
+
+### Cycle 1 resolution quality
+
+The password policy-code mismatch (the most significant finding from cycle 1) has been properly resolved. `password.ts` now only checks minimum length, matching AGENTS.md. The deprecated `DATA_RETENTION_LEGAL_HOLD` constant has been removed. These are clean fixes.
+
+### Carry-forward backlog health
+
+The deferred backlog from cycle 1 remains unchanged. No MEDIUM items picked up this cycle. The critic's recommendation from cycle 1 (schedule 1-2 MEDIUM deferred items per cycle) still applies.
+
+### Recent change quality
+
+The conditional-header component is a clean addition. The i18n fixes properly externalize hardcoded strings. The discussions refactor pushes filters to SQL. The code-similarity performance improvement uses monotonic clock. All recent changes are well-executed.
+
+---
 
 ## Findings
 
-### C2-CT-1: [MEDIUM] encryption.ts doc-code mismatch is a real risk
+### C2-CT-1: [LOW] Deferred MEDIUM items still not scheduled
 
-- **Source:** Concur with C2-CR-1, C2-SR-1
-- **File:** `src/lib/security/encryption.ts:5-6`
-- **Description:** The module-level JSDoc says "base64" but the code uses "hex". While the code is internally consistent, this is a real risk: if someone writes a data migration tool, backup decryption utility, or monitoring sidecar based on the documentation, they would fail silently or produce corrupted data. The fix is trivial (one word change) and should be done this cycle.
-- **Confidence:** HIGH
+- **Confidence:** HIGH (carry-forward from C1-CT-2)
+- **Description:** 4 MEDIUM items (D1, D2, AGG-2, ARCH-CARRY-1) remain deferred with no forward progress. Recommend scheduling at least one per cycle.
+- **Status:** Carry-forward.
 
-### C2-CT-2: [LOW] Dead _context parameter cleanup
+### C2-CT-2: [INFO] Recent changes are clean and well-structured
 
-- **Source:** Concur with C2-CR-2, C2-SR-2
-- **File:** `src/lib/users/core.ts:57`, `src/app/api/v1/users/bulk/route.ts:73-76`
-- **Description:** The `_context` parameter is dead code after cycle 1. It should be cleaned up to avoid future confusion about what validation is happening.
-- **Confidence:** HIGH
-
-### C2-CT-3: [INFO] Cycle 1 implementation quality
-
-- The password policy change (C1-AGG-1) was implemented cleanly
-- The `latestSubmittedAt` fix (C1-AGG-2) is correct
-- The parallelization fix (C1-AGG-5) is correct
-- The Korean letter-spacing CSS correctly uses CSS custom properties with `html:lang(ko)` override
-
-## Carry-forward
-
-All carry-forward deferred items from cycle 1 are accurately tracked. No change in status.
+No quality concerns with the 6 commits reviewed this cycle. Code is well-commented, follows existing patterns, and includes proper JSDoc where needed.

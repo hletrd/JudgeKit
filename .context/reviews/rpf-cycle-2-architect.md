@@ -1,32 +1,43 @@
-# RPF Cycle 2 (2026-05-01) — Architect
+# Architect Review — RPF Cycle 2 (2026-05-04)
 
-**Date:** 2026-05-01
-**HEAD reviewed:** `70c02a02`
+**Reviewer:** architect
+**HEAD reviewed:** `767b1fee`
+
+---
+
+## Architectural observations
+
+### ConditionalHeader pattern
+The new `ConditionalHeader` component in `src/components/layout/conditional-header.tsx` cleanly introduces a route-based UI branching pattern for the dashboard layout. It's a thin client component that delegates to `PublicHeader` for non-admin paths and renders a minimal admin header otherwise. This is architecturally sound — the decision boundary is at the layout level, not scattered across individual pages.
+
+### i18n externalization
+The contest and community pages now properly use translation keys instead of hardcoded strings. This follows the existing `next-intl` pattern consistently.
+
+### Discussions refactor
+`src/lib/discussions/data.ts` now pushes moderation filters to SQL. The shared `compareThreadsByPinnedVoteScoreDate` comparator eliminates duplication across 4 thread-listing functions. Good DRY improvement.
+
+---
 
 ## Findings
 
-### C2-AR-1: [MEDIUM] encryption.ts doc-code mismatch
+### C2-AR-1: [LOW] `rateLimits` table overloaded for SSE connection tracking
 
-- **Source:** Concur with C2-CR-1, C2-SR-1, C2-CT-1
-- **File:** `src/lib/security/encryption.ts:5-6`
-- **Description:** Module-level JSDoc says "base64" but code uses "hex". Architectural risk: any external tool built against the documented format will fail silently. This violates the principle that security-critical module documentation must be accurate.
-- **Confidence:** HIGH
+- **File:** `src/lib/realtime/realtime-coordination.ts:75-137`
+- **Confidence:** MEDIUM (carry-forward from C1-AR-1)
+- **Description:** The `rateLimits` table is used both for rate limiting and SSE connection slot tracking. The `blockedUntil` column is repurposed as an "expires at" timestamp for SSE slots.
+- **Status:** Carry-forward under ARCH-CARRY-2.
 
-### C2-AR-2: [LOW] Dead _context parameter in validateAndHashPassword
+### C2-AR-2: [LOW] `import.ts` uses `any` types
 
-- **Source:** Concur with C2-CR-2
-- **File:** `src/lib/users/core.ts:57`
-- **Description:** The `_context` parameter is dead code after cycle 1's password policy simplification. While not an architectural issue, it represents an API surface that no longer has a purpose and should be cleaned up.
-- **Confidence:** HIGH
+- **File:** `src/lib/db/import.ts:19-24`
+- **Confidence:** MEDIUM (carry-forward from C1-AR-2 / C1-CR-2)
+- **Description:** `TABLE_MAP: Record<string, any>` bypasses type safety.
+- **Status:** Carry-forward.
 
-## Architectural Observations (Re-verified at HEAD)
+---
 
-1. Layered access control: capabilities (coarse) -> group membership (medium) -> object ownership (fine)
-2. Dual-path Docker API: local/remote abstraction is clean
-3. Compiler sandbox: multi-layered defense
-4. Encryption module: two separate encryption systems (encryption.ts for columns, secrets.ts for plugins) with different encoding formats. This is intentional (column-level uses `enc:` hex, plugin-level uses `enc:v1:` base64url)
-5. The `createApiHandler` wrapper pattern is well-adopted (84 of 104 routes)
+## No-issue confirmations
 
-## Carry-forward
-
-All carry-forward items unchanged at HEAD. ARCH-CARRY-1 (20 raw API handlers) still DEFERRED.
+- API handler standardization: 134/218 routes use `createApiHandler`. ARCH-CARRY-1 carry-forward.
+- Layering: `lib/` -> `db/`, `auth/`, `security/`, `compiler/`, `judge/`. No reverse coupling. Correct.
+- Route group hierarchy: `(auth)`, `(public)`, `(dashboard)` is clean. No architectural drift.

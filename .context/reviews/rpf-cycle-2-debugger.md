@@ -1,31 +1,45 @@
-# RPF Cycle 2 (2026-05-01) — Debugger
+# Debugger Review — RPF Cycle 2 (2026-05-04)
 
-**Date:** 2026-05-01
-**HEAD reviewed:** `70c02a02`
+**Reviewer:** debugger
+**HEAD reviewed:** `767b1fee`
 
-## Latent Bug Surface Analysis
+---
 
-### C2-DB-1: [MEDIUM] encryption.ts doc-code mismatch could cause latent failures
+## Latent bug surface scan
 
-- **Source:** Concur with C2-CR-1, C2-SR-1
-- **File:** `src/lib/security/encryption.ts:5-6`
-- **Description:** If a developer reads the module-level JSDoc ("base64") and writes a data recovery tool, it would produce incorrect decryption results on every value. The `decrypt()` function would never be called because the format parsing would fail (wrong encoding). This is a latent failure mode: the system works fine until someone trusts the documentation.
-- **Confidence:** HIGH
-- **Failure scenario:** Developer reads JSDoc -> implements base64 decoder -> gets wrong IV/authTag/ciphertext -> GCM auth tag mismatch -> error or silent corruption depending on error handling.
+### TypeScript / ESLint status
 
-### C2-DB-2: [LOW] Dead _context parameter in validateAndHashPassword
+- `npx tsc --noEmit`: 0 errors at HEAD (verified via prior cycle).
+- ESLint: 0 errors in `src/`.
 
-- **Source:** Concur with C2-CR-2
-- **File:** `src/lib/users/core.ts:57`
-- **Description:** Not a bug but a maintainability hazard. The `_context` parameter suggests validation is happening when it isn't.
-- **Confidence:** HIGH
+### Recent changes regression analysis
 
-### Cycle-1 fixes verified at HEAD
+#### ConditionalHeader (commit `767b1fee`)
+- **Regression risk:** LOW — New component, no existing behavior modified. The `startsWith("/dashboard/admin")` check is straightforward.
+- **Edge case:** Nested admin routes like `/dashboard/admin/settings` correctly match the prefix.
 
-- Password validation now only checks length < 8 (C1-AGG-1): VERIFIED
-- latestSubmittedAt uses Date normalization (C1-AGG-2): VERIFIED
-- Query parallelization with Promise.all (C1-AGG-5): VERIFIED
+#### i18n fixes (commit `95cbcf6a`)
+- **Regression risk:** LOW — Translation keys added, hardcoded strings removed. Existing tests updated.
 
-## Carry-forward
+#### Discussions refactor (commit `82e1ea9e`)
+- **Regression risk:** LOW — SQL filters replace JS filters. The `conditions` array is properly built with `and()` when non-empty, `undefined` when empty (which means no filter — same as before).
 
-All prior carry-forward items unchanged at HEAD.
+#### Code similarity (commit `7f29d897`)
+- **Regression risk:** LOW — `performance.now()` is a drop-in replacement for `Date.now()` timing. Both return milliseconds.
+
+---
+
+## Findings
+
+### C2-DB-1: [LOW] `latestSubmittedAt` mixed-type comparison
+
+- **File:** `src/lib/assignments/submissions.ts:625-627`
+- **Confidence:** MEDIUM (carry-forward from C1-DB-1)
+- **Description:** The comparison `row.latestSubmittedAt > existing.latestSubmittedAt` operates on `string | Date | null`. Potential incorrect ordering under specific driver/timezone configurations.
+- **Status:** Carry-forward. No regression.
+
+---
+
+## No new debugger findings this cycle.
+
+All recent changes have low regression risk. No latent bugs introduced.

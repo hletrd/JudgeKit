@@ -1,37 +1,71 @@
-# RPF Cycle 2 (2026-05-01) — Verifier
+# Verifier Review — RPF Cycle 2 (2026-05-04)
 
-**Date:** 2026-05-01
-**HEAD reviewed:** `70c02a02`
+**Reviewer:** verifier
+**HEAD reviewed:** `767b1fee`
 
-## Evidence-Based Correctness Check
+---
 
-### Verified Behaviors (Cycle-1 fixes)
+## Evidence-based correctness checks
 
-1. **Password validation (C1-AGG-1)**: `getPasswordValidationError()` at `src/lib/security/password.ts:10-17` only checks `password.length < 8`. Type `PasswordValidationError = "passwordTooShort"`. VERIFIED correct.
+### Password validation vs AGENTS.md
 
-2. **latestSubmittedAt normalization (C1-AGG-2)**: `src/lib/assignments/submissions.ts:625-627` now uses `new Date(row.latestSubmittedAt)` and `new Date(existing.latestSubmittedAt)` for comparison. VERIFIED correct.
+**Claim (AGENTS.md):** "Password validation MUST only check minimum length — exactly 8 characters minimum, no other rules."
 
-3. **Query parallelization (C1-AGG-5)**: `src/lib/assignments/submissions.ts:510` uses `Promise.all` for assignment, problems, and students queries. VERIFIED correct.
+**Actual code (`src/lib/security/password.ts`):**
+- Line 13: checks `password.length < FIXED_MIN_PASSWORD_LENGTH` — matches policy
+- No other checks present
 
-### Verified Behaviors (Carry-forward)
+**Verdict:** Code MATCHES the documented policy. RESOLVED from cycle 1.
 
-4. Encryption round-trip: `encrypt()` produces `enc:hex:hex:hex` format. `decrypt()` parses with `Buffer.from(..., "hex")`. VERIFIED correct (code is consistent; only JSDoc is wrong).
+### DATA_RETENTION_LEGAL_HOLD deprecated constant
 
-5. Rate limit atomicity: FOR UPDATE row lock within transaction. VERIFIED.
+**Claim (cycle 1 aggregate):** Deprecated constant still exported alongside runtime function.
 
-6. Import atomicity: Single transaction with FK ordering. VERIFIED.
+**Actual code (`src/lib/data-retention.ts:45-47`):**
+- Lines 45-47: Comment documenting removal of deprecated constant
+- Line 40-43: `isDataRetentionLegalHold()` function present
 
-### C2-VE-1: [MEDIUM] encryption.ts JSDoc mismatch confirmed
+**Verdict:** Deprecated constant REMOVED. RESOLVED from cycle 1.
 
-- **Source:** Concur with C2-CR-1, C2-SR-1, C2-CT-1, C2-AR-1, C2-DB-1
-- **File:** `src/lib/security/encryption.ts:5-6`
-- **Description:** Verified the mismatch: line 5-6 says "base64(IV || authTag || ciphertext)" but line 78 uses `toString("hex")` and lines 127-129 use `Buffer.from(..., "hex")`. The function-level JSDoc at line 64 correctly says "hex-encoded string". The code is correct; only the module-level JSDoc is wrong.
-- **Confidence:** HIGH (6-lane cross-agreement)
+### ConditionalHeader correctness
 
-## New Findings
+**Claim:** Admin pages hide the top navbar.
 
-C2-VE-1 (concurring with multi-lane finding).
+**Actual code (`src/components/layout/conditional-header.tsx`):**
+- Line 28: `pathname.startsWith("/dashboard/admin")`
+- Lines 30-37: Admin branch renders minimal header with SidebarTrigger only
+- Lines 40-48: Non-admin branch renders full PublicHeader
 
-## Confidence
+**Verdict:** Correct. Both branches include SidebarTrigger for sidebar toggle access.
 
-HIGH
+### i18n externalization
+
+**Claim:** Hardcoded strings replaced with translations.
+
+**Actual code (`src/app/(public)/contests/[id]/page.tsx`):**
+- Line 55: `tContest("metadataFallbackTitle")` — key exists in en.json and ko.json
+- Lines 72-74: `tContest("keywords.programmingContest")` etc. — keys exist
+
+**Verdict:** Correct. All hardcoded strings externalized.
+
+### Rate limit timestamp consistency
+
+**Claim:** All rate-limit timestamp comparisons use DB server time.
+
+**Verified:** `atomicConsumeRateLimit` uses `getDbNowMs()`, `checkServerActionRateLimit` uses `getDbNowMs()`, `realtime-coordination.ts` uses `getDbNowUncached()`. Consistent.
+
+---
+
+## Findings
+
+### C2-VE-1: [INFO] All cycle 1 resolutions verified
+
+- Password policy-code mismatch: RESOLVED
+- DATA_RETENTION_LEGAL_HOLD deprecated constant: RESOLVED
+- ConditionalHeader: Correct
+- i18n externalization: Correct
+
+### C2-VE-2: [INFO] Carry-forward deferred items verified as still deferred
+
+- All deferred items from cycle 1 aggregate remain accurately described.
+- No deferred items have been silently resolved or worsened.

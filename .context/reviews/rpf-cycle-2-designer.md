@@ -1,35 +1,35 @@
-# RPF Cycle 2 (2026-05-01) — Designer (Source-Level Review)
+# Designer (UI/UX) Review — RPF Cycle 2 (2026-05-04)
 
-**Date:** 2026-05-01
-**HEAD reviewed:** `70c02a02`
+**Reviewer:** designer (source-level)
+**HEAD reviewed:** `767b1fee`
+**Method:** Source-level review. No live browser session.
 
-Note: Runtime UI/UX review not performed this cycle (no dev server running). This is a source-level review only.
+---
 
-## UI/UX Source-Level Assessment
+## Recent UI changes audit
 
-### Accessibility
+### ConditionalHeader (commit `767b1fee`)
+- **File:** `src/components/layout/conditional-header.tsx`
+- **UX impact:** Admin dashboard pages now show a minimal header with only a sidebar trigger, removing the full public navigation bar. This reduces visual clutter on admin pages and gives more vertical space to admin content.
+- **Dark mode:** Header uses `bg-background/95 backdrop-blur` — theme-aware. Correct.
+- **Accessibility:** `SidebarTrigger` inherits ARIA from shadcn/ui sidebar component. Correct.
+- **Responsive:** Header is visible on all screen sizes (no `hidden` breakpoint). Correct.
 
-1. Chat widget: role="log", aria-label on messages container and buttons. Error messages use role="alert". Typing indicator uses motion-safe:animate-bounce. Good.
-2. Form accessibility: Textarea has aria-label. Send button has aria-label. Disabled states properly convey inaccessibility. Good.
+### Login/signup card width (commit `9b87eeee`)
+- Card widened from `max-w-md` to `max-w-lg`. Improves form usability on desktop without affecting mobile.
 
-### Korean Typography (CLAUDE.md Compliance)
+---
 
-1. All `tracking-*` utilities guarded with `locale !== "ko"` conditionals. Good.
-2. `globals.css:127-137` uses CSS custom properties with `:lang(ko)` override to set letter-spacing: normal. Good.
-3. `src/app/not-found.tsx:59` uses `tracking-[0.2em]` on "404" text — numeric status code, safe for Korean locale. Comment explicitly notes this. Good.
+## Findings
 
-### Responsive Design
+### C2-DS-1: [INFO] No UI/UX regressions
 
-Chat widget full-screen on mobile, fixed-size panel on desktop. Dashboard layouts use responsive breakpoints.
+No new visual or accessibility regressions detected. Dark-mode coverage remains at 100%.
 
-### Loading/Empty/Error States
+### C2-DS-2: [INFO] ConditionalHeader is a clean UX improvement
 
-Chat widget has empty state and error state with role="alert". Loading skeletons present for dashboard pages.
+Admin pages benefit from reduced chrome. The sidebar trigger remains accessible in both branches.
 
-## New Findings
+---
 
-**No new findings this cycle.** Korean typography compliance verified at HEAD.
-
-## Confidence
-
-MEDIUM (source-level only, no runtime verification)
+## Net new findings: 0

@@ -128,6 +128,74 @@ describe("POST /api/v1/recruiting/validate", () => {
     await expect(response.json()).resolves.toEqual({ error: "invalidToken" });
   });
 
+  it("returns { valid: false } for expired invitations filtered by SQL NOW()", async () => {
+    dbSelectMock.mockReset();
+    // Expired invitations are filtered out by the SQL WHERE clause
+    // (expiresAt > NOW()), so the DB returns an empty array.
+    dbSelectMock.mockReturnValueOnce({
+      from: () => ({
+        where: () => ({
+          limit: () => Promise.resolve([]),
+        }),
+      }),
+    });
+
+    const { POST } = await import("@/app/api/v1/recruiting/validate/route");
+    const response = await POST(
+      new NextRequest("http://localhost/api/v1/recruiting/validate", {
+        method: "POST",
+        headers: CSRF_HEADERS,
+        body: JSON.stringify({ token: "token-1" }),
+      })
+    );
+
+    expect(response.status).toBe(200);
+    await expect(response.json()).resolves.toEqual({
+      data: { valid: false },
+    });
+  });
+
+  it("returns { valid: false } when assignment deadline has passed", async () => {
+    dbSelectMock.mockReset();
+    // Invitation is valid, but assignment deadline is expired (filtered by SQL NOW())
+    dbSelectMock
+      .mockReturnValueOnce({
+        from: () => ({
+          where: () => ({
+            limit: () =>
+              Promise.resolve([
+                {
+                  status: "pending",
+                  assignmentId: "assignment-1",
+                },
+              ]),
+          }),
+        }),
+      })
+      .mockReturnValueOnce({
+        from: () => ({
+          where: () => ({
+            // Expired deadline filtered by SQL WHERE clause — empty result
+            limit: () => Promise.resolve([]),
+          }),
+        }),
+      });
+
+    const { POST } = await import("@/app/api/v1/recruiting/validate/route");
+    const response = await POST(
+      new NextRequest("http://localhost/api/v1/recruiting/validate", {
+        method: "POST",
+        headers: CSRF_HEADERS,
+        body: JSON.stringify({ token: "token-1" }),
+      })
+    );
+
+    expect(response.status).toBe(200);
+    await expect(response.json()).resolves.toEqual({
+      data: { valid: false },
+    });
+  });
+
   it("returns the authoritative rate-limit response before touching the database", async () => {
     consumeApiRateLimitMock.mockResolvedValueOnce(
       NextResponse.json({ error: "rateLimited" }, { status: 429 })
