@@ -3,6 +3,7 @@ import { db } from "@/lib/db";
 import { recruitingInvitations, assignments } from "@/lib/db/schema";
 import { eq, and, sql } from "drizzle-orm";
 import { consumeApiRateLimit } from "@/lib/security/api-rate-limit";
+import { validateCsrf } from "@/lib/security/csrf";
 import { validateRecruitingTokenSchema } from "@/lib/validators/recruiting-invitations";
 import { hashToken } from "@/lib/security/token-hash";
 
@@ -11,6 +12,13 @@ export async function POST(req: NextRequest) {
   if (rateLimitResponse) {
     return rateLimitResponse;
   }
+
+  // CSRF validation — consistent with all other POST endpoints that use
+  // createApiHandler. This is a public endpoint but CSRF protection prevents
+  // cross-origin form submissions from triggering token validation in a
+  // victim's browser.
+  const csrfError = validateCsrf(req);
+  if (csrfError) return csrfError;
 
   const body = await req.json().catch(() => null);
   const parsed = validateRecruitingTokenSchema.safeParse(body);

@@ -16,6 +16,12 @@ vi.mock("@/lib/security/api-rate-limit", () => ({
   consumeApiRateLimit: consumeApiRateLimitMock,
 }));
 
+// Headers that satisfy the CSRF check (X-Requested-With required for POST)
+const CSRF_HEADERS = {
+  "Content-Type": "application/json",
+  "X-Requested-With": "XMLHttpRequest",
+};
+
 describe("POST /api/v1/recruiting/validate", () => {
   beforeEach(() => {
     vi.clearAllMocks();
@@ -60,7 +66,7 @@ describe("POST /api/v1/recruiting/validate", () => {
     const response = await POST(
       new NextRequest("http://localhost/api/v1/recruiting/validate", {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        headers: CSRF_HEADERS,
         body: JSON.stringify({ token: "token-1" }),
       })
     );
@@ -95,7 +101,7 @@ describe("POST /api/v1/recruiting/validate", () => {
     const response = await POST(
       new NextRequest("http://localhost/api/v1/recruiting/validate", {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        headers: CSRF_HEADERS,
         body: JSON.stringify({ token: "token-1" }),
       })
     );
@@ -113,7 +119,7 @@ describe("POST /api/v1/recruiting/validate", () => {
     const response = await POST(
       new NextRequest("http://localhost/api/v1/recruiting/validate", {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        headers: CSRF_HEADERS,
         body: JSON.stringify({ token: "" }),
       })
     );
@@ -131,7 +137,7 @@ describe("POST /api/v1/recruiting/validate", () => {
     const response = await POST(
       new NextRequest("http://localhost/api/v1/recruiting/validate", {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        headers: CSRF_HEADERS,
         body: JSON.stringify({ token: "token-1" }),
       })
     );
