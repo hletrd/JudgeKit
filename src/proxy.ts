@@ -61,6 +61,8 @@ async function hashUserAgent(userAgent: string) {
 
 function getCachedAuthUser(cacheKey: string) {
   const cached = authUserCache.get(cacheKey);
+  // Intentional Date.now(): Edge Runtime cannot use getDbNowMs(). Cache TTL
+  // is short enough (max 10 s) that app/DB clock skew is immaterial.
   if (cached && cached.expiresAt > Date.now()) {
     return cached.user;
   }
@@ -76,6 +78,7 @@ function setCachedAuthUser(cacheKey: string, user: Awaited<ReturnType<typeof get
   // iterating all entries on every set call under normal load — getCachedAuthUser
   // already cleans up expired entries on read.
   if (authUserCache.size >= Math.floor(AUTH_CACHE_MAX_SIZE * 0.9)) {
+    // Intentional Date.now(): Edge Runtime cannot use getDbNowMs()
     const now = Date.now();
     for (const [key, entry] of authUserCache) {
       if (entry.expiresAt <= now) {
@@ -88,6 +91,7 @@ function setCachedAuthUser(cacheKey: string, user: Awaited<ReturnType<typeof get
     const firstKey = authUserCache.keys().next().value;
     if (firstKey !== undefined) authUserCache.delete(firstKey);
   }
+  // Intentional Date.now(): Edge Runtime cannot use getDbNowMs()
   authUserCache.set(cacheKey, { user, expiresAt: Date.now() + AUTH_CACHE_TTL_MS });
 }
 
