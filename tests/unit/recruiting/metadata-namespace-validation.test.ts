@@ -7,9 +7,9 @@
  * internal flags and brute-force counter manipulation.
  *
  * These tests validate the rejection logic in createRecruitingInvitation,
- * bulkCreateRecruitingInvitations, and updateRecruitingInvitation. Since the
- * validation is implemented as a synchronous check before any DB write, these
- * tests mock the DB layer and focus on the validation boundary.
+ * bulkCreateRecruitingInvitations, updateRecruitingInvitation, AND at the
+ * Zod schema level (createRecruitingInvitationSchema,
+ * updateRecruitingInvitationSchema).
  */
 import { describe, it, expect, vi, beforeEach } from "vitest";
 
@@ -35,6 +35,11 @@ import {
   bulkCreateRecruitingInvitations,
   updateRecruitingInvitation,
 } from "@/lib/assignments/recruiting-invitations";
+
+import {
+  createRecruitingInvitationSchema,
+  updateRecruitingInvitationSchema,
+} from "@/lib/validators/recruiting-invitations";
 
 describe("recruiting invitations _sys. namespace validation", () => {
   const baseParams = {
@@ -151,6 +156,67 @@ describe("recruiting invitations _sys. namespace validation", () => {
           expiresAt: null,
         })
       ).resolves.toBeUndefined();
+    });
+  });
+});
+
+describe("recruiting invitation Zod schemas _sys. namespace rejection", () => {
+  describe("createRecruitingInvitationSchema", () => {
+    it("should reject metadata with _sys. prefix key at schema level", () => {
+      const result = createRecruitingInvitationSchema.safeParse({
+        candidateName: "Test",
+        candidateEmail: "test@example.com",
+        metadata: { "_sys.failedRedeemAttempts": "5" },
+      });
+      expect(result.success).toBe(false);
+      if (!result.success) {
+        const msg = result.error.issues.map((i) => i.message).join("; ");
+        expect(msg).toContain("_sys.");
+      }
+    });
+
+    it("should accept metadata without _sys. prefix at schema level", () => {
+      const result = createRecruitingInvitationSchema.safeParse({
+        candidateName: "Test",
+        candidateEmail: "test@example.com",
+        metadata: { department: "Engineering" },
+      });
+      expect(result.success).toBe(true);
+    });
+
+    it("should accept empty metadata at schema level", () => {
+      const result = createRecruitingInvitationSchema.safeParse({
+        candidateName: "Test",
+        candidateEmail: "test@example.com",
+      });
+      expect(result.success).toBe(true);
+    });
+  });
+
+  describe("updateRecruitingInvitationSchema", () => {
+    it("should reject metadata with _sys. prefix key at schema level", () => {
+      const result = updateRecruitingInvitationSchema.safeParse({
+        metadata: { "_sys.accountPasswordResetRequired": "true" },
+      });
+      expect(result.success).toBe(false);
+      if (!result.success) {
+        const msg = result.error.issues.map((i) => i.message).join("; ");
+        expect(msg).toContain("_sys.");
+      }
+    });
+
+    it("should accept metadata without _sys. prefix at schema level", () => {
+      const result = updateRecruitingInvitationSchema.safeParse({
+        metadata: { department: "Engineering" },
+      });
+      expect(result.success).toBe(true);
+    });
+
+    it("should accept update without metadata at schema level", () => {
+      const result = updateRecruitingInvitationSchema.safeParse({
+        status: "revoked",
+      });
+      expect(result.success).toBe(true);
     });
   });
 });
