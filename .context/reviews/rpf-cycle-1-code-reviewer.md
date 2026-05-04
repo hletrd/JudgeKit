@@ -1,46 +1,52 @@
-# Code Review — RPF Cycle 1 (2026-05-01)
+# Code Review — RPF Cycle 3 (2026-05-04)
 
 **Reviewer:** code-reviewer
-**HEAD reviewed:** `894320ff`
-**Scope:** Full codebase — src/, judge-worker-rs/, scripts/, deploy scripts
+**HEAD reviewed:** `4cd03c2b`
+**Scope:** Full codebase — src/, tests/, deploy scripts. Focus on changes since `988435b5`.
+
+---
+
+## Prior cycle status
+
+- **C1-CR-1 (password.ts policy mismatch):** RESOLVED — `password.ts` now only checks minimum length per AGENTS.md policy.
+- **C1-CR-2 (import.ts `any` types):** CARRY — still deferred.
+- **C1-CR-3 (latestSubmittedAt mixed-type comparison):** CARRY — still deferred.
+- **C1-CR-4 (console.error sites):** CARRY — still deferred.
 
 ---
 
 ## Findings
 
-### C1-CR-1: [MEDIUM] `password.ts` violates AGENTS.md password policy — adds checks beyond minimum length
+### C3-CR-1: [LOW] Hardcoded "Loading..." string in CodeTimelinePanel
 
-- **File:** `src/lib/security/password.ts:44-68`
+- **File:** `src/components/contest/code-timeline-panel.tsx:93`
+- **Code:** `if (loading) return <p className="text-sm text-muted-foreground">Loading...</p>;`
 - **Confidence:** HIGH
-- **Description:** The `getPasswordValidationError` function checks for common passwords, username similarity, and email similarity in addition to the 8-character minimum. AGENTS.md explicitly states: "Password validation MUST only check minimum length — exactly 8 characters minimum, no other rules. Do NOT add complexity requirements (uppercase, numbers, symbols), similarity checks, or dictionary checks."
-- **Failure scenario:** A user who sets "password1" or a password containing their username gets a validation error, contradicting the documented policy that only minimum length should be checked.
-- **Fix:** Remove the `COMMON_PASSWORDS` set, the username match check, and the email match check. Keep only `password.length < FIXED_MIN_PASSWORD_LENGTH`. Update the `PasswordValidationError` type to only include `"passwordTooShort"`. Update call sites accordingly.
+- **Problem:** The loading state uses a hardcoded English string instead of the i18n translation key `common.loading` which already exists in `messages/en.json`. The component already imports and uses `useTranslations("common")` as `tCommon` (line 41), so this is an oversight.
+- **Fix:** Replace with `{tCommon("loading")}`.
 
-### C1-CR-2: [LOW] Inconsistent `any` usage in `src/lib/db/import.ts`
+### C3-CR-2: [LOW] Hardcoded "chars" unit string in CodeTimelinePanel
 
-- **File:** `src/lib/db/import.ts:19-24`
+- **File:** `src/components/contest/code-timeline-panel.tsx:199`
+- **Code:** `{current.charCount} chars`
+- **Confidence:** HIGH
+- **Problem:** The character count label is hardcoded in English. Should use an i18n key for consistency with the rest of the internationalized UI.
+- **Fix:** Add a translation key like `contests.codeTimeline.charCount` in `messages/en.json` and `messages/ko.json`, then use `t("charCount", { count: current.charCount })`.
+
+### C3-CR-3: [LOW] Hardcoded "Loading..." in dashboard and public loading.tsx files
+
+- **File:** `src/app/(dashboard)/loading.tsx:3,5` and `src/app/(public)/loading.tsx:3,5`
+- **Code:** `aria-label="Loading"` and `<span className="sr-only">Loading...</span>`
 - **Confidence:** MEDIUM
-- **Description:** `TABLE_MAP` is typed as `Record<string, any>` and `buildImportColumnSets` takes `Record<string, any>`. This bypasses type safety for the import pipeline.
-- **Fix:** Define a proper table schema type or use `Record<string, unknown>` with type guards.
-
-### C1-CR-3: [LOW] `latestSubmittedAt` comparison uses `>` on mixed `string | Date` type
-
-- **File:** `src/lib/assignments/submissions.ts:625-627`
-- **Confidence:** MEDIUM
-- **Description:** In `getAssignmentStatusRows`, the `userLatestMap` aggregation compares `row.latestSubmittedAt` values using `>`. The type is `string | Date | null`. When PostgreSQL returns a timestamp, it can be either a string or a Date depending on the pg driver configuration. Using `>` on a string vs Date or two strings in different date formats could produce incorrect ordering.
-- **Fix:** Normalize `latestSubmittedAt` to `Date` before comparison.
-
-### C1-CR-4: [LOW] 27 client-side `console.error` sites without structured logging
-
-- **File:** Multiple files under `src/app/(dashboard)/` and `src/components/`
-- **Confidence:** HIGH (known carry-forward from C1-AGG-3)
-- **Description:** Already tracked in deferred backlog. No new sites added beyond what was previously catalogued.
+- **Problem:** These are server components that use hardcoded English strings for `aria-label` and sr-only text. The `common.loading` key exists in the i18n files. Server components can use `getTranslations()` from `next-intl/server`.
+- **Fix:** Convert to async server components using `getTranslations("common")` and use `t("loading")` for both the aria-label and sr-only text.
 
 ---
 
 ## No-issue confirmations
 
-- Auth flow in `config.ts` uses timing-safe comparison for password verification and dummy hash for user enumeration prevention. Correct.
-- CSRF validation in `csrf.ts` properly validates origin, sec-fetch-site, and X-Requested-With. Correct.
-- Encryption module uses AES-256-GCM with proper IV and auth tag handling. Correct.
-- `createApiHandler` wrapper properly chains rate limiting, auth, CSRF, and body validation. Correct.
+- CSRF validation in recruiting validate endpoint (`src/app/api/v1/recruiting/validate/route.ts`) properly uses `validateCsrf()` and `consumeApiRateLimit()`. Correct.
+- ConditionalHeader component (`src/components/layout/conditional-header.tsx`) correctly uses `"use client"` directive and `usePathname()`. The admin detection logic is clean.
+- `listModerationDiscussionThreads` in `src/lib/discussions/data.ts` properly pushes scope/state filters to SQL WHERE clause. The "open" state correctly uses `isNull(lockedAt)` to include pinned-but-unlocked threads. Correct.
+- Code similarity `performance.now()` migration is correct and well-documented.
+- Auth flow, CSRF, encryption, and `createApiHandler` all remain correct.

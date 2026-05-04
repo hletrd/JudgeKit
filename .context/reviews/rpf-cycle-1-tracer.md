@@ -1,29 +1,43 @@
-# Tracer Review — RPF Cycle 1 (2026-05-01)
+# Tracer Review — RPF Cycle 3 (2026-05-04)
 
 **Reviewer:** tracer
-**HEAD reviewed:** `894320ff`
+**HEAD reviewed:** `4cd03c2b`
+**Scope:** Causal trace of suspicious flows in changes since `988435b5`.
 
 ---
 
-## Causal trace of suspicious flows
+## Prior cycle status
 
-### Password validation trace
+- **C1-TR-1 (password validation policy mismatch):** RESOLVED — `password.ts` now only checks minimum length. The `PasswordValidationError` type only includes `"passwordTooShort"`.
 
-Tracing the password validation flow:
-1. `src/lib/security/password.ts:getPasswordValidationError()` — checks length, common passwords, username match, email match
-2. `src/lib/security/password.ts:isStrongPassword()` — wraps `getPasswordValidationError`
-3. Call sites: `src/app/(auth)/signup/signup-form.tsx`, `src/app/(dashboard)/dashboard/admin/users/add-user-dialog.tsx`, `src/app/(dashboard)/dashboard/admin/users/edit-user-dialog.tsx`, `src/app/(dashboard)/dashboard/admin/users/bulk-create-dialog.tsx`, `src/app/change-password/change-password-form.tsx`
-4. Server actions: `src/lib/actions/public-signup.ts`, `src/lib/actions/user-management.ts`, `src/lib/actions/change-password.ts`
+---
 
-The `PasswordValidationError` type is used in client-side forms to display error messages. The keys `"passwordMatchesUsername"`, `"passwordMatchesEmail"`, and `"passwordTooCommon"` are mapped to localized error strings in the form components. Removing them from the type will require updating the form components' error message maps.
+## Causal trace of recent changes
+
+### Recruiting validate CSRF addition trace
+
+Tracing the CSRF validation addition:
+1. `src/app/api/v1/recruiting/validate/route.ts:20-21` — calls `validateCsrf(req)`
+2. `src/lib/security/csrf.ts:30-72` — validates `X-Requested-With`, `Sec-Fetch-Site`, `Origin`
+3. The endpoint is public (no auth required) but CSRF protection prevents cross-origin form submissions
+
+**Trace result:** Clean. The CSRF check is consistent with all other POST endpoints. The `X-Requested-With: XMLHttpRequest` header is required, which HTML forms cannot set.
+
+### Moderation filter SQL trace
+
+Tracing the moderation filter changes:
+1. `src/lib/discussions/data.ts:260-299` — `listModerationDiscussionThreads` builds WHERE conditions
+2. Scope filter: `eq(discussionThreads.scopeType, scope)` when scope !== "all"
+3. State "open": `isNull(discussionThreads.lockedAt)` — correctly excludes locked threads
+4. State "locked": `isNotNull(discussionThreads.lockedAt)`
+5. State "pinned": `isNotNull(discussionThreads.pinnedAt)`
+
+**Trace result:** Clean. The "open" state correctly means "not locked" regardless of pin status. A thread that is both pinned and locked is correctly classified as "locked", not "open".
 
 ---
 
 ## Findings
 
-### C1-TR-1: [MEDIUM] Password validation policy mismatch — full trace
+### C3-TR-1: [INFO] No suspicious flows found
 
-- **File:** `src/lib/security/password.ts` and all call sites
-- **Confidence:** HIGH
-- **Description:** Tracing confirms the extra checks are wired through the entire stack: type definition -> validation function -> server actions -> client forms. The `PasswordValidationError` type union feeds into localized error message maps in 5+ client components. Removing the extra checks requires updating the type and all error message maps.
-- **Fix:** Remove `COMMON_PASSWORDS`, username match, and email match from `getPasswordValidationError`. Remove `passwordMatchesUsername`, `passwordMatchesEmail`, `passwordTooCommon` from the `PasswordValidationError` type. Remove corresponding error message entries from all form components. Update tests.
+All recent changes have clean causal traces with no unexpected side effects or competing hypotheses.

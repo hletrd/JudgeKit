@@ -1,37 +1,32 @@
-# Test Engineer Review — RPF Cycle 1 (2026-05-01)
+# Test Engineer Review — RPF Cycle 3 (2026-05-04)
 
 **Reviewer:** test-engineer
-**HEAD reviewed:** `894320ff`
+**HEAD reviewed:** `4cd03c2b`
+**Scope:** Test coverage for changes since `988435b5`.
 
 ---
 
-## Test surface scan
+## Prior cycle status
 
-- vitest configs: `vitest.config.ts`, `vitest.config.integration.ts`, `vitest.config.component.ts`
-- security tests: `tests/unit/security/`
-- playwright configs: `playwright.config.ts`, `playwright.visual.config.ts`
-- Component tests: 30+ files in `tests/component/`
+- **C1-TE-1 (password policy test):** RESOLVED — `password.ts` now matches AGENTS.md policy. Tests should be updated to match.
+- **C1-TE-2 (getAssignmentStatusRows integration test):** CARRY — still deferred.
+- **C1-TE-3 (Playwright browser dependency):** CARRY — still deferred.
 
 ---
 
 ## Findings
 
-### C1-TE-1: [MEDIUM] No test enforces AGENTS.md password policy
+### C3-TE-1: [LOW] CodeTimelinePanel has no dedicated test
 
-- **File:** Test coverage for `src/lib/security/password.ts`
-- **Confidence:** HIGH
-- **Description:** The existing tests for `getPasswordValidationError` validate the current behavior (including common-password rejection and username/email similarity checks). However, there is no test that asserts the documented AGENTS.md policy: "Password validation MUST only check minimum length." If the policy is the source of truth, the tests are testing the wrong behavior. If the code is the source of truth, the documentation is wrong.
-- **Fix:** After resolving the policy-code mismatch (C1-CR-1), update the tests to match the chosen source of truth.
-
-### C1-TE-2: [LOW] `getAssignmentStatusRows` has no integration test for the raw SQL aggregation
-
-- **File:** `src/lib/assignments/submissions.ts:562-601`
+- **File:** `src/components/contest/code-timeline-panel.tsx`
 - **Confidence:** MEDIUM
-- **Description:** The complex raw SQL query in `getAssignmentStatusRows` (CTE with `ROW_NUMBER`, late penalty CASE expression, GROUP BY aggregation) is a critical scoring path. There is no integration test that validates the scoring output against known inputs. Unit tests may mock the DB, but the raw SQL itself is untested against a real PostgreSQL instance.
-- **Fix:** Add an integration test under `tests/integration/` that seeds a known assignment with submissions and verifies the aggregated status rows match expected scores, especially for late-penalty edge cases.
+- **Description:** The `CodeTimelinePanel` component has no dedicated test file. It's a client component with fetch logic, state management, and conditional rendering. A component test verifying loading, error, empty, and populated states would catch regressions.
+- **Fix:** Add a component test under `tests/component/` that mocks `apiFetchJson` and verifies the component renders correctly in each state.
 
-### C1-TE-3: [LOW] Playwright e2e gate depends on browser availability
+---
 
-- **Confidence:** HIGH (carry-forward from prior cycles)
-- **Description:** If `playwright install` has not been run, e2e tests cannot execute. This is a known environment dependency, not a code issue.
-- **Fix:** Record as a deferred gate caveat.
+## No-issue confirmations
+
+- New tests in `tests/component/conditional-header.test.tsx` cover all 4 branches (admin, non-admin dashboard, root dashboard, public pages). Good coverage.
+- New tests in `tests/unit/api/recruiting-validate.route.test.ts` cover valid, revoked, invalid token, expired invitation, expired deadline, and rate-limited scenarios. Comprehensive.
+- New tests in `tests/unit/code-similarity.test.ts` cover `normalizeSource`, `normalizeIdentifiersForSimilarity`, and `jaccardSimilarity` with 33 test cases. Good coverage for the similarity module.

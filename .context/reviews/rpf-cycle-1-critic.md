@@ -1,37 +1,54 @@
-# Critic Review — RPF Cycle 1 (2026-05-01)
+# Critic Review — RPF Cycle 3 (2026-05-04)
 
 **Reviewer:** critic
-**HEAD reviewed:** `894320ff`
+**HEAD reviewed:** `4cd03c2b`
+**Scope:** Multi-perspective critique of changes since `988435b5`.
+
+---
+
+## Prior cycle status
+
+- **C1-CT-1 (password validation policy-code mismatch):** RESOLVED — `password.ts` now matches AGENTS.md policy.
+- **C1-CT-2 (deferred MEDIUM items should be scheduled):** CARRY — still relevant.
 
 ---
 
 ## Multi-perspective critique
 
-### Policy-code alignment
+### Progress assessment
 
-The most substantive finding this cycle is the **password.ts vs AGENTS.md mismatch** (C1-CR-1 / C1-SR-1). The code enforces more restrictive password checks than the documented policy allows. This is a policy violation regardless of whether the extra checks are "better" security — the project explicitly chose minimum-length-only, and the code violates that choice. Either the policy or the code must be updated to match.
+This cycle shows good incremental progress:
+1. **Security:** CSRF validation added to recruiting validate endpoint — consistent with all other POST endpoints.
+2. **Performance:** SQL-level filtering for moderation queries — leverages existing indexes.
+3. **Correctness:** "open" state filter fix for pinned+locked threads — addresses a real logic bug.
+4. **i18n:** Hardcoded strings replaced with translations in contest and community pages.
+5. **Testing:** 33 new unit tests for code similarity, 4 component tests for ConditionalHeader, 2 new test cases for recruiting validate.
 
-### Carry-forward backlog health
+### Remaining i18n gaps
 
-The deferred backlog (17 items from prior cycles) has been well-maintained with exit criteria. However, several items (D1 JWT clock-skew, D2 JWT DB query per request, AGG-2 Date.now() in rate-limit, ARCH-CARRY-1 raw API handlers) are all MEDIUM items that have been deferred for 5+ cycles. The risk is that they become permanent residents. The recommendation is to schedule at least 1-2 MEDIUM deferred items per cycle going forward.
+The i18n fix in commit `95cbcf6a` was a good step, but there are still hardcoded English strings:
+- `CodeTimelinePanel.tsx:93` — "Loading..."
+- `CodeTimelinePanel.tsx:199` — "chars"
+- `loading.tsx` files — "Loading..." in aria-label and sr-only text
 
-### Test coverage
+These are low-severity but should be addressed for full i18n consistency.
 
-The test infrastructure is comprehensive (vitest unit/integration/component + playwright e2e). However, the `password.ts` policy violation has no test that would catch it — the tests validate the current behavior, not the documented policy. A policy-conformance test (e.g., "password matching username is accepted" per AGENTS.md rules) would have caught this drift.
+### Deferred backlog health
+
+The deferred MEDIUM items (D1, D2, AGG-2, ARCH-CARRY-1) remain deferred. The recommendation to schedule at least 1 MEDIUM item per cycle is still valid.
 
 ---
 
 ## Findings
 
-### C1-CT-1: [MEDIUM] Password validation policy-code mismatch
+### C3-CT-1: [LOW] Remaining hardcoded English strings after i18n fix
 
-- **File:** `src/lib/security/password.ts` vs `AGENTS.md:562-568`
+- **File:** `src/components/contest/code-timeline-panel.tsx:93,199`, `src/app/(dashboard)/loading.tsx`, `src/app/(public)/loading.tsx`
 - **Confidence:** HIGH
-- **Description:** Cross-agreement with C1-CR-1 and C1-SR-1. The code implements checks that the documented policy explicitly forbids.
-- **Fix:** Resolve the mismatch by either updating the policy or the code.
+- **Description:** The i18n fix in commit `95cbcf6a` replaced hardcoded strings in contest and community pages, but a few remain in the code timeline panel and loading screens. These should be translated for full i18n consistency.
+- **Fix:** Use existing `common.loading` key and add a new `contests.codeTimeline.charCount` key.
 
-### C1-CT-2: [LOW] Deferred MEDIUM items should be scheduled for implementation
+### C3-CT-2: [LOW] Deferred MEDIUM items should still be scheduled
 
-- **Confidence:** HIGH
-- **Description:** 4 MEDIUM items (D1, D2, AGG-2, ARCH-CARRY-1) have been deferred for 5+ cycles with no forward progress. Recommend scheduling at least one per cycle.
-- **Fix:** Add a planning directive to pick at least 1 MEDIUM deferred item per cycle.
+- **Confidence:** HIGH (carry-forward from C1-CT-2)
+- **Description:** The recommendation to schedule at least 1 MEDIUM deferred item per cycle remains valid.

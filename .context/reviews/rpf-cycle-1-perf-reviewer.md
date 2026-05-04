@@ -1,32 +1,32 @@
-# Performance Review — RPF Cycle 1 (2026-05-01)
+# Performance Review — RPF Cycle 3 (2026-05-04)
 
 **Reviewer:** perf-reviewer
-**HEAD reviewed:** `894320ff`
-**Scope:** Hot paths, render cost, bundle size, query parallelism
+**HEAD reviewed:** `4cd03c2b`
+**Scope:** Hot paths, render cost, bundle size, query parallelism. Focus on changes since `988435b5`.
+
+---
+
+## Prior cycle status
+
+- **C1-PR-1 (polling intervals not visibility-paused):** CARRY — still deferred.
+- **C1-PR-2 (sequential DB queries in getAssignmentStatusRows):** CARRY — still deferred.
 
 ---
 
 ## Findings
 
-### C1-PR-1: [LOW] Polling intervals not visibility-paused
+### C3-PR-1: [LOW] `listModerationDiscussionThreads` fetches all columns for filtered results
 
-- **File:** `src/hooks/use-submission-polling.ts`, `src/hooks/use-visibility-polling.ts`, `src/components/submission-list-auto-refresh.tsx`
-- **Confidence:** MEDIUM
-- **Description:** `setInterval`/`setTimeout` exist in real-time submission status, leaderboard updates, exam timers. No global pause when document is hidden. Background tabs still consume polling cycles.
-- **Fix:** Defer; candidate for visibility-based pause once usage telemetry shows it matters. Already tracked as C2-AGG-5 in deferred backlog.
-
-### C1-PR-2: [LOW] `getAssignmentStatusRows` performs 4 sequential DB queries
-
-- **File:** `src/lib/assignments/submissions.ts:483-601`
-- **Confidence:** MEDIUM
-- **Description:** The function runs 4 DB queries sequentially: assignment lookup, assignment problems, enrolled students, and a raw SQL aggregation. The first 3 could run in parallel since they have no data dependency on each other (they all depend only on `assignmentId`). This is especially impactful for large groups.
-- **Fix:** Use `Promise.all` for the 3 independent queries. The raw SQL aggregation depends on `assignment.deadline` and `assignment.latePenalty` from the first query, so it must remain sequential.
+- **File:** `src/lib/discussions/data.ts:289-298`
+- **Confidence:** LOW
+- **Description:** The moderation query now correctly filters by scope and state at the SQL level (good improvement from cycle 12b). However, it still fetches all columns including `content` (which can be large) even though the moderation UI may only need thread metadata. With `limit: 100`, this could be significant for threads with large content.
+- **Fix:** Consider selecting only the columns needed by the moderation view. Deferred — low impact, the limit is reasonable.
 
 ---
 
 ## No-issue confirmations
 
-- `Promise.all` parallelism in `src/app/layout.tsx` is correct.
-- Client component count (149 "use client") is healthy for an SSR-first Next.js 16 app.
-- Rate limiting uses `SELECT FOR UPDATE` transactions to prevent TOCTOU races. Correct.
-- Compiler execution uses `pLimit` for concurrency control. Correct.
+- `performance.now()` migration in `src/lib/assignments/code-similarity.ts` is correct and monotonic. Good improvement.
+- `Promise.all` parallelism in dashboard layout and other server components remains correct.
+- The SQL-level filtering in `listModerationDiscussionThreads` is a good performance improvement over the previous JS-level filtering.
+- Rate limiting, compiler concurrency control, and query patterns all remain correct.

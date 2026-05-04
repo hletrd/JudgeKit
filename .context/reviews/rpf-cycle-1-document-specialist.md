@@ -1,39 +1,43 @@
-# Document Specialist Review — RPF Cycle 1 (2026-05-01)
+# Document Specialist Review — RPF Cycle 3 (2026-05-04)
 
 **Reviewer:** document-specialist
-**HEAD reviewed:** `894320ff`
+**HEAD reviewed:** `4cd03c2b`
+**Scope:** Doc/code mismatch scan of changes since `988435b5`.
+
+---
+
+## Prior cycle status
+
+- **C1-DOC-1 (password validation docs vs code mismatch):** RESOLVED — `password.ts` now only checks minimum length, matching AGENTS.md policy.
+- **C1-DOC-2 (dead PasswordValidationError types):** RESOLVED — the type now only includes `"passwordTooShort"`.
 
 ---
 
 ## Doc/code mismatch scan
 
-### Password policy mismatch (CRITICAL)
+### Password policy (re-verification)
 
-**AGENTS.md:562-568 states:**
-> Password validation MUST only check minimum length — exactly 8 characters minimum, no other rules. Do NOT add complexity requirements (uppercase, numbers, symbols), similarity checks, or dictionary checks.
+**AGENTS.md states:** "Password validation MUST only check minimum length — exactly 8 characters minimum, no other rules."
 
 **`src/lib/security/password.ts` implements:**
 1. Minimum length check (8 chars) -- matches policy
-2. Common password check (20-entry deny list) -- violates policy ("dictionary checks")
-3. Username similarity check -- violates policy ("similarity checks")
-4. Email local part match check -- violates policy ("similarity checks")
 
-This is the most significant doc-code mismatch in the current codebase. The policy was presumably written to keep password validation simple, but the code diverged by adding "helpful" security checks.
+**Verdict:** Code now matches the documented policy. C1-DOC-1 and C1-DOC-2 fully resolved.
 
 ---
 
 ## Findings
 
-### C1-DOC-1: [MEDIUM] Password validation docs vs code mismatch
+### C3-DOC-1: [INFO] No new doc/code mismatches found
 
-- **File:** `AGENTS.md:562-568` vs `src/lib/security/password.ts`
-- **Confidence:** HIGH
-- **Description:** AGENTS.md explicitly forbids the checks that password.ts implements. Either the documentation or the code must be updated.
-- **Fix:** Either (a) update AGENTS.md to document the actual policy including common-password rejection and similarity checks, or (b) remove the extra checks from the code. Option (b) aligns with the stated design intent; option (a) acknowledges the security improvement. The project owner should decide.
+All recent changes are consistent with their documentation:
+- CSRF validation on recruiting validate endpoint follows the same pattern as documented in `csrf.ts` JSDoc.
+- SQL-level moderation filtering is consistent with the `dt_scope_idx` index documentation.
+- `performance.now()` migration is documented with inline comments referencing C12b-3.
 
-### C1-DOC-2: [LOW] AGENTS.md references `PasswordValidationError` types that may not exist after fix
+### C3-DOC-2: [LOW] i18n keys for contest metadata keywords not documented in CONTRIBUTING.md
 
-- **File:** `AGENTS.md:565-567`
-- **Confidence:** MEDIUM
-- **Description:** If the password checks are removed, the client-side form error message maps referencing `"passwordMatchesUsername"`, `"passwordMatchesEmail"`, and `"passwordTooCommon"` keys will have dead entries. The forms should be updated to remove these mappings.
-- **Fix:** Update all form components that reference the removed error types.
+- **File:** `messages/en.json` (new keys under `contests.keywords`)
+- **Confidence:** LOW
+- **Description:** The new i18n keys `contests.keywords.programmingContest`, `contests.keywords.icpcScoring`, `contests.keywords.ioiScoring` are used in `generateMetadata` for SEO. There's no documentation about the i18n key naming convention for SEO metadata. This is a minor documentation gap.
+- **Fix:** Consider adding a note in CONTRIBUTING.md about i18n key conventions for SEO metadata. Deferred — low priority.
