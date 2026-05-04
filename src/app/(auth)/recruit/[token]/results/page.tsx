@@ -1,8 +1,11 @@
+import { cache } from "react";
 import { getTranslations, getLocale } from "next-intl/server";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { auth } from "@/lib/auth";
 import { getRecruitingInvitationByToken } from "@/lib/assignments/recruiting-invitations";
+import { checkServerActionRateLimit } from "@/lib/security/api-rate-limit";
+import { extractClientIp } from "@/lib/security/ip";
 import { getDbNow } from "@/lib/db-time";
 import { db } from "@/lib/db";
 import {
@@ -18,6 +21,15 @@ import { SubmissionStatusBadge } from "@/components/submission-status-badge";
 import { NO_INDEX_METADATA } from "@/lib/seo";
 import { computeRecruitResultsTotals } from "@/lib/assignments/recruiting-results";
 import Link from "next/link";
+
+/**
+ * Cached version of getRecruitingInvitationByToken for use within a single
+ * server render. Both generateMetadata and the page component need the same
+ * invitation data, so React.cache() deduplicates the DB query within one
+ * request, eliminating the duplicate lookup and ensuring consistency.
+ * Mirrors the pattern in the recruit start page at ../page.tsx.
+ */
+const getCachedInvitation = cache(getRecruitingInvitationByToken);
 
 /**
  * Candidate results page (H-4).
@@ -44,7 +56,22 @@ export default async function RecruitResultsPage({
   const t = await getTranslations("recruit");
   const locale = await getLocale();
 
-  const invitation = await getRecruitingInvitationByToken(token);
+  // Rate-limit token lookups to prevent brute-force enumeration.
+  // The /api/v1/recruiting/validate route has the same protection.
+  // When rate-limited, show the same "invalidToken" card as a failed lookup
+  // so the attacker cannot distinguish rate-limit from invalid-token.
+  const { headers } = await import("next/headers");
+  const reqHeaders = await headers();
+  const clientIp = extractClientIp(reqHeaders) ?? "unknown";
+  const rateLimitResult = await checkServerActionRateLimit(
+    clientIp,
+    "recruiting:results",
+    30,   // max 30 requests per window
+    60,   // 60-second window
+  );
+  const isRateLimited = rateLimitResult !== null;
+
+  const invitation = isRateLimited ? null : await getCachedInvitation(token);
   if (!invitation || invitation.status === "revoked") {
     return (
       <Card className="w-full max-w-md">
