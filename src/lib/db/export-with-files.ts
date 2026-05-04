@@ -31,6 +31,10 @@ interface BackupIntegrityManifest {
 
 const BACKUP_MANIFEST_PATH = "backup-manifest.json";
 
+// Intentionally uses inline createHash rather than hashToken — this computes
+// an integrity checksum for backup verification, not a verification hash.
+// Divergence from token-hash.ts is acceptable because the checksum is never
+// compared against stored DB values that use hashToken(). See C6-6 (cycle 6).
 function sha256Hex(data: Buffer | Uint8Array | string) {
   return createHash("sha256").update(data).digest("hex");
 }
