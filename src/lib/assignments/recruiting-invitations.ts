@@ -8,6 +8,7 @@ import {
   recruitingInvitations,
   contestAccessTokens,
   enrollments,
+  sessions,
   users,
 } from "@/lib/db/schema";
 import { and, eq, sql, count } from "drizzle-orm";
@@ -263,6 +264,15 @@ export async function resetRecruitingInvitationAccountPassword(id: string) {
         updatedAt: now,
       })
       .where(eq(users.id, userId));
+
+    // Delete all active sessions so the candidate's existing browser
+    // session is immediately revoked. Without this, a compromised session
+    // could survive until the next JWT refresh cycle. tokenInvalidatedAt
+    // above also causes the JWT callback to clear the token on refresh,
+    // providing defense-in-depth.
+    await tx
+      .delete(sessions)
+      .where(eq(sessions.userId, userId));
 
     await tx
       .update(recruitingInvitations)
