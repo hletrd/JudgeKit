@@ -569,7 +569,7 @@ if [[ "$SKIP_BUILD" == false ]]; then
             fi
         else
             info "Building all judge language images on ${REMOTE_HOST} [${PLATFORM}]..."
-            remote "cd ${REMOTE_DIR} && (DOCKER_DEFAULT_PLATFORM=${PLATFORM} docker compose -f docker-compose.yml build 2>/dev/null || \
+            remote "cd ${REMOTE_DIR} && (DOCKER_DEFAULT_PLATFORM=${PLATFORM} docker compose -f docker-compose.yml build || \
                 DOCKER_DEFAULT_PLATFORM=${PLATFORM} docker-compose -f docker-compose.yml build)"
             success "Judge language images built on remote"
         fi
@@ -673,11 +673,11 @@ fi
 # the local worker with `docker compose stop judge-worker` after `up -d`.
 # ---------------------------------------------------------------------------
 info "Stopping existing containers (if any)..."
-remote "cd ${REMOTE_DIR} && cp -f .env.production .env && (docker compose -f docker-compose.production.yml down --remove-orphans 2>/dev/null || docker-compose -f docker-compose.production.yml down --remove-orphans 2>/dev/null || true)"
+remote "cd ${REMOTE_DIR} && cp -f .env.production .env && (docker compose -f docker-compose.production.yml down --remove-orphans || docker-compose -f docker-compose.production.yml down --remove-orphans || true)"
 
 # 5a. Start only the database container
 info "Starting database container..."
-remote "cd ${REMOTE_DIR} && (docker compose -f docker-compose.production.yml --env-file .env.production up -d db 2>/dev/null || docker-compose -f docker-compose.production.yml --env-file .env.production up -d db)"
+remote "cd ${REMOTE_DIR} && (docker compose -f docker-compose.production.yml --env-file .env.production up -d db || docker-compose -f docker-compose.production.yml --env-file .env.production up -d db)"
 
 info "Waiting for database to be healthy..."
 DB_BECAME_HEALTHY=0
@@ -858,11 +858,11 @@ if [[ "${INCLUDE_WORKER}" == "true" ]]; then
 else
     info "Starting all containers (local judge worker will be stopped after startup)..."
 fi
-remote "cd ${REMOTE_DIR} && (docker compose -f docker-compose.production.yml --env-file .env.production up -d 2>/dev/null || docker-compose -f docker-compose.production.yml --env-file .env.production up -d)"
+remote "cd ${REMOTE_DIR} && (docker compose -f docker-compose.production.yml --env-file .env.production up -d || docker-compose -f docker-compose.production.yml --env-file .env.production up -d)"
 
 if [[ "${INCLUDE_WORKER}" != "true" ]]; then
     info "Stopping local judge-worker per INCLUDE_WORKER=${INCLUDE_WORKER}..."
-    remote "cd ${REMOTE_DIR} && (docker compose -f docker-compose.production.yml --env-file .env.production stop judge-worker 2>/dev/null || docker-compose -f docker-compose.production.yml --env-file .env.production stop judge-worker 2>/dev/null || true)"
+    remote "cd ${REMOTE_DIR} && (docker compose -f docker-compose.production.yml --env-file .env.production stop judge-worker || docker-compose -f docker-compose.production.yml --env-file .env.production stop judge-worker 2>/dev/null || true)"
 fi
 
 info "Waiting for app container to be healthy..."
