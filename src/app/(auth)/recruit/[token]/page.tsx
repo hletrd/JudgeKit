@@ -4,9 +4,12 @@ import { getTranslations, getLocale } from "next-intl/server";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { auth } from "@/lib/auth";
 import { getRecruitingInvitationByToken } from "@/lib/assignments/recruiting-invitations";
+import { checkServerActionRateLimit } from "@/lib/security/api-rate-limit";
+import { extractClientIp } from "@/lib/security/ip";
 import { getEnabledCompilerLanguages } from "@/lib/compiler/catalog";
 import { getDbNow } from "@/lib/db-time";
 import { formatDateTimeInTimeZone } from "@/lib/datetime";
+import { headers } from "next/headers";
 import { db } from "@/lib/db";
 import { assignmentProblems, assignments } from "@/lib/db/schema";
 import { eq, sql } from "drizzle-orm";
@@ -32,13 +35,13 @@ export async function generateMetadata({
   if (!invitation || invitation.status === "revoked") {
     return { title: t("invalidToken") };
   }
-  // Use DB server time for expiry/deadline checks to avoid clock skew
-  // between the app server and DB server (same rationale as commit b42a7fe4).
-  const now = await getDbNow();
-  if (invitation.expiresAt && invitation.expiresAt < now) {
-    return { title: t("expired") };
-  }
-  if (invitation.status === "redeemed") {
+  // A redeemed invitation represents an existing candidate account. Even if
+  // the invitation link has expired, the candidate should still be able to
+  // re-enter the contest via their account password. Skip the expiry gate
+  // for redeemed tokens so the browser tab shows "Claimed" (not "Expired"),
+  // consistent with the page body logic. See C6-3 (cycle 6 review) and
+  // AGG-4 (cycle 7 review).
+  if (invitation.status === "redeemed" && invitation.userId) {
     const description = t("claimedDescription");
     return {
       title: t("claimed"),
@@ -46,6 +49,12 @@ export async function generateMetadata({
       openGraph: { title: t("claimed"), description },
       twitter: { card: "summary", title: t("claimed"), description },
     };
+  }
+  // Use DB server time for expiry/deadline checks to avoid clock skew
+  // between the app server and DB server (same rationale as commit b42a7fe4).
+  const now = await getDbNow();
+  if (invitation.expiresAt && invitation.expiresAt < now) {
+    return { title: t("expired") };
   }
   const title = t("title");
   const description = t("ogDescription");
@@ -68,24 +77,27 @@ export default async function RecruitPage({
   const locale = await getLocale();
   const session = await auth();
 
-  const invitation = await getCachedInvitation(token);
+  // Rate-limit token lookups to prevent brute-force enumeration.
+  // The /api/v1/recruiting/validate route and the results page have the same
+  // protection. When rate-limited, show the same "invalidToken" card as a
+  // failed lookup so the attacker cannot distinguish rate-limit from invalid-token.
+  const reqHeaders = await headers();
+  const clientIp = extractClientIp(reqHeaders) ?? "unknown";
+  const rateLimitResult = await checkServerActionRateLimit(
+    clientIp,
+    "recruiting:start",
+    30,   // max 30 requests per window
+    60,   // 60-second window
+  );
+  const isRateLimited = rateLimitResult !== null;
+
+  const invitation = isRateLimited ? null : await getCachedInvitation(token);
 
   // Use DB server time for expiry/deadline checks to avoid clock skew
   // between the app server and DB server (same rationale as commit b42a7fe4).
   const now = await getDbNow();
 
-  if (!invitation) {
-    return (
-      <Card className="w-full max-w-md">
-        <CardHeader className="text-center">
-          <CardTitle className="text-2xl">{t("invalidToken")}</CardTitle>
-          <CardDescription>{t("invalidTokenDescription")}</CardDescription>
-        </CardHeader>
-      </Card>
-    );
-  }
-
-  if (invitation.status === "revoked") {
+  if (!invitation || invitation.status === "revoked") {
     return (
       <Card className="w-full max-w-md">
         <CardHeader className="text-center">
