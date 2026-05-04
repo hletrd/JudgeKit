@@ -256,11 +256,17 @@ export async function checkServerActionRateLimit(
       .select({
         attempts: rateLimits.attempts,
         windowStartedAt: rateLimits.windowStartedAt,
+        blockedUntil: rateLimits.blockedUntil,
       })
       .from(rateLimits)
       .where(eq(rateLimits.key, rateLimitKey))
       .for("update")
       .limit(1);
+
+    // If still within a block period, reject immediately
+    if (existing?.blockedUntil && existing.blockedUntil > now) {
+      return { error: "rateLimited" };
+    }
 
     let attempts: number;
     let windowStartedAt: number;
@@ -285,10 +291,13 @@ export async function checkServerActionRateLimit(
     }
 
     const newAttempts = attempts + 1;
+    // Set blockedUntil when the limit is hit so there is a cooldown period
+    // instead of allowing immediate retries after the window expires.
+    const blockedUntil = newAttempts >= maxRequests ? now + windowMs : null;
 
     if (exists) {
       await tx.update(rateLimits)
-        .set({ attempts: newAttempts, windowStartedAt, lastAttempt: now })
+        .set({ attempts: newAttempts, windowStartedAt, lastAttempt: now, blockedUntil })
         .where(eq(rateLimits.key, rateLimitKey));
     } else {
       await tx.insert(rateLimits)
@@ -296,7 +305,7 @@ export async function checkServerActionRateLimit(
           key: rateLimitKey,
           attempts: newAttempts,
           windowStartedAt,
-          blockedUntil: null,
+          blockedUntil,
           consecutiveBlocks: 0,
           lastAttempt: now,
         });
