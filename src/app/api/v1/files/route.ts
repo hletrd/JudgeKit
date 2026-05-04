@@ -9,7 +9,7 @@ import { parsePagination } from "@/lib/api/pagination";
 import { recordAuditEvent } from "@/lib/audit/events";
 import { getConfiguredSettings } from "@/lib/system-settings-config";
 import { isImageMimeType, processImage } from "@/lib/files/image-processing";
-import { isAllowedMimeType, validateFileSize, getExtensionForMime, isZipMimeType, validateZipDecompressedSize } from "@/lib/files/validation";
+import { isAllowedMimeType, validateFileSize, getExtensionForMime, isZipMimeType, validateZipDecompressedSize, verifyFileMagicBytes } from "@/lib/files/validation";
 import { writeUploadedFile } from "@/lib/files/storage";
 import { logger } from "@/lib/logger";
 import { escapeLikePattern } from "@/lib/db/like";
@@ -37,6 +37,14 @@ export const POST = createApiHandler({
       }
 
       const rawBuffer = Buffer.from(await file.arrayBuffer());
+
+      // Magic-byte verification: ensure the file content matches the declared
+      // MIME type. This prevents uploading disguised executables (e.g., an
+      // .exe with a .pdf MIME type). Images are verified by sharp during
+      // processing; text types are checked for null bytes (binary indicator).
+      if (!verifyFileMagicBytes(rawBuffer, file.type)) {
+        return apiError("fileContentMismatch", 400);
+      }
 
       // ZIP bomb protection: validate total decompressed size for ZIP uploads
       if (isZipMimeType(file.type)) {

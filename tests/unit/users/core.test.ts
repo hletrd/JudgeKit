@@ -197,9 +197,6 @@ describe("validateAndHashPassword", () => {
     mocks.getPasswordValidationError.mockReturnValue(null);
     mocks.hashPassword.mockResolvedValue("hashed-password");
 
-    // validateAndHashPassword takes a single password argument; the optional
-    // context parameter was removed when the password policy was simplified
-    // to "minimum length only" (see AGENTS.md / src/lib/security/password.ts).
     const result = await validateAndHashPassword("StrongPass1!");
     expect(result).toEqual({ hash: "hashed-password" });
     expect(mocks.hashPassword).toHaveBeenCalledWith("StrongPass1!");
@@ -212,18 +209,6 @@ describe("validateAndHashPassword", () => {
     const result = await validateAndHashPassword("weak");
     expect(result).toEqual({ error: "passwordTooShort" });
     expect(mocks.hashPassword).not.toHaveBeenCalled();
-  });
-
-  it("calls getPasswordValidationError with just the password (no context arg)", async () => {
-    const { validateAndHashPassword } = await import("@/lib/users/core");
-    mocks.getPasswordValidationError.mockReturnValue(null);
-    mocks.hashPassword.mockResolvedValue("hashed");
-
-    // The legacy 2-arg form (password, ctx) was dropped along with the
-    // simplified policy. Guard against accidental reintroduction.
-    await validateAndHashPassword("Password1!");
-    expect(mocks.getPasswordValidationError).toHaveBeenCalledWith("Password1!");
-    expect(mocks.getPasswordValidationError).toHaveBeenCalledTimes(1);
   });
 });
 

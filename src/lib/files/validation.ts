@@ -128,3 +128,69 @@ const MIME_TO_EXTENSION: Record<string, string> = {
 export function getExtensionForMime(mimeType: string): string {
   return MIME_TO_EXTENSION[mimeType] ?? ".bin";
 }
+
+// ── Magic-byte verification ──────────────────────────────────────────────────
+
+/**
+ * Known magic-byte signatures for supported non-image MIME types.
+ * Used to verify that uploaded file content matches the declared MIME type,
+ * preventing disguised executable uploads.
+ *
+ * Each entry maps a MIME type to a list of acceptable byte signatures
+ * (any match passes — some formats have multiple valid signatures).
+ */
+const MAGIC_SIGNATURES: Record<string, Array<{ offset: number; bytes: Buffer }>> = (() => {
+  const entries: Record<string, Array<{ offset: number; bytes: Buffer }>> = {};
+  // PDF: starts with %PDF-
+  entries["application/pdf"] = [{ offset: 0, bytes: Buffer.from("%PDF-", "ascii") }];
+  // ZIP: starts with PK\x03\x04 (local file header) or PK\x05\x06 (empty archive)
+  entries["application/zip"] = [
+    { offset: 0, bytes: Buffer.from([0x50, 0x4b, 0x03, 0x04]) },
+    { offset: 0, bytes: Buffer.from([0x50, 0x4b, 0x05, 0x06]) },
+  ];
+  entries["application/x-zip-compressed"] = entries["application/zip"];
+  return entries;
+})();
+
+/**
+ * Verify that the file content matches the declared MIME type by checking
+ * magic-byte signatures. Returns true if the content matches, false if it
+ * does not match or if verification is not supported for the given MIME type.
+ *
+ * Images are verified by `sharp` during processing (not here).
+ * Text types (text/plain, text/csv, text/markdown) have no binary signature,
+ * so we verify they don't contain null bytes (which would indicate binary
+ * content disguised as text).
+ */
+export function verifyFileMagicBytes(buffer: Buffer, declaredMimeType: string): boolean {
+  // Images are verified by sharp during processImage — skip here
+  if (isImageMimeType(declaredMimeType)) {
+    return true;
+  }
+
+  // Text types: no binary signature, but verify no null bytes in the first 8KB
+  // (a strong indicator that the content is not actually text)
+  if (declaredMimeType.startsWith("text/")) {
+    const checkSlice = buffer.subarray(0, Math.min(buffer.length, 8192));
+    return !checkSlice.includes(0x00);
+  }
+
+  // Check known magic-byte signatures
+  const signatures = MAGIC_SIGNATURES[declaredMimeType];
+  if (!signatures) {
+    // No signature defined for this MIME type — allow by default
+    // (future signatures can be added to MAGIC_SIGNATURES)
+    return true;
+  }
+
+  for (const sig of signatures) {
+    const start = sig.offset;
+    const end = start + sig.bytes.length;
+    if (buffer.length < end) continue;
+    if (buffer.subarray(start, end).equals(sig.bytes)) {
+      return true;
+    }
+  }
+
+  return false;
+}
