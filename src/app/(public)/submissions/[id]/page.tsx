@@ -59,7 +59,7 @@ export default async function PublicSubmissionDetailPage({ params, searchParams 
         columns: { name: true },
       },
       problem: {
-        columns: { id: true, title: true, timeLimitMs: true, showCompileOutput: true, showDetailedResults: true, showRuntimeErrors: true },
+        columns: { id: true, title: true, timeLimitMs: true, showCompileOutput: true, showDetailedResults: true, showRuntimeErrors: true, visibility: true },
       },
       results: {
         with: {
@@ -76,6 +76,14 @@ export default async function PublicSubmissionDetailPage({ params, searchParams 
   }
 
   const isOwner = submission.userId === session.user.id;
+
+  // Non-owners can only view submissions for public problems. This aligns
+  // the detail page with the list page's guestVisibilityFilter and prevents
+  // authenticated users from discovering private-problem submission metadata
+  // (contest/exam submissions) by guessing submission IDs. See AGG-2 (cycle 7).
+  if (!isOwner && submission.problem?.visibility !== "public") {
+    notFound();
+  }
 
   // Fetch the viewer's own other submissions for the same problem
   const otherSubmissions = submission.problemId
