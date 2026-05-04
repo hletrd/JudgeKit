@@ -66,12 +66,13 @@ export async function changePassword(
   const newHash = await hashPassword(newPassword);
 
   try {
+    const now = await getDbNowUncached();
     await db.update(users)
       .set(withUpdatedAt({
         passwordHash: newHash,
         mustChangePassword: false,
-        tokenInvalidatedAt: await getDbNowUncached(),
-      }, await getDbNowUncached()))
+        tokenInvalidatedAt: now,
+      }, now))
       .where(eq(users.id, user.id));
   } catch (error) {
     logger.error({ err: error }, "Failed to change password");

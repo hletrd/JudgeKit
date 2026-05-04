@@ -105,14 +105,15 @@ export async function toggleUserActive(userId: string, isActive: boolean): Promi
   }
 
   try {
+    const now = await getDbNowUncached();
     const updates: UserUpdates = { isActive };
 
     if (!isActive) {
-      updates.tokenInvalidatedAt = await getDbNowUncached();
+      updates.tokenInvalidatedAt = now;
     }
 
     await db.update(users)
-      .set(withUpdatedAt(updates, await getDbNowUncached()))
+      .set(withUpdatedAt(updates, now))
       .where(eq(users.id, userId));
 
     const auditContext = await buildServerActionAuditContext("/dashboard/admin/users");
@@ -303,6 +304,7 @@ export async function editUser(userId: string, data: ManagedUserInput): Promise<
     }
 
     try {
+      const now = await getDbNowUncached();
       await execTransaction(async (tx) => {
         if (await isUsernameTaken(data.username, userId, tx)) {
           throw new Error("usernameInUse");
@@ -312,7 +314,7 @@ export async function editUser(userId: string, data: ManagedUserInput): Promise<
           throw new Error("emailInUse");
         }
 
-        await tx.update(users).set(withUpdatedAt(updates, await getDbNowUncached())).where(eq(users.id, userId));
+        await tx.update(users).set(withUpdatedAt(updates, now)).where(eq(users.id, userId));
       });
     } catch (error) {
       const pgErr = error as { code?: string; constraint?: string };
