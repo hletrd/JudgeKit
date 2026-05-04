@@ -86,7 +86,7 @@ async function atomicConsumeRateLimit(key: string): Promise<{ limited: boolean; 
         blockedUntil: rateLimits.blockedUntil,
       })
       .from(rateLimits)
-      .where(eq(rateLimits.key, rateLimitKey))
+      .where(eq(rateLimits.key, key))
       .for("update")
       .limit(1);
 
@@ -97,7 +97,7 @@ async function atomicConsumeRateLimit(key: string): Promise<{ limited: boolean; 
       // escalation is not needed.
       await tx.insert(rateLimits)
         .values({
-          key: rateLimitKey,
+          key,
           attempts: 1,
           windowStartedAt: now,
           blockedUntil: null,
@@ -114,7 +114,7 @@ async function atomicConsumeRateLimit(key: string): Promise<{ limited: boolean; 
     if (existing.windowStartedAt + windowMs <= now) {
       await tx.update(rateLimits)
         .set({ attempts: 1, windowStartedAt: now, lastAttempt: now, blockedUntil: null })
-        .where(eq(rateLimits.key, rateLimitKey));
+        .where(eq(rateLimits.key, key));
       return false;
     }
 
@@ -131,7 +131,7 @@ async function atomicConsumeRateLimit(key: string): Promise<{ limited: boolean; 
         lastAttempt: now,
         blockedUntil: blocked,
       })
-      .where(eq(rateLimits.key, rateLimitKey));
+      .where(eq(rateLimits.key, key));
 
     return false;
   });
