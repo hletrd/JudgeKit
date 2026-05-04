@@ -45,6 +45,7 @@ const MAX_SILENT_FAILURES = 3;
 let auditEventWriteFailures = 0;
 let consecutiveAuditFailures = 0;
 let lastAuditEventWriteFailureAt: string | null = null;
+let droppedAuditEvents = 0;
 
 /**
  * Recursively truncate string values within a JSON-compatible object
@@ -173,6 +174,15 @@ export async function flushAuditBuffer(): Promise<void> {
     // ones so the next successful flush inserts them in the correct order.
     if (_auditBuffer.length + batch.length < FLUSH_SIZE_THRESHOLD * 2) {
       _auditBuffer = [...batch, ..._auditBuffer];
+    } else {
+      // Buffer overflow — the failed batch plus new events exceeds the safety
+      // threshold. Drop the failed batch and track the loss so operators can
+      // detect and investigate via the health endpoint.
+      droppedAuditEvents += batch.length;
+      logger.error(
+        { droppedCount: batch.length, totalDropped: droppedAuditEvents, bufferSize: _auditBuffer.length },
+        "CRITICAL: dropped audit events due to buffer overflow — DB may be down",
+      );
     }
     if (consecutiveAuditFailures >= MAX_SILENT_FAILURES) {
       logger.error({ count: batch.length, err: error, consecutiveFailures: consecutiveAuditFailures }, `CRITICAL: failed to flush ${batch.length} audit events`);
@@ -223,8 +233,9 @@ export function recordAuditEvent({
 export function getAuditEventHealthSnapshot() {
   return {
     failedWrites: auditEventWriteFailures,
+    droppedEvents: droppedAuditEvents,
     lastFailureAt: lastAuditEventWriteFailureAt,
-    status: auditEventWriteFailures === 0 ? "ok" : "degraded",
+    status: auditEventWriteFailures === 0 && droppedAuditEvents === 0 ? "ok" : "degraded",
   } as const;
 }
 
