@@ -1,4 +1,4 @@
-import { and, desc, eq, inArray, sql } from "drizzle-orm";
+import { and, desc, eq, inArray, isNotNull, isNull, or, sql } from "drizzle-orm";
 import { db } from "@/lib/db";
 import { communityVotes, discussionPosts, discussionThreads, problems } from "@/lib/db/schema";
 import { canAccessProblem } from "@/lib/auth/permissions";
@@ -69,6 +69,22 @@ function withPostVotes<T extends { id: string }>(posts: T[], summaries: Map<stri
   }));
 }
 
+/**
+ * Shared comparator for discussion threads: pinned first, then by voteScore
+ * descending, then by updatedAt descending. Used by all thread list functions
+ * to keep sort order consistent and DRY.
+ */
+function compareThreadsByPinnedVoteScoreDate(
+  left: { pinnedAt: Date | null; voteScore: number; updatedAt: Date | string },
+  right: { pinnedAt: Date | null; voteScore: number; updatedAt: Date | string },
+) {
+  const leftPinned = left.pinnedAt ? 1 : 0;
+  const rightPinned = right.pinnedAt ? 1 : 0;
+  if (leftPinned !== rightPinned) return rightPinned - leftPinned;
+  if (left.voteScore !== right.voteScore) return right.voteScore - left.voteScore;
+  return new Date(right.updatedAt).getTime() - new Date(left.updatedAt).getTime();
+}
+
 export async function listGeneralDiscussionThreads(sort: "newest" | "popular" = "newest", viewerUserId?: string | null) {
   const threads = await db.query.discussionThreads.findMany({
     where: eq(discussionThreads.scopeType, "general"),
@@ -84,13 +100,7 @@ export async function listGeneralDiscussionThreads(sort: "newest" | "popular" = 
   const withVotes = withThreadVotes(threads, voteSummaries);
 
   if (sort === "popular") {
-    return withVotes.sort((left, right) => {
-      const leftPinned = left.pinnedAt ? 1 : 0;
-      const rightPinned = right.pinnedAt ? 1 : 0;
-      if (leftPinned !== rightPinned) return rightPinned - leftPinned;
-      if (left.voteScore !== right.voteScore) return right.voteScore - left.voteScore;
-      return new Date(right.updatedAt).getTime() - new Date(left.updatedAt).getTime();
-    });
+    return withVotes.sort(compareThreadsByPinnedVoteScoreDate);
   }
 
   return withVotes;
@@ -108,13 +118,7 @@ export async function listProblemDiscussionThreads(problemId: string, viewerUser
   });
 
   const voteSummaries = await listVoteSummaries("thread", threads.map((thread) => thread.id), viewerUserId);
-  return withThreadVotes(threads, voteSummaries).sort((left, right) => {
-    const leftPinned = left.pinnedAt ? 1 : 0;
-    const rightPinned = right.pinnedAt ? 1 : 0;
-    if (leftPinned !== rightPinned) return rightPinned - leftPinned;
-    if (left.voteScore !== right.voteScore) return right.voteScore - left.voteScore;
-    return new Date(right.updatedAt).getTime() - new Date(left.updatedAt).getTime();
-  });
+  return withThreadVotes(threads, voteSummaries).sort(compareThreadsByPinnedVoteScoreDate);
 }
 
 export async function listProblemSolutionThreads(problemId: string, viewerUserId?: string | null) {
@@ -129,13 +133,7 @@ export async function listProblemSolutionThreads(problemId: string, viewerUserId
   });
 
   const voteSummaries = await listVoteSummaries("thread", threads.map((thread) => thread.id), viewerUserId);
-  return withThreadVotes(threads, voteSummaries).sort((left, right) => {
-    const leftPinned = left.pinnedAt ? 1 : 0;
-    const rightPinned = right.pinnedAt ? 1 : 0;
-    if (leftPinned !== rightPinned) return rightPinned - leftPinned;
-    if (left.voteScore !== right.voteScore) return right.voteScore - left.voteScore;
-    return new Date(right.updatedAt).getTime() - new Date(left.updatedAt).getTime();
-  });
+  return withThreadVotes(threads, voteSummaries).sort(compareThreadsByPinnedVoteScoreDate);
 }
 
 export async function listProblemEditorials(problemId: string, viewerUserId?: string | null) {
@@ -166,13 +164,7 @@ export async function listProblemEditorials(problemId: string, viewerUserId?: st
       ...thread,
       posts: withPostVotes(thread.posts, postVotes),
     }))
-    .sort((left, right) => {
-      const leftPinned = left.pinnedAt ? 1 : 0;
-      const rightPinned = right.pinnedAt ? 1 : 0;
-      if (leftPinned !== rightPinned) return rightPinned - leftPinned;
-      if (left.voteScore !== right.voteScore) return right.voteScore - left.voteScore;
-      return new Date(right.updatedAt).getTime() - new Date(left.updatedAt).getTime();
-    });
+    .sort(compareThreadsByPinnedVoteScoreDate);
 }
 
 export async function getDiscussionThreadById(threadId: string, viewerUserId?: string | null) {
@@ -272,7 +264,32 @@ export async function listModerationDiscussionThreads(options: {
   const scope = options.scope ?? "all";
   const state = options.state ?? "all";
 
-  const threads = await db.query.discussionThreads.findMany({
+  // Push scope and state filters to the SQL WHERE clause instead of filtering
+  // in JavaScript. This leverages the dt_scope_idx index on scopeType and
+  // reduces DB I/O by only returning rows that match the requested filters.
+  const conditions = [];
+
+  if (scope !== "all") {
+    conditions.push(eq(discussionThreads.scopeType, scope));
+  }
+
+  if (state === "locked") {
+    conditions.push(isNotNull(discussionThreads.lockedAt));
+  } else if (state === "pinned") {
+    conditions.push(isNotNull(discussionThreads.pinnedAt));
+  } else if (state === "open") {
+    conditions.push(
+      and(
+        isNull(discussionThreads.lockedAt),
+        isNull(discussionThreads.pinnedAt),
+      )!
+    );
+  }
+
+  const whereClause = conditions.length > 0 ? and(...conditions) : undefined;
+
+  return db.query.discussionThreads.findMany({
+    where: whereClause,
     with: {
       author: { columns: { id: true, name: true, role: true } },
       problem: { columns: { id: true, title: true } },
@@ -280,21 +297,5 @@ export async function listModerationDiscussionThreads(options: {
     },
     orderBy: [desc(discussionThreads.pinnedAt), desc(discussionThreads.updatedAt)],
     limit: 100,
-  });
-
-  return threads.filter((thread) => {
-    if (scope !== "all" && thread.scopeType !== scope) {
-      return false;
-    }
-    if (state === "locked" && !thread.lockedAt) {
-      return false;
-    }
-    if (state === "pinned" && !thread.pinnedAt) {
-      return false;
-    }
-    if (state === "open" && (thread.lockedAt || thread.pinnedAt)) {
-      return false;
-    }
-    return true;
   });
 }
