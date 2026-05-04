@@ -381,6 +381,10 @@ export const authConfig: NextAuthConfig = {
 
         const loginContext = getLoginEventContextFromUser(user);
         const ua = loginContext?.userAgent ?? "";
+        // Intentionally uses inline createHash rather than hashToken — this is
+        // a UA fingerprint (truncated to 16 hex chars), not a verification hash.
+        // Divergence from token-hash.ts is acceptable because the UA hash is
+        // never compared against stored DB values that use hashToken().
         updatedToken.uaHash = crypto
           .createHash("sha256")
           .update(ua)
