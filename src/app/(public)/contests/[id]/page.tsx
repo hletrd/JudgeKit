@@ -144,7 +144,6 @@ export default async function PublicContestDetailPage({ params }: { params: Prom
           status: submissions.status,
           score: submissions.score,
           submittedAt: submissions.submittedAt,
-          compileOutput: submissions.compileOutput,
           executionTimeMs: submissions.executionTimeMs,
           memoryUsedKb: submissions.memoryUsedKb,
           problem: {
@@ -387,7 +386,6 @@ export default async function PublicContestDetailPage({ params }: { params: Prom
                               <SubmissionStatusBadge
                                 status={sub.status}
                                 label={statusLabelMap[sub.status as keyof typeof statusLabelMap] ?? sub.status ?? ""}
-                                compileOutput={sub.compileOutput}
                                 executionTimeMs={sub.executionTimeMs}
                                 memoryUsedKb={sub.memoryUsedKb}
                                 score={sub.score}
