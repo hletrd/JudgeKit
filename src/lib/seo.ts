@@ -148,7 +148,22 @@ export function buildSocialImageUrl(options: {
     params.set("footer", summarizeShortLabelForMetadata(options.footer, 80));
   }
 
-  return buildAbsoluteUrl(`/og?${params.toString()}`);
+  const url = buildAbsoluteUrl(`/og?${params.toString()}`);
+  // Guard against excessively long social image URLs (most servers/browsers
+  // handle up to ~2000-8000 chars). If the URL exceeds 2000 characters,
+  // strip optional parameters from least to most important until within limits.
+  const MAX_SOCIAL_URL_LENGTH = 2000;
+  if (url.length > MAX_SOCIAL_URL_LENGTH) {
+    const optionalKeys = ["footer", "meta", "badge", "section", "description"];
+    for (const key of optionalKeys) {
+      if (params.has(key)) {
+        params.delete(key);
+        const trimmed = buildAbsoluteUrl(`/og?${params.toString()}`);
+        if (trimmed.length <= MAX_SOCIAL_URL_LENGTH) return trimmed;
+      }
+    }
+  }
+  return url;
 }
 
 export function buildPublicMetadata(options: {
