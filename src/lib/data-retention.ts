@@ -30,7 +30,19 @@ export type DataRetentionKey = keyof typeof DATA_RETENTION_DAYS;
  * `DATA_RETENTION_LEGAL_HOLD` environment variable.  Intended for
  * litigation holds, regulatory investigations, or any scenario where
  * data must not be deleted until the hold is lifted.
+ *
+ * Re-read from the environment on each call so that changing the env var
+ * at runtime (e.g., Kubernetes ConfigMap rollout) takes effect on the next
+ * prune cycle without requiring a process restart. Previously this was a
+ * module-level constant, which meant runtime env-var changes were invisible
+ * until the next deploy.
  */
+export function isDataRetentionLegalHold(): boolean {
+  return process.env.DATA_RETENTION_LEGAL_HOLD === "true" ||
+    process.env.DATA_RETENTION_LEGAL_HOLD === "1";
+}
+
+/** @deprecated Use isDataRetentionLegalHold() for runtime-responsive checks. */
 export const DATA_RETENTION_LEGAL_HOLD =
   process.env.DATA_RETENTION_LEGAL_HOLD === "true" ||
   process.env.DATA_RETENTION_LEGAL_HOLD === "1";

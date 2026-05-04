@@ -32,6 +32,7 @@ vi.mock("@/lib/data-retention", () => ({
     loginEvents: 180,
   },
   DATA_RETENTION_LEGAL_HOLD: false,
+  isDataRetentionLegalHold: vi.fn(() => false),
   getRetentionCutoff: mocks.getRetentionCutoff,
 }));
 

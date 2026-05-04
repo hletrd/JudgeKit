@@ -186,6 +186,7 @@ describe("pruneSensitiveOperationalData — legal hold", () => {
     // is true for the dynamic-imported module instance.
     vi.doMock("@/lib/data-retention", () => ({
       DATA_RETENTION_LEGAL_HOLD: true,
+      isDataRetentionLegalHold: () => true,
       DATA_RETENTION_DAYS: {
         auditEvents: 90,
         chatMessages: 30,

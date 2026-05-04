@@ -6,9 +6,10 @@ const RETENTION_PATH = "src/lib/data-retention.ts";
 const MAINTENANCE_PATH = "src/lib/data-retention-maintenance.ts";
 
 describe("data retention legal hold", () => {
-  it("data-retention.ts exports DATA_RETENTION_LEGAL_HOLD", () => {
+  it("data-retention.ts exports DATA_RETENTION_LEGAL_HOLD and isDataRetentionLegalHold", () => {
     const source = readFileSync(join(process.cwd(), RETENTION_PATH), "utf8");
     expect(source).toContain("export const DATA_RETENTION_LEGAL_HOLD");
+    expect(source).toContain("export function isDataRetentionLegalHold");
   });
 
   it("DATA_RETENTION_LEGAL_HOLD is driven by the DATA_RETENTION_LEGAL_HOLD env var", () => {
@@ -19,24 +20,26 @@ describe("data retention legal hold", () => {
     expect(source).toContain('"1"');
   });
 
-  it("data-retention-maintenance.ts imports DATA_RETENTION_LEGAL_HOLD", () => {
+  it("data-retention-maintenance.ts imports isDataRetentionLegalHold", () => {
     const source = readFileSync(join(process.cwd(), MAINTENANCE_PATH), "utf8");
-    expect(source).toContain("DATA_RETENTION_LEGAL_HOLD");
+    expect(source).toContain("isDataRetentionLegalHold");
     expect(source).toContain("@/lib/data-retention");
   });
 
   it("pruneSensitiveOperationalData checks legal hold before pruning", () => {
     const source = readFileSync(join(process.cwd(), MAINTENANCE_PATH), "utf8");
-    expect(source).toContain("DATA_RETENTION_LEGAL_HOLD");
+    // Accepts either the old constant or the new function pattern
+    expect(source).toMatch(/(DATA_RETENTION_LEGAL_HOLD|isDataRetentionLegalHold)/);
     // The guard must appear inside pruneSensitiveOperationalData
     expect(source).toContain("pruneSensitiveOperationalData");
-    expect(source).toMatch(/pruneSensitiveOperationalData[\s\S]*?DATA_RETENTION_LEGAL_HOLD/);
+    expect(source).toMatch(/pruneSensitiveOperationalData[\s\S]*?(DATA_RETENTION_LEGAL_HOLD|isDataRetentionLegalHold)/);
   });
 
   it("maintenance function returns early when legal hold is active", () => {
     const source = readFileSync(join(process.cwd(), MAINTENANCE_PATH), "utf8");
-    // early return pattern: if (DATA_RETENTION_LEGAL_HOLD) { ... return; }
-    expect(source).toMatch(/if\s*\(\s*DATA_RETENTION_LEGAL_HOLD\s*\)[\s\S]*?return/);
+    // early return pattern: if (isDataRetentionLegalHold()) { ... return; }
+    // or legacy: if (DATA_RETENTION_LEGAL_HOLD) { ... return; }
+    expect(source).toMatch(/if\s*\(\s*(DATA_RETENTION_LEGAL_HOLD|isDataRetentionLegalHold\(\))\s*\)[\s\S]*?return/);
   });
 
   it("legal hold log message mentions skipping pruning", () => {

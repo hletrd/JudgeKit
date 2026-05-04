@@ -2,7 +2,7 @@ import { and, inArray, lt, notInArray, or, sql } from "drizzle-orm";
 import { db } from "@/lib/db";
 import { logger } from "@/lib/logger";
 import { antiCheatEvents, chatMessages, loginEvents, recruitingInvitations, submissions } from "@/lib/db/schema";
-import { DATA_RETENTION_DAYS, DATA_RETENTION_LEGAL_HOLD, getRetentionCutoff } from "@/lib/data-retention";
+import { DATA_RETENTION_DAYS, isDataRetentionLegalHold, getRetentionCutoff } from "@/lib/data-retention";
 import { getDbNowMs } from "@/lib/db-time";
 
 const BATCH_SIZE = 5000;
@@ -104,7 +104,7 @@ async function pruneLoginEvents(nowMs: number) {
  *   hatch for litigation holds.
  */
 async function pruneSensitiveOperationalData() {
-  if (DATA_RETENTION_LEGAL_HOLD) {
+  if (isDataRetentionLegalHold()) {
     logger.info("Data retention legal hold is active — skipping all automatic pruning");
     return;
   }
