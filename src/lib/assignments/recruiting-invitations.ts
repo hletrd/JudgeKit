@@ -23,6 +23,36 @@ type RecruitingInvitationExecutor =
   | typeof db;
 
 const ACCOUNT_PASSWORD_RESET_REQUIRED_KEY = "accountPasswordResetRequired";
+const FAILED_REDEEM_ATTEMPTS_KEY = "_failedRedeemAttempts";
+const MAX_FAILED_REDEEM_ATTEMPTS = 5;
+
+/**
+ * Increment the per-invitation failed redeem attempt counter.
+ * Runs outside the main transaction (which may have rolled back) so
+ * the counter persists across retries and eventually locks the token.
+ */
+async function incrementFailedRedeemAttempt(token: string): Promise<void> {
+  try {
+    const tokenHashValue = hashToken(token);
+    const [existing] = await db
+      .select({ id: recruitingInvitations.id, metadata: recruitingInvitations.metadata })
+      .from(recruitingInvitations)
+      .where(eq(recruitingInvitations.tokenHash, tokenHashValue))
+      .limit(1);
+    if (!existing) return;
+
+    const currentAttempts = Number(existing.metadata?.[FAILED_REDEEM_ATTEMPTS_KEY] ?? 0);
+    await db
+      .update(recruitingInvitations)
+      .set({
+        metadata: { ...(existing.metadata ?? {}), [FAILED_REDEEM_ATTEMPTS_KEY]: String(currentAttempts + 1) },
+      })
+      .where(eq(recruitingInvitations.id, existing.id));
+  } catch (err) {
+    // Best-effort: don't let counter update failures block the auth flow
+    logger.warn({ err }, "[recruiting] Failed to increment failed redeem attempt counter");
+  }
+}
 
 /**
  * Shared SQL expression: a pending invitation is expired when its
@@ -353,6 +383,16 @@ export async function redeemRecruitingToken(
 
       if (!invitation) return { ok: false as const, error: "invalidToken" };
 
+      // Per-invitation brute-force lockout: if this invitation has accumulated
+      // too many failed redeem attempts, reject immediately. This complements
+      // the IP-based rate limiter by preventing targeted token brute-force from
+      // distributed IPs. The counter is stored in the invitation's metadata
+      // to avoid a schema migration.
+      const failedAttempts = Number(invitation.metadata?.[FAILED_REDEEM_ATTEMPTS_KEY] ?? 0);
+      if (failedAttempts >= MAX_FAILED_REDEEM_ATTEMPTS) {
+        return { ok: false as const, error: "tokenLocked" };
+      }
+
       // Already redeemed — verify password for re-entry
       if (invitation.status === "redeemed" && invitation.userId) {
         if (!accountPassword) return { ok: false as const, error: "accountPasswordRequired" };
@@ -405,6 +445,9 @@ export async function redeemRecruitingToken(
         } else {
           const { valid } = await verifyAndRehashPassword(accountPassword, existingUser.id, existingUser.passwordHash);
           if (!valid) {
+            // Increment failed-redeem counter outside the transaction to
+            // persist the attempt even if the transaction rolls back.
+            void incrementFailedRedeemAttempt(token);
             return { ok: false as const, error: "accountPasswordIncorrect" };
           }
         }
@@ -546,6 +589,9 @@ export async function redeemRecruitingToken(
     });
   } catch (err: unknown) {
     if (err instanceof Error && err.message === "alreadyRedeemed") {
+      // Increment per-invitation failed-redeem counter outside the
+      // rolled-back transaction so the lockout persists across retries.
+      await incrementFailedRedeemAttempt(token);
       return { ok: false, error: "alreadyRedeemed" };
     }
     // The atomic SQL WHERE clause in the transaction handles expiry

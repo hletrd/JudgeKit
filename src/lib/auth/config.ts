@@ -229,7 +229,12 @@ export const authConfig: NextAuthConfig = {
             return null;
           }
 
-          await clearRateLimitMulti(recruitIpKey);
+          // Do NOT clear the IP rate limiter for recruiting token re-entry.
+          // Unlike normal credential login where a successful auth proves the
+          // user knows their password, a recruiting token is single-factor auth.
+          // Clearing the rate limit on success would allow an attacker who
+          // compromises one token to brute-force other tokens without hitting
+          // rate limits. The IP-based rate limiter must accumulate for this path.
           return result;
         }
 

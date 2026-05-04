@@ -2655,6 +2655,8 @@
     "claimedDescription": "This invitation has already been used. Continue from your existing assessment session on this device, or sign in with your recruiting email and account password.",
     "invalidToken": "Invalid link",
     "invalidTokenDescription": "This link is invalid or has been revoked.",
+    "tokenLocked": "Link locked",
+    "tokenLockedDescription": "This link has been locked due to too many failed attempts. Contact the organizer for a new one.",
     "expired": "Link expired",
     "expiredDescription": "This link has expired. Contact the organizer for a new one.",
     "contestClosed": "Assessment closed",

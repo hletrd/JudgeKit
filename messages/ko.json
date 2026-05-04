@@ -2655,6 +2655,8 @@
     "claimedDescription": "이 초대 링크는 이미 사용되었습니다. 이 기기에서 기존 세션을 이어가거나 채용 이메일과 계정 비밀번호로 로그인하세요.",
     "invalidToken": "잘못된 링크",
     "invalidTokenDescription": "잘못된 링크이거나 이미 취소된 초대입니다.",
+    "tokenLocked": "잠긴 링크",
+    "tokenLockedDescription": "여러 번 시도 실패로 링크가 잠겼습니다. 담당자에게 새 링크를 요청하세요.",
     "expired": "만료된 초대",
     "expiredDescription": "초대 링크가 만료되었습니다. 담당자에게 새 링크를 요청하세요.",
     "contestClosed": "평가 마감",
