@@ -278,12 +278,10 @@ export async function listModerationDiscussionThreads(options: {
   } else if (state === "pinned") {
     conditions.push(isNotNull(discussionThreads.pinnedAt));
   } else if (state === "open") {
-    conditions.push(
-      and(
-        isNull(discussionThreads.lockedAt),
-        isNull(discussionThreads.pinnedAt),
-      )!
-    );
+    // "Open" means not locked, regardless of pin status. A thread that is
+    // both pinned and locked is still "locked" — pinning is an organizational
+    // action, not a state that makes a thread closed.
+    conditions.push(isNull(discussionThreads.lockedAt));
   }
 
   const whereClause = conditions.length > 0 ? and(...conditions) : undefined;
