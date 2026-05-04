@@ -181,7 +181,7 @@ export const POST = createApiHandler({
     // Fetch problem and language config in parallel
     const [[problem], [languageConfig]] = await Promise.all([
       db
-        .select({ id: problems.id, title: problems.title, problemType: problems.problemType })
+        .select({ id: problems.id, title: problems.title, problemType: problems.problemType, showCompileOutput: problems.showCompileOutput })
         .from(problems)
         .where(eq(problems.id, problemId))
         .limit(1),
@@ -363,6 +363,15 @@ export const POST = createApiHandler({
         },
         request: req,
       });
+    }
+
+    // Strip compileOutput when the problem has showCompileOutput=false.
+    // The submission owner created the code so they can see compile errors,
+    // but the problem's visibility setting takes precedence — if the instructor
+    // disabled compile output, even the submitter should not see it in the
+    // API response. See C9-2 (cycle 9 review).
+    if (submission && problem.showCompileOutput === false) {
+      submission.compileOutput = null;
     }
 
     return apiSuccess(submission, { status: 201 });
