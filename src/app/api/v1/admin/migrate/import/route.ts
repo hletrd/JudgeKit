@@ -157,21 +157,30 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: "invalidPassword" }, { status: 403 });
     }
 
-    // Extract the actual export data, stripping the password field
-    // Use Zod-validated data instead of unsafe casts
+    // Extract the actual export data, stripping the password field.
+    // The export payload is validated by validateExport() below, which checks
+    // the structural integrity (required fields, table shapes, etc.) before
+    // the data reaches importDatabase(). The intermediate cast is therefore
+    // guarded by that validation — do NOT remove the validateExport() call
+    // without replacing it with equivalent structural validation (e.g., a
+    // full Zod schema for JudgeKitExport). See C11-1.
     if (typeof rawJsonBody !== "object" || rawJsonBody === null || Array.isArray(rawJsonBody)) {
       return NextResponse.json({ error: "invalidJson" }, { status: 400 });
     }
     const rawRecord = rawJsonBody as Record<string, unknown>;
     const { password: _, data: _data, ...restFields } = rawRecord;
-    const data: JudgeKitExport = parsedBody.data.data
-      ? parsedBody.data.data as JudgeKitExport
-      : restFields as unknown as JudgeKitExport;
-
-    const errors = validateExport(data);
+    // parsedBody.data.data comes from z.unknown().optional() — no structural
+    // guarantee. The cast to JudgeKitExport is safe ONLY because validateExport()
+    // below verifies the structure. If data is absent, fall back to the rest
+    // of the body (legacy format where the export was the top-level object).
+    const unvalidatedData = parsedBody.data.data ?? restFields;
+    const errors = validateExport(unvalidatedData);
     if (errors.length > 0) {
       return NextResponse.json({ error: "invalidExport", details: errors }, { status: 400 });
     }
+    // After validateExport() passes, the data conforms to JudgeKitExport.
+    // Cast is safe because validateExport verified the structure.
+    const data = unvalidatedData as JudgeKitExport;
 
     recordAuditEvent({
       actorId: user.id,
