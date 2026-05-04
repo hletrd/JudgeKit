@@ -1,4 +1,5 @@
 import { cache } from "react";
+import { headers } from "next/headers";
 import { getTranslations, getLocale } from "next-intl/server";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
@@ -60,7 +61,6 @@ export default async function RecruitResultsPage({
   // The /api/v1/recruiting/validate route has the same protection.
   // When rate-limited, show the same "invalidToken" card as a failed lookup
   // so the attacker cannot distinguish rate-limit from invalid-token.
-  const { headers } = await import("next/headers");
   const reqHeaders = await headers();
   const clientIp = extractClientIp(reqHeaders) ?? "unknown";
   const rateLimitResult = await checkServerActionRateLimit(
