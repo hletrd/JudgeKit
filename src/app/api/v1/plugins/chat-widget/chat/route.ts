@@ -3,11 +3,12 @@ import { z } from "zod";
 import { eq } from "drizzle-orm";
 import { createApiHandler } from "@/lib/api/handler";
 import { isPluginEnabled, getPluginState } from "@/lib/plugins/data";
+import { decryptPluginSecret } from "@/lib/plugins/secrets";
 import { getProvider, type ChatMessage } from "@/lib/plugins/chat-widget/providers";
 import { AGENT_TOOLS, executeTool, type AgentContext } from "@/lib/plugins/chat-widget/tools";
 import { checkServerActionRateLimit } from "@/lib/security/api-rate-limit";
 import { db } from "@/lib/db";
-import { problems, chatMessages } from "@/lib/db/schema";
+import { plugins, problems, chatMessages } from "@/lib/db/schema";
 import { logger } from "@/lib/logger";
 import { nanoid } from "nanoid";
 import {
@@ -23,6 +24,21 @@ const STREAM_HEADERS = {
 
 function generateSessionId(): string {
   return nanoid(12);
+}
+
+/**
+ * Read the raw (encrypted) plugin config from the DB.
+ * Used to decrypt only the selected provider's API key (least-privilege)
+ * instead of decrypting all three keys when only one is used per request.
+ * See C12-2.
+ */
+async function getRawPluginConfig(pluginId: string): Promise<Record<string, unknown> | null> {
+  const [row] = await db
+    .select({ config: plugins.config })
+    .from(plugins)
+    .where(eq(plugins.id, pluginId))
+    .limit(1);
+  return (row?.config as Record<string, unknown>) ?? null;
 }
 
 const requestSchema = z.object({
@@ -168,7 +184,11 @@ export const POST = createApiHandler({
       return NextResponse.json({ error: "notConfigured" }, { status: 404 });
     }
 
-    const pluginState = await getPluginState("chat-widget", { includeSecrets: true });
+    // Load plugin state WITHOUT secrets first to determine the provider.
+    // Then only decrypt the API key for the selected provider (least-privilege:
+    // avoid decrypting all three provider keys when only one is used per request).
+    // See C12-2.
+    const pluginState = await getPluginState("chat-widget", { includeSecrets: false });
     if (!pluginState) {
       return NextResponse.json({ error: "notConfigured" }, { status: 404 });
     }
@@ -187,6 +207,31 @@ export const POST = createApiHandler({
       maxTokens: number;
       rateLimitPerMinute: number;
     };
+
+    // Determine which provider key to decrypt based on the configured provider.
+    // Only the selected provider's key is decrypted; the other two remain as
+    // redacted/empty strings in the config object.
+    const VALID_PROVIDERS = new Set(["openai", "claude", "gemini"]);
+    if (!VALID_PROVIDERS.has(config.provider)) {
+      return NextResponse.json({ error: "invalidProvider" }, { status: 400 });
+    }
+
+    const selectedKeyField = `${config.provider}ApiKey` as "openaiApiKey" | "claudeApiKey" | "geminiApiKey";
+
+    // Re-read the raw plugin config from DB to get the encrypted key value
+    // for the selected provider only. The redacted config from getPluginState
+    // has empty strings for secret keys, so we need the raw encrypted values.
+    const rawConfig = await getRawPluginConfig("chat-widget");
+    const encryptedKey = rawConfig?.[selectedKeyField];
+    let apiKey = "";
+    if (typeof encryptedKey === "string" && encryptedKey.length > 0) {
+      try {
+        apiKey = decryptPluginSecret(encryptedKey);
+      } catch (err) {
+        logger.error({ err, provider: config.provider }, "[chat] Failed to decrypt provider API key");
+        return NextResponse.json({ error: "notConfigured" }, { status: 500 });
+      }
+    }
 
     // Rate limit check
     const rateLimitResult = await checkServerActionRateLimit(
@@ -263,25 +308,17 @@ export const POST = createApiHandler({
       });
     }
 
-    // Determine API key and model based on provider
-    const VALID_PROVIDERS = new Set(["openai", "claude", "gemini"]);
-    if (!VALID_PROVIDERS.has(config.provider)) {
-      return NextResponse.json({ error: "invalidProvider" }, { status: 400 });
-    }
-
-    let apiKey: string;
+    // Determine model based on provider (apiKey already resolved above via
+    // least-privilege decryption — see C12-2).
     let model: string;
     switch (config.provider) {
       case "claude":
-        apiKey = config.claudeApiKey;
         model = config.claudeModel;
         break;
       case "gemini":
-        apiKey = config.geminiApiKey;
         model = config.geminiModel;
         break;
       default: // openai
-        apiKey = config.openaiApiKey;
         model = config.openaiModel;
         break;
     }
@@ -292,7 +329,10 @@ export const POST = createApiHandler({
 
     // Detect locale from cookie (set by next-intl), fallback to Accept-Language
     const cookieHeader = req.headers.get("cookie") ?? "";
-    const localeMatch = cookieHeader.match(/(?:^|;\s*)locale=(\w+)/);
+    // Match locale tags including hyphenated variants (e.g., zh-Hans, pt-BR).
+    // Previously used \w which doesn't match hyphens — fragile for future
+    // locale additions. See C12-4.
+    const localeMatch = cookieHeader.match(/(?:^|;\s*)locale=([A-Za-z0-9_-]+)/);
     const acceptLang = req.headers.get("accept-language")?.split(",")[0]?.split("-")[0]?.trim();
     const locale = localeMatch?.[1] ?? (acceptLang === "ko" ? "ko" : "en");
     const siteName = config.assistantName || "AI Assistant";
