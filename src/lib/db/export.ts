@@ -252,7 +252,18 @@ const SANITIZED_COLUMNS: Record<string, Set<string>> = {
   systemSettings: new Set(["hcaptchaSecret"]),
 };
 
-/** Columns that are ALWAYS redacted, even in full-fidelity backup exports. */
+/**
+ * Columns that are ALWAYS redacted, even in full-fidelity backup exports.
+ *
+ * Note: `judgeWorkers.secretTokenHash` and `judgeWorkers.judgeClaimToken` are
+ * NOT included here. They ARE redacted in sanitized exports (see
+ * SANITIZED_COLUMNS above) but retained in full-fidelity backups because a
+ * successful restore requires re-registering workers — the secrets are needed
+ * as a reference for operators to re-provision workers. If worker secrets are
+ * leaked via a full-fidelity backup, the operator must rotate the shared
+ * RUNNER_AUTH_TOKEN and re-register each worker to generate new per-worker
+ * secrets.
+ */
 const ALWAYS_REDACT: Record<string, Set<string>> = {
   users: new Set(["passwordHash"]),
   sessions: new Set(["sessionToken"]),
