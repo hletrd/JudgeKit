@@ -22,7 +22,7 @@ import { getRateLimitKey } from "./rate-limit";
 import { checkRateLimit as sidecarCheck } from "./rate-limiter-client";
 import { execTransaction } from "@/lib/db";
 import { rateLimits } from "@/lib/db/schema";
-import { getDbNowMs, getDbNowUncached } from "@/lib/db-time";
+import { getDbNowMs } from "@/lib/db-time";
 import { getConfiguredSettings } from "@/lib/system-settings-config";
 import { eq } from "drizzle-orm";
 
@@ -249,9 +249,11 @@ export async function checkServerActionRateLimit(
 
   return execTransaction(async (tx) => {
     // Use DB server time for rate-limit window comparisons to avoid clock skew
-    // between app and DB servers, consistent with other rate-limit checks
-    // (realtime-coordination.ts, submissions.ts, assignment PATCH route).
-    const now = (await getDbNowUncached()).getTime();
+    // between app and DB servers, consistent with atomicConsumeRateLimit above
+    // and other rate-limit checks (realtime-coordination.ts, submissions.ts).
+    // Previously used getDbNowUncached().getTime() which introduces a Date
+    // intermediary; unified on getDbNowMs() for consistency. See C9-7.
+    const now = await getDbNowMs();
     const [existing] = await tx
       .select({
         attempts: rateLimits.attempts,
