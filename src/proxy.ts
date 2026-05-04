@@ -19,7 +19,10 @@ import {
 // eviction deletes the oldest entry first, making this FIFO rather than LRU).
 // Security tradeoff: revoked or deactivated users may retain access for up to
 // AUTH_CACHE_TTL_MS (default: 2 seconds via AUTH_CACHE_TTL_MS env var) after the change is applied to the database.
-// Negative results (user not found / inactive / token invalidated) are NOT cached.
+// In multi-instance deployments (N instances behind a load balancer), each instance
+// caches independently, so the effective worst-case post-deactivation access window
+// is AUTH_CACHE_TTL_MS * N (e.g., 2s * 2 instances = 4s). Negative results (user
+// not found / inactive / token invalidated) are NOT cached.
 const authUserCache = new Map<string, { user: Awaited<ReturnType<typeof getActiveAuthUserById>>; expiresAt: number }>();
 const AUTH_CACHE_TTL_MS = (() => {
   // Cap operator-supplied values at 10 s to bound the post-deactivation
