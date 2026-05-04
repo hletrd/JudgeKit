@@ -25,7 +25,7 @@ describe("UI hardcoded-string guards", () => {
         required: ['getTranslations("dashboardState")'],
       },
       {
-        path: "src/app/(dashboard)/dashboard/groups/[id]/not-found.tsx",
+        path: "src/app/(public)/groups/[id]/not-found.tsx",
         forbidden: ["Not Found", "Back to Dashboard"],
         required: ['getTranslations("dashboardState")'],
       },
@@ -56,7 +56,7 @@ describe("UI hardcoded-string guards", () => {
       // file path that could go stale again.
       ...["filter-form.tsx", "page.tsx", "score-override-dialog.tsx", "status-board.tsx"].map(
         (file) => ({
-          path: `src/app/(dashboard)/dashboard/groups/[id]/assignments/[assignmentId]/${file}`,
+          path: `src/app/(public)/groups/[id]/assignments/[assignmentId]/${file}`,
           forbidden: ['"Solved"', '"Attempted"', '"Untried"'],
         }),
       ),

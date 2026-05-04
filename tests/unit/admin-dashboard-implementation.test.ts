@@ -8,8 +8,8 @@ function read(relativePath: string) {
 
 describe("admin dashboard implementation", () => {
   it("surfaces only the quick links the actor can actually access", () => {
-    const source = read("src/app/(dashboard)/dashboard/_components/admin-dashboard.tsx");
-    const dashboardPage = read("src/app/(dashboard)/dashboard/page.tsx");
+    const source = read("src/app/(public)/dashboard/_components/admin-dashboard.tsx");
+    const dashboardPage = read("src/app/(public)/dashboard/page.tsx");
 
     expect(source).toContain("const caps = new Set(capabilities);");
     expect(source).toContain('const canViewHealth = caps.has("system.settings");');
@@ -38,8 +38,8 @@ describe("admin dashboard implementation", () => {
   });
 
   it("renders the system health snapshot only for roles with system.settings", () => {
-    const source = read("src/app/(dashboard)/dashboard/_components/admin-dashboard.tsx");
-    const dashboardPage = read("src/app/(dashboard)/dashboard/page.tsx");
+    const source = read("src/app/(public)/dashboard/_components/admin-dashboard.tsx");
+    const dashboardPage = read("src/app/(public)/dashboard/page.tsx");
 
     expect(source).toContain('canViewHealth ? getAdminHealthSnapshot() : Promise.resolve(null)');
     expect(source).toContain("{canViewHealth && health ? (");

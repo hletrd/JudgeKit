@@ -8,15 +8,15 @@ function read(relativePath: string) {
 
 describe("instructor dashboard implementation", () => {
   it("surfaces quick links for the most common instructor workflows", () => {
-    const source = read("src/app/(dashboard)/dashboard/_components/instructor-dashboard.tsx");
+    const source = read("src/app/(public)/dashboard/_components/instructor-dashboard.tsx");
 
     expect(source).toContain('CardTitle>{t("instructorQuickActions")}');
     expect(source).toContain("const canAccessProblemSets =");
     expect(source).toContain('caps.has("problem_sets.edit")');
-    expect(source).toContain('href="/dashboard/groups"');
-    expect(source).toContain('href="/dashboard/contests"');
+    expect(source).toContain('href="/groups"');
+    expect(source).toContain('href="/contests/manage"');
     expect(source).toContain('href="/dashboard/admin/submissions"');
-    expect(source).toContain('href="/dashboard/problem-sets"');
+    expect(source).toContain('href="/problem-sets"');
     expect(source).toContain("{canAccessProblemSets ? (");
   });
 });

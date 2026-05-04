@@ -72,7 +72,7 @@ export default async function PrivacyPage() {
       <h2>{t("sectionRequestsTitle")}</h2>
       <p>{t("sectionRequestsIntro")}</p>
       <p>
-        <Link href={buildLocalePath("/dashboard/profile", locale)} className="underline">
+        <Link href={buildLocalePath("/profile", locale)} className="underline">
           {t("openProfileForRequest")}
         </Link>
       </p>

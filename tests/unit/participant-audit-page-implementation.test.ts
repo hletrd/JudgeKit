@@ -8,7 +8,7 @@ function read(relativePath: string) {
 
 describe("participant audit page implementation", () => {
   it("loads contest participant data and delegates rendering to the shared timeline view", () => {
-    const source = read("src/app/(dashboard)/dashboard/contests/[assignmentId]/participant/[userId]/page.tsx");
+    const source = read("src/app/(public)/contests/manage/[assignmentId]/participant/[userId]/page.tsx");
 
     expect(source).toContain('import { ParticipantTimelineView } from "@/components/contest/participant-timeline-view";');
     expect(source).toContain("getParticipantAuditData(assignmentId, userId)");
@@ -19,7 +19,7 @@ describe("participant audit page implementation", () => {
   });
 
   it("keeps the page responsible for assignment-level access checks before rendering the shared view", () => {
-    const source = read("src/app/(dashboard)/dashboard/contests/[assignmentId]/participant/[userId]/page.tsx");
+    const source = read("src/app/(public)/contests/manage/[assignmentId]/participant/[userId]/page.tsx");
 
     expect(source).toContain("canViewAssignmentSubmissions(");
     expect(source).toContain('redirect(`/dashboard/contests/${assignmentId}`)');

@@ -2208,6 +2208,9 @@
     },
     "participants": "{count} participants",
     "endsIn": "Ends in",
+    "durationMinutes": "{value}min",
+    "submissionCount": "{count, plural, one {# submission} other {# submissions}}",
+    "noSubmissions": "No submissions",
     "tabs": {
       "overview": "Overview",
       "leaderboard": "Leaderboard",
@@ -2390,6 +2393,7 @@
     "participantAudit": {
       "title": "Participant Audit",
       "backToContest": "Back to Contest",
+      "pointsValue": "{value} pt",
       "header": {
         "rank": "Rank",
         "totalScore": "Total Score",
@@ -2765,6 +2769,19 @@
       "admin": "Admin",
       "languages": "Languages",
       "privacy": "Privacy"
+    },
+    "seo": {
+      "keywords": {
+        "practice": ["algorithm practice", "coding interview problems", "programming exercises"],
+        "problem": ["programming problem", "algorithm challenge"],
+        "contests": ["programming contests", "competitive coding events", "online programming competitions"],
+        "playground": ["online compiler", "code playground", "run code online"],
+        "community": ["programming community", "coding discussions", "developer forum"],
+        "threadDiscussion": "programming discussion",
+        "threadCommunity": "community forum",
+        "threadSolution": "solution discussion",
+        "threadProblem": "problem discussion"
+      }
     },
     "moderation": {
       "title": "Discussion moderation",

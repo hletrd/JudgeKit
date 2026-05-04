@@ -57,11 +57,11 @@ function isActivePath(pathname: string, href: string) {
 const DROPDOWN_ICONS: Record<string, React.ReactNode> = {
   "/dashboard": <LayoutDashboard className="size-4" />,
   "/practice": <FileText className="size-4" />,
-  "/dashboard/problem-sets": <FolderOpen className="size-4" />,
-  "/dashboard/groups": <Users className="size-4" />,
+  "/problem-sets": <FolderOpen className="size-4" />,
+  "/groups": <Users className="size-4" />,
   "/submissions?scope=mine": <ClipboardList className="size-4" />,
   "/contests": <Timer className="size-4" />,
-  "/dashboard/profile": <Settings className="size-4" />,
+  "/profile": <Settings className="size-4" />,
   "/dashboard/admin": <Shield className="size-4" />,
 };
 

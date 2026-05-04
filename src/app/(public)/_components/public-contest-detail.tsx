@@ -55,6 +55,7 @@ type PublicContestDetailProps = {
   }>;
   signInHref: string;
   signInLabel: string;
+  overviewLabel: string;
   dashboardHref: string;
   dashboardLabel: string;
 };
@@ -89,6 +90,7 @@ export function PublicContestDetail({
   finalRankings = [],
   signInHref,
   signInLabel,
+  overviewLabel,
   dashboardHref,
   dashboardLabel,
 }: PublicContestDetailProps) {
@@ -127,7 +129,7 @@ export function PublicContestDetail({
 
       <Card>
         <CardHeader>
-          <CardTitle>Overview</CardTitle>
+          <CardTitle>{overviewLabel}</CardTitle>
         </CardHeader>
         <CardContent className="space-y-4">
           <div className="flex flex-wrap gap-2">

@@ -2,7 +2,7 @@ import { render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import type { ReactNode } from "react";
 import { describe, expect, it, vi } from "vitest";
-import { DashboardJudgeSystemTabs } from "@/app/(dashboard)/dashboard/_components/dashboard-judge-system-tabs";
+import { DashboardJudgeSystemTabs } from "@/app/(public)/dashboard/_components/dashboard-judge-system-tabs";
 
 vi.mock("next/link", () => ({
   default: ({ href, children, asChild: _asChild, ...props }: { href: string; children: ReactNode; asChild?: boolean } & Record<string, unknown>) => (

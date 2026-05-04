@@ -602,6 +602,7 @@ export default async function PublicContestDetailPage({ params }: { params: Prom
         signInLabel={t("contests.signInToJoin")}
         dashboardHref={buildLocalePath("/dashboard", locale)}
         dashboardLabel={t("contests.openDashboard")}
+        overviewLabel={tContest("tabs.overview")}
       />
 
       {showArchiveInsights && replay ? (

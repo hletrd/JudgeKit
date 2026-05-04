@@ -1,7 +1,7 @@
 import { render, screen } from "@testing-library/react";
 import type { ReactNode } from "react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import { StudentDashboard } from "@/app/(dashboard)/dashboard/_components/student-dashboard";
+import { StudentDashboard } from "@/app/(public)/dashboard/_components/student-dashboard";
 
 const { dbSelectMock, getResolvedSystemSettingsMock } = vi.hoisted(() => ({
   dbSelectMock: vi.fn(),

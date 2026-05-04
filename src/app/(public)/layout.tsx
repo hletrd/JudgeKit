@@ -6,6 +6,8 @@ import { getResolvedSystemSettings } from "@/lib/system-settings";
 import { auth } from "@/lib/auth";
 import { resolveCapabilities } from "@/lib/capabilities/cache";
 import { getPublicNavItems, getPublicNavActions } from "@/lib/navigation/public-nav";
+import { Toaster } from "@/components/ui/sonner";
+import { ChatWidgetLoader } from "@/components/plugins/chat-widget-loader";
 
 export default async function PublicLayout({ children }: { children: React.ReactNode }) {
   const [tCommon, tAuth, tShell, session] = await Promise.all([
@@ -32,6 +34,8 @@ export default async function PublicLayout({ children }: { children: React.React
       />
       <main id="main-content" className="mx-auto w-full max-w-6xl px-4 py-10 sm:px-6 lg:px-8">{children}</main>
       <PublicFooter siteTitle={settings.siteTitle} footerContent={settings.footerContent} />
+      <Toaster />
+      {session?.user && <ChatWidgetLoader userId={session.user.id} />}
     </div>
   );
 }

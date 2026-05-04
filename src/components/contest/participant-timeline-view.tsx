@@ -184,7 +184,7 @@ export async function ParticipantTimelineView({
                           {problem.title}
                         </Link>
                         <span className="ml-1 text-xs text-muted-foreground">
-                          {problem.points ?? DEFAULT_PROBLEM_POINTS} pt
+                          {t("pointsValue", { value: problem.points ?? DEFAULT_PROBLEM_POINTS })}
                         </span>
                       </TableCell>
                       <TableCell>
@@ -257,7 +257,7 @@ export async function ParticipantTimelineView({
                     {problem.title}
                   </Link>
                   <span className="text-xs font-normal text-muted-foreground">
-                    {problem.points ?? DEFAULT_PROBLEM_POINTS} pt
+                    {t("pointsValue", { value: problem.points ?? DEFAULT_PROBLEM_POINTS })}
                   </span>
                 </h4>
                 {summary ? (

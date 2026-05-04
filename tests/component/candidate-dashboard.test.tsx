@@ -190,7 +190,7 @@ describe("CandidateDashboard", () => {
 
   it("shows time remaining and a per-assignment progress snapshot for recruiting candidates", async () => {
     const { CandidateDashboard } = await import(
-      "@/app/(dashboard)/dashboard/_components/candidate-dashboard"
+      "@/app/(public)/dashboard/_components/candidate-dashboard"
     );
 
     render(

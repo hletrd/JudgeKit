@@ -11,7 +11,7 @@ describe("group member management capability implementation", () => {
     const membersRoute = read("src/app/api/v1/groups/[id]/members/route.ts");
     const memberDeleteRoute = read("src/app/api/v1/groups/[id]/members/[userId]/route.ts");
     const bulkRoute = read("src/app/api/v1/groups/[id]/members/bulk/route.ts");
-    const groupPage = read("src/app/(dashboard)/dashboard/groups/[id]/page.tsx");
+    const groupPage = read("src/app/(public)/groups/[id]/page.tsx");
 
     expect(membersRoute).toContain("canManageGroupMembersAsync(");
     expect(memberDeleteRoute).toContain("canManageGroupMembersAsync(");

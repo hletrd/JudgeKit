@@ -8,7 +8,7 @@ function read(relativePath: string) {
 
 describe("dashboard judge system implementation", () => {
   it("wires the judge system section into the root dashboard page", () => {
-    const source = read("src/app/(dashboard)/dashboard/page.tsx");
+    const source = read("src/app/(public)/dashboard/page.tsx");
 
     expect(source).toContain('DashboardJudgeSystemSection');
     expect(source).toContain('!isAdminView && !isCandidateView && (');

@@ -1,6 +1,6 @@
 import { fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import ProblemSetForm from "@/app/(dashboard)/dashboard/problem-sets/_components/problem-set-form";
+import ProblemSetForm from "@/app/(public)/problem-sets/_components/problem-set-form";
 
 const { pushMock, refreshMock, apiFetchMock, toastSuccessMock, toastErrorMock } = vi.hoisted(() => ({
   pushMock: vi.fn(),

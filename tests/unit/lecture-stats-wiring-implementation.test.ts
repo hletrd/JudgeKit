@@ -10,7 +10,7 @@ describe("lecture stats wiring implementation", () => {
   it("wires lecture stats through lecture-mode context instead of leaving them unreachable", () => {
     const provider = read("src/components/lecture/lecture-mode-provider.tsx");
     const toolbar = read("src/components/lecture/lecture-toolbar.tsx");
-    const wrapper = read("src/app/(dashboard)/dashboard/problems/[id]/problem-lecture-wrapper.tsx");
+    const wrapper = read("src/app/(public)/problems/[id]/problem-lecture-wrapper.tsx");
 
     expect(provider).toContain("statsAvailable: boolean");
     expect(provider).toContain("showStats: boolean");

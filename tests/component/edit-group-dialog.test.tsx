@@ -2,7 +2,7 @@ import { render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
-import EditGroupDialog from "@/app/(dashboard)/dashboard/groups/edit-group-dialog";
+import EditGroupDialog from "@/app/(public)/groups/edit-group-dialog";
 
 const {
   apiFetchMock,

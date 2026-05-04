@@ -97,7 +97,7 @@ export default async function PublicContestsPage() {
       {(isAuthenticated || canCreateContest) && (
         <div className="mb-4 flex flex-wrap justify-end gap-2">
           {canCreateContest && (
-            <Link href={buildLocalePath("/dashboard/contests/create", locale)}>
+            <Link href={buildLocalePath("/contests/manage/create", locale)}>
               <Button>
                 <Plus className="mr-1 size-4" />
                 {tContests("createContest")}

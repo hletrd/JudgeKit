@@ -78,12 +78,10 @@ export default async function PlaygroundPage() {
         <div className="flex h-full items-center justify-center p-6">
           <div className="max-w-md text-center">
             <h1 className="mb-2 text-2xl font-bold">
-              {tCompiler("noLanguagesTitle", { defaultValue: "No Languages Available" })}
+              {tCompiler("noLanguagesTitle")}
             </h1>
             <p className="text-muted-foreground">
-              {tCompiler("noLanguagesDescription", {
-                defaultValue: "Enable at least one language in settings.",
-              })}
+              {tCompiler("noLanguagesDescription")}
             </p>
           </div>
         </div>

@@ -2,7 +2,7 @@ import { render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
-import { GroupMembersManager } from "@/app/(dashboard)/dashboard/groups/[id]/group-members-manager";
+import { GroupMembersManager } from "@/app/(public)/groups/[id]/group-members-manager";
 
 const { refreshMock } = vi.hoisted(() => ({
   refreshMock: vi.fn(),

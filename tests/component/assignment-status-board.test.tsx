@@ -1,6 +1,6 @@
 import { render, screen } from "@testing-library/react";
 import { describe, expect, it } from "vitest";
-import { StatusBoard } from "@/app/(dashboard)/dashboard/groups/[id]/assignments/[assignmentId]/status-board";
+import { StatusBoard } from "@/app/(public)/groups/[id]/assignments/[assignmentId]/status-board";
 import type { AssignmentStudentStatusRow } from "@/lib/assignments/submissions";
 
 const labels = {

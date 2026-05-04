@@ -10,7 +10,7 @@ describe("problem page scroll layout implementation", () => {
   it("keeps the submission panel sticky only on large screens so stacked mobile layouts can scroll normally", () => {
     // The dashboard route is now a redirect-only shell; the layout lives in
     // the public counterpart at (public)/practice/problems/[id]/page.tsx.
-    const dashboardShell = read("src/app/(dashboard)/dashboard/problems/[id]/page.tsx");
+    const dashboardShell = read("src/app/(public)/problems/[id]/page.tsx");
     const publicSource = read("src/app/(public)/practice/problems/[id]/page.tsx");
 
     expect(dashboardShell).toContain("redirect(");

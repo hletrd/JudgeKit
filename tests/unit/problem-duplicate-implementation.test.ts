@@ -8,9 +8,9 @@ function read(relativePath: string) {
 
 describe("problem duplication implementation", () => {
   it("lets the create page open the problem form in duplication mode and links to it from edit", () => {
-    const createPage = read("src/app/(dashboard)/dashboard/problems/create/page.tsx");
-    const formSource = read("src/app/(dashboard)/dashboard/problems/create/create-problem-form.tsx");
-    const editPage = read("src/app/(dashboard)/dashboard/problems/[id]/edit/page.tsx");
+    const createPage = read("src/app/(public)/problems/create/page.tsx");
+    const formSource = read("src/app/(public)/problems/create/create-problem-form.tsx");
+    const editPage = read("src/app/(public)/problems/[id]/edit/page.tsx");
 
     expect(createPage).toContain("duplicateFrom");
     expect(createPage).toContain('mode={duplicateProblemData ? "duplicate" : "create"}');

@@ -2208,6 +2208,9 @@
     },
     "participants": "{count}명 참가",
     "endsIn": "종료까지",
+    "durationMinutes": "{value}분",
+    "submissionCount": "{count}개 제출",
+    "noSubmissions": "제출 없음",
     "tabs": {
       "overview": "개요",
       "leaderboard": "리더보드",
@@ -2390,6 +2393,7 @@
     "participantAudit": {
       "title": "참가자 감사 로그",
       "backToContest": "대회로 돌아가기",
+      "pointsValue": "{value}점",
       "header": {
         "rank": "순위",
         "totalScore": "총점",
@@ -2765,6 +2769,19 @@
       "admin": "관리자",
       "languages": "언어",
       "privacy": "개인정보"
+    },
+    "seo": {
+      "keywords": {
+        "practice": ["알고리즘 연습", "코딩 인터뷰 문제", "프로그래밍 연습 문제"],
+        "problem": ["프로그래밍 문제", "알고리즘 챌린지"],
+        "contests": ["프로그래밍 대회", "코딩 경진 대회", "온라인 프로그래밍 대회"],
+        "playground": ["온라인 컴파일러", "코드 놀이터", "코드 실행"],
+        "community": ["프로그래밍 커뮤니티", "코딩 토론", "개발자 포럼"],
+        "threadDiscussion": "프로그래밍 토론",
+        "threadCommunity": "커뮤니티 포럼",
+        "threadSolution": "풀이 토론",
+        "threadProblem": "문제 토론"
+      }
     },
     "moderation": {
       "title": "토론 관리",

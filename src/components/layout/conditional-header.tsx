@@ -15,6 +15,7 @@ type ConditionalHeaderProps = {
     capabilities?: string[];
   } | null;
   trailingSlot?: React.ReactNode;
+  hasAdminCapabilities?: boolean;
 };
 
 export function ConditionalHeader({
@@ -23,9 +24,11 @@ export function ConditionalHeader({
   actions,
   loggedInUser,
   trailingSlot,
+  hasAdminCapabilities = false,
 }: ConditionalHeaderProps) {
   const pathname = usePathname();
-  const isAdmin = pathname.startsWith("/dashboard/admin");
+  const stripped = pathname.replace(/^\/(en|ko)(?=\/|$)/, "");
+  const isAdmin = stripped.startsWith("/dashboard/admin");
 
   if (isAdmin) {
     return (
@@ -43,7 +46,7 @@ export function ConditionalHeader({
       items={items}
       actions={actions}
       loggedInUser={loggedInUser}
-      leadingSlot={<SidebarTrigger />}
+      leadingSlot={hasAdminCapabilities ? <SidebarTrigger /> : undefined}
       trailingSlot={trailingSlot}
     />
   );

@@ -49,6 +49,7 @@ describe("PublicContestDetail", () => {
         signInLabel="Sign in to join"
         dashboardHref="/dashboard"
         dashboardLabel="Open dashboard"
+        overviewLabel="Overview"
       />
     );
 

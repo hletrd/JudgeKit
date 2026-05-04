@@ -12,7 +12,7 @@ describe("problem page anti-cheat implementation", () => {
     // part of the workspace→public migration; the dashboard route is now a
     // redirect-only shell. Verify the anti-cheat wiring on the public page
     // and assert the dashboard shell is just a redirect.
-    const dashboardShell = read("src/app/(dashboard)/dashboard/problems/[id]/page.tsx");
+    const dashboardShell = read("src/app/(public)/problems/[id]/page.tsx");
     const publicSource = read("src/app/(public)/practice/problems/[id]/page.tsx");
 
     expect(dashboardShell).toContain("redirect(");

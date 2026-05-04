@@ -42,12 +42,12 @@ export async function generateMetadata({ params }: { params: Promise<{ id: strin
     siteTitle: settings.siteTitle,
     locale,
     keywords: [
-      "programming discussion",
+      tShell("seo.keywords.threadDiscussion"),
       thread.scopeType === "general"
-        ? "community forum"
+        ? tShell("seo.keywords.threadCommunity")
         : thread.scopeType === "solution"
-          ? "solution discussion"
-          : "problem discussion",
+          ? tShell("seo.keywords.threadSolution")
+          : tShell("seo.keywords.threadProblem"),
     ],
     section: thread.scopeType === "general" ? tShell("nav.community") : tShell(`community.${thread.scopeType === "solution" ? "scopeSolution" : "scopeProblem"}`),
     socialBadge:

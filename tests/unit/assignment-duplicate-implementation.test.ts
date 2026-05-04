@@ -8,8 +8,8 @@ function read(relativePath: string) {
 
 describe("assignment duplication implementation", () => {
   it("lets the group detail page open the assignment form in duplication mode", () => {
-    const pageSource = read("src/app/(dashboard)/dashboard/groups/[id]/page.tsx");
-    const dialogSource = read("src/app/(dashboard)/dashboard/groups/[id]/assignment-form-dialog.tsx");
+    const pageSource = read("src/app/(public)/groups/[id]/page.tsx");
+    const dialogSource = read("src/app/(public)/groups/[id]/assignment-form-dialog.tsx");
 
     expect(pageSource).toContain("seedAssignment={editorValue}");
     expect(dialogSource).toContain("seedAssignment?: AssignmentEditorValue");

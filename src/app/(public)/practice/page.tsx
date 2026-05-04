@@ -571,7 +571,7 @@ export default async function PracticePage({
       {canManageProblems && (
         <div className="mb-4 flex flex-wrap justify-end gap-2">
           <ProblemImportButton />
-          <Link href={buildLocalePath("/dashboard/problems/create", locale)}>
+          <Link href={buildLocalePath("/problems/create", locale)}>
             <Button>
               <Plus className="mr-1 size-4" />
               {tProblems("create")}

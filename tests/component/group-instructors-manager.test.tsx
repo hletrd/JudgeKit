@@ -2,7 +2,7 @@ import { render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
-import { GroupInstructorsManager } from "@/app/(dashboard)/dashboard/groups/[id]/group-instructors-manager";
+import { GroupInstructorsManager } from "@/app/(public)/groups/[id]/group-instructors-manager";
 
 vi.mock("next-intl", () => ({
   useTranslations:

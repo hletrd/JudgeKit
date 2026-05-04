@@ -9,7 +9,7 @@ function read(relativePath: string) {
 describe("participant timeline route implementation", () => {
   it("re-exports the participant audit page at the dedicated /timeline route", () => {
     const source = read(
-      "src/app/(dashboard)/dashboard/contests/[assignmentId]/participant/[userId]/timeline/page.tsx"
+      "src/app/(public)/contests/manage/[assignmentId]/participant/[userId]/timeline/page.tsx"
     );
 
     expect(source).toContain('export { default } from "../page";');

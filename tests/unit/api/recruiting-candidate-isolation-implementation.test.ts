@@ -32,7 +32,7 @@ describe("recruiting candidate isolation implementation", () => {
     // recruiting_invitations.status = 'redeemed'. This is stronger than the
     // previous redirect-on-candidate guard because candidates don't appear
     // in the rankings even to other viewers.
-    const dashboardShell = read("src/app/(dashboard)/dashboard/problems/[id]/page.tsx");
+    const dashboardShell = read("src/app/(public)/problems/[id]/page.tsx");
     const rankingsSource = read("src/app/(public)/practice/problems/[id]/rankings/page.tsx");
 
     expect(dashboardShell).toContain("redirect(");

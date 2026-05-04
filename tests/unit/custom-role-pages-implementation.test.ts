@@ -10,19 +10,19 @@ describe("custom-role page/runtime implementation guards", () => {
   it("removes built-in-only role assertions from custom-role-aware dashboard pages", () => {
     const pagePaths = [
       "src/app/(dashboard)/layout.tsx",
-      "src/app/(dashboard)/dashboard/contests/page.tsx",
-      "src/app/(dashboard)/dashboard/contests/[assignmentId]/analytics/page.tsx",
-      "src/app/(dashboard)/dashboard/contests/[assignmentId]/participant/[userId]/page.tsx",
-      "src/app/(dashboard)/dashboard/contests/[assignmentId]/page.tsx",
-      "src/app/(dashboard)/dashboard/groups/[id]/assignments/[assignmentId]/student/[userId]/page.tsx",
-      "src/app/(dashboard)/dashboard/groups/[id]/assignments/[assignmentId]/page.tsx",
-      "src/app/(dashboard)/dashboard/groups/[id]/page.tsx",
-      "src/app/(dashboard)/dashboard/problem-sets/page.tsx",
-      "src/app/(dashboard)/dashboard/problem-sets/new/page.tsx",
-      "src/app/(dashboard)/dashboard/problem-sets/[id]/page.tsx",
-      "src/app/(dashboard)/dashboard/problems/page.tsx",
-      "src/app/(dashboard)/dashboard/problems/[id]/page.tsx",
-      "src/app/(dashboard)/dashboard/problems/[id]/edit/page.tsx",
+      "src/app/(public)/contests/manage/page.tsx",
+      "src/app/(public)/contests/manage/[assignmentId]/analytics/page.tsx",
+      "src/app/(public)/contests/manage/[assignmentId]/participant/[userId]/page.tsx",
+      "src/app/(public)/contests/manage/[assignmentId]/page.tsx",
+      "src/app/(public)/groups/[id]/assignments/[assignmentId]/student/[userId]/page.tsx",
+      "src/app/(public)/groups/[id]/assignments/[assignmentId]/page.tsx",
+      "src/app/(public)/groups/[id]/page.tsx",
+      "src/app/(public)/problem-sets/page.tsx",
+      "src/app/(public)/problem-sets/new/page.tsx",
+      "src/app/(public)/problem-sets/[id]/page.tsx",
+      "src/app/(public)/problems/page.tsx",
+      "src/app/(public)/problems/[id]/page.tsx",
+      "src/app/(public)/problems/[id]/edit/page.tsx",
     ];
 
     for (const pagePath of pagePaths) {
@@ -49,15 +49,15 @@ describe("custom-role page/runtime implementation guards", () => {
 
   it("keeps problem and dashboard affordances capability-aware for custom roles", () => {
     const dashboardLayout = read("src/app/(dashboard)/layout.tsx");
-    const problemSetsPage = read("src/app/(dashboard)/dashboard/problem-sets/page.tsx");
-    const newProblemSetPage = read("src/app/(dashboard)/dashboard/problem-sets/new/page.tsx");
-    const problemSetDetailPage = read("src/app/(dashboard)/dashboard/problem-sets/[id]/page.tsx");
-    const problemsPage = read("src/app/(dashboard)/dashboard/problems/page.tsx");
+    const problemSetsPage = read("src/app/(public)/problem-sets/page.tsx");
+    const newProblemSetPage = read("src/app/(public)/problem-sets/new/page.tsx");
+    const problemSetDetailPage = read("src/app/(public)/problem-sets/[id]/page.tsx");
+    const problemsPage = read("src/app/(public)/problems/page.tsx");
     // The dashboard problem detail page was migrated to a redirect-only shell
     // (workspace→public migration); the capability-aware page now lives at
     // (public)/practice/problems/[id]/page.tsx. Verify the shell is just a
     // redirect and assert the capability checks on the public counterpart.
-    const dashboardProblemRedirect = read("src/app/(dashboard)/dashboard/problems/[id]/page.tsx");
+    const dashboardProblemRedirect = read("src/app/(public)/problems/[id]/page.tsx");
     const publicPracticeDetail = read("src/app/(public)/practice/problems/[id]/page.tsx");
     const appSidebar = read("src/components/layout/app-sidebar.tsx");
 
@@ -104,7 +104,7 @@ describe("custom-role page/runtime implementation guards", () => {
     const userActions = read("src/app/(dashboard)/dashboard/admin/users/user-actions.tsx");
     const editDialog = read("src/app/(dashboard)/dashboard/admin/users/edit-user-dialog.tsx");
     const userDetailPage = read("src/app/(dashboard)/dashboard/admin/users/[id]/page.tsx");
-    const profilePage = read("src/app/(dashboard)/dashboard/profile/page.tsx");
+    const profilePage = read("src/app/(public)/profile/page.tsx");
 
     expect(usersPage).toContain("canManageRoleAsync");
     expect(usersPage).toContain('caps.has("users.create")');

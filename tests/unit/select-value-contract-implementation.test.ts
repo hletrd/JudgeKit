@@ -10,7 +10,7 @@ describe("select value contract implementation", () => {
   it("renders explicit selected labels for the known risky select call sites", () => {
     const codeTimeline = read("src/components/contest/code-timeline-panel.tsx");
     const recruitingInvitations = read("src/components/contest/recruiting-invitations-panel.tsx");
-    const groupMembers = read("src/app/(dashboard)/dashboard/groups/[id]/group-members-manager.tsx");
+    const groupMembers = read("src/app/(public)/groups/[id]/group-members-manager.tsx");
     const systemSettings = read("src/app/(dashboard)/dashboard/admin/settings/system-settings-form.tsx");
 
     expect(codeTimeline).not.toContain("<SelectValue />");

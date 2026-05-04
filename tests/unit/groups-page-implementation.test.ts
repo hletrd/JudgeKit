@@ -8,7 +8,7 @@ function read(relativePath: string) {
 
 describe("groups page implementation", () => {
   it("surfaces the edit dialog from the groups index when group editing is allowed", () => {
-    const source = read("src/app/(dashboard)/dashboard/groups/page.tsx");
+    const source = read("src/app/(public)/groups/page.tsx");
 
     expect(source).toContain('import EditGroupDialog from "./edit-group-dialog"');
     expect(source).toContain("const canViewAllGroups = caps.has(\"groups.view_all\")");
