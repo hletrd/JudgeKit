@@ -20,7 +20,7 @@ export default async function SignupPage() {
   }
 
   return (
-    <Card className="w-full max-w-md">
+    <Card className="w-full max-w-lg">
       <CardHeader className="text-center">
         <p className="text-2xl font-medium">{settings.siteTitle}</p>
         <CardTitle className="text-2xl">
