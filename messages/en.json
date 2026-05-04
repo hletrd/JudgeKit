@@ -2299,7 +2299,8 @@
       "fetchError": "Failed to load code snapshots.",
       "previousSnapshot": "Previous snapshot",
       "nextSnapshot": "Next snapshot",
-      "snapshotOf": "Snapshot {index} of {total}"
+      "snapshotOf": "Snapshot {index} of {total}",
+      "charCount": "{count} chars"
     },
     "recruiter": {
       "title": "Candidate Overview",

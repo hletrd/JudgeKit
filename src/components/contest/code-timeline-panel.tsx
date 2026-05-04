@@ -90,7 +90,7 @@ export function CodeTimelinePanel({
     return formatDateTimeInTimeZone(dateStr, locale, timeZone);
   }
 
-  if (loading) return <p className="text-sm text-muted-foreground">Loading...</p>;
+  if (loading) return <p className="text-sm text-muted-foreground">{tCommon("loading")}</p>;
   if (error && snapshots.length === 0) {
     return (
       <Card>
@@ -196,7 +196,7 @@ export function CodeTimelinePanel({
                 )}
               </div>
               <span className="text-xs text-muted-foreground">
-                {current.charCount} chars
+                {t("charCount", { count: current.charCount })}
               </span>
             </div>
           </CardHeader>

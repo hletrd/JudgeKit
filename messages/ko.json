@@ -2299,7 +2299,8 @@
       "fetchError": "코드 스냅샷을 불러오지 못했습니다.",
       "previousSnapshot": "이전 스냅샷",
       "nextSnapshot": "다음 스냅샷",
-      "snapshotOf": "전체 {total}개 중 {index}번째 스냅샷"
+      "snapshotOf": "전체 {total}개 중 {index}번째 스냅샷",
+      "charCount": "{count}자"
     },
     "recruiter": {
       "title": "지원자 현황",
