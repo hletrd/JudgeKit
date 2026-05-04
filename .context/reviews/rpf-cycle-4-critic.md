@@ -1,31 +1,46 @@
-# RPF Cycle 4 — critic perspective (orchestrator-driven, 2026-04-29)
+# Critic Review -- RPF Cycle 4 (2026-05-04)
 
-**Date:** 2026-04-29
-**HEAD reviewed:** `e61f8a91`
+**Reviewer:** critic
+**HEAD reviewed:** `ec8939ca`
+**Scope:** Multi-perspective critique of changes since `4cd03c2b`.
+
+---
+
+## Prior cycle status
+
+- **C1-CT-1 (password validation policy-code mismatch):** RESOLVED.
+- **C1-CT-2 (deferred MEDIUM items should be scheduled):** CARRY -- still relevant.
+
+---
 
 ## Multi-perspective critique
 
-### C4-CT-1: [LOW] The cycle-3 deferred backlog is growing without a visible draw-down policy
+### Progress assessment
 
-10 LOW findings carried into the deferred list this cycle (C3-AGG-2 through C3-AGG-10), plus 14 carry-forwards from earlier cycles. Without an explicit policy on "when does cycle N pick a deferred item up?", the backlog could accumulate indefinitely. The orchestrator's PROMPT 2 instruction to "Pick one or two LOW deferred items off the backlog and schedule them for implementation in this cycle if feasible" addresses this — but only if it is followed.
+This cycle completes the i18n remediation started in cycle 3:
+1. All 4 loading.tsx files now use `getTranslations()` for "Loading..." strings.
+2. CodeTimelinePanel "chars" label now uses proper i18n key with count interpolation.
+3. ConditionalHeader trailing newline fixed.
 
-**Concrete failure scenario:** Cycle 4 could record "no new findings, all carry-forwards still deferred" — a do-nothing cycle. The loop would not fail any gate, but it also would not make progress.
+These are the last remaining hardcoded English strings in the active codebase (excluding console.error messages and comments).
 
-**Fix this cycle:** Pick at least one LOW item from the cycle-3 deferred list whose exit criterion is naturally met by a small docs/code touch. Three viable candidates (low operational risk):
-- **C3-AGG-9** (chmod 700 redundancy comment): one-line code-comment change.
-- **C3-AGG-7** (`deploy-docker.sh` header docstring + `AGENTS.md` "Deploy hardening" subsection): documentation-only.
-- **C3-AGG-10** (`succeeded after N attempts` log line): one-line code change in `_initial_ssh_check`.
+### Deferred backlog health (carry-forward)
 
-**Repo policy check:** All three are LOW with naturally-met exit criteria (the moment a cycle touches the file). Fixing them now removes them from the backlog without operational risk. This is consistent with the orchestrator's "make forward progress on backlog" directive.
+The recommendation to schedule at least 1 MEDIUM deferred item per cycle remains valid. Current MEDIUM deferred items:
+- D1: JWT clock-skew (outside config.ts)
+- D2: JWT DB query per request
+- AGG-2: Rate-limit Date.now + overflow sort
+- ARCH-CARRY-1: 20 raw API handlers
+- PERF-3: Anti-cheat dashboard query
+- F3: Candidate PII encryption at rest
+- F5: JWT callback DB query optimization
 
-### C4-CT-2: [INFO] Cycle-3 plan structure is sound; no process drift
+---
 
-I read `plans/open/2026-04-29-rpf-cycle-3-review-remediation.md`. Each task has source, severity, files, scenario, deferral reason, repo-policy quote, and exit criterion. No process drift this cycle.
+## Findings
 
-### C4-CT-3: [INFO] No commit-message claim drift
+### C4-CT-1: [LOW] CodeTimelinePanel still lacks dedicated test
 
-I re-read the cycle-3 commit messages: `8d36398e` (cycle-3 plan), `fd5197fe` (cycle-3 reviews), `e61f8a91` (cycle-3 deploy outcome). All three are docs-only commits, conventional + gitmoji, GPG-signed. No drift.
-
-## Confidence
-
-High that the only critic-perspective action this cycle is to pick 1–2 LOW deferred items off the backlog (C4-CT-1).
+- **Confidence:** HIGH (carry-forward from C3-TE-1)
+- **Description:** The component has no dedicated test file. This is the only remaining actionable item from the cycle-3 aggregate (AGG3-4).
+- **Fix:** Add component test under `tests/component/`.

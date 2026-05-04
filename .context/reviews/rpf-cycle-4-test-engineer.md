@@ -1,24 +1,33 @@
-# RPF Cycle 4 — test-engineer perspective (orchestrator-driven, 2026-04-29)
+# Test Engineer Review -- RPF Cycle 4 (2026-05-04)
 
-**Date:** 2026-04-29
-**HEAD reviewed:** `e61f8a91`
+**Reviewer:** test-engineer
+**HEAD reviewed:** `ec8939ca`
+**Scope:** Test coverage for changes since `4cd03c2b`.
+
+---
+
+## Prior cycle status
+
+- **C1-TE-1 (password policy test):** RESOLVED.
+- **C1-TE-2 (getAssignmentStatusRows integration test):** CARRY -- still deferred.
+- **C1-TE-3 (Playwright browser dependency):** CARRY -- still deferred.
+- **C3-TE-1 (CodeTimelinePanel has no dedicated test):** CARRY -- still deferred.
+
+---
 
 ## Findings
 
-### C4-TE-1: [LOW, High confidence] No new test coverage gaps this cycle
+### C4-TE-1: [LOW] CodeTimelinePanel still lacks dedicated test (carry-forward)
 
-Cycle-3 made zero `src/` changes; therefore there are no new code paths to cover. Cycle-3's C3-AGG-4 (bash CI gate via `bash -n` / `shellcheck`) remains deferred. No exit criterion has been newly met.
+- **File:** `src/components/contest/code-timeline-panel.tsx`
+- **Confidence:** MEDIUM
+- **Description:** The `CodeTimelinePanel` component has no dedicated test. With the i18n changes, it now uses `tCommon("loading")` and `t("charCount", { count })` -- a component test would verify these translations render correctly. This is AGG3-4 carry-forward.
+- **Fix:** Add component test under `tests/component/`.
 
-### C4-TE-2: [INFO] Pre-cycle gate baseline
+---
 
-Per cycle-3 close-out: `npm run lint` exit 0, `npx tsc --noEmit` exit 0. I will re-confirm these as part of this cycle's gate run. The orchestrator's GATES list also includes `next build`, `vitest unit`, `vitest integration`, `vitest component`, `vitest security`, and `playwright e2e` (best-effort).
+## No-issue confirmations
 
-### C4-TE-3: [LOW, Medium confidence] `npm run test:integration` may be env-blocked
-
-The DEFER-ENV-GATES item carried forward across multiple cycles notes that some tests require a fully-provisioned Postgres + sidecar harness. The dev shell here may not have that. Best-effort gate runs are explicitly allowed by the orchestrator ("playwright e2e — best-effort, skip with explanation only if browsers/binaries genuinely unavailable"); the same skip-with-explanation convention applies to vitest integration if the harness is missing.
-
-**Status:** Continues DEFER-ENV-GATES carry-forward; no new finding.
-
-## Confidence
-
-High that no new test-engineer findings exist this cycle beyond carry-forwards.
+- Existing tests in `tests/unit/api/plugins.route.test.ts` remain comprehensive (19 test cases covering auth, rate limiting, provider switching, error handling, persistence).
+- Existing tests in `tests/unit/code-similarity.test.ts` cover the similarity module well (33 test cases).
+- The i18n changes do not require new test cases since they are display-only translations.

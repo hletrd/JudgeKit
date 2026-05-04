@@ -1,66 +1,39 @@
-# RPF Cycle 3 — Aggregate Review (2026-05-04)
+# RPF Cycle 4 -- Aggregate Review (2026-05-04)
 
 **Date:** 2026-05-04
-**HEAD reviewed:** `4cd03c2b` (main)
+**HEAD reviewed:** `ec8939ca` (main)
 **Reviewer:** Comprehensive multi-perspective (code-quality, security, perf, architect, debugger, test-engineer, tracer, verifier, critic, document-specialist, designer consolidated)
 
 ---
 
 ## Prior cycle resolutions
 
-The following findings from cycle 1 (new round) have been resolved:
+The following findings from cycle 3 (aggregate) have been resolved:
 
 | ID | Description | Status |
 |---|---|---|
-| C1-CR-1 / C1-SR-1 / C1-CT-1 / C1-VE-1 / C1-TR-1 / C1-DOC-1 | password.ts policy-code mismatch | RESOLVED |
-| C1-DB-2 / C1-DOC-2 | PasswordValidationError dead types | RESOLVED |
+| AGG3-1 | Hardcoded "Loading..." in CodeTimelinePanel | RESOLVED (commit `960fd185`) |
+| AGG3-2 | Hardcoded "chars" in CodeTimelinePanel | RESOLVED (commit `960fd185`) |
+| AGG3-3 | Hardcoded "Loading..." in loading.tsx files | RESOLVED (commits `960fd185`, `a3536439`) |
+| C14-1 | Missing trailing newline in conditional-header.tsx | RESOLVED (commit `a3536439`) |
 
 ---
 
 ## NEW deduplicated findings this cycle
 
-**Severity tally (NEW only):** 0 HIGH, 0 MEDIUM, 4 LOW.
+**Severity tally (NEW only):** 0 HIGH, 0 MEDIUM, 0 LOW.
 
-### AGG3-1: [LOW] Hardcoded "Loading..." in CodeTimelinePanel
-
-- **File:** `src/components/contest/code-timeline-panel.tsx:93`
-- **Confidence:** HIGH
-- **Cross-agent agreement:** code-reviewer (C3-CR-1), critic (C3-CT-1)
-- **Description:** The loading state uses a hardcoded English string instead of the i18n translation key `common.loading`. The component already uses `useTranslations("common")` as `tCommon`.
-- **Fix:** Replace with `{tCommon("loading")}`.
-
-### AGG3-2: [LOW] Hardcoded "chars" in CodeTimelinePanel
-
-- **File:** `src/components/contest/code-timeline-panel.tsx:199`
-- **Confidence:** HIGH
-- **Cross-agent agreement:** code-reviewer (C3-CR-2), designer (C3-DS-2), critic (C3-CT-1)
-- **Description:** The character count label `{current.charCount} chars` is hardcoded in English.
-- **Fix:** Add i18n key `contests.codeTimeline.charCount` and use `t("charCount", { count: current.charCount })`.
-
-### AGG3-3: [LOW] Hardcoded "Loading..." in loading.tsx files
-
-- **File:** `src/app/(dashboard)/loading.tsx:3,5` and `src/app/(public)/loading.tsx:3,5`
-- **Confidence:** MEDIUM
-- **Cross-agent agreement:** code-reviewer (C3-CR-3), designer (C3-DS-1), critic (C3-CT-1)
-- **Description:** Server components use hardcoded English "Loading..." for `aria-label` and sr-only text. The `common.loading` key exists in i18n files.
-- **Fix:** Convert to async server components using `getTranslations("common")`.
-
-### AGG3-4: [LOW] CodeTimelinePanel has no dedicated test
-
-- **File:** `src/components/contest/code-timeline-panel.tsx`
-- **Confidence:** MEDIUM
-- **Cross-agent agreement:** test-engineer (C3-TE-1)
-- **Description:** The CodeTimelinePanel component has no dedicated test. It has fetch logic, state management, and conditional rendering that would benefit from component tests.
-- **Fix:** Add component test under `tests/component/`.
+No new findings this cycle. All changes since `4cd03c2b` are i18n fixes that correctly resolve the AGG3-1 through AGG3-3 findings from the prior aggregate. Verified by all 11 review agents.
 
 ---
 
 ## Carry-forward DEFERRED items
 
-All previously deferred items from the cycle 1 aggregate remain valid. No path drift detected at HEAD `4cd03c2b`.
+All previously deferred items from the cycle 1 aggregate remain valid. No path drift detected at HEAD `ec8939ca`.
 
 | ID | Severity | Status | Exit criterion |
 |---|---|---|---|
+| AGG3-4 | LOW | CARRY | CodeTimelinePanel test -- add component test |
 | AGG1-2 | MEDIUM | DEFERRED | Per-invitation-token rate limiting design decision |
 | AGG1-4 | MEDIUM | CARRY | Rate-limit consolidation cycle |
 | AGG1-7 | LOW | DEFERRED | Runtime re-read of legal hold (now function-based) |
@@ -84,6 +57,7 @@ All previously deferred items from the cycle 1 aggregate remain valid. No path d
 | C1-TE-3 | LOW | CARRY | Playwright browser dependency |
 | C1-AR-1 | LOW | CARRY | rateLimits table overloaded for SSE |
 | C1-AR-2 | LOW | CARRY | import.ts `any` types |
+| C3-SR-1 | LOW | CARRY | token-hash.ts lacks algorithm prefix |
 
 No HIGH findings deferred. No security/correctness/data-loss findings deferred unjustifiably.
 
@@ -91,22 +65,20 @@ No HIGH findings deferred. No security/correctness/data-loss findings deferred u
 
 ## Cross-agent agreement summary
 
-- All HIGH-confidence findings from previous cycles have been resolved or documented.
-- The password.ts policy-code mismatch (the most significant finding from cycle 1) is fully resolved.
-- Only 4 LOW-severity items remain as actionable this cycle (AGG3-1 through AGG3-4).
-- All agents agree that the recent changes (CSRF validation, SQL-level filtering, i18n fixes, performance.now() migration) are well-implemented.
+- All 11 agents agree that the i18n fixes since `4cd03c2b` are correct and complete.
+- No agent found any new issues in the i18n changes.
+- The codebase is in a mature state with only LOW-severity carry-forward items remaining.
+- The only actionable NEW item is AGG3-4 (CodeTimelinePanel test), which is a carry-forward from cycle 3.
 
 ---
 
 ## Agent failures
 
-None — all 11 review agents completed successfully.
+None -- all 11 review agents completed successfully.
 
 ---
 
 ## Suggested PROMPT 3 priority order
 
-1. **AGG3-1 (hardcoded "Loading..." in CodeTimelinePanel)** — simple i18n fix
-2. **AGG3-2 (hardcoded "chars" in CodeTimelinePanel)** — add i18n key and use it
-3. **AGG3-3 (hardcoded "Loading..." in loading.tsx)** — convert to async server components
-4. **AGG3-4 (CodeTimelinePanel test)** — add component test
+1. **AGG3-4 (CodeTimelinePanel test)** -- the only remaining actionable finding from cycle 3
+2. Address any gate failures from the quality gates listed in GATES
