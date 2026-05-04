@@ -1,73 +1,103 @@
-# Cycle 10 Deep Code Review — JudgeKit
+# Cycle 10 — Comprehensive Code Review (2026-05-03)
 
-**Date:** 2026-04-19
-**Reviewer:** Comprehensive multi-angle review (code quality, security, performance, architecture, correctness, testing, design)
-**Scope:** Full repository — `src/`, configuration files
-**Delta from prior cycle:** Focus on new issues not covered in cycles 1-9, verifying previously reported items
-
----
-
-## F1: `getRecruitingInvitationByToken()` uses `.select().from()` without column restriction
-- **File**: `src/lib/assignments/recruiting-invitations.ts:163-169`
-- **Severity**: MEDIUM | **Confidence**: High
-- **Description**: `getRecruitingInvitationByToken()` calls `db.select().from(recruitingInvitations).where(...)` with no column restriction. This function is called in `redeemRecruitingToken()` (line 296-300) inside a transaction, meaning all columns — including `tokenHash` — are loaded into memory. The same file's other read functions (`getRecruitingInvitation()`, `getRecruitingInvitations()`) already use explicit column selection. Additionally, inside `redeemRecruitingToken()` at line 296-299, there's a second `tx.select().from(recruitingInvitations)` without column restriction, which loads the full row including the `tokenHash` column. While `tokenHash` is a SHA-256 hash (not the plaintext token), minimizing data exposure is defense-in-depth.
-- **Concrete failure scenario**: A developer reading `getRecruitingInvitationByToken()` or `redeemRecruitingToken()` may not realize all columns are loaded. If a future column is added to `recruitingInvitations` containing sensitive data (e.g., PII), it would be silently exposed.
-- **Fix**: Add explicit column selection to both `getRecruitingInvitationByToken()` and the inline query in `redeemRecruitingToken()`, matching the pattern used in `getRecruitingInvitation()`.
-
-## F2: Problem GET endpoint leaks full problem data to non-managers before access check returns
-- **File**: `src/app/api/v1/problems/[id]/route.ts:45-55`
-- **Severity**: MEDIUM | **Confidence**: Medium
-- **Description**: The GET handler fetches the full problem row with `db.query.problems.findFirst({ where: eq(problems.id, id) })` (no column restriction) at line 45 **before** checking access at line 49-50. If the user does not have access, `forbidden()` is returned at line 50, which is correct. However, the full problem data (including potentially hidden description, test cases when the manager branch is taken) is loaded into memory even for unauthorized users. More importantly, `findFirst` without `columns` restriction loads every column of the `problems` table, including fields like `description` which could contain private content for hidden problems.
-- **Concrete failure scenario**: The data is loaded into server memory but never sent to the client (the `forbidden()` response is returned). This is not a data leak, but it is an unnecessary full-row fetch on every unauthorized access attempt. If the `problems` table grows large columns (e.g., very long descriptions), this is a minor performance issue.
-- **Fix**: Add `columns: { id: true, authorId: true, visibility: true }` to the initial `findFirst` for the access check, then re-fetch full data only when access is granted.
-
-## F3: `communityVotes` vote toggle is not atomic — race condition on concurrent votes
-- **File**: `src/app/api/v1/community/votes/route.ts:72-97`
-- **Severity**: MEDIUM | **Confidence**: Medium
-- **Description**: The vote toggle logic reads the existing vote with `db.query.communityVotes.findFirst()` (line 72), then conditionally inserts, updates, or deletes (lines 81-97). This is a read-then-write pattern with no transaction or row lock. Two concurrent requests from the same user for the same target can both read "no existing vote" and both insert, resulting in duplicate vote rows. The `communityVotes` table likely has a unique constraint on `(targetType, targetId, userId)` which would cause one insert to fail with a constraint violation, resulting in a 500 error to the user instead of a clean response.
-- **Concrete failure scenario**: User double-clicks the upvote button rapidly. Both requests read no existing vote at line 72. Both attempt `db.insert(communityVotes).values(...)` at line 91. The second insert fails with a PostgreSQL unique constraint violation, caught by the generic `createApiHandler` error handler which returns a 500. The user sees an error instead of a clean vote toggle.
-- **Fix**: Wrap the vote toggle in a transaction with `SELECT ... FOR UPDATE` on the existing vote row, or use an `INSERT ... ON CONFLICT` upsert pattern.
-
-## F4: Problem PATCH endpoint fetches full problem row twice without column restriction
-- **File**: `src/app/api/v1/problems/[id]/route.ts:72,145`
-- **Severity**: LOW | **Confidence**: High
-- **Description**: The PATCH handler calls `db.query.problems.findFirst({ where: eq(problems.id, id) })` at line 72 without `columns` restriction, then calls it again at line 145 (also without `columns` restriction, but with `with: { testCases: true }`). The first fetch loads all columns to check existence and get current values for the patch merge. The second fetch loads the updated row for the response. Both are full-row reads. The first fetch could use `columns: { id: true, authorId: true, title: true, description: true, ... }` to only load the fields needed for the merge.
-- **Concrete failure scenario**: Minor performance waste on every PATCH request — two full-row reads when partial reads would suffice.
-- **Fix**: Add `columns` restriction to the first `findFirst` at line 72, listing only the fields needed for the merge logic.
-
-## F5: `redeemRecruitingToken` uses `new Date()` for deadline comparison inside transaction instead of PostgreSQL `NOW()`
-- **File**: `src/lib/assignments/recruiting-invitations.ts:375,410`
-- **Severity**: LOW | **Confidence**: Medium
-- **Description**: Inside `redeemRecruitingToken()`, the deadline comparison at lines 375 and 410 uses `new Date()` (application server time) instead of PostgreSQL `NOW()` for the comparison. This is a specific instance of the clock-skew concern noted in the deferred item D2. The interesting aspect is that the atomic claim at line 463-469 correctly uses `NOW()` in the SQL (`${recruitingInvitations.expiresAt} > NOW()`), creating an inconsistency: the initial validation at line 410 uses application time, but the atomic claim uses database time. If the application server clock is slightly ahead of the database clock, a request could pass the initial validation (deadline not yet passed per app time) but fail the atomic claim (deadline already passed per DB time), resulting in the transaction rolling back with "alreadyRedeemed" error even though the token is still valid — a confusing error message.
-- **Concrete failure scenario**: App server clock is 5 seconds ahead of DB clock. A token expires at exactly 12:00:00. At 11:59:57 app time (11:59:52 DB time), the user submits a redeem request. The initial check at line 410 passes (11:59:57 < 12:00:00). The atomic claim at line 467 uses `NOW()` which returns 11:59:52 DB time, and the `expiresAt > NOW()` check passes correctly. No failure in this direction. However, if the app server clock is behind the DB clock (DB says 12:00:05, app says 12:00:00), the initial check passes but the atomic claim fails because DB NOW() is past the deadline. The user gets "alreadyRedeemed" instead of "contestClosed".
-- **Fix**: This is already tracked as D2 (deferred). The specific error message mismatch could be fixed by changing the thrown error from "alreadyRedeemed" to a more specific message that distinguishes "expired" from "already redeemed", but this is LOW severity.
-
-## F6: `invite/route.ts` LIKE search doesn't use ILIKE for case-insensitive matching on `users.name`
-- **File**: `src/app/api/v1/contests/[assignmentId]/invite/route.ts:46`
-- **Severity**: LOW | **Confidence**: High
-- **Description**: The invite search uses `sql\`lower(${users.name}) like ${likePattern} escape '\\'\``. This works correctly because both the column value and the pattern are lowercased. However, the `users.username` search at line 45 also uses `lower()`. In contrast, `recruiting-invitations.ts:109` uses `ILIKE` without `lower()`. The patterns are functionally equivalent but inconsistent across the codebase. The `ILIKE` approach is cleaner and allows PostgreSQL to potentially use an index (if a case-insensitive index exists).
-- **Concrete failure scenario**: No functional failure — both approaches produce correct case-insensitive results. The inconsistency is a maintainability concern.
-- **Fix**: Standardize on either `ILIKE` or `lower() + LIKE` across the codebase. Prefer `ILIKE` for readability.
-
-## F7: `validateShellCommand` regex uses `\beval\b` which can reject legitimate commands containing "eval" as a substring
-- **File**: `src/lib/compiler/execute.ts:156`
-- **Severity**: LOW | **Confidence**: Medium
-- **Description**: The regex `/\beval\b/` matches word boundaries. As the code's own comment on line 147 notes, this rejects tokens like "eval-xxx" where a hyphen follows "eval". The Rust worker uses `split_whitespace` which only rejects the exact token "eval". This divergence is acknowledged in the comment as a "safe false-positive." However, there are legitimate tools/commands that might contain "eval" as a word-boundary-adjacent substring, such as `reval` (a Ruby eval tool) or script filenames like `evaluate.sh`. The `\b` word boundary considers hyphens as boundaries, so `my-eval-script.sh` would match `\beval\b` and be rejected, while it would pass the Rust validator.
-- **Concrete failure scenario**: An admin configures a compile command like `sh -c "my-eval-script.sh && cc ..."` which would be rejected by the Node.js validator but accepted by the Rust runner. The fallback path would fail while the primary runner would succeed, causing inconsistent behavior.
-- **Fix**: Align the Node.js validator with the Rust one by replacing `\beval\b` with a split-on-whitespace check that only matches the exact token "eval".
-
-## F8: `readStreamTextWithLimit` does not account for multi-byte character truncation
-- **File**: `src/lib/db/import-transfer.ts:10-21`
-- **Severity**: LOW | **Confidence**: Medium
-- **Description**: The `readStreamTextWithLimit` function reads chunks from a stream and concatenates them using `TextDecoder.decode(value, { stream: true })`. The byte-count limit check at line 16 (`total += value.byteLength; if (total > limit)`) counts raw bytes correctly. However, the final `decoder.decode()` at line 23 could produce a partial multi-byte character if the stream was truncated mid-character at the byte boundary. This would cause `JSON.parse` at line 47 to throw a syntax error, which is caught and converted to an "invalidJson" error. The error message is misleading — it suggests invalid JSON when the real issue is that the stream was too large and was cut mid-character.
-- **Concrete failure scenario**: A 100 MB JSON body is uploaded where the 100 MB boundary falls in the middle of a multi-byte UTF-8 character (e.g., Korean text). The stream read stops at the byte limit, the decoder produces a replacement character, and JSON.parse fails with "invalidJson" instead of "fileTooLarge". The admin sees a confusing error.
-- **Fix**: Before throwing "fileTooLarge", check if the decoder produced replacement characters. Alternatively, move the size check to the `Content-Length` header validation (already done at line 32-36) and make the stream-level check a safety net with a clearer error.
+**Date:** 2026-05-03
+**HEAD reviewed:** `1d5fe1e2` (most recent: test(auth): update change-password test)
+**Scope:** Full repository deep review across security, correctness, performance, architecture, UI/UX, documentation, and testing.
 
 ---
 
-## Summary Statistics
-- Total new findings this cycle: 8
-- Critical: 0
-- High: 0
-- Medium: 3 (F1 — uncolumned select on recruiting invitations, F2 — full problem row fetched before access check, F3 — vote toggle race condition)
-- Low: 5 (F4 — double full-row fetch in problem PATCH, F5 — clock skew inconsistency in redeem, F6 — LIKE vs ILIKE inconsistency, F7 — eval regex divergence from Rust, F8 — multi-byte truncation in stream reader)
+## C10-1. Privacy page hardcoded retention periods — data-class mismatch risk (MEDIUM, High confidence)
+
+**File:** `src/app/(public)/privacy/page.tsx:39-44`
+
+```tsx
+const dataClasses = [
+  { key: "auditLogs", retention: "90" },
+  { key: "aiChatLogs", retention: "30" },
+  { key: "antiCheatEvents", retention: "180" },
+  { key: "recruitingInvitations", retention: "365" },
+  { key: "submissions", retention: "365" },
+] as const;
+```
+
+These values are hardcoded strings, not derived from `DATA_RETENTION_DAYS` in `src/lib/data-retention.ts`. If an operator changes a retention period via environment variables (e.g., `AUDIT_EVENT_RETENTION_DAYS=180`), the privacy page will display the wrong period. The code already has a comment on line 35-37 acknowledging this, but no enforcement exists.
+
+**Fix:** Derive retention values from `DATA_RETENTION_DAYS` on the server and pass them to the component, or add a runtime assertion that the hardcoded values match the configured values (failing loudly in dev).
+
+---
+
+## C10-2. Privacy page missing `loginEvents` data class (LOW, High confidence)
+
+**File:** `src/app/(public)/privacy/page.tsx:38-44`
+
+The `DATA_RETENTION_DAYS` object in `src/lib/data-retention.ts` defines six retention categories: `auditEvents`, `chatMessages`, `antiCheatEvents`, `recruitingRecords`, `submissions`, and `loginEvents`. The privacy page only lists five -- `loginEvents` (180-day retention) is missing. This is a data-transparency gap: users are not informed about the retention of their login event history.
+
+**Fix:** Add `loginEvents` to the `dataClasses` array with retention `"180"`.
+
+---
+
+## C10-3. `recruiting-results.ts` `computeRecruitResultsTotals` -- NaN propagation from `mapSubmissionPercentageToAssignmentPoints` (MEDIUM, Medium confidence)
+
+**File:** `src/lib/assignments/recruiting-results.ts:86`
+
+```ts
+const adjusted = mapSubmissionPercentageToAssignmentPoints(best.score, points);
+```
+
+If `best.score` is NaN or infinity (e.g., from a corrupted submission record), `mapSubmissionPercentageToAssignmentPoints` will propagate NaN through the `totalScore` accumulator. The cycle-3 review added a NaN guard to `mapSubmissionPercentageToAssignmentPoints`, but this function still does not validate that `best.score` is a finite number before passing it.
+
+**Fix:** Add a `Number.isFinite(best.score)` guard before calling `mapSubmissionPercentageToAssignmentPoints`, skipping the entry if the score is not a finite number.
+
+---
+
+## C10-4. `recruiting-invitations.ts` `updateRecruitingInvitation` allows metadata overwrite that removes `_sys.*` keys (LOW, Medium confidence)
+
+**File:** `src/lib/assignments/recruiting-invitations.ts:293-330`
+
+The `updateRecruitingInvitation` function accepts a `metadata` field that replaces the entire metadata object. While `findInternalKeyViolation` prevents `_sys.` prefixed keys from being injected, an admin could indirectly remove existing `_sys.` keys (like the `failedRedeemAttempts` counter or `accountPasswordResetRequired` flag) because the replacement is a full object overwrite, not a merge.
+
+**Scenario:** An admin updates invitation metadata with `{"note": "follow up"}`. This replaces the entire metadata, removing `_sys.accountPasswordResetRequired` and `_sys.failedRedeemAttempts`. The brute-force counter would be reset to zero.
+
+**Fix:** Merge the new metadata with existing metadata rather than replacing it, or preserve `_sys.*` keys during the update.
+
+---
+
+## C10-5. `seo.ts` `buildSocialImageUrl` -- no URL length validation (LOW, Low confidence)
+
+**File:** `src/lib/seo.ts:124-152`
+
+The function builds a `/og?params` URL with query parameters. If all options are provided with maximum-length strings, the URL could exceed browser/server URL length limits (typically 2048-8192 characters). The `summarizeTextForMetadata` function truncates individual values, but the combined URL could still be very long.
+
+**Fix:** Add a total URL length check and truncate or omit optional parameters if the URL exceeds a safe limit.
+
+---
+
+## Items reviewed and confirmed as no-action / known deferred
+
+| Item | Verdict |
+|---|---|
+| `incrementFailedRedeemAttempt` uses `sql.raw` with module constant | Safe -- constant is not user input |
+| `encryption.ts` decrypt plaintext fallback | Known deferred (C7-AGG-7) |
+| JWT callback DB query on every refresh | Known deferred (D2/F5) |
+| `getDbNowUncached()` vs `getDbNowMs()` in recruiting | Correct for respective column types |
+| `createApiHandler` auth enforcement | Well-designed, defaults to true |
+| `system-settings-config.ts` cache uses `Date.now()` | Correct -- in-process cache TTL |
+| `sanitize-html.ts` IMG src restriction | Intentional security design |
+| `RUNNER_AUTH_TOKEN` debug log | No secret exposure |
+| `api-key-auth.ts` fire-and-forget `lastUsedAt` | Acceptable for non-critical metadata |
+| `realtime-coordination.ts` SSE in rateLimits table | Pragmatic reuse, LOW concern |
+| `recruiting/validate` timing side channel | LOW, mitigated by rate limiting |
+
+---
+
+## Summary of NEW actionable findings this cycle
+
+| ID | Severity | Confidence | File | Summary |
+|---|---|---|---|---|
+| C10-1 | MEDIUM | High | `src/app/(public)/privacy/page.tsx` | Hardcoded retention periods may diverge from configured values |
+| C10-2 | LOW | High | `src/app/(public)/privacy/page.tsx` | Missing `loginEvents` data class on privacy page |
+| C10-3 | MEDIUM | Medium | `src/lib/assignments/recruiting-results.ts` | No NaN/finite guard before score computation |
+| C10-4 | LOW | Medium | `src/lib/assignments/recruiting-invitations.ts` | Metadata update overwrites `_sys.*` keys |
+| C10-5 | LOW | Low | `src/lib/seo.ts` | Social image URL may exceed length limits |
+
+No HIGH severity findings. No security vulnerabilities found beyond known deferred items.
