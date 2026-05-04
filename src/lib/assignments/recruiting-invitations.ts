@@ -67,6 +67,9 @@ async function incrementFailedRedeemAttempt(token: string): Promise<void> {
     await db
       .update(recruitingInvitations)
       .set({
+        // sql.raw is safe here: FAILED_REDEEM_ATTEMPTS_KEY is a module-level
+        // constant, not user input. It is used to embed the key name into the
+        // JSONB path literal that jsonb_set() expects.
         metadata: sql`jsonb_set(COALESCE(${recruitingInvitations.metadata}, '{}'), '{${sql.raw(FAILED_REDEEM_ATTEMPTS_KEY)}}', (COALESCE((${recruitingInvitations.metadata}->>${sql.raw(FAILED_REDEEM_ATTEMPTS_KEY)})::int, 0) + 1)::text)`,
       })
       .where(eq(recruitingInvitations.tokenHash, tokenHashValue));
