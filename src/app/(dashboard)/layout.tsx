@@ -4,6 +4,7 @@ import { auth } from "@/lib/auth";
 import { getTranslations } from "next-intl/server";
 import { SidebarProvider, SidebarInset, SidebarTrigger } from "@/components/ui/sidebar";
 import { AppSidebar } from "@/components/layout/app-sidebar";
+import { PublicHeader } from "@/components/layout/public-header";
 import { SkipToContent } from "@/components/layout/skip-to-content";
 import { Breadcrumb } from "@/components/layout/breadcrumb";
 
@@ -14,6 +15,7 @@ import { resolveCapabilities } from "@/lib/capabilities/cache";
 import { getRecruitingAccessContext } from "@/lib/recruiting/access";
 import { getActiveTimedAssignmentsForSidebar } from "@/lib/assignments/active-timed-assignments";
 import { NO_INDEX_METADATA } from "@/lib/seo";
+import { getPublicNavItems, getPublicNavActions } from "@/lib/navigation/public-nav";
 
 export const metadata: Metadata = NO_INDEX_METADATA;
 
@@ -28,9 +30,11 @@ export default async function DashboardLayout({ children }: { children: React.Re
   const session = await auth();
   if (!session?.user) redirect("/login");
 
-  const [{ effectivePlatformMode }, tCommon, capsSet, settings] = await Promise.all([
+  const [{ effectivePlatformMode }, tCommon, tShell, tAuth, capsSet, settings] = await Promise.all([
     getRecruitingAccessContext(session.user.id),
     getTranslations("common"),
+    getTranslations("publicShell"),
+    getTranslations("auth"),
     resolveCapabilities(session.user.role),
     getResolvedSystemSettings({
       siteTitle: (await getTranslations("common"))("appName"),
@@ -50,6 +54,18 @@ export default async function DashboardLayout({ children }: { children: React.Re
 
   return (
     <SidebarProvider>
+      <PublicHeader
+        siteTitle={settings.siteTitle}
+        items={getPublicNavItems(tShell)}
+        actions={getPublicNavActions(tAuth, settings.publicSignupEnabled)}
+        loggedInUser={{
+          name: session.user.name || session.user.username || "",
+          href: "/dashboard",
+          label: session.user.name || session.user.username || "",
+          capabilities,
+        }}
+        leadingSlot={<SidebarTrigger />}
+      />
       <SkipToContent targetId="main-content" label={tCommon("skipToContent")} />
       <AppSidebar
         user={session.user}
@@ -60,11 +76,6 @@ export default async function DashboardLayout({ children }: { children: React.Re
         activeTimedAssignments={activeTimedAssignments}
       />
       <SidebarInset>
-        <header className="border-b bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/80">
-          <div className="flex items-center gap-2 px-4 py-3">
-            <SidebarTrigger />
-          </div>
-        </header>
         <header className="hidden md:block sticky top-0 z-10 border-b bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/80 px-6 py-3">
           <Breadcrumb />
         </header>
