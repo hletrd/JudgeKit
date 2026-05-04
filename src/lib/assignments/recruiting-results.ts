@@ -82,7 +82,7 @@ export function computeRecruitResultsTotals(
     const points = ap.points ?? 100;
     totalPossible += points;
     const best = bestByProblem.get(ap.problemId);
-    if (best?.score !== null && best?.score !== undefined) {
+    if (best?.score !== null && best?.score !== undefined && Number.isFinite(best.score)) {
       const adjusted = mapSubmissionPercentageToAssignmentPoints(best.score, points);
       adjustedByProblem.set(ap.problemId, adjusted);
       totalScore += adjusted;
