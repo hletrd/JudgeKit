@@ -2,6 +2,13 @@ const CODE_SIMILARITY_URL =
   process.env.CODE_SIMILARITY_URL || "http://127.0.0.1:3002";
 const CODE_SIMILARITY_AUTH_TOKEN = process.env.CODE_SIMILARITY_AUTH_TOKEN ?? "";
 
+if (process.env.CODE_SIMILARITY_URL && !CODE_SIMILARITY_AUTH_TOKEN) {
+  console.warn(
+    "[code-similarity] CODE_SIMILARITY_URL is set but CODE_SIMILARITY_AUTH_TOKEN is missing — " +
+    "requests to the similarity service will be unauthenticated."
+  );
+}
+
 interface RustSubmission {
   userId: string;
   problemId: string;
