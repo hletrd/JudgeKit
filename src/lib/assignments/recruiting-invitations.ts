@@ -15,6 +15,7 @@ import type { SQL } from "drizzle-orm";
 import type { TransactionClient } from "@/lib/db";
 import { getDbNowUncached } from "@/lib/db-time";
 import { escapeLikePattern } from "@/lib/db/like";
+import { logger } from "@/lib/logger";
 
 type RecruitingInvitationExecutor =
   Pick<TransactionClient, "insert" | "select" | "update" | "delete">
@@ -537,9 +538,11 @@ export async function redeemRecruitingToken(
     if (err instanceof Error && err.message === "alreadyRedeemed") {
       return { ok: false, error: "alreadyRedeemed" };
     }
-    if (err instanceof Error && err.message === "tokenExpired") {
-      return { ok: false, error: "tokenExpired" };
-    }
-    throw err;
+    // The atomic SQL WHERE clause in the transaction handles expiry
+    // validation authoritatively (using DB NOW()). Unexpected errors
+    // are logged and surfaced as a generic internal error rather than
+    // propagating to the generic 500 handler.
+    logger.error({ err }, "[recruiting] Unexpected error in redeemRecruitingToken");
+    return { ok: false, error: "internalError" };
   }
 }
