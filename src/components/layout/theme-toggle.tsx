@@ -67,7 +67,7 @@ export function ThemeToggle({ className, dbTheme }: { className?: string; dbThem
   }, [mounted, dbTheme, theme, setTheme]);
 
   if (!mounted) {
-    return <Skeleton className={cn("h-9 w-9 rounded-md", className)} role="status" aria-busy="true" aria-label={t("theme")} />;
+    return <Skeleton className={cn("h-11 w-11 rounded-md lg:h-9 lg:w-9", className)} role="status" aria-busy="true" aria-label={t("theme")} />;
   }
 
   return (
@@ -75,7 +75,9 @@ export function ThemeToggle({ className, dbTheme }: { className?: string; dbThem
       <DropdownMenuTrigger
         aria-label={t("theme")}
         className={cn(
-          "inline-flex h-9 w-9 items-center justify-center rounded-md text-sm font-medium transition-colors hover:bg-accent hover:text-accent-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring",
+          // 44 × 44 px (size-11) on mobile to satisfy the iOS HIG / Material touch-target guideline,
+          // shrinks to 36 × 36 (size-9) at lg+ where pointer input dominates.
+          "inline-flex h-11 w-11 items-center justify-center rounded-md text-sm font-medium transition-colors hover:bg-accent hover:text-accent-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring lg:h-9 lg:w-9",
           className,
         )}
       >

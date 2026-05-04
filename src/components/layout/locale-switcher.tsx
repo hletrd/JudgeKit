@@ -11,6 +11,7 @@ import {
 } from "@/components/ui/dropdown-menu";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
+import { cn } from "@/lib/utils";
 import { Languages } from "lucide-react";
 import { DEFAULT_LOCALE, LOCALE_COOKIE_NAME, LOCALE_QUERY_PARAM } from "@/lib/i18n/constants";
 import { forceNavigate } from "@/lib/navigation/client";
@@ -28,7 +29,14 @@ export function LocaleSwitcher({ className }: { className?: string }) {
   const mounted = useSyncExternalStore(subscribeToHydration, () => true, () => false);
 
   if (!mounted) {
-    return <Skeleton className="h-9 w-9 rounded-md" role="status" aria-busy="true" aria-label={t("language")} />;
+    return (
+      <Skeleton
+        className={cn("h-11 w-11 rounded-md lg:h-9 lg:w-9", className)}
+        role="status"
+        aria-busy="true"
+        aria-label={t("language")}
+      />
+    );
   }
 
   function setLocale(locale: string) {
@@ -53,7 +61,14 @@ export function LocaleSwitcher({ className }: { className?: string }) {
     <DropdownMenu>
       <DropdownMenuTrigger
         render={
-          <Button variant="ghost" size="icon" aria-label={t("language")} className={className}>
+          <Button
+            variant="ghost"
+            size="icon"
+            aria-label={t("language")}
+            // Override Button's size="icon" default (size-8 / 32 px) with a touch-friendly
+            // 44 × 44 px footprint on mobile, shrinking back to 36 × 36 at lg+.
+            className={cn("size-11 lg:size-9", className)}
+          >
             <Languages className="size-4" aria-hidden="true" />
           </Button>
         }
