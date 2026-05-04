@@ -228,6 +228,9 @@ export default async function RecruitResultsPage({
           <h2 className="text-sm font-medium uppercase tracking-wide text-muted-foreground">
             {t("perProblemBreakdown")}
           </h2>
+          {assignmentProblemRows.length === 0 ? (
+            <p className="text-sm text-muted-foreground">{t("noProblemsYet")}</p>
+          ) : (
           <ul className="space-y-2">
             {assignmentProblemRows.map((ap) => {
               const best = bestByProblem.get(ap.problemId);
@@ -278,6 +281,7 @@ export default async function RecruitResultsPage({
               );
             })}
           </ul>
+          )}
         </div>
         {assignment.contactEmail && (
           <p className="text-xs text-center text-muted-foreground">

@@ -2718,6 +2718,7 @@
     "totalScore": "총점",
     "perProblemBreakdown": "문제별 내역",
     "noSubmissionForProblem": "이 문제에 제출한 코드가 없습니다.",
+    "noProblemsYet": "아직 이 평가에 추가된 문제가 없습니다.",
     "notAttempted": "미응시",
     "reviewNoticeTitle": "평가 검토 안내",
     "reviewNoticeSubmissions": "검토 권한이 있는 담당자가 채용 판단을 위해 제출 코드, 소요 시간, 풀이 기록을 확인할 수 있습니다.",

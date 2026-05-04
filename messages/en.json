@@ -2718,6 +2718,7 @@
     "totalScore": "Total score",
     "perProblemBreakdown": "Per-problem breakdown",
     "noSubmissionForProblem": "You did not submit on this problem.",
+    "noProblemsYet": "No problems have been added to this assessment yet.",
     "notAttempted": "Not attempted",
     "reviewNoticeTitle": "Assessment review notice",
     "reviewNoticeSubmissions": "Authorized reviewers may inspect submissions, timestamps, and assessment progress for hiring decisions and support.",
