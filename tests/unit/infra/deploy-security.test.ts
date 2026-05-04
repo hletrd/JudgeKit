@@ -61,7 +61,7 @@ describe("deployment security defaults", () => {
     // service refuses to start when the token is unset, instead of the
     // historical :- default-to-empty form (which was a footgun — the
     // sidecar then ran unauthenticated). Pin the new pattern.
-    expect(rateLimiterBlock!).toMatch(/RATE_LIMITER_AUTH_TOKEN=\$\{RATE_LIMITER_AUTH_TOKEN:\?/);
+    expect(rateLimiterBlock!).toMatch(/RATE_LIMITER_AUTH_TOKEN:\s*\$\{RATE_LIMITER_AUTH_TOKEN:\?/);
 
     // Reset endpoint must NOT be enabled explicitly.
     expect(production).not.toContain("RATE_LIMITER_ENABLE_RESET=1");
@@ -75,8 +75,10 @@ describe("deployment security defaults", () => {
     // Production compose now requires the tokens (:? syntax). test-backends
     // (used for CI / dev rigs) keeps the lenient :- form so contributors
     // without a generated token can still spin up the stack.
-    expect(production).toMatch(/CODE_SIMILARITY_AUTH_TOKEN=\$\{CODE_SIMILARITY_AUTH_TOKEN:\?/);
-    expect(production).toMatch(/RATE_LIMITER_AUTH_TOKEN=\$\{RATE_LIMITER_AUTH_TOKEN:\?/);
+    // Production uses YAML mapping syntax (KEY: ${...}) while test-backends
+    // uses the array form (KEY=${...}).
+    expect(production).toMatch(/CODE_SIMILARITY_AUTH_TOKEN:\s*\$\{CODE_SIMILARITY_AUTH_TOKEN:\?/);
+    expect(production).toMatch(/RATE_LIMITER_AUTH_TOKEN:\s*\$\{RATE_LIMITER_AUTH_TOKEN:\?/);
     expect(testBackends).toContain("CODE_SIMILARITY_AUTH_TOKEN=${CODE_SIMILARITY_AUTH_TOKEN:-}");
   });
 

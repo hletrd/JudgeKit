@@ -42,10 +42,9 @@ export function isDataRetentionLegalHold(): boolean {
     process.env.DATA_RETENTION_LEGAL_HOLD === "1";
 }
 
-/** @deprecated Use isDataRetentionLegalHold() for runtime-responsive checks. */
-export const DATA_RETENTION_LEGAL_HOLD =
-  process.env.DATA_RETENTION_LEGAL_HOLD === "true" ||
-  process.env.DATA_RETENTION_LEGAL_HOLD === "1";
+// The deprecated module-level constant DATA_RETENTION_LEGAL_HOLD was removed in
+// favour of isDataRetentionLegalHold() which re-reads the env var at runtime.
+// See commit ad6fe8f4.
 
 /**
  * Compute the cutoff Date before which data is eligible for pruning.

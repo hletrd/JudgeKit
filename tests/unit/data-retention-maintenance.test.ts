@@ -152,7 +152,7 @@ describe("startSensitiveDataPruning / stopSensitiveDataPruning", () => {
 
 // Cycle-4 CYC4-AGG-3: pin the legal-hold escape hatch. Kept in a separate
 // describe block (with its own beforeEach/afterEach) because the test
-// uses vi.doMock to flip DATA_RETENTION_LEGAL_HOLD; that override
+// uses vi.doMock to flip isDataRetentionLegalHold; that override
 // persists across vi.resetModules within the same describe and would
 // pollute the failure-isolation test above. Running this in its own
 // describe block ensures the doMock is fully torn down before any
@@ -175,7 +175,7 @@ describe("pruneSensitiveOperationalData — legal hold", () => {
     vi.restoreAllMocks();
   });
 
-  it("short-circuits all prunes when DATA_RETENTION_LEGAL_HOLD is true (CYC4-AGG-3)", async () => {
+  it("short-circuits all prunes when isDataRetentionLegalHold() returns true (CYC4-AGG-3)", async () => {
     // The legal-hold flag is the operator's litigation-hold override; a
     // regression that drops it (e.g., a refactor moving the check inside
     // the try-block where a thrown DB error can still emit warn logs) is
@@ -185,7 +185,6 @@ describe("pruneSensitiveOperationalData — legal hold", () => {
     // Override @/lib/data-retention via vi.doMock so the legal-hold flag
     // is true for the dynamic-imported module instance.
     vi.doMock("@/lib/data-retention", () => ({
-      DATA_RETENTION_LEGAL_HOLD: true,
       isDataRetentionLegalHold: () => true,
       DATA_RETENTION_DAYS: {
         auditEvents: 90,
