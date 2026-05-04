@@ -666,9 +666,10 @@ export async function redeemRecruitingToken(
     });
   } catch (err: unknown) {
     if (err instanceof Error && err.message === "alreadyRedeemed") {
-      // Increment per-invitation failed-redeem counter outside the
-      // rolled-back transaction so the lockout persists across retries.
-      await incrementFailedRedeemAttempt(token);
+      // Do NOT increment the brute-force counter for a concurrent-claim race.
+      // "alreadyRedeemed" means another request claimed the token first —
+      // this is not a brute-force attempt and incrementing would unfairly
+      // move the legitimate user toward lockout.
       return { ok: false, error: "alreadyRedeemed" };
     }
     // The atomic SQL WHERE clause in the transaction handles expiry
