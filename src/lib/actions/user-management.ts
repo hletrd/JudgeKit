@@ -193,8 +193,14 @@ export async function deleteUserPermanently(userId: string, confirmUsername: str
   }
 
   try {
-    // Record audit BEFORE deletion since actorId FK gets set-null on cascade
+    // Capture audit context BEFORE deletion since actorId FK gets set-null on
+    // cascade. We build the context early (to preserve the request origin) but
+    // only record the event after the deletion succeeds — otherwise a failed
+    // deletion would produce a phantom audit entry. See C9-6 (cycle 9 review).
     const auditContext = await buildServerActionAuditContext("/dashboard/admin/users");
+
+    await db.delete(users).where(eq(users.id, userId));
+
     recordAuditEvent({
       actorId: session.user.id,
       actorRole: session.user.role,
@@ -208,8 +214,6 @@ export async function deleteUserPermanently(userId: string, confirmUsername: str
       },
       context: auditContext,
     });
-
-    await db.delete(users).where(eq(users.id, userId));
 
     return { success: true };
   } catch (error) {
