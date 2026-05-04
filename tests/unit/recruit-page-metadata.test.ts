@@ -92,6 +92,7 @@ describe("recruit page metadata", () => {
     getRecruitingInvitationByTokenMock.mockResolvedValue({
       id: "invite-2",
       status: "redeemed",
+      userId: "user-2",
       assignmentId: "assignment-2",
       candidateName: "Candidate Two",
       expiresAt: null,
@@ -137,5 +138,26 @@ describe("recruit page metadata", () => {
     });
 
     expect(metadata.title).toBe("Link expired");
+  });
+
+  it("shows claimed metadata for expired-but-redeemed tokens (AGG-4)", async () => {
+    // A redeemed invitation with an expired link should show "claimed" metadata,
+    // not "expired" — the candidate has an account and can re-enter via password.
+    // See AGG-4 (cycle 7 review) and C6-3 (cycle 6 review).
+    getRecruitingInvitationByTokenMock.mockResolvedValue({
+      id: "invite-5",
+      status: "redeemed",
+      userId: "user-5",
+      assignmentId: "assignment-5",
+      candidateName: "Candidate Five",
+      expiresAt: new Date("2026-04-20T11:00:00Z"),
+    });
+
+    const metadata = await generateMetadata({
+      params: Promise.resolve({ token: "invite-token" }),
+    });
+
+    expect(metadata.title).toBe("Assessment already claimed");
+    expect(metadata.description).toContain("already been used");
   });
 });
