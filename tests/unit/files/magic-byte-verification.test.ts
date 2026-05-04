@@ -58,4 +58,24 @@ describe("verifyFileMagicBytes", () => {
     const buffer = Buffer.from([0x50, 0x4b, 0x03, 0x04, 0x00, 0x00]);
     expect(verifyFileMagicBytes(buffer, "application/x-zip-compressed")).toBe(true);
   });
+
+  it("rejects text types with null byte in the first 8KB", () => {
+    const buffer = Buffer.concat([Buffer.from("hello"), Buffer.from([0x00]), Buffer.from("world")]);
+    expect(verifyFileMagicBytes(buffer, "text/plain")).toBe(false);
+  });
+
+  it("accepts text types with null byte after the first 8KB", () => {
+    // Create a buffer larger than 8KB with a null byte after the 8KB boundary
+    const before = Buffer.alloc(8192, 0x41); // 8KB of 'A'
+    const after = Buffer.concat([Buffer.from([0x00]), Buffer.from("trailing")]);
+    const buffer = Buffer.concat([before, after]);
+    expect(verifyFileMagicBytes(buffer, "text/plain")).toBe(true);
+  });
+
+  it("accepts empty text files", () => {
+    const buffer = Buffer.alloc(0);
+    expect(verifyFileMagicBytes(buffer, "text/plain")).toBe(true);
+    expect(verifyFileMagicBytes(buffer, "text/csv")).toBe(true);
+    expect(verifyFileMagicBytes(buffer, "text/markdown")).toBe(true);
+  });
 });
