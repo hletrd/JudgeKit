@@ -31,9 +31,25 @@ type RecruitingInvitationExecutor =
  */
 const INTERNAL_KEY_PREFIX = "_sys.";
 
+// Defense-in-depth: validate that internal metadata keys match a safe pattern
+// before they are used in sql.raw() calls. sql.raw() bypasses parameterized
+// query escaping, so any future change that makes these keys dynamic must not
+// introduce a SQL injection vector. This assertion catches accidental misuse.
+const INTERNAL_KEY_PATTERN = /^_sys\.[a-zA-Z0-9_]+$/;
+
 const ACCOUNT_PASSWORD_RESET_REQUIRED_KEY = `${INTERNAL_KEY_PREFIX}accountPasswordResetRequired`;
 const FAILED_REDEEM_ATTEMPTS_KEY = `${INTERNAL_KEY_PREFIX}failedRedeemAttempts`;
 const MAX_FAILED_REDEEM_ATTEMPTS = 5;
+
+// Runtime assertion: verify internal keys match the safe pattern before they
+// are used in sql.raw() calls. If this assertion fires, a key was changed to
+// an unsafe value — do not pass it to sql.raw().
+if (!INTERNAL_KEY_PATTERN.test(ACCOUNT_PASSWORD_RESET_REQUIRED_KEY)) {
+  throw new Error(`Internal key ${ACCOUNT_PASSWORD_RESET_REQUIRED_KEY} does not match safe pattern ${INTERNAL_KEY_PATTERN}`);
+}
+if (!INTERNAL_KEY_PATTERN.test(FAILED_REDEEM_ATTEMPTS_KEY)) {
+  throw new Error(`Internal key ${FAILED_REDEEM_ATTEMPTS_KEY} does not match safe pattern ${INTERNAL_KEY_PATTERN}`);
+}
 
 /**
  * Validate that user-supplied metadata does not contain keys with the
@@ -60,6 +76,14 @@ function findInternalKeyViolation(metadata: Record<string, string> | undefined):
  * the same token, the old pattern allowed all requests to read the same
  * counter value and write back the same increment — defeating the lockout.
  * The atomic SQL UPDATE acquires a row-level lock and serializes increments.
+ *
+ * Fire-and-forget tradeoff: this function is called via `void` (not awaited)
+ * from inside the redeem transaction. The counter increment persists even if
+ * the calling transaction rolls back, which is intentional for brute-force
+ * protection. Tradeoff: if the DB write fails, the counter is lost (under-counting);
+ * if the calling transaction rolls back after the increment commits, the counter
+ * is elevated (over-counting). Both cases are acceptable because the lockout is
+ * per-invitation and self-corrects on successful auth (via resetFailedRedeemAttempt).
  */
 async function incrementFailedRedeemAttempt(token: string): Promise<void> {
   try {
@@ -306,7 +330,28 @@ export async function updateRecruitingInvitation(
   }
   const updates: Record<string, unknown> = { updatedAt: await getDbNowUncached() };
   if (data.expiresAt !== undefined) updates.expiresAt = data.expiresAt;
-  if (data.metadata !== undefined) updates.metadata = data.metadata;
+  if (data.metadata !== undefined) {
+    // Merge new metadata with existing metadata, preserving _sys.* keys
+    // that hold security-relevant internal flags (e.g., brute-force counters,
+    // password-reset-required). Without this merge, a full metadata replacement
+    // would silently drop those keys. See C10-4.
+    const [existing] = await db
+      .select({ metadata: recruitingInvitations.metadata })
+      .from(recruitingInvitations)
+      .where(eq(recruitingInvitations.id, id))
+      .limit(1);
+    const existingMetadata = existing?.metadata ?? {};
+    // Preserve any _sys.* keys from the existing metadata that are not
+    // already in the new metadata (which is enforced by findInternalKeyViolation
+    // to never contain _sys.* keys).
+    const mergedMetadata: Record<string, string> = { ...data.metadata };
+    for (const [key, value] of Object.entries(existingMetadata)) {
+      if (key.startsWith(INTERNAL_KEY_PREFIX) && !(key in mergedMetadata)) {
+        mergedMetadata[key] = value;
+      }
+    }
+    updates.metadata = mergedMetadata;
+  }
   if (data.status !== undefined) {
     // Only allow revoking pending invitations — already-redeemed cannot be revoked
     const result = await db
@@ -590,10 +635,13 @@ export async function redeemRecruitingToken(
       const username = nanoid(10);
       const passwordValidationError = getPasswordValidationError(accountPassword);
       if (passwordValidationError) {
-        // Increment per-invitation failed-redeem counter outside the
-        // transaction so the attempt persists even if the transaction
-        // rolls back. This mirrors the re-entry path at line 450.
-        void incrementFailedRedeemAttempt(token);
+        // Do NOT increment the brute-force counter for password FORMAT
+        // validation errors (too short, too long, weak password). These are
+        // input validation failures, not authentication attempts. Counting
+        // them would allow a candidate to lock their own token by entering
+        // short passwords — they never actually tried a real password.
+        // The counter is only incremented for actual password verification
+        // failures (wrong password), consistent with the re-entry path above.
         return { ok: false as const, error: passwordValidationError };
       }
       const accountPasswordHash = await hashPassword(accountPassword);
