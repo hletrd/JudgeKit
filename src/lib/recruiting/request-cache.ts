@@ -40,6 +40,13 @@ export function getCachedRecruitingContext(userId: string): import("./access").R
 
 /**
  * Store the recruiting access context for the current request.
+ *
+ * **Single-user constraint:** The cache holds exactly one user's context per
+ * request. Calling this with a different userId silently overwrites the
+ * previous context. This is acceptable for the current single-user-per-request
+ * pattern (each API request checks access for exactly one authenticated user).
+ * If multi-user access within a single request becomes needed, refactor to a
+ * Map<string, RecruitingAccessContext>.
  */
 export function setCachedRecruitingContext(
   userId: string,
