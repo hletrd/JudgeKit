@@ -512,6 +512,10 @@ export async function redeemRecruitingToken(
       const username = nanoid(10);
       const passwordValidationError = getPasswordValidationError(accountPassword);
       if (passwordValidationError) {
+        // Increment per-invitation failed-redeem counter outside the
+        // transaction so the attempt persists even if the transaction
+        // rolls back. This mirrors the re-entry path at line 450.
+        void incrementFailedRedeemAttempt(token);
         return { ok: false as const, error: passwordValidationError };
       }
       const accountPasswordHash = await hashPassword(accountPassword);
