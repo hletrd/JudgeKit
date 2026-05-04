@@ -1,4 +1,4 @@
-import { and, desc, eq, inArray, isNotNull, isNull, or, sql } from "drizzle-orm";
+import { and, desc, eq, inArray, isNotNull, isNull, sql } from "drizzle-orm";
 import { db } from "@/lib/db";
 import { communityVotes, discussionPosts, discussionThreads, problems } from "@/lib/db/schema";
 import { canAccessProblem } from "@/lib/auth/permissions";
