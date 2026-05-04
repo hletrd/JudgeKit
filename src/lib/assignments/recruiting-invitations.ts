@@ -28,27 +28,26 @@ const FAILED_REDEEM_ATTEMPTS_KEY = "_failedRedeemAttempts";
 const MAX_FAILED_REDEEM_ATTEMPTS = 5;
 
 /**
- * Increment the per-invitation failed redeem attempt counter.
+ * Atomically increment the per-invitation failed redeem attempt counter.
  * Runs outside the main transaction (which may have rolled back) so
  * the counter persists across retries and eventually locks the token.
+ *
+ * Uses a single atomic SQL UPDATE with jsonb_set to avoid the TOCTOU race
+ * that existed in the previous read-modify-write pattern (SELECT metadata,
+ * increment in JS, UPDATE metadata). Under concurrent failed redeems for
+ * the same token, the old pattern allowed all requests to read the same
+ * counter value and write back the same increment — defeating the lockout.
+ * The atomic SQL UPDATE acquires a row-level lock and serializes increments.
  */
 async function incrementFailedRedeemAttempt(token: string): Promise<void> {
   try {
     const tokenHashValue = hashToken(token);
-    const [existing] = await db
-      .select({ id: recruitingInvitations.id, metadata: recruitingInvitations.metadata })
-      .from(recruitingInvitations)
-      .where(eq(recruitingInvitations.tokenHash, tokenHashValue))
-      .limit(1);
-    if (!existing) return;
-
-    const currentAttempts = Number(existing.metadata?.[FAILED_REDEEM_ATTEMPTS_KEY] ?? 0);
     await db
       .update(recruitingInvitations)
       .set({
-        metadata: { ...(existing.metadata ?? {}), [FAILED_REDEEM_ATTEMPTS_KEY]: String(currentAttempts + 1) },
+        metadata: sql`jsonb_set(COALESCE(${recruitingInvitations.metadata}, '{}'), '{${sql.raw(FAILED_REDEEM_ATTEMPTS_KEY)}}', (COALESCE((${recruitingInvitations.metadata}->>${sql.raw(FAILED_REDEEM_ATTEMPTS_KEY)})::int, 0) + 1)::text)`,
       })
-      .where(eq(recruitingInvitations.id, existing.id));
+      .where(eq(recruitingInvitations.tokenHash, tokenHashValue));
   } catch (err) {
     // Best-effort: don't let counter update failures block the auth flow
     logger.warn({ err }, "[recruiting] Failed to increment failed redeem attempt counter");
