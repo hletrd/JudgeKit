@@ -94,6 +94,11 @@ export async function acquireSharedSseConnectionSlot({
     const nowMs = (await getDbNowUncached()).getTime();
     const expiresAt = nowMs + timeoutMs + 30_000;
 
+    // LIKE pattern uses a module-level constant prefix (SSE_KEY_PREFIX)
+    // that cannot contain SQL wildcards (% or _), so escapeLikePattern()
+    // is not needed here. This diverges from other LIKE sites that use
+    // user-supplied search terms (e.g., recruiting-invitations.ts, audit-logs).
+    // See C11-2.
     await tx.delete(rateLimits).where(
       and(
         sql`${rateLimits.key} LIKE ${getSsePrefixPattern()} ESCAPE '\\'`,
@@ -101,6 +106,8 @@ export async function acquireSharedSseConnectionSlot({
       )
     );
 
+    // LIKE patterns use constant prefixes (SSE_KEY_PREFIX) that cannot contain
+    // SQL wildcards, so escapeLikePattern() is not needed. See comment above. C11-2.
     const [counts] = await tx
       .select({
         total: sql<number>`count(*)`,
