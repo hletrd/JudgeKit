@@ -64,6 +64,13 @@ const LEGACY_HTML_ALLOWED_ATTR = [
   "title",
 ];
 
+/**
+ * Sanitize legacy HTML content for safe rendering.
+ *
+ * Image src attributes are restricted to root-relative paths (starting with /
+ * but not //). External image URLs (https://, http://) are stripped for
+ * security — they could be used for external resource loading or tracking.
+ */
 export function sanitizeHtml(html: string) {
   return DOMPurify.sanitize(html, {
     ALLOWED_ATTR: LEGACY_HTML_ALLOWED_ATTR,
