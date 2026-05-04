@@ -3,6 +3,7 @@ import { getLocale, getTranslations } from "next-intl/server";
 import Link from "next/link";
 import { buildLocalePath, buildPublicMetadata } from "@/lib/seo";
 import { getResolvedSystemSettings } from "@/lib/system-settings";
+import { DATA_RETENTION_DAYS } from "@/lib/data-retention";
 
 const PAGE_PATH = "/privacy";
 
@@ -31,16 +32,16 @@ export default async function PrivacyPage() {
     getLocale(),
   ]);
 
-  // IMPORTANT: These retention periods must be kept in sync with the system
-  // settings in src/lib/data-retention.ts and the maintenance thresholds in
-  // src/lib/data-retention-maintenance.ts. If an operator changes a retention
-  // period in the admin settings, this page must be updated to match.
+  // Retention periods are derived from DATA_RETENTION_DAYS (which reads env
+  // var overrides) so the privacy page always reflects the actual configured
+  // values, not stale hardcoded defaults.
   const dataClasses = [
-    { key: "auditLogs", retention: "90" },
-    { key: "aiChatLogs", retention: "30" },
-    { key: "antiCheatEvents", retention: "180" },
-    { key: "recruitingInvitations", retention: "365" },
-    { key: "submissions", retention: "365" },
+    { key: "auditLogs", retention: String(DATA_RETENTION_DAYS.auditEvents) },
+    { key: "aiChatLogs", retention: String(DATA_RETENTION_DAYS.chatMessages) },
+    { key: "antiCheatEvents", retention: String(DATA_RETENTION_DAYS.antiCheatEvents) },
+    { key: "loginEvents", retention: String(DATA_RETENTION_DAYS.loginEvents) },
+    { key: "recruitingInvitations", retention: String(DATA_RETENTION_DAYS.recruitingRecords) },
+    { key: "submissions", retention: String(DATA_RETENTION_DAYS.submissions) },
   ] as const;
 
   return (

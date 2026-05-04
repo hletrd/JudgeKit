@@ -2689,6 +2689,10 @@
         "submissions": {
           "label": "제출 및 채점 기록",
           "description": "강사/관리자와 본인 응시자가 플랫폼 권한 범위 내에서 접근합니다."
+        },
+        "loginEvents": {
+          "label": "로그인 기록",
+          "description": "권한 있는 운영자/관리자가 보안 및 감사 목적으로 인증 활동을 검토합니다."
         }
       },
       "sectionRightsTitle": "이용자 권리",

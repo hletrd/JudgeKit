@@ -2689,6 +2689,10 @@
         "submissions": {
           "label": "Submissions and grading records",
           "description": "Instructors / admins and the submitting user, subject to platform permissions."
+        },
+        "loginEvents": {
+          "label": "Login events",
+          "description": "Authorized operators / admins reviewing authentication activity for security and audit purposes."
         }
       },
       "sectionRightsTitle": "Your rights",
