@@ -14,7 +14,7 @@ import { SubmissionStatusBadge } from "@/components/submission-status-badge";
 import { db } from "@/lib/db";
 import { escapeLikePattern } from "@/lib/db/like";
 import { problems, submissions, users } from "@/lib/db/schema";
-import { and, asc, count, desc, eq, gte, or, sql } from "drizzle-orm";
+import { and, desc, eq, gte, or, sql } from "drizzle-orm";
 import { auth } from "@/lib/auth";
 import Link from "next/link";
 import { Button } from "@/components/ui/button";
@@ -31,6 +31,7 @@ import { buildLocalePath, NO_INDEX_METADATA } from "@/lib/seo";
 import { getResolvedSystemSettings } from "@/lib/system-settings";
 import { normalizePage, normalizePageSize, setPaginationParams } from "@/lib/pagination";
 import { FilterSelect } from "@/components/filter-select";
+import { getEnabledCompilerLanguages } from "@/lib/compiler/catalog";
 
 const PAGE_PATH = "/submissions";
 
@@ -64,21 +65,23 @@ type SubmissionRow = {
 
 function getPeriodStart(period: PeriodFilter, now: Date): Date | null {
   if (period === "all") return null;
+  // Use UTC methods to avoid timezone-dependent period boundaries when the
+  // app server runs in a non-UTC timezone. getDbNow() returns a UTC Date,
+  // so local-time methods like setHours() would shift the boundary.
   switch (period) {
     case "today": {
       const start = new Date(now);
-      start.setHours(0, 0, 0, 0);
+      start.setUTCHours(0, 0, 0, 0);
       return start;
     }
     case "week": {
       const start = new Date(now);
-      start.setDate(start.getDate() - start.getDay());
-      start.setHours(0, 0, 0, 0);
+      start.setUTCDate(start.getUTCDate() - start.getUTCDay());
+      start.setUTCHours(0, 0, 0, 0);
       return start;
     }
     case "month": {
-      const start = new Date(now.getFullYear(), now.getMonth(), 1);
-      return start;
+      return new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), 1));
     }
     default:
       return null;
@@ -137,13 +140,12 @@ export default async function SubmissionsPage({
     : "all";
   const rawLanguage = (resolvedSearchParams?.language ?? "").trim();
 
-  const availableLanguageRows = await db
-    .selectDistinct({ language: submissions.language })
-    .from(submissions)
-    .orderBy(asc(submissions.language));
-  const availableLanguages = availableLanguageRows
-    .map((row) => row.language)
-    .filter((language): language is string => Boolean(language));
+  // Query language configurations instead of SELECT DISTINCT on the submissions
+  // table. The submissions table scan becomes progressively slower as it grows,
+  // and the language configs are already the authoritative source for which
+  // languages are available. See F4 (cycle 5 review).
+  const enabledLanguages = await getEnabledCompilerLanguages();
+  const availableLanguages = enabledLanguages.map((lang) => lang.language);
   const currentLanguage = rawLanguage && availableLanguages.includes(rawLanguage) ? rawLanguage : "all";
 
   const statusLabels = buildStatusLabels(t);
@@ -181,25 +183,20 @@ export default async function SubmissionsPage({
   const filters = [userFilter, searchFilter, statusDbFilter, periodFilter, languageFilter, guestVisibilityFilter].filter(Boolean);
   const whereClause = filters.length > 0 ? and(...filters) : undefined;
 
-  const [countRow] = await db
-    .select({ count: count() })
-    .from(submissions)
-    .leftJoin(problems, eq(submissions.problemId, problems.id))
-    .leftJoin(users, eq(submissions.userId, users.id))
-    .where(whereClause);
-  const totalCount = Number(countRow?.count ?? 0);
-  const totalPages = Math.max(1, Math.ceil(totalCount / pageSize));
-  const clampedPage = Math.min(currentPage, totalPages);
-  const clampedOffset = (clampedPage - 1) * pageSize;
-
-  const visibleSubmissions: SubmissionRow[] = await db
+  // Single query with COUNT(*) OVER() window function to get both the
+  // paginated data and the total count in one DB round-trip, matching the
+  // pattern used in /api/v1/files/route.ts. See F8 (cycle 5 review).
+  const preliminarySubmissions = await db
     .select({
       id: submissions.id,
       language: submissions.language,
       status: submissions.status,
       submittedAt: submissions.submittedAt,
       score: submissions.score,
-      compileOutput: submissions.compileOutput,
+      // Exclude compileOutput for guests — compiler errors can contain source
+      // code fragments. Logged-in users see it via the tooltip.
+      // See F1 (cycle 5 review).
+      compileOutput: isGuest ? sql<string | null>`NULL` : submissions.compileOutput,
       executionTimeMs: submissions.executionTimeMs,
       memoryUsedKb: submissions.memoryUsedKb,
       problem: {
@@ -210,6 +207,7 @@ export default async function SubmissionsPage({
         id: users.id,
         name: users.name,
       },
+      _total: sql<number>`count(*) over()`,
     })
     .from(submissions)
     .leftJoin(problems, eq(submissions.problemId, problems.id))
@@ -217,10 +215,54 @@ export default async function SubmissionsPage({
     .where(whereClause)
     .orderBy(desc(submissions.submittedAt))
     .limit(pageSize)
-    .offset(clampedOffset);
-  const rangeStart = visibleSubmissions.length === 0 ? 0 : clampedOffset + 1;
-  const rangeEnd = clampedOffset + visibleSubmissions.length;
-  const hasActiveSubmissions = visibleSubmissions.some(
+    .offset(0);
+
+  const totalCount = preliminarySubmissions.length > 0 ? Number(preliminarySubmissions[0]._total) : 0;
+  const totalPages = Math.max(1, Math.ceil(totalCount / pageSize));
+  const clampedPage = Math.min(currentPage, totalPages);
+  const clampedOffset = (clampedPage - 1) * pageSize;
+
+  // If the page was clamped, re-query with the corrected offset.
+  // For the common case (page is valid), the initial query is already correct
+  // and this re-query is skipped.
+  let rawSubmissions: typeof preliminarySubmissions;
+  if (clampedOffset === 0 && clampedPage === 1) {
+    rawSubmissions = preliminarySubmissions;
+  } else {
+    rawSubmissions = await db
+      .select({
+        id: submissions.id,
+        language: submissions.language,
+        status: submissions.status,
+        submittedAt: submissions.submittedAt,
+        score: submissions.score,
+        compileOutput: isGuest ? sql<string | null>`NULL` : submissions.compileOutput,
+        executionTimeMs: submissions.executionTimeMs,
+        memoryUsedKb: submissions.memoryUsedKb,
+        problem: {
+          id: problems.id,
+          title: problems.title,
+        },
+        user: {
+          id: users.id,
+          name: users.name,
+        },
+        _total: sql<number>`count(*) over()`,
+      })
+      .from(submissions)
+      .leftJoin(problems, eq(submissions.problemId, problems.id))
+      .leftJoin(users, eq(submissions.userId, users.id))
+      .where(whereClause)
+      .orderBy(desc(submissions.submittedAt))
+      .limit(pageSize)
+      .offset(clampedOffset);
+  }
+
+  // Strip the internal _total field from the visible rows
+  const cleanSubmissions: SubmissionRow[] = rawSubmissions.map(({ _total, ...rest }) => rest);
+  const rangeStart = cleanSubmissions.length === 0 ? 0 : clampedOffset + 1;
+  const rangeEnd = clampedOffset + cleanSubmissions.length;
+  const hasActiveSubmissions = cleanSubmissions.some(
     (sub) => sub.status === "pending" || sub.status === "queued" || sub.status === "judging"
   );
 
@@ -388,7 +430,7 @@ export default async function SubmissionsPage({
           <CardTitle>{listCardTitle}</CardTitle>
         </CardHeader>
         <CardContent>
-          {visibleSubmissions.length > 0 && (
+          {cleanSubmissions.length > 0 && (
             <p className="mb-4 text-sm text-muted-foreground">
               {t("pagination.showingRange", { start: rangeStart, end: rangeEnd })}
             </p>
@@ -410,7 +452,7 @@ export default async function SubmissionsPage({
               </TableRow>
             </TableHeader>
             <TableBody>
-              {visibleSubmissions.map((sub) => (
+              {cleanSubmissions.map((sub) => (
                 <TableRow key={sub.id}>
                   <TableCell className="font-mono text-xs">
                     <Link href={buildLocalePath(`/submissions/${sub.id}`, locale)} className="text-primary hover:underline">
@@ -452,7 +494,7 @@ export default async function SubmissionsPage({
                   </TableCell>
                 </TableRow>
               ))}
-              {visibleSubmissions.length === 0 && (
+              {cleanSubmissions.length === 0 && (
                 <TableRow>
                   <TableCell colSpan={8} className="text-center text-muted-foreground">
                     {emptyListMessage}
@@ -464,7 +506,7 @@ export default async function SubmissionsPage({
           </div>
           {/* Mobile cards */}
           <ul className="md:hidden divide-y" role="list">
-            {visibleSubmissions.map((sub) => (
+            {cleanSubmissions.map((sub) => (
               <li key={sub.id} className="flex items-start gap-3 px-4 py-3">
                 <div className="min-w-0 flex-1">
                   <div className="flex items-center gap-2">
@@ -503,7 +545,7 @@ export default async function SubmissionsPage({
                 </Link>
               </li>
             ))}
-            {visibleSubmissions.length === 0 && (
+            {cleanSubmissions.length === 0 && (
               <li className="px-4 py-6 text-center text-sm text-muted-foreground">{emptyListMessage}</li>
             )}
           </ul>
