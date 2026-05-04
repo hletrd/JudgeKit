@@ -37,7 +37,7 @@ Change the "open" filter to `isNull(lockedAt)` only. "Open" should mean "not loc
 
 2. Verify the change doesn't break existing behavior by running tests.
 
-### Status: [ ] Not started
+### Status: [x] Done (commit `e451e995`)
 
 ---
 
@@ -65,7 +65,7 @@ Add CSRF validation to the route by importing and calling `validateCsrf` (or ref
 
 3. Verify the change doesn't break existing behavior by running tests.
 
-### Status: [ ] Not started
+### Status: [x] Done (commit `1075728a` + `370479cd`)
 
 ---
 
