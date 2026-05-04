@@ -191,6 +191,11 @@ export function createApiHandler<T = undefined>(config: HandlerConfig<T>) {
         result.headers.set("Cache-Control", "no-store");
       }
 
+      // Defense-in-depth: prevent browsers from MIME-sniffing API responses
+      if (!result.headers.has("X-Content-Type-Options")) {
+        result.headers.set("X-Content-Type-Options", "nosniff");
+      }
+
       return result;
     } catch (error) {
       logger.error({ err: error, method: req.method, path: req.nextUrl.pathname }, "Unhandled error");
