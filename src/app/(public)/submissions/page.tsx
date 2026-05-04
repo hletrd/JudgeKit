@@ -186,77 +186,70 @@ export default async function SubmissionsPage({
   // Single query with COUNT(*) OVER() window function to get both the
   // paginated data and the total count in one DB round-trip, matching the
   // pattern used in /api/v1/files/route.ts. See F8 (cycle 5 review).
-  const preliminarySubmissions = await db
-    .select({
-      id: submissions.id,
-      language: submissions.language,
-      status: submissions.status,
-      submittedAt: submissions.submittedAt,
-      score: submissions.score,
-      // Exclude compileOutput for guests — compiler errors can contain source
-      // code fragments. Logged-in users see it via the tooltip.
-      // See F1 (cycle 5 review).
-      compileOutput: isGuest ? sql<string | null>`NULL` : submissions.compileOutput,
-      executionTimeMs: submissions.executionTimeMs,
-      memoryUsedKb: submissions.memoryUsedKb,
-      problem: {
-        id: problems.id,
-        title: problems.title,
-      },
-      user: {
-        id: users.id,
-        name: users.name,
-      },
-      _total: sql<number>`count(*) over()`,
-    })
+  //
+  // Optimization (C6-5, cycle 6): query at the requested offset directly.
+  // If the offset is beyond the data, the result set is empty and we fall
+  // back to page 1. This avoids an unnecessary preliminary query at offset=0
+  // when the requested page is valid (the common case).
+  const requestedOffset = (currentPage - 1) * pageSize;
+
+  const submissionSelectFields = {
+    id: submissions.id,
+    language: submissions.language,
+    status: submissions.status,
+    submittedAt: submissions.submittedAt,
+    score: submissions.score,
+    // Exclude compileOutput for guests — compiler errors can contain source
+    // code fragments. Logged-in users see it via the tooltip.
+    // See F1 (cycle 5 review).
+    compileOutput: isGuest ? sql<string | null>`NULL` : submissions.compileOutput,
+    executionTimeMs: submissions.executionTimeMs,
+    memoryUsedKb: submissions.memoryUsedKb,
+    problem: {
+      id: problems.id,
+      title: problems.title,
+    },
+    user: {
+      id: users.id,
+      name: users.name,
+    },
+    _total: sql<number>`count(*) over()`,
+  };
+
+  let rawSubmissions = await db
+    .select(submissionSelectFields)
     .from(submissions)
     .leftJoin(problems, eq(submissions.problemId, problems.id))
     .leftJoin(users, eq(submissions.userId, users.id))
     .where(whereClause)
     .orderBy(desc(submissions.submittedAt))
     .limit(pageSize)
-    .offset(0);
+    .offset(requestedOffset);
 
-  const totalCount = preliminarySubmissions.length > 0 ? Number(preliminarySubmissions[0]._total) : 0;
-  const totalPages = Math.max(1, Math.ceil(totalCount / pageSize));
-  const clampedPage = Math.min(currentPage, totalPages);
-  const clampedOffset = (clampedPage - 1) * pageSize;
+  // Derive total count from the window function. If the requested offset
+  // was beyond the data, _total is not available (empty result set).
+  // Fall back to page 1 in that case.
+  let totalCount = rawSubmissions.length > 0 ? Number(rawSubmissions[0]._total) : 0;
+  let clampedOffset = requestedOffset;
 
-  // If the page was clamped, re-query with the corrected offset.
-  // For the common case (page is valid), the initial query is already correct
-  // and this re-query is skipped.
-  let rawSubmissions: typeof preliminarySubmissions;
-  if (clampedOffset === 0 && clampedPage === 1) {
-    rawSubmissions = preliminarySubmissions;
-  } else {
+  if (totalCount === 0 && requestedOffset > 0) {
+    // The requested page is beyond the last page. Re-query at offset 0
+    // to get the actual data and total count.
     rawSubmissions = await db
-      .select({
-        id: submissions.id,
-        language: submissions.language,
-        status: submissions.status,
-        submittedAt: submissions.submittedAt,
-        score: submissions.score,
-        compileOutput: isGuest ? sql<string | null>`NULL` : submissions.compileOutput,
-        executionTimeMs: submissions.executionTimeMs,
-        memoryUsedKb: submissions.memoryUsedKb,
-        problem: {
-          id: problems.id,
-          title: problems.title,
-        },
-        user: {
-          id: users.id,
-          name: users.name,
-        },
-        _total: sql<number>`count(*) over()`,
-      })
+      .select(submissionSelectFields)
       .from(submissions)
       .leftJoin(problems, eq(submissions.problemId, problems.id))
       .leftJoin(users, eq(submissions.userId, users.id))
       .where(whereClause)
       .orderBy(desc(submissions.submittedAt))
       .limit(pageSize)
-      .offset(clampedOffset);
+      .offset(0);
+    totalCount = rawSubmissions.length > 0 ? Number(rawSubmissions[0]._total) : 0;
+    clampedOffset = 0;
   }
+
+  const totalPages = Math.max(1, Math.ceil(totalCount / pageSize));
+  const clampedPage = clampedOffset === 0 ? 1 : currentPage;
 
   // Strip the internal _total field from the visible rows
   const cleanSubmissions: SubmissionRow[] = rawSubmissions.map(({ _total, ...rest }) => rest);
