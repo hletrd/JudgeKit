@@ -632,6 +632,13 @@ export async function redeemRecruitingToken(
 
       // Create user + enroll + access token + atomically claim invitation
       const uid = nanoid();
+      // Username is a display-only identifier for recruiting candidates — it is
+      // never used for authentication (the token is the auth boundary). nanoid(10)
+      // provides ~62 bits of entropy (6 bits/char * 10 chars), which is adequate
+      // for uniqueness within a single JudgeKit instance. The shorter length keeps
+      // candidate profile URLs manageable. If usernames were ever used for
+      // security-sensitive lookups, this should be increased to the default 21
+      // chars (~126 bits). See C11-3.
       const username = nanoid(10);
       const passwordValidationError = getPasswordValidationError(accountPassword);
       if (passwordValidationError) {
