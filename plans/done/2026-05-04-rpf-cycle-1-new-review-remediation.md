@@ -47,3 +47,33 @@ All previously deferred items remain unchanged. See aggregate for full table.
 - [x] `npm run test:integration` — skipped (no DB)
 - [x] `npm run test:security` — PASS (11 files, 195 tests)
 - [x] cargo test (3 crates) — PASS (48 + 2 + 55 = 105 tests)
+
+---
+
+## Additional changes (same session, from prior cycle review findings)
+
+### FIX-3: Extract shared sort comparator and push moderation filters to SQL
+
+- **File:** `src/lib/discussions/data.ts`
+- **Commit:** `82e1ea9e`
+- **Changes:**
+  - Extracted duplicated thread sort comparator into `compareThreadsByPinnedVoteScoreDate()`
+  - Pushed scope/state filters in `listModerationDiscussionThreads()` to SQL WHERE clause instead of post-fetch JS filtering
+  - Leverages `dt_scope_idx` index for better DB performance
+
+### FIX-4: Add 33 unit tests for code similarity functions
+
+- **File:** `tests/unit/code-similarity.test.ts` (new)
+- **Commit:** `25699307`
+- **Changes:**
+  - 14 tests for `normalizeSource()` (comments, whitespace, strings, preprocessor directives, edge cases)
+  - 7 tests for `normalizeIdentifiersForSimilarity()` (keywords, placeholders, consistency, Rust keywords)
+  - 12 tests for `jaccardSimilarity()` (identical, disjoint, partial overlap, empty sets, large sets)
+
+### FIX-5: Use monotonic clock for yield timing
+
+- **File:** `src/lib/assignments/code-similarity.ts`
+- **Commit:** `7f29d897`
+- **Changes:**
+  - Replaced `Date.now()` with `performance.now()` for yield timing in O(n^2) comparison loop
+  - `performance.now()` is monotonic and unaffected by NTP clock adjustments
