@@ -1,42 +1,34 @@
-# Verifier — RPF Cycle 5 (orchestrator-driven, 2026-04-29)
+# Verifier Review -- RPF Cycle 5 (2026-05-04)
 
-**Date:** 2026-04-29
-**HEAD reviewed:** `2626aab6`
-**Cycle change surface vs cycle-4 close-out:** EMPTY.
+**Reviewer:** verifier
+**HEAD reviewed:** `f65d0559` (main)
+**Scope:** Evidence-based correctness check of changes since cycle 4 HEAD `ec8939ca`.
 
-## Verification of cycle-4 close-out claims at HEAD `2626aab6`
+---
 
-| Claim (cycle-4 plan) | Verification at HEAD | Status |
-| --- | --- | --- |
-| Task A: `deploy-docker.sh:1-30` extended header enumerates 8 env vars | Inspected. All 8 env vars listed: SKIP_LANGUAGES, SKIP_BUILD, BUILD_WORKER_IMAGE, INCLUDE_WORKER, LANGUAGE_FILTER, SKIP_PREDEPLOY_BACKUP, AUTH_URL_OVERRIDE, DRIZZLE_PUSH_FORCE. | VERIFIED |
-| Task A: `AGENTS.md` "Deploy hardening" subsection added | Inspected. Subsection present, enumerates cycle-1/2/3/4 fixes. | VERIFIED |
-| Task B: `deploy-docker.sh:151-152` chmod-700 defense-in-depth comment present | Inspected. Comment present. | VERIFIED |
-| Task C: `_initial_ssh_check` emits succeeded-after-N-attempts log when retry needed | Inspected. Log line emitted only when `attempt > 1`. | VERIFIED |
-| Task ZZ: cycle-3 plan archived to `plans/done/` | `plans/done/2026-04-29-rpf-cycle-3-review-remediation.md` present. | VERIFIED |
-| Cycle-4 deploy: `per-cycle-success` | Recorded in cycle-4 plan Task Z. | VERIFIED |
-| Cycle-4 commits GPG-signed, conventional + gitmoji | Per cycle-4 plan close-out (commits `e657a96c`, `f5ac57ff`, `5cae08af`, `eda4bb65`, `2330a2ec`, `2626aab6`). | VERIFIED (per record) |
+## Changes since last review
 
-## Verification of resolution claims for stale prior-cycle-5 (base `4c2769b2`) findings
+Test-only change: `264fa77e` -- updated mock setup in `plugins.route.test.ts`.
 
-Spot-checked the highest-impact stale findings to confirm they no longer apply at HEAD:
+---
 
-| Stale finding | Spot check at HEAD `2626aab6` | Status |
-| --- | --- | --- |
-| AGG-2 (group export OOM) | `MAX_EXPORT_ROWS = 10_000` present at `src/app/api/v1/groups/[id]/assignments/[assignmentId]/export/route.ts:14`; truncation logic at lines 55-56; `truncated` flag in CSV output | RESOLVED |
-| AGG-1 (PublicHeader dropdown role filter dead code) | Searched `src/components/layout/public-header.tsx` for `adminOnly`/`instructorOnly` literals → 0 hits. Component refactored. | RESOLVED |
+## Findings
 
-All cycle-4 claims verified. Stale cycle-5 actionable findings RESOLVED at HEAD.
+**0 NEW findings.**
 
-## NEW findings
+### Evidence-based verification
 
-**None.** No source-code or deploy-script changes since cycle-4 close-out.
+1. **Test correctness**: The mock update in `plugins.route.test.ts` correctly models the production code's behavior. Verified by comparing the test mock structure against the actual route handler in `src/app/api/v1/plugins/chat-widget/chat/route.ts`.
 
-## Cycle-5 readiness
+2. **Prior fixes verified**: All prior bug fixes remain in place:
+   - Moderation "open" state filter (commit `e451e995`) -- verified
+   - CSRF validation for recruiting validate endpoint (commit `1075728a`) -- verified
+   - Trailing newlines (commits `960fd185`, `a3536439`) -- verified
+   - i18n hardcoded strings replaced (commit `95cbcf6a`) -- verified
+   - DATA_RETENTION_LEGAL_HOLD deprecated export removed (commit `74c99333`) -- verified
 
-- Cycle-4 plan: ready to archive after cycle-5 plan publishes.
-- User-injected TODOs: TODO #1 closed (cycle 1 RPF). No new TODOs.
-- Pre-cycle gates: assumed green per cycle-4 close-out (`npm run lint` 0, `npx tsc --noEmit` 0, `npm run build` 0). To be re-verified by Task Z this cycle.
+3. **Behavioral correctness**: No behavioral changes in production code since cycle 4. The test change only updates test infrastructure to match existing production behavior.
 
-## Confidence
+---
 
-**High.** Direct file inspection.
+## Confidence: HIGH (no new findings)

@@ -1,38 +1,29 @@
-# Test Engineer — RPF Cycle 5 (orchestrator-driven, 2026-04-29)
+# Test Engineer Review -- RPF Cycle 5 (2026-05-04)
 
-**Date:** 2026-04-29
-**HEAD reviewed:** `2626aab6`
-**Cycle change surface vs cycle-4 close-out:** EMPTY.
+**Reviewer:** test-engineer
+**HEAD reviewed:** `f65d0559` (main)
+**Scope:** Test coverage for changes since cycle 4 HEAD `ec8939ca`.
 
-## Inventory
+---
 
-- Test directories: `tests/unit/`, `tests/integration/`, `tests/component/`, `tests/security/`, `tests/e2e/`. None changed since cycle 3.
-- Vitest configs: not changed.
-- Playwright config: not changed (still requires `bash scripts/playwright-local-webserver.sh` which boots Docker Postgres — sandbox-blocked).
+## Changes since last review
 
-## NEW findings this cycle
+Test-only change: `264fa77e` -- updated mock setup in `plugins.route.test.ts`.
 
-**None.** No test or test-config changes; no source surface change to introduce regressions.
+---
 
-## Carry-forward DEFERRED test-related items
+## Findings
 
-- **DEFER-ENV-GATES** (LOW, env-blocked): unit/component/security/integration/e2e tests fail or skip in dev shell because no DATABASE_URL/Postgres/sidecar. Same condition cycle-3 and cycle-4 reported. Exit criterion: fully provisioned CI/host with required env.
-- **C3-AGG-4** (LOW): No `bash -n` / shellcheck gate over deploy scripts. Could be implemented this cycle as a `lint:bash` npm script.
+**0 NEW findings.**
 
-## Cycle-5 gate plan
+### Test coverage assessment
 
-Run all gates verbatim per orchestrator directive:
-1. `npm run lint`
-2. `npx tsc --noEmit`
-3. `npm run build`
-4. `npm run test:unit` — env-blocked, expected to repeat cycle-4 outcome (some failures from missing Postgres / rate-limit sidecar).
-5. `npm run test:integration` — env-blocked, expected SKIP majority.
-6. `npm run test:component` — env-blocked.
-7. `npm run test:security` — env-blocked.
-8. `npm run test:e2e` — env-blocked (no Docker Postgres).
+1. **Test quality**: The mock update correctly models the production flow. The test now properly separates `getPluginState` (redacted) from raw DB reads (with secrets) and `decryptPluginSecret` (decryption).
 
-Expectation: lint + tsc + build clean (0 errors). Test failures are pre-existing DEFER-ENV-GATES carry-forwards, NOT regressions of this cycle's work.
+2. **Coverage**: The test file covers auth, rate limiting, plugin state resolution, provider selection, streaming, tool-calling, message persistence, and error handling. Good coverage breadth.
 
-## Confidence
+3. **Test isolation**: Each test uses `beforeEach` to reset mocks. No test interdependencies detected.
 
-**High.** Same condition cycle-4.
+---
+
+## Confidence: HIGH (no new findings)

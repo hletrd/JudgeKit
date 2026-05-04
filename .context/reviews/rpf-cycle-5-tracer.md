@@ -1,37 +1,29 @@
-# Tracer — RPF Cycle 5 (orchestrator-driven, 2026-04-29)
+# Tracer Review -- RPF Cycle 5 (2026-05-04)
 
-**Date:** 2026-04-29
-**HEAD reviewed:** `2626aab6`
-**Cycle change surface vs cycle-4 close-out:** EMPTY.
+**Reviewer:** tracer
+**HEAD reviewed:** `f65d0559` (main)
+**Scope:** Causal trace of suspicious flows in changes since cycle 4 HEAD `ec8939ca`.
 
-## Trace 1: SSH ControlMaster path is stable across cycles
+---
 
-Path: `deploy-docker.sh` → `_setup_ssh_control_master` (l.140-160) → `mktemp -d -t judgekit-ssh.XXXXXX` → 0700 dir → ControlPath=/tmp/judgekit-ssh.<rand>/cm-%h.
+## Changes since last review
 
-Cycle-2 fix `66146861` placed the dir in `/tmp` (instead of `${TMPDIR}` which had stale macOS sandbox path). Cycle-4 added defense-in-depth comment (commit `f5ac57ff`). Verifier-cycle-5 confirms unchanged at HEAD `2626aab6`. Behavior: identical to cycle-4 deploy log, 0 "Permission denied" lines.
+Test-only change: `264fa77e` -- updated mock setup in `plugins.route.test.ts`.
 
-## Trace 2: drizzle-kit push policy
+---
 
-Path: `deploy-docker.sh` → `db:push` → `npx drizzle-kit push --force=$DRIZZLE_PUSH_FORCE`. AGENTS.md "Drizzle push policy" subsection: `DRIZZLE_PUSH_FORCE=1` set ONLY when destructive diff is anticipated and approved. Cycle-4 deploy log: `[i] No changes detected`, no force needed. Cycle-5 directive (orchestrator): same — must NOT preemptively set `DRIZZLE_PUSH_FORCE=1`.
+## Findings
 
-## Trace 3: deploy script env-var coverage
+**0 NEW findings.**
 
-`deploy-docker.sh:1-30` header documents 8 env vars. Body usage check (grep for each var):
-- `SKIP_LANGUAGES`: used to gate language image build.
-- `SKIP_BUILD`: used to gate Docker build.
-- `BUILD_WORKER_IMAGE`: used to gate worker image build.
-- `INCLUDE_WORKER`: used to gate worker container start/stop.
-- `LANGUAGE_FILTER`: used to filter language images.
-- `SKIP_PREDEPLOY_BACKUP`: used to skip predeploy backup.
-- `AUTH_URL_OVERRIDE`: used to override AUTH_URL in `.env`.
-- `DRIZZLE_PUSH_FORCE`: used to set drizzle-kit force.
+### Flow tracing
 
-All 8 docs match body usage. No drift.
+1. **Chat-widget API flow**: Traced the full request flow from `POST /api/v1/plugins/chat-widget/chat` through auth, rate limiting, plugin state resolution, config decryption, provider selection, and response streaming. The test mocks correctly model each step.
 
-## NEW findings
+2. **Least-privilege decryption flow**: Traced the flow where `getPluginState(includeSecrets:false)` returns redacted keys, then the route reads the raw encrypted config from DB, then `decryptPluginSecret` decrypts only the selected provider's key. The test change correctly models this flow.
 
-**None.**
+3. **No suspicious flows detected**: No competing hypotheses or causal anomalies found.
 
-## Confidence
+---
 
-**High.** Direct trace.
+## Confidence: HIGH (no new findings)

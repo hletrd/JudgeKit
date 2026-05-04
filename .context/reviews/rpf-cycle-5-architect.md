@@ -1,29 +1,29 @@
-# Architect — RPF Cycle 5 (orchestrator-driven, 2026-04-29)
+# Architect Review -- RPF Cycle 5 (2026-05-04)
 
-**Date:** 2026-04-29
-**HEAD reviewed:** `2626aab6`
-**Cycle change surface vs cycle-4 close-out:** EMPTY.
+**Reviewer:** architect
+**HEAD reviewed:** `f65d0559` (main)
+**Scope:** Architectural review of changes since cycle 4 HEAD `ec8939ca`.
 
-## Architectural inventory
+---
 
-- Top-level dirs: `src/app/`, `src/components/`, `src/lib/`, `src/server/`, `tests/`. Unchanged since cycle 3.
-- Boundaries: app router routes (public + dashboard + admin), workspace migration ARCHIVED (cycle 1 RPF closed TODO #1).
-- Cross-cutting concerns: auth/config.ts (preserved per project rule), API rate-limit, anti-cheat, SSE realtime, polling components.
+## Changes since last review
 
-## NEW findings
+Test-only change: `264fa77e` -- updated mock setup in `plugins.route.test.ts`.
 
-**None.** No architectural change.
+---
 
-## Carry-forward DEFERRED architectural items (severity preserved)
+## Findings
 
-- **C3-AGG-5** (LOW) `deploy-docker.sh` whole + `deploy.sh:58-66` — modular extraction + legacy `deploy.sh` cleanup. Trigger: 1500-line threshold. Currently 1032 lines; cycle-4 added 31 lines. At linear rate +31 lines/cycle the threshold would be reached around cycle ~20. Defer-and-monitor remains correct.
-- **ARCH-CARRY-1** (MEDIUM) 22+ raw API route handlers don't use `createApiHandler`. Carry-forward.
-- **ARCH-CARRY-2** (LOW) `src/lib/realtime/` SSE eviction is O(n). Carry-forward.
+**0 NEW findings.**
 
-## Recommendation
+### Architectural assessment
 
-Same as critic and code-reviewer: pick 2-3 LOW backlog items (C3-AGG-8, C3-AGG-4, C2-AGG-7) without architectural impact this cycle.
+1. **Layering**: The codebase follows a clear layered architecture: API routes -> lib/ modules -> DB layer. No layer violations detected.
 
-## Confidence
+2. **Module boundaries**: The chat-widget route has appropriate boundaries with separate concerns for auth, rate limiting, plugin state, provider selection, and response streaming.
 
-**High.** No architectural delta to evaluate.
+3. **Deferred items**: ARCH-CARRY-1 (20 raw API handlers) and ARCH-CARRY-2 (SSE coordination) remain deferred with proper exit criteria.
+
+---
+
+## Confidence: HIGH (no new findings)
