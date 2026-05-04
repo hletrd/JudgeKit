@@ -295,6 +295,7 @@ describe("getAuditEventHealthSnapshot", () => {
 
     expect(getAuditEventHealthSnapshot()).toEqual({
       failedWrites: 0,
+      droppedEvents: 0,
       lastFailureAt: null,
       status: "ok",
     });
