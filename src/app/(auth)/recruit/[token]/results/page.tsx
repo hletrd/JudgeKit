@@ -21,6 +21,7 @@ import { formatScore } from "@/lib/formatting";
 import { SubmissionStatusBadge } from "@/components/submission-status-badge";
 import { NO_INDEX_METADATA } from "@/lib/seo";
 import { computeRecruitResultsTotals } from "@/lib/assignments/recruiting-results";
+import { getRecruitingAccessContext } from "@/lib/recruiting/access";
 import Link from "next/link";
 
 /**
@@ -102,6 +103,28 @@ export default async function RecruitResultsPage({
   // surface another candidate's score.
   const session = await auth();
   if (!session?.user?.id || session.user.id !== invitation.userId) {
+    return (
+      <Card className="w-full max-w-md">
+        <CardHeader className="text-center">
+          <CardTitle className="text-2xl">{t("resultsSignInRequired")}</CardTitle>
+          <CardDescription>{t("resultsSignInRequiredDescription")}</CardDescription>
+        </CardHeader>
+        <CardContent className="text-center">
+          <Link className="underline" href={`/recruit/${token}`}>{t("backToStart")}</Link>
+        </CardContent>
+      </Card>
+    );
+  }
+
+  // Defense-in-depth: verify the session user is actually a recruiting candidate
+  // with access to this invitation's assignment. This prevents a non-recruiting
+  // user who happens to share a userId with an invitation from viewing results
+  // intended for recruiting candidates. See C9-3 (cycle 9 review).
+  const recruitingAccess = await getRecruitingAccessContext(session.user.id);
+  if (
+    !recruitingAccess.isRecruitingCandidate ||
+    !recruitingAccess.assignmentIds.includes(invitation.assignmentId)
+  ) {
     return (
       <Card className="w-full max-w-md">
         <CardHeader className="text-center">
