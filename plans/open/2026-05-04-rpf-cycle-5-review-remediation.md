@@ -45,7 +45,31 @@ All previously deferred items from cycle 4 remain valid. See `_aggregate.md` for
 
 ---
 
+## Deployment
+
+- `./deploy-docker.sh` -- FAILED (local environment: `docker-compose` not available; Docker build started but compose orchestration unavailable. This is an environment limitation, not a code issue.)
+
+---
+
+## Cycle close-out evidence
+
+- Commits landed this cycle (against pre-cycle HEAD `f65d0559`):
+  - `a1071449` docs(review): add RPF cycle 5 reviews, aggregate, and remediation plan
+- Gate run at HEAD post-cycle:
+  - `eslint` -- exit 0 (0 errors, 0 warnings)
+  - `tsc --noEmit` -- exit 0
+  - `npm run build` -- exit 0
+  - `vitest run` -- 310 files / **2322 tests passed**
+  - `vitest run --config vitest.config.component.ts` -- 65/67 files pass, 173/178 tests pass (2 pre-existing failures)
+  - `vitest run --config vitest.config.integration.ts` -- SKIPPED (no DB)
+  - `playwright test` -- SKIPPED (no Docker daemon)
+  - `bash -n deploy-docker.sh && bash -n deploy.sh` -- exit 0
+- Deploy: `per-cycle-failed:docker-compose not available locally`
+
+---
+
 ## Status
 
 - [x] Gate checklist
+- [x] Deployment attempted
 - [ ] Plan archived to `plans/done/` after close-out
