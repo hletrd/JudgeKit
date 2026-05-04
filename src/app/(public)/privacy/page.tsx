@@ -75,7 +75,7 @@ export default async function PrivacyPage() {
       <h2>{t("sectionContactTitle")}</h2>
       <p>
         {t("sectionContactIntro")}{" "}
-        <a className="underline" href="mailto:privacy@xylolabs.com">
+        <a className="underline" rel="nofollow" href="mailto:privacy@xylolabs.com">
           privacy@xylolabs.com
         </a>
       </p>
