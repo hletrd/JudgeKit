@@ -172,7 +172,7 @@ describe("public detail page SEO metadata", () => {
     const page = await import("@/app/(public)/contests/[id]/page");
     const metadata = await page.generateMetadata({ params: Promise.resolve({ id: "contest-1" }) });
 
-    expect(metadata.keywords).toEqual(expect.arrayContaining(["Algo Group", "ICPC scoring"]));
+    expect(metadata.keywords).toEqual(expect.arrayContaining(["Algo Group", "keywords.icpcScoring"]));
 
     const image = Array.isArray(metadata.openGraph?.images)
       ? metadata.openGraph?.images[0]

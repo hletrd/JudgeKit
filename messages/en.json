@@ -2033,6 +2033,12 @@
     "contestDetail": "Contest Detail",
     "contestNotStarted": "This contest hasn't started yet.",
     "contestClosed": "This contest has ended.",
+    "metadataFallbackTitle": "Contest",
+    "keywords": {
+      "programmingContest": "programming contest",
+      "icpcScoring": "ICPC scoring",
+      "ioiScoring": "IOI scoring"
+    },
     "filterAll": "All",
     "filterUpcoming": "Upcoming",
     "filterActive": "Active",

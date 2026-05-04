@@ -64,16 +64,16 @@ export async function generateMetadata({ params }: { params: Promise<{ id: strin
 
 export default async function CommunityThreadDetailPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
-  const [tShell, tCommon, session, locale, settings] = await Promise.all([
+  const [tShell, tCommon, session, locale] = await Promise.all([
     getTranslations("publicShell"),
     getTranslations("common"),
     auth(),
     getLocale(),
-    getResolvedSystemSettings({
-      siteTitle: "JudgeKit",
-      siteDescription: "Online judge",
-    }),
   ]);
+  const settings = await getResolvedSystemSettings({
+    siteTitle: tCommon("appName"),
+    siteDescription: tCommon("appDescription"),
+  });
   const thread = await getDiscussionThreadById(id, session?.user?.id ?? null);
 
   if (!thread) {

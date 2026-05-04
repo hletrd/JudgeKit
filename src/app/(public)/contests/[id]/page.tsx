@@ -43,15 +43,16 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@
 
 export async function generateMetadata({ params }: { params: Promise<{ id: string }> }): Promise<Metadata> {
   const { id } = await params;
-  const [contest, t, tShell, locale] = await Promise.all([
+  const [contest, t, tShell, tContest, locale] = await Promise.all([
     getPublicContestById(id),
     getTranslations("common"),
     getTranslations("publicShell"),
+    getTranslations("contests"),
     getLocale(),
   ]);
   if (!contest) {
     return {
-      title: "Contest",
+      title: tContest("metadataFallbackTitle"),
       ...NO_INDEX_METADATA,
     };
   }
@@ -68,9 +69,9 @@ export async function generateMetadata({ params }: { params: Promise<{ id: strin
     siteTitle: settings.siteTitle,
     locale,
     keywords: [
-      "programming contest",
+      tContest("keywords.programmingContest"),
       contest.groupName,
-      contest.scoringModel === "icpc" ? "ICPC scoring" : "IOI scoring",
+      contest.scoringModel === "icpc" ? tContest("keywords.icpcScoring") : tContest("keywords.ioiScoring"),
     ],
     section: tShell("nav.contests"),
     socialBadge: tShell(`contests.status.${contest.status === "in_progress" ? "inProgress" : contest.status}`),
@@ -88,7 +89,7 @@ export async function generateMetadata({ params }: { params: Promise<{ id: strin
 
 export default async function PublicContestDetailPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
-  const [t, tCommon, tProblems, tContest, tSubmissions, tMySubmissions, tAssignment, tGroups, locale, settings, session] = await Promise.all([
+  const [t, tCommon, tProblems, tContest, tSubmissions, tMySubmissions, tAssignment, tGroups, locale, session] = await Promise.all([
     getTranslations("publicShell"),
     getTranslations("common"),
     getTranslations("problems"),
@@ -98,12 +99,12 @@ export default async function PublicContestDetailPage({ params }: { params: Prom
     getTranslations("groups.assignmentDetail"),
     getTranslations("groups"),
     getLocale(),
-    getResolvedSystemSettings({
-      siteTitle: "JudgeKit",
-      siteDescription: "Online judge",
-    }),
     auth(),
   ]);
+  const settings = await getResolvedSystemSettings({
+    siteTitle: tCommon("appName"),
+    siteDescription: tCommon("appDescription"),
+  });
   const statusLabels = buildContestStatusLabels({
     upcoming: t("contests.status.upcoming"),
     open: t("contests.status.open"),

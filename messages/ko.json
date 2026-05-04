@@ -2033,6 +2033,12 @@
     "contestDetail": "대회 상세",
     "contestNotStarted": "아직 대회가 시작되지 않았습니다.",
     "contestClosed": "이 대회는 종료되었습니다.",
+    "metadataFallbackTitle": "대회",
+    "keywords": {
+      "programmingContest": "프로그래밍 대회",
+      "icpcScoring": "ICPC 채점",
+      "ioiScoring": "IOI 채점"
+    },
     "filterAll": "전체",
     "filterUpcoming": "예정",
     "filterActive": "진행 중",
