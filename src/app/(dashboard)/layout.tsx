@@ -2,9 +2,9 @@ import type { Metadata } from "next";
 import { redirect } from "next/navigation";
 import { auth } from "@/lib/auth";
 import { getTranslations } from "next-intl/server";
-import { SidebarProvider, SidebarInset, SidebarTrigger } from "@/components/ui/sidebar";
+import { SidebarProvider, SidebarInset } from "@/components/ui/sidebar";
 import { AppSidebar } from "@/components/layout/app-sidebar";
-import { PublicHeader } from "@/components/layout/public-header";
+import { ConditionalHeader } from "@/components/layout/conditional-header";
 import { SkipToContent } from "@/components/layout/skip-to-content";
 import { LectureModeProvider } from "@/components/lecture/lecture-mode-provider";
 import { LectureModeToggle } from "@/components/layout/lecture-mode-toggle";
@@ -72,7 +72,7 @@ export default async function DashboardLayout({ children }: { children: React.Re
       persistAction={updatePreferences}
     >
       <SidebarProvider>
-        <PublicHeader
+        <ConditionalHeader
           siteTitle={settings.siteTitle}
           items={getPublicNavItems(tShell)}
           actions={getPublicNavActions(tAuth, settings.publicSignupEnabled)}
@@ -82,7 +82,6 @@ export default async function DashboardLayout({ children }: { children: React.Re
             label: session.user.name || session.user.username || "",
             capabilities,
           }}
-          leadingSlot={<SidebarTrigger />}
           trailingSlot={canUseLectureMode ? <LectureModeToggle /> : undefined}
         />
         <SkipToContent targetId="main-content" label={tCommon("skipToContent")} />
