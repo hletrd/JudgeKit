@@ -230,7 +230,11 @@ describe("changePassword", () => {
     const result = await changePassword("correctpass", "StrongNewPass1");
     expect(result).toEqual({ success: false, error: "error" });
     expect(mocks.loggerError).toHaveBeenCalled();
-    expect(mocks.clearRateLimit).not.toHaveBeenCalled();
+    // Rate limit is cleared after successful current-password verification,
+    // even if the subsequent DB update fails. The user already proved they
+    // know their password, so they should not accumulate toward lockout.
+    // See C9-5 (cycle 9 review).
+    expect(mocks.clearRateLimit).toHaveBeenCalledWith("change-password:user:user-1");
     expect(mocks.recordAuditEvent).not.toHaveBeenCalled();
   });
 
