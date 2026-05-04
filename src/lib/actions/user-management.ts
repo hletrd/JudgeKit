@@ -266,8 +266,8 @@ export async function editUser(userId: string, data: ManagedUserInput): Promise<
     const roleError = await validateRoleChangeAsync(actorRole, requestedRole, targetUser.role);
     if (roleError === "invalidRole") return { success: false, error: "updateUserFailed" };
     if (roleError) return { success: false, error: roleError };
-    // Prevent password reset for users of equal or higher privilege
-    if (data.password && targetUser.role) {
+    // Prevent password reset for users of equal or higher privilege (excluding self-edit)
+    if (data.password && targetUser.role && targetUser.id !== session.user.id) {
       if (targetLevel >= actorLevel) {
         return { success: false, error: "unauthorized" };
       }
