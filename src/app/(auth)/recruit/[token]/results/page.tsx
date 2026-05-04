@@ -246,8 +246,8 @@ export default async function RecruitResultsPage({
               {t("totalScore")}
             </p>
             <p className="text-3xl font-semibold">
-              {formatScore(totalScore)}
-              <span className="text-base font-normal text-muted-foreground"> / {formatScore(totalPossible)}</span>
+              {formatScore(totalScore, locale)}
+              <span className="text-base font-normal text-muted-foreground"> / {formatScore(totalPossible, locale)}</span>
             </p>
           </div>
         )}
@@ -300,7 +300,7 @@ export default async function RecruitResultsPage({
                     )}
                     {showScores && (
                       <span className="font-mono text-sm">
-                        {formatScore(adjustedByProblem.get(ap.problemId) ?? 0)} / {formatScore(ap.points ?? 100)}
+                        {formatScore(adjustedByProblem.get(ap.problemId) ?? 0, locale)} / {formatScore(ap.points ?? 100, locale)}
                       </span>
                     )}
                   </div>
