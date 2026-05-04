@@ -1,4 +1,4 @@
-import { createCipheriv, createDecipheriv, createHash, randomBytes } from "node:crypto";
+import { createCipheriv, createDecipheriv, randomBytes } from "node:crypto";
 import { eq, and } from "drizzle-orm";
 import { db } from "@/lib/db";
 import { apiKeys, users } from "@/lib/db/schema";
@@ -7,6 +7,7 @@ import { deriveEncryptionKey, legacyEncryptionKey } from "@/lib/security/derive-
 import { getRoleLevel } from "@/lib/capabilities/cache";
 import { logger } from "@/lib/logger";
 import { getDbNowUncached } from "@/lib/db-time";
+import { hashToken } from "@/lib/security/token-hash";
 
 export const API_KEY_PREFIX = "jk_";
 const KEY_RANDOM_BYTES = 20; // 20 bytes = 40 hex chars → total key = "jk_" + 40 = 43 chars
@@ -19,7 +20,7 @@ export function buildMaskedApiKeyPreview(keyPrefix: string) {
 }
 
 export function hashApiKey(rawKey: string) {
-  return createHash("sha256").update(rawKey).digest("hex");
+  return hashToken(rawKey);
 }
 
 export function encryptApiKey(rawKey: string): string {
