@@ -74,6 +74,62 @@ const nextConfig: NextConfig = {
         destination: "/practice/problems/:id/rankings",
         permanent: false,
       },
+      // Phase 7 route consolidation: legacy dashboard workspace routes →
+      // public counterparts. Internal links have been migrated; these
+      // redirects exist for old bookmarks and external links.
+      {
+        source: "/dashboard/profile",
+        destination: "/profile",
+        permanent: false,
+      },
+      {
+        source: "/dashboard/problems",
+        destination: "/problems",
+        permanent: false,
+      },
+      {
+        source: "/dashboard/problems/:path*",
+        destination: "/problems/:path*",
+        permanent: false,
+      },
+      {
+        source: "/dashboard/groups",
+        destination: "/groups",
+        permanent: false,
+      },
+      {
+        source: "/dashboard/groups/:path*",
+        destination: "/groups/:path*",
+        permanent: false,
+      },
+      {
+        source: "/dashboard/problem-sets",
+        destination: "/problem-sets",
+        permanent: false,
+      },
+      {
+        source: "/dashboard/problem-sets/:path*",
+        destination: "/problem-sets/:path*",
+        permanent: false,
+      },
+      // Contests: legacy workspace URL maps to the manage area, which is
+      // where instructors/admins came from. Participant deep-links now
+      // route to /contests/[id] directly.
+      {
+        source: "/dashboard/contests",
+        destination: "/contests/manage",
+        permanent: false,
+      },
+      {
+        source: "/dashboard/contests/create",
+        destination: "/contests/manage/create",
+        permanent: false,
+      },
+      {
+        source: "/dashboard/contests/:path*",
+        destination: "/contests/manage/:path*",
+        permanent: false,
+      },
     ];
   },
   webpack: disableMinify
