@@ -433,9 +433,9 @@ export default async function PublicContestDetailPage({ params }: { params: Prom
             {tCommon("back")}
           </Link>
           <div className="rounded-lg border p-6 text-center space-y-4">
-            <p className="text-muted-foreground">{t("contests.privateContestNotice")}</p>
+            <p className="text-muted-foreground">{tContest("privateContestNotice")}</p>
             <Link href={buildLocalePath(`/dashboard/contests/${id}`, locale)}>
-              <Button>{t("contests.manageContest")}</Button>
+              <Button>{tContest("manageContest")}</Button>
             </Link>
           </div>
         </div>
@@ -464,8 +464,8 @@ export default async function PublicContestDetailPage({ params }: { params: Prom
     badge: statusLabels[contest.status],
     meta: [
       contest.groupName,
-      contest.examMode === "scheduled" ? t("contests.modeScheduled") : t("contests.modeWindowed"),
-      contest.scoringModel === "icpc" ? t("contests.scoringModelIcpc") : t("contests.scoringModelIoi"),
+      contest.examMode === "scheduled" ? tContest("modeScheduled") : tContest("modeWindowed"),
+      contest.scoringModel === "icpc" ? tContest("scoringModelIcpc") : tContest("scoringModelIoi"),
     ].join(" • "),
     footer: [
       t("contests.problemCount", { count: contest.problemCount }),
@@ -543,7 +543,7 @@ export default async function PublicContestDetailPage({ params }: { params: Prom
       {userAccess === "managing" && (
         <div className="mb-4 flex justify-end">
           <Link href={buildLocalePath(`/dashboard/contests/${contest.id}`, locale)}>
-            <Button>{t("contests.manageContest")}</Button>
+            <Button>{tContest("manageContest")}</Button>
           </Link>
         </div>
       )}
@@ -555,8 +555,8 @@ export default async function PublicContestDetailPage({ params }: { params: Prom
         description={contest.description}
         groupLabel={t("contests.hostedBy", { name: contest.groupName })}
         statusLabel={statusLabels[contest.status]}
-        modeLabel={contest.examMode === "scheduled" ? t("contests.modeScheduled") : t("contests.modeWindowed")}
-        scoringLabel={contest.scoringModel === "icpc" ? t("contests.scoringModelIcpc") : t("contests.scoringModelIoi")}
+        modeLabel={contest.examMode === "scheduled" ? tContest("modeScheduled") : tContest("modeWindowed")}
+        scoringLabel={contest.scoringModel === "icpc" ? tContest("scoringModelIcpc") : tContest("scoringModelIoi")}
         startsAtLabel={t("contests.startsAt", { value: formatDateLabel(contest.startsAt, t("contests.notScheduled"), locale) })}
         deadlineLabel={t("contests.deadline", { value: formatDateLabel(contest.deadline, t("contests.noDeadline"), locale) })}
         problemCountLabel={t("contests.problemCount", { count: contest.problemCount })}
