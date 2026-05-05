@@ -13,7 +13,7 @@ export default async function LoginPage() {
   });
 
   return (
-    <Card className="w-full max-w-lg">
+    <Card className="w-full max-w-xl">
       <CardHeader className="text-center">
         <p className="text-2xl font-medium">{settings.siteTitle}</p>
         <CardTitle className="text-2xl">
