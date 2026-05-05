@@ -1014,6 +1014,23 @@
     "shortcutsTitle": "Keyboard Shortcuts"
   },
   "admin": {
+    "index": {
+      "subtitle": "Pick an administrative area to manage. Only sections you have access to are shown.",
+      "userManagementDesc": "Create, edit, deactivate, and restore user accounts.",
+      "roleManagementDesc": "Manage roles, capabilities, and access scopes.",
+      "allSubmissionsDesc": "Review every submission across the platform.",
+      "auditLogsDesc": "Audit trail of administrative and user actions.",
+      "loginLogsDesc": "Sign-in history with IP, device, and outcome.",
+      "chatLogsDesc": "Inspect chat-widget conversations across users.",
+      "discussionModerationDesc": "Moderate community threads and replies.",
+      "judgeWorkersDesc": "Monitor and configure judge worker pool health.",
+      "languagesDesc": "Toggle, configure, and rebuild language images.",
+      "systemSettingsDesc": "Site title, branding, security, and platform mode.",
+      "fileManagementDesc": "Browse and delete uploaded files and assets.",
+      "apiKeysDesc": "Issue and revoke API keys and tokens.",
+      "tagManagementDesc": "Curate problem tags and color labels.",
+      "pluginsDesc": "Manage installed plugins and integration settings."
+    },
     "users": {
       "title": "User Management",
       "addUser": "Add User",
