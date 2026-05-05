@@ -532,7 +532,7 @@ export default async function PublicProblemDetailPage({
                     </Link>
                   ) : null}
                   editAction={caps.has("problems.create") ? (
-                    <Link href={buildLocalePath(`/dashboard/problems/${problem.id}/edit`, locale)}>
+                    <Link href={buildLocalePath(`/problems/${problem.id}/edit`, locale)}>
                       <Button variant="outline">{tProblems("editProblem")}</Button>
                     </Link>
                   ) : null}

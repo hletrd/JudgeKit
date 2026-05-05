@@ -132,8 +132,8 @@ function MobileStudentCard({
             <div className="flex items-center gap-2">
               <Link
                 href={isContestView
-                  ? `/dashboard/contests/${assignmentId}/participant/${row.userId}`
-                  : `/dashboard/groups/${groupId}/assignments/${assignmentId}/student/${row.userId}`}
+                  ? `/contests/manage/${assignmentId}/participant/${row.userId}`
+                  : `/groups/${groupId}/assignments/${assignmentId}/student/${row.userId}`}
                 className="font-medium text-primary hover:underline"
               >
                 {row.name}
@@ -141,7 +141,7 @@ function MobileStudentCard({
               <span className="text-xs text-muted-foreground">@{row.username}</span>
               {isContestView && labels.viewSubmissions && (
                 <Link
-                  href={`/dashboard/contests/${assignmentId}/participant/${row.userId}/submissions`}
+                  href={`/contests/manage/${assignmentId}/participant/${row.userId}/submissions`}
                   onClick={(e) => e.stopPropagation()}
                   className="ml-auto inline-flex"
                 >
@@ -362,8 +362,8 @@ export function StatusBoard({
                     <TableCell className="align-top whitespace-normal">
                       <Link
                         href={isContestView
-                          ? `/dashboard/contests/${assignmentId}/participant/${row.userId}`
-                          : `/dashboard/groups/${groupId}/assignments/${assignmentId}/student/${row.userId}`}
+                          ? `/contests/manage/${assignmentId}/participant/${row.userId}`
+                          : `/groups/${groupId}/assignments/${assignmentId}/student/${row.userId}`}
                         className="font-medium text-primary hover:underline"
                       >
                         {row.name}
@@ -371,7 +371,7 @@ export function StatusBoard({
                       <div className="text-xs text-muted-foreground">@{row.username}</div>
                       {isContestView && labels.viewSubmissions && (
                         <Link
-                          href={`/dashboard/contests/${assignmentId}/participant/${row.userId}/submissions`}
+                          href={`/contests/manage/${assignmentId}/participant/${row.userId}/submissions`}
                           className="mt-1 inline-flex"
                         >
                           <Button variant="outline" size="sm" className="h-7 gap-1 px-2 text-xs">

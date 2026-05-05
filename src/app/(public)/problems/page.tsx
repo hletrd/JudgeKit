@@ -619,7 +619,7 @@ export default async function ProblemsPage({
                     {problem.sequenceNumber ?? offset + index + 1}
                   </TableCell>
                   <TableCell className="font-medium">
-                    <Link href={`/dashboard/problems/${problem.id}`} className="text-primary hover:underline">
+                    <Link href={`/problems/${problem.id}`} className="text-primary hover:underline">
                       {problem.title}
                     </Link>
                   </TableCell>
@@ -655,11 +655,11 @@ export default async function ProblemsPage({
                   </TableCell>
                   <TableCell>
                     <div className="flex flex-wrap gap-2">
-                      <Link href={`/dashboard/problems/${problem.id}`}>
+                      <Link href={`/problems/${problem.id}`}>
                         <Button variant="outline" size="sm">{t("solve")}</Button>
                       </Link>
                       {(problem.authorId === session.user.id || canEditProblems) && (
-                        <Link href={`/dashboard/problems/${problem.id}/edit`}>
+                        <Link href={`/problems/${problem.id}/edit`}>
                           <Button size="sm">{tCommon("edit")}</Button>
                         </Link>
                       )}

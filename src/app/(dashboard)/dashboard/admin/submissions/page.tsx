@@ -444,7 +444,7 @@ export default async function AdminSubmissionsPage({
                   </TableCell>
                   <TableCell>
                     {sub.group ? (
-                      <Link href={`/dashboard/groups/${sub.group.id}`} className="text-primary hover:underline">
+                      <Link href={`/groups/${sub.group.id}`} className="text-primary hover:underline">
                         {sub.group.name}
                       </Link>
                     ) : (
@@ -453,7 +453,7 @@ export default async function AdminSubmissionsPage({
                   </TableCell>
                   <TableCell>
                     {sub.problem ? (
-                      <Link href={`/dashboard/problems/${sub.problem.id}`} className="text-primary hover:underline">
+                      <Link href={`/problems/${sub.problem.id}`} className="text-primary hover:underline">
                         {sub.problem.title}
                       </Link>
                     ) : (

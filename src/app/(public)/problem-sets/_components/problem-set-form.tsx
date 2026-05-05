@@ -245,7 +245,7 @@ export default function ProblemSetForm({
       toast.success(t(isEditing ? "updateSuccess" : "createSuccess"));
 
       if (!isEditing && (payload as { data?: { id?: string } }).data?.id) {
-        router.push(`/dashboard/problem-sets/${(payload as { data: { id: string } }).data.id}`);
+        router.push(`/problem-sets/${(payload as { data: { id: string } }).data.id}`);
       }
 
       router.refresh();

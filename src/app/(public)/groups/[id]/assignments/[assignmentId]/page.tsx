@@ -171,7 +171,7 @@ export default async function GroupAssignmentDetailPage({
     return (
       <div className="space-y-6">
         <Link
-          href={`/dashboard/groups/${groupId}`}
+          href={`/groups/${groupId}`}
           className="inline-flex items-center gap-1 text-sm text-muted-foreground hover:text-foreground"
         >
           <ArrowLeft className="size-4" />
@@ -298,7 +298,7 @@ export default async function GroupAssignmentDetailPage({
   return (
     <div className="space-y-6">
       <Link
-        href={`/dashboard/groups/${groupId}`}
+        href={`/groups/${groupId}`}
         className="inline-flex items-center gap-1 text-sm text-muted-foreground hover:text-foreground"
       >
         <ArrowLeft className="size-4" />
@@ -317,7 +317,7 @@ export default async function GroupAssignmentDetailPage({
           </p>
         </div>
 
-        <Link href={`/dashboard/groups/${groupId}`}>
+        <Link href={`/groups/${groupId}`}>
           <Button variant="outline">{tCommon("back")}</Button>
         </Link>
       </div>

@@ -8,7 +8,7 @@ vi.mock("next-intl", () => ({
 }));
 
 vi.mock("next/navigation", () => ({
-  usePathname: () => "/dashboard/problems/problem-1",
+  usePathname: () => "/problems/problem-1",
   useSearchParams: () => new URLSearchParams(),
 }));
 

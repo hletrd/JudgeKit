@@ -90,7 +90,7 @@ export default async function GroupAnalyticsPage({ params }: PageProps) {
     <div className="space-y-6">
       <div className="flex items-center gap-3">
         <Link
-          href={`/dashboard/groups/${groupId}`}
+          href={`/groups/${groupId}`}
           className="inline-flex items-center gap-1 text-sm text-muted-foreground hover:text-foreground"
         >
           <ArrowLeft className="size-4" />
@@ -147,7 +147,7 @@ export default async function GroupAnalyticsPage({ params }: PageProps) {
                     <TableRow key={a.id}>
                       <TableCell>
                         <Link
-                          href={`/dashboard/groups/${groupId}/assignments/${a.id}`}
+                          href={`/groups/${groupId}/assignments/${a.id}`}
                           className="font-medium text-primary hover:underline"
                         >
                           {a.title}

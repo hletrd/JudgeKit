@@ -22,7 +22,7 @@ describe("participant audit page implementation", () => {
     const source = read("src/app/(public)/contests/manage/[assignmentId]/participant/[userId]/page.tsx");
 
     expect(source).toContain("canViewAssignmentSubmissions(");
-    expect(source).toContain('redirect(`/dashboard/contests/${assignmentId}`)');
+    expect(source).toContain('redirect(`/contests/manage/${assignmentId}`)');
     expect(source).toContain('notFound()');
   });
 });

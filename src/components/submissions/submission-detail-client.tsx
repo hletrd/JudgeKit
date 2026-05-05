@@ -77,7 +77,7 @@ export function SubmissionDetailClient(props: SubmissionDetailClientProps) {
     submission.problem === null
       ? null
       : submission.assignmentId
-        ? `/dashboard/problems/${submission.problem.id}?assignmentId=${submission.assignmentId}`
+        ? `/problems/${submission.problem.id}?assignmentId=${submission.assignmentId}`
         : `/practice/problems/${submission.problem.id}`;
 
   function handleResubmit() {

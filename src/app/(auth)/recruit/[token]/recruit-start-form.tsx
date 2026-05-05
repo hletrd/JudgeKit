@@ -64,7 +64,7 @@ export function RecruitStartForm({
 
     try {
       if (resumeWithCurrentSession) {
-        router.push(`/dashboard/contests/${assignmentId}`);
+        router.push(`/contests/${assignmentId}`);
         router.refresh();
         return;
       }
@@ -86,7 +86,7 @@ export function RecruitStartForm({
       if (result?.error || !result?.ok) {
         setError(t("startFailed"));
       } else {
-        router.push(`/dashboard/contests/${assignmentId}`);
+        router.push(`/contests/${assignmentId}`);
         router.refresh();
       }
     } catch {

@@ -172,7 +172,7 @@ describe("ProblemSetForm", () => {
     });
 
     expect(toastSuccessMock).toHaveBeenCalledWith("Problem set created");
-    expect(pushMock).toHaveBeenCalledWith("/dashboard/problem-sets/ps-1");
+    expect(pushMock).toHaveBeenCalledWith("/problem-sets/ps-1");
     expect(refreshMock).toHaveBeenCalled();
   });
 

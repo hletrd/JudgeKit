@@ -449,7 +449,7 @@ export default async function ContestDetailPage({
               applyFilter: tAssignment("applyFilter"),
               resetFilter: tAssignment("resetFilter"),
             }}
-            resetHref={`/dashboard/contests/${assignmentId}`}
+            resetHref={`/contests/manage/${assignmentId}`}
           />
           <Badge variant="secondary">{filterSummary}</Badge>
           <StatusBoard

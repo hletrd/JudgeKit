@@ -74,7 +74,7 @@ export default async function CreateContestPage() {
               <p className="text-sm text-muted-foreground">{t("noGroupsForContest")}</p>
             ) : (
               userGroups.map((group) => (
-                <Link key={group.id} href={`/dashboard/groups/${group.id}`}>
+                <Link key={group.id} href={`/groups/${group.id}`}>
                   <Card className="hover:border-primary/50 hover:shadow-md transition-all cursor-pointer mb-2">
                     <CardContent className="flex items-center gap-3 py-3 px-4">
                       <Users className="size-5 text-muted-foreground shrink-0" />

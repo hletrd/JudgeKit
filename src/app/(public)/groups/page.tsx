@@ -289,7 +289,7 @@ export default async function GroupsPage({
                   <TableCell>{group.instructor?.name || tCommon("unknown")}</TableCell>
                   <TableCell>
                     <div className="flex flex-wrap gap-2">
-                      <Link href={`/dashboard/groups/${group.id}`}>
+                      <Link href={`/groups/${group.id}`}>
                         <Button variant="outline" size="sm">{tCommon("view")}</Button>
                       </Link>
                       {canEditGroups ? (
@@ -328,7 +328,7 @@ export default async function GroupsPage({
           if (searchQuery) params.set("search", searchQuery);
           if (stateFilter !== "all") params.set("state", stateFilter);
           const qs = params.toString();
-          return qs ? `/dashboard/groups?${qs}` : "/groups";
+          return qs ? `/groups?${qs}` : "/groups";
         }}
       />
     </div>

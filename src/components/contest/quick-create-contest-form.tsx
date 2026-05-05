@@ -80,10 +80,10 @@ export function QuickCreateContestForm({ problems }: { problems: Problem[] }) {
         const json = await res.json().catch(() => ({ data: {} }));
         toast.success(t("createSuccess"));
         if (json.data?.assignmentId) {
-          router.push(`/dashboard/contests/${json.data.assignmentId}`);
+          router.push(`/contests/manage/${json.data.assignmentId}`);
         } else {
           // Success but no assignmentId returned — navigate to contests list
-          router.push("/dashboard/contests");
+          router.push("/contests/manage");
         }
       } else {
         toast.error(t("createError"));

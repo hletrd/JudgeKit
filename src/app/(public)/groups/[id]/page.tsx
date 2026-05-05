@@ -340,7 +340,7 @@ export default async function GroupDetailPage({ params }: { params: Promise<{ id
                   <TableRow key={assignment.id}>
                     <TableCell className="font-medium">
                       <Link
-                        href={`/dashboard/groups/${groupId}/assignments/${assignment.id}`}
+                        href={`/groups/${groupId}/assignments/${assignment.id}`}
                         className="text-primary hover:underline"
                       >
                         {assignment.title}

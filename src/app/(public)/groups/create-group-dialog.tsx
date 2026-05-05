@@ -76,7 +76,7 @@ export default function CreateGroupDialog() {
         await handleOpenChange(false);
         const groupId = data.data?.id;
         if (groupId) {
-          router.push(`/dashboard/groups/${groupId}`);
+          router.push(`/groups/${groupId}`);
         } else {
           router.push("/groups");
         }

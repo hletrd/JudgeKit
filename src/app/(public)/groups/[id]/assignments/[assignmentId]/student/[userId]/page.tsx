@@ -137,7 +137,7 @@ export default async function StudentSubmissionsPage({
 
   const statusLabels: Record<string, string> = buildStatusLabels(tSubmissions);
 
-  const scoreboardUrl = `/dashboard/groups/${groupId}/assignments/${assignmentId}`;
+  const scoreboardUrl = `/groups/${groupId}/assignments/${assignmentId}`;
 
   return (
     <div className="space-y-6">
@@ -170,7 +170,7 @@ export default async function StudentSubmissionsPage({
                 <CardHeader>
                   <CardTitle className="flex items-center gap-2 text-base">
                     <Link
-                      href={`/dashboard/problems/${problem.problemId}`}
+                      href={`/problems/${problem.problemId}`}
                       className="text-primary hover:underline"
                     >
                       {problem.title}

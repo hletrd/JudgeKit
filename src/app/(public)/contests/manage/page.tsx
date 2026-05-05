@@ -37,7 +37,7 @@ function buildContestPageHref(page: number, filter: FilterValue) {
   if (page > 1) params.set("page", String(page));
   if (filter !== "all") params.set("filter", filter);
   const qs = params.toString();
-  return qs ? `/dashboard/contests?${qs}` : "/contests/manage";
+  return qs ? `/contests/manage?${qs}` : "/contests/manage";
 }
 
 export default async function ContestsPage({
@@ -150,7 +150,7 @@ export default async function ContestsPage({
           {pagedContests.map((contest) => {
             const status = statusMap.get(contest.id) ?? "closed";
             return (
-              <Link key={contest.id} href={`/dashboard/contests/${contest.id}`} className="block">
+              <Link key={contest.id} href={`/contests/manage/${contest.id}`} className="block">
                 <div className={`flex items-center gap-4 rounded-lg border p-4 transition-colors hover:bg-accent/50 ${getContestStatusBorderClass(status)}`}>
                   <div className="flex-1 min-w-0">
                     <div className="flex items-center gap-2 mb-1">

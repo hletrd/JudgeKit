@@ -68,9 +68,9 @@ export interface AssignmentOverviewProps {
   timeZone: string;
   labels: AssignmentOverviewLabels;
   problemStatuses?: StudentProblemStatus[];
-  /** Override the back button href. Defaults to `/dashboard/groups/${groupId}`. */
+  /** Override the back button href. Defaults to `/groups/${groupId}`. */
   backHref?: string;
-  /** URL prefix for problem links. Defaults to `/dashboard/problems/`. */
+  /** URL prefix for problem links. Defaults to `/problems/`. */
   problemHrefPrefix?: string;
 }
 
@@ -120,9 +120,9 @@ export function AssignmentOverview({
   labels,
   problemStatuses,
   backHref,
-  problemHrefPrefix = "/dashboard/problems/",
+  problemHrefPrefix = "/problems/",
 }: AssignmentOverviewProps) {
-  const resolvedBackHref = backHref ?? `/dashboard/groups/${groupId}`;
+  const resolvedBackHref = backHref ?? `/groups/${groupId}`;
   const statusMap = new Map<string, StudentProblemProgress>(
     (problemStatuses ?? []).map((s) => [s.problemId, s.progress])
   );

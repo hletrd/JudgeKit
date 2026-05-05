@@ -453,7 +453,7 @@ export default function CreateProblemForm({
             : t("createSuccess")
       );
       allowNextNavigation();
-      router.push(nextProblemId ? `/dashboard/problems/${nextProblemId}` : "/problems");
+      router.push(nextProblemId ? `/problems/${nextProblemId}` : "/problems");
       router.refresh();
     } catch (error) {
       toast.error(getErrorMessage(error));

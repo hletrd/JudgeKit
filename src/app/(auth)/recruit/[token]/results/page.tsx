@@ -41,7 +41,7 @@ const getCachedInvitation = cache(getRecruitingInvitationByToken);
  * per problem with the verdict, score, runtime, and a link to inspect the
  * code they themselves submitted. The page intentionally does NOT show the
  * recruiter's view (other candidates' submissions, internal anti-cheat
- * details, IP addresses) — those remain inside /dashboard/contests/[id].
+ * details, IP addresses) — those remain inside /contests/[id].
  */
 
 export async function generateMetadata() {

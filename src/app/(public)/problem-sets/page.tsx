@@ -101,7 +101,7 @@ export default async function ProblemSetsPage({
                     {ps.creator?.name ?? ps.creator?.username ?? tCommon("unknown")}
                   </TableCell>
                   <TableCell>
-                    <Link href={`/dashboard/problem-sets/${ps.id}`}>
+                    <Link href={`/problem-sets/${ps.id}`}>
                       <Button variant="outline" size="sm">{tCommon("view")}</Button>
                     </Link>
                   </TableCell>
@@ -122,7 +122,7 @@ export default async function ProblemSetsPage({
       <PaginationControls
         currentPage={clampedPage}
         totalPages={totalPages}
-        buildHref={(page) => page > 1 ? `/dashboard/problem-sets?page=${page}` : "/problem-sets"}
+        buildHref={(page) => page > 1 ? `/problem-sets?page=${page}` : "/problem-sets"}
       />
     </div>
   );

@@ -559,7 +559,7 @@ export async function CandidateDashboard({
                             ? t("candidateAssignmentComplete")
                             : t("candidateAssignmentActive")}
                       </Badge>
-                      <Link href={`/dashboard/contests/${assignment.assignmentId}`}>
+                      <Link href={`/contests/${assignment.assignmentId}`}>
                         <Badge variant="secondary">{t("viewChallengeProgress")}</Badge>
                       </Link>
                     </div>

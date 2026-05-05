@@ -33,7 +33,7 @@ export default async function EditProblemPage({ params }: { params: Promise<{ id
   const canOverrideTestCases = caps.has("problems.delete");
 
   if (!canEdit) {
-    redirect(`/dashboard/problems/${problem.id}`);
+    redirect(`/problems/${problem.id}`);
   }
 
   const t = await getTranslations("problems");
@@ -65,7 +65,7 @@ export default async function EditProblemPage({ params }: { params: Promise<{ id
           <p className="text-sm text-muted-foreground">{t("deleteHelpText")}</p>
         </div>
         <div className="flex flex-wrap gap-2">
-          <Link href={`/dashboard/problems/create?duplicateFrom=${problem.id}`}>
+          <Link href={`/problems/create?duplicateFrom=${problem.id}`}>
             <Button variant="outline">{t("duplicateProblem")}</Button>
           </Link>
           <ProblemDeleteButton problemId={problem.id} problemTitle={problem.title} />

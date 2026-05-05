@@ -23,7 +23,7 @@ export default async function ParticipantAuditPage({
     session.user.role
   );
   if (!canView) {
-    redirect(`/dashboard/contests/${assignmentId}`);
+    redirect(`/contests/manage/${assignmentId}`);
   }
 
   const [assignment, auditData, participantTimeline, assignmentProblemRows] =

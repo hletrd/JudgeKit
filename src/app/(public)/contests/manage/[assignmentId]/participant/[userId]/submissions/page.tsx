@@ -41,7 +41,7 @@ export default async function ContestParticipantSubmissionsPage({
     session.user.role
   );
   if (!canView && session.user.id !== userId) {
-    redirect(`/dashboard/contests/${assignmentId}`);
+    redirect(`/contests/manage/${assignmentId}`);
   }
 
   const [locale, timeZone, t, tSubmissions, tCommon, tAudit] = await Promise.all([
@@ -95,7 +95,7 @@ export default async function ContestParticipantSubmissionsPage({
   return (
     <div className="space-y-6">
       <Link
-        href={`/dashboard/contests/${assignmentId}`}
+        href={`/contests/manage/${assignmentId}`}
         className="inline-flex items-center gap-1 text-sm text-muted-foreground hover:text-foreground"
       >
         <ArrowLeft className="size-4" />
@@ -147,7 +147,7 @@ export default async function ContestParticipantSubmissionsPage({
                       <TableCell>
                         {sub.problemTitle ? (
                           <Link
-                            href={`/dashboard/problems/${sub.problemId}`}
+                            href={`/problems/${sub.problemId}`}
                             className="text-primary hover:underline"
                           >
                             {sub.problemTitle}

@@ -125,7 +125,7 @@ export async function updateProfile(
     },
   });
 
-  const auditContext = await buildServerActionAuditContext("/dashboard/profile");
+  const auditContext = await buildServerActionAuditContext("/profile");
   recordAuditEvent({
     actorId: currentUser.id,
     actorRole: session.user.role,

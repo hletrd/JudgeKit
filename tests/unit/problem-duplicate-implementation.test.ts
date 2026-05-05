@@ -22,7 +22,7 @@ describe("problem duplication implementation", () => {
     expect(formSource).toContain('t("duplicateSuccess")');
     expect(formSource).toContain('t("duplicateProblem")');
 
-    expect(editPage).toContain('href={`/dashboard/problems/create?duplicateFrom=${problem.id}`}');
+    expect(editPage).toContain('href={`/problems/create?duplicateFrom=${problem.id}`}');
     expect(editPage).toContain('t("duplicateProblem")');
   });
 });

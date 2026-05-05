@@ -434,7 +434,7 @@ export default async function PublicContestDetailPage({ params }: { params: Prom
           </Link>
           <div className="rounded-lg border p-6 text-center space-y-4">
             <p className="text-muted-foreground">{tContest("privateContestNotice")}</p>
-            <Link href={buildLocalePath(`/dashboard/contests/${id}`, locale)}>
+            <Link href={buildLocalePath(`/contests/manage/${id}`, locale)}>
               <Button>{tContest("manageContest")}</Button>
             </Link>
           </div>
@@ -542,7 +542,7 @@ export default async function PublicContestDetailPage({ params }: { params: Prom
       {/* Instructor: show manage button at the top */}
       {userAccess === "managing" && (
         <div className="mb-4 flex justify-end">
-          <Link href={buildLocalePath(`/dashboard/contests/${contest.id}`, locale)}>
+          <Link href={buildLocalePath(`/contests/manage/${contest.id}`, locale)}>
             <Button>{tContest("manageContest")}</Button>
           </Link>
         </div>

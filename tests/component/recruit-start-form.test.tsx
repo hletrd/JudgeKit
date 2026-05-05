@@ -42,7 +42,7 @@ describe("RecruitStartForm", () => {
     await waitFor(() => {
       expect(signOutMock).toHaveBeenCalledWith({ redirect: false });
       expect(signInMock).toHaveBeenCalledWith("credentials", { recruitToken: "invite-token", recruitAccountPassword: "account-password", redirect: false });
-      expect(pushMock).toHaveBeenCalledWith("/dashboard/contests/assignment-1");
+      expect(pushMock).toHaveBeenCalledWith("/contests/assignment-1");
       expect(refreshMock).toHaveBeenCalled();
     });
   });
@@ -78,7 +78,7 @@ describe("RecruitStartForm", () => {
     await user.click(screen.getByRole("button", { name: "Continue Assessment" }));
 
     await waitFor(() => {
-      expect(pushMock).toHaveBeenCalledWith("/dashboard/contests/assignment-4");
+      expect(pushMock).toHaveBeenCalledWith("/contests/assignment-4");
       expect(refreshMock).toHaveBeenCalled();
     });
     expect(signOutMock).not.toHaveBeenCalled();

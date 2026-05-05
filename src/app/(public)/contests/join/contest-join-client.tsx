@@ -62,7 +62,7 @@ export function ContestJoinClient() {
         toast.success(t("joinSuccess"));
       }
       await new Promise((resolve) => setTimeout(resolve, 1000));
-      router.push(`/dashboard/contests/${payload.data.assignmentId}`);
+      router.push(`/contests/${payload.data.assignmentId}`);
     } catch {
       setShaking(true);
       setTimeout(() => setShaking(false), 600);

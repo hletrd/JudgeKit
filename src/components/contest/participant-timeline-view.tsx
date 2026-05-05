@@ -82,7 +82,7 @@ export async function ParticipantTimelineView({
   return (
     <div className="space-y-6">
       <Link
-        href={`/dashboard/contests/${assignmentId}`}
+        href={`/contests/manage/${assignmentId}`}
         className="inline-flex items-center gap-1 text-sm text-muted-foreground hover:text-foreground"
       >
         <ArrowLeft className="size-4" />
@@ -178,7 +178,7 @@ export async function ParticipantTimelineView({
                     <TableRow key={problem.problemId}>
                       <TableCell>
                         <Link
-                          href={`/dashboard/problems/${problem.problemId}`}
+                          href={`/problems/${problem.problemId}`}
                           className="text-primary hover:underline"
                         >
                           {problem.title}
@@ -251,7 +251,7 @@ export async function ParticipantTimelineView({
               <div key={problem.problemId}>
                 <h4 className="mb-2 flex items-center gap-2 text-sm font-medium">
                   <Link
-                    href={`/dashboard/problems/${problem.problemId}`}
+                    href={`/problems/${problem.problemId}`}
                     className="text-primary hover:underline"
                   >
                     {problem.title}

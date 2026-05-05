@@ -13,7 +13,7 @@ type ProblemImportButtonProps = {
    * Path to navigate to after import. The created problem id is appended
    * (path/<id>) when present in the response. Defaults to /practice/problems
    * so the public listing is the canonical landing page; instructors can
-   * still pass /dashboard/problems if they want the management view.
+   * still pass /problems if they want the management view.
    */
   redirectBasePath?: string;
 };

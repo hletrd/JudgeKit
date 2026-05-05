@@ -209,7 +209,7 @@ export async function StudentDashboard({ userId }: StudentDashboardProps) {
                   )}
                   <div className="mt-3">
                     <Link
-                      href={`/dashboard/groups/${assignment.groupId}/assignments/${assignment.id}`}
+                      href={`/groups/${assignment.groupId}/assignments/${assignment.id}`}
                       aria-label={t("viewAssignmentLabel", { title: assignment.title })}
                     >
                       <Badge variant="secondary">{t("viewAssignment")}</Badge>

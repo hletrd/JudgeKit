@@ -93,7 +93,7 @@ export function FilterForm({
 
           <div className="flex gap-2 items-end">
             <Button type="submit" className="h-10">{labels.applyFilter}</Button>
-            <Link href={resetHref ?? `/dashboard/groups/${groupId}/assignments/${assignmentId}`}>
+            <Link href={resetHref ?? `/groups/${groupId}/assignments/${assignmentId}`}>
               <Button type="button" variant="outline" className="h-10">
                 {labels.resetFilter}
               </Button>

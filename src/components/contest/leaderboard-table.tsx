@@ -393,7 +393,7 @@ export function LeaderboardTable({
                 >
                   <div>
                     {canViewStudentDetails ? (
-                      <Link href={`/dashboard/contests/${assignmentId}/students/${entry.userId}`}>
+                      <Link href={`/contests/manage/${assignmentId}/students/${entry.userId}`}>
                         <span className="font-medium hover:underline cursor-pointer">{entry.name}</span>
                       </Link>
                     ) : (
@@ -407,7 +407,7 @@ export function LeaderboardTable({
                   </div>
                   {canViewStudentDetails ? (
                     <Link
-                      href={`/dashboard/contests/${assignmentId}/participant/${entry.userId}/timeline`}
+                      href={`/contests/manage/${assignmentId}/participant/${entry.userId}/timeline`}
                       className="text-xs text-muted-foreground underline-offset-4 hover:text-foreground hover:underline"
                     >
                       {t("timeline")}

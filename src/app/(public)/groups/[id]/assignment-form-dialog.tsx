@@ -291,7 +291,7 @@ export default function AssignmentFormDialog({
 
       const createdAssignmentId = payload.data?.id;
       if (!isEditing && typeof createdAssignmentId === "string") {
-        router.push(`/dashboard/groups/${groupId}/assignments/${createdAssignmentId}`);
+        router.push(`/groups/${groupId}/assignments/${createdAssignmentId}`);
       }
 
       router.refresh();

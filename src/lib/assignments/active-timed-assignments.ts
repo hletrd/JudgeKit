@@ -31,7 +31,7 @@ export function selectActiveTimedAssignments(
       assignmentId: contest.id,
       title: contest.title,
       groupName: contest.groupName,
-      href: `/dashboard/contests/${contest.id}`,
+      href: `/contests/${contest.id}`,
       mode: contest.examMode as "scheduled" | "windowed",
       startedAt: (contest.examMode === "scheduled" ? contest.startsAt : contest.startedAt)?.toISOString() ?? "",
       deadline: (contest.examMode === "scheduled" ? contest.deadline : contest.personalDeadline)?.toISOString() ?? "",
