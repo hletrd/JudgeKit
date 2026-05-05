@@ -57,8 +57,10 @@ export default async function DashboardLayout({ children }: { children: React.Re
           capabilities,
         }}
       />
-      <header className="hidden md:block sticky top-0 z-10 border-b bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/80 px-6 py-3">
-        <Breadcrumb />
+      <header className="hidden md:block sticky top-0 z-10 border-b bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/80">
+        <div className="mx-auto w-full max-w-6xl px-4 py-3 sm:px-6 lg:px-8">
+          <Breadcrumb />
+        </div>
       </header>
       <main id="main-content" className="mx-auto w-full max-w-6xl px-4 py-10 sm:px-6 lg:px-8">
         {children}
