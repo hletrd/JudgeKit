@@ -270,7 +270,7 @@ export function CompilerClient({ languages, title, description, preferredLanguag
 
       if (!res.ok) {
         // Ensure errorMessage is always a string — data.error/data.message could be objects
-        const rawError = data.error || data.message || res.statusText || "Request failed";
+        const rawError = data.error || data.message || res.statusText || t("requestFailed");
         const errorMessage = String(rawError);
         updateTestCase(runningTestCaseId, (testCase) => ({
           ...testCase,

@@ -47,6 +47,7 @@ function titleCase(segment: string): string {
 export function Breadcrumb({ className, overrides }: BreadcrumbProps) {
   const pathname = usePathname();
   const tNav = useTranslations("nav");
+  const tCommon = useTranslations("common");
 
   // Strip leading locale prefix (e.g. /en, /ko) and split
   const segments = pathname
@@ -79,7 +80,7 @@ export function Breadcrumb({ className, overrides }: BreadcrumbProps) {
   }
 
   return (
-    <nav aria-label="Breadcrumb" className={cn(className)}>
+    <nav aria-label={tCommon("breadcrumb")} className={cn(className)}>
       <ol
         itemScope
         itemType="https://schema.org/BreadcrumbList"
@@ -98,7 +99,7 @@ export function Breadcrumb({ className, overrides }: BreadcrumbProps) {
             className="flex items-center gap-1 transition-colors hover:text-foreground"
           >
             <Home className="size-3.5" aria-hidden="true" />
-            <span itemProp="name" className="sr-only">Home</span>
+            <span itemProp="name" className="sr-only">{tCommon("home")}</span>
           </Link>
           <meta itemProp="position" content="1" />
           <ChevronRight className="size-3.5" aria-hidden="true" />

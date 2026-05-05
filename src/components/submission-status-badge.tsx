@@ -1,6 +1,7 @@
 "use client";
 
 import { AlertTriangle, CheckCircle2, Clock3, Timer, HardDrive } from "lucide-react";
+import { useTranslations } from "next-intl";
 import { Badge } from "@/components/ui/badge";
 import {
   Tooltip,
@@ -48,13 +49,13 @@ function formatBadgeNumber(n: number, locale?: string): string {
   return formatNumber(n, locale);
 }
 
-const RUNTIME_ERROR_LABELS: Record<string, string> = {
-  SIGSEGV: "Segmentation fault",
-  SIGFPE: "Division by zero",
-  SIGABRT: "Abnormal termination",
-  SIGXCPU: "CPU time limit exceeded",
-  SIGKILL: "Process killed",
-  stack_overflow: "Stack overflow",
+const RUNTIME_ERROR_KEYS: Record<string, string> = {
+  SIGSEGV: "runtimeErrors.SIGSEGV",
+  SIGFPE: "runtimeErrors.SIGFPE",
+  SIGABRT: "runtimeErrors.SIGABRT",
+  SIGXCPU: "runtimeErrors.SIGXCPU",
+  SIGKILL: "runtimeErrors.SIGKILL",
+  stack_overflow: "runtimeErrors.stack_overflow",
 };
 
 function TooltipBody({
@@ -67,7 +68,8 @@ function TooltipBody({
   timeLimitMs,
   score,
   locale,
-}: Pick<SubmissionStatusBadgeProps, "status" | "compileOutput" | "executionTimeMs" | "memoryUsedKb" | "failedTestCaseIndex" | "runtimeErrorType" | "timeLimitMs" | "score" | "locale">) {
+  tSub,
+}: Pick<SubmissionStatusBadgeProps, "status" | "compileOutput" | "executionTimeMs" | "memoryUsedKb" | "failedTestCaseIndex" | "runtimeErrorType" | "timeLimitMs" | "score" | "locale"> & { tSub: ReturnType<typeof useTranslations> }) {
   if (status === "compile_error" && compileOutput) {
     const truncated = compileOutput.length > 200
       ? compileOutput.slice(0, 200) + "..."
@@ -83,10 +85,10 @@ function TooltipBody({
     <div className="space-y-1 text-xs">
       {/* Verdict-specific detail line */}
       {status === "wrong_answer" && failedTestCaseIndex != null && (
-        <div className="text-muted-foreground">WA on test #{failedTestCaseIndex + 1}</div>
+        <div className="text-muted-foreground">{tSub("waOnTest", { index: failedTestCaseIndex + 1 })}</div>
       )}
       {status === "wrong_answer" && score !== null && score !== undefined && (
-        <span className="font-medium">Score: {formatScore(score, locale)}</span>
+        <span className="font-medium">{tSub("scoreLabel", { score: formatScore(score, locale) })}</span>
       )}
       {status === "time_limit" && executionTimeMs != null && (
         <div className="text-muted-foreground">
@@ -95,7 +97,7 @@ function TooltipBody({
       )}
       {status === "runtime_error" && (
         <div className="text-muted-foreground">
-          {runtimeErrorType ? (RUNTIME_ERROR_LABELS[runtimeErrorType] ?? runtimeErrorType) : "Runtime error"}
+          {runtimeErrorType ? (RUNTIME_ERROR_KEYS[runtimeErrorType] ? tSub(RUNTIME_ERROR_KEYS[runtimeErrorType] as Parameters<typeof tSub>[0]) : runtimeErrorType) : tSub("runtimeErrorFallback")}
         </div>
       )}
 
@@ -133,6 +135,8 @@ export function SubmissionStatusBadge({
   score,
   locale,
 }: SubmissionStatusBadgeProps) {
+  const tSub = useTranslations("submissions");
+
   const badge = (
     <Badge
       variant={variant ?? getSubmissionStatusVariant(status)}
@@ -175,6 +179,7 @@ export function SubmissionStatusBadge({
             timeLimitMs={timeLimitMs}
             score={score}
             locale={locale}
+            tSub={tSub}
           />
         </TooltipContent>
       </Tooltip>
