@@ -108,6 +108,8 @@ export function Breadcrumb({ className, overrides }: BreadcrumbProps) {
           <Link
             href="/"
             itemProp="item"
+            aria-label={tCommon("home")}
+            title={tCommon("home")}
             className="flex items-center gap-1 transition-colors hover:text-foreground"
           >
             <Home className="size-3.5" aria-hidden="true" />
