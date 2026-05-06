@@ -31,17 +31,20 @@ export default async function DashboardLayout({ children }: { children: React.Re
   const session = await auth();
   if (!session?.user) redirect("/login");
 
-  const [{ effectivePlatformMode }, tCommon, tShell, tAuth, capsSet, settings] = await Promise.all([
+  const [{ effectivePlatformMode }, tCommon, tShell, tAuth, capsSet] = await Promise.all([
     getRecruitingAccessContext(session.user.id),
     getTranslations("common"),
     getTranslations("publicShell"),
     getTranslations("auth"),
     resolveCapabilities(session.user.role),
-    getResolvedSystemSettings({
-      siteTitle: (await getTranslations("common"))("appName"),
-      siteDescription: (await getTranslations("common"))("appDescription"),
-    }),
   ]);
+
+  // Resolve system settings after `tCommon` is available so we don't call
+  // `getTranslations("common")` redundantly inside the arg object.
+  const settings = await getResolvedSystemSettings({
+    siteTitle: tCommon("appName"),
+    siteDescription: tCommon("appDescription"),
+  });
 
   const capabilities = [...capsSet];
 
