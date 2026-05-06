@@ -26,6 +26,18 @@ const SEGMENT_LABEL_MAP: Record<string, string> = {
   community: "community",
   discussions: "discussions",
   assignments: "problemSets",
+  // Admin route segments — explicit i18n keys to avoid title-cased fallbacks
+  // like "Api Keys" / "Audit Logs" leaking through in non-English locales.
+  "api-keys": "apiKeys",
+  "audit-logs": "auditLogs",
+  "login-logs": "loginLogs",
+  "chat-logs": "chatLogs",
+  "problem-sets": "problemSets",
+  workers: "judgeWorkers",
+  tags: "tagManagement",
+  plugins: "plugins",
+  files: "fileManagement",
+  roles: "roleManagement",
 };
 
 type SegmentOverride = {
@@ -94,7 +106,7 @@ export function Breadcrumb({ className, overrides }: BreadcrumbProps) {
           className="flex items-center gap-1"
         >
           <Link
-            href="/dashboard"
+            href="/"
             itemProp="item"
             className="flex items-center gap-1 transition-colors hover:text-foreground"
           >
