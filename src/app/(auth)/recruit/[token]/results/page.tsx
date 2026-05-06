@@ -265,7 +265,8 @@ export default async function RecruitResultsPage({
             candidate; cycle-2 C2-AGG-9 prefers an unset card over zero/zero. */}
         {showScores && totalPossible > 0 && (
           <div className="rounded-lg border bg-muted/30 p-4 text-center">
-            <p className="text-xs uppercase tracking-wide text-muted-foreground">
+            {/* Per CLAUDE.md: tracking-wide is for English uppercase only — skip for Korean. */}
+            <p className={`text-xs uppercase${locale !== "ko" ? " tracking-wide" : ""} text-muted-foreground`}>
               {t("totalScore")}
             </p>
             <p className="text-3xl font-semibold">
@@ -275,7 +276,8 @@ export default async function RecruitResultsPage({
           </div>
         )}
         <div className="space-y-3">
-          <h2 className="text-sm font-medium uppercase tracking-wide text-muted-foreground">
+          {/* Per CLAUDE.md: tracking-wide is for English uppercase only — skip for Korean. */}
+          <h2 className={`text-sm font-medium uppercase${locale !== "ko" ? " tracking-wide" : ""} text-muted-foreground`}>
             {t("perProblemBreakdown")}
           </h2>
           {assignmentProblemRows.length === 0 ? (
