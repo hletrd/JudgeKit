@@ -8,32 +8,29 @@ function read(relativePath: string) {
 
 describe("admin dashboard implementation", () => {
   it("surfaces only the quick links the actor can actually access", () => {
+    // Per cycle-1 IA cleanup, the dashboard no longer renders the full 11-item
+    // admin chip wall — that surface lives at /dashboard/admin (the canonical
+    // admin landing). The dashboard now renders a single 'Administration →'
+    // CTA plus a curated set of high-frequency shortcuts gated by capability.
+    // This test asserts the new contract: capability-gated shortcuts + CTA to
+    // the canonical admin landing.
     const source = read("src/app/(public)/dashboard/_components/admin-dashboard.tsx");
     const dashboardPage = read("src/app/(public)/dashboard/page.tsx");
 
     expect(source).toContain("const caps = new Set(capabilities);");
     expect(source).toContain('const canViewHealth = caps.has("system.settings");');
-    expect(source).toContain('caps.has("system.settings")');
-    expect(source).toContain('caps.has("users.view")');
-    expect(source).toContain('caps.has("users.manage_roles")');
-    expect(source).toContain('caps.has("system.audit_logs")');
-    expect(source).toContain('caps.has("system.login_logs")');
-    expect(source).toContain('caps.has("system.chat_logs")');
-    expect(source).toContain('caps.has("files.manage")');
-    expect(source).toContain('caps.has("system.plugins")');
+    // Primary CTA → admin landing.
+    expect(source).toContain('href="/dashboard/admin"');
+    expect(source).toContain('tNav("administration")');
     expect(source).toContain('CardTitle>{t("adminQuickActions")}');
-    expect(source).toContain('href="/dashboard/admin/workers"');
-    expect(source).toContain('href="/dashboard/admin/languages"');
-    expect(source).toContain('href="/dashboard/admin/users"');
-    expect(source).toContain('href="/dashboard/admin/roles"');
-    expect(source).toContain('href="/dashboard/admin/audit-logs"');
-    expect(source).toContain('href="/dashboard/admin/login-logs"');
-    expect(source).toContain('href="/dashboard/admin/plugins/chat-logs"');
-    expect(source).toContain('href="/dashboard/admin/files"');
-    expect(source).toContain('href="/dashboard/admin/plugins"');
-    expect(source).toContain('href="/dashboard/admin/api-keys"');
-    expect(source).toContain('href="/dashboard/admin/tags"');
-    expect(source).toContain('href="/dashboard/admin/settings"');
+    // Curated high-frequency shortcuts — capability-gated.
+    expect(source).toContain('"users.view"');
+    expect(source).toContain('"system.settings"');
+    expect(source).toContain('"/dashboard/admin/users"');
+    expect(source).toContain('"/dashboard/admin/workers"');
+    expect(source).toContain('"/dashboard/admin/settings"');
+    // Empty-state guard.
+    expect(source).toContain("visibleQuickLinks.length > 0");
     expect(dashboardPage).toContain("<AdminDashboard capabilities={capabilityList} />");
   });
 
