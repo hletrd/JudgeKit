@@ -30,7 +30,7 @@ export default async function AuthLayout({ children }: { children: React.ReactNo
         <ThemeToggle className={AUTH_CHROME_BUTTON_CLASS} />
         <LocaleSwitcher className={AUTH_CHROME_BUTTON_CLASS} />
       </div>
-      <main id="main-content">{children}</main>
+      <main id="main-content" className="w-full flex justify-center">{children}</main>
     </div>
   );
 }
