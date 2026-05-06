@@ -32,10 +32,23 @@ type DropdownItem = {
 
 /**
  * Build the public navigation items for PublicHeader.
- * Uses the `publicShell.nav.*` i18n namespace.
+ *
+ * Uses the `publicShell.nav.*` i18n namespace. When `capabilities` is
+ * provided, capability-gated entries (Groups, Problem Sets) are
+ * surfaced inline so users with those capabilities don't have to hunt
+ * for them in the avatar dropdown. The base entries (Practice,
+ * Playground, Contests, Rankings, Submissions, Community) always render.
+ *
+ * Cap-aware insertion order is curated for menu rhythm: capability-gated
+ * items are appended after the always-on entries, before any later
+ * additions. Adding a new cap-gated entry is a single edit here.
  */
-export function getPublicNavItems(t: (key: string) => string): HeaderItem[] {
-  return [
+export function getPublicNavItems(
+  t: (key: string) => string,
+  capabilities?: string[]
+): HeaderItem[] {
+  const capsSet = capabilities ? new Set(capabilities) : null;
+  const items: HeaderItem[] = [
     { href: "/practice", label: t("nav.practice") },
     { href: "/playground", label: t("nav.playground") },
     { href: "/contests", label: t("nav.contests") },
@@ -45,6 +58,21 @@ export function getPublicNavItems(t: (key: string) => string): HeaderItem[] {
     // "Languages" moved to footer — it is a reference page, not a primary action.
     // See: PublicFooter (always includes the Languages link).
   ];
+
+  // Cap-aware additions for instructors / group leaders / problem-set authors.
+  // Without these, those users would have to dig into the avatar dropdown
+  // for primary work (Groups, Problem Sets). When capabilities are not
+  // supplied (e.g. unauthenticated public layout), these are not surfaced.
+  if (capsSet) {
+    if (capsSet.has("groups.view_all") || capsSet.has("groups.create")) {
+      items.push({ href: "/groups", label: t("nav.groups") });
+    }
+    if (capsSet.has("problem_sets.view") || capsSet.has("problem_sets.create")) {
+      items.push({ href: "/problem-sets", label: t("nav.problemSets") });
+    }
+  }
+
+  return items;
 }
 
 /**

@@ -28,7 +28,7 @@ export default async function PublicLayout({ children }: { children: React.React
       <SkipToContent label={tCommon("skipToContent")} />
       <PublicHeader
         siteTitle={settings.siteTitle}
-        items={getPublicNavItems(tShell)}
+        items={getPublicNavItems(tShell, capabilities)}
         actions={getPublicNavActions(tAuth, settings.publicSignupEnabled)}
         loggedInUser={session?.user ? { name: session.user.name, href: "/dashboard", label: tShell("nav.dashboard"), capabilities } : null}
       />

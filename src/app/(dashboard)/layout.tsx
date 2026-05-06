@@ -6,13 +6,13 @@ import { PublicHeader } from "@/components/layout/public-header";
 import { PublicFooter } from "@/components/layout/public-footer";
 import { SkipToContent } from "@/components/layout/skip-to-content";
 import { Breadcrumb } from "@/components/layout/breadcrumb";
+import { PlatformModeBadge } from "@/components/layout/platform-mode-badge";
 
 import { Toaster } from "@/components/ui/sonner";
 
 import { getResolvedSystemSettings } from "@/lib/system-settings";
 import { resolveCapabilities } from "@/lib/capabilities/cache";
 import { getRecruitingAccessContext } from "@/lib/recruiting/access";
-import { getActiveTimedAssignmentsForSidebar } from "@/lib/assignments/active-timed-assignments";
 import { NO_INDEX_METADATA } from "@/lib/seo";
 import { getPublicNavItems, getPublicNavActions } from "@/lib/navigation/public-nav";
 
@@ -23,7 +23,9 @@ export const metadata: Metadata = NO_INDEX_METADATA;
  *
  * Provides the top navbar (PublicHeader) for admin workspace pages.
  * Non-admin authenticated pages (profile, groups, problems, etc.)
- * use the public layout instead.
+ * use the public layout instead. Surfaces the effective platform mode
+ * as a badge in the header trailing slot so admins can tell at a glance
+ * which mode the site is running in.
  */
 export default async function DashboardLayout({ children }: { children: React.ReactNode }) {
   const session = await auth();
@@ -48,7 +50,7 @@ export default async function DashboardLayout({ children }: { children: React.Re
       <SkipToContent targetId="main-content" label={tCommon("skipToContent")} />
       <PublicHeader
         siteTitle={settings.siteTitle}
-        items={getPublicNavItems(tShell)}
+        items={getPublicNavItems(tShell, capabilities)}
         actions={getPublicNavActions(tAuth, settings.publicSignupEnabled)}
         loggedInUser={{
           name: session.user.name || session.user.username || "",
@@ -56,6 +58,7 @@ export default async function DashboardLayout({ children }: { children: React.Re
           label: session.user.name || session.user.username || "",
           capabilities,
         }}
+        trailingSlot={<PlatformModeBadge platformMode={effectivePlatformMode} />}
       />
       <header className="hidden md:block sticky top-0 z-10 border-b bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/80">
         <div className="mx-auto w-full max-w-6xl px-4 py-3 sm:px-6 lg:px-8">
