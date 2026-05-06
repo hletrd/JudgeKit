@@ -6,6 +6,7 @@ import { Badge } from "@/components/ui/badge";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { DashboardJudgeSystemSection } from "@/app/(public)/dashboard/_components/dashboard-judge-system-section";
 import { getAdminHealthSnapshot } from "@/lib/ops/admin-health";
+import { findAdminNavItem, type AdminNavItem } from "@/lib/navigation/admin-nav";
 
 type AdminDashboardProps = {
   capabilities: string[];
@@ -19,11 +20,16 @@ type AdminDashboardProps = {
  * (the canonical admin landing). Only a single primary CTA plus a
  * curated set of high-traffic shortcuts are surfaced here, gated by
  * capability.
+ *
+ * The shortcut list is curated by href against the single source of
+ * truth in `src/lib/navigation/admin-nav.ts`. Adding a new admin
+ * section there does NOT automatically promote it to the dashboard
+ * shortcuts — that promotion is intentional/curated.
  */
-const QUICK_ADMIN_LINKS: { href: string; titleKey: string; capability: string }[] = [
-  { href: "/dashboard/admin/users", titleKey: "userManagement", capability: "users.view" },
-  { href: "/dashboard/admin/workers", titleKey: "judgeWorkers", capability: "system.settings" },
-  { href: "/dashboard/admin/settings", titleKey: "systemSettings", capability: "system.settings" },
+const QUICK_ADMIN_HREFS: string[] = [
+  "/dashboard/admin/users",
+  "/dashboard/admin/workers",
+  "/dashboard/admin/settings",
 ];
 
 export async function AdminDashboard({ capabilities }: AdminDashboardProps) {
@@ -35,13 +41,15 @@ export async function AdminDashboard({ capabilities }: AdminDashboardProps) {
     canViewHealth ? getAdminHealthSnapshot() : Promise.resolve(null),
   ]);
 
-  const visibleQuickLinks = QUICK_ADMIN_LINKS.filter((link) => caps.has(link.capability));
+  const visibleQuickLinks: AdminNavItem[] = QUICK_ADMIN_HREFS
+    .map((href) => findAdminNavItem(href))
+    .filter((item): item is AdminNavItem => Boolean(item) && caps.has(item!.capability));
 
   return (
     <div className="space-y-6">
       <Card>
         <CardHeader className="flex flex-row items-start justify-between gap-4">
-          <CardTitle>{t("adminQuickActions")}</CardTitle>
+          <CardTitle>{t("adminShortcuts")}</CardTitle>
           <Link href="/dashboard/admin">
             <Button size="sm">
               {tNav("administration")}
@@ -51,9 +59,9 @@ export async function AdminDashboard({ capabilities }: AdminDashboardProps) {
         </CardHeader>
         {visibleQuickLinks.length > 0 ? (
           <CardContent className="flex flex-wrap gap-2">
-            {visibleQuickLinks.map((link) => (
-              <Link key={link.href} href={link.href}>
-                <Button size="sm" variant="outline">{tNav(link.titleKey)}</Button>
+            {visibleQuickLinks.map((item) => (
+              <Link key={item.href} href={item.href}>
+                <Button size="sm" variant="outline">{tNav(item.titleKey)}</Button>
               </Link>
             ))}
           </CardContent>
