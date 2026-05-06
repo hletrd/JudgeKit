@@ -757,8 +757,14 @@ BEGIN
     \$sql\$;
   END IF;
 END\$\$;
+-- Drop the deprecated plaintext secret_token column after backfilling its
+-- hash. Idempotent: DROP COLUMN IF EXISTS is a no-op once the column is
+-- gone. Doing this here (vs. relying on drizzle-kit push to detect the
+-- destructive diff) avoids the need for DRIZZLE_PUSH_FORCE=1 in routine
+-- deploys, since the column is already absent by the time push runs.
+ALTER TABLE judge_workers DROP COLUMN IF EXISTS secret_token;
 SQL" >/dev/null || die "secret_token backfill failed — aborting deploy"
-success "secret_token backfill complete"
+success "secret_token backfill + idempotent column drop complete"
 
 # ---------------------------------------------------------------------------
 # Step 6: Run database migrations before starting the app
