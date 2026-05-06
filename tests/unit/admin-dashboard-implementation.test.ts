@@ -22,15 +22,17 @@ describe("admin dashboard implementation", () => {
     // Primary CTA → admin landing.
     expect(source).toContain('href="/dashboard/admin"');
     expect(source).toContain('tNav("administration")');
-    expect(source).toContain('CardTitle>{t("adminQuickActions")}');
-    // Curated high-frequency shortcuts — capability-gated.
-    expect(source).toContain('"users.view"');
-    expect(source).toContain('"system.settings"');
+    expect(source).toContain('CardTitle>{t("adminShortcuts")}');
+    // Curated high-frequency shortcuts — capability-gated by way of the
+    // single source of truth in src/lib/navigation/admin-nav.ts.
+    expect(source).toContain('findAdminNavItem');
     expect(source).toContain('"/dashboard/admin/users"');
     expect(source).toContain('"/dashboard/admin/workers"');
     expect(source).toContain('"/dashboard/admin/settings"');
     // Empty-state guard.
     expect(source).toContain("visibleQuickLinks.length > 0");
+    // Caps still derived from server-passed capability list.
+    expect(source).toContain("const caps = new Set(capabilities);");
     expect(dashboardPage).toContain("<AdminDashboard capabilities={capabilityList} />");
   });
 

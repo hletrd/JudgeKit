@@ -59,10 +59,14 @@ describe("custom-role page/runtime implementation guards", () => {
     // redirect and assert the capability checks on the public counterpart.
     const dashboardProblemRedirect = read("src/app/(public)/problems/[id]/page.tsx");
     const publicPracticeDetail = read("src/app/(public)/practice/problems/[id]/page.tsx");
-    const appSidebar = read("src/components/layout/app-sidebar.tsx");
 
-    expect(dashboardLayout).toContain('capsSet.has("assignments.view_status")');
+    // Cycle 2: AppSidebar was deleted (dead code post-cycle-1 migration).
+    // The dashboard layout no longer threads `assignments.view_status` —
+    // capability-gating now lives in the PublicHeader dropdown via
+    // `getDropdownItems` and in the new cap-aware top nav. Verify the
+    // dashboard layout does not regress to role-string checks.
     expect(dashboardLayout).not.toContain('session.user.role === "admin"');
+    expect(dashboardLayout).not.toContain('user.role === "admin"');
 
     expect(problemSetsPage).toContain("getProblemSetCapabilityFlags");
     expect(problemSetsPage).not.toContain("isInstructorOrAbove");
@@ -74,12 +78,16 @@ describe("custom-role page/runtime implementation guards", () => {
     expect(problemSetDetailPage).toContain("canManageProblemSetForUser");
     expect(problemSetDetailPage).not.toContain("isInstructorOrAbove");
 
-    expect(appSidebar).not.toContain('capability: "problem_sets.view"');
-    // Non-admin nav items (Problems, Groups, Problem Sets) have been moved
-    // to the PublicHeader dropdown. Verify the dropdown keeps them capability-aware.
+    // The avatar dropdown surfaces personal + capability-gated workspace
+    // items (Groups, Problem Sets, Admin). Cycle 2 also surfaces Groups
+    // and Problem Sets in the cap-aware top nav for users with the
+    // matching capabilities. Verify both contracts.
     const publicNav = read("src/lib/navigation/public-nav.ts");
-    expect(publicNav).toContain('capability: "problem_sets.create"');
-    expect(publicNav).toContain('label: "problems"');
+    expect(publicNav).toContain('capability: "system.settings"');
+    expect(publicNav).toContain('label: "admin"');
+    expect(publicNav).toContain('"groups.view_all"');
+    expect(publicNav).toContain('"problem_sets.view"');
+    expect(publicNav).toContain("capabilities?: string[]");
 
     expect(problemsPage).toContain("resolveCapabilities");
     expect(problemsPage).toContain('caps.has("problems.edit")');

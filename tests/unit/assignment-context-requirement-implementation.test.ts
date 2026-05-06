@@ -35,16 +35,29 @@ describe("assignment-context requirement implementation", () => {
     expect(snapshotsRoute).not.toContain('user.role === "student"');
   });
 
-  it("uses capabilities instead of built-in admin-only checks for sidebar mode restrictions", () => {
-    const sidebarSource = read("src/components/layout/app-sidebar.tsx");
+  it("uses capabilities instead of built-in admin-only checks for navigation gating", () => {
+    // Cycle 2: AppSidebar was deleted (dead code post-cycle-1 migration).
+    // Navigation capability-gating now lives in:
+    //   - src/lib/navigation/public-nav.ts (top nav + dropdown)
+    //   - src/lib/navigation/admin-nav.ts (admin landing + quick shortcuts)
+    // Verify both modules gate by capability strings rather than by
+    // hard-coded role names.
+    const publicNav = read("src/lib/navigation/public-nav.ts");
+    const adminNav = read("src/lib/navigation/admin-nav.ts");
 
-    expect(sidebarSource).toContain("const canBypassModeRestrictions =");
-    expect(sidebarSource).toContain('capsSet.has("groups.view_all")');
-    expect(sidebarSource).toContain('capsSet.has("submissions.view_all")');
-    expect(sidebarSource).toContain('capsSet.has("assignments.view_status")');
-    expect(sidebarSource).not.toContain('user.role === "admin"');
-    expect(sidebarSource).not.toContain('user.role === "super_admin"');
-    expect(sidebarSource).not.toContain('user.role === "instructor"');
+    expect(publicNav).toContain('"groups.view_all"');
+    expect(publicNav).toContain('"problem_sets.view"');
+    expect(publicNav).toContain('capability: "system.settings"');
+    expect(publicNav).not.toContain('role === "admin"');
+    expect(publicNav).not.toContain('role === "super_admin"');
+    expect(publicNav).not.toContain('role === "instructor"');
+
+    expect(adminNav).toContain('capability: "users.view"');
+    expect(adminNav).toContain('capability: "system.settings"');
+    expect(adminNav).toContain('capability: "users.manage_roles"');
+    expect(adminNav).not.toContain('role === "admin"');
+    expect(adminNav).not.toContain('role === "super_admin"');
+    expect(adminNav).not.toContain('role === "instructor"');
   });
 
   it("routes AI and compiler context through the server-derived assignment helper", () => {
