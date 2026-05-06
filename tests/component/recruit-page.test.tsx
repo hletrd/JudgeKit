@@ -48,6 +48,15 @@ vi.mock("next-intl/server", () => ({
   },
 }));
 
+vi.mock("next/headers", () => ({
+  headers: async () => new Headers(),
+}));
+vi.mock("@/lib/security/api-rate-limit", () => ({
+  checkServerActionRateLimit: async () => null,
+}));
+vi.mock("@/lib/security/ip", () => ({
+  extractClientIp: () => "127.0.0.1",
+}));
 vi.mock("@/lib/auth", () => ({ auth: authMock }));
 vi.mock("@/lib/assignments/recruiting-invitations", () => ({ getRecruitingInvitationByToken: getRecruitingInvitationByTokenMock }));
 vi.mock("@/lib/compiler/catalog", () => ({
