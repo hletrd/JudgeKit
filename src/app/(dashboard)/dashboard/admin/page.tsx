@@ -19,7 +19,7 @@ import {
 } from "lucide-react";
 import { auth } from "@/lib/auth";
 import { resolveCapabilities } from "@/lib/capabilities/cache";
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import { Card, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { NO_INDEX_METADATA } from "@/lib/seo";
 
 export const metadata: Metadata = NO_INDEX_METADATA;
@@ -112,9 +112,6 @@ export default async function AdminIndexPage() {
                         </CardDescription>
                       </div>
                     </CardHeader>
-                    <CardContent className="text-xs text-muted-foreground">
-                      {item.href}
-                    </CardContent>
                   </Card>
                 </Link>
               );
