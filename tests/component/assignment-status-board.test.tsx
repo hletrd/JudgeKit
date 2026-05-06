@@ -1,5 +1,20 @@
 import { render, screen } from "@testing-library/react";
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
+
+// Mock next-intl so SubmissionStatusBadge (used inside StatusBoard) can call
+// useTranslations without a NextIntlClientProvider — return the i18n key as-is.
+vi.mock("next-intl", () => ({
+  useTranslations: () => (key: string, values?: Record<string, string | number>) => {
+    if (values) {
+      return Object.entries(values).reduce(
+        (acc, [k, v]) => acc.replaceAll(`{${k}}`, String(v)),
+        key,
+      );
+    }
+    return key;
+  },
+}));
+
 import { StatusBoard } from "@/app/(public)/groups/[id]/assignments/[assignmentId]/status-board";
 import type { AssignmentStudentStatusRow } from "@/lib/assignments/submissions";
 
