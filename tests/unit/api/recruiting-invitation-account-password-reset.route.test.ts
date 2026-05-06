@@ -11,23 +11,29 @@ const {
   recordAuditEventMock: vi.fn(),
 }));
 
-vi.mock("@/lib/api/auth", () => ({
-  getApiUser: vi.fn(() => Promise.resolve({ id: "admin-1", role: "admin", username: "admin" })),
-  csrfForbidden: vi.fn(() => null),
-  unauthorized: () => NextResponse.json({ error: "unauthorized" }, { status: 401 }),
-  forbidden: () => NextResponse.json({ error: "forbidden" }, { status: 403 }),
-  notFound: (resource: string) => NextResponse.json({ error: "notFound", resource }, { status: 404 }),
+// Bypass createApiHandler's auth/CSRF/rate-limit middleware so the route's
+// business logic runs synchronously in the test. This mirrors the canonical
+// pattern used by recruiting-invitations-auth.route.test.ts.
+vi.mock("@/lib/api/handler", () => ({
+  createApiHandler:
+    ({ handler, schema }: { handler: (req: NextRequest, ctx: { user: { id: string; role: string }; body: unknown; params: Record<string, string> }) => Promise<Response>; schema?: { parse: (input: unknown) => unknown } }) =>
+    async (req: NextRequest, ctx?: { params?: Promise<Record<string, string>> }) => {
+      const rawBody =
+        req.method === "PATCH" || req.method === "POST" || req.method === "PUT" || req.method === "DELETE"
+          ? await req.json().catch(() => undefined)
+          : undefined;
+      const body = schema ? schema.parse(rawBody) : rawBody;
+      return handler(req, {
+        user: { id: "admin-1", role: "admin" },
+        body,
+        params: (await ctx?.params) ?? { assignmentId: "assignment-1", invitationId: "invite-1" },
+      });
+    },
 }));
 
 vi.mock("@/lib/api/responses", () => ({
   apiSuccess: (data: unknown) => NextResponse.json({ data }, { status: 200 }),
   apiError: (error: string, status: number) => NextResponse.json({ error }, { status }),
-}));
-
-vi.mock("@/lib/capabilities/cache", () => ({
-  resolveCapabilities: async () => ({
-    has: () => true,
-  }),
 }));
 
 vi.mock("@/lib/assignments/recruiting-invitations", () => ({
@@ -52,6 +58,7 @@ vi.mock("@/lib/db", () => ({
     update: vi.fn(() => ({ where: vi.fn(), set: vi.fn(() => ({ then: vi.fn(cb => cb([])) })) })),
     delete: vi.fn(() => ({ where: vi.fn(() => ({ then: vi.fn(cb => cb()) })) })),
   },
+  execTransaction: vi.fn(),
 }));
 
 function makePatchRequest(body: unknown) {
