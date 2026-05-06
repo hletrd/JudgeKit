@@ -1,4 +1,5 @@
 import Link from "next/link";
+import { ArrowRight } from "lucide-react";
 import { getTranslations } from "next-intl/server";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -10,6 +11,21 @@ type AdminDashboardProps = {
   capabilities: string[];
 };
 
+/**
+ * High-frequency admin shortcuts shown directly on the dashboard.
+ *
+ * Per cycle-1 IA cleanup, the dashboard no longer renders the full
+ * 11-item admin button wall — that surface lives at /dashboard/admin
+ * (the canonical admin landing). Only a single primary CTA plus a
+ * curated set of high-traffic shortcuts are surfaced here, gated by
+ * capability.
+ */
+const QUICK_ADMIN_LINKS: { href: string; titleKey: string; capability: string }[] = [
+  { href: "/dashboard/admin/users", titleKey: "userManagement", capability: "users.view" },
+  { href: "/dashboard/admin/workers", titleKey: "judgeWorkers", capability: "system.settings" },
+  { href: "/dashboard/admin/settings", titleKey: "systemSettings", capability: "system.settings" },
+];
+
 export async function AdminDashboard({ capabilities }: AdminDashboardProps) {
   const caps = new Set(capabilities);
   const canViewHealth = caps.has("system.settings");
@@ -19,74 +35,29 @@ export async function AdminDashboard({ capabilities }: AdminDashboardProps) {
     canViewHealth ? getAdminHealthSnapshot() : Promise.resolve(null),
   ]);
 
+  const visibleQuickLinks = QUICK_ADMIN_LINKS.filter((link) => caps.has(link.capability));
+
   return (
     <div className="space-y-6">
       <Card>
-        <CardHeader>
+        <CardHeader className="flex flex-row items-start justify-between gap-4">
           <CardTitle>{t("adminQuickActions")}</CardTitle>
+          <Link href="/dashboard/admin">
+            <Button size="sm">
+              {tNav("administration")}
+              <ArrowRight className="ml-1 size-3.5" aria-hidden="true" />
+            </Button>
+          </Link>
         </CardHeader>
-        <CardContent className="flex flex-wrap gap-2">
-          {caps.has("system.settings") ? (
-            <>
-              <Link href="/dashboard/admin/workers">
-                <Button size="sm" variant="outline">{tNav("judgeWorkers")}</Button>
+        {visibleQuickLinks.length > 0 ? (
+          <CardContent className="flex flex-wrap gap-2">
+            {visibleQuickLinks.map((link) => (
+              <Link key={link.href} href={link.href}>
+                <Button size="sm" variant="outline">{tNav(link.titleKey)}</Button>
               </Link>
-              <Link href="/dashboard/admin/languages">
-                <Button size="sm" variant="outline">{tNav("languages")}</Button>
-              </Link>
-            </>
-          ) : null}
-          {caps.has("users.view") ? (
-            <Link href="/dashboard/admin/users">
-              <Button size="sm" variant="outline">{tNav("userManagement")}</Button>
-            </Link>
-          ) : null}
-          {caps.has("users.manage_roles") ? (
-            <Link href="/dashboard/admin/roles">
-              <Button size="sm" variant="outline">{tNav("roleManagement")}</Button>
-            </Link>
-          ) : null}
-          {caps.has("system.audit_logs") ? (
-            <Link href="/dashboard/admin/audit-logs">
-              <Button size="sm" variant="outline">{tNav("auditLogs")}</Button>
-            </Link>
-          ) : null}
-          {caps.has("system.login_logs") ? (
-            <Link href="/dashboard/admin/login-logs">
-              <Button size="sm" variant="outline">{tNav("loginLogs")}</Button>
-            </Link>
-          ) : null}
-          {caps.has("system.chat_logs") ? (
-            <Link href="/dashboard/admin/plugins/chat-logs">
-              <Button size="sm" variant="outline">{tNav("chatLogs")}</Button>
-            </Link>
-          ) : null}
-          {caps.has("files.manage") ? (
-            <Link href="/dashboard/admin/files">
-              <Button size="sm" variant="outline">{tNav("fileManagement")}</Button>
-            </Link>
-          ) : null}
-          {caps.has("system.plugins") ? (
-            <Link href="/dashboard/admin/plugins">
-              <Button size="sm" variant="outline">{tNav("plugins")}</Button>
-            </Link>
-          ) : null}
-          {caps.has("system.settings") ? (
-            <Link href="/dashboard/admin/api-keys">
-              <Button size="sm" variant="outline">{tNav("apiKeys")}</Button>
-            </Link>
-          ) : null}
-          {caps.has("system.settings") ? (
-            <Link href="/dashboard/admin/tags">
-              <Button size="sm" variant="outline">{tNav("tagManagement")}</Button>
-            </Link>
-          ) : null}
-          {caps.has("system.settings") ? (
-            <Link href="/dashboard/admin/settings">
-              <Button size="sm" variant="outline">{tNav("systemSettings")}</Button>
-            </Link>
-          ) : null}
-        </CardContent>
+            ))}
+          </CardContent>
+        ) : null}
       </Card>
 
       {canViewHealth && health ? (
