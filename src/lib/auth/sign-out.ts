@@ -65,7 +65,7 @@ function clearAppStorage(): void {
 }
 
 /**
- * Shared sign-out handler used by both PublicHeader and AppSidebar.
+ * Sign-out handler used by PublicHeader (desktop dropdown + mobile drawer).
  * Clears application storage, calls NextAuth signOut, and handles
  * errors gracefully by resetting the loading state.
  *

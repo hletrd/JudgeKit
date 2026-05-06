@@ -102,7 +102,9 @@ export function getPublicNavActions(
  * capability. When absent, the item is always shown.
  * `icon` is rendered directly in the dropdown — no string-keyed map.
  *
- * Capability checks must stay aligned with AppSidebar's filterItems().
+ * Capability checks must stay aligned with the admin landing
+ * (`ADMIN_NAV_GROUPS` in `src/lib/navigation/admin-nav.ts`) and the
+ * cap definitions in `src/lib/capabilities/*`.
  */
 const DROPDOWN_ITEM_DEFINITIONS: DropdownItem[] = [
   { href: "/dashboard", label: "dashboard", icon: LayoutDashboard },

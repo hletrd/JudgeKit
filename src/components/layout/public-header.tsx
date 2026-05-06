@@ -34,7 +34,7 @@ type PublicHeaderProps = {
     label: string;
     /**
      * User capabilities — used for capability-based filtering of dropdown
-     * items. Must stay aligned with AppSidebar's capability checks.
+     * items. Must stay aligned with `ADMIN_NAV_GROUPS` capability gates.
      * When absent, falls back to role-based checks for backwards compatibility.
      */
     capabilities?: string[];
