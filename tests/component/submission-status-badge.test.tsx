@@ -1,5 +1,31 @@
 import { render, screen } from "@testing-library/react";
 import { describe, it, expect, vi, beforeEach } from "vitest";
+
+// Mock next-intl so the component can call useTranslations without an
+// NextIntlClientProvider — return the i18n key as-is, plus interpolate
+// known parameter shapes so the runtime-error/TLE assertions still pass.
+vi.mock("next-intl", () => ({
+  useTranslations: () => (key: string, values?: Record<string, string | number>) => {
+    const messages: Record<string, string> = {
+      "runtimeErrors.SIGSEGV": "Segmentation fault",
+      "runtimeErrors.SIGFPE": "Arithmetic error",
+      "runtimeErrors.SIGABRT": "Abort",
+      "runtimeErrors.SIGXCPU": "CPU time exceeded",
+      "runtimeErrors.SIGKILL": "Killed",
+      "runtimeErrors.stack_overflow": "Stack overflow",
+      runtimeErrorFallback: "Runtime error",
+    };
+    if (key in messages) return messages[key];
+    if (values) {
+      return Object.entries(values).reduce(
+        (acc, [k, v]) => acc.replaceAll(`{${k}}`, String(v)),
+        key,
+      );
+    }
+    return key;
+  },
+}));
+
 import { SubmissionStatusBadge } from "@/components/submission-status-badge";
 
 // Mock lucide-react icons
