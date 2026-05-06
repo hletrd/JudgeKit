@@ -16,7 +16,7 @@ vi.mock("@/lib/db-time", () => ({
 }));
 
 import {
-  getActiveTimedAssignmentsForSidebar,
+  getActiveTimedAssignments,
   selectActiveTimedAssignments,
 } from "@/lib/assignments/active-timed-assignments";
 
@@ -113,7 +113,7 @@ describe("selectActiveTimedAssignments", () => {
   });
 });
 
-describe("getActiveTimedAssignmentsForSidebar", () => {
+describe("getActiveTimedAssignments", () => {
   beforeEach(() => {
     vi.clearAllMocks();
   });
@@ -124,7 +124,7 @@ describe("getActiveTimedAssignmentsForSidebar", () => {
     getContestStatusMock.mockReturnValue("open");
 
     await expect(
-      getActiveTimedAssignmentsForSidebar("user-1", "student", new Date("2026-04-15T04:30:00.000Z"))
+      getActiveTimedAssignments("user-1", "student", new Date("2026-04-15T04:30:00.000Z"))
     ).resolves.toEqual([
       {
         assignmentId: "scheduled-open",

@@ -15,8 +15,10 @@ export type ActiveTimedAssignmentSummary = {
  * Filter and sort contests to show only active timed assignments.
  *
  * IMPORTANT: The `now` parameter should come from `getDbNow()` in server
- * components to avoid clock skew. See `getActiveTimedAssignmentsForSidebar`
- * for the async wrapper that fetches DB time automatically.
+ * components to avoid clock skew. See `getActiveTimedAssignments` for the
+ * async wrapper that fetches DB time automatically. Intended for future
+ * banner / floating-widget surfaces that show "you have an active timed
+ * assignment right now".
  */
 export function selectActiveTimedAssignments(
   contests: ContestEntry[],
@@ -46,7 +48,12 @@ export function selectActiveTimedAssignments(
     });
 }
 
-export async function getActiveTimedAssignmentsForSidebar(
+/**
+ * Async wrapper around `selectActiveTimedAssignments` that fetches contests
+ * for the user and uses `getDbNow()` to avoid client/server clock skew.
+ * Intended for future banner / floating-widget surfaces.
+ */
+export async function getActiveTimedAssignments(
   userId: string,
   role: string,
   now?: Date
