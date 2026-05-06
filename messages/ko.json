@@ -241,7 +241,7 @@
     "viewAttempt": "시도 보기",
     "scoreLabel": "점수: {score}",
     "instructorQuickActions": "빠른 작업",
-    "adminQuickActions": "관리자 빠른 작업",
+    "adminShortcuts": "관리자 바로가기",
     "systemHealthTitle": "시스템 상태 스냅샷",
     "systemHealthDescription": "데이터베이스, 감사 파이프라인, 대기열, 워커 상태를 확인합니다.",
     "healthStatusOk": "정상",

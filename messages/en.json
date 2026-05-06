@@ -241,7 +241,7 @@
     "viewAttempt": "View attempt",
     "scoreLabel": "Score: {score}",
     "instructorQuickActions": "Quick actions",
-    "adminQuickActions": "Admin quick actions",
+    "adminShortcuts": "Admin shortcuts",
     "systemHealthTitle": "System health snapshot",
     "systemHealthDescription": "Database, audit pipeline, queue, and worker fleet health.",
     "healthStatusOk": "OK",
