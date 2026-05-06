@@ -6,6 +6,18 @@
  * definitions so they stay in sync automatically.
  */
 
+import type { ComponentType, SVGProps } from "react";
+import {
+  ClipboardList,
+  FolderOpen,
+  LayoutDashboard,
+  Settings,
+  Shield,
+  Users,
+} from "lucide-react";
+
+type LucideIcon = ComponentType<SVGProps<SVGSVGElement>>;
+
 type HeaderItem = {
   href: string;
   label: string;
@@ -15,6 +27,7 @@ type DropdownItem = {
   href: string;
   label: string;
   capability?: string;
+  icon: LucideIcon;
 };
 
 /**
@@ -51,22 +64,25 @@ export function getPublicNavActions(
 /**
  * Dropdown menu item definitions for the authenticated user.
  *
- * The `label` field is a `publicShell.nav.*` i18n key suffix.
- * The `capability` field, when set, gates the item behind the
- * corresponding user capability. When absent, the item is always shown.
+ * Per cycle-1 IA cleanup, items already present in the top nav
+ * (Practice, Contests, Submissions) are NOT repeated here. The dropdown
+ * is reserved for personal/account items and capability-gated workspace
+ * items (Groups, Problem Sets, Admin) that have no top-nav presence.
+ *
+ * `label` is a `publicShell.nav.*` i18n key suffix.
+ * `capability`, when set, gates the item behind the corresponding
+ * capability. When absent, the item is always shown.
+ * `icon` is rendered directly in the dropdown — no string-keyed map.
+ *
  * Capability checks must stay aligned with AppSidebar's filterItems().
- * Icons for each item are defined in DROPDOWN_ICONS in public-header.tsx —
- * keep both in sync when adding or removing items.
  */
 const DROPDOWN_ITEM_DEFINITIONS: DropdownItem[] = [
-  { href: "/dashboard", label: "dashboard" },
-  { href: "/practice", label: "problems" },
-  { href: "/problem-sets", label: "problemSets", capability: "problem_sets.create" },
-  { href: "/groups", label: "groups" },
-  { href: "/submissions?scope=mine", label: "mySubmissions" },
-  { href: "/contests", label: "contests" },
-  { href: "/profile", label: "profile" },
-  { href: "/dashboard/admin", label: "admin", capability: "system.settings" },
+  { href: "/dashboard", label: "dashboard", icon: LayoutDashboard },
+  { href: "/profile", label: "profile", icon: Settings },
+  { href: "/submissions?scope=mine", label: "mySubmissions", icon: ClipboardList },
+  { href: "/groups", label: "groups", icon: Users },
+  { href: "/problem-sets", label: "problemSets", icon: FolderOpen },
+  { href: "/dashboard/admin", label: "admin", capability: "system.settings", icon: Shield },
 ];
 
 /**
@@ -84,3 +100,5 @@ export function getDropdownItems(capabilities?: string[]): DropdownItem[] {
     return capsSet?.has(item.capability) ?? false;
   });
 }
+
+export type { DropdownItem };

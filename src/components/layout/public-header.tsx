@@ -17,7 +17,7 @@ import { cn } from "@/lib/utils";
 import { handleSignOutWithCleanup } from "@/lib/auth/sign-out";
 import { buildLocalizedHref } from "@/lib/locale-paths";
 import { getDropdownItems } from "@/lib/navigation/public-nav";
-import { Menu, X, ChevronDown, LogOut, LayoutDashboard, FileText, Users, ClipboardList, Settings, Shield, Timer, FolderOpen } from "lucide-react";
+import { Menu, X, ChevronDown, LogOut } from "lucide-react";
 
 type HeaderItem = {
   href: string;
@@ -49,21 +49,6 @@ function isActivePath(pathname: string, href: string) {
   if (href === "/") return pathname === "/";
   return pathname === href || pathname.startsWith(`${href}/`);
 }
-
-/**
- * Map dropdown item hrefs to icons for rendering in the header.
- * Must stay aligned with DROPDOWN_ITEM_DEFINITIONS in public-nav.ts.
- */
-const DROPDOWN_ICONS: Record<string, React.ReactNode> = {
-  "/dashboard": <LayoutDashboard className="size-4" />,
-  "/practice": <FileText className="size-4" />,
-  "/problem-sets": <FolderOpen className="size-4" />,
-  "/groups": <Users className="size-4" />,
-  "/submissions?scope=mine": <ClipboardList className="size-4" />,
-  "/contests": <Timer className="size-4" />,
-  "/profile": <Settings className="size-4" />,
-  "/dashboard/admin": <Shield className="size-4" />,
-};
 
 export function PublicHeader({ siteTitle, items, actions, loggedInUser, leadingSlot, trailingSlot }: PublicHeaderProps) {
   const pathname = usePathname();
@@ -205,17 +190,20 @@ export function PublicHeader({ siteTitle, items, actions, loggedInUser, leadingS
                 <ChevronDown className="size-3.5" />
               </DropdownMenuTrigger>
               <DropdownMenuContent align="end" className="w-48">
-                {dropdownItems.map((item) => (
-                  <DropdownMenuItem key={item.href}>
-                    <Link
-                      href={buildLocalizedHref(item.href, locale)}
-                      className="flex w-full items-center gap-2"
-                    >
-                      {DROPDOWN_ICONS[item.href]}
-                      {tShell(`nav.${item.label}`)}
-                    </Link>
-                  </DropdownMenuItem>
-                ))}
+                {dropdownItems.map((item) => {
+                  const Icon = item.icon;
+                  return (
+                    <DropdownMenuItem key={item.href}>
+                      <Link
+                        href={buildLocalizedHref(item.href, locale)}
+                        className="flex w-full items-center gap-2"
+                      >
+                        <Icon className="size-4" aria-hidden="true" />
+                        {tShell(`nav.${item.label}`)}
+                      </Link>
+                    </DropdownMenuItem>
+                  );
+                })}
                 <DropdownMenuSeparator />
                 <DropdownMenuItem onClick={handleSignOut} disabled={isSigningOut}>
                   <span className="flex items-center gap-2">
@@ -301,17 +289,20 @@ export function PublicHeader({ siteTitle, items, actions, loggedInUser, leadingS
                 <p className={`px-3 py-1 text-xs font-medium uppercase text-muted-foreground/60${locale !== "ko" ? " tracking-wide" : ""}`}>
                   {tShell("nav.dashboard")}
                 </p>
-                {dropdownItems.map((item) => (
-                  <Link
-                    key={item.href}
-                    href={buildLocalizedHref(item.href, locale)}
-                    onClick={closeMobileMenu}
-                    className="flex items-center gap-2 rounded-md px-3 py-2 text-sm text-muted-foreground transition-colors hover:bg-accent hover:text-accent-foreground"
-                  >
-                    {DROPDOWN_ICONS[item.href]}
-                    {tShell(`nav.${item.label}`)}
-                  </Link>
-                ))}
+                {dropdownItems.map((item) => {
+                  const Icon = item.icon;
+                  return (
+                    <Link
+                      key={item.href}
+                      href={buildLocalizedHref(item.href, locale)}
+                      onClick={closeMobileMenu}
+                      className="flex items-center gap-2 rounded-md px-3 py-2 text-sm text-muted-foreground transition-colors hover:bg-accent hover:text-accent-foreground"
+                    >
+                      <Icon className="size-4" aria-hidden="true" />
+                      {tShell(`nav.${item.label}`)}
+                    </Link>
+                  );
+                })}
                 <div className="mt-1 border-t pt-1">
                 <button
                   onClick={() => { closeMobileMenu(); handleSignOut(); }}
