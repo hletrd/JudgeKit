@@ -97,7 +97,7 @@ export default async function RootLayout({
   const nonce = headersList.get("x-nonce") ?? undefined;
 
   return (
-    <html lang={locale} suppressHydrationWarning className={pretendard.variable}>
+    <html lang={locale} suppressHydrationWarning className={pretendard.variable} nonce={nonce}>
       <body className="antialiased">
         {GA_MEASUREMENT_ID && (
           <>
