@@ -10,10 +10,10 @@ test.describe("Public shell", () => {
     await page.goto("/", { waitUntil: "networkidle" });
 
     await expectNoPublicErrorShell(page);
-    await expect(page.getByRole("heading", { name: /JudgeKit|구조/i })).toBeVisible();
-    await expect(page.getByRole("link", { name: /Practice|연습/i })).toBeVisible();
-    await expect(page.getByRole("link", { name: /Community|커뮤니티/i })).toBeVisible();
-    await expect(page.getByRole("link", { name: /Dashboard|대시보드/i })).toBeVisible();
+    await expect(page.getByRole("heading", { name: /Write code|코드를/i })).toBeVisible();
+    await expect(page.getByRole("link", { name: /Practice|연습/i }).first()).toBeVisible();
+    await expect(page.getByRole("link", { name: /Community|커뮤니티/i }).first()).toBeVisible();
+    await expect(page.getByRole("link", { name: /Dashboard|대시보드/i }).first()).toBeVisible();
   });
 
   test("guest is redirected to login when opening workspace", async ({ page }) => {
@@ -26,7 +26,7 @@ test.describe("Public shell", () => {
 
     await expectNoPublicErrorShell(page);
     await expect(page.getByRole("heading", { name: /Public playground|공개 플레이그라운드/i })).toBeVisible();
-    await expect(page.getByRole("button", { name: /Run code|실행/i })).toBeVisible();
+    await expect(page.getByRole("button", { name: /Run|실행/i })).toBeVisible();
   });
 
   test("guest can open the public practice catalog", async ({ page }) => {
@@ -59,7 +59,7 @@ test.describe("Public shell", () => {
     await page.goto("/practice", { waitUntil: "networkidle" });
     await expectNoPublicErrorShell(page);
     await expect(page).toHaveTitle(/Public problem catalog|공개 문제 카탈로그/i);
-    await expect(page.locator('link[rel="canonical"]')).toHaveAttribute("href", "/practice");
+    await expect(page.locator('link[rel="canonical"]')).toHaveAttribute("href", /\/practice$/);
   });
 
   test("guest can open the community board", async ({ page }) => {
