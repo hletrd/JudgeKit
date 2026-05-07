@@ -150,20 +150,16 @@ const nextConfig: NextConfig = {
           { key: "Strict-Transport-Security", value: "max-age=63072000; includeSubDomains" },
           { key: "X-XSS-Protection", value: "0" },
           {
-            // NOTE: This static CSP is a baseline fallback for routes NOT
-            // handled by the proxy middleware (src/proxy.ts). The proxy
-            // generates a per-request cryptographic nonce and sets a stricter
-            // CSP with `script-src 'self' 'nonce-<value>'` which overrides
-            // this header for all dashboard and API routes.
-            //
-            // 'unsafe-inline' is retained here ONLY for the static fallback
-            // because Next.js config headers cannot contain dynamic nonces.
-            // style-src keeps 'unsafe-inline' because CSS-in-JS libraries
-            // and Next.js font injection require it.
+            // NOTE: This static CSP is the production baseline because the
+            // proxy middleware (src/proxy.ts) only runs in development.
+            // Next.js config headers cannot contain dynamic nonces, so
+            // 'unsafe-inline' is required for script-src to allow Next.js
+            // streaming inline scripts (self.__next_f) and style-src for
+            // CSS-in-JS libraries and Next.js font injection.
             key: "Content-Security-Policy",
             value: [
               "default-src 'self'",
-              "script-src 'self'",
+              "script-src 'self' 'unsafe-inline'",
               "style-src 'self' 'unsafe-inline'",
               "font-src 'self' data:",
               "img-src 'self' data: blob:",
