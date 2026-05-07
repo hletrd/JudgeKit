@@ -9,11 +9,9 @@
 import type { ComponentType, SVGProps } from "react";
 import {
   ClipboardList,
-  FolderOpen,
   LayoutDashboard,
   Settings,
   Shield,
-  Users,
 } from "lucide-react";
 
 type LucideIcon = ComponentType<SVGProps<SVGSVGElement>>;
@@ -110,8 +108,10 @@ const DROPDOWN_ITEM_DEFINITIONS: DropdownItem[] = [
   { href: "/dashboard", label: "dashboard", icon: LayoutDashboard },
   { href: "/profile", label: "profile", icon: Settings },
   { href: "/submissions?scope=mine", label: "mySubmissions", icon: ClipboardList },
-  { href: "/groups", label: "groups", icon: Users },
-  { href: "/problem-sets", label: "problemSets", icon: FolderOpen },
+  // Groups and Problem Sets are surfaced inline in the top nav when the
+  // user has the relevant capabilities (see getPublicNavItems), so they
+  // are not repeated here. Students without those capabilities have no
+  // access to those pages in the first place.
   { href: "/dashboard/admin", label: "admin", capability: "system.settings", icon: Shield },
 ];
 
