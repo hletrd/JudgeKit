@@ -1,8 +1,15 @@
+import type { Metadata } from "next";
 import { redirect } from "next/navigation";
 import { getTranslations } from "next-intl/server";
 import { auth } from "@/lib/auth";
 import { resolveCapabilities } from "@/lib/capabilities/cache";
+import { NO_INDEX_METADATA } from "@/lib/seo";
 import { WorkersPageClient } from "./workers-client";
+
+export async function generateMetadata(): Promise<Metadata> {
+  const t = await getTranslations("admin.workers");
+  return { title: t("title"), ...NO_INDEX_METADATA };
+}
 
 export default async function AdminWorkersPage() {
   const session = await auth();

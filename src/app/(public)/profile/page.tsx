@@ -1,3 +1,4 @@
+import type { Metadata } from "next";
 import { getTranslations } from "next-intl/server";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { auth } from "@/lib/auth";
@@ -14,6 +15,11 @@ import { getJudgeLanguageDefinition } from "@/lib/judge/languages";
 import { getRoleLevel } from "@/lib/capabilities/cache";
 import ProfileForm from "./profile-form";
 import { EditorThemePicker } from "./editor-theme-picker";
+
+export async function generateMetadata(): Promise<Metadata> {
+  const t = await getTranslations("profile");
+  return { title: t("title") };
+}
 
 export default async function ProfilePage() {
   const session = await auth();

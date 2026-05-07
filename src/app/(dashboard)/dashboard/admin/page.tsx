@@ -8,7 +8,10 @@ import { Card, CardDescription, CardHeader, CardTitle } from "@/components/ui/ca
 import { NO_INDEX_METADATA } from "@/lib/seo";
 import { ADMIN_NAV_GROUPS } from "@/lib/navigation/admin-nav";
 
-export const metadata: Metadata = NO_INDEX_METADATA;
+export async function generateMetadata(): Promise<Metadata> {
+  const tNav = await getTranslations("nav");
+  return { title: tNav("administration"), ...NO_INDEX_METADATA };
+}
 
 export default async function AdminIndexPage() {
   const session = await auth();

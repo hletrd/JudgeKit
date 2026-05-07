@@ -1,6 +1,8 @@
+import type { Metadata } from "next";
 import { redirect } from "next/navigation";
 import { getTranslations } from "next-intl/server";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import { NO_INDEX_METADATA } from "@/lib/seo";
 import { auth } from "@/lib/auth";
 import { resolveCapabilities } from "@/lib/capabilities/cache";
 import {
@@ -107,6 +109,11 @@ async function getDbInfo() {
     version,
     tableCount,
   };
+}
+
+export async function generateMetadata(): Promise<Metadata> {
+  const t = await getTranslations("admin.settings");
+  return { title: t("title"), ...NO_INDEX_METADATA };
 }
 
 export default async function AdminSettingsPage() {
