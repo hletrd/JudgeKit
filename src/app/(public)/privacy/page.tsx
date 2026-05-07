@@ -10,7 +10,7 @@ const PAGE_PATH = "/privacy";
 export async function generateMetadata(): Promise<Metadata> {
   const [tCommon, t, locale] = await Promise.all([
     getTranslations("common"),
-    getTranslations("privacy"),
+    getTranslations("recruit.privacy"),
     getLocale(),
   ]);
   const settings = await getResolvedSystemSettings({
@@ -28,7 +28,7 @@ export async function generateMetadata(): Promise<Metadata> {
 
 export default async function PrivacyPage() {
   const [t, locale] = await Promise.all([
-    getTranslations("privacy"),
+    getTranslations("recruit.privacy"),
     getLocale(),
   ]);
 
