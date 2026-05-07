@@ -88,9 +88,8 @@ export default async function HomePage() {
       <SkipToContent label={tCommon("skipToContent")} />
       <PublicHeader
         siteTitle={settings.siteTitle}
-        items={getPublicNavItems(tShell)}
+        items={getPublicNavItems(tShell, capabilities)}
         actions={[
-          { href: "/dashboard", label: tShell("nav.dashboard") },
           { href: "/login", label: tAuth("signIn") },
           ...(settings.publicSignupEnabled ? [{ href: "/signup", label: tAuth("signUp") }] : []),
         ]}

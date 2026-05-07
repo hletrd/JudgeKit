@@ -67,7 +67,7 @@ export function getPublicNavItems(
     if (capsSet.has("groups.view_all") || capsSet.has("groups.create")) {
       items.push({ href: "/groups", label: t("nav.groups") });
     }
-    if (capsSet.has("problem_sets.view") || capsSet.has("problem_sets.create")) {
+    if (capsSet.has("problem_sets.create")) {
       items.push({ href: "/problem-sets", label: t("nav.problemSets") });
     }
   }
