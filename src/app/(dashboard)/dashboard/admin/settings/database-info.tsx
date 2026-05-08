@@ -17,7 +17,6 @@ export function DatabaseInfo({ dbInfo }: { dbInfo: DbInfo }) {
 
   const rows = [
     { label: t("dbDialect"), value: "PostgreSQL" },
-    { label: t("dbPath"), value: dbInfo.path },
     { label: t("dbSize"), value: formatBytes(dbInfo.sizeBytes, locale) },
     { label: t("dbVersion"), value: dbInfo.version },
     { label: t("dbTableCount"), value: dbInfo.tableCount.toString() },
