@@ -1,33 +1,43 @@
-# Security Reviewer — Cycle 5 (Loop 5/100)
+# Security Reviewer Report — Cycle 5/100 (RPF Run)
 
-**Date:** 2026-04-24
-**HEAD commit:** b7a39a76 (no source changes since cycle 4)
+**Date:** 2026-05-09
+**HEAD:** 6fc4a4a2
+**Scope:** Security-focused review of auth, API routes, data handling, and SSE coordination
 
-## Methodology
-
-OWASP Top-10 focused review: injection, auth bypass, CSRF, XSS, SSRF, secrets, access control. Examined auth flow, API key auth, CSRF protection, CSP headers, file upload security, encryption, recruiting token flow, and Docker container sandboxing.
+---
 
 ## Findings
 
-**No new security findings.** No source code has changed since cycle 4.
+### C5-SR-1: Backup ZIP path-traversal check is not exhaustive [LOW]
 
-### Verified Security Posture
+- **Severity:** LOW
+- **Confidence:** MEDIUM
+- **File+line:** `src/lib/db/export-with-files.ts:258-260`
+- **Issue:** `restoreFilesFromZip` checks for `/`, `\\`, and `..` in stored names. While this blocks common traversal patterns, ZIP extractors (including JSZip) may normalize certain encoded sequences (e.g., URL-encoded `..`, Unicode homoglyphs, or NTFS alternate data streams) differently. The threat model is low — backups are admin-generated and integrity-checked — but the defense-in-depth could be stronger.
+- **Fix:** Use a whitelist approach (alphanumeric + safe separators) or normalize via `path.normalize()` before validation.
 
-- **Auth**: JWT-based with session invalidation via `tokenInvalidatedAt`. `clearAuthToken()` sets `authenticatedAt = 0` to close revocation bypass window. API key auth uses SHA-256 hashed keys with AES-256-GCM encryption at rest.
-- **CSRF**: `X-Requested-With: XMLHttpRequest` header required for mutations. Origin validation against configured `AUTH_URL`. API key requests bypass CSRF (no cookies involved).
-- **XSS**: DOMPurify sanitization for HTML descriptions. `dangerouslySetInnerHTML` used only with `sanitizeHtml()` or `safeJsonForScript()`. React-markdown with `skipHtml` for problem descriptions.
-- **CSP**: Comprehensive Content-Security-Policy set in proxy middleware with nonce-based script-src. `frame-ancestors 'none'`, `object-src 'none'`, `form-action 'self'`.
-- **File Upload**: MIME type validation, size limits, ZIP bomb protection, path traversal guard in `resolveStoredPath()` (rejects `/`, `\\`, `..`), image reprocessing via sharp.
-- **Docker Sandbox**: Network disabled, memory/CPU limits, seccomp profile, `--cap-drop=ALL`, `--security-opt=no-new-privileges`, non-root user (65534:65534), PID limits, read-only filesystem with tmpfs.
-- **SSRF**: No user-controlled URLs in server-side fetch calls. External fetch targets are hardcoded (OpenAI, Anthropic, Gemini, hCaptcha). Gemini model ID validated against safe pattern before URL construction.
-- **Rate Limiting**: Two-tier (sidecar + PostgreSQL with SELECT FOR UPDATE). IP-based and username-based for login. Per-endpoint for API routes.
-- **Encryption**: AES-256-GCM for plugin config and API keys. Production requires env var; dev fallback with fixed key.
-- **Session Security**: Token invalidation check on every JWT refresh. Password re-verification for database restore.
+### C5-SR-2: SSE events route does not validate `sseConfig.sseTimeoutMs` before use [LOW]
 
-### Observations
+- **Severity:** LOW
+- **Confidence:** MEDIUM
+- **File+line:** `src/app/api/v1/submissions/[id]/events/route.ts:367-372`
+- **Issue:** `setTimeout(() => { ... }, sseConfig.sseTimeoutMs)` uses the configured timeout directly. If an admin sets `sseTimeoutMs` to a non-finite value (NaN, Infinity) or a negative value via the settings UI, `setTimeout` treats NaN as 0 (fires immediately) and negative values as 0 in some environments. This could cause immediate SSE timeouts. `getConfiguredSettings()` does not validate numeric bounds.
+- **Fix:** Add a defensive guard: `const timeoutMs = Math.max(1000, Number.isFinite(sseConfig.sseTimeoutMs) ? sseConfig.sseTimeoutMs : 300_000);`
 
-1. **JWT `authenticatedAt` uses app-server time** — `src/lib/auth/config.ts:352` uses `Date.now()` instead of DB time for the sign-in timestamp. This is the same class as deferred item AGG-2 but applies specifically to the auth token creation path. Impact: up to a few seconds of clock-skew window on token revocation. **Severity: LOW**. **Confidence: MEDIUM**.
+---
 
-## Carry-Over Deferred Items
+## Areas Verified (No Issues Found)
 
-All 23 deferred security items from cycle 4 aggregate remain valid and unchanged.
+- **CSRF coverage:** All 9 mutating POST endpoints verified — protected or correctly exempted.
+- **Rate limiting:** DB-backed, atomic with advisory locks.
+- **SQL injection:** All raw SQL uses parameterized values or constant patterns.
+- **XSS:** `dangerouslySetInnerHTML` only used with DOMPurify/safeJsonForScript.
+- **Auth pipeline:** JWT sign-in uses DB time, session invalidation, dummy hash, and rate-limit clearing verified.
+- **Encryption:** AES-256-GCM with plaintext fallback documented.
+- **File access:** `files/[id]/route.ts` properly checks permissions before serving.
+
+---
+
+## Already-fixed findings verified at HEAD
+
+All cycle 1-21 fixes remain resolved. No new security vulnerabilities found.

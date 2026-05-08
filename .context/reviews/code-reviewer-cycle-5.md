@@ -1,31 +1,43 @@
-# Code Reviewer — Cycle 5 (Loop 5/100)
+# Code Reviewer Report — Cycle 5/100 (RPF Run)
 
-**Date:** 2026-04-24
-**HEAD commit:** b7a39a76 (no source changes since cycle 4)
+**Date:** 2026-05-09
+**HEAD:** 6fc4a4a2
+**Scope:** Full TypeScript/TSX source review focusing on areas not well-covered in cycles 1-4 of this run
 
-## Methodology
-
-Full-file review of all source files under `src/`, focusing on code quality, logic correctness, SOLID principles, and maintainability. Cross-file interaction analysis for auth, rate-limiting, SSE, recruiting-token, and compiler execution paths.
+---
 
 ## Findings
 
-**No new production-code findings.** No source code has changed since cycle 4.
+### C5-CR-1: Unremoved abort listener in auto-review Promise.race [LOW]
 
-### Observations
+- **Severity:** LOW
+- **Confidence:** HIGH
+- **File+line:** `src/lib/judge/auto-review.ts:175-198`
+- **Issue:** The `timeoutController.signal.addEventListener("abort", ...)` listener created for the `Promise.race` timeout is never removed when `provider.chatWithTools()` wins the race. The `finally` block clears the `setTimeout` but does not call `removeEventListener`. Since `PROVIDER_REQUEST_TIMEOUT_MS` (25s) is shorter than `AUTO_REVIEW_TIMEOUT_MS` (30s), the provider timeout fires first in practice, making the auto-review timeout effectively dead code. The unremoved listener is minor memory noise but technically a leak.
+- **Fix:** Remove the abort listener in `finally`, or better: wire the provider fetch to the same `AbortSignal` so a single timeout governs both the fetch and the race.
 
-1. **`Date.now()` in JWT callback `authenticatedAtSeconds`** — `src/lib/auth/config.ts:352` uses `Math.trunc(Date.now() / 1000)` to set the `authenticatedAt` timestamp on the JWT at sign-in time. This is used later in `isTokenInvalidated()` to compare against `tokenInvalidatedAt` from the DB. Clock skew between app server and DB could cause a token to be considered valid for a few seconds after password change/forced logout, or prematurely invalidated. **Severity: LOW** — the window is seconds at most, and the JWT callback fires once at sign-in; the `jwt` callback refresh path (line 390) calls `syncTokenWithUser` without overriding `authenticatedAtSeconds`, preserving the original sign-in time from DB comparison. **Confidence: MEDIUM** — marginal improvement, unlikely to cause real-world issues.
+### C5-CR-2: Redundant Promise.race timeout in auto-review [LOW]
 
-2. **`Date.now()` default in `syncTokenWithUser` parameter** — `src/lib/auth/config.ts:116` defaults `authenticatedAtSeconds` to `Math.trunc(Date.now() / 1000)` when `getTokenAuthenticatedAtSeconds(token)` returns null. This fallback should rarely fire (only on malformed tokens). **Severity: LOW** — same clock-skew class as observation 1. **Confidence: LOW** — fallback path is defensive, not actively used.
+- **Severity:** LOW
+- **Confidence:** HIGH
+- **File+line:** `src/lib/judge/auto-review.ts:174-199`
+- **Issue:** `provider.chatWithTools()` already passes `AbortSignal.timeout(PROVIDER_REQUEST_TIMEOUT_MS)` (25s) to `fetch()`. The outer `Promise.race` with `AUTO_REVIEW_TIMEOUT_MS` (30s) can never win — the provider always rejects first. This adds complexity and the listener leak (C5-CR-1) for no operational benefit.
+- **Fix:** Remove the custom `Promise.race` and rely on the provider's `AbortSignal.timeout`. If a longer or separate timeout is desired, increase `PROVIDER_REQUEST_TIMEOUT_MS` instead.
 
-## Verified Prior Fixes
+---
 
-All prior fixes from cycles 37-55 and cycles 1-4 remain intact:
-- `getDbNowUncached()` / `getDbNowMs()` usage in judge claim route, recruiting token, rate-limit checks
-- Non-null assertion removals
-- Deterministic leaderboard sorts
-- Token-invalidation bypass fix
-- Source-grep baseline at 121 files
+## Areas Verified (No Issues Found)
 
-## Files Reviewed
+- **Timer cleanup:** All `setTimeout`/`setInterval` usages have matching cleanup.
+- **Event listener cleanup:** All `addEventListener` calls have matching `removeEventListener`.
+- **JSON.parse guards:** All untrusted paths have try/catch or safeParse.
+- **React key stability:** All dynamic `.map()` uses stable IDs.
+- **Type safety:** No `@ts-ignore`, no `any` types in source (except `TABLE_MAP` in import.ts which is already documented).
+- **Auth endpoints:** CSRF protection, rate limiting, and JWT validation verified.
+- **Korean letter spacing:** No inappropriate `tracking-*` applied to Korean text.
 
-Key files examined: `src/lib/auth/config.ts`, `src/lib/security/api-rate-limit.ts`, `src/lib/api/handler.ts`, `src/lib/api/auth.ts`, `src/lib/api/api-key-auth.ts`, `src/proxy.ts`, `src/app/api/v1/submissions/[id]/events/route.ts`, `src/lib/compiler/execute.ts`, `src/lib/assignments/recruiting-invitations.ts`, `src/lib/realtime/realtime-coordination.ts`, `src/lib/security/csrf.ts`, `src/lib/security/encryption.ts`, `src/lib/files/storage.ts`, `src/lib/db-time.ts`, `src/instrumentation.ts`
+---
+
+## Already-fixed findings verified at HEAD
+
+All cycle 1-21 fixes remain resolved.
