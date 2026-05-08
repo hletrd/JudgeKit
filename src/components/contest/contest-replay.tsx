@@ -125,6 +125,7 @@ export function ContestReplay({
       nextPositions.set(entry.userId, row.getBoundingClientRect().top);
     }
 
+    const rafHandles: number[] = [];
     for (const entry of selectedSnapshot.entries) {
       const row = rowRefs.current.get(entry.userId);
       if (!row) continue;
@@ -140,13 +141,21 @@ export function ContestReplay({
       row.style.transform = `translateY(${deltaY}px)`;
       row.getBoundingClientRect();
 
-      requestAnimationFrame(() => {
-        row.style.transition = "transform 450ms ease";
-        row.style.transform = "";
-      });
+      rafHandles.push(
+        requestAnimationFrame(() => {
+          row.style.transition = "transform 450ms ease";
+          row.style.transform = "";
+        }),
+      );
     }
 
     previousRowPositionsRef.current = nextPositions;
+
+    return () => {
+      for (const handle of rafHandles) {
+        cancelAnimationFrame(handle);
+      }
+    };
   }, [selectedSnapshot]);
 
   if (snapshots.length === 0 || !selectedSnapshot) {
