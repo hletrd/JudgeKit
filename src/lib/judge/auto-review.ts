@@ -3,6 +3,7 @@ import { db } from "@/lib/db";
 import { submissions, submissionComments } from "@/lib/db/schema";
 import { isPluginEnabled, getPluginState } from "@/lib/plugins/data";
 import { getProvider } from "@/lib/plugins/chat-widget/providers";
+import { chatWidgetConfigSchema } from "@/lib/plugins/chat-widget/schema";
 import { isAiAssistantEnabledForContext } from "@/lib/platform-mode-context";
 import { logger } from "@/lib/logger";
 import pLimit from "p-limit";
@@ -89,16 +90,15 @@ export async function triggerAutoCodeReview(submissionId: string): Promise<void>
     const pluginState = await getPluginState("chat-widget", { includeSecrets: true });
     if (!pluginState) return;
 
-    const config = pluginState.config as {
-      provider: string;
-      openaiApiKey: string;
-      openaiModel: string;
-      claudeApiKey: string;
-      claudeModel: string;
-      geminiApiKey: string;
-      geminiModel: string;
-      maxTokens: number;
-    };
+    const configParse = chatWidgetConfigSchema.safeParse(pluginState.config);
+    if (!configParse.success) {
+      logger.warn(
+        { submissionId, issues: configParse.error.issues },
+        "[auto-review] Plugin config validation failed, skipping review",
+      );
+      return;
+    }
+    const config = configParse.data;
 
     // Determine API key and model
     let apiKey: string;
