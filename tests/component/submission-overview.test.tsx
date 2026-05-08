@@ -92,7 +92,8 @@ describe("SubmissionOverview", () => {
 
     await waitFor(() => {
       expect(apiFetchMock).toHaveBeenCalledWith(
-        "/api/v1/submissions?problemId=problem-1&limit=10&includeSummary=1&assignmentId=assignment-1"
+        "/api/v1/submissions?problemId=problem-1&limit=10&includeSummary=1&assignmentId=assignment-1",
+        expect.objectContaining({ signal: expect.anything() })
       );
     });
 
@@ -115,7 +116,8 @@ describe("SubmissionOverview", () => {
       await Promise.resolve();
     });
     expect(apiFetchMock).toHaveBeenCalledWith(
-      "/api/v1/submissions?problemId=problem-2&limit=10&includeSummary=1"
+      "/api/v1/submissions?problemId=problem-2&limit=10&includeSummary=1",
+      expect.objectContaining({ signal: expect.anything() })
     );
     expect(apiFetchMock).toHaveBeenCalledTimes(1);
 
