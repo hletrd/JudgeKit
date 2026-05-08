@@ -1,42 +1,36 @@
-# Code Review — Cycle 13/100
+# Code Review — Cycle 14/100
 
-**Reviewer:** code-reviewer (manual, single-agent)
+**Reviewer:** code-reviewer (manual)
 **Date:** 2026-05-08
-**HEAD:** b3c16d3a
-**Scope:** Full TypeScript/TSX source review, API routes, client components
+**HEAD:** fe8f8866
+**Scope:** Full TypeScript/TSX source review, focusing on timer correctness, abort controller hygiene, and test coverage gaps
 
 ---
 
 ## NEW FINDINGS
 
-### C13-CR-1 — Multiple components fetch data without AbortController cleanup [LOW]
+### C14-CR-1 — Shared AbortController causes cross-operation cancellation in language admin [MEDIUM]
+- **Severity:** MEDIUM
+- **Confidence:** HIGH
+- **File:** `src/app/(dashboard)/dashboard/admin/languages/language-config-table.tsx:87,150-177,183-207,214-224`
+- **Problem:** The component declares a single `abortControllerRef` (line 87) that is shared between `handleBuild`, `confirmRemoveImage`, and `confirmPrune`. When any of these operations starts, it aborts the previous request regardless of whether it was the same type of operation. For example, if a Docker image build for `judge-python` is in flight and the admin clicks "Remove" on `judge-rust`, the build request is aborted. This is unexpected UX — operations on different languages should not interfere with each other.
+- **Fix:** Use separate AbortController refs for each operation type (build, remove, prune), or key the controller by language/operation so they don't collide.
+
+### C14-CR-2 — CopyCodeButton timer leak on rapid clicks [LOW]
 - **Severity:** LOW
 - **Confidence:** HIGH
-- **Files:**
-  - `src/app/(dashboard)/dashboard/admin/languages/language-config-table.tsx:132` — `fetchImageStatus()` in useEffect
-  - `src/components/lecture/submission-overview.tsx:90` — `apiFetch` in useEffect
-  - `src/components/problem/accepted-solutions.tsx:72` — `apiFetchJson` in useEffect
-  - `src/components/submissions/submission-detail-client.tsx:131` — queue-status `apiFetch`
-- **Problem:** These components initiate fetch requests inside `useEffect` but do not attach an `AbortController.signal`. If the component unmounts (or effect re-runs) while the request is in flight, the promise still resolves and calls `setState` on an unmounted component. React logs a development warning. This is a cleanup gap consistent with patterns already fixed in `compiler-client.tsx` (cycle 8) and `language-config-table.tsx` build/remove handlers (cycle 11).
-- **Fix:** Create an `AbortController` in the effect, pass `signal` to the fetch call, and abort it in the cleanup function.
-
-### C13-CR-2 — `AcceptedSolutions` cancelled flag does not cancel the underlying fetch [LOW]
-- **Severity:** LOW
-- **Confidence:** MEDIUM
-- **File:** `src/components/problem/accepted-solutions.tsx:58-105`
-- **Problem:** The component correctly uses a `cancelled` flag to skip `setState` after cleanup, but the underlying `fetch` continues to completion. If the user rapidly changes sort/language/page, multiple requests can be in flight simultaneously, consuming bandwidth and browser connection slots. The earlier requests' responses are ignored but the network work is still done.
-- **Fix:** Use `AbortController` and abort the previous fetch before starting a new one when sort/language/page changes.
+- **File:** `src/components/code/copy-code-button.tsx:13,19-27`
+- **Problem:** `handleCopy` sets `copiedTimer.current = setTimeout(...)` without first clearing any existing timer. If the user clicks the copy button twice within 2 seconds, the first timer remains in the event queue. When it fires, it sets `copied = false` even though the second timer is still running. This causes the "copied" checkmark to disappear prematurely.
+- **Fix:** Clear `copiedTimer.current` before setting a new timeout, matching the pattern in `api-keys-client.tsx` and `file-management-client.tsx`.
 
 ## Previously Fixed (Verified at HEAD)
 
 | ID | Status | Note |
 |---|---|---|
-| C12-CR-1 (deregister JSON guard) | FIXED | Commit `7417ae55` adds try/catch around `request.json()` |
-| C12-CR-2 (staggered timer cleanup) | FIXED | Commit `b3c16d3a` clears `staggeredTimerIdsRef` in cleanup |
-| C12-CR-3 (deadline reactivity) | FIXED | Commit `b3c16d3a` resets expired/firedThresholds on deadline change |
+| C13-CR-1 (AbortController in 4 files) | FIXED | Commits e9df1dc1, a7c12a9e, b91121bf add AbortController cleanup |
+| C13-CR-2 (AcceptedSolutions concurrent fetch) | FIXED | Commit a7c12a9e aborts previous fetch on filter change |
+| C12-CR-1 through C12-CR-3 | FIXED | All verified |
 
 ## Carry-forward Deferred Items (NOT re-reported)
 
-- C12b-1: Moderation query fetches all then filters in JS — MEDIUM, deferred
-- C12b-2: Duplicated sort logic in four list functions — LOW, deferred
-- C12b-3: `Date.now()` for yield timing in code-similarity — LOW, deferred
+- C12b-1 through C12b-3: deferred per cycle 13 aggregate

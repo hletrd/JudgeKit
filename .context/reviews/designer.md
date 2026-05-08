@@ -1,23 +1,29 @@
-# Designer Review — Cycle 12/100
+# Designer Review — Cycle 14/100
 
-**Reviewer:** designer (orchestrator direct)
+**Reviewer:** designer (manual)
 **Date:** 2026-05-08
-**HEAD:** e584aeac
+**HEAD:** fe8f8866
 **Scope:** UI/UX review — information architecture, affordances, focus/keyboard navigation, accessibility, responsive breakpoints, loading/empty/error states, form validation UX, dark/light mode, i18n
 
 ---
 
 ## NEW FINDINGS
 
-### C12-DS-1 — CountdownTimer shows stale "00:00:00" when exam deadline extends
+### C14-DS-1 — CopyCodeButton checkmark disappears too soon on rapid clicks [LOW]
 - **Severity:** LOW
-- **Confidence:** MEDIUM
-- **File:** `src/components/exam/countdown-timer.tsx`
-- **Problem:** If an exam administrator extends the deadline while a student is viewing the countdown, the component continues to display "00:00:00" in the destructive/red variant instead of recalculating the new remaining time. From the student's perspective, the exam appears to have ended even though it hasn't.
-- **UX impact:** Students may panic, submit prematurely, or navigate away from the exam thinking time has expired. The mismatch between actual server-side deadline and displayed countdown undermines trust in the timer.
-- **Fix:** Reset `expired` state and recompute thresholds when `deadline` prop changes.
+- **Confidence:** HIGH
+- **File:** `src/components/code/copy-code-button.tsx`
+- **Problem:** The copied checkmark is intended to show for 2 seconds to confirm the copy action. If the user clicks rapidly (e.g., double-clicking by accident), the checkmark disappears at the 2-second mark from the FIRST click, not the LAST click. This breaks the visual feedback affordance.
+- **UX impact:** Users may not realize the copy succeeded, or may think the UI is broken.
+- **Fix:** Clear the old timer before starting the new one.
 
----
+### C14-DS-2 — Language admin: operation cancellation without user intent [MEDIUM]
+- **Severity:** MEDIUM
+- **Confidence:** MEDIUM
+- **File:** `src/app/(dashboard)/dashboard/admin/languages/language-config-table.tsx`
+- **Problem:** If the user is building one language image and clicks remove on another, the build is silently aborted. The user sees a build error toast with no indication that their own remove action caused it.
+- **UX impact:** Admin confusion, wasted build time, potential retry loops.
+- **Fix:** Separate operation controllers so they don't interfere.
 
 ## No Other UI/UX Issues Found
 

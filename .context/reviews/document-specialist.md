@@ -1,23 +1,28 @@
-# Document Specialist Review — Cycle 12/100
+# Document Specialist Review — Cycle 14/100
 
-**Reviewer:** document-specialist (orchestrator direct)
+**Reviewer:** document-specialist (manual)
 **Date:** 2026-05-08
-**HEAD:** e584aeac
+**HEAD:** fe8f8866
 **Scope:** Doc/code mismatches against authoritative sources
 
 ---
 
 ## NEW FINDINGS
 
-### C12-DO-1 — Comment/doc mismatch: cycle 10 fix claims all judge routes are guarded
-- **Severity:** LOW
-- **Confidence:** MEDIUM
-- **File:** `src/app/api/v1/judge/heartbeat/route.ts` and related files
-- **Problem:** The comments in the fixed judge routes describe the pattern as "all judge routes" but the deregister route was missed. The cycle 10 aggregate review states: "Each judge route parses the request body with `await request.json()` directly inside a `.safeParse()` call" but the remediation only covered 4 of 5 routes.
-- **Fix:** Update comments if they claim completeness, or simply fix deregister to match.
+No new documentation issues found this cycle.
 
----
+The `AGENTS.md` file accurately describes the Docker image management API, the deployment workflow, and the language management UI. The `CLAUDE.md` deployment rules are current. API documentation in `src/lib/api/client.ts` is accurate.
 
-## No Other Documentation Issues Found
+## Verification of Past Documentation
 
-API documentation in `src/lib/api/client.ts` is accurate and helpful. Error handling conventions are well-documented. The judge route comments correctly explain the auth patterns. The CLAUDE.md deployment rules are current.
+| Topic | Status |
+|---|---|
+| Judge route comments | Accurate |
+| SelectValue Turbopack pattern | Accurate and enforced |
+| Password validation rules | Accurate (8 chars min) |
+| Seccomp profile behavior | Accurate (deny-list approach) |
+| Deployment env vars | Accurate |
+
+## Carry-forward
+
+- C12-DO-1 (deregister route doc mismatch): Fixed in cycle 13 — deregister now has JSON parse guard matching other judge routes.

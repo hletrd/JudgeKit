@@ -1,38 +1,52 @@
-# Test Engineer Review — Cycle 13/100
+# Test Engineer Review — Cycle 14/100
 
-**Reviewer:** test-engineer (manual, single-agent)
+**Reviewer:** test-engineer (manual)
 **Date:** 2026-05-08
-**HEAD:** b3c16d3a
-**Scope:** Test coverage, flaky tests, regression tests, TDD opportunities
+**HEAD:** fe8f8866
+**Scope:** Test coverage gaps for cycle 13 fixes, component test completeness, unmount behavior
 
 ---
 
 ## NEW FINDINGS
 
-### C13-TE-1 — Missing tests for AbortController cleanup patterns [LOW]
+### C14-TE-1 — Missing component tests for submission-detail-client AbortController cleanup [LOW]
 - **Severity:** LOW
-- **Confidence:** MEDIUM
-- **Problem:** Components that were fixed in cycles 8–11 to abort in-flight requests on unmount (compiler-client, chat-widget, language-config-table) do not have unit tests verifying the cleanup behavior. The `accepted-solutions.tsx`, `submission-overview.tsx`, and `submission-detail-client.tsx` components (which still lack abort cleanup per C13-CR-1) also have no tests for unmount-cleanup behavior.
-- **Fix:** Add component tests that mount the component, trigger a fetch, unmount, and verify the AbortController was signaled (or that no setState warnings occur).
+- **Confidence:** HIGH
+- **File:** `src/components/submissions/submission-detail-client.tsx`
+- **Problem:** No test file exists at `tests/component/submission-detail-client.test.tsx`. Cycle 13 added AbortController cleanup for queue status polling (lines 124-181), but there is no automated verification that:
+  1. The AbortController signal is passed to `apiFetch`
+  2. The signal is aborted on unmount
+  3. The timer and event listener are cleaned up on unmount
+- **Fix:** Create `tests/component/submission-detail-client.test.tsx` with tests covering mount, unmount cleanup, and visibility change behavior.
 
-### C13-TE-2 — CountdownTimer tests should cover deadline prop changes [LOW]
+### C14-TE-2 — AcceptedSolutions test does not cover abort-on-filter-change [LOW]
+- **Severity:** LOW
+- **Confidence:** HIGH
+- **File:** `tests/component/accepted-solutions.test.tsx`
+- **Problem:** The existing test (lines 39-78) verifies basic loading and expand/collapse. It does not verify that changing sort/language/page aborts the previous in-flight request. The cycle 13 fix added this behavior (lines 59-64 of the component), but the test only asserts that the fetch succeeds — not that concurrent requests are prevented.
+- **Fix:** Add a test that:
+  1. Starts a slow fetch
+  2. Changes the sort option while the fetch is pending
+  3. Verifies the first fetch was aborted (signal.aborted === true)
+  4. Verifies the second fetch uses a fresh signal
+
+### C14-TE-3 — CopyCodeButton missing rapid-click test [LOW]
 - **Severity:** LOW
 - **Confidence:** MEDIUM
-- **File:** `tests/component/countdown-timer.test.tsx`
-- **Problem:** The cycle-12 fix for deadline reactivity (resetting expired state and fired thresholds when deadline changes) is not covered by existing tests. A regression where deadline changes don't reset state would not be caught.
-- **Fix:** Add a test that renders CountdownTimer with an expired deadline, then changes the deadline to a future time, and verifies the component shows the new remaining time instead of "00:00:00".
+- **File:** `src/components/code/copy-code-button.tsx`
+- **Problem:** No test exists for the copy button. The timer leak identified in C14-CR-2 would be caught by a test that simulates two rapid clicks and asserts the copied state remains true for the full 2-second duration.
+- **Fix:** Add `tests/component/copy-code-button.test.tsx`.
 
 ## Test Coverage Status
 
 | Area | Coverage | Notes |
 |---|---|---|
-| Judge routes | Good | JSON parse guard tests added in cycle 12 |
-| CountdownTimer | Good | Timer cleanup tests exist; deadline reactivity tests needed |
-| Anti-cheat monitor | Good | Storage helpers tested; retry logic coverage adequate |
-| API client | Good | `apiFetchJson` behavior well-tested |
-| Component abort cleanup | Weak | No tests for unmount abort behavior |
+| CountdownTimer deadline reactivity | Good | Tests added in prior cycle |
+| SubmissionOverview abort cleanup | Good | Tests verify signal is passed |
+| SubmissionDetailClient abort cleanup | Missing | No test file exists |
+| AcceptedSolutions concurrent fetch | Weak | Only happy path tested |
+| CopyCodeButton timer | Missing | No test file exists |
 
 ## Previously Deferred (NOT re-reported)
 
 - Env-blocked integration tests — deferred pending CI provisioning
-- 20 raw API handler refactor tests — deferred pending handler abstraction

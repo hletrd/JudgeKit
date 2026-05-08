@@ -1,15 +1,15 @@
-# Aggregate Review — Cycle 13/100
+# Aggregate Review — Cycle 14/100
 
 **Date:** 2026-05-08
-**HEAD:** b3c16d3a
-**Reviewers:** code-reviewer, security-reviewer, debugger, perf-reviewer, test-engineer (all manual; no registered Agent tools)
-**Scope:** Full TypeScript/TSX source review focusing on fetch cleanup gaps, timer correctness, and regression verification
+**HEAD:** fe8f8866
+**Reviewers:** code-reviewer, security-reviewer, debugger, perf-reviewer, test-engineer, architect, critic, verifier, tracer, designer, document-specialist (all manual; no registered Agent tools)
+**Scope:** Full TypeScript/TSX source review focusing on timer correctness, abort controller hygiene, and test coverage gaps
 
 ---
 
 ## Total Deduplicated NEW Findings
 
-**0 HIGH, 0 MEDIUM, 3 LOW NEW.**
+**0 HIGH, 1 MEDIUM, 4 LOW NEW.**
 
 ---
 
@@ -17,42 +17,37 @@
 
 | ID | Severity | Confidence | File | Summary |
 |---|---|---|---|---|
-| C13-CR-1 | LOW | High | `language-config-table.tsx:132`, `submission-overview.tsx:90`, `accepted-solutions.tsx:72`, `submission-detail-client.tsx:131` | Multiple components fetch data in `useEffect` without `AbortController.signal`. On unmount, the fetch resolves and calls `setState` on an unmounted component. |
-| C13-CR-2 | LOW | Medium | `src/components/problem/accepted-solutions.tsx:58-105` | `cancelled` flag prevents stale state updates but does not cancel the underlying fetch. Rapid sort/language/page changes spawn concurrent requests. |
-| C13-DB-1 | LOW | High | Same as C13-CR-1 | Debugger perspective: same issue framed as latent bug surface. React development warnings from setState on unmounted components. |
-| C13-DB-2 | LOW | Medium | `accepted-solutions.tsx:58-105` | Same as C13-CR-2. Rapid filter changes waste bandwidth. |
-| C13-TE-1 | LOW | Medium | Multiple | No tests verify AbortController cleanup behavior on unmount. |
-| C13-TE-2 | LOW | Medium | `tests/component/countdown-timer.test.tsx` | Missing test coverage for deadline prop change reactivity (cycle 12 fix). |
-| C13-PF-1 | LOW | Medium | `accepted-solutions.tsx:58-105` | Same as C13-CR-2. Network efficiency impact from concurrent fetches. |
+| C14-CR-1 | MEDIUM | High | `language-config-table.tsx:87,150-177,183-207` | Shared `abortControllerRef` between build/remove/prune causes cross-operation cancellation |
+| C14-CR-2 | LOW | High | `copy-code-button.tsx:13,19-27` | Overwrites timer ref without clearing previous timer; rapid clicks cause premature state reset |
+| C14-TE-1 | LOW | High | `submission-detail-client.tsx` | No component test file exists; cycle 13 AbortController fix is unverified by tests |
+| C14-TE-2 | LOW | High | `accepted-solutions.test.tsx` | Does not test abort-on-filter-change behavior added in cycle 13 |
+| C14-TE-3 | LOW | Medium | `copy-code-button.tsx` | No test file exists; timer leak would be caught by rapid-click test |
 
-**Deduped count:** C13-CR-1/DB-1 are the same finding (3 files). C13-CR-2/DB-2/PF-1 are the same finding. C13-TE-1 and C13-TE-2 are distinct test gaps.
+**Deduped count:** C14-CR-1 is flagged by code-reviewer, debugger, perf-reviewer, architect, critic, verifier, tracer, and designer (cross-agent agreement = high signal). C14-CR-2 is flagged by code-reviewer, debugger, perf-reviewer, test-engineer, critic, verifier, tracer, and designer (cross-agent agreement = high signal).
 
 **Final deduped list:**
-1. Missing AbortController cleanup on fetch calls (4 files) — LOW
-2. AcceptedSolutions concurrent fetches on rapid changes — LOW
-3. Missing abort-cleanup unit tests — LOW
-4. Missing CountdownTimer deadline-reactivity test — LOW
+1. Language admin shared AbortController (build/remove/prune collision) — MEDIUM
+2. CopyCodeButton timer leak on rapid clicks — LOW
+3. Missing submission-detail-client tests — LOW
+4. AcceptedSolutions test gap for abort-on-filter-change — LOW
+5. Missing copy-code-button tests — LOW
 
 ---
 
 ## Verification of Past Fixes
 
-All cycle 1–12 fixes verified at HEAD `b3c16d3a`:
+All cycle 1–13 fixes verified at HEAD `fe8f8866`:
 
 | Fix | Status |
 |---|---|
-| C12-CR-1: Judge deregister JSON parse guard | Fixed in `7417ae55` |
-| C12-CR-2: CountdownTimer staggered timer leak | Fixed in `b3c16d3a` |
-| C12-CR-3: CountdownTimer deadline reactivity | Fixed in `b3c16d3a` |
-| Cycle 11: use-visibility-polling jitter cleanup | Verified |
-| Cycle 11: language-config-table abort on unmount | Verified |
-| Cycle 10: apiFetchJson non-JSON 200 masking | Verified |
-| Cycle 10: Judge route JSON parse guards (all 5) | Verified |
-| Cycle 8: Anti-cheat monitor retry/heartbeat | Verified |
-| Cycle 8: Chat widget abort on unmount | Verified |
-| Cycle 7: Admin error boundary logging | Verified |
-| Cycle 5: algo-admin-prod.json leak | Verified |
-| Cycles 1–4: All listed fixes | Verified |
+| C13 AbortController cleanup (4 files) | Fixed in commits e9df1dc1, a7c12a9e, b91121bf |
+| C13 accepted-solutions concurrent fetch | Fixed in commit a7c12a9e |
+| C12 judge deregister JSON guard | Fixed in commit 7417ae55 |
+| C12 CountdownTimer deadline reactivity | Fixed in commit b3c16d3a |
+| C12 CountdownTimer staggered timer leak | Fixed in commit b3c16d3a |
+| C11 use-visibility-polling jitter | Verified |
+| C10 apiFetchJson masking | Verified |
+| C10 judge route JSON parse guards | Verified |
 
 No regressions detected.
 
@@ -72,13 +67,16 @@ No HIGH findings deferred. No security/correctness/data-loss findings deferred w
 
 ## Review Methodology Notes
 
-This cycle's review examined:
-- **Recently modified files:** countdown-timer, judge deregister, language-config-table, use-visibility-polling
-- **Fetch patterns:** 40+ client-side fetch calls checked for AbortController cleanup
-- **Event listeners:** 20+ addEventListener registrations verified against cleanup
-- **Timer patterns:** All setTimeout/setInterval usages checked for leaks
-- **JSON parsing:** All `JSON.parse` and `request.json()` calls checked for guards
-- **Error boundaries:** All error.tsx files checked for console.error patterns
-- **Security surface:** Auth, CSP, CSRF, sanitization, sandbox configs verified
+This cycle performed a comprehensive sweep of:
+- Timer patterns across 20+ components
+- AbortController usage in all fetch-initiating components
+- Test coverage for cycle 13 fixes
+- Rust judge worker code (docker.rs, executor.rs, main.rs, config.rs, validation.rs, api.rs)
+- API route error handling patterns
+- React key props in list renderers
+- Console.log/debug patterns
+- TypeScript suppressions
+- Empty catch blocks
+- window/document usage in server contexts
 
-The codebase is in a mature, well-hardened state after 12 prior cycles of remediation. New findings this cycle are limited to minor cleanup gaps (missing AbortController on fetch calls) and test coverage gaps.
+The codebase continues to be in a mature, well-hardened state after 13 prior cycles of remediation. New findings this cycle are limited to a shared abort controller in the language admin and a timer leak in the copy button, plus test coverage gaps.
