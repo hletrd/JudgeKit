@@ -65,7 +65,8 @@
 
 ## Deploy Results
 
-- Pending (will run after commit)
+- worv (test.worv.ai): FAILED — remote server disk full during `npm ci` (infrastructure issue, not code-related)
+- algo (algo.xylolabs.com): SUCCESS (exit code 0, HTTPS 200 verified)
 
 ---
 
