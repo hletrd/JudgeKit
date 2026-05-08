@@ -44,7 +44,7 @@ import { resolveCapabilities } from "@/lib/capabilities/cache";
 
 export async function generateMetadata({ params }: { params: Promise<{ id: string }> }): Promise<Metadata> {
   const { id } = await params;
-  const [problem, t, tProblems, tShell, locale] = await Promise.all([
+  const [problem, t, tProblems, locale] = await Promise.all([
     db.query.problems.findFirst({
       where: eq(problems.id, id),
       columns: {
@@ -65,7 +65,6 @@ export async function generateMetadata({ params }: { params: Promise<{ id: strin
     }),
     getTranslations("common"),
     getTranslations("problems"),
-    getTranslations("publicShell"),
     getLocale(),
   ]);
 
