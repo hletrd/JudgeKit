@@ -14,7 +14,7 @@
 - **Severity:** HIGH
 - **Task:** Add runtime shape validation after parsing the Rust runner JSON response. Verify that required fields (`stdout`, `stderr`, `timedOut`, `oomKilled`) have the expected types before returning the result. Return `null` (triggering local fallback) if validation fails.
 - **Approach:** After the existing `!data` null check, add a type-guard check that validates `typeof data.stdout === "string"`, `typeof data.stderr === "string"`, `typeof data.timedOut === "boolean"`, and `typeof data.oomKilled === "boolean"`. Log a warning when validation fails.
-- **Status:** TODO
+- **Status:** DONE — committed in `6af20c70`
 
 ### 2. C8-2 — Validate worker JSON responses in `callWorkerJson` and call sites
 - **File:** `src/lib/docker/client.ts` (line 114), plus call sites
@@ -28,7 +28,7 @@
      - `inspectDockerImage`: validate object return (already `Record<string, unknown>`, minimal validation needed)
      - `buildDockerImage`: validate `typeof data.logs === "string"`
      - `getDiskUsage`: validate object with string fields
-- **Status:** TODO
+- **Status:** DONE — committed in `21e064b3`
 
 ---
 
@@ -38,10 +38,10 @@ None — both findings are security/correctness issues that affect sidecar clien
 
 ---
 
-## Gate requirements
+## Gate results (post-fix)
 
-- `npx eslint .` — must pass 0 errors, 0 warnings
-- `npx tsc --noEmit` — must pass
-- `npx next build` — must pass
-- `npx vitest run` — must pass
-- `npx vitest run --config vitest.config.component.ts` — must pass
+- `npx eslint .` — PASS (0 errors, 0 warnings)
+- `npx tsc --noEmit` — PASS
+- `npx next build` — PASS
+- `npx vitest run` — PASS (314 files, 2338 tests)
+- `npx vitest run --config vitest.config.component.ts` — PASS (66 files, 179 tests)
