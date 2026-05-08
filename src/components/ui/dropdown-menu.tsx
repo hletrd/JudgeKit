@@ -236,6 +236,13 @@ function DropdownMenuSeparator({
   )
 }
 
+/**
+ * Renders a keyboard shortcut label inside a dropdown menu item.
+ *
+ * **Note:** `tracking-widest` is applied unconditionally. Per CLAUDE.md,
+ * Korean text must use default letter spacing. Children should be ASCII-only
+ * keyboard shortcut text (e.g. "Ctrl+K", "⌘K"). Do not pass Korean labels.
+ */
 function DropdownMenuShortcut({
   className,
   ...props
