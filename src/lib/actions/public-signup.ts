@@ -12,6 +12,7 @@ import { isEmailTaken, isUsernameTaken, validateAndHashPassword } from "@/lib/us
 import { getSystemSettings } from "@/lib/system-settings";
 import { publicSignupSchema, type PublicSignupInput } from "@/lib/validators/public-signup";
 import { isHcaptchaConfigured, verifyHcaptchaToken } from "@/lib/security/hcaptcha";
+import type { ZodIssue } from "zod";
 
 export type PublicSignupResult = {
   success: boolean;
@@ -36,6 +37,37 @@ export type PublicSignupResult = {
     | "passwordTooLong"
     | "confirmPasswordRequired";
 };
+
+/**
+ * Map a zod validation issue to a known PublicSignupResult error type.
+ * Falls back to "createUserFailed" for unrecognized issues so that
+ * schema changes never leak unexpected error strings to the client.
+ */
+function mapZodIssueToSignupError(issue: ZodIssue): PublicSignupResult["error"] {
+  const path = issue.path[0];
+  switch (path) {
+    case "username":
+      if (issue.code === "too_small") return "usernameTooShort";
+      if (issue.code === "too_big") return "usernameTooLong";
+      return "createUserFailed";
+    case "name":
+      if (issue.code === "too_small") return "nameRequired";
+      if (issue.code === "too_big") return "nameTooLong";
+      return "createUserFailed";
+    case "email":
+      if (issue.code === "invalid_format") return "invalidEmail";
+      if (issue.code === "too_big") return "emailTooLong";
+      return "createUserFailed";
+    case "password":
+      if (issue.code === "too_small") return "passwordTooShort";
+      if (issue.code === "too_big") return "passwordTooLong";
+      return "createUserFailed";
+    case "confirmPassword":
+      return "confirmPasswordRequired";
+    default:
+      return "createUserFailed";
+  }
+}
 
 function getPublicAuthSettings(settings: Awaited<ReturnType<typeof getSystemSettings>>) {
   return {
@@ -68,9 +100,10 @@ export async function registerPublicUser(input: PublicSignupInput): Promise<Publ
 
   const parsed = publicSignupSchema.safeParse(input);
   if (!parsed.success) {
+    const firstIssue = parsed.error.issues[0];
     return {
       success: false,
-      error: (parsed.error.issues[0]?.message as PublicSignupResult["error"]) ?? "createUserFailed",
+      error: firstIssue ? mapZodIssueToSignupError(firstIssue) : "createUserFailed",
     };
   }
 
