@@ -95,7 +95,11 @@ async function readError(response: Response): Promise<string> {
   }
 }
 
-async function callWorkerJson<T>(path: string, init?: RequestInit): Promise<T> {
+async function callWorkerJson<T>(
+  path: string,
+  init?: RequestInit,
+  validate?: (data: unknown) => boolean,
+): Promise<T> {
   if (!JUDGE_WORKER_URL) throw new Error("JUDGE_WORKER_URL is not configured");
   const headers = new Headers(init?.headers);
   headers.set("Content-Type", "application/json");
@@ -113,8 +117,11 @@ async function callWorkerJson<T>(path: string, init?: RequestInit): Promise<T> {
 
   const data = await response.json().catch(() => {
     throw new Error("Worker returned non-JSON response");
-  }) as T;
-  return data;
+  });
+  if (validate && !validate(data)) {
+    throw new Error("Worker returned unexpected response shape");
+  }
+  return data as T;
 }
 
 function getWorkerDockerApiConfigError(): string | null {
@@ -321,6 +328,17 @@ export async function listDockerImages(filter?: string): Promise<DockerImage[]> 
   const query = filter ? `?filter=${encodeURIComponent(filter)}` : "";
   return await callWorkerJson<DockerImage[]>(`/docker/images${query}`, {
     method: "GET",
+  }, (data): boolean => {
+    if (!Array.isArray(data)) return false;
+    return data.every(
+      (item): boolean =>
+        item &&
+        typeof (item as Record<string, unknown>).repository === "string" &&
+        typeof (item as Record<string, unknown>).tag === "string" &&
+        typeof (item as Record<string, unknown>).id === "string" &&
+        typeof (item as Record<string, unknown>).created === "string" &&
+        typeof (item as Record<string, unknown>).size === "string",
+    );
   });
 }
 
@@ -368,7 +386,7 @@ export async function inspectDockerImage(imageTag: string): Promise<Record<strin
     return await callWorkerJson<Record<string, unknown>>("/docker/inspect", {
       method: "POST",
       body: JSON.stringify({ imageTag }),
-    });
+    }, (data): boolean => typeof data === "object" && data !== null);
   } catch {
     return null;
   }
@@ -399,6 +417,9 @@ export async function buildDockerImage(
     const response = await callWorkerJson<{ logs: string }>("/docker/build", {
       method: "POST",
       body: JSON.stringify({ imageName, dockerfilePath }),
+    }, (data): boolean => {
+      if (typeof data !== "object" || data === null) return false;
+      return typeof (data as Record<string, unknown>).logs === "string";
     });
     return { success: true, logs: response.logs };
   } catch (error) {
@@ -420,6 +441,15 @@ export async function getDiskUsage(): Promise<{ total: string; used: string; ava
   try {
     return await callWorkerJson<{ total: string; used: string; available: string; usePercent: string }>("/docker/disk-usage", {
       method: "GET",
+    }, (data): boolean => {
+      if (typeof data !== "object" || data === null) return false;
+      const d = data as Record<string, unknown>;
+      return (
+        typeof d.total === "string" &&
+        typeof d.used === "string" &&
+        typeof d.available === "string" &&
+        typeof d.usePercent === "string"
+      );
     });
   } catch {
     return null;
