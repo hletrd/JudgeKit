@@ -40,7 +40,7 @@ export function LocaleSwitcher({ className }: { className?: string }) {
       return;
     }
 
-    document.cookie = `${LOCALE_COOKIE_NAME}=${locale}; Path=/; SameSite=Lax; ${location.protocol === "https:" ? "Secure; " : ""}Max-Age=${60 * 60 * 24 * 365}`;
+    document.cookie = `${LOCALE_COOKIE_NAME}=${locale}; Path=/; SameSite=Lax; Secure; Max-Age=${60 * 60 * 24 * 365}`;
     window.location.reload();
   }
 
