@@ -39,3 +39,8 @@ None. Both findings are LOW severity and straightforward to fix. No security/cor
 - [x] next build passes
 - [x] vitest run passes (314 files, 2338 tests)
 - [x] vitest run --config vitest.config.component.ts passes (66 files, 179 tests)
+
+## Deploy Status
+
+- algo.xylolabs.com: deployed successfully (commit 42274348)
+- worv: failed due to remote disk space (ENOSPC) during npm ci — infrastructure issue, not code-related
