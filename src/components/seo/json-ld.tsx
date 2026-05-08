@@ -6,12 +6,16 @@ type JsonLdProps = {
  * Sanitize JSON string for safe embedding in a <script> tag.
  * `JSON.stringify` escapes `<` in V8/SpiderMonkey but this is not
  * guaranteed by the ECMAScript spec. Replace `</script` sequences
- * to prevent breaking out of the script tag.
+ * to prevent breaking out of the script tag. Also escapes Unicode
+ * line separator (U+2028) and paragraph separator (U+2029) which
+ * are valid in JSON but historically invalid in JavaScript strings.
  */
 function safeJsonForScript(data: unknown): string {
   return JSON.stringify(data)
     .replace(/<\/script/gi, "<\\/script")
-    .replace(/<!--/g, "<\\!--");
+    .replace(/<!--/g, "<\\!--")
+    .replace(new RegExp(String.fromCharCode(0x2028), "g"), "\\u2028")
+    .replace(new RegExp(String.fromCharCode(0x2029), "g"), "\\u2029");
 }
 
 export function JsonLd({ data }: JsonLdProps) {
