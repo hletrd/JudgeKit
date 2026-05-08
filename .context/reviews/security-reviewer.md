@@ -1,32 +1,38 @@
-# Security Review — Cycle 18/100
+# Security Review — Cycle 20
 
-**Reviewer:** security-reviewer (manual)
-**Date:** 2026-05-08
-**HEAD:** 2b3e22c1
-**Scope:** API routes, auth layer, security utilities, data handling patterns
+**Date:** 2026-05-09
+**HEAD:** e9ff5e04
+**Agent:** security-reviewer (manual)
 
 ---
 
-## NEW FINDINGS
+## S20-1: [LOW] JSON parse swallowing in public recruiting endpoint
 
-None. No new security findings this cycle.
+- **Severity:** LOW
+- **Confidence:** HIGH
+- **File:** `src/app/api/v1/recruiting/validate/route.ts:23`
+- **Category:** input_validation
+- **Summary:** The endpoint uses `await req.json().catch(() => null)` which silently discards JSON parse errors. While the downstream `safeParse(null)` prevents further processing, the error-swallowing pattern hides malformed request bodies from logs and makes security monitoring harder (e.g., distinguishing between a scanner sending garbage and a legitimate user with a bad token).
+- **Exploit scenario:** An attacker probing the API with malformed JSON bodies receives the same `"invalidToken"` response as a legitimate user with an expired token. This makes it harder to detect and distinguish probing behavior in logs.
+- **Fix:** Log JSON parse failures at `warn` level and return a distinct error code (`"invalidJson"`).
 
-## Verified Safe
+## S20-2: [LOW] Missing zod validation on chat-widget plugin config shape
 
-- `dangerouslySetInnerHTML` in `problem-description.tsx` is guarded by `sanitizeHtml`
-- `dangerouslySetInnerHTML` in `json-ld.tsx` is guarded by `safeJsonForScript` (now with U+2028/U+2029 escaping, commit 6fdf3e3c)
-- All API routes have proper auth checks via `createApiHandler` or manual guards
-- No raw SQL injection vectors found (all parameterized or module-level constants)
-- CSRF tokens validated on state-changing POST endpoints
-- `locale-switcher.tsx` now always sets `Secure` flag on cookie (commit 19e7ddc2)
-- `node-shutdown.ts` properly catches errors in `beforeExit` handler (commit d75041f3)
-- No secrets in code
-- No unsafe eval/exec patterns
-- All `request.json()` calls in API routes have try/catch guards
+- **Severity:** LOW
+- **Confidence:** MEDIUM
+- **File:** `src/app/api/v1/plugins/chat-widget/chat/route.ts:196-209`
+- **Category:** input_validation
+- **Summary:** The plugin config is cast with `as { provider: string; openaiApiKey: string; ... }` without runtime validation. If the config object stored in the DB is corrupted or partially migrated, fields like `provider` could be undefined, causing a runtime error when `config.provider` is checked against `VALID_PROVIDERS`.
+- **Exploit scenario:** Requires admin-level DB access or a schema migration bug to corrupt the config. Not directly exploitable by unauthenticated users, but represents a defense-in-depth gap.
+- **Fix:** Add a zod schema to validate `pluginState.config` before use.
 
-## Final Sweep
+---
 
-- Checked all API routes for missing auth — none found
-- Checked for secrets in code — none found
-- Checked for unsafe eval/exec — none found
-- No relevant files were skipped.
+## Deferred / No Findings
+
+- No SQL injection vulnerabilities (all queries use Drizzle parameterized queries).
+- No XSS vulnerabilities (React auto-escapes, no dangerousSetInnerHTML in reviewed code).
+- No authentication bypass paths found.
+- No hardcoded secrets or API keys.
+- All CSP, CORS, and CSRF protections are correctly implemented.
+- The backup/restore path traversal checks (`storedName.includes("/") || storedName.includes("\\") || storedName.includes("..")`) are correct.

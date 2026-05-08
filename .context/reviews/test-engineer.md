@@ -1,33 +1,39 @@
-# Test Engineering Review — Cycle 18/100
+# Test Engineering Review — Cycle 20
 
-**Reviewer:** test-engineer (manual)
-**Date:** 2026-05-08
-**HEAD:** 2b3e22c1
-**Scope:** Unit tests, component tests, test infrastructure
+**Date:** 2026-05-09
+**HEAD:** e9ff5e04
+**Agent:** test-engineer (manual)
 
 ---
 
-## NEW FINDINGS
+## T20-1: [LOW] Missing test coverage for zod error message mismatch in public signup
 
-None. No new test coverage gaps identified this cycle beyond previously deferred items.
+- **Severity:** LOW
+- **Confidence:** HIGH
+- **File:** `src/lib/actions/public-signup.ts:73`
+- **Summary:** The `registerPublicUser` function casts zod error messages directly to `PublicSignupResult["error"]`. There are no tests verifying that unexpected zod messages (e.g., from a future schema change) are handled gracefully. The existing tests likely only cover the known validation paths.
+- **Fix:** Add a test that mocks `publicSignupSchema.safeParse` returning an unknown error message, and assert that the function falls back to `"createUserFailed"` instead of propagating the unexpected string.
 
-## Verified Covered
+## T20-2: [LOW] Missing test for malformed JSON body in recruiting validate endpoint
 
-- Cycle 16 fixes (create-problem-form refs, public-header RAF) have corresponding tests
-- Cycle 17 fixes (json-ld, locale-switcher, node-shutdown, public-footer, dropdown-menu) are all documented/tested
-- All major UI components have component tests
-- API routes have integration tests
-- 314 unit test files, 2338 tests passing
-- 66 component test files, 179 tests passing
+- **Severity:** LOW
+- **Confidence:** HIGH
+- **File:** `src/app/api/v1/recruiting/validate/route.ts:23`
+- **Summary:** The endpoint silently swallows JSON parse errors. There is likely no test for a request with a truncated or invalid JSON body, since the code path treats all parse failures identically.
+- **Fix:** Add a test sending `Content-Type: application/json` with body `"not json"` and assert a distinct error response (after fixing C20-2).
 
-## Previously Deferred (Still Open)
+## T20-3: [LOW] Missing test for invalid compiler time limit in executeCompilerRun
 
-- D-C17-1: Missing test for `handleSignOutWithCleanup` error path (`src/lib/auth/sign-out.ts:75-89`)
-- D-C17-2: Missing component tests for mobile menu focus trap (`src/components/layout/public-header.tsx:105-129`)
-- C16-TE-1: Missing tests for create-problem-form ref cleanup
-- C16-TE-2: Missing tests for public-header RAF cleanup
+- **Severity:** LOW
+- **Confidence:** MEDIUM
+- **File:** `src/lib/compiler/execute.ts:528-545`
+- **Summary:** No tests verify the behavior when `compilerTimeLimitMs` is `NaN`, negative, or Infinity. The `AbortSignal.timeout(NaN)` path is untested.
+- **Fix:** Add tests mocking `getConfiguredSettings()` with invalid `compilerTimeLimitMs` values and assert graceful fallback.
 
-## Final Sweep
+---
 
-- No test files with `test.skip` or `test.only` found
-- No relevant files were skipped.
+## Deferred / No Findings
+
+- All 380 component/unit tests pass (314 unit + 66 component).
+- No flaky test patterns detected in newly reviewed code.
+- Test coverage for timer cleanup and AbortController disposal is adequate based on prior cycle fixes.

@@ -1,49 +1,51 @@
-# Code Review — Cycle 18/100
+# Code Review — Cycle 20
 
-**Reviewer:** code-reviewer (manual)
-**Date:** 2026-05-08
-**HEAD:** 2b3e22c1
-**Scope:** Full TypeScript/TSX source review, focusing on RAF cleanup, accessibility, and re-verification of cycles 15-17 fixes
+**Date:** 2026-05-09
+**HEAD:** e9ff5e04
+**Agent:** code-reviewer (manual)
 
 ---
 
-## NEW FINDINGS
+## C20-1: [MEDIUM] Unsafe type assertion on zod error message in public signup
 
-### C18-CR-1 — Uncancelled RAF in contest-replay layout effect [LOW]
+- **Severity:** MEDIUM
+- **Confidence:** HIGH
+- **File:** `src/lib/actions/public-signup.ts:73`
+- **Summary:** The code casts `parsed.error.issues[0]?.message` directly to `PublicSignupResult["error"]` using a type assertion. This assumes every zod validation error message string exactly matches one of the 17 union literals in `PublicSignupResult["error"]`. If the `publicSignupSchema` is ever extended with a new validation rule (e.g., a custom refinement with a message like "passwordTooCommon"), the cast produces a runtime value that is not in the expected union. The client UI may not have a translation for this unexpected string, causing a broken user-facing error message.
+- **Concrete failure:** Add a `z.refine()` to `publicSignupSchema` with message "passwordTooCommon". A user submits an invalid signup form. The server returns `{ error: "passwordTooCommon" }`. The client calls `t("signup.error.passwordTooCommon")` which does not exist in messages/en.json or messages/ko.json, showing the raw key or falling back to a generic message.
+- **Fix:** Replace the cast with an explicit mapping function that translates zod issue paths/codes to known error types, with a safe fallback to `"createUserFailed"`.
+
+## C20-2: [LOW] Silent JSON parse failure loses debugging information
+
+- **Severity:** LOW
+- **Confidence:** HIGH
+- **File:** `src/app/api/v1/recruiting/validate/route.ts:23`
+- **Summary:** `await req.json().catch(() => null)` silently swallows JSON parse errors (truncated body, invalid UTF-8, malformed syntax). The subsequent `safeParse(null)` fails and returns `"invalidToken"`, which conflates three distinct failure modes: (1) malformed JSON, (2) missing body, and (3) invalid token structure. API consumers cannot distinguish between these.
+- **Concrete failure:** A recruiting page frontend bug sends a truncated POST body due to a network interruption. The backend returns `"invalidToken"`. Developers waste time investigating token generation logic instead of realizing the request body was truncated.
+- **Fix:** Separate JSON parsing from schema validation. Return `"invalidJson"` or `"invalidRequestBody"` for parse failures, and `"invalidToken"` only for schema validation failures.
+
+## C20-3: [LOW] AbortSignal.timeout may receive NaN if compiler time limit is invalid
+
 - **Severity:** LOW
 - **Confidence:** MEDIUM
-- **File:** `src/components/contest/contest-replay.tsx:143`
-- **Problem:** The `useIsomorphicLayoutEffect` calls `requestAnimationFrame` without storing or cancelling the handle:
-  ```tsx
-  requestAnimationFrame(() => {
-    row.style.transition = "transform 450ms ease";
-    row.style.transform = "";
-  });
-  ```
-  If `selectedSnapshot` changes rapidly (e.g., fast-forward at 8x speed) or the component unmounts during the 450ms transition, RAF callbacks from prior snapshots may run on detached or already-transitioned DOM elements. While style mutations on detached elements are no-ops in modern browsers, this is a dangling-reference pattern inconsistent with the RAF cleanup used elsewhere in the codebase.
-- **Fix:** Store RAF handles in a ref array and cancel them in the layout effect cleanup.
+- **File:** `src/lib/compiler/execute.ts:545`
+- **Summary:** `AbortSignal.timeout(Math.max(timeLimitMs * 4, 120_000))` constructs a timeout signal. If `timeLimitMs` is `NaN` (e.g., from a corrupted system setting or unexpected DB value), `Math.max(NaN, 120_000)` returns `NaN`. `AbortSignal.timeout(NaN)` behavior is implementation-defined and may throw a `RangeError` or behave unexpectedly.
+- **Concrete failure:** An admin sets `compilerTimeLimitMs` to an invalid value (e.g., via direct DB manipulation). A student clicks "Run" in the compiler. The request crashes with an unhandled `RangeError` instead of falling back to local execution.
+- **Fix:** Validate `timeLimitMs` with `Number.isFinite(timeLimitMs) && timeLimitMs > 0` before constructing the signal, with a sensible fallback (e.g., 5000ms).
 
-### C18-CR-2 — File upload dropzone lacks keyboard accessibility [LOW]
-- **Severity:** LOW (accessibility)
-- **Confidence:** HIGH
-- **File:** `src/app/(dashboard)/dashboard/admin/files/file-upload-dialog.tsx:171-196`
-- **Problem:** The drag-and-drop zone is a `<div>` with `onClick` handler but lacks `role="button"`, `tabIndex={0}`, and `onKeyDown` handlers for Enter/Space. The nested `<input type="file" className="hidden">` uses Tailwind `hidden` (`display: none`), which removes it from the accessibility tree. Keyboard-only users cannot activate the file picker.
-- **Fix:** Add `role="button"`, `tabIndex={0}`, `aria-label`, and an `onKeyDown` handler that triggers the file input on Enter/Space to the dropzone div.
+## C20-4: [LOW] Unhandled stream reader errors in backup export
 
-## Previously Fixed (Verified at HEAD)
+- **Severity:** LOW
+- **Confidence:** MEDIUM
+- **File:** `src/lib/db/export-with-files.ts:133-138`
+- **Summary:** The `while(true)` loop reading from `dbReader.read()` has no try/catch around the read itself. If the underlying `streamDatabaseExport` ReadableStream encounters an internal error (e.g., DB connection drop mid-transaction), `dbReader.read()` throws. The exception propagates out of `streamBackupWithFiles`, causing the backup route to return a generic 500 instead of a more specific error.
+- **Fix:** Wrap the reader loop in try/catch and re-throw with a descriptive message, or handle gracefully by aborting the ZIP generation.
 
-| ID | Status | Note |
-|---|---|---|
-| C17-CR-1 (DropdownMenuShortcut tracking-widest) | FIXED | Commit 7d700bef |
-| C17-CR-2 (public-footer SSR/hydration) | FIXED | Commit 99ec0351 |
-| C17-CR-3 (node-shutdown beforeExit catch) | FIXED | Commit d75041f3 |
-| C17-SEC-1 (json-ld U+2028/U+2029) | FIXED | Commit 6fdf3e3c |
-| C17-SEC-2 (locale-switcher Secure flag) | FIXED | Commit 19e7ddc2 |
-| C16-CR-1 (create-problem-form refs) | FIXED | Commit 3104e401 |
-| C16-CR-2 (public-header RAF cleanup) | FIXED | Commit a1aae071 |
-| C15-CR-1 (bulk-create React key) | FIXED | Commit bcdfe429 |
-| C15-CR-2/3 (file-upload nanoid IDs) | FIXED | Commit 3c4506cd |
+---
 
-## Carry-forward Deferred Items (NOT re-reported)
+## Deferred / No Findings
 
-- All deferred items from prior aggregates remain deferred with unchanged exit criteria.
+- All prior cycle fixes (RAF cleanup, timer leaks, AbortController separation, stable React keys) are holding correctly.
+- No new logic bugs found in contest replay, recruiting invitations, or file upload components.
+- No SQL injection risks (Drizzle ORM parameterized queries throughout).
+- No new race conditions in SSE connection tracking beyond those already documented.
