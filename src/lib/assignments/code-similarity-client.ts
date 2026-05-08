@@ -54,7 +54,7 @@ export async function computeSimilarityRust(
     });
     if (!response.ok) return null;
     const data = (await response.json().catch(() => null)) as RustComputeResponse | null;
-    if (!data) return null;
+    if (!data || !Array.isArray(data.pairs)) return null;
     return data.pairs;
   } catch {
     return null; // Fail open — fall back to TS implementation
