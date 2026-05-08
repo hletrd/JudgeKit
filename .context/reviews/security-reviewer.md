@@ -1,56 +1,34 @@
-# Security Reviewer — Cycle 3/100
+# Security Reviewer Review — Cycle 4/100
 
 **Date:** 2026-05-08
-**HEAD:** main / c43ec539
-**Scope:** Auth/authz, data exposure, injection risks, OWASP Top 10
+**Scope:** Authentication, authorization, input validation, and data exposure in API routes and UI
+**Approach:** Static analysis of API handlers, auth middleware, and admin-facing pages
 
 ---
 
-## CRITICAL
+## Findings
 
-None found this cycle.
-
----
-
-## HIGH
-
-### S1: Audit logs API bypasses instructor scope restrictions
-- **File:** `src/app/api/v1/admin/audit-logs/route.ts:37-183`
-- **Severity:** HIGH
-- **Confidence:** HIGH
-- **Problem:** The server-side page `page.tsx` distinguishes between `isAdminViewer` and `isInstructorViewer`, applying scope filters for instructors. The API route only checks `system.audit_logs` capability with NO scope filtering. Any user with this capability (including instructors) can call the API directly to access ALL audit events.
-- **Attack:** Instructor downloads CSV export containing audit events for all users, groups, and assignments they do not own.
-- **Fix:** Add the same instructor scope filtering logic from `page.tsx` to the API route.
-
-### S2: Audit logs CSV export lacks rate limiting
-- **File:** `src/app/api/v1/admin/audit-logs/route.ts:121-122`
-- **Severity:** HIGH
-- **Confidence:** MEDIUM
-- **Problem:** The CSV export fetches up to 10,000 rows with no rate limiting. An authorized user could repeatedly hit this endpoint to cause memory exhaustion or DB load spikes.
-- **Attack:** Automated script repeatedly calls CSV export, causing memory pressure.
-- **Fix:** Apply rate limiting to the CSV export endpoint.
-
----
-
-## MEDIUM
-
-### S3: Login-logs API exposes all login events without scope filtering
-- **File:** `src/app/api/v1/admin/login-logs/route.ts:24-134`
-- **Severity:** MEDIUM
-- **Confidence:** MEDIUM
-- **Problem:** The login-logs API exposes all login events to anyone with `system.login_logs` capability. Verify if scope restrictions should apply.
-- **Fix:** Review and apply consistent scope restrictions.
-
----
-
-## LOW
-
-### S4: Chat logs API scope not verified
-- **File:** `src/app/api/v1/admin/chat-logs/route.ts`
+### S1 — Database connection string partially exposed in admin settings
 - **Severity:** LOW
-- **Confidence:** LOW
-- **Problem:** Not reviewed in detail this cycle. Should verify scope filtering.
+- **Confidence:** HIGH
+- **File:** `src/app/(dashboard)/dashboard/admin/settings/database-info.tsx`
+- **Problem:** The Database tab in System Settings displays the connection string as `postgres://***:***@db:5432/***`. While credentials are masked, the hostname (`db`) and port (`5432`) are visible to any admin user.
+- **Impact:** LOW — requires admin access already. The information confirms internal network topology which aids reconnaissance if combined with other vulnerabilities.
+- **Fix:** Display only database type, version, size, and table count. Remove the connection string entirely from the UI.
+- **Cross-agent agreement:** Also noted by designer as D3.
 
 ---
 
-## FINDINGS COUNT: 4
+## No Other Security Issues Found
+
+API routes reviewed use `createApiHandler` with appropriate auth checks. Backup/restore routes require password re-confirmation and capability checks. CSRF protection is enforced for non-API-key auth. Rate limiting is applied to sensitive endpoints. No SQL injection vectors (Drizzle ORM parameterized queries). No XSS in rendered HTML (sanitizeHtml used). No IDOR vulnerabilities in tested routes — all resource access checks the user's capabilities and group membership.
+
+**Routes verified for proper auth:**
+- `/api/v1/users/[id]` — capability checks for view/edit/delete
+- `/api/v1/groups/[id]` — ownership + capability checks
+- `/api/v1/admin/workers/[id]` — system.settings capability required
+- `/api/v1/admin/backup` — system.backup + password re-auth
+- `/api/v1/admin/restore` — system.backup + password re-auth + integrity validation
+- `/api/v1/contests/[id]/code-snapshots` — contests.view_analytics capability
+- `/api/v1/contests/[id]/anti-cheat` — canManageContest check
+- `/api/v1/contests/[id]/participant-timeline` — contests.view_analytics + submission view check

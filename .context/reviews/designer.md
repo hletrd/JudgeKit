@@ -1,86 +1,60 @@
-# Designer Review — Cycle 3/100
+# Designer Review — Cycle 4/100
 
-**Reviewer:** designer (browser-based UI/UX review)
 **Date:** 2026-05-08
-**Target:** https://algo.xylolabs.com (production)
-**Credentials:** admin / mcl1234~
-**Scope:** Full site browse — all public pages, admin panels, profile/settings, interactive elements, i18n, theme
+**Scope:** Production browser review of https://algo.xylolabs.com (logged in as admin)
+**Approach:** agent-browser skills for navigation, interaction, snapshot, and accessibility query
 
 ---
 
-## CRITICAL
+## Findings
 
-None found this cycle. (Cycle 2 critical issues D1-D3 are FIXED.)
-
----
-
-## HIGH
-
-None found this cycle. (Cycle 2 high issues D2-D3 are FIXED.)
-
----
-
-## MEDIUM
-
-### D1: Dashboard permanently shows "Degraded" system health
-- **URL:** `/dashboard`
+### D1 — Breadcrumb shows raw i18n key on Discussion Moderation page
 - **Severity:** MEDIUM
 - **Confidence:** HIGH
-- **Evidence:** System health snapshot shows "Degraded" overall despite Database "OK", Audit pipeline "OK", and Submission queue "0 / 200". The degradation is caused by 42 stale workers in the judge_workers table.
-- **Root cause:** `src/lib/ops/admin-health.ts:88-91` marks status as "degraded" if ANY stale workers exist. Historical worker records accumulate in the database with no cleanup.
-- **Impact:** Operators learn to ignore the "Degraded" indicator, reducing its signal value for real problems.
-- **Fix:** Add stale worker cleanup or adjust the degraded threshold to consider ratio rather than absolute count.
+- **File:** `src/components/layout/breadcrumb.tsx:27`, `messages/en.json`, `messages/ko.json`
+- **Problem:** The breadcrumb on `/dashboard/admin/discussions` displays `nav.discussions` as raw text instead of the translated label. This happens in BOTH English and Korean locales because the `nav.discussions` key is missing from the `nav` namespace in both message files.
+- **Failure scenario:** Admin navigates to Discussion Moderation. The breadcrumb trail shows "Home > Dashboard > Administration > nav.discussions" instead of "Home > Dashboard > Administration > Discussion Moderation" (or Korean equivalent).
+- **Fix:** Add `"discussions": "Discussion Moderation"` to `messages/en.json` under `nav` namespace, and `"discussions": "토론 관리"` to `messages/ko.json` under `nav` namespace.
+- **Cross-agent agreement:** Also flagged by code-reviewer as missing i18n key.
 
-### D2: Uptime shows process uptime, misleading operators
-- **URL:** `/dashboard`
-- **Severity:** MEDIUM
-- **Confidence:** HIGH
-- **Evidence:** Uptime shows values like "284s" (4.7 minutes) on a production server that has been running for days.
-- **Root cause:** `getUptimeSeconds()` uses `process.uptime()` (Node.js process uptime) not system uptime. After process restart (e.g., PM2 reload, deploy), this resets.
-- **Impact:** Operators may think the server is unstable or crashing frequently.
-- **Fix:** Label it "Process uptime" in the UI, or query system uptime via OS APIs.
+### D2 — Missing nav i18n keys for workspace and control segments
+- **Severity:** LOW
+- **Confidence:** MEDIUM
+- **File:** `src/components/layout/breadcrumb.tsx:23-24`
+- **Problem:** The breadcrumb maps `workspace: "workspace"` and `control: "home"` to nav namespace keys that do not exist. If routes containing these segments ever appear in the dashboard layout breadcrumb, they will show raw keys.
+- **Failure scenario:** Any future route under `/dashboard/workspace` or `/dashboard/control` would show raw i18n keys.
+- **Fix:** Add `"workspace"` and `"home"` (or `"control"`) keys to the `nav` namespace in both locales, OR remove the mappings if these segments are never used in the dashboard breadcrumb context.
 
-### D3: Date format inconsistency between UI table and CSV export
-- **URL:** `/dashboard/admin/audit-logs`
-- **Severity:** MEDIUM
-- **Confidence:** HIGH
-- **Evidence:** Filtering by date range in the UI and downloading CSV for the same range produces different row counts.
-- **Root cause:** Server page advances `dateTo` to next-day midnight; API route uses end-of-same-day 23:59:59.999.
-- **Fix:** Make both implementations consistent.
-
----
-
-## LOW
-
-### D4: Contest layout contains Next.js RSC streaming workaround
-- **URL:** `/contests/*`
+### D3 — Settings database tab renders connection string with masked credentials
 - **Severity:** LOW
 - **Confidence:** HIGH
-- **Evidence:** Contest pages use `data-full-navigate` attribute to force full page navigation, bypassing client-side RSC streaming.
-- **Impact:** Slower navigation between contest pages. Known upstream bug.
-- **Fix:** Monitor upstream Next.js issue and remove workaround when fixed.
-
-### D5: Worker fleet shows 42 stale / 40 offline workers
-- **URL:** `/dashboard/admin/workers`
-- **Severity:** LOW
-- **Confidence:** HIGH
-- **Evidence:** 82 total registered workers, only 1 online.
-- **Impact:** Clutters the UI, makes it hard to identify actual active workers.
-- **Fix:** Implement automatic cleanup of workers that have been offline/stale for > N days.
+- **File:** `src/app/(dashboard)/dashboard/admin/settings/database-info.tsx`
+- **Problem:** The Database settings tab displays the connection string as `postgres://***:***@db:5432/***`. While the credentials are masked, exposing even the hostname (`db`) and port confirms internal infrastructure details that could aid reconnaissance.
+- **Failure scenario:** An attacker with admin access (or XSS) learns the internal DB hostname is `db:5432`.
+- **Fix:** Consider showing only the database type and version, not the connection string at all. The connection string is not actionable for admins via the UI.
 
 ---
 
-## CYCLE 2 FIXED ISSUES (VERIFIED)
+## Verified Fixes from Prior Cycles
 
-- D1 (Locale 404): FIXED — Korean locale switch works correctly
-- D2 (Empty Settings): FIXED — System Settings renders with all tabs
-- D3 (Empty Audit Logs): FIXED — Audit Logs renders with filters and table
-- D5 (Date format): FIXED — Dates render in locale-appropriate format
-- D7 (Uptime 0s): FIXED — Uptime now shows actual process uptime value
-- D8 (Untranslated keys): FIXED — Filter buttons show proper labels
-- D9 (Duplicate heading): FIXED — API Keys page shows correct heading
-- D10 (Nested buttons): FIXED — Role Management buttons are accessible
+- Locale switcher (cycle 2): Korean locale works correctly across all tested pages
+- Empty settings (cycle 2): System Settings renders with all tabs functional
+- Empty audit logs (cycle 2): Audit Logs renders with filters and data
+- Date formatting (cycle 2): Dates respect locale
+- API Keys duplicate text (cycle 2): Fixed
+- Role Management nested buttons (cycle 2): Fixed
+- Uptime display (cycle 2): Shows actual process uptime (155s observed)
 
 ---
 
-## FINDINGS COUNT: 5 (new this cycle)
+## Pages Tested
+
+**Admin pages:** dashboard, admin, users, roles, audit-logs, login-logs, files, languages, settings (all tabs), workers, submissions, plugins, plugin chat-logs, tags, discussions
+**Public pages:** problems, contests, groups, community, rankings, submissions, profile, playground, practice
+**Interactive elements tested:** locale switcher (EN/KO), theme toggle (light/dark/system), add-user dialog, create-group dialog, create-contest form, create-problem form, settings tabs, filters
+
+---
+
+## No Other UI/UX Issues Found
+
+All tested pages rendered correctly in both locales. Dark/light mode toggled properly. Form dialogs opened and displayed correct labels. No console errors observed during navigation.

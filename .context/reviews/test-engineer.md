@@ -1,47 +1,36 @@
-# Test Engineer — Cycle 3/100
+# Test Engineer Review — Cycle 4/100
 
 **Date:** 2026-05-08
-**HEAD:** main / c43ec539
-**Scope:** Test coverage gaps for cycle 3 findings
+**Scope:** Test coverage gaps, flaky test risks, and missing test scenarios
+**Approach:** Analysis of existing test files against code findings
 
 ---
 
-## MEDIUM
+## Findings
 
-### T1: No tests for audit logs API route scope filtering
-- **File:** `src/app/api/v1/admin/audit-logs/route.ts`
-- **Severity:** MEDIUM
-- **Confidence:** HIGH
-- **Problem:** No tests verify that instructors can only see their scoped audit events via the API. The server page has scope logic but the API route lacks it entirely — no test catches this.
-- **Fix:** Add integration tests for the audit-logs API that verify instructor vs admin scope.
-
-### T2: No tests for audit logs date filter consistency
-- **Files:**
-  - `src/app/(dashboard)/dashboard/admin/audit-logs/page.tsx`
-  - `src/app/api/v1/admin/audit-logs/route.ts`
-- **Severity:** MEDIUM
-- **Confidence:** HIGH
-- **Problem:** No tests verify that the UI page and API route produce the same results for identical date filters.
-- **Fix:** Add unit tests for the date filter logic in both files, or extract to a shared function.
-
-### T3: No tests for dashboard health snapshot logic
-- **File:** `src/lib/ops/admin-health.ts`
-- **Severity:** MEDIUM
-- **Confidence:** HIGH
-- **Problem:** No tests verify the degraded/ok status logic, especially the stale worker threshold.
-- **Fix:** Add unit tests for `getAdminHealthSnapshot` with mocked worker stats.
-
----
-
-## LOW
-
-### T4: No tests for data retention batchedDelete
-- **File:** `src/lib/data-retention-maintenance.ts`
+### T1 — No test for breadcrumb i18n key completeness
 - **Severity:** LOW
 - **Confidence:** HIGH
-- **Problem:** No tests verify the batched delete logic, including edge cases like empty tables or tables with fewer than BATCH_SIZE rows.
-- **Fix:** Add integration tests for batchedDelete.
+- **File:** `src/components/layout/breadcrumb.tsx`
+- **Problem:** The `SEGMENT_LABEL_MAP` maps URL segments to i18n keys, but there is no automated test verifying that all mapped keys exist in the message files. The `discussions` key was missing but no test caught it.
+- **Fix:** Add a unit test that loads `messages/en.json` and `messages/ko.json`, iterates over `SEGMENT_LABEL_MAP` values, and asserts each key exists in the `nav` namespace.
+
+### T2 — No test for SubmissionListAutoRefresh timer cleanup
+- **Severity:** LOW
+- **Confidence:** HIGH
+- **File:** `src/components/submission-list-auto-refresh.tsx`
+- **Problem:** The timer leak on unmount (found by code-reviewer and perf-reviewer) would have been caught by a test that mounts the component, triggers a refresh cycle, unmounts, and verifies no further timers are scheduled.
+- **Fix:** Add a component test that mocks `apiFetch` and `router.refresh`, then verifies timer cleanup on unmount.
+
+### T3 — No contract test for hash-tabs hydration safety
+- **Severity:** LOW
+- **Confidence:** MEDIUM
+- **File:** `src/components/hash-tabs.tsx`
+- **Problem:** The hash-tabs component reads `window.location.hash` in useEffect to avoid SSR mismatch. No test verifies this behavior or the rAF cleanup.
+- **Fix:** Add a source-grep contract test verifying the `requestAnimationFrame` + `cancelAnimationFrame` pattern.
 
 ---
 
-## FINDINGS COUNT: 4
+## No Other Test Gaps Found
+
+Existing test suite covers API handlers, auth middleware, and core utilities well. The cycle 3 fixes (audit logs scope, date filtering, ctid batch delete) were accompanied by appropriate test updates.
