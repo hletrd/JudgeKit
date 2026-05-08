@@ -6,67 +6,69 @@
 
 ---
 
-## Active Fixes
+## Completed Fixes
 
-### C20-1: Map zod error messages to safe types in public signup [MEDIUM]
+### C20-1: Map zod error messages to safe types in public signup [MEDIUM] — DONE
 
 **File:** `src/lib/actions/public-signup.ts:73`
 
-**Plan:**
-- Remove the unsafe cast `as PublicSignupResult["error"]`.
-- Add a helper function `mapZodIssueToSignupError(issue: ZodIssue): PublicSignupResult["error"]` that maps known zod issue paths/codes to the correct error type.
-- Return `"createUserFailed"` as the fallback for any unrecognized issue.
-- Update tests to cover the fallback behavior.
+**Completed:** 2026-05-09
+- Added `mapZodIssueToSignupError(issue: ZodIssue)` helper that maps by path and code.
+- Falls back to `"createUserFailed"` for any unrecognized issue.
+- Commit: `b5c8e280` — `fix(auth): 🐛 map zod issues to safe error types in public signup`
 
-### C20-2: Distinguish JSON parse errors from validation errors in recruiting validate [LOW]
+### C20-2: Distinguish JSON parse errors from validation errors in recruiting validate [LOW] — DONE
 
 **File:** `src/app/api/v1/recruiting/validate/route.ts:23`
 
-**Plan:**
-- Replace `await req.json().catch(() => null)` with explicit try/catch.
-- On JSON parse failure, return `{ error: "invalidJson" }` (status 400).
-- On schema validation failure, keep returning `{ error: "invalidToken" }` (status 400).
-- Add test for malformed JSON body.
+**Completed:** 2026-05-09
+- Replaced `.catch(() => null)` with explicit try/catch.
+- Returns `"invalidJson"` for parse failures, `"invalidToken"` for schema failures.
+- Commit: `4554cdae` — `fix(api): 🐛 distinguish JSON parse errors from validation in recruiting validate`
 
-### C20-3: Validate compiler time limit before AbortSignal.timeout [LOW]
+### C20-3: Validate compiler time limit before AbortSignal.timeout [LOW] — DONE
 
 **File:** `src/lib/compiler/execute.ts:545`
 
-**Plan:**
-- Before constructing `AbortSignal.timeout`, validate `timeLimitMs`:
-  - `Number.isFinite(timeLimitMs) && timeLimitMs > 0`
-- If invalid, fall back to a default (e.g., 5000ms) and log a warning.
+**Completed:** 2026-05-09
+- Added `Number.isFinite(rawTimeLimitMs) && rawTimeLimitMs > 0` validation.
+- Falls back to 5000ms with warning log when invalid.
+- Commit: `9cff07b2` — `fix(compiler): 🐛 validate timeLimitMs before AbortSignal.timeout`
 
-### C20-4: Wrap stream reader in try/catch during backup export [LOW]
+### C20-4: Wrap stream reader in try/catch during backup export [LOW] — DONE
 
 **File:** `src/lib/db/export-with-files.ts:133-138`
 
-**Plan:**
-- Wrap the `dbReader.read()` loop in a try/catch.
-- On error, re-throw with a descriptive message like `"backupStreamReadFailed"`.
-- Ensure the reader is released on error using `dbReader.releaseLock()`.
+**Completed:** 2026-05-09
+- Wrapped `dbReader.read()` loop in try/catch.
+- Releases reader lock and throws `"backupStreamReadFailed"` on error.
+- Commit: `1d70dff1` — `fix(backup): 🐛 wrap stream reader in try/catch during export`
 
-### C20-5: Add runtime validation to chat-widget plugin config [LOW]
+### C20-5: Add runtime validation to chat-widget plugin config [LOW] — DONE
 
 **File:** `src/app/api/v1/plugins/chat-widget/chat/route.ts:196-209`
 
-**Plan:**
-- Define a zod schema for the plugin config shape.
-- Validate `pluginState.config` against the schema before use.
-- Return `"notConfigured"` (500) if validation fails.
+**Completed:** 2026-05-09
+- Added `pluginConfigSchema` zod schema with all required fields.
+- Validates config at runtime; returns `"notConfigured"` (500) on failure.
+- Commit: `0e2e4b06` — `fix(api): 🐛 validate chat-widget plugin config with zod schema`
+
+---
+
+## Gate Results
+
+- `npx eslint .`: PASS (no errors, no warnings)
+- `npx tsc --noEmit`: PASS
+- `npx next build`: PASS
+- `npx vitest run`: PASS (314 files, 2338 tests)
+- `npx vitest run --config vitest.config.component.ts`: PASS (66 files, 179 tests)
+
+## Deploy Results
+
+- Pending (will run after commit)
 
 ---
 
 ## Deferred Items
 
-None this cycle. All findings are scheduled for implementation.
-
----
-
-## Gate Requirements
-
-- `npx eslint .`: must pass (no errors, no warnings)
-- `npx tsc --noEmit`: must pass
-- `npx next build`: must pass
-- `npx vitest run`: must pass
-- `npx vitest run --config vitest.config.component.ts`: must pass
+None this cycle. All findings are implemented.
