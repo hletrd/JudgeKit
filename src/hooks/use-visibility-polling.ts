@@ -36,12 +36,20 @@ export function useVisibilityPolling(
     if (paused) return;
 
     let timerId: ReturnType<typeof setTimeout> | null = null;
+    let jitterTimerId: ReturnType<typeof setTimeout> | null = null;
     let cancelled = false;
 
     function clearPollingTimer() {
       if (timerId !== null) {
         clearTimeout(timerId);
         timerId = null;
+      }
+    }
+
+    function clearJitterTimer() {
+      if (jitterTimerId !== null) {
+        clearTimeout(jitterTimerId);
+        jitterTimerId = null;
       }
     }
 
@@ -58,7 +66,7 @@ export function useVisibilityPolling(
         // Add a small random jitter (0-500ms) to prevent all polling
         // components from firing simultaneously on tab switch.
         const jitter = Math.floor(Math.random() * 500);
-        setTimeout(() => {
+        jitterTimerId = setTimeout(() => {
           if (!cancelled) tick();
         }, jitter);
         // Always clear before creating to prevent duplicate timers
@@ -66,6 +74,7 @@ export function useVisibilityPolling(
         scheduleNext();
       } else {
         clearPollingTimer();
+        clearJitterTimer();
       }
     }
 
@@ -76,6 +85,7 @@ export function useVisibilityPolling(
       cancelled = true;
       document.removeEventListener("visibilitychange", syncVisibility);
       clearPollingTimer();
+      clearJitterTimer();
     };
   }, [tick, intervalMs, paused]);
 }
