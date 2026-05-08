@@ -1,8 +1,8 @@
-# Security Review — Cycle 14/100
+# Security Review — Cycle 16/100
 
 **Reviewer:** security-reviewer (manual)
 **Date:** 2026-05-08
-**HEAD:** fe8f8866
+**HEAD:** 5aef3f6f
 **Scope:** Auth, sandbox, API routes, secrets, CSP, CSRF, input handling
 
 ---
@@ -15,17 +15,15 @@ No new HIGH or MEDIUM security findings identified this cycle.
 
 | ID | Status | Note |
 |---|---|---|
+| Cycle 15: bulk-create key stability | VERIFIED FIXED | Commit bcdfe429 |
+| Cycle 15: file-upload ID matching | VERIFIED FIXED | Commit 3c4506cd |
+| Cycle 14: language admin AbortControllers | VERIFIED FIXED | Commit 181a60e8 |
 | Cycle 13: AbortController cleanup in 4 files | VERIFIED FIXED | Commits e9df1dc1, a7c12a9e, b91121bf |
 | Cycle 12: Judge deregister JSON guard | VERIFIED FIXED | Commit 7417ae55 |
-| Cycle 12: CountdownTimer reactivity | VERIFIED FIXED | Commit b3c16d3a |
 | Cycle 10: JSON parse guards on judge routes | VERIFIED FIXED | All 5 routes guarded |
-| Cycle 10: apiFetchJson non-JSON 200 masking | VERIFIED FIXED |
-| Cycle 8: Chat widget abort on unmount | VERIFIED FIXED |
-| Cycle 7: Admin error boundary logging | VERIFIED FIXED |
-| Cycle 5: algo-admin-prod.json credential leak | VERIFIED FIXED |
 
 ## Security Posture Summary
 
-The codebase maintains a strong security posture. No new vulnerabilities identified in cycle 14 review. The C14-CR-1 and C14-CR-2 findings are UX/correctness issues, not security issues.
+The codebase maintains a strong security posture. No new vulnerabilities identified in cycle 16 review. The C16-CR-1 and C16-CR-2 findings are code-quality issues, not security issues.
 
 No regressions detected in any previously fixed security issue.

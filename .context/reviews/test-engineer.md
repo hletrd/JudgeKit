@@ -1,51 +1,38 @@
-# Test Engineer Review — Cycle 14/100
+# Test Engineer Review — Cycle 16/100
 
 **Reviewer:** test-engineer (manual)
 **Date:** 2026-05-08
-**HEAD:** fe8f8866
-**Scope:** Test coverage gaps for cycle 13 fixes, component test completeness, unmount behavior
+**HEAD:** 5aef3f6f
+**Scope:** Test coverage gaps for ref cleanup, RAF cleanup, and component test completeness
 
 ---
 
 ## NEW FINDINGS
 
-### C14-TE-1 — Missing component tests for submission-detail-client AbortController cleanup [LOW]
-- **Severity:** LOW
-- **Confidence:** HIGH
-- **File:** `src/components/submissions/submission-detail-client.tsx`
-- **Problem:** No test file exists at `tests/component/submission-detail-client.test.tsx`. Cycle 13 added AbortController cleanup for queue status polling (lines 124-181), but there is no automated verification that:
-  1. The AbortController signal is passed to `apiFetch`
-  2. The signal is aborted on unmount
-  3. The timer and event listener are cleaned up on unmount
-- **Fix:** Create `tests/component/submission-detail-client.test.tsx` with tests covering mount, unmount cleanup, and visibility change behavior.
-
-### C14-TE-2 — AcceptedSolutions test does not cover abort-on-filter-change [LOW]
-- **Severity:** LOW
-- **Confidence:** HIGH
-- **File:** `tests/component/accepted-solutions.test.tsx`
-- **Problem:** The existing test (lines 39-78) verifies basic loading and expand/collapse. It does not verify that changing sort/language/page aborts the previous in-flight request. The cycle 13 fix added this behavior (lines 59-64 of the component), but the test only asserts that the fetch succeeds — not that concurrent requests are prevented.
-- **Fix:** Add a test that:
-  1. Starts a slow fetch
-  2. Changes the sort option while the fetch is pending
-  3. Verifies the first fetch was aborted (signal.aborted === true)
-  4. Verifies the second fetch uses a fresh signal
-
-### C14-TE-3 — CopyCodeButton missing rapid-click test [LOW]
+### C16-TE-1 — Missing tests for create-problem-form ref cleanup [LOW]
 - **Severity:** LOW
 - **Confidence:** MEDIUM
-- **File:** `src/components/code/copy-code-button.tsx`
-- **Problem:** No test exists for the copy button. The timer leak identified in C14-CR-2 would be caught by a test that simulates two rapid clicks and asserts the copied state remains true for the full 2-second duration.
-- **Fix:** Add `tests/component/copy-code-button.test.tsx`.
+- **File:** `src/app/(public)/problems/create/create-problem-form.tsx`
+- **Problem:** There are no tests verifying that test-case file input refs are properly cleaned up when test cases are removed. The `removeTestCase` function could fail to clean up refs, leading to stale entries, but this is not exercised in tests. The `el!` non-null assertion in callback refs is also not covered.
+- **Fix:** Add a component test that adds test cases, removes one, and verifies the ref arrays are cleaned up.
+
+### C16-TE-2 — Missing tests for public-header RAF cleanup [LOW]
+- **Severity:** LOW
+- **Confidence:** LOW
+- **File:** `src/components/layout/public-header.tsx`
+- **Problem:** The `closeMobileMenu` RAF is not covered by tests. While the current callback is safe, tests should verify focus management behavior.
+- **Fix:** Add test coverage for mobile menu close + focus restoration.
 
 ## Test Coverage Status
 
 | Area | Coverage | Notes |
 |---|---|---|
 | CountdownTimer deadline reactivity | Good | Tests added in prior cycle |
-| SubmissionOverview abort cleanup | Good | Tests verify signal is passed |
-| SubmissionDetailClient abort cleanup | Missing | No test file exists |
-| AcceptedSolutions concurrent fetch | Weak | Only happy path tested |
-| CopyCodeButton timer | Missing | No test file exists |
+| SubmissionDetailClient abort cleanup | Good | Tests added in cycle 14 |
+| AcceptedSolutions concurrent fetch | Good | Tests added in cycle 14 |
+| CopyCodeButton timer | Good | Tests added in cycle 14 |
+| CreateProblemForm ref cleanup | Missing | No test coverage for ref lifecycle |
+| PublicHeader RAF cleanup | Missing | No test coverage for focus RAF |
 
 ## Previously Deferred (NOT re-reported)
 

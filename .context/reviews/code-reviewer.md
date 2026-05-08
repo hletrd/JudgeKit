@@ -1,35 +1,49 @@
-# Code Review — Cycle 14/100
+# Code Review — Cycle 16/100
 
 **Reviewer:** code-reviewer (manual)
 **Date:** 2026-05-08
-**HEAD:** fe8f8866
-**Scope:** Full TypeScript/TSX source review, focusing on timer correctness, abort controller hygiene, and test coverage gaps
+**HEAD:** 5aef3f6f
+**Scope:** Full TypeScript/TSX source review, focusing on ref safety, timer/RAF cleanup, and React patterns
 
 ---
 
 ## NEW FINDINGS
 
-### C14-CR-1 — Shared AbortController causes cross-operation cancellation in language admin [MEDIUM]
-- **Severity:** MEDIUM
-- **Confidence:** HIGH
-- **File:** `src/app/(dashboard)/dashboard/admin/languages/language-config-table.tsx:87,150-177,183-207,214-224`
-- **Problem:** The component declares a single `abortControllerRef` (line 87) that is shared between `handleBuild`, `confirmRemoveImage`, and `confirmPrune`. When any of these operations starts, it aborts the previous request regardless of whether it was the same type of operation. For example, if a Docker image build for `judge-python` is in flight and the admin clicks "Remove" on `judge-rust`, the build request is aborted. This is unexpected UX — operations on different languages should not interfere with each other.
-- **Fix:** Use separate AbortController refs for each operation type (build, remove, prune), or key the controller by language/operation so they don't collide.
-
-### C14-CR-2 — CopyCodeButton timer leak on rapid clicks [LOW]
+### C16-CR-1 — Callback ref non-null assertion in create-problem-form [LOW]
 - **Severity:** LOW
 - **Confidence:** HIGH
-- **File:** `src/components/code/copy-code-button.tsx:13,19-27`
-- **Problem:** `handleCopy` sets `copiedTimer.current = setTimeout(...)` without first clearing any existing timer. If the user clicks the copy button twice within 2 seconds, the first timer remains in the event queue. When it fires, it sets `copied = false` even though the second timer is still running. This causes the "copied" checkmark to disappear prematurely.
-- **Fix:** Clear `copiedTimer.current` before setting a new timeout, matching the pattern in `api-keys-client.tsx` and `file-management-client.tsx`.
+- **File:** `src/app/(public)/problems/create/create-problem-form.tsx:875,916`
+- **Problem:** The callback refs for test-case file inputs use `el!` (non-null assertion):
+  ```tsx
+  ref={(el) => { testCaseInputFileRefs.current[index] = el!; }}
+  ref={(el) => { testCaseOutputFileRefs.current[index] = el!; }}
+  ```
+  When React unmounts an element, it calls the ref callback with `null`. The `!` suppresses TypeScript's null check, meaning `null` is silently assigned to the array slot. While the current code accesses these refs with optional chaining (`?.click()`), the non-null assertion is a latent hazard: any future code that accesses the ref without null-checking will crash at runtime. Additionally, the `testCaseInputFileRefs.current` and `testCaseOutputFileRefs.current` arrays grow indefinitely and are never cleaned up when test cases are removed via `removeTestCase`, accumulating stale entries.
+- **Fix:** Remove the `!` assertions and type the refs as `(HTMLInputElement | null)[]`. Clean up ref entries when test cases are removed.
+
+### C16-CR-2 — Uncancelled requestAnimationFrame in public-header close handler [LOW]
+- **Severity:** LOW
+- **Confidence:** MEDIUM
+- **File:** `src/components/layout/public-header.tsx:138`
+- **Problem:** The `closeMobileMenu` callback fires a `requestAnimationFrame` that is never cancelled:
+  ```tsx
+  const closeMobileMenu = useCallback(() => {
+    setMobileOpen(false);
+    requestAnimationFrame(() => toggleRef.current?.focus());
+  }, []);
+  ```
+  If the component unmounts before the RAF callback fires, the callback still executes. The current callback is safe (`toggleRef.current?.focus()` handles null), but this pattern is inconsistent with the RAF cleanup used elsewhere in the same file (lines 79-85) and could become a real bug if the callback is ever expanded.
+- **Fix:** Store the RAF handle in a ref and cancel it in a cleanup effect, or inline the RAF cleanup pattern from lines 79-85.
 
 ## Previously Fixed (Verified at HEAD)
 
 | ID | Status | Note |
 |---|---|---|
-| C13-CR-1 (AbortController in 4 files) | FIXED | Commits e9df1dc1, a7c12a9e, b91121bf add AbortController cleanup |
-| C13-CR-2 (AcceptedSolutions concurrent fetch) | FIXED | Commit a7c12a9e aborts previous fetch on filter change |
-| C12-CR-1 through C12-CR-3 | FIXED | All verified |
+| C15-CR-1 (bulk-create React key) | FIXED | Commit bcdfe429 |
+| C15-CR-2 (file-upload index-based state) | FIXED | Commit 3c4506cd |
+| C15-CR-3 (file-upload Math.random IDs) | FIXED | Commit 3c4506cd |
+| C14-CR-1 (language admin shared AbortController) | FIXED | Commit 181a60e8 |
+| C14-CR-2 (CopyCodeButton timer leak) | FIXED | Commit b4143450 |
 
 ## Carry-forward Deferred Items (NOT re-reported)
 
