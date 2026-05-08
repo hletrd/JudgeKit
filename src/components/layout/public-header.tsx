@@ -62,6 +62,7 @@ export function PublicHeader({ siteTitle, items, actions, loggedInUser, leadingS
   const toggleRef = useRef<HTMLButtonElement>(null);
   const panelRef = useRef<HTMLDivElement>(null);
   const previousPathnameRef = useRef(pathname);
+  const closeMenuRafRef = useRef<number | null>(null);
 
   const dropdownItems = getDropdownItems(loggedInUser?.capabilities);
 
@@ -135,7 +136,23 @@ export function PublicHeader({ siteTitle, items, actions, loggedInUser, leadingS
   const closeMobileMenu = useCallback(() => {
     setMobileOpen(false);
     // Defer focus restoration so the DOM update (unmount) completes first
-    requestAnimationFrame(() => toggleRef.current?.focus());
+    if (closeMenuRafRef.current !== null) {
+      cancelAnimationFrame(closeMenuRafRef.current);
+    }
+    closeMenuRafRef.current = requestAnimationFrame(() => {
+      closeMenuRafRef.current = null;
+      toggleRef.current?.focus();
+    });
+  }, []);
+
+  // Cleanup any pending RAF on unmount
+  useEffect(() => {
+    return () => {
+      if (closeMenuRafRef.current !== null) {
+        cancelAnimationFrame(closeMenuRafRef.current);
+        closeMenuRafRef.current = null;
+      }
+    };
   }, []);
 
   const handleSignOut = useCallback(async () => {
