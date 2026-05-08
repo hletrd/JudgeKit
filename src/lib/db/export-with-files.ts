@@ -138,8 +138,9 @@ export async function streamBackupWithFiles(signal?: AbortSignal, dbNow?: Date):
       dbChunks.push(value);
     }
   } catch (error) {
-    dbReader.releaseLock();
     throw new Error("backupStreamReadFailed", { cause: error });
+  } finally {
+    dbReader.releaseLock();
   }
 
   const dbJson = Buffer.concat(dbChunks).toString("utf-8");
