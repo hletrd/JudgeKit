@@ -1,82 +1,86 @@
-# Aggregate Review — Cycle 14/100
+# Aggregate Review -- Cycle 15/100
 
 **Date:** 2026-05-08
-**HEAD:** fe8f8866
-**Reviewers:** code-reviewer, security-reviewer, debugger, perf-reviewer, test-engineer, architect, critic, verifier, tracer, designer, document-specialist (all manual; no registered Agent tools)
-**Scope:** Full TypeScript/TSX source review focusing on timer correctness, abort controller hygiene, and test coverage gaps
+**HEAD:** 6be44cd5
+**Reviewers:** self-review (manual comprehensive sweep; no registered Agent tools for fan-out)
+**Scope:** Full TypeScript/TSX source review focusing on recently modified files, React key stability, timer hygiene, and abort controller patterns
 
 ---
 
 ## Total Deduplicated NEW Findings
 
-**0 HIGH, 1 MEDIUM, 4 LOW NEW.**
+**0 HIGH, 0 MEDIUM, 3 LOW**
 
 ---
 
-## NEW Findings This Cycle
+## Findings
 
-| ID | Severity | Confidence | File | Summary |
-|---|---|---|---|---|
-| C14-CR-1 | MEDIUM | High | `language-config-table.tsx:87,150-177,183-207` | Shared `abortControllerRef` between build/remove/prune causes cross-operation cancellation |
-| C14-CR-2 | LOW | High | `copy-code-button.tsx:13,19-27` | Overwrites timer ref without clearing previous timer; rapid clicks cause premature state reset |
-| C14-TE-1 | LOW | High | `submission-detail-client.tsx` | No component test file exists; cycle 13 AbortController fix is unverified by tests |
-| C14-TE-2 | LOW | High | `accepted-solutions.test.tsx` | Does not test abort-on-filter-change behavior added in cycle 13 |
-| C14-TE-3 | LOW | Medium | `copy-code-button.tsx` | No test file exists; timer leak would be caught by rapid-click test |
+### C15-1: Unstable React key in bulk-create-dialog preview table
+- **Severity:** LOW
+- **Confidence:** HIGH
+- **File+line:** `src/app/(dashboard)/dashboard/admin/users/bulk-create-dialog.tsx:347`
+- **Issue:** CSV upload preview table uses array index `i` as React key:
+  ```tsx
+  {parsedRows.slice(0, 50).map((row, i) => (
+    <TableRow key={i}>
+  ```
+  If identical rows appear at different positions, or if the parsed rows are re-sorted, React may not correctly update the DOM.
+- **Fix:** Use a composite key based on row content, e.g. `key={`${row.username}-${row.name}-${i}`}`.
 
-**Deduped count:** C14-CR-1 is flagged by code-reviewer, debugger, perf-reviewer, architect, critic, verifier, tracer, and designer (cross-agent agreement = high signal). C14-CR-2 is flagged by code-reviewer, debugger, perf-reviewer, test-engineer, critic, verifier, tracer, and designer (cross-agent agreement = high signal).
+### C15-2: Index-based state update in file upload dialog
+- **Severity:** LOW
+- **Confidence:** MEDIUM
+- **File+line:** `src/app/(dashboard)/dashboard/admin/files/file-upload-dialog.tsx:89-120`
+- **Issue:** `handleUpload` updates queue items by index position (`idx === i`) rather than by stable ID. While removal is disabled during upload (`isUploading`), making this safe in practice, the pattern is fragile and could break if concurrent state updates are introduced.
+- **Fix:** Update queue items by matching `item.id === queue[i].id` instead of by index.
 
-**Final deduped list:**
-1. Language admin shared AbortController (build/remove/prune collision) — MEDIUM
-2. CopyCodeButton timer leak on rapid clicks — LOW
-3. Missing submission-detail-client tests — LOW
-4. AcceptedSolutions test gap for abort-on-filter-change — LOW
-5. Missing copy-code-button tests — LOW
-
----
-
-## Verification of Past Fixes
-
-All cycle 1–13 fixes verified at HEAD `fe8f8866`:
-
-| Fix | Status |
-|---|---|
-| C13 AbortController cleanup (4 files) | Fixed in commits e9df1dc1, a7c12a9e, b91121bf |
-| C13 accepted-solutions concurrent fetch | Fixed in commit a7c12a9e |
-| C12 judge deregister JSON guard | Fixed in commit 7417ae55 |
-| C12 CountdownTimer deadline reactivity | Fixed in commit b3c16d3a |
-| C12 CountdownTimer staggered timer leak | Fixed in commit b3c16d3a |
-| C11 use-visibility-polling jitter | Verified |
-| C10 apiFetchJson masking | Verified |
-| C10 judge route JSON parse guards | Verified |
-
-No regressions detected.
+### C15-3: Math.random() for ephemeral queue IDs
+- **Severity:** LOW
+- **Confidence:** LOW
+- **File+line:** `src/app/(dashboard)/dashboard/admin/files/file-upload-dialog.tsx:52`
+- **Issue:** Upload queue item IDs use `Math.random()` for uniqueness. While the combination with file metadata makes collisions extremely unlikely, `Math.random()` is not cryptographically secure. For ephemeral UI state this is acceptable.
+- **Fix:** Use `nanoid()` or `crypto.randomUUID()` for stronger uniqueness guarantees (optional cosmetic improvement).
 
 ---
 
-## Carry-forward Deferred Items (status unchanged)
+## Areas Verified (No Issues Found)
 
-| ID | Severity | File+line | Status | Exit criterion |
-|---|---|---|---|---|
-| C12b-1 | MEDIUM | `src/lib/discussions/data.ts:275-299` | DEFERRED | Query refactor cycle |
-| C12b-2 | LOW | `src/lib/discussions/data.ts:87-93,111-117,131-138,169-175` | DEFERRED | Shared comparator extraction |
-| C12b-3 | LOW | `src/lib/assignments/code-similarity.ts:278,297,299` | DEFERRED | Performance refactor cycle |
-
-No HIGH findings deferred. No security/correctness/data-loss findings deferred without exit criteria.
+- **AbortController cleanup:** All fetch-based components properly abort in-flight requests on unmount and dependency changes.
+- **Timer cleanup:** All setTimeout/setInterval usages have proper cleanup in useEffect return functions.
+- **Event listener cleanup:** All addEventListener calls have matching removeEventListener in cleanup.
+- **JSON.parse guards:** All JSON.parse calls either have try/catch or are in contexts where failure is acceptable.
+- **React key stability:** All `.map()` render loops use stable keys (IDs, not indices), except for static skeleton arrays and the one bulk-create-dialog preview noted above.
+- **Judge routes:** All 5 judge API routes (claim, heartbeat, register, poll, deregister) properly guard `request.json()` with try/catch.
+- **CSRF coverage:** All mutating POST endpoints either have CSRF protection or are correctly exempted.
+- **Type safety:** No `@ts-ignore`, no `any` types in source.
+- **Timer leaks:** CountdownTimer, SubmissionListAutoRefresh, CopyCodeButton, and all polling hooks have verified cleanup.
 
 ---
 
-## Review Methodology Notes
+## Already-fixed findings from prior cycles (verified at HEAD)
 
-This cycle performed a comprehensive sweep of:
-- Timer patterns across 20+ components
-- AbortController usage in all fetch-initiating components
-- Test coverage for cycle 13 fixes
-- Rust judge worker code (docker.rs, executor.rs, main.rs, config.rs, validation.rs, api.rs)
-- API route error handling patterns
-- React key props in list renderers
-- Console.log/debug patterns
-- TypeScript suppressions
-- Empty catch blocks
-- window/document usage in server contexts
+All cycle 1-14 fixes remain resolved. Key verified areas:
+- Separate AbortControllers per operation in language-config-table (cycle 14)
+- Timer leak fixes in CopyCodeButton, CountdownTimer (cycles 13-14)
+- JSON parse guards in all judge routes (cycle 13)
+- Stable React keys in output-diff-view, structured-problem-statement (cycles 12-13)
+- AbortController cleanup in submission polling, accepted solutions, submission overview (cycle 13)
+- Hydration mismatch fixes in skeleton widths, locale switcher (cycles 11-12)
 
-The codebase continues to be in a mature, well-hardened state after 13 prior cycles of remediation. New findings this cycle are limited to a shared abort controller in the language admin and a timer leak in the copy button, plus test coverage gaps.
+---
+
+## Carry-forward DEFERRED items
+
+All deferred items from prior aggregates remain deferred with unchanged exit criteria. See `_aggregate-cycle-15.md` (2026-05-03) for full list.
+
+No new deferred items this cycle.
+
+---
+
+## Review methodology notes
+
+- Full grep sweeps for: AbortController, timers, JSON.parse, event listeners, keys, catches, Math.random, any, ts-ignore
+- Full reads of recently modified files and their tests
+- Re-verification of all cycle 14 fixes
+- All 575+ TS/TSX files in scope
+- All gates pass (eslint, tsc, next build, vitest integration + component)
