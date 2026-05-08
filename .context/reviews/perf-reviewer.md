@@ -1,63 +1,56 @@
-# Performance Review — Cycle 1 (New Session)
+# Performance Reviewer — Cycle 3/100
 
-**Reviewer:** perf-reviewer
-**Date:** 2026-04-28
-**Scope:** Full repository performance analysis
-
----
-
-## Findings
-
-### PERF-1: [MEDIUM] Public contest detail page makes N+1-style sequential queries for enrolled users
-
-**File:** `src/app/(public)/contests/[id]/page.tsx:123-169`
-**Confidence:** MEDIUM
-
-For enrolled users, the page makes these sequential queries:
-1. `auth()` — session check
-2. `getUserContestAccess(id, ...)` — checks enrollment/management (queries assignment + enrollment + access tokens)
-3. `getEnrolledContestDetail(id, ...)` — queries assignment again + enrollment again + exam sessions
-4. `getStudentProblemStatuses(...)` — problem statuses
-5. `mySubmissions` query — submission history
-6. `getResolvedSystemTimeZone()` — timezone
-7. `getExamSession(...)` — exam session again
-
-Steps 2 and 3 both query the same assignment row and check enrollment. Step 6 queries exam session, and step 7 queries it again. This is 2-3 redundant DB roundtrips per page load.
-
-**Failure scenario:** Under load (e.g., 500 students starting a timed exam simultaneously), these redundant queries contribute to DB connection pool exhaustion.
-
-**Fix:** Merge `getUserContestAccess` and `getEnrolledContestDetail` into a single query that returns both access level and detail, or cache the assignment row between calls. The exam session query should also be deduplicated.
+**Date:** 2026-05-08
+**HEAD:** main / c43ec539
+**Scope:** Page load times, query patterns, data retention, worker cleanup
 
 ---
 
-### PERF-2: [LOW] SSE connection tracking FIFO eviction is already improved from previous reviews
+## CRITICAL
 
-**File:** `src/app/api/v1/submissions/[id]/events/route.ts:39-75`
-
-Verified that the two-phase eviction (stale cleanup + FIFO by insertion order) has replaced the previous O(n) oldest-entry scan. The `userConnectionCounts` Map provides O(1) per-user count lookup. No further optimization needed at current scale.
+None found this cycle.
 
 ---
 
-### PERF-3: [LOW] Public problem detail page runs 4+ parallel query batches
+## HIGH
 
-**File:** `src/app/(public)/practice/problems/[id]/page.tsx:225-252`
-
-The page correctly uses `Promise.all` for independent queries after the problem lookup, which is good. However, the first query batch (lines 125-133) includes `auth()`, `getLocale()`, and multiple `getTranslations()` calls that are independent of the problem data but block the problem query (line 136). These could be parallelized with the initial problem lookup.
-
-**Fix:** Move the problem query and translation queries into a single `Promise.all` batch, then do the access check and second query batch afterward.
+None found this cycle.
 
 ---
 
-### PERF-4: [LOW] `getEnrolledContestDetail` calls `resolveCapabilities` redundantly
+## MEDIUM
 
-**File:** `src/lib/assignments/public-contests.ts:277-278`
+### P1: Audit logs CSV export fetches 10,000 rows synchronously
+- **File:** `src/app/api/v1/admin/audit-logs/route.ts:121-122`
+- **Severity:** MEDIUM
+- **Confidence:** HIGH
+- **Problem:** CSV export loads up to 10,000 rows into memory and serializes them synchronously. Large exports could block the event loop and consume significant memory.
+- **Fix:** Stream CSV generation using a generator or streaming response, or reduce the row limit.
 
-`getEnrolledContestDetail` calls `resolveCapabilities(role)` on line 277, but `getUserContestAccess` already called `resolveCapabilities(role)` on line 209 of the same file. When both functions are called in sequence (as in the contest detail page), the capabilities are resolved twice. The `resolveCapabilities` function has a cache, but the cache still incurs a function call + map lookup overhead.
+### P2: Data retention uses ctid-based batch delete
+- **File:** `src/lib/data-retention-maintenance.ts:28-29`
+- **Severity:** MEDIUM
+- **Confidence:** MEDIUM
+- **Problem:** `ctid` can change during concurrent operations, causing missed or duplicate deletes.
+- **Fix:** Use primary key-based batching.
 
-**Fix:** Pass the resolved capabilities set from `getUserContestAccess` to `getEnrolledContestDetail`, or return access info that includes the capabilities.
+### P3: 82 stale worker records slow dashboard health queries
+- **File:** `src/lib/ops/admin-health.ts:71-77`
+- **Severity:** MEDIUM
+- **Confidence:** HIGH
+- **Problem:** The health query counts all judge_workers rows. With 82 stale/offline workers, this query runs against a bloated table.
+- **Fix:** Clean up stale workers or add an index on status.
 
 ---
 
-## No High-severity performance findings
+## LOW
 
-The codebase uses `Promise.all` appropriately in most server components. The main area for improvement is reducing redundant queries in the enrolled contest detail flow.
+### P4: Contest pages force full navigation workaround
+- **File:** `src/app/(public)/contests/manage/layout.tsx`
+- **Severity:** LOW
+- **Confidence:** HIGH
+- **Problem:** Contest pages bypass client-side RSC streaming, causing slower perceived navigation.
+
+---
+
+## FINDINGS COUNT: 4

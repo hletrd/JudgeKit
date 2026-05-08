@@ -1,58 +1,47 @@
-# Test Engineering Review — Cycle 1 (New Session)
+# Test Engineer — Cycle 3/100
 
-**Reviewer:** test-engineer
-**Date:** 2026-04-28
-**Scope:** Test coverage analysis for recent changes and overall test health
-
----
-
-## Findings
-
-### TE-1: [MEDIUM] No tests for the new public contest detail enrolled view
-
-**File:** `src/app/(public)/contests/[id]/page.tsx`
-**Confidence:** HIGH
-
-The enrolled contest detail view (lines 131-421) is a significant new feature with complex conditional rendering (upcoming, past, exam modes, anti-cheat, countdown timer, leaderboard, submissions table). There are no component or integration tests for this view.
-
-**Failure scenario:** The `totalPoints` bug (CR-1) would not be caught by any existing test. Similarly, the `StartExamButton` receiving 0 duration (CR-2) would not be caught.
-
-**Fix:** Add component tests covering:
-1. Enrolled student with upcoming contest (shows countdown)
-2. Enrolled student with active contest (shows problems, submit button)
-3. Enrolled student with past contest (shows closed message)
-4. Total points calculation with multiple problems
-5. Windowed exam flow (start button, countdown)
+**Date:** 2026-05-08
+**HEAD:** main / c43ec539
+**Scope:** Test coverage gaps for cycle 3 findings
 
 ---
 
-### TE-2: [MEDIUM] No tests for the assignment context on problem detail page
+## MEDIUM
 
-**File:** `src/app/(public)/practice/problems/[id]/page.tsx`
-**Confidence:** HIGH
+### T1: No tests for audit logs API route scope filtering
+- **File:** `src/app/api/v1/admin/audit-logs/route.ts`
+- **Severity:** MEDIUM
+- **Confidence:** HIGH
+- **Problem:** No tests verify that instructors can only see their scoped audit events via the API. The server page has scope logic but the API route lacks it entirely — no test catches this.
+- **Fix:** Add integration tests for the audit-logs API that verify instructor vs admin scope.
 
-The `assignmentId` search parameter handling (lines 150-211) introduces new branching logic: validation redirect, exam session lookup, deadline checking, submission blocking, and anti-cheat activation. None of these paths have tests.
+### T2: No tests for audit logs date filter consistency
+- **Files:**
+  - `src/app/(dashboard)/dashboard/admin/audit-logs/page.tsx`
+  - `src/app/api/v1/admin/audit-logs/route.ts`
+- **Severity:** MEDIUM
+- **Confidence:** HIGH
+- **Problem:** No tests verify that the UI page and API route produce the same results for identical date filters.
+- **Fix:** Add unit tests for the date filter logic in both files, or extract to a shared function.
 
-**Failure scenario:** Changes to `validateAssignmentSubmission` could break the redirect behavior without any test catching it.
-
-**Fix:** Add integration tests for the assignment context flow:
-1. Problem with valid assignmentId (shows exam UI)
-2. Problem with invalid assignmentId (redirects)
-3. Problem with expired deadline (shows blocked state)
-4. Problem with windowed exam and no session (shows start button)
+### T3: No tests for dashboard health snapshot logic
+- **File:** `src/lib/ops/admin-health.ts`
+- **Severity:** MEDIUM
+- **Confidence:** HIGH
+- **Problem:** No tests verify the degraded/ok status logic, especially the stale worker threshold.
+- **Fix:** Add unit tests for `getAdminHealthSnapshot` with mocked worker stats.
 
 ---
 
-### TE-3: [LOW] Existing test suite is comprehensive for other areas
+## LOW
 
-The component test suite covers 50+ components. Unit tests cover 304 files with 2234 tests passing. The gap is specifically in the newly added public contest/problem detail pages, which makes sense given their recent addition.
+### T4: No tests for data retention batchedDelete
+- **File:** `src/lib/data-retention-maintenance.ts`
+- **Severity:** LOW
+- **Confidence:** HIGH
+- **Problem:** No tests verify the batched delete logic, including edge cases like empty tables or tables with fewer than BATCH_SIZE rows.
+- **Fix:** Add integration tests for batchedDelete.
 
 ---
 
-## Test Infrastructure Notes
-
-- `vitest.config.ts` — unit tests
-- `vitest.config.component.ts` — component tests
-- `vitest.config.integration.ts` — integration tests
-- `playwright.config.ts` — e2e tests
-- All configs appear well-structured.
+## FINDINGS COUNT: 4
