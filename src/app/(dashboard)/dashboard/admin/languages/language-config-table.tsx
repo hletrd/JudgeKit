@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useTransition, useEffect, useCallback } from "react";
+import { useState, useTransition, useEffect, useCallback, useRef } from "react";
 import { useTranslations } from "next-intl";
 import { useRouter } from "next/navigation";
 import { toast } from "sonner";
@@ -84,6 +84,16 @@ export function LanguageConfigTable({ languages }: { languages: LanguageConfig[]
   const [confirmAction, setConfirmAction] = useState<ConfirmAction | null>(null);
   const [imageStatusLoading, setImageStatusLoading] = useState(true);
   const [imageStatusError, setImageStatusError] = useState(false);
+  const abortControllerRef = useRef<AbortController | null>(null);
+
+  useEffect(() => {
+    return () => {
+      if (abortControllerRef.current) {
+        abortControllerRef.current.abort();
+        abortControllerRef.current = null;
+      }
+    };
+  }, []);
 
   const fetchImageStatus = useCallback(async () => {
     setImageStatusLoading(true);
@@ -123,10 +133,16 @@ export function LanguageConfigTable({ languages }: { languages: LanguageConfig[]
 
   function handleBuild(lang: LanguageConfig) {
     setBuildingLangs(prev => new Set(prev).add(lang.language));
+    if (abortControllerRef.current) {
+      abortControllerRef.current.abort();
+    }
+    const controller = new AbortController();
+    abortControllerRef.current = controller;
     apiFetch("/api/v1/admin/docker/images/build", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ language: lang.language }),
+      signal: controller.signal,
     })
       .then(async (res) => {
         if (res.ok) {
@@ -149,10 +165,16 @@ export function LanguageConfigTable({ languages }: { languages: LanguageConfig[]
   }
 
   function confirmRemoveImage(lang: LanguageConfig) {
+    if (abortControllerRef.current) {
+      abortControllerRef.current.abort();
+    }
+    const controller = new AbortController();
+    abortControllerRef.current = controller;
     apiFetch("/api/v1/admin/docker/images", {
       method: "DELETE",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ imageTag: lang.dockerImage }),
+      signal: controller.signal,
     })
       .then(async (res) => {
         if (res.ok) {
@@ -175,9 +197,15 @@ export function LanguageConfigTable({ languages }: { languages: LanguageConfig[]
 
   function confirmPrune() {
     setIsPruning(true);
+    if (abortControllerRef.current) {
+      abortControllerRef.current.abort();
+    }
+    const controller = new AbortController();
+    abortControllerRef.current = controller;
     apiFetch("/api/v1/admin/docker/images/prune", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
+      signal: controller.signal,
     })
       .then(async (res) => {
         const data = await res.json().catch(() => ({}));
