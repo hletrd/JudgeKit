@@ -77,11 +77,11 @@ function SideBySideDiffView({ pairs }: { pairs: SideBySidePair[] }) {
           <p className="mb-1 text-xs font-medium text-muted-foreground">{t("expectedOutput")}</p>
           <table className="w-full border-collapse text-xs font-mono leading-relaxed">
             <tbody>
-              {pairs.map((pair, i) => {
+              {pairs.map((pair) => {
                 const left = pair.left;
                 return (
                   <tr
-                    key={`left-${left?.lineNo ?? "n"}-${i}`}
+                    key={`left-${left?.lineNo ?? "n"}-${left?.kind ?? "n"}-${left?.content?.slice(0, 20) ?? ""}`}
                     className={
                       left?.kind === "remove"
                         ? "bg-red-50 dark:bg-red-950/30"
@@ -104,11 +104,11 @@ function SideBySideDiffView({ pairs }: { pairs: SideBySidePair[] }) {
           <p className="mb-1 text-xs font-medium text-muted-foreground">{t("actualOutput")}</p>
           <table className="w-full border-collapse text-xs font-mono leading-relaxed">
             <tbody>
-              {pairs.map((pair, i) => {
+              {pairs.map((pair) => {
                 const right = pair.right;
                 return (
                   <tr
-                    key={`right-${right?.lineNo ?? "n"}-${i}`}
+                    key={`right-${right?.lineNo ?? "n"}-${right?.kind ?? "n"}-${right?.content?.slice(0, 20) ?? ""}`}
                     className={
                       right?.kind === "add"
                         ? "bg-green-50 dark:bg-green-950/30"
