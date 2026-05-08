@@ -42,7 +42,7 @@ export async function PublicFooter({ siteTitle, footerContent }: PublicFooterPro
   return (
     <footer className="border-t bg-muted/40">
       <div className="mx-auto flex max-w-6xl flex-col items-center gap-2 px-4 py-6 text-center text-sm text-muted-foreground sm:flex-row sm:justify-between sm:px-6 sm:text-left lg:px-8">
-        <span className="max-w-full break-words">{copyrightText}</span>
+        <span className="max-w-full break-words" suppressHydrationWarning>{copyrightText}</span>
         {allLinks.length > 0 && (
           <nav
             className="flex flex-wrap items-center justify-center gap-x-4 gap-y-2 sm:justify-end"
