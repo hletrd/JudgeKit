@@ -65,8 +65,11 @@ export function SubmissionListAutoRefresh({
     function scheduleNext() {
       timerRef.current = setTimeout(async () => {
         await tick();
-        // Reschedule with potentially changed interval after error
-        scheduleNext();
+        // Reschedule with potentially changed interval after error,
+        // but only if cleanup has not run (timerRef cleared on unmount)
+        if (timerRef.current !== null) {
+          scheduleNext();
+        }
       }, getBackoffInterval());
     }
 
