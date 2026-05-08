@@ -50,3 +50,26 @@ No other deferred items. All findings are actionable and will be implemented thi
 1. C5-AGG-2 (remove redundant Promise.race) — simplest fix, removes dead code
 2. C5-AGG-3 (SSE timeout guard) — defensive validation
 3. C5-AGG-4 (backup ZIP path traversal) — strengthen existing check
+
+---
+
+## Gate Results (post-fix)
+
+- `npx eslint .`: PASS (no errors, no warnings)
+- `npx tsc --noEmit`: PASS
+- `npx next build`: PASS
+- `npx vitest run`: PASS (314 files, 2338 tests)
+- `npx vitest run --config vitest.config.component.ts`: PASS (66 files, 179 tests)
+
+---
+
+## Deploy Results
+
+- **test.worv.ai**: SUCCESS (2026-05-09)
+- **algo.xylolabs.com**: SUCCESS (2026-05-09)
+  - App image built and running
+  - Database migrations: no changes detected
+  - Pre-deploy backup saved
+  - All containers healthy
+  - Nginx configured and reloaded
+  - HTTPS endpoint verified (HTTP 200)
