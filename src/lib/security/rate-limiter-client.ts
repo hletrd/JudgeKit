@@ -50,7 +50,11 @@ function isSidecarConfigured(): boolean {
   return RATE_LIMITER_URL.length > 0;
 }
 
-async function callRateLimiter<T>(path: string, body: Record<string, unknown>): Promise<T | null> {
+async function callRateLimiter<T>(
+  path: string,
+  body: Record<string, unknown>,
+  validate?: (data: unknown) => boolean
+): Promise<T | null> {
   if (!isSidecarConfigured()) {
     return null;
   }
@@ -82,6 +86,15 @@ async function callRateLimiter<T>(path: string, body: Record<string, unknown>): 
       // Treat as a sidecar error but log separately from network failures.
       consecutiveFailures++;
       circuitOpenUntil = Date.now() + RECOVERY_WINDOW_MS;
+      return null;
+    }
+    if (validate && !validate(data)) {
+      // Valid JSON but unexpected shape — treat as sidecar error to preserve
+      // the fail-open contract (do not return a malformed result that callers
+      // might interpret as a definitive rate-limit decision).
+      consecutiveFailures++;
+      circuitOpenUntil = Date.now() + RECOVERY_WINDOW_MS;
+      logger.warn({ path, data }, "[rate-limiter] sidecar returned unexpected response shape");
       return null;
     }
     consecutiveFailures = 0;
@@ -116,7 +129,15 @@ export async function checkRateLimit(
   maxAttempts: number = 30,
   windowMs: number = 60000
 ): Promise<RateLimitCheckResult | null> {
-  return callRateLimiter<RateLimitCheckResult>("/check", { key, maxAttempts, windowMs });
+  return callRateLimiter<RateLimitCheckResult>("/check", { key, maxAttempts, windowMs }, (data) => {
+    if (typeof data !== "object" || data === null) return false;
+    const d = data as Record<string, unknown>;
+    return (
+      typeof d.allowed === "boolean" &&
+      typeof d.remaining === "number" &&
+      (typeof d.retryAfter === "number" || d.retryAfter === null)
+    );
+  });
 }
 
 /**
@@ -130,7 +151,14 @@ export async function recordRateLimitFailure(
   windowMs: number = 60000,
   blockMs: number = 900000
 ): Promise<RecordFailureResult | null> {
-  return callRateLimiter<RecordFailureResult>("/record-failure", { key, maxAttempts, windowMs, blockMs });
+  return callRateLimiter<RecordFailureResult>("/record-failure", { key, maxAttempts, windowMs, blockMs }, (data) => {
+    if (typeof data !== "object" || data === null) return false;
+    const d = data as Record<string, unknown>;
+    return (
+      typeof d.blocked === "boolean" &&
+      (typeof d.blockedUntil === "number" || d.blockedUntil === null)
+    );
+  });
 }
 
 /** Best-effort reset of a sidecar counter. Silently no-ops if unreachable. */
