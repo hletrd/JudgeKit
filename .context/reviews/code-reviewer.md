@@ -1,58 +1,68 @@
-# Code Reviewer Review — Cycle 4/100
+# Code Review — Cycle 6
 
+**Reviewer:** code-reviewer (orchestrator direct)
 **Date:** 2026-05-08
-**Scope:** Full codebase review focused on correctness, maintainability, and edge cases
-**Approach:** Static analysis of components, hooks, and i18n patterns
+**HEAD:** main / 75d82a17
+**Scope:** Full TypeScript/TSX source review focused on logic bugs, React correctness, and maintainability.
 
 ---
 
 ## Findings
 
-### C1 — Timer leak in SubmissionListAutoRefresh causes post-unmount network requests
+### C6-CR-1 — PublicFooter duplicate React keys when CMS footer content contains /privacy or /languages
+
+- **File:** `src/components/layout/public-footer.tsx`
+- **Lines:** 36, 49
 - **Severity:** MEDIUM
 - **Confidence:** HIGH
-- **File:** `src/components/submission-list-auto-refresh.tsx:60-74`
-- **Problem:** `scheduleNext()` creates a `setTimeout` whose callback awaits `tick()` then recursively calls `scheduleNext()`. If the component unmounts while `tick()` is awaiting the fetch, the cleanup function clears `timerRef.current` but the async callback continues. After `tick()` resolves, it calls `scheduleNext()` unconditionally, creating a new timer that fires indefinitely.
-- **Failure scenario:** Admin navigates to Submissions page, then quickly navigates away. Background network requests to `/api/v1/time` continue indefinitely, wasting bandwidth and triggering unnecessary `router.refresh()` calls.
-- **Fix:** Guard `scheduleNext()` against post-unmount execution:
-  ```tsx
-  function scheduleNext() {
-    timerRef.current = setTimeout(async () => {
-      await tick();
-      if (timerRef.current !== null) {
-        scheduleNext();
-      }
-    }, getBackoffInterval());
-  }
-  ```
-- **Cross-agent agreement:** Also flagged by perf-reviewer as P1.
 
-### C2 — Missing i18n key "discussions" in nav namespace
-- **Severity:** MEDIUM
-- **Confidence:** HIGH
-- **File:** `src/components/layout/breadcrumb.tsx:27`, `messages/en.json`, `messages/ko.json`
-- **Problem:** The breadcrumb component maps URL segment `discussions` to `tNav("discussions")`, but this key does not exist in the `nav` namespace of either locale file. next-intl falls back to rendering the raw key path `nav.discussions`.
-- **Failure scenario:** Any user visiting `/dashboard/admin/discussions` sees the literal text "nav.discussions" in the breadcrumb instead of a human-readable label.
-- **Fix:** Add `"discussions": "Discussion Moderation"` to `messages/en.json` nav namespace and `"discussions": "토론 관리"` to `messages/ko.json` nav namespace.
-- **Cross-agent agreement:** Also flagged by designer as D1.
+The component concatenates CMS-provided footer links with two hardcoded links (Languages and Privacy):
 
-### C3 — Missing i18n keys "workspace" and "home" in nav namespace
-- **Severity:** LOW
-- **Confidence:** MEDIUM
-- **File:** `src/components/layout/breadcrumb.tsx:23-24`
-- **Problem:** Segments `workspace` and `control` map to `tNav("workspace")` and `tNav("home")` respectively, but neither key exists in the nav namespace.
-- **Failure scenario:** If future routes introduce `/dashboard/workspace` or `/dashboard/control`, their breadcrumbs will show raw i18n keys.
-- **Fix:** Add the missing keys to both locale files, or remove the mappings if unused.
+```tsx
+const allLinks = [...links, languagesLink, privacyLink];
+```
 
-### C4 — Missing nav i18n keys for publicShell segments that appear in dashboard breadcrumbs
-- **Severity:** LOW
-- **Confidence:** LOW
-- **File:** `src/components/layout/breadcrumb.tsx`
-- **Problem:** The breadcrumb maps `practice`, `playground`, `community`, and `assignments` to nav keys. While `assignments` maps to `"problemSets"` (which exists), the other three map to keys that exist in `publicShell.nav` but NOT in `nav`. If these segments ever appear under the dashboard layout's breadcrumb, they will show raw keys.
-- **Note:** These segments may never appear in the dashboard layout breadcrumb in practice, since they belong to the public route group. This is a low-confidence finding.
+Both `languagesLink.url` ("/languages") and `privacyLink.url` ("/privacy") can collide with URLs already present in `links` from the CMS `footerContent`. The rendered map uses `key={link.url}`:
+
+```tsx
+{allLinks.map((link) => (
+  <Link key={link.url} ...>
+```
+
+When a collision occurs, React emits a duplicate-key warning and component identity becomes unstable (children may be duplicated or omitted). The existing component test at `tests/component/public-footer.test.tsx:35` explicitly supplies `{ label: "Privacy", url: "/privacy" }` in the footer content, which triggers the warning in every test run:
+
+```
+Encountered two children with the same key, `/privacy`. Keys should be unique...
+```
+
+**Fix:** Deduplicate `allLinks` by URL before rendering, or skip injecting hardcoded links when the CMS content already contains them. Alternatively, synthesize unique keys with an index fallback.
+
+**Concrete failure scenario:** An admin configures footer content with a Privacy link. Every page render logs a React warning and React may skip re-rendering the duplicate link on updates.
 
 ---
 
-## No Other Code Issues Found
+### C6-CR-2 — Chat widget messages use index-based React key
 
-All API routes use proper auth middleware. Form validation uses Zod schemas. Error handling is consistent. No TypeScript strict-mode violations observed. Event listeners have proper cleanup. The hash-tabs component correctly avoids SSR mismatch with rAF.
+- **File:** `src/lib/plugins/chat-widget/chat-widget.tsx`
+- **Line:** 334
+- **Severity:** LOW
+- **Confidence:** MEDIUM
+
+```tsx
+{messages.map((msg, i) => (
+  <div key={i} ...>
+```
+
+While the current implementation only appends messages, this pattern is fragile against future edits (message deletion, reordering, or streaming retries) and violates React best practices. If two messages are ever swapped or one is removed, React will mis-identify DOM nodes.
+
+**Fix:** Use `msg.id` or `msg.timestamp + msg.role` as the key if a stable identifier exists; otherwise generate a client-side ID when messages are pushed into the array.
+
+---
+
+## Final sweep
+
+- No other duplicate-key issues found in non-skeleton rendering paths.
+- No stale closures or missing useEffect cleanup found in high-traffic components.
+- Raw SQL routes (`judge/claim`, audit logs, etc.) use parameterized queries; no injection vectors.
+- File storage path resolution (`resolveStoredPath`) correctly rejects path traversal.
+- API routes using `createApiHandler` properly await params; manual routes also await where needed.

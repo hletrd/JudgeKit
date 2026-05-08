@@ -1,36 +1,44 @@
-# Test Engineer Review — Cycle 4/100
+# Test Engineering Review — Cycle 6
 
+**Reviewer:** test-engineer (orchestrator direct)
 **Date:** 2026-05-08
-**Scope:** Test coverage gaps, flaky test risks, and missing test scenarios
-**Approach:** Analysis of existing test files against code findings
+**HEAD:** main / 75d82a17
+**Scope:** Component and integration test suites, gate status, flaky-test surface.
 
 ---
+
+## Gate Status
+
+All configured gates pass at HEAD:
+- `eslint .` — 0 errors, 0 warnings
+- `tsc --noEmit` — 0 errors
+- `next build` — success
+- `vitest run` — 314 files, 2337 tests, all passing
+- `vitest run --config vitest.config.component.ts` — 64 files, 167 tests, all passing
 
 ## Findings
 
-### T1 — No test for breadcrumb i18n key completeness
-- **Severity:** LOW
-- **Confidence:** HIGH
-- **File:** `src/components/layout/breadcrumb.tsx`
-- **Problem:** The `SEGMENT_LABEL_MAP` maps URL segments to i18n keys, but there is no automated test verifying that all mapped keys exist in the message files. The `discussions` key was missing but no test caught it.
-- **Fix:** Add a unit test that loads `messages/en.json` and `messages/ko.json`, iterates over `SEGMENT_LABEL_MAP` values, and asserts each key exists in the `nav` namespace.
+### C6-TE-1 — PublicFooter component test emits React duplicate-key warning
 
-### T2 — No test for SubmissionListAutoRefresh timer cleanup
-- **Severity:** LOW
+- **File:** `tests/component/public-footer.test.tsx`
+- **Severity:** MEDIUM
 - **Confidence:** HIGH
-- **File:** `src/components/submission-list-auto-refresh.tsx`
-- **Problem:** The timer leak on unmount (found by code-reviewer and perf-reviewer) would have been caught by a test that mounts the component, triggers a refresh cycle, unmounts, and verifies no further timers are scheduled.
-- **Fix:** Add a component test that mocks `apiFetch` and `router.refresh`, then verifies timer cleanup on unmount.
 
-### T3 — No contract test for hash-tabs hydration safety
-- **Severity:** LOW
-- **Confidence:** MEDIUM
-- **File:** `src/components/hash-tabs.tsx`
-- **Problem:** The hash-tabs component reads `window.location.hash` in useEffect to avoid SSR mismatch. No test verifies this behavior or the rAF cleanup.
-- **Fix:** Add a source-grep contract test verifying the `requestAnimationFrame` + `cancelAnimationFrame` pattern.
+The test case "wraps footer links for small screens" supplies a `links` array that includes `{ label: "Privacy", url: "/privacy" }`. The `PublicFooter` component unconditionally appends its own hardcoded privacy link (`url: "/privacy"`) to this array. Because the rendered navigation uses `key={link.url}`, React detects duplicate keys and emits a console warning during the test:
+
+```
+stderr | tests/component/public-footer.test.tsx > PublicFooter > wraps footer links for small screens
+Encountered two children with the same key, `/privacy`. Keys should be unique...
+```
+
+**Impact:** Console warnings in test output are noise that can mask real regressions. If this pattern were to cause actual DOM instability, the test would not catch it because it only asserts text presence, not DOM structure stability.
+
+**Fix:** Either (a) update the test to not include `/privacy` in the mock footer content, or (b) fix the component to deduplicate links by URL. Prefer (b) because the bug exists in production code, not just the test.
 
 ---
 
-## No Other Test Gaps Found
+## Final sweep
 
-Existing test suite covers API handlers, auth middleware, and core utilities well. The cycle 3 fixes (audit logs scope, date filtering, ctid batch delete) were accompanied by appropriate test updates.
+- No other component tests emit warnings or errors.
+- No flaky tests detected in this cycle's runs.
+- All previously broken tests from cycle 5 remain fixed.

@@ -33,7 +33,11 @@ export async function PublicFooter({ siteTitle, footerContent }: PublicFooterPro
     label: tShell("nav.privacy"),
     url: "/privacy",
   };
-  const allLinks = [...links, languagesLink, privacyLink];
+  // Deduplicate: if the CMS footer content already contains /languages or
+  // /privacy links, prefer the hardcoded ones so React keys stay unique.
+  const hardcodedUrls = new Set([languagesLink.url, privacyLink.url]);
+  const dedupedLinks = links.filter((link) => !hardcodedUrls.has(link.url));
+  const allLinks = [...dedupedLinks, languagesLink, privacyLink];
 
   return (
     <footer className="border-t bg-muted/40">
