@@ -143,7 +143,7 @@ export const GET = createApiHandler({
         if (problemScope) scopeFilters.push(problemScope);
       }
 
-      const scopedInstructorFilter = scopeFilters.length > 0 ? or(...scopeFilters) : sql`0`;
+      const scopedInstructorFilter = scopeFilters.length > 0 ? or(...scopeFilters) : null;
       if (scopedInstructorFilter) filters.push(scopedInstructorFilter);
     }
 
