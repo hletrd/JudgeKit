@@ -1,5 +1,4 @@
 import { redirect } from "next/navigation";
-import { getTranslations } from "next-intl/server";
 import { auth } from "@/lib/auth";
 import { resolveCapabilities } from "@/lib/capabilities/cache";
 import { db } from "@/lib/db";
@@ -27,15 +26,7 @@ export default async function AdminApiKeysPage() {
     )
   ).filter((role): role is { name: string; displayName: string; level: number } => Boolean(role));
 
-  const t = await getTranslations("admin.apiKeys");
-
   return (
-    <div className="space-y-6">
-      <div>
-        <h2 className="text-2xl font-bold">{t("title")}</h2>
-        <p className="text-sm text-muted-foreground">{t("description")}</p>
-      </div>
-      <ApiKeysClient roleOptions={roleOptions} />
-    </div>
+    <ApiKeysClient roleOptions={roleOptions} />
   );
 }
