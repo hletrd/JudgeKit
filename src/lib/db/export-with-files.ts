@@ -7,6 +7,7 @@ import { logger } from "@/lib/logger";
 import { asc } from "drizzle-orm";
 import { access } from "node:fs/promises";
 import { createHash } from "node:crypto";
+import path from "node:path";
 import { getDbNowUncached } from "@/lib/db-time";
 
 interface BackupIntegrityEntry {
@@ -254,9 +255,11 @@ export async function restoreFilesFromZip(zipBuffer: Buffer): Promise<{
     const storedName = entry.name.slice("uploads/".length);
     if (!storedName) continue;
 
-    // Validate: no path traversal
-    if (storedName.includes("/") || storedName.includes("\\") || storedName.includes("..")) {
-      logger.warn({ storedName }, "Skipping file with invalid name in backup ZIP");
+    // Validate: no path traversal. Normalize first to catch encoded variants,
+    // then reject any path that escapes the uploads directory.
+    const normalized = path.normalize(storedName);
+    if (normalized.includes("/") || normalized.includes("\\") || normalized.startsWith("..") || normalized === "..") {
+      logger.warn({ storedName, normalized }, "Skipping file with invalid name in backup ZIP");
       continue;
     }
 
