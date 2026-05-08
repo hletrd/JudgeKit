@@ -4,11 +4,13 @@ import { useState, useRef, useEffect, useCallback } from "react";
 import { useTranslations } from "next-intl";
 import { usePathname, useSearchParams } from "next/navigation";
 import { MessageCircle, X, Minus, Send } from "lucide-react";
+import { nanoid } from "nanoid";
 import { apiFetch } from "@/lib/api/client";
 import { AssistantMarkdown } from "@/components/assistant-markdown";
 import { useEditorContent } from "@/contexts/editor-content-context";
 
 interface Message {
+  id: string;
   role: "user" | "assistant";
   content: string;
   displayContent?: string; // shown in UI instead of content (for auto-prompts)
@@ -170,12 +172,12 @@ export default function ChatWidget() {
     if (!text || isStreamingRef.current) return;
 
     setError(null);
-    const userMessage: Message = { role: "user", content: text, displayContent: displayText };
+    const userMessage: Message = { id: nanoid(), role: "user", content: text, displayContent: displayText };
     const newMessages = [...messagesRef.current, userMessage];
     setMessages(newMessages);
     setInput("");
     setIsStreaming(true);
-    setMessages((prev) => [...prev, { role: "assistant", content: "" }]);
+    setMessages((prev) => [...prev, { id: nanoid(), role: "assistant", content: "" }]);
 
     // Only send the last 20 messages to the API to limit token usage
     const recentMessages = newMessages.slice(-20);
@@ -331,7 +333,7 @@ export default function ChatWidget() {
         )}
         {messages.map((msg, i) => (
           <div
-            key={i}
+            key={msg.id}
             className={`flex ${msg.role === "user" ? "justify-end" : "justify-start"}`}
           >
             <div
