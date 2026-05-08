@@ -491,6 +491,7 @@ function transformSSE(
       } catch (err) {
         controller.error(err);
       } finally {
+        reader.releaseLock();
         controller.close();
       }
     },
