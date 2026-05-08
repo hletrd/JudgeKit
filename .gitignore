@@ -76,6 +76,9 @@ judge-worker-rs/dead-letter/
 node-compile-cache/
 .agent/
 
+# browser session exports (may contain live credentials)
+algo-admin-*.json
+
 # one-off problem-solving / verification scratch scripts (not source-of-truth)
 /add-stress-tests.mjs
 /auto-solver.mjs
