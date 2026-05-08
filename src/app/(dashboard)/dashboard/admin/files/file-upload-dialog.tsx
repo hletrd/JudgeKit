@@ -1,6 +1,6 @@
 "use client";
 
-import { useRef, useState, useCallback } from "react";
+import { useRef, useState, useCallback, useEffect } from "react";
 import { useTranslations } from "next-intl";
 import { Upload, X, FileIcon, Loader2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
@@ -35,6 +35,7 @@ export function FileUploadDialog({ open, onOpenChange, onComplete, maxFileSizeBy
   const [queue, setQueue] = useState<QueuedFile[]>([]);
   const [isDragging, setIsDragging] = useState(false);
   const [isUploading, setIsUploading] = useState(false);
+  const completeTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const addFiles = useCallback((fileList: FileList | File[]) => {
     const MAX_UPLOAD_SIZE = maxFileSizeBytes;
@@ -124,16 +125,32 @@ export function FileUploadDialog({ open, onOpenChange, onComplete, maxFileSizeBy
     if (successCount > 0) {
       toast.success(t("uploadSuccess", { count: successCount }));
       // Small delay so user can see status, then close
-      setTimeout(() => {
+      completeTimerRef.current = setTimeout(() => {
+        completeTimerRef.current = null;
         setQueue([]);
         onComplete();
       }, 500);
     }
   }
 
+  useEffect(() => {
+    return () => {
+      if (completeTimerRef.current) {
+        clearTimeout(completeTimerRef.current);
+        completeTimerRef.current = null;
+      }
+    };
+  }, []);
+
   function handleClose(open: boolean) {
     if (!isUploading) {
-      if (!open) setQueue([]);
+      if (!open) {
+        if (completeTimerRef.current) {
+          clearTimeout(completeTimerRef.current);
+          completeTimerRef.current = null;
+        }
+        setQueue([]);
+      }
       onOpenChange(open);
     }
   }
