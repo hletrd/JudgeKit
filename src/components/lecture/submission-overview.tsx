@@ -73,10 +73,16 @@ export function SubmissionOverview({
   const initialLoadDoneRef = useRef(false);
   const openRef = useRef(open);
   openRef.current = open;
+  const fetchAbortControllerRef = useRef<AbortController | null>(null);
 
   const fetchStats = useCallback(async () => {
     // Guard: only fetch when the dialog is open
     if (!openRef.current) return;
+    if (fetchAbortControllerRef.current) {
+      fetchAbortControllerRef.current.abort();
+    }
+    const controller = new AbortController();
+    fetchAbortControllerRef.current = controller;
     try {
       setLoading(true);
       const params = new URLSearchParams({
@@ -87,7 +93,9 @@ export function SubmissionOverview({
       if (assignmentId) {
         params.set("assignmentId", assignmentId);
       }
-      const res = await apiFetch(`/api/v1/submissions?${params.toString()}`);
+      const res = await apiFetch(`/api/v1/submissions?${params.toString()}`, {
+        signal: controller.signal,
+      });
       if (!res.ok) {
         if (!initialLoadDoneRef.current) toast.error(t("fetchError"));
         return;
@@ -116,7 +124,10 @@ export function SubmissionOverview({
       }
       setStats(newStats);
       setRecent(submissions.slice(0, 10));
-    } catch {
+    } catch (err) {
+      if (err instanceof Error && err.name === "AbortError") {
+        return;
+      }
       // Only show toast on the initial load — polling refreshes should fail
       // silently to avoid spamming the user with error toasts.
       if (!initialLoadDoneRef.current) {
@@ -129,6 +140,14 @@ export function SubmissionOverview({
   }, [assignmentId, problemId, t]);
 
   useVisibilityPolling(() => { void fetchStats(); }, POLL_INTERVAL_MS, !open);
+
+  useEffect(() => {
+    return () => {
+      if (fetchAbortControllerRef.current) {
+        fetchAbortControllerRef.current.abort();
+      }
+    };
+  }, []);
 
   // Reset initialLoadDoneRef when the dialog opens so error toasts work correctly
   // on the next initial load.
