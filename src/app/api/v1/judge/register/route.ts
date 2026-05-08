@@ -31,7 +31,13 @@ export async function POST(request: NextRequest) {
       return apiError("unauthorized", 401);
     }
 
-    const parsed = registerSchema.safeParse(await request.json());
+    let raw: unknown;
+    try {
+      raw = await request.json();
+    } catch {
+      return apiError("invalidJson", 400);
+    }
+    const parsed = registerSchema.safeParse(raw);
     if (!parsed.success) {
       return apiError(parsed.error.issues[0]?.message ?? "invalidRequest", 400);
     }
