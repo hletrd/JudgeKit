@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { useTranslations } from "next-intl";
 import { apiFetchJson } from "@/lib/api/client";
 import { Badge } from "@/components/ui/badge";
@@ -45,6 +45,7 @@ export function AcceptedSolutions({ problemId, languages }: AcceptedSolutionsPro
   const [solutions, setSolutions] = useState<AcceptedSolution[]>([]);
   const [total, setTotal] = useState(0);
   const [expandedId, setExpandedId] = useState<string | null>(null);
+  const abortControllerRef = useRef<AbortController | null>(null);
 
   const totalPages = Math.max(1, Math.ceil(total / pageSize));
   const languageOptions = useMemo(
@@ -56,7 +57,11 @@ export function AcceptedSolutions({ problemId, languages }: AcceptedSolutionsPro
   );
 
   useEffect(() => {
-    let cancelled = false;
+    if (abortControllerRef.current) {
+      abortControllerRef.current.abort();
+    }
+    const controller = new AbortController();
+    abortControllerRef.current = controller;
 
     async function load() {
       setLoading(true);
@@ -73,25 +78,25 @@ export function AcceptedSolutions({ problemId, languages }: AcceptedSolutionsPro
           data?: { solutions?: AcceptedSolution[]; total?: number };
         }>(
           `/api/v1/problems/${problemId}/accepted-solutions?${params.toString()}`,
-          { cache: "no-store" },
+          { cache: "no-store", signal: controller.signal },
           { data: { solutions: [], total: 0 } }
         );
-        if (!cancelled) {
-          if (ok) {
-            setSolutions(data.data?.solutions ?? []);
-            setTotal(Number(data.data?.total ?? 0));
-          } else {
-            setSolutions([]);
-            setTotal(0);
-          }
-        }
-      } catch {
-        if (!cancelled) {
+        if (controller.signal.aborted) return;
+        if (ok) {
+          setSolutions(data.data?.solutions ?? []);
+          setTotal(Number(data.data?.total ?? 0));
+        } else {
           setSolutions([]);
           setTotal(0);
         }
+      } catch (err) {
+        if (err instanceof Error && err.name === "AbortError") {
+          return;
+        }
+        setSolutions([]);
+        setTotal(0);
       } finally {
-        if (!cancelled) {
+        if (!controller.signal.aborted) {
           setLoading(false);
         }
       }
@@ -100,7 +105,7 @@ export function AcceptedSolutions({ problemId, languages }: AcceptedSolutionsPro
     void load();
 
     return () => {
-      cancelled = true;
+      controller.abort();
     };
   }, [problemId, sort, language, page, pageSize]);
 
