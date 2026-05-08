@@ -90,6 +90,14 @@ export default function ChatWidget() {
     }
   }, [pathname]);
 
+  // Abort any in-flight request when the component unmounts so that
+  // the streaming fetch does not call setState on an unmounted component.
+  useEffect(() => {
+    return () => {
+      abortControllerRef.current?.abort();
+    };
+  }, []);
+
   const scrollRafRef = useRef<number | null>(null);
 
   const scrollToBottom = useCallback(() => {
@@ -164,7 +172,9 @@ export default function ChatWidget() {
         ? t("autoAnalysisError")
         : t("autoAnalysisReview");
       setPendingAutoAnalysis(null);
-      void sendMessageRef.current(apiPrompt, displayText);
+      if (sendMessageRef.current) {
+        void sendMessageRef.current(apiPrompt, displayText);
+      }
     }
   }, [pendingAutoAnalysis, isStreaming, problemContext, t]);
 
