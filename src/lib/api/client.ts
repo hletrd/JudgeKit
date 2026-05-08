@@ -124,8 +124,15 @@ export async function apiFetchJson<T = unknown>(
   fallback: T
 ): Promise<{ ok: true; data: T } | { ok: false; data: T }> {
   const res = await apiFetch(input, init);
-  const data = await res.json().catch(() => fallback) as T;
-  if (res.ok) {
+  let data: T;
+  let parseOk = false;
+  try {
+    data = await res.json() as T;
+    parseOk = true;
+  } catch {
+    data = fallback;
+  }
+  if (res.ok && parseOk) {
     return { ok: true, data };
   }
   return { ok: false, data };
