@@ -1,24 +1,31 @@
-# Performance Review — Cycle 12/100
+# Performance Review — Cycle 13/100
 
-**Reviewer:** perf-reviewer (orchestrator direct)
+**Reviewer:** perf-reviewer (manual, single-agent)
 **Date:** 2026-05-08
-**HEAD:** e584aeac
-**Scope:** Performance, concurrency, CPU/memory/UI responsiveness
+**HEAD:** b3c16d3a
+**Scope:** Rendering performance, network efficiency, memory leaks, polling patterns
 
 ---
 
 ## NEW FINDINGS
 
-### C12-PR-1 — CountdownTimer staggered setTimeout accumulation
+### C13-PF-1 — Concurrent fetches in AcceptedSolutions on rapid filter changes [LOW]
 - **Severity:** LOW
 - **Confidence:** MEDIUM
-- **File:** `src/components/exam/countdown-timer.tsx:126`
-- **Problem:** When multiple threshold toasts are staggered (e.g., after tab regains focus), each delayed toast creates a `setTimeout` that is never tracked or cleared. On effect cleanup (unmount or deadline change), only the main `timerId` is cleared. The staggered timers remain in the browser's timer queue until they fire and self-cancel via the `cancelled` flag. With at most 3 thresholds and 4-second max delay, the leak is bounded but unnecessary.
-- **Impact:** Minor timer queue pollution. Each orphaned timer consumes a small amount of browser memory until it fires.
-- **Fix:** Track staggered timer IDs in a ref array and clear them all on cleanup.
+- **File:** `src/components/problem/accepted-solutions.tsx:58-105`
+- **Problem:** Each sort/language/page change fires a new fetch while the previous one may still be in flight. The cancelled flag prevents state updates from stale responses, but the network requests are not cancelled. On slow connections or rapid user interaction, this wastes bandwidth and browser connection slots.
+- **Impact:** Minor. Typical user interaction is not rapid enough to trigger more than 2–3 concurrent requests.
+- **Fix:** Abort the previous fetch before starting a new one.
 
----
+## Verification of Past Fixes
 
-## No Other Performance Issues Found
+| Fix | Status |
+|---|---|
+| use-visibility-polling jitter (cycle 11) | Verified — prevents thundering herd on tab switch |
+| SubmissionListAutoRefresh backoff (cycle 4) | Verified — exponential backoff on errors |
+| SSE shared poll timer (cycle 12) | Verified — single interval for all subscribers |
+| Anti-cheat monitor retry backoff (cycle 8) | Verified — exponential backoff with cap |
 
-Recursive setTimeout patterns in useVisibilityPolling and api-keys-client are correctly implemented. Compiler execute timeout is bounded. Docker build output buffering is capped at 2MB. SSE connection limits are enforced. Rate limiter eviction runs on a 60s interval. No unnecessary re-renders detected in hot paths.
+## Summary
+
+No significant performance regressions. One minor network efficiency gap in AcceptedSolutions. Overall performance patterns are well-designed and mature.

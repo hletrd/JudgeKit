@@ -1,39 +1,39 @@
-# Debugger Review — Cycle 12/100
+# Debugger Review — Cycle 13/100
 
-**Reviewer:** debugger (orchestrator direct)
+**Reviewer:** debugger (manual, single-agent)
 **Date:** 2026-05-08
-**HEAD:** e584aeac
-**Scope:** Latent bug surface, failure modes, regressions
+**HEAD:** b3c16d3a
+**Scope:** Latent bug surface, failure modes, timer leaks, race conditions, regressions
 
 ---
 
 ## NEW FINDINGS
 
-### C12-DB-1 — Judge deregister route: malformed JSON bypasses validation and returns 500
-- **Severity:** MEDIUM
+### C13-DB-1 — In-flight fetch promises continue after component unmount in several components [LOW]
+- **Severity:** LOW
 - **Confidence:** HIGH
-- **File:** `src/app/api/v1/judge/deregister/route.ts:24`
-- **Problem:** The deregister route was excluded from the cycle 10 fix that added try/catch around `request.json()` in judge routes. A truncated or malformed JSON body triggers a SyntaxError that the outer catch block handles as an internal server error. This is a regression from the cycle 10 remediation pattern.
-- **Failure mode:** Worker sends malformed JSON → SyntaxError → caught by outer try/catch → 500 internalServerError logged. Worker sees 500 and retries with same payload, creating a retry loop that generates error-log noise.
-- **Fix:** Wrap `await request.json()` in try/catch, return 400 invalidJson on parse failure.
+- **Files:** `language-config-table.tsx:132`, `submission-overview.tsx:90`, `accepted-solutions.tsx:72`, `submission-detail-client.tsx:131`
+- **Problem:** These components do not abort fetch requests on cleanup. The promise resolves after unmount and calls `setState` on an unmounted component. React logs: "Warning: Can't perform a React state update on an unmounted component."
+- **Failure scenario:** User navigates away from the languages admin page before image status loads. The fetch completes and calls `setImageInfo`, `setStaleCount`, etc. on the unmounted component.
+- **Fix:** Add AbortController to each fetch and abort in effect cleanup.
 
-### C12-DB-2 — CountdownTimer: deadline prop change leaves component stuck in expired state
+### C13-DB-2 — `AcceptedSolutions` rapid filter changes spawn concurrent fetches [LOW]
 - **Severity:** LOW
 - **Confidence:** MEDIUM
-- **File:** `src/components/exam/countdown-timer.tsx:46-65`
-- **Problem:** The `expired` state and `firedThresholds` ref are initialized once on mount and never react to `deadline` prop changes. If an exam deadline is extended while the component is mounted, `expired` remains true and the display shows "00:00:00" regardless of the actual remaining time. The `handleExpired` callback also guards against re-firing via `expiredRef`, so even if the new deadline passes again, `onExpired` won't fire.
-- **Failure mode:** Admin extends exam deadline. Student's countdown shows "00:00:00" instead of the new remaining time. Student may incorrectly think the exam has ended.
-- **Fix:** Reset `expired` state and recompute `firedThresholds` when `deadline` changes.
+- **File:** `src/components/problem/accepted-solutions.tsx:58-105`
+- **Problem:** When sort, language, or page changes rapidly, each change triggers a new fetch. The `cancelled` flag prevents stale results from updating state, but all fetches still execute, wasting bandwidth and connection slots.
+- **Fix:** Abort the previous fetch before starting a new one.
 
-### C12-DB-3 — CountdownTimer: staggered toast timers leak on unmount
-- **Severity:** LOW
-- **Confidence:** MEDIUM
-- **File:** `src/components/exam/countdown-timer.tsx:126`
-- **Problem:** When `staggerToasts=true`, the delayed setTimeout callbacks are not stored for cleanup. While the `cancelled` flag prevents state updates, the timers remain in the browser's timer queue until they fire. Frequent mount/unmount cycles (rare for exam countdown but possible in test environments) could accumulate orphaned timers.
-- **Fix:** Collect staggered timer IDs in an array ref and clear them all on cleanup.
+## Regressions Checked
 
----
+| Fix | Status |
+|---|---|
+| CountdownTimer deadline reactivity | No regression — correctly resets on deadline change |
+| CountdownTimer staggered timer leak | No regression — timers tracked in ref and cleared |
+| Anti-cheat heartbeat guard | No regression — `isHeartbeatActiveRef` prevents stale callbacks |
+| Judge deregister JSON guard | No regression — try/catch properly returns 400 |
+| use-visibility-polling jitter cleanup | No regression — jitter timer cleared on cleanup |
 
-## No Regressions Detected
+## Summary
 
-Cycle 10 and 11 fixes remain intact. JSON parse guards in register, claim, heartbeat, and poll routes are working. apiFetchJson parse-ok check is correct. Contest join shake timer cleanup is in place.
+No regressions from prior fixes. Two new LOW-severity cleanup gaps identified, both involving missing AbortController cleanup on fetch calls. These are hygiene issues rather than functional bugs.

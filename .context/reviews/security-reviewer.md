@@ -1,30 +1,40 @@
-# Security Review — Cycle 12/100
+# Security Review — Cycle 13/100
 
-**Reviewer:** security-reviewer (orchestrator direct)
+**Reviewer:** security-reviewer (manual, single-agent)
 **Date:** 2026-05-08
-**HEAD:** e584aeac
-**Scope:** Authentication, authorization, input validation, error handling, and data exposure in API routes and UI
+**HEAD:** b3c16d3a
+**Scope:** Auth, sandbox, API routes, secrets, CSP, CSRF, input handling
 
 ---
 
 ## NEW FINDINGS
 
-### C12-SR-1 — Judge deregister route returns 500 on malformed JSON, leaking implementation details
-- **Severity:** MEDIUM
-- **Confidence:** HIGH
-- **File:** `src/app/api/v1/judge/deregister/route.ts:24`
-- **Problem:** Malformed JSON in the deregister route request body causes an unhandled `SyntaxError` that propagates to the outer `try/catch`, returning HTTP 500 `internalServerError`. While not directly an information leak, 500 responses on client-provided bad input expose internal error-handling gaps to attackers probing the API surface. More importantly, the lack of a 400 response means legitimate workers cannot distinguish between "bad JSON" and "server down."
-- **Fix:** Add explicit JSON parse try/catch before schema validation, returning 400.
+No new HIGH or MEDIUM security findings identified this cycle.
 
----
+## Verification of Past Fixes
 
-## No Other Security Issues Found
+| ID | Status | Note |
+|---|---|---|
+| Cycle 10: JSON parse guards on judge routes | VERIFIED FIXED | All 5 judge routes (register, deregister, claim, heartbeat, poll) now wrap `request.json()` in try/catch |
+| Cycle 10: apiFetchJson non-JSON 200 masking | VERIFIED FIXED | Returns `{ ok: false }` when parse fails on 200 response |
+| Cycle 8: Chat widget abort on unmount | VERIFIED FIXED | `abortControllerRef.current?.abort()` in cleanup |
+| Cycle 7: Admin error boundary logging | VERIFIED FIXED | Logs only `error.digest ?? error.message`, not full object |
+| Cycle 5: algo-admin-prod.json credential leak | VERIFIED FIXED | File deleted, .gitignore rule added |
+| Cycle 3: Audit logs dateTo off-by-one | VERIFIED FIXED | Uses end-of-day correctly |
+| Cycle 3: JSON LIKE fragility | VERIFIED FIXED | Uses jsonb operators |
+| Cycle 2: Locale switcher 404s | VERIFIED FIXED | Uses `window.location.reload()` |
+| Cycle 2: Database connection string exposure | VERIFIED FIXED | No longer shown in admin settings |
 
-All API routes continue to use `createApiHandler` with appropriate auth checks. CSRF protection enforced for non-API-key auth. Rate limiting applied to sensitive endpoints. No SQL injection vectors. No XSS in rendered HTML. File upload validation includes magic-byte checks and ZIP bomb protection. Judge routes enforce IP allowlisting and bearer token authentication.
+## Security Posture Summary
 
-**Routes verified for proper auth this cycle:**
-- `/api/v1/judge/*` — IP allowlist + bearer token or per-worker secret (deregister now also validated)
-- `/api/v1/files/*` — capability checks + ownership checks
-- `/api/v1/admin/submissions/rejudge` — submissions.rejudge capability + group scope
-- `/api/v1/problems/import` — problems.create capability + zod validation
-- `/api/v1/recruiting/validate` — rate limit + CSRF
+The codebase maintains a strong security posture:
+- All API routes enforce auth via `getApiUser` or explicit checks
+- CSRF protection via `X-Requested-With` header and `Sec-Fetch-Site` validation
+- CSP with per-request nonce, no `unsafe-inline` scripts in production
+- Rate limiting on all sensitive endpoints
+- JWT signing with SHA-256, session invalidation checks
+- DOMPurify sanitization on legacy HTML, react-markdown with `skipHtml` for Markdown
+- Docker sandbox with seccomp, network isolation, resource limits
+- No dangerous patterns (`eval`, `Function`, `dangerouslySetInnerHTML` outside sanitization)
+
+No regressions detected in any previously fixed security issue.

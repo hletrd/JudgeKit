@@ -85,6 +85,7 @@ export function LanguageConfigTable({ languages }: { languages: LanguageConfig[]
   const [imageStatusLoading, setImageStatusLoading] = useState(true);
   const [imageStatusError, setImageStatusError] = useState(false);
   const abortControllerRef = useRef<AbortController | null>(null);
+  const imageStatusAbortControllerRef = useRef<AbortController | null>(null);
 
   useEffect(() => {
     return () => {
@@ -92,14 +93,26 @@ export function LanguageConfigTable({ languages }: { languages: LanguageConfig[]
         abortControllerRef.current.abort();
         abortControllerRef.current = null;
       }
+      if (imageStatusAbortControllerRef.current) {
+        imageStatusAbortControllerRef.current.abort();
+        imageStatusAbortControllerRef.current = null;
+      }
     };
   }, []);
 
   const fetchImageStatus = useCallback(async () => {
+    if (imageStatusAbortControllerRef.current) {
+      imageStatusAbortControllerRef.current.abort();
+    }
+    const controller = new AbortController();
+    imageStatusAbortControllerRef.current = controller;
+
     setImageStatusLoading(true);
     setImageStatusError(false);
     try {
-      const res = await apiFetch("/api/v1/admin/docker/images");
+      const res = await apiFetch("/api/v1/admin/docker/images", {
+        signal: controller.signal,
+      });
       if (res.ok) {
         const json = await res.json().catch(() => ({ data: {} }));
         const data = json.data ?? {};
@@ -121,7 +134,10 @@ export function LanguageConfigTable({ languages }: { languages: LanguageConfig[]
         setImageStatusError(true);
         toast.error(t("toast.fetchImageStatusError"));
       }
-    } catch {
+    } catch (err) {
+      if (err instanceof Error && err.name === "AbortError") {
+        return;
+      }
       setImageStatusError(true);
       toast.error(t("toast.fetchImageStatusError"));
     } finally {
