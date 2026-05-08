@@ -1,38 +1,27 @@
-# Performance Review — Cycle 14/100
+# Performance Review — Cycle 18/100
 
 **Reviewer:** perf-reviewer (manual)
 **Date:** 2026-05-08
-**HEAD:** fe8f8866
-**Scope:** Rendering performance, timer efficiency, network request patterns
+**HEAD:** 2b3e22c1
+**Scope:** React rendering patterns, database query patterns, API route efficiency
 
 ---
 
 ## NEW FINDINGS
 
-### C14-PF-1 — CopyCodeButton accumulates orphaned timers [LOW]
-- **Severity:** LOW
-- **Confidence:** HIGH
-- **File:** `src/components/code/copy-code-button.tsx:26`
-- **Problem:** Rapid clicks orphan previous timer IDs. Each orphaned timer fires and attempts a state update. While React handles this gracefully, it's unnecessary event queue noise. With enough rapid clicks (e.g., stress testing), this creates minor timer accumulation.
-- **Impact:** Very minor. Typical usage is single clicks.
-- **Fix:** Clear previous timer before setting new one.
+None. No new performance findings this cycle.
 
-### C14-PF-2 — Language admin shared AbortController wastes work on operation switch [MEDIUM]
-- **Severity:** MEDIUM
-- **Confidence:** HIGH
-- **File:** `src/app/(dashboard)/dashboard/admin/languages/language-config-table.tsx`
-- **Problem:** When the user switches from one operation to another (e.g., build to remove), the in-flight request is aborted. The network work already done is discarded. With separate controllers, operations on different languages could proceed in parallel.
-- **Impact:** Minor. Admin operations are infrequent and sequential in normal usage.
-- **Fix:** Separate AbortControllers per operation type.
+## Verified Optimized
 
-## Verification of Past Fixes
+- `Promise.all` used for parallel DB queries where applicable
+- Proper memoization (`useMemo`, `useCallback`, `React.memo`) used throughout
+- SSE polling uses shared timer to avoid N concurrent timers
+- No N+1 query patterns found in API routes reviewed
+- `contest-replay.tsx` uses FLIP animation pattern for efficient DOM transitions
+- `file-upload-dialog.tsx` uses nanoid IDs for stable queue item identification
 
-| Fix | Status |
-|---|---|
-| use-visibility-polling jitter | Verified |
-| SSE shared poll timer | Verified |
-| Anti-cheat monitor retry backoff | Verified |
+## Final Sweep
 
-## Summary
-
-No significant performance regressions. Two minor efficiency gaps identified.
+- Checked for missing React.memo on heavy components — patterns are consistent
+- Checked for unnecessary re-renders — no obvious issues found
+- No relevant files were skipped.
