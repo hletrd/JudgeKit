@@ -96,7 +96,7 @@ export function ContestReplay({
         // which still has isPlaying=true. We rely on the effect re-running
         // when isPlaying changes to stop the loop.
         if (!cancelled) scheduleNext();
-      }, 1400 / speed);
+      }, Math.max(100, 1400 / speed));
     }
 
     scheduleNext();
@@ -211,7 +211,13 @@ export function ContestReplay({
           </Button>
           <div className="space-y-2 text-sm">
             <Label>{speedLabel}</Label>
-            <Select value={String(speed)} onValueChange={(v) => { if (v) setSpeed(parseInt(v, 10) as (typeof PLAYBACK_SPEEDS)[number]); }}>
+            <Select value={String(speed)} onValueChange={(v) => {
+              if (!v) return;
+              const parsed = parseInt(v, 10);
+              if (PLAYBACK_SPEEDS.includes(parsed as (typeof PLAYBACK_SPEEDS)[number])) {
+                setSpeed(parsed as (typeof PLAYBACK_SPEEDS)[number]);
+              }
+            }}>
               <SelectTrigger className="w-24">
                 <SelectValue />
               </SelectTrigger>
