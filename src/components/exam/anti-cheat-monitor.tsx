@@ -36,7 +36,13 @@ export function AntiCheatMonitor({
 }: AntiCheatMonitorProps) {
   const t = useTranslations("contests.antiCheat");
   const resolvedWarningMessage = warningMessage ?? t("warningTabSwitch");
-  const [showPrivacyNotice, setShowPrivacyNotice] = useState(true);
+  const [showPrivacyNotice, setShowPrivacyNotice] = useState(() => {
+    try {
+      return sessionStorage.getItem(`judgekit_anticheat_notice_${assignmentId}`) !== "accepted";
+    } catch {
+      return true;
+    }
+  });
   const lastEventRef = useRef<Record<string, number>>({});
   const MIN_INTERVAL_MS = 1000;
   const retryTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -164,15 +170,16 @@ export function AntiCheatMonitor({
     void flushPendingEventsRef.current();
   }, [enabled, showPrivacyNotice]);
 
+  const heartbeatTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
   useEffect(() => {
     if (!enabled || showPrivacyNotice) return;
 
     void reportEventRef.current("heartbeat");
 
-    let heartbeatTimer: ReturnType<typeof setTimeout> | null = null;
-
     function scheduleHeartbeat() {
-      heartbeatTimer = setTimeout(async () => {
+      if (heartbeatTimerRef.current) clearTimeout(heartbeatTimerRef.current);
+      heartbeatTimerRef.current = setTimeout(async () => {
         if (document.visibilityState === "visible") {
           await reportEventRef.current("heartbeat");
         }
@@ -183,7 +190,10 @@ export function AntiCheatMonitor({
     scheduleHeartbeat();
 
     return () => {
-      if (heartbeatTimer) clearTimeout(heartbeatTimer);
+      if (heartbeatTimerRef.current) {
+        clearTimeout(heartbeatTimerRef.current);
+        heartbeatTimerRef.current = null;
+      }
     };
   }, [enabled, showPrivacyNotice]);
 
@@ -290,7 +300,18 @@ export function AntiCheatMonitor({
             <li>{t("privacyNoticeIpAddress")}</li>
             <li>{t("privacyNoticeCodeSnapshots")}</li>
           </ul>
-          <Button variant="default" className="w-full" onClick={() => setShowPrivacyNotice(false)}>
+          <Button
+            variant="default"
+            className="w-full"
+            onClick={() => {
+              setShowPrivacyNotice(false);
+              try {
+                sessionStorage.setItem(`judgekit_anticheat_notice_${assignmentId}`, "accepted");
+              } catch {
+                // sessionStorage unavailable
+              }
+            }}
+          >
             {t("privacyNoticeAccept")}
           </Button>
         </DialogContent>
