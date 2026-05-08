@@ -84,14 +84,24 @@ export function LanguageConfigTable({ languages }: { languages: LanguageConfig[]
   const [confirmAction, setConfirmAction] = useState<ConfirmAction | null>(null);
   const [imageStatusLoading, setImageStatusLoading] = useState(true);
   const [imageStatusError, setImageStatusError] = useState(false);
-  const abortControllerRef = useRef<AbortController | null>(null);
+  const buildAbortControllerRef = useRef<AbortController | null>(null);
+  const removeAbortControllerRef = useRef<AbortController | null>(null);
+  const pruneAbortControllerRef = useRef<AbortController | null>(null);
   const imageStatusAbortControllerRef = useRef<AbortController | null>(null);
 
   useEffect(() => {
     return () => {
-      if (abortControllerRef.current) {
-        abortControllerRef.current.abort();
-        abortControllerRef.current = null;
+      if (buildAbortControllerRef.current) {
+        buildAbortControllerRef.current.abort();
+        buildAbortControllerRef.current = null;
+      }
+      if (removeAbortControllerRef.current) {
+        removeAbortControllerRef.current.abort();
+        removeAbortControllerRef.current = null;
+      }
+      if (pruneAbortControllerRef.current) {
+        pruneAbortControllerRef.current.abort();
+        pruneAbortControllerRef.current = null;
       }
       if (imageStatusAbortControllerRef.current) {
         imageStatusAbortControllerRef.current.abort();
@@ -149,11 +159,11 @@ export function LanguageConfigTable({ languages }: { languages: LanguageConfig[]
 
   function handleBuild(lang: LanguageConfig) {
     setBuildingLangs(prev => new Set(prev).add(lang.language));
-    if (abortControllerRef.current) {
-      abortControllerRef.current.abort();
+    if (buildAbortControllerRef.current) {
+      buildAbortControllerRef.current.abort();
     }
     const controller = new AbortController();
-    abortControllerRef.current = controller;
+    buildAbortControllerRef.current = controller;
     apiFetch("/api/v1/admin/docker/images/build", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
@@ -181,11 +191,11 @@ export function LanguageConfigTable({ languages }: { languages: LanguageConfig[]
   }
 
   function confirmRemoveImage(lang: LanguageConfig) {
-    if (abortControllerRef.current) {
-      abortControllerRef.current.abort();
+    if (removeAbortControllerRef.current) {
+      removeAbortControllerRef.current.abort();
     }
     const controller = new AbortController();
-    abortControllerRef.current = controller;
+    removeAbortControllerRef.current = controller;
     apiFetch("/api/v1/admin/docker/images", {
       method: "DELETE",
       headers: { "Content-Type": "application/json" },
@@ -213,11 +223,11 @@ export function LanguageConfigTable({ languages }: { languages: LanguageConfig[]
 
   function confirmPrune() {
     setIsPruning(true);
-    if (abortControllerRef.current) {
-      abortControllerRef.current.abort();
+    if (pruneAbortControllerRef.current) {
+      pruneAbortControllerRef.current.abort();
     }
     const controller = new AbortController();
-    abortControllerRef.current = controller;
+    pruneAbortControllerRef.current = controller;
     apiFetch("/api/v1/admin/docker/images/prune", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
