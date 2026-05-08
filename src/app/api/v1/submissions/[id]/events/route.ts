@@ -364,12 +364,15 @@ export async function GET(
 
         request.signal.addEventListener("abort", close, { once: true });
 
+        const sseTimeoutMs = Number.isFinite(sseConfig.sseTimeoutMs) && sseConfig.sseTimeoutMs >= 1000
+          ? sseConfig.sseTimeoutMs
+          : 300_000;
         const timeoutTimer = setTimeout(() => {
           if (!closed) {
             controller.enqueue(encoder.encode("event: timeout\ndata: {}\n\n"));
             close();
           }
-        }, sseConfig.sseTimeoutMs);
+        }, sseTimeoutMs);
 
         let lastAuthCheck = Date.now();
 
