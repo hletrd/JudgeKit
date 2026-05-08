@@ -23,6 +23,7 @@ export function CopyCodeButton({ value }: { value: string }) {
       return;
     }
     setCopied(true);
+    if (copiedTimer.current) clearTimeout(copiedTimer.current);
     copiedTimer.current = setTimeout(() => setCopied(false), 2000);
   }, [value, t]);
 
