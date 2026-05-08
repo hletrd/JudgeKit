@@ -84,7 +84,9 @@
     "paginationPageSize": "Page size",
     "paginationPageSizeOption": "Show {size} items per page",
     "footerNavigation": "Footer navigation",
-    "copyFailed": "Failed to copy to clipboard"
+    "copyFailed": "Failed to copy to clipboard",
+    "apply": "Apply",
+    "reset": "Reset"
   },
   "auth": {
     "signIn": "Sign in",
@@ -2802,11 +2804,30 @@
     },
     "seo": {
       "keywords": {
-        "practice": ["algorithm practice", "coding interview problems", "programming exercises"],
-        "problem": ["programming problem", "algorithm challenge"],
-        "contests": ["programming contests", "competitive coding events", "online programming competitions"],
-        "playground": ["online compiler", "code playground", "run code online"],
-        "community": ["programming community", "coding discussions", "developer forum"],
+        "practice": [
+          "algorithm practice",
+          "coding interview problems",
+          "programming exercises"
+        ],
+        "problem": [
+          "programming problem",
+          "algorithm challenge"
+        ],
+        "contests": [
+          "programming contests",
+          "competitive coding events",
+          "online programming competitions"
+        ],
+        "playground": [
+          "online compiler",
+          "code playground",
+          "run code online"
+        ],
+        "community": [
+          "programming community",
+          "coding discussions",
+          "developer forum"
+        ],
         "threadDiscussion": "programming discussion",
         "threadCommunity": "community forum",
         "threadSolution": "solution discussion",
