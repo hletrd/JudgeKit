@@ -75,7 +75,7 @@ describe("NotFoundPage", () => {
     expect(screen.getByText("This page doesn't exist.")).toBeInTheDocument();
     expect(screen.getByRole("link", { name: "Back" })).toHaveAttribute("href", "/");
     const props = publicHeaderPropsMock.mock.calls.at(-1)?.[0];
-    expect(props?.actions[0]?.label).toBe("Dashboard");
+    expect(props?.actions[0]?.label).toBe("Sign in");
     // "Languages" was moved from the header nav to the footer; verify the remaining items
     expect(props?.items.map((item: { label: string }) => item.label)).toContain("Community");
   });

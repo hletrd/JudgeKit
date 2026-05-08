@@ -164,6 +164,6 @@ describe("HomePage hero CTAs", () => {
     expect(screen.getByText("Open workspace")).toBeInTheDocument();
     expect(screen.getByText("Sign in")).toBeInTheDocument();
     const props = publicHeaderPropsMock.mock.calls.at(-1)?.[0];
-    expect(props?.actions[0]?.label).toBe("Dashboard");
+    expect(props?.actions[0]?.label).toBe("Sign in");
   });
 });

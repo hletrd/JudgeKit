@@ -34,6 +34,10 @@ function createStreamResponse(chunks: string[]): Response {
 describe("ChatWidget", () => {
   beforeEach(() => {
     vi.restoreAllMocks();
+    vi.stubGlobal("requestAnimationFrame", (cb: FrameRequestCallback) => {
+      cb(0);
+      return 0;
+    });
   });
 
   it("scrolls the message container to the actual bottom while streaming replies", async () => {

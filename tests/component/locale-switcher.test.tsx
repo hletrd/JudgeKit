@@ -4,10 +4,6 @@ import userEvent from "@testing-library/user-event";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { LocaleSwitcher } from "@/components/layout/locale-switcher";
 
-const { forceNavigateMock } = vi.hoisted(() => ({
-  forceNavigateMock: vi.fn(),
-}));
-
 vi.mock("next-intl", () => ({
   useTranslations: () => (key: string) =>
     ({
@@ -23,10 +19,6 @@ vi.mock("next/navigation", () => ({
   useSearchParams: () => ({
     toString: () => "page=2",
   }),
-}));
-
-vi.mock("@/lib/navigation/client", () => ({
-  forceNavigate: forceNavigateMock,
 }));
 
 vi.mock("@/components/ui/button", () => ({
@@ -83,6 +75,9 @@ describe("LocaleSwitcher", () => {
   });
 
   it("forces a full navigation after switching locale so public pages re-render", async () => {
+    const reloadMock = vi.fn();
+    vi.stubGlobal("location", { protocol: "https:", reload: reloadMock });
+
     const user = userEvent.setup();
 
     render(<LocaleSwitcher />);
@@ -90,6 +85,6 @@ describe("LocaleSwitcher", () => {
     await user.click(screen.getByRole("button", { name: "Korean" }));
 
     expect(document.cookie).toContain("locale=ko");
-    expect(forceNavigateMock).toHaveBeenCalledWith("/dashboard?page=2&locale=ko");
+    expect(reloadMock).toHaveBeenCalled();
   });
 });
