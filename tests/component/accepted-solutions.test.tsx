@@ -36,6 +36,51 @@ describe("AcceptedSolutions", () => {
     apiFetchMock.mockReset();
   });
 
+  it("aborts previous fetch when problemId changes (concurrent fetch prevention)", async () => {
+    let firstSignal: AbortSignal | undefined;
+    let secondSignal: AbortSignal | undefined;
+
+    apiFetchMock.mockImplementation(async (input: unknown, init: unknown) => {
+      const url = typeof input === "string" ? input : "";
+      const opts = (init ?? {}) as { signal?: AbortSignal };
+      if (url.includes("problem-1")) {
+        firstSignal = opts.signal;
+        return new Promise(() => {});
+      }
+      if (url.includes("problem-2")) {
+        secondSignal = opts.signal;
+        return {
+          ok: true,
+          json: async () => ({
+            data: { solutions: [], total: 0, page: 1, pageSize: 10 },
+          }),
+        };
+      }
+      return { ok: true, json: async () => ({ data: { solutions: [], total: 0 } }) };
+    });
+
+    const { rerender } = render(
+      <AcceptedSolutions
+        problemId="problem-1"
+        languages={[{ language: "python", displayName: "Python", standard: "3.14" }]}
+      />
+    );
+
+    await waitFor(() => expect(firstSignal).toBeDefined());
+
+    rerender(
+      <AcceptedSolutions
+        problemId="problem-2"
+        languages={[{ language: "python", displayName: "Python", standard: "3.14" }]}
+      />
+    );
+
+    await waitFor(() => expect(secondSignal).toBeDefined());
+
+    expect(firstSignal!.aborted).toBe(true);
+    expect(secondSignal!.aborted).toBe(false);
+  });
+
   it("loads accepted solutions and expands source code", async () => {
     apiFetchMock.mockResolvedValue({
       ok: true,
