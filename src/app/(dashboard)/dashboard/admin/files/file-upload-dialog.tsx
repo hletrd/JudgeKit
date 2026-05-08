@@ -2,6 +2,7 @@
 
 import { useRef, useState, useCallback, useEffect } from "react";
 import { useTranslations } from "next-intl";
+import { nanoid } from "nanoid";
 import { Upload, X, FileIcon, Loader2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import {
@@ -49,7 +50,7 @@ export function FileUploadDialog({ open, onOpenChange, onComplete, maxFileSizeBy
         return true;
       })
       .map((file) => ({
-        id: `${file.name}-${file.size}-${file.lastModified}-${Math.random().toString(36).slice(2)}`,
+        id: nanoid(),
         file,
         status: "pending" as const,
       }));
@@ -86,9 +87,11 @@ export function FileUploadDialog({ open, onOpenChange, onComplete, maxFileSizeBy
     for (let i = 0; i < queue.length; i++) {
       if (queue[i].status !== "pending") continue;
 
+      const itemId = queue[i].id;
+
       setQueue((prev) =>
-        prev.map((item, idx) =>
-          idx === i ? { ...item, status: "uploading" } : item
+        prev.map((item) =>
+          item.id === itemId ? { ...item, status: "uploading" } : item
         )
       );
 
@@ -107,16 +110,16 @@ export function FileUploadDialog({ open, onOpenChange, onComplete, maxFileSizeBy
         }
 
         setQueue((prev) =>
-          prev.map((item, idx) =>
-            idx === i ? { ...item, status: "done" } : item
+          prev.map((item) =>
+            item.id === itemId ? { ...item, status: "done" } : item
           )
         );
         successCount++;
       } catch (err) {
         const message = err instanceof Error ? err.message : "uploadFailed";
         setQueue((prev) =>
-          prev.map((item, idx) =>
-            idx === i ? { ...item, status: "error", error: message } : item
+          prev.map((item) =>
+            item.id === itemId ? { ...item, status: "error", error: message } : item
           )
         );
       }
