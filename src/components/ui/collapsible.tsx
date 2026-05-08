@@ -75,11 +75,13 @@ const CollapsibleContent = React.forwardRef<HTMLDivElement, CollapsibleContentPr
   ({ className, ...props }, ref) => {
     const { isOpen } = useCollapsible()
 
-    if (!isOpen) {
-      return null
-    }
-
-    return <div ref={ref} className={cn(className)} {...props} />
+    return (
+      <div
+        ref={ref}
+        className={cn(className, !isOpen && "hidden")}
+        {...props}
+      />
+    )
   }
 )
 CollapsibleContent.displayName = "CollapsibleContent"
