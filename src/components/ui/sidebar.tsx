@@ -29,13 +29,6 @@ import { PanelLeftIcon } from "lucide-react"
 const SIDEBAR_COOKIE_NAME = "sidebar_state"
 const SIDEBAR_COOKIE_MAX_AGE = 60 * 60 * 24 * 7
 const SIDEBAR_KEYBOARD_SHORTCUT = "b"
-const SIDEBAR_SKELETON_WIDTH_CLASSES = [
-  "max-w-[50%]",
-  "max-w-[60%]",
-  "max-w-[70%]",
-  "max-w-[80%]",
-  "max-w-[90%]",
-] as const
 
 type SidebarContextProps = {
   state: "expanded" | "collapsed"
@@ -605,12 +598,7 @@ function SidebarMenuSkeleton({
 }: React.ComponentProps<"div"> & {
   showIcon?: boolean
 }) {
-  // Random width between 50 to 90%.
-  const [widthClass] = React.useState(() => {
-    return SIDEBAR_SKELETON_WIDTH_CLASSES[
-      Math.floor(Math.random() * SIDEBAR_SKELETON_WIDTH_CLASSES.length)
-    ]
-  })
+  const widthClass = "max-w-[70%]"
 
   return (
     <div
