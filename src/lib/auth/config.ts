@@ -317,6 +317,9 @@ export const authConfig: NextAuthConfig = {
     }),
   ],
   trustHost: shouldTrustAuthHost(),
+  // NOTE: maxAge is evaluated once at module load time. Changes to the
+  // sessionMaxAgeSeconds system setting require a server restart to take
+  // effect because NextAuth captures this value during config initialization.
   session: { strategy: "jwt", maxAge: getSessionMaxAgeSeconds() },
   pages: {
     signIn: "/login",
