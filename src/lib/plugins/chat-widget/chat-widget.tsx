@@ -255,6 +255,7 @@ export default function ChatWidget() {
         });
       }
     } finally {
+      reader.releaseLock();
       setIsStreaming(false);
       abortControllerRef.current = null;
     }
