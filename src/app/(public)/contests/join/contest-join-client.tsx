@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { useTranslations } from "next-intl";
 import { toast } from "sonner";
@@ -25,9 +25,21 @@ export function ContestJoinClient() {
       window.history.replaceState({}, "", url.toString());
     }
   }, [searchParams]);
+
+  // Cleanup shake timer on unmount
+  useEffect(() => {
+    return () => {
+      if (shakeTimerRef.current) {
+        clearTimeout(shakeTimerRef.current);
+        shakeTimerRef.current = null;
+      }
+    };
+  }, []);
+
   const [isLoading, setIsLoading] = useState(false);
   const [success, setSuccess] = useState(false);
   const [shaking, setShaking] = useState(false);
+  const shakeTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   async function handleJoin(submitCode?: string) {
     const codeToUse = submitCode ?? code;
@@ -65,7 +77,7 @@ export function ContestJoinClient() {
       router.push(`/contests/${payload.data.assignmentId}`);
     } catch {
       setShaking(true);
-      setTimeout(() => setShaking(false), 600);
+      shakeTimerRef.current = setTimeout(() => setShaking(false), 600);
       toast.error(t("joinFailed"));
     } finally {
       setIsLoading(false);
