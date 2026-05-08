@@ -66,11 +66,13 @@ export default function RoleDeleteDialog({
 
   return (
     <Dialog open={open} onOpenChange={setOpen}>
-      <DialogTrigger>
-        <Button variant="ghost" size="sm" className="text-destructive hover:text-destructive">
-          <Trash2 className="size-4" />
-        </Button>
-      </DialogTrigger>
+      <DialogTrigger
+        render={
+          <Button variant="ghost" size="sm" className="text-destructive hover:text-destructive" aria-label={t("deleteRole")}>
+            <Trash2 className="size-4" />
+          </Button>
+        }
+      />
       <DialogContent>
         <DialogHeader>
           <DialogTitle>{t("deleteConfirmTitle")}</DialogTitle>

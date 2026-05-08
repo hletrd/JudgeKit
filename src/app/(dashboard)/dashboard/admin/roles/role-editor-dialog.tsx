@@ -116,18 +116,20 @@ export default function RoleEditorDialog({ mode, role, superAdminLevel = 4 }: Ro
 
   return (
     <Dialog open={open} onOpenChange={(v) => { setOpen(v); if (v) resetForm(); }}>
-      <DialogTrigger>
-        {mode === "create" ? (
-          <Button>
-            <Plus className="size-4 mr-2" />
-            {t("createRole")}
-          </Button>
-        ) : (
-          <Button variant="ghost" size="sm">
-            <Pencil className="size-4" />
-          </Button>
-        )}
-      </DialogTrigger>
+      <DialogTrigger
+        render={
+          mode === "create" ? (
+            <Button>
+              <Plus className="size-4 mr-2" />
+              {t("createRole")}
+            </Button>
+          ) : (
+            <Button variant="ghost" size="sm" aria-label={t("editRole")}>
+              <Pencil className="size-4" />
+            </Button>
+          )
+        }
+      />
       <DialogContent className="max-w-4xl max-h-[85vh] overflow-y-auto overflow-x-hidden">
         <DialogHeader>
           <DialogTitle>{mode === "create" ? t("createRole") : t("editRole")}</DialogTitle>
