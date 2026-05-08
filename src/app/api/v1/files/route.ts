@@ -162,7 +162,6 @@ export const GET = createApiHandler({
       .select({
         id: files.id,
         originalName: files.originalName,
-        storedName: files.storedName,
         mimeType: files.mimeType,
         sizeBytes: files.sizeBytes,
         category: files.category,
