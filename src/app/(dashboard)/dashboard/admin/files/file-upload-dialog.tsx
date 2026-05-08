@@ -79,6 +79,13 @@ export function FileUploadDialog({ open, onOpenChange, onComplete, maxFileSizeBy
     }
   }, [addFiles]);
 
+  const handleDropzoneKeyDown = useCallback((e: React.KeyboardEvent) => {
+    if (e.key === "Enter" || e.key === " ") {
+      e.preventDefault();
+      fileInputRef.current?.click();
+    }
+  }, []);
+
   async function handleUpload() {
     if (queue.length === 0) return;
     setIsUploading(true);
@@ -169,6 +176,9 @@ export function FileUploadDialog({ open, onOpenChange, onComplete, maxFileSizeBy
         </DialogHeader>
 
         <div
+          role="button"
+          tabIndex={0}
+          aria-label={t("dropzoneHint")}
           className={`flex min-h-[150px] cursor-pointer flex-col items-center justify-center rounded-lg border-2 border-dashed p-6 transition-colors ${
             isDragging
               ? "border-primary bg-primary/5"
@@ -178,6 +188,7 @@ export function FileUploadDialog({ open, onOpenChange, onComplete, maxFileSizeBy
           onDragLeave={handleDragLeave}
           onDrop={handleDrop}
           onClick={() => fileInputRef.current?.click()}
+          onKeyDown={handleDropzoneKeyDown}
         >
           <Upload className="mb-2 size-8 text-muted-foreground" />
           <p className="text-sm text-muted-foreground">
