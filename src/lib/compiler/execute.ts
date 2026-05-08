@@ -53,8 +53,12 @@ const WORKSPACE_BASE = process.env.COMPILER_WORKSPACE_DIR || tmpdir();
  * Local fallback is disabled by default whenever a runner URL is configured.
  * Set ENABLE_COMPILER_LOCAL_FALLBACK=1 to opt back in for development.
  */
+// Normalize env vars: treat empty string as missing.
 const COMPILER_RUNNER_URL = process.env.COMPILER_RUNNER_URL || "";
 const RUNNER_AUTH_TOKEN = process.env.RUNNER_AUTH_TOKEN || "";
+// Explicit opt-in to disable runner auth (e.g., for local dev with no auth sidecar).
+const RUNNER_AUTH_DISABLED = process.env.RUNNER_AUTH_DISABLED === "1";
+
 if (!RUNNER_AUTH_TOKEN && COMPILER_RUNNER_URL && process.env.NODE_ENV === "production") {
   throw new Error(
     "RUNNER_AUTH_TOKEN must be set in production when COMPILER_RUNNER_URL is configured. " +
@@ -64,14 +68,15 @@ if (!RUNNER_AUTH_TOKEN && COMPILER_RUNNER_URL && process.env.NODE_ENV === "produ
 if (!RUNNER_AUTH_TOKEN && !COMPILER_RUNNER_URL && process.env.NODE_ENV === "production") {
   logger.debug("RUNNER_AUTH_TOKEN is not set — compiler runner auth disabled (no COMPILER_RUNNER_URL configured)");
 }
-if (COMPILER_RUNNER_URL && !RUNNER_AUTH_TOKEN) {
+if (COMPILER_RUNNER_URL && !RUNNER_AUTH_TOKEN && !RUNNER_AUTH_DISABLED) {
   logger.warn(
     "[compiler] COMPILER_RUNNER_URL is set but RUNNER_AUTH_TOKEN is missing — " +
-    "runner requests will be unauthenticated. Set RUNNER_AUTH_TOKEN to secure the connection."
+    "runner requests will be unauthenticated. Set RUNNER_AUTH_TOKEN to secure the connection, " +
+    "or set RUNNER_AUTH_DISABLED=1 to explicitly opt out of runner authentication.",
   );
 }
 const COMPILER_RUNNER_CONFIG_ERROR =
-  COMPILER_RUNNER_URL && !RUNNER_AUTH_TOKEN
+  COMPILER_RUNNER_URL && !RUNNER_AUTH_TOKEN && !RUNNER_AUTH_DISABLED
     ? "COMPILER_RUNNER_URL is set but RUNNER_AUTH_TOKEN is missing"
     : null;
 const LEGACY_DISABLE_LOCAL_FALLBACK = /^(1|true|yes|on)$/i.test(
@@ -772,21 +777,33 @@ export async function executeCompilerRun(
  */
 export async function cleanupOrphanedContainers(): Promise<number> {
   try {
-    // Query all compiler containers regardless of status
+    // Query all compiler containers regardless of status.
+    // Use --format '{{json .}}' for robust parsing instead of tab-delimited
+    // output that breaks when fields contain tabs or Docker changes formatting.
     const { stdout } = await exec("docker", [
       "ps",
       "-a",
       "--filter",
       "name=compiler-",
       "--format",
-      "{{.Names}}\t{{.Status}}\t{{.CreatedAt}}",
+      "{{json .}}",
     ], { timeout: 10_000 });
 
     const lines = stdout.trim().split("\n").filter(Boolean);
     let cleaned = 0;
 
     for (const line of lines) {
-      const [container, status, createdAtStr] = line.split("\t");
+      let parsed: { Names?: string; Status?: string; CreatedAt?: string } | null = null;
+      try {
+        parsed = JSON.parse(line);
+      } catch {
+        logger.debug({ line }, "[compiler] Skipping unparseable line in docker ps output");
+        continue;
+      }
+
+      const container = parsed?.Names;
+      const status = parsed?.Status;
+      const createdAtStr = parsed?.CreatedAt;
       if (!container || !status) continue;
 
       const statusLower = status.toLowerCase();
@@ -798,13 +815,11 @@ export async function cleanupOrphanedContainers(): Promise<number> {
         statusLower.startsWith("dead");
 
       // For running containers, check if they've been running too long.
-      // Prefer the CreatedAt from `docker ps` output (already in the format
-      // string) to avoid a redundant `docker inspect` call per container.
       let staleRunning = false;
       if (!shouldClean && statusLower.startsWith("up")) {
         let createdAt: number | null = null;
 
-        // Parse CreatedAt from docker ps output (format: "2026-04-19 12:34:56 +0000 UTC")
+        // Parse CreatedAt from docker ps JSON output
         if (createdAtStr) {
           const parsed = Date.parse(createdAtStr.trim());
           if (!Number.isNaN(parsed)) {
