@@ -121,15 +121,19 @@ export function SubmissionDetailClient(props: SubmissionDetailClientProps) {
 
     let cancelled = false;
     let timer: ReturnType<typeof setTimeout> | null = null;
+    let controller: AbortController | null = null;
 
     const pollQueueStatus = async () => {
       if (document.visibilityState === "hidden") {
         return;
       }
 
+      controller = new AbortController();
+
       try {
         const response = await apiFetch(`/api/v1/submissions/${submission.id}/queue-status`, {
           cache: "no-store",
+          signal: controller.signal,
         });
         if (!response.ok) {
           return;
@@ -140,7 +144,10 @@ export function SubmissionDetailClient(props: SubmissionDetailClientProps) {
           setQueuePosition(typeof payload.data?.queuePosition === "number" ? payload.data.queuePosition : null);
           setGradingTestCase(typeof payload.data?.gradingTestCase === "string" ? payload.data.gradingTestCase : null);
         }
-      } catch {
+      } catch (err) {
+        if (err instanceof Error && err.name === "AbortError") {
+          return;
+        }
         // Best-effort only; submission status polling still continues.
       }
     };
@@ -169,6 +176,7 @@ export function SubmissionDetailClient(props: SubmissionDetailClientProps) {
     return () => {
       cancelled = true;
       if (timer) clearTimeout(timer);
+      if (controller) controller.abort();
       document.removeEventListener("visibilitychange", handleVisibilityChange);
     };
   }, [isLive, submission.id]);
