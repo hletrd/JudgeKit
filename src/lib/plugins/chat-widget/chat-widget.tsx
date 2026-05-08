@@ -192,6 +192,7 @@ export default function ChatWidget() {
     // Only send the last 20 messages to the API to limit token usage
     const recentMessages = newMessages.slice(-20);
 
+    let reader: ReadableStreamDefaultReader<Uint8Array> | null = null;
     try {
       const controller = new AbortController();
       abortControllerRef.current = controller;
@@ -230,7 +231,7 @@ export default function ChatWidget() {
         return;
       }
 
-      const reader = response.body.getReader();
+      reader = response.body.getReader();
       const decoder = new TextDecoder();
       while (true) {
         const { done, value } = await reader.read();
@@ -255,7 +256,7 @@ export default function ChatWidget() {
         });
       }
     } finally {
-      reader.releaseLock();
+      if (reader) reader.releaseLock();
       setIsStreaming(false);
       abortControllerRef.current = null;
     }
