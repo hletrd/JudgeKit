@@ -13,13 +13,13 @@
 - **File:** `src/components/layout/public-footer.tsx` (lines 32-36, 47-55)
 - **Task:** Deduplicate the `allLinks` array by URL before rendering, so hardcoded `/languages` and `/privacy` links do not collide with CMS-provided links that have the same URL.
 - **Approach:** Filter the CMS `links` array to exclude entries whose `url` matches `/languages` or `/privacy` before concatenating with the hardcoded links. This preserves CMS custom labels for other URLs while ensuring unique keys.
-- **Status:** OPEN
+- **Status:** DONE — deduplication logic committed in `df8cbd6f`
 
 ### 2. C6-CR-2 — Fix chat widget index-based React key
 - **File:** `src/lib/plugins/chat-widget/chat-widget.tsx` (line 334)
 - **Task:** Replace `key={i}` with a stable message identifier.
-- **Approach:** Check the `Message` type for a stable ID field. If `msg.id` exists, use it. Otherwise use `msg.role + "-" + msg.timestamp` or similar composite key. If neither exists, generate a client-side nanoid when messages are created.
-- **Status:** OPEN
+- **Approach:** Added `id: string` to the `Message` interface and generate `nanoid()` IDs when creating user and assistant messages. Updated render to use `key={msg.id}`.
+- **Status:** DONE — committed in `11090b78`
 
 ---
 
