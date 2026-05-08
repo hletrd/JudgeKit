@@ -1,7 +1,6 @@
 "use client";
 
 import { useLocale, useTranslations } from "next-intl";
-import { usePathname, useSearchParams } from "next/navigation";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -13,8 +12,7 @@ import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
 import { cn } from "@/lib/utils";
 import { Languages } from "lucide-react";
-import { DEFAULT_LOCALE, LOCALE_COOKIE_NAME, LOCALE_QUERY_PARAM } from "@/lib/i18n/constants";
-import { forceNavigate } from "@/lib/navigation/client";
+import { LOCALE_COOKIE_NAME } from "@/lib/i18n/constants";
 import { useSyncExternalStore } from "react";
 
 function subscribeToHydration() {
@@ -23,8 +21,6 @@ function subscribeToHydration() {
 
 export function LocaleSwitcher({ className }: { className?: string }) {
   const t = useTranslations("common");
-  const pathname = usePathname();
-  const searchParams = useSearchParams();
   const currentLocale = useLocale();
   const mounted = useSyncExternalStore(subscribeToHydration, () => true, () => false);
 
@@ -45,16 +41,7 @@ export function LocaleSwitcher({ className }: { className?: string }) {
     }
 
     document.cookie = `${LOCALE_COOKIE_NAME}=${locale}; Path=/; SameSite=Lax; ${location.protocol === "https:" ? "Secure; " : ""}Max-Age=${60 * 60 * 24 * 365}`;
-    const params = new URLSearchParams(searchParams.toString());
-
-    if (locale === DEFAULT_LOCALE) {
-      params.delete(LOCALE_QUERY_PARAM);
-    } else {
-      params.set(LOCALE_QUERY_PARAM, locale);
-    }
-
-    const nextUrl = params.size > 0 ? `${pathname}?${params.toString()}` : pathname;
-    forceNavigate(nextUrl);
+    window.location.reload();
   }
 
   return (
