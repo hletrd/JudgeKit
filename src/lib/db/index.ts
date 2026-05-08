@@ -57,9 +57,12 @@ export type TransactionClient = Parameters<Parameters<DbType["transaction"]>[0]>
 /**
  * Run a function inside a real PostgreSQL transaction.
  *
- * During build/type-check phases there is no live database connection, so the
- * callback runs against the build-phase drizzle instance without opening a
- * transaction.
+ * WARNING: During build/type-check phases (`NEXT_PHASE === "phase-production-build"`),
+ * there is no live database connection. The callback runs against the build-phase
+ * drizzle instance WITHOUT opening a transaction. Callers that require atomicity
+ * (e.g., rate-limit checks with SELECT FOR UPDATE, advisory locks, or multi-table
+ * writes) must not rely on transaction semantics during build. This fallback exists
+ * only to allow type-checking of code paths that call `execTransaction`.
  */
 export function execTransaction<T>(
   fn: (tx: TransactionClient) => Promise<T> | T
