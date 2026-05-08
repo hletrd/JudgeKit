@@ -1,51 +1,55 @@
-# Code Review — Cycle 20
+# Code Review — Cycle 21
 
 **Date:** 2026-05-09
-**HEAD:** e9ff5e04
+**HEAD:** 17ae0bda
 **Agent:** code-reviewer (manual)
 
 ---
 
-## C20-1: [MEDIUM] Unsafe type assertion on zod error message in public signup
+## C21-1: [MEDIUM] Import timestamp column detection uses wrong Drizzle dataType string
 
 - **Severity:** MEDIUM
 - **Confidence:** HIGH
-- **File:** `src/lib/actions/public-signup.ts:73`
-- **Summary:** The code casts `parsed.error.issues[0]?.message` directly to `PublicSignupResult["error"]` using a type assertion. This assumes every zod validation error message string exactly matches one of the 17 union literals in `PublicSignupResult["error"]`. If the `publicSignupSchema` is ever extended with a new validation rule (e.g., a custom refinement with a message like "passwordTooCommon"), the cast produces a runtime value that is not in the expected union. The client UI may not have a translation for this unexpected string, causing a broken user-facing error message.
-- **Concrete failure:** Add a `z.refine()` to `publicSignupSchema` with message "passwordTooCommon". A user submits an invalid signup form. The server returns `{ error: "passwordTooCommon" }`. The client calls `t("signup.error.passwordTooCommon")` which does not exist in messages/en.json or messages/ko.json, showing the raw key or falling back to a generic message.
-- **Fix:** Replace the cast with an explicit mapping function that translates zod issue paths/codes to known error types, with a safe fallback to `"createUserFailed"`.
+- **File:** `src/lib/db/import.ts:33`
+- **Category:** data_integrity
+- **Summary:** `buildImportColumnSets` checks `dataType === "date"` to detect timestamp columns, but the PostgreSQL schema defines timestamp columns using Drizzle's `timestamp()` builder, which reports `dataType === "timestamp"`. There are zero `date()` columns in the entire schema. Consequently, `TIMESTAMP_COLUMNS` is always empty, and the `convertValue` function never converts ISO string timestamps back to `Date` objects during import. Drizzle may reject string values for timestamp columns, or PostgreSQL may accept them with unexpected timezone behavior, corrupting temporal data during restore operations.
+- **Concrete failure:** An operator exports the database, then attempts to import it. All `created_at`, `updated_at`, `submitted_at`, etc. values remain as ISO strings instead of `Date` objects. Depending on the PostgreSQL driver version, this may cause type errors during batch insert or silently store strings in timestamp-with-timezone columns, breaking temporal queries and comparisons.
+- **Fix:** Change `dataType === "date"` to `dataType === "timestamp"` in `buildImportColumnSets`.
 
-## C20-2: [LOW] Silent JSON parse failure loses debugging information
+## C21-2: [MEDIUM] Unvalidated plugin config cast in auto-review background job
+
+- **Severity:** MEDIUM
+- **Confidence:** HIGH
+- **File:** `src/lib/judge/auto-review.ts:92`
+- **Category:** input_validation
+- **Summary:** `auto-review.ts` casts `pluginState.config` to a fully-typed object without runtime validation. Cycle 20 fixed the same pattern in `chat/route.ts` (C20-5 / S20-2) by adding a zod schema, but `auto-review.ts` was missed. If the plugin config stored in the DB is corrupted or partially migrated, fields like `provider` could be undefined, causing the `switch` to fall through to the default case and potentially passing an undefined `apiKey` to the provider — which is caught by the `if (!apiKey) return` guard, but represents a defense-in-depth gap.
+- **Concrete failure:** A schema migration partially corrupts the chat-widget config JSONB. The next accepted submission triggers `triggerAutoCodeReview`, which casts the corrupted config. `config.provider` is undefined, so the switch falls to default (OpenAI). `config.openaiApiKey` is also undefined, so the guard catches it and silently skips the review. The user never sees an AI review, and the only signal is a debug log.
+- **Fix:** Share the `pluginConfigSchema` from `chat/route.ts` (or extract it to a shared module) and validate `pluginState.config` before use in `auto-review.ts`.
+
+## C21-3: [LOW] use-mobile hook uses inconsistent width-detection methods
+
+- **Severity:** LOW
+- **Confidence:** MEDIUM
+- **File:** `src/hooks/use-mobile.ts:9-15`
+- **Category:** ux_reliability
+- **Summary:** The hook initializes `isMobile` using `window.innerWidth < MOBILE_BREAKPOINT` but listens to a media query for changes. These two methods can disagree in edge cases (browser zoom, pixel density variations, or when the media query uses different logic than `innerWidth`). The more robust pattern is to use `mql.matches` consistently.
+- **Fix:** Use `mql.matches` for the initial state instead of `window.innerWidth`.
+
+## C21-4: [LOW] use-keyboard-shortcuts blocks ALL modifier-key combinations
 
 - **Severity:** LOW
 - **Confidence:** HIGH
-- **File:** `src/app/api/v1/recruiting/validate/route.ts:23`
-- **Summary:** `await req.json().catch(() => null)` silently swallows JSON parse errors (truncated body, invalid UTF-8, malformed syntax). The subsequent `safeParse(null)` fails and returns `"invalidToken"`, which conflates three distinct failure modes: (1) malformed JSON, (2) missing body, and (3) invalid token structure. API consumers cannot distinguish between these.
-- **Concrete failure:** A recruiting page frontend bug sends a truncated POST body due to a network interruption. The backend returns `"invalidToken"`. Developers waste time investigating token generation logic instead of realizing the request body was truncated.
-- **Fix:** Separate JSON parsing from schema validation. Return `"invalidJson"` or `"invalidRequestBody"` for parse failures, and `"invalidToken"` only for schema validation failures.
-
-## C20-3: [LOW] AbortSignal.timeout may receive NaN if compiler time limit is invalid
-
-- **Severity:** LOW
-- **Confidence:** MEDIUM
-- **File:** `src/lib/compiler/execute.ts:545`
-- **Summary:** `AbortSignal.timeout(Math.max(timeLimitMs * 4, 120_000))` constructs a timeout signal. If `timeLimitMs` is `NaN` (e.g., from a corrupted system setting or unexpected DB value), `Math.max(NaN, 120_000)` returns `NaN`. `AbortSignal.timeout(NaN)` behavior is implementation-defined and may throw a `RangeError` or behave unexpectedly.
-- **Concrete failure:** An admin sets `compilerTimeLimitMs` to an invalid value (e.g., via direct DB manipulation). A student clicks "Run" in the compiler. The request crashes with an unhandled `RangeError` instead of falling back to local execution.
-- **Fix:** Validate `timeLimitMs` with `Number.isFinite(timeLimitMs) && timeLimitMs > 0` before constructing the signal, with a sensible fallback (e.g., 5000ms).
-
-## C20-4: [LOW] Unhandled stream reader errors in backup export
-
-- **Severity:** LOW
-- **Confidence:** MEDIUM
-- **File:** `src/lib/db/export-with-files.ts:133-138`
-- **Summary:** The `while(true)` loop reading from `dbReader.read()` has no try/catch around the read itself. If the underlying `streamDatabaseExport` ReadableStream encounters an internal error (e.g., DB connection drop mid-transaction), `dbReader.read()` throws. The exception propagates out of `streamBackupWithFiles`, causing the backup route to return a generic 500 instead of a more specific error.
-- **Fix:** Wrap the reader loop in try/catch and re-throw with a descriptive message, or handle gracefully by aborting the ZIP generation.
+- **File:** `src/hooks/use-keyboard-shortcuts.ts:30`
+- **Category:** ux_reliability
+- **Summary:** The `handleKeyDown` handler returns early if ANY modifier key is pressed (`ctrlKey`, `metaKey`, or `altKey`). The comment says "Ignore when modifier keys are pressed (except for our own shortcuts)", but the code has no exception — it unconditionally blocks all shortcuts when modifiers are held. This means shortcuts like "Ctrl+S" or "Cmd+Enter" can never be registered through this hook, even though callers might expect them to work.
+- **Fix:** Remove the blanket modifier check, or change the API to allow callers to specify modifier combinations explicitly.
 
 ---
 
 ## Deferred / No Findings
 
-- All prior cycle fixes (RAF cleanup, timer leaks, AbortController separation, stable React keys) are holding correctly.
-- No new logic bugs found in contest replay, recruiting invitations, or file upload components.
-- No SQL injection risks (Drizzle ORM parameterized queries throughout).
+- No new SQL injection risks (all queries use Drizzle parameterized queries).
 - No new race conditions in SSE connection tracking beyond those already documented.
+- The `apiFetchJson` `as T` cast is a known architectural pattern documented in the file; callers are expected to validate at the call site.
+- The `db/export-with-files.ts` reader lock release in the success path is handled automatically by the stream reaching `done`.
+- All prior cycle fixes (RAF cleanup, timer leaks, AbortController separation, stable React keys, zod error mapping) remain resolved.

@@ -1,34 +1,26 @@
-# Test Engineering Review — Cycle 20
+# Test Engineering Review — Cycle 21
 
 **Date:** 2026-05-09
-**HEAD:** e9ff5e04
+**HEAD:** 17ae0bda
 **Agent:** test-engineer (manual)
 
 ---
 
-## T20-1: [LOW] Missing test coverage for zod error message mismatch in public signup
+## T21-1: [LOW] Missing test for timestamp column conversion during database import
 
 - **Severity:** LOW
 - **Confidence:** HIGH
-- **File:** `src/lib/actions/public-signup.ts:73`
-- **Summary:** The `registerPublicUser` function casts zod error messages directly to `PublicSignupResult["error"]`. There are no tests verifying that unexpected zod messages (e.g., from a future schema change) are handled gracefully. The existing tests likely only cover the known validation paths.
-- **Fix:** Add a test that mocks `publicSignupSchema.safeParse` returning an unknown error message, and assert that the function falls back to `"createUserFailed"` instead of propagating the unexpected string.
+- **File:** `src/lib/db/import.ts:33`
+- **Summary:** There is no test verifying that timestamp columns (e.g., `createdAt`, `updatedAt`) are correctly converted from ISO strings back to `Date` objects during import. The bug in `buildImportColumnSets` (checking `"date"` instead of `"timestamp"`) would not be caught by existing tests.
+- **Fix:** Add a unit test that creates a mock export with ISO timestamp strings, runs `importDatabase`, and asserts that the inserted values are `Date` instances (or that Drizzle receives `Date` objects).
 
-## T20-2: [LOW] Missing test for malformed JSON body in recruiting validate endpoint
-
-- **Severity:** LOW
-- **Confidence:** HIGH
-- **File:** `src/app/api/v1/recruiting/validate/route.ts:23`
-- **Summary:** The endpoint silently swallows JSON parse errors. There is likely no test for a request with a truncated or invalid JSON body, since the code path treats all parse failures identically.
-- **Fix:** Add a test sending `Content-Type: application/json` with body `"not json"` and assert a distinct error response (after fixing C20-2).
-
-## T20-3: [LOW] Missing test for invalid compiler time limit in executeCompilerRun
+## T21-2: [LOW] Missing test for plugin config validation in auto-review
 
 - **Severity:** LOW
 - **Confidence:** MEDIUM
-- **File:** `src/lib/compiler/execute.ts:528-545`
-- **Summary:** No tests verify the behavior when `compilerTimeLimitMs` is `NaN`, negative, or Infinity. The `AbortSignal.timeout(NaN)` path is untested.
-- **Fix:** Add tests mocking `getConfiguredSettings()` with invalid `compilerTimeLimitMs` values and assert graceful fallback.
+- **File:** `src/lib/judge/auto-review.ts:92`
+- **Summary:** There is no test for the auto-review path when `pluginState.config` is malformed or missing required fields. The existing tests likely mock a well-formed config.
+- **Fix:** Add a test that mocks `getPluginState` returning a corrupted config (e.g., missing `provider` or `openaiApiKey`) and assert that `triggerAutoCodeReview` returns early without throwing.
 
 ---
 

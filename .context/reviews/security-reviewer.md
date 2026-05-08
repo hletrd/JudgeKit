@@ -1,38 +1,37 @@
-# Security Review — Cycle 20
+# Security Review — Cycle 21
 
 **Date:** 2026-05-09
-**HEAD:** e9ff5e04
+**HEAD:** 17ae0bda
 **Agent:** security-reviewer (manual)
 
 ---
 
-## S20-1: [LOW] JSON parse swallowing in public recruiting endpoint
+## S21-1: [MEDIUM] Unvalidated plugin config cast in auto-review background job
 
-- **Severity:** LOW
+- **Severity:** MEDIUM
 - **Confidence:** HIGH
-- **File:** `src/app/api/v1/recruiting/validate/route.ts:23`
+- **File:** `src/lib/judge/auto-review.ts:92`
 - **Category:** input_validation
-- **Summary:** The endpoint uses `await req.json().catch(() => null)` which silently discards JSON parse errors. While the downstream `safeParse(null)` prevents further processing, the error-swallowing pattern hides malformed request bodies from logs and makes security monitoring harder (e.g., distinguishing between a scanner sending garbage and a legitimate user with a bad token).
-- **Exploit scenario:** An attacker probing the API with malformed JSON bodies receives the same `"invalidToken"` response as a legitimate user with an expired token. This makes it harder to detect and distinguish probing behavior in logs.
-- **Fix:** Log JSON parse failures at `warn` level and return a distinct error code (`"invalidJson"`).
+- **Summary:** Same as C21-2. The auto-review background job casts `pluginState.config` without runtime validation. While the downstream `if (!apiKey) return` guard prevents the null/undefined key from being used, the cast suppresses TypeScript safety and could mask config corruption. An attacker with write access to the `plugins` table (e.g., via a compromised admin account or SQL injection in another endpoint) could inject a malformed config that causes unexpected behavior in the auto-review pipeline.
+- **Exploit scenario:** Requires admin-level DB access or a schema migration bug. Not directly exploitable by unauthenticated users, but represents a defense-in-depth gap. The fix from C20-5 (`pluginConfigSchema`) should be applied here as well.
+- **Fix:** Reuse or extract the `pluginConfigSchema` from `chat/route.ts` and validate before casting.
 
-## S20-2: [LOW] Missing zod validation on chat-widget plugin config shape
+## S21-2: [LOW] test-connection route uses loose config cast
 
 - **Severity:** LOW
 - **Confidence:** MEDIUM
-- **File:** `src/app/api/v1/plugins/chat-widget/chat/route.ts:196-209`
+- **File:** `src/app/api/v1/plugins/chat-widget/test-connection/route.ts:45`
 - **Category:** input_validation
-- **Summary:** The plugin config is cast with `as { provider: string; openaiApiKey: string; ... }` without runtime validation. If the config object stored in the DB is corrupted or partially migrated, fields like `provider` could be undefined, causing a runtime error when `config.provider` is checked against `VALID_PROVIDERS`.
-- **Exploit scenario:** Requires admin-level DB access or a schema migration bug to corrupt the config. Not directly exploitable by unauthenticated users, but represents a defense-in-depth gap.
-- **Fix:** Add a zod schema to validate `pluginState.config` before use.
+- **Summary:** The test-connection route casts `pluginState.config as Record<string, unknown>`. This is less dangerous than the `auto-review.ts` cast because it uses a broader type, but it still bypasses runtime validation. The downstream code accesses `config.openaiApiKey` etc. and treats them as potentially undefined, so the impact is limited.
+- **Fix:** Validate with the shared `pluginConfigSchema` before accessing specific fields.
 
 ---
 
 ## Deferred / No Findings
 
 - No SQL injection vulnerabilities (all queries use Drizzle parameterized queries).
-- No XSS vulnerabilities (React auto-escapes, no dangerousSetInnerHTML in reviewed code).
+- No XSS vulnerabilities (React auto-escapes, `dangerouslySetInnerHTML` is only used with `sanitizeHtml` in `problem-description.tsx` and with escaped JSON in `json-ld.tsx`).
 - No authentication bypass paths found.
 - No hardcoded secrets or API keys.
 - All CSP, CORS, and CSRF protections are correctly implemented.
-- The backup/restore path traversal checks (`storedName.includes("/") || storedName.includes("\\") || storedName.includes("..")`) are correct.
+- The backup/restore path traversal checks remain correct.
