@@ -144,7 +144,6 @@ export function CompilerClient({ languages, title, description, preferredLanguag
   const [isRunning, setIsRunning] = useState(false);
   const abortControllerRef = useRef<AbortController | null>(null);
   const resultRef = useRef<HTMLDivElement>(null);
-  const hydratedPreferenceRef = useRef(false);
 
   const activeTestCase = testCases.find((testCase) => testCase.id === activeTestCaseId) ?? testCases[0] ?? initialTestCaseRef.current;
   const activeTestCaseIndex = testCases.findIndex((testCase) => testCase.id === activeTestCase.id);
@@ -159,14 +158,11 @@ export function CompilerClient({ languages, title, description, preferredLanguag
   }, []);
 
   useEffect(() => {
-    if (hydratedPreferenceRef.current) return;
-    hydratedPreferenceRef.current = true;
-
     const savedLanguage = (() => { try { return window.localStorage.getItem("compiler:language"); } catch { return null; } })();
     if (!savedLanguage || !languages.some((entry) => entry.language === savedLanguage)) {
       return;
     }
-    if (savedLanguage === language) {
+    if (savedLanguage === initialLanguage) {
       return;
     }
 
@@ -182,7 +178,8 @@ export function CompilerClient({ languages, title, description, preferredLanguag
         error: null,
       }))
     );
-  }, [initialLanguage, language, languages]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   // Persist language preference (best-effort — may fail in private browsing)
   useEffect(() => {
