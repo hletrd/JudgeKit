@@ -21,7 +21,13 @@ export async function POST(request: NextRequest) {
       return apiError("ipNotAllowed", 403);
     }
 
-    const parsed = deregisterSchema.safeParse(await request.json());
+    let raw: unknown;
+    try {
+      raw = await request.json();
+    } catch {
+      return apiError("invalidJson", 400);
+    }
+    const parsed = deregisterSchema.safeParse(raw);
     if (!parsed.success) {
       return apiError(parsed.error.issues[0]?.message ?? "invalidRequest", 400);
     }

@@ -153,6 +153,22 @@ describe("POST /api/v1/judge/deregister", () => {
     expect(response.status).toBe(400);
   });
 
+  it("returns 400 on malformed JSON body", async () => {
+    const response = await POST(
+      new NextRequest("http://localhost:3000/api/v1/judge/deregister", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: "Bearer valid-token",
+        },
+        body: "not-valid-json{",
+      })
+    );
+
+    expect(response.status).toBe(400);
+    await expect(response.json()).resolves.toEqual({ error: "invalidJson" });
+  });
+
   it("returns 500 on unexpected error", async () => {
     isJudgeAuthorizedForWorkerMock.mockRejectedValue(new Error("Unexpected"));
 
