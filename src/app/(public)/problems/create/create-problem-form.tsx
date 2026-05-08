@@ -159,8 +159,8 @@ export default function CreateProblemForm({
   const imageInputRef = useRef<HTMLInputElement>(null);
   const [isUploadingImage, setIsUploadingImage] = useState(false);
 
-  const testCaseInputFileRefs = useRef<HTMLInputElement[]>([]);
-  const testCaseOutputFileRefs = useRef<HTMLInputElement[]>([]);
+  const testCaseInputFileRefs = useRef<(HTMLInputElement | null)[]>([]);
+  const testCaseOutputFileRefs = useRef<(HTMLInputElement | null)[]>([]);
   const zipImportRef = useRef<HTMLInputElement>(null);
 
   const handleZipImport = useCallback(async (event: React.ChangeEvent<HTMLInputElement>) => {
@@ -367,6 +367,8 @@ export default function CreateProblemForm({
 
   function removeTestCase(index: number) {
     setTestCases((current) => current.filter((_, currentIndex) => currentIndex !== index));
+    testCaseInputFileRefs.current.splice(index, 1);
+    testCaseOutputFileRefs.current.splice(index, 1);
   }
 
   async function handleTestCaseFileChange(
@@ -872,7 +874,7 @@ export default function CreateProblemForm({
                       <div>
                         <input
                           className="sr-only"
-                          ref={(el) => { testCaseInputFileRefs.current[index] = el!; }}
+                          ref={(el) => { testCaseInputFileRefs.current[index] = el; }}
                           onChange={(event) => {
                             void handleTestCaseFileChange(index, "input", event);
                           }}
@@ -913,7 +915,7 @@ export default function CreateProblemForm({
                       <div>
                         <input
                           className="sr-only"
-                          ref={(el) => { testCaseOutputFileRefs.current[index] = el!; }}
+                          ref={(el) => { testCaseOutputFileRefs.current[index] = el; }}
                           onChange={(event) => {
                             void handleTestCaseFileChange(index, "expectedOutput", event);
                           }}
