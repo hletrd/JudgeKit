@@ -6,6 +6,7 @@ import { getTokenAuthenticatedAtSeconds } from "@/lib/auth/session-security";
 import { getActiveAuthUserById, getTokenUserId } from "@/lib/api/auth";
 import { getValidatedAuthSecret, getAuthSessionCookieNames } from "@/lib/security/env";
 import { recordAuditEvent, buildAuditRequestContext } from "@/lib/audit/events";
+import { logger } from "@/lib/logger";
 import { usesDeterministicPublicLocale } from "@/lib/public-route-seo";
 import {
   DEFAULT_LOCALE,
@@ -252,6 +253,18 @@ function createSecuredNextResponse(request: NextRequest) {
 }
 
 export async function proxy(request: NextRequest) {
+  try {
+    return await _proxy(request);
+  } catch (error) {
+    logger.error({ err: error, path: request.nextUrl.pathname }, "[proxy] Unhandled error in middleware");
+    if (request.nextUrl.pathname.startsWith("/api/v1")) {
+      return NextResponse.json({ error: "internalServerError" }, { status: 500 });
+    }
+    return NextResponse.json({ error: "internalServerError" }, { status: 500 });
+  }
+}
+
+async function _proxy(request: NextRequest) {
   const pathname = request.nextUrl.pathname;
   const token = await getToken({
     req: request,
