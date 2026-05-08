@@ -138,7 +138,6 @@ function buildExportHref(resourceType: ResourceFilter, search: string, actionTyp
 
   return `/api/v1/admin/audit-logs?${params.toString()}`;
 }
-
 function buildGroupMemberScopeFilter(groupIds: string[]) {
   if (groupIds.length === 0) {
     return sql`0`;
@@ -147,7 +146,7 @@ function buildGroupMemberScopeFilter(groupIds: string[]) {
   return or(
     ...groupIds.map(
       (groupId) =>
-        sql`${auditEvents.details} LIKE ${'%"groupId":"' + escapeLikePattern(groupId) + '"%'} ESCAPE '\\'`
+        sql`(${auditEvents.details}::jsonb)->>'groupId' = ${groupId}`
     )
   );
 }
@@ -296,9 +295,8 @@ export default async function AdminAuditLogsPage({
   if (dateTo) {
     const toDate = new Date(dateTo);
     if (!isNaN(toDate.getTime())) {
-      // Include the entire end day by advancing to the next day at midnight
       const endOfDay = new Date(toDate);
-      endOfDay.setDate(endOfDay.getDate() + 1);
+      endOfDay.setHours(23, 59, 59, 999);
       filters.push(lte(auditEvents.createdAt, endOfDay));
     }
   }
