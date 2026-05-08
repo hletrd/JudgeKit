@@ -27,10 +27,15 @@ None — both findings are actionable this cycle and are correctness/UI quality 
 
 ---
 
-## Gate requirements
+## Gate results
 
-- `npx eslint .` — must pass 0 errors, 0 warnings
-- `npx tsc --noEmit` — must pass
-- `npx next build` — must pass
-- `npx vitest run` — must pass (2338 tests)
-- `npx vitest run --config vitest.config.component.ts` — must pass (179 tests)
+- `npx eslint .` — PASSED (0 errors, 0 warnings)
+- `npx tsc --noEmit` — PASSED
+- `npx next build` — PASSED
+- `npx vitest run` — PASSED (2338 tests)
+- `npx vitest run --config vitest.config.component.ts` — PASSED (179 tests)
+
+## Deploy results
+
+- worv (test.worv.ai) — DEPLOYED (exit code 0, HTTP 200 verified)
+- algo (algo.xylolabs.com) — DEPLOYED (exit code 0, HTTP 200 verified)
