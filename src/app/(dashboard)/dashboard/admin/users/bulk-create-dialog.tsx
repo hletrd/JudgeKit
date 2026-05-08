@@ -344,7 +344,7 @@ export default function BulkCreateDialog() {
                       </TableHeader>
                       <TableBody>
                         {parsedRows.slice(0, 50).map((row, i) => (
-                          <TableRow key={i}>
+                          <TableRow key={`${row.username}-${row.name}-${i}`}>
                             <TableCell className="font-mono">{row.username}</TableCell>
                             <TableCell>{row.name}</TableCell>
                             <TableCell>{row.email || "-"}</TableCell>
