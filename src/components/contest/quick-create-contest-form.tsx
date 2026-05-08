@@ -150,7 +150,7 @@ export function QuickCreateContestForm({ problems }: { problems: Problem[] }) {
         <div className="space-y-3">
           <Label>{t("problems")}</Label>
           {selectedProblems.map((sp, i) => (
-            <div key={i} className="flex items-center gap-2">
+            <div key={sp.id} className="flex items-center gap-2">
               <Select value={sp.id} onValueChange={(v) => { if (v) updateProblemId(i, v); }}>
                 <SelectTrigger className="flex-1">
                   <SelectValue>
