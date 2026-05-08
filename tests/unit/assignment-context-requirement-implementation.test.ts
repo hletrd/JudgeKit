@@ -46,7 +46,7 @@ describe("assignment-context requirement implementation", () => {
     const adminNav = read("src/lib/navigation/admin-nav.ts");
 
     expect(publicNav).toContain('"groups.view_all"');
-    expect(publicNav).toContain('"problem_sets.view"');
+    expect(publicNav).toContain('"problem_sets.create"');
     expect(publicNav).toContain('capability: "system.settings"');
     expect(publicNav).not.toContain('role === "admin"');
     expect(publicNav).not.toContain('role === "super_admin"');

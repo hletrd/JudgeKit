@@ -91,7 +91,12 @@ describe("source-grep test inventory", () => {
     //     C1-AGG-2). The file already existed in the inventory but the
     //     readFileSync call now fires from the new describe block too. The
     //     net source-grep count increase is +2.
-    const DOCUMENTED_BASELINE = 128;
+    // Bumped 128 → 132 in cycle-1 RPF (2026-05-08):
+    //   - tests/unit/docker-cleanup-parsing.test.ts
+    //   - tests/unit/rate-limit-eviction-timer.test.ts
+    //   - tests/unit/server-actions-origin.test.ts
+    //   - tests/unit/proxy-error-handling.test.ts
+    const DOCUMENTED_BASELINE = 132;
     expect(sourceGrepFiles.length).toBe(DOCUMENTED_BASELINE);
   });
 

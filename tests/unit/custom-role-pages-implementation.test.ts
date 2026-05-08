@@ -86,7 +86,7 @@ describe("custom-role page/runtime implementation guards", () => {
     expect(publicNav).toContain('capability: "system.settings"');
     expect(publicNav).toContain('label: "admin"');
     expect(publicNav).toContain('"groups.view_all"');
-    expect(publicNav).toContain('"problem_sets.view"');
+    expect(publicNav).toContain('"problem_sets.create"');
     expect(publicNav).toContain("capabilities?: string[]");
 
     expect(problemsPage).toContain("resolveCapabilities");
