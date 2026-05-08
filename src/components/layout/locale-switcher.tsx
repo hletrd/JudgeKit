@@ -40,7 +40,12 @@ export function LocaleSwitcher({ className }: { className?: string }) {
       return;
     }
 
-    document.cookie = `${LOCALE_COOKIE_NAME}=${locale}; Path=/; SameSite=Lax; Secure; Max-Age=${60 * 60 * 24 * 365}`;
+    try {
+      document.cookie = `${LOCALE_COOKIE_NAME}=${locale}; Path=/; SameSite=Lax; Secure; Max-Age=${60 * 60 * 24 * 365}`;
+    } catch {
+      // Cookie may be blocked (sandboxed iframe, disabled cookies).
+      // Fall through to reload so server-side locale handling can take effect.
+    }
     window.location.reload();
   }
 
