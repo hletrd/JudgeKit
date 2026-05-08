@@ -1,4 +1,4 @@
-const DEFAULT_LOCALE = "en-US";
+const DEFAULT_LOCALE = "en";
 
 export const DEFAULT_TIME_ZONE = "Asia/Seoul";
 
