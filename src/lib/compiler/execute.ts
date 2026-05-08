@@ -313,7 +313,7 @@ function stopContainer(containerName: string): void {
     stdio: "ignore",
   }).on("error", (err) => {
     logger.warn({ error: err, container: containerName }, "[compiler] Failed to stop container");
-  }).unref();
+  });
 }
 
 /**
@@ -627,7 +627,8 @@ export async function executeCompilerRun(
   }
 
   const settings = getConfiguredSettings();
-  const timeLimitMs = options.timeLimitMs ?? settings.compilerTimeLimitMs;
+  const rawTimeLimitMs = options.timeLimitMs ?? settings.compilerTimeLimitMs;
+  const timeLimitMs = Number.isFinite(rawTimeLimitMs) && rawTimeLimitMs > 0 ? rawTimeLimitMs : 5000;
 
   // Validate Docker image
   if (!isAllowedJudgeDockerImage(options.language.dockerImage)) {
