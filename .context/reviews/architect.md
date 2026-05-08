@@ -1,54 +1,30 @@
-# Architecture Review — Cycle 1 (New Session)
+# Architect Review — Cycle 12/100
 
-**Reviewer:** architect
-**Date:** 2026-04-28
-**Scope:** Architectural patterns, coupling, layering
-
----
-
-## Findings
-
-### ARCH-1: [MEDIUM] `getUserContestAccess` and `getEnrolledContestDetail` have significant query overlap
-
-**File:** `src/lib/assignments/public-contests.ts`
-**Confidence:** HIGH
-
-Both functions query the same `assignments` row and check enrollment status. When called in sequence from the contest detail page, this results in:
-- 2 assignment queries roundtrips
-- 2 enrollment query roundtrips
-- 2 `resolveCapabilities` calls
-- 2 `canManageContest` calls
-
-This violates the principle of composing data access at the right granularity. The caller (page component) should be able to get access + detail in a single pass.
-
-**Fix:** Create a unified `getContestDetailForUser(assignmentId, userId, role)` function that returns both the access level and the detail in one query, or at minimum returns the assignment row from `getUserContestAccess` so `getEnrolledContestDetail` can reuse it.
+**Reviewer:** architect (orchestrator direct)
+**Date:** 2026-05-08
+**HEAD:** e584aeac
+**Scope:** Architectural/design risks, coupling, layering
 
 ---
 
-### ARCH-2: [LOW] Public contest detail page is a single 680-line server component with two distinct render paths
+## NEW FINDINGS
 
-**File:** `src/app/(public)/contests/[id]/page.tsx`
-**Confidence:** MEDIUM
+### C12-AR-1 — Judge route JSON parse pattern: incomplete DRY application
+- **Severity:** LOW
+- **Confidence:** HIGH
+- **File:** `src/app/api/v1/judge/deregister/route.ts`
+- **Problem:** The five judge routes (register, deregister, claim, heartbeat, poll) all perform the same manual JSON parse + safeParse + error-return pattern. Cycle 10 fixed four of them but not deregister. This is a DRY violation that creates maintenance risk: future changes to JSON parse error handling must be applied in five places.
+- **Architectural recommendation:** Extract a shared `parseJudgeBody(schema, request)` helper that wraps `request.json()` in try/catch and returns either `{ success: true, data }` or `{ success: false, errorResponse }`. This centralizes the pattern and prevents future omissions.
 
-The enrolled student view (lines 131-421) and the public view (lines 424-680) are completely different rendering paths within the same component. This is a common Next.js pattern for auth-aware pages, but at 680 lines, the file is becoming difficult to navigate and test independently.
-
-**Fix:** Consider extracting the enrolled view into a separate component (e.g., `EnrolledContestView`) and the public view into `PublicContestView`. The page component would handle auth routing and delegate rendering.
-
----
-
-### ARCH-3: [LOW] `assignmentContext` type in problem detail page is missing `examDurationMinutes`
-
-**File:** `src/app/(public)/practice/problems/[id]/page.tsx:152-162`
-**Confidence:** HIGH (confirmed bug — see CR-2)
-
-The `assignmentContext` type deliberately omits `examDurationMinutes`, causing the `StartExamButton` to receive 0 instead of the actual duration. This is both a type design gap and a bug.
-
-**Fix:** Add `examDurationMinutes: number | null` to the `assignmentContext` type and populate it from the DB query.
+### C12-AR-2 — CountdownTimer: prop-change reactivity gap
+- **Severity:** LOW
+- **Confidence:** MEDIUM
+- **File:** `src/components/exam/countdown-timer.tsx`
+- **Problem:** The CountdownTimer component mixes imperative refs (`expiredRef`, `firedThresholds`, `offsetRef`) with React state (`expired`, `remaining`). When the `deadline` prop changes, the imperative state is not reset, causing the component to display stale data. This is a symptom of using refs for derived state that should be recomputed from props.
+- **Architectural recommendation:** Derive `expired` directly from `remaining <= 0` instead of maintaining it as separate state. Reset `firedThresholds` in a `useEffect` when `deadline` changes.
 
 ---
 
-## Architectural Observations (No Action Needed)
+## No Other Architectural Issues Found
 
-- The public route structure (`/(public)/contests/[id]`, `/(public)/practice/problems/[id]`) is clean and follows Next.js App Router conventions.
-- The `public-contests.ts` module properly encapsulates data access for public contest pages.
-- The RSC streaming workaround in `layout.tsx` is appropriately scoped and documented with a TODO for removal.
+The overall architecture remains sound: API routes are well-layered with `createApiHandler`, DB access is centralized through drizzle-orm, auth is handled consistently, and client-side state is mostly well-managed. The judge worker route pattern (custom auth, raw SQL for atomic claims) is justified by the performance requirements.

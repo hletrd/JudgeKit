@@ -1,45 +1,24 @@
-# Performance Reviewer Review — Cycle 4/100
+# Performance Review — Cycle 12/100
 
+**Reviewer:** perf-reviewer (orchestrator direct)
 **Date:** 2026-05-08
-**Scope:** UI responsiveness, network efficiency, timer management, and resource leaks
-**Approach:** Code analysis of timer lifecycle, event listener cleanup, and async patterns
+**HEAD:** e584aeac
+**Scope:** Performance, concurrency, CPU/memory/UI responsiveness
 
 ---
 
-## Findings
+## NEW FINDINGS
 
-### P1 — Timer leak in SubmissionListAutoRefresh causes background network traffic after unmount
-- **Severity:** MEDIUM
-- **Confidence:** HIGH
-- **File:** `src/components/submission-list-auto-refresh.tsx:60-74`
-- **Problem:** When the component unmounts while `tick()` is awaiting the `/api/v1/time` fetch, the cleanup function clears `timerRef.current` but the async callback inside `setTimeout` continues. After `await tick()` resolves, it calls `scheduleNext()` unconditionally, creating a new timer. This timer fires indefinitely, causing:
-  - Wasted network requests to `/api/v1/time` and subsequent `router.refresh()`
-  - Unnecessary CPU from React re-renders on the new page
-  - Potential memory accumulation if the user navigates through many submission-list pages
-- **Impact:** Medium — the endpoint is lightweight, but on a busy admin dashboard the cumulative effect is non-zero.
-- **Fix:** Add a mounted guard:
-  ```tsx
-  function scheduleNext() {
-    timerRef.current = setTimeout(async () => {
-      await tick();
-      if (timerRef.current !== null) {
-        scheduleNext();
-      }
-    }, getBackoffInterval());
-  }
-  ```
-- **Cross-agent agreement:** Also flagged by code-reviewer as C1.
-
-### P2 — Dashboard health snapshot re-fetches on every render
+### C12-PR-1 — CountdownTimer staggered setTimeout accumulation
 - **Severity:** LOW
-- **Confidence:** LOW
-- **File:** `src/app/(dashboard)/dashboard/page.tsx`
-- **Problem:** The dashboard page uses server components that fetch health data on every request. There is no caching or stale-while-revalidate strategy for the health snapshot.
-- **Impact:** Low — the queries are small and fast, but under high concurrency the health checks themselves add load.
-- **Fix:** Not recommended to fix in this cycle; real-time health data is intentional.
+- **Confidence:** MEDIUM
+- **File:** `src/components/exam/countdown-timer.tsx:126`
+- **Problem:** When multiple threshold toasts are staggered (e.g., after tab regains focus), each delayed toast creates a `setTimeout` that is never tracked or cleared. On effect cleanup (unmount or deadline change), only the main `timerId` is cleared. The staggered timers remain in the browser's timer queue until they fire and self-cancel via the `cancelled` flag. With at most 3 thresholds and 4-second max delay, the leak is bounded but unnecessary.
+- **Impact:** Minor timer queue pollution. Each orphaned timer consumes a small amount of browser memory until it fires.
+- **Fix:** Track staggered timer IDs in a ref array and clear them all on cleanup.
 
 ---
 
 ## No Other Performance Issues Found
 
-All event listeners in components have proper cleanup. No memory leaks detected in useEffect patterns. The anti-cheat monitor correctly clears its retry timer. The compiler client aborts in-flight requests on unmount.
+Recursive setTimeout patterns in useVisibilityPolling and api-keys-client are correctly implemented. Compiler execute timeout is bounded. Docker build output buffering is capped at 2MB. SSE connection limits are enforced. Rate limiter eviction runs on a 60s interval. No unnecessary re-renders detected in hot paths.

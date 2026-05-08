@@ -1,53 +1,32 @@
-# Critic Review — Cycle 1 (New Session)
+# Critic Review — Cycle 12/100
 
-**Reviewer:** critic
-**Date:** 2026-04-28
-**Scope:** Multi-perspective critique of recent change surface
-
----
-
-## Findings
-
-### CRIT-1: [HIGH] `totalPoints` reduce initial value is 100 instead of 0 — data integrity bug
-
-**File:** `src/app/(public)/contests/[id]/page.tsx:187`
-**Confidence:** HIGH
-
-This is a clear logic error confirmed by 4 independent reviewers (code-reviewer, debugger, verifier, architect). The reduce initial value of `100` inflates the total points displayed to students. This is likely a copy-paste error or misunderstanding of the `reduce` API.
-
-**Fix:** Change `100` to `0`.
+**Reviewer:** critic (orchestrator direct)
+**Date:** 2026-05-08
+**HEAD:** e584aeac
+**Scope:** Multi-perspective critique of the whole change surface
 
 ---
 
-### CRIT-2: [MEDIUM] Problem detail page silently drops `examDurationMinutes` — breaks windowed exam flow
+## NEW FINDINGS
 
-**File:** `src/app/(public)/practice/problems/[id]/page.tsx:478`
-**Confidence:** HIGH
+### C12-CT-1 — Incomplete cycle 10 remediation: deregister route omitted
+- **Severity:** MEDIUM
+- **Confidence:** HIGH
+- **File:** `src/app/api/v1/judge/deregister/route.ts:24`
+- **Problem:** Cycle 10 fixed JSON parse error handling across four judge routes (register, claim, heartbeat, poll) but missed the deregister route. This suggests the cycle 10 review did not inventory ALL judge routes before applying the fix. The deregister route has the exact same vulnerability: unguarded `await request.json()` inside `safeParse`.
+- **Cross-perspective:** From a security angle, this gives attackers a 500-producing probe target. From a reliability angle, it generates false-positive alerts. From a maintenance angle, it breaks the consistency of the judge route error-handling pattern.
+- **Fix:** Apply the same try/catch wrapper pattern used in the other four judge routes.
 
-The `assignmentContext` type was defined without `examDurationMinutes`, causing the `StartExamButton` to always receive 0. This is a type completeness gap — the DB query (line 175-186) does not select `examDurationMinutes`, so the type correctly reflects what was queried. The fix requires both updating the query and the type.
-
-**Fix:** Add `examDurationMinutes` to both the DB query columns and the type definition.
-
----
-
-### CRIT-3: [LOW] Contest detail page has redundant `getExamSession` fallback call
-
-**File:** `src/app/(public)/contests/[id]/page.tsx:173-176`
-
-The `getEnrolledContestDetail` function already queries the exam session (lines 302-313 in `public-contests.ts`), so the fallback `getExamSession` call in the page component is redundant. If `getEnrolledContestDetail` returns `examSession: null`, it means no session exists — the fallback query would return the same result unless a session was created between the two queries (race condition).
-
-**Fix:** Remove the redundant fallback call. If `getEnrolledContestDetail` returns `examSession: null`, that is authoritative.
-
----
-
-### CRIT-4: [LOW] New public pages add significant rendering complexity without test coverage
-
-The enrolled contest view (~290 lines of JSX) and the assignment context on the problem detail page (~60 lines of branching logic) have zero test coverage. This is a test debt that should be addressed before these pages see production traffic.
-
-**Fix:** Add component/integration tests as outlined in TE-1 and TE-2.
+### C12-CT-2 — CountdownTimer edge cases around prop changes
+- **Severity:** LOW
+- **Confidence:** MEDIUM
+- **File:** `src/components/exam/countdown-timer.tsx`
+- **Problem:** The CountdownTimer component assumes `deadline` is static after mount. The `expired` state, `expiredRef`, and `firedThresholds` ref are never reset when `deadline` changes. This creates two failure modes: (1) deadline extension leaves the timer stuck at "00:00:00", and (2) staggered toast timers are not tracked for cleanup. These are edge cases that may not occur in normal exam usage but represent incomplete reactive behavior.
+- **Cross-perspective:** From UX, a student seeing "00:00:00" after a deadline extension is confusing. From code quality, the component should handle prop changes reactively or document the static-deadline assumption.
+- **Fix:** Reset `expired` and `firedThresholds` when `deadline` changes; track staggered timer IDs for cleanup.
 
 ---
 
-## Cross-cutting Concern
+## No Other Critiques
 
-The two HIGH/MEDIUM bugs (totalPoints, examDurationMinutes) both stem from the same root cause: the new enrolled contest view was built by extracting logic from the dashboard version, but the extraction was incomplete. The dashboard version calculates totalPoints differently and passes examDurationMinutes correctly. The public version missed both. This suggests the extraction should have been reviewed more carefully or the shared logic should be consolidated.
+The codebase shows good patterns overall: consistent use of `createApiHandler`, proper CSRF handling, explicit abort controller cleanup in most fetch paths, and defensive SQL via drizzle-orm. The cycle 10 and 11 fixes were well-applied across their target surfaces.
