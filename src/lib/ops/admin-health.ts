@@ -3,7 +3,9 @@ import { rawQueryOne } from "@/lib/db/queries";
 import { logger } from "@/lib/logger";
 import { getConfiguredSettings } from "@/lib/system-settings-config";
 
-const PROCESS_STARTED_AT_MS = Date.now();
+function getUptimeSeconds(): number {
+  return Math.floor(process.uptime());
+}
 
 type WorkerStatsRow = {
   online?: string | number | null;
@@ -102,7 +104,7 @@ export async function getAdminHealthSnapshot(): Promise<AdminHealthSnapshot> {
         pending,
         limit: settings.submissionGlobalQueueLimit,
       },
-      uptimeSeconds: Math.floor((Date.now() - PROCESS_STARTED_AT_MS) / 1000),
+      uptimeSeconds: getUptimeSeconds(),
       responseTimeMs: Date.now() - probeStartedAt,
       appVersion: process.env.npm_package_version ?? "unknown",
       status: overallStatus,
@@ -135,7 +137,7 @@ export async function getAdminHealthSnapshot(): Promise<AdminHealthSnapshot> {
         pending: 0,
         limit: settings.submissionGlobalQueueLimit,
       },
-      uptimeSeconds: Math.floor((Date.now() - PROCESS_STARTED_AT_MS) / 1000),
+      uptimeSeconds: getUptimeSeconds(),
       responseTimeMs: Date.now() - probeStartedAt,
       appVersion: process.env.npm_package_version ?? "unknown",
       status: "error",
