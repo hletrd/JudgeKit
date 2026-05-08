@@ -110,7 +110,7 @@ function getStaleThreshold(): number {
   const sseTimeout = getConfiguredSettings().sseTimeoutMs;
   cachedStaleThreshold = Number.isFinite(sseTimeout)
     ? Math.min(sseTimeout + 30_000, 2 * 60 * 60 * 1000)
-    : 30_030_000; // 30min + 30s fallback
+    : 1_830_000; // 30min + 30s fallback
   cachedStaleThresholdAt = now;
   return cachedStaleThreshold;
 }
