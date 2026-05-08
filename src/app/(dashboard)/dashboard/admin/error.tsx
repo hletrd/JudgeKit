@@ -16,7 +16,7 @@ export default function AdminError({
   useEffect(() => {
     // Log error details in all environments so production issues can be
     // diagnosed. The digest field is safe to log (no stack traces).
-    console.error("[admin-error-boundary]", error.digest ?? error.message, error);
+    console.error("[admin-error-boundary]", error.digest ?? error.message);
   }, [error]);
 
   return (
