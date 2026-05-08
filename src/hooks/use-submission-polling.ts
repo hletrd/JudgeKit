@@ -142,7 +142,10 @@ export function useSubmissionPolling(initialSubmission: SubmissionDetailView) {
           setError(false);
           setIsPolling(false);
         } catch {
-          // Parse failure — SSE will close and we stay with current state
+          // Parse failure — SSE will close and we stay with current state.
+          // Stop the polling indicator so the UI does not spin indefinitely.
+          setIsPolling(false);
+          setError(true);
         }
         es.close();
         sseActive = false;
