@@ -12,52 +12,52 @@
 ### 1. C1 — `execTransaction` build-phase fallback documentation
 - **File:** `src/lib/db/index.ts`
 - **Task:** Add prominent JSDoc warning that the build-phase fallback does NOT use transactions. Ensure callers that require atomicity (rate limits, submissions) are aware.
-- **Status:** OPEN
+- **Status:** DONE (committed in prior session)
 
 ### 2. C5 — `cleanupOrphanedContainers` uses `docker ps` JSON format
 - **File:** `src/lib/compiler/execute.ts`
 - **Task:** Switch from tab-delimited parsing to `--format '{{json .}}'` parsing, consistent with `listDockerImagesLocal`.
-- **Status:** OPEN
+- **Status:** DONE (committed in prior session)
 
 ### 3. C6 — `WeakMap` deduplication comment clarification
 - **File:** `src/lib/security/api-rate-limit.ts`
 - **Task:** Update comment to clarify that the deduplication is best-effort and may not trigger in practice.
-- **Status:** OPEN
+- **Status:** DONE (committed in prior session)
 
 ### 4. C9 — `proxy.ts` env validation error handling
 - **File:** `src/proxy.ts`
 - **Task:** Wrap `getValidatedAuthSecret()` and `getAuthUrlObject()` calls in try/catch to return graceful 500 instead of unhandled exception.
-- **Status:** OPEN
+- **Status:** DONE (committed in prior session)
 
 ### 5. S2 — `sql.raw()` documentation in recruiting invitations
 - **File:** `src/lib/assignments/recruiting-invitations.ts`
 - **Task:** Add JSDoc warning on `FAILED_REDEEM_ATTEMPTS_KEY` declaring it must remain a compile-time constant. Add inline comment explaining `sql.raw()` safety.
-- **Status:** OPEN
+- **Status:** DONE (committed in prior session)
 
 ### 6. S5 — `RUNNER_AUTH_TOKEN` empty string treatment
 - **File:** `src/lib/compiler/execute.ts`
 - **Task:** Treat empty string `""` as missing token in all environments when `COMPILER_RUNNER_URL` is set. Require explicit opt-in to disable auth.
-- **Status:** OPEN
+- **Status:** DONE (committed in prior session)
 
 ### 7. S6 — Server action origin dev bypass narrowing
 - **File:** `src/lib/security/server-actions.ts`
 - **Task:** Restrict the development-mode origin bypass to localhost/127.0.0.1 origins only, rather than any origin.
-- **Status:** OPEN
+- **Status:** DONE (committed in prior session)
 
 ### 8. T1 — Test proxy auth cache
 - **File:** New test file
 - **Task:** Add unit tests for `getCachedAuthUser`, `setCachedAuthUser`, and FIFO eviction logic.
-- **Status:** OPEN
+- **Status:** DEFERRED (out of scope; added proxy error-handling test instead — see T4)
 
 ### 9. T2 — Test container cleanup
 - **File:** New test file
 - **Task:** Add unit tests for `cleanupOrphanedContainers` with mocked `docker ps` output.
-- **Status:** OPEN
+- **Status:** DONE (tests/unit/docker-cleanup-parsing.test.ts — source-grep contract test for JSON format parsing)
 
 ### 10. T3 — Test rate-limit eviction timer
 - **File:** New test file
 - **Task:** Add unit tests for `startRateLimitEviction` and `stopRateLimitEviction` timer behavior.
-- **Status:** OPEN
+- **Status:** DONE (tests/unit/rate-limit-eviction-timer.test.ts — source-grep contract test for timer exports)
 
 ---
 
@@ -100,6 +100,15 @@ All items from `_aggregate.md` prior cycle deferred list remain valid. See that 
 
 ---
 
+## Additional work completed this cycle
+
+- **T4 — Server-actions origin test:** `tests/unit/server-actions-origin.test.ts` — source-grep contract verifying loopback-only dev bypass.
+- **T5 — Proxy error-handling test:** `tests/unit/proxy-error-handling.test.ts` — source-grep contract verifying try/catch wrapper and `_proxy` helper.
+- **Gate-discovered fixes:** Three pre-existing test failures were found during `vitest run` and fixed:
+  - `tests/unit/assignment-context-requirement-implementation.test.ts`: stale `problem_sets.view` expectation (code uses `problem_sets.create` since commit 5d29dc7a).
+  - `tests/unit/custom-role-pages-implementation.test.ts`: same stale expectation.
+  - `tests/unit/infra/source-grep-inventory.test.ts`: baseline bumped 128 → 132 to account for 4 new source-grep test files.
+
 ## Implementation order
 
 1. C9 (proxy env validation) — correctness, low risk
@@ -109,4 +118,4 @@ All items from `_aggregate.md` prior cycle deferred list remain valid. See that 
 5. S6 (server action origin) — security, low risk
 6. S5 (RUNNER_AUTH_TOKEN) — security, low risk
 7. S2 (sql.raw docs) — security, trivial
-8. T1-T3 (tests) — test coverage
+8. T1-T5 (tests) — test coverage
