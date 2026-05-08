@@ -20,7 +20,13 @@ export async function POST(req: NextRequest) {
   const csrfError = validateCsrf(req);
   if (csrfError) return csrfError;
 
-  const body = await req.json().catch(() => null);
+  let body: unknown;
+  try {
+    body = await req.json();
+  } catch {
+    return NextResponse.json({ error: "invalidJson" }, { status: 400 });
+  }
+
   const parsed = validateRecruitingTokenSchema.safeParse(body);
   if (!parsed.success) {
     return NextResponse.json({ error: "invalidToken" }, { status: 400 });
