@@ -1,10 +1,10 @@
-# Aggregate Review — Cycle 6/100 (Current)
+# Aggregate Review — Cycle 9/100 (Current)
 
 **Date:** 2026-05-08
-**HEAD:** main / 75d82a17
-**Reviewers:** code-reviewer, test-engineer (orchestrator direct; no registered Agent tools)
-**Scope:** Full TypeScript/TSX source review + test suite verification
-**Approach:** Static code analysis, pattern-based search, gate execution
+**HEAD:** c5eb175b (cycle 8 close-out)
+**Reviewers:** code-reviewer, debugger (orchestrator direct; no registered Agent tools)
+**Scope:** Full TypeScript/TSX source review + gate execution
+**Approach:** Static code analysis, pattern-based search, targeted deep dives
 
 ---
 
@@ -12,49 +12,56 @@
 
 | ID | Severity | Confidence | Title | Source |
 |---|---|---|---|---|
-| C6-CR-1 | MEDIUM | HIGH | PublicFooter duplicate React keys when CMS footer content contains /privacy or /languages | code-reviewer |
-| C6-CR-2 | LOW | MEDIUM | Chat widget messages use index-based React key | code-reviewer |
-| C6-TE-1 | MEDIUM | HIGH | PublicFooter component test emits React duplicate-key warning | test-engineer |
+| C9-CR-1 | MEDIUM | HIGH | AntiCheatMonitor heartbeat timer restarts after enabled becomes false | code-reviewer, debugger |
+| C9-CR-2 | LOW | MEDIUM | OutputDiffView uses index-based React keys for diff lines | code-reviewer, debugger |
+| C9-CR-3 | LOW | HIGH | FooterContentForm updateLink uses array index instead of stable id | code-reviewer |
+| C9-CR-4 | LOW | LOW | Loading skeleton placeholders use index-based React keys | code-reviewer |
+| C9-CR-5 | LOW | LOW | LeaderboardTable uses index-based React keys for table rows | code-reviewer |
+| C9-CR-6 | LOW | LOW | AntiCheatDashboard uses index-based React keys | code-reviewer |
+| C9-CR-7 | LOW | LOW | ParticipantAntiCheatTimeline uses index-based React keys | code-reviewer |
+| C9-CR-8 | LOW | LOW | RecruitingInvitationsPanel uses index-based React keys | code-reviewer |
+| C9-CR-9 | LOW | LOW | BulkCreateDialog uses index-based React keys for table rows | code-reviewer |
+| C9-CR-10 | LOW | LOW | AnalyticsCharts uses index-based React keys for SVG elements | code-reviewer |
 
 ---
 
 ## CROSS-AGENT AGREEMENT
 
-- **C6-CR-1 / C6-TE-1** are the same root cause: `PublicFooter` unconditionally appends hardcoded privacy/languages links to CMS-provided links, and the map uses `key={link.url}`. The test-engineer observed the warning in test output; code-reviewer traced it to the component logic. Both agree this is a real production bug, not just a test artifact.
+- **C9-CR-1 / C9-DB-1** are the same root cause: 2 lanes agree on the AntiCheatMonitor heartbeat timer race condition. debugger provides the concrete step-by-step failure scenario; code-reviewer identifies the structural issue.
+- **C9-CR-2 / C9-DB-2** are the same root cause: 2 lanes agree on OutputDiffView index keys.
 
 ---
 
 ## DETAILED FINDINGS
 
-### C6-CR-1 — PublicFooter duplicate React keys
+### C9-CR-1 / C9-DB-1 — AntiCheatMonitor heartbeat timer restarts after enabled becomes false
 
-- **File:** `src/components/layout/public-footer.tsx`, lines 36, 49
-- **Problem:** `allLinks = [...links, languagesLink, privacyLink]` concatenates CMS links with hardcoded ones. When CMS content already contains `/privacy` or `/languages`, `key={link.url}` produces duplicates.
-- **Evidence:** Component test at `tests/component/public-footer.test.tsx:35` supplies `{ label: "Privacy", url: "/privacy" }`, triggering the React warning:
-  ```
-  Encountered two children with the same key, `/privacy`. Keys should be unique...
-  ```
-- **Fix:** Deduplicate `allLinks` by URL before rendering, or conditionally skip injecting hardcoded links when the CMS content already contains them.
+- **File:** `src/components/exam/anti-cheat-monitor.tsx:180-188`
+- **Problem:** When `enabled` prop toggles from true to false while a heartbeat request is in-flight (`await reportEventRef.current("heartbeat")` at line 183), the async setTimeout callback completes and calls `scheduleHeartbeat()` (line 186), which schedules a new timer. The cleanup effect (lines 191-197) only clears the current `heartbeatTimerRef.current` but cannot intercept an already-executing async callback.
+- **Concrete failure:** User navigates away from a contest page (enabled becomes false) while a heartbeat network request is in-flight. The heartbeat completes after cleanup, schedules a new timer, and heartbeats continue indefinitely even though the component is logically disabled.
+- **Fix:** Guard `scheduleHeartbeat` with an `enabledRef` or `isActiveRef` that tracks the current effect instance. Set the ref to true when the effect runs and false in cleanup; check it before scheduling the next heartbeat.
 
-### C6-CR-2 — Chat widget index-based React key
+### C9-CR-2 / C9-DB-2 — OutputDiffView uses index-based React keys for diff lines
 
-- **File:** `src/lib/plugins/chat-widget/chat-widget.tsx`, line 334
-- **Problem:** `messages.map((msg, i) => <div key={i} ...>)` uses array index as React key.
-- **Impact:** Fragile against future message edits (deletion, reordering). Currently append-only so no active bug, but violates React best practices.
-- **Fix:** Use a stable message identifier (`msg.id`, `msg.timestamp`, etc.) as the key.
+- **File:** `src/components/submissions/output-diff-view.tsx:43, 84, 111`
+- **Problem:** Three separate `key={i}` uses for diff line rendering. If expected/actual outputs update while the component is mounted, React may mis-identify DOM nodes.
+- **Fix:** Use composite keys based on line content + line numbers.
 
-### C6-TE-1 — PublicFooter test duplicate-key warning
+### C9-CR-3 — FooterContentForm updateLink uses array index instead of stable id
 
-- **File:** `tests/component/public-footer.test.tsx`
-- **Problem:** The test mock data includes a `/privacy` link that collides with the component's hardcoded privacy link.
-- **Impact:** Console noise in tests; does not assert DOM stability.
-- **Fix:** Fix the component (C6-CR-1) which will also resolve the test warning.
+- **File:** `src/app/(dashboard)/dashboard/admin/settings/footer-content-form.tsx:64`
+- **Problem:** `updateLink(locale, index, field, value)` updates by index even though links have stable `id` fields.
+- **Fix:** Update by `id` instead of `index`.
+
+### C9-CR-4 through C9-CR-10 — Various index-based React keys
+
+All are LOW severity pattern violations in mostly-static contexts. See per-agent files for full citations.
 
 ---
 
 ## AGENT FAILURES
 
-No agent failures. All review work performed directly by the orchestrator due to absence of registered Agent tools in this environment.
+No agent failures. All review work performed directly by the orchestrator due to absence of registered Agent tools.
 
 ---
 
@@ -68,4 +75,4 @@ No agent failures. All review work performed directly by the orchestrator due to
 
 ---
 
-## NEW_FINDINGS COUNT: 2
+## NEW_FINDINGS COUNT: 10 (1 MEDIUM, 9 LOW)

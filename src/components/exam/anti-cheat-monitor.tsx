@@ -171,15 +171,19 @@ export function AntiCheatMonitor({
   }, [enabled, showPrivacyNotice]);
 
   const heartbeatTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const isHeartbeatActiveRef = useRef(false);
 
   useEffect(() => {
     if (!enabled || showPrivacyNotice) return;
 
+    isHeartbeatActiveRef.current = true;
     void reportEventRef.current("heartbeat");
 
     function scheduleHeartbeat() {
+      if (!isHeartbeatActiveRef.current) return;
       if (heartbeatTimerRef.current) clearTimeout(heartbeatTimerRef.current);
       heartbeatTimerRef.current = setTimeout(async () => {
+        if (!isHeartbeatActiveRef.current) return;
         if (document.visibilityState === "visible") {
           await reportEventRef.current("heartbeat");
         }
@@ -190,6 +194,7 @@ export function AntiCheatMonitor({
     scheduleHeartbeat();
 
     return () => {
+      isHeartbeatActiveRef.current = false;
       if (heartbeatTimerRef.current) {
         clearTimeout(heartbeatTimerRef.current);
         heartbeatTimerRef.current = null;

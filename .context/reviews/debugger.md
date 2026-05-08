@@ -1,87 +1,48 @@
-# Debugger Review — Cycle 1 (New Session)
+# Debugger Review — Cycle 9
 
-**Reviewer:** debugger
-**Date:** 2026-04-28
-**Scope:** Latent bug surface, failure modes, regressions
-
----
-
-## Findings
-
-### DBG-1: [HIGH] `totalPoints` always inflated by 100 — visible bug in student-facing UI
-
-**File:** `src/app/(public)/contests/[id]/page.tsx:187`
-**Confidence:** HIGH
-
-```tsx
-const totalPoints = sortedProblems.reduce((sum, p) => sum + p.points, 100);
-```
-
-The reduce initial value is `100` instead of `0`. This is a definite logic error. The `totalPoints` value is passed to `AssignmentOverview` at line 329, which displays it to students.
-
-**Concrete failure scenario:**
-- Contest has 3 problems, each worth 100 points
-- Expected total: 300
-- Actual total displayed: 400 (300 + 100 initial value)
-- Student sees "Total: 400 points" when the contest is actually 300 points
-
-**Fix:** Change initial value from `100` to `0`.
+**Reviewer:** debugger (orchestrator direct)
+**Date:** 2026-05-08
+**HEAD:** c5eb175b (cycle 8 close-out)
+**Scope:** Latent bug surface, failure modes, race conditions, regressions
 
 ---
 
-### DBG-2: [MEDIUM] `StartExamButton` on problem detail page receives `durationMinutes={0}` for windowed exams
+## NEW FINDINGS
 
-**File:** `src/app/(public)/practice/problems/[id]/page.tsx:478`
-**Confidence:** HIGH
+### C9-DB-1 — AntiCheatMonitor heartbeat timer restarts after enabled toggles off
 
-The `assignmentContext` type doesn't include `examDurationMinutes`, so the button always gets 0. This could cause:
-1. The exam session to be created with a 0-minute duration
-2. The button UI to show "0 min" which is confusing
-3. Immediate expiration of the exam session
+- **Severity:** MEDIUM
+- **Confidence:** HIGH
+- **File:** `src/components/exam/anti-cheat-monitor.tsx:180-188`
+- **Problem:** Race condition between effect cleanup and async timer callback. When `enabled` becomes false while a heartbeat `await reportEventRef.current("heartbeat")` is in-flight, the cleanup clears `heartbeatTimerRef.current` but the in-flight promise resolves and calls `scheduleHeartbeat()` which schedules a new timer.
+- **Failure scenario:**
+  1. Component mounts with `enabled=true`, heartbeat effect schedules timer H1
+  2. H1 fires, visibility is visible, starts `await reportEventRef.current("heartbeat")`
+  3. User navigates away, parent sets `enabled=false`
+  4. Effect cleanup runs: clears H1, sets `heartbeatTimerRef.current = null`
+  5. Heartbeat await resolves, calls `scheduleHeartbeat()`
+  6. `scheduleHeartbeat` sees `heartbeatTimerRef.current === null`, skips clear
+  7. NEW timer H2 is scheduled with `setTimeout(..., HEARTBEAT_INTERVAL_MS)`
+  8. H2 fires indefinitely, calling `reportEventRef.current("heartbeat")` forever
+- **Fix:** Guard `scheduleHeartbeat` with a ref that tracks whether the current effect instance is still active. Set the ref to true when the effect runs and false in cleanup; check it before scheduling.
 
-**Concrete failure scenario:** Student navigates to a problem via `/practice/problems/123?assignmentId=abc`. The contest has `examMode: "windowed"` with `examDurationMinutes: 120`. The student clicks "Start Exam" and the exam session is created with 0 minutes, immediately expiring.
+### C9-DB-2 — OutputDiffView index-based keys could mismatch on output refresh
 
-**Fix:** Add `examDurationMinutes` to `assignmentContext` and pass it through.
-
----
-
-### DBG-3: [LOW] Potential race condition in contest detail page — `getExamSession` called twice
-
-**File:** `src/app/(public)/contests/[id]/page.tsx:173-176`
-
-```tsx
-let examSession = contest.examSession;
-if (contest.examMode === "windowed" && !examSession) {
-  examSession = await getExamSession(contest.id, session.user.id);
-}
-```
-
-The `contest.examSession` comes from `getEnrolledContestDetail` (lines 302-313), which also queries `examSessions`. If the exam session is created between the two queries, the page could show inconsistent state. This is a low-probability race but worth noting for timed exam flows where session creation timing matters.
-
-**Fix:** Use a single query path. The `getEnrolledContestDetail` function already queries exam sessions — the fallback query on lines 173-176 should not be needed if `getEnrolledContestDetail` is correctly returning the session.
+- **Severity:** LOW
+- **Confidence:** MEDIUM
+- **File:** `src/components/submissions/output-diff-view.tsx:43, 84, 111`
+- **Problem:** If submission detail auto-refreshes and expected/actual outputs change (e.g., from empty to populated after judge completes), React uses index keys and may not correctly update DOM rows that shifted position.
+- **Failure scenario:** Diff view shows old line highlighting at wrong positions after output update. Cosmetic only.
+- **Fix:** Use composite keys based on line data.
 
 ---
 
-### DBG-4: [LOW] `ContestDetailLayout` workaround depends on `#main-content` element existing
+## CARRY-FORWARD DEFERRED ITEMS
 
-**File:** `src/app/(public)/contests/[id]/layout.tsx:36-37`
-
-```tsx
-const main = document.getElementById("main-content");
-main?.addEventListener("click", handler, true);
-```
-
-If the `#main-content` element does not exist (e.g., layout change, SSR hydration mismatch), the click handler is never attached. The workaround silently fails, and users on contest pages would experience broken client-side navigation (RSC payload corruption).
-
-**Fix:** Add a development-only warning if `#main-content` is not found.
+All previously deferred items remain unchanged. Not re-reported per cycle instructions.
 
 ---
 
-## Regression Verification
+## AGENT FAILURES
 
-All recent commits were reviewed:
-- `1ee90015` (redirect dashboard contest pages to public URLs) — No regression risk; redirects are simple
-- `db9ddbc8` (My Contests section) — New feature; no regression
-- `565d68ad` (assignment context on problem detail) — Introduces CR-2/DBG-2 bug
-- `4df35c7f` (auth-aware contest detail) — Introduces CR-1/DBG-1 bug
-- `21671fdd` (assignmentId through PublicQuickSubmit) — No regression; passes prop through
+No agent failures. Review performed directly by orchestrator.
