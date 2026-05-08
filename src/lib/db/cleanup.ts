@@ -44,7 +44,7 @@ export async function cleanupOldEvents(): Promise<{
   // Batch DELETE to avoid long-running locks and WAL bloat
   while (true) {
     const auditResult = await db.execute(
-      sql`DELETE FROM ${auditEvents} WHERE ctid IN (SELECT ctid FROM ${auditEvents} WHERE ${auditEvents.createdAt} < ${auditCutoff} LIMIT ${BATCH_SIZE})`
+      sql`DELETE FROM ${auditEvents} WHERE ${auditEvents.id} IN (SELECT ${auditEvents.id} FROM ${auditEvents} WHERE ${auditEvents.createdAt} < ${auditCutoff} LIMIT ${BATCH_SIZE})`
     );
     const deleted = Number(auditResult.rowCount ?? 0);
     auditDeleted += deleted;
@@ -54,7 +54,7 @@ export async function cleanupOldEvents(): Promise<{
 
   while (true) {
     const loginResult = await db.execute(
-      sql`DELETE FROM ${loginEvents} WHERE ctid IN (SELECT ctid FROM ${loginEvents} WHERE ${loginEvents.createdAt} < ${loginCutoff} LIMIT ${BATCH_SIZE})`
+      sql`DELETE FROM ${loginEvents} WHERE ${loginEvents.id} IN (SELECT ${loginEvents.id} FROM ${loginEvents} WHERE ${loginEvents.createdAt} < ${loginCutoff} LIMIT ${BATCH_SIZE})`
     );
     const deleted = Number(loginResult.rowCount ?? 0);
     loginDeleted += deleted;
