@@ -568,6 +568,20 @@ async function tryRustRunner(
       );
       return null;
     }
+    // Validate response shape to prevent propagating malformed data when the
+    // sidecar returns valid JSON with unexpected fields (e.g., error envelope).
+    if (
+      typeof data.stdout !== "string" ||
+      typeof data.stderr !== "string" ||
+      typeof data.timedOut !== "boolean" ||
+      typeof data.oomKilled !== "boolean"
+    ) {
+      logger.warn(
+        { url: COMPILER_RUNNER_URL, data },
+        "[compiler] Rust runner returned unexpected response shape, falling back to local execution",
+      );
+      return null;
+    }
     return data;
   } catch (error) {
     logger.warn(
