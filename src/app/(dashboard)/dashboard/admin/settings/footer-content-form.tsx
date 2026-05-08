@@ -10,8 +10,9 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { PlusIcon, TrashIcon } from "lucide-react";
+import { nanoid } from "nanoid";
 
-type FooterLink = { label: string; url: string };
+type FooterLink = { id?: string; label: string; url: string };
 type FooterLocaleContent = {
   copyrightText?: string;
   links?: FooterLink[];
@@ -37,7 +38,19 @@ export function FooterContentForm({ initialContent }: FooterContentFormProps) {
   const t = useTranslations("admin.settings");
   const tCommon = useTranslations("common");
 
-  const [content, setContent] = useState<FooterContent>(initialContent ?? {});
+  const [content, setContent] = useState<FooterContent>(() => {
+    const patched: FooterContent = {};
+    for (const [loc, entry] of Object.entries(initialContent ?? {})) {
+      patched[loc] = {
+        ...entry,
+        links: entry?.links?.map((link) => ({
+          ...link,
+          id: (link as FooterLink).id ?? nanoid(),
+        })),
+      };
+    }
+    return patched;
+  });
   const [activeLocale, setActiveLocale] = useState<string>("en");
   const [isLoading, setIsLoading] = useState(false);
 
@@ -48,7 +61,7 @@ export function FooterContentForm({ initialContent }: FooterContentFormProps) {
     }));
   }
 
-  function updateLink(locale: string, index: number, field: keyof FooterLink, value: string) {
+  function updateLink(locale: string, index: number, field: keyof Omit<FooterLink, "id">, value: string) {
     setContent((prev) => {
       const localeData = prev[locale] ?? {};
       const links = [...(localeData.links ?? [])];
@@ -60,7 +73,7 @@ export function FooterContentForm({ initialContent }: FooterContentFormProps) {
   function addLink(locale: string) {
     setContent((prev) => {
       const localeData = prev[locale] ?? {};
-      return { ...prev, [locale]: { ...localeData, links: [...(localeData.links ?? []), { label: "", url: "" }] } };
+      return { ...prev, [locale]: { ...localeData, links: [...(localeData.links ?? []), { id: nanoid(), label: "", url: "" }] } };
     });
   }
 
@@ -134,7 +147,7 @@ export function FooterContentForm({ initialContent }: FooterContentFormProps) {
               <div className="space-y-2">
                 <Label>{t("footerLinks")}</Label>
                 {links.map((link, i) => (
-                  <div key={i} className="flex items-center gap-2">
+                  <div key={link.id ?? `${loc}-${i}`} className="flex items-center gap-2">
                     <Input
                       value={link.label}
                       onChange={(e) => updateLink(loc, i, "label", e.target.value)}
