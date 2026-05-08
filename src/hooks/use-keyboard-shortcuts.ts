@@ -26,9 +26,6 @@ export function useKeyboardShortcuts(shortcuts: ShortcutMap) {
       const cmFocused = (e.target as HTMLElement)?.closest?.(".cm-content");
       if (cmFocused) return;
 
-      // Ignore when modifier keys are pressed (except for our own shortcuts)
-      if (e.ctrlKey || e.metaKey || e.altKey) return;
-
       const handler = shortcutsRef.current[e.key];
       if (handler) {
         e.preventDefault();
