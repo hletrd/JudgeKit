@@ -24,6 +24,7 @@ type Props = {
 };
 
 type QueuedFile = {
+  id: string;
   file: File;
   status: "pending" | "uploading" | "done" | "error";
   error?: string;
@@ -48,6 +49,7 @@ export function FileUploadDialog({ open, onOpenChange, onComplete, maxFileSizeBy
         return true;
       })
       .map((file) => ({
+        id: `${file.name}-${file.size}-${file.lastModified}-${Math.random().toString(36).slice(2)}`,
         file,
         status: "pending" as const,
       }));
@@ -194,7 +196,7 @@ export function FileUploadDialog({ open, onOpenChange, onComplete, maxFileSizeBy
           <div className="max-h-[200px] space-y-2 overflow-y-auto">
             {queue.map((item, i) => (
               <div
-                key={`${item.file.name}-${i}`}
+                key={item.id}
                 className="flex items-center gap-2 rounded-md border px-3 py-2 text-sm"
               >
                 <FileIcon className="size-4 shrink-0 text-muted-foreground" />
