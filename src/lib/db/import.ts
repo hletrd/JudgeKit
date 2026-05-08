@@ -30,7 +30,7 @@ function buildImportColumnSets(tableMap: Record<string, any>) {
     const columns = getTableColumns(table);
     for (const [columnName, column] of Object.entries(columns)) {
       const dataType = (column as { dataType?: string }).dataType;
-      if (dataType === "date") {
+      if (dataType === "timestamp") {
         timestampColumns.add(columnName);
       } else if (dataType === "boolean") {
         booleanColumns.add(columnName);
