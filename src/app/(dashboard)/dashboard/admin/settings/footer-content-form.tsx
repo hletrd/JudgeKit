@@ -61,11 +61,12 @@ export function FooterContentForm({ initialContent }: FooterContentFormProps) {
     }));
   }
 
-  function updateLink(locale: string, index: number, field: keyof Omit<FooterLink, "id">, value: string) {
+  function updateLink(locale: string, id: string, field: keyof Omit<FooterLink, "id">, value: string) {
     setContent((prev) => {
       const localeData = prev[locale] ?? {};
-      const links = [...(localeData.links ?? [])];
-      links[index] = { ...links[index], [field]: value };
+      const links = (localeData.links ?? []).map((link) =>
+        link.id === id ? { ...link, [field]: value } : link
+      );
       return { ...prev, [locale]: { ...localeData, links } };
     });
   }
@@ -77,10 +78,10 @@ export function FooterContentForm({ initialContent }: FooterContentFormProps) {
     });
   }
 
-  function removeLink(locale: string, index: number) {
+  function removeLink(locale: string, id: string) {
     setContent((prev) => {
       const localeData = prev[locale] ?? {};
-      const links = (localeData.links ?? []).filter((_, i) => i !== index);
+      const links = (localeData.links ?? []).filter((link) => link.id !== id);
       return { ...prev, [locale]: { ...localeData, links } };
     });
   }
@@ -150,13 +151,13 @@ export function FooterContentForm({ initialContent }: FooterContentFormProps) {
                   <div key={link.id ?? `${loc}-${i}`} className="flex items-center gap-2">
                     <Input
                       value={link.label}
-                      onChange={(e) => updateLink(loc, i, "label", e.target.value)}
+                      onChange={(e) => updateLink(loc, link.id ?? `${loc}-${i}`, "label", e.target.value)}
                       placeholder={t("footerLinkLabel")}
                       className="flex-1"
                     />
                     <Input
                       value={link.url}
-                      onChange={(e) => updateLink(loc, i, "url", e.target.value)}
+                      onChange={(e) => updateLink(loc, link.id ?? `${loc}-${i}`, "url", e.target.value)}
                       placeholder={t("footerLinkUrl")}
                       className="flex-1"
                     />
@@ -164,7 +165,7 @@ export function FooterContentForm({ initialContent }: FooterContentFormProps) {
                       type="button"
                       variant="ghost"
                       size="icon"
-                      onClick={() => removeLink(loc, i)}
+                      onClick={() => removeLink(loc, link.id ?? `${loc}-${i}`)}
                       aria-label={t("footerRemoveLink")}
                     >
                       <TrashIcon className="size-4" />
