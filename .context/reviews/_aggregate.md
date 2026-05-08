@@ -28,6 +28,17 @@
 
 ---
 
+## CYCLE 5 FIXED ISSUES (VERIFIED IN GATES)
+
+- C5-1 (Audit-logs SQL): FIXED — `sql\`0\`` changed to `null` so instructors with no groups don't hit a SQL error
+- C5-2 (Component tests): FIXED — 4 broken tests updated (chat-widget rAF mock, home-page/not-found-page guest action labels, locale-switcher reload assertion)
+- C5-3 (Credential leak): FIXED — `algo-admin-prod.json` deleted and `algo-admin-*.json` added to `.gitignore`
+- C5-4 (Unused tShell): FIXED — removed unused `tShell` destructuring from `generateMetadata`
+- C5-5 (Stale comment): FIXED — updated comment to reflect primary key usage instead of `ctid`
+- C5-6 (storedName exposure): FIXED — removed `storedName` from files API GET response
+
+---
+
 ## CYCLE 4 FIXED ISSUES (VERIFIED IN PRODUCTION)
 
 - D1 (Breadcrumb i18n): FIXED — nav.discussions keys added
@@ -37,14 +48,14 @@
 
 ---
 
-## QUALITY GATES (HEAD baseline)
+## QUALITY GATES (post-remediation)
 
 - `tsc --noEmit`: PASS (exit 0)
-- `eslint .`: PASS (1 warning: unused tShell)
+- `eslint .`: PASS (exit 0, 0 warnings)
 - `next build`: PASS (exit 0)
-- `vitest run`: PASS (2337 tests, 314 files)
-- `vitest run --config vitest.config.component.ts`: FAIL (4 tests failed)
+- `vitest run`: PASS (2337+ tests)
+- `vitest run --config vitest.config.component.ts`: PASS (167 tests, 64 files)
 
 ---
 
-## NEW_FINDINGS COUNT: 6
+## NEW_FINDINGS COUNT: 0
