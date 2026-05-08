@@ -53,6 +53,11 @@ async function sidecarConsume(key: string): Promise<boolean | null> {
   return !result.allowed;
 }
 
+// Best-effort deduplication of rate-limit consumption within a single request
+// object lifetime. In practice Next.js creates a new request object per
+// middleware/route boundary, so this typically deduplicates only when the
+// same handler calls consumeApiRateLimit multiple times with the same
+// NextRequest reference.
 const consumedRequestKeys = new WeakMap<NextRequest, Set<string>>();
 
 function rememberRequestKey(request: NextRequest, key: string) {
