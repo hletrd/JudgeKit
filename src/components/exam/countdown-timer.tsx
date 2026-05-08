@@ -47,6 +47,7 @@ export function CountdownTimer({ deadline, label, onExpired }: CountdownTimerPro
   const [expired, setExpired] = useState(() => deadline - Date.now() <= 0);
   const expiredRef = useRef(expired);
   const firedThresholds = useRef<Set<number>>(prePopulateThresholds(deadline - Date.now()));
+  const staggeredTimerIdsRef = useRef<ReturnType<typeof setTimeout>[]>([]);
   const [thresholdAnnouncement, setThresholdAnnouncement] = useState("");
   const [thresholdUrgent, setThresholdUrgent] = useState(false);
   const t = useTranslations("groups");
@@ -62,6 +63,18 @@ export function CountdownTimer({ deadline, label, onExpired }: CountdownTimerPro
   useEffect(() => {
     expiredRef.current = expired;
   }, [expired]);
+
+  // Reset derived state when the deadline prop changes (e.g., exam extension).
+  useEffect(() => {
+    const newRemaining = deadline - (Date.now() + offsetRef.current);
+    const newExpired = newRemaining <= 0;
+    setRemaining(newRemaining);
+    setExpired(newExpired);
+    expiredRef.current = newExpired;
+    firedThresholds.current = prePopulateThresholds(newRemaining);
+    setThresholdAnnouncement("");
+    setThresholdUrgent(false);
+  }, [deadline]);
 
   useEffect(() => {
     const controller = new AbortController();
@@ -123,12 +136,13 @@ export function CountdownTimer({ deadline, label, onExpired }: CountdownTimerPro
             setThresholdAnnouncement(t(messageKey));
             setThresholdUrgent(threshold === 1 * 60 * 1000);
           } else {
-            setTimeout(() => {
+            const staggeredId = setTimeout(() => {
               if (cancelled) return;
               toast.warning(t(messageKey));
               setThresholdAnnouncement(t(messageKey));
               setThresholdUrgent(threshold === 1 * 60 * 1000);
             }, delayMs);
+            staggeredTimerIdsRef.current.push(staggeredId);
           }
         }
       } else {
@@ -178,6 +192,8 @@ export function CountdownTimer({ deadline, label, onExpired }: CountdownTimerPro
     return () => {
       cancelled = true;
       if (timerId !== null) clearTimeout(timerId);
+      staggeredTimerIdsRef.current.forEach((id) => clearTimeout(id));
+      staggeredTimerIdsRef.current = [];
       document.removeEventListener("visibilitychange", handleVisibilityChange);
     };
   }, [deadline, handleExpired, t]);

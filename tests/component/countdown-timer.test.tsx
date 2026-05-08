@@ -167,4 +167,50 @@ describe("CountdownTimer", () => {
 
     expect(signal?.aborted).toBe(true);
   });
+
+  it("resets expired state when deadline is extended", () => {
+    const onExpired = vi.fn();
+    // Start with a deadline 2 seconds in the past (already expired)
+    const { rerender } = render(
+      <CountdownTimer deadline={Date.now() - 2000} onExpired={onExpired} />
+    );
+
+    expect(screen.getByTestId("badge")).toHaveTextContent("00:00:00");
+    // onExpired does NOT fire on mount for already-expired deadlines;
+    // it only fires on transition from non-expired to expired
+    expect(onExpired).not.toHaveBeenCalled();
+
+    // Extend deadline to 1 hour in the future
+    act(() => {
+      rerender(<CountdownTimer deadline={Date.now() + 3600 * 1000} onExpired={onExpired} />);
+    });
+
+    // Should show positive remaining time, not 00:00:00
+    expect(screen.getByTestId("badge")).toHaveTextContent("01:00:00");
+  });
+
+  it("re-fires onExpired when extended deadline expires again", () => {
+    const onExpired = vi.fn();
+    // Start expired
+    const { rerender } = render(
+      <CountdownTimer deadline={Date.now() - 1000} onExpired={onExpired} />
+    );
+
+    expect(onExpired).not.toHaveBeenCalled();
+
+    // Extend to 3 seconds in the future
+    act(() => {
+      rerender(<CountdownTimer deadline={Date.now() + 3000} onExpired={onExpired} />);
+    });
+
+    expect(screen.getByTestId("badge")).not.toHaveTextContent("00:00:00");
+
+    // Advance past the new deadline
+    act(() => {
+      vi.advanceTimersByTime(5000);
+    });
+
+    expect(onExpired).toHaveBeenCalledTimes(1);
+    expect(screen.getByTestId("badge")).toHaveTextContent("00:00:00");
+  });
 });
