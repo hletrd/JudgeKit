@@ -26,7 +26,9 @@ export function registerAuditFlushOnShutdown() {
   registered = true;
 
   processLike.once("beforeExit", () => {
-    void flushAuditBuffer();
+    void flushAuditBuffer().catch(() => {
+      // Best-effort flush during shutdown — ignore errors
+    });
   });
 
   processLike.once("SIGTERM", () => {
