@@ -57,6 +57,21 @@ const requestSchema = z.object({
   }).optional(),
 });
 
+const pluginConfigSchema = z.object({
+  provider: z.enum(["openai", "claude", "gemini"]),
+  openaiApiKey: z.string(),
+  openaiModel: z.string(),
+  claudeApiKey: z.string(),
+  claudeModel: z.string(),
+  geminiApiKey: z.string(),
+  geminiModel: z.string(),
+  assistantName: z.string(),
+  systemPrompt: z.string(),
+  knowledgeBase: z.string(),
+  maxTokens: z.number().int().positive(),
+  rateLimitPerMinute: z.number().int().positive(),
+});
+
 async function persistChatMessage(entry: {
   userId: string;
   sessionId: string;
@@ -193,28 +208,15 @@ export const POST = createApiHandler({
       return NextResponse.json({ error: "notConfigured" }, { status: 404 });
     }
 
-    const config = pluginState.config as {
-      provider: string;
-      openaiApiKey: string;
-      openaiModel: string;
-      claudeApiKey: string;
-      claudeModel: string;
-      geminiApiKey: string;
-      geminiModel: string;
-      assistantName: string;
-      systemPrompt: string;
-      knowledgeBase: string;
-      maxTokens: number;
-      rateLimitPerMinute: number;
-    };
-
-    // Determine which provider key to decrypt based on the configured provider.
-    // Only the selected provider's key is decrypted; the other two remain as
-    // redacted/empty strings in the config object.
-    const VALID_PROVIDERS = new Set(["openai", "claude", "gemini"]);
-    if (!VALID_PROVIDERS.has(config.provider)) {
-      return NextResponse.json({ error: "invalidProvider" }, { status: 400 });
+    const configParse = pluginConfigSchema.safeParse(pluginState.config);
+    if (!configParse.success) {
+      logger.warn(
+        { issues: configParse.error.issues },
+        "[chat] Plugin config validation failed",
+      );
+      return NextResponse.json({ error: "notConfigured" }, { status: 500 });
     }
+    const config = configParse.data;
 
     const selectedKeyField = `${config.provider}ApiKey` as "openaiApiKey" | "claudeApiKey" | "geminiApiKey";
 
