@@ -45,3 +45,8 @@ None — both findings are security/correctness issues that affect sidecar clien
 - `npx next build` — PASS
 - `npx vitest run` — PASS (314 files, 2338 tests)
 - `npx vitest run --config vitest.config.component.ts` — PASS (66 files, 179 tests)
+
+## Deploy results
+
+- **test.worv.ai** — SUCCESS (HTTP 200 verified)
+- **algo.xylolabs.com** — SUCCESS (HTTP 200 verified)
