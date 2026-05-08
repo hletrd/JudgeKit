@@ -130,11 +130,16 @@ export async function streamBackupWithFiles(signal?: AbortSignal, dbNow?: Date):
   const dbStream = streamDatabaseExport({ signal, dbNow: resolvedDbNow });
 
   const dbReader = dbStream.getReader();
-  while (true) {
-    if (signal?.aborted) throw new DOMException("Aborted", "AbortError");
-    const { done, value } = await dbReader.read();
-    if (done) break;
-    dbChunks.push(value);
+  try {
+    while (true) {
+      if (signal?.aborted) throw new DOMException("Aborted", "AbortError");
+      const { done, value } = await dbReader.read();
+      if (done) break;
+      dbChunks.push(value);
+    }
+  } catch (error) {
+    dbReader.releaseLock();
+    throw new Error("backupStreamReadFailed", { cause: error });
   }
 
   const dbJson = Buffer.concat(dbChunks).toString("utf-8");
