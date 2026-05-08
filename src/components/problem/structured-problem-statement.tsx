@@ -18,11 +18,11 @@ export function StructuredProblemStatement({
 
   return (
     <div className={cn("space-y-4", className)}>
-      {blocks.map((block, index) => {
+      {blocks.map((block) => {
         if (block.type === "markdown") {
           return (
             <ProblemDescription
-              key={`markdown-${index}`}
+              key={`markdown-${block.content.length}-${block.content.slice(0, 40)}`}
               description={block.content}
               editorTheme={editorTheme}
             />
@@ -30,7 +30,7 @@ export function StructuredProblemStatement({
         }
 
         return (
-          <Card key={`structured-${block.kind}-${index}`}>
+          <Card key={`structured-${block.kind}-${block.title}-${block.content.length}-${block.content.slice(0, 40)}`}>
             <CardHeader className="pb-3">
               <CardTitle className="text-base">{block.title}</CardTitle>
             </CardHeader>
