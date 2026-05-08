@@ -1,9 +1,9 @@
-# Aggregate Review — Cycle 9/100 (Current)
+# Aggregate Review — Cycle 10/100 (Current)
 
 **Date:** 2026-05-08
-**HEAD:** c5eb175b (cycle 8 close-out)
-**Reviewers:** code-reviewer, debugger (orchestrator direct; no registered Agent tools)
-**Scope:** Full TypeScript/TSX source review + gate execution
+**HEAD:** 2a6db3dd
+**Reviewers:** code-reviewer, security-reviewer, debugger (orchestrator direct; no registered Agent tools)
+**Scope:** Full TypeScript/TSX source review focusing on API correctness, error handling, and client-side cleanup
 **Approach:** Static code analysis, pattern-based search, targeted deep dives
 
 ---
@@ -12,50 +12,46 @@
 
 | ID | Severity | Confidence | Title | Source |
 |---|---|---|---|---|
-| C9-CR-1 | MEDIUM | HIGH | AntiCheatMonitor heartbeat timer restarts after enabled becomes false | code-reviewer, debugger |
-| C9-CR-2 | LOW | MEDIUM | OutputDiffView uses index-based React keys for diff lines | code-reviewer, debugger |
-| C9-CR-3 | LOW | HIGH | FooterContentForm updateLink uses array index instead of stable id | code-reviewer |
-| C9-CR-4 | LOW | LOW | Loading skeleton placeholders use index-based React keys | code-reviewer |
-| C9-CR-5 | LOW | LOW | LeaderboardTable uses index-based React keys for table rows | code-reviewer |
-| C9-CR-6 | LOW | LOW | AntiCheatDashboard uses index-based React keys | code-reviewer |
-| C9-CR-7 | LOW | LOW | ParticipantAntiCheatTimeline uses index-based React keys | code-reviewer |
-| C9-CR-8 | LOW | LOW | RecruitingInvitationsPanel uses index-based React keys | code-reviewer |
-| C9-CR-9 | LOW | LOW | BulkCreateDialog uses index-based React keys for table rows | code-reviewer |
-| C9-CR-10 | LOW | LOW | AnalyticsCharts uses index-based React keys for SVG elements | code-reviewer |
+| C10-CR-1 | MEDIUM | HIGH | Judge routes return 500 on malformed JSON request body | code-reviewer, security-reviewer, debugger |
+| C10-CR-2 | MEDIUM | MEDIUM | apiFetchJson masks non-JSON success responses as valid data | code-reviewer, security-reviewer, debugger |
+| C10-CR-3 | LOW | MEDIUM | contest-join-client setTimeout not cleaned up on unmount | code-reviewer, debugger |
 
 ---
 
 ## CROSS-AGENT AGREEMENT
 
-- **C9-CR-1 / C9-DB-1** are the same root cause: 2 lanes agree on the AntiCheatMonitor heartbeat timer race condition. debugger provides the concrete step-by-step failure scenario; code-reviewer identifies the structural issue.
-- **C9-CR-2 / C9-DB-2** are the same root cause: 2 lanes agree on OutputDiffView index keys.
+- **C10-CR-1** — All 3 reviewers agree: judge routes mishandle malformed JSON. code-reviewer identifies the structural pattern across 4 files; security-reviewer notes the error-handling gap and inability for workers to distinguish bad input from server failure; debugger provides the failure-mode analysis.
+- **C10-CR-2** — 3 reviewers agree: `apiFetchJson`'s unconditional `.catch(() => fallback)` on `res.json()` is risky for success-path parsing. code-reviewer identifies the data-masking issue; security-reviewer notes potential for MITM/compromised-proxy masking; debugger describes the concrete failure scenario.
+- **C10-CR-3** — code-reviewer and debugger agree on the unguarded timer in contest-join-client.
 
 ---
 
 ## DETAILED FINDINGS
 
-### C9-CR-1 / C9-DB-1 — AntiCheatMonitor heartbeat timer restarts after enabled becomes false
+### C10-CR-1 — Judge routes return 500 on malformed JSON request body
 
-- **File:** `src/components/exam/anti-cheat-monitor.tsx:180-188`
-- **Problem:** When `enabled` prop toggles from true to false while a heartbeat request is in-flight (`await reportEventRef.current("heartbeat")` at line 183), the async setTimeout callback completes and calls `scheduleHeartbeat()` (line 186), which schedules a new timer. The cleanup effect (lines 191-197) only clears the current `heartbeatTimerRef.current` but cannot intercept an already-executing async callback.
-- **Concrete failure:** User navigates away from a contest page (enabled becomes false) while a heartbeat network request is in-flight. The heartbeat completes after cleanup, schedules a new timer, and heartbeats continue indefinitely even though the component is logically disabled.
-- **Fix:** Guard `scheduleHeartbeat` with an `enabledRef` or `isActiveRef` that tracks the current effect instance. Set the ref to true when the effect runs and false in cleanup; check it before scheduling the next heartbeat.
+- **Files:**
+  - `src/app/api/v1/judge/register/route.ts:34`
+  - `src/app/api/v1/judge/claim/route.ts:65`
+  - `src/app/api/v1/judge/heartbeat/route.ts:30`
+  - `src/app/api/v1/judge/poll/route.ts:32`
+- **Problem:** Each judge route parses the request body with `await request.json()` directly inside a `.safeParse()` call. If the client sends malformed JSON (truncated body, invalid syntax, proxy corruption), `request.json()` throws a `SyntaxError`. This bypasses schema validation and is caught by the outer `try/catch`, returning HTTP 500 `internalServerError` instead of HTTP 400 `invalidJson`.
+- **Concrete failure:** A worker with a JSON serialization bug sends a truncated POST body. The app server logs an error and returns 500. The worker retries with the same bad body, causing error-log noise and potential alert fatigue. The worker operator cannot tell whether the server is broken or their request is malformed.
+- **Fix:** Wrap `await request.json()` in a `try/catch` before passing to `safeParse`, returning 400 on JSON parse failure.
 
-### C9-CR-2 / C9-DB-2 — OutputDiffView uses index-based React keys for diff lines
+### C10-CR-2 — apiFetchJson masks non-JSON success responses as valid data
 
-- **File:** `src/components/submissions/output-diff-view.tsx:43, 84, 111`
-- **Problem:** Three separate `key={i}` uses for diff line rendering. If expected/actual outputs update while the component is mounted, React may mis-identify DOM nodes.
-- **Fix:** Use composite keys based on line content + line numbers.
+- **File:** `src/lib/api/client.ts:126-127`
+- **Problem:** `apiFetchJson` unconditionally calls `res.json()` and uses `.catch(() => fallback)`. When the server returns HTTP 200 with a non-JSON body (empty body, HTML from reverse proxy, chunked transfer ending mid-JSON), the parse fails, `fallback` is returned, and because `res.ok` is true, the caller receives `{ok: true, data: fallback}`. The caller proceeds with default/empty data believing it is real server data.
+- **Concrete failure:** A misconfigured nginx returns HTML with status 200 for a proxied API endpoint. A client component using `apiFetchJson` receives `{ok: true, data: fallback}` and renders stale/default data without any error indication.
+- **Fix:** In `apiFetchJson`, if `res.ok` is true but `res.json()` throws, treat it as a network/parsing error rather than success.
 
-### C9-CR-3 — FooterContentForm updateLink uses array index instead of stable id
+### C10-CR-3 — contest-join-client setTimeout not cleaned up on unmount
 
-- **File:** `src/app/(dashboard)/dashboard/admin/settings/footer-content-form.tsx:64`
-- **Problem:** `updateLink(locale, index, field, value)` updates by index even though links have stable `id` fields.
-- **Fix:** Update by `id` instead of `index`.
-
-### C9-CR-4 through C9-CR-10 — Various index-based React keys
-
-All are LOW severity pattern violations in mostly-static contexts. See per-agent files for full citations.
+- **File:** `src/app/(public)/contests/join/contest-join-client.tsx:68`
+- **Problem:** In the catch block of `handleJoin`, `setTimeout(() => setShaking(false), 600)` is not stored in a ref and not cleared in a cleanup effect. If the component unmounts before the timeout fires, React may log a warning.
+- **Concrete failure:** User submits invalid code, gets error shake, immediately navigates away. 600ms later, timeout fires and attempts `setShaking(false)` on unmounted component.
+- **Fix:** Store the timeout ID in a `useRef` and clear it in a `useEffect` cleanup.
 
 ---
 
@@ -65,14 +61,4 @@ No agent failures. All review work performed directly by the orchestrator due to
 
 ---
 
-## QUALITY GATES (pre-remediation)
-
-- `eslint .` — PASS (0 errors, 0 warnings)
-- `tsc --noEmit` — PASS
-- `next build` — PASS
-- `vitest run` — PASS (2337 tests)
-- `vitest run --config vitest.config.component.ts` — PASS (167 tests)
-
----
-
-## NEW_FINDINGS COUNT: 10 (1 MEDIUM, 9 LOW)
+## NEW_FINDINGS COUNT: 3 (2 MEDIUM, 1 LOW)

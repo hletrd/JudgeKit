@@ -1,48 +1,44 @@
-# Debugger Review — Cycle 9
+# Debugger Review — Cycle 10/100
 
 **Reviewer:** debugger (orchestrator direct)
 **Date:** 2026-05-08
-**HEAD:** c5eb175b (cycle 8 close-out)
+**HEAD:** 2a6db3dd
 **Scope:** Latent bug surface, failure modes, race conditions, regressions
 
 ---
 
 ## NEW FINDINGS
 
-### C9-DB-1 — AntiCheatMonitor heartbeat timer restarts after enabled toggles off
-
+### C10-DB-1 — Judge routes return 500 on malformed JSON body
 - **Severity:** MEDIUM
 - **Confidence:** HIGH
-- **File:** `src/components/exam/anti-cheat-monitor.tsx:180-188`
-- **Problem:** Race condition between effect cleanup and async timer callback. When `enabled` becomes false while a heartbeat `await reportEventRef.current("heartbeat")` is in-flight, the cleanup clears `heartbeatTimerRef.current` but the in-flight promise resolves and calls `scheduleHeartbeat()` which schedules a new timer.
-- **Failure scenario:**
-  1. Component mounts with `enabled=true`, heartbeat effect schedules timer H1
-  2. H1 fires, visibility is visible, starts `await reportEventRef.current("heartbeat")`
-  3. User navigates away, parent sets `enabled=false`
-  4. Effect cleanup runs: clears H1, sets `heartbeatTimerRef.current = null`
-  5. Heartbeat await resolves, calls `scheduleHeartbeat()`
-  6. `scheduleHeartbeat` sees `heartbeatTimerRef.current === null`, skips clear
-  7. NEW timer H2 is scheduled with `setTimeout(..., HEARTBEAT_INTERVAL_MS)`
-  8. H2 fires indefinitely, calling `reportEventRef.current("heartbeat")` forever
-- **Fix:** Guard `scheduleHeartbeat` with a ref that tracks whether the current effect instance is still active. Set the ref to true when the effect runs and false in cleanup; check it before scheduling.
+- **Files:**
+  - `src/app/api/v1/judge/register/route.ts:34`
+  - `src/app/v1/judge/claim/route.ts:65`
+  - `src/app/v1/judge/heartbeat/route.ts:30`
+  - `src/app/v1/judge/poll/route.ts:32`
+- **Problem:** `await request.json()` throws `SyntaxError` on malformed JSON. The outer `try/catch` returns HTTP 500 instead of 400. This is a failure-mode mismatch: the client sent bad data but the server reports an internal error.
+- **Failure scenario:** A worker with a bug sends a truncated POST body. The app server logs an error and returns 500. The worker retries with the same bad body, causing error-log noise and potential alert fatigue.
+- **Fix:** Guard JSON parsing with an explicit try/catch that returns 400.
 
-### C9-DB-2 — OutputDiffView index-based keys could mismatch on output refresh
+### C10-DB-2 — apiFetchJson success-path parse failure masks server issues
+- **Severity:** MEDIUM
+- **Confidence:** MEDIUM
+- **File:** `src/lib/api/client.ts:126-127`
+- **Problem:** When `res.ok` is true but the body is not valid JSON, `apiFetchJson` returns `{ok: true, data: fallback}`. This hides the fact that the server returned a malformed response.
+- **Failure scenario:** A proxy misconfiguration returns HTML with status 200. The client receives fallback data and proceeds as if the request succeeded, potentially causing data loss or incorrect UI state.
+- **Fix:** Separate the error-handling paths: if `res.ok` is true, JSON parse failure should be treated as a fetch error (return `{ok: false, data: fallback}` or throw).
 
+### C10-DB-3 — contest-join-client shake timer not guarded on unmount
 - **Severity:** LOW
 - **Confidence:** MEDIUM
-- **File:** `src/components/submissions/output-diff-view.tsx:43, 84, 111`
-- **Problem:** If submission detail auto-refreshes and expected/actual outputs change (e.g., from empty to populated after judge completes), React uses index keys and may not correctly update DOM rows that shifted position.
-- **Failure scenario:** Diff view shows old line highlighting at wrong positions after output update. Cosmetic only.
-- **Fix:** Use composite keys based on line data.
+- **File:** `src/app/(public)/contests/join/contest-join-client.tsx:68`
+- **Problem:** `setTimeout(() => setShaking(false), 600)` in catch block fires after component unmount if navigation happens quickly after failed join.
+- **Failure scenario:** User submits invalid code, gets error shake, immediately navigates away. 600ms later, timeout fires and attempts `setShaking(false)` on unmounted component.
+- **Fix:** Store timeout in `useRef` and clear in `useEffect` cleanup.
 
 ---
 
 ## CARRY-FORWARD DEFERRED ITEMS
 
 All previously deferred items remain unchanged. Not re-reported per cycle instructions.
-
----
-
-## AGENT FAILURES
-
-No agent failures. Review performed directly by orchestrator.
