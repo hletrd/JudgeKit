@@ -38,6 +38,13 @@ const INTERNAL_KEY_PREFIX = "_sys.";
 const INTERNAL_KEY_PATTERN = /^_sys\.[a-zA-Z0-9_]+$/;
 
 const ACCOUNT_PASSWORD_RESET_REQUIRED_KEY = `${INTERNAL_KEY_PREFIX}accountPasswordResetRequired`;
+/**
+ * JSONB key name used in sql.raw() calls for the failed redeem attempt counter.
+ * WARNING: This MUST remain a compile-time constant string. It is interpolated
+ * directly into SQL via sql.raw() — if it is ever made dynamic or derived from
+ * user input, it becomes an SQL injection vector. The INTERNAL_KEY_PATTERN
+ * runtime assertion below provides a safety net against accidental changes.
+ */
 const FAILED_REDEEM_ATTEMPTS_KEY = `${INTERNAL_KEY_PREFIX}failedRedeemAttempts`;
 const MAX_FAILED_REDEEM_ATTEMPTS = 5;
 
