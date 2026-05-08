@@ -42,3 +42,16 @@ None — both findings are code-quality/consistency issues that have simple, saf
 - `npx next build` — PASS
 - `npx vitest run` — PASS (314 files, 2338 tests)
 - `npx vitest run --config vitest.config.component.ts` — PASS (66 files, 179 tests)
+
+## Deployment (per-cycle)
+
+- **worv (`test.worv.ai`)** — PASS
+  - Build: `judgekit-app:latest` (linux/arm64), `judgekit-code-similarity:latest`, `judgekit-rate-limiter:latest`
+  - Pre-deploy DB backup: `~/backups/judgekit-predeploy-20260508-184348Z.dump`
+  - DB migrations: No changes detected
+  - Containers: All healthy, nginx reloaded
+- **algo (`algo.xylolabs.com`)** — PASS
+  - Build: `judgekit-app:latest` (linux/arm64), `judgekit-code-similarity:latest`, `judgekit-rate-limiter:latest`
+  - Pre-deploy DB backup preserved
+  - DB migrations: No changes detected
+  - Containers: All healthy, HTTPS verified (HTTP 200)
