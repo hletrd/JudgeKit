@@ -26,7 +26,7 @@ async function batchedDelete(
 
   while (true) {
     const result = await db.execute(
-      sql`DELETE FROM ${table} WHERE ctid IN (SELECT ctid FROM ${table} WHERE ${whereClause} LIMIT ${BATCH_SIZE})`
+      sql`DELETE FROM ${table} WHERE ${table.id} IN (SELECT ${table.id} FROM ${table} WHERE ${whereClause} LIMIT ${BATCH_SIZE})`
     );
     const deleted = Number(result.rowCount ?? 0);
     totalDeleted += deleted;
