@@ -525,7 +525,14 @@ async function tryRustRunner(
 
   try {
     const settings = getConfiguredSettings();
-    const timeLimitMs = options.timeLimitMs ?? settings.compilerTimeLimitMs;
+    const rawTimeLimitMs = options.timeLimitMs ?? settings.compilerTimeLimitMs;
+    const timeLimitMs = Number.isFinite(rawTimeLimitMs) && rawTimeLimitMs > 0 ? rawTimeLimitMs : 5000;
+    if (timeLimitMs !== rawTimeLimitMs) {
+      logger.warn(
+        { rawTimeLimitMs },
+        "[compiler] Invalid compilerTimeLimitMs fallback to default (5000ms)",
+      );
+    }
 
     const response = await fetch(`${COMPILER_RUNNER_URL}/run`, {
       method: "POST",
