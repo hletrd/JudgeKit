@@ -92,7 +92,8 @@ export function RecruitingInvitationsPanel({ assignmentId }: { assignmentId: str
   const [createEmail, setCreateEmail] = useState("");
   const [createExpiry, setCreateExpiry] = useState("none");
   const [customExpiryDate, setCustomExpiryDate] = useState("");
-  const [metadataFields, setMetadataFields] = useState<{ key: string; value: string }[]>([]);
+  const [metadataFields, setMetadataFields] = useState<{ id: string; key: string; value: string }[]>([]);
+  const metadataFieldIdRef = useRef(0);
   const [creating, setCreating] = useState(false);
   const [createdLink, setCreatedLink] = useState<string | null>(null);
 
@@ -219,6 +220,7 @@ export function RecruitingInvitationsPanel({ assignmentId }: { assignmentId: str
         setCreateEmail("");
         setCreateExpiry("none");
         setMetadataFields([]);
+        metadataFieldIdRef.current = 0;
         if (token) {
           const link = `${baseUrl}/recruit/${token}`;
           setCreatedLink(link);
@@ -468,15 +470,15 @@ export function RecruitingInvitationsPanel({ assignmentId }: { assignmentId: str
                 {/* Dynamic metadata fields */}
                 <div className="space-y-2">
                   <Label>{t("metadata")}</Label>
-                  {metadataFields.map((field, i) => (
-                    <div key={i} className="flex gap-2">
+                  {metadataFields.map((field) => (
+                    <div key={field.id} className="flex gap-2">
                       <Input
                         placeholder={t("metadataKey")}
                         value={field.key}
                         onChange={(e) => {
-                          const copy = [...metadataFields];
-                          copy[i].key = e.target.value;
-                          setMetadataFields(copy);
+                          setMetadataFields((prev) =>
+                            prev.map((f) => (f.id === field.id ? { ...f, key: e.target.value } : f))
+                          );
                         }}
                         className="flex-1"
                       />
@@ -484,16 +486,16 @@ export function RecruitingInvitationsPanel({ assignmentId }: { assignmentId: str
                         placeholder={t("metadataValue")}
                         value={field.value}
                         onChange={(e) => {
-                          const copy = [...metadataFields];
-                          copy[i].value = e.target.value;
-                          setMetadataFields(copy);
+                          setMetadataFields((prev) =>
+                            prev.map((f) => (f.id === field.id ? { ...f, value: e.target.value } : f))
+                          );
                         }}
                         className="flex-1"
                       />
                       <Button
                         variant="ghost"
                         size="sm"
-                        onClick={() => setMetadataFields(metadataFields.filter((_, j) => j !== i))}
+                        onClick={() => setMetadataFields((prev) => prev.filter((f) => f.id !== field.id))}
                         aria-label={t("removeField")}
                       >
                         <Trash2 className="h-4 w-4" />
@@ -503,7 +505,10 @@ export function RecruitingInvitationsPanel({ assignmentId }: { assignmentId: str
                   <Button
                     variant="outline"
                     size="sm"
-                    onClick={() => setMetadataFields([...metadataFields, { key: "", value: "" }])}
+                    onClick={() => {
+                      metadataFieldIdRef.current += 1;
+                      setMetadataFields((prev) => [...prev, { id: String(metadataFieldIdRef.current), key: "", value: "" }]);
+                    }}
                   >
                     {t("addField")}
                   </Button>
