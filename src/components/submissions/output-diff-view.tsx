@@ -38,9 +38,9 @@ function UnifiedDiffView({ lines }: { lines: DiffLine[] }) {
     <div className="overflow-auto rounded border bg-[var(--code-surface-background)] text-xs font-mono leading-relaxed" style={{ maxHeight: 320 }}>
       <table className="w-full border-collapse">
         <tbody>
-          {lines.map((line, i) => (
+          {lines.map((line) => (
             <tr
-              key={i}
+              key={`old-${line.oldNo ?? "n"}-new-${line.newNo ?? "n"}`}
               className={
                 line.kind === "add"
                   ? "bg-green-50 dark:bg-green-950/30"
@@ -81,7 +81,7 @@ function SideBySideDiffView({ pairs }: { pairs: SideBySidePair[] }) {
                 const left = pair.left;
                 return (
                   <tr
-                    key={i}
+                    key={`left-${left?.lineNo ?? "n"}-${i}`}
                     className={
                       left?.kind === "remove"
                         ? "bg-red-50 dark:bg-red-950/30"
@@ -108,7 +108,7 @@ function SideBySideDiffView({ pairs }: { pairs: SideBySidePair[] }) {
                 const right = pair.right;
                 return (
                   <tr
-                    key={i}
+                    key={`right-${right?.lineNo ?? "n"}-${i}`}
                     className={
                       right?.kind === "add"
                         ? "bg-green-50 dark:bg-green-950/30"
