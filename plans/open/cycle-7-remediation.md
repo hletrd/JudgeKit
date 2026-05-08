@@ -52,4 +52,5 @@ None — both findings are correctness/reliability issues that should not be def
 
 ## Deploy Results
 
-- TBD after push
+- **worv (test.worv.ai)**: DEPLOYED (exit code 0, HTTP 200 verified, HTTPS verified)
+- **algo (algo.xylolabs.com)**: DEPLOYED (exit code 0, HTTP 200 verified, HTTPS verified)
