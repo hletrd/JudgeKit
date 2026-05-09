@@ -11,6 +11,10 @@ import { db, activeDialect } from "./index";
 import type { DbDialect } from "./config";
 import * as schema from "./schema";
 import { getDbNowUncached } from "@/lib/db-time";
+import {
+  EXPORT_SANITIZED_COLUMNS,
+  EXPORT_ALWAYS_REDACT_COLUMNS,
+} from "@/lib/security/secrets";
 
 export type JudgeKitExportRedactionMode = "full-fidelity" | "sanitized";
 
@@ -71,7 +75,7 @@ export function streamDatabaseExport(options: { signal?: AbortSignal; sanitize?:
             )
           );
 
-          const activeRedactionMap = options.sanitize ? { ...SANITIZED_COLUMNS, ...ALWAYS_REDACT } : ALWAYS_REDACT;
+          const activeRedactionMap = options.sanitize ? { ...EXPORT_SANITIZED_COLUMNS, ...EXPORT_ALWAYS_REDACT_COLUMNS } : EXPORT_ALWAYS_REDACT_COLUMNS;
 
           for (const [tableIndex, { name, table, orderColumns }] of TABLE_ORDER.entries()) {
             if (cancelled) return;
@@ -233,44 +237,6 @@ const EXPORT_CHUNK_SIZE = 1000;
 function getExportRedactionMode(sanitize?: boolean): JudgeKitExportRedactionMode {
   return sanitize ? "sanitized" : "full-fidelity";
 }
-
-/**
- * Columns redacted in sanitized (human-downloadable) exports.
- * Full-fidelity backup keeps all columns for disaster recovery.
- *
- * Sanitized exports null-out sensitive material — session tokens, password
- * hashes, API keys, worker secrets — so a portable export can be shared or
- * archived without leaking live credentials.
- */
-const SANITIZED_COLUMNS: Record<string, Set<string>> = {
-  users: new Set(["passwordHash"]),
-  sessions: new Set(["sessionToken"]),
-  accounts: new Set(["refresh_token", "access_token", "id_token"]),
-  apiKeys: new Set(["encryptedKey"]),
-  judgeWorkers: new Set(["secretTokenHash", "judgeClaimToken"]),
-  recruitingInvitations: new Set(["tokenHash"]),
-  systemSettings: new Set(["hcaptchaSecret"]),
-};
-
-/**
- * Columns that are ALWAYS redacted, even in full-fidelity backup exports.
- *
- * Note: `judgeWorkers.secretTokenHash` and `judgeWorkers.judgeClaimToken` are
- * NOT included here. They ARE redacted in sanitized exports (see
- * SANITIZED_COLUMNS above) but retained in full-fidelity backups because a
- * successful restore requires re-registering workers — the secrets are needed
- * as a reference for operators to re-provision workers. If worker secrets are
- * leaked via a full-fidelity backup, the operator must rotate the shared
- * RUNNER_AUTH_TOKEN and re-register each worker to generate new per-worker
- * secrets.
- */
-const ALWAYS_REDACT: Record<string, Set<string>> = {
-  users: new Set(["passwordHash"]),
-  sessions: new Set(["sessionToken"]),
-  accounts: new Set(["refresh_token", "access_token", "id_token"]),
-  apiKeys: new Set(["encryptedKey"]),
-  systemSettings: new Set(["hcaptchaSecret"]),
-};
 
 type ColumnRef = Parameters<typeof asc>[0];
 

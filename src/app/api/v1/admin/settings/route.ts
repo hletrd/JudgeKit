@@ -7,9 +7,18 @@ import { DEFAULT_PLATFORM_MODE, getSystemSettings, GLOBAL_SETTINGS_ID } from "@/
 import { invalidateSettingsCache } from "@/lib/system-settings-config";
 import { isHcaptchaConfigured } from "@/lib/security/hcaptcha";
 import { encrypt, redactSecret } from "@/lib/security/encryption";
+import { SECRET_SETTINGS_KEYS } from "@/lib/security/secrets";
 import { systemSettingsSchema } from "@/lib/validators/system-settings";
 import { getDbNowUncached } from "@/lib/db-time";
 import { recordAuditEvent } from "@/lib/audit/events";
+
+function redactSecretSettings(settings: Record<string, unknown>): void {
+  for (const key of SECRET_SETTINGS_KEYS) {
+    if (settings[key]) {
+      settings[key] = redactSecret(settings[key] as string);
+    }
+  }
+}
 
 export const GET = createApiHandler({
   auth: { capabilities: ["system.settings"] },
@@ -18,10 +27,8 @@ export const GET = createApiHandler({
     void user;
     const settings = await getSystemSettings();
     // Never expose the full secret in API responses
-    if (settings && (settings as Record<string, unknown>).hcaptchaSecret) {
-      (settings as Record<string, unknown>).hcaptchaSecret = redactSecret(
-        (settings as Record<string, unknown>).hcaptchaSecret as string
-      );
+    if (settings) {
+      redactSecretSettings(settings as Record<string, unknown>);
     }
     return apiSuccess(settings ?? {});
   },
@@ -128,10 +135,8 @@ export const PUT = createApiHandler({
 
     const updated = await getSystemSettings();
     // Never expose the full secret in API responses
-    if (updated && (updated as Record<string, unknown>).hcaptchaSecret) {
-      (updated as Record<string, unknown>).hcaptchaSecret = redactSecret(
-        (updated as Record<string, unknown>).hcaptchaSecret as string
-      );
+    if (updated) {
+      redactSecretSettings(updated as Record<string, unknown>);
     }
     return apiSuccess(updated ?? {});
   },
