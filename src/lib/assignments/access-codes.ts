@@ -183,7 +183,7 @@ export async function redeemAccessCode(
         return { ok: true as const, alreadyEnrolled: true, assignmentId: assignment.id, groupId: assignment.groupId };
       }
 
-      // Create access token
+      // Create access token with expiry tied to assignment deadline
       await tx.insert(contestAccessTokens)
         .values({
           id: nanoid(),
@@ -191,6 +191,7 @@ export async function redeemAccessCode(
           userId,
           redeemedAt: now,
           ipAddress: ipAddress ?? null,
+          expiresAt: assignment.deadline,
         });
 
       // Auto-enroll in group if not already enrolled

@@ -1021,6 +1021,7 @@ export const contestAccessTokens = pgTable(
       .notNull()
       .$defaultFn(() => new Date()),
     ipAddress: text("ip_address"),
+    expiresAt: timestamp("expires_at", { withTimezone: true }),
   },
   (table) => [
     uniqueIndex("cat_assignment_user_idx").on(table.assignmentId, table.userId),

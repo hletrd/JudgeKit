@@ -683,6 +683,7 @@ export async function redeemRecruitingToken(
         userId: uid,
         redeemedAt: dbNow,
         ipAddress: ipAddress ?? null,
+        expiresAt: assignment.deadline,
       });
 
       // Atomically claim — rolls back entire tx if already redeemed or expired

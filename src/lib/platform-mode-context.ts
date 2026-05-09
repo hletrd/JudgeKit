@@ -86,6 +86,7 @@ async function findRestrictedAssignmentIdForProblem(
          OR EXISTS (
            SELECT 1 FROM contest_access_tokens cat
            WHERE cat.assignment_id = a.id AND cat.user_id = @userId
+             AND (cat.expires_at IS NULL OR cat.expires_at > NOW())
          )
        )
      ORDER BY a.starts_at DESC NULLS LAST, a.created_at DESC
@@ -115,6 +116,7 @@ async function findAccessibleAssignmentIdForProblem(
          OR EXISTS (
            SELECT 1 FROM contest_access_tokens cat
            WHERE cat.assignment_id = a.id AND cat.user_id = @userId
+             AND (cat.expires_at IS NULL OR cat.expires_at > NOW())
          )
        )
      LIMIT 1`,
@@ -139,6 +141,7 @@ async function findActiveRestrictedAssignmentIdForUser(
          OR EXISTS (
            SELECT 1 FROM contest_access_tokens cat
            WHERE cat.assignment_id = a.id AND cat.user_id = @userId
+             AND (cat.expires_at IS NULL OR cat.expires_at > NOW())
          )
        )
        AND (

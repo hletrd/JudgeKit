@@ -107,6 +107,7 @@ export const POST = createApiHandler({
           userId: targetUser.id,
           redeemedAt: now,
           ipAddress: null,
+          expiresAt: assignment.deadline,
         })
         .onConflictDoNothing({
           target: [contestAccessTokens.assignmentId, contestAccessTokens.userId],

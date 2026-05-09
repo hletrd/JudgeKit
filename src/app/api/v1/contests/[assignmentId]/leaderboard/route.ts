@@ -43,7 +43,7 @@ export const GET = createApiHandler({
       const hasAccess = await rawQueryOne(
         `SELECT 1 FROM enrollments WHERE group_id = @groupId AND user_id = @userId
          UNION ALL
-         SELECT 1 FROM contest_access_tokens WHERE assignment_id = @assignmentId AND user_id = @userId
+         SELECT 1 FROM contest_access_tokens WHERE assignment_id = @assignmentId AND user_id = @userId AND (expires_at IS NULL OR expires_at > NOW())
          LIMIT 1`,
         { groupId: assignment.groupId, userId: user.id, assignmentId }
       );

@@ -180,6 +180,7 @@ export async function getContestsForUser(
          OR EXISTS (
            SELECT 1 FROM contest_access_tokens cat
            WHERE cat.assignment_id = a.id AND cat.user_id = @userId
+             AND (cat.expires_at IS NULL OR cat.expires_at > NOW())
          )
        )
      ${ORDER_BY}`,
