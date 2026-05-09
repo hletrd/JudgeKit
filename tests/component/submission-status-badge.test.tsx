@@ -166,8 +166,6 @@ describe("SubmissionStatusBadge", () => {
     const badge = screen.getByTestId("badge");
     expect(badge).toHaveAttribute("data-variant", "secondary");
   });
-});
-
 
   it("shows the TLE tooltip with execution time compared against the limit", () => {
     render(
@@ -193,3 +191,4 @@ describe("SubmissionStatusBadge", () => {
 
     expect(screen.getByTestId("tooltip-content")).toHaveTextContent("Segmentation fault");
   });
+});
