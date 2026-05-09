@@ -200,3 +200,10 @@ Recommended order to minimize conflicts and maximize safety:
 - C18-2 may depend on C18-3 if recruiting routes use rate limiting (unlikely — separate concerns)
 - C18-3 should be implemented independently after all other fixes to isolate any regressions
 - No other cross-dependencies
+
+---
+
+## Deploy Status
+
+- **algo.xylolabs.com**: SUCCESS (2026-05-09, commit def9d906) — app container healthy, nginx reloaded, HTTPS verified
+- **test.worv.ai**: SUCCESS (2026-05-09, commit def9d906) — app container healthy, nginx reloaded, HTTPS verified
