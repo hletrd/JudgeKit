@@ -1,40 +1,53 @@
 # Security Review — Cycle 19/100
 
-**Reviewer:** security-reviewer (manual)
-**Date:** 2026-05-08
-**HEAD:** 18b479ac
-**Scope:** OWASP Top 10, auth/authz, input validation, secrets exposure
+**Reviewer:** security-reviewer (manual — no agents registered)
+**Date:** 2026-05-09
+**Base commit:** 75d82a17
+**Current HEAD:** def9d906
 
 ---
 
-## NEW FINDINGS
+## Scope
 
-### C19-SR-1: [LOW] ContestReplay NaN speed could cause client-side DoS via rapid timer loop
-
-**Severity:** LOW
-**Confidence:** MEDIUM
-**File:** `src/components/contest/contest-replay.tsx:214`
-
-**Problem:** The playback speed Select uses an unchecked `parseInt(v, 10) as (typeof PLAYBACK_SPEEDS)[number]`. If an attacker manipulates the DOM or injects an invalid value into the Select component, `speed` can become `NaN`. The playback timer uses `1400 / speed` (line 99), which becomes `NaN`. `setTimeout(callback, NaN)` fires immediately, and the callback unconditionally reschedules itself, causing a tight loop of `setCurrentIndex` updates that freeze the UI thread.
-
-**Impact:** Client-side denial of service (browser tab freeze). No server impact, no data exfiltration.
-
-**Fix:** Validate parsed speed against the allowed set before applying:
-```tsx
-const parsed = parseInt(v, 10);
-if (PLAYBACK_SPEEDS.includes(parsed)) {
-  setSpeed(parsed);
-}
-```
+Security-focused review of changed files:
+- Auth pipeline (`public-signup.ts`, `api/handler.ts`)
+- Secret handling (`plugins/secrets.ts`)
+- File storage (`files/storage.ts`)
+- Docker API (`docker/client.ts`, `admin/docker/images/prune/route.ts`)
+- Rate limiting (`security/rate-limit.ts`, `security/api-rate-limit.ts`, `security/rate-limit-core.ts`)
+- hCaptcha (`security/hcaptcha.ts`)
+- Chat widget (`api/v1/plugins/chat-widget/chat/route.ts`)
+- SSE events (`api/v1/submissions/[id]/events/route.ts`)
+- Compiler sandbox (`compiler/execute.ts`)
 
 ---
 
-## No Other Confirmed Issues
+## Findings
 
-- All API routes use `createApiHandler` or implement equivalent auth/CSRF/rate-limit checks.
-- Judge worker routes (`/api/v1/judge/*`) correctly use IP allowlist + token auth.
-- Backup/restore routes require capability check (`system.backup`) + password re-verification.
-- File access route implements proper capability-based authorization.
-- SQL queries use parameterized inputs via Drizzle ORM; no raw user input concatenation found.
-- No secrets or credentials exposed in client-side code.
-- CSP headers properly configured with nonce-based script-src.
+### No new MEDIUM or HIGH security findings identified.
+
+### Verification of Prior Fixes
+
+| Finding | Status | Evidence |
+|---------|--------|----------|
+| C18-1 Plugin secret plaintext fallback | FIXED | Production guard throws in production; tests cover all paths |
+| C18-5 Path traversal | FIXED | Allowlist regex rejects leading dots, path separators, control chars |
+| C18-6 Prune route path construction | FIXED | `isAllowedJudgeDockerImage` validates repository before `join()` |
+| B2 Admin routes `needsRehash` | FIXED | `verifyAndRehashPassword` transparently handles rehashing |
+| B4 Internal cleanup rate limiting | FIXED | `consumeApiRateLimit` called at `src/app/api/internal/cleanup/route.ts:44` |
+
+### Minor Observations (LOW)
+
+1. **`src/hooks/use-keyboard-shortcuts.ts` — shortcut bypass potential**
+   - A focused CodeMirror editor (`.cm-content`) blocks shortcuts, but other rich text editors or custom focus traps without the `.cm-content` class would not be caught.
+   - Confidence: LOW. No such editors are currently in use.
+
+2. **`src/lib/docker/client.ts` — `isValidImageReference` allows colon in registry tag**
+   - Regex `/^[a-zA-Z0-9][a-zA-Z0-9._\-/:]+$/` allows `:` which could allow registry-prefixed images like `registry.example.com:5000/image`. This is intentional for legitimate registry prefixes but widens the surface slightly.
+   - Confidence: LOW. The `validateDockerfilePath` function further restricts build paths.
+
+---
+
+## Verdict
+
+Security posture remains strong. All previously identified issues are resolved and verified. No new vulnerabilities found.

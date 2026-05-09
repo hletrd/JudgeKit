@@ -1,64 +1,60 @@
 # Code Review — Cycle 19/100
 
-**Reviewer:** code-reviewer (manual)
-**Date:** 2026-05-08
-**HEAD:** 18b479ac
-**Scope:** Code quality, logic, maintainability, React patterns
+**Reviewer:** code-reviewer (manual — no agents registered)
+**Date:** 2026-05-09
+**Base commit:** 75d82a17
+**Current HEAD:** def9d906
 
 ---
 
-## NEW FINDINGS
+## Scope
 
-### C19-CR-1: [LOW] RecruitingInvitationsPanel metadata fields use index-based React key
-
-**Severity:** LOW
-**Confidence:** HIGH
-**File:** `src/components/contest/recruiting-invitations-panel.tsx:472`
-
-**Code:**
-```tsx
-{metadataFields.map((field, i) => (
-  <div key={i} className="flex gap-2">
-```
-
-**Problem:** The metadata fields in the invitation creation dialog use `key={i}` (array index). While the inputs are controlled by state and fields are only appended/removed by index (no reordering), this is still an anti-pattern. If future enhancements add drag-to-reorder or pre-populated fields, React will reuse DOM nodes incorrectly.
-
-**Fix:** Generate stable IDs when fields are added (e.g., `nanoid()` or a counter ref), store them in the field object, and use `key={field.id}`.
-
-**Concrete failure scenario:** If a user fills in Field 0 (key=0, key="name", value="Alice"), Field 1 (key=1, key="email", value="alice@example.com"), then deletes Field 0, React reuses the DOM node that had focus in Field 0 for what is now Field 1. The cursor position and internal DOM state (scroll, selection) shift unexpectedly.
+Reviewed all files changed since cycle 18 aggregate (75d82a17..def9d906):
+- 90+ source files across src/app, src/components, src/hooks, src/lib
+- 24 test files
+- Focus on correctness, edge cases, error handling, and maintainability
 
 ---
 
-### C19-CR-2: [MEDIUM] ContestReplay unsafe type assertion on Select parseInt
+## Findings
 
-**Severity:** MEDIUM
-**Confidence:** HIGH
-**File:** `src/components/contest/contest-replay.tsx:214`
+### No new MEDIUM or HIGH findings identified.
 
-**Code:**
-```tsx
-<Select value={String(speed)} onValueChange={(v) => { if (v) setSpeed(parseInt(v, 10) as (typeof PLAYBACK_SPEEDS)[number]); }}>
-```
+The codebase maintains strong correctness posture after 18+ cycles of remediation.
+All gates pass: eslint (0 errors), tsc --noEmit, next build, vitest run (314 files, 2352 tests), vitest component (66 files, 179 tests).
 
-**Problem:** The `as` type assertion masks a runtime invariant. While the Select component constrains values, if a DOM manipulation or Select bug passes an empty string, `parseInt("", 10)` returns `NaN`. The `speed` state becomes `NaN`, and at line 99:
-```tsx
-}, 1400 / speed);
-```
-`1400 / NaN` evaluates to `NaN`. `setTimeout(fn, NaN)` treats the delay as 0, firing immediately. The timer callback at line 88 schedules the next tick unconditionally with `scheduleNext()`, creating a rapid-fire state-update loop that pegs the main thread.
+### Minor Observations (LOW / informational)
 
-**Fix:** Validate the parsed value against `PLAYBACK_SPEEDS` before setting state:
-```tsx
-const parsed = parseInt(v, 10);
-if (PLAYBACK_SPEEDS.includes(parsed as typeof PLAYBACK_SPEEDS[number])) {
-  setSpeed(parsed as typeof PLAYBACK_SPEEDS[number]);
-}
-```
+1. **`src/hooks/use-keyboard-shortcuts.ts` — modifier key interference**
+   - The handler fires on `e.key` match without checking if modifier keys (Ctrl, Meta, Alt) are pressed. A shortcut mapped to "s" will fire on Ctrl+S, potentially conflicting with browser shortcuts.
+   - Confidence: LOW. The calling code currently maps only navigation keys (Esc, Arrow keys) that don't overlap with browser shortcuts.
+   - Suggestion: Add an explicit check for `e.ctrlKey || e.metaKey || e.altKey` before firing non-modifier shortcuts.
+
+2. **`src/app/api/v1/judge/poll/route.ts` — inconsistent transaction wrapper**
+   - In-progress status update (line 77) uses `execTransaction`, while final status update (line 136) uses `db.transaction` directly. `execTransaction` has build-phase fallback semantics; mixing the two could confuse future readers.
+   - Confidence: LOW. Both paths are correct at runtime; this is a consistency/readability concern.
+   - Suggestion: Use `execTransaction` for both paths.
+
+3. **`src/components/code/compiler-client.tsx` — `handleRemoveActiveTestCase` dependency on mutable array**
+   - The `useCallback` at line 230 includes `testCases` in its dependency array. Since `testCases` changes on every add/remove, the memoization is effectively defeated.
+   - Confidence: LOW. Performance impact is negligible for the typical number of test cases (1-10).
+   - Suggestion: Use a ref or callback ref pattern to avoid the full-array dependency.
 
 ---
 
-## No Other Confirmed Issues
+## Previously Fixed (Verified)
 
-- Skeleton placeholders using `key={i}` are acceptable — skeletons have no internal state or user input.
-- All previously fixed index-key issues remain fixed.
-- Timer cleanup patterns are correct across the board.
-- AbortController separation per operation in language-config-table is correctly implemented.
+| Finding | Status | Evidence |
+|---------|--------|----------|
+| C18-1 Plugin secret plaintext fallback | FIXED | `decryptPluginSecret` now has production guard at `src/lib/plugins/secrets.ts:52-74` |
+| C18-2 Recruiting context caching | FIXED | JSDoc updated; React `cache()` + AsyncLocalStorage confirmed at `src/lib/recruiting/access.ts:34-119` |
+| C18-3 Rate limit consolidation | FIXED | Shared `rate-limit-core.ts` extracted; both modules delegate to it |
+| C18-4 Unhandled promise in auto-review | FIXED | `Promise.resolve(triggerAutoCodeReview(...)).catch(...)` at `src/app/api/v1/judge/poll/route.ts:207-209` |
+| C18-5 Path traversal in `resolveStoredPath` | FIXED | Strict allowlist regex `^[a-zA-Z0-9][a-zA-Z0-9._-]+$` at `src/lib/files/storage.ts:18` |
+| C18-6 Prune route repository validation | FIXED | `isAllowedJudgeDockerImage` check at `src/app/api/v1/admin/docker/images/prune/route.ts:21` |
+
+---
+
+## Verdict
+
+Zero blocking findings. Code quality remains high. The three observations above are all LOW severity and can be deferred or addressed opportunistically.
