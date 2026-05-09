@@ -115,6 +115,7 @@ function TooltipBody({
             exceeded={status === "time_limit"}
             compact
             icon="timer"
+            locale={locale}
           />
         )}
         {executionTimeMs !== null && executionTimeMs !== undefined && (timeLimitMs == null || timeLimitMs <= 0) && status !== "time_limit" && (
@@ -132,6 +133,7 @@ function TooltipBody({
             exceeded={status === "memory_limit"}
             compact
             icon="memory"
+            locale={locale}
           />
         )}
         {memoryUsedKb !== null && memoryUsedKb !== undefined && (memoryLimitMb == null || memoryLimitMb <= 0) && (

@@ -691,6 +691,7 @@ export default async function PublicProblemDetailPage({
                                         exceeded={sub.status === "time_limit"}
                                         compact
                                         icon="timer"
+                                        locale={locale}
                                       />
                                     ) : sub.executionTimeMs != null ? (
                                       <span className="text-xs text-muted-foreground">{sub.executionTimeMs} ms</span>
@@ -707,6 +708,7 @@ export default async function PublicProblemDetailPage({
                                         exceeded={sub.status === "memory_limit"}
                                         compact
                                         icon="memory"
+                                        locale={locale}
                                       />
                                     ) : sub.memoryUsedKb != null ? (
                                       <span className="text-xs text-muted-foreground">{sub.memoryUsedKb} KB</span>
