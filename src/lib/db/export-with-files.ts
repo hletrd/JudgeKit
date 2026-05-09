@@ -99,7 +99,9 @@ function parseBackupIntegrityManifest(raw: string): BackupIntegrityManifest {
       typeof upload.storedName !== "string" ||
       typeof upload.sha256 !== "string" ||
       typeof upload.byteLength !== "number" ||
-      !upload.path.startsWith("uploads/")
+      !upload.path.startsWith("uploads/") ||
+      upload.path.includes("..") ||
+      upload.path.slice("uploads/".length).includes("/")
     ) {
       throw new Error("invalidBackupManifest");
     }
