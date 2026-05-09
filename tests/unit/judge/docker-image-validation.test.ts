@@ -21,6 +21,28 @@ describe("judge docker image validation", () => {
     ).toBe(false);
   });
 
+  it("rejects registry prefix boundary bypass (prefix without trailing delimiter)", () => {
+    // A prefix like "registry.example.com" without / should NOT match
+    // "registry.example.com.evil.com/judge-python:latest"
+    expect(
+      isAllowedJudgeDockerImage("registry.example.com.evil.com/judge-python:latest", [
+        "registry.example.com",
+      ])
+    ).toBe(false);
+    // But the exact prefix followed by / should match
+    expect(
+      isAllowedJudgeDockerImage("registry.example.com/team/judge-python:latest", [
+        "registry.example.com",
+      ])
+    ).toBe(true);
+    // And prefix followed by : (port) should match
+    expect(
+      isAllowedJudgeDockerImage("registry.example.com:5000/judge-python:latest", [
+        "registry.example.com",
+      ])
+    ).toBe(true);
+  });
+
   it("allows only unqualified local judge images for local build actions", () => {
     expect(isLocalJudgeDockerImage("judge-python:latest")).toBe(true);
     expect(isLocalJudgeDockerImage("registry.example.com/team/judge-python:latest")).toBe(false);

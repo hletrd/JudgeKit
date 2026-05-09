@@ -1,5 +1,14 @@
 function isTrustedRegistryImage(image: string, trustedRegistries: string[]) {
-  return trustedRegistries.length > 0 && trustedRegistries.some((prefix) => image.startsWith(prefix));
+  return trustedRegistries.some((prefix) => {
+    if (!image.startsWith(prefix)) return false;
+    // If prefix already ends with a path/port delimiter, boundary is enforced
+    const lastChar = prefix[prefix.length - 1];
+    if (lastChar === "/" || lastChar === ":") return true;
+    // Otherwise require a delimiter after the prefix to prevent prefix spoofing
+    // (e.g., "registry.io" must not match "registry.io.evil.com/...")
+    const nextChar = image[prefix.length];
+    return nextChar === "/" || nextChar === ":" || nextChar === undefined;
+  });
 }
 
 function hasValidJudgeImageName(image: string) {
