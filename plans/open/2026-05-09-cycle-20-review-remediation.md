@@ -107,4 +107,11 @@ None. All findings from this cycle are scheduled for implementation.
 
 ## Deploy Results
 
-All fixes implemented and gates passed.
+Deployed to algo.xylolabs.com at 2026-05-09 09:13 UTC.
+- App image built and started successfully (linux/arm64)
+- Database migrated without issues
+- Schema repairs and ANALYZE applied
+- All containers healthy
+- Nginx configured and reloaded
+- Health check returned HTTP 200
+- Judge worker stopped per INCLUDE_WORKER=false (dedicated worker-0 handles judging)
