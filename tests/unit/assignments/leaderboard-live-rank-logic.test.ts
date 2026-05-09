@@ -58,6 +58,15 @@ describe("computeSingleUserLiveRank implementation", () => {
       expect(source).toContain("ut.solved_count = t.solved_count AND ut.total_penalty < t.total_penalty");
     });
 
+    it("breaks ties by earlier last AC (smaller timestamp ranks better)", () => {
+      // Earlier last_ac_at = better rank, so ut.last_ac_at < t.last_ac_at means ut ranks higher
+      expect(source).toContain("ut.last_ac_at < t.last_ac_at");
+    });
+
+    it("uses user_id lexicographic order as final tie-breaker", () => {
+      expect(source).toContain("ut.last_ac_at = t.last_ac_at AND ut.user_id < t.user_id");
+    });
+
     it("computes penalty as first_ac_time_in_minutes + 20 * wrong_before_ac (matching main leaderboard)", () => {
       expect(source).toContain("EXTRACT(EPOCH FROM us.first_ac_at)::bigint / 60");
       // wrong_before_ac uses a window function to count only pre-AC wrongs,

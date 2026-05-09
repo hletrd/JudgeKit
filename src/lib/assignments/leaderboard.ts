@@ -163,7 +163,7 @@ export async function computeSingleUserLiveRank(
       FROM user_totals ut, target t
       WHERE ut.solved_count > t.solved_count
          OR (ut.solved_count = t.solved_count AND ut.total_penalty < t.total_penalty)
-         OR (ut.solved_count = t.solved_count AND ut.total_penalty = t.total_penalty AND ut.last_ac_at > t.last_ac_at)
+         OR (ut.solved_count = t.solved_count AND ut.total_penalty = t.total_penalty AND ut.last_ac_at < t.last_ac_at)
          OR (ut.solved_count = t.solved_count AND ut.total_penalty = t.total_penalty AND ut.last_ac_at = t.last_ac_at AND ut.user_id < t.user_id)
       GROUP BY t.solved_count, t.total_penalty`,
       { assignmentId, userId },
