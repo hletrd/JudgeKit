@@ -1,9 +1,11 @@
-# Designer — Cycle 25
+# Designer — Cycle 26
 
-Reviewer: designer
-Date: 2026-05-09
-Scope: UI/UX — accessibility, responsive design, form validation, loading/error states, dark/light mode, i18n
-Base commit: 75d82a17
+**Date:** 2026-05-09
+**Cycle:** 26 of 100
+**Base commit:** 5594a074
+**Current HEAD:** 5594a074 (clean working tree)
+
+---
 
 ## Summary
 
@@ -19,7 +21,20 @@ No new UI/UX findings. The codebase continues to show strong accessibility and d
 - **Dark/Light Mode**: `next-themes` used consistently. No hardcoded colors that break theme switching.
 - **i18n**: All user-facing strings use `next-intl`. Locale-aware formatting for dates and numbers.
 - **Korean Letter Spacing**: All `tracking-*` utilities are conditionally applied only for non-Korean locales, per CLAUDE.md rule.
-- **Images**: 155 accessibility attributes vs 9 image usages in components — images have adequate accessibility coverage.
+- **Images**: Images have adequate accessibility coverage.
+- **Problem Rendering**: ReactMarkdown with `skipHtml` and `rehypeKatex` with `strict: true, maxExpand: 100` prevents XSS and DoS. DOMPurify for legacy HTML.
+
+---
+
+## New UI/UX Considerations
+
+### UI-26-1: Auto-review output not moderated before display
+
+- **File**: `src/lib/judge/auto-review.ts:186-194`
+- **Severity**: Low
+- **Confidence**: Medium
+- **Summary**: LLM-generated review text is stored directly in the database and displayed to students. There is no content moderation or filtering layer. In an educational context, this could result in inappropriate content reaching students if the LLM hallucinates or if prompt injection succeeds.
+- **Recommendation**: Add a simple content filter or moderation step before storing/displaying AI-generated content.
 
 ---
 
@@ -27,9 +42,9 @@ No new UI/UX findings. The codebase continues to show strong accessibility and d
 
 | Finding | Status |
 |---|---|
-| C16 Chat widget indefinite spinner | FIXED — timeout prevents hanging |
-| C16 File upload indefinite progress | FIXED — timeout prevents hanging |
-| C14 copy-code-button visual feedback | Fixed |
+| C16 Chat widget indefinite spinner | FIXED |
+| C16 File upload indefinite progress | FIXED |
+| C14 copy-code-button visual feedback | FIXED |
 
 ---
 

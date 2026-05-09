@@ -1,60 +1,60 @@
-# Critic — Cycle 25
+# Critic — Cycle 26
 
-Reviewer: critic
-Date: 2026-05-09
-Scope: Multi-perspective critique of the whole codebase
-Base commit: 75d82a17
-
-## Summary
-
-Three design-level observations. The codebase maintains strong consistency. One carry-forward from C19 remains.
+**Date:** 2026-05-09
+**Cycle:** 26 of 100
+**Base commit:** 5594a074
+**Current HEAD:** 5594a074 (clean working tree)
 
 ---
 
-## Findings
+## Cross-cutting Findings
 
-### CT-25-1: Transaction wrapper inconsistency in judge/poll persists
+### C26-CRIT-1: LLM prompt injection in auto-review (NEW, High signal)
 
-- **File**: `src/app/api/v1/judge/poll/route.ts:77,136`
-- **Severity**: Low
-- **Confidence**: High
+- **File:** `src/lib/judge/auto-review.ts:162-167`
+- **Severity:** Medium
+- **Confidence:** High
+- **Summary:** Embedding user-controlled data (source code) directly into LLM prompts without sanitization is a well-known vulnerability class. The impact is moderate (misleading educational feedback, potential for inappropriate content) but the fix is straightforward.
+- **Why this matters:** Auto-review comments are shown to students as authoritative feedback from an "AI Assistant". If an attacker can manipulate the output, they could:
+  - Cause the system to generate false positive/negative feedback
+  - Insert inappropriate or harmful content into educational materials
+  - Waste API tokens on manipulated outputs
+- **Suggested approach:** Implement a `sanitizePromptInput()` helper that strips or escapes known prompt injection markers before embedding user content. Also consider adding a content moderation step on the LLM output before storing.
 
-**Description**: The same inconsistency flagged in C19-2 (mixing `execTransaction` and `db.transaction`) is still present after 6 cycles. This suggests either the finding was deferred without a plan, or the plan was not executed. Cross-file consistency matters for maintainability.
+### C26-CRIT-2: Transaction wrapper inconsistency (carry-forward, 7 cycles)
 
-**Fix**: Change line 136 to use `execTransaction`.
+- **File:** `src/app/api/v1/judge/poll/route.ts:77,136`
+- **Severity:** Low
+- **Confidence:** High
+- **Summary:** The inconsistency between `execTransaction` (line 77) and `db.transaction` (line 136) has been deferred for 7 cycles. While functionally equivalent today, this creates a hidden dependency: if `execTransaction` is enhanced (e.g., retries, observability), the final-update path won't benefit.
+- **Recommendation:** Fix in the next available cycle. It's a one-line change.
 
-### CT-25-2: `any` type usage in TABLE_MAP undermines import safety
+### C26-CRIT-3: Client-side error logging deferred too long
 
-- **File**: `src/lib/db/import.ts:19`
-- **Severity**: Medium
-- **Confidence**: High
+- **Files:** Multiple client components (22 instances of `console.error`)
+- **Severity:** Low
+- **Confidence:** Medium
+- **Summary:** The 22 instances of `console.error` in client components were identified in cycle 25 and deferred. While not a security vulnerability, this represents a meaningful UX leak in production where browser dev tools expose internal error details.
+- **Recommendation:** Create a minimal client-side logger utility (`src/lib/client-logger.ts`) that respects environment and log levels. Then batch-convert all instances.
 
-**Description**: The import engine is a critical data-migration path. Using `any` for table references means TypeScript cannot catch table name mismatches or incorrect column references. Given that imports REPLACE all database data, type safety here is especially important.
+### C26-CRIT-4: Auto-review fire-and-forget lacks observability
 
-**Fix**: Replace `Record<string, any>` with a derived type from `TABLE_ORDER`.
-
-### CT-25-3: Registry prefix validation lacks boundary enforcement
-
-- **File**: `src/lib/judge/docker-image-validation.ts:1-3`
-- **Severity**: Medium
-- **Confidence**: Medium
-
-**Description**: From a threat-modeling perspective, `startsWith` on registry prefixes is a classic prefix-matching bug. An attacker controlling the registry configuration (or via social engineering of an operator) could exploit this to pull from an untrusted registry that happens to start with a trusted prefix.
-
-**Fix**: Add boundary check as described in SEC-25-1.
-
----
-
-## Verified Consistency
-
-- Auth middleware is consistently applied across all API routes
-- Error handling patterns are uniform (apiError codes, logger usage)
-- Drizzle ORM used consistently — no raw SQL with user input
-- Docker operations all use `isAllowedJudgeDockerImage` validation
-- Client-side API calls all go through `apiFetch` wrapper
+- **File:** `src/app/api/v1/judge/poll/route.ts:207-209`
+- **Severity:** Low
+- **Confidence:** Medium
+- **Summary:** The `Promise.resolve(triggerAutoCodeReview(submissionId)).catch(...)` pattern fires the review in the background with no way to track success/failure per submission. If auto-reviews silently fail, there's no alert or retry mechanism.
+- **Recommendation:** Add a flag to the submission record (e.g., `aiReviewRequested`, `aiReviewCompleted`) so operators can detect stuck reviews.
 
 ---
+
+## Systemic Strengths
+
+- Strong defense-in-depth: multiple validation layers (magic bytes, MIME type, size limits, path validation)
+- Good separation of concerns between API handlers and business logic
+- Consistent use of parameterized queries (raw SQL uses `@name` → positional conversion)
+- Audit logging throughout sensitive operations
+- Rate limiting on all mutation endpoints
 
 ## Final Sweep
 
-No contradictions between modules, no inconsistent error handling strategies, no mismatched frontend/backend contracts found.
+No additional architectural or design risks found beyond those listed. The codebase is well-structured and the security posture is strong.

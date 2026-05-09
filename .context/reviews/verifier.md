@@ -1,13 +1,9 @@
-# Verifier — Cycle 25
+# Verifier — Cycle 26
 
-Reviewer: verifier
-Date: 2026-05-09
-Scope: Evidence-based correctness check against stated behavior
-Base commit: 75d82a17
-
-## Summary
-
-All prior fixes verified as resolved. Three new findings confirmed by code inspection.
+**Date:** 2026-05-09
+**Cycle:** 26 of 100
+**Base commit:** 5594a074
+**Current HEAD:** 5594a074 (clean working tree)
 
 ---
 
@@ -15,45 +11,49 @@ All prior fixes verified as resolved. Three new findings confirmed by code inspe
 
 ### VR-P1: apiFetch timeout bypass (C16 CR-1)
 - **Status**: FIXED
-- **Evidence**: `src/lib/api/client.ts:90-92` now uses `withTimeout(init.signal, 30_000)` when caller provides signal, and `createTimeoutSignal(30_000)` when no signal is provided. Both paths enforce the 30s timeout.
+- **Evidence**: `src/lib/api/client.ts:90-92` uses `withTimeout(init.signal, 30_000)` and `createTimeoutSignal(30_000)`. Both paths enforce timeout.
 
 ### VR-P2: AbortSignal.timeout browser fallback (C16 CR-2)
 - **Status**: FIXED
-- **Evidence**: `src/lib/abort.ts:6-13` implements `createTimeoutSignal` with `typeof AbortSignal?.timeout === "function"` check and setTimeout fallback.
+- **Evidence**: `src/lib/abort.ts:6-13` implements fallback with setTimeout.
 
 ### VR-P3: useKeyboardShortcuts modifier key handling (C19-1)
 - **Status**: FIXED
-- **Evidence**: `src/hooks/use-keyboard-shortcuts.ts:8-20` builds modifier-aware shortcut keys (`Ctrl+k`, `Alt+p`, etc.). Plain keys like `"n"` only match when no modifiers are pressed.
 
-### VR-P4: Chat widget hanging (C16 DB-1)
+### VR-P4-P5: Chat widget / file upload hanging (C16 DB-1/DB-2)
 - **Status**: FIXED
-- **Evidence**: `apiFetch` now applies timeout to all requests via `withTimeout`, so chat widget requests cannot hang indefinitely.
 
-### VR-P5: File upload hanging (C16 DB-2)
+### VR-P6: Trusted registry boundary (C25-1)
 - **Status**: FIXED
-- **Evidence**: Same as VR-P4 — all `apiFetch` calls get timeout.
+- **Evidence**: `docker-image-validation.ts:9-10` checks `nextChar === '/' || nextChar === ':' || nextChar === undefined`.
+
+### VR-P7: TABLE_MAP typing (C25-2)
+- **Status**: FIXED
+- **Evidence**: `import.ts:20` uses `Record<string, PgTable>` instead of `any`.
+
+### VR-P8: Stale images concurrency (C25-3)
+- **Status**: FIXED
+- **Evidence**: `images/route.ts:17` uses `pLimit(5)`.
+
+### VR-P9: Image reference regex (C25-4)
+- **Status**: FIXED
+- **Evidence**: `client.ts:89-91` rejects trailing delimiters and consecutive delimiters.
 
 ---
 
 ## New Findings Verified
 
-### VR-25-1: `poll/route.ts` uses inconsistent transaction wrappers
+### VR-26-1: LLM prompt injection in auto-review
+
+- **File**: `src/lib/judge/auto-review.ts:162-167`
+- **Confidence**: High
+- **Evidence**: The `userPrompt` string at lines 162-167 interpolates `submission.sourceCode` directly without any sanitization. The source code is user-controlled data from the `submissions` table. No prompt injection filtering is applied before the `provider.chatWithTools()` call at line 175.
+
+### VR-26-2: `poll/route.ts` transaction inconsistency still present
 
 - **File**: `src/app/api/v1/judge/poll/route.ts:77,136`
 - **Confidence**: High
-- **Evidence**: Line 77 reads `await execTransaction(async (tx) => { ... })`. Line 136 reads `await db.transaction(async (tx) => { ... })`. Confirmed by direct inspection.
-
-### VR-25-2: `getStaleImages` has unbounded concurrency
-
-- **File**: `src/app/api/v1/admin/docker/images/route.ts:16-38`
-- **Confidence**: High
-- **Evidence**: `await Promise.all(images.map(async (img) => { ... }))` has no concurrency limit. With 100+ images, this spawns 200+ concurrent operations.
-
-### VR-25-3: Trusted registry prefix lacks boundary check
-
-- **File**: `src/lib/judge/docker-image-validation.ts:1-3`
-- **Confidence**: High
-- **Evidence**: `isTrustedRegistryImage` uses `trustedRegistries.some((prefix) => image.startsWith(prefix))` without checking the character after the prefix. A registry `registry.io` would match `registry.io.evil.com/judge-cpp`.
+- **Evidence**: Confirmed by direct inspection. Line 77: `execTransaction`. Line 136: `db.transaction`. This is the same finding as VR-25-1, now 7 cycles deferred.
 
 ---
 
