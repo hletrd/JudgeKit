@@ -1,33 +1,65 @@
-# Verifier — Cycle 24
+# Cycle 24 Verification Review
 
-**Date:** 2026-04-20
-**Base commit:** f1b478bc
+**Date:** 2026-05-09
+**HEAD:** c86576a1
+**Scope:** Evidence-based correctness check of recent changes
 
-## Findings
+---
 
-### V-1: Silent error catch blocks may hide stale data from users [MEDIUM/MEDIUM]
+## Verified Behaviors
 
-**Files:**
-- `src/components/lecture/submission-overview.tsx:101-102`
-- `src/components/contest/invite-participants.tsx:49-50`
-- `src/app/(dashboard)/dashboard/admin/plugins/chat-logs/chat-logs-client.tsx:61-62,75-76`
-- `src/app/(dashboard)/dashboard/problems/create/create-problem-form.tsx:223-224`
-- `src/components/contest/participant-anti-cheat-timeline.tsx:121`
+### V-1: Contest access token expiry correctly implemented
 
-**Description:** Verified that these catch blocks silently swallow errors, violating the project convention in `src/lib/api/client.ts`. The convention states: "Never silently swallow errors — always surface them to the user." The recently-fixed `contest-quick-stats.tsx` (cycle 23) now shows toast errors, but these similar instances were not fixed.
-**Confidence:** MEDIUM
+**Evidence:**
+- Migration `0022_contest_access_token_expiry.sql` adds `expires_at` column
+- Schema at `schema.pg.ts:1024` defines `expiresAt: timestamp("expires_at", { withTimezone: true })`
+- Creation in `access-codes.ts:194` sets `expiresAt: assignment.deadline`
+- Creation in `recruiting-invitations.ts:686` sets `expiresAt: assignment.deadline`
+- All 5 contest route handlers check `(expires_at IS NULL OR expires_at > NOW())`
+- `platform-mode-context.ts` checks expiry in 3 SQL queries
+- `contests.ts` checks expiry in student query
 
-### V-2: Dead `titleKeyByMode` on hidden AppSidebar nav item [LOW/HIGH]
+**Status:** CORRECT. All access verification paths enforce expiry.
 
-**Files:** `src/components/layout/app-sidebar.tsx:66-67`
-**Description:** Verified that `filterItems()` returns `false` for the "Problems" item when `platformMode === "recruiting"` due to `hiddenInModes: ["recruiting"]`. The `titleKeyByMode: { recruiting: "challenges" }` property is unreachable dead code.
-**Confidence:** HIGH
+### V-2: Centralized secrets registry correctly integrated
 
-## Verified Correct
+**Evidence:**
+- `secrets.ts` exports 4 constants used by 3 modules
+- `export.ts:15-16` imports `EXPORT_SANITIZED_COLUMNS` and `EXPORT_ALWAYS_REDACT_COLUMNS`
+- `export.ts:78` uses them in active redaction map
+- `logger.ts:2` imports `LOGGER_REDACT_PATHS`
+- `settings/route.ts:10` imports `SECRET_SETTINGS_KEYS`
 
-- All cycle-23 fixes are present and correct: `contest-quick-stats.tsx` shows toast error, `countdown-timer.tsx` uses `apiFetch`, `leaderboard-table.tsx` has visibility-aware polling.
-- Phase 4 workspace-to-public migration is complete: no `workspaceHref`, no `/workspace` in robots.ts, no `/workspace` in public-route-seo.ts.
-- All Korean letter-spacing violations from the previous cycle-24 review (AGG-4) have been fixed with locale-conditional tracking patterns.
-- `AppSidebar` "Learning" group label has been removed (M3 from cycle 23 is DONE).
-- `next.config.ts` redirects are correctly configured for all legacy routes.
-- All gate checks pass: eslint, tsc --noEmit, vitest.
+**Status:** CORRECT. All three consumers use the centralized registry.
+
+### V-3: ICPC tie-breaker direction corrected
+
+**Evidence:**
+- Commit 68c05b6e changed `ut.last_ac_at > t.last_ac_at` to `ut.last_ac_at < t.last_ac_at`
+- Test at `leaderboard-live-rank-logic.test.ts:63` verifies `ut.last_ac_at < t.last_ac_at`
+- Comment at `leaderboard.ts:114` explains "Earlier last AC (smaller timestamp) ranks better"
+
+**Status:** CORRECT. Earlier last AC now correctly ranks better.
+
+### V-4: Retention cutoff uses DB time
+
+**Evidence:**
+- `data-retention-maintenance.ts:117` calls `getDbNowMs()` and passes to all prune functions
+- `cleanup.ts:37` calls `getDbNowMs()` for cutoff calculation
+- `data-retention.ts:53-58` documents the requirement
+
+**Status:** CORRECT. Both callers use DB time.
+
+### V-5: Security headers present in proxy
+
+**Evidence:**
+- `proxy.ts:240` sets `X-Content-Type-Options: nosniff`
+- `proxy.ts:241` sets `Referrer-Policy: strict-origin-when-cross-origin`
+
+**Status:** CORRECT. Both OWASP-recommended headers are present.
+
+---
+
+## No Evidence Required
+
+All stated behaviors in recent commits are verified correct at HEAD.

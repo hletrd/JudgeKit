@@ -1,33 +1,57 @@
-# Performance Reviewer — Cycle 24
+# Cycle 24 Performance Review
 
-**Date:** 2026-04-20
-**Base commit:** f1b478bc
+**Date:** 2026-05-09
+**HEAD:** c86576a1
+**Scope:** Performance, concurrency, and resource usage review
 
-## Findings
+---
 
-### PERF-1: `ContestsLayout` forces full page reload on every internal navigation [MEDIUM/MEDIUM]
+## New Findings
 
-**Files:** `src/app/(dashboard)/dashboard/contests/layout.tsx:27`
-**Description:** Every internal link click within contest pages triggers `window.location.href = href`, which forces a full page reload instead of Next.js client-side navigation. This means:
-1. No RSC payload streaming — the entire page must be fetched from scratch.
-2. All JavaScript bundles are re-parsed and re-executed.
-3. All API calls (session, settings, capabilities) are re-made on every navigation.
-4. The browser loses React state for all components on the page.
-**Concrete failure scenario:** An instructor navigating between contest sub-pages (e.g., from contest list to contest detail) experiences a full page reload each time, taking 2-5 seconds instead of <500ms for client-side navigation.
-**Fix:** This is a workaround for a Next.js bug. Monitor Next.js releases for the fix and remove the workaround as soon as possible. Consider adding a performance metric to track navigation time on contest pages.
-**Confidence:** MEDIUM
+### P-1: [MEDIUM] contestAccessTokens.expiresAt query lacks index
 
-### PERF-2: `submission-overview.tsx` polling interval continues when tab is hidden [LOW/MEDIUM]
+**Files:** `src/lib/db/schema.pg.ts:1024-1028`
+**Confidence:** HIGH
+**Cross-agent signal:** Also flagged by security-reviewer (S-1)
 
-**Files:** `src/components/lecture/submission-overview.tsx:108-114`
-**Description:** The `SubmissionOverview` component uses `setInterval(fetchStats, 5000)` but does not pause the interval when the tab is hidden. This is the same pattern that was fixed for `leaderboard-table.tsx` in cycle 23 (visibility-aware polling). The component already uses `apiFetch` but lacks the visibility-based pause/resume.
-**Concrete failure scenario:** An instructor leaves the lecture stats panel open in a background tab. The interval continues firing every 5 seconds, making unnecessary API calls.
-**Fix:** Add visibility-aware pause/resume to the interval, matching the pattern established in `leaderboard-table.tsx` and `contest-clarifications.tsx`.
-**Confidence:** MEDIUM
+The missing index on `expires_at` in `contest_access_tokens` causes full table scans in EXISTS subqueries across multiple hot paths. This is the most significant performance risk introduced in recent changes.
 
-## Verified Performant
+**Query pattern:**
+```sql
+SELECT 1 FROM contest_access_tokens cat
+WHERE cat.assignment_id = @assignmentId
+  AND cat.user_id = @userId
+  AND (cat.expires_at IS NULL OR cat.expires_at > NOW())
+```
 
-- `leaderboard-table.tsx` now properly pauses polling when tab is hidden (cycle 23 fix confirmed).
-- `workers-client.tsx` now properly pauses polling when tab is hidden (cycle 22 fix confirmed).
-- `authUserCache` in proxy.ts has a 2-second TTL with max 500 entries — reasonable.
-- No N+1 query patterns found in server-side page components.
+With only a unique index on `(assignment_id, user_id)`, PostgreSQL can find the specific row but must then check the `expires_at` condition without index support. For a table with many tokens, this is a sequential scan.
+
+**Impact:** Medium to high under load. Each contest route handler performs this check. During a contest with many participants, the accumulated query time grows linearly with token count.
+
+**Fix:** Add composite index `(assignment_id, user_id, expires_at)` or `(expires_at)`.
+
+---
+
+### P-2: [LOW] Export redaction uses Set spread in hot loop
+
+**Files:** `src/lib/db/export.ts:78`
+**Confidence:** LOW
+**Cross-agent signal:** Also flagged by code-reviewer (CR-1)
+
+The object spread `{ ...EXPORT_SANITIZED_COLUMNS, ...EXPORT_ALWAYS_REDACT_COLUMNS }` is executed once per export, not per row, so the performance impact is minimal. However, the Set values are shared references, which is correct for performance (no copying per lookup).
+
+The actual per-row redaction at line 112 uses `redactSet?.has(col)` which is O(1) per column. With ~50 tables * 1000 rows * ~20 columns = ~1M lookups per export chunk, this is efficient.
+
+**No action required** - performance is acceptable.
+
+---
+
+## Areas Verified (No Issues Found)
+
+- Batched DELETE in data retention (BATCH_SIZE = 5000) prevents long-running locks
+- Promise.allSettled in pruneSensitiveOperationalData prevents cascade failures
+- SSE connection slot uses advisory locks for serialization
+- Rate limiter uses in-memory cache with periodic eviction
+- Compiler execution has timeout guards via AbortSignal
+- Docker client has timeout on container operations
+- Export uses streaming with backpressure (waitForReadableStreamDemand)

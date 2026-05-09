@@ -1,58 +1,77 @@
-# Cycle 24 Code Reviewer
+# Cycle 24 Code Review
 
-**Date:** 2026-04-20
-**Base commit:** f1b478bc
+**Date:** 2026-05-09
+**HEAD:** c86576a1
+**Scope:** Full repository re-review at HEAD c86576a1, focusing on changes since cycle-22 (91e99c91)
 
-## Findings
+---
 
-### CR-1: Dead code — `titleKeyByMode` on hidden sidebar nav item [LOW/HIGH]
+## Prior Findings Status
 
-**Files:** `src/components/layout/app-sidebar.tsx:66-67`
-**Description:** The "Problems" nav item in `navGroups` has both `titleKeyByMode: { recruiting: "challenges" }` and `hiddenInModes: ["recruiting"]`. When `platformMode === "recruiting"`, `filterItems()` hides the item entirely due to `hiddenInModes`, so `titleKeyByMode` is dead code that can never execute. This is confusing for maintainers who may think the item is visible in recruiting mode with an alternate label.
-**Concrete failure scenario:** A developer reading the code assumes "Problems" shows as "Challenges" in recruiting mode, but it's actually hidden.
-**Fix:** Remove `titleKeyByMode: { recruiting: "challenges" }` from the "Problems" nav item definition.
+All April 2026 cycle-24 findings verified at current HEAD:
+- CR-1 (dead titleKeyByMode): Fixed - app-sidebar.tsx no longer has this dead code
+- CR-2/CR-3/CR-4/CR-5 (silent error swallowing): All fixed in prior cycles
+- CR-6 (ContestsLayout interception): Still present; this is a known Next.js workaround
+
+---
+
+## New Findings
+
+### CR-1: [MEDIUM] Export redaction map merge uses object spread that could lose columns
+
+**Files:** `src/lib/db/export.ts:78`
 **Confidence:** HIGH
 
-### CR-2: Silent error swallowing in `submission-overview.tsx` fetchStats [MEDIUM/MEDIUM]
+The active redaction map is built with:
+```typescript
+const activeRedactionMap = options.sanitize
+  ? { ...EXPORT_SANITIZED_COLUMNS, ...EXPORT_ALWAYS_REDACT_COLUMNS }
+  : EXPORT_ALWAYS_REDACT_COLUMNS;
+```
 
-**Files:** `src/components/lecture/submission-overview.tsx:101-102`
-**Description:** The `fetchStats` callback catches all errors with `catch { // ignore }`. Per the project convention documented in `src/lib/api/client.ts` ("Never silently swallow errors — always surface them to the user"), this violates the project standard. If the API is down or returns malformed data, the instructor sees stale stats with no indication of failure. The similar `contest-quick-stats.tsx` was fixed in cycle 23 to show a toast error.
-**Concrete failure scenario:** An instructor is monitoring live submission stats during a contest. The API returns a 500 error. The UI continues showing stale stats with no error feedback, leading the instructor to believe the stats are current.
-**Fix:** Add `toast.error(...)` in the catch block, matching the pattern established in `contest-quick-stats.tsx`.
-**Confidence:** MEDIUM
+For tables present in both objects (users, sessions, accounts, apiKeys, systemSettings), the Set from `EXPORT_ALWAYS_REDACT_COLUMNS` overwrites the one from `EXPORT_SANITIZED_COLUMNS`. Currently these Sets are identical for overlapping tables, but if a future change adds a column to only one of them for the same table, the spread will silently drop it.
 
-### CR-3: Silent error swallowing in `invite-participants.tsx` search [MEDIUM/MEDIUM]
+**Concrete failure:** Developer adds `users.someNewSecret` to `EXPORT_SANITIZED_COLUMNS` but not to `EXPORT_ALWAYS_REDACT_COLUMNS`. During a sanitized export, the `users` entry from ALWAYS (which doesn't have `someNewSecret`) overwrites the SANITIZED entry, and `someNewSecret` is exported in plaintext.
 
-**Files:** `src/components/contest/invite-participants.tsx:49-50`
-**Description:** The `search` callback catches all errors with `catch { // ignore }`. If the search API fails, the user sees no results with no indication that an error occurred. The `handleInvite` function in the same file correctly shows `toast.error(t("inviteFailed"))` on error, but the search function does not.
-**Concrete failure scenario:** An instructor searches for a student to invite to a contest. The API call fails. The UI shows "No results" with no error feedback, leading the instructor to believe the student doesn't exist rather than that the search failed.
-**Fix:** Add `toast.error(t("searchFailed"))` or a generic search error toast in the catch block.
-**Confidence:** MEDIUM
+**Fix:** Merge the Sets explicitly per table:
+```typescript
+function mergeRedactionMaps(
+  sanitized: Record<string, Set<string>>,
+  always: Record<string, Set<string>>
+): Record<string, Set<string>> {
+  const merged: Record<string, Set<string>> = {};
+  for (const [table, cols] of Object.entries(sanitized)) {
+    merged[table] = new Set([...cols, ...(always[table] ?? [])]);
+  }
+  for (const [table, cols] of Object.entries(always)) {
+    if (!merged[table]) merged[table] = new Set(cols);
+  }
+  return merged;
+}
+```
 
-### CR-4: Silent error swallowing in `create-problem-form.tsx` tag fetch [LOW/MEDIUM]
+---
 
-**Files:** `src/app/(dashboard)/dashboard/problems/create/create-problem-form.tsx:223-224`
-**Description:** The tag suggestion fetch catches all errors with `catch { // ignore }`. Tag suggestions are a non-critical enhancement, so swallowing the error is more defensible here, but it still violates the project convention.
-**Concrete failure scenario:** A problem author types in the tag field and gets no suggestions. They don't know if there are no matching tags or if the fetch failed.
-**Fix:** Add a `console.warn` at minimum, or show a subtle indicator that suggestions are unavailable.
-**Confidence:** MEDIUM
+### CR-2: [LOW] Missing explicit return type on normalizeValue
 
-### CR-5: Silent error swallowing in `chat-logs-client.tsx` (2 instances) [MEDIUM/MEDIUM]
+**Files:** `src/lib/db/export.ts:225`
+**Confidence:** LOW
 
-**Files:** `src/app/(dashboard)/dashboard/admin/plugins/chat-logs/chat-logs-client.tsx:61-62,75-76`
-**Description:** Two `catch { // ignore }` blocks: one for `fetchLogs` (line 61) and one for `fetchMore` (line 75). Both swallow errors silently. For an admin tool, this is problematic because the admin has no way to know if the data is stale or the fetch failed.
-**Concrete failure scenario:** An admin reviewing chat logs sees a partial list. They don't know if there are no more logs or if the fetch failed.
-**Fix:** Add toast.error in both catch blocks, matching the pattern used in other admin pages.
-**Confidence:** MEDIUM
+`normalizeValue` lacks an explicit return type annotation. While TypeScript infers `unknown`, this makes the function contract implicit.
 
-### CR-6: `ContestsLayout` intercepts ALL internal link clicks [MEDIUM/MEDIUM]
+**Fix:** Add explicit return type `unknown`.
 
-**Files:** `src/app/(dashboard)/dashboard/contests/layout.tsx:16-28`
-**Description:** The layout uses a click event handler on `#main-content` and `[data-slot='sidebar']` that intercepts ALL internal `<a>` clicks and forces `window.location.href` navigation. This is a workaround for a Next.js 16 RSC streaming bug. However, this approach has several problems:
-1. It breaks Next.js client-side navigation for ALL links on contest pages, not just problematic ones.
-2. It uses `me.stopPropagation()` which can prevent other click handlers from firing.
-3. The `href.startsWith("http")` check only excludes absolute URLs, not protocol-relative URLs.
-4. The `getElementById("main-content")` and `querySelector("[data-slot='sidebar']")` may return null if the DOM isn't ready, silently failing to attach the handler.
-**Concrete failure scenario:** A custom button with an `<a>` wrapper inside contest pages has its own onClick handler. The layout's handler calls `stopPropagation()`, preventing the custom handler from running.
-**Fix:** This is a workaround for a Next.js bug. Add a comment explaining the specific bug and consider scoping the interception to only `<Link>` components from Next.js, or using a data attribute to opt specific links out. At minimum, add a JSDoc explaining the tradeoff and when the workaround can be removed.
-**Confidence:** MEDIUM
+---
+
+## Areas Verified (No Issues Found)
+
+- All `Date.now()` usages in server code are either in Edge Runtime contexts (proxy.ts) or documented as intentional
+- All timer/setInterval usages have proper cleanup
+- No `eval()` or `new Function()` in source
+- No `as any` casts in server code (only in test files and documented edge cases)
+- All JSON.parse calls have try/catch or are in safe contexts
+- SQL injection prevention verified: all raw SQL uses parameterized queries or module-level constants
+- Korean letter spacing: no `tracking-*` applied to Korean text
+- Contest access token expiry is correctly implemented across all queries
+- ICPC tie-breaker direction corrected (earlier last AC ranks better)
+- Logger redaction paths centralized in secrets.ts

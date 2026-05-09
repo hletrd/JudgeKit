@@ -1,35 +1,88 @@
-# Security Reviewer — Cycle 24
+# Cycle 24 Security Review
 
-**Date:** 2026-04-20
-**Base commit:** f1b478bc
+**Date:** 2026-05-09
+**HEAD:** c86576a1
+**Scope:** Security-focused review of recent changes and full codebase
 
-## Findings
+---
 
-### SEC-1: Silent error handlers hide API failures from admin users [MEDIUM/MEDIUM]
+## Prior Findings Status
 
-**Files:**
-- `src/app/(dashboard)/dashboard/admin/plugins/chat-logs/chat-logs-client.tsx:61-62,75-76`
-- `src/components/lecture/submission-overview.tsx:101-102`
-- `src/components/contest/invite-participants.tsx:49-50`
+All April 2026 cycle-24 findings verified at current HEAD:
+- SEC-1 (silent error handlers): Fixed in prior cycles
+- SEC-2 (ContestsLayout navigation): Still present as known Next.js workaround
 
-**Description:** Multiple `catch { // ignore }` blocks in admin and instructor-facing components silently swallow API errors. While not directly a security vulnerability, this can mask service degradation or interception. An admin who cannot see chat logs (due to a MITM or API failure) has no indication that something is wrong.
-**Concrete failure scenario:** A network interceptor blocks admin API calls. The admin sees empty lists instead of error messages, unaware that data is being suppressed.
-**Fix:** Replace silent catch blocks with toast.error feedback. This aligns with the project convention in `src/lib/api/client.ts`.
+---
+
+## New Findings
+
+### S-1: [MEDIUM] contestAccessTokens.expiresAt lacks database index
+
+**Files:** `src/lib/db/schema.pg.ts:1024-1028`
+**Confidence:** HIGH
+
+The new `expires_at` column on `contest_access_tokens` is queried in multiple locations with `AND (cat.expires_at IS NULL OR cat.expires_at > NOW())`. Without an index on `expires_at`, these queries will perform full table scans on `contest_access_tokens`. Under load with many tokens, this becomes a performance and availability risk.
+
+**Affected queries:**
+- `src/lib/assignments/contests.ts:183` (student contest list)
+- `src/lib/platform-mode-context.ts:88-89` (problem scope resolution)
+- `src/lib/platform-mode-context.ts:117-118` (accessible assignment lookup)
+- `src/lib/platform-mode-context.ts:142-143` (active restricted assignment)
+- `src/app/api/v1/contests/[assignmentId]/*/route.ts` (multiple route handlers)
+
+**Concrete failure:** A platform with 10,000 contest access tokens. Every page load that checks contest access does a full scan of the tokens table. During a high-traffic contest, this creates lock contention and query timeouts.
+
+**Fix:** Add a composite index:
+```typescript
+index("cat_assignment_user_expires_idx").on(table.assignmentId, table.userId, table.expiresAt),
+```
+Or at minimum:
+```typescript
+index("cat_expires_at_idx").on(table.expiresAt),
+```
+
+---
+
+### S-2: [LOW] Existing contest access tokens have NULL expiresAt (indefinite validity)
+
+**Files:** `drizzle/pg/0022_contest_access_token_expiry.sql`
 **Confidence:** MEDIUM
 
-### SEC-2: `ContestsLayout` click interception bypasses Next.js navigation security [LOW/MEDIUM]
+The migration adds `expires_at` as a nullable column with no default. Existing tokens will have `NULL expires_at`, which the query logic treats as "never expires" (`expires_at IS NULL OR expires_at > NOW()`). This means tokens created before this migration grant indefinite access.
 
-**Files:** `src/app/(dashboard)/dashboard/contests/layout.tsx:16-28`
-**Description:** The contests layout intercepts all internal `<a>` clicks and forces `window.location.href = href`. This bypasses Next.js router's security checks (e.g., same-origin validation) and could potentially be exploited if a malicious href is injected into the DOM. However, since the href comes from the `getAttribute("href")` of an `<a>` element in the React virtual DOM, the risk is low.
-**Concrete failure scenario:** An XSS vulnerability in contest page content injects an `<a href="javascript:alert(1)">` element. The layout's handler would call `me.preventDefault()` but then `window.location.href = "javascript:alert(1)"` would not execute (browsers block javascript: URLs set via location.href), so this specific vector is safe. But the pattern of bypassing Next.js navigation is a defense-in-depth concern.
-**Fix:** Add an explicit check for `javascript:` and `data:` scheme URLs before setting `window.location.href`.
-**Confidence:** MEDIUM
+While this is intentional for backward compatibility, it creates a security gap where old tokens remain valid forever. The fix should be a data migration that sets `expires_at` for existing tokens based on their assignment's deadline.
 
-## Verified Safe
+**Fix:** Add a follow-up migration:
+```sql
+UPDATE contest_access_tokens cat
+SET expires_at = a.deadline
+FROM assignments a
+WHERE cat.assignment_id = a.id
+  AND cat.expires_at IS NULL;
+```
 
-- All API routes use `apiFetch` for client-side calls (except server-side routes which use `fetch` directly — correct).
-- CSRF protection via `X-Requested-With` header is centralized in `apiFetch`.
-- Secret values (AUTH_SECRET, JUDGE_AUTH_TOKEN) are validated for minimum length and against placeholder values.
-- `dangerouslySetInnerHTML` uses `sanitizeHtml()` for problem descriptions and `safeJsonForScript()` for JSON-LD.
-- No secrets in client-side code (all `process.env` references for secrets are server-only).
-- Security headers (CSP, HSTS, X-Frame-Options, etc.) are properly configured in `next.config.ts` and `proxy.ts`.
+---
+
+### S-3: [LOW] SECRET_SETTINGS_KEYS is not cross-referenced with LOGGER_REDACT_PATHS
+
+**Files:** `src/lib/security/secrets.ts:74`
+**Confidence:** LOW
+
+`SECRET_SETTINGS_KEYS` only contains `hcaptchaSecret` but there is no automated check ensuring new entries are also added to `LOGGER_REDACT_PATHS`. If a future secret setting key is added to `SECRET_SETTINGS_KEYS` but not to `LOGGER_REDACT_PATHS`, it will leak in logs.
+
+**Fix:** Derive logger paths from `SECRET_SETTINGS_KEYS` or add a cross-reference assertion in secrets.ts.
+
+---
+
+## Areas Verified (No Issues Found)
+
+- Password hashing uses Argon2id with OWASP parameters
+- Dummy password hash prevents user enumeration via timing
+- CSP nonce-based script-src configured correctly
+- frame-ancestors 'none' prevents clickjacking
+- Path traversal prevention in file operations (resolveStoredPath)
+- SQL injection prevention in all raw SQL usage
+- XSS prevention: user content sanitized before dangerouslySetInnerHTML
+- No plaintext secrets in logs (LOGGER_REDACT_PATHS covers all sensitive paths)
+- Secure cookie flags conditionally set based on protocol
+- Security headers (Referrer-Policy, X-Content-Type-Options) present in proxy.ts

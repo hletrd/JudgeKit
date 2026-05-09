@@ -1,92 +1,123 @@
-# Aggregate Review — Cycle 24
+# Aggregate Review -- Cycle 24
 
-**Date:** 2026-04-24
+**Date:** 2026-05-09
+**HEAD:** c86576a1
 **Reviewers:** code-reviewer, security-reviewer, perf-reviewer, architect, test-engineer, verifier, critic
-**Total findings:** 13 (deduplicated to 5)
+**Total findings:** 9 (deduplicated to 5)
 
 ---
 
 ## Deduplicated Findings (sorted by severity)
 
-### AGG-1: [MEDIUM] Missing `Referrer-Policy` and `X-Content-Type-Options` Security Headers
+### AGG-1: [MEDIUM] contestAccessTokens.expiresAt lacks database index
 
-**Sources:** S-1, S-2, CR-1, C-1 | **Confidence:** HIGH
-**Cross-agent signal:** 4 of 7 review perspectives
-
-The proxy middleware at `src/proxy.ts:144-229` sets CSP, HSTS, and `frame-ancestors 'none'` but omits two OWASP-recommended security headers:
-
-1. **`Referrer-Policy: strict-origin-when-cross-origin`** — Browsers default to `no-referrer-when-downgrade`, which sends the full URL (including query parameters) in the `Referer` header to same-origin and HTTPS-to-HTTPS navigations. Contest access codes appear in URLs (e.g., `?code=ACCESS_CODE`). Without `Referrer-Policy`, these tokens leak in Referer headers to cross-origin destinations.
-
-2. **`X-Content-Type-Options: nosniff`** — Currently only set on the file download route (`src/app/api/v1/files/[id]/route.ts:115`). All other responses lack this header. While CSP provides defense-in-depth, `nosniff` prevents MIME-sniffing attacks on API responses.
-
-**Concrete failure scenario:** A student navigates to a contest page with `?code=SECRET_CODE` in the URL. The page contains an external link. The full URL with the access code is sent in the `Referer` header to the external site.
-
-**Fix:** Add both headers in `createSecuredNextResponse`:
-```typescript
-response.headers.set("X-Content-Type-Options", "nosniff");
-response.headers.set("Referrer-Policy", "strict-origin-when-cross-origin");
-```
-
----
-
-### AGG-2: [MEDIUM] `getRetentionCutoff` Uses App-Server Time While Data Uses DB-Server Time
-
-**Sources:** CR-4, P-2, V-1, C-2 | **Confidence:** HIGH
-**Cross-agent signal:** 4 of 7 review perspectives
-
-`getRetentionCutoff` at `src/lib/data-retention.ts:38-40` uses `Date.now()` (app-server time) to compute the retention cutoff date, while the data it compares against (e.g., `submittedAt`, `createdAt`) is stored using DB-server time. All other time-sensitive operations in the codebase (contest boundaries, anti-cheat, SSE coordination, rate limiting) consistently use `getDbNowMs()` or `getDbNowUncached()`.
-
-The function already accepts an optional `nowMs` parameter, but no caller passes DB time. The `data-retention-maintenance.ts` and `db/cleanup.ts` callers use the default.
-
-**Concrete failure scenario:** App server clock is 5 minutes ahead of DB server clock. A submission with `submittedAt` 364d 23h 55m ago (DB time) is within the 365-day retention window, but `getRetentionCutoff` computes the cutoff using the advanced app clock, placing the submission just outside the window. The submission is deleted one full day early.
-
-**Fix:** Update `data-retention-maintenance.ts` and `db/cleanup.ts` to pass `await getDbNowMs()` as the `nowMs` parameter to `getRetentionCutoff`.
-
----
-
-### AGG-3: [MEDIUM] ZIP Bomb Validation Decompresses All Entries Instead of Reading Metadata
-
-**Sources:** CR-2, P-1, C-3, TE-1 | **Confidence:** HIGH
-**Cross-agent signal:** 4 of 7 review perspectives
-
-`validateZipDecompressedSize` at `src/lib/files/validation.ts:55-85` decompresses every ZIP entry via `entry.async("uint8array")` to measure the decompressed size. For large ZIPs, this causes significant memory allocation and GC pressure. JSZip stores `uncompressedSize` in the local file header for most ZIPs — reading this metadata is O(1) vs O(decompressed size) for the current approach.
-
-Additionally, there are no unit tests for the ZIP validation function (TE-1).
-
-**Concrete failure scenario:** A user uploads a ZIP with 200 entries, one of which decompresses to 40 MB. The validation function decompresses all 201 entries (potentially hundreds of MB) just to check sizes, delaying the upload by seconds and causing GC pressure.
-
-**Fix:**
-1. Read `uncompressedSize` from ZIP metadata when available instead of decompressing.
-2. Add unit tests for `validateZipDecompressedSize`.
-
----
-
-### AGG-4: [LOW] Argon2 `needsRehash` Not Implemented for Parameter Changes
-
-**Sources:** S-3, V-2, C-4 | **Confidence:** MEDIUM
+**Sources:** S-1, P-1, C-1 | **Confidence:** HIGH
 **Cross-agent signal:** 3 of 7 review perspectives
 
-`verifyPassword` at `src/lib/security/password-hash.ts:30-41` returns `needsRehash: false` for Argon2 hashes even when the hash parameters differ from the current `ARGON2_OPTIONS`. The `argon2.needsRehash()` function exists in the library but is not called. The bcrypt-to-argon2 migration path works correctly (returns `needsRehash: true`), but the argon2-parameter-change path does not.
+The new `expires_at` column on `contest_access_tokens` (added in migration 0022) is queried in 10+ locations with `AND (cat.expires_at IS NULL OR cat.expires_at > NOW())`. The table only has a unique index on `(assignment_id, user_id)`. Without an index covering `expires_at`, these queries perform full table scans.
 
-**Concrete failure scenario:** Admin increases `ARGON2_OPTIONS.memoryCost` from 19456 to 65536. Existing users with old hashes continue using the weaker parameters indefinitely because `needsRehash` always returns `false` for Argon2 hashes.
+**Affected queries:**
+- `src/lib/assignments/contests.ts:183` (student contest list)
+- `src/lib/platform-mode-context.ts:88-89,117-118,142-143` (3 problem/assignment lookups)
+- `src/app/api/v1/contests/[assignmentId]/leaderboard/route.ts:46`
+- `src/app/api/v1/contests/[assignmentId]/clarifications/route.ts:27`
+- `src/app/api/v1/contests/[assignmentId]/announcements/route.ts:27`
+- `src/app/api/v1/contests/[assignmentId]/anti-cheat/route.ts:54`
+- `src/app/api/v1/contests/[assignmentId]/stats/route.ts:72`
+- `src/app/api/v1/contests/[assignmentId]/invite/route.ts` (access check)
 
-**Fix:** After successful Argon2 verification, add:
+**Concrete failure scenario:** A platform with 10,000+ contest access tokens. Every page load that checks contest access does a full scan. During a high-traffic contest, this creates query pile-up, increased latency, and potential timeouts.
+
+**Fix:** Add a composite index in the Drizzle schema:
 ```typescript
-if (valid && !isBcryptHash(storedHash)) {
-  return { valid, needsRehash: argon2.needsRehash(storedHash, ARGON2_OPTIONS) };
+index("cat_assignment_user_expires_idx").on(table.assignmentId, table.userId, table.expiresAt),
+```
+
+Generate and run the migration.
+
+---
+
+### AGG-2: [MEDIUM] Export redaction map merge uses object spread that could lose columns
+
+**Sources:** CR-1, P-2, C-2 | **Confidence:** HIGH
+**Cross-agent signal:** 2 of 7 review perspectives
+
+In `src/lib/db/export.ts:78`, the active redaction map is built with:
+```typescript
+const activeRedactionMap = options.sanitize
+  ? { ...EXPORT_SANITIZED_COLUMNS, ...EXPORT_ALWAYS_REDACT_COLUMNS }
+  : EXPORT_ALWAYS_REDACT_COLUMNS;
+```
+
+For tables present in both objects (users, sessions, accounts, apiKeys, systemSettings), the Set from `EXPORT_ALWAYS_REDACT_COLUMNS` overwrites the one from `EXPORT_SANITIZED_COLUMNS`. Currently the Sets are identical for overlapping tables, but if a future change adds a column to only `EXPORT_SANITIZED_COLUMNS` for a table that also exists in `EXPORT_ALWAYS_REDACT_COLUMNS`, the spread will silently drop it.
+
+**Concrete failure scenario:** A developer adds `users.someNewSecret` to `EXPORT_SANITIZED_COLUMNS` (because it should be redacted in sanitized exports but retained in full-fidelity backups). They forget to also add it to `EXPORT_ALWAYS_REDACT_COLUMNS`. During a sanitized export, the `users` entry from ALWAYS (which doesn't have `someNewSecret`) overwrites the SANITIZED entry, and `someNewSecret` is exported in plaintext.
+
+**Fix:** Replace the spread with an explicit merge that unions the Sets:
+```typescript
+function mergeRedactionMaps(
+  sanitized: Record<string, Set<string>>,
+  always: Record<string, Set<string>>
+): Record<string, Set<string>> {
+  const merged: Record<string, Set<string>> = {};
+  for (const [table, cols] of Object.entries(sanitized)) {
+    merged[table] = new Set([...cols, ...(always[table] ?? [])]);
+  }
+  for (const [table, cols] of Object.entries(always)) {
+    if (!merged[table]) merged[table] = new Set(cols);
+  }
+  return merged;
 }
 ```
 
 ---
 
-### AGG-5: [LOW] `rateLimits` Table Overloaded for Realtime Coordination — Schema Coupling Risk
+### AGG-3: [LOW] Existing contest access tokens have NULL expiresAt (indefinite validity)
 
-**Sources:** A-1 | **Confidence:** MEDIUM
+**Sources:** S-2, C-1 | **Confidence:** MEDIUM
+**Cross-agent signal:** 2 of 7 review perspectives
+
+Migration `0022_contest_access_token_expiry.sql` adds `expires_at` as a nullable column with no default. Existing tokens have `NULL expires_at`, and the query logic treats NULL as "never expires" (`expires_at IS NULL OR expires_at > NOW()`). This means tokens created before this migration grant indefinite access.
+
+**Concrete failure scenario:** A student redeemed an access code before the migration. Their token has `NULL expires_at`. After the contest deadline passes, they can still access contest resources because the query treats NULL as valid.
+
+**Fix:** Add a data migration:
+```sql
+UPDATE contest_access_tokens cat
+SET expires_at = a.deadline
+FROM assignments a
+WHERE cat.assignment_id = a.id
+  AND cat.expires_at IS NULL;
+```
+
+Alternatively, if the assignment no longer exists (orphaned token), set a past date or delete the token.
+
+---
+
+### AGG-4: [LOW] Contest access token expiry logic duplicated across 6+ files
+
+**Sources:** A-2 | **Confidence:** MEDIUM
 **Cross-agent signal:** 1 of 7 review perspectives
 
-The `rateLimits` table is used for three distinct purposes: rate limiting, SSE connection tracking, and anti-cheat heartbeat dedup. The `acquireSharedSseConnectionSlot` function acquires a global advisory lock (`"realtime:sse:acquire"`) that serializes all SSE connection setups globally. During high-traffic contests, this creates a bottleneck causing connection setup latency to grow linearly with concurrent connections.
+The expiry check `(expires_at IS NULL OR expires_at > NOW())` is duplicated in SQL across 10+ query locations. While this is a small fragment, it creates maintenance risk if the logic needs to change (e.g., add grace period, change timezone handling).
 
-**Fix:** Long-term: separate SSE connections and heartbeat dedup into dedicated tables. Short-term: defer until performance becomes an issue under production load.
+**Fix:** Extract a shared SQL expression or Drizzle helper. Given the project uses raw SQL for complex queries, a module-level SQL fragment constant would suffice:
+```typescript
+export const CONTEST_ACCESS_TOKEN_VALID = sql`(
+  cat.expires_at IS NULL OR cat.expires_at > NOW()
+)`;
+```
+
+---
+
+### AGG-5: [LOW] Missing test for export redaction map merge behavior
+
+**Sources:** TE-1 | **Confidence:** HIGH
+**Cross-agent signal:** 1 of 7 review perspectives
+
+No test verifies that the merged redaction map includes all columns when a table exists in both `EXPORT_SANITIZED_COLUMNS` and `EXPORT_ALWAYS_REDACT_COLUMNS`. This is the exact scenario that would catch AGG-2.
+
+**Fix:** Add a unit test that creates divergent column sets for the same table in both maps and asserts the merged map contains the union.
 
 ---
 
@@ -96,17 +127,18 @@ All prior DEFER items (DEFER-1 through DEFER-13 from cycle 23 plan) remain uncha
 
 ## Positive Observations
 
-- All clock-skew-sensitive paths (contest boundaries, anti-cheat, rate limiting, SSE coordination) consistently use `getDbNowMs()`
+- Centralized secrets registry (`secrets.ts`) is well-designed and correctly integrated
+- Contest access token expiry is correctly implemented in all access queries
+- ICPC live-rank tie-breaker direction corrected (earlier last AC ranks better)
+- Security headers (Referrer-Policy, X-Content-Type-Options) present in proxy.ts
+- All clock-skew-sensitive paths use `getDbNowMs()`
 - `createApiHandler` correctly awaits `params` for Next.js 16 compatibility
-- `escapeLikePattern` is used correctly with `ESCAPE '\\'` clauses throughout
-- `resolveStoredPath` properly prevents path traversal in file operations
-- `namedToPositional` validates parameter names and prevents SQL injection
-- CSP is well-configured with nonce-based script-src and proper frame-ancestors
-- Password hashing uses Argon2id with OWASP-recommended parameters
-- Dummy password hash prevents user-enumeration via timing
+- `resolveStoredPath` properly prevents path traversal
+- CSP is well-configured with nonce-based script-src
+- Password hashing uses Argon2id with OWASP parameters
 - No `eval()`, `new Function()`, or `Math.random()` in security contexts
 - No `as any` type casts in server code
 
-## No Agent Failures
+## Subagent Availability Note
 
-All 7 review perspectives completed successfully.
+No subagent spawning tool was available in this environment. Review was performed as a single comprehensive manual sweep covering all perspectives. All relevant files were examined.
