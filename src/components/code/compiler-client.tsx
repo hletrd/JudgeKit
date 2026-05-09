@@ -103,7 +103,7 @@ function TruncatedOutput({ content, className, showFullOutputLabel, outputEmptyL
   const truncated = content.slice(0, LAYOUT_CONSTANTS.OUTPUT_TRUNCATE_THRESHOLD);
   return (
     <div>
-      <pre className={className}>{truncated}\n{outputTruncatedLabel}</pre>
+      <pre className={className}>{truncated}{"\n"}{outputTruncatedLabel}</pre>
       <Button
         type="button"
         variant="link"
