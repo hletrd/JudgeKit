@@ -55,4 +55,13 @@ None — all findings are straightforward fixes with no security/correctness tra
 
 ## Deployment (per-cycle)
 
-- Pending
+- **worv (`test.worv.ai`)** — PASS
+  - Build: `judgekit-app:latest` (linux/arm64), `judgekit-code-similarity:latest`, `judgekit-rate-limiter:latest`
+  - Pre-deploy DB backup preserved
+  - DB migrations: No changes detected
+  - Containers: All healthy, nginx reloaded, HTTPS verified (HTTP 200)
+- **algo (`algo.xylolabs.com`)** — PASS
+  - Build: `judgekit-app:latest` (linux/arm64), `judgekit-code-similarity:latest`, `judgekit-rate-limiter:latest`
+  - Pre-deploy DB backup preserved
+  - DB migrations: No changes detected
+  - Containers: All healthy, nginx reloaded, HTTPS verified (HTTP 200)
