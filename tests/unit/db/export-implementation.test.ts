@@ -23,19 +23,17 @@ describe("exportDatabase implementation guards", () => {
     expect(source).toContain('"redactionMode":${JSON.stringify(redactionMode)}');
   });
 
-  it("defines ALWAYS_REDACT for full-fidelity backups and SANITIZED_COLUMNS for portable exports", () => {
+  it("imports ALWAYS_REDACT and SANITIZED_COLUMNS from the centralized secrets registry", () => {
     const source = readFileSync(join(process.cwd(), "src/lib/db/export.ts"), "utf8");
 
-    // Full-fidelity backup always redacts passwordHash via ALWAYS_REDACT
-    expect(source).toContain("const ALWAYS_REDACT: Record<string, Set<string>>");
+    // Export imports redaction config from centralized registry instead of defining inline
+    expect(source).toContain("@/lib/security/secrets");
+    expect(source).toContain("EXPORT_SANITIZED_COLUMNS");
+    expect(source).toContain("EXPORT_ALWAYS_REDACT_COLUMNS");
 
     // Sanitized export path must redact sensitive columns
-    expect(source).toContain("SANITIZED_COLUMNS");
-    expect(source).toContain('users: new Set(["passwordHash"])');
-    expect(source).toContain('sessions: new Set(["sessionToken"])');
-    expect(source).toContain('apiKeys: new Set(["encryptedKey"])');
-    expect(source).toContain('judgeWorkers: new Set(["secretTokenHash", "judgeClaimToken"])');
-    expect(source).toContain('recruitingInvitations: new Set(["tokenHash"])');
+    expect(source).toContain("EXPORT_SANITIZED_COLUMNS");
+    expect(source).toContain("EXPORT_ALWAYS_REDACT_COLUMNS");
     expect(source).toContain("const redactionMode = getExportRedactionMode(options.sanitize)");
   });
 

@@ -4,6 +4,11 @@ import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 
 import { createLogger } from "@/lib/logger";
+import {
+  LOGGER_REDACT_PATHS,
+  EXPORT_SANITIZED_COLUMNS,
+  EXPORT_ALWAYS_REDACT_COLUMNS,
+} from "@/lib/security/secrets";
 
 function waitForFlush() {
   return new Promise((resolve) => setImmediate(resolve));
@@ -54,12 +59,12 @@ describe("REDACT_PATHS coverage", () => {
 
   /**
    * Secret columns that must be covered by logger REDACT_PATHS.
-   * Derived from SANITIZED_COLUMNS + ALWAYS_REDACT in export.ts,
+   * Derived from EXPORT_SANITIZED_COLUMNS + EXPORT_ALWAYS_REDACT_COLUMNS,
    * plus known secret fields that are handled in plaintext before
    * encryption (e.g. hcaptchaSecret in system settings).
    */
   const REQUIRED_REDACT_ENTRIES = [
-    // From SANITIZED_COLUMNS / ALWAYS_REDACT
+    // From EXPORT_SANITIZED_COLUMNS / EXPORT_ALWAYS_REDACT_COLUMNS
     "passwordHash",
     "sessionToken",
     "encryptedKey",
@@ -73,54 +78,57 @@ describe("REDACT_PATHS coverage", () => {
   ];
 
   it("includes all known secret column names in REDACT_PATHS", () => {
-    const source = readFileSync(join(process.cwd(), LOGGER_PATH), "utf8");
-
     for (const entry of REQUIRED_REDACT_ENTRIES) {
       expect(
-        source.includes(`"${entry}"`),
+        LOGGER_REDACT_PATHS.includes(entry),
         `REDACT_PATHS should include "${entry}"`
       ).toBe(true);
     }
   });
 
   it("includes body-prefixed variants for form-submitted secrets", () => {
-    const source = readFileSync(join(process.cwd(), LOGGER_PATH), "utf8");
-
     // Secrets that arrive via form body in server actions
     const bodyPrefixed = ["body.passwordHash", "body.hcaptchaSecret"];
     for (const entry of bodyPrefixed) {
       expect(
-        source.includes(`"${entry}"`),
+        LOGGER_REDACT_PATHS.includes(entry),
         `REDACT_PATHS should include "${entry}"`
       ).toBe(true);
     }
   });
 
-  it("keeps SANITIZED_COLUMNS and REDACT_PATHS in sync", () => {
+  it("keeps export sanitization and REDACT_PATHS in sync", () => {
     const exportSource = readFileSync(join(process.cwd(), EXPORT_PATH), "utf8");
-    const loggerSource = readFileSync(join(process.cwd(), LOGGER_PATH), "utf8");
 
     // Columns that are hashes, not secrets — they don't need logger redaction
     // because they are one-way hashes (not reversible to plaintext).
     const HASH_COLUMNS = new Set(["secretTokenHash", "tokenHash"]);
 
-    // Extract column names from SANITIZED_COLUMNS in export.ts
-    const sanitizedMatch = exportSource.match(/SANITIZED_COLUMNS[^}]*\{([^}]*)\}/s);
-    if (sanitizedMatch) {
-      const columnNames = sanitizedMatch[1].match(/"(\w+)"/g) ?? [];
-      for (const col of columnNames) {
-        const name = col.replace(/"/g, "");
-        // Hash columns are redacted from exports but don't need logger redaction
-        // (they are not reversible to plaintext secrets)
-        if (HASH_COLUMNS.has(name)) continue;
-        // Each non-hash column in SANITIZED_COLUMNS should be covered by
-        // REDACT_PATHS (either directly or via a body- prefix)
-        const hasDirect = loggerSource.includes(`"${name}"`);
-        expect(
-          hasDirect,
-          `REDACT_PATHS should cover SANITIZED_COLUMNS entry "${name}"`
-        ).toBe(true);
+    // Collect all non-hash column names from the centralized registry
+    const allExportColumns = new Set<string>();
+    for (const cols of Object.values(EXPORT_SANITIZED_COLUMNS)) {
+      for (const col of cols) {
+        if (!HASH_COLUMNS.has(col)) allExportColumns.add(col);
       }
     }
+    for (const cols of Object.values(EXPORT_ALWAYS_REDACT_COLUMNS)) {
+      for (const col of cols) {
+        if (!HASH_COLUMNS.has(col)) allExportColumns.add(col);
+      }
+    }
+
+    for (const name of allExportColumns) {
+      const hasDirect = LOGGER_REDACT_PATHS.includes(name);
+      expect(
+        hasDirect,
+        `REDACT_PATHS should cover export sanitization entry "${name}"`
+      ).toBe(true);
+    }
+  });
+
+  it("imports REDACT_PATHS from the centralized secrets registry", () => {
+    const loggerSource = readFileSync(join(process.cwd(), LOGGER_PATH), "utf8");
+    expect(loggerSource).toContain("@/lib/security/secrets");
+    expect(loggerSource).toContain("LOGGER_REDACT_PATHS");
   });
 });

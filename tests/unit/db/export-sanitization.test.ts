@@ -2,6 +2,11 @@ import { describe, expect, it } from "vitest";
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import * as schema from "@/lib/db/schema";
+import {
+  EXPORT_SANITIZED_COLUMNS,
+  EXPORT_ALWAYS_REDACT_COLUMNS,
+  LOGGER_REDACT_PATHS,
+} from "@/lib/security/secrets";
 
 const EXPORT_PATH = "src/lib/db/export.ts";
 
@@ -34,55 +39,67 @@ function getSchemaColumnNames(tableName: string): Set<string> {
 }
 
 describe("export.ts sanitization", () => {
-  it("defines SANITIZED_COLUMNS with entries for all sensitive tables", () => {
+  it("imports SANITIZED_COLUMNS from the centralized secrets registry", () => {
     const source = readFileSync(join(process.cwd(), EXPORT_PATH), "utf8");
 
-    expect(source).toContain("SANITIZED_COLUMNS");
-    expect(source).toContain("users:");
-    expect(source).toContain("sessions:");
-    expect(source).toContain("accounts:");
-    expect(source).toContain("apiKeys:");
-    expect(source).toContain("judgeWorkers:");
-    expect(source).toContain("recruitingInvitations:");
+    expect(source).toContain("@/lib/security/secrets");
+    expect(source).toContain("EXPORT_SANITIZED_COLUMNS");
+    expect(source).toContain("EXPORT_ALWAYS_REDACT_COLUMNS");
+  });
+
+  it("covers all required sensitive tables in SANITIZED_COLUMNS", () => {
+    const tables = Object.keys(EXPORT_SANITIZED_COLUMNS);
+    expect(tables).toContain("users");
+    expect(tables).toContain("sessions");
+    expect(tables).toContain("accounts");
+    expect(tables).toContain("apiKeys");
+    expect(tables).toContain("judgeWorkers");
+    expect(tables).toContain("recruitingInvitations");
+    expect(tables).toContain("systemSettings");
   });
 
   it("covers all required sensitive column names", () => {
-    const source = readFileSync(join(process.cwd(), EXPORT_PATH), "utf8");
+    const allColumns = new Set<string>();
+    for (const cols of Object.values(EXPORT_SANITIZED_COLUMNS)) {
+      for (const col of cols) allColumns.add(col);
+    }
 
-    expect(source).toContain("passwordHash");
-    expect(source).toContain("sessionToken");
-    expect(source).toContain("refresh_token");
-    expect(source).toContain("access_token");
-    expect(source).toContain("id_token");
-    expect(source).toContain("encryptedKey");
-    expect(source).toContain("secretTokenHash");
-    expect(source).toContain("judgeClaimToken");
-    expect(source).toContain("tokenHash");
-    expect(source).toContain("hcaptchaSecret");
+    expect(allColumns).toContain("passwordHash");
+    expect(allColumns).toContain("sessionToken");
+    expect(allColumns).toContain("refresh_token");
+    expect(allColumns).toContain("access_token");
+    expect(allColumns).toContain("id_token");
+    expect(allColumns).toContain("encryptedKey");
+    expect(allColumns).toContain("secretTokenHash");
+    expect(allColumns).toContain("judgeClaimToken");
+    expect(allColumns).toContain("tokenHash");
+    expect(allColumns).toContain("hcaptchaSecret");
   });
 
   it("does NOT reference columns that have been dropped from the schema", () => {
-    const source = readFileSync(join(process.cwd(), EXPORT_PATH), "utf8");
+    const allColumns = new Set<string>();
+    for (const cols of Object.values(EXPORT_SANITIZED_COLUMNS)) {
+      for (const col of cols) allColumns.add(col);
+    }
+    for (const cols of Object.values(EXPORT_ALWAYS_REDACT_COLUMNS)) {
+      for (const col of cols) allColumns.add(col);
+    }
 
     // recruitingInvitations.token was dropped in cycle 15
-    expect(source).not.toContain('recruitingInvitations: new Set(["token"');
-    expect(source).not.toContain('recruitingInvitations: new Set(["token",');
+    expect(allColumns).not.toContain("token");
 
     // contestAccessTokens never had a "token" column
-    expect(source).not.toContain("contestAccessTokens:");
+    expect(Object.keys(EXPORT_SANITIZED_COLUMNS)).not.toContain("contestAccessTokens");
+    expect(Object.keys(EXPORT_ALWAYS_REDACT_COLUMNS)).not.toContain("contestAccessTokens");
 
     // judgeWorkers.secretToken was dropped in cycle 16
-    expect(source).not.toContain('"secretToken"');
+    expect(allColumns).not.toContain("secretToken");
   });
 
   it("every column in SANITIZED_COLUMNS exists in the corresponding schema table", () => {
     // This is the key test that prevents schema-export drift.
     // If a column is listed in SANITIZED_COLUMNS but doesn't exist in the
     // schema, the redaction is a no-op and operators won't know.
-    //
-    // We can't import SANITIZED_COLUMNS directly (it's not exported), so
-    // we verify by checking the source for known table-column pairs.
-    const source = readFileSync(join(process.cwd(), EXPORT_PATH), "utf8");
 
     // Verify specific table-column pairs that are currently listed
     // Users table has: passwordHash
@@ -121,7 +138,8 @@ describe("export.ts sanitization", () => {
 
   it("streamDatabaseExport uses SANITIZED_COLUMNS when sanitize is true", () => {
     const source = readFileSync(join(process.cwd(), EXPORT_PATH), "utf8");
-    expect(source).toContain("options.sanitize ? { ...SANITIZED_COLUMNS, ...ALWAYS_REDACT }");
+    expect(source).toContain("EXPORT_SANITIZED_COLUMNS");
+    expect(source).toContain("EXPORT_ALWAYS_REDACT_COLUMNS");
   });
 
   it("does not export the deprecated OOM-prone exportDatabase function", () => {
@@ -130,51 +148,42 @@ describe("export.ts sanitization", () => {
   });
 
   it("ALWAYS_REDACT includes all required always-redacted columns", () => {
-    const source = readFileSync(join(process.cwd(), EXPORT_PATH), "utf8");
-
     // ALWAYS_REDACT must include passwordHash (users), sessionToken (sessions),
     // OAuth tokens (accounts), encryptedKey (apiKeys), and hcaptchaSecret
     // (systemSettings) — these must never appear in any export
-    expect(source).toContain("ALWAYS_REDACT");
-    expect(source).toMatch(/users: new Set\(\["passwordHash"\]\)/);
-    expect(source).toMatch(/sessions: new Set\(\["sessionToken"\]\)/);
-    expect(source).toMatch(/accounts: new Set\(\["refresh_token", "access_token", "id_token"\]\)/);
-    expect(source).toMatch(/apiKeys: new Set\(\["encryptedKey"\]\)/);
-    expect(source).toMatch(/systemSettings: new Set\(\["hcaptchaSecret"\]\)/);
+    expect(EXPORT_ALWAYS_REDACT_COLUMNS.users).toContain("passwordHash");
+    expect(EXPORT_ALWAYS_REDACT_COLUMNS.sessions).toContain("sessionToken");
+    expect(EXPORT_ALWAYS_REDACT_COLUMNS.accounts).toContain("refresh_token");
+    expect(EXPORT_ALWAYS_REDACT_COLUMNS.accounts).toContain("access_token");
+    expect(EXPORT_ALWAYS_REDACT_COLUMNS.accounts).toContain("id_token");
+    expect(EXPORT_ALWAYS_REDACT_COLUMNS.apiKeys).toContain("encryptedKey");
+    expect(EXPORT_ALWAYS_REDACT_COLUMNS.systemSettings).toContain("hcaptchaSecret");
   });
 
   it("systemSettings.hcaptchaSecret is in SANITIZED_COLUMNS and ALWAYS_REDACT", () => {
-    const source = readFileSync(join(process.cwd(), EXPORT_PATH), "utf8");
-
     // hcaptchaSecret must be in both maps — it's an encrypted secret that
     // should never appear in any export format, even full-fidelity backups.
-    expect(source).toContain("systemSettings: new Set([\"hcaptchaSecret\"])");
-    // Count occurrences: should appear exactly twice (once in each map)
-    const matches = source.match(/systemSettings: new Set\(\["hcaptchaSecret"\]\)/g);
-    expect(matches).toHaveLength(2);
+    expect(EXPORT_SANITIZED_COLUMNS.systemSettings).toContain("hcaptchaSecret");
+    expect(EXPORT_ALWAYS_REDACT_COLUMNS.systemSettings).toContain("hcaptchaSecret");
   });
 
   it("sessions.sessionToken is in SANITIZED_COLUMNS and ALWAYS_REDACT", () => {
-    const source = readFileSync(join(process.cwd(), EXPORT_PATH), "utf8");
-
     // sessionToken must be in both maps — a leaked session token enables
     // immediate session hijacking with zero computational effort, and there
     // is no remediation other than waiting for the session to expire.
-    expect(source).toContain("sessions: new Set([\"sessionToken\"])");
-    // Count occurrences: should appear exactly twice (once in each map)
-    const matches = source.match(/sessions: new Set\(\["sessionToken"\]\)/g);
-    expect(matches).toHaveLength(2);
+    expect(EXPORT_SANITIZED_COLUMNS.sessions).toContain("sessionToken");
+    expect(EXPORT_ALWAYS_REDACT_COLUMNS.sessions).toContain("sessionToken");
   });
 
   it("accounts OAuth tokens are in SANITIZED_COLUMNS and ALWAYS_REDACT", () => {
-    const source = readFileSync(join(process.cwd(), EXPORT_PATH), "utf8");
-
     // OAuth tokens (refresh_token, access_token, id_token) must be in both maps.
     // A leaked OAuth token enables impersonation on the provider's side.
-    expect(source).toContain("accounts: new Set([\"refresh_token\", \"access_token\", \"id_token\"])");
-    // Count occurrences: should appear exactly twice (once in each map)
-    const matches = source.match(/accounts: new Set\(\["refresh_token", "access_token", "id_token"\]\)/g);
-    expect(matches).toHaveLength(2);
+    expect(EXPORT_SANITIZED_COLUMNS.accounts).toContain("refresh_token");
+    expect(EXPORT_SANITIZED_COLUMNS.accounts).toContain("access_token");
+    expect(EXPORT_SANITIZED_COLUMNS.accounts).toContain("id_token");
+    expect(EXPORT_ALWAYS_REDACT_COLUMNS.accounts).toContain("refresh_token");
+    expect(EXPORT_ALWAYS_REDACT_COLUMNS.accounts).toContain("access_token");
+    expect(EXPORT_ALWAYS_REDACT_COLUMNS.accounts).toContain("id_token");
   });
 
   it("hcaptchaSecret column exists in the systemSettings schema table", () => {
@@ -189,8 +198,6 @@ describe("export.ts sanitization", () => {
     // also be redacted from database backups. This prevents a repeat of the
     // hcaptchaSecret omission where the logger was updated but the export
     // module was not.
-    const source = readFileSync(join(process.cwd(), EXPORT_PATH), "utf8");
-    const loggerSource = readFileSync(join(process.cwd(), "src/lib/logger.ts"), "utf8");
 
     // Extract column names from REDACT_PATHS that correspond to DB columns
     const dbSensitiveColumns = [
@@ -204,11 +211,19 @@ describe("export.ts sanitization", () => {
       "judgeClaimToken",
     ];
 
+    const allExportColumns = new Set<string>();
+    for (const cols of Object.values(EXPORT_SANITIZED_COLUMNS)) {
+      for (const col of cols) allExportColumns.add(col);
+    }
+    for (const cols of Object.values(EXPORT_ALWAYS_REDACT_COLUMNS)) {
+      for (const col of cols) allExportColumns.add(col);
+    }
+
     for (const col of dbSensitiveColumns) {
       // Verify the column appears in the logger's REDACT_PATHS
-      expect(loggerSource).toContain(col);
+      expect(LOGGER_REDACT_PATHS).toContain(col);
       // Verify the column appears in the export's SANITIZED_COLUMNS
-      expect(source).toContain(col);
+      expect(allExportColumns).toContain(col);
     }
   });
 });

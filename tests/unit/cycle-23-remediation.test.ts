@@ -105,7 +105,8 @@ describe("Cycle 23: ICPC live-rank tie-breakers (L3)", () => {
   });
 
   it("includes earlier last AC tie-breaker in the WHERE clause", () => {
-    expect(leaderboard).toContain("ut.last_ac_at > t.last_ac_at");
+    // Earlier last AC (smaller timestamp) ranks better
+    expect(leaderboard).toContain("ut.last_ac_at < t.last_ac_at");
   });
 
   it("includes userId lexicographic tie-breaker in the WHERE clause", () => {
