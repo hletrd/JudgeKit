@@ -49,7 +49,7 @@ N/A — no fixes required this cycle.
 
 ## Deploy Results
 
-- **test.worv.ai**: SKIPPED (no code changes to deploy)
-- **algo.xylolabs.com**: SKIPPED (no code changes to deploy)
+- **test.worv.ai**: SUCCESS (2026-05-09) — app container healthy, nginx reloaded, HTTPS verified
+- **algo.xylolabs.com**: SUCCESS (2026-05-09) — app container healthy, nginx reloaded, HTTPS verified
 
-Plan archival only — no functional changes.
+Note: deploy-algo.sh does not exist locally; deploy-docker.sh with algo env vars was used as fallback per recovery attempt. Both targets deployed successfully.
