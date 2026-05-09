@@ -1,6 +1,7 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import {
   decryptPluginConfigForUse,
+  decryptPluginSecret,
   encryptPluginSecret,
   preparePluginConfigForStorage,
   redactPluginConfigForAudit,
@@ -92,6 +93,64 @@ describe("plugin secret helpers", () => {
       expect(() => secrets.encryptPluginSecret("test")).toThrow(
         "PLUGIN_CONFIG_ENCRYPTION_KEY must be set"
       );
+    });
+  });
+
+  describe("decryptPluginSecret plaintext fallback", () => {
+    it("decrypts a valid encrypted secret", () => {
+      const encrypted = encryptPluginSecret("my-secret");
+      expect(decryptPluginSecret(encrypted)).toBe("my-secret");
+    });
+
+    it("throws in production when value is not encrypted", () => {
+      const originalEnv = process.env.NODE_ENV;
+      process.env.NODE_ENV = "production";
+      try {
+        expect(() => decryptPluginSecret("plaintext-value")).toThrow(
+          "decryptPluginSecret() called on non-encrypted value"
+        );
+      } finally {
+        process.env.NODE_ENV = originalEnv;
+      }
+    });
+
+    it("returns plaintext as-is in non-production", () => {
+      const originalEnv = process.env.NODE_ENV;
+      process.env.NODE_ENV = "development";
+      try {
+        expect(decryptPluginSecret("plaintext-value")).toBe("plaintext-value");
+      } finally {
+        process.env.NODE_ENV = originalEnv;
+      }
+    });
+
+    it("allows explicit plaintext fallback even in production", () => {
+      const originalEnv = process.env.NODE_ENV;
+      process.env.NODE_ENV = "production";
+      try {
+        expect(decryptPluginSecret("plaintext-value", { allowPlaintextFallback: true })).toBe(
+          "plaintext-value"
+        );
+      } finally {
+        process.env.NODE_ENV = originalEnv;
+      }
+    });
+
+    it("decryptPluginConfigForUse handles production plaintext by clearing the value", () => {
+      const originalEnv = process.env.NODE_ENV;
+      process.env.NODE_ENV = "production";
+      try {
+        const storedConfig = {
+          provider: "openai",
+          openaiApiKey: "not-encrypted",
+          claudeApiKey: "",
+          geminiApiKey: "",
+        };
+        const decrypted = decryptPluginConfigForUse("chat-widget", storedConfig);
+        expect(decrypted.openaiApiKey).toBe("");
+      } finally {
+        process.env.NODE_ENV = originalEnv;
+      }
     });
   });
 });

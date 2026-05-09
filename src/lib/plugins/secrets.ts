@@ -49,8 +49,27 @@ export function encryptPluginSecret(plaintext: string | null | undefined): strin
   ].join(":");
 }
 
-export function decryptPluginSecret(value: string) {
+export function decryptPluginSecret(
+  value: string,
+  options?: { allowPlaintextFallback?: boolean }
+) {
+  const allowPlaintext =
+    options?.allowPlaintextFallback ?? (process.env.NODE_ENV !== "production");
+
   if (!isEncryptedPluginSecret(value)) {
+    if (!allowPlaintext) {
+      throw new Error(
+        "decryptPluginSecret() called on non-encrypted value. " +
+          "If this is expected during migration, pass { allowPlaintextFallback: true }. " +
+          "Otherwise, investigate possible data tampering or incomplete migration."
+      );
+    }
+    if (process.env.NODE_ENV === "production") {
+      logger.warn(
+        { prefix: value.slice(0, 10) },
+        "[plugin-secrets] decryptPluginSecret() called on non-encrypted value — possible data tampering or incomplete migration"
+      );
+    }
     return value;
   }
 
