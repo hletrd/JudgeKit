@@ -4,6 +4,7 @@ import { join } from "path";
 import { createApiHandler } from "@/lib/api/handler";
 import { apiSuccess } from "@/lib/api/responses";
 import { listDockerImages, inspectDockerImage, removeDockerImages } from "@/lib/docker/client";
+import { isAllowedJudgeDockerImage } from "@/lib/judge/docker-image-validation";
 import { recordAuditEvent } from "@/lib/audit/events";
 import { logger } from "@/lib/logger";
 
@@ -17,6 +18,13 @@ export const POST = createApiHandler({
 
     await Promise.all(images.map(async (img) => {
       if (img.repository === "<none>") return;
+      if (!isAllowedJudgeDockerImage(img.repository)) {
+        logger.debug(
+          { repository: img.repository },
+          "[docker:prune] skipping image with disallowed repository"
+        );
+        return;
+      }
       const tag = `${img.repository}:${img.tag}`;
       const dockerfilePath = join("docker", `Dockerfile.${img.repository}`);
 
