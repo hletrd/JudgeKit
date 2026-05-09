@@ -64,6 +64,7 @@ export async function verifyHcaptchaToken(token: string, remoteIp?: string | nul
     },
     body,
     cache: "no-store",
+    signal: AbortSignal.timeout(10_000),
   });
 
   if (!response.ok) {
