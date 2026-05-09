@@ -53,7 +53,7 @@ N/A — no fixes required this cycle.
 
 ## Stale Plan Cleanup
 
-The following plans in `plans/open/` are fully implemented and should be archived to `plans/done/`:
+The following plans in `plans/open/` were archived to `plans/done/`:
 
 - `2026-05-09-cycle-14-review-remediation.md`
 - `2026-05-09-cycle-18-review-remediation.md`
@@ -61,3 +61,10 @@ The following plans in `plans/open/` are fully implemented and should be archive
 - `2026-05-08-cycle-3-review-remediation.md`
 - `2026-05-08-cycle-4-review-remediation.md`
 - `2026-05-08-cycle-6-review-remediation.md`
+
+---
+
+## Deploy Results
+
+- **test.worv.ai**: SUCCESS (2026-05-09) — app container healthy, nginx reloaded, HTTPS verified
+- **algo.xylolabs.com**: SUCCESS (2026-05-09) — app container healthy, nginx reloaded, HTTPS verified (deploy-docker.sh with algo env vars used as fallback since deploy-algo.sh does not exist locally)
