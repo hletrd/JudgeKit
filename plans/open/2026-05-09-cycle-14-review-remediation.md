@@ -61,4 +61,5 @@ N/A — no fixes required this cycle.
 
 ## Deploy Results
 
-To be recorded after gate verification.
+- **test.worv.ai**: SUCCESS (2026-05-09) — app container healthy, nginx reloaded, HTTPS verified
+- **algo.xylolabs.com**: SUCCESS (2026-05-09) — app container healthy, nginx reloaded, HTTPS verified (deploy-docker.sh with algo env vars used as fallback since deploy-algo.sh does not exist locally)
