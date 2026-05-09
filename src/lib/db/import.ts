@@ -6,6 +6,7 @@
  */
 
 import { getTableColumns, sql } from "drizzle-orm";
+import type { PgTable } from "drizzle-orm/pg-core";
 import { db } from "./index";
 import { validateExport, getTableOrder, getReversedTableOrder, TABLE_ORDER, type JudgeKitExport } from "./export";
 import { logger } from "@/lib/logger";
@@ -16,12 +17,12 @@ import { logger } from "@/lib/logger";
  * If a table is added to the schema, it must be added to TABLE_ORDER in
  * export.ts — the import side will pick it up automatically.
  */
-export const TABLE_MAP: Record<string, any> = {};
+export const TABLE_MAP: Record<string, PgTable> = {};
 for (const { name, table } of TABLE_ORDER) {
   TABLE_MAP[name] = table;
 }
 
-function buildImportColumnSets(tableMap: Record<string, any>) {
+function buildImportColumnSets(tableMap: Record<string, PgTable>) {
   const timestampColumns = new Set<string>();
   const booleanColumns = new Set<string>();
   const jsonColumns = new Set<string>();
