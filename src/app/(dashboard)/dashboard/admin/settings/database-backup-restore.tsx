@@ -60,9 +60,15 @@ export function DatabaseBackupRestore({ isSuperAdmin }: { isSuperAdmin: boolean 
       // download name matches the DB-time-based snapshot inside the file.
       const disposition = response.headers.get("Content-Disposition") ?? "";
       const filenameMatch = disposition.match(/filename\*?=UTF-8''([^\s;]+)|filename="([^"]+)"/);
-      const serverFilename = filenameMatch
-        ? decodeURIComponent(filenameMatch[1] ?? filenameMatch[2])
-        : null;
+      let serverFilename: string | null = null;
+      if (filenameMatch) {
+        try {
+          serverFilename = decodeURIComponent(filenameMatch[1] ?? filenameMatch[2]);
+        } catch {
+          // Malformed percent-encoding in Content-Disposition — fall back to generated filename
+          serverFilename = null;
+        }
+      }
       // Fallback to a client-side timestamp only if the header is missing
       const timestamp = new Date().toISOString().replace(/[:.]/g, "-");
       a.download = serverFilename
