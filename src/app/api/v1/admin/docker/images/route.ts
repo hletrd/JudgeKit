@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { z } from "zod";
 import { stat } from "fs/promises";
 import { join } from "path";
+import pLimit from "p-limit";
 import { createApiHandler } from "@/lib/api/handler";
 import { apiSuccess } from "@/lib/api/responses";
 import { listDockerImages, inspectDockerImage, pullDockerImage, removeDockerImage, getDiskUsage } from "@/lib/docker/client";
@@ -13,7 +14,9 @@ import { logger } from "@/lib/logger";
 async function getStaleImages(images: { repository: string; tag: string }[]): Promise<Set<string>> {
   const stale = new Set<string>();
 
-  await Promise.all(images.map(async (img) => {
+  const limit = pLimit(5);
+
+  await Promise.all(images.map((img) => limit(async () => {
     const tag = `${img.repository}:${img.tag}`;
     const dockerfilePath = join("docker", `Dockerfile.${img.repository}`);
 
@@ -34,7 +37,7 @@ async function getStaleImages(images: { repository: string; tag: string }[]): Pr
       // Dockerfile doesn't exist or inspect failed - not stale
       logger.debug({ err, tag, dockerfilePath }, "[docker:images] stale check failed for image, skipping");
     }
-  }));
+  })));
 
   return stale;
 }
