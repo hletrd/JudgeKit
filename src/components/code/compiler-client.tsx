@@ -178,8 +178,7 @@ export function CompilerClient({ languages, title, description, preferredLanguag
         error: null,
       }))
     );
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+  }, [languages, initialLanguage]);
 
   // Persist language preference (best-effort — may fail in private browsing)
   useEffect(() => {
