@@ -10,21 +10,21 @@
 
 ### C13-1 — Add timeout to docker/client.ts judge worker fetches
 
-**Severity:** MEDIUM  
-**File:** `src/lib/docker/client.ts:108-112` (callWorkerJson), `src/lib/docker/client.ts:139-143` (callWorkerNoContent)  
-**Issue:** `fetch()` calls to the judge worker lack timeout/abort signals. A hung worker can cause indefinite request hangs.  
-**Fix:** Add `signal: AbortSignal.timeout(N)` to both fetches. Use 30s for `callWorkerJson` (JSON parsing may take time) and 10s for `callWorkerNoContent`.
-
-**Status:** PENDING
+**Severity:** MEDIUM
+**File:** `src/lib/docker/client.ts:108-112` (callWorkerJson), `src/lib/docker/client.ts:139-143` (callWorkerNoContent)
+**Issue:** `fetch()` calls to the judge worker lack timeout/abort signals. A hung worker can cause indefinite request hangs.
+**Fix:** Add `signal: AbortSignal.timeout(N)` to both fetches. Use 30s for `callWorkerJson` and 60s for `callWorkerNoContent`.
+**Commit:** `e6d7755d`
+**Status:** DONE
 
 ### C13-2 — Add timeout to hCaptcha verification fetch
 
-**Severity:** LOW  
-**File:** `src/lib/security/hcaptcha.ts:60-66`  
-**Issue:** hCaptcha verification `fetch()` lacks a timeout. Unlike other external API calls (OpenAI, Anthropic, code-similarity), this fetch is unprotected.  
+**Severity:** LOW
+**File:** `src/lib/security/hcaptcha.ts:60-66`
+**Issue:** hCaptcha verification `fetch()` lacks a timeout. Unlike other external API calls (OpenAI, Anthropic, code-similarity), this fetch is unprotected.
 **Fix:** Add `signal: AbortSignal.timeout(10_000)` to the fetch call in `verifyHcaptchaToken`.
-
-**Status:** PENDING
+**Commit:** `c8bf8609`
+**Status:** DONE
 
 ---
 
@@ -46,7 +46,11 @@ No new deferred items. All carry-forward deferred items from prior cycles remain
 
 ## Gate Results
 
-TBD — will be recorded after fixes are implemented.
+- `npx eslint src/lib/security/hcaptcha.ts src/lib/docker/client.ts`: PASS (no errors, no warnings)
+- `npx tsc --noEmit`: PASS
+- `npx next build`: PASS
+- `npx vitest run`: PASS (314 files, 2338 tests)
+- `npx vitest run --config vitest.config.component.ts`: PASS (66 files, 179 tests)
 
 ---
 
@@ -59,4 +63,4 @@ TBD — will be recorded after fixes are implemented.
 
 ## Deploy Results
 
-TBD — will be recorded after gates pass.
+TBD — will be recorded after deploy command runs.
