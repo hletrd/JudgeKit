@@ -41,7 +41,8 @@ export function LocaleSwitcher({ className }: { className?: string }) {
     }
 
     try {
-      document.cookie = `${LOCALE_COOKIE_NAME}=${locale}; Path=/; SameSite=Lax; Secure; Max-Age=${60 * 60 * 24 * 365}`;
+      const secure = window.location.protocol === "https:" ? "; Secure" : "";
+      document.cookie = `${LOCALE_COOKIE_NAME}=${locale}; Path=/; SameSite=Lax${secure}; Max-Age=${60 * 60 * 24 * 365}`;
     } catch {
       // Cookie may be blocked (sandboxed iframe, disabled cookies).
       // Fall through to reload so server-side locale handling can take effect.

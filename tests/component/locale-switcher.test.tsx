@@ -69,12 +69,34 @@ vi.mock("lucide-react", () => ({
 }));
 
 describe("LocaleSwitcher", () => {
+  let lastCookieValue: string;
+
   beforeEach(() => {
     vi.clearAllMocks();
-    document.cookie = "locale=; Max-Age=0; Path=/";
+    lastCookieValue = "";
+    Object.defineProperty(document, "cookie", {
+      writable: true,
+      value: "",
+      configurable: true,
+    });
+    const originalDescriptor = Object.getOwnPropertyDescriptor(document, "cookie");
+    Object.defineProperty(document, "cookie", {
+      get() {
+        return lastCookieValue.split(";")[0] ?? "";
+      },
+      set(value: string) {
+        lastCookieValue = value;
+      },
+      configurable: true,
+    });
+    return () => {
+      if (originalDescriptor) {
+        Object.defineProperty(document, "cookie", originalDescriptor);
+      }
+    };
   });
 
-  it("forces a full navigation after switching locale so public pages re-render", async () => {
+  it("forces a full navigation after switching locale so public pages re-render (HTTPS)", async () => {
     const reloadMock = vi.fn();
     vi.stubGlobal("location", { protocol: "https:", reload: reloadMock });
 
@@ -84,7 +106,23 @@ describe("LocaleSwitcher", () => {
 
     await user.click(screen.getByRole("button", { name: "Korean" }));
 
-    expect(document.cookie).toContain("locale=ko");
+    expect(lastCookieValue).toContain("locale=ko");
+    expect(lastCookieValue).toContain("Secure");
+    expect(reloadMock).toHaveBeenCalled();
+  });
+
+  it("omits Secure flag on HTTP so the cookie is accepted in development", async () => {
+    const reloadMock = vi.fn();
+    vi.stubGlobal("location", { protocol: "http:", reload: reloadMock });
+
+    const user = userEvent.setup();
+
+    render(<LocaleSwitcher />);
+
+    await user.click(screen.getByRole("button", { name: "Korean" }));
+
+    expect(lastCookieValue).toContain("locale=ko");
+    expect(lastCookieValue).not.toContain("Secure");
     expect(reloadMock).toHaveBeenCalled();
   });
 });
