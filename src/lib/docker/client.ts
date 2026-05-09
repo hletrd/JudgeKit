@@ -95,6 +95,22 @@ async function readError(response: Response): Promise<string> {
   }
 }
 
+/**
+ * Combine an existing AbortSignal with a timeout.
+ * Returns a new AbortSignal that aborts when EITHER the original signal
+ * aborts OR the timeout fires. Cleans up the timeout if the original
+ * signal aborts first to avoid dangling timers.
+ */
+function withTimeout(signal: AbortSignal, ms: number): AbortSignal {
+  const combined = new AbortController();
+  const timer = setTimeout(() => combined.abort(), ms);
+  signal.addEventListener("abort", () => {
+    clearTimeout(timer);
+    combined.abort();
+  }, { once: true });
+  return combined.signal;
+}
+
 async function callWorkerJson<T>(
   path: string,
   init?: RequestInit,
@@ -109,7 +125,9 @@ async function callWorkerJson<T>(
     ...init,
     headers,
     cache: "no-store",
-    signal: init?.signal ?? AbortSignal.timeout(30_000),
+    signal: init?.signal
+      ? withTimeout(init.signal, 30_000)
+      : AbortSignal.timeout(30_000),
   });
 
   if (!response.ok) {
@@ -141,7 +159,9 @@ async function callWorkerNoContent(path: string, init?: RequestInit): Promise<vo
     ...init,
     headers,
     cache: "no-store",
-    signal: init?.signal ?? AbortSignal.timeout(60_000),
+    signal: init?.signal
+      ? withTimeout(init.signal, 60_000)
+      : AbortSignal.timeout(60_000),
   });
 
   if (!response.ok) {
