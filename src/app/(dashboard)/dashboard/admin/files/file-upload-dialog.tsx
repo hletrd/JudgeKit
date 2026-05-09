@@ -38,6 +38,7 @@ export function FileUploadDialog({ open, onOpenChange, onComplete, maxFileSizeBy
   const [isDragging, setIsDragging] = useState(false);
   const [isUploading, setIsUploading] = useState(false);
   const completeTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const abortControllerRef = useRef<AbortController | null>(null);
 
   const addFiles = useCallback((fileList: FileList | File[]) => {
     const MAX_UPLOAD_SIZE = maxFileSizeBytes;
@@ -89,6 +90,7 @@ export function FileUploadDialog({ open, onOpenChange, onComplete, maxFileSizeBy
   async function handleUpload() {
     if (queue.length === 0) return;
     setIsUploading(true);
+    abortControllerRef.current = new AbortController();
     let successCount = 0;
 
     for (let i = 0; i < queue.length; i++) {
@@ -109,6 +111,7 @@ export function FileUploadDialog({ open, onOpenChange, onComplete, maxFileSizeBy
         const res = await apiFetch("/api/v1/files", {
           method: "POST",
           body: formData,
+          signal: abortControllerRef.current.signal,
         });
 
         if (!res.ok) {
@@ -123,6 +126,14 @@ export function FileUploadDialog({ open, onOpenChange, onComplete, maxFileSizeBy
         );
         successCount++;
       } catch (err) {
+        if (err instanceof Error && err.name === "AbortError") {
+          setQueue((prev) =>
+            prev.map((item) =>
+              item.id === itemId ? { ...item, status: "error", error: "uploadAborted" } : item
+            )
+          );
+          break;
+        }
         const message = err instanceof Error ? err.message : "uploadFailed";
         setQueue((prev) =>
           prev.map((item) =>
@@ -151,6 +162,10 @@ export function FileUploadDialog({ open, onOpenChange, onComplete, maxFileSizeBy
         clearTimeout(completeTimerRef.current);
         completeTimerRef.current = null;
       }
+      if (abortControllerRef.current) {
+        abortControllerRef.current.abort();
+        abortControllerRef.current = null;
+      }
     };
   }, []);
 
@@ -164,6 +179,9 @@ export function FileUploadDialog({ open, onOpenChange, onComplete, maxFileSizeBy
         setQueue([]);
       }
       onOpenChange(open);
+    } else if (!open) {
+      // Abort in-flight uploads when user closes the dialog during upload
+      abortControllerRef.current?.abort();
     }
   }
 
