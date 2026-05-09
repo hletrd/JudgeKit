@@ -86,6 +86,12 @@ None. All findings are fixable within this cycle. No security/correctness findin
 - [x] vitest run passes (314 files, 2343 tests)
 - [x] vitest run --config vitest.config.component.ts passes (66 files, 179 tests)
 
+## Deploy Status
+
+- test.worv.ai: deployed successfully (commit 0ee7be6a)
+- algo.xylolabs.com: deployed successfully (commit 0ee7be6a)
+- Note: deploy-algo.sh does not exist locally; deploy-docker.sh with algo env vars used as fallback
+
 ---
 
 ## Dependencies
