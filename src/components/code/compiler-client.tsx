@@ -67,9 +67,10 @@ const DEFAULT_CODE: Record<string, string> = {
 
 function getDefaultCode(language: string): string {
   if (DEFAULT_CODE[language]) return DEFAULT_CODE[language];
-  // Check if it's a C/C++ variant
-  if (language.startsWith("c") && !language.startsWith("cs")) return DEFAULT_CODE.c;
+  // Check if it's a C/C++ variant — C++ must be checked BEFORE generic C
+  // so clang_cpp23/clang_cpp26 match C++ rather than C.
   if (language.startsWith("cpp") || language.startsWith("clang_cpp")) return DEFAULT_CODE.cpp20;
+  if (language.startsWith("c") && !language.startsWith("cs")) return DEFAULT_CODE.c;
   if (language.startsWith("java")) return DEFAULT_CODE.java;
   if (language.startsWith("python")) return DEFAULT_CODE.python;
   return "";
