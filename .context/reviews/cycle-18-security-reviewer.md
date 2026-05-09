@@ -1,55 +1,72 @@
-# Cycle 18 Security Reviewer Findings
+# Cycle 18 Security Reviewer Findings (Updated)
 
-**Date:** 2026-04-19
+**Date:** 2026-05-09
 **Reviewer:** OWASP top 10, secrets, unsafe patterns, auth/authz
-**Base commit:** 7c1b65cc
+**Base commit:** 75d82a17
+**Previous review:** cycle-18-security-reviewer.md (2026-04-19, commit 7c1b65cc)
 
 ---
 
-## Findings
+## Previous Finding Status
 
-### F1: Admin backup/restore/migrate routes verify password but discard `needsRehash` — bcrypt hashes persist for admin-heavy users
+| ID | Previous Finding | Status |
+|----|-----------------|--------|
+| F1 | Admin routes discard `needsRehash` | **STILL OPEN** — unchanged since April |
+| F2 | `getRecruitingAccessContext` timing side channel | **PARTIALLY ADDRESSED** — `withRecruitingContextCache` added in `api/handler.ts:109` |
+| F3 | Internal cleanup endpoint lacks rate limiting | **STILL OPEN** — `/api/internal/cleanup` still has no rate limit or IP restriction |
 
-- **File**: `src/app/api/v1/admin/backup/route.ts:62`, `src/app/api/v1/admin/restore/route.ts:56`, `src/app/api/v1/admin/migrate/export/route.ts:56`, `src/app/api/v1/admin/migrate/import/route.ts:58,143`
+---
+
+## New Findings
+
+### N1: Plaintext Fallback in Plugin Secret Decryption — encryption bypass
+
+- **File**: `src/lib/plugins/secrets.ts:54`
+- **Severity**: MEDIUM
+- **Confidence**: HIGH
+- **Description**: `decryptPluginSecret()` returns the raw value unchanged if it lacks the `enc:v1:` prefix. Unlike `decrypt()` in `encryption.ts` which throws in production when `allowPlaintextFallback` is false, the plugin function has NO production safeguard. An attacker who can write to the `plugins.config` JSONB column bypasses AES-GCM authenticity entirely.
+- **Exploit scenario**: Attacker with compromised admin credentials or DB write access replaces an encrypted API key with plaintext. The chat-widget plugin loads and uses the attacker-controlled value without detecting tampering.
+- **Fix**: Add production-safe fallback matching `encryption.ts`: reject non-encrypted values in production, warn-log, only allow explicit fallback during migration.
+
+### N2: Unhandled Promise Rejection in Auto Code Review Trigger
+
+- **File**: `src/app/api/v1/judge/poll/route.ts:206`
 - **Severity**: LOW
 - **Confidence**: HIGH
-- **Description**: All four admin data-management routes verify the user's password using `verifyPassword()` but only destructure `{ valid }`, discarding `needsRehash`. This is the same pattern identified in the cycle-18 comprehensive review (F2). The recruiting-invitations path has been fixed (now rehashes on `needsRehash`). The `change-password.ts` path is correctly handled (user is setting a new password anyway). However, these admin routes present a genuine missed rehash opportunity: an admin who only interacts with the system via backup/restore operations (rare but possible in a highly automated environment) would never have their bcrypt hash upgraded.
-- **Concrete failure scenario**: An admin with a bcrypt hash verifies their password to download a backup. The `needsRehash` flag is true but discarded. The admin's password remains stored as bcrypt. If the admin never logs in through the main login page (e.g., uses API key auth for daily work), their hash is never upgraded.
-- **Suggested fix**: Add rehash logic after successful password verification in the backup and export routes. The restore and import routes are lower risk since they run infrequently and the admin is likely to log in normally soon after.
+- **Description**: `void triggerAutoCodeReview(submissionId)` fires without await or catch. If the function throws (DB timeout, AI provider error), the unhandled rejection may crash the process depending on Node.js `--unhandled-rejections` policy.
+- **Fix**: `void triggerAutoCodeReview(submissionId).catch(err => logger.warn({ err, submissionId }, "[auto-review] failed"))`
 
-### F2: `getRecruitingAccessContext` does not cache results — potential for timing-based user enumeration via repeated requests
+### N3: Path Traversal Defense Gaps in File Storage
 
-- **File**: `src/lib/recruiting/access.ts:14-66`
-- **Severity**: LOW
-- **Confidence**: LOW
-- **Description**: `getRecruitingAccessContext` queries the database on every call without any caching. An attacker who can observe response times could potentially distinguish between users who have recruiting invitations and those who don't, since the query will be faster for users with no invitations (empty result set). However, this is a very weak signal and would require many requests to establish a statistical baseline.
-- **Concrete failure scenario**: Not practically exploitable with current query complexity (two simple indexed queries). The timing difference is likely sub-millisecond and swamped by network jitter.
-- **Suggested fix**: Add request-scoped caching as suggested in the code reviewer's F1. This is more of a performance issue than a security one, but the caching also eliminates the minor timing side channel.
-
-### F3: Internal cleanup endpoint rate limiting depends only on `CRON_SECRET` — no IP or request-count restrictions
-
-- **File**: `src/app/api/internal/cleanup/route.ts:7-24`
+- **File**: `src/lib/files/storage.ts:18-27`
 - **Severity**: LOW
 - **Confidence**: MEDIUM
-- **Description**: The `/api/internal/cleanup` endpoint is protected only by a Bearer token (`CRON_SECRET`). There is no rate limiting, IP allowlist, or request count tracking. If `CRON_SECRET` is leaked (e.g., committed to a public repo, exposed in a log), any client can call this endpoint without restriction. The endpoint performs expensive batched DELETE operations that can cause significant DB load.
-- **Concrete failure scenario**: `CRON_SECRET` is accidentally logged in a verbose debug output. An attacker discovers the secret and calls the cleanup endpoint in a tight loop, causing repeated batched DELETEs against `audit_events` and `login_events`, consuming DB connections and I/O.
-- **Suggested fix**: Add rate limiting via `consumeApiRateLimit(request, "internal:cleanup")`. Alternatively, restrict the endpoint to internal IPs only (e.g., `127.0.0.1`) since cron jobs should only originate from the same server.
+- **Description**: `resolveStoredPath()` only checks for `/`, `\`, and `..`. It does not reject null bytes, control characters, or names starting with `.` (hidden files). While current callers use `nanoid()`-generated names, future reuse could be vulnerable.
+- **Fix**: Restrict stored names to `[a-zA-Z0-9._-]+`, reject leading `.`, and null bytes.
+
+### N4: WeakMap Request Deduplication is Fragile Across Middleware Boundaries
+
+- **File**: `src/lib/security/api-rate-limit.ts:61-71`
+- **Severity**: LOW
+- **Confidence**: MEDIUM
+- **Description**: `consumedRequestKeys` is a `WeakMap<NextRequest, Set<string>>`. The code comment correctly notes that "Next.js creates a new request object per middleware/route boundary", so deduplication typically only works within a single handler. If middleware and route handler both call `consumeApiRateLimit`, the same request consumes two tokens.
+- **Fix**: Use `AsyncLocalStorage`-based request context for reliable per-request deduplication, or document the limitation.
+
+### N5: Prune Route Uses Unvalidated Docker Repository in Path Construction
+
+- **File**: `src/app/api/v1/admin/docker/images/prune/route.ts:21`
+- **Severity**: LOW
+- **Confidence**: MEDIUM
+- **Description**: `join("docker", \`Dockerfile.${img.repository}\`)` constructs a path from Docker image repository names without validation. While `listDockerImages` filters with `reference=judge-*`, the repository string is not validated through `isAllowedJudgeDockerImage` before path use. Repository names with `/` create unexpected subdirectories.
+- **Fix**: Validate `img.repository` with `isAllowedJudgeDockerImage` or reject path separators before constructing the dockerfile path.
 
 ---
 
-## Verified Safe
+## Verified Safe (Re-confirmed)
 
-### VS1: Password hashing is properly implemented with argon2id
-- All password verification paths use `verifyPassword()` which correctly differentiates bcrypt and argon2 hashes. The main login flow performs transparent rehashing.
-
-### VS2: DOMPurify sanitization is properly configured
-- `sanitizeHtml` uses strict allowlists, `ALLOW_DATA_ATTR: false`, and proper URI restrictions. No XSS vectors found.
-
-### VS3: SQL injection is prevented throughout
-- All raw queries use parameterized placeholders (`@paramName`). No string interpolation of user input into SQL.
-
-### VS4: Recruiting token redemption is properly atomic
-- Uses SQL-level `NOW()` for expiry validation and atomic `UPDATE ... WHERE` for claim. No TOCTOU races.
-
-### VS5: Admin data-management routes have proper CSRF protection
-- All admin routes check CSRF unless using API key auth. The `csrfForbidden` check is correctly placed before the capability check.
+- **VS1**: SQL injection prevention — all raw queries use parameterized placeholders via `namedToPositional`.
+- **VS2**: Auth/CSRF — `createApiHandler` correctly gates all mutation endpoints.
+- **VS3**: DOMPurify — `sanitizeHtml` maintains strict allowlists and URI restrictions.
+- **VS4**: Judge worker auth — per-worker secret tokens enforced, shared token fallback restricted to registration.
+- **VS5**: Docker sandboxing — seccomp, capability drop, no-new-privileges, read-only rootfs all present.
+- **VS6**: `db/cleanup.ts` now uses canonical `DATA_RETENTION_DAYS` and respects `DATA_RETENTION_LEGAL_HOLD` (fixed since April).

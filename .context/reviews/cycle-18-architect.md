@@ -1,43 +1,52 @@
-# Cycle 18 Architect Reviewer Findings
+# Cycle 18 Architect Reviewer Findings (Updated)
 
-**Date:** 2026-04-19
+**Date:** 2026-05-09
 **Reviewer:** Architectural/design risks, coupling, layering
-**Base commit:** 7c1b65cc
+**Base commit:** 75d82a17
+**Previous review:** cycle-18-architect.md (2026-04-19, commit 7c1b65cc)
 
 ---
 
-## Findings
+## Previous Finding Status
 
-### F1: `getRecruitingAccessContext` is a cross-cutting concern without a caching layer — systemic N+1 risk
+| ID | Previous Finding | Status |
+|----|-----------------|--------|
+| F1 | `getRecruitingAccessContext` no caching layer | **PARTIALLY ADDRESSED** — `withRecruitingContextCache` added |
+| F2 | Admin routes duplicated auth logic | **STILL OPEN** — unchanged |
+| F3 | Workspace-to-public migration Phase 3 stalled | **STILL OPEN** — unchanged |
 
-- **File**: `src/lib/recruiting/access.ts:14-66`
+---
+
+## New Findings
+
+### N1: Dual Rate-Limit Implementations with Divergent Logic
+
+- **Files**: `src/lib/security/rate-limit.ts`, `src/lib/security/api-rate-limit.ts`
 - **Severity**: MEDIUM
 - **Confidence**: HIGH
-- **Description**: This is an architectural issue rather than a simple code issue. `getRecruitingAccessContext` is a cross-cutting concern (similar to auth context) that is called from 15+ locations. Unlike auth context which is cached via the JWT session, this function hits the database on every call. The lack of a caching strategy means every new page or route that needs recruiting context adds another redundant DB query. This is a systemic pattern issue that will get worse as more features are added.
-- **Suggested fix**: Create a `withRecruitingContext()` wrapper or React `cache()` wrapper that ensures the context is computed once per request. This is the architectural fix, as opposed to the code-level fix of deduplicating calls in individual pages.
+- **Description**: Two modules implement similar DB-backed token bucket logic with different semantics. Both write to the same `rateLimits` table. Consolidation is acknowledged as deferred in comments.
+- **Fix**: Extract shared `DbRateLimiter` class.
 
-### F2: Admin data-management routes have duplicated request-handling logic — violation of DRY
+### N2: Plugin Secret Encryption Uses Different Format from Column Encryption
 
-- **File**: `src/app/api/v1/admin/backup/route.ts`, `src/app/api/v1/admin/restore/route.ts`, `src/app/api/v1/admin/migrate/export/route.ts`, `src/app/api/v1/admin/migrate/import/route.ts`
+- **Files**: `src/lib/plugins/secrets.ts`, `src/lib/security/encryption.ts`
 - **Severity**: LOW
 - **Confidence**: HIGH
-- **Description**: All four admin data-management routes share the same authentication/authorization pattern (getApiUser, CSRF check, capability check, rate limit, password verification). This pattern is repeated verbatim in each file. Additionally, the import route has duplicated logic between its form-data and JSON paths. This increases the risk of the routes diverging over time (e.g., one route gets a security update but others don't).
-- **Suggested fix**: Create a `withAdminPasswordVerification()` middleware/handler wrapper that encapsulates the common auth + CSRF + capability + rate limit + password verification pattern. Each route would only need to specify its unique logic (export, import, etc.).
+- **Description**: Plugin secrets use `enc:v1:base64url` format. Column encryption uses `enc:hex` format. Both AES-256-GCM but incompatible.
+- **Fix**: Unify on single ciphertext format.
 
-### F3: Workspace-to-public migration Phase 3 is stalled — `AppSidebar` still contains navigation items that duplicate PublicHeader
+### N3: Chat Widget Tightly Coupled to Provider Config
 
-- **File**: `plans/open/2026-04-19-workspace-to-public-migration.md`
+- **File**: `src/app/api/v1/plugins/chat-widget/chat/route.ts:315-326`
 - **Severity**: LOW
 - **Confidence**: MEDIUM
-- **Description**: The migration plan shows Phase 3 is "IN PROGRESS" with remaining work: "Further slim down AppSidebar to icon-only mode or contextual sub-navigation", "Move breadcrumb to top navbar area", and "Evaluate (control) route group merge into (dashboard)/admin". While these are UX improvements rather than bugs, the dual-navigation state (PublicHeader + AppSidebar with overlapping items) creates a confusing user experience and adds maintenance burden.
-- **Suggested fix**: Continue Phase 3 work in this cycle: at minimum, convert `AppSidebar` to an icon-only rail (remove text labels from items already in PublicHeader dropdown) and evaluate the `(control)` route group merge.
+- **Description**: Hardcoded `switch` mapping provider names to model fields. Adding a provider requires modifying route, schema, and UI.
+- **Fix**: Store active model name in provider config or use dynamic registry.
 
----
+### N4: `execTransaction` Build-Phase Fallback Violates Atomicity Contract
 
-## Verified Safe
-
-### VS1: Route group structure is reasonable
-- The (public), (dashboard), and (control) route groups are logically separated. The workspace group was correctly removed in Phase 1.
-
-### VS2: Data retention architecture is properly layered
-- `data-retention.ts` (config), `data-retention-maintenance.ts` (pruning), `audit/events.ts` (audit pruning), `db/cleanup.ts` (deprecated cron endpoint). The cleanup.ts is now properly marked as deprecated and uses canonical config.
+- **File**: `src/lib/db/index.ts:67-75`
+- **Severity**: LOW
+- **Confidence**: HIGH
+- **Description**: Function promises transactions but silently falls back to non-transactional during build.
+- **Fix**: Rename or throw during build for transaction-required operations.

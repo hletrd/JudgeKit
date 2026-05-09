@@ -1,40 +1,51 @@
-# Cycle 18 Debugger Findings
+# Cycle 18 Debugger Reviewer Findings (Updated)
 
-**Date:** 2026-04-19
+**Date:** 2026-05-09
 **Reviewer:** Latent bug surface, failure modes, regressions
-**Base commit:** 7c1b65cc
+**Base commit:** 75d82a17
+**Previous review:** cycle-18-debugger.md (2026-04-19, commit 7c1b65cc)
 
 ---
 
-## Findings
+## Previous Finding Status
 
-### F1: `import-transfer.ts` string concatenation in streaming read can cause OOM for large uploads
+| ID | Previous Finding | Status |
+|----|-----------------|--------|
+| F1 | `import-transfer.ts` string concatenation OOM risk | **STILL OPEN** — unchanged |
+| F2 | `updateRecruitingInvitation` uses `new Date()` | **STILL OPEN** — unchanged |
 
-- **File**: `src/lib/db/import-transfer.ts:20`
+---
+
+## New Findings
+
+### N1: Unhandled Promise Rejection in Auto Code Review
+
+- **File**: `src/app/api/v1/judge/poll/route.ts:206`
 - **Severity**: MEDIUM
-- **Confidence**: MEDIUM
-- **Description**: Same as code-reviewer F2. The `text += decoder.decode(value, { stream: true })` pattern in `readStreamTextWithLimit` creates a new string on every chunk, doubling the memory usage during accumulation. For a 100 MB upload, peak memory usage is ~200 MB (original string + new string during concatenation). Combined with `JSON.parse(text)` which creates another copy, peak usage is ~300 MB. This can cause OOM in a memory-constrained Docker container (e.g., 512 MB limit).
-- **Concrete failure scenario**: Admin uploads a 95 MB database export on a production server running in a 512 MB container. The upload processing consumes 300 MB, leaving only 212 MB for the running Next.js process. If other requests are being processed simultaneously, the container runs out of memory and the process is killed.
-- **Suggested fix**: For the file upload path, use `file.arrayBuffer()` instead of streaming, since `file.size` is already checked. For the streaming path, use `Uint8Array` accumulation instead of string concatenation, then decode once at the end.
+- **Confidence**: HIGH
+- **Description**: `void triggerAutoCodeReview(submissionId)` creates floating promise. May crash process if `--unhandled-rejections=strict`.
+- **Fix**: Add `.catch()` handler.
 
-### F2: `updateRecruitingInvitation` uses `new Date()` for `updatedAt` — clock skew risk on distributed deployments
+### N2: Docker Build Timeout May Leave Orphan Containers
 
-- **File**: `src/lib/assignments/recruiting-invitations.ts:193`
+- **File**: `src/lib/docker/client.ts:266-269`
 - **Severity**: LOW
 - **Confidence**: MEDIUM
-- **Description**: The `updateRecruitingInvitation` function sets `updatedAt: new Date()` in JavaScript, while other parts of the recruiting flow (e.g., `redeemRecruitingToken`) use SQL `NOW()` for date comparisons. In a distributed deployment where the app server clock differs from the DB server clock, the JS-side `new Date()` can create timestamps that are inconsistent with SQL-generated timestamps. This could cause confusing ordering in audit logs or race conditions in time-based queries.
-- **Concrete failure scenario**: App server clock is 2 seconds ahead of DB server. Admin revokes an invitation at time T (JS). The `updatedAt` is set to T+2s (JS time). Meanwhile, a candidate tries to redeem at time T+1s (DB time). The SQL `expiresAt > NOW()` check passes because DB time is T+1s, but the invitation's `updatedAt` is already T+2s, creating a temporal inconsistency.
-- **Suggested fix**: Use SQL `NOW()` for `updatedAt` in update queries, consistent with how other date comparisons are handled in the recruiting flow.
+- **Description**: SIGKILL may not trigger cleanup. Container removal is fire-and-forget.
+- **Fix**: Await container removal with retry.
 
----
+### N3: `getDiskUsageLocal` Fragile `df` Output Parsing
 
-## Verified Safe
+- **File**: `src/lib/docker/client.ts:294-307`
+- **Severity**: LOW
+- **Confidence**: MEDIUM
+- **Description**: Parses `df -h /` by fixed column indices. Locale/format changes break parsing.
+- **Fix**: Use `fs.statfs()` (Node.js 18+) or `df -B1` for machine-readable output.
 
-### VS1: No race conditions in recruiting token redemption
-- Atomic SQL claim with `UPDATE ... WHERE status = 'pending' AND (expiresAt IS NULL OR expiresAt > NOW())` prevents concurrent claims.
+### N4: Git Status Reports Non-Existent Untracked Files
 
-### VS2: No unhandled promise rejections in SSE route
-- All async IIFEs have `.catch()` handlers.
-
-### VS3: No integer overflow risks in scoring calculations
-- All score values use `ROUND(..., 2)` in SQL and `Math.round(x * 100) / 100` in JS, keeping values in a reasonable range.
+- **Evidence**: `git status` listed `active-timed-assignment-sidebar-panel.tsx`, `app-sidebar.tsx`, `conditional-header.tsx` and tests. Files do not exist on disk.
+- **Severity**: LOW
+- **Confidence**: HIGH
+- **Description**: Corrupted git index or stale entries.
+- **Fix**: `git rm --cached` phantom entries or reset index.
