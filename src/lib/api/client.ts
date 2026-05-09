@@ -85,7 +85,8 @@ export function apiFetch(
     headers.set("Accept", "application/json");
   }
 
-  return fetch(input, { ...init, headers });
+  const signal = init?.signal ?? AbortSignal.timeout(30_000);
+  return fetch(input, { ...init, headers, signal });
 }
 
 /**

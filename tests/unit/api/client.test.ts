@@ -68,4 +68,22 @@ describe("apiFetch", () => {
 
     expect(globalThis.fetch).toHaveBeenCalledTimes(1);
   });
+
+  it("adds default AbortSignal.timeout(30s) when no signal is provided", async () => {
+    await apiFetch("/api/v1/test");
+
+    expect(globalThis.fetch).toHaveBeenCalledTimes(1);
+    const [, init] = vi.mocked(globalThis.fetch).mock.calls[0] as [RequestInfo | URL, RequestInit | undefined];
+    expect(init?.signal).toBeInstanceOf(AbortSignal);
+    expect(init?.signal?.aborted).toBe(false);
+  });
+
+  it("preserves caller-provided signal instead of default timeout", async () => {
+    const controller = new AbortController();
+    await apiFetch("/api/v1/test", { signal: controller.signal });
+
+    expect(globalThis.fetch).toHaveBeenCalledTimes(1);
+    const [, init] = vi.mocked(globalThis.fetch).mock.calls[0] as [RequestInfo | URL, RequestInit | undefined];
+    expect(init?.signal).toBe(controller.signal);
+  });
 });
