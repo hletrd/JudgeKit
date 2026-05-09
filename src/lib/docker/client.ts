@@ -109,6 +109,7 @@ async function callWorkerJson<T>(
     ...init,
     headers,
     cache: "no-store",
+    signal: init?.signal ?? AbortSignal.timeout(30_000),
   });
 
   if (!response.ok) {
@@ -140,6 +141,7 @@ async function callWorkerNoContent(path: string, init?: RequestInit): Promise<vo
     ...init,
     headers,
     cache: "no-store",
+    signal: init?.signal ?? AbortSignal.timeout(60_000),
   });
 
   if (!response.ok) {
