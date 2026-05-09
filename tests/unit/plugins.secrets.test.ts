@@ -99,46 +99,42 @@ describe("plugin secret helpers", () => {
   describe("decryptPluginSecret plaintext fallback", () => {
     it("decrypts a valid encrypted secret", () => {
       const encrypted = encryptPluginSecret("my-secret");
-      expect(decryptPluginSecret(encrypted)).toBe("my-secret");
+      expect(decryptPluginSecret(encrypted!)).toBe("my-secret");
     });
 
     it("throws in production when value is not encrypted", () => {
-      const originalEnv = process.env.NODE_ENV;
-      process.env.NODE_ENV = "production";
+      vi.stubEnv("NODE_ENV", "production");
       try {
         expect(() => decryptPluginSecret("plaintext-value")).toThrow(
           "decryptPluginSecret() called on non-encrypted value"
         );
       } finally {
-        process.env.NODE_ENV = originalEnv;
+        vi.unstubAllEnvs();
       }
     });
 
     it("returns plaintext as-is in non-production", () => {
-      const originalEnv = process.env.NODE_ENV;
-      process.env.NODE_ENV = "development";
+      vi.stubEnv("NODE_ENV", "development");
       try {
         expect(decryptPluginSecret("plaintext-value")).toBe("plaintext-value");
       } finally {
-        process.env.NODE_ENV = originalEnv;
+        vi.unstubAllEnvs();
       }
     });
 
     it("allows explicit plaintext fallback even in production", () => {
-      const originalEnv = process.env.NODE_ENV;
-      process.env.NODE_ENV = "production";
+      vi.stubEnv("NODE_ENV", "production");
       try {
         expect(decryptPluginSecret("plaintext-value", { allowPlaintextFallback: true })).toBe(
           "plaintext-value"
         );
       } finally {
-        process.env.NODE_ENV = originalEnv;
+        vi.unstubAllEnvs();
       }
     });
 
     it("decryptPluginConfigForUse handles production plaintext by clearing the value", () => {
-      const originalEnv = process.env.NODE_ENV;
-      process.env.NODE_ENV = "production";
+      vi.stubEnv("NODE_ENV", "production");
       try {
         const storedConfig = {
           provider: "openai",
@@ -149,7 +145,7 @@ describe("plugin secret helpers", () => {
         const decrypted = decryptPluginConfigForUse("chat-widget", storedConfig);
         expect(decrypted.openaiApiKey).toBe("");
       } finally {
-        process.env.NODE_ENV = originalEnv;
+        vi.unstubAllEnvs();
       }
     });
   });

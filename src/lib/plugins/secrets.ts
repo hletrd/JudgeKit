@@ -66,7 +66,7 @@ export function decryptPluginSecret(
     }
     if (process.env.NODE_ENV === "production") {
       logger.warn(
-        { prefix: value.slice(0, 10) },
+        { prefix: (value as string).slice(0, 10) },
         "[plugin-secrets] decryptPluginSecret() called on non-encrypted value — possible data tampering or incomplete migration"
       );
     }
