@@ -14,21 +14,21 @@
 - **Severity:** LOW
 - **Task:** Replace literal `\n` in JSX with `{"\n"}` so it renders as an actual newline instead of backslash-n text.
 - **Approach:** Change `<pre className={className}>{truncated}\n{outputTruncatedLabel}</pre>` to `<pre className={className}>{truncated}{"\n"}{outputTruncatedLabel}</pre>`.
-- **Status:** OPEN
+- **Status:** DONE — committed in `ae875836`
 
 ### 2. C11-2 — Fix `getDefaultCode` so `clang_cpp23`/`clang_cpp26` return C++ template
 - **File:** `src/components/code/compiler-client.tsx` (lines 68-76)
 - **Severity:** LOW
 - **Task:** Reorder the language checks so C++ variants (`cpp*`, `clang_cpp*`) are checked before the generic C branch.
 - **Approach:** Move the `language.startsWith("cpp") || language.startsWith("clang_cpp")` check above the `language.startsWith("c") && !language.startsWith("cs")` check.
-- **Status:** OPEN
+- **Status:** DONE — committed in `4747e9a3`
 
 ### 3. C11-3 — Wrap `decodeURIComponent` in try/catch in backup download handler
 - **File:** `src/app/(dashboard)/dashboard/admin/settings/database-backup-restore.tsx` (line 64)
 - **Severity:** LOW
 - **Task:** Guard `decodeURIComponent` against malformed percent-encoding that throws `URIError`.
 - **Approach:** Wrap `decodeURIComponent(filenameMatch[1] ?? filenameMatch[2])` in try/catch; on error, fall back to `null` so the client-side timestamp fallback is used.
-- **Status:** OPEN
+- **Status:** DONE — committed in `6389f7b1`
 
 ---
 
@@ -38,10 +38,10 @@ None — all findings are straightforward fixes with no security/correctness tra
 
 ---
 
-## Gate results (pre-fix)
+## Gate results (post-fix)
 
 - `npx eslint .` — PASS (0 errors, 0 warnings)
 - `npx tsc --noEmit` — PASS
 - `npx next build` — PASS
-- `npx vitest run` — PASS
-- `npx vitest run --config vitest.config.component.ts` — PASS
+- `npx vitest run` — PASS (314 files, 2338 tests)
+- `npx vitest run --config vitest.config.component.ts` — PASS (66 files, 179 tests)
