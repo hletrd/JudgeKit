@@ -71,35 +71,7 @@
  * // use data (typed) for success
  * ```
  */
-/**
- * Create an AbortSignal that aborts after `ms` milliseconds.
- * Uses AbortSignal.timeout when available (modern browsers + Node.js),
- * with a fallback for older browsers (Safari < 16.4, Chrome < 103).
- */
-function createTimeoutSignal(ms: number): AbortSignal {
-  if (typeof AbortSignal?.timeout === "function") {
-    return AbortSignal.timeout(ms);
-  }
-  const controller = new AbortController();
-  setTimeout(() => controller.abort(), ms);
-  return controller.signal;
-}
-
-/**
- * Combine an existing AbortSignal with a timeout.
- * Returns a new AbortSignal that aborts when EITHER the original signal
- * aborts OR the timeout fires. Cleans up the timeout if the original
- * signal aborts first to avoid dangling timers.
- */
-function withTimeout(signal: AbortSignal, ms: number): AbortSignal {
-  const combined = new AbortController();
-  const timer = setTimeout(() => combined.abort(), ms);
-  signal.addEventListener("abort", () => {
-    clearTimeout(timer);
-    combined.abort();
-  }, { once: true });
-  return combined.signal;
-}
+import { createTimeoutSignal, withTimeout } from "@/lib/abort";
 
 export function apiFetch(
   input: RequestInfo | URL,

@@ -115,4 +115,15 @@ describe("apiFetch", () => {
       (AbortSignal as unknown as { timeout: typeof originalTimeout }).timeout = originalTimeout;
     }
   });
+
+  it("immediately aborts when caller-provided signal is already aborted", async () => {
+    const controller = new AbortController();
+    controller.abort();
+    await apiFetch("/api/v1/test", { signal: controller.signal });
+
+    expect(globalThis.fetch).toHaveBeenCalledTimes(1);
+    const [, init] = vi.mocked(globalThis.fetch).mock.calls[0] as [RequestInfo | URL, RequestInit | undefined];
+    expect(init?.signal).toBeInstanceOf(AbortSignal);
+    expect(init?.signal?.aborted).toBe(true);
+  });
 });

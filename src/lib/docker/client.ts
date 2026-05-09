@@ -2,6 +2,7 @@ import { execFile, spawn } from "child_process";
 import { promisify } from "util";
 import pLimit from "p-limit";
 import { logger } from "@/lib/logger";
+import { withTimeout } from "@/lib/abort";
 
 const exec = promisify(execFile);
 // Accept JUDGE_WORKER_URL or COMPILER_RUNNER_URL — both map to the same
@@ -93,22 +94,6 @@ async function readError(response: Response): Promise<string> {
   } catch {
     return `${response.status} ${response.statusText}`;
   }
-}
-
-/**
- * Combine an existing AbortSignal with a timeout.
- * Returns a new AbortSignal that aborts when EITHER the original signal
- * aborts OR the timeout fires. Cleans up the timeout if the original
- * signal aborts first to avoid dangling timers.
- */
-function withTimeout(signal: AbortSignal, ms: number): AbortSignal {
-  const combined = new AbortController();
-  const timer = setTimeout(() => combined.abort(), ms);
-  signal.addEventListener("abort", () => {
-    clearTimeout(timer);
-    combined.abort();
-  }, { once: true });
-  return combined.signal;
 }
 
 async function callWorkerJson<T>(
