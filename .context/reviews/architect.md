@@ -1,12 +1,22 @@
-# Architect Review — Cycle 15 Review
+# Architect — Cycle 16 Review
 
 **Date:** 2026-05-09
-**HEAD:** e7d25c46
+**HEAD:** 64de91dd
 **Scope:** Architectural/design risks, coupling, layering
 
 ## Summary
 
-No new architectural issues. The codebase maintains clean separation of concerns.
+No new architectural issues. The codebase maintains clean separation of concerns. One minor observation about cross-layer consistency.
+
+## Findings
+
+### AR-1: Inconsistent fetch wrapper timeout strategy across layers [LOW]
+
+- **Files:** `src/lib/api/client.ts:88`, `src/lib/docker/client.ts:112`, `:144`
+- **Confidence:** Medium
+- **Severity:** Low
+- **Problem:** Both the client-side `apiFetch` and server-side `callWorkerJson`/`callWorkerNoContent` use the same timeout pattern (`signal = init?.signal ?? AbortSignal.timeout(N)`). While the server-side impact is lower (Node.js always supports `AbortSignal.timeout`), the architectural inconsistency means fixes must be applied in multiple places.
+- **Recommendation:** Extract a shared `withDefaultTimeout(signal?, timeoutMs)` utility to `src/lib/utils.ts` or a new `src/lib/timeouts.ts` module. This centralizes the timeout logic, ensures consistency, and makes the browser fallback available everywhere.
 
 ## Verified Architecture
 

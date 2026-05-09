@@ -1,24 +1,35 @@
-# Document Specialist Review — Cycle 15 Review
+# Document Specialist — Cycle 16 Review
 
 **Date:** 2026-05-09
-**HEAD:** e7d25c46
+**HEAD:** 64de91dd
 **Scope:** Doc/code mismatches against authoritative sources
 
 ## Summary
 
-One documentation/code mismatch identified.
+One documentation/code mismatch identified. The extensive comment block in api/client.ts continues to promise safety that the code does not deliver.
 
 ## Findings
 
-### DS-1: apiFetch documentation claims safety but wrapper doesn't enforce it
+### DS-1: apiFetch documentation promises timeout safety but code only partially delivers [MEDIUM]
 
-- **File:** `src/lib/api/client.ts:74-89`
+- **File:** `src/lib/api/client.ts:74-90`
+- **Confidence:** High
+- **Severity:** Medium
+- **Doc Claim:** After the C15 fix, the wrapper now includes timeout protection.
+- **Actual Code:** Timeout is only applied when `init?.signal` is undefined. When callers pass their own signal, no timeout is applied.
+- **Mismatch:** The documentation does not mention this limitation. Developers reading the code would reasonably assume that apiFetch always provides a 30s timeout.
+- **Fix:** Update the doc comment to clarify:
+  1. apiFetch applies a 30s default timeout when NO signal is provided
+  2. When a signal IS provided, the caller is responsible for their own timeout
+  3. OR (preferred): Fix the code to always apply a timeout and update docs to match
+
+### DS-2: Test comment documents buggy behavior as correct [LOW]
+
+- **File:** `tests/unit/api/client.test.ts:81`
 - **Confidence:** High
 - **Severity:** Low
-- **Doc Claim:** The extensive comment block (lines 6-73) documents fetch safety patterns: "Never silently swallow errors", "Always check response.ok before calling response.json()", warns about body consumption.
-- **Actual Code:** The `apiFetch` wrapper only adds CSRF headers. It does NOT enforce any of the safety patterns it documents.
-- **Mismatch:** The documentation suggests `apiFetch` is a safe wrapper, but it's just a thin header injector. Callers must still manually implement all safety checks.
-- **Fix:** Either (a) enhance `apiFetch` to match its documented safety contract, or (b) update the documentation to clarify that `apiFetch` is a minimal header wrapper and `apiFetchJson` is the safer alternative.
+- **Problem:** Test name "preserves caller-provided signal instead of default timeout" documents the bypass behavior as intentional.
+- **Fix:** Update test name and assertions to reflect the corrected behavior.
 
 ## Verified Documentation Accuracy
 

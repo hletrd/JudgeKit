@@ -1,12 +1,24 @@
-# Designer Review — Cycle 15 Review
+# Designer — Cycle 16 Review
 
 **Date:** 2026-05-09
-**HEAD:** e7d25c46
+**HEAD:** 64de91dd
 **Scope:** UI/UX — accessibility, responsive design, form validation, loading/error states, dark/light mode, i18n
 
 ## Summary
 
-No new UI/UX findings. The codebase continues to show strong accessibility and design patterns.
+No new UI/UX findings. The codebase continues to show strong accessibility and design patterns. The apiFetch timeout issue has UX implications noted below.
+
+## UX Impact of apiFetch Timeout Issue
+
+### UX-1: Hanging fetches degrade perceived performance and responsiveness [MEDIUM]
+
+- **Related to:** CR-1, DB-1, DB-2
+- **Confidence:** High
+- **Impact:** When apiFetch requests hang because the caller provided a signal without a timeout:
+  - Chat widget: Assistant shows "thinking" spinner indefinitely. User has no feedback about whether the system is working or broken.
+  - File upload: Progress indicator shows "uploading" forever. Admin cannot tell if the upload is slow or stalled.
+  - Language config: Image status loading spinner spins indefinitely.
+- **Recommendation:** Fixing CR-1 (always applying timeout) also fixes these UX issues. A 30s timeout with appropriate error messaging ("Request timed out — please retry") is much better than an indefinite spinner.
 
 ## Verified UI/UX Patterns
 
@@ -16,10 +28,6 @@ No new UI/UX findings. The codebase continues to show strong accessibility and d
 - **Dark/Light Mode:** `next-themes` is used consistently. No hardcoded colors that break theme switching.
 - **i18n:** All user-facing strings use `next-intl`. Locale-aware formatting for dates and numbers.
 - **Korean Letter Spacing:** All `tracking-*` utilities are conditionally applied only for non-Korean locales, per CLAUDE.md rule.
-
-## Related Note
-
-The `apiFetch` timeout issue (CR-1) has a UX dimension: hanging fetches degrade perceived performance and responsiveness. Users see stuck buttons and indefinite loading states.
 
 ## Prior Fixes Verified
 
