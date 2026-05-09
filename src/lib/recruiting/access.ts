@@ -95,9 +95,20 @@ async function loadRecruitingAccessContext(
  *
  * Uses a dual caching strategy:
  * - React `cache()` deduplicates within a single server component render
- * - AsyncLocalStorage deduplicates across API route handlers
+ * - AsyncLocalStorage deduplicates across API route handlers (via
+ *   `withRecruitingContextCache` in `createApiHandler`)
  *
- * Call sites do not need any changes.
+ * **Server actions:** Server actions run outside the React rendering lifecycle
+ * and are NOT covered by React `cache()`. If a server action calls this
+ * function (or any function that calls it, such as `canAccessProblem`), wrap
+ * the action body with `withRecruitingContextCache()` to enable deduplication.
+ * Without the wrapper, each call executes two DB queries.
+ *
+ * **Dev-mode safety:** `setCachedRecruitingContext` logs a warning when no
+ * active AsyncLocalStorage store is detected in non-production environments.
+ * This helps catch server actions and other call sites that forget to wrap.
+ *
+ * Call sites do not need any changes unless they are server actions.
  */
 export const getRecruitingAccessContext = cache(
   async function getRecruitingAccessContextInner(
