@@ -26,7 +26,8 @@ Several findings from the cycle-18 aggregate review were **already resolved** be
 
 - **Files:** `src/lib/plugins/secrets.ts:52-55`, `tests/unit/plugins.secrets.test.ts`
 - **Severity:** MEDIUM
-- **Status:** PENDING
+- **Status:** DONE
+- **Commit:** `0d6c5b33`
 - **Source:** Security N1, Architect N2, Critic N2, Test N1
 - **Description:** `decryptPluginSecret()` returns raw value unchanged if it lacks the `enc:v1:` prefix. Unlike `decrypt()` in `encryption.ts:98-117` which throws in production, the plugin function has NO safeguard. An attacker with DB write access can bypass AES-GCM authenticity by writing plaintext to a plugin config column.
 - **Fix:** Add production-safe fallback matching `encryption.ts` pattern:
@@ -46,7 +47,9 @@ Several findings from the cycle-18 aggregate review were **already resolved** be
 
 - **Files:** `src/lib/recruiting/access.ts:34-91`, `src/lib/api/handler.ts:109`
 - **Severity:** MEDIUM
-- **Status:** PENDING
+- **Status:** DONE
+- **Commit:** `67bd5241`
+- **Note:** Verified all call sites are covered by React `cache()` (RSC pages) or `withRecruitingContextCache` (API routes via `createApiHandler`). No server actions call recruiting functions. Updated JSDoc to document coverage and warn about server-action gap.
 - **Source:** Code F1, Perf F1, Architect F1, Security F2, Critic N1, Test F1
 - **Description:** `getRecruitingAccessContext` performs 2 DB queries per call. `withRecruitingContextCache` in `api/handler.ts:109` only covers routes using `createApiHandler`. Page components (RSC) and server actions that call `getRecruitingAccessContext` directly are NOT covered by the AsyncLocalStorage cache, though they ARE covered by React `cache()`.
 - **Analysis:** The function already uses `React cache()` at line 102-108, which deduplicates within a single RSC render. The AsyncLocalStorage cache at lines 38-39, 88 handles API routes. The concern is server actions — do they use React `cache()`? Server actions run outside the RSC render tree, so they would not benefit from React `cache()`.
@@ -61,9 +64,11 @@ Several findings from the cycle-18 aggregate review were **already resolved** be
 
 ### C18-3: Consolidate Dual Rate-Limit Implementations [MEDIUM]
 
-- **Files:** `src/lib/security/rate-limit.ts`, `src/lib/security/api-rate-limit.ts`
+- **Files:** `src/lib/security/rate-limit.ts`, `src/lib/security/api-rate-limit.ts`, `src/lib/security/rate-limit-core.ts`
 - **Severity:** MEDIUM
-- **Status:** PENDING
+- **Status:** DONE
+- **Commit:** `7084f899`
+- **Note:** Extracted `fetchRateLimitEntry` shared helper into `rate-limit-core.ts`. Both modules now delegate SELECT FOR UPDATE reads to the shared core, preventing bug-fix drift while preserving each module's specific semantics (exponential backoff vs fixed window). Updated `rate-limit.test.ts` mock to support both query-builder chaining orders.
 - **Source:** Architect N1, Perf N2
 - **Description:** Two modules implement similar DB-backed token bucket logic with different semantics on the same `rateLimits` table. Both use `SELECT ... FOR UPDATE` row locking. Bug fixes may not propagate between implementations, and row locking causes contention under burst load.
 - **Fix:** Extract a shared `DbRateLimiter` class or utility that both modules use.
@@ -81,7 +86,8 @@ Several findings from the cycle-18 aggregate review were **already resolved** be
 
 - **File:** `src/app/api/v1/judge/poll/route.ts:206-208`
 - **Severity:** LOW
-- **Status:** PENDING
+- **Status:** DONE
+- **Commit:** `df133c98` (initial), `a0f14070` (Promise.resolve safety fix)
 - **Source:** Security N2, Debugger N1
 - **Description:** `void triggerAutoCodeReview(submissionId)` creates a floating promise. If the function throws (DB timeout, AI provider error), the unhandled rejection may crash the process when `--unhandled-rejections=strict`.
 - **Fix:** Add `.catch()` with structured logging:
@@ -98,7 +104,8 @@ Several findings from the cycle-18 aggregate review were **already resolved** be
 
 - **File:** `src/lib/files/storage.ts:18-27`, `tests/unit/files/storage-path-traversal.test.ts`
 - **Severity:** LOW
-- **Status:** PENDING
+- **Status:** DONE
+- **Commit:** `e396240e`
 - **Source:** Security N3, Test N2
 - **Description:** `resolveStoredPath()` only checks for `/`, `\`, and `..`. It does not explicitly reject null bytes, control characters, or names starting with `.` (hidden files). While current callers use `nanoid()`-generated names, future reuse could be vulnerable.
 - **Fix:** Replace the ad-hoc check with a strict allowlist:
@@ -121,7 +128,8 @@ Several findings from the cycle-18 aggregate review were **already resolved** be
 
 - **File:** `src/app/api/v1/admin/docker/images/prune/route.ts:18-21`
 - **Severity:** LOW
-- **Status:** PENDING
+- **Status:** DONE
+- **Commit:** `ac8db895`
 - **Source:** Security N5
 - **Description:** `join("docker", \`Dockerfile.${img.repository}\`)` constructs a path from Docker image repository names without validation. If `img.repository` contains `/` (e.g., a registry-prefixed image like `registry.example.com/judge-cpp`), the join creates an unexpected subdirectory path `docker/Dockerfile.registry.example.com/judge-cpp`.
 - **Fix:** Validate `img.repository` with `isAllowedJudgeDockerImage(img.repository)` before path construction, or extract the base image name (last segment after `/`) for the Dockerfile name. Given the filter is `judge-*`, repositories with `/` are unlikely but not impossible if a registry-prefixed judge image exists.
@@ -163,13 +171,13 @@ Several findings from the cycle-18 aggregate review were **already resolved** be
 
 ---
 
-## Gate Requirements
+## Gate Results
 
-- [ ] `npx eslint .` passes (0 errors, 0 warnings)
-- [ ] `npx tsc --noEmit` passes
-- [ ] `npx next build` passes
-- [ ] `npx vitest run` passes (all unit tests)
-- [ ] `npx vitest run --config vitest.config.component.ts` passes (all component tests)
+- [x] `npx eslint .` passes (0 errors, 0 warnings)
+- [x] `npx tsc --noEmit` passes
+- [x] `npx next build` passes
+- [x] `npx vitest run` passes (314 files, 2352 tests)
+- [x] `npx vitest run --config vitest.config.component.ts` passes (66 files, 179 tests)
 
 ---
 
