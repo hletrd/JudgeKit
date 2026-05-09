@@ -63,4 +63,5 @@ No new deferred items. All carry-forward deferred items from prior cycles remain
 
 ## Deploy Results
 
-TBD — will be recorded after deploy command runs.
+- **test.worv.ai**: SUCCESS (2026-05-09) — app container healthy, nginx reloaded, HTTPS verified
+- **algo.xylolabs.com**: SUCCESS (2026-05-09) — app container healthy, nginx reloaded, HTTPS verified
