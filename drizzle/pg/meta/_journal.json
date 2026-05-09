@@ -162,6 +162,13 @@
       "when": 1777491900000,
       "tag": "0022_contest_access_token_expiry",
       "breakpoints": true
+    },
+    {
+      "idx": 23,
+      "version": "7",
+      "when": 1777492800000,
+      "tag": "0023_contest_access_token_index",
+      "breakpoints": true
     }
   ]
 }

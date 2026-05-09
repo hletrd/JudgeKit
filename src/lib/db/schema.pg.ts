@@ -1025,6 +1025,9 @@ export const contestAccessTokens = pgTable(
   },
   (table) => [
     uniqueIndex("cat_assignment_user_idx").on(table.assignmentId, table.userId),
+    // Supports the expiry check in contest access queries:
+    // WHERE (expires_at IS NULL OR expires_at > NOW())
+    index("cat_expires_at_idx").on(table.expiresAt),
   ]
 );
 
