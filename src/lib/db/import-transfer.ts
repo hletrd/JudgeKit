@@ -18,14 +18,18 @@ async function readStreamBytesWithLimit(
   const chunks: Uint8Array[] = [];
   let total = 0;
 
-  while (true) {
-    const { done, value } = await reader.read();
-    if (done) break;
-    total += value.byteLength;
-    if (total > limit) {
-      throw new Error("fileTooLarge");
+  try {
+    while (true) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      total += value.byteLength;
+      if (total > limit) {
+        throw new Error("fileTooLarge");
+      }
+      chunks.push(value);
     }
-    chunks.push(value);
+  } finally {
+    reader.releaseLock();
   }
 
   // Concatenate all chunks into a single Uint8Array
