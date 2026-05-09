@@ -16,7 +16,8 @@
   - `src/app/(dashboard)/dashboard/admin/files/file-upload-dialog.tsx:93`
   - `src/app/(dashboard)/dashboard/admin/languages/language-config-table.tsx:117`
 - **Severity:** MEDIUM
-- **Status:** PENDING
+- **Status:** DONE
+- **Commit:** `83b4d09c`
 - **Description:** The cycle-15 fix added `AbortSignal.timeout(30_000)` only when `init?.signal` is undefined. When callers pass their own `AbortController.signal`, the default timeout is completely bypassed. Chat widget streaming, file uploads, and language config fetches can hang indefinitely.
 - **Implementation steps:**
   1. Add a `withTimeout(signal, ms)` helper in `src/lib/api/client.ts` that creates a composite AbortSignal
@@ -34,7 +35,8 @@
 
 - **File:** `src/lib/api/client.ts:88`
 - **Severity:** MEDIUM
-- **Status:** PENDING
+- **Status:** DONE
+- **Commit:** `83b4d09c`
 - **Description:** `AbortSignal.timeout()` is not supported in Safari < 16.4, Chrome < 103, Firefox < 100. This is the only client-side use in the entire codebase. Users on older browsers will see a `TypeError` and all API calls will fail.
 - **Implementation steps:**
   1. Add a `createTimeoutSignal(ms)` helper in `src/lib/api/client.ts`:
@@ -50,7 +52,8 @@
 
 - **File:** `tests/unit/api/client.test.ts`
 - **Severity:** LOW
-- **Status:** PENDING
+- **Status:** DONE
+- **Commit:** `83b4d09c`
 - **Description:** The existing test "preserves caller-provided signal instead of default timeout" documents the buggy behavior. It must be updated.
 - **Implementation steps:**
   1. Rename test to "combines caller-provided signal with default timeout"
@@ -62,7 +65,8 @@
 
 - **Files:** `src/lib/docker/client.ts:112`, `:144`
 - **Severity:** LOW
-- **Status:** PENDING
+- **Status:** DONE
+- **Commit:** `eb4a2dd4`
 - **Description:** Server-side wrappers have the same `signal = init?.signal ?? AbortSignal.timeout(N)` pattern. While the impact is lower (Node.js always supports AbortSignal.timeout), applying the composite timeout strategy ensures consistency and protects against server-side callers that pass signals without timeouts.
 - **Implementation steps:**
   1. Extract shared timeout helpers to a utility module (or keep in client.ts and import from docker/client.ts)
@@ -78,11 +82,11 @@ None. Both findings are correctness issues affecting user experience. Per repo p
 
 ## Gate Requirements
 
-- [ ] eslint passes
-- [ ] tsc --noEmit passes
-- [ ] next build passes
-- [ ] vitest run passes (integration tests)
-- [ ] vitest run --config vitest.config.component.ts passes (component tests)
+- [x] eslint passes
+- [x] tsc --noEmit passes
+- [x] next build passes
+- [x] vitest run passes (314 files, 2342 tests)
+- [x] vitest run --config vitest.config.component.ts passes (66 files, 179 tests)
 
 ---
 
