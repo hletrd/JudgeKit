@@ -78,12 +78,41 @@ describe("apiFetch", () => {
     expect(init?.signal?.aborted).toBe(false);
   });
 
-  it("preserves caller-provided signal instead of default timeout", async () => {
+  it("combines caller-provided signal with default timeout", async () => {
     const controller = new AbortController();
     await apiFetch("/api/v1/test", { signal: controller.signal });
 
     expect(globalThis.fetch).toHaveBeenCalledTimes(1);
     const [, init] = vi.mocked(globalThis.fetch).mock.calls[0] as [RequestInfo | URL, RequestInit | undefined];
-    expect(init?.signal).toBe(controller.signal);
+    // The signal passed to fetch should be a composite signal, not the caller's raw signal
+    expect(init?.signal).toBeInstanceOf(AbortSignal);
+    expect(init?.signal).not.toBe(controller.signal);
+  });
+
+  it("aborts fetch when caller-provided signal is aborted", async () => {
+    const controller = new AbortController();
+    await apiFetch("/api/v1/test", { signal: controller.signal });
+
+    const [, init] = vi.mocked(globalThis.fetch).mock.calls[0] as [RequestInfo | URL, RequestInit | undefined];
+    expect(init?.signal?.aborted).toBe(false);
+
+    controller.abort();
+    expect(init?.signal?.aborted).toBe(true);
+  });
+
+  it("falls back to setTimeout-based signal when AbortSignal.timeout is unavailable", async () => {
+    const originalTimeout = AbortSignal.timeout;
+    (AbortSignal as unknown as { timeout: unknown }).timeout = undefined;
+
+    try {
+      await apiFetch("/api/v1/test");
+
+      expect(globalThis.fetch).toHaveBeenCalledTimes(1);
+      const [, init] = vi.mocked(globalThis.fetch).mock.calls[0] as [RequestInfo | URL, RequestInit | undefined];
+      expect(init?.signal).toBeInstanceOf(AbortSignal);
+      expect(init?.signal?.aborted).toBe(false);
+    } finally {
+      (AbortSignal as unknown as { timeout: typeof originalTimeout }).timeout = originalTimeout;
+    }
   });
 });
