@@ -1,24 +1,31 @@
-# Performance Review — Cycle 18/100
+# Performance Reviewer — Cycle 15 Review
 
-**Reviewer:** perf-reviewer (manual)
-**Date:** 2026-05-08
-**HEAD:** 2b3e22c1
-**Scope:** React rendering patterns, database query patterns, API route efficiency
+**Date:** 2026-05-09
+**HEAD:** e7d25c46
+**Scope:** React rendering, database queries, API efficiency, resource usage
 
----
+## Summary
 
-## NEW FINDINGS
+No new performance findings this cycle. The codebase continues to show optimized patterns.
 
-None. No new performance findings this cycle.
+## Findings
 
-## Verified Optimized
+None. All searched patterns were verified as sound.
+
+## Verified Optimized Patterns
 
 - `Promise.all` used for parallel DB queries where applicable
 - Proper memoization (`useMemo`, `useCallback`, `React.memo`) used throughout
 - SSE polling uses shared timer to avoid N concurrent timers
 - No N+1 query patterns found in API routes reviewed
-- `contest-replay.tsx` uses FLIP animation pattern for efficient DOM transitions
-- `file-upload-dialog.tsx` uses nanoid IDs for stable queue item identification
+- Docker container spawning is limited by `pLimit(cpus().length - 1)`
+- File upload streams use buffer-based accumulation, not string concatenation
+- Rate limiter sidecar uses circuit breaker with 500ms timeout
+- Compiler runner fetch has timeout scaled to time limit (max 120s)
+
+## Related Note
+
+The `apiFetch` timeout issue identified by code-reviewer (CR-1) has a performance dimension: hanging fetches can block user interaction and appear as unresponsive UI, but this is primarily a correctness/UX issue rather than a resource exhaustion problem.
 
 ## Final Sweep
 

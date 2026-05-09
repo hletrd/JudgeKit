@@ -1,52 +1,52 @@
-# Tracer Review — Cycle 14/100
+# Tracer Review — Cycle 15 Review
 
-**Reviewer:** tracer (manual)
-**Date:** 2026-05-08
-**HEAD:** fe8f8866
-**Scope:** Causal tracing of suspicious flows identified by other reviewers
+**Date:** 2026-05-09
+**HEAD:** e7d25c46
+**Scope:** Causal tracing of data flows, state transitions, and async flows
 
----
+## Summary
 
-## NEW FINDINGS
+No new suspicious flows identified. All traced flows show consistent state management and proper error handling.
 
-### TRC-1: [LOW] CopyCodeButton rapid-click trace to premature state reset
+## Traced Flows
 
-**File:** `src/components/code/copy-code-button.tsx`
+### Submission Flow (user → judge → result)
+- Entry: `src/app/api/v1/submissions/route.ts` POST
+- Queued in DB with `status: "pending"`
+- Judge worker claims via `src/app/api/v1/judge/claim/route.ts`
+- Worker executes in Docker sandbox
+- Results written back via `src/app/api/v1/judge/poll/route.ts`
+- Status: All state transitions are atomic within transactions. No inconsistent states found.
 
-**Causal trace:**
-1. User clicks copy button at t=0
-2. `handleCopy` sets `copied = true` and creates `setTimeout(timer1, 2000)`
-3. User clicks copy button again at t=500ms
-4. `handleCopy` sets `copied = true` (no-op, already true) and creates `setTimeout(timer2, 2000)`
-5. `copiedTimer.current` now points to `timer2`; `timer1` is orphaned
-6. At t=2000ms, `timer1` fires and calls `setCopied(false)`
-7. Checkmark disappears even though only 1500ms have passed since the last click
-8. At t=2500ms, `timer2` fires and calls `setCopied(false)` again (no-op)
-9. If component unmounted at t=1500ms, cleanup only clears `timer2`; `timer1` fires on unmounted component
+### Auth Flow (login → session → validation)
+- Entry: `src/app/api/auth/[...nextauth]/route.ts`
+- Session created with JWT + cookie
+- Proxy validates on every protected request
+- Cache TTL capped at 10s with FIFO eviction
+- Status: Proper. Token invalidation reflected within cache TTL.
 
-**Root cause:** Missing `clearTimeout(copiedTimer.current)` before line 26.
+### File Upload Flow
+- Entry: `src/app/api/v1/files/route.ts` POST
+- Stored in `data/uploads/` with path traversal protection
+- DB record links file to user/problem
+- Retrieval checks auth via `canAccessFile`
+- Status: Proper. DB write precedes disk write. Delete removes DB first, then disk best-effort.
 
-**Fix:** Add the clear step.
+### Anti-Cheat Flow
+- Entry: `src/components/exam/anti-cheat-monitor.tsx`
+- Events batched in localStorage
+- Flushed via `performFlush`
+- Failed events retried with exponential backoff
+- Status: Proper. Events are deduplicated. Retry logic is bounded by MAX_RETRIES.
 
-### TRC-2: [MEDIUM] Language admin build/remove collision trace
+## No Suspicious Flows Found
 
-**File:** `src/app/(dashboard)/dashboard/admin/languages/language-config-table.tsx`
+All traced flows showed:
+- Proper transaction boundaries
+- Consistent error handling
+- No race conditions in multi-step operations
+- Proper cleanup on failure paths
 
-**Causal trace:**
-1. Admin clicks "Build" on `judge-haskell` at t=0
-2. `handleBuild` aborts any existing controller (none), creates `controller1`
-3. POST to `/api/v1/admin/docker/images/build` with `signal: controller1.signal`
-4. Build takes ~3 minutes due to large image size
-5. At t=60s, admin clicks "Remove" on `judge-python`
-6. `confirmRemoveImage` aborts `abortControllerRef.current` (which is `controller1`)
-7. Build request receives `AbortError` and shows "buildError" toast
-8. Admin is confused — they did not cancel the build
+## Final Sweep
 
-**Root cause:** Single shared AbortController for unrelated operations.
-
-**Fix:** Use separate refs or a map of controllers.
-
-## Traces attempted but ruled out
-
-- **Compiler-client mount effect:** The `exhaustive-deps` suppression is justified — the effect is intentionally mount-only and all referenced values are stable.
-- **Submission-detail-client timer overlap:** The sequential `schedule()` pattern prevents parallel poll calls; cleanup correctly handles unmount mid-poll.
+No additional suspicious flows identified.

@@ -1,38 +1,38 @@
-# Debugger Review — Cycle 14/100
+# Debugger Review — Cycle 15 Review
 
-**Reviewer:** debugger (manual)
-**Date:** 2026-05-08
-**HEAD:** fe8f8866
-**Scope:** Latent bug surface, timer leaks, race conditions, regressions
-
----
-
-## NEW FINDINGS
-
-### C14-DB-1 — CopyCodeButton timer accumulation on rapid clicks [LOW]
-- **Severity:** LOW
-- **Confidence:** HIGH
-- **File:** `src/components/code/copy-code-button.tsx:26`
-- **Problem:** Each click creates a new `setTimeout` without clearing the previous one. After N rapid clicks, N timers are queued. The first timer to fire resets `copied = false`, making the checkmark disappear before the intended 2-second duration from the most recent click. After unmount, only the last timer ID is cleared in cleanup — earlier timers leak and fire on an unmounted component (though React ignores the no-op state update).
-- **Failure scenario:** User triple-clicks the copy button. The checkmark shows for ~2 seconds (first timer), then disappears. The user expects it to show for 2 seconds from the last click (~2 seconds total), but it actually disappears at ~2 seconds, then tries to disappear again at ~3 and ~4 seconds (no-op due to unmount or already-false state).
-- **Fix:** Clear existing timer before setting new one.
-
-### C14-DB-2 — Language admin cross-operation abort race [MEDIUM]
-- **Severity:** MEDIUM
-- **Confidence:** HIGH
-- **File:** `src/app/(dashboard)/dashboard/admin/languages/language-config-table.tsx:150-177,183-207`
-- **Problem:** Build, remove, and prune operations share a single AbortController. If a slow build is in progress and the user clicks remove on another language, the build is aborted. The user sees a build error toast even though the build might have succeeded.
-- **Fix:** Separate AbortControllers per operation.
-
-## Regressions Checked
-
-| Fix | Status |
-|---|---|
-| C13 AbortController fixes (4 files) | No regression — verified by inspection |
-| C12 CountdownTimer deadline reactivity | No regression |
-| C12 CountdownTimer staggered timer cleanup | No regression |
-| C11 language-config-table abort on unmount | No regression |
+**Date:** 2026-05-09
+**HEAD:** e7d25c46
+**Scope:** Latent bug surface, failure modes, regressions
 
 ## Summary
 
-No regressions from prior fixes. Two new issues identified: a timer leak in CopyCodeButton and a cross-operation abort race in the language admin. Both are hygiene issues with concrete failure scenarios.
+One latent bug identified. Prior fixes verified as resolved. No regressions.
+
+## Findings
+
+### DB-1: Client-side fetch can hang indefinitely
+
+- **File:** `src/lib/api/client.ts:88`
+- **Confidence:** High
+- **Severity:** Medium
+- **Problem:** The `apiFetch` wrapper does not add a default timeout. If a network partition occurs or the server stops responding mid-request, the fetch Promise never resolves. React components waiting on this Promise will remain in a loading state forever.
+- **Trigger Condition:** Any client component calls `apiFetch` without passing a `signal`, and the network/server stalls.
+- **Failure Scenario:** User clicks "Save" in a form. The request is sent but the server enters a GC pause or network partition. The fetch hangs. The form stays in a "Saving..." state. The user cannot submit again because the button is disabled. A page refresh is required.
+- **Fix:** Add `AbortSignal.timeout(30_000)` as default signal in `apiFetch` when no signal is provided by caller.
+
+## Prior Fixes Verified
+
+| Fix | Status |
+|---|---|
+| C14 copy-code-button timer leak | Fixed |
+| C14 language-config-table cross-operation abort | Fixed |
+| C13 AbortController cleanup (4 files) | No regression |
+| C12 countdown timer fixes | No regression |
+
+## Regressions Checked
+
+No regressions from prior fixes identified.
+
+## Final Sweep
+
+No latent bugs in timer handling, event listener management, async flow, or state mutation found.

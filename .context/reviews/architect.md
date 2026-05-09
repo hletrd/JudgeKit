@@ -1,21 +1,34 @@
-# Architect Review — Cycle 14/100
+# Architect Review — Cycle 15 Review
 
-**Reviewer:** architect (manual)
-**Date:** 2026-05-08
-**HEAD:** fe8f8866
+**Date:** 2026-05-09
+**HEAD:** e7d25c46
 **Scope:** Architectural/design risks, coupling, layering
 
----
+## Summary
 
-## NEW FINDINGS
+No new architectural issues. The codebase maintains clean separation of concerns.
 
-### C14-AR-1 — Language admin: single AbortController conflates unrelated operations [MEDIUM]
-- **Severity:** MEDIUM
-- **Confidence:** HIGH
-- **File:** `src/app/(dashboard)/dashboard/admin/languages/language-config-table.tsx:87`
-- **Problem:** Build, remove, and prune are semantically independent operations. Using a single AbortController to govern all three couples them unnecessarily. This creates a hidden dependency: operation A cancels operation B even though they have no logical relationship.
-- **Architectural recommendation:** Each async operation should own its cancellation token. If the component needs to cancel all pending work on unmount, collect all active controllers into an array and abort them in cleanup.
+## Verified Architecture
 
-## No Other Architectural Issues Found
+- **API Layer:** `createApiHandler` provides consistent middleware (auth, CSRF, rate limit, validation) across all routes. No route bypasses this abstraction.
+- **Database Layer:** All DB access goes through Drizzle ORM. Schema definitions in `schema.pg.ts` are centralized.
+- **Auth Layer:** Session management is abstracted behind `getApiUser`, `createApiHandler`, and proxy middleware.
+- **File Layer:** Storage operations are abstracted behind `src/lib/files/storage.ts`.
+- **Judge Layer:** Execution is delegated to Rust sidecar or local Docker, with clear boundaries.
+- **Client Layer:** API calls go through `apiFetch`/`apiFetchJson` wrapper.
 
-The overall architecture remains sound. API routes are well-layered, DB access is centralized, auth is consistent, and client-side state is well-managed.
+## Coupling Check
+
+- No direct DB imports in components (all go through API routes or server actions)
+- No circular dependencies found in key modules
+- Rust/TS interop is clean with typed interfaces
+
+## Prior Fixes Verified
+
+| Finding | Status |
+|---|---|
+| C14 language-config-table shared AbortController | Fixed — now uses separate refs per operation |
+
+## Final Sweep
+
+No new architectural risks identified.

@@ -1,34 +1,33 @@
-# Verifier Review — Cycle 14/100
+# Verifier Review — Cycle 15 Review
 
-**Reviewer:** verifier (manual)
-**Date:** 2026-05-08
-**HEAD:** fe8f8866
+**Date:** 2026-05-09
+**HEAD:** e7d25c46
 **Scope:** Evidence-based correctness check against stated behavior
 
----
+## Summary
 
-## NEW FINDINGS
+One finding verified. Prior fixes confirmed as resolved.
 
-### C14-VR-1 — Verified: CopyCodeButton does not clear previous timer [LOW]
-- **Severity:** LOW
-- **Confidence:** HIGH
-- **File:** `src/components/code/copy-code-button.tsx:19-27`
-- **Verification:**
-  1. Line 13: `const copiedTimer = useRef<ReturnType<typeof setTimeout> | null>(null);`
-  2. Line 26: `copiedTimer.current = setTimeout(() => setCopied(false), 2000);`
-  3. No `clearTimeout(copiedTimer.current)` precedes line 26.
-  4. Compare with `api-keys-client.tsx:249-252` and `file-management-client.tsx:102-107` where the pattern `if (timerRef.current) clearTimeout(...)` is used before setting.
-- **Conclusion:** Confirmed bug. Rapid clicks orphan timers.
+## Findings
 
-### C14-VR-2 — Verified: language-config-table uses single AbortController for all operations [MEDIUM]
-- **Severity:** MEDIUM
-- **Confidence:** HIGH
-- **File:** `src/app/(dashboard)/dashboard/admin/languages/language-config-table.tsx:87,150-177,183-207`
-- **Verification:**
-  1. Line 87: `const abortControllerRef = useRef<AbortController | null>(null);` — single ref.
-  2. Line 152-156: `handleBuild` aborts `abortControllerRef.current` and assigns new controller.
-  3. Line 184-188: `confirmRemoveImage` aborts the SAME `abortControllerRef.current`.
-  4. If build is in flight when remove is clicked, the build signal is aborted.
-- **Conclusion:** Confirmed bug. Cross-operation cancellation occurs.
+### VR-1: Verified — apiFetch does not enforce documented safety patterns
+
+- **File:** `src/lib/api/client.ts:74-89`
+- **Confidence:** High
+- **Severity:** Medium
+- **Claim:** The file's own documentation (lines 25-54) states "Never silently swallow errors", "Always check response.ok before calling response.json()", and warns about calling `.json()` twice.
+- **Reality:** The `apiFetch` wrapper enforces NONE of these patterns. It only adds headers. The `apiFetchJson` helper (lines 121-139) does implement safe parsing, but it is a separate function that many callers don't use.
+- **Gap:** Dozens of components call `apiFetch` directly and manually implement (or skip) the safety checks documented in the same file.
+- **Fix:** Either enforce a default timeout in `apiFetch`, or add a lint rule requiring either `apiFetchJson` or explicit signal/timeout when using `apiFetch`.
+
+## Prior Fixes Verified
+
+| Finding | Status | Verification Method |
+|---|---|---|
+| C14 copy-code-button timer | FIXED | Read file, confirmed line 26 clears timer |
+| C14 language-config-table abort | FIXED | Read file, confirmed separate refs (lines 87-90) |
+| C10 import-transfer stream lock | FIXED | Read file, confirmed finally block releases reader |
 
 ## No Other Verified Issues
+
+All auth checks, rate limits, and transaction boundaries were verified by inspection to behave as documented.
