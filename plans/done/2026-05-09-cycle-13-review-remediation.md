@@ -1,68 +1,67 @@
 # Cycle 13 Review Remediation Plan
 
-**Created:** 2026-05-08
-**Review Head:** b3c16d3a
-**Findings Source:** .context/reviews/_aggregate.md (cycle 13)
+**Created:** 2026-05-09
+**Review Head:** d9887d20
+**Findings Source:** `.context/reviews/_aggregate-cycle-13.md`
 
 ---
 
-## Planned Fixes (to implement this cycle)
+## Planned Fixes
 
-### C13-1: Add AbortController cleanup to fetch calls in 4 components [LOW]
+### C13-1 — Add timeout to docker/client.ts judge worker fetches
 
-**Files to modify:**
-- `src/app/(dashboard)/dashboard/admin/languages/language-config-table.tsx`
-- `src/components/lecture/submission-overview.tsx`
-- `src/components/problem/accepted-solutions.tsx`
-- `src/components/submissions/submission-detail-client.tsx`
-
-**Description:** These components initiate `fetch` requests inside `useEffect` but do not attach an `AbortController.signal`. If the component unmounts while the request is in flight, the promise resolves and calls `setState` on an unmounted component. React logs a development warning.
-
-**Fix pattern:**
-```tsx
-useEffect(() => {
-  const controller = new AbortController();
-  fetch(url, { signal: controller.signal }).then(...);
-  return () => controller.abort();
-}, [...]);
-```
-
-**For accepted-solutions.tsx:** Also abort the previous fetch before starting a new one when sort/language/page changes.
-
+**Severity:** MEDIUM
+**File:** `src/lib/docker/client.ts:108-112` (callWorkerJson), `src/lib/docker/client.ts:139-143` (callWorkerNoContent)
+**Issue:** `fetch()` calls to the judge worker lack timeout/abort signals. A hung worker can cause indefinite request hangs.
+**Fix:** Add `signal: AbortSignal.timeout(N)` to both fetches. Use 30s for `callWorkerJson` and 60s for `callWorkerNoContent`.
+**Commit:** `e6d7755d`
 **Status:** DONE
 
-**Completed:** 2026-05-08
-- Added `imageStatusAbortControllerRef` to language-config-table.tsx
-- Added `fetchAbortControllerRef` to submission-overview.tsx with proper cleanup
-- Added `abortControllerRef` to accepted-solutions.tsx with previous-request abort logic
-- Added AbortController to submission-detail-client.tsx queue polling with proper cleanup
+### C13-2 — Add timeout to hCaptcha verification fetch
 
-### C13-2: Add CountdownTimer deadline-reactivity test [LOW]
-
-**File:** `tests/component/countdown-timer.test.tsx`
-
-**Description:** The cycle-12 fix for deadline reactivity (resetting expired state when deadline prop changes) lacks test coverage.
-
-**Test case:** Render with an expired deadline, then update props to a future deadline, assert that the component shows the new remaining time instead of "00:00:00".
-
+**Severity:** LOW
+**File:** `src/lib/security/hcaptcha.ts:60-66`
+**Issue:** hCaptcha verification `fetch()` lacks a timeout. Unlike other external API calls (OpenAI, Anthropic, code-similarity), this fetch is unprotected.
+**Fix:** Add `signal: AbortSignal.timeout(10_000)` to the fetch call in `verifyHcaptchaToken`.
+**Commit:** `c8bf8609`
 **Status:** DONE
 
-**Completed:** 2026-05-08
-- Test already exists in `tests/component/countdown-timer.test.tsx` (lines 171-190: "resets expired state when deadline is extended")
-- Verified passing with all component tests green
+---
+
+## Deferred Items
+
+No new deferred items. All carry-forward deferred items from prior cycles remain valid with unchanged exit criteria. See `_aggregate-cycle-13.md` for full deferred inventory.
 
 ---
 
-## Deferred Items (none this cycle)
+## Areas Verified This Cycle
 
-All cycle 13 findings are scheduled for implementation. No deferrals.
-
-Carry-forward deferred items from prior cycles (C12b-1, C12b-2, C12b-3) remain in their existing deferred state with unchanged exit criteria.
+- **Security**: Auth pipeline, CSRF, rate limiting, server actions origin validation, public signup, file serving, backup/restore
+- **Correctness**: Docker client, hCaptcha, compiler execute, code similarity client, chat widget providers
+- **Performance**: AbortController coverage, timer leaks, promise chains
+- **Architecture**: API handler factory, raw API route coverage
+- **Infrastructure**: Export engine, SSE events, discussions data
 
 ---
 
-## Implementation Notes
+## Gate Results
 
-- Follow existing abort-cleanup patterns already applied in `compiler-client.tsx` and `language-config-table.tsx` build/remove handlers.
-- Ensure no regressions in existing behavior.
-- Run all gates (eslint, tsc, vitest, component tests) after changes.
+- `npx eslint src/lib/security/hcaptcha.ts src/lib/docker/client.ts`: PASS (no errors, no warnings)
+- `npx tsc --noEmit`: PASS
+- `npx next build`: PASS
+- `npx vitest run`: PASS (314 files, 2338 tests)
+- `npx vitest run --config vitest.config.component.ts`: PASS (66 files, 179 tests)
+
+---
+
+## Implementation Order
+
+1. C13-2 (hCaptcha timeout) — simpler fix, single line
+2. C13-1 (Docker client timeouts) — two functions to update
+
+---
+
+## Deploy Results
+
+- **test.worv.ai**: SUCCESS (2026-05-09) — app container healthy, nginx reloaded, HTTPS verified
+- **algo.xylolabs.com**: SUCCESS (2026-05-09) — app container healthy, nginx reloaded, HTTPS verified
