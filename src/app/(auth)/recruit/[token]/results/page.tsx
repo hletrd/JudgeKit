@@ -319,6 +319,7 @@ export default async function RecruitResultsPage({
                       <SubmissionStatusBadge
                         status={best.status ?? "pending"}
                         label={best.status ?? "pending"}
+                        locale={locale}
                       />
                     ) : (
                       <Badge variant="secondary">{t("notAttempted")}</Badge>
