@@ -601,6 +601,8 @@
       "problem": "문제",
       "language": "언어",
       "status": "상태",
+      "time": "시간",
+      "memory": "메모리",
       "score": "점수",
       "submittedAt": "제출 일시",
       "action": "작업"

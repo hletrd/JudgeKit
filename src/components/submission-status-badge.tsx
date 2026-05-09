@@ -15,6 +15,7 @@ import {
   isActiveSubmissionStatus,
 } from "@/lib/submissions/status";
 import { formatNumber, formatScore } from "@/lib/formatting";
+import { ResourceUsageBar } from "@/components/resource-usage-bar";
 
 type SubmissionStatusBadgeProps = {
   status: string | null | undefined;
@@ -28,6 +29,7 @@ type SubmissionStatusBadgeProps = {
   failedTestCaseIndex?: number | null;
   runtimeErrorType?: string | null;
   timeLimitMs?: number | null;
+  memoryLimitMb?: number | null;
   score?: number | null;
   /** Locale for number formatting. Defaults to "en-US". */
   locale?: string;
@@ -66,10 +68,11 @@ function TooltipBody({
   failedTestCaseIndex,
   runtimeErrorType,
   timeLimitMs,
+  memoryLimitMb,
   score,
   locale,
   tSub,
-}: Pick<SubmissionStatusBadgeProps, "status" | "compileOutput" | "executionTimeMs" | "memoryUsedKb" | "failedTestCaseIndex" | "runtimeErrorType" | "timeLimitMs" | "score" | "locale"> & { tSub: ReturnType<typeof useTranslations> }) {
+}: Pick<SubmissionStatusBadgeProps, "status" | "compileOutput" | "executionTimeMs" | "memoryUsedKb" | "failedTestCaseIndex" | "runtimeErrorType" | "timeLimitMs" | "memoryLimitMb" | "score" | "locale"> & { tSub: ReturnType<typeof useTranslations> }) {
   if (status === "compile_error" && compileOutput) {
     const truncated = compileOutput.length > 200
       ? compileOutput.slice(0, 200) + "..."
@@ -102,15 +105,37 @@ function TooltipBody({
       )}
 
       {/* Resource usage */}
-      <div className="flex items-center gap-3">
-        {executionTimeMs !== null && executionTimeMs !== undefined && status !== "time_limit" && (
-          <span className="inline-flex items-center gap-1 text-muted-foreground">
+      <div className="space-y-2 pt-1">
+        {executionTimeMs !== null && executionTimeMs !== undefined && status !== "time_limit" && timeLimitMs != null && timeLimitMs > 0 && (
+          <ResourceUsageBar
+            current={executionTimeMs}
+            limit={timeLimitMs}
+            label="Time"
+            unit="ms"
+            exceeded={status === "time_limit"}
+            compact
+            icon="timer"
+          />
+        )}
+        {executionTimeMs !== null && executionTimeMs !== undefined && (timeLimitMs == null || timeLimitMs <= 0) && status !== "time_limit" && (
+          <span className="inline-flex items-center gap-1 text-xs text-muted-foreground">
             <Timer aria-hidden="true" className="size-3 shrink-0" />
             {formatBadgeNumber(executionTimeMs, locale)} ms
           </span>
         )}
-        {memoryUsedKb !== null && memoryUsedKb !== undefined && (
-          <span className="inline-flex items-center gap-1 text-muted-foreground">
+        {memoryUsedKb !== null && memoryUsedKb !== undefined && memoryLimitMb != null && memoryLimitMb > 0 && (
+          <ResourceUsageBar
+            current={memoryUsedKb}
+            limit={memoryLimitMb * 1024}
+            label="Memory"
+            unit="KB"
+            exceeded={status === "memory_limit"}
+            compact
+            icon="memory"
+          />
+        )}
+        {memoryUsedKb !== null && memoryUsedKb !== undefined && (memoryLimitMb == null || memoryLimitMb <= 0) && (
+          <span className="inline-flex items-center gap-1 text-xs text-muted-foreground">
             <HardDrive aria-hidden="true" className="size-3 shrink-0" />
             {formatBadgeNumber(memoryUsedKb, locale)} KB
           </span>
@@ -132,6 +157,7 @@ export function SubmissionStatusBadge({
   failedTestCaseIndex,
   runtimeErrorType,
   timeLimitMs,
+  memoryLimitMb,
   score,
   locale,
 }: SubmissionStatusBadgeProps) {
@@ -177,6 +203,7 @@ export function SubmissionStatusBadge({
             failedTestCaseIndex={failedTestCaseIndex}
             runtimeErrorType={runtimeErrorType}
             timeLimitMs={timeLimitMs}
+            memoryLimitMb={memoryLimitMb}
             score={score}
             locale={locale}
             tSub={tSub}

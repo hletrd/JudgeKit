@@ -25,6 +25,7 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { PublicQuickSubmit } from "@/components/problem/public-quick-submit";
+import { ResourceUsageBar } from "@/components/resource-usage-bar";
 import { AntiCheatMonitor } from "@/components/exam/anti-cheat-monitor";
 import { CountdownTimer } from "@/components/exam/countdown-timer";
 import { StartExamButton } from "@/components/exam/start-exam-button";
@@ -651,6 +652,8 @@ export default async function PublicProblemDetailPage({
                                 <TableHead>{tSubmissions("table.id")}</TableHead>
                                 <TableHead>{tSubmissions("table.language")}</TableHead>
                                 <TableHead>{tSubmissions("table.status")}</TableHead>
+                                <TableHead className="hidden md:table-cell">{tSubmissions("table.time")}</TableHead>
+                                <TableHead className="hidden md:table-cell">{tSubmissions("table.memory")}</TableHead>
                                 <TableHead>{tSubmissions("table.score")}</TableHead>
                                 <TableHead>{tSubmissions("table.submittedAt")}</TableHead>
                                 <TableHead>{tSubmissions("table.action")}</TableHead>
@@ -675,8 +678,41 @@ export default async function PublicProblemDetailPage({
                                       failedTestCaseIndex={sub.failedTestCaseIndex}
                                       runtimeErrorType={sub.runtimeErrorType}
                                       timeLimitMs={problem.timeLimitMs ?? null}
+                                      memoryLimitMb={problem.memoryLimitMb ?? null}
                                       locale={locale}
                                     />
+                                  </TableCell>
+                                  <TableCell className="hidden md:table-cell">
+                                    {sub.executionTimeMs != null && problem.timeLimitMs != null && problem.timeLimitMs > 0 ? (
+                                      <ResourceUsageBar
+                                        current={sub.executionTimeMs}
+                                        limit={problem.timeLimitMs}
+                                        unit="ms"
+                                        exceeded={sub.status === "time_limit"}
+                                        compact
+                                        icon="timer"
+                                      />
+                                    ) : sub.executionTimeMs != null ? (
+                                      <span className="text-xs text-muted-foreground">{sub.executionTimeMs} ms</span>
+                                    ) : (
+                                      "-"
+                                    )}
+                                  </TableCell>
+                                  <TableCell className="hidden md:table-cell">
+                                    {sub.memoryUsedKb != null && problem.memoryLimitMb != null && problem.memoryLimitMb > 0 ? (
+                                      <ResourceUsageBar
+                                        current={sub.memoryUsedKb}
+                                        limit={problem.memoryLimitMb * 1024}
+                                        unit="KB"
+                                        exceeded={sub.status === "memory_limit"}
+                                        compact
+                                        icon="memory"
+                                      />
+                                    ) : sub.memoryUsedKb != null ? (
+                                      <span className="text-xs text-muted-foreground">{sub.memoryUsedKb} KB</span>
+                                    ) : (
+                                      "-"
+                                    )}
                                   </TableCell>
                                   <TableCell>{sub.score !== null ? formatScore(sub.score, locale) : "-"}</TableCell>
                                   <TableCell>

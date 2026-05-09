@@ -601,6 +601,8 @@
       "problem": "Problem",
       "language": "Language",
       "status": "Status",
+      "time": "Time",
+      "memory": "Memory",
       "score": "Score",
       "submittedAt": "Submitted At",
       "action": "Action"
