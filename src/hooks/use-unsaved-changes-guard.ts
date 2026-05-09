@@ -6,6 +6,98 @@ const DEFAULT_WARNING_MESSAGE = "You have unsaved code changes. Leave this page?
 const HISTORY_GUARD_STATE_KEY = "__ojUnsavedChangesGuard";
 const HISTORY_INDEX_STATE_KEY = "__ojUnsavedChangesGuardIndex";
 
+// Shared singleton to prevent multiple hook instances from clobbering each
+// other's patches of window.history.pushState / replaceState.
+// A single shared patch delegates to the most recently mounted active guard
+// so that unmounting one instance correctly falls back to the next.
+let originalPushState: typeof window.history.pushState | undefined;
+let originalReplaceState: typeof window.history.replaceState | undefined;
+
+function getOriginalPushState() {
+  if (!originalPushState) {
+    originalPushState = window.history.pushState.bind(window.history);
+  }
+  return originalPushState;
+}
+
+function getOriginalReplaceState() {
+  if (!originalReplaceState) {
+    originalReplaceState = window.history.replaceState.bind(window.history);
+  }
+  return originalReplaceState;
+}
+
+type GuardEntry = {
+  confirmNavigation: (target: string | URL | null | undefined) => boolean;
+  historyIndexRef: { current: number };
+  confirmedLocationRef: { current: string | null };
+};
+
+const guardStack: GuardEntry[] = [];
+let isHistoryPatched = false;
+
+function getActiveGuard(): GuardEntry | undefined {
+  return guardStack[guardStack.length - 1];
+}
+
+function sharedPushState(data: unknown, unused: string, url?: string | URL | null) {
+  const active = getActiveGuard();
+  if (!active) {
+    getOriginalPushState()(data, unused, url);
+    return;
+  }
+  if (!active.confirmNavigation(url)) {
+    return;
+  }
+  const nextIndex = active.historyIndexRef.current + 1;
+  active.historyIndexRef.current = nextIndex;
+  active.confirmedLocationRef.current = resolveNavigationUrl(url);
+  getOriginalPushState()(
+    {
+      ...(typeof data === "object" && data !== null ? data : {}) as Record<string, unknown>,
+      [HISTORY_GUARD_STATE_KEY]: true,
+      [HISTORY_INDEX_STATE_KEY]: nextIndex,
+    },
+    unused,
+    url,
+  );
+}
+
+function sharedReplaceState(data: unknown, unused: string, url?: string | URL | null) {
+  const active = getActiveGuard();
+  if (!active) {
+    getOriginalReplaceState()(data, unused, url);
+    return;
+  }
+  if (!active.confirmNavigation(url)) {
+    return;
+  }
+  active.confirmedLocationRef.current = resolveNavigationUrl(url);
+  getOriginalReplaceState()(
+    {
+      ...(typeof data === "object" && data !== null ? data : {}) as Record<string, unknown>,
+      [HISTORY_GUARD_STATE_KEY]: true,
+      [HISTORY_INDEX_STATE_KEY]: active.historyIndexRef.current,
+    },
+    unused,
+    url,
+  );
+}
+
+function installHistoryPatch() {
+  if (isHistoryPatched) return;
+  window.history.pushState = sharedPushState;
+  window.history.replaceState = sharedReplaceState;
+  isHistoryPatched = true;
+}
+
+function uninstallHistoryPatch() {
+  if (!isHistoryPatched) return;
+  window.history.pushState = getOriginalPushState();
+  window.history.replaceState = getOriginalReplaceState();
+  isHistoryPatched = false;
+}
+
 type HistoryNavigationApi = {
   addEventListener: (type: "navigate", listener: (event: Event) => void) => void;
   removeEventListener: (type: "navigate", listener: (event: Event) => void) => void;
@@ -231,41 +323,26 @@ export function useUnsavedChangesGuard({
 
     const currentState = toHistoryStateValue(window.history.state);
     const baseIndex = getHistoryStateIndex(currentState) ?? Date.now();
-    const originalPushState = window.history.pushState.bind(window.history);
-    const originalReplaceState = window.history.replaceState.bind(window.history);
 
     historyIndexRef.current = baseIndex;
 
-    const wrapState = (state: unknown, nextIndex: number) => ({
-      ...toHistoryStateValue(state),
-      [HISTORY_GUARD_STATE_KEY]: true,
-      [HISTORY_INDEX_STATE_KEY]: nextIndex,
-    });
-
-    window.history.pushState = function pushState(data, unused, url) {
-      if (!confirmNavigation(url)) {
-        return;
-      }
-
-      const nextIndex = historyIndexRef.current + 1;
-
-      historyIndexRef.current = nextIndex;
-      confirmedLocationRef.current = resolveNavigationUrl(url);
-      originalPushState(wrapState(data, nextIndex), unused, url);
+    const entry: GuardEntry = {
+      confirmNavigation,
+      historyIndexRef,
+      confirmedLocationRef,
     };
 
-    window.history.replaceState = function replaceState(data, unused, url) {
-      if (!confirmNavigation(url)) {
-        return;
-      }
-
-      confirmedLocationRef.current = resolveNavigationUrl(url);
-      originalReplaceState(wrapState(data, historyIndexRef.current), unused, url);
-    };
+    guardStack.push(entry);
+    installHistoryPatch();
 
     return () => {
-      window.history.pushState = originalPushState;
-      window.history.replaceState = originalReplaceState;
+      const idx = guardStack.indexOf(entry);
+      if (idx !== -1) {
+        guardStack.splice(idx, 1);
+      }
+      if (guardStack.length === 0) {
+        uninstallHistoryPatch();
+      }
     };
   }, [confirmNavigation, isDirty]);
 
