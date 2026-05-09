@@ -60,4 +60,30 @@ describe("resolveStoredPath path-traversal guard", () => {
     // Null bytes could truncate the name in some runtimes
     expect(() => resolveStoredPath("file.txt\x00../evil")).toThrow();
   });
+
+  it("rejects names starting with a dot (hidden files)", async () => {
+    const { resolveStoredPath } = await import("@/lib/files/storage");
+    expect(() => resolveStoredPath(".hidden")).toThrow();
+    expect(() => resolveStoredPath(".gitignore")).toThrow();
+    expect(() => resolveStoredPath(".env")).toThrow();
+  });
+
+  it("rejects control characters", async () => {
+    const { resolveStoredPath } = await import("@/lib/files/storage");
+    expect(() => resolveStoredPath("file\x01.txt")).toThrow();
+    expect(() => resolveStoredPath("file\x1f.txt")).toThrow();
+    expect(() => resolveStoredPath("file\x7f.txt")).toThrow();
+  });
+
+  it("rejects empty string", async () => {
+    const { resolveStoredPath } = await import("@/lib/files/storage");
+    expect(() => resolveStoredPath("")).toThrow();
+  });
+
+  it("accepts valid nanoid-style names", async () => {
+    const { resolveStoredPath } = await import("@/lib/files/storage");
+    expect(() => resolveStoredPath("V1StGXR8_Z5jdHi6B-myT")).not.toThrow();
+    expect(() => resolveStoredPath("abc123")).not.toThrow();
+    expect(() => resolveStoredPath("file_name.txt")).not.toThrow();
+  });
 });

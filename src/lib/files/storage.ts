@@ -15,12 +15,10 @@ export async function ensureUploadsDir(): Promise<void> {
   await mkdir(getUploadsDir(), { recursive: true });
 }
 
+const SAFE_STORED_NAME_RE = /^[a-zA-Z0-9][a-zA-Z0-9._-]+$/;
+
 export function resolveStoredPath(storedName: string): string {
-  if (
-    storedName.includes("/") ||
-    storedName.includes("\\") ||
-    storedName.includes("..")
-  ) {
+  if (!SAFE_STORED_NAME_RE.test(storedName) || storedName.includes("..")) {
     throw new Error("Invalid stored file name");
   }
   return join(getUploadsDir(), storedName);
