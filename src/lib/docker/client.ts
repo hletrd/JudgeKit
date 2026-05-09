@@ -84,6 +84,10 @@ export interface DockerPullProgress {
 }
 
 function isValidImageReference(value: string) {
+  if (!value || value.length > 256) return false;
+  // Reject common malformed patterns: empty segments, consecutive delimiters, trailing delimiters
+  if (value.endsWith(":") || value.endsWith("/") || value.endsWith(".")) return false;
+  if (value.includes("//") || value.includes("::")) return false;
   return /^[a-zA-Z0-9][a-zA-Z0-9._\-/:]+$/.test(value);
 }
 
