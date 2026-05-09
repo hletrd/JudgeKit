@@ -7,6 +7,7 @@ import {
   EXPORT_ALWAYS_REDACT_COLUMNS,
   LOGGER_REDACT_PATHS,
 } from "@/lib/security/secrets";
+import { mergeRedactionMaps } from "@/lib/db/export";
 
 const EXPORT_PATH = "src/lib/db/export.ts";
 
@@ -190,6 +191,39 @@ describe("export.ts sanitization", () => {
     // Validate the column referenced in the redaction maps actually exists
     const columns = getSchemaColumnNames("systemSettings");
     expect(columns).toContain("hcaptchaSecret");
+  });
+
+  it("mergeRedactionMaps unions columns for tables present in both maps", () => {
+    // This test catches the bug where object spread would silently drop
+    // SANITIZED-only columns when a table exists in both maps.
+    const sanitized = {
+      users: new Set(["passwordHash", "newSanitizedOnly"]),
+      judgeWorkers: new Set(["secretTokenHash"]),
+    };
+    const always = {
+      users: new Set(["passwordHash"]),
+    };
+    const merged = mergeRedactionMaps(sanitized, always);
+
+    // Table in both: union of columns (not overwrite)
+    expect(merged.users).toContain("passwordHash");
+    expect(merged.users).toContain("newSanitizedOnly");
+
+    // Table only in sanitized: preserved
+    expect(merged.judgeWorkers).toContain("secretTokenHash");
+
+    // Table only in always: preserved
+    expect(merged.users).toContain("passwordHash");
+  });
+
+  it("mergeRedactionMaps produces distinct Set instances", () => {
+    const sanitized = { users: new Set(["a"]) };
+    const always = { users: new Set(["b"]) };
+    const merged = mergeRedactionMaps(sanitized, always);
+    // Mutating the merged set must not affect the originals
+    merged.users.add("c");
+    expect(sanitized.users.has("c")).toBe(false);
+    expect(always.users.has("c")).toBe(false);
   });
 
   it("logger REDACT_PATHS columns are covered by SANITIZED_COLUMNS", () => {

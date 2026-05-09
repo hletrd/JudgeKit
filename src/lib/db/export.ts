@@ -18,6 +18,27 @@ import {
 
 export type JudgeKitExportRedactionMode = "full-fidelity" | "sanitized";
 
+/**
+ * Merge two redaction column maps. For tables present in both maps, the
+ * resulting Set is the UNION of both column sets (not an overwrite). This
+ * prevents a column added to only SANITIZED from being silently dropped when
+ * the object spread `{ ...sanitized, ...always }` would overwrite with the
+ * ALWAYS version.
+ */
+export function mergeRedactionMaps(
+  sanitized: Record<string, Set<string>>,
+  always: Record<string, Set<string>>
+): Record<string, Set<string>> {
+  const merged: Record<string, Set<string>> = {};
+  for (const [table, cols] of Object.entries(sanitized)) {
+    merged[table] = new Set([...cols, ...(always[table] ?? [])]);
+  }
+  for (const [table, cols] of Object.entries(always)) {
+    if (!merged[table]) merged[table] = new Set(cols);
+  }
+  return merged;
+}
+
 export interface JudgeKitExport {
   version: 1;
   exportedAt: string;
@@ -75,7 +96,9 @@ export function streamDatabaseExport(options: { signal?: AbortSignal; sanitize?:
             )
           );
 
-          const activeRedactionMap = options.sanitize ? { ...EXPORT_SANITIZED_COLUMNS, ...EXPORT_ALWAYS_REDACT_COLUMNS } : EXPORT_ALWAYS_REDACT_COLUMNS;
+          const activeRedactionMap = options.sanitize
+            ? mergeRedactionMaps(EXPORT_SANITIZED_COLUMNS, EXPORT_ALWAYS_REDACT_COLUMNS)
+            : EXPORT_ALWAYS_REDACT_COLUMNS;
 
           for (const [tableIndex, { name, table, orderColumns }] of TABLE_ORDER.entries()) {
             if (cancelled) return;
