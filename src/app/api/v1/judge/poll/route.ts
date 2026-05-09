@@ -204,7 +204,7 @@ export async function POST(request: NextRequest) {
 
     // Trigger AI code review in background for accepted submissions
     if (status === "accepted") {
-      void triggerAutoCodeReview(submissionId).catch((err: unknown) => {
+      Promise.resolve(triggerAutoCodeReview(submissionId)).catch((err: unknown) => {
         logger.warn({ err, submissionId }, "[auto-review] trigger failed");
       });
     }
