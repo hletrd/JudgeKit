@@ -15,6 +15,7 @@ import { db, execTransaction, type TransactionClient } from "@/lib/db";
 import { rateLimits } from "@/lib/db/schema";
 import { extractClientIp } from "@/lib/security/ip";
 import { getConfiguredSettings } from "@/lib/system-settings-config";
+import { fetchRateLimitEntry, isRateLimitWindowExpired } from "@/lib/security/rate-limit-core";
 import { eq, lt } from "drizzle-orm";
 import { logger } from "@/lib/logger";
 import { getDbNowMs } from "@/lib/db-time";
@@ -96,12 +97,7 @@ async function getEntry(
   // checkServerActionRateLimit). Callers that already have DB time should pass
   // it via nowMs to avoid an extra query.
   const now = nowMs ?? await getDbNowMs();
-  const [existing] = await queryDb.select({
-    attempts: rateLimits.attempts,
-    windowStartedAt: rateLimits.windowStartedAt,
-    blockedUntil: rateLimits.blockedUntil,
-    consecutiveBlocks: rateLimits.consecutiveBlocks,
-  }).from(rateLimits).where(eq(rateLimits.key, key)).limit(1).for("update");
+  const existing = await fetchRateLimitEntry(queryDb, key);
 
   if (!existing) {
     return {
@@ -111,14 +107,14 @@ async function getEntry(
     };
   }
 
-  if (existing.windowStartedAt + getRateLimitConfig().windowMs <= now) {
+  if (isRateLimitWindowExpired(existing.windowStartedAt, getRateLimitConfig().windowMs, now)) {
     return {
       now,
       entry: {
         attempts: 0,
         windowStartedAt: now,
         blockedUntil: existing.blockedUntil && existing.blockedUntil > now ? existing.blockedUntil : 0,
-        consecutiveBlocks: existing.consecutiveBlocks ?? 0,
+        consecutiveBlocks: existing.consecutiveBlocks,
       },
       exists: true,
     };
@@ -130,7 +126,7 @@ async function getEntry(
       attempts: existing.attempts,
       windowStartedAt: existing.windowStartedAt,
       blockedUntil: existing.blockedUntil ?? 0,
-      consecutiveBlocks: existing.consecutiveBlocks ?? 0,
+      consecutiveBlocks: existing.consecutiveBlocks,
     },
     exists: true,
   };

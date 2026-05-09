@@ -73,14 +73,20 @@ beforeEach(() => {
   dbNowMock.mockResolvedValue(1000);
   dbMock.select.mockImplementation(() => ({
     from: vi.fn(() => ({
-      where: vi.fn((predicate: Predicate) => ({
-        limit: vi.fn(() => ({
-          for: vi.fn(() => {
-            const row = readRow(predicate);
-            return row ? [row] : [];
-          }),
-        })),
-      })),
+      where: vi.fn((predicate: Predicate) => {
+        const result = () => {
+          const row = readRow(predicate);
+          return row ? [row] : [];
+        };
+        return {
+          limit: vi.fn(() => ({
+            for: vi.fn(result),
+          })),
+          for: vi.fn(() => ({
+            limit: vi.fn(result),
+          })),
+        };
+      }),
     })),
   }));
   dbMock.delete.mockImplementation(() => ({

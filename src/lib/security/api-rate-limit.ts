@@ -20,6 +20,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getRateLimitKey } from "./rate-limit";
 import { checkRateLimit as sidecarCheck } from "./rate-limiter-client";
+import { fetchRateLimitEntry } from "@/lib/security/rate-limit-core";
 import { execTransaction } from "@/lib/db";
 import { rateLimits } from "@/lib/db/schema";
 import { getDbNowMs } from "@/lib/db-time";
@@ -84,16 +85,7 @@ async function atomicConsumeRateLimit(key: string): Promise<{ limited: boolean; 
   const { max: apiMax, windowMs } = getApiRateLimitConfig();
 
   const limited = await execTransaction(async (tx) => {
-    const [existing] = await tx
-      .select({
-        attempts: rateLimits.attempts,
-        windowStartedAt: rateLimits.windowStartedAt,
-        blockedUntil: rateLimits.blockedUntil,
-      })
-      .from(rateLimits)
-      .where(eq(rateLimits.key, key))
-      .for("update")
-      .limit(1);
+    const existing = await fetchRateLimitEntry(tx, key);
 
     if (!existing) {
       // API rate limits use fixed blocking without exponential backoff
@@ -259,16 +251,7 @@ export async function checkServerActionRateLimit(
     // Previously used getDbNowUncached().getTime() which introduces a Date
     // intermediary; unified on getDbNowMs() for consistency. See C9-7.
     const now = await getDbNowMs();
-    const [existing] = await tx
-      .select({
-        attempts: rateLimits.attempts,
-        windowStartedAt: rateLimits.windowStartedAt,
-        blockedUntil: rateLimits.blockedUntil,
-      })
-      .from(rateLimits)
-      .where(eq(rateLimits.key, rateLimitKey))
-      .for("update")
-      .limit(1);
+    const existing = await fetchRateLimitEntry(tx, rateLimitKey);
 
     // If still within a block period, reject immediately
     if (existing?.blockedUntil && existing.blockedUntil > now) {
