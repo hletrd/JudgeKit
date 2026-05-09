@@ -1,44 +1,60 @@
-# Critic — Cycle 16 Review
+# Critic — Cycle 25
 
-**Date:** 2026-05-09
-**HEAD:** 64de91dd
-**Scope:** Multi-perspective critique of the whole codebase
+Reviewer: critic
+Date: 2026-05-09
+Scope: Multi-perspective critique of the whole codebase
+Base commit: 75d82a17
 
 ## Summary
 
-Two design-level observations identified. The codebase continues to show strong consistency.
+Three design-level observations. The codebase maintains strong consistency. One carry-forward from C19 remains.
+
+---
 
 ## Findings
 
-### CT-1: apiFetch timeout fix is incomplete — creates two problems instead of solving one [MEDIUM]
+### CT-25-1: Transaction wrapper inconsistency in judge/poll persists
 
-- **File:** `src/lib/api/client.ts:74-90`
-- **Confidence:** High
-- **Severity:** Medium
-- **Problem:** The C15 fix attempted to add a default timeout to apiFetch but solved only half the problem:
-  1. When no signal is provided: timeout is added (good)
-  2. When a signal IS provided: timeout is bypassed (bad — same original bug)
-  3. The `AbortSignal.timeout` API is used without a fallback for older browsers (bad — new regression)
-- **Contradiction:** The wrapper is documented as a safety wrapper but doesn't actually provide safety for its most common caller pattern (passing an AbortController.signal for cancellation).
-- **Cross-perspective:** Code-reviewer, verifier, debugger, and test-engineer all independently identified the same issue. High signal.
-- **Fix:** Implement a composite timeout strategy:
-  - Always create a timeout signal (with browser fallback)
-  - When caller provides a signal, combine both signals so either can abort the fetch
-  - Update the test that documents the buggy behavior
+- **File**: `src/app/api/v1/judge/poll/route.ts:77,136`
+- **Severity**: Low
+- **Confidence**: High
 
-### CT-2: Inconsistent timeout strategy across fetch wrappers [LOW]
+**Description**: The same inconsistency flagged in C19-2 (mixing `execTransaction` and `db.transaction`) is still present after 6 cycles. This suggests either the finding was deferred without a plan, or the plan was not executed. Cross-file consistency matters for maintainability.
 
-- **Files:** `src/lib/api/client.ts:88`, `src/lib/docker/client.ts:112`, `src/lib/docker/client.ts:144`
-- **Confidence:** Medium
-- **Severity:** Low
-- **Problem:** The same `signal = init?.signal ?? AbortSignal.timeout(N)` pattern appears in both client-side (`apiFetch`) and server-side (`callWorkerJson`, `callWorkerNoContent`) wrappers. The server-side wrappers have the same bug (caller signal bypasses timeout) but the impact is different since they run in Node.js where `AbortSignal.timeout` is always available.
-- **Fix:** Apply the composite timeout fix to `docker/client.ts` as well for consistency.
+**Fix**: Change line 136 to use `execTransaction`.
 
-## Prior Fixes Verified
+### CT-25-2: `any` type usage in TABLE_MAP undermines import safety
 
-- C14 copy-code-button timer leak: Fixed
-- C14 language-config-table shared AbortController: Fixed
+- **File**: `src/lib/db/import.ts:19`
+- **Severity**: Medium
+- **Confidence**: High
+
+**Description**: The import engine is a critical data-migration path. Using `any` for table references means TypeScript cannot catch table name mismatches or incorrect column references. Given that imports REPLACE all database data, type safety here is especially important.
+
+**Fix**: Replace `Record<string, any>` with a derived type from `TABLE_ORDER`.
+
+### CT-25-3: Registry prefix validation lacks boundary enforcement
+
+- **File**: `src/lib/judge/docker-image-validation.ts:1-3`
+- **Severity**: Medium
+- **Confidence**: Medium
+
+**Description**: From a threat-modeling perspective, `startsWith` on registry prefixes is a classic prefix-matching bug. An attacker controlling the registry configuration (or via social engineering of an operator) could exploit this to pull from an untrusted registry that happens to start with a trusted prefix.
+
+**Fix**: Add boundary check as described in SEC-25-1.
+
+---
+
+## Verified Consistency
+
+- Auth middleware is consistently applied across all API routes
+- Error handling patterns are uniform (apiError codes, logger usage)
+- Drizzle ORM used consistently — no raw SQL with user input
+- Docker operations all use `isAllowedJudgeDockerImage` validation
+- Client-side API calls all go through `apiFetch` wrapper
+
+---
 
 ## Final Sweep
 
-No contradictions between modules, no inconsistent error handling strategies, no mismatched frontend/backend contracts found beyond the timeout strategy inconsistency noted above.
+No contradictions between modules, no inconsistent error handling strategies, no mismatched frontend/backend contracts found.
