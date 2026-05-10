@@ -32,9 +32,12 @@ function clearAppStorage(): void {
   if (typeof window === "undefined") return;
 
   try {
-    // Clear localStorage keys with app prefixes
+    // Clear localStorage keys with app prefixes.
+    // Snapshot keys first to avoid race conditions if another tab
+    // modifies storage during iteration.
     const lsKeysToRemove: string[] = [];
-    for (let i = 0; i < window.localStorage.length; i++) {
+    const lsLen = window.localStorage.length;
+    for (let i = 0; i < lsLen; i++) {
       const key = window.localStorage.key(i);
       if (key && APP_STORAGE_PREFIXES.some((prefix) => key.startsWith(prefix))) {
         lsKeysToRemove.push(key);
@@ -48,9 +51,11 @@ function clearAppStorage(): void {
   }
 
   try {
-    // Clear sessionStorage keys with app prefixes
+    // Clear sessionStorage keys with app prefixes.
+    // Snapshot keys first to avoid race conditions during iteration.
     const ssKeysToRemove: string[] = [];
-    for (let i = 0; i < window.sessionStorage.length; i++) {
+    const ssLen = window.sessionStorage.length;
+    for (let i = 0; i < ssLen; i++) {
       const key = window.sessionStorage.key(i);
       if (key && APP_STORAGE_PREFIXES.some((prefix) => key.startsWith(prefix))) {
         ssKeysToRemove.push(key);
