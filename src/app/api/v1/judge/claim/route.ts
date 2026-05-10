@@ -1,4 +1,5 @@
 import { NextRequest } from "next/server";
+import crypto from "crypto";
 import { safeTokenCompare } from "@/lib/security/timing";
 import { apiSuccess, apiError } from "@/lib/api/responses";
 import { db } from "@/lib/db";
@@ -76,7 +77,22 @@ export async function POST(request: NextRequest) {
     const workerId = parsed.data.workerId ?? null;
     const workerSecret = parsed.data.workerSecret ?? null;
 
-    const rateLimitScope = workerId ?? `ip:${extractClientIp(request.headers) ?? "anonymous"}`;
+    const clientIp = extractClientIp(request.headers);
+    let rateLimitScope: string;
+    if (workerId) {
+      rateLimitScope = workerId;
+    } else if (clientIp) {
+      rateLimitScope = `ip:${clientIp}`;
+    } else {
+      // Fall back to a hash of the Authorization header so different tokens
+      // get different rate-limit buckets. Prevents one token-holder from
+      // exhausting the limit for all unidentifiable workers.
+      const authHeader = request.headers.get("authorization") ?? "";
+      const authHash = authHeader.length > 7
+        ? crypto.createHash("sha256").update(authHeader).digest("hex").slice(0, 16)
+        : "none";
+      rateLimitScope = `auth:${authHash}`;
+    }
     const rateLimitResponse = await consumeUserApiRateLimit(request, rateLimitScope, "judge:claim");
     if (rateLimitResponse) {
       return rateLimitResponse;
@@ -180,8 +196,8 @@ export async function POST(request: NextRequest) {
             s.execution_time_ms AS "executionTimeMs",
             s.memory_used_kb AS "memoryUsedKb",
             s.score,
-            EXTRACT(EPOCH FROM s.judged_at)::integer AS "judgedAt",
-            EXTRACT(EPOCH FROM s.submitted_at)::integer AS "submittedAt"
+            EXTRACT(EPOCH FROM s.judged_at) AS "judgedAt",
+            EXTRACT(EPOCH FROM s.submitted_at) AS "submittedAt"
         ),
         worker_bump AS (
           UPDATE judge_workers
@@ -229,8 +245,8 @@ export async function POST(request: NextRequest) {
           s.execution_time_ms AS "executionTimeMs",
           s.memory_used_kb AS "memoryUsedKb",
           s.score,
-          EXTRACT(EPOCH FROM s.judged_at)::integer AS "judgedAt",
-          EXTRACT(EPOCH FROM s.submitted_at)::integer AS "submittedAt"
+          EXTRACT(EPOCH FROM s.judged_at)::bigint AS "judgedAt",
+          EXTRACT(EPOCH FROM s.submitted_at)::bigint AS "submittedAt"
       `;
 
     // Atomic claim via raw SQL (PostgreSQL). When a worker is provided, the
