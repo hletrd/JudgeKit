@@ -202,6 +202,18 @@ export const authConfig: NextAuthConfig = {
       async authorize(credentials, request) {
         // Recruiting token auth — bypass password flow
         if (typeof credentials?.recruitToken === "string" && credentials.recruitToken.length > 0) {
+          // Validate token format before consuming rate limit attempts.
+          // Recruiting tokens are base64url-encoded random bytes (32 chars).
+          // Rejecting malformed tokens early prevents trivial rate-limit exhaustion.
+          if (!/^[-A-Za-z0-9_]{16,}$/.test(credentials.recruitToken)) {
+            recordLoginEvent({
+              outcome: "invalid_credentials",
+              attemptedIdentifier: "recruitToken",
+              request,
+            });
+            return null;
+          }
+
           const recruitIpKey = getRateLimitKey("login", request.headers);
           if (await consumeRateLimitAttemptMulti(recruitIpKey)) {
             recordLoginEvent({
