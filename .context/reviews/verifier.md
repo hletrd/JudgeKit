@@ -1,55 +1,44 @@
-# Verifier — Cycle 29
+# Verifier Review — Cycle 32
 
-**Date:** 2026-05-09
-**Cycle:** 29 of 100
-**Base commit:** 81c5daa8
-**Current HEAD:** 81c5daa8 (clean working tree)
-
----
-
-## Prior Fixes Verified at HEAD
-
-| Finding | Status | Evidence |
-|---------|--------|----------|
-| C28 localStorage try/catch | FIXED | compiler-client.tsx:186, submission-detail-client.tsx:94 both wrapped |
-| C26-1 LLM prompt sanitization | FIXED | sanitizePromptInput at auto-review.ts:163 |
-| C25-1 Trusted registry boundary | FIXED | docker-image-validation.ts |
-| C25-2 TABLE_MAP typing | FIXED | Record<string, PgTable> at import.ts:20 |
-| C25-3 Stale images concurrency | FIXED | pLimit(5) at images/route.ts:17 |
-| C25-4 Image reference regex | FIXED | client.ts:86-91 |
-| C19-1 Keyboard shortcuts | FIXED | use-keyboard-shortcuts.ts:8-20 |
+**Reviewer:** verifier (manual)
+**Date:** 2026-05-10
+**Scope:** Evidence-based correctness against stated behavior
 
 ---
 
-## New Findings Verified
+## Verification Results
 
-### C29-V-1: Recruiting token regex lacks upper bound
+### Verified: All gates pass
+- eslint: 0 errors
+- tsc --noEmit: passes
+- next build: passes
+- vitest run: 315 files, 2382 tests (all pass)
+- vitest component: 68 files, 208 tests (all pass)
 
-- **File:** `src/lib/auth/config.ts:208`
-- **Severity:** Medium
-- **Confidence:** High
-- **Evidence:**
-  - Regex `/^[-A-Za-z0-9_]{16,}$/` quantifier `{16,}` has no upper bound
-  - JavaScript `RegExp.prototype.test()` allocates the full input string before evaluation
-  - Node.js default max string length is ~512MB (V8 heap limit)
-  - An attacker can POST a multi-megabyte recruitToken before the regex rejects it
-  - The token also flows to `recordLoginEvent({ attemptedIdentifier: "recruitToken" })` — could be logged
-- **Reproduction:** Send a 10MB recruitToken to /api/auth/callback/credentials
-- **Fix:** Change regex to `/^[-A-Za-z0-9_]{16,128}$/`
-
-### C29-V-2: Test infrastructure failure verified
-
-- **File:** `tests/unit/db/export-sanitization.test.ts`
-- **Severity:** Low
-- **Confidence:** High
-- **Evidence:**
-  - Running `vitest run` produces: `Error: DATABASE_URL is required` at src/lib/db/index.ts:36
-  - The test file imports `src/lib/db/export.ts` which imports `src/lib/db/index.ts`
-  - No mock is configured for the db module in this test
-- **Fix:** Mock db or add test DATABASE_URL
+### Verified: Cycle 31 fixes intact
+- compiler-client.tsx error fallback uses only translated strings
+- json-ld.tsx RegExp are module-level constants
 
 ---
 
-## No Regressions Detected
+## Findings Requiring Evidence
 
-All gates pass: eslint (0 errors), tsc --noEmit, next build, vitest component (68/68 files, 208 tests). Unit tests: 314 passed, 1 pre-existing failure.
+### C32-VER-1: [MEDIUM] SSE parser violates ReadableStream contract
+
+**Claim:** transformSSE calls controller.close() after controller.error(), which throws.
+
+**Evidence:** Per WHATWG Streams spec, section 4.2.4 (ReadableStreamDefaultController.close()): "If stream.[[state]] is not "readable", return a TypeError". After controller.error(), the stream state is "errored", so close() must throw.
+
+**File:** `src/lib/plugins/chat-widget/providers.ts:491-495`
+
+**Confidence:** HIGH
+
+### C32-VER-2: [LOW] maxTokens || 1024 treats 0 as falsy
+
+**Claim:** When config.maxTokens is explicitly 0, || falls back to 1024.
+
+**Evidence:** In JavaScript, `0 || 1024` evaluates to `1024`. The nullish coalescing operator `??` only falls back for `null` or `undefined`, not `0`.
+
+**File:** `src/lib/judge/auto-review.ts:186`
+
+**Confidence:** HIGH

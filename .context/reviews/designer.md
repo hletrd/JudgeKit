@@ -1,49 +1,29 @@
-# Designer — Cycle 29
+# Designer Review — Cycle 32
 
-**Date:** 2026-05-09
-**Cycle:** 29 of 100
-**Base commit:** 81c5daa8
-**Current HEAD:** 81c5daa8 (clean working tree)
-
----
-
-## Summary
-
-No new UI/UX findings in cycle 29. The codebase continues to show strong accessibility and design patterns. All prior UX fixes verified.
+**Reviewer:** designer (manual)
+**Date:** 2026-05-10
+**Scope:** UI/UX review
 
 ---
 
-## Verified UI/UX Patterns
+## Findings
 
-- **Accessibility**: ARIA labels present. Keyboard navigation works. Focus trapping implemented.
-- **Responsive**: Pagination and layout adapt appropriately.
-- **Loading/Error States**: Async components handle states. Skeleton loaders used.
-- **Dark/Light Mode**: `next-themes` consistent. No hardcoded colors.
-- **i18n**: All user-facing strings use `next-intl`. Korean letter-spacing compliance verified.
-- **Images**: Accessibility coverage adequate.
-- **Markdown Rendering**: ReactMarkdown with `skipHtml` and `rehypeKatex` `strict: true, maxExpand: 100`.
+### C32-UI-1: [LOW] Hardcoded English strings still present in code-editor.tsx
 
----
+**File:** `src/components/code/code-editor.tsx:36`
 
-## Carry-Forward Findings
+Default prop values remain:
+- `fullscreenLabel = "Fullscreen (F)"`
+- `exitFullscreenLabel = "Exit fullscreen (Esc)"`
+- `exitButtonLabel = "Exit"`
+- `languageFallbackLabel = "Code Editor"`
 
-### UI-26-1: Auto-review output not moderated
-- **File:** `src/lib/judge/auto-review.ts`
-- **Status:** Still present. No content moderation layer.
+These are used in title attributes and aria-labels. Korean users may encounter untranslated English text.
+
+**Status:** Carry-forward from C29 AGG-18 (deferred)
 
 ---
 
-## Prior Fixes Verified
+## No New UI/UX Issues
 
-| Finding | Status |
-|---|---|
-| C16 Chat widget indefinite spinner | FIXED |
-| C16 File upload indefinite progress | FIXED |
-| C14 copy-code-button visual feedback | FIXED |
-| C28 localStorage UX (private browsing) | FIXED |
-
----
-
-## Final Sweep
-
-No missing ARIA attributes, no inaccessible color combinations, no form validation UX gaps.
+The codebase shows strong i18n coverage with next-intl. Most user-facing strings are properly translated.

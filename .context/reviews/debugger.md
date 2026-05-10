@@ -1,44 +1,41 @@
-# Debugger — Cycle 29
+# Debugger Review — Cycle 32
 
-**Date:** 2026-05-09
-**Cycle:** 29 of 100
-**Base commit:** 81c5daa8
-**Current HEAD:** 81c5daa8 (clean working tree)
-
----
-
-## New Findings
-
-### C29-DBG-1: Recruiting token length — unbounded memory allocation before validation
-
-- **File:** `src/lib/auth/config.ts:204-215`
-- **Severity:** Medium
-- **Confidence:** High
-- **Description:** The `credentials?.recruitToken` string is passed to `.test()` with no length check. Node.js must allocate and hold the entire string before regex evaluation. A 100MB token causes 100MB allocation before rejection.
-- **Failure mode:** Memory pressure → potential OOM on constrained instances → denial of service.
-- **Fix:** Add `credentials.recruitToken.length > 128` check before regex, or use `/^[-A-Za-z0-9_]{16,128}$/`.
+**Reviewer:** debugger (manual)
+**Date:** 2026-05-10
+**Scope:** Latent bugs, failure modes, regressions
 
 ---
 
-## Carry-Forward Findings
+## Failure Mode Analysis
 
-### DB-26-1: Transaction wrapper inconsistency
-- **File:** `src/app/api/v1/judge/poll/route.ts:77,136`
-- **Status:** Still present. 9+ cycles deferred.
+### C32-DEBUG-1: [MEDIUM] SSE parser secondary exception masks original error
 
-### C27 findings (Docker inspect, prompt sanitization, DELETE audit)
-- **Status:** Still present.
+**File:** `src/lib/plugins/chat-widget/providers.ts:491-495`
 
----
+**Failure scenario:**
+1. Network error occurs during reader.read()
+2. catch block calls controller.error(networkError)
+3. finally block calls controller.close()
+4. controller.close() throws TypeError because stream is already errored
+5. The TypeError from step 4 becomes the effective exception
+6. Original networkError is lost or masked
 
-## Regressions Checked
+**Impact:** Makes debugging streaming issues harder; the wrong error is propagated.
 
-- Timer cleanup: correct
-- Event listener cleanup: correct
-- AbortController cleanup: correct
-- Stream reader cleanup: correct (chat widget streams have proper releaseLock)
-- Async flow handling: correct
+**Fix:** Remove controller.close() from finally; only call it on the success path.
 
-## Final Sweep
+**Confidence:** HIGH
 
-No new latent bugs in timer handling, event listener management, async flow, or state mutation.
+### C32-DEBUG-2: [LOW] maxTokens=0 silently overridden
+
+**File:** `src/lib/judge/auto-review.ts:186`
+
+**Failure scenario:**
+1. Admin configures chat-widget with maxTokens: 0
+2. Auto-review triggers for an accepted submission
+3. maxTokens is silently overridden to 1024
+4. User receives unexpectedly long (and expensive) AI review
+
+**Fix:** Use ?? instead of ||
+
+**Confidence:** MEDIUM

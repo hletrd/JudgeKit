@@ -1,46 +1,45 @@
-# Critic — Cycle 29
+# Critic Review — Cycle 32
 
-**Date:** 2026-05-09
-**Cycle:** 29 of 100
-**Base commit:** 81c5daa8
-**Current HEAD:** 81c5daa8 (clean working tree)
-
----
-
-## Cross-cutting Findings
-
-### C29-CRIT-1: Recruiting token regex — input validation gap
-
-- **File:** `src/lib/auth/config.ts:208`
-- **Severity:** Medium
-- **Confidence:** High
-- **Summary:** The lack of an upper bound on the recruiting token regex is a classic input validation omission. In a security-critical auth endpoint, every input field should have both lower and upper bounds. The absence creates a trivial DoS vector.
-- **Cross-agent agreement:** Code-reviewer (CR-1), security-reviewer (SEC-1), debugger (implicit via input validation lens)
-
-### C29-CRIT-2: Test infrastructure debt accumulating
-
-- **File:** `tests/unit/db/export-sanitization.test.ts`
-- **Severity:** Low
-- **Confidence:** High
-- **Summary:** The DATABASE_URL test failure has been present for multiple cycles (noted in verifier cycle 27). This represents infrastructure debt that degrades CI reliability and signals incomplete test isolation.
-- **Fix:** Mock DB dependency or add test env configuration.
-
-### C29-CRIT-3: Carry-forward findings growing stale
-
-- **Files:** Multiple (C27-CR-1, C27-CR-2, C27-CR-3, C27-SEC-1, C27-SEC-2, C27-SEC-3)
-- **Severity:** Low
-- **Confidence:** Medium
-- **Summary:** Cycle 27 findings (Docker inspect validation, prompt sanitization gap, DELETE audit gap) remain unaddressed after 2+ cycles. These are low-severity but well-defined fixes that should not accumulate indefinitely.
+**Reviewer:** critic (manual)
+**Date:** 2026-05-10
+**Scope:** Multi-perspective critique of the codebase
 
 ---
 
-## Systemic Strengths
+## Overall Assessment
 
-- Consistent defense-in-depth patterns
-- Good abstraction layers (createApiHandler, rawQuery helpers)
-- Audit logging throughout sensitive operations
-- Parameterized queries prevent SQL injection
+The codebase is in a mature state after 31 review cycles. Most critical issues have been resolved. The remaining surface is primarily low-impact deferred items and edge cases in less-frequently-exercised code paths.
 
-## Final Sweep
+---
 
-No additional architectural or design risks beyond those listed. The codebase maintains strong security posture.
+## New Findings
+
+### C32-CRIT-1: [MEDIUM] ReadableStream lifecycle violation in SSE parser
+
+**File:** `src/lib/plugins/chat-widget/providers.ts:491-495`
+
+From multiple angles:
+- **Correctness:** controller.error() and controller.close() are mutually exclusive per Web Streams spec
+- **Maintainability:** The finally block assumes success; error paths are not explicitly guarded
+- **Testing:** No test coverage for the error path means regressions could go unnoticed
+
+This is the most significant new finding in this cycle.
+
+**Confidence:** HIGH
+
+### C32-CRIT-2: [LOW] Boolean logic confusion in maxTokens fallback
+
+**File:** `src/lib/judge/auto-review.ts:186`
+
+Using `||` where `??` is semantically correct is a common JavaScript pitfall. While `maxTokens: 0` is an edge case, the pattern suggests the developer may not be fully aware of the distinction.
+
+**Confidence:** MEDIUM
+
+---
+
+## Positive Observations
+
+- Strong TypeScript discipline with no `as any` casts
+- Comprehensive error handling in API layer
+- Proper resource cleanup (AbortController, timers, event listeners)
+- Well-documented code with clear intent comments

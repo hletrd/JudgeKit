@@ -1,49 +1,35 @@
-# Architect — Cycle 29
+# Architecture Review — Cycle 32
 
-**Date:** 2026-05-09
-**Cycle:** 29 of 100
-**Base commit:** 81c5daa8
-**Current HEAD:** 81c5daa8 (clean working tree)
-
----
-
-## New Findings
-
-### C29-ARCH-1: Recruiting token validation — missing bounded input architecture
-
-- **File:** `src/lib/auth/config.ts:208`
-- **Severity:** Medium
-- **Confidence:** High
-- **Description:** The auth layer lacks a centralized input validation utility with bounds checking. Each endpoint defines its own validation ad-hoc. The recruiting token regex omission is a symptom of this architectural gap.
-- **Recommendation:** Consider a `BoundedString` schema helper or centralized input size limits (e.g., max 4096 bytes for any credential field) applied before route handlers.
-
----
-
-## Carry-Forward Findings
-
-### AR-26-1: Transaction wrapper inconsistency
-- **File:** `src/app/api/v1/judge/poll/route.ts:77,136`
-- **Status:** Still present. 9+ cycles deferred.
-
-### C27 findings
-- **Status:** Still present (Docker inspect, prompt sanitization, DELETE audit).
+**Reviewer:** architect (manual)
+**Date:** 2026-05-10
+**Scope:** Design risks, coupling, layering, maintainability
 
 ---
 
 ## Verified Architecture
 
-- **API Layer:** `createApiHandler` middleware stack intact
-- **Database Layer:** Drizzle ORM with raw query helpers. Parameterization verified.
-- **Auth Layer:** JWT + cookie. Token invalidation verified.
-- **Judge Layer:** Atomic claim via CTE with SKIP LOCKED. Proper.
-- **Client Layer:** apiFetch/apiFetchJson wrappers intact.
+- createApiHandler adoption is comprehensive (219 references vs 104 route files)
+- Chat provider abstraction is clean (openai/claude/gemini unified interface)
+- Auto-review is properly decoupled from judge pipeline (errors don't affect judging)
+- SSE abstraction (transformSSE) provides reusable streaming text extraction
 
-## Coupling Check
+---
 
-- No circular dependencies
-- Clean separation between API routes and business logic
-- Rust/TS interop clean
+## New Findings
 
-## Final Sweep
+### C32-ARCH-1: [MEDIUM] SSE parser has incorrect lifecycle management
 
-No new architectural risks.
+**File:** `src/lib/plugins/chat-widget/providers.ts:444-498`
+
+**Problem:** The transformSSE function is a reusable abstraction for streaming text from SSE responses. However, its internal ReadableStream lifecycle management has a bug where controller.close() is called after controller.error() in the finally block. This breaks the abstraction's contract — consumers expect either a clean close or an error, not a cascading failure.
+
+**Fix:** Remove controller.close() from finally; call it only on successful completion in the try block.
+
+**Confidence:** HIGH
+
+---
+
+## Carry-Forward
+
+- 15 routes still bypass createApiHandler (deferred from C29)
+- Admin settings exposes DB host/port (deferred from C29)

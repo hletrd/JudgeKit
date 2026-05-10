@@ -1,48 +1,43 @@
-# Tracer — Cycle 29
+# Tracer Review — Cycle 32
 
-**Date:** 2026-05-09
-**Cycle:** 29 of 100
-**Base commit:** 81c5daa8
-**Current HEAD:** 81c5daa8 (clean working tree)
-
----
-
-## Findings
-
-### C29-TR-1: Recruiting token auth flow — unbounded input before validation
-
-- **Entry:** `src/lib/auth/config.ts:204-215`
-- **Flow:**
-  1. Client POSTs to `/api/auth/callback/credentials` with recruitToken
-  2. `authorize()` receives credentials object
-  3. `credentials.recruitToken` accessed with only `typeof` and length > 0 checks
-  4. Regex `/^[-A-Za-z0-9_]{16,}$/` executed on unbounded string
-  5. String allocation happens before regex can reject
-  6. If token passes regex, rate limit consumed
-  7. `authorizeRecruitingToken()` called with full string
-  8. Token flows to `redeemRecruitingToken()` → DB query
-- **Root Cause:** No length guard before regex. Input validation should have bounds.
-- **Fix:** Add upper bound to regex or explicit length check.
+**Reviewer:** tracer (manual)
+**Date:** 2026-05-10
+**Scope:** Causal tracing of suspicious flows
 
 ---
 
-## Verified Safe Flows
+## Traced Flow: SSE Parser Error Path
 
-### Judge Claim Flow
-- Atomic CTE with SKIP LOCKED prevents race conditions
-- Worker capacity check before claim
-- Token comparison uses timing-safe compare
+**File:** `src/lib/plugins/chat-widget/providers.ts:444-498`
 
-### Chat Widget Flow
-- Double DB query pattern is intentional (least-privilege decryption)
-- Stream cleanup verified: reader.releaseLock() in finally blocks
-- Abort signal handled via apiFetch timeout
+**Flow:**
+1. Gemini/OpenAI/Claude provider.stream() calls transformSSE()
+2. transformSSE creates a new ReadableStream with start(controller)
+3. start() creates a reader from the upstream body
+4. In the loop, reader.read() may throw (network error, abort, etc.)
+5. Error propagates to catch block → controller.error(err)
+6. finally runs → reader.releaseLock() → controller.close()
+7. controller.close() throws because stream is in "errored" state
 
-### Auth Flow
-- Session creation uses DB server time (avoids clock skew)
-- Token invalidation check verified
-- Rate limiting on both IP and username
+**Root cause:** The finally block unconditionally calls controller.close() without checking if the stream has already been errored.
 
-## Final Sweep
+**Cross-file impact:** This affects all three providers (openai, claude, gemini) since they all use transformSSE().
 
-No additional suspicious flows identified.
+**Confidence:** HIGH
+
+---
+
+## Traced Flow: Auto-review maxTokens
+
+**File:** `src/lib/judge/auto-review.ts:186`
+
+**Flow:**
+1. Plugin config is parsed via Zod schema (chatWidgetConfigSchema)
+2. config.maxTokens is extracted from parsed config
+3. Provider.chatWithTools() is called with maxTokens: config.maxTokens || 1024
+4. If config.maxTokens is 0, JavaScript evaluates 0 || 1024 → 1024
+5. The provider receives 1024 instead of 0
+
+**Root cause:** || treats 0 as falsy; ?? is the correct operator.
+
+**Confidence:** HIGH

@@ -1,44 +1,21 @@
-# Document Specialist — Cycle 29
+# Document Specialist Review — Cycle 32
 
-**Date:** 2026-05-09
-**Cycle:** 29 of 100
-**Base commit:** 81c5daa8
-**Current HEAD:** 81c5daa8 (clean working tree)
-
----
-
-## New Findings
-
-### C29-DOC-1: Recruiting token validation comment documents intent but regex is incomplete
-
-- **File:** `src/lib/auth/config.ts:205-207`
-- **Severity:** Low
-- **Confidence:** High
-- **Summary:** The comment states "Recruiting tokens are base64url-encoded random bytes (32 chars)" but the regex `/^[-A-Za-z0-9_]{16,}$/` does not enforce the 32-char length mentioned in the comment. The mismatch between documented expectation (32 chars) and implemented validation (16+ chars) could cause confusion.
-- **Fix:** Update comment to reflect the actual validation rule, or align regex with comment.
+**Reviewer:** document-specialist (manual)
+**Date:** 2026-05-10
+**Scope:** Doc/code mismatches
 
 ---
 
-## Carry-Forward Findings
+## Findings
 
-### DS-1: apiFetch documentation promises timeout safety
-- **File:** `src/lib/api/client.ts:74-90`
-- **Status:** Still present. Documentation still implies universal timeout protection.
+### C32-DOC-1: [LOW] JSDoc on parseApiResponse is accurate and helpful
+
+The JSDoc at `src/lib/api/client.ts:25-101` correctly documents the `.json()` before `.ok` anti-pattern and provides clear usage examples. Documentation matches implementation.
+
+### C32-DOC-2: [LOW] auto-review.ts comments are thorough
+
+The auto-review file has extensive inline comments explaining design decisions (queue size limits, source code size caps, UTF-8 byte length rationale). Documentation matches implementation.
 
 ---
 
-## Verified Documentation Accuracy
-
-| Topic | Status |
-|---|---|
-| AGENTS.md language table | Accurate |
-| CLAUDE.md deployment rules | Current and accurate |
-| API route auth documentation | Accurate |
-| Docker build instructions | Accurate |
-| Environment variable docs | Accurate |
-| Judge claim SQL comments | Accurate — explain CTE and SKIP LOCKED |
-| Chat widget least-privilege comment | Accurate — references C12-2 |
-
-## Final Sweep
-
-No stale TODO comments, no outdated instructions, no mismatched type signatures.
+## No Doc/Code Mismatches Found

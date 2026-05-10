@@ -1,61 +1,89 @@
-# Code Reviewer — Cycle 29
+# Code Review — Cycle 32
 
-**Date:** 2026-05-09
-**Cycle:** 29 of 100
-**Base commit:** 81c5daa8
-**Current HEAD:** 81c5daa8 (clean working tree)
+**Reviewer:** code-reviewer (manual)
+**Date:** 2026-05-10
+**Scope:** Code quality, logic correctness, maintainability
+
+---
+
+## Verified Fixes from Prior Cycles
+
+All cycle 31 fixes confirmed intact:
+- `compiler-client.tsx:268` no longer uses `res.statusText`
+- `json-ld.tsx:13-14` RegExp objects are module-level constants
+- All gates pass (eslint, tsc, next build, vitest unit + component)
 
 ---
 
 ## New Findings
 
-### C29-CR-1: Recruiting token regex lacks upper bound — DoS vector
+### C32-CODE-1: [MEDIUM] SSE parser calls controller.close() after controller.error()
 
-- **File:** `src/lib/auth/config.ts:208`
-- **Severity:** Medium
-- **Confidence:** High
-- **Summary:** The regex `/^[-A-Za-z0-9_]{16,}$/` validates recruiting token format before rate-limit consumption. It has a lower bound of 16 but no upper bound. An attacker can send an arbitrarily long token (e.g., 10MB) causing memory pressure and potential ReDoS before rejection. The token is also used in `recordLoginEvent` attemptedIdentifier.
-- **Fix:** Add upper bound: `/^[-A-Za-z0-9_]{16,128}$/`.
+**File:** `src/lib/plugins/chat-widget/providers.ts:491-495`
 
-### C29-CR-2: Test infrastructure failure — DATABASE_URL required
+The `transformSSE` function has a try/catch/finally structure:
 
-- **File:** `tests/unit/db/export-sanitization.test.ts`
-- **Severity:** Low
-- **Confidence:** High
-- **Summary:** Test fails with `DATABASE_URL is required` when run without environment variables. The test imports db-dependent modules at top level rather than mocking them.
-- **Fix:** Mock the db module or configure test DATABASE_URL in vitest config.
+```typescript
+try {
+  while (true) {
+    const { done, value } = await reader.read();
+    // ...
+  }
+  // ...
+} catch (err) {
+  controller.error(err);     // line 492
+} finally {
+  reader.releaseLock();
+  controller.close();        // line 495
+}
+```
 
-### C29-CR-3: `startRateLimitEviction` race condition
+**Problem:** `ReadableStreamDefaultController.error()` and `.close()` are mutually exclusive. Once `error()` transitions the stream to the "errored" state, calling `close()` throws a `TypeError: "Cannot close a stream that has already been closed or errored"`. This unhandled exception in the finally block can mask the original error and potentially cause issues for consumers of the stream.
 
-- **File:** `src/lib/security/rate-limit.ts:70-81`
-- **Severity:** Low
-- **Confidence:** Low
-- **Summary:** Two concurrent calls could both pass `if (evictionTimer) return` before either assigns, creating duplicate timers. Theoretical in Node.js module scope but worth guarding.
-- **Fix:** Use a once-flag or atomic initialization pattern.
+**Fix:** Guard the `controller.close()` call with a flag, or move `controller.close()` into the try block before the catch (after the successful loop), and omit it from finally:
+
+```typescript
+let streamClosed = false;
+try {
+  // ... loop ...
+  if (!streamClosed) {
+    streamClosed = true;
+    controller.close();
+  }
+} catch (err) {
+  controller.error(err);
+} finally {
+  reader.releaseLock();
+}
+```
+
+**Confidence:** HIGH
 
 ---
 
-## Carry-Forward Findings (no change at HEAD)
+### C32-CODE-2: [LOW] maxTokens fallback uses || instead of ??
 
-### C27-CR-1: Stale Docker image detection silently skipped
-- **File:** `src/app/api/v1/admin/docker/images/route.ts:30`
-- **Status:** Still present. `info.Created as string` lacks runtime validation.
+**File:** `src/lib/judge/auto-review.ts:186`
 
-### C27-CR-2: Prompt sanitization regex misses empty injection markers
-- **File:** `src/lib/judge/prompt-sanitization.ts:12`
-- **Status:** Still present. `<<>>` not matched.
+```typescript
+maxTokens: config.maxTokens || 1024,
+```
 
-### C27-CR-3: DELETE handler audit gap
-- **File:** `src/app/api/v1/admin/docker/images/route.ts:129-135`
-- **Status:** Still present. No audit event for rejected DELETE.
+**Problem:** The `||` operator treats `0` as falsy. Some LLM providers support `maxTokens: 0` to indicate unconstrained generation length. If a user explicitly configures `maxTokens: 0`, this code incorrectly falls back to `1024`.
+
+**Fix:** Use nullish coalescing:
+```typescript
+maxTokens: config.maxTokens ?? 1024,
+```
+
+**Confidence:** HIGH
 
 ---
 
-## Prior Fixes Verified at HEAD
+## No Other Issues Found
 
-| Finding | Status | Evidence |
-|---------|--------|----------|
-| C28-1 localStorage try/catch | FIXED | compiler-client.tsx:186, submission-detail-client.tsx:94 |
-| C28-2 localStorage try/catch | FIXED | Both files now wrapped |
-| C26-1 LLM prompt sanitization | FIXED | sanitizePromptInput active |
-| C25-1 Trusted registry boundary | FIXED | docker-image-validation.ts |
+- All JSON.parse calls have try/catch guards
+- All fetch calls have AbortSignal timeout
+- Event listeners have proper cleanup
+- No `eval()` or `Function()` constructor usage
+- No shell injection vectors
