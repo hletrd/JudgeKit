@@ -96,7 +96,9 @@ describe("source-grep test inventory", () => {
     //   - tests/unit/rate-limit-eviction-timer.test.ts
     //   - tests/unit/server-actions-origin.test.ts
     //   - tests/unit/proxy-error-handling.test.ts
-    const DOCUMENTED_BASELINE = 132;
+    // Bumped 132 → 133 in cycle 35 (2026-05-09):
+    //   - tests/unit/api/import-sunset-headers.route.test.ts
+    const DOCUMENTED_BASELINE = 133;
     expect(sourceGrepFiles.length).toBe(DOCUMENTED_BASELINE);
   });
 
