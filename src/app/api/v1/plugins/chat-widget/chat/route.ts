@@ -112,7 +112,11 @@ function buildLoggedStreamingResponse(options: {
         controller.error(error);
       } finally {
         reader.releaseLock();
-        await options.persistAssistantMessage(completed ? "complete" : "partial");
+        try {
+          await options.persistAssistantMessage(completed ? "complete" : "partial");
+        } catch {
+          // Persistence failure must not crash the stream
+        }
       }
     },
   });
@@ -396,16 +400,20 @@ export const POST = createApiHandler({
             controller.error(error);
           } finally {
             reader.releaseLock();
-            await persistChatMessage({
-              userId: user.id,
-              sessionId,
-              role: "assistant",
-              content: assistantContent,
-              completionStatus: streamCompleted ? "complete" : (assistantContent ? "partial" : "error"),
-              problemId: context?.problemId ?? null,
-              model,
-              provider: config.provider,
-            });
+            try {
+              await persistChatMessage({
+                userId: user.id,
+                sessionId,
+                role: "assistant",
+                content: assistantContent,
+                completionStatus: streamCompleted ? "complete" : (assistantContent ? "partial" : "error"),
+                problemId: context?.problemId ?? null,
+                model,
+                provider: config.provider,
+              });
+            } catch {
+              // Persistence failure must not crash the stream
+            }
           }
         },
       });
@@ -506,16 +514,20 @@ export const POST = createApiHandler({
           controller.error(error);
         } finally {
           reader.releaseLock();
-          await persistChatMessage({
-            userId: user.id,
-            sessionId,
-            role: "assistant",
-            content: assistantContent,
-            completionStatus: finalStreamCompleted ? "complete" : (assistantContent ? "partial" : "error"),
-            problemId: context?.problemId ?? null,
-            model,
-            provider: config.provider,
-          });
+          try {
+            await persistChatMessage({
+              userId: user.id,
+              sessionId,
+              role: "assistant",
+              content: assistantContent,
+              completionStatus: finalStreamCompleted ? "complete" : (assistantContent ? "partial" : "error"),
+              problemId: context?.problemId ?? null,
+              model,
+              provider: config.provider,
+            });
+          } catch {
+            // Persistence failure must not crash the stream
+          }
         }
       },
     });
