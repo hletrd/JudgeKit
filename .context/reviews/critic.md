@@ -1,52 +1,55 @@
-# Critic Review — Cycle 33
+# Critic Review — Cycle 34
 
 **Reviewer:** critic
 **Date:** 2026-05-10
-**Scope:** Multi-perspective critique of client-side code patterns
+**Scope:** Multi-perspective critique of codebase patterns and conventions
 
 ---
 
 ## Findings
 
-### C33-CT-1: [MEDIUM] throw-then-match anti-pattern persists despite explicit documentation against it
+### C34-CT-1: [MEDIUM] `apiFetchJson` silence on parse failures is a developer experience regression
 
-**Files:** Multiple client components
+**File:** `src/lib/api/client.ts:138-144`
 **Confidence:** HIGH
 
-The `src/lib/api/client.ts` file contains extensive documentation (lines 24-73) explaining why the throw-then-match pattern is dangerous and providing the correct pattern. Yet 20+ components still use `throw new Error(data.error ?? "...")` immediately after `.json()`.
+The codebase invests heavily in developer experience: excellent inline documentation, typed APIs, and clear error conventions. Yet `apiFetchJson` — the most commonly used API utility — gives zero feedback when JSON parsing fails. A developer debugging why their component shows fallback data instead of server data must manually add logging or use browser devtools network panel.
 
-This is a process/code-culture issue: documentation alone is insufficient when the anti-pattern is easier to write than the correct pattern.
+This contradicts the module's own stated principle: "Never silently swallow errors."
 
-**Fix:** Consider an ESLint rule or a wrapper that makes the correct pattern the path of least resistance.
-
----
-
-### C33-CT-2: [LOW] Error boundaries log to console unconditionally
-
-**Files:** `src/app/*/error.tsx` (4 files)
-**Confidence:** MEDIUM
-
-Error boundaries in production should not log to console.error. These are user-facing error UI components, not debugging tools. The digest hash leaked to console could expose internal routing or implementation details.
-
-**Fix:** Gate all error boundary console.error behind NODE_ENV check.
+**Fix:** One-line development-only console.warn.
 
 ---
 
-### C33-CT-3: [LOW] apiFetchJson type narrowing is awkward
+### C34-CT-2: [MEDIUM] Rate limit eviction timer is an uncontrolled side effect at module level
 
-**File:** `src/lib/api/client.ts`
+**File:** `src/lib/security/rate-limit.ts:68-80`
+**Confidence:** HIGH
+
+Module-level side effects (timers, global listeners) are generally discouraged because they violate testability and composability. The rate limit eviction timer is started by whoever calls `startRateLimitEviction()` but cannot be stopped. This is a one-way door.
+
+**Fix:** Export symmetric stop function.
+
+---
+
+### C34-CT-3: [LOW] Heartbeat scheduling in anti-cheat monitor is wasteful when tab is hidden
+
+**File:** `src/components/exam/anti-cheat-monitor.tsx:185-191`
 **Confidence:** LOW
 
-The `{ ok: true; data: T } | { ok: false; data: T }` return type forces callers to destructure then check `ok`, but `data` is available in both branches. This is confusing — why return data on error?
+A hidden tab does not need heartbeat scheduling. The current implementation schedules 960+ no-op callbacks over an 8-hour hidden period. While not a bug, it is unnecessary work that accumulates.
 
-The design intent (providing parsed error body) is reasonable, but the ergonomics could be improved with a result type or optional chaining.
-
-**Fix:** Consider `Result<T, ErrorInfo>` pattern or at least document why data is returned on error.
+**Fix:** Gate reschedule on visibility.
 
 ---
 
 ## Cross-Agent Agreement
 
-- Timer leak in submission-list-auto-refresh: confirmed by code-reviewer, debugger, verifier
-- apiFetchJson fetch error handling: confirmed by code-reviewer, security-reviewer, verifier
-- Error boundary console.error: confirmed by security-reviewer, critic
+- Rate limit timer leak: confirmed by code-reviewer, perf-reviewer, test-engineer, architect, debugger, verifier
+- apiFetchJson parse silence: confirmed by code-reviewer, security-reviewer, architect, debugger, verifier
+
+## Previously Addressed (cycle 33)
+
+- C33-CT-1 (throw-then-match anti-pattern): Partially addressed — many components still use it
+- C33-CT-2 (error boundary console.error): **FIXED** — all 4 files gated
+- C33-CT-3 (apiFetchJson type narrowing): Unchanged

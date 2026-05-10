@@ -1,152 +1,105 @@
-# Aggregate Review — Cycle 33
+# Aggregate Review — Cycle 34
 
 **Date:** 2026-05-10
-**Cycle:** 33 of 100
+**Cycle:** 34 of 100
 **Reviewers:** code-reviewer, security-reviewer, perf-reviewer, test-engineer, architect, debugger, verifier, critic, tracer, document-specialist
-**Total findings:** 7 new (3 MEDIUM, 4 LOW) + 11 carried deferred re-validated
+**Total findings:** 3 new (2 MEDIUM, 1 LOW) + 8 deferred items re-validated
 
 ---
 
 ## Deduplicated Findings (sorted by severity)
 
-### AGG-1: [MEDIUM] Timer leak in submission-list-auto-refresh on unmount during initial tick
+### AGG-1: [MEDIUM] `apiFetchJson` silently swallows JSON parse failures in development
 
-**Sources:** C33-CR-1, C33-DB-2, C33-TR-1, C33-PR-1 | **Confidence:** HIGH
-**File:** `src/components/submission-list-auto-refresh.tsx:60-77`
+**Sources:** C34-CR-1, C34-SR-1, C34-DB-3, C34-VR-1, C34-CT-1, C34-TR-2, C34-DS-1 | **Confidence:** HIGH
+**File:** `src/lib/api/client.ts:138-144`
 
-The `start()` function awaits `tick()` (which includes an async fetch) then calls `scheduleNext()`. If the component unmounts during `tick()`, cleanup sets `timerRef.current = null`, but after `tick()` completes, `scheduleNext()` still executes and sets a new timer that will never be cleared.
+When `res.json()` throws (non-JSON body, malformed JSON), `apiFetchJson` silently catches the error and returns the fallback value. In development, this makes debugging impossible — developers cannot distinguish between network errors, server misconfigurations returning HTML, or actual data issues.
 
-**Failure scenario:** User navigates away during initial poll. A leaked timer continues calling `router.refresh()` indefinitely, causing unnecessary server load and React reconciliation.
+**Failure scenario:** A new API endpoint accidentally returns HTML due to middleware misconfiguration. The client shows fallback data with no indication of what went wrong. Developer wastes time debugging client-side state when the issue is server-side.
 
-**Fix:** Add a mounted ref check before scheduling:
+**Fix:** Add development-only warning:
 ```typescript
-const mountedRef = useRef(true);
-useEffect(() => {
-  mountedRef.current = true;
-  async function start() {
-    await tick();
-    if (mountedRef.current) scheduleNext();
+} catch {
+  if (process.env.NODE_ENV === "development") {
+    console.warn("apiFetchJson: JSON parse failed for", input, "status:", res.status);
   }
-  void start();
-  return () => { mountedRef.current = false; /* existing cleanup */ };
-}, [...]);
-```
-
-**Cross-agent agreement:** 4 agents flagged this. HIGH confidence.
-
----
-
-### AGG-2: [MEDIUM] apiFetchJson does not handle fetch() throwing
-
-**Sources:** C33-CR-2, C33-SR-4, C33-VR-1, C33-DS-1 | **Confidence:** HIGH
-**File:** `src/lib/api/client.ts:126-144`
-
-The `apiFetchJson` helper documents itself as a "safe wrapper" that eliminates common footguns, but if `fetch()` itself throws (network failure, CORS, DNS error), the exception propagates unhandled. Only `res.json()` throwing is caught.
-
-**Failure scenario:** Network interruption during API call causes unhandled exception instead of graceful fallback.
-
-**Fix:** Wrap the `apiFetch` call in try/catch:
-```typescript
-export async function apiFetchJson<T = unknown>(input, init, fallback) {
-  let res: Response;
-  try {
-    res = await apiFetch(input, init);
-  } catch {
-    return { ok: false, data: fallback };
-  }
-  // ...existing parse logic...
+  data = fallback;
 }
 ```
 
-**Cross-agent agreement:** 4 agents flagged this. HIGH confidence.
+**Cross-agent agreement:** 7 agents flagged this. HIGH confidence.
 
 ---
 
-### AGG-3: [MEDIUM] Ungated console.error in error boundaries
+### AGG-2: [MEDIUM] Rate limit eviction timer has no cleanup function
 
-**Sources:** C33-SR-1, C33-CT-2 | **Confidence:** HIGH
-**Files:**
-- `src/app/(dashboard)/dashboard/admin/error.tsx:19`
-- `src/app/(public)/problems/error.tsx:20`
-- `src/app/(public)/groups/error.tsx:20`
-- `src/app/(public)/contests/manage/error.tsx:22`
+**Sources:** C34-CR-2, C34-PR-1, C34-TE-1, C34-AR-1, C34-DB-1, C34-VR-2, C34-CT-2, C34-TR-1, C34-DS-2 | **Confidence:** HIGH
+**File:** `src/lib/security/rate-limit.ts:68-80`
 
-Error boundary components have `console.error` calls that are NOT gated behind `process.env.NODE_ENV === "development"`. In production, these could leak internal error details including Next.js digest hashes.
+`startRateLimitEviction()` creates a `setInterval` stored in a module-level variable with no corresponding stop function. This causes open handle warnings in test environments and prevents clean process shutdown.
 
-**Fix:** Gate all error boundary console.error calls:
+**Failure scenario:** Vitest runs with `--detectOpenHandles` and reports an unref'd timer originating from rate-limit.ts. CI fails or developers ignore the warning, masking real leaks.
+
+**Fix:** Export `stopRateLimitEviction()`:
 ```typescript
-if (process.env.NODE_ENV === "development") {
-  console.error("[problems-error-boundary]", error);
+export function stopRateLimitEviction() {
+  if (evictionTimer) {
+    clearInterval(evictionTimer);
+    evictionTimer = null;
+  }
 }
 ```
 
----
-
-### AGG-4: [LOW] export-button missing request cancellation
-
-**Sources:** C33-CR-3, C33-DB-3 | **Confidence:** MEDIUM
-**File:** `src/components/contest/export-button.tsx:14-43`
-
-Large contest exports could take significant time. There is no AbortController to cancel in-flight requests if the user navigates away or clicks the other export button.
-
-**Fix:** Add AbortController support and revoke blob URL properly.
+**Cross-agent agreement:** 9 agents flagged this. HIGH confidence.
 
 ---
 
-### AGG-5: [LOW] contests layout queries DOM elements that may not exist
+### AGG-3: [LOW] `anti-cheat-monitor` heartbeat reschedules while tab is hidden
 
-**Sources:** C33-CR-4, C33-AR-2 | **Confidence:** MEDIUM
-**File:** `src/app/(public)/contests/manage/layout.tsx:42-45`
+**Sources:** C34-PR-2, C34-VR-3, C34-CT-3, C34-DS-3 | **Confidence:** MEDIUM
+**File:** `src/components/exam/anti-cheat-monitor.tsx:185-191`
 
-The layout queries `document.getElementById("main-content")` and `document.querySelector("[data-slot='sidebar']")` in useEffect. These elements may not exist during initial render. The TODO lacks an upstream issue link for tracking removal.
+The heartbeat timer callback skips sending events when the document is hidden, but unconditionally calls `scheduleHeartbeat()` to reschedule. Over an 8-hour hidden tab, this creates ~960 no-op timer callbacks.
 
-**Fix:** Add null checks and specific GitHub issue reference in TODO.
+**Failure scenario:** Student opens exam, switches to research reference material, leaves tab hidden for hours. Heartbeat timers accumulate unnecessarily. Low impact but wasteful.
 
----
-
-### AGG-6: [LOW] sign-out storage iteration race condition
-
-**Sources:** C33-CR-5, C33-DB-4, C33-TR-2 | **Confidence:** LOW
-**File:** `src/lib/auth/sign-out.ts:37-44`
-
-The for loop iterates over `window.localStorage.length` and accesses `key(i)`. If another tab modifies localStorage during iteration, indices shift and some keys may be skipped.
-
-**Fix:** Snapshot keys first:
+**Fix:** Gate reschedule on visibility:
 ```typescript
-const keys = Array.from({ length: window.localStorage.length }, (_, i) =>
-  window.localStorage.key(i)
-).filter((k): k is string => k !== null);
+if (document.visibilityState === "visible") {
+  await reportEventRef.current("heartbeat");
+}
+if (document.visibilityState === "visible") {
+  scheduleHeartbeat();
+}
 ```
 
----
-
-### AGG-7: [LOW] Test coverage gaps for timer/async components
-
-**Sources:** C33-TE-1, C33-TE-2, C33-TE-3 | **Confidence:** MEDIUM
-
-- `submission-list-auto-refresh.tsx`: no tests for timer logic, backoff, cleanup
-- `export-button.tsx`: no tests for blob download, filename extraction
-- `apiFetchJson`: no tests for network failures, non-JSON responses
-
-**Fix:** Add unit tests for these components.
+**Cross-agent agreement:** 4 agents flagged this. MEDIUM confidence.
 
 ---
 
-## Previously Fixed Findings (none this cycle — working tree was clean)
+## Previously Fixed Findings (cycles 30-33)
 
-## Carried Deferred Items (unchanged)
+- C33-AGG-1 (timer leak): **FIXED** — `mountedRef` guard in submission-list-auto-refresh
+- C33-AGG-2 (apiFetchJson fetch throw): **FIXED** — try/catch around `apiFetch` call
+- C33-AGG-3 (ungated console.error): **FIXED** — all error boundaries gated behind `NODE_ENV === "development"`
+- C33-AGG-4 (export-button AbortController): **FIXED** — `abortRef` and `blobUrlRef` with cleanup
+- C33-AGG-5 (contests layout TODO): **FIXED** — upstream issue link added
+- C33-AGG-6 (sign-out race condition): **FIXED** — keys snapshotted before iteration
 
-- C-1: Test/Seed localhost check spoofable — CRITICAL
-- C-2: Accepted solutions endpoint unauthenticated — CRITICAL
-- C-3: File DELETE CSRF ordering — CRITICAL
-- H-1: SSE result visibility bypass — HIGH
-- H-2: Problem-Set PATCH bypasses createApiHandler — HIGH
-- H-3: Overrides route doesn't use createApiHandler — HIGH
-- H-4: In-memory rate limiter for judge claims — HIGH
-- H-5: Accepted solutions exposes userId for anonymous — HIGH
-- DEFER-C30-4: `.json()` before `.ok` in non-critical components — MEDIUM
-- DEFER-C30-5: Raw API error strings without i18n — MEDIUM
-- DEFER-C30-6: `as { error?: string }` unsafe type assertions — MEDIUM
+## Carried Deferred Items (re-validated)
+
+- C-1: Test/Seed localhost check spoofable — **STILL PRESENT** — CRITICAL (X-Forwarded-For processing allows spoofing with TRUSTED_PROXY_HOPS=1)
+- C-2: Accepted solutions endpoint unauthenticated — **FIXED** — requires `auth: true`
+- C-3: File DELETE CSRF ordering — **FIXED** — auth before CSRF with API key bypass
+- H-1: SSE result visibility bypass — Needs re-check (no SSE routes found in current scan)
+- H-2: Problem-Set PATCH bypasses createApiHandler — **FIXED** — uses `createApiHandler`
+- H-3: Overrides route doesn't use createApiHandler — Needs re-check
+- H-4: In-memory rate limiter for judge claims — **FIXED** — DB-backed only
+- H-5: Accepted solutions exposes userId for anonymous — **FIXED** — properly anonymizes
+- DEFER-C30-4: `.json()` before `.ok` in non-critical components — Still present in docker client but wrapped in try/catch (safe)
+- DEFER-C30-5: Raw API error strings without i18n — Still present in many client components
+- DEFER-C30-6: `as { error?: string }` unsafe type assertions — Still present in ~15 instances
 
 ## No Agent Failures
 

@@ -1,84 +1,78 @@
-# Security Review — Cycle 33
+# Security Review — Cycle 34
 
 **Reviewer:** security-reviewer
 **Date:** 2026-05-10
-**Scope:** Client-side security, auth flows, XSS, CSRF, data exposure
+**Scope:** Auth flows, API security, rate limiting, data exposure
 
 ---
 
 ## Findings
 
-### C33-SR-1: [MEDIUM] Ungated console.error in error boundaries leak server errors
+### C34-SR-1: [MEDIUM] `apiFetchJson` parse failures silently swallowed
 
-**File:** Multiple error.tsx files
+**File:** `src/lib/api/client.ts:138-144`
 **Confidence:** HIGH
 
-Error boundary components across the app (`src/app/(dashboard)/dashboard/admin/error.tsx:19`, `src/app/(public)/problems/error.tsx:20`, `src/app/(public)/groups/error.tsx:20`, `src/app/(public)/contests/manage/error.tsx:22`) have `console.error` calls that are NOT gated behind `process.env.NODE_ENV === "development"`. In production, these could leak internal error details including Next.js digest hashes and error messages to the browser console.
+When `res.json()` throws (non-JSON body), `apiFetchJson` silently falls back to the fallback value with no logging. In development, this makes debugging JSON parse errors impossible — developers cannot distinguish between a network error, a server 500 returning HTML, or actual malformed JSON.
 
-**Fix:** Gate all error boundary console.error calls:
+This was raised in cycle 33 (C33-SR-4) but not yet addressed.
+
+**Fix:** Add development-only `console.warn` in the catch block, citing the endpoint URL and HTTP status.
+
+---
+
+### C34-SR-2: [LOW] `extractClientIp` localhost spoofing still present
+
+**File:** `src/lib/security/ip.ts:39-74`
+**Confidence:** HIGH
+
+The X-Forwarded-For processing at line 54-59:
+
 ```typescript
-if (process.env.NODE_ENV === "development") {
-  console.error("[problems-error-boundary]", error);
+const clientIndex = Math.max(0, parts.length - (TRUSTED_PROXY_HOPS + 1));
+const candidate = parts[clientIndex];
+```
+
+With `TRUSTED_PROXY_HOPS=1` (default), a client sending `X-Forwarded-For: 127.0.0.1` results in nginx appending the real IP: `127.0.0.1, <real_ip>`. The function returns `parts[0]` = `127.0.0.1`, bypassing the localhost check in `test/seed/route.ts`.
+
+**Status:** CRITICAL deferred item C-1, still present. Requires infrastructure-level fix (nginx config to strip untrusted XFF).
+
+---
+
+### C34-SR-3: [LOW] Rate limit key falls back to `"unknown"` when IP extraction fails
+
+**File:** `src/lib/security/rate-limit.ts:46-47`
+**Confidence:** MEDIUM
+
+```typescript
+export function getRateLimitKey(action: string, headers: Headers) {
+  return `${action}:${extractClientIp(headers) ?? "unknown"}`;
 }
 ```
 
----
+When `extractClientIp` returns `null` (no XFF in production), all requests from different clients share the `"unknown"` rate limit bucket. A single attacker can exhaust the limit for all users behind the same condition.
 
-### C33-SR-2: [LOW] Anti-cheat monitor clipboard events lack sanitization
-
-**File:** `src/components/exam/anti-cheat-monitor.tsx:245-255`
-**Confidence:** MEDIUM
-
-The `handleCopy` and `handlePaste` event handlers capture `e.target` element description. While the `describeElement` function (lines 222-243) no longer captures text content (fixed in a previous cycle), the event object itself contains clipboard data that could theoretically be accessed if the code is modified in the future.
-
-**Fix:** Ensure clipboard events never access `e.clipboardData` or `window.clipboardData`. Current code is safe, but add a comment guard.
+**Fix:** In production, require XFF and return a distinct key (e.g., include User-Agent hash) when IP is unavailable.
 
 ---
 
-### C33-SR-3: [LOW] Compiler client stores arbitrary code in localStorage without quota check
+## Previously Deferred Security Items (re-validated)
 
-**File:** `src/components/code/compiler-client.tsx:186`
-**Confidence:** LOW
-
-The compiler client stores language preference in localStorage with a try/catch, but doesn't check quota before storing. Large code submissions could exceed quota.
-
-**Fix:** Current implementation already has try/catch. Verify that code drafts (not just language preference) also have quota protection.
-
----
-
-### C33-SR-4: [LOW] apiFetchJson swallows JSON parse errors silently
-
-**File:** `src/lib/api/client.ts:126-144`
-**Confidence:** MEDIUM
-
-When `res.json()` throws, `apiFetchJson` silently falls back without any logging or notification. This makes debugging JSON parse errors difficult in development.
-
-**Fix:** Add a development-only console.warn for parse failures:
-```typescript
-} catch {
-  if (process.env.NODE_ENV === "development") {
-    console.warn("apiFetchJson: JSON parse failed for", input);
-  }
-  data = fallback;
-}
-```
-
----
-
-## Previously Deferred Security Items (re-validated, still open)
-
-- C-1: Test/Seed localhost check spoofable — still present
-- C-2: Accepted solutions endpoint unauthenticated — still present
-- C-3: File DELETE CSRF ordering — still present
-- H-1: SSE result visibility bypass — still present
-- H-5: Accepted solutions exposes userId for anonymous — still present
-- DEFER-30: Recruiting validate token brute-force — still present
-- DEFER-32: Admin settings exposes DB host/port — still present
+- C-1 (Test/Seed localhost spoofable): **STILL PRESENT** — CRITICAL
+- C-2 (Accepted solutions unauthenticated): **FIXED** — requires `auth: true`
+- C-3 (File DELETE CSRF ordering): **FIXED** — auth resolved before CSRF with API key bypass
+- H-1 (SSE result visibility bypass): Needs re-check — no SSE routes found in current scan
+- H-2 (Problem-Set PATCH bypasses createApiHandler): **FIXED** — uses `createApiHandler`
+- H-3 (Overrides route doesn't use createApiHandler): Needs re-check
+- H-4 (In-memory rate limiter): **FIXED** — removed, DB-backed only
+- H-5 (Accepted solutions exposes userId): **FIXED** — properly anonymizes
+- DEFER-30 (Recruiting validate token brute-force): Needs re-check
+- DEFER-32 (Admin settings exposes DB host/port): Needs re-check
 
 ## Positive Observations
 
-1. DOMPurify sanitization is comprehensive with custom hooks for rel/target attributes.
-2. Image src restricted to root-relative paths only.
-3. No `eval()` or `Function()` constructor usage in client code.
-4. All localStorage access wrapped in try/catch.
-5. CSP policy in proxy.ts correctly includes nonce-based restrictions.
+1. All error boundaries gate `console.error` behind development checks.
+2. File upload validates magic bytes before accepting.
+3. ZIP uploads have decompressed size validation.
+4. Judge claim uses atomic SQL with `FOR UPDATE SKIP LOCKED`.
+5. DOMPurify sanitization is comprehensive with custom hooks.

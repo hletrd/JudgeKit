@@ -1,4 +1,4 @@
-# Tracer Review — Cycle 33
+# Tracer Review — Cycle 34
 
 **Reviewer:** tracer
 **Date:** 2026-05-10
@@ -8,44 +8,48 @@
 
 ## Findings
 
-### C33-TR-1: [MEDIUM] Hypothesis: Timer leak causes memory accumulation in long-running sessions
+### C34-TR-1: [MEDIUM] Hypothesis: Rate limit eviction timer causes test flakiness
 
-**File:** `src/components/submission-list-auto-refresh.tsx`
-**Confidence:** MEDIUM
-
-If a user navigates between pages with submission lists frequently (e.g., a proctor monitoring multiple contests), each unmount during the initial tick leaks a timer. After 100 navigations, 100 timers could be running, each calling `router.refresh()`.
+**File:** `src/lib/security/rate-limit.ts:68-80`
+**Confidence:** HIGH
 
 **Trace:**
-1. User loads page with active submissions
-2. useEffect runs, calls `start()`
-3. `tick()` awaits `apiFetch("/api/v1/time")`
-4. User navigates away (component unmounts)
-5. Cleanup runs: `timerRef.current = null`
-6. `tick()` completes
-7. `scheduleNext()` runs (timerRef was already set to null by cleanup, but wait...)
+1. Test file imports module that transitively imports `rate-limit.ts`
+2. `startRateLimitEviction()` is called (likely in app init or middleware)
+3. Test completes and asserts no open handles
+4. `setInterval` timer is still running → test fails with open handle warning
 
-Wait — actually re-reading: `start()` awaits `tick()` then calls `scheduleNext()`. `tick()` includes the fetch. If unmount happens during `tick()`, cleanup sets `timerRef.current = null`. Then `tick()` returns, and `scheduleNext()` sets `timerRef.current = setTimeout(...)`. Since cleanup already ran, this new timer is never cleared.
+This hypothesis is confirmed by the presence of `evictionTimer.unref()` (line 78-79), which was added precisely to mitigate this issue. However, `unref()` only works in Node.js — in jsdom/Vitest browser environments, the timer remains referenced.
 
-**Confirmed.** Timer leak on unmount during async tick.
+**Fix:** Export `stopRateLimitEviction()` for explicit test teardown.
 
 ---
 
-### C33-TR-2: [LOW] Hypothesis: sign-out misses keys due to concurrent modification
+### C34-TR-2: [LOW] Hypothesis: `apiFetchJson` silent parse failures hide server misconfigurations
 
-**File:** `src/lib/auth/sign-out.ts`
-**Confidence:** LOW
+**File:** `src/lib/api/client.ts:138-144`
+**Confidence:** MEDIUM
 
-Scenario: Tab A calls handleSignOutWithCleanup. During iteration, tab B (same origin) writes a new localStorage key. Tab A's loop:
-1. i=0, key(0) = "oj:draft1"
-2. Tab B writes "oj:draft2"
-3. Tab A continues, i=1, but key(1) might now be "oj:draft3" (shifted)
-4. "oj:draft2" is never processed
+**Trace:**
+1. Developer adds new API endpoint
+2. Endpoint accidentally returns HTML instead of JSON (e.g., middleware misconfiguration)
+3. Client calls `apiFetchJson(endpoint, ..., fallback)`
+4. `fetch()` succeeds (returns 200 with HTML body)
+5. `res.json()` throws SyntaxError
+6. Catch block silently swallows error, returns `{ ok: false, data: fallback }`
+7. Developer sees "request failed" toast but has no idea the server returned HTML
+8. Time wasted debugging client-side code when the issue is server-side
 
-While unlikely and low-impact (draft data left behind), the pattern is technically incorrect.
+**Fix:** Add development-only warning to surface the actual error.
 
 ---
+
+## Previously Addressed (cycle 33)
+
+- C33-TR-1 (timer leak in submission-list-auto-refresh): **FIXED** — `mountedRef` guard added
+- C33-TR-2 (sign-out key iteration race): **FIXED** — keys snapshotted before iteration
 
 ## Positive Observations
 
-1. Anti-cheat retry scheduling uses ref-based delegation correctly to avoid circular deps.
-2. The performFlushRef pattern in anti-cheat is a clever solution to the useCallback circularity problem.
+1. Anti-cheat retry scheduling uses ref-based delegation correctly.
+2. Timer cleanup patterns are consistent across components.

@@ -1,4 +1,4 @@
-# Debugger Review — Cycle 33
+# Debugger Review — Cycle 34
 
 **Reviewer:** debugger
 **Date:** 2026-05-10
@@ -8,52 +8,63 @@
 
 ## Findings
 
-### C33-DB-1: [MEDIUM] Race condition in anti-cheat flush + retry
+### C34-DB-1: [MEDIUM] Rate limit eviction timer leaks across test boundaries
 
-**File:** `src/components/exam/anti-cheat-monitor.tsx:73-86`
-**Confidence:** MEDIUM
-
-The `performFlush` function loads events from localStorage, sends them, then saves remaining events. Between the load and save, another tab or event handler could modify localStorage. While unlikely in a single-tab exam scenario, this is a latent race condition.
-
-**Fix:** Use a Mutex-like pattern or sessionStorage (which is tab-scoped) instead of localStorage.
-
----
-
-### C33-DB-2: [MEDIUM] submission-list-auto-refresh concurrent tick guard insufficient
-
-**File:** `src/components/submission-list-auto-refresh.tsx:34-37`
+**File:** `src/lib/security/rate-limit.ts:68-80`
 **Confidence:** HIGH
 
-The `isRunningRef` guard prevents concurrent ticks within the same timer chain, but if `hasActiveSubmissions` prop changes rapidly, the effect cleanup and re-setup could create overlapping timer chains. The old timer is cleared, but a new one starts immediately.
+The `startRateLimitEviction()` function stores its timer in a module-level variable. When tests import modules transitively depending on rate-limit.ts, the timer starts. There is no way to stop it, so tests that check for clean exits will fail.
 
-**Fix:** Add an AbortController for the fetch in tick() to cancel in-flight requests when props change.
+This is a classic module-level singleton leak pattern.
 
----
-
-### C33-DB-3: [LOW] export-button blob URL leak on rapid clicks
-
-**File:** `src/components/contest/export-button.tsx:30-37`
-**Confidence:** LOW
-
-If user rapidly clicks export buttons, multiple blob URLs are created but `URL.revokeObjectURL` only runs after the successful download. Rapid clicks could temporarily leak memory.
-
-**Fix:** Track and revoke previous blob URL before creating new one, or disable button during export.
+**Fix:** Export `stopRateLimitEviction()`.
 
 ---
 
-### C33-DB-4: [LOW] sign-out localStorage key iteration non-atomic
+### C34-DB-2: [LOW] `anti-cheat-monitor` scheduleRetryRef closure over stale performFlush
 
-**File:** `src/lib/auth/sign-out.ts:37-44`
+**File:** `src/components/exam/anti-cheat-monitor.tsx:115-128`
 **Confidence:** MEDIUM
 
-The iteration pattern `for (let i = 0; i < window.localStorage.length; i++)` is non-atomic. If keys are added or removed during iteration (e.g., by another tab or the anti-cheat monitor), the loop behavior is undefined.
+The `scheduleRetryRef` useEffect depends on `[performFlush]`. When `performFlush` identity changes, a new `scheduleRetryRef.current` is assigned. However, any in-flight retry timer (created before the identity change) captures the OLD `performFlush` in its closure at line 123:
 
-**Fix:** Use `Object.keys(window.localStorage)` to snapshot before iterating.
+```typescript
+retryTimerRef.current = setTimeout(async () => {
+  retryTimerRef.current = null;
+  const retryRemaining = await performFlush(); // stale closure
+  scheduleRetryRef.current(retryRemaining);
+}, backoffDelay);
+```
+
+In practice, `performFlush` only changes when `assignmentId` or `sendEvent` changes (prop changes), so the stale closure would use old prop values.
+
+**Fix:** Use a ref for `performFlush` or inline the retry logic in the same useEffect that manages cleanup.
 
 ---
+
+### C34-DB-3: [LOW] `apiFetchJson` parse failure gives no debug signal
+
+**File:** `src/lib/api/client.ts:138-144`
+**Confidence:** MEDIUM
+
+When JSON parsing fails, developers have no signal about what went wrong. The only observable behavior is `{ ok: false, data: fallback }`. This makes it impossible to distinguish between:
+- Server returned non-JSON (e.g., 502 HTML)
+- Server returned malformed JSON
+- Network error (now handled by the fetch try/catch added in cycle 33)
+
+**Fix:** Add development-only logging.
+
+---
+
+## Previously Fixed (cycle 33)
+
+- C33-DB-1 (anti-cheat flush race): Addressed via `performFlush` extraction
+- C33-DB-2 (submission-list-auto-refresh concurrent tick): Fixed — `mountedRef` guard added
+- C33-DB-3 (export-button blob leak): Fixed — `blobUrlRef` with revoke
+- C33-DB-4 (sign-out iteration race): Fixed — keys snapshotted before iteration
 
 ## Positive Observations
 
-1. Error count backoff in submission-list-auto-refresh prevents spam on failure.
-2. Anti-cheat retry cap (MAX_RETRIES=3) prevents infinite loops.
-3. Most async operations have cleanup handlers.
+1. `isRunningRef` guard in compiler-client prevents concurrent runs.
+2. AbortController in compiler-client properly cancels in-flight requests.
+3. Heartbeat cleanup in anti-cheat monitor properly clears timers.

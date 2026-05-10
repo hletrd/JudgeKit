@@ -1,117 +1,103 @@
-# Code Review — Cycle 33
+# Code Review — Cycle 34
 
 **Reviewer:** code-reviewer
 **Date:** 2026-05-10
-**Scope:** Client components, hooks, API client utilities, timer/async patterns
+**Scope:** Client utilities, rate limiting, async patterns, anti-cheat monitor
 
 ---
 
 ## Findings
 
-### C33-CR-1: [MEDIUM] Timer leak in submission-list-auto-refresh on unmount during initial tick
+### C34-CR-1: [MEDIUM] `apiFetchJson` parse failures silently swallowed in development
 
-**File:** `src/components/submission-list-auto-refresh.tsx:60-77`
+**File:** `src/lib/api/client.ts:138-144`
 **Confidence:** HIGH
 
-The `start()` function awaits `tick()` then calls `scheduleNext()`. If the component unmounts during the async `tick()` call (which includes a network fetch), the cleanup function runs and clears `timerRef.current`. However, after `tick()` completes, `scheduleNext()` still executes and sets a new timer. This timer will never be cleared because cleanup already ran.
+The `apiFetchJson` helper catches `res.json()` failures silently:
 
 ```typescript
-async function start() {
-  await tick();        // if unmount happens here...
-  scheduleNext();      // ...this still runs and sets a leaked timer
+try {
+  data = await res.json() as T;
+  parseOk = true;
+} catch {
+  data = fallback;
 }
 ```
 
-**Failure scenario:** User navigates away from a page with active submissions while the initial time endpoint fetch is in flight. A timer is leaked that continues calling `router.refresh()` indefinitely.
+In development, when an API returns non-JSON (e.g., a 502 HTML page from nginx, a misconfigured middleware response), developers have no visibility into what went wrong or which endpoint failed. This was flagged by the security-reviewer in cycle 33 (C33-SR-4) but not yet implemented.
 
-**Fix:** Check a mounted ref before scheduling next:
+**Fix:** Add a development-only warning:
 ```typescript
-const mountedRef = useRef(true);
-useEffect(() => {
-  mountedRef.current = true;
-  async function start() {
-    await tick();
-    if (mountedRef.current) scheduleNext();
+} catch {
+  if (process.env.NODE_ENV === "development") {
+    console.warn("apiFetchJson: JSON parse failed for", input, "status:", res.status);
   }
-  void start();
-  return () => { mountedRef.current = false; /* existing cleanup */ };
-}, [...]);
-```
-
----
-
-### C33-CR-2: [MEDIUM] apiFetchJson does not handle fetch() throwing
-
-**File:** `src/lib/api/client.ts:126-144`
-**Confidence:** HIGH
-
-The `apiFetchJson` helper is documented as safe wrapper that "eliminates common footguns," but if `fetch()` itself throws (network failure, CORS rejection, DNS error), the exception propagates unhandled. Only `res.json()` throwing is caught.
-
-**Failure scenario:** Network interruption causes unhandled exception instead of graceful fallback.
-
-**Fix:** Wrap the `apiFetch` call in try/catch:
-```typescript
-export async function apiFetchJson<T = unknown>(...) {
-  let res: Response;
-  try {
-    res = await apiFetch(input, init);
-  } catch {
-    return { ok: false, data: fallback };
-  }
-  // ... existing parsing logic ...
+  data = fallback;
 }
 ```
 
 ---
 
-### C33-CR-3: [LOW] export-button missing request cancellation
+### C34-CR-2: [MEDIUM] Rate limit eviction timer has no cleanup function
 
-**File:** `src/components/contest/export-button.tsx:14-43`
-**Confidence:** MEDIUM
+**File:** `src/lib/security/rate-limit.ts:68-80`
+**Confidence:** HIGH
 
-Large contest exports could take significant time. There is no AbortController to cancel in-flight requests if the user navigates away or clicks the other export button.
+`startRateLimitEviction()` starts a `setInterval` that runs indefinitely:
 
-**Fix:** Add AbortController support:
 ```typescript
-const abortRef = useRef<AbortController | null>(null);
-// In handleExport: abortRef.current?.abort(); abortRef.current = new AbortController();
-// Pass signal to apiFetch
+export function startRateLimitEviction() {
+  if (evictionTimer) return;
+  evictionTimer = setInterval(() => {
+    void evictStaleEntries();
+  }, EVICTION_INTERVAL_MS);
+  if (evictionTimer && typeof evictionTimer === "object" && "unref" in evictionTimer) {
+    evictionTimer.unref();
+  }
+}
+```
+
+There is no exported `stopRateLimitEviction()` function. In test environments (Vitest with `--detectOpenHandles`), this causes open handle warnings. The timer also prevents clean process shutdown in scripts that import this module.
+
+**Fix:** Export `stopRateLimitEviction()`:
+```typescript
+export function stopRateLimitEviction() {
+  if (evictionTimer) {
+    clearInterval(evictionTimer);
+    evictionTimer = null;
+  }
+}
 ```
 
 ---
 
-### C33-CR-4: [LOW] contests layout queries DOM elements that may not exist
+### C34-CR-3: [LOW] `anti-cheat-monitor` retry timer ref not guarded in separate useEffect
 
-**File:** `src/app/(public)/contests/manage/layout.tsx:42-45`
+**File:** `src/components/exam/anti-cheat-monitor.tsx:115-128,280-283`
 **Confidence:** MEDIUM
 
-The layout queries `document.getElementById("main-content")` and `document.querySelector("[data-slot='sidebar']")` in useEffect. These elements may not exist during initial render or if the DOM structure changes. The effect depends on `pathname` but the queried elements might be stale after navigation.
+The `scheduleRetryRef` is updated in one useEffect (lines 115-128) while the timer cleanup happens in another useEffect's cleanup (lines 280-283). When `performFlush` identity changes, `scheduleRetryRef.current` is reassigned. Any in-flight retry timer callback was created with the OLD `performFlush` closure. The callback at line 123 references `performFlush` directly from the outer scope, so it uses the stale closure.
 
-**Fix:** Add null checks and consider using a ref-based approach or event delegation on document.
+In practice, `performFlush` only changes when `assignmentId` or `sendEvent` changes, which only happens on prop changes (not during normal operation). Risk is low but the pattern is fragile.
 
----
-
-### C33-CR-5: [LOW] sign-out storage iteration race condition
-
-**File:** `src/lib/auth/sign-out.ts:37-44`
-**Confidence:** LOW
-
-The for loop iterates over `window.localStorage.length` and accesses `key(i)`. If another tab modifies localStorage during iteration, indices shift and some keys may be skipped or an out-of-bounds access could occur.
-
-**Fix:** Snapshot keys first: `const keys = Object.keys(window.localStorage)` or collect all keys in a single pass.
+**Fix:** Move the retry scheduling logic into the same useEffect that handles cleanup, or use a ref for `performFlush`.
 
 ---
 
 ## Previously Deferred Items (re-validated)
 
-- DEFER-C30-4: `.json()` before `.ok` — still 30+ instances in client components
-- DEFER-C30-5: Raw API error strings without i18n — still present
-- DEFER-C30-6: `as { error?: string }` — 15 instances remain
-- C25-7: WeakMap complexity — unchanged
+- C33-CR-1 (timer leak): Fixed — `mountedRef` guard present in submission-list-auto-refresh
+- C33-CR-2 (apiFetchJson fetch throw): Fixed — try/catch around `apiFetch` call present
+- C33-CR-3 (export-button AbortController): Fixed — `abortRef` and `blobUrlRef` present
+- C33-CR-4 (contests layout null checks): Fixed — nullish coalescing on `main`/`sidebar` listeners
+- C33-CR-5 (sign-out race condition): Fixed — keys snapshotted before iteration
+- DEFER-C30-4 (`.json()` before `.ok`): Still present in `src/lib/docker/client.ts:96` but wrapped in try/catch (safe pattern)
+- DEFER-C30-5 (raw API error strings without i18n): Still present in many client components
+- DEFER-C30-6 (`as { error?: string }` unsafe assertions): Still present in ~15 instances
 
 ## Positive Observations
 
-1. `apiFetchJson` and `parseApiResponse` are well-designed helpers that reduce footguns.
-2. `sanitizeHtml` correctly restricts image src to root-relative paths.
-3. Anti-cheat storage has MAX_PENDING_EVENTS cap for localStorage safety.
-4. Most timer patterns use `useRef` for proper cleanup.
+1. All error boundary `console.error` calls are gated behind `NODE_ENV === "development"`.
+2. `apiFetchJson` properly wraps both fetch and JSON parsing in try/catch.
+3. Sign-out storage iteration correctly snapshots keys before mutation.
+4. Export button properly cancels in-flight requests and revokes blob URLs.

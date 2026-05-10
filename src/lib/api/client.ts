@@ -140,6 +140,9 @@ export async function apiFetchJson<T = unknown>(
     data = await res.json() as T;
     parseOk = true;
   } catch {
+    if (process.env.NODE_ENV === "development") {
+      console.warn("apiFetchJson: JSON parse failed for", input, "status:", res.status);
+    }
     data = fallback;
   }
   if (res.ok && parseOk) {

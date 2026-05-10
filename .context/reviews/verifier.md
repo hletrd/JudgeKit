@@ -1,4 +1,4 @@
-# Verifier Review — Cycle 33
+# Verifier Review — Cycle 34
 
 **Reviewer:** verifier
 **Date:** 2026-05-10
@@ -8,43 +8,53 @@
 
 ## Findings
 
-### C33-VR-1: [MEDIUM] apiFetchJson behavior does not match documentation
+### C34-VR-1: [MEDIUM] `apiFetchJson` documentation claims "safe wrapper" but silently swallows parse errors
 
-**File:** `src/lib/api/client.ts:126-144`
+**File:** `src/lib/api/client.ts:126-149`
 **Confidence:** HIGH
 
-The documentation claims: "Both success and error response JSON parsing is wrapped in `.catch()`, ensuring non-JSON bodies never throw SyntaxError." This is true for JSON parsing. However, the function does NOT handle `fetch()` throwing, contradicting the "safe wrapper" claim.
+The documentation at line 98-101 states: "Both success and error response JSON parsing is wrapped in `.catch()`, ensuring non-JSON bodies never throw SyntaxError." This is accurate. However, the complete absence of any logging when parsing fails contradicts the broader module convention documented at line 20: "Never silently swallow errors — always surface them to the user."
 
-**Evidence:** Line 131: `const res = await apiFetch(input, init);` — no try/catch.
+**Evidence:** Lines 138-144 catch parse errors with an empty catch block.
 
-**Fix:** Update docs or add fetch error handling.
+**Fix:** Add development-only console.warn in the catch block.
 
 ---
 
-### C33-VR-2: [LOW] submission-list-auto-refresh visibility check timing
+### C34-VR-2: [MEDIUM] `startRateLimitEviction` creates uncontrolled background process
 
-**File:** `src/components/submission-list-auto-refresh.tsx:40`
+**File:** `src/lib/security/rate-limit.ts:68-80`
+**Confidence:** HIGH
+
+The function creates a `setInterval` and stores it in a module-level variable. There is no exported function to stop it. This contradicts standard Node.js patterns where intervals should be stoppable.
+
+**Evidence:** Lines 68-80 define `startRateLimitEviction` with no corresponding stop function.
+
+**Fix:** Export `stopRateLimitEviction()`.
+
+---
+
+### C34-VR-3: [LOW] `anti-cheat-monitor` heartbeat continues scheduling while hidden
+
+**File:** `src/components/exam/anti-cheat-monitor.tsx:185-191`
 **Confidence:** MEDIUM
 
-The component checks `document.visibilityState === "hidden"` to skip refresh. However, this check happens AFTER `isRunningRef.current = true`, meaning the tick is marked as running even when it returns early. The errorCountRef is not incremented, but isRunningRef is set and then cleared.
+The heartbeat timer always reschedules itself regardless of document visibility. While the actual event send is skipped when hidden, the timer chain continues. This wastes timer callbacks during long hidden periods.
 
-**Fix:** Move visibility check before `isRunningRef.current = true`.
+**Evidence:** Line 190 calls `scheduleHeartbeat()` unconditionally after the visibility check at line 187.
 
----
-
-### C33-VR-3: [LOW] export-button Content-Disposition parsing regex incomplete
-
-**File:** `src/components/contest/export-button.tsx:27`
-**Confidence:** MEDIUM
-
-The regex `/filename="?([^"]+)"?/` does not handle RFC 5987 encoding (e.g., `filename*=UTF-8''%e2%g3.pdf`). While the API likely uses simple ASCII filenames, the regex is technically incomplete.
-
-**Fix:** Document the assumption or use a more robust parser.
+**Fix:** Only reschedule when visible.
 
 ---
+
+## Previously Verified (cycle 33 fixes)
+
+- C33-VR-1 (apiFetchJson fetch throw): **FIXED** — try/catch added around apiFetch call
+- C33-VR-2 (visibility check timing): **FIXED** — `mountedRef` guard handles cleanup properly
+- C33-VR-3 (Content-Disposition regex): Unchanged — still uses simple regex
 
 ## Positive Observations
 
-1. apiFetch documentation in client.ts is excellent and detailed.
-2. Anti-cheat storage has clear comments explaining MAX_PENDING_EVENTS rationale.
-3. Contests layout workaround is well-documented with TODO and explanation.
+1. `apiFetchJson` fetch error handling now matches documentation (cycle 33 fix verified).
+2. Error boundaries all gate `console.error` behind development check.
+3. Sign-out correctly snapshots keys before iteration.

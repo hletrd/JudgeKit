@@ -1,58 +1,62 @@
-# Architect Review — Cycle 33
+# Architecture Review — Cycle 34
 
 **Reviewer:** architect
 **Date:** 2026-05-10
-**Scope:** Component architecture, coupling, layering, design patterns
+**Scope:** Design patterns, coupling, module boundaries, API consistency
 
 ---
 
 ## Findings
 
-### C33-AR-1: [MEDIUM] Timer logic duplicated across multiple components
+### C34-AR-1: [MEDIUM] Rate limit module has no lifecycle management
 
-**Files:** 
-- `src/components/submission-list-auto-refresh.tsx`
-- `src/components/exam/anti-cheat-monitor.tsx`
-- `src/app/(dashboard)/dashboard/admin/api-keys/api-keys-client.tsx`
-
+**File:** `src/lib/security/rate-limit.ts:68-80`
 **Confidence:** HIGH
 
-Each component implements its own timer management (setTimeout, cleanup refs, backoff logic). This is duplicated 5+ times across the codebase with slight variations. A shared `useInterval` or `useTimer` hook would centralize the complexity and prevent leaks.
+The rate limit eviction timer is started once at module load time via `startRateLimitEviction()`. There is no corresponding lifecycle teardown. This violates the principle that background processes should be controllable. In serverless or test environments, uncontrolled timers can cause:
+- Open handle warnings in tests
+- Resource leaks in long-running processes
+- Unclean shutdowns
 
-**Fix:** Extract a `useSafeInterval` hook that handles:
-- Cleanup on unmount
-- Backoff calculation
-- Visibility-aware pausing
+**Fix:** Export `stopRateLimitEviction()` and document when to call it.
 
 ---
 
-### C33-AR-2: [LOW] contests/manage/layout.tsx workaround belongs in framework layer
+### C34-AR-2: [LOW] `apiFetchJson` silent failure mode hinders debugging
 
-**File:** `src/app/(public)/contests/manage/layout.tsx`
+**File:** `src/lib/api/client.ts:138-144`
 **Confidence:** MEDIUM
 
-The Next.js RSC streaming workaround is embedded in a layout component. If multiple route groups need similar workarounds, this pattern will proliferate. The TODO comment indicates it's temporary, but there's no tracking mechanism to remove it when upstream is fixed.
+The `apiFetchJson` helper's design philosophy is "safe parsing eliminates footguns." However, the complete silence on parse failures in development contradicts the module's own documentation which states "Never silently swallow errors — always surface them to the user." The silent catch is a deliberate trade-off for production safety, but the development experience suffers.
 
-**Fix:** Extract to a reusable hook or document the workaround in a central location with a GitHub issue reference.
+**Fix:** Add a development-only logging path that preserves production silence.
 
 ---
 
-### C33-AR-3: [LOW] apiFetchJson success/failure typing could be stricter
+### C34-AR-3: [LOW] Two rate limit modules share schema but have divergent logic
 
-**File:** `src/lib/api/client.ts:126-144`
+**Files:** `src/lib/security/rate-limit.ts`, `src/lib/security/api-rate-limit.ts`
 **Confidence:** LOW
 
-The return type `{ ok: true; data: T } | { ok: false; data: T }` requires callers to check `ok` but provides no type-level enforcement. A discriminated union with a type guard would be more ergonomic.
+The codebase has two rate limit modules that write to the same `rateLimits` table:
+- `rate-limit.ts`: login/auth limits with exponential backoff
+- `api-rate-limit.ts`: API limits with fixed windows
 
-**Fix:** Consider:
-```typescript
-type ApiResult<T> = { success: true; data: T } | { success: false; error: string };
-```
+The module comments explicitly note this: "Drift between the two is tracked under C7-AGG-9." The divergence is intentional (different use cases need different algorithms) but creates maintenance risk when fixing bugs.
+
+**Status:** Known architectural debt, tracked since cycle 7. No action needed unless bugs are found.
 
 ---
+
+## Previously Deferred Architecture Items (re-validated)
+
+- H-4 (In-memory rate limiter): **FIXED** — consolidated to DB-backed only
+- C25-7 (WeakMap complexity): Unchanged
+- C33-AR-1 (timer logic duplication): Partially addressed — no shared hook yet extracted
 
 ## Positive Observations
 
-1. Anti-cheat logic cleanly separated into storage + monitor + monitor components.
-2. apiFetch/client abstraction provides consistent CSRF handling.
-3. Component composition patterns (slots, compound components) used well in UI layer.
+1. `createApiHandler` provides a consistent middleware wrapper for all API routes.
+2. `apiFetch`/`apiFetchJson`/`parseApiResponse` form a clear client-side API utility hierarchy.
+3. DB time utilities (`getDbNow`, `getDbNowMs`) centralize temporal authority.
+4. Auth module separates concerns: config, permissions, sessions, tokens.

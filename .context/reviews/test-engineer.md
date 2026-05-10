@@ -1,76 +1,62 @@
-# Test Engineer Review — Cycle 33
+# Test Engineer Review — Cycle 34
 
 **Reviewer:** test-engineer
 **Date:** 2026-05-10
-**Scope:** Test coverage, flaky test patterns, testing gaps
+**Scope:** Test coverage gaps, test infrastructure, flaky patterns
 
 ---
 
 ## Findings
 
-### C33-TE-1: [MEDIUM] submission-list-auto-refresh has no unit tests
+### C34-TE-1: [MEDIUM] Rate limit eviction timer causes open handles in tests
 
-**File:** `src/components/submission-list-auto-refresh.tsx`
+**File:** `src/lib/security/rate-limit.ts:68-80`
 **Confidence:** HIGH
 
-This component handles complex timer logic, backoff, and cleanup but has no dedicated test file. The timer leak finding (C33-CR-1) would have been caught with tests.
+The `startRateLimitEviction()` function starts a `setInterval` with no corresponding stop function. Tests that import this module (directly or transitively) will report open handles when Vitest exits. This was likely the cause of the `--detectOpenHandles` warnings seen in CI.
 
-**Fix:** Add tests for:
-- Timer scheduling with backoff
-- Cleanup on unmount
-- Visibility state handling
-- Error count reset on success
+**Fix:** Export `stopRateLimitEviction()` and call it in `vitest.setup.ts` or equivalent teardown.
 
 ---
 
-### C33-TE-2: [MEDIUM] export-button has no unit tests
-
-**File:** `src/components/contest/export-button.tsx`
-**Confidence:** HIGH
-
-Export functionality (CSV/JSON download) is untested. The blob download and filename extraction logic are complex enough to warrant tests.
-
-**Fix:** Test blob creation, filename parsing from Content-Disposition, and error handling.
-
----
-
-### C33-TE-3: [LOW] apiFetchJson edge cases untested
+### C34-TE-2: [LOW] `apiFetchJson` parse failure path not tested
 
 **File:** `src/lib/api/client.ts`
 **Confidence:** MEDIUM
 
-The `apiFetchJson` and `parseApiResponse` helpers don't appear to have dedicated unit tests for:
-- Network failures (fetch throwing)
-- Non-JSON responses
-- JSON parse failures
-- Response body already consumed
+The `apiFetchJson` helper has tests for success paths and JSON parse failures (via `.catch()`), but there are no tests for:
+- The `fetch()` throwing (network failure) — this was added in cycle 33
+- Non-JSON response bodies (e.g., HTML 502 page)
+- The development-only warning (when implemented)
 
-**Fix:** Add comprehensive unit tests for these utilities.
+**Fix:** Add tests for fetch-throw and non-JSON response scenarios.
 
 ---
 
-### C33-TE-4: [LOW] contests layout workaround untested
+### C34-TE-3: [LOW] `anti-cheat-monitor` timer logic not covered by unit tests
 
-**File:** `src/app/(public)/contests/manage/layout.tsx`
+**File:** `src/components/exam/anti-cheat-monitor.tsx`
 **Confidence:** MEDIUM
 
-The Next.js RSC streaming workaround for contest navigation is not tested. If the upstream bug is fixed and this workaround is removed, regressions could occur.
+The component has no unit tests for:
+- Heartbeat scheduling and cleanup
+- Retry backoff logic
+- Event listener registration/cleanup
+- Privacy notice acceptance flow
 
-**Fix:** Add tests for the click interception logic, including:
-- data-full-navigate attribute detection
-- Relative path validation
-- preventDefault behavior
+**Fix:** Add component tests using React Testing Library, mocking `localStorage` and `apiFetch`.
 
 ---
 
-## Coverage Summary
+## Previously Deferred Test Items (re-validated)
 
-- Unit tests: 2382 tests passing (good coverage overall)
-- Component tests: 208 tests passing
-- Missing: timer/async components, export/download, layout workarounds
+- C33-TE-1 (submission-list-auto-refresh timer tests): Still uncovered
+- C33-TE-2 (export-button blob download tests): Still uncovered
+- C33-TE-3 (apiFetchJson network failure tests): Partially covered — fetch-throw path added but non-JSON path untested
 
 ## Positive Observations
 
-1. Anti-cheat storage extracted to separate module for testability.
-2. apiFetchJson and parseApiResponse are pure functions, easily testable.
-3. Component tests exist for newer components.
+1. Unit tests exist for password rules, assignment validation, late-penalty scoring.
+2. Rate limit core has test coverage.
+3. API handler wrapper has tests for auth, CSRF, and rate limiting.
+4. E2E tests cover 55 languages and contest lifecycle.
