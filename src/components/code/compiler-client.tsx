@@ -10,7 +10,7 @@ import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
 import { Label } from "@/components/ui/label";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
-import { apiFetch } from "@/lib/api/client";
+import { apiFetch, parseApiResponse } from "@/lib/api/client";
 import { formatBytes } from "@/lib/formatting";
 import { Loader2, Play, AlertTriangle, Maximize2, Plus, X } from "lucide-react";
 
@@ -262,11 +262,9 @@ export function CompilerClient({ languages, title, description, preferredLanguag
         signal: abortController.signal,
       });
 
-      // Parse response body once — the Response body can only be consumed once
-      const data = await res.json().catch(() => ({ data: null })) as { error?: string; message?: string; data?: unknown };
+      const { ok, data } = await parseApiResponse(res, { data: null } as { error?: string; message?: string; data?: unknown });
 
-      if (!res.ok) {
-        // Ensure errorMessage is always a string — data.error/data.message could be objects
+      if (!ok) {
         const rawError = data.error || data.message || res.statusText || t("requestFailed");
         const errorMessage = String(rawError);
         updateTestCase(runningTestCaseId, (testCase) => ({

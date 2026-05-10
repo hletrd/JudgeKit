@@ -73,6 +73,14 @@ vi.mock("@/components/language-selector", () => ({
 
 vi.mock("@/lib/api/client", () => ({
   apiFetch: apiFetchMock,
+  parseApiResponse: async (res: { ok: boolean; json: () => Promise<unknown> }, fallback: unknown) => {
+    try {
+      const data = await res.json();
+      return { ok: res.ok, data };
+    } catch {
+      return { ok: false, data: fallback };
+    }
+  },
 }));
 
 describe("CompilerClient", () => {

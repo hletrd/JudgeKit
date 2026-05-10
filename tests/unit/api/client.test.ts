@@ -1,5 +1,5 @@
 import { describe, expect, it, vi, beforeEach, afterEach } from "vitest";
-import { apiFetch } from "@/lib/api/client";
+import { apiFetch, parseApiResponse } from "@/lib/api/client";
 
 describe("apiFetch", () => {
   const originalFetch = globalThis.fetch;
@@ -125,5 +125,38 @@ describe("apiFetch", () => {
     const [, init] = vi.mocked(globalThis.fetch).mock.calls[0] as [RequestInfo | URL, RequestInit | undefined];
     expect(init?.signal).toBeInstanceOf(AbortSignal);
     expect(init?.signal?.aborted).toBe(true);
+  });
+});
+
+describe("parseApiResponse", () => {
+  it("returns ok:true with parsed JSON when response is OK", async () => {
+    const res = new Response(JSON.stringify({ id: "123" }), { status: 200 });
+    const result = await parseApiResponse(res, { id: "" });
+    expect(result.ok).toBe(true);
+    expect(result.data).toEqual({ id: "123" });
+  });
+
+  it("returns ok:false with fallback when response body is non-JSON", async () => {
+    const res = new Response("<html>502 Bad Gateway</html>", { status: 502 });
+    const fallback = { error: "fallback" };
+    const result = await parseApiResponse(res, fallback);
+    expect(result.ok).toBe(false);
+    expect(result.data).toEqual(fallback);
+  });
+
+  it("returns ok:false with parsed error JSON when response is 4xx/5xx with JSON body", async () => {
+    const res = new Response(JSON.stringify({ error: "rateLimited" }), { status: 429 });
+    const fallback = { error: "fallback" };
+    const result = await parseApiResponse(res, fallback);
+    expect(result.ok).toBe(false);
+    expect(result.data).toEqual({ error: "rateLimited" });
+  });
+
+  it("returns ok:false with fallback when ok response has malformed JSON", async () => {
+    const res = new Response("not json", { status: 200 });
+    const fallback = { data: null };
+    const result = await parseApiResponse(res, fallback);
+    expect(result.ok).toBe(false);
+    expect(result.data).toEqual(fallback);
   });
 });

@@ -142,3 +142,39 @@ export async function apiFetchJson<T = unknown>(
   }
   return { ok: false, data };
 }
+
+/**
+ * Safely parse a Response body as JSON without throwing on non-JSON bodies.
+ * Use this when you already have a Response object (e.g., from apiFetch) and
+ * need to parse it safely.
+ *
+ * @param res - The Response to parse
+ * @param fallback - Value returned when `.json()` throws (e.g., non-JSON body)
+ * @returns `{ ok: true, data: T }` when response is OK and JSON parsed successfully.
+ *          `{ ok: false, data: T }` when response is not OK or JSON parsing failed.
+ *
+ * @example
+ * ```ts
+ * const res = await apiFetch("/api/v1/resource");
+ * const { ok, data } = await parseApiResponse<{ items: Item[] }>(res, { items: [] });
+ * if (!ok) { toast.error(t("fetchError")); return; }
+ * setItems(data.items);
+ * ```
+ */
+export async function parseApiResponse<T = unknown>(
+  res: Response,
+  fallback: T
+): Promise<{ ok: true; data: T } | { ok: false; data: T }> {
+  let data: T;
+  let parseOk = false;
+  try {
+    data = await res.json() as T;
+    parseOk = true;
+  } catch {
+    data = fallback;
+  }
+  if (res.ok && parseOk) {
+    return { ok: true, data };
+  }
+  return { ok: false, data };
+}

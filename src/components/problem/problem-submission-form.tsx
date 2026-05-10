@@ -9,7 +9,7 @@ import { Button } from "@/components/ui/button";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { LanguageSelector } from "@/components/language-selector";
-import { apiFetch } from "@/lib/api/client";
+import { apiFetch, parseApiResponse } from "@/lib/api/client";
 import { DEFAULT_TEMPLATES, isTemplateLike } from "@/lib/judge/code-templates";
 import { useSourceDraft } from "@/hooks/use-source-draft";
 import { useUnsavedChangesGuard } from "@/hooks/use-unsaved-changes-guard";
@@ -190,13 +190,12 @@ export function ProblemSubmissionForm({
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ language, sourceCode, stdin, assignmentId }),
       });
-      // Parse response body once — the Response body can only be consumed once
-      const payload = await response.json().catch(() => ({ data: null })) as { error?: string; data?: { stdout: string; stderr: string; executionTimeMs: number; timedOut: boolean; oomKilled: boolean; compileOutput: string | null } | null };
-      if (!response.ok) {
-        toast.error(translateSubmissionError(payload.error));
+      const { ok, data } = await parseApiResponse(response, { data: null } as { error?: string; data?: { stdout: string; stderr: string; executionTimeMs: number; timedOut: boolean; oomKilled: boolean; compileOutput: string | null } | null });
+      if (!ok) {
+        toast.error(translateSubmissionError(data.error));
         return;
       }
-      setRunResult(payload.data ?? null);
+      setRunResult(data.data ?? null);
     } catch {
       toast.error(tCommon("error"));
     } finally {
@@ -265,15 +264,14 @@ export function ProblemSubmissionForm({
         }),
       });
 
-      // Parse response body once — the Response body can only be consumed once
-      const payload = await response.json().catch(() => ({ data: {} })) as { error?: string; data?: { id?: string } };
+      const { ok, data } = await parseApiResponse(response, { data: {} } as { error?: string; data?: { id?: string } });
 
-      if (!response.ok) {
-        toast.error(translateSubmissionError(payload.error));
+      if (!ok) {
+        toast.error(translateSubmissionError(data.error));
         return;
       }
 
-      const submissionId = payload.data?.id;
+      const submissionId = data.data?.id;
 
       if (!submissionId || typeof submissionId !== "string") {
         toast.error(tCommon("error"));

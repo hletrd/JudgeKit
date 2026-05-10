@@ -1,9 +1,9 @@
-# Cycle 29 Aggregate Review
+# Cycle 30 Aggregate Review
 
 **Date:** 2026-05-09
-**Cycle:** 29 of 100
-**Base commit:** 81c5daa8
-**Current HEAD:** 81c5daa8 (clean working tree)
+**Cycle:** 30 of 100
+**Base commit:** 22623e07
+**Current HEAD:** 22623e07 (clean working tree)
 **Agents:** Manual review — no agent runtime registered in `.claude/agents/`
 
 ---
@@ -12,102 +12,110 @@
 
 No review agents were registered in this environment. Reviews were performed manually across 10 specialist angles: code-reviewer, security-reviewer, perf-reviewer, critic, debugger, test-engineer, architect, verifier, tracer, document-specialist, designer.
 
-All gates verified at HEAD: eslint (0 errors), tsc --noEmit, next build, vitest run (314/315 files, 2361 tests, 1 pre-existing DB failure), vitest component (68 files, 208 tests — all pass).
+All gates verified at HEAD:
+- eslint: 0 errors
+- tsc --noEmit: passes
+- next build: passes
+- vitest run: 315/315 files, 2378 tests (all pass — previous DATABASE_URL failure fixed)
+- vitest component: 68 files, 208 tests (all pass)
 
 ---
 
 ## DEDUPLICATED FINDINGS
 
-### AGG-1: Recruiting token regex lacks upper bound — DoS vector [MEDIUM/HIGH]
+### C30-1: [MEDIUM] Inconsistent `EXTRACT(EPOCH)` casting between worker and non-worker paths in judge claim route
 
-**Flagged by:** code-reviewer (C29-CR-1), security-reviewer (C29-SEC-1), debugger (C29-DBG-1), verifier (C29-V-1), tracer (C29-TR-1), critic (C29-CRIT-1), architect (C29-ARCH-1)
-**Cross-agent agreement:** 7 of 10 reviewers flagged this independently. HIGH signal.
-**Citation:** `src/lib/auth/config.ts:208`
-**Code:**
-```js
-if (!/^[-A-Za-z0-9_]{16,}$/.test(credentials.recruitToken)) {
+**Flagged by:** code-reviewer, verifier, debugger
+**Cross-agent agreement:** 3 perspectives
+**Citation:** `src/app/api/v1/judge/claim/route.ts:199-200` vs `lines 248-249`
+
+**Code (worker path — no cast):**
+```typescript
+EXTRACT(EPOCH FROM s.judged_at) AS "judgedAt",
+EXTRACT(EPOCH FROM s.submitted_at) AS "submittedAt"
 ```
-**Description:** The recruiting token validation regex has a lower bound of 16 but no upper bound. An attacker can send an arbitrarily long token (e.g., multi-megabyte), causing:
-1. Memory pressure from unbounded string allocation before regex evaluation
-2. Potential ReDoS (though regex is linear, input size is unbounded)
-3. Unnecessary rate-limit consumption before format rejection
-4. The token value could be logged in `attemptedIdentifier` fields
 
-Recruiting tokens are base64url-encoded random bytes and should be bounded. The comment at line 206 mentions "32 chars" but the regex allows any length >= 16.
+**Code (non-worker path — with `::bigint`):**
+```typescript
+EXTRACT(EPOCH FROM s.judged_at)::bigint AS "judgedAt",
+EXTRACT(EPOCH FROM s.submitted_at)::bigint AS "submittedAt"
+```
 
-**Concrete failure scenario:** Attacker POSTs a 50MB recruitToken to `/api/auth/callback/credentials`. Node.js allocates 50MB string, regex runs, rejects. Repeats to exhaust memory.
+**Description:** The cycle 29 fix (commit 72895df0) changed `::integer` to `::bigint` on the non-worker path but removed the cast entirely from the worker path. PostgreSQL's `EXTRACT(EPOCH FROM timestamp)` returns `double precision`. Without an explicit cast, the value may come back as a string depending on the PostgreSQL client/driver configuration, causing the Zod schema `z.number().nullable()` to fail validation.
 
-**Fix:** Change regex to `/^[-A-Za-z0-9_]{16,128}$/`. Also consider adding a pre-check: `credentials.recruitToken.length > 128` before regex.
+**Concrete failure scenario:** A worker claims a submission. The `judgedAt` field comes back as a string `"1234567890.123"` instead of a number. `claimedSubmissionRowSchema.parse(claimedRaw)` throws a ZodError, causing the claim to fail with a 500 error even though the SQL UPDATE succeeded.
 
----
-
-### AGG-2: Test infrastructure failure — DATABASE_URL missing [LOW/HIGH]
-
-**Flagged by:** code-reviewer (C29-CR-2), test-engineer (C29-TE-1), verifier (C29-V-2)
-**Cross-agent agreement:** 3 of 10 reviewers.
-**Citation:** `tests/unit/db/export-sanitization.test.ts`
-**Description:** The test fails with `DATABASE_URL is required` when run without environment variables. The test imports `src/lib/db/export.ts` which imports `src/lib/db/index.ts`, which throws if DATABASE_URL is missing.
-
-**Fix:** Mock the db module in the test or configure a test DATABASE_URL in the vitest config.
+**Fix:** Add `::bigint` to the worker path to match the non-worker path:
+```typescript
+EXTRACT(EPOCH FROM s.judged_at)::bigint AS "judgedAt",
+EXTRACT(EPOCH FROM s.submitted_at)::bigint AS "submittedAt"
+```
 
 ---
 
-### AGG-3: Carry-forward findings from cycle 27 still unaddressed [LOW/LOW]
+### C30-2: [LOW] JSZip statically imported in server-side utility modules
 
-**Flagged by:** critic, debugger, architect, code-reviewer, security-reviewer
-**Cross-agent agreement:** 5 of 10 reviewers.
+**Flagged by:** perf-reviewer, architect
+**Cross-agent agreement:** 2 perspectives
+**Citations:** `src/lib/files/validation.ts:3`, `src/lib/db/export-with-files.ts:1`
 
-1. **C27-1/C27-SEC-1:** Docker inspect `info.Created as string` lacks runtime validation (`src/app/api/v1/admin/docker/images/route.ts:30`)
-2. **C27-2/C27-SEC-2:** DELETE Docker image rejection not audited (`src/app/api/v1/admin/docker/images/route.ts:129-135`)
-3. **C27-3/C27-SEC-3:** Prompt sanitization regex misses empty markers `<<>>` (`src/lib/judge/prompt-sanitization.ts:12`)
+**Description:** Both files use `import JSZip from "jszip"` at the module level. JSZip is ~100KB. These modules are imported by API routes and other server code. While this is server-side (not client bundle), it still adds to cold-start memory and import overhead. The codebase already demonstrates the correct pattern in `src/app/(public)/problems/create/create-problem-form.tsx:172` which uses dynamic import: `const JSZip = (await import("jszip")).default;`.
 
-These have been deferred for 2+ cycles and are well-defined, low-risk fixes.
+**Fix:** Convert both static imports to dynamic imports inside the functions that actually use JSZip (`validateZipDecompressedSize` and the backup-with-files stream function).
 
 ---
 
-## Previously Fixed (Verified at HEAD)
+## CARRY-FORWARD FINDINGS (still present from prior cycles)
+
+### C30-3: [HIGH] `.json()` before `response.ok` check — systemic anti-pattern (cycle 29 AGG-2)
+
+**Status:** Still present at cycle 30. 15+ instances across client components.
+**Affected files:** `compiler-client.tsx`, `invite-participants.tsx`, `recruiting-invitations-panel.tsx`, `quick-create-contest-form.tsx`, `access-code-manager.tsx`, `discussion-thread-moderation-controls.tsx`, `discussion-thread-form.tsx`, `discussion-post-delete-button.tsx`, `discussion-post-form.tsx`, `submission-detail-client.tsx`, `start-exam-button.tsx`, `countdown-timer.tsx`, `comment-section.tsx`, `lecture/submission-overview.tsx`, `problem-import-button.tsx`, `problem-submission-form.tsx`
+
+**Description:** Client-side fetch handlers call `.json()` before checking `.ok`. When a reverse proxy returns HTML (e.g., 502 Bad Gateway), `.json()` throws `SyntaxError`, caught by `.catch(() => ({}))` which returns an empty object — losing the actual error.
+
+**Fix:** Create a project-wide `parseApiResponse(res)` helper that checks `res.ok` first.
+
+---
+
+### C30-4: [MEDIUM] Raw API error strings shown to users without translation (cycle 29 AGG-3)
+
+**Status:** Still present at cycle 30. 7+ instances.
+**Description:** Components display `errorBody.error` from API responses in `toast.error()` without routing through `t()`. Korean-locale users see raw English API error messages.
+
+**Fix:** Adopt a consistent pattern: `toast.error(t(errorBody.error ?? "fallbackKey"))`.
+
+---
+
+### C30-5: [MEDIUM] `as { error?: string }` pattern — unsafe type assertions (cycle 29 AGG-9)
+
+**Status:** Still present at cycle 30. 22+ instances.
+**Description:** Client-side error handlers parse API responses with unsafe type assertions instead of using a shared runtime validator.
+
+**Fix:** Create `parseApiError(body: unknown): string` helper with runtime validation.
+
+---
+
+## FIXED SINCE CYCLE 29 (verified at HEAD)
 
 | Finding | Status | Evidence |
 |---------|--------|----------|
-| C28 localStorage try/catch | FIXED | compiler-client.tsx:186, submission-detail-client.tsx:94 |
-| C26-1 LLM prompt sanitization | FIXED | sanitizePromptInput at auto-review.ts:163 |
-| C25-1 Trusted registry boundary | FIXED | docker-image-validation.ts |
-| C25-2 TABLE_MAP typing | FIXED | Record<string, PgTable> at import.ts:20 |
-| C25-3 Stale images concurrency | FIXED | pLimit(5) at images/route.ts:17 |
-| C25-4 Image reference regex | FIXED | client.ts:86-91 |
-| C19-1 Keyboard shortcuts | FIXED | use-keyboard-shortcuts.ts:8-20 |
+| C29-AGG-1: Recruiting token regex upper bound | FIXED | `auth/config.ts:208` uses `{16,128}` |
+| C29-AGG-2: DATABASE_URL missing | FIXED | `vitest.config.ts:12` provides fallback |
+| C29-AGG-3: Cycle 27 carry-forward | FIXED | NaN guards, DELETE audit, prompt regex all applied |
+| C29-AGG-6: DEV_ENCRYPTION_KEY | FIXED | Removed from codebase |
+| C29-AGG-7: Chat test-connection auth | FIXED | Uses `createApiHandler` with auth + rateLimit |
+| C29-AGG-10: Admin routes bypass | FIXED | All admin routes use `createApiHandler` |
+| C29-AGG-16: CountdownTimer cleanup | FIXED | Proper abort controller + timeout + event listener cleanup |
 
 ---
 
-## Deferred / Carry-Forward
+## LONG-TERM DEFERRED ITEMS (unchanged)
 
-### C19-2 carry-forward: Transaction wrapper inconsistency
-- **File+line:** `src/app/api/v1/judge/poll/route.ts:136`
-- **Original cycle:** 19
-- **Status:** Still present at cycle 29 (10 cycles deferred)
-- **Reason:** Low severity maintainability issue with no functional impact
-- **Exit criterion:** Use `execTransaction` for both paths
-
-### C25-6 carry-forward: Client-side console.error
-- **Files:** Multiple client components (22 instances)
-- **Original cycle:** 25
-- **Status:** Deferred
-- **Reason:** Informational only
-- **Exit criterion:** When a client-side logging utility is introduced
-
-### C25-7 carry-forward: WeakMap complexity
-- **File+line:** `src/lib/security/api-rate-limit.ts:62-72`
-- **Original cycle:** 25
-- **Status:** Deferred
-- **Reason:** Best-effort deduplication documented as such
-- **Exit criterion:** When rate-limit module is refactored
-
-### C25-8 carry-forward: RegExp creation per render
-- **File+line:** `src/components/seo/json-ld.tsx:17-18`
-- **Original cycle:** 25
-- **Status:** Deferred
-- **Reason:** Micro-optimization
-- **Exit criterion:** When SEO component is refactored
+- **C19-2:** Transaction wrapper inconsistency (`src/app/api/v1/judge/poll/route.ts:136`) — 11 cycles deferred
+- **C25-6:** Client-side console.error (22 instances) — deferred
+- **C25-7:** WeakMap complexity (`api-rate-limit.ts:62-72`) — deferred
+- **C25-8:** RegExp creation per render (`json-ld.tsx:17-18`) — deferred
 
 ---
 
