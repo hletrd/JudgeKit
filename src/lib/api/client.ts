@@ -71,7 +71,7 @@
  * // use data (typed) for success
  * ```
  */
-import { createTimeoutSignal, withTimeout } from "@/lib/abort";
+import { createTimeoutSignal, withTimeout, cleanupWithTimeout } from "@/lib/abort";
 
 export function apiFetch(
   input: RequestInfo | URL,
@@ -87,9 +87,14 @@ export function apiFetch(
     headers.set("Accept", "application/json");
   }
 
-  const signal = init?.signal
-    ? withTimeout(init.signal, 30_000)
-    : createTimeoutSignal(30_000);
+  if (init?.signal) {
+    const signal = withTimeout(init.signal, 30_000);
+    return fetch(input, { ...init, headers, signal }).finally(() => {
+      cleanupWithTimeout(signal);
+    });
+  }
+
+  const signal = createTimeoutSignal(30_000);
   return fetch(input, { ...init, headers, signal });
 }
 
