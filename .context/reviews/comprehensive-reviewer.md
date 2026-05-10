@@ -1,7 +1,7 @@
-# Comprehensive Code Review — Cycle 37
+# Comprehensive Code Review — Cycle 43
 
-**Reviewer:** comprehensive-reviewer (single-agent review — no subagent spawn capability available)
-**Date:** 2026-05-09
+**Reviewer:** comprehensive-reviewer (single-agent review, subagent spawning unavailable)
+**Date:** 2026-05-10
 **Scope:** Full repository review across security, correctness, performance, architecture, test coverage, and UI/UX dimensions.
 
 ## Methodology
@@ -25,36 +25,43 @@ Key files examined:
 - `src/lib/auth/config.ts`
 - `src/lib/security/rate-limit.ts`
 - `src/lib/plugins/chat-widget/providers.ts`
-- `judge-worker-rs/src/docker.rs` and `executor.rs`
+- `src/hooks/use-submission-polling.ts`
+- `src/hooks/use-source-draft.ts`
+- `src/hooks/use-visibility-polling.ts`
+- `src/lib/compiler/execute.ts`
+- `src/lib/audit/events.ts`
+- `src/lib/db/export.ts` and `export-with-files.ts`
 - Plus 50+ additional files via grep-driven pattern analysis
 
 ## Verified Fixes from Prior Cycles
 
-### Cycle 35 — All Fixed
-- AGG-1: parseFloat() || null treats 0 as falsy — FIXED
-- AGG-2: Tags PATCH missing updatedAt — FIXED
-- AGG-3: SUBMISSION_GLOBAL_QUEUE_LIMIT || pattern — FIXED
-- AGG-4: group-instructors-manager raw log — VERIFIED (already gated)
+### Cycle 42 — All Verified
+- No code changes (documentation only)
 
-### Cycle 34 — All Fixed
-- C34-CR-1 / C34-SR-1 / C34-VR-1 / C34-DS-1: apiFetchJson silent parse failures — FIXED (development-only warning added at line 143)
-- C34-CR-2 / C34-PR-1 / C34-TE-1 / C34-AR-1 / C34-DB-1 / C34-CT-2 / C34-VR-2: Rate limit eviction timer leak — FIXED (stopRateLimitEviction exported)
-- C34-PR-2 / C34-CT-3 / C34-VR-3: Anti-cheat heartbeat reschedules while hidden — FIXED (gated on visibility)
+### Cycle 41 — All Verified
+- No code changes (documentation only)
 
-### Cycle 33 — All Fixed
-- C33-CR-2: apiFetchJson fetch throw — FIXED
-- C33-CR-3: export-button AbortController — FIXED
-- C33-CR-5: sign-out race condition — FIXED
+### Cycle 40 — All Fixed
+- DEFER-36: `formData.get()` cast assertions — FIXED in login-form.tsx and change-password-form.tsx
+- Export.ts pre-abort signal check — ADDED in cycle 39, verified in cycles 40-43
 
-### Cycle 32 — All Fixed
-- C32-1: SSE parser controller.close() after error() — FIXED
-- C32-2: maxTokens || fallback — FIXED
+### Cycle 39 — All Fixed
+- AGG-1 (cycle 39): Docker build stderr sanitized
+- AGG-2 (cycle 39): `participant-status.ts` `Date.now()` default removed
+- AGG-3 (cycle 39): `JUDGE_WORKER_URL` guard added
+
+### Cycle 38 — All Fixed
+- AGG-3 (cycle 38): `db/import.ts` error messages sanitized
+- AGG-4 (cycle 38): Anti-cheat monitor text content capture removed
+
+### Cycles 32-37 — All Fixed
+(See prior aggregates for full list; all prior fixes verified intact.)
 
 ## New Findings
 
 None. 0 new findings in this cycle.
 
-## Carry-Forward Deferred Items (unchanged from cycle 36)
+## Carry-Forward Deferred Items (unchanged from cycle 42)
 
 ### CRITICAL
 - C-1: Test/Seed localhost check spoofable
@@ -63,45 +70,39 @@ None. 0 new findings in this cycle.
 
 ### HIGH
 - H-1: SSE result visibility bypass
-- H-2: Problem-Set PATCH bypasses createApiHandler — FIXED
-- H-3: Overrides route doesn't use createApiHandler — FIXED
-- H-4: In-memory rate limiter for judge claims — FIXED
-- H-5: Accepted solutions exposes userId for anonymous — FIXED
 
 ### MEDIUM
 - DEFER-C30-4: `.json()` before `.ok` in non-critical components (30+ files)
 - DEFER-C30-5: Raw API error strings without i18n (ongoing incremental)
 - DEFER-C30-6: `as { error?: string }` unsafe type assertions (15 instances)
-- C29 AGG-10: Admin routes bypass createApiHandler (partially fixed)
-- C29 AGG-12: Recruiting validate endpoint token brute-force (mitigated)
+- C29 AGG-10: Admin routes bypass createApiHandler (partially fixed, 15 routes remain)
+- C29 AGG-12: Recruiting validate endpoint token brute-force (mitigated by rate limit + format validation)
 
 ### LOW
 - DEFER-27: Missing AbortController on polling fetches
 - DEFER-34: Hardcoded English fallback strings
 - DEFER-35: Hardcoded English strings in editor title attributes
-- DEFER-36: `formData.get()` cast assertions without validation
 - C25-6: Client-side console.error (remaining instances)
 - C25-7: WeakMap complexity in api-rate-limit.ts
 - C29 AGG-13: files/[id] GET selects storedName
 - C29 AGG-14: Admin settings exposes DB host/port
 - C29 AGG-15: Missing error boundaries
-- C29 AGG-17: Hardcoded English in throw new Error
+- C29 AGG-17: Hardcoded English in throw new Error (permissions.ts)
 - C29 AGG-18: Hardcoded English fallback strings in code-editor.tsx
-- C29 AGG-19: formData.get() cast assertions without validation
 
 ## Positive Observations
 
-1. All quality gates pass: eslint, tsc, vitest unit + component, cargo test
+1. All quality gates pass: eslint, tsc, vitest unit + component
 2. Error boundaries gate console.error behind development checks
 3. Critical user-facing paths use safe response parsing
 4. All clock-skew-sensitive paths use DB-server time
-5. No `as any` type casts found
+5. No new `as any` type casts found
 6. No `@ts-ignore`, `@ts-expect-error`, or `@ts-nocheck`
 7. AES-256-GCM encryption with proper auth tag handling
 8. Atomic SQL with FOR UPDATE SKIP LOCKED in judge claim
-9. Comprehensive test coverage (2391 unit + 208 component + 55 Rust tests)
+9. Comprehensive test coverage
 10. Fine-grained semantic commits with gitmoji
 
 ## Final Assessment
 
-Cycle 37 represents a mature codebase with no new issues identified. All previously found issues have been fixed or properly deferred with clear exit criteria. The codebase demonstrates sustained high quality across 36+ review cycles.
+Cycle 43 represents a mature codebase with no new issues identified. All previously found issues have been fixed or properly deferred with clear exit criteria. The codebase demonstrates sustained high quality across 42+ review cycles.

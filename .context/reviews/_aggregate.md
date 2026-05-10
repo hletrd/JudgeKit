@@ -1,25 +1,49 @@
-# Aggregate Review — Cycle 42 (RPF Loop)
+# Aggregate Review — Cycle 43 (RPF Loop)
 
 **Date:** 2026-05-10
 **Reviewers:** comprehensive-reviewer (single-agent review, subagent spawning unavailable)
-**Total findings:** 0 new + 0 false positives + all prior deferred items re-validated
+**Total findings:** 1 new (1 LOW) + 0 false positives + all prior deferred items re-validated
 
 ---
 
 ## Deduplicated Findings
 
-No new findings in this cycle.
+### C43-1: [LOW] Audit flush timer lacks stop function for test teardown
+
+**File:** `src/lib/audit/events.ts:142-151`
+**Confidence:** HIGH
+
+The `_flushTimer` (a `setInterval` for flushing buffered audit events) is created in `ensureFlushTimer()` but has no corresponding exported `stopAuditFlushTimer()` function. This is the exact same pattern that was fixed for the rate-limit eviction timer in cycle 34 (commit adding `stopRateLimitEviction()`).
+
+**Why it matters:**
+- The timer uses `.unref()`, so it will not block process exit in production
+- However, in test environments, Vitest may report open handles after test completion
+- Unlike `startSensitiveDataPruning()` / `stopSensitiveDataPruning()`, the audit flush timer is module-level and starts on first `recordAuditEvent()` call
+
+**Fix:** Add an exported `stopAuditFlushTimer()` function that clears `_flushTimer` and sets it to null.
+
+```typescript
+export function stopAuditFlushTimer() {
+  if (_flushTimer) {
+    clearInterval(_flushTimer);
+    _flushTimer = null;
+  }
+}
+```
 
 ---
 
 ## Previously Fixed Items (confirmed in current code)
+
+All cycle 42 fixes verified:
+- Cycle 42 was documentation-only (no code changes)
 
 All cycle 41 fixes verified:
 - No code changes in cycle 41 (documentation only)
 
 All cycle 40 fixes verified:
 - DEFER-36: `formData.get()` cast assertions — FIXED in login-form.tsx and change-password-form.tsx
-- Export.ts pre-abort signal check — ADDED in cycle 39, verified in cycles 40-42
+- Export.ts pre-abort signal check — ADDED in cycle 39, verified in cycles 40-43
 
 All cycle 39 fixes verified:
 - AGG-1 (cycle 39): Docker build stderr sanitized
@@ -30,39 +54,26 @@ All cycle 38 fixes verified:
 - AGG-3 (cycle 38): `db/import.ts` error messages sanitized
 - AGG-4 (cycle 38): Anti-cheat monitor text content capture removed
 
-### Cycles 32-37 — All Fixed
-(See prior aggregates for full list; all prior fixes verified intact.)
+**Also confirmed fixed since cycle 42 review (April 25):**
+- Cycle 43 NEW-1 (April 25): `recruit_` username prefix removed from recruiting-invitations.ts
+- Cycle 43 NEW-2 (April 25): Contest scoring background refresh now uses `Date.now()` fallback for cooldown timestamp
+- Cycle 43 NEW-3 (April 25): Already-redeemed recruiting path now checks assignment deadline via SQL `NOW()`
+- Cycle 43 NEW-4 (April 25): Docker build uses head+tail buffer strategy instead of string accumulation
+- Cycle 43 NEW-5 (April 25): In-memory rate limiter removed entirely
+- Cycle 43 NEW-6 (April 25): Recruiting ALS store mutation is documented as intentional single-user-per-request design
 
 ---
 
-## Carried Deferred Items (unchanged from cycle 41)
+## Carried Deferred Items (unchanged from cycle 42)
 
-### CRITICAL (requires architecture/product decision)
-- **C-1**: Test/Seed localhost check spoofable
-- **C-2**: Accepted solutions endpoint unauthenticated
-- **C-3**: File DELETE CSRF ordering
+All deferred items from cycles 25-41 remain unchanged in status. See `_aggregate-cycle-40.md` for the full list.
 
-### HIGH
-- **H-1**: SSE result visibility bypass
-
-### MEDIUM
-- **DEFER-C30-4**: `.json()` before `.ok` in non-critical components (30+ files)
-- **DEFER-C30-5**: Raw API error strings without i18n (ongoing incremental)
-- **DEFER-C30-6**: `as { error?: string }` unsafe type assertions (15 instances)
-- **C29 AGG-10**: Admin routes bypass createApiHandler (partially fixed, 15 routes remain)
-- **C29 AGG-12**: Recruiting validate endpoint token brute-force (mitigated by rate limit + format validation)
-
-### LOW
-- **DEFER-27**: Missing AbortController on polling fetches
-- **DEFER-34**: Hardcoded English fallback strings
-- **DEFER-35**: Hardcoded English strings in editor title attributes
-- **C25-6**: Client-side console.error (remaining instances)
-- **C25-7**: WeakMap complexity in api-rate-limit.ts
-- **C29 AGG-13**: files/[id] GET selects storedName
-- **C29 AGG-14**: Admin settings exposes DB host/port
-- **C29 AGG-15**: Missing error boundaries
-- **C29 AGG-17**: Hardcoded English in throw new Error (permissions.ts)
-- **C29 AGG-18**: Hardcoded English fallback strings in code-editor.tsx
+| Category | Count | Status |
+|----------|-------|--------|
+| CRITICAL | 3 | Unchanged |
+| HIGH | 1 | Unchanged |
+| MEDIUM | 5 | Unchanged |
+| LOW | 12+ | Unchanged |
 
 ---
 
@@ -81,14 +92,16 @@ Single comprehensive review completed successfully. Subagent spawning was unavai
 5. Recruiting token validation uses bounded regex to prevent ReDoS.
 6. Backup/restore requires password re-confirmation and verifies integrity manifest.
 7. Export redaction properly merges sanitized and always-redact column maps via explicit Set union.
+8. IP extraction uses proper hop validation (`TRUSTED_PROXY_HOPS`).
 
 ## Correctness Observations (No New Issues)
 
-1. Timer cleanup: All examined components properly clear timers and event listeners on unmount.
+1. Timer cleanup: All examined components clear timers and event listeners on unmount.
 2. Error handling: `apiFetchJson` correctly catches network errors and logs parse failures in development.
 3. Type safety: No new unsafe type assertions found beyond previously deferred items.
 4. React patterns: Ref patterns in anti-cheat monitor are sound.
 5. SSE fallback: `useSubmissionPolling` correctly falls back from SSE to fetch polling.
+6. Data retention: Uses `getDbNowMs()` for cutoffs, avoiding clock skew.
 
 ## Performance Observations (No New Issues)
 

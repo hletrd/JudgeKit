@@ -144,6 +144,17 @@ if (globalThis.__sseCleanupTimer && typeof globalThis.__sseCleanupTimer === "obj
   globalThis.__sseCleanupTimer.unref();
 }
 
+/**
+ * Stop the SSE cleanup timer. Exported for test teardown.
+ */
+export function stopSseCleanupTimer() {
+  if (globalThis.__sseCleanupTimer) {
+    clearInterval(globalThis.__sseCleanupTimer);
+    globalThis.__sseCleanupTimer = undefined;
+    globalThis.__sseCleanupInitialized = false;
+  }
+}
+
 // Graceful shutdown: in-memory connection tracking is cleaned up on process
 // exit automatically. The audit-buffer flush is handled by
 // registerAuditFlushOnShutdown() in node-shutdown.ts (called from
