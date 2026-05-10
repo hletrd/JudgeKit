@@ -2,7 +2,7 @@ import { execFile, spawn } from "child_process";
 import { promisify } from "util";
 import pLimit from "p-limit";
 import { logger } from "@/lib/logger";
-import { withTimeout } from "@/lib/abort";
+import { withTimeout, cleanupWithTimeout } from "@/lib/abort";
 
 const exec = promisify(execFile);
 // Accept JUDGE_WORKER_URL or COMPILER_RUNNER_URL — both map to the same
@@ -110,13 +110,19 @@ async function callWorkerJson<T>(
   headers.set("Content-Type", "application/json");
   headers.set("Authorization", `Bearer ${RUNNER_AUTH_TOKEN}`);
 
+  const signal = init?.signal
+    ? withTimeout(init.signal, 30_000)
+    : AbortSignal.timeout(30_000);
+
   const response = await fetch(`${JUDGE_WORKER_URL}${path}`, {
     ...init,
     headers,
     cache: "no-store",
-    signal: init?.signal
-      ? withTimeout(init.signal, 30_000)
-      : AbortSignal.timeout(30_000),
+    signal,
+  }).finally(() => {
+    if (init?.signal) {
+      cleanupWithTimeout(signal);
+    }
   });
 
   if (!response.ok) {
@@ -144,13 +150,19 @@ async function callWorkerNoContent(path: string, init?: RequestInit): Promise<vo
   headers.set("Content-Type", "application/json");
   headers.set("Authorization", `Bearer ${RUNNER_AUTH_TOKEN}`);
 
+  const signal = init?.signal
+    ? withTimeout(init.signal, 60_000)
+    : AbortSignal.timeout(60_000);
+
   const response = await fetch(`${JUDGE_WORKER_URL}${path}`, {
     ...init,
     headers,
     cache: "no-store",
-    signal: init?.signal
-      ? withTimeout(init.signal, 60_000)
-      : AbortSignal.timeout(60_000),
+    signal,
+  }).finally(() => {
+    if (init?.signal) {
+      cleanupWithTimeout(signal);
+    }
   });
 
   if (!response.ok) {
