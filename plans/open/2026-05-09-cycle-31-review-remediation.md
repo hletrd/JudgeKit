@@ -28,8 +28,8 @@ const rawError = data.error || data.message || t("requestFailed");
 ```
 
 **Implementation:**
-- [ ] Update error fallback chain in compiler-client.tsx
-- [ ] Run gates
+- [x] Update error fallback chain in compiler-client.tsx
+- [x] Run gates
 
 **Exit criterion:** `res.statusText` is no longer used as a user-visible error fallback.
 
@@ -58,8 +58,8 @@ const U2029_REGEX = new RegExp(String.fromCharCode(0x2029), "g");
 Then use `.replace(U2028_REGEX, "\\u2028")` and `.replace(U2029_REGEX, "\\u2029")`.
 
 **Implementation:**
-- [ ] Extract RegExp objects to module-level constants
-- [ ] Run gates
+- [x] Extract RegExp objects to module-level constants
+- [x] Run gates
 
 **Exit criterion:** RegExp objects are created once at module load time, not per function call.
 
@@ -81,3 +81,13 @@ Then use `.replace(U2028_REGEX, "\\u2028")` and `.replace(U2029_REGEX, "\\u2029"
 - **C29 AGG-17:** Hardcoded English in throw new Error (`permissions.ts`) — LOW, deferred
 - **C29 AGG-18:** Hardcoded English fallback strings in code-editor.tsx — LOW, deferred
 - **C29 AGG-19:** formData.get() cast assertions without validation — LOW, deferred
+
+---
+
+## Gate Results (Post-Implementation)
+
+- [x] `npx eslint .` passes (0 errors)
+- [x] `npx tsc --noEmit` passes
+- [x] `npx next build` passes
+- [x] `npx vitest run` passes — 315 files, 2382 tests (all pass)
+- [x] `npx vitest run --config vitest.config.component.ts` passes — 68 files, 208 tests (all pass)
