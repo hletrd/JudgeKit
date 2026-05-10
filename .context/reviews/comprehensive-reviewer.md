@@ -1,108 +1,57 @@
-# Comprehensive Code Review — Cycle 43
+# Comprehensive Review — Cycle 46
 
-**Reviewer:** comprehensive-reviewer (single-agent review, subagent spawning unavailable)
+**Reviewer:** comprehensive-reviewer (single-agent deep review)
 **Date:** 2026-05-10
-**Scope:** Full repository review across security, correctness, performance, architecture, test coverage, and UI/UX dimensions.
+**Scope:** Full repository — Next.js app, API routes, components, hooks, lib modules
+**Focus:** Timer/resource leaks, race conditions, error handling, React lifecycle issues
 
-## Methodology
+---
 
-Since Agent tools were not available for spawning parallel review subagents, this review was conducted as a single deep-dive using direct codebase exploration. Review angles covered:
+## C46-1: [LOW] Timer leak in `callWorkerJson`/`callWorkerNoContent` when custom signal provided
 
-- **Security:** Auth patterns, CSRF, rate limiting, SQL injection, XSS, secrets handling
-- **Correctness:** Type safety, error handling, race conditions, edge cases
-- **Performance:** Memory leaks, re-renders, AbortController usage, timer cleanup
-- **Architecture:** createApiHandler adoption, middleware consistency, coupling
-- **Tests:** Coverage gaps, flaky patterns, missing test cases
-- **UI/UX:** i18n completeness, accessibility, hardcoded strings
+**Confidence:** HIGH
+**Files:** `src/lib/docker/client.ts:118`, `src/lib/docker/client.ts:152`
 
-Key files examined:
-- `src/lib/api/client.ts` and `handler.ts`
-- `src/components/exam/anti-cheat-monitor.tsx`
-- `src/app/api/v1/judge/claim/route.ts`
-- `src/app/api/v1/recruiting/validate/route.ts`
-- `src/app/api/v1/files/[id]/route.ts`
-- `src/app/api/v1/test/seed/route.ts`
-- `src/lib/auth/config.ts`
-- `src/lib/security/rate-limit.ts`
-- `src/lib/plugins/chat-widget/providers.ts`
-- `src/hooks/use-submission-polling.ts`
-- `src/hooks/use-source-draft.ts`
-- `src/hooks/use-visibility-polling.ts`
-- `src/lib/compiler/execute.ts`
-- `src/lib/audit/events.ts`
-- `src/lib/db/export.ts` and `export-with-files.ts`
-- Plus 50+ additional files via grep-driven pattern analysis
+`callWorkerJson` and `callWorkerNoContent` both accept an optional `init?: RequestInit` parameter. When `init.signal` is provided, they wrap it with `withTimeout(init.signal, 30_000)` (or 60_000 for `callWorkerNoContent`) before passing to `fetch()`. However, unlike `apiFetch` in `src/lib/api/client.ts` (which was fixed in cycle 45), neither function calls `cleanupWithTimeout()` after `fetch()` completes.
 
-## Verified Fixes from Prior Cycles
+**Concrete failure scenario:** A future caller (or existing external integration) passes an `AbortSignal` to `buildDockerImage()` or `removeDockerImage()` with a long-running timeout. The `withTimeout` creates a 30s timer. If the Docker worker responds in 2s, the timer fires 28s later with no work to do. Under sustained load with custom signals, these dangling timers accumulate.
 
-### Cycle 42 — All Verified
-- No code changes (documentation only)
+**Fix:** Chain `.finally(() => cleanupWithTimeout(signal))` on the `fetch()` call when a custom signal was provided, mirroring the fix in `apiFetch`.
 
-### Cycle 41 — All Verified
-- No code changes (documentation only)
+---
 
-### Cycle 40 — All Fixed
-- DEFER-36: `formData.get()` cast assertions — FIXED in login-form.tsx and change-password-form.tsx
-- Export.ts pre-abort signal check — ADDED in cycle 39, verified in cycles 40-43
+## C46-2: [LOW] `useVisibilityPolling` breaks permanently if callback throws
 
-### Cycle 39 — All Fixed
-- AGG-1 (cycle 39): Docker build stderr sanitized
-- AGG-2 (cycle 39): `participant-status.ts` `Date.now()` default removed
-- AGG-3 (cycle 39): `JUDGE_WORKER_URL` guard added
+**Confidence:** MEDIUM
+**File:** `src/hooks/use-visibility-polling.ts:57-61`
 
-### Cycle 38 — All Fixed
-- AGG-3 (cycle 38): `db/import.ts` error messages sanitized
-- AGG-4 (cycle 38): Anti-cheat monitor text content capture removed
+The `scheduleNext()` function inside `useVisibilityPolling` is:
+```ts
+timerId = setTimeout(() => {
+  if (cancelled) return;
+  tick();
+  scheduleNext();
+}, intervalMs);
+```
 
-### Cycles 32-37 — All Fixed
-(See prior aggregates for full list; all prior fixes verified intact.)
+`tick()` calls `savedCallback.current()` synchronously. If the user's callback throws an exception, the exception propagates out of the `setTimeout` callback without reaching `scheduleNext()`. The timer is never rescheduled, and polling stops permanently for the lifetime of the component (or until the effect re-runs due to dependency changes).
 
-## New Findings
+The hook's doc comment says "The callback must handle its own errors", but in practice React component callbacks can throw from unexpected places (e.g., a `setState` updater that throws, or a downstream component error). Once broken, the hook provides no recovery mechanism.
 
-None. 0 new findings in this cycle.
+**Concrete failure scenario:** A dashboard component uses `useVisibilityPolling` to refresh data every 30s. A transient `setState` error during one refresh tick causes an unhandled exception. The exception is caught by an error boundary, but polling never resumes. The user sees stale data indefinitely until they manually refresh the page.
 
-## Carry-Forward Deferred Items (unchanged from cycle 42)
+**Fix:** Wrap `tick()` in a try/catch inside `scheduleNext()` so that even if the callback throws, `scheduleNext()` is still called and polling continues.
 
-### CRITICAL
-- C-1: Test/Seed localhost check spoofable
-- C-2: Accepted solutions endpoint unauthenticated
-- C-3: File DELETE CSRF ordering
+---
 
-### HIGH
-- H-1: SSE result visibility bypass
+## Final Sweep: Commonly Missed Issues
 
-### MEDIUM
-- DEFER-C30-4: `.json()` before `.ok` in non-critical components (30+ files)
-- DEFER-C30-5: Raw API error strings without i18n (ongoing incremental)
-- DEFER-C30-6: `as { error?: string }` unsafe type assertions (15 instances)
-- C29 AGG-10: Admin routes bypass createApiHandler (partially fixed, 15 routes remain)
-- C29 AGG-12: Recruiting validate endpoint token brute-force (mitigated by rate limit + format validation)
-
-### LOW
-- DEFER-27: Missing AbortController on polling fetches
-- DEFER-34: Hardcoded English fallback strings
-- DEFER-35: Hardcoded English strings in editor title attributes
-- C25-6: Client-side console.error (remaining instances)
-- C25-7: WeakMap complexity in api-rate-limit.ts
-- C29 AGG-13: files/[id] GET selects storedName
-- C29 AGG-14: Admin settings exposes DB host/port
-- C29 AGG-15: Missing error boundaries
-- C29 AGG-17: Hardcoded English in throw new Error (permissions.ts)
-- C29 AGG-18: Hardcoded English fallback strings in code-editor.tsx
-
-## Positive Observations
-
-1. All quality gates pass: eslint, tsc, vitest unit + component
-2. Error boundaries gate console.error behind development checks
-3. Critical user-facing paths use safe response parsing
-4. All clock-skew-sensitive paths use DB-server time
-5. No new `as any` type casts found
-6. No `@ts-ignore`, `@ts-expect-error`, or `@ts-nocheck`
-7. AES-256-GCM encryption with proper auth tag handling
-8. Atomic SQL with FOR UPDATE SKIP LOCKED in judge claim
-9. Comprehensive test coverage
-10. Fine-grained semantic commits with gitmoji
-
-## Final Assessment
-
-Cycle 43 represents a mature codebase with no new issues identified. All previously found issues have been fixed or properly deferred with clear exit criteria. The codebase demonstrates sustained high quality across 42+ review cycles.
+- **Timer leaks in components:** All examined components (anti-cheat-monitor, countdown-timer, submission-list-auto-refresh, problem-submission-form, recruiting-invitations-panel, lecture-toolbar, api-keys-client, file-management-client) properly clean up timers in useEffect cleanup functions. No additional leaks found.
+- **AbortSignal cleanup:** `apiFetch` correctly cleans up `withTimeout` signals (cycle 45 fix verified). The Docker client functions are the only remaining place with this pattern unchecked.
+- **SSE cleanup:** The shared poll timer and cleanup timer in `events/route.ts` both have proper `stopSseCleanupTimer()` exports and `unref()` calls.
+- **Audit flush:** `stopAuditFlushTimer()` exported correctly (cycle 43 fix verified).
+- **Rate limit eviction:** `stopRateLimitEviction()` exported and used in tests.
+- **Data retention pruning:** `stopSensitiveDataPruning()` properly clears both local and global timer references.
+- **Type safety:** No unsafe `as` casts found in newly reviewed code that bypass validation.
+- **SQL injection:** All raw queries use parameterized bindings via `namedToPositional`. No user input reaches SQL unsanitized.
+- **Auth bypass:** All examined API routes use `createApiHandler` with appropriate auth config. No missing auth checks found.
