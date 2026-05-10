@@ -205,7 +205,7 @@ export const authConfig: NextAuthConfig = {
           // Validate token format before consuming rate limit attempts.
           // Recruiting tokens are base64url-encoded random bytes (32 chars).
           // Rejecting malformed tokens early prevents trivial rate-limit exhaustion.
-          if (!/^[-A-Za-z0-9_]{16,}$/.test(credentials.recruitToken)) {
+          if (!/^[-A-Za-z0-9_]{16,128}$/.test(credentials.recruitToken)) {
             recordLoginEvent({
               outcome: "invalid_credentials",
               attemptedIdentifier: "recruitToken",
