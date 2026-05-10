@@ -488,11 +488,12 @@ function transformSSE(
             }
           }
         }
+
+        controller.close();
       } catch (err) {
         controller.error(err);
       } finally {
         reader.releaseLock();
-        controller.close();
       }
     },
   });
