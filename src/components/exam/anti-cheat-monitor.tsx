@@ -187,7 +187,9 @@ export function AntiCheatMonitor({
         if (document.visibilityState === "visible") {
           await reportEventRef.current("heartbeat");
         }
-        scheduleHeartbeat();
+        if (document.visibilityState === "visible") {
+          scheduleHeartbeat();
+        }
       }, HEARTBEAT_INTERVAL_MS);
     }
 
