@@ -24,12 +24,14 @@ User-submitted source code is embedded directly into the LLM prompt without any 
 3. Add output guardrails: validate LLM output length and reject empty/whitespace-only responses.
 
 **Implementation:**
-- [ ] Create `src/lib/judge/prompt-sanitization.ts` with `sanitizePromptInput()` helper
-- [ ] Integrate sanitization into `auto-review.ts` before embedding source code
-- [ ] Add delimiter framing in the prompt template
-- [ ] Add output validation (non-empty check, length cap)
-- [ ] Add unit tests for sanitization function
-- [ ] Run gates
+- [x] Create `src/lib/judge/prompt-sanitization.ts` with `sanitizePromptInput()` helper
+- [x] Integrate sanitization into `auto-review.ts` before embedding source code
+- [x] Add delimiter framing in the prompt template
+- [x] Add output validation (non-empty check, length cap)
+- [x] Add unit tests for sanitization function
+- [x] Run gates
+
+**Status:** Completed in commits 29e5075d and 61027b55.
 
 **Exit criterion:** User source code containing prompt injection markers is sanitized before reaching the LLM, and LLM output is validated before storage.
 
@@ -81,10 +83,10 @@ User-submitted source code is embedded directly into the LLM prompt without any 
 
 ---
 
-## Gate Results (Pre-Implementation)
+## Gate Results (Post-Implementation)
 
 - [x] `npx eslint .` passes (0 errors)
 - [x] `npx tsc --noEmit` passes
 - [x] `npx next build` passes
-- [x] `npx vitest run` passes
-- [x] `npx vitest run --config vitest.config.component.ts` passes
+- [x] `npx vitest run` passes — 314/315 files, 2360 tests (1 pre-existing failure: export-sanitization.test.ts requires DATABASE_URL)
+- [x] `npx vitest run --config vitest.config.component.ts` passes — 68 files, 208 tests
