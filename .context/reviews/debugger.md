@@ -1,70 +1,35 @@
-# Debugger Review — Cycle 34
+# Debugger Review — Cycle 37
 
 **Reviewer:** debugger
-**Date:** 2026-05-10
-**Scope:** Latent bugs, failure modes, edge cases, race conditions
+**Date:** 2026-05-09
+**HEAD:** 07174a9b
 
----
+## Summary
 
-## Findings
+0 new findings. No latent bugs, race conditions, or failure mode regressions detected.
 
-### C34-DB-1: [MEDIUM] Rate limit eviction timer leaks across test boundaries
+## Reviewed Areas
 
-**File:** `src/lib/security/rate-limit.ts:68-80`
-**Confidence:** HIGH
+### Timer & Async Patterns
+- Anti-cheat monitor: Retry timer properly cleared in cleanup. Heartbeat gated on visibility (cycle 35 fix).
+- Submission list auto-refresh: `mountedRef` guard prevents state updates after unmount (cycle 33 fix).
+- Export button: AbortController cancels in-flight requests, blob URLs revoked (cycle 33 fix).
 
-The `startRateLimitEviction()` function stores its timer in a module-level variable. When tests import modules transitively depending on rate-limit.ts, the timer starts. There is no way to stop it, so tests that check for clean exits will fail.
+### Race Conditions
+- Sign-out: Keys snapshotted before iteration (cycle 33 fix).
+- Judge claim: Atomic SQL with `FOR UPDATE SKIP LOCKED` prevents double-claims.
+- Rate limit eviction: `stopRateLimitEviction()` enables clean teardown (cycle 34 fix).
 
-This is a classic module-level singleton leak pattern.
+### Edge Cases
+- apiFetchJson: Handles fetch throwing (network failure) and JSON parse failures (non-JSON body).
+- SSE parser: No longer calls controller.close() after controller.error() (cycle 32 fix).
+- Compiler client: `isRunningRef` prevents concurrent runs.
 
-**Fix:** Export `stopRateLimitEviction()`.
+## Deferred Debug Items (unchanged)
 
----
+- DEFER-C30-6: `as { error?: string }` unsafe assertions — 15 instances remain
+- C25-6: Client-side console.error — tracked, low severity
 
-### C34-DB-2: [LOW] `anti-cheat-monitor` scheduleRetryRef closure over stale performFlush
+## Conclusion
 
-**File:** `src/components/exam/anti-cheat-monitor.tsx:115-128`
-**Confidence:** MEDIUM
-
-The `scheduleRetryRef` useEffect depends on `[performFlush]`. When `performFlush` identity changes, a new `scheduleRetryRef.current` is assigned. However, any in-flight retry timer (created before the identity change) captures the OLD `performFlush` in its closure at line 123:
-
-```typescript
-retryTimerRef.current = setTimeout(async () => {
-  retryTimerRef.current = null;
-  const retryRemaining = await performFlush(); // stale closure
-  scheduleRetryRef.current(retryRemaining);
-}, backoffDelay);
-```
-
-In practice, `performFlush` only changes when `assignmentId` or `sendEvent` changes (prop changes), so the stale closure would use old prop values.
-
-**Fix:** Use a ref for `performFlush` or inline the retry logic in the same useEffect that manages cleanup.
-
----
-
-### C34-DB-3: [LOW] `apiFetchJson` parse failure gives no debug signal
-
-**File:** `src/lib/api/client.ts:138-144`
-**Confidence:** MEDIUM
-
-When JSON parsing fails, developers have no signal about what went wrong. The only observable behavior is `{ ok: false, data: fallback }`. This makes it impossible to distinguish between:
-- Server returned non-JSON (e.g., 502 HTML)
-- Server returned malformed JSON
-- Network error (now handled by the fetch try/catch added in cycle 33)
-
-**Fix:** Add development-only logging.
-
----
-
-## Previously Fixed (cycle 33)
-
-- C33-DB-1 (anti-cheat flush race): Addressed via `performFlush` extraction
-- C33-DB-2 (submission-list-auto-refresh concurrent tick): Fixed — `mountedRef` guard added
-- C33-DB-3 (export-button blob leak): Fixed — `blobUrlRef` with revoke
-- C33-DB-4 (sign-out iteration race): Fixed — keys snapshotted before iteration
-
-## Positive Observations
-
-1. `isRunningRef` guard in compiler-client prevents concurrent runs.
-2. AbortController in compiler-client properly cancels in-flight requests.
-3. Heartbeat cleanup in anti-cheat monitor properly clears timers.
+No new latent bugs or failure modes found in this cycle.

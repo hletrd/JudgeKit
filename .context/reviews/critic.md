@@ -1,55 +1,34 @@
-# Critic Review — Cycle 34
+# Critic Review — Cycle 37
 
 **Reviewer:** critic
-**Date:** 2026-05-10
-**Scope:** Multi-perspective critique of codebase patterns and conventions
+**Date:** 2026-05-09
+**HEAD:** 07174a9b
 
----
+## Summary
 
-## Findings
+0 new findings. Codebase patterns and conventions remain consistent and well-maintained.
 
-### C34-CT-1: [MEDIUM] `apiFetchJson` silence on parse failures is a developer experience regression
+## Multi-Perspective Assessment
 
-**File:** `src/lib/api/client.ts:138-144`
-**Confidence:** HIGH
+### Developer Experience
+- apiFetchJson now has development-only warning for parse failures (cycle 35 fix) — addresses the DX concern from cycle 34.
+- Inline documentation is excellent throughout the codebase.
+- Type safety is strong — no `as any`, `@ts-ignore`, or `@ts-expect-error` found.
 
-The codebase invests heavily in developer experience: excellent inline documentation, typed APIs, and clear error conventions. Yet `apiFetchJson` — the most commonly used API utility — gives zero feedback when JSON parsing fails. A developer debugging why their component shows fallback data instead of server data must manually add logging or use browser devtools network panel.
+### Testability
+- `stopRateLimitEviction()` exported (cycle 34 fix) — enables clean test teardown.
+- Rate limit module still has module-level side effects, but now controllable.
 
-This contradicts the module's own stated principle: "Never silently swallow errors."
+### Maintainability
+- createApiHandler factory provides consistent middleware application.
+- Auth preference fields automatically propagated via AUTH_PREFERENCE_FIELDS.
+- Rust worker modules are well-separated.
 
-**Fix:** One-line development-only console.warn.
+### Code Quality Trends
+- 36 cycles of review have produced a very mature codebase.
+- Most critical issues resolved; remaining deferred items are low-severity or require architecture decisions.
+- Commit history shows fine-grained, semantic commits with gitmoji.
 
----
+## Conclusion
 
-### C34-CT-2: [MEDIUM] Rate limit eviction timer is an uncontrolled side effect at module level
-
-**File:** `src/lib/security/rate-limit.ts:68-80`
-**Confidence:** HIGH
-
-Module-level side effects (timers, global listeners) are generally discouraged because they violate testability and composability. The rate limit eviction timer is started by whoever calls `startRateLimitEviction()` but cannot be stopped. This is a one-way door.
-
-**Fix:** Export symmetric stop function.
-
----
-
-### C34-CT-3: [LOW] Heartbeat scheduling in anti-cheat monitor is wasteful when tab is hidden
-
-**File:** `src/components/exam/anti-cheat-monitor.tsx:185-191`
-**Confidence:** LOW
-
-A hidden tab does not need heartbeat scheduling. The current implementation schedules 960+ no-op callbacks over an 8-hour hidden period. While not a bug, it is unnecessary work that accumulates.
-
-**Fix:** Gate reschedule on visibility.
-
----
-
-## Cross-Agent Agreement
-
-- Rate limit timer leak: confirmed by code-reviewer, perf-reviewer, test-engineer, architect, debugger, verifier
-- apiFetchJson parse silence: confirmed by code-reviewer, security-reviewer, architect, debugger, verifier
-
-## Previously Addressed (cycle 33)
-
-- C33-CT-1 (throw-then-match anti-pattern): Partially addressed — many components still use it
-- C33-CT-2 (error boundary console.error): **FIXED** — all 4 files gated
-- C33-CT-3 (apiFetchJson type narrowing): Unchanged
+No new critique-worthy issues found in this cycle. The codebase demonstrates sustained high quality.

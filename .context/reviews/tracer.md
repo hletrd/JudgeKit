@@ -1,55 +1,40 @@
-# Tracer Review — Cycle 34
+# Tracer Review — Cycle 37
 
 **Reviewer:** tracer
-**Date:** 2026-05-10
-**Scope:** Causal tracing of suspicious flows, competing hypotheses
+**Date:** 2026-05-09
+**HEAD:** 07174a9b
 
----
+## Summary
 
-## Findings
+0 new findings. No suspicious flows or competing hypotheses require investigation.
 
-### C34-TR-1: [MEDIUM] Hypothesis: Rate limit eviction timer causes test flakiness
+## Traced Flows
 
-**File:** `src/lib/security/rate-limit.ts:68-80`
-**Confidence:** HIGH
+### Login → Rate Limit → Auth Flow
+1. Credentials submitted to NextAuth authorize callback
+2. Rate limit checked via `consumeRateLimitAttemptMulti` with IP + username keys
+3. On success, rate limits cleared; on failure, attempts recorded
+4. Token created with DB-server authenticatedAt timestamp
+5. Token invalidated check uses DB-server time for consistency
+- No TOCTOU races detected. All rate limit operations are atomic within transactions.
 
-**Trace:**
-1. Test file imports module that transitively imports `rate-limit.ts`
-2. `startRateLimitEviction()` is called (likely in app init or middleware)
-3. Test completes and asserts no open handles
-4. `setInterval` timer is still running → test fails with open handle warning
+### Judge Claim → SQL Execution → Worker Response
+1. IP allowlist check
+2. Rate limiting via `consumeUserApiRateLimit`
+3. Worker auth validation
+4. Atomic SQL claim with CTEs
+5. Test cases and language config fetched
+6. Response returned with adjusted time limits
+- No race conditions. FOR UPDATE SKIP LOCKED prevents double-claims.
 
-This hypothesis is confirmed by the presence of `evictionTimer.unref()` (line 78-79), which was added precisely to mitigate this issue. However, `unref()` only works in Node.js — in jsdom/Vitest browser environments, the timer remains referenced.
+### Anti-Cheat → Event Recording → Retry Logic
+1. Event recorded with MIN_INTERVAL_MS debouncing
+2. Immediate send attempted
+3. On failure, event saved to localStorage with retry count
+4. scheduleRetryRef handles exponential backoff
+5. Cleanup clears all timers and listeners
+- Timer lifecycle is properly managed.
 
-**Fix:** Export `stopRateLimitEviction()` for explicit test teardown.
+## Conclusion
 
----
-
-### C34-TR-2: [LOW] Hypothesis: `apiFetchJson` silent parse failures hide server misconfigurations
-
-**File:** `src/lib/api/client.ts:138-144`
-**Confidence:** MEDIUM
-
-**Trace:**
-1. Developer adds new API endpoint
-2. Endpoint accidentally returns HTML instead of JSON (e.g., middleware misconfiguration)
-3. Client calls `apiFetchJson(endpoint, ..., fallback)`
-4. `fetch()` succeeds (returns 200 with HTML body)
-5. `res.json()` throws SyntaxError
-6. Catch block silently swallows error, returns `{ ok: false, data: fallback }`
-7. Developer sees "request failed" toast but has no idea the server returned HTML
-8. Time wasted debugging client-side code when the issue is server-side
-
-**Fix:** Add development-only warning to surface the actual error.
-
----
-
-## Previously Addressed (cycle 33)
-
-- C33-TR-1 (timer leak in submission-list-auto-refresh): **FIXED** — `mountedRef` guard added
-- C33-TR-2 (sign-out key iteration race): **FIXED** — keys snapshotted before iteration
-
-## Positive Observations
-
-1. Anti-cheat retry scheduling uses ref-based delegation correctly.
-2. Timer cleanup patterns are consistent across components.
+No suspicious flows or causal anomalies detected in this cycle.

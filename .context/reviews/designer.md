@@ -1,29 +1,26 @@
-# Designer Review — Cycle 32
+# Designer Review — Cycle 37
 
-**Reviewer:** designer (manual)
-**Date:** 2026-05-10
-**Scope:** UI/UX review
+**Reviewer:** designer
+**Date:** 2026-05-09
+**HEAD:** 07174a9b
 
----
+## Summary
 
-## Findings
+0 new findings. UI/UX remains consistent and well-implemented.
 
-### C32-UI-1: [LOW] Hardcoded English strings still present in code-editor.tsx
+## Reviewed Areas
 
-**File:** `src/components/code/code-editor.tsx:36`
+- Korean text uses default letter spacing (per CLAUDE.md rule)
+- next-intl i18n coverage is comprehensive
+- Error boundaries properly gated
+- Select components follow the documented patterns (SelectValue with static children, SelectItem with label prop)
 
-Default prop values remain:
-- `fullscreenLabel = "Fullscreen (F)"`
-- `exitFullscreenLabel = "Exit fullscreen (Esc)"`
-- `exitButtonLabel = "Exit"`
-- `languageFallbackLabel = "Code Editor"`
+## Deferred UI/UX Items (unchanged)
 
-These are used in title attributes and aria-labels. Korean users may encounter untranslated English text.
+- C29 AGG-18: Hardcoded English fallback strings in code-editor.tsx
+- DEFER-34: Hardcoded English fallback strings (global)
+- DEFER-35: Hardcoded English strings in editor title attributes
 
-**Status:** Carry-forward from C29 AGG-18 (deferred)
+## Conclusion
 
----
-
-## No New UI/UX Issues
-
-The codebase shows strong i18n coverage with next-intl. Most user-facing strings are properly translated.
+No new UI/UX issues found in this cycle.

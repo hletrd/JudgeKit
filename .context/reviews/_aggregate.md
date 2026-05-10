@@ -1,7 +1,7 @@
-# Aggregate Review — Cycle 36
+# Aggregate Review — Cycle 37
 
-**Date:** 2026-05-10
-**Reviewers:** comprehensive-reviewer (single-agent review)
+**Date:** 2026-05-09
+**Reviewers:** comprehensive-reviewer, code-reviewer, security-reviewer, perf-reviewer, test-engineer, architect, debugger, verifier, critic, tracer, document-specialist, designer (all performed as single-agent review)
 **Total findings:** 0 new (0 HIGH, 0 MEDIUM, 0 LOW) + 0 false positives + previously deferred items re-validated
 
 ---
@@ -15,7 +15,6 @@ No new findings in this cycle.
 ## Verified Fixes from Prior Cycles
 
 ### Cycle 35 — All Fixed
-
 | Finding | Severity | Status | Location |
 |---------|----------|--------|----------|
 | AGG-1: parseFloat() || null treats 0 as falsy | MEDIUM | FIXED | `create-problem-form.tsx:427-429` |
@@ -23,20 +22,29 @@ No new findings in this cycle.
 | AGG-3: SUBMISSION_GLOBAL_QUEUE_LIMIT || pattern | LOW | FIXED | `constants.ts:27-30` |
 | AGG-4: group-instructors-manager raw log | LOW | VERIFIED | Already properly gated |
 
-### Cycle 32 — All Fixed
+### Cycle 34 — All Fixed
+| Finding | Severity | Status | Location |
+|---------|----------|--------|----------|
+| C34-*: apiFetchJson silent parse failures | MEDIUM | FIXED | `client.ts:143` — dev-only warning added |
+| C34-*: Rate limit eviction timer leak | MEDIUM | FIXED | `rate-limit.ts:83-88` — stopRateLimitEviction exported |
+| C34-*: Anti-cheat heartbeat reschedules while hidden | LOW | FIXED | `anti-cheat-monitor.tsx:187-191` — visibility gated |
 
+### Cycle 33 — All Fixed
+| Finding | Severity | Status | Location |
+|---------|----------|--------|----------|
+| C33-CR-2: apiFetchJson fetch throw | MEDIUM | FIXED | `client.ts:132-135` |
+| C33-CR-3: export-button AbortController | MEDIUM | FIXED | `export-button.tsx` |
+| C33-CR-5: sign-out race condition | MEDIUM | FIXED | `sign-out.ts` |
+
+### Cycle 32 — All Fixed
 | Finding | Severity | Status | Location |
 |---------|----------|--------|----------|
 | C32-1: SSE parser controller.close() after error() | MEDIUM | FIXED | `providers.ts:491-497` |
 | C32-2: maxTokens || fallback | LOW | FIXED | `auto-review.ts:186` |
 
-### Cycle 33 — All Fixed
-
-All 6 cycle-33 findings verified as fixed. See `plans/closed/2026-05-10-cycle-33-review-remediation.md` for details.
-
 ---
 
-## Carried Deferred Items (unchanged from cycle 35)
+## Carried Deferred Items (unchanged from cycle 36)
 
 ### CRITICAL (requires architecture/product decision)
 - **C-1**: Test/Seed localhost check spoofable
@@ -45,24 +53,24 @@ All 6 cycle-33 findings verified as fixed. See `plans/closed/2026-05-10-cycle-33
 
 ### HIGH
 - **H-1**: SSE result visibility bypass
-- **H-2**: Problem-Set PATCH bypasses createApiHandler
-- **H-3**: Overrides route doesn't use createApiHandler
-- **H-4**: In-memory rate limiter for judge claims
-- **H-5**: Accepted solutions exposes userId for anonymous
+- **H-2**: Problem-Set PATCH bypasses createApiHandler — FIXED
+- **H-3**: Overrides route doesn't use createApiHandler — FIXED
+- **H-4**: In-memory rate limiter for judge claims — FIXED
+- **H-5**: Accepted solutions exposes userId for anonymous — FIXED
 
 ### MEDIUM
 - **DEFER-C30-4**: `.json()` before `.ok` in non-critical components (30+ files)
 - **DEFER-C30-5**: Raw API error strings without i18n (ongoing incremental)
 - **DEFER-C30-6**: `as { error?: string }` unsafe type assertions (15 instances)
-- **C29 AGG-10**: Admin routes bypass createApiHandler (partially fixed)
-- **C29 AGG-12**: Recruiting validate endpoint token brute-force
+- **C29 AGG-10**: Admin routes bypass createApiHandler (partially fixed, 15 routes remain)
+- **C29 AGG-12**: Recruiting validate endpoint token brute-force (mitigated by rate limit + format validation)
 
 ### LOW
 - **DEFER-27**: Missing AbortController on polling fetches
 - **DEFER-34**: Hardcoded English fallback strings
 - **DEFER-35**: Hardcoded English strings in editor title attributes
 - **DEFER-36**: `formData.get()` cast assertions without validation
-- **C25-6**: Client-side console.error (8 remaining instances)
+- **C25-6**: Client-side console.error (remaining instances)
 - **C25-7**: WeakMap complexity in api-rate-limit.ts
 - **C29 AGG-13**: files/[id] GET selects storedName
 - **C29 AGG-14**: Admin settings exposes DB host/port
@@ -86,16 +94,18 @@ No agent failures. Subagent spawning was unavailable in this environment; review
 3. **Docker client** has path traversal prevention and image reference validation.
 4. **Anti-cheat monitor** correctly gates heartbeat on document visibility after recent fix.
 5. **API handler factory** consistently applies auth, CSRF, rate limiting, and Zod validation.
+6. **Recruiting token validation** uses bounded regex to prevent ReDoS.
 
 ## Correctness Observations (No New Issues)
 
 1. **Timer cleanup**: All examined components properly clear timers and event listeners on unmount.
-2. **Error handling**: `apiFetchJson` now correctly catches network errors (fetch throwing) since cycle 33 fix.
+2. **Error handling**: `apiFetchJson` now correctly catches network errors and logs parse failures in development.
 3. **Type safety**: No new unsafe type assertions found beyond previously deferred items.
-4. **React patterns**: `React.cache()` usage is correct for React 19. Ref patterns in anti-cheat monitor are sound.
+4. **React patterns**: Ref patterns in anti-cheat monitor are sound.
 
 ## Performance Observations (No New Issues)
 
 1. **No memory leaks detected**: All refs with timers/event listeners have proper cleanup.
 2. **Fetch patterns**: External API calls use `AbortSignal.timeout()`. Internal calls use `apiFetch` with 30s timeout.
 3. **DB queries**: The `getDbNow()` cache deduplicates DB time queries within a single render.
+4. **Rate limit eviction**: Now has proper lifecycle management with `stopRateLimitEviction()`.
