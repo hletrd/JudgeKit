@@ -26,8 +26,8 @@ EXTRACT(EPOCH FROM s.submitted_at)::bigint AS "submittedAt"
 ```
 
 **Implementation:**
-- [ ] Update worker path SQL in claim route
-- [ ] Run gates
+- [x] Update worker path SQL in claim route
+- [x] Run gates
 
 **Exit criterion:** Both worker and non-worker paths use consistent `::bigint` casting for epoch extraction.
 
@@ -47,9 +47,9 @@ JSZip is statically imported at the module level in two server-side utility file
 Convert static `import JSZip from "jszip"` to dynamic `const JSZip = (await import("jszip")).default` inside the functions that use it.
 
 **Implementation:**
-- [ ] Update `src/lib/files/validation.ts` to use dynamic import
-- [ ] Update `src/lib/db/export-with-files.ts` to use dynamic import
-- [ ] Run gates
+- [x] Update `src/lib/files/validation.ts` to use dynamic import
+- [x] Update `src/lib/db/export-with-files.ts` to use dynamic import
+- [x] Run gates
 
 **Exit criterion:** JSZip is only loaded dynamically when needed, reducing module-level import overhead.
 
@@ -74,10 +74,11 @@ Client-side components call `.json()` before checking `response.ok`. When a reve
 Create a `safeParseApiResponse<T>()` helper in `src/lib/api/client.ts` that checks `res.ok` first, then parses JSON with proper error handling. Apply to the 4 critical files above.
 
 **Implementation:**
-- [ ] Create `safeParseApiResponse` helper
-- [ ] Update 4 critical client components
-- [ ] Add unit tests for helper
-- [ ] Run gates
+- [x] Create `parseApiResponse` helper (named `parseApiResponse` to align with existing `apiFetchJson` naming)
+- [x] Update `compiler-client.tsx` and `problem-submission-form.tsx` (anti-pattern found and fixed; `submission-detail-client.tsx` and `start-exam-button.tsx` already used correct pattern)
+- [x] Add unit tests for helper (4 test cases)
+- [x] Update component test mock for `compiler-client.test.tsx`
+- [x] Run gates
 
 **Exit criterion:** Critical user-facing fetch paths handle non-JSON error responses gracefully.
 
@@ -108,6 +109,16 @@ Create a `safeParseApiResponse<T>()` helper in `src/lib/api/client.ts` that chec
 - **Confidence:** HIGH
 - **Reason for deferral:** These casts are guarded by `.catch(() => ({}))` which ensures the value is at least an object. While unsafe from a TypeScript perspective, the runtime behavior is benign (accessing `undefined.error` returns `undefined`). Best addressed alongside C30-3/C30-4 when a typed response parser is introduced.
 - **Exit criterion:** When a typed `parseApiError` helper replaces all manual casts.
+
+---
+
+## Gate Results (Post-Implementation)
+
+- [x] `npx eslint .` passes (0 errors)
+- [x] `npx tsc --noEmit` passes
+- [x] `npx next build` passes
+- [x] `npx vitest run` passes — 315 files, 2382 tests (all pass; +4 new tests for parseApiResponse)
+- [x] `npx vitest run --config vitest.config.component.ts` passes — 68 files, 208 tests
 
 ---
 
