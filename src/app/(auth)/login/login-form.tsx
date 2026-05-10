@@ -24,8 +24,8 @@ export function LoginForm() {
     setError(null);
 
     const formData = new FormData(e.currentTarget);
-    const username = formData.get("username") as string;
-    const password = formData.get("password") as string;
+    const username = String(formData.get("username") ?? "");
+    const password = String(formData.get("password") ?? "");
     const redirectTo = getSafeRedirectUrl(searchParams.get("callbackUrl"));
 
     try {

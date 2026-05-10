@@ -26,9 +26,9 @@ export function ChangePasswordForm({ username }: { username: string }) {
     setReauthFailed(false);
 
     const formData = new FormData(e.currentTarget);
-    const currentPassword = formData.get("currentPassword") as string;
-    const newPassword = formData.get("newPassword") as string;
-    const confirmPassword = formData.get("confirmPassword") as string;
+    const currentPassword = String(formData.get("currentPassword") ?? "");
+    const newPassword = String(formData.get("newPassword") ?? "");
+    const confirmPassword = String(formData.get("confirmPassword") ?? "");
 
     if (newPassword !== confirmPassword) {
       setError(t("passwordMismatch"));
