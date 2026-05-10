@@ -10,12 +10,15 @@ type JsonLdProps = {
  * line separator (U+2028) and paragraph separator (U+2029) which
  * are valid in JSON but historically invalid in JavaScript strings.
  */
+const U2028_REGEX = new RegExp(String.fromCharCode(0x2028), "g");
+const U2029_REGEX = new RegExp(String.fromCharCode(0x2029), "g");
+
 function safeJsonForScript(data: unknown): string {
   return JSON.stringify(data)
     .replace(/<\/script/gi, "<\\/script")
     .replace(/<!--/g, "<\\!--")
-    .replace(new RegExp(String.fromCharCode(0x2028), "g"), "\\u2028")
-    .replace(new RegExp(String.fromCharCode(0x2029), "g"), "\\u2029");
+    .replace(U2028_REGEX, "\\u2028")
+    .replace(U2029_REGEX, "\\u2029");
 }
 
 export function JsonLd({ data }: JsonLdProps) {
