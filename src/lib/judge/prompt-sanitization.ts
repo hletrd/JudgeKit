@@ -9,7 +9,7 @@
 
 const PROMPT_INJECTION_PATTERNS = [
   // Common jailbreak / delimiter markers
-  /<<[^>]+>>/g,
+  /<<[^>]*>>/g,
   /\[\/?(?:INST|SYSTEM|USER|ASSISTANT)\]/gi,
   // Instruction override phrases
   /ignore\s+(?:all\s+)?(?:previous\s+)?instructions?/gi,
