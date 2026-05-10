@@ -27,7 +27,10 @@ async function getStaleImages(images: { repository: string; tag: string }[]): Pr
       ]);
       if (!info) return;
 
-      const imageCreated = new Date(info.Created as string).getTime();
+      const createdRaw = info.Created;
+      if (typeof createdRaw !== "string") return;
+      const imageCreated = new Date(createdRaw).getTime();
+      if (Number.isNaN(imageCreated)) return;
       const dockerfileMtime = fileStat.mtimeMs;
 
       if (dockerfileMtime > imageCreated) {
@@ -128,6 +131,16 @@ export const DELETE = createApiHandler({
   schema: deleteSchema,
   handler: async (req: NextRequest, { body, user }) => {
     if (!isAllowedJudgeDockerImage(body.imageTag)) {
+      recordAuditEvent({
+        actorId: user.id,
+        actorRole: user.role,
+        action: "docker_image.remove_rejected",
+        resourceType: "docker_image",
+        resourceId: body.imageTag,
+        summary: `Rejected Docker image removal for ${body.imageTag}`,
+        details: { reason: "imageTagMustStartWithJudge" },
+        request: req,
+      });
       return NextResponse.json(
         { error: "imageTagMustStartWithJudge", message: "Only judge-* images can be removed" },
         { status: 400 }
