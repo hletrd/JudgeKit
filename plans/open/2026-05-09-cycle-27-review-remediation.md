@@ -24,8 +24,8 @@
 3. Return early (skip stale check) when data is invalid rather than making a false comparison
 
 **Implementation:**
-- [ ] Update `getStaleImages` function with type and NaN guards
-- [ ] Run gates
+- [x] Update `getStaleImages` function with type and NaN guards
+- [x] Run gates
 
 **Exit criterion:** Invalid Docker inspect `Created` timestamps are handled gracefully instead of silently bypassing stale detection.
 
@@ -45,8 +45,8 @@ The DELETE handler does not record an audit event when `isAllowedJudgeDockerImag
 Add `recordAuditEvent` call in the DELETE handler before returning the 400 error, matching the POST handler pattern. Include the actor ID, role, image tag, and reason.
 
 **Implementation:**
-- [ ] Add `recordAuditEvent` to DELETE rejection path
-- [ ] Run gates
+- [x] Add `recordAuditEvent` to DELETE rejection path
+- [x] Run gates
 
 **Exit criterion:** DELETE rejections of non-judge images leave an audit trail identical in structure to POST rejections.
 
@@ -66,9 +66,9 @@ The pattern `/<<[^>]+>>/g` requires at least one non-`>` character between the d
 Change `+` to `*` in the character class repetition: `/<<[^>]*>>/g`
 
 **Implementation:**
-- [ ] Update regex pattern
-- [ ] Add test case for `<<>>` empty marker
-- [ ] Run gates
+- [x] Update regex pattern
+- [x] Add test case for `<<>>` empty marker
+- [x] Run gates
 
 **Exit criterion:** Empty `<<>>` markers are sanitized in addition to markers with content.
 
@@ -110,10 +110,10 @@ Change `+` to `*` in the character class repetition: `/<<[^>]*>>/g`
 
 ---
 
-## Gate Results (Pre-Implementation)
+## Gate Results (Post-Implementation)
 
 - [x] `npx eslint .` passes (0 errors)
 - [x] `npx tsc --noEmit` passes
 - [x] `npx next build` passes
-- [x] `npx vitest run` passes — 314/315 files, 2360 tests (1 pre-existing failure: export-sanitization.test.ts requires DATABASE_URL)
+- [x] `npx vitest run` passes — 314/315 files, 2361 tests (1 pre-existing failure: export-sanitization.test.ts requires DATABASE_URL)
 - [x] `npx vitest run --config vitest.config.component.ts` passes — 68 files, 208 tests
