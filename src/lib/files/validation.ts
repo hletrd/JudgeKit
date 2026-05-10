@@ -1,6 +1,5 @@
 import { isImageMimeType } from "./image-processing";
 import type { ConfiguredSettings } from "@/lib/system-settings-config";
-import JSZip from "jszip";
 
 const ALLOWED_ATTACHMENT_TYPES = new Set([
   "application/pdf",
@@ -60,6 +59,7 @@ export async function validateZipDecompressedSize(
   maxDecompressedSizeBytes: number,
 ): Promise<string | null> {
   try {
+    const JSZip = (await import("jszip")).default;
     const zip = await JSZip.loadAsync(buffer, { createFolders: false });
     const entries = Object.values(zip.files).filter((e) => !e.dir);
     // Limit the number of entries to prevent ZIP bomb with millions of tiny files

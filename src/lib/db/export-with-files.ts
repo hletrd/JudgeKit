@@ -1,4 +1,3 @@
-import JSZip from "jszip";
 import { db } from "@/lib/db";
 import { files } from "@/lib/db/schema";
 import { streamDatabaseExport, type JudgeKitExport } from "@/lib/db/export";
@@ -126,6 +125,7 @@ export async function streamBackupWithFiles(signal?: AbortSignal, dbNow?: Date):
   // matches the export snapshot. Passing dbNow from the route handler avoids
   // redundant SELECT NOW() round-trips across the backup pipeline.
   const resolvedDbNow = dbNow ?? await getDbNowUncached();
+  const JSZip = (await import("jszip")).default;
   const zip = new JSZip();
 
   // 1. Collect database export as JSON
@@ -211,6 +211,7 @@ export async function restoreFilesFromZip(zipBuffer: Buffer): Promise<{
   dbExport: JudgeKitExport;
   filesRestored: number;
 }> {
+  const JSZip = (await import("jszip")).default;
   const zip = await JSZip.loadAsync(zipBuffer);
 
   // 1. Extract database.json
