@@ -1,18 +1,56 @@
-# Aggregate Review — Cycle 37
+# Aggregate Review — Cycle 38
 
-**Date:** 2026-05-09
-**Reviewers:** comprehensive-reviewer, code-reviewer, security-reviewer, perf-reviewer, test-engineer, architect, debugger, verifier, critic, tracer, document-specialist, designer (all performed as single-agent review)
-**Total findings:** 0 new (0 HIGH, 0 MEDIUM, 0 LOW) + 0 false positives + previously deferred items re-validated
+**Date:** 2026-05-10
+**Reviewers:** comprehensive-reviewer (single-agent review, subagent spawning unavailable)
+**Total findings:** 1 new (0 HIGH, 0 MEDIUM, 1 LOW) + 0 false positives + previously deferred items re-validated
 
 ---
 
 ## Deduplicated Findings
 
-No new findings in this cycle.
+### AGG-1: [LOW] Anti-cheat monitor heartbeat permanently stops after tab-switch cycle
+
+**Sources:** comprehensive-reviewer-cycle-38 Finding 1 | **Confidence:** HIGH
+
+`src/components/exam/anti-cheat-monitor.tsx:190-191` — The `scheduleHeartbeat` timer callback gates the reschedule on `document.visibilityState === "visible"`. When the tab is hidden and the timer fires, the callback completes without calling `scheduleHeartbeat()`. When the tab becomes visible again, `handleVisibilityChange` sends an immediate heartbeat but does not restart the timer. Result: ongoing heartbeats permanently stop after any tab-switch cycle.
+
+**Concrete failure scenario:** Student starts exam, heartbeats begin every 30s. Student switches tabs. Upon return, an immediate heartbeat is sent, but no further heartbeats are ever sent. A 10-minute gap with no user actions produces zero heartbeats, which the anti-cheat dashboard interprets as a potential anomaly.
+
+**Root cause:** The cycle-34 fix (commit 474ea82d "gate heartbeat reschedule on document visibility") prevented heartbeats while hidden but also prevented timer rescheduling. The visibility-change handler does not restart the timer.
+
+**Fix:** Always call `scheduleHeartbeat()` at the end of the timer callback regardless of visibility state, while keeping the heartbeat-send gated on visibility:
+
+```ts
+heartbeatTimerRef.current = setTimeout(async () => {
+  if (!isHeartbeatActiveRef.current) return;
+  if (document.visibilityState === "visible") {
+    await reportEventRef.current("heartbeat");
+  }
+  scheduleHeartbeat();  // always reschedule
+}, HEARTBEAT_INTERVAL_MS);
+```
 
 ---
 
 ## Verified Fixes from Prior Cycles
+
+### Cycle 37 — All Fixed
+| Finding | Severity | Status | Location |
+|---------|----------|--------|----------|
+| AGG-1: parseInt || default in quick-create-contest-form | MEDIUM | FIXED | `quick-create-contest-form.tsx:133,172` |
+| AGG-2: parseFloat || 0 in assignment-form-dialog | MEDIUM | FIXED | `assignment-form-dialog.tsx:410,654,457` |
+| AGG-3: Flaky public-seo-metadata test timeout | LOW | FIXED | `public-seo-metadata.test.ts:103` |
+| AGG-4: parseInt || null in assignment-form-dialog | LOW | FIXED | `assignment-form-dialog.tsx:457` |
+
+### Cycle 36 — All Fixed
+| Finding | Severity | Status | Location |
+|---------|----------|--------|----------|
+| C36-1: Analytics route unhandled rejection chain | MEDIUM | FIXED | `analytics/route.ts` — async IIFE + defensive .catch() |
+| C36-2: database-backup-restore.tsx raw console.error | LOW | FIXED | Structured error message |
+| C36-3: Chat widget parseInt || default | LOW | FIXED | Number.isFinite pattern |
+| C36-4: Role editor parseInt || 0 | LOW | FIXED | Number.isFinite pattern |
+| C36-5: parseInt(diskUsage.usePercent) || 0 | LOW | FIXED | Number.isFinite pattern |
+| C36-6: Exam-session GET examModeInvalid (400) | LOW | FIXED | Changed to notFound("ExamSession") |
 
 ### Cycle 35 — All Fixed
 | Finding | Severity | Status | Location |
@@ -27,7 +65,7 @@ No new findings in this cycle.
 |---------|----------|--------|----------|
 | C34-*: apiFetchJson silent parse failures | MEDIUM | FIXED | `client.ts:143` — dev-only warning added |
 | C34-*: Rate limit eviction timer leak | MEDIUM | FIXED | `rate-limit.ts:83-88` — stopRateLimitEviction exported |
-| C34-*: Anti-cheat heartbeat reschedules while hidden | LOW | FIXED | `anti-cheat-monitor.tsx:187-191` — visibility gated |
+| C34-*: Anti-cheat heartbeat reschedules while hidden | LOW | PARTIALLY FIXED | `anti-cheat-monitor.tsx:187-191` — visibility gated but introduced regression (see AGG-1 above) |
 
 ### Cycle 33 — All Fixed
 | Finding | Severity | Status | Location |
@@ -44,7 +82,7 @@ No new findings in this cycle.
 
 ---
 
-## Carried Deferred Items (unchanged from cycle 36)
+## Carried Deferred Items (unchanged from cycle 37)
 
 ### CRITICAL (requires architecture/product decision)
 - **C-1**: Test/Seed localhost check spoofable
@@ -92,16 +130,15 @@ No agent failures. Subagent spawning was unavailable in this environment; review
 1. **File upload validation** remains strong: MIME whitelist + magic bytes + ZIP bomb protection + image processing.
 2. **Judge claim route** properly implements IP allowlist, rate limiting, worker auth, atomic SQL claims.
 3. **Docker client** has path traversal prevention and image reference validation.
-4. **Anti-cheat monitor** correctly gates heartbeat on document visibility after recent fix.
-5. **API handler factory** consistently applies auth, CSRF, rate limiting, and Zod validation.
-6. **Recruiting token validation** uses bounded regex to prevent ReDoS.
+4. **API handler factory** consistently applies auth, CSRF, rate limiting, and Zod validation.
+5. **Recruiting token validation** uses bounded regex to prevent ReDoS.
 
 ## Correctness Observations (No New Issues)
 
-1. **Timer cleanup**: All examined components properly clear timers and event listeners on unmount.
+1. **Timer cleanup**: All examined components properly clear timers and event listeners on unmount (except the anti-cheat heartbeat regression noted above).
 2. **Error handling**: `apiFetchJson` now correctly catches network errors and logs parse failures in development.
 3. **Type safety**: No new unsafe type assertions found beyond previously deferred items.
-4. **React patterns**: Ref patterns in anti-cheat monitor are sound.
+4. **React patterns**: Ref patterns in anti-cheat monitor are sound (with the noted heartbeat scheduling exception).
 
 ## Performance Observations (No New Issues)
 

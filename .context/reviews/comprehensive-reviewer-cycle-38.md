@@ -1,118 +1,107 @@
 # Comprehensive Review — Cycle 38
 
-**Date:** 2026-04-25
-**Reviewer:** comprehensive-reviewer
-**Scope:** Full repository deep review
+**Reviewer:** comprehensive-reviewer (single-agent, no subagents available)
+**Date:** 2026-05-10
+**Scope:** Full repository review focusing on recent changes (cycles 33-37 fixes) and remaining deferred issues
 
 ---
 
-## NEW-1: [MEDIUM] `error.message` used as control-flow discriminator in API routes — fragile, leaks internal state
+## Finding 1: [LOW] Anti-cheat monitor heartbeat permanently stops after tab-switch cycle
 
 **Confidence:** HIGH
-**Files:**
-- `src/app/api/v1/groups/[id]/assignments/[assignmentId]/exam-session/route.ts:77` — `switch (error.message)`
-- `src/app/api/v1/groups/[id]/assignments/[assignmentId]/route.ts:191-196`
-- `src/app/api/v1/admin/restore/route.ts:91`
-- `src/app/api/v1/admin/migrate/validate/route.ts:40,49,52`
-- `src/app/api/v1/admin/migrate/import/route.ts:80,128,131`
-- `src/app/api/v1/contests/[assignmentId]/recruiting-invitations/route.ts:118-127`
-- `src/app/api/v1/contests/[assignmentId]/recruiting-invitations/bulk/route.ts:111`
-- `src/app/api/v1/groups/[id]/members/[userId]/route.ts:87`
-- `src/app/api/v1/admin/roles/route.ts:105`
-- `src/app/api/v1/users/route.ts:135,138`
-- `src/app/api/v1/judge/poll/route.ts:168`
-- `src/lib/assignments/recruiting-invitations.ts:541,544`
-- `src/lib/actions/user-management.ts:326,329,439,442`
-- `src/lib/actions/public-signup.ts:120`
+**File:** `src/components/exam/anti-cheat-monitor.tsx:190-191`
 
-**Problem:** Numerous catch blocks use `error.message === "someString"` to discriminate error types. This is a well-known anti-pattern: Error messages can be refactored, i18n'd, or have typos, silently breaking the control flow. Additionally, at `exam-session/route.ts:81`, `apiError("examModeInvalid", 400)` is returned from the catch block, but the same condition is handled pre-emptively at line 29. The dual-path handling is confusing.
+### Problem
 
-**Note:** This was previously deferred as DEFER-24 (for migrate/import) and is a broader pattern. The new finding here is that the pattern extends far beyond the originally deferred scope and is present in 15+ catch blocks across the API layer.
+The `scheduleHeartbeat` function (lines 182-194) gates BOTH the heartbeat send AND the timer reschedule on `document.visibilityState === "visible"`:
 
-**Fix:** Use custom error classes (e.g., `class AssignmentError extends Error { code: string }`) or result objects instead of string-matching on `error.message`. This is a large refactor, so it should be planned incrementally.
+```ts
+heartbeatTimerRef.current = setTimeout(async () => {
+  if (!isHeartbeatActiveRef.current) return;
+  if (document.visibilityState === "visible") {
+    await reportEventRef.current("heartbeat");
+  }
+  if (document.visibilityState === "visible") {
+    scheduleHeartbeat();  // <-- only reschedules when visible
+  }
+}, HEARTBEAT_INTERVAL_MS);
+```
 
----
+When the tab becomes hidden:
+1. The timer fires after 30s
+2. Visibility check at line 187 is false -> no heartbeat sent
+3. Visibility check at line 190 is false -> `scheduleHeartbeat()` NOT called
+4. `heartbeatTimerRef.current` is null after the callback completes
+5. No timer is running
 
-## NEW-2: [MEDIUM] Import route uses `as JudgeKitExport` unsafe cast after Zod validation of wrapper but NOT of the export data itself
+When the tab becomes visible again:
+1. `handleVisibilityChange` fires (lines 210-217)
+2. It sends an immediate heartbeat (line 215) and flushes pending events
+3. But it does NOT call `scheduleHeartbeat()` — `scheduleHeartbeat` is scoped inside the heartbeat useEffect and is inaccessible
+4. Heartbeats stop indefinitely
 
-**Confidence:** HIGH
-**File:** `src/app/api/v1/admin/migrate/import/route.ts:164-166`
+### Concrete Failure Scenario
 
-**Problem:** The JSON import path validates the wrapper with `jsonImportBodySchema` (which checks `password` is a string and `data?` is optional+unknown), but then casts `parsedBody.data.data as JudgeKitExport` without Zod validation of the export structure. The `data` field is `z.unknown()` — it passes Zod but gets cast to `JudgeKitExport` unsafely. While `validateExport(data)` is called afterwards, the cast itself is technically unsound between Zod validation and `validateExport`. The `restFields as unknown as JudgeKitExport` on line 166 is a double cast that bypasses type safety entirely.
+A student starts an exam. The anti-cheat monitor begins sending heartbeats every 30s. The student switches to another tab to check something. When they return:
+- The immediate "tab visible" heartbeat is sent
+- No further heartbeats are ever sent
+- If the student stays on the exam tab for 10 minutes without any user actions, there are zero heartbeats during that period
+- An admin viewing the anti-cheat dashboard sees a gap in the heartbeat timeline and may incorrectly suspect the student closed the exam tab
 
-**Failure scenario:** A malformed JSON body with `{ password: "x", data: { malformed: true } }` passes Zod validation, gets cast to `JudgeKitExport`, then `validateExport` may or may not catch all issues depending on its validation depth.
+### Root Cause
 
-**Fix:** Replace `data: z.unknown().optional()` with `data: judgeKitExportSchema.optional()` (where `judgeKitExportSchema` is a proper Zod schema for the export format). The `validateExport` function should be backed by a Zod schema rather than manual checks.
+The fix introduced in cycle 34 (commit 474ea82d "gate heartbeat reschedule on document visibility") was intended to prevent heartbeats from firing while the tab is hidden. However, it also prevents the timer from rescheduling when hidden, and the visibility-change handler does not restart the timer when the tab becomes visible.
 
----
+### Fix
 
-## NEW-3: [LOW] `db/import.ts` error messages leak internal DB error text to API responses
+Always reschedule the heartbeat timer regardless of visibility, but only send the heartbeat when visible:
 
-**Confidence:** HIGH
-**File:** `src/lib/db/import.ts:136,200,214`
+```ts
+heartbeatTimerRef.current = setTimeout(async () => {
+  if (!isHeartbeatActiveRef.current) return;
+  if (document.visibilityState === "visible") {
+    await reportEventRef.current("heartbeat");
+  }
+  scheduleHeartbeat();  // always reschedule
+}, HEARTBEAT_INTERVAL_MS);
+```
 
-**Problem:** When a table truncation or batch insert fails, `err.message` is included in the error array: `throw new Error(\`Failed to truncate ${tableName}: ${message}\`)` and `result.errors.push(\`${tableName} batch ${i}: ${message}\`)`. These messages propagate through `importDatabase` result to the API response at `route.ts:108` (`details: result.errors`). This leaks PostgreSQL internal error text (table names, constraint names, column types) to the admin client. While the route is admin-only, this is still an information disclosure risk.
+This preserves the "don't send heartbeat while hidden" behavior while keeping the timer alive.
 
-**Failure scenario:** A constraint violation error like `Key (user_id)=(abc) is not present in table "users"` gets returned verbatim in the API response, exposing schema details.
+### Cross-Reference
 
-**Fix:** Sanitize error messages before including them in `result.errors`. Use a generic message for the API response and log the detailed error server-side only.
-
----
-
-## NEW-4: [LOW] Anti-cheat monitor captures text snippets from problem description — user text content in event details
-
-**Confidence:** MEDIUM
-**File:** `src/components/exam/anti-cheat-monitor.tsx:206-210`
-
-**Problem:** The `describeElement` function captures up to 80 characters of element text content for headings, paragraphs, spans, etc.: `const text = (el.textContent ?? "").trim().slice(0, 80)`. This text is included in the anti-cheat event details (via `reportEvent("copy", { target: describeElement(e.target) })`). When a student copies from a problem description, the actual problem text snippet is sent to the server and stored in the audit log. This is a privacy concern (DEFER-45 noted this as a design decision, but the text snippet capture specifically was not called out).
-
-**Note:** This was previously deferred as DEFER-45, but the specific risk of capturing exam problem text content (not just "user text snippets") is worth re-highlighting because it could include copyrighted problem content from external sources.
-
-**Fix:** For copy/paste events, only capture the element type and CSS class (already partially done), not the text content. Change `describeElement` to not include `text` for copy/paste events, or limit to a much shorter snippet (e.g., 10 chars as a hash indicator).
-
----
-
-## NEW-5: [LOW] `CountdownTimer` uses `Date.now()` for exam deadline but server-synced time for offset
-
-**Confidence:** LOW
-**File:** `src/components/exam/countdown-timer.tsx:46-47,97`
-
-**Problem:** The `remaining` state is initialized with `deadline - Date.now()` (client time), then periodically recalculated with `deadline - (Date.now() + offsetRef.current)` (server-corrected time). But the initial render uses the uncorrected client time. If the client clock is significantly off, the initial badge display could flash an incorrect time (e.g., showing "00:05:00" when the real remaining time is "00:15:00") before the server time sync completes. For exam countdown timers, this initial inaccuracy could alarm students.
-
-**Fix:** Consider showing a loading state or "Syncing..." indicator until the first server time sync completes, or initialize with a conservative estimate. This is LOW because the sync happens quickly (within 5 seconds) and the flash is brief.
+- Cycle 34 AGG-4 noted: "Anti-cheat heartbeat reschedules while hidden" — the fix for that introduced this regression.
+- Cycle 48 aggregate DEFER-55: "countdown-timer.tsx no retry on server time fetch failure" — a related class of timer/visibility issues.
 
 ---
 
-## NEW-6: [LOW] SSE cleanup timer uses O(n) scan to find oldest entry
+## Other Areas Examined (No New Issues)
 
-**Confidence:** LOW
-**File:** `src/app/api/v1/submissions/[id]/events/route.ts:44-53`
+### Recently Modified Files
+- `src/components/submission-list-auto-refresh.tsx` — Proper cleanup, backoff, visibility handling. No issues.
+- `src/lib/api/client.ts` — `apiFetchJson` and `parseApiResponse` helpers are well-designed. No issues.
+- `src/components/contest/export-button.tsx` — AbortController and blob URL cleanup are correct. No issues.
+- `src/lib/auth/sign-out.ts` — Key snapshot before iteration correctly prevents races. No issues.
+- `src/app/(dashboard)/dashboard/admin/error.tsx` — Dev-only logging, proper translations. No issues.
+- `src/app/(public)/contests/[id]/layout.tsx` — Event listener cleanup is correct. No issues.
 
-**Problem:** The `addConnection` function iterates all entries in `connectionInfoMap` to find the oldest-by-age entry when `MAX_TRACKED_CONNECTIONS` is exceeded. This is O(n) per eviction. With `MAX_TRACKED_CONNECTIONS = 1000`, this is acceptable under normal load but could become a bottleneck during connection bursts (e.g., exam start time with many students connecting simultaneously).
+### Security
+- `sanitizeHtml` uses DOMPurify with narrow allowlists. No issues.
+- `safeJsonForScript` properly escapes `</script`, `<!--`, U+2028, U+2029. No issues.
+- No new XSS vectors found.
 
-**Fix:** Consider using an ordered data structure (e.g., a sorted array or linked list) for O(1) oldest-entry lookup, or increase the eviction batch size to amortize the cost. This is LOW because the threshold is rarely hit in practice.
+### Known Deferred Issues (Still Present, No Change)
+- DEFER-22: `.json()` before `response.ok` — 60+ instances (not new)
+- DEFER-28: `as { error?: string }` pattern — 22+ instances (not new)
+- DEFER-36: `formData.get()` cast assertions — several instances (not new)
+- DEFER-46: `error.message` as control-flow discriminator — 15+ instances (not new)
 
 ---
 
-## Previously Known Issues (Validated, Still Present)
+## Final Sweep
 
-All previously deferred items from cycle 37 remain unchanged:
-- DEFER-22 through DEFER-45 (see cycle 37 aggregate for full list)
-
----
-
-## Sweep Confirmation
-
-All source files in `src/` were scanned via grep for the following patterns:
-- `parseInt(...) || ` / `parseFloat(...) || ` — CONFIRMED FIXED (0 instances)
-- `.json()` without `.ok` check — 30+ instances (known DEFER-22)
-- `as { error?: string }` — 15 instances (known DEFER-28)
-- `innerHTML` / `dangerouslySetInnerHTML` — 2 instances (properly sanitized with DOMPurify and safeJsonForScript)
-- `eval()` / `new Function()` — 0 instances
-- `catch (...) {}` (empty catch) — 0 instances
-- `as any` — 0 instances (only in comments)
-- `process.env` — all properly guarded with validation
-- Timer cleanup — all properly handled with cleanup functions
-- SQL injection via `sql` template — all uses are parameterized via Drizzle's tagged template
-
-No new `parseInt || default` or `parseFloat || default` regressions found.
+No additional issues found in commonly missed areas:
+- No race conditions in recently changed async code
+- No resource leaks in timer/interval usage
+- No new unguarded JSON.parse calls in critical paths
+- No type safety regressions in recently modified files
