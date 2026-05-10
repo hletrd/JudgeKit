@@ -1,9 +1,9 @@
-# Verifier — Cycle 27
+# Verifier — Cycle 29
 
 **Date:** 2026-05-09
-**Cycle:** 27 of 100
-**Base commit:** 5771402a
-**Current HEAD:** 5771402a (clean working tree)
+**Cycle:** 29 of 100
+**Base commit:** 81c5daa8
+**Current HEAD:** 81c5daa8 (clean working tree)
 
 ---
 
@@ -11,56 +11,45 @@
 
 | Finding | Status | Evidence |
 |---------|--------|----------|
-| C26-1 LLM prompt sanitization | FIXED | `sanitizePromptInput` imported and used at auto-review.ts:163; tests at prompt-sanitization.test.ts pass |
-| C25-1 Trusted registry boundary | FIXED | `isTrustedRegistryImage` at docker-image-validation.ts:1-11 |
-| C25-2 TABLE_MAP typing | FIXED | `Record<string, PgTable>` at import.ts:20 |
-| C25-3 Stale images concurrency | FIXED | `pLimit(5)` at images/route.ts:17 |
-| C25-4 Image reference regex | FIXED | Structural checks at client.ts:86-91 |
-| C19-1 Keyboard shortcuts | FIXED | `getShortcutKey` at use-keyboard-shortcuts.ts:8-20 |
+| C28 localStorage try/catch | FIXED | compiler-client.tsx:186, submission-detail-client.tsx:94 both wrapped |
+| C26-1 LLM prompt sanitization | FIXED | sanitizePromptInput at auto-review.ts:163 |
+| C25-1 Trusted registry boundary | FIXED | docker-image-validation.ts |
+| C25-2 TABLE_MAP typing | FIXED | Record<string, PgTable> at import.ts:20 |
+| C25-3 Stale images concurrency | FIXED | pLimit(5) at images/route.ts:17 |
+| C25-4 Image reference regex | FIXED | client.ts:86-91 |
+| C19-1 Keyboard shortcuts | FIXED | use-keyboard-shortcuts.ts:8-20 |
 
 ---
 
 ## New Findings Verified
 
-### C27-V-1: NaN causes stale image detection to silently fail
+### C29-V-1: Recruiting token regex lacks upper bound
 
-- **File:** `src/app/api/v1/admin/docker/images/route.ts:30`
+- **File:** `src/lib/auth/config.ts:208`
+- **Severity:** Medium
+- **Confidence:** High
+- **Evidence:**
+  - Regex `/^[-A-Za-z0-9_]{16,}$/` quantifier `{16,}` has no upper bound
+  - JavaScript `RegExp.prototype.test()` allocates the full input string before evaluation
+  - Node.js default max string length is ~512MB (V8 heap limit)
+  - An attacker can POST a multi-megabyte recruitToken before the regex rejects it
+  - The token also flows to `recordLoginEvent({ attemptedIdentifier: "recruitToken" })` — could be logged
+- **Reproduction:** Send a 10MB recruitToken to /api/auth/callback/credentials
+- **Fix:** Change regex to `/^[-A-Za-z0-9_]{16,128}$/`
+
+### C29-V-2: Test infrastructure failure verified
+
+- **File:** `tests/unit/db/export-sanitization.test.ts`
 - **Severity:** Low
 - **Confidence:** High
 - **Evidence:**
-  - `info.Created` is typed as `unknown` via `Record<string, unknown>` return from `inspectDockerImage`
-  - `as string` cast provides no runtime guarantee
-  - `new Date("not a date").getTime() === NaN` (JavaScript spec)
-  - `dockerfileMtime > NaN` is always `false` (IEEE 754)
-  - Therefore the image is never added to the stale set
-- **Reproduction:** If Docker inspect returns `{ Created: null }` or the worker returns malformed JSON, stale detection is bypassed.
-- **Fix:** Add type guard and NaN check before comparison.
-
-### C27-V-2: Prompt sanitization regex mathematical property
-
-- **File:** `src/lib/judge/prompt-sanitization.ts:12`
-- **Severity:** Low
-- **Confidence:** High
-- **Evidence:**
-  - Regex `/<<[^>]+>>/g` requires `[^>]+` (one or more non-`>` chars)
-  - Input `<<>>`: `<<` matches, then `>>` must match `[^>]+>>` — impossible since `[^>]+` needs at least one char
-  - Therefore `<<>>` is not sanitized
-- **Fix:** Change `+` to `*` in the character class repetition.
-
-### C27-V-3: Audit event asymmetry between POST and DELETE
-
-- **File:** `src/app/api/v1/admin/docker/images/route.ts:76-86` vs `129-135`
-- **Severity:** Low
-- **Confidence:** High
-- **Evidence:**
-  - POST handler (line 76): calls `recordAuditEvent` before returning 400 for rejected image
-  - DELETE handler (line 129): returns 400 directly without audit event
-  - Both require the same `system.settings` capability
-  - Asymmetric audit trail is verifiable by comparing the two handlers side-by-side
-- **Fix:** Add audit event to DELETE rejection path.
+  - Running `vitest run` produces: `Error: DATABASE_URL is required` at src/lib/db/index.ts:36
+  - The test file imports `src/lib/db/export.ts` which imports `src/lib/db/index.ts`
+  - No mock is configured for the db module in this test
+- **Fix:** Mock db or add test DATABASE_URL
 
 ---
 
 ## No Regressions Detected
 
-All gates pass: eslint (0 errors), tsc --noEmit, next build, vitest component (68/68 files, 208 tests). Unit tests have 1 pre-existing failure (export-sanitization.test.ts requires DATABASE_URL).
+All gates pass: eslint (0 errors), tsc --noEmit, next build, vitest component (68/68 files, 208 tests). Unit tests: 314 passed, 1 pre-existing failure.

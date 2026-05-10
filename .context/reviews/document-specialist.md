@@ -1,35 +1,31 @@
-# Document Specialist — Cycle 16 Review
+# Document Specialist — Cycle 29
 
 **Date:** 2026-05-09
-**HEAD:** 64de91dd
-**Scope:** Doc/code mismatches against authoritative sources
+**Cycle:** 29 of 100
+**Base commit:** 81c5daa8
+**Current HEAD:** 81c5daa8 (clean working tree)
 
-## Summary
+---
 
-One documentation/code mismatch identified. The extensive comment block in api/client.ts continues to promise safety that the code does not deliver.
+## New Findings
 
-## Findings
+### C29-DOC-1: Recruiting token validation comment documents intent but regex is incomplete
 
-### DS-1: apiFetch documentation promises timeout safety but code only partially delivers [MEDIUM]
-
-- **File:** `src/lib/api/client.ts:74-90`
-- **Confidence:** High
-- **Severity:** Medium
-- **Doc Claim:** After the C15 fix, the wrapper now includes timeout protection.
-- **Actual Code:** Timeout is only applied when `init?.signal` is undefined. When callers pass their own signal, no timeout is applied.
-- **Mismatch:** The documentation does not mention this limitation. Developers reading the code would reasonably assume that apiFetch always provides a 30s timeout.
-- **Fix:** Update the doc comment to clarify:
-  1. apiFetch applies a 30s default timeout when NO signal is provided
-  2. When a signal IS provided, the caller is responsible for their own timeout
-  3. OR (preferred): Fix the code to always apply a timeout and update docs to match
-
-### DS-2: Test comment documents buggy behavior as correct [LOW]
-
-- **File:** `tests/unit/api/client.test.ts:81`
-- **Confidence:** High
+- **File:** `src/lib/auth/config.ts:205-207`
 - **Severity:** Low
-- **Problem:** Test name "preserves caller-provided signal instead of default timeout" documents the bypass behavior as intentional.
-- **Fix:** Update test name and assertions to reflect the corrected behavior.
+- **Confidence:** High
+- **Summary:** The comment states "Recruiting tokens are base64url-encoded random bytes (32 chars)" but the regex `/^[-A-Za-z0-9_]{16,}$/` does not enforce the 32-char length mentioned in the comment. The mismatch between documented expectation (32 chars) and implemented validation (16+ chars) could cause confusion.
+- **Fix:** Update comment to reflect the actual validation rule, or align regex with comment.
+
+---
+
+## Carry-Forward Findings
+
+### DS-1: apiFetch documentation promises timeout safety
+- **File:** `src/lib/api/client.ts:74-90`
+- **Status:** Still present. Documentation still implies universal timeout protection.
+
+---
 
 ## Verified Documentation Accuracy
 
@@ -40,7 +36,9 @@ One documentation/code mismatch identified. The extensive comment block in api/c
 | API route auth documentation | Accurate |
 | Docker build instructions | Accurate |
 | Environment variable docs | Accurate |
+| Judge claim SQL comments | Accurate — explain CTE and SKIP LOCKED |
+| Chat widget least-privilege comment | Accurate — references C12-2 |
 
 ## Final Sweep
 
-No stale TODO comments, no outdated instructions, no mismatched type signatures found.
+No stale TODO comments, no outdated instructions, no mismatched type signatures.

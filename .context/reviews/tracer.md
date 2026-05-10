@@ -1,56 +1,47 @@
-# Tracer — Cycle 16 Review
+# Tracer — Cycle 29
 
 **Date:** 2026-05-09
-**HEAD:** 64de91dd
-**Scope:** Causal tracing of data flows, state transitions, and async flows
+**Cycle:** 29 of 100
+**Base commit:** 81c5daa8
+**Current HEAD:** 81c5daa8 (clean working tree)
 
-## Summary
-
-One suspicious flow identified related to the apiFetch timeout issue. All other traced flows show consistent state management and proper error handling.
+---
 
 ## Findings
 
-### TR-1: Chat widget streaming flow can get stuck indefinitely [MEDIUM]
+### C29-TR-1: Recruiting token auth flow — unbounded input before validation
 
-- **Entry:** `src/lib/plugins/chat-widget/chat-widget.tsx:197-214`
+- **Entry:** `src/lib/auth/config.ts:204-215`
 - **Flow:**
-  1. User sends message → `sendMessage` sets `isStreaming = true`
-  2. Creates `new AbortController()` with NO timeout
-  3. Calls `apiFetch` with `signal: controller.signal`
-  4. apiFetch passes signal verbatim → `fetch` with caller's signal
-  5. Server stalls → fetch Promise never resolves
-  6. `isStreaming` remains `true` forever
-  7. UI shows assistant "thinking" spinner indefinitely
-  8. No automatic recovery — user must close widget or refresh
-- **Root Cause:** apiFetch does not combine caller signal with default timeout.
-- **Fix:** Ensure apiFetch always applies a timeout, even when caller provides a signal.
+  1. Client POSTs to `/api/auth/callback/credentials` with recruitToken
+  2. `authorize()` receives credentials object
+  3. `credentials.recruitToken` accessed with only `typeof` and length > 0 checks
+  4. Regex `/^[-A-Za-z0-9_]{16,}$/` executed on unbounded string
+  5. String allocation happens before regex can reject
+  6. If token passes regex, rate limit consumed
+  7. `authorizeRecruitingToken()` called with full string
+  8. Token flows to `redeemRecruitingToken()` → DB query
+- **Root Cause:** No length guard before regex. Input validation should have bounds.
+- **Fix:** Add upper bound to regex or explicit length check.
 
-### TR-2: File upload batch flow can stall on hung individual upload [MEDIUM]
-
-- **Entry:** `src/app/(dashboard)/dashboard/admin/files/file-upload-dialog.tsx:90-128`
-- **Flow:**
-  1. Admin clicks upload → `handleUpload` starts
-  2. Creates `new AbortController()` with NO timeout
-  3. Iterates through queue, uploading files one by one
-  4. Each upload calls `apiFetch` with shared abort controller signal
-  5. If ONE upload hangs, the entire batch waits forever
-  6. `isUploading` remains `true`
-  7. Admin can click Cancel to abort all, but no automatic timeout
-- **Note:** This is less severe than TR-1 because the admin has a manual abort option, but in a large batch upload (e.g., 50 files), one stalled upload blocks the rest.
+---
 
 ## Verified Safe Flows
 
-### Submission Flow (user → judge → result)
-- All state transitions are atomic within transactions. No inconsistent states found.
+### Judge Claim Flow
+- Atomic CTE with SKIP LOCKED prevents race conditions
+- Worker capacity check before claim
+- Token comparison uses timing-safe compare
 
-### Auth Flow (login → session → validation)
-- Session created with JWT + cookie. Cache TTL capped at 10s. Proper.
+### Chat Widget Flow
+- Double DB query pattern is intentional (least-privilege decryption)
+- Stream cleanup verified: reader.releaseLock() in finally blocks
+- Abort signal handled via apiFetch timeout
 
-### File Upload Flow
-- DB write precedes disk write. Delete removes DB first, then disk best-effort. Proper.
-
-### Anti-Cheat Flow
-- Events batched in localStorage. Flushed with exponential backoff. Bounded by MAX_RETRIES. Proper.
+### Auth Flow
+- Session creation uses DB server time (avoids clock skew)
+- Token invalidation check verified
+- Rate limiting on both IP and username
 
 ## Final Sweep
 

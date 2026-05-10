@@ -1,51 +1,49 @@
-# Architect — Cycle 26
+# Architect — Cycle 29
 
 **Date:** 2026-05-09
-**Cycle:** 26 of 100
-**Base commit:** 5594a074
-**Current HEAD:** 5594a074 (clean working tree)
+**Cycle:** 29 of 100
+**Base commit:** 81c5daa8
+**Current HEAD:** 81c5daa8 (clean working tree)
 
 ---
 
-## Findings
+## New Findings
 
-### AR-26-1: Transaction wrapper inconsistency in judge/poll (carry-forward)
+### C29-ARCH-1: Recruiting token validation — missing bounded input architecture
 
-- **File**: `src/app/api/v1/judge/poll/route.ts:77,136`
-- **Severity**: Low
-- **Confidence**: High
-- **Description**: Using `execTransaction` in one path and `db.transaction` in another breaks the abstraction layer. If `execTransaction` later adds retries, metrics, or logging, the direct `db.transaction` path would miss these behaviors.
-- **Fix**: Standardize on `execTransaction` throughout.
+- **File:** `src/lib/auth/config.ts:208`
+- **Severity:** Medium
+- **Confidence:** High
+- **Description:** The auth layer lacks a centralized input validation utility with bounds checking. Each endpoint defines its own validation ad-hoc. The recruiting token regex omission is a symptom of this architectural gap.
+- **Recommendation:** Consider a `BoundedString` schema helper or centralized input size limits (e.g., max 4096 bytes for any credential field) applied before route handlers.
 
-### AR-26-2: Auto-review lacks output guardrails (NEW)
+---
 
-- **File**: `src/lib/judge/auto-review.ts`
-- **Severity**: Medium
-- **Confidence**: Medium
-- **Description:** The auto-review pipeline has no output validation layer. LLM-generated content goes directly from the provider to the database to the user-facing UI without content moderation. In an educational platform, this creates a risk of inappropriate content reaching students.
-- **Architectural recommendation:** Add a content moderation layer (even a simple regex/word-list filter) between LLM output and DB storage. Also consider adding a `reviewStatus` field to submissions to track review lifecycle.
+## Carry-Forward Findings
+
+### AR-26-1: Transaction wrapper inconsistency
+- **File:** `src/app/api/v1/judge/poll/route.ts:77,136`
+- **Status:** Still present. 9+ cycles deferred.
+
+### C27 findings
+- **Status:** Still present (Docker inspect, prompt sanitization, DELETE audit).
 
 ---
 
 ## Verified Architecture
 
-- **API Layer**: `createApiHandler` provides consistent middleware (auth, CSRF, rate limit, validation). No route bypasses this.
-- **Database Layer**: All DB access through Drizzle ORM. Schema centralized in `schema.pg.ts`.
-- **Auth Layer**: Session management abstracted behind `getApiUser`, `createApiHandler`, proxy middleware.
-- **File Layer**: Storage operations abstracted behind `src/lib/files/storage.ts`.
-- **Judge Layer**: Execution delegated to Rust sidecar or local Docker with clear boundaries.
-- **Client Layer**: API calls go through `apiFetch`/`apiFetchJson` wrapper.
-- **Abort Utilities**: `src/lib/abort.ts` module provides shared timeout primitives.
+- **API Layer:** `createApiHandler` middleware stack intact
+- **Database Layer:** Drizzle ORM with raw query helpers. Parameterization verified.
+- **Auth Layer:** JWT + cookie. Token invalidation verified.
+- **Judge Layer:** Atomic claim via CTE with SKIP LOCKED. Proper.
+- **Client Layer:** apiFetch/apiFetchJson wrappers intact.
 
 ## Coupling Check
 
-- No direct DB imports in components
-- No circular dependencies in key modules
-- Rust/TS interop is clean with typed interfaces
-- Docker client abstraction isolates Docker CLI calls
-
----
+- No circular dependencies
+- Clean separation between API routes and business logic
+- Rust/TS interop clean
 
 ## Final Sweep
 
-No new architectural risks identified.
+No new architectural risks.
