@@ -1,4 +1,4 @@
-# Aggregate Review — Cycle 38
+# Aggregate Review — Cycle 39
 
 **Date:** 2026-05-10
 **Reviewers:** comprehensive-reviewer (single-agent review, subagent spawning unavailable)
@@ -8,31 +8,35 @@
 
 ## Deduplicated Findings
 
-### AGG-1: [LOW] Anti-cheat monitor heartbeat permanently stops after tab-switch cycle
+### AGG-1: [LOW] streamDatabaseExport missing pre-aborted signal check
 
-**Sources:** comprehensive-reviewer-cycle-38 Finding 1 | **Confidence:** HIGH
+**Sources:** comprehensive-reviewer-cycle-39 Finding 1 | **Confidence:** MEDIUM
 
-`src/components/exam/anti-cheat-monitor.tsx:190-191` — The `scheduleHeartbeat` timer callback gates the reschedule on `document.visibilityState === "visible"`. When the tab is hidden and the timer fires, the callback completes without calling `scheduleHeartbeat()`. When the tab becomes visible again, `handleVisibilityChange` sends an immediate heartbeat but does not restart the timer. Result: ongoing heartbeats permanently stop after any tab-switch cycle.
+`src/lib/db/export.ts:80-81` — The `streamDatabaseExport` function adds an abort listener with `{ once: true }` but does not check if the signal is already aborted before entering the streaming loop. If called with a pre-aborted signal (e.g., from a parent timeout), the listener never fires and the export continues indefinitely.
 
-**Concrete failure scenario:** Student starts exam, heartbeats begin every 30s. Student switches tabs. Upon return, an immediate heartbeat is sent, but no further heartbeats are ever sent. A 10-minute gap with no user actions produces zero heartbeats, which the anti-cheat dashboard interprets as a potential anomaly.
+**Concrete failure scenario:** A backup route creates an AbortSignal with a timeout. If the timeout fires between `streamBackupWithFiles` starting and `streamDatabaseExport` being called, the signal is already aborted. `streamDatabaseExport` adds the listener but the event was already dispatched, so the export streams the full database even though cancellation was requested.
 
-**Root cause:** The cycle-34 fix (commit 474ea82d "gate heartbeat reschedule on document visibility") prevented heartbeats while hidden but also prevented timer rescheduling. The visibility-change handler does not restart the timer.
-
-**Fix:** Always call `scheduleHeartbeat()` at the end of the timer callback regardless of visibility state, while keeping the heartbeat-send gated on visibility:
+**Fix:** Check `options.signal?.aborted` before adding the listener:
 
 ```ts
-heartbeatTimerRef.current = setTimeout(async () => {
-  if (!isHeartbeatActiveRef.current) return;
-  if (document.visibilityState === "visible") {
-    await reportEventRef.current("heartbeat");
+async start(controller) {
+  if (options.signal?.aborted) {
+    controller.close();
+    return;
   }
-  scheduleHeartbeat();  // always reschedule
-}, HEARTBEAT_INTERVAL_MS);
+  options.signal?.addEventListener("abort", abort, { once: true });
+  // ...
+}
 ```
 
 ---
 
 ## Verified Fixes from Prior Cycles
+
+### Cycle 38 — All Fixed
+| Finding | Severity | Status | Location |
+|---------|----------|--------|----------|
+| AGG-1: Anti-cheat heartbeat permanently stops after tab-switch | LOW | FIXED | `anti-cheat-monitor.tsx:190` — scheduleHeartbeat() always called |
 
 ### Cycle 37 — All Fixed
 | Finding | Severity | Status | Location |
@@ -45,7 +49,7 @@ heartbeatTimerRef.current = setTimeout(async () => {
 ### Cycle 36 — All Fixed
 | Finding | Severity | Status | Location |
 |---------|----------|--------|----------|
-| C36-1: Analytics route unhandled rejection chain | MEDIUM | FIXED | `analytics/route.ts` — async IIFE + defensive .catch() |
+| C36-1: Analytics route unhandled rejection chain | MEDIUM | FIXED | `analytics/route.ts` |
 | C36-2: database-backup-restore.tsx raw console.error | LOW | FIXED | Structured error message |
 | C36-3: Chat widget parseInt || default | LOW | FIXED | Number.isFinite pattern |
 | C36-4: Role editor parseInt || 0 | LOW | FIXED | Number.isFinite pattern |
@@ -65,7 +69,7 @@ heartbeatTimerRef.current = setTimeout(async () => {
 |---------|----------|--------|----------|
 | C34-*: apiFetchJson silent parse failures | MEDIUM | FIXED | `client.ts:143` — dev-only warning added |
 | C34-*: Rate limit eviction timer leak | MEDIUM | FIXED | `rate-limit.ts:83-88` — stopRateLimitEviction exported |
-| C34-*: Anti-cheat heartbeat reschedules while hidden | LOW | PARTIALLY FIXED | `anti-cheat-monitor.tsx:187-191` — visibility gated but introduced regression (see AGG-1 above) |
+| C34-*: Anti-cheat heartbeat reschedules while hidden | LOW | FIXED | `anti-cheat-monitor.tsx:187-191` |
 
 ### Cycle 33 — All Fixed
 | Finding | Severity | Status | Location |
@@ -82,7 +86,7 @@ heartbeatTimerRef.current = setTimeout(async () => {
 
 ---
 
-## Carried Deferred Items (unchanged from cycle 37)
+## Carried Deferred Items (unchanged from cycle 38)
 
 ### CRITICAL (requires architecture/product decision)
 - **C-1**: Test/Seed localhost check spoofable
@@ -127,22 +131,25 @@ No agent failures. Subagent spawning was unavailable in this environment; review
 
 ## Security Observations (No New Issues)
 
-1. **File upload validation** remains strong: MIME whitelist + magic bytes + ZIP bomb protection + image processing.
-2. **Judge claim route** properly implements IP allowlist, rate limiting, worker auth, atomic SQL claims.
-3. **Docker client** has path traversal prevention and image reference validation.
-4. **API handler factory** consistently applies auth, CSRF, rate limiting, and Zod validation.
-5. **Recruiting token validation** uses bounded regex to prevent ReDoS.
+1. File upload validation remains strong: MIME whitelist + magic bytes + ZIP bomb protection + image processing.
+2. Judge claim route properly implements IP allowlist, rate limiting, worker auth, atomic SQL claims.
+3. Docker client has path traversal prevention and image reference validation.
+4. API handler factory consistently applies auth, CSRF, rate limiting, and Zod validation.
+5. Recruiting token validation uses bounded regex to prevent ReDoS.
+6. Backup/restore requires password re-confirmation and verifies integrity manifest.
 
 ## Correctness Observations (No New Issues)
 
-1. **Timer cleanup**: All examined components properly clear timers and event listeners on unmount (except the anti-cheat heartbeat regression noted above).
-2. **Error handling**: `apiFetchJson` now correctly catches network errors and logs parse failures in development.
-3. **Type safety**: No new unsafe type assertions found beyond previously deferred items.
-4. **React patterns**: Ref patterns in anti-cheat monitor are sound (with the noted heartbeat scheduling exception).
+1. Timer cleanup: All examined components properly clear timers and event listeners on unmount.
+2. Error handling: `apiFetchJson` correctly catches network errors and logs parse failures in development.
+3. Type safety: No new unsafe type assertions found beyond previously deferred items.
+4. React patterns: Ref patterns in anti-cheat monitor are sound.
+5. SSE fallback: `useSubmissionPolling` correctly falls back from SSE to fetch polling.
 
 ## Performance Observations (No New Issues)
 
-1. **No memory leaks detected**: All refs with timers/event listeners have proper cleanup.
-2. **Fetch patterns**: External API calls use `AbortSignal.timeout()`. Internal calls use `apiFetch` with 30s timeout.
-3. **DB queries**: The `getDbNow()` cache deduplicates DB time queries within a single render.
-4. **Rate limit eviction**: Now has proper lifecycle management with `stopRateLimitEviction()`.
+1. No memory leaks detected: All refs with timers/event listeners have proper cleanup.
+2. Fetch patterns: External API calls use `AbortSignal.timeout()`. Internal calls use `apiFetch` with 30s timeout.
+3. DB queries: The `getDbNow()` cache deduplicates DB time queries within a single render.
+4. Rate limit eviction: Has proper lifecycle management with `stopRateLimitEviction()`.
+5. Export streaming: Uses chunked reads with backpressure via `waitForReadableStreamDemand`.
