@@ -3,7 +3,7 @@
 **Date:** 2026-05-10
 **Cycle:** 44/100
 **Source:** `_aggregate.md` (C44-1, C44-2)
-**Status:** IN PROGRESS
+**Status:** COMPLETED — all fixes implemented and committed, all gates pass
 
 ---
 
@@ -14,7 +14,7 @@
 **File:** `src/app/api/v1/submissions/[id]/events/route.ts:122-145`
 **Severity:** LOW
 **Confidence:** HIGH
-**Status:** PENDING
+**Status:** COMPLETED — committed as `4ce6d7b6`
 
 **Problem:**
 The `globalThis.__sseCleanupTimer` (a `setInterval` for evicting stale SSE connection tracking entries) is created at module load time with an atomic guard (`globalThis.__sseCleanupInitialized`), but there is no corresponding exported `stopSseCleanupTimer()` function. This is the exact same pattern fixed for the audit flush timer in cycle 43 (C43-1) and the rate-limit eviction timer in cycle 34.
@@ -46,7 +46,7 @@ export function stopSseCleanupTimer() {
 - `src/app/api/v1/admin/restore/route.ts:40`
 **Severity:** LOW
 **Confidence:** MEDIUM
-**Status:** PENDING
+**Status:** COMPLETED — committed as `da1628ff`
 
 **Problem:**
 These are additional instances of DEFER-36 (`formData.get()` cast assertions) that were not addressed in cycle 40. Cycle 40 fixed `login-form.tsx` and `change-password-form.tsx`, but these admin routes retain the unsafe cast pattern.
