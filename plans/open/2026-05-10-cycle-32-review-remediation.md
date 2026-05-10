@@ -53,8 +53,8 @@ try {
 ```
 
 **Implementation:**
-- [ ] Update transformSSE in providers.ts
-- [ ] Run gates
+- [x] Update transformSSE in providers.ts
+- [x] Run gates
 
 **Exit criterion:** `controller.close()` is only called on the success path, not in finally.
 
@@ -80,8 +80,8 @@ maxTokens: config.maxTokens ?? 1024,
 ```
 
 **Implementation:**
-- [ ] Update auto-review.ts line 186
-- [ ] Run gates
+- [x] Update auto-review.ts line 186
+- [x] Run gates
 
 **Exit criterion:** `config.maxTokens` uses nullish coalescing (`??`).
 
@@ -106,7 +106,7 @@ maxTokens: config.maxTokens ?? 1024,
 
 ---
 
-## Gate Results (Pre-Implementation)
+## Gate Results (Post-Implementation)
 
 - [x] `npx eslint .` passes (0 errors)
 - [x] `npx tsc --noEmit` passes
