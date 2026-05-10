@@ -183,7 +183,7 @@ ${submission.memoryUsedKb !== null ? `Memory used: ${submission.memoryUsedKb}KB`
         { role: "system", content: systemPrompt },
         { role: "user", content: userPrompt },
       ],
-      maxTokens: config.maxTokens || 1024,
+      maxTokens: config.maxTokens ?? 1024,
       tools: [], // No tools needed for review
     });
 
