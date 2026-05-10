@@ -196,8 +196,8 @@ export async function POST(request: NextRequest) {
             s.execution_time_ms AS "executionTimeMs",
             s.memory_used_kb AS "memoryUsedKb",
             s.score,
-            EXTRACT(EPOCH FROM s.judged_at) AS "judgedAt",
-            EXTRACT(EPOCH FROM s.submitted_at) AS "submittedAt"
+            EXTRACT(EPOCH FROM s.judged_at)::bigint AS "judgedAt",
+            EXTRACT(EPOCH FROM s.submitted_at)::bigint AS "submittedAt"
         ),
         worker_bump AS (
           UPDATE judge_workers
