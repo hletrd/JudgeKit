@@ -78,6 +78,10 @@ export function streamDatabaseExport(options: { signal?: AbortSignal; sanitize?:
 
   return new ReadableStream({
     async start(controller) {
+      if (options.signal?.aborted) {
+        controller.close();
+        return;
+      }
       options.signal?.addEventListener("abort", abort, { once: true });
       try {
         await db.transaction(async (tx) => {
