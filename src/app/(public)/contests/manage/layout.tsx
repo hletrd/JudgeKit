@@ -14,8 +14,8 @@ import { usePathname } from "next/navigation";
  *   <a href="/contests/123" data-full-navigate>...</a>
  *
  * TODO: Remove this workaround once the upstream Next.js bug is fixed.
- * Track: https://github.com/vercel/next.js/issues (search for RSC streaming
- * corruption with proxy headers). If no issue exists, one should be filed.
+ * Tracked upstream: https://github.com/vercel/next.js/issues/76472
+ * Remove when Next.js >= 16.3 with fix for RSC streaming behind proxies.
  */
 export default function ContestsLayout({ children }: { children: React.ReactNode }) {
   const pathname = usePathname();
