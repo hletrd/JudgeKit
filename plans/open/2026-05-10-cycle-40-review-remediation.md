@@ -61,7 +61,14 @@ const confirmPassword = String(formData.get("confirmPassword") ?? "");
 - [ ] ESLint passes (`npx eslint src/app/(auth)/login/login-form.tsx src/app/change-password/change-password-form.tsx`) — 0 errors
 - [ ] All gates pass — eslint, tsc, next build, vitest run, vitest component tests
 
-**Status:** PENDING
+**Status:** DONE
+
+**Verification:**
+- [x] Code compiles (`npx tsc --noEmit`) — 0 errors
+- [x] ESLint passes (`npx eslint "src/app/(auth)/login/login-form.tsx" "src/app/change-password/change-password-form.tsx"`) — 0 errors
+- [x] Unit/integration tests pass (`npx vitest run`) — 317 files, 2391 tests (all pass)
+- [x] Component tests pass (`npx vitest run --config vitest.config.component.ts`) — 68 files, 208 tests (all pass)
+- [x] Next build passes (`npx next build`)
 
 ---
 
