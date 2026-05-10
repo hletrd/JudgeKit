@@ -22,8 +22,10 @@ export function SubmissionListAutoRefresh({
   const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const errorCountRef = useRef(0);
   const isRunningRef = useRef(false);
+  const mountedRef = useRef(true);
 
   useEffect(() => {
+    mountedRef.current = true;
     const baseInterval = hasActiveSubmissions ? activeIntervalMs : idleIntervalMs;
 
     function getBackoffInterval() {
@@ -59,7 +61,9 @@ export function SubmissionListAutoRefresh({
 
     async function start() {
       await tick();
-      scheduleNext();
+      if (mountedRef.current) {
+        scheduleNext();
+      }
     }
 
     function scheduleNext() {
@@ -67,7 +71,7 @@ export function SubmissionListAutoRefresh({
         await tick();
         // Reschedule with potentially changed interval after error,
         // but only if cleanup has not run (timerRef cleared on unmount)
-        if (timerRef.current !== null) {
+        if (timerRef.current !== null && mountedRef.current) {
           scheduleNext();
         }
       }, getBackoffInterval());
@@ -77,6 +81,7 @@ export function SubmissionListAutoRefresh({
     void start();
 
     return () => {
+      mountedRef.current = false;
       if (timerRef.current) {
         clearTimeout(timerRef.current);
         timerRef.current = null;
