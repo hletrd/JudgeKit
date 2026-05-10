@@ -8,6 +8,9 @@ export default defineConfig({
     },
   },
   test: {
+    env: {
+      DATABASE_URL: process.env.DATABASE_URL ?? "postgresql://test:test@localhost:5432/test",
+    },
     environment: "node",
     include: ["tests/unit/**/*.test.ts"],
     coverage: {
