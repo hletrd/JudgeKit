@@ -1,72 +1,71 @@
-# Aggregate Review — Cycle 43 (RPF Loop)
+# Aggregate Review — Cycle 44 (RPF Loop)
 
 **Date:** 2026-05-10
 **Reviewers:** comprehensive-reviewer (single-agent review, subagent spawning unavailable)
-**Total findings:** 1 new (1 LOW) + 0 false positives + all prior deferred items re-validated
+**Total findings:** 2 new (2 LOW) + 0 false positives + all prior deferred items re-validated
 
 ---
 
 ## Deduplicated Findings
 
-### C43-1: [LOW] Audit flush timer lacks stop function for test teardown
+### C44-1: [LOW] SSE cleanup timer lacks stop function for test teardown
 
-**File:** `src/lib/audit/events.ts:142-151`
+**File:** `src/app/api/v1/submissions/[id]/events/route.ts:122-145`
 **Confidence:** HIGH
 
-The `_flushTimer` (a `setInterval` for flushing buffered audit events) is created in `ensureFlushTimer()` but has no corresponding exported `stopAuditFlushTimer()` function. This is the exact same pattern that was fixed for the rate-limit eviction timer in cycle 34 (commit adding `stopRateLimitEviction()`).
+The `globalThis.__sseCleanupTimer` (a `setInterval` for evicting stale SSE connection tracking entries) is created at module load time with an atomic guard but has no corresponding exported `stopSseCleanupTimer()` function. This is the exact same pattern that was fixed for the audit flush timer in cycle 43 (C43-1, commit 2c86c3b1) and the rate-limit eviction timer in cycle 34.
 
 **Why it matters:**
 - The timer uses `.unref()`, so it will not block process exit in production
 - However, in test environments, Vitest may report open handles after test completion
-- Unlike `startSensitiveDataPruning()` / `stopSensitiveDataPruning()`, the audit flush timer is module-level and starts on first `recordAuditEvent()` call
+- Any test that imports this route module will have the timer active
 
-**Fix:** Add an exported `stopAuditFlushTimer()` function that clears `_flushTimer` and sets it to null.
+**Fix:** Add an exported `stopSseCleanupTimer()` function that clears the timer and resets the guard flag.
 
 ```typescript
-export function stopAuditFlushTimer() {
-  if (_flushTimer) {
-    clearInterval(_flushTimer);
-    _flushTimer = null;
+export function stopSseCleanupTimer() {
+  if (globalThis.__sseCleanupTimer) {
+    clearInterval(globalThis.__sseCleanupTimer);
+    globalThis.__sseCleanupTimer = undefined;
+    globalThis.__sseCleanupInitialized = false;
   }
 }
 ```
 
 ---
 
-## Previously Fixed Items (confirmed in current code)
+### C44-2: [LOW] `formData.get("password") as string | null` still present in two admin routes
 
-All cycle 42 fixes verified:
-- Cycle 42 was documentation-only (no code changes)
+**File:** `src/app/api/v1/admin/migrate/import/route.ts:48` and `src/app/api/v1/admin/restore/route.ts:40`
+**Confidence:** MEDIUM
 
-All cycle 41 fixes verified:
-- No code changes in cycle 41 (documentation only)
+These are additional instances of DEFER-36 (`formData.get()` cast assertions) that were not addressed in cycle 40. Cycle 40 fixed `login-form.tsx` and `change-password-form.tsx`, but these admin routes retain the unsafe cast pattern. While `typeof` guards on the next line provide defense in depth, the `as` cast is brittle and inconsistent with the cycle 40 fix.
 
-All cycle 40 fixes verified:
-- DEFER-36: `formData.get()` cast assertions — FIXED in login-form.tsx and change-password-form.tsx
-- Export.ts pre-abort signal check — ADDED in cycle 39, verified in cycles 40-43
+**Fix:** Use `String(formData.get("password") ?? "")` instead of `as string | null`, matching the cycle 40 remediation pattern.
 
-All cycle 39 fixes verified:
-- AGG-1 (cycle 39): Docker build stderr sanitized
-- AGG-2 (cycle 39): `participant-status.ts` `Date.now()` default removed
-- AGG-3 (cycle 39): `JUDGE_WORKER_URL` guard added
-
-All cycle 38 fixes verified:
-- AGG-3 (cycle 38): `db/import.ts` error messages sanitized
-- AGG-4 (cycle 38): Anti-cheat monitor text content capture removed
-
-**Also confirmed fixed since cycle 42 review (April 25):**
-- Cycle 43 NEW-1 (April 25): `recruit_` username prefix removed from recruiting-invitations.ts
-- Cycle 43 NEW-2 (April 25): Contest scoring background refresh now uses `Date.now()` fallback for cooldown timestamp
-- Cycle 43 NEW-3 (April 25): Already-redeemed recruiting path now checks assignment deadline via SQL `NOW()`
-- Cycle 43 NEW-4 (April 25): Docker build uses head+tail buffer strategy instead of string accumulation
-- Cycle 43 NEW-5 (April 25): In-memory rate limiter removed entirely
-- Cycle 43 NEW-6 (April 25): Recruiting ALS store mutation is documented as intentional single-user-per-request design
+**Note:** This is an additional instance of the existing DEFER-36 deferred item, not a new category of bug.
 
 ---
 
-## Carried Deferred Items (unchanged from cycle 42)
+## Previously Fixed Items (confirmed in current code)
 
-All deferred items from cycles 25-41 remain unchanged in status. See `_aggregate-cycle-40.md` for the full list.
+All cycle 43 fixes verified:
+- C43-1: `stopAuditFlushTimer()` exported in `src/lib/audit/events.ts:156-161`
+
+All cycle 42 fixes verified:
+- No code changes in cycle 42 (documentation only)
+
+All cycle 40 fixes verified:
+- DEFER-36: `formData.get()` cast assertions — FIXED in login-form.tsx and change-password-form.tsx
+
+All earlier cycle fixes verified (cycles 25-39):
+- All previously committed fixes remain in place with no regressions
+
+---
+
+## Carried Deferred Items (unchanged from cycle 43)
+
+All deferred items from cycles 25-41 remain unchanged in status.
 
 | Category | Count | Status |
 |----------|-------|--------|
@@ -74,6 +73,9 @@ All deferred items from cycles 25-41 remain unchanged in status. See `_aggregate
 | HIGH | 1 | Unchanged |
 | MEDIUM | 5 | Unchanged |
 | LOW | 12+ | Unchanged |
+
+**Specific deferred items with additional instances found this cycle:**
+- DEFER-36: +2 instances in admin import/restore routes (see C44-2 above)
 
 ---
 
