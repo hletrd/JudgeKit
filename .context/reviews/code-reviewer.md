@@ -1,89 +1,117 @@
-# Code Review — Cycle 32
+# Code Review — Cycle 33
 
-**Reviewer:** code-reviewer (manual)
+**Reviewer:** code-reviewer
 **Date:** 2026-05-10
-**Scope:** Code quality, logic correctness, maintainability
+**Scope:** Client components, hooks, API client utilities, timer/async patterns
 
 ---
 
-## Verified Fixes from Prior Cycles
+## Findings
 
-All cycle 31 fixes confirmed intact:
-- `compiler-client.tsx:268` no longer uses `res.statusText`
-- `json-ld.tsx:13-14` RegExp objects are module-level constants
-- All gates pass (eslint, tsc, next build, vitest unit + component)
+### C33-CR-1: [MEDIUM] Timer leak in submission-list-auto-refresh on unmount during initial tick
 
----
+**File:** `src/components/submission-list-auto-refresh.tsx:60-77`
+**Confidence:** HIGH
 
-## New Findings
-
-### C32-CODE-1: [MEDIUM] SSE parser calls controller.close() after controller.error()
-
-**File:** `src/lib/plugins/chat-widget/providers.ts:491-495`
-
-The `transformSSE` function has a try/catch/finally structure:
+The `start()` function awaits `tick()` then calls `scheduleNext()`. If the component unmounts during the async `tick()` call (which includes a network fetch), the cleanup function runs and clears `timerRef.current`. However, after `tick()` completes, `scheduleNext()` still executes and sets a new timer. This timer will never be cleared because cleanup already ran.
 
 ```typescript
-try {
-  while (true) {
-    const { done, value } = await reader.read();
-    // ...
-  }
-  // ...
-} catch (err) {
-  controller.error(err);     // line 492
-} finally {
-  reader.releaseLock();
-  controller.close();        // line 495
+async function start() {
+  await tick();        // if unmount happens here...
+  scheduleNext();      // ...this still runs and sets a leaked timer
 }
 ```
 
-**Problem:** `ReadableStreamDefaultController.error()` and `.close()` are mutually exclusive. Once `error()` transitions the stream to the "errored" state, calling `close()` throws a `TypeError: "Cannot close a stream that has already been closed or errored"`. This unhandled exception in the finally block can mask the original error and potentially cause issues for consumers of the stream.
+**Failure scenario:** User navigates away from a page with active submissions while the initial time endpoint fetch is in flight. A timer is leaked that continues calling `router.refresh()` indefinitely.
 
-**Fix:** Guard the `controller.close()` call with a flag, or move `controller.close()` into the try block before the catch (after the successful loop), and omit it from finally:
-
+**Fix:** Check a mounted ref before scheduling next:
 ```typescript
-let streamClosed = false;
-try {
-  // ... loop ...
-  if (!streamClosed) {
-    streamClosed = true;
-    controller.close();
+const mountedRef = useRef(true);
+useEffect(() => {
+  mountedRef.current = true;
+  async function start() {
+    await tick();
+    if (mountedRef.current) scheduleNext();
   }
-} catch (err) {
-  controller.error(err);
-} finally {
-  reader.releaseLock();
+  void start();
+  return () => { mountedRef.current = false; /* existing cleanup */ };
+}, [...]);
+```
+
+---
+
+### C33-CR-2: [MEDIUM] apiFetchJson does not handle fetch() throwing
+
+**File:** `src/lib/api/client.ts:126-144`
+**Confidence:** HIGH
+
+The `apiFetchJson` helper is documented as safe wrapper that "eliminates common footguns," but if `fetch()` itself throws (network failure, CORS rejection, DNS error), the exception propagates unhandled. Only `res.json()` throwing is caught.
+
+**Failure scenario:** Network interruption causes unhandled exception instead of graceful fallback.
+
+**Fix:** Wrap the `apiFetch` call in try/catch:
+```typescript
+export async function apiFetchJson<T = unknown>(...) {
+  let res: Response;
+  try {
+    res = await apiFetch(input, init);
+  } catch {
+    return { ok: false, data: fallback };
+  }
+  // ... existing parsing logic ...
 }
 ```
 
-**Confidence:** HIGH
+---
+
+### C33-CR-3: [LOW] export-button missing request cancellation
+
+**File:** `src/components/contest/export-button.tsx:14-43`
+**Confidence:** MEDIUM
+
+Large contest exports could take significant time. There is no AbortController to cancel in-flight requests if the user navigates away or clicks the other export button.
+
+**Fix:** Add AbortController support:
+```typescript
+const abortRef = useRef<AbortController | null>(null);
+// In handleExport: abortRef.current?.abort(); abortRef.current = new AbortController();
+// Pass signal to apiFetch
+```
 
 ---
 
-### C32-CODE-2: [LOW] maxTokens fallback uses || instead of ??
+### C33-CR-4: [LOW] contests layout queries DOM elements that may not exist
 
-**File:** `src/lib/judge/auto-review.ts:186`
+**File:** `src/app/(public)/contests/manage/layout.tsx:42-45`
+**Confidence:** MEDIUM
 
-```typescript
-maxTokens: config.maxTokens || 1024,
-```
+The layout queries `document.getElementById("main-content")` and `document.querySelector("[data-slot='sidebar']")` in useEffect. These elements may not exist during initial render or if the DOM structure changes. The effect depends on `pathname` but the queried elements might be stale after navigation.
 
-**Problem:** The `||` operator treats `0` as falsy. Some LLM providers support `maxTokens: 0` to indicate unconstrained generation length. If a user explicitly configures `maxTokens: 0`, this code incorrectly falls back to `1024`.
-
-**Fix:** Use nullish coalescing:
-```typescript
-maxTokens: config.maxTokens ?? 1024,
-```
-
-**Confidence:** HIGH
+**Fix:** Add null checks and consider using a ref-based approach or event delegation on document.
 
 ---
 
-## No Other Issues Found
+### C33-CR-5: [LOW] sign-out storage iteration race condition
 
-- All JSON.parse calls have try/catch guards
-- All fetch calls have AbortSignal timeout
-- Event listeners have proper cleanup
-- No `eval()` or `Function()` constructor usage
-- No shell injection vectors
+**File:** `src/lib/auth/sign-out.ts:37-44`
+**Confidence:** LOW
+
+The for loop iterates over `window.localStorage.length` and accesses `key(i)`. If another tab modifies localStorage during iteration, indices shift and some keys may be skipped or an out-of-bounds access could occur.
+
+**Fix:** Snapshot keys first: `const keys = Object.keys(window.localStorage)` or collect all keys in a single pass.
+
+---
+
+## Previously Deferred Items (re-validated)
+
+- DEFER-C30-4: `.json()` before `.ok` — still 30+ instances in client components
+- DEFER-C30-5: Raw API error strings without i18n — still present
+- DEFER-C30-6: `as { error?: string }` — 15 instances remain
+- C25-7: WeakMap complexity — unchanged
+
+## Positive Observations
+
+1. `apiFetchJson` and `parseApiResponse` are well-designed helpers that reduce footguns.
+2. `sanitizeHtml` correctly restricts image src to root-relative paths.
+3. Anti-cheat storage has MAX_PENDING_EVENTS cap for localStorage safety.
+4. Most timer patterns use `useRef` for proper cleanup.

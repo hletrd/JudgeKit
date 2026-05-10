@@ -1,45 +1,52 @@
-# Critic Review — Cycle 32
+# Critic Review — Cycle 33
 
-**Reviewer:** critic (manual)
+**Reviewer:** critic
 **Date:** 2026-05-10
-**Scope:** Multi-perspective critique of the codebase
+**Scope:** Multi-perspective critique of client-side code patterns
 
 ---
 
-## Overall Assessment
+## Findings
 
-The codebase is in a mature state after 31 review cycles. Most critical issues have been resolved. The remaining surface is primarily low-impact deferred items and edge cases in less-frequently-exercised code paths.
+### C33-CT-1: [MEDIUM] throw-then-match anti-pattern persists despite explicit documentation against it
 
----
-
-## New Findings
-
-### C32-CRIT-1: [MEDIUM] ReadableStream lifecycle violation in SSE parser
-
-**File:** `src/lib/plugins/chat-widget/providers.ts:491-495`
-
-From multiple angles:
-- **Correctness:** controller.error() and controller.close() are mutually exclusive per Web Streams spec
-- **Maintainability:** The finally block assumes success; error paths are not explicitly guarded
-- **Testing:** No test coverage for the error path means regressions could go unnoticed
-
-This is the most significant new finding in this cycle.
-
+**Files:** Multiple client components
 **Confidence:** HIGH
 
-### C32-CRIT-2: [LOW] Boolean logic confusion in maxTokens fallback
+The `src/lib/api/client.ts` file contains extensive documentation (lines 24-73) explaining why the throw-then-match pattern is dangerous and providing the correct pattern. Yet 20+ components still use `throw new Error(data.error ?? "...")` immediately after `.json()`.
 
-**File:** `src/lib/judge/auto-review.ts:186`
+This is a process/code-culture issue: documentation alone is insufficient when the anti-pattern is easier to write than the correct pattern.
 
-Using `||` where `??` is semantically correct is a common JavaScript pitfall. While `maxTokens: 0` is an edge case, the pattern suggests the developer may not be fully aware of the distinction.
-
-**Confidence:** MEDIUM
+**Fix:** Consider an ESLint rule or a wrapper that makes the correct pattern the path of least resistance.
 
 ---
 
-## Positive Observations
+### C33-CT-2: [LOW] Error boundaries log to console unconditionally
 
-- Strong TypeScript discipline with no `as any` casts
-- Comprehensive error handling in API layer
-- Proper resource cleanup (AbortController, timers, event listeners)
-- Well-documented code with clear intent comments
+**Files:** `src/app/*/error.tsx` (4 files)
+**Confidence:** MEDIUM
+
+Error boundaries in production should not log to console.error. These are user-facing error UI components, not debugging tools. The digest hash leaked to console could expose internal routing or implementation details.
+
+**Fix:** Gate all error boundary console.error behind NODE_ENV check.
+
+---
+
+### C33-CT-3: [LOW] apiFetchJson type narrowing is awkward
+
+**File:** `src/lib/api/client.ts`
+**Confidence:** LOW
+
+The `{ ok: true; data: T } | { ok: false; data: T }` return type forces callers to destructure then check `ok`, but `data` is available in both branches. This is confusing — why return data on error?
+
+The design intent (providing parsed error body) is reasonable, but the ergonomics could be improved with a result type or optional chaining.
+
+**Fix:** Consider `Result<T, ErrorInfo>` pattern or at least document why data is returned on error.
+
+---
+
+## Cross-Agent Agreement
+
+- Timer leak in submission-list-auto-refresh: confirmed by code-reviewer, debugger, verifier
+- apiFetchJson fetch error handling: confirmed by code-reviewer, security-reviewer, verifier
+- Error boundary console.error: confirmed by security-reviewer, critic

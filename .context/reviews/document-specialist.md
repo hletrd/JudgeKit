@@ -1,21 +1,39 @@
-# Document Specialist Review — Cycle 32
+# Document Specialist Review — Cycle 33
 
-**Reviewer:** document-specialist (manual)
+**Reviewer:** document-specialist
 **Date:** 2026-05-10
-**Scope:** Doc/code mismatches
+**Scope:** Documentation/code mismatches, comment accuracy
 
 ---
 
 ## Findings
 
-### C32-DOC-1: [LOW] JSDoc on parseApiResponse is accurate and helpful
+### C33-DS-1: [LOW] apiFetchJson docs claim safety but miss fetch() errors
 
-The JSDoc at `src/lib/api/client.ts:25-101` correctly documents the `.json()` before `.ok` anti-pattern and provides clear usage examples. Documentation matches implementation.
+**File:** `src/lib/api/client.ts:64-72`
+**Confidence:** HIGH
 
-### C32-DOC-2: [LOW] auto-review.ts comments are thorough
+The doc comment for `apiFetchJson` says: "Fetch a URL with CSRF headers, check `res.ok`, and safely parse the JSON response body in one call. This eliminates the common footguns of: ..."
 
-The auto-review file has extensive inline comments explaining design decisions (queue size limits, source code size caps, UTF-8 byte length rationale). Documentation matches implementation.
+But footgun #1 in the docs is "Forgetting to check `res.ok` before `.json()`" — the function does handle this. However, it does NOT handle `fetch()` itself throwing, which is a different but equally common footgun.
+
+**Fix:** Update docs to mention that network-level errors (fetch throwing) are NOT caught and must be handled by the caller, OR add the catch.
 
 ---
 
-## No Doc/Code Mismatches Found
+### C33-DS-2: [LOW] contests layout TODO lacks upstream issue link
+
+**File:** `src/app/(public)/contests/manage/layout.tsx:16-18`
+**Confidence:** LOW
+
+The TODO says "Remove this workaround once the upstream Next.js bug is fixed" but provides no GitHub issue link or version number to track.
+
+**Fix:** Add a specific Next.js issue URL or version threshold for removal.
+
+---
+
+## Positive Observations
+
+1. api/client.ts has excellent inline documentation with examples.
+2. Anti-cheat storage module has thorough rationale comments.
+3. sanitize-html.ts documents the security rationale for each restriction.

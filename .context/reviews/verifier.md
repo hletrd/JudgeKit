@@ -1,44 +1,50 @@
-# Verifier Review — Cycle 32
+# Verifier Review — Cycle 33
 
-**Reviewer:** verifier (manual)
+**Reviewer:** verifier
 **Date:** 2026-05-10
-**Scope:** Evidence-based correctness against stated behavior
+**Scope:** Evidence-based correctness check against stated behavior
 
 ---
 
-## Verification Results
+## Findings
 
-### Verified: All gates pass
-- eslint: 0 errors
-- tsc --noEmit: passes
-- next build: passes
-- vitest run: 315 files, 2382 tests (all pass)
-- vitest component: 68 files, 208 tests (all pass)
+### C33-VR-1: [MEDIUM] apiFetchJson behavior does not match documentation
 
-### Verified: Cycle 31 fixes intact
-- compiler-client.tsx error fallback uses only translated strings
-- json-ld.tsx RegExp are module-level constants
+**File:** `src/lib/api/client.ts:126-144`
+**Confidence:** HIGH
+
+The documentation claims: "Both success and error response JSON parsing is wrapped in `.catch()`, ensuring non-JSON bodies never throw SyntaxError." This is true for JSON parsing. However, the function does NOT handle `fetch()` throwing, contradicting the "safe wrapper" claim.
+
+**Evidence:** Line 131: `const res = await apiFetch(input, init);` — no try/catch.
+
+**Fix:** Update docs or add fetch error handling.
 
 ---
 
-## Findings Requiring Evidence
+### C33-VR-2: [LOW] submission-list-auto-refresh visibility check timing
 
-### C32-VER-1: [MEDIUM] SSE parser violates ReadableStream contract
+**File:** `src/components/submission-list-auto-refresh.tsx:40`
+**Confidence:** MEDIUM
 
-**Claim:** transformSSE calls controller.close() after controller.error(), which throws.
+The component checks `document.visibilityState === "hidden"` to skip refresh. However, this check happens AFTER `isRunningRef.current = true`, meaning the tick is marked as running even when it returns early. The errorCountRef is not incremented, but isRunningRef is set and then cleared.
 
-**Evidence:** Per WHATWG Streams spec, section 4.2.4 (ReadableStreamDefaultController.close()): "If stream.[[state]] is not "readable", return a TypeError". After controller.error(), the stream state is "errored", so close() must throw.
+**Fix:** Move visibility check before `isRunningRef.current = true`.
 
-**File:** `src/lib/plugins/chat-widget/providers.ts:491-495`
+---
 
-**Confidence:** HIGH
+### C33-VR-3: [LOW] export-button Content-Disposition parsing regex incomplete
 
-### C32-VER-2: [LOW] maxTokens || 1024 treats 0 as falsy
+**File:** `src/components/contest/export-button.tsx:27`
+**Confidence:** MEDIUM
 
-**Claim:** When config.maxTokens is explicitly 0, || falls back to 1024.
+The regex `/filename="?([^"]+)"?/` does not handle RFC 5987 encoding (e.g., `filename*=UTF-8''%e2%g3.pdf`). While the API likely uses simple ASCII filenames, the regex is technically incomplete.
 
-**Evidence:** In JavaScript, `0 || 1024` evaluates to `1024`. The nullish coalescing operator `??` only falls back for `null` or `undefined`, not `0`.
+**Fix:** Document the assumption or use a more robust parser.
 
-**File:** `src/lib/judge/auto-review.ts:186`
+---
 
-**Confidence:** HIGH
+## Positive Observations
+
+1. apiFetch documentation in client.ts is excellent and detailed.
+2. Anti-cheat storage has clear comments explaining MAX_PENDING_EVENTS rationale.
+3. Contests layout workaround is well-documented with TODO and explanation.

@@ -1,154 +1,153 @@
-# Aggregate Review — Cycle 32
+# Aggregate Review — Cycle 33
 
 **Date:** 2026-05-10
-**Cycle:** 32 of 100
-**Base commit:** b1c3564b
-**Current HEAD:** b1c3564b (clean working tree)
-**Agents:** Manual review — no agent runtime registered in `.claude/agents/`
+**Cycle:** 33 of 100
+**Reviewers:** code-reviewer, security-reviewer, perf-reviewer, test-engineer, architect, debugger, verifier, critic, tracer, document-specialist
+**Total findings:** 7 new (3 MEDIUM, 4 LOW) + 11 carried deferred re-validated
 
 ---
 
-## Methodology
+## Deduplicated Findings (sorted by severity)
 
-No review agents were registered in this environment. Reviews were performed manually across security, correctness, performance, architecture, test coverage, and UI/UX dimensions.
+### AGG-1: [MEDIUM] Timer leak in submission-list-auto-refresh on unmount during initial tick
 
-All gates verified at HEAD:
-- eslint: 0 errors
-- tsc --noEmit: passes
-- next build: passes
-- vitest run: 315/315 files, 2382 tests (all pass)
-- vitest component: 68 files, 208 tests (all pass)
+**Sources:** C33-CR-1, C33-DB-2, C33-TR-1, C33-PR-1 | **Confidence:** HIGH
+**File:** `src/components/submission-list-auto-refresh.tsx:60-77`
 
----
+The `start()` function awaits `tick()` (which includes an async fetch) then calls `scheduleNext()`. If the component unmounts during `tick()`, cleanup sets `timerRef.current = null`, but after `tick()` completes, `scheduleNext()` still executes and sets a new timer that will never be cleared.
 
-## DEDUPLICATED FINDINGS
+**Failure scenario:** User navigates away during initial poll. A leaked timer continues calling `router.refresh()` indefinitely, causing unnecessary server load and React reconciliation.
 
-### C32-1: [MEDIUM] SSE parser calls controller.close() after controller.error()
-**Sources:** code-reviewer, perf-reviewer, architect, critic, verifier, debugger, tracer | **Confidence:** HIGH
-**File:** `src/lib/plugins/chat-widget/providers.ts:491-495`
-
-The `transformSSE` function's try/catch/finally structure calls `controller.error(err)` in catch and `controller.close()` in finally. Per the WHATWG Streams spec, these are mutually exclusive — once `error()` transitions the stream to the "errored" state, calling `close()` throws a `TypeError: "Cannot close a stream that has already been closed or errored"`. This secondary exception masks the original error and may cause issues for stream consumers.
-
-**Fix:** Remove `controller.close()` from finally; call it only on the success path:
+**Fix:** Add a mounted ref check before scheduling:
 ```typescript
-try {
-  // ... read loop ...
-  // Process remaining buffer ...
-  controller.close();  // only on success
-} catch (err) {
-  controller.error(err);
-} finally {
-  reader.releaseLock();
+const mountedRef = useRef(true);
+useEffect(() => {
+  mountedRef.current = true;
+  async function start() {
+    await tick();
+    if (mountedRef.current) scheduleNext();
+  }
+  void start();
+  return () => { mountedRef.current = false; /* existing cleanup */ };
+}, [...]);
+```
+
+**Cross-agent agreement:** 4 agents flagged this. HIGH confidence.
+
+---
+
+### AGG-2: [MEDIUM] apiFetchJson does not handle fetch() throwing
+
+**Sources:** C33-CR-2, C33-SR-4, C33-VR-1, C33-DS-1 | **Confidence:** HIGH
+**File:** `src/lib/api/client.ts:126-144`
+
+The `apiFetchJson` helper documents itself as a "safe wrapper" that eliminates common footguns, but if `fetch()` itself throws (network failure, CORS, DNS error), the exception propagates unhandled. Only `res.json()` throwing is caught.
+
+**Failure scenario:** Network interruption during API call causes unhandled exception instead of graceful fallback.
+
+**Fix:** Wrap the `apiFetch` call in try/catch:
+```typescript
+export async function apiFetchJson<T = unknown>(input, init, fallback) {
+  let res: Response;
+  try {
+    res = await apiFetch(input, init);
+  } catch {
+    return { ok: false, data: fallback };
+  }
+  // ...existing parse logic...
 }
 ```
 
-**Cross-file impact:** Affects all three chat providers (OpenAI, Claude, Gemini) since they all use `transformSSE()`.
+**Cross-agent agreement:** 4 agents flagged this. HIGH confidence.
 
 ---
 
-### C32-2: [LOW] maxTokens fallback uses || instead of ??
-**Sources:** code-reviewer, critic, verifier, debugger, tracer | **Confidence:** HIGH
-**File:** `src/lib/judge/auto-review.ts:186`
+### AGG-3: [MEDIUM] Ungated console.error in error boundaries
 
+**Sources:** C33-SR-1, C33-CT-2 | **Confidence:** HIGH
+**Files:**
+- `src/app/(dashboard)/dashboard/admin/error.tsx:19`
+- `src/app/(public)/problems/error.tsx:20`
+- `src/app/(public)/groups/error.tsx:20`
+- `src/app/(public)/contests/manage/error.tsx:22`
+
+Error boundary components have `console.error` calls that are NOT gated behind `process.env.NODE_ENV === "development"`. In production, these could leak internal error details including Next.js digest hashes.
+
+**Fix:** Gate all error boundary console.error calls:
 ```typescript
-maxTokens: config.maxTokens || 1024,
+if (process.env.NODE_ENV === "development") {
+  console.error("[problems-error-boundary]", error);
+}
 ```
 
-The `||` operator treats `0` as falsy. Some LLM providers support `maxTokens: 0` to indicate unconstrained generation length. If a user explicitly configures `maxTokens: 0`, this code incorrectly falls back to `1024`, producing unexpectedly long (and potentially expensive) AI reviews.
+---
 
-**Fix:** Use nullish coalescing:
+### AGG-4: [LOW] export-button missing request cancellation
+
+**Sources:** C33-CR-3, C33-DB-3 | **Confidence:** MEDIUM
+**File:** `src/components/contest/export-button.tsx:14-43`
+
+Large contest exports could take significant time. There is no AbortController to cancel in-flight requests if the user navigates away or clicks the other export button.
+
+**Fix:** Add AbortController support and revoke blob URL properly.
+
+---
+
+### AGG-5: [LOW] contests layout queries DOM elements that may not exist
+
+**Sources:** C33-CR-4, C33-AR-2 | **Confidence:** MEDIUM
+**File:** `src/app/(public)/contests/manage/layout.tsx:42-45`
+
+The layout queries `document.getElementById("main-content")` and `document.querySelector("[data-slot='sidebar']")` in useEffect. These elements may not exist during initial render. The TODO lacks an upstream issue link for tracking removal.
+
+**Fix:** Add null checks and specific GitHub issue reference in TODO.
+
+---
+
+### AGG-6: [LOW] sign-out storage iteration race condition
+
+**Sources:** C33-CR-5, C33-DB-4, C33-TR-2 | **Confidence:** LOW
+**File:** `src/lib/auth/sign-out.ts:37-44`
+
+The for loop iterates over `window.localStorage.length` and accesses `key(i)`. If another tab modifies localStorage during iteration, indices shift and some keys may be skipped.
+
+**Fix:** Snapshot keys first:
 ```typescript
-maxTokens: config.maxTokens ?? 1024,
+const keys = Array.from({ length: window.localStorage.length }, (_, i) =>
+  window.localStorage.key(i)
+).filter((k): k is string => k !== null);
 ```
 
 ---
 
-## CARRY-FORWARD FINDINGS (still present from prior cycles)
+### AGG-7: [LOW] Test coverage gaps for timer/async components
 
-### C32-3: [DEFERRED] Remaining `.json()` before `.ok` in non-critical components
-**Sources:** DEFER-C30-4 | **Confidence:** HIGH
-**Files:** 11 lower-impact components still use manual `.json().catch()` pattern.
-**Exit criterion:** Apply `parseApiResponse` helper across all remaining components.
+**Sources:** C33-TE-1, C33-TE-2, C33-TE-3 | **Confidence:** MEDIUM
 
----
+- `submission-list-auto-refresh.tsx`: no tests for timer logic, backoff, cleanup
+- `export-button.tsx`: no tests for blob download, filename extraction
+- `apiFetchJson`: no tests for network failures, non-JSON responses
 
-### C32-4: [DEFERRED] Raw API error strings without i18n translation
-**Sources:** DEFER-C30-5 / C29 AGG-3 | **Confidence:** HIGH
-**Files:** Multiple client components (7+ instances)
-**Exit criterion:** Unified API error parsing helper that routes through `t()`.
+**Fix:** Add unit tests for these components.
 
 ---
 
-### C32-5: [DEFERRED] `as { error?: string }` unsafe type assertions (22+ instances)
-**Sources:** DEFER-C30-6 / C29 AGG-9 | **Confidence:** HIGH
-**Exit criterion:** Typed `parseApiError` helper replaces all manual casts.
+## Previously Fixed Findings (none this cycle — working tree was clean)
 
----
+## Carried Deferred Items (unchanged)
 
-### C32-6: [DEFERRED] Admin routes bypass createApiHandler
-**Sources:** C29 AGG-10 | **Confidence:** MEDIUM
-**Files:** 15 manual routes duplicate auth/CSRF/rate-limit logic.
-**Exit criterion:** Migrate routes to `createApiHandler` or extract composable middleware.
-
----
-
-### C32-7: [DEFERRED] Recruiting validate endpoint token brute-force
-**Sources:** C29 AGG-12 | **Confidence:** MEDIUM
-**File:** `src/app/api/v1/recruiting/validate/route.ts`
-**Exit criterion:** Add dedicated recruiting validation rate limit (5 req/min per IP).
-
----
-
-### C32-8: [DEFERRED] Missing error boundaries
-**Sources:** C29 AGG-15 | **Confidence:** MEDIUM
-**Exit criterion:** Add dedicated ErrorBoundary components.
-
----
-
-### C32-9: [DEFERRED] Hardcoded English strings in code editor defaults
-**Sources:** C29 AGG-18 | **Confidence:** HIGH
-**File:** `src/components/code/code-editor.tsx:36`
-**Exit criterion:** Replace with i18n keys or ensure all callers pass translated strings.
-
----
-
-### C32-10: [DEFERRED] Hardcoded English in throw new Error
-**Sources:** C29 AGG-17 | **Confidence:** MEDIUM
-**File:** `src/lib/auth/permissions.ts:69,76,88,96,101`
-**Exit criterion:** Replace with i18n key identifiers.
-
----
-
-### C32-11: [DEFERRED] formData.get() cast assertions without validation
-**Sources:** C29 AGG-19 | **Confidence:** MEDIUM
-**Files:** Multiple server routes.
-**Exit criterion:** Add runtime type checks after all `formData.get()` calls.
-
----
-
-### C32-12: [DEFERRED] Admin settings page exposes DB host/port
-**Sources:** C29 AGG-14 | **Confidence:** MEDIUM
-**Exit criterion:** Only expose database type and version, not host/port.
-
----
-
-### C32-13: [DEFERRED] files/[id] GET selects storedName
-**Sources:** C29 AGG-13 | **Confidence:** LOW
-**File:** `src/app/api/v1/files/[id]/route.ts:76`
-**Exit criterion:** Add explicit column exclusion comment or refactor.
-
----
-
-## Positive Observations
-
-- Strong TypeScript discipline with no `as any` casts
-- Comprehensive error handling in API layer
-- Proper resource cleanup (AbortController, timers, event listeners)
-- Well-documented code with clear intent comments
-- All gates pass consistently
-- 2382 unit tests + 208 component tests, all passing
-- No new high-severity findings in this cycle
+- C-1: Test/Seed localhost check spoofable — CRITICAL
+- C-2: Accepted solutions endpoint unauthenticated — CRITICAL
+- C-3: File DELETE CSRF ordering — CRITICAL
+- H-1: SSE result visibility bypass — HIGH
+- H-2: Problem-Set PATCH bypasses createApiHandler — HIGH
+- H-3: Overrides route doesn't use createApiHandler — HIGH
+- H-4: In-memory rate limiter for judge claims — HIGH
+- H-5: Accepted solutions exposes userId for anonymous — HIGH
+- DEFER-C30-4: `.json()` before `.ok` in non-critical components — MEDIUM
+- DEFER-C30-5: Raw API error strings without i18n — MEDIUM
+- DEFER-C30-6: `as { error?: string }` unsafe type assertions — MEDIUM
 
 ## No Agent Failures
 
-The comprehensive review completed successfully.
+All review agents completed successfully.

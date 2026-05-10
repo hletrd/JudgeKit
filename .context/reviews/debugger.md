@@ -1,41 +1,59 @@
-# Debugger Review — Cycle 32
+# Debugger Review — Cycle 33
 
-**Reviewer:** debugger (manual)
+**Reviewer:** debugger
 **Date:** 2026-05-10
-**Scope:** Latent bugs, failure modes, regressions
+**Scope:** Latent bugs, failure modes, edge cases, race conditions
 
 ---
 
-## Failure Mode Analysis
+## Findings
 
-### C32-DEBUG-1: [MEDIUM] SSE parser secondary exception masks original error
+### C33-DB-1: [MEDIUM] Race condition in anti-cheat flush + retry
 
-**File:** `src/lib/plugins/chat-widget/providers.ts:491-495`
+**File:** `src/components/exam/anti-cheat-monitor.tsx:73-86`
+**Confidence:** MEDIUM
 
-**Failure scenario:**
-1. Network error occurs during reader.read()
-2. catch block calls controller.error(networkError)
-3. finally block calls controller.close()
-4. controller.close() throws TypeError because stream is already errored
-5. The TypeError from step 4 becomes the effective exception
-6. Original networkError is lost or masked
+The `performFlush` function loads events from localStorage, sends them, then saves remaining events. Between the load and save, another tab or event handler could modify localStorage. While unlikely in a single-tab exam scenario, this is a latent race condition.
 
-**Impact:** Makes debugging streaming issues harder; the wrong error is propagated.
+**Fix:** Use a Mutex-like pattern or sessionStorage (which is tab-scoped) instead of localStorage.
 
-**Fix:** Remove controller.close() from finally; only call it on the success path.
+---
 
+### C33-DB-2: [MEDIUM] submission-list-auto-refresh concurrent tick guard insufficient
+
+**File:** `src/components/submission-list-auto-refresh.tsx:34-37`
 **Confidence:** HIGH
 
-### C32-DEBUG-2: [LOW] maxTokens=0 silently overridden
+The `isRunningRef` guard prevents concurrent ticks within the same timer chain, but if `hasActiveSubmissions` prop changes rapidly, the effect cleanup and re-setup could create overlapping timer chains. The old timer is cleared, but a new one starts immediately.
 
-**File:** `src/lib/judge/auto-review.ts:186`
+**Fix:** Add an AbortController for the fetch in tick() to cancel in-flight requests when props change.
 
-**Failure scenario:**
-1. Admin configures chat-widget with maxTokens: 0
-2. Auto-review triggers for an accepted submission
-3. maxTokens is silently overridden to 1024
-4. User receives unexpectedly long (and expensive) AI review
+---
 
-**Fix:** Use ?? instead of ||
+### C33-DB-3: [LOW] export-button blob URL leak on rapid clicks
 
+**File:** `src/components/contest/export-button.tsx:30-37`
+**Confidence:** LOW
+
+If user rapidly clicks export buttons, multiple blob URLs are created but `URL.revokeObjectURL` only runs after the successful download. Rapid clicks could temporarily leak memory.
+
+**Fix:** Track and revoke previous blob URL before creating new one, or disable button during export.
+
+---
+
+### C33-DB-4: [LOW] sign-out localStorage key iteration non-atomic
+
+**File:** `src/lib/auth/sign-out.ts:37-44`
 **Confidence:** MEDIUM
+
+The iteration pattern `for (let i = 0; i < window.localStorage.length; i++)` is non-atomic. If keys are added or removed during iteration (e.g., by another tab or the anti-cheat monitor), the loop behavior is undefined.
+
+**Fix:** Use `Object.keys(window.localStorage)` to snapshot before iterating.
+
+---
+
+## Positive Observations
+
+1. Error count backoff in submission-list-auto-refresh prevents spam on failure.
+2. Anti-cheat retry cap (MAX_RETRIES=3) prevents infinite loops.
+3. Most async operations have cleanup handlers.
