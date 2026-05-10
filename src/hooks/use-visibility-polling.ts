@@ -56,7 +56,12 @@ export function useVisibilityPolling(
     function scheduleNext() {
       timerId = setTimeout(() => {
         if (cancelled) return;
-        tick();
+        try {
+          tick();
+        } catch {
+          // Callback errors must not break the polling loop.
+          // The caller's error boundary or own handler will surface it.
+        }
         scheduleNext();
       }, intervalMs);
     }
