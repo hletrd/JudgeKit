@@ -265,7 +265,7 @@ export function CompilerClient({ languages, title, description, preferredLanguag
       const { ok, data } = await parseApiResponse(res, { data: null } as { error?: string; message?: string; data?: unknown });
 
       if (!ok) {
-        const rawError = data.error || data.message || res.statusText || t("requestFailed");
+        const rawError = data.error || data.message || t("requestFailed");
         const errorMessage = String(rawError);
         updateTestCase(runningTestCaseId, (testCase) => ({
           ...testCase,
