@@ -92,6 +92,14 @@ export function ProblemSubmissionForm({
   const lastSnapshotRef = useRef<string>("");
   const lastChangeRef = useRef<number>(0);
   const snapshotTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const isMountedRef = useRef(true);
+
+  useEffect(() => {
+    isMountedRef.current = true;
+    return () => {
+      isMountedRef.current = false;
+    };
+  }, []);
 
   useEffect(() => {
     if (!assignmentId) return;
@@ -124,6 +132,7 @@ export function ProblemSubmissionForm({
         }).catch(() => {});
       }
 
+      if (!isMountedRef.current) return;
       const nextDelay = sinceLastChange < 30000 ? 10000 : 60000;
       snapshotTimerRef.current = setTimeout(tick, nextDelay);
     }
