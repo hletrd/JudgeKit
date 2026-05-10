@@ -1,62 +1,66 @@
-# Verifier — Cycle 26
+# Verifier — Cycle 27
 
 **Date:** 2026-05-09
-**Cycle:** 26 of 100
-**Base commit:** 5594a074
-**Current HEAD:** 5594a074 (clean working tree)
+**Cycle:** 27 of 100
+**Base commit:** 5771402a
+**Current HEAD:** 5771402a (clean working tree)
 
 ---
 
-## Prior Fixes Verified
+## Prior Fixes Verified at HEAD
 
-### VR-P1: apiFetch timeout bypass (C16 CR-1)
-- **Status**: FIXED
-- **Evidence**: `src/lib/api/client.ts:90-92` uses `withTimeout(init.signal, 30_000)` and `createTimeoutSignal(30_000)`. Both paths enforce timeout.
-
-### VR-P2: AbortSignal.timeout browser fallback (C16 CR-2)
-- **Status**: FIXED
-- **Evidence**: `src/lib/abort.ts:6-13` implements fallback with setTimeout.
-
-### VR-P3: useKeyboardShortcuts modifier key handling (C19-1)
-- **Status**: FIXED
-
-### VR-P4-P5: Chat widget / file upload hanging (C16 DB-1/DB-2)
-- **Status**: FIXED
-
-### VR-P6: Trusted registry boundary (C25-1)
-- **Status**: FIXED
-- **Evidence**: `docker-image-validation.ts:9-10` checks `nextChar === '/' || nextChar === ':' || nextChar === undefined`.
-
-### VR-P7: TABLE_MAP typing (C25-2)
-- **Status**: FIXED
-- **Evidence**: `import.ts:20` uses `Record<string, PgTable>` instead of `any`.
-
-### VR-P8: Stale images concurrency (C25-3)
-- **Status**: FIXED
-- **Evidence**: `images/route.ts:17` uses `pLimit(5)`.
-
-### VR-P9: Image reference regex (C25-4)
-- **Status**: FIXED
-- **Evidence**: `client.ts:89-91` rejects trailing delimiters and consecutive delimiters.
+| Finding | Status | Evidence |
+|---------|--------|----------|
+| C26-1 LLM prompt sanitization | FIXED | `sanitizePromptInput` imported and used at auto-review.ts:163; tests at prompt-sanitization.test.ts pass |
+| C25-1 Trusted registry boundary | FIXED | `isTrustedRegistryImage` at docker-image-validation.ts:1-11 |
+| C25-2 TABLE_MAP typing | FIXED | `Record<string, PgTable>` at import.ts:20 |
+| C25-3 Stale images concurrency | FIXED | `pLimit(5)` at images/route.ts:17 |
+| C25-4 Image reference regex | FIXED | Structural checks at client.ts:86-91 |
+| C19-1 Keyboard shortcuts | FIXED | `getShortcutKey` at use-keyboard-shortcuts.ts:8-20 |
 
 ---
 
 ## New Findings Verified
 
-### VR-26-1: LLM prompt injection in auto-review
+### C27-V-1: NaN causes stale image detection to silently fail
 
-- **File**: `src/lib/judge/auto-review.ts:162-167`
-- **Confidence**: High
-- **Evidence**: The `userPrompt` string at lines 162-167 interpolates `submission.sourceCode` directly without any sanitization. The source code is user-controlled data from the `submissions` table. No prompt injection filtering is applied before the `provider.chatWithTools()` call at line 175.
+- **File:** `src/app/api/v1/admin/docker/images/route.ts:30`
+- **Severity:** Low
+- **Confidence:** High
+- **Evidence:**
+  - `info.Created` is typed as `unknown` via `Record<string, unknown>` return from `inspectDockerImage`
+  - `as string` cast provides no runtime guarantee
+  - `new Date("not a date").getTime() === NaN` (JavaScript spec)
+  - `dockerfileMtime > NaN` is always `false` (IEEE 754)
+  - Therefore the image is never added to the stale set
+- **Reproduction:** If Docker inspect returns `{ Created: null }` or the worker returns malformed JSON, stale detection is bypassed.
+- **Fix:** Add type guard and NaN check before comparison.
 
-### VR-26-2: `poll/route.ts` transaction inconsistency still present
+### C27-V-2: Prompt sanitization regex mathematical property
 
-- **File**: `src/app/api/v1/judge/poll/route.ts:77,136`
-- **Confidence**: High
-- **Evidence**: Confirmed by direct inspection. Line 77: `execTransaction`. Line 136: `db.transaction`. This is the same finding as VR-25-1, now 7 cycles deferred.
+- **File:** `src/lib/judge/prompt-sanitization.ts:12`
+- **Severity:** Low
+- **Confidence:** High
+- **Evidence:**
+  - Regex `/<<[^>]+>>/g` requires `[^>]+` (one or more non-`>` chars)
+  - Input `<<>>`: `<<` matches, then `>>` must match `[^>]+>>` — impossible since `[^>]+` needs at least one char
+  - Therefore `<<>>` is not sanitized
+- **Fix:** Change `+` to `*` in the character class repetition.
+
+### C27-V-3: Audit event asymmetry between POST and DELETE
+
+- **File:** `src/app/api/v1/admin/docker/images/route.ts:76-86` vs `129-135`
+- **Severity:** Low
+- **Confidence:** High
+- **Evidence:**
+  - POST handler (line 76): calls `recordAuditEvent` before returning 400 for rejected image
+  - DELETE handler (line 129): returns 400 directly without audit event
+  - Both require the same `system.settings` capability
+  - Asymmetric audit trail is verifiable by comparing the two handlers side-by-side
+- **Fix:** Add audit event to DELETE rejection path.
 
 ---
 
-## No Other Verified Issues
+## No Regressions Detected
 
-All auth checks, rate limits, and transaction boundaries behave as documented.
+All gates pass: eslint (0 errors), tsc --noEmit, next build, vitest component (68/68 files, 208 tests). Unit tests have 1 pre-existing failure (export-sanitization.test.ts requires DATABASE_URL).
