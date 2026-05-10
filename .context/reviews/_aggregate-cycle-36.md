@@ -1,117 +1,101 @@
 # Aggregate Review — Cycle 36
 
-**Date:** 2026-04-25
-**Reviewers:** comprehensive-reviewer
-**Total findings:** 6 new (1 MEDIUM, 5 LOW) + 0 false positives + 14 carried deferred re-validated + 0 newly fixed
+**Date:** 2026-05-10
+**Reviewers:** comprehensive-reviewer (single-agent review)
+**Total findings:** 0 new (0 HIGH, 0 MEDIUM, 0 LOW) + 0 false positives + previously deferred items re-validated
 
 ---
 
-## Deduplicated Findings (sorted by severity)
+## Deduplicated Findings
 
-### AGG-1: [MEDIUM] Analytics route `getDbNowMs()` in background `.then()`/`.catch()` can cause unhandled rejection chain
-
-**Sources:** NEW-1 | **Confidence:** HIGH
-
-In `src/app/api/v1/contests/[assignmentId]/analytics/route.ts:67-78`, the stale-while-revalidate background refresh uses async callbacks in `.then()`/`.catch()` chains with `getDbNowMs()` (an async DB query). If `getDbNowMs()` throws inside the `.catch()` handler (e.g., during DB connectivity degradation), the resulting rejection is unhandled because `.finally()` does not catch rejections. This could crash the Node.js process on unhandled promise rejection.
-
-The same pattern exists in `src/lib/assignments/contest-scoring.ts:118-129`, but that code's staleness check uses `Date.now()`, and the DB query is only used for cache writes — making it less likely to fail during DB issues. However, the same structural risk applies.
-
-**Fix:** Replace the `.then()`/`.catch()`/`.finally()` chain with a standalone async IIFE wrapped in its own try/catch/finally. Add a defensive outer `.catch()` to swallow any failures from `getDbNowMs()` itself:
-
-```ts
-_refreshingKeys.add(cacheKey);
-(async () => {
-  try {
-    const fresh = await computeContestAnalytics(assignmentId, true);
-    analyticsCache.set(cacheKey, { data: fresh, createdAt: await getDbNowMs() });
-    _lastRefreshFailureAt.delete(cacheKey);
-  } catch {
-    _lastRefreshFailureAt.set(cacheKey, await getDbNowMs());
-    logger.error({ assignmentId }, "[analytics] Failed to refresh analytics cache");
-  } finally {
-    _refreshingKeys.delete(cacheKey);
-  }
-})().catch(() => {
-  // Defensive: if getDbNowMs() itself fails in catch/finally, swallow to prevent unhandled rejection
-});
-```
-
-Apply the same pattern to `contest-scoring.ts`.
+No new findings in this cycle.
 
 ---
 
-### AGG-2: [LOW] `database-backup-restore.tsx` logs raw API response object in development
+## Verified Fixes from Prior Cycles
 
-**Sources:** NEW-2 | **Confidence:** HIGH
+### Cycle 35 — All Fixed
 
-`src/app/(dashboard)/dashboard/admin/settings/database-backup-restore.tsx:153-154` logs the full `data` object via `console.error(data)` in development mode. This is the same class of issue fixed in cycle 35 for `group-instructors-manager.tsx`. The raw API response could contain internal error details.
+| Finding | Severity | Status | Location |
+|---------|----------|--------|----------|
+| AGG-1: parseFloat() || null treats 0 as falsy | MEDIUM | FIXED | `create-problem-form.tsx:427-429` |
+| AGG-2: Tags PATCH missing updatedAt | LOW | FIXED | `schema.pg.ts:1073-1074`, `tags/[id]/route.ts:28` |
+| AGG-3: SUBMISSION_GLOBAL_QUEUE_LIMIT || pattern | LOW | FIXED | `constants.ts:27-30` |
+| AGG-4: group-instructors-manager raw log | LOW | VERIFIED | Already properly gated |
 
-**Fix:** Replace `console.error(data)` with `console.error("Restore failed:", (data as { error?: string }).error)`.
+### Cycle 32 — All Fixed
 
----
+| Finding | Severity | Status | Location |
+|---------|----------|--------|----------|
+| C32-1: SSE parser controller.close() after error() | MEDIUM | FIXED | `providers.ts:491-497` |
+| C32-2: maxTokens || fallback | LOW | FIXED | `auto-review.ts:186` |
 
-### AGG-3: [LOW] `parseInt(x, 10) || defaultValue` in chat widget admin config treats `0` as falsy
+### Cycle 33 — All Fixed
 
-**Sources:** NEW-3 | **Confidence:** MEDIUM
-
-`src/lib/plugins/chat-widget/admin-config.tsx:295,306` uses `parseInt(e.target.value, 10) || 100` and `|| 10`. While HTML `min` constraints prevent `0`, the `||` pattern is fragile and inconsistent with the `Number.isFinite` fix applied to similar fields in cycle 35.
-
-**Fix:** Use `Number.isFinite` pattern for consistency:
-```ts
-const parsed = parseInt(e.target.value, 10);
-setMaxTokens(Number.isFinite(parsed) ? parsed : 100);
-```
-
----
-
-### AGG-4: [LOW] `parseInt(x, 10) || 0` in admin roles editor treats `0` as falsy
-
-**Sources:** NEW-4 | **Confidence:** MEDIUM
-
-`src/app/(dashboard)/dashboard/admin/roles/role-editor-dialog.tsx:187` uses `parseInt(e.target.value, 10) || 0`. While `0` maps to the same fallback value, `NaN` inputs are silently masked as `0` instead of signaling invalid input. Inconsistent with `Number.isFinite` pattern.
-
-**Fix:** Use `Number.isFinite` pattern for consistency.
-
----
-
-### AGG-5: [LOW] `parseInt(diskUsage.usePercent) || 0` — low risk but inconsistent pattern
-
-**Sources:** NEW-5 | **Confidence:** LOW
-
-`src/app/(dashboard)/dashboard/admin/languages/language-config-table.tsx:320` — not buggy for `0%` case since `0 || 0 === 0`, but the `||` pattern is inconsistent.
-
----
-
-### AGG-6: [LOW] Exam-session GET returns `examModeInvalid` (400) for non-exam assignments — semantically questionable
-
-**Sources:** NEW-6 | **Confidence:** LOW
-
-`src/app/api/v1/groups/[id]/assignments/[assignmentId]/exam-session/route.ts:106` returns `apiError("examModeInvalid", 400)` when `examMode === "none"`. A GET for a resource that doesn't exist (no exam session possible for non-exam assignments) is more appropriately a 404, consistent with the analytics route's handling of the same condition.
+All 6 cycle-33 findings verified as fixed. See `plans/closed/2026-05-10-cycle-33-review-remediation.md` for details.
 
 ---
 
 ## Carried Deferred Items (unchanged from cycle 35)
 
-- DEFER-22: `.json()` before `response.ok` — 60+ instances
-- DEFER-23: Raw API error strings without translation — partially fixed
-- DEFER-24: `migrate/import` unsafe casts — Zod validation not yet built
-- DEFER-27: Missing AbortController on polling fetches
-- DEFER-28: `as { error?: string }` pattern — 22+ instances
-- DEFER-29: Admin routes bypass `createApiHandler` — assignments POST now fixed
-- DEFER-30: Recruiting validate token brute-force
-- DEFER-32: Admin settings exposes DB host/port
-- DEFER-33: Missing error boundaries — contests segment now fixed
-- DEFER-34: Hardcoded English fallback strings
-- DEFER-35: Hardcoded English strings in editor title attributes
-- DEFER-36: `formData.get()` cast assertions
-- DEFER-43: Docker client leaks `err.message` in build responses
-- DEFER-44: No documentation for timer pattern convention
-- DEFER-45: Anti-cheat monitor captures user text snippets (design decision)
+### CRITICAL (requires architecture/product decision)
+- **C-1**: Test/Seed localhost check spoofable
+- **C-2**: Accepted solutions endpoint unauthenticated
+- **C-3**: File DELETE CSRF ordering
 
-## Previously Deferred Items Now Fixed
+### HIGH
+- **H-1**: SSE result visibility bypass
+- **H-2**: Problem-Set PATCH bypasses createApiHandler
+- **H-3**: Overrides route doesn't use createApiHandler
+- **H-4**: In-memory rate limiter for judge claims
+- **H-5**: Accepted solutions exposes userId for anonymous
 
-- (No new fixes this cycle beyond those tracked in previous cycles)
+### MEDIUM
+- **DEFER-C30-4**: `.json()` before `.ok` in non-critical components (30+ files)
+- **DEFER-C30-5**: Raw API error strings without i18n (ongoing incremental)
+- **DEFER-C30-6**: `as { error?: string }` unsafe type assertions (15 instances)
+- **C29 AGG-10**: Admin routes bypass createApiHandler (partially fixed)
+- **C29 AGG-12**: Recruiting validate endpoint token brute-force
 
-## No Agent Failures
+### LOW
+- **DEFER-27**: Missing AbortController on polling fetches
+- **DEFER-34**: Hardcoded English fallback strings
+- **DEFER-35**: Hardcoded English strings in editor title attributes
+- **DEFER-36**: `formData.get()` cast assertions without validation
+- **C25-6**: Client-side console.error (8 remaining instances)
+- **C25-7**: WeakMap complexity in api-rate-limit.ts
+- **C29 AGG-13**: files/[id] GET selects storedName
+- **C29 AGG-14**: Admin settings exposes DB host/port
+- **C29 AGG-15**: Missing error boundaries
+- **C29 AGG-17**: Hardcoded English in throw new Error (permissions.ts)
+- **C29 AGG-18**: Hardcoded English fallback strings in code-editor.tsx
+- **C29 AGG-19**: formData.get() cast assertions without validation
 
-The comprehensive review completed successfully.
+---
+
+## Agent Failures
+
+No agent failures. Subagent spawning was unavailable in this environment; review was performed as a single comprehensive pass by the primary agent.
+
+---
+
+## Security Observations (No New Issues)
+
+1. **File upload validation** remains strong: MIME whitelist + magic bytes + ZIP bomb protection + image processing.
+2. **Judge claim route** properly implements IP allowlist, rate limiting, worker auth, atomic SQL claims.
+3. **Docker client** has path traversal prevention and image reference validation.
+4. **Anti-cheat monitor** correctly gates heartbeat on document visibility after recent fix.
+5. **API handler factory** consistently applies auth, CSRF, rate limiting, and Zod validation.
+
+## Correctness Observations (No New Issues)
+
+1. **Timer cleanup**: All examined components properly clear timers and event listeners on unmount.
+2. **Error handling**: `apiFetchJson` now correctly catches network errors (fetch throwing) since cycle 33 fix.
+3. **Type safety**: No new unsafe type assertions found beyond previously deferred items.
+4. **React patterns**: `React.cache()` usage is correct for React 19. Ref patterns in anti-cheat monitor are sound.
+
+## Performance Observations (No New Issues)
+
+1. **No memory leaks detected**: All refs with timers/event listeners have proper cleanup.
+2. **Fetch patterns**: External API calls use `AbortSignal.timeout()`. Internal calls use `apiFetch` with 30s timeout.
+3. **DB queries**: The `getDbNow()` cache deduplicates DB time queries within a single render.
