@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useRef, useState } from "react";
 import { useTranslations } from "next-intl";
 import { toast } from "sonner";
 import { apiFetch } from "@/lib/api/client";
@@ -14,11 +14,23 @@ interface ExportButtonProps {
 export function ExportButton({ assignmentId }: ExportButtonProps) {
   const t = useTranslations("contests.analytics");
   const [exporting, setExporting] = useState<"csv" | "json" | null>(null);
+  const abortRef = useRef<AbortController | null>(null);
+  const blobUrlRef = useRef<string | null>(null);
 
   async function handleExport(format: "csv" | "json") {
+    // Cancel any in-flight request and revoke previous blob URL
+    abortRef.current?.abort();
+    if (blobUrlRef.current) {
+      URL.revokeObjectURL(blobUrlRef.current);
+      blobUrlRef.current = null;
+    }
+
     setExporting(format);
+    abortRef.current = new AbortController();
     try {
-      const res = await apiFetch(`/api/v1/contests/${assignmentId}/export?format=${format}`);
+      const res = await apiFetch(`/api/v1/contests/${assignmentId}/export?format=${format}`, {
+        signal: abortRef.current.signal,
+      });
       if (!res.ok) {
         throw new Error("export failed");
       }
@@ -28,17 +40,18 @@ export function ExportButton({ assignmentId }: ExportButtonProps) {
       const filename = filenameMatch?.[1] ?? `export.${format}`;
 
       const url = URL.createObjectURL(blob);
+      blobUrlRef.current = url;
       const a = document.createElement("a");
       a.href = url;
       a.download = filename;
       document.body.appendChild(a);
       a.click();
       document.body.removeChild(a);
-      URL.revokeObjectURL(url);
     } catch {
       toast.error(t("exportFailed"));
     } finally {
       setExporting(null);
+      abortRef.current = null;
     }
   }
 
