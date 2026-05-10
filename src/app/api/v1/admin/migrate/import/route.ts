@@ -45,7 +45,8 @@ export async function POST(request: NextRequest) {
 
     if (contentType?.includes("multipart/form-data")) {
       const formData = await request.formData();
-      password = formData.get("password") as string | null;
+      const passwordValue = formData.get("password");
+      password = typeof passwordValue === "string" ? passwordValue : null;
       const file = formData.get("file") as File | null;
 
       if (!password || typeof password !== "string") {
