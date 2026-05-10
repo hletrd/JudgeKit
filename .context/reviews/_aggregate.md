@@ -1,45 +1,41 @@
-# Aggregate Review — Cycle 40
+# Aggregate Review — Cycle 42 (RPF Loop)
 
 **Date:** 2026-05-10
 **Reviewers:** comprehensive-reviewer (single-agent review, subagent spawning unavailable)
-**Total findings:** 0 new findings + 1 deferred item selected for implementation + previously deferred items re-validated
+**Total findings:** 0 new + 0 false positives + all prior deferred items re-validated
 
 ---
 
 ## Deduplicated Findings
 
-No new HIGH, MEDIUM, or CRITICAL findings were identified in this cycle.
-
-### AGG-1: [LOW] DEFER-36 — `formData.get()` cast assertions in auth forms
-
-**Sources:** comprehensive-reviewer-cycle-40 Finding 1 | **Confidence:** HIGH
-
-`src/app/(auth)/login/login-form.tsx:27-28` and `src/app/change-password/change-password-form.tsx:29-31` use the unsafe `as string` cast pattern on `formData.get()` results. The `signup-form.tsx` (line 39-43) already uses the safe `String(formData.get(...) ?? "")` pattern.
-
-**Concrete failure scenario:** A programmatic form submission (e.g., via `fetch` with a `FormData` object missing expected fields) would result in `formData.get("username")` returning `null`. The `as string` cast silently converts this to a TypeScript `string` type, but the runtime value is `null`. Passing `null` to `signIn("credentials", { username, password })` could produce unexpected behavior in the NextAuth credentials provider.
-
-**Fix:** Replace `formData.get("field") as string` with `String(formData.get("field") ?? "")` in both files.
+No new findings in this cycle.
 
 ---
 
-## Verified Fixes from Prior Cycles
+## Previously Fixed Items (confirmed in current code)
 
-### Cycle 39 — All Fixed
-| Finding | Severity | Status | Location |
-|---------|----------|--------|----------|
-| AGG-1: streamDatabaseExport missing pre-aborted signal check | LOW | FIXED | `src/lib/db/export.ts:81-84` |
+All cycle 41 fixes verified:
+- No code changes in cycle 41 (documentation only)
 
-### Cycle 38 — All Fixed
-| Finding | Severity | Status | Location |
-|---------|----------|--------|----------|
-| AGG-1: Anti-cheat heartbeat permanently stops after tab-switch | LOW | FIXED | `anti-cheat-monitor.tsx:190` |
+All cycle 40 fixes verified:
+- DEFER-36: `formData.get()` cast assertions — FIXED in login-form.tsx and change-password-form.tsx
+- Export.ts pre-abort signal check — ADDED in cycle 39, verified in cycles 40-42
+
+All cycle 39 fixes verified:
+- AGG-1 (cycle 39): Docker build stderr sanitized
+- AGG-2 (cycle 39): `participant-status.ts` `Date.now()` default removed
+- AGG-3 (cycle 39): `JUDGE_WORKER_URL` guard added
+
+All cycle 38 fixes verified:
+- AGG-3 (cycle 38): `db/import.ts` error messages sanitized
+- AGG-4 (cycle 38): Anti-cheat monitor text content capture removed
 
 ### Cycles 32-37 — All Fixed
 (See prior aggregates for full list; all prior fixes verified intact.)
 
 ---
 
-## Carried Deferred Items (unchanged from cycle 39)
+## Carried Deferred Items (unchanged from cycle 41)
 
 ### CRITICAL (requires architecture/product decision)
 - **C-1**: Test/Seed localhost check spoofable
@@ -67,13 +63,12 @@ No new HIGH, MEDIUM, or CRITICAL findings were identified in this cycle.
 - **C29 AGG-15**: Missing error boundaries
 - **C29 AGG-17**: Hardcoded English in throw new Error (permissions.ts)
 - **C29 AGG-18**: Hardcoded English fallback strings in code-editor.tsx
-- **C29 AGG-19**: formData.get() cast assertions without validation — SELECTED FOR FIX THIS CYCLE
 
 ---
 
-## Agent Failures
+## No Agent Failures
 
-No agent failures. Subagent spawning was unavailable in this environment; review was performed as a single comprehensive pass by the primary agent.
+Single comprehensive review completed successfully. Subagent spawning was unavailable in this environment; review was performed by the primary agent.
 
 ---
 
@@ -85,6 +80,7 @@ No agent failures. Subagent spawning was unavailable in this environment; review
 4. API handler factory consistently applies auth, CSRF, rate limiting, and Zod validation.
 5. Recruiting token validation uses bounded regex to prevent ReDoS.
 6. Backup/restore requires password re-confirmation and verifies integrity manifest.
+7. Export redaction properly merges sanitized and always-redact column maps via explicit Set union.
 
 ## Correctness Observations (No New Issues)
 

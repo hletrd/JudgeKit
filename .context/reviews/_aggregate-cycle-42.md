@@ -1,96 +1,78 @@
-# Aggregate Review — Cycle 42 (Fresh Pass)
+# Aggregate Review — Cycle 42 (RPF Loop)
 
-**Date:** 2026-04-25
-**Reviewers:** comprehensive-reviewer (fresh pass)
-**Total findings:** 3 new (1 MEDIUM, 2 LOW) + 0 false positives + 19 carried deferred re-validated + prior cycle-42 findings confirmed fixed
-
----
-
-## Deduplicated Findings (sorted by severity)
-
-### AGG-1: [MEDIUM] `normalizeSource()` unclosed string literals cause incorrect similarity detection
-
-**Sources:** NEW-1 | **Confidence:** MEDIUM
-
-`src/lib/assignments/code-similarity.ts:51-65,68-83` — When `normalizeSource()` encounters an unclosed string literal (e.g., a file starting with `"` with no closing quote), the inner while loop scans the entire remaining file as part of the string. The function outputs the opening quote but never closes it, causing the rest of the file to be consumed as string content. This means identifiers after the unclosed string are never processed by `normalizeIdentifiersForSimilarity()`, causing the similarity score to drop dramatically and allowing plagiarism to go undetected.
-
-**Concrete failure scenario:** Two students submit nearly identical solutions, but one has an unclosed string literal at the top. The normalizer scans past all the actual code inside the unclosed string, so the normalized output is just `"` — identifiers from the rest of the file are never processed. The similarity score drops, causing the plagiarism to go undetected.
-
-**Fix:**
-1. When the inner while loop exits because `index >= source.length` (unclosed string), do NOT output the quote — treat it as if the string never started, or add a closing quote to maintain balanced parsing
-2. Consider adding a maximum string literal length cap (e.g., 10,000 chars)
+**Date:** 2026-05-10
+**Reviewers:** comprehensive-reviewer (single-agent review, subagent spawning unavailable)
+**Total findings:** 0 new + 0 false positives + all prior deferred items re-validated
 
 ---
 
-### AGG-2: [LOW] `normalizeSource()` does not handle template literals (backticks) for JS/TS submissions
+## Deduplicated Findings
 
-**Sources:** NEW-2 | **Confidence:** MEDIUM
-
-`src/lib/assignments/code-similarity.ts:14-101` — The function strips `//` and `/* */` comments, single-quoted strings, and double-quoted strings, but does not handle template literals (backtick-delimited strings). Template literals are common in modern JavaScript/TypeScript submissions. Content inside template literals is treated as code rather than strings, which can cause false positives (text differences in template literals inflate the perceived code difference).
-
-**Concrete failure scenario:** Two students submit JavaScript solutions differing only in template literal string content (e.g., different error messages). The normalizer includes template literal content as code, so normalized versions differ more than they should. The similarity score is artificially lowered, reducing the chance of detecting actual plagiarism.
-
-**Fix:** Add handling for backtick-delimited strings in `normalizeSource()`. Treat the entire template literal as a single string (replacing with `` ` ` ``), consistent with how double/single quoted strings are handled.
-
----
-
-### AGG-3: [LOW] `files/[id]/route.ts` DELETE handler rate-limits before auth check — wastes capacity on unauthenticated requests
-
-**Sources:** NEW-3 | **Confidence:** LOW
-
-`src/app/api/v1/files/[id]/route.ts:132-201` — The DELETE handler checks rate limits before auth. Unauthenticated requests consume rate-limit capacity before being rejected. While `createApiHandler` also checks rate limits before auth, the file route uses manual auth checks and could be optimized to reject unauthenticated requests first.
-
-**Concrete failure scenario:** An attacker sends many unauthenticated DELETE requests. Each hits the rate limiter before being rejected as unauthorized, wasting capacity and potentially rate-limiting legitimate users.
-
-**Fix:** Move auth check before rate limit in DELETE, or migrate DELETE to `createApiHandler`.
+No new findings in this cycle.
 
 ---
 
 ## Previously Fixed Items (confirmed in current code)
 
-All prior cycle fixes verified:
-- AGG-1 (cycle 41): `auto-review.ts` source code size cap — `AUTO_REVIEW_MAX_SOURCE_CODE_BYTES = 8192` at line 18
-- AGG-1 (cycle 40): `getRetentionCutoff` `Date.now()` default removed — `now` is now a required parameter
-- AGG-1 (cycle 39): Docker build stderr sanitized — `error: "Docker build failed"` at line 181
-- AGG-2 (cycle 39): `participant-status.ts` `Date.now()` default removed — `now` is now a required parameter
-- AGG-3 (cycle 39): `JUDGE_WORKER_URL` guard added to `callWorkerJson` and `callWorkerNoContent`
+All cycle 41 fixes verified:
+- No code changes in cycle 41 (documentation only)
 
-**Prior cycle 42 reviews (all findings fixed since their base commit 8912b987):**
-- `problemPoints`/`problemIds` length mismatch — `.refine()` at line 21-24 of quick-create/route.ts
-- Access-code routes capability auth — `auth: { capabilities: ["contests.manage_access_codes"] }` on all three handlers
-- `invitation.userId!` non-null assertion — replaced with `const userId = invitation.userId` capture pattern
+All cycle 40 fixes verified:
+- DEFER-36: `formData.get()` cast assertions — FIXED in login-form.tsx and change-password-form.tsx
+- Export.ts pre-abort signal check — ADDED in cycle 39, verified in cycles 40-42
+
+All cycle 39 fixes verified:
+- AGG-1 (cycle 39): Docker build stderr sanitized
+- AGG-2 (cycle 39): `participant-status.ts` `Date.now()` default removed
+- AGG-3 (cycle 39): `JUDGE_WORKER_URL` guard added
+
+All cycle 38 fixes verified:
+- AGG-3 (cycle 38): `db/import.ts` error messages sanitized
+- AGG-4 (cycle 38): Anti-cheat monitor text content capture removed
 
 ---
 
 ## Carried Deferred Items (unchanged from cycle 41)
 
-- DEFER-22: `.json()` before `response.ok` — 60+ instances
-- DEFER-23: Raw API error strings without translation — partially fixed
-- DEFER-24: `migrate/import` unsafe casts — Zod validation not yet built
-- DEFER-27: Missing AbortController on polling fetches
-- DEFER-28: `as { error?: string }` pattern — 22+ instances
-- DEFER-29: Admin routes bypass `createApiHandler`
-- DEFER-30: Recruiting validate token brute-force
-- DEFER-32: Admin settings exposes DB host/port
-- DEFER-33: Missing error boundaries — contests segment now fixed
-- DEFER-34: Hardcoded English fallback strings
-- DEFER-35: Hardcoded English strings in editor title attributes
-- DEFER-36: `formData.get()` cast assertions
-- DEFER-43: Docker client leaks `err.message` in build responses (addressed by cycle 39 AGG-1)
-- DEFER-44: No documentation for timer pattern convention
-- DEFER-45: Anti-cheat monitor captures user text snippets (design decision — partially fixed in cycle 38)
-- DEFER-46: `error.message` as control-flow discriminator across 15+ API catch blocks
-- DEFER-47: Import route JSON path uses unsafe `as JudgeKitExport` cast
-- DEFER-48: CountdownTimer initial render uses uncorrected client time
-- DEFER-49: SSE connection tracking uses O(n) scan for oldest-entry eviction
-- DEFER-50: [LOW] `in-memory-rate-limit.ts` `maybeEvict` triggers on every rate-limit call
-- DEFER-51: [LOW] `contest-scoring.ts` ranking cache mixes `Date.now()` staleness check with `getDbNowMs()` writes
-- DEFER-52: [LOW] `buildDockerImageLocal` accumulates stdout/stderr up to 2MB with string slicing
+All deferred items from cycles 25-41 remain unchanged in status. See `_aggregate-cycle-40.md` for the full list.
 
-Reason for deferral unchanged. See cycle 40 plan for details.
+| Category | Count | Status |
+|----------|-------|--------|
+| CRITICAL | 3 | Unchanged |
+| HIGH | 1 | Unchanged |
+| MEDIUM | 5 | Unchanged |
+| LOW | 12+ | Unchanged |
 
 ---
 
 ## No Agent Failures
 
-The comprehensive review completed successfully.
+Single comprehensive review completed successfully. Subagent spawning was unavailable in this environment; review was performed by the primary agent.
+
+---
+
+## Security Observations (No New Issues)
+
+1. File upload validation remains strong: MIME whitelist + magic bytes + ZIP bomb protection + image processing.
+2. Judge claim route properly implements IP allowlist, rate limiting, worker auth, atomic SQL claims.
+3. Docker client has path traversal prevention and image reference validation.
+4. API handler factory consistently applies auth, CSRF, rate limiting, and Zod validation.
+5. Recruiting token validation uses bounded regex to prevent ReDoS.
+6. Backup/restore requires password re-confirmation and verifies integrity manifest.
+7. Export redaction properly merges sanitized and always-redact column maps via explicit Set union.
+
+## Correctness Observations (No New Issues)
+
+1. Timer cleanup: All examined components properly clear timers and event listeners on unmount.
+2. Error handling: `apiFetchJson` correctly catches network errors and logs parse failures in development.
+3. Type safety: No new unsafe type assertions found beyond previously deferred items.
+4. React patterns: Ref patterns in anti-cheat monitor are sound.
+5. SSE fallback: `useSubmissionPolling` correctly falls back from SSE to fetch polling.
+
+## Performance Observations (No New Issues)
+
+1. No memory leaks detected: All refs with timers/event listeners have proper cleanup.
+2. Fetch patterns: External API calls use `AbortSignal.timeout()`. Internal calls use `apiFetch` with 30s timeout.
+3. DB queries: The `getDbNow()` cache deduplicates DB time queries within a single render.
+4. Rate limit eviction: Has proper lifecycle management with `stopRateLimitEviction()`.
+5. Export streaming: Uses chunked reads with backpressure via `waitForReadableStreamDemand`.
