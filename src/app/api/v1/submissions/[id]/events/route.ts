@@ -464,7 +464,7 @@ export async function GET(
               if (closed) return;
               try {
                 const reAuthUser = await getApiUser(request);
-                if (!reAuthUser) {
+                if (!reAuthUser || reAuthUser.id !== viewerId) {
                   close();
                   return;
                 }
