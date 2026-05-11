@@ -47,6 +47,11 @@ export const POST = createApiHandler({
       return apiError("notFound", 404);
     }
 
+    if (!assignment.enableAntiCheat) {
+      // Anti-cheat not enabled, silently accept without further checks
+      return apiSuccess({ logged: false });
+    }
+
     // Verify user has access to this contest
     const hasAccess = await rawQueryOne(
       `SELECT 1 FROM enrollments WHERE group_id = @groupId AND user_id = @userId
@@ -70,11 +75,6 @@ export const POST = createApiHandler({
     }
     if (assignment.deadline && now > assignment.deadline) {
       return apiError("contestEnded", 403);
-    }
-
-    if (!assignment.enableAntiCheat) {
-      // Anti-cheat not enabled, silently accept
-      return apiSuccess({ logged: false });
     }
 
     const { eventType, details: rawDetails } = body;
