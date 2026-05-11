@@ -21,7 +21,7 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
     if (result.error === "invalid_token" || result.error === "expired") {
       return NextResponse.json({ error: "invalidOrExpiredToken" }, { status: 400 });
     }
-    return NextResponse.json({ error: result.error }, { status: 400 });
+    return NextResponse.json({ error: "verifyFailed" }, { status: 400 });
   }
 
   return NextResponse.json({ success: true });
