@@ -152,7 +152,7 @@ export async function streamBackupWithFiles(signal?: AbortSignal, dbNow?: Date):
   }
 
   const dbJson = Buffer.concat(dbChunks).toString("utf-8");
-  const dbExport = JSON.parse(dbJson) as JudgeKitExport;
+  const dbExport = JSON.parse(dbJson);
   zip.file("database.json", dbJson);
 
   // 2. Collect file records from DB
