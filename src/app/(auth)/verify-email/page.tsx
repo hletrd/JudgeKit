@@ -12,15 +12,15 @@ export default function VerifyEmailPage() {
   const t = useTranslations("auth");
   const token = searchParams.get("token");
 
-  const [status, setStatus] = useState<"loading" | "success" | "error">("loading");
-  const [errorMessage, setErrorMessage] = useState<string>("");
+  const [status, setStatus] = useState<"loading" | "success" | "error">(
+    token ? "loading" : "error"
+  );
+  const [errorMessage, setErrorMessage] = useState<string>(
+    token ? "" : t("invalidOrExpiredToken")
+  );
 
   useEffect(() => {
-    if (!token) {
-      setStatus("error");
-      setErrorMessage(t("invalidOrExpiredToken"));
-      return;
-    }
+    if (!token) return;
 
     async function verify() {
       try {
