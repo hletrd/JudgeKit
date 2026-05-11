@@ -145,7 +145,7 @@ export default function RoleEditorDialog({ mode, role, superAdminLevel = 4 }: Ro
                 id="roleName"
                 value={name}
                 onChange={(e) => setName(e.target.value)}
-                placeholder="e.g. teaching_assistant"
+                placeholder={t("roleNamePlaceholder")}
                 pattern="^[a-z][a-z0-9_]{1,49}$"
                 required
               />
@@ -159,7 +159,7 @@ export default function RoleEditorDialog({ mode, role, superAdminLevel = 4 }: Ro
               id="displayName"
               value={displayName}
               onChange={(e) => setDisplayName(e.target.value)}
-              placeholder="e.g. Teaching Assistant"
+              placeholder={t("displayNamePlaceholder")}
               required
               maxLength={100}
             />

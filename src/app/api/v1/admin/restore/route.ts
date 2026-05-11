@@ -102,7 +102,7 @@ export async function POST(request: NextRequest) {
       const isJsonFile = file.name?.endsWith(".json") || file.type === "application/json";
       if (!isJsonFile) {
         return NextResponse.json(
-          { error: "unsupportedFileFormat", message: "Only JSON export files or ZIP backup archives are supported." },
+          { error: "unsupportedFileFormat" },
           { status: 400 }
         );
       }
@@ -126,7 +126,6 @@ export async function POST(request: NextRequest) {
       return NextResponse.json(
         {
           error: "sanitizedExportNotRestorable",
-          message: "Portable sanitized exports are for sharing and validation only. Restore from a full-fidelity backup instead.",
         },
         { status: 400 }
       );
@@ -170,7 +169,6 @@ export async function POST(request: NextRequest) {
 
     return NextResponse.json({
       success: true,
-      message: "Database restored from backup.",
       tablesImported: result.tablesImported,
       totalRowsImported: result.totalRowsImported,
       filesRestored: isZipFile ? filesRestored : undefined,

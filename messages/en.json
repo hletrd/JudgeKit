@@ -1487,7 +1487,13 @@
       "hcaptchaSecretLabel": "hCaptcha Secret",
       "hcaptchaSecretPlaceholder": "Enter your hCaptcha secret key",
       "hcaptchaSecretHint": "The secret key from your hCaptcha dashboard. Overrides the HCAPTCHA_SECRET env var. Leave blank to keep the current value.",
-      "defaultLanguagePlaceholder": "python"
+      "defaultLanguagePlaceholder": "python",
+      "languageNotFound": "Language not found",
+      "unknownProvider": "Unknown provider",
+      "dockerfileNotFound": "Dockerfile not found",
+      "imageTagMustStartWithJudge": "Only judge-* images are allowed",
+      "imageTagMustBeLocalJudge": "Only local judge-* images can be built",
+      "unsupportedFileFormat": "Only JSON export files or ZIP backup archives are supported."
     },
     "files": {
       "title": "File Management",
@@ -1584,7 +1590,9 @@
         "capabilities": "Capabilities",
         "type": "Type",
         "action": "Action"
-      }
+      },
+      "roleNamePlaceholder": "e.g. teaching_assistant",
+      "displayNamePlaceholder": "e.g. Teaching Assistant"
     },
     "languages": {
       "title": "Language Management",

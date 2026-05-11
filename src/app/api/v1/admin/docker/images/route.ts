@@ -88,7 +88,7 @@ export const POST = createApiHandler({
         request: req,
       });
       return NextResponse.json(
-        { error: "imageTagMustStartWithJudge", message: "Only judge-* images are allowed" },
+        { error: "imageTagMustStartWithJudge" },
         { status: 400 }
       );
     }
@@ -142,7 +142,7 @@ export const DELETE = createApiHandler({
         request: req,
       });
       return NextResponse.json(
-        { error: "imageTagMustStartWithJudge", message: "Only judge-* images can be removed" },
+        { error: "imageTagMustStartWithJudge" },
         { status: 400 }
       );
     }

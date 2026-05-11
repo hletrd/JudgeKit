@@ -113,7 +113,7 @@ export const POST = createApiHandler({
       }
 
       default:
-        return NextResponse.json({ error: "Unknown provider" }, { status: 400 });
+        return NextResponse.json({ error: "unknownProvider" }, { status: 400 });
     }
 
     if (!response.ok) {

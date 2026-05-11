@@ -28,18 +28,18 @@ export const POST = createApiHandler({
       .limit(1);
 
     if (!langConfig) {
-      return NextResponse.json({ error: "Language not found" }, { status: 404 });
+      return NextResponse.json({ error: "languageNotFound" }, { status: 404 });
     }
 
     if (!isAllowedJudgeDockerImage(langConfig.dockerImage)) {
       return NextResponse.json(
-        { error: "imageTagMustStartWithJudge", message: "Only judge-* images are allowed" },
+        { error: "imageTagMustStartWithJudge" },
         { status: 400 }
       );
     }
     if (!isLocalJudgeDockerImage(langConfig.dockerImage)) {
       return NextResponse.json(
-        { error: "imageTagMustBeLocalJudge", message: "Only local judge-* images can be built" },
+        { error: "imageTagMustBeLocalJudge" },
         { status: 400 }
       );
     }
@@ -53,7 +53,7 @@ export const POST = createApiHandler({
     } catch (err) {
       logger.info({ err, dockerfilePath }, "[docker] Dockerfile not found for build request");
       return NextResponse.json(
-        { error: `Dockerfile not found: ${dockerfilePath}` },
+        { error: "dockerfileNotFound" },
         { status: 404 },
       );
     }
