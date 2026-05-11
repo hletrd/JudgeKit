@@ -1,8 +1,8 @@
-# Aggregate Review — Cycle 3 (RPF Loop)
+# Aggregate Review — Cycle 4 (RPF Loop)
 
 **Date:** 2026-05-11
-**Reviewers:** code-reviewer, security-reviewer (orchestrator direct — Agent tool unavailable)
-**Scope:** Auth surfaces, error handling, i18n — follow-up to cycle 2 deferred items
+**Reviewers:** code-reviewer, security-reviewer, test-engineer (orchestrator direct — Agent tool unavailable)
+**Scope:** Auth surfaces, group/assignment dialogs, create-problem-form, db utilities — follow-up to cycle 3 fixes
 
 ---
 
@@ -10,91 +10,75 @@
 
 | Severity | Count |
 |----------|-------|
-| MEDIUM   | 4     |
-| LOW      | 4     |
-| **Total**| **8** |
+| MEDIUM   | 1     |
+| LOW      | 6     |
+| **Total**| **7** |
 
 ---
 
 ## MEDIUM
 
-### M1: Reset-Password Form Missing AbortController — Race Condition on Navigation
-- **File:** `src/app/(auth)/reset-password/reset-password-form.tsx:41-65`
-- **Reviewer:** code-reviewer, security-reviewer
-- **Confidence:** High
-- **Description:** The `fetch("/api/v1/auth/reset-password")` call has no AbortController. If the user navigates away while the request is in flight, the fetch continues in the background. When it eventually resolves, `setSuccess` / `setError` mutate state on an unmounted component or overwrite newer state if the component remounts. Same pattern as cycle 2 verify-email finding TR1.
-- **Fix:** Add an AbortController inside `handleSubmit`, pass its signal to fetch, and abort on cleanup/unmount.
-
-### M2: Forgot-Password Form Missing AbortController — Race Condition on Re-submit
-- **File:** `src/app/(auth)/forgot-password/forgot-password-form.tsx:23-48`
-- **Reviewer:** code-reviewer, security-reviewer
-- **Confidence:** High
-- **Description:** Same issue as M1. The fetch call has no AbortController. If the user clicks submit multiple times or navigates away, multiple requests race and state may be mutated after unmount.
-- **Fix:** Add AbortController, abort previous request on re-submit.
-
-### M3: Widespread `throw new Error(getApiError(...))` Pattern for Flow Control
-- **Files:** 
-  - `src/app/(public)/groups/[id]/assignment-form-dialog.tsx:278`
-  - `src/app/(public)/problems/create/create-problem-form.tsx:341,445`
-  - `src/app/(public)/groups/edit-group-dialog.tsx:92`
-  - `src/app/(public)/groups/create-group-dialog.tsx:72`
-  - `src/app/(public)/groups/[id]/group-members-manager.tsx:141,202,310`
+### M1: `isDirty` in CreateProblemForm Missing Test Cases and Float Error Fields
+- **File:** `src/app/(public)/problems/create/create-problem-form.tsx:122-141`
 - **Reviewer:** code-reviewer
 - **Confidence:** High
-- **Description:** Multiple form dialogs throw `new Error()` with a translation key when the API returns an error response. This conflates programmer errors with expected user-facing conditions. If an error boundary or global error reporter (Sentry) is added later, routine form validation errors will be reported as uncaught exceptions.
-- **Fix:** Replace `throw new Error(getApiError(...) || "key")` with explicit error handling: set error state and return. The surrounding try/catch already catches these, so the fix is straightforward.
-
-### M4: Verify-Email Page Does Not Preserve Redirect Param After Success
-- **File:** `src/app/(auth)/verify-email/page.tsx:13-14,84`
-- **Reviewer:** code-reviewer
-- **Confidence:** Medium
-- **Description:** The component extracts only `token` from search params. If the URL contains additional params (e.g., `?token=abc&redirect=/dashboard`), the redirect target is lost. The success flow always pushes to `/login` regardless of where the user should go next. Deferred from cycle 2 (CR2/L5).
-- **Fix:** Accept an optional `redirect` search param and navigate there on success. Fall back to `/login` only when no redirect is provided.
+- **Description:** The `isDirty` flag that drives `useUnsavedChangesGuard` does not compare `testCases`, `floatAbsoluteError`, `floatRelativeError`, or `testCaseOverrideEnabled`. Users can edit test cases or float tolerances and navigate away without a warning — data loss.
+- **Fix:** Add the missing fields to the `isDirty` comparison.
 
 ---
 
 ## LOW
 
-### L1: Signup Form Contains Hardcoded English String
-- **File:** `src/app/(auth)/signup/signup-form.tsx:208`
+### L1: ForgotPasswordForm Leaks `loading` State on Success
+- **File:** `src/app/(auth)/forgot-password/forgot-password-form.tsx:55`
 - **Reviewer:** code-reviewer
 - **Confidence:** High
-- **Description:** The text `"Passwords match"` is hardcoded in English, bypassing the translation system. All other UI strings in the file use `t()`. This was likely missed during the hardcoded-string cleanup in cycle 1.
-- **Fix:** Replace with `t("passwordsMatch")` and add the key to translation files.
+- **Fix:** Add `setLoading(false)` after `setSuccess(true)`.
 
-### L2: Pre-Restore Snapshot Silently Swallows Unlink Errors
-- **File:** `src/lib/db/pre-restore-snapshot.ts:119`
+### L2: ResetPasswordForm Leaks `loading` State on Success
+- **File:** `src/app/(auth)/reset-password/reset-password-form.tsx:73`
+- **Reviewer:** code-reviewer
+- **Confidence:** High
+- **Fix:** Add `setLoading(false)` after `setSuccess(true)`.
+
+### L3: Bulk Enrollment Hardcodes "student" Role
+- **File:** `src/app/api/v1/groups/[id]/members/bulk/route.ts:71-72`
 - **Reviewer:** code-reviewer
 - **Confidence:** Medium
-- **Description:** `await unlink(fullPath).catch(() => {})` silently swallows file deletion errors in a cleanup path. Failure to delete a partial snapshot could leave a truncated file that a later restore might mistake for a valid rollback artifact.
-- **Fix:** Log the unlink failure with the existing logger.
+- **Description:** Inconsistent with single-member route which uses role levels. Breaks custom-role deployments.
+- **Fix:** Replace hardcoded `"student"` with role-level filtering (`level === 0`).
 
-### L3: db-time.ts Docstring Claims Universal `Date.now()` Replacement
-- **File:** `src/lib/db-time.ts:45-47`
-- **Reviewer:** code-reviewer
-- **Confidence:** Medium
-- **Description:** The docstring claims to replace all server-side `Date.now()` calls, but `src/lib/compiler/execute.ts:874` uses raw `Date.now()` for container age calculation. The docstring creates a false expectation. Deferred from cycle 2.
-- **Fix:** Narrow the docstring scope to clarify it's for DB timestamp comparisons only.
-
-### L4: Verify-Email Token Not Validated Client-Side Before Fetch
-- **File:** `src/app/(auth)/verify-email/page.tsx:31`
+### L4: Verify-Email API Returns Raw Internal Errors
+- **File:** `src/app/api/v1/auth/verify-email/route.ts:24`
 - **Reviewer:** security-reviewer
+- **Confidence:** Medium
+- **Description:** Unmapped errors from `verifyEmail` are forwarded directly to the client, potentially leaking internal details.
+- **Fix:** Add a default case that returns sanitized `verifyFailed` instead of `result.error`.
+
+### L5: `handleTestCaseFileChange` Unnecessarily `async`
+- **File:** `src/app/(public)/problems/create/create-problem-form.tsx:379`
+- **Reviewer:** code-reviewer
+- **Confidence:** High
+- **Fix:** Remove `async` keyword.
+
+### L6: VerifyEmail Page `useEffect` Missing `redirect` Dependency
+- **File:** `src/app/(auth)/verify-email/page.tsx:61`
+- **Reviewer:** code-reviewer
 - **Confidence:** Low
-- **Description:** The verify token is sent to the server via POST without client-side format validation. While the server validates it, a minimal client-side check could prevent unnecessary network requests. Deferred from cycle 2.
-- **Fix:** Add a minimal length/format check before calling the API.
+- **Fix:** Add `redirect` to dependency array.
 
 ---
 
 ## Cross-Agent Agreement
 
-- **Auth forms missing AbortController:** code-reviewer and security-reviewer both flagged reset-password and forgot-password forms.
-- **throw-based flow control:** code-reviewer identified 7 instances across 5 files — this is a systemic pattern that should be addressed.
+- None — findings are from individual reviewer specializations.
 
 ---
 
 ## Recommended Priority for Fixes
 
-1. **Immediate:** M1, M2 (AbortController for auth forms) — real race conditions
-2. **Immediate:** M3 (throw for flow control) — code quality, Sentry noise bomb
-3. **Short-term:** M4 (redirect param) — UX improvement
-4. **Medium-term:** L1-L4 — defensive improvements
+1. **Immediate:** M1 (`isDirty` test case tracking) — real data-loss risk
+2. **Immediate:** L1, L2 (loading state leaks) — one-line fixes, correctness
+3. **Short-term:** L4 (verify-email error sanitization) — defensive security
+4. **Medium-term:** L3 (bulk enrollment role consistency) — custom-role correctness
+5. **Trivial:** L5, L6 — hygiene fixes
