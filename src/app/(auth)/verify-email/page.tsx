@@ -3,6 +3,7 @@
 import { useEffect, useState } from "react";
 import { useSearchParams, useRouter } from "next/navigation";
 import { useTranslations } from "next-intl";
+import { Loader2 } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 
@@ -22,12 +23,15 @@ export default function VerifyEmailPage() {
   useEffect(() => {
     if (!token) return;
 
+    const ctrl = new AbortController();
+
     async function verify() {
       try {
         const res = await fetch("/api/v1/auth/verify-email", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({ token }),
+          signal: ctrl.signal,
         });
 
         const data = await res.json().catch(() => ({ error: "unknown" }));
@@ -44,24 +48,30 @@ export default function VerifyEmailPage() {
 
         setStatus("success");
       } catch {
+        if (ctrl.signal.aborted) return;
         setStatus("error");
         setErrorMessage(t("verifyFailed"));
       }
     }
 
     verify();
+
+    return () => ctrl.abort();
   }, [token, t]);
 
   return (
     <Card className="w-full max-w-xl">
       <CardHeader className="text-center">
         <CardTitle className="text-2xl">
-          <h1>{t("verifyEmailTitle")}</h1>
+          {t("verifyEmailTitle")}
         </CardTitle>
       </CardHeader>
       <CardContent className="space-y-4">
         {status === "loading" && (
-          <p className="text-center text-muted-foreground">{t("verifying")}</p>
+          <div className="flex items-center justify-center gap-2 text-muted-foreground">
+            <Loader2 className="size-4 animate-spin" />
+            <p>{t("verifying")}</p>
+          </div>
         )}
         {status === "success" && (
           <>
