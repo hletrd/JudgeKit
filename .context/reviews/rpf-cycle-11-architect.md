@@ -1,25 +1,30 @@
-# RPF Cycle 11 — Architect
+# RPF Cycle 11 — Architect ( refreshed 2026-05-11 )
 
-**Date:** 2026-04-29
-**HEAD:** `7073809b`. Cycle-10 surface: 6 commits, all markdown.
+**Date:** 2026-05-11
+**HEAD reviewed:** `b5008708`
 
-## NEW findings
+---
 
-**0 HIGH/MEDIUM/LOW NEW.** No architectural changes. No new modules, no module boundary changes, no contract changes.
+## Findings
 
-## Carry-forward architectural items at HEAD (re-verified)
+**0 HIGH/MEDIUM/LOW NEW.**
 
-| ID | Severity | Status | Notes |
-|---|---|---|---|
-| ARCH-CARRY-1 | MEDIUM | DEFERRED | 20 raw of 104 API route handlers (84 use `createApiHandler`). Verified at HEAD via `grep -l createApiHandler src/app/api/**/route.ts \| wc -l = 84` and `find src/app/api -name route.ts \| wc -l = 104`. Exact match with aggregate. Exit criterion: API-handler refactor cycle (large coordinated work; one-cycle exemplar would create third pattern). |
-| ARCH-CARRY-2 | LOW | DEFERRED | SSE eviction O(n) in `src/lib/realtime/realtime-coordination.ts` (254 lines) + `src/app/api/v1/submissions/[id]/events/route.ts` (566 lines). Trigger: SSE perf cycle OR >500 concurrent connections. Not met. |
+## Change-surface architecture assessment
 
-## Architectural posture
+The major change since the prior review point is the layout migration (workspace pages → public route group with top navbar). This is a structural improvement:
+- Dashboard layout is now admin-only with sidebar.
+- Public layout hosts all user-facing pages with consistent top navbar.
+- Navigation config centralized in `public-nav.ts`.
+- Dead components (`AppSidebar`, `ConditionalHeader`, `ActiveTimedAssignmentSidebarPanel`) removed.
 
-The architecture is mature and stable through 10 RPF cycles in this loop. Boundaries are clear:
-- `src/lib/security/` (primitives) — three rate-limit modules with explicit cross-reference orientation comments (cycle 8 mitigation for C7-AGG-9 still in place)
-- `src/lib/auth/` (auth logic) — `config.ts` is the no-touch contract surface; D1/D2 fixes pending in a separate auth-perf cycle
-- `src/lib/api/` (handler middleware) — `createApiHandler` covers 84/104 routes; 20 raw handlers tracked under ARCH-CARRY-1
-- `src/lib/realtime/` (SSE coordination) — single coordination point; eviction pattern tracked under ARCH-CARRY-2
+No coupling regressions. The navigation abstraction (`getPublicNavItems`, `getPublicNavActions`) cleanly separates layout from content.
 
-No new architecture concerns this cycle.
+## Deferred architectural items (unchanged)
+
+- ARCH-CARRY-1: 20 raw API handlers (deferred — refactor cycle needed)
+- ARCH-CARRY-2: SSE coordination (deferred — perf cycle or >500 concurrent)
+- C3-AGG-5: `deploy-docker.sh` modularity (deferred — >1500 lines)
+
+## Verdict
+
+No architectural risks introduced. Layout migration improves separation of concerns.

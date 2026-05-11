@@ -1,32 +1,29 @@
-# RPF Cycle 11 — Debugger
+# RPF Cycle 11 — Debugger ( refreshed 2026-05-11 )
 
-**Date:** 2026-04-29
-**HEAD:** `7073809b`. Cycle-10 surface: 6 commits, all markdown.
+**Date:** 2026-05-11
+**HEAD reviewed:** `b5008708`
+
+---
 
 ## NEW findings
 
-**0 HIGH/MEDIUM/LOW NEW.** No runtime code changed.
+**0 HIGH/MEDIUM/LOW NEW.** No runtime code paths with latent failure modes discovered.
 
-## Latent-bug sweep (cycle-2..10 deferred against HEAD)
+## Latent-bug sweep (deferred items against HEAD)
 
-I traced each deferred item to confirm the failure scenario is still latent (no silent fix and no regression). All deferred items remain accurate as written.
+- **AGG-1 (recruiting token clock skew):** FIXED. Transaction now uses `getDbNowUncached()` consistently. Forensic timestamp inconsistency eliminated.
+- **AGG-2 (export/backup clock skew):** FIXED. Backup route passes DB-sourced time through.
+- **C7-AGG-7 (encryption plaintext fallback):** Still latent. Path exists at `src/lib/security/encryption.ts:99-100`. Trigger: production tampering incident OR audit cycle.
+- **D1 (JWT clock-skew):** Still latent. Would manifest as spurious auth failures during NTP-skewed deploy windows.
+- **D2 (JWT DB-per-request):** Still latent. Would manifest as DB load proportional to authenticated request rate.
 
-**One silently-fixed stale finding:** the prior-loop `rpf-cycle-11-debugger.md` flagged `preparePluginConfigForStorage` encrypt-then-discard pattern at `src/lib/plugins/secrets.ts:132-136`. **At current HEAD, this has been refactored to short-circuit on validation BEFORE encrypting** (lines 154-163):
-```ts
-if (isValidEncryptedPluginSecret(incomingValue)) {
-  prepared[key] = incomingValue;
-} else {
-  const encrypted = encryptPluginSecret(incomingValue);
-  prepared[key] = encrypted ?? incomingValue;
-}
-```
-Both the wasteful encrypt-then-discard and the bypass surface are eliminated by the `isValidEncryptedPluginSecret` structural check. Confidence H. Closed.
+## Commonly missed sweep
 
-## Other latent-bug carry-forward verifications
+- No race conditions in the timer/sync cleanup paths (cycle-10 fix verified intact).
+- No memory leaks from unmatched event listeners.
+- No unhandled promise rejections in critical paths.
+- `formatDuration` correctly handles negative and NaN inputs.
 
-- AGG-2 (Date.now in rate-limit hot path): the `Date.now()` calls at lines 31, 33, 65, 84, 109, 158 still execute multiple times per call chain in `maybeEvict()` and `isRateLimitedInMemory()`. Not a bug per se; latent perf concern. Trigger criterion not tripped.
-- C7-AGG-7 (encryption plaintext fallback): the runtime path is still in `src/lib/security/encryption.ts` line 99-100. Latent attack surface preserved by design (migration compatibility); JSDoc warning at lines 8-21 documents the risk. Trigger criterion (production tampering incident OR audit cycle) not met.
-- D1 (JWT clock-skew): would manifest as spurious authentication failures during NTP-skewed deploy windows. No bug report; deferred.
-- D2 (JWT DB-per-request): would manifest as DB load proportional to authenticated request rate. No bug report; deferred.
+## Verdict
 
-No new latent bugs found.
+No new latent bugs. Prior fixes verified.

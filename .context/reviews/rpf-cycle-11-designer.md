@@ -1,29 +1,29 @@
-# RPF Cycle 11 — Designer
+# RPF Cycle 11 — Designer ( refreshed 2026-05-11 )
 
-**Date:** 2026-04-29
-**HEAD:** `7073809b`. Cycle-10 surface: 6 commits, all markdown. **No UI/UX touched.**
+**Date:** 2026-05-11
+**HEAD reviewed:** `b5008708`
 
-## NEW findings
+---
 
-**0 HIGH/MEDIUM/LOW NEW.** No frontend code, components, styles, or routes touched. Cycle-10 commits are entirely plan-archive moves and plan-body annotations.
+## Findings
 
-## Repo policy compliance (UI/UX-relevant)
+**0 HIGH/MEDIUM/LOW NEW.**
 
-- Korean text default letter-spacing rule (CLAUDE.md): preserved. No `globals.css`, no Tailwind utility class touched. ✓
-- Dark/light mode parity: unchanged at HEAD. Last UI dark-mode work landed in commit `ab201509` (chat widget admin config) which is several commits before cycle-9 close.
-- No `tracking-*` utilities introduced anywhere this cycle. ✓
-- No locale strings changed.
+## UI/UX assessment
 
-## Verified UI/UX controls (no change since cycle 10)
+- Layout migration to public top navbar is a UX improvement — consistent navigation across all user-facing pages.
+- `PublicHeader` focus trap for mobile menu is properly implemented with Escape-to-close and Tab wraparound.
+- Korean letter-spacing rules correctly applied (`locale !== "ko"` guard before `tracking-tight` / `tracking-wide`).
+- `SkipToContent` link present in both layouts.
+- `LocaleSwitcher` has proper skeleton during hydration to prevent layout shift.
+- `CountdownTimer` ARIA live region for threshold announcements is present.
 
-- Theme support via `next-themes` (dark/light mode)
-- Locale support via `next-intl` (Korean/English)
-- Loading states via dedicated `loading.tsx` files
-- Error boundaries via `error.tsx` files
-- Skip-to-content link
-- Nonce-based CSP for script tags
-- Code editor with CodeMirror
+## Accessibility checks
 
-## Recommendation
+- WCAG 2.2 focus indicators (`focus-visible:ring-2`) present on interactive elements.
+- Mobile menu uses `aria-expanded`, `aria-controls`, `aria-label` correctly.
+- No new color-contrast issues in the change surface.
 
-Nothing to fix at the design/UX tier this cycle.
+## Verdict
+
+No UI/UX issues introduced. Layout migration improves consistency.

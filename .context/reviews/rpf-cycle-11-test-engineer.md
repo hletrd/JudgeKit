@@ -1,33 +1,30 @@
-# RPF Cycle 11 — Test Engineer
+# RPF Cycle 11 — Test Engineer ( refreshed 2026-05-11 )
 
-**Date:** 2026-04-29
-**HEAD:** `7073809b`. Cycle-10 surface: 6 commits, all markdown.
+**Date:** 2026-05-11
+**HEAD reviewed:** `b5008708`
 
-## NEW findings
+---
 
-**0 HIGH/MEDIUM/LOW NEW.** No test code touched. No source code touched (so no test gap created).
+## Findings
 
-## Carry-forward test items, status at HEAD
+### C11-TE-1: No test for `staggeredTimerIdsRef` dead-code removal
 
-| ID | Severity | Status | Notes |
-|---|---|---|---|
-| AGG-7 (carry, original cycle-1 list) | MEDIUM | DEFERRED | No tests for new public pages. Deferred until next feature iteration on those pages. |
-| C7-AGG-6 (carry) | LOW | DEFERRED | participant-status time-boundary tests. Trigger not met. |
-| DEFER-ENV-GATES | LOW | DEFERRED | Env-blocked tests (DATABASE_URL, Postgres, Playwright sidecar). dev-shell can't run these. Trigger: fully provisioned CI. |
+- **Severity:** LOW
+- **Confidence:** High
+- **File:** `tests/component/countdown-timer.test.tsx`
+- **Problem:** Removing `staggeredTimerIdsRef` should not break existing tests, but there's no explicit assertion that verifies timer cleanup completeness. The existing tests verify sync cleanup but not the internal ref state.
+- **Fix:** Ensure existing tests still pass after removing the dead ref. No new test strictly required for dead-code removal.
 
-## Coverage assessment
+## Coverage gaps (no new gaps introduced this cycle)
 
-Coverage of security-critical paths is comprehensive and unchanged since cycle 10:
-- `src/lib/security/`: env, ip, timing, sanitize-html, rate-limit-client all have tests
-- `src/lib/auth/`: generated-password, login-events, rate-limit-await, permissions all covered
-- `src/lib/db/`: schema-implementation and relations-implementation tested
-- `src/lib/api/handler.ts` and route-specific tests
-- Recruiting invitations: race + auth + isolation tests
-- Compiler: output-limits implementation test
-- Anti-cheat: review-model + dashboard-implementation tests
+- `lastAuditEventWriteFailureAt` health path in `events.ts:206` — untested but health-monitoring only.
+- `formatDuration` edge cases (NaN, negative) — covered by existing unit tests in `tests/unit/datetime.test.ts`.
 
-The `npm run test:unit` baseline shows 98-107 failures + ~2130 passes attributable to DEFER-ENV-GATES (vitest pool fork-spawn 5s timeouts + DB-env-required tests) — same as cycles 3-10, no regression.
+## Gate status
 
-## Recommendation
+- 317 test files, 2399 tests passed at HEAD.
+- No flaky tests detected.
 
-Nothing to fix at test-engineering tier this cycle. The DEFER-ENV-GATES carry-forward continues to require a fully-provisioned CI/host with `DATABASE_URL`, Postgres, and Playwright sidecar to retire — out of scope for the dev shell.
+## Verdict
+
+No new test coverage required beyond verifying existing tests pass after code-quality fixes.
