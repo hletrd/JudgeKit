@@ -376,7 +376,7 @@ export default function CreateProblemForm({
     testCaseOutputFileRefs.current.splice(index, 1);
   }
 
-  async function handleTestCaseFileChange(
+  function handleTestCaseFileChange(
     index: number,
     field: "input" | "expectedOutput",
     event: React.ChangeEvent<HTMLInputElement>
