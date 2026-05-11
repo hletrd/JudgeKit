@@ -3,7 +3,7 @@
 **Date:** 2026-05-11
 **Source:** `.context/reviews/_aggregate.md` (cycle 10)
 **New findings:** 1 (LOW)
-**Status:** In Progress
+**Status:** Completed
 
 ---
 
@@ -68,7 +68,7 @@ return () => {
 - Component tests pass
 - `npm run test:unit` passes
 
-**Status:** PENDING
+**Status:** DONE — commit `9055f59c`
 
 ---
 
@@ -82,12 +82,12 @@ All deferred items from previous cycles remain unchanged. See `_aggregate.md` fo
 
 | Task | Status | Commit |
 |------|--------|--------|
-| Task 1: CountdownTimer cleanup leak | PENDING | — |
+| Task 1: CountdownTimer cleanup leak | DONE | `9055f59c` |
 
 ---
 
 ## Gate Status
 
-- [ ] eslint
-- [ ] next build
-- [ ] vitest
+- [x] eslint — 0 errors, 0 warnings
+- [x] next build — success
+- [x] vitest — 317 files, 2399 tests passed
