@@ -4,7 +4,7 @@ import { useState, useEffect, useCallback, useRef } from "react";
 import { useTranslations, useLocale } from "next-intl";
 import { toast } from "sonner";
 import { Plus, Check, Ban, Trash2, Link, Copy, ShieldAlert } from "lucide-react";
-import { apiFetch, apiFetchJson } from "@/lib/api/client";
+import { apiFetch, apiFetchJson, getApiError, getApiCode } from "@/lib/api/client";
 import { formatDateTimeInTimeZone } from "@/lib/datetime";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -229,8 +229,8 @@ export function RecruitingInvitationsPanel({ assignmentId }: { assignmentId: str
         toast.success(t("createSuccess"));
         await fetchAll();
       } else {
-        const json = await res.json().catch(() => ({})) as { error?: string; code?: string };
-        const code = json.error ?? json.code ?? "";
+        const json = await res.json().catch(() => ({}));
+        const code = getApiError(json) ?? getApiCode(json) ?? "";
         if (code === "emailAlreadyInvited") {
           toast.error(t("emailAlreadyInvited"));
         } else {

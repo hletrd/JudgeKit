@@ -3,7 +3,7 @@
 import { useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { useTranslations } from "next-intl";
-import { apiFetch } from "@/lib/api/client";
+import { apiFetch, getApiError, getApiData } from "@/lib/api/client";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
@@ -66,15 +66,16 @@ export default function CreateGroupDialog() {
         });
 
         // Parse response body once — the Response body can only be consumed once
-        const data = await response.json().catch(() => ({ data: {} })) as { error?: string; data?: { id?: string } };
+        const data = await response.json().catch(() => ({ data: {} }));
 
         if (!response.ok) {
-          throw new Error(data.error || "createError");
+          throw new Error(getApiError(data) || "createError");
         }
 
         toast.success(t("createSuccess"));
         await handleOpenChange(false);
-        const groupId = data.data?.id;
+        const dataObj = getApiData(data);
+        const groupId = typeof dataObj === "object" && dataObj !== null && "id" in dataObj && typeof dataObj.id === "string" ? dataObj.id : undefined;
         if (groupId) {
           router.push(`/groups/${groupId}`);
         } else {

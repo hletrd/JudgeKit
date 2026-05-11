@@ -4,7 +4,7 @@ import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { useTranslations } from "next-intl";
 import { toast } from "sonner";
-import { apiFetch } from "@/lib/api/client";
+import { apiFetch, getApiError } from "@/lib/api/client";
 import { Button } from "@/components/ui/button";
 import {
   Dialog,
@@ -39,7 +39,7 @@ export function StartExamButton({ groupId, assignmentId, durationMinutes }: Star
 
       if (!response.ok) {
         const payload = await response.json().catch(() => ({}));
-        const errorCode = (payload as { error?: string }).error;
+        const errorCode = getApiError(payload);
         if (errorCode === "assignmentClosed") {
           toast.error(t("examTimeExpired"));
         } else if (errorCode === "assignmentNotStarted") {

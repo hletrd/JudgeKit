@@ -216,7 +216,7 @@ export function ProblemSubmissionForm({
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ language, sourceCode, stdin, assignmentId }),
       });
-      const { ok, data } = await parseApiResponse(response, { data: null } as { error?: string; data?: { stdout: string; stderr: string; executionTimeMs: number; timedOut: boolean; oomKilled: boolean; compileOutput: string | null } | null });
+      const { ok, data } = await parseApiResponse<{ error?: string; data?: { stdout: string; stderr: string; executionTimeMs: number; timedOut: boolean; oomKilled: boolean; compileOutput: string | null } | null }>(response, { data: null });
       if (!ok) {
         toast.error(translateSubmissionError(data.error));
         return;
@@ -290,7 +290,7 @@ export function ProblemSubmissionForm({
         }),
       });
 
-      const { ok, data } = await parseApiResponse(response, { data: {} } as { error?: string; data?: { id?: string } });
+      const { ok, data } = await parseApiResponse<{ error?: string; data?: { id?: string } }>(response, { data: {} });
 
       if (!ok) {
         toast.error(translateSubmissionError(data.error));

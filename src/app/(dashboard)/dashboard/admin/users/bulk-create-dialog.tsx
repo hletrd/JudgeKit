@@ -2,7 +2,7 @@
 
 import { useState, useRef } from "react";
 import { useTranslations } from "next-intl";
-import { apiFetch } from "@/lib/api/client";
+import { apiFetch, getApiError } from "@/lib/api/client";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
@@ -212,7 +212,7 @@ export default function BulkCreateDialog() {
       if (!response.ok) {
         const errorBody = await response.json().catch(() => ({}));
         if (process.env.NODE_ENV === "development") {
-          console.error("Bulk create failed:", (errorBody as { error?: string }).error);
+          console.error("Bulk create failed:", getApiError(errorBody));
         }
         toast.error(tCommon("error"));
         return;

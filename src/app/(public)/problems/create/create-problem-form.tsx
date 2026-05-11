@@ -12,7 +12,7 @@ import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
 import { Textarea } from "@/components/ui/textarea";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Badge } from "@/components/ui/badge";
-import { apiFetch } from "@/lib/api/client";
+import { apiFetch, getApiError, getApiData } from "@/lib/api/client";
 import { formatBytes } from "@/lib/formatting";
 import { toast } from "sonner";
 import { useUnsavedChangesGuard } from "@/hooks/use-unsaved-changes-guard";
@@ -335,13 +335,15 @@ export default function CreateProblemForm({
       });
 
       // Parse response body once — the Response body can only be consumed once
-      const uploadData = await res.json().catch(() => ({ data: {} })) as { error?: string; data?: { originalName?: string; url?: string } };
+      const uploadData = await res.json().catch(() => ({ data: {} }));
 
       if (!res.ok) {
-        throw new Error(uploadData.error ?? "uploadFailed");
+        throw new Error(getApiError(uploadData) ?? "uploadFailed");
       }
 
-      const { originalName, url } = uploadData.data ?? {};
+      const dataObj = getApiData(uploadData);
+      const originalName = typeof dataObj === "object" && dataObj !== null && "originalName" in dataObj && typeof dataObj.originalName === "string" ? dataObj.originalName : undefined;
+      const url = typeof dataObj === "object" && dataObj !== null && "url" in dataObj && typeof dataObj.url === "string" ? dataObj.url : undefined;
       const markdown = `![${originalName}](${url})`;
       setDescription((prev) => prev.replace(placeholder, markdown));
       toast.success(t("imageUploadSuccess"));
@@ -437,15 +439,14 @@ export default function CreateProblemForm({
       });
 
       // Parse response body once — the Response body can only be consumed once
-      const payload = await res.json().catch(() => ({ data: {} })) as { error?: string; data?: { id?: string } };
+      const payload = await res.json().catch(() => ({ data: {} }));
 
       if (!res.ok) {
-        throw new Error(payload.error || (isEditing ? "updateError" : "createError"));
+        throw new Error(getApiError(payload) || (isEditing ? "updateError" : "createError"));
       }
 
-      const resultData = payload;
-
-      const nextProblemId = resultData.data?.id ?? initialProblem?.id;
+      const dataObj = getApiData(payload);
+      const nextProblemId = typeof dataObj === "object" && dataObj !== null && "id" in dataObj && typeof dataObj.id === "string" ? dataObj.id : initialProblem?.id;
 
       toast.success(
         isEditing

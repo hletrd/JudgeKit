@@ -3,7 +3,7 @@
 import { useRouter } from "next/navigation";
 import { useState } from "react";
 import { toast } from "sonner";
-import { apiFetch } from "@/lib/api/client";
+import { apiFetch, getApiError } from "@/lib/api/client";
 import { Button } from "@/components/ui/button";
 import {
   AlertDialog,
@@ -75,7 +75,7 @@ export function DiscussionThreadModerationControls({
         if (payload.locked !== undefined) setIsLocked(!payload.locked);
         if (process.env.NODE_ENV === "development") {
           const errorBody = await response.json().catch(() => ({}));
-          console.error("Discussion moderation failed:", (errorBody as { error?: string }).error);
+          console.error("Discussion moderation failed:", getApiError(errorBody));
         }
         toast.error(errorLabel);
         return;
@@ -98,7 +98,7 @@ export function DiscussionThreadModerationControls({
       if (!response.ok) {
         if (process.env.NODE_ENV === "development") {
           const errorBody = await response.json().catch(() => ({}));
-          console.error("Discussion thread deletion failed:", (errorBody as { error?: string }).error);
+          console.error("Discussion thread deletion failed:", getApiError(errorBody));
         }
         toast.error(deleteErrorLabel);
         return;

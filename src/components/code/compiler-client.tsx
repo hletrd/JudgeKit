@@ -262,7 +262,7 @@ export function CompilerClient({ languages, title, description, preferredLanguag
         signal: abortController.signal,
       });
 
-      const { ok, data } = await parseApiResponse(res, { data: null } as { error?: string; message?: string; data?: unknown });
+      const { ok, data } = await parseApiResponse<{ error?: string; message?: string; data?: unknown }>(res, { data: null });
 
       if (!ok) {
         const rawError = data.error || data.message || t("requestFailed");

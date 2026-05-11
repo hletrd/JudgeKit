@@ -34,7 +34,7 @@
  * const response = await apiFetch("/api/v1/resource");
  * if (!response.ok) {
  *   const errorBody = await response.json().catch(() => ({}));
- *   console.error("Request failed:", (errorBody as { error?: string }).error);
+ *   console.error("Request failed:", getApiError(errorBody));
  *   toast.error(errorLabel);  // Use i18n key, not raw API error
  *   return;
  * }
@@ -142,7 +142,7 @@ export async function apiFetchJson<T = unknown>(
   let data: T;
   let parseOk = false;
   try {
-    data = await res.json() as T;
+    data = await res.json();
     parseOk = true;
   } catch {
     if (process.env.NODE_ENV === "development") {
@@ -181,7 +181,7 @@ export async function parseApiResponse<T = unknown>(
   let data: T;
   let parseOk = false;
   try {
-    data = await res.json() as T;
+    data = await res.json();
     parseOk = true;
   } catch {
     data = fallback;
@@ -190,4 +190,31 @@ export async function parseApiResponse<T = unknown>(
     return { ok: true, data };
   }
   return { ok: false, data };
+}
+
+/** Safely extract a string `error` field from an unknown API response body. */
+export function getApiError(data: unknown): string | undefined {
+  if (typeof data !== "object" || data === null || !("error" in data)) return undefined;
+  const err = data.error;
+  return typeof err === "string" ? err : undefined;
+}
+
+/** Safely extract a string `code` field from an unknown API response body. */
+export function getApiCode(data: unknown): string | undefined {
+  if (typeof data !== "object" || data === null || !("code" in data)) return undefined;
+  const code = data.code;
+  return typeof code === "string" ? code : undefined;
+}
+
+/** Safely extract a string `message` field from an unknown API response body. */
+export function getApiMessage(data: unknown): string | undefined {
+  if (typeof data !== "object" || data === null || !("message" in data)) return undefined;
+  const message = data.message;
+  return typeof message === "string" ? message : undefined;
+}
+
+/** Safely extract the `data` property from an unknown API response body. */
+export function getApiData(data: unknown): unknown {
+  if (typeof data !== "object" || data === null || !("data" in data)) return undefined;
+  return data.data;
 }

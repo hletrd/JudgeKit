@@ -3,7 +3,7 @@
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { toast } from "sonner";
-import { apiFetch } from "@/lib/api/client";
+import { apiFetch, getApiError } from "@/lib/api/client";
 import { Button } from "@/components/ui/button";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
@@ -45,7 +45,7 @@ export function DiscussionPostForm({
       if (!response.ok) {
         if (process.env.NODE_ENV === "development") {
           const errorBody = await response.json().catch(() => ({}));
-          console.error("Discussion post creation failed:", (errorBody as { error?: string }).error);
+          console.error("Discussion post creation failed:", getApiError(errorBody));
         }
         toast.error(errorLabel);
         return;

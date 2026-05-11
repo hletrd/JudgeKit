@@ -4,7 +4,7 @@ import { useCallback } from "react";
 import { useRouter } from "next/navigation";
 import { useTranslations } from "next-intl";
 import { toast } from "sonner";
-import { apiFetch } from "@/lib/api/client";
+import { apiFetch, getApiError } from "@/lib/api/client";
 import { DestructiveActionDialog } from "@/components/destructive-action-dialog";
 
 type DiscussionPostDeleteButtonProps = {
@@ -27,7 +27,7 @@ export function DiscussionPostDeleteButton({ postId, deleteLabel, deleteDescript
       if (!response.ok) {
         if (process.env.NODE_ENV === "development") {
           const errorBody = await response.json().catch(() => ({}));
-          console.error("Discussion post deletion failed:", (errorBody as { error?: string }).error);
+          console.error("Discussion post deletion failed:", getApiError(errorBody));
         }
         toast.error(errorLabel);
         return false;

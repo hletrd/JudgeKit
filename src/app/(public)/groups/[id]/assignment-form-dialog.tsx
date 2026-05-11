@@ -6,7 +6,7 @@ import { useTranslations } from "next-intl";
 import { nanoid } from "nanoid";
 import { Plus, Trash2 } from "lucide-react";
 import { toast } from "sonner";
-import { apiFetch } from "@/lib/api/client";
+import { apiFetch, getApiError, getApiData } from "@/lib/api/client";
 import { Button } from "@/components/ui/button";
 import {
   Dialog,
@@ -272,10 +272,10 @@ export default function AssignmentFormDialog({
       );
 
       // Parse response body once — the Response body can only be consumed once
-      const payload = await response.json().catch(() => ({ data: {} })) as { error?: string; data?: { id?: string } };
+      const payload = await response.json().catch(() => ({ data: {} }));
 
       if (!response.ok) {
-        throw new Error(payload.error || (isEditing ? "assignmentUpdateFailed" : "assignmentCreateFailed"));
+        throw new Error(getApiError(payload) || (isEditing ? "assignmentUpdateFailed" : "assignmentCreateFailed"));
       }
 
       toast.success(

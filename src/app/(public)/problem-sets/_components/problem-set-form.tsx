@@ -101,7 +101,7 @@ export default function ProblemSetForm({
 
   function mapApiError(payload: unknown, fallback: string): string {
     const code = typeof payload === "object" && payload !== null && "error" in payload
-      ? (payload as { error?: unknown }).error
+      ? payload.error
       : undefined;
     return typeof code === "string" && KNOWN_SUBMIT_ERRORS.has(code) ? code : fallback;
   }

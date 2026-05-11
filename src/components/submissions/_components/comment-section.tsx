@@ -6,7 +6,7 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { apiFetch } from "@/lib/api/client";
+import { apiFetch, getApiError } from "@/lib/api/client";
 import { toast } from "sonner";
 import { formatRelativeTimeFromNow } from "@/lib/datetime";
 import { useTranslations, useLocale } from "next-intl";
@@ -76,7 +76,7 @@ export function CommentSection({ submissionId, canComment, targetLine = null, on
       } else {
         const errorBody = await response.json().catch(() => ({}));
         if (process.env.NODE_ENV === "development") {
-          console.error("Comment submit failed:", (errorBody as { error?: string }).error);
+          console.error("Comment submit failed:", getApiError(errorBody));
         }
         toast.error(tComments("submitError"));
       }

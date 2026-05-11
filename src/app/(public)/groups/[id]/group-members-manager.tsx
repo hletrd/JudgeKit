@@ -3,7 +3,7 @@
 import { useState } from "react";
 import { useTranslations } from "next-intl";
 import { toast } from "sonner";
-import { apiFetch } from "@/lib/api/client";
+import { apiFetch, getApiError, getApiData } from "@/lib/api/client";
 import { DestructiveActionDialog } from "@/components/destructive-action-dialog";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -135,20 +135,24 @@ export function GroupMembersManager({
       });
 
       // Parse response body once — the Response body can only be consumed once
-      const payload = await response.json().catch(() => ({ data: {} })) as { error?: string; data?: { id?: string; user?: { id: string; name: string; username: string; className: string | null }; enrolledAt?: string } };
+      const payload = await response.json().catch(() => ({ data: {} }));
 
       if (!response.ok) {
-        throw new Error(payload.error || "memberAddFailed");
+        throw new Error(getApiError(payload) || "memberAddFailed");
       }
 
-      const nextMember = payload.data?.user && payload.data.id
+      const dataObj = getApiData(payload);
+      const userObj = typeof dataObj === "object" && dataObj !== null && "user" in dataObj && typeof dataObj.user === "object" && dataObj.user !== null ? dataObj.user : null;
+      const memberId = typeof dataObj === "object" && dataObj !== null && "id" in dataObj && typeof dataObj.id === "string" ? dataObj.id : undefined;
+      const enrolledAt = typeof dataObj === "object" && dataObj !== null && "enrolledAt" in dataObj && typeof dataObj.enrolledAt === "string" ? dataObj.enrolledAt : undefined;
+      const nextMember = userObj && memberId
         ? {
-            id: payload.data.id,
-            userId: payload.data.user.id,
-            name: payload.data.user.name,
-            username: payload.data.user.username,
-            className: payload.data.user.className,
-            enrolledAt: payload.data.enrolledAt ? new Date(payload.data.enrolledAt).valueOf() : null,
+            id: memberId,
+            userId: "id" in userObj && typeof userObj.id === "string" ? userObj.id : "",
+            name: "name" in userObj && typeof userObj.name === "string" ? userObj.name : "",
+            username: "username" in userObj && typeof userObj.username === "string" ? userObj.username : "",
+            className: "className" in userObj && (userObj.className === null || typeof userObj.className === "string") ? userObj.className : null,
+            enrolledAt: enrolledAt ? new Date(enrolledAt).valueOf() : null,
           }
         : null;
 
@@ -192,13 +196,14 @@ export function GroupMembersManager({
       });
 
       // Parse response body once — the Response body can only be consumed once
-      const payload = await response.json().catch(() => ({ enrolled: 0, skipped: 0 })) as { error?: string; enrolled?: number; skipped?: number };
+      const payload = await response.json().catch(() => ({ enrolled: 0, skipped: 0 }));
 
       if (!response.ok) {
-        throw new Error(payload.error || "bulkAddFailed");
+        throw new Error(getApiError(payload) || "bulkAddFailed");
       }
 
-      const { enrolled = 0, skipped = 0 } = payload;
+      const enrolled = typeof payload === "object" && payload !== null && "enrolled" in payload && typeof payload.enrolled === "number" ? payload.enrolled : 0;
+      const skipped = typeof payload === "object" && payload !== null && "skipped" in payload && typeof payload.skipped === "number" ? payload.skipped : 0;
 
       // Remove enrolled students from available list (we don't know which were skipped as duplicates
       // vs invalid, so optimistically remove all selected)
@@ -302,7 +307,7 @@ export function GroupMembersManager({
 
       if (!response.ok) {
         const payload = await response.json().catch(() => ({}));
-        throw new Error((payload as { error?: string }).error || "memberRemoveFailed");
+        throw new Error(getApiError(payload) || "memberRemoveFailed");
       }
 
       setCurrentMembers((current) => current.filter((entry) => entry.userId !== member.userId));

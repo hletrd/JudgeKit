@@ -3,7 +3,7 @@
 import { useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { useTranslations } from "next-intl";
-import { apiFetch } from "@/lib/api/client";
+import { apiFetch, getApiError } from "@/lib/api/client";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import {
@@ -89,7 +89,7 @@ export default function EditGroupDialog({ group }: { group: EditableGroup }) {
 
         if (!response.ok) {
           const errorBody = await response.json().catch(() => ({}));
-          throw new Error((errorBody as { error?: string }).error || "updateError");
+          throw new Error(getApiError(errorBody) || "updateError");
         }
 
         toast.success(t("updateSuccess"));

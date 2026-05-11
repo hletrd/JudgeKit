@@ -10,7 +10,7 @@ import { Input } from "@/components/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Badge } from "@/components/ui/badge";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
-import { apiFetch } from "@/lib/api/client";
+import { apiFetch, getApiError } from "@/lib/api/client";
 
 type GroupInstructor = {
   id: string;
@@ -71,7 +71,7 @@ export function GroupInstructorsManager({
       if (!res.ok) {
         const data = await res.json().catch(() => ({}));
         if (process.env.NODE_ENV === "development") {
-          console.error("Instructor add failed:", (data as { error?: string }).error);
+          console.error("Instructor add failed:", getApiError(data));
         }
         toast.error(t("addInstructorFailed"));
         return;

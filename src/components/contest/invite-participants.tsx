@@ -3,7 +3,7 @@
 import { useState, useCallback, useRef, useEffect } from "react";
 import { useTranslations } from "next-intl";
 import { toast } from "sonner";
-import { apiFetch, apiFetchJson } from "@/lib/api/client";
+import { apiFetch, apiFetchJson, getApiError } from "@/lib/api/client";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -85,8 +85,9 @@ export function InviteParticipants({ assignmentId }: InviteParticipantsProps) {
         setInvitedIds((prev) => new Set(prev).add(userId));
         toast.success(t("inviteSuccess"));
       } else {
-        const data = await res.json().catch(() => ({})) as { error?: string };
-        toast.error(data.error === "userNotFound" ? t("userNotFound") : t("inviteFailed"));
+        const data = await res.json().catch(() => ({}));
+        const error = getApiError(data);
+        toast.error(error === "userNotFound" ? t("userNotFound") : t("inviteFailed"));
       }
     } catch {
       toast.error(t("inviteFailed"));

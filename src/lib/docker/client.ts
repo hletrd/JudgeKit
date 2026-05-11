@@ -3,6 +3,7 @@ import { promisify } from "util";
 import pLimit from "p-limit";
 import { logger } from "@/lib/logger";
 import { withTimeout, cleanupWithTimeout } from "@/lib/abort";
+import { getApiError } from "@/lib/api/client";
 
 const exec = promisify(execFile);
 // Accept JUDGE_WORKER_URL or COMPILER_RUNNER_URL — both map to the same
@@ -93,8 +94,8 @@ function isValidImageReference(value: string) {
 
 async function readError(response: Response): Promise<string> {
   try {
-    const data = await response.json() as { error?: string };
-    return data.error ?? `${response.status} ${response.statusText}`;
+    const data = await response.json();
+    return getApiError(data) ?? `${response.status} ${response.statusText}`;
   } catch {
     return `${response.status} ${response.statusText}`;
   }

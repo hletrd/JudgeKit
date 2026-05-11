@@ -5,7 +5,7 @@ import { useTranslations } from "next-intl";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { Download, Upload } from "lucide-react";
-import { apiFetch } from "@/lib/api/client";
+import { apiFetch, getApiError } from "@/lib/api/client";
 
 type DownloadMode = "portable" | "backup";
 
@@ -157,7 +157,7 @@ export function DatabaseBackupRestore({ isSuperAdmin }: { isSuperAdmin: boolean 
       if (!response.ok) {
         const data = await response.json().catch(() => ({}));
         if (process.env.NODE_ENV === "development") {
-          console.error("Restore failed:", (data as { error?: string }).error);
+          console.error("Restore failed:", getApiError(data));
         }
         toast.error(t("restoreFailed"));
         return;
