@@ -46,6 +46,8 @@ export function AntiCheatMonitor({
   const lastEventRef = useRef<Record<string, number>>({});
   const MIN_INTERVAL_MS = 1000;
   const retryTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const tabSwitchGraceTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const TAB_SWITCH_GRACE_MS = 3000;
 
   const sendEvent = useCallback(
     async (event: PendingEvent): Promise<boolean> => {
@@ -207,9 +209,19 @@ export function AntiCheatMonitor({
 
     function handleVisibilityChange() {
       if (document.hidden) {
-        void reportEventRef.current("tab_switch");
-        toast.warning(resolvedWarningMessage);
+        // Start a grace-period timer before reporting tab_switch.
+        // This avoids false positives from accidental brief switches
+        // (Alt+Tab slip, notification clicks, Spotlight, etc.).
+        tabSwitchGraceTimerRef.current = setTimeout(() => {
+          void reportEventRef.current("tab_switch");
+          toast.warning(resolvedWarningMessage);
+        }, TAB_SWITCH_GRACE_MS);
       } else {
+        // Tab became visible — cancel any pending grace-period report.
+        if (tabSwitchGraceTimerRef.current) {
+          clearTimeout(tabSwitchGraceTimerRef.current);
+          tabSwitchGraceTimerRef.current = null;
+        }
         void flushPendingEventsRef.current();
         void reportEventRef.current("heartbeat");
       }
@@ -280,6 +292,10 @@ export function AntiCheatMonitor({
       if (retryTimerRef.current) {
         clearTimeout(retryTimerRef.current);
         retryTimerRef.current = null;
+      }
+      if (tabSwitchGraceTimerRef.current) {
+        clearTimeout(tabSwitchGraceTimerRef.current);
+        tabSwitchGraceTimerRef.current = null;
       }
     };
   }, [enabled, resolvedWarningMessage, showPrivacyNotice]);
