@@ -6,6 +6,8 @@ import { eq } from "drizzle-orm";
 import { z } from "zod";
 import { isJudgeLanguage, getJudgeLanguageDefinition, serializeJudgeCommand } from "@/lib/judge/languages";
 import { executeCompilerRun } from "@/lib/compiler/execute";
+import { getPlatformModePolicy } from "@/lib/platform-mode";
+import { getEffectivePlatformMode } from "@/lib/platform-mode-context";
 
 const MAX_SOURCE_CODE_LENGTH = 64 * 1024;
 const MAX_STDIN_LENGTH = 64 * 1024 - 1; // -1 to account for the appended newline in executeCompilerRun
@@ -20,7 +22,15 @@ export const POST = createApiHandler({
   auth: { capabilities: ["content.submit_solutions"] },
   rateLimit: "playground:run",
   schema: playgroundRunSchema,
-  handler: async (_req, { body }) => {
+  handler: async (_req, { user, body }) => {
+    const platformMode = await getEffectivePlatformMode({
+      userId: user.id,
+      assignmentId: null,
+    });
+    if (getPlatformModePolicy(platformMode).restrictStandaloneCompiler) {
+      return apiError("compilerDisabledInCurrentMode", 403);
+    }
+
     if (!isJudgeLanguage(body.language)) {
       return apiError("languageNotFound", 404, "language");
     }
