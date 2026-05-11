@@ -1,40 +1,58 @@
-# Test Engineer Report — Cycle 5/100 (RPF Run)
+# Test Engineer Review — Cycle 5 (RPF Loop)
 
-**Date:** 2026-05-09
-**HEAD:** 6fc4a4a2
-**Scope:** Test coverage, flaky-test surface, and TDD opportunities
-
----
-
-## Findings
-
-### C5-TE-1: Missing test for non-finite SSE timeout configuration [LOW]
-
-- **Severity:** LOW
-- **Confidence:** MEDIUM
-- **File+line:** `src/app/api/v1/submissions/[id]/events/route.ts:367`
-- **Issue:** The SSE timeout timer uses `sseConfig.sseTimeoutMs` without bounds validation. There is no test covering the behavior when this setting is NaN, negative, or extremely large. A NaN timeout causes `setTimeout` to fire immediately (treated as 0), which would close the SSE connection before any data is sent.
-- **Fix:** Add a unit test for `getStaleThreshold()` and the timeout configuration path that exercises NaN, negative, zero, and very large values.
-
-### C5-TE-2: `auto-review.ts` Promise.race listener leak not covered by tests [LOW]
-
-- **Severity:** LOW
-- **Confidence:** HIGH
-- **File+line:** `src/lib/judge/auto-review.ts:175-198`
-- **Issue:** The abort listener leak (C5-CR-1) is not detectable by existing tests because the provider timeout (25s) fires before the auto-review timeout (30s). Tests mock the provider and resolve immediately, so the listener leak is invisible. A test that inspects `AbortSignal` listener count or uses a slow mock would catch it.
-- **Fix:** Add a test that mocks a slow provider, asserts the custom timeout fires, and verifies no listeners remain on the signal after the race settles.
+**Date:** 2026-05-11
+**Reviewer:** test-engineer (orchestrator direct — Agent tool unavailable)
+**Scope:** Test coverage, dead code, edge case coverage
 
 ---
 
-## Areas Verified (No Issues Found)
+## Summary
 
-- **Gate status:** All gates pass (eslint, tsc, next build, vitest integration + component).
-- **Test coverage:** 314 integration tests + 66 component tests, 2507 total assertions.
-- **Flaky tests:** No new flaky tests detected.
-- **Mock isolation:** All API route tests properly mock dependencies.
+1 LOW finding. Coverage gap for diff algorithm edge cases.
 
 ---
 
-## Already-fixed findings verified at HEAD
+## LOW
 
-All cycle 1-21 test-related fixes remain resolved.
+### T5-L1: `buildCodeSnapshotDiff` Has Zero Test Coverage
+- **File:** `src/lib/code-snapshots/diff.ts`
+- **Confidence:** High
+- **Description:** The diff function has no unit tests. It is also dead code (never imported), but if it is retained, it needs tests for:
+  1. Empty strings (both empty)
+  2. Identical strings (all context, zero added/removed)
+  3. Completely different strings (all added + all removed)
+  4. Single-line changes
+  5. Large inputs (memory/performance boundary)
+  6. Strings with trailing newlines
+- **Suggested tests:**
+  ```ts
+  describe("buildCodeSnapshotDiff", () => {
+    it("handles empty strings", () => {
+      const result = buildCodeSnapshotDiff("", "");
+      expect(result.lines).toHaveLength(0);
+      expect(result.summary).toEqual({ added: 0, removed: 0, unchanged: 0 });
+    });
+
+    it("handles identical strings", () => {
+      const result = buildCodeSnapshotDiff("a\nb", "a\nb");
+      expect(result.summary.unchanged).toBe(2);
+      expect(result.summary.added).toBe(0);
+      expect(result.summary.removed).toBe(0);
+    });
+
+    it("handles completely different strings", () => {
+      const result = buildCodeSnapshotDiff("a", "b");
+      expect(result.summary.removed).toBe(1);
+      expect(result.summary.added).toBe(1);
+      expect(result.summary.unchanged).toBe(0);
+    });
+  });
+  ```
+
+---
+
+## Coverage Notes
+
+- All prior cycle fixes have corresponding tests.
+- `buildCodeSnapshotDiff` is the only exported function in `src/lib/code-snapshots/` with zero coverage.
+- Total test suite: 317 files, 2399 tests passing.

@@ -1,43 +1,54 @@
-# Code Reviewer Report — Cycle 5/100 (RPF Run)
+# Code Review — Cycle 5 (RPF Loop)
 
-**Date:** 2026-05-09
-**HEAD:** 6fc4a4a2
-**Scope:** Full TypeScript/TSX source review focusing on areas not well-covered in cycles 1-4 of this run
-
----
-
-## Findings
-
-### C5-CR-1: Unremoved abort listener in auto-review Promise.race [LOW]
-
-- **Severity:** LOW
-- **Confidence:** HIGH
-- **File+line:** `src/lib/judge/auto-review.ts:175-198`
-- **Issue:** The `timeoutController.signal.addEventListener("abort", ...)` listener created for the `Promise.race` timeout is never removed when `provider.chatWithTools()` wins the race. The `finally` block clears the `setTimeout` but does not call `removeEventListener`. Since `PROVIDER_REQUEST_TIMEOUT_MS` (25s) is shorter than `AUTO_REVIEW_TIMEOUT_MS` (30s), the provider timeout fires first in practice, making the auto-review timeout effectively dead code. The unremoved listener is minor memory noise but technically a leak.
-- **Fix:** Remove the abort listener in `finally`, or better: wire the provider fetch to the same `AbortSignal` so a single timeout governs both the fetch and the race.
-
-### C5-CR-2: Redundant Promise.race timeout in auto-review [LOW]
-
-- **Severity:** LOW
-- **Confidence:** HIGH
-- **File+line:** `src/lib/judge/auto-review.ts:174-199`
-- **Issue:** `provider.chatWithTools()` already passes `AbortSignal.timeout(PROVIDER_REQUEST_TIMEOUT_MS)` (25s) to `fetch()`. The outer `Promise.race` with `AUTO_REVIEW_TIMEOUT_MS` (30s) can never win — the provider always rejects first. This adds complexity and the listener leak (C5-CR-1) for no operational benefit.
-- **Fix:** Remove the custom `Promise.race` and rely on the provider's `AbortSignal.timeout`. If a longer or separate timeout is desired, increase `PROVIDER_REQUEST_TIMEOUT_MS` instead.
+**Date:** 2026-05-11
+**Reviewer:** code-reviewer (orchestrator direct — Agent tool unavailable)
+**Scope:** Judge polling, SSE events, code snapshots, recruiting invitations, restore route, database queries — follow-up to cycle 4 fixes
 
 ---
 
-## Areas Verified (No Issues Found)
+## Summary
 
-- **Timer cleanup:** All `setTimeout`/`setInterval` usages have matching cleanup.
-- **Event listener cleanup:** All `addEventListener` calls have matching `removeEventListener`.
-- **JSON.parse guards:** All untrusted paths have try/catch or safeParse.
-- **React key stability:** All dynamic `.map()` uses stable IDs.
-- **Type safety:** No `@ts-ignore`, no `any` types in source (except `TABLE_MAP` in import.ts which is already documented).
-- **Auth endpoints:** CSRF protection, rate limiting, and JWT validation verified.
-- **Korean letter spacing:** No inappropriate `tracking-*` applied to Korean text.
+3 findings: 1 MEDIUM, 2 LOW. Focused on correctness and dead-code elimination in areas not covered by prior cycles.
 
 ---
 
-## Already-fixed findings verified at HEAD
+## MEDIUM
 
-All cycle 1-21 fixes remain resolved.
+### C5-M1: `buildCodeSnapshotDiff` O(n×m) Memory Can Exhaust Heap on Large Files
+- **File:** `src/lib/code-snapshots/diff.ts:28-30`
+- **Confidence:** High
+- **Description:** The LCS diff algorithm allocates a full `(previousLines.length + 1) × (currentLines.length + 1)` integer matrix. For files with 5,000+ lines (generated test cases, large solutions, boilerplate), this creates ~25M integers (~200MB). At 10K lines it's ~100M integers (~800MB). In production with concurrent diffs or limited heap, this can trigger OOM crashes.
+- **Failure scenario:** A user submits a 8,000-line generated solution. The system attempts to diff it against a previous snapshot, allocates ~64M integers (~512MB), and the Node.js process crashes with `FATAL ERROR: Reached heap limit`.
+- **Fix:** Replace with space-optimized LCS using only two rows, reducing memory from O(n×m) to O(min(n,m)).
+  ```ts
+  // Instead of full matrix, keep only previous and current rows
+  let prevRow = Array(currentLines.length + 1).fill(0);
+  let currRow = Array(currentLines.length + 1).fill(0);
+  // ... compute LCS with row swapping ...
+  ```
+
+---
+
+## LOW
+
+### C5-L1: `buildCodeSnapshotDiff` and Related Types Are Dead Code
+- **File:** `src/lib/code-snapshots/diff.ts`
+- **Confidence:** High
+- **Description:** `buildCodeSnapshotDiff`, `CodeDiffResult`, and `CodeDiffLine` are exported but never imported by any module in `src/` or `tests/`. This is unmaintained dead code with no tests and no documented intended usage. It creates maintenance burden (e.g., the OOM bug above affects a function nobody uses).
+- **Fix:** Remove `src/lib/code-snapshots/diff.ts` and its directory if no other files exist there. If it is kept for a planned feature, add tests and a comment explaining the intended integration point.
+
+### C5-L2: `getDbNowUncached()` Extends Transaction Duration in Judge/Poll
+- **File:** `src/app/api/v1/judge/poll/route.ts:82`
+- **Confidence:** Medium
+- **Description:** `getDbNowUncached()` executes `SELECT NOW()` as a separate database query inside a transaction (`execTransaction`) that already holds row-level locks on `submissions` and `submissionResults`. This extends the transaction duration and increases lock contention under high judge throughput.
+- **Fix:** Call `getDbNowUncached()` before entering the transaction, or replace the timestamp with a `sql` expression computed inside the UPDATE statement itself.
+
+---
+
+## Final Sweep
+
+- No remaining `throw new Error(getApiError(...))` patterns found in the codebase.
+- `rawQueryOne` and `rawQueryAll` properly parameterize queries via named-to-positional conversion.
+- `escapeLikePattern` correctly escapes backslashes before `%` and `_`.
+- All `formData.get()` casts in recently modified routes use `instanceof` or `typeof` guards.
+- No unused imports or variables in recently changed files.

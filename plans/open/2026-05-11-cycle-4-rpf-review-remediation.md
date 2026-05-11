@@ -129,3 +129,5 @@ Replace the hardcoded `equals(usersTable.role, "student")` filter with a role-le
 | Task 7: bulk enrollment role | DONE | `c0a5e3cd` |
 
 All quality gates green: eslint (0 errors, 0 warnings), next build (success), vitest (317 files, 2399 tests passed).
+
+**DEPLOY:** per-cycle-success (`oj-internal.maum.ai` responding HTTP 200).
