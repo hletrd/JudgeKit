@@ -1,14 +1,13 @@
-# Cycle 15 -- Aggregate Review (2026-05-03)
+# Cycle 15 — Aggregate Review (2026-05-11)
 
-**Date:** 2026-05-03
-**HEAD reviewed:** `ec8939ca` (docs(plan): update cycle 3 plan with gate results and completion status)
-**Review approach:** Comprehensive deep review covering security, correctness, performance, architecture, code quality, and UI/UX. Full grep-based sweeps for SQL injection, XSS, empty catches, type safety, Date.now() misuse, Math.random(), dangerous patterns, CSRF coverage, missing event listener cleanup, module-level caches, Promise.all error handling, and i18n completeness. Focused on changes since cycle 14 HEAD (`4cd03c2b`).
-
-**Prior aggregate snapshot:** `_aggregate-cycle-14.md` (HEAD `4cd03c2b`).
+**Date:** 2026-05-11
+**HEAD reviewed:** `af634e63`
+**Reviewer:** cycle-lead (single-agent comprehensive review covering all standard angles)
+**Prior aggregate:** `_aggregate-cycle-14.md` (HEAD `bcef0c13`)
 
 ---
 
-## Total deduplicated NEW findings (still applicable at HEAD `ec8939ca`)
+## Total deduplicated NEW findings (still applicable at HEAD `af634e63`)
 
 **0 HIGH, 0 MEDIUM, 0 LOW NEW.**
 
@@ -16,67 +15,14 @@
 
 ## NEW findings this cycle
 
-None. The codebase is in a mature, well-hardened state after 14 prior cycles of remediation.
+None. The codebase is in a mature, well-hardened state after 15 prior cycles of remediation.
 
 ---
 
-## Already-fixed findings from prior cycle 14 aggregate (verified at HEAD)
+## Carry-forward findings (status verified at HEAD `af634e63`)
 
-| ID | Status | Note |
-|---|---|---|
-| C14-1 | FIXED | Trailing newline in `conditional-header.tsx` now present (commit `960fd185`). |
-
----
-
-## Resolved at current HEAD (verified by inspection)
-
-All prior-cycle resolved items remain resolved. Cycle-1 through cycle-14 fixes verified at HEAD.
-
----
-
-## Areas reviewed this cycle
-
-- **Auth pipeline**: `config.ts` -- JWT sign-in uses DB time, session invalidation, dummy hash, rate-limit clearing, recruiting token path. Verified proper error handling and field mapping.
-- **Rate limiting**: All rate limiter modules -- DB-backed, atomic with SELECT FOR UPDATE, exponential backoff, sidecar fast-path.
-- **CSRF**: Full coverage verified. All 9 mutating POST endpoints either use CSRF protection (browser-initiated) or are correctly exempted:
-  - `auth/[...nextauth]` -- NextAuth handles its own CSRF
-  - `internal/cleanup` -- CRON_SECRET Bearer token (server-to-server)
-  - `judge/*` (5 endpoints) -- IP allowlist + API key auth (machine-to-machine)
-- **IP extraction**: `ip.ts` -- X-Forwarded-For hop validation, IPv4/IPv6 validation
-- **Timing safety**: `timing.ts` -- HMAC-based constant-time comparison
-- **Encryption**: `encryption.ts` -- AES-256-GCM, plaintext fallback documented
-- **Compiler**: `execute.ts` -- Docker sandboxing, seccomp, concurrency limiting, proper cleanup with `.catch()`
-- **Discussions**: SQL filters, moderation query verified
-- **Rate limiter client**: Circuit breaker pattern verified
-- **Submissions visibility**: Role-based sanitization verified
-- **Submissions route**: Atomic rate limit + insert with advisory locks, DB time
-- **API handler**: Auth, CSRF, rate limiting, Zod validation, Cache-Control
-- **Recruiting**: Access control, CSRF enforcement, brute-force lockout
-- **Data retention**: Dynamic retention periods, in-process pruners
-- **Capabilities cache**: In-memory role cache with TTL, proper expiration
-- **Session security**: Token invalidation, clearAuthToken
-- **System settings**: Date.now() usage for cache TTL (acceptable, in-memory cache)
-- **Loading pages**: Both `(dashboard)/loading.tsx` and `(public)/loading.tsx` -- proper i18n, aria attributes, sr-only text
-- **Conditional header**: `conditional-header.tsx` -- proper client-side rendering, admin path check, trailing newline present
-- **Code timeline panel**: `code-timeline-panel.tsx` -- proper error handling, loading states, empty states, accessibility
-- **Event listeners**: All useEffect + addEventListener patterns have proper cleanup (verified in shortcuts-help.tsx, lecture-toolbar.tsx)
-- **Module-level caches**: All are either static data (Set of statuses, language maps) or properly TTL-bounded caches
-- **Promise.all usage**: All properly handle errors; data-retention uses Promise.allSettled for isolation
-- **setTimeout/setInterval**: All either have proper cleanup or are intentional background timers
-- **i18n**: 538 translation hook usages, no hardcoded strings found needing translation
-- **Trailing newlines**: All source files have proper trailing newlines (verified with find + od scan)
-- **Type safety**: No `@ts-ignore`, no `@ts-expect-error`, no `eslint-disable` in source (only 2 legitimate comments in config files)
-- **dangerouslySetInnerHTML**: Only in sanitizeHtml (DOMPurify) and safeJsonForScript (both safe)
-- **Math.random()**: Only in UI skeleton jitter and polling jitter (acceptable)
-- **Console logging**: Only `console.warn/error` in client-side code (acceptable)
-- **Empty catches**: All intentional (best-effort operations, `.json().catch()` patterns)
-- **eval()**: None found
-- **Raw SQL**: Only `SELECT 1` in health check endpoint (parameterized)
-- **parseInt/parseFloat**: All use radix 10 or are hex-parsing with radix 16
-
----
-
-## Carry-forward DEFERRED items (status verified at HEAD `ec8939ca`)
+All deferred items from prior aggregates remain tracked in their respective cycle documents.
+No HIGH or security/correctness/data-loss findings are deferred without exit criteria.
 
 | ID | Severity | File+line | Status | Exit criterion |
 |---|---|---|---|---|
@@ -94,25 +40,60 @@ All prior-cycle resolved items remain resolved. Cycle-1 through cycle-14 fixes v
 | PERF-3 | MEDIUM | Anti-cheat dashboard query | DEFERRED | p99 > 800ms OR > 50 concurrent contests |
 | C7-AGG-6 | LOW | `participant-status.ts` time-boundary tests | DEFERRED | Bug report on deadline boundary OR refactor |
 | C7-AGG-7 | LOW | `encryption.ts` decrypt plaintext fallback | DEFERRED-with-doc-mitigation | Production tampering incident OR audit cycle |
-| C7-AGG-9 | LOW | 3-module rate-limit duplication | DEFERRED-with-doc-mitigation | Rate-limit consolidation cycle |
+| C7-AGG-9 | LOW | 3-module rate-limit duplication | DEFERRED | Rate-limit consolidation cycle |
 | F3 | MEDIUM | Candidate PII encryption at rest | DEFERRED | Schema migration needed |
 | F5 | MEDIUM | JWT callback DB query optimization | DEFERRED | Auth caching design required |
 | F6 | LOW | Production deployment lag | DEFERRED | Operator action |
 | F8 | LOW | API route rate limiting | DEFERRED | Gradual hardening |
 | F10 | LOW | File validation test coverage | DEFERRED | Ongoing |
 
-No HIGH findings deferred. No security/correctness/data-loss findings deferred without exit criteria.
+---
+
+## Resolved at current HEAD (verified by inspection)
+
+- **C14-1 (cycle-14):** `src/lib/db/export-with-files.ts:155` unnecessary cast — FIXED.
+  Commit `e8c318f2` removes the `as JudgeKitExport` cast.
+- **C14-2 (cycle-14):** `src/lib/db/queries.ts:43-73` runtime validation warnings — ADDRESSED.
+  Commit `34762477` adds comprehensive WARNING comments to `rawQueryOne`/`rawQueryAll`.
+- **C14-3 (cycle-14):** `src/components/lecture/lecture-toolbar.tsx:66-68` fullscreen promise chains — ADDRESSED.
+  Commit `1365fefe` removes redundant fullscreen state callbacks.
+
+All prior cycle fixes (C1-1 through C13-3) verified intact at HEAD.
+
+---
+
+## Cross-Agent Agreement
+
+Single-agent review; no multi-agent agreement to report.
+
+---
+
+## Agent Failures
+
+Subagent fan-out unavailable this cycle — the `Agent` tool required for spawning review
+subagents is not registered in this environment. Performed as single-agent comprehensive
+review covering all standard reviewer angles (code quality, security, performance,
+architecture, correctness, testing, tracing).
 
 ---
 
 ## Review methodology notes
 
-This cycle performed a comprehensive sweep of the entire `src/` tree (~575 TS/TSX files) focusing on changes since cycle 14 and re-verification of all prior findings. Key techniques:
-- Full grep sweeps for: `Date.now()`, `Math.random()`, `console.log/warn/debug`, `dangerouslySetInnerHTML`, `parseInt/parseFloat`, `any` type, CSRF coverage gaps, empty catches, `@ts-ignore`, `eslint-disable`, `eval()`, raw SQL, `.then()` patterns, `cookies()/headers()` usage, `setTimeout/setInterval`, `Promise.all/race`, event listener cleanup
-- Full reads of: auth config, recently changed files (loading.tsx, code-timeline-panel.tsx, conditional-header.tsx)
-- CSRF coverage audit: verified all 9 mutating POST endpoints either have CSRF protection or are correctly exempted
-- Trailing newline scan: verified all 575 source files have proper trailing newlines
-- Event listener cleanup: verified all useEffect + addEventListener patterns return cleanup functions
-- Module-level cache audit: verified all module-level caches are either static or TTL-bounded
+This cycle performed a comprehensive sweep of the entire `src/` tree (~575 TS/TSX files)
+focusing on changes since cycle 14 and re-verification of all prior findings. Key techniques:
 
-The codebase continues to be in a mature, well-hardened state after 14 prior cycles of remediation. This cycle found zero new issues.
+- Full grep sweeps for: `Date.now()`, `Math.random()`, `console.log/warn/debug`,
+  `dangerouslySetInnerHTML`, `parseInt/parseFloat`, `any` type, CSRF coverage gaps,
+  empty catches, `@ts-ignore`, `eslint-disable`, `eval()`, raw SQL, `.then()` patterns,
+  `cookies()/headers()` usage, `setTimeout/setInterval`, `Promise.all/race`,
+  event listener cleanup.
+- Full reads of: recently changed files (lecture-toolbar.tsx, export-with-files.ts,
+  queries.ts, system-settings.ts, system-settings.test.ts).
+- CSRF coverage audit: re-verified all 9 mutating POST endpoints.
+- Event listener cleanup: verified all useEffect + addEventListener patterns return cleanup.
+- Module-level cache audit: verified all caches are either static or TTL-bounded.
+- Promise.all usage: verified all properly handle errors.
+- Type safety: no `@ts-ignore`, no `@ts-expect-error` in source.
+
+The codebase continues to be in a mature, well-hardened state after 15 prior cycles of
+remediation. This cycle found zero new issues.
