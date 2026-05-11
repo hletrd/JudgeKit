@@ -63,11 +63,16 @@ export async function readJsonBodyWithLimit<T = unknown>(
   const bytes = await readStreamBytesWithLimit(reader, limit);
   const text = new TextDecoder().decode(bytes);
 
+  let parsed: unknown;
   try {
-    return JSON.parse(text) as T;
+    parsed = JSON.parse(text);
   } catch {
     throw new Error("invalidJson");
   }
+  if (typeof parsed !== "object" || parsed === null) {
+    throw new Error("invalidJson");
+  }
+  return parsed as T;
 }
 
 export async function readUploadedJsonFileWithLimit<T = unknown>(
@@ -85,9 +90,14 @@ export async function readUploadedJsonFileWithLimit<T = unknown>(
   const buffer = await file.arrayBuffer();
   const text = new TextDecoder().decode(buffer);
 
+  let parsed: unknown;
   try {
-    return JSON.parse(text) as T;
+    parsed = JSON.parse(text);
   } catch {
     throw new Error("invalidJson");
   }
+  if (typeof parsed !== "object" || parsed === null) {
+    throw new Error("invalidJson");
+  }
+  return parsed as T;
 }

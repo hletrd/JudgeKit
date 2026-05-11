@@ -80,25 +80,25 @@ async function callRateLimiter<T>(
       circuitOpenUntil = Date.now() + RECOVERY_WINDOW_MS;
       return null;
     }
-    const data = (await response.json().catch(() => null)) as T | null;
-    if (data === null) {
+    const raw = await response.json().catch(() => null);
+    if (raw === null) {
       // Non-JSON response body (e.g., HTML from a misconfigured proxy).
       // Treat as a sidecar error but log separately from network failures.
       consecutiveFailures++;
       circuitOpenUntil = Date.now() + RECOVERY_WINDOW_MS;
       return null;
     }
-    if (validate && !validate(data)) {
+    if (validate && !validate(raw)) {
       // Valid JSON but unexpected shape — treat as sidecar error to preserve
       // the fail-open contract (do not return a malformed result that callers
       // might interpret as a definitive rate-limit decision).
       consecutiveFailures++;
       circuitOpenUntil = Date.now() + RECOVERY_WINDOW_MS;
-      logger.warn({ path, data }, "[rate-limiter] sidecar returned unexpected response shape");
+      logger.warn({ path, data: raw }, "[rate-limiter] sidecar returned unexpected response shape");
       return null;
     }
     consecutiveFailures = 0;
-    return data;
+    return raw as T;
   } catch (err) {
     consecutiveFailures++;
     circuitOpenUntil = Date.now() + RECOVERY_WINDOW_MS;

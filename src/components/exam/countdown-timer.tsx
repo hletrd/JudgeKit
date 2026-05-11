@@ -84,20 +84,16 @@ export function CountdownTimer({ deadline, label, onExpired }: CountdownTimerPro
     const timeout = setTimeout(() => controller.abort(), 5000);
     const requestStart = Date.now();
     apiFetch("/api/v1/time", { signal: controller.signal })
-      .then((res) => {
+      .then(async (res) => {
         if (!res.ok) return null;
-        return res.json().catch(() => null) as Promise<{ timestamp: number } | null>;
+        return res.json().catch(() => null);
       })
       .then((data) => {
-        if (!data) return;
-        // Validate that the timestamp is a finite number before using it.
-        // A malformed response (e.g., { timestamp: null }) would produce NaN,
-        // causing the countdown to show "00:00:00" in red without actually
-        // triggering the onExpired callback (since NaN <= 0 is false).
-        if (Number.isFinite(data.timestamp)) {
-          const roundTrip = Date.now() - requestStart;
-          offsetRef.current = data.timestamp - (requestStart + roundTrip / 2);
-        }
+        if (!data || typeof data !== "object" || !("timestamp" in data)) return;
+        const timestamp = data.timestamp;
+        if (typeof timestamp !== "number" || !Number.isFinite(timestamp)) return;
+        const roundTrip = Date.now() - requestStart;
+        offsetRef.current = timestamp - (requestStart + roundTrip / 2);
       })
       .catch(() => {
         // keep existing offset on error

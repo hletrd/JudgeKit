@@ -85,9 +85,9 @@ export type SystemSettingsRecord = {
 
 export async function getSystemSettings(): Promise<SystemSettingsRecord | undefined> {
   try {
-    return (await db.query.systemSettings.findFirst({
+    return await db.query.systemSettings.findFirst({
       where: eq(systemSettings.id, GLOBAL_SETTINGS_ID),
-    })) as SystemSettingsRecord | undefined;
+    });
   } catch {
     // Fallback: query without new columns (migration may not have run yet)
     const rows = await db
@@ -118,7 +118,7 @@ export const getResolvedSystemSettings = cache(async (defaults: {
   return {
     siteTitle: settings?.siteTitle ?? defaults.siteTitle,
     siteDescription: settings?.siteDescription ?? defaults.siteDescription,
-    siteIconUrl: (settings as Record<string, unknown> | undefined)?.siteIconUrl as string | null ?? null,
+    siteIconUrl: settings?.siteIconUrl ?? null,
     timeZone: settings?.timeZone ?? defaults.timeZone ?? DEFAULT_SYSTEM_TIME_ZONE,
     platformMode: settings?.platformMode ?? DEFAULT_PLATFORM_MODE,
     aiAssistantEnabled: settings?.aiAssistantEnabled ?? true,

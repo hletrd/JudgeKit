@@ -144,7 +144,7 @@ export async function initializeSettings(): Promise<void> {
       })
       .catch(() => {
         // On error, seal defaults so callers aren't stuck on null
-        if (!cached) cached = { ...DEFAULTS } as ConfiguredSettings;
+        if (!cached) cached = { ...DEFAULTS };
         _initialized = true;
       });
   }
@@ -170,14 +170,14 @@ export function getConfiguredSettings(): ConfiguredSettings {
       })
       .catch(() => {
         // On error, use defaults
-        if (!cached) cached = { ...DEFAULTS } as ConfiguredSettings;
+        if (!cached) cached = { ...DEFAULTS };
       })
       .finally(() => {
         _refreshing = false;
       });
   }
   // Return current cache or defaults while async load is in progress
-  return cached ?? ({ ...DEFAULTS } as ConfiguredSettings);
+  return cached ?? { ...DEFAULTS };
 }
 
 let _refreshing = false;

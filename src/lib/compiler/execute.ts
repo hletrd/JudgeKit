@@ -564,14 +564,15 @@ async function tryRustRunner(
       return null;
     }
 
-    const data = (await response.json().catch(() => null)) as CompilerRunResult | null;
-    if (!data) {
+    const parsed = await response.json().catch(() => null);
+    if (!parsed || typeof parsed !== "object") {
       logger.warn(
         { url: COMPILER_RUNNER_URL },
         "[compiler] Rust runner returned invalid JSON, falling back to local execution",
       );
       return null;
     }
+    const data = parsed as Record<string, unknown>;
     // Validate response shape to prevent propagating malformed data when the
     // sidecar returns valid JSON with unexpected fields (e.g., error envelope).
     if (
@@ -586,7 +587,15 @@ async function tryRustRunner(
       );
       return null;
     }
-    return data;
+    return {
+      stdout: data.stdout,
+      stderr: data.stderr,
+      exitCode: typeof data.exitCode === "number" ? data.exitCode : null,
+      executionTimeMs: typeof data.executionTimeMs === "number" ? data.executionTimeMs : 0,
+      timedOut: data.timedOut,
+      oomKilled: data.oomKilled,
+      compileOutput: typeof data.compileOutput === "string" ? data.compileOutput : null,
+    };
   } catch (error) {
     logger.warn(
       { error, url: COMPILER_RUNNER_URL },
