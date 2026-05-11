@@ -45,8 +45,12 @@ export type { SubmissionResultView, SubmissionDetailView };
 function normalizeSubmission(data: Record<string, unknown>): SubmissionDetailView {
   const results = Array.isArray(data.results)
     ? data.results.map((result) => {
-        const record = result as Record<string, unknown>;
-        const testCase = record.testCase as Record<string, unknown> | null;
+        const record: Record<string, unknown> = result;
+        const rawTestCase = record.testCase;
+        const testCase: Record<string, unknown> | null =
+          rawTestCase !== null && typeof rawTestCase === "object"
+            ? (rawTestCase as Record<string, unknown>)
+            : null;
 
         return {
           id: String(record.id),
@@ -67,8 +71,16 @@ function normalizeSubmission(data: Record<string, unknown>): SubmissionDetailVie
       })
     : [];
 
-  const user = data.user as Record<string, unknown> | null;
-  const problem = data.problem as Record<string, unknown> | null;
+  const rawUser = data.user;
+  const user: Record<string, unknown> | null =
+    rawUser !== null && typeof rawUser === "object"
+      ? (rawUser as Record<string, unknown>)
+      : null;
+  const rawProblem = data.problem;
+  const problem: Record<string, unknown> | null =
+    rawProblem !== null && typeof rawProblem === "object"
+      ? (rawProblem as Record<string, unknown>)
+      : null;
   const submittedAtValue = data.submittedAt;
   const submittedAt =
     typeof submittedAtValue === "number" && Number.isFinite(submittedAtValue)
@@ -136,7 +148,7 @@ export function useSubmissionPolling(initialSubmission: SubmissionDetailView) {
       es.addEventListener("result", (event: MessageEvent) => {
         if (!sseActive) return;
         try {
-          const data = JSON.parse(event.data as string) as Record<string, unknown>;
+          const data: Record<string, unknown> = JSON.parse(event.data);
           const normalized = normalizeSubmission(data);
           setSubmission((prev) => ({ ...normalized, sourceCode: normalized.sourceCode || prev.sourceCode }));
           setError(false);
