@@ -14,7 +14,7 @@
 **Description:** The fetch call has no AbortController. If user navigates away, the fetch continues and may mutate state on unmounted component.
 **Fix:** Add AbortController inside handleSubmit, pass signal to fetch, abort on cleanup/unmount.
 **Estimated effort:** 10 min
-**Status:** pending
+**Status:** completed
 
 ### 1.2 Add AbortController to forgot-password form
 **Severity:** MEDIUM
@@ -22,7 +22,7 @@
 **Description:** Same issue as 1.1. Fetch call has no AbortController.
 **Fix:** Add AbortController, abort previous request on re-submit.
 **Estimated effort:** 10 min
-**Status:** pending
+**Status:** completed
 
 ---
 
@@ -39,7 +39,7 @@
 **Description:** 7 instances of `throw new Error(getApiError(...))` used for expected API error flow control. Conflates programmer errors with user-facing conditions.
 **Fix:** Replace each `throw new Error(...)` with explicit error handling (set error state + return) within the existing try/catch.
 **Estimated effort:** 30 min
-**Status:** pending
+**Status:** completed
 
 ---
 
@@ -51,7 +51,7 @@
 **Description:** Success flow always pushes to `/login` regardless of any `redirect` search param.
 **Fix:** Accept optional `redirect` search param and navigate there on success. Fall back to `/login`.
 **Estimated effort:** 10 min
-**Status:** pending
+**Status:** completed
 
 ### 3.2 Fix hardcoded English string in signup form
 **Severity:** LOW
@@ -59,7 +59,7 @@
 **Description:** `"Passwords match"` is hardcoded in English.
 **Fix:** Replace with `t("passwordsMatch")` and add key to `messages/en.json` and `messages/ko.json`.
 **Estimated effort:** 5 min
-**Status:** pending
+**Status:** completed
 
 ---
 
@@ -71,7 +71,7 @@
 **Description:** Docstring claims universal `Date.now()` replacement but `execute.ts` uses raw `Date.now()` for container lifecycle.
 **Fix:** Narrow docstring to "Use this for DB timestamp comparisons in transactional code".
 **Estimated effort:** 2 min
-**Status:** pending
+**Status:** completed
 
 ### 4.2 Log pre-restore snapshot unlink failures
 **Severity:** LOW
@@ -79,7 +79,7 @@
 **Description:** `unlink(fullPath).catch(() => {})` silently swallows file deletion errors.
 **Fix:** Log the unlink failure with the existing pino logger.
 **Estimated effort:** 5 min
-**Status:** pending
+**Status:** completed
 
 ---
 
@@ -95,19 +95,19 @@
 
 ## Acceptance Criteria
 
-- [ ] `npm run lint` passes with 0 errors, 0 warnings
-- [ ] `npm run build` passes
-- [ ] `npm run test:unit` passes
-- [ ] reset-password form has AbortController
-- [ ] forgot-password form has AbortController
-- [ ] All 7 throw-based flow control instances replaced
-- [ ] verify-email page supports redirect param
-- [ ] signup form uses translation key for "Passwords match"
-- [ ] db-time.ts docstring narrowed
-- [ ] pre-restore-snapshot unlink errors logged
+- [x] `npm run lint` passes with 0 errors, 0 warnings
+- [x] `npm run build` passes
+- [x] `npm run test:unit` passes
+- [x] reset-password form has AbortController
+- [x] forgot-password form has AbortController
+- [x] All 7 throw-based flow control instances replaced
+- [x] verify-email page supports redirect param
+- [x] signup form uses translation key for "Passwords match"
+- [x] db-time.ts docstring narrowed
+- [x] pre-restore-snapshot unlink errors logged
 
 ---
 
 ## Deploy Status
 
-**DEPLOY:** TBD after implementation
+**DEPLOY:** per-cycle-success (all gates green)
