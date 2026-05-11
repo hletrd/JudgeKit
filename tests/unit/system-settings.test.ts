@@ -118,14 +118,61 @@ describe("getSystemSettings", () => {
       siteTitle: "Fallback Site",
       siteDescription: "Fallback desc",
       timeZone: "America/New_York",
-      platformMode: "exam",
       updatedAt: new Date("2025-06-01"),
+      aiAssistantEnabled: true,
     };
     mocks.dbQuerySystemSettingsFindFirst.mockRejectedValue(new Error("column not found"));
     mocks.dbSelectFromWhereLimit.mockResolvedValue([fakeRow]);
 
     const result = await getSystemSettings();
-    expect(result).toEqual(fakeRow);
+    expect(result).toEqual({
+      id: "global",
+      siteTitle: "Fallback Site",
+      siteDescription: "Fallback desc",
+      siteIconUrl: null,
+      timeZone: "America/New_York",
+      platformMode: null,
+      aiAssistantEnabled: true,
+      publicSignupEnabled: null,
+      signupHcaptchaEnabled: null,
+      hcaptchaSiteKey: null,
+      hcaptchaSecret: null,
+      defaultLanguage: null,
+      defaultLocale: null,
+      updatedAt: fakeRow.updatedAt,
+      allowedHosts: null,
+      homePageContent: null,
+      footerContent: null,
+      loginRateLimitMaxAttempts: null,
+      loginRateLimitWindowMs: null,
+      loginRateLimitBlockMs: null,
+      apiRateLimitMax: null,
+      apiRateLimitWindowMs: null,
+      submissionRateLimitMaxPerMinute: null,
+      submissionMaxPending: null,
+      submissionGlobalQueueLimit: null,
+      defaultTimeLimitMs: null,
+      defaultMemoryLimitMb: null,
+      maxSourceCodeSizeBytes: null,
+      staleClaimTimeoutMs: null,
+      sessionMaxAgeSeconds: null,
+      minPasswordLength: null,
+      defaultPageSize: null,
+      maxSseConnectionsPerUser: null,
+      ssePollIntervalMs: null,
+      sseTimeoutMs: null,
+      compilerTimeLimitMs: null,
+      uploadMaxImageSizeBytes: null,
+      uploadMaxFileSizeBytes: null,
+      uploadMaxImageDimension: null,
+      smtpHost: null,
+      smtpPort: null,
+      smtpSecure: null,
+      smtpUser: null,
+      smtpPass: null,
+      smtpFrom: null,
+      emailVerificationRequired: null,
+    });
     expect(mocks.dbSelectFromWhereLimit).toHaveBeenCalledWith(1);
   });
 

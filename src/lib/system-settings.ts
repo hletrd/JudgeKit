@@ -89,7 +89,10 @@ export async function getSystemSettings(): Promise<SystemSettingsRecord | undefi
       where: eq(systemSettings.id, GLOBAL_SETTINGS_ID),
     });
   } catch {
-    // Fallback: query without new columns (migration may not have run yet)
+    // Fallback: query without new columns (migration may not have run yet).
+    // Construct a full SystemSettingsRecord by spreading the partial result
+    // with explicit null for missing fields — never cast a partial select
+    // to the full type.
     const rows = await db
       .select({
         id: systemSettings.id,
@@ -104,7 +107,58 @@ export async function getSystemSettings(): Promise<SystemSettingsRecord | undefi
       .from(systemSettings)
       .where(eq(systemSettings.id, GLOBAL_SETTINGS_ID))
       .limit(1);
-    return (rows[0] ?? undefined) as SystemSettingsRecord | undefined;
+
+    const partial = rows[0];
+    if (!partial) return undefined;
+
+    return {
+      id: partial.id,
+      siteTitle: partial.siteTitle,
+      siteDescription: partial.siteDescription,
+      siteIconUrl: null,
+      timeZone: partial.timeZone,
+      platformMode: null,
+      aiAssistantEnabled: partial.aiAssistantEnabled,
+      publicSignupEnabled: null,
+      signupHcaptchaEnabled: null,
+      hcaptchaSiteKey: null,
+      hcaptchaSecret: null,
+      defaultLanguage: null,
+      defaultLocale: null,
+      updatedAt: partial.updatedAt,
+      allowedHosts: null,
+      homePageContent: partial.homePageContent ?? null,
+      footerContent: partial.footerContent ?? null,
+      loginRateLimitMaxAttempts: null,
+      loginRateLimitWindowMs: null,
+      loginRateLimitBlockMs: null,
+      apiRateLimitMax: null,
+      apiRateLimitWindowMs: null,
+      submissionRateLimitMaxPerMinute: null,
+      submissionMaxPending: null,
+      submissionGlobalQueueLimit: null,
+      defaultTimeLimitMs: null,
+      defaultMemoryLimitMb: null,
+      maxSourceCodeSizeBytes: null,
+      staleClaimTimeoutMs: null,
+      sessionMaxAgeSeconds: null,
+      minPasswordLength: null,
+      defaultPageSize: null,
+      maxSseConnectionsPerUser: null,
+      ssePollIntervalMs: null,
+      sseTimeoutMs: null,
+      compilerTimeLimitMs: null,
+      uploadMaxImageSizeBytes: null,
+      uploadMaxFileSizeBytes: null,
+      uploadMaxImageDimension: null,
+      smtpHost: null,
+      smtpPort: null,
+      smtpSecure: null,
+      smtpUser: null,
+      smtpPass: null,
+      smtpFrom: null,
+      emailVerificationRequired: null,
+    };
   }
 }
 
