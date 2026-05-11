@@ -141,6 +141,11 @@ export async function streamBackupWithFiles(signal?: AbortSignal, dbNow?: Date):
       dbChunks.push(value);
     }
   } catch (error) {
+    // Propagate abort errors without wrapping so the route handler can
+    // distinguish client disconnects from actual backup failures.
+    if (error instanceof DOMException && error.name === "AbortError") {
+      throw error;
+    }
     throw new Error("backupStreamReadFailed", { cause: error });
   } finally {
     dbReader.releaseLock();
@@ -175,7 +180,11 @@ export async function streamBackupWithFiles(signal?: AbortSignal, dbNow?: Date):
         byteLength: buffer.byteLength,
       });
       included++;
-    } catch {
+    } catch (err) {
+      // Propagate abort errors so the route handler can detect client disconnects.
+      if (err instanceof DOMException && err.name === "AbortError") {
+        throw err;
+      }
       // File may have been deleted from disk; skip silently
       skipped++;
     }

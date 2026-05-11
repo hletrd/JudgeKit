@@ -366,11 +366,11 @@ export const POST = createApiHandler({
     }
 
     // Strip compileOutput when the problem has showCompileOutput=false.
-    // The submission owner created the code so they can see compile errors,
-    // but the problem's visibility setting takes precedence — if the instructor
-    // disabled compile output, even the submitter should not see it in the
-    // API response. See C9-2 (cycle 9 review).
-    if (submission && problem.showCompileOutput === false) {
+    // Users with submissions.view_all (instructors/admins) can always see
+    // compile output regardless of the problem setting, matching the behavior
+    // of sanitizeSubmissionForViewer in the detail endpoint.
+    const postCaps = await resolveCapabilities(user.role);
+    if (submission && !postCaps.has("submissions.view_all") && problem.showCompileOutput === false) {
       submission.compileOutput = null;
     }
 

@@ -105,6 +105,16 @@ export async function POST(request: NextRequest) {
       },
     });
   } catch (error) {
+    // Distinguish client-initiated aborts (disconnect / cancelled download)
+    // from actual backup failures to avoid logging noise and return the
+    // correct status code.
+    if (
+      error instanceof DOMException &&
+      error.name === "AbortError"
+    ) {
+      logger.info("Database backup aborted by client");
+      return NextResponse.json({ error: "backupAborted" }, { status: 499 });
+    }
     logger.error({ err: error }, "Database backup error");
     return NextResponse.json({ error: "backupFailed" }, { status: 500 });
   }

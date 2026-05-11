@@ -10,6 +10,7 @@ import { recordAuditEvent } from "@/lib/audit/events";
 import { readUploadedFile, deleteUploadedFile } from "@/lib/files/storage";
 import { logger } from "@/lib/logger";
 import { isImageMimeType } from "@/lib/files/image-processing";
+import { verifyFileMagicBytes } from "@/lib/files/validation";
 import { getAccessibleProblemIds } from "@/lib/auth/permissions";
 import { contentDispositionAttachment } from "@/lib/http/content-disposition";
 
@@ -105,18 +106,24 @@ export async function GET(
     }
 
     const isImage = isImageMimeType(file.mimeType);
+    // Verify file content matches declared MIME type via magic bytes.
+    // If mismatched, fall back to application/octet-stream to prevent
+    // content-sniffing attacks from disguised file content.
+    const magicMatches = verifyFileMagicBytes(buffer, file.mimeType);
+    const contentType = magicMatches ? file.mimeType : "application/octet-stream";
+
     // Sanitize originalName: reject control characters and newlines that could
     // break HTTP headers or enable header injection (CRLF).
     const sanitizedName = file.originalName.replace(/[\x00-\x1f\x7f]/g, "");
     const ext = sanitizedName.lastIndexOf(".") > 0 ? sanitizedName.slice(sanitizedName.lastIndexOf(".")) : "";
-    const disposition = isImage
+    const disposition = isImage && magicMatches
       ? "inline"
       : contentDispositionAttachment(sanitizedName.replace(/\.[^.]+$/, ""), ext);
 
     return new NextResponse(new Uint8Array(buffer), {
       status: 200,
       headers: {
-        "Content-Type": file.mimeType,
+        "Content-Type": contentType,
         "Content-Length": String(buffer.length),
         "Content-Disposition": disposition,
         "Cache-Control": "private, no-store, max-age=0",

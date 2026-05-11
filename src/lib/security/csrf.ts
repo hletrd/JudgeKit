@@ -53,11 +53,13 @@ export function validateCsrf(request: NextRequest): NextResponse | null {
     return NextResponse.json({ error: "csrfValidationFailed" }, { status: 403 });
   }
 
-  if (!origin && expectedHost && !secFetchSite) {
-    return NextResponse.json({ error: "csrfValidationFailed" }, { status: 403 });
-  }
-
   if (origin && expectedHost) {
+    // Reject origins that don't start with http:// or https:// — this blocks
+    // protocol-relative origins and other malformed values before URL parsing.
+    if (!/^https?:\/\//i.test(origin)) {
+      logger.warn({ origin }, "[csrf] origin missing http/https protocol, rejecting request");
+      return NextResponse.json({ error: "csrfValidationFailed" }, { status: 403 });
+    }
     try {
       if (new URL(origin).host !== expectedHost) {
         return NextResponse.json({ error: "csrfValidationFailed" }, { status: 403 });

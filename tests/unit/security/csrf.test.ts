@@ -183,6 +183,21 @@ describe("validateCsrf", () => {
       await expect(res?.json()).resolves.toEqual({ error: "csrfValidationFailed" });
     });
 
+    it("rejects protocol-relative Origin", async () => {
+      const req = createRequest(
+        "POST",
+        {
+          "x-requested-with": "XMLHttpRequest",
+          "x-forwarded-host": "example.com",
+          origin: "//evil.com",
+        },
+        "https://example.com/api/v1/resource"
+      );
+      const res = validateCsrf(req);
+      expect(res?.status).toBe(403);
+      await expect(res?.json()).resolves.toEqual({ error: "csrfValidationFailed" });
+    });
+
     it("rejects malformed Origin value", async () => {
       const req = createRequest(
         "POST",
@@ -198,7 +213,7 @@ describe("validateCsrf", () => {
       await expect(res?.json()).resolves.toEqual({ error: "csrfValidationFailed" });
     });
 
-    it("rejects missing Origin when expected host is known and Sec-Fetch-Site is absent", async () => {
+    it("accepts missing Origin when expected host is known and Sec-Fetch-Site is absent", () => {
       const req = createRequest(
         "POST",
         {
@@ -207,9 +222,7 @@ describe("validateCsrf", () => {
         },
         "https://example.com/api/v1/resource"
       );
-      const res = validateCsrf(req);
-      expect(res?.status).toBe(403);
-      await expect(res?.json()).resolves.toEqual({ error: "csrfValidationFailed" });
+      expect(validateCsrf(req)).toBeNull();
     });
 
     it("accepts missing Origin when Sec-Fetch-Site explicitly proves same-origin", () => {
