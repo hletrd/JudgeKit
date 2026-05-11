@@ -52,6 +52,7 @@ export function CountdownTimer({ deadline, label, onExpired }: CountdownTimerPro
   const [thresholdUrgent, setThresholdUrgent] = useState(false);
   const t = useTranslations("groups");
   const lastHiddenAtRef = useRef<number | null>(null);
+  const syncCleanupRef = useRef<(() => void) | null>(null);
 
   const handleExpired = useCallback(() => {
     if (!expiredRef.current) {
@@ -109,7 +110,11 @@ export function CountdownTimer({ deadline, label, onExpired }: CountdownTimerPro
   }, []);
 
   useEffect(() => {
-    return syncTime();
+    const cleanup = syncTime();
+    return () => {
+      cleanup();
+      syncCleanupRef.current = null;
+    };
   }, [syncTime]);
 
   useEffect(() => {
@@ -182,8 +187,10 @@ export function CountdownTimer({ deadline, label, onExpired }: CountdownTimerPro
       }
 
       if (document.visibilityState === "visible") {
-        // Re-sync server time before recalculating to correct any drift.
-        syncTime();
+        // Abort any in-flight sync before starting a new one to prevent
+        // queuing multiple concurrent /api/v1/time requests on rapid tab switches.
+        syncCleanupRef.current?.();
+        syncCleanupRef.current = syncTime();
 
         const hiddenDurationMs =
           lastHiddenAtRef.current !== null ? Date.now() - lastHiddenAtRef.current : 0;
