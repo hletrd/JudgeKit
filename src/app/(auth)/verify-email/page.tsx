@@ -58,7 +58,7 @@ export default function VerifyEmailPage() {
     verify();
 
     return () => ctrl.abort();
-  }, [token, t]);
+  }, [token, t, redirect]);
 
   return (
     <Card className="w-full max-w-xl">
