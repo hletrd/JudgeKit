@@ -27,6 +27,13 @@ function normalizeLanguageFilter(value?: string | null) {
   return typeof value === "string" ? value.trim().slice(0, 50) : "";
 }
 
+function normalizeStatusFilter(value: string | null) {
+  const trimmed = typeof value === "string" ? value.trim() : "";
+  return STATUS_FILTER_VALUES.includes(trimmed as (typeof STATUS_FILTER_VALUES)[number])
+    ? (trimmed as (typeof STATUS_FILTER_VALUES)[number])
+    : "";
+}
+
 function normalizeGroupFilter(value?: string | null) {
   return typeof value === "string" ? value.trim().slice(0, 64) : "";
 }
@@ -43,9 +50,7 @@ export const GET = createApiHandler({
   handler: async (req: NextRequest, { user }) => {
     const searchParams = req.nextUrl.searchParams;
     const searchQuery = (searchParams.get("search") ?? "").trim().slice(0, 200);
-    const statusFilter = STATUS_FILTER_VALUES.includes((searchParams.get("status") ?? "") as (typeof STATUS_FILTER_VALUES)[number])
-      ? ((searchParams.get("status") ?? "") as (typeof STATUS_FILTER_VALUES)[number])
-      : "";
+    const statusFilter = normalizeStatusFilter(searchParams.get("status"));
     const groupFilter = normalizeGroupFilter(searchParams.get("group"));
     const languageFilter = normalizeLanguageFilter(searchParams.get("language"));
     const dateFrom = normalizeDateFilter(searchParams.get("dateFrom"));
