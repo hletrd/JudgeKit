@@ -48,6 +48,34 @@ let lastAuditEventWriteFailureAt: string | null = null;
 let droppedAuditEvents = 0;
 
 /**
+ * Compute the JSON serialization length of a value without actually
+ * serializing it. For primitives this is O(1); for objects/arrays it
+ * sums child sizes recursively. Avoids the O(n^2) cost of repeatedly
+ * calling JSON.stringify inside truncateObject.
+ */
+function computeJsonLength(value: JsonValue): number {
+  if (value === null) return 4;
+  if (typeof value === "boolean") return value ? 4 : 5;
+  if (typeof value === "number") return String(value).length;
+  if (typeof value === "string") return value.length + 2;
+  if (Array.isArray(value)) {
+    let len = 2; // [ ]
+    for (const item of value) {
+      len += computeJsonLength(item) + 1; // +1 for comma
+    }
+    return len;
+  }
+  if (typeof value === "object") {
+    let len = 2; // { }
+    for (const [k, v] of Object.entries(value)) {
+      len += JSON.stringify(k).length + 1 + computeJsonLength(v) + 1; // "key":value,
+    }
+    return len;
+  }
+  return 0;
+}
+
+/**
  * Recursively truncate string values within a JSON-compatible object
  * so that the serialized form stays within `budget` bytes.
  * Produces valid JSON at every level — never cuts mid-string.
@@ -65,11 +93,10 @@ function truncateObject(obj: JsonValue, budget: number): JsonValue {
     let remaining = budget - 2; // [ ]
     for (const item of obj) {
       const truncated = truncateObject(item, remaining - 1);
-      const serialized = JSON.stringify(truncated);
-      if (!serialized) break;
-      if (remaining - serialized.length - 1 < 0) break;
+      const cost = computeJsonLength(truncated);
+      if (remaining - cost - 1 < 0) break;
       result.push(truncated);
-      remaining -= serialized.length + 1; // +1 for comma
+      remaining -= cost + 1; // +1 for comma
     }
     return result;
   }
@@ -77,14 +104,14 @@ function truncateObject(obj: JsonValue, budget: number): JsonValue {
     const result: Record<string, JsonValue> = {};
     let remaining = budget - 2; // { }
     for (const [key, value] of Object.entries(obj)) {
-      const keyCost = JSON.stringify(key).length + 2; // key + ":" + ","
+      const keyCost = JSON.stringify(key).length + 1; // "key":
       if (remaining - keyCost <= 0) break;
       remaining -= keyCost;
       const truncated = truncateObject(value, remaining);
-      const valCost = JSON.stringify(truncated).length + 1;
-      if (remaining - valCost < 0) break;
+      const cost = computeJsonLength(truncated);
+      if (remaining - cost < 0) break;
       result[key] = truncated;
-      remaining -= valCost;
+      remaining -= cost;
     }
     return result;
   }
