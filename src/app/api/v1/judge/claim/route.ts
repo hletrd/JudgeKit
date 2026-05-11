@@ -258,9 +258,15 @@ export async function POST(request: NextRequest) {
       workerId,
     });
 
-    const claimed: ClaimedSubmissionRow | undefined = claimedRaw
-      ? claimedSubmissionRowSchema.parse(claimedRaw)
-      : undefined;
+    let claimed: ClaimedSubmissionRow | undefined;
+    if (claimedRaw) {
+      try {
+        claimed = claimedSubmissionRowSchema.parse(claimedRaw);
+      } catch (parseErr) {
+        logger.error({ err: parseErr, claimedRaw }, "[judge/claim] Claimed row schema mismatch");
+        return apiError("invalidJudgeClaim", 422);
+      }
+    }
 
     if (!claimed) {
       if (workerId) {
