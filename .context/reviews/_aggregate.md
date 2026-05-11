@@ -1,6 +1,6 @@
 # Aggregate Review — Cycle 1 (RPF Loop)
 
-**Date:** 2026-05-10
+**Date:** 2026-05-11
 **Reviewers:** code-reviewer, perf-reviewer, security-reviewer, test-engineer, architect
 **Scope:** New findings from this cycle's deep code review
 
@@ -10,88 +10,79 @@
 
 | Severity | Count |
 |----------|-------|
-| CRITICAL | 1 |
-| HIGH | 0 |
-| MEDIUM | 16 |
-| LOW | 13 |
-| **Total** | **30** |
+| CRITICAL | 0 |
+| HIGH     | 2 |
+| MEDIUM   | 2 |
+| LOW      | 2 |
+| **Total**| **6** |
 
 ---
 
-## CRITICAL
+## HIGH
 
-### C1: SSE Parse Failure Does Not Trigger Fetch Fallback
-- **File:** `src/hooks/use-submission-polling.ts:143-149`
+### H1: setState in useEffect Blocking ESLint (verify-email page)
+- **File:** `src/app/(auth)/verify-email/page.tsx:20-21,36-37,40,45,47-48`
+- **Reviewer:** code-reviewer, perf-reviewer
+- **Description:** The verify-email page calls `setStatus()` and `setErrorMessage()` directly inside `useEffect`. The `react-hooks/set-state-in-effect` ESLint rule flags this as an error. Build gates are blocked.
+- **Fix:** Restructure the component to avoid setState in effect bodies. Use initial state values or callback-based flows.
+
+### H2: Unused Import After Refactoring
+- **File:** `src/app/(public)/groups/[id]/assignment-form-dialog.tsx:9`
 - **Reviewer:** code-reviewer
-- **Description:** When JSON.parse fails on an SSE message, the polling stops entirely without falling back to fetch polling. Users must manually refresh.
-- **Fix:** Call `startFetchPolling()` in the parse-failure catch block.
+- **Description:** `getApiData` is imported but never used. Leftover from commit 3c8057f3 refactoring. Produces an ESLint warning.
+- **Fix:** Remove unused import.
 
 ---
 
-## MEDIUM (16)
+## MEDIUM
 
-1. **Zod Validation Returns Only First Error** (`src/lib/api/handler.ts:163-166`) - code-reviewer
-2. **File Extension Extraction Fails on Dotfiles** (`src/app/api/v1/files/[id]/route.ts:108`) - code-reviewer
-3. **Judge Claim Raw SQL Parse Can Throw Unhandled** (`src/app/api/v1/judge/claim/route.ts:261-263`) - code-reviewer
-4. **CSRF Validation Rejects Empty Origin Without sec-fetch-site** (`src/lib/security/csrf.ts:56-58`) - code-reviewer
-5. **Offset Pagination Without Index Optimization** (`src/app/api/v1/submissions/route.ts:114-133`) - perf-reviewer
-6. **truncateObject Has O(n^2) JSON Serialization** (`src/lib/audit/events.ts:55-91`) - perf-reviewer
-7. **Infinite Polling Retry Without Error Classification** (`src/hooks/use-submission-polling.ts:267`) - perf-reviewer
-8. **N+1 Query in Cursor Pagination** (`src/app/api/v1/submissions/route.ts:61-68`) - perf-reviewer
-9. **Double Query for includeSummary** (`src/app/api/v1/submissions/route.ts:139-148`) - perf-reviewer
-10. **Backup Stream Abort Handling Gap** (`src/app/api/v1/admin/backup/route.ts:90-106`) - security-reviewer
-11. **File Download Content-Type Not Validated Against Magic Bytes** (`src/app/api/v1/files/[id]/route.ts:113-125`) - security-reviewer
-12. **Submissions API compileOutput Filter Inconsistency** (`src/app/api/v1/submissions/route.ts:373-375`) - security-reviewer
-13. **No Unit Tests for Scoring Logic** (`src/lib/judge/verdict.ts`) - test-engineer (HIGH impact)
-14. **No Unit Tests for useSourceDraft Hook** (`src/hooks/use-source-draft.ts`) - test-engineer
-15. **No Tests for Audit Event Buffer Flush** (`src/lib/audit/events.ts`) - test-engineer
-16. **Monolithic Handler Factory Without Middleware Composition** (`src/lib/api/handler.ts`) - architect
+### M1: COMPILER_RUNNER_URL Backfill Timing in Deploy Script
+- **File:** `deploy-docker.sh:453-520`
+- **Reviewer:** code-reviewer, security-reviewer, architect
+- **Description:** `ensure_env_literal` for COMPILER_RUNNER_URL runs before `.env.production` is transferred to remote. On first deploy, the key is never injected. Lines 514-520 only warn but do not fix.
+- **Fix:** Add post-transfer backfill for COMPILER_RUNNER_URL, or source `.env.deploy.*` files before backfill.
+
+### M2: verify-email Page Lacks Tests
+- **File:** `src/app/(auth)/verify-email/page.tsx`
+- **Reviewer:** test-engineer
+- **Description:** New auth surface with zero test coverage. Missing tests for token absence, fetch errors, success flow, and navigation.
+- **Fix:** Add component tests.
 
 ---
 
-## LOW (13)
+## LOW
 
-1. **ICPC Cell Newline Formatting Relies on CSS Class** (`src/components/contest/leaderboard-table.tsx:69-81`) - code-reviewer
-2. **Duplicate API Key Auth Attempt** (`src/lib/api/auth.ts:66-83`) - code-reviewer
-3. **Rate Limit Eviction Timer Never Stops in Tests** (`src/lib/security/rate-limit.ts:70-81`) - perf-reviewer (already known)
-4. **Compiler Container Concurrency Limit Uses CPU Count Only** (`src/lib/compiler/execute.ts:32`) - perf-reviewer
-5. **CSRF Origin Check Bypass via Protocol-Relative Origin** (`src/lib/security/csrf.ts:60-68`) - security-reviewer
-6. **Test Seed Endpoint Accepts JSON Without Rate Limit** (`src/app/api/v1/test/seed/route.ts`) - security-reviewer
-7. **Docker Build Context Includes Entire Repository** (`src/lib/docker/client.ts:245-246`) - security-reviewer (already known)
-8. **No Tests for Error Boundaries** (`src/app/**/error.tsx`) - test-engineer
-9. **No Tests for Cursor Pagination Edge Cases** (`src/app/api/v1/submissions/route.ts:51-101`) - test-engineer
-10. **No Tests for Compiler Container Cleanup** (`src/lib/compiler/execute.ts:800-894`) - test-engineer
-11. **No Tests for CSRF Edge Cases** (`src/lib/security/csrf.ts`) - test-engineer
-12. **Custom Store Implementation in useSourceDraft** (`src/hooks/use-source-draft.ts`) - architect
-13. **Mixed Auth Patterns Across Routes** (Multiple API routes) - architect
+### L1: Cleanup Failures Silently Swallowed
+- **File:** `src/lib/compiler/execute.ts:406,418`
+- **Reviewer:** code-reviewer
+- **Description:** `.catch(() => {})` masks Docker cleanup failures.
+- **Fix:** Log at warn level.
+
+### L2: verify-email Token Not Client-Side Validated
+- **File:** `src/app/(auth)/verify-email/page.tsx:31`
+- **Reviewer:** security-reviewer
+- **Description:** No client-side format validation before sending token to server.
+- **Fix:** Add minimal length/format check.
 
 ---
 
 ## Cross-Agent Agreement
 
-The following findings were flagged by multiple reviewers:
-- **use-submission-polling issues:** code-reviewer (parse failure), perf-reviewer (infinite retry)
-- **src/lib/api/handler.ts:** code-reviewer (Zod error), architect (monolithic factory)
-- **src/lib/audit/events.ts:** perf-reviewer (O(n^2) JSON), test-engineer (missing tests)
+- **verify-email page:** code-reviewer (lint errors), perf-reviewer (cascading renders), test-engineer (missing tests), security-reviewer (input validation) — multi-agent consensus that this new surface needs attention.
+- **deploy script COMPILER_RUNNER_URL:** code-reviewer, security-reviewer, architect all flagged the ordering/robustness issue.
 
 ---
 
-## Relation to Existing Perspective Reviews
+## Relation to Previous Reviews
 
-The 6 perspective reviews (student, instructor, job-applicant, admin, assistant, security-researcher) identified 192 findings. This cycle's deep review found 30 NEW findings focused on:
-- Code logic and edge cases not visible from user-facing perspective
-- Performance characteristics of API endpoints
-- Test coverage gaps in core business logic
-- Architectural coupling and extensibility risks
-- Additional security defense-in-depth items
-
-No overlap with existing CRITICAL findings. The existing CRITICALs (timer drift, anti-cheat bypass, judge result fabrication) were confirmed still present in the codebase.
+This cycle focused on recently changed surfaces (SMTP email/verification, API client refactoring, deploy script) and gate failures. Previous CRITICAL/HIGH findings (timer drift, anti-cheat, auth bypasses, SQL injection risks) were verified still resolved. No regressions detected in previously fixed areas.
 
 ---
 
 ## Recommended Priority for Fixes
 
-1. **Immediate:** C1 - SSE parse failure fallback (breaks live updates)
-2. **Short-term:** M13 - No tests for scoring logic (affects fairness), M5-M9 - Performance issues
-3. **Medium-term:** M1-M4 - Code quality issues, M10-M12 - Security gaps
-4. **Long-term:** LOW items, architecture refactoring
+1. **Immediate:** H1 — Fix verify-email setState-in-effect to unblock lint gate
+2. **Immediate:** H2 — Remove unused import to clean warning
+3. **Short-term:** M1 — Fix deploy script COMPILER_RUNNER_URL ordering for algo target
+4. **Medium-term:** M2 — Add verify-email tests
+5. **Long-term:** L1, L2 — Defensive improvements
