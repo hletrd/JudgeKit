@@ -27,7 +27,8 @@ export async function POST(request: NextRequest) {
 
     if (contentType?.includes("multipart/form-data")) {
       const formData = await request.formData();
-      const file = formData.get("file") as File | null;
+      const fileValue = formData.get("file");
+      const file = fileValue instanceof File ? fileValue : null;
       if (!file) {
         return NextResponse.json({ error: "noFileProvided" }, { status: 400 });
       }

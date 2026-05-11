@@ -20,7 +20,8 @@ export const POST = createApiHandler({
   handler: async (request, { user }) => {
     try {
       const formData = await request.formData();
-      const file = formData.get("file") as File | null;
+      const fileValue = formData.get("file");
+      const file = fileValue instanceof File ? fileValue : null;
 
       if (!file) {
         return apiError("noFileProvided", 400);

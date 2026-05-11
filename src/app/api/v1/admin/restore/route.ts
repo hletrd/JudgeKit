@@ -36,7 +36,8 @@ export async function POST(request: NextRequest) {
     if (rateLimitError) return rateLimitError;
 
     const formData = await request.formData();
-    const file = formData.get("file") as File | null;
+    const fileValue = formData.get("file");
+    const file = fileValue instanceof File ? fileValue : null;
     const passwordValue = formData.get("password");
     const password = typeof passwordValue === "string" ? passwordValue : null;
 

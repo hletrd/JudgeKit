@@ -47,7 +47,8 @@ export async function POST(request: NextRequest) {
       const formData = await request.formData();
       const passwordValue = formData.get("password");
       password = typeof passwordValue === "string" ? passwordValue : null;
-      const file = formData.get("file") as File | null;
+      const fileValue = formData.get("file");
+      const file = fileValue instanceof File ? fileValue : null;
 
       if (!password || typeof password !== "string") {
         return NextResponse.json({ error: "passwordRequired" }, { status: 400 });
