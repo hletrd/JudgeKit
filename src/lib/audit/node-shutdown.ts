@@ -45,8 +45,8 @@ export function registerAuditFlushOnShutdown() {
   processLike.once("SIGINT", () => {
     stopSseCleanupTimer();
     stopSharedPollTimer();
-    void flushAuditBuffer().finally(() => {
-      processLike.exit?.(130);
+    void flushAuditBuffer().catch(() => {
+      // Best-effort flush during shutdown — ignore errors
     });
   });
 }
