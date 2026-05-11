@@ -138,7 +138,8 @@ export function GroupMembersManager({
       const payload = await response.json().catch(() => ({ data: {} }));
 
       if (!response.ok) {
-        throw new Error(getApiError(payload) || "memberAddFailed");
+        toast.error(t(getApiError(payload) || "memberAddFailed"));
+        return;
       }
 
       const dataObj = getApiData(payload);
@@ -199,7 +200,8 @@ export function GroupMembersManager({
       const payload = await response.json().catch(() => ({ enrolled: 0, skipped: 0 }));
 
       if (!response.ok) {
-        throw new Error(getApiError(payload) || "bulkAddFailed");
+        toast.error(t(getApiError(payload) || "bulkAddFailed"));
+        return;
       }
 
       const enrolled = typeof payload === "object" && payload !== null && "enrolled" in payload && typeof payload.enrolled === "number" ? payload.enrolled : 0;
@@ -307,7 +309,8 @@ export function GroupMembersManager({
 
       if (!response.ok) {
         const payload = await response.json().catch(() => ({}));
-        throw new Error(getApiError(payload) || "memberRemoveFailed");
+        toast.error(t(getApiError(payload) || "memberRemoveFailed"));
+        return;
       }
 
       setCurrentMembers((current) => current.filter((entry) => entry.userId !== member.userId));

@@ -275,7 +275,8 @@ export default function AssignmentFormDialog({
       const payload = await response.json().catch(() => ({ data: {} }));
 
       if (!response.ok) {
-        throw new Error(getApiError(payload) || (isEditing ? "assignmentUpdateFailed" : "assignmentCreateFailed"));
+        toast.error(t(getApiError(payload) || (isEditing ? "assignmentUpdateFailed" : "assignmentCreateFailed")));
+        return;
       }
 
       toast.success(

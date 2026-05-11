@@ -89,7 +89,8 @@ export default function EditGroupDialog({ group }: { group: EditableGroup }) {
 
         if (!response.ok) {
           const errorBody = await response.json().catch(() => ({}));
-          throw new Error(getApiError(errorBody) || "updateError");
+          toast.error(t(getApiError(errorBody) || "updateError"));
+          return;
         }
 
         toast.success(t("updateSuccess"));

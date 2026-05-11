@@ -69,7 +69,8 @@ export default function CreateGroupDialog() {
         const data = await response.json().catch(() => ({ data: {} }));
 
         if (!response.ok) {
-          throw new Error(getApiError(data) || "createError");
+          toast.error(t(getApiError(data) || "createError"));
+          return;
         }
 
         toast.success(t("createSuccess"));

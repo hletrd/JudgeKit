@@ -338,7 +338,10 @@ export default function CreateProblemForm({
       const uploadData = await res.json().catch(() => ({ data: {} }));
 
       if (!res.ok) {
-        throw new Error(getApiError(uploadData) ?? "uploadFailed");
+        setDescription((prev) => prev.replace(placeholder, ""));
+        toast.error(t(getApiError(uploadData) ?? "uploadFailed"));
+        setIsUploadingImage(false);
+        return;
       }
 
       const dataObj = getApiData(uploadData);
@@ -442,7 +445,8 @@ export default function CreateProblemForm({
       const payload = await res.json().catch(() => ({ data: {} }));
 
       if (!res.ok) {
-        throw new Error(getApiError(payload) || (isEditing ? "updateError" : "createError"));
+        toast.error(t(getApiError(payload) || (isEditing ? "updateError" : "createError")));
+        return;
       }
 
       const dataObj = getApiData(payload);
