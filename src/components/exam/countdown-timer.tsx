@@ -113,6 +113,7 @@ export function CountdownTimer({ deadline, label, onExpired }: CountdownTimerPro
     const cleanup = syncTime();
     return () => {
       cleanup();
+      syncCleanupRef.current?.();
       syncCleanupRef.current = null;
     };
   }, [syncTime]);
@@ -212,6 +213,8 @@ export function CountdownTimer({ deadline, label, onExpired }: CountdownTimerPro
       if (timerId !== null) clearTimeout(timerId);
       staggeredTimerIdsRef.current.forEach((id) => clearTimeout(id));
       staggeredTimerIdsRef.current = [];
+      syncCleanupRef.current?.();
+      syncCleanupRef.current = null;
       document.removeEventListener("visibilitychange", handleVisibilityChange);
     };
   }, [deadline, handleExpired, t]);
