@@ -6,7 +6,7 @@ import { useTranslations } from "next-intl";
 import { nanoid } from "nanoid";
 import { Plus, Trash2 } from "lucide-react";
 import { toast } from "sonner";
-import { apiFetch, getApiError, getApiData } from "@/lib/api/client";
+import { apiFetch, getApiError } from "@/lib/api/client";
 import { Button } from "@/components/ui/button";
 import {
   Dialog,
