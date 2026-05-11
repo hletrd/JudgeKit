@@ -125,11 +125,28 @@ export function ProblemSubmissionForm({
 
       if (changed) {
         lastSnapshotRef.current = code;
-        void apiFetch("/api/v1/code-snapshots", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ problemId, assignmentId, language: languageRef.current, sourceCode: code }),
-        }).catch(() => {});
+        // Send snapshot with retry (exponential backoff, max 3 attempts).
+        // Previously, network failures were silently swallowed, creating
+        // gaps in the anti-cheat audit log.
+        async function sendSnapshot(attempt = 1) {
+          try {
+            const res = await apiFetch("/api/v1/code-snapshots", {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({ problemId, assignmentId, language: languageRef.current, sourceCode: code }),
+            });
+            if (!res.ok && attempt < 3) {
+              await new Promise((r) => setTimeout(r, 1000 * Math.pow(2, attempt - 1)));
+              await sendSnapshot(attempt + 1);
+            }
+          } catch {
+            if (attempt < 3) {
+              await new Promise((r) => setTimeout(r, 1000 * Math.pow(2, attempt - 1)));
+              await sendSnapshot(attempt + 1);
+            }
+          }
+        }
+        void sendSnapshot();
       }
 
       if (!isMountedRef.current) return;
