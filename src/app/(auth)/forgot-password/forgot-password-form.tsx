@@ -53,6 +53,7 @@ export function ForgotPasswordForm() {
       }
 
       setSuccess(true);
+      setLoading(false);
     } catch {
       if (ctrl.signal.aborted) return;
       setError(t("sendFailed"));
