@@ -230,4 +230,71 @@ describe("extractFinalJudgeDetail", () => {
       runtimeErrorType: "SIGSEGV",
     });
   });
+
+  it("returns null runtimeErrorType when first failure is not runtime_error", () => {
+    expect(extractFinalJudgeDetail([
+      { testCaseId: "tc1", status: "accepted" },
+      { testCaseId: "tc2", status: "wrong_answer" },
+      { testCaseId: "tc3", status: "time_limit_exceeded" },
+    ])).toEqual({
+      failedTestCaseIndex: 1,
+      runtimeErrorType: null,
+    });
+  });
+
+  it("returns null detail for empty results", () => {
+    expect(extractFinalJudgeDetail([])).toEqual({
+      failedTestCaseIndex: null,
+      runtimeErrorType: null,
+    });
+  });
+
+  it("returns null runtimeErrorType when runtime_error lacks runtimeErrorType field", () => {
+    expect(extractFinalJudgeDetail([
+      { testCaseId: "tc1", status: "runtime_error" },
+    ])).toEqual({
+      failedTestCaseIndex: 0,
+      runtimeErrorType: null,
+    });
+  });
+});
+
+describe("computeFinalJudgeMetrics edge cases", () => {
+  it("returns 33.33 for 1 out of 3 accepted", () => {
+    const results = [
+      { testCaseId: "tc1", status: "accepted" },
+      { testCaseId: "tc2", status: "wrong_answer" },
+      { testCaseId: "tc3", status: "wrong_answer" },
+    ];
+    const { score } = computeFinalJudgeMetrics(results);
+    expect(score).toBe(33.33);
+  });
+
+  it("returns 66.67 for 2 out of 3 accepted", () => {
+    const results = [
+      { testCaseId: "tc1", status: "accepted" },
+      { testCaseId: "tc2", status: "accepted" },
+      { testCaseId: "tc3", status: "wrong_answer" },
+    ];
+    const { score } = computeFinalJudgeMetrics(results);
+    expect(score).toBe(66.67);
+  });
+
+  it("handles large result counts correctly", () => {
+    const results = Array.from({ length: 100 }, (_, i) => ({
+      testCaseId: `tc${i}`,
+      status: i < 67 ? "accepted" : "wrong_answer",
+    }));
+    const { score } = computeFinalJudgeMetrics(results);
+    expect(score).toBe(67);
+  });
+
+  it("returns 0.01 for 1 out of 10000 accepted", () => {
+    const results = Array.from({ length: 10000 }, (_, i) => ({
+      testCaseId: `tc${i}`,
+      status: i === 0 ? "accepted" : "wrong_answer",
+    }));
+    const { score } = computeFinalJudgeMetrics(results);
+    expect(score).toBe(0.01);
+  });
 });
