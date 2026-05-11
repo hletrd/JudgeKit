@@ -14,7 +14,7 @@
 **Description:** The fetch call has no AbortController. If user navigates away, the fetch continues and may mutate state on unmounted component.
 **Fix:** Add AbortController inside useEffect, pass signal to fetch, abort on cleanup.
 **Estimated effort:** 10 min
-**Status:** pending
+**Status:** completed
 
 ---
 
@@ -26,7 +26,7 @@
 **Description:** Loading state shows only static text with no visual feedback.
 **Fix:** Add `Loader2` spinner icon with `animate-spin` next to verifying text.
 **Estimated effort:** 5 min
-**Status:** pending
+**Status:** completed
 
 ### 2.2 Remove nested h1 inside CardTitle (UI2)
 **Severity:** MEDIUM
@@ -34,7 +34,7 @@
 **Description:** `<h1>` is nested inside `<CardTitle>` which renders its own heading element, creating invalid heading hierarchy.
 **Fix:** Remove `<h1>` wrapper, use `<CardTitle>` directly. The text is already inside CardTitle.
 **Estimated effort:** 2 min
-**Status:** pending
+**Status:** completed
 
 ---
 
@@ -46,7 +46,7 @@
 **Description:** `.catch(() => {})` masks Docker cleanup failures.
 **Fix:** Replace with `.catch((e) => logger.warn({ err: e }, "container cleanup failed"))` using the existing pino logger.
 **Estimated effort:** 5 min
-**Status:** pending
+**Status:** completed
 
 ---
 
@@ -100,15 +100,22 @@ Per repo deferred-fix rules, the following are deferred:
 
 ## Acceptance Criteria
 
-- [ ] `npm run lint` passes with 0 errors, 0 warnings
-- [ ] `npm run build` passes
-- [ ] `npm run test:unit` passes
-- [ ] verify-email fetch has AbortController
-- [ ] verify-email loading state shows spinner
-- [ ] verify-email heading hierarchy is valid
-- [ ] execute.ts cleanup failures are logged
+- [x] `npm run lint` passes with 0 errors, 0 warnings
+- [x] `npm run build` passes
+- [x] `npm run test:unit` passes
+- [x] verify-email fetch has AbortController
+- [x] verify-email loading state shows spinner
+- [x] verify-email heading hierarchy is valid
+- [x] execute.ts cleanup failures are logged
 
 ---
+
+## Deploy Status
+
+**DEPLOY: per-cycle-success** (2026-05-11)
+- All containers healthy on algo.xylolabs.com
+- App responding HTTP 200
+- Nginx configured for oj-internal.maum.ai
 
 ## Archive Notes
 
