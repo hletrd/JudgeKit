@@ -1,8 +1,8 @@
-# Aggregate Review — Cycle 2 (RPF Loop)
+# Aggregate Review — Cycle 3 (RPF Loop)
 
 **Date:** 2026-05-11
-**Reviewers:** code-reviewer, perf-reviewer, security-reviewer, test-engineer, architect, critic, verifier, tracer, debugger, document-specialist, designer
-**Scope:** Full codebase review — new findings from this cycle
+**Reviewers:** code-reviewer, security-reviewer (orchestrator direct — Agent tool unavailable)
+**Scope:** Auth surfaces, error handling, i18n — follow-up to cycle 2 deferred items
 
 ---
 
@@ -10,130 +10,91 @@
 
 | Severity | Count |
 |----------|-------|
-| CRITICAL | 0 |
-| HIGH     | 0 |
-| MEDIUM   | 5 |
-| LOW      | 7 |
-| **Total**| **12** |
+| MEDIUM   | 4     |
+| LOW      | 4     |
+| **Total**| **8** |
 
 ---
 
 ## MEDIUM
 
-### M1: Verify-Email Fetch Missing AbortController — Race Condition on Navigation
-- **File:** `src/app/(auth)/verify-email/page.tsx:27-31`
-- **Reviewer:** tracer
-- **Confidence:** Medium
-- **Description:** The `fetch("/api/v1/auth/verify-email")` call has no AbortController. If the user navigates away while the request is in flight, the fetch continues in the background. When it eventually resolves, `setStatus` / `setErrorMessage` mutate state on an unmounted component or overwrite newer state if the component remounts.
-- **Fix:** Add an AbortController inside useEffect, pass its signal to fetch, and abort on cleanup.
-
-### M2: Verify-Email Page Lacks Loading Spinner / Visual Feedback During Fetch
-- **File:** `src/app/(auth)/verify-email/page.tsx:63-65`
-- **Reviewer:** designer
+### M1: Reset-Password Form Missing AbortController — Race Condition on Navigation
+- **File:** `src/app/(auth)/reset-password/reset-password-form.tsx:41-65`
+- **Reviewer:** code-reviewer, security-reviewer
 - **Confidence:** High
-- **Description:** The loading state displays only static text with no spinner or progress indicator. On slower networks, users may perceive the page as frozen.
-- **Fix:** Add a `Loader2` spinner icon next to the text, matching other async UI surfaces.
+- **Description:** The `fetch("/api/v1/auth/reset-password")` call has no AbortController. If the user navigates away while the request is in flight, the fetch continues in the background. When it eventually resolves, `setSuccess` / `setError` mutate state on an unmounted component or overwrite newer state if the component remounts. Same pattern as cycle 2 verify-email finding TR1.
+- **Fix:** Add an AbortController inside `handleSubmit`, pass its signal to fetch, and abort on cleanup/unmount.
 
-### M3: Verify-Email CardTitle Wraps `<h1>` Creating Invalid Heading Hierarchy
-- **File:** `src/app/(auth)/verify-email/page.tsx:58-60`
-- **Reviewer:** designer
-- **Confidence:** Medium
-- **Description:** `<CardTitle>` from shadcn/ui renders as a heading element (typically `<h3>`). Wrapping an `<h1>` inside it creates invalid nested heading hierarchy, breaking accessibility for screen reader users.
-- **Fix:** Remove the nested `<h1>` and rely on `<CardTitle>`'s native heading.
-
-### M4: Assignment-Form Dialog Uses `throw` for API Error Flow Control
-- **File:** `src/app/(public)/groups/[id]/assignment-form-dialog.tsx:278`
-- **Reviewer:** critic
+### M2: Forgot-Password Form Missing AbortController — Race Condition on Re-submit
+- **File:** `src/app/(auth)/forgot-password/forgot-password-form.tsx:23-48`
+- **Reviewer:** code-reviewer, security-reviewer
 - **Confidence:** High
-- **Description:** The form submission handler throws `new Error()` with a translation key when the API returns an error. This conflates programmer errors with expected user-facing conditions and would pollute error reporting if Sentry/etc. is added.
-- **Fix:** Return an error result object instead of throwing. Use explicit error propagation.
+- **Description:** Same issue as M1. The fetch call has no AbortController. If the user clicks submit multiple times or navigates away, multiple requests race and state may be mutated after unmount.
+- **Fix:** Add AbortController, abort previous request on re-submit.
 
-### M5: Deploy Script `ensure_env_literal` Runs Before `.env.production` Transfer
-- **File:** `deploy-docker.sh:419-520`
-- **Reviewer:** code-reviewer, security-reviewer, architect
+### M3: Widespread `throw new Error(getApiError(...))` Pattern for Flow Control
+- **Files:** 
+  - `src/app/(public)/groups/[id]/assignment-form-dialog.tsx:278`
+  - `src/app/(public)/problems/create/create-problem-form.tsx:341,445`
+  - `src/app/(public)/groups/edit-group-dialog.tsx:92`
+  - `src/app/(public)/groups/create-group-dialog.tsx:72`
+  - `src/app/(public)/groups/[id]/group-members-manager.tsx:141,202,310`
+- **Reviewer:** code-reviewer
+- **Confidence:** High
+- **Description:** Multiple form dialogs throw `new Error()` with a translation key when the API returns an error response. This conflates programmer errors with expected user-facing conditions. If an error boundary or global error reporter (Sentry) is added later, routine form validation errors will be reported as uncaught exceptions.
+- **Fix:** Replace `throw new Error(getApiError(...) || "key")` with explicit error handling: set error state and return. The surrounding try/catch already catches these, so the fix is straightforward.
+
+### M4: Verify-Email Page Does Not Preserve Redirect Param After Success
+- **File:** `src/app/(auth)/verify-email/page.tsx:13-14,84`
+- **Reviewer:** code-reviewer
 - **Confidence:** Medium
-- **Description:** On first deploy to a fresh target, `COMPILER_RUNNER_URL` is never injected because the backfill runs before the file exists on the remote.
-- **Fix:** Add post-transfer backfill for `COMPILER_RUNNER_URL`, or source `.env.deploy.*` files before backfill.
+- **Description:** The component extracts only `token` from search params. If the URL contains additional params (e.g., `?token=abc&redirect=/dashboard`), the redirect target is lost. The success flow always pushes to `/login` regardless of where the user should go next. Deferred from cycle 2 (CR2/L5).
+- **Fix:** Accept an optional `redirect` search param and navigate there on success. Fall back to `/login` only when no redirect is provided.
 
 ---
 
 ## LOW
 
-### L1: Cleanup Failures Silently Swallowed in `execute.ts`
-- **File:** `src/lib/compiler/execute.ts:406,418`
-- **Reviewer:** code-reviewer, debugger
-- **Confidence:** Low
-- **Description:** `.catch(() => {})` masks Docker cleanup failures, potentially hiding disk-pressure or daemon issues.
-- **Fix:** Log cleanup failures at warn level rather than swallowing them entirely.
+### L1: Signup Form Contains Hardcoded English String
+- **File:** `src/app/(auth)/signup/signup-form.tsx:208`
+- **Reviewer:** code-reviewer
+- **Confidence:** High
+- **Description:** The text `"Passwords match"` is hardcoded in English, bypassing the translation system. All other UI strings in the file use `t()`. This was likely missed during the hardcoded-string cleanup in cycle 1.
+- **Fix:** Replace with `t("passwordsMatch")` and add the key to translation files.
 
-### L2: Verify-Email Token Not Client-Side Validated
+### L2: Pre-Restore Snapshot Silently Swallows Unlink Errors
+- **File:** `src/lib/db/pre-restore-snapshot.ts:119`
+- **Reviewer:** code-reviewer
+- **Confidence:** Medium
+- **Description:** `await unlink(fullPath).catch(() => {})` silently swallows file deletion errors in a cleanup path. Failure to delete a partial snapshot could leave a truncated file that a later restore might mistake for a valid rollback artifact.
+- **Fix:** Log the unlink failure with the existing logger.
+
+### L3: db-time.ts Docstring Claims Universal `Date.now()` Replacement
+- **File:** `src/lib/db-time.ts:45-47`
+- **Reviewer:** code-reviewer
+- **Confidence:** Medium
+- **Description:** The docstring claims to replace all server-side `Date.now()` calls, but `src/lib/compiler/execute.ts:874` uses raw `Date.now()` for container age calculation. The docstring creates a false expectation. Deferred from cycle 2.
+- **Fix:** Narrow the docstring scope to clarify it's for DB timestamp comparisons only.
+
+### L4: Verify-Email Token Not Validated Client-Side Before Fetch
 - **File:** `src/app/(auth)/verify-email/page.tsx:31`
 - **Reviewer:** security-reviewer
 - **Confidence:** Low
-- **Description:** The verify token is sent to the server without client-side format validation.
-- **Fix:** Add a minimal client-side length/format check before calling the API.
-
-### L3: `db-time.ts` Docstring Overly Broad, Not Honored by `execute.ts`
-- **File:** `src/lib/db-time.ts:45`, `src/lib/compiler/execute.ts:870`
-- **Reviewer:** verifier, document-specialist
-- **Confidence:** Medium
-- **Description:** Docstring claims to replace all server-side `Date.now()` calls, but `execute.ts` uses raw `Date.now()` for container age.
-- **Fix:** Narrow the docstring scope.
-
-### L4: Verify-Email Success/Error Buttons Not Disabled During Processing
-- **File:** `src/app/(auth)/verify-email/page.tsx:71-76,85-90`
-- **Reviewer:** designer
-- **Confidence:** Low
-- **Description:** Buttons remain interactive while verification is in flight.
-- **Fix:** Add `disabled={status === "loading"}`.
-
-### L5: Verify-Email Page Assumes Token is Only Search Param
-- **File:** `src/app/(auth)/verify-email/page.tsx:13`
-- **Reviewer:** critic
-- **Confidence:** Medium
-- **Description:** No redirect preservation after verification success.
-- **Fix:** Accept optional `redirect` search param.
-
-### L6: Verify-Email Page Lacks Tests
-- **File:** `src/app/(auth)/verify-email/page.tsx`
-- **Reviewer:** test-engineer
-- **Confidence:** High
-- **Description:** New auth surface with zero test coverage.
-- **Fix:** Add component tests.
-
----
-
-## False Positives / Invalid Findings
-
-### ~~H2: Unused Import `getApiData` in assignment-form-dialog~~
-- **Reviewer:** code-reviewer
-- **Status:** INVALID — The actual import is `getApiError`, which IS used at line 278. The review cited an incorrect identifier name.
-
-### ~~H1: setState in useEffect Blocking ESLint~~
-- **Reviewer:** code-reviewer, perf-reviewer
-- **Status:** NOT REPRODUCIBLE — The code uses an async function inside useEffect (standard React pattern). `setStatus`/`setErrorMessage` are called after `await`, not synchronously in the effect body. ESLint passes clean. The initial state is computed in `useState` initializer, not via setState.
-
----
-
-## AGENT SPAWN FAILURES
-
-- **critic, verifier, tracer, debugger, document-specialist, designer:** The `Agent` tool is unavailable in this environment. These six reviews were conducted directly by the orchestrator agent rather than fanned-out subagents. Coverage is reduced compared to a full multi-agent fan-out.
+- **Description:** The verify token is sent to the server via POST without client-side format validation. While the server validates it, a minimal client-side check could prevent unnecessary network requests. Deferred from cycle 2.
+- **Fix:** Add a minimal length/format check before calling the API.
 
 ---
 
 ## Cross-Agent Agreement
 
-- **verify-email page:** Flagged by 7 agents (tracer, designer, critic, security-reviewer, test-engineer, debugger, code-reviewer) — strong consensus that this new auth surface needs hardening.
-- **deploy script env injection:** code-reviewer, security-reviewer, architect all flagged the ordering/robustness issue.
-- **execute.ts silent catches:** code-reviewer and debugger both noted the swallowed-error pattern.
+- **Auth forms missing AbortController:** code-reviewer and security-reviewer both flagged reset-password and forgot-password forms.
+- **throw-based flow control:** code-reviewer identified 7 instances across 5 files — this is a systemic pattern that should be addressed.
 
 ---
 
 ## Recommended Priority for Fixes
 
-1. **Immediate:** M1 (AbortController for verify-email fetch) — real race condition
-2. **Immediate:** M2 (loading spinner) — easy UX win
-3. **Immediate:** M3 (nested h1) — easy a11y fix
-4. **Short-term:** M4 (throw for flow control) — code quality
-5. **Short-term:** M5 (deploy script) — infra robustness
-6. **Medium-term:** L1-L6 — defensive improvements and coverage
+1. **Immediate:** M1, M2 (AbortController for auth forms) — real race conditions
+2. **Immediate:** M3 (throw for flow control) — code quality, Sentry noise bomb
+3. **Short-term:** M4 (redirect param) — UX improvement
+4. **Medium-term:** L1-L4 — defensive improvements

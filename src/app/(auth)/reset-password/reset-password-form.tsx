@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { useTranslations } from "next-intl";
 import { Eye, EyeOff } from "lucide-react";
@@ -23,10 +23,21 @@ export function ResetPasswordForm() {
   const [loading, setLoading] = useState(false);
   const [showPassword, setShowPassword] = useState(false);
   const [showConfirm, setShowConfirm] = useState(false);
+  const abortCtrlRef = useRef<AbortController | null>(null);
+
+  useEffect(() => {
+    return () => {
+      abortCtrlRef.current?.abort();
+    };
+  }, []);
 
   async function handleSubmit(e: React.FormEvent<HTMLFormElement>) {
     e.preventDefault();
     if (!token) return;
+
+    abortCtrlRef.current?.abort();
+    const ctrl = new AbortController();
+    abortCtrlRef.current = ctrl;
 
     setLoading(true);
     setError(null);
@@ -42,6 +53,7 @@ export function ResetPasswordForm() {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ token, password }),
+        signal: ctrl.signal,
       });
 
       const data = await res.json().catch(() => ({ error: "unknown" }));
@@ -60,6 +72,7 @@ export function ResetPasswordForm() {
 
       setSuccess(true);
     } catch {
+      if (ctrl.signal.aborted) return;
       setError(t("resetFailed"));
       setLoading(false);
     }

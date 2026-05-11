@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useTranslations } from "next-intl";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -12,9 +12,20 @@ export function ForgotPasswordForm() {
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState(false);
   const [loading, setLoading] = useState(false);
+  const abortCtrlRef = useRef<AbortController | null>(null);
+
+  useEffect(() => {
+    return () => {
+      abortCtrlRef.current?.abort();
+    };
+  }, []);
 
   async function handleSubmit(e: React.FormEvent<HTMLFormElement>) {
     e.preventDefault();
+    abortCtrlRef.current?.abort();
+    const ctrl = new AbortController();
+    abortCtrlRef.current = ctrl;
+
     setLoading(true);
     setError(null);
     setSuccess(false);
@@ -24,6 +35,7 @@ export function ForgotPasswordForm() {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ email }),
+        signal: ctrl.signal,
       });
 
       const data = await res.json().catch(() => ({ error: "unknown" }));
@@ -42,6 +54,7 @@ export function ForgotPasswordForm() {
 
       setSuccess(true);
     } catch {
+      if (ctrl.signal.aborted) return;
       setError(t("sendFailed"));
       setLoading(false);
     }
