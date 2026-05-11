@@ -138,6 +138,11 @@ export default function CreateProblemForm({
     comparisonMode !== (initialProblem?.comparisonMode ?? "exact") ||
     difficulty !== (initialProblem?.difficulty?.toString() ?? "") ||
     defaultLanguage !== (initialProblem?.defaultLanguage ?? "") ||
+    floatAbsoluteError !== (initialProblem?.floatAbsoluteError?.toString() ?? "1e-6") ||
+    floatRelativeError !== (initialProblem?.floatRelativeError?.toString() ?? "1e-6") ||
+    testCaseOverrideEnabled !== false ||
+    JSON.stringify(testCases.map((t) => ({ input: t.input, expectedOutput: t.expectedOutput, isVisible: t.isVisible }))) !==
+      JSON.stringify((initialProblem?.testCases ?? []).map((t) => ({ input: t.input, expectedOutput: t.expectedOutput, isVisible: t.isVisible }))) ||
     JSON.stringify(currentTags) !== JSON.stringify(initialProblem?.tags ?? []);
 
   const { allowNextNavigation } = useUnsavedChangesGuard({ isDirty });
