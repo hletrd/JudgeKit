@@ -12,6 +12,7 @@ export default function VerifyEmailPage() {
   const searchParams = useSearchParams();
   const t = useTranslations("auth");
   const token = searchParams.get("token");
+  const redirect = searchParams.get("redirect");
 
   const [status, setStatus] = useState<"loading" | "success" | "error">(
     token ? "loading" : "error"
@@ -81,7 +82,7 @@ export default function VerifyEmailPage() {
             <Button
               type="button"
               className="w-full"
-              onClick={() => router.push("/login")}
+              onClick={() => router.push(redirect || "/login")}
             >
               {t("signIn")}
             </Button>
@@ -96,7 +97,7 @@ export default function VerifyEmailPage() {
               type="button"
               variant="outline"
               className="w-full"
-              onClick={() => router.push("/login")}
+              onClick={() => router.push(redirect || "/login")}
             >
               {t("backToSignIn")}
             </Button>

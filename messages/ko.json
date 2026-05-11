@@ -114,6 +114,7 @@
     "createAccount": "계정 만들기",
     "passwordTooShort": "비밀번호는 최소 8자 이상이어야 합니다.",
     "passwordsDoNotMatch": "비밀번호가 일치하지 않습니다.",
+    "passwordsMatch": "비밀번호가 일치합니다",
     "usernameInUse": "이미 사용 중인 사용자명입니다.",
     "emailInUse": "이미 사용 중인 이메일입니다.",
     "invalidEmail": "올바른 이메일 주소를 입력하세요.",

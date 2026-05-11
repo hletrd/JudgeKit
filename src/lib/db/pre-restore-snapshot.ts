@@ -116,7 +116,9 @@ export async function takePreRestoreSnapshot(actorId: string): Promise<string | 
     // Clean up any partial write so a later restore cannot mistake a
     // truncated file for a valid rollback artifact. Best-effort —
     // failure to unlink is logged via the surrounding error log.
-    await unlink(fullPath).catch(() => {});
+    await unlink(fullPath).catch((err) => {
+      logger.warn({ err, fullPath }, "[restore] failed to clean up partial snapshot");
+    });
     logger.error({ err, fullPath }, "[restore] failed to write pre-restore snapshot");
     return null;
   }
