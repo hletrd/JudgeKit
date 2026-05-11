@@ -42,23 +42,31 @@ type SubmissionDetailView = {
 
 export type { SubmissionResultView, SubmissionDetailView };
 
-function normalizeSubmission(data: Record<string, unknown>): SubmissionDetailView {
-  const results = Array.isArray(data.results)
-    ? data.results.map((result) => {
-        const record: Record<string, unknown> = result;
-        const rawTestCase = record.testCase;
+function normalizeSubmission(data: unknown): SubmissionDetailView {
+  const record =
+    data !== null && typeof data === "object" && !Array.isArray(data)
+      ? data as Record<string, unknown>
+      : {};
+
+  const results = Array.isArray(record.results)
+    ? record.results.map((result: unknown) => {
+        const resultRecord =
+          result !== null && typeof result === "object" && !Array.isArray(result)
+            ? result as Record<string, unknown>
+            : {};
+        const rawTestCase = resultRecord.testCase;
         const testCase: Record<string, unknown> | null =
-          rawTestCase !== null && typeof rawTestCase === "object"
-            ? (rawTestCase as Record<string, unknown>)
+          rawTestCase !== null && typeof rawTestCase === "object" && !Array.isArray(rawTestCase)
+            ? rawTestCase as Record<string, unknown>
             : null;
 
         return {
-          id: String(record.id),
-          status: String(record.status),
+          id: String(resultRecord.id),
+          status: String(resultRecord.status),
           executionTimeMs:
-            typeof record.executionTimeMs === "number" && Number.isFinite(record.executionTimeMs) ? record.executionTimeMs : null,
-          memoryUsedKb: typeof record.memoryUsedKb === "number" && Number.isFinite(record.memoryUsedKb) ? record.memoryUsedKb : null,
-          actualOutput: typeof record.actualOutput === "string" ? record.actualOutput : null,
+            typeof resultRecord.executionTimeMs === "number" && Number.isFinite(resultRecord.executionTimeMs) ? resultRecord.executionTimeMs : null,
+          memoryUsedKb: typeof resultRecord.memoryUsedKb === "number" && Number.isFinite(resultRecord.memoryUsedKb) ? resultRecord.memoryUsedKb : null,
+          actualOutput: typeof resultRecord.actualOutput === "string" ? resultRecord.actualOutput : null,
           testCase: testCase
             ? {
                 sortOrder:
@@ -71,17 +79,17 @@ function normalizeSubmission(data: Record<string, unknown>): SubmissionDetailVie
       })
     : [];
 
-  const rawUser = data.user;
+  const rawUser = record.user;
   const user: Record<string, unknown> | null =
-    rawUser !== null && typeof rawUser === "object"
-      ? (rawUser as Record<string, unknown>)
+    rawUser !== null && typeof rawUser === "object" && !Array.isArray(rawUser)
+      ? rawUser as Record<string, unknown>
       : null;
-  const rawProblem = data.problem;
+  const rawProblem = record.problem;
   const problem: Record<string, unknown> | null =
-    rawProblem !== null && typeof rawProblem === "object"
-      ? (rawProblem as Record<string, unknown>)
+    rawProblem !== null && typeof rawProblem === "object" && !Array.isArray(rawProblem)
+      ? rawProblem as Record<string, unknown>
       : null;
-  const submittedAtValue = data.submittedAt;
+  const submittedAtValue = record.submittedAt;
   const submittedAt =
     typeof submittedAtValue === "number" && Number.isFinite(submittedAtValue)
       ? submittedAtValue
@@ -90,17 +98,17 @@ function normalizeSubmission(data: Record<string, unknown>): SubmissionDetailVie
         : null;
 
   return {
-    id: String(data.id),
-    assignmentId: typeof data.assignmentId === "string" ? data.assignmentId : null,
-    language: String(data.language),
-    status: String(data.status),
-    sourceCode: typeof data.sourceCode === "string" ? data.sourceCode : "",
-    compileOutput: typeof data.compileOutput === "string" ? data.compileOutput : null,
-    executionTimeMs: typeof data.executionTimeMs === "number" && Number.isFinite(data.executionTimeMs) ? data.executionTimeMs : null,
-    memoryUsedKb: typeof data.memoryUsedKb === "number" && Number.isFinite(data.memoryUsedKb) ? data.memoryUsedKb : null,
-    score: typeof data.score === "number" && Number.isFinite(data.score) ? data.score : null,
-    failedTestCaseIndex: typeof data.failedTestCaseIndex === "number" && Number.isFinite(data.failedTestCaseIndex) ? data.failedTestCaseIndex : null,
-    runtimeErrorType: typeof data.runtimeErrorType === "string" ? data.runtimeErrorType : null,
+    id: String(record.id),
+    assignmentId: typeof record.assignmentId === "string" ? record.assignmentId : null,
+    language: String(record.language),
+    status: String(record.status),
+    sourceCode: typeof record.sourceCode === "string" ? record.sourceCode : "",
+    compileOutput: typeof record.compileOutput === "string" ? record.compileOutput : null,
+    executionTimeMs: typeof record.executionTimeMs === "number" && Number.isFinite(record.executionTimeMs) ? record.executionTimeMs : null,
+    memoryUsedKb: typeof record.memoryUsedKb === "number" && Number.isFinite(record.memoryUsedKb) ? record.memoryUsedKb : null,
+    score: typeof record.score === "number" && Number.isFinite(record.score) ? record.score : null,
+    failedTestCaseIndex: typeof record.failedTestCaseIndex === "number" && Number.isFinite(record.failedTestCaseIndex) ? record.failedTestCaseIndex : null,
+    runtimeErrorType: typeof record.runtimeErrorType === "string" ? record.runtimeErrorType : null,
     submittedAt,
     user: user
       ? {
@@ -148,7 +156,7 @@ export function useSubmissionPolling(initialSubmission: SubmissionDetailView) {
       es.addEventListener("result", (event: MessageEvent) => {
         if (!sseActive) return;
         try {
-          const data: Record<string, unknown> = JSON.parse(event.data);
+          const data = JSON.parse(event.data);
           const normalized = normalizeSubmission(data);
           setSubmission((prev) => ({ ...normalized, sourceCode: normalized.sourceCode || prev.sourceCode }));
           setError(false);
@@ -254,9 +262,13 @@ function initFetchPolling(
         throw new Error(`submissionRefreshFailed:${response.status}`);
       }
 
-      const payload = (await response.json().catch(() => ({ data: null }))) as { data?: Record<string, unknown> | null };
+      const payload = await response.json().catch(() => ({ data: null }));
 
-      if (!payload.data) {
+      if (typeof payload !== "object" || payload === null || !("data" in payload)) {
+        throw new Error("submissionPayloadMissing");
+      }
+      const data = payload.data;
+      if (data === null || data === undefined) {
         throw new Error("submissionPayloadMissing");
       }
 
@@ -264,7 +276,7 @@ function initFetchPolling(
         return;
       }
 
-      const nextSubmission = normalizeSubmission(payload.data);
+      const nextSubmission = normalizeSubmission(data);
       setSubmission((prev) => ({ ...nextSubmission, sourceCode: nextSubmission.sourceCode || prev.sourceCode }));
       setError(false);
       delayMs = 3000;
