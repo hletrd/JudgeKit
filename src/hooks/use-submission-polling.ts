@@ -238,7 +238,8 @@ function initFetchPolling(
       });
 
       if (!response.ok) {
-        throw new Error("submissionRefreshFailed");
+        // Preserve status for error-classification below.
+        throw new Error(`submissionRefreshFailed:${response.status}`);
       }
 
       const payload = (await response.json().catch(() => ({ data: null }))) as { data?: Record<string, unknown> | null };
@@ -266,7 +267,20 @@ function initFetchPolling(
         return;
       }
 
+      // Classify errors: stop polling on terminal statuses (404/403),
+      // back off on 5xx and network errors.
+      const statusMatch =
+        err instanceof Error ? err.message.match(/submissionRefreshFailed:(\d+)/) : null;
+      const statusCode = statusMatch ? parseInt(statusMatch[1], 10) : null;
+      const isTerminalError = statusCode === 404 || statusCode === 403;
+
       setError(true);
+
+      if (isTerminalError) {
+        setIsPolling(false);
+        return;
+      }
+
       delayMs = Math.min(delayMs * 2, 30000);
       scheduleRefresh();
     }
