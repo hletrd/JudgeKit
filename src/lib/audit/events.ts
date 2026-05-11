@@ -191,7 +191,7 @@ export function stopAuditFlushTimer() {
  * Flush all buffered audit events to the database in a single batch insert.
  * Exported for use during graceful shutdown.
  */
-export async function flushAuditBuffer(): Promise<void> {
+export async function flushAuditBuffer(dbNow?: Date): Promise<void> {
   if (_auditBuffer.length === 0) return;
 
   const batch = _auditBuffer;
@@ -203,7 +203,7 @@ export async function flushAuditBuffer(): Promise<void> {
   } catch (error) {
     auditEventWriteFailures += batch.length;
     consecutiveAuditFailures += 1;
-    lastAuditEventWriteFailureAt = new Date().toISOString();
+    lastAuditEventWriteFailureAt = dbNow?.toISOString() ?? new Date().toISOString();
     // Re-buffer lost events, preserving chronological insertion order.
     // `batch` contains events recorded before the flush started; `_auditBuffer`
     // may contain events recorded during the await (by concurrent recordAuditEvent
