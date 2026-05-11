@@ -2,7 +2,7 @@
 
 **Date:** 2026-05-11
 **Source:** `.context/reviews/_aggregate-cycle-4.md`
-**Status:** IN PROGRESS
+**Status:** COMPLETED
 
 ---
 
@@ -120,10 +120,12 @@ Replace the hardcoded `equals(usersTable.role, "student")` filter with a role-le
 
 | Task | Status | Commit |
 |------|--------|--------|
-| Task 1: isDirty test cases | TODO | |
-| Task 2: forgot-password loading | TODO | |
-| Task 3: reset-password loading | TODO | |
-| Task 4: verify-email sanitization | TODO | |
-| Task 5: remove async | TODO | |
-| Task 6: redirect dependency | TODO | |
-| Task 7: bulk enrollment role | TODO | |
+| Task 1: isDirty test cases | DONE | `50693dc7` |
+| Task 2: forgot-password loading | DONE | `c4dcba79` |
+| Task 3: reset-password loading | DONE | `5bcdace1` |
+| Task 4: verify-email sanitization | DONE | `6b324e8a` |
+| Task 5: remove async | RETRACTED | `a0aac716` — finding was false positive; `await selectedFile.text()` requires `async` |
+| Task 6: redirect dependency | DONE | `46bdb97e` |
+| Task 7: bulk enrollment role | DONE | `c0a5e3cd` |
+
+All quality gates green: eslint (0 errors, 0 warnings), next build (success), vitest (317 files, 2399 tests passed).
