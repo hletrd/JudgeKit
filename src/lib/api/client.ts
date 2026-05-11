@@ -95,7 +95,9 @@ export function apiFetch(
   }
 
   const signal = createTimeoutSignal(30_000);
-  return fetch(input, { ...init, headers, signal });
+  return fetch(input, { ...init, headers, signal }).finally(() => {
+    cleanupWithTimeout(signal);
+  });
 }
 
 /**
