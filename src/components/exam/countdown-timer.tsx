@@ -51,6 +51,7 @@ export function CountdownTimer({ deadline, label, onExpired }: CountdownTimerPro
   const [thresholdAnnouncement, setThresholdAnnouncement] = useState("");
   const [thresholdUrgent, setThresholdUrgent] = useState(false);
   const t = useTranslations("groups");
+  const lastHiddenAtRef = useRef<number | null>(null);
 
   const handleExpired = useCallback(() => {
     if (!expiredRef.current) {
@@ -76,7 +77,9 @@ export function CountdownTimer({ deadline, label, onExpired }: CountdownTimerPro
     setThresholdUrgent(false);
   }, [deadline]);
 
-  useEffect(() => {
+  // Sync local clock offset with the server. Called at mount and on every
+  // tab refocus to prevent timer drift from background tab throttling.
+  const syncTime = useCallback(() => {
     const controller = new AbortController();
     const timeout = setTimeout(() => controller.abort(), 5000);
     const requestStart = Date.now();
@@ -97,13 +100,17 @@ export function CountdownTimer({ deadline, label, onExpired }: CountdownTimerPro
         }
       })
       .catch(() => {
-        // keep offset at 0 on error
+        // keep existing offset on error
       });
     return () => {
       controller.abort();
       clearTimeout(timeout);
     };
   }, []);
+
+  useEffect(() => {
+    return syncTime();
+  }, [syncTime]);
 
   useEffect(() => {
     function recalculate(staggerToasts = false) {
@@ -120,31 +127,18 @@ export function CountdownTimer({ deadline, label, onExpired }: CountdownTimerPro
 
       if (staggerToasts && newlyFired.length > 1) {
         // When the tab regains focus after being backgrounded, multiple
-        // thresholds may fire simultaneously. Stagger toast emissions with
-        // a 2-second delay between each so the student can read them.
-        for (let i = 0; i < newlyFired.length; i++) {
-          const threshold = newlyFired[i];
-          const messageKey =
-            threshold === 15 * 60 * 1000
-              ? "examWarning15Min"
-              : threshold === 5 * 60 * 1000
-                ? "examWarning5Min"
-                : "examWarning1Min";
-          const delayMs = i * 2000;
-          if (delayMs === 0) {
-            toast.warning(t(messageKey));
-            setThresholdAnnouncement(t(messageKey));
-            setThresholdUrgent(threshold === 1 * 60 * 1000);
-          } else {
-            const staggeredId = setTimeout(() => {
-              if (cancelled) return;
-              toast.warning(t(messageKey));
-              setThresholdAnnouncement(t(messageKey));
-              setThresholdUrgent(threshold === 1 * 60 * 1000);
-            }, delayMs);
-            staggeredTimerIdsRef.current.push(staggeredId);
-          }
-        }
+        // thresholds may fire simultaneously. Only show the most urgent
+        // (smallest threshold = closest to expiration) to avoid toast spam.
+        const mostUrgent = Math.min(...newlyFired);
+        const messageKey =
+          mostUrgent === 15 * 60 * 1000
+            ? "examWarning15Min"
+            : mostUrgent === 5 * 60 * 1000
+              ? "examWarning5Min"
+              : "examWarning1Min";
+        toast.warning(t(messageKey));
+        setThresholdAnnouncement(t(messageKey));
+        setThresholdUrgent(mostUrgent === 1 * 60 * 1000);
       } else {
         // Normal tick path: fire all toasts immediately (at most one per tick)
         for (const threshold of newlyFired) {
@@ -179,10 +173,27 @@ export function CountdownTimer({ deadline, label, onExpired }: CountdownTimerPro
     // Immediately recalculate when the tab becomes visible to prevent
     // timer drift caused by browser throttling of setInterval in
     // background tabs. Students rely on accurate countdown during exams.
-    // Stagger threshold toasts to avoid an unreadable burst of warnings.
+    // Re-syncs with server time on every refocus and suppresses toast
+    // spam when the tab was backgrounded for more than 30 seconds.
     function handleVisibilityChange() {
+      if (document.visibilityState === "hidden") {
+        lastHiddenAtRef.current = Date.now();
+        return;
+      }
+
       if (document.visibilityState === "visible") {
-        recalculate(true);
+        // Re-sync server time before recalculating to correct any drift.
+        syncTime();
+
+        const hiddenDurationMs =
+          lastHiddenAtRef.current !== null ? Date.now() - lastHiddenAtRef.current : 0;
+        const wasHiddenLong = hiddenDurationMs > 30_000;
+
+        // If the tab was hidden for >30s, suppress threshold toasts
+        // entirely — the student already knows they were away.
+        // Otherwise, only show the most urgent crossed threshold.
+        recalculate(!wasHiddenLong);
+        lastHiddenAtRef.current = null;
       }
     }
 
