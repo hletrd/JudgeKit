@@ -71,6 +71,7 @@ export function ResetPasswordForm() {
       }
 
       setSuccess(true);
+      setLoading(false);
     } catch {
       if (ctrl.signal.aborted) return;
       setError(t("resetFailed"));
