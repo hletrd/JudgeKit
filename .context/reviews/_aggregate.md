@@ -1,141 +1,110 @@
-# Aggregate Review — Cycle 6
+# RPF Cycle 9 — Aggregate Review
 
 **Date:** 2026-05-11
-**Reviewers:** code-reviewer, security-reviewer, perf-reviewer, architect, test-engineer
-**Scope:** JudgeKit codebase with focus on SSE events, judge/poll, compiler/run, restore, anti-cheat, audit-logs
+**HEAD reviewed:** `06f74d76` (cycle-8 close-out)
+**Change surface:** 0 commits, 0 files, 0 lines vs cycle-8 close-out HEAD.
+**Reviewers:** code-reviewer, security-reviewer, perf-reviewer, test-engineer, architect, debugger (6 lanes; manual review due to no registered agent subagents).
+**Per-agent files:** `.context/reviews/cycle-9/*.md`
 
 ---
 
-## New Findings Summary (This Cycle)
+## Total deduplicated NEW findings
 
-| Severity | Count |
-|----------|-------|
-| MEDIUM   | 4     |
-| LOW      | 10    |
-| **Total**| **14** |
+**0 HIGH, 0 MEDIUM, 5 LOW.**
+
+All findings are carry-forward sweeps on existing code; no new issues introduced this cycle.
 
 ---
 
-## MEDIUM
+## NEW findings this cycle
 
-### M1: SSE `sharedPollTick` Unbounded `inArray` Query
-- **File:** `src/app/api/v1/submissions/[id]/events/route.ts:224-232`
-- **Reviewers:** perf-reviewer (primary), code-reviewer
-- **Confidence:** High
-- **Description:** The shared poll tick collects ALL active submission IDs from `submissionSubscribers` and queries them in a single `inArray(submissions.id, submissionIds)` query. With 500 concurrent SSE connections, this creates an IN clause with 500 IDs. PostgreSQL performance degrades with large IN lists, and the query plan may switch to a suboptimal nested loop.
-- **Fix:** Query by status (`WHERE status IN ('pending', 'queued', 'judging')`) with a reasonable LIMIT instead of by ID list. Or batch the ID list into chunks of 100.
+### C9-AGG-1: SIGINT handler forces process exit (LOW)
 
-### M2: `stopSharedPollTimer` Race with In-Progress `sharedPollTick`
-- **File:** `src/app/api/v1/submissions/[id]/events/route.ts:161-166`
-- **Reviewers:** code-reviewer (primary), perf-reviewer
-- **Confidence:** Medium
-- **Description:** `stopSharedPollTimer()` clears the interval timer but does not wait for an in-flight `sharedPollTick()` promise to complete. During graceful shutdown, if `stopSharedPollTimer` is called while `sharedPollTick` is awaiting its DB query, the DB connection may be released mid-query or the process may exit before the query completes.
-- **Fix:** Track the active poll promise and await it in `stopSharedPollTimer` before returning.
-
-### M3: Compiler Route `assignmentId` Accepted Without Immediate Ownership Check
-- **File:** `src/app/api/v1/compiler/run/route.ts:25,33-35`
-- **Reviewer:** security-reviewer
-- **Confidence:** Medium
-- **Description:** The compiler run route accepts `assignmentId` from the client body and passes it to `resolvePlatformModeAssignmentContextDetails`. While downstream validation exists, the route does not immediately verify that the user is enrolled in or has access to the specified assignment. A malicious user could probe different `assignmentId` values to enumerate active assignments.
-- **Fix:** Validate assignment access explicitly before processing the compiler request.
-
-### M4: `rateLimits` Table Overloaded for Three Different Concerns
-- **File:** `src/lib/realtime/realtime-coordination.ts`
-- **Reviewer:** architect
-- **Confidence:** High
-- **Description:** The `rateLimits` table is used for (1) API rate limiting, (2) SSE connection slot tracking, and (3) heartbeat deduplication. These are semantically different concerns. The table schema has fields like `attempts`, `consecutiveBlocks`, and `blockedUntil` which make sense for rate limiting but are meaningless for SSE slots.
-- **Fix:** Create separate tables for SSE connection slots and heartbeat tracking, or add a `category` column with stricter validation.
+**Consensus:** code-reviewer + architect + debugger + security-reviewer (4 lanes)
+**File:** `src/lib/audit/node-shutdown.ts:49`
+**Description:** The SIGINT handler calls `processLike.exit?.(130)` inside `.finally()`, forcing immediate process termination. This is inconsistent with the SIGTERM handler (fixed in cycle 8) which allows natural exit. Prevents other cleanup handlers from running and could truncate in-flight audit events.
+**Fix:** Remove forced exit from SIGINT, matching SIGTERM behavior. Single-line change.
 
 ---
 
-## LOW
+### C9-AGG-2: countdown-timer leaks AbortController on visibility changes (LOW)
 
-### L1: Double-Close Risk in SSE `emitStatusHeartbeat`
-- **File:** `src/app/api/v1/submissions/[id]/events/route.ts:433-446`
-- **Reviewers:** code-reviewer
-- **Confidence:** Medium
-
-### L2: `sanitizeHtml` Allows `mailto:` in Anchors Without Validation
-- **File:** `src/lib/security/sanitize-html.ts:79`
-- **Reviewers:** security-reviewer
-- **Confidence:** Low
-
-### L3: Legacy JSON Path in Restore Still Consults `file.type`
-- **File:** `src/app/api/v1/admin/restore/route.ts:101`
-- **Reviewers:** security-reviewer
-- **Confidence:** Low
-
-### L4: `getApiUser` Re-Auth in SSE Doesn't Verify Same User
-- **File:** `src/app/api/v1/submissions/[id]/events/route.ts:466-470`
-- **Reviewers:** security-reviewer
-- **Confidence:** Low
-
-### L5: Compiler `runDocker` Missing Timeout on `child.kill`
-- **File:** `src/lib/compiler/execute.ts:459-464`
-- **Reviewers:** code-reviewer
-- **Confidence:** Low
-
-### L6: Audit-Logs CSV Export Missing Row Count Cap Validation
-- **File:** `src/app/api/v1/admin/audit-logs/route.ts:218-219`
-- **Reviewers:** code-reviewer
-- **Confidence:** Low
-
-### L7: Anti-Cheat Heartbeat Gap Detection Loads 5000 Rows into Memory
-- **File:** `src/app/api/v1/contests/[assignmentId]/anti-cheat/route.ts:199-227`
-- **Reviewers:** perf-reviewer
-- **Confidence:** Medium
-
-### L8: `getDbNowUncached` Still Called Inside `withPgAdvisoryLock` Transaction
-- **File:** `src/lib/realtime/realtime-coordination.ts:68-73, 94`
-- **Reviewers:** perf-reviewer
-- **Confidence:** Medium
-
-### L9: Audit-Logs Instructor Scope Requires N+1 Queries
-- **File:** `src/app/api/v1/admin/audit-logs/route.ts:74-105`
-- **Reviewers:** perf-reviewer
-- **Confidence:** Low
-
-### L10: Missing Component Source Files for New Tests
-- **Files:** `tests/component/active-timed-assignment-sidebar-panel.test.tsx`, `tests/component/app-sidebar.test.tsx`, `tests/component/conditional-header.test.tsx`
-- **Reviewers:** test-engineer
-- **Confidence:** High
-
-### L11: `stopSharedPollTimer` Lacks Unit Test Coverage
-- **File:** `src/app/api/v1/submissions/[id]/events/route.ts:161-166`
-- **Reviewers:** test-engineer
-- **Confidence:** Medium
-
-### L12: SSE Events Route Has Dual Coordination Paths
-- **File:** `src/app/api/v1/submissions/[id]/events/route.ts`
-- **Reviewers:** architect
-- **Confidence:** Medium
-
-### L13: `stopSharedPollTimer` Added But No `isSharedPollTimerRunning` Query Function
-- **File:** `src/app/api/v1/submissions/[id]/events/route.ts:161-166`
-- **Reviewers:** architect
-- **Confidence:** Low
-
-### L14: `compiler/execute.ts` Local Fallback Path Not Covered
-- **File:** `src/lib/compiler/execute.ts`
-- **Reviewers:** test-engineer
-- **Confidence:** Low
+**Consensus:** code-reviewer + perf-reviewer + debugger (3 lanes)
+**File:** `src/components/exam/countdown-timer.tsx:186`
+**Description:** `syncTime()` is called from `handleVisibilityChange` but its returned cleanup function (AbortController abort + timeout clear) is discarded. Rapid tab switching can queue multiple concurrent `/api/v1/time` requests.
+**Fix:** Store the cleanup function in a ref and abort before starting a new sync. ~8 lines.
 
 ---
 
-## Cross-Agent Agreement
+### C9-AGG-3: Malformed JSON success responses treated as success (LOW)
 
-- **M1** flagged by both perf-reviewer and code-reviewer (higher signal).
-- **M2** flagged by both code-reviewer and perf-reviewer (higher signal).
+**Consensus:** code-reviewer + security-reviewer + architect + debugger + test-engineer (5 lanes)
+**Files:**
+- `src/app/(auth)/verify-email/page.tsx:38-50`
+- `src/app/(auth)/forgot-password/forgot-password-form.tsx:34-55`
+- `src/app/(auth)/reset-password/reset-password-form.tsx:52-73`
+- `src/app/(public)/problems/create/create-problem-form.tsx:343-356`
+**Description:** These components parse JSON with `.catch(() => fallback)` and branch on `res.ok` alone. If the server returns HTTP 200 with a non-JSON body (proxy/WAF misconfiguration), the components enter their success paths with fallback data, producing false-positive success states.
+**Fix:** Add an explicit parse-success check alongside `res.ok`. ~3 lines per file; 4 files total.
 
 ---
 
-## Recommended Priority for Fixes
+### C9-AGG-4: apiFetch fallback timer leak in old browsers (LOW)
 
-1. **Immediate:** L10 (missing component source files) — breaks tests.
-2. **Short-term:** M2 (stopSharedPollTimer race) — shutdown hygiene.
-3. **Short-term:** L3 (restore file.type) — defense-in-depth, trivial fix.
-4. **Medium-term:** M1 (SSE unbounded IN query) — performance under load.
-5. **Medium-term:** M3 (compiler assignmentId validation) — security hardening.
-6. **Medium-term:** L4 (SSE re-auth same-user check) — security hardening.
-7. **Long-term:** M4 (rateLimits table overloading) — architectural debt.
-8. **Long-term:** L7 (anti-cheat gap detection) — performance at scale.
+**Consensus:** code-reviewer + perf-reviewer (2 lanes)
+**File:** `src/lib/api/client.ts:97-98`
+**Description:** When no signal is provided to `apiFetch`, `createTimeoutSignal(30_000)` is used. In the fallback path for old browsers, the `setTimeout` timer cannot be cancelled if the fetch completes before timeout. Modern browsers are not affected.
+**Fix:** Store timer reference and clean it up. ~5 lines.
+**Status:** Deferred — old-browser-only, minimal practical impact.
+
+---
+
+## Carry-forward DEFERRED items (status verified at HEAD `06f74d76`)
+
+All deferred items from previous cycles remain unchanged:
+
+| ID | Severity | Status |
+|---|---|---|
+| DEFER-1 (SSE unbounded IN) | MEDIUM | Unchanged |
+| DEFER-2 (rateLimits overloaded) | MEDIUM | Unchanged |
+| DEFER-3 (compiler child.kill timeout) | LOW | Unchanged |
+| DEFER-4 (pre-restore type assertion) | LOW | Unchanged |
+| DEFER-5 (stopSharedPollTimer race) | LOW | Unchanged |
+| DEFER-6 (anti-cheat 5000 rows) | LOW | Unchanged |
+| DEFER-7 (submissionSubscribers leak) | LOW | Unchanged |
+| DEFER-8 (Next.js layout workaround) | LOW | Unchanged |
+| DEFER-9 (stopSharedPollTimer tests) | LOW | Unchanged |
+| DEFER-10 (compiler local fallback tests) | LOW | Unchanged |
+| C9-AGG-4 (apiFetch timer leak) | LOW | Deferred this cycle |
+
+---
+
+## Cross-agent agreement summary
+
+- **Empty change surface (0 commits, 0 files, 0 lines):** 6 lanes agree.
+- **C9-AGG-1 (SIGINT exit) as primary pick:** 4 lanes.
+- **C9-AGG-3 (malformed JSON success) as highest-signal finding:** 5 lanes.
+- **C9-AGG-2 (countdown-timer leak) as secondary pick:** 3 lanes.
+- **C9-AGG-4 (apiFetch timer leak) as deferrable:** 2 lanes.
+
+## Agent failures
+
+No agent failures. All 6 reviewer perspectives were performed manually and produced artifacts in `.context/reviews/cycle-9/`.
+
+---
+
+## Implementation queue for PROMPT 3
+
+Per orchestrator directive, pick at least 2-3 LOW findings:
+
+1. **C9-AGG-1** — SIGINT natural exit. Single file, ~3 lines.
+2. **C9-AGG-3** — Malformed JSON success responses. 4 files, ~3 lines each.
+3. **C9-AGG-2** — countdown-timer AbortController leak. Single file, ~8 lines.
+
+**Deferred:**
+- C9-AGG-4 (apiFetch timer leak): Old-browser-only, minimal impact.
+
+**Repo-policy compliance:**
+- GPG-signed commits with conventional commit + gitmoji.
+- Fine-grained commits (one per finding).
+- `git pull --rebase` before `git push`.
