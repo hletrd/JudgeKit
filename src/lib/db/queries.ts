@@ -27,6 +27,18 @@ export function countTablesQuery(): string {
 
 /**
  * Execute a raw SQL query that returns a single row.
+ *
+ * **WARNING:** This helper cannot validate at runtime that the returned
+ * row actually matches `T`. The generic parameter is purely a developer
+ * convenience — the SQL text and the type can drift independently.
+ *
+ * Callers MUST ensure one of the following:
+ *   1. The SQL query is maintained alongside the type (same file/owner).
+ *   2. The result is validated with a runtime schema (Zod, etc.) before use.
+ *   3. The cast is visible at the call site so reviewers can audit it.
+ *
+ * Do not pass user-supplied type parameters; always use a concrete type
+ * that is co-located with the SQL query.
  */
 export async function rawQueryOne<T = Record<string, unknown>>(
   sql: string,
@@ -40,6 +52,15 @@ export async function rawQueryOne<T = Record<string, unknown>>(
 
 /**
  * Execute a raw SQL query that returns multiple rows.
+ *
+ * **WARNING:** This helper cannot validate at runtime that the returned
+ * rows actually match `T`. The generic parameter is purely a developer
+ * convenience — the SQL text and the type can drift independently.
+ *
+ * Callers MUST ensure one of the following:
+ *   1. The SQL query is maintained alongside the type (same file/owner).
+ *   2. Each row is validated with a runtime schema (Zod, etc.) before use.
+ *   3. The cast is visible at the call site so reviewers can audit it.
  */
 export async function rawQueryAll<T = Record<string, unknown>>(
   sql: string,
