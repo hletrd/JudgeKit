@@ -18,7 +18,7 @@
 - Option C: Use `useLayoutEffect` for initial state sync if the timing matters.
 **Preferred:** Option A — restructure as a self-contained verification component that shows a "Verify Email" button when token is present, and an error state immediately (via initial state) when token is absent.
 **Estimated effort:** 20 min
-**Status:** pending
+**Status:** completed (commit c04f01cc)
 
 ### 1.2 Remove unused import (assignment-form-dialog)
 **Severity:** HIGH (lint warning)
@@ -26,7 +26,7 @@
 **Description:** `getApiData` imported but never used. Leftover from commit 3c8057f3.
 **Fix:** Remove `getApiData` from the import line.
 **Estimated effort:** 2 min
-**Status:** pending
+**Status:** completed (commit 9124e9ff)
 
 ---
 
@@ -38,7 +38,7 @@
 **Description:** `ensure_env_literal` for COMPILER_RUNNER_URL runs BEFORE `.env.production` is transferred to remote. On first deploy, the key is never injected. Also, lines 514-520 only warn but don't fix.
 **Fix:** Add a post-transfer backfill step that explicitly ensures COMPILER_RUNNER_URL is present when `INCLUDE_WORKER != true`. Move the `ensure_env_literal COMPILER_RUNNER_URL` call to after the `.env.production` transfer block (after line 510), or add a second check after transfer.
 **Estimated effort:** 15 min
-**Status:** pending
+**Status:** completed (commit c04f01cc)
 
 ---
 
@@ -55,7 +55,7 @@
 - 2xx response renders success state
 - Navigation button pushes to /login
 **Estimated effort:** 30 min
-**Status:** pending
+**Status:** completed (commit c76e39b7)
 
 ---
 
@@ -79,11 +79,20 @@ Per repo deferred-fix rules, the following LOW severity findings are deferred:
 
 ## Acceptance Criteria
 
-- [ ] `npm run lint` passes with 0 errors, 0 warnings
-- [ ] `npm run build` passes
-- [ ] `npm run test:unit` passes (all 317 files)
-- [ ] deploy-docker.sh correctly injects COMPILER_RUNNER_URL on first deploy to algo target
-- [ ] verify-email page has component tests
+- [x] `npm run lint` passes with 0 errors, 0 warnings
+- [x] `npm run build` passes
+- [x] `npm run test:unit` passes (all 317 files)
+- [x] deploy-docker.sh correctly injects COMPILER_RUNNER_URL on first deploy to algo target
+- [x] verify-email page has component tests
+
+---
+
+## Deploy Status
+
+**DEPLOY: per-cycle-success** (2026-05-11)
+- All containers healthy on algo.xylolabs.com
+- App responding HTTP 200
+- Nginx configured for oj-internal.maum.ai
 
 ---
 

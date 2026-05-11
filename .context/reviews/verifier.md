@@ -1,40 +1,40 @@
-# Verifier Review — Cycle 37
+# Evidence-Based Correctness Review: JudgeKit
 
 **Reviewer:** verifier
-**Date:** 2026-05-09
-**HEAD:** 07174a9b
+**Date:** 2026-05-11
+**Scope:** Comment-code mismatches, stale docs, spec violations — Cycle 2 of RPF loop
 
-## Summary
+---
 
-0 new findings. All stated behaviors match implementation.
+## New Findings Summary
 
-## Verified Behaviors
+| Severity | Count |
+|----------|-------|
+| LOW      | 2     |
+| **Total**| **2** |
 
-### apiFetchJson (src/lib/api/client.ts)
-- Documentation claims "safe wrapper" — verified. Single-parse design eliminates double-.json() footgun.
-- Fetch throw handling — verified. try/catch around apiFetch call present (cycle 33 fix).
-- Development-only warning for parse failures — verified at line 143 (cycle 35 fix).
-- Response body single-read rule documented — correctly implemented.
+---
 
-### Anti-Cheat Monitor (src/components/exam/anti-cheat-monitor.tsx)
-- Heartbeat visibility gating — verified. Lines 187-191 only reschedule when visible.
-- Timer cleanup — verified. All timers cleared in useEffect cleanup.
-- Retry scheduling — verified. Uses scheduleRetryRef with exponential backoff.
+## LOW
 
-### Rate Limit Eviction (src/lib/security/rate-limit.ts)
-- `stopRateLimitEviction()` exists — verified at lines 83-88 (cycle 34 fix).
-- `unref()` call prevents process exit blocking — verified.
+### V1: `db-time.ts` Documentation Claims It Replaces `Date.now()` But `execute.ts` Uses `Date.now()` Directly
+- **File:** `src/lib/db-time.ts:45` (doc comment), `src/lib/compiler/execute.ts:870`
+- **Confidence:** Medium
+- **Description:** `db-time.ts` has a docstring stating "Use this instead of `Date.now()` in any server-side code that compares against DB timestamps." However, `execute.ts` (server-side compiler execution) directly calls `Date.now()` at line 870 for container age calculation against a DB timestamp (`createdAt`). The comment promises a utility but the code does not use it.
+- **Failure scenario:** If `db-time.ts` ever applies normalization (e.g., monotonic clock, timezone fixes), `execute.ts` will behave inconsistently with other server-side code. The documented contract is not honored.
+- **Fix:** Either import and use `dbTimeNow()` from `db-time.ts` in `execute.ts`, or remove the overly broad claim from the docstring and narrow it to specific use cases.
 
-### Judge Claim (src/app/api/v1/judge/claim/route.ts)
-- Atomic SQL claim — verified. CTE with FOR UPDATE SKIP LOCKED.
-- bigint cast for EXTRACT(EPOCH) — verified at line 199 (cycle 30 fix).
-- Worker capacity check — verified. worker_slot CTE checks active_tasks < concurrency.
+### V2: `assignment-form-dialog.tsx` Import Review Finding is a False Positive
+- **File:** `src/app/(public)/groups/[id]/assignment-form-dialog.tsx:9`
+- **Confidence:** High
+- **Description:** The code-reviewer review (H2) claims `getApiData` is imported but unused. The actual import is `getApiError`, which IS used at line 278. The review cited an incorrect identifier name, making the finding invalid.
+- **Fix:** No code change needed. The review should be corrected in the aggregate.
 
-### Auth Config (src/lib/auth/config.ts)
-- Timing-safe dummy hash — verified.
-- Token invalidation — verified. Uses DB-server time for consistency.
-- Rate limiting on login — verified. Both IP and username buckets.
+---
 
-## Conclusion
+## Verification Sweep Results
 
-All verified behaviors match their documented contracts. No discrepancies found.
+- README.md setup instructions: match current package.json scripts
+- docs/languages.md: aligned with `src/lib/judge/languages.ts` (125 languages)
+- Environment variable docs: no obvious mismatches found in this cycle
+- API route documentation: no stale endpoint references detected

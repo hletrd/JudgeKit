@@ -1,40 +1,37 @@
-# Tracer Review — Cycle 37
+# Causal Tracing Review: JudgeKit
 
 **Reviewer:** tracer
-**Date:** 2026-05-09
-**HEAD:** 07174a9b
+**Date:** 2026-05-11
+**Scope:** Data flow tracing, auth flow gaps, multi-step race conditions — Cycle 2 of RPF loop
 
-## Summary
+---
 
-0 new findings. No suspicious flows or competing hypotheses require investigation.
+## New Findings Summary
 
-## Traced Flows
+| Severity | Count |
+|----------|-------|
+| MEDIUM   | 1     |
+| **Total**| **1** |
 
-### Login → Rate Limit → Auth Flow
-1. Credentials submitted to NextAuth authorize callback
-2. Rate limit checked via `consumeRateLimitAttemptMulti` with IP + username keys
-3. On success, rate limits cleared; on failure, attempts recorded
-4. Token created with DB-server authenticatedAt timestamp
-5. Token invalidated check uses DB-server time for consistency
-- No TOCTOU races detected. All rate limit operations are atomic within transactions.
+---
 
-### Judge Claim → SQL Execution → Worker Response
-1. IP allowlist check
-2. Rate limiting via `consumeUserApiRateLimit`
-3. Worker auth validation
-4. Atomic SQL claim with CTEs
-5. Test cases and language config fetched
-6. Response returned with adjusted time limits
-- No race conditions. FOR UPDATE SKIP LOCKED prevents double-claims.
+## MEDIUM
 
-### Anti-Cheat → Event Recording → Retry Logic
-1. Event recorded with MIN_INTERVAL_MS debouncing
-2. Immediate send attempted
-3. On failure, event saved to localStorage with retry count
-4. scheduleRetryRef handles exponential backoff
-5. Cleanup clears all timers and listeners
-- Timer lifecycle is properly managed.
+### TR1: Verify-Email Fetch Missing AbortController / Race Condition on Rapid Navigation
+- **File:** `src/app/(auth)/verify-email/page.tsx:27-31`
+- **Confidence:** Medium
+- **Description:** The `fetch("/api/v1/auth/verify-email")` call in the verify-email page has no AbortController. If the user navigates away while the request is in flight, the fetch continues in the background. When it eventually resolves, the `setStatus` / `setErrorMessage` calls mutate state on an unmounted component (React warns in strict mode) or, worse, if the component remounts (e.g., back navigation), the stale response may overwrite newer state.
+- **Failure scenario:** User lands on verify-email page, request starts. User clicks browser back before it completes. They then click the verification link again from email. The first (stale) request completes and calls `setStatus("success")` while the second request is still loading. The UI flickers between states.
+- **Fix:** Add an AbortController inside the useEffect, pass its signal to fetch, and abort on cleanup: `useEffect(() => { const ctrl = new AbortController(); fetch(..., { signal: ctrl.signal }); return () => ctrl.abort(); }, [token])`.
 
-## Conclusion
+---
 
-No suspicious flows or causal anomalies detected in this cycle.
+## Traced Flows Summary
+
+| Flow | Status | Notes |
+|------|--------|-------|
+| Auth: login -> session -> API call | OK | CSRF middleware validated, session cookie secure |
+| Submission: upload -> judge -> result | OK | AbortController added in prior cycle |
+| File: upload -> storage -> download | OK | Magic bytes validation added in prior cycle |
+| Admin: action -> audit -> log | OK | Audit buffer flushes correctly |
+| Verify-email: token -> fetch -> state | ISSUE | TR1: no abort on unmount |
