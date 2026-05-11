@@ -8,6 +8,7 @@ import { bulkEnrollmentSchema } from "@/lib/validators/groups";
 import { forbidden, notFound, createApiHandler } from "@/lib/api/handler";
 import { apiSuccess } from "@/lib/api/responses";
 import { getDbNowUncached } from "@/lib/db-time";
+import { getAllRoleLevels } from "@/lib/capabilities/cache";
 
 export const POST = createApiHandler({
   rateLimit: "members:bulk-add",
@@ -62,20 +63,22 @@ export const POST = createApiHandler({
       });
     }
 
-    // Validate all users exist, are active, and have student role in a single query
-    const validStudents = await db.query.users.findMany({
+    // Validate all users exist, are active, and have student-level role
+    const activeUsers = await db.query.users.findMany({
       where: (usersTable, { and, eq: equals, inArray: inArr }) =>
         and(
           inArr(usersTable.id, uniqueRequestedUserIds),
           equals(usersTable.isActive, true),
-          equals(usersTable.role, "student")
         ),
-      columns: { id: true, username: true },
+      columns: { id: true, username: true, role: true },
     });
+
+    const roleLevels = await getAllRoleLevels();
+    const validStudents = activeUsers.filter((u) => (roleLevels.get(u.role) ?? -1) === 0);
 
     const validStudentIds = new Set(validStudents.map((s) => s.id));
     const validStudentUsernames = new Set(validStudents.map((s) => s.username.toLowerCase()));
-    // Usernames that resolved to a user but the user is not an active student
+    // Usernames that resolved to a user but the user is not an active student-level user
     const nonStudentUsernames = trimmedUsernames.filter(
       (u) => !validStudentUsernames.has(u) && !unresolvedUsernames.includes(u),
     );
