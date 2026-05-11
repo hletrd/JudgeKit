@@ -446,15 +446,6 @@ ensure_env_secret RATE_LIMITER_AUTH_TOKEN hex
 # rather than the external domain.
 ensure_env_literal AUTH_TRUST_HOST true
 
-# When the local judge worker is disabled, the app container needs to reach the
-# external worker via COMPILER_RUNNER_URL. Auto-inject the default Docker host
-# URL if the key is missing — the operator can override it in .env.production
-# with a custom URL (e.g., pointing at a remote worker host).
-if [[ "${INCLUDE_WORKER}" != "true" ]]; then
-    COMPILER_RUNNER_DEFAULT="http://host.docker.internal:3001"
-    ensure_env_literal COMPILER_RUNNER_URL "${COMPILER_RUNNER_DEFAULT}"
-fi
-
 # ---------------------------------------------------------------------------
 # Step 2: Sync source code to remote host
 # ---------------------------------------------------------------------------
@@ -507,6 +498,13 @@ if remote "test -f ${REMOTE_DIR}/.env.production" 2>/dev/null; then
 else
     info "Transferring .env.production (first deploy)..."
     remote_copy "${SCRIPT_DIR}/.env.production" "${REMOTE_USER}@${REMOTE_HOST}:${REMOTE_DIR}/.env.production"
+fi
+
+# After .env.production is guaranteed to exist, backfill target-specific overrides
+# that may not be present in the repo's .env.production template.
+if [[ "${INCLUDE_WORKER}" != "true" ]]; then
+    COMPILER_RUNNER_DEFAULT="http://host.docker.internal:3001"
+    ensure_env_literal COMPILER_RUNNER_URL "${COMPILER_RUNNER_DEFAULT}"
 fi
 
 success "Source code synced to remote"
