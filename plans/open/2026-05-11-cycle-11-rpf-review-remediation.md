@@ -100,10 +100,10 @@ All deferred items from previous cycles remain unchanged. See `_aggregate.md` fo
 
 | Task | Status | Commit |
 |------|--------|--------|
-| Task 1: Remove dead staggeredTimerIdsRef | PENDING | |
-| Task 2: Remove redundant as string | PENDING | |
-| Task 3: Remove unsafe as casts | PENDING | |
-| Task 4: Use DB time for audit failure timestamp | PENDING | |
+| Task 1: Remove dead staggeredTimerIdsRef | DONE | `9fe9852f` |
+| Task 2: Remove redundant as string | DONE | `954efe82` |
+| Task 3: Remove unsafe as casts | DONE | `954efe82` |
+| Task 4: Use DB time for audit failure timestamp | DONE | `a0b6b171` |
 
 ---
 
