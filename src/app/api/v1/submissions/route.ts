@@ -62,8 +62,8 @@ export const GET = createApiHandler({
         let cursorSubmittedAt: Date | undefined;
         try {
           const decoded = JSON.parse(Buffer.from(cursor, "base64").toString("utf-8"));
-          if (decoded && typeof decoded === "object" && "t" in decoded) {
-            cursorSubmittedAt = new Date(decoded.t as string);
+          if (decoded && typeof decoded === "object" && "t" in decoded && typeof decoded.t === "string") {
+            cursorSubmittedAt = new Date(decoded.t);
           }
         } catch {
           // Not a base64-encoded cursor — fall back to DB lookup for backward
