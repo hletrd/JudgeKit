@@ -1,5 +1,6 @@
 "use client";
 
+import Link from "next/link";
 import { useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { signIn } from "next-auth/react";
@@ -102,6 +103,11 @@ export function LoginForm() {
       <Button type="submit" className="w-full" disabled={loading}>
         {loading ? t("signingIn") : t("signIn")}
       </Button>
+      <p className="text-center text-sm text-muted-foreground">
+        <Link href="/forgot-password" className="font-medium text-primary hover:underline">
+          {t("forgotPassword")}
+        </Link>
+      </p>
     </form>
   );
 }

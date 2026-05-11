@@ -598,6 +598,14 @@ export const systemSettings = pgTable("system_settings", {
     copyrightText?: string;
     links?: { label: string; url: string }[];
   }>>(),
+  // SMTP Configuration
+  smtpHost: text("smtp_host"),
+  smtpPort: integer("smtp_port"),
+  smtpSecure: boolean("smtp_secure").notNull().default(false),
+  smtpUser: text("smtp_user"),
+  smtpPass: text("smtp_pass"),
+  smtpFrom: text("smtp_from"),
+  emailVerificationRequired: boolean("email_verification_required").notNull().default(false),
   updatedAt: timestamp("updated_at", { withTimezone: true })
     .notNull()
     .$defaultFn(() => new Date()),
@@ -1148,5 +1156,52 @@ export const files = pgTable(
     index("files_uploaded_by_idx").on(table.uploadedBy),
     index("files_category_idx").on(table.category),
     index("files_created_at_idx").on(table.createdAt),
+  ]
+);
+
+export const passwordResetTokens = pgTable(
+  "password_reset_tokens",
+  {
+    id: text("id")
+      .primaryKey()
+      .$defaultFn(() => nanoid()),
+    userId: text("user_id")
+      .notNull()
+      .references(() => users.id, { onDelete: "cascade" }),
+    tokenHash: text("token_hash").notNull(),
+    expiresAt: timestamp("expires_at", { withTimezone: true }).notNull(),
+    usedAt: timestamp("used_at", { withTimezone: true }),
+    createdAt: timestamp("created_at", { withTimezone: true })
+      .notNull()
+      .$defaultFn(() => new Date()),
+  },
+  (table) => [
+    index("prt_user_idx").on(table.userId),
+    index("prt_token_hash_idx").on(table.tokenHash),
+    index("prt_expires_at_idx").on(table.expiresAt),
+  ]
+);
+
+export const emailVerificationTokens = pgTable(
+  "email_verification_tokens",
+  {
+    id: text("id")
+      .primaryKey()
+      .$defaultFn(() => nanoid()),
+    userId: text("user_id")
+      .notNull()
+      .references(() => users.id, { onDelete: "cascade" }),
+    email: text("email").notNull(),
+    tokenHash: text("token_hash").notNull(),
+    expiresAt: timestamp("expires_at", { withTimezone: true }).notNull(),
+    verifiedAt: timestamp("verified_at", { withTimezone: true }),
+    createdAt: timestamp("created_at", { withTimezone: true })
+      .notNull()
+      .$defaultFn(() => new Date()),
+  },
+  (table) => [
+    index("evt_user_idx").on(table.userId),
+    index("evt_token_hash_idx").on(table.tokenHash),
+    index("evt_expires_at_idx").on(table.expiresAt),
   ]
 );

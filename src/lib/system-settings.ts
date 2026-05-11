@@ -23,6 +23,8 @@ export type SystemSettingsRecord = {
   aiAssistantEnabled?: boolean | null;
   publicSignupEnabled?: boolean | null;
   signupHcaptchaEnabled?: boolean | null;
+  hcaptchaSiteKey?: string | null;
+  hcaptchaSecret?: string | null;
   defaultLanguage?: string | null;
   defaultLocale?: string | null;
   updatedAt: Date;
@@ -42,6 +44,43 @@ export type SystemSettingsRecord = {
     copyrightText?: string;
     links?: { label: string; url: string }[];
   }> | null;
+  // Rate Limiting
+  loginRateLimitMaxAttempts?: number | null;
+  loginRateLimitWindowMs?: number | null;
+  loginRateLimitBlockMs?: number | null;
+  apiRateLimitMax?: number | null;
+  apiRateLimitWindowMs?: number | null;
+  submissionRateLimitMaxPerMinute?: number | null;
+  submissionMaxPending?: number | null;
+  submissionGlobalQueueLimit?: number | null;
+  // Judge Defaults
+  defaultTimeLimitMs?: number | null;
+  defaultMemoryLimitMb?: number | null;
+  maxSourceCodeSizeBytes?: number | null;
+  staleClaimTimeoutMs?: number | null;
+  // Session & Auth
+  sessionMaxAgeSeconds?: number | null;
+  minPasswordLength?: number | null;
+  // Pagination
+  defaultPageSize?: number | null;
+  // Real-time / SSE
+  maxSseConnectionsPerUser?: number | null;
+  ssePollIntervalMs?: number | null;
+  sseTimeoutMs?: number | null;
+  // Compiler
+  compilerTimeLimitMs?: number | null;
+  // File Uploads
+  uploadMaxImageSizeBytes?: number | null;
+  uploadMaxFileSizeBytes?: number | null;
+  uploadMaxImageDimension?: number | null;
+  // SMTP Configuration
+  smtpHost?: string | null;
+  smtpPort?: number | null;
+  smtpSecure?: boolean | null;
+  smtpUser?: string | null;
+  smtpPass?: string | null;
+  smtpFrom?: string | null;
+  emailVerificationRequired?: boolean | null;
 };
 
 export async function getSystemSettings(): Promise<SystemSettingsRecord | undefined> {
