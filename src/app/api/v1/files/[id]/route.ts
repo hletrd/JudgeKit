@@ -105,10 +105,13 @@ export async function GET(
     }
 
     const isImage = isImageMimeType(file.mimeType);
-    const ext = file.originalName.includes(".") ? `.${file.originalName.split(".").pop()}` : "";
+    // Sanitize originalName: reject control characters and newlines that could
+    // break HTTP headers or enable header injection (CRLF).
+    const sanitizedName = file.originalName.replace(/[\x00-\x1f\x7f]/g, "");
+    const ext = sanitizedName.lastIndexOf(".") > 0 ? sanitizedName.slice(sanitizedName.lastIndexOf(".")) : "";
     const disposition = isImage
       ? "inline"
-      : contentDispositionAttachment(file.originalName.replace(/\.[^.]+$/, ""), ext);
+      : contentDispositionAttachment(sanitizedName.replace(/\.[^.]+$/, ""), ext);
 
     return new NextResponse(new Uint8Array(buffer), {
       status: 200,
