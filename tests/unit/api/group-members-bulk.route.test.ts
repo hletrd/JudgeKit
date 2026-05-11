@@ -46,6 +46,18 @@ vi.mock("@/lib/db-time", () => ({
   getDbNowUncached: vi.fn().mockResolvedValue(new Date("2026-04-20T12:00:00Z")),
 }));
 
+vi.mock("@/lib/capabilities/cache", () => ({
+  getAllRoleLevels: vi.fn().mockResolvedValue(
+    new Map([
+      ["student", 0],
+      ["assistant", 1],
+      ["instructor", 2],
+      ["admin", 3],
+      ["super_admin", 4],
+    ])
+  ),
+}));
+
 vi.mock("@/lib/db", () => ({
   db: {
     query: {
@@ -98,8 +110,8 @@ describe("POST /api/v1/groups/[id]/members/bulk", () => {
 
   it("counts skipped users from duplicate requests, invalid ids, and insert conflicts", async () => {
     usersFindManyMock.mockResolvedValue([
-      { id: "student-1", username: "student1" },
-      { id: "student-2", username: "student2" },
+      { id: "student-1", username: "student1", role: "student" },
+      { id: "student-2", username: "student2", role: "student" },
     ]);
     insertReturningMock.mockResolvedValue([{ id: "enrollment-1" }]);
 
