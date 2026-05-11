@@ -55,15 +55,27 @@ export const GET = createApiHandler({
         limit: searchParams.get("limit") ?? undefined,
       });
 
-      // Resolve the submittedAt of the cursor submission to page backwards
+      // Decode cursor: new cursors embed {id, submittedAt} as base64 JSON;
+      // old cursors are raw IDs (backward compatible).
       let cursorFilter: ReturnType<typeof lt> | undefined;
       if (cursor) {
-        const cursorRow = await db.query.submissions.findFirst({
-          where: eq(submissions.id, cursor),
-          columns: { submittedAt: true },
-        });
-        if (cursorRow?.submittedAt) {
-          cursorFilter = lt(submissions.submittedAt, cursorRow.submittedAt);
+        let cursorSubmittedAt: Date | undefined;
+        try {
+          const decoded = JSON.parse(Buffer.from(cursor, "base64").toString("utf-8"));
+          if (decoded && typeof decoded === "object" && "t" in decoded) {
+            cursorSubmittedAt = new Date(decoded.t as string);
+          }
+        } catch {
+          // Not a base64-encoded cursor — fall back to DB lookup for backward
+          // compatibility with cursors generated before this change.
+          const cursorRow = await db.query.submissions.findFirst({
+            where: eq(submissions.id, cursor),
+            columns: { submittedAt: true },
+          });
+          cursorSubmittedAt = cursorRow?.submittedAt;
+        }
+        if (cursorSubmittedAt) {
+          cursorFilter = lt(submissions.submittedAt, cursorSubmittedAt);
         }
       }
 
@@ -95,7 +107,12 @@ export const GET = createApiHandler({
 
       const hasMore = results.length > limit;
       const pageResults = hasMore ? results.slice(0, limit) : results;
-      const nextCursor = hasMore ? pageResults[pageResults.length - 1]?.id : undefined;
+      // Encode the next cursor with both id and submittedAt to eliminate the
+      // N+1 lookup query on the next page request.
+      const lastResult = pageResults[pageResults.length - 1];
+      const nextCursor = hasMore && lastResult?.submittedAt
+        ? Buffer.from(JSON.stringify({ id: lastResult.id, t: lastResult.submittedAt.toISOString() }), "utf-8").toString("base64")
+        : undefined;
 
       return apiSuccess({ data: pageResults, nextCursor: nextCursor ?? null });
     }
