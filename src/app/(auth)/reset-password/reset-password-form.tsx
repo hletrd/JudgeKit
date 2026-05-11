@@ -56,9 +56,16 @@ export function ResetPasswordForm() {
         signal: ctrl.signal,
       });
 
-      const data = await res.json().catch(() => ({ error: "unknown" }));
+      let data: { error?: string; minLength?: number };
+      let parseOk = false;
+      try {
+        data = await res.json();
+        parseOk = true;
+      } catch {
+        data = { error: "unknown" };
+      }
 
-      if (!res.ok) {
+      if (!res.ok || !parseOk) {
         if (data.error === "invalidOrExpiredToken") {
           setError(t("invalidOrExpiredToken"));
         } else if (data.error === "passwordTooShort") {

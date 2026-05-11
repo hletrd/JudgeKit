@@ -340,9 +340,16 @@ export default function CreateProblemForm({
       });
 
       // Parse response body once — the Response body can only be consumed once
-      const uploadData = await res.json().catch(() => ({ data: {} }));
+      let uploadData: unknown;
+      let parseOk = false;
+      try {
+        uploadData = await res.json();
+        parseOk = true;
+      } catch {
+        uploadData = { data: {} };
+      }
 
-      if (!res.ok) {
+      if (!res.ok || !parseOk) {
         setDescription((prev) => prev.replace(placeholder, ""));
         toast.error(t(getApiError(uploadData) ?? "uploadFailed"));
         setIsUploadingImage(false);

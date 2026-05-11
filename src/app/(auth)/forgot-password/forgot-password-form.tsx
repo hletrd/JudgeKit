@@ -38,9 +38,16 @@ export function ForgotPasswordForm() {
         signal: ctrl.signal,
       });
 
-      const data = await res.json().catch(() => ({ error: "unknown" }));
+      let data: { error?: string };
+      let parseOk = false;
+      try {
+        data = await res.json();
+        parseOk = true;
+      } catch {
+        data = { error: "unknown" };
+      }
 
-      if (!res.ok) {
+      if (!res.ok || !parseOk) {
         if (data.error === "rateLimited") {
           setError(t("rateLimited"));
         } else if (data.error === "emailNotConfigured") {

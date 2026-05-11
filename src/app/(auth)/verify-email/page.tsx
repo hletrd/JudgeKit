@@ -35,9 +35,16 @@ export default function VerifyEmailPage() {
           signal: ctrl.signal,
         });
 
-        const data = await res.json().catch(() => ({ error: "unknown" }));
+        let data: { error?: string };
+        let parseOk = false;
+        try {
+          data = await res.json();
+          parseOk = true;
+        } catch {
+          data = { error: "unknown" };
+        }
 
-        if (!res.ok) {
+        if (!res.ok || !parseOk) {
           setStatus("error");
           if (data.error === "invalidOrExpiredToken") {
             setErrorMessage(t("invalidOrExpiredToken"));
