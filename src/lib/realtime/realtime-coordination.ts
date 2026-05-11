@@ -87,11 +87,13 @@ export async function acquireSharedSseConnectionSlot({
 }) {
   const key = getRealtimeConnectionKey(userId, connectionId);
 
+  // Use DB server time for all comparisons against DB-stored timestamps
+  // to avoid clock skew between app and DB servers. Fetch the timestamp
+  // BEFORE acquiring the advisory lock to minimize lock hold duration.
+  const dbNow = await getDbNowUncached();
+  const nowMs = dbNow.getTime();
+
   return withPgAdvisoryLock("realtime:sse:acquire", async (tx) => {
-    // Use DB server time for all comparisons against DB-stored timestamps
-    // to avoid clock skew between app and DB servers, consistent with
-    // other schedule checks (submissions, rate-limiting, assignments).
-    const nowMs = (await getDbNowUncached()).getTime();
     const expiresAt = nowMs + timeoutMs + 30_000;
 
     // LIKE pattern uses a module-level constant prefix (SSE_KEY_PREFIX)
@@ -158,10 +160,13 @@ export async function shouldRecordSharedHeartbeat({
 }) {
   const key = getHeartbeatKey(assignmentId, userId);
 
+  // Use DB server time for heartbeat dedup to avoid clock skew
+  // between app and DB servers. Fetch the timestamp BEFORE acquiring
+  // the advisory lock to minimize lock hold duration.
+  const dbNow = await getDbNowUncached();
+  const nowMs = dbNow.getTime();
+
   return withPgAdvisoryLock(key, async (tx) => {
-    // Use DB server time for heartbeat dedup to avoid clock skew
-    // between app and DB servers, consistent with other schedule checks.
-    const nowMs = (await getDbNowUncached()).getTime();
     const [existing] = await tx
       .select({ lastAttempt: rateLimits.lastAttempt })
       .from(rateLimits)
