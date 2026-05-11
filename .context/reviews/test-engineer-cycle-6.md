@@ -1,48 +1,45 @@
-# Test Engineer — Cycle 6 (Loop 6/100)
+# Test Engineering Review — Cycle 6 (Updated)
 
-**Date:** 2026-04-24
-**HEAD commit:** 4ec394c2 (cycle 5 multi-agent review + remediation)
+**Reviewer:** test-engineer
+**Date:** 2026-05-11
+**Scope:** Test coverage for new and modified code, component tests, API route tests
 
-## Methodology
+---
 
-Review of test coverage, test quality, flaky test risks, and TDD opportunities across the repository. Examination of unit, component, integration, and e2e test directories. Cross-referencing test files against production code modules.
+## HIGH
 
-## Findings
+None.
 
-**No new test-related findings.** No source code has changed since cycle 5.
+---
 
-### Test Coverage Assessment
+## MEDIUM
 
-1. **Unit tests**: Extensive coverage across auth, API, security, compiler, assignments, submissions, recruiting, problems, and infra modules (100+ test files under `tests/unit/`).
+### M1: Missing Component Source Files for New Tests
+- **Files:** `tests/component/active-timed-assignment-sidebar-panel.test.tsx`, `tests/component/app-sidebar.test.tsx`, `tests/component/conditional-header.test.tsx`
+- **Confidence:** High
+- **Description:** Three component test files exist in `tests/component/` but their corresponding source files (`src/components/layout/active-timed-assignment-sidebar-panel.tsx`, etc.) do not exist in the repository. These tests are listed as untracked in git status. They will fail if run because the imports will resolve to missing modules.
+- **Fix:** Either create the missing component source files or remove the test files if they were committed prematurely.
 
-2. **Key coverage areas**:
-   - Auth: JWT, session-security, login-events, recruiting-token
-   - API: handler factory, rate-limiting, API key auth
-   - Security: encryption, CSRF, IP extraction, password hashing, sanitization
-   - Compiler: execution, Docker image validation
-   - DB: time functions, cleanup, export/import
-   - Submissions: visibility, formatting, queue status
-   - Problems: management, test-case-drafts
-   - Assignments: scoring, leaderboard, participant-status
+---
 
-3. **Cycle 5 addition verified**: `tests/unit/api/judge-claim-db-time.test.ts` (56 lines) tests the judge claim route DB-time usage — addressing TE-2 from cycle 4.
+## LOW
 
-### Observations
+### L1: `stopSharedPollTimer` Lacks Unit Test Coverage
+- **File:** `src/app/api/v1/submissions/[id]/events/route.ts:161-166`
+- **Confidence:** Medium
+- **Description:** The newly-added `stopSharedPollTimer` export is not exercised in any test. There are no tests verifying that (a) calling it stops the timer, (b) calling it when no timer is running is safe, or (c) the shutdown handler correctly invokes it.
+- **Fix:** Add unit tests for `stopSharedPollTimer` and `stopSseCleanupTimer` in the events route test suite.
 
-1. **TE-3 (from cycle 5) still open**: No unit test for JWT `authenticatedAt` clock-skew path. However, the cycle 5 fix (using `getDbNowMs()`) reduces the risk: the sign-in path now fetches DB time, so the clock-skew concern is between the DB and itself (zero). The only remaining `Date.now()` usage is in the `syncTokenWithUser` fallback for malformed tokens — a path so rare that a dedicated test has marginal value. **Severity: LOW**. **Confidence: LOW**.
+### L2: `compiler/execute.ts` Local Fallback Path Not Covered
+- **File:** `src/lib/compiler/execute.ts`
+- **Confidence:** Low
+- **Description:** The `executeCompilerRun` function has multiple code paths (Rust runner success, Rust runner failure with local fallback, local fallback disabled, invalid Docker image, invalid shell command) but only the happy path is likely covered by integration tests. The error paths (invalid shell command, invalid Docker image) are critical for security but lack explicit test coverage.
+- **Fix:** Add unit tests for `validateShellCommand` and `validateShellCommandStrict` with edge cases (boundary length, forbidden characters, allowed prefixes).
 
-2. **TE-1 (from cycle 51) still open**: Missing integration test for concurrent recruiting token redemption. The atomic SQL claim with `pg_advisory_xact_lock` prevents TOCTOU races, but an integration test would provide higher confidence. **Severity: LOW/MEDIUM**.
+---
 
-3. **#21 (vitest flakes) still open**: Vitest unit parallel-contention flakes. Low impact, intermittent. **Severity: LOW/MEDIUM**.
+## Final Sweep Notes
 
-### Test Infrastructure
-
-- Vitest for unit/component tests
-- Playwright for E2E tests
-- Visual regression tests configured
-- Integration test config separate from unit test config
-- Source-grep inventory test (`tests/unit/infra/source-grep-inventory.test.ts`) ensures baseline file count is tracked
-
-## Carry-Over
-
-All deferred test items from cycle 5 aggregate remain valid and unchanged.
+- 317 test files pass (from cycle 5 remediation notes), indicating a healthy test suite.
+- Component tests use proper mocking patterns (observed in existing test files).
+- No flaky test patterns detected in the examined test files.

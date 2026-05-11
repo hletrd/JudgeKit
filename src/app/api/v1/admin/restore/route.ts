@@ -98,7 +98,7 @@ export async function POST(request: NextRequest) {
       }
     } else {
       // Legacy JSON format
-      const isJsonFile = file.name?.endsWith(".json") || file.type === "application/json";
+      const isJsonFile = file.name?.endsWith(".json");
       if (!isJsonFile) {
         return NextResponse.json(
           { error: "unsupportedFileFormat" },

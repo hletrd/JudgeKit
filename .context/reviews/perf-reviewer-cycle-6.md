@@ -1,34 +1,52 @@
-# Performance Reviewer — Cycle 6 (Loop 6/100)
+# Performance Review — Cycle 6 (Updated)
 
-**Date:** 2026-04-24
-**HEAD commit:** 4ec394c2 (cycle 5 multi-agent review + remediation)
+**Reviewer:** perf-reviewer
+**Date:** 2026-05-11
+**Scope:** SSE polling, database queries, compiler execution, anti-cheat heartbeat processing
 
-## Methodology
+---
 
-Review of performance-critical paths: rate limiting, SSE connection management, compiler execution, database queries, caching patterns, and concurrency control. Focus on CPU/memory usage, response latency, and scalability.
+## HIGH
 
-## Findings
+None.
 
-**No new performance findings.** No source code has changed since cycle 5.
+---
 
-### Performance-Critical Paths Reviewed
+## MEDIUM
 
-1. **Rate limiting**: Two-tier strategy (sidecar pre-check + PostgreSQL transaction) is efficient. The sidecar pre-check avoids a DB transaction per request when the limit is already exceeded. `atomicConsumeRateLimit` uses `SELECT FOR UPDATE` which serializes per-key but is necessary for correctness.
+### M1: SSE `sharedPollTick` Unbounded `inArray` Query
+- **File:** `src/app/api/v1/submissions/[id]/events/route.ts:224-232`
+- **Confidence:** High
+- **Description:** The shared poll tick collects ALL active submission IDs from `submissionSubscribers` and queries them in a single `inArray(submissions.id, submissionIds)` query. With 500 concurrent SSE connections, this creates an IN clause with 500 IDs. PostgreSQL's query planner may switch to a sequential scan or nested loop when IN lists grow large. The query also has no LIMIT, so it could return many rows if submissions are shared across connections.
+- **Concrete scenario:** During a large contest, 500+ students submit and keep SSE connections open. Each poll tick sends a query with 500 IDs to PostgreSQL, causing CPU spikes and query queue buildup.
+- **Fix:** Query by status (`WHERE status IN ('pending', 'queued', 'judging')`) with a reasonable LIMIT instead of by ID list. Or batch the ID list into chunks of 100.
 
-2. **SSE connection tracking**: Per-user connection counts via `userConnectionCounts` Map avoids O(n) iteration on each connection check. Stale connection cleanup runs every 60 seconds. O(n) eviction scan in `addConnection` is bounded by `MAX_TRACKED_CONNECTIONS = 1000` — known deferred item (AGG-6).
+### M2: Anti-Cheat Heartbeat Gap Detection Loads 5000 Rows into Memory
+- **File:** `src/app/api/v1/contests/[assignmentId]/anti-cheat/route.ts:199-227`
+- **Confidence:** Medium
+- **Description:** When filtering anti-cheat events by `userId`, the endpoint fetches up to 5000 heartbeat rows and reverses them in memory for gap detection. For a long contest (e.g., 4 hours), this is ~240 rows (one per minute), so 5000 is excessive. However, if heartbeats are recorded more frequently or the limit is increased, this could cause memory pressure.
+- **Fix:** Use a SQL window function (LAG) to detect gaps in the database instead of loading rows into memory.
 
-3. **Compiler execution**: Module-level `pLimit` caps parallel Docker containers to `cpus() - 1`. Orphan container cleanup runs on each execution request. Container age check uses `Date.now()` vs `docker inspect` output — acceptable for non-transactional cleanup.
+---
 
-4. **Proxy auth cache**: FIFO with 2-second TTL and max 500 entries. Cache key includes `authenticatedAt` for prompt invalidation. Negative results (user not found) are not cached — correct for security but means every unauthenticated request hits the DB. This is acceptable given the short TTL and small cache size.
+## LOW
 
-5. **Analytics/leaderboard caching**: Stale-while-revalidate pattern with 5-second TTL. Refresh is async and does not block the current request. Failure cooldown prevents thundering herd on repeated DB errors.
+### L1: `getDbNowUncached` Still Called Inside `withPgAdvisoryLock` Transaction
+- **File:** `src/lib/realtime/realtime-coordination.ts:68-73, 94`
+- **Confidence:** Medium
+- **Description:** `withPgAdvisoryLock` wraps operations in a transaction, and `acquireSharedSseConnectionSlot` calls `getDbNowUncached()` inside that transaction (line 94). This extends the advisory lock hold time by one extra DB round-trip. While advisory locks are lightweight, under very high SSE connection churn this adds latency.
+- **Fix:** Pass the timestamp into `withPgAdvisoryLock` or call `getDbNowUncached` before entering the transaction.
 
-### Observations
+### L2: Audit-Logs Instructor Scope Requires N+1 Queries
+- **File:** `src/app/api/v1/admin/audit-logs/route.ts:74-105`
+- **Confidence:** Low
+- **Description:** For instructor-scoped audit log views, the code performs up to 4 sequential queries (groups -> assignments -> submissions -> problems) to build the scope filter. Each depends on the previous result. This is O(N) in the number of owned resources.
+- **Fix:** Use a single CTE query or denormalize the ownership relationships.
 
-- **PERF-3 (from cycle 43) still open**: Anti-cheat heartbeat gap query transfers up to 5000 rows. The query uses `ORDER BY DESC LIMIT 5000` and then reverses in JS — this is efficient for the DB but the data transfer could be significant for very long contests. **Severity: MEDIUM/MEDIUM**.
+---
 
-- **AGG-6 still open**: SSE O(n) eviction scan — bounded by 1000 entries, runs only when capacity is reached. LOW/LOW.
+## Final Sweep Notes
 
-## Carry-Over
-
-All deferred performance items from cycle 5 aggregate remain valid and unchanged.
+- The cycle-5 fix (moving `getDbNowUncached` out of judge/poll transactions) is correctly applied.
+- Compiler execution limiter (`pLimit`) properly caps concurrent Docker containers.
+- No memory leaks detected in connection tracking Maps.
