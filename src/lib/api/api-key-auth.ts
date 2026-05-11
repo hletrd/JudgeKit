@@ -77,6 +77,7 @@ export async function authenticateApiKey(authHeader: string | null) {
       createdById: apiKeys.createdById,
       expiresAt: apiKeys.expiresAt,
       isActive: apiKeys.isActive,
+      createdAt: apiKeys.createdAt,
     })
     .from(apiKeys)
     .where(and(eq(apiKeys.keyHash, keyHash), eq(apiKeys.isActive, true)))
@@ -92,10 +93,20 @@ export async function authenticateApiKey(authHeader: string | null) {
 
   // Fetch the creator user for context
   const user = await db
-    .select(authUserSelect)
+    .select({ ...authUserSelect, tokenInvalidatedAt: users.tokenInvalidatedAt })
     .from(users)
     .where(eq(users.id, candidate.createdById))
     .then((rows) => rows[0] ?? null);
+
+  // Reject API keys created before the user's session was revoked.
+  // This closes the gap where revoking sessions does not invalidate API keys.
+  if (
+    user?.tokenInvalidatedAt &&
+    candidate.createdAt &&
+    new Date(candidate.createdAt).getTime() < new Date(user.tokenInvalidatedAt).getTime()
+  ) {
+    return null;
+  }
 
   if (!user?.isActive) return null;
 
