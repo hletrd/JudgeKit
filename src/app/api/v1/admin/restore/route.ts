@@ -70,11 +70,10 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: "fileTooLarge" }, { status: 400 });
     }
 
-    // Detect whether this is a ZIP archive (new format) or plain JSON (legacy)
-    const isZipFile =
-      file.name?.endsWith(".zip") ||
-      file.type === "application/zip" ||
-      file.type === "application/x-zip-compressed";
+    // Detect whether this is a ZIP archive (new format) or plain JSON (legacy).
+    // Rely only on the file name extension; file.type is client-controlled and
+    // can be spoofed via the multipart Content-Type header.
+    const isZipFile = file.name?.endsWith(".zip");
 
     let data: JudgeKitExport;
     let filesRestored = 0;
