@@ -47,7 +47,6 @@ export function CountdownTimer({ deadline, label, onExpired }: CountdownTimerPro
   const [expired, setExpired] = useState(() => deadline - Date.now() <= 0);
   const expiredRef = useRef(expired);
   const firedThresholds = useRef<Set<number>>(prePopulateThresholds(deadline - Date.now()));
-  const staggeredTimerIdsRef = useRef<ReturnType<typeof setTimeout>[]>([]);
   const [thresholdAnnouncement, setThresholdAnnouncement] = useState("");
   const [thresholdUrgent, setThresholdUrgent] = useState(false);
   const t = useTranslations("groups");
@@ -211,8 +210,6 @@ export function CountdownTimer({ deadline, label, onExpired }: CountdownTimerPro
     return () => {
       cancelled = true;
       if (timerId !== null) clearTimeout(timerId);
-      staggeredTimerIdsRef.current.forEach((id) => clearTimeout(id));
-      staggeredTimerIdsRef.current = [];
       syncCleanupRef.current?.();
       syncCleanupRef.current = null;
       document.removeEventListener("visibilitychange", handleVisibilityChange);
