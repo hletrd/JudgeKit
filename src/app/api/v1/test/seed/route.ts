@@ -24,6 +24,7 @@ import { logger } from "@/lib/logger";
 import { safeTokenCompare } from "@/lib/security/timing";
 import { extractClientIp } from "@/lib/security/ip";
 import { csrfForbidden } from "@/lib/api/auth";
+import { consumeApiRateLimit } from "@/lib/security/api-rate-limit";
 
 // ─── Auth helpers ────────────────────────────────────────────────────────────
 
@@ -64,7 +65,7 @@ const createUserSchema = z.object({
     username: z.string().min(1).startsWith("e2e-"),
     name: z.string().min(1).optional(),
     password: z.string().min(1).optional(),
-    role: z.enum(["student", "instructor"]).optional(),
+    role: z.literal("student").optional(),
   }),
 });
 
@@ -115,6 +116,9 @@ export async function POST(req: NextRequest) {
   if (!isAuthorized(req)) {
     return apiError("unauthorized", 401);
   }
+
+  const rateLimitResponse = await consumeApiRateLimit(req, "test:seed");
+  if (rateLimitResponse) return rateLimitResponse;
 
   const csrfError = csrfForbidden(req);
   if (csrfError) return csrfError;
