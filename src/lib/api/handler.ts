@@ -160,8 +160,12 @@ export function createApiHandler<T = undefined>(config: HandlerConfig<T>) {
 
         const parsed = schema.safeParse(raw);
         if (!parsed.success) {
+          const issues = parsed.error.issues;
           return NextResponse.json(
-            { error: parsed.error.issues[0]?.message ?? "validationError" },
+            {
+              error: issues[0]?.message ?? "validationError",
+              errors: issues.map((issue) => issue.message),
+            },
             { status: 400 }
           );
         }
