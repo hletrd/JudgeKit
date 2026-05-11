@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useCallback, useMemo } from "react";
+import { useState, useCallback, useMemo, useRef, useEffect } from "react";
 import { useTranslations, useLocale } from "next-intl";
 import { toast } from "sonner";
 import { useSystemTimezone } from "@/contexts/timezone-context";
@@ -81,12 +81,20 @@ export function ParticipantAntiCheatTimeline({
   const [offset, setOffset] = useState(0);
   const [loadingMore, setLoadingMore] = useState(false);
   const PAGE_SIZE = 50;
+  const abortControllerRef = useRef<AbortController | null>(null);
 
   const fetchEvents = useCallback(async () => {
+    // Abort any in-flight request before starting a new one
+    if (abortControllerRef.current) {
+      abortControllerRef.current.abort();
+    }
+    const controller = new AbortController();
+    abortControllerRef.current = controller;
+
     try {
       const { ok, data: json } = await apiFetchJson<{ data: { events: AntiCheatEvent[]; total: number } }>(
         `/api/v1/contests/${assignmentId}/anti-cheat?userId=${userId}&limit=${PAGE_SIZE}&offset=0`,
-        undefined,
+        { signal: controller.signal },
         { data: { events: [], total: 0 } }
       );
       if (ok) {
@@ -101,7 +109,9 @@ export function ParticipantAntiCheatTimeline({
       } else {
         setError(true);
       }
-    } catch {
+    } catch (err) {
+      // AbortError means the request was cancelled — not a real error
+      if (err instanceof DOMException && err.name === "AbortError") return;
       setError(true);
     } finally {
       setLoading(false);
@@ -129,6 +139,15 @@ export function ParticipantAntiCheatTimeline({
   }, [assignmentId, userId, offset, t]);
 
   useVisibilityPolling(() => { void fetchEvents(); }, 30_000);
+
+  useEffect(() => {
+    return () => {
+      if (abortControllerRef.current) {
+        abortControllerRef.current.abort();
+        abortControllerRef.current = null;
+      }
+    };
+  }, []);
 
   const eventTypes = useMemo(
     () => Array.from(new Set(events.map((e) => e.eventType))).sort(),

@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useCallback } from "react";
+import { useState, useCallback, useRef, useEffect } from "react";
 import Link from "next/link";
 import { useTranslations, useLocale } from "next-intl";
 import { apiFetchJson } from "@/lib/api/client";
@@ -217,16 +217,24 @@ export function LeaderboardTable({
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [error, setError] = useState(false);
+  const abortControllerRef = useRef<AbortController | null>(null);
 
   const fetchLeaderboard = useCallback(
     async (isRefresh = false) => {
+      // Abort any in-flight request before starting a new one
+      if (abortControllerRef.current) {
+        abortControllerRef.current.abort();
+      }
+      const controller = new AbortController();
+      abortControllerRef.current = controller;
+
       if (isRefresh) setRefreshing(true);
       else setLoading(true);
 
       try {
         const { ok, data: json } = await apiFetchJson<{ data: LeaderboardData }>(
           `/api/v1/contests/${assignmentId}/leaderboard`,
-          undefined,
+          { signal: controller.signal },
           { data: { entries: [] } as unknown as LeaderboardData }
         );
         if (ok) {
@@ -239,7 +247,9 @@ export function LeaderboardTable({
         } else if (!isRefresh) {
           setError(true);
         }
-      } catch {
+      } catch (err) {
+        // AbortError means the request was cancelled — not a real error
+        if (err instanceof DOMException && err.name === "AbortError") return;
         if (!isRefresh) {
           setError(true);
         }
@@ -252,6 +262,15 @@ export function LeaderboardTable({
   );
 
   useVisibilityPolling(() => { void fetchLeaderboard(true); }, refreshInterval);
+
+  useEffect(() => {
+    return () => {
+      if (abortControllerRef.current) {
+        abortControllerRef.current.abort();
+        abortControllerRef.current = null;
+      }
+    };
+  }, []);
 
   if (loading && !data) {
     return <SkeletonTable />;

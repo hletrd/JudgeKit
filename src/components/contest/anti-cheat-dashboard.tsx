@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useCallback, useMemo } from "react";
+import { useState, useCallback, useEffect, useMemo, useRef } from "react";
 import { useTranslations, useLocale } from "next-intl";
 import { useSystemTimezone } from "@/contexts/timezone-context";
 import { formatDateTimeInTimeZone } from "@/lib/datetime";
@@ -122,12 +122,20 @@ export function AntiCheatDashboard({ assignmentId }: AntiCheatDashboardProps) {
   const [similarityStatusMessage, setSimilarityStatusMessage] = useState<string | null>(null);
   const [similarityPairs, setSimilarityPairs] = useState<SimilarityPairView[]>([]);
   const PAGE_SIZE = 100;
+  const abortControllerRef = useRef<AbortController | null>(null);
 
   const fetchEvents = useCallback(async () => {
+    // Abort any in-flight request before starting a new one
+    if (abortControllerRef.current) {
+      abortControllerRef.current.abort();
+    }
+    const controller = new AbortController();
+    abortControllerRef.current = controller;
+
     try {
       const { ok, data: json } = await apiFetchJson<{ data: { events: AntiCheatEvent[]; total: number } }>(
         `/api/v1/contests/${assignmentId}/anti-cheat?limit=${PAGE_SIZE}&offset=0`,
-        undefined,
+        { signal: controller.signal },
         { data: { events: [], total: 0 } }
       );
       if (ok) {
@@ -160,7 +168,9 @@ export function AntiCheatDashboard({ assignmentId }: AntiCheatDashboardProps) {
       } else {
         setError(true);
       }
-    } catch {
+    } catch (err) {
+      // AbortError means the request was cancelled — not a real error
+      if (err instanceof DOMException && err.name === "AbortError") return;
       setError(true);
     } finally {
       setLoading(false);
@@ -188,6 +198,15 @@ export function AntiCheatDashboard({ assignmentId }: AntiCheatDashboardProps) {
   }, [assignmentId, offset, tCommon]);
 
   useVisibilityPolling(() => { void fetchEvents(); }, 30_000);
+
+  useEffect(() => {
+    return () => {
+      if (abortControllerRef.current) {
+        abortControllerRef.current.abort();
+        abortControllerRef.current = null;
+      }
+    };
+  }, []);
 
   // Derived stats
   const uniqueStudentCount = useMemo(

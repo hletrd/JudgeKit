@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState, useCallback } from "react";
+import { useEffect, useState, useCallback, useRef } from "react";
 import { useTranslations, useLocale } from "next-intl";
 import { apiFetch, apiFetchJson } from "@/lib/api/client";
 import { useVisibilityPolling } from "@/hooks/use-visibility-polling";
@@ -224,12 +224,20 @@ export function WorkersPageClient() {
   const [workers, setWorkers] = useState<Worker[]>([]);
   const [stats, setStats] = useState<WorkerStats | null>(null);
   const [loading, setLoading] = useState(true);
+  const abortControllerRef = useRef<AbortController | null>(null);
 
   const fetchData = useCallback(async () => {
+    // Abort any in-flight request before starting a new one
+    if (abortControllerRef.current) {
+      abortControllerRef.current.abort();
+    }
+    const controller = new AbortController();
+    abortControllerRef.current = controller;
+
     try {
       const [workersResult, statsResult] = await Promise.all([
-        apiFetchJson<{ data: Worker[] }>("/api/v1/admin/workers", undefined, { data: [] }),
-        apiFetchJson<{ data: WorkerStats }>("/api/v1/admin/workers/stats", undefined, { data: null as unknown as WorkerStats }),
+        apiFetchJson<{ data: Worker[] }>("/api/v1/admin/workers", { signal: controller.signal }, { data: [] }),
+        apiFetchJson<{ data: WorkerStats }>("/api/v1/admin/workers/stats", { signal: controller.signal }, { data: null as unknown as WorkerStats }),
       ]);
       if (workersResult.ok) {
         setWorkers(workersResult.data.data ?? []);
@@ -241,7 +249,9 @@ export function WorkersPageClient() {
       } else {
         toast.error(t("fetchError"));
       }
-    } catch {
+    } catch (err) {
+      // AbortError means the request was cancelled — not a real error
+      if (err instanceof DOMException && err.name === "AbortError") return;
       toast.error(t("fetchError"));
     } finally {
       setLoading(false);
@@ -251,6 +261,15 @@ export function WorkersPageClient() {
   useEffect(() => {
     fetchData();
   }, [fetchData]);
+
+  useEffect(() => {
+    return () => {
+      if (abortControllerRef.current) {
+        abortControllerRef.current.abort();
+        abortControllerRef.current = null;
+      }
+    };
+  }, []);
 
   useVisibilityPolling(() => { void fetchData(); }, 10_000);
 

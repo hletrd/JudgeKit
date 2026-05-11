@@ -23,6 +23,7 @@ export function SubmissionListAutoRefresh({
   const errorCountRef = useRef(0);
   const isRunningRef = useRef(false);
   const mountedRef = useRef(true);
+  const abortControllerRef = useRef<AbortController | null>(null);
 
   useEffect(() => {
     mountedRef.current = true;
@@ -38,6 +39,13 @@ export function SubmissionListAutoRefresh({
       if (isRunningRef.current) return;
       isRunningRef.current = true;
 
+      // Abort any previous in-flight request before starting a new one
+      if (abortControllerRef.current) {
+        abortControllerRef.current.abort();
+      }
+      const controller = new AbortController();
+      abortControllerRef.current = controller;
+
       try {
         if (document.visibilityState === "hidden") return;
 
@@ -48,14 +56,24 @@ export function SubmissionListAutoRefresh({
         // Note: /api/v1/time is unauthenticated, so this backoff only
         // activates for network/server errors, not session expiry. Session
         // expiry is correctly handled by the middleware redirect.
-        const res = await apiFetch("/api/v1/time", { cache: "no-store" });
+        const res = await apiFetch("/api/v1/time", {
+          cache: "no-store",
+          signal: controller.signal,
+        });
         if (!res.ok) throw new Error(`time endpoint returned ${res.status}`);
         router.refresh();
         errorCountRef.current = 0;
-      } catch {
+      } catch (err) {
+        // Ignore abort errors — they are intentional cancellations
+        if (err instanceof DOMException && err.name === "AbortError") {
+          return;
+        }
         errorCountRef.current += 1;
       } finally {
         isRunningRef.current = false;
+        if (abortControllerRef.current === controller) {
+          abortControllerRef.current = null;
+        }
       }
     }
 
@@ -85,6 +103,10 @@ export function SubmissionListAutoRefresh({
       if (timerRef.current) {
         clearTimeout(timerRef.current);
         timerRef.current = null;
+      }
+      if (abortControllerRef.current) {
+        abortControllerRef.current.abort();
+        abortControllerRef.current = null;
       }
     };
   }, [hasActiveSubmissions, activeIntervalMs, idleIntervalMs, router]);
