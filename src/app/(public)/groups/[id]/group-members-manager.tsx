@@ -310,7 +310,7 @@ export function GroupMembersManager({
       if (!response.ok) {
         const payload = await response.json().catch(() => ({}));
         toast.error(t(getApiError(payload) || "memberRemoveFailed"));
-        return;
+        return false;
       }
 
       setCurrentMembers((current) => current.filter((entry) => entry.userId !== member.userId));
