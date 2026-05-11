@@ -1,112 +1,88 @@
-# Cycle 16 Comprehensive Deep Code Review
+# Cycle 16 — Comprehensive Review (2026-05-11)
 
-**Date:** 2026-04-19
-**Reviewer:** Multi-angle review (code quality, security, performance, architecture, correctness, testing)
-**Base commit:** 433f3221
-
----
-
-## Findings
-
-### F1: Contest replay pLimit(4) concurrency can starve the DB connection pool under load
-- **File**: `src/lib/assignments/contest-replay.ts:61-80`
-- **Severity**: MEDIUM
-- **Confidence**: HIGH
-- **Description**: The cycle 15 fix added `pLimit(4)` to parallelize snapshot computation. Each `computeContestRanking` call executes up to 3 SQL queries (meta, scoring, assignment problems). With 4 concurrent snapshots, that is up to 12 simultaneous SQL queries. Since `computeContestRanking` uses a stale-while-revalidate cache, these queries are only executed on cache misses. However, on a cold cache (first request after restart or cache expiry), an instructor opening the replay for a large contest triggers 4 concurrent snapshot computations, each holding DB connections for the full query duration. If multiple instructors do this simultaneously for different contests, the DB connection pool (typically 10-20 connections) can be exhausted, causing other requests to time out waiting for connections.
-- **Concrete failure scenario**: Three instructors open replay pages for different contests within seconds of a server restart. Each replay triggers 4 concurrent snapshot computations (12 queries each). With 3 instructors, that is up to 36 concurrent DB queries from replay alone, far exceeding a typical 20-connection pool. Other API requests start timing out.
-- **Fix**: Either reduce the concurrency to 2, or add a comment documenting the expected connection pool sizing. Better: use a single batched query approach for all snapshots (fetch all submissions once, compute rankings in memory) as a longer-term improvement.
-
-### F2: `computeContestRanking` stale-while-revalidate background refresh is fire-and-forget with no error boundary
-- **File**: `src/lib/assignments/contest-scoring.ts:101-113`
-- **Severity**: LOW
-- **Confidence**: HIGH
-- **Description**: The stale-while-revalidate pattern at lines 101-113 triggers a background refresh via `_computeContestRankingInner`. If this background promise rejects (e.g., DB connection error), the `.catch()` handler logs the error and the `_refreshingKeys.delete()` runs in `.finally()`. However, the error is only logged, and the stale data continues to be served. On the next request within the TTL window, the cache is still stale, but `_refreshingKeys` no longer has the key, so another refresh attempt is triggered. This creates a retry loop: every request during the stale window triggers a new DB query that also fails. If the DB is temporarily down, this amplifies the failure rate instead of backing off.
-- **Concrete failure scenario**: The DB is temporarily unavailable for 30 seconds. Every request to `computeContestRanking` during that window triggers a new failed DB query. With 100 requests/second on the leaderboard API, this generates 3000 failed DB connection attempts during the outage, worsening the DB's recovery.
-- **Fix**: Add an exponential backoff or a "recently failed" timestamp that prevents re-triggering the background refresh for a short cooldown period (e.g., 5 seconds) after a failure.
-
-### F3: `resetRecruitingInvitationAccountPassword` sets `mustChangePassword: false` instead of `true`
-- **File**: `src/lib/assignments/recruiting-invitations.ts:233-252`
-- **Severity**: MEDIUM
-- **Confidence**: HIGH
-- **Description**: When an admin resets a recruiting invitation account password, the function invalidates the current password (sets it to a random hash) and sets `mustChangePassword: false`. The intention is that the next time the candidate redeems the token, they will be prompted to set a new password (via the `ACCOUNT_PASSWORD_RESET_REQUIRED_KEY` metadata flag). However, since `mustChangePassword` is `false`, the candidate can still log in with their old session token (if it hasn't been invalidated yet) without setting a new password. The `tokenInvalidatedAt` is set, which should invalidate existing sessions, but the `mustChangePassword: false` means that if the session invalidation has a race condition or is bypassed (e.g., a session created after the reset but before the candidate redeems), the candidate would not be prompted to change their password.
-- **Concrete failure scenario**: An admin resets a recruiting candidate's password. The `tokenInvalidatedAt` is set, but due to a clock skew or JWT cache, the candidate's existing session is still valid for a brief window. During that window, the candidate makes a request. Since `mustChangePassword` is `false`, they are not redirected to the password change page. The intended security measure (forcing a password change on next login) is bypassed.
-- **Fix**: Set `mustChangePassword: true` instead of `false` in the `resetRecruitingInvitationAccountPassword` function. This ensures that even if the session invalidation has a gap, the candidate will be forced to change their password on the next interaction.
-
-### F4: `getInvitationStats` counts "expired" invitations that are actually still valid
-- **File**: `src/lib/assignments/recruiting-invitations.ts:260-295`
-- **Severity**: LOW
-- **Confidence**: HIGH
-- **Description**: `getInvitationStats` counts "expired" invitations by checking `expiresAt < now` for invitations with status "pending". However, the count of "expired" is subtracted from "pending" at line 292 (`stats.pending -= stats.expired`). This means the `pending` count in the stats can become negative if there is a race condition or if invitations are transitioned to "redeemed" between the two queries (the status-based count and the expiry-based count). Additionally, the expiry check uses `new Date()` (app time) instead of `NOW()` (DB time), which is inconsistent with the `redeemRecruitingToken` function that uses `NOW()` in the SQL WHERE clause.
-- **Concrete failure scenario**: Between the two queries in `getInvitationStats`, a pending invitation is redeemed. The first query counts it as "pending", but by the time the second query runs, it is "redeemed" and no longer counted as "expired". The `stats.pending -= stats.expired` subtraction still removes the "expired" count that was computed with the invitation still in the "pending" state, potentially making `stats.pending` go negative.
-- **Fix**: Use a single SQL query with conditional aggregation (SUM(CASE WHEN ...)) to atomically compute all status counts. Also, use `NOW()` for the expiry comparison instead of `new Date()`.
-
-### F5: `isAdmin()` sync function is still exported and used as a re-export from handler.ts
-- **File**: `src/lib/api/auth.ts:97`, `src/lib/api/handler.ts:191`
-- **Severity**: LOW
-- **Confidence**: HIGH
-- **Description**: The sync `isAdmin()` function is still exported from `auth.ts` and re-exported from `handler.ts`. While it's only used internally as a fast-path inside `isAdminAsync()`, it is available for import by any route. This is the same class of issue as `isInstructor()` (which was fixed in cycle 15 by making it module-private). If a developer imports `isAdmin` directly from `handler.ts` and uses it for an auth check, custom admin-level roles will be silently denied.
-- **Concrete failure scenario**: Same as the `isInstructor()` finding from cycle 15 (F2). A developer adds `if (!isAdmin(user.role)) return forbidden()` in a new route. A custom role "department_admin" with admin-equivalent capabilities but not in `ROLE_LEVEL` returns `false`, blocking the user.
-- **Fix**: Remove the export of `isAdmin` from both `auth.ts` and `handler.ts`. Keep it as a module-private function used only inside `isAdminAsync()`. Update any remaining importers.
-
-### F6: Code snapshot POST has no per-user rate limit — potential abuse vector
-- **File**: `src/app/api/v1/code-snapshots/route.ts:20-68`
-- **Severity**: LOW
-- **Confidence**: MEDIUM
-- **Description**: The code snapshot POST endpoint has a generic rate limit (`"code-snapshot"`) which is IP-based. Since the source code can be up to 256KB per request, a malicious or buggy client could flood the `code_snapshots` table with large rows. There is no per-user rate limit (unlike the submission route which uses `consumeUserApiRateLimit`), and no limit on the total number of snapshots per user per assignment.
-- **Concrete failure scenario**: A student's browser has a bug that sends code snapshots on every keystroke. During a 2-hour contest, the student generates thousands of snapshot records (each up to 256KB), consuming significant DB storage and potentially degrading query performance on the `code_snapshots` table.
-- **Fix**: Add a per-user rate limit for code snapshots (e.g., max 60 per hour per user per problem). Consider also adding a cleanup policy for old snapshots.
-
-### F7: Anti-cheat GET query uses `createdAt` ordering without an index-friendly filter for heartbeat gap detection
-- **File**: `src/app/api/v1/contests/[assignmentId]/anti-cheat/route.ts:187-196`
-- **Severity**: LOW
-- **Confidence**: MEDIUM
-- **Description**: The heartbeat gap detection query selects heartbeats ordered by `createdAt` with a LIMIT of 5000. However, it does not filter by a time range. For a contest that has been running for days with many students, the `anti_cheat_events` table can have millions of rows. The query `SELECT createdAt FROM anti_cheat_events WHERE assignmentId = ? AND userId = ? AND eventType = 'heartbeat' ORDER BY createdAt LIMIT 5000` will use the index to find the first 5000 heartbeats for this user, which are the oldest ones. If the contest has been running for a long time, the gap detection only examines the earliest heartbeats and misses recent gaps.
-- **Concrete failure scenario**: A contest runs for 3 days with 500 students. Each student generates ~4320 heartbeat events (1 per minute). The query fetches the first 5000 heartbeats for a student, which covers only the first 83 hours (out of 72 hours total). Since the limit is exactly the number of heartbeats generated, it works. But if the contest runs longer than 83 hours, or if heartbeats are more frequent, the LIMIT 5000 would miss the most recent heartbeats, and gaps in the later part of the contest would not be detected.
-- **Fix**: Change the ordering to `desc(antiCheatEvents.createdAt)` and reverse the array, or use `ORDER BY created_at DESC LIMIT 5000` to get the most recent heartbeats for gap detection. Alternatively, add a date range filter.
-
-### F8: `sanitizeSubmissionForViewer` DB query is not batched — called per-submission in list endpoints
-- **File**: `src/lib/submissions/visibility.ts:73-84`
-- **Severity**: LOW
-- **Confidence**: MEDIUM
-- **Description**: This was identified in cycle 15 (F3/L2) as a "principle of least surprise" issue. However, the practical impact is worse than noted: while the function is currently only called from `GET /api/v1/submissions/[id]`, if a future developer adds it to a list endpoint, it would create an N+1 query pattern (one DB query per submission for the assignment visibility settings). The assignment visibility settings are the same for all submissions in the same assignment, so they should be cached or passed in.
-- **Concrete failure scenario**: A developer adds `sanitizeSubmissionForViewer` to the submission list endpoint. For a page of 50 submissions, this generates 50 additional DB queries (one per submission), even though all 50 submissions are for the same assignment and the visibility settings are identical.
-- **Fix**: Already noted in cycle 15 deferred items (D16). Re-iterating here with the concrete N+1 risk for list endpoints. The fix is to accept the assignment visibility settings as an optional parameter and skip the DB query when provided.
+**Date:** 2026-05-11
+**HEAD reviewed:** `5a400792`
+**Prior aggregate:** `_aggregate-cycle-15.md` (HEAD `af634e63`)
 
 ---
 
-## Verified Safe (No Issue)
+## Summary
 
-### VS1: Contest invite POST — redundant SELECT removal is correct
-- **File**: `src/app/api/v1/contests/[assignmentId]/invite/route.ts:96-120`
-- **Description**: The cycle 15 fix removed the redundant SELECT checks before the INSERT+onConflictDoNothing. This is correct: `onConflictDoNothing` handles the race condition. The transaction still ensures atomicity of the token + enrollment pair. No issue found.
+The codebase has not changed since cycle 15 (`af634e63`). Commit `5a400792` only adds documentation files (cycle 15 review artifacts). Therefore, this cycle's review focuses on:
 
-### VS2: `validateRoleChangeAsync` error differentiation is correct
-- **File**: `src/lib/users/core.ts:89-95`
-- **Description**: The cycle 15 fix correctly differentiates between super-admin escalation (specific error) and other role escalation (generic error). The `isSuperAdminRole` async check properly uses the capability cache for custom roles. No issue found.
+1. Re-verification of all prior deferred findings
+2. Fresh sweeps of high-risk areas to ensure no regression
+3. Verification that recently-added files (since April 20) remain in good standing
 
-### VS3: `isInstructor` made module-private
-- **File**: `src/lib/api/auth.ts:116`
-- **Description**: The cycle 15 fix correctly made `isInstructor` module-private (removed the `export` keyword). It is still used as a fast-path inside `isInstructorAsync`. The `handler.ts` re-export was also updated. No issue found.
-
-### VS4: `ensureActorCanManageTarget` specific error message
-- **File**: `src/app/api/v1/users/[id]/route.ts:119-120`
-- **Description**: The cycle 15 fix correctly replaced the generic "unauthorized" error with the specific "cannotManageSameLevelUser" error. The behavior is correct (same-level management is still blocked, just with a better error message). No issue found.
+**Result: 0 new findings.** The codebase remains in a mature, well-hardened state after 15 prior cycles of remediation.
 
 ---
 
-## Previously Deferred Items (Still Active)
+## Review Coverage
 
-| ID | Finding | Severity | Status |
-|----|---------|----------|--------|
-| A19 | `new Date()` clock skew risk | LOW | Deferred — only affects distributed deployments with unsynchronized clocks |
-| A7 | Dual encryption key management | MEDIUM | Deferred — consolidation requires migration |
-| A12 | Inconsistent auth/authorization patterns | MEDIUM | Deferred — existing routes work correctly |
-| A2 | Rate limit eviction could delete SSE slots | MEDIUM | Deferred — unlikely with heartbeat refresh |
-| A17 | JWT contains excessive UI preference data | LOW | Deferred — requires session restructure |
-| A25 | Timing-unsafe bcrypt fallback | LOW | Deferred — bcrypt-to-argon2 migration in progress |
-| A26 | Polling-based backpressure wait | LOW | Deferred — no production reports |
-| L2(c13) | Anti-cheat LRU cache single-instance limitation | LOW | Deferred — already guarded by getUnsupportedRealtimeGuard |
-| L5(c13) | Bulk create elevated roles warning | LOW | Deferred — server validates role assignments |
-| D16 | `sanitizeSubmissionForViewer` unexpected DB query | LOW | Deferred — only called from one place, no N+1 risk |
-| D17 | Exam session `new Date()` clock skew | LOW | Deferred — same as A19 |
-| D18 | Contest replay top-10 limit | LOW | Deferred — likely intentional, requires design input |
+### Files added since April 20 (post-initial review cycles)
+
+Verified the following recently-added files:
+
+| File | Status | Notes |
+|---|---|---|
+| `src/lib/abort.ts` | Clean | Proper AbortSignal composition, WeakMap cleanup, timer leak prevention |
+| `src/components/exam/anti-cheat-storage.ts` | Clean | localStorage bounds (MAX_PENDING_EVENTS=200), validation, try/catch |
+| `src/hooks/use-visibility-polling.ts` | Clean | Proper cleanup, jitter to prevent thundering herd, error isolation |
+| `src/app/api/v1/auth/forgot-password/route.ts` | Clean | Zod validation, dual rate-limiting (IP + email), proper error responses |
+| `src/app/api/v1/auth/reset-password/route.ts` | Clean | Token validation, password length check, clear error paths |
+| `src/app/(auth)/forgot-password/forgot-password-form.tsx` | Clean | AbortController cleanup, loading states, a11y attributes |
+| `src/lib/security/rate-limit.ts` | Clean | DB time consistency, TOCTOU protection, exponential backoff |
+| `src/lib/security/api-rate-limit.ts` | Clean | Two-tier (sidecar + DB), WeakMap dedup, proper headers |
+| `src/lib/security/rate-limit-core.ts` | Clean | Shared primitives, SELECT FOR UPDATE, parameterized queries |
+| `src/lib/db-time.ts` | Clean | React.cache for dedup, throws on failure (no silent fallback) |
+| `src/lib/db/queries.ts` | Clean | WARNING comments on runtime validation, namedToPositional parameterization |
+| `src/lib/platform-mode-context.ts` | Clean | Parameterized raw SQL via @name -> $N conversion |
+| `src/lib/auth/sign-out.ts` | Clean | Prefix-based storage cleanup, proper error handling, resets loading state |
+
+### Sweeps performed
+
+- **Security:** No `eval()`, no unsanitized `dangerouslySetInnerHTML` (2 usages both with sanitization), no `@ts-ignore`, no `@ts-expect-error`
+- **Error handling:** No empty catch blocks; all catches either log, return fallback, or propagate meaningfully
+- **Race conditions:** All `Promise.all` usages verified for error handling; rate limits use transactions with `SELECT FOR UPDATE`
+- **Type safety:** No `any` abuse; 2 `eslint-disable` directives both with documented justifications
+- **Memory leaks:** All `setTimeout`/`setInterval` usages verified for cleanup; event listeners properly removed in useEffect cleanup
+- **SQL injection:** All raw SQL uses parameterized queries via `namedToPositional`; no string interpolation of user input
+- **Auth:** All auth API routes have rate limiting, input validation, and proper error responses
+- **Console usage:** Console sites verified legitimate (errors, warnings, or debug logs in appropriate contexts)
+- **Tracking classes:** All `tracking-wide`/`tracking-wider` usages are conditional on `locale !== "ko"` per CLAUDE.md
+- **Storage cleanup:** `localStorage.clear()` / `sessionStorage.clear()` replaced with prefix-based targeted removal
+
+---
+
+## Prior Deferred Findings — Status Verification
+
+All deferred findings from `_aggregate-cycle-15.md` remain properly deferred with valid exit criteria. None have become actionable since no code changes occurred and no new telemetry/performance data has been introduced.
+
+Key deferred items verified still present:
+- C3-AGG-5/6: deploy-docker.sh modularization (LOW)
+- C2-AGG-5/6: polling component consolidation, practice page performance (LOW)
+- C1-AGG-3: client console.error sites (LOW)
+- D1/D2: JWT clock-skew and DB query per request (MEDIUM)
+- AGG-2: Rate-limit Date.now + overflow sort (MEDIUM)
+- ARCH-CARRY-1: Raw API handlers (MEDIUM)
+- PERF-3: Anti-cheat dashboard query (MEDIUM)
+- F3/F5: Candidate PII encryption, JWT callback optimization (MEDIUM)
+
+Historical cycle-16 findings (from April 19, commit `9bb13834`) verified as resolved at current HEAD:
+- PublicHeader signOut error handling -> fixed by `handleSignOutWithCleanup`
+- AppSidebar tracking-wider on Korean -> component no longer exists, all current usages are locale-conditional
+- localStorage.clear() on sign-out -> replaced with prefix-based cleanup in `sign-out.ts`
+- cleanupOrphanedContainers redundant docker inspect -> now parses CreatedAt from docker ps output
+- Deprecated recruitingInvitations.token column -> removed from schema, only tokenHash remains
+- redeemRecruitingToken new Date() check -> removed, relies on SQL atomic check
+- SSE duplicate terminal-state paths -> extracted into shared helper
+
+---
+
+## Methodology
+
+- Full reads of recently-added files (13 files)
+- Targeted grep sweeps: `eval`, `dangerouslySetInnerHTML`, `@ts-ignore`, `eslint-disable`, empty catches, `Date.now`, `Math.random`, `console.*`, raw SQL, `Promise.all`, `tracking-wider`, `localStorage.clear`
+- Cross-reference with prior cycle findings to verify no regressions
+- Single-agent comprehensive review (Agent tool not available in this environment)
