@@ -5,7 +5,6 @@ import { formatBytes } from "@/lib/formatting";
 
 interface DbInfo {
   dialect: "postgresql";
-  path: string;
   sizeBytes: number;
   version: string;
   tableCount: number;

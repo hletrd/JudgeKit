@@ -91,20 +91,8 @@ async function getDbInfo() {
   const fullVersion = (versionResult.rows[0]?.version as string) ?? "unknown";
   const version = fullVersion.split(" ").slice(0, 2).join(" ");
 
-  const dbUrl = process.env.DATABASE_URL ?? "";
-  // Mask everything except host:port — hide username, password, and database name
-  const maskedUrl = (() => {
-    try {
-      const u = new URL(dbUrl);
-      return `${u.protocol}//***:***@${u.host}/***`;
-    } catch {
-      return "***";
-    }
-  })();
-
   return {
     dialect: "postgresql" as const,
-    path: maskedUrl,
     sizeBytes,
     version,
     tableCount,
