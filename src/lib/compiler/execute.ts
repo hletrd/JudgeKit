@@ -403,7 +403,9 @@ async function runDocker(opts: {
       cleaned = true;
       if (remove) {
         // Fire and forget - run in background
-        cleanupContainer(containerName).catch(() => {});
+        cleanupContainer(containerName).catch((err: unknown) => {
+          logger.warn({ err }, "container cleanup failed");
+        });
       }
     };
 
@@ -415,7 +417,9 @@ async function runDocker(opts: {
     } catch (spawnError) {
       // spawn() rarely throws (it's the parent process creation that typically succeeds)
       // but if it does, the container may still exist
-      cleanup().catch(() => {});
+      cleanup().catch((err: unknown) => {
+        logger.warn({ err }, "container cleanup after spawn failure failed");
+      });
       throw spawnError;
     }
 
