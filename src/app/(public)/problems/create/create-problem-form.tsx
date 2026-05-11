@@ -559,6 +559,9 @@ export default function CreateProblemForm({
                 const items = e.clipboardData?.items;
                 if (!items) return;
                 for (const item of items) {
+                  // item.type is browser-derived from clipboard content.
+                  // Server-side validation with magic bytes is the
+                  // authoritative check; this is a UX convenience only.
                   if (item.type.startsWith("image/")) {
                     e.preventDefault();
                     const file = item.getAsFile();
@@ -571,11 +574,11 @@ export default function CreateProblemForm({
                 const droppedFiles = e.dataTransfer?.files;
                 if (!droppedFiles) return;
                 for (const file of droppedFiles) {
-                  if (file.type.startsWith("image/")) {
-                    e.preventDefault();
-                    handleImageUpload(file);
-                    return;
-                  }
+                  // Do not trust client-controlled file.type for filesystem
+                  // drops — the server validates with magic bytes.
+                  e.preventDefault();
+                  handleImageUpload(file);
+                  return;
                 }
               } : undefined}
               onDragOver={canUploadFiles ? (e) => e.preventDefault() : undefined}
