@@ -155,6 +155,16 @@ export function stopSseCleanupTimer() {
   }
 }
 
+/**
+ * Stop the shared SSE poll timer. Exported for graceful shutdown.
+ */
+export function stopSharedPollTimer() {
+  if (sharedPollTimer) {
+    clearInterval(sharedPollTimer);
+    sharedPollTimer = null;
+  }
+}
+
 // Graceful shutdown: in-memory connection tracking is cleaned up on process
 // exit automatically. The audit-buffer flush is handled by
 // registerAuditFlushOnShutdown() in node-shutdown.ts (called from

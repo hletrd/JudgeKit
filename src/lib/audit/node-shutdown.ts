@@ -1,4 +1,5 @@
 import { flushAuditBuffer } from "./events";
+import { stopSseCleanupTimer, stopSharedPollTimer } from "@/app/api/v1/submissions/[id]/events/route";
 
 type ProcessLike = {
   once: (event: string, listener: () => void) => unknown;
@@ -26,18 +27,24 @@ export function registerAuditFlushOnShutdown() {
   registered = true;
 
   processLike.once("beforeExit", () => {
+    stopSseCleanupTimer();
+    stopSharedPollTimer();
     void flushAuditBuffer().catch(() => {
       // Best-effort flush during shutdown — ignore errors
     });
   });
 
   processLike.once("SIGTERM", () => {
+    stopSseCleanupTimer();
+    stopSharedPollTimer();
     void flushAuditBuffer().finally(() => {
       processLike.exit?.(0);
     });
   });
 
   processLike.once("SIGINT", () => {
+    stopSseCleanupTimer();
+    stopSharedPollTimer();
     void flushAuditBuffer().finally(() => {
       processLike.exit?.(130);
     });
