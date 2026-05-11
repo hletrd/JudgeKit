@@ -74,12 +74,13 @@ export async function POST(request: NextRequest) {
     }
 
     if (IN_PROGRESS_JUDGE_STATUSES.has(status)) {
+      const dbNow = await getDbNowUncached();
       const updatedInProgress = await execTransaction(async (tx) => {
         const inProgressResult = await tx
           .update(submissions)
           .set({
             status,
-            judgeClaimedAt: await getDbNowUncached(),
+            judgeClaimedAt: dbNow,
             failedTestCaseIndex,
             runtimeErrorType,
           })
@@ -131,6 +132,8 @@ export async function POST(request: NextRequest) {
 
     const { score, maxExecutionTimeMs, maxMemoryUsedKb } = computeFinalJudgeMetrics(results);
 
+    const judgedAt = await getDbNowUncached();
+
     // Wrap status update + result replacement in a single transaction
     try {
       await db.transaction(async (tx) => {
@@ -145,7 +148,7 @@ export async function POST(request: NextRequest) {
           memoryUsedKb: maxMemoryUsedKb,
           failedTestCaseIndex,
           runtimeErrorType,
-          judgedAt: await getDbNowUncached(),
+          judgedAt,
         }).where(
           and(eq(submissions.id, submissionId), eq(submissions.judgeClaimToken, claimToken))
         );
