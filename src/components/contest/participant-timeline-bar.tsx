@@ -59,6 +59,8 @@ type TimelineTranslations = {
   firstAccepted: string;
   codeSnapshot: (chars: number) => string;
   view: string;
+  tries: (count: number) => string;
+  best: (score: string | number) => string;
 };
 
 type ParticipantTimelineBarProps = {
@@ -140,8 +142,12 @@ export function ParticipantTimelineBar({
   }
 
   function formatDuration(totalSeconds: number) {
-    const minutes = Math.floor(totalSeconds / 60);
+    const hours = Math.floor(totalSeconds / 3600);
+    const minutes = Math.floor((totalSeconds % 3600) / 60);
     const seconds = totalSeconds % 60;
+    if (hours > 0) {
+      return `${hours}h ${minutes}m ${seconds}s`;
+    }
     return `${minutes}m ${seconds}s`;
   }
 
@@ -168,7 +174,7 @@ export function ParticipantTimelineBar({
               <span className="text-xs font-medium">{problem.title}</span>
               {summary ? (
                 <span className="text-xs text-muted-foreground">
-                  ({summary.totalAttempts} submissions, best: {summary.bestScore ?? "-"})
+                  ({tr.attempts(summary.totalAttempts)}, {tr.best(summary.bestScore ?? "-")})
                 </span>
               ) : null}
             </div>
@@ -203,34 +209,39 @@ export function ParticipantTimelineBar({
                 className="absolute top-1/2 -translate-y-1/2 group"
                 style={{ left: `${pct}%` }}
               >
-                <Link
-                  href={
-                    ev.submissionId
-                      ? `/submissions/${ev.submissionId}`
-                      : "#"
-                  }
-                  className="block -translate-x-1/2"
-                >
-                  {isFirstAc ? (
-                    <div
-                      className={`size-5 rounded-full ${problemColor(ev.problemIndex)} flex items-center justify-center shadow-sm ring-2 ring-white`}
-                    >
-                      <Check className="size-3 text-white" />
-                    </div>
-                  ) : isSnapshot ? (
+                {isSnapshot ? (
+                  <div
+                    aria-label={`${ev.problemTitle} — ${formatDateTimeInTimeZone(ev.at, locale, timeZone)}`}
+                    className="block -translate-x-1/2"
+                    tabIndex={0}
+                  >
                     <div
                       className={`size-3 rounded-sm ${problemColor(ev.problemIndex)} opacity-60`}
                     />
-                  ) : (
-                    <div
-                      className={`size-4 rounded-full border-2 ${problemBorderColor(ev.problemIndex)} ${
-                        ev.status === "accepted" || ev.status === "scored"
-                          ? problemColor(ev.problemIndex)
-                          : "bg-white"
-                      }`}
-                    />
-                  )}
-                </Link>
+                  </div>
+                ) : (
+                  <Link
+                    href={ev.submissionId ? `/submissions/${ev.submissionId}` : "#"}
+                    aria-label={`${ev.problemTitle} — ${ev.status ?? ev.type} — ${formatDateTimeInTimeZone(ev.at, locale, timeZone)}`}
+                    className="block -translate-x-1/2"
+                  >
+                    {isFirstAc ? (
+                      <div
+                        className={`size-5 rounded-full ${problemColor(ev.problemIndex)} flex items-center justify-center shadow-sm ring-2 ring-white`}
+                      >
+                        <Check className="size-3 text-white" />
+                      </div>
+                    ) : (
+                      <div
+                        className={`size-4 rounded-full border-2 ${problemBorderColor(ev.problemIndex)} ${
+                          ev.status === "accepted" || ev.status === "scored"
+                            ? problemColor(ev.problemIndex)
+                            : "bg-white"
+                        }`}
+                      />
+                    )}
+                  </Link>
+                )}
 
                 {/* Hover tooltip - CSS only */}
                 <div className="absolute bottom-full left-1/2 -translate-x-1/2 mb-2 z-50 min-w-[200px] hidden group-hover:block">
@@ -322,7 +333,7 @@ export function ParticipantTimelineBar({
                         (ev.status === "accepted" || ev.status === "scored"));
                     return (
                       <div
-                        key={i}
+                        key={`${ev.type}-${ev.at.getTime()}-${i}`}
                         className="absolute top-1/2 -translate-y-1/2"
                         style={{ left: `${pct}%` }}
                       >
@@ -340,10 +351,10 @@ export function ParticipantTimelineBar({
 
                 <div className="flex flex-wrap gap-1.5">
                   <Badge variant="secondary" className="text-xs">
-                    {summary.totalAttempts} tries
+                    {tr.tries(summary.totalAttempts)}
                   </Badge>
                   <Badge variant="outline" className="text-xs">
-                    best: {summary.bestScore ?? "-"}
+                    {tr.best(summary.bestScore ?? "-")}
                   </Badge>
                   {summary.firstAcAt ? (
                     <Badge variant="outline" className="text-xs text-green-600">
