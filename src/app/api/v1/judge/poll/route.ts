@@ -183,11 +183,12 @@ export async function POST(request: NextRequest) {
 
     // Invalidate leaderboard cache so instructors see updated rankings immediately.
     // Fire-and-forget: cache invalidation failure must not block the judge report.
-    if (submission.assignmentId) {
+    const assignmentIdForCache = submission.assignmentId;
+    if (assignmentIdForCache) {
       Promise.resolve().then(() => {
-        invalidateRankingCache(submission.assignmentId);
+        invalidateRankingCache(assignmentIdForCache);
       }).catch((err: unknown) => {
-        logger.warn({ err, assignmentId: submission.assignmentId }, "[poll] Failed to invalidate leaderboard cache");
+        logger.warn({ err, assignmentId: assignmentIdForCache }, "[poll] Failed to invalidate leaderboard cache");
       });
     }
 
