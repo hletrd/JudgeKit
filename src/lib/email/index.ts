@@ -53,7 +53,6 @@ export async function sendPasswordResetEmail(
     return { success: false, error: "no_email" };
   }
 
-  const userEmail = user.email;
   const { token, hash } = generateSecureToken();
   const dbNow = await getDbNowUncached();
   const expiresAt = new Date(dbNow.getTime() + PASSWORD_RESET_EXPIRY_MS);
