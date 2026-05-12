@@ -19,6 +19,7 @@ const inviteSchema = z.object({
  * GET - Search users to invite (autocomplete)
  */
 export const GET = createApiHandler({
+  rateLimit: "contest:invite-search",
   handler: async (req: NextRequest, { user, params }) => {
     const { assignmentId } = params;
 
