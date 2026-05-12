@@ -1,6 +1,6 @@
 import { NextRequest } from "next/server";
 import { apiSuccess, apiError } from "@/lib/api/responses";
-import { db } from "@/lib/db";
+import { db, execTransaction } from "@/lib/db";
 import { judgeWorkers, submissions } from "@/lib/db/schema";
 import { and, eq, inArray } from "drizzle-orm";
 import { isJudgeAuthorizedForWorker, hashToken } from "@/lib/judge/auth";
@@ -50,25 +50,28 @@ export async function POST(request: NextRequest) {
       return apiError("invalidWorkerSecret", 403);
     }
 
-    const result = await db
-      .update(judgeWorkers)
-      .set({
-        status: "offline",
-        deregisteredAt: await getDbNowUncached(),
-        activeTasks: 0,
-      })
-      .where(eq(judgeWorkers.id, workerId));
+    const now = await getDbNowUncached();
 
-    if ((result.rowCount ?? 0) === 0) {
-      return apiError("workerNotFound", 404);
-    }
+    // Atomic: update worker to offline AND release all claimed submissions.
+    // Prevents a partial-failure state where the worker is offline but
+    // submissions remain claimed (which would stall them for up to the
+    // stale-claim timeout).
+    const releasedCount = await execTransaction(async (tx) => {
+      const result = await tx
+        .update(judgeWorkers)
+        .set({
+          status: "offline",
+          deregisteredAt: now,
+          activeTasks: 0,
+        })
+        .where(eq(judgeWorkers.id, workerId));
 
-    logger.info({ workerId }, "[judge/deregister] Worker deregistered");
+      if ((result.rowCount ?? 0) === 0) {
+        throw new Error("workerNotFound");
+      }
 
-    // Release all submissions claimed by this worker so they don't remain stuck
-    try {
-      // Find all submissions currently claimed by this worker
-      const claimed = await db
+      // Find and release all submissions currently claimed by this worker
+      const claimed = await tx
         .select({ id: submissions.id })
         .from(submissions)
         .where(
@@ -80,7 +83,7 @@ export async function POST(request: NextRequest) {
 
       if (claimed.length > 0) {
         const claimedIds = claimed.map((s) => s.id);
-        await db
+        await tx
           .update(submissions)
           .set({
             status: "pending",
@@ -89,21 +92,21 @@ export async function POST(request: NextRequest) {
             judgeWorkerId: null,
           })
           .where(inArray(submissions.id, claimedIds));
-
-        logger.info(
-          { workerId, releasedCount: claimedIds.length },
-          "[judge/deregister] Released claimed submissions"
-        );
       }
-    } catch (releaseErr) {
-      logger.error(
-        { err: releaseErr, workerId },
-        "[judge/deregister] Failed to release claimed submissions"
-      );
-    }
+
+      return claimed.length;
+    });
+
+    logger.info(
+      { workerId, releasedCount },
+      "[judge/deregister] Worker deregistered and submissions released"
+    );
 
     return apiSuccess({ ok: true });
   } catch (error) {
+    if (error instanceof Error && error.message === "workerNotFound") {
+      return apiError("workerNotFound", 404);
+    }
     logger.error({ err: error }, "POST /api/v1/judge/deregister error");
     return apiError("internalServerError", 500);
   }
