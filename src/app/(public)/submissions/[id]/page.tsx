@@ -96,6 +96,8 @@ export default async function PublicSubmissionDetailPage({ params, searchParams 
     notFound();
   }
 
+  const canViewDetails = isOwner || canViewAsInstructor;
+
   // Fetch the viewer's own other submissions for the same problem
   const otherSubmissions = submission.problemId
     ? await db
@@ -122,9 +124,9 @@ export default async function PublicSubmissionDetailPage({ params, searchParams 
         .limit(20)
     : [];
 
-  const showDetailedResults = isOwner && (submission.problem?.showDetailedResults ?? true);
-  const showRuntimeErrors = isOwner && (submission.problem?.showRuntimeErrors ?? true);
-  const showCompileOutput = isOwner && (submission.problem?.showCompileOutput ?? true);
+  const showDetailedResults = canViewDetails && (isOwner ? (submission.problem?.showDetailedResults ?? true) : true);
+  const showRuntimeErrors = canViewDetails && (isOwner ? (submission.problem?.showRuntimeErrors ?? true) : true);
+  const showCompileOutput = canViewDetails && (isOwner ? (submission.problem?.showCompileOutput ?? true) : true);
 
   const filteredResults = submission.results.map((result) => {
     let executionTimeMs = result.executionTimeMs ?? null;
@@ -169,8 +171,8 @@ export default async function PublicSubmissionDetailPage({ params, searchParams 
           assignmentId: submission.assignmentId ?? null,
           language: submission.language,
           status: submission.status ?? "pending",
-          sourceCode: isOwner ? submission.sourceCode : "",
-          compileOutput: isOwner ? (submission.compileOutput ?? null) : null,
+          sourceCode: canViewDetails ? submission.sourceCode : "",
+          compileOutput: canViewDetails ? (submission.compileOutput ?? null) : null,
           executionTimeMs: submission.executionTimeMs ?? null,
           memoryUsedKb: submission.memoryUsedKb ?? null,
           score: submission.score ?? null,
@@ -188,7 +190,7 @@ export default async function PublicSubmissionDetailPage({ params, searchParams 
                 title: submission.problem.title,
               }
             : null,
-          results: isOwner ? filteredResults : [],
+          results: canViewDetails ? filteredResults : [],
         }}
         backHref={backHref}
         timeZone={timeZone}
@@ -198,7 +200,7 @@ export default async function PublicSubmissionDetailPage({ params, searchParams 
         userId={session.user.id}
         capabilities={[]}
         problemTimeLimitMs={submission.problem?.timeLimitMs ?? null}
-        canViewSource={isOwner}
+        canViewSource={canViewDetails}
         isOwner={isOwner}
       />
 
