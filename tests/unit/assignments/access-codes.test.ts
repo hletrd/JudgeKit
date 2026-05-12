@@ -221,9 +221,9 @@ describe("access code helpers", () => {
     const result = await accessCodesModule.redeemAccessCode("TESTCODE", "user-1");
     expect(result).toMatchObject({ ok: true, assignmentId: "assignment-1", groupId: "group-1" });
 
-    // Verify rawQueryOne was called for DB-sourced time (SELECT NOW())
-    const { rawQueryOne } = await import("@/lib/db/queries");
-    expect(rawQueryOne).toHaveBeenCalled();
+    // Verify getDbNowUncached was called for DB-sourced time
+    const { getDbNowUncached } = await import("@/lib/db-time");
+    expect(getDbNowUncached).toHaveBeenCalled();
   });
 
   it("uses DB-sourced time for setAccessCode and revokeAccessCode", async () => {

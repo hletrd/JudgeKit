@@ -23,6 +23,6 @@ describe("raw query usage implementation guards", () => {
 
     expect(helper).toContain('sql.replace(/@(\\w+)/g');
     expect(helper).toContain("return `$${idx + 1}`");
-    expect(helper).toContain("activeClient.query(text, values)");
+    expect(helper).toContain("pool.query(text, values)");
   });
 });
