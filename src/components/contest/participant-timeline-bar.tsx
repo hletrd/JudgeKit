@@ -198,7 +198,7 @@ export function ParticipantTimelineBar({
           <div className="absolute inset-x-0 top-1/2 -translate-y-1/2 h-2 bg-muted-foreground/20 rounded-full" />
 
           {/* Event markers */}
-          {flatEvents.map((ev, i) => {
+          {flatEvents.map((ev) => {
             const pct = percentFromStart(ev.at);
             const isFirstAc = ev.type === "first_ac";
             const isSnapshot = ev.type === "snapshot";
@@ -323,7 +323,7 @@ export function ParticipantTimelineBar({
                 {/* Mini timeline bar for this problem */}
                 <div className="relative h-6">
                   <div className="absolute inset-x-0 top-1/2 -translate-y-1/2 h-1.5 bg-muted-foreground/15 rounded-full" />
-                  {problemEvents.map((ev, i) => {
+                  {problemEvents.map((ev) => {
                     if (!ev.at) return null;
                     const pct = percentFromStart(ev.at);
                     const isAc =

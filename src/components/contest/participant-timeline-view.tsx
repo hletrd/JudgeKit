@@ -2,20 +2,15 @@ import Link from "next/link";
 import { ArrowLeft, Clock, Trophy } from "lucide-react";
 import { getLocale, getTranslations } from "next-intl/server";
 import { formatDateTimeInTimeZone } from "@/lib/datetime";
-import { formatScore } from "@/lib/formatting";
-import { getLanguageDisplayLabel } from "@/lib/judge/languages";
 import { buildStatusLabels } from "@/lib/judge/status-labels";
-import { formatSubmissionIdPrefix } from "@/lib/submissions/format";
 import { getResolvedSystemTimeZone } from "@/lib/system-settings";
 import type { ParticipantAuditData } from "@/lib/assignments/participant-audit";
 import type { ParticipantTimeline } from "@/lib/assignments/participant-timeline";
-import { SubmissionStatusBadge } from "@/components/submission-status-badge";
 import { DEFAULT_PROBLEM_POINTS } from "@/lib/assignments/constants";
 import { ParticipantAntiCheatTimeline } from "@/components/contest/participant-anti-cheat-timeline";
 import { CodeTimelinePanel } from "@/components/contest/code-timeline-panel";
 import { ParticipantTimelineBar } from "@/components/contest/participant-timeline-bar";
 import { Badge } from "@/components/ui/badge";
-import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import {
   Table,
@@ -69,16 +64,6 @@ export async function ParticipantTimelineView({
   const problemRankingMap = new Map(
     auditData?.entry.problems.map((p) => [p.problemId, p]) ?? []
   );
-
-  function formatRelativeSeconds(totalSeconds: number | null) {
-    if (totalSeconds === null || totalSeconds === undefined) {
-      return "-";
-    }
-
-    const minutes = Math.floor(totalSeconds / 60);
-    const seconds = totalSeconds % 60;
-    return t("problemSummary.relativeTime", { minutes, seconds });
-  }
 
   return (
     <div className="space-y-6">
