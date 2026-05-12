@@ -262,11 +262,13 @@ export const POST = createApiHandler({
     const maxPending = getSubmissionMaxPending();
     const maxGlobalQueue = getSubmissionGlobalQueueLimit();
 
+    // Fetch DB server time outside the transaction for clock-skew safety.
+    // The time is only used for rate-limit window calculation and the
+    // submittedAt timestamp, neither of which needs transaction isolation.
+    const dbNow = await getDbNowUncached();
+    const oneMinuteAgo = new Date(dbNow.getTime() - 60_000);
+
     const txResult = await execTransaction(async (tx) => {
-      // Use DB server time for the rate-limit window to avoid clock skew
-      // between app and DB servers, consistent with other schedule checks.
-      const dbNow = await getDbNowUncached();
-      const oneMinuteAgo = new Date(dbNow.getTime() - 60_000);
 
       // Acquire advisory lock on user ID to serialize concurrent submissions.
       // Use hashtextextended (PG 14+) for 64-bit hash space to minimize collisions.
