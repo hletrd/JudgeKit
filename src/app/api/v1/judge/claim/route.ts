@@ -19,6 +19,20 @@ import { deserializeStoredJudgeCommand } from "@/lib/judge/languages";
 import { getConfiguredSettings } from "@/lib/system-settings-config";
 import { getDbNowUncached } from "@/lib/db-time";
 
+/**
+ * Coerces a value to number while rejecting NaN. PostgreSQL raw queries may
+ * return strings for numeric columns; we want to accept those but reject
+ * genuinely non-numeric values (including the string "NaN").
+ */
+const coerceNullableNumber = z.union([
+  z.null(),
+  z.string().transform((s) => {
+    const n = Number(s);
+    return Number.isNaN(n) ? null : n;
+  }),
+  z.number().refine((n) => !Number.isNaN(n)),
+]);
+
 const claimedSubmissionRowSchema = z.object({
   id: z.string(),
   userId: z.string(),
@@ -31,11 +45,20 @@ const claimedSubmissionRowSchema = z.object({
   status: z.string().nullable(),
   compileOutput: z.string().nullable(),
   // PostgreSQL may return integer/bigint columns as strings in raw queries.
-  executionTimeMs: z.coerce.number().nullable(),
-  memoryUsedKb: z.coerce.number().nullable(),
-  score: z.coerce.number().nullable(),
-  judgedAt: z.coerce.number().nullable(),
-  submittedAt: z.coerce.number(),
+  executionTimeMs: coerceNullableNumber,
+  memoryUsedKb: coerceNullableNumber,
+  score: coerceNullableNumber,
+  judgedAt: coerceNullableNumber,
+  submittedAt: z.union([
+    z.number().refine((n) => !Number.isNaN(n)),
+    z.string().transform((s) => {
+      const n = Number(s);
+      if (Number.isNaN(n)) {
+        throw new Error(`Invalid submittedAt: ${s}`);
+      }
+      return n;
+    }),
+  ]),
 });
 
 type ClaimedSubmissionRow = z.infer<typeof claimedSubmissionRowSchema>;
