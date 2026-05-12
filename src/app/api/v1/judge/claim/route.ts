@@ -5,7 +5,7 @@ import { apiSuccess, apiError } from "@/lib/api/responses";
 import { db } from "@/lib/db";
 import { rawQueryOne } from "@/lib/db/queries";
 import { problems, testCases, languageConfigs, judgeWorkers, submissions } from "@/lib/db/schema";
-import { eq, asc } from "drizzle-orm";
+import { eq, asc, sql } from "drizzle-orm";
 import { nanoid } from "nanoid";
 import { z } from "zod";
 import { recordAuditEvent } from "@/lib/audit/events";
@@ -338,6 +338,15 @@ export async function POST(request: NextRequest) {
           judgeClaimedAt: null,
         })
         .where(eq(submissions.id, claimed.id));
+
+      // Also decrement the worker's active_tasks count since the claim
+      // was consumed but the submission is being returned to the queue.
+      if (workerId) {
+        await db.update(judgeWorkers)
+          .set({ activeTasks: sql`${judgeWorkers.activeTasks} - 1` })
+          .where(eq(judgeWorkers.id, workerId));
+      }
+
       return apiError("problemNotFound", 422);
     }
 
