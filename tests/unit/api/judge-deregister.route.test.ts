@@ -24,24 +24,39 @@ vi.mock("@/lib/logger", () => ({
 
 vi.mock("@/lib/db/schema", () => ({
   judgeWorkers: { id: "id" },
+  submissions: { id: "id", status: "status", judgeWorkerId: "judgeWorkerId" },
 }));
 
 vi.mock("drizzle-orm", () => ({
   eq: vi.fn(),
+  and: vi.fn(() => ({})),
+  inArray: vi.fn(() => ({})),
 }));
 
-vi.mock("@/lib/db", () => ({
-  db: {
-    query: {
-      judgeWorkers: { findFirst: findFirstMock },
-    },
-    update: vi.fn(() => ({
-      set: vi.fn(() => ({
-        where: updateWhereMock,
-      })),
+vi.mock("@/lib/db", () => {
+  const dbUpdate = vi.fn(() => ({
+    set: vi.fn(() => ({
+      where: updateWhereMock,
     })),
-  },
-}));
+  }));
+  return {
+    db: {
+      query: {
+        judgeWorkers: { findFirst: findFirstMock },
+      },
+      update: dbUpdate,
+    },
+    execTransaction: async (fn: (tx: unknown) => Promise<unknown>) =>
+      fn({
+        update: dbUpdate,
+        select: vi.fn(() => ({
+          from: vi.fn(() => ({
+            where: vi.fn(() => Promise.resolve([])),
+          })),
+        })),
+      }),
+  };
+});
 
 vi.mock("@/lib/db-time", () => ({
   getDbNowUncached: vi.fn().mockResolvedValue(new Date("2026-04-20T12:00:00Z")),
