@@ -29,7 +29,7 @@
 3. Verify the function still returns `ParticipantTimeline | null`
 4. Run tests to ensure no regressions
 
-**Status:** pending
+**Status:** completed (commit b66e7f7e)
 
 ---
 
@@ -55,7 +55,7 @@
 3. Update `exam-sessions.ts:52` to pass `tx` (or `tx.$client` if using Drizzle transaction client) as the client parameter
 4. Check for other callers of rawQueryOne/rawQueryAll inside transactions and update them
 
-**Status:** pending
+**Status:** completed (commit 320fa8b1)
 
 ---
 
@@ -80,7 +80,7 @@
    - sortTimeline ordering with null timestamps
 3. Keep or remove the source-inspection test (recommend removal)
 
-**Status:** pending
+**Status:** deferred — see DEFERRED-3-4
 
 ---
 
@@ -129,6 +129,16 @@ Option B: Have `computeSingleUserLiveRank` call `computeContestRanking` and extr
 **Severity:** LOW | Confidence: Medium
 **Reason:** Theoretical concern. 50 concurrent background queries is manageable for the current scale. The `_refreshingKeys` set already prevents per-key thundering herd.
 **Exit criterion:** Performance monitoring shows cache refresh as a bottleneck.
+
+---
+
+### DEFERRED-3-4: Source-inspection tests need real unit test replacement
+
+**Finding:** C3-AGG-3
+**File:** `tests/unit/assignments/participant-timeline-logic.test.ts`
+**Severity:** MEDIUM | Confidence: High
+**Reason:** Requires significant mocking infrastructure for Drizzle ORM transaction client. The existing source-inspection tests were updated to reflect the transaction wrapper change but still don't exercise actual logic.
+**Exit criterion:** Mock DB infrastructure available or integration test suite covers timeline logic.
 
 ---
 
