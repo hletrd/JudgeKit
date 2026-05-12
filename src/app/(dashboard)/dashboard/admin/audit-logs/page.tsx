@@ -296,7 +296,7 @@ export default async function AdminAuditLogsPage({
     const toDate = new Date(dateTo);
     if (!isNaN(toDate.getTime())) {
       const endOfDay = new Date(toDate);
-      endOfDay.setHours(23, 59, 59, 999);
+      endOfDay.setUTCHours(23, 59, 59, 999);
       filters.push(lte(auditEvents.createdAt, endOfDay));
     }
   }

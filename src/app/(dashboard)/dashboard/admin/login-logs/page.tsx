@@ -198,7 +198,7 @@ export default async function AdminLoginLogsPage({
 
   if (dateTo) {
     const endOfDay = new Date(dateTo);
-    endOfDay.setHours(23, 59, 59, 999);
+    endOfDay.setUTCHours(23, 59, 59, 999);
     filters.push(lte(loginEvents.createdAt, endOfDay));
   }
 
