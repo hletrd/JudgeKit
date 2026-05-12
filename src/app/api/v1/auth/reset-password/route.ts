@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { z } from "zod";
 import { resetPassword, validatePasswordResetToken } from "@/lib/email";
 import { getSystemSettings } from "@/lib/system-settings";
+import { consumeRateLimitAttemptMulti, getRateLimitKey } from "@/lib/security/rate-limit";
 
 const resetPasswordSchema = z.object({
   token: z.string().min(1),
@@ -17,6 +18,13 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
   }
 
   const { token, password } = parsed.data;
+
+  const rateLimitKey = getRateLimitKey("reset_password", req.headers);
+  const tokenRateLimitKey = `reset_password:token:${token.slice(0, 8)}`;
+  const blocked = await consumeRateLimitAttemptMulti(rateLimitKey, tokenRateLimitKey);
+  if (blocked) {
+    return NextResponse.json({ error: "rateLimited" }, { status: 429 });
+  }
 
   const validation = await validatePasswordResetToken(token);
   if (!validation.valid) {
