@@ -327,7 +327,7 @@ export async function POST(request: NextRequest) {
     });
 
     if (!problem) {
-      return apiError("problemNotFound", 500);
+      return apiError("problemNotFound", 422);
     }
 
     // Fetch test cases for the problem
