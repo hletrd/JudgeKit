@@ -92,234 +92,234 @@ export async function getParticipantTimeline(
   userId: string
 ): Promise<ParticipantTimeline | null> {
   return db.transaction(async (tx) => {
-  const [
-    participant,
-    examSession,
-    contestAccess,
-    assignmentMeta,
-    assignmentProblemRows,
-    submissionRows,
-    snapshotRows,
-    antiCheatRows,
-  ] = await Promise.all([
-    tx.query.users.findFirst({
-      where: eq(users.id, userId),
-      columns: {
-        id: true,
-        username: true,
-        name: true,
-        className: true,
-      },
-    }),
-    tx.query.examSessions.findFirst({
-      where: and(eq(examSessions.assignmentId, assignmentId), eq(examSessions.userId, userId)),
-      columns: {
-        startedAt: true,
-        personalDeadline: true,
-      },
-    }),
-    tx.query.contestAccessTokens.findFirst({
-      where: and(
-        eq(contestAccessTokens.assignmentId, assignmentId),
-        eq(contestAccessTokens.userId, userId)
-      ),
-      columns: {
-        redeemedAt: true,
-      },
-    }),
-    tx.query.assignments.findFirst({
-      where: eq(assignments.id, assignmentId),
-      columns: {
-        scoringModel: true,
-        deadline: true,
-        latePenalty: true,
-        examMode: true,
-      },
-    }),
-    tx
-      .select({
-        problemId: assignmentProblems.problemId,
-        title: problems.title,
-        points: assignmentProblems.points,
-        sortOrder: assignmentProblems.sortOrder,
-      })
-      .from(assignmentProblems)
-      .innerJoin(problems, eq(problems.id, assignmentProblems.problemId))
-      .where(eq(assignmentProblems.assignmentId, assignmentId))
-      .orderBy(assignmentProblems.sortOrder, problems.title),
-    tx
-      .select({
-        id: submissions.id,
-        problemId: submissions.problemId,
-        status: submissions.status,
-        score: submissions.score,
-        language: submissions.language,
-        executionTimeMs: submissions.executionTimeMs,
-        memoryUsedKb: submissions.memoryUsedKb,
-        submittedAt: submissions.submittedAt,
-      })
-      .from(submissions)
-      .where(and(eq(submissions.assignmentId, assignmentId), eq(submissions.userId, userId)))
-      .orderBy(asc(submissions.submittedAt))
-      .limit(5000),
-    tx
-      .select({
-        id: codeSnapshots.id,
-        problemId: codeSnapshots.problemId,
-        language: codeSnapshots.language,
-        charCount: codeSnapshots.charCount,
-        createdAt: codeSnapshots.createdAt,
-      })
-      .from(codeSnapshots)
-      .where(and(eq(codeSnapshots.assignmentId, assignmentId), eq(codeSnapshots.userId, userId)))
-      .orderBy(asc(codeSnapshots.createdAt))
-      .limit(1000),
-    tx
-      .select({
-        eventType: antiCheatEvents.eventType,
-        count: sql<number>`count(*)`,
-      })
-      .from(antiCheatEvents)
-      .where(and(eq(antiCheatEvents.assignmentId, assignmentId), eq(antiCheatEvents.userId, userId)))
-      .groupBy(antiCheatEvents.eventType),
-  ]);
-
-  if (!participant) {
-    return null;
-  }
-
-  const submissionsByProblem = new Map<string, typeof submissionRows>();
-  for (const row of submissionRows) {
-    const current = submissionsByProblem.get(row.problemId) ?? [];
-    current.push(row);
-    submissionsByProblem.set(row.problemId, current);
-  }
-
-  const snapshotsByProblem = new Map<string, typeof snapshotRows>();
-  for (const row of snapshotRows) {
-    const current = snapshotsByProblem.get(row.problemId) ?? [];
-    current.push(row);
-    snapshotsByProblem.set(row.problemId, current);
-  }
-
-  const scoringModel = assignmentMeta?.scoringModel ?? "ioi";
-  const deadline = assignmentMeta?.deadline ?? null;
-  const latePenalty = assignmentMeta?.latePenalty ?? 0;
-  const examMode = assignmentMeta?.examMode ?? "none";
-  const personalDeadline = examSession?.personalDeadline ?? null;
-
-  const problemsTimeline = assignmentProblemRows.map((problemRow) => {
-    const problemSubmissions = submissionsByProblem.get(problemRow.problemId) ?? [];
-    const problemSnapshots = snapshotsByProblem.get(problemRow.problemId) ?? [];
-    const firstSubmission = problemSubmissions[0] ?? null;
-    const lastSubmission = problemSubmissions.at(-1) ?? null;
-    const problemPoints = problemRow.points ?? DEFAULT_PROBLEM_POINTS;
-    // For ICPC: "accepted" status means full score (binary accept/reject).
-    // For IOI: submissions are typically "scored" rather than "accepted", so
-    // use score >= full points as the "first AC" condition. This is consistent
-    // with the `solved` field in contest-scoring.ts which uses
-    // `bestScore >= ap.points` for IOI.
-    const isFirstAc = scoringModel === "icpc"
-      ? (submission: typeof problemSubmissions[number]) => submission.status === "accepted"
-      : (submission: typeof problemSubmissions[number]) =>
-          submission.score !== null && submission.score !== undefined && submission.score >= problemPoints;
-    const firstAccepted = problemSubmissions.find(isFirstAc) ?? null;
-    const wrongBeforeAc = firstAccepted
-      ? problemSubmissions.filter(
-          (submission) =>
-            submission !== firstAccepted
-            && !isFirstAc(submission)
-            && submission.submittedAt
-            && firstAccepted.submittedAt
-            && submission.submittedAt.getTime() < firstAccepted.submittedAt.getTime()
-        ).length
-      : 0;
-    // Apply late penalties using mapSubmissionPercentageToAssignmentPoints for
-    // consistency with the leaderboard (which uses buildIoiLatePenaltyCaseExpr at
-    // the SQL level). Both share the same late-penalty semantics.
-    const bestScore = problemSubmissions.reduce<number | null>((best, submission) => {
-      if (submission.score === null || submission.score === undefined) return best;
-      const adjusted = mapSubmissionPercentageToAssignmentPoints(submission.score, problemPoints, {
-        submittedAt: submission.submittedAt,
-        deadline,
-        latePenalty,
-        personalDeadline,
-        examMode,
-      });
-      if (best === null) return adjusted;
-      return Math.max(best, adjusted);
-    }, null);
-
-    const timeline = sortTimeline([
-      ...problemSubmissions.map((submission) => ({
-        type: "submission" as const,
-        at: submission.submittedAt,
-        submissionId: submission.id,
-        status: submission.status,
-        score: submission.score,
-        language: submission.language,
-        executionTimeMs: submission.executionTimeMs,
-        memoryUsedKb: submission.memoryUsedKb,
-      })),
-      ...problemSnapshots.map((snapshot) => ({
-        type: "snapshot" as const,
-        at: snapshot.createdAt,
-        snapshotId: snapshot.id,
-        charCount: snapshot.charCount,
-        language: snapshot.language,
-      })),
-      ...(firstAccepted
-        ? [{
-            type: "first_ac" as const,
-            at: firstAccepted.submittedAt,
-            submissionId: firstAccepted.id,
-          }]
-        : []),
+    const [
+      participant,
+      examSession,
+      contestAccess,
+      assignmentMeta,
+      assignmentProblemRows,
+      submissionRows,
+      snapshotRows,
+      antiCheatRows,
+    ] = await Promise.all([
+      tx.query.users.findFirst({
+        where: eq(users.id, userId),
+        columns: {
+          id: true,
+          username: true,
+          name: true,
+          className: true,
+        },
+      }),
+      tx.query.examSessions.findFirst({
+        where: and(eq(examSessions.assignmentId, assignmentId), eq(examSessions.userId, userId)),
+        columns: {
+          startedAt: true,
+          personalDeadline: true,
+        },
+      }),
+      tx.query.contestAccessTokens.findFirst({
+        where: and(
+          eq(contestAccessTokens.assignmentId, assignmentId),
+          eq(contestAccessTokens.userId, userId)
+        ),
+        columns: {
+          redeemedAt: true,
+        },
+      }),
+      tx.query.assignments.findFirst({
+        where: eq(assignments.id, assignmentId),
+        columns: {
+          scoringModel: true,
+          deadline: true,
+          latePenalty: true,
+          examMode: true,
+        },
+      }),
+      tx
+        .select({
+          problemId: assignmentProblems.problemId,
+          title: problems.title,
+          points: assignmentProblems.points,
+          sortOrder: assignmentProblems.sortOrder,
+        })
+        .from(assignmentProblems)
+        .innerJoin(problems, eq(problems.id, assignmentProblems.problemId))
+        .where(eq(assignmentProblems.assignmentId, assignmentId))
+        .orderBy(assignmentProblems.sortOrder, problems.title),
+      tx
+        .select({
+          id: submissions.id,
+          problemId: submissions.problemId,
+          status: submissions.status,
+          score: submissions.score,
+          language: submissions.language,
+          executionTimeMs: submissions.executionTimeMs,
+          memoryUsedKb: submissions.memoryUsedKb,
+          submittedAt: submissions.submittedAt,
+        })
+        .from(submissions)
+        .where(and(eq(submissions.assignmentId, assignmentId), eq(submissions.userId, userId)))
+        .orderBy(asc(submissions.submittedAt))
+        .limit(5000),
+      tx
+        .select({
+          id: codeSnapshots.id,
+          problemId: codeSnapshots.problemId,
+          language: codeSnapshots.language,
+          charCount: codeSnapshots.charCount,
+          createdAt: codeSnapshots.createdAt,
+        })
+        .from(codeSnapshots)
+        .where(and(eq(codeSnapshots.assignmentId, assignmentId), eq(codeSnapshots.userId, userId)))
+        .orderBy(asc(codeSnapshots.createdAt))
+        .limit(1000),
+      tx
+        .select({
+          eventType: antiCheatEvents.eventType,
+          count: sql<number>`count(*)`,
+        })
+        .from(antiCheatEvents)
+        .where(and(eq(antiCheatEvents.assignmentId, assignmentId), eq(antiCheatEvents.userId, userId)))
+        .groupBy(antiCheatEvents.eventType),
     ]);
 
+    if (!participant) {
+      return null;
+    }
+
+    const submissionsByProblem = new Map<string, typeof submissionRows>();
+    for (const row of submissionRows) {
+      const current = submissionsByProblem.get(row.problemId) ?? [];
+      current.push(row);
+      submissionsByProblem.set(row.problemId, current);
+    }
+
+    const snapshotsByProblem = new Map<string, typeof snapshotRows>();
+    for (const row of snapshotRows) {
+      const current = snapshotsByProblem.get(row.problemId) ?? [];
+      current.push(row);
+      snapshotsByProblem.set(row.problemId, current);
+    }
+
+    const scoringModel = assignmentMeta?.scoringModel ?? "ioi";
+    const deadline = assignmentMeta?.deadline ?? null;
+    const latePenalty = assignmentMeta?.latePenalty ?? 0;
+    const examMode = assignmentMeta?.examMode ?? "none";
+    const personalDeadline = examSession?.personalDeadline ?? null;
+
+    const problemsTimeline = assignmentProblemRows.map((problemRow) => {
+      const problemSubmissions = submissionsByProblem.get(problemRow.problemId) ?? [];
+      const problemSnapshots = snapshotsByProblem.get(problemRow.problemId) ?? [];
+      const firstSubmission = problemSubmissions[0] ?? null;
+      const lastSubmission = problemSubmissions.at(-1) ?? null;
+      const problemPoints = problemRow.points ?? DEFAULT_PROBLEM_POINTS;
+      // For ICPC: "accepted" status means full score (binary accept/reject).
+      // For IOI: submissions are typically "scored" rather than "accepted", so
+      // use score >= full points as the "first AC" condition. This is consistent
+      // with the `solved` field in contest-scoring.ts which uses
+      // `bestScore >= ap.points` for IOI.
+      const isFirstAc = scoringModel === "icpc"
+        ? (submission: typeof problemSubmissions[number]) => submission.status === "accepted"
+        : (submission: typeof problemSubmissions[number]) =>
+            submission.score !== null && submission.score !== undefined && submission.score >= problemPoints;
+      const firstAccepted = problemSubmissions.find(isFirstAc) ?? null;
+      const wrongBeforeAc = firstAccepted
+        ? problemSubmissions.filter(
+            (submission) =>
+              submission !== firstAccepted
+              && !isFirstAc(submission)
+              && submission.submittedAt
+              && firstAccepted.submittedAt
+              && submission.submittedAt.getTime() < firstAccepted.submittedAt.getTime()
+          ).length
+        : 0;
+      // Apply late penalties using mapSubmissionPercentageToAssignmentPoints for
+      // consistency with the leaderboard (which uses buildIoiLatePenaltyCaseExpr at
+      // the SQL level). Both share the same late-penalty semantics.
+      const bestScore = problemSubmissions.reduce<number | null>((best, submission) => {
+        if (submission.score === null || submission.score === undefined) return best;
+        const adjusted = mapSubmissionPercentageToAssignmentPoints(submission.score, problemPoints, {
+          submittedAt: submission.submittedAt,
+          deadline,
+          latePenalty,
+          personalDeadline,
+          examMode,
+        });
+        if (best === null) return adjusted;
+        return Math.max(best, adjusted);
+      }, null);
+
+      const timeline = sortTimeline([
+        ...problemSubmissions.map((submission) => ({
+          type: "submission" as const,
+          at: submission.submittedAt,
+          submissionId: submission.id,
+          status: submission.status,
+          score: submission.score,
+          language: submission.language,
+          executionTimeMs: submission.executionTimeMs,
+          memoryUsedKb: submission.memoryUsedKb,
+        })),
+        ...problemSnapshots.map((snapshot) => ({
+          type: "snapshot" as const,
+          at: snapshot.createdAt,
+          snapshotId: snapshot.id,
+          charCount: snapshot.charCount,
+          language: snapshot.language,
+        })),
+        ...(firstAccepted
+          ? [{
+              type: "first_ac" as const,
+              at: firstAccepted.submittedAt,
+              submissionId: firstAccepted.id,
+            }]
+          : []),
+      ]);
+
+      return {
+        problemId: problemRow.problemId,
+        title: problemRow.title,
+        points: problemRow.points ?? DEFAULT_PROBLEM_POINTS,
+        sortOrder: problemRow.sortOrder ?? 0,
+        summary: {
+          totalAttempts: problemSubmissions.length,
+          bestScore,
+          firstSubmissionAt: firstSubmission?.submittedAt ?? null,
+          lastSubmissionAt: lastSubmission?.submittedAt ?? null,
+          firstAcAt: firstAccepted?.submittedAt ?? null,
+          timeToFirstSubmission: toSecondsBetween(examSession?.startedAt ?? null, firstSubmission?.submittedAt ?? null),
+          timeToFirstAc: toSecondsBetween(examSession?.startedAt ?? null, firstAccepted?.submittedAt ?? null),
+          wrongBeforeAc,
+          snapshotCount: problemSnapshots.length,
+        },
+        timeline,
+      };
+    });
+
+    const byType: Record<string, number> = {};
+    let totalEvents = 0;
+    for (const row of antiCheatRows) {
+      const count = Number(row.count);
+      byType[row.eventType] = count;
+      totalEvents += count;
+    }
+
     return {
-      problemId: problemRow.problemId,
-      title: problemRow.title,
-      points: problemRow.points ?? DEFAULT_PROBLEM_POINTS,
-      sortOrder: problemRow.sortOrder ?? 0,
-      summary: {
-        totalAttempts: problemSubmissions.length,
-        bestScore,
-        firstSubmissionAt: firstSubmission?.submittedAt ?? null,
-        lastSubmissionAt: lastSubmission?.submittedAt ?? null,
-        firstAcAt: firstAccepted?.submittedAt ?? null,
-        timeToFirstSubmission: toSecondsBetween(examSession?.startedAt ?? null, firstSubmission?.submittedAt ?? null),
-        timeToFirstAc: toSecondsBetween(examSession?.startedAt ?? null, firstAccepted?.submittedAt ?? null),
-        wrongBeforeAc,
-        snapshotCount: problemSnapshots.length,
+      participant: {
+        userId: participant.id,
+        username: participant.username,
+        name: participant.name,
+        className: participant.className,
+        examStartedAt: examSession?.startedAt ?? null,
+        personalDeadline: examSession?.personalDeadline ?? null,
+        contestAccessAt: contestAccess?.redeemedAt ?? null,
       },
-      timeline,
+      problems: problemsTimeline,
+      antiCheatSummary: {
+        totalEvents,
+        byType,
+      },
     };
   });
-
-  const byType: Record<string, number> = {};
-  let totalEvents = 0;
-  for (const row of antiCheatRows) {
-    const count = Number(row.count);
-    byType[row.eventType] = count;
-    totalEvents += count;
-  }
-
-  return {
-    participant: {
-      userId: participant.id,
-      username: participant.username,
-      name: participant.name,
-      className: participant.className,
-      examStartedAt: examSession?.startedAt ?? null,
-      personalDeadline: examSession?.personalDeadline ?? null,
-      contestAccessAt: contestAccess?.redeemedAt ?? null,
-    },
-    problems: problemsTimeline,
-    antiCheatSummary: {
-      totalEvents,
-      byType,
-    },
-  };
-});
 }
