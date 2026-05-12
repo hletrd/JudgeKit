@@ -4,7 +4,7 @@ import { getApiUser, unauthorized, forbidden, csrfForbidden } from "@/lib/api/au
 import { consumeApiRateLimit } from "@/lib/security/api-rate-limit";
 import { resolveCapabilities } from "@/lib/capabilities/cache";
 import { importDatabase } from "@/lib/db/import";
-import { validateExport, type JudgeKitExport } from "@/lib/db/export";
+import { validateExport, isSanitizedExport, type JudgeKitExport } from "@/lib/db/export";
 import { MAX_IMPORT_BYTES, readJsonBodyWithLimit, readUploadedJsonFileWithLimit } from "@/lib/db/import-transfer";
 import { recordAuditEvent } from "@/lib/audit/events";
 import { verifyAndRehashPassword } from "@/lib/security/password-hash";
@@ -88,6 +88,10 @@ export async function POST(request: NextRequest) {
       const errors = validateExport(data);
       if (errors.length > 0) {
         return NextResponse.json({ error: "invalidExport", details: errors }, { status: 400 });
+      }
+
+      if (isSanitizedExport(data)) {
+        return NextResponse.json({ error: "sanitizedExportNotRestorable" }, { status: 400 });
       }
 
       recordAuditEvent({
@@ -183,6 +187,10 @@ export async function POST(request: NextRequest) {
     // After validateExport() passes, the data conforms to JudgeKitExport.
     // Cast is safe because validateExport verified the structure.
     const data = unvalidatedData as JudgeKitExport;
+
+    if (isSanitizedExport(data)) {
+      return NextResponse.json({ error: "sanitizedExportNotRestorable" }, { status: 400 });
+    }
 
     recordAuditEvent({
       actorId: user.id,
