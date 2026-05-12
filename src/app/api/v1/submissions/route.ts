@@ -268,8 +268,9 @@ export const POST = createApiHandler({
       const dbNow = await getDbNowUncached();
       const oneMinuteAgo = new Date(dbNow.getTime() - 60_000);
 
-      // Acquire advisory lock on user ID to serialize concurrent submissions
-      await tx.execute(sql`SELECT pg_advisory_xact_lock(hashtext(${user.id})::bigint)`);
+      // Acquire advisory lock on user ID to serialize concurrent submissions.
+      // Use hashtextextended (PG 14+) for 64-bit hash space to minimize collisions.
+      await tx.execute(sql`SELECT pg_advisory_xact_lock(hashtextextended(${user.id}, 0)::bigint)`);
 
       // Rate-limit checks with row-level advisory lock on user submissions
       const userCounts = await tx

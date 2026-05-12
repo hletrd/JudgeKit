@@ -205,7 +205,7 @@ export function ParticipantTimelineBar({
 
             return (
               <div
-                key={`${ev.problemId}-${ev.type}-${i}`}
+                key={`${ev.problemId}-${ev.type}-${ev.at.getTime()}`}
                 className="absolute top-1/2 -translate-y-1/2 group"
                 style={{ left: `${pct}%` }}
               >
@@ -213,7 +213,6 @@ export function ParticipantTimelineBar({
                   <div
                     aria-label={`${ev.problemTitle} — ${formatDateTimeInTimeZone(ev.at, locale, timeZone)}`}
                     className="block -translate-x-1/2"
-                    tabIndex={0}
                   >
                     <div
                       className={`size-3 rounded-sm ${problemColor(ev.problemIndex)} opacity-60`}
@@ -333,7 +332,7 @@ export function ParticipantTimelineBar({
                         (ev.status === "accepted" || ev.status === "scored"));
                     return (
                       <div
-                        key={`${ev.type}-${ev.at.getTime()}-${i}`}
+                        key={`${ev.type}-${ev.at.getTime()}`}
                         className="absolute top-1/2 -translate-y-1/2"
                         style={{ left: `${pct}%` }}
                       >
