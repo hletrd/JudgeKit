@@ -5,7 +5,6 @@ import { createApiHandler, forbidden } from "@/lib/api/handler";
 import { apiSuccess } from "@/lib/api/responses";
 import { execTransaction } from "@/lib/db";
 import { getSubmissionReviewGroupIds } from "@/lib/assignments/submissions";
-import { db } from "@/lib/db";
 import { assignments, submissions, submissionResults } from "@/lib/db/schema";
 import { recordAuditEvent } from "@/lib/audit/events";
 import { invalidateRankingCache } from "@/lib/assignments/contest-scoring";
@@ -30,22 +29,25 @@ export const POST = createApiHandler({
           ? inArray(assignments.groupId, submissionReviewGroupIds)
           : eq(assignments.id, "__no_access__")
         : undefined;
-    const permittedSubmissionRows = await db
-      .select({ id: submissions.id })
-      .from(submissions)
-      .leftJoin(assignments, eq(submissions.assignmentId, assignments.id))
-      .where(
-        and(
-          inArray(submissions.id, uniqueSubmissionIds),
-          scopedGroupFilter
-        )
-      );
 
-    if (permittedSubmissionRows.length !== uniqueSubmissionIds.length) {
-      return forbidden();
-    }
+    // Run permission check and mutation inside the same transaction so the
+    // permission snapshot cannot drift between check and write (TOCTOU).
+    const txResult = await execTransaction(async (tx) => {
+      const permittedSubmissionRows = await tx
+        .select({ id: submissions.id })
+        .from(submissions)
+        .leftJoin(assignments, eq(submissions.assignmentId, assignments.id))
+        .where(
+          and(
+            inArray(submissions.id, uniqueSubmissionIds),
+            scopedGroupFilter
+          )
+        );
 
-    await execTransaction(async (tx) => {
+      if (permittedSubmissionRows.length !== uniqueSubmissionIds.length) {
+        return { ok: false as const };
+      }
+
       await tx.delete(submissionResults).where(inArray(submissionResults.submissionId, uniqueSubmissionIds));
 
       await tx
@@ -62,7 +64,13 @@ export const POST = createApiHandler({
           judgedAt: null,
         })
         .where(inArray(submissions.id, uniqueSubmissionIds));
+
+      return { ok: true as const };
     });
+
+    if (!txResult.ok) {
+      return forbidden();
+    }
 
     // Bulk rejudge changes scores for an unknown set of assignments — clear
     // the entire leaderboard cache so no stale data persists. Admin rejudge
