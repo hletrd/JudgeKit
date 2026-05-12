@@ -173,7 +173,7 @@ async function _computeContestRankingInner(assignmentId: string, cutoffSec?: num
           u.name,
           u.class_name,
           es.personal_deadline,
-          MIN(CASE WHEN ROUND(s.score, 2) = 100 THEN s.submitted_at ELSE NULL END)
+          MIN(CASE WHEN ROUND(s.score::numeric, 2) = 100 THEN s.submitted_at ELSE NULL END)
             OVER (PARTITION BY s.user_id, s.problem_id) AS first_ac_at
         FROM submissions s
         INNER JOIN assignment_problems ap
@@ -195,8 +195,8 @@ async function _computeContestRankingInner(assignmentId: string, cutoffSec?: num
         MAX(
           ${buildIoiLatePenaltyCaseExpr("score", "points")}
         ) AS "bestScore",
-        MAX(CASE WHEN ROUND(score, 2) = 100 THEN 1 ELSE 0 END) AS "hasAc",
-        MIN(CASE WHEN ROUND(score, 2) = 100 THEN submitted_at ELSE NULL END) AS "firstAcAt",
+        MAX(CASE WHEN ROUND(score::numeric, 2) = 100 THEN 1 ELSE 0 END) AS "hasAc",
+        MIN(CASE WHEN ROUND(score::numeric, 2) = 100 THEN submitted_at ELSE NULL END) AS "firstAcAt",
         SUM(CASE WHEN (score IS NULL OR score < 100)
                   AND EXTRACT(EPOCH FROM submitted_at)::bigint < COALESCE(EXTRACT(EPOCH FROM first_ac_at)::bigint, 9999999999)
              THEN 1 ELSE 0 END) AS "wrongBeforeAc"
