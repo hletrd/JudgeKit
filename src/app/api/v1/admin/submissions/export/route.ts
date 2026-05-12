@@ -80,7 +80,7 @@ export const GET = createApiHandler({
       dateTo
         ? (() => {
             const endOfDay = new Date(dateTo);
-            endOfDay.setHours(23, 59, 59, 999);
+            endOfDay.setUTCHours(23, 59, 59, 999);
             return lte(submissions.submittedAt, endOfDay);
           })()
         : undefined,
