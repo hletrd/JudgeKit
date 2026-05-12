@@ -1,57 +1,45 @@
-# Code Reviewer — Cycle 3 Review
+# Code Reviewer — Cycle 4 Review
 
-## C3-CR-1: `getParticipantTimeline` lacks transaction isolation
+## C4-CR-1: `rawQueryOne` inside transaction in access-codes.ts bypasses isolation
 
-**File:** `src/lib/assignments/participant-timeline.ts:94-184`
+**File:** `src/lib/assignments/access-codes.ts:133`
 **Severity:** MEDIUM | Confidence: High
 
-The function fires 8 parallel DB queries via `Promise.all` without wrapping them in a transaction. Each query reads from a potentially changing database state. Without transaction isolation:
-- A new submission inserted after the submissions query but before the snapshots query would result in a timeline event referencing a submission that has no corresponding snapshot at that exact moment (or vice versa).
-- The anti-cheat event count could diverge from the actual submissions shown.
-- The participant metadata (exam session, contest access) could reflect a state different from the submissions.
+Inside `db.transaction` (line 108), `rawQueryOne("SELECT NOW()::timestamptz AS now")` executes on the global `pool`, not the transaction client. The comment at lines 131-132 explicitly states the intent is to use "DB server time within the transaction" but the code does not achieve this. This is the same pattern cycle 3 fixed in `exam-sessions.ts`, but `access-codes.ts` was missed.
 
-**Fix:** Wrap the `Promise.all` in `db.transaction(async (tx) => { ... })` and use `tx` instead of `db` for all 8 queries.
+**Fix:** Move the `rawQueryOne` call outside the transaction block (before line 108), matching the pattern used in `exam-sessions.ts` after the cycle 3 fix.
 
 ---
 
-## C3-CR-2: `rawQueryOne` inside transaction uses global pool
+## C4-CR-2: `rawQueryOne`/`rawQueryAll` client parameter type is unusable with Drizzle transactions
 
-**File:** `src/lib/assignments/exam-sessions.ts:52`
+**File:** `src/lib/db/queries.ts:46,70`
 **Severity:** MEDIUM | Confidence: High
 
-Inside `db.transaction(async (tx) => { ... })`, line 52 calls `rawQueryOne("SELECT NOW()::timestamptz AS now")`. The `rawQueryOne` function in `src/lib/db/queries.ts` always uses the global `pool.query()`, not the transaction client. This means the time query executes outside the transaction. While `SELECT NOW()` is mostly harmless, this pattern indicates a systemic issue: any raw SQL helper called inside a transaction silently bypasses transaction isolation.
+The `client?: typeof pool` parameter added in cycle 3 can only accept `Pool | null`. Inside a Drizzle `db.transaction(async (tx) => { ... })`, the `tx` object is a `TransactionClient` (a Drizzle database instance), which has a completely different type from `Pool`. No caller inside a transaction can pass `tx` to `rawQueryOne`/`rawQueryAll` without a type error. The parameter does not solve the stated problem of transaction-aware raw queries.
 
-**Fix:** Add an optional `client` parameter to `rawQueryOne`/`rawQueryAll` so callers inside transactions can pass the transaction client. Or use `tx.execute()` / Drizzle's raw query method when inside transactions.
+**Fix:** Either:
+- Remove the unused `client` parameter and document that raw queries cannot participate in Drizzle transactions (callers must use Drizzle's `tx.execute()` or move raw queries outside transactions)
+- Or change the type to accept both `Pool` and the Drizzle transaction's underlying pg client
 
 ---
 
-## C3-CR-3: Source-inspection tests masquerade as logic tests
+## C4-CR-3: Indentation regression after transaction wrapper in participant-timeline.ts
+
+**File:** `src/lib/assignments/participant-timeline.ts:94-325`
+**Severity:** LOW | Confidence: High
+
+The `db.transaction(async (tx) => {` wrapper added in cycle 3 does not indent its body. Lines 95-324 are at the same indentation level as the `return db.transaction` statement, making the control flow difficult to read.
+
+**Fix:** Indent the entire transaction body one level (2 spaces) deeper.
+
+---
+
+## C4-CR-4: Source-inspection tests still masquerade as logic tests
 
 **File:** `tests/unit/assignments/participant-timeline-logic.test.ts`
 **Severity:** MEDIUM | Confidence: High
 
-The entire test file reads the source code as strings and checks for substring presence. It never exercises any actual function logic. This provides zero confidence that the code works correctly — it only verifies that certain text exists in the file. The comment acknowledges this is intentional but the file should be replaced with real unit tests that mock the DB layer and exercise the transformation logic.
+Same finding as cycle 3 (C3-AGG-3). The test file reads source code as strings and checks substring presence. It was updated to verify the transaction wrapper exists but still does not exercise any actual function logic. The file comment acknowledges this limitation.
 
-**Fix:** Rewrite with `vi.mock("@/lib/db")` to mock Drizzle queries, then call `getParticipantTimeline` with mocked data and assert on the returned structure.
-
----
-
-## C3-CR-4: Silent data truncation in timeline queries
-
-**File:** `src/lib/assignments/participant-timeline.ts:163,175`
-**Severity:** LOW | Confidence: High
-
-Submissions query has `.limit(5000)` and snapshots query has `.limit(1000)`. For extremely active participants, data is silently truncated with no indication to the caller. The summary counts (totalAttempts, snapshotCount) would then be inconsistent with the actual timeline events.
-
-**Fix:** Either remove limits (if performance is acceptable), add pagination, or return a `truncated: true` flag so the UI can warn the user.
-
----
-
-## C3-CR-5: Duplicate scoring logic between contest-scoring.ts and leaderboard.ts
-
-**File:** `src/lib/assignments/leaderboard.ts:118-176`, `src/lib/assignments/contest-scoring.ts`
-**Severity:** MEDIUM | Confidence: High
-
-`computeSingleUserLiveRank` reimplements ICPC and IOI scoring logic in raw SQL that mirrors the logic in `computeContestRanking`. Any scoring rule change must be updated in both places or rankings will diverge.
-
-**Fix:** Extract the common SQL building blocks into shared helpers, or have `computeSingleUserLiveRank` call `computeContestRanking` and extract the single user's rank from the full result.
+**Fix:** Replace with real unit tests that mock the DB layer and call `getParticipantTimeline` with test data.

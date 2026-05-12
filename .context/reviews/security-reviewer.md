@@ -1,32 +1,21 @@
-# Security Reviewer — Cycle 3 Review
+# Security Reviewer — Cycle 4 Review
 
-## C3-SEC-1: No transaction isolation on multi-query reads
+## C4-SR-1: Transaction isolation bypass in access code redemption
 
-**File:** `src/lib/assignments/participant-timeline.ts:94-184`
+**File:** `src/lib/assignments/access-codes.ts:133`
 **Severity:** MEDIUM | Confidence: High
 
-Reading participant data across 8 tables without a transaction means the result set is not point-in-time consistent. An attacker (or concurrent legitimate user) submitting code between queries could cause the timeline to show inconsistent state. While not directly exploitable for privilege escalation, this violates the principle that audit/timeline data should be internally consistent.
+Inside `redeemAccessCode`, the `rawQueryOne("SELECT NOW()")` at line 133 runs outside the transaction despite being inside a `db.transaction` block (line 108). The DB time is used for deadline validation (lines 138-140). If clock skew exists between the transaction's snapshot and the global pool query, a user could theoretically redeem an access code after the deadline has passed, because the NOW() value is not transaction-consistent with the assignment read at line 110.
 
-**Fix:** Wrap in `db.transaction(async (tx) => { ... })`.
+**Fix:** Move the `rawQueryOne` call outside the transaction block, or use `tx.execute()` with Drizzle's raw SQL support.
 
 ---
 
-## C3-SEC-2: rawQueryOne bypasses transaction isolation
+## C4-SR-2: rawQueryOne/All client parameter type prevents proper transaction isolation
 
-**File:** `src/lib/db/queries.ts:43-73`, `src/lib/assignments/exam-sessions.ts:52`
+**File:** `src/lib/db/queries.ts:46,70`
 **Severity:** MEDIUM | Confidence: High
 
-The `rawQueryOne`/`rawQueryAll` helpers always execute on the global pool, even when called inside a transaction callback. In `exam-sessions.ts`, the `SELECT NOW()` query inside `db.transaction()` actually runs outside the transaction. More critically, any future code that uses raw queries inside transactions for INSERT/UPDATE will silently bypass isolation.
+The `client?: typeof pool` parameter cannot accept a Drizzle transaction client, meaning no raw query can ever participate in a transaction. This is a systemic limitation that forces developers to either (a) move raw queries outside transactions (losing atomicity) or (b) unknowingly run raw queries outside transactions while inside a transaction block (creating isolation violations). The latter is what happened in `access-codes.ts`.
 
-**Fix:** Add a transaction-aware parameter to raw query helpers.
-
----
-
-## C3-SEC-3: SQL injection in `namedToPositional` parameter validation
-
-**File:** `src/lib/db/queries.ts:95-110`
-**Severity:** LOW | Confidence: Medium
-
-The `namedToPositional` function validates parameter names with `/^[a-zA-Z_]\w*$/` but the SQL replacement regex `@(\w+)` only matches word characters. The validation is slightly more permissive (allows leading underscore) than the regex, which is fine. However, there is no validation that replaced parameters don't appear inside SQL string literals or comments. If a caller accidentally constructs SQL like `SELECT * FROM users WHERE name = '@paramName'`, the replacement would corrupt the query.
-
-**Fix:** This is a low-risk defense-in-depth issue. Document the constraint more prominently.
+**Fix:** Fix the type to accept Drizzle transaction clients, or explicitly document that raw queries bypass transactions and audit all call sites.

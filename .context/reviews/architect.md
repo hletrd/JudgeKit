@@ -1,21 +1,23 @@
-# Architect — Cycle 3 Architectural Review
+# Architect — Cycle 4 Architectural Review
 
-## C3-ARCH-1: Transaction boundary inconsistency across modules
+## C4-ARCH-1: Incomplete raw query helper design
 
-**Files:** Multiple
+**File:** `src/lib/db/queries.ts:43-77`
 **Severity:** MEDIUM | Confidence: High
 
-Some modules use `execTransaction` consistently (rate-limit, api-rate-limit). Others use `db.transaction` directly (exam-sessions). Others don't use transactions at all for multi-query reads (participant-timeline). This inconsistency makes it hard to reason about isolation guarantees and increases the risk of future bugs when developers copy patterns from the wrong module.
+The cycle 3 fix added a `client` parameter to `rawQueryOne`/`rawQueryAll` to make them transaction-aware, but the type (`typeof pool`) only accepts PostgreSQL Pool instances. Drizzle transaction clients are not Pools — they are database instances. This design does not solve the stated problem and may mislead future developers into thinking raw queries can participate in transactions.
 
-**Recommendation:** Standardize on `execTransaction` for all transaction needs, or establish clear guidelines: "Any function that reads from 2+ related tables must use a transaction."
+**Recommendation:** Either:
+1. Remove the `client` parameter and document that raw queries cannot participate in Drizzle transactions. Audit all call sites to ensure raw queries are moved outside transaction blocks.
+2. Or redesign to accept Drizzle's `execute()` method or the underlying pg client from the transaction.
 
 ---
 
-## C3-ARCH-2: Raw SQL helpers are not transaction-aware
+## C4-ARCH-2: Inconsistent error message convention
 
-**File:** `src/lib/db/queries.ts`
-**Severity:** MEDIUM | Confidence: High
+**Files:** `src/lib/assignments/exam-sessions.ts:53`, `src/lib/assignments/access-codes.ts:135`
+**Severity:** LOW | Confidence: High
 
-The `rawQueryOne` and `rawQueryAll` helpers are convenience wrappers around `pool.query()`, but they have no concept of transactions. This forces callers to either (a) not use raw SQL inside transactions, or (b) bypass the helpers and use the transaction client directly. Both options are suboptimal.
+Both files throw generic `Error` messages (`"Failed to fetch DB server time..."`) while other errors in the same functions use localized string keys (`"assignmentNotFound"`, `"examModeInvalid"`, `"invalidAccessCode"`). This inconsistency means upstream error handlers cannot uniformly translate or categorize errors.
 
-**Recommendation:** Make raw query helpers accept an optional client parameter, defaulting to `pool`.
+**Recommendation:** Standardize on localized error keys for all throw points in these functions.

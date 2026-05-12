@@ -1,36 +1,32 @@
-# Critic — Cycle 3 Multi-Perspective Review
+# Critic — Cycle 4 Review
 
-## C3-CRIT-1: Transaction semantics are inconsistently applied
+## C4-CT-1: Incomplete fix from cycle 3 — access-codes.ts missed
 
-**Files:** `src/lib/assignments/participant-timeline.ts`, `src/lib/assignments/exam-sessions.ts`, `src/lib/db/queries.ts`
+**File:** `src/lib/assignments/access-codes.ts:133`
 **Severity:** MEDIUM | Confidence: High
 
-The codebase has a systemic inconsistency around transactions:
-- `exam-sessions.ts` correctly uses `db.transaction()` but then calls `rawQueryOne()` which bypasses it.
-- `participant-timeline.ts` reads 8 related tables without any transaction wrapper.
-- `rate-limit.ts` correctly uses `execTransaction` for atomic operations.
-- `api-rate-limit.ts` correctly uses `execTransaction`.
+Cycle 3 identified and fixed the same raw-query-outside-transaction issue in `exam-sessions.ts` (C3-AGG-2). However, the identical pattern in `access-codes.ts` was not discovered or fixed. This suggests the review process missed a file that should have been caught by the same analysis. The `grep` pattern `rawQueryOne.*NOW` would have found both occurrences.
 
-This inconsistency suggests developers are unsure when transactions are needed. A guideline or lint rule would help.
+**Fix:** Apply the same fix pattern (move raw query outside transaction) to `access-codes.ts`.
 
 ---
 
-## C3-CRIT-2: Source-inspection tests provide false confidence
+## C4-CT-2: Type-system mismatch in raw query helper
+
+**File:** `src/lib/db/queries.ts:46,70`
+**Severity:** MEDIUM | Confidence: High
+
+Adding a parameter with a type that cannot be used as intended (`client?: typeof pool` when the caller has a Drizzle `TransactionClient`) is worse than not having the parameter. It creates the illusion of transaction support without providing it. Future developers may see the parameter and attempt to pass `tx`, only to hit a type error and work around it incorrectly.
+
+**Fix:** Either make the parameter useful (correct type) or remove it and document the limitation clearly.
+
+---
+
+## C4-CT-3: False confidence from source-inspection tests
 
 **File:** `tests/unit/assignments/participant-timeline-logic.test.ts`
 **Severity:** MEDIUM | Confidence: High
 
-The test file reads source code and checks string presence. This is not testing — it's static analysis done at runtime. It provides no evidence that the functions produce correct output for given inputs. The existence of this file may discourage writing real tests because "coverage exists."
+The test file was updated in cycle 3 to verify the transaction wrapper exists, but this is still source-inspection testing. It provides zero confidence that `getParticipantTimeline` produces correct output. The cycle 3 deferral rationale ("requires significant mocking infrastructure") is reasonable, but the file should not remain in the test suite indefinitely in its current form.
 
-**Fix:** Replace with real unit tests or remove and track as a coverage gap.
-
----
-
-## C3-CRIT-3: Duplicate SQL scoring logic is a maintenance hazard
-
-**Files:** `src/lib/assignments/contest-scoring.ts`, `src/lib/assignments/leaderboard.ts`
-**Severity:** MEDIUM | Confidence: High
-
-Two complex raw SQL queries implement the same scoring rules. The ICPC ranking query in `leaderboard.ts` (118-176) duplicates the CTE structure from `contest-scoring.ts`. The IOI ranking query (182-216) calls `buildIoiLatePenaltyCaseExpr` which is shared, but the surrounding CTE structure is still duplicated. If a scoring bug is fixed in one place, the other may remain broken indefinitely.
-
-**Fix:** Refactor to use a single shared query builder, or have the single-user rank call the full ranking function.
+**Fix:** Create a tracking issue or plan item with a concrete deadline for replacing these tests.
