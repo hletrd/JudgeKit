@@ -433,7 +433,7 @@ export const authConfig: NextAuthConfig = {
     async session({ session, token }) {
       const userId = getTokenUserId(token);
 
-      if (userId && token.role) {
+      if (userId) {
         mapTokenToSession(token, session);
       }
       return session;
