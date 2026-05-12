@@ -139,7 +139,7 @@ export default async function ContestDetailPage({
     },
   });
 
-  if (!assignment || assignment.examMode === "none") {
+  if (!assignment) {
     notFound();
   }
 
@@ -154,6 +154,10 @@ export default async function ContestDetailPage({
 
   if (!hasAccess) {
     redirect("/contests/manage");
+  }
+
+  if (assignment.examMode === "none") {
+    notFound();
   }
 
   const canManage = await canManageGroupResourcesAsync(
