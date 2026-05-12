@@ -28,6 +28,11 @@ export function countTablesQuery(): string {
 /**
  * Execute a raw SQL query that returns a single row.
  *
+ * **WARNING:** This helper always runs on the global connection pool.
+ * It cannot participate in Drizzle transactions. If you need raw SQL
+ * inside a transaction, use Drizzle's `tx.execute()` or move the raw
+ * query outside the transaction block.
+ *
  * **WARNING:** This helper cannot validate at runtime that the returned
  * row actually matches `T`. The generic parameter is purely a developer
  * convenience — the SQL text and the type can drift independently.
@@ -42,18 +47,21 @@ export function countTablesQuery(): string {
  */
 export async function rawQueryOne<T = Record<string, unknown>>(
   sql: string,
-  params?: Record<string, unknown>,
-  client?: typeof pool,
+  params?: Record<string, unknown>
 ): Promise<T | undefined> {
-  const activeClient = client ?? pool;
-  if (!activeClient) throw new Error("PostgreSQL pool not available");
+  if (!pool) throw new Error("PostgreSQL pool not available");
   const { text, values } = namedToPositional(sql, params);
-  const result = await activeClient.query(text, values);
+  const result = await pool.query(text, values);
   return result.rows[0] as T | undefined;
 }
 
 /**
  * Execute a raw SQL query that returns multiple rows.
+ *
+ * **WARNING:** This helper always runs on the global connection pool.
+ * It cannot participate in Drizzle transactions. If you need raw SQL
+ * inside a transaction, use Drizzle's `tx.execute()` or move the raw
+ * query outside the transaction block.
  *
  * **WARNING:** This helper cannot validate at runtime that the returned
  * rows actually match `T`. The generic parameter is purely a developer
@@ -66,13 +74,11 @@ export async function rawQueryOne<T = Record<string, unknown>>(
  */
 export async function rawQueryAll<T = Record<string, unknown>>(
   sql: string,
-  params?: Record<string, unknown>,
-  client?: typeof pool,
+  params?: Record<string, unknown>
 ): Promise<T[]> {
-  const activeClient = client ?? pool;
-  if (!activeClient) throw new Error("PostgreSQL pool not available");
+  if (!pool) throw new Error("PostgreSQL pool not available");
   const { text, values } = namedToPositional(sql, params);
-  const result = await activeClient.query(text, values);
+  const result = await pool.query(text, values);
   return result.rows as T[];
 }
 
