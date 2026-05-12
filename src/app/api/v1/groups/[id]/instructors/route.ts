@@ -104,6 +104,7 @@ export const POST = createApiHandler({
 });
 
 export const DELETE = createApiHandler({
+  rateLimit: "group-instructors:remove",
   schema: removeInstructorSchema,
   handler: async (_req: NextRequest, { user, body, params }) => {
     const { id } = params;

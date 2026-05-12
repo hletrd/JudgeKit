@@ -178,7 +178,7 @@ export const GET = createApiHandler({
 
     if (dateTo) {
       const endOfDay = new Date(dateTo);
-      endOfDay.setHours(23, 59, 59, 999);
+      endOfDay.setUTCHours(23, 59, 59, 999);
       filters.push(lte(auditEvents.createdAt, endOfDay));
     }
 
