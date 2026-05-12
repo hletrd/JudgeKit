@@ -17,6 +17,7 @@ import {
 } from "@/lib/email/templates";
 import { logger } from "@/lib/logger";
 import { hashPassword } from "@/lib/security/password-hash";
+import { getDbNowUncached } from "@/lib/db-time";
 
 const PASSWORD_RESET_EXPIRY_MS = 60 * 60 * 1000; // 1 hour
 const EMAIL_VERIFY_EXPIRY_MS = 24 * 60 * 60 * 1000; // 24 hours
@@ -57,7 +58,8 @@ export async function sendPasswordResetEmail(
     .where(eq(passwordResetTokens.userId, user.id));
 
   const { token, hash } = generateSecureToken();
-  const expiresAt = new Date(Date.now() + PASSWORD_RESET_EXPIRY_MS);
+  const dbNow = await getDbNowUncached();
+  const expiresAt = new Date(dbNow.getTime() + PASSWORD_RESET_EXPIRY_MS);
 
   await db.insert(passwordResetTokens).values({
     userId: user.id,
@@ -94,11 +96,12 @@ export interface ValidateResetTokenResult {
 
 export async function validatePasswordResetToken(token: string): Promise<ValidateResetTokenResult> {
   const hash = crypto.createHash("sha256").update(token).digest("hex");
+  const now = await getDbNowUncached();
 
   const row = await db.query.passwordResetTokens.findFirst({
     where: and(
       eq(passwordResetTokens.tokenHash, hash),
-      gt(passwordResetTokens.expiresAt, new Date()),
+      gt(passwordResetTokens.expiresAt, now),
       isNull(passwordResetTokens.usedAt)
     ),
   });
@@ -125,6 +128,7 @@ export async function resetPassword(
   }
 
   const hash = crypto.createHash("sha256").update(token).digest("hex");
+  const now = await getDbNowUncached();
 
   try {
     await db.transaction(async (tx) => {
@@ -133,7 +137,7 @@ export async function resetPassword(
       const row = await tx.query.passwordResetTokens.findFirst({
         where: and(
           eq(passwordResetTokens.tokenHash, hash),
-          gt(passwordResetTokens.expiresAt, new Date())
+          gt(passwordResetTokens.expiresAt, now)
         ),
       });
 
@@ -152,7 +156,7 @@ export async function resetPassword(
       // consumed the token, our WHERE will see usedAt is set and rowCount=0.
       const tokenUpdate = await tx
         .update(passwordResetTokens)
-        .set({ usedAt: new Date() })
+        .set({ usedAt: now })
         .where(
           and(
             eq(passwordResetTokens.id, row.id),
@@ -166,7 +170,7 @@ export async function resetPassword(
 
       await tx
         .update(users)
-        .set({ passwordHash, mustChangePassword: false, updatedAt: new Date() })
+        .set({ passwordHash, mustChangePassword: false, updatedAt: now })
         .where(eq(users.id, row.userId));
 
       logger.info({ userId: row.userId }, "Password reset completed");
@@ -220,7 +224,8 @@ export async function sendEmailVerification(
     .where(eq(emailVerificationTokens.userId, userId));
 
   const { token, hash } = generateSecureToken();
-  const expiresAt = new Date(Date.now() + EMAIL_VERIFY_EXPIRY_MS);
+  const dbNow = await getDbNowUncached();
+  const expiresAt = new Date(dbNow.getTime() + EMAIL_VERIFY_EXPIRY_MS);
 
   await db.insert(emailVerificationTokens).values({
     userId,
@@ -258,6 +263,7 @@ export interface VerifyEmailResult {
 
 export async function verifyEmail(token: string): Promise<VerifyEmailResult> {
   const hash = crypto.createHash("sha256").update(token).digest("hex");
+  const now = await getDbNowUncached();
 
   try {
     await db.transaction(async (tx) => {
@@ -265,7 +271,7 @@ export async function verifyEmail(token: string): Promise<VerifyEmailResult> {
       const row = await tx.query.emailVerificationTokens.findFirst({
         where: and(
           eq(emailVerificationTokens.tokenHash, hash),
-          gt(emailVerificationTokens.expiresAt, new Date()),
+          gt(emailVerificationTokens.expiresAt, now),
           isNull(emailVerificationTokens.verifiedAt)
         ),
       });
@@ -278,7 +284,7 @@ export async function verifyEmail(token: string): Promise<VerifyEmailResult> {
       // Under READ COMMITTED this serializes concurrent verification attempts.
       const tokenUpdate = await tx
         .update(emailVerificationTokens)
-        .set({ verifiedAt: new Date() })
+        .set({ verifiedAt: now })
         .where(
           and(
             eq(emailVerificationTokens.id, row.id),
@@ -292,7 +298,7 @@ export async function verifyEmail(token: string): Promise<VerifyEmailResult> {
 
       await tx
         .update(users)
-        .set({ emailVerified: new Date(), updatedAt: new Date() })
+        .set({ emailVerified: now, updatedAt: now })
         .where(eq(users.id, row.userId));
 
       logger.info({ userId: row.userId, email: row.email }, "Email verified");
