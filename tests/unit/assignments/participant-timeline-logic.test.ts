@@ -61,14 +61,26 @@ describe("participant-timeline logic", () => {
     });
   });
 
+  describe("transaction isolation", () => {
+    it("wraps queries in db.transaction", () => {
+      expect(source).toContain("db.transaction(async (tx) => {");
+    });
+
+    it("uses tx instead of db for all queries", () => {
+      expect(source).toContain("tx.query.users.findFirst");
+      expect(source).toContain("tx.query.examSessions.findFirst");
+      expect(source).toContain("tx.query.assignments.findFirst");
+    });
+  });
+
   describe("parallel data fetching", () => {
     it("fetches all data sources in parallel with Promise.all", () => {
       expect(source).toContain("Promise.all");
-      // Verify all 8 parallel queries are present
-      expect(source).toContain("db.query.users.findFirst");
-      expect(source).toContain("db.query.examSessions.findFirst");
-      expect(source).toContain("db.query.contestAccessTokens.findFirst");
-      expect(source).toContain("db.query.assignments.findFirst");
+      // Verify all 8 parallel queries are present (now using tx inside transaction)
+      expect(source).toContain("tx.query.users.findFirst");
+      expect(source).toContain("tx.query.examSessions.findFirst");
+      expect(source).toContain("tx.query.contestAccessTokens.findFirst");
+      expect(source).toContain("tx.query.assignments.findFirst");
     });
   });
 
