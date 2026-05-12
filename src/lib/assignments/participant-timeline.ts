@@ -91,6 +91,7 @@ export async function getParticipantTimeline(
   assignmentId: string,
   userId: string
 ): Promise<ParticipantTimeline | null> {
+  return db.transaction(async (tx) => {
   const [
     participant,
     examSession,
@@ -101,7 +102,7 @@ export async function getParticipantTimeline(
     snapshotRows,
     antiCheatRows,
   ] = await Promise.all([
-    db.query.users.findFirst({
+    tx.query.users.findFirst({
       where: eq(users.id, userId),
       columns: {
         id: true,
@@ -110,14 +111,14 @@ export async function getParticipantTimeline(
         className: true,
       },
     }),
-    db.query.examSessions.findFirst({
+    tx.query.examSessions.findFirst({
       where: and(eq(examSessions.assignmentId, assignmentId), eq(examSessions.userId, userId)),
       columns: {
         startedAt: true,
         personalDeadline: true,
       },
     }),
-    db.query.contestAccessTokens.findFirst({
+    tx.query.contestAccessTokens.findFirst({
       where: and(
         eq(contestAccessTokens.assignmentId, assignmentId),
         eq(contestAccessTokens.userId, userId)
@@ -126,7 +127,7 @@ export async function getParticipantTimeline(
         redeemedAt: true,
       },
     }),
-    db.query.assignments.findFirst({
+    tx.query.assignments.findFirst({
       where: eq(assignments.id, assignmentId),
       columns: {
         scoringModel: true,
@@ -135,7 +136,7 @@ export async function getParticipantTimeline(
         examMode: true,
       },
     }),
-    db
+    tx
       .select({
         problemId: assignmentProblems.problemId,
         title: problems.title,
@@ -146,7 +147,7 @@ export async function getParticipantTimeline(
       .innerJoin(problems, eq(problems.id, assignmentProblems.problemId))
       .where(eq(assignmentProblems.assignmentId, assignmentId))
       .orderBy(assignmentProblems.sortOrder, problems.title),
-    db
+    tx
       .select({
         id: submissions.id,
         problemId: submissions.problemId,
@@ -161,7 +162,7 @@ export async function getParticipantTimeline(
       .where(and(eq(submissions.assignmentId, assignmentId), eq(submissions.userId, userId)))
       .orderBy(asc(submissions.submittedAt))
       .limit(5000),
-    db
+    tx
       .select({
         id: codeSnapshots.id,
         problemId: codeSnapshots.problemId,
@@ -173,7 +174,7 @@ export async function getParticipantTimeline(
       .where(and(eq(codeSnapshots.assignmentId, assignmentId), eq(codeSnapshots.userId, userId)))
       .orderBy(asc(codeSnapshots.createdAt))
       .limit(1000),
-    db
+    tx
       .select({
         eventType: antiCheatEvents.eventType,
         count: sql<number>`count(*)`,
@@ -320,4 +321,5 @@ export async function getParticipantTimeline(
       byType,
     },
   };
+});
 }
