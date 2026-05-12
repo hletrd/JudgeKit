@@ -1,36 +1,65 @@
-# Verifier — Cycle 4 Evidence-Based Correctness Review
+# Verifier Review — Cycle 5
 
-## C4-VER-1: Confirmed — `rawQueryOne` inside transaction in access-codes.ts
-
-**File:** `src/lib/assignments/access-codes.ts:108,133`
-**Severity:** MEDIUM | Confidence: High
-
-Evidence: Line 108 opens `db.transaction(async (tx) => {`. Inside the transaction callback, line 133 calls `rawQueryOne("SELECT NOW()::timestamptz AS now")` without passing `tx` or any client parameter. The `rawQueryOne` function (queries.ts:48) uses `client ?? pool`, and since no client is passed, it executes on the global `pool` outside the transaction.
-
-This is the same verified issue as C3-VER-2, but in a different file that was not fixed.
-
-**Fix:** Move the `rawQueryOne` call to before the transaction block.
+**Reviewer:** verifier
+**Date:** 2026-05-12
 
 ---
 
-## C4-VER-2: Confirmed — client parameter type mismatch
+## Verification 1: Cycle 3/4 fixes are correctly applied
 
-**File:** `src/lib/db/queries.ts:46`
-**Severity:** MEDIUM | Confidence: High
+**Status:** VERIFIED
 
-Evidence: The parameter is declared as `client?: typeof pool`. The `pool` export (index.ts:50) is typed as `Pool | null`. A Drizzle transaction client (`tx`) has type `NodePgDatabase<AppSchema>` (or transaction-specific variant), which does not extend `Pool`. TypeScript will reject passing `tx` to `rawQueryOne`.
-
-The cycle 3 fix added a parameter that cannot be used for its intended purpose.
-
-**Fix:** Correct the type or remove the parameter.
+| Fix | Location | Status |
+|-----|----------|--------|
+| C3-AGG-1: Transaction wrapper in participant-timeline.ts | `src/lib/assignments/participant-timeline.ts:94` | Fixed — all 8 queries use `tx` |
+| C3-AGG-2: getDbNowUncached outside transaction in exam-sessions.ts | `src/lib/assignments/exam-sessions.ts:51` | Fixed — fetched before transaction |
+| C4-AGG-1: getDbNowUncached outside transaction in access-codes.ts | `src/lib/assignments/access-codes.ts:109` | Fixed — fetched before transaction |
+| C4-AGG-2: Removed unusable client param from rawQuery helpers | `src/lib/db/queries.ts:48-83` | Fixed — params removed, docs updated |
+| C4-AGG-4: Indentation in participant-timeline.ts | `src/lib/assignments/participant-timeline.ts:95-324` | Fixed — body indented |
 
 ---
 
-## C4-VER-3: Confirmed — participant-timeline.ts indentation regression
+## Verification 2: Judge claim race condition is reproducible
 
-**File:** `src/lib/assignments/participant-timeline.ts:94-325`
-**Severity:** LOW | Confidence: High
+**File:** `src/app/api/v1/judge/claim/route.ts:352-374`
+**Status:** CONFIRMED
 
-Evidence: Line 94 is `return db.transaction(async (tx) => {` with indent 0. Lines 95-324 (the entire transaction body) are also at indent 0. The closing `});` is at line 324 with indent 0, and the function's closing `}` is at line 325 with indent 0.
+The code path is:
+1. Lines 278-283: Atomic claim via raw SQL CTE
+2. Lines 341-350: Problem lookup (outside transaction)
+3. Lines 356-363: Reset submission (outside transaction)
+4. Lines 367-370: Decrement active_tasks (outside transaction)
 
-The transaction wrapper body should be indented one level (2 spaces) relative to the function body.
+Steps 3-4 are non-atomic and vulnerable to concurrent modification. If another worker claims the submission between steps 1 and 3, the reset will clear the newer worker's claim.
+
+**Reproduction:**
+1. Submit a solution
+2. Worker A claims it (atomic CTE succeeds)
+3. Worker B claims it via stale claim (atomic CTE succeeds because judge_claimed_at is stale)
+4. Worker A's problem lookup returns null (simulated DB delay)
+5. Worker A resets submission to pending — OVERWRITING Worker B's claim
+6. Worker A decrements its own active_tasks
+7. Result: Worker B has the submission but active_tasks is wrong
+
+---
+
+## Verification 3: All quality gates pass
+
+**Status:** VERIFIED
+
+- `npx eslint .` — passed (no errors)
+- `npx next build` — passed
+- `npx vitest run` — 317 test files passed, 2401 tests passed
+
+---
+
+## Verification 4: getDbNowUncached in submissions POST is a real pattern violation
+
+**File:** `src/app/api/v1/submissions/route.ts:268`
+**Status:** CONFIRMED
+
+`getDbNowUncached()` calls `rawQueryOne()` which uses `pool.query()`, the global pool. Inside `execTransaction`, this query runs outside the transaction context. The JSDoc on `rawQueryOne` explicitly warns:
+
+> "This helper always runs on the global connection pool. It cannot participate in Drizzle transactions."
+
+The impact is mitigated because `dbNow` is only used for the rate-limit window calculation, not for writes. But the pattern violation is real.

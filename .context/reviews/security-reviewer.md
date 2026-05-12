@@ -1,21 +1,89 @@
-# Security Reviewer — Cycle 4 Review
+# Security Review — Cycle 5
 
-## C4-SR-1: Transaction isolation bypass in access code redemption
-
-**File:** `src/lib/assignments/access-codes.ts:133`
-**Severity:** MEDIUM | Confidence: High
-
-Inside `redeemAccessCode`, the `rawQueryOne("SELECT NOW()")` at line 133 runs outside the transaction despite being inside a `db.transaction` block (line 108). The DB time is used for deadline validation (lines 138-140). If clock skew exists between the transaction's snapshot and the global pool query, a user could theoretically redeem an access code after the deadline has passed, because the NOW() value is not transaction-consistent with the assignment read at line 110.
-
-**Fix:** Move the `rawQueryOne` call outside the transaction block, or use `tx.execute()` with Drizzle's raw SQL support.
+**Reviewer:** security-reviewer
+**Date:** 2026-05-12
 
 ---
 
-## C4-SR-2: rawQueryOne/All client parameter type prevents proper transaction isolation
+## Finding 1: TOCTOU race in judge claim problem-not-found path
 
-**File:** `src/lib/db/queries.ts:46,70`
-**Severity:** MEDIUM | Confidence: High
+**File:** `src/app/api/v1/judge/claim/route.ts:352-374`
+**Severity:** HIGH
+**Confidence:** High
+**Category:** Race Condition / State Inconsistency
 
-The `client?: typeof pool` parameter cannot accept a Drizzle transaction client, meaning no raw query can ever participate in a transaction. This is a systemic limitation that forces developers to either (a) move raw queries outside transactions (losing atomicity) or (b) unknowingly run raw queries outside transactions while inside a transaction block (creating isolation violations). The latter is what happened in `access-codes.ts`.
+After the atomic claim CTE acquires a submission, if the problem lookup fails (line 341-350), the code attempts to reset the submission and decrement the worker's active_tasks. These two operations are NOT wrapped in a transaction:
 
-**Fix:** Fix the type to accept Drizzle transaction clients, or explicitly document that raw queries bypass transactions and audit all call sites.
+```typescript
+await db.update(submissions).set({ status: "pending", ... }).where(eq(submissions.id, claimed.id));
+if (workerId) {
+  await db.update(judgeWorkers).set({ activeTasks: sql`${judgeWorkers.activeTasks} - 1` })
+    .where(eq(judgeWorkers.id, workerId));
+}
+```
+
+Attack scenario:
+1. Worker A claims submission S (atomic CTE succeeds)
+2. Worker A's process crashes or is slow after the claim
+3. Worker B claims S via stale claim timeout (the CTE allows this when judge_claimed_at is stale)
+4. Worker A finally runs the problem-not-found check and resets S + decrements Worker A's tasks
+5. Worker B is now processing S but Worker A's task count is wrong
+
+The active_tasks counter could go negative over time, causing the worker to accept more tasks than its concurrency limit.
+
+**Fix:** Wrap the reset in a transaction that checks the claim token is still valid. Also decrement active_tasks only if the worker still owns the claim.
+
+---
+
+## Finding 2: Docker build path validation is solid
+
+**File:** `src/lib/docker/client.ts:62-72`
+**Severity:** N/A (positive finding)
+**Confidence:** High
+
+The `validateDockerfilePath` function correctly prevents path traversal:
+- Requires prefix `docker/Dockerfile.judge-`
+- Rejects `..` and path separators in the suffix
+- Matches the Rust validator in judge-worker-rs
+
+This is good defense-in-depth.
+
+---
+
+## Finding 3: CSRF check bypass for API key auth is correct
+
+**File:** `src/lib/api/handler.ts:139-148`
+**Severity:** N/A (positive finding)
+**Confidence:** High
+
+The CSRF check correctly skips for API key-authenticated requests (`isApiKeyAuth`), since API keys don't involve cookies and therefore aren't vulnerable to CSRF. This matches OWASP guidance.
+
+---
+
+## Finding 4: Judge auth correctly rejects unknown workers
+
+**File:** `src/lib/judge/auth.ts:52-97`
+**Severity:** N/A (positive finding)
+**Confidence:** High
+
+The `isJudgeAuthorizedForWorker` function correctly:
+- Rejects unknown workers (no fallback to shared token)
+- Rejects workers without secretTokenHash
+- Uses timing-safe comparison (`safeTokenCompare`)
+- Hashes tokens before comparison
+
+This is a well-hardened auth path.
+
+---
+
+## Finding 5: No new injection vectors found
+
+**Severity:** N/A
+**Confidence:** High
+
+Reviewed raw SQL usage:
+- `src/lib/db/queries.ts`: Named parameters with validation (`@\w+`), no user-controlled SQL text
+- `src/app/api/v1/judge/claim/route.ts`: Raw CTE with parameterized values only
+- `src/lib/assignments/contest-scoring.ts`: Raw CTE with parameterized values only
+
+All raw SQL uses parameterized queries. No SQL injection vulnerabilities identified.

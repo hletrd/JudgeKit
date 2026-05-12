@@ -1,32 +1,64 @@
-# Critic — Cycle 4 Review
+# Critic Review — Cycle 5
 
-## C4-CT-1: Incomplete fix from cycle 3 — access-codes.ts missed
-
-**File:** `src/lib/assignments/access-codes.ts:133`
-**Severity:** MEDIUM | Confidence: High
-
-Cycle 3 identified and fixed the same raw-query-outside-transaction issue in `exam-sessions.ts` (C3-AGG-2). However, the identical pattern in `access-codes.ts` was not discovered or fixed. This suggests the review process missed a file that should have been caught by the same analysis. The `grep` pattern `rawQueryOne.*NOW` would have found both occurrences.
-
-**Fix:** Apply the same fix pattern (move raw query outside transaction) to `access-codes.ts`.
+**Reviewer:** critic
+**Date:** 2026-05-12
 
 ---
 
-## C4-CT-2: Type-system mismatch in raw query helper
+## Finding 1: The judge claim problem-not-found path is a real bug
 
-**File:** `src/lib/db/queries.ts:46,70`
-**Severity:** MEDIUM | Confidence: High
+**File:** `src/app/api/v1/judge/claim/route.ts:341-374`
+**Severity:** HIGH
+**Confidence:** High
 
-Adding a parameter with a type that cannot be used as intended (`client?: typeof pool` when the caller has a Drizzle `TransactionClient`) is worse than not having the parameter. It creates the illusion of transaction support without providing it. Future developers may see the parameter and attempt to pass `tx`, only to hit a type error and work around it incorrectly.
+This is the most serious finding this cycle. The problem-not-found path in the judge claim route:
+1. Fetches the problem AFTER the atomic claim
+2. If missing, resets the submission and decrements active_tasks NON-ATOMICALLY
+3. No claim token check during reset — any request could trigger the reset
 
-**Fix:** Either make the parameter useful (correct type) or remove it and document the limitation clearly.
+While the endpoint is IP-restricted and auth-required, the race condition within the legitimate worker flow is real. A slow worker or concurrent stale claim can produce inconsistent state.
+
+The fix is straightforward: wrap lines 356-370 in `execTransaction` and check the claim token matches.
 
 ---
 
-## C4-CT-3: False confidence from source-inspection tests
+## Finding 2: getDbNowUncached inside execTransaction is a pattern violation
 
-**File:** `tests/unit/assignments/participant-timeline-logic.test.ts`
-**Severity:** MEDIUM | Confidence: High
+**File:** `src/app/api/v1/submissions/route.ts:265-270`
+**Severity:** MEDIUM
+**Confidence:** High
 
-The test file was updated in cycle 3 to verify the transaction wrapper exists, but this is still source-inspection testing. It provides zero confidence that `getParticipantTimeline` produces correct output. The cycle 3 deferral rationale ("requires significant mocking infrastructure") is reasonable, but the file should not remain in the test suite indefinitely in its current form.
+The cycles 3/4 fixes explicitly moved `getDbNowUncached` (via `rawQueryOne`) outside transaction blocks because raw queries bypass transaction isolation. The submissions POST route violates this pattern:
 
-**Fix:** Create a tracking issue or plan item with a concrete deadline for replacing these tests.
+```typescript
+const txResult = await execTransaction(async (tx) => {
+  const dbNow = await getDbNowUncached(); // Always uses global pool!
+```
+
+While the impact is lower here (dbNow is only used for rate-limit window, not for writes), it's a pattern inconsistency that future maintainers might copy into more sensitive code.
+
+---
+
+## Finding 3: Cache invalidation remains unaddressed
+
+**File:** `src/lib/assignments/contest-scoring.ts`
+**Severity:** LOW
+**Confidence:** Medium
+
+The leaderboard cache (30s TTL, 15s stale-while-revalidate) means:
+- A participant submits code
+- The submission completes judging
+- The leaderboard may not reflect the new result for 15-30 seconds
+
+For a live contest, this is a noticeable UX issue. The cache is necessary for performance (raw SQL CTEs are expensive), but invalidation should be tied to submission lifecycle events.
+
+---
+
+## Summary
+
+Cycle 5 found fewer new issues than prior cycles, which is expected — the codebase has been through 4 review cycles. The remaining issues are:
+1. One real race condition (HIGH)
+2. One pattern inconsistency (MEDIUM)
+3. A few deferred low-severity items
+
+The codebase is in significantly better shape than cycle 1.
