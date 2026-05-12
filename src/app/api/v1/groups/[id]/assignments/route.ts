@@ -21,6 +21,9 @@ export async function GET(
   { params }: { params: Promise<{ id: string }> }
 ) {
   try {
+    const rateLimitResponse = await consumeApiRateLimit(request, "assignments:list");
+    if (rateLimitResponse) return rateLimitResponse;
+
     const user = await getApiUser(request);
     if (!user) return unauthorized();
 
