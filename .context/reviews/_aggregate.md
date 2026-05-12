@@ -1,47 +1,55 @@
-# Aggregate Review — Cycle 12
+# Aggregate Review — Cycle 14
 
 **Date:** 2026-05-12
-**Scope:** Comprehensive review of entire codebase: auth, email, API routes, database queries, transactions, judge system, compiler, file uploads, SSE, Docker client, and anti-cheat
-**Previous cycles reviewed:** C6 aggregate (all findings were fixed in cycle 6)
+**Scope:** Comprehensive review of API routes, auth handlers, database queries, and business logic
+**Previous cycles reviewed:** C13 aggregate (findings were fixed in prior cycles)
+
+---
+
+## FIXED in this cycle (from C13 carry-over)
+
+### C13-1: resend-verification route lacks authentication — arbitrary email trigger
+
+**File:** `src/app/api/v1/auth/resend-verification/route.ts`
+**Status:** Fixed — wrapped in `createApiHandler({ auth: true })` with `body.userId !== user.id` check.
+
+---
+
+### C13-2: groups/[id]/assignments GET lacks rate limiting
+
+**File:** `src/app/api/v1/groups/[id]/assignments/route.ts`
+**Status:** Fixed — added `consumeApiRateLimit(request, "assignments:list")` to the GET handler.
 
 ---
 
 ## MEDIUM Severity
 
-### C12-AGG-1: Email token delete/insert not atomic — leaves user with no tokens on insert failure
+### C14-1: audit-logs and login-logs dateTo filters use `setHours` instead of `setUTCHours`
 
-**File:** `src/lib/email/index.ts:56-68` (sendPasswordResetEmail) and `src/lib/email/index.ts:222-235` (sendEmailVerification)
+**Files:**
+- `src/app/api/v1/admin/audit-logs/route.ts:181`
+- `src/app/api/v1/admin/login-logs/route.ts:61`
 **Confidence:** High
 
-Both `sendPasswordResetEmail` and `sendEmailVerification` delete old tokens and insert new ones as separate, non-transactional operations. If the insert fails after the delete (e.g., DB connection lost, constraint violation, disk full), the user is left with no active tokens.
+Both endpoints construct an end-of-day timestamp for the `dateTo` query parameter using `setHours(23, 59, 59, 999)` on a `Date` object parsed from the incoming string. This sets the local time hours, not UTC hours. When the server runs in a non-UTC timezone (e.g., UTC+9), the resulting timestamp is shifted by the timezone offset relative to UTC midnight. PostgreSQL timestamp comparisons then include or exclude the wrong records at the day boundary.
 
-**Concrete failure scenario:**
-1. User requests password reset
-2. `sendPasswordResetEmail` deletes the old token (line 56-58)
-3. Network blip or DB primary failover occurs before the insert (line 64-68)
-4. The insert throws and the function returns `{ success: false, error: "send_failed" }`
-5. User has no valid password reset token in the database
-6. User retries but the same race can occur again
-7. Only recovery: wait for token TTL to fully expire or admin intervention
+**Impact:** An admin filtering audit logs for "2024-01-01" will see records up to `2024-01-01T14:59:59Z` instead of `2024-01-01T23:59:59Z`, silently dropping the last ~9 hours of the day (in UTC+9).
 
-Same pattern exists in `sendEmailVerification` (lines 222-235) where old verification tokens are deleted before new ones are inserted.
-
-**Fix:** Wrap delete+insert in `db.transaction()`.
-**Status:** Fixed in commit `90999aa8`.
+**Fix:** Replace `setHours(23, 59, 59, 999)` with `setUTCHours(23, 59, 59, 999)` in both files.
+**Note:** The same pattern was previously fixed in the submissions export route (commit aa6438f9) but the audit-logs and login-logs routes were missed.
 
 ---
 
 ## LOW Severity
 
-### C12-AGG-2: `sendEmailVerification` returns misleading error for missing email
+### C14-2: groups/[id]/instructors DELETE lacks rate limiting
 
-**File:** `src/lib/email/index.ts:218-219`
+**File:** `src/app/api/v1/groups/[id]/instructors/route.ts:106-131`
 **Confidence:** High
 
-When a user exists but has no email address, `sendEmailVerification` returns `"user_not_found"` instead of a more descriptive error. The user was found — they simply lack an email. This mismatch can confuse API consumers and logging/alerting systems.
+The DELETE handler for removing group instructors does not apply rate limiting, while the sibling POST handler does (`rateLimit: "group-instructors:add"`). Under load, a compromised admin session or script could rapidly remove instructors from groups.
 
-**Fix:** Return `"no_email"` instead of `"user_not_found"` at line 219.
-**Status:** Fixed in commit `90999aa8`.
+**Fix:** Add `rateLimit: "group-instructors:remove"` to the DELETE handler's `createApiHandler` config.
 
 ---
 
@@ -49,15 +57,19 @@ When a user exists but has no email address, `sendEmailVerification` returns `"u
 
 | Pattern | Location | Assessment |
 |---|---|---|
-| Judge claim CTE atomicity | `judge/claim/route.ts:175-283` | Correct — raw SQL CTE handles claim atomically |
-| Judge poll final transaction | `judge/poll/route.ts:138-181` | Correct — status update + results in tx |
-| Bulk rejudge permission + mutation | `admin/submissions/rejudge/route.ts:35-69` | Correct — permission check inside execTransaction |
-| Single rejudge cache invalidation | `submissions/[id]/rejudge/route.ts:57-64` | Correct — fire-and-forget with error handling |
-| File upload cleanup | `files/route.ts:91-113` | Correct — orphaned file deleted on DB insert failure |
-| Rate limit atomic consume | `api-rate-limit.ts:80-137` | Correct — SELECT FOR UPDATE inside transaction |
-| Shell command validation | `compiler/execute.ts:170-244` | Correct — dangerous patterns rejected |
-| Docker image validation | `judge/docker-image-validation.ts:32-51` | Correct — prefix + name enforced |
-| API handler return type | `api/handler.ts:65-213` | Correct — Response type supports streaming |
-| SSE connection cleanup | `submissions/[id]/events/route.ts:531-548` | Correct — slot released on error |
-| Compiler sandboxing | `compiler/execute.ts:323-519` | Correct — seccomp, no-new-privs, unprivileged user |
-| Export redaction | `db/export.ts:103-105` | Correct — sanitized + always-redacted merged |
+| Judge poll claim token check | `judge/poll/route.ts:89,154` | Correct — conditional WHERE on claimToken prevents races |
+| Public signup username check | `actions/public-signup.ts:130` | Correct — transaction-scoped uniqueness check |
+| Compiler sandbox | `compiler/execute.ts:323-519` | Correct — seccomp, no-new-privs, unprivileged user, network none |
+| Recruiting token auth | `auth/config.ts:204-250` | Correct — rate limit + token validation before redeem |
+| File upload auth | `files/[id]/route.ts:62-140` | Correct — auth + access check + magic bytes validation |
+| Submissions POST atomic rate limit | `submissions/route.ts:271-345` | Correct — advisory lock + tx-scoped checks |
+| API key expiry check | `api/api-key-auth.ts:89-92` | Correct — DB server time used for comparison |
+| CSRF validation | `security/csrf.ts:30-74` | Correct — multi-layer check with origin validation |
+| Password reset atomicity | `email/index.ts:137-181` | Correct — token read+update inside transaction |
+| Email verification atomicity | `email/index.ts:277-313` | Correct — token read+update inside transaction |
+| Delete+insert transactions | `email/index.ts:62-72,232-243` | Correct — wrapped in db.transaction() |
+| Bulk rejudge scopedGroupFilter | `admin/submissions/rejudge/route.ts:25-30` | Correct — `null` means admin with view_all, intentional |
+| Exam session POST | `exam-session/route.ts:15-91` | Correct — enrollment check, exam mode validation, rate limit |
+| Quick-create contest | `contests/quick-create/route.ts:27-114` | Correct — capability check, transaction-scoped inserts |
+| Submissions export dateTo | `admin/submissions/export/route.ts:82-84` | Correct — already uses `setUTCHours` |
+| Member removal | `members/[userId]/route.ts:10-95` | Correct — tx-scoped enrollment + submission check |
