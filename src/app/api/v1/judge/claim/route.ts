@@ -30,11 +30,12 @@ const claimedSubmissionRowSchema = z.object({
   sourceCode: z.string(),
   status: z.string().nullable(),
   compileOutput: z.string().nullable(),
-  executionTimeMs: z.number().nullable(),
-  memoryUsedKb: z.number().nullable(),
-  score: z.number().nullable(),
-  judgedAt: z.number().nullable(),
-  submittedAt: z.number(),
+  // PostgreSQL may return integer/bigint columns as strings in raw queries.
+  executionTimeMs: z.coerce.number().nullable(),
+  memoryUsedKb: z.coerce.number().nullable(),
+  score: z.coerce.number().nullable(),
+  judgedAt: z.coerce.number().nullable(),
+  submittedAt: z.coerce.number(),
 });
 
 type ClaimedSubmissionRow = z.infer<typeof claimedSubmissionRowSchema>;
