@@ -22,6 +22,7 @@ import { judgeStatusReportSchema } from "@/lib/validators/api";
 import { triggerAutoCodeReview } from "@/lib/judge/auto-review";
 import { logger } from "@/lib/logger";
 import { getDbNowUncached } from "@/lib/db-time";
+import { invalidateRankingCache } from "@/lib/assignments/contest-scoring";
 
 export async function POST(request: NextRequest) {
   try {
@@ -178,6 +179,16 @@ export async function POST(request: NextRequest) {
         return apiError("invalidJudgeClaim", 403);
       }
       throw err;
+    }
+
+    // Invalidate leaderboard cache so instructors see updated rankings immediately.
+    // Fire-and-forget: cache invalidation failure must not block the judge report.
+    if (submission.assignmentId) {
+      Promise.resolve().then(() => {
+        invalidateRankingCache(submission.assignmentId);
+      }).catch((err: unknown) => {
+        logger.warn({ err, assignmentId: submission.assignmentId }, "[poll] Failed to invalidate leaderboard cache");
+      });
     }
 
     const updated = await db.query.submissions.findFirst({

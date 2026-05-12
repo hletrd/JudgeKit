@@ -8,6 +8,8 @@ import { getSubmissionReviewGroupIds } from "@/lib/assignments/submissions";
 import { db } from "@/lib/db";
 import { assignments, submissions, submissionResults } from "@/lib/db/schema";
 import { recordAuditEvent } from "@/lib/audit/events";
+import { invalidateRankingCache } from "@/lib/assignments/contest-scoring";
+import { logger } from "@/lib/logger";
 
 const bulkRejudgeSchema = z.object({
   submissionIds: z.array(z.string().min(1)).min(1, "bulkRejudgeSelectionRequired").max(50, "bulkRejudgeTooMany"),
@@ -60,6 +62,15 @@ export const POST = createApiHandler({
           judgedAt: null,
         })
         .where(inArray(submissions.id, uniqueSubmissionIds));
+    });
+
+    // Bulk rejudge changes scores for an unknown set of assignments — clear
+    // the entire leaderboard cache so no stale data persists. Admin rejudge
+    // is infrequent and the cache is small (max 50 entries).
+    Promise.resolve().then(() => {
+      invalidateRankingCache();
+    }).catch((err: unknown) => {
+      logger.warn({ err }, "[rejudge] Failed to invalidate leaderboard cache");
     });
 
     recordAuditEvent({

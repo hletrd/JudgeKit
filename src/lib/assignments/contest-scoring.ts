@@ -64,6 +64,44 @@ const _refreshingKeys = new Set<string>();
 const REFRESH_FAILURE_COOLDOWN_MS = 5_000;
 const _lastRefreshFailureAt = new Map<string, number>();
 
+/**
+ * Invalidate cached leaderboard data for an assignment.
+ * Call this after any mutation that affects submission scores or status
+ * (judge verdict, rejudge, score override) so the next leaderboard request
+ * fetches fresh data instead of serving stale cached results.
+ *
+ * @param assignmentId When provided, deletes only keys for this assignment
+ *   (both live and frozen variants). When omitted, clears the entire cache.
+ */
+export function invalidateRankingCache(assignmentId?: string): void {
+  if (assignmentId) {
+    // Delete both the live and any frozen variant for this assignment.
+    // Keys are `${assignmentId}:${cutoffSec ?? 'live'}` — frozen variants use
+    // a numeric cutoff, so delete the live key and iterate to find frozen ones.
+    rankingCache.delete(`${assignmentId}:live`);
+    for (const key of rankingCache.keys()) {
+      if (key.startsWith(`${assignmentId}:`)) {
+        rankingCache.delete(key);
+      }
+    }
+    // Also clear any background refresh tracking for this assignment
+    for (const key of _refreshingKeys) {
+      if (key.startsWith(`${assignmentId}:`)) {
+        _refreshingKeys.delete(key);
+      }
+    }
+    for (const key of _lastRefreshFailureAt.keys()) {
+      if (key.startsWith(`${assignmentId}:`)) {
+        _lastRefreshFailureAt.delete(key);
+      }
+    }
+  } else {
+    rankingCache.clear();
+    _refreshingKeys.clear();
+    _lastRefreshFailureAt.clear();
+  }
+}
+
 type RawLeaderboardRow = {
   userId: string;
   username: string;
