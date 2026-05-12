@@ -213,17 +213,12 @@ export async function ParticipantTimelineView({
                         {timeline?.summary.totalAttempts ?? ranking?.attempts ?? 0}
                       </TableCell>
                       <TableCell>
-                        {timeline?.summary.firstAcAt ?? ranking?.firstAcAt ? (
-                          formatDateTimeInTimeZone(
-                            new Date(
-                              (timeline?.summary.firstAcAt ?? ranking?.firstAcAt)!
-                            ),
-                            locale,
-                            timeZone
-                          )
-                        ) : (
-                          "-"
-                        )}
+                        {(() => {
+                          const firstAc = timeline?.summary.firstAcAt ?? ranking?.firstAcAt;
+                          if (!firstAc) return "-";
+                          const date = typeof firstAc === "number" ? new Date(firstAc) : firstAc;
+                          return formatDateTimeInTimeZone(date, locale, timeZone);
+                        })()}
                       </TableCell>
                     </TableRow>
                   );
@@ -258,9 +253,11 @@ export async function ParticipantTimelineView({
               wrongBeforeAc: (count: number) => t("problemSummary.wrongBeforeAc", { count }),
               relativeTime: (minutes: number, seconds: number) =>
                 t("problemSummary.relativeTime", { minutes, seconds }),
-              firstAccepted: "First Accepted!",
-              codeSnapshot: (chars: number) => `Code snapshot (${chars} chars)`,
+              firstAccepted: t("problemSummary.firstAccepted"),
+              codeSnapshot: (chars: number) => t("problemSummary.codeSnapshot", { chars }),
               view: tCommon("view"),
+              tries: (count: number) => t("problemSummary.tries", { count }),
+              best: (score: string | number) => t("problemSummary.best", { score }),
             }}
             statusLabels={statusLabels}
           />
