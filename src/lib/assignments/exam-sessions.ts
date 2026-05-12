@@ -2,7 +2,7 @@ import { db } from "@/lib/db";
 import { assignments, examSessions, users } from "@/lib/db/schema";
 import { and, eq, asc } from "drizzle-orm";
 import { nanoid } from "nanoid";
-import { rawQueryOne } from "@/lib/db/queries";
+import { getDbNowUncached } from "@/lib/db-time";
 
 export type ExamSession = {
   id: string;
@@ -48,11 +48,7 @@ export async function startExamSession(
     throw new Error("examDurationInvalid");
   }
 
-  const nowRow = await rawQueryOne<{ now: Date }>("SELECT NOW()::timestamptz AS now");
-  if (!nowRow?.now) {
-    throw new Error("Failed to fetch DB server time for exam session");
-  }
-  const now = nowRow.now;
+  const now = await getDbNowUncached();
 
   return db.transaction(async (tx) => {
 
