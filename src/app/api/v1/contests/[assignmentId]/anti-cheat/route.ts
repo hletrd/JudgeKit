@@ -138,6 +138,7 @@ export const POST = createApiHandler({
 
 /** GET: Fetch anti-cheat events (instructor+, paginated) */
 export const GET = createApiHandler({
+  rateLimit: "anti-cheat:view",
   handler: async (req: NextRequest, { user, params }) => {
     const { assignmentId } = params;
     const assignment = await getContestAssignment(assignmentId);
