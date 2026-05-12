@@ -414,7 +414,10 @@ export async function POST(request: NextRequest) {
     // limit untouched. Round up so the displayed value matches what the
     // judge actually enforces.
     const baseTimeLimitMs = problem.timeLimitMs ?? 2000;
-    const multiplier = langConfig?.timeLimitMultiplier ?? 1.0;
+    const rawMultiplier = langConfig?.timeLimitMultiplier ?? 1.0;
+    // Guard against NaN/Infinity from corrupted DB values. A non-finite
+    // multiplier would serialize to null over JSON and crash the worker.
+    const multiplier = Number.isFinite(rawMultiplier) ? Math.max(0.1, Math.min(rawMultiplier, 50)) : 1.0;
     const adjustedTimeLimitMs = Math.max(1, Math.ceil(baseTimeLimitMs * multiplier));
 
     return apiSuccess({

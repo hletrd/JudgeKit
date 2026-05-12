@@ -14,6 +14,7 @@ const updateLanguageSchema = z.object({
   runCommand: z.string().min(1).max(500).optional(),
   dockerfile: z.string().max(10000).nullable().optional(),
   isEnabled: z.boolean().optional(),
+  timeLimitMultiplier: z.number().min(0.1).max(50).optional(),
 });
 
 export const GET = createApiHandler({
@@ -48,6 +49,7 @@ export const PATCH = createApiHandler({
     if (body.runCommand !== undefined) updateValues.runCommand = body.runCommand;
     if (body.dockerfile !== undefined) updateValues.dockerfile = body.dockerfile;
     if (body.isEnabled !== undefined) updateValues.isEnabled = body.isEnabled;
+    if (body.timeLimitMultiplier !== undefined) updateValues.timeLimitMultiplier = body.timeLimitMultiplier;
 
     await db
       .update(languageConfigs)
