@@ -41,6 +41,9 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
     if (result.error === "user_not_found") {
       return NextResponse.json({ error: "userNotFound" }, { status: 404 });
     }
+    if (result.error === "no_email") {
+      return NextResponse.json({ error: "noEmail" }, { status: 400 });
+    }
     return NextResponse.json({ error: "sendFailed" }, { status: 500 });
   }
 

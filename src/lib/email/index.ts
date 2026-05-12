@@ -53,18 +53,22 @@ export async function sendPasswordResetEmail(
     return { success: false, error: "no_email" };
   }
 
-  await db
-    .delete(passwordResetTokens)
-    .where(eq(passwordResetTokens.userId, user.id));
-
+  const userEmail = user.email;
   const { token, hash } = generateSecureToken();
   const dbNow = await getDbNowUncached();
   const expiresAt = new Date(dbNow.getTime() + PASSWORD_RESET_EXPIRY_MS);
 
-  await db.insert(passwordResetTokens).values({
-    userId: user.id,
-    tokenHash: hash,
-    expiresAt,
+  // Atomic delete+insert so an insert failure never leaves the user token-less
+  await db.transaction(async (tx) => {
+    await tx
+      .delete(passwordResetTokens)
+      .where(eq(passwordResetTokens.userId, user.id));
+
+    await tx.insert(passwordResetTokens).values({
+      userId: user.id,
+      tokenHash: hash,
+      expiresAt,
+    });
   });
 
   const resetUrl = `${baseUrl}/reset-password?token=${token}`;
@@ -192,7 +196,7 @@ export async function resetPassword(
 
 export interface SendVerificationResult {
   success: boolean;
-  error?: "email_not_configured" | "user_not_found" | "already_verified" | "send_failed";
+  error?: "email_not_configured" | "user_not_found" | "no_email" | "already_verified" | "send_failed";
 }
 
 export async function sendEmailVerification(
@@ -216,22 +220,26 @@ export async function sendEmailVerification(
   }
 
   if (!user.email) {
-    return { success: false, error: "user_not_found" };
+    return { success: false, error: "no_email" };
   }
 
-  await db
-    .delete(emailVerificationTokens)
-    .where(eq(emailVerificationTokens.userId, userId));
-
+  const userEmail = user.email;
   const { token, hash } = generateSecureToken();
   const dbNow = await getDbNowUncached();
   const expiresAt = new Date(dbNow.getTime() + EMAIL_VERIFY_EXPIRY_MS);
 
-  await db.insert(emailVerificationTokens).values({
-    userId,
-    email: user.email,
-    tokenHash: hash,
-    expiresAt,
+  // Atomic delete+insert so an insert failure never leaves the user token-less
+  await db.transaction(async (tx) => {
+    await tx
+      .delete(emailVerificationTokens)
+      .where(eq(emailVerificationTokens.userId, userId));
+
+    await tx.insert(emailVerificationTokens).values({
+      userId,
+      email: userEmail,
+      tokenHash: hash,
+      expiresAt,
+    });
   });
 
   const verificationUrl = `${baseUrl}/verify-email?token=${token}`;
