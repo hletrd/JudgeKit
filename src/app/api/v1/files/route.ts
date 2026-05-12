@@ -10,7 +10,7 @@ import { recordAuditEvent } from "@/lib/audit/events";
 import { getConfiguredSettings } from "@/lib/system-settings-config";
 import { isImageMimeType, processImage } from "@/lib/files/image-processing";
 import { isAllowedMimeType, validateFileSize, getExtensionForMime, isZipMimeType, validateZipDecompressedSize, verifyFileMagicBytes } from "@/lib/files/validation";
-import { writeUploadedFile } from "@/lib/files/storage";
+import { writeUploadedFile, deleteUploadedFile } from "@/lib/files/storage";
 import { logger } from "@/lib/logger";
 import { escapeLikePattern } from "@/lib/db/like";
 
@@ -88,19 +88,30 @@ export const POST = createApiHandler({
 
       await writeUploadedFile(storedName, finalBuffer);
 
-      const [inserted] = await db
-        .insert(files)
-        .values({
-          originalName: file.name,
-          storedName,
-          mimeType: finalMimeType,
-          sizeBytes: finalBuffer.length,
-          category,
-          width,
-          height,
-          uploadedBy: user.id,
-        })
-        .returning();
+      let inserted: typeof files.$inferSelect | undefined;
+      try {
+        const result = await db
+          .insert(files)
+          .values({
+            originalName: file.name,
+            storedName,
+            mimeType: finalMimeType,
+            sizeBytes: finalBuffer.length,
+            category,
+            width,
+            height,
+            uploadedBy: user.id,
+          })
+          .returning();
+        inserted = result[0];
+      } catch (dbErr: unknown) {
+        // Clean up the orphaned file so the upload directory does not
+        // accumulate unreferenced files when the DB insert fails.
+        await deleteUploadedFile(storedName).catch(() => {
+          // Swallow cleanup errors; the original DB error is what matters.
+        });
+        throw dbErr;
+      }
 
       recordAuditEvent({
         actorId: user.id,
