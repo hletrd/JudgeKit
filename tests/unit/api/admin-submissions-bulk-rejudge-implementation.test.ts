@@ -12,7 +12,7 @@ describe("admin submissions bulk rejudge implementation", () => {
 
     expect(source).toContain('capabilities: ["submissions.rejudge"]');
     expect(source).toContain("getSubmissionReviewGroupIds(user.id, user.role)");
-    expect(source).toContain("const permittedSubmissionRows = await db");
+    expect(source).toContain("const permittedSubmissionRows = await tx");
     expect(source).toContain("if (permittedSubmissionRows.length !== uniqueSubmissionIds.length)");
     expect(source).toContain("return forbidden();");
     expect(source).toContain('rateLimit: "submissions.bulk-rejudge"');
