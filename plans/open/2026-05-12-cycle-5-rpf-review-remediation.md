@@ -23,7 +23,7 @@
 4. Add a test for this edge case
 5. Run eslint, next build, vitest
 
-**Status:** pending
+**Status:** completed (commit d576493e)
 
 ---
 
@@ -46,7 +46,7 @@
 5. Verify the exam session expiry check (line 320) still works with the same `dbNow`
 6. Run eslint, next build, vitest
 
-**Status:** pending
+**Status:** completed (commit eff5a64d)
 
 ---
 
@@ -64,7 +64,7 @@
 1. Replace the custom `submittedAt` validation with `coerceNullableNumber`
 2. Run tests to ensure no regressions in judge claim parsing
 
-**Status:** pending
+**Status:** no-fix — `submittedAt` is a required field (always set at insert time) while `executionTimeMs`/`memoryUsedKb`/`score`/`judgedAt` are nullable fields populated after judging. Using `coerceNullableNumber` would incorrectly allow null for a required field. The stricter validation is intentional and correct.
 
 ---
 
