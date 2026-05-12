@@ -126,36 +126,63 @@ export async function resetPassword(
 
   const hash = crypto.createHash("sha256").update(token).digest("hex");
 
-  const row = await db.query.passwordResetTokens.findFirst({
-    where: and(
-      eq(passwordResetTokens.tokenHash, hash),
-      gt(passwordResetTokens.expiresAt, new Date())
-    ),
-  });
+  try {
+    await db.transaction(async (tx) => {
+      // Read token inside transaction to prevent TOCTOU races where a
+      // concurrent request marks the token used between our read and write.
+      const row = await tx.query.passwordResetTokens.findFirst({
+        where: and(
+          eq(passwordResetTokens.tokenHash, hash),
+          gt(passwordResetTokens.expiresAt, new Date())
+        ),
+      });
 
-  if (!row) {
-    return { success: false, error: "invalid_token" };
+      if (!row) {
+        throw new Error("invalid_token");
+      }
+
+      if (row.usedAt) {
+        throw new Error("already_used");
+      }
+
+      const passwordHash = await hashPassword(newPassword);
+
+      // Update token first with a conditional WHERE that checks usedAt IS NULL.
+      // Under READ COMMITTED this serializes: if another transaction already
+      // consumed the token, our WHERE will see usedAt is set and rowCount=0.
+      const tokenUpdate = await tx
+        .update(passwordResetTokens)
+        .set({ usedAt: new Date() })
+        .where(
+          and(
+            eq(passwordResetTokens.id, row.id),
+            isNull(passwordResetTokens.usedAt)
+          )
+        );
+
+      if ((tokenUpdate.rowCount ?? 0) === 0) {
+        throw new Error("already_used");
+      }
+
+      await tx
+        .update(users)
+        .set({ passwordHash, mustChangePassword: false, updatedAt: new Date() })
+        .where(eq(users.id, row.userId));
+
+      logger.info({ userId: row.userId }, "Password reset completed");
+    });
+  } catch (err: unknown) {
+    if (err instanceof Error) {
+      if (err.message === "invalid_token") {
+        return { success: false, error: "invalid_token" };
+      }
+      if (err.message === "already_used") {
+        return { success: false, error: "already_used" };
+      }
+    }
+    throw err;
   }
 
-  if (row.usedAt) {
-    return { success: false, error: "already_used" };
-  }
-
-  const passwordHash = await hashPassword(newPassword);
-
-  await db.transaction(async (tx) => {
-    await tx
-      .update(users)
-      .set({ passwordHash, mustChangePassword: false, updatedAt: new Date() })
-      .where(eq(users.id, row.userId));
-
-    await tx
-      .update(passwordResetTokens)
-      .set({ usedAt: new Date() })
-      .where(eq(passwordResetTokens.id, row.id));
-  });
-
-  logger.info({ userId: row.userId }, "Password reset completed");
   return { success: true };
 }
 
@@ -232,31 +259,51 @@ export interface VerifyEmailResult {
 export async function verifyEmail(token: string): Promise<VerifyEmailResult> {
   const hash = crypto.createHash("sha256").update(token).digest("hex");
 
-  const row = await db.query.emailVerificationTokens.findFirst({
-    where: and(
-      eq(emailVerificationTokens.tokenHash, hash),
-      gt(emailVerificationTokens.expiresAt, new Date()),
-      isNull(emailVerificationTokens.verifiedAt)
-    ),
-  });
+  try {
+    await db.transaction(async (tx) => {
+      // Read token inside transaction to prevent TOCTOU races.
+      const row = await tx.query.emailVerificationTokens.findFirst({
+        where: and(
+          eq(emailVerificationTokens.tokenHash, hash),
+          gt(emailVerificationTokens.expiresAt, new Date()),
+          isNull(emailVerificationTokens.verifiedAt)
+        ),
+      });
 
-  if (!row) {
-    return { success: false, error: "invalid_token" };
+      if (!row) {
+        throw new Error("invalid_token");
+      }
+
+      // Update token first with a conditional WHERE that checks verifiedAt IS NULL.
+      // Under READ COMMITTED this serializes concurrent verification attempts.
+      const tokenUpdate = await tx
+        .update(emailVerificationTokens)
+        .set({ verifiedAt: new Date() })
+        .where(
+          and(
+            eq(emailVerificationTokens.id, row.id),
+            isNull(emailVerificationTokens.verifiedAt)
+          )
+        );
+
+      if ((tokenUpdate.rowCount ?? 0) === 0) {
+        throw new Error("invalid_token");
+      }
+
+      await tx
+        .update(users)
+        .set({ emailVerified: new Date(), updatedAt: new Date() })
+        .where(eq(users.id, row.userId));
+
+      logger.info({ userId: row.userId, email: row.email }, "Email verified");
+    });
+  } catch (err: unknown) {
+    if (err instanceof Error && err.message === "invalid_token") {
+      return { success: false, error: "invalid_token" };
+    }
+    throw err;
   }
 
-  await db.transaction(async (tx) => {
-    await tx
-      .update(users)
-      .set({ emailVerified: new Date(), updatedAt: new Date() })
-      .where(eq(users.id, row.userId));
-
-    await tx
-      .update(emailVerificationTokens)
-      .set({ verifiedAt: new Date() })
-      .where(eq(emailVerificationTokens.id, row.id));
-  });
-
-  logger.info({ userId: row.userId, email: row.email }, "Email verified");
   return { success: true };
 }
 
