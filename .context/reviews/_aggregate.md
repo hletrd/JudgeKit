@@ -1,65 +1,47 @@
-# Aggregate Review — Cycle 6
+# Aggregate Review — Cycle 12
 
 **Date:** 2026-05-12
-**Scope:** Focused review of judge/claim, judge/poll, submissions, scoring, auth, exam sessions, recruiting, anti-cheat, and contest APIs
-**Previous cycles reviewed:** C5 aggregate (all 3 findings were fixed in cycle 5)
+**Scope:** Comprehensive review of entire codebase: auth, email, API routes, database queries, transactions, judge system, compiler, file uploads, SSE, Docker client, and anti-cheat
+**Previous cycles reviewed:** C6 aggregate (all findings were fixed in cycle 6)
 
 ---
 
 ## MEDIUM Severity
 
-### C6-AGG-1: Missing leaderboard cache invalidation on mutations (carry-over from C5-AGG-4)
+### C12-AGG-1: Email token delete/insert not atomic — leaves user with no tokens on insert failure
 
-**File:** `src/lib/assignments/contest-scoring.ts:58` (cache definition)
-**Also affected:** `src/app/api/v1/judge/poll/route.ts:133-181`, `src/app/api/v1/admin/submissions/rejudge/route.ts:46-63`
+**File:** `src/lib/email/index.ts:56-68` (sendPasswordResetEmail) and `src/lib/email/index.ts:222-235` (sendEmailVerification)
 **Confidence:** High
 
-The `rankingCache` LRU cache in `contest-scoring.ts` stores computed leaderboard results for 30 seconds. When submissions are judged (poll route) or bulk-rejudged (admin rejudge route), the cache is **never invalidated**. This means instructors viewing leaderboards during active contests see stale data for up to 30 seconds after a submission is judged.
+Both `sendPasswordResetEmail` and `sendEmailVerification` delete old tokens and insert new ones as separate, non-transactional operations. If the insert fails after the delete (e.g., DB connection lost, constraint violation, disk full), the user is left with no active tokens.
 
 **Concrete failure scenario:**
-1. Student submits solution to problem A during an active ICPC contest
-2. Worker judges it as "accepted" and updates the submission score
-3. Instructor views the leaderboard within 30 seconds
-4. The cached leaderboard still shows the old ranking (student not credited for the solve)
-5. After cache TTL expires, the correct ranking appears
+1. User requests password reset
+2. `sendPasswordResetEmail` deletes the old token (line 56-58)
+3. Network blip or DB primary failover occurs before the insert (line 64-68)
+4. The insert throws and the function returns `{ success: false, error: "send_failed" }`
+5. User has no valid password reset token in the database
+6. User retries but the same race can occur again
+7. Only recovery: wait for token TTL to fully expire or admin intervention
 
-**Fix:** Add `invalidateRankingCache()` to `contest-scoring.ts` and call it from mutation paths.
-**Status:** Fixed in commit defe5489.
+Same pattern exists in `sendEmailVerification` (lines 222-235) where old verification tokens are deleted before new ones are inserted.
+
+**Fix:** Wrap delete+insert in `db.transaction()`.
+**Status:** Fixed in commit `90999aa8`.
 
 ---
 
 ## LOW Severity
 
-### C6-AGG-2: Worker deregister doesn't atomically release submissions
+### C12-AGG-2: `sendEmailVerification` returns misleading error for missing email
 
-**File:** `src/app/api/v1/judge/deregister/route.ts:53-103`
+**File:** `src/lib/email/index.ts:218-219`
 **Confidence:** High
 
-The deregister route performed two separate DB operations: update worker to offline, then release claimed submissions. If submission release failed after the worker was marked offline, submissions remained claimed for up to the stale-claim timeout (5 minutes), causing unnecessary judging delays.
+When a user exists but has no email address, `sendEmailVerification` returns `"user_not_found"` instead of a more descriptive error. The user was found — they simply lack an email. This mismatch can confuse API consumers and logging/alerting systems.
 
-**Fix:** Wrap both operations in a single `execTransaction`.
-**Status:** Fixed in commit 9dcd3ad0.
-
-### C6-AGG-3: `getDbNowUncached` called inside transaction in resetRecruitingInvitationAccountPassword
-
-**File:** `src/lib/assignments/recruiting-invitations.ts:404-435`
-**Confidence:** Medium
-
-Same pattern violation as C5-AGG-2. `getDbNowUncached()` queried the global pool via `rawQueryOne`, bypassing transaction isolation.
-
-**Fix:** Move `getDbNowUncached()` before `db.transaction()`.
-**Status:** Fixed in commit 309205dc.
-
----
-
-## Deferred from previous cycles (retain)
-
-| ID | File | Severity | Reason | Exit Criterion |
-|---|---|---|---|---|
-| DEFERRED-3-1 | `leaderboard.ts`, `contest-scoring.ts` | MEDIUM | Refactoring risk | Next scoring rule change |
-| DEFERRED-3-2 | `participant-timeline.ts:163,175` | LOW | Theoretical | User report |
-| DEFERRED-3-3 | `contest-scoring.ts:121-145` | LOW | Scale not reached | Performance bottleneck |
-| DEFERRED-3-4 | `participant-timeline-logic.test.ts` | MEDIUM | Mock infra needed | Integration tests cover it |
+**Fix:** Return `"no_email"` instead of `"user_not_found"` at line 219.
+**Status:** Fixed in commit `90999aa8`.
 
 ---
 
@@ -67,11 +49,15 @@ Same pattern violation as C5-AGG-2. `getDbNowUncached()` queried the global pool
 
 | Pattern | Location | Assessment |
 |---|---|---|
-| Exam session start idempotency | `exam-sessions.ts:64-99` | Correct |
-| Judge claim CTE atomicity | `judge/claim/route.ts:175-234` | Correct |
-| Poll route final transaction | `judge/poll/route.ts:138-181` | Correct |
-| Rate limit atomic consume | `api-rate-limit.ts:80-137` | Correct |
-| Anti-cheat shared heartbeat | `realtime-coordination.ts:152-203` | Correct |
-| Recruiting token atomic claim | `recruiting-invitations.ts:690-706` | Correct |
-| Compiler sandboxing | `compiler/execute.ts:323-519` | Correct |
-| Shell command validation | `compiler/execute.ts:170-244` | Correct |
+| Judge claim CTE atomicity | `judge/claim/route.ts:175-283` | Correct — raw SQL CTE handles claim atomically |
+| Judge poll final transaction | `judge/poll/route.ts:138-181` | Correct — status update + results in tx |
+| Bulk rejudge permission + mutation | `admin/submissions/rejudge/route.ts:35-69` | Correct — permission check inside execTransaction |
+| Single rejudge cache invalidation | `submissions/[id]/rejudge/route.ts:57-64` | Correct — fire-and-forget with error handling |
+| File upload cleanup | `files/route.ts:91-113` | Correct — orphaned file deleted on DB insert failure |
+| Rate limit atomic consume | `api-rate-limit.ts:80-137` | Correct — SELECT FOR UPDATE inside transaction |
+| Shell command validation | `compiler/execute.ts:170-244` | Correct — dangerous patterns rejected |
+| Docker image validation | `judge/docker-image-validation.ts:32-51` | Correct — prefix + name enforced |
+| API handler return type | `api/handler.ts:65-213` | Correct — Response type supports streaming |
+| SSE connection cleanup | `submissions/[id]/events/route.ts:531-548` | Correct — slot released on error |
+| Compiler sandboxing | `compiler/execute.ts:323-519` | Correct — seccomp, no-new-privs, unprivileged user |
+| Export redaction | `db/export.ts:103-105` | Correct — sanitized + always-redacted merged |
