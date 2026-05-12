@@ -18,6 +18,7 @@ import { formatSubmissionIdPrefix } from "@/lib/submissions/format";
 import { getLanguageDisplayLabel } from "@/lib/judge/languages";
 import { buildStatusLabels } from "@/lib/judge/status-labels";
 import { formatDateTimeInTimeZone } from "@/lib/datetime";
+import { canViewAssignmentSubmissions } from "@/lib/assignments/submissions";
 
 export async function generateMetadata(): Promise<Metadata> {
   const t = await getTranslations("submissions");
@@ -77,11 +78,21 @@ export default async function PublicSubmissionDetailPage({ params, searchParams 
 
   const isOwner = submission.userId === session.user.id;
 
-  // Non-owners can only view submissions for public problems. This aligns
-  // the detail page with the list page's guestVisibilityFilter and prevents
+  // Non-owners can only view submissions for public problems, unless they
+  // have instructor/admin privileges for the assignment. This aligns the
+  // detail page with the list page's guestVisibilityFilter and prevents
   // authenticated users from discovering private-problem submission metadata
   // (contest/exam submissions) by guessing submission IDs. See AGG-2 (cycle 7).
-  if (!isOwner && submission.problem?.visibility !== "public") {
+  let canViewAsInstructor = false;
+  if (!isOwner && submission.assignmentId && submission.problem?.visibility !== "public") {
+    canViewAsInstructor = await canViewAssignmentSubmissions(
+      submission.assignmentId,
+      session.user.id,
+      session.user.role ?? "user"
+    );
+  }
+
+  if (!isOwner && submission.problem?.visibility !== "public" && !canViewAsInstructor) {
     notFound();
   }
 
