@@ -23,37 +23,38 @@ export async function startExamSession(
   userId: string,
   ipAddress?: string | null
 ): Promise<ExamSession> {
+  // Fetch assignment metadata and DB time outside the transaction.
+  // Only the exam session existence check + insert needs transaction isolation.
+  const assignment = await db.query.assignments.findFirst({
+    where: eq(assignments.id, assignmentId),
+    columns: {
+      id: true,
+      examMode: true,
+      examDurationMinutes: true,
+      startsAt: true,
+      deadline: true,
+    },
+  });
+
+  if (!assignment) {
+    throw new Error("assignmentNotFound");
+  }
+
+  if (assignment.examMode !== "windowed") {
+    throw new Error("examModeInvalid");
+  }
+
+  if (!assignment.examDurationMinutes || assignment.examDurationMinutes <= 0) {
+    throw new Error("examDurationInvalid");
+  }
+
+  const nowRow = await rawQueryOne<{ now: Date }>("SELECT NOW()::timestamptz AS now");
+  if (!nowRow?.now) {
+    throw new Error("Failed to fetch DB server time for exam session");
+  }
+  const now = nowRow.now;
+
   return db.transaction(async (tx) => {
-    const assignment = await tx.query.assignments.findFirst({
-      where: eq(assignments.id, assignmentId),
-      columns: {
-        id: true,
-        examMode: true,
-        examDurationMinutes: true,
-        startsAt: true,
-        deadline: true,
-      },
-    });
-
-    if (!assignment) {
-      throw new Error("assignmentNotFound");
-    }
-
-    if (assignment.examMode !== "windowed") {
-      throw new Error("examModeInvalid");
-    }
-
-    if (!assignment.examDurationMinutes || assignment.examDurationMinutes <= 0) {
-      throw new Error("examDurationInvalid");
-    }
-
-    // Use DB server time for temporal comparisons to avoid clock skew.
-    // Query within the same transaction for transaction-consistent time.
-    const nowRow = await rawQueryOne<{ now: Date }>("SELECT NOW()::timestamptz AS now");
-    if (!nowRow?.now) {
-      throw new Error("Failed to fetch DB server time for exam session");
-    }
-    const now = nowRow.now;
 
     if (assignment.startsAt && now < assignment.startsAt) {
       throw new Error("assignmentNotStarted");

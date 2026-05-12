@@ -42,11 +42,13 @@ export function countTablesQuery(): string {
  */
 export async function rawQueryOne<T = Record<string, unknown>>(
   sql: string,
-  params?: Record<string, unknown>
+  params?: Record<string, unknown>,
+  client?: typeof pool,
 ): Promise<T | undefined> {
-  if (!pool) throw new Error("PostgreSQL pool not available");
+  const activeClient = client ?? pool;
+  if (!activeClient) throw new Error("PostgreSQL pool not available");
   const { text, values } = namedToPositional(sql, params);
-  const result = await pool.query(text, values);
+  const result = await activeClient.query(text, values);
   return result.rows[0] as T | undefined;
 }
 
@@ -64,11 +66,13 @@ export async function rawQueryOne<T = Record<string, unknown>>(
  */
 export async function rawQueryAll<T = Record<string, unknown>>(
   sql: string,
-  params?: Record<string, unknown>
+  params?: Record<string, unknown>,
+  client?: typeof pool,
 ): Promise<T[]> {
-  if (!pool) throw new Error("PostgreSQL pool not available");
+  const activeClient = client ?? pool;
+  if (!activeClient) throw new Error("PostgreSQL pool not available");
   const { text, values } = namedToPositional(sql, params);
-  const result = await pool.query(text, values);
+  const result = await activeClient.query(text, values);
   return result.rows as T[];
 }
 
