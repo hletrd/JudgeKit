@@ -8,6 +8,8 @@ import { recordAuditEvent } from "@/lib/audit/events";
 import { apiSuccess } from "@/lib/api/responses";
 import { createApiHandler } from "@/lib/api/handler";
 import { getDbNowUncached } from "@/lib/db-time";
+import { invalidateRankingCache } from "@/lib/assignments/contest-scoring";
+import { logger } from "@/lib/logger";
 
 export const POST = createApiHandler({
   auth: { capabilities: ["submissions.rejudge"] },
@@ -49,6 +51,17 @@ export const POST = createApiHandler({
         })
         .where(eq(submissions.id, id));
     });
+
+    // Invalidate leaderboard cache so instructors see updated rankings immediately.
+    // Fire-and-forget: cache invalidation failure must not block the rejudge.
+    if (submission.assignmentId) {
+      const assignmentIdForCache = submission.assignmentId;
+      Promise.resolve().then(() => {
+        invalidateRankingCache(assignmentIdForCache);
+      }).catch((err: unknown) => {
+        logger.warn({ err, assignmentId: assignmentIdForCache }, "[rejudge] Failed to invalidate leaderboard cache");
+      });
+    }
 
     const updated = await db.query.submissions.findFirst({
       where: eq(submissions.id, id),
