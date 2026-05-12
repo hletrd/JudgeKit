@@ -2490,7 +2490,11 @@
         "timeToFirstSubmission": "First submission",
         "timeToSolve": "Time to solve",
         "wrongBeforeAc": "{count} wrong before AC",
-        "relativeTime": "+{minutes}m {seconds}s"
+        "relativeTime": "+{minutes}m {seconds}s",
+        "firstAccepted": "First Accepted!",
+        "codeSnapshot": "Code snapshot ({chars} chars)",
+        "tries": "{count} tries",
+        "best": "best: {score}"
       },
       "antiCheatSummary": {
         "title": "Integrity Signal Summary",

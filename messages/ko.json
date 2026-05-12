@@ -2490,7 +2490,11 @@
         "timeToFirstSubmission": "첫 제출까지",
         "timeToSolve": "풀이까지",
         "wrongBeforeAc": "AC 전 오답 {count}회",
-        "relativeTime": "+{minutes}분 {seconds}초"
+        "relativeTime": "+{minutes}분 {seconds}초",
+        "firstAccepted": "첫 정답!",
+        "codeSnapshot": "코드 스냅샷 ({chars}자)",
+        "tries": "{count}회 시도",
+        "best": "최고: {score}"
       },
       "antiCheatSummary": {
         "title": "무결성 신호 요약",
