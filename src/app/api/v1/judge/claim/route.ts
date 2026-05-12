@@ -2,7 +2,7 @@ import { NextRequest } from "next/server";
 import crypto from "crypto";
 import { safeTokenCompare } from "@/lib/security/timing";
 import { apiSuccess, apiError } from "@/lib/api/responses";
-import { db } from "@/lib/db";
+import { db, execTransaction } from "@/lib/db";
 import { rawQueryOne } from "@/lib/db/queries";
 import { problems, testCases, languageConfigs, judgeWorkers, submissions } from "@/lib/db/schema";
 import { eq, asc, sql } from "drizzle-orm";
@@ -353,22 +353,34 @@ export async function POST(request: NextRequest) {
       // Reset the submission to pending so it doesn't get stuck in a
       // claim-failure loop. The claim fields are cleared so another worker
       // can pick it up if the problem reappears, or an admin can investigate.
-      await db.update(submissions)
-        .set({
-          status: "pending",
-          judgeWorkerId: null,
-          judgeClaimToken: null,
-          judgeClaimedAt: null,
-        })
-        .where(eq(submissions.id, claimed.id));
+      // Wrap in a transaction and verify the claim token still matches to
+      // prevent races where another worker claimed the submission while we
+      // were looking up the problem.
+      await execTransaction(async (tx) => {
+        const [current] = await tx
+          .select({ judgeClaimToken: submissions.judgeClaimToken })
+          .from(submissions)
+          .where(eq(submissions.id, claimed.id))
+          .limit(1);
 
-      // Also decrement the worker's active_tasks count since the claim
-      // was consumed but the submission is being returned to the queue.
-      if (workerId) {
-        await db.update(judgeWorkers)
-          .set({ activeTasks: sql`${judgeWorkers.activeTasks} - 1` })
-          .where(eq(judgeWorkers.id, workerId));
-      }
+        if (current?.judgeClaimToken === claimToken) {
+          await tx.update(submissions)
+            .set({
+              status: "pending",
+              judgeWorkerId: null,
+              judgeClaimToken: null,
+              judgeClaimedAt: null,
+            })
+            .where(eq(submissions.id, claimed.id));
+
+          // Only decrement active_tasks if this worker still owns the claim
+          if (workerId) {
+            await tx.update(judgeWorkers)
+              .set({ activeTasks: sql`${judgeWorkers.activeTasks} - 1` })
+              .where(eq(judgeWorkers.id, workerId));
+          }
+        }
+      });
 
       return apiError("problemNotFound", 422);
     }
