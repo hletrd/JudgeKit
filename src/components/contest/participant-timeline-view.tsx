@@ -13,6 +13,7 @@ import { SubmissionStatusBadge } from "@/components/submission-status-badge";
 import { DEFAULT_PROBLEM_POINTS } from "@/lib/assignments/constants";
 import { ParticipantAntiCheatTimeline } from "@/components/contest/participant-anti-cheat-timeline";
 import { CodeTimelinePanel } from "@/components/contest/code-timeline-panel";
+import { ParticipantTimelineBar } from "@/components/contest/participant-timeline-bar";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -240,152 +241,29 @@ export async function ParticipantTimelineView({
           </CardTitle>
         </CardHeader>
         <CardContent className="space-y-6">
-          {assignmentProblems.map((problem) => {
-            const timeline = timelineByProblem.get(problem.problemId);
-            const submissionEvents =
-              timeline?.timeline.filter(
-                (event) => event.type === "submission"
-              ) ?? [];
-            const summary = timeline?.summary;
-            return (
-              <div key={problem.problemId}>
-                <h4 className="mb-2 flex items-center gap-2 text-sm font-medium">
-                  <Link
-                    href={`/problems/${problem.problemId}`}
-                    className="text-primary hover:underline"
-                  >
-                    {problem.title}
-                  </Link>
-                  <span className="text-xs font-normal text-muted-foreground">
-                    {t("pointsValue", { value: problem.points ?? DEFAULT_PROBLEM_POINTS })}
-                  </span>
-                </h4>
-                {summary ? (
-                  <div className="mb-3 flex flex-wrap gap-2">
-                    <Badge variant="secondary">
-                      {t("problemSummary.attempts", {
-                        count: summary.totalAttempts,
-                      })}
-                    </Badge>
-                    <Badge variant="outline">
-                      {t("problemSummary.bestScore")}: {" "}
-                      {summary.bestScore !== null &&
-                      summary.bestScore !== undefined
-                        ? summary.bestScore
-                        : "-"}
-                    </Badge>
-                    <Badge variant="outline">
-                      {t("problemSummary.snapshots", {
-                        count: summary.snapshotCount,
-                      })}
-                    </Badge>
-                    <Badge variant="outline">
-                      {t("problemSummary.timeToFirstSubmission")}: {" "}
-                      {formatRelativeSeconds(summary.timeToFirstSubmission)}
-                    </Badge>
-                    <Badge variant="outline">
-                      {t("problemSummary.timeToSolve")}: {" "}
-                      {formatRelativeSeconds(summary.timeToFirstAc)}
-                    </Badge>
-                    <Badge variant="outline">
-                      {t("problemSummary.wrongBeforeAc", {
-                        count: summary.wrongBeforeAc,
-                      })}
-                    </Badge>
-                  </div>
-                ) : null}
-                {submissionEvents.length === 0 ? (
-                  <p className="text-sm text-muted-foreground">
-                    {t("submissionHistory.noSubmissions")}
-                  </p>
-                ) : (
-                  <Table>
-                    <TableHeader>
-                      <TableRow>
-                        <TableHead>{tSubmissions("table.id")}</TableHead>
-                        <TableHead>{tSubmissions("table.status")}</TableHead>
-                        <TableHead>{tSubmissions("table.score")}</TableHead>
-                        <TableHead>{tSubmissions("time")}</TableHead>
-                        <TableHead>{tSubmissions("memory")}</TableHead>
-                        <TableHead>
-                          {tSubmissions("table.language")}
-                        </TableHead>
-                        <TableHead>
-                          {tSubmissions("table.submittedAt")}
-                        </TableHead>
-                        <TableHead>{tCommon("action")}</TableHead>
-                      </TableRow>
-                    </TableHeader>
-                    <TableBody>
-                      {submissionEvents.map((sub) => (
-                        <TableRow key={sub.submissionId}>
-                          <TableCell className="font-mono text-xs">
-                            <Link
-                              href={`/submissions/${sub.submissionId}`}
-                              className="text-primary hover:underline"
-                            >
-                              {formatSubmissionIdPrefix(sub.submissionId)}
-                            </Link>
-                          </TableCell>
-                          <TableCell>
-                            {sub.status ? (
-                              <SubmissionStatusBadge
-                                status={sub.status}
-                                label={statusLabels[sub.status] ?? sub.status}
-                                locale={locale}
-                              />
-                            ) : (
-                              <Badge variant="outline">-</Badge>
-                            )}
-                          </TableCell>
-                          <TableCell>
-                            {formatScore(sub.score, locale)}
-                          </TableCell>
-                          <TableCell>
-                            {sub.executionTimeMs !== null &&
-                            sub.executionTimeMs !== undefined
-                              ? tSubmissions("timeValue", {
-                                  value: sub.executionTimeMs,
-                                })
-                              : "-"}
-                          </TableCell>
-                          <TableCell>
-                            {sub.memoryUsedKb !== null &&
-                            sub.memoryUsedKb !== undefined
-                              ? tSubmissions("memoryValue", {
-                                  value: sub.memoryUsedKb,
-                                })
-                              : "-"}
-                          </TableCell>
-                          <TableCell>
-                            {getLanguageDisplayLabel(sub.language)}
-                          </TableCell>
-                          <TableCell>
-                            {sub.at
-                              ? formatDateTimeInTimeZone(
-                                  sub.at,
-                                  locale,
-                                  timeZone
-                                )
-                              : "-"}
-                          </TableCell>
-                          <TableCell>
-                            <Link
-                              href={`/submissions/${sub.submissionId}`}
-                            >
-                              <Button variant="outline" size="sm">
-                                {tCommon("view")}
-                              </Button>
-                            </Link>
-                          </TableCell>
-                        </TableRow>
-                      ))}
-                    </TableBody>
-                  </Table>
-                )}
-              </div>
-            );
-          })}
+          <ParticipantTimelineBar
+            participant={participantTimeline.participant}
+            assignmentProblems={assignmentProblems}
+            timelineByProblem={timelineByProblem}
+            locale={locale}
+            timeZone={timeZone}
+            translations={{
+              noSubmissions: t("submissionHistory.noSubmissions"),
+              pointsValue: (value: number) => t("pointsValue", { value }),
+              attempts: (count: number) => t("problemSummary.attempts", { count }),
+              snapshots: (count: number) => t("problemSummary.snapshots", { count }),
+              bestScore: t("problemSummary.bestScore"),
+              timeToFirstSubmission: t("problemSummary.timeToFirstSubmission"),
+              timeToSolve: t("problemSummary.timeToSolve"),
+              wrongBeforeAc: (count: number) => t("problemSummary.wrongBeforeAc", { count }),
+              relativeTime: (minutes: number, seconds: number) =>
+                t("problemSummary.relativeTime", { minutes, seconds }),
+              firstAccepted: "First Accepted!",
+              codeSnapshot: (chars: number) => `Code snapshot (${chars} chars)`,
+              view: tCommon("view"),
+            }}
+            statusLabels={statusLabels}
+          />
         </CardContent>
       </Card>
 
