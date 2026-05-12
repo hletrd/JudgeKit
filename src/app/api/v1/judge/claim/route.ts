@@ -4,7 +4,7 @@ import { safeTokenCompare } from "@/lib/security/timing";
 import { apiSuccess, apiError } from "@/lib/api/responses";
 import { db } from "@/lib/db";
 import { rawQueryOne } from "@/lib/db/queries";
-import { problems, testCases, languageConfigs, judgeWorkers } from "@/lib/db/schema";
+import { problems, testCases, languageConfigs, judgeWorkers, submissions } from "@/lib/db/schema";
 import { eq, asc } from "drizzle-orm";
 import { nanoid } from "nanoid";
 import { z } from "zod";
@@ -327,6 +327,17 @@ export async function POST(request: NextRequest) {
     });
 
     if (!problem) {
+      // Reset the submission to pending so it doesn't get stuck in a
+      // claim-failure loop. The claim fields are cleared so another worker
+      // can pick it up if the problem reappears, or an admin can investigate.
+      await db.update(submissions)
+        .set({
+          status: "pending",
+          judgeWorkerId: null,
+          judgeClaimToken: null,
+          judgeClaimedAt: null,
+        })
+        .where(eq(submissions.id, claimed.id));
       return apiError("problemNotFound", 422);
     }
 
