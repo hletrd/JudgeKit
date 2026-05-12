@@ -1,44 +1,36 @@
-# Multi-Perspective Critique Review: JudgeKit
+# Critic — Cycle 3 Multi-Perspective Review
 
-**Reviewer:** critic
-**Date:** 2026-05-11
-**Scope:** Hidden assumptions, blind spots, over/under-engineering — Cycle 2 of RPF loop
+## C3-CRIT-1: Transaction semantics are inconsistently applied
 
----
+**Files:** `src/lib/assignments/participant-timeline.ts`, `src/lib/assignments/exam-sessions.ts`, `src/lib/db/queries.ts`
+**Severity:** MEDIUM | Confidence: High
 
-## New Findings Summary
+The codebase has a systemic inconsistency around transactions:
+- `exam-sessions.ts` correctly uses `db.transaction()` but then calls `rawQueryOne()` which bypasses it.
+- `participant-timeline.ts` reads 8 related tables without any transaction wrapper.
+- `rate-limit.ts` correctly uses `execTransaction` for atomic operations.
+- `api-rate-limit.ts` correctly uses `execTransaction`.
 
-| Severity | Count |
-|----------|-------|
-| MEDIUM   | 1     |
-| LOW      | 1     |
-| **Total**| **2** |
-
----
-
-## MEDIUM
-
-### CR1: Assignment-Form Dialog Uses `throw` for API Error Flow Control
-- **File:** `src/app/(public)/groups/[id]/assignment-form-dialog.tsx:278`
-- **Confidence:** High
-- **Description:** The form submission handler throws a `new Error()` with a translation key string when the API returns an error response. This creates an exception-based control flow inside a React event handler. While caught by the surrounding try/catch, it conflates programmer errors (bugs) with expected user-facing error conditions (validation failures). This is an anti-pattern that makes debugging harder — legitimate API errors appear in error boundaries and monitoring as thrown exceptions.
-- **Failure scenario:** If an error boundary or global error reporter (Sentry, etc.) is added later, routine form validation errors will be reported as uncaught exceptions, drowning real bugs in noise.
-- **Fix:** Return an error result object instead of throwing. Use explicit error propagation: `const result = await submitForm(); if (result.error) { setError(result.error); return; }`.
+This inconsistency suggests developers are unsure when transactions are needed. A guideline or lint rule would help.
 
 ---
 
-## LOW
+## C3-CRIT-2: Source-inspection tests provide false confidence
 
-### CR2: Verify-Email Page Assumes Token is the Only Search Param
-- **File:** `src/app/(auth)/verify-email/page.tsx:13`
-- **Confidence:** Medium
-- **Description:** The component extracts only `token` from search params. If the URL contains additional params (e.g., `?token=abc&redirect=/dashboard`), the redirect target is lost. The success flow always pushes to `/login` regardless of where the user came from or where they should go next.
-- **Failure scenario:** A user clicks a verification link from a recruiting invitation email. After verification, they are dumped at the generic login page instead of the recruiting flow they were in. This breaks contextual onboarding.
-- **Fix:** Accept an optional `redirect` search param and navigate there on success. Fall back to `/login` only when no redirect is provided.
+**File:** `tests/unit/assignments/participant-timeline-logic.test.ts`
+**Severity:** MEDIUM | Confidence: High
+
+The test file reads source code and checks string presence. This is not testing — it's static analysis done at runtime. It provides no evidence that the functions produce correct output for given inputs. The existence of this file may discourage writing real tests because "coverage exists."
+
+**Fix:** Replace with real unit tests or remove and track as a coverage gap.
 
 ---
 
-## Cross-File Observations
+## C3-CRIT-3: Duplicate SQL scoring logic is a maintenance hazard
 
-- The `throw` pattern in CR1 may exist in other form dialogs. A grep for `throw new Error\(.*\|\|.*\)` in form components would reveal the scope.
-- The verify-email page was added as a minimal surface (SMTP feature). It lacks several affordances that other auth flows have: no redirect preservation, no resend link, no rate-limiting indication.
+**Files:** `src/lib/assignments/contest-scoring.ts`, `src/lib/assignments/leaderboard.ts`
+**Severity:** MEDIUM | Confidence: High
+
+Two complex raw SQL queries implement the same scoring rules. The ICPC ranking query in `leaderboard.ts` (118-176) duplicates the CTE structure from `contest-scoring.ts`. The IOI ranking query (182-216) calls `buildIoiLatePenaltyCaseExpr` which is shared, but the surrounding CTE structure is still duplicated. If a scoring bug is fixed in one place, the other may remain broken indefinitely.
+
+**Fix:** Refactor to use a single shared query builder, or have the single-user rank call the full ranking function.

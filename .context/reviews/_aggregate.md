@@ -1,72 +1,92 @@
-# Cycle 2 — Aggregate Review (Fresh, 2026-05-12)
+# Aggregate Review — Cycle 3
 
 **Date:** 2026-05-12
-**HEAD reviewed:** `31049465`
-**Reviewer:** cycle-lead (multi-angle single-agent review)
-**Prior aggregate:** `_aggregate-cycle-13.md` (HEAD `bcef0c13`) — cycle 13 was the last prior review.
+**Reviewers:** code-reviewer, perf-reviewer, security-reviewer, critic, verifier, test-engineer, architect
 
 ---
 
-## Total deduplicated NEW findings (still applicable at HEAD `31049465`)
+## HIGH Severity
 
-**3 HIGH, 9 MEDIUM, 8 LOW NEW.**
-
----
-
-## NEW findings this cycle
-
-| ID | Severity | Confidence | File | Summary | Agent agreement |
-|---|---|---|---|---|---|
-| C2-AGG-1 | HIGH | High | `src/app/(public)/submissions/[id]/page.tsx:125-127,191,201` | Instructors viewing student submissions get empty results, no source code, no compile output | code-reviewer, critic, verifier |
-| C2-AGG-2 | HIGH | High | `src/app/api/v1/judge/claim/route.ts:328-341` | Missing problem reset doesn't decrement worker active_tasks, causing capacity leak | debugger, critic, verifier |
-| C2-AGG-3 | HIGH | High | `src/lib/assignments/participant-timeline.ts` | No unit tests for core timeline data transformation logic | test-engineer |
-| C2-AGG-4 | MEDIUM | High | `src/app/api/v1/judge/claim/route.ts:34-37` | `z.coerce.number()` produces NaN without failing validation | code-reviewer, debugger, security-reviewer |
-| C2-AGG-5 | MEDIUM | High | `src/components/contest/participant-timeline-bar.tsx:208` | Index-based React keys cause incorrect DOM reuse | code-reviewer, debugger |
-| C2-AGG-6 | MEDIUM | High | `src/lib/assignments/participant-timeline.ts:94-184` | 8 parallel DB queries without transaction wrapper | perf-reviewer |
-| C2-AGG-7 | MEDIUM | High | `src/app/api/v1/submissions/route.ts:272` | `hashtext()` 32-bit hash collisions in advisory lock cause cross-user blocking | perf-reviewer, security-reviewer |
-| C2-AGG-8 | MEDIUM | High | `src/components/contest/participant-timeline-bar.tsx` | No component tests for complex rendering logic | test-engineer |
-| C2-AGG-9 | MEDIUM | High | `src/app/api/v1/judge/claim/route.ts:328-341` | No regression test for orphaned submission reset-to-pending | test-engineer |
-| C2-AGG-10 | MEDIUM | High | `src/components/contest/participant-timeline-bar.tsx:247-292` | CSS-only tooltips inaccessible on touch devices | designer |
-| C2-AGG-11 | MEDIUM | High | `src/components/contest/participant-timeline-bar.tsx:213-221` | Snapshot markers have tabIndex but no keyboard interaction | designer |
-| C2-AGG-12 | LOW | High | `src/components/contest/participant-timeline-bar.tsx:30` | Fragile string replacement for Tailwind class names | code-reviewer |
-| C2-AGG-13 | LOW | High | `src/lib/assignments/participant-timeline.ts:163,175` | Silent data truncation with `.limit(5000/1000)` | code-reviewer |
-| C2-AGG-14 | LOW | High | `src/components/contest/participant-timeline-bar.tsx:362` | Unnecessary `new Date()` wrapping suggests type mismatch | code-reviewer |
-| C2-AGG-15 | LOW | Medium | `src/lib/assignments/participant-timeline.ts:215,282` | `points` nullable in DB but non-null in type | code-reviewer |
-| C2-AGG-16 | LOW | Medium | `src/components/contest/participant-timeline-bar.tsx:201-295` | Timeline markers can overlap visually | designer |
-| C2-AGG-17 | LOW | Medium | `src/components/contest/participant-timeline-bar.tsx:325-350` | Mini timeline bars lack labels or interaction | designer |
-| C2-AGG-18 | LOW | Medium | `src/components/contest/participant-timeline-bar.tsx:166-183` | Color legend renders even for single-problem assignments | designer |
-| C2-AGG-19 | LOW | Low | `src/components/contest/participant-timeline-bar.tsx:188-193` | Time axis label "0m" unclear for non-exam contexts | designer |
-| C2-AGG-20 | LOW | Low | `src/components/contest/participant-timeline-view.tsx:293-298` | Anti-cheat event type translation fallback missing | debugger |
+(none this cycle)
 
 ---
 
-## Cross-Agent Agreement
+## MEDIUM Severity
 
-- **C2-AGG-1** (instructor empty results): flagged by code-reviewer, critic, and verifier — high signal.
-- **C2-AGG-2** (worker capacity leak): flagged by debugger, critic, and verifier — high signal.
-- **C2-AGG-4** (NaN coercion): flagged by code-reviewer, debugger, and security-reviewer — high signal.
-- **C2-AGG-7** (hash collision): flagged by both perf-reviewer and security-reviewer — medium signal.
+### C3-AGG-1: `getParticipantTimeline` lacks transaction isolation
 
----
+**File:** `src/lib/assignments/participant-timeline.ts:94-184`
+**Cross-agent agreement:** code-reviewer, security-reviewer, critic, verifier, test-engineer, architect (6/7)
+**Confidence:** High
 
-## Resolved at current HEAD (verified by inspection)
+8 parallel DB queries read from related tables without a transaction wrapper. This means the result set is not point-in-time consistent. A concurrent submission between queries could produce an internally inconsistent timeline.
 
-- Cycle 13 findings C13-1 through C13-3 (unsafe casts in db queries, system-settings) — still present but were LOW severity and deferred. No new HIGH/MEDIUM findings from prior cycles were reintroduced.
-- The timeline feature is entirely new since cycle 13, so all timeline-related findings are genuinely new.
+**Fix:** Wrap the `Promise.all` in `db.transaction(async (tx) => { ... })` and use `tx` instead of `db` for all queries.
 
 ---
 
-## Carry-forward DEFERRED items (status verified at HEAD `31049465`)
+### C3-AGG-2: `rawQueryOne`/`rawQueryAll` bypass transaction isolation
 
-From `_aggregate-cycle-13.md`:
-- C13-1: `rawQueryOne` generic cast — still present, documented with warnings.
-- C13-2: `rawQueryAll` generic cast — still present, documented with warnings.
-- C13-3: `system-settings.ts` fallback cast — the fallback path now constructs a full object literal instead of casting. **This is RESOLVED.** The explicit null fields at lines 114-161 eliminate the cast.
+**File:** `src/lib/db/queries.ts:43-73`, `src/lib/assignments/exam-sessions.ts:52`
+**Cross-agent agreement:** code-reviewer, security-reviewer, critic, verifier, architect (5/7)
+**Confidence:** High
 
-All deferred items from cycle 12 aggregate remain tracked in `_aggregate-cycle-12.md`.
+`rawQueryOne` and `rawQueryAll` always execute on the global `pool`, even when called inside a `db.transaction()` callback. In `exam-sessions.ts:52`, the `SELECT NOW()` query runs outside the transaction. Any future INSERT/UPDATE raw SQL inside transactions would silently bypass isolation.
+
+**Fix:** Add an optional `client` parameter to `rawQueryOne`/`rawQueryAll`, defaulting to `pool`.
 
 ---
 
-## Agent Failures
+### C3-AGG-3: Source-inspection tests provide false confidence
 
-No agent failures this cycle. Subagent fan-out was not available; review performed as comprehensive multi-angle single-agent review. All standard reviewer angles covered.
+**File:** `tests/unit/assignments/participant-timeline-logic.test.ts`
+**Cross-agent agreement:** code-reviewer, critic, verifier, test-engineer (4/7)
+**Confidence:** High
+
+The test file reads source code as strings and checks substring presence. It never calls any actual function. This gives the appearance of test coverage without providing any confidence in correctness.
+
+**Fix:** Replace with real unit tests that mock DB queries and exercise `getParticipantTimeline` with test data.
+
+---
+
+### C3-AGG-4: Duplicate scoring logic between contest-scoring.ts and leaderboard.ts
+
+**File:** `src/lib/assignments/leaderboard.ts:118-176`, `src/lib/assignments/contest-scoring.ts`
+**Cross-agent agreement:** code-reviewer, critic (2/7)
+**Confidence:** High
+
+`computeSingleUserLiveRank` reimplements ICPC and IOI scoring CTEs that mirror `computeContestRanking`. Maintenance risk: fixes in one place may not be applied to the other.
+
+**Fix:** Extract shared SQL building blocks or have single-user rank call the full ranking function.
+
+---
+
+## LOW Severity
+
+### C3-AGG-5: Silent data truncation in timeline queries
+
+**File:** `src/lib/assignments/participant-timeline.ts:163,175`
+**Cross-agent agreement:** code-reviewer (1/7)
+**Confidence:** High
+
+`.limit(5000)` on submissions and `.limit(1000)` on snapshots silently truncate data for high-activity participants.
+
+**Fix:** Remove limits, add pagination, or return a truncation indicator.
+
+---
+
+### C3-AGG-6: LRU cache background refresh concurrency
+
+**File:** `src/lib/assignments/contest-scoring.ts:121-145`
+**Cross-agent agreement:** perf-reviewer (1/7)
+**Confidence:** Medium
+
+Stale-while-revalidate can trigger up to 50 concurrent background DB queries under high load.
+
+**Fix:** Consider global concurrency limit or increased stale threshold.
+
+---
+
+## AGENT FAILURES
+
+(none)

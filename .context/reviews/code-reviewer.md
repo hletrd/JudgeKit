@@ -1,62 +1,57 @@
-# Code Quality and Logic Review: JudgeKit
+# Code Reviewer — Cycle 3 Review
 
-**Reviewer:** code-reviewer
-**Date:** 2026-05-11
-**Scope:** Full codebase review for logic bugs, edge cases, maintainability, and correctness — Cycle 1 of RPF loop
+## C3-CR-1: `getParticipantTimeline` lacks transaction isolation
 
----
+**File:** `src/lib/assignments/participant-timeline.ts:94-184`
+**Severity:** MEDIUM | Confidence: High
 
-## New Findings Summary
+The function fires 8 parallel DB queries via `Promise.all` without wrapping them in a transaction. Each query reads from a potentially changing database state. Without transaction isolation:
+- A new submission inserted after the submissions query but before the snapshots query would result in a timeline event referencing a submission that has no corresponding snapshot at that exact moment (or vice versa).
+- The anti-cheat event count could diverge from the actual submissions shown.
+- The participant metadata (exam session, contest access) could reflect a state different from the submissions.
 
-| Severity | Count |
-|----------|-------|
-| HIGH     | 2     |
-| MEDIUM   | 1     |
-| LOW      | 1     |
-| **Total**| **4** |
+**Fix:** Wrap the `Promise.all` in `db.transaction(async (tx) => { ... })` and use `tx` instead of `db` for all 8 queries.
 
 ---
 
-## HIGH
+## C3-CR-2: `rawQueryOne` inside transaction uses global pool
 
-### C1: setState in useEffect Triggers ESLint Error (verify-email page)
-- **File:** `src/app/(auth)/verify-email/page.tsx:20-21,36-37,40,45,47-48`
-- **Confidence:** High
-- **Description:** The verify-email page (added in commit 3f634f42) calls `setStatus()` and `setErrorMessage()` directly inside the `useEffect` body. The React ESLint rule `react-hooks/set-state-in-effect` flags this because synchronous setState in effects can trigger cascading renders. This is a blocking lint error.
-- **Failure scenario:** CI builds fail. On slower devices, the cascading render could cause visual flicker or jank.
-- **Fix:** Restructure to initialize state via `useState` default values or use a synchronous verification handler triggered on mount instead of an effect. Alternatively, use `useLayoutEffect` for initial state sync, or compute the initial state before rendering.
+**File:** `src/lib/assignments/exam-sessions.ts:52`
+**Severity:** MEDIUM | Confidence: High
 
-### C2: Unused Import After Refactoring (assignment-form-dialog)
-- **File:** `src/app/(public)/groups/[id]/assignment-form-dialog.tsx:9`
-- **Confidence:** High
-- **Description:** `getApiData` is imported from `@/lib/api/client` but never used in the file. This was likely left over after the recent unsafe-cast refactoring (commit 3c8057f3). It produces an ESLint warning.
-- **Fix:** Remove the unused `getApiData` from the import statement.
+Inside `db.transaction(async (tx) => { ... })`, line 52 calls `rawQueryOne("SELECT NOW()::timestamptz AS now")`. The `rawQueryOne` function in `src/lib/db/queries.ts` always uses the global `pool.query()`, not the transaction client. This means the time query executes outside the transaction. While `SELECT NOW()` is mostly harmless, this pattern indicates a systemic issue: any raw SQL helper called inside a transaction silently bypasses transaction isolation.
+
+**Fix:** Add an optional `client` parameter to `rawQueryOne`/`rawQueryAll` so callers inside transactions can pass the transaction client. Or use `tx.execute()` / Drizzle's raw query method when inside transactions.
 
 ---
 
-## MEDIUM
+## C3-CR-3: Source-inspection tests masquerade as logic tests
 
-### C3: COMPILER_RUNNER_URL Backfill Timing Issue in deploy-docker.sh
-- **File:** `deploy-docker.sh:419-456,502-520`
-- **Confidence:** Medium
-- **Description:** `ensure_env_literal` for `COMPILER_RUNNER_URL` runs BEFORE the `.env.production` file is transferred to the remote host (line 505-509). On first deploy to a fresh target, `ensure_env_literal` sees no file and returns early. Then `.env.production` is transferred (without COMPILER_RUNNER_URL because the repo's `.env.production` doesn't contain it). The key is never backfilled. On subsequent deploys it works because the file exists. Also, lines 514-520 only warn but don't auto-fix the value.
-- **Failure scenario:** First deploy to algo.xylolabs.com fails because the app container cannot reach the judge worker — COMPILER_RUNNER_URL is unset or points to the wrong default.
-- **Fix:** Move `ensure_env_literal COMPILER_RUNNER_URL` to run AFTER `.env.production` transfer, or ensure `.env.deploy.algo` is sourced into the script before `ensure_env_literal` runs. Alternatively, add a post-transfer backfill step.
+**File:** `tests/unit/assignments/participant-timeline-logic.test.ts`
+**Severity:** MEDIUM | Confidence: High
 
----
+The entire test file reads the source code as strings and checks for substring presence. It never exercises any actual function logic. This provides zero confidence that the code works correctly — it only verifies that certain text exists in the file. The comment acknowledges this is intentional but the file should be replaced with real unit tests that mock the DB layer and exercise the transformation logic.
 
-## LOW
-
-### C4: `.catch(() => {})` Patterns Still Present in Cleanup Code
-- **File:** `src/lib/compiler/execute.ts:406,418`
-- **Confidence:** Low
-- **Description:** Container cleanup failures are silently swallowed. While cleanup failures are typically non-actionable, they can mask disk-pressure or Docker daemon issues.
-- **Fix:** Log cleanup failures at debug/warn level rather than swallowing them entirely.
+**Fix:** Rewrite with `vi.mock("@/lib/db")` to mock Drizzle queries, then call `getParticipantTimeline` with mocked data and assert on the returned structure.
 
 ---
 
-## Cross-File Observations
+## C3-CR-4: Silent data truncation in timeline queries
 
-- The `apiFetchJson` / `getApiError` / `getApiData` refactoring in commit 3c8057f3 was broadly correct but left behind one unused import (C2).
-- The verify-email page is a new surface added in the SMTP feature commit; it should have been linted before merge.
-- The deploy script's `ensure_env_literal` pattern works for keys that already exist in the repo `.env.production` but breaks for target-specific overrides that are meant to be injected.
+**File:** `src/lib/assignments/participant-timeline.ts:163,175`
+**Severity:** LOW | Confidence: High
+
+Submissions query has `.limit(5000)` and snapshots query has `.limit(1000)`. For extremely active participants, data is silently truncated with no indication to the caller. The summary counts (totalAttempts, snapshotCount) would then be inconsistent with the actual timeline events.
+
+**Fix:** Either remove limits (if performance is acceptable), add pagination, or return a `truncated: true` flag so the UI can warn the user.
+
+---
+
+## C3-CR-5: Duplicate scoring logic between contest-scoring.ts and leaderboard.ts
+
+**File:** `src/lib/assignments/leaderboard.ts:118-176`, `src/lib/assignments/contest-scoring.ts`
+**Severity:** MEDIUM | Confidence: High
+
+`computeSingleUserLiveRank` reimplements ICPC and IOI scoring logic in raw SQL that mirrors the logic in `computeContestRanking`. Any scoring rule change must be updated in both places or rankings will diverge.
+
+**Fix:** Extract the common SQL building blocks into shared helpers, or have `computeSingleUserLiveRank` call `computeContestRanking` and extract the single user's rank from the full result.

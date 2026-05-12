@@ -1,37 +1,18 @@
-# User-Injected TODO for Next Cycle
+# User-injected TODOs for Cycle 3
 
-**Injected at:** 2026-05-11
-**Status:** Queued for next RPF cycle
+## TODO-1: Wrap 8 parallel DB queries in transaction (C2-AGG-6)
 
-## SMTP Email Notification Feature
+**Source finding:** C2-AGG-6 from cycle 2 aggregate review
+**File:** `src/lib/assignments/participant-timeline.ts:94-184`
+**Severity:** MEDIUM | Confidence: High
+**Original reporter:** perf-reviewer
 
-Add SMTP email notification functionality to JudgeKit for the following use cases:
+**Problem:** The `getParticipantTimeline` function fires 8 parallel DB queries (`db.select().from()`) via `Promise.all` without wrapping them in a transaction. If any query fails or if data changes between queries, the timeline data becomes inconsistent.
 
-1. **Site events notifications** — Send email alerts for important system events
-   (e.g., new user registration, failed login attempts, judge worker failures, 
-   submission errors requiring attention, system maintenance notices)
+**Suggested fix:** Wrap the parallel queries in `db.transaction(async (tx) => { ... })` and use `tx` instead of `db` for all queries. This ensures atomicity and consistency.
 
-2. **Password reset requests** — Allow users to request password reset via email.
-   Generate secure reset tokens with expiry, send reset link via SMTP, 
-   validate token on reset page, enforce token single-use.
+**Exit criterion:** All 8 queries use the same transaction context.
 
-3. **Join/registration email verification** — Send verification email when new 
-   users register. Require email verification before account activation. 
-   Include verification token/link with expiry. Resend verification option.
+---
 
-## Technical Considerations
-
-- Use existing SMTP configuration from environment variables 
-  (SMTP_HOST, SMTP_PORT, SMTP_USER, SMTP_PASS, SMTP_FROM)
-- Integrate with existing auth system (NextAuth / custom auth in src/lib/auth/)
-- Store tokens securely (hashed or in DB with expiry)
-- Use transactional email templates with i18n support
-- Rate limit email sending to prevent abuse
-- Handle SMTP failures gracefully (queue and retry)
-- Ensure email content is accessible and mobile-friendly
-- Add admin settings for SMTP configuration
-
-## Priority
-
-This is a HIGH priority feature request that impacts user onboarding 
-(password reset, verification) and operational awareness (site events).
+*Injected by orchestrator on 2026-05-12 because cycle 2's remediation plan missed this finding.*

@@ -1,31 +1,21 @@
-# Architecture Review: JudgeKit
+# Architect — Cycle 3 Architectural Review
 
-**Reviewer:** architect
-**Date:** 2026-05-11
-**Scope:** Architectural/design risks, coupling, layering — Cycle 1 of RPF loop
+## C3-ARCH-1: Transaction boundary inconsistency across modules
 
----
+**Files:** Multiple
+**Severity:** MEDIUM | Confidence: High
 
-## New Findings Summary
+Some modules use `execTransaction` consistently (rate-limit, api-rate-limit). Others use `db.transaction` directly (exam-sessions). Others don't use transactions at all for multi-query reads (participant-timeline). This inconsistency makes it hard to reason about isolation guarantees and increases the risk of future bugs when developers copy patterns from the wrong module.
 
-| Severity | Count |
-|----------|-------|
-| MEDIUM   | 1     |
-| **Total**| **1** |
+**Recommendation:** Standardize on `execTransaction` for all transaction needs, or establish clear guidelines: "Any function that reads from 2+ related tables must use a transaction."
 
 ---
 
-## MEDIUM
+## C3-ARCH-2: Raw SQL helpers are not transaction-aware
 
-### A1: Deploy Script Env Injection Ordering Is Fragile
-- **File:** `deploy-docker.sh:419-520`
-- **Confidence:** Medium
-- **Description:** The deployment script has a subtle ordering dependency: `ensure_env_literal` helpers run before `.env.production` is transferred to the remote. This means target-specific overrides (like `COMPILER_RUNNER_URL` for algo targets) are not reliably injected on first deploy. The architecture assumes `.env.production` already exists on the remote, which is only true for redeploys.
-- **Design issue:** The env-injection phase and the file-transfer phase are not properly sequenced. Target-specific config files (`.env.deploy.algo`) exist but are not integrated into the backfill logic.
-- **Fix:** Restructure the deploy script so that env backfill always runs AFTER the `.env.production` file is guaranteed to exist on the remote. Consider sourcing `.env.deploy.*` files into the script's own environment and using them as defaults for `ensure_env_literal`.
+**File:** `src/lib/db/queries.ts`
+**Severity:** MEDIUM | Confidence: High
 
----
+The `rawQueryOne` and `rawQueryAll` helpers are convenience wrappers around `pool.query()`, but they have no concept of transactions. This forces callers to either (a) not use raw SQL inside transactions, or (b) bypass the helpers and use the transaction client directly. Both options are suboptimal.
 
-## No Critical, High, or Additional Medium Findings
-
-The codebase architecture remains sound. Recent refactors (api client type-safe helpers, modular auth config) improved maintainability. No new coupling or layering regressions introduced in the recent commits.
+**Recommendation:** Make raw query helpers accept an optional client parameter, defaulting to `pool`.

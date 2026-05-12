@@ -1,48 +1,29 @@
-# Test Coverage Review: JudgeKit
+# Test Engineer — Cycle 3 Test Coverage Review
 
-**Reviewer:** test-engineer
-**Date:** 2026-05-11
-**Scope:** Test coverage gaps, flaky tests, TDD opportunities — Cycle 1 of RPF loop
+## C3-TEST-1: `getParticipantTimeline` has no real unit tests
 
----
+**File:** `src/lib/assignments/participant-timeline.ts`
+**Severity:** MEDIUM | Confidence: High
 
-## New Findings Summary
+The existing `tests/unit/assignments/participant-timeline-logic.test.ts` is a source-inspection test that reads the file and checks string presence. It does not exercise any function logic. The API test (`tests/unit/api/participant-timeline.route.test.ts`) mocks `getParticipantTimeline` entirely, so it doesn't test the function either.
 
-| Severity | Count |
-|----------|-------|
-| MEDIUM   | 1     |
-| LOW      | 1     |
-| **Total**| **2** |
+Coverage gaps:
+- ICPC vs IOI first-AC detection logic
+- Late penalty application in timeline context
+- `wrongBeforeAc` counting
+- `sortTimeline` ordering with null timestamps
+- Anti-cheat aggregation
+- Best score reduction across multiple submissions
 
----
-
-## MEDIUM
-
-### T1: verify-email Page Has No Unit or Component Tests
-- **File:** `src/app/(auth)/verify-email/page.tsx`
-- **Confidence:** High
-- **Description:** The verify-email page (added in commit 3f634f42) contains client-side logic for token verification, error handling, and navigation. It currently has zero test coverage. This is a new auth surface that handles sensitive flows (email verification).
-- **Test gaps:**
-  - Missing token absent state handling
-  - Missing fetch error handling (network failure, 4xx, 5xx)
-  - Missing successful verification flow
-  - Missing navigation to login after success/error
-- **Fix:** Add component tests using vitest + React Testing Library. Mock `fetch`, `useSearchParams`, and `useRouter`.
+**Fix:** Create real unit tests with mocked DB queries.
 
 ---
 
-## LOW
+## C3-TEST-2: `rawQueryOne` transaction bypass is untested
 
-### T2: assignment-form-dialog Unused Import Indicates Test Gap
-- **File:** `src/app/(public)/groups/[id]/assignment-form-dialog.tsx:9`
-- **Confidence:** Low
-- **Description:** The unused `getApiData` import suggests the file's imports were not verified by tests or lint-on-commit. This is a minor indicator that the file may lack sufficient test coverage for its API client interactions.
-- **Fix:** Ensure lint passes before merge (already addressed by C2 in code-reviewer review). Add integration tests for the assignment form's API interactions.
+**File:** `src/lib/db/queries.ts`
+**Severity:** LOW | Confidence: High
 
----
+There are no tests verifying that `rawQueryOne` and `rawQueryAll` can accept a transaction client. The bug in `exam-sessions.ts` where `rawQueryOne` is called inside a transaction went undetected because no test exercises this path with transaction assertions.
 
-## Test Suite Health
-
-- **Unit tests:** 317 files, 2399 tests — ALL PASSING
-- **No flaky tests detected** in current run
-- Previous test coverage gaps (scoring logic, CSRF edge cases, cursor pagination) have been addressed in prior cycles.
+**Fix:** Add tests for transaction-aware raw queries.

@@ -1,40 +1,36 @@
-# Evidence-Based Correctness Review: JudgeKit
+# Verifier — Cycle 3 Evidence-Based Correctness Review
 
-**Reviewer:** verifier
-**Date:** 2026-05-11
-**Scope:** Comment-code mismatches, stale docs, spec violations — Cycle 2 of RPF loop
+## C3-VER-1: Confirmed — `getParticipantTimeline` has no transaction wrapper
 
----
+**File:** `src/lib/assignments/participant-timeline.ts:94-184`
+**Severity:** MEDIUM | Confidence: High
 
-## New Findings Summary
+Evidence: Lines 94-184 show `const [participant, examSession, ...] = await Promise.all([db.query.users..., db.query.examSessions..., ...])`. There is no `db.transaction` wrapper around the Promise.all. Each query uses the global `db` instance directly.
 
-| Severity | Count |
-|----------|-------|
-| LOW      | 2     |
-| **Total**| **2** |
+This means the 8 queries are not guaranteed to see a consistent snapshot of the database.
+
+**Fix:** Wrap in `db.transaction(async (tx) => { ... })` and use `tx.query...` / `tx.select...` for all queries.
 
 ---
 
-## LOW
+## C3-VER-2: Confirmed — `rawQueryOne` ignores transaction context
 
-### V1: `db-time.ts` Documentation Claims It Replaces `Date.now()` But `execute.ts` Uses `Date.now()` Directly
-- **File:** `src/lib/db-time.ts:45` (doc comment), `src/lib/compiler/execute.ts:870`
-- **Confidence:** Medium
-- **Description:** `db-time.ts` has a docstring stating "Use this instead of `Date.now()` in any server-side code that compares against DB timestamps." However, `execute.ts` (server-side compiler execution) directly calls `Date.now()` at line 870 for container age calculation against a DB timestamp (`createdAt`). The comment promises a utility but the code does not use it.
-- **Failure scenario:** If `db-time.ts` ever applies normalization (e.g., monotonic clock, timezone fixes), `execute.ts` will behave inconsistently with other server-side code. The documented contract is not honored.
-- **Fix:** Either import and use `dbTimeNow()` from `db-time.ts` in `execute.ts`, or remove the overly broad claim from the docstring and narrow it to specific use cases.
+**File:** `src/lib/db/queries.ts:43-51`, `src/lib/assignments/exam-sessions.ts:52`
+**Severity:** MEDIUM | Confidence: High
 
-### V2: `assignment-form-dialog.tsx` Import Review Finding is a False Positive
-- **File:** `src/app/(public)/groups/[id]/assignment-form-dialog.tsx:9`
-- **Confidence:** High
-- **Description:** The code-reviewer review (H2) claims `getApiData` is imported but unused. The actual import is `getApiError`, which IS used at line 278. The review cited an incorrect identifier name, making the finding invalid.
-- **Fix:** No code change needed. The review should be corrected in the aggregate.
+Evidence: `rawQueryOne` always calls `pool.query(text, values)`. In `exam-sessions.ts:52`, this is called inside `db.transaction(async (tx) => { ... })` at line 26. The `tx` parameter is never passed to `rawQueryOne`, so the query runs on the global pool outside the transaction.
+
+This is a verified correctness issue for any code path that expects raw SQL to participate in transaction isolation.
+
+**Fix:** Add optional transaction client parameter to raw query helpers.
 
 ---
 
-## Verification Sweep Results
+## C3-VER-3: Confirmed — source-inspection test does not exercise code
 
-- README.md setup instructions: match current package.json scripts
-- docs/languages.md: aligned with `src/lib/judge/languages.ts` (125 languages)
-- Environment variable docs: no obvious mismatches found in this cycle
-- API route documentation: no stale endpoint references detected
+**File:** `tests/unit/assignments/participant-timeline-logic.test.ts`
+**Severity:** MEDIUM | Confidence: High
+
+Evidence: The file imports `readFileSync` and `join`, reads the source file as a string, and uses `expect(source).toContain(...)` for all assertions. No functions are imported or called. The test passes even if the functions contain logic bugs that don't change the substring presence.
+
+**Fix:** Replace with real unit tests.
