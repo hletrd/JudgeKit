@@ -986,7 +986,7 @@
       "statsSubmitted": "Submitted",
       "statsPerfect": "Perfect scores",
       "pointsAbbreviation": "pt",
-      "studentSubmissions": "Submissions by {user}",
+      "studentSubmissions": "Submissions by {student}",
       "viewSubmissions": "Submissions",
       "allAttempts": "All attempts",
       "noAttempts": "No submissions yet",
