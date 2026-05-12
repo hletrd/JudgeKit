@@ -1,34 +1,81 @@
-# Test Engineer Review — Cycle 2
+# Test Engineer Review — Cycle 2 (Fresh)
 
-**Base commit:** b91dac5b
+**Base commit:** 31049465
 **Reviewer:** test-engineer
+**Focus:** Test coverage gaps, flaky tests, TDD opportunities, regression risks
 
-## F1 — No test for NaN `Number()` query param in audit-logs and login-logs routes
-- **Severity:** MEDIUM | **Confidence:** HIGH
-- **File:** `src/app/api/v1/admin/audit-logs/route.ts:47-48`, `src/app/api/v1/admin/login-logs/route.ts:34-35`
-- The tags route NaN bug was found and fixed in cycle 1, but the identical bug in audit-logs and login-logs has no test coverage. Non-numeric `page`/`limit` query params produce `NaN` which propagates through offset calculations.
-- **Fix:** Add API route tests that send non-numeric `page` and `limit` params and assert they get valid responses (not 500 errors).
+---
 
-## F2 — No test for CSV export unbounded row count in admin log routes
-- **Severity:** MEDIUM | **Confidence:** HIGH
-- **File:** `src/app/api/v1/admin/audit-logs/route.ts:127-175`, `src/app/api/v1/admin/login-logs/route.ts:98-132`
-- The CSV export path omits `limit`/`offset`, potentially returning millions of rows. There is no test verifying the CSV export path respects any row limit.
-- **Fix:** Add tests for CSV export that verify row count is bounded.
+## C2-TEST-1 — No unit tests for `getParticipantTimeline`
+**Severity:** HIGH | **Confidence:** High
+**File:** `src/lib/assignments/participant-timeline.ts`
 
-## F3 — Practice page progress filter (Path B) has no performance/load test
-- **Severity:** MEDIUM | **Confidence:** MEDIUM
-- **File:** `src/app/(public)/practice/page.tsx:410-447`
-- Path B loads all problem IDs into memory. There is no test verifying that this page performs acceptably with a large problem set.
-- **Fix:** Add an integration test with a seeded large problem set (1000+ problems) and verify the page renders within a reasonable time budget.
+The core timeline data transformation logic (sorting, first-AC detection, late penalty application, anti-cheat aggregation) has no dedicated unit tests. This is complex business logic with edge cases (no submissions, all wrong answers, ICPC vs IOI, late penalties).
 
-## F4 — No test for SSE connection eviction behavior under load
-- **Severity:** LOW | **Confidence:** MEDIUM
-- **File:** `src/app/api/v1/submissions/[id]/events/route.ts:39-49`
-- The `addConnection` function evicts the oldest entry when `connectionInfoMap` reaches `MAX_TRACKED_CONNECTIONS`. The `removeConnection` function decrements `userConnectionCounts` unconditionally, even for evicted entries. There is no test verifying this interaction under load.
-- **Fix:** Add a unit test that simulates eviction and verifies per-user counts remain correct.
+**Failure scenario:** A future refactor changes the `isFirstAc` logic and breaks ICPC/IOI differentiation. No test catches it.
 
-## F5 — Chat widget tool result truncation has no test
-- **Severity:** LOW | **Confidence:** LOW
-- **File:** `src/app/api/v1/plugins/chat-widget/chat/route.ts:425-434`
-- Tool results are not truncated before being added to the message array. No test verifies behavior with very large tool results.
-- **Fix:** Add a test that verifies tool results exceeding a reasonable size are truncated or handled gracefully.
+**Fix:** Add unit tests in `tests/unit/assignments/participant-timeline.test.ts` covering:
+- Empty participant (returns null)
+- Participant with no submissions
+- ICPC scoring: first AC detection via status
+- IOI scoring: first AC detection via score >= points
+- Late penalty application
+- Anti-cheat aggregation
+- Snapshot inclusion in timeline
+
+---
+
+## C2-TEST-2 — No component tests for `ParticipantTimelineBar`
+**Severity:** MEDIUM | **Confidence:** High
+**File:** `src/components/contest/participant-timeline-bar.tsx`
+
+The timeline bar component has complex rendering logic (event markers, tooltips, mini timelines, color coding) with no component tests.
+
+**Fix:** Add tests in `tests/component/participant-timeline-bar.test.tsx` covering:
+- Empty state (no events)
+- Event marker rendering
+- Color assignment cycling
+- Tooltip content
+- Mini timeline bar rendering
+
+---
+
+## C2-TEST-3 — No regression test for orphaned submission reset
+**Severity:** MEDIUM | **Confidence:** High
+**File:** `src/app/api/v1/judge/claim/route.ts:328-341`
+
+The recent fix (commit `fe5885c9`) adds reset-to-pending when a problem is missing after claim. No test verifies this behavior.
+
+**Fix:** Add an API test that:
+1. Creates a submission for a problem
+2. Deletes the problem (or mocks the query to return null)
+3. Calls the claim endpoint
+4. Asserts 422 response and submission status reset to "pending"
+
+---
+
+## C2-TEST-4 — No test for `z.coerce.number()` NaN handling
+**Severity:** LOW | **Confidence:** Medium
+**File:** `src/app/api/v1/judge/claim/route.ts`
+
+The `claimedSubmissionRowSchema` accepts `NaN` via coercion. No test verifies that malformed DB responses are rejected.
+
+**Fix:** Add a unit test that passes `{ executionTimeMs: "abc" }` to the schema and asserts validation failure (currently it passes).
+
+---
+
+## C2-TEST-5 — Instructor view of student submission not tested
+**Severity:** MEDIUM | **Confidence:** High
+**File:** `src/app/(public)/submissions/[id]/page.tsx`
+
+The `canViewAsInstructor` path has no test coverage. The E2E tests should verify that instructors can view student submissions with appropriate data visibility.
+
+**Fix:** Add E2E test: log in as instructor, navigate to a student's submission, verify source code and results are visible.
+
+---
+
+## Commonly Missed Sweep
+
+- Existing component tests in `tests/component/` are comprehensive for other features.
+- The judge claim endpoint has API tests (confirmed by prior cycle work).
+- The submissions API route has tests for rate limiting and validation.

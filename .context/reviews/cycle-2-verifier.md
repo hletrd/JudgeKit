@@ -1,29 +1,73 @@
-# Verifier Review — Cycle 2
+# Verifier Review — Cycle 2 (Fresh)
 
-**Base commit:** b91dac5b
+**Base commit:** 31049465
 **Reviewer:** verifier
+**Focus:** Evidence-based correctness check against stated behavior
 
-## F1 — Verify: UntrustedHost fix commit 5353f41f is correct but may be insufficient in production
-- **Severity:** HIGH | **Confidence:** HIGH
-- **File:** `src/lib/auth/trusted-host.ts:23-26`
-- The commit adds `if (shouldTrustAuthHost()) { return null; }` at the top of `validateTrustedAuthHost`. This is correct — when `AUTH_TRUST_HOST=true`, the function returns `null` (meaning "no rejection"), allowing the request through.
-- **Verification concern:** The fix only works if `AUTH_TRUST_HOST=true` is set in the production environment. If the production `.env.deploy.algo` file does not include this variable, the fix has no effect. The code is correct; the deployment config may be wrong.
-- **Fix:** Verify production env has `AUTH_TRUST_HOST=true`. If not, add it to the deployment env configuration.
+---
 
-## F2 — Verify: Tags route NaN fix is correct
-- **Severity:** MEDIUM | **Confidence:** HIGH
-- **File:** `src/app/api/v1/tags/route.ts:17`
-- The fix `parseInt(searchParams.get("limit") ?? "50", 10) || 50` is correct. `parseInt("abc", 10)` returns `NaN`, and `NaN || 50` returns `50`. The `Math.min(..., 100)` clamp then applies correctly.
-- **Verified:** Fix is correct.
+## C2-VER-1 — "problemNotFound" reset logic is correct but incomplete
+**Severity:** MEDIUM | **Confidence:** High
+**File:** `src/app/api/v1/judge/claim/route.ts:328-341`
 
-## F3 — Verify: UX-01 test case label fix (commit c5363d87)
-- **Severity:** MEDIUM | **Confidence:** MEDIUM
-- **File:** `src/app/(dashboard)/dashboard/compiler/compiler-client.tsx`
-- Cannot fully verify without seeing the current compiler-client.tsx content, but the fix was committed and the plan marks it as Done.
-- **Status:** Needs browser verification against live site.
+**Stated behavior:** "Reset the submission to pending so it doesn't get stuck in a claim-failure loop."
+**Verification:** The reset correctly sets `status = 'pending'`, `judgeWorkerId = null`, `judgeClaimToken = null`, `judgeClaimedAt = null`.
+**Gap:** The worker's `active_tasks` was incremented in the `worker_bump` CTE but is not decremented. The worker now has a ghost active task.
 
-## F4 — Verify: Rankings page count/data race condition
-- **Severity:** LOW | **Confidence:** MEDIUM
-- **File:** `src/app/(public)/rankings/page.tsx:115-172`
-- The count query and data query are separate SQL statements. If a submission is created between them, the count could be stale, causing the last page to be empty or an extra page to exist.
-- **Fix:** Use a single query with `COUNT(*) OVER()` window function.
+**Evidence:**
+1. The SQL CTE `worker_bump` increments `active_tasks` when a claim succeeds.
+2. The problem check happens AFTER the claim CTE completes.
+3. No corresponding decrement exists in the `!problem` branch.
+
+**Conclusion:** The submission won't get stuck, but the worker's capacity accounting drifts.
+
+---
+
+## C2-VER-2 — Late penalty calculation matches leaderboard behavior
+**Severity:** Info | **Confidence:** High
+**File:** `src/lib/assignments/participant-timeline.ts:239-250`
+
+**Stated behavior:** "Apply late penalties using mapSubmissionPercentageToAssignmentPoints for consistency with the leaderboard."
+**Verification:** The function uses the same helper (`mapSubmissionPercentageToAssignmentPoints`) with the same parameters (`deadline`, `latePenalty`, `personalDeadline`, `examMode`) as the leaderboard SQL expression.
+
+**Conclusion:** Correct and consistent.
+
+---
+
+## C2-VER-3 — ICPC "first AC" uses binary acceptance criteria
+**Severity:** Info | **Confidence:** High
+**File:** `src/lib/assignments/participant-timeline.ts:221-225`
+
+**Stated behavior:** "For ICPC: 'accepted' status means full score (binary accept/reject)."
+**Verification:** The code checks `submission.status === "accepted"` for ICPC, which is the correct binary criterion. For IOI, it uses `score >= problemPoints`.
+
+**Conclusion:** Correct per the scoring model definitions.
+
+---
+
+## C2-VER-4 — Time-limit multiplier rounds up and clamps to minimum 1ms
+**Severity:** Info | **Confidence:** High
+**File:** `src/app/api/v1/judge/claim/route.ts:372-374`
+
+**Stated behavior:** "Round up so the displayed value matches what the judge actually enforces."
+**Verification:** `Math.max(1, Math.ceil(baseTimeLimitMs * multiplier))` correctly rounds up and clamps.
+
+**Conclusion:** Correct.
+
+---
+
+## C2-VER-5 — Public submission detail page doesn't match POST handler authorization claims
+**Severity:** HIGH | **Confidence:** High
+**File:** `src/app/(public)/submissions/[id]/page.tsx`
+
+**Stated behavior:** (from POST handler comment) "Users with submissions.view_all (instructors/admins) can always see compile output regardless of the problem setting."
+**Verification:** The GET page does NOT implement this. Instructors viewing student submissions get empty results.
+
+**Conclusion:** Implementation does not match stated behavior.
+
+---
+
+## Commonly Missed Sweep
+
+- The `getDbNowUncached()` call in `judge/claim` correctly uses DB server time for claim timestamps, matching the stale claim detection logic.
+- The `to_timestamp(@claimCreatedAt::double precision / 1000)` conversion correctly converts epoch milliseconds to PostgreSQL timestamp.

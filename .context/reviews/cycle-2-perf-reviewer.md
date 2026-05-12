@@ -1,35 +1,79 @@
-# Performance Review — Cycle 2
+# Performance Review — Cycle 2 (Fresh)
 
-**Base commit:** b91dac5b
+**Base commit:** 31049465
 **Reviewer:** perf-reviewer
+**Focus:** Performance, concurrency, CPU/memory efficiency, DB query patterns
 
-## F1 — Practice page Path B loads all problems into memory for progress filtering
-- **Severity:** HIGH | **Confidence:** HIGH
-- **File:** `src/app/(public)/practice/page.tsx:410-447`
-- When a logged-in user applies a progress filter (solved/unsolved/attempted), the server fetches ALL matching problem IDs and ALL user submissions for those problems, then filters in JS memory. For a site with 10k+ problems and active users, this is a significant memory and DB load per page view.
-- The base query `db.query.problems.findMany({ where: baseWhereClause, columns: { id: true, ... } })` fetches all rows even though only `id` is needed for the progress filter.
-- **Fix:** Use a SQL CTE or window function to compute progress in the database, or at minimum limit the `allProblemRows` query to only fetch `id` column (remove `sequenceNumber`, `title`, `description`).
+---
 
-## F2 — Rankings page runs the full CTE twice (count + data)
-- **Severity:** MEDIUM | **Confidence:** HIGH
-- **File:** `src/app/(public)/rankings/page.tsx:115-172`
-- The `first_accepts` CTE is computed twice: once in `rawQueryOne` for the count and once in `rawQueryAll` for the data. For large submission tables, this is expensive.
-- **Fix:** Use a single query with `COUNT(*) OVER()` window function to get total and page data in one pass.
+## C2-PERF-1 — 8 parallel DB queries without transaction wrapper
+**Severity:** MEDIUM | **Confidence:** High
+**File:** `src/lib/assignments/participant-timeline.ts:94-184`
 
-## F3 — SSE cleanup timer iterates entire connection map synchronously
-- **Severity:** LOW | **Confidence:** MEDIUM
-- **File:** `src/app/api/v1/submissions/[id]/events/route.ts:72-80`
-- The `setInterval` cleanup callback iterates the entire `connectionInfoMap` synchronously on each tick. Under high connection counts (approaching `MAX_TRACKED_CONNECTIONS = 1000`), this could block the event loop.
-- **Fix:** Use a time-indexed data structure or batch the cleanup (e.g., only check the oldest N entries per tick).
+`getParticipantTimeline` fires 8 parallel queries via `Promise.all`. While parallelization is good for latency, the lack of a transaction means data can drift between queries (e.g., a new submission inserted between the `submissions` query and the `codeSnapshots` query). More critically, 8 concurrent queries per request can spike connection pool usage under load.
 
-## F4 — `sanitizeSubmissionForViewer` makes a hidden DB query per call
-- **Severity:** MEDIUM | **Confidence:** HIGH
-- **File:** `src/lib/submissions/visibility.ts:90-96`
-- Previously flagged (cycle 1 AGG-3). The JSDoc was added but the DB query remains. When called in a loop (e.g., listing multiple submissions), this creates N+1 queries.
-- **Fix:** The `assignmentVisibility` parameter exists but is not always used by callers. Audit call sites to ensure they pass pre-fetched data in bulk contexts.
+**Failure scenario:** Under high load, connection pool exhaustion causes subsequent requests to queue. Each timeline request consumes 8 connections simultaneously.
 
-## F5 — Chat widget agent loop blocks HTTP connection for up to ~50 seconds
-- **Severity:** MEDIUM | **Confidence:** MEDIUM
-- **File:** `src/app/api/v1/plugins/chat-widget/chat/route.ts:386-436`
-- The `for` loop with `MAX_TOOL_ITERATIONS = 5` can block for 10+ seconds per iteration. Under concurrent load, this consumes server resources (memory, DB connections).
-- **Fix:** Stream intermediate results or offload to a background worker with SSE delivery.
+**Fix:** Wrap in a single transaction or reduce query count by joining related tables. Consider using Drizzle's relational query builder with `with` clauses.
+
+---
+
+## C2-PERF-2 — `hashtext()` collision in advisory lock causes cross-user blocking
+**Severity:** MEDIUM | **Confidence:** High
+**File:** `src/app/api/v1/submissions/route.ts:272`
+
+```typescript
+await tx.execute(sql`SELECT pg_advisory_xact_lock(hashtext(${user.id})::bigint)`);
+```
+
+`hashtext()` returns a 32-bit signed integer. With a large user base, hash collisions are inevitable (birthday paradox: ~50% collision chance with ~77,000 users). When two users hash to the same value, one blocks the other unnecessarily during submission.
+
+**Fix:** Use `hashtextextended(${user.id}, 0)::bigint` (PostgreSQL 14+) which produces a 64-bit hash, reducing collision probability to negligible levels.
+
+---
+
+## C2-PERF-3 — `getParticipantTimeline` re-fetches anti-cheat data that may already exist
+**Severity:** LOW | **Confidence:** Medium
+**File:** `src/lib/assignments/participant-timeline.ts:176-184`
+
+Anti-cheat events are queried and aggregated in the timeline function. If the caller already has this data (e.g., from the anti-cheat dashboard), it's fetched twice.
+
+**Fix:** Accept optional anti-cheat summary as a parameter, or memoize the query.
+
+---
+
+## C2-PERF-4 — Timeline bar re-computes `percentFromStart` for every render
+**Severity:** LOW | **Confidence:** Medium
+**File:** `src/components/contest/participant-timeline-bar.tsx:139-142`
+
+The `percentFromStart` closure is recreated on every render. While not expensive, the `flatEvents` array is also rebuilt and re-sorted on every render even when props haven't changed.
+
+**Fix:** Memoize `flatEvents`, `startTime`, `endTime`, and `totalDurationMs` with `useMemo`.
+
+---
+
+## C2-PERF-5 — `.limit(5000)` without early termination on large datasets
+**Severity:** LOW | **Confidence:** Medium
+**File:** `src/lib/assignments/participant-timeline.ts:163`
+
+Fetching 5000 submission rows and then processing them all in JavaScript is memory-intensive. For a typical contest, most participants won't have this many submissions, but edge cases exist.
+
+**Fix:** Consider streaming or chunked processing for very large result sets.
+
+---
+
+## C2-PERF-6 — `ParticipantTimelineView` blocks on 6 sequential translation fetches
+**Severity:** LOW | **Confidence:** Medium
+**File:** `src/components/contest/participant-timeline-view.tsx:54-62`
+
+Six `getTranslations()` calls are parallelized via `Promise.all`, but each one may incur a separate filesystem read. On cold starts, this adds latency.
+
+**Fix:** Combine related translation keys into fewer namespaces, or use a single namespace for the participant audit view.
+
+---
+
+## Commonly Missed Sweep
+
+- The `submissions` API route uses cursor-based pagination for large result sets — good.
+- The claim endpoint uses `FOR UPDATE SKIP LOCKED` — correct for contention reduction.
+- The timeline queries use indexed columns (`assignment_id`, `user_id`) — good.

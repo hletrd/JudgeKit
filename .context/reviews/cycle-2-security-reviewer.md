@@ -1,34 +1,81 @@
-# Security Review — Cycle 2
+# Security Review — Cycle 2 (Fresh)
 
-**Base commit:** b91dac5b
+**Base commit:** 31049465
 **Reviewer:** security-reviewer
+**Focus:** OWASP Top 10, auth/authz, injection, secrets, unsafe patterns
 
-## F1 — Admin audit-logs and login-logs CSV export has no row limit
-- **Severity:** HIGH | **Confidence:** HIGH
-- **File:** `src/app/api/v1/admin/audit-logs/route.ts:127-175`, `src/app/api/v1/admin/login-logs/route.ts:98-132`
-- When `format=csv`, the query omits `.limit(limit).offset(offset)` and fetches ALL matching rows. An attacker with admin access could cause a memory exhaustion DoS by requesting CSV export of millions of audit/login events.
-- **Fix:** Apply the same `limit`/`offset` to CSV exports, or impose a maximum export row count (e.g., 10000).
+---
 
-## F2 — `COMPILER_RUNNER_URL` and `RUNNER_AUTH_TOKEN` have empty-string fallbacks
-- **Severity:** MEDIUM | **Confidence:** HIGH
-- **File:** `src/lib/compiler/execute.ts:56-57`, `src/lib/docker/client.ts:6-7`
-- `process.env.COMPILER_RUNNER_URL || ""` silently defaults to empty string rather than failing fast. If the env var is misconfigured, the system will attempt to connect to an empty URL instead of reporting the misconfiguration.
-- **Fix:** Validate these at startup (similar to `getValidatedAuthSecret`) rather than falling back to empty string.
+## C2-SEC-1 — Instructor can view submission metadata but not content (authorization gap)
+**Severity:** MEDIUM | **Confidence:** High
+**File:** `src/app/(public)/submissions/[id]/page.tsx:125-127,191,201`
 
-## F3 — Rankings page raw SQL is safe but would benefit from parameterized period
-- **Severity:** LOW | **Confidence:** HIGH
-- **File:** `src/app/(public)/rankings/page.tsx:31-39,115-172`
-- The `getPeriodClause` function returns SQL fragments that are concatenated into `rawQueryOne`/`rawQueryAll`. The period is validated against `PERIOD_FILTER_VALUES` before use, so this is currently safe. However, the raw SQL pattern is a code-smell that could become a vulnerability if the validation is accidentally weakened.
-- **Fix:** Use parameterized queries or Drizzle's query builder.
+An instructor with `canViewAsInstructor = true` can access the page (passes the `notFound()` guard) but receives empty results and no source code. While not a direct security vulnerability, the authorization model is inconsistent: the instructor is authorized to view the submission but the data layer denies them. This could lead to information disclosure bugs if the logic drifts further.
 
-## F4 — Chat widget API key stored in plugin state config (DB)
-- **Severity:** MEDIUM | **Confidence:** HIGH
-- **File:** `src/app/api/v1/plugins/chat-widget/chat/route.ts:176-189`
-- The `pluginState.config` object contains `openaiApiKey`, `claudeApiKey`, `geminiApiKey` as plaintext strings. These API keys are stored in the database and loaded on every chat request. If the DB is compromised, all AI provider API keys are exposed.
-- **Fix:** Consider encrypting API keys at rest (using the existing `derive-key.ts`/`encryption.ts` infrastructure) or storing them exclusively in env vars.
+**Fix:** Align authorization and data access: `const canViewDetails = isOwner || canViewAsInstructor;`.
 
-## F5 — CSV export lacks filename sanitization
-- **Severity:** LOW | **Confidence:** MEDIUM
-- **File:** `src/app/api/v1/admin/audit-logs/route.ts:171`, `src/app/api/v1/admin/login-logs/route.ts:129`
-- The `Content-Disposition` filename is hardcoded (`audit-logs.csv`, `login-logs.csv`), so this is not currently exploitable. However, if user-controlled input is ever used in filenames, it could lead to header injection.
-- **Fix:** No immediate fix needed; document the constraint if filenames become dynamic.
+---
+
+## C2-SEC-2 — Advisory lock hash collisions allow cross-user blocking (DoS vector)
+**Severity:** LOW | **Confidence:** Medium
+**File:** `src/app/api/v1/submissions/route.ts:272`
+
+```typescript
+await tx.execute(sql`SELECT pg_advisory_xact_lock(hashtext(${user.id})::bigint)`);
+```
+
+`hashtext()` returns int32. With sufficient users, collisions allow User A to block User B's submission. While transient (transaction-scoped), this is a minor DoS vector.
+
+**Fix:** Use `hashtextextended(${user.id}, 0)::bigint` for 64-bit hash space.
+
+---
+
+## C2-SEC-3 — NaN injection via `z.coerce.number()` in judge claim
+**Severity:** LOW | **Confidence:** Medium
+**File:** `src/app/api/v1/judge/claim/route.ts:34-37`
+
+`z.coerce.number().nullable()` accepts `NaN`. If a malformed DB row or type coercion produces a non-numeric string, the worker receives `NaN` for time limits or scores. The worker's behavior with `NaN` timeouts is undefined and could lead to resource exhaustion (infinite wait) or immediate termination.
+
+**Fix:** Reject `NaN` in the schema with `.refine((n) => n === null || !Number.isNaN(n))`.
+
+---
+
+## C2-SEC-4 — CSRF on submission creation not explicitly verified
+**Severity:** LOW | **Confidence:** Low
+**File:** `src/app/api/v1/submissions/route.ts:183`
+
+The POST handler uses `createApiHandler` which likely includes CSRF protection, but this is not visible in the file. The AGENTS.md notes that mutation routes require `X-Requested-With: XMLHttpRequest`.
+
+**Verification needed:** Confirm `createApiHandler` enforces CSRF headers for the submissions:create rate limit scope.
+
+---
+
+## C2-SEC-5 — Rate-limit scope fallback uses truncated SHA-256 hash
+**Severity:** LOW | **Confidence:** Low
+**File:** `src/app/api/v1/judge/claim/route.ts:91-95`
+
+```typescript
+const authHash = authHeader.length > 7
+  ? crypto.createHash("sha256").update(authHeader).digest("hex"slice(0, 16)
+  : "none";
+```
+
+Truncating a SHA-256 hash to 16 hex chars (64 bits) for rate-limit bucketing. Collision probability is low but non-zero. Two different auth headers could share a bucket.
+
+**Impact:** Minimal — only affects rate-limiting fairness, not security directly.
+
+---
+
+## C2-SEC-6 — `rawQueryOne` parameter validation is strict but correct
+**Severity:** Info | **Confidence:** High
+**File:** `src/lib/db/queries.ts:95-101`
+
+The `namedToPositional` function validates parameter names with `/^[a-zA-Z_]\w*$/` and checks `Object.prototype.hasOwnProperty.call(params, name)`. This prevents prototype pollution attacks on the params object.
+
+---
+
+## Commonly Missed Sweep
+
+- No SQL injection in raw queries: all parameters use named-to-positional binding.
+- No XSS in timeline components: all user data is rendered as text, not HTML.
+- The `deserializeStoredJudgeCommand` regex `^sh\s+-c\s+` could be bypassed with tabs (`sh\t-c`), but the input comes from admin-controlled DB, not user input.

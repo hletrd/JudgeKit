@@ -1,34 +1,68 @@
-# Critic Review — Cycle 2
+# Critic Review — Cycle 2 (Fresh)
 
-**Base commit:** b91dac5b
+**Base commit:** 31049465
 **Reviewer:** critic
+**Focus:** Multi-perspective critique, cross-cutting concerns, holistic assessment
 
-## F1 — User-injected TODO #2 (UntrustedHost) was marked "Done" in cycle 1 but the live site still shows the error
-- **Severity:** HIGH | **Confidence:** HIGH
-- **File:** `plans/open/2026-04-19-cycle-2-review-remediation.md:86` (status: Done, commit: 5353f41f)
-- The plan claims AUTH-01 is "Done" with commit `5353f41f`, but the user's injected TODO explicitly says login still shows `{"error":"UntrustedHost"}` on algo.xylolabs.com. Either the fix was not deployed, or the fix was insufficient (the `shouldTrustAuthHost()` check was added to `validateTrustedAuthHost` but the production environment may not have `AUTH_TRUST_HOST=true` set, or the `x-forwarded-host` header is being stripped before reaching the auth route).
-- **Fix:** Verify that the deployed production `.env` has `AUTH_TRUST_HOST=true` and that nginx passes `x-forwarded-host` to the Next.js app container on auth routes. The code fix alone is insufficient if the env var is not set.
+---
 
-## F2 — Workspace-to-public migration (User TODO #3) is underspecified and high-risk
-- **Severity:** MEDIUM | **Confidence:** HIGH
-- **Files:** `src/app/(workspace)/`, `src/app/(control)/`, `src/components/layout/workspace-nav.tsx`
-- The workspace pages redirect to `/dashboard` and the control pages are thin wrappers. Merging these into public pages with a new top navbar is a large architectural change that touches routing, layout, navigation, and authorization. The user TODO says "plan it, don't try to implement everything in one cycle" but the risk of partial implementation breaking existing workflows is high.
-- **Fix:** Create a detailed migration plan with: (1) inventory of all workspace/control pages, (2) authorization requirements for each, (3) new layout wireframes, (4) phased migration order. Do not implement until the plan is reviewed.
+## C2-CRIT-1 — Authorization model inconsistency across submission views
+**Severity:** HIGH | **Confidence:** High
+**File:** Cross-file: `submissions/route.ts` (POST) vs `submissions/[id]/page.tsx` (GET)
 
-## F3 — Duplicate CSV escaping logic is a maintenance trap
-- **Severity:** LOW | **Confidence:** HIGH
-- **File:** `src/app/api/v1/admin/audit-logs/route.ts:32-41`, `src/app/api/v1/admin/login-logs/route.ts:19-28`
-- Identical `escapeCsvField` function defined in two files. If a CSV injection vulnerability is found, both must be patched simultaneously.
-- **Fix:** Extract to shared utility.
+The POST handler comment explicitly states that instructors can "always see compile output regardless of the problem setting." The GET page does not honor this. This is a cross-file contract violation — two parts of the system disagree on what instructors can see.
 
-## F4 — `Number()` NaN issue in admin routes was missed during cycle 1 fix
-- **Severity:** MEDIUM | **Confidence:** HIGH
-- **File:** `src/app/api/v1/admin/audit-logs/route.ts:47-48`, `src/app/api/v1/admin/login-logs/route.ts:34-35`
-- The tags route NaN bug was fixed in cycle 1 (AGG-1), but the same bug pattern in two admin routes was not caught. This suggests the fix should have been a shared `parsePositiveInt` utility rather than per-route fixes.
-- **Fix:** Create a shared `parsePositiveInt(value, defaultValue)` utility and use it in all query-param parsing locations.
+**Impact:** Instructors must context-switch between public and dashboard views. Worse, if a future change updates one file but not the other, the inconsistency widens.
 
-## F5 — Chat widget tool execution error handling was added but still has edge case
-- **Severity:** LOW | **Confidence:** MEDIUM
-- **File:** `src/app/api/v1/plugins/chat-widget/chat/route.ts:425-434`
-- The tool execution is now wrapped in try/catch (fixing cycle 1 AGG-2), but if `executeTool` returns a very large string (e.g., a full problem description), it gets pushed into `fullMessages` which could cause memory issues in subsequent LLM API calls.
-- **Fix:** Truncate tool results to a maximum length (e.g., 4000 characters) before pushing to the message array.
+**Fix:** Extract a shared `canViewSubmissionDetails(user, submission)` utility used by both POST response construction and GET page rendering.
+
+---
+
+## C2-CRIT-2 — Timeline feature has no degradation strategy for large datasets
+**Severity:** MEDIUM | **Confidence:** High
+**File:** `src/lib/assignments/participant-timeline.ts`, `participant-timeline-bar.tsx`
+
+The timeline feature fetches up to 5000 submissions and 1000 snapshots, then renders them all. There's no pagination, virtual scrolling, or progressive loading. For a participant with many submissions, the initial page load could be very slow.
+
+**Impact:** First paint degradation; potential memory issues on lower-end devices.
+
+**Fix:** Implement virtual scrolling for the timeline bar, or add a "show more" button for older events.
+
+---
+
+## C2-CRIT-3 — The `participant-timeline-bar.tsx` mixes presentation and data transformation
+**Severity:** MEDIUM | **Confidence:** High
+**File:** `src/components/contest/participant-timeline-bar.tsx`
+
+The component performs significant data transformation (flattening events, computing percentages, sorting) inline. This logic should be extracted to a pure function or hook for testability and reusability.
+
+**Fix:** Extract `useTimelineEvents(timelineByProblem, participant)` hook.
+
+---
+
+## C2-CRIT-4 — Judge claim reset-to-pending doesn't decrement worker capacity
+**Severity:** MEDIUM | **Confidence:** High
+**File:** `src/app/api/v1/judge/claim/route.ts:328-341`
+
+When a claimed submission's problem is missing, the code resets the submission to pending but does NOT decrement the worker's `active_tasks`. The worker already incremented its count in the CTE (`worker_bump`), so the worker now has an inflated active task count.
+
+**Impact:** Workers report higher load than actual. Over time, this could cause workers to appear at capacity when they're not, starving the queue.
+
+**Fix:** Decrement `active_tasks` in the same transaction, or move the problem validation before the worker bump.
+
+---
+
+## C2-CRIT-5 — Timeline i18n keys duplicated across en/ko without extraction helper
+**Severity:** LOW | **Confidence:** Medium
+**File:** `messages/en.json`, `messages/ko.json`
+
+The timeline translation keys are nested deeply (`contests.participantAudit.submissionHistory.*`). Adding a new label requires editing both JSON files. There's no type-safe key extraction or codegen to catch missing translations.
+
+**Fix:** Consider using a type-safe i18n framework with compile-time key checking, or add a CI gate that verifies key parity between locales.
+
+---
+
+## Commonly Missed Sweep
+
+- The timeline feature is well-integrated with existing anti-cheat and code snapshot systems — good architectural reuse.
+- The `participant-timeline.ts` file correctly handles both ICPC and IOI scoring models — good domain modeling.
