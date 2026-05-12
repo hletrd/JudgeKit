@@ -127,7 +127,7 @@ function buildLoggedStreamingResponse(options: {
       "Transfer-Encoding": "chunked",
       "X-Chat-Session-Id": options.sessionId,
     },
-  }) as unknown as NextResponse;
+  });
 }
 
 function buildSystemPrompt(config: {

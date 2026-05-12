@@ -62,7 +62,7 @@ export type HandlerConfig<T = undefined> = {
   handler: (
     req: NextRequest,
     ctx: HandlerContext<T>
-  ) => Promise<NextResponse>;
+  ) => Promise<Response>;
 };
 
 const MUTATION_METHODS = new Set(["POST", "PUT", "PATCH", "DELETE"]);
@@ -85,9 +85,9 @@ const MUTATION_METHODS = new Set(["POST", "PUT", "PATCH", "DELETE"]);
  * ```
  */
 // Overload: when schema is provided, body is typed as the schema output
-export function createApiHandler<T>(config: HandlerConfig<T> & { schema: ZodSchema<T> }): (req: NextRequest, routeCtx?: { params: Promise<Record<string, string>> }) => Promise<NextResponse>;
+export function createApiHandler<T>(config: HandlerConfig<T> & { schema: ZodSchema<T> }): (req: NextRequest, routeCtx?: { params: Promise<Record<string, string>> }) => Promise<Response>;
 // Overload: when no schema, body is undefined
-export function createApiHandler(config: HandlerConfig<undefined> & { schema?: undefined }): (req: NextRequest, routeCtx?: { params: Promise<Record<string, string>> }) => Promise<NextResponse>;
+export function createApiHandler(config: HandlerConfig<undefined> & { schema?: undefined }): (req: NextRequest, routeCtx?: { params: Promise<Record<string, string>> }) => Promise<Response>;
 // Implementation
 export function createApiHandler<T = undefined>(config: HandlerConfig<T>) {
   const {
@@ -101,7 +101,7 @@ export function createApiHandler<T = undefined>(config: HandlerConfig<T>) {
   return async function apiHandler(
     req: NextRequest,
     routeCtx?: { params: Promise<Record<string, string>> }
-  ): Promise<NextResponse> {
+  ): Promise<Response> {
     // Initialize per-request AsyncLocalStorage cache for recruiting context.
     // This ensures that getRecruitingAccessContext deduplicates DB queries
     // within a single API request, even though React cache() does not work
