@@ -159,7 +159,8 @@ export async function getParticipantTimeline(
       })
       .from(submissions)
       .where(and(eq(submissions.assignmentId, assignmentId), eq(submissions.userId, userId)))
-      .orderBy(asc(submissions.submittedAt)),
+      .orderBy(asc(submissions.submittedAt))
+      .limit(5000),
     db
       .select({
         id: codeSnapshots.id,
