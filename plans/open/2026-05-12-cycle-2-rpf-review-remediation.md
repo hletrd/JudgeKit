@@ -22,7 +22,7 @@
 4. Update `results` prop to pass `filteredResults` when `canViewDetails` is true
 5. Add E2E test: instructor views student submission and sees source code + results
 
-**Status:** pending
+**Status:** completed (commit 1b7f0945)
 
 ---
 
@@ -44,7 +44,7 @@
    ```
 2. Add API test: mock missing problem, claim submission, assert worker activeTasks unchanged
 
-**Status:** pending
+**Status:** completed (commit 5060cc27)
 
 ---
 
@@ -68,7 +68,7 @@
    - Code snapshots included in timeline
    - Limit truncation behavior (if kept)
 
-**Status:** pending
+**Status:** deferred — existing source-inspection tests (`participant-timeline-logic.test.ts`) cover implementation structure. Full DB-mocked unit tests require significant mocking infrastructure; backlog for next cycle.
 
 ---
 
@@ -93,7 +93,7 @@
    ```
 2. Add unit test passing `"abc"` and asserting validation failure
 
-**Status:** pending
+**Status:** completed (commit 56863aec)
 
 ---
 
@@ -106,7 +106,7 @@
 1. Change key from `${ev.problemId}-${ev.type}-${i}` to `${ev.problemId}-${ev.type}-${ev.at.getTime()}`
 2. For mini timeline: change `${ev.type}-${ev.at.getTime()}-${i}` to `${ev.type}-${ev.at.getTime()}`
 
-**Status:** pending
+**Status:** completed (commit aa9b1cf4)
 
 ---
 
@@ -119,7 +119,7 @@
 1. Change `hashtext(${user.id})::bigint` to `hashtextextended(${user.id}, 0)::bigint`
 2. Verify PostgreSQL version supports `hashtextextended` (requires PG 14+, project uses PG 18)
 
-**Status:** pending
+**Status:** completed (commit aa9b1cf4)
 
 ---
 
@@ -132,7 +132,7 @@
 1. Create `tests/component/participant-timeline-bar.test.tsx`
 2. Test empty state, event rendering, color cycling, tooltip content (via DOM query)
 
-**Status:** pending
+**Status:** deferred — component test requires substantial mocking of translation/locale context. Backlog for next cycle.
 
 ---
 
@@ -146,7 +146,7 @@
 2. Assert 422 response and submission status reset to "pending"
 3. Assert worker active_tasks unchanged (after PLAN-2-2 fix)
 
-**Status:** pending
+**Status:** deferred — API test requires mocking raw SQL CTE and DB transaction layer. Backlog for next cycle.
 
 ---
 
@@ -159,7 +159,7 @@
 1. Replace CSS-only tooltip with Radix UI Tooltip or similar accessible component
 2. Ensure tooltips work on hover, focus, and touch
 
-**Status:** pending
+**Status:** deferred — replacing CSS-only tooltips with Radix UI Tooltip requires adding tooltip provider and restructuring the component. Backlog for next cycle.
 
 ---
 
@@ -172,7 +172,7 @@
 1. Either remove `tabIndex={0}` from snapshot markers (they're not interactive)
 2. Or add `role="button"` and keyboard handler if they should be interactive
 
-**Status:** pending
+**Status:** completed (commit aa9b1cf4)
 
 ---
 
