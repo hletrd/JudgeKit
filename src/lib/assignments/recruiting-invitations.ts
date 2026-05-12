@@ -401,8 +401,8 @@ export async function resetRecruitingInvitationAccountPassword(id: string) {
     [ACCOUNT_PASSWORD_RESET_REQUIRED_KEY]: "true",
   };
 
+  const now = await getDbNowUncached();
   await db.transaction(async (tx) => {
-    const now = await getDbNowUncached();
     await tx
       .update(users)
       .set({
