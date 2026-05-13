@@ -86,6 +86,13 @@ export const POST = createApiHandler({
       const ext = getExtensionForMime(finalMimeType);
       const storedName = `${nanoid()}${ext}`;
 
+      // Sanitize originalName: reject control characters and newlines that could
+      // break HTTP headers or enable header injection (CRLF). Also cap length
+      // to prevent storage abuse and downstream rendering issues.
+      const sanitizedOriginalName = file.name
+        .replace(/[\x00-\x1f\x7f]/g, "")
+        .slice(0, 255);
+
       await writeUploadedFile(storedName, finalBuffer);
 
       let inserted: typeof files.$inferSelect | undefined;
@@ -93,7 +100,7 @@ export const POST = createApiHandler({
         const result = await db
           .insert(files)
           .values({
-            originalName: file.name,
+            originalName: sanitizedOriginalName,
             storedName,
             mimeType: finalMimeType,
             sizeBytes: finalBuffer.length,
