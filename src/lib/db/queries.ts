@@ -93,6 +93,10 @@ export function getActiveDialect() {
 
 /**
  * Convert named parameters (@name) to PostgreSQL positional ($1, $2...).
+ *
+ * Skips @-patterns inside single-quoted and double-quoted string literals
+ * to avoid incorrectly treating email addresses and other literal text as
+ * parameters (e.g., 'user@example.com' must not extract "example").
  */
 function namedToPositional(
   sql: string,
@@ -102,21 +106,29 @@ function namedToPositional(
 
   const values: unknown[] = [];
   const paramNames: string[] = [];
-  const text = sql.replace(/@(\w+)/g, (_, name) => {
-    if (!/^[a-zA-Z_]\w*$/.test(name)) {
-      throw new Error(`Invalid SQL parameter name: ${name}`);
-    }
-    if (!Object.prototype.hasOwnProperty.call(params, name)) {
-      throw new Error(`Missing SQL parameter: ${name}`);
-    }
 
-    let idx = paramNames.indexOf(name);
-    if (idx === -1) {
-      paramNames.push(name);
-      values.push(params[name]);
-      idx = paramNames.length - 1;
+  // Match either a string literal (single or double quoted, no escapes) or
+  // a parameter placeholder. Only placeholders outside literals are replaced.
+  const text = sql.replace(
+    /('[^']*')|("[^"]*")|@([a-zA-Z_]\w*)/g,
+    (match, _singleQuote, _doubleQuote, name) => {
+      // If name is undefined, the match was a string literal — pass through unchanged
+      if (name === undefined) {
+        return match;
+      }
+
+      if (!Object.prototype.hasOwnProperty.call(params, name)) {
+        throw new Error(`Missing SQL parameter: ${name}`);
+      }
+
+      let idx = paramNames.indexOf(name);
+      if (idx === -1) {
+        paramNames.push(name);
+        values.push(params[name]);
+        idx = paramNames.length - 1;
+      }
+      return `$${idx + 1}`;
     }
-    return `$${idx + 1}`;
-  });
+  );
   return { text, values };
 }
