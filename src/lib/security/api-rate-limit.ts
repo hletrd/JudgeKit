@@ -54,22 +54,11 @@ async function sidecarConsume(key: string): Promise<boolean | null> {
   return !result.allowed;
 }
 
-// Best-effort deduplication of rate-limit consumption within a single request
-// object lifetime. In practice Next.js creates a new request object per
-// middleware/route boundary, so this typically deduplicates only when the
-// same handler calls consumeApiRateLimit multiple times with the same
-// NextRequest reference.
-const consumedRequestKeys = new WeakMap<NextRequest, Set<string>>();
-
-function rememberRequestKey(request: NextRequest, key: string) {
-  const requestKeys = consumedRequestKeys.get(request) ?? new Set<string>();
-  requestKeys.add(key);
-  consumedRequestKeys.set(request, requestKeys);
-}
-
-function hasConsumedRequestKey(request: NextRequest, key: string) {
-  return consumedRequestKeys.get(request)?.has(key) ?? false;
-}
+// NOTE: Rate-limit deduplication within a single request is intentionally
+// NOT implemented. Next.js creates new NextRequest objects at middleware/
+// route boundaries, making object-identity-based dedup unreliable. Each call
+// to consumeApiRateLimit counts as a separate consumption. Callers that need
+// to check multiple rate limits for the same request should do so explicitly.
 
 /**
  * Atomically check rate limit and record an API request attempt inside a
@@ -104,7 +93,7 @@ async function atomicConsumeRateLimit(key: string): Promise<{ limited: boolean; 
       return false;
     }
 
-    if (existing.blockedUntil && existing.blockedUntil > now) {
+    if (existing.blockedUntil && existing.blockedUntil >= now) {
       return true;
     }
 
@@ -167,10 +156,6 @@ export async function consumeApiRateLimit(
 ): Promise<NextResponse | null> {
   const key = getRateLimitKey(`api:${endpoint}`, request.headers);
 
-  if (hasConsumedRequestKey(request, key)) {
-    return null;
-  }
-
   const { windowMs } = getApiRateLimitConfig();
 
   const sidecarVerdict = await sidecarConsume(key);
@@ -187,7 +172,6 @@ export async function consumeApiRateLimit(
     return rateLimitedResponse(windowMs, nowMs);
   }
 
-  rememberRequestKey(request, key);
   return null;
 }
 
@@ -205,10 +189,6 @@ export async function consumeUserApiRateLimit(
 ): Promise<NextResponse | null> {
   const key = `api:${endpoint}:user:${userId}`;
 
-  if (hasConsumedRequestKey(request, key)) {
-    return null;
-  }
-
   const { windowMs } = getApiRateLimitConfig();
 
   const sidecarVerdict = await sidecarConsume(key);
@@ -225,7 +205,6 @@ export async function consumeUserApiRateLimit(
     return rateLimitedResponse(windowMs, nowMs);
   }
 
-  rememberRequestKey(request, key);
   return null;
 }
 
