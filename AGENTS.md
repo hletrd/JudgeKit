@@ -225,7 +225,7 @@ Changes take effect immediately for new submissions without restarting services.
 | `judge-lua` | 14 MB | Alpine 3.21 | — |
 | `judge-awk` | 13 MB | Alpine 3.21 | — |
 
-**Total: ~25 GB** across 102 images (down from ~31.1 GB, saved **~6.1 GB / 20%**)
+**Total: ~25 GB** across ~44 unique Docker images (down from ~31.1 GB, saved **~6.1 GB / 20%**)
 
 ## Docker Image Management API
 
@@ -262,7 +262,7 @@ JudgeKit supports full contest management with two scoring models and two schedu
 ## Architecture
 
 ### Database
-- **PostgreSQL 18** runtime
+- **PostgreSQL 17** runtime
 - **ORM**: Drizzle ORM with PostgreSQL runtime schema (`schema.pg.ts`); legacy SQLite/MySQL schema artifacts remain in-repo for migration/test context
 - **Migrations**: PostgreSQL runtime migrations under `drizzle/pg/`; older SQLite/MySQL migration artifacts remain in-repo for migration/test context
 - **Sync**: `npm run languages:sync` syncs language definitions from TypeScript config to the `language_configs` table

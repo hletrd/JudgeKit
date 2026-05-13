@@ -18,7 +18,7 @@ services:
   # Database Servers
   # ---------------------------------------------------------------------------
   db-postgres:
-    image: postgres:18-alpine
+    image: postgres:17-alpine
     container_name: judgekit-db-postgres
     restart: unless-stopped
     volumes:

@@ -15,7 +15,7 @@ services:
   # PostgreSQL Database
   # ---------------------------------------------------------------------------
   db:
-    image: postgres:18-alpine
+    image: postgres:17-alpine
     container_name: judgekit-db
     restart: unless-stopped
     # Postgres memory tuning is configurable per-target via .env.production.
@@ -48,7 +48,7 @@ services:
       POSTGRES_USER: judgekit
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?POSTGRES_PASSWORD is required}
       # Pin PGDATA so the mounted named volume is the cluster directory
-      # regardless of image default. Without this, postgres:18-alpine
+      # regardless of image default. Without this, postgres:17-alpine
       # silently puts data in /var/lib/postgresql/18/docker, which lands
       # inside an anonymous volume when only /var/lib/postgresql/data is
       # mounted. That mismatch caused a data wipe on 2026-04-09.
