@@ -43,6 +43,18 @@ describe("judge docker image validation", () => {
     ).toBe(true);
   });
 
+  it("rejects URL-encoded characters and other invalid syntax", () => {
+    // URL-encoded characters are rejected by the name pattern
+    expect(isAllowedJudgeDockerImage("judge-python%3alatest", [])).toBe(false);
+    expect(isAllowedJudgeDockerImage("judge-python%2flatest", [])).toBe(false);
+    // Protocol-style prefix is rejected
+    expect(isAllowedJudgeDockerImage("https://registry.example.com/judge-python:latest", [])).toBe(false);
+  });
+
+  it("rejects registry-prefixed images when trusted registries list is empty", () => {
+    expect(isAllowedJudgeDockerImage("registry.example.com/judge-python:latest", [])).toBe(false);
+  });
+
   it("allows only unqualified local judge images for local build actions", () => {
     expect(isLocalJudgeDockerImage("judge-python:latest")).toBe(true);
     expect(isLocalJudgeDockerImage("registry.example.com/team/judge-python:latest")).toBe(false);
