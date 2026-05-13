@@ -1,3 +1,4 @@
+import { AsyncLocalStorage } from "async_hooks";
 import { Pool } from "pg";
 import { drizzle, type NodePgDatabase } from "drizzle-orm/node-postgres";
 import * as schema from "./schema.pg";
@@ -50,6 +51,13 @@ if (isBuildPhase) {
 export const pool: Pool | null = _pool;
 
 /**
+ * AsyncLocalStorage marker used to detect when rawQueryOne/rawQueryAll are
+ * called inside a transaction callback (they run on the global pool and do
+ * NOT participate in the Drizzle transaction). See rawQueryOne in queries.ts.
+ */
+export const transactionContext = new AsyncLocalStorage<void>();
+
+/**
  * Transaction client type inferred from Drizzle's transaction callback.
  */
 export type TransactionClient = Parameters<Parameters<DbType["transaction"]>[0]>[0];
@@ -71,7 +79,7 @@ export function execTransaction<T>(
     return Promise.resolve(fn(db as unknown as TransactionClient));
   }
 
-  return db.transaction(async (tx) => fn(tx as TransactionClient));
+  return db.transaction(async (tx) => transactionContext.run(undefined, () => fn(tx as TransactionClient)));
 }
 
 export { db };

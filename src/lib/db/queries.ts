@@ -2,7 +2,8 @@
  * Raw SQL query helpers for PostgreSQL.
  */
 
-import { pool } from "./index";
+import { pool, transactionContext } from "./index";
+import { logger } from "@/lib/logger";
 
 /**
  * Returns a SQL expression for "current time in milliseconds since epoch".
@@ -50,6 +51,9 @@ export async function rawQueryOne<T = Record<string, unknown>>(
   params?: Record<string, unknown>
 ): Promise<T | undefined> {
   if (!pool) throw new Error("PostgreSQL pool not available");
+  if (transactionContext.getStore() !== undefined) {
+    logger.warn("[rawQueryOne] Called inside a transaction callback — this runs on the global pool and does NOT participate in the Drizzle transaction. Use tx.execute() instead.");
+  }
   const { text, values } = namedToPositional(sql, params);
   const result = await pool.query(text, values);
   return result.rows[0] as T | undefined;
@@ -77,6 +81,9 @@ export async function rawQueryAll<T = Record<string, unknown>>(
   params?: Record<string, unknown>
 ): Promise<T[]> {
   if (!pool) throw new Error("PostgreSQL pool not available");
+  if (transactionContext.getStore() !== undefined) {
+    logger.warn("[rawQueryAll] Called inside a transaction callback — this runs on the global pool and does NOT participate in the Drizzle transaction. Use tx.execute() instead.");
+  }
   const { text, values } = namedToPositional(sql, params);
   const result = await pool.query(text, values);
   return result.rows as T[];
