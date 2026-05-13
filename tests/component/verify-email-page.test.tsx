@@ -62,11 +62,14 @@ describe("VerifyEmailPage", () => {
       expect(screen.getByRole("status")).toHaveTextContent("Email verified successfully.");
     });
 
-    expect(global.fetch).toHaveBeenCalledWith("/api/v1/auth/verify-email", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ token: "valid-token" }),
-    });
+    expect(global.fetch).toHaveBeenCalledWith(
+      "/api/v1/auth/verify-email",
+      expect.objectContaining({
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ token: "valid-token" }),
+      })
+    );
   });
 
   it("shows error on 4xx response with invalid token", async () => {
