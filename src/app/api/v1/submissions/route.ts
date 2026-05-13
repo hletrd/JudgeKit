@@ -3,7 +3,7 @@ import { extractClientIp } from "@/lib/security/ip";
 import { db, execTransaction } from "@/lib/db";
 import { examSessions, languageConfigs, problems, submissions } from "@/lib/db/schema";
 import { isJudgeLanguage } from "@/lib/judge/languages";
-import { and, desc, eq, lt, sql } from "drizzle-orm";
+import { and, desc, eq, lt, or, sql } from "drizzle-orm";
 import { recordAuditEvent } from "@/lib/audit/events";
 import { canAccessProblem } from "@/lib/auth/permissions";
 import {
@@ -57,17 +57,22 @@ export const GET = createApiHandler({
 
       // Decode cursor: new cursors embed {id, submittedAt} as base64 JSON;
       // old cursors are raw IDs (backward compatible).
-      let cursorFilter: ReturnType<typeof lt> | undefined;
+      let cursorFilter: ReturnType<typeof lt> | ReturnType<typeof or> | undefined;
+      let cursorId: string | undefined;
       if (cursor) {
         let cursorSubmittedAt: Date | undefined;
         try {
           const decoded = JSON.parse(Buffer.from(cursor, "base64").toString("utf-8"));
           if (decoded && typeof decoded === "object" && "t" in decoded && typeof decoded.t === "string") {
             cursorSubmittedAt = new Date(decoded.t);
+            if ("id" in decoded && typeof decoded.id === "string") {
+              cursorId = decoded.id;
+            }
           }
         } catch {
           // Not a base64-encoded cursor — fall back to DB lookup for backward
           // compatibility with cursors generated before this change.
+          cursorId = cursor;
           const cursorRow = await db.query.submissions.findFirst({
             where: eq(submissions.id, cursor),
             columns: { submittedAt: true },
@@ -75,7 +80,19 @@ export const GET = createApiHandler({
           cursorSubmittedAt = cursorRow?.submittedAt;
         }
         if (cursorSubmittedAt) {
-          cursorFilter = lt(submissions.submittedAt, cursorSubmittedAt);
+          if (cursorId) {
+            // Use a tuple-style comparison: get rows that are strictly before
+            // (submittedAt, id) to handle same-timestamp submissions correctly.
+            cursorFilter = or(
+              lt(submissions.submittedAt, cursorSubmittedAt),
+              and(
+                eq(submissions.submittedAt, cursorSubmittedAt),
+                lt(submissions.id, cursorId)
+              )
+            );
+          } else {
+            cursorFilter = lt(submissions.submittedAt, cursorSubmittedAt);
+          }
         }
       }
 
@@ -101,7 +118,7 @@ export const GET = createApiHandler({
           judgedAt: true,
           submittedAt: true,
         },
-        orderBy: [desc(submissions.submittedAt)],
+        orderBy: [desc(submissions.submittedAt), desc(submissions.id)],
         limit: limit + 1,
       });
 
