@@ -138,16 +138,16 @@ describe("consumeApiRateLimit", () => {
     await expect(response?.json()).resolves.toEqual({ error: "rateLimited" });
   });
 
-  it("does not double-count the same request key", async () => {
+  it("counts each call independently (no request-level dedup)", async () => {
     getRateLimitKeyMock.mockReturnValue("api:groups:198.51.100.8");
     const request = createRequest();
 
     await consumeApiRateLimit(request, "groups");
-    // Second call with same request object: key already consumed, returns null without recording
+    // Second call with same request object: each call counts independently
     await consumeApiRateLimit(request, "groups");
 
-    // transaction is only called once (dedup via WeakMap)
-    expect(dbMock.insert).toHaveBeenCalledTimes(1);
+    // Both calls record an attempt (no WeakMap dedup — unreliable across Next.js boundaries)
+    expect(dbMock.insert).toHaveBeenCalledTimes(2);
   });
 });
 
@@ -181,15 +181,15 @@ describe("consumeUserApiRateLimit", () => {
     await expect(response?.json()).resolves.toEqual({ error: "rateLimited" });
   });
 
-  it("deduplicates same request+key via WeakMap", async () => {
+  it("counts each call independently (no request-level dedup)", async () => {
     const request = createRequest();
 
     await consumeUserApiRateLimit(request, "user-123", "settings");
-    // Second call with same request object and same params: dedup returns null without recording again
+    // Second call with same request object and same params: each call counts
     await consumeUserApiRateLimit(request, "user-123", "settings");
 
-    // Only one insert — the second call is deduped
-    expect(dbMock.insert).toHaveBeenCalledTimes(1);
+    // Both calls record an attempt (no WeakMap dedup — unreliable across Next.js boundaries)
+    expect(dbMock.insert).toHaveBeenCalledTimes(2);
   });
 });
 

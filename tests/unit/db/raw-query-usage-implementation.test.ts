@@ -18,10 +18,10 @@ describe("raw query usage implementation guards", () => {
     expect(leaderboardRoute).not.toContain("${assignmentId}");
   });
 
-  it("keeps the raw query helper on positional parameters for PostgreSQL", () => {
+  it("keeps the raw query helper on positional parameters for PostgreSQL", async () => {
     const helper = read("src/lib/db/queries.ts");
 
-    expect(helper).toContain('sql.replace(/@(\\w+)/g');
+    expect(helper).toContain("@([a-zA-Z_]\\w*)");
     expect(helper).toContain("return `$${idx + 1}`");
     expect(helper).toContain("pool.query(text, values)");
   });
