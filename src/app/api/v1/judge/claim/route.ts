@@ -20,17 +20,18 @@ import { getConfiguredSettings } from "@/lib/system-settings-config";
 import { getDbNowUncached } from "@/lib/db-time";
 
 /**
- * Coerces a value to number while rejecting NaN. PostgreSQL raw queries may
- * return strings for numeric columns; we want to accept those but reject
- * genuinely non-numeric values (including the string "NaN").
+ * Coerces a value to number while rejecting NaN and Infinity. PostgreSQL raw
+ * queries may return strings for numeric columns; we want to accept those but
+ * reject genuinely non-numeric values (including "NaN", "Infinity", and
+ * scientific notation that overflows to Infinity like "1e309").
  */
 const coerceNullableNumber = z.union([
   z.null(),
   z.string().transform((s) => {
     const n = Number(s);
-    return Number.isNaN(n) ? null : n;
+    return Number.isNaN(n) || !Number.isFinite(n) ? null : n;
   }),
-  z.number().refine((n) => !Number.isNaN(n)),
+  z.number().refine((n) => !Number.isNaN(n) && Number.isFinite(n)),
 ]);
 
 const claimedSubmissionRowSchema = z.object({
