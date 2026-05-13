@@ -2,11 +2,37 @@
 
 > Date: 2026-05-13
 > Source: `.context/reviews/_aggregate.md`
+> Status: Phase 1-2 implemented, Phase 3-4 partially implemented
 
 ## Summary
 
 This plan addresses 14 findings from the cycle 1 deep code review across security,
 correctness, performance, test coverage, and documentation categories.
+
+## Implementation Status
+
+| ID | Status | Commit |
+|----|--------|--------|
+| SEC-3 | ✅ Done | f0d80feb |
+| SEC-2 | ✅ Done | e43c0c81 |
+| SEC-1 | ✅ Done | 54beee5e |
+| SEC-5 | ✅ Done | 725f1af8 |
+| COR-2 | ✅ Done | c5fe4022 |
+| COR-3 | ✅ Done | e43c0c81 |
+| COR-4 | ✅ Done | 68041129 |
+| DOC-1 | ✅ Done | d872f280 |
+| DOC-2 | ✅ Done | d872f280 |
+| TEST-1 | ✅ Done | ae3406e3 |
+| TEST-2 | ✅ Done | ae3406e3 |
+| TEST-3 | ✅ Done | ae3406e3 |
+| TEST-4 | ✅ Done | ae3406e3 |
+| PERF-1 | 🔄 Deferred | See deferred section |
+| PERF-2 | 🔄 Deferred | See deferred section |
+| COR-1 | 🔄 Deferred | See deferred section |
+| SEC-4 | 🔄 Deferred | See deferred section |
+| SEC-6 | 🔄 Deferred | See deferred section |
+| ARCH-1 | 🔄 Deferred | See deferred section |
+| ARCH-2 | 🔄 Deferred | See deferred section |
 
 ---
 
