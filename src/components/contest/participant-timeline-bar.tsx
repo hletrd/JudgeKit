@@ -330,9 +330,13 @@ export function ParticipantTimelineBar({
                       ev.type === "first_ac" ||
                       (ev.type === "submission" &&
                         (ev.status === "accepted" || ev.status === "scored"));
+                    const eventKey =
+                      ev.type === "snapshot"
+                        ? `snapshot-${ev.snapshotId}`
+                        : `${ev.type}-${ev.submissionId}`;
                     return (
                       <div
-                        key={`${ev.type}-${ev.at.getTime()}`}
+                        key={eventKey}
                         className="absolute top-1/2 -translate-y-1/2"
                         style={{ left: `${pct}%` }}
                       >
