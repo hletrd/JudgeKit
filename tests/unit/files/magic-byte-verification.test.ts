@@ -64,11 +64,17 @@ describe("verifyFileMagicBytes", () => {
     expect(verifyFileMagicBytes(buffer, "text/plain")).toBe(false);
   });
 
-  it("accepts text types with null byte after the first 8KB", () => {
-    // Create a buffer larger than 8KB with a null byte after the 8KB boundary
+  it("rejects text types with null byte after the first 8KB", () => {
+    // Create a buffer larger than 8KB with a null byte after the 8KB boundary.
+    // The multi-region scan must catch null bytes in the trailing slice.
     const before = Buffer.alloc(8192, 0x41); // 8KB of 'A'
     const after = Buffer.concat([Buffer.from([0x00]), Buffer.from("trailing")]);
     const buffer = Buffer.concat([before, after]);
+    expect(verifyFileMagicBytes(buffer, "text/plain")).toBe(false);
+  });
+
+  it("accepts large text files with no null bytes anywhere", () => {
+    const buffer = Buffer.alloc(20_000, 0x41); // 20KB of 'A'
     expect(verifyFileMagicBytes(buffer, "text/plain")).toBe(true);
   });
 

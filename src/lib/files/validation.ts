@@ -170,11 +170,20 @@ export function verifyFileMagicBytes(buffer: Buffer, declaredMimeType: string): 
     return true;
   }
 
-  // Text types: no binary signature, but verify no null bytes in the first 8KB
-  // (a strong indicator that the content is not actually text)
+  // Text types: no binary signature, but verify no null bytes. Sample three
+  // regions (start, middle, end) to catch files with a text prefix followed
+  // by binary content, without scanning the entire file for large uploads.
   if (declaredMimeType.startsWith("text/")) {
-    const checkSlice = buffer.subarray(0, Math.min(buffer.length, 8192));
-    return !checkSlice.includes(0x00);
+    const SLICE_SIZE = 8192;
+    const slices = [buffer.subarray(0, Math.min(buffer.length, SLICE_SIZE))];
+    if (buffer.length > SLICE_SIZE) {
+      slices.push(buffer.subarray(-SLICE_SIZE));
+      if (buffer.length > SLICE_SIZE * 2) {
+        const midStart = Math.floor(buffer.length / 2) - Math.floor(SLICE_SIZE / 2);
+        slices.push(buffer.subarray(Math.max(SLICE_SIZE, midStart), Math.min(buffer.length - SLICE_SIZE, midStart + SLICE_SIZE)));
+      }
+    }
+    return !slices.some((slice) => slice.includes(0x00));
   }
 
   // Check known magic-byte signatures
