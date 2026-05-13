@@ -32,7 +32,7 @@ describe("Query Helpers", () => {
 
   it("rawQueryOne converts named params to positional parameters", async () => {
     const mockQuery = vi.fn().mockResolvedValue({ rows: [{ id: "1" }] });
-    vi.doMock("@/lib/db/index", () => ({ pool: { query: mockQuery } }));
+    vi.doMock("@/lib/db/index", () => ({ pool: { query: mockQuery }, transactionContext: { getStore: () => undefined } }));
     const { rawQueryOne } = await import("@/lib/db/queries");
     const result = await rawQueryOne("SELECT * FROM users WHERE id = @id", { id: "1" });
     expect(mockQuery).toHaveBeenCalledWith("SELECT * FROM users WHERE id = $1", ["1"]);
@@ -41,7 +41,7 @@ describe("Query Helpers", () => {
 
   it("rawQueryOne reuses the same positional index for repeated named params", async () => {
     const mockQuery = vi.fn().mockResolvedValue({ rows: [{ id: "1" }] });
-    vi.doMock("@/lib/db/index", () => ({ pool: { query: mockQuery } }));
+    vi.doMock("@/lib/db/index", () => ({ pool: { query: mockQuery }, transactionContext: { getStore: () => undefined } }));
     const { rawQueryOne } = await import("@/lib/db/queries");
     await rawQueryOne("SELECT * FROM users WHERE id = @id OR manager_id = @id", { id: "1" });
     expect(mockQuery).toHaveBeenCalledWith(
@@ -52,7 +52,7 @@ describe("Query Helpers", () => {
 
   it("rawQueryOne fails closed when a named SQL parameter is missing", async () => {
     const mockQuery = vi.fn();
-    vi.doMock("@/lib/db/index", () => ({ pool: { query: mockQuery } }));
+    vi.doMock("@/lib/db/index", () => ({ pool: { query: mockQuery }, transactionContext: { getStore: () => undefined } }));
     const { rawQueryOne } = await import("@/lib/db/queries");
 
     await expect(rawQueryOne("SELECT * FROM users WHERE id = @id AND role = @role", { id: "1" })).rejects.toThrow(
@@ -62,7 +62,7 @@ describe("Query Helpers", () => {
   });
 
   it("rawQueryOne throws when the PostgreSQL pool is missing", async () => {
-    vi.doMock("@/lib/db/index", () => ({ pool: null }));
+    vi.doMock("@/lib/db/index", () => ({ pool: null, transactionContext: { getStore: () => undefined } }));
     const { rawQueryOne } = await import("@/lib/db/queries");
     await expect(rawQueryOne("SELECT 1")).rejects.toThrow("PostgreSQL pool not available");
   });
@@ -70,7 +70,7 @@ describe("Query Helpers", () => {
   it("rawQueryAll returns all rows for PostgreSQL", async () => {
     const rows = [{ id: "1" }, { id: "2" }];
     const mockQuery = vi.fn().mockResolvedValue({ rows });
-    vi.doMock("@/lib/db/index", () => ({ pool: { query: mockQuery } }));
+    vi.doMock("@/lib/db/index", () => ({ pool: { query: mockQuery }, transactionContext: { getStore: () => undefined } }));
     const { rawQueryAll } = await import("@/lib/db/queries");
     const result = await rawQueryAll("SELECT * FROM users WHERE team_id = @teamId", { teamId: "t-1" });
     expect(mockQuery).toHaveBeenCalledWith("SELECT * FROM users WHERE team_id = $1", ["t-1"]);
@@ -79,7 +79,7 @@ describe("Query Helpers", () => {
 
   it("rawQueryAll fails closed when a named SQL parameter is missing", async () => {
     const mockQuery = vi.fn();
-    vi.doMock("@/lib/db/index", () => ({ pool: { query: mockQuery } }));
+    vi.doMock("@/lib/db/index", () => ({ pool: { query: mockQuery }, transactionContext: { getStore: () => undefined } }));
     const { rawQueryAll } = await import("@/lib/db/queries");
 
     await expect(rawQueryAll("SELECT * FROM users WHERE team_id = @teamId AND role = @role", { teamId: "t-1" })).rejects.toThrow(
