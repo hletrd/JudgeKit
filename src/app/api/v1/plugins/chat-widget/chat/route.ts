@@ -17,6 +17,7 @@ import {
 } from "@/lib/platform-mode-context";
 
 const MAX_TOOL_ITERATIONS = 5;
+const TOOL_EXECUTION_TIMEOUT_MS = 10_000;
 const STREAM_HEADERS = {
   "Content-Type": "text/plain; charset=utf-8",
   "Cache-Control": "no-cache",
@@ -475,10 +476,18 @@ export const POST = createApiHandler({
       for (const call of response.toolCalls ?? []) {
         let toolResult: string;
         try {
-          toolResult = await executeTool(call.name, call.arguments, agentContext);
+          toolResult = await Promise.race([
+            executeTool(call.name, call.arguments, agentContext),
+            new Promise<never>((_, reject) =>
+              setTimeout(() => reject(new Error("tool execution timed out")), TOOL_EXECUTION_TIMEOUT_MS)
+            ),
+          ]);
         } catch (err) {
-          logger.warn({ err, toolName: call.name }, "[chat] Tool execution failed, returning error to agent");
-          toolResult = `Error executing tool "${call.name}" — please try again`;
+          const reason = err instanceof Error && err.message === "tool execution timed out"
+            ? "timed out"
+            : "failed";
+          logger.warn({ err, toolName: call.name }, `[chat] Tool execution ${reason}, returning error to agent`);
+          toolResult = `Error executing tool "${call.name}" (${reason}) — please try again`;
         }
         const resultMessage = provider.formatToolResult(call.id, call.name, toolResult);
         fullMessages.push(resultMessage);
