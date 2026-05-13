@@ -22,8 +22,10 @@ import {
 // AUTH_CACHE_TTL_MS (default: 2 seconds via AUTH_CACHE_TTL_MS env var) after the change is applied to the database.
 // In multi-instance deployments (N instances behind a load balancer), each instance
 // caches independently, so the effective worst-case post-deactivation access window
-// is AUTH_CACHE_TTL_MS * N (e.g., 2s * 2 instances = 4s). Negative results (user
-// not found / inactive / token invalidated) are NOT cached.
+// is AUTH_CACHE_TTL_MS * N (e.g., 2s * 2 instances = 4s).
+// Both positive and negative results are cached to prevent DoS via invalid-token
+// flooding. Negative results (user not found / inactive / token invalidated) are
+// cached with the same TTL as positive results.
 const authUserCache = new Map<string, { user: Awaited<ReturnType<typeof getActiveAuthUserById>>; expiresAt: number }>();
 const AUTH_CACHE_TTL_MS = (() => {
   // Cap operator-supplied values at 10 s to bound the post-deactivation
@@ -63,15 +65,19 @@ async function hashUserAgent(userAgent: string) {
   return bytesToHex(new Uint8Array(digest)).slice(0, 16);
 }
 
-function getCachedAuthUser(cacheKey: string) {
+type CachedAuthResult =
+  | { kind: "hit"; user: Awaited<ReturnType<typeof getActiveAuthUserById>> }
+  | { kind: "miss" };
+
+function getCachedAuthUser(cacheKey: string): CachedAuthResult {
   const cached = authUserCache.get(cacheKey);
   // Intentional Date.now(): Edge Runtime cannot use getDbNowMs(). Cache TTL
   // is short enough (max 10 s) that app/DB clock skew is immaterial.
   if (cached && cached.expiresAt > Date.now()) {
-    return cached.user;
+    return { kind: "hit", user: cached.user };
   }
   authUserCache.delete(cacheKey);
-  return null;
+  return { kind: "miss" };
 }
 
 function setCachedAuthUser(cacheKey: string, user: Awaited<ReturnType<typeof getActiveAuthUserById>>) {
@@ -292,10 +298,12 @@ async function _proxy(request: NextRequest) {
     // Build a cache key that incorporates authenticatedAt so that token
     // invalidation (password change / forced logout) is reflected promptly.
     const cacheKey = `${userId}:${authenticatedAtSeconds ?? ""}`;
-    activeUser = getCachedAuthUser(cacheKey);
-    if (!activeUser) {
+    const cached = getCachedAuthUser(cacheKey);
+    if (cached.kind === "hit") {
+      activeUser = cached.user;
+    } else {
       activeUser = await getActiveAuthUserById(userId, authenticatedAtSeconds);
-      if (activeUser) setCachedAuthUser(cacheKey, activeUser);
+      setCachedAuthUser(cacheKey, activeUser);
     }
   }
 
