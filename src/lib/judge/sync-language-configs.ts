@@ -88,9 +88,9 @@ export async function syncLanguageConfigsOnStartup() {
     try {
       await doSync();
       return; // success
-    } catch {
+    } catch (err) {
       if (attempt >= MAX_SYNC_RETRIES) {
-        logger.error("[sync] Max retries exceeded, giving up");
+        logger.error({ err }, "[sync] Max retries exceeded, giving up");
         throw new Error("[sync] Failed to sync language configs after max retries");
       }
       // Table may not exist yet (pre-migration). Retry with exponential backoff.

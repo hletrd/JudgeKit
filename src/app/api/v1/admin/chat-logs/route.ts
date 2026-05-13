@@ -71,7 +71,7 @@ export const GET = createApiHandler({
       `WITH filtered AS (
          SELECT *
          FROM chat_messages
-         WHERE (@userId IS NULL OR user_id = @userId)
+         WHERE (@userId::text IS NULL OR user_id = @userId::text)
        ),
        session_bounds AS (
          SELECT

@@ -370,7 +370,7 @@ export default async function SubmissionsPage({
         <CardContent>
           <form className="flex flex-col gap-4 md:flex-row md:items-end" method="get">
             <div className="flex-1 space-y-1.5">
-              <label className="block text-sm font-medium" htmlFor="submissions-search">
+              <label className="block text-sm font-medium whitespace-nowrap" htmlFor="submissions-search">
                 {t("searchLabel")}
               </label>
               <Input
