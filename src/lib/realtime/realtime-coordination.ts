@@ -61,6 +61,10 @@ function getSseUserPattern(userId: string) {
   return `${SSE_KEY_PREFIX}${userId}:%`;
 }
 
+function getHeartbeatPrefixPattern() {
+  return `${HEARTBEAT_KEY_PREFIX}%`;
+}
+
 function getHeartbeatKey(assignmentId: string, userId: string) {
   return `${HEARTBEAT_KEY_PREFIX}${assignmentId}:${userId}`;
 }
@@ -197,6 +201,17 @@ export async function shouldRecordSharedHeartbeat({
         createdAt: nowMs,
       });
     }
+
+    // Cleanup stale heartbeat entries for this assignment to prevent
+    // unbounded table growth. Entries older than one interval past their
+    // expiration are safe to delete (the just-updated entry has
+    // blockedUntil = nowMs + minIntervalMs, so it is retained).
+    await tx.delete(rateLimits).where(
+      and(
+        sql`${rateLimits.key} LIKE ${getHeartbeatPrefixPattern()} ESCAPE '\\'`,
+        lt(rateLimits.blockedUntil, nowMs - minIntervalMs),
+      )
+    );
 
     return true;
   });
