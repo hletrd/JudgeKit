@@ -178,7 +178,7 @@ export function verifyFileMagicBytes(buffer: Buffer, declaredMimeType: string): 
     const slices = [buffer.subarray(0, Math.min(buffer.length, SLICE_SIZE))];
     if (buffer.length > SLICE_SIZE) {
       slices.push(buffer.subarray(-SLICE_SIZE));
-      if (buffer.length > SLICE_SIZE * 2) {
+      if (buffer.length > SLICE_SIZE * 3) {
         const midStart = Math.floor(buffer.length / 2) - Math.floor(SLICE_SIZE / 2);
         slices.push(buffer.subarray(Math.max(SLICE_SIZE, midStart), Math.min(buffer.length - SLICE_SIZE, midStart + SLICE_SIZE)));
       }
