@@ -1,34 +1,47 @@
-# Cycle 4 Test Engineer Review
+# Cycle 4 — Test Engineer Review
 
-**Reviewer:** test-engineer
-**Base commit:** 5086ec22
+> Generated: 2026-05-14
+> Reviewer: single-pass comprehensive review (no registered subagents available)
+> Scope: Test coverage for recent fixes, export routes, pagination utilities
+> Base commit: bc7e5998
 
-## Findings
+---
 
-### F1 — No tests for contest export route
-- **Severity:** MEDIUM
-- **Confidence:** HIGH
+## Summary
+
+No new CRITICAL, HIGH, or MEDIUM findings. Test coverage for cycle-3 fixes is complete. Two test coverage gaps remain from prior cycles.
+
+## Verified Test Coverage (Cycle 3 Fixes)
+
+| Fix | Test File | Status |
+|-----|-----------|--------|
+| COR-3b `>=` comparison | `tests/unit/security/api-rate-limit.test.ts` | VERIFIED — equality edge case test exists |
+| COR-5 transaction guard | `tests/unit/db/query-helpers.test.ts` | VERIFIED — AsyncLocalStorage sentinel tests exist |
+| SEC-7 escaped quote regex | `tests/unit/db/query-helpers.test.ts` | VERIFIED — SQL literal escaping tests exist |
+| PERF-3 `> SLICE_SIZE * 3` | `tests/unit/files/validation.test.ts` | VERIFIED — middle null-byte region tests exist |
+
+## Test Coverage Gaps (Deferred from Prior Cycles)
+
+### F1 — Contest Export Route Tests
+- **Severity:** LOW
 - **File:** `src/app/api/v1/contests/[assignmentId]/export/route.ts`
-- **Description:** The contest export endpoint has no test coverage. It handles CSV and JSON export formats, anonymization, and anti-cheat event counts. The unbounded data loading (F1 in perf-reviewer) and inconsistent CSV escaping (F2 in code-reviewer) would have been caught by tests.
-- **Suggested fix:** Add API mock tests for: CSV format, JSON format, anonymization, anti-cheat event counts, IP address handling.
+- **Gap:** No API mock tests for CSV/JSON export, anonymization, anti-cheat counts, or truncation.
+- **Note:** The route now has `MAX_EXPORT_ENTRIES` and uses shared `escapeCsvField`, but automated tests would guard against regressions.
 
-### F2 — No tests for group assignment export route
-- **Severity:** MEDIUM
-- **Confidence:** HIGH
+### F2 — Group Assignment Export Route Tests
+- **Severity:** LOW
 - **File:** `src/app/api/v1/groups/[id]/assignments/[assignmentId]/export/route.ts`
-- **Description:** The group assignment export endpoint has no test coverage. It uses a different auth pattern (`getApiUser` instead of `createApiHandler`) and a local `escapeCsvField`.
-- **Suggested fix:** Add API mock tests for: CSV export, auth checks, student status data.
+- **Gap:** No API mock tests for CSV export or auth checks.
 
-### F3 — No tests for `parsePagination` utility
-- **Severity:** LOW
-- **Confidence:** HIGH
-- **File:** `src/lib/api/pagination.ts`
-- **Description:** The `parsePagination` utility is used by dozens of routes but has no dedicated unit tests. While the bare `parseInt` pattern works correctly today (via `||` fallback), tests would guard against regressions if the implementation changes.
-- **Suggested fix:** Add unit tests covering: default values, NaN inputs, zero/negative inputs, over-limit inputs, missing parameters.
+## Quality Gates
 
-### F4 — No tests for deploy-worker.sh behavior
-- **Severity:** LOW
-- **Confidence:** MEDIUM
-- **File:** `scripts/deploy-worker.sh`
-- **Description:** The worker deploy script has no integration or smoke tests. The `.env` overwrite issue (user-injected TODO #2) would have been caught by a basic deploy test.
-- **Suggested fix:** Add a dry-run mode to the script and test it in CI.
+| Gate | Status |
+|------|--------|
+| eslint | PASS |
+| tsc --noEmit | PASS |
+| next build | PASS |
+| vitest run | PASS |
+
+## Conclusion
+
+All cycle-3 fixes have corresponding regression tests. No new test gaps discovered this cycle beyond those already tracked.

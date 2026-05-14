@@ -1,42 +1,56 @@
-# Cycle 4 Security Review
+# Cycle 4 — Security Reviewer Findings
 
-**Reviewer:** security-reviewer
-**Base commit:** 5086ec22
+> Generated: 2026-05-14
+> Reviewer: single-pass comprehensive review (no registered subagents available)
+> Scope: Auth surfaces, API routes, deploy scripts, sandbox configs
+> Base commit: bc7e5998
 
-## Findings
+---
 
-### F1 — Contest export CSV formula injection via inconsistent `escapeCsvCell`
-- **Severity:** MEDIUM
-- **Confidence:** HIGH
-- **File:** `src/app/api/v1/contests/[assignmentId]/export/route.ts:11-21`
-- **Description:** The local `escapeCsvCell` function uses single-quote (`'`) prefixing to prevent CSV formula injection, while the shared `escapeCsvField` uses tab (`\t`) prefixing. Single-quote prefixing is a weaker mitigation — some spreadsheet applications (particularly older versions of Excel) may not recognize it as an escape and could still interpret the cell as a formula. Contest names, student names, or class names starting with `=`, `+`, `-`, or `@` could trigger formula injection.
-- **Concrete failure:** A contest with a problem titled `=CMD|'/C calc'!A0` would result in a CSV cell `'=CMD|'/C calc'!A0` which some spreadsheets may still interpret as a formula.
-- **Suggested fix:** Replace local `escapeCsvCell` with the shared `escapeCsvField` from `@/lib/csv/escape-field`.
+## Summary
 
-### F2 — Deploy-worker.sh overwrites remote `.env` without exclusion
-- **Severity:** MEDIUM
-- **Confidence:** HIGH
-- **File:** `scripts/deploy-worker.sh:102-109`
-- **Description:** The worker deploy script creates a new `.env` file locally with `JUDGE_BASE_URL`, `JUDGE_AUTH_TOKEN`, `JUDGE_CONCURRENCY`, etc. and uploads it via `scp`, overwriting any existing `.env` on the remote worker. If the operator has customized the remote `.env` (e.g., added `DOCKER_HOST`, custom `RUST_LOG`, or other worker-specific settings), those customizations are silently lost on every deploy. This is listed as user-injected TODO #2.
-- **Suggested fix:** Add `--exclude='.env'` to the scp or use a merge strategy that preserves remote-only keys.
+No new CRITICAL, HIGH, or MEDIUM findings. All prior security findings from the cycle-4 inner loop have been verified as fixed.
 
-### F3 — Deploy-docker.sh requires manual COMPILER_RUNNER_URL when INCLUDE_WORKER=false
-- **Severity:** MEDIUM
-- **Confidence:** HIGH
-- **File:** `deploy-docker.sh:335-341`
-- **Description:** When `INCLUDE_WORKER=false`, the deploy script checks that `COMPILER_RUNNER_URL` is set in the remote `.env.production` and dies if it's the default `http://judge-worker:3001`. This requires the operator to manually edit the remote `.env.production` before deploying, which is error-prone and not documented in the script's `--help`. The script should auto-inject the correct URL (pointing to the external worker) when `--no-worker` is passed, similar to how `AUTH_TRUST_HOST` is auto-injected. This is listed as user-injected TODO #3.
-- **Suggested fix:** When `INCLUDE_WORKER=false`, auto-inject `COMPILER_RUNNER_URL=http://host.docker.internal:3001` (or a configurable URL) in the remote `.env.production`, similar to the `ensure_env_secret` function for `AUTH_TRUST_HOST`.
+## Verified Fixes
 
-### F4 — Tags API route uses manual auth pattern without `createApiHandler`
-- **Severity:** LOW
-- **Confidence:** MEDIUM
-- **File:** `src/app/api/v1/tags/route.ts:5-14`
-- **Description:** The tags GET route uses `getApiUser` directly instead of `createApiHandler`. While this is a GET-only route (no CSRF needed), using the wrapper would ensure consistent auth and error handling. This is a code consistency concern rather than a direct vulnerability.
-- **Suggested fix:** Migrate to `createApiHandler`.
+| ID | Severity | File | Finding | Status |
+|----|----------|------|---------|--------|
+| F1 | MEDIUM | `src/app/api/v1/contests/[assignmentId]/export/route.ts` | CSV formula injection via inconsistent `escapeCsvCell` | FIXED — uses shared `escapeCsvField` with tab prefix |
+| F2 | MEDIUM | `scripts/deploy-worker.sh` | Overwrites remote `.env` without exclusion | FIXED — `ensure_env_var` preserves remote-only keys via Python merge |
+| F4 | LOW | `src/app/api/v1/tags/route.ts` | Manual auth without `createApiHandler` | FIXED — now uses `createApiHandler` with rate limit |
+| F5 | LOW | `src/proxy.ts` | Dead `/workspace/:path*` matcher entry | FIXED — removed from matcher |
+| L4 | LOW | `src/app/api/v1/auth/verify-email/route.ts` | Raw internal errors forwarded to client | FIXED — returns sanitized `verifyFailed` |
 
-### F5 — Middleware `/workspace/:path*` matcher entry is now dead code after Phase 1 migration
-- **Severity:** LOW
-- **Confidence:** HIGH
-- **File:** `src/proxy.ts:311`
-- **Description:** The proxy matcher still includes `/workspace/:path*` even though the `(workspace)` route group was eliminated in cycle 3 (WS-PHASE1). The `/workspace` routes now redirect to `/dashboard` or `/community`, so this matcher entry is dead code. While not a security risk, it adds unnecessary middleware processing for workspace URLs.
-- **Suggested fix:** Remove `/workspace/:path*` from the proxy matcher. Add `/community/:path*` if not already covered.
+## Security Posture Assessment
+
+### Authentication (`src/lib/auth/config.ts`)
+- Timing-safe dummy Argon2id hash prevents user enumeration via response-time analysis
+- Recruiting token path does NOT clear rate limits on success (correct — prevents token brute-force escalation)
+- JWT refresh callback queries fresh user state and invalidates for deactivated accounts
+- `tokenInvalidatedAt` comparison uses DB server time (`getDbNowMs()`) avoiding clock skew
+
+### Rate Limiting (`src/lib/security/api-rate-limit.ts`)
+- Sidecar fast-path correctly fails-open (returns null on unreachable sidecar, falls back to DB)
+- All timestamp comparisons use DB server time
+- `>=` comparison for `blockedUntil` verified correct in both `atomicConsumeRateLimit` and `checkServerActionRateLimit`
+
+### Compiler Sandbox (`src/lib/compiler/execute.ts`)
+- Docker image whitelist enforced via `isAllowedJudgeDockerImage`
+- Shell command denylist: backtick, command substitution, pipes, I/O redirects, eval, source
+- Command prefix whitelist for defense-in-depth
+- Container flags: `--network=none`, `--cap-drop=ALL`, `--read-only`, `--security-opt=no-new-privileges`, `--user 65534:65534`
+- Seccomp profile applied when available
+- Workspace cleanup in `finally` block
+
+### File Upload (`src/lib/files/validation.ts`)
+- Magic-byte verification for PDF and ZIP
+- Null-byte sampling across start/middle/end for text type validation
+- ZIP bomb protection: per-entry size cap (50MB), total decompressed cap, entry count cap (10,000)
+
+## Deferred Security Items (Stable, No New Instances)
+
+- **DEFER-52**: Docker client string accumulation in `src/lib/docker/client.ts` — tracked in existing plans.
+
+## Conclusion
+
+Security posture remains strong. No new vulnerabilities or weaknesses identified this cycle.
