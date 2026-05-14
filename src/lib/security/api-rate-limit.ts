@@ -233,7 +233,7 @@ export async function checkServerActionRateLimit(
     const existing = await fetchRateLimitEntry(tx, rateLimitKey);
 
     // If still within a block period, reject immediately
-    if (existing?.blockedUntil && existing.blockedUntil > now) {
+    if (existing?.blockedUntil && existing.blockedUntil >= now) {
       return { error: "rateLimited" };
     }
 

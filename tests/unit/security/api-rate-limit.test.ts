@@ -364,6 +364,25 @@ describe("checkServerActionRateLimit", () => {
     const setArgs = (setFn.mock as unknown as { calls: Array<[Record<string, unknown>]> }).calls[0][0];
     expect(setArgs.attempts).toBe(4);
   });
+
+  it("blocks when blockedUntil equals now (equality edge case)", async () => {
+    // When blockedUntil is exactly equal to now, the request must be blocked.
+    // This catches the > vs >= bug that would allow the request through.
+    mockSelectResult({
+      key: "sa:user-1:deleteAccount",
+      attempts: 1,
+      windowStartedAt: MOCK_DB_NOW_MS,
+      blockedUntil: MOCK_DB_NOW_MS,
+      consecutiveBlocks: 0,
+      lastAttempt: MOCK_DB_NOW_MS,
+    });
+
+    const result = await checkServerActionRateLimit("user-1", "deleteAccount", 20, 60);
+
+    expect(result).toEqual({ error: "rateLimited" });
+    expect(dbMock.insert).not.toHaveBeenCalled();
+    expect(dbMock.update).not.toHaveBeenCalled();
+  });
 });
 
 describe("sidecar fast-path integration", () => {
