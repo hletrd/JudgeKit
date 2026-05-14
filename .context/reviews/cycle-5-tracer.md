@@ -1,77 +1,47 @@
-# Tracer — RPF Cycle 5
+# Tracer — Cycle 5
 
 **Reviewer:** tracer
-**Base commit:** 00002346
-**Date:** 2026-04-22
+**Base commit:** 6bb2b2eb
+**Date:** 2026-05-14
 
 ## Causal Traces
 
-### TR-1: `discussion-post-delete-button.tsx` — `.json()` before `response.ok` [MEDIUM/HIGH]
+### TRACE-1: `rateLimits` table bloat — root cause trace
 
-**Trace:**
-1. User clicks delete button on a discussion post
-2. `handleDelete` calls `apiFetch(..., { method: "DELETE" })`
-3. Server returns 502 with HTML body (reverse proxy error)
-4. Line 25: `const body = await response.json()` throws `SyntaxError: Unexpected token < in JSON`
-5. Line 26 `if (!response.ok)` is never reached
-6. Line 32 catch block: `error instanceof Error` is true (SyntaxError extends Error)
-7. `error.message` is "Unexpected token < in JSON at position 0"
-8. `toast.error("Unexpected token < in JSON at position 0")` — useless to user
+**Hypothesis:** The `rateLimits` table accumulates stale entries because cleanup only targets SSE prefixes.
 
-**Hypothesis confirmed:** The `.json()` call before `response.ok` check causes SyntaxError on non-JSON error bodies. The SyntaxError message leaks into the user-facing toast.
+**Evidence:**
+- `acquireSharedSseConnectionSlot` calls `tx.delete(rateLimits).where(... key LIKE ${getSsePrefixPattern()} ESCAPE '\\' ...)` — line 104.
+- `getSsePrefixPattern()` returns `realtime:sse:user:%` — line 57.
+- `shouldRecordSharedHeartbeat` inserts keys with prefix `realtime:heartbeat:` — line 64.
+- No function in the codebase deletes `realtime:heartbeat:%` entries.
+- Confirmed by grep: only insert/update for heartbeat prefix, no delete.
 
-**Fix:** Check `response.ok` first, use `.json().catch(() => ({}))`.
+**Conclusion:** Confirmed. Heartbeat entries are write-only from the application's perspective.
 
----
+### TRACE-2: Shell command validator gap — regex trace
 
-### TR-2: `start-exam-button.tsx` — exam start flow loses error info on non-JSON response [MEDIUM/MEDIUM]
+**Hypothesis:** The regex `$[A-Za-z_]` intentionally allows `$1` because positional parameters in `sh -c` with no args are empty.
 
-**Trace:**
-1. Student clicks "Start Exam" button
-2. `handleStart` calls `apiFetch` with POST
-3. Server returns 500 with HTML body
-4. Line 40: `if (!response.ok)` is true
-5. Line 41: `const payload = await response.json()` throws SyntaxError
-6. Catch block on line 48 catches it
-7. `error instanceof Error && error.message === "assignmentClosed"` — false (message is SyntaxError)
-8. Falls through to generic `toast.error(t("examSessionStartFailed"))`
-9. Student sees generic error, doesn't know if session was created
+**Evidence:**
+- Regex: `/`|\$\(|\$\{|\$[A-Za-z_]|[<>]\(|\|\||\||>|<|\n|\r|\beval\b|\bsource\b/` — line 173.
+- `$[A-Za-z_]` matches `$a`, `$FOO` but not `$1`, `$0`.
+- Commands are passed as `["sh", "-c", command]` with no additional positional args.
 
-**Hypothesis confirmed:** The error code discrimination logic is bypassed by the SyntaxError.
+**Conclusion:** The gap exists but is low-risk because positional parameters receive no values. Defense-in-depth should still block them.
 
-**Fix:** Use `.json().catch(() => ({}))` so the error code can be checked.
+### TRACE-3: Source code size mismatch — user confusion trace
 
----
+**Hypothesis:** A user with CJK source code passes schema validation but fails execution validation.
 
-### TR-3: `anti-cheat-dashboard.tsx` — stale data trace [MEDIUM/MEDIUM]
+**Evidence:**
+- Zod: `z.string().max(64 * 1024)` checks string.length (UTF-16 code units).
+- Execution: `Buffer.byteLength(sourceCode, "utf8")` checks UTF-8 bytes.
+- Korean characters are typically 3 bytes in UTF-8.
+- 40K Korean chars = ~40K string length (passes) but ~120K bytes (fails).
 
-**Trace:**
-1. Instructor opens contest anti-cheat dashboard
-2. Component mounts, `fetchEvents()` called once via `useEffect`
-3. New anti-cheat events occur (tab switches, copy events)
-4. `fetchEvents` is only called again if `assignmentId` changes (dependency of `useCallback`)
-5. Instructor sees stale data until manual page refresh
-
-**Hypothesis confirmed:** Missing `useVisibilityPolling` causes stale data for instructors.
-
-**Fix:** Add `useVisibilityPolling(() => { void fetchEvents(); }, 30_000)`.
-
----
-
-### TR-4: `code-timeline-panel.tsx` — silent failure trace [LOW/MEDIUM]
-
-**Trace:**
-1. Instructor opens code timeline panel
-2. `fetchSnapshots` called, API returns 500
-3. `res.ok` is false, no else branch — function silently returns
-4. `setLoading(false)` in finally block
-5. Component renders with empty snapshots array
-6. User sees "No snapshots" message, doesn't know there was an error
-
-**Hypothesis confirmed:** Missing error state and error feedback.
-
-**Fix:** Add error state and show error toast.
+**Conclusion:** Confirmed. The mismatch is guaranteed for any multi-byte UTF-8 input.
 
 ## Summary
 
-4 findings: 1 MEDIUM/HIGH, 2 MEDIUM/MEDIUM, 1 LOW/MEDIUM.
+3 traces: 2 confirmed MEDIUM/HIGH signal, 1 confirmed LOW signal.

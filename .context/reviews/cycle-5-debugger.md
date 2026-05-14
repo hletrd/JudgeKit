@@ -1,64 +1,32 @@
-# Debugger — RPF Cycle 5
+# Debugger — Cycle 5
 
 **Reviewer:** debugger
-**Base commit:** 00002346
-**Date:** 2026-04-22
+**Base commit:** 6bb2b2eb
+**Date:** 2026-05-14
 
 ## Findings
 
-### DBG-1: `discussion-post-delete-button.tsx` — SyntaxError on non-JSON error response causes confusing user feedback [MEDIUM/HIGH]
+### DBG-1: `rateLimits` table bloat — guaranteed production degradation [MEDIUM]
 
-**File:** `src/components/discussions/discussion-post-delete-button.tsx:25-26`
-**Confidence:** HIGH
+- **File:** `src/lib/realtime/realtime-coordination.ts:104-109, 152-203`
+- **Confidence:** High
+- **Failure scenario:** A school deploys JudgeKit with 5,000 students. Each student participates in 2 assignments per week. The heartbeat deduplication in `shouldRecordSharedHeartbeat` inserts or updates a `rateLimits` row with key `realtime:heartbeat:<assignmentId>:<userId>` every minute while the assignment is active. After 6 months, the `rateLimits` table has millions of stale heartbeat rows that are never cleaned up. The `fetchRateLimitEntry` and `acquireSharedSseConnectionSlot` queries slow down because PostgreSQL must scan past all these stale rows even with an index. Eventually, the table becomes large enough that vacuum and autovacuum struggle, causing query latency spikes.
+- **Fix:** Add cleanup for expired heartbeat entries or migrate to a separate table.
 
-**Failure scenario:** User clicks delete on a discussion post. Server returns 502 with HTML from reverse proxy. `response.json()` throws SyntaxError: "Unexpected token < in JSON at position 0". The catch block catches it and shows the SyntaxError message in a toast. User sees "Unexpected token < in JSON at position 0" instead of a meaningful error.
+### DBG-2: `validateShellCommand` `$1` bypass — hypothetical command injection [LOW]
 
-**Fix:** Check `response.ok` first, use `.json().catch(() => ({}))`.
+- **File:** `src/lib/compiler/execute.ts:173`
+- **Confidence:** Low
+- **Failure scenario:** An admin configures a compile command that legitimately uses `$1` (e.g., a script that takes a filename argument). The validator allows it. The command is passed to `sh -c "..."` with no additional arguments, so `$1` is empty in the child shell. Not a direct injection, but if the command were ever refactored to pass arguments via the Docker command array, `$1` could expand unexpectedly.
+- **Fix:** Block `$[0-9]` to close the gap.
 
----
+### DBG-3: Source code size mismatch — user confusion [LOW]
 
-### DBG-2: `start-exam-button.tsx` — SyntaxError on non-JSON error during exam start [MEDIUM/MEDIUM]
-
-**File:** `src/components/exam/start-exam-button.tsx:41`
-**Confidence:** HIGH
-
-**Failure scenario:** Student clicks "Start Exam". Server returns 500 with HTML. `response.json()` throws SyntaxError. The catch block catches it but falls through to the generic `toast.error(t("examSessionStartFailed"))`. The student sees a generic error but the actual cause is lost. Worse, the student may not know whether their exam session was actually created.
-
-**Fix:** Use `.json().catch(() => ({}))` on error path, then check for known error codes.
-
----
-
-### DBG-3: `code-timeline-panel.tsx` — no error handling, silently fails [LOW/MEDIUM]
-
-**File:** `src/components/contest/code-timeline-panel.tsx:47-61`
-**Confidence:** MEDIUM
-
-**Failure scenario:** Instructor views code timeline. Network request fails. No error state is set, no toast is shown. The component shows "Loading..." forever or an empty timeline with no indication of failure.
-
-**Fix:** Add catch block and error state.
-
----
-
-### DBG-4: `recruiting-invitations-panel.tsx` — `handleRevoke` and `handleDelete` unhandled promise rejections [LOW/MEDIUM]
-
-**File:** `src/components/contest/recruiting-invitations-panel.tsx:229-281`
-**Confidence:** MEDIUM
-
-**Failure scenario:** Admin clicks "Revoke" on an invitation. Network goes offline. The `apiFetch` promise rejects with a TypeError. Since there's no try/catch, this is an unhandled promise rejection. In development, React may show an error overlay. In production, the user sees no feedback.
-
-**Fix:** Wrap in try/catch with error toast.
-
----
-
-### DBG-5: `anti-cheat-dashboard.tsx` — stale data for instructors during live contests [MEDIUM/MEDIUM]
-
-**File:** `src/components/contest/anti-cheat-dashboard.tsx:149-151`
-**Confidence:** HIGH
-
-**Failure scenario:** During a live contest, an instructor monitors the anti-cheat dashboard. New tab switches and copy events are happening, but the dashboard only loaded data once on mount. The instructor sees zero events and believes no cheating is occurring. This is a data-freshness bug that directly affects the reliability of the anti-cheat system.
-
-**Fix:** Add `useVisibilityPolling` like `ParticipantAntiCheatTimeline`.
+- **File:** `src/app/api/v1/compiler/run/route.ts:18-23`, `src/lib/compiler/execute.ts:659-670`
+- **Confidence:** High
+- **Failure scenario:** A student writes a solution in Korean with ~45K characters. The API accepts it (Zod: 45K < 64K). The compiler rejects it with "Source code exceeds maximum size limit (64KB)". The student tries to shorten their code but can't understand why it's rejected — the character count is well under 64K. They report a bug to the instructor.
+- **Fix:** Use byte-length validation in the Zod schema.
 
 ## Summary
 
-5 findings: 1 MEDIUM/HIGH, 2 MEDIUM/MEDIUM, 2 LOW/MEDIUM.
+3 findings: 1 MEDIUM, 2 LOW.

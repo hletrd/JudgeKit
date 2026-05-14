@@ -108,6 +108,36 @@ describe("executeCompilerRun", () => {
     });
   });
 
+  it("rejects positional parameter expansion ($0-$9) in local fallback commands", async () => {
+    const { executeCompilerRun } = await import("@/lib/compiler/execute");
+
+    await expect(
+      executeCompilerRun({
+        ...VALID_OPTIONS,
+        language: {
+          ...VALID_OPTIONS.language,
+          runCommand: "python3 /workspace/solution.py $1",
+        },
+      })
+    ).resolves.toMatchObject({
+      stderr: "Invalid run command",
+      exitCode: null,
+    });
+
+    await expect(
+      executeCompilerRun({
+        ...VALID_OPTIONS,
+        language: {
+          ...VALID_OPTIONS.language,
+          runCommand: "python3 /workspace/solution.py $0",
+        },
+      })
+    ).resolves.toMatchObject({
+      stderr: "Invalid run command",
+      exitCode: null,
+    });
+  });
+
   it("fails closed with an explicit config error when a runner URL is set without any runner auth token", async () => {
     process.env.COMPILER_RUNNER_URL = "http://judge-worker:3001";
 

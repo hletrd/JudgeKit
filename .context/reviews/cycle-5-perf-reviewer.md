@@ -1,53 +1,39 @@
-# Performance Reviewer — RPF Cycle 5
+# Performance Reviewer — Cycle 5
 
 **Reviewer:** perf-reviewer
-**Base commit:** 00002346
-**Date:** 2026-04-22
+**Base commit:** 6bb2b2eb
+**Date:** 2026-05-14
 
 ## Findings
 
-### PERF-1: `anti-cheat-dashboard.tsx` missing `useVisibilityPolling` — instructor stale data [MEDIUM/MEDIUM]
+### P5-1: `realtime-coordination.ts` heartbeat entries never cleaned up from `rateLimits` [MEDIUM]
 
-**File:** `src/components/contest/anti-cheat-dashboard.tsx:149-151`
-**Confidence:** HIGH
+- **File:** `src/lib/realtime/realtime-coordination.ts:104-109, 152-203`
+- **Confidence:** High
+- **Description:** Same as S5-1. The `rateLimits` table is used for three different concerns (API rate limiting, SSE slots, heartbeat dedup). Heartbeat entries with prefix `realtime:heartbeat:%` are never cleaned up. Over time this causes table bloat, slowing down all queries that scan `rateLimits` including the rate-limit checks and SSE slot acquisition queries. The `rateLimits` table already has an index on `key`, but expired entries accumulate without bound.
+- **Fix:** Add periodic cleanup for expired heartbeat entries, or migrate heartbeats to a separate table.
 
-The instructor-facing anti-cheat dashboard does not poll for updates. During a live contest with many participants, anti-cheat events arrive continuously, but instructors see stale data until they manually refresh the page. The student-facing `ParticipantAntiCheatTimeline` was already fixed with `useVisibilityPolling` in cycle 3.
+### P5-2: `events/route.ts` `sharedPollTick` unbounded `inArray` query (deferred) [LOW]
 
-**Fix:** Replace `useEffect(() => { fetchEvents(); }, [fetchEvents])` with `useVisibilityPolling(() => { void fetchEvents(); }, 30_000)`.
+- **File:** `src/app/api/v1/submissions/[id]/events/route.ts:224-232`
+- **Confidence:** High
+- **Description:** Already deferred. The `inArray(submissions.id, submissionIds)` query has no upper bound on the ID list size. PostgreSQL's query planner may switch to a suboptimal nested loop for large IN lists. Each poll tick queries all active submission IDs simultaneously.
+- **Fix:** Batch the query into chunks of 100 IDs, or switch to a status-based query with LIMIT.
 
----
+### P5-3: `events/route.ts` `stopSharedPollTimer` race with in-progress tick (deferred) [LOW]
 
-### PERF-2: `accepted-solutions.tsx` uses native `<select>` — two instances [LOW/LOW]
+- **File:** `src/app/api/v1/submissions/[id]/events/route.ts:161-166`
+- **Confidence:** Medium
+- **Description:** Already deferred. `stopSharedPollTimer()` clears the interval but does not wait for an in-flight `sharedPollTick()` promise. During graceful shutdown, DB connections may be released mid-query.
+- **Fix:** Track the active poll promise and await it in `stopSharedPollTimer`.
 
-**File:** `src/components/problem/accepted-solutions.tsx:104-117,122-137`
-**Confidence:** HIGH
+### P5-4: `compiler/execute.ts` `runDocker` stdout/stderr UTF-8 boundary split [LOW]
 
-Native `<select>` elements don't participate in the project's design system, causing layout shift and inconsistent rendering. While not a direct performance issue, they cause unnecessary style recalculation when the theme changes because they don't use CSS variables.
-
-**Fix:** Replace with project's `Select` component.
-
----
-
-### PERF-3: `anti-cheat-dashboard.tsx` uses native `<select>` [LOW/LOW]
-
-**File:** `src/components/contest/anti-cheat-dashboard.tsx:419-432`
-**Confidence:** HIGH
-
-Same as PERF-2. Native `<select>` in the student filter.
-
-**Fix:** Replace with project's `Select` component.
-
----
-
-### PERF-4: `score-timeline-chart.tsx` uses native `<select>` [LOW/LOW]
-
-**File:** `src/components/contest/score-timeline-chart.tsx:57`
-**Confidence:** HIGH
-
-Same class of issue.
-
-**Fix:** Replace with project's `Select` component.
+- **File:** `src/lib/compiler/execute.ts:438-456`
+- **Confidence:** Low
+- **Description:** When truncating stdout/stderr at `MAX_OUTPUT_BYTES`, `chunk.toString("utf8", 0, remaining)` may split a multi-byte UTF-8 character at the boundary, producing invalid UTF-8 in the truncated output. This is a minor data corruption issue for output containing CJK or emoji characters near the 4MiB limit.
+- **Fix:** Use a UTF-8-safe truncation method (e.g., `Buffer.toString()` then truncate by code points, or use `TextDecoder` with `stream: true`).
 
 ## Summary
 
-4 findings: 1 MEDIUM/MEDIUM (missing polling), 3 LOW/LOW (native selects).
+4 findings: 1 MEDIUM, 3 LOW (2 deferred). No new OOM or CPU-bound issues found.

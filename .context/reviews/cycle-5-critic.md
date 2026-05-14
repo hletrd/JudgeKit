@@ -1,53 +1,38 @@
-# Critic — RPF Cycle 5
+# Critic — Cycle 5
 
 **Reviewer:** critic
-**Base commit:** 00002346
-**Date:** 2026-04-22
+**Base commit:** 6bb2b2eb
+**Date:** 2026-05-14
 
 ## Multi-Perspective Critique
 
-### CRI-1: `.json()` before `response.ok` still present — systemic pattern failure [MEDIUM/HIGH]
+### CRI-1: `rateLimits` table overload is a ticking time bomb for production [MEDIUM]
 
-**Files:**
-- `src/components/discussions/discussion-post-delete-button.tsx:25`
-- `src/components/exam/start-exam-button.tsx:41`
+- **File:** `src/lib/realtime/realtime-coordination.ts`, `src/lib/security/api-rate-limit.ts`
+- **Confidence:** High
 
-**Confidence:** HIGH
+The `rateLimits` table currently serves three entirely different purposes: API rate limiting (with backoff logic), SSE connection slot tracking (where `blockedUntil` means "connection expires at"), and heartbeat deduplication (where `lastAttempt` means "last heartbeat timestamp"). The cleanup logic only removes expired SSE entries. Heartbeat entries are never cleaned up. In a production environment with thousands of students and daily assignments, this table will grow without bound. The `acquireSharedSseConnectionSlot` function already has a `getSsePrefixPattern()` that only matches `realtime:sse:user:%` — there is literally no code path that ever deletes `realtime:heartbeat:%` entries. This is not a theoretical concern; it's a guaranteed table bloat issue.
 
-After 4 cycles of fixing this pattern one instance at a time, it keeps reappearing. The current approach of fixing individual files is insufficient. The `apiFetch` JSDoc documents the correct pattern, but documentation alone does not prevent the bug. The `apiJson` helper was added in cycle 3 and removed in cycle 4 because no component used it — a clear signal that the approach was wrong. A successful fix requires making the safe path the *easiest* path.
+**Recommendation:** Either add a category column with per-category cleanup, or split into separate tables before the next production deployment with significant user growth.
 
-**Recommendation:** Create an ESLint rule that flags `response.json()` or `res.json()` calls that are not preceded by a `response.ok` or `res.ok` check within the same function scope. This would catch the bug at write time.
+### CRI-2: Defense-in-depth gaps in shell command validator [MEDIUM]
 
----
+- **File:** `src/lib/compiler/execute.ts:170-175`
+- **Confidence:** Medium
 
-### CRI-2: `anti-cheat-dashboard.tsx` missing polling is a feature gap, not just a bug [MEDIUM/MEDIUM]
+The shell command validator documents that it blocks "Variable substitution: `${`" but the regex actually blocks `$a`, `$FOO`, etc. while allowing `$1`, `$0`. The comment and the regex are subtly mismatched. A developer reading the comment might believe positional parameters are blocked when they are not. The trust boundary (Docker sandbox) is strong, but the validator's purpose is defense-in-depth — it should match its documented intent.
 
-**File:** `src/components/contest/anti-cheat-dashboard.tsx:149-151`
-**Confidence:** HIGH
+**Recommendation:** Update the regex and the comment to be consistent. If positional parameters are intentionally allowed, document why.
 
-The student-facing timeline was fixed in cycle 3 but the instructor dashboard was missed. During a live contest, instructors rely on the anti-cheat dashboard to detect cheating in real time. Without polling, they must manually refresh the page — a poor experience that undermines the purpose of the feature.
+### CRI-3: Size validation mismatch between API contract and runtime [LOW]
 
----
+- **File:** `src/app/api/v1/compiler/run/route.ts`, `src/lib/compiler/execute.ts`
+- **Confidence:** High
 
-### CRI-3: Native `<select>` elements keep appearing — need structural solution [LOW/LOW]
+A user submits Korean source code of 40,000 characters. The API returns 200 OK (schema validation passes: 40K < 64K). The compiler then rejects it with "Source code exceeds maximum size limit" (byte length: ~120K > 64K). From the user's perspective, the API accepted their input but the compiler refused it with a confusing message. This is a contract mismatch that degrades user trust.
 
-**Files:** `accepted-solutions.tsx`, `anti-cheat-dashboard.tsx`, `score-timeline-chart.tsx`, `filter-form.tsx`
-
-**Confidence:** HIGH
-
-5 native `<select>` instances across 4 files. Same class of issue "fixed" in cycles 2 and 3. Without a lint rule or component lint, developers will keep using native `<select>` because it's simpler.
-
----
-
-### CRI-4: `recruiting-invitations-panel.tsx` mutation handlers lack error handling — inconsistent with codebase conventions [LOW/MEDIUM]
-
-**File:** `src/components/contest/recruiting-invitations-panel.tsx:229-281`
-**Confidence:** MEDIUM
-
-`handleRevoke` and `handleDelete` call `apiFetch` without try/catch. Most mutation handlers in the codebase use try/catch with error toast. These two don't. Network errors become unhandled promise rejections.
-
-**Fix:** Add try/catch with error toast, consistent with the rest of the codebase.
+**Recommendation:** Unify the validation at the API layer so the user gets a clear 400 response before any compiler execution.
 
 ## Summary
 
-4 findings: 1 MEDIUM/HIGH, 1 MEDIUM/MEDIUM, 1 LOW/MEDIUM, 1 LOW/LOW.
+3 findings: 2 MEDIUM, 1 LOW.

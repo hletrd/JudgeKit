@@ -1,119 +1,39 @@
-# Code Reviewer — RPF Cycle 5
+# Code Reviewer — Cycle 5
 
 **Reviewer:** code-reviewer
-**Base commit:** 00002346
-**Date:** 2026-04-22
+**Base commit:** 6bb2b2eb
+**Date:** 2026-05-14
 
 ## Findings
 
-### CR-1: `discussion-post-delete-button.tsx` calls `.json()` before checking `response.ok` [MEDIUM/HIGH]
+### C5-1: `validateShellCommand` allows `$0-$9` positional parameter expansion [MEDIUM]
 
-**File:** `src/components/discussions/discussion-post-delete-button.tsx:25-26`
-**Confidence:** HIGH
+- **File:** `src/lib/compiler/execute.ts:173`
+- **Confidence:** Medium
+- **Description:** The regex `$[A-Za-z_]` blocks `$a`, `$FOO`, etc. but allows `$1`, `$0`, `$9` because digits are excluded from the character class. In a `sh -c` context, positional parameters could expand unexpectedly if an admin-configured compile/run command contains them. This is a defense-in-depth gap that diverges from the stated intent of blocking variable substitution.
+- **Fix:** Change `$[A-Za-z_]` to `$[A-Za-z0-9_]` to also block positional parameter expansion.
 
-`response.json()` is called on line 25 before `response.ok` is checked on line 26. When the server returns a non-JSON body (e.g., 502 HTML), this throws SyntaxError. The catch block catches it but the user sees a useless error message.
+### C5-2: Source code size validation uses different units in schema vs execution [LOW]
 
-**Fix:** Check `response.ok` first, use `.json().catch(() => ({}))` for error responses.
+- **File:** `src/app/api/v1/compiler/run/route.ts:18-23`, `src/app/api/v1/playground/run/route.ts:12-18`, `src/lib/compiler/execute.ts:659-670`
+- **Confidence:** High
+- **Description:** The Zod schema validates `sourceCode` using `z.string().max(64 * 1024)` which counts UTF-16 code units (JavaScript string length). But `executeCompilerRun` validates using `Buffer.byteLength(options.sourceCode, "utf8")` which counts UTF-8 bytes. For CJK/Korean text (3 bytes per character in UTF-8), a source code of 40K characters passes the schema but fails at execution time with "Source code exceeds maximum size limit". This creates inconsistent UX where valid schema input is rejected at runtime.
+- **Fix:** Align both checks to use byte length. Update the Zod schema with a custom refinement that checks `Buffer.byteLength(value, "utf8")`.
 
----
+### C5-3: `findRestrictedAssignmentIdForProblem` and `findActiveRestrictedAssignmentIdForUser` lack deterministic tie-breaker [LOW]
 
-### CR-2: `start-exam-button.tsx` calls `.json()` on error path without `.catch()` [MEDIUM/MEDIUM]
+- **File:** `src/lib/platform-mode-context.ts:92-93, 163-164`
+- **Confidence:** Medium
+- **Description:** Both raw SQL queries order by `a.starts_at DESC NULLS LAST, a.created_at DESC` without an `a.id ASC` tie-breaker. If two assignments have identical `starts_at` and `created_at`, the `LIMIT 1` result is nondeterministic and may vary between executions, causing inconsistent platform mode enforcement.
+- **Fix:** Add `, a.id ASC` as a final tie-breaker to both ORDER BY clauses.
 
-**File:** `src/components/exam/start-exam-button.tsx:41`
-**Confidence:** HIGH
+### C5-4: `judge/claim/route.ts` `submittedAt` schema accepts Infinity [LOW]
 
-Inside the `!response.ok` branch, `await response.json()` can throw SyntaxError if the error body is not JSON. The outer catch handles it but falls through to the generic error toast, losing useful information.
-
-**Fix:** Use `.json().catch(() => ({}))` on the error path.
-
----
-
-### CR-3: `accepted-solutions.tsx` uses native `<select>` — two instances [LOW/LOW]
-
-**File:** `src/components/problem/accepted-solutions.tsx:104-117,122-137`
-**Confidence:** HIGH
-
-Two native `<select>` elements for sort and language filter. Same class of issue previously fixed in `contest-replay.tsx` (cycle 3) and `contest-clarifications.tsx` (cycle 2).
-
-**Fix:** Replace with project's `Select` component family.
-
----
-
-### CR-4: `anti-cheat-dashboard.tsx` uses native `<select>` for student filter [LOW/LOW]
-
-**File:** `src/components/contest/anti-cheat-dashboard.tsx:419-432`
-**Confidence:** HIGH
-
-Native `<select>` instead of the project's `Select` component.
-
-**Fix:** Replace with project's `Select` component family.
-
----
-
-### CR-5: `code-timeline-panel.tsx` silently swallows fetch errors [LOW/MEDIUM]
-
-**File:** `src/components/contest/code-timeline-panel.tsx:47-61`
-**Confidence:** MEDIUM
-
-When the API returns `!res.ok`, the function silently does nothing. No error toast. The `try` block has no `catch` — network errors are unhandled promise rejections.
-
-**Fix:** Add catch block and show error toast on `!res.ok`.
-
----
-
-### CR-6: `problem-set-form.tsx` calls `.json()` without `.catch()` on 4 error paths [MEDIUM/LOW]
-
-**File:** `src/app/(dashboard)/dashboard/problem-sets/_components/problem-set-form.tsx:129,158,180,214`
-**Confidence:** MEDIUM
-
-Four API calls call `await response.json()` on error paths without `.catch()`.
-
-**Fix:** Add `.json().catch(() => ({}))` pattern.
-
----
-
-### CR-7: `anti-cheat-dashboard.tsx` missing `useVisibilityPolling` — stale data during live contests [MEDIUM/MEDIUM]
-
-**File:** `src/components/contest/anti-cheat-dashboard.tsx:149-151`
-**Confidence:** HIGH
-
-Instructor-facing anti-cheat dashboard fetches events once on mount and never polls. The student-facing `ParticipantAntiCheatTimeline` was fixed in cycle 3 to use `useVisibilityPolling`, but this component was not.
-
-**Fix:** Replace `useEffect(() => { fetchEvents(); }, [fetchEvents])` with `useVisibilityPolling(() => { void fetchEvents(); }, 30_000)`.
-
----
-
-### CR-8: `score-timeline-chart.tsx` uses native `<select>` [LOW/LOW]
-
-**File:** `src/components/contest/score-timeline-chart.tsx:57`
-**Confidence:** HIGH
-
-Native `<select>` instead of the project's `Select` component.
-
-**Fix:** Replace with project's `Select` component family.
-
----
-
-### CR-9: `filter-form.tsx` uses native `<select>` [LOW/LOW]
-
-**File:** `src/app/(dashboard)/dashboard/groups/[id]/assignments/[assignmentId]/filter-form.tsx:68`
-**Confidence:** HIGH
-
-Native `<select>` instead of the project's `Select` component.
-
-**Fix:** Replace with project's `Select` component family.
-
----
-
-### CR-10: `recruiting-invitations-panel.tsx` — `handleRevoke` and `handleDelete` have no try/catch [LOW/MEDIUM]
-
-**File:** `src/components/contest/recruiting-invitations-panel.tsx:229-281`
-**Confidence:** MEDIUM
-
-`handleRevoke` and `handleDelete` call `apiFetch` without try/catch. Network errors will result in unhandled promise rejections. While the UI will appear functional (the user clicked a button), the promise rejection is logged in the console and could cause issues in development.
-
-**Fix:** Wrap in try/catch with error toast.
+- **File:** `src/app/api/v1/judge/claim/route.ts:53-62`
+- **Confidence:** Low
+- **Description:** The `submittedAt` Zod schema uses `z.number().refine((n) => !Number.isNaN(n))` which accepts `Infinity` and `-Infinity`. The string transform path also accepts `"1e309"` which parses to `Infinity`. While the SQL query returns finite `bigint` values, the schema is weaker than it should be as a defense-in-depth validator.
+- **Fix:** Add `Number.isFinite(n)` check to both the number refine and string transform paths.
 
 ## Summary
 
-10 findings: 1 MEDIUM/HIGH, 2 MEDIUM/MEDIUM, 1 MEDIUM/LOW, 4 LOW/LOW (native selects), 2 LOW/MEDIUM.
+4 findings: 1 MEDIUM, 3 LOW. No regressions from prior cycles.
