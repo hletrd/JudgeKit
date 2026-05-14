@@ -51,10 +51,10 @@ const claimedSubmissionRowSchema = z.object({
   score: coerceNullableNumber,
   judgedAt: coerceNullableNumber,
   submittedAt: z.union([
-    z.number().refine((n) => !Number.isNaN(n)),
+    z.number().refine((n) => !Number.isNaN(n) && Number.isFinite(n)),
     z.string().transform((s) => {
       const n = Number(s);
-      if (Number.isNaN(n)) {
+      if (Number.isNaN(n) || !Number.isFinite(n)) {
         throw new Error(`Invalid submittedAt: ${s}`);
       }
       return n;
