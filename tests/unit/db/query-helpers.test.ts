@@ -50,6 +50,39 @@ describe("Query Helpers", () => {
     );
   });
 
+  it("rawQueryOne skips parameter replacement inside string literals with escaped quotes", async () => {
+    const mockQuery = vi.fn().mockResolvedValue({ rows: [{ id: "1" }] });
+    vi.doMock("@/lib/db/index", () => ({ pool: { query: mockQuery }, transactionContext: { getStore: () => undefined } }));
+    const { rawQueryOne } = await import("@/lib/db/queries");
+    await rawQueryOne("SELECT * FROM users WHERE name = 'it''s @email here' AND id = @id", { id: "1" });
+    expect(mockQuery).toHaveBeenCalledWith(
+      "SELECT * FROM users WHERE name = 'it''s @email here' AND id = $1",
+      ["1"]
+    );
+  });
+
+  it("rawQueryOne warns when called inside a transaction callback", async () => {
+    const mockQuery = vi.fn().mockResolvedValue({ rows: [{ id: "1" }] });
+    const warnSpy = vi.fn();
+    vi.doMock("@/lib/db/index", () => ({ pool: { query: mockQuery }, transactionContext: { getStore: () => true } }));
+    vi.doMock("@/lib/logger", () => ({ logger: { warn: warnSpy } }));
+    const { rawQueryOne } = await import("@/lib/db/queries");
+    await rawQueryOne("SELECT * FROM users WHERE id = @id", { id: "1" });
+    expect(warnSpy).toHaveBeenCalledWith(
+      "[rawQueryOne] Called inside a transaction callback — this runs on the global pool and does NOT participate in the Drizzle transaction. Use tx.execute() instead."
+    );
+  });
+
+  it("rawQueryOne does not warn when called outside a transaction", async () => {
+    const mockQuery = vi.fn().mockResolvedValue({ rows: [{ id: "1" }] });
+    const warnSpy = vi.fn();
+    vi.doMock("@/lib/db/index", () => ({ pool: { query: mockQuery }, transactionContext: { getStore: () => undefined } }));
+    vi.doMock("@/lib/logger", () => ({ logger: { warn: warnSpy } }));
+    const { rawQueryOne } = await import("@/lib/db/queries");
+    await rawQueryOne("SELECT * FROM users WHERE id = @id", { id: "1" });
+    expect(warnSpy).not.toHaveBeenCalled();
+  });
+
   it("rawQueryOne fails closed when a named SQL parameter is missing", async () => {
     const mockQuery = vi.fn();
     vi.doMock("@/lib/db/index", () => ({ pool: { query: mockQuery }, transactionContext: { getStore: () => undefined } }));

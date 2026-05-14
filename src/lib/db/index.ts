@@ -55,7 +55,7 @@ export const pool: Pool | null = _pool;
  * called inside a transaction callback (they run on the global pool and do
  * NOT participate in the Drizzle transaction). See rawQueryOne in queries.ts.
  */
-export const transactionContext = new AsyncLocalStorage<void>();
+export const transactionContext = new AsyncLocalStorage<boolean>();
 
 /**
  * Transaction client type inferred from Drizzle's transaction callback.
@@ -79,7 +79,7 @@ export function execTransaction<T>(
     return Promise.resolve(fn(db as unknown as TransactionClient));
   }
 
-  return db.transaction(async (tx) => transactionContext.run(undefined, () => fn(tx as TransactionClient)));
+  return db.transaction(async (tx) => transactionContext.run(true, () => fn(tx as TransactionClient)));
 }
 
 export { db };

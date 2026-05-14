@@ -51,7 +51,7 @@ export async function rawQueryOne<T = Record<string, unknown>>(
   params?: Record<string, unknown>
 ): Promise<T | undefined> {
   if (!pool) throw new Error("PostgreSQL pool not available");
-  if (transactionContext.getStore() !== undefined) {
+  if (transactionContext.getStore() === true) {
     logger.warn("[rawQueryOne] Called inside a transaction callback — this runs on the global pool and does NOT participate in the Drizzle transaction. Use tx.execute() instead.");
   }
   const { text, values } = namedToPositional(sql, params);
@@ -81,7 +81,7 @@ export async function rawQueryAll<T = Record<string, unknown>>(
   params?: Record<string, unknown>
 ): Promise<T[]> {
   if (!pool) throw new Error("PostgreSQL pool not available");
-  if (transactionContext.getStore() !== undefined) {
+  if (transactionContext.getStore() === true) {
     logger.warn("[rawQueryAll] Called inside a transaction callback — this runs on the global pool and does NOT participate in the Drizzle transaction. Use tx.execute() instead.");
   }
   const { text, values } = namedToPositional(sql, params);
@@ -114,10 +114,10 @@ function namedToPositional(
   const values: unknown[] = [];
   const paramNames: string[] = [];
 
-  // Match either a string literal (single or double quoted, no escapes) or
-  // a parameter placeholder. Only placeholders outside literals are replaced.
+  // Match either a string literal (single or double quoted, with escaped quotes)
+  // or a parameter placeholder. Only placeholders outside literals are replaced.
   const text = sql.replace(
-    /('[^']*')|("[^"]*")|@([a-zA-Z_]\w*)/g,
+    /('(?:[^']|'')*')|("(?:[^"]|"")*")|@([a-zA-Z_]\w*)/g,
     (match, _singleQuote, _doubleQuote, name) => {
       // If name is undefined, the match was a string literal — pass through unchanged
       if (name === undefined) {
