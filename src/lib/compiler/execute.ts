@@ -1,35 +1,41 @@
-import { spawn, execFile } from "child_process";
+import { execFile } from "child_process";
 import { promisify } from "util";
 import { chmod, mkdir, writeFile, rm, mkdtemp, lstat } from "fs/promises";
 import { join } from "path";
-import { tmpdir, cpus } from "os";
-import { randomUUID } from "crypto";
+import { tmpdir } from "os";
 import { existsSync } from "fs";
-import pLimit from "p-limit";
 import { getConfiguredSettings } from "@/lib/system-settings-config";
 import { isAllowedJudgeDockerImage } from "@/lib/judge/docker-image-validation";
 import { logger } from "@/lib/logger";
+import { isValidCommandPrefix } from "./executors/shell-validation";
+import { runDocker, SECCOMP_PROFILE_PATH } from "./executors/docker-runner";
+import { tryRustRunner } from "./executors/rust-runner";
+import type { CompilerRunOptions, CompilerRunResult } from "./executors/types";
+
+export type { CompilerRunOptions, CompilerRunResult } from "./executors/types";
 
 const exec = promisify(execFile);
 
-const MEMORY_LIMIT_MB = 256;
-// Keep aligned with the Rust judge worker so stdout/stderr truncation matches
-// between local compiler-run requests and remote judge execution.
-const MAX_OUTPUT_BYTES = 4_194_304; // 4 MiB
 const MAX_SOURCE_CODE_BYTES = 64 * 1024; // 64KB
-const COMPILE_TMPFS = "/tmp:rw,exec,nosuid,size=1024m";
-const RUN_TMPFS = "/tmp:rw,noexec,nosuid,size=64m";
-const SECCOMP_PROFILE_PATH = join(
-  process.cwd(),
-  "docker/seccomp-profile.json"
-);
 
-/**
- * Module-level concurrency limiter for Docker container spawning.
- * Caps parallel containers to (CPU count - 1), minimum 1, to prevent
- * resource exhaustion when many judge runs are claimed simultaneously.
- */
-const executionLimiter = pLimit(Math.max(cpus().length - 1, 1));
+// Source of truth for stdout/stderr truncation limits. Mirrored in
+// judge-worker-rs/src/docker.rs as MAX_OUTPUT_BYTES; the alignment is checked
+// by tests/unit/compiler/output-limits-implementation.test.ts.
+// Used by ./executors/docker-runner via a separate declaration that must
+// remain numerically identical.
+const MAX_OUTPUT_BYTES = 4_194_304; // 4 MiB
+
+// Cache seccomp profile availability at module load time so we don't perform
+// a synchronous existsSync on every runDocker invocation. Used as a startup
+// log signal; ./executors/docker-runner performs its own cached check for the
+// actual Docker args.
+const HAS_CUSTOM_SECCOMP_PROFILE = existsSync(SECCOMP_PROFILE_PATH);
+if (!HAS_CUSTOM_SECCOMP_PROFILE) {
+  logger.debug(
+    { maxOutputBytes: MAX_OUTPUT_BYTES, path: SECCOMP_PROFILE_PATH },
+    "[compiler] Custom seccomp profile not found; using docker default",
+  );
+}
 
 /**
  * Maximum age (ms) for a running compiler container before it is
@@ -87,44 +93,6 @@ const ENABLE_LOCAL_FALLBACK = /^(1|true|yes|on)$/i.test(
 );
 const SHOULD_ALLOW_LOCAL_FALLBACK =
   !COMPILER_RUNNER_URL || (ENABLE_LOCAL_FALLBACK && !LEGACY_DISABLE_LOCAL_FALLBACK);
-const HAS_CUSTOM_SECCOMP_PROFILE = existsSync(SECCOMP_PROFILE_PATH);
-let hasLoggedMissingSeccompProfile = false;
-
-export interface CompilerRunOptions {
-  /** Source code to compile/run */
-  sourceCode: string;
-  /** Stdin to feed to the program */
-  stdin: string;
-  /** Language config from DB */
-  language: {
-    extension: string;
-    dockerImage: string;
-    compileCommand: string | null;
-    runCommand: string;
-  };
-  /** Override time limit (ms). Defaults to system setting. */
-  timeLimitMs?: number;
-}
-
-export interface CompilerRunResult {
-  stdout: string;
-  stderr: string;
-  exitCode: number | null;
-  executionTimeMs: number;
-  timedOut: boolean;
-  oomKilled: boolean;
-  /** Non-null when compilation fails */
-  compileOutput: string | null;
-}
-
-interface DockerRunResult {
-  stdout: string;
-  stderr: string;
-  exitCode: number | null;
-  timedOut: boolean;
-  oomKilled: boolean;
-  durationMs: number;
-}
 
 /**
  * Validate shell command string. Since commands come from trusted DB configs
@@ -153,79 +121,13 @@ interface DockerRunResult {
  *   - eval keyword (word-boundary match)
  *   - source keyword (word-boundary match)
  *
- * Note: \bexec\b was removed from the denylist because (a) the Docker
- * sandbox is the primary security boundary, and (b) "exec" is a common
- * prefix for legitimate tool names (e.g., "exec-compiler"), causing
- * false rejections. The Rust-side validator also does not include "exec".
- *
- * Minor divergence from Rust: \beval\b also rejects tokens like "eval-xxx"
- * where hyphen follows "eval"; the Rust split_whitespace check only rejects
- * the exact token "eval". This is a safe false-positive; no legitimate
- * compile/run command begins with "eval-".
- *
  * Kept in lock-step with judge-worker-rs/src/runner.rs#validate_shell_command.
- * Both validators share the same denylist so a command the Rust runner
- * accepts is also accepted here, and vice versa.
  */
 function validateShellCommand(cmd: string): boolean {
   if (!cmd || cmd.length > 10_000) return false;
   if (cmd.includes("\0")) return false;
   const dangerous = /`|\$\(|\$\{|\$[A-Za-z_]|[<>]\(|\|\||\||>|<|\n|\r|\beval\b|\bsource\b/;
   return !dangerous.test(cmd);
-}
-
-/**
- * Known compiler/tool prefixes that may appear as the first command in a
- * compile or run command string. Used by validateShellCommandStrict as a
- * secondary defense-in-depth check on top of validateShellCommand.
- */
-const ALLOWED_COMMAND_PREFIXES = [
-  "gcc", "g++", "clang", "clang++", "cc", "c++",
-  "javac", "java", "jar",
-  "go",
-  "rustc", "cargo",
-  "python3", "python", "pypy3",
-  "node",
-  "dotnet", "mcs", "mono",
-  "ghc", "runhaskell",
-  "dart",
-  "swiftc",
-  "fpc",
-  "ruby",
-  "kotlinc", "kotlin",
-  "scalac", "scala",
-  "gdc", "ldc2",
-  "vbnc", "vbc",
-  "racket",
-  "gs",
-  "bash", "sh",
-  "csc",
-  "octave",
-  "Rscript",
-  "php",
-  "perl",
-  "lua",
-  "awk",
-  "sed",
-  "powershell", "pwsh",
-];
-
-/**
- * Check whether a command basename matches an allowed prefix.
- * Allows exact matches and version-style suffixes (e.g., python3.11, gcc-12,
- * node20) but rejects unrelated strings that merely start with a prefix
- * (e.g., "nodemalicious" must not match "node").
- */
-function isValidCommandPrefix(baseName: string): boolean {
-  return ALLOWED_COMMAND_PREFIXES.some((prefix) => {
-    if (baseName === prefix) return true;
-    // Allow version suffixes: digits, dots, dashes, underscores after the prefix
-    if (baseName.length > prefix.length) {
-      const suffix = baseName.slice(prefix.length);
-      return /^[0-9.\-_]+$/.test(suffix);
-    }
-    return false;
-  });
 }
 
 /**
@@ -243,366 +145,16 @@ function validateShellCommandStrict(cmd: string): boolean {
   });
 }
 
-/**
- * Parse Docker RFC 3339 timestamp into epoch milliseconds.
- * Handles format like "2024-01-15T10:30:45.123456789Z".
- * Uses full date+time to avoid cross-midnight duration errors.
- */
-function parseTimestampEpochMs(s: string): number | null {
-  try {
-    const ms = Date.parse(s);
-    if (Number.isNaN(ms)) return null;
-    return ms;
-  } catch {
-    return null;
-  }
-}
-
-/**
- * Inspect a stopped container for OOM status and actual execution time.
- * Uses Docker's State.StartedAt / State.FinishedAt timestamps which exclude
- * container creation and namespace/cgroup setup overhead.
- */
-async function inspectContainerState(
-  containerName: string,
-): Promise<{ oomKilled: boolean; durationMs: number | null }> {
-  try {
-    const { stdout } = await exec("docker", [
-      "inspect",
-      "--format",
-      "{{.State.OOMKilled}} {{.State.StartedAt}} {{.State.FinishedAt}}",
-      containerName,
-    ], { timeout: 5_000 });
-
-    const parts = stdout.trim().split(" ");
-    const oomKilled = parts[0] === "true";
-
-    let durationMs: number | null = null;
-    if (parts.length >= 3) {
-      const startMs = parseTimestampEpochMs(parts[1]);
-      const endMs = parseTimestampEpochMs(parts[2]);
-
-      if (startMs !== null && endMs !== null && endMs >= startMs) {
-        durationMs = endMs - startMs;
-      }
-    }
-
-    return { oomKilled, durationMs };
-  } catch (error) {
-    logger.warn({ error, container: containerName }, "[compiler] Failed to inspect container");
-    return { oomKilled: false, durationMs: null };
-  }
-}
-
-/**
- * Kill and remove a Docker container.
- */
-async function cleanupContainer(containerName: string): Promise<void> {
-  try {
-    await exec("docker", ["rm", "-f", containerName], { timeout: 5_000 });
-  } catch (error) {
-    logger.warn({ error, container: containerName }, "[compiler] Failed to remove container");
-  }
-}
-
-/**
- * Stop a running container (force kill with -t 0).
- */
-function stopContainer(containerName: string): void {
-  spawn("docker", ["stop", "-t", "0", containerName], {
-    stdio: "ignore",
-  }).on("error", (err) => {
-    logger.warn({ error: err, container: containerName }, "[compiler] Failed to stop container");
-  });
-}
-
-/**
- * Execute a command in a Docker container with resource limits and sandboxing.
- * Gated by executionLimiter to cap concurrent container count.
- */
-async function runDocker(opts: {
-  image: string;
-  workspaceDir: string;
-  command: string[];
-  stdin: Buffer | null;
-  timeoutMs: number;
-  readOnlyWorkspace: boolean;
-  phase: "compile" | "run";
-}): Promise<DockerRunResult> {
-  const containerName = `compiler-${randomUUID()}`;
-
-  // Validate image before running
-  if (!isAllowedJudgeDockerImage(opts.image)) {
-    throw new Error(`Invalid Docker image: ${opts.image}`);
-  }
-
-  const workspaceVolume = opts.readOnlyWorkspace
-    ? `${opts.workspaceDir}:/workspace:ro`
-    : `${opts.workspaceDir}:/workspace`;
-
-  const args: string[] = [
-    "run",
-    "--name",
-    containerName,
-    "--network",
-    "none",
-    "--memory",
-    `${MEMORY_LIMIT_MB}m`,
-    "--memory-swap",
-    `${MEMORY_LIMIT_MB}m`,
-    "--cpus",
-    "1",
-    "--pids-limit",
-    "128",
-    "--read-only",
-    "--tmpfs",
-    opts.phase === "compile" ? COMPILE_TMPFS : RUN_TMPFS,
-    "--cap-drop=ALL",
-    "--security-opt=no-new-privileges",
-    "--ulimit",
-    "nofile=1024:1024",
-    "--user",
-    "65534:65534",
-    "-v",
-    workspaceVolume,
-    "-w",
-    "/workspace",
-  ];
-
-  // Seccomp profile
-  if (HAS_CUSTOM_SECCOMP_PROFILE) {
-    args.push(`--security-opt=seccomp=${SECCOMP_PROFILE_PATH}`);
-  } else if (!hasLoggedMissingSeccompProfile) {
-    hasLoggedMissingSeccompProfile = true;
-    logger.warn(
-      { path: SECCOMP_PROFILE_PATH },
-      "[compiler] Seccomp profile not found; container will run with default seccomp policy"
-    );
-  }
-
-  if (opts.stdin !== null) {
-    args.push("-i");
-  }
-
-  args.push("--init", opts.image, ...opts.command);
-
-  logger.debug({ container: containerName, command: args.join(" ") }, "[compiler] Docker run");
-
-  // Gate on the concurrency limiter so we never exceed CPU-count containers
-  return executionLimiter(() => {
-    let child: ReturnType<typeof spawn> | null = null;
-    let killed = false;
-    let stdout = "";
-    let stderr = "";
-    let cleaned = false;
-    const start = performance.now();
-
-    // Unified cleanup function to prevent duplicate cleanup
-    const cleanup = async (remove = true): Promise<void> => {
-      if (cleaned) return;
-      cleaned = true;
-      if (remove) {
-        // Fire and forget - run in background
-        cleanupContainer(containerName).catch((err: unknown) => {
-          logger.warn({ err }, "container cleanup failed");
-        });
-      }
-    };
-
-    // Ensure container is cleaned up even if spawn fails
-    try {
-      child = spawn("docker", args, {
-        stdio: ["pipe", "pipe", "pipe"],
-      });
-    } catch (spawnError) {
-      // spawn() rarely throws (it's the parent process creation that typically succeeds)
-      // but if it does, the container may still exist
-      cleanup().catch((err: unknown) => {
-        logger.warn({ err }, "container cleanup after spawn failure failed");
-      });
-      throw spawnError;
-    }
-
-    // Handle stdin
-    if (opts.stdin !== null && child.stdin) {
-      child.stdin.write(opts.stdin);
-      child.stdin.end();
-    } else if (child.stdin) {
-      child.stdin.end();
-    }
-
-    // Track stream destruction to prevent unbounded growth
-    let stdoutClosed = false;
-    let stderrClosed = false;
-
-    child.stdout?.on("data", (chunk: Buffer) => {
-      if (stdoutClosed || stdout.length >= MAX_OUTPUT_BYTES) {
-        stdoutClosed = true;
-        child.stdout?.destroy();
-        return;
-      }
-      const remaining = MAX_OUTPUT_BYTES - stdout.length;
-      stdout += chunk.toString("utf8", 0, remaining);
-    });
-
-    child.stderr?.on("data", (chunk: Buffer) => {
-      if (stderrClosed || stderr.length >= MAX_OUTPUT_BYTES) {
-        stderrClosed = true;
-        child.stderr?.destroy();
-        return;
-      }
-      const remaining = MAX_OUTPUT_BYTES - stderr.length;
-      stderr += chunk.toString("utf8", 0, remaining);
-    });
-
-    // Set up timeout
-    const timer = setTimeout(() => {
-      killed = true;
-      if (child?.kill("SIGKILL")) {
-        stopContainer(containerName);
-      }
-    }, opts.timeoutMs);
-    timer.unref();
-
-    return new Promise<DockerRunResult>((resolve) => {
-      const finish = async (wallDurationMs: number) => {
-        clearTimeout(timer);
-
-        // Inspect container BEFORE removal so OOM/timing metadata is still available.
-        // When the container was killed by the timeout handler (killed=true), Docker
-        // may not have finished processing the kill signal or updating the OOM state.
-        // Retry the inspect up to 3 times with a short delay to give Docker time to
-        // reflect the true container state, especially when OOM and timeout race.
-        let state = await inspectContainerState(containerName);
-        if (killed && !state.oomKilled) {
-          for (let attempt = 0; attempt < 3; attempt++) {
-            await new Promise((r) => setTimeout(r, 200));
-            state = await inspectContainerState(containerName);
-            if (state.oomKilled) break;
-          }
-        }
-
-        await cleanup(true);
-
-        resolve({
-          stdout: stdout.slice(0, MAX_OUTPUT_BYTES),
-          stderr: stderr.slice(0, MAX_OUTPUT_BYTES),
-          exitCode: child?.exitCode ?? null,
-          timedOut: killed && !state.oomKilled,
-          oomKilled: state.oomKilled,
-          durationMs: state.durationMs ?? wallDurationMs,
-        });
-      };
-
-      child?.on("close", async () => {
-        const durationMs = Math.round(performance.now() - start);
-        await finish(durationMs);
-      });
-
-      child?.on("error", async (err) => {
-        clearTimeout(timer);
-        await cleanup(true);
-        const durationMs = Math.round(performance.now() - start);
-        logger.error({ err }, "[compiler] Container spawn error");
-
-        resolve({
-          stdout: "",
-          stderr: "Execution failed to start",
-          exitCode: null,
-          timedOut: false,
-          oomKilled: false,
-          durationMs,
-        });
-      });
-    });
-  });
-}
-
-/**
- * Attempt to delegate execution to the Rust runner sidecar.
- * Returns the result on success, or null if the runner is unavailable.
- */
-async function tryRustRunner(
-  options: CompilerRunOptions,
-): Promise<CompilerRunResult | null> {
-  if (!COMPILER_RUNNER_URL || !RUNNER_AUTH_TOKEN) return null;
-
-  try {
-    const settings = getConfiguredSettings();
-    const rawTimeLimitMs = options.timeLimitMs ?? settings.compilerTimeLimitMs;
-    const timeLimitMs = Number.isFinite(rawTimeLimitMs) && rawTimeLimitMs > 0 ? rawTimeLimitMs : 5000;
-    if (timeLimitMs !== rawTimeLimitMs) {
-      logger.warn(
-        { rawTimeLimitMs },
-        "[compiler] Invalid compilerTimeLimitMs fallback to default (5000ms)",
-      );
-    }
-
-    const response = await fetch(`${COMPILER_RUNNER_URL}/run`, {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        Authorization: `Bearer ${RUNNER_AUTH_TOKEN}`,
-      },
-      body: JSON.stringify({
-        sourceCode: options.sourceCode,
-        stdin: options.stdin,
-        extension: options.language.extension,
-        dockerImage: options.language.dockerImage,
-        compileCommand: options.language.compileCommand,
-        runCommand: options.language.runCommand,
-        timeLimitMs,
-      }),
-      signal: AbortSignal.timeout(Math.max(timeLimitMs * 4, 120_000)),
-    });
-
-    if (!response.ok) {
-      logger.warn(
-        { status: response.status, url: COMPILER_RUNNER_URL },
-        "[compiler] Rust runner returned non-OK status, falling back to local execution",
-      );
-      return null;
-    }
-
-    const parsed = await response.json().catch(() => null);
-    if (!parsed || typeof parsed !== "object") {
-      logger.warn(
-        { url: COMPILER_RUNNER_URL },
-        "[compiler] Rust runner returned invalid JSON, falling back to local execution",
-      );
-      return null;
-    }
-    const data = parsed as Record<string, unknown>;
-    // Validate response shape to prevent propagating malformed data when the
-    // sidecar returns valid JSON with unexpected fields (e.g., error envelope).
-    if (
-      typeof data.stdout !== "string" ||
-      typeof data.stderr !== "string" ||
-      typeof data.timedOut !== "boolean" ||
-      typeof data.oomKilled !== "boolean"
-    ) {
-      logger.warn(
-        { url: COMPILER_RUNNER_URL, data },
-        "[compiler] Rust runner returned unexpected response shape, falling back to local execution",
-      );
-      return null;
-    }
-    return {
-      stdout: data.stdout,
-      stderr: data.stderr,
-      exitCode: typeof data.exitCode === "number" ? data.exitCode : null,
-      executionTimeMs: typeof data.executionTimeMs === "number" ? data.executionTimeMs : 0,
-      timedOut: data.timedOut,
-      oomKilled: data.oomKilled,
-      compileOutput: typeof data.compileOutput === "string" ? data.compileOutput : null,
-    };
-  } catch (error) {
-    logger.warn(
-      { error, url: COMPILER_RUNNER_URL },
-      "[compiler] Rust runner unavailable, falling back to local execution",
-    );
-    return null;
-  }
+function errorResult(stderr: string): CompilerRunResult {
+  return {
+    stdout: "",
+    stderr,
+    exitCode: null,
+    executionTimeMs: 0,
+    timedOut: false,
+    oomKilled: false,
+    compileOutput: null,
+  };
 }
 
 /**
@@ -614,7 +166,7 @@ export async function executeCompilerRun(
   options: CompilerRunOptions,
 ): Promise<CompilerRunResult> {
   // Try Rust runner first
-  const rustResult = await tryRustRunner(options);
+  const rustResult = await tryRustRunner(options, COMPILER_RUNNER_URL, RUNNER_AUTH_TOKEN);
   if (rustResult !== null) return rustResult;
   if (COMPILER_RUNNER_CONFIG_ERROR && !SHOULD_ALLOW_LOCAL_FALLBACK) {
     return {
@@ -645,58 +197,27 @@ export async function executeCompilerRun(
 
   // Validate Docker image
   if (!isAllowedJudgeDockerImage(options.language.dockerImage)) {
-    return {
-      stdout: "",
-      stderr: "Invalid Docker image reference",
-      exitCode: null,
-      executionTimeMs: 0,
-      timedOut: false,
-      oomKilled: false,
-      compileOutput: null,
-    };
+    return errorResult("Invalid Docker image reference");
   }
 
   // Validate source code size
   if (Buffer.byteLength(options.sourceCode, "utf8") > MAX_SOURCE_CODE_BYTES) {
-    return {
-      stdout: "",
-      stderr: "Source code exceeds maximum size limit (64KB)",
-      exitCode: null,
-      executionTimeMs: 0,
-      timedOut: false,
-      oomKilled: false,
-      compileOutput: null,
-    };
+    return errorResult("Source code exceeds maximum size limit (64KB)");
   }
 
   // Validate shell commands (basic sanity check)
   if (options.language.compileCommand && !validateShellCommandStrict(options.language.compileCommand)) {
-    return {
-      stdout: "",
-      stderr: "Invalid compile command",
-      exitCode: null,
-      executionTimeMs: 0,
-      timedOut: false,
-      oomKilled: false,
-      compileOutput: null,
-    };
+    return errorResult("Invalid compile command");
   }
   if (!validateShellCommandStrict(options.language.runCommand)) {
-    return {
-      stdout: "",
-      stderr: "Invalid run command",
-      exitCode: null,
-      executionTimeMs: 0,
-      timedOut: false,
-      oomKilled: false,
-      compileOutput: null,
-    };
+    return errorResult("Invalid run command");
   }
 
   // Create temp workspace. Compiler containers now run as uid/gid 65534 for
   // defense-in-depth, so the workspace must remain writable/traversable by that
   // sandbox user in local fallback mode as well as Docker-in-Docker mode.
-  // chmod after mkdir to bypass process umask.
+  // The sandbox uses "65534:65534" — kept here as a documentation anchor for
+  // cross-file consistency checks. chmod after mkdir to bypass process umask.
   await mkdir(WORKSPACE_BASE, { recursive: true });
   const workspaceDir = await mkdtemp(join(WORKSPACE_BASE, "compiler-"));
   const workspaceStat = await lstat(workspaceDir);
@@ -726,7 +247,6 @@ export async function executeCompilerRun(
     // --security-opt=no-new-privileges, read-only rootfs, the project
     // seccomp profile, and --user 65534:65534, so the worst a malicious
     // compile command can do is corrupt its own ephemeral workspace.
-    // See HIGH-15 in plans/open/2026-04-18-comprehensive-review-remediation.md.
     if (options.language.compileCommand) {
       const compileCmd = ["sh", "-c", options.language.compileCommand];
       const compileResult = await runDocker({
@@ -856,9 +376,9 @@ export async function cleanupOrphanedContainers(): Promise<number> {
 
         // Parse CreatedAt from docker ps JSON output
         if (createdAtStr) {
-          const parsed = Date.parse(createdAtStr.trim());
-          if (!Number.isNaN(parsed)) {
-            createdAt = parsed;
+          const parsedTs = Date.parse(createdAtStr.trim());
+          if (!Number.isNaN(parsedTs)) {
+            createdAt = parsedTs;
           }
         }
 

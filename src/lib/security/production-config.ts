@@ -1,3 +1,5 @@
+import { logger } from "@/lib/logger";
+
 /**
  * Validates production-required configuration at process startup.
  *
@@ -48,7 +50,7 @@ export function assertProductionConfig(): void {
     missing.map((m) => `  - ${m.name}: ${m.reason}`).join("\n") +
     "\n\nGenerate each missing secret with `openssl rand -hex 32` and add to `.env.production` before redeploying.";
 
-  console.error(message);
+  logger.error({ missing: missing.map((m) => m.name) }, message);
   // Exit non-zero so the supervisor/PM2/systemd unit notices and surfaces an alert.
   // Throwing also works in Next.js's instrumentation hook but exit is more explicit.
   process.exit(1);
