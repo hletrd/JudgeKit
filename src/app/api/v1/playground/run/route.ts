@@ -9,13 +9,19 @@ import { executeCompilerRun } from "@/lib/compiler/execute";
 import { getPlatformModePolicy } from "@/lib/platform-mode";
 import { getEffectivePlatformMode } from "@/lib/platform-mode-context";
 
-const MAX_SOURCE_CODE_LENGTH = 64 * 1024;
-const MAX_STDIN_LENGTH = 64 * 1024 - 1; // -1 to account for the appended newline in executeCompilerRun
+const MAX_SOURCE_CODE_BYTES = 64 * 1024;
+const MAX_STDIN_BYTES = 64 * 1024; // execution layer also appends newline, but API layer checks raw input
 
 const playgroundRunSchema = z.object({
   language: z.string().min(1),
-  sourceCode: z.string().min(1).max(MAX_SOURCE_CODE_LENGTH),
-  stdin: z.string().max(MAX_STDIN_LENGTH).default(""),
+  sourceCode: z.string().min(1).refine(
+    (v) => Buffer.byteLength(v, "utf8") <= MAX_SOURCE_CODE_BYTES,
+    { message: "sourceCodeTooLarge" }
+  ),
+  stdin: z.string().refine(
+    (v) => Buffer.byteLength(v, "utf8") <= MAX_STDIN_BYTES,
+    { message: "stdinTooLarge" }
+  ).default(""),
 });
 
 export const POST = createApiHandler({
