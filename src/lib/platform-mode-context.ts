@@ -89,7 +89,7 @@ async function findRestrictedAssignmentIdForProblem(
              AND (cat.expires_at IS NULL OR cat.expires_at > NOW())
          )
        )
-     ORDER BY a.starts_at DESC NULLS LAST, a.created_at DESC
+     ORDER BY a.starts_at DESC NULLS LAST, a.created_at DESC, a.id ASC
      LIMIT 1`,
     { problemId, userId }
   );
@@ -160,7 +160,7 @@ async function findActiveRestrictedAssignmentIdForUser(
            )
          )
        )
-     ORDER BY a.starts_at DESC NULLS LAST, a.created_at DESC
+     ORDER BY a.starts_at DESC NULLS LAST, a.created_at DESC, a.id ASC
      LIMIT 1`,
     { userId }
   );
