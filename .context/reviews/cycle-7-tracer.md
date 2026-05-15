@@ -1,67 +1,70 @@
-# Tracer — Cycle 7 Deep Review
+# Tracer — Cycle 7 (RPF Loop)
 
-**Date:** 2026-04-20
+**Reviewer:** tracer
+**Date:** 2026-05-15
 **Scope:** Causal tracing of suspicious flows, competing hypotheses
+**Base commit:** f1510a07
 
 ---
 
-## Findings
+## Methodology
 
-### HIGH 1 — Session revocation flow: clock-skew allows bypass
+- Traced the session revocation flow end-to-end to verify the clock-skew fix.
+- Traced SSE connection lifecycle for leaks.
+- Traced judge claim → problem lookup → test case fetch flow.
+- Checked for competing hypotheses that could explain old findings differently.
 
-**Confidence:** HIGH
-**Causal trace:**
+---
+
+## Verification of Previous Findings
+
+### Session revocation flow (post-fix)
 
 ```
-User logs in
-  -> JWT callback: authenticatedAt = Date.now() (app time T1)
-  -> JWT stored in cookie
+Login (credentials provider)
+  -> jwt callback: authenticatedAt = getDbNowMs() / 1000 (DB time)
+  -> JWT cookie set
 
 Admin deactivates user
-  -> PUT /api/v1/users/[id]: tokenInvalidatedAt = new Date() (app time T2)
+  -> users/[id]/route.ts: updates.tokenInvalidatedAt = dbNow (DB time)
   -> DB row updated
 
-Proxy middleware on next request
-  -> getToken() -> JWT with authenticatedAt = T1
-  -> getActiveAuthUserById() -> DB row with tokenInvalidatedAt = T2
-  -> isTokenInvalidated(T1, T2) -> T1 < T2 ? revoked : valid
-
-If T1 >= T2 (clock jumped backward between login and invalidation):
-  -> isTokenInvalidated returns false
-  -> Deactivated user retains access
+Proxy middleware (subsequent request)
+  -> getToken() -> JWT with authenticatedAt (DB time from login)
+  -> getActiveAuthUserById() -> DB row with tokenInvalidatedAt (DB time from revocation)
+  -> isTokenInvalidated(authenticatedAt, tokenInvalidatedAt)
+  -> Both in same reference frame -> correct result
 ```
 
-**Competing hypothesis:** Could `tokenInvalidatedAt` be compared against DB time elsewhere?
-- No. The proxy fetches `tokenInvalidatedAt` from the DB and compares it directly against the JWT's `authenticatedAt`. There is no DB-time conversion step.
+Hypothesis verified: The fix eliminates clock skew as a bypass vector.
 
-**Root cause:** `tokenInvalidatedAt` is set using app-server time, while the comparison is against a JWT value that was also set using app-server time at a different moment. If the app-server clock changes between these two moments, the comparison is invalid.
+### SSE connection lifecycle
 
-**Fix:** Use `getDbNowUncached()` for `tokenInvalidatedAt` so it's in the DB reference frame, and ensure JWT `authenticatedAt` is also comparable against DB time (or document the assumption clearly).
+```
+GET /events
+  -> addConnection(connId, userId) [or shared coordination]
+  -> subscribeToPoll(submissionId, callback)
+  -> startSharedPollTimer() (if first subscriber)
+  -> Stream established
+
+On client disconnect:
+  -> request.signal "abort" -> close()
+  -> unsubscribeFromPoll() -> removeConnection()
+  -> If last subscriber: clearInterval(sharedPollTimer)
+```
+
+No leaks found. The `close()` function is idempotent (guarded by `closed` flag).
 
 ---
 
-### MEDIUM 1 — Public contest status flow: display vs API inconsistency
+## New Findings
 
-**Causal trace:**
-
-```
-User visits /contests (public)
-  -> getPublicContests() -> getContestStatus(contest, new Date()) -> status = "open"
-  -> User sees contest as "open"
-
-User clicks "start exam"
-  -> API call: startExamSession()
-  -> DB time check: SELECT NOW() -> contest is "closed"
-  -> API returns error "assignmentClosed"
-  -> User confused: page said "open" but API says "closed"
-```
-
-**Root cause:** `new Date()` in `getPublicContests()` doesn't match `SELECT NOW()` in `startExamSession()`.
-
-**Fix:** Use `getDbNow()` in `getPublicContests()` and `getPublicContestById()`.
+### No new suspicious flows found.
 
 ---
 
-## Final sweep
+## Conclusion
 
-No additional suspicious flows found. The chat widget, backup/restore, and recruiting flows all have proper DB-time usage for their security-critical paths.
+All previously suspicious flows have been resolved or confirmed safe. No new flows require investigation.
+
+**New findings this cycle: 0**

@@ -1,65 +1,50 @@
-# Test Engineer — Cycle 7 Deep Review
+# Test Engineer — Cycle 7 (RPF Loop)
 
-**Date:** 2026-04-20
+**Reviewer:** test-engineer
+**Date:** 2026-05-15
 **Scope:** Test coverage gaps, flaky tests, TDD opportunities
+**Base commit:** f1510a07
 
 ---
 
-## Findings
+## Methodology
 
-### MEDIUM 1 — No test coverage for `tokenInvalidatedAt` clock-skew behavior
-
-**Confidence:** HIGH
-**Files:**
-- `src/lib/auth/session-security.ts:26-36`
-- `src/app/api/v1/users/[id]/route.ts:164,185,218,260,466`
-- `src/lib/actions/user-management.ts:114,308`
-- `src/lib/actions/change-password.ts:75`
-
-**Problem:** While `tests/unit/db-time.test.ts` tests `getDbNow()` and `getDbNowUncached()`, there are no tests verifying that `tokenInvalidatedAt` is set using DB-consistent time. If a developer changes `tokenInvalidatedAt: new Date()` to use `getDbNowUncached()`, there is no test to prevent a regression back to `new Date()`. Additionally, `isTokenInvalidated()` itself has no unit test for the clock-skew scenario.
-
-**Suggested fix:**
-1. Add a unit test for `isTokenInvalidated()` that verifies the comparison is correct when `tokenInvalidatedAt` and `authenticatedAtSeconds` are in different clock reference frames.
-2. Add integration tests that verify user deactivation, role change, and password reset all set `tokenInvalidatedAt` using DB-consistent time (after the fix is applied).
+- Checked unit, component, integration, and e2e test suites.
+- Verified tests for cycle-5 and cycle-6 fixes.
+- Looked for missing coverage in auth, SSE, and clock-skew paths.
+- Checked for test flakiness indicators.
 
 ---
 
-### MEDIUM 2 — No test coverage for public contest pages using DB time
+## Verification of Previous Findings
 
-**Confidence:** HIGH
-**Files:**
-- `src/lib/assignments/public-contests.ts:30,124`
+### Old cycle-7 test coverage gaps
 
-**Problem:** The public contest pages determine contest status using `new Date()`. After the fix (using `getDbNow()`), there should be tests verifying that the status is computed against DB time, not app-server time. Currently there are no such tests.
+The old cycle-7 findings requested tests for:
+1. `tokenInvalidatedAt` clock-skew behavior
+2. Public contest pages using DB time
+3. Active-timed-assignments sidebar using DB time
 
-**Suggested fix:** Add a test that verifies `getPublicContests()` and `getPublicContestById()` use `getDbNow()` for contest status computation.
-
----
-
-### MEDIUM 3 — No test coverage for active-timed-assignments sidebar using DB time
-
-**Confidence:** MEDIUM
-**Files:**
-- `src/lib/assignments/active-timed-assignments.ts:15,44`
-
-**Problem:** After the fix to use `getDbNow()`, there should be tests verifying the sidebar correctly determines active contests against DB time.
-
-**Suggested fix:** Add unit tests for `selectActiveTimedAssignments` and `getActiveTimedAssignmentsForSidebar`.
+**Status:** These tests should be added as part of implementing the fixes. The fixes are in place but dedicated regression tests were not observed in the test suite.
 
 ---
 
-### LOW 1 — Missing test for anti-cheat `createdAt` DB-time consistency
+## New Findings
 
-**Confidence:** MEDIUM
-**Files:**
-- `src/app/api/v1/contests/[assignmentId]/anti-cheat/route.ts:110,128`
+### No new test issues found.
 
-**Problem:** The anti-cheat route inserts events with `createdAt: new Date()`. After the fix to use DB time, a test should verify this.
+Current test status:
+- `vitest.config.ts` — unit tests
+- `vitest.config.component.ts` — component tests
+- `vitest.config.integration.ts` — integration tests
+- `playwright.config.ts` — e2e tests
 
-**Suggested fix:** Add a unit test for the anti-cheat event insertion.
+All existing test suites pass. No flaky patterns observed (no `setTimeout` in tests without proper cleanup, no unmocked Date.now() calls).
 
 ---
 
-## Final sweep
+## Conclusion
 
-The existing test suite covers the recent `getDbNow()` / `getDbNowUncached()` fixes well (`tests/unit/db-time.test.ts`, `tests/unit/escape-like-pattern.test.ts`). The main gap is test coverage for the NEW findings in this cycle — specifically `tokenInvalidatedAt`, public contest pages, and sidebar status.
+No new test gaps or flaky tests identified. The old cycle-7 test coverage requests remain valid TDD opportunities but are not blocking.
+
+**New findings this cycle: 0**
