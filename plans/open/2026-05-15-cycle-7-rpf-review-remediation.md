@@ -42,10 +42,10 @@ Cycle-6 fix verification: All six cycle-5 fixes remain correctly implemented.
 
 ## Quality Gates
 
-- [ ] eslint
-- [ ] tsc --noEmit
-- [ ] next build
-- [ ] vitest run
+- [x] eslint — PASS (no errors, no warnings)
+- [x] tsc --noEmit — PASS (no type errors)
+- [x] next build — PASS (exit code 0)
+- [x] vitest run — PASS (317 files, 2409 tests)
 
 ---
 
@@ -54,5 +54,6 @@ Cycle-6 fix verification: All six cycle-5 fixes remain correctly implemented.
 - [x] Review complete
 - [x] Aggregate written
 - [x] Plan written
-- [ ] Gates passed
-- [ ] Committed and pushed
+- [x] Gates passed
+- [x] Committed and pushed
+- [x] Deployed to algo.xylolabs.com (per-cycle)
