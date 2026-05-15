@@ -1,49 +1,55 @@
-# Cycle 6 Security Reviewer
+# Security Review — Cycle 6
 
-**Date:** 2026-04-20
-**Base commit:** 528cdf29
+**Date:** 2026-05-14
+**Scope:** JudgeKit codebase — auth, authz, secrets, input validation, SSE, rate limiting, judge sandbox
+**Base commit:** db6378c8
+**Agent:** security-reviewer (manual single-pass)
 
-## Findings
+---
 
-### SEC-1: Contest detail page clock-skew reveals problems before start time [MEDIUM/HIGH]
+## Executive Summary
 
-**File:** `src/app/(dashboard)/dashboard/contests/[assignmentId]/page.tsx:188-192`
-**Description:** The `isUpcoming` flag computed with `new Date()` controls whether contest problems are visible. In a windowed exam, problems should only be visible after the start time. If the app server clock is behind the DB clock, students see problems before the official start.
-**Failure scenario:** During a proctored exam, students with access to the contest detail page can see problem descriptions before the exam officially starts. This undermines the exam integrity.
-**Fix:** Use `getDbNow()` instead of `new Date()`.
-**Confidence:** HIGH
+**0 new security findings** this cycle. All cycle-5 security-relevant fixes verified. Deferred security findings from prior cycles remain stable.
 
-### SEC-2: Problem page access gate uses app-server time [MEDIUM/HIGH]
+---
 
-**File:** `src/app/(dashboard)/dashboard/problems/[id]/page.tsx:159`
-**Description:** `new Date(assignment.startsAt) > new Date()` controls whether non-admin users are redirected away from the problem page before contest start. Clock skew could allow early access to problems.
-**Failure scenario:** Student accesses a problem URL directly. If the app server clock is behind the DB server, they see the problem before the contest starts.
-**Fix:** Use `getDbNow()` instead of `new Date()`.
-**Confidence:** HIGH
+## Cycle-5 Security Fix Verification
 
-### SEC-3: Quick-create contest stores app-server time as `startsAt` [MEDIUM/MEDIUM]
+### M1: `rateLimits` heartbeat cleanup (bloat → DoS via degraded queries)
+- **Status:** VERIFIED. Stale heartbeat entries are now deleted inside `shouldRecordSharedHeartbeat`, preventing unbounded table growth that could degrade rate-limit query performance.
 
-**File:** `src/app/api/v1/contests/quick-create/route.ts:28-32`
-**Description:** When `body.startsAt` is not provided, `const now = new Date()` is stored as the default `startsAt`. This stored value is then used by exam session enforcement and submission deadline checks that use DB time (`NOW()`). A discrepancy between the stored app-server timestamp and the DB clock could cause unexpected behavior.
-**Failure scenario:** Admin creates a quick contest. The stored `startsAt` is the app server's time (e.g., 10:00:00). The DB server time is 10:00:05. Exam session enforcement uses `NOW()` which returns 10:00:05. The contest appears to have started 5 seconds early from the DB's perspective.
-**Fix:** Use `await getDbNowUncached()` for the default `startsAt` and `deadline` calculation.
-**Confidence:** MEDIUM
+### M2: Shell command validator `$0-$9` gap
+- **Status:** VERIFIED. Positional parameter expansion is now blocked, closing a defense-in-depth gap.
 
-### SEC-4: Submission deadline blocking on problem page uses app-server time [LOW/MEDIUM]
+### L3: `submittedAt` Infinity acceptance
+- **Status:** VERIFIED. `Number.isFinite(n)` guards both paths.
 
-**File:** `src/app/(dashboard)/dashboard/problems/[id]/page.tsx:187-189`
-**Description:** `isSubmissionBlocked` is computed using `new Date()`. This controls UI-level submission blocking. While the API route enforces deadlines using DB time, the UI could misleadingly show the submission form as available or blocked when it shouldn't be.
-**Failure scenario:** A student sees the "Submit" button as active when the deadline has actually passed (API will reject), causing frustration. Or conversely, the button is disabled when there's still time.
-**Fix:** Use `getDbNow()` for the temporal comparison.
-**Confidence:** MEDIUM
+---
 
-## Verified Safe
+## Auth / AuthZ Review
 
-- All previously fixed clock-skew issues (recruit page, API key auth, exam sessions, access codes, anti-cheat, submission creation) are confirmed working.
-- SQL injection: All LIKE queries use `escapeLikePattern()`. The `buildGroupMemberScopeFilter` interpolation is safe because `groupId` values come from DB queries, not user input.
-- XSS: No unsanitized `dangerouslySetInnerHTML`. Two uses are properly sanitized.
-- Auth: Robust with Argon2id, timing-safe dummy hash, rate limiting, proper token invalidation.
-- CSRF: Protected for server actions and non-API-key routes.
-- Encryption: AES-256-GCM with proper IV and auth tag. Production requires `NODE_ENCRYPTION_KEY`.
-- Shell command validation: Dual-layer defense (denylist + prefix allowlist).
-- Import/export: Proper size limits, password re-confirmation, validation.
+- `getApiUser` correctly prioritizes API key auth (Bearer jk_) before JWT session lookup.
+- CSRF check properly skipped for API-key-authenticated requests.
+- Role and capability checks use `requireAllCapabilities` logic correctly.
+- No new auth bypass vectors identified.
+
+## Input Validation
+
+- All API routes using `createApiHandler` pass through Zod schema validation.
+- File upload route has ZIP bomb protection and image dimension limits.
+- Shell command validator defense-in-depth verified.
+
+## Deferred Security Items (Stable)
+
+| ID | Severity | File | Description | Status |
+|----|----------|------|-------------|--------|
+| SSE-M2 | LOW | `events/route.ts:224-232` | Unbounded `inArray` query in `sharedPollTick` | Unchanged |
+| SSE-RACE | LOW | `events/route.ts:161-166` | `stopSharedPollTimer` race with in-progress tick | Unchanged |
+| COR-1 | LOW | Judge claim | Problem lookup outside transaction scope | Unchanged |
+| C-1 | CRITICAL | Nginx | Test/Seed localhost spoofable via XFF | Infrastructure — unchanged |
+
+---
+
+## New Findings
+
+None.

@@ -1,28 +1,61 @@
-# Cycle 6 Performance Reviewer
+# Performance Review — Cycle 6
 
-**Date:** 2026-04-20
-**Base commit:** 528cdf29
+**Date:** 2026-05-14
+**Scope:** JudgeKit — DB queries, SSE polling, timers, rate limiting, Docker client, build pipeline
+**Base commit:** db6378c8
+**Agent:** perf-reviewer (manual single-pass)
 
-## Findings
+---
 
-### PERF-1: Contest detail page fetches assignment data without `getDbNow()` — extra query needed for DB time [LOW/LOW]
+## Executive Summary
 
-**File:** `src/app/(dashboard)/dashboard/contests/[assignmentId]/page.tsx:188`
-**Description:** The contest detail page uses `new Date()` instead of `getDbNow()`. If this is fixed to use `getDbNow()`, it adds one extra DB query (`SELECT NOW()`). However, `getDbNow()` uses `React.cache()` so the query is deduplicated within the same server render.
-**Failure scenario:** Negligible performance impact — React.cache() deduplicates the query.
-**Fix:** No performance concern. Use `getDbNow()` for correctness.
-**Confidence:** LOW
+**0 new performance findings**. Cycle-5 M1 fix (heartbeat cleanup) directly addresses the only production degradation risk identified. All other performance-sensitive paths reviewed and unchanged.
 
-### PERF-2: Student dashboard queries could be parallelized further [LOW/LOW]
+---
 
-**File:** `src/app/(dashboard)/dashboard/_components/student-dashboard.tsx:27-95`
-**Description:** The progress stats query (line 27), language stats query (line 48), and the recentSubmissions + studentAssignments parallel query (line 59) are executed sequentially. The progress stats and language stats are independent and could run in parallel with each other and with the line 59 queries.
-**Failure scenario:** Minor latency increase on student dashboard loads.
-**Fix:** Wrap all independent queries in `Promise.all()`.
-**Confidence:** LOW
+## Cycle-5 Performance Fix Verification
 
-## Verified Safe
+### M1: `rateLimits` heartbeat cleanup
+- **Status:** VERIFIED. The cleanup runs inside the same advisory-locked transaction as the heartbeat update, so there is no extra lock overhead. The `LIKE` query on `blockedUntil < nowMs - minIntervalMs` will only match expired entries, which are few per tick under normal operation.
+- **Impact:** Prevents unbounded table growth that would degrade all `rateLimits` queries.
 
-- SSE connection tracking is bounded by MAX_TRACKED_CONNECTIONS (1000). O(n) eviction is acceptable.
-- React.cache() deduplication in `getDbNow()` avoids redundant SELECT NOW() queries within a single render.
-- Import/export streaming avoids loading entire database into memory.
+---
+
+## Performance Review of Key Paths
+
+### SSE Shared Polling
+- `sharedPollTick` batches all active submission IDs into a single `inArray` query. Under normal load this is efficient.
+- The deferred SSE-M2 finding (unbounded `inArray` under extreme subscriber counts) remains unchanged; no new mitigation added this cycle.
+
+### Rate Limiting
+- DB-backed rate limiting uses `SELECT FOR UPDATE` for atomicity.
+- Sidecar fast-path (`rate-limiter-client`) reduces DB writes.
+- Eviction timer (`startRateLimitEviction`) runs every 60s; `stopRateLimitEviction` exported for tests.
+
+### Timer Lifecycle
+- All module-level timers now have exported `stop*` functions:
+  - `stopSensitiveDataPruning`
+  - `stopRateLimitEviction`
+  - `stopAuditFlushTimer`
+  - `stopSseCleanupTimer`
+  - `stopSharedPollTimer`
+
+### Connection Tracking
+- `addConnection` uses two-phase eviction (stale scan + FIFO) with O(n) + O(excess) complexity instead of O(n^2).
+- Per-user connection counts maintained via separate `Map` for O(1) lookup.
+
+---
+
+## Deferred Performance Items (Stable)
+
+| ID | Severity | File | Description |
+|----|----------|------|-------------|
+| SSE-M2 | LOW | `events/route.ts:224-232` | `inArray` unbounded under extreme load |
+| PERF-2 | LOW | `src/lib/docker/client.ts` | Sequential image fetches could parallelize |
+| DEFER-52 | LOW | `src/lib/docker/client.ts` | String accumulation in output parser |
+
+---
+
+## New Findings
+
+None.

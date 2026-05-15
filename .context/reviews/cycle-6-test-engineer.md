@@ -1,34 +1,48 @@
-# Cycle 6 Test Engineer Review
+# Test Engineering Review — Cycle 6
 
-**Date:** 2026-04-20
-**Base commit:** 528cdf29
+**Date:** 2026-05-14
+**Scope:** JudgeKit test suite — coverage gaps, flaky tests, test quality
+**Base commit:** db6378c8
+**Agent:** test-engineer (manual single-pass)
 
-## Findings
+---
 
-### TE-1: No test coverage for contest detail page temporal status computation [MEDIUM/MEDIUM]
+## Executive Summary
 
-**File:** `src/app/(dashboard)/dashboard/contests/[assignmentId]/page.tsx:188-192`
-**Description:** The `isUpcoming` and `isPast` flags computed with `new Date()` have no test coverage. When these are fixed to use `getDbNow()`, the behavior should be verified with tests that confirm DB time is used instead of app-server time.
-**Failure scenario:** A refactor changes the temporal comparison logic but no test catches a regression.
-**Fix:** Add unit tests that verify the contest status computation uses DB-sourced time.
-**Confidence:** MEDIUM
+**0 new test gaps or flaky patterns identified**. All cycle-5 fixes have corresponding test coverage. Gate status is green.
 
-### TE-2: No test coverage for problem page submission blocking logic [LOW/MEDIUM]
+---
 
-**File:** `src/app/(dashboard)/dashboard/problems/[id]/page.tsx:187-189`
-**Description:** The `isSubmissionBlocked` computation has no test coverage. When fixed to use `getDbNow()`, tests should verify that DB time is used.
-**Fix:** Add unit tests for the submission blocking logic using DB-sourced time.
-**Confidence:** MEDIUM
+## Cycle-5 Test Verification
 
-### TE-3: No test coverage for quick-create contest default scheduling [LOW/LOW]
+### M2: Shell command validator `$0-$9`
+- **Test file:** `tests/unit/compiler/execute.test.ts:111-139`
+- **Coverage:** Tests both `$0` and `$1` rejection via `executeCompilerRun` local fallback path.
+- **Gap:** The standalone `tests/unit/shell-command-validation.test.ts` does NOT include `$0-$9` cases. However, since `execute.test.ts` covers the production path, this is a cosmetic inconsistency, not a coverage gap.
 
-**File:** `src/app/api/v1/contests/quick-create/route.ts:28-32`
-**Description:** The default `startsAt` and `deadline` values from `new Date()` have no test coverage. When fixed to use `getDbNowUncached()`, a test should verify that the stored timestamps come from DB time.
-**Fix:** Add integration test for quick-create with default scheduling.
-**Confidence:** LOW
+### L1-L3: Other fixes
+- Source code byte length, tie-breaker ordering, and Infinity hardening fixes were API-level or schema-level changes. Existing integration tests exercise the affected routes.
 
-## Verified Safe
+---
 
-- `escapeLikePattern` tests: 8 cases (commit 0b949d47) — comprehensive.
-- `getDbNow` / `getDbNowUncached` tests: 6 cases (commit 0b949d47) — covers throw on failure.
-- Recruit page metadata test: covers DB-sourced time behavior (commit d2ceed3d).
+## Gate Status
+
+- `eslint`: PASS (0 errors, 0 warnings)
+- `tsc --noEmit`: PASS (0 errors)
+- `next build`: PASS
+- `vitest run`: PASS
+
+---
+
+## Commonly Missed Test Issues
+
+- [x] No dangling timer handles in test output (all stop functions exported)
+- [x] No `vi.useRealTimers()` without corresponding `vi.useFakeTimers()` restore
+- [x] No hardcoded `setTimeout` durations in assertions that could flake
+- [x] No test-only env vars leaking between test files
+
+---
+
+## New Findings
+
+None.

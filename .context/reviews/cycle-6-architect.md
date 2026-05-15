@@ -1,36 +1,48 @@
-# Cycle 6 Architect Review
+# Architecture Review — Cycle 6
 
-**Date:** 2026-04-20
-**Base commit:** 528cdf29
+**Date:** 2026-05-14
+**Scope:** JudgeKit — layering, coupling, abstraction boundaries, design risks
+**Base commit:** db6378c8
+**Agent:** architect (manual single-pass)
 
-## Findings
+---
 
-### ARCH-1: Systemic `new Date()` in server component temporal comparisons — 4 remaining pages [MEDIUM/HIGH]
+## Executive Summary
 
-**Files:**
-- `src/app/(dashboard)/dashboard/contests/[assignmentId]/page.tsx:188`
-- `src/app/(dashboard)/dashboard/problems/[id]/page.tsx:159,187`
-- `src/app/(dashboard)/dashboard/groups/[id]/page.tsx:304`
-- `src/app/(dashboard)/dashboard/contests/page.tsx:95`
+**0 new architectural risks**. Cycle-5 fixes all fit within existing abstraction boundaries. No new coupling introduced. Deferred architectural findings remain stable.
 
-**Description:** The codebase has `getDbNow()` and `getDbNowUncached()` utilities for DB-sourced time, and previous cycles fixed 6 API routes and the recruit page. However, 4 dashboard server components still use `new Date()` for temporal comparisons. This is an architectural consistency issue — the pattern has been established (use DB time for all security-relevant temporal comparisons) but not systematically applied to server components.
+---
 
-The most critical are the contest detail page and problem page, where `new Date()` is used for access-control-adjacent decisions (blocking problem viewing before contest start, blocking submission after deadline).
+## Cycle-5 Fix Architecture Review
 
-**Failure scenario:** Clock drift between app server and DB server causes inconsistent access control in server-rendered pages, even though API routes correctly use DB time.
-**Fix:** Systematically replace `new Date()` with `getDbNow()` in all server components that make temporal comparisons for access control or status display.
-**Confidence:** HIGH
+### M1: Heartbeat cleanup in `realtime-coordination.ts`
+- **Assessment:** The cleanup is co-located with the heartbeat update logic, preserving the single-responsibility of `shouldRecordSharedHeartbeat`. No new cross-module dependencies introduced.
+- **Prefix helper:** `getHeartbeatPrefixPattern()` follows the existing pattern of `getSsePrefixPattern()` — consistent abstraction.
 
-### ARCH-2: `submittedAt` insert value inconsistency with `NOW()` enforcement [LOW/LOW]
+### M2: Shell validator regex expansion
+- **Assessment:** Single-character change in a regex. No architectural impact.
 
-**File:** `src/app/api/v1/submissions/route.ts:317`
-**Description:** The submission deadline check on line 298 uses `NOW()` in SQL, but the actual `submittedAt` value inserted on line 317 uses `new Date()`. This means the stored timestamp could differ from the DB server's time. While this doesn't affect access control (which uses `NOW()`), it means the stored submission time and the enforcement time are from different clocks.
-**Fix:** Consider using the schema's `DEFAULT` for `submittedAt` or capturing `NOW()` from the transaction.
-**Confidence:** LOW
+### L1-L3: Schema and query fixes
+- **Assessment:** Localized changes. The byte-length refinement is duplicated in `compiler/run` and `playground/run` routes; a shared schema factory could reduce duplication, but this is pre-existing technical debt, not a new issue.
 
-## Verified Safe
+---
 
-- `getDbNow()` / `getDbNowUncached()` are well-designed with proper error handling.
-- The React.cache() deduplication pattern for `getDbNow()` is appropriate for server components.
-- The `createApiHandler` middleware pattern provides consistent auth/CSRF/rate-limit across 83 routes.
-- The 22 raw handlers all have documented reasons for not using the standard handler.
+## Layering Review
+
+- `src/lib/api/handler.ts` remains the single entry point for API route handlers.
+- `src/lib/realtime/realtime-coordination.ts` encapsulates all SSE coordination concerns.
+- `src/lib/compiler/execute.ts` encapsulates compiler execution with local fallback and runner paths.
+- No boundary violations detected.
+
+## Deferred Architectural Items (Stable)
+
+| ID | Severity | Description |
+|----|----------|-------------|
+| ARCH-1 | LOW | `createApiHandler` generic 500 — does not distinguish error types |
+| ARCH-2 | LOW | Judge worker dual token system redundancy |
+
+---
+
+## New Findings
+
+None.
