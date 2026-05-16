@@ -41,7 +41,23 @@ export function ProblemDescription({
   editorTheme,
 }: ProblemDescriptionProps) {
   const themeStyle = getProblemCodeThemeStyle(editorTheme);
-  const looksLikeLegacyHtml = /<(p|h[1-6]|pre|ul|ol|li|table|blockquote|img|div|br|hr)\b/i.test(description);
+  const hasHtmlTags = /<(p|h[1-6]|pre|ul|ol|li|table|blockquote|img|div|br|hr)\b/i.test(description);
+  // Markdown markers: ATX headings, setext headings, fenced code, bold/italic
+  // pairs, dollar-delimited math, list bullets at line start. Their presence
+  // means the document is markdown (possibly with embedded HTML), so we must
+  // keep the markdown renderer to process LaTeX/markdown syntax. Switching to
+  // raw HTML mode just because a `<br>` or `<div>` exists strips all the
+  // markdown/TeX rendering and leaves users seeing literal `$N$`, `### Title`,
+  // etc. (cycle 8).
+  const hasMarkdownStructure =
+    /^#{1,6}\s+\S/m.test(description)
+    || /^[-*+]\s+\S/m.test(description)
+    || /^[ \t]{0,3}>\s+\S/m.test(description)
+    || /^[ \t]*```/m.test(description)
+    || /\*\*[^*\n]+\*\*/.test(description)
+    || /(?<![\\$])\$[^$\n]+\$/.test(description)
+    || /\$\$[\s\S]+?\$\$/.test(description);
+  const looksLikeLegacyHtml = hasHtmlTags && !hasMarkdownStructure;
 
   if (looksLikeLegacyHtml) {
     return (
