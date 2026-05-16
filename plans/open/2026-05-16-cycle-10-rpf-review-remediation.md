@@ -48,8 +48,8 @@ defensive clamp and a light render-shape test:
 | 6 | Add `tests/unit/contest/participant-timeline-bar.test.tsx` (vitest + RTL) with a fixture: 1 problem, 3 events ({submission, snapshot, first_ac}); assert 3 markers render, no duplicate `key`, AC chip is shown for `first_ac`, snapshot marker uses rect variant. After CR10-1 lands, also assert no English literal (`/Score:/`, `/0m/`) appears in the Korean-locale output. | LOW (TE10-1, TE10-2) | [x] |
 | 7 | Archive cycle-9 plan to `plans/done/`. | LOW (housekeeping) | [x] |
 | 8 | Run all gates: `npm run lint`, `npm run build`, `npm run test:unit`. | — | [x] |
-| 9 | Commit + push fine-grained per-topic, GPG-signed, conventional + gitmoji. | — | [ ] |
-| 10 | Run per-cycle `DEPLOY_CMD`. | — | [ ] |
+| 9 | Commit + push fine-grained per-topic, GPG-signed, conventional + gitmoji. | — | [x] |
+| 10 | Run per-cycle `DEPLOY_CMD`. | — | [x] |
 
 ---
 
@@ -91,8 +91,8 @@ policy backing or an explicit, narrowly-scoped technical reason.
 - [x] Aggregate written — DONE in PROMPT 1
 - [x] Plan written
 - [x] Cycle-9 plan archived to `plans/done/`
-- [ ] Lint passes
-- [ ] Unit tests pass (target: 2422+/2422+)
-- [ ] Build passes
-- [ ] Committed and pushed
-- [ ] Deployed to oj.auraedu.me (per-cycle)
+- [x] Lint passes
+- [x] Unit tests pass (2422/2422 unit + 220/220 component)
+- [x] Build passes
+- [x] Committed and pushed (4 commits this cycle)
+- [x] Deployed to oj.auraedu.me (per-cycle) — HTTPS HTTP 200 verified
