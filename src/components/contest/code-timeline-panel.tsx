@@ -1,10 +1,11 @@
 "use client";
 
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useMemo } from "react";
 import { useTranslations, useLocale } from "next-intl";
 import hljs from "highlight.js/lib/common";
 import "highlight.js/styles/github.css";
 import { sanitizeHtml } from "@/lib/security/sanitize-html";
+import { getHighlightJsLanguage } from "@/lib/code/language-map";
 import { useSystemTimezone } from "@/contexts/timezone-context";
 import { formatDateTimeInTimeZone } from "@/lib/datetime";
 import { toast } from "sonner";
@@ -21,43 +22,6 @@ import {
 } from "@/components/ui/select";
 import { ChevronLeft, ChevronRight, Clock } from "lucide-react";
 
-// Map app language IDs to highlight.js language identifiers. Falls back to
-// auto-detection (`undefined` returned) when the language isn't in the table.
-const LANGUAGE_TO_HLJS: Record<string, string> = {
-  c: "c",
-  c11: "c",
-  c17: "c",
-  c89: "c",
-  c99: "c",
-  cpp: "cpp",
-  "cpp17": "cpp",
-  "cpp20": "cpp",
-  "cpp23": "cpp",
-  python: "python",
-  python3: "python",
-  java: "java",
-  rust: "rust",
-  go: "go",
-  javascript: "javascript",
-  typescript: "typescript",
-  node: "javascript",
-  bash: "bash",
-  ruby: "ruby",
-  php: "php",
-  swift: "swift",
-  kotlin: "kotlin",
-  scala: "scala",
-  perl: "perl",
-  haskell: "haskell",
-  ocaml: "ocaml",
-  lua: "lua",
-  csharp: "csharp",
-};
-
-function hljsLanguageFor(language: string): string | undefined {
-  return LANGUAGE_TO_HLJS[language.toLowerCase()];
-}
-
 function escapeHtml(value: string): string {
   return value
     .replace(/&/g, "&amp;")
@@ -73,7 +37,7 @@ function HighlightedCode({ language, source }: { language: string; source: strin
   // backed) as defense-in-depth before rendering.
   let raw: string;
   try {
-    const lang = hljsLanguageFor(language);
+    const lang = getHighlightJsLanguage(language);
     const result = lang && hljs.getLanguage(lang)
       ? hljs.highlight(source, { language: lang, ignoreIllegals: true })
       : hljs.highlightAuto(source);
@@ -147,13 +111,17 @@ export function CodeTimelinePanel({
     fetchSnapshots();
   }, [fetchSnapshots]);
 
-  const problems = Array.from(
-    new Map(snapshots.map((s) => [s.problemId, s.problemTitle ?? s.problemId])).entries()
+  const problems = useMemo(
+    () =>
+      Array.from(
+        new Map(snapshots.map((s) => [s.problemId, s.problemTitle ?? s.problemId])).entries()
+      ),
+    [snapshots]
   );
-  const problemLabels = Object.fromEntries([
-    ["all", t("allProblems")],
-    ...problems,
-  ]);
+  const problemLabels = useMemo(
+    () => Object.fromEntries([["all", t("allProblems")] as const, ...problems]),
+    [problems, t]
+  );
   const selectedProblemLabel = problemLabels[filterProblem] ?? filterProblem;
 
   const current = snapshots[selectedIdx];
