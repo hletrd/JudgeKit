@@ -510,7 +510,7 @@ export default async function PublicProblemDetailPage({
           </TabsList>
           <TabsContent value="problem" className="mt-4">
             <div className={session?.user ? "grid grid-cols-1 gap-6 lg:grid-cols-2" : "space-y-6"}>
-              <div className="space-y-6">
+              <div className="min-w-0 space-y-6">
                 <PublicProblemDetail
                   backHref={resolvedBackHref}
                   backLabel={assignmentContext ? assignmentContext.title : tCommon("back")}
@@ -616,7 +616,7 @@ export default async function PublicProblemDetailPage({
               </div>
 
               {session?.user ? (
-                <div className="space-y-6">
+                <div className="min-w-0 space-y-6">
                   <Card id="public-submit-panel" className="sticky top-6">
                     <CardHeader>
                       <CardTitle>{tProblems("submitSolution")}</CardTitle>
