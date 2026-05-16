@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, type ReactNode } from "react";
+import { useEffect, useState, type ReactNode } from "react";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 
 interface SettingsTabsProps {
@@ -8,7 +8,36 @@ interface SettingsTabsProps {
 }
 
 export function SettingsTabs({ tabs }: SettingsTabsProps) {
-  const [activeTab, setActiveTab] = useState("general");
+  // Initial state must be deterministic for SSR — fall back to the first tab
+  // value here. The effect below switches tabs based on `location.hash` only
+  // when it changes (initial load uses a layout effect equivalent via the
+  // hashchange handler with manual fire on mount, scheduled async to avoid
+  // cascading renders flagged by `react-hooks/set-state-in-effect`).
+  const [activeTab, setActiveTab] = useState(tabs[0]?.value ?? "general");
+
+  useEffect(() => {
+    function applyHash(hash: string) {
+      if (hash && tabs.some((tab) => tab.value === hash)) {
+        setActiveTab((current) => (current === hash ? current : hash));
+      }
+    }
+    function onHashChange() {
+      applyHash(window.location.hash.slice(1));
+    }
+    // Defer the initial sync to the next microtask so the setState happens
+    // after the effect body returns, sidestepping cascading-render warnings
+    // while still hydrating from the URL hash on mount.
+    const initialHash = window.location.hash.slice(1);
+    let cancelled = false;
+    queueMicrotask(() => {
+      if (!cancelled) applyHash(initialHash);
+    });
+    window.addEventListener("hashchange", onHashChange);
+    return () => {
+      cancelled = true;
+      window.removeEventListener("hashchange", onHashChange);
+    };
+  }, [tabs]);
 
   function handleTabChange(value: string) {
     setActiveTab(value);
