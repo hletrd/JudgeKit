@@ -344,7 +344,7 @@ export function ParticipantTimelineBar({
                 {/* Mini timeline bar for this problem */}
                 <div className="relative h-6">
                   <div className="absolute inset-x-0 top-1/2 -translate-y-1/2 h-1.5 bg-muted-foreground/15 rounded-full" />
-                  {problemEvents.map((ev) => {
+                  {problemEvents.map((ev, eventIdx) => {
                     if (!ev.at) return null;
                     const pct = percentFromStart(ev.at);
                     const isAc =
@@ -353,8 +353,8 @@ export function ParticipantTimelineBar({
                         (ev.status === "accepted" || ev.status === "scored"));
                     const eventKey =
                       ev.type === "snapshot"
-                        ? `snapshot-${ev.snapshotId}`
-                        : `${ev.type}-${ev.submissionId}`;
+                        ? `snapshot-${ev.snapshotId ?? `${ev.at.getTime()}-${eventIdx}`}`
+                        : `${ev.type}-${ev.submissionId ?? `${ev.at.getTime()}-${eventIdx}`}`;
                     return (
                       <div
                         key={eventKey}
