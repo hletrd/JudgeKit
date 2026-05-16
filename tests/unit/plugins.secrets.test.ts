@@ -18,7 +18,11 @@ beforeEach(() => {
 });
 
 describe("plugin secret helpers", () => {
-  it("encrypts secret fields before storage and preserves existing encrypted secrets on blank updates", () => {
+  it("stores plugin secrets verbatim (plaintext policy) and preserves existing values on blank updates", () => {
+    // Plaintext storage policy (cycle 8): preparePluginConfigForStorage now
+    // keeps both legacy `enc:v1:` values and new plaintext values verbatim.
+    // Blank inputs continue to fall back to whatever was stored previously
+    // so partial updates don't wipe other secrets.
     const existingSecret = encryptPluginSecret("existing-openai-key");
 
     const prepared = preparePluginConfigForStorage(
@@ -38,8 +42,8 @@ describe("plugin secret helpers", () => {
 
     expect(prepared.openaiApiKey).toBe(existingSecret);
     expect(prepared.claudeApiKey).toBeNull();
-    expect(typeof prepared.geminiApiKey).toBe("string");
-    expect(String(prepared.geminiApiKey)).not.toBe("new-gemini-key");
+    // New writes go through verbatim (no encryption wrapper).
+    expect(prepared.geminiApiKey).toBe("new-gemini-key");
   });
 
   it("redacts secrets for admin reads and restores them for runtime use", () => {
@@ -102,12 +106,25 @@ describe("plugin secret helpers", () => {
       expect(decryptPluginSecret(encrypted!)).toBe("my-secret");
     });
 
-    it("throws in production when value is not encrypted", () => {
+    it("returns plaintext verbatim in production under the plaintext-storage policy", () => {
+      // Plaintext storage policy (cycle 8): plugin secrets are stored as-is
+      // in every environment, so decryptPluginSecret returns plaintext values
+      // unchanged rather than throwing. Callers can still opt into the strict
+      // mode by passing { allowPlaintextFallback: false }.
       vi.stubEnv("NODE_ENV", "production");
       try {
-        expect(() => decryptPluginSecret("plaintext-value")).toThrow(
-          "decryptPluginSecret() called on non-encrypted value"
-        );
+        expect(decryptPluginSecret("plaintext-value")).toBe("plaintext-value");
+      } finally {
+        vi.unstubAllEnvs();
+      }
+    });
+
+    it("still rejects plaintext when callers opt out of the fallback", () => {
+      vi.stubEnv("NODE_ENV", "production");
+      try {
+        expect(() =>
+          decryptPluginSecret("plaintext-value", { allowPlaintextFallback: false })
+        ).toThrow("decryptPluginSecret() called on non-encrypted value");
       } finally {
         vi.unstubAllEnvs();
       }
@@ -133,7 +150,11 @@ describe("plugin secret helpers", () => {
       }
     });
 
-    it("decryptPluginConfigForUse handles production plaintext by clearing the value", () => {
+    it("decryptPluginConfigForUse passes plaintext through under the plaintext-storage policy", () => {
+      // Plaintext storage policy (cycle 8): runtime decryption returns
+      // plaintext values verbatim instead of clearing them. This is required
+      // so operator-typed API keys actually reach the upstream provider
+      // SDK without an additional encryption migration step.
       vi.stubEnv("NODE_ENV", "production");
       try {
         const storedConfig = {
@@ -143,7 +164,7 @@ describe("plugin secret helpers", () => {
           geminiApiKey: "",
         };
         const decrypted = decryptPluginConfigForUse("chat-widget", storedConfig);
-        expect(decrypted.openaiApiKey).toBe("");
+        expect(decrypted.openaiApiKey).toBe("not-encrypted");
       } finally {
         vi.unstubAllEnvs();
       }

@@ -53,8 +53,11 @@ export function decryptPluginSecret(
   value: string,
   options?: { allowPlaintextFallback?: boolean }
 ) {
-  const allowPlaintext =
-    options?.allowPlaintextFallback ?? (process.env.NODE_ENV !== "production");
+  // Plugin secrets are now stored in plaintext per operator policy. Plaintext
+  // values pass through unchanged in every environment; legacy `enc:v1:`
+  // values are still decrypted for backwards compatibility with rows written
+  // before this policy change.
+  const allowPlaintext = options?.allowPlaintextFallback ?? true;
 
   if (!isEncryptedPluginSecret(value)) {
     if (!allowPlaintext) {
@@ -62,12 +65,6 @@ export function decryptPluginSecret(
         "decryptPluginSecret() called on non-encrypted value. " +
           "If this is expected during migration, pass { allowPlaintextFallback: true }. " +
           "Otherwise, investigate possible data tampering or incomplete migration."
-      );
-    }
-    if (process.env.NODE_ENV === "production") {
-      logger.warn(
-        { prefix: (value as string).slice(0, 10) },
-        "[plugin-secrets] decryptPluginSecret() called on non-encrypted value — possible data tampering or incomplete migration"
       );
     }
     return value;
@@ -170,16 +167,9 @@ export function preparePluginConfigForStorage(
       continue;
     }
 
-    if (isValidEncryptedPluginSecret(incomingValue)) {
-      // Already encrypted with valid structure (e.g. round-tripped from a
-      // previous save) — keep as-is. Use isValidEncryptedPluginSecret()
-      // (not the prefix-only isEncryptedPluginSecret) to prevent malformed
-      // `enc:v1:` values from bypassing encryption (CR11-1, CR12-1).
-      prepared[key] = incomingValue;
-    } else {
-      const encrypted = encryptPluginSecret(incomingValue);
-      prepared[key] = encrypted ?? incomingValue;
-    }
+    // Plaintext storage policy: keep both plaintext and legacy `enc:v1:`
+    // values verbatim. New writes go in as-typed by the operator.
+    prepared[key] = incomingValue;
   }
 
   return prepared;
