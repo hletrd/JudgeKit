@@ -277,6 +277,7 @@ export const POST = createApiHandler({
     // Check global AI assistant toggle
     const globalEnabled = await isAiAssistantEnabledForContext({
       userId: user.id,
+      userRole: user.role,
       assignmentId: assignmentContext.assignmentId,
       problemId: context?.problemId ?? null,
     });

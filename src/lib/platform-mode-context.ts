@@ -10,6 +10,13 @@ export type PlatformModeContextOptions = {
   userId?: string | null;
   assignmentId?: string | null;
   problemId?: string | null;
+  /**
+   * Caller's role. When the caller is an instructor/admin/super_admin (i.e.
+   * holds `submissions.view_all`), they bypass the platform-mode AI restriction
+   * so staff can use the assistant during a contest/exam without being treated
+   * as a participant.
+   */
+  userRole?: string | null;
 };
 
 export type ResolvedPlatformModeAssignmentContext = {
@@ -265,6 +272,19 @@ export async function getEffectivePlatformMode(
 export async function isAiAssistantEnabledForContext(
   options: PlatformModeContextOptions = {}
 ): Promise<boolean> {
+  // Staff with broad submission access (instructor/admin/super_admin) bypass
+  // the contest/exam-mode AI gate. The restriction targets participants who
+  // shouldn't get AI help during a graded session; staff need the assistant
+  // to investigate submissions and run reviews regardless of platform mode.
+  if (options.userRole) {
+    const { resolveCapabilities } = await import("@/lib/capabilities/cache");
+    const caps = await resolveCapabilities(options.userRole);
+    if (caps.has("submissions.view_all")) {
+      const settings = await getSystemSettings();
+      return settings?.aiAssistantEnabled ?? true;
+    }
+  }
+
   const effectiveMode = await getEffectivePlatformMode(options);
   if (getPlatformModePolicy(effectiveMode).restrictAiByDefault) {
     return false;
