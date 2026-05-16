@@ -14,6 +14,12 @@ const COMPILATION_MEMORY_LIMIT_MB: u32 = 2048;
 const COMPILATION_TIMEOUT_MS: u64 = 600_000;
 const MIN_COMPILE_TIMEOUT_MS: u64 = 30_000;
 const MIN_TIMEOUT_MS: u64 = 100;
+/// Wall-clock budget for Docker container startup/teardown that we add on top
+/// of the problem's `time_limit_ms` before issuing the kill timeout. Docker
+/// reports CPU runtime via `StartedAt → FinishedAt`, so this buffer only
+/// affects the "kill" deadline; TLE classification still compares the
+/// Docker-reported duration against the unbuffered problem limit.
+const DOCKER_RUN_OVERHEAD_BUDGET_MS: u64 = 2_000;
 const MAX_MEMORY_LIMIT_MB: u32 = 1024;
 const RUNTIME_ERROR_OUTPUT_LIMIT: usize = 500;
 
@@ -74,6 +80,43 @@ fn runtime_error_type(stderr: &str, exit_code: Option<i32>) -> Option<String> {
         Some(152) => Some("SIGXCPU".to_string()),
         Some(code) if code >= 128 => Some(format!("signal_{}", code - 128)),
         _ => None,
+    }
+}
+
+/// Inputs to the per-test-case verdict classifier. Extracted so the
+/// classifier can be unit-tested without spinning up a real container.
+#[derive(Debug, Clone, Copy)]
+struct VerdictInputs {
+    timed_out: bool,
+    duration_ms: u64,
+    effective_time_limit_ms: u64,
+    oom_killed: bool,
+    exit_code: Option<i32>,
+    is_correct: bool,
+}
+
+/// Classify the per-test-case verdict from execution signals. The classifier
+/// honours the `DOCKER_RUN_OVERHEAD_BUDGET_MS` policy: a wall-clock kill that
+/// fires while the Docker-reported user-code runtime stayed within the problem
+/// limit is reported as `RuntimeError` (likely environment/container issue)
+/// rather than `TimeLimit`, so submissions like "765ms < 1000ms TLE" don't get
+/// misclassified as TLE due to container startup overhead.
+fn classify_test_case_verdict(inputs: VerdictInputs) -> Verdict {
+    let exceeded_problem_limit = inputs.duration_ms > inputs.effective_time_limit_ms;
+    if inputs.timed_out && exceeded_problem_limit {
+        Verdict::TimeLimit
+    } else if inputs.timed_out {
+        Verdict::RuntimeError
+    } else if exceeded_problem_limit {
+        Verdict::TimeLimit
+    } else if inputs.oom_killed || inputs.exit_code == Some(137) {
+        Verdict::MemoryLimit
+    } else if inputs.exit_code.unwrap_or(1) != 0 {
+        Verdict::RuntimeError
+    } else if !inputs.is_correct {
+        Verdict::WrongAnswer
+    } else {
+        Verdict::Accepted
     }
 }
 
@@ -447,7 +490,16 @@ async fn execute_inner(
     let mut results: Vec<TestResult> = Vec::new();
 
     for test_case in &submission.test_cases {
-        let run_timeout_ms = MIN_TIMEOUT_MS.max(submission.time_limit_ms.min(max_time_limit_ms()));
+        // Effective per-test time limit (clamped to MAX_TIME_LIMIT_MS).
+        let effective_time_limit_ms =
+            MIN_TIMEOUT_MS.max(submission.time_limit_ms.min(max_time_limit_ms()));
+        // Wall-clock kill timeout includes Docker container startup overhead
+        // so a submission whose actual user-code runtime is under the limit
+        // isn't killed prematurely. The verdict logic below still uses the
+        // Docker-reported `duration_ms` (StartedAt → FinishedAt) for TLE so
+        // the buffer doesn't change pass/fail semantics.
+        let run_timeout_ms =
+            effective_time_limit_ms.saturating_add(DOCKER_RUN_OVERHEAD_BUDGET_MS);
 
         let run_opts = DockerRunOptions {
             image: docker_image.to_string(),
@@ -501,18 +553,21 @@ async fn execute_inner(
             compare_output(test_case.expected_output.as_bytes(), &execution.stdout)
         };
 
-        // Determine test case status
-        let verdict = if execution.timed_out {
-            Verdict::TimeLimit
-        } else if execution.oom_killed || execution.exit_code == Some(137) {
-            Verdict::MemoryLimit
-        } else if execution.exit_code.unwrap_or(1) != 0 {
-            Verdict::RuntimeError
-        } else if !is_correct {
-            Verdict::WrongAnswer
-        } else {
-            Verdict::Accepted
-        };
+        // Determine test case status. We mark TLE when EITHER the wall-clock
+        // kill fired AND user code actually crossed the limit, OR the Docker-
+        // reported runtime crosses the problem's time limit on its own.
+        // The classification is delegated to `classify_test_case_verdict` so
+        // it can be unit-tested without spinning up a real container.
+        let verdict = classify_test_case_verdict(
+            VerdictInputs {
+                timed_out: execution.timed_out,
+                duration_ms: execution.duration_ms,
+                effective_time_limit_ms,
+                oom_killed: execution.oom_killed,
+                exit_code: execution.exit_code,
+                is_correct,
+            },
+        );
 
         let actual_output =
             reportable_test_case_output(verdict, &execution.stdout, &execution.stderr);
@@ -566,12 +621,98 @@ async fn execute_inner(
 mod tests {
     use super::{
         COMPILATION_TIMEOUT_MS, MIN_COMPILE_TIMEOUT_MS, RUNTIME_ERROR_OUTPUT_LIMIT,
-        compile_timeout_ms_for_submission, prune_dead_letter_dir, reportable_test_case_output,
-        reported_memory_used_kb, runtime_error_type,
+        VerdictInputs, classify_test_case_verdict, compile_timeout_ms_for_submission,
+        prune_dead_letter_dir, reportable_test_case_output, reported_memory_used_kb,
+        runtime_error_type,
     };
     use crate::types::Verdict;
     use tempfile::tempdir;
     use tokio::fs;
+
+    fn base_inputs() -> VerdictInputs {
+        VerdictInputs {
+            timed_out: false,
+            duration_ms: 0,
+            effective_time_limit_ms: 1_000,
+            oom_killed: false,
+            exit_code: Some(0),
+            is_correct: true,
+        }
+    }
+
+    #[test]
+    fn classifies_clean_run_as_accepted() {
+        assert_eq!(classify_test_case_verdict(base_inputs()), Verdict::Accepted);
+    }
+
+    #[test]
+    fn classifies_wrong_answer_when_output_mismatches() {
+        let mut inputs = base_inputs();
+        inputs.is_correct = false;
+        assert_eq!(classify_test_case_verdict(inputs), Verdict::WrongAnswer);
+    }
+
+    #[test]
+    fn classifies_tle_when_docker_duration_crosses_problem_limit() {
+        let mut inputs = base_inputs();
+        inputs.duration_ms = 1_500;
+        inputs.effective_time_limit_ms = 1_000;
+        assert_eq!(classify_test_case_verdict(inputs), Verdict::TimeLimit);
+    }
+
+    #[test]
+    fn classifies_tle_when_kill_fires_after_user_code_exceeded_limit() {
+        let mut inputs = base_inputs();
+        inputs.timed_out = true;
+        inputs.duration_ms = 2_500;
+        inputs.effective_time_limit_ms = 1_000;
+        assert_eq!(classify_test_case_verdict(inputs), Verdict::TimeLimit);
+    }
+
+    #[test]
+    fn does_not_classify_tle_when_kill_fires_within_limit_due_to_overhead() {
+        // Reproduces the "765ms < 1000ms TLE 오인" report: wall-clock kill
+        // fires (e.g. Docker overhead pushes the wall-clock past the buffered
+        // run timeout) but the Docker-reported user-code runtime stayed under
+        // the problem's effective limit. Should be RuntimeError, not TLE.
+        let mut inputs = base_inputs();
+        inputs.timed_out = true;
+        inputs.duration_ms = 765;
+        inputs.effective_time_limit_ms = 1_000;
+        assert_eq!(classify_test_case_verdict(inputs), Verdict::RuntimeError);
+    }
+
+    #[test]
+    fn classifies_oom_kill_as_memory_limit() {
+        let mut inputs = base_inputs();
+        inputs.oom_killed = true;
+        inputs.exit_code = None;
+        assert_eq!(classify_test_case_verdict(inputs), Verdict::MemoryLimit);
+    }
+
+    #[test]
+    fn classifies_exit_137_as_memory_limit_even_without_oom_signal() {
+        let mut inputs = base_inputs();
+        inputs.exit_code = Some(137);
+        assert_eq!(classify_test_case_verdict(inputs), Verdict::MemoryLimit);
+    }
+
+    #[test]
+    fn classifies_non_zero_exit_as_runtime_error() {
+        let mut inputs = base_inputs();
+        inputs.exit_code = Some(1);
+        assert_eq!(classify_test_case_verdict(inputs), Verdict::RuntimeError);
+    }
+
+    #[test]
+    fn tle_takes_precedence_over_runtime_error_when_user_code_exceeded_limit() {
+        let mut inputs = base_inputs();
+        inputs.timed_out = true;
+        inputs.duration_ms = 1_001;
+        inputs.effective_time_limit_ms = 1_000;
+        inputs.exit_code = Some(1);
+        assert_eq!(classify_test_case_verdict(inputs), Verdict::TimeLimit);
+    }
 
     #[test]
     fn compile_timeout_has_reasonable_floor_for_tiny_time_limits() {
