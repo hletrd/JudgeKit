@@ -2484,13 +2484,7 @@
         "noSubmissions": "No submissions for this problem."
       },
       "problemSummary": {
-        "bestScore": "Best Score",
         "attempts": "{count} attempts",
-        "snapshots": "{count} snapshots",
-        "timeToFirstSubmission": "First submission",
-        "timeToSolve": "Time to solve",
-        "wrongBeforeAc": "{count} wrong before AC",
-        "relativeTime": "+{minutes}m {seconds}s",
         "firstAccepted": "First Accepted!",
         "codeSnapshot": "Code snapshot ({chars} chars)",
         "tries": "{count} tries",
