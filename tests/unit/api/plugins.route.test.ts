@@ -334,8 +334,11 @@ describe("POST /api/v1/plugins/chat-widget/chat", () => {
     expect(res.status).toBe(403);
     const body = await res.json();
     expect(body.error).toBe("aiDisabled");
+    // Cycle 8: chat route now forwards `userRole` so staff with
+    // submissions.view_all can use the assistant during platform-mode contests.
     expect(isAiAssistantEnabledForContextMock).toHaveBeenCalledWith({
       userId: "student-1",
+      userRole: "student",
       assignmentId: null,
       problemId: null,
     });
