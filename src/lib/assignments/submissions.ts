@@ -348,13 +348,13 @@ export async function canViewAssignmentSubmissions(
   userId: string,
   role: string
 ): Promise<boolean> {
-  if (!assignmentId) {
-    return false;
-  }
-
   const caps = await resolveCapabilities(role);
   if (caps.has("submissions.view_all")) {
     return true;
+  }
+
+  if (!assignmentId) {
+    return false;
   }
 
   if (!caps.has("assignments.view_status")) {

@@ -11,7 +11,7 @@ import { getResolvedSystemSettings } from "@/lib/system-settings";
 import { auth } from "@/lib/auth";
 import { resolveCapabilities } from "@/lib/capabilities/cache";
 import { Button } from "@/components/ui/button";
-import { KeyRound, Plus } from "lucide-react";
+import { KeyRound, Plus, Settings } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { CountdownTimer } from "@/components/exam/countdown-timer";
 import { getDbNow } from "@/lib/db-time";
@@ -120,10 +120,12 @@ export default async function PublicContestsPage() {
         <div className="mb-8">
           <h2 className="mb-4 text-xl font-bold">{t("contests.myContestsTitle")}</h2>
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
-            {myContests.map((contest) => (
-              <Link key={contest.id} href={buildLocalePath(`/contests/${contest.id}`, locale)} className="block">
-                <div className={`flex items-center gap-4 rounded-lg border p-4 transition-colors hover:bg-accent/50 ${getContestStatusBorderClass(contest.status)}`}>
-                  <div className="flex-1 min-w-0">
+            {myContests.map((contest) => {
+              const detailHref = buildLocalePath(`/contests/${contest.id}`, locale);
+              const cardClass = `flex items-center gap-4 rounded-lg border p-4 transition-colors hover:bg-accent/50 ${getContestStatusBorderClass(contest.status)}`;
+              return (
+                <div key={contest.id} className={cardClass}>
+                  <Link href={detailHref} className="flex-1 min-w-0">
                     <div className="flex items-center gap-2 mb-1">
                       <span className="font-medium truncate">{contest.title}</span>
                     </div>
@@ -147,7 +149,7 @@ export default async function PublicContestsPage() {
                         </>
                       )}
                     </div>
-                  </div>
+                  </Link>
                   <div className="flex items-center gap-2 shrink-0">
                     <Badge variant={getContestStatusBadgeVariant(contest.status)} className="text-xs">
                       {statusLabels[contest.status]}
@@ -158,10 +160,21 @@ export default async function PublicContestsPage() {
                     <Badge className={getScoringModelBadgeClass(contest.scoringModel)}>
                       {contest.scoringModel === "ioi" ? tContests("scoringModelIoi") : tContests("scoringModelIcpc")}
                     </Badge>
+                    {canCreateContest && (
+                      <Link
+                        href={buildLocalePath(`/contests/manage/${contest.id}`, locale)}
+                        className="inline-flex"
+                      >
+                        <Button variant="outline" size="sm" className="gap-1">
+                          <Settings className="size-3.5" />
+                          {tContests("manageContest")}
+                        </Button>
+                      </Link>
+                    )}
                   </div>
                 </div>
-              </Link>
-            ))}
+              );
+            })}
           </div>
         </div>
       )}

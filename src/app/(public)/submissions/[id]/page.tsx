@@ -19,6 +19,7 @@ import { getLanguageDisplayLabel } from "@/lib/judge/languages";
 import { buildStatusLabels } from "@/lib/judge/status-labels";
 import { formatDateTimeInTimeZone } from "@/lib/datetime";
 import { canViewAssignmentSubmissions } from "@/lib/assignments/submissions";
+import { resolveCapabilities } from "@/lib/capabilities/cache";
 
 export async function generateMetadata(): Promise<Metadata> {
   const t = await getTranslations("submissions");
@@ -84,7 +85,7 @@ export default async function PublicSubmissionDetailPage({ params, searchParams 
   // authenticated users from discovering private-problem submission metadata
   // (contest/exam submissions) by guessing submission IDs. See AGG-2 (cycle 7).
   let canViewAsInstructor = false;
-  if (!isOwner && submission.assignmentId && submission.problem?.visibility !== "public") {
+  if (!isOwner) {
     canViewAsInstructor = await canViewAssignmentSubmissions(
       submission.assignmentId,
       session.user.id,
@@ -97,6 +98,11 @@ export default async function PublicSubmissionDetailPage({ params, searchParams 
   }
 
   const canViewDetails = isOwner || canViewAsInstructor;
+
+  // Capabilities surface the rejudge / comment / view_source actions on the
+  // submission detail UI (`SubmissionDetailClient`). Previously hard-coded to
+  // an empty list, which hid the rejudge button from instructors and admins.
+  const userCapabilities = [...await resolveCapabilities(session.user.role ?? "user")];
 
   // Fetch the viewer's own other submissions for the same problem
   const otherSubmissions = submission.problemId
@@ -198,7 +204,7 @@ export default async function PublicSubmissionDetailPage({ params, searchParams 
         showDetailedResults={showDetailedResults}
         showRuntimeErrors={showRuntimeErrors}
         userId={session.user.id}
-        capabilities={[]}
+        capabilities={userCapabilities}
         problemTimeLimitMs={submission.problem?.timeLimitMs ?? null}
         canViewSource={canViewDetails}
         isOwner={isOwner}

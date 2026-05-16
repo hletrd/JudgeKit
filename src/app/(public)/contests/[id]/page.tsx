@@ -120,13 +120,13 @@ export default async function PublicContestDetailPage({ params }: { params: Prom
 
   if (session?.user) {
     userAccess = await getUserContestAccess(id, session.user.id, session.user.role);
-    if (userAccess === "enrolled") {
+    if (userAccess === "enrolled" || userAccess === "managing") {
       enrolledDetail = await getEnrolledContestDetail(id, session.user.id, session.user.role);
     }
   }
 
-  // --- Student participation view (enrolled) ---
-  if (userAccess === "enrolled" && enrolledDetail && session?.user) {
+  // --- Participation view (enrolled student or managing instructor/admin) ---
+  if ((userAccess === "enrolled" || userAccess === "managing") && enrolledDetail && session?.user) {
     const contest = enrolledDetail;
     const recruitingAccess = await getRecruitingAccessContext(session.user.id);
     const isRecruitingCandidate = recruitingAccess.isRecruitingCandidate;
