@@ -41,6 +41,18 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 
+type ContestUserAccess = Awaited<ReturnType<typeof getUserContestAccess>>;
+
+/**
+ * Whether a contest detail page should render the rich "participation" view
+ * (enrolled student or managing instructor/admin). After the cycle-8 widening
+ * this predicate replaces the inline `userAccess === "enrolled" || === "managing"`
+ * compound expression in two call sites and captures the shared semantics.
+ */
+function canShowParticipationView(userAccess: ContestUserAccess): boolean {
+  return userAccess === "enrolled" || userAccess === "managing";
+}
+
 export async function generateMetadata({ params }: { params: Promise<{ id: string }> }): Promise<Metadata> {
   const { id } = await params;
   const [contest, t, tShell, tContest, locale] = await Promise.all([
@@ -120,13 +132,13 @@ export default async function PublicContestDetailPage({ params }: { params: Prom
 
   if (session?.user) {
     userAccess = await getUserContestAccess(id, session.user.id, session.user.role);
-    if (userAccess === "enrolled" || userAccess === "managing") {
+    if (canShowParticipationView(userAccess)) {
       enrolledDetail = await getEnrolledContestDetail(id, session.user.id, session.user.role);
     }
   }
 
   // --- Participation view (enrolled student or managing instructor/admin) ---
-  if ((userAccess === "enrolled" || userAccess === "managing") && enrolledDetail && session?.user) {
+  if (canShowParticipationView(userAccess) && enrolledDetail && session?.user) {
     const contest = enrolledDetail;
     const recruitingAccess = await getRecruitingAccessContext(session.user.id);
     const isRecruitingCandidate = recruitingAccess.isRecruitingCandidate;
