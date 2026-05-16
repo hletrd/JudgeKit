@@ -35,24 +35,24 @@ work is a small consolidation pass:
 
 | # | Task | Severity | Status |
 |---|---|---|---|
-| 1 | Add `getHighlightJsLanguage()` adapter to `src/lib/code/language-map.ts` returning `undefined` when canonical lookup yields `"plaintext"`, derived from `CODE_SURFACE_LANGUAGE_MAP`. Cover any judge-language-id present in `LANGUAGE_TO_HLJS` but missing from the canonical map (`node`, `bash`, `ruby`, `scala`, `haskell`, `ocaml`, `lua`, `c11`, `c89`, `c99`, `cpp`, `cpp17`, `python3`, `csharp` aliases). | LOW | [ ] |
-| 2 | Replace `LANGUAGE_TO_HLJS` and `hljsLanguageFor` in `src/components/contest/code-timeline-panel.tsx` with `getHighlightJsLanguage` from the adapter. Delete the local map. | LOW | [ ] |
-| 3 | Add unit tests for `getHighlightJsLanguage` in `tests/unit/code/language-map.test.ts`: known-language, case-insensitive, plaintext-fallback returns undefined, unknown returns undefined. | LOW | [ ] |
-| 4 | In `src/lib/plugins/secrets.ts`, wire `isValidEncryptedPluginSecret` into `preparePluginConfigForStorage`: when `incomingValue.startsWith("enc:v1:")` but the value is not well-formed (per the validator), reject the write with a descriptive error rather than persisting a malformed ciphertext. Plaintext writes continue to bypass the validator unchanged. | LOW (defense-in-depth) | [ ] |
-| 5 | Add `@policy: plaintext` JSDoc marker + brief explanation on `preparePluginConfigForStorage` and tighten the `decryptPluginSecret` JSDoc to clearly call out the dual-mode (plaintext-pass-through + legacy-decrypt) behavior. | LOW (ARCH8b-2 + CR9-3) | [ ] |
-| 6 | `useMemo` the `problems` and `problemLabels` derivations in `code-timeline-panel.tsx` keyed on `[snapshots]` (and `t` for labels). | LOW (PERF9-2) | [ ] |
-| 7 | Move `plans/open/2026-05-16-cycle-8-rpf-review-remediation.md` to `plans/done/`. | LOW (housekeeping, CR9-4) | [ ] |
-| 8 | Run all gates: `npm run lint`, `npm run build`, `npm run test:unit`. | — | [ ] |
-| 9 | Commit + push fine-grained per-topic, GPG-signed, conventional + gitmoji. | — | [ ] |
+| 1 | Add `getHighlightJsLanguage()` adapter to `src/lib/code/language-map.ts` returning `undefined` when canonical lookup yields `"plaintext"`, derived from `CODE_SURFACE_LANGUAGE_MAP`. Cover any judge-language-id present in `LANGUAGE_TO_HLJS` but missing from the canonical map (`node`, `bash`, `ruby`, `scala`, `haskell`, `ocaml`, `lua`, `c11`, `c89`, `c99`, `cpp`, `cpp17`, `python3`, `csharp` aliases). | LOW | [x] |
+| 2 | Replace `LANGUAGE_TO_HLJS` and `hljsLanguageFor` in `src/components/contest/code-timeline-panel.tsx` with `getHighlightJsLanguage` from the adapter. Delete the local map. | LOW | [x] |
+| 3 | Add unit tests for `getHighlightJsLanguage` in `tests/unit/code/language-map.test.ts`: known-language, case-insensitive, plaintext-fallback returns undefined, unknown returns undefined. | LOW | [x] |
+| 4 | In `src/lib/plugins/secrets.ts`, wire `isValidEncryptedPluginSecret` into `preparePluginConfigForStorage`: when `incomingValue.startsWith("enc:v1:")` but the value is not well-formed (per the validator), reject the write with a descriptive error rather than persisting a malformed ciphertext. Plaintext writes continue to bypass the validator unchanged. | LOW (defense-in-depth) | [x] |
+| 5 | Add `@policy: plaintext` JSDoc marker + brief explanation on `preparePluginConfigForStorage` and tighten the `decryptPluginSecret` JSDoc to clearly call out the dual-mode (plaintext-pass-through + legacy-decrypt) behavior. | LOW (ARCH8b-2 + CR9-3) | [x] |
+| 6 | `useMemo` the `problems` and `problemLabels` derivations in `code-timeline-panel.tsx` keyed on `[snapshots]` (and `t` for labels). | LOW (PERF9-2) | [x] |
+| 7 | Move `plans/open/2026-05-16-cycle-8-rpf-review-remediation.md` to `plans/done/`. | LOW (housekeeping, CR9-4) | [x] |
+| 8 | Run all gates: `npm run lint`, `npm run build`, `npm run test:unit`. | — | [x] |
+| 9 | Commit + push fine-grained per-topic, GPG-signed, conventional + gitmoji. | — | [x] |
 | 10 | Run per-cycle `DEPLOY_CMD`. | — | [ ] |
 
 ---
 
 ## Quality gates
 
-- [ ] `npm run lint`
-- [ ] `npm run build`
-- [ ] `npm run test:unit`
+- [x] `npm run lint` — PASS
+- [x] `npm run build` — PASS
+- [x] `npm run test:unit` — 317 files, 2421 tests pass (was 2410; added 11)
 
 ---
 
@@ -80,11 +80,11 @@ writes.
 
 ## Progress
 
-- [ ] Per-agent reviews written — DONE in PROMPT 1
-- [ ] Aggregate written — DONE in PROMPT 1
-- [ ] Plan written — DONE (this file)
-- [ ] Lint passes
-- [ ] Unit tests pass
-- [ ] Build passes
-- [ ] Committed and pushed
+- [x] Per-agent reviews written — DONE in PROMPT 1
+- [x] Aggregate written — DONE in PROMPT 1
+- [x] Plan written
+- [x] Lint passes
+- [x] Unit tests pass (2421/2421)
+- [x] Build passes
+- [x] Committed and pushed (4 commits this cycle)
 - [ ] Deployed
