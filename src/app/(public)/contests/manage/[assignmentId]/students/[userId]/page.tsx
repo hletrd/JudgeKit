@@ -105,6 +105,8 @@ export default async function StudentDetailPage({
       tParticipantAudit("timelineBar.durationLong", { hours, minutes, seconds }),
     durationShort: (minutes: number, seconds: number) =>
       tParticipantAudit("timelineBar.durationShort", { minutes, seconds }),
+    snapshotMarkerLabel: (problemTitle: string, when: string) =>
+      tParticipantAudit("timelineBar.snapshotMarkerLabel", { problemTitle, when }),
   };
 
   const statusColors: Record<string, string> = {

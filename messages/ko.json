@@ -2494,7 +2494,8 @@
         "axisStart": "0분",
         "scoreLabel": "점수: {score}",
         "durationLong": "{hours}시간 {minutes}분 {seconds}초",
-        "durationShort": "{minutes}분 {seconds}초"
+        "durationShort": "{minutes}분 {seconds}초",
+        "snapshotMarkerLabel": "{problemTitle} — 코드 스냅샷 — {when}"
       },
       "antiCheatSummary": {
         "title": "무결성 신호 요약",

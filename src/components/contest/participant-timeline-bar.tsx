@@ -61,6 +61,8 @@ type TimelineTranslations = {
   durationLong: (hours: number, minutes: number, seconds: number) => string;
   /** Localized "{minutes}m {seconds}s" duration string. */
   durationShort: (minutes: number, seconds: number) => string;
+  /** Localized aria-label for a code-snapshot marker. */
+  snapshotMarkerLabel: (problemTitle: string, when: string) => string;
 };
 
 type ParticipantTimelineBarProps = {
@@ -214,7 +216,11 @@ export function ParticipantTimelineBar({
               >
                 {isSnapshot ? (
                   <div
-                    aria-label={`${ev.problemTitle} — ${formatDateTimeInTimeZone(ev.at, locale, timeZone)}`}
+                    role="img"
+                    aria-label={tr.snapshotMarkerLabel(
+                      ev.problemTitle,
+                      formatDateTimeInTimeZone(ev.at, locale, timeZone),
+                    )}
                     className="block -translate-x-1/2"
                   >
                     <div

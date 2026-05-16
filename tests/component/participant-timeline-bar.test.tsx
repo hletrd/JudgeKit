@@ -28,6 +28,8 @@ const baseTranslations = {
   scoreLabel: (score: string) => `Score: ${score}`,
   durationLong: (h: number, m: number, s: number) => `${h}h ${m}m ${s}s`,
   durationShort: (m: number, s: number) => `${m}m ${s}s`,
+  snapshotMarkerLabel: (title: string, when: string) =>
+    `${title} — code snapshot — ${when}`,
 };
 
 const koTranslations = {
@@ -36,6 +38,8 @@ const koTranslations = {
   scoreLabel: (score: string) => `점수: ${score}`,
   durationLong: (h: number, m: number, s: number) => `${h}시간 ${m}분 ${s}초`,
   durationShort: (m: number, s: number) => `${m}분 ${s}초`,
+  snapshotMarkerLabel: (title: string, when: string) =>
+    `${title} — 코드 스냅샷 — ${when}`,
 };
 
 const start = new Date("2026-01-01T10:00:00.000Z");

@@ -239,6 +239,8 @@ export async function ParticipantTimelineView({
                 t("timelineBar.durationLong", { hours, minutes, seconds }),
               durationShort: (minutes: number, seconds: number) =>
                 t("timelineBar.durationShort", { minutes, seconds }),
+              snapshotMarkerLabel: (problemTitle: string, when: string) =>
+                t("timelineBar.snapshotMarkerLabel", { problemTitle, when }),
             }}
             statusLabels={statusLabels}
           />

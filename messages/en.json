@@ -2494,7 +2494,8 @@
         "axisStart": "0m",
         "scoreLabel": "Score: {score}",
         "durationLong": "{hours}h {minutes}m {seconds}s",
-        "durationShort": "{minutes}m {seconds}s"
+        "durationShort": "{minutes}m {seconds}s",
+        "snapshotMarkerLabel": "{problemTitle} — code snapshot — {when}"
       },
       "antiCheatSummary": {
         "title": "Integrity Signal Summary",
