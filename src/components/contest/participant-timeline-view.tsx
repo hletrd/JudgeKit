@@ -46,12 +46,11 @@ export async function ParticipantTimelineView({
   auditData,
   participantTimeline,
 }: ParticipantTimelineViewProps) {
-  const [t, tAntiCheat, tSubmissions, tCommon, locale, timeZone] =
+  const [t, tAntiCheat, tSubmissions, locale, timeZone] =
     await Promise.all([
       getTranslations("contests.participantAudit"),
       getTranslations("contests.antiCheat"),
       getTranslations("submissions"),
-      getTranslations("common"),
       getLocale(),
       getResolvedSystemTimeZone(),
     ]);
@@ -229,20 +228,17 @@ export async function ParticipantTimelineView({
             timeZone={timeZone}
             translations={{
               noSubmissions: t("submissionHistory.noSubmissions"),
-              pointsValue: (value: number) => t("pointsValue", { value }),
-              attempts: (count: number) => t("problemSummary.attempts", { count }),
-              snapshots: (count: number) => t("problemSummary.snapshots", { count }),
-              bestScore: t("problemSummary.bestScore"),
-              timeToFirstSubmission: t("problemSummary.timeToFirstSubmission"),
-              timeToSolve: t("problemSummary.timeToSolve"),
-              wrongBeforeAc: (count: number) => t("problemSummary.wrongBeforeAc", { count }),
-              relativeTime: (minutes: number, seconds: number) =>
-                t("problemSummary.relativeTime", { minutes, seconds }),
               firstAccepted: t("problemSummary.firstAccepted"),
               codeSnapshot: (chars: number) => t("problemSummary.codeSnapshot", { chars }),
-              view: tCommon("view"),
+              attempts: (count: number) => t("problemSummary.attempts", { count }),
               tries: (count: number) => t("problemSummary.tries", { count }),
               best: (score: string | number) => t("problemSummary.best", { score }),
+              axisStart: t("timelineBar.axisStart"),
+              scoreLabel: (score: string) => t("timelineBar.scoreLabel", { score }),
+              durationLong: (hours: number, minutes: number, seconds: number) =>
+                t("timelineBar.durationLong", { hours, minutes, seconds }),
+              durationShort: (minutes: number, seconds: number) =>
+                t("timelineBar.durationShort", { minutes, seconds }),
             }}
             statusLabels={statusLabels}
           />

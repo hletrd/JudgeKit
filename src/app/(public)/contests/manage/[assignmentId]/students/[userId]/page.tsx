@@ -94,20 +94,17 @@ export default async function StudentDetailPage({
   }));
   const timelineTranslations = {
     noSubmissions: tParticipantAudit("submissionHistory.noSubmissions"),
-    pointsValue: (value: number) => tParticipantAudit("pointsValue", { value }),
-    attempts: (count: number) => tParticipantAudit("problemSummary.attempts", { count }),
-    snapshots: (count: number) => tParticipantAudit("problemSummary.snapshots", { count }),
-    bestScore: tParticipantAudit("problemSummary.bestScore"),
-    timeToFirstSubmission: tParticipantAudit("problemSummary.timeToFirstSubmission"),
-    timeToSolve: tParticipantAudit("problemSummary.timeToSolve"),
-    wrongBeforeAc: (count: number) => tParticipantAudit("problemSummary.wrongBeforeAc", { count }),
-    relativeTime: (minutes: number, seconds: number) =>
-      tParticipantAudit("problemSummary.relativeTime", { minutes, seconds }),
     firstAccepted: tParticipantAudit("problemSummary.firstAccepted"),
     codeSnapshot: (chars: number) => tParticipantAudit("problemSummary.codeSnapshot", { chars }),
-    view: tCommon("view"),
+    attempts: (count: number) => tParticipantAudit("problemSummary.attempts", { count }),
     tries: (count: number) => tParticipantAudit("problemSummary.tries", { count }),
     best: (score: string | number) => tParticipantAudit("problemSummary.best", { score }),
+    axisStart: tParticipantAudit("timelineBar.axisStart"),
+    scoreLabel: (score: string) => tParticipantAudit("timelineBar.scoreLabel", { score }),
+    durationLong: (hours: number, minutes: number, seconds: number) =>
+      tParticipantAudit("timelineBar.durationLong", { hours, minutes, seconds }),
+    durationShort: (minutes: number, seconds: number) =>
+      tParticipantAudit("timelineBar.durationShort", { minutes, seconds }),
   };
 
   const statusColors: Record<string, string> = {

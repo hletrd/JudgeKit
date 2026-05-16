@@ -48,19 +48,19 @@ type FlatTimelineEvent = {
 
 type TimelineTranslations = {
   noSubmissions: string;
-  pointsValue: (value: number) => string;
-  attempts: (count: number) => string;
-  snapshots: (count: number) => string;
-  bestScore: string;
-  timeToFirstSubmission: string;
-  timeToSolve: string;
-  wrongBeforeAc: (count: number) => string;
-  relativeTime: (minutes: number, seconds: number) => string;
   firstAccepted: string;
   codeSnapshot: (chars: number) => string;
-  view: string;
+  attempts: (count: number) => string;
   tries: (count: number) => string;
   best: (score: string | number) => string;
+  /** Localized "0" label for the timeline axis start. */
+  axisStart: string;
+  /** Localized "Score: {score}" label inside the tooltip. */
+  scoreLabel: (score: string) => string;
+  /** Localized "{hours}h {minutes}m {seconds}s" duration string. */
+  durationLong: (hours: number, minutes: number, seconds: number) => string;
+  /** Localized "{minutes}m {seconds}s" duration string. */
+  durationShort: (minutes: number, seconds: number) => string;
 };
 
 type ParticipantTimelineBarProps = {
@@ -142,13 +142,16 @@ export function ParticipantTimelineBar({
   }
 
   function formatDuration(totalSeconds: number) {
-    const hours = Math.floor(totalSeconds / 3600);
-    const minutes = Math.floor((totalSeconds % 3600) / 60);
-    const seconds = totalSeconds % 60;
+    // Clamp at 0 so pre-start events (e.g. retroactively-started exams) don't
+    // render `0m -5s` in the tooltip relative-time label.
+    const safeSeconds = Math.max(0, totalSeconds);
+    const hours = Math.floor(safeSeconds / 3600);
+    const minutes = Math.floor((safeSeconds % 3600) / 60);
+    const seconds = safeSeconds % 60;
     if (hours > 0) {
-      return `${hours}h ${minutes}m ${seconds}s`;
+      return tr.durationLong(hours, minutes, seconds);
     }
-    return `${minutes}m ${seconds}s`;
+    return tr.durationShort(minutes, seconds);
   }
 
   const hasEvents = flatEvents.length > 0;
@@ -186,7 +189,7 @@ export function ParticipantTimelineBar({
       <div className="relative">
         {/* Time axis labels */}
         <div className="flex justify-between text-xs text-muted-foreground mb-1">
-          <span>0m</span>
+          <span>{tr.axisStart}</span>
           <span>
             {formatDuration(Math.floor(totalDurationMs / 1000))}
           </span>
@@ -218,29 +221,41 @@ export function ParticipantTimelineBar({
                       className={`size-3 rounded-sm ${problemColor(ev.problemIndex)} opacity-60`}
                     />
                   </div>
-                ) : (
-                  <Link
-                    href={ev.submissionId ? `/submissions/${ev.submissionId}` : "#"}
-                    aria-label={`${ev.problemTitle} — ${ev.status ?? ev.type} — ${formatDateTimeInTimeZone(ev.at, locale, timeZone)}`}
-                    className="block -translate-x-1/2"
-                  >
-                    {isFirstAc ? (
-                      <div
-                        className={`size-5 rounded-full ${problemColor(ev.problemIndex)} flex items-center justify-center shadow-sm ring-2 ring-white`}
-                      >
-                        <Check className="size-3 text-white" />
-                      </div>
-                    ) : (
-                      <div
-                        className={`size-4 rounded-full border-2 ${problemBorderColor(ev.problemIndex)} ${
-                          ev.status === "accepted" || ev.status === "scored"
-                            ? problemColor(ev.problemIndex)
-                            : "bg-white"
-                        }`}
-                      />
-                    )}
-                  </Link>
-                )}
+                ) : (() => {
+                  const markerInner = isFirstAc ? (
+                    <div
+                      className={`size-5 rounded-full ${problemColor(ev.problemIndex)} flex items-center justify-center shadow-sm ring-2 ring-white`}
+                    >
+                      <Check className="size-3 text-white" />
+                    </div>
+                  ) : (
+                    <div
+                      className={`size-4 rounded-full border-2 ${problemBorderColor(ev.problemIndex)} ${
+                        ev.status === "accepted" || ev.status === "scored"
+                          ? problemColor(ev.problemIndex)
+                          : "bg-white"
+                      }`}
+                    />
+                  );
+                  const markerLabel = `${ev.problemTitle} — ${ev.status ?? ev.type} — ${formatDateTimeInTimeZone(ev.at, locale, timeZone)}`;
+                  return ev.submissionId ? (
+                    <Link
+                      href={`/submissions/${ev.submissionId}`}
+                      aria-label={markerLabel}
+                      className="block -translate-x-1/2"
+                    >
+                      {markerInner}
+                    </Link>
+                  ) : (
+                    <div
+                      role="img"
+                      aria-label={markerLabel}
+                      className="block -translate-x-1/2"
+                    >
+                      {markerInner}
+                    </div>
+                  );
+                })()}
 
                 {/* Hover tooltip - CSS only */}
                 <div className="absolute bottom-full left-1/2 -translate-x-1/2 mb-2 z-50 min-w-[200px] hidden group-hover:block">
@@ -268,7 +283,7 @@ export function ParticipantTimelineBar({
                           ) : null}
                         </div>
                         {ev.score !== null && ev.score !== undefined ? (
-                          <div>Score: {formatScore(ev.score, locale)}</div>
+                          <div>{tr.scoreLabel(formatScore(ev.score, locale))}</div>
                         ) : null}
                         {ev.language ? (
                           <div className="text-xs text-muted-foreground">

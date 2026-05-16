@@ -2496,6 +2496,12 @@
         "tries": "{count} tries",
         "best": "best: {score}"
       },
+      "timelineBar": {
+        "axisStart": "0m",
+        "scoreLabel": "Score: {score}",
+        "durationLong": "{hours}h {minutes}m {seconds}s",
+        "durationShort": "{minutes}m {seconds}s"
+      },
       "antiCheatSummary": {
         "title": "Integrity Signal Summary",
         "totalEvents": "{count} recorded signals"

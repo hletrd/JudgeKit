@@ -2496,6 +2496,12 @@
         "tries": "{count}회 시도",
         "best": "최고: {score}"
       },
+      "timelineBar": {
+        "axisStart": "0분",
+        "scoreLabel": "점수: {score}",
+        "durationLong": "{hours}시간 {minutes}분 {seconds}초",
+        "durationShort": "{minutes}분 {seconds}초"
+      },
       "antiCheatSummary": {
         "title": "무결성 신호 요약",
         "totalEvents": "기록된 신호 {count}건"
