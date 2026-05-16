@@ -19,6 +19,7 @@ import {
   getEnrolledContestDetail,
   getUserContestAccess,
 } from "@/lib/assignments/public-contests";
+import { canShowParticipationView } from "@/lib/contests/access-view";
 import { computeContestAnalytics } from "@/lib/assignments/contest-analytics";
 import { computeContestReplay } from "@/lib/assignments/contest-replay";
 import { computeLeaderboard } from "@/lib/assignments/leaderboard";
@@ -40,18 +41,6 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
-
-type ContestUserAccess = Awaited<ReturnType<typeof getUserContestAccess>>;
-
-/**
- * Whether a contest detail page should render the rich "participation" view
- * (enrolled student or managing instructor/admin). After the cycle-8 widening
- * this predicate replaces the inline `userAccess === "enrolled" || === "managing"`
- * compound expression in two call sites and captures the shared semantics.
- */
-function canShowParticipationView(userAccess: ContestUserAccess): boolean {
-  return userAccess === "enrolled" || userAccess === "managing";
-}
 
 export async function generateMetadata({ params }: { params: Promise<{ id: string }> }): Promise<Metadata> {
   const { id } = await params;
