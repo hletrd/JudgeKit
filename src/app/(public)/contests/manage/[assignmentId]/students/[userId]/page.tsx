@@ -17,6 +17,9 @@ import { getResolvedSystemTimeZone } from "@/lib/system-settings";
 import { DEFAULT_PROBLEM_POINTS } from "@/lib/assignments/constants";
 import { getLanguageDisplayLabel } from "@/lib/judge/languages";
 import { CodeTimelinePanel } from "@/components/contest/code-timeline-panel";
+import { ParticipantTimelineBar } from "@/components/contest/participant-timeline-bar";
+import { getParticipantTimeline } from "@/lib/assignments/participant-timeline";
+import { buildStatusLabels } from "@/lib/judge/status-labels";
 
 export default async function StudentDetailPage({
   params,
@@ -74,6 +77,39 @@ export default async function StudentDetailPage({
     (a, b) => (a.sortOrder ?? 0) - (b.sortOrder ?? 0)
   );
 
+  // Per-problem timeline (used by ParticipantTimelineBar progress view)
+  const [participantTimeline, tParticipantAudit] = await Promise.all([
+    getParticipantTimeline(assignmentId, userId),
+    getTranslations("contests.participantAudit"),
+  ]);
+  const timelineByProblem = new Map(
+    participantTimeline?.problems.map((p) => [p.problemId, p]) ?? []
+  );
+  const statusLabels = buildStatusLabels(tSub);
+  const timelineProblems = sortedProblems.map((ap) => ({
+    problemId: ap.problemId,
+    title: ap.problem.title,
+    points: ap.points ?? null,
+    sortOrder: ap.sortOrder ?? null,
+  }));
+  const timelineTranslations = {
+    noSubmissions: tParticipantAudit("submissionHistory.noSubmissions"),
+    pointsValue: (value: number) => tParticipantAudit("pointsValue", { value }),
+    attempts: (count: number) => tParticipantAudit("problemSummary.attempts", { count }),
+    snapshots: (count: number) => tParticipantAudit("problemSummary.snapshots", { count }),
+    bestScore: tParticipantAudit("problemSummary.bestScore"),
+    timeToFirstSubmission: tParticipantAudit("problemSummary.timeToFirstSubmission"),
+    timeToSolve: tParticipantAudit("problemSummary.timeToSolve"),
+    wrongBeforeAc: (count: number) => tParticipantAudit("problemSummary.wrongBeforeAc", { count }),
+    relativeTime: (minutes: number, seconds: number) =>
+      tParticipantAudit("problemSummary.relativeTime", { minutes, seconds }),
+    firstAccepted: tParticipantAudit("problemSummary.firstAccepted"),
+    codeSnapshot: (chars: number) => tParticipantAudit("problemSummary.codeSnapshot", { chars }),
+    view: tCommon("view"),
+    tries: (count: number) => tParticipantAudit("problemSummary.tries", { count }),
+    best: (score: string | number) => tParticipantAudit("problemSummary.best", { score }),
+  };
+
   const statusColors: Record<string, string> = {
     accepted: "bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400",
     wrong_answer: "bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-400",
@@ -106,7 +142,8 @@ export default async function StudentDetailPage({
         </p>
       </div>
 
-      {/* Per-problem summary */}
+      {/* Per-problem summary — clicking jumps to the submissions list anchored
+          at the matching row */}
       <div className="grid gap-3 md:grid-cols-2 lg:grid-cols-3">
         {sortedProblems.map((ap) => {
           const problemSubs = studentSubmissions.filter(
@@ -116,27 +153,52 @@ export default async function StudentDetailPage({
             ? problemSubs.map((s) => s.score ?? 0).reduce((max, v) => Math.max(max, v), 0)
             : 0;
           const hasAccepted = problemSubs.some((s) => s.status === "accepted");
+          const firstSubAnchor = problemSubs[0]?.id
+            ? `submission-${problemSubs[0].id}`
+            : "submission-list";
 
           return (
-            <Card key={ap.problemId} className={hasAccepted ? "border-green-300 dark:border-green-700" : ""}>
-              <CardContent className="py-3 px-4">
-                <div className="flex items-center justify-between">
-                  <span className="font-medium text-sm truncate">{ap.problem.title}</span>
-                  <Badge variant={hasAccepted ? "success" : problemSubs.length > 0 ? "destructive" : "secondary"} className="text-xs">
-                    {bestScore}/{ap.points ?? DEFAULT_PROBLEM_POINTS}
-                  </Badge>
-                </div>
-                <p className="text-xs text-muted-foreground mt-1">
-                  {t("submissionCount", { count: problemSubs.length })}
-                </p>
-              </CardContent>
-            </Card>
+            <Link key={ap.problemId} href={`#${firstSubAnchor}`} className="block focus:outline-none">
+              <Card className={`${hasAccepted ? "border-green-300 dark:border-green-700" : ""} transition-colors hover:bg-muted/40`}>
+                <CardContent className="py-3 px-4">
+                  <div className="flex items-center justify-between">
+                    <span className="font-medium text-sm truncate">{ap.problem.title}</span>
+                    <Badge variant={hasAccepted ? "success" : problemSubs.length > 0 ? "destructive" : "secondary"} className="text-xs">
+                      {bestScore}/{ap.points ?? DEFAULT_PROBLEM_POINTS}
+                    </Badge>
+                  </div>
+                  <p className="text-xs text-muted-foreground mt-1">
+                    {t("submissionCount", { count: problemSubs.length })}
+                  </p>
+                </CardContent>
+              </Card>
+            </Link>
           );
         })}
       </div>
 
+      {/* Progress-bar timeline view */}
+      {participantTimeline && (
+        <Card>
+          <CardHeader>
+            <CardTitle className="text-lg">{tParticipantAudit("progressTitle")}</CardTitle>
+          </CardHeader>
+          <CardContent className="space-y-6">
+            <ParticipantTimelineBar
+              participant={participantTimeline.participant}
+              assignmentProblems={timelineProblems}
+              timelineByProblem={timelineByProblem}
+              locale={locale}
+              timeZone={timeZone}
+              translations={timelineTranslations}
+              statusLabels={statusLabels}
+            />
+          </CardContent>
+        </Card>
+      )}
+
       {/* Full submission log */}
-      <Card>
+      <Card id="submission-list">
         <CardHeader>
           <CardTitle className="text-lg">{t("tabs.submissions")}</CardTitle>
         </CardHeader>
@@ -144,12 +206,12 @@ export default async function StudentDetailPage({
           <Table>
             <TableHeader>
               <TableRow>
-                <TableHead>{tSub("problem")}</TableHead>
-                <TableHead>{tSub("language")}</TableHead>
-                <TableHead>{tSub("status.label")}</TableHead>
-                <TableHead className="text-right">{tSub("score")}</TableHead>
-                <TableHead>{tSub("submittedAt")}</TableHead>
-                <TableHead className="text-right pr-6">{tCommon("action")}</TableHead>
+                <TableHead>{tSub("table.problem")}</TableHead>
+                <TableHead>{tSub("table.language")}</TableHead>
+                <TableHead>{tSub("table.status")}</TableHead>
+                <TableHead className="text-right">{tSub("table.score")}</TableHead>
+                <TableHead>{tSub("table.submittedAt")}</TableHead>
+                <TableHead className="text-right pr-6">{tSub("table.action")}</TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
@@ -161,7 +223,7 @@ export default async function StudentDetailPage({
                 </TableRow>
               ) : (
                 studentSubmissions.map((sub) => (
-                  <TableRow key={sub.id}>
+                  <TableRow key={sub.id} id={`submission-${sub.id}`} className="scroll-mt-24">
                     <TableCell className="font-medium text-sm">
                       <Link
                         href={`/submissions/${sub.id}`}

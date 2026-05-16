@@ -2,6 +2,9 @@
 
 import { useState, useEffect, useCallback } from "react";
 import { useTranslations, useLocale } from "next-intl";
+import hljs from "highlight.js/lib/common";
+import "highlight.js/styles/github.css";
+import { sanitizeHtml } from "@/lib/security/sanitize-html";
 import { useSystemTimezone } from "@/contexts/timezone-context";
 import { formatDateTimeInTimeZone } from "@/lib/datetime";
 import { toast } from "sonner";
@@ -17,6 +20,75 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { ChevronLeft, ChevronRight, Clock } from "lucide-react";
+
+// Map app language IDs to highlight.js language identifiers. Falls back to
+// auto-detection (`undefined` returned) when the language isn't in the table.
+const LANGUAGE_TO_HLJS: Record<string, string> = {
+  c: "c",
+  c11: "c",
+  c17: "c",
+  c89: "c",
+  c99: "c",
+  cpp: "cpp",
+  "cpp17": "cpp",
+  "cpp20": "cpp",
+  "cpp23": "cpp",
+  python: "python",
+  python3: "python",
+  java: "java",
+  rust: "rust",
+  go: "go",
+  javascript: "javascript",
+  typescript: "typescript",
+  node: "javascript",
+  bash: "bash",
+  ruby: "ruby",
+  php: "php",
+  swift: "swift",
+  kotlin: "kotlin",
+  scala: "scala",
+  perl: "perl",
+  haskell: "haskell",
+  ocaml: "ocaml",
+  lua: "lua",
+  csharp: "csharp",
+};
+
+function hljsLanguageFor(language: string): string | undefined {
+  return LANGUAGE_TO_HLJS[language.toLowerCase()];
+}
+
+function escapeHtml(value: string): string {
+  return value
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;")
+    .replace(/'/g, "&#39;");
+}
+
+function HighlightedCode({ language, source }: { language: string; source: string }) {
+  // highlight.js's `.value` HTML-escapes user input before producing markup,
+  // and we additionally pass the result through `sanitizeHtml` (DOMPurify-
+  // backed) as defense-in-depth before rendering.
+  let raw: string;
+  try {
+    const lang = hljsLanguageFor(language);
+    const result = lang && hljs.getLanguage(lang)
+      ? hljs.highlight(source, { language: lang, ignoreIllegals: true })
+      : hljs.highlightAuto(source);
+    raw = result.value;
+  } catch {
+    raw = escapeHtml(source);
+  }
+  const html = sanitizeHtml(raw);
+
+  return (
+    <pre className="overflow-auto max-h-[500px] p-4 text-sm font-mono rounded-b-lg">
+      <code className="hljs" dangerouslySetInnerHTML={{ __html: html }} />
+    </pre>
+  );
+}
 
 type Snapshot = {
   id: string;
@@ -201,9 +273,10 @@ export function CodeTimelinePanel({
             </div>
           </CardHeader>
           <CardContent className="p-0">
-            <pre className="overflow-auto max-h-[500px] p-4 text-sm font-mono bg-muted/30 rounded-b-lg">
-              <code>{current.sourceCode}</code>
-            </pre>
+            <HighlightedCode
+              language={current.language}
+              source={current.sourceCode}
+            />
           </CardContent>
         </Card>
       )}
