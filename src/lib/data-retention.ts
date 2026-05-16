@@ -1,6 +1,6 @@
 const DEFAULT_DATA_RETENTION_DAYS = {
   auditEvents: 90,
-  chatMessages: 30,
+  chatMessages: 365 * 5,
   antiCheatEvents: 180,
   recruitingRecords: 365,
   submissions: 365,

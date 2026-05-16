@@ -16,7 +16,7 @@ describe("data retention configuration", () => {
 
     expect(DATA_RETENTION_DAYS).toEqual({
       auditEvents: 90,
-      chatMessages: 30,
+      chatMessages: 365 * 5,
       antiCheatEvents: 180,
       recruitingRecords: 365,
       submissions: 365,
@@ -40,7 +40,7 @@ describe("data retention configuration", () => {
 
     const { DATA_RETENTION_DAYS } = await import("@/lib/data-retention");
 
-    expect(DATA_RETENTION_DAYS.chatMessages).toBe(30);
+    expect(DATA_RETENTION_DAYS.chatMessages).toBe(365 * 5);
     expect(DATA_RETENTION_DAYS.submissions).toBe(365);
   });
 });
