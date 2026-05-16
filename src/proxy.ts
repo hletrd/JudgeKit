@@ -131,17 +131,27 @@ function resolveExplicitLocale(request: NextRequest): SupportedLocale | null {
   return isSupportedLocale(locale) ? locale : null;
 }
 
+function hasSessionCookie(request: NextRequest): boolean {
+  const { name, secureName } = getAuthSessionCookieNames();
+  return Boolean(request.cookies.get(name)?.value || request.cookies.get(secureName)?.value);
+}
+
 function resolveRequestLocale(request: NextRequest, deterministicPublicLocale: boolean): SupportedLocale {
   const explicitLocale = resolveExplicitLocale(request);
   if (explicitLocale) {
     return explicitLocale;
   }
 
-  if (deterministicPublicLocale) {
+  const cookieLocale = request.cookies.get(LOCALE_COOKIE_NAME)?.value;
+
+  // Deterministic public locale forces DEFAULT_LOCALE for SEO consistency on
+  // unauthenticated requests. Authenticated users (session cookie present) keep
+  // their explicit cookie/Accept-Language preference so language switching works
+  // on indexable pages like /practice, /contests, etc.
+  if (deterministicPublicLocale && !hasSessionCookie(request)) {
     return DEFAULT_LOCALE;
   }
 
-  const cookieLocale = request.cookies.get(LOCALE_COOKIE_NAME)?.value;
   if (isSupportedLocale(cookieLocale)) {
     return cookieLocale;
   }
@@ -170,7 +180,11 @@ function createSecuredNextResponse(request: NextRequest) {
   const nonce = createNonce();
   const isDev = process.env.NODE_ENV === "development";
   const isSignupPage = request.nextUrl.pathname === "/signup";
-  const deterministicPublicLocale = usesDeterministicPublicLocale(request.nextUrl.pathname);
+  const deterministicPathPolicy = usesDeterministicPublicLocale(request.nextUrl.pathname);
+  // Authenticated users override the SEO-deterministic mode so their cookie
+  // preference takes effect on indexable pages. Unauthenticated requests keep
+  // the deterministic locale for SEO consistency.
+  const deterministicPublicLocale = deterministicPathPolicy && !hasSessionCookie(request);
   const explicitLocale = resolveExplicitLocale(request);
   const resolvedLocale = resolveRequestLocale(request, deterministicPublicLocale);
   const requestHeaders = new Headers(request.headers);
