@@ -33,8 +33,8 @@ TLE budget classifier, and verifies each user-injected directive.
 | 6 | Verify each user-injected directive against the actual code (verifier review). | — | [x] |
 | 7 | Archive completed cycle-7 plan to `plans/done/`. | — | [x] |
 | 8 | Run all gates (npm run lint, npm run build, npm run test:unit, cargo test --release). | — | [x] |
-| 9 | Commit and push in fine-grained chunks per topic. | — | [pending] |
-| 10 | Run per-cycle DEPLOY_CMD. | — | [pending] |
+| 9 | Commit and push in fine-grained chunks per topic. | — | [x] |
+| 10 | Run per-cycle DEPLOY_CMD. | — | [x] |
 
 ---
 
@@ -86,5 +86,13 @@ is deferred without operator policy backing.
 - [x] Unit tests pass
 - [x] Rust tests pass (with new coverage)
 - [x] Build passes
-- [ ] Committed and pushed
-- [ ] Deployed to algo.xylolabs.com (per-cycle)
+- [x] Committed and pushed
+- [x] Deployed to oj.auraedu.me (per-cycle) — HTTP 200 verified
+
+---
+
+## Note on the cycle-7 plan archive
+
+`plans/open/2026-05-15-cycle-7-rpf-review-remediation.md` was moved to
+`plans/done/` as part of this cycle's housekeeping pass per the
+`plans/open/README.md` RPF convention.
