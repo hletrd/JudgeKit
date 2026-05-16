@@ -123,7 +123,7 @@ export async function computeSingleUserLiveRank(
           s.score,
           s.submitted_at,
           COALESCE(ap.points, 100) AS points,
-          MIN(CASE WHEN ROUND(s.score, 2) = 100 THEN s.submitted_at ELSE NULL END)
+          MIN(CASE WHEN ROUND(s.score::numeric, 2) = 100 THEN s.submitted_at ELSE NULL END)
             OVER (PARTITION BY s.user_id, s.problem_id) AS first_ac_at
         FROM submissions s
         INNER JOIN assignment_problems ap ON ap.assignment_id = s.assignment_id AND ap.problem_id = s.problem_id
@@ -133,8 +133,8 @@ export async function computeSingleUserLiveRank(
         SELECT
           user_id,
           problem_id,
-          MAX(CASE WHEN ROUND(score, 2) = 100 THEN 1 ELSE 0 END) AS has_ac,
-          MIN(CASE WHEN ROUND(score, 2) = 100 THEN submitted_at ELSE NULL END) AS first_ac_at,
+          MAX(CASE WHEN ROUND(score::numeric, 2) = 100 THEN 1 ELSE 0 END) AS has_ac,
+          MIN(CASE WHEN ROUND(score::numeric, 2) = 100 THEN submitted_at ELSE NULL END) AS first_ac_at,
           SUM(CASE WHEN (score IS NULL OR score < 100)
                     AND EXTRACT(EPOCH FROM submitted_at)::bigint < COALESCE(EXTRACT(EPOCH FROM first_ac_at)::bigint, 9999999999)
                THEN 1 ELSE 0 END) AS wrong_before_ac

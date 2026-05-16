@@ -182,7 +182,7 @@ export async function computeContestAnalytics(assignmentId: string, includeTimel
     rawQueryAll<{ userId: string; problemId: string; submittedAt: Date }>(
       `SELECT s.user_id AS "userId", s.problem_id AS "problemId", s.submitted_at AS "submittedAt"
        FROM submissions s
-       WHERE s.assignment_id = @assignmentId AND ROUND(s.score, 2) = 100
+       WHERE s.assignment_id = @assignmentId AND ROUND(s.score::numeric, 2) = 100
        ORDER BY s.submitted_at ASC`,
       { assignmentId }
     ),
