@@ -223,6 +223,65 @@ describe("ParticipantTimelineBar", () => {
     expect(imgMarker).toBeInTheDocument();
   });
 
+  it("clamps formatDuration at 0 for pre-start events (regression test for DBG10-2)", () => {
+    // A submission whose timestamp predates participant.examStartedAt
+    // (retroactively-started exam, clock skew, etc.) used to render
+    // "0m -5s" in the relative-time tooltip line. The cycle-10 clamp
+    // `Math.max(0, totalSeconds)` should now produce "0m 0s" / "0분 0초".
+    const beforeStart = new Date(start.getTime() - 5_000); // 5s before start
+    const synth = new Map<string, ParticipantTimeline["problems"][number]>([
+      [
+        "p1",
+        {
+          problemId: "p1",
+          title: "Problem A",
+          points: 100,
+          sortOrder: 1,
+          summary: {
+            totalAttempts: 1,
+            bestScore: 0,
+            firstSubmissionAt: beforeStart,
+            lastSubmissionAt: beforeStart,
+            firstAcAt: null,
+            timeToFirstSubmission: -5,
+            timeToFirstAc: null,
+            wrongBeforeAc: 1,
+            snapshotCount: 0,
+          },
+          timeline: [
+            {
+              type: "submission",
+              at: beforeStart,
+              submissionId: "s-pre",
+              status: "wrong_answer",
+              score: 0,
+              language: "python",
+              executionTimeMs: 50,
+              memoryUsedKb: 512,
+            },
+          ],
+        },
+      ],
+    ]);
+    const { container } = render(
+      <ParticipantTimelineBar
+        participant={participant}
+        assignmentProblems={assignmentProblems}
+        timelineByProblem={synth}
+        locale="ko"
+        timeZone="UTC"
+        translations={koTranslations}
+        statusLabels={{ wrong_answer: "오답" }}
+      />
+    );
+    const html = container.innerHTML;
+    // No negative-second substring should appear in the tooltip relative-time.
+    expect(html).not.toMatch(/-\d+초/);
+    expect(html).not.toMatch(/-\d+s\b/);
+    // The pre-start relative-time should clamp to "0분 0초" (ko durationShort).
+    expect(html).toMatch(/\+0분 0초/);
+  });
+
   it("renders 'no submissions' fallback when there are no events", () => {
     render(
       <ParticipantTimelineBar
