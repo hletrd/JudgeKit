@@ -29,7 +29,7 @@ export default function ChatWidgetAdminConfig({ config, onSave }: PluginAdminPro
   const [claudeApiKey, setClaudeApiKey] = useState((config.claudeApiKey as string) ?? "");
   const [claudeModel, setClaudeModel] = useState((config.claudeModel as string) ?? "claude-sonnet-4-6");
   const [geminiApiKey, setGeminiApiKey] = useState((config.geminiApiKey as string) ?? "");
-  const [geminiModel, setGeminiModel] = useState((config.geminiModel as string) ?? "gemini-3.1-flash-lite-preview");
+  const [geminiModel, setGeminiModel] = useState((config.geminiModel as string) ?? "gemini-3.1-flash-lite");
   const [assistantName, setAssistantName] = useState((config.assistantName as string) ?? "");
   const [systemPrompt, setSystemPrompt] = useState((config.systemPrompt as string) ?? "");
   const [knowledgeBase, setKnowledgeBase] = useState((config.knowledgeBase as string) ?? "");
@@ -75,7 +75,7 @@ export default function ChatWidgetAdminConfig({ config, onSave }: PluginAdminPro
     "claude-opus-4-20250514": "Claude Opus 4",
     "claude-sonnet-4-5-20250929": "Claude Sonnet 4.5",
     "claude-opus-4-5-20251101": "Claude Opus 4.5",
-    "gemini-3.1-flash-lite-preview": "Gemini 3.1 Flash Lite",
+    "gemini-3.1-flash-lite": "Gemini 3.1 Flash Lite",
     "gemini-3.1-pro-preview": "Gemini 3.1 Pro",
     "gemini-2.5-pro": "Gemini 2.5 Pro",
     "gemini-2.5-flash": "Gemini 2.5 Flash",
@@ -222,7 +222,7 @@ export default function ChatWidgetAdminConfig({ config, onSave }: PluginAdminPro
                 )}
                 {provider === "gemini" && (
                   <>
-                    <SelectItem value="gemini-3.1-flash-lite-preview" label="Gemini 3.1 Flash Lite">Gemini 3.1 Flash Lite</SelectItem>
+                    <SelectItem value="gemini-3.1-flash-lite" label="Gemini 3.1 Flash Lite">Gemini 3.1 Flash Lite</SelectItem>
                     <SelectItem value="gemini-3.1-pro-preview" label="Gemini 3.1 Pro">Gemini 3.1 Pro</SelectItem>
                     <SelectItem value="gemini-2.5-pro" label="Gemini 2.5 Pro">Gemini 2.5 Pro</SelectItem>
                     <SelectItem value="gemini-2.5-flash" label="Gemini 2.5 Flash">Gemini 2.5 Flash</SelectItem>
