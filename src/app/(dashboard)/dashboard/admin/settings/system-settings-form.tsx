@@ -335,34 +335,36 @@ export function SystemSettingsForm({
         </p>
       </div>
 
-      <div className="space-y-2 pl-4 border-l-2 border-muted">
-        <div className="space-y-2">
-          <Label htmlFor="hcaptcha-site-key">{t("hcaptchaSiteKeyLabel")}</Label>
-          <Input
-            id="hcaptcha-site-key"
-            value={hcaptchaSiteKey}
-            onChange={(event) => setHcaptchaSiteKey(event.target.value)}
-            placeholder={t("hcaptchaSiteKeyPlaceholder")}
-          />
-          <p className="text-xs text-muted-foreground">
-            {t("hcaptchaSiteKeyHint")}
-          </p>
-        </div>
+      {signupHcaptchaEnabled && (
+        <div className="space-y-2 pl-4 border-l-2 border-muted">
+          <div className="space-y-2">
+            <Label htmlFor="hcaptcha-site-key">{t("hcaptchaSiteKeyLabel")}</Label>
+            <Input
+              id="hcaptcha-site-key"
+              value={hcaptchaSiteKey}
+              onChange={(event) => setHcaptchaSiteKey(event.target.value)}
+              placeholder={t("hcaptchaSiteKeyPlaceholder")}
+            />
+            <p className="text-xs text-muted-foreground">
+              {t("hcaptchaSiteKeyHint")}
+            </p>
+          </div>
 
-        <div className="space-y-2">
-          <Label htmlFor="hcaptcha-secret">{t("hcaptchaSecretLabel")}</Label>
-          <Input
-            id="hcaptcha-secret"
-            type="password"
-            value={hcaptchaSecret}
-            onChange={(event) => setHcaptchaSecret(event.target.value)}
-            placeholder={t("hcaptchaSecretPlaceholder")}
-          />
-          <p className="text-xs text-muted-foreground">
-            {t("hcaptchaSecretHint")}
-          </p>
+          <div className="space-y-2">
+            <Label htmlFor="hcaptcha-secret">{t("hcaptchaSecretLabel")}</Label>
+            <Input
+              id="hcaptcha-secret"
+              type="password"
+              value={hcaptchaSecret}
+              onChange={(event) => setHcaptchaSecret(event.target.value)}
+              placeholder={t("hcaptchaSecretPlaceholder")}
+            />
+            <p className="text-xs text-muted-foreground">
+              {t("hcaptchaSecretHint")}
+            </p>
+          </div>
         </div>
-      </div>
+      )}
 
       <Button type="submit" disabled={isLoading}>
         {isLoading ? tCommon("loading") : tCommon("save")}
