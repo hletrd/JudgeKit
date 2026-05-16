@@ -44,7 +44,7 @@ work is a small consolidation pass:
 | 7 | Move `plans/open/2026-05-16-cycle-8-rpf-review-remediation.md` to `plans/done/`. | LOW (housekeeping, CR9-4) | [x] |
 | 8 | Run all gates: `npm run lint`, `npm run build`, `npm run test:unit`. | — | [x] |
 | 9 | Commit + push fine-grained per-topic, GPG-signed, conventional + gitmoji. | — | [x] |
-| 10 | Run per-cycle `DEPLOY_CMD`. | — | [ ] |
+| 10 | Run per-cycle `DEPLOY_CMD`. | — | [x] |
 
 ---
 
@@ -87,4 +87,4 @@ writes.
 - [x] Unit tests pass (2421/2421)
 - [x] Build passes
 - [x] Committed and pushed (4 commits this cycle)
-- [ ] Deployed
+- [x] Deployed to oj.auraedu.me (per-cycle) — HTTPS HTTP 200 verified
