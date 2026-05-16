@@ -46,6 +46,39 @@ describe("plugin secret helpers", () => {
     expect(prepared.geminiApiKey).toBe("new-gemini-key");
   });
 
+  it("rejects malformed enc:v1: payloads on the storage path (defense in depth)", () => {
+    // Plaintext storage policy (cycle 8): plaintext writes pass through, but
+    // an `enc:v1:`-prefixed value MUST still be well-formed because the read
+    // path will attempt decryption. A malformed token would corrupt the row.
+    expect(() =>
+      preparePluginConfigForStorage(
+        "chat-widget",
+        {
+          provider: "openai",
+          openaiApiKey: "enc:v1:not-base64",
+          claudeApiKey: "",
+          geminiApiKey: "",
+        },
+        {}
+      )
+    ).toThrow(/Malformed encrypted plugin secret/);
+  });
+
+  it("accepts a well-formed enc:v1: payload (legacy migration path)", () => {
+    const encrypted = encryptPluginSecret("legacy-secret")!;
+    const prepared = preparePluginConfigForStorage(
+      "chat-widget",
+      {
+        provider: "openai",
+        openaiApiKey: encrypted,
+        claudeApiKey: "",
+        geminiApiKey: "",
+      },
+      {}
+    );
+    expect(prepared.openaiApiKey).toBe(encrypted);
+  });
+
   it("redacts secrets for admin reads and restores them for runtime use", () => {
     const encrypted = encryptPluginSecret("live-secret");
     const storedConfig = {
