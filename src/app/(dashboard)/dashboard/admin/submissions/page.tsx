@@ -294,10 +294,10 @@ export default async function AdminSubmissionsPage({
       <SubmissionListAutoRefresh hasActiveSubmissions={hasActiveSubmissions} />
       <h2 className="text-2xl font-bold mb-4">{t("title")}</h2>
       <Card>
-        <CardContent>
-          <form className="flex flex-col gap-4 md:flex-row md:items-end" method="get">
+        <CardContent className="overflow-x-auto">
+          <form className="flex flex-col gap-4 md:flex-row md:items-end md:flex-nowrap md:min-w-max" method="get">
             <div className="flex-1 space-y-1.5">
-              <label className="block text-sm font-medium" htmlFor="submissions-search">
+              <label className="block text-sm font-medium whitespace-nowrap" htmlFor="submissions-search">
                 {t("searchLabel")}
               </label>
               <Input
@@ -309,7 +309,7 @@ export default async function AdminSubmissionsPage({
               />
             </div>
             <div className="space-y-1.5">
-              <label className="block text-sm font-medium" htmlFor="submissions-status">
+              <label className="block text-sm font-medium whitespace-nowrap" htmlFor="submissions-status">
                 {tSubmissions("statusLabel")}
               </label>
               <FilterSelect
@@ -326,7 +326,7 @@ export default async function AdminSubmissionsPage({
               />
             </div>
             <div className="space-y-1.5">
-              <label className="block text-sm font-medium" htmlFor="submissions-group">
+              <label className="block text-sm font-medium whitespace-nowrap" htmlFor="submissions-group">
                 {t("groupFilterLabel")}
               </label>
               <FilterSelect
@@ -343,7 +343,7 @@ export default async function AdminSubmissionsPage({
               />
             </div>
             <div className="space-y-1.5">
-              <label className="block text-sm font-medium" htmlFor="submissions-language">
+              <label className="block text-sm font-medium whitespace-nowrap" htmlFor="submissions-language">
                 {tSubmissions("languageFilterLabel")}
               </label>
               <FilterSelect
@@ -363,7 +363,7 @@ export default async function AdminSubmissionsPage({
               />
             </div>
             <div className="space-y-1.5">
-              <label className="block text-sm font-medium" htmlFor="submissions-date-from">
+              <label className="block text-sm font-medium whitespace-nowrap" htmlFor="submissions-date-from">
                 {t("dateFromLabel")}
               </label>
               <Input
@@ -374,7 +374,7 @@ export default async function AdminSubmissionsPage({
               />
             </div>
             <div className="space-y-1.5">
-              <label className="block text-sm font-medium" htmlFor="submissions-date-to">
+              <label className="block text-sm font-medium whitespace-nowrap" htmlFor="submissions-date-to">
                 {t("dateToLabel")}
               </label>
               <Input
