@@ -101,7 +101,6 @@ export function ConfigSettingsForm({
               <Button
                 type="button"
                 variant="outline"
-                size="sm"
                 onClick={() => handleClear(f.key)}
                 className="shrink-0 text-xs"
               >

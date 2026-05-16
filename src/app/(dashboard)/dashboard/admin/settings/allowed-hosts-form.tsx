@@ -86,7 +86,7 @@ export function AllowedHostsForm({ initialHosts, authUrlHost }: AllowedHostsForm
             placeholder={t("allowedHostPlaceholder")}
             className="font-mono"
           />
-          <Button type="button" variant="outline" size="sm" onClick={handleAdd} className="shrink-0">
+          <Button type="button" variant="outline" onClick={handleAdd} className="shrink-0">
             {tCommon("add")}
           </Button>
         </div>
