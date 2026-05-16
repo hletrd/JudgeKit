@@ -16,27 +16,30 @@ describe("participant timeline view implementation", () => {
     expect(source).toContain("<ParticipantAntiCheatTimeline");
   });
 
-  it("keeps the per-problem summary badges and anti-cheat summary in the shared component", () => {
-    const source = read("src/components/contest/participant-timeline-view.tsx");
+  it("keeps the per-problem summary badges and anti-cheat summary wired (via the shared translations helper)", () => {
+    // Cycle 11 (ARCH11-2): the per-call-site inline translations bag was
+    // factored into `buildParticipantTimelineTranslations(t)`. The keys we
+    // care about now live in the helper, not the view file. The view file
+    // still owns the anti-cheat summary surface.
+    const view = read("src/components/contest/participant-timeline-view.tsx");
+    const helper = read("src/components/contest/participant-timeline-translations.ts");
 
-    // Per-problem summary keys actually wired into the rendered output (CR10-2:
-    // the previously-asserted `problemSummary.bestScore` and
-    // `problemSummary.timeToSolve` bag fields were dead — they were declared in
-    // `TimelineTranslations` but never consumed by `ParticipantTimelineBar`,
-    // and were dropped in cycle 10).
-    expect(source).toContain('t("problemSummary.attempts"');
-    expect(source).toContain('t("problemSummary.tries"');
-    expect(source).toContain('t("problemSummary.best"');
-    expect(source).toContain('t("problemSummary.firstAccepted")');
-    expect(source).toContain('t("antiCheatSummary.title")');
-    expect(source).toContain("participantTimeline.antiCheatSummary.byType");
+    expect(helper).toContain('t("problemSummary.attempts"');
+    expect(helper).toContain('t("problemSummary.tries"');
+    expect(helper).toContain('t("problemSummary.best"');
+    expect(helper).toContain('t("problemSummary.firstAccepted")');
+    expect(view).toContain('t("antiCheatSummary.title")');
+    expect(view).toContain("participantTimeline.antiCheatSummary.byType");
+    expect(view).toContain("buildParticipantTimelineTranslations(t)");
   });
 
-  it("wires the new timelineBar i18n keys for the participation bar", () => {
-    const source = read("src/components/contest/participant-timeline-view.tsx");
-    expect(source).toContain('t("timelineBar.axisStart")');
-    expect(source).toContain('t("timelineBar.scoreLabel"');
-    expect(source).toContain('t("timelineBar.durationLong"');
-    expect(source).toContain('t("timelineBar.durationShort"');
+  it("wires the timelineBar i18n keys for the participation bar via the shared helper", () => {
+    const helper = read("src/components/contest/participant-timeline-translations.ts");
+    expect(helper).toContain('t("timelineBar.axisStart")');
+    expect(helper).toContain('t("timelineBar.scoreLabel"');
+    expect(helper).toContain('t("timelineBar.durationLong"');
+    expect(helper).toContain('t("timelineBar.durationShort"');
+    // Cycle 11 (CR11-2): snapshot-marker a11y label
+    expect(helper).toContain('t("timelineBar.snapshotMarkerLabel"');
   });
 });
