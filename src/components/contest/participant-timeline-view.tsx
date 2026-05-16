@@ -10,6 +10,7 @@ import { DEFAULT_PROBLEM_POINTS } from "@/lib/assignments/constants";
 import { ParticipantAntiCheatTimeline } from "@/components/contest/participant-anti-cheat-timeline";
 import { CodeTimelinePanel } from "@/components/contest/code-timeline-panel";
 import { ParticipantTimelineBar } from "@/components/contest/participant-timeline-bar";
+import { buildParticipantTimelineTranslations } from "@/components/contest/participant-timeline-translations";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import {
@@ -226,22 +227,7 @@ export async function ParticipantTimelineView({
             timelineByProblem={timelineByProblem}
             locale={locale}
             timeZone={timeZone}
-            translations={{
-              noSubmissions: t("submissionHistory.noSubmissions"),
-              firstAccepted: t("problemSummary.firstAccepted"),
-              codeSnapshot: (chars: number) => t("problemSummary.codeSnapshot", { chars }),
-              attempts: (count: number) => t("problemSummary.attempts", { count }),
-              tries: (count: number) => t("problemSummary.tries", { count }),
-              best: (score: string | number) => t("problemSummary.best", { score }),
-              axisStart: t("timelineBar.axisStart"),
-              scoreLabel: (score: string) => t("timelineBar.scoreLabel", { score }),
-              durationLong: (hours: number, minutes: number, seconds: number) =>
-                t("timelineBar.durationLong", { hours, minutes, seconds }),
-              durationShort: (minutes: number, seconds: number) =>
-                t("timelineBar.durationShort", { minutes, seconds }),
-              snapshotMarkerLabel: (problemTitle: string, when: string) =>
-                t("timelineBar.snapshotMarkerLabel", { problemTitle, when }),
-            }}
+            translations={buildParticipantTimelineTranslations(t)}
             statusLabels={statusLabels}
           />
         </CardContent>

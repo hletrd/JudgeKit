@@ -18,6 +18,7 @@ import { DEFAULT_PROBLEM_POINTS } from "@/lib/assignments/constants";
 import { getLanguageDisplayLabel } from "@/lib/judge/languages";
 import { CodeTimelinePanel } from "@/components/contest/code-timeline-panel";
 import { ParticipantTimelineBar } from "@/components/contest/participant-timeline-bar";
+import { buildParticipantTimelineTranslations } from "@/components/contest/participant-timeline-translations";
 import { getParticipantTimeline } from "@/lib/assignments/participant-timeline";
 import { buildStatusLabels } from "@/lib/judge/status-labels";
 
@@ -92,22 +93,7 @@ export default async function StudentDetailPage({
     points: ap.points ?? null,
     sortOrder: ap.sortOrder ?? null,
   }));
-  const timelineTranslations = {
-    noSubmissions: tParticipantAudit("submissionHistory.noSubmissions"),
-    firstAccepted: tParticipantAudit("problemSummary.firstAccepted"),
-    codeSnapshot: (chars: number) => tParticipantAudit("problemSummary.codeSnapshot", { chars }),
-    attempts: (count: number) => tParticipantAudit("problemSummary.attempts", { count }),
-    tries: (count: number) => tParticipantAudit("problemSummary.tries", { count }),
-    best: (score: string | number) => tParticipantAudit("problemSummary.best", { score }),
-    axisStart: tParticipantAudit("timelineBar.axisStart"),
-    scoreLabel: (score: string) => tParticipantAudit("timelineBar.scoreLabel", { score }),
-    durationLong: (hours: number, minutes: number, seconds: number) =>
-      tParticipantAudit("timelineBar.durationLong", { hours, minutes, seconds }),
-    durationShort: (minutes: number, seconds: number) =>
-      tParticipantAudit("timelineBar.durationShort", { minutes, seconds }),
-    snapshotMarkerLabel: (problemTitle: string, when: string) =>
-      tParticipantAudit("timelineBar.snapshotMarkerLabel", { problemTitle, when }),
-  };
+  const timelineTranslations = buildParticipantTimelineTranslations(tParticipantAudit);
 
   const statusColors: Record<string, string> = {
     accepted: "bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400",

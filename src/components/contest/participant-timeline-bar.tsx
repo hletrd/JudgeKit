@@ -46,7 +46,7 @@ type FlatTimelineEvent = {
   charCount?: number;
 };
 
-type TimelineTranslations = {
+export type TimelineTranslations = {
   noSubmissions: string;
   firstAccepted: string;
   codeSnapshot: (chars: number) => string;
