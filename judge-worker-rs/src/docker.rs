@@ -325,11 +325,23 @@ async fn run_docker_once(
     if let Some(ref input) = options.input {
         if let Some(mut stdin) = child.stdin.take() {
             if let Err(e) = stdin.write_all(input.as_bytes()).await {
-                tracing::error!(error = %e, container = %container_name, "Failed to write stdin to container");
-                drop(stdin);
-                kill_container(&container_name).await;
-                remove_container(&container_name).await;
-                return Err(DockerError::StdinFailed(e));
+                // EPIPE means the child closed stdin (exited or stopped reading)
+                // before we finished writing — a normal outcome for submissions
+                // that don't consume all input or that crash early. Surface the
+                // child's actual exit status and output instead of failing the
+                // whole run with an environment error.
+                if e.kind() == std::io::ErrorKind::BrokenPipe {
+                    tracing::debug!(
+                        container = %container_name,
+                        "child closed stdin before all input was written; continuing to wait for exit"
+                    );
+                } else {
+                    tracing::error!(error = %e, container = %container_name, "Failed to write stdin to container");
+                    drop(stdin);
+                    kill_container(&container_name).await;
+                    remove_container(&container_name).await;
+                    return Err(DockerError::StdinFailed(e));
+                }
             }
             drop(stdin);
         }
