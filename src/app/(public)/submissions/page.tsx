@@ -32,6 +32,7 @@ import { getResolvedSystemSettings } from "@/lib/system-settings";
 import { normalizePage, normalizePageSize, setPaginationParams } from "@/lib/pagination";
 import { FilterSelect } from "@/components/filter-select";
 import { getEnabledCompilerLanguages } from "@/lib/compiler/catalog";
+import { resolveCapabilities } from "@/lib/capabilities/cache";
 
 const PAGE_PATH = "/submissions";
 
@@ -175,12 +176,27 @@ export default async function SubmissionsPage({
   const languageFilter = currentLanguage !== "all"
     ? eq(submissions.language, currentLanguage)
     : undefined;
-  // Guests must not see submissions targeting private problems — those are
-  // contest / homework / exam submissions whose visibility is not public.
-  const guestVisibilityFilter = isGuest
+  // Visibility scoping for non-staff:
+  //   - Guests: only public-problem submissions.
+  //   - Authenticated non-staff (students, candidates): own submissions OR
+  //     submissions targeting public problems. Submissions to private
+  //     problems (contest / homework / exam) belong to other students and
+  //     leaking even their metadata (problem title, status, score, username)
+  //     to peers is unacceptable.
+  //   - Staff (submissions.view_all): no additional filter.
+  const capsForViewer = !isGuest
+    ? await resolveCapabilities(session!.user.role ?? "user")
+    : null;
+  const isStaff = capsForViewer?.has("submissions.view_all") ?? false;
+  const visibilityScopeFilter = isGuest
     ? eq(problems.visibility, "public")
-    : undefined;
-  const filters = [userFilter, searchFilter, statusDbFilter, periodFilter, languageFilter, guestVisibilityFilter].filter(Boolean);
+    : isStaff
+      ? undefined
+      : or(
+          eq(submissions.userId, session!.user.id),
+          eq(problems.visibility, "public"),
+        );
+  const filters = [userFilter, searchFilter, statusDbFilter, periodFilter, languageFilter, visibilityScopeFilter].filter(Boolean);
   const whereClause = filters.length > 0 ? and(...filters) : undefined;
 
   // Single query with COUNT(*) OVER() window function to get both the

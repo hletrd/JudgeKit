@@ -377,9 +377,10 @@ describe("POST /api/v1/submissions", () => {
     expect(response.headers.get("Retry-After")).toBe("30");
   });
 
-  it("returns 409 when a student submits without assignmentId but has active assignments", async () => {
+  it("returns 409 when a student submits without assignmentId and the problem is in multiple active assignments", async () => {
     getRequiredAssignmentContextsForProblemMock.mockResolvedValue([
       { assignmentId: "assign-1", title: "HW1", groupId: "group-1" },
+      { assignmentId: "assign-2", title: "HW2", groupId: "group-1" },
     ]);
     const { POST } = await import("@/app/api/v1/submissions/route");
 
@@ -388,6 +389,62 @@ describe("POST /api/v1/submissions", () => {
 
     expect(response.status).toBe(409);
     expect(payload.error).toBe("assignmentContextRequired");
+  });
+
+  it("auto-routes to the only active assignment when the student omits assignmentId", async () => {
+    getRequiredAssignmentContextsForProblemMock.mockResolvedValue([
+      { assignmentId: "assign-1", title: "HW1", groupId: "group-1" },
+    ]);
+    validateAssignmentSubmissionMock.mockResolvedValue({
+      ok: true,
+      assignment: { id: "assign-1", groupId: "group-1", instructorId: "inst-1" },
+    });
+    queueSelectResults([
+      [{ id: "problem-1", title: "Hello World" }],
+      [{ id: "lc-1" }],
+      [{ recentCount: 0, pendingCount: 0 }],
+      [{ count: 0 }],
+      [],
+      [{
+        id: "submission-auto",
+        userId: "user-1",
+        problemId: "problem-1",
+        assignmentId: "assign-1",
+        language: "python",
+        status: "pending",
+        compileOutput: null,
+        executionTimeMs: null,
+        memoryUsedKb: null,
+        score: null,
+        judgedAt: null,
+        submittedAt: new Date(),
+      }],
+      [{
+        id: "submission-auto",
+        userId: "user-1",
+        problemId: "problem-1",
+        assignmentId: "assign-1",
+        language: "python",
+        status: "pending",
+        compileOutput: null,
+        executionTimeMs: null,
+        memoryUsedKb: null,
+        score: null,
+        judgedAt: null,
+        submittedAt: new Date(),
+      }],
+    ]);
+    const { POST } = await import("@/app/api/v1/submissions/route");
+
+    const response = await POST(makeRequest(VALID_BODY));
+
+    expect(response.status).toBe(201);
+    expect(validateAssignmentSubmissionMock).toHaveBeenCalledWith(
+      "assign-1",
+      "problem-1",
+      "user-1",
+      "student"
+    );
   });
 
   it("passes assignment validation when assignmentId is provided and valid", async () => {

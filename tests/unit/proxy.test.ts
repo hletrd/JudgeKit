@@ -217,7 +217,21 @@ describe("proxy", () => {
       }
     });
 
-    it("forces default English locale on indexable public routes without an explicit locale", async () => {
+    it("forces default English locale on indexable public routes without a locale cookie", async () => {
+      const response = await proxy(
+        makeRequest("/practice", {
+          headers: {
+            "accept-language": "ko,en;q=0.9",
+          },
+        })
+      );
+
+      expect(response.status).toBe(200);
+      expect(response.headers.get("Content-Language")).toBe("en");
+      expect(response.headers.get("Vary")).toBe("Cookie");
+    });
+
+    it("honors an explicit locale cookie on indexable public routes", async () => {
       const response = await proxy(
         makeRequest("/practice", {
           headers: {
@@ -228,23 +242,22 @@ describe("proxy", () => {
       );
 
       expect(response.status).toBe(200);
-      expect(response.headers.get("Content-Language")).toBe("en");
-      expect(response.headers.get("Vary")).toBeNull();
+      expect(response.headers.get("Content-Language")).toBe("ko");
+      expect(response.headers.get("Vary")).toContain("Cookie");
     });
 
-    it("also forces default English locale on rankings without an explicit locale", async () => {
+    it("also forces default English locale on rankings without a locale cookie", async () => {
       const response = await proxy(
         makeRequest("/rankings", {
           headers: {
             "accept-language": "ko,en;q=0.9",
-            cookie: "locale=ko",
           },
         })
       );
 
       expect(response.status).toBe(200);
       expect(response.headers.get("Content-Language")).toBe("en");
-      expect(response.headers.get("Vary")).toBeNull();
+      expect(response.headers.get("Vary")).toBe("Cookie");
     });
 
     it("honors an explicit locale on indexable public routes", async () => {

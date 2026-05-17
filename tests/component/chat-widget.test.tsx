@@ -51,7 +51,6 @@ describe("ChatWidget", () => {
     const { container } = render(<ChatWidget />);
 
     await user.click(screen.getByRole("button", { name: "Chat" }));
-    expect(screen.getByText("loggingNotice")).toBeInTheDocument();
 
     const messagesContainer = container.querySelector(".overflow-y-auto") as HTMLDivElement;
     Object.defineProperty(messagesContainer, "scrollHeight", {

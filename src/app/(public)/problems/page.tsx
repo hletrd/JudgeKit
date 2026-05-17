@@ -84,19 +84,30 @@ function buildPageHref(
 
 /**
  * Build the SQL access filter for non-admin users.
+ *
+ * Group-access problems are resolved to an explicit ID list up front. The
+ * previous EXISTS subquery was rewritten by drizzle-orm's
+ * mapColumnsInSQLToAlias inside `db.query.problems.findMany` (any qualified
+ * column reference in a sql-template `where:` is forced onto the outer
+ * `problems` alias), which produced
+ * `column problems.problem_id does not exist`. `inArray(problems.id, …)`
+ * survives that rewrite.
  */
-function buildAccessFilter(userId: string) {
+async function buildAccessFilter(userId: string) {
+  const groupAccessibleProblemIds = (
+    await db
+      .select({ problemId: problemGroupAccess.problemId })
+      .from(problemGroupAccess)
+      .innerJoin(enrollments, eq(problemGroupAccess.groupId, enrollments.groupId))
+      .where(eq(enrollments.userId, userId))
+  ).map((row) => row.problemId);
+
   return or(
     eq(problems.visibility, "public"),
     eq(problems.authorId, userId),
-    sql`exists (
-      select 1
-      from ${problemGroupAccess}
-      inner join ${enrollments}
-        on ${problemGroupAccess.groupId} = ${enrollments.groupId}
-      where ${problemGroupAccess.problemId} = ${problems.id}
-        and ${enrollments.userId} = ${userId}
-    )`
+    groupAccessibleProblemIds.length > 0
+      ? inArray(problems.id, groupAccessibleProblemIds)
+      : sql`false`
   );
 }
 
@@ -180,16 +191,26 @@ export default async function ProblemsPage({
       ? (recruitingAccess.problemIds.length > 0
           ? inArray(problems.id, recruitingAccess.problemIds)
           : sql`false`)
-      : buildAccessFilter(session.user.id);
+      : await buildAccessFilter(session.user.id);
 
-  // Tag filter: restrict to problems that have this tag
-  const tagFilter = currentTag
-    ? sql`exists (
-        select 1 from ${problemTags}
-        inner join ${tags} on ${problemTags.tagId} = ${tags.id}
-        where ${problemTags.problemId} = ${problems.id}
-          and ${tags.name} = ${currentTag}
-      )`
+  // Resolve tag → problem IDs up front: db.query.X.findMany rewrites every
+  // Column ref inside a SQL-template `where` to use the outer table alias
+  // (drizzle-orm mapColumnsInSQLToAlias), which corrupts foreign-table refs
+  // in an EXISTS subquery (e.g., problemTags.tagId becomes problems.tag_id
+  // and Postgres errors out with `column problems.tag_id does not exist`).
+  // inArray(problems.id, …) survives that rewrite. Mirrors the patch already
+  // applied in src/app/(public)/practice/page.tsx.
+  const tagProblemIds = currentTag
+    ? (
+        await db
+          .select({ id: problemTags.problemId })
+          .from(problemTags)
+          .innerJoin(tags, eq(problemTags.tagId, tags.id))
+          .where(eq(tags.name, currentTag))
+      ).map((row) => row.id)
+    : null;
+  const tagFilter = tagProblemIds
+    ? (tagProblemIds.length > 0 ? inArray(problems.id, tagProblemIds) : sql`false`)
     : undefined;
 
   const baseWhereClause = combineFilters(searchFilter, visibilityDbFilter, accessFilter, tagFilter);

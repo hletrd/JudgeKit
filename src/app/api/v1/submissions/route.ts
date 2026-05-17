@@ -202,7 +202,7 @@ export const POST = createApiHandler({
   schema: submissionCreateSchema,
   handler: async (req: NextRequest, { user, body }) => {
     const { problemId, language, sourceCode } = body;
-    const normalizedAssignmentId = body.assignmentId ?? null;
+    let normalizedAssignmentId = body.assignmentId ?? null;
 
     if (!isJudgeLanguage(language)) {
       return apiError("languageNotSupported", 400);
@@ -244,7 +244,18 @@ export const POST = createApiHandler({
         user.role
       );
 
-      if (assignmentContexts.length > 0) {
+      if (assignmentContexts.length === 1) {
+        // Single context — auto-route to it so the user does not have to
+        // navigate back to the assignment page to record progress on the
+        // correct assignment. validateAssignmentSubmission below still
+        // enforces the assignment's submission window and exam state, so a
+        // closed or not-yet-open assignment still surfaces the proper error.
+        normalizedAssignmentId = assignmentContexts[0].assignmentId;
+      } else if (assignmentContexts.length > 1) {
+        // Ambiguous: the problem belongs to more than one assignment the
+        // user can submit through. Surface the list to the UI so the user
+        // can pick deliberately — auto-routing would attribute the
+        // submission to the wrong context.
         return apiError("assignmentContextRequired", 409);
       }
     }

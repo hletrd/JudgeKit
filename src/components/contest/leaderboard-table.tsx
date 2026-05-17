@@ -376,6 +376,11 @@ export function LeaderboardTable({
               // Pre-build per-entry problem map for O(1) lookup instead of
               // calling Array.find() (O(m)) per problem cell.
               const entryProblemMap = new Map(entry.problems.map((pr) => [pr.problemId, pr]));
+              // Non-contributing rows (admins doing test runs, candidates who
+              // joined but never scored): other cells already render in
+              // muted colors because of zero/untried styling, so mute the
+              // name cell too for visual consistency.
+              const isInactiveEntry = entry.totalScore === 0;
               return (
               <TableRow
                 key={entry.userId || `row-${idx}`}
@@ -413,10 +418,24 @@ export function LeaderboardTable({
                   <div>
                     {canViewStudentDetails ? (
                       <Link href={`/contests/manage/${assignmentId}/students/${entry.userId}`}>
-                        <span className="font-medium hover:underline cursor-pointer">{entry.name}</span>
+                        <span
+                          className={cn(
+                            "font-medium hover:underline cursor-pointer",
+                            isInactiveEntry && "text-muted-foreground"
+                          )}
+                        >
+                          {entry.name}
+                        </span>
                       </Link>
                     ) : (
-                      <span className="font-medium">{entry.name}</span>
+                      <span
+                        className={cn(
+                          "font-medium",
+                          isInactiveEntry && "text-muted-foreground"
+                        )}
+                      >
+                        {entry.name}
+                      </span>
                     )}
                     {data.frozen && entry.isCurrentUser ? (
                       <Badge variant="outline" className="ml-2 text-[10px]">

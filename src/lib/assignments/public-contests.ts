@@ -206,11 +206,12 @@ export async function getUserContestAccess(
   );
   if (canManage) return "managing";
 
-  // Check enrollment (student with group enrollment or access token)
+  // Check enrollment (student with group enrollment or access token).
+  // Only `groups.view_all` grants blanket "managing" access. `submissions.view_all`
+  // is for cross-group submission review — it must not promote an instructor
+  // into a manage view on another instructor's private contest.
   const caps = await resolveCapabilities(role);
-  const canViewAll =
-    caps.has("groups.view_all") || caps.has("submissions.view_all");
-  if (canViewAll) return "managing";
+  if (caps.has("groups.view_all")) return "managing";
 
   const enrollmentRow = await db.query.enrollments.findFirst({
     where: and(

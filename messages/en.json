@@ -2011,7 +2011,6 @@
       "viewChatLogs": "View Chat Logs",
       "noLogs": "No chat logs yet.",
       "noMessages": "No messages in this conversation.",
-      "loggingNotice": "Messages may be stored and reviewed by authorized staff to improve support and investigate misuse.",
       "chatLogsRetentionNotice": "Chat transcripts are pruned after {days} days unless exported through other review workflows.",
       "chatLogsAccessNotice": "Only authorized staff with chat-log access should review transcripts, and only for support, safety, or assessment-governance reasons.",
       "chatLogsAuditNotice": "Chat-log session views are audit logged.",
@@ -2168,7 +2167,15 @@
       "userNotFound": "User not found",
       "noResults": "No users found",
       "searching": "Searching...",
-      "searchFailed": "Search failed. Please try again."
+      "searchFailed": "Search failed. Please try again.",
+      "participantsTitle": "Current participants",
+      "participantsCount": "{count}",
+      "participantsLoading": "Loading participants...",
+      "participantsEmpty": "No participants yet. Invite someone below.",
+      "participantsFetchError": "Failed to load participants.",
+      "participantsLimitNotice": "Showing up to {limit} participants. Use search to find more.",
+      "accessViaInvited": "Invited",
+      "accessViaGroup": "Group member"
     },
     "antiCheat": {
       "title": "Anti-Cheat Signals",

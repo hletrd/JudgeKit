@@ -85,7 +85,7 @@ export function PublicProblemDetail({
         </div>
       </div>
       <Card>
-        <CardContent className="pt-6">
+        <CardContent>
           <StructuredProblemStatement description={description ?? ""} />
         </CardContent>
       </Card>

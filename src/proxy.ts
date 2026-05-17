@@ -144,16 +144,16 @@ function resolveRequestLocale(request: NextRequest, deterministicPublicLocale: b
 
   const cookieLocale = request.cookies.get(LOCALE_COOKIE_NAME)?.value;
 
-  // Deterministic public locale forces DEFAULT_LOCALE for SEO consistency on
-  // unauthenticated requests. Authenticated users (session cookie present) keep
-  // their explicit cookie/Accept-Language preference so language switching works
-  // on indexable pages like /practice, /contests, etc.
-  if (deterministicPublicLocale && !hasSessionCookie(request)) {
-    return DEFAULT_LOCALE;
-  }
-
+  // An explicit locale cookie always wins, even on SEO-deterministic public
+  // routes. Crawlers (no cookie) still fall through to DEFAULT_LOCALE below,
+  // so canonical indexing stays consistent while user-driven language toggles
+  // are honored on /practice, /contests, etc.
   if (isSupportedLocale(cookieLocale)) {
     return cookieLocale;
+  }
+
+  if (deterministicPublicLocale && !hasSessionCookie(request)) {
+    return DEFAULT_LOCALE;
   }
 
   return getPreferredLocaleFromAcceptLanguage(request.headers.get("accept-language"));
@@ -224,9 +224,12 @@ function createSecuredNextResponse(request: NextRequest) {
   if (isApi && !isPublicApi && !isJudgeWorker) {
     response.headers.set("Cache-Control", "no-store");
   }
+  // Cookie always influences the resolved locale (explicit toggle wins over
+  // SEO-deterministic default), so caches must key on it. Accept-Language
+  // only matters when there is no cookie/explicit override.
+  appendVaryHeader(response.headers, "Cookie");
   if (!deterministicPublicLocale) {
     appendVaryHeader(response.headers, "Accept-Language");
-    appendVaryHeader(response.headers, "Cookie");
   }
   if (explicitLocale) {
     response.cookies.set(LOCALE_COOKIE_NAME, explicitLocale, {

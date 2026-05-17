@@ -23,7 +23,28 @@ describe("i18n request config", () => {
   beforeEach(() => {
     vi.resetModules();
     vi.clearAllMocks();
+    getResolvedSystemSettingsMock.mockResolvedValue({ defaultLocale: "ko" });
+  });
 
+  it("keeps deterministic public routes on default locale when no cookie is set", async () => {
+    cookiesMock.mockResolvedValue({
+      get: vi.fn(() => undefined),
+    });
+    headersMock.mockResolvedValue({
+      get: vi.fn((name: string) => {
+        if (name === "x-public-locale-mode") return "deterministic";
+        if (name === "accept-language") return "ko,en;q=0.9";
+        return null;
+      }),
+    });
+
+    const getConfig = (await import("@/i18n/request")).default;
+    const config = await (getConfig as () => Promise<{ locale: string }>)();
+
+    expect(config.locale).toBe("en");
+  });
+
+  it("honors an explicit locale cookie on deterministic public routes", async () => {
     cookiesMock.mockResolvedValue({
       get: vi.fn((name: string) => (name === "locale" ? { value: "ko" } : undefined)),
     });
@@ -34,17 +55,17 @@ describe("i18n request config", () => {
         return null;
       }),
     });
-    getResolvedSystemSettingsMock.mockResolvedValue({ defaultLocale: "ko" });
-  });
 
-  it("keeps deterministic public routes on default locale without explicit override", async () => {
     const getConfig = (await import("@/i18n/request")).default;
     const config = await (getConfig as () => Promise<{ locale: string }>)();
 
-    expect(config.locale).toBe("en");
+    expect(config.locale).toBe("ko");
   });
 
   it("honors explicit locale overrides on deterministic public routes", async () => {
+    cookiesMock.mockResolvedValue({
+      get: vi.fn(() => undefined),
+    });
     headersMock.mockResolvedValue({
       get: vi.fn((name: string) => {
         if (name === "x-public-locale-mode") return "deterministic";

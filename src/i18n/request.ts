@@ -13,9 +13,13 @@ export default getRequestConfig(async () => {
   const publicLocaleMode = headerStore.get("x-public-locale-mode");
   const deterministicPublicLocale = publicLocaleMode === "deterministic";
 
-  let locale = localeOverride || (deterministicPublicLocale ? DEFAULT_LOCALE : cookieLocale);
+  let locale = localeOverride || cookieLocale;
 
-  if (!locale && !deterministicPublicLocale && acceptLanguage) {
+  if (!locale && deterministicPublicLocale) {
+    locale = DEFAULT_LOCALE;
+  }
+
+  if (!locale && acceptLanguage) {
     const preferred = acceptLanguage.split(",")[0]?.split("-")[0]?.trim();
     if (preferred === "ko") {
       locale = "ko";

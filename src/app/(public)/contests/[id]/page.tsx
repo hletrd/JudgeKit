@@ -8,6 +8,7 @@ import { ContestReplay } from "@/components/contest/contest-replay";
 import { ContestStatistics } from "@/components/contest/contest-statistics";
 import { ContestClarifications } from "@/components/contest/contest-clarifications";
 import { LeaderboardTable } from "@/components/contest/leaderboard-table";
+import { ContestJoinClient } from "@/app/(public)/contests/join/contest-join-client";
 import { JsonLd } from "@/components/seo/json-ld";
 import { AntiCheatMonitor } from "@/components/exam/anti-cheat-monitor";
 import { CountdownTimer } from "@/components/exam/countdown-timer";
@@ -439,6 +440,25 @@ export default async function PublicContestDetailPage({ params }: { params: Prom
               <Button>{tContest("manageContest")}</Button>
             </Link>
           </div>
+        </div>
+      );
+    }
+
+    // Authenticated user landed on a private contest link without access —
+    // offer the access-code gate inline instead of returning a 404. Anonymous
+    // visitors still get notFound() because we should not even acknowledge
+    // private contest existence to logged-out callers.
+    if (session?.user) {
+      return (
+        <div className="space-y-6">
+          <Link
+            href={buildLocalePath("/contests", locale)}
+            className="inline-flex items-center gap-1 text-sm text-muted-foreground hover:text-foreground"
+          >
+            <ArrowLeft className="size-4" />
+            {tCommon("back")}
+          </Link>
+          <ContestJoinClient />
         </div>
       );
     }

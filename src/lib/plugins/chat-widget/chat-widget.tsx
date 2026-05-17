@@ -407,9 +407,6 @@ export default function ChatWidget() {
             <Send className="h-5 w-5" />
           </button>
         </div>
-        <p className="mt-2 text-xs text-muted-foreground">
-          {t("loggingNotice")}
-        </p>
       </div>
     </div>
   );

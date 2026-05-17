@@ -99,8 +99,11 @@ describe("POST /api/v1/code-snapshots", () => {
     expect(dbInsertValuesMock).not.toHaveBeenCalled();
   });
 
-  it("returns 409 when a student omits assignmentId while assignment contexts exist", async () => {
-    getStudentAssignmentContextsForProblemMock.mockResolvedValue([{ assignmentId: "assignment-1" }]);
+  it("returns 409 when a student omits assignmentId while multiple assignment contexts exist", async () => {
+    getStudentAssignmentContextsForProblemMock.mockResolvedValue([
+      { assignmentId: "assignment-1" },
+      { assignmentId: "assignment-2" },
+    ]);
 
     const { POST } = await import("@/app/api/v1/code-snapshots/route");
     const response = await POST(
@@ -115,6 +118,34 @@ describe("POST /api/v1/code-snapshots", () => {
     expect(response.status).toBe(409);
     expect(validateAssignmentSubmissionMock).not.toHaveBeenCalled();
     expect(dbInsertValuesMock).not.toHaveBeenCalled();
+  });
+
+  it("auto-routes to the only assignment context when a student omits assignmentId", async () => {
+    getStudentAssignmentContextsForProblemMock.mockResolvedValue([
+      { assignmentId: "assignment-1" },
+    ]);
+    validateAssignmentSubmissionMock.mockResolvedValue({ ok: true });
+    canAccessProblemMock.mockResolvedValue(true);
+    dbInsertValuesMock.mockResolvedValue(undefined);
+
+    const { POST } = await import("@/app/api/v1/code-snapshots/route");
+    const response = await POST(
+      makeRequest({
+        problemId: "problem-1",
+        assignmentId: null,
+        language: "python",
+        sourceCode: 'print("hi")',
+      })
+    );
+
+    expect(response.status).toBe(201);
+    expect(validateAssignmentSubmissionMock).toHaveBeenCalledWith(
+      "assignment-1",
+      "problem-1",
+      expect.any(String),
+      expect.any(String),
+    );
+    expect(dbInsertValuesMock).toHaveBeenCalled();
   });
 
   it("validates assignment context before writing a snapshot", async () => {

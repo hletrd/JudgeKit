@@ -69,8 +69,16 @@ services:
       - CONTAINERS=1
       - IMAGES=1
       - BUILD=0
-      - POST=0
-      - DELETE=0
+      # Worker needs POST/DELETE plus ALLOW_START/STOP to run and clean up
+      # submission containers via the proxy. With these set to 0 every
+      # `docker run` from the worker fails with
+      # `403 Forbidden — Request forbidden by administrative rules.`
+      # and gets mis-recorded as compile_error. BUILD stays 0 — image
+      # builds must not flow through the worker path.
+      - POST=1
+      - DELETE=1
+      - ALLOW_START=1
+      - ALLOW_STOP=1
       - LOG_LEVEL=warning
     volumes:
       - /var/run/docker.sock:/var/run/docker.sock:ro

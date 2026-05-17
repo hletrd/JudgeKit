@@ -129,9 +129,10 @@ export async function getContestsForUser(
   role: string
 ): Promise<ContestEntry[]> {
   const caps = await resolveCapabilities(role);
-  const canViewAllContests =
-    caps.has("groups.view_all") ||
-    caps.has("submissions.view_all");
+  // Only `groups.view_all` (admin/super_admin) opens the full contest catalog.
+  // `submissions.view_all` is for cross-group submission review and must NOT
+  // imply "see every other instructor's contest" in the My Contests list.
+  const canViewAllContests = caps.has("groups.view_all");
   const canManageOwnedContests =
     caps.has("assignments.view_status") ||
     caps.has("contests.view_analytics") ||

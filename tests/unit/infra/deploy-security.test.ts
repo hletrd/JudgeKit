@@ -118,8 +118,17 @@ describe("deployment security defaults", () => {
     expect(production).toContain("judgekit-app-data:/app/data");
     expect(production).toContain("judgekit-app-data:");
     expect(production).toContain("- IMAGES=1");
+    // BUILD must stay 0 — image builds must not flow through the integrated
+    // worker path. The proxy still allows POST/DELETE/ALLOW_START/ALLOW_STOP
+    // because the worker needs them for `docker run` and per-submission
+    // container cleanup; without these the proxy returns 403 for every
+    // judge invocation (root cause of the 2026-05-16 silent compile_error
+    // sweep).
     expect(production).toContain("- BUILD=0");
-    expect(production).toContain("- DELETE=0");
+    expect(production).toContain("- POST=1");
+    expect(production).toContain("- DELETE=1");
+    expect(production).toContain("- ALLOW_START=1");
+    expect(production).toContain("- ALLOW_STOP=1");
     // Worker compose now hardcodes BUILD/POST/DELETE to 0 (instead of the
     // historical ${WORKER_DOCKER_PROXY_*:-0} envars) so an operator cannot
     // accidentally enable them via .env. IMAGES is still env-toggleable

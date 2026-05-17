@@ -28,7 +28,7 @@ export const POST = createApiHandler({
     const userRateLimitResponse = await consumeUserApiRateLimit(_req, user.id, "code-snapshot:user");
     if (userRateLimitResponse) return userRateLimitResponse;
 
-    const normalizedAssignmentId = body.assignmentId ?? null;
+    let normalizedAssignmentId = body.assignmentId ?? null;
 
     if (!normalizedAssignmentId) {
       const assignmentContexts = await getRequiredAssignmentContextsForProblem(
@@ -37,7 +37,13 @@ export const POST = createApiHandler({
         user.role
       );
 
-      if (assignmentContexts.length > 0) {
+      if (assignmentContexts.length === 1) {
+        // Single context — auto-attribute the snapshot to it so the live
+        // anti-cheat timeline lines up with the assignment the user is
+        // actually working on. Mirrors the auto-routing in
+        // src/app/api/v1/submissions/route.ts.
+        normalizedAssignmentId = assignmentContexts[0].assignmentId;
+      } else if (assignmentContexts.length > 1) {
         return apiError("assignmentContextRequired", 409);
       }
     }

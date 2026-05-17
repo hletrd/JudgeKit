@@ -33,9 +33,15 @@ export const GET = createApiHandler({
     const pageSize = normalizePageSize(req.nextUrl.searchParams.get("pageSize") ?? undefined);
     const offset = (page - 1) * pageSize;
 
+    // Only direct practice submissions count. Submissions tied to an
+    // assignment (contest, exam, homework) must never surface here even if
+    // the underlying problem later becomes public — that would leak every
+    // contest participant's code to peers as soon as a problem flips
+    // visibility post-contest.
     const whereClause = and(
       eq(submissions.problemId, id),
       eq(submissions.status, "accepted"),
+      sql`${submissions.assignmentId} IS NULL`,
       language ? eq(submissions.language, language) : undefined,
     );
 
