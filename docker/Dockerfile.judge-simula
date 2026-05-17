@@ -1,14 +1,23 @@
 FROM debian:bookworm-slim
 
+# CIM 5.1 (GNU's Simula compiler) ships sources with literal
+# `#include "../../lib/cim.h"` directives that assume an out-of-tree
+# build layout. The tarball uses an in-tree layout where lib/*.c is
+# compiled from inside lib/, so the relative path resolves to
+# /tmp/lib/cim.h (one level too high) and `make` fails with
+# "fatal error: ../../lib/cim.h: No such file or directory".
+# Rewriting the includes to source-relative form is the upstream
+# workaround.
 RUN apt-get update && \
     apt-get install -y --no-install-recommends gcc make libc6-dev ca-certificates curl autoconf automake libtool file texinfo flex bison && \
     curl -fsSL https://ftp.gnu.org/gnu/cim/cim-5.1.tar.gz | tar xz -C /tmp && \
     cd /tmp/cim-* && \
+    find lib -maxdepth 1 -name '*.c' -exec sed -i 's|"../../lib/|"|g' {} + && \
     sed -i 's/^CFLAGS.*/CFLAGS = -g -O0 -Wno-error -Wno-implicit-function-declaration/' Makefile.in && \
     ./configure CFLAGS="-g -O0 -Wno-error -Wno-implicit-function-declaration" && \
-    make && make install && \
+    make -j1 && make install && \
     cd / && rm -rf /tmp/cim-* && \
-    apt-get purge -y gcc make libc6-dev ca-certificates curl autoconf automake libtool file texinfo flex bison && \
+    apt-get purge -y make autoconf automake libtool texinfo flex bison && \
     apt-get autoremove -y && rm -rf /var/lib/apt/lists/* && \
     useradd -m -s /bin/false judge && \
     mkdir -p /workspace && chown judge:judge /workspace

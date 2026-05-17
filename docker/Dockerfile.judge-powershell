@@ -1,12 +1,26 @@
 FROM debian:bookworm-slim
 
-RUN apt-get update && apt-get install -y --no-install-recommends curl ca-certificates && \
+# PowerShell 7.4 LTS via tarball. The .deb package is published only for
+# amd64; arm64 ships as a tarball, so we use the tarball for both arches
+# for cross-arch parity. v7.6.0 (pinned previously) was never released —
+# the curl returned 404 and broke every build.
+ARG PS_VERSION=7.4.6
+
+RUN apt-get update && apt-get install -y --no-install-recommends \
+        curl ca-certificates libicu72 libssl3 libstdc++6 zlib1g less && \
     ARCH=$(dpkg --print-architecture) && \
-    if [ "$ARCH" = "amd64" ]; then PS_DEB_ARCH="amd64"; \
-    elif [ "$ARCH" = "arm64" ]; then PS_DEB_ARCH="arm64"; fi && \
-    curl -fsSL "https://github.com/PowerShell/PowerShell/releases/download/v7.6.0/powershell_7.6.0-1.deb_${PS_DEB_ARCH}.deb" -o /tmp/powershell.deb && \
-    apt-get install -y --no-install-recommends /tmp/powershell.deb && \
-    rm /tmp/powershell.deb && \
+    case "$ARCH" in \
+        amd64) PS_ARCH=x64 ;; \
+        arm64) PS_ARCH=arm64 ;; \
+        *) echo "unsupported arch: $ARCH" >&2; exit 1 ;; \
+    esac && \
+    mkdir -p /opt/powershell && \
+    curl -fsSL "https://github.com/PowerShell/PowerShell/releases/download/v${PS_VERSION}/powershell-${PS_VERSION}-linux-${PS_ARCH}.tar.gz" \
+        -o /tmp/pwsh.tar.gz && \
+    tar xzf /tmp/pwsh.tar.gz -C /opt/powershell && \
+    chmod +x /opt/powershell/pwsh && \
+    ln -s /opt/powershell/pwsh /usr/local/bin/pwsh && \
+    rm /tmp/pwsh.tar.gz && \
     apt-get purge -y curl && apt-get autoremove -y && rm -rf /var/lib/apt/lists/* && \
     useradd -m -s /bin/false judge && \
     mkdir -p /workspace && chown judge:judge /workspace

@@ -1,13 +1,30 @@
 FROM debian:bookworm-slim
 
+# Odin's build_odin.sh accepts only LLVM 14, 17, 18, 19, 20, 21 or 22.
+# LLVM 14 + 17 lack the Fast-Math C API symbols Odin's
+# llvm_backend_opt.cpp uses (LLVMSetFastMathFlags + flags). LLVM 18
+# introduces them, so pull llvm-18 from the official LLVM apt repo
+# regardless of host arch (Debian bookworm caps at llvm-16).
 RUN apt-get update && \
-    apt-get install -y --no-install-recommends git make clang llvm-dev libc6-dev ca-certificates && \
+    apt-get install -y --no-install-recommends \
+        curl ca-certificates gnupg lsb-release && \
+    curl -fsSL https://apt.llvm.org/llvm-snapshot.gpg.key \
+        | gpg --dearmor -o /usr/share/keyrings/llvm-archive-keyring.gpg && \
+    echo "deb [signed-by=/usr/share/keyrings/llvm-archive-keyring.gpg] http://apt.llvm.org/bookworm/ llvm-toolchain-bookworm-18 main" \
+        > /etc/apt/sources.list.d/llvm.list && \
+    apt-get update && \
+    apt-get install -y --no-install-recommends \
+        git make clang-18 llvm-18-dev libc6-dev && \
+    ln -sf /usr/bin/clang-18 /usr/local/bin/clang && \
+    ln -sf /usr/bin/clang++-18 /usr/local/bin/clang++ && \
+    ln -sf /usr/bin/llvm-config-18 /usr/local/bin/llvm-config && \
     git clone --depth 1 https://github.com/odin-lang/Odin.git /tmp/odin && \
-    cd /tmp/odin && make release && \
+    cd /tmp/odin && \
+    LLVM_CONFIG=/usr/bin/llvm-config-18 CXX=clang++-18 CC=clang-18 make release && \
     mkdir -p /opt/odin && cp -r /tmp/odin/* /opt/odin/ && \
     rm -rf /tmp/odin && \
     ln -s /opt/odin/odin /usr/local/bin/odin && \
-    apt-get purge -y git && \
+    apt-get purge -y git gnupg lsb-release && \
     apt-get autoremove -y && rm -rf /var/lib/apt/lists/* && \
     useradd -m -s /bin/false judge && \
     mkdir -p /workspace && chown judge:judge /workspace

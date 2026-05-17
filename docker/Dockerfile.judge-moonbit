@@ -1,32 +1,16 @@
-FROM debian:bookworm-slim
+# MoonBit ships only a linux-x86_64 toolchain (no native arm64 build).
+# Pinning the platform to linux/amd64 lets buildx + qemu binfmt handle
+# emulation for us instead of hand-wrapping every binary with
+# qemu-user-static (which produced "Exec format error" the moment a
+# downstream RUN invoked moon).
+FROM --platform=linux/amd64 debian:bookworm-slim
 
 RUN apt-get update && apt-get install -y --no-install-recommends \
-    curl ca-certificates git && \
+    curl ca-certificates git gcc libc6-dev && \
     rm -rf /var/lib/apt/lists/*
 
-# Install moon CLI
-# Native on amd64; on arm64, run x86_64 binaries under qemu with multiarch libs
-# (MoonBit has no native linux-aarch64 build yet)
-# On amd64: install native gcc. On arm64: install qemu + x86_64 cross-toolchain
-# so moonbit can produce x86_64 native binaries
-RUN ARCH=$(dpkg --print-architecture) && \
-    if [ "$ARCH" = "arm64" ]; then \
-      dpkg --add-architecture amd64 && \
-      apt-get update && apt-get install -y --no-install-recommends \
-        qemu-user-static libc6:amd64 libstdc++6:amd64 libgcc-s1:amd64 \
-        gcc-x86-64-linux-gnu binutils-x86-64-linux-gnu libc6-dev:amd64 && \
-      ln -sf /usr/bin/x86_64-linux-gnu-gcc /usr/local/bin/gcc && \
-      ln -sf /usr/bin/x86_64-linux-gnu-as /usr/local/bin/as && \
-      ln -sf /usr/bin/x86_64-linux-gnu-ld /usr/local/bin/ld && \
-      ln -sf /usr/bin/x86_64-linux-gnu-ar /usr/local/bin/ar && \
-      rm -rf /var/lib/apt/lists/*; \
-    else \
-      apt-get update && apt-get install -y --no-install-recommends gcc libc6-dev && \
-      rm -rf /var/lib/apt/lists/*; \
-    fi
-
-RUN ARCH=$(dpkg --print-architecture) && \
-    MOON_HOME=/root/.moon && \
+# Install moon CLI + core libraries.
+RUN MOON_HOME=/root/.moon && \
     mkdir -p "$MOON_HOME/bin" "$MOON_HOME/lib" && \
     curl -fsSL -o /tmp/moonbit.tar.gz \
       "https://cli.moonbitlang.com/binaries/latest/moonbit-linux-x86_64.tar.gz" && \
@@ -37,18 +21,9 @@ RUN ARCH=$(dpkg --print-architecture) && \
       "https://cli.moonbitlang.com/cores/core-latest.tar.gz" && \
     tar xf /tmp/core.tar.gz -C "$MOON_HOME/lib" && \
     rm /tmp/core.tar.gz && \
-    if [ "$ARCH" = "arm64" ]; then \
-      find "$MOON_HOME/bin" -type f ! -name '*.wasm' -print0 | while IFS= read -r -d '' bin; do \
-        if head -c4 "$bin" | grep -q 'ELF'; then \
-          mv "$bin" "${bin}.x86" && \
-          printf '#!/bin/sh\nexec /usr/bin/qemu-x86_64-static "%s" "$@"\n' "${bin}.x86" > "$bin" && \
-          chmod +x "$bin"; \
-        fi; \
-      done; \
-    fi && \
-    PATH="$MOON_HOME/bin:$PATH" moon version || echo "moon version check skipped (qemu)" && \
+    PATH="$MOON_HOME/bin:$PATH" moon version && \
     PATH="$MOON_HOME/bin:$PATH" moon -C "$MOON_HOME/lib/core" bundle --warn-list -a --all && \
-    PATH="$MOON_HOME/bin:$PATH" moon -C "$MOON_HOME/lib/core" bundle --warn-list -a --target native || true
+    PATH="$MOON_HOME/bin:$PATH" moon -C "$MOON_HOME/lib/core" bundle --warn-list -a --target native
 ENV PATH="/root/.moon/bin:$PATH"
 
 # Create project template with C FFI stub for stdin I/O
