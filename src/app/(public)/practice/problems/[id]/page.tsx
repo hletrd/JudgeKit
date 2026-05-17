@@ -616,8 +616,8 @@ export default async function PublicProblemDetailPage({
               </div>
 
               {session?.user ? (
-                <div className="min-w-0 space-y-6">
-                  <Card id="public-submit-panel" className="sticky top-6">
+                <div className="min-w-0 space-y-6 lg:sticky lg:top-6 lg:self-start lg:max-h-[calc(100vh-3rem)] lg:overflow-y-auto">
+                  <Card id="public-submit-panel">
                     <CardHeader>
                       <CardTitle>{tProblems("submitSolution")}</CardTitle>
                     </CardHeader>
