@@ -1,4 +1,4 @@
-import { and, count, desc, eq, inArray, or, sql } from "drizzle-orm";
+import { and, count, desc, eq, inArray, or, sql, type SQL } from "drizzle-orm";
 import { db } from "@/lib/db";
 import { problemSetProblems, problemSets, problemTags, problems, submissions, tags } from "@/lib/db/schema";
 import { escapePracticeLike, normalizePracticeSearch } from "@/lib/practice/search";
@@ -58,10 +58,15 @@ function collectPublicProblemSetTags(
   return [...seen.values()].sort((left, right) => left.name.localeCompare(right.name));
 }
 
-function buildPublicProblemSetSearchFilter(search?: string, tag?: string) {
+// Resolve tag → problem-set IDs up front: db.query.X.findMany rewrites every
+// Column ref inside a SQL-template `where` to use the outer table alias
+// (drizzle-orm mapColumnsInSQLToAlias), which corrupts foreign-table refs in
+// an EXISTS subquery. inArray(problemSets.id, …) survives that rewrite, and
+// applying the same shape on the count path keeps both queries consistent.
+async function buildPublicProblemSetSearchFilter(search?: string, tag?: string): Promise<SQL | undefined> {
   const normalizedSearch = normalizePracticeSearch(search);
   const normalizedTag = tag?.trim() ?? "";
-  const filters = [eq(problemSets.isPublic, true)];
+  const filters: SQL[] = [eq(problemSets.isPublic, true)];
 
   if (normalizedSearch) {
     const escapedSearch = `%${escapePracticeLike(normalizedSearch)}%`;
@@ -72,16 +77,14 @@ function buildPublicProblemSetSearchFilter(search?: string, tag?: string) {
   }
 
   if (normalizedTag) {
-    filters.push(sql`exists (
-      select 1
-      from ${problemSetProblems}
-      inner join ${problems} on ${problemSetProblems.problemId} = ${problems.id}
-      inner join ${problemTags} on ${problemTags.problemId} = ${problems.id}
-      inner join ${tags} on ${problemTags.tagId} = ${tags.id}
-      where ${problemSetProblems.problemSetId} = ${problemSets.id}
-        and ${problems.visibility} = 'public'
-        and ${tags.name} = ${normalizedTag}
-    )`);
+    const idRows = await db
+      .select({ id: problemSetProblems.problemSetId })
+      .from(problemSetProblems)
+      .innerJoin(problems, eq(problemSetProblems.problemId, problems.id))
+      .innerJoin(problemTags, eq(problemTags.problemId, problems.id))
+      .innerJoin(tags, eq(problemTags.tagId, tags.id))
+      .where(and(eq(problems.visibility, "public"), eq(tags.name, normalizedTag)));
+    filters.push(inArray(problemSets.id, idRows.map((row) => row.id)));
   }
 
   return filters.length === 1 ? filters[0] : and(...filters);
@@ -91,14 +94,14 @@ export async function countPublicProblemSets(search?: string, tag?: string) {
   const [row] = await db
     .select({ total: count() })
     .from(problemSets)
-    .where(buildPublicProblemSetSearchFilter(search, tag));
+    .where(await buildPublicProblemSetSearchFilter(search, tag));
 
   return Number(row?.total ?? 0);
 }
 
 export async function listPublicProblemSets(options: { limit?: number; offset?: number; search?: string; tag?: string } = {}): Promise<PublicProblemSetListItem[]> {
   const rows = await db.query.problemSets.findMany({
-    where: buildPublicProblemSetSearchFilter(options.search, options.tag),
+    where: await buildPublicProblemSetSearchFilter(options.search, options.tag),
     with: {
       problems: {
         with: {

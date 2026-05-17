@@ -174,15 +174,20 @@ export default async function PracticePage({
       )
     : undefined;
 
-  // Tag filter
-  const tagFilter = currentTag
-    ? sql`exists (
-        select 1 from ${problemTags}
-        inner join ${tags} on ${problemTags.tagId} = ${tags.id}
-        where ${problemTags.problemId} = ${problems.id}
-          and ${tags.name} = ${currentTag}
-      )`
-    : undefined;
+  // Resolve tag → problem IDs up front: db.query.X.findMany rewrites every
+  // Column ref inside a SQL-template `where` to use the outer table alias
+  // (drizzle-orm mapColumnsInSQLToAlias), which corrupts foreign-table refs
+  // in an EXISTS subquery. inArray(problems.id, …) survives that rewrite.
+  const tagProblemIds = currentTag
+    ? (
+        await db
+          .select({ id: problemTags.problemId })
+          .from(problemTags)
+          .innerJoin(tags, eq(problemTags.tagId, tags.id))
+          .where(eq(tags.name, currentTag))
+      ).map((row) => row.id)
+    : null;
+  const tagFilter = tagProblemIds ? inArray(problems.id, tagProblemIds) : undefined;
   const difficultyFilter = hasCustomDifficultyRange(currentDifficultyRange)
     ? and(
         gte(problems.difficulty, currentDifficultyRange.min),
