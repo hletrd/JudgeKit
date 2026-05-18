@@ -150,16 +150,24 @@ const nextConfig: NextConfig = {
           { key: "Strict-Transport-Security", value: "max-age=63072000; includeSubDomains" },
           { key: "X-XSS-Protection", value: "0" },
           {
-            // NOTE: This static CSP is the production baseline because the
-            // proxy middleware (src/proxy.ts) only runs in development.
-            // Next.js config headers cannot contain dynamic nonces, so
-            // 'unsafe-inline' is required for script-src to allow Next.js
-            // streaming inline scripts (self.__next_f) and style-src for
-            // CSS-in-JS libraries and Next.js font injection.
+            // SEC H-3 — defense-in-depth static fallback. The production
+            // CSP is set per-request by src/proxy.ts (Next 16 middleware
+            // convention), which injects a per-request nonce into
+            // script-src. That header overrides this static one for
+            // every matched route. This block is intentionally STRICTER
+            // than the runtime CSP so that, if proxy.ts ever stops
+            // running on a route, inline scripts break loudly instead
+            // of silently allowing XSS bypasses. Operators should treat
+            // any browser console "blocked by CSP" report on a
+            // proxy-matched route as a wiring bug.
+            //
+            // style-src keeps 'unsafe-inline' because Next.js's
+            // hydrated CSS-in-JS pipeline emits inline <style> tags
+            // without a way to add nonces in stable releases.
             key: "Content-Security-Policy",
             value: [
               "default-src 'self'",
-              "script-src 'self' 'unsafe-inline'",
+              "script-src 'self'",
               "style-src 'self' 'unsafe-inline'",
               "font-src 'self' data:",
               "img-src 'self' data: blob:",
