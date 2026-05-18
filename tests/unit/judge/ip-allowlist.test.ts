@@ -4,6 +4,11 @@ import { isJudgeIpAllowed, ipMatchesAllowlistEntry, resetIpAllowlistCache } from
 
 function requestWithIp(ip: string | null): NextRequest {
   const headers: Record<string, string> = {};
+  // Judge worker traffic typically terminates directly at the app
+  // container (no reverse proxy in front) — so a single XFF entry IS
+  // the worker IP. The SEC H-5 hardening rejects a "shorter than
+  // TRUSTED_PROXY_HOPS expects" chain, so we pin TRUSTED_PROXY_HOPS=0
+  // for these tests to mirror the deployed worker-to-app path.
   if (ip !== null) headers["x-forwarded-for"] = ip;
   return new NextRequest("http://localhost:3000/api/v1/judge/claim", {
     method: "POST",
@@ -15,6 +20,7 @@ describe("isJudgeIpAllowed", () => {
   beforeEach(() => {
     resetIpAllowlistCache();
     vi.unstubAllEnvs();
+    vi.stubEnv("TRUSTED_PROXY_HOPS", "0");
   });
 
   afterEach(() => {

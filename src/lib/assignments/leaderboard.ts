@@ -43,8 +43,13 @@ export async function computeLeaderboard(
   assignmentId: string,
   isInstructorView: boolean
 ): Promise<FrozenLeaderboardResult> {
-  const meta = await rawQueryOne<AssignmentFreezeRow>(
-    `SELECT freeze_leaderboard_at AS "freezeLeaderboardAt", scoring_model AS "scoringModel", starts_at AS "startsAt" FROM assignments WHERE id = @assignmentId`,
+  const meta = await rawQueryOne<AssignmentFreezeRow & { deadline: Date | null; lateDeadline: Date | null }>(
+    `SELECT freeze_leaderboard_at AS "freezeLeaderboardAt",
+            scoring_model AS "scoringModel",
+            starts_at AS "startsAt",
+            deadline,
+            late_deadline AS "lateDeadline"
+     FROM assignments WHERE id = @assignmentId`,
     { assignmentId }
   );
 
@@ -54,7 +59,20 @@ export async function computeLeaderboard(
   // between app and DB servers, consistent with other contest boundary checks
   // (anti-cheat route, submissions, assignment PATCH).
   const nowMs = await getDbNowMs();
-  const isFrozen = !isInstructorView && freezeAt != null && nowMs >= freezeAt;
+  // Auto-unfreeze once the contest itself is over. Previously a contest
+  // configured with `freezeLeaderboardAt` would remain frozen forever from
+  // the student's perspective, even after the late-deadline (or deadline)
+  // passes — there was no upper bound on the freeze window. Anchor unfreeze
+  // to the lateDeadline if present, otherwise the deadline. Instructors
+  // always see live data.
+  const unfreezeAt = meta?.lateDeadline
+    ? new Date(meta.lateDeadline).getTime()
+    : meta?.deadline
+      ? new Date(meta.deadline).getTime()
+      : null;
+  const isWithinFreezeWindow =
+    freezeAt != null && nowMs >= freezeAt && (unfreezeAt == null || nowMs < unfreezeAt);
+  const isFrozen = !isInstructorView && isWithinFreezeWindow;
 
   if (isFrozen && freezeAt) {
     // Compute ranking using only submissions before freeze time

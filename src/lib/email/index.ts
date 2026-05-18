@@ -8,7 +8,7 @@
 import crypto from "crypto";
 import { db } from "@/lib/db";
 import { users, passwordResetTokens, emailVerificationTokens } from "@/lib/db/schema";
-import { eq, and, gt, isNull } from "drizzle-orm";
+import { eq, and, gt, isNull, sql } from "drizzle-orm";
 import { sendEmail, isEmailConfigured } from "@/lib/email/smtp";
 import {
   renderPasswordResetEmail,
@@ -41,8 +41,13 @@ export async function sendPasswordResetEmail(
     return { success: false, error: "email_not_configured" };
   }
 
+  // Email lookups must be case-insensitive to match the sign-in flow at
+  // src/lib/auth/config.ts (lower(email) = lower(...)) — otherwise a
+  // legitimate user who registered with "Alice@example.com" cannot reset
+  // by typing "alice@example.com" and gets a misleading "user not found"
+  // (SEC H-6).
   const user = await db.query.users.findFirst({
-    where: eq(users.email, email),
+    where: sql`lower(${users.email}) = lower(${email})`,
   });
 
   if (!user) {
@@ -173,7 +178,16 @@ export async function resetPassword(
 
       await tx
         .update(users)
-        .set({ passwordHash, mustChangePassword: false, updatedAt: now })
+        .set({
+          passwordHash,
+          mustChangePassword: false,
+          updatedAt: now,
+          // Invalidate any pre-existing JWTs (SEC C-1). Without this, a
+          // stolen session cookie survives the very password reset that
+          // was meant to recover the account. Mirrors the in-session
+          // change-password path in src/lib/actions/change-password.ts.
+          tokenInvalidatedAt: now,
+        })
         .where(eq(users.id, row.userId));
 
       logger.info({ userId: row.userId }, "Password reset completed");

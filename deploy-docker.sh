@@ -1094,6 +1094,47 @@ if [[ "${USE_TLS}" == "true" ]]; then
 fi
 
 # ---------------------------------------------------------------------------
+# Step 8b: Post-deploy smoke (Playwright remote-safe profile)
+# ---------------------------------------------------------------------------
+# This block is what would have caught the 2026-05-16 14-hour silent
+# `compile_error` sweep. A single curl on the landing page returns 200
+# even when every page beyond / 500s, so we run the dedicated smoke
+# profile (Playwright remoteSafeSpecs in playwright.config.ts) against
+# the deployed URL.
+#
+# Skip with SKIP_POST_DEPLOY_SMOKE=1 if running on a host without
+# node / playwright cache (e.g. CI runners that already ran the smoke
+# in a prior step).
+if [[ "${SKIP_POST_DEPLOY_SMOKE:-0}" != "1" && "${USE_TLS}" == "true" ]]; then
+    if command -v npx >/dev/null 2>&1; then
+        info "Running post-deploy smoke against https://${DOMAIN} (PLAYWRIGHT_PROFILE=smoke)..."
+        # E2E_PASSWORD must be set for any smoke spec that logs in. Tests
+        # that don't need a login (locale-cookie, public-routes-no-error)
+        # ignore the value, so we feed a dummy if the operator did not
+        # provide one — they'll just get the no-login subset.
+        if (
+            cd "${SCRIPT_DIR}" && \
+            PLAYWRIGHT_BASE_URL="https://${DOMAIN}" \
+            PLAYWRIGHT_PROFILE=smoke \
+            E2E_USERNAME="${E2E_USERNAME:-admin}" \
+            E2E_PASSWORD="${E2E_PASSWORD:-skip-login}" \
+            npx playwright test --reporter=list >/tmp/judgekit-smoke-${DOMAIN}.log 2>&1
+        ); then
+            success "Post-deploy smoke passed"
+        else
+            warn "Post-deploy smoke FAILED — log: /tmp/judgekit-smoke-${DOMAIN}.log"
+            warn "Last 30 lines:"
+            tail -n 30 "/tmp/judgekit-smoke-${DOMAIN}.log" >&2 || true
+            warn "Treat this as a deploy failure. Investigate before announcing."
+        fi
+    else
+        info "npx not available locally — skipping post-deploy smoke"
+    fi
+else
+    info "Post-deploy smoke skipped (SKIP_POST_DEPLOY_SMOKE=${SKIP_POST_DEPLOY_SMOKE:-0}, USE_TLS=${USE_TLS})"
+fi
+
+# ---------------------------------------------------------------------------
 # Summary
 # ---------------------------------------------------------------------------
 echo ""

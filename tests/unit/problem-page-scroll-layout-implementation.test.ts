@@ -16,9 +16,12 @@ describe("problem page scroll layout implementation", () => {
     expect(dashboardShell).toContain("redirect(");
     expect(dashboardShell).toContain("/practice/problems/");
 
-    // The sticky panel keeps an id for downstream test selectors; the lg:
-    // breakpoint matches the rest of the public layout's responsive design.
-    expect(publicSource).toContain('className="sticky top-6"');
+    // The sticky panel uses lg: breakpoint so mobile layouts can scroll
+    // normally. lg:px-px / lg:-mx-px is a 1px gutter that keeps Card's
+    // ring-1 from being clipped by the lg:overflow-y-auto scroll
+    // container (see commit message of the 2026-05-18 border fix).
+    expect(publicSource).toContain("lg:sticky lg:top-6");
+    expect(publicSource).toContain("lg:overflow-y-auto");
     expect(publicSource).toContain("grid grid-cols-1 gap-6 lg:grid-cols-2");
   });
 });

@@ -51,12 +51,18 @@ describe("extractClientIp", () => {
     ).toBe("198.51.100.8");
   });
 
-  it("falls back to the first forwarded IP when there are fewer hops than expected", async () => {
+  it("refuses to fall back to a client-controllable XFF entry when the chain has fewer hops than expected (SEC H-5)", async () => {
+    // Previously the helper indexed Math.max(0, len - (hops+1)) and
+    // happily returned parts[0] whenever the chain was shorter than
+    // TRUSTED_PROXY_HOPS expected — which is exactly the client-supplied
+    // first entry. Now we degrade to null (or the dev sentinel) so
+    // downstream rate-limit / audit code does not key on a spoofable
+    // value.
     const { extractClientIp } = await importIpModule("3");
 
     expect(
       extractClientIp(createHeaders({ "x-forwarded-for": "198.51.100.8, 203.0.113.10" }))
-    ).toBe("198.51.100.8");
+    ).toBe(process.env.NODE_ENV === "production" ? null : "0.0.0.0");
   });
 
   it("uses x-real-ip when x-forwarded-for is absent", async () => {

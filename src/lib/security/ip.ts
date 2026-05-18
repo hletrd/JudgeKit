@@ -4,12 +4,16 @@ type HeaderCarrier = {
   get(name: string): string | null;
 };
 
-const TRUSTED_PROXY_HOPS = (() => {
+// Resolve TRUSTED_PROXY_HOPS at call time so test-runner stubbing
+// (vi.stubEnv("TRUSTED_PROXY_HOPS", ...)) takes effect without forcing
+// every spec to reset module imports. In production the env var is set
+// once at process start so the lookup is effectively free.
+function getTrustedProxyHops(): number {
   const parsed = parseInt(process.env.TRUSTED_PROXY_HOPS ?? "1", 10);
   // Use ?? so TRUSTED_PROXY_HOPS=0 is respected (means "no trusted proxies").
   // Fall back to 1 only when the env var is unset or parseInt returns NaN.
   return Number.isNaN(parsed) ? 1 : Math.max(0, parsed);
-})();
+}
 
 function isValidIp(value: string) {
   const candidate = value.trim();
@@ -50,13 +54,27 @@ export function extractClientIp(headers: HeaderCarrier): string | null {
     // Extract the Nth-from-last value based on trusted proxy hop count.
     // With TRUSTED_PROXY_HOPS=1 (one reverse proxy), the client IP is
     // the last-but-one entry; the final entry is the proxy itself.
-    // If there are fewer entries than expected, fall back to the first entry.
-    if (parts.length > 0) {
-      const clientIndex = Math.max(0, parts.length - (TRUSTED_PROXY_HOPS + 1));
+    //
+    // SEC H-5: If the chain has fewer entries than expected (e.g. a single
+    // element when we expect at least 2), the missing hop is client-
+    // controllable — Nginx normally appends the connecting IP, but if XFF
+    // is forwarded through and Nginx is misconfigured (no
+    // `set_real_ip_from` + `real_ip_recursive on`), the attacker's claim
+    // is at parts[0] and we'd trust it. Refuse to fall back; the caller
+    // gets null and downstream code can degrade to per-IP rate-limit by
+    // request socket or treat the request as unknown.
+    const trustedHops = getTrustedProxyHops();
+    if (parts.length >= trustedHops + 1) {
+      const clientIndex = parts.length - (trustedHops + 1);
       const candidate = parts[clientIndex];
       if (isValidIp(candidate)) {
         return candidate;
       }
+    } else if (parts.length > 0 && process.env.NODE_ENV === "production") {
+      logger.warn(
+        { xffHopsExpected: trustedHops + 1, xffHopsObserved: parts.length, xff: forwardedFor },
+        "[security] X-Forwarded-For has fewer hops than TRUSTED_PROXY_HOPS expects — refusing to trust client-supplied IP (possible spoofing)",
+      );
     }
   }
 

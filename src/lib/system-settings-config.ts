@@ -47,7 +47,12 @@ const DEFAULTS: ConfiguredSettings = {
   maxSourceCodeSizeBytes: 256 * 1024,
   staleClaimTimeoutMs: 300_000,
   sessionMaxAgeSeconds: 14 * 24 * 60 * 60,
-  minPasswordLength: 8,
+  // 12-char minimum keeps brute-force surface low enough for recruiting +
+  // contest deployments without trapping users in complexity rules.
+  // Operators that need to keep an 8-char floor for legacy compatibility
+  // can override via system_settings.min_password_length (validator allows
+  // 4..128). See security review L-1.
+  minPasswordLength: 12,
   defaultPageSize: 25,
   maxSseConnectionsPerUser: 5,
   ssePollIntervalMs: 2_000,
