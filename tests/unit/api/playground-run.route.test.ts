@@ -51,6 +51,10 @@ vi.mock("@/lib/security/api-rate-limit", () => ({
   consumeApiRateLimit: consumeApiRateLimitMock,
 }));
 
+vi.mock("@/lib/security/sandbox-gate", () => ({
+  gateSandboxEndpoint: vi.fn(async () => null),
+}));
+
 vi.mock("@/lib/db", () => ({
   db: {
     select: vi.fn(),

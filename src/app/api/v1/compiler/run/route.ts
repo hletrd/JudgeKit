@@ -36,6 +36,19 @@ export const POST = createApiHandler({
   rateLimit: "compiler:run",
   schema: compilerRunSchema,
   handler: async (_req, { user, body }) => {
+    // SEC H-1 / H-2: gate sandbox-heavy endpoint. Same shape as
+    // /api/v1/playground/run. Compiler is reachable from assignment
+    // workspaces (legitimate per-test debugging) so the daily ceiling
+    // is higher than playground's, but the email-verified gate still
+    // closes off disposable-signup abuse.
+    const { gateSandboxEndpoint } = await import("@/lib/security/sandbox-gate");
+    const sandboxGate = await gateSandboxEndpoint({
+      userId: user.id,
+      endpoint: "compiler:run",
+      maxPerDay: 500,
+    });
+    if (sandboxGate) return sandboxGate;
+
     const assignmentContext = await resolvePlatformModeAssignmentContextDetails({
       userId: user.id,
       assignmentId: body.assignmentId ?? null,

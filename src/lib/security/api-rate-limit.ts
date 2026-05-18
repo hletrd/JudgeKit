@@ -209,6 +209,77 @@ export async function consumeUserApiRateLimit(
 }
 
 /**
+ * SEC H-1: per-user daily quota for sandbox-heavy endpoints
+ * (playground/compiler). Uses the same `rate_limits` table as the
+ * short-window limiter above but with a 24h window and an explicit
+ * `max` parameter so different endpoints can pick their own ceiling.
+ * Returns a 429 response if the user has exhausted their daily budget,
+ * or null if the call is allowed.
+ *
+ * Resets automatically once 24h elapses since the bucket was opened.
+ */
+export async function consumeUserDailyQuota(
+  userId: string,
+  endpoint: string,
+  maxPerDay: number,
+): Promise<NextResponse | null> {
+  const key = `daily:${endpoint}:user:${userId}`;
+  const windowMs = 24 * 60 * 60 * 1000;
+  const now = await getDbNowMs();
+
+  const limited = await execTransaction(async (tx) => {
+    const existing = await fetchRateLimitEntry(tx, key);
+
+    if (!existing) {
+      await tx.insert(rateLimits).values({
+        key,
+        attempts: 1,
+        windowStartedAt: now,
+        blockedUntil: null,
+        consecutiveBlocks: 0,
+        lastAttempt: now,
+      });
+      return false;
+    }
+
+    if (existing.windowStartedAt + windowMs <= now) {
+      await tx
+        .update(rateLimits)
+        .set({ attempts: 1, windowStartedAt: now, lastAttempt: now, blockedUntil: null })
+        .where(eq(rateLimits.key, key));
+      return false;
+    }
+
+    if (existing.attempts >= maxPerDay) {
+      return true;
+    }
+
+    await tx
+      .update(rateLimits)
+      .set({ attempts: existing.attempts + 1, lastAttempt: now })
+      .where(eq(rateLimits.key, key));
+    return false;
+  });
+
+  if (limited) {
+    return NextResponse.json(
+      { error: "dailyQuotaExceeded" },
+      {
+        status: 429,
+        headers: {
+          "Retry-After": String(Math.ceil(windowMs / 1000)),
+          "X-RateLimit-Limit": String(maxPerDay),
+          "X-RateLimit-Remaining": "0",
+          "X-RateLimit-Reset": String(Math.ceil((now + windowMs) / 1000)),
+        },
+      },
+    );
+  }
+
+  return null;
+}
+
+/**
  * Check and record a rate limit for a server action.
  * Keyed on the provided key + actionName so each key has its own counter.
  * Use a userId for per-user limits, or a client IP for per-IP limits.

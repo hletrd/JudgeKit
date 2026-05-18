@@ -29,6 +29,19 @@ export const POST = createApiHandler({
   rateLimit: "playground:run",
   schema: playgroundRunSchema,
   handler: async (_req, { user, body }) => {
+    // SEC H-1 / H-2: gate sandbox-heavy endpoints behind email verification
+    // and a per-user daily quota. Public signup + playground was the path
+    // an attacker could use to spin up a Docker-mining farm; the email-
+    // verified gate stops disposable accounts and the daily cap bounds
+    // damage from a single legit-but-abusive user.
+    const { gateSandboxEndpoint } = await import("@/lib/security/sandbox-gate");
+    const sandboxGate = await gateSandboxEndpoint({
+      userId: user.id,
+      endpoint: "playground:run",
+      maxPerDay: 200,
+    });
+    if (sandboxGate) return sandboxGate;
+
     const platformMode = await getEffectivePlatformMode({
       userId: user.id,
       assignmentId: null,
