@@ -2,7 +2,7 @@ import { cache } from "react";
 import { and, eq, inArray } from "drizzle-orm";
 import type { PlatformMode } from "@/types";
 import { db } from "@/lib/db";
-import { assignmentProblems, recruitingInvitations } from "@/lib/db/schema";
+import { assignmentProblems, assignments, recruitingInvitations } from "@/lib/db/schema";
 import { getResolvedPlatformMode } from "@/lib/system-settings";
 import { getCachedRecruitingContext, setCachedRecruitingContext } from "@/lib/recruiting/request-cache";
 
@@ -120,4 +120,43 @@ export const getRecruitingAccessContext = cache(
 
 export async function isRecruitingCandidateUser(userId: string): Promise<boolean> {
   return (await getRecruitingAccessContext(userId)).isRecruitingCandidate;
+}
+
+/**
+ * SEC C-2: A recruiting candidate whose ALL invitation windows have
+ * expired must not be able to log in via /login with the password they
+ * set at redeem time. The candidate user row stays in the DB (for audit
+ * trail) but `/login` rejects them.
+ *
+ * "Stale" = the user is a recruiting candidate AND every assignment they
+ * were invited to has its lateDeadline (or deadline, if no late grace)
+ * in the past. If any invitation is still in the open window, login
+ * remains allowed.
+ */
+export async function isStaleRecruitingCandidate(userId: string): Promise<boolean> {
+  const ctx = await getRecruitingAccessContext(userId);
+  if (!ctx.isRecruitingCandidate) return false;
+  if (ctx.assignmentIds.length === 0) return false;
+
+  const rows = await db
+    .select({
+      id: assignments.id,
+      deadline: assignments.deadline,
+      lateDeadline: assignments.lateDeadline,
+    })
+    .from(assignments)
+    .where(inArray(assignments.id, ctx.assignmentIds));
+
+  const now = Date.now();
+  for (const row of rows) {
+    const cutoff = row.lateDeadline ?? row.deadline;
+    if (!cutoff) {
+      // No deadline = open-ended, treat as active.
+      return false;
+    }
+    if (new Date(cutoff).getTime() > now) {
+      return false;
+    }
+  }
+  return true;
 }

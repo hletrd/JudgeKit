@@ -12,6 +12,7 @@ import {
 } from "@/lib/auth/session-security";
 import { db } from "@/lib/db";
 import { users } from "@/lib/db/schema";
+import { isStaleRecruitingCandidate } from "@/lib/recruiting/access";
 import { eq, sql } from "drizzle-orm";
 import { getDbNowMs } from "@/lib/db-time";
 import {
@@ -297,6 +298,21 @@ export const authConfig: NextAuthConfig = {
 
         const { valid: isValid } = await verifyAndRehashPassword(password, user.id, user.passwordHash);
         if (!isValid) {
+          recordLoginEvent({
+            outcome: "invalid_credentials",
+            attemptedIdentifier: identifier,
+            userId: user.id,
+            request,
+          });
+          return null;
+        }
+
+        // SEC C-2: a recruiting candidate whose ALL invitation windows
+        // have expired must not be able to log back in via /login with
+        // the password they chose at redeem time. The user row stays in
+        // the DB (audit trail, prior submissions, etc.) but credential
+        // auth is closed off until an operator re-invites them.
+        if (await isStaleRecruitingCandidate(user.id)) {
           recordLoginEvent({
             outcome: "invalid_credentials",
             attemptedIdentifier: identifier,
