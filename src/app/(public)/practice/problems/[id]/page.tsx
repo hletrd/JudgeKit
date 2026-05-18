@@ -616,7 +616,17 @@ export default async function PublicProblemDetailPage({
               </div>
 
               {session?.user ? (
-                <div className="min-w-0 space-y-6 lg:sticky lg:top-6 lg:self-start lg:max-h-[calc(100vh-3rem)] lg:overflow-y-auto">
+                // lg:overflow-y-auto on this sticky column forces overflow-x
+                // to `auto` per CSS spec (overflow x/y interaction rule).
+                // Card uses ring-1 (box-shadow-based border) which renders
+                // outside the box dimensions, so the side strokes get clipped
+                // at the scroll container edges — users saw "top corners +
+                // bottom only" on the submit card and "top + bottom corners
+                // only" on the my-submissions card. Adding px-px keeps a 1px
+                // gutter inside the scroll viewport so the ring has room to
+                // paint, and -mx-px on this wrapper cancels the visual
+                // displacement so the layout grid is unchanged.
+                <div className="min-w-0 space-y-6 lg:sticky lg:top-6 lg:-mx-px lg:max-h-[calc(100vh-3rem)] lg:self-start lg:overflow-y-auto lg:px-px">
                   <Card id="public-submit-panel">
                     <CardHeader>
                       <CardTitle>{tProblems("submitSolution")}</CardTitle>
