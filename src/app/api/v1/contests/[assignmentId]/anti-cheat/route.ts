@@ -52,6 +52,32 @@ export const POST = createApiHandler({
       return apiSuccess({ logged: false });
     }
 
+    // SEC M-8: stricter origin check than the global CSRF helper.
+    // CSRF.validateCsrf only rejects when Origin IS PRESENT and mismatches;
+    // a curl client that simply omits Origin still passes. For anti-cheat
+    // we REQUIRE the Origin header to be present and to match the
+    // deployment's canonical host. This makes the scripted bypass
+    // ("curl every 30s while a confederate handles the exam") meaningfully
+    // harder — the attacker now has to spoof the browser environment
+    // closely enough to pin Origin.
+    if (process.env.NODE_ENV === "production") {
+      const originHeader = req.headers.get("origin")?.trim();
+      if (!originHeader) {
+        return apiError("forbidden", 403);
+      }
+      const { getAuthUrlObject } = await import("@/lib/security/env");
+      const expectedHost = getAuthUrlObject()?.host;
+      if (expectedHost) {
+        try {
+          if (new URL(originHeader).host !== expectedHost) {
+            return apiError("forbidden", 403);
+          }
+        } catch {
+          return apiError("forbidden", 403);
+        }
+      }
+    }
+
     // Verify user has access to this contest
     const hasAccess = await rawQueryOne(
       `SELECT 1 FROM enrollments WHERE group_id = @groupId AND user_id = @userId
