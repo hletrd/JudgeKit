@@ -384,6 +384,25 @@ async fn main() {
             .map(Arc::new),
     };
     if auth_state.expected.is_none() {
+        // SEC H-4: in production refuse to boot without an auth token.
+        // /reset is particularly damaging if reachable unauthenticated —
+        // anyone on the docker bridge can clear their own login-failure
+        // bucket and brute-force without limit. Local development is
+        // unaffected — set NODE_ENV != production or
+        // RATE_LIMITER_ALLOW_UNAUTHENTICATED=1 to bypass.
+        let allow_unauth = std::env::var("RATE_LIMITER_ALLOW_UNAUTHENTICATED")
+            .map(|v| v == "1" || v.eq_ignore_ascii_case("true"))
+            .unwrap_or(false);
+        let is_production = std::env::var("NODE_ENV")
+            .map(|v| v == "production")
+            .unwrap_or(false);
+        if is_production && !allow_unauth {
+            tracing::error!(
+                "RATE_LIMITER_AUTH_TOKEN is not set in production. Refusing to start. \
+                 Set the token, or set RATE_LIMITER_ALLOW_UNAUTHENTICATED=1 if you fully understand the risk."
+            );
+            std::process::exit(1);
+        }
         warn!(
             "RATE_LIMITER_AUTH_TOKEN is not set — /check, /record-failure, and /reset will accept unauthenticated requests. Set it in production."
         );

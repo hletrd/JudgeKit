@@ -167,7 +167,25 @@ async fn main() {
             .filter(|t| !t.is_empty())
             .map(Arc::new),
     };
+    // SEC H-4: in production we refuse to boot without an auth token.
+    // A misconfigured deployment (docker port exposed, sandbox escape
+    // onto the bridge, etc.) cannot then talk to /compute without a
+    // bearer. Local development is unaffected — set NODE_ENV != production
+    // or CODE_SIMILARITY_ALLOW_UNAUTHENTICATED=1 to bypass.
     if auth_state.expected.is_none() {
+        let allow_unauth = std::env::var("CODE_SIMILARITY_ALLOW_UNAUTHENTICATED")
+            .map(|v| v == "1" || v.eq_ignore_ascii_case("true"))
+            .unwrap_or(false);
+        let is_production = std::env::var("NODE_ENV")
+            .map(|v| v == "production")
+            .unwrap_or(false);
+        if is_production && !allow_unauth {
+            tracing::error!(
+                "CODE_SIMILARITY_AUTH_TOKEN is not set in production. Refusing to start. \
+                 Set the token, or set CODE_SIMILARITY_ALLOW_UNAUTHENTICATED=1 if you fully understand the risk."
+            );
+            std::process::exit(1);
+        }
         tracing::warn!(
             "CODE_SIMILARITY_AUTH_TOKEN is not set — /compute will accept unauthenticated requests. Set it in production."
         );
