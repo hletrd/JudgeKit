@@ -23,6 +23,8 @@ const ERROR_SHELL_MARKERS = [
   /500 Internal Server Error/i,
 ];
 
+// Routes that must always render without the global error shell on every
+// deployment regardless of feature flags.
 const GUEST_ROUTES = [
   "/",
   "/practice",
@@ -32,9 +34,13 @@ const GUEST_ROUTES = [
   "/rankings",
   "/languages",
   "/login",
-  "/signup",
   "/forgot-password",
 ];
+
+// Optional routes that are disabled by feature flag on some hosts (e.g.
+// public signup is off on algo/worv). A 404 is acceptable; an error shell
+// is not.
+const OPTIONAL_GUEST_ROUTES = ["/signup"];
 
 async function expectNoErrorShell(page: Page, route: string) {
   const body = await page.content();
@@ -54,6 +60,19 @@ test.describe("public routes return without server error shell", () => {
       expect(status, `${route} status`).toBeLessThan(400);
 
       await expectNoErrorShell(page, route);
+    });
+  }
+
+  for (const route of OPTIONAL_GUEST_ROUTES) {
+    test(`GET ${route} (allowed to 404 if feature disabled)`, async ({ page }) => {
+      const response = await page.goto(route, { waitUntil: "networkidle" });
+      const status = response?.status() ?? 0;
+      // 200 (feature enabled) or 404 (feature disabled by config) are both
+      // valid. What we never want is a 500 / error-shell render.
+      expect(status === 404 || (status >= 200 && status < 400)).toBeTruthy();
+      if (status < 400) {
+        await expectNoErrorShell(page, route);
+      }
     });
   }
 
