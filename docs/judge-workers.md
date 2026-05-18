@@ -56,8 +56,8 @@ Workers poll `/api/v1/judge/claim` to claim submissions. The claim request inclu
 | Variable | Default | Description |
 |----------|---------|-------------|
 | `JUDGE_BASE_URL` | `http://localhost:3000/api/v1` | App server API URL |
-| `JUDGE_AUTH_TOKEN` | (required) | Shared bootstrap token. Authorises **registration only**; once a worker is registered the app rejects `claim` / `heartbeat` / `deregister` calls that present this token instead of the per-worker `secretTokenHash` (since 2026-05). |
-| `RUNNER_AUTH_TOKEN` | Falls back to `JUDGE_AUTH_TOKEN` | Bearer token for runner/docker-admin endpoints |
+| `JUDGE_AUTH_TOKEN` | (required, ≥32 chars) | Shared bootstrap token. Authorises **registration only**; once a worker is registered the app rejects `claim` / `heartbeat` / `deregister` calls that present this token instead of the per-worker `secretTokenHash` (since 2026-05). |
+| `RUNNER_AUTH_TOKEN` | Unset → falls back to `JUDGE_AUTH_TOKEN`; **set-but-empty → startup error** | Bearer token for runner/docker-admin endpoints. The worker validates strictly: the value must either be absent or be ≥32 chars. `docker-compose.worker.yml` always renders this variable (`${RUNNER_AUTH_TOKEN:-}`), so on that path an unconfigured host variable becomes `""` and the worker exits with `RUNNER_AUTH_TOKEN must not be empty`. Set it explicitly when using compose. |
 | `JUDGE_ALLOW_DEFAULT_COMPILE_SECCOMP` | `false` | Explicitly let compile containers fall back to Docker's default seccomp profile |
 | `JUDGE_CONCURRENCY` | `1` | Max concurrent submissions (1-16) |
 | `JUDGE_WORKER_HOSTNAME` | System hostname | Hostname reported to app server |

@@ -203,9 +203,12 @@ Deploy workers to separate machines using `docker-compose.worker.yml`:
 ```bash
 JUDGE_BASE_URL=https://your-app-server/api/v1 \
 JUDGE_AUTH_TOKEN=your-token \
+RUNNER_AUTH_TOKEN=your-runner-token \
 JUDGE_CONCURRENCY=4 \
 docker compose -f docker-compose.worker.yml up -d
 ```
+
+`docker-compose.worker.yml` always interpolates `RUNNER_AUTH_TOKEN` into the worker environment, so leaving it unset materialises it as `""` — which the worker now rejects on startup with `RUNNER_AUTH_TOKEN must not be empty`. Always pass the token explicitly (≥32 chars).
 
 Or use the deploy script:
 

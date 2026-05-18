@@ -266,6 +266,7 @@ JudgeKit supports full contest management with two scoring models and two schedu
 - **ORM**: Drizzle ORM with PostgreSQL runtime schema (`schema.pg.ts`); legacy SQLite/MySQL schema artifacts remain in-repo for migration/test context
 - **Migrations**: PostgreSQL runtime migrations under `drizzle/pg/`; older SQLite/MySQL migration artifacts remain in-repo for migration/test context
 - **Sync**: `npm run languages:sync` syncs language definitions from TypeScript config to the `language_configs` table
+- **Relational-query `where` rewrite footgun**: `db.query.<table>.findMany({ where, … })` routes its `where` clause through `mapColumnsInSQLToAlias`, which rewrites every `${otherTable.col}` reference inside a `sql\`...\`` template to use the outer table's alias. EXISTS / IN subqueries that reference foreign tables silently emit invalid SQL (e.g. `${tags.name}` becomes `"problems"."name"`), so `db.select().from(problems).where(…)` works on the count path while the relational `findMany` 500s. Pre-resolve the foreign-table predicate to an ID list and switch to `inArray(<thisTable>.id, ids)` — single-column predicates survive the alias rewrite. See commit `5907931c` (`fix(public): unbreak tag filter on practice and problem-sets lists`).
 
 ### Security Sandbox
 - **Seccomp profile**: Uses a **deny-list** approach — default action is `SCMP_ACT_ALLOW`, with specific dangerous syscalls explicitly blocked. This is more permissive during container init (avoids Docker 28+/modern-kernel init errors) while still restricting the attack surface during code execution.
