@@ -9,12 +9,21 @@ import { bulkCreateRecruitingInvitationsSchema } from "@/lib/validators/recruiti
 import { recordAuditEvent } from "@/lib/audit/events";
 import { getDbNowUncached } from "@/lib/db-time";
 import { MAX_EXPIRY_MS, computeExpiryFromDays } from "@/lib/assignments/recruiting-constants";
+import { canManageContest, getContestAssignment } from "@/lib/assignments/contests";
 
 export const POST = createApiHandler({
   auth: { capabilities: ["recruiting.manage_invitations"] },
   schema: bulkCreateRecruitingInvitationsSchema,
   handler: async (req: NextRequest, { user, params, body }) => {
     const { assignmentId } = params;
+
+    // SEC-21-8: capability alone lets any holder write to ANY contest's
+    // invitation list. Pair with the per-contest canManageContest check
+    // so an instructor of one contest can't seed candidates into a
+    // sibling instructor's contest.
+    const assignment = await getContestAssignment(assignmentId);
+    if (!assignment) return apiError("notFound", 404, "Assignment");
+    if (!(await canManageContest(user, assignment))) return apiError("forbidden", 403);
 
     // Check for duplicate emails within the request
     const emails = body.invitations
