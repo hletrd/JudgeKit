@@ -118,6 +118,14 @@ vi.mock("@/lib/db-time", () => ({
   getDbNowUncached: getDbNowUncachedMock,
 }));
 
+vi.mock("@/lib/auth/permissions", () => ({
+  getAccessibleProblemIds: vi.fn(async (
+    _userId: string,
+    _role: string,
+    list: Array<{ id: string }>
+  ) => new Set(list.map((p) => p.id))),
+}));
+
 import { POST as joinPOST } from "@/app/api/v1/contests/join/route";
 import {
   GET as accessCodeGET,

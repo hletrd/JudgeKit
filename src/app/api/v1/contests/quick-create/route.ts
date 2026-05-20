@@ -9,6 +9,7 @@ import { apiSuccess, apiError } from "@/lib/api/responses";
 import { recordAuditEvent } from "@/lib/audit/events";
 import { getDbNowUncached } from "@/lib/db-time";
 import { DEFAULT_PROBLEM_POINTS } from "@/lib/assignments/constants";
+import { getAccessibleProblemIds } from "@/lib/auth/permissions";
 
 const quickCreateSchema = z.object({
   title: z.string().min(1).max(255),
@@ -51,12 +52,19 @@ export const POST = createApiHandler({
       return apiError("assignmentScheduleInvalid", 400);
     }
 
-    // Verify all problem IDs exist in the database
+    // Verify all problem IDs exist AND are accessible to this user.
+    // SEC-21-9: previously only existence was checked, so any caller with
+    // contests.create could embed another instructor's private problem
+    // IDs and gain read access via the contest workspace.
     const existingProblems = await db
-      .select({ id: problems.id })
+      .select({ id: problems.id, visibility: problems.visibility, authorId: problems.authorId })
       .from(problems)
       .where(inArray(problems.id, body.problemIds));
     if (existingProblems.length !== body.problemIds.length) {
+      return apiError("invalidProblemIds", 400);
+    }
+    const accessible = await getAccessibleProblemIds(user.id, user.role, existingProblems);
+    if (accessible.size !== body.problemIds.length) {
       return apiError("invalidProblemIds", 400);
     }
 
