@@ -334,9 +334,53 @@ async fn main() {
 
     // Start runner HTTP server if enabled
     let runner_handle = if config.runner_enabled {
+        // SEC ops fix: probe the docker socket at boot. Catches a
+        // misconfigured docker-socket-proxy (e.g. POST=0) before the
+        // first submission lands and lets `docker compose up -d` fail
+        // visibly instead of silently emitting compile_error for hours.
+        let docker_capability_ok = Arc::new(std::sync::atomic::AtomicBool::new(false));
+        match runner::probe_docker_capability().await {
+            Ok(()) => {
+                docker_capability_ok.store(true, std::sync::atomic::Ordering::Relaxed);
+                tracing::info!("Docker capability probe passed at startup");
+            }
+            Err(err) => {
+                tracing::error!(
+                    error = %err,
+                    "Docker capability probe failed at startup. The worker would \
+                     emit compile_error on every submission. Refusing to start. \
+                     Check docker-socket-proxy ACL (POST, DELETE, ALLOW_START)."
+                );
+                std::process::exit(1);
+            }
+        }
+
+        // Periodic re-probe so a mid-life socket-proxy regression
+        // surfaces on the /health endpoint within ~60s.
+        let probe_flag = Arc::clone(&docker_capability_ok);
+        tokio::spawn(async move {
+            let mut ticker = tokio::time::interval(std::time::Duration::from_secs(60));
+            ticker.tick().await; // skip immediate tick; startup already probed
+            loop {
+                ticker.tick().await;
+                match runner::probe_docker_capability().await {
+                    Ok(()) => {
+                        if !probe_flag.swap(true, std::sync::atomic::Ordering::Relaxed) {
+                            tracing::warn!("Docker capability probe recovered");
+                        }
+                    }
+                    Err(err) => {
+                        probe_flag.store(false, std::sync::atomic::Ordering::Relaxed);
+                        tracing::error!(error = %err, "Docker capability probe failed");
+                    }
+                }
+            }
+        });
+
         let runner_state = Arc::new(runner::RunnerState {
             config: Arc::clone(&config),
             semaphore: Arc::new(Semaphore::new(config.runner_concurrency)),
+            docker_capability_ok,
         });
         let app = runner::create_router(runner_state);
         let addr = format!("{}:{}", config.runner_host, config.runner_port);

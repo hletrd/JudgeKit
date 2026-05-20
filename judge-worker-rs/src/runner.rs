@@ -1,4 +1,5 @@
 use std::sync::Arc;
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::path::Path;
 
 use axum::extract::{DefaultBodyLimit, Query, State};
@@ -28,6 +29,11 @@ const MAX_RUNNER_BODY_BYTES: usize = 4 * 1024 * 1024;
 pub struct RunnerState {
     pub config: Arc<Config>,
     pub semaphore: Arc<Semaphore>,
+    /// Set by the periodic docker-capability probe. Cleared if the most
+    /// recent probe (a container create + remove cycle) failed, e.g.
+    /// because docker-socket-proxy was misconfigured with POST=0. This
+    /// is the signal the 14h silent compile_error sweep was missing.
+    pub docker_capability_ok: Arc<AtomicBool>,
 }
 
 #[derive(Debug, Serialize)]
@@ -373,8 +379,64 @@ fn constant_time_eq(a: &[u8], b: &[u8]) -> bool {
     diff == 0
 }
 
-async fn health() -> StatusCode {
-    StatusCode::OK
+async fn health(State(state): State<Arc<RunnerState>>) -> StatusCode {
+    if state.docker_capability_ok.load(Ordering::Relaxed) {
+        StatusCode::OK
+    } else {
+        // Surfacing 503 here lets docker-compose's healthcheck mark the
+        // worker container as unhealthy, so a downstream load balancer
+        // or operator dashboard can detect the 14h-sweep failure mode
+        // (POST=0 on socket-proxy → every submission compile_error)
+        // instead of letting the worker silently emit compile_error
+        // forever while appearing green.
+        StatusCode::SERVICE_UNAVAILABLE
+    }
+}
+
+/// Try to create and then immediately remove a tiny docker container.
+/// Returns Ok(()) if both POST /containers/create and DELETE
+/// /containers/{id} succeed. Used by the startup probe and the periodic
+/// probe to detect socket-proxy misconfiguration (POST=0, DELETE=0)
+/// that is otherwise silent until the first submission lands.
+pub async fn probe_docker_capability() -> Result<(), String> {
+    // hello-world is ~6KB, present on almost every docker host. We use
+    // --rm to keep the test self-cleaning even on probe-create success
+    // but probe-remove fail. We don't actually start the container —
+    // create + rm is sufficient to exercise POST and DELETE on the
+    // docker socket.
+    let probe_name = format!("judgekit-health-probe-{}", std::process::id());
+    let create_output = run_command(
+        "docker",
+        &[
+            "container",
+            "create",
+            "--name",
+            &probe_name,
+            "--label",
+            "judgekit-health-probe=1",
+            "hello-world:latest",
+        ],
+        None,
+    )
+    .await
+    .map_err(|e| format!("docker create failed: {e}"))?;
+
+    if !create_output.status.success() {
+        let combined = combined_output(&create_output);
+        // Best-effort cleanup if create partially succeeded (e.g.
+        // container was created but a stderr line confused our parser).
+        let _ = run_command("docker", &["rm", "-f", &probe_name], None).await;
+        return Err(format!("docker create rejected: {combined}"));
+    }
+
+    let rm_output = run_command("docker", &["rm", "-f", &probe_name], None)
+        .await
+        .map_err(|e| format!("docker rm failed: {e}"))?;
+    if !rm_output.status.success() {
+        return Err(format!("docker rm rejected: {}", combined_output(&rm_output)));
+    }
+
+    Ok(())
 }
 
 async fn docker_images_handler(
