@@ -108,6 +108,11 @@ export function LoginForm() {
           {t("forgotPassword")}
         </Link>
       </p>
+      {error && (
+        <p className="text-center text-xs text-muted-foreground">
+          {t("recruitingCandidateHint")}
+        </p>
+      )}
     </form>
   );
 }
