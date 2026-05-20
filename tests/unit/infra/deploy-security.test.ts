@@ -129,14 +129,19 @@ describe("deployment security defaults", () => {
     expect(production).toContain("- DELETE=1");
     expect(production).toContain("- ALLOW_START=1");
     expect(production).toContain("- ALLOW_STOP=1");
-    // Worker compose now hardcodes BUILD/POST/DELETE to 0 (instead of the
-    // historical ${WORKER_DOCKER_PROXY_*:-0} envars) so an operator cannot
-    // accidentally enable them via .env. IMAGES is still env-toggleable
-    // because legitimate workers may need it for `docker images` listings.
+    // Worker compose: BUILD stays hardcoded off (separate overlay if
+    // needed), but POST/DELETE/ALLOW_START/ALLOW_STOP default to 1
+    // because the judge worker uses POST /containers/create + DELETE
+    // /containers/{id} on every submission. Hardcoding POST=0 here in
+    // an earlier revision caused the 14h silent compile_error sweep
+    // across the fleet. IMAGES is still env-toggleable because
+    // legitimate workers may need it for `docker images` listings.
     expect(workerCompose).toContain("WORKER_DOCKER_PROXY_IMAGES:-0");
     expect(workerCompose).toMatch(/^\s*-\s*BUILD=0\s*$/m);
-    expect(workerCompose).toMatch(/^\s*-\s*POST=0\s*$/m);
-    expect(workerCompose).toMatch(/^\s*-\s*DELETE=0\s*$/m);
+    expect(workerCompose).toMatch(/^\s*-\s*POST=\$\{WORKER_DOCKER_PROXY_POST:-1\}\s*$/m);
+    expect(workerCompose).toMatch(/^\s*-\s*DELETE=\$\{WORKER_DOCKER_PROXY_DELETE:-1\}\s*$/m);
+    expect(workerCompose).toMatch(/^\s*-\s*ALLOW_START=\$\{WORKER_DOCKER_PROXY_ALLOW_START:-1\}\s*$/m);
+    expect(workerCompose).toMatch(/^\s*-\s*ALLOW_STOP=\$\{WORKER_DOCKER_PROXY_ALLOW_STOP:-1\}\s*$/m);
     expect(workerCompose).toContain('127.0.0.1:${RUNNER_PORT:-3001}:3001');
     expect(workerCompose).toContain("RUNNER_AUTH_TOKEN=${RUNNER_AUTH_TOKEN:-}");
     expect(workerDocs).toContain("WORKER_DOCKER_PROXY_IMAGES=1");

@@ -22,13 +22,22 @@ services:
     environment:
       - CONTAINERS=1
       - IMAGES=${WORKER_DOCKER_PROXY_IMAGES:-0}
-      # BUILD / POST / DELETE are hardcoded off here. If a worker host genuinely
-      # needs to build images locally, use a dedicated overlay file (e.g.
-      # docker-compose.worker-build.override.yml) — not an env-driven toggle on
-      # the production compose, which is too easy to leave enabled accidentally.
+      # POST / DELETE are REQUIRED for a judge worker because Rust runner
+      # calls POST /containers/create and DELETE /containers/{id} to spawn
+      # and clean up sandboxes per submission. Hardcoding POST=0 here in
+      # an earlier revision was the direct cause of the 14h silent
+      # compile_error sweep across the fleet (2026-05-17). The
+      # docker-socket-proxy is still locked down compared to bare docker
+      # access: container privilege/volume mount controls live in the
+      # runner code, not in the socket-proxy ACL.
+      #
+      # BUILD remains off; image builds on dedicated workers must use a
+      # separate overlay (docker-compose.worker-build.override.yml).
       - BUILD=0
-      - POST=0
-      - DELETE=0
+      - POST=${WORKER_DOCKER_PROXY_POST:-1}
+      - DELETE=${WORKER_DOCKER_PROXY_DELETE:-1}
+      - ALLOW_START=${WORKER_DOCKER_PROXY_ALLOW_START:-1}
+      - ALLOW_STOP=${WORKER_DOCKER_PROXY_ALLOW_STOP:-1}
       - LOG_LEVEL=warning
     volumes:
       - /var/run/docker.sock:/var/run/docker.sock:ro
