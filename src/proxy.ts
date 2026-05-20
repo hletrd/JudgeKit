@@ -407,5 +407,14 @@ export const config = {
     "/signup",
     "/change-password",
     "/recruit/:path*",
+    // SEC-21-3: these auth-recovery routes must also receive the runtime
+    // nonce CSP, otherwise they fall to the strict static fallback in
+    // next.config.ts (script-src 'self' only) and the Next.js streaming
+    // inline scripts get blocked. Self-DoS on password recovery is bad
+    // for both candidate and student UX.
+    "/forgot-password",
+    "/reset-password/:path*",
+    "/verify-email",
+    "/verify-email/:path*",
   ],
 };
