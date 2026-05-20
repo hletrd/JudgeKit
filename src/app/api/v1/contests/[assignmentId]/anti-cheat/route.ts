@@ -9,7 +9,7 @@ import { rawQueryOne } from "@/lib/db/queries";
 import { antiCheatEvents, users } from "@/lib/db/schema";
 import { eq, and, desc, sql } from "drizzle-orm";
 import { parsePositiveInt, parseNonNegativeInt } from "@/lib/validators/query-params";
-import { getContestAssignment, canManageContest } from "@/lib/assignments/contests";
+import { getContestAssignment, canManageContest, canMonitorContest } from "@/lib/assignments/contests";
 import { LRUCache } from "lru-cache";
 import { getUnsupportedRealtimeGuard, shouldRecordSharedHeartbeat, usesSharedRealtimeCoordination } from "@/lib/realtime/realtime-coordination";
 
@@ -173,7 +173,11 @@ export const GET = createApiHandler({
       return apiError("notFound", 404);
     }
 
-    const canView = await canManageContest(user, assignment);
+    // Read-only monitoring surface: extend to group TAs so a teaching
+    // assistant can supervise a live exam without inheriting write
+    // power. Write semantics (e.g., the POST heartbeat) keep
+    // canManageContest above.
+    const canView = await canMonitorContest(user, assignment);
 
     if (!canView) {
       return apiError("forbidden", 403);

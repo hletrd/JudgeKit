@@ -214,6 +214,32 @@ export async function canManageContest(
   );
 }
 
+/**
+ * Read-only counterpart of canManageContest for proctoring/monitoring
+ * surfaces (anti-cheat events, participant timeline, similarity reports,
+ * submission lists). Includes everyone canManageContest does, plus:
+ *
+ *   - group TAs (`group_instructors.role='ta'`) so a teaching assistant
+ *     can supervise a live exam on a group they're assigned to;
+ *   - global users with the `anti_cheat.view_events` capability (the
+ *     built-in `assistant` role), so org-wide proctors can supervise
+ *     without per-group group_instructors rows.
+ *
+ * Routes that need write semantics (delete a submission, override a
+ * score, freeze the leaderboard) MUST keep using canManageContest.
+ */
+export async function canMonitorContest(
+  user: { id: string; role: string },
+  assignment: Pick<ContestAssignmentRow, "groupId" | "instructorId">
+): Promise<boolean> {
+  if (await canManageContest(user, assignment)) return true;
+  const { isGroupTA } = await import("@/lib/assignments/management");
+  if (await isGroupTA(assignment.groupId, user.id)) return true;
+  const { resolveCapabilities } = await import("@/lib/capabilities");
+  const caps = await resolveCapabilities(user.role);
+  return caps.has("anti_cheat.view_events");
+}
+
 type RawContestAssignmentRow = {
   groupId: string;
   instructorId: string | null;

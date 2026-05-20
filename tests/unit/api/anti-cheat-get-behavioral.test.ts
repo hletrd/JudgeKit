@@ -5,10 +5,12 @@ const {
   selectMock,
   getContestAssignmentMock,
   canManageContestMock,
+  canMonitorContestMock,
 } = vi.hoisted(() => ({
   selectMock: vi.fn(),
   getContestAssignmentMock: vi.fn(),
   canManageContestMock: vi.fn(),
+  canMonitorContestMock: vi.fn(),
 }));
 
 const ASSIGNMENT_ID = "assign-1";
@@ -26,6 +28,7 @@ vi.mock("@/lib/api/handler", () => ({
 vi.mock("@/lib/assignments/contests", () => ({
   getContestAssignment: getContestAssignmentMock,
   canManageContest: canManageContestMock,
+  canMonitorContest: canMonitorContestMock,
 }));
 
 vi.mock("@/lib/db", () => ({
@@ -104,6 +107,7 @@ describe("GET /api/v1/contests/[assignmentId]/anti-cheat", () => {
       enableAntiCheat: true,
     });
     canManageContestMock.mockResolvedValue(true);
+    canMonitorContestMock.mockResolvedValue(true);
   });
 
   it("returns anti-cheat events with pagination metadata", async () => {
@@ -162,6 +166,7 @@ describe("GET /api/v1/contests/[assignmentId]/anti-cheat", () => {
 
   it("rejects callers who cannot manage the contest", async () => {
     canManageContestMock.mockResolvedValueOnce(false);
+    canMonitorContestMock.mockResolvedValueOnce(false);
     buildSelectChain([], 0);
 
     const { GET } = await import("@/app/api/v1/contests/[assignmentId]/anti-cheat/route");
