@@ -1,5 +1,6 @@
 import { z } from "zod";
 import { normalizeOptionalString } from "@/lib/validators/preprocess";
+import { FIXED_MIN_PASSWORD_LENGTH } from "@/lib/security/password";
 
 export const platformModeValues = ["homework", "exam", "contest", "recruiting"] as const;
 
@@ -113,7 +114,12 @@ export const systemSettingsSchema = z.object({
   staleClaimTimeoutMs: optionalInt(10_000, 3_600_000),
   // Session & Auth
   sessionMaxAgeSeconds: optionalInt(300, 7_776_000),
-  minPasswordLength: optionalInt(4, 128),
+  // SEC-21-6: floor at FIXED_MIN_PASSWORD_LENGTH (12) so admin UI cannot
+  // weaken the L-1 hardening below the security baseline. The runtime
+  // validator (getPasswordValidationError) always enforces the floor
+  // anyway, but rejecting weakening writes here gives a clean error
+  // instead of a silent no-op.
+  minPasswordLength: optionalInt(FIXED_MIN_PASSWORD_LENGTH, 128),
   // Pagination
   defaultPageSize: optionalInt(5, 200),
   // Real-time / SSE
