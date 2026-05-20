@@ -167,27 +167,27 @@ async fn main() {
             .filter(|t| !t.is_empty())
             .map(Arc::new),
     };
-    // SEC H-4: in production we refuse to boot without an auth token.
-    // A misconfigured deployment (docker port exposed, sandbox escape
-    // onto the bridge, etc.) cannot then talk to /compute without a
-    // bearer. Local development is unaffected — set NODE_ENV != production
-    // or CODE_SIMILARITY_ALLOW_UNAUTHENTICATED=1 to bypass.
+    // SEC H-4 / SEC-21-4: fail-closed by default, regardless of NODE_ENV.
+    // The previous gate depended on NODE_ENV=production propagating from
+    // Node land into the Rust container — which it doesn't automatically
+    // when the sidecar runs under a separate `docker compose` service
+    // with its own environment. To remove the foot-gun, the only opt-out
+    // is now the explicit CODE_SIMILARITY_ALLOW_UNAUTHENTICATED=1 flag.
+    // Local development MUST either set the token or set the explicit
+    // opt-out.
     if auth_state.expected.is_none() {
         let allow_unauth = std::env::var("CODE_SIMILARITY_ALLOW_UNAUTHENTICATED")
             .map(|v| v == "1" || v.eq_ignore_ascii_case("true"))
             .unwrap_or(false);
-        let is_production = std::env::var("NODE_ENV")
-            .map(|v| v == "production")
-            .unwrap_or(false);
-        if is_production && !allow_unauth {
+        if !allow_unauth {
             tracing::error!(
-                "CODE_SIMILARITY_AUTH_TOKEN is not set in production. Refusing to start. \
+                "CODE_SIMILARITY_AUTH_TOKEN is not set. Refusing to start. \
                  Set the token, or set CODE_SIMILARITY_ALLOW_UNAUTHENTICATED=1 if you fully understand the risk."
             );
             std::process::exit(1);
         }
         tracing::warn!(
-            "CODE_SIMILARITY_AUTH_TOKEN is not set — /compute will accept unauthenticated requests. Set it in production."
+            "CODE_SIMILARITY_AUTH_TOKEN is not set and CODE_SIMILARITY_ALLOW_UNAUTHENTICATED=1 — /compute will accept unauthenticated requests."
         );
     }
 
