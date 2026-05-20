@@ -265,11 +265,26 @@ export function CompilerClient({ languages, title, description, preferredLanguag
       const { ok, data } = await parseApiResponse<{ error?: string; message?: string; data?: unknown }>(res, { data: null });
 
       if (!ok) {
-        const rawError = data.error || data.message || t("requestFailed");
-        const errorMessage = String(rawError);
+        const rawError = data.error || data.message;
+        const knownErrorKeys = new Set([
+          "emailVerificationRequired",
+          "dailyQuotaExceeded",
+          "compilerDisabledInCurrentMode",
+          "languageDisabled",
+          "languageNotFound",
+          "sourceCodeTooLarge",
+          "stdinTooLarge",
+          "forbidden",
+          "runFailed",
+          "networkError",
+          "requestFailed",
+        ]);
+        const translated = typeof rawError === "string" && knownErrorKeys.has(rawError)
+          ? t(rawError as never)
+          : (rawError ? String(rawError) : t("requestFailed"));
         updateTestCase(runningTestCaseId, (testCase) => ({
           ...testCase,
-          error: errorMessage,
+          error: translated,
           result: null,
         }));
         toast.error(t("runFailed"));

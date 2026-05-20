@@ -192,6 +192,12 @@ export function ProblemSubmissionForm({
       "sourceCode is required": "submissionErrors.sourceCodeRequired",
       "sourceCode exceeds the 65536-byte limit": "submissionErrors.sourceCodeTooLarge",
       "Internal server error": "submissionErrors.submissionCreateFailed",
+      emailVerificationRequired: "submissionErrors.emailVerificationRequired",
+      dailyQuotaExceeded: "submissionErrors.dailyQuotaExceeded",
+      compilerDisabledInCurrentMode: "submissionErrors.compilerDisabledInCurrentMode",
+      sourceCodeTooLarge: "submissionErrors.sourceCodeTooLarge",
+      stdinTooLarge: "submissionErrors.stdinTooLarge",
+      languageDisabled: "submissionErrors.languageDisabled",
     };
 
     const translationKey = legacyErrorMap[error] ?? `submissionErrors.${error}`;
