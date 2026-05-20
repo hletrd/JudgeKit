@@ -1,5 +1,6 @@
 import { z } from "zod";
 import { normalizeOptionalString } from "@/lib/validators/preprocess";
+import { FIXED_MIN_PASSWORD_LENGTH } from "@/lib/security/password";
 
 export const publicSignupSchema = z.object({
   username: z.preprocess(normalizeOptionalString, z.string().min(3, "usernameTooShort").max(50, "usernameTooLong")),
@@ -8,7 +9,7 @@ export const publicSignupSchema = z.object({
     normalizeOptionalString,
     z.string().email("invalidEmail").max(255, "emailTooLong").optional(),
   ),
-  password: z.string().min(8, "passwordTooShort").max(256, "passwordTooLong"),
+  password: z.string().min(FIXED_MIN_PASSWORD_LENGTH, "passwordTooShort").max(256, "passwordTooLong"),
   confirmPassword: z.string().min(1, "confirmPasswordRequired"),
   captchaToken: z.preprocess(normalizeOptionalString, z.string().optional()),
 }).superRefine((data, ctx) => {

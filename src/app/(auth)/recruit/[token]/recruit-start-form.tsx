@@ -16,8 +16,9 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
+import { FIXED_MIN_PASSWORD_LENGTH } from "@/lib/security/password";
 
-const MIN_PASSWORD_LENGTH = 8;
+const MIN_PASSWORD_LENGTH = FIXED_MIN_PASSWORD_LENGTH;
 
 export function RecruitStartForm({
   token,

@@ -102,8 +102,8 @@ describe("registerPublicUser", () => {
       username: "newstudent",
       name: "New Student",
       email: "student@example.com",
-      password: "password123",
-      confirmPassword: "password123",
+      password: "password12345",
+      confirmPassword: "password12345",
       captchaToken: undefined,
     });
 
@@ -132,8 +132,8 @@ describe("registerPublicUser", () => {
       username: "newstudent",
       name: "New Student",
       email: undefined,
-      password: "password123",
-      confirmPassword: "password123",
+      password: "password12345",
+      confirmPassword: "password12345",
       captchaToken: undefined,
     });
 
@@ -148,8 +148,8 @@ describe("registerPublicUser", () => {
       username: "newstudent",
       name: "New Student",
       email: undefined,
-      password: "password123",
-      confirmPassword: "password123",
+      password: "password12345",
+      confirmPassword: "password12345",
       captchaToken: undefined,
     });
 
@@ -164,8 +164,8 @@ describe("registerPublicUser", () => {
       username: "newstudent",
       name: "New Student",
       email: undefined,
-      password: "password123",
-      confirmPassword: "password123",
+      password: "password12345",
+      confirmPassword: "password12345",
       captchaToken: undefined,
     });
 

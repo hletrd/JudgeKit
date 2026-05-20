@@ -12,6 +12,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { getSafeRedirectUrl } from "@/lib/auth/redirect";
+import { FIXED_MIN_PASSWORD_LENGTH } from "@/lib/security/password";
 
 export function SignupForm({
   hcaptchaEnabled,
@@ -187,9 +188,14 @@ export function SignupForm({
             type="password"
             autoComplete="new-password"
             required
+            minLength={FIXED_MIN_PASSWORD_LENGTH}
             value={passwordValue}
             onChange={(e) => setPasswordValue(e.target.value)}
+            aria-describedby="password-hint"
           />
+          <p id="password-hint" className="text-xs text-muted-foreground">
+            {t("passwordHint", { min: FIXED_MIN_PASSWORD_LENGTH })}
+          </p>
         </div>
         <div className="space-y-2">
           <Label htmlFor="confirmPassword">{t("confirmPassword")}</Label>
