@@ -29,6 +29,19 @@ export const POST = createApiHandler({
   rateLimit: "playground:run",
   schema: playgroundRunSchema,
   handler: async (_req, { user, body }) => {
+    // Order matters: platform-mode check first so recruiting candidates and
+    // contest-mode users get the actionable "compilerDisabledInCurrentMode"
+    // response instead of the SEC H-1/H-2 emailVerificationRequired gate
+    // (which they cannot satisfy because their account is provisioned via
+    // recruiting invitation, never email-verified).
+    const platformMode = await getEffectivePlatformMode({
+      userId: user.id,
+      assignmentId: null,
+    });
+    if (getPlatformModePolicy(platformMode).restrictStandaloneCompiler) {
+      return apiError("compilerDisabledInCurrentMode", 403);
+    }
+
     // SEC H-1 / H-2: gate sandbox-heavy endpoints behind email verification
     // and a per-user daily quota. Public signup + playground was the path
     // an attacker could use to spin up a Docker-mining farm; the email-
@@ -41,14 +54,6 @@ export const POST = createApiHandler({
       maxPerDay: 200,
     });
     if (sandboxGate) return sandboxGate;
-
-    const platformMode = await getEffectivePlatformMode({
-      userId: user.id,
-      assignmentId: null,
-    });
-    if (getPlatformModePolicy(platformMode).restrictStandaloneCompiler) {
-      return apiError("compilerDisabledInCurrentMode", 403);
-    }
 
     if (!isJudgeLanguage(body.language)) {
       return apiError("languageNotFound", 404, "language");

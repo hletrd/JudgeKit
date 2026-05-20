@@ -36,19 +36,11 @@ export const POST = createApiHandler({
   rateLimit: "compiler:run",
   schema: compilerRunSchema,
   handler: async (_req, { user, body }) => {
-    // SEC H-1 / H-2: gate sandbox-heavy endpoint. Same shape as
-    // /api/v1/playground/run. Compiler is reachable from assignment
-    // workspaces (legitimate per-test debugging) so the daily ceiling
-    // is higher than playground's, but the email-verified gate still
-    // closes off disposable-signup abuse.
-    const { gateSandboxEndpoint } = await import("@/lib/security/sandbox-gate");
-    const sandboxGate = await gateSandboxEndpoint({
-      userId: user.id,
-      endpoint: "compiler:run",
-      maxPerDay: 500,
-    });
-    if (sandboxGate) return sandboxGate;
-
+    // Order matters: platform-mode check first so recruiting candidates and
+    // contest-mode users get the actionable "compilerDisabledInCurrentMode"
+    // response instead of the SEC H-1/H-2 emailVerificationRequired gate
+    // (which they cannot satisfy because their account is provisioned via
+    // recruiting invitation, never email-verified).
     const assignmentContext = await resolvePlatformModeAssignmentContextDetails({
       userId: user.id,
       assignmentId: body.assignmentId ?? null,
@@ -72,6 +64,19 @@ export const POST = createApiHandler({
     if (getPlatformModePolicy(platformMode).restrictStandaloneCompiler) {
       return apiError("compilerDisabledInCurrentMode", 403);
     }
+
+    // SEC H-1 / H-2: gate sandbox-heavy endpoint. Same shape as
+    // /api/v1/playground/run. Compiler is reachable from assignment
+    // workspaces (legitimate per-test debugging) so the daily ceiling
+    // is higher than playground's, but the email-verified gate still
+    // closes off disposable-signup abuse.
+    const { gateSandboxEndpoint } = await import("@/lib/security/sandbox-gate");
+    const sandboxGate = await gateSandboxEndpoint({
+      userId: user.id,
+      endpoint: "compiler:run",
+      maxPerDay: 500,
+    });
+    if (sandboxGate) return sandboxGate;
 
     const caps = await resolveCapabilities(user.role);
     if (!caps.has("content.submit_solutions")) {
