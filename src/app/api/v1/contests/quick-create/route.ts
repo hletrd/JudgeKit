@@ -63,7 +63,19 @@ export const POST = createApiHandler({
     if (existingProblems.length !== body.problemIds.length) {
       return apiError("invalidProblemIds", 400);
     }
-    const accessible = await getAccessibleProblemIds(user.id, user.role, existingProblems);
+    // A null visibility is treated as private by getAccessibleProblemIds —
+    // coercing to an empty string keeps the type checker happy while
+    // preserving that semantics (the helper only treats === "public" as
+    // public; everything else falls back to author/group-access checks).
+    const accessible = await getAccessibleProblemIds(
+      user.id,
+      user.role,
+      existingProblems.map((p) => ({
+        id: p.id,
+        visibility: p.visibility ?? "",
+        authorId: p.authorId,
+      })),
+    );
     if (accessible.size !== body.problemIds.length) {
       return apiError("invalidProblemIds", 400);
     }
