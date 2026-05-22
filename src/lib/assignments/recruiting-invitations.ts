@@ -441,6 +441,44 @@ export async function deleteRecruitingInvitation(id: string) {
     .where(eq(recruitingInvitations.id, id));
 }
 
+/**
+ * Rotate the invitation's token and return the fresh plaintext token.
+ *
+ * The plaintext token is only ever exposed at creation time — the DB stores
+ * only its SHA-256 hash (see hashToken), so a token that was lost (e.g. the
+ * "Link created" dialog was dismissed) cannot be recovered. This function
+ * mints a NEW token, persists its hash, and returns the plaintext once so the
+ * organizer can re-send a working link. The previous link stops working.
+ *
+ * Allowed for pending and redeemed invitations:
+ * - pending: re-send the initial link.
+ * - redeemed: a returning candidate who lost their link gets a new URL that
+ *   resolves to the same invitation; they still re-enter with their account
+ *   password. The per-invitation metadata (brute-force counter, password-reset
+ *   flag) lives in the `metadata` column and is untouched by the rotation.
+ *
+ * Revoked invitations are rejected — a revoked link must not be revivable.
+ */
+export async function regenerateRecruitingInvitationToken(id: string): Promise<string> {
+  const token = generateRecruitingToken();
+  const result = await db
+    .update(recruitingInvitations)
+    .set({
+      tokenHash: hashToken(token),
+      updatedAt: await getDbNowUncached(),
+    })
+    .where(
+      and(
+        eq(recruitingInvitations.id, id),
+        sql`${recruitingInvitations.status} <> 'revoked'`,
+      ),
+    );
+  if ((result.rowCount ?? 0) === 0) {
+    throw new Error("invitationCannotRegenerateToken");
+  }
+  return token;
+}
+
 export async function getInvitationStats(assignmentId: string) {
   // Single atomic query with conditional aggregation — avoids the race
   // condition where invitations transition between two separate queries,
