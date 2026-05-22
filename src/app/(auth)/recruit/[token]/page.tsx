@@ -3,7 +3,7 @@ import { cache } from "react";
 import { getTranslations, getLocale } from "next-intl/server";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { auth } from "@/lib/auth";
-import { getRecruitingInvitationByToken } from "@/lib/assignments/recruiting-invitations";
+import { getRecruitingInvitationByToken, isRecruitingInvitationLocked } from "@/lib/assignments/recruiting-invitations";
 import { checkServerActionRateLimit } from "@/lib/security/api-rate-limit";
 import { extractClientIp } from "@/lib/security/ip";
 import { getEnabledCompilerLanguages } from "@/lib/compiler/catalog";
@@ -162,6 +162,32 @@ export default async function RecruitPage({
           <CardTitle className="text-2xl">{t("invalidToken")}</CardTitle>
           <CardDescription>{t("invalidTokenDescription")}</CardDescription>
         </CardHeader>
+      </Card>
+    );
+  }
+
+  // Surface the brute-force lockout explicitly. Once too many account-password
+  // attempts have failed, redeemRecruitingToken rejects every attempt with
+  // "tokenLocked" — but the sign-in form only ever shows a generic "couldn't
+  // start" message, so the candidate keeps retrying with no idea why. Show the
+  // locked state directly here (and tell them to contact the organizer) instead
+  // of letting them fail silently. An authenticated resume bypasses redeem, so
+  // it is not affected by the lockout.
+  if (!resumeWithCurrentSession && isRecruitingInvitationLocked(invitation.metadata)) {
+    return (
+      <Card className="w-full max-w-md">
+        <CardHeader className="text-center">
+          <CardTitle className="text-2xl">{t("tokenLocked")}</CardTitle>
+          <CardDescription>{t("tokenLockedDescription")}</CardDescription>
+        </CardHeader>
+        {assignment.contactEmail && (
+          <CardContent className="text-center text-sm text-muted-foreground">
+            {t("contactPrompt")}{" "}
+            <a className="underline" rel="nofollow" href={`mailto:${assignment.contactEmail}`}>
+              {assignment.contactEmail}
+            </a>
+          </CardContent>
+        )}
       </Card>
     );
   }

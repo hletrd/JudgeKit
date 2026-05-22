@@ -143,6 +143,21 @@ async function resetFailedRedeemAttempt(token: string): Promise<void> {
 }
 
 /**
+ * Whether this invitation is locked out due to too many failed redeem
+ * attempts. Mirrors the authoritative gate in redeemRecruitingToken (which
+ * rejects with "tokenLocked" once the counter reaches the threshold) so the
+ * recruit page can surface the locked state to the candidate instead of
+ * letting them keep hitting a generic "couldn't start" error. Cleared by a
+ * successful redeem (resetFailedRedeemAttempt) or an organizer-initiated
+ * account password reset (resetRecruitingInvitationAccountPassword).
+ */
+export function isRecruitingInvitationLocked(
+  metadata: Record<string, string> | null | undefined,
+): boolean {
+  return Number(metadata?.[FAILED_REDEEM_ATTEMPTS_KEY] ?? 0) >= MAX_FAILED_REDEEM_ATTEMPTS;
+}
+
+/**
  * Shared SQL expression: a pending invitation is expired when its
  * expiresAt is before NOW(). Computed server-side using DB time so
  * the client doesn't need to compare raw timestamps against the
@@ -399,6 +414,12 @@ export async function resetRecruitingInvitationAccountPassword(id: string) {
   const nextMetadata = {
     ...(invitation.metadata ?? {}),
     [ACCOUNT_PASSWORD_RESET_REQUIRED_KEY]: "true",
+    // Clear the brute-force lockout so an organizer-initiated reset is a real
+    // recovery path. Without this a locked invitation (failed attempts >=
+    // MAX_FAILED_REDEEM_ATTEMPTS) stays locked forever — redeemRecruitingToken
+    // rejects with "tokenLocked" before reaching the password-reset branch, so
+    // the candidate could never use the new password.
+    [FAILED_REDEEM_ATTEMPTS_KEY]: "0",
   };
 
   const now = await getDbNowUncached();
@@ -454,10 +475,16 @@ export async function deleteRecruitingInvitation(id: string) {
  * - pending: re-send the initial link.
  * - redeemed: a returning candidate who lost their link gets a new URL that
  *   resolves to the same invitation; they still re-enter with their account
- *   password. The per-invitation metadata (brute-force counter, password-reset
- *   flag) lives in the `metadata` column and is untouched by the rotation.
+ *   password. The password-reset flag in `metadata` is preserved; the
+ *   brute-force counter is cleared (see below).
  *
  * Revoked invitations are rejected — a revoked link must not be revivable.
+ *
+ * Also clears the brute-force lockout counter: re-issuing a link is a
+ * deliberate organizer action that gives the candidate a fresh start, and the
+ * old token (against which any failed attempts accumulated) no longer works.
+ * This keeps the "contact the organizer for a new one" guidance on the locked
+ * screen accurate — a regenerated link is usable again.
  */
 export async function regenerateRecruitingInvitationToken(id: string): Promise<string> {
   const token = generateRecruitingToken();
@@ -465,6 +492,9 @@ export async function regenerateRecruitingInvitationToken(id: string): Promise<s
     .update(recruitingInvitations)
     .set({
       tokenHash: hashToken(token),
+      // sql.raw is safe here: FAILED_REDEEM_ATTEMPTS_KEY is a module-level
+      // constant (see the assertion guarding it), not user input.
+      metadata: sql`jsonb_set(COALESCE(${recruitingInvitations.metadata}, '{}'), '{${sql.raw(FAILED_REDEEM_ATTEMPTS_KEY)}}', '0')`,
       updatedAt: await getDbNowUncached(),
     })
     .where(
