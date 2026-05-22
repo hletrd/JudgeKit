@@ -7,6 +7,7 @@ import { assignmentProblems, assignments, enrollments, scoreOverrides } from "@/
 import { recordAuditEvent } from "@/lib/audit/events";
 import { canManageGroupResourcesAsync } from "@/lib/assignments/management";
 import { DEFAULT_PROBLEM_POINTS } from "@/lib/assignments/constants";
+import { invalidateRankingCache } from "@/lib/assignments/contest-scoring";
 import { createApiHandler, forbidden, notFound } from "@/lib/api/handler";
 import type { AuthUser } from "@/lib/api/handler";
 import { getDbNowUncached } from "@/lib/db-time";
@@ -119,6 +120,13 @@ export const POST = createApiHandler({
         });
     });
 
+    // Ranking cache holds materialized per-assignment leaderboards keyed by
+    // assignment id. Without this invalidation a score override would land
+    // in the DB but the cached ranking would keep showing the old value
+    // until TTL — instructors saw "I changed the score but the ranking
+    // didn't update" and that was the source of bug reports.
+    invalidateRankingCache(assignment.id);
+
     recordAuditEvent({
       actorId: user.id,
       actorRole: user.role,
@@ -204,6 +212,8 @@ export const DELETE = createApiHandler({
           eq(scoreOverrides.userId, userId),
         ),
       );
+
+    invalidateRankingCache(assignment.id);
 
     recordAuditEvent({
       actorId: user.id,
