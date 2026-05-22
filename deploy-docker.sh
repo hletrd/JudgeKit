@@ -882,6 +882,73 @@ done
 success "All containers started"
 
 # ---------------------------------------------------------------------------
+# Step 6c: Sync code to dedicated worker hosts (if configured) and rebuild
+# their judge-worker image. Without this step a deploy that outsources
+# judging (INCLUDE_WORKER=false) leaves the worker host running stale
+# code — the 14h compile_error sweep was prolonged by exactly that
+# (workers shipped the bug-fixed runner image but the host wasn't
+# touched on subsequent deploys). Set WORKER_HOSTS in the deploy env
+# to a comma-separated list of "host" or "host:ssh_key_path:platform"
+# entries. Platform defaults to linux/amd64.
+# ---------------------------------------------------------------------------
+if [[ -n "${WORKER_HOSTS:-}" ]]; then
+    info "Syncing source + rebuilding judge worker on dedicated worker host(s): ${WORKER_HOSTS}"
+    IFS=',' read -ra _WORKER_ENTRIES <<< "${WORKER_HOSTS}"
+    for entry in "${_WORKER_ENTRIES[@]}"; do
+        entry="$(echo "$entry" | xargs)"
+        [[ -z "$entry" ]] && continue
+        IFS=':' read -r WHOST WKEY WPLATFORM <<< "$entry"
+        WKEY="${WKEY:-${SSH_KEY}}"
+        WPLATFORM="${WPLATFORM:-linux/amd64}"
+        WUSER="${WORKER_SSH_USER:-${REMOTE_USER}}"
+        info "→ ${WHOST} (key=${WKEY}, platform=${WPLATFORM})"
+        info "  rsync source"
+        rsync -az --delete \
+            --exclude='node_modules/' \
+            --exclude='.next/' \
+            --exclude='.git/' \
+            --exclude='data/' \
+            --exclude='.env*' \
+            --exclude='*.db' \
+            --exclude='judge-worker-rs/target/' \
+            --exclude='rate-limiter-rs/target/' \
+            --exclude='code-similarity-rs/target/' \
+            --exclude='.omc/' \
+            --exclude='.omx/' \
+            --exclude='.claude/' \
+            --exclude='.agent/' \
+            --exclude='.sisyphus/' \
+            --exclude='.context/' \
+            --exclude='tests/' \
+            --exclude='.playwright/' \
+            --exclude='backups/' \
+            --exclude='._*' \
+            -e "ssh -i ${WKEY} ${SSH_OPTS}" \
+            "${SCRIPT_DIR}/" \
+            "${WUSER}@${WHOST}:/home/${WUSER}/judgekit/" \
+            || die "Failed to rsync source to worker host ${WHOST}"
+        info "  build judge-worker image (no-cache)"
+        ssh -i "${WKEY}" ${SSH_OPTS} "${WUSER}@${WHOST}" \
+            "cd /home/${WUSER}/judgekit && docker build --no-cache --platform ${WPLATFORM} -t judgekit-judge-worker:latest -f Dockerfile.judge-worker ." \
+            || die "Failed to build judge-worker image on ${WHOST}"
+        info "  restart worker compose"
+        ssh -i "${WKEY}" ${SSH_OPTS} "${WUSER}@${WHOST}" \
+            "cd /home/${WUSER}/judgekit && docker compose -f docker-compose.worker.yml --env-file .env up -d" \
+            || die "Failed to restart worker compose on ${WHOST}"
+        # The worker's startup docker-capability probe will exit(1) if
+        # docker-socket-proxy is misconfigured. Give it a moment to
+        # settle, then verify it's still running.
+        sleep 5
+        if ssh -i "${WKEY}" ${SSH_OPTS} "${WUSER}@${WHOST}" \
+            "docker ps --filter name=judgekit-judge-worker --format '{{.Status}}' | grep -q '^Up '"; then
+            success "  worker on ${WHOST} is up"
+        else
+            warn "  worker on ${WHOST} is NOT running after restart — check the docker-capability probe log"
+        fi
+    done
+fi
+
+# ---------------------------------------------------------------------------
 # Step 7: Set up nginx reverse proxy
 # ---------------------------------------------------------------------------
 info "Configuring nginx reverse proxy for ${DOMAIN}..."
