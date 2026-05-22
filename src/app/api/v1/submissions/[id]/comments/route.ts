@@ -38,7 +38,22 @@ export const GET = createApiHandler({
       orderBy: (sc, { asc }) => [asc(sc.createdAt)],
     });
 
-    return apiSuccess(comments);
+    // Submitter-side view: when the requester is the submitter and not
+    // a staff role (instructor/admin/super_admin/assistant), strip
+    // reviewer name and role. The candidate review (cycle 2026-05-21,
+    // 05-candidate.md §5.5) flagged this as a recruiter identity leak —
+    // an HR-side reviewer's name on a comment is metadata the candidate
+    // is not supposed to learn until/unless the employer chooses to
+    // share it. Staff viewers continue to see reviewer identity, which
+    // is required for the dashboard workflow.
+    const STAFF_ROLES = new Set(["instructor", "admin", "super_admin", "assistant"]);
+    const isSubmitter = submission.userId === user.id;
+    const isStaff = STAFF_ROLES.has(user.role);
+    const maskedComments = (isSubmitter && !isStaff)
+      ? comments.map((c) => ({ ...c, author: c.author ? { name: null, role: null } : null }))
+      : comments;
+
+    return apiSuccess(maskedComments);
   },
 });
 
