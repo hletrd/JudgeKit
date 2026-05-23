@@ -178,16 +178,6 @@ function ensureFlushTimer() {
 }
 
 /**
- * Stop the audit flush timer. Exported for test teardown.
- */
-export function stopAuditFlushTimer() {
-  if (_flushTimer) {
-    clearInterval(_flushTimer);
-    _flushTimer = null;
-  }
-}
-
-/**
  * Flush all buffered audit events to the database in a single batch insert.
  * Exported for use during graceful shutdown.
  */

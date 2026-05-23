@@ -117,29 +117,3 @@ export async function isAdminAsync(role: string): Promise<boolean> {
   return caps.has("users.view") && caps.has("system.settings");
 }
 
-/**
- * Check whether a role is one of the built-in instructor-level roles.
- * @internal Only for use as a fast-path inside isInstructorAsync().
- * Custom-role-aware instructor checks should use `isInstructorAsync()`
- * or direct capability resolution instead.
- */
-function isInstructor(role: string) {
-  return (ROLE_LEVEL[role as UserRole] ?? -1) >= ROLE_LEVEL.instructor;
-}
-
-/**
- * Async version that supports custom roles via capability check.
- */
-export async function isInstructorAsync(role: string): Promise<boolean> {
-  if (isInstructor(role)) return true;
-  const caps = await resolveCapabilities(role);
-  return caps.has("problems.create") || caps.has("submissions.view_all");
-}
-
-/**
- * Check if a user has a specific capability based on their role.
- */
-export async function userHasCapability(role: string, capability: string): Promise<boolean> {
-  const caps = await resolveCapabilities(role);
-  return caps.has(capability);
-}

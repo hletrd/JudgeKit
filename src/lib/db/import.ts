@@ -5,7 +5,7 @@
  * handling type conversions between dialects.
  */
 
-import { getTableColumns, sql } from "drizzle-orm";
+import { getTableColumns } from "drizzle-orm";
 import type { PgTable } from "drizzle-orm/pg-core";
 import { db } from "./index";
 import { validateExport, getTableOrder, getReversedTableOrder, TABLE_ORDER, type JudgeKitExport } from "./export";
@@ -227,20 +227,3 @@ export async function importDatabase(data: JudgeKitExport): Promise<ImportResult
   return result;
 }
 
-/**
- * Get a summary of the current database (table names and row counts).
- * Useful for pre-import comparison.
- */
-export async function getDatabaseSummary(): Promise<Record<string, number>> {
-  const summary: Record<string, number> = {};
-  for (const [name, table] of Object.entries(TABLE_MAP)) {
-    try {
-      const [row] = await db.select({ count: sql<number>`count(*)` }).from(table);
-      summary[name] = Number(row?.count ?? 0);
-    } catch (err) {
-      logger.warn({ err, tableName: name }, "[import] failed to read row count for table summary");
-      summary[name] = -1; // error reading
-    }
-  }
-  return summary;
-}

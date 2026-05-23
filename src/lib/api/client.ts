@@ -208,13 +208,6 @@ export function getApiCode(data: unknown): string | undefined {
   return typeof code === "string" ? code : undefined;
 }
 
-/** Safely extract a string `message` field from an unknown API response body. */
-export function getApiMessage(data: unknown): string | undefined {
-  if (typeof data !== "object" || data === null || !("message" in data)) return undefined;
-  const message = data.message;
-  return typeof message === "string" ? message : undefined;
-}
-
 /** Safely extract the `data` property from an unknown API response body. */
 export function getApiData(data: unknown): unknown {
   if (typeof data !== "object" || data === null || !("data" in data)) return undefined;

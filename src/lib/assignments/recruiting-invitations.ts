@@ -150,7 +150,7 @@ async function resetFailedRedeemAttempt(token: string): Promise<void> {
  */
 const isExpiredExpr = sql<boolean>`CASE WHEN ${recruitingInvitations.status} = 'pending' AND ${recruitingInvitations.expiresAt} IS NOT NULL AND ${recruitingInvitations.expiresAt} < NOW() THEN true ELSE false END`;
 
-export function generateRecruitingToken(): string {
+function generateRecruitingToken(): string {
   return randomBytes(24).toString("base64url");
 }
 

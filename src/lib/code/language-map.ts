@@ -1,4 +1,4 @@
-export const CODE_SURFACE_LANGUAGE_MAP = {
+const CODE_SURFACE_LANGUAGE_MAP = {
   c: "c",
   c11: "c",
   c17: "c",
@@ -50,7 +50,7 @@ export const CODE_SURFACE_LANGUAGE_MAP = {
   elm: "haskell",
 } as const;
 
-export const CODE_SURFACE_PLAINTEXT_LANGUAGE = "plaintext" as const;
+const CODE_SURFACE_PLAINTEXT_LANGUAGE = "plaintext" as const;
 
 /** Languages that must use a raw textarea instead of CodeMirror (e.g. whitespace-significant code). */
 export const RAW_TEXTAREA_LANGUAGES = new Set(["whitespace"]);

@@ -13,8 +13,3 @@ export const EDITOR_FONT_FAMILIES = [
   { id: "inconsolata", name: "Inconsolata", css: "'Inconsolata', monospace" },
 ] as const;
 export const DEFAULT_EDITOR_FONT_FAMILY = "system";
-
-export function getFontFamilyCss(fontId: string | null | undefined): string {
-  const font = EDITOR_FONT_FAMILIES.find(f => f.id === fontId);
-  return font?.css ?? EDITOR_FONT_FAMILIES[0].css;
-}

@@ -1,9 +1,9 @@
-import { createCipheriv, createDecipheriv, randomBytes } from "node:crypto";
+import { createCipheriv, randomBytes } from "node:crypto";
 import { eq, and } from "drizzle-orm";
 import { db } from "@/lib/db";
 import { apiKeys, users } from "@/lib/db/schema";
 import { authUserSelect } from "@/lib/db/selects";
-import { deriveEncryptionKey, legacyEncryptionKey } from "@/lib/security/derive-key";
+import { deriveEncryptionKey } from "@/lib/security/derive-key";
 import { getRoleLevel } from "@/lib/capabilities/cache";
 import { logger } from "@/lib/logger";
 import { getDbNowUncached } from "@/lib/db-time";
@@ -11,7 +11,7 @@ import { hashToken } from "@/lib/security/token-hash";
 
 export const API_KEY_PREFIX = "jk_";
 const KEY_RANDOM_BYTES = 20; // 20 bytes = 40 hex chars → total key = "jk_" + 40 = 43 chars
-export const STORED_PREFIX_LEN = 8; // store first 8 chars of full key for display
+const STORED_PREFIX_LEN = 8; // store first 8 chars of full key for display
 const MASKED_KEY_SUFFIX = "••••••••••••";
 const API_KEY_DOMAIN = "api-key-encryption";
 
@@ -29,23 +29,6 @@ export function encryptApiKey(rawKey: string): string {
   const ciphertext = Buffer.concat([cipher.update(rawKey, "utf8"), cipher.final()]);
   const tag = cipher.getAuthTag();
   return [iv.toString("base64url"), tag.toString("base64url"), ciphertext.toString("base64url")].join(":");
-}
-
-export function decryptApiKey(encrypted: string): string {
-  const [ivRaw, tagRaw, ciphertextRaw] = encrypted.split(":");
-  if (!ivRaw || !tagRaw || !ciphertextRaw) throw new Error("Malformed encrypted API key");
-
-  // Try HKDF-derived key first, then fall back to legacy key for backward compatibility
-  for (const key of [deriveEncryptionKey(API_KEY_DOMAIN), legacyEncryptionKey()]) {
-    try {
-      const decipher = createDecipheriv("aes-256-gcm", key, Buffer.from(ivRaw, "base64url"));
-      decipher.setAuthTag(Buffer.from(tagRaw, "base64url"));
-      return Buffer.concat([decipher.update(Buffer.from(ciphertextRaw, "base64url")), decipher.final()]).toString("utf8");
-    } catch {
-      continue;
-    }
-  }
-  throw new Error("Failed to decrypt API key with any available key");
 }
 
 /** Generate a new API key. Returns the one-time reveal token plus stored fields. */

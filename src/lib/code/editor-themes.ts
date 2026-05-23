@@ -57,11 +57,6 @@ export const EDITOR_THEMES: EditorThemeDefinition[] = [
 ];
 
 export const DEFAULT_LIGHT_THEME = "material-lighter";
-export const DEFAULT_DARK_THEME = "one-dark";
-
-export function getEditorThemeDefinition(id: string): EditorThemeDefinition | undefined {
-  return EDITOR_THEMES.find((t) => t.id === id);
-}
 
 // ---------------------------------------------------------------------------
 // Inline theme definitions (no extra npm packages)
