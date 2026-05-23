@@ -68,6 +68,7 @@ export function LectureModeToggle({ className }: { className?: string }) {
           <DropdownMenuLabel className="flex items-center justify-between">
             <span>{t("lectureMode")}</span>
             <button
+              type="button"
               onClick={(e) => { e.preventDefault(); toggle(); }}
               className={cn(
                 "relative inline-flex h-5 w-9 shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors",
