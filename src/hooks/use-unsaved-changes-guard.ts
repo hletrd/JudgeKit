@@ -86,6 +86,11 @@ function sharedReplaceState(data: unknown, unused: string, url?: string | URL | 
 
 function installHistoryPatch() {
   if (isHistoryPatched) return;
+  // Capture the originals BEFORE swapping. Otherwise getOriginalPushState()
+  // will be called for the first time inside sharedPushState and snapshot the
+  // already-patched function, causing infinite recursion when delegating.
+  getOriginalPushState();
+  getOriginalReplaceState();
   window.history.pushState = sharedPushState;
   window.history.replaceState = sharedReplaceState;
   isHistoryPatched = true;
