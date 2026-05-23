@@ -260,28 +260,7 @@ export function ProblemSubmissionForm({
     }
   }
 
-  // Hold the actual POST behind a 4-second cancel window so an accidental
-  // ⌘/Ctrl+Enter does not eat a contest attempt or a limited-submission slot.
-  const SUBMIT_CONFIRM_DELAY_MS = 4000;
-  const pendingSubmitTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const pendingToastIdRef = useRef<string | number | null>(null);
-
-  function cancelPendingSubmit() {
-    if (pendingSubmitTimerRef.current !== null) {
-      clearTimeout(pendingSubmitTimerRef.current);
-      pendingSubmitTimerRef.current = null;
-    }
-    if (pendingToastIdRef.current !== null) {
-      toast.dismiss(pendingToastIdRef.current);
-      pendingToastIdRef.current = null;
-    }
-    setIsSubmitting(false);
-  }
-
   async function executeSubmit() {
-    pendingSubmitTimerRef.current = null;
-    pendingToastIdRef.current = null;
-
     try {
       const response = await apiFetch("/api/v1/submissions", {
         method: "POST",
@@ -334,36 +313,11 @@ export function ProblemSubmissionForm({
       return;
     }
 
-    if (pendingSubmitTimerRef.current !== null) {
-      // Already pending — second click confirms immediately.
-      cancelPendingSubmit();
-      setIsSubmitting(true);
-      void executeSubmit();
-      return;
-    }
+    if (isSubmitting) return;
 
     setIsSubmitting(true);
-    pendingToastIdRef.current = toast(t("submissionConfirming"), {
-      description: t("submissionCancelHint"),
-      action: {
-        label: tCommon("cancel"),
-        onClick: () => cancelPendingSubmit(),
-      },
-      duration: SUBMIT_CONFIRM_DELAY_MS,
-    });
-    pendingSubmitTimerRef.current = setTimeout(() => {
-      void executeSubmit();
-    }, SUBMIT_CONFIRM_DELAY_MS);
+    void executeSubmit();
   }
-
-  // Clear any pending submit if the component unmounts mid-countdown.
-  useEffect(() => {
-    return () => {
-      if (pendingSubmitTimerRef.current !== null) {
-        clearTimeout(pendingSubmitTimerRef.current);
-      }
-    };
-  }, []);
 
   return (
     <form className="space-y-4" onSubmit={handleSubmit}>

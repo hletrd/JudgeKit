@@ -355,8 +355,6 @@
     "sourceFileLoaded": "\"{name}\" 파일을 에디터로 불러왔어요.",
     "sourceFileLoadFailed": "선택한 소스 파일을 읽지 못했어요.",
     "submissionCreated": "제출 완료",
-    "submissionConfirming": "4초 뒤에 제출해요",
-    "submissionCancelHint": "'취소'를 누르면 멈추고, '제출'을 다시 누르면 바로 보내요.",
     "resetToTemplate": "템플릿 초기화",
     "writeCodePlaceholder": "여기에 코드를 입력하세요",
     "descriptionTitle": "설명",
