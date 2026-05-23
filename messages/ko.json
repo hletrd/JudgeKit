@@ -679,6 +679,20 @@
       "cancelled": "취소됨",
       "submitted": "제출 완료"
     },
+    "statusFull": {
+      "pending": "대기 중",
+      "queued": "채점 대기",
+      "judging": "채점 중",
+      "accepted": "정답 (Accepted)",
+      "wrong_answer": "오답 (Wrong Answer)",
+      "time_limit": "시간 초과 (Time Limit Exceeded)",
+      "memory_limit": "메모리 초과 (Memory Limit Exceeded)",
+      "runtime_error": "런타임 오류 (Runtime Error)",
+      "compile_error": "컴파일 오류 (Compile Error)",
+      "canceled": "취소됨",
+      "cancelled": "취소됨",
+      "submitted": "제출 완료"
+    },
     "compileOutputHidden": "이 제출의 컴파일 오류 상세는 공개되지 않아요.",
     "detailedResultsHidden": "이 제출의 테스트 케이스 상세 결과는 공개되지 않아요.",
     "runtimeErrorOutput": "런타임 오류 출력",

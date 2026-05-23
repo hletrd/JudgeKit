@@ -60,6 +60,33 @@ const RUNTIME_ERROR_KEYS: Record<string, string> = {
   stack_overflow: "runtimeErrors.stack_overflow",
 };
 
+const STATUS_FULL_KEYS = new Set([
+  "pending",
+  "queued",
+  "judging",
+  "accepted",
+  "wrong_answer",
+  "time_limit",
+  "memory_limit",
+  "runtime_error",
+  "compile_error",
+  "canceled",
+  "cancelled",
+  "submitted",
+]);
+
+function StatusFullName({
+  status,
+  tSub,
+}: { status: string | null | undefined; tSub: ReturnType<typeof useTranslations> }) {
+  if (!status || !STATUS_FULL_KEYS.has(status)) return null;
+  return (
+    <div className="text-sm font-semibold">
+      {tSub(`statusFull.${status}` as Parameters<typeof tSub>[0])}
+    </div>
+  );
+}
+
 function TooltipBody({
   status,
   compileOutput,
@@ -78,14 +105,18 @@ function TooltipBody({
       ? compileOutput.slice(0, 200) + "..."
       : compileOutput;
     return (
-      <pre className="max-w-xs whitespace-pre-wrap break-all font-mono text-xs leading-relaxed">
-        {truncated}
-      </pre>
+      <div className="space-y-1.5">
+        <StatusFullName status={status} tSub={tSub} />
+        <pre className="max-w-xs whitespace-pre-wrap break-all font-mono text-xs leading-relaxed">
+          {truncated}
+        </pre>
+      </div>
     );
   }
 
   return (
     <div className="space-y-1 text-xs">
+      <StatusFullName status={status} tSub={tSub} />
       {/* Verdict-specific detail line */}
       {status === "wrong_answer" && failedTestCaseIndex != null && (
         <div className="text-muted-foreground">{tSub("waOnTest", { index: failedTestCaseIndex + 1 })}</div>
@@ -179,16 +210,10 @@ export function SubmissionStatusBadge({
     </Badge>
   );
 
-  // Only show tooltip for terminal statuses with detail data
-  const hasDetail =
-    compileOutput != null ||
-    executionTimeMs != null ||
-    memoryUsedKb != null ||
-    failedTestCaseIndex != null ||
-    runtimeErrorType != null ||
-    score != null;
-
-  if (!hasDetail || isActiveSubmissionStatus(status)) {
+  // Show tooltip whenever there's a known verdict — the full-name expansion
+  // alone (e.g., "WA" → "오답 (Wrong Answer)") is reason enough. In-progress
+  // statuses skip the tooltip so the live pulse remains uncluttered.
+  if (isActiveSubmissionStatus(status) || !status || !STATUS_FULL_KEYS.has(status)) {
     return badge;
   }
 

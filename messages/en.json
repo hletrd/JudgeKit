@@ -679,6 +679,20 @@
       "cancelled": "Cancelled",
       "submitted": "Submitted"
     },
+    "statusFull": {
+      "pending": "Pending",
+      "queued": "Queued",
+      "judging": "Judging",
+      "accepted": "Accepted (AC)",
+      "wrong_answer": "Wrong Answer (WA)",
+      "time_limit": "Time Limit Exceeded (TLE)",
+      "memory_limit": "Memory Limit Exceeded (MLE)",
+      "runtime_error": "Runtime Error (RE)",
+      "compile_error": "Compile Error (CE)",
+      "canceled": "Canceled",
+      "cancelled": "Cancelled",
+      "submitted": "Submitted"
+    },
     "compileOutputHidden": "Compile error details are not available for this submission.",
     "detailedResultsHidden": "Detailed test case results are not available for this submission.",
     "runtimeErrorOutput": "Runtime error output",
