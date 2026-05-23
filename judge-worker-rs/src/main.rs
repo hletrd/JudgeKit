@@ -428,7 +428,7 @@ async fn main() {
     // reducing CPU and network overhead when no submissions are queued.
     // Resets immediately when work is claimed.
     let mut consecutive_empty_polls: u32 = 0;
-    const MAX_BACKOFF_SECS: u64 = 30;
+    const MAX_BACKOFF_MS: u64 = 3000;
     const BACKOFF_SHIFT_LIMIT: u32 = 5; // 2^5 = 32x base interval
 
     loop {
@@ -506,10 +506,10 @@ async fn main() {
                 let sleep_duration = if consecutive_empty_polls <= 1 {
                     config.poll_interval
                 } else {
-                    let base_secs = config.poll_interval.as_secs().max(1);
+                    let base_ms = (config.poll_interval.as_millis() as u64).max(1);
                     let multiplier = 1u64 << (consecutive_empty_polls - 1).min(BACKOFF_SHIFT_LIMIT);
-                    let backoff_secs = base_secs.saturating_mul(multiplier).min(MAX_BACKOFF_SECS);
-                    std::time::Duration::from_secs(backoff_secs)
+                    let backoff_ms = base_ms.saturating_mul(multiplier).min(MAX_BACKOFF_MS);
+                    std::time::Duration::from_millis(backoff_ms)
                 };
 
                 // Sleep before next poll, but still respect shutdown

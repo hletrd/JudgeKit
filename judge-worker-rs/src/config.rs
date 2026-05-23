@@ -127,7 +127,7 @@ impl Config {
                 }
                 ms
             }
-            Err(_) => 3000,
+            Err(_) => 500,
         };
         let poll_interval = Duration::from_millis(poll_interval_ms);
 
