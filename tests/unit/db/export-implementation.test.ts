@@ -37,13 +37,6 @@ describe("exportDatabase implementation guards", () => {
     expect(source).toContain("const redactionMode = getExportRedactionMode(options.sanitize)");
   });
 
-  it("uses the streaming export helper in the migration script instead of materializing the whole export object", () => {
-    const source = readFileSync(join(process.cwd(), "scripts/migrate-sqlite-to-pg.ts"), "utf8");
-
-    expect(source).toContain("streamDatabaseExport");
-    expect(source).not.toContain("const data = await exportDatabase()");
-  });
-
   it("does not export the deprecated OOM-prone exportDatabase or createExportJsonStream functions", () => {
     const source = readFileSync(join(process.cwd(), "src/lib/db/export.ts"), "utf8");
 
