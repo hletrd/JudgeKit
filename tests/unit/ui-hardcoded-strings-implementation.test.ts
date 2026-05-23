@@ -34,21 +34,6 @@ describe("UI hardcoded-string guards", () => {
         forbidden: ["Tab switch detected. An integrity signal has been recorded for review."],
         required: ['useTranslations("contests.antiCheat")'],
       },
-      {
-        path: "src/components/lecture/lecture-problem-view.tsx",
-        forbidden: [">Problem<", ">Code<"],
-        required: ['useTranslations("lecture")'],
-      },
-      {
-        path: "src/components/lecture/lecture-toolbar.tsx",
-        forbidden: ["Problem only (1)", "Split view (2)", "Code only (3)", "Fullscreen (F)"],
-        required: ['useTranslations("lecture")'],
-      },
-      {
-        path: "src/components/lecture/submission-overview.tsx",
-        forbidden: ['"Submission Stats"', '"Accepted:"', '"Wrong:"', '"Recent"'],
-        required: ['useTranslations("lecture")'],
-      },
       // The assignment-overview component was refactored/renamed; the
       // "Solved" / "Attempted" / "Untried" hardcoded English strings were
       // moved to translated keys. Verify they no longer appear in any

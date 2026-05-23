@@ -12,13 +12,6 @@ type LectureModeContextValue = {
   setFontScale: (scale: LectureFontScale) => void;
   colorScheme: LectureColorScheme;
   setColorScheme: (scheme: LectureColorScheme) => void;
-  panelLayout: "split" | "problem" | "code";
-  setPanelLayout: (layout: "split" | "problem" | "code") => void;
-  statsAvailable: boolean;
-  setStatsAvailable: (available: boolean) => void;
-  showStats: boolean;
-  toggleStats: () => void;
-  closeStats: () => void;
 };
 
 const LectureModeContext = createContext<LectureModeContextValue | null>(null);
@@ -32,13 +25,6 @@ const DEFAULT_LECTURE_MODE: LectureModeContextValue = {
   setFontScale: () => {},
   colorScheme: "dark" as LectureColorScheme,
   setColorScheme: () => {},
-  panelLayout: "split" as const,
-  setPanelLayout: () => {},
-  statsAvailable: false,
-  setStatsAvailable: () => {},
-  showStats: false,
-  toggleStats: () => {},
-  closeStats: () => {},
 };
 
 export function useLectureMode() {
@@ -65,9 +51,6 @@ export function LectureModeProvider({
   const [colorScheme, setColorSchemeState] = useState<LectureColorScheme>(
     (["dark", "light", "solarized"].includes(initialColorScheme) ? initialColorScheme : "dark") as LectureColorScheme
   );
-  const [panelLayout, setPanelLayout] = useState<"split" | "problem" | "code">("split");
-  const [statsAvailable, setStatsAvailable] = useState(false);
-  const [showStats, setShowStats] = useState(false);
 
   // Apply/remove CSS classes on <html>
   useEffect(() => {
@@ -101,21 +84,6 @@ export function LectureModeProvider({
     persistAction?.({ lectureColorScheme: scheme }).catch(() => {});
   }, [persistAction]);
 
-  const toggleStats = useCallback(() => {
-    setShowStats((prev) => (statsAvailable ? !prev : false));
-  }, [statsAvailable]);
-
-  const closeStats = useCallback(() => {
-    setShowStats(false);
-  }, []);
-
-  const handleSetStatsAvailable = useCallback((available: boolean) => {
-    setStatsAvailable(available);
-    if (!available) {
-      setShowStats(false);
-    }
-  }, []);
-
   const value = useMemo(() => ({
     active,
     toggle,
@@ -123,16 +91,7 @@ export function LectureModeProvider({
     setFontScale,
     colorScheme,
     setColorScheme,
-    panelLayout,
-    setPanelLayout,
-    statsAvailable,
-    setStatsAvailable: handleSetStatsAvailable,
-    showStats,
-    toggleStats,
-    closeStats,
-  }), [active, toggle, fontScale, setFontScale, colorScheme, setColorScheme,
-    panelLayout, setPanelLayout, statsAvailable, handleSetStatsAvailable,
-    showStats, toggleStats, closeStats]);
+  }), [active, toggle, fontScale, setFontScale, colorScheme, setColorScheme]);
 
   return (
     <LectureModeContext.Provider value={value}>

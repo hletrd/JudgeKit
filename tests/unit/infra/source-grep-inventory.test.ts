@@ -98,7 +98,13 @@ describe("source-grep test inventory", () => {
     //   - tests/unit/proxy-error-handling.test.ts
     // Bumped 132 → 133 in cycle 35 (2026-05-09):
     //   - tests/unit/api/import-sunset-headers.route.test.ts
-    const DOCUMENTED_BASELINE = 133;
+    // Dropped 133 → 132 (deslop on src/components/lecture/**):
+    //   - tests/unit/lecture-stats-wiring-implementation.test.ts was a
+    //     source-grep regression pinning wiring between four components that
+    //     are now removed (lecture-toolbar, lecture-problem-view,
+    //     submission-overview, problem-lecture-wrapper). Removed with the
+    //     dead components.
+    const DOCUMENTED_BASELINE = 132;
     expect(sourceGrepFiles.length).toBe(DOCUMENTED_BASELINE);
   });
 
