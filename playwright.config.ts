@@ -25,6 +25,7 @@ const remoteSafeSpecs = [
   "tests/e2e/public-shell.spec.ts",
   "tests/e2e/rankings.spec.ts",
   "tests/e2e/responsive-layout.spec.ts",
+  "tests/e2e/session-deslop-changes.spec.ts",
 ];
 
 /**
