@@ -62,6 +62,7 @@ Workers poll `/api/v1/judge/claim` to claim submissions. The claim request inclu
 | `JUDGE_CONCURRENCY` | `1` | Max concurrent submissions (1-16) |
 | `JUDGE_WORKER_HOSTNAME` | System hostname | Hostname reported to app server |
 | `POLL_INTERVAL` | `500` | Polling interval in ms when the queue has work. Empty-queue polls back off exponentially (×2 per consecutive empty poll) capped at 3 s. Lowering `POLL_INTERVAL` directly reduces pickup latency on a freshly created submission but raises baseline DB QPS proportionally per worker. |
+| `WORKER_PREWARM_IMAGES` | `judge-cpp,judge-python,judge-jvm,judge-node,judge-rust,judge-go` | Comma-separated list of judge-* image tags to "prewarm" at worker startup by running `docker run --rm <image> true` once. This pulls the image layers into the OS page cache so the FIRST submission targeting each language doesn't pay the cold-disk read cost on top of docker spawn. Each prewarm is capped at 10 s; missing images log a warning and are skipped. Set to empty string to disable entirely. |
 | `DEAD_LETTER_DIR` | `./dead-letter` | Directory for failed result payloads |
 
 ## Deployment
@@ -155,6 +156,36 @@ The deploy script now copies the worker `.env` file with mode `0600` instead of 
 For 2-3 workers, `deploy-worker.sh --sync-images` transfers images via `docker save | ssh | docker load`.
 
 For larger fleets, use `deploy-worker.sh --sync-images` or your own registry/distribution tooling. `JUDGE_DOCKER_REGISTRY` is not a current built-in startup-pull feature.
+
+## Spawn-latency optimizations
+
+Each submission ends up running N+1 `docker run` invocations on the worker host: one to compile and one per test case. With many test cases, container cold-spawn time (50-300 ms per spawn) starts to dominate end-to-end judging latency. Isolation must be preserved between submissions, so reusing a container across users is not an option. Two complementary tactics are available — both keep the per-submission, per-test container model untouched.
+
+### Image page-cache prewarm (built-in, on by default)
+
+On startup, the worker runs `docker run --rm <image> true` once for each image in `WORKER_PREWARM_IMAGES` (default: the popular language set). The dummy command exits immediately, but the image layers are read from disk into the OS page cache. The next real submission targeting that language hits warm memory instead of cold disk, cutting cold-spawn latency by 100-200 ms on a typical SSD. No isolation impact — the prewarm container is the same `--rm` short-lived shape as a real submission's.
+
+Tune the list with `WORKER_PREWARM_IMAGES` (empty string to disable). Missing images log a warning and are skipped, so a worker host that doesn't carry the full popular set doesn't fail prewarm.
+
+### crun runtime (opt-in via host setup)
+
+By default Docker uses `runc` (Go) as its low-level OCI runtime. `crun` (C) is a fully OCI-compliant drop-in replacement that's typically 30-50 ms faster on container create/start. For an online judge that compounds across N+1 spawns per submission and across thousands of submissions per hour.
+
+Apply once per worker host:
+
+```bash
+ssh <worker-host> 'bash -s' < scripts/install-crun-runtime.sh
+```
+
+The script installs `crun` via apt, merges `default-runtime: crun` into `/etc/docker/daemon.json` (backing up any existing config), and restarts the Docker daemon. Idempotent — re-running with crun already set is a no-op.
+
+Verify after the script runs:
+
+```bash
+docker info | grep -i 'default runtime'   # should print "Default Runtime: crun"
+```
+
+Roll back by editing `/etc/docker/daemon.json` to set `default-runtime` back to `runc` and restarting Docker — image layers, networks, and volumes are runtime-independent so a switch back is non-destructive.
 
 ## Admin Dashboard
 
