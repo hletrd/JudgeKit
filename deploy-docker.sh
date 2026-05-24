@@ -28,6 +28,13 @@
 #                            production stack (default false on the app server)
 #   SKIP_PREDEPLOY_BACKUP — "1"/"true" to skip the pg_dump pre-deploy backup
 #                            (escape hatch when DB host is unreachable; use with care)
+#   SKIP_POST_DEPLOY_PRUNE — "1"/"true" to skip the default post-deploy
+#                            Docker artifact cleanup (stopped containers,
+#                            unused images, BuildKit cache, orphan volumes).
+#                            Cleanup is on by default — every judge-image
+#                            rebuild leaves the prior tag dangling and the
+#                            disk fills up without it. Set this only when
+#                            you need to keep old images for debugging.
 #   DRIZZLE_PUSH_FORCE    — "1" to allow drizzle-kit push --force on destructive
 #                            schema diffs. Reserved for explicit user authorization
 #                            with quoted-text consent; never set preemptively.
@@ -290,6 +297,42 @@ remote_rsync() {
     else
         rsync -s -e "ssh $SSH_OPTS" "$@"
     fi
+}
+
+# Aggressive but DB-safe post-deploy cleanup. Removes stopped containers,
+# unused/dangling images, BuildKit cache, and orphan named volumes —
+# preserving everything any running container references. The DB volume
+# is preserved because docker volume prune skips volumes attached to
+# running containers, and we explicitly verify judgekit-db is up before
+# pruning volumes (per CLAUDE.md "never docker system prune --volumes").
+#
+# Honors SKIP_POST_DEPLOY_PRUNE=1 for opt-out (e.g., debugging a deploy
+# where you want to inspect the old images before they go away).
+#
+# Usage:
+#   prune_old_docker_artifacts <host_label> <remote-command-runner>
+# where <remote-command-runner> is a shell function name that takes a
+# command string and runs it on the target host. Defaults to "remote".
+prune_old_docker_artifacts() {
+    local host_label="${1:-remote}"
+    local runner="${2:-remote}"
+    if [[ "${SKIP_POST_DEPLOY_PRUNE:-}" == "1" || "${SKIP_POST_DEPLOY_PRUNE:-}" == "true" ]]; then
+        info "SKIP_POST_DEPLOY_PRUNE set — leaving stale images/volumes on ${host_label} (manual cleanup required to free disk)"
+        return 0
+    fi
+    info "Post-deploy cleanup on ${host_label}: stopped containers, unused images, build cache, orphan volumes..."
+    local db_running
+    db_running=$("$runner" "docker ps --filter name=judgekit-db --filter status=running --format '{{.Names}}' | head -1" 2>/dev/null | tr -d '\r\n ')
+    "$runner" "docker container prune -f 2>&1 | tail -1" || true
+    "$runner" "docker image prune -af 2>&1 | tail -1" || true
+    "$runner" "docker builder prune -af 2>&1 | tail -1" || true
+    if [[ -n "$db_running" ]]; then
+        "$runner" "docker volume prune -f 2>&1 | tail -1" || true
+    else
+        warn "judgekit-db is not running on ${host_label} — skipping volume prune as a safety guard (per CLAUDE.md). Run again manually after the DB is restored."
+    fi
+    "$runner" "df -h / | tail -1" || true
+    success "Cleanup complete on ${host_label}"
 }
 
 remote_sudo() {
@@ -576,10 +619,9 @@ else
     info "Skipping image build (--skip-build)"
 fi
 
-# Clean up stale (dangling) images from previous builds — keeps :latest tagged images
-info "Removing stale worker images from previous builds..."
-remote "docker image prune -f" >/dev/null 2>&1 || true
-success "Stale images cleaned up"
+# Dangling images from the build step are cleaned up after compose up by
+# prune_old_docker_artifacts (Step 6d) so we can also reclaim images the
+# old containers were keeping alive. Nothing to do here.
 
 # ---------------------------------------------------------------------------
 # Step 4: Set up docker-compose config on remote
@@ -942,11 +984,31 @@ if [[ -n "${WORKER_HOSTS:-}" ]]; then
         if ssh -i "${WKEY}" ${SSH_OPTS} "${WUSER}@${WHOST}" \
             "docker ps --filter name=judgekit-judge-worker --format '{{.Status}}' | grep -q '^Up '"; then
             success "  worker on ${WHOST} is up"
+            # Reclaim disk on the worker host. Worker hosts accumulate the
+            # most stale images because judge-worker + every language image
+            # is rebuilt --no-cache here. Each rebuild leaves the prior
+            # :latest dangling, and a few cycles eat tens of GB. We invoke
+            # the same prune_old_docker_artifacts helper but routed through
+            # an ad-hoc ssh wrapper bound to this worker's key.
+            _worker_ssh() {
+                ssh -i "${WKEY}" ${SSH_OPTS} "${WUSER}@${WHOST}" "$@"
+            }
+            prune_old_docker_artifacts "worker ${WHOST}" _worker_ssh
         else
             warn "  worker on ${WHOST} is NOT running after restart — check the docker-capability probe log"
         fi
     done
 fi
+
+# ---------------------------------------------------------------------------
+# Step 6d: Post-deploy Docker artifact cleanup (DEFAULT — disable with
+# SKIP_POST_DEPLOY_PRUNE=1). Removes stopped containers, unused images,
+# BuildKit cache, and orphan volumes on the app host. Every judge-image
+# rebuild leaves the prior tag dangling — without periodic pruning the
+# disk fills up and the next deploy thrashes (the auraedu deploy
+# misfired exactly this way before this step existed).
+# ---------------------------------------------------------------------------
+prune_old_docker_artifacts "app ${REMOTE_HOST}" remote
 
 # ---------------------------------------------------------------------------
 # Step 7: Set up nginx reverse proxy
