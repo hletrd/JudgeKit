@@ -79,6 +79,16 @@ fi
 REMOTE_SCRIPT=$(cat <<REMOTE
 set -u
 cd ~/judgekit
+
+# Re-pull hello-world too: the judge worker's startup "Docker capability
+# probe" creates a hello-world container to confirm Docker access works.
+# If hello-world is missing locally, the worker can't pull through the
+# docker-socket-proxy (403 Forbidden) and the container stays unhealthy.
+# The original prune-regression wiped this image alongside the language
+# set, so include it in any recovery cycle.
+echo "ensuring hello-world:latest is present..."
+docker pull hello-world:latest 2>&1 | tail -1
+
 i=0
 FAIL=()
 for lang in ${LANGS_TO_BUILD}; do

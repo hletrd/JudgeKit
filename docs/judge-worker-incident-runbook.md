@@ -37,6 +37,26 @@ Submissions that terminate before reading all of stdin (early-exit on a sufficie
 
 If reports of `failed to write stdin` reach an operator from a current worker, the worker binary is stale — rebuild it on the worker host (`docker build -f Dockerfile.judge-worker -t judgekit-judge-worker:latest .`) and recreate the container. Look for the debug line `child closed stdin before all input was written; continuing to wait for exit` to confirm the new handling is in effect.
 
+### Worker stays unhealthy with `Docker capability probe failed: hello-world: not found locally`
+
+The worker runs a one-shot `hello-world` container at startup to confirm
+its Docker access works. If `hello-world:latest` is missing locally,
+the worker tries to `docker pull`, the `docker-socket-proxy` denies
+the pull with `403 Forbidden` (pulls are not in the proxy's allowed
+operation list), and the worker's healthcheck stays red.
+
+The recovery script in the next section already includes a
+`docker pull hello-world:latest` step. Run it, or do it manually:
+
+```bash
+ssh <worker-host> 'docker pull hello-world:latest && \
+    cd ~/judgekit && \
+    docker compose -f docker-compose.worker.yml restart judge-worker'
+```
+
+The worker should report `Docker capability probe passed at startup`
+within ~10 s after restart.
+
 ### Every submission fails with `pull access denied for judge-<lang>` or `no such image`
 
 The worker spawns a fresh container from a tagged language image
