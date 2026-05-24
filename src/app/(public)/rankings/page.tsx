@@ -250,7 +250,12 @@ export default async function RankingsPage({
         })}
       </div>
 
-      <Card>
+      {/* `Card` ships with a default `py-4` that adds a 16 px gap above the
+          first child. With a flush table as the only content, that gap reads
+          as an unbalanced padding band above the table header. Override
+          `py-0` here — tailwind-merge in `cn()` lets the page-level class
+          beat the component default. */}
+      <Card className="py-0">
         <CardContent className="p-0">
           {rankingRows.length === 0 ? (
             <p className="p-6 text-sm text-muted-foreground">
