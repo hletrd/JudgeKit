@@ -37,6 +37,46 @@ Submissions that terminate before reading all of stdin (early-exit on a sufficie
 
 If reports of `failed to write stdin` reach an operator from a current worker, the worker binary is stale — rebuild it on the worker host (`docker build -f Dockerfile.judge-worker -t judgekit-judge-worker:latest .`) and recreate the container. Look for the debug line `child closed stdin before all input was written; continuing to wait for exit` to confirm the new handling is in effect.
 
+### Every submission fails with `pull access denied for judge-<lang>` or `no such image`
+
+The worker spawns a fresh container from a tagged language image
+(`judge-cpp:latest`, `judge-python:latest`, ...) per submission. If
+those images are missing from the worker host's local Docker, every
+submission in any of the affected languages will fail at the spawn
+step. Common causes:
+
+- An over-aggressive `docker image prune -af` on the worker host
+  (the May 2026 deploy-script regression — the prune treated every
+  language image as "unused" because none of them is attached to a
+  long-running container).
+- A fresh worker host that has never received the language build pass.
+- Disk pressure that triggered the kernel to evict images? — not really
+  possible, Docker won't auto-evict; ignore this branch.
+
+Verify the missing set:
+
+```bash
+ssh <worker-host> 'docker images --format "{{.Repository}}" | grep "^judge-" | sort -u | wc -l'
+```
+
+If the count is far below the expected ~80, rebuild:
+
+```bash
+# From the local workstation, against a remote worker host:
+LANGUAGE_FILTER=all  ./scripts/rebuild-worker-language-images.sh \
+    worker.example.com ~/.ssh/worker-key.pem linux/amd64
+
+# Or, running directly on the worker host:
+LANGUAGE_FILTER=all  ./scripts/rebuild-worker-language-images.sh local linux/arm64
+```
+
+The script iterates through every `docker/Dockerfile.judge-*` defined
+in the `ALL_LANGS` preset, builds each, and prints a final OK/FAIL
+summary. Per-image logs land in `/tmp/build-judge-<lang>.log` on the
+target host. The script also runs the safe dangling-only prune at the
+end (`docker image prune -f`, NOT `-af`) so it doesn't undo its own
+work.
+
 ### Worker crash-loops with `RUNNER_AUTH_TOKEN must not be empty`
 
 The worker validates `RUNNER_AUTH_TOKEN` strictly: unset → falls back to `JUDGE_AUTH_TOKEN`, but a present-and-empty value is rejected at startup. The dedicated worker compose file always renders `RUNNER_AUTH_TOKEN=${RUNNER_AUTH_TOKEN:-}`, so if the host env or `.env` file does not define the variable the container receives `""` and exits in a loop.
