@@ -81,6 +81,8 @@ export type SystemSettingsRecord = {
   smtpPass?: string | null;
   smtpFrom?: string | null;
   emailVerificationRequired?: boolean | null;
+  communityUpvoteEnabled?: boolean | null;
+  communityDownvoteEnabled?: boolean | null;
 };
 
 export async function getSystemSettings(): Promise<SystemSettingsRecord | undefined> {
@@ -158,6 +160,8 @@ export async function getSystemSettings(): Promise<SystemSettingsRecord | undefi
       smtpPass: null,
       smtpFrom: null,
       emailVerificationRequired: null,
+      communityUpvoteEnabled: null,
+      communityDownvoteEnabled: null,
     };
   }
 }

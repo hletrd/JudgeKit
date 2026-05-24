@@ -38,6 +38,8 @@ type SystemSettingsFormProps = {
   initialAiAssistantEnabled: boolean;
   initialPublicSignupEnabled: boolean;
   initialEmailVerificationRequired: boolean;
+  initialCommunityUpvoteEnabled: boolean;
+  initialCommunityDownvoteEnabled: boolean;
   initialSignupHcaptchaEnabled: boolean;
   initialHcaptchaSiteKey: string;
   initialHcaptchaSecretMasked: string;
@@ -68,6 +70,8 @@ export function SystemSettingsForm({
   initialAiAssistantEnabled,
   initialPublicSignupEnabled,
   initialEmailVerificationRequired,
+  initialCommunityUpvoteEnabled,
+  initialCommunityDownvoteEnabled,
   initialSignupHcaptchaEnabled,
   initialHcaptchaSiteKey,
   initialHcaptchaSecretMasked,
@@ -85,6 +89,8 @@ export function SystemSettingsForm({
   const [aiAssistantEnabled, setAiAssistantEnabled] = useState(initialAiAssistantEnabled);
   const [publicSignupEnabled, setPublicSignupEnabled] = useState(initialPublicSignupEnabled);
   const [emailVerificationRequired, setEmailVerificationRequired] = useState(initialEmailVerificationRequired);
+  const [communityUpvoteEnabled, setCommunityUpvoteEnabled] = useState(initialCommunityUpvoteEnabled);
+  const [communityDownvoteEnabled, setCommunityDownvoteEnabled] = useState(initialCommunityDownvoteEnabled);
   const [signupHcaptchaEnabled, setSignupHcaptchaEnabled] = useState(initialSignupHcaptchaEnabled);
   const [hcaptchaSiteKey, setHcaptchaSiteKey] = useState(initialHcaptchaSiteKey);
   const [hcaptchaSecret, setHcaptchaSecret] = useState(initialHcaptchaSecretMasked);
@@ -136,6 +142,8 @@ export function SystemSettingsForm({
         aiAssistantEnabled,
         publicSignupEnabled,
         emailVerificationRequired,
+        communityUpvoteEnabled,
+        communityDownvoteEnabled,
         signupHcaptchaEnabled,
         hcaptchaSiteKey,
         // Only send secret if user actually changed it from the masked placeholder
@@ -290,6 +298,27 @@ export function SystemSettingsForm({
           <span>{t("emailVerificationRequired")}</span>
         </label>
         <p className="text-xs text-muted-foreground">{t("emailVerificationRequiredHint")}</p>
+      </div>
+
+      <div className="space-y-2">
+        <Label>{t("communityVotingTitle")}</Label>
+        <label className="flex items-center gap-2 text-sm">
+          <Checkbox
+            id="community-upvote-enabled"
+            checked={communityUpvoteEnabled}
+            onCheckedChange={(checked) => setCommunityUpvoteEnabled(checked === true)}
+          />
+          <span>{t("communityUpvoteEnabled")}</span>
+        </label>
+        <label className="flex items-center gap-2 text-sm">
+          <Checkbox
+            id="community-downvote-enabled"
+            checked={communityDownvoteEnabled}
+            onCheckedChange={(checked) => setCommunityDownvoteEnabled(checked === true)}
+          />
+          <span>{t("communityDownvoteEnabled")}</span>
+        </label>
+        <p className="text-xs text-muted-foreground">{t("communityVotingHint")}</p>
       </div>
 
       <div className="space-y-2">

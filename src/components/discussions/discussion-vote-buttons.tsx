@@ -12,6 +12,10 @@ type DiscussionVoteButtonsProps = {
   score: number;
   currentUserVote: "up" | "down" | null;
   canVote: boolean;
+  /** When false the upvote button is hidden entirely (operator-disabled). */
+  upvoteEnabled?: boolean;
+  /** When false the downvote button is hidden entirely (operator-disabled). */
+  downvoteEnabled?: boolean;
   upvoteLabel: string;
   downvoteLabel: string;
   voteFailedLabel: string;
@@ -23,6 +27,8 @@ export function DiscussionVoteButtons({
   score: initialScore,
   currentUserVote: initialCurrentUserVote,
   canVote,
+  upvoteEnabled = true,
+  downvoteEnabled = true,
   upvoteLabel,
   downvoteLabel,
   voteFailedLabel,
@@ -64,29 +70,40 @@ export function DiscussionVoteButtons({
     }
   }
 
+  // When both directions are operator-disabled, render nothing — the score
+  // would otherwise sit alone in an empty pill. Existing scores from past
+  // votes stay visible if at least one direction is still on.
+  if (!upvoteEnabled && !downvoteEnabled) {
+    return null;
+  }
+
   return (
     <div className="inline-flex items-center gap-1 rounded-full border px-2 py-1 text-xs text-muted-foreground">
-      <Button
-        type="button"
-        variant={currentUserVote === "up" ? "default" : "ghost"}
-        size="sm"
-        className="h-6 px-2 text-xs"
-        disabled={!canVote || isSubmitting}
-        onClick={() => void handleVote("up")}
-      >
-        ▲ {upvoteLabel}
-      </Button>
+      {upvoteEnabled ? (
+        <Button
+          type="button"
+          variant={currentUserVote === "up" ? "default" : "ghost"}
+          size="sm"
+          className="h-6 px-2 text-xs"
+          disabled={!canVote || isSubmitting}
+          onClick={() => void handleVote("up")}
+        >
+          ▲ {upvoteLabel}
+        </Button>
+      ) : null}
       <span className="min-w-6 text-center font-medium">{score}</span>
-      <Button
-        type="button"
-        variant={currentUserVote === "down" ? "default" : "ghost"}
-        size="sm"
-        className="h-6 px-2 text-xs"
-        disabled={!canVote || isSubmitting}
-        onClick={() => void handleVote("down")}
-      >
-        ▼ {downvoteLabel}
-      </Button>
+      {downvoteEnabled ? (
+        <Button
+          type="button"
+          variant={currentUserVote === "down" ? "default" : "ghost"}
+          size="sm"
+          className="h-6 px-2 text-xs"
+          disabled={!canVote || isSubmitting}
+          onClick={() => void handleVote("down")}
+        >
+          ▼ {downvoteLabel}
+        </Button>
+      ) : null}
     </div>
   );
 }

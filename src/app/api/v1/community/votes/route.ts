@@ -1,18 +1,31 @@
 import { and, eq, sql } from "drizzle-orm";
 import { NextRequest } from "next/server";
 import { createApiHandler, forbidden, notFound } from "@/lib/api/handler";
-import { apiSuccess } from "@/lib/api/responses";
+import { apiError, apiSuccess } from "@/lib/api/responses";
 import { canAccessProblem } from "@/lib/auth/permissions";
 import { db } from "@/lib/db";
 import { communityVotes, discussionPosts, discussionThreads } from "@/lib/db/schema";
 import { communityVoteSchema } from "@/lib/validators/discussions";
 import { getDbNowUncached } from "@/lib/db-time";
+import { getSystemSettings } from "@/lib/system-settings";
 
 export const POST = createApiHandler({
   auth: true,
   rateLimit: "community:votes",
   schema: communityVoteSchema,
   handler: async (_req: NextRequest, { user, body }) => {
+    // Operator can dial down voting per direction without disabling the
+    // community board itself. Defaults stay true so a deployment that
+    // never touches this setting keeps the legacy behavior.
+    const settings = await getSystemSettings();
+    const upvoteEnabled = settings?.communityUpvoteEnabled !== false;
+    const downvoteEnabled = settings?.communityDownvoteEnabled !== false;
+    if (body.voteType === "up" && !upvoteEnabled) {
+      return apiError("upvoteDisabled", 403);
+    }
+    if (body.voteType === "down" && !downvoteEnabled) {
+      return apiError("downvoteDisabled", 403);
+    }
     const target =
       body.targetType === "thread"
         ? await db.query.discussionThreads.findFirst({

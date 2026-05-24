@@ -30,7 +30,7 @@ import { AntiCheatMonitor } from "@/components/exam/anti-cheat-monitor";
 import { CountdownTimer } from "@/components/exam/countdown-timer";
 import { StartExamButton } from "@/components/exam/start-exam-button";
 import { buildAbsoluteUrl, buildLocalePath, buildPublicMetadata, buildSocialImageUrl, NO_INDEX_METADATA, summarizeTextForMetadata } from "@/lib/seo";
-import { getResolvedSystemSettings } from "@/lib/system-settings";
+import { getResolvedSystemSettings, getSystemSettings } from "@/lib/system-settings";
 import { getResolvedSystemTimeZone } from "@/lib/system-settings";
 import { TierBadge } from "@/components/tier-badge";
 import { getProblemTierInfo } from "@/lib/problem-tiers";
@@ -232,6 +232,7 @@ export default async function PublicProblemDetailPage({
   const [
     timeZone,
     settings,
+    voteSettings,
     langs,
     threads,
     solutionThreads,
@@ -243,6 +244,7 @@ export default async function PublicProblemDetailPage({
       siteTitle: tCommon("appName"),
       siteDescription: tCommon("appDescription"),
     }),
+    getSystemSettings(),
     db.select({ id: languageConfigs.id, language: languageConfigs.language, displayName: languageConfigs.displayName, standard: languageConfigs.standard, isEnabled: languageConfigs.isEnabled }).from(languageConfigs).where(eq(languageConfigs.isEnabled, true)),
     listProblemDiscussionThreads(problem.id, session?.user?.id ?? null),
     listProblemSolutionThreads(problem.id, session?.user?.id ?? null),
@@ -257,6 +259,8 @@ export default async function PublicProblemDetailPage({
       .where(eq(submissions.problemId, problem.id))
       .then(rows => rows[0]),
   ]);
+  const upvoteEnabled = voteSettings?.communityUpvoteEnabled !== false;
+  const downvoteEnabled = voteSettings?.communityDownvoteEnabled !== false;
 
   const enabledLanguages = langs.flatMap((language) => {
     const definition = getJudgeLanguageDefinition(language.language);
@@ -781,6 +785,8 @@ export default async function PublicProblemDetailPage({
                         score={editorial.voteScore}
                         currentUserVote={editorial.currentUserVote}
                         canVote={Boolean(session?.user) && editorial.authorId !== session?.user?.id}
+                        upvoteEnabled={upvoteEnabled}
+                        downvoteEnabled={downvoteEnabled}
                         upvoteLabel={t("community.upvote")}
                         downvoteLabel={t("community.downvote")}
                         voteFailedLabel={t("community.voteFailed")}
@@ -807,6 +813,8 @@ export default async function PublicProblemDetailPage({
                                   score={post.voteScore}
                                   currentUserVote={post.currentUserVote}
                                   canVote={Boolean(session?.user) && post.author?.id !== session?.user?.id}
+                        upvoteEnabled={upvoteEnabled}
+                        downvoteEnabled={downvoteEnabled}
                                   upvoteLabel={t("community.upvote")}
                                   downvoteLabel={t("community.downvote")}
                                   voteFailedLabel={t("community.voteFailed")}
@@ -894,6 +902,8 @@ export default async function PublicProblemDetailPage({
                         score={thread.voteScore}
                         currentUserVote={thread.currentUserVote}
                         canVote={Boolean(session?.user) && thread.authorId !== session?.user?.id}
+                        upvoteEnabled={upvoteEnabled}
+                        downvoteEnabled={downvoteEnabled}
                         upvoteLabel={t("community.upvote")}
                         downvoteLabel={t("community.downvote")}
                         voteFailedLabel={t("community.voteFailed")}
@@ -939,6 +949,8 @@ export default async function PublicProblemDetailPage({
                         score={thread.voteScore}
                         currentUserVote={thread.currentUserVote}
                         canVote={Boolean(session?.user) && thread.authorId !== session?.user?.id}
+                        upvoteEnabled={upvoteEnabled}
+                        downvoteEnabled={downvoteEnabled}
                         upvoteLabel={t("community.upvote")}
                         downvoteLabel={t("community.downvote")}
                         voteFailedLabel={t("community.voteFailed")}

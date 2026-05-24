@@ -606,6 +606,10 @@ export const systemSettings = pgTable("system_settings", {
   smtpPass: text("smtp_pass"),
   smtpFrom: text("smtp_from"),
   emailVerificationRequired: boolean("email_verification_required").notNull().default(false),
+  // Community discussion knobs — let an operator dial down voting without
+  // disabling the board entirely. Defaults preserve current behavior.
+  communityUpvoteEnabled: boolean("community_upvote_enabled").notNull().default(true),
+  communityDownvoteEnabled: boolean("community_downvote_enabled").notNull().default(true),
   updatedAt: timestamp("updated_at", { withTimezone: true })
     .notNull()
     .$defaultFn(() => new Date()),

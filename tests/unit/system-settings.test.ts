@@ -172,6 +172,8 @@ describe("getSystemSettings", () => {
       smtpPass: null,
       smtpFrom: null,
       emailVerificationRequired: null,
+      communityUpvoteEnabled: null,
+      communityDownvoteEnabled: null,
     });
     expect(mocks.dbSelectFromWhereLimit).toHaveBeenCalledWith(1);
   });

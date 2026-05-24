@@ -87,6 +87,8 @@ export async function updateSystemSettings(
     aiAssistantEnabled,
     publicSignupEnabled,
     emailVerificationRequired,
+    communityUpvoteEnabled,
+    communityDownvoteEnabled,
     signupHcaptchaEnabled,
     hcaptchaSiteKey,
     hcaptchaSecret,
@@ -143,6 +145,12 @@ export async function updateSystemSettings(
   }
   if (hasOwnInput("emailVerificationRequired")) {
     baseValues.emailVerificationRequired = emailVerificationRequired ?? true;
+  }
+  if (hasOwnInput("communityUpvoteEnabled")) {
+    baseValues.communityUpvoteEnabled = communityUpvoteEnabled ?? true;
+  }
+  if (hasOwnInput("communityDownvoteEnabled")) {
+    baseValues.communityDownvoteEnabled = communityDownvoteEnabled ?? true;
   }
   if (hasOwnInput("signupHcaptchaEnabled")) {
     baseValues.signupHcaptchaEnabled = signupHcaptchaEnabled ?? false;

@@ -9,7 +9,7 @@ import { MyDiscussionsList } from "@/components/discussions/my-discussions-list"
 import { listAllProblemDiscussionThreads, listGeneralDiscussionThreads, listUserDiscussionThreads } from "@/lib/discussions/data";
 import { JsonLd } from "@/components/seo/json-ld";
 import { buildAbsoluteUrl, buildLocalePath, buildPublicMetadata, summarizeTextForMetadata } from "@/lib/seo";
-import { getResolvedSystemSettings } from "@/lib/system-settings";
+import { getResolvedSystemSettings, getSystemSettings } from "@/lib/system-settings";
 
 export async function generateMetadata(): Promise<Metadata> {
   const [tCommon, tShell, locale] = await Promise.all([
@@ -103,6 +103,12 @@ export default async function CommunityPage({
         session?.user ? { userId: session.user.id, role: session.user.role } : null,
       )
     : await listGeneralDiscussionThreads(sort, session?.user?.id ?? null);
+
+  // Operator-controlled voting knobs. Defaults preserved as true so older
+  // deployments without the new columns keep showing both buttons.
+  const voteSettings = await getSystemSettings();
+  const upvoteEnabled = voteSettings?.communityUpvoteEnabled !== false;
+  const downvoteEnabled = voteSettings?.communityDownvoteEnabled !== false;
   const activeListTitle = scope === "problems"
     ? t("community.problemTalk.title")
     : t("community.liveTitle");
@@ -221,6 +227,8 @@ export default async function CommunityPage({
                 score={thread.voteScore}
                 currentUserVote={thread.currentUserVote}
                 canVote={Boolean(session?.user) && thread.authorId !== session?.user?.id}
+                upvoteEnabled={upvoteEnabled}
+                downvoteEnabled={downvoteEnabled}
                 upvoteLabel={t("community.upvote")}
                 downvoteLabel={t("community.downvote")}
                 voteFailedLabel={t("community.voteFailed")}

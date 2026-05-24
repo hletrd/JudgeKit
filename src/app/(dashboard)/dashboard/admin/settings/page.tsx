@@ -124,6 +124,10 @@ export default async function AdminSettingsPage() {
     typeof stored?.publicSignupEnabled === "boolean" ? stored.publicSignupEnabled : false;
   const initialEmailVerificationRequired =
     typeof stored?.emailVerificationRequired === "boolean" ? stored.emailVerificationRequired : true;
+  const initialCommunityUpvoteEnabled =
+    typeof stored?.communityUpvoteEnabled === "boolean" ? stored.communityUpvoteEnabled : true;
+  const initialCommunityDownvoteEnabled =
+    typeof stored?.communityDownvoteEnabled === "boolean" ? stored.communityDownvoteEnabled : true;
   const initialSignupHcaptchaEnabled =
     typeof stored?.signupHcaptchaEnabled === "boolean" ? stored.signupHcaptchaEnabled : false;
   const initialHcaptchaSiteKey = (stored?.hcaptchaSiteKey as string) ?? "";
@@ -193,6 +197,8 @@ export default async function AdminSettingsPage() {
                 initialAiAssistantEnabled={initialAiAssistantEnabled}
                 initialPublicSignupEnabled={initialPublicSignupEnabled}
                 initialEmailVerificationRequired={initialEmailVerificationRequired}
+                initialCommunityUpvoteEnabled={initialCommunityUpvoteEnabled}
+                initialCommunityDownvoteEnabled={initialCommunityDownvoteEnabled}
                 initialSignupHcaptchaEnabled={initialSignupHcaptchaEnabled}
                 initialHcaptchaSiteKey={initialHcaptchaSiteKey}
                 initialHcaptchaSecretMasked={initialHcaptchaSecretMasked}

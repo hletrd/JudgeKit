@@ -12,7 +12,7 @@ import { JsonLd } from "@/components/seo/json-ld";
 import { canReadProblemDiscussion, getDiscussionThreadById } from "@/lib/discussions/data";
 import { canModerateDiscussions } from "@/lib/discussions/permissions";
 import { buildAbsoluteUrl, buildLocalePath, buildPublicMetadata, buildSocialImageUrl, NO_INDEX_METADATA, summarizeTextForMetadata } from "@/lib/seo";
-import { getResolvedSystemSettings } from "@/lib/system-settings";
+import { getResolvedSystemSettings, getSystemSettings } from "@/lib/system-settings";
 
 export async function generateMetadata({ params }: { params: Promise<{ id: string }> }): Promise<Metadata> {
   const { id } = await params;
@@ -91,6 +91,9 @@ export default async function CommunityThreadDetailPage({ params }: { params: Pr
   }
 
   const canModerate = session?.user ? await canModerateDiscussions(session.user.role) : false;
+  const voteSettings = await getSystemSettings();
+  const upvoteEnabled = voteSettings?.communityUpvoteEnabled !== false;
+  const downvoteEnabled = voteSettings?.communityDownvoteEnabled !== false;
   const socialImageUrl = buildSocialImageUrl({
     title: thread.title,
     description: summarizeTextForMetadata(thread.content),
@@ -207,6 +210,8 @@ export default async function CommunityThreadDetailPage({ params }: { params: Pr
               score={thread.voteScore}
               currentUserVote={thread.currentUserVote}
               canVote={Boolean(session?.user) && thread.authorId !== session?.user?.id}
+              upvoteEnabled={upvoteEnabled}
+              downvoteEnabled={downvoteEnabled}
               upvoteLabel={tShell("community.upvote")}
               downvoteLabel={tShell("community.downvote")}
               voteFailedLabel={tShell("community.voteFailed")}
@@ -224,6 +229,8 @@ export default async function CommunityThreadDetailPage({ params }: { params: Pr
                   score={post.voteScore}
                   currentUserVote={post.currentUserVote}
                   canVote={Boolean(session?.user) && post.author?.id !== session?.user?.id}
+                  upvoteEnabled={upvoteEnabled}
+                  downvoteEnabled={downvoteEnabled}
                   upvoteLabel={tShell("community.upvote")}
                   downvoteLabel={tShell("community.downvote")}
                   voteFailedLabel={tShell("community.voteFailed")}

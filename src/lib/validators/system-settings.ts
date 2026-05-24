@@ -80,6 +80,8 @@ export const systemSettingsSchema = z.object({
   aiAssistantEnabled: z.boolean().optional(),
   publicSignupEnabled: z.boolean().optional(),
   emailVerificationRequired: z.boolean().optional(),
+  communityUpvoteEnabled: z.boolean().optional(),
+  communityDownvoteEnabled: z.boolean().optional(),
   signupHcaptchaEnabled: z.boolean().optional(),
   hcaptchaSiteKey: z.preprocess(
     normalizeOptionalString,

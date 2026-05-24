@@ -92,6 +92,15 @@ vi.mock("@/lib/db-time", () => ({
   getDbNowUncached: vi.fn().mockResolvedValue(new Date("2026-04-20T12:00:00Z")),
 }));
 
+vi.mock("@/lib/system-settings", () => ({
+  // Default both directions enabled — tests can override per-case if they
+  // need to exercise the upvoteDisabled / downvoteDisabled branches.
+  getSystemSettings: vi.fn().mockResolvedValue({
+    communityUpvoteEnabled: true,
+    communityDownvoteEnabled: true,
+  }),
+}));
+
 vi.mock("@/lib/db", () => ({
   db: {
     query: {
