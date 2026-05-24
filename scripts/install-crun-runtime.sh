@@ -17,8 +17,14 @@
 # =============================================================================
 set -euo pipefail
 
-CRUN_PKG_NAME="crun"
 DAEMON_JSON=/etc/docker/daemon.json
+# Static binary release of crun. Pinned to a known-good version that
+# supports the OCI runtime spec emitted by Docker 28-29 (the apt
+# package on Debian/Ubuntu ships crun 1.14.1 which fails container
+# create on Docker 29.x with "unknown version specified"). Update this
+# pin when a newer crun release becomes the operator-blessed one.
+CRUN_PINNED_VERSION="1.21"
+CRUN_INSTALL_PATH="/usr/local/bin/crun"
 
 need_sudo() {
     if [[ "$EUID" -ne 0 ]]; then
@@ -29,12 +35,45 @@ need_sudo() {
 }
 need_sudo
 
-if ! command -v crun >/dev/null 2>&1; then
-    echo "==> Installing crun via apt..."
-    $SUDO apt-get update -qq
-    $SUDO apt-get install -y --no-install-recommends "$CRUN_PKG_NAME"
-else
-    echo "==> crun already installed: $(crun --version | head -1)"
+CRUN_NEEDS_INSTALL=1
+if command -v crun >/dev/null 2>&1; then
+    CURRENT_VERSION=$(crun --version 2>/dev/null | awk '/crun version/ {print $3}' | head -1)
+    echo "==> crun already installed: $CURRENT_VERSION"
+    # Accept any 1.15+ since 1.15 introduced support for newer OCI versions.
+    if [[ -n "$CURRENT_VERSION" ]]; then
+        # Compare with 1.15 — accept >= 1.15
+        if [[ "$(printf '%s\n1.15\n' "$CURRENT_VERSION" | sort -V | head -1)" == "1.15" ]]; then
+            CRUN_NEEDS_INSTALL=0
+        else
+            echo "    (installed version is too old for Docker 28+; reinstalling pinned ${CRUN_PINNED_VERSION})"
+        fi
+    fi
+fi
+
+if [[ "$CRUN_NEEDS_INSTALL" -eq 1 ]]; then
+    echo "==> Installing crun ${CRUN_PINNED_VERSION} from upstream GitHub release..."
+    # crun is a single static binary. Map dpkg arch to release asset arch.
+    ARCH=$(dpkg --print-architecture 2>/dev/null || uname -m)
+    case "$ARCH" in
+        amd64|x86_64) RELEASE_ARCH=amd64 ;;
+        arm64|aarch64) RELEASE_ARCH=arm64 ;;
+        *) echo "ERROR: unsupported arch: $ARCH" >&2; exit 1 ;;
+    esac
+    URL="https://github.com/containers/crun/releases/download/${CRUN_PINNED_VERSION}/crun-${CRUN_PINNED_VERSION}-linux-${RELEASE_ARCH}"
+    TMP=$(mktemp)
+    if ! curl -fsSL "$URL" -o "$TMP"; then
+        echo "ERROR: failed to download crun from $URL" >&2
+        rm -f "$TMP"
+        exit 1
+    fi
+    $SUDO install -m 0755 "$TMP" "$CRUN_INSTALL_PATH"
+    rm -f "$TMP"
+    # Drop any apt-installed older crun out of PATH precedence
+    if [[ -x /usr/bin/crun ]] && [[ "$(readlink -f /usr/bin/crun)" != "$CRUN_INSTALL_PATH" ]]; then
+        $SUDO dpkg --force-all -P crun 2>/dev/null || true
+    fi
+    hash -r
+    echo "==> Installed: $(${CRUN_INSTALL_PATH} --version | head -1)"
 fi
 
 CRUN_BIN=$(command -v crun)
