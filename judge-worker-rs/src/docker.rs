@@ -353,13 +353,22 @@ async fn run_docker_once(
     // Keep aligned with the local compiler runner so stdout/stderr truncation
     // behaves the same regardless of whether execution happens in Node or the
     // Rust judge worker sidecar.
-    const MAX_OUTPUT_BYTES: u64 = 4_194_304; // 4 MiB
+    const MAX_OUTPUT_BYTES: u64 = 134_217_728; // 128 MiB
 
+    // After the cap is reached, keep draining (into /dev/null) so the writer
+    // doesn't get EPIPE on its next write. Without this drain, a submission
+    // that prints a few MiB more than the cap gets `write /dev/stdout: broken
+    // pipe` from its runtime (Go, Python, etc.), and the user sees a
+    // misleading runtime-error stderr message that has nothing to do with
+    // their actual bug — the real signal is "your output exceeded the limit".
     let stdout_handle = {
         let stdout = child.stdout.take().expect("stdout not captured");
         tokio::spawn(async move {
+            let mut take = stdout.take(MAX_OUTPUT_BYTES);
             let mut buf = Vec::new();
-            let _ = stdout.take(MAX_OUTPUT_BYTES).read_to_end(&mut buf).await;
+            let _ = take.read_to_end(&mut buf).await;
+            let mut inner = take.into_inner();
+            let _ = tokio::io::copy(&mut inner, &mut tokio::io::sink()).await;
             buf
         })
     };
@@ -367,9 +376,12 @@ async fn run_docker_once(
     let stderr_handle = {
         let stderr = child.stderr.take().expect("stderr not captured");
         tokio::spawn(async move {
-            let mut buf = String::new();
-            let _ = stderr.take(MAX_OUTPUT_BYTES).read_to_string(&mut buf).await;
-            buf
+            let mut take = stderr.take(MAX_OUTPUT_BYTES);
+            let mut buf = Vec::new();
+            let _ = take.read_to_end(&mut buf).await;
+            let mut inner = take.into_inner();
+            let _ = tokio::io::copy(&mut inner, &mut tokio::io::sink()).await;
+            String::from_utf8_lossy(&buf).into_owned()
         })
     };
 

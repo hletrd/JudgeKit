@@ -7,11 +7,26 @@ function read(relativePath: string) {
 }
 
 describe("compiler output truncation limits", () => {
-  it("keeps the Node compiler runner and Rust worker aligned at 4 MiB", () => {
+  it("keeps the Node compiler runner and Rust worker aligned at 128 MiB", () => {
     const tsSource = read("src/lib/compiler/execute.ts");
     const rustSource = read("judge-worker-rs/src/docker.rs");
 
-    expect(tsSource).toContain("const MAX_OUTPUT_BYTES = 4_194_304; // 4 MiB");
-    expect(rustSource).toContain("const MAX_OUTPUT_BYTES: u64 = 4_194_304; // 4 MiB");
+    expect(tsSource).toContain("const MAX_OUTPUT_BYTES = 134_217_728; // 128 MiB");
+    expect(rustSource).toContain("const MAX_OUTPUT_BYTES: u64 = 134_217_728; // 128 MiB");
+  });
+
+  it("drains past the cap instead of tearing down the pipe (no spurious EPIPE)", () => {
+    // The original implementation called `stdout.destroy()` (Node) or
+    // dropped the `Take` adapter (Rust) once the cap was reached. Both
+    // closed the pipe and forced the child process to die on its next
+    // write with `write /dev/stdout: broken pipe` — masking the real
+    // "output exceeded the limit" signal. Verify the new behavior is
+    // structurally present so the regression can't sneak back in.
+    const tsSource = read("src/lib/compiler/execute.ts");
+    const rustSource = read("judge-worker-rs/src/docker.rs");
+
+    expect(tsSource).not.toContain("child.stdout?.destroy()");
+    expect(tsSource).not.toContain("child.stderr?.destroy()");
+    expect(rustSource).toContain("tokio::io::copy(&mut inner, &mut tokio::io::sink())");
   });
 });

@@ -15,7 +15,7 @@ const exec = promisify(execFile);
 const MEMORY_LIMIT_MB = 256;
 // Keep aligned with the Rust judge worker so stdout/stderr truncation matches
 // between local compiler-run requests and remote judge execution.
-const MAX_OUTPUT_BYTES = 4_194_304; // 4 MiB
+const MAX_OUTPUT_BYTES = 134_217_728; // 128 MiB
 const MAX_SOURCE_CODE_BYTES = 64 * 1024; // 64KB
 const COMPILE_TMPFS = "/tmp:rw,exec,nosuid,size=1024m";
 const RUN_TMPFS = "/tmp:rw,noexec,nosuid,size=64m";
@@ -431,26 +431,20 @@ async function runDocker(opts: {
       child.stdin.end();
     }
 
-    // Track stream destruction to prevent unbounded growth
-    let stdoutClosed = false;
-    let stderrClosed = false;
-
+    // Past the cap, keep consuming chunks but discard them. Calling
+    // `destroy()` on the readable would close the pipe and the child
+    // process would get EPIPE on its next write — surfacing as
+    // `write /dev/stdout: broken pipe` (Go runtime) or equivalent in
+    // other runtimes and masking the real "output exceeded the limit"
+    // signal as a runtime crash.
     child.stdout?.on("data", (chunk: Buffer) => {
-      if (stdoutClosed || stdout.length >= MAX_OUTPUT_BYTES) {
-        stdoutClosed = true;
-        child.stdout?.destroy();
-        return;
-      }
+      if (stdout.length >= MAX_OUTPUT_BYTES) return;
       const remaining = MAX_OUTPUT_BYTES - stdout.length;
       stdout += chunk.toString("utf8", 0, remaining);
     });
 
     child.stderr?.on("data", (chunk: Buffer) => {
-      if (stderrClosed || stderr.length >= MAX_OUTPUT_BYTES) {
-        stderrClosed = true;
-        child.stderr?.destroy();
-        return;
-      }
+      if (stderr.length >= MAX_OUTPUT_BYTES) return;
       const remaining = MAX_OUTPUT_BYTES - stderr.length;
       stderr += chunk.toString("utf8", 0, remaining);
     });
