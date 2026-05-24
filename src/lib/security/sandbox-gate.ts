@@ -3,12 +3,13 @@ import { eq } from "drizzle-orm";
 import { db } from "@/lib/db";
 import { users } from "@/lib/db/schema";
 import { consumeUserDailyQuota } from "@/lib/security/api-rate-limit";
+import { getSystemSettings } from "@/lib/system-settings";
 
-const ALLOW_UNVERIFIED_EMAIL = (() => {
-  // Single escape hatch for deployments that intentionally don't run an
-  // SMTP server (e.g. air-gapped class lab) and so cannot send verification
-  // emails. Operator must opt in explicitly. Default-OFF means a brand-new
-  // deploy is locked down to verified users.
+const ALLOW_UNVERIFIED_EMAIL_ENV = (() => {
+  // Hard env-level escape hatch for deployments that intentionally don't
+  // run an SMTP server (e.g. air-gapped class lab). When set, it bypasses
+  // the gate entirely regardless of the DB setting. Operator must opt in
+  // explicitly.
   const raw = process.env.SANDBOX_ALLOW_UNVERIFIED_EMAIL ?? "";
   return raw === "1" || raw.toLowerCase() === "true";
 })();
@@ -36,7 +37,24 @@ interface GateOptions {
 export async function gateSandboxEndpoint(options: GateOptions): Promise<NextResponse | null> {
   const { userId, endpoint, maxPerDay } = options;
 
-  if (!ALLOW_UNVERIFIED_EMAIL) {
+  // Resolve gate state. The env flag is a hard override; otherwise the
+  // admin-controlled DB setting `system_settings.emailVerificationRequired`
+  // wins. Default when neither is set: enforce verification (the
+  // historical default before this setting actually wired through).
+  let enforceEmailGate = !ALLOW_UNVERIFIED_EMAIL_ENV;
+  if (enforceEmailGate) {
+    try {
+      const settings = await getSystemSettings();
+      if (settings?.emailVerificationRequired === false) {
+        enforceEmailGate = false;
+      }
+    } catch {
+      // DB unavailable / migration not run: stay safe and keep the gate
+      // enforced. Operator can still bypass via the env var.
+    }
+  }
+
+  if (enforceEmailGate) {
     const [row] = await db
       .select({
         emailVerified: users.emailVerified,

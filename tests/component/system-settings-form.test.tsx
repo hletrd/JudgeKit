@@ -84,6 +84,7 @@ function renderForm(initialTimeZone = "UTC") {
       currentPlatformMode="homework"
       initialAiAssistantEnabled
       initialPublicSignupEnabled={false}
+      initialEmailVerificationRequired
       initialSignupHcaptchaEnabled={false}
       initialHcaptchaSiteKey=""
       initialHcaptchaSecretMasked=""

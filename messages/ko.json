@@ -1331,6 +1331,9 @@
       "aiAssistantTitle": "AI 도우미",
       "aiAssistantEnabled": "AI 디버깅 도우미 활성화",
       "aiAssistantEnabledHint": "비활성화하면 문제별 설정에 관계없이 모든 문제에서 AI 도우미가 숨겨집니다.",
+      "emailVerificationTitle": "이메일 인증",
+      "emailVerificationRequired": "이메일 인증을 마쳐야 실행/제출 가능",
+      "emailVerificationRequiredHint": "비활성화하면 이메일 미인증 사용자도 코드 실행과 제출이 가능해요. SMTP 없는 환경에서 사용하세요. (강사/관리자/조교는 설정과 무관하게 통과)",
       "defaultLanguage": "기본 언어",
       "defaultLanguageHint": "사용자가 문제를 열 때 기본으로 선택되는 언어 (예: python, cpp). 비워두면 C가 기본값입니다.",
       "defaultLocale": "기본 UI 언어",
@@ -3175,6 +3178,17 @@
       "secondaryCta": "로그인",
       "liveTitle": "커뮤니티 게시판",
       "liveDescription": "풀이 힌트를 공유하거나 궁금한 점을 물어볼 수 있어요. 누구나 읽을 수 있고, 글 작성은 로그인이 필요해요.",
+      "scope": {
+        "general": "일반 토론",
+        "problems": "문제 토론",
+        "questionBadge": "질문",
+        "solutionBadge": "풀이"
+      },
+      "problemTalk": {
+        "title": "전체 문제 토론",
+        "description": "접근 가능한 모든 문제의 질문/풀이 토론을 한 곳에서 살펴봐요.",
+        "empty": "아직 문제 토론이 없어요."
+      },
       "createThread": "글쓰기",
       "newThreadTitle": "새 글 작성",
       "newThreadDescription": "커뮤니티 전체에 공유할 토론을 시작하세요.",

@@ -79,6 +79,7 @@ export const systemSettingsSchema = z.object({
   platformMode: z.enum(platformModeValues).optional(),
   aiAssistantEnabled: z.boolean().optional(),
   publicSignupEnabled: z.boolean().optional(),
+  emailVerificationRequired: z.boolean().optional(),
   signupHcaptchaEnabled: z.boolean().optional(),
   hcaptchaSiteKey: z.preprocess(
     normalizeOptionalString,

@@ -37,6 +37,7 @@ type SystemSettingsFormProps = {
   currentPlatformMode: PlatformMode;
   initialAiAssistantEnabled: boolean;
   initialPublicSignupEnabled: boolean;
+  initialEmailVerificationRequired: boolean;
   initialSignupHcaptchaEnabled: boolean;
   initialHcaptchaSiteKey: string;
   initialHcaptchaSecretMasked: string;
@@ -66,6 +67,7 @@ export function SystemSettingsForm({
   currentPlatformMode,
   initialAiAssistantEnabled,
   initialPublicSignupEnabled,
+  initialEmailVerificationRequired,
   initialSignupHcaptchaEnabled,
   initialHcaptchaSiteKey,
   initialHcaptchaSecretMasked,
@@ -82,6 +84,7 @@ export function SystemSettingsForm({
   const [platformMode, setPlatformMode] = useState<PlatformMode>(initialPlatformMode);
   const [aiAssistantEnabled, setAiAssistantEnabled] = useState(initialAiAssistantEnabled);
   const [publicSignupEnabled, setPublicSignupEnabled] = useState(initialPublicSignupEnabled);
+  const [emailVerificationRequired, setEmailVerificationRequired] = useState(initialEmailVerificationRequired);
   const [signupHcaptchaEnabled, setSignupHcaptchaEnabled] = useState(initialSignupHcaptchaEnabled);
   const [hcaptchaSiteKey, setHcaptchaSiteKey] = useState(initialHcaptchaSiteKey);
   const [hcaptchaSecret, setHcaptchaSecret] = useState(initialHcaptchaSecretMasked);
@@ -132,6 +135,7 @@ export function SystemSettingsForm({
         platformMode,
         aiAssistantEnabled,
         publicSignupEnabled,
+        emailVerificationRequired,
         signupHcaptchaEnabled,
         hcaptchaSiteKey,
         // Only send secret if user actually changed it from the masked placeholder
@@ -273,6 +277,19 @@ export function SystemSettingsForm({
           <span>{t("aiAssistantEnabled")}</span>
         </label>
         <p className="text-xs text-muted-foreground">{t("aiAssistantEnabledHint")}</p>
+      </div>
+
+      <div className="space-y-2">
+        <Label htmlFor="email-verification-required">{t("emailVerificationTitle")}</Label>
+        <label className="flex items-center gap-2 text-sm">
+          <Checkbox
+            id="email-verification-required"
+            checked={emailVerificationRequired}
+            onCheckedChange={(checked) => setEmailVerificationRequired(checked === true)}
+          />
+          <span>{t("emailVerificationRequired")}</span>
+        </label>
+        <p className="text-xs text-muted-foreground">{t("emailVerificationRequiredHint")}</p>
       </div>
 
       <div className="space-y-2">

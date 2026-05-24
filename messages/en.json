@@ -1331,6 +1331,9 @@
       "aiAssistantTitle": "AI Assistant",
       "aiAssistantEnabled": "Enable AI Debugging Assistant",
       "aiAssistantEnabledHint": "When disabled, the AI assistant is hidden on all problems regardless of per-problem settings.",
+      "emailVerificationTitle": "Email verification",
+      "emailVerificationRequired": "Require verified email to run / submit code",
+      "emailVerificationRequiredHint": "When disabled, unverified users can run and submit code. Useful for deployments without SMTP. Instructors, admins, and assistants bypass the check regardless.",
       "defaultLanguage": "Default Language",
       "defaultLanguageHint": "Language pre-selected when users open problems (e.g. python, cpp). Leave empty to default to C.",
       "defaultLocale": "Default UI Language",
@@ -3175,6 +3178,17 @@
       "secondaryCta": "Sign in",
       "liveTitle": "Community board",
       "liveDescription": "Ask questions, share hints, and follow platform-wide discussions. Guests can read everything; signed-in users can start threads and reply.",
+      "scope": {
+        "general": "General",
+        "problems": "Problem talk",
+        "questionBadge": "Q",
+        "solutionBadge": "Solution"
+      },
+      "problemTalk": {
+        "title": "Problem discussions",
+        "description": "Every question and solution thread across all problems you can access, in one place.",
+        "empty": "No problem-scoped threads yet."
+      },
       "createThread": "Create thread",
       "newThreadTitle": "Create a new thread",
       "newThreadDescription": "Start a discussion visible to the whole community.",

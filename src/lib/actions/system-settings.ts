@@ -86,6 +86,7 @@ export async function updateSystemSettings(
     platformMode,
     aiAssistantEnabled,
     publicSignupEnabled,
+    emailVerificationRequired,
     signupHcaptchaEnabled,
     hcaptchaSiteKey,
     hcaptchaSecret,
@@ -139,6 +140,9 @@ export async function updateSystemSettings(
   }
   if (hasOwnInput("publicSignupEnabled")) {
     baseValues.publicSignupEnabled = publicSignupEnabled ?? false;
+  }
+  if (hasOwnInput("emailVerificationRequired")) {
+    baseValues.emailVerificationRequired = emailVerificationRequired ?? true;
   }
   if (hasOwnInput("signupHcaptchaEnabled")) {
     baseValues.signupHcaptchaEnabled = signupHcaptchaEnabled ?? false;

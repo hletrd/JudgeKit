@@ -122,6 +122,8 @@ export default async function AdminSettingsPage() {
     typeof stored?.aiAssistantEnabled === "boolean" ? stored.aiAssistantEnabled : true;
   const initialPublicSignupEnabled =
     typeof stored?.publicSignupEnabled === "boolean" ? stored.publicSignupEnabled : false;
+  const initialEmailVerificationRequired =
+    typeof stored?.emailVerificationRequired === "boolean" ? stored.emailVerificationRequired : true;
   const initialSignupHcaptchaEnabled =
     typeof stored?.signupHcaptchaEnabled === "boolean" ? stored.signupHcaptchaEnabled : false;
   const initialHcaptchaSiteKey = (stored?.hcaptchaSiteKey as string) ?? "";
@@ -190,6 +192,7 @@ export default async function AdminSettingsPage() {
                 currentPlatformMode={resolvedSettings.platformMode}
                 initialAiAssistantEnabled={initialAiAssistantEnabled}
                 initialPublicSignupEnabled={initialPublicSignupEnabled}
+                initialEmailVerificationRequired={initialEmailVerificationRequired}
                 initialSignupHcaptchaEnabled={initialSignupHcaptchaEnabled}
                 initialHcaptchaSiteKey={initialHcaptchaSiteKey}
                 initialHcaptchaSecretMasked={initialHcaptchaSecretMasked}
