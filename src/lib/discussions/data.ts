@@ -106,6 +106,73 @@ export async function listGeneralDiscussionThreads(sort: "newest" | "popular" = 
   return withVotes;
 }
 
+/**
+ * List every problem-scoped (questions) and solution-scoped (solutions)
+ * discussion thread across all problems the viewer can access. Used by
+ * the community "Problem talk" tab to give a single place to scan
+ * discussion activity instead of opening each problem page one by one.
+ *
+ * Visibility:
+ * - threads on public problems are always included
+ * - threads on private/hidden problems are included only if the viewer
+ *   passes canAccessProblem (instructors/admins/recruiting candidates
+ *   on the right token, problem authors, and group members)
+ * - guests (no viewer) see only public-problem threads
+ *
+ * Sort: pinned first, then either by vote score (`popular`) or by
+ * updatedAt (`newest`), matching the general-community list.
+ */
+export async function listAllProblemDiscussionThreads(
+  sort: "newest" | "popular" = "newest",
+  viewer?: { userId: string; role: string } | null,
+) {
+  const threads = await db.query.discussionThreads.findMany({
+    where: and(
+      inArray(discussionThreads.scopeType, ["problem", "solution"]),
+      isNotNull(discussionThreads.problemId),
+    ),
+    with: {
+      author: { columns: { id: true, name: true, role: true } },
+      posts: { columns: { id: true } },
+      problem: { columns: { id: true, title: true, visibility: true } },
+    },
+    orderBy: [desc(discussionThreads.pinnedAt), desc(discussionThreads.updatedAt)],
+    limit: 200,
+  });
+
+  const publicThreads = threads.filter((thread) => thread.problem?.visibility === "public");
+  let visible = publicThreads;
+
+  if (viewer) {
+    const nonPublic = threads.filter((thread) => thread.problem && thread.problem.visibility !== "public");
+    const uniqueProblemIds = Array.from(new Set(nonPublic.map((thread) => thread.problem!.id)));
+    const accessible = new Set<string>();
+    // Bulk visibility check — canAccessProblem hits 1-2 small queries per id;
+    // batching the threads' distinct problems caps total work at #threads
+    // problems rather than #threads. For private/hidden problems this is
+    // typically a single-digit count anyway.
+    await Promise.all(uniqueProblemIds.map(async (problemId) => {
+      if (await canAccessProblem(problemId, viewer.userId, viewer.role)) {
+        accessible.add(problemId);
+      }
+    }));
+    visible = visible.concat(nonPublic.filter((thread) => thread.problem && accessible.has(thread.problem.id)));
+  }
+
+  const voteSummaries = await listVoteSummaries("thread", visible.map((thread) => thread.id), viewer?.userId);
+  const withVotes = withThreadVotes(visible, voteSummaries);
+
+  if (sort === "popular") {
+    return withVotes.sort(compareThreadsByPinnedVoteScoreDate);
+  }
+  return withVotes.sort((left, right) => {
+    const leftPinned = left.pinnedAt ? 1 : 0;
+    const rightPinned = right.pinnedAt ? 1 : 0;
+    if (leftPinned !== rightPinned) return rightPinned - leftPinned;
+    return new Date(right.updatedAt).getTime() - new Date(left.updatedAt).getTime();
+  });
+}
+
 export async function listProblemDiscussionThreads(problemId: string, viewerUserId?: string | null) {
   const threads = await db.query.discussionThreads.findMany({
     where: and(eq(discussionThreads.scopeType, "problem"), eq(discussionThreads.problemId, problemId)),
