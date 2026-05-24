@@ -241,7 +241,7 @@ Monitor workers at `/dashboard/admin/workers`.
   intentionally limited to literal output statements (`$display`/`$write`/`$strobe`
   for Verilog/SystemVerilog and `report` for VHDL), not full simulation.
 - **`TRUSTED_DOCKER_REGISTRIES`**: Optional comma-separated allowlist for externally qualified image references (for example `ghcr.io/your-org/,registry.example.com/`). Unqualified local images such as `judge-python:latest` remain allowed.
-- The `deploy-docker.sh` script handles setup automatically (server-side builds, architecture detection, nginx config). See [Deployment Guide](docs/deployment.md).
+- The `deploy-docker.sh` script handles setup automatically (server-side builds, architecture detection, nginx config, and a post-deploy `docker container/image/builder/volume` prune that's DB-running-guarded — opt out with `SKIP_POST_DEPLOY_PRUNE=1`). See [Deployment Guide](docs/deployment.md).
 
 ## Platform Modes
 

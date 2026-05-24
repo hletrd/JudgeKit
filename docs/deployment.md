@@ -28,7 +28,7 @@ RATE_LIMITER_AUTH_TOKEN=<openssl rand -hex 32>
 # Judge worker bootstrap (registration only; per-worker secrets take over after register)
 JUDGE_AUTH_TOKEN=<openssl rand -hex 32>
 JUDGE_BASE_URL=http://localhost:3000/api/v1
-POLL_INTERVAL=2000
+POLL_INTERVAL=500
 JUDGE_CONCURRENCY=2
 JUDGE_DISABLE_CUSTOM_SECCOMP=0
 # JUDGE_WORKER_HOSTNAME=worker-1   # Reported during registration (default: system hostname)
@@ -50,7 +50,7 @@ JUDGE_DISABLE_CUSTOM_SECCOMP=0
 | `JUDGE_BASE_URL` | No | `http://localhost:3000/api/v1` | App API URL for workers |
 | `JUDGE_CONCURRENCY` | No | `1` | Max parallel submissions per worker (1-16) |
 | `JUDGE_WORKER_HOSTNAME` | No | System hostname | Worker name shown in admin dashboard |
-| `POLL_INTERVAL` | No | `2000` | Worker poll interval in ms |
+| `POLL_INTERVAL` | No | `500` | Worker poll interval in ms (busy-queue base; empty-queue backoff capped at 3 s) |
 | `JUDGE_DISABLE_CUSTOM_SECCOMP` | No | `0` | Set `1` on Docker 28+/modern kernels |
 | `JUDGE_ALLOW_DEFAULT_COMPILE_SECCOMP` | No | `0` | Set `1` only when a compile toolchain is incompatible with the repository seccomp profile |
 | `TRUSTED_DOCKER_REGISTRIES` | No | — | Comma-separated allowlist for fully qualified external judge image registries |
@@ -225,13 +225,46 @@ past (see commit history for the Apr 2026 incident).
 - `docker compose -f docker-compose.production.yml up -d` — safe (no volume changes)
 - `docker compose -f docker-compose.production.yml down` — safe (keeps volumes)
 - `docker image prune -f` — safe (only removes dangling `<none>` images)
+- `docker image prune -af` — safe **only when the running container set is the
+  intended target.** Removes any image not referenced by a container. After
+  `docker compose up -d` recreates containers with the new build, old image
+  tags are reclaimable; this is exactly what the post-deploy step does.
+- `docker volume prune -f` — safe **only while `judgekit-db` is running.**
+  The DB volume is preserved because docker skips volumes attached to running
+  containers. `deploy-docker.sh` verifies the DB is up before invoking this.
 
 ### Dangerous operations — never run on production
 
 - `docker compose down -v` — **deletes `judgekit-pgdata`**. Use `down` without `-v`.
 - `docker volume rm judgekit_judgekit-pgdata` — destroys the cluster
 - `docker volume prune -af` — indiscriminate, can delete mounted volumes on stopped containers
+- `docker volume prune -f` **while the DB container is stopped** — same risk
 - `docker system prune -a --volumes` — same, destructive across the board
+
+### Automatic post-deploy cleanup
+
+`deploy-docker.sh` runs `prune_old_docker_artifacts()` at the end of every
+deploy on every host it touches (app server + each entry in `WORKER_HOSTS`).
+The helper executes (in this order, all safe per the "Safe operations" list
+above):
+
+1. `docker container prune -f` — stopped containers
+2. `docker image prune -af` — unused images (covers dangling builds and the
+   prior `:latest` of every rebuilt judge language image)
+3. `docker builder prune -af` — BuildKit cache
+4. `docker volume prune -f` — only after asserting `judgekit-db` is running
+   (skipped with a warning otherwise; rerun the deploy or invoke the helper
+   manually once the DB is back)
+
+This step exists because every `--no-cache` rebuild on a worker host leaves
+the prior layer set dangling, and a few cycles consume tens of gigabytes.
+Without it, the disk fills up and the next deploy thrashes (`auraedu`
+stalled at 95% / 6.6 GB free in May 2026 before this step was added).
+
+Set `SKIP_POST_DEPLOY_PRUNE=1` to opt out of cleanup for a single deploy
+(useful when you want to inspect the prior `:latest` before it is reclaimed).
+The opt-out logs a warning so the next deploy can be expected to grow disk
+usage.
 - Changing the `postgres` image tag without an explicit `pg_upgrade` plan
 - Upgrading the `postgres` major version inside the same named volume without
   following the [postgres upgrade guide](https://www.postgresql.org/docs/current/pgupgrade.html)

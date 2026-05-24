@@ -16,6 +16,10 @@ That path is the canonical baseline because it:
 - runs the PostgreSQL volume safety check before touching containers
 - captures a pre-deploy `pg_dump`
 - applies the Docker-based production architecture described in `docs/deployment.md`
+- prunes stopped containers, unused images, BuildKit cache, and (DB-guarded)
+  orphan volumes on every host it touched (app + each `WORKER_HOSTS` entry)
+  at the end of the deploy — opt out with `SKIP_POST_DEPLOY_PRUNE=1`. See
+  `docs/deployment.md` § "Automatic post-deploy cleanup".
 
 ## Automated verification path
 

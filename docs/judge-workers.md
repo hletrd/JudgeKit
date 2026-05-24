@@ -61,7 +61,7 @@ Workers poll `/api/v1/judge/claim` to claim submissions. The claim request inclu
 | `JUDGE_ALLOW_DEFAULT_COMPILE_SECCOMP` | `false` | Explicitly let compile containers fall back to Docker's default seccomp profile |
 | `JUDGE_CONCURRENCY` | `1` | Max concurrent submissions (1-16) |
 | `JUDGE_WORKER_HOSTNAME` | System hostname | Hostname reported to app server |
-| `POLL_INTERVAL` | `2000` | Polling interval in ms |
+| `POLL_INTERVAL` | `500` | Polling interval in ms when the queue has work. Empty-queue polls back off exponentially (×2 per consecutive empty poll) capped at 3 s. Lowering `POLL_INTERVAL` directly reduces pickup latency on a freshly created submission but raises baseline DB QPS proportionally per worker. |
 | `DEAD_LETTER_DIR` | `./dead-letter` | Directory for failed result payloads |
 
 ## Deployment
