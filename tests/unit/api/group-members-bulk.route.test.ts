@@ -38,8 +38,6 @@ vi.mock("@/lib/api/auth", () => ({
   unauthorized: () => new Response(JSON.stringify({ error: "unauthorized" }), { status: 401 }),
   forbidden: () => new Response(JSON.stringify({ error: "forbidden" }), { status: 403 }),
   csrfForbidden: vi.fn(() => null),
-  isAdmin: (role: string) => role === "admin" || role === "super_admin",
-  isInstructor: (role: string) => role === "instructor" || role === "admin" || role === "super_admin",
 }));
 
 vi.mock("@/lib/db-time", () => ({

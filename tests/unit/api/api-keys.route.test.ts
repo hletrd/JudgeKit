@@ -34,7 +34,6 @@ vi.mock("@/lib/api/auth", () => ({
   forbidden: () => new Response(JSON.stringify({ error: "forbidden" }), { status: 403 }),
   notFound: (resource: string) =>
     new Response(JSON.stringify({ error: "notFound", resource }), { status: 404 }),
-  isAdmin: (role: string) => role === "admin" || role === "super_admin",
 }));
 
 vi.mock("@/lib/security/api-rate-limit", () => ({

@@ -32,7 +32,6 @@ vi.mock("@/lib/api/auth", () => ({
   csrfForbidden: csrfForbiddenMock,
   unauthorized: () => NextResponse.json({ error: "unauthorized" }, { status: 401 }),
   forbidden: () => NextResponse.json({ error: "forbidden" }, { status: 403 }),
-  isAdmin: (role: string) => role === "admin" || role === "super_admin",
 }));
 
 vi.mock("@/lib/security/api-rate-limit", () => ({

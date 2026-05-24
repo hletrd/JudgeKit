@@ -37,7 +37,6 @@ vi.mock("@/lib/api/handler", async () => {
   const actual = await vi.importActual<typeof import("@/lib/api/handler")>("@/lib/api/handler");
   return {
     ...actual,
-    isAdmin: (role: string) => role === "admin" || role === "super_admin",
   };
 });
 

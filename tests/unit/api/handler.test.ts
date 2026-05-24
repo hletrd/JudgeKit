@@ -32,11 +32,6 @@ vi.mock("@/lib/api/auth", () => ({
   unauthorized: unauthorizedMock,
   forbidden: forbiddenMock,
   csrfForbidden: csrfForbiddenMock,
-  isAdmin: vi.fn((role: string) => role === "admin" || role === "super_admin"),
-  isInstructor: vi.fn(
-    (role: string) =>
-      role === "admin" || role === "super_admin" || role === "instructor"
-  ),
 }));
 
 vi.mock("@/lib/security/api-rate-limit", () => ({

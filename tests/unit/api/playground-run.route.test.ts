@@ -11,8 +11,6 @@ vi.mock("@/lib/api/auth", () => ({
   unauthorized: () => NextResponse.json({ error: "unauthorized" }, { status: 401 }),
   forbidden: () => NextResponse.json({ error: "forbidden" }, { status: 403 }),
   notFound: (resource: string) => NextResponse.json({ error: "notFound", resource }, { status: 404 }),
-  isAdmin: vi.fn(() => true),
-  isInstructor: vi.fn(() => true),
 }));
 
 vi.mock("@/lib/api/handler", () => ({
@@ -85,8 +83,6 @@ describe("POST /api/v1/playground/run", () => {
       unauthorized: () => NextResponse.json({ error: "unauthorized" }, { status: 401 }),
       forbidden: () => NextResponse.json({ error: "forbidden" }, { status: 403 }),
       notFound: (resource: string) => NextResponse.json({ error: "notFound", resource }, { status: 404 }),
-      isAdmin: vi.fn(() => true),
-      isInstructor: vi.fn(() => true),
     }));
     vi.doMock("@/lib/api/handler", () => ({
       createApiHandler:

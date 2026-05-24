@@ -66,8 +66,6 @@ vi.mock("@/lib/api/auth", () => ({
   forbidden: () => NextResponse.json({ error: "forbidden" }, { status: 403 }),
   notFound: () => NextResponse.json({ error: "notFound" }, { status: 404 }),
   csrfForbidden: () => null,
-  isAdmin: vi.fn(),
-  isInstructor: vi.fn(),
 }));
 
 vi.mock("@/lib/capabilities/cache", () => ({

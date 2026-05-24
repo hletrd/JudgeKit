@@ -39,8 +39,6 @@ vi.mock("@/lib/api/auth", () => ({
   unauthorized: () => NextResponse.json({ error: "unauthorized" }, { status: 401 }),
   forbidden: () => NextResponse.json({ error: "forbidden" }, { status: 403 }),
   notFound: (resource: string) => NextResponse.json({ error: "notFound", resource }, { status: 404 }),
-  isAdmin: vi.fn(() => false),
-  isInstructor: vi.fn(() => false),
 }));
 
 vi.mock("@/lib/security/api-rate-limit", () => ({

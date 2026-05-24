@@ -31,9 +31,6 @@ const {
 vi.mock("@/lib/api/auth", () => ({
   getApiUser: getApiUserMock,
   csrfForbidden: csrfForbiddenMock,
-  isAdmin: (role: string) => role === "admin" || role === "super_admin",
-  isInstructor: (role: string) =>
-    role === "instructor" || role === "admin" || role === "super_admin",
   unauthorized: () => NextResponse.json({ error: "unauthorized" }, { status: 401 }),
   forbidden: () => NextResponse.json({ error: "forbidden" }, { status: 403 }),
 }));

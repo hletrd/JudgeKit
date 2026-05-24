@@ -32,8 +32,6 @@ vi.mock("@/lib/api/handler", () => ({
       const params = routeCtx?.params ? await routeCtx.params : {};
       return handler(req, { user: mockUser, body: undefined as never, params });
     },
-  isAdmin: (role: string) => role === "admin" || role === "super_admin",
-  isInstructor: (role: string) => role === "instructor" || role === "admin" || role === "super_admin",
 }));
 
 vi.mock("@/lib/api/responses", () => ({

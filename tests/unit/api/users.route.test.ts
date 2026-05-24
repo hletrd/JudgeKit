@@ -47,8 +47,6 @@ vi.mock("@/lib/api/auth", () => ({
     new Response(JSON.stringify({ error: "notFound", resource }), {
       status: 404,
     }),
-  isAdmin: (role: string) =>
-    role === "admin" || role === "super_admin",
 }));
 
 vi.mock("@/lib/audit/events", () => ({
