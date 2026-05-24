@@ -12,17 +12,10 @@ import {
   DialogTrigger,
 } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
 import { Pencil } from "lucide-react";
 import { toast } from "sonner";
 import { updateTag } from "@/lib/actions/tag-management";
-
-const COLOR_PALETTE = [
-  "#EF4444", "#F97316", "#F59E0B", "#10B981",
-  "#14B8A6", "#06B6D4", "#3B82F6", "#6366F1",
-  "#8B5CF6", "#A855F7", "#EC4899", "#6B7280",
-];
+import { TagFormFields, type TagFormValue } from "./tag-form-fields";
 
 interface EditTagDialogProps {
   tag: {
@@ -39,43 +32,27 @@ export default function EditTagDialog({ tag }: EditTagDialogProps) {
 
   const [open, setOpen] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
-  const [name, setName] = useState(tag.name);
-  const [color, setColor] = useState<string | null>(tag.color);
-  const [hexInput, setHexInput] = useState(tag.color ?? "");
+  const [form, setForm] = useState<TagFormValue>({
+    name: tag.name,
+    color: tag.color,
+    hexInput: tag.color ?? "",
+  });
 
   useEffect(() => {
     if (open) {
-      setName(tag.name);
-      setColor(tag.color);
-      setHexInput(tag.color ?? "");
+      setForm({ name: tag.name, color: tag.color, hexInput: tag.color ?? "" });
     }
   }, [open, tag]);
-
-  function handleOpenChange(nextOpen: boolean) {
-    setOpen(nextOpen);
-  }
-
-  function handlePaletteSelect(c: string) {
-    setColor(c);
-    setHexInput(c);
-  }
-
-  function handleHexChange(value: string) {
-    setHexInput(value);
-    if (/^#[0-9A-Fa-f]{6}$/.test(value)) {
-      setColor(value);
-    }
-  }
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
     setIsLoading(true);
     try {
-      const result = await updateTag(tag.id, name, color);
+      const result = await updateTag(tag.id, form.name, form.color);
       if (result.success) {
         toast.success(t("updateSuccess"));
         router.refresh();
-        handleOpenChange(false);
+        setOpen(false);
       } else {
         toast.error(t(result.error));
       }
@@ -87,7 +64,7 @@ export default function EditTagDialog({ tag }: EditTagDialogProps) {
   }
 
   return (
-    <Dialog open={open} onOpenChange={handleOpenChange}>
+    <Dialog open={open} onOpenChange={setOpen}>
       <DialogTrigger>
         <Button variant="ghost" size="sm">
           <Pencil className="size-4" />
@@ -98,49 +75,9 @@ export default function EditTagDialog({ tag }: EditTagDialogProps) {
           <DialogHeader>
             <DialogTitle>{t("editTag")}</DialogTitle>
           </DialogHeader>
-          <div className="space-y-2">
-            <Label htmlFor="edit-tag-name">{t("table.name")}</Label>
-            <Input
-              id="edit-tag-name"
-              value={name}
-              onChange={(e) => setName(e.target.value)}
-              required
-            />
-          </div>
-          <div className="space-y-2">
-            <Label>{t("color")} ({tCommon("optional")})</Label>
-            <div className="flex flex-wrap gap-2">
-              {COLOR_PALETTE.map((c) => (
-                <button
-                  key={c}
-                  type="button"
-                  className="size-7 rounded-full border-2 transition-all"
-                  style={{
-                    backgroundColor: c,
-                    borderColor: color === c ? "hsl(var(--foreground))" : "transparent",
-                  }}
-                  onClick={() => handlePaletteSelect(c)}
-                  aria-label={c}
-                />
-              ))}
-              <button
-                type="button"
-                className="size-7 rounded-full border-2 border-dashed border-muted-foreground flex items-center justify-center text-xs text-muted-foreground"
-                onClick={() => { setColor(null); setHexInput(""); }}
-                aria-label={t("noColor")}
-              >
-                ×
-              </button>
-            </div>
-            <Input
-              placeholder="#3B82F6"
-              value={hexInput}
-              onChange={(e) => handleHexChange(e.target.value)}
-              maxLength={7}
-            />
-          </div>
+          <TagFormFields value={form} onChange={setForm} nameInputId="edit-tag-name" />
           <DialogFooter>
-            <Button type="button" variant="outline" onClick={() => handleOpenChange(false)} disabled={isLoading}>
+            <Button type="button" variant="outline" onClick={() => setOpen(false)} disabled={isLoading}>
               {tCommon("cancel")}
             </Button>
             <Button type="submit" disabled={isLoading}>

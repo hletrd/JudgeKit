@@ -12,17 +12,12 @@ import {
   DialogTrigger,
 } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
 import { Plus } from "lucide-react";
 import { toast } from "sonner";
 import { createTag } from "@/lib/actions/tag-management";
+import { TagFormFields, type TagFormValue } from "./tag-form-fields";
 
-const COLOR_PALETTE = [
-  "#EF4444", "#F97316", "#F59E0B", "#10B981",
-  "#14B8A6", "#06B6D4", "#3B82F6", "#6366F1",
-  "#8B5CF6", "#A855F7", "#EC4899", "#6B7280",
-];
+const EMPTY_FORM: TagFormValue = { name: "", color: null, hexInput: "" };
 
 export default function AddTagDialog() {
   const t = useTranslations("admin.tags");
@@ -31,38 +26,18 @@ export default function AddTagDialog() {
 
   const [open, setOpen] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
-  const [name, setName] = useState("");
-  const [color, setColor] = useState<string | null>(null);
-  const [hexInput, setHexInput] = useState("");
-
-  function resetFormState() {
-    setName("");
-    setColor(null);
-    setHexInput("");
-  }
+  const [form, setForm] = useState<TagFormValue>(EMPTY_FORM);
 
   function handleOpenChange(nextOpen: boolean) {
     setOpen(nextOpen);
-    if (!nextOpen) resetFormState();
-  }
-
-  function handlePaletteSelect(c: string) {
-    setColor(c);
-    setHexInput(c);
-  }
-
-  function handleHexChange(value: string) {
-    setHexInput(value);
-    if (/^#[0-9A-Fa-f]{6}$/.test(value)) {
-      setColor(value);
-    }
+    if (!nextOpen) setForm(EMPTY_FORM);
   }
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
     setIsLoading(true);
     try {
-      const result = await createTag(name, color);
+      const result = await createTag(form.name, form.color);
       if (result.success) {
         toast.success(t("createSuccess"));
         router.refresh();
@@ -85,47 +60,7 @@ export default function AddTagDialog() {
           <DialogHeader>
             <DialogTitle>{t("addTag")}</DialogTitle>
           </DialogHeader>
-          <div className="space-y-2">
-            <Label htmlFor="tag-name">{t("table.name")}</Label>
-            <Input
-              id="tag-name"
-              value={name}
-              onChange={(e) => setName(e.target.value)}
-              required
-            />
-          </div>
-          <div className="space-y-2">
-            <Label>{t("color")} ({tCommon("optional")})</Label>
-            <div className="flex flex-wrap gap-2">
-              {COLOR_PALETTE.map((c) => (
-                <button
-                  key={c}
-                  type="button"
-                  className="size-7 rounded-full border-2 transition-all"
-                  style={{
-                    backgroundColor: c,
-                    borderColor: color === c ? "hsl(var(--foreground))" : "transparent",
-                  }}
-                  onClick={() => handlePaletteSelect(c)}
-                  aria-label={c}
-                />
-              ))}
-              <button
-                type="button"
-                className="size-7 rounded-full border-2 border-dashed border-muted-foreground flex items-center justify-center text-xs text-muted-foreground"
-                onClick={() => { setColor(null); setHexInput(""); }}
-                aria-label={t("noColor")}
-              >
-                ×
-              </button>
-            </div>
-            <Input
-              placeholder="#3B82F6"
-              value={hexInput}
-              onChange={(e) => handleHexChange(e.target.value)}
-              maxLength={7}
-            />
-          </div>
+          <TagFormFields value={form} onChange={setForm} nameInputId="tag-name" />
           <DialogFooter>
             <Button type="button" variant="outline" onClick={() => handleOpenChange(false)} disabled={isLoading}>
               {tCommon("cancel")}
