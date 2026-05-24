@@ -319,12 +319,22 @@ remote_rsync() {
     fi
 }
 
-# Aggressive but DB-safe post-deploy cleanup. Removes stopped containers,
-# unused/dangling images, BuildKit cache, and orphan named volumes —
-# preserving everything any running container references. The DB volume
-# is preserved because docker volume prune skips volumes attached to
-# running containers, and we explicitly verify judgekit-db is up before
-# pruning volumes (per CLAUDE.md "never docker system prune --volumes").
+# DB-safe post-deploy cleanup. Removes stopped containers, dangling
+# (untagged) images, BuildKit cache, and orphan named volumes — preserving
+# every tagged image and every volume attached to a running container.
+#
+# CRITICAL: this MUST NOT use `docker image prune -af`. Judge language
+# images (judge-cpp, judge-python, judge-mercury, ...) are tagged but are
+# *not* attached to any long-running container — the worker spawns a fresh
+# container from them on demand for each submission and tears it down
+# afterward. `-af` would therefore see them as "unused" and wipe them all,
+# breaking judging across every target (this happened in the May 2026
+# rollout of the prune step before this comment landed). `-f` alone keeps
+# them: it only prunes images that have no tag, i.e. <none>:<none> layers
+# left over from `docker build` rebuilds. Each rebuild of, say,
+# judgekit-app:latest re-tags the new image with :latest and leaves the
+# old image dangling, so `-f` is enough to keep disk usage bounded across
+# repeated deploys.
 #
 # Honors SKIP_POST_DEPLOY_PRUNE=1 for opt-out (e.g., debugging a deploy
 # where you want to inspect the old images before they go away).
@@ -340,11 +350,13 @@ prune_old_docker_artifacts() {
         info "SKIP_POST_DEPLOY_PRUNE set — leaving stale images/volumes on ${host_label} (manual cleanup required to free disk)"
         return 0
     fi
-    info "Post-deploy cleanup on ${host_label}: stopped containers, unused images, build cache, orphan volumes..."
+    info "Post-deploy cleanup on ${host_label}: stopped containers, dangling images, build cache, orphan volumes..."
     local db_running
     db_running=$("$runner" "docker ps --filter name=judgekit-db --filter status=running --format '{{.Names}}' | head -1" 2>/dev/null | tr -d '\r\n ')
     "$runner" "docker container prune -f 2>&1 | tail -1" || true
-    "$runner" "docker image prune -af 2>&1 | tail -1" || true
+    # -f (NOT -af): dangling only — preserves judge-* language images that
+    # are tagged but not currently attached to any running container.
+    "$runner" "docker image prune -f 2>&1 | tail -1" || true
     "$runner" "docker builder prune -af 2>&1 | tail -1" || true
     if [[ -n "$db_running" ]]; then
         "$runner" "docker volume prune -f 2>&1 | tail -1" || true

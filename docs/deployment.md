@@ -226,11 +226,9 @@ past (see commit history for the Apr 2026 incident).
 - `docker compose -f docker-compose.production.yml restart` — safe
 - `docker compose -f docker-compose.production.yml up -d` — safe (no volume changes)
 - `docker compose -f docker-compose.production.yml down` — safe (keeps volumes)
-- `docker image prune -f` — safe (only removes dangling `<none>` images)
-- `docker image prune -af` — safe **only when the running container set is the
-  intended target.** Removes any image not referenced by a container. After
-  `docker compose up -d` recreates containers with the new build, old image
-  tags are reclaimable; this is exactly what the post-deploy step does.
+- `docker image prune -f` — safe (only removes dangling `<none>:<none>` images
+  left over from `docker build` rebuilds). Does **not** touch tagged judge
+  language images.
 - `docker volume prune -f` — safe **only while `judgekit-db` is running.**
   The DB volume is preserved because docker skips volumes attached to running
   containers. `deploy-docker.sh` verifies the DB is up before invoking this.
@@ -239,6 +237,12 @@ past (see commit history for the Apr 2026 incident).
 
 - `docker compose down -v` — **deletes `judgekit-pgdata`**. Use `down` without `-v`.
 - `docker volume rm judgekit_judgekit-pgdata` — destroys the cluster
+- `docker image prune -af` — **wipes every judge-* language image** because
+  none of them is attached to a long-running container; the judge worker
+  spawns a fresh container from `judge-cpp:latest` etc. per submission and
+  tears it down afterward, so `prune -af` sees the tagged image as "unused"
+  and reclaims it. Rebuilding the full language set is multi-hour. This is
+  why `deploy-docker.sh` uses `-f` (dangling only), not `-af`.
 - `docker volume prune -af` — indiscriminate, can delete mounted volumes on stopped containers
 - `docker volume prune -f` **while the DB container is stopped** — same risk
 - `docker system prune -a --volumes` — same, destructive across the board
@@ -251,8 +255,10 @@ The helper executes (in this order, all safe per the "Safe operations" list
 above):
 
 1. `docker container prune -f` — stopped containers
-2. `docker image prune -af` — unused images (covers dangling builds and the
-   prior `:latest` of every rebuilt judge language image)
+2. `docker image prune -f` — **dangling only** (untagged `<none>:<none>`
+   layers from rebuilds). Tagged judge language images are intentionally
+   preserved; `-af` would wipe them because the worker only attaches to
+   each language image transiently per submission.
 3. `docker builder prune -af` — BuildKit cache
 4. `docker volume prune -f` — only after asserting `judgekit-db` is running
    (skipped with a warning otherwise; rerun the deploy or invoke the helper
