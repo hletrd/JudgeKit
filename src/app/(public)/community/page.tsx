@@ -6,7 +6,7 @@ import { Button } from "@/components/ui/button";
 import { DiscussionThreadList } from "@/components/discussions/discussion-thread-list";
 import { DiscussionVoteButtons } from "@/components/discussions/discussion-vote-buttons";
 import { MyDiscussionsList } from "@/components/discussions/my-discussions-list";
-import { listGeneralDiscussionThreads, listUserDiscussionThreads } from "@/lib/discussions/data";
+import { listAllProblemDiscussionThreads, listGeneralDiscussionThreads, listUserDiscussionThreads } from "@/lib/discussions/data";
 import { JsonLd } from "@/components/seo/json-ld";
 import { buildAbsoluteUrl, buildLocalePath, buildPublicMetadata, summarizeTextForMetadata } from "@/lib/seo";
 import { getResolvedSystemSettings } from "@/lib/system-settings";
@@ -40,11 +40,12 @@ export async function generateMetadata(): Promise<Metadata> {
 export default async function CommunityPage({
   searchParams,
 }: {
-  searchParams?: Promise<{ sort?: string; filter?: string }>;
+  searchParams?: Promise<{ sort?: string; filter?: string; scope?: string }>;
 }) {
   const resolvedSearchParams = searchParams ? await searchParams : undefined;
   const sort = resolvedSearchParams?.sort === "popular" ? "popular" : "newest";
   const filter = resolvedSearchParams?.filter === "mine" ? "mine" : "all";
+  const scope = resolvedSearchParams?.scope === "problems" ? "problems" : "general";
   const [t, tCommon, session, locale] = await Promise.all([
     getTranslations("publicShell"),
     getTranslations("common"),
@@ -52,8 +53,17 @@ export default async function CommunityPage({
     getLocale(),
   ]);
   const communityHref = buildLocalePath("/community", locale);
-  const popularHref = `${communityHref}?sort=popular`;
-  const myDiscussionsHref = `${communityHref}?filter=mine`;
+  // buildLocalePath returns the path with `?locale=ko` already appended on
+  // non-default locales. Concatenating another `?...` produces an invalid
+  // double-question-mark URL that Next.js parses as a single
+  // `locale=ko?sort=popular` query param, so the page never sees `sort` or
+  // `filter` and silently falls back to defaults. Use `&` when the base
+  // already has a query string, `?` otherwise.
+  const querySep = communityHref.includes("?") ? "&" : "?";
+  const popularHref = `${communityHref}${querySep}sort=popular`;
+  const myDiscussionsHref = `${communityHref}${querySep}filter=mine`;
+  const problemDiscussionsHref = `${communityHref}${querySep}scope=problems`;
+  const problemDiscussionsPopularHref = `${communityHref}${querySep}scope=problems&sort=popular`;
 
   // "My Discussions" tab — only shown when authenticated
   if (filter === "mine" && session?.user) {
@@ -87,7 +97,21 @@ export default async function CommunityPage({
     );
   }
 
-  const threads = await listGeneralDiscussionThreads(sort, session?.user?.id ?? null);
+  const threads = scope === "problems"
+    ? await listAllProblemDiscussionThreads(
+        sort,
+        session?.user ? { userId: session.user.id, role: session.user.role } : null,
+      )
+    : await listGeneralDiscussionThreads(sort, session?.user?.id ?? null);
+  const activeListTitle = scope === "problems"
+    ? t("community.problemTalk.title")
+    : t("community.liveTitle");
+  const activeListDescription = scope === "problems"
+    ? t("community.problemTalk.description")
+    : t("community.liveDescription");
+  const activeListEmpty = scope === "problems"
+    ? t("community.problemTalk.empty")
+    : t("community.empty");
   const communityJsonLd = {
     "@context": "https://schema.org",
     "@type": "CollectionPage",
@@ -112,14 +136,26 @@ export default async function CommunityPage({
       <JsonLd data={communityJsonLd} />
       <div className="space-y-6">
         <div className="flex flex-wrap gap-2">
-          <Link href={communityHref}>
+          <Link href={scope === "problems" ? problemDiscussionsHref : communityHref}>
             <Button variant={sort === "newest" ? "default" : "outline"} size="sm">
               {t("community.sortNewest")}
             </Button>
           </Link>
-          <Link href={popularHref}>
+          <Link href={scope === "problems" ? problemDiscussionsPopularHref : popularHref}>
             <Button variant={sort === "popular" ? "default" : "outline"} size="sm">
               {t("community.sortPopular")}
+            </Button>
+          </Link>
+        </div>
+        <div className="flex flex-wrap gap-2 border-t pt-3">
+          <Link href={communityHref}>
+            <Button variant={scope === "general" ? "default" : "outline"} size="sm">
+              {t("community.scope.general")}
+            </Button>
+          </Link>
+          <Link href={problemDiscussionsHref}>
+            <Button variant={scope === "problems" ? "default" : "outline"} size="sm">
+              {t("community.scope.problems")}
             </Button>
           </Link>
           {session?.user ? (
@@ -143,23 +179,41 @@ export default async function CommunityPage({
           </Link>
         )}
         <DiscussionThreadList
-          title={t("community.liveTitle")}
+          title={activeListTitle}
           titleAs="h1"
-          description={t("community.liveDescription")}
-          emptyLabel={t("community.empty")}
+          description={activeListDescription}
+          emptyLabel={activeListEmpty}
           openLabel={t("community.openThread")}
           pinnedLabel={t("community.pinned")}
           lockedLabel={t("community.locked")}
           locale={locale}
-          threads={threads.map((thread) => ({
+          threads={threads.map((thread) => {
+            // Problem-scope threads link to the problem's discussion tab so
+            // the thread is read in context. General-scope threads link to
+            // the standalone thread page as before.
+            // Narrow `thread.problem` for TypeScript: the general-list rows
+            // don't include the field at all (its shape is `Thread`, not
+            // `Thread & { problem: ... }`), so the conditional has to be a
+            // runtime structural check rather than an `in` test.
+            const problemRelation =
+              scope === "problems" && "problem" in thread
+                ? (thread as { problem?: { id: string; title: string } | null }).problem ?? null
+                : null;
+            const href = problemRelation
+              ? buildLocalePath(`/problems/${problemRelation.id}#thread-${thread.id}`, locale)
+              : buildLocalePath(`/community/threads/${thread.id}`, locale);
+            const problemBadge = problemRelation
+              ? `[${problemRelation.title}] ${thread.scopeType === "solution" ? t("community.scope.solutionBadge") : t("community.scope.questionBadge")}`
+              : null;
+            return {
             id: thread.id,
-            title: thread.title,
+            title: problemBadge ? `${problemBadge} · ${thread.title}` : thread.title,
             content: thread.content,
             authorName: thread.author?.name ?? t("community.unknownAuthor"),
             replyCountLabel: t("community.replyCount", { count: thread.posts.length }),
             locked: Boolean(thread.lockedAt),
             pinned: Boolean(thread.pinnedAt),
-            href: buildLocalePath(`/community/threads/${thread.id}`, locale),
+            href,
             actions: (
               <DiscussionVoteButtons
                 targetType="thread"
@@ -172,7 +226,8 @@ export default async function CommunityPage({
                 voteFailedLabel={t("community.voteFailed")}
               />
             ),
-          }))}
+          };
+          })}
         />
       </div>
     </>
