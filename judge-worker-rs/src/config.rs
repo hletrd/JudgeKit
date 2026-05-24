@@ -41,6 +41,14 @@ pub struct Config {
     /// registration fails. Defaults to false and should only be enabled in
     /// controlled local/dev environments.
     pub allow_unregistered_mode: bool,
+    /// Comma-separated list of judge-* image names to prewarm at startup
+    /// by running `docker run --rm <image> true`. The dummy command exits
+    /// immediately but the image layers are read from disk into the OS
+    /// page cache, cutting cold-spawn latency for the FIRST submission
+    /// that targets each language by 100-200ms. Defaults to the popular
+    /// language set; set to empty string to disable.
+    /// Configurable via `WORKER_PREWARM_IMAGES` env var.
+    pub prewarm_images: Vec<String>,
 }
 
 impl Config {
@@ -276,6 +284,24 @@ impl Config {
             Err(_) => false,
         };
 
+        // Default: the same "popular" set deploy-docker.sh builds by default.
+        // Setting WORKER_PREWARM_IMAGES="" disables prewarm entirely.
+        let prewarm_images: Vec<String> = match env::var("WORKER_PREWARM_IMAGES") {
+            Ok(val) => val
+                .split(',')
+                .map(|s| s.trim().to_string())
+                .filter(|s| !s.is_empty())
+                .collect(),
+            Err(_) => vec![
+                "judge-cpp".to_string(),
+                "judge-python".to_string(),
+                "judge-jvm".to_string(),
+                "judge-node".to_string(),
+                "judge-rust".to_string(),
+                "judge-go".to_string(),
+            ],
+        };
+
         Ok(Config {
             claim_url,
             report_url,
@@ -296,6 +322,7 @@ impl Config {
             runner_port,
             runner_concurrency,
             allow_unregistered_mode,
+            prewarm_images,
         })
     }
 }

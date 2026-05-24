@@ -250,6 +250,59 @@ async fn main() {
                 heartbeat_interval_ms = resp.data.heartbeat_interval_ms,
                 "Registered with app server"
             );
+            // Fire-and-forget: bring popular language images into the OS
+            // page cache so the FIRST submission targeting each language
+            // doesn't pay the cold-disk read cost on top of docker spawn.
+            // Each prewarm is a one-shot `docker run --rm <image> true`
+            // capped at 10 s; failures are logged and ignored so a missing
+            // image (or a worker host that doesn't have the popular set
+            // locally) doesn't block the main poll loop.
+            if !config.prewarm_images.is_empty() {
+                let images = config.prewarm_images.clone();
+                tokio::spawn(async move {
+                    for image in images {
+                        let started = std::time::Instant::now();
+                        let res = tokio::time::timeout(
+                            std::time::Duration::from_secs(10),
+                            tokio::process::Command::new("docker")
+                                .args([
+                                    "run",
+                                    "--rm",
+                                    "--cpus=0.5",
+                                    "--memory=16m",
+                                    "--security-opt=no-new-privileges",
+                                    &image,
+                                    "true",
+                                ])
+                                .output(),
+                        )
+                        .await;
+                        match res {
+                            Ok(Ok(output)) if output.status.success() => {
+                                tracing::info!(
+                                    image = %image,
+                                    elapsed_ms = started.elapsed().as_millis() as u64,
+                                    "Prewarmed language image"
+                                );
+                            }
+                            Ok(Ok(output)) => {
+                                let stderr = String::from_utf8_lossy(&output.stderr);
+                                tracing::warn!(
+                                    image = %image,
+                                    stderr = %stderr.trim(),
+                                    "Prewarm dummy-run exited non-zero (image probably missing locally)"
+                                );
+                            }
+                            Ok(Err(e)) => {
+                                tracing::warn!(image = %image, error = %e, "Prewarm docker invocation failed");
+                            }
+                            Err(_) => {
+                                tracing::warn!(image = %image, "Prewarm timed out after 10s");
+                            }
+                        }
+                    }
+                });
+            }
             (
                 Some(resp.data.worker_id),
                 resp.data.worker_secret,
