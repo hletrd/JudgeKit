@@ -75,6 +75,8 @@ export default function ChatWidgetAdminConfig({ config, onSave }: PluginAdminPro
     "claude-opus-4-20250514": "Claude Opus 4",
     "claude-sonnet-4-5-20250929": "Claude Sonnet 4.5",
     "claude-opus-4-5-20251101": "Claude Opus 4.5",
+    "gemini-3.5-flash": "Gemini 3.5 Flash",
+    "gemini-3-flash-preview": "Gemini 3 Flash (Preview)",
     "gemini-3.1-flash-lite": "Gemini 3.1 Flash Lite",
     "gemini-3.1-pro-preview": "Gemini 3.1 Pro",
     "gemini-2.5-pro": "Gemini 2.5 Pro",
@@ -222,6 +224,8 @@ export default function ChatWidgetAdminConfig({ config, onSave }: PluginAdminPro
                 )}
                 {provider === "gemini" && (
                   <>
+                    <SelectItem value="gemini-3.5-flash" label="Gemini 3.5 Flash">Gemini 3.5 Flash</SelectItem>
+                    <SelectItem value="gemini-3-flash-preview" label="Gemini 3 Flash (Preview)">Gemini 3 Flash (Preview)</SelectItem>
                     <SelectItem value="gemini-3.1-flash-lite" label="Gemini 3.1 Flash Lite">Gemini 3.1 Flash Lite</SelectItem>
                     <SelectItem value="gemini-3.1-pro-preview" label="Gemini 3.1 Pro">Gemini 3.1 Pro</SelectItem>
                     <SelectItem value="gemini-2.5-pro" label="Gemini 2.5 Pro">Gemini 2.5 Pro</SelectItem>
