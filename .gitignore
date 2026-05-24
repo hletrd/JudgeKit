@@ -98,3 +98,9 @@ algo-admin-*.json
 /scripts/fix-copyright.mjs
 /scripts/validate-enhance-201-300.mjs
 /scripts/validate-enhance-basic.mjs
+
+# NFS sentinel files (created when a file is unlinked while still open on
+# another NFS client; the kernel renames the open file to .nfs.<hex> until
+# the last fd closes). Surfaced this session when concurrent editors held
+# deploy-docker.sh open during an Edit-driven rewrite.
+.nfs*
