@@ -119,12 +119,25 @@ export async function sanitizeSubmissionForViewer(
 
   if (hideResults) {
     sanitized.results = [];
-    sanitized.compileOutput = null;
     sanitized.executionTimeMs = null;
     sanitized.memoryUsedKb = null;
     sanitized.score = null;
     sanitized.failedTestCaseIndex = null;
-    sanitized.runtimeErrorType = null;
+    // Compile error output and runtime error type describe the user's OWN
+    // code, not the test-case expected output or score. Keeping them when
+    // hideResults is on lets the submitter actually fix their broken code
+    // — they could see the same information by re-running locally — while
+    // still hiding everything that reveals the assignment's grading state
+    // (per-test outputs, total score, failed test index). The
+    // problem-level showCompileOutput / showRuntimeErrors gates were
+    // already applied above and still take effect here.
+    const status = typeof sanitized.status === "string" ? sanitized.status : null;
+    if (status !== "compile_error") {
+      sanitized.compileOutput = null;
+    }
+    if (status !== "runtime_error") {
+      sanitized.runtimeErrorType = null;
+    }
   } else if (hideScores) {
     sanitized.score = null;
   }
