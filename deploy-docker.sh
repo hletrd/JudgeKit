@@ -126,14 +126,22 @@ EXTENDED_LANGS="$POPULAR_LANGS ruby lua bash csharp php perl swift r haskell dar
 # ALL_LANGS used to ship every language image we have a Dockerfile for.
 # A handful of obscure functional/research languages have no prebuilt aarch64
 # binaries, so building them on an ARM deploy target compiles their entire
-# compiler + stdlib from source — historically the slowest was mercury
-# (13 build grades × full stdlib rebuild each = ~3 hours), but that was a
-# Dockerfile defect (no --enable-libgrades restriction) — fixed separately
-# so mercury is back in ALL_LANGS. The remaining 17 are still excluded
-# because nobody on production currently submits in them. Build them
-# deliberately with LANGUAGE_FILTER=cpp,carp,chapel,... when you need them.
-ARM_PROHIBITIVE_LANGS="carp chapel clean curry elm factor flix grain idris2 minizinc modula2 moonbit pony purescript rescript roc wat"
-ALL_LANGS="cpp clang python pypy node jvm rust go swift csharp r perl php ruby lua haskell dart zig nim ocaml elixir julia d racket v fortran pascal cobol brainfuck scala erlang commonlisp bash esoteric ada clojure prolog tcl awk scheme groovy octave crystal powershell postscript fsharp apl freebasic smalltalk b nasm bqn lolcode forth algol68 umjunsik haxe raku shakespeare snobol4 icon uiua odin objective-c deno bun gleam sml micropython squirrel rexx hy arturo janet c3 vala nelua hare koka lean picat mercury"
+# compiler + stdlib from source — none of them currently receive production
+# submissions. They're excluded from "all" by default; build them
+# deliberately with LANGUAGE_FILTER=cpp,carp,chapel,... when you need them,
+# or LANGUAGE_FILTER=everything to include all of them.
+#
+# Mercury is the worst offender: its install script iterates through 13
+# library "grades" (hlc.gc, hlc.par.gc, reg.gc.debug.stseg, ...) and
+# rebuilds the entire stdlib + runtime for each one. The
+# `--enable-libgrades=hlc.gc` configure flag does NOT short-circuit that
+# loop — empirically (auraedu, May 2026) the install scripts still iterate
+# through every grade name regardless. A full aarch64 mercury build runs
+# ~3 hours wall time on a 3-core instance even with --enable-libgrades set.
+# Worth revisiting later by patching Mercury's Mmakefile directly, but for
+# now mercury stays in the prohibitive set.
+ARM_PROHIBITIVE_LANGS="carp chapel clean curry elm factor flix grain idris2 mercury minizinc modula2 moonbit pony purescript rescript roc wat"
+ALL_LANGS="cpp clang python pypy node jvm rust go swift csharp r perl php ruby lua haskell dart zig nim ocaml elixir julia d racket v fortran pascal cobol brainfuck scala erlang commonlisp bash esoteric ada clojure prolog tcl awk scheme groovy octave crystal powershell postscript fsharp apl freebasic smalltalk b nasm bqn lolcode forth algol68 umjunsik haxe raku shakespeare snobol4 icon uiua odin objective-c deno bun gleam sml micropython squirrel rexx hy arturo janet c3 vala nelua hare koka lean picat"
 
 resolve_languages() {
   local spec="$1"
