@@ -17,9 +17,18 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
       mkdir -p /tmp/mercury-build && \
       tar xzf /tmp/mercury-src.tar.gz -C /tmp/mercury-build --strip-components=1 && \
       cd /tmp/mercury-build && \
-      ./configure --prefix=/usr/local && \
-      make && \
-      make install && \
+      # --enable-libgrades=hlc.gc: install only the single high-level-C +
+      #     Boehm GC grade. Without this Mercury's "make install" iterates
+      #     through 13 grades (hlc.gc, reg.gc, reg.gc.debug.stseg, ...),
+      #     each one a full stdlib rebuild — that single phase took ~2 hours
+      #     on a 3-core aarch64 deploy host before this change. The judge
+      #     never compiles user code in any non-default grade, so installing
+      #     them all is pure waste.
+      # MAKEFLAGS=-j$(nproc): parallelise stdlib C compilation. Mercury's
+      #     install scripts spawn one cc1 per .c at a time without -j.
+      ./configure --prefix=/usr/local --enable-libgrades=hlc.gc && \
+      make -j"$(nproc)" && \
+      make -j"$(nproc)" install && \
       rm -rf /tmp/mercury-build /tmp/mercury-src.tar.gz; \
     fi && \
     apt-get purge -y curl wget && apt-get autoremove -y && rm -rf /var/lib/apt/lists/* && \

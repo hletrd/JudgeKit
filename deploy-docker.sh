@@ -126,13 +126,14 @@ EXTENDED_LANGS="$POPULAR_LANGS ruby lua bash csharp php perl swift r haskell dar
 # ALL_LANGS used to ship every language image we have a Dockerfile for.
 # A handful of obscure functional/research languages have no prebuilt aarch64
 # binaries, so building them on an ARM deploy target compiles their entire
-# compiler + stdlib from source for every grade — mercury alone runs 13
-# build grades and took ~3 hours on a 3-core / 6 GB instance, with nobody
-# actually using these languages for submissions on production. They're
-# excluded from "all" by default; build them deliberately with
-# LANGUAGE_FILTER=cpp,mercury,carp,... when you need them.
-ARM_PROHIBITIVE_LANGS="mercury carp chapel clean curry elm factor flix grain idris2 minizinc modula2 moonbit pony purescript rescript roc wat"
-ALL_LANGS="cpp clang python pypy node jvm rust go swift csharp r perl php ruby lua haskell dart zig nim ocaml elixir julia d racket v fortran pascal cobol brainfuck scala erlang commonlisp bash esoteric ada clojure prolog tcl awk scheme groovy octave crystal powershell postscript fsharp apl freebasic smalltalk b nasm bqn lolcode forth algol68 umjunsik haxe raku shakespeare snobol4 icon uiua odin objective-c deno bun gleam sml micropython squirrel rexx hy arturo janet c3 vala nelua hare koka lean picat"
+# compiler + stdlib from source — historically the slowest was mercury
+# (13 build grades × full stdlib rebuild each = ~3 hours), but that was a
+# Dockerfile defect (no --enable-libgrades restriction) — fixed separately
+# so mercury is back in ALL_LANGS. The remaining 17 are still excluded
+# because nobody on production currently submits in them. Build them
+# deliberately with LANGUAGE_FILTER=cpp,carp,chapel,... when you need them.
+ARM_PROHIBITIVE_LANGS="carp chapel clean curry elm factor flix grain idris2 minizinc modula2 moonbit pony purescript rescript roc wat"
+ALL_LANGS="cpp clang python pypy node jvm rust go swift csharp r perl php ruby lua haskell dart zig nim ocaml elixir julia d racket v fortran pascal cobol brainfuck scala erlang commonlisp bash esoteric ada clojure prolog tcl awk scheme groovy octave crystal powershell postscript fsharp apl freebasic smalltalk b nasm bqn lolcode forth algol68 umjunsik haxe raku shakespeare snobol4 icon uiua odin objective-c deno bun gleam sml micropython squirrel rexx hy arturo janet c3 vala nelua hare koka lean picat mercury"
 
 resolve_languages() {
   local spec="$1"

@@ -221,15 +221,18 @@ end beh;
 
 ### ARM-prohibitive set (excluded from `all` by default)
 
-`mercury, carp, chapel, clean, curry, elm, factor, flix, grain, idris2,
+`carp, chapel, clean, curry, elm, factor, flix, grain, idris2,
 minizinc, modula2, moonbit, pony, purescript, rescript, roc, wat`
 
 These compilers have no prebuilt aarch64 binaries, so an arm64 deploy must
-build them (and their stdlibs) entirely from source. Mercury alone iterates
-through 13 build grades — each one a full stdlib + runtime rebuild — and
-takes ~3 hours on a 3-core ARM instance. None of them currently receive
-production submissions, so they are excluded from `all` to keep aarch64
-deploy times reasonable.
+build them (and their stdlibs) entirely from source. None of them currently
+receive production submissions, so they are excluded from `all` to keep
+aarch64 deploy times reasonable.
+
+(Mercury used to be in this list — its install step iterated through 13
+build grades and took ~3 hours — but `docker/Dockerfile.judge-mercury`
+now pins `--enable-libgrades=hlc.gc` and uses parallel `make -jN`, so
+mercury builds in a few minutes on aarch64 and stays in `all`.)
 
 If you actually need to ship one of them, request it explicitly:
 
