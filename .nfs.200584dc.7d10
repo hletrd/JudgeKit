@@ -123,16 +123,7 @@ APP_PORT=3100
 CORE_LANGS="cpp python jvm"
 POPULAR_LANGS="$CORE_LANGS node rust go"
 EXTENDED_LANGS="$POPULAR_LANGS ruby lua bash csharp php perl swift r haskell dart zig"
-# ALL_LANGS used to ship every language image we have a Dockerfile for.
-# A handful of obscure functional/research languages have no prebuilt aarch64
-# binaries, so building them on an ARM deploy target compiles their entire
-# compiler + stdlib from source for every grade — mercury alone runs 13
-# build grades and took ~3 hours on a 3-core / 6 GB instance, with nobody
-# actually using these languages for submissions on production. They're
-# excluded from "all" by default; build them deliberately with
-# LANGUAGE_FILTER=cpp,mercury,carp,... when you need them.
-ARM_PROHIBITIVE_LANGS="mercury carp chapel clean curry elm factor flix grain idris2 minizinc modula2 moonbit pony purescript rescript roc wat"
-ALL_LANGS="cpp clang python pypy node jvm rust go swift csharp r perl php ruby lua haskell dart zig nim ocaml elixir julia d racket v fortran pascal cobol brainfuck scala erlang commonlisp bash esoteric ada clojure prolog tcl awk scheme groovy octave crystal powershell postscript fsharp apl freebasic smalltalk b nasm bqn lolcode forth algol68 umjunsik haxe raku shakespeare snobol4 icon uiua odin objective-c deno bun gleam sml micropython squirrel rexx hy arturo janet c3 vala nelua hare koka lean picat"
+ALL_LANGS="cpp clang python pypy node jvm rust go swift csharp r perl php ruby lua haskell dart zig nim ocaml elixir julia d racket v fortran pascal cobol brainfuck scala erlang commonlisp bash esoteric ada clojure prolog tcl awk scheme groovy octave crystal powershell postscript fsharp apl freebasic smalltalk b nasm bqn lolcode forth algol68 umjunsik haxe raku shakespeare snobol4 icon uiua odin objective-c deno bun gleam sml micropython squirrel rexx hy arturo janet c3 vala nelua hare koka lean picat mercury wat purescript modula2 factor minizinc curry clean roc carp grain pony chapel elm flix idris2 moonbit rescript"
 
 resolve_languages() {
   local spec="$1"
@@ -142,10 +133,6 @@ resolve_languages() {
     extended) echo "$EXTENDED_LANGS" ;;
     all)      echo "$ALL_LANGS" ;;
     none)     echo "" ;;
-    # Escape hatch for the rare case you really do want the ARM-prohibitive
-    # set. Builds the (already huge) ALL_LANGS plus mercury/carp/chapel/...
-    # on aarch64 this can take several hours and ~30 GB of disk per cycle.
-    everything) echo "$ALL_LANGS $ARM_PROHIBITIVE_LANGS" ;;
     *)        echo "$spec" | tr ',' ' ' ;;
   esac
 }
@@ -178,18 +165,12 @@ for arg in "$@"; do
       echo "  INCLUDE_WORKER=false  — Persistently disable the local worker for this target"
       echo "  BUILD_WORKER_IMAGE=false — Persistently skip the judge-worker image build"
       echo ""
-      echo "Language presets: core, popular, extended, all, everything, none"
-      echo "  core       — C/C++, Python, Java/Kotlin (~1.2 GB)"
-      echo "  popular    — Core + Node.js, Rust, Go (~4 GB)"
-      echo "  extended   — Popular + Ruby, Lua, Bash, C#, PHP, Perl, Swift, R, Haskell, Dart, Zig (~12 GB)"
-      echo "  all        — Everything except the ARM-prohibitive set below (~30 GB)"
-      echo "  everything — all + mercury/carp/chapel/clean/curry/elm/factor/flix/grain/idris2/"
-      echo "                minizinc/modula2/moonbit/pony/purescript/rescript/roc/wat."
-      echo "                These 18 have no prebuilt aarch64 binaries; mercury alone runs"
-      echo "                13 build grades and pushes a typical aarch64 deploy past 3 hours."
-      echo "                Use only when you actually need them — nothing on production"
-      echo "                currently submits in these languages."
-      echo "  none       — Skip language image builds"
+      echo "Language presets: core, popular, extended, all, none"
+      echo "  core     — C/C++, Python, Java/Kotlin (~1.2 GB)"
+      echo "  popular  — Core + Node.js, Rust, Go (~4 GB)"
+      echo "  extended — Popular + Ruby, Lua, Bash, C#, PHP, Perl, Swift, R, Haskell, Dart, Zig (~12 GB)"
+      echo "  all      — All supported language images (~30 GB)"
+      echo "  none     — Skip language image builds"
       exit 0
       ;;
   esac

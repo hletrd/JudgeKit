@@ -75,7 +75,9 @@ ADMIN_USERNAME=admin ADMIN_PASSWORD=admin123 npm run seed
 npm run languages:sync
 
 # Build judge language Docker images (pick a preset)
-# Presets: core (~0.8 GB), popular (~2.5 GB), extended (~8 GB), all (~14 GB)
+# Presets: core (~0.8 GB), popular (~2.5 GB), extended (~8 GB), all (~30 GB),
+# everything (~35 GB, multi-hour aarch64 build — includes the rarely-used
+# ARM-prohibitive language set; see docs/languages.md for the full list)
 for img in cpp python jvm; do
   docker build -t "judge-${img}" -f "docker/Dockerfile.judge-${img}" .
 done
