@@ -40,6 +40,12 @@ type SystemSettingsFormProps = {
   initialEmailVerificationRequired: boolean;
   initialCommunityUpvoteEnabled: boolean;
   initialCommunityDownvoteEnabled: boolean;
+  initialSmtpHost: string;
+  initialSmtpPort: string;
+  initialSmtpSecure: boolean;
+  initialSmtpUser: string;
+  initialSmtpPassMasked: string;
+  initialSmtpFrom: string;
   initialSignupHcaptchaEnabled: boolean;
   initialHcaptchaSiteKey: string;
   initialHcaptchaSecretMasked: string;
@@ -72,6 +78,12 @@ export function SystemSettingsForm({
   initialEmailVerificationRequired,
   initialCommunityUpvoteEnabled,
   initialCommunityDownvoteEnabled,
+  initialSmtpHost,
+  initialSmtpPort,
+  initialSmtpSecure,
+  initialSmtpUser,
+  initialSmtpPassMasked,
+  initialSmtpFrom,
   initialSignupHcaptchaEnabled,
   initialHcaptchaSiteKey,
   initialHcaptchaSecretMasked,
@@ -91,6 +103,12 @@ export function SystemSettingsForm({
   const [emailVerificationRequired, setEmailVerificationRequired] = useState(initialEmailVerificationRequired);
   const [communityUpvoteEnabled, setCommunityUpvoteEnabled] = useState(initialCommunityUpvoteEnabled);
   const [communityDownvoteEnabled, setCommunityDownvoteEnabled] = useState(initialCommunityDownvoteEnabled);
+  const [smtpHost, setSmtpHost] = useState(initialSmtpHost);
+  const [smtpPort, setSmtpPort] = useState(initialSmtpPort);
+  const [smtpSecure, setSmtpSecure] = useState(initialSmtpSecure);
+  const [smtpUser, setSmtpUser] = useState(initialSmtpUser);
+  const [smtpPass, setSmtpPass] = useState(initialSmtpPassMasked);
+  const [smtpFrom, setSmtpFrom] = useState(initialSmtpFrom);
   const [signupHcaptchaEnabled, setSignupHcaptchaEnabled] = useState(initialSignupHcaptchaEnabled);
   const [hcaptchaSiteKey, setHcaptchaSiteKey] = useState(initialHcaptchaSiteKey);
   const [hcaptchaSecret, setHcaptchaSecret] = useState(initialHcaptchaSecretMasked);
@@ -144,6 +162,12 @@ export function SystemSettingsForm({
         emailVerificationRequired,
         communityUpvoteEnabled,
         communityDownvoteEnabled,
+        smtpHost,
+        smtpPort: smtpPort ? Number(smtpPort) : undefined,
+        smtpSecure,
+        smtpUser,
+        ...(smtpPass !== initialSmtpPassMasked ? { smtpPass } : {}),
+        smtpFrom,
         signupHcaptchaEnabled,
         hcaptchaSiteKey,
         // Only send secret if user actually changed it from the masked placeholder
@@ -319,6 +343,39 @@ export function SystemSettingsForm({
           <span>{t("communityDownvoteEnabled")}</span>
         </label>
         <p className="text-xs text-muted-foreground">{t("communityVotingHint")}</p>
+      </div>
+
+      <div className="space-y-3 rounded-lg border p-4">
+        <Label className="text-base font-medium">{t("smtpTitle")}</Label>
+        <p className="text-xs text-muted-foreground">{t("smtpHint")}</p>
+        <div className="grid gap-3 sm:grid-cols-2">
+          <div className="space-y-1">
+            <Label htmlFor="smtp-host" className="text-xs">{t("smtpHostLabel")}</Label>
+            <Input id="smtp-host" value={smtpHost} onChange={(e) => setSmtpHost(e.target.value)} placeholder="smtp.gmail.com" />
+          </div>
+          <div className="space-y-1">
+            <Label htmlFor="smtp-port" className="text-xs">{t("smtpPortLabel")}</Label>
+            <Input id="smtp-port" value={smtpPort} onChange={(e) => setSmtpPort(e.target.value)} placeholder="587" />
+          </div>
+          <div className="space-y-1">
+            <Label htmlFor="smtp-user" className="text-xs">{t("smtpUserLabel")}</Label>
+            <Input id="smtp-user" value={smtpUser} onChange={(e) => setSmtpUser(e.target.value)} placeholder="user@example.com" />
+          </div>
+          <div className="space-y-1">
+            <Label htmlFor="smtp-pass" className="text-xs">{t("smtpPassLabel")}</Label>
+            <Input id="smtp-pass" type="password" value={smtpPass} onChange={(e) => setSmtpPass(e.target.value)} placeholder="••••••••" />
+          </div>
+          <div className="space-y-1">
+            <Label htmlFor="smtp-from" className="text-xs">{t("smtpFromLabel")}</Label>
+            <Input id="smtp-from" value={smtpFrom} onChange={(e) => setSmtpFrom(e.target.value)} placeholder="noreply@example.com" />
+          </div>
+          <div className="flex items-end gap-2 pb-1">
+            <label className="flex items-center gap-2 text-xs">
+              <Checkbox id="smtp-secure" checked={smtpSecure} onCheckedChange={(c) => setSmtpSecure(c === true)} />
+              {t("smtpSecureLabel")}
+            </label>
+          </div>
+        </div>
       </div>
 
       <div className="space-y-2">

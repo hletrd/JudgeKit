@@ -89,6 +89,12 @@ export async function updateSystemSettings(
     emailVerificationRequired,
     communityUpvoteEnabled,
     communityDownvoteEnabled,
+    smtpHost,
+    smtpPort,
+    smtpSecure,
+    smtpUser,
+    smtpPass,
+    smtpFrom,
     signupHcaptchaEnabled,
     hcaptchaSiteKey,
     hcaptchaSecret,
@@ -151,6 +157,24 @@ export async function updateSystemSettings(
   }
   if (hasOwnInput("communityDownvoteEnabled")) {
     baseValues.communityDownvoteEnabled = communityDownvoteEnabled ?? true;
+  }
+  if (hasOwnInput("smtpHost")) {
+    baseValues.smtpHost = smtpHost ?? null;
+  }
+  if (hasOwnInput("smtpPort")) {
+    baseValues.smtpPort = smtpPort ?? null;
+  }
+  if (hasOwnInput("smtpSecure")) {
+    baseValues.smtpSecure = smtpSecure ?? false;
+  }
+  if (hasOwnInput("smtpUser")) {
+    baseValues.smtpUser = smtpUser ?? null;
+  }
+  if (hasOwnInput("smtpPass")) {
+    baseValues.smtpPass = smtpPass ? encrypt(smtpPass) : null;
+  }
+  if (hasOwnInput("smtpFrom")) {
+    baseValues.smtpFrom = smtpFrom ?? null;
   }
   if (hasOwnInput("signupHcaptchaEnabled")) {
     baseValues.signupHcaptchaEnabled = signupHcaptchaEnabled ?? false;

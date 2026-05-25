@@ -128,6 +128,12 @@ export default async function AdminSettingsPage() {
     typeof stored?.communityUpvoteEnabled === "boolean" ? stored.communityUpvoteEnabled : true;
   const initialCommunityDownvoteEnabled =
     typeof stored?.communityDownvoteEnabled === "boolean" ? stored.communityDownvoteEnabled : true;
+  const initialSmtpHost = (stored?.smtpHost as string) ?? "";
+  const initialSmtpPort = stored?.smtpPort != null ? String(stored.smtpPort) : "";
+  const initialSmtpSecure = typeof stored?.smtpSecure === "boolean" ? stored.smtpSecure : false;
+  const initialSmtpUser = (stored?.smtpUser as string) ?? "";
+  const initialSmtpPassMasked = (stored?.smtpPass as string) ? "••••••••" : "";
+  const initialSmtpFrom = (stored?.smtpFrom as string) ?? "";
   const initialSignupHcaptchaEnabled =
     typeof stored?.signupHcaptchaEnabled === "boolean" ? stored.signupHcaptchaEnabled : false;
   const initialHcaptchaSiteKey = (stored?.hcaptchaSiteKey as string) ?? "";
@@ -199,6 +205,12 @@ export default async function AdminSettingsPage() {
                 initialEmailVerificationRequired={initialEmailVerificationRequired}
                 initialCommunityUpvoteEnabled={initialCommunityUpvoteEnabled}
                 initialCommunityDownvoteEnabled={initialCommunityDownvoteEnabled}
+                initialSmtpHost={initialSmtpHost}
+                initialSmtpPort={initialSmtpPort}
+                initialSmtpSecure={initialSmtpSecure}
+                initialSmtpUser={initialSmtpUser}
+                initialSmtpPassMasked={initialSmtpPassMasked}
+                initialSmtpFrom={initialSmtpFrom}
                 initialSignupHcaptchaEnabled={initialSignupHcaptchaEnabled}
                 initialHcaptchaSiteKey={initialHcaptchaSiteKey}
                 initialHcaptchaSecretMasked={initialHcaptchaSecretMasked}

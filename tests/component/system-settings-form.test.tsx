@@ -87,6 +87,12 @@ function renderForm(initialTimeZone = "UTC") {
       initialEmailVerificationRequired
       initialCommunityUpvoteEnabled
       initialCommunityDownvoteEnabled
+      initialSmtpHost=""
+      initialSmtpPort=""
+      initialSmtpSecure={false}
+      initialSmtpUser=""
+      initialSmtpPassMasked=""
+      initialSmtpFrom=""
       initialSignupHcaptchaEnabled={false}
       initialHcaptchaSiteKey=""
       initialHcaptchaSecretMasked=""
