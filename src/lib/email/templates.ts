@@ -33,6 +33,27 @@ export async function renderEmailVerificationEmail(data: EmailVerificationEmail)
   return { subject, text, html };
 }
 
+export interface RecruitingInvitationEmail {
+  to: string;
+  candidateName: string;
+  assessmentTitle: string;
+  accessUrl: string;
+  expiresAt: Date | null;
+}
+
+export async function renderRecruitingInvitationEmail(data: RecruitingInvitationEmail): Promise<{ subject: string; text: string; html: string }> {
+  const subject = `You're invited: ${data.assessmentTitle}`;
+  const expiryNote = data.expiresAt
+    ? `\n\nThis link expires on ${data.expiresAt.toISOString().split("T")[0]}.`
+    : "";
+  const text = `Hi ${data.candidateName},\n\nYou've been invited to a coding assessment: ${data.assessmentTitle}.\n\nClick the link below to begin:\n${data.accessUrl}${expiryNote}\n\nGood luck!`;
+  const expiryHtml = data.expiresAt
+    ? `<p>This link expires on <strong>${data.expiresAt.toISOString().split("T")[0]}</strong>.</p>`
+    : "";
+  const html = `<p>Hi ${data.candidateName},</p><p>You've been invited to a coding assessment: <strong>${data.assessmentTitle}</strong>.</p><p><a href="${data.accessUrl}">Click here to begin</a></p>${expiryHtml}<p>Good luck!</p>`;
+  return { subject, text, html };
+}
+
 export async function renderSiteEventEmail(data: SiteEventEmail): Promise<{ subject: string; text: string; html: string }> {
   const subject = `[${data.severity.toUpperCase()}] ${data.title}`;
   const text = `Event: ${data.eventType}\nTitle: ${data.title}\nSeverity: ${data.severity}\n\nDetails:\n${data.details}`;

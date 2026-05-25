@@ -13,6 +13,8 @@ import { createRecruitingInvitationSchema } from "@/lib/validators/recruiting-in
 import { recordAuditEvent } from "@/lib/audit/events";
 import { getDbNowUncached } from "@/lib/db-time";
 import { MAX_EXPIRY_MS, computeExpiryFromDays } from "@/lib/assignments/recruiting-constants";
+import { sendEmail, isEmailConfigured } from "@/lib/email/smtp";
+import { renderRecruitingInvitationEmail } from "@/lib/email/templates";
 
 export const GET = createApiHandler({
   auth: { capabilities: ["recruiting.manage_invitations"] },
@@ -112,6 +114,30 @@ export const POST = createApiHandler({
         details: { assignmentId, candidateEmail: body.candidateEmail ?? null },
         request: req,
       });
+
+      // Auto-send invitation email if the candidate has an email address
+      // and SMTP is configured. Fire-and-forget so the API response isn't
+      // delayed by mail delivery; failures are logged inside sendEmail.
+      if (body.candidateEmail && invitation.token && await isEmailConfigured()) {
+        const proto = req.headers.get("x-forwarded-proto") || "https";
+        const host = req.headers.get("host") || "localhost:3000";
+        const baseUrl = `${proto}://${host}`;
+        const accessUrl = `${baseUrl}/recruit/${invitation.token}`;
+        renderRecruitingInvitationEmail({
+          to: body.candidateEmail,
+          candidateName: body.candidateName,
+          assessmentTitle: assignment.title,
+          accessUrl,
+          expiresAt: invitation.expiresAt ?? null,
+        }).then((template) =>
+          sendEmail({
+            to: body.candidateEmail!,
+            subject: template.subject,
+            text: template.text,
+            html: template.html,
+          })
+        ).catch(() => {});
+      }
 
       return apiSuccess(invitation, { status: 201 });
     } catch (error) {

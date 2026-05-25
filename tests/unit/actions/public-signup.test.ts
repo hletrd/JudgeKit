@@ -48,6 +48,10 @@ vi.mock("@/lib/users/core", () => ({
   validateAndHashPassword: mocks.validateAndHashPassword,
 }));
 
+vi.mock("@/lib/email", () => ({
+  sendEmailVerification: vi.fn().mockResolvedValue({ success: true }),
+}));
+
 vi.mock("@/lib/audit/events", () => ({
   buildServerActionAuditContext: mocks.buildServerActionAuditContext,
   recordAuditEvent: mocks.recordAuditEvent,
@@ -82,12 +86,17 @@ beforeEach(() => {
   mocks.dbTransaction.mockImplementation(async (callback: (tx: unknown) => Promise<unknown>) => {
     const tx = {
       insert: vi.fn(() => ({
-        values: mocks.txInsertValues,
+        values: vi.fn((...args: unknown[]) => {
+          mocks.txInsertValues(...args);
+          return {
+            returning: vi.fn().mockResolvedValue([{ id: "test-user-id" }]),
+          };
+        }),
       })),
     };
     return callback(tx);
   });
-  mocks.txInsertValues.mockResolvedValue(undefined);
+  mocks.txInsertValues.mockReturnValue(undefined);
 });
 
 afterEach(() => {

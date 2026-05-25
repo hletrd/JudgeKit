@@ -191,6 +191,7 @@ export async function getContestsForUser(
 }
 
 export type ContestAssignmentRow = {
+  title: string;
   groupId: string;
   instructorId: string | null;
   examMode: string;
@@ -241,6 +242,7 @@ export async function canMonitorContest(
 }
 
 type RawContestAssignmentRow = {
+  title: string;
   groupId: string;
   instructorId: string | null;
   examMode: string;
@@ -251,12 +253,13 @@ type RawContestAssignmentRow = {
 
 export async function getContestAssignment(assignmentId: string): Promise<ContestAssignmentRow | undefined> {
   const row = await rawQueryOne<RawContestAssignmentRow>(
-    `SELECT a.group_id AS "groupId", g.instructor_id AS "instructorId", a.exam_mode AS "examMode", a.enable_anti_cheat AS "enableAntiCheat", a.starts_at, a.deadline
+    `SELECT a.title, a.group_id AS "groupId", g.instructor_id AS "instructorId", a.exam_mode AS "examMode", a.enable_anti_cheat AS "enableAntiCheat", a.starts_at, a.deadline
      FROM assignments a INNER JOIN groups g ON g.id = a.group_id WHERE a.id = @assignmentId`,
     { assignmentId }
   );
   if (!row) return undefined;
   return {
+    title: row.title,
     groupId: row.groupId,
     instructorId: row.instructorId,
     examMode: row.examMode,

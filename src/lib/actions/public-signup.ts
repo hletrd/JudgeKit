@@ -12,6 +12,7 @@ import { isEmailTaken, isUsernameTaken, validateAndHashPassword } from "@/lib/us
 import { getSystemSettings } from "@/lib/system-settings";
 import { publicSignupSchema, type PublicSignupInput } from "@/lib/validators/public-signup";
 import { isHcaptchaConfigured, verifyHcaptchaToken } from "@/lib/security/hcaptcha";
+import { sendEmailVerification } from "@/lib/email";
 import type { ZodIssue } from "zod";
 
 export type PublicSignupResult = {
@@ -125,6 +126,7 @@ export async function registerPublicUser(input: PublicSignupInput): Promise<Publ
     return { success: false, error: passwordResult.error };
   }
 
+  let createdUserId: string | null = null;
   try {
     await db.transaction(async (tx) => {
       if (await isUsernameTaken(username, undefined, tx)) {
@@ -135,7 +137,7 @@ export async function registerPublicUser(input: PublicSignupInput): Promise<Publ
         throw new Error("emailInUse");
       }
 
-      await tx.insert(users).values({
+      const [inserted] = await tx.insert(users).values({
         username,
         name,
         email: email ?? null,
@@ -144,7 +146,8 @@ export async function registerPublicUser(input: PublicSignupInput): Promise<Publ
         isActive: true,
         mustChangePassword: false,
         preferredLanguage: settings.defaultLanguage,
-      });
+      }).returning({ id: users.id });
+      createdUserId = inserted?.id ?? null;
     });
   } catch (error) {
     if (error instanceof Error && error.message === "usernameInUse") {
@@ -180,6 +183,20 @@ export async function registerPublicUser(input: PublicSignupInput): Promise<Publ
     },
     context: auditContext,
   });
+
+  // Auto-send verification email if the user provided an email address.
+  // Fire-and-forget: signup succeeds even if the email send fails (the user
+  // can resend from the verification prompt). Previously users had to
+  // manually trigger "resend verification" — this closes the gap.
+  if (email && createdUserId) {
+    const h = await headers();
+    const proto = h.get("x-forwarded-proto") || "https";
+    const host = h.get("host") || "localhost:3000";
+    const baseUrl = `${proto}://${host}`;
+    sendEmailVerification(createdUserId, baseUrl).catch(() => {
+      // logged inside sendEmailVerification
+    });
+  }
 
   revalidatePath("/login");
   revalidatePath("/signup");
