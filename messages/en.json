@@ -1345,7 +1345,7 @@
       "smtpUserLabel": "Username",
       "smtpPassLabel": "Password",
       "smtpFromLabel": "From address",
-      "smtpSecureLabel": "Use TLS/SSL",
+      "smtpSecureLabel": "Implicit TLS (port 465 only; uncheck for port 587 — STARTTLS auto-negotiated)",
       "defaultLanguage": "Default Language",
       "defaultLanguageHint": "Language pre-selected when users open problems (e.g. python, cpp). Leave empty to default to C.",
       "defaultLocale": "Default UI Language",

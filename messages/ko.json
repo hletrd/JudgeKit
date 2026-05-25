@@ -1345,7 +1345,7 @@
       "smtpUserLabel": "사용자",
       "smtpPassLabel": "비밀번호",
       "smtpFromLabel": "발신 주소",
-      "smtpSecureLabel": "TLS/SSL 사용",
+      "smtpSecureLabel": "암시적 TLS (포트 465 전용, 587은 체크 해제 — STARTTLS 자동)",
       "defaultLanguage": "기본 언어",
       "defaultLanguageHint": "사용자가 문제를 열 때 기본으로 선택되는 언어 (예: python, cpp). 비워두면 C가 기본값입니다.",
       "defaultLocale": "기본 UI 언어",

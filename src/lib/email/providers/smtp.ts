@@ -56,6 +56,33 @@ async function getSmtpConfig(): Promise<{
   };
 }
 
+function buildTransporter(config: {
+  host: string;
+  port: number;
+  secure: boolean;
+  user: string;
+  pass: string;
+}): Transporter {
+  // `secure: true` = implicit TLS on connect (port 465).
+  // `secure: false` = plain connection that auto-upgrades via STARTTLS
+  // if the server advertises it (which port 587 servers always do).
+  // Nodemailer handles the STARTTLS negotiation automatically when
+  // secure=false — no explicit "starttls" flag is needed.
+  return nodemailer.createTransport({
+    host: config.host,
+    port: config.port,
+    secure: config.secure,
+    auth: { user: config.user, pass: config.pass },
+    pool: true,
+    maxConnections: 3,
+    maxMessages: 100,
+    connectionTimeout: 10_000,
+    greetingTimeout: 10_000,
+    socketTimeout: 30_000,
+    tls: { rejectUnauthorized: !process.env.SMTP_SKIP_TLS_VERIFY },
+  });
+}
+
 export const smtpProvider: EmailProvider = {
   name: "smtp",
 
@@ -73,35 +100,59 @@ export const smtpProvider: EmailProvider = {
 
     const cfgHash = hashConfig(config);
     if (!transporter || lastConfigHash !== cfgHash) {
-      transporter = nodemailer.createTransport({
+      transporter = buildTransporter({
         host: config.host,
         port: config.port,
         secure: config.secure,
-        auth: { user: config.user, pass: config.pass },
-        pool: true,
-        maxConnections: 3,
-        maxMessages: 100,
-        tls: { rejectUnauthorized: !process.env.SMTP_SKIP_TLS_VERIFY },
+        user: config.user,
+        pass: config.pass,
       });
       lastConfigHash = cfgHash;
     }
 
     const from = config.from || config.user;
 
-    try {
-      const result = await transporter.sendMail({
-        from,
-        to: message.to,
-        subject: message.subject,
-        text: message.text,
-        html: message.html,
-      });
-      logger.info({ to: message.to, subject: message.subject, messageId: result.messageId }, "Email sent via SMTP");
-      return { success: true, messageId: result.messageId };
-    } catch (error) {
-      const errMsg = error instanceof Error ? error.message : String(error);
-      logger.error({ to: message.to, subject: message.subject, error: errMsg }, "SMTP send failed");
-      return { success: false, error: errMsg };
+    // Retry once on transient failures (network reset, temporary SMTP 4xx).
+    for (let attempt = 1; attempt <= 2; attempt++) {
+      try {
+        const result = await transporter.sendMail({
+          from,
+          to: message.to,
+          subject: message.subject,
+          text: message.text,
+          html: message.html,
+        });
+        logger.info({ to: message.to, subject: message.subject, messageId: result.messageId }, "Email sent via SMTP");
+        return { success: true, messageId: result.messageId };
+      } catch (error) {
+        const errMsg = error instanceof Error ? error.message : String(error);
+        const code = (error as { code?: string })?.code;
+        const isTransient =
+          code === "ECONNRESET" ||
+          code === "ETIMEDOUT" ||
+          code === "ECONNREFUSED" ||
+          code === "ESOCKET" ||
+          errMsg.includes("421 ") ||
+          errMsg.includes("try again");
+
+        if (isTransient && attempt < 2) {
+          logger.warn({ to: message.to, error: errMsg, attempt }, "SMTP transient failure, retrying");
+          transporter = buildTransporter({
+            host: config.host,
+            port: config.port,
+            secure: config.secure,
+            user: config.user,
+            pass: config.pass,
+          });
+          lastConfigHash = cfgHash;
+          continue;
+        }
+
+        logger.error({ to: message.to, subject: message.subject, error: errMsg }, "SMTP send failed");
+        return { success: false, error: errMsg };
+      }
     }
+
+    return { success: false, error: "SMTP send exhausted retries" };
   },
 };
