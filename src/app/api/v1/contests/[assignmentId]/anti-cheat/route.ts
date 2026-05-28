@@ -9,7 +9,7 @@ import { rawQueryOne } from "@/lib/db/queries";
 import { antiCheatEvents, users } from "@/lib/db/schema";
 import { eq, and, desc, sql } from "drizzle-orm";
 import { parsePositiveInt, parseNonNegativeInt } from "@/lib/validators/query-params";
-import { getContestAssignment, canManageContest, canMonitorContest } from "@/lib/assignments/contests";
+import { getContestAssignment, canMonitorContest } from "@/lib/assignments/contests";
 import { LRUCache } from "lru-cache";
 import { getUnsupportedRealtimeGuard, shouldRecordSharedHeartbeat, usesSharedRealtimeCoordination } from "@/lib/realtime/realtime-coordination";
 
