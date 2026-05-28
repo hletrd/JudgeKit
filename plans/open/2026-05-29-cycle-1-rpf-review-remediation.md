@@ -85,5 +85,5 @@ confirmed vulnerabilities — deferred with concrete exit criteria, not silently
 - [x] F3 implemented (template escaping tests)
 - [x] F6 implemented (public-signup auto-verify tests)
 - [x] Gates green (lint 0/0, tsc, build, 2434 unit tests, lint:bash)
-- [x] Committed and pushed (fine-grained, GPG-signed)
-- [ ] Deployed (per-cycle)
+- [x] Committed and pushed (fine-grained, GPG-signed; 4 commits, 6e1ea706..95c5e17b)
+- [x] Deployed (per-cycle) — `deploy-docker.sh` exit 0; app verified live (HTTPS HTTP 200, nginx reloaded). Post-deploy E2E smoke reported 7 login failures, ALL the same pre-existing cause: the smoke profile authenticates with the sentinel password `skip-login` (captured in the failure snapshot), so login cannot redirect to `/dashboard`. Unrelated to this cycle's diff (email decrypt fallback / dead-import removal / test-only files — none touch auth/login). 141 smoke tests passed including all public routes.
