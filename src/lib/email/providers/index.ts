@@ -3,6 +3,7 @@ import { smtpProvider } from "./smtp";
 import { sendgridProvider } from "./sendgrid";
 import { resendProvider } from "./resend";
 import { sesProvider } from "./ses";
+import { logger } from "@/lib/logger";
 
 const providers: EmailProvider[] = [
   sendgridProvider,
@@ -15,8 +16,19 @@ let activeProvider: EmailProvider | null = null;
 
 async function detectProvider(): Promise<EmailProvider | null> {
   for (const provider of providers) {
-    if (await provider.isConfigured()) {
-      return provider;
+    // Defense-in-depth: a provider's isConfigured() should never throw, but if
+    // one does (e.g. a decrypt failure on a malformed stored secret), treat it
+    // as "not configured" and continue rather than letting the exception escape
+    // detectProvider() and disable all email. Failures are logged.
+    try {
+      if (await provider.isConfigured()) {
+        return provider;
+      }
+    } catch (error) {
+      logger.warn(
+        { provider: provider.name, error: error instanceof Error ? error.message : String(error) },
+        "Email provider isConfigured() threw; treating provider as not configured"
+      );
     }
   }
   return null;

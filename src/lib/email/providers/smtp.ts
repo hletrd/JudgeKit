@@ -44,7 +44,14 @@ async function getSmtpConfig(): Promise<{
   }
 
   const raw = settings as Record<string, unknown>;
-  const pass = raw.smtpPass ? decrypt(raw.smtpPass as string) : null;
+  // Read the stored SMTP password with the plaintext-migration fallback enabled,
+  // mirroring the sibling secret reader in src/lib/security/hcaptcha.ts. Without
+  // this, a legacy plaintext smtpPass (configured before column encryption, or
+  // restored from an older backup) makes decrypt() throw in production, which
+  // propagates out of isConfigured()/send() and silently disables ALL
+  // transactional email. The encryption module still emits a production warn-log
+  // on plaintext input, preserving the migration audit trail.
+  const pass = raw.smtpPass ? decrypt(raw.smtpPass as string, { allowPlaintextFallback: true }) : null;
 
   return {
     host: (raw.smtpHost as string | null) || null,
