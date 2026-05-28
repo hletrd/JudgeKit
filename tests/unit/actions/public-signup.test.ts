@@ -15,6 +15,7 @@ const mocks = vi.hoisted(() => ({
   buildServerActionAuditContext: vi.fn(),
   recordAuditEvent: vi.fn(),
   revalidatePath: vi.fn(),
+  sendEmailVerification: vi.fn(),
 }));
 
 vi.mock("next/headers", () => ({
@@ -49,7 +50,7 @@ vi.mock("@/lib/users/core", () => ({
 }));
 
 vi.mock("@/lib/email", () => ({
-  sendEmailVerification: vi.fn().mockResolvedValue({ success: true }),
+  sendEmailVerification: mocks.sendEmailVerification,
 }));
 
 vi.mock("@/lib/audit/events", () => ({
@@ -83,6 +84,7 @@ beforeEach(() => {
   mocks.isUsernameTaken.mockResolvedValue(false);
   mocks.isEmailTaken.mockResolvedValue(false);
   mocks.buildServerActionAuditContext.mockResolvedValue({ requestPath: "/signup" });
+  mocks.sendEmailVerification.mockResolvedValue({ success: true });
   mocks.dbTransaction.mockImplementation(async (callback: (tx: unknown) => Promise<unknown>) => {
     const tx = {
       insert: vi.fn(() => ({
@@ -179,5 +181,39 @@ describe("registerPublicUser", () => {
     });
 
     expect(result).toEqual({ success: false, error: "usernameInUse" });
+  });
+
+  it("still succeeds when the verification email send rejects (fire-and-forget)", async () => {
+    const { registerPublicUser } = await import("@/lib/actions/public-signup");
+    mocks.sendEmailVerification.mockRejectedValue(new Error("smtp down"));
+
+    const result = await registerPublicUser({
+      username: "newstudent",
+      name: "New Student",
+      email: "student@example.com",
+      password: "password12345",
+      confirmPassword: "password12345",
+      captchaToken: undefined,
+    });
+
+    expect(result).toEqual({ success: true });
+    expect(mocks.sendEmailVerification).toHaveBeenCalledTimes(1);
+    expect(mocks.sendEmailVerification).toHaveBeenCalledWith("test-user-id", expect.any(String));
+  });
+
+  it("does not attempt to send a verification email when no email is provided", async () => {
+    const { registerPublicUser } = await import("@/lib/actions/public-signup");
+
+    const result = await registerPublicUser({
+      username: "newstudent",
+      name: "New Student",
+      email: undefined,
+      password: "password12345",
+      confirmPassword: "password12345",
+      captchaToken: undefined,
+    });
+
+    expect(result).toEqual({ success: true });
+    expect(mocks.sendEmailVerification).not.toHaveBeenCalled();
   });
 });
