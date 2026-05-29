@@ -196,6 +196,15 @@ export async function computeSingleUserLiveRank(
   // IOI: rank = 1 + count of users with higher total adjusted score
   // Uses the same scoring logic as contest-scoring.ts, including windowed
   // exam mode late penalties applied against the per-user personal_deadline.
+  //
+  // NOTE (N7-C7): this single-user live rank does NOT overlay `score_overrides`,
+  // whereas the full board (`computeContestRanking`) now does. Overlaying here
+  // would require restructuring this query to a per-problem-best CTE (it
+  // currently SUMs adjusted scores across submission rows rather than per-problem
+  // bests), which is a larger change tracked as a deferred sub-item of N7-C7.
+  // The live rank is only shown to a student during the freeze window as an
+  // indicative position; the authoritative, override-aware standings come from
+  // `computeContestRanking`. See plans/open/2026-05-29-cycle-7-rpf-review-remediation.md.
   type IoiRankRow = { rank: number | null; hasSubmissions: boolean };
   const result = await rawQueryOne<IoiRankRow>(
     `WITH user_scores AS (

@@ -719,6 +719,8 @@ Create or update a score override. Rate limit: `overrides:upsert`.
 
 Score is capped to the problem's max points. User must be enrolled in the group.
 
+An override replaces the student's effective score for that problem in both the gradebook/student-status view and the **IOI** contest leaderboard, export, and analytics. (ICPC leaderboard solved-state/penalty are not yet derived from overrides, because an override carries no accepted-time; see the cycle-7 plan's deferred ledger.)
+
 ---
 
 #### `DELETE /api/v1/groups/:id/assignments/:assignmentId/overrides`

@@ -271,6 +271,31 @@ async function _computeContestRankingInner(assignmentId: string, cutoffSec?: num
     { assignmentId }
   );
 
+  // Score overrides: an instructor-set per-(user, problem) score that REPLACES
+  // the judged score. The gradebook (`getAssignmentStudentStatus`) already
+  // overlays these; the contest leaderboard must agree (N7-C7). Without this,
+  // an override lands in the DB and `invalidateRankingCache` runs, but the
+  // recomputed ranking still shows the original judged score — the two
+  // instructor-facing surfaces for the same assignment diverge.
+  //
+  // IOI only: the override replaces the per-problem adjusted best score
+  // (presence test, not truthiness — an override of 0 legitimately zeroes the
+  // problem). Late penalty is NOT re-applied on top of an override.
+  //
+  // ICPC is intentionally NOT overlaid here (deferred, N7-C7-ICPC): an override
+  // writes no `submissions.score`, so it has no AC timestamp, and ICPC
+  // solved-state/penalty derive from first-AC time. Mapping an override onto
+  // ICPC would require a product decision on the AC-time source.
+  const overrideRows = await rawQueryAll<{ userId: string; problemId: string; overrideScore: number }>(
+    `SELECT user_id AS "userId", problem_id AS "problemId", override_score AS "overrideScore"
+     FROM score_overrides WHERE assignment_id = @assignmentId`,
+    { assignmentId }
+  );
+  const overrideMap = new Map<string, number>();
+  for (const o of overrideRows) {
+    overrideMap.set(`${o.userId}:${o.problemId}`, Number(o.overrideScore));
+  }
+
   const scoringModel = (meta.scoringModel ?? "ioi") as ScoringModel;
 
   // Guard ICPC scoring against null startsAt to prevent absurd penalty values
@@ -281,7 +306,15 @@ async function _computeContestRankingInner(assignmentId: string, cutoffSec?: num
 
   const contestStartMs = meta.startsAt ? new Date(meta.startsAt).getTime() : 0;
 
-  // Group by user
+  // Group by user. The leaderboard is built from users who have at least one
+  // terminal submission (the `rows` set). A user with ONLY a score override and
+  // NO submissions for the contest is therefore not added here — the override
+  // overlay below still applies to every participant's overridden problems, but
+  // an override-only non-participant does not materialize a leaderboard row
+  // (the ranking query carries no name/class for a user with zero submissions).
+  // This matches the leaderboard's "participants" semantics; the gradebook, by
+  // contrast, iterates all enrolled students so it does surface override-only
+  // users. In practice an override targets a participating student.
   const userMap = new Map<
     string,
     {
@@ -317,7 +350,23 @@ async function _computeContestRankingInner(assignmentId: string, cutoffSec?: num
     const problemResults: LeaderboardProblemResult[] = assignmentProblems.map(
       (ap) => {
         const row = userData.problems.get(ap.problemId);
+        // IOI score override (presence test, not truthiness — an override of 0
+        // legitimately zeroes the problem). ICPC is not overlaid (deferred).
+        const overrideScore =
+          scoringModel === "icpc" ? undefined : overrideMap.get(`${userId}:${ap.problemId}`);
         if (!row) {
+          // A user with an override but no submissions still gets the override
+          // score (IOI), matching the gradebook. ICPC keeps the no-row default.
+          if (overrideScore !== undefined) {
+            return {
+              problemId: ap.problemId,
+              score: overrideScore,
+              attempts: 0,
+              solved: overrideScore >= ap.points,
+              firstAcAt: null,
+              penalty: 0,
+            };
+          }
           return {
             problemId: ap.problemId,
             score: 0,
@@ -346,9 +395,11 @@ async function _computeContestRankingInner(assignmentId: string, cutoffSec?: num
           };
         }
 
-        // IOI
+        // IOI: an override REPLACES the judged best score (already late-penalty
+        // adjusted); the penalty is NOT re-applied on top of the override.
         const rawScore = Number(row.bestScore);
-        const bestScore = Number.isNaN(rawScore) ? 0 : (rawScore ?? 0);
+        const judgedScore = Number.isNaN(rawScore) ? 0 : (rawScore ?? 0);
+        const bestScore = overrideScore !== undefined ? overrideScore : judgedScore;
         return {
           problemId: ap.problemId,
           score: bestScore,
