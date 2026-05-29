@@ -11,6 +11,7 @@ const {
   consumeApiRateLimitMock,
   resolveCapabilitiesMock,
   canManageGroupResourcesAsyncMock,
+  canManageGroupMembersAsyncMock,
   recordAuditEventMock,
   canAccessGroupMock,
   groupsFindFirstMock,
@@ -31,6 +32,7 @@ const {
     consumeApiRateLimitMock: vi.fn<() => NextResponse | null>(() => null),    // null = not rate-limited
     resolveCapabilitiesMock: vi.fn(),
     canManageGroupResourcesAsyncMock: vi.fn(),
+    canManageGroupMembersAsyncMock: vi.fn(),
     recordAuditEventMock: vi.fn(),
     canAccessGroupMock: vi.fn(),
     groupsFindFirstMock: vi.fn(),
@@ -68,6 +70,7 @@ vi.mock("@/lib/capabilities/cache", () => ({
 
 vi.mock("@/lib/assignments/management", () => ({
   canManageGroupResourcesAsync: canManageGroupResourcesAsyncMock,
+  canManageGroupMembersAsync: canManageGroupMembersAsyncMock,
 }));
 
 vi.mock("@/lib/logger", () => ({
@@ -185,6 +188,7 @@ beforeEach(() => {
   consumeApiRateLimitMock.mockReturnValue(null);
   resolveCapabilitiesMock.mockResolvedValue(new Set(["groups.delete"]));
   canManageGroupResourcesAsyncMock.mockResolvedValue(false);
+  canManageGroupMembersAsyncMock.mockResolvedValue(false);
   canAccessGroupMock.mockResolvedValue(true);
   groupsFindFirstMock.mockResolvedValue(EXISTING_GROUP);
   // default: no submissions → deletion allowed
@@ -261,6 +265,7 @@ describe("GET /api/v1/groups/[id] — enrollment contract", () => {
       mustChangePassword: false,
     });
     canManageGroupResourcesAsyncMock.mockResolvedValueOnce(true);
+    canManageGroupMembersAsyncMock.mockResolvedValueOnce(true);
     canAccessGroupMock.mockResolvedValueOnce(true);
     groupsFindFirstMock
       .mockResolvedValueOnce({ id: EXISTING_GROUP.id })
@@ -307,6 +312,37 @@ describe("GET /api/v1/groups/[id] — enrollment contract", () => {
     const res = await GET(makeRequest("GET"), { params: PARAMS });
 
     expect(res.status).toBe(403);
+  });
+
+  it("hides the member roster from an enrolled non-manager (IDOR guard)", async () => {
+    // Enrolled student CAN access the group but is NOT a manager — they must not
+    // receive the per-member roster (co-candidate PII enumeration).
+    getApiUserMock.mockResolvedValue(STUDENT_USER);
+    canAccessGroupMock.mockResolvedValue(true);
+    canManageGroupResourcesAsyncMock.mockResolvedValue(false);
+    canManageGroupMembersAsyncMock.mockResolvedValue(false);
+    groupsFindFirstMock
+      .mockResolvedValueOnce({ id: EXISTING_GROUP.id })
+      .mockResolvedValueOnce({
+        ...EXISTING_GROUP,
+        instructor: { id: "instructor-1", name: "Instructor", email: "instructor@example.com" },
+      });
+    dbSelectMock.mockReturnValueOnce({
+      from: vi.fn(() => ({ where: vi.fn().mockResolvedValue([{ count: 2 }]) })),
+    });
+    // If the route ever queried enrollments for a non-manager, this would leak.
+    enrollmentsFindManyMock.mockResolvedValue([
+      { id: "e1", userId: "other", groupId: EXISTING_GROUP.id, enrolledAt: new Date(), user: { id: "other", name: "Other", email: "other@example.com" } },
+    ]);
+
+    const res = await GET(makeRequest("GET"), { params: PARAMS });
+    const body = await res.json();
+
+    expect(res.status).toBe(200);
+    expect(body.data.enrollments).toEqual([]);
+    expect(enrollmentsFindManyMock).not.toHaveBeenCalled();
+    // memberCount (a non-PII aggregate) is still available.
+    expect(body.data.memberCount).toBe(2);
   });
 });
 
