@@ -65,6 +65,35 @@ describe("extractClientIp", () => {
     ).toBe(process.env.NODE_ENV === "production" ? null : "0.0.0.0");
   });
 
+  it("unwraps an IPv4-mapped IPv6 client hop to its dotted IPv4 (dual-stack proxy)", async () => {
+    const { extractClientIp } = await importIpModule();
+
+    // A dual-stack Nginx listening on [::] reports IPv4 clients via
+    // $remote_addr as ::ffff:a.b.c.d. Previously isValidIp rejected this and
+    // extractClientIp returned the dev sentinel / null in prod, locking
+    // judge workers out when JUDGE_ALLOWED_IPS was configured.
+    expect(
+      extractClientIp(createHeaders({ "x-forwarded-for": "::ffff:198.51.100.8, 203.0.113.10" }))
+    ).toBe("198.51.100.8");
+  });
+
+  it("unwraps an IPv4-mapped IPv6 from x-real-ip", async () => {
+    const { extractClientIp } = await importIpModule();
+
+    expect(extractClientIp(createHeaders({ "x-real-ip": "::ffff:198.51.100.9" }))).toBe(
+      "198.51.100.9"
+    );
+  });
+
+  it("rejects a mapped form with an out-of-range IPv4 tail", async () => {
+    const { extractClientIp } = await importIpModule();
+
+    // 999 is not a valid octet — the mapped form must not be accepted.
+    expect(
+      extractClientIp(createHeaders({ "x-forwarded-for": "::ffff:999.1.1.1, 203.0.113.10" }))
+    ).toBe("0.0.0.0");
+  });
+
   it("uses x-real-ip when x-forwarded-for is absent", async () => {
     const { extractClientIp } = await importIpModule();
 

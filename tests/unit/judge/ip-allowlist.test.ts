@@ -55,6 +55,13 @@ describe("isJudgeIpAllowed", () => {
       expect(isJudgeIpAllowed(requestWithIp("192.168.1.10"))).toBe(true);
     });
 
+    it("allows an IPv4-mapped IPv6 client that matches an IPv4 entry (dual-stack proxy)", () => {
+      // A dual-stack reverse proxy may report the worker IP as ::ffff:10.0.0.5.
+      // extractClientIp now unwraps this to 10.0.0.5 so it matches the exact
+      // IPv4 allowlist entry instead of being rejected as an unparseable IP.
+      expect(isJudgeIpAllowed(requestWithIp("::ffff:10.0.0.5"))).toBe(true);
+    });
+
     it("rejects unlisted IPs", () => {
       expect(isJudgeIpAllowed(requestWithIp("10.0.0.6"))).toBe(false);
       expect(isJudgeIpAllowed(requestWithIp("203.0.113.9"))).toBe(false);
@@ -70,6 +77,10 @@ describe("isJudgeIpAllowed", () => {
     it("allows addresses inside the range", () => {
       expect(isJudgeIpAllowed(requestWithIp("192.168.1.1"))).toBe(true);
       expect(isJudgeIpAllowed(requestWithIp("192.168.1.254"))).toBe(true);
+    });
+
+    it("allows an IPv4-mapped IPv6 client inside an IPv4 CIDR range", () => {
+      expect(isJudgeIpAllowed(requestWithIp("::ffff:192.168.1.42"))).toBe(true);
     });
 
     it("rejects addresses outside the range", () => {

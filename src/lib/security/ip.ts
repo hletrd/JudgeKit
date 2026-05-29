@@ -15,14 +15,39 @@ function getTrustedProxyHops(): number {
   return Number.isNaN(parsed) ? 1 : Math.max(0, parsed);
 }
 
+function isValidIpv4(value: string): boolean {
+  if (!/^\d{1,3}(?:\.\d{1,3}){3}$/.test(value)) return false;
+  return value.split(".").every((part) => {
+    const number = Number(part);
+    return Number.isInteger(number) && number >= 0 && number <= 255;
+  });
+}
+
+/**
+ * Normalize an IPv4-mapped IPv6 address (`::ffff:a.b.c.d`) to its plain dotted
+ * IPv4 form. A dual-stack reverse proxy listening on `[::]` reports IPv4 clients
+ * via `$remote_addr` in this mapped form, which would otherwise fail both the
+ * dotted-quad and the pure-hex IPv6 validators below. Returning the unwrapped
+ * IPv4 keeps `extractClientIp` consistent with the allowlist matcher in
+ * `judge/ip-allowlist.ts` (which already unwraps the embedded-v4 tail) and with
+ * the rate-limit key derivation. Returns null when the input is not a mapped
+ * IPv4-in-IPv6 address.
+ */
+export function unwrapMappedIpv4(value: string): string | null {
+  const match = /^::ffff:(\d{1,3}(?:\.\d{1,3}){3})$/i.exec(value.trim());
+  if (!match) return null;
+  return isValidIpv4(match[1]) ? match[1] : null;
+}
+
 function isValidIp(value: string) {
   const candidate = value.trim();
   if (!candidate) return false;
-  if (/^\d{1,3}(?:\.\d{1,3}){3}$/.test(candidate)) {
-    return candidate.split(".").every((part) => {
-      const number = Number(part);
-      return Number.isInteger(number) && number >= 0 && number <= 255;
-    });
+  if (isValidIpv4(candidate)) {
+    return true;
+  }
+  // Accept IPv4-mapped IPv6 (`::ffff:a.b.c.d`) by validating its IPv4 tail.
+  if (unwrapMappedIpv4(candidate) !== null) {
+    return true;
   }
 
   const stripped = candidate.startsWith("[") && candidate.endsWith("]")
@@ -68,7 +93,9 @@ export function extractClientIp(headers: HeaderCarrier): string | null {
       const clientIndex = parts.length - (trustedHops + 1);
       const candidate = parts[clientIndex];
       if (isValidIp(candidate)) {
-        return candidate;
+        // Unwrap IPv4-mapped IPv6 to its dotted IPv4 so the allowlist matcher
+        // and rate-limit keys see a stable, canonical form.
+        return unwrapMappedIpv4(candidate) ?? candidate;
       }
     } else if (parts.length > 0 && process.env.NODE_ENV === "production") {
       logger.warn(
@@ -81,12 +108,17 @@ export function extractClientIp(headers: HeaderCarrier): string | null {
   // Only trust X-Real-IP when XFF is absent (avoids bypassing hop validation)
   const realIp = headers.get("x-real-ip")?.trim();
   if (realIp && isValidIp(realIp)) {
-    return realIp;
+    return unwrapMappedIpv4(realIp) ?? realIp;
   }
 
   if (process.env.NODE_ENV === "production" && !forwardedFor) {
     logger.warn("[security] No X-Forwarded-For header in production — ensure a trusted reverse proxy is configured");
   }
 
+  // In production a null result means "client IP undeterminable"; downstream
+  // consumers must treat it as such (e.g. judge/ip-allowlist.ts denies when an
+  // allowlist is configured, rate-limit keying degrades to a coarse bucket).
+  // The dev-only "0.0.0.0" sentinel is likewise special-cased as "unknown" by
+  // isJudgeIpAllowed; keep these two call sites in sync if the sentinel changes.
   return process.env.NODE_ENV === "production" ? null : "0.0.0.0";
 }
