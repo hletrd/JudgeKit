@@ -151,7 +151,21 @@ export const PATCH = createApiHandler({
       visibility: body.visibility ?? assignment.visibility ?? "private",
       examDurationMinutes: body.examDurationMinutes !== undefined ? body.examDurationMinutes : assignment.examDurationMinutes ?? null,
       scoringModel: body.scoringModel ?? assignment.scoringModel ?? "ioi",
+      // Preserve freeze/visibility on partial edits. Omitting these previously
+      // let assignmentMutationSchema apply its defaults (freeze=null,
+      // show/hide=false), silently un-freezing a live contest's leaderboard and
+      // re-exposing candidate results on every edit.
+      freezeLeaderboardAt:
+        body.freezeLeaderboardAt !== undefined
+          ? body.freezeLeaderboardAt
+          : assignment.freezeLeaderboardAt
+            ? assignment.freezeLeaderboardAt.valueOf()
+            : null,
       enableAntiCheat: body.enableAntiCheat ?? assignment.enableAntiCheat ?? false,
+      showResultsToCandidate:
+        body.showResultsToCandidate ?? assignment.showResultsToCandidate ?? false,
+      hideScoresFromCandidates:
+        body.hideScoresFromCandidates ?? assignment.hideScoresFromCandidates ?? false,
       problems:
         body.problems ??
         assignment.assignmentProblems

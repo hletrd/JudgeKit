@@ -130,7 +130,10 @@ export const assignmentPatchSchema = z.object({
   visibility: z.enum(["private", "public"]).optional(),
   examDurationMinutes: z.number().int().min(1).max(1440).nullable().optional(),
   scoringModel: z.enum(["ioi", "icpc"]).optional(),
+  freezeLeaderboardAt: z.number().int().nullable().optional(),
   enableAntiCheat: z.boolean().optional(),
+  showResultsToCandidate: z.boolean().optional(),
+  hideScoresFromCandidates: z.boolean().optional(),
   problems: z.array(assignmentProblemSchema).min(1).max(100).optional(),
   allowLockedProblems: z.boolean().optional(),
 }).strict();
