@@ -350,10 +350,17 @@ async fn run_docker_once(
     let timeout_duration =
         std::time::Duration::from_millis(options.timeout_ms.max(MIN_TIMEOUT_MS));
 
-    // Keep aligned with the local compiler runner so stdout/stderr truncation
-    // behaves the same regardless of whether execution happens in Node or the
-    // Rust judge worker sidecar.
-    const MAX_OUTPUT_BYTES: u64 = 134_217_728; // 128 MiB
+    // Per-stream output cap. Bounds worker RAM under an output flood (a
+    // malicious submission printing gigabytes). 128 MiB default — generous so it
+    // never truncates a legitimate large-output problem — but configurable via
+    // JUDGE_MAX_OUTPUT_BYTES so RAM-constrained operators can lower it
+    // (worst-case RAM ≈ cap × 2 streams × concurrent jobs). Keep aligned with
+    // the local compiler runner's truncation so behavior matches across runners.
+    let max_output_bytes: u64 = std::env::var("JUDGE_MAX_OUTPUT_BYTES")
+        .ok()
+        .and_then(|v| v.parse::<u64>().ok())
+        .filter(|&n| n > 0)
+        .unwrap_or(134_217_728); // 128 MiB
 
     // After the cap is reached, keep draining (into /dev/null) so the writer
     // doesn't get EPIPE on its next write. Without this drain, a submission
@@ -364,7 +371,7 @@ async fn run_docker_once(
     let stdout_handle = {
         let stdout = child.stdout.take().expect("stdout not captured");
         tokio::spawn(async move {
-            let mut take = stdout.take(MAX_OUTPUT_BYTES);
+            let mut take = stdout.take(max_output_bytes);
             let mut buf = Vec::new();
             let _ = take.read_to_end(&mut buf).await;
             let mut inner = take.into_inner();
@@ -376,7 +383,7 @@ async fn run_docker_once(
     let stderr_handle = {
         let stderr = child.stderr.take().expect("stderr not captured");
         tokio::spawn(async move {
-            let mut take = stderr.take(MAX_OUTPUT_BYTES);
+            let mut take = stderr.take(max_output_bytes);
             let mut buf = Vec::new();
             let _ = take.read_to_end(&mut buf).await;
             let mut inner = take.into_inner();
