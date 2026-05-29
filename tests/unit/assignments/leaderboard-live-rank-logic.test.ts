@@ -19,6 +19,10 @@ function read(relativePath: string) {
  * - IOI branch uses buildIoiLatePenaltyCaseExpr (same SQL fragment as contest-scoring.ts)
  * - IOI branch LEFT JOINs exam_sessions for windowed late penalty
  * - IOI rank uses ROUND(total_score, 2) for tie-breaking consistency
+ * - IOI branch sums the PER-PROBLEM BEST score (MAX per user+problem), then
+ *   SUMs the bests per user — NOT a SUM over all submission rows (N8-C8-LIVERANK).
+ *   This is the invariant that keeps the live rank in agreement with the full
+ *   board (contest-scoring.ts MAX-per-problem then sum).
  * - ICPC branch counts users with more solved or same solved + less penalty
  * - Both branches return null when user has no submissions
  */
@@ -44,6 +48,24 @@ describe("computeSingleUserLiveRank implementation", () => {
 
     it("computes rank as 1 + count of users with higher score", () => {
       expect(source).toContain("1 + COUNT(*)");
+    });
+
+    it("aggregates the PER-PROBLEM BEST score via a per_problem CTE (N8-C8-LIVERANK)", () => {
+      // The IOI live rank must sum each problem's best adjusted score, not all
+      // submission rows. Guard the per-problem-best inner aggregate.
+      expect(source).toContain("per_problem AS (");
+      // MAX over rows, grouped by user+problem, gives the per-problem best.
+      expect(source).toContain("MAX(");
+      expect(source).toContain("GROUP BY s.user_id, s.problem_id");
+    });
+
+    it("sums the per-problem bests per user (not a SUM over all submission rows)", () => {
+      // The outer per-user total must SUM the per_problem bests.
+      expect(source).toContain("ROUND(SUM(COALESCE(best, 0)), 2) AS total_score");
+      expect(source).toContain("FROM per_problem");
+      // Regression guard: the old SUM-over-rows shape (SUM of the per-row CASE
+      // expression grouped only by user_id) must NOT reappear.
+      expect(source).not.toMatch(/ROUND\(SUM\(\s*CASE WHEN s\.score IS NOT NULL/);
     });
 
     it("returns null when the user has no submissions (hasSubmissions guard)", () => {

@@ -193,33 +193,49 @@ export async function computeSingleUserLiveRank(
     return result.rank;
   }
 
-  // IOI: rank = 1 + count of users with higher total adjusted score
-  // Uses the same scoring logic as contest-scoring.ts, including windowed
-  // exam mode late penalties applied against the per-user personal_deadline.
+  // IOI: rank = 1 + count of users with higher total adjusted score.
+  // Uses the same scoring logic as contest-scoring.ts: the per-problem BEST
+  // adjusted score (MAX over submission rows, per user+problem), then summed
+  // per user. This must match the full board (`computeContestRanking`), which
+  // computes MAX(adjusted) GROUP BY (user_id, problem_id) and sums the
+  // per-problem bests. Windowed exam-mode late penalties are applied against
+  // the per-user personal_deadline via the shared CASE expression.
   //
-  // NOTE (N7-C7): this single-user live rank does NOT overlay `score_overrides`,
-  // whereas the full board (`computeContestRanking`) now does. Overlaying here
-  // would require restructuring this query to a per-problem-best CTE (it
-  // currently SUMs adjusted scores across submission rows rather than per-problem
-  // bests), which is a larger change tracked as a deferred sub-item of N7-C7.
-  // The live rank is only shown to a student during the freeze window as an
-  // indicative position; the authoritative, override-aware standings come from
-  // `computeContestRanking`. See plans/open/2026-05-29-cycle-7-rpf-review-remediation.md.
+  // N8-C8-LIVERANK fix: previously this query SUMmed the adjusted score across
+  // ALL submission rows (GROUP BY user_id only), inflating a user's score by
+  // their resubmission count and producing a wrong live rank. It now uses a
+  // per-problem-best inner CTE so the live rank agrees with the full board.
+  //
+  // NOTE (N7-C7, still deferred): this single-user live rank does NOT overlay
+  // `score_overrides`, whereas the full board now does. Overlaying here needs a
+  // product decision (esp. ICPC, where an override has no AC timestamp). The
+  // per-problem-best CTE below makes the IOI overlay feasible later, but the
+  // overlay itself remains a deferred sub-item of N7-C7. The live rank is only
+  // shown to a student during the freeze window as an indicative position; the
+  // authoritative, override-aware standings come from `computeContestRanking`.
   type IoiRankRow = { rank: number | null; hasSubmissions: boolean };
   const result = await rawQueryOne<IoiRankRow>(
-    `WITH user_scores AS (
+    `WITH per_problem AS (
       SELECT
         s.user_id,
-        ROUND(SUM(
+        s.problem_id,
+        MAX(
           CASE WHEN s.score IS NOT NULL THEN
             ${buildIoiLatePenaltyCaseExpr("s.score", "COALESCE(ap.points, 100)", "s.submitted_at", "es.personal_deadline")}
           ELSE 0
-        END), 2) AS total_score
+        END) AS best
       FROM submissions s
       INNER JOIN assignment_problems ap ON ap.assignment_id = s.assignment_id AND ap.problem_id = s.problem_id
       LEFT JOIN exam_sessions es ON es.assignment_id = s.assignment_id AND es.user_id = s.user_id
       WHERE s.assignment_id = @assignmentId AND s.status IN (${TERMINAL_SUBMISSION_STATUSES_SQL_LIST})
-      GROUP BY s.user_id
+      GROUP BY s.user_id, s.problem_id
+    ),
+    user_scores AS (
+      SELECT
+        user_id,
+        ROUND(SUM(COALESCE(best, 0)), 2) AS total_score
+      FROM per_problem
+      GROUP BY user_id
     ),
     target AS (
       SELECT total_score FROM user_scores WHERE user_id = @userId
