@@ -143,6 +143,48 @@ describe("getAuthUrlObject", () => {
 });
 
 // ---------------------------------------------------------------------------
+// getPublicBaseUrl
+// ---------------------------------------------------------------------------
+describe("getPublicBaseUrl", () => {
+  it("prefers the canonical AUTH_URL over the request host", async () => {
+    setEnv({ AUTH_URL: "https://canonical.example.com" });
+    const { getPublicBaseUrl } = await importEnv();
+    expect(getPublicBaseUrl("attacker.evil.tld", "http")).toBe("https://canonical.example.com");
+  });
+
+  it("falls back to NEXTAUTH_URL when AUTH_URL is absent", async () => {
+    setEnv({ AUTH_URL: undefined, NEXTAUTH_URL: "https://fallback.example.com" });
+    const { getPublicBaseUrl } = await importEnv();
+    expect(getPublicBaseUrl("attacker.evil.tld", "http")).toBe("https://fallback.example.com");
+  });
+
+  it("strips a trailing slash from the canonical URL", async () => {
+    setEnv({ AUTH_URL: "https://canonical.example.com/" });
+    const { getPublicBaseUrl } = await importEnv();
+    expect(getPublicBaseUrl()).toBe("https://canonical.example.com");
+  });
+
+  it("uses the request host+proto only when no canonical URL is configured", async () => {
+    setEnv({ AUTH_URL: undefined, NEXTAUTH_URL: undefined });
+    const { getPublicBaseUrl } = await importEnv();
+    expect(getPublicBaseUrl("app.example.com", "https")).toBe("https://app.example.com");
+  });
+
+  it("defaults the request fallback to https + localhost:3000 when headers are missing", async () => {
+    setEnv({ AUTH_URL: undefined, NEXTAUTH_URL: undefined });
+    const { getPublicBaseUrl } = await importEnv();
+    expect(getPublicBaseUrl(null, null)).toBe("https://localhost:3000");
+    expect(getPublicBaseUrl()).toBe("https://localhost:3000");
+  });
+
+  it("honors an x-forwarded-proto of http in the request fallback", async () => {
+    setEnv({ AUTH_URL: undefined, NEXTAUTH_URL: undefined });
+    const { getPublicBaseUrl } = await importEnv();
+    expect(getPublicBaseUrl("dev.local:3000", "http")).toBe("http://dev.local:3000");
+  });
+});
+
+// ---------------------------------------------------------------------------
 // validateAuthUrl
 // ---------------------------------------------------------------------------
 describe("validateAuthUrl", () => {

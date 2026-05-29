@@ -15,6 +15,7 @@ import { getDbNowUncached } from "@/lib/db-time";
 import { MAX_EXPIRY_MS, computeExpiryFromDays } from "@/lib/assignments/recruiting-constants";
 import { sendEmail, isEmailConfigured } from "@/lib/email/smtp";
 import { renderRecruitingInvitationEmail } from "@/lib/email/templates";
+import { getPublicBaseUrl } from "@/lib/security/env";
 import { logger } from "@/lib/logger";
 
 export const GET = createApiHandler({
@@ -120,9 +121,12 @@ export const POST = createApiHandler({
       // and SMTP is configured. Fire-and-forget so the API response isn't
       // delayed by mail delivery; failures are logged inside sendEmail.
       if (body.candidateEmail && invitation.token && await isEmailConfigured()) {
-        const proto = req.headers.get("x-forwarded-proto") || "https";
-        const host = req.headers.get("host") || "localhost:3000";
-        const baseUrl = `${proto}://${host}`;
+        // Canonical-first origin (see getPublicBaseUrl): prefer the configured
+        // AUTH_URL over the client-supplied Host header for the link domain.
+        const baseUrl = getPublicBaseUrl(
+          req.headers.get("host"),
+          req.headers.get("x-forwarded-proto"),
+        );
         const accessUrl = `${baseUrl}/recruit/${invitation.token}`;
         renderRecruitingInvitationEmail({
           to: body.candidateEmail,

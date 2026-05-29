@@ -78,6 +78,34 @@ export function getAuthUrlObject() {
   }
 }
 
+/**
+ * Resolve the public origin (scheme + host, no trailing slash) to embed in
+ * outbound email links (verification, recruiting invitations).
+ *
+ * Canonical-first: prefer the configured `AUTH_URL`/`NEXTAUTH_URL` so the link
+ * domain is operator-controlled and stable, NOT derived from the client-supplied
+ * `Host`/`X-Forwarded-Host` header. Trusting the request host on paths that are
+ * not behind the trusted-host guard (e.g. the public-signup server action) would
+ * let a spoofed header place an attacker origin inside an email link a victim is
+ * likely to trust (CWE-601 link poisoning / token forwarding).
+ *
+ * Falls back to the request-derived origin only when no canonical URL is
+ * configured (e.g. local dev without AUTH_URL set).
+ */
+export function getPublicBaseUrl(
+  headerHost?: string | null,
+  forwardedProto?: string | null,
+): string {
+  const canonical = getAuthUrl()?.trim();
+  if (canonical) {
+    return canonical.replace(/\/+$/, "");
+  }
+
+  const proto = forwardedProto?.trim() || "https";
+  const host = headerHost?.trim() || "localhost:3000";
+  return `${proto}://${host}`.replace(/\/+$/, "");
+}
+
 function parseAllowedHosts(raw: string | null | undefined): string[] {
   if (!raw) return [];
 
