@@ -110,5 +110,5 @@ F6-cycle3 (SMTP UX polish), F7-cycle3 (provider-name staleness), F8-cycle3
 - [x] N2 implemented (rate-limit param rename, key format preserved) — commit 9bf5a018
 - [x] Gates green (lint 0, tsc 0, build 0, 2459 unit tests, lint:bash 0)
 - [x] Committed (fine-grained, GPG-signed): 9250635b, 9bf5a018, 2913ffd1
-- [ ] Pushed to main
-- [ ] Deployed (per-cycle)
+- [x] Pushed to main (527931f7..b59dde3e)
+- [ ] Deployed (per-cycle) — in progress
