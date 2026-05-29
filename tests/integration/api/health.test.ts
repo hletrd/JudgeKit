@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeEach, afterEach } from "vitest";
-import { createTestDb, hasPostgresIntegrationSupport, seedUser, type TestDb } from "../support";
+import { createTestDb, hasPostgresIntegrationSupport, seedRoles, seedUser, type TestDb } from "../support";
 import { eq, sql } from "drizzle-orm";
 import { users } from "@/lib/db/schema";
 
@@ -8,6 +8,7 @@ describe.skipIf(!hasPostgresIntegrationSupport)("Integration DB health check", (
 
   beforeEach(async () => {
     ctx = await createTestDb();
+    await seedRoles(ctx); // users.role -> roles.name FK; migrations don't seed roles
   });
 
   afterEach(async () => {

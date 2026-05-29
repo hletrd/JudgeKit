@@ -3,6 +3,7 @@ import { eq, and } from "drizzle-orm";
 import {
   createTestDb,
   hasPostgresIntegrationSupport,
+  seedRoles,
   seedUser,
   seedProblem,
   seedTestCase,
@@ -31,6 +32,7 @@ describe.skipIf(!hasPostgresIntegrationSupport)("Submission lifecycle (integrati
 
   beforeEach(async () => {
     ctx = await createTestDb();
+    await seedRoles(ctx); // users.role -> roles.name FK; migrations don't seed roles
     const user = await seedUser(ctx, { username: "submitter", role: "student" });
     const problem = await seedProblem(ctx, { title: "Sum Two Numbers" });
     userId = user.id;

@@ -3,6 +3,7 @@ import { eq } from "drizzle-orm";
 import {
   createTestDb,
   hasPostgresIntegrationSupport,
+  seedRoles,
   seedUser,
   seedGroup,
   seedEnrollment,
@@ -16,6 +17,7 @@ describe.skipIf(!hasPostgresIntegrationSupport)("User CRUD (integration)", () =>
 
   beforeEach(async () => {
     ctx = await createTestDb();
+    await seedRoles(ctx); // users.role -> roles.name FK; migrations don't seed roles
   });
 
   afterEach(async () => {
