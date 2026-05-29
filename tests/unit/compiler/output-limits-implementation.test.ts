@@ -7,12 +7,15 @@ function read(relativePath: string) {
 }
 
 describe("compiler output truncation limits", () => {
-  it("keeps the Node compiler runner and Rust worker aligned at 128 MiB", () => {
+  it("keeps the Node compiler runner and Rust worker aligned at a 128 MiB default", () => {
     const tsSource = read("src/lib/compiler/execute.ts");
     const rustSource = read("judge-worker-rs/src/docker.rs");
 
     expect(tsSource).toContain("const MAX_OUTPUT_BYTES = 134_217_728; // 128 MiB");
-    expect(rustSource).toContain("const MAX_OUTPUT_BYTES: u64 = 134_217_728; // 128 MiB");
+    // Rust worker: the per-stream cap is env-configurable (JUDGE_MAX_OUTPUT_BYTES)
+    // but DEFAULTS to 128 MiB, staying aligned with the Node runner above.
+    expect(rustSource).toContain("JUDGE_MAX_OUTPUT_BYTES");
+    expect(rustSource).toContain(".unwrap_or(134_217_728); // 128 MiB");
   });
 
   it("drains past the cap instead of tearing down the pipe (no spurious EPIPE)", () => {
