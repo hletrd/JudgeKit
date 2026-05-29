@@ -71,5 +71,16 @@ exists this cycle). Key items (severity NOT downgraded):
 - [x] PROMPT 2: convergence recorded; all carried findings re-deferred with
       severity preserved; cycle-8 plan archived.
 - [x] PROMPT 3: no implementation needed (0 findings). Gates re-verified green
-      (lint 0/0, tsc 0, build OK, test:unit 2472/321, lint:bash 0). No code
-      change → no commit churn manufactured. Deploy per DEPLOY_MODE=per-cycle.
+      (lint 0/0, tsc 0, build exit 0 / 7 pre-existing Turbopack Edge-runtime
+      warnings, test:unit 2472/321, lint:bash 0). No code change → no commit
+      churn manufactured. Single docs commit 251d956c (GPG-signed) pushed
+      24939e42..251d956c.
+- [x] Deploy per DEPLOY_MODE=per-cycle: SUCCESS (exit 0). Image built+pushed,
+      nginx reconfigured+reloaded, app live: root HTTP 200, HTTPS HTTP 200 (both
+      verified by the deploy script). Post-deploy Playwright smoke: 141 passed,
+      7 failed — ALL are the pre-existing "Step 1: Login" credential timeouts at
+      tests/e2e/support/helpers.ts:32 (documented "smoke creds pre-existing"
+      since cycle-5, re-confirmed cycle-8), unrelated to this cycle (zero code
+      change — docs only). The script's generic "[WARN] treat as deploy failure"
+      refers to the smoke step only; the deployment itself succeeded. Not a
+      regression. DEPLOY: per-cycle-success.
