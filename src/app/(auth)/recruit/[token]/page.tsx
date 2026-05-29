@@ -14,6 +14,8 @@ import { db } from "@/lib/db";
 import { assignmentProblems, assignments } from "@/lib/db/schema";
 import { eq, sql } from "drizzle-orm";
 import { RecruitStartForm } from "./recruit-start-form";
+import Link from "next/link";
+import { buildLocalePath } from "@/lib/seo";
 
 /**
  * Cached version of getRecruitingInvitationByToken for use within a single
@@ -322,6 +324,17 @@ export default async function RecruitPage({
             </div>
           )}
         </div>
+        <p className="text-xs text-muted-foreground">
+          {t("consentNotice")}{" "}
+          <Link
+            href={buildLocalePath("/privacy", locale)}
+            className="underline"
+            target="_blank"
+            rel="noopener noreferrer"
+          >
+            {t("privacyPolicyLinkLabel")}
+          </Link>
+        </p>
         <RecruitStartForm
           token={token}
           assignmentId={assignment.id}

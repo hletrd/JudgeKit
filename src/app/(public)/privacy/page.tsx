@@ -32,6 +32,10 @@ export default async function PrivacyPage() {
     getLocale(),
   ]);
 
+  // The data-controller contact must be configurable per deployment — a
+  // hardcoded address misroutes other tenants' candidate GDPR/PIPA requests.
+  const contactEmail = process.env.PRIVACY_CONTACT_EMAIL?.trim() || "privacy@xylolabs.com";
+
   // Retention periods are derived from DATA_RETENTION_DAYS (which reads env
   // var overrides) so the privacy page always reflects the actual configured
   // values, not stale hardcoded defaults.
@@ -80,8 +84,8 @@ export default async function PrivacyPage() {
       <h2>{t("sectionContactTitle")}</h2>
       <p>
         {t("sectionContactIntro")}{" "}
-        <a className="underline" rel="nofollow" href="mailto:privacy@xylolabs.com">
-          privacy@xylolabs.com
+        <a className="underline" rel="nofollow" href={`mailto:${contactEmail}`}>
+          {contactEmail}
         </a>
       </p>
 

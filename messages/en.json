@@ -2751,6 +2751,8 @@
     "noteFixedDeadline": "This assessment ends at the fixed deadline shown above — there is no personal timer that starts when you begin, so the time available to you depends on when you start. Begin as early as you can.",
     "noteSubmissions": "You may submit multiple times; your best score counts.",
     "noteCompletion": "Make sure you have a stable connection and enough time to complete.",
+    "consentNotice": "By starting, you consent to assessment monitoring and to the handling of your personal data described in our",
+    "privacyPolicyLinkLabel": "Privacy Policy",
     "startAssessment": "Start Assessment",
     "continueAssessment": "Continue Assessment",
     "startConfirmTitle": "Ready to start the assessment?",
