@@ -54,6 +54,13 @@ vi.mock("@/lib/security/hcaptcha", () => ({
   isHcaptchaConfigured: vi.fn(() => Promise.resolve(true)),
 }));
 
+vi.mock("@/lib/security/encryption", () => ({
+  // Deterministic stand-in: the action stores the *return value* as the secret
+  // column; the audit-redaction test only cares that it is a non-empty string
+  // that gets masked, not that it is real ciphertext.
+  encrypt: vi.fn((value: string) => `enc:${value}`),
+}));
+
 vi.mock("next/cache", () => ({
   revalidatePath: mocks.revalidatePath,
 }));
@@ -318,5 +325,39 @@ describe("updateSystemSettings", () => {
     expect(insertedValues).not.toHaveProperty("siteDescription");
     expect(insertedValues).not.toHaveProperty("timeZone");
     expect(insertedValues).not.toHaveProperty("platformMode");
+  });
+
+  // Regression for SEC-C2-1: secret settings columns (smtpPass, hcaptchaSecret)
+  // are stored encrypted but MUST be redacted in the audit log so the encrypted
+  // ciphertext is never persisted into the auditEvents table.
+  it("redacts smtpPass and hcaptchaSecret in the audit log details", async () => {
+    const { updateSystemSettings } = await import("@/lib/actions/system-settings");
+    setupAuthorizedAdmin();
+
+    const result = await updateSystemSettings({
+      smtpHost: "smtp.example.com",
+      smtpPass: "super-secret-smtp-password",
+      hcaptchaSecret: "super-secret-hcaptcha-key",
+    });
+    expect(result).toEqual({ success: true });
+
+    // The encrypted value IS stored in the DB column (not redacted there).
+    const insertedValues = mocks.dbInsertValues.mock.calls.at(-1)?.[0] as Record<string, unknown>;
+    expect(insertedValues.smtpPass).toBe("enc:super-secret-smtp-password");
+    expect(insertedValues.hcaptchaSecret).toBe("enc:super-secret-hcaptcha-key");
+
+    // The audit log MUST mask both secrets and never leak the plaintext or the
+    // ciphertext.
+    const auditCall = mocks.recordAuditEvent.mock.calls.at(-1)?.[0] as {
+      details: Record<string, unknown>;
+    };
+    expect(auditCall.details.smtpPass).toBe("••••••••");
+    expect(auditCall.details.hcaptchaSecret).toBe("••••••••");
+    const serialized = JSON.stringify(auditCall.details);
+    expect(serialized).not.toContain("super-secret-smtp-password");
+    expect(serialized).not.toContain("super-secret-hcaptcha-key");
+    expect(serialized).not.toContain("enc:super-secret-smtp-password");
+    // A non-secret field on the same payload still passes through unmasked.
+    expect(auditCall.details.smtpHost).toBe("smtp.example.com");
   });
 });

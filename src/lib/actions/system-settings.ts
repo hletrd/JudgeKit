@@ -44,6 +44,17 @@ const CONFIG_KEYS = [
   "uploadMaxImageDimension",
 ] as const;
 
+/**
+ * Settings columns that hold secrets. Their values are stored encrypted, but
+ * must ALSO be redacted before being written into the audit log — otherwise
+ * the encrypted ciphertext is persisted into the `auditEvents` table, which is
+ * a secret-handling inconsistency (the encrypted value should never be
+ * duplicated into general-purpose logs). Keep this in sync with every `encrypt`
+ * call in the write logic below so adding a secret column is a single,
+ * deliberate change rather than a silently-missed redaction.
+ */
+const SECRET_SETTING_KEYS = new Set<string>(["hcaptchaSecret", "smtpPass"]);
+
 type UpdateSystemSettingsResult = {
   success: boolean;
   error?: string;
@@ -219,7 +230,7 @@ export async function updateSystemSettings(
     Object.fromEntries(
       Object.entries(baseValues)
         .filter(([key]) => key !== "updatedAt")
-        .map(([key, val]) => [key, key === "hcaptchaSecret" && typeof val === "string" && val.length > 0 ? "••••••••" : val])
+        .map(([key, val]) => [key, SECRET_SETTING_KEYS.has(key) && typeof val === "string" && val.length > 0 ? "••••••••" : val])
     )
   ));
 
