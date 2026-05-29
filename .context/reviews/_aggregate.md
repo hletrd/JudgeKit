@@ -1,135 +1,90 @@
-# Aggregate Review — Cycle 3 (2026-05-29)
+# Aggregate Review — Cycle 4 (2026-05-29)
 
-Per-agent reviews live in `.context/reviews/cycle-3-2026-05-29/` (one file per
-specialist angle). The previous cycle-2 aggregate is preserved verbatim at
-`.context/reviews/_aggregate-cycle-2-2026-05-29.md` for provenance (and cycle-1 at
-`_aggregate-cycle-1-2026-05-29.md`).
+Per-agent reviews live in `.context/reviews/cycle-4-2026-05-29/` (one file per
+specialist angle). Prior aggregates preserved verbatim at
+`.context/reviews/_aggregate-cycle-3.md`, `_aggregate-cycle-2-2026-05-29.md`,
+`_aggregate-cycle-1-2026-05-29.md`.
 
 ## Environment note (review fan-out)
-This environment exposes NO reviewer-style subagents: `.claude/agents/` contains
-only `settings.local.json` + a lock file; there is no `~/.claude/agents/`; the
-`.context/agents/*.md` files are domain personas (admin/applicant/student/etc.),
-NOT dispatchable Claude Code agents; and only the `general-purpose` Agent type is
-registered. Per the prompt's "skip any that are not registered" rule, there were
-no specialist reviewer agents to fan out to. The review was conducted directly
-across all 11 required specialist angles, one provenance file per angle:
-code-reviewer, perf-reviewer, security-reviewer, critic, verifier, test-engineer,
-tracer, architect, debugger, document-specialist, designer (web UI present →
-designer included).
+This environment exposes NO reviewer-style subagents (`.claude/agents/` empty, no
+`~/.claude/agents/`) and no general `Agent`/`Task` dispatch tool is callable — only
+team tools that require a non-exposed Agent tool. Per the prompt's "skip any not
+registered" rule, the review was conducted directly across all 11 specialist
+angles, one provenance file per angle: code-reviewer, perf-reviewer,
+security-reviewer, critic, verifier, test-engineer, tracer, architect, debugger,
+document-specialist, designer (web UI present → designer included).
 
-Scope emphasis: net-new issues only, over the recently-changed surface (email/SMTP
-transport + templates, public-signup auto-verify, recruiting invitations
-single + bulk, system-settings secrets) and the cross-file URL/secret helpers.
-Cycle-1 (F1–F12) and cycle-2 (F1–F7) findings were re-verified in code as
-FIXED-or-LEDGERED; this cycle hunts the residue.
+## Scope this cycle (per orchestrator)
+Broadened OFF the email/SMTP surface (cycles 1-3) onto: judge worker
+(claim/poll routes, auth, ip-allowlist, verdict), rate limiter (DB-backed + Rust
+sidecar), contests (access-view), auth/session (session-security, trusted-host,
+find-session-user, recruiting-token), DB/drizzle (schema FKs), and scripts (nginx).
 
-Gate baseline (whole repo): `npm run lint` exit 0 (0 errors / 0 warnings),
-`tsc --noEmit` exit 0, `npm run build` exit 0, `npm run test:unit` = 319 files /
-2438 tests all passing, `npm run lint:bash` exit 0.
+## Gate baseline (whole repo, verified this cycle)
+`npm run lint` = 0 errors/0 warnings · `tsc --noEmit` = 0 · `npm run build` (prior
+cycle, unchanged inputs) green · `npm run test:unit` = 319 files / 2445 tests all
+pass · `npm run lint:bash` = 0.
 
 ## Merged findings (deduped; cross-agent agreement noted)
 
-### F1 [DBG-C3-3 / VER-C3-1 / DOC-C3-1 / tracer-FlowA / critic#1 / TE-C3-1] — Low / High
-Public-signup verification dispatch is fire-and-forget with an EMPTY catch that
-swallows non-`sendEmail` throws. `src/lib/actions/public-signup.ts:196-198`:
-`sendEmailVerification(createdUserId, baseUrl).catch(() => {})` with the comment
-"logged inside sendEmailVerification". But `sendEmailVerification`
-(`src/lib/email/index.ts:215-278`) logs ONLY the `sendEmail`-failure branch
-(`:272-273`); it can THROW (rejecting the promise) from `db.transaction`
-(`:245`), `getDbNowUncached()` (`:241`), `generateSecureToken()` (`:240`), or
-`isEmailConfigured()` decrypt (`:219`) — and those rejections vanish with zero
-log. This is ASYMMETRIC with the sibling recruiting fire-and-forget, which
-cycle-2 (9cd4b16e) already gave an explicit `logger.warn`. The comment overstates
-the guarantee (DOC-C3-1).
-AGREEMENT: 5 angles (debugger, verifier, document, test-engineer) + tracer's
-leading Flow-A hypothesis + critic. Highest-signal net-new finding this cycle.
-FIX: replace `() => {}` with a `logger.warn({ userId: createdUserId, err })`
-(mirroring the recruiting route); update the comment to describe the real
-behavior; add a unit test (TE-C3-1) asserting signup still returns
-`{success:true}` and a warn is logged when the dispatch rejects.
-NOT DEFERRABLE — it is a tiny observability fix on a correctness-adjacent path
-(silent loss of operator signal), root-causable in 2 lines + 1 test.
+### F1 [SEC-C4-1 / VER-C4-1 / DBG-C4-1 / TRACE-H1 / ARCH-C4-1 / TE-C4-1 / DOC-C4-2 / critic#1] — Low / Medium-confidence-in-prod, High-confidence-mechanism
+`isValidIp` (`src/lib/security/ip.ts:18-41`) rejects IPv4-mapped IPv6
+(`::ffff:a.b.c.d`) because the form matches neither the dotted-quad regex nor the
+pure-hex IPv6 regex. EMPIRICALLY VERIFIED: `isValidIp("::ffff:192.168.1.1")=false`.
+Consequence: `extractClientIp` returns null in production for such addresses, so
+`isJudgeIpAllowed` (`judge/ip-allowlist.ts:171`) DENIES the worker when an
+allowlist is set (availability lockout, submissions stall in pending/queued), and
+rate-limit keys coarsen. ASYMMETRIC with `ip-allowlist.ts:ipv6ToBytes` (lines
+50-62), which DOES parse the embedded-v4 tail — two IP parsers that disagree
+(ARCH-C4-1). Trigger requires a dual-stack Nginx emitting the mapped `$remote_addr`
+(`scripts/online-judge.nginx.conf:61`).
+AGREEMENT: 7 angles + critic — highest-signal net-new finding this cycle.
+FIX: extract a shared IP normalizer that accepts/normalizes `::ffff:a.b.c.d`
+(reusing `ipv6ToBytes`'s embedded-v4 logic), use it in both `ip.ts` and
+`ip-allowlist.ts`; add mapped-form tests to `ip.test.ts` and `ip-allowlist.test.ts`.
+Fail-safe today (denies, never wrongly allows) → Low severity, but a correctness +
+availability defect. IMPLEMENT THIS CYCLE.
 
-### F2 [CR-C3-1 / SEC-C3-1 / ARCH-C3-1 / VER-C3-2 / tracer-FlowB / critic#2] — Low / High
-Outbound email base URL is built from the client-influenced request `Host`
-header in two duplicated sites, ignoring the configured canonical origin.
-`src/lib/actions/public-signup.ts:193-195` and
-`src/app/api/v1/contests/[assignmentId]/recruiting-invitations/route.ts:123-125`
-compute `${proto}://${host}` from `x-forwarded-proto` + `host`. The repo already
-owns the canonical origin (`getAuthUrl()`, `src/lib/security/env.ts:62`) and host
-trust (`getTrustedAuthHosts`/`validateTrustedAuthHost`,
-`normalizeHostForComparison`). The signup server-action path is not behind the
-trusted-host guard, so a spoofed `Host`/`X-Forwarded-Host` can place an
-attacker-origin link inside a verification/invitation email (CWE-601-class
-link-poisoning / token-forwarding). Also pure duplication that already drifted
-(signup uses `headers()`, recruiting uses `req.headers`).
-AGREEMENT: 5 angles (code, security, architect, verifier) + tracer's Flow-B +
-critic. This is the carried-over F4-cycle1 / SEC-C2-2 / CR-C2-3 item, OPEN since
-cycle 1 (now its third appearance) with the fix anchor finally pinned.
-FIX: add `getPublicBaseUrl(headerHost?: string): string` to `env.ts` —
-canonical-first (`getAuthUrl()`), request-host fallback only when unset, with
-trailing-slash normalization — and use it in both email-sending sites. Add a unit
-test (TE-C3-2) for the precedence + normalization. Defense-in-depth + dedup;
-implement this cycle rather than deferring a fourth time (critic#2).
+### F2 [CR-C4-1 / VER-C4-2 / ARCH-C4-2 / DOC-C4-1 / TE-C4-2 / critic#2] — Low / High
+`findSessionUser` (`src/lib/auth/find-session-user.ts:33,37`) returns
+`(await db.select(...))[0]` WITHOUT `?? null`, while the sibling
+`findSessionUserWithPassword` (`:57,61`) DOES — so the two paired functions, which
+cross-reference each other in their doc comments, return different not-found
+sentinels (`undefined` vs `null`). Callers using `=== null` mis-handle the
+missing-user case.
+AGREEMENT: 4 angles + critic.
+FIX: append `?? null` on both `findSessionUser` branches; update the doc comment;
+add a not-found-returns-null test (TE-C4-2). IMPLEMENT THIS CYCLE.
 
-### F3 [ARCH-C3-2 / DSN-C3-3 / DOC-C3-2 — DEFERRED, product decision] — Low / High
-Bulk recruiting create does NOT email invitations; single-create does. Same
-capability, same resource, asymmetric side effects (bulk tokens ARE available
-in-memory, `recruiting-invitations.ts:227`, so "send" is feasible under a
-`p-limit(2-3)` cap to respect the 3-connection pool). The UI gives no
-email-status feedback either way (DSN-C3-3). This is a behavioral/product
-divergence, not a defect (no data lost; invitations are still created). REMAINS
-DEFERRED under the cycle-2 F2 ledger criterion (await product intent). Re-stated,
-not re-counted as new.
+### F3 [SEC-C4-2 / SEC-C4-3 / TE-C4-3 / critic#3] — Low / Medium (DEFERRED)
+Judge result handling trusts the worker's `results` array: (a) `testCaseId` is
+only FK-constrained to `test_cases` (any problem), not scoped to the claimed
+problem; (b) `score = passed/results.length` lets a partial result set inflate the
+score. Both are gated by claimToken ownership + the authenticated-worker trust
+boundary; the FK already blocks fabricated IDs. Not a correctness/data-loss defect
+under the current trust model. DEFERRED (see ledger; exit criterion = untrusted /
+third-party workers become possible). critic explicitly cautions against
+over-engineering full-result validation this cycle.
 
-### F4 [CR-C3-2 / SEC-C3-2 / ARCH-C3-3 — carried-over, OPEN] — Low / High-non-exploitable
-`hashConfig` (`smtp.ts:11-13`) is a misnomer (`JSON.stringify`, not a hash) and
-retains the decrypted SMTP password in the module-scope `lastConfigHash` for the
-process lifetime. Never logged/persisted/sent → not remotely exploitable, but
-widens the in-memory secret footprint (heap/core-dump) and misleads. Carried-over
-CR-C2-1 / F7-cycle1, OPEN. Optional low-cost win this cycle (critic#4): hash before
-caching, rename to `configFingerprint`.
+### F4 [CR-C4-2 / PERF-C4-1] — Low / Medium (DEFERRED, perf-only)
+Claim route does up to 3 SELECTs of the same `judge_workers` row
+(`claim/route.ts:130,143-150,298-306`). Bounded by worker count; no correctness
+impact. DEFERRED (exit = claim path shows up in profiling, or auth helper is
+refactored to return the fetched row).
 
-### F5 [PERF-C3-1 / CR-C3-3 — carried-over, OPEN] — Low / Medium
-Per-send SMTP config resolution (settings read + AES-GCM decrypt) runs up to 3×
-per email (`isConfigured` + `send` + route-level `isEmailConfigured`).
-`getSystemSettings()` is cached but the decrypt repeats. Email cadence is low →
-Low. Carried-over PERF-C1-1 / F9, OPEN.
+### F5 [CR-C4-3 / PERF-C4-2 / DBG-C4-2 / DOC-C4-2] — Low / Low (informational)
+Minor: implicit `"0.0.0.0"` sentinel coupling between `ip.ts` and `ip-allowlist.ts`
+(document/share a constant); regex literals re-created per call (V8-cached, moot);
+in-progress poll branch can transiently shrink the result set. Informational; fold
+the constant/comment into the F1 fix where convenient.
 
-### F6 [DSN-C3-1 / DSN-C3-2 — carried-over, OPEN] — Low
-SMTP port input lacks `inputMode="numeric"`
-(`system-settings-form.tsx:358`); masked password field's clear-vs-keep semantics
-are ambiguous (`:366,169`). Admin-UX polish. Carried-over UX-C1-1 / UX-C1-2, OPEN.
-
-### F7 [CR-C3-4 / DBG-C3-4 / ARCH — carried-over, OPEN] — Low
-`getActiveProviderName()` (`providers/index.ts:70`) can report a stale provider
-name after a config switch (next send re-detects). Observability-only.
-Carried-over F12-cycle1, OPEN.
-
-### F8 [PERF-C3-2 / PERF-C3-3 — carried-over, OPEN] — Low / informational
-Bulk recruiting holds N advisory locks for the whole txn (deadlock-safe, bounded);
-settings save does a redundant `JSON.parse(JSON.stringify(...))` deep-clone.
-Carried-over PERF-C2-2 / PERF-C2-3, OPEN.
-
-## Severity roll-up
-- Net-new actionable this cycle: F1 (NOT deferrable — silent-catch observability),
-  F2 (implement now — host-trust + dedup, 3rd appearance).
-- Deferred (product decision): F3.
-- Carried-over OPEN (Low / informational): F4, F5, F6, F7, F8.
-- No High/Critical, no data-loss findings.
-
-## Cross-cycle CLOSED (verified in code this cycle)
-- cycle-2 SEC-C2-1 (smtpPass→audit log): CLOSED (`system-settings.ts:56,233`
-  `SECRET_SETTING_KEYS`).
-- cycle-2 SEC-C2-3 (`SMTP_SKIP_TLS_VERIFY` truthiness): CLOSED (`smtp.ts:92`
-  `=== "true"`, documented `.env.example:34`).
-- cycle-2 DBG-C2-1 (cached-provider re-check unguarded): CLOSED
-  (`providers/index.ts:49-57`).
-- cycle-2 DBG-C2-3 (recruiting silent catch): CLOSED
-  (`recruiting-invitations/route.ts:140-147`).
-- cycle-1 F1 (plaintext-SMTP decrypt throw): CLOSED (`smtp.ts:54`).
+## Severity roll-up (net-new only)
+- Low / Medium (implement now): F1 (7-angle agreement), F2 (4-angle agreement).
+- Low (deferred, severity preserved): F3, F4.
+- Low / informational: F5.
+- No High/Critical, no data-loss, no remote-exploit findings.
 
 ## AGENT FAILURES
 None. No subagents were spawnable in this environment (see Environment note); all
 11 specialist angles were covered directly, one provenance file per angle in
-`.context/reviews/cycle-3-2026-05-29/`.
+`cycle-4-2026-05-29/`.
