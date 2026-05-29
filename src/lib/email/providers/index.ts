@@ -40,7 +40,23 @@ export async function isEmailConfigured(): Promise<boolean> {
 }
 
 export async function sendEmail(message: EmailMessage): Promise<SendResult> {
-  if (!activeProvider || !(await activeProvider.isConfigured())) {
+  // Mirror the defense in detectProvider(): the cached provider's
+  // isConfigured() can throw (e.g. decrypt() on a malformed stored secret after
+  // a key rotation). Treat a throw as "no longer configured" and re-detect,
+  // rather than letting the exception escape sendEmail() and break all email.
+  let stillConfigured = false;
+  if (activeProvider) {
+    try {
+      stillConfigured = await activeProvider.isConfigured();
+    } catch (error) {
+      logger.warn(
+        { provider: activeProvider.name, error: error instanceof Error ? error.message : String(error) },
+        "Cached email provider isConfigured() threw; re-detecting provider"
+      );
+      stillConfigured = false;
+    }
+  }
+  if (!stillConfigured) {
     activeProvider = await detectProvider();
   }
 
