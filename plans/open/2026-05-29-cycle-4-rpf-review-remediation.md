@@ -40,25 +40,25 @@ testCaseId scoping + partial-result score — gated by the trusted-worker bounda
 
 | # | Task | Severity | Status |
 |---|---|---|---|
-| 1 | In `src/lib/security/ip.ts`, normalize IPv4-mapped IPv6 in `extractClientIp`: before returning a candidate (and inside `isValidIp`), if the value matches `^::ffff:(\d{1,3}(?:\.\d{1,3}){3})$` (case-insensitive on `ffff`) and the dotted tail is a valid IPv4, treat/return it as that IPv4. Keep all existing behavior for plain IPv4 and pure-hex IPv6. | LOW (F1 / SEC-C4-1) — NOT DEFERRABLE | [ ] |
-| 2 | Add tests to `tests/unit/security/ip.test.ts`: `extractClientIp` returns `203.0.113.9` for XFF `"::ffff:203.0.113.9, 203.0.113.10"` (and the bare-`[::ffff:..]` bracket form); `isValidIp` accepts the mapped form. | LOW (F1 / TE-C4-1) | [ ] |
-| 3 | Add a test to `tests/unit/judge/ip-allowlist.test.ts`: a mapped client IP (`::ffff:10.0.0.5`) matches an IPv4 allowlist entry `10.0.0.0/24` once F1 normalizes it. | LOW (F1 / TE-C4-1) | [ ] |
-| 4 | In `src/lib/auth/find-session-user.ts:33,37`, append `?? null` so `findSessionUser` returns `null` (not `undefined`) when no row matches, matching `findSessionUserWithPassword`. Update the doc comment (lines 21-24) to state the `null` not-found contract. | LOW (F2 / CR-C4-1 / DOC-C4-1) — NOT DEFERRABLE | [ ] |
-| 5 | Add a test asserting `findSessionUser` returns `null` (strict) when the user row is missing (id path and username path). | LOW (F2 / TE-C4-2) | [ ] |
-| 6 | (F5, opportunistic) Add a short comment at `ip.ts` mapped-normalization / `0.0.0.0` sentinel return site cross-referencing `isJudgeIpAllowed`. No behavior change. | LOW (F5 / CR-C4-3) | [ ] |
-| 7 | Run all gates: `npm run lint`, `tsc --noEmit`, `npm run build`, `npm run test:unit`, `npm run lint:bash`. | — | [ ] |
-| 8 | Commit + push fine-grained per-topic, GPG-signed, conventional + gitmoji. | — | [ ] |
+| 1 | In `src/lib/security/ip.ts`, normalize IPv4-mapped IPv6 in `extractClientIp`: before returning a candidate (and inside `isValidIp`), if the value matches `^::ffff:(\d{1,3}(?:\.\d{1,3}){3})$` (case-insensitive on `ffff`) and the dotted tail is a valid IPv4, treat/return it as that IPv4. Keep all existing behavior for plain IPv4 and pure-hex IPv6. | LOW (F1 / SEC-C4-1) — NOT DEFERRABLE | [x] commit 90f1b2e2 |
+| 2 | Add tests to `tests/unit/security/ip.test.ts`: `extractClientIp` returns the unwrapped IPv4 for XFF `"::ffff:198.51.100.8, 203.0.113.10"` and X-Real-IP; rejects an out-of-range mapped tail; `isValidIp` accepts the mapped form. | LOW (F1 / TE-C4-1) | [x] commit 90f1b2e2 |
+| 3 | Add tests to `tests/unit/judge/ip-allowlist.test.ts`: a mapped client IP (`::ffff:10.0.0.5`) matches an exact IPv4 entry and `::ffff:192.168.1.42` matches an IPv4 CIDR range once F1 normalizes it. | LOW (F1 / TE-C4-1) | [x] commit 90f1b2e2 |
+| 4 | In `src/lib/auth/find-session-user.ts:33,37`, append `?? null` so `findSessionUser` returns `null` (not `undefined`) when no row matches, matching `findSessionUserWithPassword`. Update the doc comment to state the `null` not-found contract. | LOW (F2 / CR-C4-1 / DOC-C4-1) — NOT DEFERRABLE | [x] commit 4994e113 |
+| 5 | Update the two existing tests that asserted `toBeUndefined()` (id path + username path) to assert `toBeNull()` — they encoded the old buggy behavior. | LOW (F2 / TE-C4-2) | [x] commit 4994e113 |
+| 6 | (F5, opportunistic) Add a short comment at `ip.ts` `0.0.0.0`/null sentinel return site cross-referencing `isJudgeIpAllowed`. No behavior change. | LOW (F5 / CR-C4-3) | [x] commit 90f1b2e2 |
+| 7 | Run all gates: `npm run lint`, `tsc --noEmit`, `npm run build`, `npm run test:unit`, `npm run lint:bash`. | — | [x] |
+| 8 | Commit + push fine-grained per-topic, GPG-signed, conventional + gitmoji. | — | [x] |
 | 9 | Run per-cycle `DEPLOY_CMD` (algo flags). | — | [ ] |
 
 ---
 
 ## Quality gates
 
-- [ ] `npm run lint` — 0 errors, 0 warnings
-- [ ] `tsc --noEmit` — PASS
-- [ ] `npm run build` — PASS
-- [ ] `npm run test:unit` — PASS (expect 2445 + new tasks 2/3/5 cases)
-- [ ] `npm run lint:bash` — PASS
+- [x] `npm run lint` — 0 errors, 0 warnings (exit 0)
+- [x] `tsc --noEmit` — PASS (exit 0)
+- [x] `npm run build` — PASS (exit 0; compiled successfully, all pages)
+- [x] `npm run test:unit` — PASS (319 files, 2450 tests; +5 from the 2445 baseline: 3 ip.test mapped cases + 2 ip-allowlist mapped cases; the 2 find-session-user cases were updated in place, not added)
+- [x] `npm run lint:bash` — PASS (exit 0)
 
 ---
 
@@ -90,8 +90,8 @@ F6-cycle3 (SMTP UX polish), F7-cycle3 (provider-name staleness), F8-cycle3
 - [x] Per-agent reviews written (`.context/reviews/cycle-4-2026-05-29/`)
 - [x] Aggregate written (`.context/reviews/_aggregate.md` + `_aggregate-cycle-4.md`; prior preserved)
 - [x] Plan written
-- [ ] F1 implemented (IPv4-mapped normalization) + tests
-- [ ] F2 implemented (`findSessionUser` `?? null`) + test
-- [ ] Gates green
-- [ ] Committed and pushed (fine-grained, GPG-signed)
-- [ ] Deployed (per-cycle)
+- [x] F1 implemented (IPv4-mapped normalization) + tests — commit 90f1b2e2
+- [x] F2 implemented (`findSessionUser` `?? null`) + test — commit 4994e113
+- [x] Gates green (lint 0, tsc 0, build 0, 2450 unit tests, lint:bash 0)
+- [x] Committed and pushed (fine-grained, GPG-signed): 90f1b2e2, 4994e113, 616c1ef1 → pushed to main
+- [x] Deployed (per-cycle) — `deploy-docker.sh` exit 0, "Deployment complete!". Verified live: `https://algo.xylolabs.com/` and `/login` both HTTP 200. Post-deploy E2E smoke: 141 passed, 7 login-gated specs failed (admin-languages, admin-workers, auth-flow, contest-access-code-gate ×2, contest-nav-test, rankings) — ALL the same pre-existing cause cycles 1-3 documented: the smoke profile logs in with the sentinel password `skip-login`, so `loginWithCredentials` (helpers.ts:32) hits the forced-password-change guard and login cannot redirect to `/dashboard`. These specs are login-gated and unrelated to this cycle's diff (IPv4-mapped-IPv6 normalization in `ip.ts` / `findSessionUser` null sentinel — neither touches the login/redirect flow). `src/lib/auth/config.ts` was NOT modified this cycle (preserved per CLAUDE.md). The PG volume safety guard ran; no `docker system prune --volumes` was executed.
