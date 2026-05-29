@@ -56,7 +56,7 @@ SELECT — no profiling signal).
 | 3 | In `src/lib/security/api-rate-limit.ts`, rename the `userId` parameter of `consumeUserApiRateLimit` to `scope` (or `identity`) and update the JSDoc to state it accepts any stable per-caller identity (userId, `ip:<ip>`, `auth:<hash>`, workerId). No key-format change (keep `api:${endpoint}:user:${scope}` for backward compatibility — existing buckets must not reset). Update the call site comment in `claim/route.ts` if helpful. | LOW (N2 / CR-C5-2) | [x] commit 9bf5a018 |
 | 4 | Run all gates: `npm run lint`, `tsc --noEmit`, `npm run build`, `npm run test:unit`, `npm run lint:bash`. | — | [x] all green |
 | 5 | Commit + push fine-grained per-topic, GPG-signed, conventional + gitmoji. | — | [x] 9250635b, 9bf5a018, 2913ffd1 |
-| 6 | Run per-cycle `DEPLOY_CMD` (algo flags). | — | [ ] |
+| 6 | Run per-cycle `DEPLOY_CMD` (algo flags). | — | [x] deploy-docker.sh exit 0; live HTTP 200 (see Progress) |
 | 7 | Housekeeping: archive the now-fully-done cycle-3 and cycle-4 plans to `plans/done/` (done in this cycle's planning pass). | — | [x] |
 
 > NOTE on key compatibility (task 3): the rate-limit key template MUST remain
@@ -111,4 +111,4 @@ F6-cycle3 (SMTP UX polish), F7-cycle3 (provider-name staleness), F8-cycle3
 - [x] Gates green (lint 0, tsc 0, build 0, 2459 unit tests, lint:bash 0)
 - [x] Committed (fine-grained, GPG-signed): 9250635b, 9bf5a018, 2913ffd1
 - [x] Pushed to main (527931f7..b59dde3e)
-- [ ] Deployed (per-cycle) — in progress
+- [x] Deployed (per-cycle) — `deploy-docker.sh` exit 0, "Deployment complete!". Self-verified live: "JudgeKit is responding (HTTP 200)" + "HTTPS endpoint verified (HTTP 200)"; re-confirmed `https://algo.xylolabs.com/` and `/login` both HTTP 200. Post-deploy E2E smoke: 141 passed, 7 login-gated specs failed (admin-languages, admin-workers, auth-flow, contest-access-code-gate ×2, contest-nav-test, rankings) — ALL the same pre-existing cause cycles 1-4 documented: the smoke profile logs in with the sentinel password `skip-login`, so `loginWithCredentials` (helpers.ts:32) hits the forced-password-change guard and login cannot redirect to `/dashboard`. These specs are login-gated and unrelated to this cycle's diff (judge heartbeat staleness-sweep `active_tasks` reconciliation + rate-limit param rename — neither touches the login/redirect flow). `src/lib/auth/config.ts` was NOT modified this cycle (verified, preserved per CLAUDE.md). The PG volume safety guard ran; no `docker system prune --volumes` was executed (worker cleanup + app cleanup used scoped prune of dangling images / build cache / orphan volumes only).
