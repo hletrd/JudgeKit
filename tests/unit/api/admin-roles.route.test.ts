@@ -74,7 +74,28 @@ describe("POST /api/v1/admin/roles", () => {
       className: null,
       mustChangePassword: false,
     });
-    resolveCapabilitiesMock.mockResolvedValue(new Set(["users.manage_roles"]));
+    // Actor holds the capability it grants below — the create routes now reject
+    // granting capabilities the actor does not themselves hold.
+    resolveCapabilitiesMock.mockResolvedValue(
+      new Set(["users.manage_roles", "submissions.view_all"])
+    );
+  });
+
+  it("rejects granting a capability the actor does not hold (privilege escalation)", async () => {
+    const { POST } = await import("@/app/api/v1/admin/roles/route");
+    const res = await POST(
+      makeRequest({
+        name: "sneaky",
+        displayName: "Sneaky",
+        level: 1,
+        capabilities: ["system.backup"],
+      }),
+      { params: Promise.resolve({}) }
+    );
+
+    expect(res.status).toBe(403);
+    const body = await res.json();
+    expect(body.error).toBe("cannotGrantCapabilityYouLack");
   });
 
   it("returns 409 when a concurrent insert hits the unique role name constraint", async () => {
@@ -230,6 +251,41 @@ describe("PATCH /api/v1/admin/roles/[id]", () => {
 
     expect(res.status).toBe(200);
     expect(invalidateRoleCacheMock).toHaveBeenCalledTimes(1);
+  });
+
+  it("rejects adding a capability the actor does not hold (privilege escalation)", async () => {
+    // Existing role already has submissions.view_all; the actor (users.manage_roles
+    // only) tries to ADD system.backup, which it does not hold.
+    dbSelectMock.mockReturnValueOnce({
+      from: vi.fn(() => ({
+        where: vi.fn().mockResolvedValue([
+          {
+            id: "role-1",
+            name: "reviewer_plus",
+            displayName: "Reviewer+",
+            description: "Can review",
+            isBuiltin: false,
+            level: 1,
+            capabilities: ["submissions.view_all"],
+            createdAt: new Date(),
+            updatedAt: new Date(),
+          },
+        ]),
+      })),
+    });
+
+    const { PATCH } = await import("@/app/api/v1/admin/roles/[id]/route");
+    const res = await PATCH(
+      makeRequest(
+        { capabilities: ["submissions.view_all", "system.backup"] },
+        { method: "PATCH", url: "http://localhost:3000/api/v1/admin/roles/role-1" }
+      ),
+      { params: Promise.resolve({ id: "role-1" }) }
+    );
+
+    expect(res.status).toBe(403);
+    const body = await res.json();
+    expect(body.error).toBe("cannotGrantCapabilityYouLack");
   });
 });
 

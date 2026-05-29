@@ -85,6 +85,19 @@ export const PATCH = createApiHandler({
       return apiError("cannotSetRoleLevelAboveOwnLevel", 403);
     }
 
+    // Privilege-escalation guard: the actor may only ADD capabilities they
+    // themselves hold. Capabilities already on the role are allowed to remain
+    // (e.g. a lower admin renaming a role a super_admin configured), so only the
+    // newly-added capabilities are checked against the actor's resolved set.
+    if (updates.capabilities !== undefined) {
+      const existingCaps = new Set((role.capabilities as string[] | null) ?? []);
+      const added = (updates.capabilities as string[]).filter((cap) => !existingCaps.has(cap));
+      const ungrantable = added.filter((cap) => !caps.has(cap));
+      if (ungrantable.length > 0) {
+        return apiError("cannotGrantCapabilityYouLack", 403);
+      }
+    }
+
     const updateData: Record<string, unknown> = {};
     if (updates.displayName !== undefined) updateData.displayName = updates.displayName;
     if (updates.description !== undefined) updateData.description = updates.description;

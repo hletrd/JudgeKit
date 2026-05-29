@@ -66,6 +66,17 @@ export const POST = createApiHandler({
       return apiError("cannotCreateRoleAboveOwnLevel", 403);
     }
 
+    // Privilege-escalation guard: cannot grant capabilities the creator does not
+    // themselves hold. Without this, anyone with users.manage_roles could mint a
+    // lower-level role carrying system.backup / system.settings / etc. they lack
+    // and assign a user (or themselves) to it. `caps` is the creator's fully
+    // resolved set (super_admin-level resolves to ALL_CAPABILITIES, so they can
+    // still grant anything). This also rejects unknown capability strings.
+    const ungrantable = (capabilities as string[]).filter((cap) => !caps.has(cap));
+    if (ungrantable.length > 0) {
+      return apiError("cannotGrantCapabilityYouLack", 403);
+    }
+
     // Cannot use built-in role names
     if (isBuiltinRole(name)) {
       return apiError("roleNameReserved", 400);

@@ -10,9 +10,15 @@ import {
 } from "./defaults";
 
 /**
- * Ensure all built-in roles exist in the database.
- * Creates missing ones or updates existing ones with current default capabilities.
- * Safe to call multiple times — concurrent calls are race-free via onConflictDoUpdate.
+ * Seed any missing built-in roles with their default capabilities/levels.
+ *
+ * SEED-IF-MISSING ONLY: this used to onConflictDoUpdate, which ran on every
+ * render of the admin roles page and silently overwrote admin-customized
+ * built-in role capabilities/levels back to defaults (with no audit trail).
+ * It now does nothing when a role already exists, so admin edits persist.
+ * super_admin always resolves to ALL_CAPABILITIES at lookup time regardless of
+ * the stored row (see resolveCapabilities), so it never needs re-seeding.
+ * Safe to call repeatedly; concurrent calls are race-free via onConflictDoNothing.
  */
 export async function ensureBuiltinRoles(): Promise<void> {
   for (const roleName of BUILTIN_ROLE_NAMES) {
@@ -27,14 +33,8 @@ export async function ensureBuiltinRoles(): Promise<void> {
       capabilities: DEFAULT_ROLE_CAPABILITIES[roleName] as string[],
       createdAt: now,
       updatedAt: now,
-    }).onConflictDoUpdate({
+    }).onConflictDoNothing({
       target: roles.name,
-      set: {
-        displayName: DEFAULT_ROLE_DISPLAY_NAMES[roleName],
-        level: DEFAULT_ROLE_LEVELS[roleName],
-        capabilities: DEFAULT_ROLE_CAPABILITIES[roleName] as string[],
-        updatedAt: now,
-      },
     });
   }
 }
