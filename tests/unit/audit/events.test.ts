@@ -156,6 +156,27 @@ describe("recordAuditEvent", () => {
     });
   });
 
+  it("recordAuditEventDurable inserts immediately (no flush needed)", async () => {
+    const { recordAuditEventDurable } = await import("@/lib/audit/events");
+    const { db } = await import("@/lib/db");
+
+    await recordAuditEventDurable({
+      actorId: "admin-1",
+      actorRole: "super_admin",
+      action: "role.update",
+      resourceType: "role",
+      resourceId: "role-9",
+      summary: "Updated role",
+    });
+
+    // Durable path writes synchronously — no flushAuditBuffer() call required,
+    // so a hard crash right after this can't lose the event.
+    expect(db.insert).toHaveBeenCalled();
+    const batch = mocks.dbInsertValues.mock.calls.at(-1)?.[0] as Array<Record<string, unknown>>;
+    expect(batch).toHaveLength(1);
+    expect(batch[0]).toMatchObject({ action: "role.update", resourceId: "role-9" });
+  });
+
   it("uses buildAuditRequestContext when request is provided", async () => {
     const { recordAuditEvent, flushAuditBuffer } = await import("@/lib/audit/events");
 

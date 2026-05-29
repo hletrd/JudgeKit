@@ -10,7 +10,7 @@ import { encrypt, redactSecret } from "@/lib/security/encryption";
 import { SECRET_SETTINGS_KEYS } from "@/lib/security/secrets";
 import { systemSettingsSchema } from "@/lib/validators/system-settings";
 import { getDbNowUncached } from "@/lib/db-time";
-import { recordAuditEvent } from "@/lib/audit/events";
+import { recordAuditEventDurable } from "@/lib/audit/events";
 
 function redactSecretSettings(settings: Record<string, unknown>): void {
   for (const key of SECRET_SETTINGS_KEYS) {
@@ -111,7 +111,7 @@ export const PUT = createApiHandler({
 
     invalidateSettingsCache();
 
-    recordAuditEvent({
+    await recordAuditEventDurable({
       actorId: user.id,
       actorRole: user.role,
       action: "system_settings.updated",

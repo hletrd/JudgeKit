@@ -5,7 +5,7 @@ import { roles, users } from "@/lib/db/schema";
 import { eq, sql } from "drizzle-orm";
 import { forbidden } from "@/lib/api/auth";
 import { resolveCapabilities, invalidateRoleCache, getRoleLevel } from "@/lib/capabilities/cache";
-import { recordAuditEvent } from "@/lib/audit/events";
+import { recordAuditEventDurable } from "@/lib/audit/events";
 import { nanoid } from "nanoid";
 import { createRoleSchema } from "@/lib/validators/roles";
 import { isBuiltinRole } from "@/lib/capabilities/types";
@@ -123,7 +123,7 @@ export const POST = createApiHandler({
 
     invalidateRoleCache();
 
-    recordAuditEvent({
+    await recordAuditEventDurable({
       actorId: user.id,
       actorRole: user.role,
       action: "create",

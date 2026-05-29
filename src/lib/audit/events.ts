@@ -219,7 +219,7 @@ export async function flushAuditBuffer(dbNow?: Date): Promise<void> {
   }
 }
 
-export function recordAuditEvent({
+function buildAuditRow({
   actorId,
   actorRole,
   action,
@@ -230,10 +230,10 @@ export function recordAuditEvent({
   details,
   request,
   context,
-}: RecordAuditEventInput) {
+}: RecordAuditEventInput): AuditEventRow {
   const resolvedContext = request ? buildAuditRequestContext(request) : context;
 
-  _auditBuffer.push({
+  return {
     actorId: normalizeText(actorId, 64),
     actorRole: normalizeText(actorRole, 32),
     action: normalizeText(action, 128) ?? "unknown",
@@ -246,7 +246,11 @@ export function recordAuditEvent({
     userAgent: normalizeText(resolvedContext?.userAgent, MAX_TEXT_LENGTH),
     requestMethod: normalizeText(resolvedContext?.requestMethod, 32),
     requestPath: normalizeText(resolvedContext?.requestPath, MAX_PATH_LENGTH),
-  });
+  };
+}
+
+export function recordAuditEvent(input: RecordAuditEventInput) {
+  _auditBuffer.push(buildAuditRow(input));
 
   ensureFlushTimer();
 
@@ -254,6 +258,29 @@ export function recordAuditEvent({
     flushAuditBuffer().catch(() => {
       // Error already logged inside flushAuditBuffer
     });
+  }
+}
+
+/**
+ * Durably record a security-critical audit event: insert it IMMEDIATELY and
+ * await the write, so the integrity-trail entry survives a hard crash
+ * (SIGKILL/OOM/`docker kill`) instead of sitting in the up-to-5s in-memory
+ * buffer that a crash would discard. Use for role/permission changes, system
+ * settings changes, and similar low-frequency, high-stakes actions — NOT for
+ * high-frequency events (e.g. judge claims), which stay buffered.
+ *
+ * Never throws: on insert failure it falls back to the buffer (so the event is
+ * still attempted later) and the caller is not affected.
+ */
+export async function recordAuditEventDurable(input: RecordAuditEventInput): Promise<void> {
+  const row = buildAuditRow(input);
+  try {
+    await db.insert(auditEvents).values([row]);
+    consecutiveAuditFailures = 0;
+  } catch (error) {
+    logger.warn({ err: error, action: row.action }, "[audit] durable insert failed; falling back to buffer");
+    _auditBuffer.push(row);
+    ensureFlushTimer();
   }
 }
 

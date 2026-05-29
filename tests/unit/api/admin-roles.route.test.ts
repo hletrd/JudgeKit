@@ -42,6 +42,9 @@ vi.mock("@/lib/db-time", () => ({
 
 vi.mock("@/lib/audit/events", () => ({
   recordAuditEvent: recordAuditEventMock,
+  // Role create/update/delete now record durably (awaited insert) so the
+  // integrity trail survives a hard crash. Reuse the same mock fn.
+  recordAuditEventDurable: recordAuditEventMock,
 }));
 
 vi.mock("@/lib/db", () => ({
