@@ -64,7 +64,7 @@ field).
 | 3 | Extend `tests/unit/judge/worker-staleness.test.ts` with `shouldMarkWorkerOffline` cases: (a) reaped past stale-claim timeout; (b) NOT reaped when only past the 90 s stale-status floor but within the reset cutoff; (c) strict-`<` boundary; (d) `null` lastHeartbeatAt NOT reaped; (e) reap-cutoff == active_tasks-reset-cutoff invariant pinned (TE-C6-2). | MED-LOW (N6-C6 / TE-C6-1) | [x] commit 01e8ec07 (6 new cases) |
 | 4 | Run all gates: `npm run lint`, `tsc --noEmit`, `npm run build`, `npm run test:unit`, `npm run lint:bash`. | — | [x] all green (2465 tests / 320 files) |
 | 5 | Commit + push fine-grained, GPG-signed, conventional + gitmoji. | — | [x] 01e8ec07 + docs |
-| 6 | Run per-cycle `DEPLOY_CMD` (algo flags). | — | [ ] pending |
+| 6 | Run per-cycle `DEPLOY_CMD` (algo flags). | — | [x] deploy live: HTTP 200 + HTTPS 200 (see Progress) |
 | 7 | Housekeeping: archive the now-fully-done cycle-5 plan to `plans/done/`. | — | [x] |
 
 ---
@@ -110,6 +110,6 @@ F6-cycle3 (SMTP UX polish), F7-cycle3 (provider-name staleness), F8-cycle3
 - [x] Cycle-5 plan archived to `plans/done/` (fully implemented + deployed)
 - [x] N6-C6 implemented (pure predicate + combined sweep UPDATE) + tests — commit 01e8ec07
 - [x] Gates green (lint 0/0, tsc 0, build 0, 2465 unit tests / 320 files, lint:bash 0)
-- [x] Committed (fine-grained, GPG-signed): 01e8ec07
-- [ ] Pushed to main
-- [ ] Deployed (per-cycle)
+- [x] Committed (fine-grained, GPG-signed): 01e8ec07 (code) + docs commit
+- [x] Pushed to main (d1217b5a..06ff828f)
+- [x] Deployed (per-cycle) — `deploy-docker.sh` reached "Deployment complete" path: DB backed up, drizzle-kit push reported **"No changes detected"** (this cycle's fix adds NO schema migration — `judge_workers.status` is free text and `deregistered_at` already exists), schema repairs + ANALYZE applied, all containers started, app container `Healthy`. Self-verified live: **"JudgeKit is responding (HTTP 200)"** + **"HTTPS endpoint verified (HTTP 200)"**. Judge worker correctly built on the dedicated host worker-0.algo.xylolabs.com (NOT on algo) per `BUILD_WORKER_IMAGE=false`/`INCLUDE_WORKER=false`/CLAUDE.md; worker container recreated + started; binary self-test (`judge-worker --help`) passed. `src/lib/auth/config.ts` was NOT modified this cycle (verified, preserved per CLAUDE.md). PG volume safety guard fired on worker-0 (skipped volume prune because judgekit-db is not there); no `docker system prune --volumes` was run on any host — cleanup used scoped prune (dangling images / build cache / orphan volumes) only. Post-deploy E2E smoke (PLAYWRIGHT_PROFILE=smoke) runs the same login-gated specs that fail on the `skip-login` sentinel-password forced-password-change guard (pre-existing cause documented cycles 1-5) — unrelated to this cycle's diff (judge heartbeat sweep `stale -> offline` reaper, which touches neither the login/redirect flow nor any UI).
