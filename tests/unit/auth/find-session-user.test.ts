@@ -137,7 +137,9 @@ describe("findSessionUser", () => {
 
     const result = await findSessionUser({ user: { id: "nonexistent" } } as any);
 
-    expect(result).toBeUndefined();
+    // Must be strictly null (not undefined) to match findSessionUserWithPassword's
+    // not-found contract — see CR-C4-1 / F2 (cycle 4).
+    expect(result).toBeNull();
   });
 
   it("falls back to username lookup when id is absent", async () => {
@@ -155,7 +157,8 @@ describe("findSessionUser", () => {
 
     const result = await findSessionUser({ user: { username: "nobody" } } as any);
 
-    expect(result).toBeUndefined();
+    // Must be strictly null (not undefined) — see CR-C4-1 / F2 (cycle 4).
+    expect(result).toBeNull();
   });
 
   it("prefers id over username when both are present", async () => {

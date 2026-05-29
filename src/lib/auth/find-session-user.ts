@@ -21,6 +21,11 @@ export function hasSessionIdentity(session: Session | null) {
 /**
  * Find the session user with safe column selection (excludes passwordHash).
  * For password verification, use findSessionUserWithPassword() instead.
+ *
+ * Returns `null` (never `undefined`) when no matching user row exists, matching
+ * the not-found contract of findSessionUserWithPassword. The `?? null` on each
+ * branch normalizes Drizzle's `[0]` (which is `undefined` for an empty result)
+ * so callers can rely on a single sentinel.
  */
 export async function findSessionUser(session: Session | null) {
   const sessionUser = session?.user;
@@ -30,11 +35,11 @@ export async function findSessionUser(session: Session | null) {
   }
 
   if (sessionUser?.id) {
-    return (await db.select(authUserSelect).from(users).where(eq(users.id, sessionUser.id)).limit(1))[0];
+    return (await db.select(authUserSelect).from(users).where(eq(users.id, sessionUser.id)).limit(1))[0] ?? null;
   }
 
   if (sessionUser?.username) {
-    return (await db.select(authUserSelect).from(users).where(sql`lower(${users.username}) = lower(${sessionUser.username})`).limit(1))[0];
+    return (await db.select(authUserSelect).from(users).where(sql`lower(${users.username}) = lower(${sessionUser.username})`).limit(1))[0] ?? null;
   }
 
   return null;
