@@ -27,6 +27,11 @@ const PRODUCTION_REQUIRED_ENV_VARS: ReadonlyArray<{
     reason:
       "Required for the rate-limiter Rust sidecar. Without it any container on the Docker network can consume rate-limit quota for arbitrary keys (e.g., locking out a specific account).",
   },
+  {
+    name: "NODE_ENCRYPTION_KEY",
+    reason:
+      "Required for AES-256-GCM encryption of stored secrets (SMTP password, hCaptcha secret, API keys). Without it the app boots but throws the moment any secret is read or written — surfacing as a runtime 500 instead of a clear startup failure. Must be a 32-byte (64-char) hex string: openssl rand -hex 32.",
+  },
 ];
 
 export function assertProductionConfig(): void {
