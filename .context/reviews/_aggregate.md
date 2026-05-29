@@ -36,6 +36,7 @@ Per the broadening directive, this cycle focused on the contest scoring / leader
 | ID | Severity | Confidence | Re-assessment this cycle | Status |
 |---|---|---|---|---|
 | N7-C7-ICPC (NEW sub-defer) | MEDIUM | MEDIUM | ICPC override→solved/penalty/firstAc semantics undefined by the product (override has no AC timestamp). IOI portion implemented; ICPC deferred to avoid guessing. | DEFER (new) |
+| N7-C7-LIVERANK (NEW sub-defer) | MEDIUM | MEDIUM | Surfaced during implementation: `computeSingleUserLiveRank` IOI SQL SUMs per-submission adjusted scores (not per-problem bests), a pre-existing simplification distinct from N7-C7. Overlaying overrides cleanly needs a per-problem-best CTE restructure, which would entangle that pre-existing divergence; deferred to avoid regressing a frozen-mode-only indicative figure. Full board (override-aware) is authoritative. | DEFER (new) |
 | F3 (worker result trust / score inflation) | LOW | MEDIUM | Trust model unchanged (trusted first-party workers only). Fix adds poll hot-path query, defends only vs compromised trusted worker. | RE-DEFER |
 | F4 (≤3 `judge_workers` SELECTs per claim) | LOW | MEDIUM | Tiny indexed table; no DB-profiling signal; atomic claim CTE is the real gate. | RE-DEFER |
 | N3 (failedTestCaseIndex = worker array position) | LOW | MEDIUM | Folds under F3 trust boundary; no prod mis-ordering observed. | RE-DEFER |
