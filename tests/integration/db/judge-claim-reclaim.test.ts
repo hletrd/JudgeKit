@@ -17,7 +17,7 @@
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
 import { nanoid } from "nanoid";
 import { eq } from "drizzle-orm";
-import { createTestDb, hasPostgresIntegrationSupport, seedUser, seedProblem, seedSubmission, type TestDb } from "../support";
+import { createTestDb, hasPostgresIntegrationSupport, seedRoles, seedUser, seedProblem, seedSubmission, type TestDb } from "../support";
 import { buildClaimSql } from "@/lib/judge/claim-query";
 // Import the translator from the pool-free module so this gated test never
 // pulls in the global pool (which throws when DATABASE_URL is unset) at
@@ -32,6 +32,7 @@ describe.skipIf(!hasPostgresIntegrationSupport)("Judge claim reclaim after worke
 
   beforeAll(async () => {
     testDb = await createTestDb();
+    await seedRoles(testDb); // users.role -> roles.name FK; migrations don't seed roles
     const user = await seedUser(testDb, { username: `reclaim_${nanoid(6)}` });
     const problem = await seedProblem(testDb, { title: "Reclaim chaos problem" });
     userId = user.id;

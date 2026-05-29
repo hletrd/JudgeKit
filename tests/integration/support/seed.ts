@@ -9,6 +9,7 @@ import { nanoid } from "nanoid";
 import type { TestDb } from "./test-db";
 import {
   users,
+  roles,
   problems,
   testCases,
   submissions,
@@ -20,6 +21,38 @@ import {
   submissionComments,
 } from "@/lib/db/schema";
 import type { UserRole, Language, SubmissionStatus, ProblemVisibility } from "@/types";
+import { BUILTIN_ROLE_NAMES } from "@/lib/capabilities/types";
+import {
+  DEFAULT_ROLE_CAPABILITIES,
+  DEFAULT_ROLE_LEVELS,
+  DEFAULT_ROLE_DISPLAY_NAMES,
+} from "@/lib/capabilities/defaults";
+
+/**
+ * Seed the built-in roles. Migrations create the `roles` table but do not
+ * populate it (the app seeds roles via scripts/seed.ts), yet `users.role` has
+ * a FK to `roles.name` — so any test that creates a user must seed roles first.
+ * Mirrors the production seed defaults. Idempotent.
+ */
+export async function seedRoles(ctx: TestDb) {
+  const now = new Date();
+  for (const roleName of BUILTIN_ROLE_NAMES) {
+    await ctx.db
+      .insert(roles)
+      .values({
+        id: nanoid(),
+        name: roleName,
+        displayName: DEFAULT_ROLE_DISPLAY_NAMES[roleName],
+        description: null,
+        isBuiltin: true,
+        level: DEFAULT_ROLE_LEVELS[roleName],
+        capabilities: DEFAULT_ROLE_CAPABILITIES[roleName] as string[],
+        createdAt: now,
+        updatedAt: now,
+      })
+      .onConflictDoNothing();
+  }
+}
 
 export interface SeedUserOptions {
   id?: string;

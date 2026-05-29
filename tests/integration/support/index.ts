@@ -1,5 +1,6 @@
 export { createTestDb, hasPostgresIntegrationSupport, type TestDb } from "./test-db";
 export {
+  seedRoles,
   seedUser,
   seedProblem,
   seedTestCase,
