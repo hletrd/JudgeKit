@@ -176,18 +176,28 @@ export async function consumeApiRateLimit(
 }
 
 /**
- * Consume one rate limit token keyed on authenticated user ID.
- * Use for authenticated API endpoints where IP-based limiting is insufficient
- * (shared IPs, VPNs). Returns a 429 response if rate limited, or null if allowed.
+ * Consume one rate limit token keyed on a stable per-caller identity.
+ *
+ * The `scope` is any stable identifier for the caller: an authenticated user id,
+ * an `ip:<ip>` string, an `auth:<hash>` fallback, or a workerId. Use for API
+ * endpoints where plain IP-based limiting is insufficient (shared IPs, VPNs) or
+ * where the caller is identified by something other than a session user (e.g. the
+ * judge claim endpoint keys on workerId / IP / auth-hash).
+ *
+ * NOTE: the key template keeps the literal `:user:` infix for backward
+ * compatibility — existing buckets in the `rate_limits` table must not reset on
+ * deploy. The infix is historical and does NOT imply `scope` is always a user id.
+ *
+ * Returns a 429 response if rate limited, or null if allowed.
  *
  * Same two-tier strategy as {@link consumeApiRateLimit}.
  */
 export async function consumeUserApiRateLimit(
   request: NextRequest,
-  userId: string,
+  scope: string,
   endpoint: string,
 ): Promise<NextResponse | null> {
-  const key = `api:${endpoint}:user:${userId}`;
+  const key = `api:${endpoint}:user:${scope}`;
 
   const { windowMs } = getApiRateLimitConfig();
 
