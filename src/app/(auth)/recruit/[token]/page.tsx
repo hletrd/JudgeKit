@@ -298,7 +298,10 @@ export default async function RecruitPage({
           <div className="rounded-lg border border-amber-200 bg-amber-50 dark:border-amber-800 dark:bg-amber-950/30 p-3 space-y-1 text-sm">
             <p className="font-medium text-amber-800 dark:text-amber-200">{t("importantNotes")}</p>
             <ul className="list-disc list-inside text-xs text-amber-700 dark:text-amber-300 space-y-0.5">
-              <li>{t("noteTimer")}</li>
+              {/* Only a windowed exam has a per-candidate timer that starts on
+                  Start. Scheduled contests share one fixed deadline, so claiming
+                  "the timer starts when you begin" is misleading and unfair. */}
+              <li>{assignment.examDurationMinutes ? t("noteTimer") : t("noteFixedDeadline")}</li>
               <li>{t("noteSubmissions")}</li>
               <li>{t("noteCompletion")}</li>
             </ul>
