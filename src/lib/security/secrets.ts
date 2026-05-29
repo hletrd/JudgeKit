@@ -25,7 +25,7 @@ export const EXPORT_SANITIZED_COLUMNS: Record<string, Set<string>> = {
   apiKeys: new Set(["encryptedKey"]),
   judgeWorkers: new Set(["secretTokenHash", "judgeClaimToken"]),
   recruitingInvitations: new Set(["tokenHash"]),
-  systemSettings: new Set(["hcaptchaSecret"]),
+  systemSettings: new Set(["hcaptchaSecret", "smtpPass"]),
 };
 
 /**
@@ -37,7 +37,7 @@ export const EXPORT_ALWAYS_REDACT_COLUMNS: Record<string, Set<string>> = {
   sessions: new Set(["sessionToken"]),
   accounts: new Set(["refresh_token", "access_token", "id_token"]),
   apiKeys: new Set(["encryptedKey"]),
-  systemSettings: new Set(["hcaptchaSecret"]),
+  systemSettings: new Set(["hcaptchaSecret", "smtpPass"]),
 };
 
 /**
@@ -64,6 +64,8 @@ export const LOGGER_REDACT_PATHS = [
   "encryptedKey",
   "hcaptchaSecret",
   "body.hcaptchaSecret",
+  "smtpPass",
+  "body.smtpPass",
   "authToken",
   "runnerAuthToken",
 ];
@@ -71,4 +73,4 @@ export const LOGGER_REDACT_PATHS = [
 /**
  * System settings keys that contain secrets and must be redacted in API responses.
  */
-export const SECRET_SETTINGS_KEYS = ["hcaptchaSecret"];
+export const SECRET_SETTINGS_KEYS = ["hcaptchaSecret", "smtpPass"];
