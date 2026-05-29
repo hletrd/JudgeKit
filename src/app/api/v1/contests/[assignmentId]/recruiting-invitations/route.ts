@@ -15,6 +15,7 @@ import { getDbNowUncached } from "@/lib/db-time";
 import { MAX_EXPIRY_MS, computeExpiryFromDays } from "@/lib/assignments/recruiting-constants";
 import { sendEmail, isEmailConfigured } from "@/lib/email/smtp";
 import { renderRecruitingInvitationEmail } from "@/lib/email/templates";
+import { logger } from "@/lib/logger";
 
 export const GET = createApiHandler({
   auth: { capabilities: ["recruiting.manage_invitations"] },
@@ -136,7 +137,14 @@ export const POST = createApiHandler({
             text: template.text,
             html: template.html,
           })
-        ).catch(() => {});
+        ).catch((error) => {
+          // Fire-and-forget: sendEmail() logs its own send failures, but a
+          // throw from rendering or provider detection would otherwise vanish.
+          logger.warn(
+            { assignmentId, error: error instanceof Error ? error.message : String(error) },
+            "Recruiting invitation email dispatch failed"
+          );
+        });
       }
 
       return apiSuccess(invitation, { status: 201 });
