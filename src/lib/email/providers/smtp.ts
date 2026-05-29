@@ -86,7 +86,10 @@ function buildTransporter(config: {
     connectionTimeout: 10_000,
     greetingTimeout: 10_000,
     socketTimeout: 30_000,
-    tls: { rejectUnauthorized: !process.env.SMTP_SKIP_TLS_VERIFY },
+    // Explicit "true" only — matches the SMTP_SECURE convention above. Using a
+    // mere truthiness check would let SMTP_SKIP_TLS_VERIFY="false" silently
+    // DISABLE cert verification, which is the opposite of the operator's intent.
+    tls: { rejectUnauthorized: process.env.SMTP_SKIP_TLS_VERIFY !== "true" },
   });
 }
 
