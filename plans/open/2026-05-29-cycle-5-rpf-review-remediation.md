@@ -51,11 +51,11 @@ SELECT — no profiling signal).
 
 | # | Task | Severity | Status |
 |---|---|---|---|
-| 1 | In `src/app/api/v1/judge/heartbeat/route.ts`, extend the staleness sweep (lines 82-89) so that workers being marked `stale` whose `last_heartbeat_at` is older than the configured stale-claim timeout ALSO get `active_tasks = 0`. Read the timeout via `getConfiguredSettings().staleClaimTimeoutMs` (import `getConfiguredSettings`). Keep the existing 90 s `online → stale` threshold for the status flip; only the counter-zeroing uses the longer stale-claim timeout. Update the file comment to state how a dead worker's counter is reconciled. | MED-LOW (N1) — NOT DEFERRABLE | [ ] |
-| 2 | Add a unit test (`tests/unit/judge/` — new `heartbeat-sweep.test.ts` or extend an existing harness) asserting: (a) a worker stale past the stale-claim timeout gets `active_tasks` zeroed by the sweep; (b) a worker recently stale (past 90 s but within the stale-claim timeout) keeps its `active_tasks` (no clobber of live in-flight work). If the route is not unit-testable in isolation, factor the sweep predicate into a small pure helper in `src/lib/judge/` and test that. | MED-LOW (N1 / TE-C5-1) | [ ] |
-| 3 | In `src/lib/security/api-rate-limit.ts`, rename the `userId` parameter of `consumeUserApiRateLimit` to `scope` (or `identity`) and update the JSDoc to state it accepts any stable per-caller identity (userId, `ip:<ip>`, `auth:<hash>`, workerId). No key-format change (keep `api:${endpoint}:user:${scope}` for backward compatibility — existing buckets must not reset). Update the call site comment in `claim/route.ts` if helpful. | LOW (N2 / CR-C5-2) | [ ] |
-| 4 | Run all gates: `npm run lint`, `tsc --noEmit`, `npm run build`, `npm run test:unit`, `npm run lint:bash`. | — | [ ] |
-| 5 | Commit + push fine-grained per-topic, GPG-signed, conventional + gitmoji. | — | [ ] |
+| 1 | In `src/app/api/v1/judge/heartbeat/route.ts`, extend the staleness sweep (lines 82-89) so that workers being marked `stale` whose `last_heartbeat_at` is older than the configured stale-claim timeout ALSO get `active_tasks = 0`. Read the timeout via `getConfiguredSettings().staleClaimTimeoutMs` (import `getConfiguredSettings`). Keep the existing 90 s `online → stale` threshold for the status flip; only the counter-zeroing uses the longer stale-claim timeout. Update the file comment to state how a dead worker's counter is reconciled. | MED-LOW (N1) — NOT DEFERRABLE | [x] commit 9250635b (helper `src/lib/judge/worker-staleness.ts` + sweep) |
+| 2 | Add a unit test (`tests/unit/judge/` — new `heartbeat-sweep.test.ts` or extend an existing harness) asserting: (a) a worker stale past the stale-claim timeout gets `active_tasks` zeroed by the sweep; (b) a worker recently stale (past 90 s but within the stale-claim timeout) keeps its `active_tasks` (no clobber of live in-flight work). If the route is not unit-testable in isolation, factor the sweep predicate into a small pure helper in `src/lib/judge/` and test that. | MED-LOW (N1 / TE-C5-1) | [x] commit 9250635b (`tests/unit/judge/worker-staleness.test.ts`, 9 cases) |
+| 3 | In `src/lib/security/api-rate-limit.ts`, rename the `userId` parameter of `consumeUserApiRateLimit` to `scope` (or `identity`) and update the JSDoc to state it accepts any stable per-caller identity (userId, `ip:<ip>`, `auth:<hash>`, workerId). No key-format change (keep `api:${endpoint}:user:${scope}` for backward compatibility — existing buckets must not reset). Update the call site comment in `claim/route.ts` if helpful. | LOW (N2 / CR-C5-2) | [x] commit 9bf5a018 |
+| 4 | Run all gates: `npm run lint`, `tsc --noEmit`, `npm run build`, `npm run test:unit`, `npm run lint:bash`. | — | [x] all green |
+| 5 | Commit + push fine-grained per-topic, GPG-signed, conventional + gitmoji. | — | [x] 9250635b, 9bf5a018, 2913ffd1 |
 | 6 | Run per-cycle `DEPLOY_CMD` (algo flags). | — | [ ] |
 | 7 | Housekeeping: archive the now-fully-done cycle-3 and cycle-4 plans to `plans/done/` (done in this cycle's planning pass). | — | [x] |
 
@@ -69,11 +69,11 @@ SELECT — no profiling signal).
 
 ## Quality gates
 
-- [ ] `npm run lint` — 0 errors, 0 warnings (exit 0)
-- [ ] `tsc --noEmit` — PASS (exit 0)
-- [ ] `npm run build` — PASS (exit 0)
-- [ ] `npm run test:unit` — PASS (expect 2450 + new N1 sweep tests)
-- [ ] `npm run lint:bash` — PASS (exit 0)
+- [x] `npm run lint` — 0 errors, 0 warnings (exit 0)
+- [x] `tsc --noEmit` — PASS (exit 0)
+- [x] `npm run build` — PASS (exit 0; all routes compiled)
+- [x] `npm run test:unit` — PASS (320 files / 2459 tests; +1 file / +9 from the 319/2450 baseline: the new worker-staleness.test.ts)
+- [x] `npm run lint:bash` — PASS (exit 0)
 
 ---
 
@@ -106,8 +106,9 @@ F6-cycle3 (SMTP UX polish), F7-cycle3 (provider-name staleness), F8-cycle3
 - [x] Aggregate written (`.context/reviews/_aggregate.md` + `_aggregate-cycle-5.md`; prior preserved)
 - [x] Plan written
 - [x] Cycle-3 + cycle-4 plans archived to `plans/done/` (both fully implemented + deployed)
-- [ ] N1 implemented (sweep zeroes active_tasks past stale-claim timeout) + tests
-- [ ] N2 implemented (rate-limit param rename, key format preserved)
-- [ ] Gates green
-- [ ] Committed and pushed (fine-grained, GPG-signed)
+- [x] N1 implemented (sweep zeroes active_tasks past stale-claim timeout) + tests — commit 9250635b
+- [x] N2 implemented (rate-limit param rename, key format preserved) — commit 9bf5a018
+- [x] Gates green (lint 0, tsc 0, build 0, 2459 unit tests, lint:bash 0)
+- [x] Committed (fine-grained, GPG-signed): 9250635b, 9bf5a018, 2913ffd1
+- [ ] Pushed to main
 - [ ] Deployed (per-cycle)
