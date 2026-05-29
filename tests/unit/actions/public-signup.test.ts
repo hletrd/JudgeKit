@@ -16,6 +16,7 @@ const mocks = vi.hoisted(() => ({
   recordAuditEvent: vi.fn(),
   revalidatePath: vi.fn(),
   sendEmailVerification: vi.fn(),
+  loggerWarn: vi.fn(),
 }));
 
 vi.mock("next/headers", () => ({
@@ -51,6 +52,15 @@ vi.mock("@/lib/users/core", () => ({
 
 vi.mock("@/lib/email", () => ({
   sendEmailVerification: mocks.sendEmailVerification,
+}));
+
+vi.mock("@/lib/logger", () => ({
+  logger: {
+    warn: mocks.loggerWarn,
+    info: vi.fn(),
+    error: vi.fn(),
+    debug: vi.fn(),
+  },
 }));
 
 vi.mock("@/lib/audit/events", () => ({
@@ -183,7 +193,7 @@ describe("registerPublicUser", () => {
     expect(result).toEqual({ success: false, error: "usernameInUse" });
   });
 
-  it("still succeeds when the verification email send rejects (fire-and-forget)", async () => {
+  it("still succeeds and logs a warning when the verification email dispatch rejects (fire-and-forget)", async () => {
     const { registerPublicUser } = await import("@/lib/actions/public-signup");
     mocks.sendEmailVerification.mockRejectedValue(new Error("smtp down"));
 
@@ -199,6 +209,47 @@ describe("registerPublicUser", () => {
     expect(result).toEqual({ success: true });
     expect(mocks.sendEmailVerification).toHaveBeenCalledTimes(1);
     expect(mocks.sendEmailVerification).toHaveBeenCalledWith("test-user-id", expect.any(String));
+
+    // The dispatch is fire-and-forget; flush microtasks so the .catch runs,
+    // then assert the rejection is logged (not silently swallowed).
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    expect(mocks.loggerWarn).toHaveBeenCalledWith(
+      expect.objectContaining({ userId: "test-user-id", err: "smtp down" }),
+      "verification email dispatch failed"
+    );
+  });
+
+  it("builds the verification base URL from the canonical AUTH_URL, not the request Host", async () => {
+    const prevAuthUrl = process.env.AUTH_URL;
+    process.env.AUTH_URL = "https://canonical.example.com";
+    // A spoofed Host header must NOT influence the emailed link domain.
+    mocks.headers.mockResolvedValue(
+      new Headers({ "x-real-ip": "127.0.0.1", host: "attacker.evil.tld", "x-forwarded-proto": "http" })
+    );
+    try {
+      const { registerPublicUser } = await import("@/lib/actions/public-signup");
+
+      const result = await registerPublicUser({
+        username: "newstudent",
+        name: "New Student",
+        email: "student@example.com",
+        password: "password12345",
+        confirmPassword: "password12345",
+        captchaToken: undefined,
+      });
+
+      expect(result).toEqual({ success: true });
+      expect(mocks.sendEmailVerification).toHaveBeenCalledWith(
+        "test-user-id",
+        "https://canonical.example.com"
+      );
+    } finally {
+      if (prevAuthUrl === undefined) {
+        delete process.env.AUTH_URL;
+      } else {
+        process.env.AUTH_URL = prevAuthUrl;
+      }
+    }
   });
 
   it("does not attempt to send a verification email when no email is provided", async () => {

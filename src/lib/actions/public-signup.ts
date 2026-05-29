@@ -12,7 +12,9 @@ import { isEmailTaken, isUsernameTaken, validateAndHashPassword } from "@/lib/us
 import { getSystemSettings } from "@/lib/system-settings";
 import { publicSignupSchema, type PublicSignupInput } from "@/lib/validators/public-signup";
 import { isHcaptchaConfigured, verifyHcaptchaToken } from "@/lib/security/hcaptcha";
+import { getPublicBaseUrl } from "@/lib/security/env";
 import { sendEmailVerification } from "@/lib/email";
+import { logger } from "@/lib/logger";
 import type { ZodIssue } from "zod";
 
 export type PublicSignupResult = {
@@ -190,11 +192,19 @@ export async function registerPublicUser(input: PublicSignupInput): Promise<Publ
   // manually trigger "resend verification" — this closes the gap.
   if (email && createdUserId) {
     const h = await headers();
-    const proto = h.get("x-forwarded-proto") || "https";
-    const host = h.get("host") || "localhost:3000";
-    const baseUrl = `${proto}://${host}`;
-    sendEmailVerification(createdUserId, baseUrl).catch(() => {
-      // logged inside sendEmailVerification
+    // Canonical-first origin (see getPublicBaseUrl): do NOT trust the client
+    // Host header for the link domain — this server-action path is not behind
+    // the trusted-host guard.
+    const baseUrl = getPublicBaseUrl(h.get("host"), h.get("x-forwarded-proto"));
+    sendEmailVerification(createdUserId, baseUrl).catch((err) => {
+      // sendEmailVerification logs its own send failures, but a throw from its
+      // DB/token/config steps (e.g. db.transaction or a decrypt failure) would
+      // otherwise vanish here. Log it so the operator has a signal; signup still
+      // succeeds (the user can resend verification).
+      logger.warn(
+        { userId: createdUserId, err: err instanceof Error ? err.message : String(err) },
+        "verification email dispatch failed"
+      );
     });
   }
 
