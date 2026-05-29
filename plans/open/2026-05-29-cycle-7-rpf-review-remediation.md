@@ -81,5 +81,6 @@ SSE-M2, SSE-RACE (events route), COR-1 (problem lookup outside tx), PERF-2 (sequ
 - [x] N7-C7 IOI overlay implemented in `computeContestRanking` (`contest-scoring.ts`) + 5 regression tests (`tests/unit/assignments/contest-scoring-overrides.test.ts`). Single-user live-rank overlay sub-deferred (N7-C7-LIVERANK) with documented rationale.
 - [x] docs/api.md updated (DOC-C7-1)
 - [x] Gates green (lint 0/0, tsc 0, build 0, 2470 tests / 321 files, lint:bash 0)
-- [ ] Committed (fine-grained, GPG-signed) + pushed to main
-- [ ] Deployed (per-cycle)
+- [x] Committed (fine-grained, GPG-signed): abb5681b (review+plan), 9a99cd39 (N7-C7 fix), 1e8a4dc7 (plan/aggregate update)
+- [x] Pushed to main (1f06bcd0..1e8a4dc7)
+- [x] Deployed (per-cycle) — `deploy-docker.sh` reached "Deployment complete!" (exit 0). Pre-deploy DB backup saved (`~/backups/judgekit-predeploy-20260529-025543Z.dump`); `drizzle-kit push` reported **"No changes detected"** (N7-C7 reads existing `score_overrides`, adds NO migration); additive schema repairs applied; `judgekit-db Healthy`, `judgekit-app Healthy`. Self-verified live: **HTTP 200** (root) + **HTTPS 200** (/login). `src/lib/auth/config.ts` NOT modified (verified, preserved per CLAUDE.md). Volume-prune safety guard fired (skipped because judgekit-db is not on worker-0); no `docker system prune --volumes` on any host. Post-deploy Playwright smoke (141 passed, 18 did-not-run, 3 skipped) triggers the documented `[WARN]` from the pre-existing login-gated forced-password-change spec failures (cycles 1-6) — unrelated to this cycle's ranking-override diff, which touches no login/redirect/UI flow.
