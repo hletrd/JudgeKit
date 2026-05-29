@@ -3,6 +3,8 @@ import { Pool } from "pg";
 import { drizzle, type NodePgDatabase } from "drizzle-orm/node-postgres";
 import * as schema from "./schema.pg";
 import * as relations from "./relations.pg";
+import { attachPoolDiagnostics } from "./pool-health";
+import { logger } from "@/lib/logger";
 
 const isBuildPhase = process.env.NEXT_PHASE === "phase-production-build";
 
@@ -36,13 +38,26 @@ if (isBuildPhase) {
   const url = process.env.DATABASE_URL;
   if (!url) throw new Error("DATABASE_URL is required");
 
+  const poolMax = parsePoolEnv("DATABASE_POOL_MAX", 20);
   _pool = new Pool({
     connectionString: url,
-    max: parsePoolEnv("DATABASE_POOL_MAX", 20),
+    max: poolMax,
     idleTimeoutMillis: parsePoolEnv("DATABASE_POOL_IDLE_TIMEOUT_MS", 30_000),
     connectionTimeoutMillis: parsePoolEnv("DATABASE_POOL_CONNECTION_TIMEOUT_MS", 10_000),
+    // Recycle connections after this lifetime to avoid clinging to backends
+    // that survived a failover or proxy (pgbouncer) restart. 0 = disabled
+    // (default), preserving prior behavior unless explicitly opted in.
+    maxLifetimeSeconds: parsePoolEnv("DATABASE_POOL_MAX_LIFETIME_SECONDS", 0),
+    // Surface the app in pg_stat_activity so pool-exhaustion / leaked-connection
+    // incidents are diagnosable by connection source.
+    application_name: process.env.DATABASE_POOL_APP_NAME ?? "judgekit-app",
   });
   db = drizzle(_pool, { schema: schemaWithRelations });
+
+  // Attach the idle-client error handler (prevents a transient DB blip from
+  // crashing the process with an uncaught exception) and the saturation
+  // sampler. The sampler timer is unref'd so it never keeps the process alive.
+  attachPoolDiagnostics(_pool, { logger, max: poolMax });
 }
 
 /**
