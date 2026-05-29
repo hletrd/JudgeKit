@@ -10,6 +10,7 @@ import { nanoid } from "nanoid";
 import { z } from "zod";
 import { recordAuditEvent } from "@/lib/audit/events";
 import { isJudgeAuthorized, isJudgeAuthorizedForWorker, hashToken } from "@/lib/judge/auth";
+import { buildClaimSql } from "@/lib/judge/claim-query";
 import { isJudgeIpAllowed } from "@/lib/judge/ip-allowlist";
 import { logger } from "@/lib/logger";
 import { consumeUserApiRateLimit } from "@/lib/security/api-rate-limit";
@@ -173,106 +174,7 @@ export async function POST(request: NextRequest) {
     const claimCreatedAt = (await getDbNowUncached()).getTime();
 
     const staleClaimTimeoutMs = getConfiguredSettings().staleClaimTimeoutMs;
-    const claimSql = workerId
-      ? `
-        WITH worker_slot AS (
-          SELECT id
-          FROM judge_workers
-          WHERE id = @workerId
-            AND status = 'online'
-            AND active_tasks < concurrency
-          FOR UPDATE
-        ),
-        candidate AS (
-          SELECT
-            s.id,
-            s.status AS previous_status
-          FROM submissions s
-          INNER JOIN problems p ON p.id = s.problem_id
-          WHERE EXISTS (SELECT 1 FROM worker_slot)
-            AND (s.status = 'pending'
-              OR (s.status IN ('queued', 'judging')
-                  AND s.judge_claimed_at < NOW() - (@staleClaimTimeoutMs || ' milliseconds')::interval))
-            AND COALESCE(p.problem_type, 'auto') != 'manual'
-          ORDER BY s.submitted_at ASC, s.id ASC
-          LIMIT 1
-          FOR UPDATE SKIP LOCKED
-        ),
-        claimed AS (
-          UPDATE submissions AS s
-          SET
-            status = 'queued',
-            judge_claim_token = @claimToken,
-            judge_claimed_at = to_timestamp(@claimCreatedAt::double precision / 1000),
-            judge_worker_id = @workerId
-          FROM candidate
-          WHERE s.id = candidate.id
-          RETURNING
-            s.id,
-            s.user_id AS "userId",
-            s.problem_id AS "problemId",
-            s.assignment_id AS "assignmentId",
-            candidate.previous_status AS "previousStatus",
-            s.judge_claim_token AS "claimToken",
-            s.language,
-            s.source_code AS "sourceCode",
-            s.status,
-            s.compile_output AS "compileOutput",
-            s.execution_time_ms AS "executionTimeMs",
-            s.memory_used_kb AS "memoryUsedKb",
-            s.score,
-            EXTRACT(EPOCH FROM s.judged_at)::bigint AS "judgedAt",
-            EXTRACT(EPOCH FROM s.submitted_at)::bigint AS "submittedAt"
-        ),
-        worker_bump AS (
-          UPDATE judge_workers
-          SET active_tasks = active_tasks + 1
-          WHERE id = @workerId
-            AND EXISTS (SELECT 1 FROM claimed)
-          RETURNING id
-        )
-        SELECT * FROM claimed
-      `
-      : `
-        WITH candidate AS (
-          SELECT
-            s.id,
-            s.status AS previous_status
-          FROM submissions s
-          INNER JOIN problems p ON p.id = s.problem_id
-          WHERE (s.status = 'pending'
-             OR (s.status IN ('queued', 'judging')
-                 AND s.judge_claimed_at < NOW() - (@staleClaimTimeoutMs || ' milliseconds')::interval))
-            AND COALESCE(p.problem_type, 'auto') != 'manual'
-          ORDER BY s.submitted_at ASC, s.id ASC
-          LIMIT 1
-          FOR UPDATE SKIP LOCKED
-        )
-        UPDATE submissions AS s
-        SET
-          status = 'queued',
-          judge_claim_token = @claimToken,
-          judge_claimed_at = to_timestamp(@claimCreatedAt::double precision / 1000),
-          judge_worker_id = @workerId
-        FROM candidate
-        WHERE s.id = candidate.id
-        RETURNING
-          s.id,
-          s.user_id AS "userId",
-          s.problem_id AS "problemId",
-          s.assignment_id AS "assignmentId",
-          candidate.previous_status AS "previousStatus",
-          s.judge_claim_token AS "claimToken",
-          s.language,
-          s.source_code AS "sourceCode",
-          s.status,
-          s.compile_output AS "compileOutput",
-          s.execution_time_ms AS "executionTimeMs",
-          s.memory_used_kb AS "memoryUsedKb",
-          s.score,
-          EXTRACT(EPOCH FROM s.judged_at)::bigint AS "judgedAt",
-          EXTRACT(EPOCH FROM s.submitted_at)::bigint AS "submittedAt"
-      `;
+    const claimSql = buildClaimSql(Boolean(workerId));
 
     // Atomic claim via raw SQL (PostgreSQL). When a worker is provided, the
     // worker row is locked and capacity is consumed inside the same statement.
