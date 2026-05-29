@@ -9,6 +9,11 @@ import { safeTokenCompare } from "@/lib/security/timing";
 import { logger } from "@/lib/logger";
 import { z } from "zod";
 import { getDbNowUncached } from "@/lib/db-time";
+import { getConfiguredSettings } from "@/lib/system-settings-config";
+import {
+  computeStaleStatusCutoff,
+  computeActiveTasksResetCutoff,
+} from "@/lib/judge/worker-staleness";
 
 const heartbeatSchema = z.object({
   workerId: z.string().min(1),
@@ -17,9 +22,6 @@ const heartbeatSchema = z.object({
   availableSlots: z.number().int().nonnegative(),
   uptimeSeconds: z.number().nonnegative().optional(),
 });
-
-const HEARTBEAT_INTERVAL_MS = 30_000;
-const STALE_MULTIPLIER = 3;
 
 export async function POST(request: NextRequest) {
   try {
@@ -76,15 +78,39 @@ export async function POST(request: NextRequest) {
 
     // Piggyback staleness sweep: mark workers stale if heartbeat is too old.
     // Awaiting prevents the sweep from racing with another worker's heartbeat.
-    const staleThreshold = new Date(
-      now.getTime() - HEARTBEAT_INTERVAL_MS * STALE_MULTIPLIER
-    );
+    const staleThreshold = computeStaleStatusCutoff(now);
     await db.update(judgeWorkers)
       .set({ status: "stale" })
       .where(
         and(
           eq(judgeWorkers.status, "online"),
           lt(judgeWorkers.lastHeartbeatAt, staleThreshold)
+        )
+      );
+
+    // Reconcile active_tasks for workers that have been silent past the
+    // stale-claim timeout (N1). At that point any submission they had claimed is
+    // provably reclaimable by the claim CTE, so their active_tasks counter no
+    // longer reflects real in-flight work. A worker that merely crossed the 90 s
+    // stale threshold (transient blip) is intentionally NOT reset here, because
+    // it may still be working and its next heartbeat flips it back to online —
+    // zeroing it would corrupt a live counter. Without this, a SIGKILLed worker
+    // that never deregisters would leak active_tasks forever, holding
+    // admin-health in `degraded` (which trips on any stale > 0). The graceful
+    // deregister / admin-DELETE paths already zero active_tasks; this closes the
+    // crash path.
+    const staleClaimTimeoutMs = getConfiguredSettings().staleClaimTimeoutMs;
+    const activeTasksResetThreshold = computeActiveTasksResetCutoff(now, staleClaimTimeoutMs);
+    await db.update(judgeWorkers)
+      .set({ activeTasks: 0 })
+      .where(
+        and(
+          lt(judgeWorkers.lastHeartbeatAt, activeTasksResetThreshold),
+          // Only touch rows that still carry a phantom counter, and never a live
+          // worker — `online` rows are excluded because a row only stays online
+          // while heartbeating, but guard defensively against a row that flipped
+          // back to online between the two updates above.
+          eq(judgeWorkers.status, "stale")
         )
       );
 
