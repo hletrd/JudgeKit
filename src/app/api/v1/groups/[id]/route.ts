@@ -4,7 +4,7 @@ import { db } from "@/lib/db";
 import { assignments, groups, submissions, enrollments } from "@/lib/db/schema";
 import { eq, sql } from "drizzle-orm";
 import { canAccessGroup } from "@/lib/auth/permissions";
-import { canManageGroupResourcesAsync } from "@/lib/assignments/management";
+import { canManageGroupMembersAsync, canManageGroupResourcesAsync } from "@/lib/assignments/management";
 import { recordAuditEvent } from "@/lib/audit/events";
 import { updateGroupSchema } from "@/lib/validators/groups";
 import { withUpdatedAt } from "@/lib/db/helpers";
@@ -51,29 +51,41 @@ export const GET = createApiHandler({
       .where(eq(enrollments.groupId, id));
     const total = Number(totalRow?.count ?? 0);
 
-    const groupEnrollments = await db.query.enrollments.findMany({
-      where: eq(enrollments.groupId, id),
-      columns: {
-        id: true,
-        userId: true,
-        groupId: true,
-        enrolledAt: true,
-      },
-      with: {
-        user: {
-          columns: { id: true, name: true, email: true },
-        },
-      },
-      limit,
-      offset,
-    });
-
+    // The member roster (per-user id/name/email) is PII. Only expose it to
+    // group managers/TAs — not every enrolled user — or recruiting candidates
+    // sharing one contest group could enumerate each other (IDOR). Non-managers
+    // still get the group meta + memberCount.
+    const canViewRoster = await canManageGroupMembersAsync(
+      group.instructorId,
+      user.id,
+      user.role,
+      id
+    );
     const canViewEmails = await canManageGroupResourcesAsync(
       group.instructorId,
       user.id,
       user.role,
       id
     );
+
+    const groupEnrollments = canViewRoster
+      ? await db.query.enrollments.findMany({
+          where: eq(enrollments.groupId, id),
+          columns: {
+            id: true,
+            userId: true,
+            groupId: true,
+            enrolledAt: true,
+          },
+          with: {
+            user: {
+              columns: { id: true, name: true, email: true },
+            },
+          },
+          limit,
+          offset,
+        })
+      : [];
 
     return apiSuccess({
       ...group,

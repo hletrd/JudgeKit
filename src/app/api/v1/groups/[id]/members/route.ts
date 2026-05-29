@@ -7,7 +7,6 @@ import { db } from "@/lib/db";
 import { enrollments, users } from "@/lib/db/schema";
 import { canManageGroupMembersAsync } from "@/lib/assignments/management";
 import { groupMembershipSchema } from "@/lib/validators/groups";
-import { canAccessGroup } from "@/lib/auth/permissions";
 import { createApiHandler, forbidden, notFound } from "@/lib/api/handler";
 import { parsePagination } from "@/lib/api/pagination";
 import { getRoleLevel } from "@/lib/capabilities/cache";
@@ -16,8 +15,22 @@ import { getDbNowUncached } from "@/lib/db-time";
 export const GET = createApiHandler({
   handler: async (req: NextRequest, { user, params }) => {
     const { id } = params;
-    const hasAccess = await canAccessGroup(id, user.id, user.role);
-    if (!hasAccess) return forbidden();
+    // The roster exposes co-member PII (username/name/className). Restrict to
+    // group managers/TAs, NOT every enrolled user — otherwise recruiting
+    // candidates sharing one contest group could enumerate each other (IDOR).
+    const group = await db.query.groups.findFirst({
+      where: (groups, { eq: equals }) => equals(groups.id, id),
+      columns: { id: true, instructorId: true },
+    });
+    if (!group) return notFound("Group");
+
+    const canManage = await canManageGroupMembersAsync(
+      group.instructorId,
+      user.id,
+      user.role,
+      id
+    );
+    if (!canManage) return forbidden();
 
     const { page, limit, offset } = parsePagination(req.nextUrl.searchParams, {
       defaultLimit: 100,
