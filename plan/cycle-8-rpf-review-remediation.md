@@ -61,5 +61,10 @@ Key deferred items (severity NOT downgraded):
 - [x] Task A docstring/comment correction (line ~196-215, N8-C8-LIVERANK + N7-C7 note)
 - [x] Task A structural guard tests (2 new in `leaderboard-live-rank-logic.test.ts`)
 - [x] Gates green (lint 0/0, tsc 0, build OK, test:unit 2472/321, lint:bash 0)
-- [ ] Commit + push (GPG-signed, conventional + gitmoji)
-- [ ] Deploy per DEPLOY_MODE=per-cycle
+- [x] Commit + push (GPG-signed): f0d79935 (fix), docs commit; pushed db1a28d0..0afd1a0a
+- [x] Deploy per DEPLOY_MODE=per-cycle: SUCCESS (exit 0). App live, root HTTP 200
+      (61ms), /login HTTP 200, HTTPS endpoint verified by script. Post-deploy
+      Playwright smoke reported 7 failures — ALL are pre-existing "Step 1: Login"
+      credential timeouts at tests/e2e/support/helpers.ts:32 (documented since
+      cycle-5 close-out: "smoke creds pre-existing"), unrelated to the live-rank
+      SQL change (login flow untouched); 141 smoke tests passed. Not a regression.
