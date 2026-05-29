@@ -19,6 +19,7 @@ import { resolveCapabilities } from "@/lib/capabilities/cache";
 import { getRecruitingAccessContext } from "@/lib/recruiting/access";
 import { getAssignedTeachingGroupIds, hasGroupInstructorRole } from "@/lib/assignments/management";
 import { getDbNowUncached } from "@/lib/db-time";
+import { logger } from "@/lib/logger";
 import { TERMINAL_SUBMISSION_STATUSES_SQL_LIST } from "@/lib/submissions/status";
 import { buildIoiLatePenaltyCaseExpr } from "@/lib/assignments/scoring";
 import { DEFAULT_PROBLEM_POINTS } from "@/lib/assignments/constants";
@@ -312,7 +313,32 @@ export async function validateAssignmentSubmission(
       const fresh =
         latestEventAt !== null && now - latestEventAt <= ANTI_CHEAT_HEARTBEAT_FRESHNESS_MS;
       if (!fresh) {
-        return { ok: false, status: 403, error: "antiCheatHeartbeatRequired" };
+        // Fail OPEN, but record a high-tier ("escalate") anti-cheat event rather
+        // than hard-blocking. A 403 here destroyed honest candidates' work on
+        // flaky networks at the deadline — an unacceptable fairness/legal harm
+        // for graded exams and recruiting tests. An open decoy tab keeps
+        // heartbeating and defeats the block anyway, so the control's real value
+        // is the evidence trail for human review, not prevention. The instructor
+        // still sees this flag in the anti-cheat dashboard and can act on it.
+        await db
+          .insert(antiCheatEvents)
+          .values({
+            assignmentId: assignment.id,
+            userId,
+            eventType: "submission_stale_heartbeat",
+            details: JSON.stringify({
+              latestEventAt,
+              ageMs: latestEventAt === null ? null : now - latestEventAt,
+              thresholdMs: ANTI_CHEAT_HEARTBEAT_FRESHNESS_MS,
+            }),
+          })
+          .catch((error) => {
+            // Never let flag-recording failure block an honest submission.
+            logger.warn(
+              { err: error, assignmentId: assignment.id, userId },
+              "[anti-cheat] failed to record stale-heartbeat submission flag",
+            );
+          });
       }
     }
   }

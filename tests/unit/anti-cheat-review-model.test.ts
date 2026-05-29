@@ -14,5 +14,7 @@ describe("getAntiCheatReviewTier", () => {
   it("classifies stronger anomalies as escalate", () => {
     expect(getAntiCheatReviewTier("ip_change")).toBe("escalate");
     expect(getAntiCheatReviewTier("code_similarity")).toBe("escalate");
+    // Server-recorded when the heartbeat gate fails open at submit time.
+    expect(getAntiCheatReviewTier("submission_stale_heartbeat")).toBe("escalate");
   });
 });

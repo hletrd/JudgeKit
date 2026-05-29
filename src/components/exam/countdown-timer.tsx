@@ -222,6 +222,11 @@ export function CountdownTimer({ deadline, label, onExpired }: CountdownTimerPro
           {expired ? "00:00:00" : formatDuration(remaining)}
         </span>
       </Badge>
+      {expired && (
+        <span role="alert" className="ml-2 text-sm font-medium text-destructive">
+          {t("examTimeExpired")}
+        </span>
+      )}
       <span aria-live={thresholdUrgent ? "assertive" : "polite"} className="sr-only">
         {thresholdAnnouncement}
       </span>
