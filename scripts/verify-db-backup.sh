@@ -24,7 +24,45 @@ if [[ "$BACKUP_PATH" == *.sql.gz ]]; then
     exit 1
   fi
 
-  echo "PostgreSQL backup verified: $BACKUP_PATH (valid gzip, contains SQL)"
+  # Full restore-test. The gzip + non-empty checks above still PASS for a
+  # truncated-but-valid-gzip dump, so they don't prove restorability. When a
+  # throwaway PostgreSQL target is provided (RESTORE_DATABASE_URL, or the 2nd
+  # arg — a base DSN whose role can CREATE DATABASE), actually restore the dump
+  # into a fresh temp database, assert it contains tables, then drop it.
+  RESTORE_DSN="${RESTORE_DATABASE_URL:-${2:-}}"
+  if [ -n "$RESTORE_DSN" ]; then
+    command -v psql >/dev/null 2>&1 || { echo "ERROR: psql not on PATH for restore-test" >&2; exit 1; }
+    TMP_DB="verify_restore_$(date +%s)_$$"
+    cleanup_restore() {
+      psql "$RESTORE_DSN" -c "DROP DATABASE IF EXISTS \"$TMP_DB\"" >/dev/null 2>&1 || true
+    }
+    trap cleanup_restore EXIT
+
+    if ! psql "$RESTORE_DSN" -v ON_ERROR_STOP=1 -q -c "CREATE DATABASE \"$TMP_DB\"" >/dev/null; then
+      echo "ERROR: could not create temp restore database $TMP_DB" >&2
+      exit 1
+    fi
+    # Point the DSN at the temp database (replace the db-name path segment).
+    TARGET_DSN="$(printf '%s' "$RESTORE_DSN" | sed -E "s#(://[^/]+)/[^?]*#\1/$TMP_DB#")"
+
+    if ! zcat "$BACKUP_PATH" | psql "$TARGET_DSN" -v ON_ERROR_STOP=1 -q >/dev/null; then
+      echo "ERROR: restore into $TMP_DB failed — backup is not restorable: $BACKUP_PATH" >&2
+      exit 1
+    fi
+
+    TABLE_COUNT="$(psql "$TARGET_DSN" -tAc "SELECT count(*) FROM information_schema.tables WHERE table_schema='public'" | tr -d '[:space:]')"
+    if [ "${TABLE_COUNT:-0}" -lt 1 ]; then
+      echo "ERROR: restored database has no tables — backup is incomplete: $BACKUP_PATH" >&2
+      exit 1
+    fi
+
+    cleanup_restore
+    trap - EXIT
+    echo "PostgreSQL backup verified by FULL RESTORE: $BACKUP_PATH ($TABLE_COUNT tables restored into a throwaway DB, then dropped)"
+  else
+    echo "PostgreSQL backup verified: $BACKUP_PATH (valid gzip, contains SQL)."
+    echo "NOTE: full restore-test skipped — set RESTORE_DATABASE_URL to a PostgreSQL base DSN with CREATE DATABASE rights to verify the dump actually restores."
+  fi
 
 else
   # --- SQLite backup verification ---
