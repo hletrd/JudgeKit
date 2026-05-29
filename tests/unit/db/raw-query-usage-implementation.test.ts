@@ -20,9 +20,18 @@ describe("raw query usage implementation guards", () => {
 
   it("keeps the raw query helper on positional parameters for PostgreSQL", async () => {
     const helper = read("src/lib/db/queries.ts");
+    // The named→positional translation lives in the pool-free named-params
+    // module (imported + re-exported by queries.ts) so pure SQL builders and
+    // gated integration tests can use it without importing the global pool.
+    // The SQL-injection guarantee is unchanged: parameters stay positional and
+    // are never string-interpolated into the query text.
+    const namedParams = read("src/lib/db/named-params.ts");
 
-    expect(helper).toContain("@([a-zA-Z_]\\w*)");
-    expect(helper).toContain("return `$${idx + 1}`");
+    expect(namedParams).toContain("@([a-zA-Z_]\\w*)");
+    expect(namedParams).toContain("return `$${idx + 1}`");
+    // queries.ts must still route every raw query through the translator and
+    // execute it with parameterized values.
+    expect(helper).toContain("namedToPositional");
     expect(helper).toContain("pool.query(text, values)");
   });
 });
