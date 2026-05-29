@@ -48,7 +48,7 @@ email divergence — needs a product decision, see ledger), **F6**, **F7**.
 | 6 | In `src/lib/email/providers/smtp.ts:89`, change `rejectUnauthorized: !process.env.SMTP_SKIP_TLS_VERIFY` to `rejectUnauthorized: process.env.SMTP_SKIP_TLS_VERIFY !== "true"` (presence→explicit-true), matching line 25's `SMTP_SECURE === "true"`. Document `SMTP_SKIP_TLS_VERIFY` in `.env.example`. | LOW (F5 / SEC-C2-3 / DOC-C2-1) | [x] |
 | 7 | Run all gates: `npm run lint`, `tsc --noEmit`, `npm run build`, `npm run test:unit`, `npm run lint:bash`. | — | [x] |
 | 8 | Commit + push fine-grained per-topic, GPG-signed, conventional + gitmoji. | — | [x] |
-| 9 | Run per-cycle `DEPLOY_CMD`. | — | [ ] |
+| 9 | Run per-cycle `DEPLOY_CMD`. | — | [x] |
 | 10 | Housekeeping: archive the now-fully-done cycle-1 plan to `plans/done/`. | — | [x] |
 
 ---
@@ -111,5 +111,5 @@ are restated for continuity, with one update:
 - [x] F5 implemented (SMTP TLS verify === "true" + doc) — commit d99a21a7
 - [x] Gates green (lint 0/0, tsc 0, build PASS, 2438 unit tests, lint:bash 0)
 - [x] Committed and pushed (fine-grained, GPG-signed)
-- [ ] Deployed (per-cycle) — pending
+- [x] Deployed (per-cycle) — `deploy-docker.sh` exit 0; "Deployment complete!" Verified live: `https://algo.xylolabs.com/` and `/login` both HTTP 200. Post-deploy E2E smoke: 141 passed, 7 login-gated specs failed — ALL the same pre-existing cause cycle-1 documented: the smoke profile authenticates with the sentinel password `skip-login`, so `loginWithCredentials` throws on the forced-password-change guard and login cannot redirect to `/dashboard`. Failing specs (admin-languages, admin-workers, auth-flow, contest-access-code-gate, contest-nav, rankings) are all login-gated and unrelated to this cycle's diff (audit redaction / sendEmail guard / recruiting log / SMTP TLS flag / env doc — none touch auth/login). `src/lib/auth/config.ts` was NOT modified this cycle (preserved per CLAUDE.md).
 - [x] Cycle-1 plan archived to plans/done/ (commit e6265884)
