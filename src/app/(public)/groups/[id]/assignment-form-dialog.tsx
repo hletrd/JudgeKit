@@ -127,7 +127,11 @@ export default function AssignmentFormDialog({
   const [examDurationMinutes, setExamDurationMinutes] = useState<number | null>(defaultAssignment?.examDurationMinutes ?? null);
   const [scoringModel, setScoringModel] = useState<"ioi" | "icpc">(defaultAssignment?.scoringModel ?? "ioi");
   const [freezeLeaderboardAt, setFreezeLeaderboardAt] = useState(formatDateTimeInput(defaultAssignment?.freezeLeaderboardAt ?? null));
-  const [enableAntiCheat, setEnableAntiCheat] = useState(defaultAssignment?.enableAntiCheat ?? false);
+  // Default anti-cheat ON for new exam/contest assignments, matching the
+  // quick-create contest form (which defaults true). Previously this form
+  // defaulted false, so an exam created here silently shipped with no
+  // proctoring. Existing assignments keep their stored value.
+  const [enableAntiCheat, setEnableAntiCheat] = useState(defaultAssignment?.enableAntiCheat ?? true);
   const [showResultsToCandidate, setShowResultsToCandidate] = useState(defaultAssignment?.showResultsToCandidate ?? false);
   const [hideScoresFromCandidates, setHideScoresFromCandidates] = useState(defaultAssignment?.hideScoresFromCandidates ?? false);
   const [problemRows, setProblemRows] = useState<AssignmentProblemDraft[]>(
@@ -166,7 +170,7 @@ export default function AssignmentFormDialog({
     setExamDurationMinutes(defaultAssignment?.examDurationMinutes ?? null);
     setScoringModel(defaultAssignment?.scoringModel ?? "ioi");
     setFreezeLeaderboardAt(formatDateTimeInput(defaultAssignment?.freezeLeaderboardAt ?? null));
-    setEnableAntiCheat(defaultAssignment?.enableAntiCheat ?? false);
+    setEnableAntiCheat(defaultAssignment?.enableAntiCheat ?? true);
     setShowResultsToCandidate(defaultAssignment?.showResultsToCandidate ?? false);
     setHideScoresFromCandidates(defaultAssignment?.hideScoresFromCandidates ?? false);
     setProblemRows(
