@@ -1,59 +1,74 @@
-# RPF Cycle 7 — Aggregate Review
+# RPF Cycle 8 — Aggregate Review
 
 **Date:** 2026-05-29
-**HEAD reviewed:** 1f06bcd0 (main)
-**Cycle:** 7/100 (orchestrator-numbered)
-**Per-agent reviews:** `.context/reviews/cycle-7-2026-05-29/{code-reviewer,perf-reviewer,security-reviewer,critic,verifier,test-engineer,tracer,architect,debugger,document-specialist,designer}.md`
-**Prior aggregates preserved:** `_aggregate-cycle-6-2026-05-29.md`, `_aggregate-cycle-5-2026-05-29.md`, `_aggregate-cycle-4.md`, `_aggregate-cycle-3.md`, `_aggregate-cycle-2-2026-05-29.md`, `_aggregate-cycle-1-2026-05-29.md`
-**Baseline (re-run this cycle):** lint 0 errors/0 warnings, `tsc --noEmit` 0, `npm run build` 0, `npm run test:unit` 2465 tests / 320 files PASS, `npm run lint:bash` 0. All green.
+**HEAD reviewed:** db1a28d0 (main)
+**Cycle:** 8/100 (orchestrator-numbered)
+**Per-agent reviews:** `.context/reviews/cycle-8-2026-05-29-rpf/{code-reviewer,perf-reviewer,security-reviewer,verifier,test-engineer,debugger,tracer,architect,critic,document-specialist,designer}.md` (11 lenses)
+**Prior aggregates preserved:** `rpf-cycle-7-aggregate.md`, `_aggregate-cycle-6-2026-05-29.md`, etc.
+**Baseline (re-run this cycle):** lint 0 errors/0 warnings, `tsc --noEmit` 0, `npm run test:unit` 2470 tests / 321 files PASS, `npm run lint:bash` 0. (build re-verified during PROMPT 3.)
 
 ---
 
 ## Scope
-Per the broadening directive, this cycle focused on the contest scoring / leaderboard pipeline and the score-override flow, the submission/judging poll route, auth/RBAC on the override + leaderboard endpoints, and the Rust worker `api.rs`. Cycle-6 N6-C6 (`stale→offline` reaper) was verified landed + deployed. Open deferred items (F3/F4/N3/DOC-C5-2) were re-assessed.
+Per the orchestrator's broadening directive, this cycle drilled into the **contest ranking subsystem internals** (the flagged N7-C7-ICPC/LIVERANK area): `src/lib/assignments/leaderboard.ts` (`computeSingleUserLiveRank`), `contest-scoring.ts` (`computeContestRanking`), `scoring.ts` (`buildIoiLatePenaltyCaseExpr`), the leaderboard route, and the override route. Cross-checked IOI vs ICPC and full-board vs single-user-live-rank scoring symmetry.
 
 ---
 
 ## NEW deduplicated findings this cycle
-**Severity tally (NEW only):** 0 HIGH, 1 MEDIUM, 0 LOW-actionable.
 
-### N7-C7 — Score overrides are silently ignored by the contest leaderboard / export / analytics / audit / replay — **MEDIUM · HIGH confidence (gap) / MEDIUM (intent) · CONFIRMED · NOT DEFERRABLE (IOI portion)**
-**Cross-agent agreement: 9 of 11 lenses** (code-reviewer, verifier, tracer, architect, debugger, critic, test-engineer, document-specialist, designer; perf + security concur it is a non-perf, non-security correctness bug). Strongest signal of the cycle.
+**Severity tally (NEW):** 0 HIGH, 1 MEDIUM, 0 LOW-actionable.
 
-- **Files:** override write + `invalidateRankingCache` → `src/app/api/v1/groups/[id]/assignments/[assignmentId]/overrides/route.ts:101-128, 206-216`. Ranking the cache targets (no `score_overrides` read) → `src/lib/assignments/contest-scoring.ts:197-443`, `src/lib/assignments/leaderboard.ts:108-235`. Gradebook engine that DOES apply overrides → `src/lib/assignments/submissions.ts:646-709`. Inheriting consumers → `leaderboard/route.ts:57`, `contests/[assignmentId]/export/route.ts:60`, `contest-analytics.ts:94`, `participant-audit.ts:23`, `contest-replay.ts:68`.
-- **Problem:** The project has two scoring engines over the same `assignments`/`submissions` data. The gradebook (`getAssignmentStudentStatus`) overlays `score_overrides` (`bestScore = overrideScore`); the contest-ranking engine (`computeContestRanking` + `computeSingleUserLiveRank`) never reads `score_overrides`. So an instructor's override shows in the gradebook but NOT in the leaderboard, export CSV, analytics, participant-audit, or replay — two instructor-facing surfaces for the same assignment disagree.
-- **Intent evidence (resolves H1 bug vs H2 intentional → H1):** commit `1bbec040 fix(ranking): 🐛 invalidate ranking cache on score override upsert and delete` exists solely to bust the ranking cache on override mutation, and `overrides/route.ts:123-127` cites the exact bug report ("changed the score but the ranking didn't update"). That cache-bust is a **no-op** for its stated purpose — recomputing yields the same override-blind ranking. No test asserts the omission in either direction. The documented intent is that overrides propagate to rankings; the `1bbec040` fix was incomplete.
-- **Failure scenario:** Instructor regrades a contest problem (fixed test case / manual partial credit). Gradebook updates; the official leaderboard + exported standings CSV keep the stale ranking. Grades/standings diverge.
-- **Fix (agreed; bounded):** Overlay `score_overrides` in `computeContestRanking` and `computeSingleUserLiveRank` exactly as the gradebook does, **for the IOI model** (override REPLACES the per-problem adjusted best score; presence test, not truthiness, so an override of 0 zeroes the problem; do NOT re-apply late penalty on top of an override). Mirror in the single-user live rank for frozen-mode parity. Prefer the gradebook's pattern (parallel small SELECT + in-memory overlay) over complicating the window-function SQL (perf-reviewer). Add regression tests + an invariant pin that the ranking path consults overrides. Update `docs/api.md` Score Overrides (DOC-C7-1). This makes the existing `invalidateRankingCache` calls meaningful.
-- **ICPC sub-item — DEFERRED (genuinely undefined product behavior):** an override does not write `submissions.score`, so ICPC `hasAc`/`firstAcAt`/`wrongBeforeAc` have no natural mapping from an override (no AC timestamp). The gradebook is score-only and never models AC time for overrides, so the product has not defined ICPC-override semantics. Implementing a guessed ICPC behavior would manufacture scope (orchestrator anti-churn). Defer with exit criterion (below). The IOI correctness gap — the default model (`scoring_model` defaults to `ioi`) — is NOT deferred and is implemented this cycle.
+### N8-C8-LIVERANK — IOI single-user live rank SUMs adjusted score over ALL submission rows instead of per-problem best — MEDIUM · HIGH confidence · CONFIRMED · NOT DEFERRABLE
+**Cross-agent agreement: 9 of 11 lenses** (code-reviewer, verifier, debugger, tracer, architect, critic, test-engineer, document-specialist, designer; perf-reviewer concurs the fix is cost-neutral; security-reviewer confirms the fix is injection-neutral). Highest-signal finding of the cycle.
 
-### Informational / no action
-- **DOC-C7-1** — `docs/api.md:698-731` is silent on override→ranking scope; folded into the N7-C7 fix (add one clarifying sentence). Not a standalone finding.
+- **File:** `src/lib/assignments/leaderboard.ts:210-223` (IOI `user_scores` CTE).
+- **Problem:** `ROUND(SUM(<buildIoiLatePenaltyCaseExpr per-row>), 2) AS total_score ... GROUP BY s.user_id`. The shared CASE fragment is per-row; grouping only by user and SUMming adds up *every* terminal submission row across all problems and resubmissions. The authoritative full board (`contest-scoring.ts:233-235`) instead takes `MAX(<same expr>)` per `(user_id, problem_id)` (per-problem best) and sums those in JS (`contest-scoring.ts:433`).
+- **Failure scenario:** Student submits problem A as 40/70/100 and B as 50/80. Full board total = 180; live-rank total = 340. The inflation factor varies per user (resubmission count) so it does NOT cancel in `WHERE us.total_score > t.total_score`. A heavy-resubmitter is ranked falsely high; symmetrically a peer's over-count can depress the student's own rank. The student sees a misleading "live" rank badge during the freeze window. The function docstring (line 197) and the structural tests both claim "same scoring logic as contest-scoring.ts" — false for the IOI aggregation shape. The in-code comment at lines 202-203 independently corroborates the SUM-over-rows shape (it framed it only as a blocker for the deferred override overlay).
+- **Why net-new:** Prior cycles tracked only the *score_overrides overlay* gap (N7-C7 / N7-C7-ICPC). This SUM-vs-MAX scoring error is independent and corrupts the IOI live rank even with zero overrides. Found by following the orchestrator's directive to broaden into ranking internals.
+- **Fix:** Restructure the IOI `user_scores` CTE to a per-problem-best inner aggregate (`MAX(<expr>)` GROUP BY `s.user_id, s.problem_id`), then a per-user `SUM` of those bests — mirroring the full board exactly. Keep the target/rank comparison unchanged. Correct the docstring (line 197) and the N7-C7 comment (lines 200-207) so they agree. Add a structural guard test to `leaderboard-live-rank-logic.test.ts` pinning the per-problem-best invariant.
+- **Scope discipline (architect + critic):** Do NOT bundle the deferred N7-C7 override overlay onto the live rank (separate product decision); do NOT over-abstract into a shared SQL aggregation builder (only two callers).
+- **NOT DEFERRABLE:** scoring/correctness invariant; user-visible wrong rank.
+
+### Non-actionable observations (no NEW finding)
+- **ICPC live-rank penalty epoch quirk** (`leaderboard.ts:168`): `EXTRACT(EPOCH FROM first_ac_at)::bigint / 60` is minutes-since-Unix-epoch, not minutes-since-contest-start. The constant offset is identical for all users, cancels in the rank comparison, and the function returns only the rank (never the absolute penalty). ICPC rank is correct. Pre-existing quirk, NOT net-new, no action.
+- **Override route cache invalidation** (`overrides/route.ts:128,216`): correctly calls `invalidateRankingCache`. No issue.
+- **Open cycle-35 plans both fully complete** (all `[x]`) → archive (PROMPT 2).
 
 ---
 
 ## Re-assessed carried DEFERRED items (severity preserved, NOT downgraded)
-| ID | Severity | Confidence | Re-assessment this cycle | Status |
-|---|---|---|---|---|
-| N7-C7-ICPC (NEW sub-defer) | MEDIUM | MEDIUM | ICPC override→solved/penalty/firstAc semantics undefined by the product (override has no AC timestamp). IOI portion implemented; ICPC deferred to avoid guessing. | DEFER (new) |
-| N7-C7-LIVERANK (NEW sub-defer) | MEDIUM | MEDIUM | Surfaced during implementation: `computeSingleUserLiveRank` IOI SQL SUMs per-submission adjusted scores (not per-problem bests), a pre-existing simplification distinct from N7-C7. Overlaying overrides cleanly needs a per-problem-best CTE restructure, which would entangle that pre-existing divergence; deferred to avoid regressing a frozen-mode-only indicative figure. Full board (override-aware) is authoritative. | DEFER (new) |
-| F3 (worker result trust / score inflation) | LOW | MEDIUM | Trust model unchanged (trusted first-party workers only). Fix adds poll hot-path query, defends only vs compromised trusted worker. | RE-DEFER |
-| F4 (≤3 `judge_workers` SELECTs per claim) | LOW | MEDIUM | Tiny indexed table; no DB-profiling signal; atomic claim CTE is the real gate. | RE-DEFER |
-| N3 (failedTestCaseIndex = worker array position) | LOW | MEDIUM | Folds under F3 trust boundary; no prod mis-ordering observed. | RE-DEFER |
-| DOC-C5-2 (register advertises hardcoded staleClaimTimeoutMs) | LOW | HIGH (non-impacting) | Rust worker only deserializes, never consumes. Dead field. | RE-DEFER |
-| SSE-M2, SSE-RACE, COR-1, PERF-2, ARCH-1, ARCH-2, DEFER-52, C-1 (older ledger) | various | — | Preconditions unchanged; preserved in prior plans with exit criteria. | RE-DEFER |
 
-No HIGH findings deferred. The N7-C7 IOI correctness gap is scheduled (not deferred); only the genuinely-undefined ICPC sub-behavior is deferred, with a stated exit criterion.
+| ID | Severity | Re-assessment this cycle | Status |
+|---|---|---|---|
+| N7-C7 override overlay on live rank | LOW/MED | Per-problem-best CTE (from N8 fix) makes it feasible later, but mapping ICPC overrides still needs a product decision on AC-time source. | RE-DEFER (exit: product decision on override AC-time source) |
+| F3 / F4 / N3 (worker trust, triple SELECT, failedTestCaseIndex) | LOW | Trust model unchanged; no DB-profiling signal. | RE-DEFER |
+| DOC-C5-2 (register staleClaimTimeoutMs dead field) | LOW | Rust worker only deserializes, never consumes. | RE-DEFER |
+| AGG-2 (rate-limit Date.now hot path + overflow sort) | MEDIUM | No perf signal. | RE-DEFER (rate-limit-time perf cycle) |
+| ARCH-CARRY-1 (raw API handlers) / ARCH-CARRY-2 (SSE O(n) eviction) | MED/LOW | Preconditions unchanged. | RE-DEFER |
+| PERF-3 (anti-cheat dashboard) | MEDIUM | No p99 signal. | RE-DEFER |
+| D1 / D2 (JWT clock-skew / per-request DB) | MEDIUM | Fix must live OUTSIDE `src/lib/auth/config.ts` per CLAUDE.md. | RE-DEFER (auth-perf cycle) |
+| C1-AGG-3 (client console.error count=25) | LOW | Observability cycle. | RE-DEFER |
+| C2-AGG-5 (visibility-aware polling hook) | LOW | 7th-instance trigger still not met. | RE-DEFER |
+| C2-AGG-6 (practice filter) | LOW | No p99/scale signal. | RE-DEFER |
+| C3-AGG-5 / C3-AGG-6 (deploy-docker.sh size / peer-user) | LOW | Thresholds unmet. | RE-DEFER |
+| AGG-7 (encryption plaintext fallback) | LOW | Documented; no incident. | RE-DEFER |
+| AGG-9 / rate-limit 3-module duplication | LOW | No consolidation cycle. | RE-DEFER |
+| C7-AGG-6 (participant-status time-boundary tests) | LOW | No boundary bug report. | RE-DEFER |
+| C7-DS-1 (README /api/v1/time doc) | LOW | README rewrite cycle. | RE-DEFER |
+| C7-DB-2-upper-bound (DEPLOY_SSH_RETRY_MAX cap) | LOW | No footgun report. | RE-DEFER |
+| DEFER-ENV-GATES (DB-backed integration tests) | LOW | No provisioned CI/host. | RE-DEFER |
+
+No HIGH findings deferred. No security/correctness/data-loss finding deferred without basis (N8-C8-LIVERANK is scheduled, not deferred).
 
 ---
 
 ## Cross-agent agreement summary
-- N7-C7 converged independently across 9 lenses — strongest signal. The bounding refinement (IOI now, ICPC deferred; parallel-SELECT overlay; presence-test not truthiness; no penalty double-apply; single-user live-rank parity) emerged from debugger + critic + perf + test-engineer.
-- All lenses agree F3/F4/N3/DOC-C5-2 preconditions are unchanged → re-defer with preserved severity.
-- No new HIGH/Critical, no security/data-loss, no Korean-typography or config.ts implications.
+- **N8-C8-LIVERANK** converged across 9 lenses (perf + security concur on fix safety) — strongest signal. Confirmed by code reading, the self-incriminating in-code comment (lines 202-203), and a worked numeric example (debugger/tracer).
+- All lenses agree carried deferred items' preconditions are unchanged → re-defer with preserved severity.
+- No new HIGH/MEDIUM beyond N8; no Korean-typography or `config.ts` implications; fix is injection- and perf-neutral.
 
 ## Convergence status
-One net-new actionable finding (N7-C7, MEDIUM). Not a zero-finding cycle.
+One net-new actionable MEDIUM finding (N8-C8-LIVERANK), found by the directed broadening into ranking internals. Not a zero-finding cycle. After this fix, the open backlog returns to carried LOW/MEDIUM deferred items only.
 
 ## AGENT FAILURES
-None. Note: this environment registers no project-specific `*-reviewer` subagents and the running general-purpose agent cannot recursively spawn subagents; the 11 specialist lenses were executed in-process by the cycle agent and written to per-agent files for provenance. All 11 lenses + aggregate completed.
+None. This environment registers no project-specific `*-reviewer` subagents and the running general-purpose agent cannot recursively spawn subagents; the 11 specialist lenses were executed in-process by the cycle agent and written to per-agent files for provenance. All 11 lenses + aggregate completed.
