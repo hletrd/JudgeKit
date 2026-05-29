@@ -5,6 +5,7 @@ import {
   computeStaleStatusCutoff,
   computeActiveTasksResetCutoff,
   shouldResetActiveTasks,
+  shouldMarkWorkerOffline,
 } from "@/lib/judge/worker-staleness";
 
 const STALE_STATUS_MS = HEARTBEAT_INTERVAL_MS * STALE_MULTIPLIER; // 90_000
@@ -72,5 +73,51 @@ describe("shouldResetActiveTasks", () => {
     // But one only 60s stale is still within the 90s floor -> not eligible.
     const recent = new Date(NOW.getTime() - 60_000);
     expect(shouldResetActiveTasks(recent, NOW, 10_000)).toBe(false);
+  });
+});
+
+describe("shouldMarkWorkerOffline (N6-C6 stale -> offline reaper)", () => {
+  it("reaps a worker silent past the stale-claim timeout to offline", () => {
+    const lastHeartbeat = new Date(NOW.getTime() - (DEFAULT_STALE_CLAIM_MS + 1_000));
+    expect(shouldMarkWorkerOffline(lastHeartbeat, NOW, DEFAULT_STALE_CLAIM_MS)).toBe(true);
+  });
+
+  it("does NOT reap a worker only recently stale (past 90s but within the stale-claim timeout)", () => {
+    // Past the 90s status threshold but well within the 300s reap threshold:
+    // this worker may still be doing real in-flight work and is about to
+    // heartbeat back to online — it must stay `stale` and keep active_tasks.
+    const lastHeartbeat = new Date(NOW.getTime() - (STALE_STATUS_MS + 5_000));
+    expect(shouldMarkWorkerOffline(lastHeartbeat, NOW, DEFAULT_STALE_CLAIM_MS)).toBe(false);
+  });
+
+  it("does NOT reap a worker exactly at the stale-claim timeout boundary (strict <)", () => {
+    const lastHeartbeat = new Date(NOW.getTime() - DEFAULT_STALE_CLAIM_MS);
+    expect(shouldMarkWorkerOffline(lastHeartbeat, NOW, DEFAULT_STALE_CLAIM_MS)).toBe(false);
+  });
+
+  it("does NOT reap a freshly-heartbeated worker", () => {
+    const lastHeartbeat = new Date(NOW.getTime() - 1_000);
+    expect(shouldMarkWorkerOffline(lastHeartbeat, NOW, DEFAULT_STALE_CLAIM_MS)).toBe(false);
+  });
+
+  it("does NOT reap when lastHeartbeatAt is null (never heartbeated)", () => {
+    // Avoid clobbering a freshly-registered worker whose first heartbeat has not
+    // been persisted yet.
+    expect(shouldMarkWorkerOffline(null, NOW, DEFAULT_STALE_CLAIM_MS)).toBe(false);
+  });
+
+  it("uses the SAME cutoff as the active_tasks reset (invariant must not drift)", () => {
+    // The reap and the active_tasks-reset MUST share one cutoff so the combined
+    // single-UPDATE in heartbeat/route.ts can never split the two thresholds.
+    // Probe a dense band of lastHeartbeat ages across multiple configured
+    // timeouts; the two predicates must agree on every sample.
+    for (const timeout of [10_000, DEFAULT_STALE_CLAIM_MS, 600_000]) {
+      for (let ageMs = 0; ageMs <= 700_000; ageMs += 5_000) {
+        const lastHeartbeat = new Date(NOW.getTime() - ageMs);
+        expect(shouldMarkWorkerOffline(lastHeartbeat, NOW, timeout)).toBe(
+          shouldResetActiveTasks(lastHeartbeat, NOW, timeout),
+        );
+      }
+    }
   });
 });

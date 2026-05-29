@@ -88,28 +88,41 @@ export async function POST(request: NextRequest) {
         )
       );
 
-    // Reconcile active_tasks for workers that have been silent past the
-    // stale-claim timeout (N1). At that point any submission they had claimed is
+    // Reap workers that have been silent past the stale-claim timeout to the
+    // TERMINAL `offline` state, reconciling active_tasks at the same time
+    // (N1 + N6-C6). Past that timeout any submission they had claimed is
     // provably reclaimable by the claim CTE, so their active_tasks counter no
-    // longer reflects real in-flight work. A worker that merely crossed the 90 s
-    // stale threshold (transient blip) is intentionally NOT reset here, because
-    // it may still be working and its next heartbeat flips it back to online —
-    // zeroing it would corrupt a live counter. Without this, a SIGKILLed worker
-    // that never deregisters would leak active_tasks forever, holding
-    // admin-health in `degraded` (which trips on any stale > 0). The graceful
-    // deregister / admin-DELETE paths already zero active_tasks; this closes the
-    // crash path.
+    // longer reflects real in-flight work AND the worker can be moved to the
+    // terminal lifecycle state. This single combined UPDATE mirrors the
+    // graceful-deregister terminal state (`status='offline'`,
+    // `deregisteredAt=now`, `activeTasks=0`).
+    //
+    // A worker that merely crossed the 90 s stale threshold (transient blip) is
+    // intentionally NOT touched here, because it may still be working and its
+    // next heartbeat flips it back to online — zeroing its counter or reaping it
+    // would corrupt a live worker. The reap cutoff equals the active_tasks-reset
+    // cutoff (`computeActiveTasksResetCutoff`), so the two operations can never
+    // drift apart.
+    //
+    // Without the `stale -> offline` transition, a SIGKILLed worker that never
+    // deregisters would stay `stale` forever: it would leak active_tasks AND pin
+    // admin-health in `degraded` (which trips on any stale > 0), since the sweep
+    // was previously the only autonomous lifecycle actor and stopped short of
+    // the terminal state. The transition is reversible — a returning worker's
+    // next heartbeat sets `status='online'` unconditionally (above). Reaped
+    // workers remain visible in the admin inventory as `offline` with a
+    // `deregisteredAt` timestamp for post-mortem.
     const staleClaimTimeoutMs = getConfiguredSettings().staleClaimTimeoutMs;
     const activeTasksResetThreshold = computeActiveTasksResetCutoff(now, staleClaimTimeoutMs);
     await db.update(judgeWorkers)
-      .set({ activeTasks: 0 })
+      .set({ status: "offline", deregisteredAt: now, activeTasks: 0 })
       .where(
         and(
           lt(judgeWorkers.lastHeartbeatAt, activeTasksResetThreshold),
-          // Only touch rows that still carry a phantom counter, and never a live
-          // worker — `online` rows are excluded because a row only stays online
-          // while heartbeating, but guard defensively against a row that flipped
-          // back to online between the two updates above.
+          // Only reap rows still in the `stale` state — never a live `online`
+          // worker. A row only stays online while heartbeating, but this also
+          // guards defensively against a row that flipped back to online between
+          // the status-flip update above and this one.
           eq(judgeWorkers.status, "stale")
         )
       );
