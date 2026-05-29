@@ -40,7 +40,7 @@ Deferred (recorded in ledger below): F4, F5, F7, F8, F9, F10, F11, F12.
 | 5 | Extend `tests/unit/actions/public-signup.test.ts`: (a) when the mocked `sendEmailVerification` rejects, `registerPublicUser` still returns `{ success: true }`; (b) `sendEmailVerification` is NOT called when `email` is undefined. | LOW (F6 / TE-C1-3) | [x] |
 | 6 | Run all gates: `npm run lint`, `tsc --noEmit`, `npm run build`, `npm run test:unit`, `npm run lint:bash`. | — | [x] |
 | 7 | Commit + push fine-grained per-topic, GPG-signed, conventional + gitmoji. | — | [x] |
-| 8 | Run per-cycle `DEPLOY_CMD`. | — | [ ] |
+| 8 | Run per-cycle `DEPLOY_CMD`. | — | [x] |
 
 ---
 
