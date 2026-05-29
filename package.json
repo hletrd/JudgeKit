@@ -15,6 +15,7 @@
     "db:push": "drizzle-kit push",
     "db:push:dev": "drizzle-kit push",
     "db:generate": "drizzle-kit generate",
+    "db:check": "bash scripts/check-migration-drift.sh",
     "db:migrate": "tsx src/lib/db/migrate.ts",
     "backup:db": "bash scripts/backup-db.sh",
     "backup:verify": "bash scripts/verify-db-backup.sh",

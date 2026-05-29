@@ -85,6 +85,13 @@ jobs:
       - name: Run TypeScript check
         run: npx tsc --noEmit
 
+      - name: Check migration journal matches schema
+        # Fails if schema.pg.ts has changes not captured in drizzle/pg (i.e.
+        # drizzle-kit generate would emit a migration) or the journal is
+        # inconsistent. Guards against the schema/journal drift that breaks
+        # from-scratch migrate() — integration tests and DB disaster recovery.
+        run: npm run db:check
+
       - name: Run unit tests with coverage
         run: npm run test:unit:coverage
 
@@ -220,6 +227,9 @@ jobs:
 
       - name: Syntax check pg-volume-safety-check.sh
         run: bash -n scripts/pg-volume-safety-check.sh
+
+      - name: Syntax check check-migration-drift.sh
+        run: bash -n scripts/check-migration-drift.sh
 
       - name: Syntax check deploy scripts
         run: |
