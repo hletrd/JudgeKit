@@ -48,7 +48,7 @@ testCaseId scoping + partial-result score — gated by the trusted-worker bounda
 | 6 | (F5, opportunistic) Add a short comment at `ip.ts` `0.0.0.0`/null sentinel return site cross-referencing `isJudgeIpAllowed`. No behavior change. | LOW (F5 / CR-C4-3) | [x] commit 90f1b2e2 |
 | 7 | Run all gates: `npm run lint`, `tsc --noEmit`, `npm run build`, `npm run test:unit`, `npm run lint:bash`. | — | [x] |
 | 8 | Commit + push fine-grained per-topic, GPG-signed, conventional + gitmoji. | — | [x] |
-| 9 | Run per-cycle `DEPLOY_CMD` (algo flags). | — | [ ] |
+| 9 | Run per-cycle `DEPLOY_CMD` (algo flags). | — | [x] (deploy-docker.sh exit 0; live HTTP 200 — see Progress) |
 
 ---
 

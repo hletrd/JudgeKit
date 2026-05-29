@@ -1,118 +1,107 @@
-# Aggregate Review — Cycle 5
+# Aggregate Review — Cycle 5 (2026-05-29)
 
-**Date:** 2026-05-14
-**Reviewers:** code-reviewer, security-reviewer, perf-reviewer, test-engineer, architect, critic, debugger, tracer (single-pass comprehensive — no registered subagents available)
-**Scope:** JudgeKit codebase — verification of cycle-4 fixes and fresh cycle-5 review
-**Base commit:** 6bb2b2eb
+Per-agent reviews live in `.context/reviews/cycle-5-2026-05-29/` (one file per
+specialist angle). Prior aggregates preserved verbatim at
+`.context/reviews/_aggregate-cycle-4.md`, `_aggregate-cycle-3.md`,
+`_aggregate-cycle-2-2026-05-29.md`, `_aggregate-cycle-1-2026-05-29.md`.
 
----
+## Environment note (review fan-out)
+This environment exposes NO reviewer-style subagents (`.claude/agents/` empty, no
+`~/.claude/agents/`) and the only dispatchable agent type is `general-purpose`. Per
+the prompt's "skip any not registered" rule (and consistent with cycles 1-4), the
+review was conducted directly across all 11 specialist angles, one provenance file
+per angle: code-reviewer, perf-reviewer, security-reviewer, critic, verifier,
+test-engineer, tracer, architect, debugger, document-specialist, designer (web UI
+present → designer included).
 
-## New Findings Summary (This Cycle)
+## Scope this cycle (per orchestrator)
+Broadened onto judge worker SCHEDULING + result-trust and the full worker
+LIFECYCLE: register / heartbeat / deregister / claim / poll routes, `judge/auth`,
+`judge/verdict`, admin worker routes, the DB-backed rate limiter, contest scoring
+(IOI/ICPC + SWR cache), and the Rust worker crate (`judge-worker-rs`). Also
+re-validated the cycle-4 deferred items F3 (worker result trust) and F4 (triple
+worker SELECT) for actionability.
 
-| Severity | Count |
-|----------|-------|
-| MEDIUM   | 2     |
-| LOW      | 4     |
-| **Total**| **6** |
+## Gate baseline (whole repo, verified this cycle)
+`npm run lint` = 0 errors / 0 warnings · `tsc --noEmit` = 0 · `npm run lint:bash` =
+0 · `npm run test:unit` = 319 files / 2450 tests, all pass. (`npm run build`
+unchanged inputs from cycle-4 green; re-run before deploy.)
 
----
+## Merged findings (deduped; cross-agent agreement noted)
 
-## MEDIUM
+### N1 [DBG-N1 / ARCH-C5-1 / CR-C5-1 / SEC-C5-1 / PERF-C5-1 / VER-C5-1+2 / TRACE-Hyp-C / DOC-C5-1 / DSN-C5-1 / TE-C5-1 / critic] — Medium-low / High-confidence mechanism — IMPLEMENT THIS CYCLE
+**Crashed-worker `active_tasks` is never reconciled.** The heartbeat staleness
+sweep (`src/app/api/v1/judge/heartbeat/route.ts:82-89`) flips `online → stale` for
+workers whose heartbeat lapses, setting ONLY `status: "stale"`. It never resets
+`active_tasks`. The ONLY paths that zero `active_tasks` are graceful deregister
+(`deregister/route.ts:65`) and admin DELETE. A worker killed without deregistering
+(SIGKILL / OOM / host loss) leaves an orphaned row with a non-zero `active_tasks`.
 
-### M1: `rateLimits` table heartbeat entries never cleaned up — guaranteed production bloat
+AGREEMENT: 11 angles. EMPIRICALLY traced: all five `active_tasks` write sites
+enumerated (claim +1, claim-rollback -1, poll-final -1, deregister =0, admin DELETE
+row-removed); the sweep is the only degradation edge and it omits the counter.
 
-- **Files:** `src/lib/realtime/realtime-coordination.ts:104-109, 152-203`, `src/lib/security/api-rate-limit.ts`
-- **Reviewers:** security-reviewer (primary), perf-reviewer, architect, critic, debugger, tracer
-- **Confidence:** High
-- **Description:** The `rateLimits` table stores API rate limits, SSE connection slots, and heartbeat deduplication records. `acquireSharedSseConnectionSlot` cleans up expired SSE entries (`realtime:sse:user:%`) but `shouldRecordSharedHeartbeat` inserts entries with prefix `realtime:heartbeat:%` that are never deleted. Over time, the table grows without bound, degrading query performance for all rate-limit and SSE operations.
-- **Fix:** Add periodic cleanup for expired heartbeat entries (e.g., in `shouldRecordSharedHeartbeat` after update, or a background task). Alternatively, migrate heartbeats to a separate table.
+Blast radius (bounded — why Medium-LOW, not High):
+- Restarted workers `register()` afresh → new row, `active_tasks=0`
+  (`main.rs:233`, `register/route.ts:49` always INSERTs). NO self-lockout.
+- The claim CTE gates `status='online'` (`claim/route.ts:182`), so a stale row's
+  leaked counter is invisible to scheduling. NO phantom capacity theft.
+- The live-capacity dashboard sums only `online` rows (`dashboard-data.ts:54`).
+Real residual harm (CONFIRMED): (a) `admin-health.ts:89` reports `degraded` while
+`stale > 0`, and there is no reaper → a single crashed worker keeps health
+degraded indefinitely; (b) orphaned rows accumulate unbounded (register always
+INSERTs); (c) the admin workers table shows phantom `active_tasks` on dead rows.
 
-### M2: `validateShellCommand` allows `$0-$9` positional parameter expansion
+FIX (constrained by critic + verifier): in the heartbeat sweep, ALSO set
+`active_tasks = 0` for rows being marked stale — but ONLY for rows whose
+`last_heartbeat_at` is older than the **stale-claim timeout**
+(`getConfiguredSettings().staleClaimTimeoutMs`, default 300 s), NOT the mere
+90 s stale threshold. By the stale-claim timeout any in-flight claim has provably
+been reclaimed (`claim/route.ts:193-195`), so zeroing is safe; zeroing on the 90 s
+threshold alone would corrupt a transiently-slow-but-live worker that is still
+doing real work and about to heartbeat back to `online`. Add a regression test
+asserting both the zero-past-timeout case and the no-clobber recent-stale case.
+NOT deferrable (correctness of a documented invariant + sticky health degradation).
 
-- **File:** `src/lib/compiler/execute.ts:173`
-- **Reviewers:** code-reviewer (primary), security-reviewer, critic, debugger, tracer
-- **Confidence:** Medium
-- **Description:** The regex `$[A-Za-z_]` blocks `$a`, `$FOO` but allows `$1`, `$0`, etc. because digits are excluded. In `sh -c` context, positional parameters could expand unexpectedly if an admin-configured command contains them. This is a defense-in-depth gap.
-- **Fix:** Change `$[A-Za-z_]` to `$[A-Za-z0-9_]` to also block positional parameter expansion.
+### N2 [CR-C5-2 / ARCH-C5-2] — Low / maintainability — IMPLEMENT THIS CYCLE (cosmetic)
+`claim/route.ts:121` passes a generic scope (`workerId` | `ip:<ip>` | `auth:<hash>`)
+as the `userId` argument of `consumeUserApiRateLimit`
+(`api-rate-limit.ts:185-209`), producing rate-limit keys like
+`api:judge:claim:user:ip:1.2.3.4`. Functionally correct (distinct buckets, no
+collision) but the `user:` infix is misleading for non-user identities and will
+confuse `rate_limits` triage. FIX: rename the parameter to `scope`/`identity` (it is
+already used generically) and update the JSDoc; no behavior change. Low.
 
----
+### N3 / DOC-C5-2 [DBG-N3 / DOC-C5-2] — Low / informational (NOT implementing this cycle)
+- N3: `failedTestCaseIndex` (`verdict.ts:22`) is the worker-supplied array position,
+  displayed to users as the failing test ordinal; relies on the worker reporting in
+  `sortOrder`. Trust-gated; folds under F3.
+- DOC-C5-2: `register/route.ts:22,75` advertises a hard-coded
+  `staleClaimTimeoutMs = 300_000` while the claim route uses the admin-configurable
+  `getConfiguredSettings().staleClaimTimeoutMs`. VERIFIED the Rust worker only
+  deserializes this field (`types.rs:311`) and never reads it for logic → the
+  advertised value is effectively dead; behavioral impact nil. Informational only;
+  note for a future register-route touch (advertise the live setting or document the
+  field as informational). Recorded as deferred (see ledger).
 
-## LOW
+## Re-validation of cycle-4 deferred items (orchestrator asked: implement if actionable)
+- **F3** (worker result trust): trust model UNCHANGED this cycle. The fix
+  (problem-scoped testCaseId set + result-count-vs-problem-count validation) adds a
+  poll hot-path query and defends only against a compromised TRUSTED worker — the
+  exact threat the cycle-4 exit criterion gates on ("untrusted/third-party workers
+  become possible"). critic + security agree: NOT actionable; remains DEFERRED,
+  severity preserved (LOW/MEDIUM).
+- **F4** (triple `judge_workers` SELECT on claim): no profiling signal; bounded by
+  worker count. Remains DEFERRED, perf-only.
 
-### L1: Source code size validation uses different units in schema vs execution
+## Severity roll-up (net-new only)
+- Medium-low (implement now): **N1** (11-angle agreement, highest-signal net-new).
+- Low (implement now, cosmetic): **N2** (rate-limit param rename).
+- Low / informational (deferred): **N3** (folds under F3), **DOC-C5-2** (dead
+  advertised field).
+- No High/Critical, no data-loss, no remote-exploit findings.
 
-- **Files:** `src/app/api/v1/compiler/run/route.ts:18-23`, `src/app/api/v1/playground/run/route.ts:12-18`, `src/lib/compiler/execute.ts:659-670`
-- **Reviewers:** code-reviewer (primary), architect, critic, debugger, tracer
-- **Confidence:** High
-- **Description:** The Zod schema validates `sourceCode` using string length (UTF-16 code units), but `executeCompilerRun` checks UTF-8 byte length. For CJK/Korean text (3 bytes per character), a source code of 40K characters passes the schema but fails at execution time. This creates confusing UX where valid schema input is rejected at runtime.
-- **Fix:** Update the Zod schema to use a custom refinement that checks `Buffer.byteLength(value, "utf8")`.
-
-### L2: `findRestrictedAssignmentIdForProblem` and `findActiveRestrictedAssignmentIdForUser` lack deterministic tie-breaker
-
-- **File:** `src/lib/platform-mode-context.ts:92-93, 163-164`
-- **Reviewers:** code-reviewer
-- **Confidence:** Medium
-- **Description:** Both raw SQL queries order by `starts_at DESC, created_at DESC` without an `id ASC` tie-breaker. If two assignments have identical timestamps, the `LIMIT 1` result is nondeterministic.
-- **Fix:** Add `, a.id ASC` as a final tie-breaker to both ORDER BY clauses.
-
-### L3: `judge/claim/route.ts` `submittedAt` schema accepts Infinity
-
-- **File:** `src/app/api/v1/judge/claim/route.ts:53-62`
-- **Reviewers:** code-reviewer
-- **Confidence:** Low
-- **Description:** The `submittedAt` Zod schema does not reject `Infinity` or strings that parse to `Infinity` (e.g., `"1e309"`). The SQL query returns finite values, so this is a defense-in-depth gap rather than an active bug.
-- **Fix:** Add `Number.isFinite(n)` check to both the number refine and string transform paths.
-
-### L4: `events/route.ts` deferred findings remain open
-
-- **File:** `src/app/api/v1/submissions/[id]/events/route.ts`
-- **Reviewers:** perf-reviewer, security-reviewer
-- **Confidence:** High
-- **Description:** Two deferred findings from prior cycles remain unaddressed: (1) SSE `sharedPollTick` unbounded `inArray` query, and (2) `stopSharedPollTimer` race with in-progress tick.
-- **Fix:** See deferred items below.
-
----
-
-## Cross-Agent Agreement
-
-- **M1** flagged by security-reviewer, perf-reviewer, architect, critic, debugger, tracer (very high signal).
-- **M2** flagged by code-reviewer, security-reviewer, critic, debugger, tracer (high signal).
-- **L1** flagged by code-reviewer, architect, critic, debugger, tracer (high signal).
-
----
-
-## Deferred Findings Summary (Stable from Prior Cycles)
-
-| ID | Severity | File | Description | First Deferred |
-|----|----------|------|-------------|----------------|
-| SSE-M2 | LOW | `src/app/api/v1/submissions/[id]/events/route.ts:224-232` | `sharedPollTick` unbounded `inArray` query | Cycle 7 |
-| SSE-RACE | LOW | `src/app/api/v1/submissions/[id]/events/route.ts:161-166` | `stopSharedPollTimer` race with in-progress tick | Cycle 7 |
-| COR-1 | LOW | Judge claim problem lookup | Outside transaction scope | Cycle 1 |
-| PERF-1 | LOW | Proxy auth cache eviction | No TTL on positive hits (NOTE: actually has TTL; stale deferred item) | Cycle 1 |
-| PERF-2 | LOW | `getStaleImages` sequential batching | Could parallelize image fetches | Cycle 1 |
-| ARCH-1 | LOW | `createApiHandler` generic 500 error | Does not distinguish error types | Cycle 1 |
-| ARCH-2 | LOW | Judge worker dual token system | Worker ID + secret token redundancy | Cycle 1 |
-| DEFER-52 | LOW | `src/lib/docker/client.ts` | String accumulation in Docker output parser | Cycle 43 |
-
----
-
-## Recommended Priority for Fixes
-
-1. **Immediate:** M1 (`rateLimits` heartbeat cleanup) — guaranteed production degradation under growth.
-2. **Short-term:** M2 (shell command validator gap) — defense-in-depth.
-3. **Short-term:** L1 (source code size validation) — UX improvement.
-4. **Medium-term:** L2 (deterministic ordering) — correctness under edge cases.
-5. **Trivial:** L3 (submittedAt Infinity) — defense-in-depth.
-
----
-
-## Quality Gates
-
-| Gate | Status |
-|------|--------|
-| eslint | PASS (prior cycle) |
-| tsc --noEmit | PASS (prior cycle) |
-| next build | PASS (prior cycle) |
-| vitest run | PASS (prior cycle) |
-
-*Gates to be re-run after implementation.*
+## AGENT FAILURES
+None. No subagents were spawnable in this environment (see Environment note); all
+11 specialist angles were covered directly, one provenance file per angle in
+`cycle-5-2026-05-29/`.

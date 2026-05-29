@@ -1,90 +1,107 @@
-# Aggregate Review — Cycle 4 (2026-05-29)
+# Aggregate Review — Cycle 5 (2026-05-29)
 
-Per-agent reviews live in `.context/reviews/cycle-4-2026-05-29/` (one file per
+Per-agent reviews live in `.context/reviews/cycle-5-2026-05-29/` (one file per
 specialist angle). Prior aggregates preserved verbatim at
-`.context/reviews/_aggregate-cycle-3.md`, `_aggregate-cycle-2-2026-05-29.md`,
-`_aggregate-cycle-1-2026-05-29.md`.
+`.context/reviews/_aggregate-cycle-4.md`, `_aggregate-cycle-3.md`,
+`_aggregate-cycle-2-2026-05-29.md`, `_aggregate-cycle-1-2026-05-29.md`.
 
 ## Environment note (review fan-out)
 This environment exposes NO reviewer-style subagents (`.claude/agents/` empty, no
-`~/.claude/agents/`) and no general `Agent`/`Task` dispatch tool is callable — only
-team tools that require a non-exposed Agent tool. Per the prompt's "skip any not
-registered" rule, the review was conducted directly across all 11 specialist
-angles, one provenance file per angle: code-reviewer, perf-reviewer,
-security-reviewer, critic, verifier, test-engineer, tracer, architect, debugger,
-document-specialist, designer (web UI present → designer included).
+`~/.claude/agents/`) and the only dispatchable agent type is `general-purpose`. Per
+the prompt's "skip any not registered" rule (and consistent with cycles 1-4), the
+review was conducted directly across all 11 specialist angles, one provenance file
+per angle: code-reviewer, perf-reviewer, security-reviewer, critic, verifier,
+test-engineer, tracer, architect, debugger, document-specialist, designer (web UI
+present → designer included).
 
 ## Scope this cycle (per orchestrator)
-Broadened OFF the email/SMTP surface (cycles 1-3) onto: judge worker
-(claim/poll routes, auth, ip-allowlist, verdict), rate limiter (DB-backed + Rust
-sidecar), contests (access-view), auth/session (session-security, trusted-host,
-find-session-user, recruiting-token), DB/drizzle (schema FKs), and scripts (nginx).
+Broadened onto judge worker SCHEDULING + result-trust and the full worker
+LIFECYCLE: register / heartbeat / deregister / claim / poll routes, `judge/auth`,
+`judge/verdict`, admin worker routes, the DB-backed rate limiter, contest scoring
+(IOI/ICPC + SWR cache), and the Rust worker crate (`judge-worker-rs`). Also
+re-validated the cycle-4 deferred items F3 (worker result trust) and F4 (triple
+worker SELECT) for actionability.
 
 ## Gate baseline (whole repo, verified this cycle)
-`npm run lint` = 0 errors/0 warnings · `tsc --noEmit` = 0 · `npm run build` (prior
-cycle, unchanged inputs) green · `npm run test:unit` = 319 files / 2445 tests all
-pass · `npm run lint:bash` = 0.
+`npm run lint` = 0 errors / 0 warnings · `tsc --noEmit` = 0 · `npm run lint:bash` =
+0 · `npm run test:unit` = 319 files / 2450 tests, all pass. (`npm run build`
+unchanged inputs from cycle-4 green; re-run before deploy.)
 
 ## Merged findings (deduped; cross-agent agreement noted)
 
-### F1 [SEC-C4-1 / VER-C4-1 / DBG-C4-1 / TRACE-H1 / ARCH-C4-1 / TE-C4-1 / DOC-C4-2 / critic#1] — Low / Medium-confidence-in-prod, High-confidence-mechanism
-`isValidIp` (`src/lib/security/ip.ts:18-41`) rejects IPv4-mapped IPv6
-(`::ffff:a.b.c.d`) because the form matches neither the dotted-quad regex nor the
-pure-hex IPv6 regex. EMPIRICALLY VERIFIED: `isValidIp("::ffff:192.168.1.1")=false`.
-Consequence: `extractClientIp` returns null in production for such addresses, so
-`isJudgeIpAllowed` (`judge/ip-allowlist.ts:171`) DENIES the worker when an
-allowlist is set (availability lockout, submissions stall in pending/queued), and
-rate-limit keys coarsen. ASYMMETRIC with `ip-allowlist.ts:ipv6ToBytes` (lines
-50-62), which DOES parse the embedded-v4 tail — two IP parsers that disagree
-(ARCH-C4-1). Trigger requires a dual-stack Nginx emitting the mapped `$remote_addr`
-(`scripts/online-judge.nginx.conf:61`).
-AGREEMENT: 7 angles + critic — highest-signal net-new finding this cycle.
-FIX: extract a shared IP normalizer that accepts/normalizes `::ffff:a.b.c.d`
-(reusing `ipv6ToBytes`'s embedded-v4 logic), use it in both `ip.ts` and
-`ip-allowlist.ts`; add mapped-form tests to `ip.test.ts` and `ip-allowlist.test.ts`.
-Fail-safe today (denies, never wrongly allows) → Low severity, but a correctness +
-availability defect. IMPLEMENT THIS CYCLE.
+### N1 [DBG-N1 / ARCH-C5-1 / CR-C5-1 / SEC-C5-1 / PERF-C5-1 / VER-C5-1+2 / TRACE-Hyp-C / DOC-C5-1 / DSN-C5-1 / TE-C5-1 / critic] — Medium-low / High-confidence mechanism — IMPLEMENT THIS CYCLE
+**Crashed-worker `active_tasks` is never reconciled.** The heartbeat staleness
+sweep (`src/app/api/v1/judge/heartbeat/route.ts:82-89`) flips `online → stale` for
+workers whose heartbeat lapses, setting ONLY `status: "stale"`. It never resets
+`active_tasks`. The ONLY paths that zero `active_tasks` are graceful deregister
+(`deregister/route.ts:65`) and admin DELETE. A worker killed without deregistering
+(SIGKILL / OOM / host loss) leaves an orphaned row with a non-zero `active_tasks`.
 
-### F2 [CR-C4-1 / VER-C4-2 / ARCH-C4-2 / DOC-C4-1 / TE-C4-2 / critic#2] — Low / High
-`findSessionUser` (`src/lib/auth/find-session-user.ts:33,37`) returns
-`(await db.select(...))[0]` WITHOUT `?? null`, while the sibling
-`findSessionUserWithPassword` (`:57,61`) DOES — so the two paired functions, which
-cross-reference each other in their doc comments, return different not-found
-sentinels (`undefined` vs `null`). Callers using `=== null` mis-handle the
-missing-user case.
-AGREEMENT: 4 angles + critic.
-FIX: append `?? null` on both `findSessionUser` branches; update the doc comment;
-add a not-found-returns-null test (TE-C4-2). IMPLEMENT THIS CYCLE.
+AGREEMENT: 11 angles. EMPIRICALLY traced: all five `active_tasks` write sites
+enumerated (claim +1, claim-rollback -1, poll-final -1, deregister =0, admin DELETE
+row-removed); the sweep is the only degradation edge and it omits the counter.
 
-### F3 [SEC-C4-2 / SEC-C4-3 / TE-C4-3 / critic#3] — Low / Medium (DEFERRED)
-Judge result handling trusts the worker's `results` array: (a) `testCaseId` is
-only FK-constrained to `test_cases` (any problem), not scoped to the claimed
-problem; (b) `score = passed/results.length` lets a partial result set inflate the
-score. Both are gated by claimToken ownership + the authenticated-worker trust
-boundary; the FK already blocks fabricated IDs. Not a correctness/data-loss defect
-under the current trust model. DEFERRED (see ledger; exit criterion = untrusted /
-third-party workers become possible). critic explicitly cautions against
-over-engineering full-result validation this cycle.
+Blast radius (bounded — why Medium-LOW, not High):
+- Restarted workers `register()` afresh → new row, `active_tasks=0`
+  (`main.rs:233`, `register/route.ts:49` always INSERTs). NO self-lockout.
+- The claim CTE gates `status='online'` (`claim/route.ts:182`), so a stale row's
+  leaked counter is invisible to scheduling. NO phantom capacity theft.
+- The live-capacity dashboard sums only `online` rows (`dashboard-data.ts:54`).
+Real residual harm (CONFIRMED): (a) `admin-health.ts:89` reports `degraded` while
+`stale > 0`, and there is no reaper → a single crashed worker keeps health
+degraded indefinitely; (b) orphaned rows accumulate unbounded (register always
+INSERTs); (c) the admin workers table shows phantom `active_tasks` on dead rows.
 
-### F4 [CR-C4-2 / PERF-C4-1] — Low / Medium (DEFERRED, perf-only)
-Claim route does up to 3 SELECTs of the same `judge_workers` row
-(`claim/route.ts:130,143-150,298-306`). Bounded by worker count; no correctness
-impact. DEFERRED (exit = claim path shows up in profiling, or auth helper is
-refactored to return the fetched row).
+FIX (constrained by critic + verifier): in the heartbeat sweep, ALSO set
+`active_tasks = 0` for rows being marked stale — but ONLY for rows whose
+`last_heartbeat_at` is older than the **stale-claim timeout**
+(`getConfiguredSettings().staleClaimTimeoutMs`, default 300 s), NOT the mere
+90 s stale threshold. By the stale-claim timeout any in-flight claim has provably
+been reclaimed (`claim/route.ts:193-195`), so zeroing is safe; zeroing on the 90 s
+threshold alone would corrupt a transiently-slow-but-live worker that is still
+doing real work and about to heartbeat back to `online`. Add a regression test
+asserting both the zero-past-timeout case and the no-clobber recent-stale case.
+NOT deferrable (correctness of a documented invariant + sticky health degradation).
 
-### F5 [CR-C4-3 / PERF-C4-2 / DBG-C4-2 / DOC-C4-2] — Low / Low (informational)
-Minor: implicit `"0.0.0.0"` sentinel coupling between `ip.ts` and `ip-allowlist.ts`
-(document/share a constant); regex literals re-created per call (V8-cached, moot);
-in-progress poll branch can transiently shrink the result set. Informational; fold
-the constant/comment into the F1 fix where convenient.
+### N2 [CR-C5-2 / ARCH-C5-2] — Low / maintainability — IMPLEMENT THIS CYCLE (cosmetic)
+`claim/route.ts:121` passes a generic scope (`workerId` | `ip:<ip>` | `auth:<hash>`)
+as the `userId` argument of `consumeUserApiRateLimit`
+(`api-rate-limit.ts:185-209`), producing rate-limit keys like
+`api:judge:claim:user:ip:1.2.3.4`. Functionally correct (distinct buckets, no
+collision) but the `user:` infix is misleading for non-user identities and will
+confuse `rate_limits` triage. FIX: rename the parameter to `scope`/`identity` (it is
+already used generically) and update the JSDoc; no behavior change. Low.
+
+### N3 / DOC-C5-2 [DBG-N3 / DOC-C5-2] — Low / informational (NOT implementing this cycle)
+- N3: `failedTestCaseIndex` (`verdict.ts:22`) is the worker-supplied array position,
+  displayed to users as the failing test ordinal; relies on the worker reporting in
+  `sortOrder`. Trust-gated; folds under F3.
+- DOC-C5-2: `register/route.ts:22,75` advertises a hard-coded
+  `staleClaimTimeoutMs = 300_000` while the claim route uses the admin-configurable
+  `getConfiguredSettings().staleClaimTimeoutMs`. VERIFIED the Rust worker only
+  deserializes this field (`types.rs:311`) and never reads it for logic → the
+  advertised value is effectively dead; behavioral impact nil. Informational only;
+  note for a future register-route touch (advertise the live setting or document the
+  field as informational). Recorded as deferred (see ledger).
+
+## Re-validation of cycle-4 deferred items (orchestrator asked: implement if actionable)
+- **F3** (worker result trust): trust model UNCHANGED this cycle. The fix
+  (problem-scoped testCaseId set + result-count-vs-problem-count validation) adds a
+  poll hot-path query and defends only against a compromised TRUSTED worker — the
+  exact threat the cycle-4 exit criterion gates on ("untrusted/third-party workers
+  become possible"). critic + security agree: NOT actionable; remains DEFERRED,
+  severity preserved (LOW/MEDIUM).
+- **F4** (triple `judge_workers` SELECT on claim): no profiling signal; bounded by
+  worker count. Remains DEFERRED, perf-only.
 
 ## Severity roll-up (net-new only)
-- Low / Medium (implement now): F1 (7-angle agreement), F2 (4-angle agreement).
-- Low (deferred, severity preserved): F3, F4.
-- Low / informational: F5.
+- Medium-low (implement now): **N1** (11-angle agreement, highest-signal net-new).
+- Low (implement now, cosmetic): **N2** (rate-limit param rename).
+- Low / informational (deferred): **N3** (folds under F3), **DOC-C5-2** (dead
+  advertised field).
 - No High/Critical, no data-loss, no remote-exploit findings.
 
 ## AGENT FAILURES
 None. No subagents were spawnable in this environment (see Environment note); all
 11 specialist angles were covered directly, one provenance file per angle in
-`cycle-4-2026-05-29/`.
+`cycle-5-2026-05-29/`.
