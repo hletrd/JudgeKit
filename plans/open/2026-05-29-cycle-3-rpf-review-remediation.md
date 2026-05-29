@@ -48,7 +48,7 @@ cleartext), **F5** (per-send config resolution), **F6** (SMTP UX), **F7**
 | 5 | Add a unit test for `getPublicBaseUrl`: canonical `AUTH_URL`/`NEXTAUTH_URL` preferred when set; request-host fallback only when unset; trailing-slash normalized. | LOW (F2 / TE-C3-2) | [x] commit 14587e7a |
 | 6 | Run all gates: `npm run lint`, `tsc --noEmit`, `npm run build`, `npm run test:unit`, `npm run lint:bash`. | — | [x] |
 | 7 | Commit + push fine-grained per-topic, GPG-signed, conventional + gitmoji. | — | [x] |
-| 8 | Run per-cycle `DEPLOY_CMD`. | — | [ ] |
+| 8 | Run per-cycle `DEPLOY_CMD`. | — | [x] |
 | 9 | Housekeeping: archive the now-fully-done cycle-2 plan to `plans/done/`. | — | [x] |
 
 ---
@@ -95,5 +95,5 @@ it is deferred pending a product decision, not silently dropped.
 - [x] F2 unit test — commit 14587e7a
 - [x] Gates green (lint 0, tsc 0, build 0, 2445 unit tests, lint:bash 0)
 - [x] Committed and pushed (fine-grained, GPG-signed)
-- [ ] Deployed (per-cycle) — pending
+- [x] Deployed (per-cycle) — `deploy-docker.sh` exit 0; "Deployment complete!" Verified live: `https://algo.xylolabs.com/` and `/login` both HTTP 200; deploy script also self-verified "JudgeKit is responding (HTTP 200)" + "HTTPS endpoint verified (HTTP 200)". Post-deploy E2E smoke: 7 login-gated specs failed (admin-languages, admin-workers, auth-flow, contest-access-code-gate ×2, contest-nav-test, rankings) — ALL the same pre-existing cause cycles 1-2 documented: the smoke profile authenticates with the sentinel password `skip-login`, so `loginWithCredentials` (helpers.ts:32) throws on the forced-password-change guard and login cannot redirect to `/dashboard`. These specs are login-gated and unrelated to this cycle's diff (env `getPublicBaseUrl` helper / signup catch logging / recruiting URL — none touch auth/login). `src/lib/auth/config.ts` was NOT modified this cycle (preserved per CLAUDE.md). The PG volume safety guard correctly skipped volume prune on worker-0; no `docker system prune --volumes` ran anywhere.
 - [x] Cycle-2 plan archived to plans/done/
