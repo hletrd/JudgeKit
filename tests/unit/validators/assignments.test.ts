@@ -62,6 +62,30 @@ describe("assignmentMutationSchema", () => {
       "assignmentLateDeadlineInvalid"
     );
   });
+
+  it("rejects a leaderboard freeze outside the contest window", () => {
+    const beforeStart = assignmentMutationSchema.safeParse({
+      ...validPayload,
+      freezeLeaderboardAt: 50, // < startsAt (100)
+    });
+    const atDeadline = assignmentMutationSchema.safeParse({
+      ...validPayload,
+      freezeLeaderboardAt: 200, // == deadline (200)
+    });
+
+    expect(beforeStart.success).toBe(false);
+    expect(beforeStart.error?.issues[0]?.message).toBe("freezeLeaderboardOutOfRange");
+    expect(atDeadline.success).toBe(false);
+    expect(atDeadline.error?.issues[0]?.message).toBe("freezeLeaderboardOutOfRange");
+  });
+
+  it("accepts a leaderboard freeze inside the contest window", () => {
+    const result = assignmentMutationSchema.safeParse({
+      ...validPayload,
+      freezeLeaderboardAt: 150, // startsAt (100) <= 150 < deadline (200)
+    });
+    expect(result.success).toBe(true);
+  });
 });
 
 describe("assignmentPatchSchema", () => {

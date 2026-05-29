@@ -911,6 +911,7 @@
     "assignmentLatePenaltyInvalid": "지각 감점은 0~100 사이로 정해 주세요.",
     "assignmentScheduleInvalid": "시작 일시는 마감 일시보다 앞이어야 해요.",
     "assignmentLateDeadlineInvalid": "지각 허용 마감은 마감 일시 이후이거나 같아야 해요.",
+    "freezeLeaderboardOutOfRange": "리더보드 동결 시각은 시작 일시와 마감 일시 사이여야 해요.",
     "examModeLabel": "시험 모드",
     "examModeNone": "없음",
     "examModeScheduled": "정규 시험",

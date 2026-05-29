@@ -73,6 +73,21 @@ export const assignmentMutationSchema = z
       });
     }
 
+    // A leaderboard freeze only makes sense strictly inside the contest window.
+    // Before startsAt it freezes nothing; at/after deadline it freezes the whole
+    // contest — both silently defeat the feature, so reject the misconfiguration.
+    if (value.freezeLeaderboardAt != null) {
+      const beforeStart = value.startsAt != null && value.freezeLeaderboardAt < value.startsAt;
+      const afterDeadline = value.deadline != null && value.freezeLeaderboardAt >= value.deadline;
+      if (beforeStart || afterDeadline) {
+        context.addIssue({
+          code: z.ZodIssueCode.custom,
+          message: "freezeLeaderboardOutOfRange",
+          path: ["freezeLeaderboardAt"],
+        });
+      }
+    }
+
     // Exam mode cross-field validation
     if (value.examMode === "windowed") {
       if (!value.examDurationMinutes) {

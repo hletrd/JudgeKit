@@ -911,6 +911,7 @@
     "assignmentLatePenaltyInvalid": "Late penalty must be between 0 and 100.",
     "assignmentScheduleInvalid": "The start time must be before the deadline.",
     "assignmentLateDeadlineInvalid": "The late deadline must be on or after the deadline.",
+    "freezeLeaderboardOutOfRange": "The leaderboard freeze time must be between the start time and the deadline.",
     "examModeLabel": "Exam mode",
     "examModeNone": "None",
     "examModeScheduled": "Scheduled exam",
