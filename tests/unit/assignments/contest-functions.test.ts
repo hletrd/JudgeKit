@@ -1,12 +1,14 @@
-import { describe, expect, it, vi } from "vitest";
+import { beforeEach, describe, expect, it, vi } from "vitest";
 
 vi.mock("@/lib/db/queries", () => ({
   rawQueryOne: vi.fn(),
   rawQueryAll: vi.fn(),
 }));
 
-const { canManageGroupResourcesAsyncMock } = vi.hoisted(() => ({
+const { canManageGroupResourcesAsyncMock, isGroupTAMock, getAssignedTeachingGroupIdsMock } = vi.hoisted(() => ({
   canManageGroupResourcesAsyncMock: vi.fn(),
+  isGroupTAMock: vi.fn(),
+  getAssignedTeachingGroupIdsMock: vi.fn(),
 }));
 const { resolveCapabilitiesMock } = vi.hoisted(() => ({
   resolveCapabilitiesMock: vi.fn(),
@@ -14,6 +16,8 @@ const { resolveCapabilitiesMock } = vi.hoisted(() => ({
 
 vi.mock("@/lib/assignments/management", () => ({
   canManageGroupResourcesAsync: canManageGroupResourcesAsyncMock,
+  isGroupTA: isGroupTAMock,
+  getAssignedTeachingGroupIds: getAssignedTeachingGroupIdsMock,
 }));
 
 vi.mock("@/lib/capabilities/cache", () => ({
@@ -35,7 +39,7 @@ vi.mock("@/lib/logger", () => ({
 }));
 import { computeIcpcPenalty } from "@/lib/assignments/contest-scoring";
 import { generateAccessCode } from "@/lib/assignments/access-codes";
-import { canManageContest, getContestsForUser } from "@/lib/assignments/contests";
+import { canManageContest, canMonitorContest, getContestsForUser } from "@/lib/assignments/contests";
 import {
   normalizeSource,
   jaccardSimilarity,
@@ -129,6 +133,54 @@ describe("canManageContest", () => {
         }
       )
     ).resolves.toBe(true);
+  });
+});
+
+describe("canMonitorContest (group-scoped anti_cheat.view_events)", () => {
+  const contest = { groupId: "group-1", instructorId: "owner-1" };
+
+  beforeEach(() => {
+    canManageGroupResourcesAsyncMock.mockReset();
+    isGroupTAMock.mockReset();
+    getAssignedTeachingGroupIdsMock.mockReset();
+    resolveCapabilitiesMock.mockReset();
+  });
+
+  it("allows a contest manager (owner / co-instructor / groups.view_all)", async () => {
+    canManageGroupResourcesAsyncMock.mockResolvedValue(true);
+    await expect(canMonitorContest({ id: "mgr", role: "instructor" }, contest)).resolves.toBe(true);
+    // org-wide / management path short-circuits before the capability scope check
+    expect(getAssignedTeachingGroupIdsMock).not.toHaveBeenCalled();
+  });
+
+  it("allows a TA of the contest's group", async () => {
+    canManageGroupResourcesAsyncMock.mockResolvedValue(false);
+    isGroupTAMock.mockResolvedValue(true);
+    await expect(canMonitorContest({ id: "ta", role: "assistant" }, contest)).resolves.toBe(true);
+  });
+
+  it("allows an anti_cheat.view_events holder ASSIGNED to the contest's group", async () => {
+    canManageGroupResourcesAsyncMock.mockResolvedValue(false);
+    isGroupTAMock.mockResolvedValue(false);
+    resolveCapabilitiesMock.mockResolvedValue(new Set(["anti_cheat.view_events"]));
+    getAssignedTeachingGroupIdsMock.mockResolvedValue(["group-9", "group-1"]);
+    await expect(canMonitorContest({ id: "a1", role: "assistant" }, contest)).resolves.toBe(true);
+  });
+
+  it("DENIES an anti_cheat.view_events holder NOT assigned to the contest's group (no org-wide proctoring)", async () => {
+    canManageGroupResourcesAsyncMock.mockResolvedValue(false);
+    isGroupTAMock.mockResolvedValue(false);
+    resolveCapabilitiesMock.mockResolvedValue(new Set(["anti_cheat.view_events"]));
+    getAssignedTeachingGroupIdsMock.mockResolvedValue(["group-9", "group-2"]);
+    await expect(canMonitorContest({ id: "a1", role: "assistant" }, contest)).resolves.toBe(false);
+  });
+
+  it("denies a user without anti_cheat.view_events and never checks group assignment", async () => {
+    canManageGroupResourcesAsyncMock.mockResolvedValue(false);
+    isGroupTAMock.mockResolvedValue(false);
+    resolveCapabilitiesMock.mockResolvedValue(new Set(["submissions.view_source"]));
+    await expect(canMonitorContest({ id: "s1", role: "student" }, contest)).resolves.toBe(false);
+    expect(getAssignedTeachingGroupIdsMock).not.toHaveBeenCalled();
   });
 });
 

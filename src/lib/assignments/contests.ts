@@ -222,9 +222,12 @@ export async function canManageContest(
  *
  *   - group TAs (`group_instructors.role='ta'`) so a teaching assistant
  *     can supervise a live exam on a group they're assigned to;
- *   - global users with the `anti_cheat.view_events` capability (the
- *     built-in `assistant` role), so org-wide proctors can supervise
- *     without per-group group_instructors rows.
+ *   - users with the `anti_cheat.view_events` capability (e.g. the built-in
+ *     `assistant` role), but ONLY for contests whose group they are assigned
+ *     to (via `groups.instructorId` or a `group_instructors` row). The
+ *     capability is scoped to assigned groups — it does NOT grant org-wide
+ *     cross-group proctoring. Org-wide admins (`groups.view_all`) are already
+ *     covered by canManageContest above.
  *
  * Routes that need write semantics (delete a submission, override a
  * score, freeze the leaderboard) MUST keep using canManageContest.
@@ -234,11 +237,15 @@ export async function canMonitorContest(
   assignment: Pick<ContestAssignmentRow, "groupId" | "instructorId">
 ): Promise<boolean> {
   if (await canManageContest(user, assignment)) return true;
-  const { isGroupTA } = await import("@/lib/assignments/management");
+  const { isGroupTA, getAssignedTeachingGroupIds } = await import("@/lib/assignments/management");
   if (await isGroupTA(assignment.groupId, user.id)) return true;
   const { resolveCapabilities } = await import("@/lib/capabilities");
   const caps = await resolveCapabilities(user.role);
-  return caps.has("anti_cheat.view_events");
+  if (!caps.has("anti_cheat.view_events")) return false;
+  // Scope the global anti_cheat.view_events capability to the actor's assigned
+  // groups so it cannot proctor contests outside the groups they teach.
+  const assignedGroupIds = await getAssignedTeachingGroupIds(user.id);
+  return assignedGroupIds.includes(assignment.groupId);
 }
 
 type RawContestAssignmentRow = {
