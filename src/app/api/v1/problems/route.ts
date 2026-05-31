@@ -1,7 +1,8 @@
 import { NextRequest } from "next/server";
 import { db } from "@/lib/db";
 import { problems, problemGroupAccess, enrollments } from "@/lib/db/schema";
-import { eq, desc, sql, and, or } from "drizzle-orm";
+import { eq, desc, sql, and, or, inArray } from "drizzle-orm";
+import { getAssignedTeachingGroupIds } from "@/lib/assignments/management";
 import { createApiHandler } from "@/lib/api/handler";
 import { recordAuditEvent } from "@/lib/audit/events";
 import { parsePagination } from "@/lib/api/pagination";
@@ -23,7 +24,11 @@ export const GET = createApiHandler({
 
     const visibilityFilter = visibility ? eq(problems.visibility, visibility) : undefined;
 
-    if (caps.has("problems.view_all")) {
+    // Org-wide admins (groups.view_all) see every problem. A problems.view_all
+    // holder that is NOT an org-wide admin is scoped below to the groups they
+    // teach, so an assistant/instructor cannot enumerate private problems
+    // belonging to other groups.
+    if (caps.has("groups.view_all")) {
       const [total] = await db
         .select({ count: sql<number>`count(*)` })
         .from(problems)
@@ -60,18 +65,38 @@ export const GET = createApiHandler({
       return apiPaginated(results, page, limit, Number(total?.count ?? 0));
     }
 
-    const accessFilter = or(
-      eq(problems.visibility, "public"),
-      eq(problems.authorId, user.id),
-      sql`exists (
-        select 1
-        from ${problemGroupAccess}
-        inner join ${enrollments}
-          on ${problemGroupAccess.groupId} = ${enrollments.groupId}
-        where ${problemGroupAccess.problemId} = ${problems.id}
-          and ${enrollments.userId} = ${user.id}
-      )`
-    );
+    let accessFilter;
+    if (caps.has("problems.view_all")) {
+      // Scoped proctor/author: public, self-authored, or linked to a group
+      // they teach (group_instructors / groups.instructorId).
+      const teachingGroupIds = await getAssignedTeachingGroupIds(user.id);
+      const taughtProblemIds = teachingGroupIds.length > 0
+        ? (
+            await db
+              .select({ problemId: problemGroupAccess.problemId })
+              .from(problemGroupAccess)
+              .where(inArray(problemGroupAccess.groupId, teachingGroupIds))
+          ).map((row) => row.problemId)
+        : [];
+      accessFilter = or(
+        eq(problems.visibility, "public"),
+        eq(problems.authorId, user.id),
+        taughtProblemIds.length > 0 ? inArray(problems.id, taughtProblemIds) : sql`false`
+      );
+    } else {
+      accessFilter = or(
+        eq(problems.visibility, "public"),
+        eq(problems.authorId, user.id),
+        sql`exists (
+          select 1
+          from ${problemGroupAccess}
+          inner join ${enrollments}
+            on ${problemGroupAccess.groupId} = ${enrollments.groupId}
+          where ${problemGroupAccess.problemId} = ${problems.id}
+            and ${enrollments.userId} = ${user.id}
+        )`
+      );
+    }
     const whereClause = visibilityFilter ? and(accessFilter, visibilityFilter) : accessFilter;
 
     const [totalRow] = await db

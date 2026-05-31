@@ -111,6 +111,31 @@ async function buildAccessFilter(userId: string) {
   );
 }
 
+// Access filter for a problems.view_all / create / edit holder who is NOT an
+// org-wide admin: public + self-authored + problems linked to the groups they
+// TEACH (group_instructors / groups.instructorId), mirroring buildAccessFilter
+// but using teaching membership instead of student enrollment.
+async function buildTaughtGroupAccessFilter(userId: string) {
+  const { getAssignedTeachingGroupIds } = await import("@/lib/assignments/management");
+  const teachingGroupIds = await getAssignedTeachingGroupIds(userId);
+  const groupAccessibleProblemIds = teachingGroupIds.length > 0
+    ? (
+        await db
+          .select({ problemId: problemGroupAccess.problemId })
+          .from(problemGroupAccess)
+          .where(inArray(problemGroupAccess.groupId, teachingGroupIds))
+      ).map((row) => row.problemId)
+    : [];
+
+  return or(
+    eq(problems.visibility, "public"),
+    eq(problems.authorId, userId),
+    groupAccessibleProblemIds.length > 0
+      ? inArray(problems.id, groupAccessibleProblemIds)
+      : sql`false`
+  );
+}
+
 function combineFilters(...filters: (ReturnType<typeof eq> | undefined)[]) {
   const defined = filters.filter(Boolean) as Exclude<(typeof filters)[number], undefined>[];
   if (defined.length === 0) return undefined;
@@ -184,14 +209,22 @@ export default async function ProblemsPage({
       ? eq(problems.visibility, currentVisibility)
       : undefined;
 
-  // Access filter for non-admins
-  const accessFilter = canManageProblems
+  // Access filter. Org-wide admins (groups.view_all) see everything. A
+  // problems.view_all / create / edit holder that is NOT an org-wide admin is
+  // scoped to the groups they teach, so an assistant/instructor cannot
+  // enumerate private problems linked only to other groups. Everyone else sees
+  // public + authored + their enrolled groups (recruiting candidates: their
+  // invitation-scoped problems).
+  const isOrgWideProblemAdmin = caps.has("groups.view_all");
+  const accessFilter = isOrgWideProblemAdmin
     ? undefined
-    : recruitingAccess.isRecruitingCandidate
-      ? (recruitingAccess.problemIds.length > 0
-          ? inArray(problems.id, recruitingAccess.problemIds)
-          : sql`false`)
-      : await buildAccessFilter(session.user.id);
+    : canManageProblems
+      ? await buildTaughtGroupAccessFilter(session.user.id)
+      : recruitingAccess.isRecruitingCandidate
+        ? (recruitingAccess.problemIds.length > 0
+            ? inArray(problems.id, recruitingAccess.problemIds)
+            : sql`false`)
+        : await buildAccessFilter(session.user.id);
 
   // Resolve tag → problem IDs up front: db.query.X.findMany rewrites every
   // Column ref inside a SQL-template `where` to use the outer table alias
