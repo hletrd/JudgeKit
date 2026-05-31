@@ -7,6 +7,7 @@ import type { UserRole } from "@/types";
 import { isUserRole } from "@/lib/security/constants";
 import { resolveCapabilities } from "@/lib/capabilities/cache";
 import { getRecruitingAccessContext } from "@/lib/recruiting/access";
+import { getAssignedTeachingGroupIds } from "@/lib/assignments/management";
 
 export async function canAccessGroup(
   groupId: string,
@@ -110,11 +111,15 @@ export async function canAccessProblem(
   role: string
 ): Promise<boolean> {
   const caps = await resolveCapabilities(role);
-  if (caps.has("problems.view_all")) return true;
+  // Org-wide admins (groups.view_all) can access any problem.
+  if (caps.has("groups.view_all")) return true;
+  const hasViewAll = caps.has("problems.view_all");
 
-  const recruitingAccess = await getRecruitingAccessContext(userId);
-  if (recruitingAccess.isRecruitingCandidate) {
-    return recruitingAccess.problemIds.includes(problemId);
+  if (!hasViewAll) {
+    const recruitingAccess = await getRecruitingAccessContext(userId);
+    if (recruitingAccess.isRecruitingCandidate) {
+      return recruitingAccess.problemIds.includes(problemId);
+    }
   }
 
   const problem = await db
@@ -127,6 +132,27 @@ export async function canAccessProblem(
   if (!problem) return false;
   if (problem.visibility === "public") return true;
   if (problem.authorId === userId) return true;
+
+  // Group-linked access. A problems.view_all holder is scoped to the groups
+  // they TEACH (group_instructors / groups.instructorId); everyone else to the
+  // groups they're ENROLLED in. This stops a teaching assistant who teaches one
+  // class from reading private problems linked only to other groups.
+  if (hasViewAll) {
+    const teachingGroupIds = await getAssignedTeachingGroupIds(userId);
+    if (teachingGroupIds.length === 0) return false;
+    const accessRow = await db
+      .select({ groupId: problemGroupAccess.groupId })
+      .from(problemGroupAccess)
+      .where(
+        and(
+          eq(problemGroupAccess.problemId, problemId),
+          inArray(problemGroupAccess.groupId, teachingGroupIds)
+        )
+      )
+      .limit(1)
+      .then((rows) => rows[0] ?? null);
+    return accessRow !== null;
+  }
 
   const accessRow = await db
     .select({ groupId: problemGroupAccess.groupId })
@@ -149,16 +175,19 @@ export async function getAccessibleProblemIds(
   role: string,
   problemList: Array<{ id: string; visibility: string; authorId: string | null }>
 ): Promise<Set<string>> {
-  // Check capability: problems.view_all means all problems are accessible
+  // Org-wide admins (groups.view_all) see every problem in the list.
   const caps = await resolveCapabilities(role);
-  if (caps.has("problems.view_all")) {
+  if (caps.has("groups.view_all")) {
     return new Set(problemList.map((p) => p.id));
   }
+  const hasViewAll = caps.has("problems.view_all");
 
-  const recruitingAccess = await getRecruitingAccessContext(userId);
-  if (recruitingAccess.isRecruitingCandidate) {
-    const allowedProblemIds = new Set(recruitingAccess.problemIds);
-    return new Set(problemList.map((p) => p.id).filter((id) => allowedProblemIds.has(id)));
+  if (!hasViewAll) {
+    const recruitingAccess = await getRecruitingAccessContext(userId);
+    if (recruitingAccess.isRecruitingCandidate) {
+      const allowedProblemIds = new Set(recruitingAccess.problemIds);
+      return new Set(problemList.map((p) => p.id).filter((id) => allowedProblemIds.has(id)));
+    }
   }
 
   // Public problems and authored problems are always accessible
@@ -179,17 +208,21 @@ export async function getAccessibleProblemIds(
     return accessible;
   }
 
-  // Fetch user enrollments once
-  const userEnrollments = await db
-    .select({ groupId: enrollments.groupId })
-    .from(enrollments)
-    .where(eq(enrollments.userId, userId));
+  // The set of groups whose linked problems this actor may see. A
+  // problems.view_all holder (non-admin) is scoped to the groups they TEACH;
+  // everyone else to the groups they're ENROLLED in.
+  const groupIds = hasViewAll
+    ? await getAssignedTeachingGroupIds(userId)
+    : (
+        await db
+          .select({ groupId: enrollments.groupId })
+          .from(enrollments)
+          .where(eq(enrollments.userId, userId))
+      ).map((e) => e.groupId);
 
-  if (userEnrollments.length === 0) {
+  if (groupIds.length === 0) {
     return accessible;
   }
-
-  const groupIds = userEnrollments.map((e) => e.groupId);
 
   // Fetch all problemGroupAccess rows for the non-public problems in one query
   const accessRows = await db

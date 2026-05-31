@@ -1,11 +1,12 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import type { UserRole } from "@/types";
 
-const { authMock, canViewAssignmentSubmissionsMock, dbMock, resolveCapabilitiesMock, getRecruitingAccessContextMock } = vi.hoisted(() => ({
+const { authMock, canViewAssignmentSubmissionsMock, dbMock, resolveCapabilitiesMock, getRecruitingAccessContextMock, getAssignedTeachingGroupIdsMock } = vi.hoisted(() => ({
   authMock: vi.fn(),
   canViewAssignmentSubmissionsMock: vi.fn(),
   resolveCapabilitiesMock: vi.fn(),
   getRecruitingAccessContextMock: vi.fn(),
+  getAssignedTeachingGroupIdsMock: vi.fn(),
   dbMock: {
     query: {
       groups: {
@@ -31,6 +32,10 @@ vi.mock("@/lib/auth/index", () => ({
 
 vi.mock("@/lib/assignments/submissions", () => ({
   canViewAssignmentSubmissions: canViewAssignmentSubmissionsMock,
+}));
+
+vi.mock("@/lib/assignments/management", () => ({
+  getAssignedTeachingGroupIds: getAssignedTeachingGroupIdsMock,
 }));
 
 vi.mock("@/lib/db", () => ({
@@ -98,6 +103,7 @@ beforeEach(() => {
   vi.clearAllMocks();
   dbMock.select.mockReset();
   dbMock.query.groupInstructors.findFirst.mockResolvedValue(null);
+  getAssignedTeachingGroupIdsMock.mockResolvedValue([]);
 
   // Default: resolveCapabilities returns capability sets matching built-in roles
   resolveCapabilitiesMock.mockImplementation(async (role: string) => {
@@ -244,6 +250,58 @@ describe("canAccessProblem", () => {
   });
 });
 
+describe("canAccessProblem (problems.view_all scoped to taught groups)", () => {
+  it("lets an org-wide admin (groups.view_all) access any problem without a lookup", async () => {
+    resolveCapabilitiesMock.mockResolvedValueOnce(new Set(["groups.view_all", "problems.view_all"]));
+
+    await expect(canAccessProblem("problem-x", "user-1", "admin")).resolves.toBe(true);
+    expect(dbMock.select).not.toHaveBeenCalled();
+  });
+
+  it("lets a view_all holder access a private problem linked to a group they TEACH", async () => {
+    resolveCapabilitiesMock.mockResolvedValueOnce(new Set(["problems.view_all"]));
+    dbMock.select.mockReturnValueOnce(
+      createSelectResult([{ visibility: "private", authorId: "author-2" }])
+    );
+    getAssignedTeachingGroupIdsMock.mockResolvedValue(["group-1"]);
+    dbMock.select.mockReturnValueOnce(createSelectResult([{ groupId: "group-1" }]));
+
+    await expect(canAccessProblem("problem-1", "user-1", "assistant")).resolves.toBe(true);
+  });
+
+  it("DENIES a view_all holder a private problem linked only to groups they do NOT teach", async () => {
+    resolveCapabilitiesMock.mockResolvedValueOnce(new Set(["problems.view_all"]));
+    dbMock.select.mockReturnValueOnce(
+      createSelectResult([{ visibility: "private", authorId: "author-2" }])
+    );
+    getAssignedTeachingGroupIdsMock.mockResolvedValue(["group-9"]);
+    dbMock.select.mockReturnValueOnce(createSelectResult([]));
+
+    await expect(canAccessProblem("problem-1", "user-1", "assistant")).resolves.toBe(false);
+  });
+
+  it("DENIES a view_all holder with no taught groups, without a group query", async () => {
+    resolveCapabilitiesMock.mockResolvedValueOnce(new Set(["problems.view_all"]));
+    dbMock.select.mockReturnValueOnce(
+      createSelectResult([{ visibility: "private", authorId: "author-2" }])
+    );
+    getAssignedTeachingGroupIdsMock.mockResolvedValue([]);
+
+    await expect(canAccessProblem("problem-1", "user-1", "assistant")).resolves.toBe(false);
+    expect(dbMock.select).toHaveBeenCalledTimes(1);
+  });
+
+  it("still lets a view_all holder access public and self-authored problems", async () => {
+    resolveCapabilitiesMock.mockResolvedValueOnce(new Set(["problems.view_all"]));
+    dbMock.select.mockReturnValueOnce(
+      createSelectResult([{ visibility: "private", authorId: "user-1" }])
+    );
+
+    await expect(canAccessProblem("problem-1", "user-1", "assistant")).resolves.toBe(true);
+    expect(dbMock.select).toHaveBeenCalledTimes(1);
+  });
+});
+
 describe("getAccessibleProblemIds", () => {
   it("collects public, authored, and group-shared problems in one batch", async () => {
     dbMock.select
@@ -281,6 +339,56 @@ describe("getAccessibleProblemIds", () => {
     ]);
 
     expect(accessible).toEqual(new Set(["shared-problem"]));
+    expect(dbMock.select).not.toHaveBeenCalled();
+  });
+});
+
+describe("getAccessibleProblemIds (problems.view_all scoped to taught groups)", () => {
+  it("returns every problem for an org-wide admin (groups.view_all)", async () => {
+    resolveCapabilitiesMock.mockResolvedValueOnce(new Set(["groups.view_all", "problems.view_all"]));
+
+    const accessible = await getAccessibleProblemIds("user-1", "admin", [
+      { id: "p1", visibility: "private", authorId: "a" },
+      { id: "p2", visibility: "private", authorId: "b" },
+    ]);
+
+    expect(accessible).toEqual(new Set(["p1", "p2"]));
+    expect(dbMock.select).not.toHaveBeenCalled();
+  });
+
+  it("scopes a view_all holder to public, authored, and TAUGHT-group problems only", async () => {
+    resolveCapabilitiesMock.mockResolvedValueOnce(new Set(["problems.view_all"]));
+    getAssignedTeachingGroupIdsMock.mockResolvedValue(["group-1"]);
+    // One select: the problemGroupAccess batch (enrollment query is skipped for view_all holders)
+    dbMock.select.mockReturnValueOnce(
+      createSelectResult([
+        { problemId: "shared-problem", groupId: "group-1" },
+        { problemId: "other-group-problem", groupId: "group-2" },
+      ])
+    );
+
+    const accessible = await getAccessibleProblemIds("user-1", "assistant", [
+      { id: "public-problem", visibility: "public", authorId: "author-2" },
+      { id: "authored-problem", visibility: "hidden", authorId: "user-1" },
+      { id: "shared-problem", visibility: "private", authorId: "author-2" },
+      { id: "other-group-problem", visibility: "private", authorId: "author-2" },
+    ]);
+
+    expect(accessible).toEqual(new Set(["public-problem", "authored-problem", "shared-problem"]));
+    expect(getAssignedTeachingGroupIdsMock).toHaveBeenCalledWith("user-1");
+  });
+
+  it("gives a view_all holder with no taught groups only public + authored problems", async () => {
+    resolveCapabilitiesMock.mockResolvedValueOnce(new Set(["problems.view_all"]));
+    getAssignedTeachingGroupIdsMock.mockResolvedValue([]);
+
+    const accessible = await getAccessibleProblemIds("user-1", "assistant", [
+      { id: "public-problem", visibility: "public", authorId: "author-2" },
+      { id: "authored-problem", visibility: "hidden", authorId: "user-1" },
+      { id: "private-other", visibility: "private", authorId: "author-2" },
+    ]);
+
+    expect(accessible).toEqual(new Set(["public-problem", "authored-problem"]));
     expect(dbMock.select).not.toHaveBeenCalled();
   });
 });
