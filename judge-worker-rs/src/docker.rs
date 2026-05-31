@@ -65,6 +65,19 @@ fn get_memory_limit_mb(limit: u32) -> u32 {
     limit.max(MIN_MEMORY_LIMIT_MB)
 }
 
+/// Optional OCI runtime for judged containers, read from `JUDGE_OCI_RUNTIME`
+/// (e.g. `runsc` for gVisor). Unset/empty → the Docker daemon's default runtime
+/// (runc), preserving current behavior. This is a no-op until the host has the
+/// runtime installed and registered in `/etc/docker/daemon.json`; see
+/// `docs/judge-worker-gvisor.md` for setup + the disposable-worker validation
+/// protocol that MUST pass before enabling this in production.
+fn oci_runtime() -> Option<String> {
+    match std::env::var("JUDGE_OCI_RUNTIME") {
+        Ok(v) if !v.trim().is_empty() => Some(v.trim().to_string()),
+        _ => None,
+    }
+}
+
 struct ContainerInspect {
     oom_killed: bool,
     duration_ms: Option<u64>,
@@ -296,6 +309,15 @@ async fn run_docker_once(
 
     if let Some(profile) = seccomp_profile {
         args.push(format!("--security-opt=seccomp={}", profile.display()));
+    }
+
+    // Optional stronger OCI runtime (e.g. gVisor's `runsc`) for defense in depth
+    // against a container/kernel escape reaching the host or docker socket.
+    // Unset = the daemon default (runc), preserving current behavior. Validate
+    // on a disposable worker first (judge correctness + overhead) per
+    // docs/judge-worker-gvisor.md before enabling in production.
+    if let Some(runtime) = oci_runtime() {
+        args.push(format!("--runtime={}", runtime));
     }
 
     if options.input.is_some() {

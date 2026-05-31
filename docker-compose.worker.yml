@@ -65,6 +65,12 @@ services:
       # - JUDGE_MAX_OUTPUT_BYTES=134217728   # per-stream stdout/stderr cap (128 MiB)
       # - JUDGE_COMPILE_TIMEOUT_MS=600000    # max compile wall-clock (10 min)
       # - JUDGE_COMPILE_MEMORY_MB=2048       # compile-phase memory ceiling (MB)
+      # Stronger OCI runtime for judged containers (defense in depth vs container
+      # escape). Requires gVisor installed + registered on the HOST docker daemon
+      # (scripts/install-gvisor.sh) AND passing the disposable-worker validation
+      # in docs/judge-worker-gvisor.md. Unset = runc (Docker default). Do NOT
+      # enable in production before that validation passes.
+      # - JUDGE_OCI_RUNTIME=runsc
       - DEAD_LETTER_DIR=/app/dead-letter
       - TMPDIR=/judge-workspaces
       - RUST_LOG=${RUST_LOG:-info}
