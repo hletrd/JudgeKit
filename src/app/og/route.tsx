@@ -13,6 +13,14 @@ function text(value: string | null, fallback: string, maxLength: number) {
   return normalized.length > maxLength ? `${normalized.slice(0, maxLength - 1).trim()}…` : normalized;
 }
 
+// Per CLAUDE.md: Korean glyphs must render at the font's default letter-spacing.
+// OG title/site strings come from arbitrary user content (problem/contest names),
+// so the page's `locale` param doesn't reliably reflect the glyph language —
+// detect Hangul per-string and drop any custom tracking when present.
+function hasHangul(value: string): boolean {
+  return /[ᄀ-ᇿ㄰-㆏가-힣]/.test(value);
+}
+
 export async function GET(request: Request) {
   const { searchParams } = new URL(request.url);
   const title = text(searchParams.get("title"), "JudgeKit", 120);
@@ -108,7 +116,7 @@ export async function GET(request: Request) {
                 &lt;/&gt;
               </div>
               <div style={{ display: "flex", flexDirection: "column" }}>
-                <div style={{ fontSize: "18px", opacity: 0.8, letterSpacing: "0.08em", textTransform: "uppercase" }}>
+                <div style={{ fontSize: "18px", opacity: 0.8, letterSpacing: hasHangul(siteTitle) ? "normal" : "0.08em", textTransform: "uppercase" }}>
                   {siteTitle}
                 </div>
                 <div style={{ fontSize: "40px", fontWeight: 750, lineHeight: 1.1 }}>{section}</div>
@@ -168,7 +176,7 @@ export async function GET(request: Request) {
                 {meta}
               </div>
             ) : null}
-            <div style={{ fontSize: "66px", fontWeight: 800, lineHeight: 1.04, letterSpacing: "-0.03em" }}>{title}</div>
+            <div style={{ fontSize: "66px", fontWeight: 800, lineHeight: 1.04, letterSpacing: hasHangul(title) ? "normal" : "-0.03em" }}>{title}</div>
             <div style={{ maxWidth: "92%", fontSize: "29px", lineHeight: 1.34, opacity: 0.93 }}>{description}</div>
           </div>
 
