@@ -186,6 +186,21 @@ const baseExtensions: Extension[] = [
   electricBrace,
   keymap.of([
     { key: "Enter", run: insertNewlineGnuStyle },
+    // Accessibility — WCAG 2.1.2 "No Keyboard Trap". `indentWithTab` (below)
+    // captures Tab/Shift-Tab for indentation, which would otherwise trap
+    // keyboard-only and screen-reader users inside the editor with no way to
+    // move focus onward. Per CodeMirror's accessibility guidance, whenever
+    // indentWithTab is used you must also provide an Escape binding that moves
+    // focus out: pressing Escape blurs the editor so the next Tab/Shift-Tab
+    // traverses the page normally. (In fullscreen, the overlay's own Escape
+    // handler additionally exits fullscreen — both are intentional.)
+    {
+      key: "Escape",
+      run: (view) => {
+        view.contentDOM.blur();
+        return true;
+      },
+    },
     indentWithTab,
     ...defaultKeymap,
     ...historyKeymap,
