@@ -12,6 +12,7 @@ import { LanguageSelector } from "@/components/language-selector";
 import { apiFetch, parseApiResponse } from "@/lib/api/client";
 import { DEFAULT_TEMPLATES, isTemplateLike } from "@/lib/judge/code-templates";
 import { useSourceDraft } from "@/hooks/use-source-draft";
+import { useServerSourceDraft } from "@/hooks/use-server-source-draft";
 import { useUnsavedChangesGuard } from "@/hooks/use-unsaved-changes-guard";
 import { useEditorContent } from "@/contexts/editor-content-context";
 import { ChevronDown, ChevronRight, Loader2, Play, RotateCcw, Send } from "lucide-react";
@@ -77,6 +78,11 @@ export function ProblemSubmissionForm({
 
   const { allowNextNavigation } = useUnsavedChangesGuard({ isDirty });
   const { setContent } = useEditorContent();
+
+  // Server-side backup + recovery, additive on top of the localStorage draft.
+  // Restores only into an empty/template editor (never overwrites local work)
+  // and autosaves meaningful changes so unsubmitted code survives a crash.
+  useServerSourceDraft({ problemId, language, sourceCode, setSourceCode });
 
   const prevLanguageRef = useRef(language);
   useEffect(() => {
