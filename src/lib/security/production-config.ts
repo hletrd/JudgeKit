@@ -34,9 +34,38 @@ const PRODUCTION_REQUIRED_ENV_VARS: ReadonlyArray<{
   },
 ];
 
+/**
+ * Recommended-but-not-required production hardening settings. Unlike the list
+ * above, a missing entry here only logs a warning at startup — it never exits
+ * the process — because each has a safe (if less hardened) default, so forcing
+ * it would needlessly break otherwise-valid deployments.
+ */
+const PRODUCTION_RECOMMENDED_ENV_VARS: ReadonlyArray<{
+  name: string;
+  reason: string;
+}> = [
+  {
+    name: "JUDGE_ALLOWED_IPS",
+    reason:
+      "Recommended defense-in-depth for the judge result endpoint: a comma-separated IP/CIDR allowlist of your judge worker hosts. The endpoint is already worker-auth + claim-token bound, so verdicts cannot be forged without it, but an allowlist further limits which hosts may POST results. Unset means any host that obtains the worker token is accepted.",
+  },
+];
+
 export function assertProductionConfig(): void {
   if (process.env.NODE_ENV !== "production") {
     return;
+  }
+
+  const recommendedUnset = PRODUCTION_RECOMMENDED_ENV_VARS.filter((entry) => {
+    const value = process.env[entry.name];
+    return value === undefined || value === "";
+  });
+
+  if (recommendedUnset.length > 0) {
+    console.warn(
+      "[startup] Recommended production hardening settings are unset (non-fatal):\n" +
+        recommendedUnset.map((m) => `  - ${m.name}: ${m.reason}`).join("\n"),
+    );
   }
 
   const missing = PRODUCTION_REQUIRED_ENV_VARS.filter((entry) => {
