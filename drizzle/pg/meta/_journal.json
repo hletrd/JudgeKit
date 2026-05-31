@@ -183,6 +183,13 @@
       "when": 1780059114715,
       "tag": "0025_catch_up_schema_drift",
       "breakpoints": true
+    },
+    {
+      "idx": 26,
+      "version": "7",
+      "when": 1780241752015,
+      "tag": "0026_source_drafts",
+      "breakpoints": true
     }
   ]
 }

@@ -1017,6 +1017,37 @@ export const codeSnapshots = pgTable(
   ]
 );
 
+// Server-side recovery copy of a user's in-progress code, one row per
+// (user, problem, language), upserted as the editor autosaves. Unlike
+// code_snapshots (append-only anti-cheat telemetry), this is read back to
+// rehydrate the editor so unsubmitted work survives a device crash / switch.
+export const sourceDrafts = pgTable(
+  "source_drafts",
+  {
+    id: text("id")
+      .primaryKey()
+      .$defaultFn(() => nanoid()),
+    userId: text("user_id")
+      .notNull()
+      .references(() => users.id, { onDelete: "cascade" }),
+    problemId: text("problem_id")
+      .notNull()
+      .references(() => problems.id, { onDelete: "cascade" }),
+    language: text("language").notNull(),
+    sourceCode: text("source_code").notNull(),
+    updatedAt: timestamp("updated_at", { withTimezone: true })
+      .notNull()
+      .$defaultFn(() => new Date()),
+  },
+  (table) => [
+    uniqueIndex("source_drafts_user_problem_lang_unique").on(
+      table.userId,
+      table.problemId,
+      table.language
+    ),
+  ]
+);
+
 export const contestAccessTokens = pgTable(
   "contest_access_tokens",
   {
