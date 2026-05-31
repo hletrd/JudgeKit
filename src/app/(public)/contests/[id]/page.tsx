@@ -448,6 +448,16 @@ export default async function PublicContestDetailPage({ params }: { params: Prom
     // offer the access-code gate inline instead of returning a 404. Anonymous
     // visitors still get notFound() because we should not even acknowledge
     // private contest existence to logged-out callers.
+    //
+    // Note on HTTP status: because this route streams under a route-level
+    // loading.tsx (Suspense boundary), notFound() here renders the not-found
+    // UI but the status stays 200 ("soft 404") — documented Next.js behavior:
+    // https://nextjs.org/docs/app/api-reference/file-conventions/loading#status-codes
+    // This is safe: the not-found page is emitted noindex, so crawlers don't
+    // index it, and a guest sees the identical generic not-found page for both
+    // a private and a non-existent contest — no existence is leaked. Forcing a
+    // hard 404 would require a per-request existence check in proxy/middleware
+    // (latency on this hot path) and is unnecessary per the Next.js guidance.
     if (session?.user) {
       return (
         <div className="space-y-6">

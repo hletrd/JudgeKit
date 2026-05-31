@@ -56,18 +56,40 @@ test.describe("private contest URL inline access-code gate", () => {
     await expect(codeInput.first(), "inline access-code input visible").toBeVisible({ timeout: 5_000 });
   });
 
-  test("guest visitor still gets 404 (no contest existence leak)", async ({ page, context }) => {
+  test("guest visitor does not see the access-code gate (no contest existence leak)", async ({ page, context }) => {
     await context.clearCookies();
     const response = await page.goto(`/contests/${NON_EXISTENT_CONTEST_ID}`, {
       waitUntil: "domcontentloaded",
     });
-    // Guests must NOT see the inline gate — that would acknowledge the
-    // existence of the (possibly private) contest to anonymous callers.
-    // Either a 404 or a redirect to /login is acceptable.
     const status = response?.status() ?? 0;
-    expect(
-      status === 404 || page.url().includes("/login"),
-      `guest should be redirected to login or get 404; got status=${status}, url=${page.url()}`,
-    ).toBeTruthy();
+
+    // A redirect to /login or a hard 404 is unambiguously fine.
+    if (page.url().includes("/login") || status === 404) {
+      return;
+    }
+
+    // Otherwise Next.js serves a *streamed* soft-404: the page calls
+    // notFound(), but because the route sits under a route-level loading.tsx
+    // its not-found UI is wrapped in a Suspense boundary, so the HTTP status
+    // stays 200 — documented, expected behavior:
+    //   https://nextjs.org/docs/app/api-reference/file-conventions/loading#status-codes
+    // That is acceptable for a guest ONLY if no contest existence is leaked,
+    // which requires BOTH of the following to hold:
+    //   1. the page is explicitly noindex (Next's prescribed soft-404 SEO
+    //      mitigation, so crawlers don't index the URL despite the 200), and
+    //   2. the inline access-code gate is NOT rendered — rendering it would
+    //      acknowledge the (possibly private) contest to an anonymous caller.
+    // A private contest and a non-existent one are indistinguishable to a
+    // guest: both fall through to this same noindex not-found page.
+    expect(status, "guest soft-404 must be a 2xx not-found, never a 5xx").toBeLessThan(400);
+    await expect(
+      page.locator('meta[name="robots"]').first(),
+      "guest not-found page must be marked noindex",
+    ).toHaveAttribute("content", /noindex/, { timeout: 5_000 });
+    const codeInput = page.locator('#access-code, input[placeholder*="code" i], input[placeholder*="코드" i]');
+    await expect(
+      codeInput,
+      "guest must NOT see the access-code gate (it would leak contest existence)",
+    ).toHaveCount(0);
   });
 });
