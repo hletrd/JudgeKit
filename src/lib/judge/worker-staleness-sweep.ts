@@ -31,11 +31,18 @@ import {
  * route and from the background interval concurrently. Pass `now` (DB time) when
  * the caller already fetched it to avoid a redundant round-trip.
  */
-export async function sweepStaleWorkers(now?: Date): Promise<void> {
+export type StalenessSweepResult = {
+  /** online → stale transitions this sweep (transient; heartbeat may restore). */
+  markedStale: number;
+  /** stale → offline reaps this sweep (terminal; worker is gone). */
+  reapedOffline: number;
+};
+
+export async function sweepStaleWorkers(now?: Date): Promise<StalenessSweepResult> {
   const ts = now ?? (await getDbNowUncached());
 
   // online -> stale (transient: may still be working; next heartbeat restores).
-  await db
+  const markedStale = await db
     .update(judgeWorkers)
     .set({ status: "stale" })
     .where(
@@ -43,13 +50,14 @@ export async function sweepStaleWorkers(now?: Date): Promise<void> {
         eq(judgeWorkers.status, "online"),
         lt(judgeWorkers.lastHeartbeatAt, computeStaleStatusCutoff(ts))
       )
-    );
+    )
+    .returning({ id: judgeWorkers.id });
 
   // stale -> offline (terminal): past the stale-claim timeout the worker holds
   // no reclaimable claim, so reap it and reconcile active_tasks. Only `stale`
   // rows — never a live `online` worker.
   const staleClaimTimeoutMs = getConfiguredSettings().staleClaimTimeoutMs;
-  await db
+  const reapedOffline = await db
     .update(judgeWorkers)
     .set({ status: "offline", deregisteredAt: ts, activeTasks: 0 })
     .where(
@@ -57,7 +65,28 @@ export async function sweepStaleWorkers(now?: Date): Promise<void> {
         eq(judgeWorkers.status, "stale"),
         lt(judgeWorkers.lastHeartbeatAt, computeActiveTasksResetCutoff(ts, staleClaimTimeoutMs))
       )
+    )
+    .returning({ id: judgeWorkers.id });
+
+  // Emit alertable signals on the state transitions. These fire from the app
+  // logs the moment a worker is reaped — independent of (and faster than) the
+  // next Prometheus scrape of judgekit_judge_workers{status="offline"}. Each
+  // transition only matches once (the WHERE filters on the prior status), so a
+  // persistently-dead worker is logged exactly once, not every sweep.
+  if (reapedOffline.length > 0) {
+    logger.warn(
+      { reaped: reapedOffline.length, workerIds: reapedOffline.map((w) => w.id) },
+      "[judge] staleness sweep reaped unresponsive worker(s) to offline"
     );
+  }
+  if (markedStale.length > 0) {
+    logger.info(
+      { markedStale: markedStale.length, workerIds: markedStale.map((w) => w.id) },
+      "[judge] staleness sweep marked silent worker(s) stale"
+    );
+  }
+
+  return { markedStale: markedStale.length, reapedOffline: reapedOffline.length };
 }
 
 let sweepTimer: ReturnType<typeof setInterval> | null = null;
