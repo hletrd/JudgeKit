@@ -49,10 +49,21 @@ vi.mock("@/lib/db", () => ({
     query: {
       judgeWorkers: { findFirst: findFirstMock },
     },
+    // The heartbeat update awaits `...set().where()` (-> { rowCount }), while the
+    // staleness sweep chains `...set().where().returning()` (-> reaped rows).
+    // Return a builder that is both awaitable and exposes `.returning()`.
     update: vi.fn(() => ({
-      set: vi.fn(() => ({
-        where: updateWhereMock,
-      })),
+      set: vi.fn(() => {
+        const builder: Record<string, unknown> = {
+          where: vi.fn(() => builder),
+          returning: vi.fn(() => Promise.resolve([])),
+          then: (
+            resolve: (v: unknown) => unknown,
+            reject?: (e: unknown) => unknown
+          ) => updateWhereMock().then(resolve, reject),
+        };
+        return builder;
+      }),
     })),
   },
 }));
