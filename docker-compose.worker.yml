@@ -58,6 +58,13 @@ services:
       - JUDGE_CONCURRENCY=${JUDGE_CONCURRENCY:-4}
       - JUDGE_WORKER_HOSTNAME=${JUDGE_WORKER_HOSTNAME:-}
       - JUDGE_SECCOMP_PROFILE=/etc/judge/seccomp-profile.json
+      # Optional sandbox resource tuning (worker code defaults shown). Lower on
+      # RAM-constrained hosts to bound worst-case memory; raise only if a
+      # legitimate problem genuinely needs it. worst-case output RAM ≈
+      # JUDGE_MAX_OUTPUT_BYTES × 2 streams × JUDGE_CONCURRENCY.
+      # - JUDGE_MAX_OUTPUT_BYTES=134217728   # per-stream stdout/stderr cap (128 MiB)
+      # - JUDGE_COMPILE_TIMEOUT_MS=600000    # max compile wall-clock (10 min)
+      # - JUDGE_COMPILE_MEMORY_MB=2048       # compile-phase memory ceiling (MB)
       - DEAD_LETTER_DIR=/app/dead-letter
       - TMPDIR=/judge-workspaces
       - RUST_LOG=${RUST_LOG:-info}

@@ -29,6 +29,29 @@ fn max_time_limit_ms() -> u64 {
         .and_then(|v| v.parse().ok())
         .unwrap_or(30_000)
 }
+
+/// Upper bound on a single compile's wall-clock time. Bounds compiler-bomb DoS
+/// (a malicious build that loops forever). Env-configurable via
+/// JUDGE_COMPILE_TIMEOUT_MS; defaults to COMPILATION_TIMEOUT_MS so slow
+/// toolchains aren't broken, but RAM/CPU-constrained operators can lower it.
+fn compilation_timeout_ms() -> u64 {
+    std::env::var("JUDGE_COMPILE_TIMEOUT_MS")
+        .ok()
+        .and_then(|v| v.parse::<u64>().ok())
+        .filter(|&n| n > 0)
+        .unwrap_or(COMPILATION_TIMEOUT_MS)
+}
+
+/// Memory ceiling granted to the compile phase. Bounds per-compile RAM (a
+/// malicious build that allocates gigabytes). Env-configurable via
+/// JUDGE_COMPILE_MEMORY_MB; defaults to COMPILATION_MEMORY_LIMIT_MB.
+fn compilation_memory_limit_mb() -> u32 {
+    std::env::var("JUDGE_COMPILE_MEMORY_MB")
+        .ok()
+        .and_then(|v| v.parse::<u32>().ok())
+        .filter(|&n| n > 0)
+        .unwrap_or(COMPILATION_MEMORY_LIMIT_MB)
+}
 const MAX_SOURCE_CODE_BYTES: usize = 256 * 1024; // 256 KB
 
 use crate::validation::validate_docker_image;
@@ -36,7 +59,7 @@ use crate::validation::validate_docker_image;
 fn compile_timeout_ms_for_submission(time_limit_ms: u64) -> u64 {
     time_limit_ms
         .saturating_mul(2)
-        .clamp(MIN_COMPILE_TIMEOUT_MS, COMPILATION_TIMEOUT_MS)
+        .clamp(MIN_COMPILE_TIMEOUT_MS, compilation_timeout_ms())
 }
 
 fn reported_memory_used_kb(
@@ -391,7 +414,7 @@ async fn execute_inner(
     if let Some(compile_command) = compile_command {
         let compile_timeout_ms = compile_timeout_ms_for_submission(submission.time_limit_ms);
         let compile_memory_mb =
-            COMPILATION_MEMORY_LIMIT_MB.max(submission.memory_limit_mb.min(MAX_MEMORY_LIMIT_MB));
+            compilation_memory_limit_mb().max(submission.memory_limit_mb.min(MAX_MEMORY_LIMIT_MB));
 
         let compile_opts = DockerRunOptions {
             image: docker_image.to_string(),
