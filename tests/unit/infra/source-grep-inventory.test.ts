@@ -104,7 +104,13 @@ describe("source-grep test inventory", () => {
     //     are now removed (lecture-toolbar, lecture-problem-view,
     //     submission-overview, problem-lecture-wrapper). Removed with the
     //     dead components.
-    const DOCUMENTED_BASELINE = 132;
+    // Bumped 132 → 133 (2026-05-31):
+    //   - tests/unit/editor-keyboard-trap-escape.test.ts — text contract that
+    //     the CodeMirror keymap keeps an Escape binding releasing the Tab trap
+    //     (WCAG 2.1.2). A behavioural test would need a full CodeMirror mount;
+    //     the keymap wiring is the durable invariant, so a source-grep guard
+    //     is the right tool here (same pattern as the output-limits guard).
+    const DOCUMENTED_BASELINE = 133;
     expect(sourceGrepFiles.length).toBe(DOCUMENTED_BASELINE);
   });
 
