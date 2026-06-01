@@ -25,4 +25,14 @@ describe("problem duplication implementation", () => {
     expect(editPage).toContain('href={`/problems/create?duplicateFrom=${problem.id}`}');
     expect(editPage).toContain('t("duplicateProblem")');
   });
+
+  it("gates duplication on the group-scoped canAccessProblem check (no cross-group test-case exfiltration)", () => {
+    const createPage = read("src/app/(public)/problems/create/page.tsx");
+    // Duplication clones the source problem's (possibly hidden) test cases, so it
+    // MUST be gated on whether the user can actually access the source problem
+    // (group-scoped), not on a broad capability that would let any view_all/edit
+    // holder clone another group's private problem.
+    expect(createPage).toContain("canAccessProblem(initialProblem.id, session.user.id, session.user.role)");
+    expect(createPage).not.toContain('caps.has("problems.view_all")');
+  });
 });

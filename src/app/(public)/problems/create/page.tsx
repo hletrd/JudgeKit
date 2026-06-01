@@ -6,6 +6,7 @@ import { eq } from "drizzle-orm";
 import { db } from "@/lib/db";
 import { problemTags, problems, tags } from "@/lib/db/schema";
 import { resolveCapabilities } from "@/lib/capabilities/cache";
+import { canAccessProblem } from "@/lib/auth/permissions";
 import CreateProblemForm from "./create-problem-form";
 import { getResolvedPlatformMode, getPlatformModePolicy } from "@/lib/system-settings";
 
@@ -38,7 +39,13 @@ export default async function CreateProblemPage({
 
   let duplicateProblemData = null;
   if (initialProblem) {
-    const canReuseSource = initialProblem.authorId === session.user.id || caps.has("problems.edit") || caps.has("problems.view_all");
+    // Duplicating a problem clones its source AND its (possibly hidden) test
+    // cases, so gate it on the authoritative, group-scoped access check rather
+    // than a broad capability. A user may only duplicate a problem they can
+    // actually access (public, self-authored, linked to a group they teach, or
+    // org-wide admin) — otherwise a scoped instructor/assistant could exfiltrate
+    // another group's hidden test cases by duplicating its private problem.
+    const canReuseSource = await canAccessProblem(initialProblem.id, session.user.id, session.user.role);
 
     if (!canReuseSource) {
       redirect("/problems");
