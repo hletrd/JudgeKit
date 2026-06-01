@@ -136,7 +136,12 @@ export async function getManageableProblemsForGroup(
   role: string
 ): Promise<AssignmentManagerProblem[]> {
   const caps = await resolveCapabilities(role);
-  if (caps.has("problems.view_all")) {
+  // Org-wide admins (groups.view_all) may pick from every problem. A
+  // problems.view_all holder that is NOT an org-wide admin falls through to the
+  // group-scoped query below, so a group manager can't pull another group's
+  // private problems into their assignment via the picker (consistent with
+  // canAccessProblem's scoping).
+  if (caps.has("groups.view_all")) {
     return db
       .select({
         id: problems.id,

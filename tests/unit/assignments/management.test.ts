@@ -156,17 +156,33 @@ describe("group management helpers", () => {
     ]);
   });
 
-  it("lets roles with problems.view_all load the full problem list", async () => {
-    resolveCapabilitiesMock.mockResolvedValue(new Set(["problems.view_all"]));
+  it("lets org-wide admins (groups.view_all) load the full problem list", async () => {
+    resolveCapabilitiesMock.mockResolvedValue(new Set(["groups.view_all", "problems.view_all"]));
     mockProblemSelectRows([{ id: "problem-1", title: "A + B", authorId: "author-1", visibility: "private" }]);
 
     await expect(
-      getManageableProblemsForGroup("group-1", "custom-1", "custom_editor")
+      getManageableProblemsForGroup("group-1", "custom-1", "custom_admin")
     ).resolves.toEqual([
       { id: "problem-1", title: "A + B", authorId: "author-1", visibility: "private" },
     ]);
     expect(dbMock.select).toHaveBeenCalled();
     expect(dbMock.selectDistinct).not.toHaveBeenCalled();
+  });
+
+  it("scopes problems.view_all holders without groups.view_all to the group-filtered picker", async () => {
+    // Regression guard: a problems.view_all holder that is NOT an org-wide admin
+    // must not be able to enumerate (and add) other groups' private problems via
+    // the assignment problem picker — it falls through to the group-scoped query.
+    resolveCapabilitiesMock.mockResolvedValue(new Set(["problems.view_all"]));
+    mockProblemSelectRows([{ id: "problem-1", title: "Scoped", authorId: "custom-1", visibility: "hidden" }]);
+
+    await expect(
+      getManageableProblemsForGroup("group-1", "custom-1", "custom_editor")
+    ).resolves.toEqual([
+      { id: "problem-1", title: "Scoped", authorId: "custom-1", visibility: "hidden" },
+    ]);
+    expect(dbMock.selectDistinct).toHaveBeenCalled();
+    expect(dbMock.select).not.toHaveBeenCalled();
   });
 
   it("keeps scoped roles on the distinct filtered query when they lack problems.view_all", async () => {
