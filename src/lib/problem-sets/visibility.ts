@@ -225,8 +225,11 @@ export async function getAvailableProblemsForProblemSetUser(
   userId: string,
   role: string
 ) {
-  const caps = await resolveCapabilities(role);
-  if ((await canViewAllProblemSets(role)) || caps.has("problems.view_all")) {
+  // Org-wide problem-set admins (canViewAllProblemSets requires groups.view_all)
+  // may pick from every problem. A problems.view_all holder that is NOT such an
+  // admin falls through to the group-scoped query below, so it can't enumerate
+  // other groups' private problems via the problem-set builder.
+  if (await canViewAllProblemSets(role)) {
     return db
       .select({ id: problems.id, title: problems.title })
       .from(problems)
