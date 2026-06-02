@@ -170,6 +170,52 @@ export async function canAccessProblem(
   return accessRow !== null;
 }
 
+/**
+ * Whether `userId` may MUTATE (edit/delete) the given problem. This is the WRITE
+ * counterpart to canAccessProblem and is intentionally stricter: public
+ * visibility does NOT grant write access (a public problem owned by another
+ * group is readable but not editable). A user may mutate a problem only if:
+ *   - they authored it,
+ *   - they hold `groups.view_all` (org-wide admin), or
+ *   - the problem is linked (problemGroupAccess) to a group they TEACH.
+ * The caller still enforces the specific capability (problems.edit/.delete);
+ * this adds the group-scope the capability check alone was missing, closing the
+ * cross-instructor IDOR where any problems.edit holder could rewrite or delete
+ * another group's private/exam problem (incl. its hidden test cases).
+ */
+export async function canManageProblem(
+  problemId: string,
+  userId: string,
+  role: string
+): Promise<boolean> {
+  const caps = await resolveCapabilities(role);
+  if (caps.has("groups.view_all")) return true;
+
+  const problem = await db
+    .select({ authorId: problems.authorId })
+    .from(problems)
+    .where(eq(problems.id, problemId))
+    .limit(1)
+    .then((rows) => rows[0] ?? null);
+  if (!problem) return false;
+  if (problem.authorId === userId) return true;
+
+  const teachingGroupIds = await getAssignedTeachingGroupIds(userId);
+  if (teachingGroupIds.length === 0) return false;
+  const accessRow = await db
+    .select({ groupId: problemGroupAccess.groupId })
+    .from(problemGroupAccess)
+    .where(
+      and(
+        eq(problemGroupAccess.problemId, problemId),
+        inArray(problemGroupAccess.groupId, teachingGroupIds)
+      )
+    )
+    .limit(1)
+    .then((rows) => rows[0] ?? null);
+  return accessRow !== null;
+}
+
 export async function getAccessibleProblemIds(
   userId: string,
   role: string,

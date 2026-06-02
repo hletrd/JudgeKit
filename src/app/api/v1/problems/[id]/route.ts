@@ -6,7 +6,7 @@ import { assignmentProblems, problems, submissions, testCases, problemTags, tags
 import { eq, sql } from "drizzle-orm";
 import { forbidden, notFound, createApiHandler } from "@/lib/api/handler";
 import { recordAuditEvent } from "@/lib/audit/events";
-import { canAccessProblem } from "@/lib/auth/permissions";
+import { canAccessProblem, canManageProblem } from "@/lib/auth/permissions";
 import { mergeTestCasePatchIntoExisting, updateProblemWithTestCases } from "@/lib/problem-management";
 import { problemMutationSchema } from "@/lib/validators/problem-management";
 import { resolveCapabilities } from "@/lib/capabilities/cache";
@@ -86,6 +86,11 @@ export const PATCH = createApiHandler({
     const canEditProblem = caps.has("problems.edit");
     const canBypassLockedTestCases = caps.has("problems.delete");
     if (!isAuthor && !canEditProblem) return forbidden();
+    // Group-scope the write: a non-admin holder may only mutate a problem they
+    // authored or that is linked to a group they teach (mirrors canAccessProblem
+    // on the read path). Without this, any problems.edit holder could rewrite
+    // another group's private/exam problem — including its hidden test cases.
+    if (!(await canManageProblem(id, user.id, user.role))) return forbidden();
     const allowLockedTestCases = Boolean(body.allowLockedTestCases);
     const existingTestCases = await db.query.testCases.findMany({
       where: eq(testCases.problemId, id),
@@ -194,6 +199,9 @@ export const DELETE = createApiHandler({
     const isAuthor = problem.authorId === user.id;
     const canDeleteProblem = caps.has("problems.delete");
     if (!isAuthor && !canDeleteProblem) return forbidden();
+    // Group-scope the delete: a non-admin holder may only delete a problem they
+    // authored or that is linked to a group they teach (mirrors the PATCH gate).
+    if (!(await canManageProblem(id, user.id, user.role))) return forbidden();
 
     const force = req.nextUrl.searchParams.get("force") === "true";
 

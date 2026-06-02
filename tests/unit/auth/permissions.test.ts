@@ -59,6 +59,7 @@ import {
   getSession,
   canAccessGroup,
   canAccessProblem,
+  canManageProblem,
   canAccessSubmission,
   getAccessibleProblemIds,
 } from "@/lib/auth/permissions";
@@ -298,6 +299,52 @@ describe("canAccessProblem (problems.view_all scoped to taught groups)", () => {
     );
 
     await expect(canAccessProblem("problem-1", "user-1", "assistant")).resolves.toBe(true);
+    expect(dbMock.select).toHaveBeenCalledTimes(1);
+  });
+});
+
+describe("canManageProblem (write authorization, group-scoped)", () => {
+  it("lets an org-wide admin (groups.view_all) mutate any problem without a lookup", async () => {
+    resolveCapabilitiesMock.mockResolvedValueOnce(new Set(["groups.view_all", "problems.edit"]));
+
+    await expect(canManageProblem("problem-x", "user-1", "admin")).resolves.toBe(true);
+    expect(dbMock.select).not.toHaveBeenCalled();
+  });
+
+  it("lets the author mutate their own problem", async () => {
+    resolveCapabilitiesMock.mockResolvedValueOnce(new Set(["problems.edit"]));
+    dbMock.select.mockReturnValueOnce(createSelectResult([{ authorId: "user-1" }]));
+
+    await expect(canManageProblem("problem-1", "user-1", "instructor")).resolves.toBe(true);
+    expect(dbMock.select).toHaveBeenCalledTimes(1);
+  });
+
+  it("lets a non-admin editor mutate a problem linked to a group they TEACH", async () => {
+    resolveCapabilitiesMock.mockResolvedValueOnce(new Set(["problems.edit"]));
+    dbMock.select.mockReturnValueOnce(createSelectResult([{ authorId: "author-2" }]));
+    getAssignedTeachingGroupIdsMock.mockResolvedValue(["group-1"]);
+    dbMock.select.mockReturnValueOnce(createSelectResult([{ groupId: "group-1" }]));
+
+    await expect(canManageProblem("problem-1", "user-1", "instructor")).resolves.toBe(true);
+  });
+
+  it("DENIES a non-admin editor mutating another group's problem (cross-instructor IDOR)", async () => {
+    resolveCapabilitiesMock.mockResolvedValueOnce(new Set(["problems.edit"]));
+    dbMock.select.mockReturnValueOnce(createSelectResult([{ authorId: "author-2" }]));
+    getAssignedTeachingGroupIdsMock.mockResolvedValue(["group-9"]);
+    dbMock.select.mockReturnValueOnce(createSelectResult([]));
+
+    await expect(canManageProblem("problem-1", "user-1", "instructor")).resolves.toBe(false);
+  });
+
+  it("does NOT treat a public problem as writable by a non-author non-admin", async () => {
+    // public visibility grants READ (canAccessProblem) but never WRITE.
+    resolveCapabilitiesMock.mockResolvedValueOnce(new Set(["problems.edit"]));
+    dbMock.select.mockReturnValueOnce(createSelectResult([{ authorId: "author-2" }]));
+    getAssignedTeachingGroupIdsMock.mockResolvedValue([]);
+
+    await expect(canManageProblem("problem-public", "user-1", "instructor")).resolves.toBe(false);
+    // only the author lookup ran; no group query needed when the actor teaches nothing
     expect(dbMock.select).toHaveBeenCalledTimes(1);
   });
 });
