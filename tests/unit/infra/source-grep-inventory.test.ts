@@ -110,7 +110,12 @@ describe("source-grep test inventory", () => {
     //     (WCAG 2.1.2). A behavioural test would need a full CodeMirror mount;
     //     the keymap wiring is the durable invariant, so a source-grep guard
     //     is the right tool here (same pattern as the output-limits guard).
-    const DOCUMENTED_BASELINE = 133;
+    // Bumped 133 → 134 (2026-06-03):
+    //   - tests/unit/judge/ioi-run-all-tests-implementation.test.ts — the IOI
+    //     score-inflation fix is a Rust-worker ↔ TS-server contract (worker runs
+    //     all tests when the server flags IOI). No behavioural test can span that
+    //     boundary, so a source-grep guard pins both sides.
+    const DOCUMENTED_BASELINE = 134;
     expect(sourceGrepFiles.length).toBe(DOCUMENTED_BASELINE);
   });
 

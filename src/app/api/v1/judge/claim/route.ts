@@ -4,7 +4,7 @@ import { safeTokenCompare } from "@/lib/security/timing";
 import { apiSuccess, apiError } from "@/lib/api/responses";
 import { db, execTransaction } from "@/lib/db";
 import { rawQueryOne } from "@/lib/db/queries";
-import { problems, testCases, languageConfigs, judgeWorkers, submissions } from "@/lib/db/schema";
+import { problems, testCases, languageConfigs, judgeWorkers, submissions, assignments } from "@/lib/db/schema";
 import { eq, asc, sql } from "drizzle-orm";
 import { nanoid } from "nanoid";
 import { z } from "zod";
@@ -323,6 +323,20 @@ export async function POST(request: NextRequest) {
     const multiplier = Number.isFinite(rawMultiplier) ? Math.max(0.1, Math.min(rawMultiplier, 50)) : 1.0;
     const adjustedTimeLimitMs = Math.max(1, Math.ceil(baseTimeLimitMs * multiplier));
 
+    // IOI partial scoring requires running EVERY test case so the server's
+    // `passed / results.length` score uses the true denominator. ICPC (AC-only)
+    // and practice (no assignment) keep the fail-fast early break — the worker
+    // defaults run_all_test_cases to false when this flag is absent.
+    let runAllTestCases = false;
+    if (claimed.assignmentId) {
+      const [asg] = await db
+        .select({ scoringModel: assignments.scoringModel })
+        .from(assignments)
+        .where(eq(assignments.id, claimed.assignmentId))
+        .limit(1);
+      runAllTestCases = asg?.scoringModel === "ioi";
+    }
+
     return apiSuccess({
       ...claimed,
       timeLimitMs: adjustedTimeLimitMs,
@@ -331,6 +345,7 @@ export async function POST(request: NextRequest) {
       floatAbsoluteError: problem.floatAbsoluteError ?? null,
       floatRelativeError: problem.floatRelativeError ?? null,
       testCases: cases,
+      runAllTestCases,
       // Language config overrides from DB (used by worker when present)
       dockerImage: langConfig?.dockerImage?.trim() || null,
       compileCommand: deserializeStoredJudgeCommand(langConfig?.compileCommand),

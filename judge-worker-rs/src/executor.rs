@@ -614,7 +614,11 @@ async fn execute_inner(
             },
         });
 
-        if verdict != Verdict::Accepted {
+        // Fail-fast by default, but for IOI partial scoring (run_all_test_cases)
+        // keep going so EVERY test case is reported — otherwise the server's
+        // `passed / results.length` score divides by a truncated denominator and
+        // inflates the partial score (e.g. 2/3 instead of 2/10).
+        if verdict != Verdict::Accepted && !submission.run_all_test_cases {
             break;
         }
     }

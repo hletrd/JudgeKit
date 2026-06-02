@@ -237,6 +237,12 @@ pub struct Submission {
     /// DB-configured run command override (takes precedence over static config)
     #[serde(rename = "runCommand")]
     pub run_command: Option<Vec<String>>,
+    /// When true (IOI partial scoring), run EVERY test case instead of breaking
+    /// at the first failure, so the server's `passed / results.length` score uses
+    /// the true denominator. Defaults to false (fail-fast) for ICPC/practice and
+    /// for older server payloads that omit the field.
+    #[serde(rename = "runAllTestCases", default)]
+    pub run_all_test_cases: bool,
 }
 
 fn default_comparison_mode() -> String {
