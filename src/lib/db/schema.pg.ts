@@ -538,6 +538,13 @@ export const systemSettings = pgTable("system_settings", {
   timeZone: text("time_zone"),
   platformMode: text("platform_mode").$type<PlatformMode>().notNull().default("homework"),
   aiAssistantEnabled: boolean("ai_assistant_enabled").notNull().default(true),
+  // Platform-mode restriction overrides. A platform mode (exam/contest/
+  // recruiting) derives restrictions (AI off, standalone compiler off). When
+  // these flags are true the corresponding restriction is NOT enforced — an
+  // explicit admin escape hatch. Safe default is false (mode wins), preserving
+  // anti-cheat behaviour unless an operator deliberately opts out.
+  allowAiAssistantInRestrictedModes: boolean("allow_ai_assistant_in_restricted_modes").notNull().default(false),
+  allowStandaloneCompilerInRestrictedModes: boolean("allow_standalone_compiler_in_restricted_modes").notNull().default(false),
   publicSignupEnabled: boolean("public_signup_enabled").notNull().default(false),
   signupHcaptchaEnabled: boolean("signup_hcaptcha_enabled").notNull().default(false),
   hcaptchaSiteKey: text("hcaptcha_site_key"),

@@ -286,10 +286,14 @@ export async function isAiAssistantEnabledForContext(
   }
 
   const effectiveMode = await getEffectivePlatformMode(options);
-  if (getPlatformModePolicy(effectiveMode).restrictAiByDefault) {
+  const settings = await getSystemSettings();
+  // Restricted modes force AI off unless the admin opted out via
+  // allowAiAssistantInRestrictedModes.
+  const restrictAi =
+    getPlatformModePolicy(effectiveMode).restrictAiByDefault &&
+    !(settings?.allowAiAssistantInRestrictedModes ?? false);
+  if (restrictAi) {
     return false;
   }
-
-  const settings = await getSystemSettings();
   return settings?.aiAssistantEnabled ?? true;
 }

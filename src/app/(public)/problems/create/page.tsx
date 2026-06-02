@@ -8,7 +8,7 @@ import { problemTags, problems, tags } from "@/lib/db/schema";
 import { resolveCapabilities } from "@/lib/capabilities/cache";
 import { canAccessProblem } from "@/lib/auth/permissions";
 import CreateProblemForm from "./create-problem-form";
-import { getResolvedPlatformMode, getPlatformModePolicy } from "@/lib/system-settings";
+import { getResolvedPlatformMode, getEffectiveModeRestrictions } from "@/lib/system-settings";
 
 export default async function CreateProblemPage({
   searchParams,
@@ -27,7 +27,7 @@ export default async function CreateProblemPage({
   const duplicateFrom = resolvedSearchParams?.duplicateFrom?.trim() ?? "";
   const t = await getTranslations("problems");
   const platformMode = await getResolvedPlatformMode();
-  const forceDisableAiAssistant = getPlatformModePolicy(platformMode).restrictAiByDefault;
+  const forceDisableAiAssistant = (await getEffectiveModeRestrictions(platformMode)).restrictAiByDefault;
   const initialProblem = duplicateFrom
     ? await db.query.problems.findFirst({
         where: eq(problems.id, duplicateFrom),

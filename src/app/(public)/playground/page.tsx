@@ -8,7 +8,7 @@ import { JsonLd } from "@/components/seo/json-ld";
 import { buildAbsoluteUrl, buildLocalePath, buildPublicMetadata } from "@/lib/seo";
 import { getResolvedSystemSettings } from "@/lib/system-settings";
 import { getEffectivePlatformMode } from "@/lib/platform-mode-context";
-import { getPlatformModePolicy } from "@/lib/platform-mode";
+import { getEffectiveModeRestrictions } from "@/lib/system-settings";
 
 export async function generateMetadata(): Promise<Metadata> {
   const [tCommon, tShell, locale] = await Promise.all([
@@ -49,7 +49,7 @@ export default async function PlaygroundPage() {
     const effectivePlatformMode = await getEffectivePlatformMode({
       userId: session.user.id,
     });
-    if (getPlatformModePolicy(effectivePlatformMode).restrictStandaloneCompiler) {
+    if ((await getEffectiveModeRestrictions(effectivePlatformMode)).restrictStandaloneCompiler) {
       redirect("/dashboard");
     }
   }

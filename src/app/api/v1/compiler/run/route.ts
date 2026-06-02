@@ -8,7 +8,7 @@ import { z } from "zod";
 import { isJudgeLanguage, getJudgeLanguageDefinition, serializeJudgeCommand } from "@/lib/judge/languages";
 import { executeCompilerRun } from "@/lib/compiler/execute";
 import { resolveCapabilities } from "@/lib/capabilities";
-import { getPlatformModePolicy } from "@/lib/platform-mode";
+import { getEffectiveModeRestrictions } from "@/lib/system-settings";
 import {
   getEffectivePlatformMode,
   resolvePlatformModeAssignmentContextDetails,
@@ -61,7 +61,7 @@ export const POST = createApiHandler({
       userId: user.id,
       assignmentId: assignmentContext.assignmentId,
     });
-    if (getPlatformModePolicy(platformMode).restrictStandaloneCompiler) {
+    if ((await getEffectiveModeRestrictions(platformMode)).restrictStandaloneCompiler) {
       return apiError("compilerDisabledInCurrentMode", 403);
     }
 

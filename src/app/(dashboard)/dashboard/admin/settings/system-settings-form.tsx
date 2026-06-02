@@ -49,6 +49,8 @@ type SystemSettingsFormProps = {
   initialSignupHcaptchaEnabled: boolean;
   initialHcaptchaSiteKey: string;
   initialHcaptchaSecretMasked: string;
+  initialAllowAiAssistantInRestrictedModes: boolean;
+  initialAllowStandaloneCompilerInRestrictedModes: boolean;
 };
 
 function isValidTimeZone(value: string) {
@@ -89,6 +91,8 @@ export function SystemSettingsForm({
   initialHcaptchaSecretMasked,
   initialDefaultLanguage,
   initialDefaultLocale,
+  initialAllowAiAssistantInRestrictedModes,
+  initialAllowStandaloneCompilerInRestrictedModes,
 }: SystemSettingsFormProps) {
   const router = useRouter();
   const t = useTranslations("admin.settings");
@@ -114,9 +118,17 @@ export function SystemSettingsForm({
   const [hcaptchaSecret, setHcaptchaSecret] = useState(initialHcaptchaSecretMasked);
   const [defaultLanguage, setDefaultLanguage] = useState(initialDefaultLanguage);
   const [defaultLocale, setDefaultLocale] = useState(initialDefaultLocale);
+  const [allowAiAssistantInRestrictedModes, setAllowAiAssistantInRestrictedModes] = useState(
+    initialAllowAiAssistantInRestrictedModes
+  );
+  const [allowStandaloneCompilerInRestrictedModes, setAllowStandaloneCompilerInRestrictedModes] = useState(
+    initialAllowStandaloneCompilerInRestrictedModes
+  );
   const [isLoading, setIsLoading] = useState(false);
   const [timeZoneError, setTimeZoneError] = useState(false);
   const platformPolicy = useMemo(() => getPlatformModePolicy(platformMode), [platformMode]);
+  // The mode forces AI off in restricted modes; the override re-enables control.
+  const aiForcedOffByMode = platformPolicy.restrictAiByDefault && !allowAiAssistantInRestrictedModes;
   const ianaTimeZones = useMemo(() => {
     try {
       return Intl.supportedValuesOf("timeZone");
@@ -158,6 +170,8 @@ export function SystemSettingsForm({
         timeZone: normalizedTimeZone,
         platformMode,
         aiAssistantEnabled,
+        allowAiAssistantInRestrictedModes,
+        allowStandaloneCompilerInRestrictedModes,
         publicSignupEnabled,
         emailVerificationRequired,
         communityUpvoteEnabled,
@@ -280,21 +294,47 @@ export function SystemSettingsForm({
           })}
         </p>
         <p className="text-xs text-muted-foreground">{t(`platformModeDescriptions.${platformMode}`)}</p>
-        <div className="rounded-lg border border-dashed px-3 py-2 text-xs text-muted-foreground">
+        <div className="space-y-2 rounded-lg border border-dashed px-3 py-2 text-xs text-muted-foreground">
           <p className="font-medium text-foreground">{t("platformModeOperationalTitle")}</p>
-          <ul className="mt-2 list-disc space-y-1 pl-4">
+          <ul className="list-disc space-y-1 pl-4">
             <li>
               {platformPolicy.restrictAiByDefault
-                ? t("platformModeAiRestricted")
+                ? (allowAiAssistantInRestrictedModes ? t("platformModeAiOverridden") : t("platformModeAiRestricted"))
                 : t("platformModeAiAvailable")}
             </li>
             <li>
               {platformPolicy.restrictStandaloneCompiler
-                ? t("platformModeCompilerRestricted")
+                ? (allowStandaloneCompilerInRestrictedModes ? t("platformModeCompilerOverridden") : t("platformModeCompilerRestricted"))
                 : t("platformModeCompilerAvailable")}
             </li>
             <li>{t("platformModeHighStakesNotice")}</li>
           </ul>
+          {platformPolicy.restrictAiByDefault && (
+            <div className="space-y-1 border-t pt-2">
+              <label className="flex items-center gap-2 text-foreground">
+                <Checkbox
+                  id="allow-ai-in-restricted-modes"
+                  checked={allowAiAssistantInRestrictedModes}
+                  onCheckedChange={(checked) => setAllowAiAssistantInRestrictedModes(checked === true)}
+                />
+                <span>{t("allowAiAssistantInRestrictedModes")}</span>
+              </label>
+              <p>{t("allowAiAssistantInRestrictedModesHint")}</p>
+            </div>
+          )}
+          {platformPolicy.restrictStandaloneCompiler && (
+            <div className="space-y-1 border-t pt-2">
+              <label className="flex items-center gap-2 text-foreground">
+                <Checkbox
+                  id="allow-compiler-in-restricted-modes"
+                  checked={allowStandaloneCompilerInRestrictedModes}
+                  onCheckedChange={(checked) => setAllowStandaloneCompilerInRestrictedModes(checked === true)}
+                />
+                <span>{t("allowStandaloneCompilerInRestrictedModes")}</span>
+              </label>
+              <p>{t("allowStandaloneCompilerInRestrictedModesHint")}</p>
+            </div>
+          )}
         </div>
       </div>
 
@@ -304,11 +344,15 @@ export function SystemSettingsForm({
           <Checkbox
             id="ai-assistant-enabled"
             checked={aiAssistantEnabled}
+            disabled={aiForcedOffByMode}
             onCheckedChange={(checked) => setAiAssistantEnabled(checked === true)}
           />
           <span>{t("aiAssistantEnabled")}</span>
         </label>
         <p className="text-xs text-muted-foreground">{t("aiAssistantEnabledHint")}</p>
+        {aiForcedOffByMode && (
+          <p className="text-xs text-amber-600 dark:text-amber-500">{t("aiAssistantRestrictedByModeNote")}</p>
+        )}
       </div>
 
       <div className="space-y-2">

@@ -133,6 +133,8 @@ describe("getSystemSettings", () => {
       timeZone: "America/New_York",
       platformMode: null,
       aiAssistantEnabled: true,
+      allowAiAssistantInRestrictedModes: null,
+      allowStandaloneCompilerInRestrictedModes: null,
       publicSignupEnabled: null,
       signupHcaptchaEnabled: null,
       hcaptchaSiteKey: null,
@@ -165,6 +167,7 @@ describe("getSystemSettings", () => {
       uploadMaxImageSizeBytes: null,
       uploadMaxFileSizeBytes: null,
       uploadMaxImageDimension: null,
+      uploadMaxZipDecompressedSizeBytes: null,
       smtpHost: null,
       smtpPort: null,
       smtpSecure: null,
@@ -348,6 +351,88 @@ describe("isAiAssistantEnabled", () => {
 
     const result = await isAiAssistantEnabled();
     expect(result).toBe(false);
+  });
+
+  it("returns true in recruiting mode when the AI override is enabled and aiAssistantEnabled is true", async () => {
+    const { isAiAssistantEnabled } = await import("@/lib/system-settings");
+    mocks.dbQuerySystemSettingsFindFirst.mockResolvedValue({
+      id: "global",
+      siteTitle: "T",
+      siteDescription: "D",
+      timeZone: "UTC",
+      platformMode: "recruiting",
+      aiAssistantEnabled: true,
+      allowAiAssistantInRestrictedModes: true,
+      updatedAt: new Date(),
+    });
+
+    const result = await isAiAssistantEnabled();
+    expect(result).toBe(true);
+  });
+
+  it("still returns false in recruiting mode when the override is on but aiAssistantEnabled is false", async () => {
+    const { isAiAssistantEnabled } = await import("@/lib/system-settings");
+    mocks.dbQuerySystemSettingsFindFirst.mockResolvedValue({
+      id: "global",
+      siteTitle: "T",
+      siteDescription: "D",
+      timeZone: "UTC",
+      platformMode: "recruiting",
+      aiAssistantEnabled: false,
+      allowAiAssistantInRestrictedModes: true,
+      updatedAt: new Date(),
+    });
+
+    const result = await isAiAssistantEnabled();
+    expect(result).toBe(false);
+  });
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+// getEffectiveModeRestrictions
+// ─────────────────────────────────────────────────────────────────────────────
+
+describe("getEffectiveModeRestrictions", () => {
+  const baseRow = { id: "global", siteTitle: "T", siteDescription: "D", timeZone: "UTC" };
+
+  it("restricts AI and compiler in exam mode with no overrides", async () => {
+    const { getEffectiveModeRestrictions } = await import("@/lib/system-settings");
+    mocks.dbQuerySystemSettingsFindFirst.mockResolvedValue({ ...baseRow, platformMode: "exam", updatedAt: new Date() });
+    expect(await getEffectiveModeRestrictions("exam")).toEqual({
+      restrictAiByDefault: true,
+      restrictStandaloneCompiler: true,
+    });
+  });
+
+  it("lifts only the AI restriction when allowAiAssistantInRestrictedModes is true", async () => {
+    const { getEffectiveModeRestrictions } = await import("@/lib/system-settings");
+    mocks.dbQuerySystemSettingsFindFirst.mockResolvedValue({
+      ...baseRow, platformMode: "exam", allowAiAssistantInRestrictedModes: true, updatedAt: new Date(),
+    });
+    expect(await getEffectiveModeRestrictions("exam")).toEqual({
+      restrictAiByDefault: false,
+      restrictStandaloneCompiler: true,
+    });
+  });
+
+  it("lifts only the standalone-compiler restriction when its override is true", async () => {
+    const { getEffectiveModeRestrictions } = await import("@/lib/system-settings");
+    mocks.dbQuerySystemSettingsFindFirst.mockResolvedValue({
+      ...baseRow, platformMode: "exam", allowStandaloneCompilerInRestrictedModes: true, updatedAt: new Date(),
+    });
+    expect(await getEffectiveModeRestrictions("exam")).toEqual({
+      restrictAiByDefault: true,
+      restrictStandaloneCompiler: false,
+    });
+  });
+
+  it("never restricts in homework mode regardless of overrides", async () => {
+    const { getEffectiveModeRestrictions } = await import("@/lib/system-settings");
+    mocks.dbQuerySystemSettingsFindFirst.mockResolvedValue({ ...baseRow, platformMode: "homework", updatedAt: new Date() });
+    expect(await getEffectiveModeRestrictions("homework")).toEqual({
+      restrictAiByDefault: false,
+      restrictStandaloneCompiler: false,
+    });
   });
 });
 

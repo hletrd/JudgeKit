@@ -97,6 +97,8 @@ export async function updateSystemSettings(
     timeZone,
     platformMode,
     aiAssistantEnabled,
+    allowAiAssistantInRestrictedModes,
+    allowStandaloneCompilerInRestrictedModes,
     publicSignupEnabled,
     emailVerificationRequired,
     communityUpvoteEnabled,
@@ -157,6 +159,12 @@ export async function updateSystemSettings(
   }
   if (hasOwnInput("aiAssistantEnabled")) {
     baseValues.aiAssistantEnabled = aiAssistantEnabled ?? true;
+  }
+  if (hasOwnInput("allowAiAssistantInRestrictedModes")) {
+    baseValues.allowAiAssistantInRestrictedModes = allowAiAssistantInRestrictedModes ?? false;
+  }
+  if (hasOwnInput("allowStandaloneCompilerInRestrictedModes")) {
+    baseValues.allowStandaloneCompilerInRestrictedModes = allowStandaloneCompilerInRestrictedModes ?? false;
   }
   if (hasOwnInput("publicSignupEnabled")) {
     baseValues.publicSignupEnabled = publicSignupEnabled ?? false;

@@ -6,7 +6,7 @@ import { eq } from "drizzle-orm";
 import { z } from "zod";
 import { isJudgeLanguage, getJudgeLanguageDefinition, serializeJudgeCommand } from "@/lib/judge/languages";
 import { executeCompilerRun } from "@/lib/compiler/execute";
-import { getPlatformModePolicy } from "@/lib/platform-mode";
+import { getEffectiveModeRestrictions } from "@/lib/system-settings";
 import { getEffectivePlatformMode } from "@/lib/platform-mode-context";
 
 const MAX_SOURCE_CODE_BYTES = 64 * 1024;
@@ -38,7 +38,7 @@ export const POST = createApiHandler({
       userId: user.id,
       assignmentId: null,
     });
-    if (getPlatformModePolicy(platformMode).restrictStandaloneCompiler) {
+    if ((await getEffectiveModeRestrictions(platformMode)).restrictStandaloneCompiler) {
       return apiError("compilerDisabledInCurrentMode", 403);
     }
 

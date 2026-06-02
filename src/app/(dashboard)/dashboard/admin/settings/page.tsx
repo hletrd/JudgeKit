@@ -121,6 +121,10 @@ export default async function AdminSettingsPage() {
   const stored = storedSettings as Record<string, unknown> | undefined;
   const initialAiAssistantEnabled =
     typeof stored?.aiAssistantEnabled === "boolean" ? stored.aiAssistantEnabled : true;
+  const initialAllowAiAssistantInRestrictedModes =
+    typeof stored?.allowAiAssistantInRestrictedModes === "boolean" ? stored.allowAiAssistantInRestrictedModes : false;
+  const initialAllowStandaloneCompilerInRestrictedModes =
+    typeof stored?.allowStandaloneCompilerInRestrictedModes === "boolean" ? stored.allowStandaloneCompilerInRestrictedModes : false;
   const initialPublicSignupEnabled =
     typeof stored?.publicSignupEnabled === "boolean" ? stored.publicSignupEnabled : false;
   const initialEmailVerificationRequired =
@@ -215,6 +219,8 @@ export default async function AdminSettingsPage() {
                 initialSignupHcaptchaEnabled={initialSignupHcaptchaEnabled}
                 initialHcaptchaSiteKey={initialHcaptchaSiteKey}
                 initialHcaptchaSecretMasked={initialHcaptchaSecretMasked}
+                initialAllowAiAssistantInRestrictedModes={initialAllowAiAssistantInRestrictedModes}
+                initialAllowStandaloneCompilerInRestrictedModes={initialAllowStandaloneCompilerInRestrictedModes}
               />
             </CardContent>
           </Card>

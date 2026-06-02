@@ -9,7 +9,7 @@ import { eq } from "drizzle-orm";
 import CreateProblemForm from "@/app/(public)/problems/create/create-problem-form";
 import { ProblemDeleteButton } from "../problem-delete-button";
 import { resolveCapabilities } from "@/lib/capabilities/cache";
-import { getResolvedPlatformMode, getPlatformModePolicy } from "@/lib/system-settings";
+import { getResolvedPlatformMode, getEffectiveModeRestrictions } from "@/lib/system-settings";
 import Link from "next/link";
 
 export default async function EditProblemPage({ params }: { params: Promise<{ id: string }> }) {
@@ -38,7 +38,7 @@ export default async function EditProblemPage({ params }: { params: Promise<{ id
 
   const t = await getTranslations("problems");
   const platformMode = await getResolvedPlatformMode();
-  const forceDisableAiAssistant = getPlatformModePolicy(platformMode).restrictAiByDefault;
+  const forceDisableAiAssistant = (await getEffectiveModeRestrictions(platformMode)).restrictAiByDefault;
   const hasSubmissions = Boolean(
     await db.query.submissions.findFirst({
       where: eq(submissions.problemId, problem.id),

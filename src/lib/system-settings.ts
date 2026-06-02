@@ -21,6 +21,8 @@ export type SystemSettingsRecord = {
   timeZone: string | null;
   platformMode?: PlatformMode | null;
   aiAssistantEnabled?: boolean | null;
+  allowAiAssistantInRestrictedModes?: boolean | null;
+  allowStandaloneCompilerInRestrictedModes?: boolean | null;
   publicSignupEnabled?: boolean | null;
   signupHcaptchaEnabled?: boolean | null;
   hcaptchaSiteKey?: string | null;
@@ -122,6 +124,8 @@ export async function getSystemSettings(): Promise<SystemSettingsRecord | undefi
       timeZone: partial.timeZone,
       platformMode: null,
       aiAssistantEnabled: partial.aiAssistantEnabled,
+      allowAiAssistantInRestrictedModes: null,
+      allowStandaloneCompilerInRestrictedModes: null,
       publicSignupEnabled: null,
       signupHcaptchaEnabled: null,
       hcaptchaSiteKey: null,
@@ -154,6 +158,7 @@ export async function getSystemSettings(): Promise<SystemSettingsRecord | undefi
       uploadMaxImageSizeBytes: null,
       uploadMaxFileSizeBytes: null,
       uploadMaxImageDimension: null,
+      uploadMaxZipDecompressedSizeBytes: null,
       smtpHost: null,
       smtpPort: null,
       smtpSecure: null,
@@ -190,25 +195,37 @@ export const getResolvedSystemSettings = cache(async (defaults: {
   };
 });
 
-export async function isAiAssistantEnabled(): Promise<boolean> {
-  const platformMode = await getResolvedPlatformMode();
-  if (getPlatformModePolicy(platformMode).restrictAiByDefault) {
-    return false;
-  }
+/**
+ * Resolve the EFFECTIVE platform-mode restrictions for a given mode, applying
+ * the admin override flags. A restricted mode (exam/contest/recruiting) derives
+ * `restrictAiByDefault` / `restrictStandaloneCompiler`; each is suppressed when
+ * the matching `allow*InRestrictedModes` setting is enabled. The default (false)
+ * keeps the mode's safe anti-cheat behaviour, so callers that simply read these
+ * flags behave exactly as before unless an admin opts out.
+ */
+export async function getEffectiveModeRestrictions(
+  mode: PlatformMode
+): Promise<{ restrictAiByDefault: boolean; restrictStandaloneCompiler: boolean }> {
+  const base = getPlatformModePolicy(mode);
+  const settings = await getSystemSettings();
+  return {
+    restrictAiByDefault:
+      base.restrictAiByDefault && !(settings?.allowAiAssistantInRestrictedModes ?? false),
+    restrictStandaloneCompiler:
+      base.restrictStandaloneCompiler && !(settings?.allowStandaloneCompilerInRestrictedModes ?? false),
+  };
+}
 
-  try {
-    const settings = await db.query.systemSettings.findFirst({
-      where: eq(systemSettings.id, GLOBAL_SETTINGS_ID),
-      columns: { aiAssistantEnabled: true, platformMode: true },
-    });
-    const resolvedPlatformMode = settings?.platformMode ?? platformMode;
-    if (getPlatformModePolicy(resolvedPlatformMode).restrictAiByDefault) {
-      return false;
-    }
-    return settings?.aiAssistantEnabled ?? true;
-  } catch {
-    return !getPlatformModePolicy(platformMode).restrictAiByDefault;
-  }
+export async function isAiAssistantEnabled(): Promise<boolean> {
+  const settings = await getSystemSettings();
+  const platformMode = settings?.platformMode ?? DEFAULT_PLATFORM_MODE;
+  // The platform mode forces AI off in restricted modes UNLESS the admin has
+  // explicitly opted out via allowAiAssistantInRestrictedModes.
+  const restrictAi =
+    getPlatformModePolicy(platformMode).restrictAiByDefault &&
+    !(settings?.allowAiAssistantInRestrictedModes ?? false);
+  if (restrictAi) return false;
+  return settings?.aiAssistantEnabled ?? true;
 }
 
 export async function getResolvedSystemTimeZone() {
