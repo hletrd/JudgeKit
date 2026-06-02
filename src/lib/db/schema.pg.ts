@@ -575,6 +575,7 @@ export const systemSettings = pgTable("system_settings", {
   uploadMaxImageSizeBytes: integer("upload_max_image_size_bytes"),
   uploadMaxFileSizeBytes: integer("upload_max_file_size_bytes"),
   uploadMaxImageDimension: integer("upload_max_image_dimension"),
+  uploadMaxZipDecompressedSizeBytes: integer("upload_max_zip_decompressed_size_bytes"),
   // Default Language
   defaultLanguage: text("default_language"),
   // Default UI Locale (fallback when no cookie/accept-language match)

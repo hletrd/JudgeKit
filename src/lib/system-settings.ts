@@ -73,6 +73,7 @@ export type SystemSettingsRecord = {
   uploadMaxImageSizeBytes?: number | null;
   uploadMaxFileSizeBytes?: number | null;
   uploadMaxImageDimension?: number | null;
+  uploadMaxZipDecompressedSizeBytes?: number | null;
   // SMTP Configuration
   smtpHost?: string | null;
   smtpPort?: number | null;

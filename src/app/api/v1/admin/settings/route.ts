@@ -70,6 +70,7 @@ export const PUT = createApiHandler({
       "maxSseConnectionsPerUser", "ssePollIntervalMs", "sseTimeoutMs",
       "compilerTimeLimitMs",
       "uploadMaxImageSizeBytes", "uploadMaxFileSizeBytes", "uploadMaxImageDimension",
+      "uploadMaxZipDecompressedSizeBytes",
     ] as const;
 
     const filteredConfig = Object.fromEntries(

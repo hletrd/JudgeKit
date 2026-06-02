@@ -141,6 +141,7 @@ export const systemSettingsSchema = z.object({
   uploadMaxImageSizeBytes: optionalInt(1_048_576, 104_857_600),
   uploadMaxFileSizeBytes: optionalInt(1_048_576, 524_288_000),
   uploadMaxImageDimension: optionalInt(512, 16_384),
+  uploadMaxZipDecompressedSizeBytes: optionalInt(1_048_576, 1_073_741_824),
   // Allowed Hosts
   allowedHosts: z
     .array(

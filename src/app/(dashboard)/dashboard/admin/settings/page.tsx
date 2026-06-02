@@ -62,6 +62,7 @@ const UPLOAD_FIELDS: { key: keyof ConfiguredSettings }[] = [
   { key: "uploadMaxImageSizeBytes" },
   { key: "uploadMaxFileSizeBytes" },
   { key: "uploadMaxImageDimension" },
+  { key: "uploadMaxZipDecompressedSizeBytes" },
 ];
 
 function extractInitialValues(

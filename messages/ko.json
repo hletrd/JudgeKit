@@ -1486,6 +1486,8 @@
       "uploadMaxFileSizeBytesHint": "비이미지 파일의 최대 업로드 크기 (바이트). 기본값: {default}",
       "uploadMaxImageDimension": "최대 이미지 크기 (px)",
       "uploadMaxImageDimensionHint": "업로드 이미지의 최대 너비/높이예요. 큰 이미지는 자동으로 줄여요. 기본값: {default}",
+      "uploadMaxZipDecompressedSizeBytes": "최대 압축 해제 ZIP 크기 (바이트)",
+      "uploadMaxZipDecompressedSizeBytesHint": "업로드된 ZIP 압축을 풀 때 허용되는 전체 원본 크기예요 (zip bomb 방어). 기본값: {default}",
       "mustBeInteger": "값은 정수여야 합니다",
       "valueTooSmall": "값이 최소 허용값 미만입니다",
       "valueTooLarge": "값이 최대 허용값을 초과합니다",

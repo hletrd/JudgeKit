@@ -42,6 +42,7 @@ const CONFIG_KEYS = [
   "uploadMaxImageSizeBytes",
   "uploadMaxFileSizeBytes",
   "uploadMaxImageDimension",
+  "uploadMaxZipDecompressedSizeBytes",
 ] as const;
 
 /**

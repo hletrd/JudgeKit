@@ -1486,6 +1486,8 @@
       "uploadMaxFileSizeBytesHint": "Maximum upload size for non-image files in bytes. Default: {default}",
       "uploadMaxImageDimension": "Max Image Dimension (px)",
       "uploadMaxImageDimensionHint": "Maximum width/height for uploaded images. Larger images are resized. Default: {default}",
+      "uploadMaxZipDecompressedSizeBytes": "Max Decompressed ZIP Size (bytes)",
+      "uploadMaxZipDecompressedSizeBytesHint": "Maximum total uncompressed size allowed when extracting an uploaded ZIP archive (zip-bomb protection). Default: {default}",
       "mustBeInteger": "Value must be a whole number",
       "valueTooSmall": "Value is below the minimum allowed",
       "valueTooLarge": "Value exceeds the maximum allowed",
