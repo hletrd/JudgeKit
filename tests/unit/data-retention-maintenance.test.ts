@@ -19,6 +19,7 @@ vi.mock("@/lib/db/schema", () => ({
   recruitingInvitations: { createdAt: "recruitingInvitations.createdAt", updatedAt: "recruitingInvitations.updatedAt", expiresAt: "recruitingInvitations.expiresAt", status: "recruitingInvitations.status" },
   submissions: { submittedAt: "submissions.submittedAt", status: "submissions.status" },
   loginEvents: { createdAt: "loginEvents.createdAt" },
+  auditEvents: { createdAt: "auditEvents.createdAt" },
 }));
 
 vi.mock("@/lib/logger", () => ({
@@ -78,6 +79,19 @@ describe("startSensitiveDataPruning / stopSensitiveDataPruning", () => {
     // At least 3 prune functions should call db.execute (chatMessages, antiCheatEvents, loginEvents)
     expect(mocks.dbExecute.mock.calls.length).toBeGreaterThanOrEqual(3);
     expect(mocks.loggerDebug.mock.calls.length).toBeGreaterThanOrEqual(1);
+  });
+
+  it("enforces audit-event retention (audit_events is pruned, not unbounded)", async () => {
+    const { startSensitiveDataPruning, stopSensitiveDataPruning } = await import("@/lib/data-retention-maintenance");
+
+    stopSensitiveDataPruning();
+    startSensitiveDataPruning();
+    await flushMicrotasks();
+
+    // The audit prune must run — previously audit_events was omitted from the
+    // maintenance window and grew forever, retaining candidate PII past the
+    // configured 90-day cutoff.
+    expect(mocks.loggerDebug).toHaveBeenCalledWith(expect.anything(), "Pruned expired audit events");
   });
 
   it("does not create duplicate intervals when started twice", async () => {

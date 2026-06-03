@@ -1,7 +1,7 @@
 import { and, inArray, lt, notInArray, or, sql } from "drizzle-orm";
 import { db } from "@/lib/db";
 import { logger } from "@/lib/logger";
-import { antiCheatEvents, chatMessages, loginEvents, recruitingInvitations, submissions } from "@/lib/db/schema";
+import { auditEvents, antiCheatEvents, chatMessages, loginEvents, recruitingInvitations, submissions } from "@/lib/db/schema";
 import { DATA_RETENTION_DAYS, isDataRetentionLegalHold, getRetentionCutoff } from "@/lib/data-retention";
 import { getDbNowMs } from "@/lib/db-time";
 
@@ -19,7 +19,7 @@ const BATCH_DELAY_MS = 100;
  * those databases would need `DELETE ... WHERE id IN (SELECT id ...)` instead.
  */
 async function batchedDelete(
-  table: typeof antiCheatEvents | typeof chatMessages | typeof loginEvents | typeof recruitingInvitations | typeof submissions,
+  table: typeof auditEvents | typeof antiCheatEvents | typeof chatMessages | typeof loginEvents | typeof recruitingInvitations | typeof submissions,
   whereClause: ReturnType<typeof lt> | ReturnType<typeof and>,
 ): Promise<number> {
   let totalDeleted = 0;
@@ -83,11 +83,17 @@ async function pruneLoginEvents(nowMs: number) {
   logger.debug({ cutoff: cutoff.toISOString(), deleted }, "Pruned expired login events");
 }
 
+async function pruneAuditEvents(nowMs: number) {
+  const cutoff = getRetentionCutoff(DATA_RETENTION_DAYS.auditEvents, nowMs);
+  const deleted = await batchedDelete(auditEvents, lt(auditEvents.createdAt, cutoff));
+  logger.debug({ cutoff: cutoff.toISOString(), deleted }, "Pruned expired audit events");
+}
+
 /**
  * Run all sensitive-data retention prunes for one day's maintenance window.
  *
- * Five independent prunes (chatMessages, antiCheatEvents,
- * recruitingInvitations, submissions, loginEvents) run concurrently against
+ * Six independent prunes (chatMessages, antiCheatEvents,
+ * recruitingInvitations, submissions, loginEvents, auditEvents) run concurrently against
  * the DB. The cutoff is taken from `getDbNowMs()` so it is computed against
  * the same clock as the data timestamps, avoiding app-vs-DB clock skew.
  *
@@ -124,6 +130,7 @@ async function pruneSensitiveOperationalData() {
       pruneRecruitingInvitations(nowMs),
       pruneSubmissions(nowMs),
       pruneLoginEvents(nowMs),
+      pruneAuditEvents(nowMs),
     ]);
     for (const result of results) {
       if (result.status === "rejected") {
