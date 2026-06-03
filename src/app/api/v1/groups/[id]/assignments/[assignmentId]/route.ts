@@ -12,6 +12,7 @@ import {
 } from "@/lib/assignments/management";
 import { assignmentMutationSchema, assignmentPatchSchema } from "@/lib/validators/assignments";
 import { canAccessGroup } from "@/lib/auth/permissions";
+import { invalidateRankingCache } from "@/lib/assignments/contest-scoring";
 import { DEFAULT_PROBLEM_POINTS } from "@/lib/assignments/constants";
 import { createApiHandler, isAdminAsync, forbidden, notFound } from "@/lib/api/handler";
 import { getDbNowUncached } from "@/lib/db-time";
@@ -212,6 +213,13 @@ export const PATCH = createApiHandler({
       }
       throw error;
     }
+
+    // Edits to latePenalty / deadline / lateDeadline / scoringModel / problem
+    // points / freezeLeaderboardAt all change how the leaderboard is computed,
+    // but computeContestRanking caches per-assignment standings (30s TTL). Drop
+    // the cache so the leaderboard doesn't diverge from the live gradebook —
+    // mirroring the judge/rejudge/override paths.
+    invalidateRankingCache(assignmentId);
 
     const updatedAssignment = await db.query.assignments.findFirst({
       where: eq(assignments.id, assignmentId),

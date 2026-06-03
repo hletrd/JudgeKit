@@ -10,4 +10,14 @@ describe("updateAssignmentWithProblems implementation guards", () => {
     expect(source).toContain('throw new Error("assignmentProblemsLocked")');
     expect(source).toContain(".from(submissions)");
   });
+
+  it("invalidates the leaderboard ranking cache after an assignment PATCH", () => {
+    const route = readFileSync(
+      join(process.cwd(), "src/app/api/v1/groups/[id]/assignments/[assignmentId]/route.ts"),
+      "utf8"
+    );
+    // Scoring-affecting edits (latePenalty/deadline/points/scoringModel) must
+    // drop the cached standings so the leaderboard matches the gradebook.
+    expect(route).toContain("invalidateRankingCache(assignmentId)");
+  });
 });
