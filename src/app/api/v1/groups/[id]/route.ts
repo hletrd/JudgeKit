@@ -140,6 +140,15 @@ export const PATCH = createApiHandler({
     if (description !== undefined) updates.description = description ?? null;
     if (isArchived !== undefined) updates.isArchived = isArchived;
     if (instructorId !== undefined) {
+      // Ownership transfer is OWNER-or-admin only. canManageGroupResourcesAsync
+      // (the general edit gate above) also returns true for a co-instructor, so
+      // without this a co-instructor could reassign instructorId — demoting the
+      // current owner and taking over the group. Require the actor be the
+      // current owner or hold the org-wide groups.view_all capability.
+      const isOwner = group.instructorId === user.id;
+      if (!isOwner && !caps.has("groups.view_all")) {
+        return forbidden();
+      }
       const nextInstructor = await db.query.users.findFirst({
         where: (users, { eq: equals }) => equals(users.id, instructorId),
         columns: { id: true, role: true, isActive: true },

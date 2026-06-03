@@ -23,4 +23,12 @@ describe("group edit implementation", () => {
     expect(dialog).toContain("availableInstructors");
     expect(dialog).toContain("instructorId");
   });
+
+  it("restricts instructorId (ownership) transfer to the current owner or an org-wide admin", () => {
+    const route = read("src/app/api/v1/groups/[id]/route.ts");
+    // A co-instructor passes the general canManage edit gate, so the ownership
+    // field must be guarded separately or they could take over the group.
+    expect(route).toContain("const isOwner = group.instructorId === user.id");
+    expect(route).toContain('if (!isOwner && !caps.has("groups.view_all"))');
+  });
 });
