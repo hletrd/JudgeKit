@@ -8,9 +8,9 @@ import { recordAuditEvent } from "@/lib/audit/events";
 import { startExamSession, getExamSession } from "@/lib/assignments/exam-sessions";
 import { createApiHandler, forbidden, notFound } from "@/lib/api/handler";
 import { canManageGroupResourcesAsync } from "@/lib/assignments/management";
+import { canViewAssignmentSubmissions } from "@/lib/assignments/submissions";
 import { canAccessGroup } from "@/lib/auth/permissions";
 import { isUserRole } from "@/lib/security/constants";
-import { resolveCapabilities } from "@/lib/capabilities/cache";
 
 export const POST = createApiHandler({
   rateLimit: "exam-session:start",
@@ -94,7 +94,6 @@ export const GET = createApiHandler({
   handler: async (_req: NextRequest, { user, params }) => {
     const { id, assignmentId } = params;
     if (!isUserRole(user.role)) return forbidden();
-    const caps = await resolveCapabilities(user.role);
     const hasAccess = await canAccessGroup(id, user.id, user.role);
     if (!hasAccess) return forbidden();
 
@@ -105,19 +104,14 @@ export const GET = createApiHandler({
     if (!assignment || assignment.groupId !== id) return notFound("Assignment");
     if (assignment.examMode === "none") return notFound("ExamSession");
 
-    // Only group owner or admin can query another user's session
+    // Querying another participant's session requires a group-staff relationship
+    // for THIS assignment (owner / co-instructor / TA via hasGroupInstructorRole,
+    // or submissions.view_all) — NOT a bare global contests.view_analytics
+    // capability, which would let any analytics-holder enrolled as a participant
+    // read a co-participant's exam timing. Mirrors the participant-timeline route.
     const url = new URL(_req.url);
-    const group = await db.query.groups.findFirst({
-      where: eq(groups.id, id),
-      columns: { instructorId: true },
-    });
-    const canManage = await canManageGroupResourcesAsync(
-      group?.instructorId ?? null,
-      user.id,
-      user.role,
-      id
-    );
-    const targetUserId = (canManage || caps.has("contests.view_analytics"))
+    const canViewOthers = await canViewAssignmentSubmissions(assignmentId, user.id, user.role);
+    const targetUserId = canViewOthers
       ? (url.searchParams.get("userId") ?? user.id)
       : user.id;
 

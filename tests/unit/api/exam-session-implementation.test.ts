@@ -10,7 +10,11 @@ describe("exam session route capability guards", () => {
     );
 
     expect(source).toContain("canManageGroupResourcesAsync(");
-    expect(source).toContain('caps.has("contests.view_analytics")');
+    // The ?userId override must be gated on group-staff (canViewAssignmentSubmissions),
+    // NOT a bare global contests.view_analytics capability, which leaked a
+    // co-participant's exam timing to any enrolled analytics-holder.
+    expect(source).toContain("canViewAssignmentSubmissions(assignmentId, user.id, user.role)");
+    expect(source).not.toContain('caps.has("contests.view_analytics")');
     expect(source).not.toContain("isAdmin(user.role)");
   });
 });
