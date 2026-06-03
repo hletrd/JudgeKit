@@ -36,4 +36,18 @@ describe("recruiting invitation route capability guards", () => {
     expect(helper).toContain("accountPasswordResetRequired");
     expect(helper).not.toContain("Recruit-");
   });
+
+  it("does not embed raw candidate name/email in the creation audit event (references the invitation id)", () => {
+    const source = readFileSync(
+      join(process.cwd(), "src/app/api/v1/contests/[assignmentId]/recruiting-invitations/route.ts"),
+      "utf8"
+    );
+    // Audit must reference the invitation (resourceId/label) rather than copying
+    // candidate PII, which would survive in the audit log past account deletion.
+    expect(source).not.toContain("resourceLabel: body.candidateName");
+    // the old audit details embedded the raw email; it must not return
+    expect(source).not.toContain("details: { assignmentId, candidateEmail");
+    expect(source).toContain("resourceLabel: invitation.id");
+    expect(source).toContain("details: { assignmentId }");
+  });
 });

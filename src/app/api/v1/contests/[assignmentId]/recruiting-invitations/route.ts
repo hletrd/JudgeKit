@@ -111,9 +111,13 @@ export const POST = createApiHandler({
         action: "recruiting_invitation.created",
         resourceType: "recruiting_invitation",
         resourceId: invitation.id,
-        resourceLabel: body.candidateName,
-        summary: `Created recruiting invitation for "${body.candidateName}"`,
-        details: { assignmentId, candidateEmail: body.candidateEmail ?? null },
+        // Reference the invitation by id rather than embedding the candidate's
+        // name/email: the invitation row (resourceId) holds the PII and is
+        // scrubbed on account deletion + retention-pruned, so the audit trail
+        // must not retain a separate, longer-lived copy of candidate PII.
+        resourceLabel: invitation.id,
+        summary: `Created recruiting invitation ${invitation.id}`,
+        details: { assignmentId },
         request: req,
       });
 
