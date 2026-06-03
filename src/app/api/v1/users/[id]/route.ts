@@ -2,7 +2,7 @@ import { NextRequest } from "next/server";
 import { z } from "zod";
 import { apiSuccess, apiError } from "@/lib/api/responses";
 import { db, execTransaction } from "@/lib/db";
-import { users } from "@/lib/db/schema";
+import { users, recruitingInvitations } from "@/lib/db/schema";
 import { eq } from "drizzle-orm";
 import { forbidden, notFound, createApiHandler } from "@/lib/api/handler";
 import type { AuthUser } from "@/lib/api/handler";
@@ -470,7 +470,24 @@ export const DELETE = createApiHandler({
         request: req,
       });
 
-      await db.delete(users).where(eq(users.id, id));
+      // GDPR right-to-erasure: deleting the user only set-nulls
+      // recruiting_invitations.userId via the FK cascade, leaving the
+      // candidate's PII (name / email / IP / metadata) on the invitation row.
+      // Scrub it in the same transaction BEFORE the delete cascades, while the
+      // rows are still linked by userId.
+      await execTransaction(async (tx) => {
+        await tx
+          .update(recruitingInvitations)
+          .set({
+            candidateName: "[deleted]",
+            candidateEmail: null,
+            ipAddress: null,
+            metadata: {},
+          })
+          .where(eq(recruitingInvitations.userId, id));
+
+        await tx.delete(users).where(eq(users.id, id));
+      });
 
       return apiSuccess({ id, deleted: true });
     }

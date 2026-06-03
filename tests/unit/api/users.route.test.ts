@@ -118,6 +118,7 @@ vi.mock("@/lib/db", () => ({
     select: dbSelectMock,
     insert: dbInsertMock,
     update: dbUpdateMock,
+    delete: dbDeleteMock,
   })),
 }));
 
@@ -986,12 +987,15 @@ describe("DELETE /api/v1/users/[id]", () => {
     expect(recordAuditEventMock).toHaveBeenCalled();
   });
 
-  it("permanently deletes with ?permanent=true and username confirmation", async () => {
+  it("permanently deletes with ?permanent=true and scrubs recruiting-invitation PII", async () => {
     getApiUserMock.mockResolvedValue(superAdminUser);
     dbSelectMock.mockReturnValue(makeSelectChain([safeUser]));
 
     const deleteChain = { where: vi.fn().mockResolvedValue(undefined) };
     dbDeleteMock.mockReturnValue(deleteChain);
+    // GDPR scrub of recruiting_invitations runs as tx.update(...).set(...).where()
+    const scrubSet = vi.fn(() => ({ where: vi.fn().mockResolvedValue(undefined) }));
+    dbUpdateMock.mockReturnValue({ set: scrubSet });
 
     const req = makeRequest(
       "http://localhost:3000/api/v1/users/student-id?permanent=true",
@@ -1006,6 +1010,11 @@ describe("DELETE /api/v1/users/[id]", () => {
     expect(res.status).toBe(200);
     expect(body.data).toMatchObject({ id: "student-id", deleted: true });
     expect(dbDeleteMock).toHaveBeenCalled();
+    // GDPR right-to-erasure: candidate PII is wiped from the invitation rows
+    // before the user delete cascades userId to null.
+    expect(scrubSet).toHaveBeenCalledWith(
+      expect.objectContaining({ candidateName: "[deleted]", candidateEmail: null, ipAddress: null })
+    );
     expect(recordAuditEventMock).toHaveBeenCalled();
   });
 
