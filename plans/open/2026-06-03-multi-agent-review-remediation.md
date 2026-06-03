@@ -10,7 +10,13 @@ Status legend: ✅ done+pushed · 🔧 in progress · ⬜ todo · 🟡 needs dec
 
 ## CRITICAL
 
-### C1 ⬜ IOI partial scores inflated (worker early-break + truncated denominator)
+### C1 ✅ IOI partial scores inflated (worker early-break + truncated denominator) — FIXED + DEPLOYED
+Fixed in `c3a29e8a`: server signals `runAllTestCases = scoringModel === "ioi"`;
+worker `run_all_test_cases` (serde default false) only fail-fast-breaks when false.
+Deployed 2026-06-04: app live on algo (server side) + judge worker rebuilt on
+worker-0 (image a5442080, healthy) — fully active. ICPC/practice keep fail-fast.
+Original report below.
+
 `judge-worker-rs/src/executor.rs:617` breaks the test loop on the first non-AC
 verdict, reporting only the tests it ran. The server computes
 `score = passed / results.length` (`src/lib/judge/verdict.ts:46`) using that
