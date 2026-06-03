@@ -455,7 +455,7 @@ export function ProblemSubmissionForm({
                 </div>
                 {runResult.stderr && (
                   <div>
-                    <Label className="text-xs text-yellow-600 dark:text-yellow-400">{t("stderr")}</Label>
+                    <Label className="text-xs text-yellow-700 dark:text-yellow-400">{t("stderr")}</Label>
                     <pre className="mt-1 max-h-40 overflow-auto rounded bg-background p-2 text-xs whitespace-pre-wrap">{stderr.display}</pre>
                   </div>
                 )}

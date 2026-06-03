@@ -119,7 +119,11 @@ describe("source-grep test inventory", () => {
     //   - tests/unit/discussions-reply-count-implementation.test.ts — guards the
     //     H5 perf fix (reply counts via a batched count(*) aggregate, not eager
     //     post over-fetch). A behavioural test cannot easily assert the query shape.
-    const DOCUMENTED_BASELINE = 135;
+    // Bumped 135 -> 136 (2026-06-04):
+    //   - tests/unit/a11y-review-fixes-implementation.test.ts — guards the a11y
+    //     review fixes (contrast / diff cue / fullscreen-editor focus); the
+    //     durable invariant is the class/ARIA wiring, best pinned as text.
+    const DOCUMENTED_BASELINE = 136;
     expect(sourceGrepFiles.length).toBe(DOCUMENTED_BASELINE);
   });
 

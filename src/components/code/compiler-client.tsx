@@ -531,7 +531,7 @@ export function CompilerClient({ languages, title, description, preferredLanguag
             <div className="flex flex-1 flex-col gap-2 overflow-hidden">
               <div className="flex flex-wrap items-center gap-3 text-xs text-muted-foreground">
                 {result.timedOut && (
-                  <span className="font-medium text-yellow-600 dark:text-yellow-400">
+                  <span className="font-medium text-yellow-700 dark:text-yellow-400">
                     {t("timedOut")}
                   </span>
                 )}
