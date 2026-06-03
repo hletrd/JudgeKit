@@ -180,10 +180,13 @@ export async function computeContestAnalytics(assignmentId: string, includeTimel
   // summary can all run concurrently since they don't depend on each other.
   const [allAcSubs, contestMeta, cheatRows] = await Promise.all([
     rawQueryAll<{ userId: string; problemId: string; submittedAt: Date }>(
-      `SELECT s.user_id AS "userId", s.problem_id AS "problemId", s.submitted_at AS "submittedAt"
+      // Only the FIRST AC per (user, problem) is used downstream, so collapse to
+      // one row each with DISTINCT ON instead of scanning every AC submission.
+      `SELECT DISTINCT ON (s.user_id, s.problem_id)
+              s.user_id AS "userId", s.problem_id AS "problemId", s.submitted_at AS "submittedAt"
        FROM submissions s
        WHERE s.assignment_id = @assignmentId AND ROUND(s.score::numeric, 2) = 100
-       ORDER BY s.submitted_at ASC`,
+       ORDER BY s.user_id, s.problem_id, s.submitted_at ASC`,
       { assignmentId }
     ),
     rawQueryOne<{ startsAt: Date | null; deadline: Date | null; latePenalty: number | null; examMode: string }>(
@@ -240,15 +243,30 @@ export async function computeContestAnalytics(assignmentId: string, includeTimel
   let studentProgressions: StudentProgression[] | undefined;
   if (includeTimeline) {
     const submissionRows = await rawQueryAll<SubmissionTimeRow & { personalDeadline: Date | null }>(
-      `SELECT s.user_id AS "userId", u.name, s.problem_id AS "problemId", s.score, s.submitted_at AS "submittedAt",
-              COALESCE(ap.points, 100) AS points,
-              es.personal_deadline AS "personalDeadline"
-       FROM submissions s
-       INNER JOIN users u ON u.id = s.user_id
-       INNER JOIN assignment_problems ap ON ap.assignment_id = s.assignment_id AND ap.problem_id = s.problem_id
-       LEFT JOIN exam_sessions es ON es.assignment_id = s.assignment_id AND es.user_id = s.user_id
-       WHERE s.assignment_id = @assignmentId
-       ORDER BY s.submitted_at ASC`,
+      // The progression only adds a point when a submission raises the user's
+      // best for a problem; since late penalties are non-decreasing over time,
+      // any adjusted-score improvement implies a RAW-score improvement. So keep
+      // only raw record-breakers per (user, problem) via a window function — a
+      // superset of the points the JS will emit — instead of scanning every
+      // submission row. Output is identical; row count drops from O(all subs).
+      `SELECT "userId", name, "problemId", score, "submittedAt", points, "personalDeadline"
+       FROM (
+         SELECT s.user_id AS "userId", u.name, s.problem_id AS "problemId", s.score, s.submitted_at AS "submittedAt",
+                COALESCE(ap.points, 100) AS points,
+                es.personal_deadline AS "personalDeadline",
+                MAX(s.score) OVER (
+                  PARTITION BY s.user_id, s.problem_id
+                  ORDER BY s.submitted_at ASC
+                  ROWS BETWEEN UNBOUNDED PRECEDING AND 1 PRECEDING
+                ) AS prev_best
+         FROM submissions s
+         INNER JOIN users u ON u.id = s.user_id
+         INNER JOIN assignment_problems ap ON ap.assignment_id = s.assignment_id AND ap.problem_id = s.problem_id
+         LEFT JOIN exam_sessions es ON es.assignment_id = s.assignment_id AND es.user_id = s.user_id
+         WHERE s.assignment_id = @assignmentId
+       ) ranked
+       WHERE prev_best IS NULL OR score > prev_best
+       ORDER BY "submittedAt" ASC`,
       { assignmentId }
     );
 
