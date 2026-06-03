@@ -23,4 +23,12 @@ describe("a11y review fixes", () => {
     expect(diff).toContain('left?.kind === "remove" ? "-" : left?.kind === "add" ? "+"');
     expect(diff).toContain('right?.kind === "add" ? "+" : right?.kind === "remove" ? "-"');
   });
+
+  it("H6: fullscreen code-editor overlay is a focus-managed modal dialog", () => {
+    const editor = read("src/components/code/code-editor.tsx");
+    expect(editor).toContain('role: "dialog"');
+    expect(editor).toContain('"aria-modal": true');
+    expect(editor).toContain("handleTabTrap"); // focus trap inside the overlay
+    expect(editor).toContain("restoreFocusRef.current?.focus?.()"); // focus restore on close
+  });
 });

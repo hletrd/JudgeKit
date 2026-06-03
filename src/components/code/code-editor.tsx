@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import dynamic from "next/dynamic";
 import { Maximize2, Minimize2 } from "lucide-react";
 import { CodeEditorSkeleton } from "./code-editor-skeleton";
@@ -38,6 +38,8 @@ export function CodeEditor(props: CodeEditorProps) {
   const [isFullscreen, setIsFullscreen] = useState(false);
 
   const toggleFullscreen = useCallback(() => setIsFullscreen((f) => !f), []);
+  const overlayRef = useRef<HTMLDivElement>(null);
+  const restoreFocusRef = useRef<HTMLElement | null>(null);
 
   useEffect(() => {
     if (!isFullscreen) return;
@@ -49,6 +51,43 @@ export function CodeEditor(props: CodeEditorProps) {
     }
     document.addEventListener("keydown", handleEscape);
     return () => document.removeEventListener("keydown", handleEscape);
+  }, [isFullscreen]);
+
+  // Modal focus management for the fullscreen overlay (WCAG 2.4.3 / 2.1.2):
+  // remember the trigger, move focus into the dialog on open, trap Tab/Shift-Tab
+  // inside it, and restore focus to the trigger on close.
+  useEffect(() => {
+    if (!isFullscreen) return;
+    restoreFocusRef.current = (document.activeElement as HTMLElement | null) ?? null;
+    const container = overlayRef.current;
+    const focusableSelector =
+      'a[href], button:not([disabled]), textarea:not([disabled]), input:not([disabled]), select:not([disabled]), [contenteditable="true"], [tabindex]:not([tabindex="-1"])';
+    const visibleFocusables = () =>
+      Array.from(container?.querySelectorAll<HTMLElement>(focusableSelector) ?? []).filter(
+        (el) => el.offsetParent !== null,
+      );
+    visibleFocusables()[0]?.focus();
+
+    function handleTabTrap(e: KeyboardEvent) {
+      if (e.key !== "Tab") return;
+      const focusables = visibleFocusables();
+      if (focusables.length === 0) return;
+      const first = focusables[0];
+      const last = focusables[focusables.length - 1];
+      if (e.shiftKey && document.activeElement === first) {
+        e.preventDefault();
+        last.focus();
+      } else if (!e.shiftKey && document.activeElement === last) {
+        e.preventDefault();
+        first.focus();
+      }
+    }
+    const node = container;
+    node?.addEventListener("keydown", handleTabTrap);
+    return () => {
+      node?.removeEventListener("keydown", handleTabTrap);
+      restoreFocusRef.current?.focus?.();
+    };
   }, [isFullscreen]);
 
   const fullscreenOverlay = isFullscreen
@@ -90,7 +129,11 @@ export function CodeEditor(props: CodeEditorProps) {
   );
 
   return (
-    <div className={fullscreenOverlay || undefined}>
+    <div
+      ref={overlayRef}
+      className={fullscreenOverlay || undefined}
+      {...(isFullscreen ? { role: "dialog", "aria-modal": true, "aria-label": fullscreenLabel } : {})}
+    >
       {!isFullscreen && showFullscreen && (
         <div className="flex justify-end mb-1">
           <button
