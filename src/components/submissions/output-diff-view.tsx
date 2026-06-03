@@ -93,6 +93,9 @@ function SideBySideDiffView({ pairs }: { pairs: SideBySidePair[] }) {
                     <td className="w-1 select-none whitespace-nowrap px-1 py-0.5 text-right text-muted-foreground">
                       {left?.lineNo ?? ""}
                     </td>
+                    <td className="w-1 select-none whitespace-nowrap px-1 py-0.5 text-muted-foreground">
+                      {left?.kind === "remove" ? "-" : left?.kind === "add" ? "+" : " "}
+                    </td>
                     <td className="whitespace-pre-wrap break-all px-2 py-0.5">{left?.content ?? ""}</td>
                   </tr>
                 );
@@ -119,6 +122,9 @@ function SideBySideDiffView({ pairs }: { pairs: SideBySidePair[] }) {
                   >
                     <td className="w-1 select-none whitespace-nowrap px-1 py-0.5 text-right text-muted-foreground">
                       {right?.lineNo ?? ""}
+                    </td>
+                    <td className="w-1 select-none whitespace-nowrap px-1 py-0.5 text-muted-foreground">
+                      {right?.kind === "add" ? "+" : right?.kind === "remove" ? "-" : " "}
                     </td>
                     <td className="whitespace-pre-wrap break-all px-2 py-0.5">{right?.content ?? ""}</td>
                   </tr>

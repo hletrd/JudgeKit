@@ -17,4 +17,10 @@ describe("a11y review fixes", () => {
     expect(form).not.toContain('text-xs text-yellow-600');
     expect(compiler).not.toContain('font-medium text-yellow-600');
   });
+
+  it("M5: side-by-side diff marks add/remove rows with a +/- cue (not color alone)", () => {
+    const diff = read("src/components/submissions/output-diff-view.tsx");
+    expect(diff).toContain('left?.kind === "remove" ? "-" : left?.kind === "add" ? "+"');
+    expect(diff).toContain('right?.kind === "add" ? "+" : right?.kind === "remove" ? "-"');
+  });
 });
