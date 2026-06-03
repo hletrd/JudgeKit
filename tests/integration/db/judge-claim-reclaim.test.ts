@@ -118,6 +118,16 @@ describe.skipIf(!hasPostgresIntegrationSupport)("Judge claim reclaim after worke
     expect(row.worker).toBe("worker-B");
     expect(row.token).toBe(second.claimToken);
     expect(row.status).toBe("queued");
+
+    // The reclaim must RELEASE worker-A's active_tasks slot — it was bumped when
+    // A claimed and would otherwise leak forever (permanent phantom capacity
+    // loss) — and bump worker-B's.
+    const workers = await testDb.db
+      .select({ id: judgeWorkers.id, activeTasks: judgeWorkers.activeTasks })
+      .from(judgeWorkers);
+    const activeById = Object.fromEntries(workers.map((w) => [w.id, w.activeTasks]));
+    expect(activeById["worker-A"]).toBe(0);
+    expect(activeById["worker-B"]).toBe(1);
   });
 
   it("does NOT reclaim a fresh, actively-judging claim (no double-claim)", async () => {

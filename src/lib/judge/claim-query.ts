@@ -38,7 +38,8 @@ export function buildClaimSql(hasWorker: boolean): string {
         candidate AS (
           SELECT
             s.id,
-            s.status AS previous_status
+            s.status AS previous_status,
+            s.judge_worker_id AS previous_worker_id
           FROM submissions s
           INNER JOIN problems p ON p.id = s.problem_id
           WHERE EXISTS (SELECT 1 FROM worker_slot)
@@ -75,6 +76,21 @@ export function buildClaimSql(hasWorker: boolean): string {
             s.score,
             EXTRACT(EPOCH FROM s.judged_at)::bigint AS "judgedAt",
             EXTRACT(EPOCH FROM s.submitted_at)::bigint AS "submittedAt"
+        ),
+        prev_worker_release AS (
+          -- Reclaiming a stale submission: it was still counted against its
+          -- previous (now-unresponsive) worker's active_tasks. Release that slot
+          -- so the dead worker's capacity counter does not leak permanently.
+          -- Only fires when a distinct prior owner exists and the row was claimed;
+          -- a fresh 'pending' claim has previous_worker_id = NULL and is skipped.
+          UPDATE judge_workers AS jw
+          SET active_tasks = GREATEST(jw.active_tasks - 1, 0)
+          FROM candidate c
+          WHERE jw.id = c.previous_worker_id
+            AND c.previous_worker_id IS NOT NULL
+            AND c.previous_worker_id <> @workerId
+            AND EXISTS (SELECT 1 FROM claimed)
+          RETURNING jw.id
         ),
         worker_bump AS (
           UPDATE judge_workers
