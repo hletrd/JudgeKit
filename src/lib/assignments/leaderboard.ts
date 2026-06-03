@@ -206,29 +206,35 @@ export async function computeSingleUserLiveRank(
   // their resubmission count and producing a wrong live rank. It now uses a
   // per-problem-best inner CTE so the live rank agrees with the full board.
   //
-  // NOTE (N7-C7, still deferred): this single-user live rank does NOT overlay
-  // `score_overrides`, whereas the full board now does. Overlaying here needs a
-  // product decision (esp. ICPC, where an override has no AC timestamp). The
-  // per-problem-best CTE below makes the IOI overlay feasible later, but the
-  // overlay itself remains a deferred sub-item of N7-C7. The live rank is only
-  // shown to a student during the freeze window as an indicative position; the
-  // authoritative, override-aware standings come from `computeContestRanking`.
+  // The IOI live rank now overlays `score_overrides` so it agrees with the full
+  // board (which overlays IOI overrides) and cannot contradict the frozen
+  // standings shown to a student during the freeze window. The override REPLACES
+  // the per-problem adjusted best (presence test, not truthiness — an override of
+  // 0 legitimately zeroes the problem), and the late penalty is NOT re-applied on
+  // top of it — matching computeContestRanking's IOI semantics exactly. ICPC is
+  // intentionally NOT overlaid (here or on the board): an ICPC override has no AC
+  // timestamp to derive solved-state/penalty from (deferred, N7-C7-ICPC), so the
+  // ICPC live rank already agrees with the ICPC board.
   type IoiRankRow = { rank: number | null; hasSubmissions: boolean };
   const result = await rawQueryOne<IoiRankRow>(
     `WITH per_problem AS (
       SELECT
         s.user_id,
         s.problem_id,
-        MAX(
+        -- An instructor score override REPLACES the computed adjusted best for a
+        -- (user, problem) (presence test, not truthiness; no late penalty on top),
+        -- matching the full board. Overrides target a submitted problem.
+        CASE WHEN so.override_score IS NOT NULL THEN so.override_score ELSE MAX(
           CASE WHEN s.score IS NOT NULL THEN
             ${buildIoiLatePenaltyCaseExpr("s.score", "COALESCE(ap.points, 100)", "s.submitted_at", "es.personal_deadline")}
           ELSE 0
-        END) AS best
+        END) END AS best
       FROM submissions s
       INNER JOIN assignment_problems ap ON ap.assignment_id = s.assignment_id AND ap.problem_id = s.problem_id
       LEFT JOIN exam_sessions es ON es.assignment_id = s.assignment_id AND es.user_id = s.user_id
+      LEFT JOIN score_overrides so ON so.assignment_id = s.assignment_id AND so.user_id = s.user_id AND so.problem_id = s.problem_id
       WHERE s.assignment_id = @assignmentId AND s.status IN (${TERMINAL_SUBMISSION_STATUSES_SQL_LIST})
-      GROUP BY s.user_id, s.problem_id
+      GROUP BY s.user_id, s.problem_id, so.override_score
     ),
     user_scores AS (
       SELECT

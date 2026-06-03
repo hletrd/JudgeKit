@@ -21,4 +21,11 @@ describe("contest leaderboard live rank implementation", () => {
     expect(source).toContain('href={`/contests/manage/${assignmentId}/participant/${entry.userId}/timeline`}');
     expect(source).toContain('t("timeline")');
   });
+
+  it("overlays score_overrides in the IOI single-user live rank so it agrees with the frozen board", () => {
+    const source = read("src/lib/assignments/leaderboard.ts");
+    expect(source).toContain("LEFT JOIN score_overrides so ON so.assignment_id = s.assignment_id");
+    expect(source).toContain("CASE WHEN so.override_score IS NOT NULL THEN so.override_score ELSE MAX(");
+    expect(source).toContain("GROUP BY s.user_id, s.problem_id, so.override_score");
+  });
 });
