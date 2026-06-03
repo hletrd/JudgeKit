@@ -115,7 +115,11 @@ describe("source-grep test inventory", () => {
     //     score-inflation fix is a Rust-worker ↔ TS-server contract (worker runs
     //     all tests when the server flags IOI). No behavioural test can span that
     //     boundary, so a source-grep guard pins both sides.
-    const DOCUMENTED_BASELINE = 134;
+    // Bumped 134 -> 135 (2026-06-04):
+    //   - tests/unit/discussions-reply-count-implementation.test.ts — guards the
+    //     H5 perf fix (reply counts via a batched count(*) aggregate, not eager
+    //     post over-fetch). A behavioural test cannot easily assert the query shape.
+    const DOCUMENTED_BASELINE = 135;
     expect(sourceGrepFiles.length).toBe(DOCUMENTED_BASELINE);
   });
 

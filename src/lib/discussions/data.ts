@@ -53,6 +53,27 @@ async function listVoteSummaries(targetType: "thread" | "post", targetIds: strin
   );
 }
 
+/**
+ * Reply counts per thread via a single aggregate, instead of eager-loading every
+ * post row just to take `.length`. Mirrors listVoteSummaries' batched pattern.
+ */
+async function listReplyCounts(threadIds: string[]): Promise<Map<string, number>> {
+  if (threadIds.length === 0) return new Map<string, number>();
+  const rows = await db
+    .select({
+      threadId: discussionPosts.threadId,
+      count: sql<number>`count(*)`,
+    })
+    .from(discussionPosts)
+    .where(inArray(discussionPosts.threadId, threadIds))
+    .groupBy(discussionPosts.threadId);
+  return new Map(rows.map((row) => [row.threadId, Number(row.count ?? 0)]));
+}
+
+function withReplyCounts<T extends { id: string }>(threads: T[], counts: Map<string, number>) {
+  return threads.map((thread) => ({ ...thread, replyCount: counts.get(thread.id) ?? 0 }));
+}
+
 function withThreadVotes<T extends { id: string }>(threads: T[], summaries: Map<string, VoteSummary>) {
   return threads.map((thread) => ({
     ...thread,
@@ -90,14 +111,17 @@ export async function listGeneralDiscussionThreads(sort: "newest" | "popular" = 
     where: eq(discussionThreads.scopeType, "general"),
     with: {
       author: { columns: { id: true, name: true, role: true } },
-      posts: { columns: { id: true } },
     },
     orderBy: [desc(discussionThreads.pinnedAt), desc(discussionThreads.updatedAt)],
     limit: 50,
   });
 
-  const voteSummaries = await listVoteSummaries("thread", threads.map((thread) => thread.id), viewerUserId);
-  const withVotes = withThreadVotes(threads, voteSummaries);
+  const threadIds = threads.map((thread) => thread.id);
+  const [voteSummaries, replyCounts] = await Promise.all([
+    listVoteSummaries("thread", threadIds, viewerUserId),
+    listReplyCounts(threadIds),
+  ]);
+  const withVotes = withReplyCounts(withThreadVotes(threads, voteSummaries), replyCounts);
 
   if (sort === "popular") {
     return withVotes.sort(compareThreadsByPinnedVoteScoreDate);
@@ -133,7 +157,6 @@ export async function listAllProblemDiscussionThreads(
     ),
     with: {
       author: { columns: { id: true, name: true, role: true } },
-      posts: { columns: { id: true } },
       problem: { columns: { id: true, title: true, visibility: true } },
     },
     orderBy: [desc(discussionThreads.pinnedAt), desc(discussionThreads.updatedAt)],
@@ -159,8 +182,12 @@ export async function listAllProblemDiscussionThreads(
     visible = visible.concat(nonPublic.filter((thread) => thread.problem && accessible.has(thread.problem.id)));
   }
 
-  const voteSummaries = await listVoteSummaries("thread", visible.map((thread) => thread.id), viewer?.userId);
-  const withVotes = withThreadVotes(visible, voteSummaries);
+  const visibleIds = visible.map((thread) => thread.id);
+  const [voteSummaries, replyCounts] = await Promise.all([
+    listVoteSummaries("thread", visibleIds, viewer?.userId),
+    listReplyCounts(visibleIds),
+  ]);
+  const withVotes = withReplyCounts(withThreadVotes(visible, voteSummaries), replyCounts);
 
   if (sort === "popular") {
     return withVotes.sort(compareThreadsByPinnedVoteScoreDate);
@@ -178,14 +205,17 @@ export async function listProblemDiscussionThreads(problemId: string, viewerUser
     where: and(eq(discussionThreads.scopeType, "problem"), eq(discussionThreads.problemId, problemId)),
     with: {
       author: { columns: { id: true, name: true, role: true } },
-      posts: { columns: { id: true } },
     },
     orderBy: [desc(discussionThreads.pinnedAt), desc(discussionThreads.updatedAt)],
     limit: 50,
   });
 
-  const voteSummaries = await listVoteSummaries("thread", threads.map((thread) => thread.id), viewerUserId);
-  return withThreadVotes(threads, voteSummaries).sort(compareThreadsByPinnedVoteScoreDate);
+  const threadIds = threads.map((thread) => thread.id);
+  const [voteSummaries, replyCounts] = await Promise.all([
+    listVoteSummaries("thread", threadIds, viewerUserId),
+    listReplyCounts(threadIds),
+  ]);
+  return withReplyCounts(withThreadVotes(threads, voteSummaries), replyCounts).sort(compareThreadsByPinnedVoteScoreDate);
 }
 
 export async function listProblemSolutionThreads(problemId: string, viewerUserId?: string | null) {
@@ -193,14 +223,17 @@ export async function listProblemSolutionThreads(problemId: string, viewerUserId
     where: and(eq(discussionThreads.scopeType, "solution"), eq(discussionThreads.problemId, problemId)),
     with: {
       author: { columns: { id: true, name: true, role: true } },
-      posts: { columns: { id: true } },
     },
     orderBy: [desc(discussionThreads.pinnedAt), desc(discussionThreads.updatedAt)],
     limit: 50,
   });
 
-  const voteSummaries = await listVoteSummaries("thread", threads.map((thread) => thread.id), viewerUserId);
-  return withThreadVotes(threads, voteSummaries).sort(compareThreadsByPinnedVoteScoreDate);
+  const threadIds = threads.map((thread) => thread.id);
+  const [voteSummaries, replyCounts] = await Promise.all([
+    listVoteSummaries("thread", threadIds, viewerUserId),
+    listReplyCounts(threadIds),
+  ]);
+  return withReplyCounts(withThreadVotes(threads, voteSummaries), replyCounts).sort(compareThreadsByPinnedVoteScoreDate);
 }
 
 export async function listProblemEditorials(problemId: string, viewerUserId?: string | null) {

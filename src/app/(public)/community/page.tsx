@@ -216,7 +216,7 @@ export default async function CommunityPage({
             title: problemBadge ? `${problemBadge} · ${thread.title}` : thread.title,
             content: thread.content,
             authorName: thread.author?.name ?? t("community.unknownAuthor"),
-            replyCountLabel: t("community.replyCount", { count: thread.posts.length }),
+            replyCountLabel: t("community.replyCount", { count: thread.replyCount }),
             locked: Boolean(thread.lockedAt),
             pinned: Boolean(thread.pinnedAt),
             href,
