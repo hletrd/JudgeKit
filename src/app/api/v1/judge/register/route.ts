@@ -4,6 +4,7 @@ import { db } from "@/lib/db";
 import { judgeWorkers } from "@/lib/db/schema";
 import { isJudgeAuthorized, hashToken } from "@/lib/judge/auth";
 import { isJudgeIpAllowed } from "@/lib/judge/ip-allowlist";
+import { consumeApiRateLimit } from "@/lib/security/api-rate-limit";
 import { extractClientIp } from "@/lib/security/ip";
 import { logger } from "@/lib/logger";
 import { z } from "zod";
@@ -30,6 +31,14 @@ export async function POST(request: NextRequest) {
     if (!isJudgeAuthorized(request)) {
       return apiError("unauthorized", 401);
     }
+
+    // Rate-limit registrations per client IP. Each successful register INSERTs a
+    // new judge_workers row, so without this a holder of the shared judge token
+    // (leaked CI/compose env, backup, compromised worker) could flood the table
+    // with 'online' rows. Unlike claim, register has no per-worker identity yet,
+    // so the limiter keys on IP.
+    const rateLimitResponse = await consumeApiRateLimit(request, "judge:register");
+    if (rateLimitResponse) return rateLimitResponse;
 
     let raw: unknown;
     try {

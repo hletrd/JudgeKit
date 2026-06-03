@@ -10,6 +10,7 @@ const {
   valuesMock,
   returningMock,
   extractClientIpMock,
+  consumeApiRateLimitMock,
   loggerMock,
 } = vi.hoisted(() => ({
   isJudgeAuthorizedMock: vi.fn(),
@@ -17,12 +18,17 @@ const {
   valuesMock: vi.fn(),
   returningMock: vi.fn(),
   extractClientIpMock: vi.fn(),
+  consumeApiRateLimitMock: vi.fn(),
   loggerMock: { info: vi.fn(), error: vi.fn(), warn: vi.fn(), debug: vi.fn() },
 }));
 
 vi.mock("@/lib/judge/auth", () => ({
   isJudgeAuthorized: isJudgeAuthorizedMock,
   hashToken: (value: string) => `hashed:${value}`,
+}));
+
+vi.mock("@/lib/security/api-rate-limit", () => ({
+  consumeApiRateLimit: consumeApiRateLimitMock,
 }));
 
 vi.mock("@/lib/security/ip", () => ({
@@ -82,6 +88,7 @@ beforeEach(() => {
 
   isJudgeAuthorizedMock.mockReturnValue(true);
   extractClientIpMock.mockReturnValue("192.168.1.100");
+  consumeApiRateLimitMock.mockResolvedValue(null); // not rate-limited by default
 
   returningMock.mockResolvedValue([{ id: "worker-1" }]);
   valuesMock.mockReturnValue({
@@ -96,6 +103,17 @@ beforeEach(() => {
 // Tests
 // ---------------------------------------------------------------------------
 describe("POST /api/v1/judge/register", () => {
+  it("returns the rate-limit response and does NOT insert a worker when throttled", async () => {
+    const { NextResponse } = await import("next/server");
+    consumeApiRateLimitMock.mockResolvedValue(NextResponse.json({ error: "rateLimited" }, { status: 429 }));
+
+    const response = await POST(makeRequest(VALID_BODY));
+
+    expect(response.status).toBe(429);
+    // crucial: a throttled register must not bloat judge_workers with a new row
+    expect(insertMock).not.toHaveBeenCalled();
+  });
+
   it("registers a worker successfully", async () => {
     const response = await POST(makeRequest(VALID_BODY));
     const payload = await response.json();
