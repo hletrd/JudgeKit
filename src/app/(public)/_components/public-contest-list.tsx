@@ -68,7 +68,7 @@ export function PublicContestList({
               <Link key={contest.id} href={contest.href} className="block rounded-lg focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2">
                 <Card className={getContestStatusBorderClass(contest.statusKey)}>
                   <CardContent className="p-4">
-                    <div className="flex items-center gap-4">
+                    <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:gap-4">
                       <div className="min-w-0 flex-1">
                         <div className="mb-1 flex items-center gap-2">
                           <span className="truncate font-medium">{contest.title}</span>
@@ -88,7 +88,7 @@ export function PublicContestList({
                           <p className="mt-2 line-clamp-2 text-sm text-muted-foreground">{contest.description}</p>
                         ) : null}
                       </div>
-                      <div className="flex shrink-0 items-center gap-2">
+                      <div className="flex flex-wrap items-center gap-2 sm:justify-end">
                         <Badge variant="outline">{contest.statusLabel}</Badge>
                         <Badge className={getExamModeBadgeClass(contest.modeKey)}>
                           {contest.modeLabel}
@@ -114,7 +114,7 @@ export function PublicContestList({
                       <Link key={contest.id} href={contest.href} className="block rounded-lg focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2">
                         <Card className={getContestStatusBorderClass(contest.statusKey)}>
                           <CardContent className="p-4">
-                            <div className="flex items-center gap-4">
+                            <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:gap-4">
                               <div className="min-w-0 flex-1">
                                 <div className="mb-1 flex items-center gap-2">
                                   <span className="truncate font-medium">{contest.title}</span>
@@ -131,7 +131,7 @@ export function PublicContestList({
                                   <span>{contest.deadlineLabel}</span>
                                 </div>
                               </div>
-                              <div className="flex shrink-0 items-center gap-2">
+                              <div className="flex flex-wrap items-center gap-2 sm:justify-end">
                                 <Badge variant="outline">{contest.statusLabel}</Badge>
                                 <Badge className={getExamModeBadgeClass(contest.modeKey)}>
                                   {contest.modeLabel}

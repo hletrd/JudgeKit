@@ -122,7 +122,7 @@ export default async function PublicContestsPage() {
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
             {myContests.map((contest) => {
               const detailHref = buildLocalePath(`/contests/${contest.id}`, locale);
-              const cardClass = `flex items-center gap-4 rounded-lg border p-4 transition-colors hover:bg-accent/50 ${getContestStatusBorderClass(contest.status)}`;
+              const cardClass = `flex flex-col gap-3 rounded-lg border p-4 transition-colors hover:bg-accent/50 sm:flex-row sm:items-center sm:gap-4 ${getContestStatusBorderClass(contest.status)}`;
               return (
                 <div key={contest.id} className={cardClass}>
                   <Link href={detailHref} className="flex-1 min-w-0">
@@ -150,7 +150,7 @@ export default async function PublicContestsPage() {
                       )}
                     </div>
                   </Link>
-                  <div className="flex items-center gap-2 shrink-0">
+                  <div className="flex flex-wrap items-center gap-2 sm:justify-end">
                     <Badge variant={getContestStatusBadgeVariant(contest.status)} className="text-xs">
                       {statusLabels[contest.status]}
                     </Badge>
