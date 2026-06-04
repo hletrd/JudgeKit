@@ -221,9 +221,7 @@ export async function computeSingleUserLiveRank(
       SELECT
         s.user_id,
         s.problem_id,
-        -- An instructor score override REPLACES the computed adjusted best for a
-        -- (user, problem) (presence test, not truthiness; no late penalty on top),
-        -- matching the full board. Overrides target a submitted problem.
+        -- Override replaces the computed best (see overlay note above).
         CASE WHEN so.override_score IS NOT NULL THEN so.override_score ELSE MAX(
           CASE WHEN s.score IS NOT NULL THEN
             ${buildIoiLatePenaltyCaseExpr("s.score", "COALESCE(ap.points, 100)", "s.submitted_at", "es.personal_deadline")}
