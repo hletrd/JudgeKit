@@ -6,6 +6,7 @@ const {
   consumeApiRateLimitMock,
   resolveCapabilitiesMock,
   getEffectivePlatformModeMock,
+  getEffectiveModeRestrictionsMock,
   resolvePlatformModeAssignmentContextDetailsMock,
   loggerWarnMock,
 } = vi.hoisted(() => ({
@@ -13,6 +14,7 @@ const {
   consumeApiRateLimitMock: vi.fn(),
   resolveCapabilitiesMock: vi.fn(),
   getEffectivePlatformModeMock: vi.fn(),
+  getEffectiveModeRestrictionsMock: vi.fn(),
   resolvePlatformModeAssignmentContextDetailsMock: vi.fn(),
   loggerWarnMock: vi.fn(),
 }));
@@ -48,6 +50,10 @@ vi.mock("@/lib/platform-mode-context", () => ({
   getEffectivePlatformMode: getEffectivePlatformModeMock,
   resolvePlatformModeAssignmentContextDetails:
     resolvePlatformModeAssignmentContextDetailsMock,
+}));
+
+vi.mock("@/lib/system-settings", () => ({
+  getEffectiveModeRestrictions: getEffectiveModeRestrictionsMock,
 }));
 
 vi.mock("@/lib/db", () => ({
@@ -95,6 +101,15 @@ describe("POST /api/v1/compiler/run", () => {
     consumeApiRateLimitMock.mockResolvedValue(null);
     resolveCapabilitiesMock.mockResolvedValue(new Set(["content.submit_solutions"]));
     getEffectivePlatformModeMock.mockResolvedValue("homework");
+    // Mirror getPlatformModePolicy's defaults (no admin opt-out): exam and
+    // recruiting restrict the standalone compiler; homework/contest do not.
+    getEffectiveModeRestrictionsMock.mockImplementation((mode: string) =>
+      Promise.resolve({
+        restrictAiByDefault:
+          mode === "exam" || mode === "contest" || mode === "recruiting",
+        restrictStandaloneCompiler: mode === "exam" || mode === "recruiting",
+      })
+    );
     resolvePlatformModeAssignmentContextDetailsMock.mockImplementation(
       ({ assignmentId }: { assignmentId?: string | null }) =>
         Promise.resolve({ assignmentId: assignmentId ?? null, mismatch: null })
