@@ -54,45 +54,51 @@ full worker fix.
 - H1 ✅ **Cross-instructor write IDOR on PATCH/DELETE /problems/[id]** — `8b6affdd`.
   Added `canManageProblem` (author / groups.view_all / taught-group-linked; public
   ≠ writable) gating both handlers. +5 tests.
-- H2 ⬜ **90-day audit-event retention never enforced** — `startAuditEventPruning`
-  is a no-op and `pruneSensitiveOperationalData` omits `auditEvents`; the table
-  (with candidate PII) grows forever. Add `pruneAuditEvents(now)` + include in the
-  maintenance Promise.allSettled + register the schedule.
-- H3 ⬜ **Account deletion leaves recruiting-invitation PII** — permanent
-  `db.delete(users)` doesn't scrub `recruiting_invitations.{candidateName,
-  candidateEmail,ipAddress,metadata}` (userId is `set null`). GDPR erasure gap.
-  Scrub/delete invitation PII in the same transaction.
-- H4 ⬜ **Stale-claim reclaim leaks the previous worker's active_tasks** — reclaim
-  bumps the new worker but never decrements the dead worker's counter → permanent
-  phantom capacity loss. Decrement previous owner atomically in `claim-query.ts`.
-- H5 ⬜ **Discussion thread list over-fetches all post rows for reply counts**
-  (perf) — replace eager `posts` relation with a batched `COUNT(*) GROUP BY thread_id`.
-- H6 ⬜ **Fullscreen code-editor overlay has no focus management** (a11y) — add
-  role="dialog" aria-modal, focus move-in, focus trap, and focus restore on close.
+- H2 ✅ **90-day audit-event retention never enforced** — `39420539`. Added
+  `pruneAuditEvents(now)` + included it in the `pruneSensitiveOperationalData`
+  Promise.allSettled (widened `batchedDelete`'s table union to `auditEvents`). +test.
+- H3 ✅ **Account deletion leaves recruiting-invitation PII** — `16212175`. Permanent
+  delete now scrubs `recruiting_invitations.{candidateName,candidateEmail,ipAddress,
+  metadata}` in the same `execTransaction`, BEFORE the FK `set null` cascade. +test.
+- H4 ✅ **Stale-claim reclaim leaks the previous worker's active_tasks** — `ed73a23b`.
+  Added a `prev_worker_release` CTE that decrements the prior owner's `active_tasks`
+  (`GREATEST(-1,0)`, only when prev≠new and a claim happened) atomically. +guard test.
+- H5 ✅ **Discussion thread list over-fetches all post rows for reply counts**
+  (perf) — `90558b22`. `listReplyCounts` batched `COUNT(*) GROUP BY thread_id`;
+  4 list fns attach `replyCount` instead of eager `posts`; 2 consumers updated. +test.
+- H6 ✅ **Fullscreen code-editor overlay has no focus management** (a11y) — `c6cdfbe7`.
+  Added role="dialog" aria-modal aria-label, focus move-in, Tab/Shift-Tab trap, and
+  focus restore on close. +guard test.
 
 ## MEDIUM
 
-- M1 ⬜ **Co-instructor can transfer group ownership** via PATCH /groups/[id]
-  `instructorId` — gate that field on current-owner-or-admin, not co-instructor.
-- M2 ⬜ **Assignment PATCH doesn't invalidate the leaderboard ranking cache** —
-  add `invalidateRankingCache(assignmentId)` after `updateAssignmentWithProblems`.
-- M3 ⬜ **Candidate name/email written unredacted into `audit_events.details`** —
-  reference invitation/user id instead, or redact; ensure covered by retention (H2).
-- M4 ⬜ **computeContestAnalytics fetches all submission rows (no LIMIT)** (perf) —
-  push progression/first-AC aggregation into SQL (window funcs / DISTINCT ON).
-- M5 ⬜ **Side-by-side diff distinguishes add/remove by color only** (a11y) — add a
-  ± marker / sr-only label per differing row.
-- M6 ⬜ **yellow-600 on light bg fails 4.5:1 contrast** (a11y) — use yellow-700/amber-700.
+- M1 ✅ **Co-instructor can transfer group ownership** via PATCH /groups/[id]
+  `instructorId` — `b6e38593`. Gated the `instructorId` field on
+  current-owner-or-`groups.view_all`, not the general co-instructor edit gate. +test.
+- M2 ✅ **Assignment PATCH doesn't invalidate the leaderboard ranking cache** —
+  `43b7cda0`. Calls `invalidateRankingCache(assignmentId)` after the update. +guard test.
+- M3 ✅ **Candidate name/email written unredacted into `audit_events.details`** —
+  `a951da85`. Audit event now references `invitation.id` only (no raw name/email);
+  covered by retention (H2). +test.
+- M4 ✅ **computeContestAnalytics fetches all submission rows (no LIMIT)** (perf) —
+  `84c55ce7`. First-AC via `DISTINCT ON (user,problem)`; progression via window
+  `MAX(score) OVER (... ROWS … 1 PRECEDING)` filtered to raw record-breakers. +guard test.
+- M5 ✅ **Side-by-side diff distinguishes add/remove by color only** (a11y) — `604646bb`.
+  Added a `+`/`-` marker column to both panels. +guard test.
+- M6 ✅ **yellow-600 on light bg fails 4.5:1 contrast** (a11y) — `22141e82`.
+  `text-yellow-700` (keeps `dark:text-yellow-400`). +guard test.
 
 ## LOW
 
-- L1 ⬜ **judge /register: no rate limit or dedup** — add a rate-limit bucket +
-  upsert/cap by hostname (shared-token-holder DoS / table bloat).
-- L2 ⬜ **exam-session GET cross-participant timing leak** — `?userId=` override
-  honored on bare `contests.view_analytics`; require a group-manage relationship
-  (use `canViewAssignmentSubmissions`, like the sibling participant-timeline route).
-- L3 ⬜ **Frozen-window self live-rank ignores score overrides** — overlay
-  `score_overrides` in `computeSingleUserLiveRank`, or hide the live-rank badge.
+- L1 ✅ **judge /register: no rate limit or dedup** — `0b084f4b`. IP-keyed
+  `consumeApiRateLimit(request, "judge:register")` before the insert. +test.
+- L2 ✅ **exam-session GET cross-participant timing leak** — `e7e905ca`. `?userId=`
+  override now gated by `canViewAssignmentSubmissions` (removed the bare
+  `contests.view_analytics` path), matching the participant-timeline route. +test.
+- L3 ✅ **Frozen-window self live-rank ignores score overrides** — `15b37782`.
+  IOI `computeSingleUserLiveRank` LEFT JOINs `score_overrides` and overlays the
+  override (presence test; no late penalty on top), agreeing with the board. +guard test.
+  (ICPC overlay still deferred — N7-C7-ICPC: an ICPC override has no AC timestamp.)
 
 ---
 
