@@ -65,11 +65,13 @@ export default function EditTagDialog({ tag }: EditTagDialogProps) {
 
   return (
     <Dialog open={open} onOpenChange={setOpen}>
-      <DialogTrigger>
-        <Button variant="ghost" size="sm">
-          <Pencil className="size-4" />
-        </Button>
-      </DialogTrigger>
+      <DialogTrigger
+        render={
+          <Button variant="ghost" size="sm">
+            <Pencil className="size-4" />
+          </Button>
+        }
+      />
       <DialogContent className="sm:max-w-[425px]">
         <form onSubmit={handleSubmit} className="space-y-4">
           <DialogHeader>
