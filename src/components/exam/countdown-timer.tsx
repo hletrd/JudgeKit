@@ -216,9 +216,14 @@ export function CountdownTimer({ deadline, label, onExpired }: CountdownTimerPro
 
   return (
     <>
-      <Badge role="timer" className={`font-mono text-sm`} variant={getTimerVariant(remaining)}>
+      {/* The remaining-time text is computed from the current clock, so the
+          server-rendered value and the value the client computes at hydration
+          time can differ by a tick — an unavoidable timestamp mismatch. Suppress
+          the hydration warning (React keeps the server text, then the 1s tick
+          effect updates it) to avoid a spurious React #418 hydration error. */}
+      <Badge role="timer" className={`font-mono text-sm`} variant={getTimerVariant(remaining)} suppressHydrationWarning>
         {label && <span className="mr-1">{label}:</span>}
-        <span className={textColor || undefined}>
+        <span className={textColor || undefined} suppressHydrationWarning>
           {expired ? "00:00:00" : formatDuration(remaining)}
         </span>
       </Badge>
