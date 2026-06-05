@@ -7,7 +7,7 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { SubmissionStatusBadge } from "@/components/submission-status-badge";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
+import { Collapsible, CollapsibleContent } from "@/components/ui/collapsible";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 import { type AssignmentStudentStatusRow } from "@/lib/assignments/submissions";
@@ -127,7 +127,23 @@ function MobileStudentCard({
   return (
     <Collapsible open={open} onOpenChange={setOpen}>
       <div className="rounded-lg border p-3">
-        <CollapsibleTrigger className="flex w-full items-center justify-between gap-2 text-left">
+        {/* A native <button> trigger may not contain the student-name <Link> /
+            view-submissions <Button> (interactive content inside a button is
+            invalid HTML and throws a React #418 hydration mismatch). Use an
+            accessible div-button wired to the same open state instead. */}
+        <div
+          role="button"
+          tabIndex={0}
+          aria-expanded={open}
+          onClick={() => setOpen(!open)}
+          onKeyDown={(e) => {
+            if (e.key === "Enter" || e.key === " ") {
+              e.preventDefault();
+              setOpen(!open);
+            }
+          }}
+          className="flex w-full cursor-pointer items-center justify-between gap-2 text-left"
+        >
           <div className="min-w-0 flex-1">
             <div className="flex items-center gap-2">
               <Link
@@ -170,7 +186,7 @@ function MobileStudentCard({
             </div>
           </div>
           <ChevronDown className={`size-4 shrink-0 text-muted-foreground transition-transform ${open ? "rotate-180" : ""}`} />
-        </CollapsibleTrigger>
+        </div>
         <CollapsibleContent className="mt-3 space-y-2">
           <div className="text-xs text-muted-foreground">
             {labels.class}: {row.className ?? labels.notSet} · {labels.attempts}: {row.attemptCount}
