@@ -397,6 +397,14 @@ export const config = {
     "/playground/:path*",
     "/contests/:path*",
     "/community/:path*",
+    // These page routes must also receive the runtime nonce CSP. Without them
+    // the request falls to the strict static fallback in next.config.ts
+    // (script-src 'self' only), which blocks Next.js's streaming inline scripts
+    // and logs a CSP violation on every load (SEC: same class as SEC-21-3).
+    "/problems/:path*",
+    "/groups/:path*",
+    "/profile/:path*",
+    "/privacy",
     "/rankings/:path*",
     "/submissions/:path*",
     "/languages/:path*",
