@@ -122,7 +122,12 @@ export default function AssignmentFormDialog({
     formatDateTimeInput(defaultAssignment?.lateDeadline ?? null)
   );
   const [latePenalty, setLatePenalty] = useState(defaultAssignment?.latePenalty ?? 0);
-  const [examMode, setExamMode] = useState<"none" | "scheduled" | "windowed">(defaultAssignment?.examMode ?? "none");
+  // Coerce any corrupt/legacy exam_mode value (e.g. a stray "0.0" from old data)
+  // to a valid mode, so the form never builds an invalid i18n key such as
+  // `examModeDescription_0.0` (which surfaces as a MISSING_MESSAGE console error).
+  const normalizeExamMode = (m: unknown): "none" | "scheduled" | "windowed" =>
+    m === "scheduled" || m === "windowed" ? m : "none";
+  const [examMode, setExamMode] = useState<"none" | "scheduled" | "windowed">(normalizeExamMode(defaultAssignment?.examMode));
   const [visibility, setVisibility] = useState<"private" | "public">(defaultAssignment?.visibility ?? "private");
   const [examDurationMinutes, setExamDurationMinutes] = useState<number | null>(defaultAssignment?.examDurationMinutes ?? null);
   const [scoringModel, setScoringModel] = useState<"ioi" | "icpc">(defaultAssignment?.scoringModel ?? "ioi");
@@ -165,7 +170,7 @@ export default function AssignmentFormDialog({
     setDeadline(formatDateTimeInput(defaultAssignment?.deadline ?? null));
     setLateDeadline(formatDateTimeInput(defaultAssignment?.lateDeadline ?? null));
     setLatePenalty(defaultAssignment?.latePenalty ?? 0);
-    setExamMode(defaultAssignment?.examMode ?? "none");
+    setExamMode(normalizeExamMode(defaultAssignment?.examMode));
     setVisibility(defaultAssignment?.visibility ?? "private");
     setExamDurationMinutes(defaultAssignment?.examDurationMinutes ?? null);
     setScoringModel(defaultAssignment?.scoringModel ?? "ioi");
