@@ -461,6 +461,28 @@ export default async function ProblemsPage({
   const rangeStart = totalCount === 0 ? 0 : offset + 1;
   const rangeEnd = offset + filteredProblems.length;
 
+  // Stable per-problem catalog number. Each problem's displayed number is its
+  // rank within the viewer's full visible set (access scope only — independent
+  // of the search/tag/visibility/progress filters AND of pagination), by the
+  // same canonical order used for display. This keeps a problem's number fixed
+  // no matter which page or filter the viewer is on, replacing the old
+  // page-relative `offset + index + 1` fallback that shifted across pages.
+  const orderedVisibleIdRows = accessFilter
+    ? await db
+        .select({ id: problems.id })
+        .from(problems)
+        .leftJoin(users, eq(problems.authorId, users.id))
+        .where(accessFilter)
+        .orderBy(asc(problems.sequenceNumber), asc(problems.createdAt))
+    : await db
+        .select({ id: problems.id })
+        .from(problems)
+        .leftJoin(users, eq(problems.authorId, users.id))
+        .orderBy(asc(problems.sequenceNumber), asc(problems.createdAt));
+  const catalogNumberByProblemId = new Map(
+    orderedVisibleIdRows.map((row, idx) => [row.id, idx + 1] as const)
+  );
+
   // Quick stats: count solved/attempted/untried across all visible problems
   const solvedCount = filteredProblems.filter((p) => p.progress === "solved").length;
   const attemptedCount = filteredProblems.filter((p) => p.progress === "attempted").length;
@@ -670,7 +692,7 @@ export default async function ProblemsPage({
               {filteredProblems.map((problem, index) => (
                 <TableRow key={problem.id}>
                   <TableCell className="text-muted-foreground font-mono">
-                    {problem.sequenceNumber ?? offset + index + 1}
+                    {problem.sequenceNumber ?? catalogNumberByProblemId.get(problem.id) ?? offset + index + 1}
                   </TableCell>
                   <TableCell className="font-medium">
                     <Link href={`/problems/${problem.id}`} className="text-primary hover:underline">

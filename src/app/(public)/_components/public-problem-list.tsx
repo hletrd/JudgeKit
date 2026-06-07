@@ -20,6 +20,13 @@ type PublicProblemListItem = {
   id: string;
   href: string;
   sequenceNumber: number | null;
+  /**
+   * Stable per-problem catalog number used when `sequenceNumber` is null.
+   * It is the problem's rank within the full catalog by the canonical order,
+   * so it stays fixed across pagination and filters — unlike the page-relative
+   * row index, which restarts on every page.
+   */
+  displayNumber?: number | null;
   title: string;
   difficultyLabel: string | null;
   difficultyTier: ProblemTierInfo | null;
@@ -125,7 +132,7 @@ export function PublicProblemList({
                   {problems.map((problem, index) => (
                     <TableRow key={problem.id}>
                       <TableCell className="text-center font-mono text-sm text-muted-foreground">
-                        {problem.sequenceNumber ?? index + 1}
+                        {problem.sequenceNumber ?? problem.displayNumber ?? index + 1}
                       </TableCell>
                       <TableCell>
                         <Link

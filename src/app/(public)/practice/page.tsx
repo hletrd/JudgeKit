@@ -535,6 +535,21 @@ export default async function PracticePage({
   const rangeStart = totalCount === 0 ? 0 : offset + 1;
   const rangeEnd = offset + filteredProblems.length;
 
+  // Stable per-problem catalog number. Each problem's displayed number is its
+  // rank within the full public catalog (independent of the search/tag/
+  // difficulty/sort/progress filters AND of pagination), by the canonical
+  // number-ascending order. This keeps a problem's number fixed no matter which
+  // page or filter the viewer is on, replacing the page-relative `index + 1`
+  // fallback that restarted on every page.
+  const orderedCatalogIdRows = await db
+    .select({ id: problems.id })
+    .from(problems)
+    .where(visibilityFilter)
+    .orderBy(asc(problems.sequenceNumber), asc(problems.createdAt));
+  const catalogNumberByProblemId = new Map(
+    orderedCatalogIdRows.map((row, idx) => [row.id, idx + 1] as const)
+  );
+
   // Sort option labels
   const sortOptionLabels: Record<SortOption, string> = {
     number_asc: t("practice.sortOptions.number_asc"),
@@ -706,6 +721,7 @@ export default async function PracticePage({
             id: problem.id,
             href: buildLocalePath(`/practice/problems/${problem.id}`, locale),
             sequenceNumber: problem.sequenceNumber ?? null,
+            displayNumber: catalogNumberByProblemId.get(problem.id) ?? null,
             title: problem.title,
             difficultyLabel: problem.difficulty != null
               ? formatDifficulty(problem.difficulty, locale)
