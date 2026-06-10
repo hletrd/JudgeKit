@@ -224,17 +224,25 @@ export async function validateAssignmentSubmission(
   // between app and DB servers, consistent with other schedule checks.
   const now = isAdminLevel ? 0 : (await getDbNowUncached()).getTime();
 
-  // Fetched before the schedule checks: a staff-granted personal time
-  // extension (extendExamSession, RPF cycle-1 AGG-5) may place a windowed-exam
-  // participant's personal_deadline PAST the assignment close, and the close
-  // check below must honor it.
-  const examSession =
-    !isAdminLevel && assignment.examMode === "windowed"
-      ? await db.query.examSessions.findFirst({
-          where: and(eq(examSessions.assignmentId, assignment.id), eq(examSessions.userId, userId)),
-          columns: { personalDeadline: true },
-        })
-      : null;
+  // Fetched before the schedule checks (in one parallel pair, preserving the
+  // pre-AGG-5 single-round-trip shape of the submit hot path): a staff-granted
+  // personal time extension (extendExamSession, RPF cycle-1 AGG-5) may place a
+  // windowed-exam participant's personal_deadline PAST the assignment close,
+  // and the close check below must honor it.
+  const [enrollment, examSession] = isAdminLevel
+    ? [null, null]
+    : await Promise.all([
+        db.query.enrollments.findFirst({
+          where: and(eq(enrollments.groupId, assignment.groupId), eq(enrollments.userId, userId)),
+          columns: { id: true },
+        }),
+        assignment.examMode === "windowed"
+          ? db.query.examSessions.findFirst({
+              where: and(eq(examSessions.assignmentId, assignment.id), eq(examSessions.userId, userId)),
+              columns: { personalDeadline: true },
+            })
+          : Promise.resolve(null),
+      ]);
 
   if (!isAdminLevel) {
     const startsAt = assignment.startsAt?.valueOf() ?? null;
@@ -264,11 +272,6 @@ export async function validateAssignmentSubmission(
   }
 
   if (!isAdminLevel) {
-    const enrollment = await db.query.enrollments.findFirst({
-      where: and(eq(enrollments.groupId, assignment.groupId), eq(enrollments.userId, userId)),
-      columns: { id: true },
-    });
-
     if (!enrollment) {
       // Check for contest access token as enrollment alternative
       const accessToken = await db.query.contestAccessTokens.findFirst({

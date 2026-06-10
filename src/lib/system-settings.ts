@@ -204,10 +204,13 @@ export const getResolvedSystemSettings = cache(async (defaults: {
  * flags behave exactly as before unless an admin opts out.
  */
 export async function getEffectiveModeRestrictions(
-  mode: PlatformMode
+  mode: PlatformMode,
+  preloadedSettings?: SystemSettingsRecord | undefined
 ): Promise<{ restrictAiByDefault: boolean; restrictStandaloneCompiler: boolean }> {
   const base = getPlatformModePolicy(mode);
-  const settings = await getSystemSettings();
+  // Callers that already hold the settings record pass it to avoid a second
+  // settings query per resolution (getSystemSettings is not memoized).
+  const settings = preloadedSettings ?? (await getSystemSettings());
   return {
     restrictAiByDefault:
       base.restrictAiByDefault && !(settings?.allowAiAssistantInRestrictedModes ?? false),
@@ -223,8 +226,9 @@ export async function isAiAssistantEnabled(): Promise<boolean> {
     // The platform mode forces AI off in restricted modes UNLESS the admin has
     // explicitly opted out via allowAiAssistantInRestrictedModes. Single source
     // of truth for that rule: getEffectiveModeRestrictions (do not re-derive
-    // the override inline — see also isAiAssistantEnabledForContext).
-    const { restrictAiByDefault } = await getEffectiveModeRestrictions(platformMode);
+    // the override inline — see also isAiAssistantEnabledForContext). The
+    // already-fetched settings are passed through to avoid a second query.
+    const { restrictAiByDefault } = await getEffectiveModeRestrictions(platformMode, settings);
     if (restrictAiByDefault) return false;
     return settings?.aiAssistantEnabled ?? true;
   } catch {

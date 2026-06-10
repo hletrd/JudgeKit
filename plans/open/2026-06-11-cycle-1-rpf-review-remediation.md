@@ -204,3 +204,26 @@ moot, with explicit exit criteria. Deferred work remains bound by repo policy
 3. F5 (class-closer test) → F7/F8 (small code) → F3 (perf + 11c).
 4. F9/F10 (UX) → F11 (IP overlap) → F12 (time extension, biggest).
 Gates after each item; fine-grained signed commits; push per iteration.
+
+---
+
+## Completion record (2026-06-11)
+**All 13 items (F1–F13) implemented this cycle.** Bonus fix discovered during
+F6: pre-existing migration-journal drift (unjournaled 0027/0028 → from-scratch
+migrate() missed 3 columns; CI drift guard failed at HEAD) — journaled
+catch-up migration shipped.
+
+**Post-implementation deslop reviewer pass** (ai-slop-cleaner --review over the
+cycle diff) found 2 efficiency regressions introduced by the cycle's own work,
+both fixed in a follow-up writer pass:
+1. `getEffectiveModeRestrictions` consolidation double-fetched system settings
+   per AI-flag resolution → helper now accepts a preloaded settings record.
+2. AGG-5's submissions.ts restructure serialized the previously-parallel
+   enrollment+examSession pair on the submit hot path → restored to one
+   parallel Promise.all (hoisted before the schedule checks; one extra read on
+   reject paths, accepted and commented).
+
+**Final gates on the completed tree:** tsc 0 · eslint 0/0 · lint:bash clean ·
+unit 332 files / 2571 tests PASS (+20 vs cycle start) · production build OK ·
+DB-backed integration suite 5 files / 45+ tests PASS against a real throwaway
+Postgres 17 (incl. the new same-worker reclaim and catalog-ranking suites).

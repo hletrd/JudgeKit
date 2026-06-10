@@ -288,11 +288,10 @@ export async function isAiAssistantEnabledForContext(
   // Restricted modes force AI off unless the admin opted out via
   // allowAiAssistantInRestrictedModes. The override rule lives in ONE place
   // (getEffectiveModeRestrictions) so this cannot drift from the
-  // system-settings resolution path.
-  const [{ restrictAiByDefault }, settings] = await Promise.all([
-    getEffectiveModeRestrictions(effectiveMode),
-    getSystemSettings(),
-  ]);
+  // system-settings resolution path; the settings record is fetched once and
+  // passed through.
+  const settings = await getSystemSettings();
+  const { restrictAiByDefault } = await getEffectiveModeRestrictions(effectiveMode, settings);
   if (restrictAiByDefault) {
     return false;
   }
