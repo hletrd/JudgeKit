@@ -227,3 +227,23 @@ both fixed in a follow-up writer pass:
 unit 332 files / 2571 tests PASS (+20 vs cycle start) · production build OK ·
 DB-backed integration suite 5 files / 45+ tests PASS against a real throwaway
 Postgres 17 (incl. the new same-worker reclaim and catalog-ranking suites).
+
+**Deploy record (2026-06-11, per-cycle):**
+- worv ✅ deployed + HTTPS 200 + Playwright smoke passed (HEAD 5e14fdf9).
+- auraedu ❌ FAILED in the judge-language image build phase with buildkit
+  history corruption (`failed to solve: Internal: unknown blob ... in
+  history`) — first on judge-micropython; after the one-recovery attempt
+  (`docker builder prune -f` on the host, reclaimed 10.12 GB, then full
+  re-run) it recurred on judge-modula2. **No service impact:** the failure is
+  pre-deploy (image build only) — DB backup/migration/container restart were
+  never reached, the site keeps running the previous version.
+- algo ⏸ not attempted (DEPLOY_CMD `set -e` stops at first failure; per-cycle
+  rules forbid further attempts this cycle).
+
+**DEFERRED-OPS-1 (HIGH, ops — auraedu host):** recurring buildkit
+"unknown blob in history" across distinct language-image targets indicates
+daemon-level builder-state corruption on oj.auraedu.me. Operator fix:
+restart the Docker daemon (or `docker buildx prune --all` after confirming
+language images are intact, NEVER `docker image prune -a` per CLAUDE.md),
+then re-run the auraedu + algo deploys. Exit criterion: both targets deploy
+HEAD ≥ 5e14fdf9 cleanly. Next RPF cycle should attempt this first.
