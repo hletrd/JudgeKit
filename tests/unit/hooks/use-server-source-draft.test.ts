@@ -68,6 +68,40 @@ describe("useServerSourceDraft", () => {
     expect(setSourceCode).not.toHaveBeenCalled();
   });
 
+  it("fires onRestored (with the draft's updatedAt) exactly when a restore happens", async () => {
+    isTemplateLikeMock.mockReturnValue(true);
+    apiFetchMock.mockResolvedValue(
+      getResponse([{ language: "python", sourceCode: "RESTORED", updatedAt: "2026-06-10T12:00:00.000Z" } as never])
+    );
+    const setSourceCode = vi.fn();
+    const onRestored = vi.fn();
+    renderHook(() =>
+      useServerSourceDraft({ problemId: "problem-1", language: "python", sourceCode: "", setSourceCode, onRestored })
+    );
+
+    await waitFor(() => expect(setSourceCode).toHaveBeenCalledWith("RESTORED"));
+    expect(onRestored).toHaveBeenCalledTimes(1);
+    expect(onRestored).toHaveBeenCalledWith({ updatedAt: "2026-06-10T12:00:00.000Z" });
+  });
+
+  it("does NOT fire onRestored when the editor already has work (no restore)", async () => {
+    isTemplateLikeMock.mockReturnValue(false);
+    const setSourceCode = vi.fn();
+    const onRestored = vi.fn();
+    renderHook(() =>
+      useServerSourceDraft({
+        problemId: "problem-1",
+        language: "python",
+        sourceCode: "my real in-progress code",
+        setSourceCode,
+        onRestored,
+      })
+    );
+
+    await waitFor(() => expect(apiFetchMock).toHaveBeenCalledTimes(1));
+    expect(onRestored).not.toHaveBeenCalled();
+  });
+
   it("autosaves a meaningful change after the debounce (PUT) once hydrated", async () => {
     isTemplateLikeMock.mockReturnValue(false); // non-empty content throughout
     apiFetchMock.mockResolvedValue(getResponse([])); // no draft to restore

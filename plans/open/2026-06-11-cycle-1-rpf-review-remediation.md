@@ -104,12 +104,13 @@ the DEFAULT_PLATFORM_MODE-derived default. Regression test pins it.
 `getEffectiveModeRestrictions` (single source of truth); source-grep drift-pin
 test added. 28+6 related tests + tsc + eslint green.
 
-### F9 ⬜ AGG-11a — Draft-recovery toast (LOW, 3 lenses)
-`src/hooks/use-server-source-draft.ts` (or its consumer): when a server draft is
-restored into an empty/template editor, fire a sonner toast "Recovered your
-unsubmitted draft from <relative time>" (en+ko). Must not fire on the
-localStorage path twice; keep restoration logic unchanged (never-clobber
-invariants stay intact).
+### F9 ✅ AGG-11a — Draft-recovery toast (LOW, 3 lenses)
+**Done 2026-06-11:** hook gained an optional ref-held `onRestored` callback
+fired exactly on server-draft restoration (never on the localStorage path —
+that hydrates synchronously before this hook's GET resolves); the submission
+form wires it to a sonner info toast with the draft's saved time (en+ko,
+"this is your own saved work" copy to defuse the anti-cheat fear). Restoration
+invariants untouched. +2 hook tests; i18n parity green.
 
 ### F10 ✅ AGG-11b — Admin override consequence copy + active indicator (LOW)
 **Done 2026-06-11:** both override hints now state the GLOBAL/immediate-effect

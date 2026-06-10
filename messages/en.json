@@ -553,7 +553,9 @@
     "recentlyUsed": "Recently Used",
     "otherLanguages": "Other",
     "noLanguagesFound": "No languages found.",
-    "allowAiAssistantRestricted": "AI assistance is forced off in the current platform mode."
+    "allowAiAssistantRestricted": "AI assistance is forced off in the current platform mode.",
+    "draftRecovered": "Recovered your unsubmitted draft from {time}. This is your own saved work — keep editing or clear the editor.",
+    "draftRecoveredNoTime": "Recovered your unsubmitted draft. This is your own saved work — keep editing or clear the editor."
   },
   "problemSets": {
     "title": "Problem Sets",

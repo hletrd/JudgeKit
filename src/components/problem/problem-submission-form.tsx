@@ -82,7 +82,23 @@ export function ProblemSubmissionForm({
   // Server-side backup + recovery, additive on top of the localStorage draft.
   // Restores only into an empty/template editor (never overwrites local work)
   // and autosaves meaningful changes so unsubmitted code survives a crash.
-  useServerSourceDraft({ problemId, language, sourceCode, setSourceCode });
+  // The toast makes the silent restoration legible — under exam stress, code
+  // appearing "by itself" on a fresh device reads as an anti-cheat hazard
+  // (RPF cycle-1 UX3/ST3/JA).
+  useServerSourceDraft({
+    problemId,
+    language,
+    sourceCode,
+    setSourceCode,
+    onRestored: ({ updatedAt }) => {
+      const when = updatedAt ? new Date(updatedAt) : null;
+      const time =
+        when && !Number.isNaN(when.getTime())
+          ? new Intl.DateTimeFormat(undefined, { dateStyle: "medium", timeStyle: "short" }).format(when)
+          : null;
+      toast.info(time ? t("draftRecovered", { time }) : t("draftRecoveredNoTime"));
+    },
+  });
 
   const prevLanguageRef = useRef(language);
   useEffect(() => {

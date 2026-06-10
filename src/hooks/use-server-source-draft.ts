@@ -11,6 +11,13 @@ interface UseServerSourceDraftOptions {
   setSourceCode: (code: string) => void;
   /** Disable entirely (e.g. for anonymous/preview contexts). Default true. */
   enabled?: boolean;
+  /**
+   * Fired exactly once when a server draft was restored into the editor, so
+   * the consumer can surface a "recovered your draft" notice — silent
+   * restoration reads as "code appeared by itself" to a stressed candidate.
+   * Restoration behavior is identical with or without the callback.
+   */
+  onRestored?: (info: { updatedAt: string | null }) => void;
 }
 
 const AUTOSAVE_DEBOUNCE_MS = 3000;
@@ -35,11 +42,13 @@ export function useServerSourceDraft({
   sourceCode,
   setSourceCode,
   enabled = true,
+  onRestored,
 }: UseServerSourceDraftOptions): void {
   const hydratedRef = useRef(false);
   const sourceRef = useRef(sourceCode);
   const languageRef = useRef(language);
   const setSourceRef = useRef(setSourceCode);
+  const onRestoredRef = useRef(onRestored);
   const lastSavedRef = useRef<string>("");
   const saveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
@@ -52,6 +61,9 @@ export function useServerSourceDraft({
   useEffect(() => {
     setSourceRef.current = setSourceCode;
   }, [setSourceCode]);
+  useEffect(() => {
+    onRestoredRef.current = onRestored;
+  }, [onRestored]);
 
   // One-time hydration from the server draft (current language only).
   useEffect(() => {
@@ -62,7 +74,7 @@ export function useServerSourceDraft({
         const res = await apiFetch(`/api/v1/problems/${problemId}/draft`);
         if (cancelled || !res.ok) return;
         const json = (await res.json().catch(() => null)) as
-          | { data?: { drafts?: Array<{ language: string; sourceCode: string }> } }
+          | { data?: { drafts?: Array<{ language: string; sourceCode: string; updatedAt?: string }> } }
           | null;
         const drafts = json?.data?.drafts ?? [];
         const match = drafts.find((d) => d.language === languageRef.current);
@@ -70,6 +82,7 @@ export function useServerSourceDraft({
         if (match && isTemplateLike(sourceRef.current)) {
           setSourceRef.current(match.sourceCode);
           lastSavedRef.current = match.sourceCode;
+          onRestoredRef.current?.({ updatedAt: match.updatedAt ?? null });
         }
       } catch {
         /* offline / failure: localStorage remains the fallback */
