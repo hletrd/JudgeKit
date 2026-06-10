@@ -64,11 +64,13 @@ log assertion, defaults pinned. 27/27 relevant tests + tsc green.
 `docs/deployment.md` (quick-start block + required-env table), each explicitly
 distinguishing it from `PLUGIN_CONFIG_ENCRYPTION_KEY`.
 
-### F5 ⬜ AGG-7 — CSP route→matcher guard test (LOW→MEDIUM trend, class-closer)
-New unit test in the source-grep-guard idiom: enumerate top-level page segments
-under `src/app/{(public),(auth),...}/**/page.tsx` and assert each maps into the
-`config.matcher` list in `src/proxy.ts`. Document the known 404/unmatched-path
-exception explicitly in the test.
+### F5 ✅ AGG-7 — CSP route→matcher guard test (LOW→MEDIUM trend, class-closer)
+**Done 2026-06-11:** `tests/unit/infra/csp-matcher-coverage.test.ts` walks
+`src/app/**/page.tsx` (route groups stripped) and asserts every top-level
+segment maps into `config.matcher`; 404/unmatched-path exception documented
+in-test; walker-sanity assertion prevents vacuous pass. All 21 current
+segments verified covered. Source-grep inventory baseline bumped 136→138
+with rationale (this + the F8 drift-pin).
 
 ### F6 ✅ AGG-8 — `exam_mode` CHECK constraint (LOW-MEDIUM, integrity)
 **Done 2026-06-11:** `assignments_exam_mode_valid` check added to schema.pg.ts

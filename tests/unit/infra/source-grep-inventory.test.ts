@@ -123,7 +123,17 @@ describe("source-grep test inventory", () => {
     //   - tests/unit/a11y-review-fixes-implementation.test.ts — guards the a11y
     //     review fixes (contrast / diff cue / fullscreen-editor focus); the
     //     durable invariant is the class/ARIA wiring, best pinned as text.
-    const DOCUMENTED_BASELINE = 136;
+    // Bumped 136 -> 138 (2026-06-11, RPF cycle-1):
+    //   - tests/unit/infra/csp-matcher-coverage.test.ts — closes the recurring
+    //     CSP-matcher-enumeration regression class (SEC-21-3, 6035ca83): every
+    //     top-level page segment must map into src/proxy.ts config.matcher.
+    //     Inherently a cross-file text contract; no behavioural test can see
+    //     the matcher without booting the middleware runtime.
+    //   - tests/unit/platform-mode-context.test.ts gained a drift-pin that the
+    //     restricted-mode override rule is resolved ONLY via
+    //     getEffectiveModeRestrictions (A2 consolidation); the invariant is
+    //     "no second inline copy exists", which is a text property.
+    const DOCUMENTED_BASELINE = 138;
     expect(sourceGrepFiles.length).toBe(DOCUMENTED_BASELINE);
   });
 
