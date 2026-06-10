@@ -19,6 +19,7 @@ import { formatDateTimeInTimeZone } from "@/lib/datetime";
 import { formatSubmissionIdPrefix } from "@/lib/submissions/format";
 import type { SubmissionStatus } from "@/types";
 import { ScoreOverrideDialog, type ScoreOverrideLabels } from "./score-override-dialog";
+import { ExamExtendDialog } from "./exam-extend-dialog";
 
 interface ProblemHeader {
   problemId: string;
@@ -208,12 +209,23 @@ function MobileStudentCard({
             </div>
           )}
           {examMode === "windowed" && labels.examSessionStatus && (
-            <div className="text-xs">
-              {labels.examSessionStatus}:{" "}
+            <div className="flex items-center gap-1 text-xs">
+              <span>{labels.examSessionStatus}:</span>{" "}
               {examSession ? (
-                <Badge variant={now > new Date(examSession.personalDeadline).getTime() ? "outline" : "secondary"} className="text-xs">
-                  {now > new Date(examSession.personalDeadline).getTime() ? labels.examSessionCompleted : labels.examSessionInProgress}
-                </Badge>
+                <>
+                  <Badge variant={now > new Date(examSession.personalDeadline).getTime() ? "outline" : "secondary"} className="text-xs">
+                    {now > new Date(examSession.personalDeadline).getTime() ? labels.examSessionCompleted : labels.examSessionInProgress}
+                  </Badge>
+                  {canManageOverrides && (
+                    <ExamExtendDialog
+                      groupId={groupId}
+                      assignmentId={assignmentId}
+                      userId={row.userId}
+                      studentName={row.name}
+                      personalDeadline={examSession.personalDeadline}
+                    />
+                  )}
+                </>
               ) : (
                 <span className="text-muted-foreground">{labels.examSessionNotStarted}</span>
               )}
@@ -455,9 +467,20 @@ export function StatusBoard({
                       const isExpired = now > deadline;
                       return (
                         <TableCell className="align-top">
-                          <Badge variant={isExpired ? "outline" : "secondary"}>
-                            {isExpired ? labels.examSessionCompleted : labels.examSessionInProgress}
-                          </Badge>
+                          <div className="flex items-center gap-1">
+                            <Badge variant={isExpired ? "outline" : "secondary"}>
+                              {isExpired ? labels.examSessionCompleted : labels.examSessionInProgress}
+                            </Badge>
+                            {canManageOverrides && (
+                              <ExamExtendDialog
+                                groupId={groupId}
+                                assignmentId={assignmentId}
+                                userId={row.userId}
+                                studentName={row.name}
+                                personalDeadline={examSession.personalDeadline}
+                              />
+                            )}
+                          </div>
                         </TableCell>
                       );
                     })()}

@@ -1035,7 +1035,17 @@
       "examSessionNotStarted": "Not started",
       "examSessionInProgress": "In progress",
       "examSessionCompleted": "Completed",
-      "examTimesUp": "Time's up"
+      "examTimesUp": "Time's up",
+      "examExtend": {
+        "title": "Extend exam time",
+        "description": "Grant {name} extra time on this exam. Current personal deadline: {deadline}. The window can only be extended, never shortened, and every grant is recorded in the audit log.",
+        "minutesLabel": "Additional minutes (1–600)",
+        "hint": "Use for documented accommodations or incident recovery (e.g. a network outage during the exam). The extension may run past the assignment deadline; no late penalty applies within the extended window.",
+        "confirm": "Extend",
+        "invalidMinutes": "Enter a whole number of minutes between 1 and 600.",
+        "success": "Extended {name}'s exam window by {minutes} minutes.",
+        "failed": "Failed to extend the exam window."
+      }
     },
     "assignmentVisibilityLabel": "Contest visibility",
     "assignmentVisibilityPrivate": "Private contest",

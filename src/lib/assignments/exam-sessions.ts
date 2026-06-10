@@ -1,6 +1,6 @@
 import { db } from "@/lib/db";
 import { assignments, examSessions, users } from "@/lib/db/schema";
-import { and, eq, asc } from "drizzle-orm";
+import { and, eq, asc, sql } from "drizzle-orm";
 import { nanoid } from "nanoid";
 import { getDbNowUncached } from "@/lib/db-time";
 
@@ -117,6 +117,49 @@ export async function startExamSession(
       personalDeadline: session.personalDeadline,
     };
   });
+}
+
+/**
+ * Staff-granted time extension for one participant's windowed-exam session
+ * (RPF cycle-1 AGG-5: accommodations / incident recovery).
+ *
+ * Semantics:
+ *  - extends `personal_deadline` by exactly `extendMinutes` (never shrinks —
+ *    callers validate `extendMinutes >= 1`);
+ *  - the extension is computed in SQL against the CURRENT stored deadline, so
+ *    concurrent extensions compose instead of clobbering each other;
+ *  - the result MAY exceed the assignment deadline by design — that is the
+ *    point of an accommodation. `validateAssignmentSubmission` honors the
+ *    per-session deadline past the assignment close for windowed exams, and
+ *    late-penalty scoring already keys on `exam_sessions.personal_deadline`.
+ *
+ * Returns the updated session, or null when the participant has no session
+ * for this assignment (they never started the exam — nothing to extend).
+ */
+export async function extendExamSession(
+  assignmentId: string,
+  userId: string,
+  extendMinutes: number
+): Promise<ExamSession | null> {
+  if (!Number.isInteger(extendMinutes) || extendMinutes < 1) {
+    throw new Error("extendMinutesInvalid");
+  }
+
+  const [updated] = await db
+    .update(examSessions)
+    .set({
+      personalDeadline: sql`${examSessions.personalDeadline} + make_interval(mins => ${extendMinutes})`,
+    })
+    .where(and(eq(examSessions.assignmentId, assignmentId), eq(examSessions.userId, userId)))
+    .returning({
+      id: examSessions.id,
+      assignmentId: examSessions.assignmentId,
+      userId: examSessions.userId,
+      startedAt: examSessions.startedAt,
+      personalDeadline: examSessions.personalDeadline,
+    });
+
+  return updated ?? null;
 }
 
 export async function getExamSession(

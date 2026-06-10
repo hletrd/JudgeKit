@@ -185,6 +185,82 @@ describe("validateAssignmentSubmission", () => {
     expect(dbMock.query.enrollments.findFirst).not.toHaveBeenCalled();
   });
 
+  it("allows a windowed-exam participant with an EXTENDED personal window to submit past the assignment close (RPF cycle-1 AGG-5)", async () => {
+    getDbNowUncachedMock.mockResolvedValue(new Date("2026-03-10T03:00:00.000Z"));
+    dbMock.query.assignments.findFirst.mockResolvedValue({
+      ...createAssignmentRecord({
+        deadline: new Date("2026-03-10T01:00:00.000Z"),
+      }),
+      examMode: "windowed",
+      enableAntiCheat: false,
+    });
+    // Staff granted an extension: personal window runs to 04:00, past the close.
+    dbMock.query.examSessions.findFirst.mockResolvedValue({
+      personalDeadline: new Date("2026-03-10T04:00:00.000Z"),
+    });
+    dbMock.query.enrollments.findFirst.mockResolvedValue({ id: "enrollment-1" });
+    dbMock.query.assignmentProblems.findFirst.mockResolvedValue({ id: "assignment-problem-1" });
+
+    await expect(
+      validateAssignmentSubmission("assignment-1", "problem-1", "student-1", "student")
+    ).resolves.toEqual({
+      ok: true,
+      assignment: {
+        id: "assignment-1",
+        groupId: "group-1",
+        instructorId: "instructor-1",
+      },
+    });
+  });
+
+  it("still rejects past the close when the personal exam window ALSO expired", async () => {
+    getDbNowUncachedMock.mockResolvedValue(new Date("2026-03-10T03:00:00.000Z"));
+    dbMock.query.assignments.findFirst.mockResolvedValue({
+      ...createAssignmentRecord({
+        deadline: new Date("2026-03-10T01:00:00.000Z"),
+      }),
+      examMode: "windowed",
+      enableAntiCheat: false,
+    });
+    dbMock.query.examSessions.findFirst.mockResolvedValue({
+      personalDeadline: new Date("2026-03-10T02:00:00.000Z"),
+    });
+    dbMock.query.enrollments.findFirst.mockResolvedValue({ id: "enrollment-1" });
+    dbMock.query.assignmentProblems.findFirst.mockResolvedValue({ id: "assignment-problem-1" });
+
+    await expect(
+      validateAssignmentSubmission("assignment-1", "problem-1", "student-1", "student")
+    ).resolves.toEqual({
+      ok: false,
+      status: 403,
+      error: "assignmentClosed",
+    });
+  });
+
+  it("does not let a NON-exam assignment slip past the close via the exam-session path", async () => {
+    getDbNowUncachedMock.mockResolvedValue(new Date("2026-03-10T03:00:00.000Z"));
+    dbMock.query.assignments.findFirst.mockResolvedValue({
+      ...createAssignmentRecord({
+        deadline: new Date("2026-03-10T01:00:00.000Z"),
+      }),
+      examMode: "none",
+      enableAntiCheat: false,
+    });
+    // Even if a stray session row existed, examMode none must never consult it.
+    dbMock.query.examSessions.findFirst.mockResolvedValue({
+      personalDeadline: new Date("2026-03-10T04:00:00.000Z"),
+    });
+
+    await expect(
+      validateAssignmentSubmission("assignment-1", "problem-1", "student-1", "student")
+    ).resolves.toEqual({
+      ok: false,
+      status: 403,
+      error: "assignmentClosed",
+    });
+    expect(dbMock.query.examSessions.findFirst).not.toHaveBeenCalled();
+  });
+
   it("accepts enrolled students on linked problems during the active window", async () => {
     getDbNowUncachedMock.mockResolvedValue(new Date("2026-03-10T01:30:00.000Z"));
     dbMock.query.assignments.findFirst.mockResolvedValue(

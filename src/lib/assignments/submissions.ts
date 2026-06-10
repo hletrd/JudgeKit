@@ -224,6 +224,18 @@ export async function validateAssignmentSubmission(
   // between app and DB servers, consistent with other schedule checks.
   const now = isAdminLevel ? 0 : (await getDbNowUncached()).getTime();
 
+  // Fetched before the schedule checks: a staff-granted personal time
+  // extension (extendExamSession, RPF cycle-1 AGG-5) may place a windowed-exam
+  // participant's personal_deadline PAST the assignment close, and the close
+  // check below must honor it.
+  const examSession =
+    !isAdminLevel && assignment.examMode === "windowed"
+      ? await db.query.examSessions.findFirst({
+          where: and(eq(examSessions.assignmentId, assignment.id), eq(examSessions.userId, userId)),
+          columns: { personalDeadline: true },
+        })
+      : null;
+
   if (!isAdminLevel) {
     const startsAt = assignment.startsAt?.valueOf() ?? null;
     const effectiveCloseAt = assignment.lateDeadline?.valueOf() ?? assignment.deadline?.valueOf() ?? null;
@@ -237,27 +249,25 @@ export async function validateAssignmentSubmission(
     }
 
     if (effectiveCloseAt && effectiveCloseAt < now) {
-      return {
-        ok: false,
-        status: 403,
-        error: "assignmentClosed",
-      };
+      // Windowed exams: an extended personal window overrides the assignment
+      // close for THIS participant (the per-session deadline is checked
+      // again below; late-penalty scoring keys on personal_deadline too).
+      const extendedDeadline = examSession?.personalDeadline?.valueOf() ?? null;
+      if (!(extendedDeadline !== null && extendedDeadline >= now)) {
+        return {
+          ok: false,
+          status: 403,
+          error: "assignmentClosed",
+        };
+      }
     }
   }
 
   if (!isAdminLevel) {
-    const [enrollment, examSession] = await Promise.all([
-      db.query.enrollments.findFirst({
-        where: and(eq(enrollments.groupId, assignment.groupId), eq(enrollments.userId, userId)),
-        columns: { id: true },
-      }),
-      assignment.examMode === "windowed"
-        ? db.query.examSessions.findFirst({
-            where: and(eq(examSessions.assignmentId, assignment.id), eq(examSessions.userId, userId)),
-            columns: { personalDeadline: true },
-          })
-        : Promise.resolve(null),
-    ]);
+    const enrollment = await db.query.enrollments.findFirst({
+      where: and(eq(enrollments.groupId, assignment.groupId), eq(enrollments.userId, userId)),
+      columns: { id: true },
+    });
 
     if (!enrollment) {
       // Check for contest access token as enrollment alternative

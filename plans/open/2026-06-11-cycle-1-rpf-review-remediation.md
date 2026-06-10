@@ -129,21 +129,28 @@ exam-integrity model (en+ko). Route tests: report shape + assignment scoping +
 no fall-through to events query + 403 without monitor access. Component test
 + tsc + eslint green.
 
-### F12 ⬜ AGG-5 — Per-student exam time extension (MEDIUM product/fairness, 3 personas)
-Feature work, scoped minimally for incident/accommodation recovery:
-- `PATCH /api/v1/groups/[id]/assignments/[assignmentId]/exam-sessions/[userId]`
-  (or equivalent existing route family) accepting `extendMinutes` (1–600);
-  gate: same staff check as exam-session monitoring (`canViewAssignmentSubmissions`
-  is read — use the manage-grade gate `canManageContest`).
-- Semantics: `personal_deadline = personal_deadline + extendMinutes` — never
-  shrink; result may exceed assignment deadline by design (that is the point:
-  accommodations); submission-accept checks must honor the per-session deadline
-  (verify `startExamSession`/submit path reads personalDeadline, not only the
-  assignment deadline).
-- Durable audit event (`recordAuditEventDurable`) with actor, target, minutes.
-- Surface extended deadlines on the exam monitor table (badge "+15 min").
-- Tests: authz (participant cannot extend self), extension math, audit row,
-  monitor payload. en+ko strings.
+### F12 ✅ AGG-5 — Per-student exam time extension (MEDIUM product/fairness, 3 personas)
+**Done 2026-06-11:**
+- `extendExamSession` (exam-sessions.ts): SQL-side
+  `personal_deadline + make_interval(mins => n)` so concurrent grants compose;
+  extension-only (n ≥ 1 enforced in lib AND route schema 1–600).
+- `PATCH /groups/[id]/assignments/[assignmentId]/exam-sessions/[userId]`
+  gated by `canManageGroupResourcesAsync` (same write-power gate as score
+  overrides — monitor-only staff cannot change time); windowed-only;
+  404 when the participant never started; `recordAuditEventDurable`
+  (`exam_session.extend` with actor/target/minutes/new deadline).
+- `validateAssignmentSubmission` now honors an extended personal window PAST
+  the assignment close for windowed exams (session fetched before the
+  schedule check); non-exam assignments cannot slip through (pinned by test);
+  late-penalty scoring already keys on personal_deadline so accommodation
+  time is not penalized.
+- UI: `ExamExtendDialog` (timer icon next to the session badge, both mobile
+  card and desktop table views, `canManageOverrides`-gated), en+ko strings
+  with explicit audit/extension-only copy.
+- Tests: 5 route cases (success+audit shape, 403 monitor-only, 400 non-
+  windowed, 404 no-session, schema bounds incl. non-integer) + 3
+  validateAssignmentSubmission cases (extended-past-close allowed, doubly-
+  expired rejected, non-exam cannot use the path). tsc/eslint green.
 
 ### F13 ✅ AGG-12 — Doc/runbook nits (LOW)
 **Done 2026-06-11:** (a) runbook "Known signals" now opens with the exact
