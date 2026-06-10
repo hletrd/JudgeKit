@@ -5,6 +5,10 @@ const DEFAULT_DATA_RETENTION_DAYS = {
   recruitingRecords: 365,
   submissions: 365,
   loginEvents: 180,
+  // Unsubmitted editor autosaves: a draft untouched for half a year is
+  // abandoned. Without a window the table grows without bound (one row of up
+  // to 64 KiB per user × problem × language).
+  sourceDrafts: 180,
 } as const;
 
 function parseRetentionOverride(name: string, fallback: number) {
@@ -21,6 +25,7 @@ export const DATA_RETENTION_DAYS = {
   recruitingRecords: parseRetentionOverride("RECRUITING_RECORD_RETENTION_DAYS", DEFAULT_DATA_RETENTION_DAYS.recruitingRecords),
   submissions: parseRetentionOverride("SUBMISSION_RETENTION_DAYS", DEFAULT_DATA_RETENTION_DAYS.submissions),
   loginEvents: parseRetentionOverride("LOGIN_EVENT_RETENTION_DAYS", DEFAULT_DATA_RETENTION_DAYS.loginEvents),
+  sourceDrafts: parseRetentionOverride("SOURCE_DRAFT_RETENTION_DAYS", DEFAULT_DATA_RETENTION_DAYS.sourceDrafts),
 } as const;
 
 export type DataRetentionKey = keyof typeof DATA_RETENTION_DAYS;

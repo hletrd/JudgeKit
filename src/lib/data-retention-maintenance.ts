@@ -1,7 +1,7 @@
 import { and, inArray, lt, notInArray, or, sql } from "drizzle-orm";
 import { db } from "@/lib/db";
 import { logger } from "@/lib/logger";
-import { auditEvents, antiCheatEvents, chatMessages, loginEvents, recruitingInvitations, submissions } from "@/lib/db/schema";
+import { auditEvents, antiCheatEvents, chatMessages, loginEvents, recruitingInvitations, sourceDrafts, submissions } from "@/lib/db/schema";
 import { DATA_RETENTION_DAYS, isDataRetentionLegalHold, getRetentionCutoff } from "@/lib/data-retention";
 import { getDbNowMs } from "@/lib/db-time";
 
@@ -19,7 +19,7 @@ const BATCH_DELAY_MS = 100;
  * those databases would need `DELETE ... WHERE id IN (SELECT id ...)` instead.
  */
 async function batchedDelete(
-  table: typeof auditEvents | typeof antiCheatEvents | typeof chatMessages | typeof loginEvents | typeof recruitingInvitations | typeof submissions,
+  table: typeof auditEvents | typeof antiCheatEvents | typeof chatMessages | typeof loginEvents | typeof recruitingInvitations | typeof sourceDrafts | typeof submissions,
   whereClause: ReturnType<typeof lt> | ReturnType<typeof and>,
 ): Promise<number> {
   let totalDeleted = 0;
@@ -89,12 +89,20 @@ async function pruneAuditEvents(nowMs: number) {
   logger.debug({ cutoff: cutoff.toISOString(), deleted }, "Pruned expired audit events");
 }
 
+async function pruneSourceDrafts(nowMs: number) {
+  // Keyed on updatedAt (every autosave refreshes it), so only drafts the user
+  // has genuinely abandoned for the whole window are removed.
+  const cutoff = getRetentionCutoff(DATA_RETENTION_DAYS.sourceDrafts, nowMs);
+  const deleted = await batchedDelete(sourceDrafts, lt(sourceDrafts.updatedAt, cutoff));
+  logger.debug({ cutoff: cutoff.toISOString(), deleted }, "Pruned abandoned source drafts");
+}
+
 /**
  * Run all sensitive-data retention prunes for one day's maintenance window.
  *
- * Six independent prunes (chatMessages, antiCheatEvents,
- * recruitingInvitations, submissions, loginEvents, auditEvents) run concurrently against
- * the DB. The cutoff is taken from `getDbNowMs()` so it is computed against
+ * Seven independent prunes (chatMessages, antiCheatEvents,
+ * recruitingInvitations, submissions, loginEvents, auditEvents, sourceDrafts)
+ * run concurrently against the DB. The cutoff is taken from `getDbNowMs()` so it is computed against
  * the same clock as the data timestamps, avoiding app-vs-DB clock skew.
  *
  * @remarks Failure isolation: prunes are wrapped in `Promise.allSettled` so
@@ -131,6 +139,7 @@ async function pruneSensitiveOperationalData() {
       pruneSubmissions(nowMs),
       pruneLoginEvents(nowMs),
       pruneAuditEvents(nowMs),
+      pruneSourceDrafts(nowMs),
     ]);
     for (const result of results) {
       if (result.status === "rejected") {

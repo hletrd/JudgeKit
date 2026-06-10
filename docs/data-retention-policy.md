@@ -1,6 +1,6 @@
 # Data Retention Policy
 
-_Last updated: 2026-04-14_
+_Last updated: 2026-06-11_
 
 Governance reference for operators deploying JudgeKit. All implementation lives in `src/lib/data-retention.ts` and `src/lib/data-retention-maintenance.ts`.
 
@@ -11,10 +11,12 @@ Governance reference for operators deploying JudgeKit. All implementation lives 
 | Data class | Default | Environment variable override |
 |---|---|---|
 | Audit events | 90 days | `AUDIT_EVENT_RETENTION_DAYS` |
-| AI chat messages | 30 days | `CHAT_MESSAGE_RETENTION_DAYS` |
+| AI chat messages | 5 years (1825 days) | `CHAT_MESSAGE_RETENTION_DAYS` |
 | Anti-cheat events | 180 days | `ANTI_CHEAT_RETENTION_DAYS` |
 | Recruiting invitation records | 365 days | `RECRUITING_RECORD_RETENTION_DAYS` |
 | Submissions and grading records | 365 days | `SUBMISSION_RETENTION_DAYS` |
+| Login events | 180 days | `LOGIN_EVENT_RETENTION_DAYS` |
+| Source-code drafts (unsubmitted autosaves) | 180 days since last edit | `SOURCE_DRAFT_RETENTION_DAYS` |
 
 All overrides must be positive integers. Invalid or zero values are silently ignored and the default is used.
 

@@ -129,6 +129,31 @@ describe("PUT /api/v1/problems/[id]/draft", () => {
     expect(upsertSourceDraftMock).not.toHaveBeenCalled();
   });
 
+  it("rejects an unknown language with 400 (no write) — registry-gated like the submit route", async () => {
+    // Every distinct language string is a NEW row of up to 64 KiB per
+    // (user, problem); without this gate a hostile user can grow
+    // source_drafts without bound by cycling junk 64-char strings.
+    const { PUT } = await import("@/app/api/v1/problems/[id]/draft/route");
+    const res = await PUT(
+      makeRequest("PUT", { language: "not-a-real-language", sourceCode: "x" }),
+      { params: PARAMS }
+    );
+
+    expect(res.status).toBe(400);
+    expect(upsertSourceDraftMock).not.toHaveBeenCalled();
+  });
+
+  it("accepts a real judge language (registry happy path)", async () => {
+    const { PUT } = await import("@/app/api/v1/problems/[id]/draft/route");
+    const res = await PUT(
+      makeRequest("PUT", { language: "python", sourceCode: "print(1)" }),
+      { params: PARAMS }
+    );
+
+    expect(res.status).toBe(200);
+    expect(upsertSourceDraftMock).toHaveBeenCalled();
+  });
+
   it("respects the per-user rate limit (no write when limited)", async () => {
     consumeUserApiRateLimitMock.mockResolvedValue(
       NextResponse.json({ error: "rateLimited" }, { status: 429 })

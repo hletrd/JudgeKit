@@ -33,7 +33,14 @@ reclaim tests + full DB integration suite 42/42 pass.
   same-worker reclaim case (net active_tasks unchanged) — env-gated like its
   siblings.
 
-### F2 ⬜ AGG-2 — Draft route language validation + retention (MEDIUM)
+### F2 ✅ AGG-2 — Draft route language validation + retention (MEDIUM)
+**Done 2026-06-11:** PUT gated on `isJudgeLanguage` (mirrors submit route;
+DELETE deliberately permissive for cleanup of pre-gate rows); `sourceDrafts`
+added to DATA_RETENTION_DAYS (180 d, `SOURCE_DRAFT_RETENTION_DAYS` override)
+and to the pruning allSettled set keyed on updatedAt; policy doc updated
+(+ fixed two stale rows found en route: chat default is 5 y in code not 30 d,
+login events row was missing). Tests: 400 junk-language + happy case, prune
+log assertion, defaults pinned. 27/27 relevant tests + tsc green.
 - `src/app/api/v1/problems/[id]/draft/route.ts`: validate `language` against
   the judge language registry in PUT (400 `validation` on unknown); DELETE may
   stay permissive (deleting junk is harmless) — decide in implementation.

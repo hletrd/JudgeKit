@@ -20,6 +20,7 @@ vi.mock("@/lib/db/schema", () => ({
   submissions: { submittedAt: "submissions.submittedAt", status: "submissions.status" },
   loginEvents: { createdAt: "loginEvents.createdAt" },
   auditEvents: { createdAt: "auditEvents.createdAt" },
+  sourceDrafts: { updatedAt: "sourceDrafts.updatedAt" },
 }));
 
 vi.mock("@/lib/logger", () => ({
@@ -92,6 +93,19 @@ describe("startSensitiveDataPruning / stopSensitiveDataPruning", () => {
     // maintenance window and grew forever, retaining candidate PII past the
     // configured 90-day cutoff.
     expect(mocks.loggerDebug).toHaveBeenCalledWith(expect.anything(), "Pruned expired audit events");
+  });
+
+  it("enforces source-draft retention (source_drafts is pruned, not unbounded)", async () => {
+    const { startSensitiveDataPruning, stopSensitiveDataPruning } = await import("@/lib/data-retention-maintenance");
+
+    stopSensitiveDataPruning();
+    startSensitiveDataPruning();
+    await flushMicrotasks();
+
+    // source_drafts previously had NO retention window: one row of up to
+    // 64 KiB per (user, problem, language) accumulated forever. The prune
+    // keys on updatedAt so only drafts abandoned for the full window go.
+    expect(mocks.loggerDebug).toHaveBeenCalledWith(expect.anything(), "Pruned abandoned source drafts");
   });
 
   it("does not create duplicate intervals when started twice", async () => {
@@ -207,6 +221,7 @@ describe("pruneSensitiveOperationalData — legal hold", () => {
         recruitingRecords: 365,
         submissions: 365,
         loginEvents: 180,
+        sourceDrafts: 180,
       },
       getRetentionCutoff: (days: number, now: number) =>
         new Date(now - days * 24 * 60 * 60 * 1000),

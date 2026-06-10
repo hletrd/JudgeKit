@@ -3,6 +3,7 @@ import { z } from "zod";
 import { createApiHandler } from "@/lib/api/handler";
 import { apiError, apiSuccess } from "@/lib/api/responses";
 import { canAccessProblem } from "@/lib/auth/permissions";
+import { isJudgeLanguage } from "@/lib/judge/languages";
 import { consumeUserApiRateLimit } from "@/lib/security/api-rate-limit";
 import {
   deleteSourceDraft,
@@ -48,6 +49,14 @@ export const PUT = createApiHandler({
     const userRateLimitResponse = await consumeUserApiRateLimit(req, user.id, "source-draft");
     if (userRateLimitResponse) return userRateLimitResponse;
 
+    // Mirror the submission route's language gate: every distinct language
+    // string is a NEW 64 KiB-capable row per (user, problem), so accepting
+    // arbitrary strings lets one user grow source_drafts without bound. The
+    // editor only ever sends real judge languages, so this is non-breaking.
+    if (!isJudgeLanguage(body.language)) {
+      return apiError("languageNotSupported", 400);
+    }
+
     const { id } = params;
     const hasAccess = await canAccessProblem(id, user.id, user.role);
     if (!hasAccess) return apiError("forbidden", 403);
@@ -63,6 +72,8 @@ export const PUT = createApiHandler({
 });
 
 // Clear a draft (e.g. after a successful submission for that language).
+// Deliberately does NOT gate on isJudgeLanguage: deleting a row keyed by any
+// string is harmless and lets clients clean up rows from before the PUT gate.
 export const DELETE = createApiHandler({
   auth: true,
   schema: deleteSchema,
