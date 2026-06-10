@@ -3,8 +3,7 @@ import type { PlatformMode } from "@/types";
 import { db } from "@/lib/db";
 import { assignments, recruitingInvitations } from "@/lib/db/schema";
 import { rawQueryOne } from "@/lib/db/queries";
-import { getPlatformModePolicy } from "@/lib/platform-mode";
-import { getResolvedPlatformMode, getSystemSettings } from "@/lib/system-settings";
+import { getEffectiveModeRestrictions, getResolvedPlatformMode, getSystemSettings } from "@/lib/system-settings";
 
 export type PlatformModeContextOptions = {
   userId?: string | null;
@@ -286,13 +285,15 @@ export async function isAiAssistantEnabledForContext(
   }
 
   const effectiveMode = await getEffectivePlatformMode(options);
-  const settings = await getSystemSettings();
   // Restricted modes force AI off unless the admin opted out via
-  // allowAiAssistantInRestrictedModes.
-  const restrictAi =
-    getPlatformModePolicy(effectiveMode).restrictAiByDefault &&
-    !(settings?.allowAiAssistantInRestrictedModes ?? false);
-  if (restrictAi) {
+  // allowAiAssistantInRestrictedModes. The override rule lives in ONE place
+  // (getEffectiveModeRestrictions) so this cannot drift from the
+  // system-settings resolution path.
+  const [{ restrictAiByDefault }, settings] = await Promise.all([
+    getEffectiveModeRestrictions(effectiveMode),
+    getSystemSettings(),
+  ]);
+  if (restrictAiByDefault) {
     return false;
   }
   return settings?.aiAssistantEnabled ?? true;

@@ -337,6 +337,19 @@ describe("isAiAssistantEnabled", () => {
     expect(result).toBe(true);
   });
 
+  it("degrades to the default-mode policy when BOTH settings queries throw (full DB outage)", async () => {
+    const { isAiAssistantEnabled } = await import("@/lib/system-settings");
+    // getSystemSettings' own catch only covers the missing-column fallback
+    // SELECT; when that also throws (real outage, not just a missing column),
+    // isAiAssistantEnabled must return the DEFAULT_PLATFORM_MODE-derived safe
+    // default instead of propagating the exception into page rendering
+    // (pre-c8d06661 contract, regression pinned by RPF cycle-1 CR3).
+    mocks.dbQuerySystemSettingsFindFirst.mockRejectedValue(new Error("db down"));
+    mocks.dbSelectFromWhereLimit.mockRejectedValue(new Error("db down"));
+
+    await expect(isAiAssistantEnabled()).resolves.toBe(true);
+  });
+
   it("returns false by default in recruiting mode even when aiAssistantEnabled is true", async () => {
     const { isAiAssistantEnabled } = await import("@/lib/system-settings");
     mocks.dbQuerySystemSettingsFindFirst.mockResolvedValue({

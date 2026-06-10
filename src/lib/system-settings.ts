@@ -217,15 +217,23 @@ export async function getEffectiveModeRestrictions(
 }
 
 export async function isAiAssistantEnabled(): Promise<boolean> {
-  const settings = await getSystemSettings();
-  const platformMode = settings?.platformMode ?? DEFAULT_PLATFORM_MODE;
-  // The platform mode forces AI off in restricted modes UNLESS the admin has
-  // explicitly opted out via allowAiAssistantInRestrictedModes.
-  const restrictAi =
-    getPlatformModePolicy(platformMode).restrictAiByDefault &&
-    !(settings?.allowAiAssistantInRestrictedModes ?? false);
-  if (restrictAi) return false;
-  return settings?.aiAssistantEnabled ?? true;
+  try {
+    const settings = await getSystemSettings();
+    const platformMode = settings?.platformMode ?? DEFAULT_PLATFORM_MODE;
+    // The platform mode forces AI off in restricted modes UNLESS the admin has
+    // explicitly opted out via allowAiAssistantInRestrictedModes. Single source
+    // of truth for that rule: getEffectiveModeRestrictions (do not re-derive
+    // the override inline — see also isAiAssistantEnabledForContext).
+    const { restrictAiByDefault } = await getEffectiveModeRestrictions(platformMode);
+    if (restrictAiByDefault) return false;
+    return settings?.aiAssistantEnabled ?? true;
+  } catch {
+    // DB-failure safe default (pre-c8d06661 contract): degrade to the
+    // DEFAULT_PLATFORM_MODE policy instead of propagating a DB outage into
+    // page rendering. getSystemSettings' own catch only covers the
+    // missing-column fallback query; if BOTH queries throw we land here.
+    return !getPlatformModePolicy(DEFAULT_PLATFORM_MODE).restrictAiByDefault;
+  }
 }
 
 export async function getResolvedSystemTimeZone() {

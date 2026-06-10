@@ -140,3 +140,16 @@ describe("platform mode context derivation", () => {
     });
   });
 });
+
+describe("restricted-mode override single source of truth (RPF cycle-1 A2)", () => {
+  it("isAiAssistantEnabledForContext delegates to getEffectiveModeRestrictions instead of re-deriving the override inline", async () => {
+    // Guard against drift: the admin override rule
+    // (restrictAiByDefault && !allowAiAssistantInRestrictedModes) must live in
+    // exactly one place — getEffectiveModeRestrictions. A second inline copy
+    // here is how the two resolution paths diverged before this cycle.
+    const { readFileSync } = await import("node:fs");
+    const source = readFileSync("src/lib/platform-mode-context.ts", "utf8");
+    expect(source).toContain("getEffectiveModeRestrictions(");
+    expect(source).not.toContain("allowAiAssistantInRestrictedModes ??");
+  });
+});

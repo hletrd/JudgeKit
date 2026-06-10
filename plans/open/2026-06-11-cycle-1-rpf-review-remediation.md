@@ -84,14 +84,15 @@ Idempotent migration: normalize stray values
 guarded by IF NOT EXISTS-style idempotency per repo migration conventions
 (see existing drizzle/00xx migrations). Keep schema.pg.ts in sync + drift guard.
 
-### F7 ⬜ AGG-9 — Restore DB-failure safe default in `isAiAssistantEnabled` (LOW)
-`src/lib/system-settings.ts:218-228`: wrap in try/catch; on failure return the
-mode-derived default (pre-c8d06661 contract). + regression test.
+### F7 ✅ AGG-9 — Restore DB-failure safe default in `isAiAssistantEnabled` (LOW)
+**Done 2026-06-11:** try/catch restored; double-query outage now degrades to
+the DEFAULT_PLATFORM_MODE-derived default. Regression test pins it.
 
-### F8 ⬜ AGG-10 — Consolidate effective-restrictions logic (LOW)
-`src/lib/platform-mode-context.ts:288-293` → call
-`getEffectiveModeRestrictions(effectiveMode)` instead of re-implementing. + test
-asserting both paths agree (pin against drift).
+### F8 ✅ AGG-10 — Consolidate effective-restrictions logic (LOW)
+**Done 2026-06-11:** both `isAiAssistantEnabled` and
+`isAiAssistantEnabledForContext` now delegate to
+`getEffectiveModeRestrictions` (single source of truth); source-grep drift-pin
+test added. 28+6 related tests + tsc + eslint green.
 
 ### F9 ⬜ AGG-11a — Draft-recovery toast (LOW, 3 lenses)
 `src/hooks/use-server-source-draft.ts` (or its consumer): when a server draft is
