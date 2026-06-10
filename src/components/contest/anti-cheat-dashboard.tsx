@@ -72,6 +72,11 @@ type SimilarityCheckResponse = {
   pairs?: SimilarityPairView[];
 };
 
+type IpOverlapReport = {
+  sharedIps: Array<{ ip: string; users: Array<{ id: string; name: string; username: string }> }>;
+  multiIpUsers: Array<{ userId: string; name: string; username: string; ipCount: number; ips: string[] }>;
+};
+
 const EVENT_TYPE_COLORS: Record<string, string> = {
   tab_switch: "bg-yellow-100 text-yellow-800 dark:bg-yellow-900/30 dark:text-yellow-400",
   copy: "bg-blue-100 text-blue-800 dark:bg-blue-900/30 dark:text-blue-400",
@@ -121,6 +126,7 @@ export function AntiCheatDashboard({ assignmentId }: AntiCheatDashboardProps) {
   const [loadingMore, setLoadingMore] = useState(false);
   const [similarityStatusMessage, setSimilarityStatusMessage] = useState<string | null>(null);
   const [similarityPairs, setSimilarityPairs] = useState<SimilarityPairView[]>([]);
+  const [ipOverlap, setIpOverlap] = useState<IpOverlapReport | null>(null);
   const PAGE_SIZE = 100;
   const abortControllerRef = useRef<AbortController | null>(null);
 
@@ -198,6 +204,28 @@ export function AntiCheatDashboard({ assignmentId }: AntiCheatDashboardProps) {
   }, [assignmentId, offset, tCommon]);
 
   useVisibilityPolling(() => { void fetchEvents(); }, 30_000);
+
+  // IP-overlap report (duplicate-account / shared-seat signals). Fetched once
+  // on mount: it aggregates the whole assignment window, so 30 s freshness
+  // adds noise, not value — reload the page to refresh during an incident.
+  useEffect(() => {
+    let cancelled = false;
+    void (async () => {
+      try {
+        const { ok, data: json } = await apiFetchJson<{ data: IpOverlapReport }>(
+          `/api/v1/contests/${assignmentId}/anti-cheat?report=ipOverlap`,
+          undefined,
+          { data: { sharedIps: [], multiIpUsers: [] } }
+        );
+        if (ok && !cancelled) setIpOverlap(json.data);
+      } catch {
+        // Advisory panel only — the events table is the primary surface.
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [assignmentId]);
 
   useEffect(() => {
     return () => {
@@ -491,6 +519,46 @@ export function AntiCheatDashboard({ assignmentId }: AntiCheatDashboardProps) {
                 </SelectContent>
               </UiSelect>
             )}
+          </div>
+        )}
+
+        {/* IP-overlap report: same IP across participants (possible duplicate
+            accounts / shared seat) and one participant on many IPs. Rendered
+            only when there is something to review. */}
+        {ipOverlap && (ipOverlap.sharedIps.length > 0 || ipOverlap.multiIpUsers.length > 0) && (
+          <div className="space-y-2 rounded-lg border border-amber-500/40 bg-amber-500/5 p-3" role="region" aria-label={t("ipOverlap.title")}>
+            <p className="flex items-center gap-1.5 text-sm font-medium">
+              <AlertTriangle className="size-4 text-amber-600 dark:text-amber-400" aria-hidden="true" />
+              {t("ipOverlap.title")}
+            </p>
+            {ipOverlap.sharedIps.length > 0 && (
+              <div className="space-y-1">
+                <p className="text-xs font-medium text-muted-foreground">{t("ipOverlap.sharedIps")}</p>
+                <ul className="space-y-1 text-xs">
+                  {ipOverlap.sharedIps.map((row) => (
+                    <li key={row.ip}>
+                      <span className="font-mono">{row.ip}</span>
+                      {" — "}
+                      {row.users.map((u) => `${u.name} (${u.username})`).join(", ")}
+                    </li>
+                  ))}
+                </ul>
+              </div>
+            )}
+            {ipOverlap.multiIpUsers.length > 0 && (
+              <div className="space-y-1">
+                <p className="text-xs font-medium text-muted-foreground">{t("ipOverlap.multiIpUsers")}</p>
+                <ul className="space-y-1 text-xs">
+                  {ipOverlap.multiIpUsers.map((row) => (
+                    <li key={row.userId}>
+                      {row.name} ({row.username}) — {t("ipOverlap.ipCount", { count: row.ipCount })}{" "}
+                      <span className="font-mono">{row.ips.join(", ")}</span>
+                    </li>
+                  ))}
+                </ul>
+              </div>
+            )}
+            <p className="text-xs text-muted-foreground">{t("ipOverlap.hint")}</p>
           </div>
         )}
 

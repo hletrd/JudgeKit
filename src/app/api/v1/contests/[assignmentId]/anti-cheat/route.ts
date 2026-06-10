@@ -5,7 +5,7 @@ import { z } from "zod";
 import { createApiHandler } from "@/lib/api/handler";
 import { apiSuccess, apiError } from "@/lib/api/responses";
 import { db } from "@/lib/db";
-import { rawQueryOne } from "@/lib/db/queries";
+import { rawQueryAll, rawQueryOne } from "@/lib/db/queries";
 import { antiCheatEvents, users } from "@/lib/db/schema";
 import { eq, and, desc, sql } from "drizzle-orm";
 import { parsePositiveInt, parseNonNegativeInt } from "@/lib/validators/query-params";
@@ -184,6 +184,53 @@ export const GET = createApiHandler({
     }
 
     const searchParams = req.nextUrl.searchParams;
+
+    // IP-overlap report (RPF cycle-1 AGG-6/PS1): the IPs were always captured
+    // (exam_sessions.ip_address + per-event IPs) but never correlated, so
+    // duplicate-account / shared-seat collusion hunting meant eyeballing
+    // hundreds of rows. Read-only aggregation over data staff already see
+    // per-row; no new collection.
+    if (searchParams.get("report") === "ipOverlap") {
+      const ipUserCte = `
+        WITH ip_user AS (
+          SELECT DISTINCT ip_address AS ip, user_id
+            FROM anti_cheat_events
+           WHERE assignment_id = @assignmentId AND ip_address IS NOT NULL
+          UNION
+          SELECT DISTINCT ip_address AS ip, user_id
+            FROM exam_sessions
+           WHERE assignment_id = @assignmentId AND ip_address IS NOT NULL
+        )`;
+      const [sharedIps, multiIpUsers] = await Promise.all([
+        rawQueryAll<{ ip: string; users: Array<{ id: string; name: string; username: string }> }>(
+          `${ipUserCte}
+           SELECT iu.ip,
+                  json_agg(json_build_object('id', u.id, 'name', u.name, 'username', u.username) ORDER BY u.username) AS users
+             FROM ip_user iu
+             JOIN users u ON u.id = iu.user_id
+            GROUP BY iu.ip
+           HAVING COUNT(DISTINCT iu.user_id) > 1
+            ORDER BY COUNT(DISTINCT iu.user_id) DESC, iu.ip
+            LIMIT 100`,
+          { assignmentId }
+        ),
+        rawQueryAll<{ userId: string; name: string; username: string; ipCount: number; ips: string[] }>(
+          `${ipUserCte}
+           SELECT u.id AS "userId", u.name, u.username,
+                  COUNT(DISTINCT iu.ip)::int AS "ipCount",
+                  array_agg(DISTINCT iu.ip) AS ips
+             FROM ip_user iu
+             JOIN users u ON u.id = iu.user_id
+            GROUP BY u.id, u.name, u.username
+           HAVING COUNT(DISTINCT iu.ip) > 2
+            ORDER BY COUNT(DISTINCT iu.ip) DESC, u.username
+            LIMIT 100`,
+          { assignmentId }
+        ),
+      ]);
+      return apiSuccess({ sharedIps, multiIpUsers });
+    }
+
     const userIdFilter = searchParams.get("userId");
     const eventTypeFilter = searchParams.get("eventType");
     const limit = Math.min(parsePositiveInt(searchParams.get("limit"), 100), 500);

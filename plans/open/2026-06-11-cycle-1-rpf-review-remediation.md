@@ -119,12 +119,15 @@ next to the platform-mode selector whenever an override is effective
 (yellow-700/dark:yellow-400 per the 22141e82 contrast convention; no tracking-*
 on Korean). tsc/eslint/i18n tests green.
 
-### F11 ⬜ AGG-6 — Anti-cheat IP-overlap report (MEDIUM product gap, persona-security PS1)
-Staff-only section on the anti-cheat dashboard: (a) IPs used by >1 participant
-in the assignment (from `exam_sessions.ip_address` + recent anti-cheat event
-IPs); (b) participants with >2 distinct IPs. Server: extend the existing
-staff-gated anti-cheat GET (same `canMonitorContest` gate) with an aggregation
-endpoint/param. Read-only; no new data collection. + route test (authz + shape).
+### F11 ✅ AGG-6 — Anti-cheat IP-overlap report (MEDIUM product gap, persona-security PS1)
+**Done 2026-06-11:** `GET ?report=ipOverlap` on the existing
+`canMonitorContest`-gated route aggregates a UNION of event + exam-session IPs:
+shared IPs (>1 participant) and multi-IP participants (>2 IPs), both
+LIMIT 100, assignment-scoped named params. Dashboard renders an amber advisory
+panel (only when non-empty) with a benign-explanations hint referencing the
+exam-integrity model (en+ko). Route tests: report shape + assignment scoping +
+no fall-through to events query + 403 without monitor access. Component test
++ tsc + eslint green.
 
 ### F12 ⬜ AGG-5 — Per-student exam time extension (MEDIUM product/fairness, 3 personas)
 Feature work, scoped minimally for incident/accommodation recovery:

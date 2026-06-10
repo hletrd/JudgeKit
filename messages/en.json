@@ -2300,6 +2300,13 @@
         "context": "Context",
         "signal": "Signal",
         "escalate": "Escalate"
+      },
+      "ipOverlap": {
+        "title": "IP overlap review",
+        "sharedIps": "Same IP used by multiple participants (possible duplicate accounts or shared seat):",
+        "multiIpUsers": "Participants seen from more than 2 IPs:",
+        "ipCount": "{count} IPs:",
+        "hint": "Advisory signals over the whole assignment window — shared campus/VPN NAT and normal device switches are common benign explanations. Corroborate before acting (see the exam integrity model doc)."
       }
     },
     "analytics": {

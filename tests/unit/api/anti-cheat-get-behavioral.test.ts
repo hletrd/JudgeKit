@@ -6,11 +6,13 @@ const {
   getContestAssignmentMock,
   canManageContestMock,
   canMonitorContestMock,
+  rawQueryAllMock,
 } = vi.hoisted(() => ({
   selectMock: vi.fn(),
   getContestAssignmentMock: vi.fn(),
   canManageContestMock: vi.fn(),
   canMonitorContestMock: vi.fn(),
+  rawQueryAllMock: vi.fn(),
 }));
 
 const ASSIGNMENT_ID = "assign-1";
@@ -39,6 +41,7 @@ vi.mock("@/lib/db", () => ({
 
 vi.mock("@/lib/db/queries", () => ({
   rawQueryOne: vi.fn(),
+  rawQueryAll: rawQueryAllMock,
 }));
 
 vi.mock("@/lib/db/schema", () => ({
@@ -191,6 +194,50 @@ describe("GET /api/v1/contests/[assignmentId]/anti-cheat", () => {
     const body = await res.json();
 
     expect(res.status).toBe(404);
+  });
+
+  it("returns the IP-overlap report (shared IPs + multi-IP users) without touching the events query", async () => {
+    buildSelectChain([], 0);
+    const sharedIps = [
+      { ip: "10.0.0.7", users: [{ id: "u1", name: "Alice", username: "alice" }, { id: "u2", name: "Bob", username: "bob" }] },
+    ];
+    const multiIpUsers = [
+      { userId: "u3", name: "Carol", username: "carol", ipCount: 4, ips: ["10.0.0.1", "10.0.0.2", "10.0.0.3", "10.0.0.4"] },
+    ];
+    rawQueryAllMock.mockResolvedValueOnce(sharedIps).mockResolvedValueOnce(multiIpUsers);
+
+    const { GET } = await import("@/app/api/v1/contests/[assignmentId]/anti-cheat/route");
+    const req = new NextRequest(
+      `http://localhost/api/v1/contests/${ASSIGNMENT_ID}/anti-cheat?report=ipOverlap`
+    );
+    const res = await GET(req);
+    const body = await res.json();
+
+    expect(res.status).toBe(200);
+    expect(body.data.sharedIps).toEqual(sharedIps);
+    expect(body.data.multiIpUsers).toEqual(multiIpUsers);
+    // Aggregation must scope to THIS assignment (named param on both queries).
+    expect(rawQueryAllMock).toHaveBeenCalledTimes(2);
+    for (const call of rawQueryAllMock.mock.calls) {
+      expect(call[1]).toEqual({ assignmentId: ASSIGNMENT_ID });
+      expect(String(call[0])).toContain("assignment_id = @assignmentId");
+    }
+    // The report branch must not fall through to the events listing.
+    expect(selectMock).not.toHaveBeenCalled();
+  });
+
+  it("denies the IP-overlap report to callers without monitor access", async () => {
+    canManageContestMock.mockResolvedValueOnce(false);
+    canMonitorContestMock.mockResolvedValueOnce(false);
+
+    const { GET } = await import("@/app/api/v1/contests/[assignmentId]/anti-cheat/route");
+    const req = new NextRequest(
+      `http://localhost/api/v1/contests/${ASSIGNMENT_ID}/anti-cheat?report=ipOverlap`
+    );
+    const res = await GET(req);
+
+    expect(res.status).toBe(403);
+    expect(rawQueryAllMock).not.toHaveBeenCalled();
   });
 
   it("handles non-numeric limit and offset gracefully", async () => {
