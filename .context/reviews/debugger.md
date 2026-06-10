@@ -1,47 +1,67 @@
-# Latent Bug Surface Review: JudgeKit
+# Debugger (latent bug surface) — RPF Cycle 1 (2026-06-11)
 
-**Reviewer:** debugger
-**Date:** 2026-05-11
-**Scope:** Latent bugs, failure modes, edge cases, regressions — Cycle 2 of RPF loop
+**HEAD reviewed:** f977ef4c (main). Focus: failure modes in the freshest
+concurrency-bearing code (claim CTE chain, staleness sweep, draft autosave).
 
----
+## Findings
 
-## New Findings Summary
+### D1 — Cross-worker stale reclaim can deadlock two live workers (LOW, confidence Medium)
+`src/lib/judge/claim-query.ts:30-101`. Lock order inside one claim statement:
+(1) `worker_slot` takes `FOR UPDATE` on the CLAIMING worker's own
+`judge_workers` row; (2) `prev_worker_release` later updates the PREVIOUS
+owner's `judge_workers` row. If two live workers A and C concurrently reclaim
+each other's stale submissions (both must have >5-min-stale claims while still
+polling — e.g. both hung on pathological compiles, then resumed), A holds
+lock(A) wanting lock(C) while C holds lock(C) wanting lock(A) → Postgres
+aborts one transaction with a deadlock error; that worker's claim poll fails
+once and retries on its next cycle. Self-recovering, rare (requires the
+single-digit-second window on both sides), but it will surface as scary
+`deadlock detected` ERRORs in DB logs during incidents.
+**Mitigation if it ever fires:** release-before-slot lock ordering or advisory
+lock; not worth restructuring the hot path preemptively.
+**Exit criterion to act:** any `deadlock detected` involving `judge_workers`
+in production logs.
 
-| Severity | Count |
-|----------|-------|
-| MEDIUM   | 1     |
-| LOW      | 1     |
-| **Total**| **2** |
+### D2 — Self-reclaim active_tasks leak (MEDIUM) — same as code-reviewer CR1
+Documented there; from the failure-mode angle the observable symptom is a
+single-worker fleet gradually "losing" concurrency slots after long-compile
+incidents: `active_tasks` floor creeps up by 1 per self-reclaim and only a
+worker restart (re-register = new row) or full silence (sweep reap) clears it.
+This is the same *class* as the just-fixed H4 — the fix covered the
+distinct-worker case but not the self case.
 
----
+### D3 — Worker registration clock skew can insta-stale a fresh worker (LOW, confidence Medium)
+`src/lib/db/schema.pg.ts:438-440` — `lastHeartbeatAt` default is
+`$defaultFn(() => new Date())` = **app-server clock**, while the sweep compares
+against **DB-server time** (`getDbNowUncached`). If the app clock lags the DB
+clock by > 90 s (NTP failure), every newly registered worker is immediately
+`online → stale` until its first real heartbeat (which writes DB-time…
+actually heartbeat writes `now` from DB time, healing it ≤ 30 s later).
+Transient mislabel only; the reap threshold (≥ 300 s) is not plausibly crossed
+by realistic skew. Note for the ops runbook rather than a code fix; a DB-side
+`DEFAULT now()` would eliminate the class.
 
-## MEDIUM
+### D4 — Draft autosave: pre-hydration edit may never persist (LOW, confidence High)
+`src/hooks/use-server-source-draft.ts:86-108`. The autosave effect is gated on
+`hydratedRef.current`, a ref — when hydration completes nothing re-runs the
+effect, so a change made *during* hydration is only saved if the user types
+again afterwards. Worst case is "server copy missing one keystroke burst";
+localStorage still has it. Within the module's documented "best-effort"
+contract; no action needed beyond awareness.
 
-### D1: Verify-Email Page Does Not Handle `t()` Returning a Promise (next-intl Async API)
-- **File:** `src/app/(auth)/verify-email/page.tsx:19-20,38,40,48`
-- **Confidence:** Medium
-- **Description:** next-intl v4+ uses the async `getTranslations` API under the hood in server components, but in client components `useTranslations` returns a synchronous function. However, if `t()` is ever called with a missing key, it may return the key string itself or trigger a re-render. The initial state computation at lines 19-20 calls `t("invalidOrExpiredToken")` during render (inside `useState` initializer). If translations are not yet loaded, this could return the raw key or undefined.
-- **Failure scenario:** On slow networks or when the translation JSON is large, the initial render may display the raw translation key "invalidOrExpiredToken" instead of the localized text. This is a poor UX for an auth flow.
-- **Fix:** Use a static fallback or delay error message display until translations are confirmed loaded. Alternatively, initialize `errorMessage` to empty string and set it in the effect after the token check.
+## Regression check on this cycle's fixes
+- IOI run-all flag: old workers ignore the field (serde default false) —
+  backward compatible; deploy notes confirm worker-0 image rebuilt (a5442080).
+- `prev_worker_release` cannot fire on fresh pending claims
+  (previous_worker_id NULL) — verified the WHERE clause.
+- Sweep reap of a worker that is actually alive-but-hung: heartbeat
+  unconditionally restores `online` — reversible by design.
+- `GREATEST(active_tasks − 1, 0)` + DB CHECK `active_tasks >= 0`
+  (schema.pg.ts:448) — release can never violate the constraint.
 
----
-
-## LOW
-
-### D2: Container Cleanup Race Condition in `execute.ts`
-- **File:** `src/lib/compiler/execute.ts:401-420`
-- **Confidence:** Low
-- **Description:** The `cleanup` function sets `cleaned = true` synchronously but the actual container removal (`cleanupContainer`) is async and fire-and-forget. If the process exits and cleanup is triggered from multiple paths (spawn error + process exit), the second path may see `cleaned = true` and skip, but the first `cleanupContainer` may not have started yet. This is a classic TOCTOU pattern.
-- **Failure scenario:** Under high load, a rapid spawn-exit cycle could leave orphaned Docker containers. The `.catch(() => {})` masks any failure to remove them.
-- **Fix:** The `cleaned` flag already prevents duplicate cleanup calls. The fire-and-forget pattern is intentional for performance. This is a theoretical concern; log the cleanup failure instead of swallowing it (already noted as L1 in code-reviewer).
-
----
-
-## Edge Cases Checked
-
-- Token absent: handled (sets error state)
-- Network failure: handled (catch block)
-- 4xx/5xx response: handled (checks `res.ok`)
-- Double-submit: NOT handled (no disabled state on buttons during loading)
-- Token format validation: NOT handled (sends any string to server)
+## Final sweep
+Hunted for: unhandled-rejection paths in new fire-and-forget code (draft PUT
+`.catch()` present; sweep `.catch()` present; durable audit never throws),
+double-start of interval timers (idempotent guards present), TOCTOU between
+`startExamSession` pre-checks and tx (existing idempotent-insert +
+onConflictDoNothing covers it). No further findings.

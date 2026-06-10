@@ -1,97 +1,83 @@
-# Code Review — Cycle 5
+# Code Reviewer — RPF Cycle 1 (2026-06-11)
 
-**Reviewer:** code-reviewer
-**Date:** 2026-05-12
+**HEAD reviewed:** f977ef4c (main)
+**Scope:** all 76 commits since 24939e42; line-level depth on the 30 commits
+after 804c8db3 (post-multi-agent-review remediation + Jun-4/5 fixes).
 
----
+## Inventory
+Full diffstat enumerated (144 files / +16,161 −557 over the range); every
+changed non-test source file read; tests consulted as behavior claims, then
+validated against the implementation (not trusted).
 
-## Finding 1: Race condition in judge claim problem-not-found path
+## Findings
 
-**File:** `src/app/api/v1/judge/claim/route.ts:352-374`
-**Severity:** HIGH
-**Confidence:** High
+### CR1 — `worker_bump` double-counts a self-reclaimed stale submission (MEDIUM, confidence Medium-High)
+`src/lib/judge/claim-query.ts:80-101`. The new `prev_worker_release` CTE
+correctly releases the PREVIOUS worker's `active_tasks` slot on stale reclaim,
+but is guarded by `c.previous_worker_id <> @workerId`. When the SAME worker
+reclaims its own stale submission (concurrency > 1 worker that hung on one
+task > staleClaimTimeout while still polling for new work), the release is
+skipped while `worker_bump` (line 95-101) increments AGAIN:
+original claim +1, self-reclaim +1, but `poll/route.ts:172` decrements exactly
+once on finalization (the old-token finalize is rejected by the claim-token
+fence without decrementing). Net: a **permanent +1 `active_tasks` leak on a
+healthy worker**, silently reducing its effective concurrency by one. The
+staleness sweep only zeroes counters of *silent* workers
+(`worker-staleness-sweep.ts:60-69`), so a live worker never self-heals.
+**Fix:** the exclusion cannot simply be dropped (Postgres forbids two modifying
+CTEs updating the same row in one statement — only one write would win).
+Fold the self-release into `worker_bump` instead:
+`SET active_tasks = active_tasks + 1 - (SELECT COUNT(*) FROM candidate c WHERE
+c.previous_worker_id = @workerId AND EXISTS (SELECT 1 FROM claimed))`.
+Add a structural guard test in `tests/unit/judge/claim-query.test.ts`.
 
-When a claimed submission's problem is not found in the database, the code resets the submission to pending and decrements the worker's active_tasks. Both operations occur OUTSIDE any transaction:
+### CR2 — Claim route issues a separate per-claim SELECT for `scoringModel` (LOW, confidence High)
+`src/app/api/v1/judge/claim/route.ts:323-337`. The IOI `runAllTestCases` flag is
+derived via an extra `db.select` after the claim transaction. The remediation
+plan (2026-06-03, C1 item) specified joining `assignments.scoring_model` into
+the claim SELECT. One extra round-trip per claim; negligible against judging
+cost but the claim path is the hottest judge-facing query. Acceptable deviation;
+note for a future claim-SQL consolidation pass (clusters with the carried
+"triple SELECT" deferred item F3/F4).
 
-```typescript
-// Line 356-363: Reset submission outside transaction
-await db.update(submissions)
-  .set({ status: "pending", judgeWorkerId: null, judgeClaimToken: null, judgeClaimedAt: null })
-  .where(eq(submissions.id, claimed.id));
+### CR3 — `isAiAssistantEnabled` lost its DB-failure fallback (LOW, confidence High)
+`src/lib/system-settings.ts:218-228` (commit c8d06661). The old implementation
+wrapped the settings query in try/catch and returned a mode-derived safe
+default on DB error. The rewrite calls `getSystemSettings()` whose own catch
+only covers the *missing-column fallback query*; if both queries throw (DB
+outage blip), the exception now propagates to page rendering instead of
+degrading to a default. Minor (DB-down usually means the page fails anyway),
+but it is a behavior regression vs. the explicit old contract.
+**Fix:** restore a try/catch returning
+`!getPlatformModePolicy(DEFAULT_PLATFORM_MODE).restrictAiByDefault`-style safe
+default.
 
-// Line 367-370: Decrement worker active_tasks outside transaction
-if (workerId) {
-  await db.update(judgeWorkers)
-    .set({ activeTasks: sql`${judgeWorkers.activeTasks} - 1` })
-    .where(eq(judgeWorkers.id, workerId));
-}
-```
+### CR4 — Stable-number Map built from a full-catalog fetch (see perf-reviewer P1) (MEDIUM, cross-ref)
+`src/app/(public)/problems/page.tsx:469-482`,
+`src/app/(public)/practice/page.tsx:538-549`. Code-quality angle: the new
+block duplicates the ordering expression (`asc(sequenceNumber), asc(createdAt)`)
+in a 4th place and the duplicated query body (accessFilter/no-filter branches)
+could be one query with a conditional `.where()`. Consolidate when fixing P1.
 
-Between the atomic claim (via raw SQL CTE) and this reset, another worker could claim the same submission. This leads to:
-1. Worker A claims submission S
-2. Worker A finds problem missing
-3. Worker B claims submission S (via stale claim or race)
-4. Worker A resets S to pending AND decrements Worker A's active_tasks
-5. Result: S may be double-claimed, and active_tasks accounting is wrong
+## Verified sound (no finding)
+- `normalizeExamMode` coercion (2388302e): applied at BOTH init and reset paths.
+- `CountdownTimer` `suppressHydrationWarning` (d280a45f): correctly scoped to
+  the two time-text nodes, not the whole subtree.
+- Tag dialogs (82059635) / group collapsible (ebdfaafb): interactive content no
+  longer nested inside `<button>`; semantics preserved.
+- `recordAuditEventDurable`: single `buildAuditRow` shared with the buffered
+  path — no row-shape drift possible.
+- `sweepStaleWorkers`: status-filtered WHEREs make the log-once claim true;
+  `setInterval(...).unref()` + idempotent start guard correct.
+- Draft hook (`use-server-source-draft.ts`): hydration/autosave invariants are
+  real — refs prevent stale-closure clobbering; worst case is "no recovery".
+  Edge: a change typed BEFORE hydration completes and never followed by another
+  change is not autosaved (ref-gated effect) — acceptable, localStorage covers it.
 
-**Fix:** Wrap the reset and worker decrement in a single transaction. Use the claim token to ensure only the claiming worker can reset.
-
----
-
-## Finding 2: getDbNowUncached called inside execTransaction
-
-**File:** `src/app/api/v1/submissions/route.ts:268-269`
-**Severity:** MEDIUM
-**Confidence:** High
-
-Same pattern as C3-AGG-2 / C4-AGG-1 (fixed in access-codes.ts and exam-sessions.ts). The `getDbNowUncached()` call is inside `execTransaction` but always queries the global pool via `rawQueryOne`, bypassing transaction isolation:
-
-```typescript
-const txResult = await execTransaction(async (tx) => {
-  const dbNow = await getDbNowUncached();  // Uses global pool, not tx
-```
-
-While the time is only used for rate-limit window calculation (not for writes), it is inconsistent with the documented pattern of moving raw queries outside transaction blocks.
-
-**Fix:** Move `getDbNowUncached()` call before `execTransaction`, matching the pattern applied to access-codes.ts and exam-sessions.ts.
-
----
-
-## Finding 3: Inconsistent schema validation for submittedAt
-
-**File:** `src/app/api/v1/judge/claim/route.ts:52-61`
-**Severity:** LOW
-**Confidence:** Medium
-
-The `claimedSubmissionRowSchema` validates `submittedAt` with a different pattern than `executionTimeMs`/`memoryUsedKb`/`score`/`judgedAt`:
-
-- `executionTimeMs` etc. use `coerceNullableNumber` (union of null, string->Number, number)
-- `submittedAt` uses a custom union with explicit Number.isNaN checks and throws on NaN
-
-This inconsistency means `submittedAt` will throw a schema parse error on NaN while the other fields silently coerce to null. If PostgreSQL returns an unexpected string for submittedAt, the claim fails with a 422 instead of proceeding.
-
-**Fix:** Use `coerceNullableNumber` for `submittedAt` as well, or document why submittedAt needs stricter validation.
-
----
-
-## Finding 4: Missing cache invalidation on submission mutations
-
-**File:** `src/lib/assignments/contest-scoring.ts:58`
-**Severity:** LOW
-**Confidence:** Medium
-
-The LRU cache (`rankingCache`) caches contest rankings for 30s. When submissions are mutated (rejudged, poll updates status, etc.), the cache is not invalidated. Users may see stale leaderboard data for up to 30 seconds after a submission is rejudged or completes.
-
-**Fix:** Add cache invalidation calls in `rejudge` and `poll` routes, or reduce cache TTL for active contests.
-
----
-
-## Finding 5: Unused workerId in non-worker claim SQL
-
-**File:** `src/app/api/v1/judge/claim/route.ts:255`
-**Severity:** LOW
-**Confidence:** High
-
-In the non-worker claim path, the SQL sets `judge_worker_id = @workerId`, but `workerId` is null in this path. This is harmless but confusing — the column is set to null explicitly, which is the same as the default.
-
-**Fix:** Document or simplify — this is intentional (clears any existing workerId) but could use a comment.
+## Final sweep
+Looked specifically for: shared-state hazards in new module-level timers (sweep
+timer is per-process and unref'd — OK), error handling in new routes (draft
+route returns proper 403/validation responses via createApiHandler), magic
+numbers (AUTOSAVE_DEBOUNCE_MS, MAX_SOURCE_BYTES documented), naming/layering
+violations (worker-staleness vs -sweep split is clean: pure vs DB). No
+additional findings.

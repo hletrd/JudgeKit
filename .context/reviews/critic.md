@@ -1,64 +1,54 @@
-# Critic Review — Cycle 5
+# Critic (multi-perspective) — RPF Cycle 1 (2026-06-11)
 
-**Reviewer:** critic
-**Date:** 2026-05-12
+**HEAD reviewed:** f977ef4c. Role: challenge the change surface and the other
+lenses' calls; surface what everyone else is incentivized to miss.
 
----
+## Critique of the remediation wave itself
+1. **The fixes are real, but two of them re-created the pattern they fixed.**
+   - H4 (release dead worker's slot) fixed distinct-worker reclaim and left the
+     self-reclaim sibling leaking (CR1). The H4 guard test pins the fixed case
+     only — the suite now actively *asserts* the incomplete boundary.
+   - The CSP patch (6035ca83) fixed four routes by extending the same fragile
+     enumeration that caused the bug; second occurrence of the class. A
+     finding-driven loop that patches instances without closing classes will
+     meet these again; A1(b)'s route→matcher guard test is the cheap class fix.
 
-## Finding 1: The judge claim problem-not-found path is a real bug
+2. **The stable-numbering fix traded a UX paper-cut for an O(N) query on the
+   two most-visited catalog pages** (P1) — in the same week M4 removed exactly
+   this query shape from analytics. Inconsistent internal standard; fix P1.
 
-**File:** `src/app/api/v1/judge/claim/route.ts:341-374`
-**Severity:** HIGH
-**Confidence:** High
+3. **Severity honesty check:** S1 (draft language) is rate-limit-bounded and
+   authenticated-only; MEDIUM is right, don't inflate it to HIGH in the
+   aggregate. CR1 is a slow capacity corrosion, not an outage: MEDIUM with a
+   trivially safe fix is the correct framing. Nothing in this delta is HIGH —
+   and that should be stated plainly rather than padded.
 
-This is the most serious finding this cycle. The problem-not-found path in the judge claim route:
-1. Fetches the problem AFTER the atomic claim
-2. If missing, resets the submission and decrements active_tasks NON-ATOMICALLY
-3. No claim token check during reset — any request could trigger the reset
+4. **Per-viewer problem numbers** (/problems) will eventually confuse a
+   classroom ("everyone open problem 37" — different 37s). The /practice
+   variant is viewer-independent (public catalog) and fine. Worth a one-line
+   doc/UI hint or switching /problems to a viewer-independent ordinal later;
+   LOW product note, not a defect.
 
-While the endpoint is IP-restricted and auth-required, the race condition within the legitimate worker flow is real. A slow worker or concurrent stale claim can produce inconsistent state.
+5. **The admin override knobs** (allowAiAssistantInRestrictedModes /
+   allowStandaloneCompilerInRestrictedModes) are global. The plausible operator
+   mistake is enabling one for a workshop and forgetting it before an exam.
+   Mitigations already present: default-false, admin-only, durable audit. A
+   "restricted-mode overrides active" banner on the admin dashboard would
+   close the forgetting loop (LOW, UX).
 
-The fix is straightforward: wrap lines 356-370 in `execTransaction` and check the claim token matches.
+6. **Process note:** cycle 9 declared convergence (0 findings) and a fresh
+   multi-agent pass days later confirmed 16 real issues, one CRITICAL. The
+   honest conclusion: convergence claims should be scoped to "this lens set
+   over this surface", which this cycle's reports do. Keep persona lenses in
+   the rotation — C1 (IOI scoring) was invisible to file-by-file review and
+   found by behavioral review.
 
----
+## Where I disagree with other lenses (none materially)
+- D1 (reclaim deadlock): agree LOW/defer — the trigger needs two simultaneously
+  half-dead-but-alive workers; engineering for it now is speculative.
+- D3 (clock-skew insta-stale): agree note-only; the heal window is ≤30 s.
 
-## Finding 2: getDbNowUncached inside execTransaction is a pattern violation
-
-**File:** `src/app/api/v1/submissions/route.ts:265-270`
-**Severity:** MEDIUM
-**Confidence:** High
-
-The cycles 3/4 fixes explicitly moved `getDbNowUncached` (via `rawQueryOne`) outside transaction blocks because raw queries bypass transaction isolation. The submissions POST route violates this pattern:
-
-```typescript
-const txResult = await execTransaction(async (tx) => {
-  const dbNow = await getDbNowUncached(); // Always uses global pool!
-```
-
-While the impact is lower here (dbNow is only used for rate-limit window, not for writes), it's a pattern inconsistency that future maintainers might copy into more sensitive code.
-
----
-
-## Finding 3: Cache invalidation remains unaddressed
-
-**File:** `src/lib/assignments/contest-scoring.ts`
-**Severity:** LOW
-**Confidence:** Medium
-
-The leaderboard cache (30s TTL, 15s stale-while-revalidate) means:
-- A participant submits code
-- The submission completes judging
-- The leaderboard may not reflect the new result for 15-30 seconds
-
-For a live contest, this is a noticeable UX issue. The cache is necessary for performance (raw SQL CTEs are expensive), but invalidation should be tied to submission lifecycle events.
-
----
-
-## Summary
-
-Cycle 5 found fewer new issues than prior cycles, which is expected — the codebase has been through 4 review cycles. The remaining issues are:
-1. One real race condition (HIGH)
-2. One pattern inconsistency (MEDIUM)
-3. A few deferred low-severity items
-
-The codebase is in significantly better shape than cycle 1.
+## Final sweep
+Re-read the six "verified sound" remediation diffs hunting for camouflage
+(tests adjusted to pass rather than behavior fixed) — found none; the IOI fix
+in particular fixed the masking test explicitly. No additional findings.

@@ -1,56 +1,62 @@
-# Test Engineer Review — Cycle 5
+# Test Engineer — RPF Cycle 1 (2026-06-11)
 
-**Reviewer:** test-engineer
-**Date:** 2026-05-12
+**HEAD reviewed:** f977ef4c. Baseline: 330 files / 2551 unit tests, all green
+on this HEAD (re-run this cycle). +79 tests vs cycle-9.
 
----
+## Coverage assessment of the delta
+Every remediation commit shipped with tests (verified by reading them, not the
+checkmarks): claim reclaim guard (`tests/unit/judge/claim-query.test.ts`,
++ DB-backed `tests/integration/db/judge-claim-reclaim.test.ts`), IOI run-all
+(`ioi-run-all-tests-implementation.test.ts` — drives the truncated worker shape
+through scoring), retention (`data-retention-maintenance.test.ts`), draft route
+(`problem-draft.route.test.ts`, 6 cases), draft hook
+(`use-server-source-draft.test.ts`, 98 lines incl. the never-clobber cases),
+staleness sweep (`worker-staleness-sweep.test.ts`), a11y guards
+(`a11y-review-fixes-implementation.test.ts`), settings overrides
+(`system-settings.test.ts` +85 lines).
 
-## Finding 1: No test for judge claim problem-not-found race condition
+## Gaps (NEW findings)
 
-**File:** `src/app/api/v1/judge/claim/route.ts:352-374`
-**Severity:** MEDIUM
-**Confidence:** High
+### T1 — No test for the SELF-reclaim active_tasks path (MEDIUM, confidence High)
+`claim-query.test.ts:` structural tests assert `prev_worker_release` exists and
+excludes `@workerId`, but no test (unit-structural or integration) covers the
+same-worker reclaim accounting — which is exactly where the live leak hides
+(code-reviewer CR1). The DB-backed `judge-claim-reclaim.test.ts` exercises
+distinct-worker reclaim only. When CR1 is fixed, add: (a) structural assertion
+that `worker_bump` compensates the self-case; (b) an integration case
+(same worker id reclaims its own stale row → active_tasks unchanged net).
 
-The judge claim route handles the case where a claimed submission's problem no longer exists. This is an edge case that can occur when:
-- A problem is deleted between submission and claim
-- Database inconsistency
+### T2 — Draft route: no negative test for junk `language` (LOW→same fix as S1, confidence High)
+`problem-draft.route.test.ts` covers auth/authz/size-cap/upsert/delete but
+accepts any language string. Once S1 (registry validation) lands, add a 400
+case for an unknown language and keep a happy case for a real one.
 
-There is no test coverage for this path. The race condition (reset outside transaction) is particularly dangerous and untested.
+### T3 — No guard test mapping app routes → CSP matcher (LOW, confidence High)
+The repo's source-grep-guard idiom (`tests/unit/infra/source-grep-inventory.test.ts`)
+fits A1/S2 perfectly: enumerate `src/app/{(public),(auth),change-password}/**`
+top-level segments and assert each appears in `proxy.ts` config.matcher. Would
+have caught both prior CSP regressions at commit time.
 
-**Fix:** Add a unit test that mocks the problem lookup to return null, verifies the submission is reset to pending, and verifies active_tasks is decremented.
+### T4 — `verify-db-backup.sh` restore-test has no CI exercise (LOW, env-bound)
+The restore path needs a Postgres; falls under carried DEFER-ENV-GATES (no
+provisioned CI DB). Re-defer with that item; do not fake it with mocks.
 
----
+## Flakiness / hygiene
+- Unit run is deterministic (38.9 s, no retries seen). The pino error noise in
+  the run log (`contests.route.test.ts` "crash" stack traces) is *intentional*
+  error-path coverage writing through the real logger — cosmetic, but it makes
+  real failures harder to spot in CI logs. Consider silencing the logger in
+  those specific tests via the existing test logger shim (LOW, hygiene).
+- `tests/integration/db/*` (incl. the new reclaim suite) remain env-gated;
+  documented and acceptable (DEFER-ENV-GATES).
 
-## Finding 2: Source-inspection tests still present
+## TDD opportunities for this cycle's fixes
+Write T1's structural assertion BEFORE changing `buildClaimSql` (red→green),
+and T2's 400 case BEFORE adding the language guard. Both are cheap and pin the
+exact regression class.
 
-**File:** `tests/unit/assignments/participant-timeline-logic.test.ts`
-**Severity:** MEDIUM
-**Confidence:** High
-
-Same finding as C3-AGG-3 / C4-AGG-3. The test file reads source code as strings and checks substring presence. It never exercises actual function logic. The file was updated in cycle 3 to verify the transaction wrapper exists but still provides no confidence in correctness.
-
-**Fix:** Replace with real unit tests that mock the DB layer and call `getParticipantTimeline` with test data.
-
----
-
-## Finding 3: Missing test for cache invalidation
-
-**File:** `src/lib/assignments/contest-scoring.ts`
-**Severity:** LOW
-**Confidence:** Medium
-
-There is no test verifying that the LRU cache invalidates or updates when submissions change. The cache TTL is 30s with stale-while-revalidate at 15s, but no tests verify this behavior.
-
-**Fix:** Add tests for cache hit, miss, stale hit, and background refresh.
-
----
-
-## Finding 4: No test for Docker build path validation
-
-**File:** `src/lib/docker/client.ts:62-72`
-**Severity:** LOW
-**Confidence:** Medium
-
-The `validateDockerfilePath` function has no direct unit tests. It is tested indirectly via the build route tests, but edge cases (path traversal, prefix bypass) lack coverage.
-
-**Fix:** Add unit tests for `validateDockerfilePath` with various attack inputs.
+## Final sweep
+Checked for masking tests (the verdict.test.ts class fixed in C1 — no new
+hand-built result arrays that bypass the worker shape), over-mocked routes
+(b38062ae correctly mocks getEffectiveModeRestrictions where the real DB isn't
+available), and orphaned snapshots (none). Done.

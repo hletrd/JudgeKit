@@ -1,53 +1,72 @@
-# UI/UX Review: JudgeKit
+# Designer (UI/UX + a11y) — RPF Cycle 1 (2026-06-11)
 
-**Reviewer:** designer
-**Date:** 2026-05-11
-**Scope:** Accessibility, responsive design, form UX, loading states — Cycle 2 of RPF loop
+**HEAD reviewed:** f977ef4c. Net-new UI this cycle: fullscreen-editor focus
+modal, side-by-side diff markers, contrast fixes, responsive contest cards,
+tag-dialog/collapsible hydration fixes, countdown-timer hydration guard, admin
+settings additions (2 override checkboxes + zip-size field), stable problem
+numbers, recruiting consent line.
 
----
+**Method note (consistent with all prior RPF cycles in this repo):** a live
+agent-browser pass requires a running Next.js server + provisioned Postgres,
+which this environment does not have; the markup/accessibility contract is
+reviewed statically with selector/class-level evidence, and the repo's own
+a11y guard tests (`a11y-review-fixes-implementation.test.ts`,
+header-viewport Playwright suite) are used as executable evidence where they
+exist. Live-browser verification remains a provisioned-host task
+(carried DEFER-ENV-GATES).
 
-## New Findings Summary
+## Verified good (markup-level evidence)
+- **Fullscreen editor modal (c6cdfbe7):** `role="dialog"` + `aria-modal` +
+  `aria-label`, focus moved in on open, Tab/Shift-Tab wrap, focus restored on
+  close — closes the WCAG 2.4.3 trap. Escape also exits CodeMirror's Tab
+  capture separately (238f240e) → WCAG 2.1.2 satisfied at both layers.
+- **Diff add/remove markers (604646bb):** dedicated `+`/`-` `<td>` column on
+  BOTH panels — not color-alone (WCAG 1.4.1). Marker cells are plain text and
+  read naturally in sequence for screen readers.
+- **Contrast (22141e82):** `text-yellow-700` on light (dark keeps
+  `yellow-400`) — meets 4.5:1 against the white/`muted` backgrounds used.
+- **Contest cards (77262773):** `flex-col gap-3 sm:flex-row` + `flex-wrap`
+  badge cluster — no fixed-width `shrink-0` overflow on 320–768 px. Title
+  truncation retained; tap targets unchanged (whole card is the link with a
+  visible `focus-visible:ring-2`).
+- **Hydration errors removed** (d280a45f, 82059635, ebdfaafb): React #418 on
+  timer text (suppressHydrationWarning scoped to the two time nodes only) and
+  invalid button nesting in tag dialogs / collapsible triggers — the latter
+  were real HTML-validity bugs (interactive inside interactive), not just
+  console noise.
+- **Korean letter-spacing rule:** grep over the delta shows no `tracking-*`
+  utility added to any Korean-rendering markup (38b5e893 removed the one
+  violation: menu shortcut `tracking-widest`). Compliant.
 
-| Severity | Count |
-|----------|-------|
-| MEDIUM   | 1     |
-| LOW      | 2     |
-| **Total**| **3** |
+## Findings
 
----
+### UX1 — Per-viewer "stable" numbers can desync a classroom (LOW, confidence High)
+`/problems` numbers rank the *viewer's* visible set
+(`problems/page.tsx:464-482` comment admits this). Instructor says "open
+problem 37"; a student in fewer groups sees a different #37. `/practice`
+(public catalog) is viewer-independent and fine. Mitigation options: tooltip
+("numbering is personal to your catalog view"), or rank within a
+viewer-independent scope. LOW; pairs with perf P1 — fix both in one pass.
 
-## MEDIUM
+### UX2 — Admin restricted-mode override checkboxes lack consequence copy (LOW, confidence Medium)
+`system-settings-form.tsx` adds `allowAiAssistantInRestrictedModes` /
+`allowStandaloneCompilerInRestrictedModes` as labeled checkboxes (Label↔id
+associated — fine technically). The labels don't warn that these are GLOBAL
+and affect live exams immediately; the plausible failure is enabling for a
+workshop and forgetting before an exam (critic #5). Add helper text + a
+visible "overrides active" indicator near the platform-mode selector.
 
-### UI1: Verify-Email Page Lacks Loading Spinner / Visual Feedback During Fetch
-- **File:** `src/app/(auth)/verify-email/page.tsx:63-65`
-- **Confidence:** High
-- **Description:** The loading state displays only static text (`t("verifying")`) with no spinner, progress indicator, or skeleton. On slower networks, users may perceive the page as frozen. Contrast this with other auth flows (signup, login) which use button loading states and inline spinners.
-- **Failure scenario:** User on slow mobile connection sees "Verifying..." text with no animation. They assume the page is broken and refresh, potentially causing duplicate verification requests.
-- **Fix:** Add a `<Loader2 className="animate-spin" />` spinner icon next to the text, matching the pattern used in `src/components/code/compiler-client.tsx` and other async UI surfaces.
+### UX3 — Draft recovery is silent (LOW, confidence Medium)
+`use-server-source-draft.ts` restores a server draft into an empty editor with
+no notice. A student returning on a new device sees code appear without
+explanation ("did the site submit this? is this mine?"). A small toast/badge
+("Recovered unsubmitted draft from <time>") would convert a trust-ambiguous
+moment into a trust-building one. (The sonner toast util is already a
+dependency.)
 
----
-
-## LOW
-
-### UI2: Verify-Email CardTitle Wraps `<h1>` Creating Potential Heading Nesting
-- **File:** `src/app/(auth)/verify-email/page.tsx:58-60`
-- **Confidence:** Medium
-- **Description:** `<CardTitle>` from shadcn/ui typically renders as an `<h3>` or similar heading element. Wrapping an `<h1>` inside it creates invalid heading hierarchy (h1 inside h3), which breaks accessibility for screen reader users navigating by heading level.
-- **Failure scenario:** Screen reader user navigates to the page and encounters an h1 nested inside a lower-level heading. The heading structure is nonsensical and confusing.
-- **Fix:** Remove the nested `<h1>` and rely on `<CardTitle>`'s native heading, or use `<CardTitle asChild>` with the `<h1>` as the only heading element.
-
-### UI3: Verify-Email Success/Error Buttons Not Disabled During Processing
-- **File:** `src/app/(auth)/verify-email/page.tsx:71-76,85-90`
-- **Confidence:** Low
-- **Description:** The "Sign In" and "Back to Sign In" buttons are always interactive, even while verification is in flight. There is no visual or interaction difference between loading and final states until the status changes.
-- **Fix:** Add `disabled={status === "loading"}` to both buttons, or hide them entirely during loading.
-
----
-
-## Accessibility Sweep
-
-- `role="status"` and `role="alert"` used correctly for dynamic content
-- Color contrast: green-600 on white passes WCAG AA (3:1 for large text, but this is small text — needs verification)
-- Focus management: no focus trap, no autofocus on error message
-- Keyboard navigation: buttons are native and focusable
-- Missing: skip link, landmark regions (aside, nav), live region for loading state
+## Final sweep
+Checked the delta for: missing focus-visible on new interactive elements
+(none added without), new images without alt (none), form inputs without
+labels (admin zip-size field has Label htmlFor), reduced-motion (no new
+animation), i18n keys for all new strings (en+ko present). No further
+findings.
