@@ -1,6 +1,6 @@
 # Judge worker incident runbook
 
-_Last updated: 2026-05-18_
+_Last updated: 2026-06-11_
 
 The judge worker is a privileged trust boundary because it launches sibling judge containers through the Docker proxy path.
 
@@ -28,6 +28,30 @@ The judge worker is a privileged trust boundary because it launches sibling judg
 - document any affected assessment windows and operator actions taken
 
 ## Known signals
+
+### `[judge] staleness sweep reaped unresponsive worker(s) to offline` (alert on this line)
+
+This is the primary automated dead-worker signal. The background staleness
+sweep (60 s interval, DB-clock based) flips a worker `online → stale` after
+90 s of heartbeat silence and reaps `stale → offline` after 300 s. The reap
+emits exactly one `warn`-level log line per transition (not per sweep):
+
+```
+[judge] staleness sweep reaped unresponsive worker(s) to offline
+```
+
+with structured fields `reaped` (count) and `workerIds`. **Wire log-based
+alerting (Loki/grep) to this exact string** — it fires the moment a worker is
+reaped, independent of and faster than the next Prometheus scrape of
+`judgekit_judge_workers{status="offline"}`. The companion `info` line
+`[judge] staleness sweep marked silent worker(s) stale` is the early-warning
+precursor and usually not worth paging on (a healthy-but-slow worker heals
+itself on its next heartbeat).
+
+When the alert fires mid-assessment: stale claims are reclaimed automatically
+by the remaining workers (including the dead worker's `active_tasks` slots),
+so judging continues at reduced capacity; restore or replace the worker per
+the recovery sections below.
 
 ### `failed to write stdin: Broken pipe (os error 32)` surfaced to the user
 

@@ -59,9 +59,10 @@ log assertion, defaults pinned. 27/27 relevant tests + tsc green.
   noting numbering reflects the viewer's visible catalog (en+ko).
 - Tests: numbering helper unit test pinning rank semantics.
 
-### F4 ⬜ AGG-4 — Document NODE_ENCRYPTION_KEY (MEDIUM, docs)
-Add to `.env.example`, `.env.production.example`, and the required-env table in
-`docs/deployment.md`, clearly distinguishing it from `PLUGIN_CONFIG_ENCRYPTION_KEY`.
+### F4 ✅ AGG-4 — Document NODE_ENCRYPTION_KEY (MEDIUM, docs)
+**Done 2026-06-11:** added to `.env.example`, `.env.production.example`,
+`docs/deployment.md` (quick-start block + required-env table), each explicitly
+distinguishing it from `PLUGIN_CONFIG_ENCRYPTION_KEY`.
 
 ### F5 ⬜ AGG-7 — CSP route→matcher guard test (LOW→MEDIUM trend, class-closer)
 New unit test in the source-grep-guard idiom: enumerate top-level page segments
@@ -127,12 +128,13 @@ Feature work, scoped minimally for incident/accommodation recovery:
 - Tests: authz (participant cannot extend self), extension math, audit row,
   monitor payload. en+ko strings.
 
-### F13 ⬜ AGG-12 — Doc/runbook nits (LOW)
-(a) `docs/judge-worker-incident-runbook.md`: name the exact sweep reap log
-message as the alert signature.
-(b) Anti-cheat doc: state the telemetry posture (deterrence + post-hoc
-evidence; no fullscreen signal — deliberate; second-device assistance is out of
-scope for client telemetry; similarity + snapshot replay are the containment).
+### F13 ✅ AGG-12 — Doc/runbook nits (LOW)
+**Done 2026-06-11:** (a) runbook "Known signals" now opens with the exact
+reap warn line + structured fields + alerting guidance and the stale-precursor
+info line; (b) `docs/exam-integrity-model.md` gained a "Deliberate telemetry
+boundaries" section (no fullscreen signal by decision; second-device honesty;
+similarity + snapshot replay as containment). (c) covered by F2's policy-doc
+update.
 
 ---
 

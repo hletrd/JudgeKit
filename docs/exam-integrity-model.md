@@ -1,6 +1,6 @@
 # Exam integrity model
 
-_Last updated: 2026-04-12_
+_Last updated: 2026-06-11_
 
 JudgeKit currently uses an **integrity telemetry** model, not a full proctoring model.
 
@@ -20,6 +20,27 @@ These signals are **advisory**. They are useful review inputs, but they are not 
 
 ## Implication for high-stakes use
 If you need stronger assurance for formal exams or public contests, you should add operational controls beyond the current browser-event telemetry model.
+
+## Deliberate telemetry boundaries (decided posture, not omissions)
+
+The client event set is `tab_switch, copy, paste, blur, contextmenu, heartbeat`
+(`src/app/api/v1/contests/[assignmentId]/anti-cheat/route.ts`). Two commonly
+requested signals are intentionally NOT collected:
+
+- **No fullscreen enforcement / fullscreen-exit events.** Forcing fullscreen
+  is hostile UX (kills accessibility tooling, multi-monitor reference setups)
+  and is trivially defeated by a second device, so it adds candidate stress
+  without adding real assurance. `blur`/`visibilitychange` already cover
+  app-switching on the same machine.
+- **No second-device / off-screen detection.** Client-side telemetry cannot
+  see a phone running an LLM or a human helper off-screen. Pretending
+  otherwise would be dishonest; the containment for those vectors is
+  post-hoc — the similarity check plus code-snapshot replay (a pasted full
+  solution shows up as one large snapshot delta plus a `paste` event).
+
+Instructors should treat telemetry as **deterrence and evidence**, not
+prevention. If your assessment genuinely requires prevention-grade proctoring,
+pair JudgeKit with Safe Exam Browser or live human proctoring (see below).
 
 ## Review tiers
 - **Context** — ambient telemetry such as periodic heartbeats. Useful for timeline reconstruction, not suspicion on its own.

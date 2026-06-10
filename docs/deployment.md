@@ -17,6 +17,7 @@ AUTH_SECRET=<openssl rand -base64 32>
 AUTH_URL=https://your-domain.example
 AUTH_TRUST_HOST=true
 PLUGIN_CONFIG_ENCRYPTION_KEY=<openssl rand -hex 32>
+NODE_ENCRYPTION_KEY=<openssl rand -hex 32>
 
 # Cron / monitoring auth (bearer for /api/metrics + /api/internal/cleanup)
 CRON_SECRET=<openssl rand -hex 32>
@@ -42,6 +43,7 @@ JUDGE_DISABLE_CUSTOM_SECCOMP=0
 | `AUTH_URL` | Yes | — | App public URL |
 | `AUTH_TRUST_HOST` | No | `false` | Set `true` behind a reverse proxy |
 | `PLUGIN_CONFIG_ENCRYPTION_KEY` | Yes | — | Dedicated AES-GCM key for plugin secrets and API key encryption (`openssl rand -hex 32`) |
+| `NODE_ENCRYPTION_KEY` | Yes (production) | — | AES-256-GCM key for secrets stored in the DB (SMTP password, hCaptcha secret, API keys). The production startup gate refuses to boot without it. NOT the same key as `PLUGIN_CONFIG_ENCRYPTION_KEY` — generate each independently. (`openssl rand -hex 32`) |
 | `DATABASE_URL` | Yes | — | PostgreSQL connection string (e.g. `postgres://user:pass@host:5432/judgekit`) |
 | `JUDGE_AUTH_TOKEN` | Yes | — | Shared bootstrap secret. Used by workers on the registration path only — once a worker is registered the app validates `claim`/`heartbeat`/`deregister` against the per-worker `secretTokenHash` and rejects the shared token. (`openssl rand -hex 32`) |
 | `CRON_SECRET` | Yes (production) | — | Bearer token for `/api/metrics` and `/api/internal/cleanup`. The production startup gate refuses to boot without it. (`openssl rand -hex 32`) |
