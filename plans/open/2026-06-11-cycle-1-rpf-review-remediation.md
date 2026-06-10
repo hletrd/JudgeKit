@@ -111,10 +111,12 @@ unsubmitted draft from <relative time>" (en+ko). Must not fire on the
 localStorage path twice; keep restoration logic unchanged (never-clobber
 invariants stay intact).
 
-### F10 ⬜ AGG-11b — Admin override consequence copy + active indicator (LOW)
-`system-settings-form.tsx`: helper text under the two restricted-mode override
-checkboxes ("global — affects live exams immediately"); visible "overrides
-active" badge near the platform-mode selector when either is on (en+ko).
+### F10 ✅ AGG-11b — Admin override consequence copy + active indicator (LOW)
+**Done 2026-06-11:** both override hints now state the GLOBAL/immediate-effect
+consequence (en+ko); amber `role="status"` "overrides active" banner renders
+next to the platform-mode selector whenever an override is effective
+(yellow-700/dark:yellow-400 per the 22141e82 contrast convention; no tracking-*
+on Korean). tsc/eslint/i18n tests green.
 
 ### F11 ⬜ AGG-6 — Anti-cheat IP-overlap report (MEDIUM product gap, persona-security PS1)
 Staff-only section on the anti-cheat dashboard: (a) IPs used by >1 participant

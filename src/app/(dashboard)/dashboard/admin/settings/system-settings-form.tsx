@@ -294,6 +294,19 @@ export function SystemSettingsForm({
           })}
         </p>
         <p className="text-xs text-muted-foreground">{t(`platformModeDescriptions.${platformMode}`)}</p>
+        {((platformPolicy.restrictAiByDefault && allowAiAssistantInRestrictedModes) ||
+          (platformPolicy.restrictStandaloneCompiler && allowStandaloneCompilerInRestrictedModes)) && (
+          // Prominent "overrides active" indicator (RPF cycle-1 UX2/AD3): the
+          // plausible operator mistake is enabling an override for a workshop
+          // and forgetting it before an exam — the muted operational list
+          // below is too easy to skim past.
+          <p
+            role="status"
+            className="rounded-md border border-yellow-600/40 bg-yellow-500/10 px-3 py-2 text-xs font-medium text-yellow-700 dark:text-yellow-400"
+          >
+            {t("restrictedModeOverridesActive")}
+          </p>
+        )}
         <div className="space-y-2 rounded-lg border border-dashed px-3 py-2 text-xs text-muted-foreground">
           <p className="font-medium text-foreground">{t("platformModeOperationalTitle")}</p>
           <ul className="list-disc space-y-1 pl-4">
