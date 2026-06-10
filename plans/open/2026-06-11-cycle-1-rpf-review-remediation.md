@@ -1,0 +1,160 @@
+# Cycle 1 RPF review remediation (2026-06-11)
+
+**Date:** 2026-06-11
+**Cycle:** 1/100 of this RPF loop (orchestrator-numbered)
+**HEAD at review:** f977ef4c (main)
+**Aggregate:** `.context/reviews/_aggregate.md` (17 lenses: 11 specialist + 6 persona)
+**Baseline gates on review HEAD:** tsc 0 · eslint 0/0 · lint:bash clean · unit 330 files / 2551 tests PASS.
+**No HIGH finding this cycle.** Top items are MEDIUM.
+
+Status legend: ✅ done+pushed · 🔧 in progress · ⬜ todo · 🟡 needs decision
+
+---
+
+## Implement this cycle
+
+### F1 ⬜ AGG-1 — Fix self-reclaim `active_tasks` leak (MEDIUM; 4 lenses + 2 personas)
+`src/lib/judge/claim-query.ts:80-101`. Same-worker stale reclaim bumps
+`active_tasks` without releasing the prior hold → permanent +1 on a live worker.
+- Compensate in `worker_bump`: `active_tasks = active_tasks + 1 - (self-reclaim count)`
+  via `(SELECT COUNT(*) FROM candidate c WHERE c.previous_worker_id = @workerId AND EXISTS (SELECT 1 FROM claimed))`
+  — keeps the `<> @workerId` guard on `prev_worker_release` (required: Postgres
+  forbids two modifying CTEs updating one row).
+- Add invariant comments (why `<>` must stay; lock-order rationale) per architect A3.
+- Tests FIRST (red→green, test-engineer T1): structural assertion in
+  `tests/unit/judge/claim-query.test.ts` that worker_bump compensates the self
+  case; extend `tests/integration/db/judge-claim-reclaim.test.ts` with a
+  same-worker reclaim case (net active_tasks unchanged) — env-gated like its
+  siblings.
+
+### F2 ⬜ AGG-2 — Draft route language validation + retention (MEDIUM)
+- `src/app/api/v1/problems/[id]/draft/route.ts`: validate `language` against
+  the judge language registry in PUT (400 `validation` on unknown); DELETE may
+  stay permissive (deleting junk is harmless) — decide in implementation.
+- Add `source_drafts` pruning to `src/lib/data-retention-maintenance.ts`
+  (retention window env-configurable, default e.g. 180 days since `updatedAt`).
+- Doc: add drafts line to `docs/data-retention-policy.md`.
+- Tests: 400 unknown-language case + happy case (T2); retention prune test.
+
+### F3 ⬜ AGG-3 + AGG-11c — Stable problem numbering without full-catalog scan (MEDIUM)
+`src/app/(public)/problems/page.tsx:469-482`, `src/app/(public)/practice/page.tsx:538-549`.
+- Replace whole-catalog id fetch with SQL `row_number() OVER (ORDER BY
+  sequence_number ASC NULLS LAST, created_at ASC)` subquery filtered to the
+  current page's ids (≤ PAGE_SIZE rows transferred).
+- Dedupe the ordering expression (now in 4 places) into one helper.
+- UX hint (AGG-11c): title/tooltip on the number column on `/problems`
+  noting numbering reflects the viewer's visible catalog (en+ko).
+- Tests: numbering helper unit test pinning rank semantics.
+
+### F4 ⬜ AGG-4 — Document NODE_ENCRYPTION_KEY (MEDIUM, docs)
+Add to `.env.example`, `.env.production.example`, and the required-env table in
+`docs/deployment.md`, clearly distinguishing it from `PLUGIN_CONFIG_ENCRYPTION_KEY`.
+
+### F5 ⬜ AGG-7 — CSP route→matcher guard test (LOW→MEDIUM trend, class-closer)
+New unit test in the source-grep-guard idiom: enumerate top-level page segments
+under `src/app/{(public),(auth),...}/**/page.tsx` and assert each maps into the
+`config.matcher` list in `src/proxy.ts`. Document the known 404/unmatched-path
+exception explicitly in the test.
+
+### F6 ⬜ AGG-8 — `exam_mode` CHECK constraint (LOW-MEDIUM, integrity)
+Idempotent migration: normalize stray values
+(`UPDATE assignments SET exam_mode='none' WHERE exam_mode NOT IN (...)`), then
+`ALTER TABLE ... ADD CONSTRAINT ... CHECK (exam_mode IN ('none','scheduled','windowed'))`
+guarded by IF NOT EXISTS-style idempotency per repo migration conventions
+(see existing drizzle/00xx migrations). Keep schema.pg.ts in sync + drift guard.
+
+### F7 ⬜ AGG-9 — Restore DB-failure safe default in `isAiAssistantEnabled` (LOW)
+`src/lib/system-settings.ts:218-228`: wrap in try/catch; on failure return the
+mode-derived default (pre-c8d06661 contract). + regression test.
+
+### F8 ⬜ AGG-10 — Consolidate effective-restrictions logic (LOW)
+`src/lib/platform-mode-context.ts:288-293` → call
+`getEffectiveModeRestrictions(effectiveMode)` instead of re-implementing. + test
+asserting both paths agree (pin against drift).
+
+### F9 ⬜ AGG-11a — Draft-recovery toast (LOW, 3 lenses)
+`src/hooks/use-server-source-draft.ts` (or its consumer): when a server draft is
+restored into an empty/template editor, fire a sonner toast "Recovered your
+unsubmitted draft from <relative time>" (en+ko). Must not fire on the
+localStorage path twice; keep restoration logic unchanged (never-clobber
+invariants stay intact).
+
+### F10 ⬜ AGG-11b — Admin override consequence copy + active indicator (LOW)
+`system-settings-form.tsx`: helper text under the two restricted-mode override
+checkboxes ("global — affects live exams immediately"); visible "overrides
+active" badge near the platform-mode selector when either is on (en+ko).
+
+### F11 ⬜ AGG-6 — Anti-cheat IP-overlap report (MEDIUM product gap, persona-security PS1)
+Staff-only section on the anti-cheat dashboard: (a) IPs used by >1 participant
+in the assignment (from `exam_sessions.ip_address` + recent anti-cheat event
+IPs); (b) participants with >2 distinct IPs. Server: extend the existing
+staff-gated anti-cheat GET (same `canMonitorContest` gate) with an aggregation
+endpoint/param. Read-only; no new data collection. + route test (authz + shape).
+
+### F12 ⬜ AGG-5 — Per-student exam time extension (MEDIUM product/fairness, 3 personas)
+Feature work, scoped minimally for incident/accommodation recovery:
+- `PATCH /api/v1/groups/[id]/assignments/[assignmentId]/exam-sessions/[userId]`
+  (or equivalent existing route family) accepting `extendMinutes` (1–600);
+  gate: same staff check as exam-session monitoring (`canViewAssignmentSubmissions`
+  is read — use the manage-grade gate `canManageContest`).
+- Semantics: `personal_deadline = personal_deadline + extendMinutes` — never
+  shrink; result may exceed assignment deadline by design (that is the point:
+  accommodations); submission-accept checks must honor the per-session deadline
+  (verify `startExamSession`/submit path reads personalDeadline, not only the
+  assignment deadline).
+- Durable audit event (`recordAuditEventDurable`) with actor, target, minutes.
+- Surface extended deadlines on the exam monitor table (badge "+15 min").
+- Tests: authz (participant cannot extend self), extension math, audit row,
+  monitor payload. en+ko strings.
+
+### F13 ⬜ AGG-12 — Doc/runbook nits (LOW)
+(a) `docs/judge-worker-incident-runbook.md`: name the exact sweep reap log
+message as the alert signature.
+(b) Anti-cheat doc: state the telemetry posture (deterrence + post-hoc
+evidence; no fullscreen signal — deliberate; second-device assistance is out of
+scope for client telemetry; similarity + snapshot replay are the containment).
+
+---
+
+## Deferred register (cycle-1 2026-06-11) — findings NOT implemented this cycle
+Per the strict deferral rules: severity preserved; security/correctness items
+are deferred only where the repo's own carried-deferral precedent
+(DEFER-ENV-GATES, documented in prior cycle plans) or non-defect status applies.
+
+| ID | Finding (file+line) | Sev/Conf | Reason for deferral | Exit criterion |
+|---|---|---|---|---|
+| D1 | Cross-worker reclaim deadlock, `src/lib/judge/claim-query.ts:30-101` | LOW/Medium | Self-recovering (one aborted txn, retried next poll); trigger needs two simultaneously half-hung live workers; restructuring the hot path is riskier than the defect (debugger + critic concur) | Any `deadlock detected` involving `judge_workers` in prod logs |
+| D3 | Registration clock-skew insta-stale, `src/lib/db/schema.pg.ts:438-440` | LOW/Medium | Transient mislabel healed ≤30 s by first heartbeat (DB-time); not a correctness defect | If `lastHeartbeatAt` default is ever touched, switch to DB-side `DEFAULT now()`; or NTP incident showing stale flapping |
+| D4 | Pre-hydration keystroke burst not autosaved, `src/hooks/use-server-source-draft.ts:86-108` | LOW/High | Within the module's documented best-effort contract; localStorage covers the gap; fix would add effect-churn risk to never-clobber invariants | User report of lost pre-hydration edit, or any change to the hydration gate |
+| CR2/P2 | Claim-route per-claim scoringModel SELECT, `claim/route.ts:323-337` | LOW/High | ~1 ms on a throughput-bounded path; consolidation belongs to the carried claim-SQL cluster (F3/F4 of 2026-05 series) to avoid two consecutive rewrites of the same SQL | Next claim-SQL change (e.g. F1 here touches worker_bump only — if F1 implementation ends up reshaping the SELECT, fold it in then) |
+| P3 | Draft-autosave contest write load, `use-server-source-draft.ts` | INFO/Medium | Bounded (3 s debounce + per-user rate limit); monitoring note, not a defect | p95 DB latency degradation during first live contest |
+| T4 | verify-db-backup restore-test not CI-exercised, `scripts/verify-db-backup.sh:27-49` | LOW/env-bound | Carried DEFER-ENV-GATES (no provisioned CI Postgres; repo precedent in prior cycle plans). Mocking it would fake the guarantee | CI Postgres provisioning |
+| IN3/JA2 | Judging-delay banner for instructor/candidate seats | LOW/Medium | Feature; depends on a worker-health surface for non-admin roles — design needed (which roles see what); not a bug | Next ops-surface feature cycle; or a live incident where instructors were blind |
+| TA1 | TA exam-content separation of duties (`canManageProblem` path 3) | LOW/High (policy) | Matches the documented capability model; needs a product decision (capability split `problems.edit_exam`), not a patch | Owner decides institutions need TA grade-only roles |
+| TA2 | Per-assignment grading assignments for TAs | LOW/Medium | Feature note for large-course scale; no current user need | Course with >1 TA requests split grading |
+| TR2 | Per-assignment AI-override granularity (platform-mode-context.ts:286-297) | LOW (product note) | Override is by-design, default-false, admin-only, audited; F10 adds the operator-mistake mitigation | Operator feedback that global granularity caused an exam incident |
+| TH1 | Pino error noise from intentional error-path tests, `tests/unit/api/contests.route.test.ts` | LOW/High | Cosmetic CI-log hygiene; silencing via the test logger shim is mechanical but touches many assertions — batch with next test-hygiene pass | Next test-infra cycle, or a real failure being missed in CI logs |
+| DES-ENV | Live agent-browser UI pass | n/a | Requires running server + provisioned Postgres (carried DEFER-ENV-GATES); static markup/a11y review done instead | Provisioned staging host reachable from review env |
+| ST2 | Editor stays editable after personal deadline passes (exam UX) | LOW/Medium | Server rejects late submissions (integrity holds); F12 monitor work is the prerequisite surface; pure-UX state ("time expired, draft saved") needs design | Implement alongside F12 follow-up or next exam-UX cycle |
+| PS2 | No fullscreen-presence signal in anti-cheat telemetry | LOW/High (policy) | Deliberate posture to document (F13b), not a defect; forced fullscreen is hostile UX and trivially evaded by second device | Owner decides to adopt fullscreen-required exams |
+| CARRY | ARCH-CARRY-1 (raw judge handlers), ARCH-CARRY-2 (SSE O(n) eviction >500 conns), C3-AGG-5 (deploy-docker.sh size), DOC-C5-2 (staleClaimTimeoutMs doc field), C7-DS-1 (README /api/v1/time), N7-C7 (ICPC override live-rank), DEFER-ENV-GATES | as recorded | Carried from prior cycle plans with unchanged preconditions (see `plans/open/2026-05-29-cycle-7-rpf-review-remediation.md` + `plans/open/2026-06-03-…` L3 note) | As recorded in their origin plans |
+
+No security, correctness, or data-loss finding from this cycle's reviews is
+deferred: AGG-1/2/8 (the integrity/correctness items) are all scheduled above
+(F1, F2, F6). D1/D3/D4 are LOW failure-mode notes whose "fix" is riskier or
+moot, with explicit exit criteria. Deferred work remains bound by repo policy
+(GPG-signed conventional+gitmoji commits, no --no-verify, etc.) when picked up.
+
+---
+
+## Plan archival done in this planning pass
+- `plans/open/2026-06-03-multi-agent-review-remediation.md` → `plans/done/`
+  (all 16 items ✅ done+pushed; re-verified against code by this cycle's
+  verifier pass; its one open note N7-C7-ICPC is carried in the register above).
+
+## Recommended sequence
+1. F1 (judge core, tests first) → F6 (integrity constraint) → F2 (draft hardening).
+2. F4 + F13 (docs) — cheap, unblock operators.
+3. F5 (class-closer test) → F7/F8 (small code) → F3 (perf + 11c).
+4. F9/F10 (UX) → F11 (IP overlap) → F12 (time extension, biggest).
+Gates after each item; fine-grained signed commits; push per iteration.
