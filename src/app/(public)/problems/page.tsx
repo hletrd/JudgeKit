@@ -23,6 +23,7 @@ import { Button } from "@/components/ui/button";
 import { PaginationControls } from "@/components/pagination-controls";
 import { FilterSelect } from "@/components/filter-select";
 import { ProblemImportButton } from "@/components/problem/problem-import-button";
+import { getCatalogNumbersForIds } from "@/lib/problems/catalog-numbers";
 import { getRecruitingAccessContext } from "@/lib/recruiting/access";
 import { resolveCapabilities } from "@/lib/capabilities/cache";
 import { normalizePage } from "@/lib/pagination";
@@ -467,20 +468,12 @@ export default async function ProblemsPage({
   // same canonical order used for display. This keeps a problem's number fixed
   // no matter which page or filter the viewer is on, replacing the old
   // page-relative `offset + index + 1` fallback that shifted across pages.
-  const orderedVisibleIdRows = accessFilter
-    ? await db
-        .select({ id: problems.id })
-        .from(problems)
-        .leftJoin(users, eq(problems.authorId, users.id))
-        .where(accessFilter)
-        .orderBy(asc(problems.sequenceNumber), asc(problems.createdAt))
-    : await db
-        .select({ id: problems.id })
-        .from(problems)
-        .leftJoin(users, eq(problems.authorId, users.id))
-        .orderBy(asc(problems.sequenceNumber), asc(problems.createdAt));
-  const catalogNumberByProblemId = new Map(
-    orderedVisibleIdRows.map((row, idx) => [row.id, idx + 1] as const)
+  // Computed in SQL for only this page's rows (the previous implementation
+  // fetched EVERY visible id per view — RPF cycle-1 AGG-3). The users join the
+  // old query carried is not needed: accessFilter references problems.* only.
+  const catalogNumberByProblemId = await getCatalogNumbersForIds(
+    filteredProblems.map((p) => p.id),
+    accessFilter
   );
 
   // Quick stats: count solved/attempted/untried across all visible problems
@@ -676,7 +669,13 @@ export default async function ProblemsPage({
           <Table>
             <TableHeader>
               <TableRow>
-                <TableHead className="w-12">{t("table.number")}</TableHead>
+                {/* Numbers are per-viewer (rank within the viewer's visible
+                    catalog) — surface that so classes don't cite them as
+                    shared identifiers (RPF cycle-1 UX1/IN2). */}
+                <TableHead className="w-12" title={t("table.numberHint")}>
+                  {t("table.number")}
+                  <span className="sr-only"> — {t("table.numberHint")}</span>
+                </TableHead>
                 <TableHead>{t("table.title")}</TableHead>
                 <TableHead>{t("table.tags")}</TableHead>
                 <TableHead>{t("table.progress")}</TableHead>

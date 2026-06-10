@@ -11,6 +11,7 @@ import { buildAbsoluteUrl, buildLocalePath, buildPublicMetadata } from "@/lib/se
 import { getResolvedSystemSettings, getResolvedSystemTimeZone } from "@/lib/system-settings";
 import { formatDateInTimeZone } from "@/lib/datetime";
 import { formatDifficulty } from "@/lib/formatting";
+import { getCatalogNumbersForIds } from "@/lib/problems/catalog-numbers";
 import { auth } from "@/lib/auth";
 import { resolveCapabilities } from "@/lib/capabilities/cache";
 import { Card, CardContent } from "@/components/ui/card";
@@ -540,14 +541,12 @@ export default async function PracticePage({
   // difficulty/sort/progress filters AND of pagination), by the canonical
   // number-ascending order. This keeps a problem's number fixed no matter which
   // page or filter the viewer is on, replacing the page-relative `index + 1`
-  // fallback that restarted on every page.
-  const orderedCatalogIdRows = await db
-    .select({ id: problems.id })
-    .from(problems)
-    .where(visibilityFilter)
-    .orderBy(asc(problems.sequenceNumber), asc(problems.createdAt));
-  const catalogNumberByProblemId = new Map(
-    orderedCatalogIdRows.map((row, idx) => [row.id, idx + 1] as const)
+  // fallback that restarted on every page. Computed in SQL for only this
+  // page's rows (the previous implementation fetched EVERY catalog id per
+  // view — RPF cycle-1 AGG-3).
+  const catalogNumberByProblemId = await getCatalogNumbersForIds(
+    filteredProblems.map((p) => p.id),
+    visibilityFilter
   );
 
   // Sort option labels

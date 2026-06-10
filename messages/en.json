@@ -327,6 +327,7 @@
     "solve": "Solve",
     "table": {
       "number": "#",
+      "numberHint": "Numbering reflects your visible catalog and can differ between users with different group access. Cite problem titles, not numbers.",
       "title": "Title",
       "tags": "Tags",
       "progress": "Progress",

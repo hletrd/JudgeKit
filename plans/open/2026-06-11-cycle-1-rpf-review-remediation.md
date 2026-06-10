@@ -49,7 +49,15 @@ log assertion, defaults pinned. 27/27 relevant tests + tsc green.
 - Doc: add drafts line to `docs/data-retention-policy.md`.
 - Tests: 400 unknown-language case + happy case (T2); retention prune test.
 
-### F3 ⬜ AGG-3 + AGG-11c — Stable problem numbering without full-catalog scan (MEDIUM)
+### F3 ✅ AGG-3 + AGG-11c — Stable problem numbering without full-catalog scan (MEDIUM)
+**Done 2026-06-11:** new `src/lib/problems/catalog-numbers.ts`
+(`getCatalogNumbersForIds`: row_number() window in a CTE, outer-filtered to the
+page's ids — transfers ≤ PAGE_SIZE rows; lazy db import keeps it collection-safe
+for env-gated tests). Both pages migrated; the redundant users-join dropped.
+Ranking semantics (NULLS LAST, createdAt tiebreak, scope exclusion, pagination
+stability, empty short-circuit) verified by a NEW integration test executed
+against a real Postgres 17. Per-viewer numbering hint added to the /problems
+number column header (title + sr-only, en+ko). Unit suite 2559/2559 green.
 `src/app/(public)/problems/page.tsx:469-482`, `src/app/(public)/practice/page.tsx:538-549`.
 - Replace whole-catalog id fetch with SQL `row_number() OVER (ORDER BY
   sequence_number ASC NULLS LAST, created_at ASC)` subquery filtered to the
