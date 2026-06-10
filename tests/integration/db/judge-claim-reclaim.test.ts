@@ -218,6 +218,49 @@ describe.skipIf(!hasPostgresIntegrationSupport)("Judge claim reclaim after worke
     expect(row.worker).toBe("worker-B");
   });
 
+  it("does not leak active_tasks when a worker reclaims ITS OWN stale submission", async () => {
+    const subId = `sub_${nanoid(8)}`;
+    await insertWorker("worker-A");
+    await insertSubmission(subId);
+
+    // A claims (active_tasks 0 → 1), starts judging, then hangs past the
+    // stale cutoff WITHOUT dying — it keeps polling for new work.
+    const first = await runClaim("worker-A", 1_000);
+    expect(first.row?.id).toBe(subId);
+    await makeClaimStale(subId, 10_000);
+
+    // A reclaims its own orphaned submission. The slot is already held, so
+    // the bump must net to zero — NOT count the same submission twice.
+    const second = await runClaim("worker-A", 1_000);
+    expect(second.row?.id).toBe(subId);
+    expect(second.row?.previousStatus).toBe("judging");
+    expect(second.claimToken).not.toBe(first.claimToken);
+
+    const [worker] = await testDb.db
+      .select({ activeTasks: judgeWorkers.activeTasks })
+      .from(judgeWorkers)
+      .where(eq(judgeWorkers.id, "worker-A"));
+    expect(worker.activeTasks).toBe(1);
+
+    // Finalize with the fresh token: the single decrement in poll/route.ts
+    // (mirrored here) must bring the counter back to exactly 0.
+    await testDb.client.query(
+      `UPDATE submissions
+         SET status = 'completed', score = 100, judge_claim_token = NULL
+       WHERE id = $1 AND judge_claim_token = $2`,
+      [subId, second.claimToken]
+    );
+    await testDb.client.query(
+      `UPDATE judge_workers SET active_tasks = GREATEST(active_tasks - 1, 0) WHERE id = $1`,
+      ["worker-A"]
+    );
+    const [after] = await testDb.db
+      .select({ activeTasks: judgeWorkers.activeTasks })
+      .from(judgeWorkers)
+      .where(eq(judgeWorkers.id, "worker-A"));
+    expect(after.activeTasks).toBe(0);
+  });
+
   it("reclaims via the no-worker claim arm too (parity with the worker arm)", async () => {
     const subId = `sub_${nanoid(8)}`;
     await insertSubmission(subId);

@@ -13,7 +13,13 @@ Status legend: ✅ done+pushed · 🔧 in progress · ⬜ todo · 🟡 needs dec
 
 ## Implement this cycle
 
-### F1 ⬜ AGG-1 — Fix self-reclaim `active_tasks` leak (MEDIUM; 4 lenses + 2 personas)
+### F1 ✅ AGG-1 — Fix self-reclaim `active_tasks` leak (MEDIUM; 4 lenses + 2 personas)
+**Done 2026-06-11:** worker_bump now compensates the self-reclaim case
+(`active_tasks + 1 - COUNT(candidate where previous_worker_id = @workerId)`);
+`<> @workerId` guard kept on prev_worker_release with invariant + lock-order
+comments. Structural unit test added AND the same-worker integration case was
+**executed against a real throwaway Postgres 17** (not just env-gated): 5/5
+reclaim tests + full DB integration suite 42/42 pass.
 `src/lib/judge/claim-query.ts:80-101`. Same-worker stale reclaim bumps
 `active_tasks` without releasing the prior hold → permanent +1 on a live worker.
 - Compensate in `worker_bump`: `active_tasks = active_tasks + 1 - (self-reclaim count)`

@@ -83,6 +83,22 @@ export function buildClaimSql(hasWorker: boolean): string {
           -- so the dead worker's capacity counter does not leak permanently.
           -- Only fires when a distinct prior owner exists and the row was claimed;
           -- a fresh 'pending' claim has previous_worker_id = NULL and is skipped.
+          --
+          -- INVARIANT: the "<> @workerId" guard MUST stay. Postgres forbids two
+          -- modifying CTEs of one statement updating the same row, and worker_bump
+          -- below always updates @workerId's row — without the guard, a worker
+          -- reclaiming ITS OWN stale submission would have both CTEs target the
+          -- same judge_workers row (only one write would win, nondeterministically).
+          -- The self-reclaim case is therefore compensated inside worker_bump's
+          -- SET expression instead.
+          --
+          -- LOCK ORDER: worker_slot above already holds FOR UPDATE on the
+          -- CLAIMING worker's row; this CTE then locks the PREVIOUS owner's row.
+          -- Two live workers concurrently reclaiming each other's stale rows can
+          -- in principle deadlock (A holds A wants B; B holds B wants A) — Postgres
+          -- aborts one transaction and that worker simply retries on its next poll.
+          -- Accepted as self-recovering; do not "fix" by reordering without
+          -- re-deriving the snapshot semantics of the whole chain.
           UPDATE judge_workers AS jw
           SET active_tasks = GREATEST(jw.active_tasks - 1, 0)
           FROM candidate c
@@ -93,8 +109,19 @@ export function buildClaimSql(hasWorker: boolean): string {
           RETURNING jw.id
         ),
         worker_bump AS (
+          -- Counts the newly claimed submission against this worker. The
+          -- subtraction compensates the SELF-reclaim case excluded from
+          -- prev_worker_release above: when this worker reclaims its own stale
+          -- submission the slot is already held, so the net change must be 0 —
+          -- otherwise active_tasks double-counts the submission and leaks +1
+          -- permanently (finalize decrements exactly once; the staleness sweep
+          -- only resets counters of fully-silent workers).
           UPDATE judge_workers
-          SET active_tasks = active_tasks + 1
+          SET active_tasks = active_tasks + 1 - (
+            SELECT COUNT(*)::int
+            FROM candidate c
+            WHERE c.previous_worker_id = @workerId
+          )
           WHERE id = @workerId
             AND EXISTS (SELECT 1 FROM claimed)
           RETURNING id
