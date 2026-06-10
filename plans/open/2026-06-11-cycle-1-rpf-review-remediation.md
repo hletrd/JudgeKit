@@ -62,7 +62,14 @@ under `src/app/{(public),(auth),...}/**/page.tsx` and assert each maps into the
 `config.matcher` list in `src/proxy.ts`. Document the known 404/unmatched-path
 exception explicitly in the test.
 
-### F6 ⬜ AGG-8 — `exam_mode` CHECK constraint (LOW-MEDIUM, integrity)
+### F6 ✅ AGG-8 — `exam_mode` CHECK constraint (LOW-MEDIUM, integrity)
+**Done 2026-06-11:** `assignments_exam_mode_valid` check added to schema.pg.ts
++ idempotent journaled migration 0027 (normalize-then-constrain). BONUS drift
+fix discovered en route: hand-written 0027/0028 migration files were never
+journaled, so from-scratch migrate() was missing 3 system_settings columns and
+the CI drift guard failed at HEAD — the catch-up migration journals all of it;
+`check-migration-drift.sh` now green. Verified: from-scratch replay via the
+integration suite (42/42) + constraint rejects the observed corrupt value "0.0".
 Idempotent migration: normalize stray values
 (`UPDATE assignments SET exam_mode='none' WHERE exam_mode NOT IN (...)`), then
 `ALTER TABLE ... ADD CONSTRAINT ... CHECK (exam_mode IN ('none','scheduled','windowed'))`

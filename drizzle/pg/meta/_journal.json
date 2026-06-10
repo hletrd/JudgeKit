@@ -190,6 +190,13 @@
       "when": 1780241752015,
       "tag": "0026_source_drafts",
       "breakpoints": true
+    },
+    {
+      "idx": 27,
+      "version": "7",
+      "when": 1781108948466,
+      "tag": "0027_exam_mode_check_and_drift_catchup",
+      "breakpoints": true
     }
   ]
 }

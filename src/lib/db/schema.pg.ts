@@ -365,6 +365,12 @@ export const assignments = pgTable(
     index("assignments_group_idx").on(table.groupId),
     uniqueIndex("assignments_access_code_unique").on(table.accessCode),
     check("assignments_late_penalty_nonneg", sql`${table.latePenalty} >= 0`),
+    // Integrity guard: exam/not-exam readers branch on this value
+    // (exam-session route vs startExamSession vs proctoring gates) and a
+    // corrupt value (observed "0.0" in prod once) makes them disagree about
+    // whether the assignment is an exam. Client-side coercion alone cannot
+    // prevent recurrence.
+    check("assignments_exam_mode_valid", sql`exam_mode IN ('none', 'scheduled', 'windowed')`),
   ]
 );
 
