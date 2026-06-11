@@ -1,52 +1,23 @@
-# Verifier — RPF Cycle 5 (2026-06-11)
+# Verifier — RPF Cycle 6 (2026-06-12)
 
-**HEAD:** 04b8c1ec. Evidence-based check of stated behavior (docs, comments,
-prior-cycle completion claims) against the code as it actually executes.
+**HEAD reviewed:** 22e1510f. **Method:** evidence-based check of stated behavior (docs, comments, plan completion claims, registers) against the code at this exact HEAD.
 
-## V5-1 — Doc claim "every such submission is flagged … a submission was accepted while heartbeat stale" — FALSE as stated (MEDIUM, High, CONFIRMED)
-`docs/exam-integrity-model.md` (heartbeat-correlation section): "A flagged
-submission means 'the submitting client had no recent browser-monitor
-activity'" and "every such submission is flagged". Counter-evidence: flags
-are also written for attempts that are then rejected (mismatch 400 at
-`submissions.ts:395-409` after the insert at `:372`; route-level 403/429/503
-after validation). So a flag does NOT imply a submission exists. The doc and
-code must be reconciled — the cycle consensus (CR5-1) is to change the CODE
-to match the doc (flag after accept), then add one clarifying sentence.
+## Claims verified TRUE at this HEAD
+- **V6-1** `docs/exam-integrity-model.md` claim "flags are recorded only for accepted submissions and carry the submission id" — matches `submissions/route.ts:396-425` (insert after tx success, details include `submissionId`, `ipAddress`, DB-time `createdAt`) and the probe-only validator (`submissions.ts:375-403`). Cycle-5 G1 completion claim is truthful.
+- **V6-2** Cycle-5 plan completion records (G1–G5 ✅ with SHAs) — all five SHAs exist on main with the described content (spot-checked diffs of 16f64ab2, 0083a577, 1e6457b6, 34a6a9c1).
+- **V6-3** Baseline gate claims — re-executed this cycle: tsc 0, eslint 0/0, lint:bash clean, unit 2632/2632 PASS. Matches the cycle-5 completion record's shape (2632 tests).
+- **V6-4** `includeGaps=1` gating claim — confirmed: without the param the route never runs the 5000-row scan (`anti-cheat/route.ts:292`); the timeline is the only `includeGaps` consumer (repo-wide grep: 1 call site).
+- **V6-5** AGG4-5 disposition claim ("count(*) retained for pagination total") — confirmed at `:280-283`; still fed to the response `total`.
 
-## V5-2 — `review-model.ts:12-18` comment "Server-recorded by the submit path ONLY … a submission was accepted while …" — HALF TRUE (MEDIUM, High, CONFIRMED)
-"Submit path only" — TRUE (verified all three `validateAssignmentSubmission`
-call sites; only the submit route opts in). "A submission was accepted" —
-FALSE today (V5-1). Update wording with the fix.
+## Claims verified FALSE / STALE (action required)
+- **V6-6 (MEDIUM-doc, High, CONFIRMED)** `plans/open/user-injected/pending-next-cycle.md` lists item #1 (workspace migration Phase 2) as ONGOING/High and item #3 (COMPILER_RUNNER_URL auto-injection) as pending. Both are complete in-repo: the migration plan was archived 2026-04-29 with "ALL PHASES COMPLETE" (`plans/archive/2026-04-29-archived-workspace-to-public-migration.md`), and `deploy-docker.sh:657` auto-injects `COMPILER_RUNNER_URL` via `ensure_env_literal` on the `INCLUDE_WORKER=false` path (with a drift warning at `:663-666`). A stale High-priority register risks a future cycle re-doing finished work. Update the register with evidence (move resolved items to `plans/done/user-injected/` per existing convention).
+- **V6-7 (LOW-doc, High, CONFIRMED)** `anti-cheat/route.ts:192-195` comment claims the POST keeps `canManageContest` — the POST's actual gates are enrollment/token + origin pinning (`:80-90`, `:54-78`). Comment must be corrected (CR6-5).
+- **V6-8 (LOW, High, CONFIRMED)** `messages/en.json:2313` (`similarityServiceUnavailable`) describes a scan-skip state the engine can no longer produce (CR6-2). The string is a behavior claim shown to operators; it is now false by construction.
 
-## V5-3 — Cycle-4 completion claims — VERIFIED TRUE
-- G1/G2 (b1bbae03): probe filters to `CLIENT_EVENT_TYPES` via `inArray`
-  (`submissions.ts:355`) ✓; lib module is the single source ✓; render/autosave
-  pass no options ✓.
-- G3 (78083a14): claim loop + single-flight present as described ✓ (new
-  residual risk recorded separately as SEC5-2 — not a falsification of the
-  claim, which addressed lost-update, not unload-loss).
-- G4 (7ff8c186): `examSessionUnavailable` thrown (`exam-sessions.ts:116`);
-  no route case for it → generic retryable 500 ✓.
-- "Deployed healthy at 9966bfdf, three targets" — consistent with the plan's
-  completion record; re-verified targets return HTTP 200 during this cycle's
-  deploy step (PROMPT 3).
+## Cross-checks with no discrepancy
+- `SECURITY.md` heartbeat-gate fail-open statement vs `submissions/route.ts:396-403` — consistent.
+- `EVENT_TIERS` ↔ `EVENT_TYPE_COLORS` ↔ both locale catalogs: every tier key has a color and an `eventTypes.*` message in en+ko (the catalog-coverage pin at `tests/unit/infra/source-grep-inventory.test.ts` enforces it; baseline 140 matches actual).
+- `MAX_PENDING_EVENTS=200` doc comment matches enforcement (`anti-cheat-storage.ts:53`).
 
-## V5-4 — "Instructor still sees this flag in the anti-cheat dashboard" (fail-open rationale, `submissions.ts:364-371` comment + doc) — MISLEADING IN PRACTICE (MEDIUM, High, CONFIRMED)
-The dashboard does render the row, but with NO translated label (no
-`eventTypes.submission_stale_heartbeat` key in `messages/en.json` /
-`messages/ko.json`) and no type color (`EVENT_TYPE_COLORS` lacks the entry in
-both `anti-cheat-dashboard.tsx:81-89` and
-`participant-anti-cheat-timeline.tsx:35-43`). The badge text shows the raw
-i18n key path (next-intl missing-message fallback; the `?? event.eventType`
-guard at `:614` is dead — `t()` never returns nullish). The "reviewer
-obligation" the doc imposes is therefore not practically dischargeable from
-the UI today. Confirmed by key-set inspection of both message catalogs.
-
-## V5-5 — `MAX_PENDING_EVENTS` doc claim — TRUE
-"200 is well above the realistic upper bound" (`anti-cheat-storage.ts:20-26`):
-heartbeats enqueue only on send failure; sustained 30 s-interval failures fill
-~120/hour; cap is adequate and the cap-loss behavior is documented. ✓
-
-## V5-6 — Baseline gates at this HEAD — VERIFIED
-tsc 0 errors · eslint 0 errors/0 warnings · `bash -n` both deploy scripts
-clean · vitest unit 2606/2606 PASS (41.7 s). Logs under /tmp/c5-*.log.
+## Verdict
+Cycle-5's work is honestly recorded. The two stale-register/comment items (V6-6, V6-7) and the false operator-facing string (V6-8) are the verification debt of this cycle.

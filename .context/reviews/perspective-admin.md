@@ -1,51 +1,33 @@
-# Perspective: Platform Admin — RPF Cycle 5 (2026-06-11)
+# Perspective: Platform Admin / Operator — RPF Cycle 6 (2026-06-12)
 
-**HEAD:** 04b8c1ec. Walked: settings, user management, workers, backup/
-restore, monitoring, deploy/upgrade, incident response.
+**HEAD reviewed:** 22e1510f. Walked: deploy story, judge fleet health, backup/restore, capacity controls, incident response surfaces, ops registers.
 
-## AD5-1 — Backup/restore: operationally serious (verified-good)
-`system.backup` capability + password re-confirmation + CSRF + rate limit +
-audit events on both routes; restore takes a pre-restore snapshot before
-import; ZIP/file restores validated and size-capped (MAX_IMPORT_BYTES). The
-documented restore-test in CI (commit abfa90f5) closes the classic
-"backups never restored" gap. No new findings.
+## What works well
+- **Deploy story:** three-target `deploy-docker.sh` self-heals BuildKit history corruption, builds languages sequentially by default, enforces the algo app-only policy from `.env.deploy.algo`, refuses to overwrite remote `.env*`, auto-injects `COMPILER_RUNNER_URL`/`AUTH_TRUST_HOST` for app-only targets, and warns on local-default drift (`deploy-docker.sh:657-666`). Four consecutive clean three-target runs recorded.
+- **Judge fleet resilience:** the background staleness sweep (`worker-staleness-sweep.ts`) reaps a dead single-worker fleet without depending on any surviving heartbeat, zeroes leaked `active_tasks`, and emits alertable one-shot log transitions; the claim SQL self-heals orphaned claims with token fencing. Peak-load behavior is bounded by per-user pending caps + the global queue cap with honest 429/503 + Retry-After.
+- **Backups:** restore-test exists (RESTORE_DATABASE_URL full restore-test documented and wired — cycle-3/era work verified still present in `docs/`/ops scripts).
 
-## AD5-2 — Capacity: a polled instructor view pays for an unused 5000-row scan (MEDIUM, High, CONFIRMED)
-Every participant-timeline poll triggers the per-user heartbeat-gap scan
-server-side and discards it client-side (P5-1). One instructor watching one
-candidate is fine; a recruiting screen with several reviewers polling
-several candidates multiplies an indexed-but-real read load for zero value.
-G3's `includeGaps` gating makes the cost opt-in and consumed. The
-unconditional dashboard `count(*)` stays (feeds pagination; indexed,
-assignment-scoped) — recording that as the explicit resolution of the
-deferred AGG4-5 once the GET is edited this cycle.
+## Pain points / risks found
 
-## AD5-3 — Judge fleet lifecycle: healthy (verified)
-online→stale→offline sweep runs in the background (7e198b51), counter
-repair is sweep-owned, per-worker token hashes with no plaintext fallback,
-claim refuses unsandboxed retries on seccomp-init failure (fails closed).
-Worker images build on worker-0 only; algo stays app-only per policy —
-encoded in `.env.deploy.algo`, confirmed untouched.
+### AD6-1 — The ops register I'd consult first is stale (MEDIUM-doc, High — V6-6/DOC6-1)
+`plans/open/user-injected/pending-next-cycle.md` still advertises a HIGH-priority migration as ONGOING (completed 2026-04-29) and a deploy fix as pending (implemented at `deploy-docker.sh:657`). During an incident, stale registers cost exactly the minutes you don't have. Update with resolution evidence.
 
-## AD5-4 — Upgrade/deploy story (verified, with standing cautions)
-Three consecutive clean sequential-language deploys (cycle-4 record);
-BuildKit history self-heal in-script. Standing cautions remain accurate and
-binding: never `docker system prune --volumes` anywhere; never
-`docker image prune -a`/`system prune -a` on worker hosts (~80 language
-images); preserve `src/lib/auth/config.ts` during deploys. Carried AGG3-7
-(retry log overwrite in `run_remote_build`) — unchanged, fires only when
-that function is next edited; this cycle does not plan to edit the deploy
-script.
+### AD6-2 — A diagnostic string describes an impossible state (LOW, High — CR6-2/DOC6-3)
+If a similarity scan is skipped on a big contest, the UI can never truthfully say "Rust service unavailable" anymore — yet the string (and its code branch) remain. An operator chasing that message would audit the wrong service. Remove the dead state.
 
-## AD5-5 — Incident response docs (verified)
-`operator-incident-runbook.md` + `judge-worker-incident-runbook.md` +
-`admin-security-operations.md` cover worker loss, queue stalls, credential
-handling; `examSessionUnavailable` (cycle-4) maps to a retryable 500 — the
-right shape for status-page triage. The admin-bypass paragraph in the
-integrity doc correctly names the residual risk (admin compromise defeats
-the integrity model) with credential guidance. No new findings.
+### AD6-3 — Token lifecycle is an admin liability too (MEDIUM, High — SEC6-1)
+"Remove the user from the group" is the documented operator remediation for participant problems; it silently doesn't revoke contest access. Whatever the incident runbook says about removing a misbehaving participant mid-contest is currently wrong one layer down.
 
-## Wishlist registered (not defects)
-Multi-instance shared rate-limit/heartbeat coordination is configuration-
-gated (`usesSharedRealtimeCoordination`) — fine at current single-instance
-scale; revisit only when an instance count change is planned.
+## Capacity / monitoring spot-checks (no new issues)
+- Rate-limit families exist on every surface touched this cycle; submission caps are settings-driven (`security/constants.ts` getters) so they can be tuned without deploy.
+- Heartbeat ingest is one INSERT/60 s/participant with an LRU (or shared coordination on multi-instance) — a 500-seat live exam ≈ 8 writes/s worst case; fine.
+- The opt-in gap scan keeps dashboard polling cheap (AGG4-5 resolution verified).
+- Prometheus worker-status metrics + log-transition alerts cover the "fleet dead" page-out path.
+
+## Carried (register unchanged)
+- AGG3-7 — `run_remote_build` retry overwrites the first failure log; exit: next `run_remote_build` edit.
+- DEFER-ENV-GATES — login-gated E2E needs the provisioned staging browser/user.
+- AGG5-7 — judge-worker-rs cosmetics await a behavioral Rust edit.
+
+## Verdict
+Operationally the platform is in its best shape of the loop. This cycle's admin work is hygiene: fix the registers (AD6-1), delete the impossible diagnostic (AD6-2), and make roster removal mean what the runbook thinks it means (AD6-3).

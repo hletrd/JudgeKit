@@ -1,48 +1,23 @@
-# Critic — RPF Cycle 5 (2026-06-11)
+# Critic — RPF Cycle 6 (2026-06-12)
 
-**HEAD:** 04b8c1ec. Multi-perspective critique of the current change surface.
+**HEAD reviewed:** 22e1510f. Multi-perspective critique of the current change surface and the program's own habits.
 
-## 1. The cycle-4 flag fix stopped one step short of its own principle
-Cycle-4's banner finding (AGG4-1, 15-lens agreement) was "flags must mean what
-the docs say they mean". The fix removed two false-flag producers (render,
-autosave) but kept the write at a point where acceptance is unknowable — so a
-third producer (rejected submit attempts) survived, and it is the one a
-stressed student on flaky wifi hits hardest (D5-1's deadline submit-burst).
-The lesson for this cycle: when the principle is "evidence rows must map 1:1
-to accepted submissions", the write must live after the accept point, not
-merely behind an opt-in. Anything else is a smaller version of the same bug.
+## 1. The platform's weakest authz story is now the token lifecycle, not the monitor
+Five cycles hardened the anti-cheat evidence chain to near-pedantic precision (flags only on accepted submissions, DB-time stamping, probe/record separation) while the *access* substrate underneath it kept two semantics for one row type and no revocation path at all (SEC6-1). An owner running a recruiting test cares more about "removing a candidate actually removes them" than about a 60 s heartbeat nuance. Priority of this cycle should reflect that inversion: fix the token lifecycle first.
 
-## 2. The platform's most important signal is invisible at the last mile
-Three independent findings this cycle are one product failure: the escalate
-flag renders as a raw i18n key (V5-4), heartbeat gaps are computed but never
-shown (Trace 2), and ongoing absence is undetectable (D5-3). The telemetry →
-storage → API chain is solid after four cycles of hardening; the chain's last
-link — a reviewer actually SEEING the evidence — was never closed. The
-"reviewer obligation" paragraph in `docs/exam-integrity-model.md` currently
-delegates to a dashboard that cannot discharge it. Prioritize the UI half of
-the integrity model with the same seriousness as the ingest half.
+## 2. The monitor work is one fix away from a clean claim
+After AGG6-2 (queue-first `reportEvent`) the telemetry pipeline has a single, crash-safe transmission path and the documentation can finally say "no silent client-side loss below MAX_RETRIES" without footnotes. Stopping one fix short of that claim last cycle was reasonable scoping; not finishing it this cycle would be negligence — the residual was explicitly parked "for the next monitor pass" and this is that pass.
 
-## 3. Trade-off discipline: loss vs duplication in client telemetry
-The cycle-4 claim loop chose loss-on-unload over duplicate-on-crash without
-saying so (the comment narrates the lost-update fix only). For audit-grade
-telemetry, duplication is recoverable noise; loss is unrecoverable absence of
-evidence. The in-flight slot (SEC5-2) restores the right bias cheaply. When a
-redesign silently flips a failure-mode bias, the comment should name the new
-worst case.
+## 3. Consistency debt keeps being cheaper to pay than to carry
+Two cycle-6 findings (dead `service_unavailable` vocabulary; the false `canManageContest` comment) are pure carry-cost: each future reader pays a comprehension tax until someone deletes ten lines. The program's own history (CR5-2's dead `??` fallback, AGG5-5's unreachable enum branch) shows these don't age out — they multiply. Good norm to keep: every cycle deletes its own dead vocabulary.
 
-## 4. Dead surfaces accumulate review debt
-`heartbeatGaps` (no consumer), `too_many_submissions` (unreachable reason),
-`similaritySkippedTooManySubmissions` (dead i18n), the `?? event.eventType`
-fallback (dead by API contract), the vestigial pids_limit conditional in the
-worker. None is individually serious; collectively they mislead every future
-reviewer about what the system does. This cycle should clear the cheap ones
-and register the Rust one with an exit criterion.
+## 4. Where the program is over-investing
+The anti-cheat dashboards are now reviewed more deeply per cycle than the grading/score-override surfaces that determine actual outcomes. Nothing in cycles 4–6 re-validated score overrides, leaderboard freeze, or CSV export against regressions (they are stable, but "stable" was also true of the token gates). Recommendation for cycle 7+: rotate one deep lens onto the scoring/export surfaces even if the diff didn't touch them.
 
-## 5. What is genuinely good (credit where due)
-The judge pipeline's concurrency story (claim SQL invariants, token fences,
-self-healing sweeps) reads like a system that has survived four adversarial
-review cycles — because it has. Backup/restore is operationally serious
-(password re-confirmation, pre-restore snapshot). The integrity-model doc is
-honest about what telemetry cannot prove, which is rarer and more valuable
-than another feature. Keep that honesty by making the code meet the doc this
-cycle rather than softening the doc to meet the code.
+## 5. Register hygiene is part of the product
+The stale user-injected register (V6-6) is the kind of small rot that erodes trust in the whole plan system: if HIGH-priority items can sit "ONGOING" for six weeks after completion, the register stops being load-bearing. The fix is mechanical; the norm it protects is not.
+
+## Concur/dissent on severity
+- Concur MEDIUM for SEC6-1 (not HIGH: every token creator also enrolls today, so exploitation requires a staff roster action first; no anonymous path).
+- Concur MEDIUM for AGG6-2 (evidence loss, not access loss; bounded by MIN_INTERVAL dedup and the rarity of unload-during-send).
+- Would downgrade D6-3 to LOW noise if the LRU fix were costly — it is a two-line `catch`, so fix it.

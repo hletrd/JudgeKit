@@ -1,77 +1,34 @@
-# Code Reviewer — RPF Cycle 5 (2026-06-11)
+# Code Reviewer — RPF Cycle 6 (2026-06-12)
 
-**HEAD reviewed:** 04b8c1ec (main) — cycle-4's completed tree (deployed healthy
-at 9966bfdf on all three targets) + cycle-4's final docs commit.
-**Baseline gates at this HEAD (executed):** tsc 0 · eslint 0/0 · lint:bash
-clean · unit 2606/2606 PASS.
-**Scope:** full repo sweep with emphasis on cycle-4's new surface
-(`submissions.ts` flag opt-in, `anti-cheat-monitor.tsx` claim loop,
-`client-events.ts`, `exam-sessions.ts`), plus subsystems not recently
-re-read (similarity engine + route, anti-cheat GET, judge claim/poll/claim-SQL,
-admin backup/restore, CSRF/auth handler, files, recruiting validate).
+**HEAD reviewed:** 22e1510f (main, == origin/main, clean tree)
+**Baseline gates at this HEAD (executed):** tsc 0 · eslint 0/0 · lint:bash clean · unit 338 files / 2632 tests PASS.
+**Inventory:** full `src/` (609 TS/TSX files) walked by subsystem; deep reads on the cycle-5 change surface (submissions validator/route, anti-cheat monitor/storage/route/presentation, timeline/dashboard, code-similarity, exam-sessions, contests, claim-query, staleness sweep), token lifecycle call sites (6), group member removal, judge claim SQL, i18n catalogs.
 
-## CR5-1 — Stale-heartbeat flag is recorded for submissions that are REJECTED (MEDIUM-HIGH, High, CONFIRMED)
-`src/lib/assignments/submissions.ts:343-392`: the probe + flag INSERT run
-*before* the `assignmentProblems` mismatch check (`:395-409`), and the only
-opted-in caller `src/app/api/v1/submissions/route.ts:264-272` can still reject
-the submission *after* validation succeeds: `canAccessProblem` 403 (`:280-284`),
-and the whole insert transaction (`:303-377`) — `submissionRateLimited` 429,
-`tooManyPendingSubmissions` 429, `judgeQueueFull` 503, `examTimeExpired` 403.
-Failure scenario: a candidate on flaky wifi double/triple-clicks submit at the
-deadline → requests past the per-minute limit are rejected 429, yet each one
-that reached the validator with a stale monitor inserts an escalate-tier flag —
-multiple `submission_stale_heartbeat` rows with **zero** corresponding accepted
-submissions. `docs/exam-integrity-model.md` and `review-model.ts:12-18` promise
-"a submission was **accepted** while the heartbeat was stale". Cycle-4's AGG4-1
-fixed the render/autosave callers but left the rejected-submit hole.
-**Fix:** make the validator probe-only (return the staleness verdict in the
-success result); the submit route records the flag *after* the successful
-insert, with `submissionId` (+ submitting IP) in `details`.
+## Findings
 
-## CR5-2 — Dead `??` fallback after next-intl `t()` (LOW, High, CONFIRMED)
-`src/components/contest/anti-cheat-dashboard.tsx:614` and `:498`:
-`t(\`eventTypes.${event.eventType}\`) ?? event.eventType` — next-intl `t()`
-returns the fully-qualified key string for missing messages, never
-null/undefined, so the fallback is unreachable and unknown event types render
-as raw key paths (see designer DES5-1 for the user-facing impact). Use the
-`t(key) !== key`-style guard already used in `formatDetailsJson` (`:104`), or
-add the missing message keys (both — see DES5-1/G2).
+### CR6-1 — Contest access-token validity checked inconsistently across the six gates that consume it (MEDIUM, High, CONFIRMED)
+- Expiry-checked (`expires_at IS NULL OR expires_at > NOW()`): `src/lib/platform-mode-context.ts:93,123,148`; `src/lib/assignments/contests.ts:182-185` (`getContestsForUser`); `src/app/api/v1/contests/[assignmentId]/anti-cheat/route.ts:84` (POST access check).
+- NOT expiry-checked: `src/lib/assignments/submissions.ts:324-330` (`validateAssignmentSubmission` — the SUBMIT gate), `src/lib/assignments/public-contests.ts:224-231` (`getContestUserStatus`) and `:291-297` (`getEnrolledContestDetail`).
+- Tokens are created with `expiresAt: assignment.deadline` (`invite/route.ts:104-115`, `recruiting-invitations.ts:680-687`), so for an assignment with a `lateDeadline` the submit API accepts an un-enrolled token-holder whom the platform-mode gate and the contest list already deny. Divergent boundaries on the same row are a defect regardless of which semantic the owner wants.
+- Fix: one shared expiry-checked predicate consumed by all read sides; set `expiresAt` to the effective close (`lateDeadline ?? deadline`) at creation so invited users keep the late window. See SEC6-1 for the revocation half.
 
-## CR5-3 — Similarity route: timer leak + dead reason value (LOW, High, CONFIRMED)
-`src/app/api/v1/contests/[assignmentId]/similarity-check/route.ts:29-35`:
-`clearTimeout(timeoutId)` sits inside the `try` after the `await` — any
-non-abort throw leaks an armed timer that later aborts a dead controller
-(harmless but sloppy; move to `finally`). Worse:
-`src/lib/assignments/code-similarity.ts:374-383` returns
-`reason: "service_unavailable"` for the rows>500-without-sidecar case, so the
-`"too_many_submissions"` enum member and the dashboard branch
-`anti-cheat-dashboard.tsx:317-323` (and i18n key
-`similaritySkippedTooManySubmissions`) are dead code. Return
-`"too_many_submissions"` for that case so the operator sees the true cause.
+### CR6-2 — `service_unavailable` similarity reason is unreachable but still declared, branched on, and translated (LOW, High, CONFIRMED)
+`src/lib/assignments/code-similarity.ts:242` declares the member; nothing returns it since AGG5-5 (the >MAX guard now returns `too_many_submissions`, and a sidecar failure with ≤MAX rows always reaches the TS fallback). Dead branch at `anti-cheat-dashboard.tsx:299` and dead keys `similarityServiceUnavailable` in `messages/en.json:2313` + `ko.json`. The stale message also misleads operators ("the Rust similarity service is unavailable for this large contest") about a state that cannot occur. Remove member + branch + keys + test rows.
 
-## CR5-4 — `describeElement` can throw on SVG targets (LOW, Medium, LIKELY)
-`src/components/exam/anti-cheat-monitor.tsx:289-291`:
-`parent?.className?.split(" ")` — for SVG elements `className` is an
-`SVGAnimatedString` (object, no `.split`) → TypeError escapes `handleCopy`/
-`handlePaste`, and that copy/paste event is silently not reported. Trigger: a
-copy whose target resolves to an SVG `<a>`/text node inside a classed SVG
-parent. Guard with `typeof parent.className === "string"` or use
-`parent.getAttribute("class")`.
+### CR6-3 — Offset-mode submissions listing lacks the id tiebreak that cursor mode has (LOW-MEDIUM, High, CONFIRMED)
+`src/app/api/v1/submissions/route.ts:167` orders by `desc(submittedAt)` only, while cursor mode (`:123`) orders by `(submittedAt desc, id desc)` and the cursor filter is tuple-correct. `submittedAt` is the request-level `dbNow`, so deadline bursts produce equal timestamps across users; offset pages over ties are then nondeterministic between requests (rows repeat/vanish across pages). Add `desc(submissions.id)`.
 
-## CR5-5 — Flag insert uses app-server clock; every other anti-cheat insert uses DB time (LOW, High, CONFIRMED)
-`submissions.ts:372-383` relies on the schema `$defaultFn(() => new Date())`
-(`schema.pg.ts:1171-1173`) for `createdAt`, while the ingest route passes DB
-`now` (`anti-cheat/route.ts:155,173`) and the similarity store passes
-`getDbNowUncached()` (`code-similarity.ts:414`). Mixed clock sources inside a
-single evidence table mis-order the reviewer timeline under app/DB skew. Pass
-the validator's already-fetched DB `now` explicitly (folds into CR5-1's fix).
+### CR6-4 — `code_similarity` event details omit the language bucket (LOW, High, CONFIRMED)
+Pairs are computed per `(problemId, language)` (`code-similarity.ts:267-275`), and the dashboard pair table renders language, but the persisted evidence row (`code-similarity.ts:428-432`) stores only `pairedWith/problemId/similarity`. Two flags for the same user-pair+problem in different languages are indistinguishable in the stored trail. Add `language` to the details payload.
 
-## Verified-good (provenance)
-- `claim-query.ts` invariants (self-reclaim compensation, lock order,
-  prev-owner release) — re-derived, sound.
-- `judge/poll` claim-token fence + GREATEST(active_tasks-1,0) — sound.
-- Submissions POST advisory-lock rate limiting and in-tx exam expiry — sound.
-- Backup/restore: capability + password re-confirmation + CSRF — sound.
-- `exam-sessions.ts` idempotent start + SQL-composed extensions — sound.
-- Final sweep: no TODO/FIXME debris, no stray console.log (one is sample code
-  for the compiler UI), Korean tracking rule honored everywhere checked.
+### CR6-5 — Misleading authorization comment on the anti-cheat GET (LOW, High, CONFIRMED)
+`anti-cheat/route.ts:192-195` says "Write semantics (e.g., the POST heartbeat) keep canManageContest above" — the POST is the STUDENT-facing ingest gated by enrollment/token, not by `canManageContest`. A maintainer auditing authz from comments would mis-model the boundary. Reword to point at the actual write surfaces (score overrides, leaderboard freeze, similarity POST).
+
+## Verified-good (no action)
+- `performFlush` claim loop + in-flight slot ordering (`anti-cheat-monitor.tsx:108-151`) is correct: slot write precedes queue claim; `finally` clears; orphan recovery at flush start. The remaining loss path is `reportEvent`'s direct send — owned by debugger/D6-3 (aggregate AGG6-2).
+- `getAssignmentStatusRows` SQL aggregation, override application, and per-user latest derivation are consistent with the scoring source of truth.
+- `startExamSession` insert/conflict/refetch shape and `extendExamSession` SQL-composed extension are race-safe.
+- Judge claim CTE chain (`claim-query.ts`) — re-derived the self-reclaim compensation and lock-order notes; the invariants hold as documented.
+
+## Final sweep
+No other dead i18n branches in the contests namespace; no stray `?? t(...)` fallback patterns survived cycle-5's CR5-2 fix; no new `tracking-*` on Korean text (locale-conditional usages at `public-header.tsx:306`, problem-set headers are correctly gated).

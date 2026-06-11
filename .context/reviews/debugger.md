@@ -1,59 +1,27 @@
-# Debugger — RPF Cycle 5 (2026-06-11)
+# Debugger — RPF Cycle 6 (2026-06-12)
 
-**HEAD:** 04b8c1ec. Latent-bug surface and failure-mode hunt across the
-cycle-4 changes and the anti-cheat evidence chain.
+**HEAD reviewed:** 22e1510f. **Method:** failure-mode walkthroughs of the cycle-5 surface + latent-bug hunt on the interacting flows (monitor ↔ ingest ↔ probe ↔ flag; poll ↔ loadMore; token gates).
 
-## D5-1 — Multiple false escalate flags from one deadline submit-burst (MEDIUM-HIGH, High, CONFIRMED)
-Reproduction (code-trace): anti-cheat exam, monitor tab dead >90 s, student
-clicks submit 4× in quick succession at the deadline. Request 1 inserts the
-submission; requests 2–4 hit `submissionRateLimited`/`tooManyPendingSubmissions`
-inside the transaction (`submissions/route.ts:321-340`) — but the validator
-already inserted a `submission_stale_heartbeat` escalate row for EACH request
-(`submissions.ts:343-392` runs before the transaction). Result: 4 escalate
-flags, 1 accepted submission; the reviewer sees a fabricated pattern of
-"repeated out-of-monitor submissions". Same applies to
-`assignmentProblemMismatch` (flag inserted before the check at `:395`),
-`canAccessProblem` 403, `judgeQueueFull` 503, and in-tx `examTimeExpired`.
-Root cause: a write side-effect placed mid-validator instead of after the
-accept point. Fix: probe in the validator, record in the route after the
-successful insert (one flag per accepted submission, with its id).
+## Findings
 
-## D5-2 — Claimed event vanishes if the page unloads mid-send (LOW-MEDIUM, Medium, LIKELY)
-`anti-cheat-monitor.tsx:110-123`: claim (`savePendingEvents(rest)`) →
-`await sendEvent(event)`. Unload in that window = the event exists nowhere.
-Window is small (~RTT) but recurs every flush; over a semester of exams the
-loss is nonzero and biased toward navigation-adjacent events. See SEC5-2 for
-the recovery-slot fix.
+### D6-1 — `reportEvent` direct send: tab close mid-send silently loses the event (MEDIUM, High, CONFIRMED — fired residual from cycle-5 G4)
+`anti-cheat-monitor.tsx:195-225`. Repro: candidate copies problem text → `handleCopy` → `reportEvent("copy", …)` → `sendEvent` awaited with the event in NEITHER the pending queue NOR the in-flight slot → user closes the tab before the response → event gone with no trace. Cycle-5's in-flight slot only protects the *flush* path (`performFlush:129-145`); the *first* transmission of every event goes through this unprotected direct send. This is exactly the loss window the cycle-5 plan recorded as "out of AGG5-4 scope… for the next monitor pass" — that pass is now. Fix: queue-first — append to the pending queue (retries:0) synchronously, then trigger `flushPendingEvents()`; the claim loop's slot+claim ordering then covers every event. The single-flight guard + `scheduleRetryRef` already handle the "flush already running" case (backoff timer picks the event up ≤1 s later).
 
-## D5-3 — Live-absence blind spot in heartbeat-gap detection (MEDIUM, Medium → HIGH product impact, CONFIRMED)
-`anti-cheat/route.ts:307-321` iterates pairs of *recorded* heartbeats only.
-Two failure modes: (a) participant left 30 min ago → no trailing pair → no
-gap reported, ever, until they return; (b) no UI consumes the data anyway
-(see P5-1). For live exam supervision the ongoing gap is the actionable
-signal. Append a synthetic boundary at DB NOW() (flag it `ongoing`) and
-render it.
+### D6-2 — Timeline poll-reset vs loadMore append → duplicated rows and duplicate React keys (LOW, Medium, LIKELY)
+`participant-anti-cheat-timeline.tsx`: `fetchEvents` (poll, `:104-113`) unconditionally `setEvents(firstPage)` + `setOffset(firstPage.length)`; `loadMore` (`:126-144`) appends `prev => [...prev, ...page]` from an offset captured before the reset. Interleaving (poll completes while loadMore in flight) renders the same event ids twice — `TableRow key={event.id}` duplicates. The dashboard variant already reconciles; the timeline needs the seq-counter guard (see perf P6-2).
 
-## D5-4 — `describeElement` TypeError on SVG copy targets (LOW, Medium, LIKELY)
-`anti-cheat-monitor.tsx:289-291`: `className.split` on `SVGAnimatedString`
-throws inside the copy/paste listener → that telemetry event is dropped.
-Hard to hit (needs a classed SVG ancestor of an `A`/text tag target) but
-trivially guarded.
+### D6-3 — Heartbeat LRU set-before-insert: one failed insert silences heartbeats for 60 s (LOW, Medium, RISK)
+`anti-cheat/route.ts:139-158`. Failure scenario: pool exhaustion blip at insert time → 500 to the client → client's `sendEvent` sees 5xx → "retry" → requeued; but the server LRU already recorded the attempt, so every retry inside the 60 s window hits `shouldRecord=false` → `apiSuccess({logged:true})` while NO row exists. Worst case the participant's recorded coverage gets a 60–90 s hole through no fault of theirs (it then takes only one more lost event to cross the 90 s probe threshold at submit time). Fix: `delete` the LRU key on insert failure.
 
-## D5-5 — Flag timestamp clock-mix can misorder the evidence timeline (LOW, High, CONFIRMED)
-Flag rows take app-server `new Date()` (schema default); heartbeat/event/
-similarity rows take DB NOW(). With app/DB skew of a few seconds, a flag can
-sort *before* the heartbeat that proves the monitor was alive, confusing the
-reviewer timeline. Pass DB `now` into the flag insert.
+### D6-4 — Expired/orphaned token gates (shared with SEC6-1) — divergent verdicts are themselves a bug
+The same user at the same instant gets: contest list 404-equivalent (list omits it), platform-mode restriction lifted/absent, but submit 201. Any support ticket arising from this state is undiagnosable without reading six call sites. Root cause and fix recorded in SEC6-1/CR6-1.
 
-## Hypotheses tested and CLEARED
-- `startExamSession` re-fetch race → `examSessionUnavailable` (cycle-4 G4):
-  route mapping confirmed to fall through to retryable 500; no
-  `assignmentClosed` false verdict remains.
-- Claim-loop double-send under overlapping flush triggers: `isFlushingRef` +
-  per-iteration claim verified against the component tests; queue cap (200)
-  bounds pathological storage.
-- `extendExamSession` SQL-composed `make_interval` under concurrent PATCH:
-  composes additively, no clobber.
-- Heartbeat LRU dedup (`lastHeartbeatTime`) across multi-instance app: only
-  used when shared realtime coordination is NOT configured; per-instance
-  worst case is one extra heartbeat row per 60 s per instance — harmless.
+## Checked, not bugs
+- `performFlush` orphan recovery cannot double-recover (slot cleared synchronously after re-queue, before any await).
+- `heartbeats[i].createdAt` is a Drizzle Date; `new Date(Date)` copies safely; reverse-then-scan ordering correct; the 5000-row DESC window truncates at the OLD end, never the live end.
+- `startExamSession` insert-vanish path returns `examSessionUnavailable` → generic retryable 500 (AGG4-4 still honored).
+- Admin-level submit path: `now=0` short-circuits all schedule checks BUT the probe stays un-run (probe is inside `!isAdminLevel`) — admins never self-flag. Confirmed intentional per review-model doc.
+- `formatAntiCheatDetails` discriminates stale payloads by `thresholdMs` number — copy/paste `{target}` payloads can't collide (string field).
+
+## Final sweep
+Walked every `setTimeout`/`setInterval` on the changed surface for leak-on-unmount: monitor timers cleared in effect cleanup (`:261-267`, `:351-366`); sweep interval unref'd and idempotent (`worker-staleness-sweep.ts:99-107`); similarity route timer cleared in `finally`. No unhandled-rejection paths found on the touched routes (flag insert has `.catch`, audit fire-and-forget is internally guarded).

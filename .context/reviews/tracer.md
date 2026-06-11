@@ -1,56 +1,24 @@
-# Tracer — RPF Cycle 5 (2026-06-11)
+# Tracer — RPF Cycle 6 (2026-06-12)
 
-**HEAD:** 04b8c1ec. Causal traces of the anti-cheat evidence chain end-to-end,
-with competing hypotheses resolved by code evidence.
+**HEAD reviewed:** 22e1510f. Causal traces of three suspicious flows, with competing hypotheses resolved by code evidence.
 
-## Trace 1 — Lifecycle of a `submission_stale_heartbeat` flag
-PATH: submit POST → `validateAssignmentSubmission(opts.recordStaleHeartbeatFlag
-=true)` → probe (`submissions.ts:348-363`, client-event-filtered, DB-time) →
-INSERT flag (`:372-390`) → **then** assignmentProblem check (`:395`) → return
-to route → `canAccessProblem` (`route.ts:280`) → tx: advisory lock → rate
-limits → exam expiry → INSERT submission (`:364-374`).
-FINDING: five rejection exits occur AFTER the flag insert. The flag's
-documented meaning ("submission accepted while monitor stale") holds only on
-the single fully-successful path. Hypothesis "the tx rollback also rolls the
-flag back" — REJECTED: the flag insert uses `db`, not `tx`, and precedes the
-transaction entirely. Hypothesis "rate-limited requests never reach the
-validator" — REJECTED: the in-tx rate limit runs after validation by design
-(advisory-lock serialization). Conclusion: move the recording after the
-accept point (CR5-1/SEC5-1/D5-1).
+## Trace 1 — "Removed student still submitted to the contest"
+**Path:** staff DELETE `/groups/[id]/members/[userId]` → tx deletes `enrollments` only → student POSTs `/api/v1/submissions` with assignmentId → `validateAssignmentSubmission` finds no enrollment (`submissions.ts:322`) → token fallback `:324-330` finds the invite-era `contest_access_tokens` row (no `expires_at` filter, and no deletion ever happens) → access granted → submission accepted.
+**Hypotheses:** (a) token cleanup happens elsewhere (cascade?) — REFUTED: FK cascades only on assignment/user deletion (`schema.pg.ts:1071-1076`); zero `delete(contestAccessTokens)` call sites; (b) expiry saves us — REFUTED for `expiresAt` NULL-or-future and for the no-filter gates regardless.
+**Verdict:** real flow; CONFIRMED (= SEC6-1). The same trace through `getEnrolledContestDetail` shows the removed student also still loads the contest detail page; only the contest LIST and the platform-mode gate disagree (expiry-checked) — i.e., the user sees the contest vanish from their list yet deep links and submits still work. Maximally confusing for support.
 
-## Trace 2 — Where does `heartbeatGaps` go?
-PRODUCER: `anti-cheat/route.ts:286-321` (userId-filtered GETs only).
-CONSUMERS: `grep -rn heartbeatGaps src` → only the route itself.
-`participant-anti-cheat-timeline.tsx` issues exactly the userId-filtered GET
-(`:97`) on a poll loop and types the response WITHOUT the field. Conclusion:
-computed-and-discarded on a hot path (P5-1); the one screen built for
-per-participant review cannot show absence periods (D5-3). No competing
-hypothesis survives — the field was wired server-side (cycle-1 era) and the
-UI half never landed.
+## Trace 2 — "Copy event missing from a candidate's timeline despite reviewer watching them copy"
+**Path A (confirmed loss):** copy → `handleCopy` → `reportEvent` → direct `sendEvent` (`anti-cheat-monitor.tsx:209`) → tab closed before response → event in neither queue nor slot → lost (D6-1/AGG6-2).
+**Path B (throttle):** second copy within 1 s of the first → `MIN_INTERVAL_MS` dedup `:199` — by design.
+**Path C (server 4xx):** contest ended/origin mismatch → "permanent" → intentionally dropped (AGG3-5) — by design.
+Only Path A is unintended; queue-first transmission closes it.
 
-## Trace 3 — Pending-event queue across the unload boundary
-reportEvent (sync enqueue on "retry") → performFlush claim loop: load → save
-queue-minus-head (CLAIM, `:113-114`) → await send → on "retry" reload+append.
-Interleavings checked: (a) reportEvent append during await — preserved
-(re-load before requeue; sync blocks can't interleave in JS) ✓; (b) second
-flush trigger — `isFlushingRef` single-flight ✓; (c) retry-timer + manual
-flush — `!retryTimerRef.current` dedup ✓; (d) **unload between claim and
-result — the event is gone from storage and from memory** ✗ (SEC5-2/D5-2).
-The cycle-4 redesign traded duplicate-on-crash for loss-on-crash; for
-evidence telemetry the trade should be reversed via an in-flight slot.
+## Trace 3 — "Participant shows a heartbeat-coverage hole but swears the tab was open"
+**Hypotheses:** (a) tab hidden ≥ scheduled tick — heartbeat skipped while hidden (`:252`) — TRUE by design (absence signal); (b) LRU set-before-insert swallowed a heartbeat after a transient insert failure (`anti-cheat/route.ts:139-158`) — POSSIBLE, 60 s hole per incident (D6-3); (c) shared-coordination path on multi-instance — uses DB-backed dedup, not implicated; (d) clock skew — refuted, all timestamps are DB-time end-to-end since cycle-3/5.
+**Verdict:** (b) is the only unintended contributor; two-line fix.
 
-## Trace 4 — Similarity "reason" propagation
-`runSimilarityCheck` returns `service_unavailable` for BOTH "sidecar down"
-and "too many rows for TS fallback" (`code-similarity.ts:374-383`);
-`too_many_submissions` is declared (`:241`) but unreachable. UI branch for it
-exists (`anti-cheat-dashboard.tsx:317-323`) with a translated message —
-dead. The operator-facing diagnosis for a >500-submission contest with a
-down sidecar is therefore misleading-by-merger. LOW; fix in the lib.
+## Trace 4 — Cross-check: can a REJECTED submission still produce an escalate flag anywhere?
+Walked every `submission_stale_heartbeat` producer: exactly one (`submissions/route.ts:404-425`), strictly after `txResult` success. Rejection exits (`:284-289` validation, `:293-295` access, `:390-394` tx errors) all return before it. NEGATIVE — invariant holds platform-wide.
 
-## Trace 5 — Cycle-4 regression sweep (CLEARED)
-`client-events.ts` single source: route zod enum + validator probe filter
-both import it; the pin test guards equality. `examSessionUnavailable` falls
-through the start-exam route switch to the generic retryable 500 (no
-`assignmentClosed` mislabel). Render/autosave callers pass no options →
-probe-free, write-free (verified by reading both call sites). No regressions
-found in the cycle-4 surface beyond the rejected-submit hole (Trace 1).
+## Final sweep
+Traced the `includeGaps` synthetic-boundary math against a fabricated last-heartbeat 10 min old: `ongoing:true` gap emitted with DB-now end — consistent with the UI badge. No further anomalous flows identified on the changed surface.

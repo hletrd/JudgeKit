@@ -1,54 +1,31 @@
-# Test Engineer — RPF Cycle 5 (2026-06-11)
+# Test Engineer — RPF Cycle 6 (2026-06-12)
 
-**HEAD:** 04b8c1ec. Unit 2606/2606 across 337 files at baseline; component
-suite 236 tests/70 files (per cycle-4 record). Coverage-gap analysis follows
-the cycle-5 findings.
+**HEAD reviewed:** 22e1510f. **Suite state:** unit 338 files / 2632 tests PASS; component suite present (242 tests at cycle-5 close); integration/chaos suites present; E2E gated on env (DEFER-ENV-GATES). No flaky tests observed across this cycle's three full runs.
 
-## TE5-1 — No test pins "no flag for a rejected submission" (HIGH-value gap, High, CONFIRMED)
-`tests/unit/assignments/submissions.test.ts` covers: flag inserted on stale
-submit, no flag when fresh, no flag without opt-in, fail-open on insert error
-— all good. MISSING: the property that a flag is **not** recorded when the
-submission is subsequently rejected (problem mismatch, and the route-level
-429/403/503 exits). This is exactly the hole CR5-1 found — the cycle-4 tests
-pinned the opt-in plumbing, not the accepted-submission semantics the doc
-promises. Red-first tests for the G1 fix: (1) mismatch path → no flag;
-(2) route tx rejection (rate-limited) → no flag; (3) accepted path → exactly
-one flag, `details.submissionId` equals the inserted id, `ipAddress` set,
-`createdAt` from DB time; (4) flag-insert failure → submission still 201
-(fail-open pin survives the move).
+## Coverage gaps mapped to cycle-6 findings (red-first targets)
 
-## TE5-2 — No UI test renders a `submission_stale_heartbeat` row (MEDIUM, High)
-No component test mounts `anti-cheat-dashboard`/`participant-anti-cheat-
-timeline` with a stale-flag event; the missing-i18n-key regression (V5-4)
-would have been caught by a single render assertion (`expect(screen.getByText
-("...")).not.toMatch(/eventTypes\./)`). Add alongside the G2 fix, plus a
-catalog test asserting every `EVENT_TIERS` key has an `eventTypes.*` message
-in both locales (pins future event types too).
+### TE6-1 — Token expiry/revocation paths have ZERO tests (HIGH-priority gap, High confidence)
+No test exercises: (a) expired token → submit denied; (b) un-enrolled+valid-token → submit allowed; (c) member removal deletes the group's tokens; (d) `getContestUserStatus`/`getEnrolledContestDetail` with expired token. Red-first order for AGG6-1: write (a)+(c) failing first, then implement the shared predicate + revocation; (b) pins the intended grant so the fix can't over-correct; (d) covers the read sides.
 
-## TE5-3 — `heartbeatGaps` has server tests but the contract is consumer-free (MEDIUM, High)
-Route tests assert gap computation, but nothing asserts a consumer renders
-them — which is how a dead API surface survived 4 cycles. With G3: component
-test for the gaps card (incl. the `ongoing` boundary row) + route test for
-`includeGaps` gating (absent param → no scan / no field).
+### TE6-2 — `reportEvent` unload-loss has no regression test (component)
+Existing monitor tests cover the FLUSH path's slot (claim → unmount mid-send → re-sent once). Add the symmetric case: `reportEvent` fires, unmount before the fetch resolves, remount → event must still transmit exactly once. Red against the current direct-send (it loses the event), green after queue-first.
 
-## TE5-4 — Monitor in-flight recovery needs a component test (MEDIUM)
-For G4 (SEC5-2 fix): simulate claim → unmount before send resolves → remount
-→ assert the event is re-sent exactly once. Storage-level unit tests for the
-new in-flight slot helpers (corrupt slot JSON → dropped gracefully, slot
-cleared after success/permanent).
+### TE6-3 — Filter chips have no keyboard-interaction tests
+After AGG6-7 (button-rendered chips): component test tabbing to a chip and activating with Enter/Space toggles the filter; `aria-pressed` asserted for the active chip in both dashboard and timeline.
 
-## TE5-5 — Dead branch: similarity `too_many_submissions` (LOW, High)
-No test exercises `reason: "too_many_submissions"` because the lib cannot
-produce it (CR5-3). With the fix: unit test pinning rows>MAX + sidecar-null →
-`too_many_submissions` (and sidecar-present → completed regardless of count).
+### TE6-4 — Offset pagination tie-stability untested
+Unit test for the submissions GET offset mode asserting the ORDER BY includes the id tiebreak (route-shape test in `submissions.route.test.ts` style), preventing silent regression.
 
-## TE5-6 — SVG `describeElement` guard (LOW)
-Unit-level: jsdom copy event with an SVG target inside a classed SVG parent —
-expect no throw and a usable target string.
+### TE6-5 — Suite updates owed by the dead-vocabulary removal (CR6-2)
+`code-similarity.test.ts` and the dashboard component test must drop/replace `service_unavailable` expectations; the i18n catalog pin (`source-grep-inventory.test.ts`) baseline will change if message keys are removed — adjust WITH justification in the commit body (the pin exists to force exactly this conversation).
 
-## Suite health notes
-- No flaky tests observed in this cycle's two full unit runs (baseline +
-  pre-existing). Import cost (69 s of 41.7 s wall, parallelized) is fine.
-- Known carried env gaps unchanged: login-gated E2E specs need
-  E2E_PASSWORD/staging (DEFER-ENV-GATES); browser a11y audit needs a
-  provisioned browser env (DES-ENV).
+### TE6-6 — LRU failure-path test (D6-3)
+Route unit test: first heartbeat insert rejects → key evicted → immediate retry inserts successfully (assert two insert attempts, one row recorded). Mock the db insert to fail once.
+
+## Suite-health observations
+- The cycle-5 additions (anti-cheat-get-behavioral, presentation, storage tests) are well-isolated and deterministic (fake timers, no real network). Good patterns to reuse for TE6-2.
+- `submissions.route.test.ts` already models the tx/rate-limit/flag matrix — TE6-1(a) fits there with minimal new scaffolding.
+- No `xfail`/skipped tests in the unit suite; 4 expected-warn log lines in recruiting tests are assertions on failure paths, not noise.
+
+## Final sweep
+Checked for tests asserting the FALSE comment/string surfaces (V6-7/V6-8): none do — removal is safe without test rewrites beyond TE6-5.

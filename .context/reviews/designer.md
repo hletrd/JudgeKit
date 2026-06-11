@@ -1,56 +1,25 @@
-# Designer (UI/UX) — RPF Cycle 5 (2026-06-11)
+# Designer — RPF Cycle 6 (2026-06-12)
 
-**HEAD:** 04b8c1ec. Static UI/UX review (code + catalogs). The browser-based
-audit remains environment-blocked (DES-ENV: no provisioned login-capable
-browser env from this runner — unchanged carry; findings below are all
-text-evidence-backed from source).
+**HEAD reviewed:** 22e1510f. **Method:** static UI/UX + WCAG 2.2 audit of the cycle-5 UI surface (anti-cheat dashboard, participant timeline, monitor privacy dialog) via DOM-structure analysis of the TSX and the design-system primitives. Live-browser audit remains environment-gated (no provisioned login-capable browser session from this runner — DEFER-ENV-GATES, unchanged); all findings below are text-evidence-backed with selectors and exact classes.
 
-## DES5-1 — Escalate flag renders as a raw i18n key path (HIGH visual defect, High, CONFIRMED)
-`anti-cheat-dashboard.tsx:614` + filter dropdown `:498`, and the participant
-timeline equivalent: a `submission_stale_heartbeat` event's type badge shows
-the next-intl missing-message fallback (full key path) because neither
-`messages/en.json` nor `messages/ko.json` defines
-`contests.antiCheat.eventTypes.submission_stale_heartbeat` (verified
-key-set). This is the exact row the integrity doc tells instructors to look
-for. Fix: EN "Submission while monitor inactive" / KO "모니터 비활성 상태 제출"
-(Korean default letter-spacing — no tracking utilities, per repo rule).
+## Findings
 
-## DES5-2 — No severity color for the highest-severity event type (MEDIUM, High, CONFIRMED)
-`EVENT_TYPE_COLORS` maps ip_change/code_similarity to red but lacks
-`submission_stale_heartbeat` (both components) — the badge falls back to
-plain secondary styling, visually QUIETER than a routine tab_switch (yellow).
-Color must follow tier: add the red mapping in the shared presentation module
-(A5-2). Both light and dark variants exist in the established pattern —
-reuse `bg-red-100 text-red-800 dark:bg-red-900/30 dark:text-red-400`.
+### DES6-1 — Anti-cheat filter chips are mouse-only controls (MEDIUM a11y, High, CONFIRMED — WCAG 2.1.1, 4.1.2)
+`anti-cheat-dashboard.tsx:459-475` and `participant-anti-cheat-timeline.tsx:251-269`: filter chips are `Badge` (renders a `<span>` — `ui/badge.tsx:33-40`) with `onClick` + `cursor-pointer` but no `role`, no `tabIndex`, no key handling, no pressed-state semantics. Keyboard and AT users cannot operate event-type filtering at all on either proctoring view. Fix: render each chip as a real `<button type="button">` (Badge supports the base-ui `render` prop) with `aria-pressed={active}`; focus styling already exists in the badge variants (`focus-visible:ring-…`), so the visual cost is zero.
 
-## DES5-3 — Flag details render as a JSON dump (LOW-MEDIUM, High, CONFIRMED)
-`formatDetailsJson` humanizes only `target` payloads; a stale-flag's
-`{latestEventAt, ageMs, thresholdMs}` (and, after G1, `submissionId`) prints
-as pretty-printed JSON. Reviewers need "last monitor activity 4m 12s before
-this submission (threshold 90s) — submission #…". Add a payload-shaped branch
-with i18n in both locales.
+### DES6-2 — Active-chip state is conveyed by variant color alone (LOW, Medium — WCAG 1.4.1)
+Selected chip switches `outline`→`default` variant only. With `aria-pressed` (DES6-1) the programmatic state is fixed; consider an inline check glyph for low-vision users if chips grow in number. No action required beyond DES6-1 this cycle.
 
-## DES5-4 — Absence visibility (ties D5-3/IN5-2) (MEDIUM)
-The participant timeline has no representation of "monitor went dark
-12:04–12:31" or "dark since 12:40 (ongoing)". Render `heartbeatGaps` as a
-compact list/banner above the event table; mark the ongoing gap distinctly
-(destructive-tinted badge + relative time). Respect `prefers-reduced-motion`
-(no pulsing animation; globals.css already neutralizes animations globally
-under the media query — verified `:138-145`).
+## Verified-good on the cycle-5 surface
+- **Heartbeat-gaps card** (`participant-anti-cheat-timeline.tsx:218-247`): `role="region"` + `aria-label`, text labels alongside the red border (not color-only), `ongoing` conveyed by a text badge, durations humanized via i18n plurals, no motion (reduced-motion safe).
+- **Details expanders**: real `<button>` with `aria-expanded` + `aria-controls` wired to the `pre` id — correct disclosure pattern in both views.
+- **Privacy notice dialog** (`anti-cheat-monitor.tsx:371-407`): modal, non-dismissable with explicit accept, decorative icon `aria-hidden`, list semantics for recorded-signal items. Session-scoped acceptance is a sensible privacy/UX tradeoff (re-notice per tab).
+- **Escalate-flag legibility** (cycle-5 G2) holds: red tier color + translated label + humanized details replace the raw JSON dump; en/ko parity confirmed.
+- **Korean typography rule**: no `tracking-*` on Korean-bearing text; all heading tracking utilities are locale-gated (`locale !== "ko"`).
 
-## DES5-5 — Verified-good (provenance)
-- Korean letter-spacing rule: `globals.css:128-137` scopes the -0.01em body
-  tracking behind `html:lang(ko) → normal`; not-found page and admin
-  dashboard gate `tracking-*` on locale — compliant.
-- Anti-cheat privacy dialog: non-dismissable with explicit accept, lists all
-  four collection categories, `aria-hidden` decorative icon — good consent UX.
-- Dashboard rows: `aria-expanded`/`aria-controls` on detail toggles ✓;
-  countdown timer announces via `role="timer"` + escalating `aria-live`
-  (polite→assertive when urgent) ✓ — DES3-1's politeness nuance remains a
-  carried polish item, unchanged.
-- Reduced-motion global kill-switch present ✓.
+## Carried (register unchanged)
+- DES3-1 — expired→active deadline announcement politeness (`exam-deadline-sync.tsx:107`) — bundle with the next exam-page a11y pass.
+- DES-ENV — full keyboard/contrast browser audit needs the provisioned staging session (DEFER-ENV-GATES).
 
-## Carried (unchanged)
-DES3-1 (assertive announce on expired→active transition) — bundle with the
-next exam-page a11y pass. DES-ENV (browser-run audit) — needs provisioned
-staging + browser.
+## Final sweep
+Loading skeletons, empty states ("noEvents"/"noEventsForFilter"), and error+retry states all present in both views; `Load more` buttons disable while pending — no spinner-trap. No new dark-mode contrast regressions detectable from class analysis (slate/amber/red pairs match the existing approved palette).

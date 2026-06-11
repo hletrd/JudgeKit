@@ -1,46 +1,24 @@
-# Architect — RPF Cycle 5 (2026-06-11)
+# Architect — RPF Cycle 6 (2026-06-12)
 
-**HEAD:** 04b8c1ec. Design/coupling review of the anti-cheat evidence chain
-and the cycle-4 deltas; layering spot checks elsewhere.
+**HEAD reviewed:** 22e1510f. **Lens:** boundary ownership, predicate duplication, layering of the cycle-5 additions.
 
-## A5-1 — Write side-effect inside a validator violates command/query separation; finish the cycle-4 direction (MEDIUM-HIGH, High, CONFIRMED)
-Cycle-4's A4-1 correctly diagnosed "a write inside a validator" and made it
-opt-in — but left the write IN the validator
-(`validateAssignmentSubmission`, `submissions.ts:343-392`). The structural
-consequence is CR5-1: the validator cannot know whether the submission will
-be accepted, so it cannot truthfully record an "accepted-submission" flag.
-Correct ownership: the validator (query) returns a staleness verdict; the
-submit route (command) records the flag after the accept point, enriched with
-`submissionId`/IP. This removes the last hidden write from the validation
-path and makes the evidence row self-describing. Option name should change
-(`recordStaleHeartbeatFlag` → `probeStaleHeartbeat`) so the signature stops
-promising a write the validator no longer performs.
+## Findings
 
-## A5-2 — Anti-cheat presentation constants duplicated across two components (LOW, High, CONFIRMED)
-`EVENT_TYPE_COLORS` and `formatDetailsJson` are copy-pasted between
-`anti-cheat-dashboard.tsx:81-110` and
-`participant-anti-cheat-timeline.tsx:35-59` and have already drifted (the
-dashboard gained `REVIEW_TIER_COLORS` + tier badges; the timeline did not —
-and BOTH are missing the `submission_stale_heartbeat` entry, the same bug
-twice). Extract a shared `src/components/contest/anti-cheat-presentation.ts`
-(colors, tier colors, details formatter) so G2's fix lands once. The
-review-tier MODEL is already correctly placed in lib
-(`anti-cheat/review-model.ts`) — only presentation constants are duplicated.
+### A6-1 — "Has contest access via token" is a boundary predicate implemented six times with two semantics (MEDIUM, High, CONFIRMED)
+The token-validity rule lives inline in: `platform-mode-context.ts` (×3, expiry-checked SQL), `contests.ts:getContestsForUser` (expiry-checked SQL), `anti-cheat/route.ts` POST (expiry-checked SQL), `submissions.ts:validateAssignmentSubmission` (Drizzle, NO expiry), `public-contests.ts` ×2 (Drizzle, NO expiry). Predictably they drifted (SEC6-1). Architectural fix: one owning module (new `src/lib/assignments/contest-access-tokens.ts`, sibling to the existing `access-codes.ts`) exporting (a) a Drizzle `findValidContestAccessToken(assignmentId, userId)` and (b) an SQL fragment/EXISTS builder for the raw-SQL call sites, both expiry-checked. Lifecycle writes (creation expiry policy, revocation-on-roster-removal) belong to the same module so the next policy change lands once.
 
-## A5-3 — Enum/UI contract drift in similarity reasons (LOW, High, CONFIRMED)
-`SimilarityRunReason` declares `too_many_submissions`; the engine never emits
-it; the dashboard implements a branch + i18n for it. Contract drift in the
-narrow waist between lib and UI (CR5-3). Emit the declared value.
+### A6-2 — Telemetry transmission has two shapes; only one is crash-safe (MEDIUM, High — same root as D6-3/AGG6-2)
+The monitor has a hardened queue path (claim loop + in-flight slot + backoff) and a legacy direct-send path (`reportEvent`). Every hard-won invariant of cycle-4/5 (no loss window, single-flight, bounded duplicates) holds only on the first path. Unify: `reportEvent` becomes enqueue-then-flush, making the queue the single transmission pipeline. This deletes a behavioral fork rather than adding code.
 
-## A5-4 — Layering spot checks — sound (provenance)
-- `client-events.ts` extraction (cycle-4 G1) holds: lib → lib imports only;
-  the route consumes the lib; no route-module exports are imported by lib.
-- Server-time discipline: all schedule checks and evidence inserts use DB
-  time EXCEPT the flag insert (CR5-5) — fold into G1.
-- `exam-close.ts` remains the single owner of effective-close semantics;
-  both consumers (validator, ingest) delegate. Good.
-- judge claim/poll/staleness-sweep triad: responsibilities cleanly split
-  (claim = atomic SQL; poll = token-fenced writes; sweep = counter repair).
-- deploy-docker.sh remains 1433 lines with SSH plumbing inline — C3-AGG-5
-  extraction trigger stays TRIPPED for any cycle that edits SSH/remote-exec
-  code (this cycle does not plan to).
+### A6-3 — Presentation module extraction (cycle-5 A5-2) verified holding
+`anti-cheat-presentation.ts` is the single source for colors/labels/details formatting; both consumers import it; the source-grep inventory test pins catalog coverage. No drift after one cycle. The tier MODEL stays in `lib/anti-cheat/review-model.ts` — layering respected (lib has no component imports).
+
+### A6-4 — Dead vocabulary should be pruned from the similarity result contract (LOW, High)
+`SimilarityRunReason` retains `service_unavailable` though no producer emits it (CR6-2). Contracts that advertise unreachable states get cargo-culted into new consumers (the dashboard branch proves it). Prune the member; the type system then guarantees honesty.
+
+## Standing observations (unchanged, carried)
+- `deploy-docker.sh` remains 1433 lines with the SSH-helper extraction trigger TRIPPED (C3-AGG-5) — binding on the next cycle that touches SSH/remote-exec plumbing; this cycle does not.
+- `judge-worker-rs` cosmetics (AGG5-7) untouched by design — exit criterion is a behavioral Rust edit, none planned this cycle.
+
+## Final sweep
+No new cross-layer imports (components → lib only; lib never imports components); dynamic imports in `canMonitorContest` resolve to the same cached `resolveCapabilities` (`capabilities/index.ts:27` re-exports the cache implementation) — no split-brain capability resolution.

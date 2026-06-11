@@ -1,45 +1,22 @@
-# Performance Reviewer — RPF Cycle 5 (2026-06-11)
+# Perf Reviewer — RPF Cycle 6 (2026-06-12)
 
-**HEAD:** 04b8c1ec. Focus: anti-cheat read paths (the deferred AGG4-5 area),
-cycle-4's client flush loop, similarity engine, submissions hot path,
-judge claim contention.
+**HEAD reviewed:** 22e1510f. **Focus:** event-loop hazards, query shapes on hot paths, polling costs, client responsiveness on the cycle-5 surface and the submit/judge hot paths.
 
-## P5-1 — The 5000-row heartbeat-gap scan runs on every participant-timeline poll and is discarded (MEDIUM, High, CONFIRMED)
-`anti-cheat/route.ts:287-321` runs the per-user gap scan whenever `userId` is
-present. `participant-anti-cheat-timeline.tsx:97` polls the route with
-`userId=` on a visibility-driven interval — so the scan executes on every
-poll — and the component **never reads `heartbeatGaps`** (no consumer exists
-anywhere in `src/`). This is the worst combination: the deferred AGG4-5 read
-cost is being PAID on a hot polling path while producing zero user value.
-Fix shape: gate the scan behind an explicit `includeGaps=1` query param and
-have the (new, see SEC5-3/IN5-2) gap UI pass it; polls that only want the
-event table skip the scan entirely. This also satisfies the AGG4-5 deferral's
-exit criterion ("the next cycle that edits the anti-cheat GET") — the
-unconditional `count(*)` (`:279-282`) stays, as it feeds pagination `total`
-and runs on an indexed, assignment-scoped predicate.
+## Findings
 
-## P5-2 — Claim-loop storage churn is acceptable (verified, no action)
-Cycle-4's per-event claim loop (`anti-cheat-monitor.tsx:105-128`) does
-O(n) JSON parse/serialize per event per flush. With `MAX_PENDING_EVENTS=200`
-(`anti-cheat-storage.ts:26`) the worst case is ~200 parses of a ≤200-element
-array — sub-millisecond each on exam hardware. No action.
+### P6-1 — TS similarity fallback: the normalization/n-gram build phase neither yields nor honors the abort signal (LOW, Medium, RISK → DEFER with exit criterion)
+`runSimilarityCheckTS` (`code-similarity.ts:266-275`) normalizes and n-grams all rows in a tight synchronous loop before the yielding comparison phase. Bounded by the 500-row cap and the 10k string-literal cap, but ~500 large sources can still hold the event loop for a noticeable burst on the app server (this fallback runs in-process, fired from a staff route during a live contest). The comparison loop already yields every 8 ms and checks the signal; the build loop does neither. Recommendation if/when touched: move the per-row normalize into the same time-sliced loop. Not worth a dedicated change while the Rust sidecar is the default engine — recommend recording as a deferred item with an incident-based exit criterion.
 
-## P5-3 — Similarity TS fallback yields correctly; route timer leak is negligible (LOW)
-`code-similarity.ts:296-305` yields the event loop every 8 ms via monotonic
-clock — verified sound. The route's leaked `setTimeout` on the non-abort
-throw path (`similarity-check/route.ts:30-35`) costs one no-op callback;
-fix alongside CR5-3 for hygiene, not perf.
+### P6-2 — Timeline `loadMore` carries no AbortController and no staleness guard (LOW, Medium, LIKELY)
+`participant-anti-cheat-timeline.tsx:126-144`: the 30 s visibility poll resets `events` to the fresh first page and `offset` to its length, while an in-flight `loadMore` (old offset) appends afterwards → duplicate rows (duplicate React keys; wasted re-render of the whole table). The dashboard solved the same interaction with first-page reconciliation + offset preservation (`anti-cheat-dashboard.tsx:120-148`). Cheapest correct fix for the timeline's reset-on-poll semantics: a fetch-sequence counter — drop the `loadMore` response if a poll reset completed after it started (also dedupe by id defensively).
 
-## P5-4 — Submissions POST hot path — verified, no regressions
-The cycle-4 probe is correctly scoped to the submit path only (one extra
-indexed `LIMIT 1` lookup on `ace_assignment_user_idx`; render/autosave pay
-nothing). Advisory-lock serialization per user bounds contention to the
-submitting user. `count(*) over()` pagination avoids the second count query.
-No new findings.
+## Verified-acceptable (no action)
+- **Gap scan cost is now opt-in and consumed** (`anti-cheat/route.ts:292`): dashboard polls skip it; the timeline pays for what it renders. The extra `getDbNowUncached()` round trip (`:339`) only fires on the opt-in path with ≥1 heartbeat — negligible.
+- **Submit hot path:** validator keeps the single parallel pair (enrollment+session), one probe query gated on exam-mode+anti-cheat, problem-mismatch check after; the post-accept flag insert is one fail-open INSERT. No N+1.
+- **Offset listing `count(*) over()`** single-query total remains the right call; the GROUP BY summary only runs when `includeSummary=1`.
+- **Heartbeat LRU** (10k entries, 120 s TTL) and the shared-coordination path remain O(1) per ingest.
+- **`getAssignmentStatusRows`** pushes aggregation into one window-function query + one overrides query — O(students × problems) assembly in memory, as designed.
+- **Monitor client:** single-flight flush, capped queue (200), exponential backoff capped at 8 s effective — no busy-retry behavior. The proposed queue-first `reportEvent` (AGG6-2) adds at most one localStorage write per event; negligible.
 
-## P5-5 — Judge claim under contest load — verified (provenance)
-`buildClaimSql` takes one `FOR UPDATE SKIP LOCKED` candidate per call;
-worker capacity is checked in the same statement (no thundering herd on a
-single row). The background staleness sweep self-heals counter leaks. The
-documented two-worker deadlock-and-retry case is accepted and self-recovering.
-No new findings.
+## Final sweep
+No new unindexed predicates introduced this cycle (`ace_assignment_user_idx` covers the probe and gap scans; `cat_assignment_user_idx` covers token lookups). No client component re-render hazards beyond P6-2 (memoization on filters/types intact in both anti-cheat views).
