@@ -1,43 +1,47 @@
-# Document-specialist review — RPF cycle 4 (2026-06-11)
+# Document Specialist — RPF Cycle 5 (2026-06-11)
 
-**HEAD reviewed:** 7c0a4bd4.
-**Lens:** doc/code mismatches against authoritative sources (the code).
+**HEAD:** 04b8c1ec. Doc/code mismatch audit against authoritative sources
+(`docs/`, in-code contract comments, message catalogs).
 
-## DOC4-1 — `exam-integrity-model.md` promises submission-only flag semantics; code disagrees (MEDIUM, High, CONFIRMED)
-`docs/exam-integrity-model.md:54` ("A submission with a stale … heartbeat is
-accepted, and a `submission_stale_heartbeat` … event is recorded instead") and
-`:56` ("A flagged submission means 'the submitting client had no recent
-browser-monitor activity'") are false at this HEAD: the recording site is the
-shared validator, which also runs on problem-page renders
-(`practice/problems/[id]/page.tsx:167`) and autosave snapshots
-(`code-snapshots/route.ts:62`). The reviewer-obligation paragraph therefore
-instructs staff to treat page opens as suspicious submissions. Resolution:
-fix the code to match the doc (AGG4-1 — the doc describes the RIGHT design),
-then add one clarifying sentence that only the submit path records the flag
-and that autosaves/page loads never do.
+## DOC5-1 — `docs/exam-integrity-model.md`: flag semantics overstate the code (MEDIUM, High, CONFIRMED)
+The heartbeat-correlation section asserts (a) "every such submission is
+flagged" and (b) "A flagged submission means the submitting client had no
+recent browser-monitor activity" — implying flag ⇔ accepted submission.
+Code: flags are also written for rejected attempts (CR5-1 paths). After the
+G1 code fix, add one sentence: flags are recorded only for ACCEPTED
+submissions and carry the submission id in `details` (update the same
+section's `_Last updated:_ stamp).
 
-## DOC4-2 — `review-model.ts` inline comment same mismatch (LOW, High, CONFIRMED)
-`src/lib/anti-cheat/review-model.ts:12-15` — update wording with AGG4-1 so the
-tier table's "Server-recorded" description stays truthful.
+## DOC5-2 — `review-model.ts:12-18` comment repeats the false "accepted" claim (MEDIUM, High, CONFIRMED)
+Same correction as DOC5-1; this comment is the tier model's source of truth
+for reviewers reading code. Land with G1 so the comment describes the fixed
+system (mirror of cycle-4's V4-2/V4-3 sequencing).
 
-## DOC4-3 — Verified-accurate list (no action)
-- `exam-close.ts` header narrative matches both consumers and history.
-- "Staff time extensions" doc section (cycle-3 G2) matches `extendExamSession`
-  semantics incl. SQL-composed concurrent extensions and audit event name
-  (`exam_session.extend` — grep-confirmed in audit emitters).
-- `deploy-docker.sh` header env table includes the new `E2E_HOME_HEADING` knob
-  with the same default-fallback semantics the specs implement (`|| "Write
-  code|코드를"` / responsive variant) — consistent.
-- `docs/deployment.md` restore-test section (cycle-3 G6) matches
-  `verify-backup` behavior: full `RESTORE_DATABASE_URL` path, role-match
-  caveat, skip notice (script cross-checked).
-- AGENTS.md "Deploy hardening" list still matches script behavior (BuildKit
-  self-heal, sequential language builds default) — unchanged since cycle-3
-  verification.
-- Test-seed route header security model (PLAYWRIGHT_AUTH_TOKEN gate,
-  timing-safe compare, localhost via validated hops) matches implementation.
+## DOC5-3 — "The instructor still sees this flag in the anti-cheat dashboard" — true only nominally (MEDIUM, High, CONFIRMED)
+`submissions.ts:364-371` fail-open rationale + the doc's "reviewer
+obligation" paragraph both presume a legible dashboard. The event-type label
+for `submission_stale_heartbeat` is missing from BOTH message catalogs
+(`messages/en.json`, `messages/ko.json` — verified key-set), so the badge
+renders a raw key path. The doc is fine; the catalogs are the defect (G2).
+Also add the new event type to any doc listing the event vocabulary if flag
+rows gain `submissionId` details (the integrity doc's telemetry-boundary
+section lists client events only — correct as-is since the flag is
+server-originated; no change needed there).
 
-## Sweep
-README/SECURITY.md unchanged this cycle; no version-number or CLI-flag drift
-found in `docs/` against current scripts. The only live mismatches are
-DOC4-1/2, both scheduled with the code fix.
+## DOC5-4 — `messages/*` dead key: `similaritySkippedTooManySubmissions` (LOW, High, CONFIRMED)
+Translated in both locales, rendered by a dashboard branch that is
+unreachable because the engine never returns `too_many_submissions`
+(CR5-3). The fix is in code (emit the reason); the catalogs are already
+correct — keep them.
+
+## DOC5-5 — Verified accurate this cycle (provenance)
+- `judge/poll/route.ts` header comment ("named poll for historical reasons")
+  — matches deployed worker reality; keep.
+- `claim-query.ts` invariant comments — verified against the SQL; the
+  lock-order/deadlock note is accurate and load-bearing; keep verbatim.
+- `exam-close.ts` contract doc — matches both consumers.
+- `anti-cheat-storage.ts` MAX_PENDING_EVENTS rationale — verified (V5-5).
+- `docs/exam-integrity-model.md` staff-extension + admin-bypass sections —
+  match `extendExamSession` SQL and `isAdminLevel` code paths.
+- Deployment docs vs `deploy-docker.sh` / CLAUDE.md (algo app-only flags,
+  prune prohibitions) — consistent; no drift found this cycle.

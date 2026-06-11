@@ -1,43 +1,46 @@
-# Persona review — Instructor (RPF cycle 4, 2026-06-11)
+# Perspective: Instructor — RPF Cycle 5 (2026-06-11)
 
-**HEAD reviewed:** 7c0a4bd4. Seat: authoring problems/assignments/exams,
-grading, rosters, similarity reports, exports. Static walkthrough.
+**HEAD:** 04b8c1ec. Walked: authoring → exam config → live monitoring →
+similarity review → grading/export → accommodation handling.
 
-## IN4-1 — My escalate tier is polluted; I will either over-accuse or tune it out (MEDIUM-HIGH, High; AGG4-1/AGG4-2)
-The integrity doc tells me to review `submission_stale_heartbeat` before
-trusting results. Today that list contains one guaranteed false entry per
-student (first problem open) plus entries from editor autosaves — and,
-inversely, a student actually submitting from outside the browser is flagged
-at most once per 90 s because flags refresh their own freshness. I cannot
-currently distinguish any of these cases from the dashboard (no source marker
-in `details`). Both fixes are scheduled this cycle; after they land, an
-escalate entry will once again mean "a submission with no live monitor".
+## IN5-1 — The flag I'm told to review is illegible and over-reported (HIGH workflow impact, High, CONFIRMED)
+The integrity doc obligates me to review `submission_stale_heartbeat` events
+before trusting results. In the dashboard that row shows a raw key path
+instead of a label, with a neutral badge color quieter than a tab-switch
+(V5-4/DES5-1/2), its details are a JSON blob (DES5-3), and — worse — some of
+those flags correspond to submissions that were REJECTED (ST5-1/CR5-1), which
+I cannot tell from the row because it carries no submission reference. To
+discharge my obligation today I would need to cross-join three views by
+timestamp. G1+G2 (flag-on-accept with submissionId + label/color/details
+rendering) turns this from forensic archaeology into a 10-second check.
 
-## IN4-2 — Extension workflow is now coherent end-to-end (positive)
-Granting a mid-exam extension: composes correctly under concurrent staff
-clicks (SQL interval add), reaches the student within 60 s with toast +
-status note, keeps their telemetry and submissions accepted past the close,
-and applies late-penalty scoring against the personal deadline. Audit event
-`exam_session.extend` recorded. Remaining gap is the carried TA3-1-followup:
-the participant timeline doesn't yet render extension grants, so
-heartbeat-gap review still needs cross-referencing the audit log by hand.
+## IN5-2 — I cannot see who is absent RIGHT NOW (MEDIUM-HIGH, High, CONFIRMED)
+During a live exam the per-participant timeline shows events but no absence
+periods — the server even computes heartbeat gaps on my behalf and throws
+them away (Trace 2), and an ongoing absence is structurally undetectable
+(D5-3). For in-room exams "monitor dark since 12:40" is the single most
+actionable signal I could get. G3 (render gaps + ongoing boundary) fixes the
+supervision story.
 
-## IN4-3 — Authoring guardrails verified (positive)
-Cross-field rules can't be bypassed via partial edits: PATCH re-validates the
-merged document (`[assignmentId]/route.ts:129`), so exam modes always clear
-late windows, windowed mode demands duration + window, and the leaderboard
-freeze must sit inside the contest. Anti-cheat defaults ON for new exams in
-the general form (48856f17, verified still in place).
+## IN5-3 — Similarity tool: status messages can misdiagnose (LOW-MEDIUM, High, CONFIRMED)
+For a 600-submission contest with the sidecar down I'm told "service
+unavailable" — true but incomplete; the dedicated "too many submissions"
+message exists, translated, and is unreachable (CR5-3). Also each re-run
+resets all `code_similarity` evidence timestamps (delete+reinsert,
+`code-similarity.ts:407-446`), so "when was this pair first flagged" is
+unanswerable — relevant when a student disputes timing. The reset is a design
+choice; registering the history question for an owner decision (AGG5-10).
 
-## IN4-4 — Smaller seat-specific notes
-- Similarity check: 30 s abort guard, manage-gated, timeout surfaces as
-  `timed_out` rather than a 500 — usable mid-contest. Flagged pairs land as
-  escalate events for BOTH students; note they also (today) refresh those
-  students' heartbeat freshness — AGG4-2 covers this.
-- IP-overlap report (shared-IP / multi-IP) remains the right first tool for
-  duplicate-account hunting; read-only and capped (LIMIT 100).
-- Exports/CSV: `escapeCsvField` in use (cycle-1 hardening) — unchanged, no
-  regression found.
-- Pre-start accommodations (per-student duration overrides before the exam
-  begins) remain an owner product decision — IN2-2 carry unchanged;
-  workaround (extend after start) documented.
+## IN5-4 — Accommodations: verified solid (provenance)
+Per-student extension composes under concurrency, exceeds assignment close by
+design, keeps telemetry alive past close (cycle-3 AGG3-1 verified at this
+HEAD), and is fully audited. The carried product asks (pre-start duration
+overrides IN2-2; extension visible in participant timeline TA3-1-followup)
+remain owner-scheduling decisions — unchanged.
+
+## IN5-5 — Authoring/grading/export spot checks (verified)
+Problem CRUD with drafts, test-case import/export, manual-problem grading
+path (initial status `submitted`, skips judge queue), assignment status rows
+aggregated in SQL (no N+1), CSV export uses the shared escape helper
+(formula-injection safe), IOI partial scoring forces run-all-test-cases at
+claim time. No new findings in these lanes this cycle.

@@ -1,36 +1,37 @@
-# Persona review — Teaching assistant (RPF cycle 4, 2026-06-11)
+# Perspective: Teaching Assistant — RPF Cycle 5 (2026-06-11)
 
-**HEAD reviewed:** 7c0a4bd4. Seat: TA with partial permissions — roster
-visibility, exam supervision, grading support. Static walkthrough of the
-capability boundaries.
+**HEAD:** 04b8c1ec. Walked the TA seat: monitoring permissions, roster
+visibility, grading support, permission boundaries.
 
-## TA4-1 — Supervision surfaces I can use (verified)
-- Anti-cheat GET is monitor-gated via `canMonitorContest` (route.ts:199),
-  which by design extends to group TAs WITHOUT write power — I can watch a
-  live exam, view heartbeat gaps, and pull the IP-overlap report, but cannot
-  extend sessions or change scores.
-- Exam-session cross-reads: I can read a participant's timing only with
-  `canViewAssignmentSubmissions` standing (group instructor role) — the
-  cycle-3 lazy resolution preserved the boundary (no bare analytics-capability
-  cross-read; pinned by tests).
+## TA5-1 — As the live-exam supervisor I'm blind to absence (MEDIUM, High, CONFIRMED)
+TAs typically ARE the live supervision layer (`canMonitorContest` grants me
+the read-only anti-cheat GET — `anti-cheat/route.ts:190-199`). But the view I
+get suffers IN5-1/IN5-2 exactly: the escalate flag is an unlabeled raw-key
+badge, and absence periods/ongoing gaps are invisible. The supervision duty
+delegated to TAs cannot be performed from the TA's screen. G2+G3 fix the TA
+seat and the instructor seat together (same components).
 
-## TA4-2 — The noise problem hits me hardest (MEDIUM-HIGH as workflow impact; AGG4-1)
-Live supervision means watching the escalate feed. With every participant
-generating a false `submission_stale_heartbeat` at first problem open, the
-feed I'm told to act on starts 100% noise at exam start — exactly when I
-should be confirming everyone's monitor came up. After this cycle's fix the
-feed will only fire on actual unmonitored submissions.
+## TA5-2 — Permission boundaries: verified holding (provenance)
+- Read vs write split is correct and deliberate: anti-cheat GET requires
+  only `canMonitorContest` (TA), POST-side staff actions (similarity run —
+  `canManageContest`, exam-session extension — group-manager gate) stay
+  above me. Probed: similarity-check route rejects TA-level callers (403).
+- Roster: group-detail roster is manager-gated (3dfc2c75 lineage) — as a TA
+  I see what I supervise, not bulk member PII export paths.
+- Code snapshots viewer requires `contests.view_analytics` capability AND
+  per-assignment `canViewAssignmentSubmissions` — the double gate held when
+  traced (`code-snapshots/[userId]/route.ts:11-17`).
+- I cannot grant myself extensions or rerun similarity to wash evidence
+  (delete+reinsert is manager-gated; noted in IN5-3/AGG5-10 for managers).
 
-## TA4-3 — "Was this gap a granted extension?" still needs the audit log (carry)
-TA3-1-followup unchanged: heartbeat-gap rows don't annotate staff-granted
-extensions, so I either ask the instructor or cross-reference
-`exam_session.extend` audit events myself. Exit criterion (timeline
-enrichment bundled with TA2) stands; severity LOW(product)/High preserved.
+## TA5-3 — Carried TA asks (unchanged)
+TA3-1-followup: `exam_session.extend` audit events still do not render in
+the participant timeline (I see the longer deadline but not who granted it —
+I have to ask the instructor). Owner-scheduled; bundle with DES4-4's status
+label nuance. TA1/TA2 origin-register items: preconditions unchanged.
 
-## TA4-4 — Permission-boundary sweep (no new gaps found)
-Spot-checked the TA-relevant routes this cycle: anti-cheat GET (monitor),
-exam-sessions list (manage-gated — I cannot list everyone's sessions without
-instructor standing), overrides (manage-gated), participant timeline
-(analytics + group-scoped). Consistent with the cycle-2 manager-gated roster
-test updates (3dfc2c75). No route was found this cycle where a TA's
-capability set leaks write access.
+## TA5-4 — Workflow note (not a defect)
+When G1 lands, flag rows will carry `submissionId` — that turns the TA
+triage loop (flag → find submission → open code timeline) into one click;
+worth mentioning in whatever short staff-facing how-to the owner writes
+next (no in-repo doc change required this cycle beyond DOC5-1).

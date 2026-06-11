@@ -1,63 +1,59 @@
-# Debugger review — RPF cycle 4 (2026-06-11)
+# Debugger — RPF Cycle 5 (2026-06-11)
 
-**HEAD reviewed:** 7c0a4bd4 · baseline gates green.
-**Lens:** latent bug surface, failure modes, regressions.
+**HEAD:** 04b8c1ec. Latent-bug surface and failure-mode hunt across the
+cycle-4 changes and the anti-cheat evidence chain.
 
-## Findings
+## D5-1 — Multiple false escalate flags from one deadline submit-burst (MEDIUM-HIGH, High, CONFIRMED)
+Reproduction (code-trace): anti-cheat exam, monitor tab dead >90 s, student
+clicks submit 4× in quick succession at the deadline. Request 1 inserts the
+submission; requests 2–4 hit `submissionRateLimited`/`tooManyPendingSubmissions`
+inside the transaction (`submissions/route.ts:321-340`) — but the validator
+already inserted a `submission_stale_heartbeat` escalate row for EACH request
+(`submissions.ts:343-392` runs before the transaction). Result: 4 escalate
+flags, 1 accepted submission; the reviewer sees a fabricated pattern of
+"repeated out-of-monitor submissions". Same applies to
+`assignmentProblemMismatch` (flag inserted before the check at `:395`),
+`canAccessProblem` 403, `judgeQueueFull` 503, and in-tx `examTimeExpired`.
+Root cause: a write side-effect placed mid-validator instead of after the
+accept point. Fix: probe in the validator, record in the route after the
+successful insert (one flag per accepted submission, with its id).
 
-### D4-1 — Guaranteed false escalate flag on first problem open (MEDIUM-HIGH, High, CONFIRMED)
-Reproduction (from code, no environment needed):
-1. Windowed exam, `enableAntiCheat: true`. Student starts the session
-   (start-exam-button → `startExamSession`).
-2. Student opens problem 1: `practice/problems/[id]/page.tsx:167` calls
-   `validateAssignmentSubmission` during render.
-3. Validator path: schedule OK → enrollment OK → session OK → heartbeat
-   correlation (`submissions.ts:319-335`): zero `anti_cheat_events` rows exist
-   (the monitor mounts only after this render and after privacy-notice
-   acceptance) → `latestEventAt === null` → `fresh === false` → INSERT
-   `submission_stale_heartbeat` (escalate tier).
-Result: every participant of every anti-cheat exam starts flagged. Repeats per
-problem navigation whenever >90 s passed without a recorded event (e.g. student
-sat on the contest overview page, which mounts no monitor).
+## D5-2 — Claimed event vanishes if the page unloads mid-send (LOW-MEDIUM, Medium, LIKELY)
+`anti-cheat-monitor.tsx:110-123`: claim (`savePendingEvents(rest)`) →
+`await sendEvent(event)`. Unload in that window = the event exists nowhere.
+Window is small (~RTT) but recurs every flush; over a semester of exams the
+loss is nonzero and biased toward navigation-adjacent events. See SEC5-2 for
+the recovery-slot fix.
 
-### D4-2 — Flag self-suppression window (MEDIUM, High, CONFIRMED)
-Because the freshness probe (`submissions.ts:320-330`) matches ANY event type,
-the row inserted by D4-1/the real submit path satisfies the next probe for
-~90 s. Failure mode: the SECOND unmonitored submission inside 90 s is NOT
-flagged — the evidence trail under-counts in bursts, which is precisely when a
-confederate-typed exam ends (rapid-fire final submissions).
+## D5-3 — Live-absence blind spot in heartbeat-gap detection (MEDIUM, Medium → HIGH product impact, CONFIRMED)
+`anti-cheat/route.ts:307-321` iterates pairs of *recorded* heartbeats only.
+Two failure modes: (a) participant left 30 min ago → no trailing pair → no
+gap reported, ever, until they return; (b) no UI consumes the data anyway
+(see P5-1). For live exam supervision the ongoing gap is the actionable
+signal. Append a synthetic boundary at DB NOW() (flag it `ongoing`) and
+render it.
 
-### D4-3 — Lost-update race in the anti-cheat pending queue (LOW-MEDIUM, Medium, LIKELY)
-`anti-cheat-monitor.tsx`: interleaving
-`performFlush` (async; load at `:91`, save at `:103` after awaits) with
-`reportEvent`'s synchronous load-push-save (`:165-167`) drops the appended
-event. Trigger: blur/copy event fires while a flush (mount, refocus, online)
-is mid-await. Also two overlapping flush loops can double-send the same queued
-event (both load the same list before either saves). Impact: missing or
-duplicated telemetry rows — duplicates are merely noise, but missing
-`tab_switch` rows weaken evidence. Deterministic fix: per-event claim loop +
-`isFlushing` ref (see perf P4-3).
+## D5-4 — `describeElement` TypeError on SVG copy targets (LOW, Medium, LIKELY)
+`anti-cheat-monitor.tsx:289-291`: `className.split` on `SVGAnimatedString`
+throws inside the copy/paste listener → that telemetry event is dropped.
+Hard to hit (needs a classed SVG ancestor of an `A`/text tag target) but
+trivially guarded.
 
-### D4-4 — Misleading `assignmentClosed` from session re-fetch race (LOW, High, CONFIRMED)
-`exam-sessions.ts:101-110`: if the post-insert re-fetch misses, the student is
-told the assignment is closed even though it is open; they will not retry
-(the UI gates on that error). Rename to an internal error so the UI shows the
-retryable generic failure instead.
+## D5-5 — Flag timestamp clock-mix can misorder the evidence timeline (LOW, High, CONFIRMED)
+Flag rows take app-server `new Date()` (schema default); heartbeat/event/
+similarity rows take DB NOW(). With app/DB skew of a few seconds, a flag can
+sort *before* the heartbeat that proves the monitor was alive, confusing the
+reviewer timeline. Pass DB `now` into the flag insert.
 
-## Hypotheses tested and rejected (provenance)
-- "PATCH lets exams keep a late window, diverging the anti-cheat ingest from
-  submission acceptance": rejected — PATCH merges into
-  `assignmentMutationSchema` (`[assignmentId]/route.ts:129`), which nulls
-  `lateDeadline` for both exam modes (`validators/assignments.ts:107-122`).
-- "Heartbeat-only-when-visible starves freshness during legit work": rejected —
-  any visible exam tab heartbeats every 30 s; server records ≤1/60 s; the 90 s
-  threshold leaves ≥30 s margin. The starved cases are exactly the
-  non-submission paths covered by D4-1.
-- "Cycle-3 lazy staff resolution changed student fallback semantics": rejected —
-  non-staff `?userId=other` still resolves (now lazily) and self-falls-back;
-  pinned by `exam-session-get-lazy-staff.test.ts`.
-- "`getEffectiveExamCloseAt(now > close)` vs old `>= now` boundary flip":
-  rejected — old accept condition `personalDeadline >= now` ≡ new reject
-  condition `effectiveClose < now` at the boundary.
-
-Confidence labels inline.
+## Hypotheses tested and CLEARED
+- `startExamSession` re-fetch race → `examSessionUnavailable` (cycle-4 G4):
+  route mapping confirmed to fall through to retryable 500; no
+  `assignmentClosed` false verdict remains.
+- Claim-loop double-send under overlapping flush triggers: `isFlushingRef` +
+  per-iteration claim verified against the component tests; queue cap (200)
+  bounds pathological storage.
+- `extendExamSession` SQL-composed `make_interval` under concurrent PATCH:
+  composes additively, no clobber.
+- Heartbeat LRU dedup (`lastHeartbeatTime`) across multi-instance app: only
+  used when shared realtime coordination is NOT configured; per-instance
+  worst case is one extra heartbeat row per 60 s per instance — harmless.

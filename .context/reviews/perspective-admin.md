@@ -1,44 +1,51 @@
-# Persona review — Platform admin (RPF cycle 4, 2026-06-11)
+# Perspective: Platform Admin — RPF Cycle 5 (2026-06-11)
 
-**HEAD reviewed:** 7c0a4bd4. Seat: system settings, users, capacity,
-monitoring, backup/restore, deploy, incident response.
+**HEAD:** 04b8c1ec. Walked: settings, user management, workers, backup/
+restore, monitoring, deploy/upgrade, incident response.
 
-## AD4-1 — Dead-worker detection now traffic-independent (positive, verified)
-The background staleness sweep (`worker-staleness-sweep.ts`, started from
-`instrumentation.ts:28`) reaps a crashed single worker without needing another
-worker's heartbeat — closing the cycle-2 era gap for the documented
-single-worker prod topology. Reap transitions log exactly once (WHERE on prior
-status), giving me an alertable signal ahead of the Prometheus scrape.
+## AD5-1 — Backup/restore: operationally serious (verified-good)
+`system.backup` capability + password re-confirmation + CSRF + rate limit +
+audit events on both routes; restore takes a pre-restore snapshot before
+import; ZIP/file restores validated and size-capped (MAX_IMPORT_BYTES). The
+documented restore-test in CI (commit abfa90f5) closes the classic
+"backups never restored" gap. No new findings.
 
-## AD4-2 — Backup story complete on paper; restore-test documented (carry-positive)
-`RESTORE_DATABASE_URL` full restore-test documented with the role-match caveat
-and skip-notice meaning (cycle-3 G6); verification now actually restores
-(abfa90f5). My remaining operational duty: run it against a scratch instance
-periodically — the docs now tell me exactly how.
+## AD5-2 — Capacity: a polled instructor view pays for an unused 5000-row scan (MEDIUM, High, CONFIRMED)
+Every participant-timeline poll triggers the per-user heartbeat-gap scan
+server-side and discards it client-side (P5-1). One instructor watching one
+candidate is fine; a recruiting screen with several reviewers polling
+several candidates multiplies an indexed-but-real read load for zero value.
+G3's `includeGaps` gating makes the cost opt-in and consumed. The
+unconditional dashboard `count(*)` stays (feeds pagination; indexed,
+assignment-scoped) — recording that as the explicit resolution of the
+deferred AGG4-5 once the GET is edited this cycle.
 
-## AD4-3 — Capacity view for a live contest (no change, watch item)
-P4-1 (anti-cheat GET count(*) + 5000-row gap scans per dashboard poll) is the
-only new capacity note this cycle; it's read-path-only and indexed. Watch
-during the first 100+ seat live contest; the deferred row carries an explicit
-exit criterion.
+## AD5-3 — Judge fleet lifecycle: healthy (verified)
+online→stale→offline sweep runs in the background (7e198b51), counter
+repair is sweep-owned, per-worker token hashes with no plaintext fallback,
+claim refuses unsandboxed retries on seccomp-init failure (fails closed).
+Worker images build on worker-0 only; algo stays app-only per policy —
+encoded in `.env.deploy.algo`, confirmed untouched.
 
-## AD4-4 — Deploy/upgrade story (unchanged, healthy)
-Two consecutive clean three-target deploys (cycle-2, cycle-3) with the
-sequential language-build strategy and BuildKit self-heal; app-only constraint
-for algo.xylolabs.com encoded in `.env.deploy.algo`. The smoke now accepts
-branded heroes via `E2E_HOME_HEADING`. Known residuals: login-gated smoke
-specs skip without E2E_PASSWORD (DEFER-ENV-GATES carry); auraedu cold-start
-transient on tablet rankings (watch on this cycle's deploy).
+## AD5-4 — Upgrade/deploy story (verified, with standing cautions)
+Three consecutive clean sequential-language deploys (cycle-4 record);
+BuildKit history self-heal in-script. Standing cautions remain accurate and
+binding: never `docker system prune --volumes` anywhere; never
+`docker image prune -a`/`system prune -a` on worker hosts (~80 language
+images); preserve `src/lib/auth/config.ts` during deploys. Carried AGG3-7
+(retry log overwrite in `run_remote_build`) — unchanged, fires only when
+that function is next edited; this cycle does not plan to edit the deploy
+script.
 
-## AD4-5 — Incident-response relevance of this cycle's findings
-AGG4-1/2 are not availability issues, but as admin I own the data: false
-escalate rows are PII-adjacent integrity records (`anti_cheat_events` carries
-IP + UA). Until the fix deploys, any export or retention decision based on
-escalate counts is skewed. Data-retention pruning
-(`startSensitiveDataPruning`) is unaffected (prunes by age, not tier).
+## AD5-5 — Incident response docs (verified)
+`operator-incident-runbook.md` + `judge-worker-incident-runbook.md` +
+`admin-security-operations.md` cover worker loss, queue stalls, credential
+handling; `examSessionUnavailable` (cycle-4) maps to a retryable 500 — the
+right shape for status-page triage. The admin-bypass paragraph in the
+integrity doc correctly names the residual risk (admin compromise defeats
+the integrity model) with credential guidance. No new findings.
 
-## AD4-6 — Settings/permissions sweep
-`NODE_ENCRYPTION_KEY` startup requirement (a5e66736) verified still enforced
-via `assertProductionConfig` chain; system-settings init precedes background
-jobs that read it (`instrumentation.ts:20-28`). No new admin-surface gaps
-found this cycle.
+## Wishlist registered (not defects)
+Multi-instance shared rate-limit/heartbeat coordination is configuration-
+gated (`usesSharedRealtimeCoordination`) — fine at current single-instance
+scale; revisit only when an instance count change is planned.

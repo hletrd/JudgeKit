@@ -1,98 +1,115 @@
-# RPF Cycle 4 (2026-06-11) — Aggregate Review
+# RPF Cycle 5 (2026-06-11) — Aggregate Review
 
 **Date:** 2026-06-11
-**HEAD reviewed:** 7c0a4bd4 (main) — cycle-3's completed tree (deployed healthy
-at 566e54dc on all three targets) + cycle-3's final docs commit.
-**Cycle:** 4/100 (orchestrator-numbered)
-**Lenses:** 11 specialist + 6 persona files in this directory, all refreshed at
-this HEAD (cycle-3 versions moved to `_archive/cycle-3-2026-06-11/`).
+**HEAD reviewed:** 04b8c1ec (main) — cycle-4's completed tree (deployed
+healthy at 9966bfdf on all three targets) + cycle-4's final docs commit.
+**Cycle:** 5/100 (orchestrator-numbered)
+**Lenses:** 11 specialist + 6 persona files in this directory, all fresh at
+this HEAD (cycle-4 versions moved to `_archive/cycle-4-2026-06-11/`).
 **Baseline gates on review HEAD (executed):** tsc 0 · eslint 0/0 ·
-lint:bash clean · unit 336 files / 2597 tests PASS.
+lint:bash clean · unit 2606/2606 PASS.
 
 ## AGENT FAILURES
 None of the named reviewer subagents are registered in this environment (no
-Agent tool is available to this cycle's runner — same condition as cycles
-1–3). Per the fan-out fallback, every lens was executed directly by the cycle
-agent and written to its own file; no lens was dropped. Recorded for
-provenance.
+Agent tool is available to this cycle's runner; `.claude/` contains no agent
+definitions — same condition as cycles 1–4). Per the established fan-out
+fallback, every lens was executed directly by the cycle agent and written to
+its own file; no lens was dropped. Recorded for provenance.
 
 ## Merged findings (deduped; severity/confidence preserved at max across lenses)
 
-### AGG4-1 — `submission_stale_heartbeat` escalate flags are inserted by page renders and autosaves, not just submissions (MEDIUM-HIGH, High, CONFIRMED)
-**Lenses:** code-reviewer CR4-1, security SEC4-1 + perspective-security W1,
-debugger D4-1, tracer Trace 1, verifier V4-2/V4-3, critic §1, architect A4-1
-(root cause: write inside a validator), test-engineer TE4-1 (path untested),
-document-specialist DOC4-1/2, designer DES4-2, perspective-student ST4-1,
-perspective-instructor IN4-1, perspective-assistant TA4-2,
-perspective-job-applicant JA4-1 — **15-lens agreement; highest signal.**
-`validateAssignmentSubmission` inserts the escalate-tier flag when the
-freshness probe misses (`src/lib/assignments/submissions.ts:319-362`) and is
-called from `src/app/(public)/practice/problems/[id]/page.tsx:167` (GET render)
-and `src/app/api/v1/code-snapshots/route.ts:62` (autosave every 10–60 s) in
-addition to the submit route. Guaranteed false flag per participant at first
-problem open (render precedes monitor mount); repeats per navigation after a
->90 s telemetry gap; autosave flags misread as submissions
-(doc + review-model promise submission semantics). Fix: explicit opt-in
-(`recordStaleHeartbeatFlag`) passed ONLY by `submissions/route.ts`; red-first
-tests for both non-submit paths + fail-open pin; one doc sentence + comment
-update so V4-2/V4-3 become true.
+### AGG5-1 — `submission_stale_heartbeat` flags are recorded for REJECTED submissions; rows carry no submission linkage, IP, or DB-time (MEDIUM-HIGH, High, CONFIRMED)
+**Lenses:** code-reviewer CR5-1 + CR5-5, security SEC5-1 + perspective-
+security §1/§5, debugger D5-1 + D5-5, tracer Trace 1, verifier V5-1/V5-2,
+critic §1, architect A5-1, test-engineer TE5-1, document-specialist
+DOC5-1/DOC5-2, perspective-student ST5-1, perspective-instructor IN5-1,
+perspective-job-applicant JA5-1/JA5-4(a) — **14-lens agreement; highest
+signal.** The probe+INSERT in `validateAssignmentSubmission`
+(`submissions.ts:343-392`) precede the assignment-problem check (`:395`) and
+all post-validation rejections in `submissions/route.ts` (`canAccessProblem`
+403; in-tx 429/429/503/403). A deadline submit-burst on a stale monitor
+fabricates multiple escalate flags with zero accepted submissions —
+contradicting `docs/exam-integrity-model.md` ("a submission was accepted…",
+"every such submission is flagged") and diluting the platform's primary
+curl-bypass detection. Fix: validator becomes probe-only
+(`probeStaleHeartbeat` option returning the staleness verdict); the submit
+route records the flag AFTER the successful insert with `submissionId` +
+submitting IP in details and DB-time `createdAt`; doc + review-model comment
+updated in the same series; red-first tests per TE5-1.
 
-### AGG4-2 — Freshness probe counts server-inserted event types; flags self-suppress (MEDIUM, High, CONFIRMED)
-**Lenses:** security SEC4-2 + perspective-security W2, code-reviewer CR4-2,
-debugger D4-2, tracer Trace 2, test-engineer TE4-1(3) — 5-lens agreement.
-`submissions.ts:320-330` has no `event_type` filter; `submission_stale_heartbeat`
-(same file) and `code_similarity` (`code-similarity.ts:421`) rows count as
-browser liveness → one flag suppresses the next ~90 s of flags; a similarity
-hit reads as liveness. Fix: restrict the probe to client-emitted types via
-`inArray`; requires AGG4-7's extraction.
+### AGG5-2 — The escalate flag is illegible in the review UI: no i18n label (en+ko), no severity color, JSON-dump details; dead `??` fallback (MEDIUM, High, CONFIRMED)
+**Lenses:** designer DES5-1/2/3, verifier V5-4, document-specialist DOC5-3,
+code-reviewer CR5-2, test-engineer TE5-2, architect A5-2 (presentation
+constants duplicated across dashboard + timeline — same bug twice),
+perspective-instructor IN5-1, perspective-assistant TA5-1 — 8-lens.
+Fix: shared presentation module (colors incl. red for the flag, tier colors,
+details formatter incl. the `{latestEventAt, ageMs, thresholdMs,
+submissionId}` payload), `eventTypes.submission_stale_heartbeat` messages in
+both locales (Korean at default letter-spacing), replace the dead
+`?? event.eventType` with the `t(key) !== key` guard; catalog-coverage test
+pinning every `EVENT_TIERS` key has a label in both locales.
 
-### AGG4-3 — Lost-update race in the client pending-events queue (LOW-MEDIUM, Medium, LIKELY)
-**Lenses:** debugger D4-3, perf P4-3, tracer Trace 4, architect A4-4,
-code-reviewer CR4-5. `anti-cheat-monitor.tsx`: `performFlush` load(:91)/
-save(:103) spans awaits; `reportEvent`'s sync load-push-save(:165-167) in
-between is clobbered; concurrent flush loops can double-send. Fix: per-event
-claim loop + `isFlushing` guard; single storage-touching function; component
-test for mid-flush append.
+### AGG5-3 — `heartbeatGaps` is computed on every userId-filtered poll and consumed by NOTHING; ongoing absence undetectable (MEDIUM, High, CONFIRMED)
+**Lenses:** perf P5-1, security SEC5-3, debugger D5-3, tracer Trace 2,
+test-engineer TE5-3, designer DES5-4, perspective-instructor IN5-2,
+perspective-assistant TA5-1, perspective-admin AD5-2 — 9-lens.
+Fix: gate the scan behind `includeGaps=1`; render gaps in
+`participant-anti-cheat-timeline.tsx` (which passes the param); append a
+synthetic boundary at DB NOW() so the current absence shows as an `ongoing`
+gap. **This edits the anti-cheat GET, which FIRES deferred AGG4-5's exit
+criterion** — resolution recorded in the plan: scan becomes opt-in+consumed;
+the pagination `count(*)` stays with rationale (indexed, feeds `total`).
 
-### AGG4-4 — `startExamSession` re-fetch race throws user-facing `assignmentClosed` (LOW, High, CONFIRMED)
-**Lenses:** code-reviewer CR4-3, debugger D4-4, perspective-student ST4-3.
-`exam-sessions.ts:108-110`. Fix: distinct internal error key (mapped to a
-retryable generic failure), not a false "closed" verdict at exam start.
+### AGG5-4 — Claim-loop drops the in-flight event on unload (LOW-MEDIUM, Medium, LIKELY)
+**Lenses:** security SEC5-2, debugger D5-2, tracer Trace 3, critic §3,
+test-engineer TE5-4, perspective-student ST5-2, perspective-job-applicant
+JA5-4(d) — 7-lens. `anti-cheat-monitor.tsx:113-115` claims (removes from
+storage) before `await sendEvent`. Fix: single in-flight slot key written
+synchronously before the send, cleared after the result, recovered into the
+queue at next flush start (bounded duplicate beats silent evidence loss);
+component + storage tests.
 
-### AGG4-5 — Anti-cheat GET monitoring-read cost (LOW, Medium, RISK)
-**Lenses:** perf P4-1, perspective-admin AD4-3, perspective-security §6.
-`anti-cheat/route.ts:283-286` count(*) per poll; `:296-325` 5000-row gap scan,
-no time-window. Indexed; no incident. DEFER-eligible with exit criterion (see
-plan).
+### AGG5-5 — Similarity reason truthfulness + route timer hygiene (LOW, High, CONFIRMED)
+**Lenses:** code-reviewer CR5-3, tracer Trace 4, architect A5-3,
+test-engineer TE5-5, document-specialist DOC5-4, perspective-instructor
+IN5-3. Engine returns `service_unavailable` for the >MAX-rows fallback case;
+`too_many_submissions` + its translated UI branch are dead. Fix in lib
+(emit the declared reason); move the route's `clearTimeout` to `finally`.
 
-### AGG4-6 — Doc/comment claims of submission-only flag semantics are false until AGG4-1 lands (MEDIUM doc-accuracy, High, CONFIRMED)
-**Lenses:** verifier V4-2/V4-3, document-specialist DOC4-1/DOC4-2.
-`docs/exam-integrity-model.md:54-56,79`; `review-model.ts:12-15`. Fix lands
-WITH AGG4-1 (code is brought to the documented design + one clarifying
-sentence).
+### AGG5-6 — `describeElement` TypeError on SVG copy/paste targets (LOW, Medium, LIKELY)
+**Lenses:** code-reviewer CR5-4, debugger D5-4, test-engineer TE5-6.
+`anti-cheat-monitor.tsx:289-291` — `className.split` on SVGAnimatedString.
+Guard with a string check / `getAttribute("class")` + unit test.
 
-### AGG4-7 — `CLIENT_EVENT_TYPES` exported from a route module (LOW, High, CONFIRMED)
-**Lenses:** architect A4-2, code-reviewer CR4-4, test-engineer TE4-4.
-`anti-cheat/route.ts:21-28`; lib cannot import it (layering). Move to
-`src/lib/anti-cheat/client-events.ts`; route consumes it; update the
-source-pin test to guard the new location + route import equality.
+### AGG5-7 — judge-worker-rs cosmetics: vestigial pids_limit conditional; misleading `should_retry_without_seccomp` name (LOW, High, CONFIRMED — REGISTER)
+**Lenses:** code-reviewer (final sweep), perspective-security §2. Rust edit
+requires worker-image rebuild and is outside this cycle's configured gates;
+behavior is correct (fails closed). Deferred with exit criterion (see plan).
+
+### AGG5-8 — Similarity rerun delete+reinsert resets evidence timestamps (LOW product/policy, Medium, RISK — REGISTER)
+**Lenses:** perspective-instructor IN5-3, perspective-security §1, critic §4
+adjacent. "When was this pair first flagged" is unanswerable after a re-run.
+Owner decision (preserve earliest createdAt per pair vs refresh semantics).
 
 ## Cross-lens positives (provenance)
-Extension accommodation flow coherent end-to-end (tracer Trace 3, IN4-2,
-ST4-2); PATCH cross-field revalidation closes the late-window divergence
-hypothesis (debugger, code-reviewer); Korean tracking rule compliant (DES4-3);
-judge per-worker auth + background staleness sweep healthy (SEC4-3, AD4-1);
-authorization boundaries held under probing (perspective-security §3).
+Sandbox fails closed on seccomp-init failure; claim-SQL invariants re-derived
+sound; backup/restore operationally serious; CSRF/auth middleware ordering
+sound; Korean letter-spacing rule compliant; cycle-4 G1–G4 verified in place
+with no regressions beyond the rejected-submit hole (Trace 5).
 
-## Carried deferred register (cycle-3) — exit criteria re-checked this cycle
-AGG3-7 (run_remote_build retry log): not touched this cycle → carry.
-DES3-1 (assertive announce): no exam-page a11y pass this cycle → carry.
-TA3-1-followup (timeline extension rendering): owner scheduling → carry
-(+ DES4-4 status-label nuance noted to bundle with it).
-JA-clarity (language preview): owner decision → carry.
-CARRY block (C3-AGG-5 — re-measured 1433 lines, still tripped; IN2-2;
-DEFER-ENV-GATES; cycle-1 register rows): preconditions unchanged → carry.
+## Carried deferred register (cycle-4) — exit criteria re-checked this cycle
+- **AGG4-5 (anti-cheat GET read cost): exit criterion FIRES** (this cycle
+  edits the GET for AGG5-3) → resolved inside G3, disposition in the plan.
+- AGG3-7 (run_remote_build retry log): deploy script not edited → carry.
+- DES3-1 (assertive announce): no exam-page a11y pass this cycle → carry.
+- TA3-1-followup (+DES4-4 label nuance): owner scheduling → carry.
+- JA-clarity (language preview): owner decision → carry.
+- CARRY block (C3-AGG-5 SSH extraction — no SSH-plumbing edit planned;
+  IN2-2; DEFER-ENV-GATES; cycle-1 register rows): preconditions unchanged →
+  carry.
 
 ## Disposition summary
-Implement this cycle: AGG4-1, AGG4-2, AGG4-3, AGG4-4, AGG4-6, AGG4-7.
-Defer with criteria: AGG4-5. Carry: cycle-3 register verbatim.
+Implement this cycle: AGG5-1, AGG5-2, AGG5-3 (incl. AGG4-5 resolution),
+AGG5-4, AGG5-5, AGG5-6.
+Register with criteria: AGG5-7, AGG5-8. Carry: remainder of cycle-4 register
+verbatim.

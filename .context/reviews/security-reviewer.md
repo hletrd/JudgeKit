@@ -1,72 +1,74 @@
-# Security review — RPF cycle 4 (2026-06-11)
+# Security Reviewer — RPF Cycle 5 (2026-06-11)
 
-**HEAD reviewed:** 7c0a4bd4 · gates green (tsc 0, eslint 0/0, unit 2597 PASS).
-**Lens:** OWASP top 10, authn/authz, secrets, unsafe patterns. Defensive review
-of the owner's own platform.
+Authorized defensive hardening assessment of the owner's own platform
+(JudgeKit), requested by the operator before recruiting tests, graded exams,
+and contests. **HEAD:** 04b8c1ec.
 
-## Method
-Re-audited the cycle-3 diff plus the trust boundaries it touches: anti-cheat
-ingest/read (`anti-cheat/route.ts`), exam-session GET lazy staff resolution,
-submission validator, code-snapshots write/read pair, judge worker auth
-(`src/lib/judge/auth.ts`), test-seed route, similarity-check route, admin
-restore/backup routes, realtime coordination. Sampled the 112-route inventory
-for missing auth declarations.
+**Surfaces re-examined this cycle:** anti-cheat ingest/monitoring routes, the
+cycle-4 flag/probe changes, submissions POST hot path, judge claim/poll +
+claim SQL, similarity engine + sidecar client, CSRF (`security/csrf.ts`),
+`api/handler.ts` middleware order, `api/auth.ts` (JWT + API-key paths),
+admin backup/restore, recruiting validate, files route, judge-worker-rs
+sandbox flags (seccomp/network/memory/pids), playground/compiler gates.
 
-## Findings
+## SEC5-1 — Escalate-tier evidence is fabricated for rejected submissions (MEDIUM-HIGH, High, CONFIRMED)
+Same root cause as code-reviewer CR5-1 (`submissions.ts:343-392` +
+`submissions/route.ts` post-validation rejections). Security framing: the
+`submission_stale_heartbeat` flag is the platform's primary detection for the
+curl-from-second-device exam bypass. Today the flag fires for attempts that
+were never accepted (429/403/503 paths), which (a) **dilutes** the signal —
+a reviewer who learns that flags often have no matching submission will start
+ignoring real ones; (b) lets a hostile-but-honest-looking pattern (submit
+bursts on flaky wifi) bury a real curl submission among false flags. Evidence
+integrity is a security property here. Fix per CR5-1: flag only after the
+accepted insert, and link `submissionId` + submitting IP into `details` so a
+reviewer can correlate flag ↔ submission ↔ IP-overlap report in one pass
+(today the flag row has `ipAddress: null` — a wasted forensic field for
+exactly the scenario the control exists to catch).
 
-### SEC4-1 — Integrity-evidence pollution: false `submission_stale_heartbeat` flags from non-submission paths (MEDIUM-HIGH, High, CONFIRMED)
-Same defect as code-reviewer CR4-1, security framing: the escalate-tier flag is
-the platform's PRIMARY curl-bypass detection signal
-(`docs/exam-integrity-model.md:54-56`). Because page renders
-(`practice/problems/[id]/page.tsx:167`) and 10–60 s autosaves
-(`code-snapshots/route.ts:62`) also insert it, a live exam produces a baseline
-of false escalate flags (every participant's first problem open, every
-navigation after a >90 s telemetry gap). Effect on the defender: alert fatigue
-and an untrustworthy tier — real curl submissions hide in guaranteed noise. For
-recruiting use this is also a fairness/defensibility liability: candidates can
-be flagged "possible unmonitored submission" for opening the problem page.
-Fix as CR4-1 (opt-in flag recording, submissions route only).
+## SEC5-2 — In-flight telemetry event is lost on unload (LOW-MEDIUM, Medium, LIKELY)
+`anti-cheat-monitor.tsx:113-114` (cycle-4 claim loop): the claimed event is
+removed from localStorage *before* `await sendEvent(...)`. A hard navigation /
+tab close in that window permanently drops the event (the pre-cycle-4 shape
+could duplicate but never lose). The events most likely to coincide with
+unload are exactly the interesting ones (`tab_switch`, `blur`). Recommend a
+single in-flight slot key written synchronously before the send and cleared
+after the result; recovered into the queue at next flush start. Bounded
+duplicate risk (server already throttles heartbeats) beats silent evidence
+loss.
 
-### SEC4-2 — Stale-flag self-suppression weakens curl detection (MEDIUM, High, CONFIRMED)
-`submissions.ts:320-330` freshness lookup has no event-type filter, so the
-just-inserted `submission_stale_heartbeat` row (server-side, DB-time default)
-satisfies the NEXT freshness check for ~90 s. Attack shape (defensive
-assessment, no tooling): a candidate submitting via curl from a second device
-every <90 s accrues ONE flag, then their own flag rows keep them "fresh" —
-exactly the evidence trail the fail-open design depends on goes quiet.
-`code_similarity` escalate rows (code-similarity.ts:421) also count as
-liveness. Fix: freshness must only consider client-emitted types
-(tab_switch/copy/paste/blur/contextmenu/heartbeat).
+## SEC5-3 — Monitoring blind spot: ongoing heartbeat absence is invisible (MEDIUM, High, CONFIRMED)
+`anti-cheat/route.ts:284-321` computes gaps only between *consecutive
+recorded* heartbeats, and **no UI consumes the result at all** (zero
+references to `heartbeatGaps` outside the route). A participant who closed
+the monitored tab 30 minutes ago shows no gap anywhere — the proctoring
+console cannot answer "who is absent right now". Recommend: render gaps in
+`participant-anti-cheat-timeline.tsx` and append a synthetic boundary at DB
+NOW() so the *current* absence appears as an open-ended gap. (Leading gap
+before the first heartbeat is a non-issue: the monitor heartbeats on mount.)
 
-### SEC4-3 — Verified-sound list (no action)
-- Anti-cheat POST origin pinning (route.ts:57-81) still requires+matches Origin
-  in production; URL-parse failure rejects. Good.
-- Exam-session GET lazy staff resolution (cycle-3 G4) preserves the
-  "no bare contests.view_analytics cross-read" property — the resolver is
-  `canViewAssignmentSubmissions`, which requires group-instructor standing
-  (`submissions.ts:392-421`); non-staff `?userId=` still self-falls-back.
-- Judge workers: per-worker secret hash required post-registration
-  (`judge/auth.ts:37-60` + unit log evidence); shared token only at
-  registration. No fallback regression.
-- Test-seed route: production-inert (NODE_ENV gate + token + localhost via
-  TRUSTED_PROXY_HOPS-validated IP), timing-safe compare.
-- `contests/[assignmentId]/code-snapshots/[userId]` read path requires
-  `contests.view_analytics` AND `canViewAssignmentSubmissions` (group-scoped) —
-  hidden-testcase/source confidentiality boundary holds.
-- IP-overlap report stays read-only, staff-gated (route.ts:199-251).
-- Anti-cheat ingest extension fix (AGG3-1) does not widen access: the session
-  lookup is keyed to the AUTHENTICATED user id (route.ts:113), enrollment
-  check precedes it, and scheduled mode never consults sessions.
-- No secrets in the cycle-3 diff; `.env.deploy.*` stay untracked
-  (`git status` clean; only `E2E_HOME_HEADING` plumbing added).
+## SEC5-4 — Posture verified-good this cycle (provenance)
+- **Sandbox:** judge-worker-rs runs `--network none`, memory==swap cap, pids
+  limit, custom seccomp on compile AND run; on seccomp-init failure it
+  REFUSES to run unsandboxed (`docker.rs:479-488` fails closed). Opt-outs are
+  explicit env vars with loud warnings (`config.rs:182-217`).
+- **Hidden test cases:** only reachable via judge claim (IP allowlist +
+  per-worker token hash + body secret re-check, `claim/route.ts:83-168`);
+  no contestant-facing route returns `testCases.input/expectedOutput` for
+  hidden cases (re-checked the problem detail + submission detail selects).
+- **Anti-cheat ingest:** requires auth (handler default), enrollment-or-token
+  membership probe, production Origin pinning (`route.ts:53-77`), zod enum
+  rejects server-originated event classes.
+- **CSRF:** `X-Requested-With` + Sec-Fetch-Site + Origin host pin
+  (`security/csrf.ts`), applied by default to all mutations in
+  `createApiHandler`; API-key requests exempt (no cookies). Sound.
+- **Backups/restore:** `system.backup` capability + password re-confirmation +
+  rate limit + audit events + pre-restore snapshot. Sound.
+- **Secrets:** no plaintext fallback for worker secrets (hash-only); claim
+  rate-limit scope falls back to a *hash* of the auth header, not the token.
 
-### SEC4-4 — Residual risks needing manual validation (LOW, Medium)
-- `lastHeartbeatTime` LRU dedup is process-local; multi-instance deployments
-  without the postgres realtime backend would double-record heartbeats (no
-  security impact; availability of dedup only). The realtime guard already
-  503s truly-multi-instance realtime routes — confirmed unchanged.
-- Anti-cheat GET `userId`/`eventType` filters are parameterized via drizzle
-  `eq` — no injection. LIKE-prefix patterns in realtime-coordination use
-  constant prefixes (C11-2 note still accurate).
-
-No deferrable security finding this cycle; SEC4-1/2 are scheduled (plan G1/G2).
+## Residual risks (carried, unchanged)
+Hidden-tab decoy heartbeating and off-platform AI assistance remain by-design
+detection gaps documented in `docs/exam-integrity-model.md` (pair with SEB /
+human proctoring for prevention-grade needs). DEFER-ENV-GATES still blocks
+login-gated E2E probes from this environment.

@@ -1,53 +1,46 @@
-# Architect review — RPF cycle 4 (2026-06-11)
+# Architect — RPF Cycle 5 (2026-06-11)
 
-**HEAD reviewed:** 7c0a4bd4 · gates green.
-**Lens:** architectural/design risk, coupling, layering.
+**HEAD:** 04b8c1ec. Design/coupling review of the anti-cheat evidence chain
+and the cycle-4 deltas; layering spot checks elsewhere.
 
-## A4-1 — Root cause of this cycle's headline defect: a validator that writes (MEDIUM-HIGH as designed-in risk, High confidence)
-`validateAssignmentSubmission` is named, typed, and consumed as a pure
-authorization/validation query, but it owns a write (the stale-heartbeat flag,
-`submissions.ts:343-354`). Command–query separation was broken in the cycle-1
-fail-open redesign, and the predictable consequence followed: two later
-callers (page render, snapshot autosave) reused "the validator" for its checks
-and silently inherited the side effect. Remedy (minimal, this cycle): make the
-side effect an explicit opt-in parameter so every call site states its intent;
-the submit route alone opts in. Remedy (directional, recorded only): split
-"validate" from "record submission-attempt evidence" into separate functions
-the submit route composes.
+## A5-1 — Write side-effect inside a validator violates command/query separation; finish the cycle-4 direction (MEDIUM-HIGH, High, CONFIRMED)
+Cycle-4's A4-1 correctly diagnosed "a write inside a validator" and made it
+opt-in — but left the write IN the validator
+(`validateAssignmentSubmission`, `submissions.ts:343-392`). The structural
+consequence is CR5-1: the validator cannot know whether the submission will
+be accepted, so it cannot truthfully record an "accepted-submission" flag.
+Correct ownership: the validator (query) returns a staleness verdict; the
+submit route (command) records the flag after the accept point, enriched with
+`submissionId`/IP. This removes the last hidden write from the validation
+path and makes the evidence row self-describing. Option name should change
+(`recordStaleHeartbeatFlag` → `probeStaleHeartbeat`) so the signature stops
+promising a write the validator no longer performs.
 
-## A4-2 — Domain constant living in a route module (LOW, High)
-`CLIENT_EVENT_TYPES` in `anti-cheat/route.ts:21-28` is the canonical list of
-client-emitted telemetry types, but route modules are leaves in the Next.js
-layering — nothing in `src/lib` may import them. The freshness fix (SEC4-2)
-needs that list in `src/lib/anti-cheat/`; move it there, import from the route
-(routes may depend on lib, never the reverse), and update the source-pin test.
+## A5-2 — Anti-cheat presentation constants duplicated across two components (LOW, High, CONFIRMED)
+`EVENT_TYPE_COLORS` and `formatDetailsJson` are copy-pasted between
+`anti-cheat-dashboard.tsx:81-110` and
+`participant-anti-cheat-timeline.tsx:35-59` and have already drifted (the
+dashboard gained `REVIEW_TIER_COLORS` + tier badges; the timeline did not —
+and BOTH are missing the `submission_stale_heartbeat` entry, the same bug
+twice). Extract a shared `src/components/contest/anti-cheat-presentation.ts`
+(colors, tier colors, details formatter) so G2's fix lands once. The
+review-tier MODEL is already correctly placed in lib
+(`anti-cheat/review-model.ts`) — only presentation constants are duplicated.
 
-## A4-3 — Effective-close ownership: cycle-3's helper held up (positive)
-`getEffectiveExamCloseAt` is the single owner of the per-participant close
-contract with exactly two consumers; tracer Trace 3 found no third site that
-re-derives it ad hoc. The remaining participant-agnostic uses of
-`assignment.deadline` (status labels, freeze) are correct as designed.
+## A5-3 — Enum/UI contract drift in similarity reasons (LOW, High, CONFIRMED)
+`SimilarityRunReason` declares `too_many_submissions`; the engine never emits
+it; the dashboard implements a branch + i18n for it. Contract drift in the
+narrow waist between lib and UI (CR5-3). Emit the declared value.
 
-## A4-4 — Client telemetry queue: implicit shared-state contract (LOW-MEDIUM, Medium)
-The localStorage queue has three concurrent writers inside one component
-(flush loop, retry timer, reportEvent) coordinated only by JS turn-taking
-across awaits — the race in D4-3. Architecturally the queue wants a single
-serialized accessor (claim-loop or promise-chain mutex) instead of three
-load-modify-save sites; the fix should leave exactly one function that touches
-storage.
-
-## A4-5 — Carried structural triggers (unchanged status, re-checked)
-- C3-AGG-5: `deploy-docker.sh` SSH-helpers extraction — trigger condition
-  re-measured this cycle: 1433 lines (`wc -l`), still TRIPPED; rule stands
-  (any cycle touching SSH/remote-exec plumbing must extract first). This
-  cycle's plan does not touch the deploy script → carry unchanged.
-- AGG3-7 (`run_remote_build` retry log overwrite): exit criterion is "next
-  cycle that edits run_remote_build" — not this cycle; carry unchanged.
-
-## Final sweep
-No new cross-module cycles introduced by cycle-3 (`exam-close.ts` is leaf-pure;
-ingest imports lib only). Schema/migrations untouched. The instrumentation
-startup sequence (settings → sweeps → audit flush hook) remains ordered
-correctly for the staleness sweep's `getConfiguredSettings()` dependency
-(`initializeSettings()` precedes `startWorkerStalenessSweep()`,
-`instrumentation.ts:20-28`).
+## A5-4 — Layering spot checks — sound (provenance)
+- `client-events.ts` extraction (cycle-4 G1) holds: lib → lib imports only;
+  the route consumes the lib; no route-module exports are imported by lib.
+- Server-time discipline: all schedule checks and evidence inserts use DB
+  time EXCEPT the flag insert (CR5-5) — fold into G1.
+- `exam-close.ts` remains the single owner of effective-close semantics;
+  both consumers (validator, ingest) delegate. Good.
+- judge claim/poll/staleness-sweep triad: responsibilities cleanly split
+  (claim = atomic SQL; poll = token-fenced writes; sweep = counter repair).
+- deploy-docker.sh remains 1433 lines with SSH plumbing inline — C3-AGG-5
+  extraction trigger stays TRIPPED for any cycle that edits SSH/remote-exec
+  code (this cycle does not plan to).

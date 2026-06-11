@@ -1,59 +1,52 @@
-# Verifier review — RPF cycle 4 (2026-06-11)
+# Verifier — RPF Cycle 5 (2026-06-11)
 
-**HEAD reviewed:** 7c0a4bd4 · gates re-executed at this HEAD: tsc 0 · eslint
-0/0 · lint:bash clean · unit 336 files / 2597 tests PASS.
-**Lens:** evidence-based correctness against stated behavior.
+**HEAD:** 04b8c1ec. Evidence-based check of stated behavior (docs, comments,
+prior-cycle completion claims) against the code as it actually executes.
 
-## Claims verified
+## V5-1 — Doc claim "every such submission is flagged … a submission was accepted while heartbeat stale" — FALSE as stated (MEDIUM, High, CONFIRMED)
+`docs/exam-integrity-model.md` (heartbeat-correlation section): "A flagged
+submission means 'the submitting client had no recent browser-monitor
+activity'" and "every such submission is flagged". Counter-evidence: flags
+are also written for attempts that are then rejected (mismatch 400 at
+`submissions.ts:395-409` after the insert at `:372`; route-level 403/429/503
+after validation). So a flag does NOT imply a submission exists. The doc and
+code must be reconciled — the cycle consensus (CR5-1) is to change the CODE
+to match the doc (flag after accept), then add one clarifying sentence.
 
-### V4-1 — Cycle-3 completion record vs reality: ACCURATE
-All six cycle-3 items (G1–G6) verified present at HEAD: `exam-close.ts` helper +
-ingest consult on past-close branch only; doc rewrite
-(`exam-integrity-model.md:54-56` fail-open wording); `E2E_HOME_HEADING` knob in
-both specs + `deploy-docker.sh:1397-1400`; lazy staff resolution in
-exam-session GET; tri-state `sendEvent`; restore-test documentation. Test
-counts match the plan record (336/2597).
+## V5-2 — `review-model.ts:12-18` comment "Server-recorded by the submit path ONLY … a submission was accepted while …" — HALF TRUE (MEDIUM, High, CONFIRMED)
+"Submit path only" — TRUE (verified all three `validateAssignmentSubmission`
+call sites; only the submit route opts in). "A submission was accepted" —
+FALSE today (V5-1). Update wording with the fix.
 
-### V4-2 — Doc claim "a flagged submission means the submitting client had no recent browser-monitor activity": FALSE today (MEDIUM, High, CONFIRMED)
-`docs/exam-integrity-model.md:56` (and `:79`) equate the flag with a
-SUBMISSION event. Code evidence: the flag is inserted by
-`validateAssignmentSubmission` (`submissions.ts:343-354`), which also runs on
-page renders (`practice/problems/[id]/page.tsx:167`) and autosave snapshots
-(`code-snapshots/route.ts:62`). A flag row therefore does NOT imply a
-submission occurred. Either the code must match the doc (restrict the insert to
-the submit path — the correct fix per CR4-1) or the doc must stop promising
-submission semantics. The reviewer-obligation paragraph (G2's centerpiece)
-currently instructs staff to act on polluted evidence.
+## V5-3 — Cycle-4 completion claims — VERIFIED TRUE
+- G1/G2 (b1bbae03): probe filters to `CLIENT_EVENT_TYPES` via `inArray`
+  (`submissions.ts:355`) ✓; lib module is the single source ✓; render/autosave
+  pass no options ✓.
+- G3 (78083a14): claim loop + single-flight present as described ✓ (new
+  residual risk recorded separately as SEC5-2 — not a falsification of the
+  claim, which addressed lost-update, not unload-loss).
+- G4 (7ff8c186): `examSessionUnavailable` thrown (`exam-sessions.ts:116`);
+  no route case for it → generic retryable 500 ✓.
+- "Deployed healthy at 9966bfdf, three targets" — consistent with the plan's
+  completion record; re-verified targets return HTTP 200 during this cycle's
+  deploy step (PROMPT 3).
 
-### V4-3 — `review-model.ts` comment claims server-recorded flag = accepted submission: FALSE today (same root cause)
-`src/lib/anti-cheat/review-model.ts:12-16` ("a submission was accepted while
-the candidate's heartbeat was stale"). Same divergence as V4-2; fix together.
+## V5-4 — "Instructor still sees this flag in the anti-cheat dashboard" (fail-open rationale, `submissions.ts:364-371` comment + doc) — MISLEADING IN PRACTICE (MEDIUM, High, CONFIRMED)
+The dashboard does render the row, but with NO translated label (no
+`eventTypes.submission_stale_heartbeat` key in `messages/en.json` /
+`messages/ko.json`) and no type color (`EVENT_TYPE_COLORS` lacks the entry in
+both `anti-cheat-dashboard.tsx:81-89` and
+`participant-anti-cheat-timeline.tsx:35-43`). The badge text shows the raw
+i18n key path (next-intl missing-message fallback; the `?? event.eventType`
+guard at `:614` is dead — `t()` never returns nullish). The "reviewer
+obligation" the doc imposes is therefore not practically dischargeable from
+the UI today. Confirmed by key-set inspection of both message catalogs.
 
-### V4-4 — `getEffectiveExamCloseAt` contract comment vs all call sites: ACCURATE
-Helper doc (`exam-close.ts:13-21`) promises extension-only semantics and "all
-other modes: the assignment close". Verified against both consumers: ingest
-(route.ts:111-122, windowed-only lookup, null-guard direction matches) and
-validator (`submissions.ts:265-277`). The "null = no close (unreachable)"
-comments are true on both branches (`deadline`/`effectiveCloseAt` non-null
-guards precede).
+## V5-5 — `MAX_PENDING_EVENTS` doc claim — TRUE
+"200 is well above the realistic upper bound" (`anti-cheat-storage.ts:20-26`):
+heartbeats enqueue only on send failure; sustained 30 s-interval failures fill
+~120/hour; cap is adequate and the cap-loss behavior is documented. ✓
 
-### V4-5 — "Anti-cheat not enabled → silently accept" (route.ts:52-55): matches client expectations
-Client never POSTs unless `enabled` (`AntiCheatMonitor` returns null and
-registers nothing), so the 200 `{logged:false}` path is defensive only.
-Verified no caller branches on `logged`.
-
-### V4-6 — `MAX_PENDING_EVENTS` cap claim ("well above realistic upper bound"): PLAUSIBLE, with a caveat
-Cap is applied on LOAD (`anti-cheat-storage.ts:53`), so a queue grown past 200
-silently truncates the OLDEST..? No — `.slice(0, 200)` keeps the FIRST 200
-(oldest); newest events are dropped on load while the queue is saturated.
-With MAX_RETRIES=3 the queue drains or drops quickly; acceptable, but worth
-remembering if MAX_RETRIES grows.
-
-## Unverifiable in this environment
-Live-deploy behaviors (post-deploy smoke heading override on oj.auraedu.me;
-auraedu tablet-rankings cold-start transient from the cycle-3 deploy record)
-require the deploy step; will be exercised by this cycle's per-cycle deploy.
-
-Verdict: cycle-3 work is faithfully recorded; the one materially false
-documented claim (V4-2/V4-3) shares a root cause with CR4-1 and must land with
-its fix.
+## V5-6 — Baseline gates at this HEAD — VERIFIED
+tsc 0 errors · eslint 0 errors/0 warnings · `bash -n` both deploy scripts
+clean · vitest unit 2606/2606 PASS (41.7 s). Logs under /tmp/c5-*.log.

@@ -1,42 +1,52 @@
-# Persona review — Student taking assignments/exams (RPF cycle 4, 2026-06-11)
+# Perspective: Student taking assignments/exams — RPF Cycle 5 (2026-06-11)
 
-**HEAD reviewed:** 7c0a4bd4. Static walkthrough of the student exam flow
-(start exam → problem pages → autosave → submit → disconnect/extension paths);
-no live browser in this environment.
+**HEAD:** 04b8c1ec. Walked the windowed-exam flow in code: start button →
+problem workspace → monitor consent → autosave → submit → verdict →
+disconnect/extension paths.
 
-## ST4-1 — I get silently flagged for opening the problem (MEDIUM-HIGH, High; same root as AGG4-1)
-As a student I never see it, but the moment I open my first exam problem the
-platform records an escalate-tier "submitted while unmonitored" flag against
-me (`practice/problems/[id]/page.tsx:167` →
-`submissions.ts:343`), before the monitoring banner has even appeared. If my
-instructor reviews flags strictly (the docs tell them to), I'm a suspect for
-having navigated. This is the cycle's top fairness issue from my seat. Fix
-scheduled (flag only on real submissions).
+## ST5-1 — My panicked deadline retries secretly multiply evidence against me (MEDIUM-HIGH fairness, High, CONFIRMED)
+Scenario: my wifi dropped for two minutes, the monitor heartbeat went stale,
+I reconnect with 30 seconds left and hammer submit. The rate limiter rejects
+the extra clicks (correct, and the UI tells me to slow down) — but each
+rejected attempt ALSO wrote an escalate-tier `submission_stale_heartbeat`
+flag I will never see (`submissions.ts:343-392` before the route's 429
+exits). My instructor's dashboard now shows a cluster of "out-of-monitor
+submission" flags that correspond to NO submissions. I cannot explain what I
+cannot see, and the cluster shape (repeated flags) reads as deliberate.
+Fairness fix = CR5-1/G1: flag only the accepted submission, once, with its
+id, so the human review the docs promise is reviewing something real.
 
-## ST4-2 — Disconnect/timeout mid-exam: well handled (positive, verified in code)
-- My unsent telemetry queues in localStorage and survives reloads
-  (`anti-cheat-storage.ts`), retries with backoff, and permanent rejections
-  don't burn the retry ladder (cycle-3 G5).
-- My countdown can only move LATER on resync — an extension mid-exam shows a
-  toast + persistent note; a flaky poll can never shrink my time
-  (`exam-deadline-sync.tsx:70`).
-- Submissions are accepted fail-open even if my monitor died (no 403 at the
-  deadline because my wifi blipped) — `submissions.ts:336-342` rationale.
-- If staff extend my time past the contest close, both my submissions AND my
-  telemetry are accepted (cycle-3 G1) — no more dark-window flags.
+## ST5-2 — Disconnect/timeout mid-exam: mostly humane, verified
+- Submit fails open on stale heartbeat (no 403 destroying my work) ✓.
+- Offline events queue in localStorage and flush on reconnect/refocus ✓
+  (residual: an event in flight during a tab close is silently lost —
+  SEC5-2; as a student I'd rather it duplicate than vanish, since absence
+  of telemetry is what gets flagged).
+- Extension mid-exam: countdown moves LATER only, never earlier; toast +
+  persistent note; pages refresh to recompute gates ✓ (cycle-2/3 work
+  verified still in place).
+- Start-exam race no longer tells me the exam is "closed" when it isn't
+  (cycle-4 G4 verified; generic retryable error instead) ✓.
 
-## ST4-3 — Residual anxiety points (LOW, Medium)
-- The tab-switch warning toast fires when I return after >3 s away; wording is
-  warning-grade, acceptable. But repeated legitimate task-switching (allowed
-  calculator app, accessibility tools) still accumulates `signal`-tier rows I
-  can't see or contest. Mitigation is staff-side education (the integrity doc
-  covers corroboration); a student-visible "what was recorded about me"
-  panel would be the structural fix — product decision, not scheduled.
-- If the exam-session re-fetch race fires at start I'm told the assignment is
-  closed when it isn't (AGG4-4); rare, but at exam start that's a panic
-  moment. Error-key fix scheduled this cycle.
+## ST5-3 — Tab-switch grace period is humane (verified)
+3 s grace before a `tab_switch` is recorded (`anti-cheat-monitor.tsx:255`)
+absorbs Alt-Tab slips and notification clicks; the warning toast still
+teaches me the rule. Good balance of deterrence vs anxiety.
 
-## ST4-4 — Clarity of problem statements / submission flow
-Statement rendering, sample I/O, and per-language templates were covered in
-cycles 1–2 (no changes since); nothing new to flag. Language availability
-preview for candidates remains a deferred product item (JA-clarity row).
+## ST5-4 — Privacy notice is clear, but per-tab (LOW, Medium)
+Consent is stored in sessionStorage (`:41`), so a second tab or a browser
+restart re-prompts. As a student this is mildly annoying but arguably
+correct (re-consent after context loss); flagging only so the behavior is a
+decision, not an accident. No change requested.
+
+## ST5-5 — Countdown trusts my clock between syncs (LOW, Medium, carried-adjacent)
+`countdown-timer.tsx:47` computes remaining = deadline − `Date.now()`;
+refocus re-syncs with server time. A skewed client clock shows a wrong
+countdown while the tab stays focused, though SUBMISSION enforcement is
+DB-time (so the server is fair even when my display lies). Acceptable;
+worth a future "synced" indicator. Not scheduled this cycle.
+
+## What feels good (credit)
+Problem statements render sanitized HTML with code blocks; submit feedback
+includes failed-test-case index; the fail-open + human-review posture is
+exactly what an honest student wants from an anti-cheat system.

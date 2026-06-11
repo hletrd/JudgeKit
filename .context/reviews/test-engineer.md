@@ -1,54 +1,54 @@
-# Test-engineer review — RPF cycle 4 (2026-06-11)
+# Test Engineer — RPF Cycle 5 (2026-06-11)
 
-**HEAD reviewed:** 7c0a4bd4 · unit 336 files / 2597 tests PASS · component
-70 files / 234 tests PASS (cycle-3 record; re-run scheduled with this cycle's
-fixes).
-**Lens:** coverage gaps, flaky tests, TDD opportunities.
+**HEAD:** 04b8c1ec. Unit 2606/2606 across 337 files at baseline; component
+suite 236 tests/70 files (per cycle-4 record). Coverage-gap analysis follows
+the cycle-5 findings.
 
-## TE4-1 — The fail-open flag path has ZERO tests (HIGH-value gap, High confidence, CONFIRMED)
-`grep validateAssignmentSubmission tests/` →
-`tests/unit/assignments/submissions.test.ts` covers schedule/enrollment/
-exam-window branches (13 cases) but NOT the anti-cheat heartbeat correlation
-block (`submissions.ts:319-362`): no test that a stale heartbeat inserts the
-flag, that a fresh heartbeat doesn't, that insert failure fails open
-(the `.catch` at `:355`), or that the freshness probe ignores server-inserted
-event types. The cycle's principal fixes (AGG4-1/AGG4-2) land exactly here —
-write the red-first suite:
-1. submit-path + stale → flag inserted once (values asserted);
-2. submit-path + fresh client event → no insert;
-3. submit-path + ONLY a recent `submission_stale_heartbeat`/`code_similarity`
-   row → still stale → flag inserted (red against today's code);
-4. non-submit context (default options) + stale → validation passes, NO insert
-   (red against today's code);
-5. flag-insert rejection → submission still validates (fail-open pin).
+## TE5-1 — No test pins "no flag for a rejected submission" (HIGH-value gap, High, CONFIRMED)
+`tests/unit/assignments/submissions.test.ts` covers: flag inserted on stale
+submit, no flag when fresh, no flag without opt-in, fail-open on insert error
+— all good. MISSING: the property that a flag is **not** recorded when the
+submission is subsequently rejected (problem mismatch, and the route-level
+429/403/503 exits). This is exactly the hole CR5-1 found — the cycle-4 tests
+pinned the opt-in plumbing, not the accepted-submission semantics the doc
+promises. Red-first tests for the G1 fix: (1) mismatch path → no flag;
+(2) route tx rejection (rate-limited) → no flag; (3) accepted path → exactly
+one flag, `details.submissionId` equals the inserted id, `ipAddress` set,
+`createdAt` from DB time; (4) flag-insert failure → submission still 201
+(fail-open pin survives the move).
 
-## TE4-2 — Snapshot route tests don't pin "autosave never flags" (Medium)
-`tests/unit/api/code-snapshots.route.test.ts` exists; extend it with a mock
-assertion that the validator is called WITHOUT the flag opt-in (or that no
-antiCheatEvents insert occurs) once AGG4-1's API shape exists.
+## TE5-2 — No UI test renders a `submission_stale_heartbeat` row (MEDIUM, High)
+No component test mounts `anti-cheat-dashboard`/`participant-anti-cheat-
+timeline` with a stale-flag event; the missing-i18n-key regression (V5-4)
+would have been caught by a single render assertion (`expect(screen.getByText
+("...")).not.toMatch(/eventTypes\./)`). Add alongside the G2 fix, plus a
+catalog test asserting every `EVENT_TIERS` key has an `eventTypes.*` message
+in both locales (pins future event types too).
 
-## TE4-3 — Component-test gap: concurrent flush vs reportEvent (Medium)
-`tests/component/anti-cheat-monitor.test.tsx` covers tri-state retention
-(cycle-3) but not interleaving. With the claim-loop fix, add: deferred-fetch
-flush in flight + blur dispatched → after resolution, blur was either sent or
-still queued (never silently gone), and no event POSTed twice.
+## TE5-3 — `heartbeatGaps` has server tests but the contract is consumer-free (MEDIUM, High)
+Route tests assert gap computation, but nothing asserts a consumer renders
+them — which is how a dead API surface survived 4 cycles. With G3: component
+test for the gaps card (incl. the `ongoing` boundary row) + route test for
+`includeGaps` gating (absent param → no scan / no field).
 
-## TE4-4 — Source-pin test will need a deliberate update (note, not a gap)
-`tests/unit/api/anti-cheat-public-event-types.test.ts:13` pins
-`export const CLIENT_EVENT_TYPES = [` to the ROUTE file's source text. The
-A4-2 extraction moves the canonical list to `src/lib/anti-cheat/`; update the
-pin to the new module path in the same commit and keep an import-equality
-assertion (route schema must consume the lib list) so the pin still guards
-against drift rather than just file location.
+## TE5-4 — Monitor in-flight recovery needs a component test (MEDIUM)
+For G4 (SEC5-2 fix): simulate claim → unmount before send resolves → remount
+→ assert the event is re-sent exactly once. Storage-level unit tests for the
+new in-flight slot helpers (corrupt slot JSON → dropped gracefully, slot
+cleared after success/permanent).
 
-## Flake scan
-Full unit run at this HEAD: 0 failures, no retries logged. The two E2E specs
-parameterized in cycle-3 (`E2E_HOME_HEADING`) removed the only known
-deploy-smoke false positive; remaining known-flaky: auraedu tablet-rankings
-cold-start (cycle-3 deploy record; environmental, watch on this cycle's
-deploy). Login-gated E2E remain blocked on DEFER-ENV-GATES (carried).
+## TE5-5 — Dead branch: similarity `too_many_submissions` (LOW, High)
+No test exercises `reason: "too_many_submissions"` because the lib cannot
+produce it (CR5-3). With the fix: unit test pinning rows>MAX + sidecar-null →
+`too_many_submissions` (and sidecar-present → completed regardless of count).
 
-## Sweep
-No `.only`/`.skip` left in suites (grep clean). Hoisted-mock patterns in the
-new cycle-3 tests are consistent with the harness conventions; no
-order-dependence found (each file `vi.clearAllMocks()` in beforeEach).
+## TE5-6 — SVG `describeElement` guard (LOW)
+Unit-level: jsdom copy event with an SVG target inside a classed SVG parent —
+expect no throw and a usable target string.
+
+## Suite health notes
+- No flaky tests observed in this cycle's two full unit runs (baseline +
+  pre-existing). Import cost (69 s of 41.7 s wall, parallelized) is fine.
+- Known carried env gaps unchanged: login-gated E2E specs need
+  E2E_PASSWORD/staging (DEFER-ENV-GATES); browser a11y audit needs a
+  provisioned browser env (DES-ENV).

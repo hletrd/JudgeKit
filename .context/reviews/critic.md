@@ -1,45 +1,48 @@
-# Critic review — RPF cycle 4 (2026-06-11)
+# Critic — RPF Cycle 5 (2026-06-11)
 
-**HEAD reviewed:** 7c0a4bd4 · gates green.
-**Lens:** multi-perspective critique of the current change surface and of the
-loop's own blind spots.
+**HEAD:** 04b8c1ec. Multi-perspective critique of the current change surface.
 
-## 1. The anti-cheat evidence chain is the product, and it is currently lying in both directions
-Three cycles hardened WHO can extend exams, WHEN telemetry is accepted, and HOW
-docs describe the fail-open gate — yet nobody asked "who else inserts the
-flag?" The result (CR4-1/D4-1) is the worst kind of integrity bug: the system
-manufactures evidence (false escalate flags on page open) AND suppresses
-evidence (flag rows refresh freshness, SEC4-2). For the owner's three declared
-uses — recruiting, graded exams, contests — this is the difference between "we
-flag unmonitored submissions" and "our flags are statistically meaningless".
-It must be the cycle's top priority, and the fix must include red-first tests
-for the NON-submission paths, not just the happy path.
+## 1. The cycle-4 flag fix stopped one step short of its own principle
+Cycle-4's banner finding (AGG4-1, 15-lens agreement) was "flags must mean what
+the docs say they mean". The fix removed two false-flag producers (render,
+autosave) but kept the write at a point where acceptance is unknowable — so a
+third producer (rejected submit attempts) survived, and it is the one a
+stressed student on flaky wifi hits hardest (D5-1's deadline submit-burst).
+The lesson for this cycle: when the principle is "evidence rows must map 1:1
+to accepted submissions", the write must live after the accept point, not
+merely behind an opt-in. Anything else is a smaller version of the same bug.
 
-## 2. Cycle-3's own change is implicated — the loop reviewed the diff but not the callers
-`getEffectiveExamCloseAt` was wired into `validateAssignmentSubmission` with a
-careful behavior-identical proof, while the same function's write side effect
-went unexamined one screen below. Process lesson recorded for future cycles:
-when a shared function is touched, enumerate its call sites and their
-read/write expectations (the tracer lens now does this — keep it).
+## 2. The platform's most important signal is invisible at the last mile
+Three independent findings this cycle are one product failure: the escalate
+flag renders as a raw i18n key (V5-4), heartbeat gaps are computed but never
+shown (Trace 2), and ongoing absence is undetectable (D5-3). The telemetry →
+storage → API chain is solid after four cycles of hardening; the chain's last
+link — a reviewer actually SEEING the evidence — was never closed. The
+"reviewer obligation" paragraph in `docs/exam-integrity-model.md` currently
+delegates to a dashboard that cannot discharge it. Prioritize the UI half of
+the integrity model with the same seriousness as the ingest half.
 
-## 3. Don't over-rotate: the remaining findings are small
-AGG4-3 (queue race) loses isolated telemetry rows in a narrow window; AGG4-4 is
-an error-string nit; P4-1 is a monitoring-read cost with no incident behind it.
-Fixing the two flag defects + docs is the cycle; resist refactoring the
-monitor component wholesale (it is well-commented, tested, and stable).
+## 3. Trade-off discipline: loss vs duplication in client telemetry
+The cycle-4 claim loop chose loss-on-unload over duplicate-on-crash without
+saying so (the comment narrates the lost-update fix only). For audit-grade
+telemetry, duplication is recoverable noise; loss is unrecoverable absence of
+evidence. The in-flight slot (SEC5-2) restores the right bias cheaply. When a
+redesign silently flips a failure-mode bias, the comment should name the new
+worst case.
 
-## 4. Honesty checks on this cycle's review itself
-- The persona/designer lenses cannot run a browser here (DEFER-ENV-GATES
-  stands); their findings are static-analysis-grade and labeled as such.
-- Coverage assertion "112 routes sampled" means auth-pattern sampling, not 112
-  line-by-line reads; deep reads this cycle were the exam/anti-cheat surface
-  (complete), submissions, snapshots, judge auth/sweep, realtime, validators.
-- Nothing in this cycle re-verified the Rust workers (`judge-worker-rs`,
-  `rate-limiter-rs`, `code-similarity-rs`) beyond cycle-1/2 coverage; no
-  changes landed there since (git log confirms), so the carry is sound.
+## 4. Dead surfaces accumulate review debt
+`heartbeatGaps` (no consumer), `too_many_submissions` (unreachable reason),
+`similaritySkippedTooManySubmissions` (dead i18n), the `?? event.eventType`
+fallback (dead by API contract), the vestigial pids_limit conditional in the
+worker. None is individually serious; collectively they mislead every future
+reviewer about what the system does. This cycle should clear the cheap ones
+and register the Rust one with an exit criterion.
 
-## 5. Deferred-register discipline
-The cycle-3 register's four rows + CARRY block were re-read; none of their exit
-criteria fire this cycle (no run_remote_build edit, no exam-page a11y pass, no
-provisioned staging browser, no owner product decisions arrived). They must be
-re-materialized verbatim in the cycle-4 plan — severities preserved.
+## 5. What is genuinely good (credit where due)
+The judge pipeline's concurrency story (claim SQL invariants, token fences,
+self-healing sweeps) reads like a system that has survived four adversarial
+review cycles — because it has. Backup/restore is operationally serious
+(password re-confirmation, pre-restore snapshot). The integrity-model doc is
+honest about what telemetry cannot prove, which is rarer and more valuable
+than another feature. Keep that honesty by making the code meet the doc this
+cycle rather than softening the doc to meet the code.

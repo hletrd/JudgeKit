@@ -1,67 +1,70 @@
-# Persona review — Authorized defensive security assessment (RPF cycle 4, 2026-06-11)
+# Perspective: Security (authorized defensive assessment) — RPF Cycle 5 (2026-06-11)
 
-**HEAD reviewed:** 7c0a4bd4. Scope: academic-dishonesty vectors, sandbox
-isolation, role/group authorization boundaries, hidden-testcase and
-submission confidentiality, scoreboard/grading integrity, judging-pipeline
-resilience. Owner-authorized defensive review; weaknesses cited with fixes,
-no exploit tooling.
+Authorized assessment of the owner's own platform at **HEAD 04b8c1ec**,
+complementing `security-reviewer.md`. Structured per the requested coverage.
 
-## 1. Academic-dishonesty detection — TWO weaknesses this cycle (the headline)
-**W1 (MEDIUM-HIGH, High, CONFIRMED).** Evidence fabrication by the platform
-itself: `submission_stale_heartbeat` escalate flags are inserted on problem
-page renders and editor autosaves (`page.tsx:167`,
-`code-snapshots/route.ts:62` → `submissions.ts:343-354`). Detection value of
-the tier collapses under guaranteed false positives. Hardening: record the
-flag ONLY on the submit path (explicit opt-in parameter); red-first tests on
-the non-submit paths.
-**W2 (MEDIUM, High, CONFIRMED).** Detection evasion via self-suppression: the
-freshness probe (`submissions.ts:320-330`) accepts ANY event type, so
-server-inserted rows (the flag itself; `code_similarity`) count as browser
-liveness. A second-device submitter is flagged at most once per 90 s.
-Hardening: probe must filter to client-emitted types (move
-`CLIENT_EVENT_TYPES` to lib, `inArray` filter).
-Coverage of the remaining vectors re-confirmed unchanged: collusion (IP
-overlap report + similarity engine), duplicate accounts (shared-IP report),
-unauthorized AI assistance (out of band — owner accepts; code snapshots
-provide keystroke-growth evidence), curl bypass (origin pinning + W1/W2
-fixes restore the flag trail).
+## 1. Academic-dishonesty vectors during exams/contests
+- **Collusion / shared seats / duplicate accounts:** IP-overlap report
+  (shared-IP groups + multi-IP users, `anti-cheat/route.ts:208-247`) gives
+  staff the correlation view; exam-session IPs feed it. Adequate detection
+  for the threat tier the doc claims. No new gap.
+- **Answer sharing:** similarity engine groups by (problem, language),
+  normalizes identifiers/comments/strings, Rust sidecar for scale. Two
+  integrity weaknesses found: rerun destroys prior evidence timestamps
+  (delete+reinsert — a manager can also legitimately "refresh away" history;
+  AGG5-10, owner decision) and the >500-row fallback misreports its reason
+  (CR5-3, scheduled).
+- **Unauthorized AI assistance:** honestly documented as out of telemetry
+  reach (`docs/exam-integrity-model.md` boundaries section); containment is
+  snapshot-replay (one big paste delta) + similarity. Posture unchanged and
+  truthfully stated — no false-assurance drift found.
+- **Curl-from-second-device:** the heartbeat-freshness flag is the control —
+  and its evidence integrity is this cycle's headline weakness (flags on
+  rejected attempts dilute the signal; no submissionId/IP linkage in the
+  row). See SEC5-1; scheduled as G1 with concrete hardening.
 
-## 2. Sandbox isolation — no change since cycle-1/2 review
-`judge-worker-rs` untouched since the last deep review (git log verified); the
-per-worker token model (`judge/auth.ts`) prevents a leaked shared token from
-forging results for registered workers. No new findings; carry the standing
-posture (container isolation + image catalog managed on worker-0 only).
+## 2. Sandbox isolation for judged code (re-verified at this HEAD)
+`--network none`; memory==swap caps (compile no longer gets 4 GiB swap);
+pids-limit; custom seccomp on BOTH phases with explicit, warned opt-outs;
+read-only workspace option; on seccomp-init failure the worker REFUSES to
+run rather than degrading (`docker.rs:479-488`). Cosmetic: vestigial
+pids_limit conditional + misleading `should_retry_without_seccomp` name
+(AGG5-9, register w/ exit criterion — Rust edit + worker rebuild out of this
+cycle's gate surface).
 
-## 3. Authorization boundaries — probed, held
-- Student → staff data: exam-session cross-reads require group-instructor
-  standing even with analytics capability (cycle-3 G4 kept the gate; tests
-  pin it). Anti-cheat GET requires monitor standing; snapshots read path
-  requires analytics + group-scoped review rights.
-- Student → other students: no route found returning another participant's
-  events/code without the above gates; the self-fallback on `?userId=`
-  prevents enumeration responses.
-- TA: read-only supervision confirmed (see perspective-assistant TA4-4).
+## 3. Authorization boundaries between roles/groups
+Spot-probed this cycle: anti-cheat GET (monitor) vs POST staff actions
+(manage) split holds; code-snapshot viewer double-gate holds; TA seat cannot
+extend sessions, rerun similarity, or bulk-read rosters (see
+perspective-assistant). Admin bypass of integrity checks remains documented
+and capability-scoped (`isAdminLevel` = `system.settings`). No privilege
+regression found.
 
-## 4. Hidden test cases / submission confidentiality
-No regression: testcase storage and submission read gates unchanged this
-cycle; accepted-solutions route remains gated by solve-status (cycle-1/2
-review). Nothing in the cycle-3 diff touches these.
+## 4. Confidentiality of hidden test cases & others' submissions
+Hidden test cases flow only through the worker claim path (IP allowlist +
+per-worker hashed token + body-secret recheck). Submission listings scope to
+self without `submissions.view_all`; source code is excluded from judge-poll
+reads and from list selects; compile output respects `showCompileOutput`
+for non-staff. No leak path found this cycle.
 
-## 5. Scoreboard/grading integrity
-Late-penalty scoring keys on `personal_deadline` consistently with the new
-effective-close contract; score overrides require manage rights; leaderboard
-freeze validation rejects out-of-window freezes including via PATCH (merged
-revalidation). No integrity gap found this cycle beyond W1/W2's effect on
-human review of contested results.
+## 5. Scoreboard / grading integrity
+Judge writes are claim-token-fenced (stale zombies cannot overwrite a
+reclaimed submission); final metrics computed server-side from reported
+per-case results validated against `isSubmissionStatus`; ranking cache
+invalidated post-verdict; IOI mode forces full test-case runs so partial
+scores use the true denominator. The grading-evidence weakness is the flag
+chain (G1/G2/G3), not the score chain.
 
-## 6. Judging-pipeline resilience under contest load
-Background staleness sweep removes the silent-dead-worker mode; submission
-admission control (per-user rate, pending caps, global queue cap inside one
-advisory-locked transaction, `submissions/route.ts:287-330`) holds the line at
-the API; queue-status endpoint gives users feedback rather than retries.
-Watch item only: P4-1 monitoring-read cost during a large live contest
-(deferred with exit criterion).
+## 6. Resilience/availability of judging under peak load
+Per-user advisory-lock rate limit + pending caps + global queue cap (503 +
+Retry-After) shed load before the queue melts; claim is single-row
+SKIP LOCKED (no herd); worker death self-heals via stale-claim reclaim with
+counter compensation + background sweep. The monitoring read-path cost item
+is now scheduled (P5-1/G3 `includeGaps` gating) rather than deferred.
 
-## Verdict
-Fix W1+W2 this cycle (scheduled as plan G1/G2). No other security-relevant
-deltas since cycle 3; previously-verified controls re-confirmed at this HEAD.
+## Hardening recommendations (this cycle's actionable set)
+G1 flag-on-accept + submissionId/IP/DB-time in the flag row; G2 make the
+flag legible (labels/colors/details, both locales); G3 absence visibility
+(gaps + ongoing boundary, opt-in compute); G4 in-flight telemetry recovery
+slot; G5 similarity reason truthfulness. Registered: AGG5-9 (Rust cosmetics),
+AGG5-10 (similarity-evidence history policy — owner).
