@@ -50,7 +50,18 @@ export function AntiCheatMonitor({
   const TAB_SWITCH_GRACE_MS = 3000;
 
   const sendEvent = useCallback(
-    async (event: PendingEvent): Promise<boolean> => {
+    /**
+     * Tri-state send result (RPF cycle-3 AGG3-5):
+     *  - "ok"        — delivered.
+     *  - "permanent" — the server REJECTED the event with a non-retriable
+     *                  4xx (forbidden, contestEnded, origin mismatch, …).
+     *                  Retrying can never succeed; queueing such events
+     *                  burned the whole retry ladder and head-of-line
+     *                  delayed genuinely retriable events behind them.
+     *  - "retry"     — transient (network error, 5xx, 408 timeout,
+     *                  429 rate-limited): keep the existing queue+backoff.
+     */
+    async (event: PendingEvent): Promise<"ok" | "permanent" | "retry"> => {
       try {
         const res = await apiFetch(`/api/v1/contests/${assignmentId}/anti-cheat`, {
           method: "POST",
@@ -60,9 +71,13 @@ export function AntiCheatMonitor({
             details: event.details,
           }),
         });
-        return res.ok;
+        if (res.ok) return "ok";
+        if (res.status >= 400 && res.status < 500 && res.status !== 408 && res.status !== 429) {
+          return "permanent";
+        }
+        return "retry";
       } catch {
-        return false;
+        return "retry";
       }
     },
     [assignmentId]
@@ -78,8 +93,10 @@ export function AntiCheatMonitor({
 
     const remaining: PendingEvent[] = [];
     for (const event of pending) {
-      const ok = await sendEvent(event);
-      if (!ok && event.retries < MAX_RETRIES) {
+      const result = await sendEvent(event);
+      // "ok" and "permanent" both leave the queue; only transient failures
+      // ("retry") are requeued, up to MAX_RETRIES (AGG3-5).
+      if (result === "retry" && event.retries < MAX_RETRIES) {
         remaining.push({ ...event, retries: event.retries + 1 });
       }
     }
@@ -143,8 +160,8 @@ export function AntiCheatMonitor({
         retries: 0,
       };
 
-      const ok = await sendEvent(event);
-      if (!ok) {
+      const result = await sendEvent(event);
+      if (result === "retry") {
         const pending = loadPendingEvents(assignmentId);
         pending.push({ ...event, retries: 1 });
         savePendingEvents(assignmentId, pending);
@@ -153,6 +170,8 @@ export function AntiCheatMonitor({
         // the timer logic. This ensures the backoff formula stays consistent.
         scheduleRetryRef.current(pending);
       }
+      // "permanent" rejections are dropped — the server's verdict is final
+      // and authoritative (AGG3-5).
     },
     // `flushPendingEvents` was previously listed here but is no longer called
     // in this body — retry scheduling is delegated to scheduleRetryRef.current.
