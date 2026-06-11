@@ -1,8 +1,11 @@
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import {
   MAX_PENDING_EVENTS,
+  clearInflightEvent,
   isValidPendingEvent,
+  loadInflightEvent,
   loadPendingEvents,
+  saveInflightEvent,
   savePendingEvents,
   type PendingEvent,
 } from "@/components/exam/anti-cheat-storage";
@@ -180,6 +183,45 @@ describe("anti-cheat-storage", () => {
   describe("MAX_PENDING_EVENTS contract", () => {
     it("is exported and equals 200", () => {
       expect(MAX_PENDING_EVENTS).toBe(200);
+    });
+  });
+
+  // RPF cycle-5 AGG5-4: single-occupancy crash-recovery slot for the event
+  // currently being sent by the flush claim loop.
+  describe("in-flight slot", () => {
+    const INFLIGHT_PREFIX = "judgekit_anticheat_inflight";
+
+    it("round-trips save → load → clear", () => {
+      const event: PendingEvent = { eventType: "copy", timestamp: 1, retries: 2 };
+      saveInflightEvent(ASSIGNMENT_ID, event);
+      expect(loadInflightEvent(ASSIGNMENT_ID)).toEqual(event);
+      clearInflightEvent(ASSIGNMENT_ID);
+      expect(loadInflightEvent(ASSIGNMENT_ID)).toBeNull();
+    });
+
+    it("returns null for an empty slot", () => {
+      expect(loadInflightEvent(ASSIGNMENT_ID)).toBeNull();
+    });
+
+    it("drops corrupt slot JSON gracefully", () => {
+      localStorage.setItem(`${INFLIGHT_PREFIX}_${ASSIGNMENT_ID}`, "{not json");
+      expect(loadInflightEvent(ASSIGNMENT_ID)).toBeNull();
+    });
+
+    it("rejects slot entries that are not valid pending events", () => {
+      localStorage.setItem(
+        `${INFLIGHT_PREFIX}_${ASSIGNMENT_ID}`,
+        JSON.stringify({ eventType: 42 }),
+      );
+      expect(loadInflightEvent(ASSIGNMENT_ID)).toBeNull();
+    });
+
+    it("is scoped per assignment", () => {
+      const event: PendingEvent = { eventType: "blur", timestamp: 9, retries: 0 };
+      saveInflightEvent("assign-a", event);
+      expect(loadInflightEvent("assign-b")).toBeNull();
+      expect(loadInflightEvent("assign-a")).toEqual(event);
+      clearInflightEvent("assign-a");
     });
   });
 });

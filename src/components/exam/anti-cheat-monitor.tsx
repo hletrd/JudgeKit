@@ -14,7 +14,10 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import {
+  clearInflightEvent,
+  loadInflightEvent,
   loadPendingEvents,
+  saveInflightEvent,
   savePendingEvents,
   type PendingEvent,
 } from "./anti-cheat-storage";
@@ -106,19 +109,39 @@ export function AntiCheatMonitor({
     if (isFlushingRef.current) return loadPendingEvents(assignmentId);
     isFlushingRef.current = true;
     try {
+      // CRASH RECOVERY (RPF cycle-5 AGG5-4): an event claimed by a previous
+      // flush whose send never completed (hard navigation/tab close mid-send)
+      // sits in the in-flight slot. Re-queue it at the head — a bounded
+      // duplicate beats silently losing evidence telemetry.
+      const orphan = loadInflightEvent(assignmentId);
+      if (orphan) {
+        const recovered = loadPendingEvents(assignmentId);
+        recovered.unshift(orphan);
+        savePendingEvents(assignmentId, recovered);
+        clearInflightEvent(assignmentId);
+      }
+
       const initialLength = loadPendingEvents(assignmentId).length;
       for (let i = 0; i < initialLength; i++) {
         const queue = loadPendingEvents(assignmentId);
         if (queue.length === 0) break;
         const [event, ...rest] = queue;
+        // Claim order matters: write the in-flight slot BEFORE removing the
+        // event from the queue, so no unload window sees the event in
+        // neither place (worst case is a duplicate, never a loss).
+        saveInflightEvent(assignmentId, event);
         savePendingEvents(assignmentId, rest); // claim before awaiting
-        const result = await sendEvent(event);
-        // "ok" and "permanent" both leave the queue; only transient failures
-        // ("retry") are requeued, up to MAX_RETRIES (AGG3-5).
-        if (result === "retry" && event.retries < MAX_RETRIES) {
-          const current = loadPendingEvents(assignmentId);
-          current.push({ ...event, retries: event.retries + 1 });
-          savePendingEvents(assignmentId, current);
+        try {
+          const result = await sendEvent(event);
+          // "ok" and "permanent" both leave the queue; only transient failures
+          // ("retry") are requeued, up to MAX_RETRIES (AGG3-5).
+          if (result === "retry" && event.retries < MAX_RETRIES) {
+            const current = loadPendingEvents(assignmentId);
+            current.push({ ...event, retries: event.retries + 1 });
+            savePendingEvents(assignmentId, current);
+          }
+        } finally {
+          clearInflightEvent(assignmentId);
         }
       }
       return loadPendingEvents(assignmentId);
@@ -286,8 +309,11 @@ export function AntiCheatMonitor({
       // Note: text content is intentionally NOT captured to avoid storing
       // copyrighted exam problem text in the audit log.
       if (["P", "SPAN", "H1", "H2", "H3", "H4", "H5", "H6", "LI", "TD", "TH", "A", "STRONG", "EM"].includes(tag)) {
-        const parent = el.closest("[class]") as HTMLElement | null;
-        const parentClass = parent?.className?.split(" ")[0] ?? "";
+        const parent = el.closest("[class]");
+        // getAttribute, not .className: on SVG elements className is an
+        // SVGAnimatedString without .split — e.g. copying an SVG <a> inside a
+        // classed <svg> threw and silently dropped the event (AGG5-6).
+        const parentClass = parent?.getAttribute("class")?.split(" ")[0] ?? "";
         if (parentClass) return `${tag.toLowerCase()} in .${parentClass}`;
         return tag.toLowerCase();
       }

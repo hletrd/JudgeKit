@@ -1,7 +1,12 @@
 import { act, fireEvent, render, screen } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { AntiCheatMonitor } from "@/components/exam/anti-cheat-monitor";
-import { loadPendingEvents, savePendingEvents } from "@/components/exam/anti-cheat-storage";
+import {
+  loadInflightEvent,
+  loadPendingEvents,
+  saveInflightEvent,
+  savePendingEvents,
+} from "@/components/exam/anti-cheat-storage";
 
 const apiFetchMock = vi.fn();
 
@@ -242,5 +247,114 @@ describe("AntiCheatMonitor", () => {
       expect(copySends).toHaveLength(1);
       expect(loadPendingEvents("assignment-doubleflush")).toHaveLength(0);
     });
+  });
+
+  // RPF cycle-5 AGG5-4: the claim loop must never create an unload window in
+  // which an event exists in neither the queue nor storage. The claimed event
+  // sits in a crash-recovery slot during the send; a slot orphaned by a hard
+  // navigation is re-queued and re-sent on the next flush.
+  describe("in-flight crash recovery (AGG5-4)", () => {
+    async function acceptNoticeAndRender(assignmentId: string) {
+      render(<AntiCheatMonitor assignmentId={assignmentId} enabled />);
+      await act(async () => {
+        fireEvent.click(screen.getByRole("button", { name: "privacyNoticeAccept" }));
+        await Promise.resolve();
+      });
+    }
+
+    function eventTypeOf(call: unknown[]): string {
+      const init = call[1] as { body: string };
+      return (JSON.parse(init.body) as { eventType: string }).eventType;
+    }
+
+    afterEach(() => {
+      localStorage.clear();
+    });
+
+    it("re-queues and re-sends an event orphaned in the in-flight slot by a previous unload", async () => {
+      // Simulate a prior session that claimed "copy" and died mid-send.
+      saveInflightEvent("assignment-orphan", {
+        eventType: "copy",
+        timestamp: 1,
+        retries: 1,
+      });
+
+      await acceptNoticeAndRender("assignment-orphan");
+
+      const copySends = apiFetchMock.mock.calls.filter((call) => eventTypeOf(call) === "copy");
+      expect(copySends).toHaveLength(1);
+      expect(loadInflightEvent("assignment-orphan")).toBeNull();
+      expect(loadPendingEvents("assignment-orphan")).toHaveLength(0);
+    });
+
+    it("keeps the claimed event in the slot for the whole send window, then clears it", async () => {
+      savePendingEvents("assignment-window", [
+        { eventType: "copy", timestamp: 1, retries: 1 },
+      ]);
+
+      let resolveCopySend: ((value: { ok: boolean }) => void) | undefined;
+      apiFetchMock.mockImplementation(async (_url: unknown, init: unknown) => {
+        const { eventType } = JSON.parse((init as { body: string }).body) as { eventType: string };
+        if (eventType === "copy") {
+          return new Promise<{ ok: boolean }>((resolve) => {
+            resolveCopySend = resolve;
+          });
+        }
+        return { ok: true };
+      });
+
+      await acceptNoticeAndRender("assignment-window");
+
+      // Mid-send: the event has left the queue but MUST be in the slot —
+      // an unload here loses nothing.
+      expect(loadPendingEvents("assignment-window")).toHaveLength(0);
+      expect(loadInflightEvent("assignment-window")?.eventType).toBe("copy");
+
+      await act(async () => {
+        resolveCopySend?.({ ok: true });
+        await Promise.resolve();
+      });
+
+      expect(loadInflightEvent("assignment-window")).toBeNull();
+    });
+  });
+
+  // RPF cycle-5 AGG5-6: copying HTML content whose nearest CLASSED ancestor
+  // is an SVG element (e.g. a label inside <foreignObject> of a classed
+  // chart) must not crash the copy listener — SVG `className` is an
+  // SVGAnimatedString without `.split`.
+  it("reports a copy event when the nearest classed ancestor is an SVG element", async () => {
+    render(<AntiCheatMonitor assignmentId="assignment-svg" enabled />);
+    await act(async () => {
+      fireEvent.click(screen.getByRole("button", { name: "privacyNoticeAccept" }));
+      await Promise.resolve();
+    });
+    apiFetchMock.mockClear();
+
+    const svg = document.createElementNS("http://www.w3.org/2000/svg", "svg");
+    svg.setAttribute("class", "chart primary");
+    const foreignObject = document.createElementNS("http://www.w3.org/2000/svg", "foreignObject");
+    const span = document.createElement("span"); // tagName "SPAN" → classed-ancestor branch
+    span.textContent = "axis label";
+    foreignObject.appendChild(span);
+    svg.appendChild(foreignObject);
+    document.body.appendChild(svg);
+
+    await act(async () => {
+      fireEvent.copy(span);
+      await Promise.resolve();
+    });
+
+    const copyCalls = apiFetchMock.mock.calls.filter((call) => {
+      const init = call[1] as { body: string };
+      return (JSON.parse(init.body) as { eventType: string }).eventType === "copy";
+    });
+    expect(copyCalls).toHaveLength(1);
+    const details = JSON.parse(
+      (JSON.parse((copyCalls[0][1] as { body: string }).body) as { details: string }).details
+    ) as { target: string };
+    expect(details.target).toBe("span in .chart");
+
+    svg.remove();
   });
 });

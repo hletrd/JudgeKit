@@ -67,3 +67,45 @@ export function savePendingEvents(assignmentId: string, events: PendingEvent[]):
     // localStorage unavailable
   }
 }
+
+/**
+ * Single-occupancy crash-recovery slot for the event currently being sent by
+ * the flush claim loop (RPF cycle-5 AGG5-4).
+ *
+ * The claim loop removes an event from the pending queue BEFORE awaiting the
+ * send; a hard navigation/tab close in that window would otherwise drop the
+ * event from both memory and storage. The loop writes the claimed event here
+ * synchronously before the send and clears the slot once the result is
+ * handled; the next flush re-queues a leftover slot at the head. A bounded
+ * duplicate (the server throttles heartbeats; otherwise one extra evidence
+ * row) beats silent evidence loss. One slot suffices: the flush loop is
+ * single-flight and sends one event at a time.
+ */
+const INFLIGHT_KEY = "judgekit_anticheat_inflight";
+
+export function loadInflightEvent(assignmentId: string): PendingEvent | null {
+  try {
+    const raw = localStorage.getItem(`${INFLIGHT_KEY}_${assignmentId}`);
+    if (!raw) return null;
+    const parsed: unknown = JSON.parse(raw);
+    return isValidPendingEvent(parsed) ? parsed : null;
+  } catch {
+    return null;
+  }
+}
+
+export function saveInflightEvent(assignmentId: string, event: PendingEvent): void {
+  try {
+    localStorage.setItem(`${INFLIGHT_KEY}_${assignmentId}`, JSON.stringify(event));
+  } catch {
+    // localStorage unavailable
+  }
+}
+
+export function clearInflightEvent(assignmentId: string): void {
+  try {
+    localStorage.removeItem(`${INFLIGHT_KEY}_${assignmentId}`);
+  } catch {
+    // localStorage unavailable
+  }
+}
