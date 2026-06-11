@@ -133,7 +133,15 @@ describe("source-grep test inventory", () => {
     //     restricted-mode override rule is resolved ONLY via
     //     getEffectiveModeRestrictions (A2 consolidation); the invariant is
     //     "no second inline copy exists", which is a text property.
-    const DOCUMENTED_BASELINE = 138;
+    // Bumped 138 -> 139 (2026-06-11, RPF cycle-2):
+    //   - tests/unit/infra/retention-coverage.test.ts — closes the recurring
+    //     unbounded-table-growth class (source_drafts in cycle 1, then
+    //     code_snapshots in cycle 2): every pgTable must be pruned by
+    //     data-retention-maintenance or explicitly allowlisted with a
+    //     justification. Inherently a schema↔maintenance cross-file text
+    //     contract; a behavioural test cannot enumerate "tables nobody
+    //     thought about".
+    const DOCUMENTED_BASELINE = 139;
     expect(sourceGrepFiles.length).toBe(DOCUMENTED_BASELINE);
   });
 
