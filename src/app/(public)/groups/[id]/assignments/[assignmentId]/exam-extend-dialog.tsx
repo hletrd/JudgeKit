@@ -42,6 +42,7 @@ export function ExamExtendDialog({
   personalDeadline,
 }: ExamExtendDialogProps) {
   const t = useTranslations("groups.assignmentDetail.examExtend");
+  const tCommon = useTranslations("common");
   const router = useRouter();
   const [open, setOpen] = useState(false);
   const [minutes, setMinutes] = useState("15");
@@ -117,15 +118,32 @@ export function ExamExtendDialog({
           <Input
             id="exam-extend-minutes"
             type="number"
+            inputMode="numeric"
             min={1}
             max={600}
             value={minutes}
             onChange={(e) => setMinutes(e.target.value)}
+            onKeyDown={(e) => {
+              // Proctors work this dialog under time pressure: Enter submits
+              // (RPF cycle-2 AGG2-6) without reaching for the mouse.
+              if (e.key === "Enter" && !isPending) {
+                e.preventDefault();
+                handleSave();
+              }
+            }}
             disabled={isPending}
           />
           <p className="text-xs text-muted-foreground">{t("hint")}</p>
         </div>
         <DialogFooter>
+          <Button
+            type="button"
+            variant="outline"
+            onClick={() => setOpen(false)}
+            disabled={isPending}
+          >
+            {tCommon("cancel")}
+          </Button>
           <Button type="button" onClick={handleSave} disabled={isPending}>
             {t("confirm")}
           </Button>
