@@ -20,6 +20,11 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import { Shield, ChevronDown, ChevronRight } from "lucide-react";
+import {
+  EVENT_TYPE_COLORS,
+  antiCheatEventTypeLabel,
+  formatAntiCheatDetails,
+} from "@/components/contest/anti-cheat-presentation";
 
 type AntiCheatEvent = {
   id: string;
@@ -32,31 +37,6 @@ type AntiCheatEvent = {
   createdAt: string;
 };
 
-const EVENT_TYPE_COLORS: Record<string, string> = {
-  tab_switch: "bg-yellow-100 text-yellow-800 dark:bg-yellow-900/30 dark:text-yellow-400",
-  copy: "bg-blue-100 text-blue-800 dark:bg-blue-900/30 dark:text-blue-400",
-  paste: "bg-blue-100 text-blue-800 dark:bg-blue-900/30 dark:text-blue-400",
-  blur: "bg-gray-100 text-gray-800 dark:bg-gray-900/30 dark:text-gray-400",
-  contextmenu: "bg-gray-100 text-gray-800 dark:bg-gray-900/30 dark:text-gray-400",
-  ip_change: "bg-red-100 text-red-800 dark:bg-red-900/30 dark:text-red-400",
-  code_similarity: "bg-red-100 text-red-800 dark:bg-red-900/30 dark:text-red-400",
-};
-
-function formatDetailsJson(raw: string, t: (key: string) => string): string {
-  try {
-    const parsed = JSON.parse(raw);
-    // If has target field, show human-readable summary
-    if (parsed.target) {
-      const target = parsed.target as string;
-      const targetKey = `detailTargets.${target}`;
-      const label = t(targetKey) !== targetKey ? t(targetKey) : target;
-      return `${t("detailTargetLabel")}: ${label}`;
-    }
-    return JSON.stringify(parsed, null, 2);
-  } catch {
-    return raw;
-  }
-}
 
 interface ParticipantAntiCheatTimelineProps {
   assignmentId: string;
@@ -225,7 +205,7 @@ export function ParticipantAntiCheatTimeline({
                 className={`cursor-pointer select-none ${typeFilter !== type ? (EVENT_TYPE_COLORS[type] ?? "") : ""}`}
                 onClick={() => setTypeFilter(typeFilter === type ? null : type)}
               >
-                {t(`eventTypes.${type}` as Parameters<typeof t>[0]) ?? type}
+                {antiCheatEventTypeLabel(type, t)}
               </Badge>
             ))}
           </div>
@@ -271,7 +251,7 @@ export function ParticipantAntiCheatTimeline({
                           variant="secondary"
                           className={EVENT_TYPE_COLORS[event.eventType] ?? ""}
                         >
-                          {t(`eventTypes.${event.eventType}` as Parameters<typeof t>[0]) ?? event.eventType}
+                          {antiCheatEventTypeLabel(event.eventType, t)}
                         </Badge>
                       </TableCell>
                       <TableCell className="text-sm text-muted-foreground">
@@ -299,7 +279,7 @@ export function ParticipantAntiCheatTimeline({
                             {isExpanded && (
                               <pre id={`anti-cheat-timeline-detail-${event.id}`} className="mt-1.5 max-h-48 overflow-auto rounded-md bg-muted px-2 py-1.5 text-xs">
                                 <code>
-                                  {formatDetailsJson(event.details!, t)}
+                                  {formatAntiCheatDetails(event.details!, t)}
                                 </code>
                               </pre>
                             )}

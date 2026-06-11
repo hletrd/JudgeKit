@@ -2250,7 +2250,8 @@
         "contextmenu": "Right Click",
         "ip_change": "IP Change",
         "code_similarity": "Code Similarity",
-        "heartbeat": "Heartbeat"
+        "heartbeat": "Heartbeat",
+        "submission_stale_heartbeat": "Submission while monitor inactive"
       },
       "warningTabSwitch": "Activity recorded: tab switch.",
       "privacyNoticeTitle": "Activity Monitoring Notice",
@@ -2282,6 +2283,11 @@
       "allTypes": "All Types",
       "allStudents": "All Users",
       "detailTargetLabel": "Target",
+      "detailStaleWithAge": "Last monitor activity {age} before this submission (threshold {threshold})",
+      "detailStaleNoActivity": "No monitor activity recorded before this submission (threshold {threshold})",
+      "detailSubmissionRef": "Submission: {id}",
+      "durationMinutesSeconds": "{minutes}m {seconds}s",
+      "durationSeconds": "{seconds}s",
       "detailTargets": {
         "code-editor": "Code editor",
         "problem-description": "Problem description",

@@ -10,6 +10,12 @@ import { toast } from "sonner";
 import { apiFetchJson } from "@/lib/api/client";
 import { useVisibilityPolling } from "@/hooks/use-visibility-polling";
 import { getAntiCheatReviewTier } from "@/lib/anti-cheat/review-model";
+import {
+  EVENT_TYPE_COLORS,
+  REVIEW_TIER_COLORS,
+  antiCheatEventTypeLabel,
+  formatAntiCheatDetails,
+} from "@/components/contest/anti-cheat-presentation";
 import { Button } from "@/components/ui/button";
 import {
   Select as UiSelect,
@@ -77,37 +83,6 @@ type IpOverlapReport = {
   multiIpUsers: Array<{ userId: string; name: string; username: string; ipCount: number; ips: string[] }>;
 };
 
-const EVENT_TYPE_COLORS: Record<string, string> = {
-  tab_switch: "bg-yellow-100 text-yellow-800 dark:bg-yellow-900/30 dark:text-yellow-400",
-  copy: "bg-blue-100 text-blue-800 dark:bg-blue-900/30 dark:text-blue-400",
-  paste: "bg-blue-100 text-blue-800 dark:bg-blue-900/30 dark:text-blue-400",
-  blur: "bg-gray-100 text-gray-800 dark:bg-gray-900/30 dark:text-gray-400",
-  contextmenu: "bg-gray-100 text-gray-800 dark:bg-gray-900/30 dark:text-gray-400",
-  ip_change: "bg-red-100 text-red-800 dark:bg-red-900/30 dark:text-red-400",
-  code_similarity: "bg-red-100 text-red-800 dark:bg-red-900/30 dark:text-red-400",
-};
-
-const REVIEW_TIER_COLORS: Record<string, string> = {
-  context: "bg-slate-100 text-slate-800 dark:bg-slate-900/30 dark:text-slate-300",
-  signal: "bg-amber-100 text-amber-800 dark:bg-amber-900/30 dark:text-amber-300",
-  escalate: "bg-red-100 text-red-800 dark:bg-red-900/30 dark:text-red-300",
-};
-
-function formatDetailsJson(raw: string, t: (key: string) => string): string {
-  try {
-    const parsed = JSON.parse(raw);
-    // If has target field, show human-readable summary (matching participant-anti-cheat-timeline.tsx)
-    if (parsed.target) {
-      const target = parsed.target as string;
-      const targetKey = `detailTargets.${target}`;
-      const label = t(targetKey) !== targetKey ? t(targetKey) : target;
-      return `${t("detailTargetLabel")}: ${label}`;
-    }
-    return JSON.stringify(parsed, null, 2);
-  } catch {
-    return raw;
-  }
-}
 
 export function AntiCheatDashboard({ assignmentId }: AntiCheatDashboardProps) {
   const t = useTranslations("contests.antiCheat");
@@ -495,7 +470,7 @@ export function AntiCheatDashboard({ assignmentId }: AntiCheatDashboardProps) {
                   className={`cursor-pointer select-none ${typeFilter !== type ? (EVENT_TYPE_COLORS[type] ?? "") : ""}`}
                   onClick={() => setTypeFilter(typeFilter === type ? null : type)}
                 >
-                  {t(`eventTypes.${type}` as Parameters<typeof t>[0]) ?? type}
+                  {antiCheatEventTypeLabel(type, t)}
                 </Badge>
               ))}
             </div>
@@ -611,7 +586,7 @@ export function AntiCheatDashboard({ assignmentId }: AntiCheatDashboardProps) {
                           variant="secondary"
                           className={EVENT_TYPE_COLORS[event.eventType] ?? ""}
                         >
-                          {t(`eventTypes.${event.eventType}` as Parameters<typeof t>[0]) ?? event.eventType}
+                          {antiCheatEventTypeLabel(event.eventType, t)}
                         </Badge>
                       </TableCell>
                       <TableCell>
@@ -643,7 +618,7 @@ export function AntiCheatDashboard({ assignmentId }: AntiCheatDashboardProps) {
                             </button>
                             {isExpanded && (
                               <pre id={`anti-cheat-dashboard-detail-${event.id}`} className="mt-1.5 max-h-48 overflow-auto rounded-md bg-muted px-2 py-1.5 text-xs">
-                                <code>{formatDetailsJson(event.details!, t)}</code>
+                                <code>{formatAntiCheatDetails(event.details!, t)}</code>
                               </pre>
                             )}
                           </div>

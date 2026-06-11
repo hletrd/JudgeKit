@@ -2250,7 +2250,8 @@
         "contextmenu": "우클릭",
         "ip_change": "IP 변경",
         "code_similarity": "코드 유사도",
-        "heartbeat": "하트비트"
+        "heartbeat": "하트비트",
+        "submission_stale_heartbeat": "모니터 비활성 상태 제출"
       },
       "warningTabSwitch": "활동 기록: 탭 전환",
       "privacyNoticeTitle": "활동 모니터링 안내",
@@ -2282,6 +2283,11 @@
       "allTypes": "전체 유형",
       "allStudents": "전체 사용자",
       "detailTargetLabel": "대상",
+      "detailStaleWithAge": "마지막 모니터 활동: 제출 {age} 전 (기준 {threshold})",
+      "detailStaleNoActivity": "제출 전 기록된 모니터 활동 없음 (기준 {threshold})",
+      "detailSubmissionRef": "제출물: {id}",
+      "durationMinutesSeconds": "{minutes}분 {seconds}초",
+      "durationSeconds": "{seconds}초",
       "detailTargets": {
         "code-editor": "코드 편집기",
         "problem-description": "문제 설명",
