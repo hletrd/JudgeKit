@@ -17,7 +17,18 @@ Status legend: ✅ done+pushed · 🔧 in progress · ⬜ todo · 🟡 needs dec
 
 ## Implement this cycle
 
-### G1 ⬜ AGG2-2 — Close DEFERRED-OPS-1: harden deploy-docker.sh against BuildKit history corruption (HIGH ops; injected TODO — MUST land BEFORE this cycle's deploy)
+### G1 ✅ AGG2-2 — Close DEFERRED-OPS-1: harden deploy-docker.sh against BuildKit history corruption (HIGH ops; injected TODO — MUST land BEFORE this cycle's deploy)
+**Done 2026-06-11:** (a) all-languages path now defaults to
+`LANGUAGE_BUILD_STRATEGY=sequential` (per-language docker build loop —
+the empirically clean path); `compose` opt-in keeps the bake with
+`COMPOSE_PARALLEL_LIMIT` (default 4). (b) every remote build (app, worker,
+sidecars, per-language, WORKER_HOSTS worker build) goes through
+`run_remote_build()` — detects `unknown blob sha256:... in history`, runs
+`docker buildx history rm --all` on that host, retries once, loud warns.
+(c) AGENTS.md "Deploy hardening" bullet + new runbook scenario
+(`docs/operator-incident-runbook.md` → deploy image-build failure) with
+signature/remedy/non-remedy/trigger + CLAUDE.md prune guardrails.
+(d) DEFERRED-OPS-1 resolution record below. lint:bash green.
 CONFIRMED diagnosis (auraedu, Docker 29.1.3 / buildx v0.20.0, verified by the
 orchestrator): `failed to solve: Internal: unknown blob sha256:... in
 history` lives in the BuildKit HISTORY store. `docker builder prune -af`
@@ -176,6 +187,6 @@ iteration; then DEPLOY_CMD (per-cycle mode).
 ---
 
 ## Completion record (fill during implementation)
-- G1 ⬜ · G2 ⬜ · G3 ⬜ · G4 ⬜ · G5 ⬜ · G6 ⬜ · G7 ⬜
+- G1 ✅ · G2 ⬜ · G3 ⬜ · G4 ⬜ · G5 ⬜ · G6 ⬜ · G7 ⬜
 - Gates: ⬜ tsc · ⬜ eslint · ⬜ lint:bash · ⬜ unit · ⬜ build
 - Deploy: ⬜ worv · ⬜ auraedu · ⬜ algo

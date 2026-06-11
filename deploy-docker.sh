@@ -60,6 +60,17 @@
 #                            line to prevent operator-typo retry storms
 #                            (cycle 8: closes C7-DB-2-upper-bound). (cycle 6:
 #                            closes C3-AGG-3).
+#   LANGUAGE_BUILD_STRATEGY — "sequential" (default) or "compose" for the
+#                            all-languages build (no LANGUAGE_FILTER set).
+#                            Sequential per-language `docker build` is the
+#                            default because the one-shot parallel compose
+#                            bake of ~90 targets corrupted the BuildKit
+#                            history store twice on a cold cache (auraedu,
+#                            Docker 29.1.3/buildx 0.20.0 — "unknown blob ...
+#                            in history"; RPF cycle-2, closes DEFERRED-OPS-1).
+#   COMPOSE_PARALLEL_LIMIT — Build-parallelism cap for the opt-in
+#                            LANGUAGE_BUILD_STRATEGY=compose path (default 4).
+#                            Ignored by the sequential strategy.
 #
 # Deploy hardening (cycle-1/2/3/5 fixes — see AGENTS.md "Deploy hardening"):
 #   - .env.production is chmod 0600 by this script (cycle 2).
@@ -375,6 +386,55 @@ prune_old_docker_artifacts() {
     success "Cleanup complete on ${host_label}"
 }
 
+# BuildKit history-store corruption auto-recovery (RPF cycle 2, closes
+# DEFERRED-OPS-1; see AGENTS.md "Deploy hardening" → BuildKit history
+# corruption).
+#
+# CONFIRMED failure mode (auraedu, Docker 29.1.3 / buildx v0.20.0):
+#   - Builds abort with `failed to solve: Internal: unknown blob sha256:...
+#     in history`. The dangling reference lives in the BuildKit HISTORY
+#     store, NOT the build cache: `docker builder prune -af` does NOT clear
+#     it; `docker buildx history rm --all` does (metadata-only, zero
+#     downtime, leaves every image and cache layer intact).
+#   - The corruption is (re-)triggered by one parallel bake solve of ~90
+#     language targets on a cold cache (history/GC race) — which is why the
+#     all-languages build defaults to the sequential loop below.
+#
+# run_remote_build <host_label> <remote-runner-fn> <command-string>
+# Runs the build via the runner, capturing output. On failure, if the output
+# matches the corruption signature, clears the remote history store and
+# retries the SAME command exactly once. Any other failure (or a second
+# failure after recovery) propagates to the caller. No other signatures
+# trigger the recovery — this is a targeted self-heal, not a generic retry.
+BUILDKIT_HISTORY_CORRUPTION_REGEX='unknown blob sha256:[a-f0-9]+ in history'
+run_remote_build() {
+    local host_label="$1"
+    local runner="$2"
+    local cmd="$3"
+    local out_file
+    out_file=$(mktemp /tmp/judgekit-build-out.XXXXXX)
+    if "$runner" "$cmd" 2>&1 | tee "$out_file"; then
+        rm -f "$out_file"
+        return 0
+    fi
+    if grep -qiE "$BUILDKIT_HISTORY_CORRUPTION_REGEX" "$out_file"; then
+        warn "BuildKit history-store corruption detected on ${host_label} (signature: 'unknown blob ... in history')."
+        warn "Auto-recovery: clearing the BuildKit history store on ${host_label} (docker buildx history rm --all — metadata only, zero downtime) and retrying the build once."
+        "$runner" "docker buildx history rm --all 2>&1 | tail -1" \
+            || warn "docker buildx history rm --all failed on ${host_label} (buildx too old?) — retrying the build anyway"
+        if "$runner" "$cmd" 2>&1 | tee "$out_file"; then
+            rm -f "$out_file"
+            success "Build succeeded after BuildKit history recovery on ${host_label}"
+            return 0
+        fi
+        rm -f "$out_file"
+        error "Build still failing after BuildKit history recovery on ${host_label} — see docs/operator-incident-runbook.md (deploy build failure scenario)"
+        return 1
+    fi
+    rm -f "$out_file"
+    return 1
+}
+
 remote_sudo() {
     local cmd="$1"
     local quoted_cmd
@@ -615,23 +675,27 @@ if [[ "$SKIP_BUILD" == false ]]; then
     fi
 
     info "Building app image on ${REMOTE_HOST} (judgekit-app:latest) [${PLATFORM}]..."
-    remote "cd ${REMOTE_DIR} && docker build --no-cache --platform ${PLATFORM} ${EXTRA_BUILD_ARGS} -t judgekit-app:latest -f Dockerfile ."
+    run_remote_build "app ${REMOTE_HOST}" remote "cd ${REMOTE_DIR} && docker build --no-cache --platform ${PLATFORM} ${EXTRA_BUILD_ARGS} -t judgekit-app:latest -f Dockerfile ." \
+        || die "App image build failed"
     success "App image built on remote"
 
     if [[ "${BUILD_WORKER_IMAGE}" == "true" ]]; then
         info "Building judge worker image on ${REMOTE_HOST} (judgekit-judge-worker:latest) [${PLATFORM}]..."
-        remote "cd ${REMOTE_DIR} && docker build --no-cache --platform ${PLATFORM} -t judgekit-judge-worker:latest -f Dockerfile.judge-worker ."
+        run_remote_build "app ${REMOTE_HOST}" remote "cd ${REMOTE_DIR} && docker build --no-cache --platform ${PLATFORM} -t judgekit-judge-worker:latest -f Dockerfile.judge-worker ." \
+            || die "Judge worker image build failed"
         success "Judge worker image built on remote"
     else
         info "Skipping judge worker image build (BUILD_WORKER_IMAGE=${BUILD_WORKER_IMAGE}, INCLUDE_WORKER=${INCLUDE_WORKER})"
     fi
 
     info "Building code-similarity image on ${REMOTE_HOST} (judgekit-code-similarity:latest) [${PLATFORM}]..."
-    remote "cd ${REMOTE_DIR} && docker build --platform ${PLATFORM} -t judgekit-code-similarity:latest -f Dockerfile.code-similarity ."
+    run_remote_build "app ${REMOTE_HOST}" remote "cd ${REMOTE_DIR} && docker build --platform ${PLATFORM} -t judgekit-code-similarity:latest -f Dockerfile.code-similarity ." \
+        || die "Code similarity image build failed"
     success "Code similarity image built on remote"
 
     info "Building rate-limiter image on ${REMOTE_HOST} (judgekit-rate-limiter:latest) [${PLATFORM}]..."
-    remote "cd ${REMOTE_DIR} && docker build --platform ${PLATFORM} -t judgekit-rate-limiter:latest -f Dockerfile.rate-limiter-rs ."
+    run_remote_build "app ${REMOTE_HOST}" remote "cd ${REMOTE_DIR} && docker build --platform ${PLATFORM} -t judgekit-rate-limiter:latest -f Dockerfile.rate-limiter-rs ." \
+        || die "Rate limiter image build failed"
     success "Rate limiter image built on remote"
 
     if [[ "$SKIP_LANGUAGES" == false ]]; then
@@ -644,14 +708,34 @@ if [[ "$SKIP_BUILD" == false ]]; then
                 info "Building ${LANG_COUNT} judge language images on ${REMOTE_HOST} [${PLATFORM}]..."
                 for lang in $LANGS_TO_BUILD; do
                     info "  Building judge-${lang}..."
-                    remote "cd ${REMOTE_DIR} && docker build --platform ${PLATFORM} -t judge-${lang} -f docker/Dockerfile.judge-${lang} ."
+                    run_remote_build "app ${REMOTE_HOST}" remote "cd ${REMOTE_DIR} && docker build --platform ${PLATFORM} -t judge-${lang} -f docker/Dockerfile.judge-${lang} ." \
+                        || die "Failed to build judge-${lang}"
                 done
                 success "Selected judge language images built on remote"
             fi
+        elif [[ "${LANGUAGE_BUILD_STRATEGY:-sequential}" == "compose" ]]; then
+            # Opt-in parallel bake with capped concurrency. The UNCAPPED bake
+            # of ~90 targets corrupted the BuildKit history store twice
+            # (DEFERRED-OPS-1); the cap reduces the history/GC race window
+            # and run_remote_build self-heals if it still fires.
+            info "Building all judge language images via compose (COMPOSE_PARALLEL_LIMIT=${COMPOSE_PARALLEL_LIMIT:-4}) on ${REMOTE_HOST} [${PLATFORM}]..."
+            run_remote_build "app ${REMOTE_HOST}" remote "cd ${REMOTE_DIR} && (COMPOSE_PARALLEL_LIMIT=${COMPOSE_PARALLEL_LIMIT:-4} DOCKER_DEFAULT_PLATFORM=${PLATFORM} docker compose -f docker-compose.yml build || \
+                COMPOSE_PARALLEL_LIMIT=${COMPOSE_PARALLEL_LIMIT:-4} DOCKER_DEFAULT_PLATFORM=${PLATFORM} docker-compose -f docker-compose.yml build)" \
+                || die "Language image compose build failed"
+            success "Judge language images built on remote"
         else
-            info "Building all judge language images on ${REMOTE_HOST} [${PLATFORM}]..."
-            remote "cd ${REMOTE_DIR} && (DOCKER_DEFAULT_PLATFORM=${PLATFORM} docker compose -f docker-compose.yml build || \
-                DOCKER_DEFAULT_PLATFORM=${PLATFORM} docker-compose -f docker-compose.yml build)"
+            # Default all-languages strategy: SEQUENTIAL per-language builds.
+            # This is the empirically clean path that completed the auraedu +
+            # algo deploys at 4cf01035 after the parallel bake corrupted the
+            # history store twice (see header docs + AGENTS.md).
+            LANGS_TO_BUILD=$(resolve_languages all)
+            LANG_COUNT=$(echo $LANGS_TO_BUILD | wc -w | tr -d ' ')
+            info "Building all ${LANG_COUNT} judge language images sequentially on ${REMOTE_HOST} [${PLATFORM}] (LANGUAGE_BUILD_STRATEGY=sequential)..."
+            for lang in $LANGS_TO_BUILD; do
+                info "  Building judge-${lang}..."
+                run_remote_build "app ${REMOTE_HOST}" remote "cd ${REMOTE_DIR} && docker build --platform ${PLATFORM} -t judge-${lang} -f docker/Dockerfile.judge-${lang} ." \
+                    || die "Failed to build judge-${lang}"
+            done
             success "Judge language images built on remote"
         fi
     fi
@@ -1023,7 +1107,13 @@ if [[ -n "${WORKER_HOSTS:-}" ]]; then
             "${WUSER}@${WHOST}:/home/${WUSER}/judgekit/" \
             || die "Failed to rsync source to worker host ${WHOST}"
         info "  build judge-worker image (no-cache)"
-        ssh -i "${WKEY}" ${SSH_OPTS} "${WUSER}@${WHOST}" \
+        # Ad-hoc runner bound to this worker's key so run_remote_build's
+        # BuildKit history auto-recovery applies on worker hosts too (the
+        # same corruption class can fire wherever images are built).
+        _worker_build_ssh() {
+            ssh -i "${WKEY}" ${SSH_OPTS} "${WUSER}@${WHOST}" "$@"
+        }
+        run_remote_build "worker ${WHOST}" _worker_build_ssh \
             "cd /home/${WUSER}/judgekit && docker build --no-cache --platform ${WPLATFORM} -t judgekit-judge-worker:latest -f Dockerfile.judge-worker ." \
             || die "Failed to build judge-worker image on ${WHOST}"
         info "  restart worker compose"

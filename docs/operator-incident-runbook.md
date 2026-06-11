@@ -66,6 +66,50 @@ Use this when any of the following may have been exposed:
 - identify whether logs, screenshots, exported files, or CI output carried the secret
 - document which downstream credentials or sessions required forced invalidation
 
+## Scenario: deploy image-build failure (BuildKit history corruption)
+
+Signature: a remote `docker build` or compose build during `deploy-docker.sh`
+aborts with
+
+```
+failed to solve: Internal: unknown blob sha256:... in history
+```
+
+### What it is
+BuildKit **history-store** corruption (confirmed on auraedu, Docker 29.1.3 /
+buildx v0.20.0). It is metadata-only: images, containers, volumes, and the
+build cache are intact, and the running site is unaffected (the failure is
+pre-deploy — containers were never touched).
+
+### What clears it (and what does not)
+- `docker buildx history rm --all` — **works**. Metadata-only, zero
+  downtime; safe to run on a production host while the stack is up.
+- `docker builder prune -af` — does **NOT** clear it (the reference is not
+  in the build cache). Do not escalate to `docker image prune -a` /
+  `docker system prune -a` on worker hosts: that deletes the ~80 tagged
+  judge language images and breaks judging (CLAUDE.md guardrail).
+
+### What re-triggers it
+One parallel bake solve of ~90 language targets on a cold cache
+(`docker compose build` with no parallelism cap) — a history/GC race.
+
+### First response
+1. Normally nothing: `deploy-docker.sh` detects the signature
+   (`run_remote_build`), clears the history store on the failing host, and
+   retries the step once automatically. Look for the
+   "Auto-recovery: clearing the BuildKit history store" warn lines.
+2. If the retry also failed: run `docker buildx history rm --all` on the
+   host manually, then re-run the deploy with the default
+   `LANGUAGE_BUILD_STRATEGY=sequential` (do NOT set
+   `LANGUAGE_BUILD_STRATEGY=compose`).
+3. If it STILL recurs, restart the Docker daemon in a maintenance window and
+   re-run the deploy; capture `docker version` / `docker buildx version` and
+   file the evidence with the deploy notes.
+
+### Exit criteria
+- The deploy completes through the image-build phase on the affected host.
+- No `unknown blob ... in history` lines in the final deploy log.
+
 ## Scenario: worker failure
 For worker compromise, abnormal judging, or suspicious image/runtime behavior, switch to:
 - `docs/judge-worker-incident-runbook.md`
