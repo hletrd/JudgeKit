@@ -120,9 +120,18 @@ beforeEach(() => {
     })),
   }));
   dbMock.insert.mockImplementation(() => ({
-    values: vi.fn(async (values: RateLimitRow) => {
+    // Inserts now go through insertRateLimitEntryIfAbsent (conflict-safe,
+    // AGG2-3): the stateful map mirrors ON CONFLICT (key) DO NOTHING by
+    // reporting rowCount 0 when the key already exists.
+    values: vi.fn((values: RateLimitRow) => ({
+      onConflictDoNothing: vi.fn(async () => {
+        if (rows.has(values.key)) {
+          return { rowCount: 0 };
+        }
         rows.set(values.key, values);
+        return { rowCount: 1 };
       }),
+    })),
   }));
 });
 

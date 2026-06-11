@@ -65,41 +65,74 @@ export function isRateLimitWindowExpired(
   return windowStartedAt + windowMs <= now;
 }
 
+export interface RateLimitEntryData {
+  attempts: number;
+  windowStartedAt: number;
+  blockedUntil: number | null;
+  consecutiveBlocks: number;
+  lastAttempt: number;
+}
+
 /**
- * Upsert a rate-limit entry inside a transaction.
- * Uses INSERT when `exists` is false, UPDATE when true.
+ * Insert a rate-limit row only if absent (`ON CONFLICT (key) DO NOTHING`).
+ *
+ * Returns true when THIS call created the row, false when a concurrent
+ * transaction won the first-insert race. Why this exists (RPF cycle-2
+ * AGG2-3): when no row exists for a key, `fetchRateLimitEntry`'s
+ * `SELECT ... FOR UPDATE` locks nothing, so two concurrent first hits both
+ * reach the INSERT — without the conflict clause the loser threw a
+ * unique-violation that aborted the transaction and surfaced as a 500 in
+ * the middle of the rate-limit control. On a `false` return, callers must
+ * re-read with `fetchRateLimitEntry` (the row exists now, so FOR UPDATE
+ * blocks until the winner commits) and take their normal update path.
  */
-export async function upsertRateLimitEntry(
-  tx: Pick<TransactionClient, "insert" | "update">,
+export async function insertRateLimitEntryIfAbsent(
+  tx: Pick<TransactionClient, "insert">,
   key: string,
-  data: {
-    attempts: number;
-    windowStartedAt: number;
-    blockedUntil: number | null;
-    consecutiveBlocks: number;
-    lastAttempt: number;
-  },
-  exists: boolean
-): Promise<void> {
-  if (exists) {
-    await tx
-      .update(rateLimits)
-      .set({
-        attempts: data.attempts,
-        windowStartedAt: data.windowStartedAt,
-        blockedUntil: data.blockedUntil,
-        consecutiveBlocks: data.consecutiveBlocks,
-        lastAttempt: data.lastAttempt,
-      })
-      .where(eq(rateLimits.key, key));
-  } else {
-    await tx.insert(rateLimits).values({
+  data: RateLimitEntryData
+): Promise<boolean> {
+  const result = await tx
+    .insert(rateLimits)
+    .values({
       key,
       attempts: data.attempts,
       windowStartedAt: data.windowStartedAt,
       blockedUntil: data.blockedUntil,
       consecutiveBlocks: data.consecutiveBlocks,
       lastAttempt: data.lastAttempt,
-    });
+    })
+    .onConflictDoNothing({ target: rateLimits.key });
+  return Number((result as { rowCount?: number | null }).rowCount ?? 0) > 0;
+}
+
+/**
+ * Upsert a rate-limit entry inside a transaction.
+ * Uses INSERT when `exists` is false, UPDATE when true.
+ *
+ * The insert branch is conflict-safe: when a concurrent transaction wins the
+ * first-insert race, the caller's intended state is applied via UPDATE
+ * instead (blocking on the winner's row lock until it commits). The two
+ * racing first attempts collapse into the caller's computed state — at worst
+ * one attempt is undercounted, never a thrown duplicate-key 500 (AGG2-3).
+ */
+export async function upsertRateLimitEntry(
+  tx: Pick<TransactionClient, "insert" | "update">,
+  key: string,
+  data: RateLimitEntryData,
+  exists: boolean
+): Promise<void> {
+  if (!exists) {
+    const inserted = await insertRateLimitEntryIfAbsent(tx, key, data);
+    if (inserted) return;
   }
+  await tx
+    .update(rateLimits)
+    .set({
+      attempts: data.attempts,
+      windowStartedAt: data.windowStartedAt,
+      blockedUntil: data.blockedUntil,
+      consecutiveBlocks: data.consecutiveBlocks,
+      lastAttempt: data.lastAttempt,
+    })
+    .where(eq(rateLimits.key, key));
 }

@@ -15,7 +15,7 @@ import { db, execTransaction, type TransactionClient } from "@/lib/db";
 import { rateLimits } from "@/lib/db/schema";
 import { extractClientIp } from "@/lib/security/ip";
 import { getConfiguredSettings } from "@/lib/system-settings-config";
-import { fetchRateLimitEntry, isRateLimitWindowExpired } from "@/lib/security/rate-limit-core";
+import { fetchRateLimitEntry, isRateLimitWindowExpired, upsertRateLimitEntry } from "@/lib/security/rate-limit-core";
 import { eq, lt } from "drizzle-orm";
 import { logger } from "@/lib/logger";
 import { getDbNowMs } from "@/lib/db-time";
@@ -204,24 +204,16 @@ export async function consumeRateLimitAttemptMulti(...keys: string[]) {
         shouldBlock = true;
       }
 
-      if (exists) {
-        await tx.update(rateLimits).set({
-          attempts,
-          windowStartedAt: entry.windowStartedAt,
-          blockedUntil: blockedUntil > 0 ? blockedUntil : null,
-          consecutiveBlocks,
-          lastAttempt: now,
-        }).where(eq(rateLimits.key, key));
-      } else {
-        await tx.insert(rateLimits).values({
-          key,
-          attempts,
-          windowStartedAt: entry.windowStartedAt,
-          blockedUntil: blockedUntil > 0 ? blockedUntil : null,
-          consecutiveBlocks,
-          lastAttempt: now,
-        });
-      }
+      // Conflict-safe shared upsert (AGG2-3): two concurrent first attempts
+      // on a fresh key no longer throw a duplicate-key error out of the
+      // rate-limit transaction.
+      await upsertRateLimitEntry(tx, key, {
+        attempts,
+        windowStartedAt: entry.windowStartedAt,
+        blockedUntil: blockedUntil > 0 ? blockedUntil : null,
+        consecutiveBlocks,
+        lastAttempt: now,
+      }, exists);
     }
 
     return shouldBlock;
@@ -251,27 +243,14 @@ export async function recordRateLimitFailure(key: string) {
       blockedUntil = now + blockDuration;
     }
 
-    if (exists) {
-      await tx.update(rateLimits)
-        .set({
-          attempts,
-          windowStartedAt: entry.windowStartedAt,
-          blockedUntil: blockedUntil > 0 ? blockedUntil : null,
-          consecutiveBlocks,
-          lastAttempt: now,
-        })
-        .where(eq(rateLimits.key, key));
-    } else {
-      await tx.insert(rateLimits)
-        .values({
-          key,
-          attempts,
-          windowStartedAt: entry.windowStartedAt,
-          blockedUntil: blockedUntil > 0 ? blockedUntil : null,
-          consecutiveBlocks,
-          lastAttempt: now,
-        });
-    }
+    // Conflict-safe shared upsert (AGG2-3).
+    await upsertRateLimitEntry(tx, key, {
+      attempts,
+      windowStartedAt: entry.windowStartedAt,
+      blockedUntil: blockedUntil > 0 ? blockedUntil : null,
+      consecutiveBlocks,
+      lastAttempt: now,
+    }, exists);
   });
 }
 
@@ -291,24 +270,14 @@ export async function recordRateLimitFailureMulti(...keys: string[]) {
         blockedUntil = now + blockMs;
       }
 
-      if (exists) {
-        await tx.update(rateLimits).set({
-          attempts: newAttempts,
-          windowStartedAt: entry.windowStartedAt,
-          blockedUntil: blockedUntil > 0 ? blockedUntil : null,
-          consecutiveBlocks,
-          lastAttempt: now,
-        }).where(eq(rateLimits.key, key));
-      } else {
-        await tx.insert(rateLimits).values({
-          key,
-          attempts: newAttempts,
-          windowStartedAt: entry.windowStartedAt,
-          blockedUntil: blockedUntil > 0 ? blockedUntil : null,
-          consecutiveBlocks,
-          lastAttempt: now,
-        });
-      }
+      // Conflict-safe shared upsert (AGG2-3).
+      await upsertRateLimitEntry(tx, key, {
+        attempts: newAttempts,
+        windowStartedAt: entry.windowStartedAt,
+        blockedUntil: blockedUntil > 0 ? blockedUntil : null,
+        consecutiveBlocks,
+        lastAttempt: now,
+      }, exists);
     }
   });
 }

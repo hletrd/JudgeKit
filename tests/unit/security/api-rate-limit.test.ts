@@ -79,8 +79,13 @@ beforeEach(() => {
   vi.clearAllMocks();
   // Default: select returns no existing row (new request)
   mockSelectResult(undefined);
+  // Inserts go through insertRateLimitEntryIfAbsent (conflict-safe,
+  // AGG2-3): .values(...).onConflictDoNothing(...) resolving rowCount 1
+  // means "this call created the row".
   dbMock.insert.mockReturnValue({
-    values: vi.fn(async () => undefined),
+    values: vi.fn(() => ({
+      onConflictDoNothing: vi.fn(async () => ({ rowCount: 1 })),
+    })),
   });
   dbMock.update.mockReturnValue({
     set: vi.fn(() => ({
@@ -381,6 +386,84 @@ describe("checkServerActionRateLimit", () => {
 
     expect(result).toEqual({ error: "rateLimited" });
     expect(dbMock.insert).not.toHaveBeenCalled();
+    expect(dbMock.update).not.toHaveBeenCalled();
+  });
+});
+
+describe("first-insert race (AGG2-3)", () => {
+  // Two concurrent first hits on a brand-new key: SELECT ... FOR UPDATE
+  // locks nothing, both reach the INSERT. Pre-fix the loser threw a
+  // duplicate-key error that aborted the transaction and surfaced as a 500
+  // in the middle of the rate-limit control. Post-fix the loser's
+  // onConflictDoNothing reports rowCount 0, the entry is re-read (the row
+  // exists now) and the attempt is counted through the update path.
+  function mockLostRace(winnerRow: Record<string, unknown>) {
+    let selectCall = 0;
+    const rowsForCall = () => (selectCall++ === 0 ? [] : [winnerRow]);
+    dbMock.select.mockImplementation(() => ({
+      from: vi.fn(() => ({
+        where: vi.fn(() => ({
+          for: vi.fn(() => ({ limit: vi.fn(rowsForCall) })),
+          limit: vi.fn(rowsForCall),
+        })),
+      })),
+    }));
+    dbMock.insert.mockReturnValue({
+      values: vi.fn(() => ({
+        onConflictDoNothing: vi.fn(async () => ({ rowCount: 0 })),
+      })),
+    });
+  }
+
+  it("consumeApiRateLimit re-reads and counts the attempt instead of throwing", async () => {
+    getRateLimitKeyMock.mockReturnValue("api:groups:198.51.100.8");
+    mockLostRace({
+      key: "api:groups:198.51.100.8",
+      attempts: 1,
+      windowStartedAt: MOCK_DB_NOW_MS,
+      blockedUntil: null,
+      consecutiveBlocks: 0,
+      lastAttempt: MOCK_DB_NOW_MS,
+    });
+
+    // Winner holds attempt 1 of max 2 — the racing loser becomes attempt 2,
+    // still allowed, recorded via UPDATE (never via a second INSERT).
+    const result = await consumeApiRateLimit(createRequest(), "groups");
+
+    expect(result).toBeNull();
+    expect(dbMock.update).toHaveBeenCalled();
+  });
+
+  it("checkServerActionRateLimit re-reads and counts the attempt instead of throwing", async () => {
+    mockLostRace({
+      key: "sa:user-1:deleteAccount",
+      attempts: 1,
+      windowStartedAt: MOCK_DB_NOW_MS,
+      blockedUntil: null,
+      consecutiveBlocks: 0,
+      lastAttempt: MOCK_DB_NOW_MS,
+    });
+
+    const result = await checkServerActionRateLimit("user-1", "deleteAccount", 20, 60);
+
+    expect(result).toBeNull();
+    expect(dbMock.update).toHaveBeenCalled();
+  });
+
+  it("a blocked winner row still rate-limits the racing loser", async () => {
+    getRateLimitKeyMock.mockReturnValue("api:groups:198.51.100.8");
+    mockLostRace({
+      key: "api:groups:198.51.100.8",
+      attempts: 2,
+      windowStartedAt: MOCK_DB_NOW_MS,
+      blockedUntil: MOCK_DB_NOW_MS + 60_000,
+      consecutiveBlocks: 0,
+      lastAttempt: MOCK_DB_NOW_MS,
+    });
+
+    const response = await consumeApiRateLimit(createRequest(), "groups");
+
+    expect(response?.status).toBe(429);
     expect(dbMock.update).not.toHaveBeenCalled();
   });
 });

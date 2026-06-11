@@ -20,7 +20,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getRateLimitKey } from "./rate-limit";
 import { checkRateLimit as sidecarCheck } from "./rate-limiter-client";
-import { fetchRateLimitEntry } from "@/lib/security/rate-limit-core";
+import { fetchRateLimitEntry, insertRateLimitEntryIfAbsent } from "@/lib/security/rate-limit-core";
 import { execTransaction } from "@/lib/db";
 import { rateLimits } from "@/lib/db/schema";
 import { getDbNowMs } from "@/lib/db-time";
@@ -74,23 +74,26 @@ async function atomicConsumeRateLimit(key: string): Promise<{ limited: boolean; 
   const { max: apiMax, windowMs } = getApiRateLimitConfig();
 
   const limited = await execTransaction(async (tx) => {
-    const existing = await fetchRateLimitEntry(tx, key);
+    let existing = await fetchRateLimitEntry(tx, key);
 
     if (!existing) {
       // API rate limits use fixed blocking without exponential backoff
       // (consecutiveBlocks is always 0). Login rate limits use backoff,
       // but API endpoints typically have much higher thresholds and the
       // escalation is not needed.
-      await tx.insert(rateLimits)
-        .values({
-          key,
-          attempts: 1,
-          windowStartedAt: now,
-          blockedUntil: null,
-          consecutiveBlocks: 0,
-          lastAttempt: now,
-        });
-      return false;
+      const inserted = await insertRateLimitEntryIfAbsent(tx, key, {
+        attempts: 1,
+        windowStartedAt: now,
+        blockedUntil: null,
+        consecutiveBlocks: 0,
+        lastAttempt: now,
+      });
+      if (inserted) return false;
+      // Lost the first-insert race (AGG2-3): the row exists now, so the
+      // FOR UPDATE re-read blocks until the winner commits; fall through to
+      // the normal update path so this attempt is still counted.
+      existing = await fetchRateLimitEntry(tx, key);
+      if (!existing) return false;
     }
 
     if (existing.blockedUntil && existing.blockedUntil >= now) {
@@ -238,18 +241,21 @@ export async function consumeUserDailyQuota(
   const now = await getDbNowMs();
 
   const limited = await execTransaction(async (tx) => {
-    const existing = await fetchRateLimitEntry(tx, key);
+    let existing = await fetchRateLimitEntry(tx, key);
 
     if (!existing) {
-      await tx.insert(rateLimits).values({
-        key,
+      const inserted = await insertRateLimitEntryIfAbsent(tx, key, {
         attempts: 1,
         windowStartedAt: now,
         blockedUntil: null,
         consecutiveBlocks: 0,
         lastAttempt: now,
       });
-      return false;
+      if (inserted) return false;
+      // Lost the first-insert race (AGG2-3) — re-read and count this
+      // attempt through the update path instead of throwing.
+      existing = await fetchRateLimitEntry(tx, key);
+      if (!existing) return false;
     }
 
     if (existing.windowStartedAt + windowMs <= now) {
@@ -311,29 +317,40 @@ export async function checkServerActionRateLimit(
     // Previously used getDbNowUncached().getTime() which introduces a Date
     // intermediary; unified on getDbNowMs() for consistency. See C9-7.
     const now = await getDbNowMs();
-    const existing = await fetchRateLimitEntry(tx, rateLimitKey);
+    let existing = await fetchRateLimitEntry(tx, rateLimitKey);
+
+    if (!existing) {
+      // Fresh key: attempt the conflict-safe first insert (attempts = 1).
+      // blockedUntil mirrors the update path's formula so maxRequests = 1
+      // still blocks immediately after the first allowed call.
+      const inserted = await insertRateLimitEntryIfAbsent(tx, rateLimitKey, {
+        attempts: 1,
+        windowStartedAt: now,
+        blockedUntil: 1 >= maxRequests ? now + windowMs : null,
+        consecutiveBlocks: 0,
+        lastAttempt: now,
+      });
+      if (inserted) return null;
+      // Lost the first-insert race (AGG2-3) — re-read and count this
+      // attempt through the update path instead of throwing.
+      existing = await fetchRateLimitEntry(tx, rateLimitKey);
+      if (!existing) return null;
+    }
 
     // If still within a block period, reject immediately
-    if (existing?.blockedUntil && existing.blockedUntil >= now) {
+    if (existing.blockedUntil && existing.blockedUntil >= now) {
       return { error: "rateLimited" };
     }
 
     let attempts: number;
     let windowStartedAt: number;
-    let exists: boolean;
 
-    if (!existing) {
+    if (existing.windowStartedAt + windowMs <= now) {
       attempts = 0;
       windowStartedAt = now;
-      exists = false;
-    } else if (existing.windowStartedAt + windowMs <= now) {
-      attempts = 0;
-      windowStartedAt = now;
-      exists = true;
     } else {
       attempts = existing.attempts;
       windowStartedAt = existing.windowStartedAt;
-      exists = true;
     }
 
     if (attempts >= maxRequests) {
@@ -345,21 +362,9 @@ export async function checkServerActionRateLimit(
     // instead of allowing immediate retries after the window expires.
     const blockedUntil = newAttempts >= maxRequests ? now + windowMs : null;
 
-    if (exists) {
-      await tx.update(rateLimits)
-        .set({ attempts: newAttempts, windowStartedAt, lastAttempt: now, blockedUntil })
-        .where(eq(rateLimits.key, rateLimitKey));
-    } else {
-      await tx.insert(rateLimits)
-        .values({
-          key: rateLimitKey,
-          attempts: newAttempts,
-          windowStartedAt,
-          blockedUntil,
-          consecutiveBlocks: 0,
-          lastAttempt: now,
-        });
-    }
+    await tx.update(rateLimits)
+      .set({ attempts: newAttempts, windowStartedAt, lastAttempt: now, blockedUntil })
+      .where(eq(rateLimits.key, rateLimitKey));
 
     return null;
   });
