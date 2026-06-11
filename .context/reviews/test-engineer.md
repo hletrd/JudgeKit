@@ -1,46 +1,25 @@
-# Test Engineer — RPF Cycle 2 (2026-06-11)
+# Test Engineer — RPF Cycle 3 (2026-06-11)
 
-**HEAD reviewed:** 4cf01035 (main)
-**Suite state:** 332 unit files / 2571 tests PASS; DB-backed integration
-suite (env-gated) 5 files / 45+ tests passed against real Postgres 17 in
-cycle 1; Playwright smoke profile used post-deploy.
+**HEAD reviewed:** 63429d97. Baseline executed: unit 333 files / 2579 tests PASS; component suite green per cycle-2 record; eslint/tsc/lint:bash clean.
 
-## Coverage gaps to close with this cycle's fixes (TDD targets)
+## TE3-1 — No test covers the extension × anti-cheat boundary (MEDIUM, High — the gap that let CR3-1 ship)
+Cycle-1's extension tests cover the PATCH route and `extendExamSession`; cycle-2's `ExamDeadlineSync` tests cover the client. Nothing exercises "extended participant emits anti-cheat events after `assignment.deadline`". Required red-first tests when fixing CR3-1 (`tests/unit/api/anti-cheat-*.test.ts` family):
+1. windowed exam past `assignment.deadline`, session `personal_deadline` in the future → POST heartbeat/tab_switch returns 200 and inserts the row;
+2. same setup, `personal_deadline` ALSO past → 403 `contestEnded` (the gate still works);
+3. non-windowed (`scheduled`) exam past deadline → 403 unchanged (no behavior change outside windowed);
+4. submissions-side: extended window submission does NOT write `submission_stale_heartbeat` when events are fresh (guards the false-flag regression).
 
-### T2-1 — code-snapshots route has no language-gate or size tests (MEDIUM)
-When implementing the `isJudgeLanguage` gate (CR2-1/SEC2-1), add red→green
-tests mirroring the cycle-1 draft-route tests: 400 on junk language, happy
-path on a real language, and the existing access/validation paths still pin.
+## TE3-2 — Remote smoke asserts a config-dependent string (LOW-MEDIUM, High, CONFIRMED failing in production smoke)
+`tests/e2e/public-shell.spec.ts:13`, `tests/e2e/responsive-layout.spec.ts:81` — see V3-3. Test-design fix: read `process.env.E2E_HOME_HEADING` into a RegExp with the current pattern as default; document the knob in the spec header comment. Keep the assertion (a visible h1 matters); make the expectation deployment-aware. `.env.deploy.auraedu`-driven smoke invocations should set it.
 
-### T2-2 — Retention coverage class-closer (MEDIUM, high leverage)
-Critic #1: add a structural unit test asserting every prunable
-sensitive-data table is either in `DATA_RETENTION_DAYS` + the
-`pruneSensitiveOperationalData` allSettled set, or on an explicit documented
-allowlist. Start the allowlist with genuinely-permanent tables (users,
-problems, groups, settings...). This converts "we forgot snapshots" from a
-review finding into a failing test.
+## TE3-3 — `exam-session` GET route tests don't pin the no-param fast path (LOW, Medium)
+When CR3-4/PERF3-1 lands (lazy `canViewOthers`), add: (a) student poll without `userId` never calls `canViewAssignmentSubmissions` (mock assertion); (b) staff with `userId` param still resolves and returns the target's session; (c) non-staff with `userId` param still silently gets self (regression pin for the existing fallback semantic).
 
-### T2-3 — Rate-limit conflict-race test (LOW-MEDIUM)
-The fix (onConflictDoNothing + re-read) needs a structural test pinning the
-SQL shape (mock-level: insert is called with onConflictDoNothing) and, if
-cheap, an env-gated integration case firing two concurrent first-hits on one
-key and asserting neither throws.
+## TE3-4 — Doc-as-spec drift had no tripwire (INFO)
+V3-1's stale `exam-integrity-model.md` claim survived multiple cycles because docs aren't gated. Cheap tripwire available in this repo's existing style (cf. `tests/unit/infra/retention-coverage.test.ts`): a unit test asserting `grep -c "antiCheatHeartbeatRequired" src` == the union-member count expected (i.e., 0 after cleanup) is overkill; the proportionate action is just the doc fix + dead-member removal. Recording the option; not recommending a doc-lint harness this cycle.
 
-### T2-4 — Student-deadline refresh (V2-1) hook test (LOW)
-If the live-refresh lands as a hook/component change, pin: (a) refetch on
-interval/visibility, (b) countdown target updates when the server returns a
-later deadline, (c) no refetch storm (interval ≥ 30 s).
-
-## Carried test debt (unchanged preconditions)
-- T4: `scripts/verify-db-backup.sh` restore-test not CI-exercised
-  (DEFER-ENV-GATES — no provisioned CI Postgres; mocking would fake the
-  guarantee).
-- TH1: pino error noise from intentional error-path tests in
-  `contests.route.test.ts` (cosmetic; batch with next test-infra pass).
-- DES-ENV: live agent-browser UI pass needs a provisioned staging host.
-
-## Suite health notes
-- No flaky tests observed across this cycle's three full unit runs.
-- The cycle-1 source-grep inventory baseline (136→138) remains accurate at
-  HEAD; any new `sql\`` usage this cycle must update it deliberately.
-- tsconfig/vitest configs unchanged; component/integration configs intact.
+## Suite health (verified)
+- Cycle-2's new tests are meaningful: retention class-closer has walker-sanity + exact allowlist (vacuous-pass-proof); rate-limit lost-race tests simulate ON CONFLICT semantics statefully in the login-path mock; ExamDeadlineSync tests cover interval, refocus, later-only, offline, and storm-guard.
+- No flaky patterns introduced: new component tests use fake timers; no real-network awaits; the 60 s interval is constant-driven (importable) rather than magic-number-duplicated.
+- E2E for the deadline-sync feature remains deferred under DEFER-ENV-GATES (no provisioned test server from this env) — carried with unchanged exit criterion; unit/component layers exist.
+- Coverage gaps carried from the register (T4 etc.) unchanged; nothing in cycles 1–2 reduced existing coverage (no test deletions except the dead-spy refactor a0570eda, which removed assertion-free code).

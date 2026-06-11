@@ -1,75 +1,39 @@
-# Code Reviewer — RPF Cycle 2 (2026-06-11)
+# Code Reviewer — RPF Cycle 3 (2026-06-11)
 
-**HEAD reviewed:** 4cf01035 (main)
-**Scope:** full repo with line-level depth on cycle-1's change surface
-(f977ef4c..4cf01035 — 15 commits, 23 source files), the 112-route API
-inventory, lib subsystems, and deploy tooling.
-**Gates at review start:** tsc 0 · eslint 0/0 · lint:bash clean · unit 332
-files / 2571 tests PASS.
-**Method note:** no reviewer subagents are registered in this environment;
-this lens was executed directly by the cycle agent against the code-quality
-checklist (logic, SOLID, edge cases, maintainability).
+**HEAD reviewed:** 63429d97 (main; cycle-2 completed tree, deployed+healthy on all three targets).
+**Method:** full re-read of every file touched by the 28 cycle-1/2 commits (rate-limit core + consumers, exam-deadline sync, exam sessions/extension, anti-cheat route + monitor, code-snapshots route, deploy-docker.sh, staleness sweep, backup verification, catalog ranking), plus spot reads across API handler plumbing, schema, and exam pages. Baseline gates re-run on this HEAD: tsc 0 · eslint 0/0 · lint:bash clean · unit 333 files / 2579 tests PASS.
+**Fan-out note:** no Agent tool is registered in this environment (same as cycles 1–2); this lens was executed directly by the cycle agent.
 
 ## Findings
 
-### CR2-1 — `code_snapshots` POST accepts an unvalidated, unbounded `language` string (MEDIUM, High confidence, CONFIRMED)
-`src/app/api/v1/code-snapshots/route.ts:14-19`: the schema is
-`language: z.string().min(1)` — no max length, no registry gate — while both
-sibling write surfaces are gated (`src/app/api/v1/submissions/route.ts:207`
-and, since cycle-1 F2, `src/app/api/v1/problems/[id]/draft/route.ts` via
-`isJudgeLanguage`). Failure: any authenticated student can insert snapshot
-rows whose `language` is megabytes of junk (nginx body cap is 50 MB;
-`sourceCode` is capped at 256 KiB but `language` is not), polluting the
-anti-cheat timeline. The real client only ever sends judge languages
-(`problem-submission-form.tsx:158`), so gating is non-breaking. Fix: mirror
-the draft-route gate (`isJudgeLanguage` → 400 `languageNotSupported`) + test.
+### CR3-1 — Anti-cheat POST rejects events after `assignment.deadline` even when the participant holds a staff-extended personal deadline (MEDIUM-HIGH, High, CONFIRMED)
+`src/app/api/v1/contests/[assignmentId]/anti-cheat/route.ts:102-104`:
+```ts
+if (assignment.deadline && now > assignment.deadline) {
+  return apiError("contestEnded", 403);
+}
+```
+Cycle-1's `extendExamSession` (`src/lib/assignments/exam-sessions.ts:139-163`) explicitly allows `personal_deadline` to exceed the assignment deadline ("that is the point of an accommodation"), and `validateAssignmentSubmission` (`src/lib/assignments/submissions.ts:259-271`) honors it for SUBMISSIONS. But the anti-cheat event POST was never taught about per-session deadlines, so the moment `now > assignment.deadline`:
+- every heartbeat/tab_switch/copy/paste event from the extended participant gets 403 `contestEnded` → integrity telemetry goes dark exactly during the accommodation window;
+- on each submission, the heartbeat-correlation gate (`submissions.ts:312-355`) finds no fresh event and records a `submission_stale_heartbeat` **escalate-tier false-suspicion flag** against the accommodated student;
+- the instructor's heartbeat-gap report (`anti-cheat/route.ts:269-306`) shows the same window as a gap.
+Failure scenario: instructor grants +30 min to a student with an accommodation letter; the student's last 30 minutes are unmonitored AND every submission in that window is flagged as suspicious. Fix: when `assignment.examMode === "windowed"` and `now > assignment.deadline`, look up `exam_sessions.personal_deadline` for `(assignmentId, user.id)` and accept while `now <= personal_deadline` (single indexed lookup; mirror the submissions.ts pattern). Add a red-first test.
 
-### CR2-2 — Rate-limit first-insert race can 500 a user request (LOW-MEDIUM, Medium confidence, CONFIRMED by code reading)
-`src/lib/security/api-rate-limit.ts:84-92` (atomicConsumeRateLimit), `:244-252`
-(consumeUserDailyQuota), `:353-361` (checkServerActionRateLimit), and the
-shared insert branch at `src/lib/security/rate-limit-core.ts:96-104`: when no
-row exists for a key, `SELECT ... FOR UPDATE` locks nothing, so two concurrent
-first hits both reach the bare `INSERT`; the loser throws a unique violation,
-aborting the transaction → `createApiHandler` catch → 500. Concrete trigger:
-one user's two tabs autosaving a draft simultaneously on a fresh
-`api:source-draft:user:<id>` bucket, or a shared-IP burst on a brand-new
-endpoint key after deploy. Fix: `.onConflictDoNothing({ target:
-rateLimits.key })`; if 0 rows inserted, re-read (row now exists, FOR UPDATE
-works) and fall through to the update path. Same shape at all four sites.
+### CR3-2 — AntiCheatMonitor retries permanently-rejected (4xx) events as if they were transient network failures (LOW, High, CONFIRMED)
+`src/components/exam/anti-cheat-monitor.tsx:52-69`: `sendEvent` collapses every non-OK response into `false`, so a 403 (`contestEnded`, `forbidden`, origin mismatch) is queued to localStorage and retried `MAX_RETRIES=3` times with backoff — requests that can never succeed, and they delay genuinely-retriable events behind them in `performFlush`'s sequential loop. Fix: treat HTTP 4xx (except 408/429) as permanent — drop without queueing; keep retry semantics for network errors and 5xx/429.
 
-### CR2-3 — ExamExtendDialog input polish (LOW, High confidence)
-`src/app/(public)/groups/[id]/assignments/[assignmentId]/exam-extend-dialog.tsx`:
-(a) the minutes `<Input type="number">` lacks `inputMode="numeric"`; (b) no
-Cancel button and no `<form>`, so Enter does not submit. Used mid-incident
-under time pressure — cheap to fix.
+### CR3-3 — Dead error-union member `antiCheatHeartbeatRequired` (INFO, High, CONFIRMED)
+`src/lib/assignments/submissions.ts:36` still carries `"antiCheatHeartbeatRequired"` in the validation error union, but no code path returns it since the gate became fail-open (flag-only). Dead vocabulary invites the belief that the hard block still exists (the docs DO believe it — see document-specialist DOC3-1). Remove the member alongside the doc fix.
 
-### CR2-4 — `drizzle/pg/meta/_journal.json` missing trailing newline (INFO)
-Cosmetic; bundle with the next journaled migration.
+### CR3-4 — GET exam-session runs the staff-visibility resolver for every plain student poll (LOW, Medium, CONFIRMED — perf-reviewer owns the numbers)
+`src/app/api/v1/groups/[id]/assignments/[assignmentId]/exam-session/route.ts:112-116` computes `canViewAssignmentSubmissions(...)` unconditionally, though its result only matters when `?userId=` is present. Since cycle-2's `ExamDeadlineSync` turned this GET into a 60 s steady poll for every active windowed examinee, the wasted lookups multiply. Restructure: only resolve `canViewOthers` when a `userId` param is present and differs from `user.id`; identical externally-visible semantics (non-staff querying others already silently falls back to self).
 
-## Verified-good (explicitly re-checked, no action)
-- **Cycle-1 F1 accounting is sound:** `candidate` is `LIMIT 1`
-  (`src/lib/judge/claim-query.ts:51`), so the worker_bump compensation
-  (`:120-124`) is 0/1 and only applies when `claimed` is non-empty. Every
-  requeue path nulls `judgeWorkerId` (`submissions/[id]/rejudge/route.ts:49`,
-  `admin/submissions/rejudge/route.ts:63`, `admin/workers/[id]/route.ts:91`,
-  `judge/deregister/route.ts:92`, poll finalize `judge/poll/route.ts:145`), so
-  a `pending` row pointing at a live worker cannot occur.
-- **Cycle-1 F3 join removal is safe:** `accessFilter` on `/problems`
-  references problems.* only (`buildAccessFilter`/`buildTaughtGroupAccessFilter`,
-  `problems/page.tsx:97-138`); the users-referencing search filter is
-  correctly NOT passed into `getCatalogNumbersForIds`.
-- **Cycle-1 F12 cannot leak past-close submission to unextended users:**
-  `startExamSession` clamps `personalDeadline` to the assignment deadline
-  (`exam-sessions.ts:83-86`); only an explicit staff extension can move it
-  past close, and non-exam assignments never have a session row.
-- `namedToPositional` deduplicates repeated `@param` placeholders
-  (`src/lib/db/named-params.ts:40-46`) — the ipOverlap CTE's double
-  `@assignmentId` is handled.
-- `recordAuditEventDurable` never throws (`src/lib/audit/events.ts:275-285`),
-  so the exam-extend route cannot 500 after applying an extension.
+## Verified-sound (no action)
+- `rate-limit-core.ts` conflict-safe first insert + degraded upsert path: correct; `rowCount` handling is driver-safe; all four consumer sites re-read under FOR UPDATE after a lost race. Lost-race tests exist and pass.
+- `run_remote_build` in `deploy-docker.sh`: the `cmd | tee` exit status is safe because the script runs `set -euo pipefail` (line 94); temp-file cleanup on every path; recovery is signature-scoped only.
+- `CountdownTimer` deadline-prop reset (`countdown-timer.tsx:69-78`) correctly un-expires and re-arms thresholds — the expired→extended transition works.
+- `ExamDeadlineSync` mounts even when the session is already expired (`page.tsx:197-207`), so a post-expiry extension is still picked up. Good design.
+- `sweepStaleWorkers` + unref'd interval: idempotent transitions, single-shot logging per transition.
+- `verify-db-backup.sh` restore-test: trap-based cleanup correct; DSN rewrite handles query strings; dumps are plain `pg_dump` without `--create` so no cross-DB `\connect` hazard.
 
-## Final sweep
-TODO/FIXME scan: only the two known Next.js-workaround TODOs in contest
-layouts. No new suppressions in the cycle-1 diff. i18n keys added by cycle 1
-(numberHint, draftRecovered*, restrictedModeOverridesActive, ipOverlap.*,
-examExtend.*) verified present in both en.json and ko.json.
+Final sweep: no other file touched by cycles 1–2 shows logic regressions; the remaining repo surface matches the carried register in `plans/open/2026-06-11-cycle-2-rpf-review-remediation.md`.

@@ -1,46 +1,25 @@
-# Debugger (latent bug surface) — RPF Cycle 2 (2026-06-11)
+# Debugger (latent bug surface, failure modes) — RPF Cycle 3 (2026-06-11)
 
-**HEAD reviewed:** 4cf01035 (main)
+**HEAD reviewed:** 63429d97. Hunt: failure modes and regressions in the cycle-1/2 surface; edge cases the happy-path tests don't exercise.
 
-## Latent failure modes found
+## D3-1 — Accommodated examinee enters a self-reinforcing "suspicious" state (MEDIUM-HIGH, High, CONFIRMED; shared root cause with CR3-1)
+Reproduction (from code): windowed exam, anti-cheat ON, staff extends a session past `assignment.deadline`; clock passes the assignment close. Now: anti-cheat POST → 403 (`anti-cheat/route.ts:102-104`); monitor queues + retries ×3 → drops; submission → fail-open flag `submission_stale_heartbeat` per submission (`submissions.ts:336-347`); heartbeat-gap report paints the window as one continuous gap. Every signal an instructor uses to detect cheating fires on the honest accommodated student, and no signal exists for an actual cheater in that window. Single-line-class fix at the boundary check (honor `personal_deadline`); test must cover heartbeat AND non-heartbeat events plus the no-flag-on-submission assertion.
 
-### D2-1 — Rate-limit unique-violation on first concurrent use (CONFIRMED mechanism, Medium real-world frequency)
-See code-reviewer CR2-2 / tracer Trace 3. Reproduction recipe (env-gated
-integration): truncate `rate_limits`, fire two simultaneous
-`consumeUserApiRateLimit(req, sameUser, "source-draft")` — one returns null,
-the other throws `duplicate key value violates unique constraint`.
-User-visible symptom: sporadic 500 on draft autosave / snapshot POST right
-after a window reset, typically logged as "Unhandled error" with a
-unique-violation cause. If you have ever seen that log line in production,
-this is the mechanism.
+## D3-2 — Anti-cheat monitor: permanent 4xx churn (LOW, High, CONFIRMED)
+Same mechanism as CR3-2 — note the additional debugger-angle failure mode: while dead 403 events occupy the queue, `performFlush` is serial, so a REAL transient failure of a later event happens behind up to 3×(dead-event latency) — under exam-end load this can push a tab_switch event's delivery past the contest end, where it is then also 403'd. Cascading loss. Tri-state send result fixes both.
 
-### D2-2 — Student-side countdown desync after extension (CONFIRMED)
-See verifier V2-1. Additional debugger note: the same render-time snapshot
-means a student who keeps the tab open across the ORIGINAL deadline and gets
-no extension also keeps an editable editor (carried ST2) — the new wrinkle
-F12 adds is the inverse: a student WITH an extension sees a dead countdown.
-Both resolve with the same live-refetch fix.
+## D3-3 — `verify-db-backup.sh` restore-test can false-negative on role/extension mismatch (LOW, Medium, NEEDS MANUAL VALIDATION on the prod host)
+`scripts/verify-db-backup.sh` (restore-test block): plain-format dumps replay `ALTER ... OWNER TO <role>` and `CREATE EXTENSION` statements; with `ON_ERROR_STOP=1`, restoring under a DSN role different from the dump's owner (or without extension privileges) aborts and reports "backup is not restorable" for a perfectly restorable dump. The judgekit prod dumps use the same `judgekit` role, so the default topology is fine — but the first time an operator points `RESTORE_DATABASE_URL` at a generic scratch instance they will get a scary false alarm. Mitigation: document the role requirement next to the env var (it is currently documented NOWHERE outside the script — see DOC3-2), or filter with `psql -v ON_ERROR_STOP=1` only after `SET ROLE`-compatible preprocessing. Documentation is the proportionate fix.
 
-### D2-3 — Heartbeat dedup LRU is per-process (verified acceptable, INFO)
-`anti-cheat/route.ts:17` dedups heartbeats in a process-local LRU when shared
-coordination is off. Multi-instance deployments without the shared
-coordinator would write up to N× heartbeats — but
-`usesSharedRealtimeCoordination()` gates exactly that case and the
-deployment targets run single app instances. No action; do not "fix"
-speculatively.
+## D3-4 — `run_remote_build` retry overwrites the first failure log (LOW, Medium, CONFIRMED)
+`deploy-docker.sh` recovery path: the retry `tee`s into the same `$out_file`; if the retry fails too, the original corruption log is gone. The warn lines preserve the signature, so triage survives; full forensics do not. Optional one-liner (`${out_file}.retry`) — defer-eligible.
 
-### D2-4 — Snapshot retry loop can outlive navigation (INFO, verified bounded)
-`problem-submission-form.tsx:153-171` retries up to 3 times with backoff and
-checks `isMountedRef` only for the timer re-arm, not the in-flight retry
-chain. Worst case after unmount: ≤2 extra fetches over ≤3 s, then the chain
-dies. Harmless; noted so a future reviewer doesn't escalate it.
+## Edge cases probed and found SOLID
+- `CountdownTimer`: deadline prop moving past→future resets `expired`, re-arms thresholds, clears stale announcements (lines 69-78). Hidden-tab threshold-spam suppression intact.
+- `ExamDeadlineSync`: `inFlight` guard prevents overlap; `cancelled` flag prevents setState-after-unmount; equal/earlier deadlines ignored (clock-skew safe); JSON parse failures swallowed safely.
+- `startExamSession` race: `onConflictDoNothing` + authoritative re-fetch inside the tx — double-click/StrictMode double-start safe.
+- `sweepStaleWorkers` concurrent with heartbeat-route sweep: both run the same idempotent status-conditional UPDATEs; no double-log (WHERE filters on prior status) and no lost heartbeat (heartbeat sets `online` after the sweep's cutoff computation by timestamp comparison, not read-modify-write).
+- Rate-limit lost-race paths: verified no remaining bare INSERT in `rate-limit.ts` / `api-rate-limit.ts` / `rate-limit-core.ts` (grep + read); `checkServerActionRateLimit` `maxRequests=1` immediate-block preserved in the fresh-key path (`blockedUntil: 1 >= maxRequests ? ...`).
+- `insertRateLimitEntryIfAbsent` under drivers returning `rowCount: null` → coerces to 0 → treated as lost race → harmless re-read path (correct degradation).
 
-## Regression scan of cycle-1 diff
-- `validateAssignmentSubmission` reorder: enrollment/examSession now fetched
-  before the schedule checks — reject paths do one extra read (commented,
-  accepted). No behavior change for non-exam flows (pinned by tests).
-- `status-board.tsx` desktop cell IIFE still null-guards `examSession`
-  before dereferencing `personalDeadline`. No NPE path.
-- `getCatalogNumbersForIds` with an empty page returns early; `.where(undefined)`
-  on the CTE is valid drizzle (= no filter) for the org-admin case. No
-  runtime SQL hazard.
+No regressions found in the cycle-1/2 surface beyond the items above.

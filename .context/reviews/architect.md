@@ -1,47 +1,26 @@
-# Architect — RPF Cycle 2 (2026-06-11)
+# Architect — RPF Cycle 3 (2026-06-11)
 
-**HEAD reviewed:** 4cf01035 (main)
+**HEAD reviewed:** 63429d97. Focus: structural risks created or revealed by the cycle-1/2 features; coupling and layering checks on the touched modules.
 
-## Assessment
+## A3-1 — "Effective exam close for THIS participant" has no single owner (MEDIUM, High — root cause of CR3-1/SEC3-1)
+The per-participant end-of-exam is now computed independently in at least three places:
+- `src/lib/assignments/submissions.ts:259-271` — `max(assignment close, personal_deadline)` semantics for acceptance;
+- `src/lib/assignments/submissions.ts:641-655` — late-penalty scoring keyed on `es.personal_deadline` in SQL;
+- `src/app/api/v1/contests/[assignmentId]/anti-cheat/route.ts:102-104` — `assignment.deadline` only (the bug).
+Plus render-side recomputations (`page.tsx:169-170`). Each new consumer of "is the exam still running for user X?" must remember the windowed-session override or it silently diverges. Recommendation: extract `getEffectiveExamCloseAt(assignment, examSession)` (pure, DB-free, in `src/lib/assignments/`) and route the anti-cheat boundary check, the submissions check, and the page-side expiry computation through it. The cycle-3 fix for CR3-1 should land this helper rather than a fourth inline copy — that converts the bug into a structural guarantee. (Scoring's SQL copy can reference the helper's contract in a comment; SQL can't share the function.)
 
-### A2-1 — Telemetry write-surfaces lack a shared ingestion contract (MEDIUM, structural)
-Three sibling student-write surfaces (submissions, source drafts, code
-snapshots) each hand-roll the same trio of concerns — language registry gate,
-size cap, retention — and each has drifted independently (snapshots currently
-missing two of three). Minimal structural fix this cycle: close the snapshot
-gaps (SEC2-1/2) and add the retention class-closer test (T2-2). Larger
-refactor (a shared `validateTelemetryWrite` helper) is NOT recommended yet —
-two call sites do not justify the indirection; revisit if a fourth telemetry
-table appears.
+## A3-2 — Client telemetry channel lacks a permanent-failure concept (LOW-MEDIUM, Medium)
+`anti-cheat-monitor.tsx` models only success/failure; HTTP semantics (permanent vs transient) are erased at `sendEvent`. As more rejection classes appear (origin pinning, contest boundaries, future device checks), the retry queue will keep treating policy rejections as packet loss. Small fix now (tri-state result, CR3-2); keeps the storage/queue layer unchanged.
 
-### A2-2 — deploy-docker.sh: build-resilience belongs in the script, not the operator (HIGH ops)
-The script already embodies DB-safety architecture (pre-deploy dump, volume
-safety check, destructive-diff halt), but build-state resilience is absent:
-one corrupted buildx history store turns a deploy into a manual incident
-(cycle-1 auraedu). The DEFERRED-OPS-1 hardening (signature detection +
-`docker buildx history rm --all` + bounded retry + serialized language
-builds) is architecturally consistent with the script's existing
-"detect → remediate → verify" patterns (cf. Step 5b secret_token flow).
-Carry-forward note: C3-AGG-5 (modular extraction of SSH helpers) trigger
-remains TRIPPED for the SSH-helpers area specifically; this cycle's edits
-touch the language-build step, not SSH helpers — the extraction obligation
-carries unchanged, and the file is now ~1335 lines, approaching the
-1500-line size trigger. Record in the deferral register again.
+## A3-3 — Deploy script: SSH-helpers extraction trigger remains TRIPPED (carry, unchanged)
+`deploy-docker.sh` is now ~1,430 lines after G1; the C3-AGG-5 obligation (extract SSH/remote helpers when next touched or at 1,500 lines) was re-documented in cycle-2's register and is still binding. The G1 additions were build-step-scoped so the trigger condition (touching the SSH-helpers area) was not met; the size trigger (1,500) is ~70 lines away. Any cycle that adds remote-exec plumbing must do the extraction first. No new action this cycle beyond the register carry.
 
-### A2-3 — Exam-session domain boundary held up well under F12 (positive)
-The extension feature landed without violating layering: SQL-composition in
-the lib (`extendExamSession`), gate + audit in the route, render in a
-client component, validation honoring in `validateAssignmentSubmission`.
-The one seam it missed is the client-side deadline subscription (V2-1) —
-the student page treats the session deadline as immutable-per-render. The
-fix should stay client-local (poll/refetch), NOT introduce a push channel;
-SSE for exam sessions would be over-architecture at current scale.
+## A3-4 — Layering on the cycle-2 modules (verified good)
+- `rate-limit-core.ts` as the single DB-primitive layer with consumer-owned semantics is the right shape; cycle-2's G4 landing in the core (not in each consumer) kept the C7-AGG-9 consolidation debt flat as planned. The remaining duplication between `rate-limit.ts` and `api-rate-limit.ts` is policy-level (backoff vs fixed-window) and correctly deferred.
+- `worker-staleness-sweep.ts` separating DB-side sweep from pure threshold helpers (`worker-staleness.ts`) preserves DB-free unit tests; the instrumentation-registered unref'd interval is the correct process-lifecycle hook for Next.js.
+- `ExamDeadlineSync` wrapping `CountdownTimer` (composition, windowed-branch-only) instead of widening the timer's props was the lower-coupling choice; confirmed scheduled/non-exam branches untouched.
 
-## Carried architectural items (unchanged preconditions)
-- ARCH-CARRY-1: raw judge handlers (claim/poll) not on createApiHandler —
-  deliberate (streaming/latency); re-evaluate only if a third raw handler
-  appears.
-- ARCH-CARRY-2: SSE O(n) eviction beyond 500 tracked connections.
-- C7-AGG-9: two rate-limit modules drift risk — NOTE: this cycle's CR2-2 fix
-  touches both modules' shared core; apply the fix in `rate-limit-core.ts`
-  where possible so the consolidation debt does not grow.
+## A3-5 — Review/plan artifact architecture (housekeeping, LOW)
+The deferred register chain is at 2 hops (cycle-2 CARRY row → cycle-1 plan in done/). Per the critic's note, when this hits 3 hops the audit trail degrades; next planning pass should re-materialize still-live deferrals into the active plan or the master backlog (`plans/open/2026-04-14-master-review-backlog.md`). This cycle's plan does so for the items it carries.
+
+No new cross-cutting architectural risks found beyond A3-1; the system's module boundaries (judge pipeline, rate limiting, retention, exam lifecycle) remain coherent at this HEAD.

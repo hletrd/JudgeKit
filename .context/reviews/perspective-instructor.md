@@ -1,49 +1,26 @@
-# Persona: Instructor (authoring, grading, groups, exams, exports) — RPF Cycle 2 (2026-06-11)
+# Persona: Instructor (authoring, grading, groups, exams, exports) — RPF Cycle 3 (2026-06-11)
 
-**HEAD reviewed:** 4cf01035. Seat: group instructor running a windowed exam
-and weekly assignments; flows: authoring → roster → live monitoring →
-extensions → similarity → grading → export.
+**HEAD reviewed:** 63429d97. Walked: exam setup → live monitoring → granting an extension → reviewing integrity signals → grading.
 
-## What improved since cycle 1 (verified at HEAD)
-- **Time extensions exist and are audit-trailed** (F12): timer icon next to
-  each in-progress session on the status board (mobile + desktop), 1–600 min,
-  composes under concurrent grants, recorded with who/whom/how much. This
-  closes the accommodation gap that previously required DB surgery.
-- **IP-overlap report** (F11): shared-IP and many-IP participants surface as
-  an advisory panel on the anti-cheat dashboard with benign-explanation
-  guidance — the duplicate-account hunt no longer means eyeballing raw rows.
-- **Anti-cheat defaults ON for new exams** (48856f17 pre-cycle), and the
-  numbering hint on /problems means my class stops citing per-viewer numbers.
+## What got better since cycle 2 (verified)
+- Time extensions exist and are durably audited; the status board gives me the dialog; the student's screen follows within a minute. The biggest live-exam incident tool I was missing has landed.
+- The IP-overlap report turns hundreds of telemetry rows into an actionable shortlist (shared IPs, >2-IP participants) with benign-explanation framing so I don't over-read NAT artifacts.
+- New exams created through the general assignment form now default anti-cheat ON (48856f17) — the silent-no-proctoring trap is closed.
+- code_snapshots now have a retention window consistent with the anti-cheat events I derive conclusions from.
 
-## Pain points found this cycle
+## IN3-1 — My integrity dashboard lies to me about extended students (MEDIUM-HIGH from my seat; root cause CR3-1)
+After I grant an extension past the assignment close, the platform shows me: a heartbeat GAP covering the accommodation window, and `submission_stale_heartbeat` escalate flags on every submission the student made in it. The documentation tells me these are exactly the signals that "merit deeper human investigation". I would open a misconduct review against a student I personally accommodated. Inverted evidence is worse than no evidence — this needs the server fix plus (after the fix) nothing in my workflow changes; old flags from the bug window cannot be distinguished retroactively, which is one more reason to fix it THIS cycle.
 
-### IN2-1 — I can extend a student's time, but the student can't see it (LOW-MEDIUM)
-The natural workflow — outage, grant +20 min, tell the class "keep working" —
-breaks because each student's countdown still shows the old deadline until
-they reload (V2-1). During an incident I should not have to broadcast
-"everyone refresh your page" as a workaround. Same fix as the student-seat
-finding: live deadline refetch.
+## IN3-2 — The integrity doc misinforms my mental model (MEDIUM; DOC3-1)
+`docs/exam-integrity-model.md:55` tells me curl-submissions are hard-blocked. They are not (flag-only by design). My operational obligation — actually review `submission_stale_heartbeat` events before trusting results — is stated nowhere. Fix the doc; my trust in the rest of it depends on it.
 
-### IN2-2 — No extension affordance before the student starts (LOW, product note)
-The extend control renders only when a session exists (status-board guards on
-`examSession`). A documented accommodation (×1.5 time) currently requires
-waiting for the student to click Start, then extending. Correct workaround
-exists, but a pre-grant (per-student duration override at roster level) would
-match how accommodations are actually issued. Defer as product decision —
-note it next to TA2 in the register.
+## IN3-3 — Extension discoverability gaps (LOW, carried as IN2-2/TA2)
+- Pre-start accommodations still impossible (extend requires a started session); per-student duration overrides remain a product decision with an owner exit criterion.
+- The extend action lives on the status board only; during an incident I find it, but a hint on the participant timeline view would shorten the path. Cosmetic, defer-eligible.
 
-### IN2-3 (carried) — Judging-delay visibility (IN3/JA2)
-Unchanged: when the worker fleet stalls, instructors have no banner; students
-ask "is it just me?". Carried with original exit criterion (ops-surface
-feature cycle).
+## Authoring/grading spot-checks (no new issues)
+- Problem authoring, test-case management, score overrides, exports: unchanged this cycle; carried items (IN3/JA2 export shapes, similarity-report workflow polish) remain in the register with unchanged preconditions.
+- Catalog numbering on /problems now carries the per-viewer hint (title + sr-only), so my class stops citing "problem 37" as a shared id — small but real support-load reduction.
+- Roster: manager-gated roster visibility tests landed in cycle-1's surface (3dfc2c75); behavior matches the group-detail gates.
 
-## Re-checked, fine
-- Roster management (members/bulk, instructors routes) gated by
-  `canManageGroupResourcesAsync`; monitor-only staff cannot mutate.
-- Similarity reports: staff-gated, assignment-scoped, with pair views;
-  export route covers submissions + scores; contest export includes
-  anti-cheat columns where appropriate.
-- Score overrides + extensions both land in the durable audit trail — my
-  grading decisions are reconstructable for appeals.
-- Exam-mode integrity: the new DB CHECK on `exam_mode` (F6) means a corrupt
-  value can no longer make my exam silently behave as a non-exam.
+Net: monitoring and incident tooling are now genuinely usable for a live exam; the trust-critical fix is IN3-1 + the doc truth fix.

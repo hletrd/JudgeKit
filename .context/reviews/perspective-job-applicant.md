@@ -1,47 +1,23 @@
-# Persona: Job Applicant (recruiting coding test) — RPF Cycle 2 (2026-06-11)
+# Persona: Job Applicant (recruiting coding test) — RPF Cycle 3 (2026-06-11)
 
-**HEAD reviewed:** 4cf01035. Seat: external candidate with an emailed
-invitation, first contact with the platform, timed assessment.
+**HEAD reviewed:** 63429d97. Walked the candidate path: token redemption → first-run → timed test → incident (disconnect / extension) → submission → trust perception.
 
-## First-run experience (re-walked at HEAD)
-- Invitation → validate → scoped problem access works; my catalog and tag
-  list are invitation-scoped (`recruitingAccess.problemIds` paths in
-  /problems) so I can't wander into the company's other content, and they
-  can't see me wandering.
-- Language support is honest: the language picker only offers what the
-  judge actually runs (registry-driven), so no "submitted in X, judged
-  never" trap.
-- The recovered-draft toast (cycle-1 F9) matters MOST in this seat: code
-  appearing in my editor on a fresh login at a recruiting test would read as
-  a planted-code integrity trap; the timestamped "your own saved work" note
-  defuses it.
+## First-run and trust (verified at this HEAD)
+- Privacy notice before any telemetry: the anti-cheat monitor blocks on an explicit accept dialog enumerating exactly what is collected (tab switches, copy/paste, IP, code snapshots) — no silent surveillance; the notice cannot be dismissed accidentally (`disablePointerDismissal`, no close button). This matters for recruiting-candidate consent posture.
+- Token redemption failure modes return distinct errors (`tokenExpired`, `alreadyRedeemed` — seen in unit logs) rather than a generic failure; the candidate knows whether to ask the recruiter for a new link.
+- The countdown re-syncs server time on refocus — my timer is honest even after laptop sleep.
 
-## Trust/fairness findings
+## JA3-1 — Incident recovery now works, but it can mark me as a cheater (MEDIUM-HIGH from this seat; CR3-1)
+The exact recruiting scenario the extension feature was built for — "outage ate part of a candidate's window, recruiter grants time back" — is the scenario that triggers the false-suspicion flags when the granted time crosses the original close. A hiring decision influenced by `submission_stale_heartbeat` escalate flags fabricated by the platform against a candidate who was COMPENSATED for the platform's own outage is the worst-case fairness outcome for recruiting use. Highest-priority fix from this seat.
 
-### JA2-1 — Mid-test extension invisibility hits candidates hardest (LOW-MEDIUM, shared V2-1)
-If my recruiter extends my window after a platform hiccup, my countdown
-still dies at the old time. A student can ask the instructor in the room; I
-am remote with no back-channel and will assume I am done. The live
-deadline-refetch fix is a fairness fix in this seat, not a convenience.
+## JA3-2 — Accidental-disqualification risks (re-walked; acceptable)
+- Brief alt-tabs are absorbed by the 3 s grace timer before a tab_switch is recorded; the warning toast is informative, not punitive.
+- Submissions are never hard-blocked on heartbeat staleness (fail-open) — a flaky cafe wifi cannot eat my final submission; it can only add reviewable context.
+- localStorage event queue survives page reloads; my disconnect during the test does not silently void my telemetry for the connected periods.
+- One residual: nothing in the UI tells me ahead of time which languages are available for THIS test; the problem workspace's language selector is registry-driven, so I discover availability live. Carried as the JA-environment-clarity item (LOW; unchanged from the register).
 
-### JA2-2 (carried — IN3/JA2) — Judging-delay blindness
-If the worker fleet stalls during my one-shot assessment, "Queued" with no
-ETA reads as "my submission is being judged against me". Carried banner
-work; from this seat a simple "judging is slower than usual, your timer is
-unaffected / will be compensated" note is the minimum viable trust repair —
-note that today the timer is NOT automatically compensated (extension is a
-manual staff action).
+## JA3-3 — Time-pressure UX (verified good)
+Threshold warnings at 15/5/1 min with screen-reader announcements (`aria-live`, assertive at 1 min); no toast storm on tab return; extension (if granted) announces itself with a persistent status note rather than a transient toast only — I won't miss it while heads-down coding.
 
-### JA2-3 — Accidental-disqualification audit: acceptable at HEAD
-Probed disqualification vectors: tab-switch logging (signals only, no
-auto-action), copy/paste (logged, not blocked), disconnect (windowed session
-survives), double-submit (rate-limited, not penalized), wrong language
-(blocked at submit with a clear 400, no attempt consumed). No path found
-where an innocent mistake silently zeroes a candidate. The anti-cheat model
-is signals-for-humans, which is the right posture for recruiting.
-
-## Re-checked, fine
-- Invitation expiry windows enforced (`expires_at` checks in validate +
-  redeem paths); failed-redeem counters rate-limit brute force.
-- Candidate sees per-test results with failed-case index — feedback quality
-  comparable to the student seat.
+## Trust/fairness perception summary
+The platform's honest-by-design choices (fail-open submission gate, advisory-not-proof documentation posture, consent dialog) are exactly what a candidate-rights-aware recruiting flow needs. The single inversion of that posture is JA3-1/CR3-1 — fix it before the next live recruiting window that might need an extension.

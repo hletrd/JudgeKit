@@ -1,44 +1,21 @@
-# Document Specialist — RPF Cycle 2 (2026-06-11)
+# Document Specialist — RPF Cycle 3 (2026-06-11)
 
-**HEAD reviewed:** 4cf01035 (main)
+**HEAD reviewed:** 63429d97. Checked: docs/ against the code they describe, with emphasis on files touching the cycle-1/2 features (exam integrity, backups, deploy hardening, retention).
 
-## Doc/code mismatches
+## DOC3-1 — `docs/exam-integrity-model.md` describes an enforcement behavior the code intentionally removed (MEDIUM, High, CONFIRMED)
+Line 55: "Without a fresh heartbeat the submission is rejected with `HTTP 403 antiCheatHeartbeatRequired`." Reality (`src/lib/assignments/submissions.ts:328-355`): fail-OPEN — the submission is accepted and a `submission_stale_heartbeat` escalate-tier event is recorded for human review; the error id survives only as a dead union member (`submissions.ts:36`). The "What this closes" bullet is therefore wrong (the curl path is flagged, not closed) while the doc is stamped `_Last updated: 2026-06-11_`. This is the platform's authoritative integrity statement for instructors/recruiters; it must describe the fail-open posture, the flag's name/tier, and the reviewer's obligation. Bundle the dead-member removal.
 
-### DOC2-1 — `docs/data-retention-policy.md` omits `code_snapshots` (MEDIUM, paired with SEC2-2)
-The policy table covers chat, anti-cheat events, recruiting, submissions,
-login events, audit events, and (since cycle 1) source drafts — but not the
-highest-volume sensitive table, `code_snapshots`. Whatever retention the fix
-picks must land in the policy doc in the same commit, including the env
-override name.
+## DOC3-2 — Cycle-1's accommodation feature and its integrity semantics are undocumented (LOW-MEDIUM, High, CONFIRMED)
+`docs/exam-integrity-model.md` doesn't mention staff time extensions at all, although they change grading-relevant timing (`extendExamSession`, durable-audited, may exceed the assignment close). Once CR3-1 is fixed, the doc should state: extensions move the per-participant window; telemetry and submission acceptance both follow `personal_deadline`; extensions are durably audited (`exam_session.extend`). One paragraph.
 
-### DOC2-2 — Deploy runbook lacks the BuildKit failure signature (HIGH ops, part of DEFERRED-OPS-1)
-The confirmed signature (`failed to solve: Internal: unknown blob sha256:...
-in history`), its confirmed remedy (`docker buildx history rm --all`,
-metadata-only, zero downtime), the explicit NON-remedy (`docker builder
-prune -af` does not clear it), and the re-trigger mechanism (full-parallel
-compose bake) must be documented in AGENTS.md's deploy-hardening section /
-ops runbook so the next operator doesn't rediscover it. Include the
-CLAUDE.md guardrail reminder (never `docker image prune -a` on worker hosts).
+## DOC3-3 — `RESTORE_DATABASE_URL` restore-test exists only inside the script (LOW, High, CONFIRMED)
+`scripts/verify-db-backup.sh` gained a full restore-test (abfa90f5) gated on `RESTORE_DATABASE_URL`/arg 2, but `docs/deployment.md:379` still describes the script pair without it, no runbook entry, and grep finds zero references outside the script. An operator following the docs will never enable the stronger check. Add: the env var, the CREATE DATABASE rights requirement, the role-match caveat (D3-3 — `ON_ERROR_STOP` + dump ownership statements), and the skip-notice meaning, in `docs/deployment.md` (backup section) and/or `docs/operator-incident-runbook.md`.
 
-### DOC2-3 — data-retention-maintenance docstring count (LOW, mechanical)
-`src/lib/data-retention-maintenance.ts:101-104` says "Seven independent
-prunes" — adding the snapshots prune makes it eight; update the sentence in
-the same commit (this comment was updated correctly in cycle 1; keep the
-streak).
+## Verified accurate (no action)
+- `docs/data-retention-policy.md`: code_snapshots row (180 d, `CODE_SNAPSHOT_RETENTION_DAYS`, createdAt key) matches `data-retention.ts` / `data-retention-maintenance.ts`; the "eight prunes" docstring matches the allSettled set.
+- AGENTS.md "Deploy hardening": BuildKit signature, remedy (`docker buildx history rm --all`), non-remedy (`builder prune -af`), sequential default, COMPOSE_PARALLEL_LIMIT — all match `deploy-docker.sh` at this HEAD. The runbook's deploy-build-failure scenario matches `run_remote_build`'s behavior (single retry, loud warn).
+- `deploy-docker.sh` header env-var docs match the implemented flags (LANGUAGE_BUILD_STRATEGY default sequential verified at the branch point).
+- `docs/exam-integrity-model.md`'s "deliberate telemetry boundaries" section accurately reflects `CLIENT_EVENT_TYPES` and the absence of fullscreen/second-device collection.
+- CLAUDE.md production guardrails (no `docker system prune --volumes`; algo app-only flags) are consistent with `.env.deploy.algo` expectations described in the run context.
 
-## Verified accurate (spot-checked against code)
-- `docs/exam-integrity-model.md` "Deliberate telemetry boundaries" (cycle-1
-  F13b) matches the implemented posture (no fullscreen signal; similarity +
-  snapshot replay as containment).
-- `.env.example` / `.env.production.example` / `docs/deployment.md` document
-  NODE_ENCRYPTION_KEY vs PLUGIN_CONFIG_ENCRYPTION_KEY correctly (cycle-1 F4).
-- deploy-docker.sh header comments match behavior for all flags checked
-  (SKIP_*, LANGUAGE_FILTER presets incl. `everything`, DEPLOY_INSTANCE,
-  SUDO_PASSWORD fallback, DEPLOY_SSH_RETRY_MAX clamp).
-- The claim-query invariant comments added by F1 accurately describe
-  Postgres CTE semantics (verified: two modifying CTEs may not update the
-  same row; the `<>` guard plus SET-side compensation is the correct shape).
-
-## Carried doc items
-- DOC-C5-2 (`staleClaimTimeoutMs` doc field), C7-DS-1 (README /api/v1/time)
-  — unchanged preconditions, carried in the register.
+Final sweep across docs/: no other claim-vs-code mismatch found in the files adjacent to this cycle's change surface; older standing docs (threat-model, monitoring) were re-skimmed at the section level and remain consistent with the register's carried items.

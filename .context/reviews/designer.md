@@ -1,51 +1,22 @@
-# Designer (UI/UX + a11y) — RPF Cycle 2 (2026-06-11)
+# Designer (UI/UX + a11y) — RPF Cycle 3 (2026-06-11)
 
-**HEAD reviewed:** 4cf01035 (main)
-**Method:** static markup/a11y review of the cycle-1 UI surface + key exam
-flows. Live agent-browser pass remains blocked (DEFER-ENV-GATES: requires a
-running server + provisioned Postgres reachable from the review env); all
-findings below are backed by text-extractable evidence (selectors, classes,
-ARIA) per the multimodal caveat.
+**HEAD reviewed:** 63429d97. Environment note: no browser is provisioned in this run environment (DES-ENV carry — agent-browser cannot reach the deployed instances' auth flows, and no local dev server with seeded data is available); findings below are from component/source inspection with text-extractable evidence (selectors, classes, ARIA), per the multimodal caveat.
 
-## Findings
+## DES3-1 — Extension announcement UX is well-built; one gap: the EXPIRED state's recovery moment isn't announced as a recovery (LOW, Medium)
+`ExamDeadlineSync` (`src/components/exam/exam-deadline-sync.tsx:103-112`) shows `role="status"` "deadline extended" + toast, and `CountdownTimer` un-expires (the red `role="alert"` examTimeExpired text disappears, badge returns to a live countdown). For a student staring at the red "time expired" panel, the transition is visually complete after `router.refresh()` — but the panel swap itself is unannounced for screen-reader users beyond the status note (which IS the right mechanism; aria-live="polite" via role=status). Verdict: acceptable; consider `aria-live="assertive"` for the extension note only when transitioning from expired→active, since that user believed their exam was over. Cosmetic; defer-eligible.
 
-### DES2-1 — Windowed-exam countdown does not reflect a live extension (LOW-MEDIUM, High confidence — UX face of V2-1)
-`groups/[id]/assignments/[assignmentId]/page.tsx:196-201`: `CountdownTimer`
-gets a fixed epoch. For the student the moment of expiry is the highest-
-anxiety moment in the product; if staff extended them mid-session the timer
-still hits 0 and the UI offers no path but a manual reload. Recommended UX:
-refetch the session deadline (GET exam-session exists) on an interval and on
-`visibilitychange`; when the deadline moves later, the countdown should
-visibly extend (and a small `role="status"` note "your deadline was extended
-by staff" defuses the confusion in both en/ko).
+## DES3-2 — Anti-cheat warning toasts continue while events are silently rejected (LOW, ties to CR3-1)
+`anti-cheat-monitor.tsx:215-218`: on tab switch the student sees `toast.warning(warningMessage)` regardless of whether the POST succeeded. During the CR3-1 blackout the student is warned ("this is being recorded") while nothing is recorded — the UX actively misinforms during accommodations. The CR3-1 server fix resolves this without client changes; no separate UI work needed. Recorded so the persona files don't double-count it.
 
-### DES2-2 — ExamExtendDialog ergonomics (LOW, High confidence)
-`exam-extend-dialog.tsx`: (a) `<Input type="number">` without
-`inputMode="numeric"` → full keyboard on mobile (staff often proctor from a
-tablet); (b) no Cancel button in `DialogFooter` and no form-submit on Enter —
-sibling `score-override-dialog` sets the local convention; match it where
-cheap. The trigger button's `size-5` hit target is below the 24×24 CSS px
-WCAG 2.2 target-size minimum (2.5.8) — acceptable as AA-level exception
-(inline target), but consider `size-6`+padding if touched anyway.
+## DES3-3 — `ExamExtendDialog` post-G6 state (verified good)
+`exam-extend-dialog.tsx`: numeric inputMode, Enter-submit via form, Cancel button with `common.cancel` in both locales, client-side 1–600 range mirror of the zod bound. Matches score-override-dialog conventions. No further polish needed this cycle.
 
-### DES2-3 — Positive notes (keep)
-- The amber overrides-active banner (`system-settings-form.tsx:57-69`) uses
-  `role="status"`, the established yellow-700/dark:yellow-400 contrast
-  pair, and plain-language consequence copy in both locales.
-- The draft-recovered toast copy ("This is your own saved work…") directly
-  addresses the exam-stress misread; time-stamped variant is the right call.
-- ipOverlap advisory panel renders only when non-empty, uses
-  `role="region"` + aria-label, and includes the benign-explanations hint —
-  good restraint against false-accusation UI.
-- The `/problems` number-column hint ships as `title` + `sr-only` text in
-  both locales; numbering ambiguity is now discoverable without a tooltip
-  pointer device.
+## DES3-4 — Korean typography policy compliance (verified)
+Repo-wide grep: every `tracking-*` use is locale-guarded (`locale !== "ko"`) or scoped to Latin/mono content with an explanatory comment (`public-header.tsx:305-306`, `public-problem-set-detail.tsx:55`, discussion headings, `access-code-manager.tsx:153` access codes); `globals.css:129-136` zeroes letter-spacing for `ko`. No violations at this HEAD.
 
-## Korean typography check (CLAUDE.md rule)
-Verified: no `tracking-*` utilities or custom `letter-spacing` were added to
-any Korean-rendering markup in the cycle-1 diff (grep over the diff files
-returned only pre-existing Latin-context classes). Rule holds at HEAD.
+## DES3-5 — New strings i18n parity (verified)
+`examDeadlineExtended` and the cycle-1/2 additions exist in both `messages/en.json` and `messages/ko.json` (commit-level confirmation d693939c adds 1 key to each; en/ko parity test suite green in the unit run).
 
-## Carried
-- ST2 expired-editor state (design needed: "time expired, draft saved").
-- DES-ENV live browser pass (exit: provisioned staging host).
+## Standing items
+- The instructor anti-cheat dashboard's new IP-overlap panel renders only when non-empty with benign-explanation framing — good restraint (no scary empty table).
+- DES-ENV (no live-browser audit possible from this environment: WCAG contrast spot-checks, focus order on the exam workspace, INP under load) remains carried with the same exit criterion: provisioned browser access or local seeded dev server.

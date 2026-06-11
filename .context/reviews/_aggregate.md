@@ -1,118 +1,105 @@
-# RPF Cycle 2 (2026-06-11) — Aggregate Review
+# RPF Cycle 3 (2026-06-11) — Aggregate Review
 
 **Date:** 2026-06-11
-**HEAD reviewed:** 4cf01035 (main) — i.e. cycle-1's completed tree, deployed
-and healthy on all three targets.
-**Cycle:** 2/100 (orchestrator-numbered)
-**Lenses:** 11 specialist + 6 persona files in this directory, all refreshed
-for this HEAD (cycle-1 versions overwritten per run rules).
+**HEAD reviewed:** 63429d97 (main) — cycle-2's completed tree, deployed and
+healthy on all three targets (test.worv.ai / oj.auraedu.me / algo.xylolabs.com).
+**Cycle:** 3/100 (orchestrator-numbered)
+**Lenses:** 11 specialist + 6 persona files in this directory, all refreshed at
+this HEAD (cycle-2 versions copied to `_archive/cycle-2-2026-06-11/`).
 **Baseline gates on review HEAD (executed):** tsc 0 · eslint 0/0 ·
-lint:bash clean · unit 332 files / 2571 tests PASS.
+lint:bash clean · unit 333 files / 2579 tests PASS.
 
 ## AGENT FAILURES
 None of the named reviewer subagents (code-reviewer, perf-reviewer, …) are
 registered in this environment (no Agent tool is available to this cycle's
-runner). Per the fan-out fallback, every lens was executed directly by the
-cycle agent and written to its own file; no lens was dropped. Recorded here
-for provenance.
+runner — same condition as cycles 1–2). Per the fan-out fallback, every lens
+was executed directly by the cycle agent and written to its own file; no lens
+was dropped. Recorded for provenance.
 
 ## Merged findings (deduped; severity/confidence preserved at max across lenses)
 
-### AGG2-1 — `code_snapshots`: no retention + unvalidated unbounded `language` (MEDIUM, High, CONFIRMED)
-**Lenses:** code-reviewer CR2-1, security-reviewer SEC2-1+SEC2-2, perf
-PERF2-1, document-specialist DOC2-1/3, critic #1, perspective-student,
-perspective-admin AD2-2, perspective-security §4 — 8-lens agreement (highest
-signal this cycle).
-`src/app/api/v1/code-snapshots/route.ts:14-19` (no `isJudgeLanguage` gate, no
-max length on `language`); `src/lib/data-retention.ts` (no key);
-`src/lib/data-retention-maintenance.ts:135-140` (not pruned);
-`docs/data-retention-policy.md` (no row). Highest-volume sensitive table
-(≤256 KiB row / ~10 s per active examinee) outlives the 180 d anti-cheat
-events derived from it. Fix: registry-gate language (mirror draft route F2),
-add `codeSnapshots: 180` retention (env `CODE_SNAPSHOT_RETENTION_DAYS`),
-prune on `createdAt` (index `cs_created_at_idx` exists), policy-doc row,
-docstring count 7→8, tests.
+### AGG3-1 — Anti-cheat ingest ignores staff-extended personal deadlines (MEDIUM-HIGH, High, CONFIRMED)
+**Lenses:** code-reviewer CR3-1, security-reviewer SEC3-1, verifier V3-2,
+tracer Trace 1, debugger D3-1, critic §1, architect A3-1 (root cause),
+test-engineer TE3-1, designer DES3-2, perspective-student ST3-1,
+perspective-instructor IN3-1, perspective-assistant TA3-1,
+perspective-job-applicant JA3-1, perspective-security §1,
+perspective-admin AD3-3 — **15-lens agreement; highest signal this cycle.**
+`src/app/api/v1/contests/[assignmentId]/anti-cheat/route.ts:102-104` rejects
+all events once `now > assignment.deadline`, while `extendExamSession`
+(`src/lib/assignments/exam-sessions.ts:151`) deliberately moves
+`exam_sessions.personal_deadline` past that close and
+`validateAssignmentSubmission` (`src/lib/assignments/submissions.ts:259-271`)
+honors it. Consequences: telemetry blackout during accommodation windows;
+`submission_stale_heartbeat` escalate-tier FALSE flags per submission
+(`submissions.ts:312-355`); heartbeat-gap reports paint the granted window as
+suspicious; client retry churn. Fix: shared pure helper
+`getEffectiveExamCloseAt(assignment, examSession)` (per A3-1) used by the
+anti-cheat boundary check (one indexed lookup only on the past-deadline
+branch); red-first tests per TE3-1 (extended→accepted, doubly-expired→403,
+scheduled-mode unchanged, no false flag).
 
-### AGG2-2 — DEFERRED-OPS-1: deploy BuildKit history corruption — CONFIRMED diagnosis, harden deploy-docker.sh (HIGH ops, CONFIRMED — injected TODO)
-**Lenses:** security-reviewer SEC2-4, tracer Trace 1, architect A2-2,
-document-specialist DOC2-2, critic #3, perspective-admin AD2-1,
-perspective-security §6.
-Diagnosis (verified on auraedu, Docker 29.1.3/buildx 0.20.0): "Internal:
-unknown blob … in history" lives in the BuildKit HISTORY store; `docker
-builder prune -af` does NOT clear it; `docker buildx history rm --all` does
-(metadata-only). Re-triggered by the ~90-target parallel compose bake
-(`deploy-docker.sh:651-656`); sequential `LANGUAGE_FILTER=all` loop is the
-working remedy (how 4cf01035 reached auraedu+algo). Hardening (BEFORE this
-cycle's deploy): (a) cap parallelism / fall back to the sequential loop in
-the all-languages path; (b) auto-recovery — detect the signature in build
-output → `docker buildx history rm --all` on the remote → retry the step
-once; (c) document signature+remedy in AGENTS.md deploy-hardening + runbook;
-(d) close DEFERRED-OPS-1 in plans with this resolution.
+### AGG3-2 — `docs/exam-integrity-model.md` misstates the heartbeat gate as a hard block (MEDIUM, High, CONFIRMED)
+**Lenses:** verifier V3-1, security-reviewer SEC3-2, document-specialist
+DOC3-1 (+DOC3-2 extension paragraph), critic §2, code-reviewer CR3-3 (dead
+union member), perspective-instructor IN3-2 — 6-lens agreement.
+Doc line 55 claims 403 `antiCheatHeartbeatRequired`; code fails OPEN and flags
+(`submissions.ts:328-355`); the error id survives only as a dead union member
+(`submissions.ts:36`). Fix: rewrite the enforcement section to the fail-open +
+flag posture incl. reviewer obligation; add the extensions paragraph (DOC3-2);
+remove the dead union member.
 
-### AGG2-3 — Rate-limit first-insert race → user-visible 500 (LOW-MEDIUM, Medium on frequency / High on mechanism, CONFIRMED)
-**Lenses:** code-reviewer CR2-2, debugger D2-1, tracer Trace 3, security
-SEC2-3, perf PERF2-3, perspective-security §6.
-`src/lib/security/api-rate-limit.ts:84-92, 244-252, 353-361` +
-`src/lib/security/rate-limit-core.ts:96-104`: bare INSERT after a FOR
-UPDATE that locked nothing → unique violation → 500. Fix:
-`onConflictDoNothing({ target: rateLimits.key })`; on 0-row insert, re-read
-(row exists now) and take the update path. Apply in the shared core where
-possible (keeps C7-AGG-9 consolidation debt flat) + structural test.
+### AGG3-3 — Remote smoke hero-heading expectation is not instance-brand-aware (LOW-MEDIUM, High, CONFIRMED — injected by cycle-2's deploy record)
+**Lenses:** verifier V3-3, test-engineer TE3-2, perspective-admin AD3-1,
+critic §3.
+`tests/e2e/public-shell.spec.ts:13` and `tests/e2e/responsive-layout.spec.ts:81`
+assert default-instance hero text; the h1 is config-driven
+(`src/app/page.tsx:31,67` via `homePageContent`) — fails red on healthy
+oj.auraedu.me. Fix: `E2E_HOME_HEADING` env-pattern override with current
+default; document in spec headers.
 
-### AGG2-4 — Staff-granted exam extension invisible to the participant until reload (LOW-MEDIUM, High, CONFIRMED)
-**Lenses:** verifier V2-1, tracer Trace 4, debugger D2-2, designer DES2-1,
-perspective-student ST2-NEW-1, perspective-instructor IN2-1,
-perspective-job-applicant JA2-1 — 7-lens agreement.
-`src/app/(public)/groups/[id]/assignments/[assignmentId]/page.tsx:168-201`:
-countdown deadline + `isExamExpired` are render-time snapshots; the
-session GET (`exam-session/route.ts:93`) already exists. Fix: client-side
-periodic + visibilitychange refetch of the personal deadline for windowed
-exams; extend the countdown live and show a `role="status"` "deadline
-extended" note (en+ko). Completes F12's accommodation story.
+### AGG3-4 — Exam-session GET poll wastes the staff-visibility resolution on every student poll (LOW-MEDIUM, High, CONFIRMED)
+**Lenses:** perf-reviewer PERF3-1, code-reviewer CR3-4, test-engineer TE3-3.
+`groups/[id]/assignments/[assignmentId]/exam-session/route.ts:112-116` —
+resolve `canViewOthers` lazily (only when `?userId=` present and ≠ self);
+~40 % of the new poll's query budget saved; semantics identical; pin with
+tests per TE3-3.
 
-### AGG2-5 — Retention-coverage class-closer test (MEDIUM leverage, test gap)
-**Lenses:** critic #1, test-engineer T2-2. Structural unit test: every
-user-writable timestamped table in schema.pg.ts is either retention-pruned
-or on a documented allowlist — prevents the next "we forgot table X"
-(this cycle: snapshots; last cycle: drafts).
+### AGG3-5 — AntiCheatMonitor retries permanent 4xx rejections (LOW, High, CONFIRMED)
+**Lenses:** code-reviewer CR3-2, perf-reviewer PERF3-2, tracer Trace 2,
+debugger D3-2, architect A3-2.
+`src/components/exam/anti-cheat-monitor.tsx:52-69` — tri-state send result;
+drop 4xx (except 408/429) without queueing; keep retries for network/5xx/429.
 
-### AGG2-6 — ExamExtendDialog polish (LOW, High)
-**Lenses:** code-reviewer CR2-3, designer DES2-2. `inputMode="numeric"`,
-Cancel button, Enter-submit via form; optionally ≥24 px trigger target.
+### AGG3-6 — Backup restore-test undocumented (+role-mismatch false-negative caveat) (LOW, High, CONFIRMED)
+**Lenses:** document-specialist DOC3-3, debugger D3-3, perspective-admin AD3-2.
+`RESTORE_DATABASE_URL` referenced nowhere outside `scripts/verify-db-backup.sh`;
+document in `docs/deployment.md` backup section (+runbook), incl. CREATE
+DATABASE rights and the dump-owner role caveat.
 
-### AGG2-7 — Review/plan artifact sprawl (LOW, housekeeping)
-**Lenses:** critic #4, perspective-admin AD2-3. Sweep pre-2026-06 review
-files from `.context/reviews/` root into `_archive/`.
+### AGG3-7 — `run_remote_build` retry overwrites the first failure log (LOW, Medium, CONFIRMED)
+**Lenses:** tracer Trace 3, debugger D3-4, critic §4.
+Forensics-only impact (warn lines preserve the signature). Defer-eligible;
+one-line fix if touched.
 
-### AGG2-8 — INFO items
-- `drizzle/pg/meta/_journal.json` missing trailing newline (CR2-4) — bundle
-  with next journaled migration.
-- IN2-2 pre-start accommodation grants (product note → register, with TA2).
+## Lens-local notes not merged into actionable findings
+- architect A3-3 (SSH-helpers extraction trigger still TRIPPED, ~70 lines from
+  the 1,500 size trigger) — register carry, unchanged obligation.
+- critic §4 / architect A3-5 (deferred-register hop depth) — handled by this
+  cycle's plan re-materializing the CARRY row.
+- designer DES3-1 (assertive announcement on expired→extended) — cosmetic,
+  defer-eligible.
+- assistant TA3-1 follow-up candidate (render `exam_session.extend` audit in
+  the participant timeline) — future-cycle candidate, recorded in the plan's
+  deferred register.
+- job-applicant JA-environment-clarity (language availability preview) — LOW
+  carry, unchanged.
 
-## Verified-good at HEAD (explicit, to prevent re-flagging)
-All 13 cycle-1 fixes re-verified from code (see verifier.md table): F1 claim
-accounting sound (LIMIT 1 + all requeue paths null judgeWorkerId); F3 scope
-filters are problems-only; F12 cannot leak past-close to unextended
-participants (start clamps to deadline); `namedToPositional` dedupes repeated
-params; `recordAuditEventDurable` never throws; new endpoints' authz gates
-correct; i18n parity holds; no Korean tracking utilities introduced.
-
-## Carried register (unchanged preconditions — origin: cycle-1 plan deferral table)
-D1 (reclaim deadlock, self-recovering) · D3 (registration clock-skew) ·
-D4 (pre-hydration keystrokes) · CR2/P2 (claim-route scoringModel SELECT) ·
-P3 (draft write load) · T4 (backup restore-test CI) · IN3/JA2 (judging-delay
-banner) · TA1 (TA exam-content separation) · TA2 (per-assignment TA grading;
-now bundled with IN2-2) · TR2 (per-assignment AI override) · TH1 (pino test
-noise) · DES-ENV (live browser pass) · ST2 (expired-editor state; pair with
-AGG2-4) · PS2 (fullscreen posture) · ARCH-CARRY-1/2 · C3-AGG-5
-(deploy-docker.sh SSH-helpers extraction — trigger still TRIPPED; this
-cycle's build-step edits do not touch SSH helpers; file now ~1335 lines) ·
-DOC-C5-2 · C7-DS-1 · N7-C7 · DEFER-ENV-GATES.
-
-## Recommended implementation order (cycle 2)
-1. AGG2-2 deploy hardening (must precede DEPLOY_CMD).
-2. AGG2-1 snapshots (gate + retention + docs, tests first).
-3. AGG2-5 class-closer test (lands naturally with AGG2-1).
-4. AGG2-3 rate-limit race (shared core + tests).
-5. AGG2-4 live deadline refresh (+ ST2-adjacent status note).
-6. AGG2-6 dialog polish · AGG2-7 archive sweep.
+## Verified-sound this cycle (cross-lens, no action)
+Rate-limit conflict-safe insert (all sites + tests); `run_remote_build`
+pipeline-exit correctness under `set -euo pipefail`; CountdownTimer
+expired→extended reset; ExamDeadlineSync mounting in the expired state;
+sweepStaleWorkers idempotence; extension authz + durable audit + SQL
+composition; ipOverlap gating/parameterization/index alignment; test-seed
+production inertness; Korean letter-spacing policy compliance; en/ko parity
+of new strings; data-retention doc accuracy incl. code_snapshots row.

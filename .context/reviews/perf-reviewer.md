@@ -1,48 +1,23 @@
-# Perf Reviewer — RPF Cycle 2 (2026-06-11)
+# Perf Reviewer — RPF Cycle 3 (2026-06-11)
 
-**HEAD reviewed:** 4cf01035 (main)
-**Scope:** hot paths (submit, claim, SSE, catalog pages), cycle-1's perf
-changes, retention jobs, dashboard fetches.
+**HEAD reviewed:** 63429d97. Focus: steady-state load introduced by cycle-2 features, hot-path query counts, and verification of cycle-1/2 perf claims.
 
 ## Findings
 
-### PERF2-1 — `code_snapshots` grows without bound (MEDIUM, High confidence — shared with SEC2-2)
-Every active examinee posts a snapshot every 10 s while typing (60 s idle),
-≤256 KiB/row (`problem-submission-form.tsx:140-182`), and nothing ever
-deletes rows. A 100-seat 2-hour exam adds up to ~70k rows; a year of courses
-makes the `cs_user_problem_idx` and timeline queries progressively slower and
-the DB volume grows monotonically. Fix: retention prune keyed on `createdAt`
-(index already exists), batched like the existing `batchedDelete`.
+### PERF3-1 — New 60 s exam-session poll pays ~5–6 queries/poll, most of it avoidable for plain students (LOW-MEDIUM, High, CONFIRMED)
+`src/app/api/v1/groups/[id]/assignments/[assignmentId]/exam-session/route.ts:93-131` (GET), polled every 60 s + every tab refocus by `ExamDeadlineSync` for EVERY active windowed examinee. Per poll: `canAccessGroup` (1–2 queries), assignment `findFirst` (1), **`canViewAssignmentSubmissions` (2–3 queries — group/instructor/TA resolution)**, `getExamSession` (1). The `canViewAssignmentSubmissions` resolution is only consumed when `?userId=` is present (staff querying another participant) — students never send it. With 300 concurrent examinees that is ~900–1,000 wasted queries/min at exactly the moment the DB is also absorbing submissions and anti-cheat events. Fix: resolve `canViewOthers` lazily — only when `userId` param present and ≠ `user.id`. Saves ~40 % of the poll's query budget with zero semantic change. (Also flagged by code-reviewer CR3-4.)
 
-### PERF2-2 — ipOverlap report fetch per dashboard mount (INFO, verified acceptable)
-`anti-cheat-dashboard.tsx:208-228` fetches the report once per mount (not on
-the 30 s poll) — deliberate and fine. The UNION CTE is assignment-scoped and
-hits `ace_assignment_user_idx` / exam_sessions PK; LIMIT 100 on both arms.
-No action.
+### PERF3-2 — Anti-cheat retry queue does sequential awaited sends including permanently-dead 4xx events (LOW, Medium, CONFIRMED)
+`src/components/exam/anti-cheat-monitor.tsx:75-88` — `performFlush` awaits each `sendEvent` serially; when the queue holds 403-rejected events (see CR3-1 interplay) they burn 3 retries × backoff each before being dropped, head-of-line-delaying real events behind them. Dropping permanent 4xx rejections immediately (CR3-2 fix) also fixes the queue-latency profile. Sequential sending itself is fine at these volumes (events are rare); no parallelization needed.
 
-### PERF2-3 — Rate-limit conflict-500 wastes a request round-trip (LOW)
-Same defect as CR2-2; perf angle: the aborted transaction forces the client
-into a retry it should never need on the first-use path. Fix as CR2-2.
+### PERF3-3 — ipOverlap report query shape is index-aligned (verified, no action)
+`src/app/api/v1/contests/[assignmentId]/anti-cheat/route.ts:193-231`: both CTE legs filter on `assignment_id` (covered by `ace_assignment_user_idx` / `es_*` indexes, schema.pg.ts:1176-1178); DISTINCT collapses heartbeat volume before the joins; both outer queries LIMIT 100. For a 500-examinee contest with ~8 h of 60 s heartbeats (~240 k rows) this is a single-digit-ms index scan + hash agg. Acceptable as an on-demand staff view; no caching needed.
 
-## Verified-good
-- **Cycle-1 F3 (catalog numbers in SQL)** delivers the intended win: both
-  pages now transfer ≤ PAGE_SIZE ranked rows instead of the whole catalog id
-  list per view (`src/lib/problems/catalog-numbers.ts`); `row_number()` runs
-  over the scope filter with the existing order, and the outer
-  `inArray(ids)` keeps the result tiny.
-- **Cycle-1 F1/AGG-5 deslop**: submit hot path kept the single parallel
-  enrollment+examSession round trip (`submissions.ts:229-242`), now hoisted
-  before the schedule checks (one extra read on reject paths — accepted and
-  commented).
-- **Settings double-fetch removed** (5e14fdf9): `getEffectiveModeRestrictions`
-  accepts a preloaded settings record; both AI-flag resolvers pass it.
-- SSE connection tracking remains O(1) per add/remove with two-phase eviction
-  (`submissions/[id]/events/route.ts:38-72`); ARCH-CARRY-2 (>500-conn
-  eviction behavior) carries with unchanged preconditions.
-- Draft autosave write load remains bounded (3 s debounce + per-user rate
-  limit) — P3 monitoring note carries.
+## Verified perf claims from cycles 1–2 (evidence-based)
+- AGG-3 catalog ranking: `/problems` + `/practice` no longer fetch every visible id per view — `getCatalogNumbersForIds` transfers ≤ PAGE_SIZE rows (`src/lib/problems/catalog-numbers.ts`, real-Postgres integration test present). Confirmed in source; the old full-scan code is gone.
+- 5e14fdf9 settings double-fetch: submit-path checks re-parallelized; `getConfiguredSettings()` is sync-cached. Confirmed.
+- `sweepStaleWorkers` background interval (60 s) is two indexed UPDATEs on a table with ~1 row per worker — negligible.
+- Rate-limit conflict-safe insert adds zero queries to the happy path (insert was already there); the lost-race path adds one re-read inside the same tx. Fine.
+- `ExamDeadlineSync` interval is ≥60 s with in-flight dedup and no backoff storm on failure (errors keep the current deadline silently). Client side is well-behaved; the cost concern is server-side (PERF3-1).
 
-## Carried (unchanged preconditions, see cycle-1 register)
-- CR2/P2 claim-route per-claim scoringModel SELECT (~1 ms; fold into next
-  claim-SQL change).
-- P3 draft-autosave contest write load (watch p95 during first live contest).
+Final sweep: no N+1 or unbounded-fetch patterns introduced by the cycle-1/2 diffs; remaining known hotspots are unchanged and carried in the register (C7-AGG-9 consolidation, etc.).

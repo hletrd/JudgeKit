@@ -1,49 +1,23 @@
-# Persona: Student taking assignments/exams — RPF Cycle 2 (2026-06-11)
+# Persona: Student taking assignments/exams — RPF Cycle 3 (2026-06-11)
 
-**HEAD reviewed:** 4cf01035. Seat: enrolled student in a group, windowed exam
-and regular assignments. Walked: assignment list → start exam → editor →
-submit → results; failure modes: disconnect, timeout, deadline, recovery.
+**HEAD reviewed:** 63429d97. Walked the windowed-exam flow as a student would experience it: start → work → deadline pressure → extension → disconnect → submit.
 
-## What works well at HEAD
-- **Crash/disconnect recovery is genuinely good now.** localStorage draft +
-  server-side autosave + the NEW recovered-draft toast with timestamp
-  (cycle-1 F9) means losing a laptop mid-exam costs at most ~3 s of typing,
-  and the recovery is explained ("your own saved work") instead of looking
-  like planted code.
-- **The windowed model is fair on disconnect:** my personal deadline is a
-  server-side row; reconnecting on any device resumes the same window.
-  Submissions are validated against DB time, not my clock.
-- **Submission feedback** (status SSE, per-test results, failed-case index)
-  is fast and specific; queue-status endpoint gives an honest "where am I"
-  answer under load.
+## What got better since cycle 2 (verified in code)
+- If staff extends my time, my countdown now actually moves (within ≤60 s or on tab refocus), I get a toast plus a persistent "deadline extended" note, and the problem list comes back even if I was already staring at the red "time expired" panel (`ExamDeadlineSync` mounts in the expired state — `page.tsx:197-207`). This was the single most anxiety-inducing failure mode from the cycle-2 persona review; it is fixed.
+- The extend dialog my instructor uses is no longer fiddly (Enter submits, Cancel exists) — indirectly my wait time for a rescue is shorter.
+- A draft I forgot to submit announces itself when recovered (c7af2a37).
 
-## Pain points found this cycle
+## ST3-1 — During my accommodation window, the platform quietly treats me as suspicious (MEDIUM-HIGH from my seat; same root cause as CR3-1)
+If my extension carries me past the original assignment deadline: I keep seeing "tab switching is recorded" warnings (so I behave carefully), but every event my browser sends is rejected server-side, and **each submission I make adds a `submission_stale_heartbeat` flag to the instructor's dashboard against my name**. I have no way to know, no way to fix it, and the students MOST likely to hit this are accommodation holders. If a grade dispute ever cites those flags, the harm is real. This must be fixed server-side (CR3-1) — from my seat it is a fairness bug, not a telemetry bug.
 
-### ST2-NEW-1 — If staff extends my time, I can't tell (LOW-MEDIUM, High confidence)
-The countdown is fixed at page render (`page.tsx:196-201`). Scenario: outage
-eats 20 minutes, instructor grants +20 — my timer still hits 0; I panic-
-submit or stop, and only a reload shows the truth. The server accepts my
-work the whole time, but I don't know that. This is the anxiety-inducing
-failure mode the extension feature was meant to remove. Fix: live refetch of
-the personal deadline + a status note when it changes (shared with V2-1).
+## ST3-2 — Disconnect/timeout mid-exam (re-walked; acceptable)
+- Editor drafts: autosave + recovery notification; offline anti-cheat events queue in localStorage and flush on `online`/refocus (bounded retries).
+- Countdown: re-syncs server time on refocus; background-tab drift handled; threshold toasts suppressed after long-hidden (no toast storm on return).
+- Deadline sync: offline poll failures keep the current deadline (extension-only contract means I can never LOSE time from a flaky network).
+- Submission at the wire: the server is authoritative (`validateAssignmentSubmission`); if my heartbeats went stale because of wifi, I am NOT blocked (fail-open) — correct call for my anxiety, and the flag is reviewable context.
 
-### ST2 (carried) — At expiry the editor just… stays open
-After my personal deadline passes, the editor remains editable; submission
-fails server-side with `assignmentClosed`/deadline errors. I would rather see
-an explicit "time expired — your draft is saved; submissions are closed"
-state. Carried from cycle 1 with the same exit criterion (pair it with the
-ST2-NEW-1 refetch work, which provides the trigger signal).
+## ST3-3 — Clarity nits (LOW, carried)
+- ST2 (problem statement sample-IO copy affordances) and the pre-start accommodation gap (IN2-2: extensions need an existing session, so extra time can only be granted AFTER I start) remain carried with unchanged owner decisions. The workaround (extend right after start) works but requires the instructor to remember per-student.
+- When my exam-session poll 401s after a session expiry + re-login in another tab, the poller just stays silent (deadline frozen until refocus refetch succeeds) — acceptable, no false data shown.
 
-### ST2-NEW-2 — Snapshot/anti-cheat is invisible but my data lives forever (privacy note, MEDIUM via SEC2-2)
-As a student my in-progress code is snapshotted every ~10 s during
-assignments. I'd expect that surveillance-adjacent data to expire like the
-anti-cheat events do (180 d); today it never does. The fix is the retention
-window — from the student seat this is a trust issue as much as a disk one.
-
-## Re-checked, fine
-- Problem statements render sanitized markdown with images; samples are
-  copy-able; limits visible per problem (`/problems` table shows time/memory).
-- Draft autosave does not fire pre-hydration (D4 carried, contract
-  documented); language switch preserves non-template work.
-- Anti-cheat events: only my own tab/copy/paste/blur activity is recorded,
-  during the exam window only, and the exam-integrity doc says exactly that.
+Net: the student experience at this HEAD is the best it has been across cycles; the one open item (ST3-1) is serious precisely because everything else now works.
