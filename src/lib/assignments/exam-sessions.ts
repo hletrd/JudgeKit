@@ -106,7 +106,14 @@ export async function startExamSession(
     });
 
     if (!session) {
-      throw new Error("assignmentClosed");
+      // Insert-then-vanish can only be an internal anomaly (the insert above
+      // either succeeded or conflicted with an existing row). Throwing
+      // `assignmentClosed` here told the student their OPEN exam was closed
+      // at the exact moment they tried to start — a panic-inducing false
+      // verdict they would not retry (RPF cycle-4 AGG4-4). The route's error
+      // switch deliberately has no case for this key, so it falls through to
+      // the generic retryable 500.
+      throw new Error("examSessionUnavailable");
     }
 
     return {
