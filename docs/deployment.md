@@ -379,6 +379,35 @@ pruning.
 - Database backup: `scripts/backup-db.sh`, `scripts/verify-db-backup.sh` (current runtime uses PostgreSQL)
 - Systemd backup timer: `scripts/online-judge-backup.service`, `scripts/online-judge-backup.timer`
 
+### Proving a backup is actually restorable (`RESTORE_DATABASE_URL`)
+
+Without extra configuration, `scripts/verify-db-backup.sh` only proves the
+dump is valid gzip and non-empty — a **truncated-but-valid-gzip backup still
+passes**. To run the FULL restore-test, give the script a throwaway
+PostgreSQL target:
+
+```bash
+RESTORE_DATABASE_URL='postgres://judgekit:***@localhost:5432/postgres' \
+  scripts/verify-db-backup.sh /backups/judgekit-YYYYMMDD.sql.gz
+# or as the 2nd positional argument
+```
+
+What it does: creates a temp database (`verify_restore_<ts>_<pid>`), restores
+the dump into it with `ON_ERROR_STOP`, asserts at least one table exists in
+`public`, then drops the temp database (trap-guarded cleanup).
+
+Requirements and caveats:
+
+- the DSN's role needs **CREATE DATABASE** rights on that instance;
+- the dump replays `ALTER ... OWNER TO <role>` / `CREATE EXTENSION`
+  statements, so restore into an instance where the **dump's owner role
+  exists** (in practice: the same `judgekit` role). On a generic scratch
+  instance with a different role the restore-test can FAIL for a perfectly
+  restorable dump — that is a role mismatch, not a bad backup;
+- without `RESTORE_DATABASE_URL` the script prints a NOTE that the
+  restore-test was skipped — the systemd timer runs the weak check unless
+  the env var is provided in the unit environment.
+
 ## Database Reset
 
 **PostgreSQL runtime:**

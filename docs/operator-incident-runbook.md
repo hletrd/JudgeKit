@@ -25,6 +25,11 @@ Use this when a backup download, restore import, or post-restore verification lo
 
 ### Checks
 - if the artifact is ZIP-based, verify the embedded checksum manifest matches
+- for `.sql.gz` dumps, run the FULL restore-test, not just the gzip check:
+  `RESTORE_DATABASE_URL=<base DSN with CREATE DATABASE rights> scripts/verify-db-backup.sh <dump>`
+  (restores into a throwaway DB and drops it; see docs/deployment.md →
+  "Proving a backup is actually restorable" for the role-match caveat —
+  a role/extension mismatch on a scratch instance can false-fail a good dump)
 - verify whether the restore failed before import, during import, or after service restart
 - compare the target deployment's branch/commit, schema state, and environment to the backup's metadata
 - if the target database was modified after a failed restore, take a fresh pre-recovery backup before retrying
