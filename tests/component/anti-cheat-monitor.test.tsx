@@ -1,7 +1,7 @@
 import { act, fireEvent, render, screen } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { AntiCheatMonitor } from "@/components/exam/anti-cheat-monitor";
-import { loadPendingEvents } from "@/components/exam/anti-cheat-storage";
+import { loadPendingEvents, savePendingEvents } from "@/components/exam/anti-cheat-storage";
 
 const apiFetchMock = vi.fn();
 
@@ -142,6 +142,105 @@ describe("AntiCheatMonitor", () => {
 
       const pending = loadPendingEvents("assignment-429");
       expect(pending.some((e) => e.eventType === "blur")).toBe(true);
+    });
+  });
+
+  // RPF cycle-4 AGG4-3: the flush claims one event at a time (synchronous
+  // load → save-without-it before each await) and is single-flight, so a
+  // reportEvent enqueue interleaving with a flush is never clobbered and a
+  // queued event is never sent twice by overlapping flush triggers.
+  describe("pending-queue serialization (AGG4-3)", () => {
+    async function acceptNoticeAndRender(assignmentId: string) {
+      render(<AntiCheatMonitor assignmentId={assignmentId} enabled />);
+      await act(async () => {
+        fireEvent.click(screen.getByRole("button", { name: "privacyNoticeAccept" }));
+        await Promise.resolve();
+      });
+    }
+
+    function eventTypeOf(call: unknown[]): string {
+      const init = call[1] as { body: string };
+      return (JSON.parse(init.body) as { eventType: string }).eventType;
+    }
+
+    afterEach(() => {
+      localStorage.clear();
+    });
+
+    it("does not lose an event reported while a flush is in flight", async () => {
+      savePendingEvents("assignment-race", [
+        { eventType: "copy", timestamp: 1, retries: 1 },
+      ]);
+
+      let resolveCopySend: ((value: { ok: boolean }) => void) | undefined;
+      apiFetchMock.mockImplementation(async (_url: unknown, init: unknown) => {
+        const { eventType } = JSON.parse((init as { body: string }).body) as { eventType: string };
+        if (eventType === "copy") {
+          // Hold the mount-flush send open so we can interleave a report.
+          return new Promise<{ ok: boolean }>((resolve) => {
+            resolveCopySend = resolve;
+          });
+        }
+        if (eventType === "blur") {
+          throw new Error("offline"); // transient → blur must be queued
+        }
+        return { ok: true };
+      });
+
+      await acceptNoticeAndRender("assignment-race");
+
+      // The mount flush has claimed "copy" and is awaiting its send. A blur
+      // arriving now fails transiently and is appended to the queue.
+      await act(async () => {
+        window.dispatchEvent(new Event("blur"));
+        await Promise.resolve();
+      });
+
+      // Complete the in-flight copy send; the flush loop finishes its single
+      // claimed iteration without overwriting the concurrent append.
+      await act(async () => {
+        resolveCopySend?.({ ok: true });
+        await Promise.resolve();
+      });
+
+      const pending = loadPendingEvents("assignment-race");
+      expect(pending.some((e) => e.eventType === "blur")).toBe(true);
+      expect(pending.some((e) => e.eventType === "copy")).toBe(false);
+    });
+
+    it("does not send a queued event twice when flush triggers overlap", async () => {
+      savePendingEvents("assignment-doubleflush", [
+        { eventType: "copy", timestamp: 1, retries: 1 },
+      ]);
+
+      let resolveCopySend: ((value: { ok: boolean }) => void) | undefined;
+      apiFetchMock.mockImplementation(async (_url: unknown, init: unknown) => {
+        const { eventType } = JSON.parse((init as { body: string }).body) as { eventType: string };
+        if (eventType === "copy") {
+          return new Promise<{ ok: boolean }>((resolve) => {
+            resolveCopySend = resolve;
+          });
+        }
+        return { ok: true };
+      });
+
+      await acceptNoticeAndRender("assignment-doubleflush");
+
+      // First flush (mount) holds the copy send open; a second flush trigger
+      // (online) must not re-send the already-claimed event.
+      await act(async () => {
+        window.dispatchEvent(new Event("online"));
+        await Promise.resolve();
+      });
+
+      await act(async () => {
+        resolveCopySend?.({ ok: true });
+        await Promise.resolve();
+      });
+
+      const copySends = apiFetchMock.mock.calls.filter((call) => eventTypeOf(call) === "copy");
+      expect(copySends).toHaveLength(1);
+      expect(loadPendingEvents("assignment-doubleflush")).toHaveLength(0);
     });
   });
 });

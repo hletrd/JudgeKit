@@ -83,25 +83,48 @@ export function AntiCheatMonitor({
     [assignmentId]
   );
 
+  // Single-flight guard: mount, refocus, and "online" can all trigger a flush;
+  // a second loop running alongside the first would re-send events the first
+  // already loaded (RPF cycle-4 AGG4-3).
+  const isFlushingRef = useRef(false);
+
   // Core flush logic extracted to a standalone async function so that both
   // flushPendingEvents and the retry timer callback can share the same
   // implementation. This avoids duplicating the load-send-save cycle, which
   // was a maintenance risk (bug fixes to one copy could be missed in the other).
+  //
+  // CLAIM LOOP (RPF cycle-4 AGG4-3): the previous load-all → send-all →
+  // save-remaining shape held an in-memory copy of the queue across `await`
+  // boundaries, so a `reportEvent` enqueue that interleaved with the sends was
+  // clobbered by the final save (lost telemetry). Each iteration now claims
+  // exactly ONE event in a synchronous load → save-without-it block before
+  // awaiting the send, and re-loads the queue when requeueing a transient
+  // failure — concurrent appends are never overwritten. The iteration count is
+  // capped at the initial queue length so a requeued event waits for the
+  // backoff timer instead of being retried in a tight loop within one flush.
   const performFlush = useCallback(async (): Promise<PendingEvent[]> => {
-    const pending = loadPendingEvents(assignmentId);
-    if (pending.length === 0) return [];
-
-    const remaining: PendingEvent[] = [];
-    for (const event of pending) {
-      const result = await sendEvent(event);
-      // "ok" and "permanent" both leave the queue; only transient failures
-      // ("retry") are requeued, up to MAX_RETRIES (AGG3-5).
-      if (result === "retry" && event.retries < MAX_RETRIES) {
-        remaining.push({ ...event, retries: event.retries + 1 });
+    if (isFlushingRef.current) return loadPendingEvents(assignmentId);
+    isFlushingRef.current = true;
+    try {
+      const initialLength = loadPendingEvents(assignmentId).length;
+      for (let i = 0; i < initialLength; i++) {
+        const queue = loadPendingEvents(assignmentId);
+        if (queue.length === 0) break;
+        const [event, ...rest] = queue;
+        savePendingEvents(assignmentId, rest); // claim before awaiting
+        const result = await sendEvent(event);
+        // "ok" and "permanent" both leave the queue; only transient failures
+        // ("retry") are requeued, up to MAX_RETRIES (AGG3-5).
+        if (result === "retry" && event.retries < MAX_RETRIES) {
+          const current = loadPendingEvents(assignmentId);
+          current.push({ ...event, retries: event.retries + 1 });
+          savePendingEvents(assignmentId, current);
+        }
       }
+      return loadPendingEvents(assignmentId);
+    } finally {
+      isFlushingRef.current = false;
     }
-    savePendingEvents(assignmentId, remaining);
-    return remaining;
   }, [assignmentId, sendEvent]);
 
   // Schedule a retry via setTimeout if the remaining events contain retriable ones.
