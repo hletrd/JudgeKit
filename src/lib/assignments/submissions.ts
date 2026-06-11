@@ -20,7 +20,6 @@ import { resolveCapabilities } from "@/lib/capabilities/cache";
 import { getRecruitingAccessContext } from "@/lib/recruiting/access";
 import { getAssignedTeachingGroupIds, hasGroupInstructorRole } from "@/lib/assignments/management";
 import { getDbNowUncached } from "@/lib/db-time";
-import { logger } from "@/lib/logger";
 import { TERMINAL_SUBMISSION_STATUSES_SQL_LIST } from "@/lib/submissions/status";
 import { buildIoiLatePenaltyCaseExpr } from "@/lib/assignments/scoring";
 import { getEffectiveExamCloseAt } from "@/lib/assignments/exam-close";
@@ -55,6 +54,18 @@ type AssignmentAccessRecord = {
 // is friendlier to flaky wifi but defeats the purpose of the correlation.
 const ANTI_CHEAT_HEARTBEAT_FRESHNESS_MS = 90_000;
 
+/**
+ * Result of the anti-cheat heartbeat-freshness probe (RPF cycle-5 AGG5-1).
+ * `latestEventAt`/`ageMs` are null when the participant has NO client-emitted
+ * event at all; `thresholdMs` echoes ANTI_CHEAT_HEARTBEAT_FRESHNESS_MS so the
+ * recorded evidence is self-describing.
+ */
+export type StaleHeartbeatProbeResult = {
+  latestEventAt: number | null;
+  ageMs: number | null;
+  thresholdMs: number;
+};
+
 type AssignmentValidationSuccess = {
   ok: true;
   assignment: {
@@ -62,6 +73,16 @@ type AssignmentValidationSuccess = {
     groupId: string;
     instructorId: string | null;
   };
+  /**
+   * Present (non-null) iff `options.probeStaleHeartbeat` was set AND the
+   * freshness probe found no recent client-emitted event. The VALIDATOR never
+   * writes the `submission_stale_heartbeat` flag (RPF cycle-5 AGG5-1): only
+   * the submit route records it, AFTER the submission insert succeeds, so a
+   * flag always references an ACCEPTED submission — rejected attempts
+   * (problem mismatch, access denial, rate limit, queue full, expired
+   * session) must never fabricate escalate-tier evidence.
+   */
+  staleHeartbeat?: StaleHeartbeatProbeResult | null;
 };
 
 type AssignmentValidationFailure = {
@@ -76,16 +97,17 @@ export type AssignmentSubmissionValidationResult =
 
 export type AssignmentSubmissionValidationOptions = {
   /**
-   * Record a `submission_stale_heartbeat` escalate flag when the anti-cheat
-   * freshness probe misses (RPF cycle-4 AGG4-1). The side effect is explicit
-   * OPT-IN: only the real submit path (`POST /api/v1/submissions`) passes
-   * true. Validation-only callers — the problem-page render and the autosave
-   * snapshot route — must never write: a page open or an editor autosave is
-   * not a submission, and flagging them both fabricated escalate-tier
-   * evidence (false flag on every participant's first problem open) and
-   * suppressed real flags (the inserted row refreshed the next probe).
+   * Run the anti-cheat heartbeat-freshness probe and return its verdict in
+   * the success result (RPF cycle-4 AGG4-1 → cycle-5 AGG5-1). The probe is
+   * explicit OPT-IN: only the real submit path (`POST /api/v1/submissions`)
+   * passes true. Validation-only callers — the problem-page render and the
+   * autosave snapshot route — must neither probe nor flag: a page open or an
+   * editor autosave is not a submission. The probe is READ-ONLY; recording
+   * the `submission_stale_heartbeat` flag is the submit route's job after
+   * the submission is actually accepted (see `staleHeartbeat` on the
+   * success type).
    */
-  recordStaleHeartbeatFlag?: boolean;
+  probeStaleHeartbeat?: boolean;
 };
 
 export type AssignmentProblemStatusRow = {
@@ -233,6 +255,8 @@ export async function validateAssignmentSubmission(
     };
   }
 
+  let staleHeartbeat: StaleHeartbeatProbeResult | null = null;
+
   const caps = await resolveCapabilities(role);
   const isAdminLevel = caps.has("system.settings");
 
@@ -333,15 +357,23 @@ export async function validateAssignmentSubmission(
     // valid session cookie cannot bypass the in-browser monitor and submit
     // from a second device while their decoy tab sits idle.
     //
-    // Runs ONLY for the submit path (`recordStaleHeartbeatFlag`, RPF cycle-4
+    // Probes ONLY for the submit path (`probeStaleHeartbeat`, RPF cycle-4
     // AGG4-1): page renders and autosave snapshots reuse this validator but
-    // must neither probe nor write — flags they inserted were misread as
+    // must neither probe nor flag — flags they produced were misread as
     // submissions. The probe matches CLIENT-emitted event types only (RPF
     // cycle-4 AGG4-2): server-inserted rows (`submission_stale_heartbeat`,
     // `code_similarity`) are not browser liveness, and counting them let one
     // flag suppress the next ~90 s of flags.
+    //
+    // READ-ONLY since RPF cycle-5 AGG5-1: the verdict is returned to the
+    // caller and the submit route records the escalate flag only after the
+    // submission insert succeeds. Recording here fabricated evidence for
+    // attempts that were subsequently REJECTED (problem mismatch below,
+    // access denial, rate limiting, queue-full, expired session in the
+    // insert transaction) — a deadline submit-burst on flaky wifi produced
+    // multiple flags with zero accepted submissions.
     if (
-      options.recordStaleHeartbeatFlag &&
+      options.probeStaleHeartbeat &&
       assignment.enableAntiCheat &&
       assignment.examMode !== "none"
     ) {
@@ -362,32 +394,11 @@ export async function validateAssignmentSubmission(
       const fresh =
         latestEventAt !== null && now - latestEventAt <= ANTI_CHEAT_HEARTBEAT_FRESHNESS_MS;
       if (!fresh) {
-        // Fail OPEN, but record a high-tier ("escalate") anti-cheat event rather
-        // than hard-blocking. A 403 here destroyed honest candidates' work on
-        // flaky networks at the deadline — an unacceptable fairness/legal harm
-        // for graded exams and recruiting tests. An open decoy tab keeps
-        // heartbeating and defeats the block anyway, so the control's real value
-        // is the evidence trail for human review, not prevention. The instructor
-        // still sees this flag in the anti-cheat dashboard and can act on it.
-        await db
-          .insert(antiCheatEvents)
-          .values({
-            assignmentId: assignment.id,
-            userId,
-            eventType: "submission_stale_heartbeat",
-            details: JSON.stringify({
-              latestEventAt,
-              ageMs: latestEventAt === null ? null : now - latestEventAt,
-              thresholdMs: ANTI_CHEAT_HEARTBEAT_FRESHNESS_MS,
-            }),
-          })
-          .catch((error) => {
-            // Never let flag-recording failure block an honest submission.
-            logger.warn(
-              { err: error, assignmentId: assignment.id, userId },
-              "[anti-cheat] failed to record stale-heartbeat submission flag",
-            );
-          });
+        staleHeartbeat = {
+          latestEventAt,
+          ageMs: latestEventAt === null ? null : now - latestEventAt,
+          thresholdMs: ANTI_CHEAT_HEARTBEAT_FRESHNESS_MS,
+        };
       }
     }
   }
@@ -415,6 +426,7 @@ export async function validateAssignmentSubmission(
       groupId: assignment.groupId,
       instructorId: assignment.instructorId,
     },
+    staleHeartbeat,
   };
 }
 

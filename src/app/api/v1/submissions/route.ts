@@ -1,14 +1,16 @@
 import { NextRequest } from "next/server";
 import { extractClientIp } from "@/lib/security/ip";
 import { db, execTransaction } from "@/lib/db";
-import { examSessions, languageConfigs, problems, submissions } from "@/lib/db/schema";
+import { antiCheatEvents, examSessions, languageConfigs, problems, submissions } from "@/lib/db/schema";
 import { isJudgeLanguage } from "@/lib/judge/languages";
 import { and, desc, eq, lt, or, sql } from "drizzle-orm";
 import { recordAuditEvent } from "@/lib/audit/events";
 import { canAccessProblem } from "@/lib/auth/permissions";
+import { logger } from "@/lib/logger";
 import {
   getRequiredAssignmentContextsForProblem,
   validateAssignmentSubmission,
+  type StaleHeartbeatProbeResult,
 } from "@/lib/assignments/submissions";
 import {
   getMaxSourceCodeSizeBytes,
@@ -260,21 +262,30 @@ export const POST = createApiHandler({
       }
     }
 
+    // Verdict of the anti-cheat freshness probe, recorded as an escalate
+    // flag ONLY after the submission insert succeeds (RPF cycle-5 AGG5-1):
+    // a flag must always reference an ACCEPTED submission — attempts that
+    // are rejected below (problem access, rate limits, queue caps, expired
+    // exam session) must never fabricate escalate-tier evidence.
+    let staleHeartbeatProbe: StaleHeartbeatProbeResult | null = null;
+
     if (normalizedAssignmentId) {
       const assignmentValidation = await validateAssignmentSubmission(
         normalizedAssignmentId,
         problemId,
         user.id,
         user.role,
-        // This is the ONLY caller that records the stale-heartbeat escalate
-        // flag — an actual submission with no live monitor is the signal;
-        // page renders and autosaves validate without writing (AGG4-1).
-        { recordStaleHeartbeatFlag: true }
+        // This is the ONLY caller that probes monitor freshness — an actual
+        // submission with no live monitor is the signal; page renders and
+        // autosaves validate without probing (AGG4-1/AGG5-1).
+        { probeStaleHeartbeat: true }
       );
 
       if (!assignmentValidation.ok) {
         return apiError(assignmentValidation.error, assignmentValidation.status);
       }
+
+      staleHeartbeatProbe = assignmentValidation.staleHeartbeat ?? null;
     }
 
     const hasAccess = await canAccessProblem(problemId, user.id, user.role);
@@ -380,6 +391,37 @@ export const POST = createApiHandler({
       return apiError(txResult.error, txResult.status, undefined, {
         headers: { "Retry-After": txResult.retryAfter },
       });
+    }
+
+    // The submission is now ACCEPTED — record the stale-heartbeat escalate
+    // flag if the freshness probe missed (RPF cycle-5 AGG5-1). The flag row
+    // is self-describing evidence: it links the exact submission id and the
+    // submitting IP, and uses DB time so it sorts truthfully among the
+    // DB-timestamped heartbeat/event rows. Fail OPEN: a 403 here destroyed
+    // honest candidates' work on flaky networks at the deadline, and an open
+    // decoy tab defeats a hard block anyway — the control's value is the
+    // evidence trail for human review (docs/exam-integrity-model.md).
+    if (staleHeartbeatProbe && normalizedAssignmentId) {
+      await db
+        .insert(antiCheatEvents)
+        .values({
+          assignmentId: normalizedAssignmentId,
+          userId: user.id,
+          eventType: "submission_stale_heartbeat",
+          details: JSON.stringify({
+            ...staleHeartbeatProbe,
+            submissionId: id,
+          }),
+          ipAddress: ip,
+          createdAt: dbNow,
+        })
+        .catch((error: unknown) => {
+          // Never let flag-recording failure block an honest submission.
+          logger.warn(
+            { err: error, assignmentId: normalizedAssignmentId, submissionId: id, userId: user.id },
+            "[anti-cheat] failed to record stale-heartbeat submission flag",
+          );
+        });
     }
 
     // Fetch the inserted submission for the response

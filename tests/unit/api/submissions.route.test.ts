@@ -443,9 +443,9 @@ describe("POST /api/v1/submissions", () => {
       "problem-1",
       "user-1",
       "student",
-      // The submit route is the ONLY caller allowed to record the
-      // stale-heartbeat escalate flag (RPF cycle-4 AGG4-1).
-      { recordStaleHeartbeatFlag: true }
+      // The submit route is the ONLY caller allowed to probe monitor
+      // freshness (RPF cycle-4 AGG4-1 → cycle-5 AGG5-1).
+      { probeStaleHeartbeat: true }
     );
   });
 
@@ -500,11 +500,158 @@ describe("POST /api/v1/submissions", () => {
       "problem-1",
       "user-1",
       "student",
-      // The submit route is the ONLY caller allowed to record the
-      // stale-heartbeat escalate flag (RPF cycle-4 AGG4-1).
-      { recordStaleHeartbeatFlag: true }
+      // The submit route is the ONLY caller allowed to probe monitor
+      // freshness (RPF cycle-4 AGG4-1 → cycle-5 AGG5-1).
+      { probeStaleHeartbeat: true }
     );
     expect(payload.data.id).toBe("submission-abc123");
+  });
+
+  // RPF cycle-5 AGG5-1: the stale-heartbeat escalate flag is recorded by the
+  // ROUTE, only after the submission insert succeeds, with the accepted
+  // submission's id + the submitting IP + the DB-clock timestamp.
+  it("records the stale-heartbeat flag AFTER the submission is accepted, linking the submission id", async () => {
+    validateAssignmentSubmissionMock.mockResolvedValue({
+      ok: true,
+      assignment: { id: "assign-1", groupId: "group-1", instructorId: "inst-1" },
+      staleHeartbeat: { latestEventAt: null, ageMs: null, thresholdMs: 90_000 },
+    });
+    queueSelectResults([
+      [{ id: "problem-1", title: "Hello World" }],
+      [{ id: "lc-1" }],
+      [{ recentCount: 0, pendingCount: 0 }],
+      [{ count: 0 }],
+      [],
+      [{
+        id: "submission-abc123",
+        userId: "user-1",
+        problemId: "problem-1",
+        assignmentId: "assign-1",
+        language: "python",
+        status: "pending",
+        compileOutput: null,
+        executionTimeMs: null,
+        memoryUsedKb: null,
+        score: null,
+        judgedAt: null,
+        submittedAt: new Date(),
+      }],
+    ]);
+    const { POST } = await import("@/app/api/v1/submissions/route");
+
+    const response = await POST(makeRequest({ ...VALID_BODY, assignmentId: "assign-1" }));
+
+    expect(response.status).toBe(201);
+    // Two inserts: the submission (inside the tx) then the flag (after it).
+    expect(dbInsertMock).toHaveBeenCalledTimes(2);
+    const flagValues = dbInsertMock.mock.calls[1][0];
+    expect(flagValues).toMatchObject({
+      assignmentId: "assign-1",
+      userId: "user-1",
+      eventType: "submission_stale_heartbeat",
+      createdAt: new Date("2026-04-20T12:00:00Z"),
+    });
+    expect(JSON.parse(flagValues.details)).toEqual({
+      latestEventAt: null,
+      ageMs: null,
+      thresholdMs: 90_000,
+      submissionId: "submission-abc123",
+    });
+  });
+
+  it("does NOT record a flag when the submission is rejected by the rate limiter (AGG5-1)", async () => {
+    validateAssignmentSubmissionMock.mockResolvedValue({
+      ok: true,
+      assignment: { id: "assign-1", groupId: "group-1", instructorId: "inst-1" },
+      staleHeartbeat: { latestEventAt: null, ageMs: null, thresholdMs: 90_000 },
+    });
+    queueSelectResults([
+      [{ id: "problem-1", title: "Hello World" }],
+      [{ id: "lc-1" }],
+      [{ recentCount: 120, pendingCount: 0 }],
+    ]);
+    const { POST } = await import("@/app/api/v1/submissions/route");
+
+    const response = await POST(makeRequest({ ...VALID_BODY, assignmentId: "assign-1" }));
+    const payload = await response.json();
+
+    expect(response.status).toBe(429);
+    expect(payload.error).toBe("submissionRateLimited");
+    // Rejected attempt → no submission insert AND no escalate flag.
+    expect(dbInsertMock).not.toHaveBeenCalled();
+  });
+
+  it("a failing flag insert never blocks the accepted submission (fail-open pin)", async () => {
+    validateAssignmentSubmissionMock.mockResolvedValue({
+      ok: true,
+      assignment: { id: "assign-1", groupId: "group-1", instructorId: "inst-1" },
+      staleHeartbeat: { latestEventAt: null, ageMs: null, thresholdMs: 90_000 },
+    });
+    dbInsertMock
+      .mockResolvedValueOnce(undefined) // submission insert
+      .mockRejectedValueOnce(new Error("db down")); // flag insert
+    queueSelectResults([
+      [{ id: "problem-1", title: "Hello World" }],
+      [{ id: "lc-1" }],
+      [{ recentCount: 0, pendingCount: 0 }],
+      [{ count: 0 }],
+      [],
+      [{
+        id: "submission-abc123",
+        userId: "user-1",
+        problemId: "problem-1",
+        assignmentId: "assign-1",
+        language: "python",
+        status: "pending",
+        compileOutput: null,
+        executionTimeMs: null,
+        memoryUsedKb: null,
+        score: null,
+        judgedAt: null,
+        submittedAt: new Date(),
+      }],
+    ]);
+    const { POST } = await import("@/app/api/v1/submissions/route");
+
+    const response = await POST(makeRequest({ ...VALID_BODY, assignmentId: "assign-1" }));
+
+    expect(response.status).toBe(201);
+  });
+
+  it("does not insert a flag when the probe verdict is fresh (null)", async () => {
+    validateAssignmentSubmissionMock.mockResolvedValue({
+      ok: true,
+      assignment: { id: "assign-1", groupId: "group-1", instructorId: "inst-1" },
+      staleHeartbeat: null,
+    });
+    queueSelectResults([
+      [{ id: "problem-1", title: "Hello World" }],
+      [{ id: "lc-1" }],
+      [{ recentCount: 0, pendingCount: 0 }],
+      [{ count: 0 }],
+      [],
+      [{
+        id: "submission-abc123",
+        userId: "user-1",
+        problemId: "problem-1",
+        assignmentId: "assign-1",
+        language: "python",
+        status: "pending",
+        compileOutput: null,
+        executionTimeMs: null,
+        memoryUsedKb: null,
+        score: null,
+        judgedAt: null,
+        submittedAt: new Date(),
+      }],
+    ]);
+    const { POST } = await import("@/app/api/v1/submissions/route");
+
+    const response = await POST(makeRequest({ ...VALID_BODY, assignmentId: "assign-1" }));
+
+    expect(response.status).toBe(201);
+    // Only the submission insert — no flag.
+    expect(dbInsertMock).toHaveBeenCalledTimes(1);
   });
 
   it("returns assignment validation error when assignment validation fails", async () => {

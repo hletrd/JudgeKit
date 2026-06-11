@@ -9,12 +9,15 @@ const EVENT_TIERS: Record<string, AntiCheatReviewTier> = {
   tab_switch: "signal",
   ip_change: "escalate",
   code_similarity: "escalate",
-  // Server-recorded by the submit path ONLY (`POST /api/v1/submissions` opts
-  // in via recordStaleHeartbeatFlag — RPF cycle-4 AGG4-1): a submission was
-  // accepted while the candidate's in-browser anti-cheat heartbeat was stale
-  // (possible submission from outside the monitored session). Page renders
-  // and autosave snapshots never record it. The gate fails open to protect
-  // honest candidates, so this flag is the reviewer's signal.
+  // Server-recorded by the submit route ONLY, and only AFTER the submission
+  // insert succeeds (RPF cycle-4 AGG4-1 → cycle-5 AGG5-1): a submission was
+  // ACCEPTED while the candidate's in-browser anti-cheat heartbeat was stale
+  // (possible submission from outside the monitored session). The flag's
+  // details carry the accepted submission's id and the row stores the
+  // submitting IP. Page renders, autosave snapshots, and REJECTED submit
+  // attempts (rate-limited, mismatched, expired) never record it. The gate
+  // fails open to protect honest candidates, so this flag is the reviewer's
+  // signal.
   submission_stale_heartbeat: "escalate",
 };
 

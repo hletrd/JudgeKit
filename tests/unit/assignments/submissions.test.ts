@@ -210,6 +210,7 @@ describe("validateAssignmentSubmission", () => {
         groupId: "group-1",
         instructorId: "instructor-1",
       },
+      staleHeartbeat: null,
     });
     expect(dbMock.query.enrollments.findFirst).not.toHaveBeenCalled();
   });
@@ -239,6 +240,7 @@ describe("validateAssignmentSubmission", () => {
         groupId: "group-1",
         instructorId: "instructor-1",
       },
+      staleHeartbeat: null,
     });
   });
 
@@ -310,6 +312,7 @@ describe("validateAssignmentSubmission", () => {
         groupId: "group-1",
         instructorId: "instructor-1",
       },
+      staleHeartbeat: null,
     });
   });
 });
@@ -364,11 +367,14 @@ describe("canViewAssignmentSubmissions", () => {
   });
 });
 
-// RPF cycle-4 AGG4-1/AGG4-2: the stale-heartbeat escalate flag is recorded by
-// the SUBMIT path only (explicit opt-in) and the freshness probe must consult
-// client-emitted events only. The probe's event-type filter itself is pinned
+// RPF cycle-4 AGG4-1/AGG4-2 → cycle-5 AGG5-1: the freshness probe runs for
+// the SUBMIT path only (explicit opt-in), consults client-emitted events
+// only, and is READ-ONLY — the validator returns the staleness verdict and
+// NEVER inserts the escalate flag itself (recording is the submit route's
+// job after the submission is accepted, so rejected attempts cannot
+// fabricate evidence). The probe's event-type filter itself is pinned
 // structurally in tests/unit/api/anti-cheat-public-event-types.test.ts.
-describe("validateAssignmentSubmission — anti-cheat heartbeat correlation (AGG4-1)", () => {
+describe("validateAssignmentSubmission — anti-cheat heartbeat correlation (AGG4-1/AGG5-1)", () => {
   const NOW = new Date("2026-03-10T00:00:00.000Z");
 
   function createExamAssignmentRecord() {
@@ -393,27 +399,51 @@ describe("validateAssignmentSubmission — anti-cheat heartbeat correlation (AGG
     antiCheatInsertValuesMock.mockResolvedValue(undefined);
   }
 
-  it("submit path with NO recent client event records the escalate flag once and still accepts (fail-open)", async () => {
+  it("probe with NO client event at all returns a stale verdict, accepts, and NEVER writes", async () => {
     setupActiveExam();
     antiCheatLatestEventLimitMock.mockResolvedValue([]);
 
     const result = await validateAssignmentSubmission(
       "assignment-1", "problem-1", "student-1", "student",
-      { recordStaleHeartbeatFlag: true }
+      { probeStaleHeartbeat: true }
     );
 
     expect(result.ok).toBe(true);
-    expect(antiCheatInsertMock).toHaveBeenCalledTimes(1);
-    expect(antiCheatInsertValuesMock).toHaveBeenCalledWith(
-      expect.objectContaining({
-        assignmentId: "assignment-1",
-        userId: "student-1",
-        eventType: "submission_stale_heartbeat",
-      })
-    );
+    if (result.ok) {
+      expect(result.staleHeartbeat).toEqual({
+        latestEventAt: null,
+        ageMs: null,
+        thresholdMs: 90_000,
+      });
+    }
+    // AGG5-1 pin: the validator must not insert the escalate flag — that is
+    // the submit route's job AFTER the submission is accepted.
+    expect(antiCheatInsertMock).not.toHaveBeenCalled();
   });
 
-  it("submit path with a fresh client event does not flag", async () => {
+  it("probe with an event older than the threshold returns its age in the verdict", async () => {
+    setupActiveExam();
+    antiCheatLatestEventLimitMock.mockResolvedValue([
+      { createdAt: new Date(NOW.getTime() - 300_000) },
+    ]);
+
+    const result = await validateAssignmentSubmission(
+      "assignment-1", "problem-1", "student-1", "student",
+      { probeStaleHeartbeat: true }
+    );
+
+    expect(result.ok).toBe(true);
+    if (result.ok) {
+      expect(result.staleHeartbeat).toEqual({
+        latestEventAt: NOW.getTime() - 300_000,
+        ageMs: 300_000,
+        thresholdMs: 90_000,
+      });
+    }
+    expect(antiCheatInsertMock).not.toHaveBeenCalled();
+  });
+
+  it("probe with a fresh client event returns a null verdict", async () => {
     setupActiveExam();
     antiCheatLatestEventLimitMock.mockResolvedValue([
       { createdAt: new Date(NOW.getTime() - 30_000) },
@@ -421,10 +451,13 @@ describe("validateAssignmentSubmission — anti-cheat heartbeat correlation (AGG
 
     const result = await validateAssignmentSubmission(
       "assignment-1", "problem-1", "student-1", "student",
-      { recordStaleHeartbeatFlag: true }
+      { probeStaleHeartbeat: true }
     );
 
     expect(result.ok).toBe(true);
+    if (result.ok) {
+      expect(result.staleHeartbeat).toBeNull();
+    }
     expect(antiCheatInsertMock).not.toHaveBeenCalled();
   });
 
@@ -436,24 +469,34 @@ describe("validateAssignmentSubmission — anti-cheat heartbeat correlation (AGG
     );
 
     expect(result.ok).toBe(true);
+    if (result.ok) {
+      expect(result.staleHeartbeat ?? null).toBeNull();
+    }
     expect(dbMock.select).not.toHaveBeenCalled();
     expect(antiCheatInsertMock).not.toHaveBeenCalled();
   });
 
-  it("a failing flag insert never blocks the submission (fail-open pin)", async () => {
+  it("a problem-mismatch rejection after a stale probe yields NO flag and NO verdict to act on (AGG5-1)", async () => {
     setupActiveExam();
     antiCheatLatestEventLimitMock.mockResolvedValue([]);
-    antiCheatInsertValuesMock.mockRejectedValue(new Error("db down"));
+    // The submitted problem does not belong to the assignment.
+    dbMock.query.assignmentProblems.findFirst.mockResolvedValue(undefined);
 
     const result = await validateAssignmentSubmission(
-      "assignment-1", "problem-1", "student-1", "student",
-      { recordStaleHeartbeatFlag: true }
+      "assignment-1", "problem-bogus", "student-1", "student",
+      { probeStaleHeartbeat: true }
     );
 
-    expect(result.ok).toBe(true);
+    expect(result).toEqual({
+      ok: false,
+      status: 400,
+      error: "assignmentProblemMismatch",
+    });
+    // The rejected attempt must not fabricate escalate-tier evidence.
+    expect(antiCheatInsertMock).not.toHaveBeenCalled();
   });
 
-  it("flag stays off entirely when anti-cheat is disabled, even on the submit path", async () => {
+  it("probe stays off entirely when anti-cheat is disabled, even on the submit path", async () => {
     getDbNowUncachedMock.mockResolvedValue(NOW);
     dbMock.query.assignments.findFirst.mockResolvedValue({
       ...createExamAssignmentRecord(),
@@ -464,10 +507,13 @@ describe("validateAssignmentSubmission — anti-cheat heartbeat correlation (AGG
 
     const result = await validateAssignmentSubmission(
       "assignment-1", "problem-1", "student-1", "student",
-      { recordStaleHeartbeatFlag: true }
+      { probeStaleHeartbeat: true }
     );
 
     expect(result.ok).toBe(true);
+    if (result.ok) {
+      expect(result.staleHeartbeat).toBeNull();
+    }
     expect(dbMock.select).not.toHaveBeenCalled();
     expect(antiCheatInsertMock).not.toHaveBeenCalled();
   });
