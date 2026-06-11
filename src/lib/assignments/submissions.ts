@@ -33,8 +33,7 @@ type AssignmentValidationError =
   | "assignmentEnrollmentRequired"
   | "assignmentProblemMismatch"
   | "examNotStarted"
-  | "examTimeExpired"
-  | "antiCheatHeartbeatRequired";
+  | "examTimeExpired";
 
 type AssignmentAccessRecord = {
   id: string;

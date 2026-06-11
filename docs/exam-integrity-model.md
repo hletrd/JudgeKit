@@ -47,18 +47,41 @@ pair JudgeKit with Safe Exam Browser or live human proctoring (see below).
 - **Signal** — browser-behavior events such as tab switches or copy/paste that may justify closer review but still need corroboration.
 - **Escalate** — stronger anomalies such as code-similarity findings or IP-change patterns that merit deeper human investigation.
 
-## Submission-time heartbeat enforcement (since 2026-05)
+## Submission-time heartbeat correlation (fail-open since 2026-05; flag, not block)
 
-For assignments where `examMode != "none"` AND `enableAntiCheat = true`, the submission API (`/api/v1/submissions` POST, via `validateAssignmentSubmission` in `src/lib/assignments/submissions.ts`) now requires that the latest `anti_cheat_events` row for `(userId, assignmentId)` be no older than 90 seconds (`ANTI_CHEAT_HEARTBEAT_FRESHNESS_MS`). The browser monitor's heartbeat throttle is 60 s, leaving a 30 s buffer for clock skew and network jitter.
+For assignments where `examMode != "none"` AND `enableAntiCheat = true`, the submission API (`/api/v1/submissions` POST, via `validateAssignmentSubmission` in `src/lib/assignments/submissions.ts`) checks that the latest `anti_cheat_events` row for `(userId, assignmentId)` is no older than 90 seconds (`ANTI_CHEAT_HEARTBEAT_FRESHNESS_MS`). The browser monitor's heartbeat throttle is 60 s, leaving a 30 s buffer for clock skew and network jitter.
+
+**This check FAILS OPEN.** A submission with a stale (or absent) heartbeat is **accepted**, and a `submission_stale_heartbeat` anti-cheat event (Escalate tier) is recorded instead. An earlier hard-block (`HTTP 403`) was removed deliberately: it destroyed honest candidates' work on flaky networks at the deadline — an unacceptable fairness/legal harm for graded exams and recruiting tests — while an open decoy tab kept heartbeating and defeated the block anyway. The control's value is the evidence trail, not prevention.
+
+**Reviewer obligation:** before trusting results for a high-stakes assessment, review the anti-cheat dashboard for `submission_stale_heartbeat` events. A flagged submission means "the submitting client had no recent browser-monitor activity" — corroborate per the evidence model above (it may be a network hiccup; it may be a curl submission from a second device).
 
 What this closes:
-- A candidate cannot submit code with `curl` from a second device while the browser monitor sits idle on the exam tab. Without a fresh heartbeat the submission is rejected with `HTTP 403 antiCheatHeartbeatRequired`.
+- A candidate submitting with `curl` from a second device while the browser monitor sits idle no longer goes UNNOTICED — every such submission is flagged for human review. It is detection, not prevention.
 
 What this does **not** close:
 - A candidate who keeps the monitor open in a hidden tab while another browser drives the actual coding session. The heartbeats look honest because they are honest — for that browser. The platform still cannot prove that the submitted code came from the screen the monitor is observing.
 - A candidate using AI-generated code typed into the editor with normal cadence. The similarity check compares structure across this platform's submissions; it does not, on its own, identify generative output.
 
 For high-stakes assessments these residual gaps still warrant pairing JudgeKit with Safe Exam Browser or live human proctoring.
+
+## Staff time extensions (windowed exams)
+
+Group-managing staff can extend ONE participant's windowed-exam session
+(`PATCH /api/v1/groups/[id]/assignments/[assignmentId]/exam-sessions/[userId]`,
+1–600 minutes) for accommodations and incident recovery. Integrity-relevant
+semantics:
+
+- The extension moves `exam_sessions.personal_deadline` and may exceed the
+  assignment close **by design**. Submission acceptance, late-penalty scoring,
+  AND anti-cheat telemetry ingest all follow the per-participant effective
+  close (`getEffectiveExamCloseAt` in `src/lib/assignments/exam-close.ts`),
+  so an accommodation window stays monitored and does not generate false
+  `submission_stale_heartbeat` flags.
+- Extensions only ever ADD time (the endpoint cannot shrink a window) and
+  concurrent extensions compose.
+- Every extension is durably audited (`exam_session.extend`: who granted whom
+  how many minutes, and the resulting deadline) so grading-relevant timing is
+  reconstructable during disputes.
 
 ## What admins / `system.settings` callers bypass
 
