@@ -66,7 +66,11 @@ Tasks:
   NOT the SSH-helpers area; the tripped SSH-helpers extraction trigger is
   re-documented in the deferred register below, unchanged.
 
-### G2 ⬜ AGG2-1 — code_snapshots: language gate + retention (MEDIUM, 8-lens agreement)
+### G2 ✅ AGG2-1 — code_snapshots: language gate + retention (MEDIUM, 8-lens agreement)
+**Done 2026-06-11 (9ce94272):** route gated on isJudgeLanguage (400, no
+write); codeSnapshots: 180 d default + CODE_SNAPSHOT_RETENTION_DAYS;
+pruneCodeSnapshots on createdAt in the allSettled set; policy-doc row;
+docstring 7→8. Tests red→green (route 400 + prune log + defaults).
 - `src/app/api/v1/code-snapshots/route.ts`: gate `body.language` on
   `isJudgeLanguage` → 400 `languageNotSupported` (mirror submit route :207
   and cycle-1 F2 draft gate). Non-breaking: the only client
@@ -82,7 +86,11 @@ Tasks:
 - Tests FIRST: route 400-junk-language + happy path; prune log assertion +
   defaults pinned (mirror the cycle-1 F2 test shapes).
 
-### G3 ⬜ AGG2-5 — Retention-coverage class-closer test (MEDIUM leverage)
+### G3 ✅ AGG2-5 — Retention-coverage class-closer test (MEDIUM leverage)
+**Done 2026-06-11 (72e02a64):** tests/unit/infra/retention-coverage.test.ts
+walks every pgTable export; pruned-or-allowlisted with walker-sanity +
+exact-allowlist assertions (verified red before G2 landed: flagged exactly
+codeSnapshots). Source-grep inventory baseline 138→139 with rationale.
 New structural unit test (tests/unit/infra/): walk the exported pgTable
 definitions in `src/lib/db/schema.pg.ts` and assert every table that is
 user-row-growing + timestamped is either (a) covered by a prune in
@@ -92,7 +100,15 @@ groups, system_settings, …). Must fail before G2 lands (red→green) and the
 allowlist must be exact (walker-sanity assertion to prevent vacuous pass,
 per the F5 precedent).
 
-### G4 ⬜ AGG2-3 — Rate-limit first-insert race → 500 (LOW-MEDIUM correctness in a security control)
+### G4 ✅ AGG2-3 — Rate-limit first-insert race → 500 (LOW-MEDIUM correctness in a security control)
+**Done 2026-06-11 (7776d739):** insertRateLimitEntryIfAbsent in the shared
+core (ON CONFLICT (key) DO NOTHING, reports created/raced);
+upsertRateLimitEntry insert branch degrades to UPDATE on a lost race; all
+three api-rate-limit consumers re-read + count via update;
+checkServerActionRateLimit restructured (fresh-key insert at read phase,
+identical semantics incl. maxRequests=1); BONUS: rate-limit.ts (login)
+three hand-rolled exists?update:insert blocks consolidated onto the shared
+upsert (trims C7-AGG-9 drift). Lost-race tests added; full suite 2579 green.
 - Add conflict-safe insert in the shared core where possible (architect
   A2-3: keeps C7-AGG-9 consolidation debt flat):
   `insert(...).onConflictDoNothing({ target: rateLimits.key })`; when the
@@ -106,7 +122,12 @@ per the F5 precedent).
   that the conflict branch yields a non-throwing allowed/limited verdict
   (mock-level); extend the existing rate-limit unit suites.
 
-### G5 ⬜ AGG2-4 — Live personal-deadline refresh for windowed exams (LOW-MEDIUM, 7-lens agreement; completes F12)
+### G5 ✅ AGG2-4 — Live personal-deadline refresh for windowed exams (LOW-MEDIUM, 7-lens agreement; completes F12)
+**Done 2026-06-11 (d693939c):** ExamDeadlineSync wraps CountdownTimer for
+the windowed branch (60 s poll + visibilitychange; later-only; toast +
+role=status note en+ko; router.refresh() recomputes server-rendered
+expired gates). CountdownTimer already handled deadline-prop changes.
+6 component tests. E2E deferred (G5-E2E row below).
 - Client: in the windowed-exam student view
   (`groups/[id]/assignments/[assignmentId]/page.tsx:196-201` renders
   `CountdownTimer`), re-fetch the exam session (existing GET
@@ -125,13 +146,19 @@ per the F5 precedent).
   E2E: deferred to DEFER-ENV-GATES (no provisioned test server in this
   env) — record below.
 
-### G6 ⬜ AGG2-6 — ExamExtendDialog polish (LOW)
+### G6 ✅ AGG2-6 — ExamExtendDialog polish (LOW)
+**Done 2026-06-11 (14c04715):** inputMode=numeric, Enter submits, Cancel
+button (common.cancel, both locales already had the key). 4 component tests
+incl. client-side range rejection.
 `exam-extend-dialog.tsx`: `inputMode="numeric"` on the minutes input; add a
 Cancel button to the footer; submit on Enter via a form element (match
 score-override-dialog conventions). Keep strings in both locales. Component
 test updated.
 
-### G7 ⬜ AGG2-7 — Review-artifact archive sweep (LOW housekeeping)
+### G7 ✅ AGG2-7 — Review-artifact archive sweep (LOW housekeeping)
+**Done 2026-06-11 (257feda4):** ~1,190 historical files (1,165 tracked
+renames + untracked local artifacts) moved to .context/reviews/_archive/;
+the 18 current-cycle lens files remain at root. Pure moves, no deletions.
 Move pre-2026-06 review files from `.context/reviews/` root into
 `.context/reviews/_archive/` (git mv; no deletions), leaving the current
 cycle's 18 files + `_archive/` + the dated subdirectories. Update nothing
@@ -186,7 +213,8 @@ iteration; then DEPLOY_CMD (per-cycle mode).
 
 ---
 
-## Completion record (fill during implementation)
-- G1 ✅ · G2 ⬜ · G3 ⬜ · G4 ⬜ · G5 ⬜ · G6 ⬜ · G7 ⬜
-- Gates: ⬜ tsc · ⬜ eslint · ⬜ lint:bash · ⬜ unit · ⬜ build
-- Deploy: ⬜ worv · ⬜ auraedu · ⬜ algo
+## Completion record (2026-06-11)
+- G1 ✅ 8f500ff8 · G2 ✅ 9ce94272 · G3 ✅ 72e02a64 · G4 ✅ 7776d739 ·
+  G5 ✅ d693939c · G6 ✅ 14c04715 · G7 ✅ 257feda4
+- Gates: (final run recorded below after the post-implementation pass)
+- Deploy: (recorded below after DEPLOY_CMD)
