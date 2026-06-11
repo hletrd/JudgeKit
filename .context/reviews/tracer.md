@@ -1,23 +1,61 @@
-# Tracer (causal flows, competing hypotheses) — RPF Cycle 3 (2026-06-11)
+# Tracer review — RPF cycle 4 (2026-06-11)
 
-**HEAD reviewed:** 63429d97. Method: end-to-end causal trace of the exam time-extension flow (the cycle-1/2 feature pair), then the anti-cheat event lifecycle under failure.
+**HEAD reviewed:** 7c0a4bd4 · gates green.
+**Lens:** causal tracing of suspicious flows; competing hypotheses.
 
-## Trace 1 — Staff extension, end to end
-1. Staff opens `ExamExtendDialog` (status board, canManage-gated) → `PATCH /api/v1/groups/[id]/assignments/[assignmentId]/exam-sessions/[userId]` body `{extendMinutes}`.
-2. Route (`exam-sessions/[userId]/route.ts:25-90`): group → canManage gate → windowed-only check → `extendExamSession` SQL `personal_deadline + make_interval(mins => N)` (composes under concurrency, never shrinks) → durable audit. ✅
-3. Student client: `ExamDeadlineSync` (60 s interval + refocus) GETs `exam-session`, sees later `personalDeadline`, moves countdown LATER only, toast + role=status note, `router.refresh()` recomputes server gates. Verified the component mounts even in the expired state (`page.tsx:197-207`) so post-expiry rescue works. ✅
-4. Student submits past the original close: `validateAssignmentSubmission` honors the session deadline (`submissions.ts:259-271`, `:300-302`). ✅
-5. **BREAK** — student's browser monitor posts heartbeat/tab events: `anti-cheat/route.ts:102-104` rejects 403 `contestEnded` because only `assignment.deadline` is consulted. Telemetry stops; queue churns (monitor retries 4xx); each submission then writes a `submission_stale_heartbeat` escalate flag (`submissions.ts:336-347`); the heartbeat-gap report paints the window as a gap. The chain that cycles 1–2 built is intact for WORK and broken for OVERSIGHT. (MEDIUM-HIGH, High, CONFIRMED — root cause single-sourced at the boundary check.)
+## Trace 1 — Where can a `submission_stale_heartbeat` row come from?
+Goal: enumerate ALL producers of the escalate-tier flag and the causal chain
+each implies for a reviewer.
 
-Competing hypotheses considered and rejected:
-- H2 "the monitor unmounts at the old deadline so no events are attempted": false — the monitor is mounted by the workspace layout independent of the countdown; events are attempted and 403'd.
-- H3 "getExamSession GET also dies at the assignment close, so the sync never sees the extension": false — the GET has no deadline gate; only group access + exam-mode checks.
-- H4 "scheduled-mode exams hit the same break": n/a — extensions exist only for windowed mode (`examModeInvalid` guard in the PATCH).
+Producers found (exhaustive grep + call-graph):
+1. `POST /api/v1/submissions` → `validateAssignmentSubmission` → flag when the
+   freshness probe misses. Intended semantics.
+2. `POST /api/v1/code-snapshots` (autosave, every 10–60 s while editing —
+   `problem-submission-form.tsx:140-182`) → same validator → same flag.
+   Causal meaning for the reviewer: "the editor autosaved" — NOT a submission.
+3. GET page render `practice/problems/[id]?assignmentId=…`
+   (`page.tsx:166-175`) → same validator → same flag. Causal meaning: "the
+   student navigated to the problem" — NOT a submission.
+Competing hypothesis rejected: "the monitor's first heartbeat lands before the
+first render flag" — impossible; the render completes (and inserts) before the
+client receives HTML and mounts `AntiCheatMonitor`, and the privacy-notice
+gate delays the first heartbeat further (`anti-cheat-monitor.tsx:188-199`).
+Conclusion: flag rows are not interpretable as submissions today (joint with
+CR4-1/D4-1/V4-2). Confidence: High, CONFIRMED.
 
-## Trace 2 — Anti-cheat event lifecycle under server rejection
-`reportEvent` → `sendEvent` (`anti-cheat-monitor.tsx:52-69`) → non-OK → push to localStorage with `retries:1` → `scheduleRetryRef` backoff (1 s→2 s→4 s→8 s) → `performFlush` re-sends serially → after `retries ≥ 3` the event is silently dropped from the queue. Consequences: (a) permanent 4xx rejections (origin mismatch, contestEnded, forbidden) consume the full retry ladder; (b) ordering: a dead 403 event at queue head delays live events behind it by up to the full backoff; (c) silent drop is the right end state but is indistinguishable (client-side) from delivery — acceptable since the server is authoritative, but it means CR3-1's blackout is invisible to the student. Fix shape (CR3-2): tri-state send result, drop permanent rejections immediately.
+## Trace 2 — What stops a flag from firing when it should?
+The freshness probe (`submissions.ts:320-330`) reads the latest row of ANY
+type. Producers feeding it include the flag itself (Trace 1) and
+`code_similarity` (`code-similarity.ts:421`, inserted for both members of a
+flagged pair when staff run a similarity check). Chain: staff runs a
+similarity check mid-contest → both students' freshness refreshes → a curl
+submission inside 90 s is NOT flagged. Also any Trace-1 false flag suppresses
+real flags for 90 s. Confidence: High, CONFIRMED (AGG4-2).
 
-## Trace 3 — BuildKit self-heal path (re-verified after cycle-2 hardening)
-`run_remote_build` failure → grep signature on captured output → `docker buildx history rm --all` on that host → retry once → second failure propagates to `die`. Confirmed: the retry's `tee` reuses `$out_file`, so the FIRST failure log is overwritten (forensics lose the original corruption signature context). LOW, Medium — the warn lines preserve the signature fact itself; only the full first log is lost. Optional: tee the retry to `${out_file}.retry`.
+## Trace 3 — Extension accommodation end-to-end (post cycle-3)
+Staff extend → `extendExamSession` SQL-composes minutes onto
+`personal_deadline` → student's 60 s poll (`exam-session` GET) returns the new
+ISO → `ExamDeadlineSync` extends countdown (never shrinks, `:70`) +
+router.refresh recomputes gates → submissions honored via
+`getEffectiveExamCloseAt` (validator) → telemetry honored via the same helper
+on the ingest's past-close branch → late-penalty scoring keys on
+`personal_deadline` (`buildIoiLatePenaltyCaseExpr` usage,
+`submissions.ts:662`). No remaining consumer of `assignment.deadline` that
+should honor the personal deadline was found: the leaderboard freeze, contest
+status labels (`getContestStatus`), and IP-overlap report are
+participant-agnostic by design. One nuance, NOT a bug: `getContestStatus`
+(contests.ts:52-58) reports "closed" at the assignment close even for an
+extended participant — the per-participant UI uses the personal deadline
+(verified `page.tsx:201`), and the list-page label is cosmetic. Logged for the
+designer/persona lenses to weigh. Confidence: Medium-High.
 
-No other suspicious flows surfaced in this cycle's diffs; the rate-limit lost-race flow was traced and matches the tests (winner commits, loser blocks on FOR UPDATE re-read, both verdicts non-throwing).
+## Trace 4 — Concurrent flush/report on the client queue
+Interleaving diagram (performFlush load @ t0, await send @ t0+ε, reportEvent
+load/push/save @ t0+2ε, performFlush save @ t0+3ε) ⇒ append lost. Window is
+one in-flight POST (~RTT); triggers: blur during refocus-flush. Double-send
+variant with two concurrent flush loops (mount + online). Confidence: Medium,
+LIKELY — matches D4-3/P4-3; recommend deterministic claim-loop fix.
+
+No other suspicious flows surfaced this cycle; ingest boundary checks, judge
+claim staleness reclaim (log evidence in unit run), and audit flush-on-shutdown
+chains were traced without contradiction.

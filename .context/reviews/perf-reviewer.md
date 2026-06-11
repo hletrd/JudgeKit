@@ -1,23 +1,58 @@
-# Perf Reviewer — RPF Cycle 3 (2026-06-11)
+# Performance review — RPF cycle 4 (2026-06-11)
 
-**HEAD reviewed:** 63429d97. Focus: steady-state load introduced by cycle-2 features, hot-path query counts, and verification of cycle-1/2 perf claims.
+**HEAD reviewed:** 7c0a4bd4 · baseline gates green.
+**Lens:** performance, concurrency, CPU/memory, responsiveness.
+
+## Method
+Profile-by-reading of the hot paths the cycle-3 changes touch (anti-cheat POST,
+exam-session GET poll, submission validator) plus the monitoring read paths
+(anti-cheat GET, IP-overlap report) and client timers (anti-cheat monitor,
+snapshot autosave, deadline sync).
 
 ## Findings
 
-### PERF3-1 — New 60 s exam-session poll pays ~5–6 queries/poll, most of it avoidable for plain students (LOW-MEDIUM, High, CONFIRMED)
-`src/app/api/v1/groups/[id]/assignments/[assignmentId]/exam-session/route.ts:93-131` (GET), polled every 60 s + every tab refocus by `ExamDeadlineSync` for EVERY active windowed examinee. Per poll: `canAccessGroup` (1–2 queries), assignment `findFirst` (1), **`canViewAssignmentSubmissions` (2–3 queries — group/instructor/TA resolution)**, `getExamSession` (1). The `canViewAssignmentSubmissions` resolution is only consumed when `?userId=` is present (staff querying another participant) — students never send it. With 300 concurrent examinees that is ~900–1,000 wasted queries/min at exactly the moment the DB is also absorbing submissions and anti-cheat events. Fix: resolve `canViewOthers` lazily — only when `userId` param present and ≠ `user.id`. Saves ~40 % of the poll's query budget with zero semantic change. (Also flagged by code-reviewer CR3-4.)
+### P4-1 — Anti-cheat GET recomputes `count(*)` + scans up to 5000 heartbeats per poll (LOW, Medium, RISK)
+`anti-cheat/route.ts:283-286` runs an unconditional `count(*)` over the
+assignment's events on every monitor-dashboard fetch, and the per-user
+heartbeat-gap report (`:296-325`) pulls up to 5000 rows then scans in JS, with
+no time-window parameter. For a live 200-seat contest with staff dashboards
+polling per-student views this multiplies. Indexes
+(`ace_assignment_created_idx`, `ace_assignment_type_idx`) keep it from being
+quadratic, and current deployments are small — no observed incident. Suggest
+(deferred-eligible): window the gap scan to the contest window and reuse the
+paginated total only when `offset === 0`.
 
-### PERF3-2 — Anti-cheat retry queue does sequential awaited sends including permanently-dead 4xx events (LOW, Medium, CONFIRMED)
-`src/components/exam/anti-cheat-monitor.tsx:75-88` — `performFlush` awaits each `sendEvent` serially; when the queue holds 403-rejected events (see CR3-1 interplay) they burn 3 retries × backoff each before being dropped, head-of-line-delaying real events behind them. Dropping permanent 4xx rejections immediately (CR3-2 fix) also fixes the queue-latency profile. Sequential sending itself is fine at these volumes (events are rare); no parallelization needed.
+### P4-2 — Validator now does an extra write on flagged paths every 10–60 s (MEDIUM as correctness, perf side noted)
+The misplaced `submission_stale_heartbeat` inserts (CR4-1) also mean each
+stale-state autosave is a DB INSERT amplified at the snapshot cadence
+(`problem-submission-form.tsx:175`: 10 s while typing). Fixing CR4-1 removes
+the write amplification; no separate perf work needed.
 
-### PERF3-3 — ipOverlap report query shape is index-aligned (verified, no action)
-`src/app/api/v1/contests/[assignmentId]/anti-cheat/route.ts:193-231`: both CTE legs filter on `assignment_id` (covered by `ace_assignment_user_idx` / `es_*` indexes, schema.pg.ts:1176-1178); DISTINCT collapses heartbeat volume before the joins; both outer queries LIMIT 100. For a 500-examinee contest with ~8 h of 60 s heartbeats (~240 k rows) this is a single-digit-ms index scan + hash agg. Acceptable as an on-demand staff view; no caching needed.
+### P4-3 — Concurrency: pending-queue flush races (LOW-MEDIUM, Medium, LIKELY)
+`anti-cheat-monitor.tsx`: `performFlush` (`:90-105`) holds an in-memory copy of
+the localStorage queue across `await sendEvent(...)` boundaries; `reportEvent`
+(`:163-172`) does a synchronous load-push-save in between. The final
+`savePendingEvents(remaining)` clobbers the concurrent append → telemetry
+loss. Also nothing prevents two concurrent flush loops (mount + online +
+visibilitychange all call it) from double-sending the same event. Fix: claim
+events one-at-a-time (load → save-minus-first → send → maybe re-append) plus an
+`isFlushing` guard ref.
 
-## Verified perf claims from cycles 1–2 (evidence-based)
-- AGG-3 catalog ranking: `/problems` + `/practice` no longer fetch every visible id per view — `getCatalogNumbersForIds` transfers ≤ PAGE_SIZE rows (`src/lib/problems/catalog-numbers.ts`, real-Postgres integration test present). Confirmed in source; the old full-scan code is gone.
-- 5e14fdf9 settings double-fetch: submit-path checks re-parallelized; `getConfiguredSettings()` is sync-cached. Confirmed.
-- `sweepStaleWorkers` background interval (60 s) is two indexed UPDATEs on a table with ~1 row per worker — negligible.
-- Rate-limit conflict-safe insert adds zero queries to the happy path (insert was already there); the lost-race path adds one re-read inside the same tx. Fine.
-- `ExamDeadlineSync` interval is ≥60 s with in-flight dedup and no backoff storm on failure (errors keep the current deadline silently). Client side is well-behaved; the cost concern is server-side (PERF3-1).
+## Verified-clean notes
+- Cycle-3 AGG3-1 fix keeps the anti-cheat POST hot path query-free pre-close;
+  the extra `getExamSession` lookup runs only on the past-close windowed branch
+  (route.ts:110-118) — confirmed by test `anti-cheat-post-extension.test.ts`
+  ("hot path before the close never pays the session lookup").
+- Cycle-3 AGG3-4 made the 60 s exam-session poll skip staff resolution for
+  plain student polls — confirmed; the poll is now: assignment lookup,
+  enrollment/access check, session fetch.
+- `getAssignmentStatusRows` pushes aggregation into one SQL pass with window
+  functions (`submissions.ts:651-700`) — O(students × problems) rows; fine.
+- `shouldRecordSharedHeartbeat` advisory-lock + cleanup per heartbeat is one
+  short transaction per 30 s per participant; the cleanup DELETE is bounded by
+  the LIKE-prefix index pattern. Acceptable.
+- Background staleness sweep (60 s unref'd interval) is two indexed UPDATEs;
+  no lock contention risk found.
 
-Final sweep: no N+1 or unbounded-fetch patterns introduced by the cycle-1/2 diffs; remaining known hotspots are unchanged and carried in the register (C7-AGG-9 consolidation, etc.).
+Confidence labels inline. No memory-growth hazards found this cycle
+(`lastHeartbeatTime` is an LRU max 10k; pending queue capped at 200).

@@ -1,22 +1,51 @@
-# Designer (UI/UX + a11y) — RPF Cycle 3 (2026-06-11)
+# Designer (UI/UX) review — RPF cycle 4 (2026-06-11)
 
-**HEAD reviewed:** 63429d97. Environment note: no browser is provisioned in this run environment (DES-ENV carry — agent-browser cannot reach the deployed instances' auth flows, and no local dev server with seeded data is available); findings below are from component/source inspection with text-extractable evidence (selectors, classes, ARIA), per the multimodal caveat.
+**HEAD reviewed:** 7c0a4bd4.
+**Lens:** UI/UX. Constraint: no provisioned browser/dev server in this run
+environment (DEFER-ENV-GATES, carried since cycle 1) — this is a static review
+of components, markup, ARIA, and i18n; findings are labeled accordingly.
 
-## DES3-1 — Extension announcement UX is well-built; one gap: the EXPIRED state's recovery moment isn't announced as a recovery (LOW, Medium)
-`ExamDeadlineSync` (`src/components/exam/exam-deadline-sync.tsx:103-112`) shows `role="status"` "deadline extended" + toast, and `CountdownTimer` un-expires (the red `role="alert"` examTimeExpired text disappears, badge returns to a live countdown). For a student staring at the red "time expired" panel, the transition is visually complete after `router.refresh()` — but the panel swap itself is unannounced for screen-reader users beyond the status note (which IS the right mechanism; aria-live="polite" via role=status). Verdict: acceptable; consider `aria-live="assertive"` for the extension note only when transitioning from expired→active, since that user believed their exam was over. Cosmetic; defer-eligible.
+## DES4-1 — Exam-surface review (static)
+- Privacy-notice dialog (`anti-cheat-monitor.tsx:322-357`): modal with
+  `disablePointerDismissal`, no close button, single accept action — correct
+  forced-consent pattern; Radix dialog provides the focus trap and
+  `aria-describedby` via `DialogDescription`. Icon is `aria-hidden`. OK.
+- `ExamDeadlineSync` extension note (`exam-deadline-sync.tsx:107`):
+  `role="status"` (polite) + toast — DES3-1 (assertive vs polite on
+  expired→active transitions) remains deferred per its register row; no
+  regression.
+- Countdown + extension flow only ever moves deadlines later client-side;
+  no anxiety-inducing backwards jumps possible (`:70` guard). Good.
 
-## DES3-2 — Anti-cheat warning toasts continue while events are silently rejected (LOW, ties to CR3-1)
-`anti-cheat-monitor.tsx:215-218`: on tab switch the student sees `toast.warning(warningMessage)` regardless of whether the POST succeeded. During the CR3-1 blackout the student is warned ("this is being recorded") while nothing is recorded — the UX actively misinforms during accommodations. The CR3-1 server fix resolves this without client changes; no separate UI work needed. Recorded so the persona files don't double-count it.
+## DES4-2 — Instructor-facing consequence of AGG4-1 (MEDIUM as UX, High confidence)
+The anti-cheat dashboard's escalate tier is the instructor's primary triage
+surface; today it renders false `submission_stale_heartbeat` entries for every
+participant's first problem open (see code-reviewer CR4-1). From a UX
+standpoint this trains operators to ignore the highest tier — the classic
+alarm-fatigue failure. The fix is backend (flag only on submit), no dashboard
+change needed; after it lands the tier becomes meaningful again.
 
-## DES3-3 — `ExamExtendDialog` post-G6 state (verified good)
-`exam-extend-dialog.tsx`: numeric inputMode, Enter-submit via form, Cancel button with `common.cancel` in both locales, client-side 1–600 range mirror of the zod bound. Matches score-override-dialog conventions. No further polish needed this cycle.
+## DES4-3 — Korean typography rule compliance: PASS
+All `tracking-*` sites in `src/components` re-checked: every one is
+locale-gated (`locale !== "ko"`) or scoped to alphanumeric/mono content
+(access codes), matching CLAUDE.md's rule. No custom letter-spacing reaches
+Korean text. Examples verified: `public-header.tsx:305-306`,
+`public-problem-set-list.tsx:35`, `discussion-*.tsx`,
+`access-code-manager.tsx:153`.
 
-## DES3-4 — Korean typography policy compliance (verified)
-Repo-wide grep: every `tracking-*` use is locale-guarded (`locale !== "ko"`) or scoped to Latin/mono content with an explanatory comment (`public-header.tsx:305-306`, `public-problem-set-detail.tsx:55`, discussion headings, `access-code-manager.tsx:153` access codes); `globals.css:129-136` zeroes letter-spacing for `ko`. No violations at this HEAD.
+## DES4-4 — Minor notes (LOW, static-only, needs browser validation)
+- Contest list status labels show "closed" at the assignment close even for a
+  participant holding a staff extension (see tracer Trace 3); their own exam
+  page shows the live personal countdown, so the mixed signal is brief but
+  could confuse during accommodations. Needs a product/UX decision —
+  recommended to bundle with the carried TA3-1-followup timeline work rather
+  than patch ad hoc.
+- `toast.warning(resolvedWarningMessage)` on tab return (monitor `:234`) fires
+  AFTER the grace period from the hidden tab — the toast appears on the exam
+  tab when the student returns; message wording (default `warningTabSwitch`)
+  reads as a warning, not an accusation. Reasonable as-is.
 
-## DES3-5 — New strings i18n parity (verified)
-`examDeadlineExtended` and the cycle-1/2 additions exist in both `messages/en.json` and `messages/ko.json` (commit-level confirmation d693939c adds 1 key to each; en/ko parity test suite green in the unit run).
-
-## Standing items
-- The instructor anti-cheat dashboard's new IP-overlap panel renders only when non-empty with benign-explanation framing — good restraint (no scary empty table).
-- DES-ENV (no live-browser audit possible from this environment: WCAG contrast spot-checks, focus order on the exam workspace, INP under load) remains carried with the same exit criterion: provisioned browser access or local seeded dev server.
+## Exit criteria for the deferred browser audit
+DES-ENV (carried): a provisioned staging server + browser would unlock the
+WCAG 2.2 contrast/focus audit, reduced-motion check, and LCP/CLS/INP
+measurement that static review cannot provide.

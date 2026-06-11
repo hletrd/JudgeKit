@@ -1,21 +1,43 @@
-# Document Specialist — RPF Cycle 3 (2026-06-11)
+# Document-specialist review — RPF cycle 4 (2026-06-11)
 
-**HEAD reviewed:** 63429d97. Checked: docs/ against the code they describe, with emphasis on files touching the cycle-1/2 features (exam integrity, backups, deploy hardening, retention).
+**HEAD reviewed:** 7c0a4bd4.
+**Lens:** doc/code mismatches against authoritative sources (the code).
 
-## DOC3-1 — `docs/exam-integrity-model.md` describes an enforcement behavior the code intentionally removed (MEDIUM, High, CONFIRMED)
-Line 55: "Without a fresh heartbeat the submission is rejected with `HTTP 403 antiCheatHeartbeatRequired`." Reality (`src/lib/assignments/submissions.ts:328-355`): fail-OPEN — the submission is accepted and a `submission_stale_heartbeat` escalate-tier event is recorded for human review; the error id survives only as a dead union member (`submissions.ts:36`). The "What this closes" bullet is therefore wrong (the curl path is flagged, not closed) while the doc is stamped `_Last updated: 2026-06-11_`. This is the platform's authoritative integrity statement for instructors/recruiters; it must describe the fail-open posture, the flag's name/tier, and the reviewer's obligation. Bundle the dead-member removal.
+## DOC4-1 — `exam-integrity-model.md` promises submission-only flag semantics; code disagrees (MEDIUM, High, CONFIRMED)
+`docs/exam-integrity-model.md:54` ("A submission with a stale … heartbeat is
+accepted, and a `submission_stale_heartbeat` … event is recorded instead") and
+`:56` ("A flagged submission means 'the submitting client had no recent
+browser-monitor activity'") are false at this HEAD: the recording site is the
+shared validator, which also runs on problem-page renders
+(`practice/problems/[id]/page.tsx:167`) and autosave snapshots
+(`code-snapshots/route.ts:62`). The reviewer-obligation paragraph therefore
+instructs staff to treat page opens as suspicious submissions. Resolution:
+fix the code to match the doc (AGG4-1 — the doc describes the RIGHT design),
+then add one clarifying sentence that only the submit path records the flag
+and that autosaves/page loads never do.
 
-## DOC3-2 — Cycle-1's accommodation feature and its integrity semantics are undocumented (LOW-MEDIUM, High, CONFIRMED)
-`docs/exam-integrity-model.md` doesn't mention staff time extensions at all, although they change grading-relevant timing (`extendExamSession`, durable-audited, may exceed the assignment close). Once CR3-1 is fixed, the doc should state: extensions move the per-participant window; telemetry and submission acceptance both follow `personal_deadline`; extensions are durably audited (`exam_session.extend`). One paragraph.
+## DOC4-2 — `review-model.ts` inline comment same mismatch (LOW, High, CONFIRMED)
+`src/lib/anti-cheat/review-model.ts:12-15` — update wording with AGG4-1 so the
+tier table's "Server-recorded" description stays truthful.
 
-## DOC3-3 — `RESTORE_DATABASE_URL` restore-test exists only inside the script (LOW, High, CONFIRMED)
-`scripts/verify-db-backup.sh` gained a full restore-test (abfa90f5) gated on `RESTORE_DATABASE_URL`/arg 2, but `docs/deployment.md:379` still describes the script pair without it, no runbook entry, and grep finds zero references outside the script. An operator following the docs will never enable the stronger check. Add: the env var, the CREATE DATABASE rights requirement, the role-match caveat (D3-3 — `ON_ERROR_STOP` + dump ownership statements), and the skip-notice meaning, in `docs/deployment.md` (backup section) and/or `docs/operator-incident-runbook.md`.
+## DOC4-3 — Verified-accurate list (no action)
+- `exam-close.ts` header narrative matches both consumers and history.
+- "Staff time extensions" doc section (cycle-3 G2) matches `extendExamSession`
+  semantics incl. SQL-composed concurrent extensions and audit event name
+  (`exam_session.extend` — grep-confirmed in audit emitters).
+- `deploy-docker.sh` header env table includes the new `E2E_HOME_HEADING` knob
+  with the same default-fallback semantics the specs implement (`|| "Write
+  code|코드를"` / responsive variant) — consistent.
+- `docs/deployment.md` restore-test section (cycle-3 G6) matches
+  `verify-backup` behavior: full `RESTORE_DATABASE_URL` path, role-match
+  caveat, skip notice (script cross-checked).
+- AGENTS.md "Deploy hardening" list still matches script behavior (BuildKit
+  self-heal, sequential language builds default) — unchanged since cycle-3
+  verification.
+- Test-seed route header security model (PLAYWRIGHT_AUTH_TOKEN gate,
+  timing-safe compare, localhost via validated hops) matches implementation.
 
-## Verified accurate (no action)
-- `docs/data-retention-policy.md`: code_snapshots row (180 d, `CODE_SNAPSHOT_RETENTION_DAYS`, createdAt key) matches `data-retention.ts` / `data-retention-maintenance.ts`; the "eight prunes" docstring matches the allSettled set.
-- AGENTS.md "Deploy hardening": BuildKit signature, remedy (`docker buildx history rm --all`), non-remedy (`builder prune -af`), sequential default, COMPOSE_PARALLEL_LIMIT — all match `deploy-docker.sh` at this HEAD. The runbook's deploy-build-failure scenario matches `run_remote_build`'s behavior (single retry, loud warn).
-- `deploy-docker.sh` header env-var docs match the implemented flags (LANGUAGE_BUILD_STRATEGY default sequential verified at the branch point).
-- `docs/exam-integrity-model.md`'s "deliberate telemetry boundaries" section accurately reflects `CLIENT_EVENT_TYPES` and the absence of fullscreen/second-device collection.
-- CLAUDE.md production guardrails (no `docker system prune --volumes`; algo app-only flags) are consistent with `.env.deploy.algo` expectations described in the run context.
-
-Final sweep across docs/: no other claim-vs-code mismatch found in the files adjacent to this cycle's change surface; older standing docs (threat-model, monitoring) were re-skimmed at the section level and remain consistent with the register's carried items.
+## Sweep
+README/SECURITY.md unchanged this cycle; no version-number or CLI-flag drift
+found in `docs/` against current scripts. The only live mismatches are
+DOC4-1/2, both scheduled with the code fix.

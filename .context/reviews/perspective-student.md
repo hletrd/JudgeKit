@@ -1,23 +1,42 @@
-# Persona: Student taking assignments/exams — RPF Cycle 3 (2026-06-11)
+# Persona review — Student taking assignments/exams (RPF cycle 4, 2026-06-11)
 
-**HEAD reviewed:** 63429d97. Walked the windowed-exam flow as a student would experience it: start → work → deadline pressure → extension → disconnect → submit.
+**HEAD reviewed:** 7c0a4bd4. Static walkthrough of the student exam flow
+(start exam → problem pages → autosave → submit → disconnect/extension paths);
+no live browser in this environment.
 
-## What got better since cycle 2 (verified in code)
-- If staff extends my time, my countdown now actually moves (within ≤60 s or on tab refocus), I get a toast plus a persistent "deadline extended" note, and the problem list comes back even if I was already staring at the red "time expired" panel (`ExamDeadlineSync` mounts in the expired state — `page.tsx:197-207`). This was the single most anxiety-inducing failure mode from the cycle-2 persona review; it is fixed.
-- The extend dialog my instructor uses is no longer fiddly (Enter submits, Cancel exists) — indirectly my wait time for a rescue is shorter.
-- A draft I forgot to submit announces itself when recovered (c7af2a37).
+## ST4-1 — I get silently flagged for opening the problem (MEDIUM-HIGH, High; same root as AGG4-1)
+As a student I never see it, but the moment I open my first exam problem the
+platform records an escalate-tier "submitted while unmonitored" flag against
+me (`practice/problems/[id]/page.tsx:167` →
+`submissions.ts:343`), before the monitoring banner has even appeared. If my
+instructor reviews flags strictly (the docs tell them to), I'm a suspect for
+having navigated. This is the cycle's top fairness issue from my seat. Fix
+scheduled (flag only on real submissions).
 
-## ST3-1 — During my accommodation window, the platform quietly treats me as suspicious (MEDIUM-HIGH from my seat; same root cause as CR3-1)
-If my extension carries me past the original assignment deadline: I keep seeing "tab switching is recorded" warnings (so I behave carefully), but every event my browser sends is rejected server-side, and **each submission I make adds a `submission_stale_heartbeat` flag to the instructor's dashboard against my name**. I have no way to know, no way to fix it, and the students MOST likely to hit this are accommodation holders. If a grade dispute ever cites those flags, the harm is real. This must be fixed server-side (CR3-1) — from my seat it is a fairness bug, not a telemetry bug.
+## ST4-2 — Disconnect/timeout mid-exam: well handled (positive, verified in code)
+- My unsent telemetry queues in localStorage and survives reloads
+  (`anti-cheat-storage.ts`), retries with backoff, and permanent rejections
+  don't burn the retry ladder (cycle-3 G5).
+- My countdown can only move LATER on resync — an extension mid-exam shows a
+  toast + persistent note; a flaky poll can never shrink my time
+  (`exam-deadline-sync.tsx:70`).
+- Submissions are accepted fail-open even if my monitor died (no 403 at the
+  deadline because my wifi blipped) — `submissions.ts:336-342` rationale.
+- If staff extend my time past the contest close, both my submissions AND my
+  telemetry are accepted (cycle-3 G1) — no more dark-window flags.
 
-## ST3-2 — Disconnect/timeout mid-exam (re-walked; acceptable)
-- Editor drafts: autosave + recovery notification; offline anti-cheat events queue in localStorage and flush on `online`/refocus (bounded retries).
-- Countdown: re-syncs server time on refocus; background-tab drift handled; threshold toasts suppressed after long-hidden (no toast storm on return).
-- Deadline sync: offline poll failures keep the current deadline (extension-only contract means I can never LOSE time from a flaky network).
-- Submission at the wire: the server is authoritative (`validateAssignmentSubmission`); if my heartbeats went stale because of wifi, I am NOT blocked (fail-open) — correct call for my anxiety, and the flag is reviewable context.
+## ST4-3 — Residual anxiety points (LOW, Medium)
+- The tab-switch warning toast fires when I return after >3 s away; wording is
+  warning-grade, acceptable. But repeated legitimate task-switching (allowed
+  calculator app, accessibility tools) still accumulates `signal`-tier rows I
+  can't see or contest. Mitigation is staff-side education (the integrity doc
+  covers corroboration); a student-visible "what was recorded about me"
+  panel would be the structural fix — product decision, not scheduled.
+- If the exam-session re-fetch race fires at start I'm told the assignment is
+  closed when it isn't (AGG4-4); rare, but at exam start that's a panic
+  moment. Error-key fix scheduled this cycle.
 
-## ST3-3 — Clarity nits (LOW, carried)
-- ST2 (problem statement sample-IO copy affordances) and the pre-start accommodation gap (IN2-2: extensions need an existing session, so extra time can only be granted AFTER I start) remain carried with unchanged owner decisions. The workaround (extend right after start) works but requires the instructor to remember per-student.
-- When my exam-session poll 401s after a session expiry + re-login in another tab, the poller just stays silent (deadline frozen until refocus refetch succeeds) — acceptable, no false data shown.
-
-Net: the student experience at this HEAD is the best it has been across cycles; the one open item (ST3-1) is serious precisely because everything else now works.
+## ST4-4 — Clarity of problem statements / submission flow
+Statement rendering, sample I/O, and per-language templates were covered in
+cycles 1–2 (no changes since); nothing new to flag. Language availability
+preview for candidates remains a deferred product item (JA-clarity row).

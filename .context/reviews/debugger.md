@@ -1,25 +1,63 @@
-# Debugger (latent bug surface, failure modes) — RPF Cycle 3 (2026-06-11)
+# Debugger review — RPF cycle 4 (2026-06-11)
 
-**HEAD reviewed:** 63429d97. Hunt: failure modes and regressions in the cycle-1/2 surface; edge cases the happy-path tests don't exercise.
+**HEAD reviewed:** 7c0a4bd4 · baseline gates green.
+**Lens:** latent bug surface, failure modes, regressions.
 
-## D3-1 — Accommodated examinee enters a self-reinforcing "suspicious" state (MEDIUM-HIGH, High, CONFIRMED; shared root cause with CR3-1)
-Reproduction (from code): windowed exam, anti-cheat ON, staff extends a session past `assignment.deadline`; clock passes the assignment close. Now: anti-cheat POST → 403 (`anti-cheat/route.ts:102-104`); monitor queues + retries ×3 → drops; submission → fail-open flag `submission_stale_heartbeat` per submission (`submissions.ts:336-347`); heartbeat-gap report paints the window as one continuous gap. Every signal an instructor uses to detect cheating fires on the honest accommodated student, and no signal exists for an actual cheater in that window. Single-line-class fix at the boundary check (honor `personal_deadline`); test must cover heartbeat AND non-heartbeat events plus the no-flag-on-submission assertion.
+## Findings
 
-## D3-2 — Anti-cheat monitor: permanent 4xx churn (LOW, High, CONFIRMED)
-Same mechanism as CR3-2 — note the additional debugger-angle failure mode: while dead 403 events occupy the queue, `performFlush` is serial, so a REAL transient failure of a later event happens behind up to 3×(dead-event latency) — under exam-end load this can push a tab_switch event's delivery past the contest end, where it is then also 403'd. Cascading loss. Tri-state send result fixes both.
+### D4-1 — Guaranteed false escalate flag on first problem open (MEDIUM-HIGH, High, CONFIRMED)
+Reproduction (from code, no environment needed):
+1. Windowed exam, `enableAntiCheat: true`. Student starts the session
+   (start-exam-button → `startExamSession`).
+2. Student opens problem 1: `practice/problems/[id]/page.tsx:167` calls
+   `validateAssignmentSubmission` during render.
+3. Validator path: schedule OK → enrollment OK → session OK → heartbeat
+   correlation (`submissions.ts:319-335`): zero `anti_cheat_events` rows exist
+   (the monitor mounts only after this render and after privacy-notice
+   acceptance) → `latestEventAt === null` → `fresh === false` → INSERT
+   `submission_stale_heartbeat` (escalate tier).
+Result: every participant of every anti-cheat exam starts flagged. Repeats per
+problem navigation whenever >90 s passed without a recorded event (e.g. student
+sat on the contest overview page, which mounts no monitor).
 
-## D3-3 — `verify-db-backup.sh` restore-test can false-negative on role/extension mismatch (LOW, Medium, NEEDS MANUAL VALIDATION on the prod host)
-`scripts/verify-db-backup.sh` (restore-test block): plain-format dumps replay `ALTER ... OWNER TO <role>` and `CREATE EXTENSION` statements; with `ON_ERROR_STOP=1`, restoring under a DSN role different from the dump's owner (or without extension privileges) aborts and reports "backup is not restorable" for a perfectly restorable dump. The judgekit prod dumps use the same `judgekit` role, so the default topology is fine — but the first time an operator points `RESTORE_DATABASE_URL` at a generic scratch instance they will get a scary false alarm. Mitigation: document the role requirement next to the env var (it is currently documented NOWHERE outside the script — see DOC3-2), or filter with `psql -v ON_ERROR_STOP=1` only after `SET ROLE`-compatible preprocessing. Documentation is the proportionate fix.
+### D4-2 — Flag self-suppression window (MEDIUM, High, CONFIRMED)
+Because the freshness probe (`submissions.ts:320-330`) matches ANY event type,
+the row inserted by D4-1/the real submit path satisfies the next probe for
+~90 s. Failure mode: the SECOND unmonitored submission inside 90 s is NOT
+flagged — the evidence trail under-counts in bursts, which is precisely when a
+confederate-typed exam ends (rapid-fire final submissions).
 
-## D3-4 — `run_remote_build` retry overwrites the first failure log (LOW, Medium, CONFIRMED)
-`deploy-docker.sh` recovery path: the retry `tee`s into the same `$out_file`; if the retry fails too, the original corruption log is gone. The warn lines preserve the signature, so triage survives; full forensics do not. Optional one-liner (`${out_file}.retry`) — defer-eligible.
+### D4-3 — Lost-update race in the anti-cheat pending queue (LOW-MEDIUM, Medium, LIKELY)
+`anti-cheat-monitor.tsx`: interleaving
+`performFlush` (async; load at `:91`, save at `:103` after awaits) with
+`reportEvent`'s synchronous load-push-save (`:165-167`) drops the appended
+event. Trigger: blur/copy event fires while a flush (mount, refocus, online)
+is mid-await. Also two overlapping flush loops can double-send the same queued
+event (both load the same list before either saves). Impact: missing or
+duplicated telemetry rows — duplicates are merely noise, but missing
+`tab_switch` rows weaken evidence. Deterministic fix: per-event claim loop +
+`isFlushing` ref (see perf P4-3).
 
-## Edge cases probed and found SOLID
-- `CountdownTimer`: deadline prop moving past→future resets `expired`, re-arms thresholds, clears stale announcements (lines 69-78). Hidden-tab threshold-spam suppression intact.
-- `ExamDeadlineSync`: `inFlight` guard prevents overlap; `cancelled` flag prevents setState-after-unmount; equal/earlier deadlines ignored (clock-skew safe); JSON parse failures swallowed safely.
-- `startExamSession` race: `onConflictDoNothing` + authoritative re-fetch inside the tx — double-click/StrictMode double-start safe.
-- `sweepStaleWorkers` concurrent with heartbeat-route sweep: both run the same idempotent status-conditional UPDATEs; no double-log (WHERE filters on prior status) and no lost heartbeat (heartbeat sets `online` after the sweep's cutoff computation by timestamp comparison, not read-modify-write).
-- Rate-limit lost-race paths: verified no remaining bare INSERT in `rate-limit.ts` / `api-rate-limit.ts` / `rate-limit-core.ts` (grep + read); `checkServerActionRateLimit` `maxRequests=1` immediate-block preserved in the fresh-key path (`blockedUntil: 1 >= maxRequests ? ...`).
-- `insertRateLimitEntryIfAbsent` under drivers returning `rowCount: null` → coerces to 0 → treated as lost race → harmless re-read path (correct degradation).
+### D4-4 — Misleading `assignmentClosed` from session re-fetch race (LOW, High, CONFIRMED)
+`exam-sessions.ts:101-110`: if the post-insert re-fetch misses, the student is
+told the assignment is closed even though it is open; they will not retry
+(the UI gates on that error). Rename to an internal error so the UI shows the
+retryable generic failure instead.
 
-No regressions found in the cycle-1/2 surface beyond the items above.
+## Hypotheses tested and rejected (provenance)
+- "PATCH lets exams keep a late window, diverging the anti-cheat ingest from
+  submission acceptance": rejected — PATCH merges into
+  `assignmentMutationSchema` (`[assignmentId]/route.ts:129`), which nulls
+  `lateDeadline` for both exam modes (`validators/assignments.ts:107-122`).
+- "Heartbeat-only-when-visible starves freshness during legit work": rejected —
+  any visible exam tab heartbeats every 30 s; server records ≤1/60 s; the 90 s
+  threshold leaves ≥30 s margin. The starved cases are exactly the
+  non-submission paths covered by D4-1.
+- "Cycle-3 lazy staff resolution changed student fallback semantics": rejected —
+  non-staff `?userId=other` still resolves (now lazily) and self-falls-back;
+  pinned by `exam-session-get-lazy-staff.test.ts`.
+- "`getEffectiveExamCloseAt(now > close)` vs old `>= now` boundary flip":
+  rejected — old accept condition `personalDeadline >= now` ≡ new reject
+  condition `effectiveClose < now` at the boundary.
+
+Confidence labels inline.

@@ -1,32 +1,67 @@
-# Persona: Authorized Defensive Security Assessment (owner's platform) — RPF Cycle 3 (2026-06-11)
+# Persona review — Authorized defensive security assessment (RPF cycle 4, 2026-06-11)
 
-**HEAD reviewed:** 63429d97. Scope per the owner's brief: academic-dishonesty vectors and anti-cheat coverage, sandbox isolation, role/group authorization boundaries, hidden-test-case and submission confidentiality, scoreboard/grading integrity, judging-pipeline resilience. Defensive review; weaknesses + fixes, no exploit tooling. Focus this cycle: the cycle-1/2 delta; standing areas re-checked at the gate level.
+**HEAD reviewed:** 7c0a4bd4. Scope: academic-dishonesty vectors, sandbox
+isolation, role/group authorization boundaries, hidden-testcase and
+submission confidentiality, scoreboard/grading integrity, judging-pipeline
+resilience. Owner-authorized defensive review; weaknesses cited with fixes,
+no exploit tooling.
 
-## 1. Academic-dishonesty vectors / anti-cheat coverage
-- **WEAKNESS (MEDIUM-HIGH, High, CONFIRMED) — accommodation blackout = unmonitored exam time + fabricated flags.** `anti-cheat/route.ts:102-104` vs `extendExamSession`. Adversarial framing: a participant who knows the platform (or observes the 403s in devtools) learns that the extension window is UNMONITORED — tab-switching, copy/paste, and the second-device decoy pattern are all invisible there; simultaneously honest extended users accrue false `submission_stale_heartbeat` flags, polluting the very evidence stream a reviewer would use. Fix: honor `personal_deadline` at the ingest boundary (CR3-1) + regression tests. This is the only NEW dishonesty-vector regression found this cycle.
-- **Duplicate accounts / collusion:** the IP-overlap report closes the correlation gap flagged in cycle 1 (PS1); gate verified (`canMonitorContest`), parameterized SQL, LIMIT-bounded. Residual: VPN-split collusion remains out of scope by design (documented telemetry boundary).
-- **Unauthorized AI assistance:** posture unchanged and honestly documented (similarity + snapshot replay as post-hoc containment). The stale doc claim about hard-blocking (DOC3-1) must be fixed so reviewers know the curl path is flag-only — an owner reading the current doc would over-trust the control.
-- **Heartbeat-correlation gate:** fail-open by design (fairness rationale in code). Verified the flag write cannot itself block submission (`.catch` + warn). Acceptable; document it (DOC3-1).
+## 1. Academic-dishonesty detection — TWO weaknesses this cycle (the headline)
+**W1 (MEDIUM-HIGH, High, CONFIRMED).** Evidence fabrication by the platform
+itself: `submission_stale_heartbeat` escalate flags are inserted on problem
+page renders and editor autosaves (`page.tsx:167`,
+`code-snapshots/route.ts:62` → `submissions.ts:343-354`). Detection value of
+the tier collapses under guaranteed false positives. Hardening: record the
+flag ONLY on the submit path (explicit opt-in parameter); red-first tests on
+the non-submit paths.
+**W2 (MEDIUM, High, CONFIRMED).** Detection evasion via self-suppression: the
+freshness probe (`submissions.ts:320-330`) accepts ANY event type, so
+server-inserted rows (the flag itself; `code_similarity`) count as browser
+liveness. A second-device submitter is flagged at most once per 90 s.
+Hardening: probe must filter to client-emitted types (move
+`CLIENT_EVENT_TYPES` to lib, `inArray` filter).
+Coverage of the remaining vectors re-confirmed unchanged: collusion (IP
+overlap report + similarity engine), duplicate accounts (shared-IP report),
+unauthorized AI assistance (out of band — owner accepts; code snapshots
+provide keystroke-growth evidence), curl bypass (origin pinning + W1/W2
+fixes restore the flag trail).
 
-## 2. Sandbox isolation (judged code)
-No changes to `judge-worker-rs` execution, seccomp/gvisor posture, or language images in cycles 1–2 (verified by commit file lists). Standing posture (gvisor/crun, no-network judge containers, resource caps) carries; no re-audit trigger fired. Carried items (PS2 runtime-hardening follow-ups) unchanged in the register.
+## 2. Sandbox isolation — no change since cycle-1/2 review
+`judge-worker-rs` untouched since the last deep review (git log verified); the
+per-worker token model (`judge/auth.ts`) prevents a leaked shared token from
+forging results for registered workers. No new findings; carry the standing
+posture (container isolation + image catalog managed on worker-0 only).
 
-## 3. Authorization boundaries (roles/groups)
-New-surface checks, all verified at the route level this cycle: extension PATCH (manage-gated), ipOverlap (monitor-gated), cross-user session GET (submissions.view-gated + enrollment check + silent self-fallback for non-staff), code-snapshots POST (problem access + assignment-context validation + per-user limit). No student→staff or cross-group reach found through the new endpoints. The `/api/v1/test/seed` endpoint remains production-inert (NODE_ENV gate ahead of the token gate).
+## 3. Authorization boundaries — probed, held
+- Student → staff data: exam-session cross-reads require group-instructor
+  standing even with analytics capability (cycle-3 G4 kept the gate; tests
+  pin it). Anti-cheat GET requires monitor standing; snapshots read path
+  requires analytics + group-scoped review rights.
+- Student → other students: no route found returning another participant's
+  events/code without the above gates; the self-fallback on `?userId=`
+  prevents enumeration responses.
+- TA: read-only supervision confirmed (see perspective-assistant TA4-4).
 
-## 4. Hidden test cases & submission confidentiality
-Untouched by cycles 1–2 (no route changes in problems/test-cases/submissions read paths). Standing gates re-skimmed: hidden-case payloads stay server-side; cross-user submission reads remain capability-gated. No new findings.
+## 4. Hidden test cases / submission confidentiality
+No regression: testcase storage and submission read gates unchanged this
+cycle; accepted-solutions route remains gated by solve-status (cycle-1/2
+review). Nothing in the cycle-3 diff touches these.
 
-## 5. Scoreboard / grading integrity
-- Extensions are durably audited with actor/target/amount/new-deadline — grading-relevant time changes are reconstructable (good).
-- Late-penalty scoring keys on `personal_deadline` (`submissions.ts:641-655`) so an extension cannot create an un-penalized late path beyond what staff granted; concurrent extensions compose in SQL (no lost update).
-- Leaderboard freeze / hide-scores logic untouched this cycle.
+## 5. Scoreboard/grading integrity
+Late-penalty scoring keys on `personal_deadline` consistently with the new
+effective-close contract; score overrides require manage rights; leaderboard
+freeze validation rejects out-of-window freezes including via PATCH (merged
+revalidation). No integrity gap found this cycle beyond W1/W2's effect on
+human review of contested results.
 
-## 6. Judging-pipeline resilience under live-contest load
-- Crashed-worker detection no longer depends on surviving workers' heartbeats (background sweep) — the documented single-worker prod topology now has a watchdog. Reap signals log loudly for alerting ahead of the Prometheus scrape.
-- The first-insert rate-limit race (a 500 inside a security control, reachable under burst load on fresh keys — exactly contest-start conditions) is fixed conflict-safely at all four sites and the shared core; verified + tested.
-- Deploy self-heal removes the operational class most likely to leave a fleet half-built mid-contest-week (BuildKit history corruption).
-- New steady-state poll load (exam-session GET) is modest but trims further with PERF3-1.
+## 6. Judging-pipeline resilience under contest load
+Background staleness sweep removes the silent-dead-worker mode; submission
+admission control (per-user rate, pending caps, global queue cap inside one
+advisory-locked transaction, `submissions/route.ts:287-330`) holds the line at
+the API; queue-status endpoint gives users feedback rather than retries.
+Watch item only: P4-1 monitoring-read cost during a large live contest
+(deferred with exit criterion).
 
-## Summary for the owner
-One new MEDIUM-HIGH weakness (accommodation blackout — fix this cycle, before any live exam that might need an extension), one MEDIUM documentation-integrity fix (fail-open posture must be stated truthfully), and a set of verified hardening wins from cycles 1–2 that materially improve live-exam operability. No Critical findings at this HEAD.
+## Verdict
+Fix W1+W2 this cycle (scheduled as plan G1/G2). No other security-relevant
+deltas since cycle 3; previously-verified controls re-confirmed at this HEAD.
