@@ -141,7 +141,15 @@ describe("source-grep test inventory", () => {
     //     justification. Inherently a schema↔maintenance cross-file text
     //     contract; a behavioural test cannot enumerate "tables nobody
     //     thought about".
-    const DOCUMENTED_BASELINE = 139;
+    // Bumped 139 -> 140 (2026-06-11, RPF cycle-5):
+    //   - tests/unit/components/anti-cheat-presentation.test.ts — catalog
+    //     coverage: every known anti-cheat event type must have an
+    //     eventTypes.* label in BOTH locale catalogs and a badge color
+    //     (AGG5-2: submission_stale_heartbeat shipped without either and the
+    //     escalate flag rendered as a raw i18n key path). Inherently an
+    //     i18n-catalog↔event-model cross-file text contract; a component
+    //     test can only see the one locale it mounts with.
+    const DOCUMENTED_BASELINE = 140;
     expect(sourceGrepFiles.length).toBe(DOCUMENTED_BASELINE);
   });
 
