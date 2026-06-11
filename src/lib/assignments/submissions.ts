@@ -22,6 +22,7 @@ import { getDbNowUncached } from "@/lib/db-time";
 import { logger } from "@/lib/logger";
 import { TERMINAL_SUBMISSION_STATUSES_SQL_LIST } from "@/lib/submissions/status";
 import { buildIoiLatePenaltyCaseExpr } from "@/lib/assignments/scoring";
+import { getEffectiveExamCloseAt } from "@/lib/assignments/exam-close";
 import { DEFAULT_PROBLEM_POINTS } from "@/lib/assignments/constants";
 
 type AssignmentValidationError =
@@ -260,8 +261,13 @@ export async function validateAssignmentSubmission(
       // Windowed exams: an extended personal window overrides the assignment
       // close for THIS participant (the per-session deadline is checked
       // again below; late-penalty scoring keys on personal_deadline too).
-      const extendedDeadline = examSession?.personalDeadline?.valueOf() ?? null;
-      if (!(extendedDeadline !== null && extendedDeadline >= now)) {
+      // Shares the single effective-close contract with the anti-cheat
+      // ingest (RPF cycle-3 AGG3-1) via getEffectiveExamCloseAt.
+      const effectiveClose = getEffectiveExamCloseAt(
+        { examMode: assignment.examMode, deadline: new Date(effectiveCloseAt) },
+        examSession?.personalDeadline ?? null
+      );
+      if (!effectiveClose || effectiveClose.valueOf() < now) {
         return {
           ok: false,
           status: 403,

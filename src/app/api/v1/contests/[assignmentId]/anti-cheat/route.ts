@@ -10,6 +10,8 @@ import { antiCheatEvents, users } from "@/lib/db/schema";
 import { eq, and, desc, sql } from "drizzle-orm";
 import { parsePositiveInt, parseNonNegativeInt } from "@/lib/validators/query-params";
 import { getContestAssignment, canMonitorContest } from "@/lib/assignments/contests";
+import { getExamSession } from "@/lib/assignments/exam-sessions";
+import { getEffectiveExamCloseAt } from "@/lib/assignments/exam-close";
 import { LRUCache } from "lru-cache";
 import { getUnsupportedRealtimeGuard, shouldRecordSharedHeartbeat, usesSharedRealtimeCoordination } from "@/lib/realtime/realtime-coordination";
 
@@ -100,7 +102,26 @@ export const POST = createApiHandler({
       return apiError("contestNotStarted", 403);
     }
     if (assignment.deadline && now > assignment.deadline) {
-      return apiError("contestEnded", 403);
+      // RPF cycle-3 AGG3-1: a staff-granted extension (extendExamSession) may
+      // move a windowed-exam participant's personal_deadline PAST the
+      // assignment close — submissions already honor it, so telemetry must
+      // too, or the accommodation window goes dark and every submission in it
+      // accrues a false `submission_stale_heartbeat` flag. The session lookup
+      // runs ONLY on this past-close branch (hot path stays query-free).
+      let effectiveClose: Date | null = assignment.deadline;
+      if (assignment.examMode === "windowed") {
+        const examSession = await getExamSession(assignmentId, user.id);
+        effectiveClose = getEffectiveExamCloseAt(
+          assignment,
+          examSession?.personalDeadline ?? null
+        );
+      }
+      // effectiveClose is never null here (assignment.deadline is set on this
+      // branch and the helper only ever returns it or a LATER personal
+      // deadline), but keep the null semantics correct: null = no close.
+      if (effectiveClose && now > effectiveClose) {
+        return apiError("contestEnded", 403);
+      }
     }
 
     const { eventType, details: rawDetails } = body;
