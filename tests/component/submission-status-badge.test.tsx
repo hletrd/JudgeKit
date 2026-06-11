@@ -124,8 +124,25 @@ describe("SubmissionStatusBadge", () => {
     expect(screen.getByTestId("icon-alert")).toBeInTheDocument();
   });
 
-  it("does not render tooltip content when no detail data is provided", () => {
+  it("renders the full-verdict-name tooltip even without detail data", () => {
+    // Since the verdict-abbreviation explainer (1e6755a8), a known terminal
+    // verdict ALWAYS gets a tooltip — the full-name expansion ("WA" →
+    // "Wrong Answer") is reason enough. This test previously pinned the
+    // pre-explainer behavior (no tooltip without detail data) and went
+    // stale (RPF cycle-2 gate fix).
     render(<SubmissionStatusBadge status="wrong_answer" label="Wrong Answer" />);
+    const tooltip = screen.getByTestId("tooltip-content");
+    expect(tooltip).toBeInTheDocument();
+    expect(tooltip.textContent).toContain("statusFull.wrong_answer");
+  });
+
+  it("does not render a tooltip for in-progress statuses (live pulse stays uncluttered)", () => {
+    render(<SubmissionStatusBadge status="judging" label="Judging" />);
+    expect(screen.queryByTestId("tooltip-content")).not.toBeInTheDocument();
+  });
+
+  it("does not render a tooltip for unknown statuses", () => {
+    render(<SubmissionStatusBadge status="something_unknown" label="?" />);
     expect(screen.queryByTestId("tooltip-content")).not.toBeInTheDocument();
   });
 
