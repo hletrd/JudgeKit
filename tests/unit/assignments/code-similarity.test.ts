@@ -75,7 +75,7 @@ describe("code similarity status reporting", () => {
     );
   });
 
-  it("tries the Rust sidecar before reporting an unavailable service for oversized contests", async () => {
+  it("tries the Rust sidecar, then reports too_many_submissions for oversized contests (AGG5-5)", async () => {
     rawQueryAllMock.mockResolvedValue(
       Array.from({ length: 501 }, (_, index) => ({
         userId: `user-${index}`,
@@ -88,12 +88,35 @@ describe("code similarity status reporting", () => {
     const result = await runSimilarityCheck("assignment-1");
 
     expect(computeSimilarityRustMock).toHaveBeenCalledOnce();
+    // The declared enum member and its translated dashboard branch were
+    // unreachable while this guard returned "service_unavailable": the COUNT
+    // is what blocks the TS fallback engine; the sidecar being absent is the
+    // precondition for reaching the guard at all.
     expect(result).toMatchObject({
       status: "not_run",
-      reason: "service_unavailable",
+      reason: "too_many_submissions",
       flaggedPairs: 0,
       submissionCount: 501,
       maxSupportedSubmissions: MAX_SUBMISSIONS_FOR_SIMILARITY,
+    });
+  });
+
+  it("completes regardless of submission count when the Rust sidecar answers", async () => {
+    rawQueryAllMock.mockResolvedValue(
+      Array.from({ length: 501 }, (_, index) => ({
+        userId: `user-${index}`,
+        problemId: "problem-1",
+        sourceCode: "print(1)",
+      }))
+    );
+    computeSimilarityRustMock.mockResolvedValue([]);
+
+    const result = await runSimilarityCheck("assignment-1");
+
+    expect(result).toMatchObject({
+      status: "completed",
+      reason: null,
+      submissionCount: 501,
     });
   });
 

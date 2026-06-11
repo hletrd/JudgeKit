@@ -25,13 +25,13 @@ export const POST = createApiHandler({
     }
 
     let result;
+    const controller = new AbortController();
+    // Cleared in `finally` (RPF cycle-5 AGG5-5): clearing inside the `try`
+    // after the await leaked an armed timer whenever the check threw a
+    // non-abort error.
+    const timeoutId = setTimeout(() => controller.abort(), 30_000);
     try {
-      const controller = new AbortController();
-      const timeoutId = setTimeout(() => controller.abort(), 30_000);
-
       result = await runAndStoreSimilarityCheck(assignmentId, undefined, controller.signal);
-
-      clearTimeout(timeoutId);
     } catch (error) {
       if (error instanceof Error && (error.name === "AbortError" || error.message.includes("timed out"))) {
         return apiSuccess({
@@ -44,6 +44,8 @@ export const POST = createApiHandler({
         });
       }
       throw error;
+    } finally {
+      clearTimeout(timeoutId);
     }
 
     const pairs = result.pairs ?? [];
