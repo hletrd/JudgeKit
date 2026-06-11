@@ -21,6 +21,7 @@ vi.mock("@/lib/db/schema", () => ({
   loginEvents: { createdAt: "loginEvents.createdAt" },
   auditEvents: { createdAt: "auditEvents.createdAt" },
   sourceDrafts: { updatedAt: "sourceDrafts.updatedAt" },
+  codeSnapshots: { createdAt: "codeSnapshots.createdAt" },
 }));
 
 vi.mock("@/lib/logger", () => ({
@@ -106,6 +107,20 @@ describe("startSensitiveDataPruning / stopSensitiveDataPruning", () => {
     // 64 KiB per (user, problem, language) accumulated forever. The prune
     // keys on updatedAt so only drafts abandoned for the full window go.
     expect(mocks.loggerDebug).toHaveBeenCalledWith(expect.anything(), "Pruned abandoned source drafts");
+  });
+
+  it("enforces code-snapshot retention (code_snapshots is pruned, not unbounded)", async () => {
+    const { startSensitiveDataPruning, stopSensitiveDataPruning } = await import("@/lib/data-retention-maintenance");
+
+    stopSensitiveDataPruning();
+    startSensitiveDataPruning();
+    await flushMicrotasks();
+
+    // code_snapshots previously had NO retention window (RPF cycle-2
+    // AGG2-1): up to 256 KiB per row, every ~10s per active examinee,
+    // accumulating forever — and outliving the 180-day anti-cheat events
+    // derived from it. The prune keys on createdAt (append-only table).
+    expect(mocks.loggerDebug).toHaveBeenCalledWith(expect.anything(), "Pruned expired code snapshots");
   });
 
   it("does not create duplicate intervals when started twice", async () => {
@@ -222,6 +237,7 @@ describe("pruneSensitiveOperationalData — legal hold", () => {
         submissions: 365,
         loginEvents: 180,
         sourceDrafts: 180,
+        codeSnapshots: 180,
       },
       getRetentionCutoff: (days: number, now: number) =>
         new Date(now - days * 24 * 60 * 60 * 1000),

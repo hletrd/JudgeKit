@@ -10,6 +10,7 @@ describe("data retention configuration", () => {
     delete process.env.SUBMISSION_RETENTION_DAYS;
     delete process.env.LOGIN_EVENT_RETENTION_DAYS;
     delete process.env.SOURCE_DRAFT_RETENTION_DAYS;
+    delete process.env.CODE_SNAPSHOT_RETENTION_DAYS;
   });
 
   it("uses documented defaults when no overrides are present", async () => {
@@ -23,17 +24,22 @@ describe("data retention configuration", () => {
       submissions: 365,
       loginEvents: 180,
       sourceDrafts: 180,
+      // Snapshots are anti-cheat telemetry: they must not outlive the
+      // derived anti-cheat events (180 days) — RPF cycle-2 AGG2-1.
+      codeSnapshots: 180,
     });
   });
 
   it("accepts positive integer overrides from the environment", async () => {
     process.env.CHAT_MESSAGE_RETENTION_DAYS = "45";
     process.env.SUBMISSION_RETENTION_DAYS = "730";
+    process.env.CODE_SNAPSHOT_RETENTION_DAYS = "90";
 
     const { DATA_RETENTION_DAYS } = await import("@/lib/data-retention");
 
     expect(DATA_RETENTION_DAYS.chatMessages).toBe(45);
     expect(DATA_RETENTION_DAYS.submissions).toBe(730);
+    expect(DATA_RETENTION_DAYS.codeSnapshots).toBe(90);
   });
 
   it("ignores invalid overrides and falls back to defaults", async () => {

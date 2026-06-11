@@ -5,6 +5,7 @@ import { codeSnapshots } from "@/lib/db/schema";
 import { createApiHandler } from "@/lib/api/handler";
 import { apiError, apiSuccess } from "@/lib/api/responses";
 import { canAccessProblem } from "@/lib/auth/permissions";
+import { isJudgeLanguage } from "@/lib/judge/languages";
 import { consumeUserApiRateLimit } from "@/lib/security/api-rate-limit";
 import {
   getRequiredAssignmentContextsForProblem,
@@ -27,6 +28,15 @@ export const POST = createApiHandler({
     // Prevents a single user from flooding the code_snapshots table.
     const userRateLimitResponse = await consumeUserApiRateLimit(_req, user.id, "code-snapshot:user");
     if (userRateLimitResponse) return userRateLimitResponse;
+
+    // Mirror the submit/draft routes' language gate (RPF cycle-2 AGG2-1):
+    // the language string is stored verbatim with no length cap, so accepting
+    // arbitrary strings lets one user bloat code_snapshots and pollute the
+    // anti-cheat timeline. The editor only ever sends real judge languages,
+    // so this is non-breaking.
+    if (!isJudgeLanguage(body.language)) {
+      return apiError("languageNotSupported", 400);
+    }
 
     let normalizedAssignmentId = body.assignmentId ?? null;
 

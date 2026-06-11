@@ -9,6 +9,10 @@ const DEFAULT_DATA_RETENTION_DAYS = {
   // abandoned. Without a window the table grows without bound (one row of up
   // to 64 KiB per user × problem × language).
   sourceDrafts: 180,
+  // Anti-cheat code snapshots: up to 256 KiB per row, written every ~10s per
+  // active examinee. Aligned with antiCheatEvents — the raw telemetry must
+  // not outlive the derived anti-cheat signals (RPF cycle-2 AGG2-1).
+  codeSnapshots: 180,
 } as const;
 
 function parseRetentionOverride(name: string, fallback: number) {
@@ -26,6 +30,7 @@ export const DATA_RETENTION_DAYS = {
   submissions: parseRetentionOverride("SUBMISSION_RETENTION_DAYS", DEFAULT_DATA_RETENTION_DAYS.submissions),
   loginEvents: parseRetentionOverride("LOGIN_EVENT_RETENTION_DAYS", DEFAULT_DATA_RETENTION_DAYS.loginEvents),
   sourceDrafts: parseRetentionOverride("SOURCE_DRAFT_RETENTION_DAYS", DEFAULT_DATA_RETENTION_DAYS.sourceDrafts),
+  codeSnapshots: parseRetentionOverride("CODE_SNAPSHOT_RETENTION_DAYS", DEFAULT_DATA_RETENTION_DAYS.codeSnapshots),
 } as const;
 
 export type DataRetentionKey = keyof typeof DATA_RETENTION_DAYS;

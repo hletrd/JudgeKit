@@ -17,6 +17,7 @@ Governance reference for operators deploying JudgeKit. All implementation lives 
 | Submissions and grading records | 365 days | `SUBMISSION_RETENTION_DAYS` |
 | Login events | 180 days | `LOGIN_EVENT_RETENTION_DAYS` |
 | Source-code drafts (unsubmitted autosaves) | 180 days since last edit | `SOURCE_DRAFT_RETENTION_DAYS` |
+| Anti-cheat code snapshots (in-progress editor captures) | 180 days since capture | `CODE_SNAPSHOT_RETENTION_DAYS` |
 
 All overrides must be positive integers. Invalid or zero values are silently ignored and the default is used.
 

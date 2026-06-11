@@ -169,6 +169,26 @@ describe("POST /api/v1/code-snapshots", () => {
     expect(dbInsertValuesMock).not.toHaveBeenCalled();
   });
 
+  it("rejects an unknown language with 400 (no write) — registry-gated like the submit route", async () => {
+    // Mirror of the cycle-1 draft-route gate (RPF cycle-2 AGG2-1): every
+    // snapshot row stores the language string verbatim with no length cap,
+    // so accepting arbitrary strings lets one user grow code_snapshots with
+    // junk and pollute the anti-cheat timeline. The editor only ever sends
+    // real judge languages, so the gate is non-breaking.
+    const { POST } = await import("@/app/api/v1/code-snapshots/route");
+    const response = await POST(
+      makeRequest({
+        problemId: "problem-1",
+        assignmentId: "assignment-1",
+        language: "not-a-real-language",
+        sourceCode: "x",
+      })
+    );
+
+    expect(response.status).toBe(400);
+    expect(dbInsertValuesMock).not.toHaveBeenCalled();
+  });
+
   it("writes a snapshot when assignment and problem access checks pass", async () => {
     const { POST } = await import("@/app/api/v1/code-snapshots/route");
     const response = await POST(

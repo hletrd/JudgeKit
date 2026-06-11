@@ -1,7 +1,7 @@
 import { and, inArray, lt, notInArray, or, sql } from "drizzle-orm";
 import { db } from "@/lib/db";
 import { logger } from "@/lib/logger";
-import { auditEvents, antiCheatEvents, chatMessages, loginEvents, recruitingInvitations, sourceDrafts, submissions } from "@/lib/db/schema";
+import { auditEvents, antiCheatEvents, chatMessages, codeSnapshots, loginEvents, recruitingInvitations, sourceDrafts, submissions } from "@/lib/db/schema";
 import { DATA_RETENTION_DAYS, isDataRetentionLegalHold, getRetentionCutoff } from "@/lib/data-retention";
 import { getDbNowMs } from "@/lib/db-time";
 
@@ -19,7 +19,7 @@ const BATCH_DELAY_MS = 100;
  * those databases would need `DELETE ... WHERE id IN (SELECT id ...)` instead.
  */
 async function batchedDelete(
-  table: typeof auditEvents | typeof antiCheatEvents | typeof chatMessages | typeof loginEvents | typeof recruitingInvitations | typeof sourceDrafts | typeof submissions,
+  table: typeof auditEvents | typeof antiCheatEvents | typeof chatMessages | typeof codeSnapshots | typeof loginEvents | typeof recruitingInvitations | typeof sourceDrafts | typeof submissions,
   whereClause: ReturnType<typeof lt> | ReturnType<typeof and>,
 ): Promise<number> {
   let totalDeleted = 0;
@@ -97,12 +97,23 @@ async function pruneSourceDrafts(nowMs: number) {
   logger.debug({ cutoff: cutoff.toISOString(), deleted }, "Pruned abandoned source drafts");
 }
 
+async function pruneCodeSnapshots(nowMs: number) {
+  // Keyed on createdAt: code_snapshots is append-only anti-cheat telemetry
+  // (up to 256 KiB per row, written every ~10s per active examinee). The
+  // window matches antiCheatEvents so the raw telemetry never outlives the
+  // derived anti-cheat signals (RPF cycle-2 AGG2-1).
+  const cutoff = getRetentionCutoff(DATA_RETENTION_DAYS.codeSnapshots, nowMs);
+  const deleted = await batchedDelete(codeSnapshots, lt(codeSnapshots.createdAt, cutoff));
+  logger.debug({ cutoff: cutoff.toISOString(), deleted }, "Pruned expired code snapshots");
+}
+
 /**
  * Run all sensitive-data retention prunes for one day's maintenance window.
  *
- * Seven independent prunes (chatMessages, antiCheatEvents,
- * recruitingInvitations, submissions, loginEvents, auditEvents, sourceDrafts)
- * run concurrently against the DB. The cutoff is taken from `getDbNowMs()` so it is computed against
+ * Eight independent prunes (chatMessages, antiCheatEvents,
+ * recruitingInvitations, submissions, loginEvents, auditEvents, sourceDrafts,
+ * codeSnapshots) run concurrently against the DB. The cutoff is taken from
+ * `getDbNowMs()` so it is computed against
  * the same clock as the data timestamps, avoiding app-vs-DB clock skew.
  *
  * @remarks Failure isolation: prunes are wrapped in `Promise.allSettled` so
@@ -140,6 +151,7 @@ async function pruneSensitiveOperationalData() {
       pruneLoginEvents(nowMs),
       pruneAuditEvents(nowMs),
       pruneSourceDrafts(nowMs),
+      pruneCodeSnapshots(nowMs),
     ]);
     for (const result of results) {
       if (result.status === "rejected") {
