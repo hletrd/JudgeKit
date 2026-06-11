@@ -17,7 +17,14 @@ Status legend: ✅ done+pushed · 🔧 in progress · ⬜ todo · 🟡 needs dec
 
 ## Implement this cycle
 
-### G1 ⬜ AGG3-1 — Anti-cheat ingest must honor staff-extended personal deadlines (MEDIUM-HIGH, High, CONFIRMED; 15-lens agreement)
+### G1 ✅ AGG3-1 — Anti-cheat ingest must honor staff-extended personal deadlines (MEDIUM-HIGH, High, CONFIRMED; 15-lens agreement)
+**Done 2026-06-11 (4f9687a7):** getEffectiveExamCloseAt helper (pure, DB-free)
++ anti-cheat POST consults it only on the past-close branch (windowed →
+single getExamSession lookup); validateAssignmentSubmission routed through
+the same helper (behavior-identical). Tests red→green: extended window
+accepts tab_switch AND heartbeat; doubly-expired 403; no-session 403;
+scheduled unchanged + no session lookup; pre-close hot path query-free;
+8 helper boundary cases.
 `src/app/api/v1/contests/[assignmentId]/anti-cheat/route.ts:102-104` rejects
 all events once `now > assignment.deadline`, while
 `extendExamSession` (`src/lib/assignments/exam-sessions.ts:151`) deliberately
@@ -45,7 +52,11 @@ Tasks:
 - Optional same-commit consistency: route `submissions.ts:259-271` through the
   same helper (behavior-identical refactor) so the contract has one owner.
 
-### G2 ⬜ AGG3-2 — Make the integrity doc truthful about the fail-open heartbeat gate (MEDIUM, High, CONFIRMED)
+### G2 ✅ AGG3-2 — Make the integrity doc truthful about the fail-open heartbeat gate (MEDIUM, High, CONFIRMED)
+**Done 2026-06-11 (3ec2c83a, after G1):** enforcement section rewritten to
+fail-open + flag posture incl. reviewer obligation and detection-not-
+prevention framing; new "Staff time extensions" section; dead
+antiCheatHeartbeatRequired union member removed (grep-clean repo-wide).
 - `docs/exam-integrity-model.md:55` region: rewrite "Submission-time heartbeat
   enforcement" to the actual fail-open + flag posture
   (`submission_stale_heartbeat`, escalate tier, reviewer obligation, fairness
@@ -59,7 +70,11 @@ Tasks:
   (`src/lib/assignments/submissions.ts:36`) — CR3-3.
 - Land AFTER G1 so the doc describes the fixed system.
 
-### G3 ⬜ AGG3-3 — Brand-aware remote smoke heading (LOW-MEDIUM, High, CONFIRMED; injected by cycle-2's deploy record)
+### G3 ✅ AGG3-3 — Brand-aware remote smoke heading (LOW-MEDIUM, High, CONFIRMED; injected by cycle-2's deploy record)
+**Done 2026-06-11 (0892c149):** both specs read E2E_HOME_HEADING (regex
+source, ci; empty/unset → stock default via ||); deploy-docker.sh passes
+the knob to the smoke and documents it in the header env table;
+.env.deploy.auraedu (local) sets E2E_HOME_HEADING=AuraEdu.
 - `tests/e2e/public-shell.spec.ts:13` and
   `tests/e2e/responsive-layout.spec.ts:81`: read
   `process.env.E2E_HOME_HEADING` (regex source, case-insensitive) with the
@@ -67,7 +82,10 @@ Tasks:
   (h1 is `homePageContent`-config-driven — `src/app/page.tsx:31,67`).
 - Keep the assertion itself (visible h1 + no error shell still asserted).
 
-### G4 ⬜ AGG3-4 — Lazy staff-visibility resolution in the exam-session GET poll (LOW-MEDIUM, High)
+### G4 ✅ AGG3-4 — Lazy staff-visibility resolution in the exam-session GET poll (LOW-MEDIUM, High)
+**Done 2026-06-11 (e7ea2304):** resolver runs only when ?userId= present and
+≠ caller; 4 tests pin plain-poll-no-resolve / self-param-skip /
+staff-cross-read / non-staff-self-fallback; structural guard test green.
 `src/app/api/v1/groups/[id]/assignments/[assignmentId]/exam-session/route.ts:112-116`:
 only call `canViewAssignmentSubmissions` when `?userId=` is present and ≠
 `user.id`; non-staff requesting others keep the silent self-fallback.
@@ -75,7 +93,11 @@ Tests (TE3-3): student no-param poll never invokes the resolver (mock
 assertion); staff cross-read still works; non-staff cross-read still
 self-falls-back.
 
-### G5 ⬜ AGG3-5 — Tri-state anti-cheat send result; stop retrying permanent 4xx (LOW, High)
+### G5 ✅ AGG3-5 — Tri-state anti-cheat send result; stop retrying permanent 4xx (LOW, High)
+**Done 2026-06-11 (1082e466):** sendEvent returns ok|permanent|retry; 4xx
+except 408/429 dropped (never queued); network/5xx/408/429 keep
+queue+backoff; component tests for 403-drop, 500-retry, network-retry,
+429-retry.
 `src/components/exam/anti-cheat-monitor.tsx:52-69`: `sendEvent` returns
 `"ok" | "permanent" | "retry"` — `res.ok` → ok; 4xx except 408/429 →
 permanent (drop, never queue); network error / 5xx / 408 / 429 → retry
@@ -83,7 +105,11 @@ permanent (drop, never queue); network error / 5xx / 408 / 429 → retry
 permanent failures. Component tests: 403 not queued; 500 queued+retried;
 existing retry tests stay green.
 
-### G6 ⬜ AGG3-6 — Document the backup restore-test (LOW, High)
+### G6 ✅ AGG3-6 — Document the backup restore-test (LOW, High)
+**Done 2026-06-11 (1f960b20):** deployment.md "Proving a backup is actually
+restorable" section (invocation, CREATE DATABASE rights, role-match caveat,
+skip-notice meaning); runbook backup-incident checks point at the full
+restore-test.
 `docs/deployment.md` (backup section, ~:379) + runbook: `RESTORE_DATABASE_URL`
 (base DSN, CREATE DATABASE rights), what the full restore-test proves vs the
 gzip-only check, the dump-owner role caveat (D3-3 — `ON_ERROR_STOP` +
@@ -132,7 +158,14 @@ iteration; then DEPLOY_CMD (per-cycle mode, detached + polled).
 
 ---
 
-## Completion record (to fill during implementation)
-- G1 ⬜ · G2 ⬜ · G3 ⬜ · G4 ⬜ · G5 ⬜ · G6 ⬜
-- Final gates: ⬜
-- Deploy: ⬜
+## Completion record (2026-06-11)
+- G1 ✅ 4f9687a7 · G2 ✅ 3ec2c83a · G3 ✅ 0892c149 · G4 ✅ e7ea2304 ·
+  G5 ✅ 1082e466 · G6 ✅ 1f960b20
+- Post-review deslop pass (ralph 7.5): 8e651866 — null-close guard
+  direction aligned between submissions.ts and the anti-cheat ingest
+  (behavior-identical; branch unreachable), duplicate invariant comments
+  condensed. Full regression re-run post-deslop.
+- **Final gates on the completed tree:** tsc 0 · eslint 0/0 · lint:bash
+  clean · unit 336 files / 2597 tests PASS · component 70 files / 234
+  tests PASS · production build OK.
+- Deploy: recorded below after this cycle's DEPLOY_CMD completes.
