@@ -17,7 +17,8 @@ Status legend: ✅ done+pushed · 🔧 in progress · ⬜ todo · 🟡 needs dec
 
 ## Implement this cycle
 
-### G1 ⬜ AGG5-1 — Record the stale-heartbeat flag ONLY for ACCEPTED submissions, with submission linkage (MEDIUM-HIGH, High, CONFIRMED; 14-lens agreement)
+### G1 ✅ AGG5-1 — Record the stale-heartbeat flag ONLY for ACCEPTED submissions, with submission linkage (MEDIUM-HIGH, High, CONFIRMED; 14-lens agreement)
+**Done 2026-06-11 (16f64ab2):** probe-only validator (`probeStaleHeartbeat` returns the verdict); submit route records the flag after the accepted insert with submissionId + IP + DB-time; docs + review-model comment truthful; 9 red-first/updated tests.
 The validator becomes probe-only; the submit route records after the accept
 point. Completes cycle-4 AGG4-1's principle (flag ⇔ accepted submission).
 - `validateAssignmentSubmission` option renamed
@@ -41,7 +42,8 @@ point. Completes cycle-4 AGG4-1's principle (flag ⇔ accepted submission).
   are recorded only for accepted submissions and carry the submission id;
   `review-model.ts` comment matches. Lands AFTER the code change.
 
-### G2 ⬜ AGG5-2 — Make the flag legible: labels, colors, details rendering; shared presentation module (MEDIUM, High, CONFIRMED)
+### G2 ✅ AGG5-2 — Make the flag legible: labels, colors, details rendering; shared presentation module (MEDIUM, High, CONFIRMED)
+**Done 2026-06-11 (88e01b11 + 3b441805):** shared `anti-cheat-presentation.ts` (colors incl. heartbeat context-tier + red escalate entries, tier colors, miss-detecting label helper, humanized stale-payload formatter); en+ko labels; both components rewired; catalog-coverage pin (source-grep baseline 139→140 with justification).
 - New `src/components/contest/anti-cheat-presentation.ts` (A5-2): shared
   `EVENT_TYPE_COLORS` (+ `submission_stale_heartbeat` red), `REVIEW_TIER_COLORS`,
   shared details formatter handling both `target` payloads and the stale-flag
@@ -57,7 +59,8 @@ point. Completes cycle-4 AGG4-1's principle (flag ⇔ accepted submission).
   no raw key path; catalog test pinning every `EVENT_TIERS` key has an
   `eventTypes.*` message in BOTH locales.
 
-### G3 ⬜ AGG5-3 (+ resolves deferred AGG4-5, criterion FIRED) — Surface heartbeat gaps; make the scan opt-in; detect ongoing absence (MEDIUM, High, CONFIRMED)
+### G3 ✅ AGG5-3 (+ resolves deferred AGG4-5, criterion FIRED) — Surface heartbeat gaps; make the scan opt-in; detect ongoing absence (MEDIUM, High, CONFIRMED)
+**Done 2026-06-11 (0083a577):** `includeGaps=1` gates the scan; synthetic DB-NOW boundary emits `ongoing: true`; timeline renders the coverage-gaps card (en+ko); AGG4-5 resolved as planned (scan opt-in + consumed; pagination count(*) retained with rationale); 3 route tests + 2 component tests.
 - `anti-cheat/route.ts` GET: run the gap scan only when
   `includeGaps=1` AND `userId` present; append a synthetic boundary at DB
   NOW() so an absence continuing past the last heartbeat is emitted as a gap
@@ -76,7 +79,8 @@ point. Completes cycle-4 AGG4-1's principle (flag ⇔ accepted submission).
   gap emitted when last heartbeat is older than threshold; component — gaps
   card renders, ongoing row distinct.
 
-### G4 ⬜ AGG5-4 + AGG5-6 — Monitor resilience: in-flight slot recovery; SVG-safe describeElement (LOW-MEDIUM, Medium, LIKELY)
+### G4 ✅ AGG5-4 + AGG5-6 — Monitor resilience: in-flight slot recovery; SVG-safe describeElement (LOW-MEDIUM, Medium, LIKELY)
+**Done 2026-06-11 (1e6457b6):** single-occupancy in-flight slot written before the queue claim, cleared after the result, orphan re-queued at next flush; `getAttribute("class")` replaces `.className.split`; 5 storage unit tests + 3 component tests (slot window, orphan recovery, SVG-ancestor copy). Residual noted: `reportEvent`'s direct send (pre-cycle-4 shape, never queued) retains a small unload window — out of AGG5-4 scope, recorded here for the next monitor pass.
 - `anti-cheat-storage.ts`: `loadInflightEvent` / `saveInflightEvent` /
   `clearInflightEvent` (single slot per assignment; validated like queue
   entries). `performFlush`: write the claimed event to the slot synchronously
@@ -90,7 +94,8 @@ point. Completes cycle-4 AGG4-1's principle (flag ⇔ accepted submission).
   re-sent exactly once; storage — corrupt slot dropped, slot cleared on
   ok/permanent; unit — SVG-target describeElement no-throw.
 
-### G5 ⬜ AGG5-5 — Similarity reason truthfulness + route timer hygiene (LOW, High, CONFIRMED)
+### G5 ✅ AGG5-5 — Similarity reason truthfulness + route timer hygiene (LOW, High, CONFIRMED)
+**Done 2026-06-11 (34a6a9c1):** `too_many_submissions` emitted for the >MAX TS-fallback case (wakes the existing translated branch); sidecar-present completion pinned regardless of count; `clearTimeout` in `finally`.
 - `code-similarity.ts`: the rows>MAX TS-fallback guard returns
   `reason: "too_many_submissions"` (the declared enum member; wakes the
   existing translated UI branch). Sidecar-present path unchanged.
@@ -147,3 +152,15 @@ AGENTS.md).
 3. G4 (in-flight slot + SVG guard) → G5 (similarity reason + timer).
 Gates after each item; fine-grained signed commits; pull --rebase + push per
 iteration; then DEPLOY_CMD (per-cycle mode, detached + polled in-turn).
+
+---
+
+## Completion record (2026-06-11)
+- G1 ✅ 16f64ab2 · G2 ✅ 88e01b11 (+3b441805 inventory pin) · G3 ✅ 0083a577 ·
+  G4 ✅ 1e6457b6 · G5 ✅ 34a6a9c1
+- **Final gates on the completed tree:** tsc 0 · eslint 0/0 · lint:bash
+  clean · unit 338 files / 2632 tests PASS · component 71 files / 242 tests
+  PASS · production build OK.
+- GATE_FIXES this cycle: 0 pre-existing gate errors (baseline was clean);
+  2 in-flight regressions caught and fixed before push (route rate-limit
+  test threshold; source-grep inventory baseline bump with justification).
