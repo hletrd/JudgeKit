@@ -14,6 +14,7 @@ import {
   users,
 } from "@/lib/db/schema";
 import { and, asc, desc, eq, inArray } from "drizzle-orm";
+import { CLIENT_EVENT_TYPES } from "@/lib/anti-cheat/client-events";
 import type { SubmissionStatus } from "@/types";
 import { resolveCapabilities } from "@/lib/capabilities/cache";
 import { getRecruitingAccessContext } from "@/lib/recruiting/access";
@@ -72,6 +73,20 @@ type AssignmentValidationFailure = {
 export type AssignmentSubmissionValidationResult =
   | AssignmentValidationSuccess
   | AssignmentValidationFailure;
+
+export type AssignmentSubmissionValidationOptions = {
+  /**
+   * Record a `submission_stale_heartbeat` escalate flag when the anti-cheat
+   * freshness probe misses (RPF cycle-4 AGG4-1). The side effect is explicit
+   * OPT-IN: only the real submit path (`POST /api/v1/submissions`) passes
+   * true. Validation-only callers — the problem-page render and the autosave
+   * snapshot route — must never write: a page open or an editor autosave is
+   * not a submission, and flagging them both fabricated escalate-tier
+   * evidence (false flag on every participant's first problem open) and
+   * suppressed real flags (the inserted row refreshed the next probe).
+   */
+  recordStaleHeartbeatFlag?: boolean;
+};
 
 export type AssignmentProblemStatusRow = {
   problemId: string;
@@ -195,7 +210,8 @@ export async function validateAssignmentSubmission(
   assignmentId: string,
   problemId: string,
   userId: string,
-  role: string
+  role: string,
+  options: AssignmentSubmissionValidationOptions = {}
 ): Promise<AssignmentSubmissionValidationResult> {
   const normalizedAssignmentId = assignmentId.trim();
 
@@ -316,7 +332,19 @@ export async function validateAssignmentSubmission(
     // .context/reviews/2026-05-03/07-security.md F1: a candidate with a
     // valid session cookie cannot bypass the in-browser monitor and submit
     // from a second device while their decoy tab sits idle.
-    if (assignment.enableAntiCheat && assignment.examMode !== "none") {
+    //
+    // Runs ONLY for the submit path (`recordStaleHeartbeatFlag`, RPF cycle-4
+    // AGG4-1): page renders and autosave snapshots reuse this validator but
+    // must neither probe nor write — flags they inserted were misread as
+    // submissions. The probe matches CLIENT-emitted event types only (RPF
+    // cycle-4 AGG4-2): server-inserted rows (`submission_stale_heartbeat`,
+    // `code_similarity`) are not browser liveness, and counting them let one
+    // flag suppress the next ~90 s of flags.
+    if (
+      options.recordStaleHeartbeatFlag &&
+      assignment.enableAntiCheat &&
+      assignment.examMode !== "none"
+    ) {
       const latest = await db
         .select({ createdAt: antiCheatEvents.createdAt })
         .from(antiCheatEvents)
@@ -324,6 +352,7 @@ export async function validateAssignmentSubmission(
           and(
             eq(antiCheatEvents.assignmentId, assignment.id),
             eq(antiCheatEvents.userId, userId),
+            inArray(antiCheatEvents.eventType, [...CLIENT_EVENT_TYPES]),
           ),
         )
         .orderBy(desc(antiCheatEvents.createdAt))

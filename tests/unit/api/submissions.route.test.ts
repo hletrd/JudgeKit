@@ -442,7 +442,10 @@ describe("POST /api/v1/submissions", () => {
       "assign-1",
       "problem-1",
       "user-1",
-      "student"
+      "student",
+      // The submit route is the ONLY caller allowed to record the
+      // stale-heartbeat escalate flag (RPF cycle-4 AGG4-1).
+      { recordStaleHeartbeatFlag: true }
     );
   });
 
@@ -496,7 +499,10 @@ describe("POST /api/v1/submissions", () => {
       "assign-1",
       "problem-1",
       "user-1",
-      "student"
+      "student",
+      // The submit route is the ONLY caller allowed to record the
+      // stale-heartbeat escalate flag (RPF cycle-4 AGG4-1).
+      { recordStaleHeartbeatFlag: true }
     );
     expect(payload.data.id).toBe("submission-abc123");
   });

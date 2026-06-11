@@ -139,6 +139,9 @@ describe("POST /api/v1/code-snapshots", () => {
     );
 
     expect(response.status).toBe(201);
+    // Autosaves are validation-only: the snapshot route must NOT opt into the
+    // stale-heartbeat flag recording — an autosave is not a submission and
+    // flagging it fabricated escalate-tier evidence (RPF cycle-4 AGG4-1).
     expect(validateAssignmentSubmissionMock).toHaveBeenCalledWith(
       "assignment-1",
       "problem-1",

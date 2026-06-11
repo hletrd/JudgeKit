@@ -14,18 +14,14 @@ import { getExamSession } from "@/lib/assignments/exam-sessions";
 import { getEffectiveExamCloseAt } from "@/lib/assignments/exam-close";
 import { LRUCache } from "lru-cache";
 import { getUnsupportedRealtimeGuard, shouldRecordSharedHeartbeat, usesSharedRealtimeCoordination } from "@/lib/realtime/realtime-coordination";
+// Canonical client-event vocabulary lives in lib (RPF cycle-4 AGG4-7) so the
+// submission validator's freshness probe can share it; the zod schema below
+// still rejects server-originated event classes (ip_change, code_similarity,
+// submission_stale_heartbeat) from contestant POSTs.
+import { CLIENT_EVENT_TYPES } from "@/lib/anti-cheat/client-events";
 
 /** last heartbeat insert time per "assignmentId:userId" — only insert once per 60s */
 const lastHeartbeatTime = new LRUCache<string, number>({ max: 10_000, ttl: 120_000 });
-
-export const CLIENT_EVENT_TYPES = [
-  "tab_switch",
-  "copy",
-  "paste",
-  "blur",
-  "contextmenu",
-  "heartbeat",
-] as const;
 
 const antiCheatEventSchema = z.object({
   eventType: z.enum(CLIENT_EVENT_TYPES),

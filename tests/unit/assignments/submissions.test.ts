@@ -1,29 +1,58 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
-const { dbMock, resolveCapabilitiesMock, hasGroupInstructorRoleMock, getDbNowUncachedMock } = vi.hoisted(() => ({
-  dbMock: {
-    query: {
-      assignments: {
-        findFirst: vi.fn(),
+const {
+  dbMock,
+  resolveCapabilitiesMock,
+  hasGroupInstructorRoleMock,
+  getDbNowUncachedMock,
+  antiCheatLatestEventLimitMock,
+  antiCheatSelectWhereMock,
+  antiCheatInsertMock,
+  antiCheatInsertValuesMock,
+} = vi.hoisted(() => {
+  // Chainable mock for the anti-cheat freshness probe:
+  //   db.select({...}).from(...).where(...).orderBy(...).limit(1)
+  const antiCheatLatestEventLimitMock = vi.fn();
+  const antiCheatSelectWhereMock = vi.fn(() => ({
+    orderBy: vi.fn(() => ({ limit: antiCheatLatestEventLimitMock })),
+  }));
+  // db.insert(antiCheatEvents).values({...}).catch(...) — values must return
+  // a real Promise so the production .catch() attaches.
+  const antiCheatInsertValuesMock = vi.fn();
+  const antiCheatInsertMock = vi.fn(() => ({ values: antiCheatInsertValuesMock }));
+  return {
+    dbMock: {
+      query: {
+        assignments: {
+          findFirst: vi.fn(),
+        },
+        enrollments: {
+          findFirst: vi.fn(),
+        },
+        assignmentProblems: {
+          findFirst: vi.fn(),
+        },
+        contestAccessTokens: {
+          findFirst: vi.fn(),
+        },
+        examSessions: {
+          findFirst: vi.fn(),
+        },
       },
-      enrollments: {
-        findFirst: vi.fn(),
-      },
-      assignmentProblems: {
-        findFirst: vi.fn(),
-      },
-      contestAccessTokens: {
-        findFirst: vi.fn(),
-      },
-      examSessions: {
-        findFirst: vi.fn(),
-      },
+      select: vi.fn(() => ({
+        from: vi.fn(() => ({ where: antiCheatSelectWhereMock })),
+      })),
+      insert: antiCheatInsertMock,
     },
-  },
-  resolveCapabilitiesMock: vi.fn(),
-  hasGroupInstructorRoleMock: vi.fn(),
-  getDbNowUncachedMock: vi.fn(),
-}));
+    resolveCapabilitiesMock: vi.fn(),
+    hasGroupInstructorRoleMock: vi.fn(),
+    getDbNowUncachedMock: vi.fn(),
+    antiCheatLatestEventLimitMock,
+    antiCheatSelectWhereMock,
+    antiCheatInsertMock,
+    antiCheatInsertValuesMock,
+  };
+});
 
 vi.mock("@/lib/db", () => ({
   db: dbMock,
@@ -332,5 +361,114 @@ describe("canViewAssignmentSubmissions", () => {
     await expect(
       canViewAssignmentSubmissions("assignment-1", "ta-1", "custom_ta")
     ).resolves.toBe(true);
+  });
+});
+
+// RPF cycle-4 AGG4-1/AGG4-2: the stale-heartbeat escalate flag is recorded by
+// the SUBMIT path only (explicit opt-in) and the freshness probe must consult
+// client-emitted events only. The probe's event-type filter itself is pinned
+// structurally in tests/unit/api/anti-cheat-public-event-types.test.ts.
+describe("validateAssignmentSubmission — anti-cheat heartbeat correlation (AGG4-1)", () => {
+  const NOW = new Date("2026-03-10T00:00:00.000Z");
+
+  function createExamAssignmentRecord() {
+    return {
+      id: "assignment-1",
+      groupId: "group-1",
+      startsAt: null,
+      deadline: new Date("2026-03-10T02:00:00.000Z"),
+      lateDeadline: null,
+      examMode: "scheduled",
+      enableAntiCheat: true,
+      examDurationMinutes: null,
+      group: { instructorId: "instructor-1" },
+    };
+  }
+
+  function setupActiveExam() {
+    getDbNowUncachedMock.mockResolvedValue(NOW);
+    dbMock.query.assignments.findFirst.mockResolvedValue(createExamAssignmentRecord());
+    dbMock.query.enrollments.findFirst.mockResolvedValue({ id: "enrollment-1" });
+    dbMock.query.assignmentProblems.findFirst.mockResolvedValue({ id: "ap-1" });
+    antiCheatInsertValuesMock.mockResolvedValue(undefined);
+  }
+
+  it("submit path with NO recent client event records the escalate flag once and still accepts (fail-open)", async () => {
+    setupActiveExam();
+    antiCheatLatestEventLimitMock.mockResolvedValue([]);
+
+    const result = await validateAssignmentSubmission(
+      "assignment-1", "problem-1", "student-1", "student",
+      { recordStaleHeartbeatFlag: true }
+    );
+
+    expect(result.ok).toBe(true);
+    expect(antiCheatInsertMock).toHaveBeenCalledTimes(1);
+    expect(antiCheatInsertValuesMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        assignmentId: "assignment-1",
+        userId: "student-1",
+        eventType: "submission_stale_heartbeat",
+      })
+    );
+  });
+
+  it("submit path with a fresh client event does not flag", async () => {
+    setupActiveExam();
+    antiCheatLatestEventLimitMock.mockResolvedValue([
+      { createdAt: new Date(NOW.getTime() - 30_000) },
+    ]);
+
+    const result = await validateAssignmentSubmission(
+      "assignment-1", "problem-1", "student-1", "student",
+      { recordStaleHeartbeatFlag: true }
+    );
+
+    expect(result.ok).toBe(true);
+    expect(antiCheatInsertMock).not.toHaveBeenCalled();
+  });
+
+  it("validation-only callers (page render, autosave snapshot) never probe nor flag", async () => {
+    setupActiveExam();
+
+    const result = await validateAssignmentSubmission(
+      "assignment-1", "problem-1", "student-1", "student"
+    );
+
+    expect(result.ok).toBe(true);
+    expect(dbMock.select).not.toHaveBeenCalled();
+    expect(antiCheatInsertMock).not.toHaveBeenCalled();
+  });
+
+  it("a failing flag insert never blocks the submission (fail-open pin)", async () => {
+    setupActiveExam();
+    antiCheatLatestEventLimitMock.mockResolvedValue([]);
+    antiCheatInsertValuesMock.mockRejectedValue(new Error("db down"));
+
+    const result = await validateAssignmentSubmission(
+      "assignment-1", "problem-1", "student-1", "student",
+      { recordStaleHeartbeatFlag: true }
+    );
+
+    expect(result.ok).toBe(true);
+  });
+
+  it("flag stays off entirely when anti-cheat is disabled, even on the submit path", async () => {
+    getDbNowUncachedMock.mockResolvedValue(NOW);
+    dbMock.query.assignments.findFirst.mockResolvedValue({
+      ...createExamAssignmentRecord(),
+      enableAntiCheat: false,
+    });
+    dbMock.query.enrollments.findFirst.mockResolvedValue({ id: "enrollment-1" });
+    dbMock.query.assignmentProblems.findFirst.mockResolvedValue({ id: "ap-1" });
+
+    const result = await validateAssignmentSubmission(
+      "assignment-1", "problem-1", "student-1", "student",
+      { recordStaleHeartbeatFlag: true }
+    );
+
+    expect(result.ok).toBe(true);
+    expect(dbMock.select).not.toHaveBeenCalled();
+    expect(antiCheatInsertMock).not.toHaveBeenCalled();
   });
 });

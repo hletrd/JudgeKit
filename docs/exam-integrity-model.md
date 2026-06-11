@@ -49,7 +49,10 @@ pair JudgeKit with Safe Exam Browser or live human proctoring (see below).
 
 ## Submission-time heartbeat correlation (fail-open since 2026-05; flag, not block)
 
-For assignments where `examMode != "none"` AND `enableAntiCheat = true`, the submission API (`/api/v1/submissions` POST, via `validateAssignmentSubmission` in `src/lib/assignments/submissions.ts`) checks that the latest `anti_cheat_events` row for `(userId, assignmentId)` is no older than 90 seconds (`ANTI_CHEAT_HEARTBEAT_FRESHNESS_MS`). The browser monitor's heartbeat throttle is 60 s, leaving a 30 s buffer for clock skew and network jitter.
+For assignments where `examMode != "none"` AND `enableAntiCheat = true`, the submission API (`/api/v1/submissions` POST, via `validateAssignmentSubmission` in `src/lib/assignments/submissions.ts`) checks that the latest **client-emitted** `anti_cheat_events` row for `(userId, assignmentId)` is no older than 90 seconds (`ANTI_CHEAT_HEARTBEAT_FRESHNESS_MS`). The browser monitor's heartbeat throttle is 60 s, leaving a 30 s buffer for clock skew and network jitter. Two scoping rules keep the flag honest (RPF cycle-4):
+
+- **Only the submit path records the flag.** The same validator also runs on problem-page renders and editor autosave snapshots; those callers validate without writing (`recordStaleHeartbeatFlag` opt-in). A page open or an autosave is not a submission and never appears as one in the dashboard.
+- **The freshness probe counts client events only** (`tab_switch`/`copy`/`paste`/`blur`/`contextmenu`/`heartbeat` — `src/lib/anti-cheat/client-events.ts`). Server-inserted rows (`submission_stale_heartbeat` itself, `code_similarity`) are not browser liveness, so one flag cannot suppress the next and a similarity finding cannot stand in for a heartbeat.
 
 **This check FAILS OPEN.** A submission with a stale (or absent) heartbeat is **accepted**, and a `submission_stale_heartbeat` anti-cheat event (Escalate tier) is recorded instead. An earlier hard-block (`HTTP 403`) was removed deliberately: it destroyed honest candidates' work on flaky networks at the deadline — an unacceptable fairness/legal harm for graded exams and recruiting tests — while an open decoy tab kept heartbeating and defeated the block anyway. The control's value is the evidence trail, not prevention.
 

@@ -265,7 +265,11 @@ export const POST = createApiHandler({
         normalizedAssignmentId,
         problemId,
         user.id,
-        user.role
+        user.role,
+        // This is the ONLY caller that records the stale-heartbeat escalate
+        // flag — an actual submission with no live monitor is the signal;
+        // page renders and autosaves validate without writing (AGG4-1).
+        { recordStaleHeartbeatFlag: true }
       );
 
       if (!assignmentValidation.ok) {
