@@ -2288,6 +2288,12 @@
       "detailSubmissionRef": "Submission: {id}",
       "durationMinutesSeconds": "{minutes}m {seconds}s",
       "durationSeconds": "{seconds}s",
+      "heartbeatGaps": {
+        "title": "Monitor coverage gaps",
+        "description": "Periods with no heartbeat from the monitored browser (threshold 2 minutes).",
+        "ongoing": "ongoing",
+        "now": "now"
+      },
       "detailTargets": {
         "code-editor": "Code editor",
         "problem-description": "Problem description",

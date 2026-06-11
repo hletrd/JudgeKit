@@ -12,6 +12,7 @@ import { parsePositiveInt, parseNonNegativeInt } from "@/lib/validators/query-pa
 import { getContestAssignment, canMonitorContest } from "@/lib/assignments/contests";
 import { getExamSession } from "@/lib/assignments/exam-sessions";
 import { getEffectiveExamCloseAt } from "@/lib/assignments/exam-close";
+import { getDbNowUncached } from "@/lib/db-time";
 import { LRUCache } from "lru-cache";
 import { getUnsupportedRealtimeGuard, shouldRecordSharedHeartbeat, usesSharedRealtimeCoordination } from "@/lib/realtime/realtime-coordination";
 // Canonical client-event vocabulary lives in lib (RPF cycle-4 AGG4-7) so the
@@ -281,10 +282,14 @@ export const GET = createApiHandler({
       .from(antiCheatEvents)
       .where(whereClause);
 
-    // Detect heartbeat gaps: if filtering by userId, check for periods >120s
-    // without a heartbeat during the contest window
-    const heartbeatGaps: Array<{ userId: string; gapStartedAt: string; gapEndedAt: string; gapSeconds: number }> = [];
-    if (userIdFilter && assignment.enableAntiCheat) {
+    // Detect heartbeat gaps: periods >120s without a heartbeat. OPT-IN via
+    // `includeGaps=1` AND a userId filter (RPF cycle-5 AGG5-3, resolving
+    // deferred AGG4-5): the participant timeline is the only consumer, and
+    // before the gate this 5000-row scan ran on EVERY userId-filtered poll
+    // and was discarded client-side. Callers that only want the event table
+    // skip the scan entirely.
+    const heartbeatGaps: Array<{ userId: string; gapStartedAt: string; gapEndedAt: string; gapSeconds: number; ongoing?: boolean }> = [];
+    if (userIdFilter && assignment.enableAntiCheat && searchParams.get("includeGaps") === "1") {
       // Fetch the most recent heartbeat rows to prevent memory spikes for very
       // long contests. 5000 rows covers ~83 hours of heartbeats at 60-second
       // intervals. Using DESC order ensures we detect gaps near the *end* of the
@@ -315,6 +320,31 @@ export const GET = createApiHandler({
             gapStartedAt: new Date(prev).toISOString(),
             gapEndedAt: new Date(curr).toISOString(),
             gapSeconds: Math.round(gap / 1000),
+          });
+        }
+      }
+
+      // ONGOING absence (RPF cycle-5 AGG5-4): comparing only consecutive
+      // RECORDED heartbeats hid the most actionable live-exam signal — a
+      // participant whose monitor went dark and stayed dark produced no
+      // trailing pair, so "absent right now" was invisible. Emit a synthetic
+      // boundary at DB NOW() (clock-skew safe, consistent with the rows'
+      // timestamps). A leading gap before the FIRST heartbeat is deliberately
+      // not synthesized: the monitor heartbeats on mount, so session start
+      // and first heartbeat coincide in practice.
+      const lastHeartbeatAt = heartbeats.length > 0
+        ? new Date(heartbeats[heartbeats.length - 1].createdAt).getTime()
+        : null;
+      if (lastHeartbeatAt !== null) {
+        const nowMs = (await getDbNowUncached()).getTime();
+        const trailingGap = nowMs - lastHeartbeatAt;
+        if (trailingGap > GAP_THRESHOLD_MS) {
+          heartbeatGaps.push({
+            userId: userIdFilter,
+            gapStartedAt: new Date(lastHeartbeatAt).toISOString(),
+            gapEndedAt: new Date(nowMs).toISOString(),
+            gapSeconds: Math.round(trailingGap / 1000),
+            ongoing: true,
           });
         }
       }

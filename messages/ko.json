@@ -2288,6 +2288,12 @@
       "detailSubmissionRef": "제출물: {id}",
       "durationMinutesSeconds": "{minutes}분 {seconds}초",
       "durationSeconds": "{seconds}초",
+      "heartbeatGaps": {
+        "title": "모니터 공백 구간",
+        "description": "모니터링 브라우저의 하트비트가 없었던 구간입니다 (기준 2분).",
+        "ongoing": "진행 중",
+        "now": "현재"
+      },
       "detailTargets": {
         "code-editor": "코드 편집기",
         "problem-description": "문제 설명",

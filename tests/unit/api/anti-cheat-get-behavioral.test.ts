@@ -44,6 +44,13 @@ vi.mock("@/lib/db/queries", () => ({
   rawQueryAll: rawQueryAllMock,
 }));
 
+// DB-clock source for the ongoing-gap boundary (RPF cycle-5 AGG5-4).
+const DB_NOW = new Date("2026-04-12T12:00:00Z");
+vi.mock("@/lib/db-time", () => ({
+  getDbNow: vi.fn(async () => DB_NOW),
+  getDbNowUncached: vi.fn(async () => DB_NOW),
+}));
+
 vi.mock("@/lib/db/schema", () => ({
   antiCheatEvents: {
     id: "antiCheatEvents.id",
@@ -252,5 +259,103 @@ describe("GET /api/v1/contests/[assignmentId]/anti-cheat", () => {
     // parsePositiveInt("abc") returns default 100, parseInt("xyz") returns NaN → offset 0
     expect(eventsChain.limit).toHaveBeenCalledWith(100);
     expect(eventsChain.offset).toHaveBeenCalledWith(0);
+  });
+
+  // RPF cycle-5 AGG5-3/AGG5-4 (resolving deferred AGG4-5): the heartbeat-gap
+  // scan is OPT-IN via includeGaps=1, and the ongoing absence (last heartbeat
+  // → DB now) is emitted as a synthetic boundary gap.
+  describe("heartbeat gaps (includeGaps)", () => {
+    function buildGapSelectChain(events: unknown[], heartbeats: Array<{ createdAt: Date }>) {
+      let callIndex = 0;
+      const eventsChain = {
+        from: vi.fn().mockReturnThis(),
+        innerJoin: vi.fn().mockReturnThis(),
+        where: vi.fn().mockReturnThis(),
+        orderBy: vi.fn().mockReturnThis(),
+        limit: vi.fn().mockReturnThis(),
+        offset: vi.fn().mockResolvedValue(events),
+      };
+      const countChain = {
+        from: vi.fn().mockReturnThis(),
+        where: vi.fn().mockResolvedValue([{ count: events.length }]),
+      };
+      const gapChain = {
+        from: vi.fn().mockReturnThis(),
+        where: vi.fn().mockReturnThis(),
+        orderBy: vi.fn().mockReturnThis(),
+        limit: vi.fn().mockResolvedValue(heartbeats),
+      };
+      selectMock.mockImplementation(() => {
+        callIndex++;
+        if (callIndex === 1) return eventsChain;
+        if (callIndex === 2) return countChain;
+        return gapChain;
+      });
+      return { eventsChain, countChain, gapChain };
+    }
+
+    it("does NOT run the gap scan without includeGaps=1 (no heartbeatGaps field)", async () => {
+      buildGapSelectChain([], []);
+
+      const { GET } = await import("@/app/api/v1/contests/[assignmentId]/anti-cheat/route");
+      const req = new NextRequest(
+        `http://localhost/api/v1/contests/${ASSIGNMENT_ID}/anti-cheat?userId=user-1`
+      );
+      const res = await GET(req);
+      const body = await res.json();
+
+      expect(body.data.heartbeatGaps).toBeUndefined();
+      // Only the events + count selects ran — no third (gap) query.
+      expect(selectMock).toHaveBeenCalledTimes(2);
+    });
+
+    it("emits recorded gaps AND the ongoing boundary gap with includeGaps=1", async () => {
+      // 10:00 → 10:01 (fine), 10:01 → 10:30 (29 min recorded gap),
+      // 10:30 → DB now 12:00 (90 min ONGOING gap).
+      buildGapSelectChain([], [
+        { createdAt: new Date("2026-04-12T10:30:00Z") },
+        { createdAt: new Date("2026-04-12T10:01:00Z") },
+        { createdAt: new Date("2026-04-12T10:00:00Z") },
+      ]);
+
+      const { GET } = await import("@/app/api/v1/contests/[assignmentId]/anti-cheat/route");
+      const req = new NextRequest(
+        `http://localhost/api/v1/contests/${ASSIGNMENT_ID}/anti-cheat?userId=user-1&includeGaps=1`
+      );
+      const res = await GET(req);
+      const body = await res.json();
+
+      expect(body.data.heartbeatGaps).toEqual([
+        {
+          userId: "user-1",
+          gapStartedAt: "2026-04-12T10:01:00.000Z",
+          gapEndedAt: "2026-04-12T10:30:00.000Z",
+          gapSeconds: 1740,
+        },
+        {
+          userId: "user-1",
+          gapStartedAt: "2026-04-12T10:30:00.000Z",
+          gapEndedAt: "2026-04-12T12:00:00.000Z",
+          gapSeconds: 5400,
+          ongoing: true,
+        },
+      ]);
+    });
+
+    it("emits no ongoing gap when the last heartbeat is fresh", async () => {
+      buildGapSelectChain([], [
+        { createdAt: new Date("2026-04-12T11:59:30Z") },
+        { createdAt: new Date("2026-04-12T11:59:00Z") },
+      ]);
+
+      const { GET } = await import("@/app/api/v1/contests/[assignmentId]/anti-cheat/route");
+      const req = new NextRequest(
+        `http://localhost/api/v1/contests/${ASSIGNMENT_ID}/anti-cheat?userId=user-1&includeGaps=1`
+      );
+      const res = await GET(req);
+      const body = await res.json();
+
+      expect(body.data.heartbeatGaps).toBeUndefined();
+    });
   });
 });

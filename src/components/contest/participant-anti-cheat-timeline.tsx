@@ -37,10 +37,30 @@ type AntiCheatEvent = {
   createdAt: string;
 };
 
+type HeartbeatGap = {
+  userId: string;
+  gapStartedAt: string;
+  gapEndedAt: string;
+  gapSeconds: number;
+  /** True for the synthetic boundary gap: monitor dark from gapStartedAt until NOW. */
+  ongoing?: boolean;
+};
 
 interface ParticipantAntiCheatTimelineProps {
   assignmentId: string;
   userId: string;
+}
+
+/** Render a gap length via the shared duration message keys (G2). */
+function formatGapDuration(
+  gapSeconds: number,
+  t: (key: string, values?: Record<string, string | number>) => string
+): string {
+  const minutes = Math.floor(gapSeconds / 60);
+  const seconds = gapSeconds % 60;
+  return minutes > 0
+    ? t("durationMinutesSeconds", { minutes, seconds })
+    : t("durationSeconds", { seconds });
 }
 
 export function ParticipantAntiCheatTimeline({
@@ -53,6 +73,7 @@ export function ParticipantAntiCheatTimeline({
   const locale = useLocale();
   const timeZone = useSystemTimezone();
   const [events, setEvents] = useState<AntiCheatEvent[]>([]);
+  const [heartbeatGaps, setHeartbeatGaps] = useState<HeartbeatGap[]>([]);
   const [total, setTotal] = useState(0);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(false);
@@ -72,8 +93,11 @@ export function ParticipantAntiCheatTimeline({
     abortControllerRef.current = controller;
 
     try {
-      const { ok, data: json } = await apiFetchJson<{ data: { events: AntiCheatEvent[]; total: number } }>(
-        `/api/v1/contests/${assignmentId}/anti-cheat?userId=${userId}&limit=${PAGE_SIZE}&offset=0`,
+      // `includeGaps=1` opts into the server-side heartbeat-gap scan (RPF
+      // cycle-5 AGG5-3): this view is the gaps' consumer; plain event polls
+      // elsewhere skip the scan.
+      const { ok, data: json } = await apiFetchJson<{ data: { events: AntiCheatEvent[]; total: number; heartbeatGaps?: HeartbeatGap[] } }>(
+        `/api/v1/contests/${assignmentId}/anti-cheat?userId=${userId}&limit=${PAGE_SIZE}&offset=0&includeGaps=1`,
         { signal: controller.signal },
         { data: { events: [], total: 0 } }
       );
@@ -85,6 +109,7 @@ export function ParticipantAntiCheatTimeline({
         // events have been created server-side since the last fetch.
         // The user can load more pages again via the "Load more" button.
         setEvents(freshFirstPage);
+        setHeartbeatGaps(json.data.heartbeatGaps ?? []);
         setOffset(freshFirstPage.length);
       } else {
         setError(true);
@@ -187,6 +212,39 @@ export function ParticipantAntiCheatTimeline({
         <div className="rounded-lg border border-dashed px-3 py-2 text-xs text-muted-foreground">
           {t("signalsDisclaimer")}
         </div>
+
+        {/* Monitor coverage gaps (RPF cycle-5 AGG5-3/AGG5-4): periods with no
+            heartbeat, including the ongoing "dark since X" boundary gap. */}
+        {!loading && heartbeatGaps.length > 0 && (
+          <div
+            className="space-y-1.5 rounded-lg border border-red-500/40 bg-red-500/5 p-3"
+            role="region"
+            aria-label={t("heartbeatGaps.title")}
+          >
+            <p className="text-xs font-medium">{t("heartbeatGaps.title")}</p>
+            <p className="text-xs text-muted-foreground">{t("heartbeatGaps.description")}</p>
+            <ul className="space-y-1 text-xs">
+              {heartbeatGaps.map((gap) => (
+                <li
+                  key={`${gap.gapStartedAt}-${gap.gapEndedAt}`}
+                  className="flex flex-wrap items-center gap-x-2 gap-y-1"
+                >
+                  <span className="whitespace-nowrap text-muted-foreground">
+                    {formatEventTime(gap.gapStartedAt)}
+                    {" → "}
+                    {gap.ongoing ? t("heartbeatGaps.now") : formatEventTime(gap.gapEndedAt)}
+                  </span>
+                  <Badge variant="secondary" className="font-mono">
+                    {formatGapDuration(gap.gapSeconds, t)}
+                  </Badge>
+                  {gap.ongoing && (
+                    <Badge variant="destructive">{t("heartbeatGaps.ongoing")}</Badge>
+                  )}
+                </li>
+              ))}
+            </ul>
+          </div>
+        )}
 
         {/* Filter chips */}
         {!loading && events.length > 0 && (
