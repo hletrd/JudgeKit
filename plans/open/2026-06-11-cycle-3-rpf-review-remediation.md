@@ -168,4 +168,17 @@ iteration; then DEPLOY_CMD (per-cycle mode, detached + polled).
 - **Final gates on the completed tree:** tsc 0 · eslint 0/0 · lint:bash
   clean · unit 336 files / 2597 tests PASS · component 70 files / 234
   tests PASS · production build OK.
-- Deploy: recorded below after this cycle's DEPLOY_CMD completes.
+- **Deploy record (2026-06-11, per-cycle, HEAD 566e54dc): SUCCESS — all
+  three targets.** DEPLOY_CMD exit 0; "Deployment complete!" on worv,
+  auraedu, algo; HTTPS 200 on test.worv.ai / oj.auraedu.me /
+  algo.xylolabs.com. Auraedu ran the hardened sequential path (81 language
+  builds) with ZERO `unknown blob ... in history` events — second
+  consecutive clean run; no auto-recovery needed. Post-deploy smokes:
+  public subsets green (worv 142✓, algo 142✓, auraedu 141✓). **G3
+  validated live:** the cycle-2 auraedu hero-heading false positive is
+  gone (E2E_HOME_HEADING=AuraEdu). Remaining failures: (a) the 6
+  login-gated specs on each target — no E2E_PASSWORD in this run env
+  (DEFER-ENV-GATES, unchanged); (b) one cold-start transient on auraedu
+  (tablet rankings "renders some content" 3 s after app restart; spec
+  green on worv; /rankings returns 200 on direct fetch post-deploy;
+  rankings untouched this cycle).
