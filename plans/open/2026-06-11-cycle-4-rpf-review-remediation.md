@@ -17,7 +17,11 @@ Status legend: ✅ done+pushed · 🔧 in progress · ⬜ todo · 🟡 needs dec
 
 ## Implement this cycle
 
-### G1 ⬜ AGG4-7 + AGG4-2 — Extract CLIENT_EVENT_TYPES to lib; freshness probe must ignore server-inserted event types (MEDIUM, High, CONFIRMED)
+### G1 ✅ AGG4-7 + AGG4-2 — Extract CLIENT_EVENT_TYPES to lib; freshness probe must ignore server-inserted event types (MEDIUM, High, CONFIRMED)
+**Done 2026-06-11 (b1bbae03, with G2):** `src/lib/anti-cheat/client-events.ts`
+owns the list; route schema consumes it; probe filters via
+`inArray(...[...CLIENT_EVENT_TYPES])`; pin test guards the lib module, the
+route import, and the probe filter.
 - New `src/lib/anti-cheat/client-events.ts` exporting the canonical
   `CLIENT_EVENT_TYPES` tuple (tab_switch/copy/paste/blur/contextmenu/
   heartbeat); `anti-cheat/route.ts` imports it (route may depend on lib,
@@ -34,7 +38,13 @@ Status legend: ✅ done+pushed · 🔧 in progress · ⬜ todo · 🟡 needs dec
 - Red-first test (TE4-1 case 3): only a recent server-inserted row present →
   probe is stale → flag (on the submit path).
 
-### G2 ⬜ AGG4-1 + AGG4-6 — Stale-heartbeat flag must be recorded ONLY by the submit path (MEDIUM-HIGH, High, CONFIRMED; 15-lens agreement)
+### G2 ✅ AGG4-1 + AGG4-6 — Stale-heartbeat flag must be recorded ONLY by the submit path (MEDIUM-HIGH, High, CONFIRMED; 15-lens agreement)
+**Done 2026-06-11 (b1bbae03, single commit with G1 — the probe scope and the
+recording scope are one logical contract change):** `recordStaleHeartbeatFlag`
+opt-in (default false); only `submissions/route.ts` passes true; page render +
+snapshot route validate without probing or writing; 5 new validator tests +
+route-assertion pins (opt-in present on submit, absent on snapshots); doc +
+review-model comment updated to the truthful submit-only/client-only wording.
 - `validateAssignmentSubmission` gains
   `options?: { recordStaleHeartbeatFlag?: boolean }` (default FALSE — the
   side effect becomes explicit opt-in so future callers cannot silently
@@ -52,7 +62,11 @@ Status legend: ✅ done+pushed · 🔧 in progress · ⬜ todo · 🟡 needs dec
   never do); fix the `review-model.ts:12-15` comment wording. Lands AFTER the
   code change so the doc describes the fixed system (V4-2/V4-3 become true).
 
-### G3 ⬜ AGG4-3 — Serialize the client pending-events queue (LOW-MEDIUM, Medium, LIKELY)
+### G3 ✅ AGG4-3 — Serialize the client pending-events queue (LOW-MEDIUM, Medium, LIKELY)
+**Done 2026-06-11 (78083a14):** claim-loop flush (synchronous load →
+save-minus-claimed per iteration, requeue against the CURRENT queue,
+iteration cap = initial length) + `isFlushingRef` single-flight; component
+tests pin mid-flight-append preservation and no-double-send.
 `src/components/exam/anti-cheat-monitor.tsx`: replace the load-all/send-all/
 save-remaining flush (`:90-105`) with a per-event claim loop (synchronously
 load → save queue-minus-claimed → send → on "retry" re-load+re-append with
@@ -62,7 +76,10 @@ synchronous load-push-save and is now never clobbered (claims happen in sync
 blocks). Component test (TE4-3): event appended mid-flush is not lost and
 nothing is sent twice; existing tri-state tests stay green.
 
-### G4 ⬜ AGG4-4 — Honest error for the exam-session re-fetch race (LOW, High, CONFIRMED)
+### G4 ✅ AGG4-4 — Honest error for the exam-session re-fetch race (LOW, High, CONFIRMED)
+**Done 2026-06-11 (7ff8c186):** throws `examSessionUnavailable`; route switch
+deliberately lacks the case → generic retryable 500; unit tests pin the key +
+happy path.
 `src/lib/assignments/exam-sessions.ts:108-110`: throw
 `examSessionUnavailable` instead of `assignmentClosed`; check the
 start-exam route/action error mapping so the new key falls through to the
@@ -116,5 +133,13 @@ iteration; then DEPLOY_CMD (per-cycle mode, detached + polled in-turn).
 
 ---
 
-## Completion record
-(to be filled as items land)
+## Completion record (2026-06-11)
+- G1+G2 ✅ b1bbae03 (one commit — one logical contract change) ·
+  G3 ✅ 78083a14 · G4 ✅ 7ff8c186
+- **Final gates on the completed tree:** tsc 0 · eslint 0/0 · lint:bash
+  clean · unit 337 files / 2606 tests PASS · component 70 files / 236 tests
+  PASS · production build OK.
+- GATE_FIXES this cycle: 0 pre-existing gate errors (baseline was clean);
+  2 in-flight regressions caught and fixed before commit (route-test
+  assertions updated for the new validator argument).
+- Deploy record: see below (per-cycle DEPLOY_CMD).
