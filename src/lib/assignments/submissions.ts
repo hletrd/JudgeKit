@@ -266,7 +266,9 @@ export async function validateAssignmentSubmission(
         { examMode: assignment.examMode, deadline: new Date(effectiveCloseAt) },
         examSession?.personalDeadline ?? null
       );
-      if (!effectiveClose || effectiveClose.valueOf() < now) {
+      // null = no close (unreachable here — deadline is non-null on this
+      // branch); same guard direction as the anti-cheat ingest.
+      if (effectiveClose && effectiveClose.valueOf() < now) {
         return {
           ok: false,
           status: 403,

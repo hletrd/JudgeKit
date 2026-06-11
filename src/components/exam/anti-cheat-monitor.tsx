@@ -170,8 +170,6 @@ export function AntiCheatMonitor({
         // the timer logic. This ensures the backoff formula stays consistent.
         scheduleRetryRef.current(pending);
       }
-      // "permanent" rejections are dropped — the server's verdict is final
-      // and authoritative (AGG3-5).
     },
     // `flushPendingEvents` was previously listed here but is no longer called
     // in this body — retry scheduling is delegated to scheduleRetryRef.current.

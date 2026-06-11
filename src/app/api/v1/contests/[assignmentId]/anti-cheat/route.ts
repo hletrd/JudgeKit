@@ -116,9 +116,7 @@ export const POST = createApiHandler({
           examSession?.personalDeadline ?? null
         );
       }
-      // effectiveClose is never null here (assignment.deadline is set on this
-      // branch and the helper only ever returns it or a LATER personal
-      // deadline), but keep the null semantics correct: null = no close.
+      // null = no close (unreachable here — deadline is non-null on this branch).
       if (effectiveClose && now > effectiveClose) {
         return apiError("contestEnded", 403);
       }
