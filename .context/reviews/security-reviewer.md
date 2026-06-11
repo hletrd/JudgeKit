@@ -1,89 +1,75 @@
-# Security Reviewer — RPF Cycle 1 (2026-06-11)
+# Security Reviewer — RPF Cycle 2 (2026-06-11)
 
-**HEAD reviewed:** f977ef4c (main)
-**Change surface:** 76 commits since the cycle-9 baseline (24939e42), with primary
-depth on the 30 commits after the 2026-06-03 multi-agent review HEAD (804c8db3)
-— i.e. the remediation implementations themselves plus the Jun-4/5 follow-up
-fixes, which no prior review pass has examined.
+**HEAD reviewed:** 4cf01035 (main)
+**Scope:** OWASP-style pass over the cycle-1 diff + auth/authz surfaces, the
+112-route API inventory, secrets handling, deploy script, and sandbox config.
 
-## Method / inventory
-- Enumerated the full diff `804c8db3..HEAD` (67 files) and `24939e42..HEAD`
-  (144 files); every changed file was inspected; key flows traced into their
-  unchanged callees (`claim-query.ts` → `poll/route.ts` → `worker-staleness-sweep.ts`;
-  `system-settings.ts` → `platform-mode-context.ts` → compiler/playground routes;
-  draft route → `source-draft-store.ts`; CSP matcher → `next.config.ts` fallback).
-- Re-verified each of the 16 remediation fixes (C1, H1–H6, M1–M6, L1–L3) against
-  the actual implementation, not the plan text.
+## Findings
 
-## NEW findings
+### SEC2-1 — `code_snapshots` write surface weaker than its siblings (MEDIUM, High confidence, CONFIRMED)
+`src/app/api/v1/code-snapshots/route.ts:14-19` accepts arbitrary `language`
+strings of unbounded length (only `min(1)`); submissions and drafts both gate
+on `isJudgeLanguage`. Storage-flooding / timeline-pollution vector for any
+authenticated user (rate limits bound the QPS but not the per-row size of the
+`language` column). Fix: registry gate + (implicitly) the 400 path. Note the
+route's authz is otherwise correct: `canAccessProblem` +
+`validateAssignmentSubmission` + dual IP/user rate limits.
 
-### S1 — Draft API accepts arbitrary `language` strings → unbounded `source_drafts` growth (MEDIUM, confidence High)
-`src/app/api/v1/problems/[id]/draft/route.ts:17-19` — `putSchema` validates
-`language: z.string().min(1).max(64)` but never checks it against the judge
-language registry. The store upserts one row per `(user, problem, language)`
-(`src/lib/drafts/source-draft-store.ts`), so every distinct 64-char string is a
-NEW row of up to 65,536 bytes. `source_drafts` has **no retention pruning**
-(`src/lib/data-retention-maintenance.ts` prunes 6 tables; drafts are not one of
-them) and no per-user row cap.
-**Failure scenario:** a hostile authenticated student/candidate scripts
-`PUT /draft` with random `language` values at the rate limit for days →
-millions of 64 KiB rows; table bloat degrades the upsert index and backup
-size/time on the production DB.
-**Fix:** validate `isJudgeLanguage(body.language)` (the client only ever sends
-real editor languages, so this is non-breaking) in PUT and DELETE; optionally
-cap rows per (user, problem).
+### SEC2-2 — `code_snapshots` retained forever (MEDIUM, High confidence, CONFIRMED — privacy/data-minimization)
+The table holds every examinee's in-progress source every ~10 s
+(`problem-submission-form.tsx:140-182`) with IP-adjacent anti-cheat context,
+yet it is the ONLY sensitive operational table missing from the retention
+pruner: `src/lib/data-retention-maintenance.ts:135-140` covers 7 tables;
+`src/lib/data-retention.ts` has no `codeSnapshots` key;
+`docs/data-retention-policy.md` has no row. Anti-cheat events themselves are
+pruned at 180 d, so the raw keystroke-adjacent evidence outlives the derived
+signals — backwards from a privacy standpoint and unbounded on disk. Fix:
+prune on `createdAt` (`cs_created_at_idx` already exists in schema.pg.ts)
+with default aligned to `antiCheatEvents` (180 d), env-overridable, + policy
+doc row + test.
 
-### S2 — CSP nonce matcher cannot cover unknown-path 404s (LOW, confidence Medium)
-`src/proxy.ts:391-427` — commit 6035ca83 extended the **enumerated** matcher
-(`/problems`, `/groups`, `/profile`, `/privacy`), but enumeration structurally
-cannot cover (a) the root not-found page rendered for unmatched paths (e.g.
-`/asdf`) and (b) any future top-level route an author forgets to add. Those
-requests fall to the static fallback CSP in `next.config.ts:170`
-(`script-src 'self'`), which blocks Next.js streaming inline scripts — console
-CSP violations and a non-hydrated 404 page. Same class as SEC-21-3; this is the
-second patch extending the list, i.e. the enumeration is a recurring-regression
-generator.
-**Fix:** negative-lookahead catch-all matcher (after verifying the middleware
-is safe/cheap on arbitrary paths), or document the 404-page exception.
-Severity LOW (the fallback is *stricter*, not weaker; 404 content still renders).
+### SEC2-3 — Rate-limit first-insert race (LOW-MEDIUM, Medium confidence)
+Shared with code-reviewer CR2-2. Security angle: the failure mode is
+fail-OPEN-ish noise (a 500, not a bypass) — no limit evasion, but a
+crash-on-contention in the security-control path is still a robustness defect
+in the control itself. Fix as CR2-2.
 
-### S3 — examMode integrity enforced client-side only (LOW, confidence Medium)
-Commit 2388302e normalizes a corrupt `exam_mode` (observed `"0.0"` in prod)
-in the form (`assignment-form-dialog.tsx:125-129`) — but server-side readers
-branch on raw values: `exam-session/route.ts` (`examMode === "none"` → not an
-exam) vs `startExamSession` (`!== "windowed"` throws), proctoring gates, etc.
-A corrupt value is neither `"none"` nor `"windowed"`, so readers disagree about
-whether the assignment is an exam. The corrupt prod row was fixed out-of-band,
-but nothing prevents recurrence (no DB CHECK constraint on
-`assignments.exam_mode`).
-**Fix:** CHECK constraint migration (`exam_mode IN ('none','scheduled','windowed')`)
-or normalize-at-read in the assignment loader.
+### SEC2-4 — Deploy: BuildKit history-store corruption blocks worker-image refresh (HIGH ops, CONFIRMED on auraedu — injected DEFERRED-OPS-1)
+Confirmed diagnosis (Docker 29.1.3 / buildx v0.20.0): "Internal: unknown blob
+sha256:... in history" aborts language-image builds; the corrupted ref lives
+in the BuildKit HISTORY store — `docker builder prune -af` (which
+`deploy-docker.sh:368` already runs) does NOT clear it; `docker buildx
+history rm --all` does. Corruption re-occurs under the one-shot ~90-target
+parallel bake at `deploy-docker.sh:651-656`. Security relevance: a deploy
+path that cannot rebuild judge images delays shipping sandbox/runtime fixes
+to the judging fleet. Fix (scheduled): cap/serialize the all-languages build,
+auto-detect the signature and run `docker buildx history rm --all` + retry
+once, document the runbook signature.
 
-## Remediation fixes re-verified SOUND (no finding)
-- **H1/canManageProblem** (`permissions.ts:186-217`): admin → allow; author →
-  allow; else requires `problem_group_access` ∩ taught groups. Public visibility
-  does NOT grant write. Orphan problems writable only by author/admin. Correct.
-- **M1 ownership transfer** (`groups/[id]/route.ts:140-151`): `instructorId`
-  gated on current-owner OR `groups.view_all` — co-instructor takeover closed.
-- **L2 exam-session ?userId** (`exam-session/route.ts:104-117`): now
-  `canViewAssignmentSubmissions` only; bare `contests.view_analytics` removed.
-- **H3/M3 + users/[id] DELETE** (`users/[id]/route.ts:473-489`): recruiting PII
-  scrubbed in the same `execTransaction` BEFORE the FK set-null cascade —
-  correct ordering (scrub keyed on `userId` while rows are still linked).
-- **H2 audit retention** (`data-retention-maintenance.ts:86-90`): auditEvents
-  added to the pruning `Promise.allSettled`; cutoff from DB clock.
-- **L1 judge /register rate limit** (`register/route.ts:35-41`): IP-keyed and
-  placed AFTER token auth, so an unauthenticated flood can't consume the bucket
-  to lock out a real worker — good ordering.
-- **Durable audit** (`audit/events.ts` recordAuditEventDurable): awaited insert
-  with buffer fallback, never throws.
-- **NODE_ENCRYPTION_KEY startup gate**, **JUDGE_ALLOWED_IPS startup warning**,
-  **gVisor opt-in runtime** (inert until `JUDGE_OCI_RUNTIME` is set): all sound.
-- **Recruiting consent/privacy link + PRIVACY_CONTACT_EMAIL**: present, en+ko.
+## Audited and found sound (no action)
+- **New exam-extend endpoint** (`exam-sessions/[userId]/route.ts`): gated by
+  `canManageGroupResourcesAsync` (same write-power gate as score overrides);
+  windowed-only; extension-only (zod 1..600 int + lib re-check); durably
+  audited with actor/target/minutes/new-deadline. No IDOR: group → assignment
+  → session chain is verified (`assignment.groupId !== id` → 404).
+- **ipOverlap report** (`anti-cheat/route.ts:184-233`): read-only aggregation
+  behind `canMonitorContest`; assignment-scoped named params; LIMIT 100; no
+  new data collection. Indexes exist (`ace_assignment_*`).
+- **Anti-cheat POST** keeps the strict Origin pinning (SEC M-8) and contest
+  boundary checks on DB time.
+- **Draft PUT language gate (cycle-1 F2)** verified in place; DELETE
+  deliberately permissive (documented).
+- **`/api/v1/test/seed`**: triple-gated (NODE_ENV !== production AND
+  PLAYWRIGHT_AUTH_TOKEN set AND localhost via hop-validated extractClientIp
+  AND timing-safe bearer compare). Inert in production.
+- **proxy.ts auth cache**: TTL capped at 10 s; negative caching documented;
+  CSP nonce from crypto.getRandomValues.
+- **Secrets:** `.env.production` 0600 both sides; remote backfill never
+  rotates existing values; no secrets in repo (spot-checked .env.example).
+- **make_interval extension SQL** is fully parameterized via drizzle sql
+  template (`exam-sessions.ts:151`).
 
-## Final sweep
-Checked: no secrets in new diffs; no new raw-SQL injection surface
-(`prev_worker_release` uses named params only); draft endpoints owner-scoped
-(auth + canAccessProblem + per-user rate limit); no new header-injection paths;
-`src/lib/auth/config.ts` untouched (CLAUDE.md rule); no `tracking-*` on Korean
-text in new UI. No HIGH finding this cycle.
+## Residual risks (carried, with exit criteria in the cycle-1 register)
+- PS2 (no fullscreen-presence signal — documented posture), TA1 (TA exam
+  content separation), per-assignment AI-override granularity (TR2). All
+  policy-level, unchanged preconditions.

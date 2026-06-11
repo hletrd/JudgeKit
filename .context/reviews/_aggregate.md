@@ -1,160 +1,118 @@
-# RPF Cycle 1 (2026-06-11 series) — Aggregate Review
+# RPF Cycle 2 (2026-06-11) — Aggregate Review
 
 **Date:** 2026-06-11
-**HEAD reviewed:** f977ef4c (main)
-**Cycle:** 1/100 (orchestrator-numbered; follows the 2026-05-29 series and the 2026-06-03 multi-agent pass)
-**Lenses (17):** security-reviewer, code-reviewer, perf-reviewer, verifier, tracer,
-debugger, architect, test-engineer, critic, document-specialist, designer +
-personas: student, instructor, admin, assistant, job-applicant, security
-(all in `.context/reviews/*.md`; prior aggregate preserved as
-`_aggregate-cycle-9-2026-05-29-snapshot.md`).
-**Gate baseline on this HEAD (verifier, re-run):** tsc 0 · eslint 0/0 ·
-lint:bash clean · unit 330 files / 2551 tests PASS.
-**Change surface:** 76 commits since 24939e42; depth on the 30 commits after
-804c8db3 (the 2026-06-03 remediation wave itself + Jun-4/5 follow-ups).
-All 16 remediation items (C1, H1–H6, M1–M6, L1–L3) re-verified as genuinely
-implemented (verifier). **No HIGH finding this cycle** (critic severity-honesty
-check concurs — stated plainly, not padded).
+**HEAD reviewed:** 4cf01035 (main) — i.e. cycle-1's completed tree, deployed
+and healthy on all three targets.
+**Cycle:** 2/100 (orchestrator-numbered)
+**Lenses:** 11 specialist + 6 persona files in this directory, all refreshed
+for this HEAD (cycle-1 versions overwritten per run rules).
+**Baseline gates on review HEAD (executed):** tsc 0 · eslint 0/0 ·
+lint:bash clean · unit 332 files / 2571 tests PASS.
 
 ## AGENT FAILURES
-None. (Specialist/persona fan-out completed across two runs of this cycle
-after an interruption; every file re-checked fresh against HEAD f977ef4c.)
+None of the named reviewer subagents (code-reviewer, perf-reviewer, …) are
+registered in this environment (no Agent tool is available to this cycle's
+runner). Per the fan-out fallback, every lens was executed directly by the
+cycle agent and written to its own file; no lens was dropped. Recorded here
+for provenance.
 
----
+## Merged findings (deduped; severity/confidence preserved at max across lenses)
 
-## Deduplicated findings — ACTIONABLE THIS CYCLE
+### AGG2-1 — `code_snapshots`: no retention + unvalidated unbounded `language` (MEDIUM, High, CONFIRMED)
+**Lenses:** code-reviewer CR2-1, security-reviewer SEC2-1+SEC2-2, perf
+PERF2-1, document-specialist DOC2-1/3, critic #1, perspective-student,
+perspective-admin AD2-2, perspective-security §4 — 8-lens agreement (highest
+signal this cycle).
+`src/app/api/v1/code-snapshots/route.ts:14-19` (no `isJudgeLanguage` gate, no
+max length on `language`); `src/lib/data-retention.ts` (no key);
+`src/lib/data-retention-maintenance.ts:135-140` (not pruned);
+`docs/data-retention-policy.md` (no row). Highest-volume sensitive table
+(≤256 KiB row / ~10 s per active examinee) outlives the 180 d anti-cheat
+events derived from it. Fix: registry-gate language (mirror draft route F2),
+add `codeSnapshots: 180` retention (env `CODE_SNAPSHOT_RETENTION_DAYS`),
+prune on `createdAt` (index `cs_created_at_idx` exists), policy-doc row,
+docstring count 7→8, tests.
 
-### AGG-1 — Self-reclaim `active_tasks` leak in claim SQL (MEDIUM, High signal: code-reviewer CR1 + tracer T1 + debugger D2 + test-engineer T1 + admin AD2 + persona-security endorse)
-`src/lib/judge/claim-query.ts:80-101`. `prev_worker_release` is guarded by
-`previous_worker_id <> @workerId` (required — Postgres forbids two modifying
-CTEs updating one row), so a worker reclaiming ITS OWN stale submission bumps
-`active_tasks` twice but is decremented once → permanent +1 on a healthy
-worker; sweep only heals fully-silent workers. Contest-day capacity corrosion.
-**Fix:** compensate inside `worker_bump`'s SET expression
-(`+ 1 - (SELECT COUNT(*) FROM candidate c WHERE c.previous_worker_id = @workerId AND EXISTS (SELECT 1 FROM claimed))`);
-add structural unit assertion + same-worker integration case (T1); add the
-invariant comments architect A3 specifies (why `<>` must stay; lock order).
+### AGG2-2 — DEFERRED-OPS-1: deploy BuildKit history corruption — CONFIRMED diagnosis, harden deploy-docker.sh (HIGH ops, CONFIRMED — injected TODO)
+**Lenses:** security-reviewer SEC2-4, tracer Trace 1, architect A2-2,
+document-specialist DOC2-2, critic #3, perspective-admin AD2-1,
+perspective-security §6.
+Diagnosis (verified on auraedu, Docker 29.1.3/buildx 0.20.0): "Internal:
+unknown blob … in history" lives in the BuildKit HISTORY store; `docker
+builder prune -af` does NOT clear it; `docker buildx history rm --all` does
+(metadata-only). Re-triggered by the ~90-target parallel compose bake
+(`deploy-docker.sh:651-656`); sequential `LANGUAGE_FILTER=all` loop is the
+working remedy (how 4cf01035 reached auraedu+algo). Hardening (BEFORE this
+cycle's deploy): (a) cap parallelism / fall back to the sequential loop in
+the all-languages path; (b) auto-recovery — detect the signature in build
+output → `docker buildx history rm --all` on the remote → retry the step
+once; (c) document signature+remedy in AGENTS.md deploy-hardening + runbook;
+(d) close DEFERRED-OPS-1 in plans with this resolution.
 
-### AGG-2 — Draft API: junk `language` strings → unbounded `source_drafts` growth; table has no retention (MEDIUM, security S1 + admin + document-specialist DS1-gap + test-engineer T2)
-`src/app/api/v1/problems/[id]/draft/route.ts:17-19` accepts any ≤64-char
-string as `language`; one row per (user, problem, language) of up to 64 KiB;
-`data-retention-maintenance.ts` never prunes drafts.
-**Fix:** validate against the judge language registry in PUT/DELETE (400 on
-unknown); add a 400 unit case + happy case; add `source_drafts` to retention
-pruning and a line to `docs/data-retention-policy.md`.
+### AGG2-3 — Rate-limit first-insert race → user-visible 500 (LOW-MEDIUM, Medium on frequency / High on mechanism, CONFIRMED)
+**Lenses:** code-reviewer CR2-2, debugger D2-1, tracer Trace 3, security
+SEC2-3, perf PERF2-3, perspective-security §6.
+`src/lib/security/api-rate-limit.ts:84-92, 244-252, 353-361` +
+`src/lib/security/rate-limit-core.ts:96-104`: bare INSERT after a FOR
+UPDATE that locked nothing → unique violation → 500. Fix:
+`onConflictDoNothing({ target: rateLimits.key })`; on 0-row insert, re-read
+(row exists now) and take the update path. Apply in the shared core where
+possible (keeps C7-AGG-9 consolidation debt flat) + structural test.
 
-### AGG-3 — Full-catalog ID fetch per /problems & /practice view for stable numbering (MEDIUM, perf P1 + code-reviewer CR4 + critic #2)
-`src/app/(public)/problems/page.tsx:469-482`,
-`src/app/(public)/practice/page.tsx:538-549` — SELECT every visible problem id
-+ whole-catalog JS Map per page view to number ~20 rows; same query shape M4
-just removed from analytics.
-**Fix:** SQL `row_number() OVER (ORDER BY sequence_number, created_at)` in a
-subquery filtered to the page's ids; dedupe the duplicated ordering expression.
+### AGG2-4 — Staff-granted exam extension invisible to the participant until reload (LOW-MEDIUM, High, CONFIRMED)
+**Lenses:** verifier V2-1, tracer Trace 4, debugger D2-2, designer DES2-1,
+perspective-student ST2-NEW-1, perspective-instructor IN2-1,
+perspective-job-applicant JA2-1 — 7-lens agreement.
+`src/app/(public)/groups/[id]/assignments/[assignmentId]/page.tsx:168-201`:
+countdown deadline + `isExamExpired` are render-time snapshots; the
+session GET (`exam-session/route.ts:93`) already exists. Fix: client-side
+periodic + visibilitychange refetch of the personal deadline for windowed
+exams; extend the countdown live and show a `role="status"` "deadline
+extended" note (en+ko). Completes F12's accommodation story.
 
-### AGG-4 — NODE_ENCRYPTION_KEY boot-required but undocumented for operators (MEDIUM, document-specialist DS2 + admin AD1)
-`src/lib/security/production-config.ts:31` hard-requires it; absent from
-`.env.example`, `.env.production.example`, and `docs/deployment.md` required-env
-table (which lists only the DIFFERENT `PLUGIN_CONFIG_ENCRYPTION_KEY`). Fresh
-tenant following docs → crash-looping container.
-**Fix:** add to both templates + deployment doc, distinguishing the two keys.
+### AGG2-5 — Retention-coverage class-closer test (MEDIUM leverage, test gap)
+**Lenses:** critic #1, test-engineer T2-2. Structural unit test: every
+user-writable timestamped table in schema.pg.ts is either retention-pruned
+or on a documented allowlist — prevents the next "we forgot table X"
+(this cycle: snapshots; last cycle: drafts).
 
-### AGG-5 — No per-student exam time extension exists (MEDIUM product/fairness, personas: student ST1 + instructor IN1 + job-applicant JA1, confidence High)
-No field or staff endpoint mutates `exam_sessions.personal_deadline`
-(`schema.pg.ts:384`). Accommodations (legally mandated extra time), outage
-recovery, and recruiting incident recovery all have no tool short of SQL.
-**Fix (feature):** staff endpoint (gated `canManageContest`/group-staff) to
-extend a participant's personalDeadline (never shrink below original; clamp ≥
-now), durable audit event, surfaced on the exam monitor. Plan as this cycle's
-feature item.
+### AGG2-6 — ExamExtendDialog polish (LOW, High)
+**Lenses:** code-reviewer CR2-3, designer DES2-2. `inputMode="numeric"`,
+Cancel button, Enter-submit via form; optionally ≥24 px trigger target.
 
-### AGG-6 — Anti-cheat captures IPs but never correlates them (MEDIUM product gap, persona-security PS1)
-`exam_sessions.ip_address` + per-event IPs stored; dashboard shows per-row IP
-(`anti-cheat-dashboard.tsx:523,587`) but no "same IP, multiple participants" /
-"one participant, many IPs" aggregation — duplicate-account and collusion
-hunting is manual. **Fix:** staff-only IP-overlap report on the anti-cheat
-dashboard (read-only GROUP BY; no new collection).
+### AGG2-7 — Review/plan artifact sprawl (LOW, housekeeping)
+**Lenses:** critic #4, perspective-admin AD2-3. Sweep pre-2026-06 review
+files from `.context/reviews/` root into `_archive/`.
 
-### AGG-7 — CSP nonce-matcher enumeration class still open (LOW→MEDIUM trend; security S2 + architect A1 + tracer Trace-3 + test-engineer T3 + critic #1)
-`src/proxy.ts:391-427` vs `next.config.ts:156-170`: two regressions of this
-class have shipped; unmatched-path 404s still fall to the strict fallback.
-**Fix now (cheap class-closer):** unit guard test in the repo's
-source-grep-guard idiom walking `src/app/**` top-level page segments and
-asserting each maps into the matcher. Catch-all matcher deferred until
-middleware cost on arbitrary paths is measured.
+### AGG2-8 — INFO items
+- `drizzle/pg/meta/_journal.json` missing trailing newline (CR2-4) — bundle
+  with next journaled migration.
+- IN2-2 pre-start accommodation grants (product note → register, with TA2).
 
-### AGG-8 — `assignments.exam_mode` lacks a DB CHECK constraint (LOW-MEDIUM, security S3 + persona-security §5)
-Corrupt value (observed `"0.0"` in prod once) makes exam/not-exam readers
-disagree — grading-integrity hazard on recurrence. Client-side coercion
-(2388302e) is cosmetic. **Fix:** idempotent migration adding
-`CHECK (exam_mode IN ('none','scheduled','windowed'))` (after normalizing any
-stray rows in the same migration), per repo migration conventions.
+## Verified-good at HEAD (explicit, to prevent re-flagging)
+All 13 cycle-1 fixes re-verified from code (see verifier.md table): F1 claim
+accounting sound (LIMIT 1 + all requeue paths null judgeWorkerId); F3 scope
+filters are problems-only; F12 cannot leak past-close to unextended
+participants (start clamps to deadline); `namedToPositional` dedupes repeated
+params; `recordAuditEventDurable` never throws; new endpoints' authz gates
+correct; i18n parity holds; no Korean tracking utilities introduced.
 
-### AGG-9 — `isAiAssistantEnabled` lost its DB-failure safe default (LOW, code-reviewer CR3)
-`src/lib/system-settings.ts:218-228`: double-failure now propagates to page
-render instead of degrading. **Fix:** restore try/catch returning the
-mode-derived default.
+## Carried register (unchanged preconditions — origin: cycle-1 plan deferral table)
+D1 (reclaim deadlock, self-recovering) · D3 (registration clock-skew) ·
+D4 (pre-hydration keystrokes) · CR2/P2 (claim-route scoringModel SELECT) ·
+P3 (draft write load) · T4 (backup restore-test CI) · IN3/JA2 (judging-delay
+banner) · TA1 (TA exam-content separation) · TA2 (per-assignment TA grading;
+now bundled with IN2-2) · TR2 (per-assignment AI override) · TH1 (pino test
+noise) · DES-ENV (live browser pass) · ST2 (expired-editor state; pair with
+AGG2-4) · PS2 (fullscreen posture) · ARCH-CARRY-1/2 · C3-AGG-5
+(deploy-docker.sh SSH-helpers extraction — trigger still TRIPPED; this
+cycle's build-step edits do not touch SSH helpers; file now ~1335 lines) ·
+DOC-C5-2 · C7-DS-1 · N7-C7 · DEFER-ENV-GATES.
 
-### AGG-10 — Effective-restrictions logic duplicated (LOW, architect A2)
-`getEffectiveModeRestrictions` vs inline logic in
-`platform-mode-context.ts:288-293`. **Fix:** make
-`isAiAssistantEnabledForContext` call the helper.
-
-### AGG-11 — UX cluster (LOW, designer + personas, fix-cheap):
-(a) **UX3/ST3/JA:** silent server-draft recovery → one-line sonner toast
-("recovered draft from <time>"); highest value in the recruiting seat.
-(b) **UX2/AD3/critic#5:** admin restricted-mode override checkboxes need
-consequence helper text + an "overrides active" indicator near the mode
-selector.
-(c) **UX1/IN2/critic#4:** per-viewer /problems numbers — add a tooltip/hint
-("numbering reflects your visible catalog") when fixing AGG-3 in the same
-files.
-
-### AGG-12 — Doc/runbook nits (LOW, doc-specialist + admin AD4 + persona-security PS2):
-(a) name the exact sweep reap log line in
-`docs/judge-worker-incident-runbook.md` as the alert signature;
-(b) document the anti-cheat telemetry posture (deterrence+evidence, no
-fullscreen signal — deliberate) in the anti-cheat doc;
-(c) when AGG-2 lands, add the drafts retention line (covered there).
-
-## Findings to RECORD AS DEFERRED (plan dir, with exit criteria)
-- **D1** cross-worker reclaim deadlock (LOW, debugger; critic concurs defer)
-  — exit criterion: any `deadlock detected` on `judge_workers` in prod logs.
-- **D3** registration clock-skew insta-stale (LOW) — runbook note only;
-  DB-side `DEFAULT now()` if ever touched again.
-- **D4** pre-hydration keystroke not autosaved (LOW) — within documented
-  best-effort contract; localStorage covers.
-- **CR2/P2** claim-route extra scoringModel SELECT (LOW) — fold into carried
-  claim-SQL consolidation cluster (F3/F4).
-- **P3** draft-autosave write load (INFO) — monitoring note for first live
-  contest.
-- **T4** backup restore-test CI exercise — env-bound (carried DEFER-ENV-GATES).
-- **IN3/JA2** judging-delay banner for instructor/candidate (LOW feature) —
-  pairs with future ops-surface work; record as deferred product item.
-- **TA1** TA exam-content separation-of-duties capability split (LOW policy
-  decision) / **TA2** per-assignment grading assignments (LOW feature note).
-- **Trace-2 note** per-assignment AI-override granularity (LOW product note;
-  AGG-11b covers the operator-mistake mitigation).
-- **Test hygiene:** pino error noise in `contests.route.test.ts` logs (LOW).
-- **Designer:** live agent-browser pass requires provisioned server+DB
-  (carried DEFER-ENV-GATES); static a11y review done instead.
-- **Carried unchanged:** ARCH-CARRY-1 (raw judge handlers), ARCH-CARRY-2 (SSE
-  O(n) eviction), deploy-docker.sh size (C3-AGG-5), DOC-C5-2
-  (staleClaimTimeoutMs doc field), C7-DS-1 (README /api/v1/time), N7-C7 (ICPC
-  override live-rank product decision).
-
-## Cross-agent agreement (signal table)
-| Finding | Lenses agreeing |
-|---|---|
-| AGG-1 self-reclaim leak | 4 specialist + 2 persona |
-| AGG-3 catalog scan | 3 |
-| AGG-7 CSP enumeration class | 5 |
-| AGG-5 time extension | 3 personas (independent seats) |
-| AGG-2 draft growth | 3 |
-| AGG-4 env-var doc gap | 2 |
-| AGG-11a silent recovery | 3 |
-
-## Verified-sound highlights (no action; provenance in per-lens files)
-Sandbox hardening flags (persona-security §2); hidden-test-case query-shape
-confidentiality (§4); all 16 remediation fixes; draft-hook safety invariants;
-RBAC remediation wave incl. TA boundary sweep (no regression); IOI scoring
-end-to-end; backup restore-test script; durable audit; staleness sweep design.
+## Recommended implementation order (cycle 2)
+1. AGG2-2 deploy hardening (must precede DEPLOY_CMD).
+2. AGG2-1 snapshots (gate + retention + docs, tests first).
+3. AGG2-5 class-closer test (lands naturally with AGG2-1).
+4. AGG2-3 rate-limit race (shared core + tests).
+5. AGG2-4 live deadline refresh (+ ST2-adjacent status note).
+6. AGG2-6 dialog polish · AGG2-7 archive sweep.

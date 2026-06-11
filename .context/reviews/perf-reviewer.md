@@ -1,64 +1,48 @@
-# Perf Reviewer — RPF Cycle 1 (2026-06-11)
+# Perf Reviewer — RPF Cycle 2 (2026-06-11)
 
-**HEAD reviewed:** f977ef4c (main)
-**Scope:** 76-commit delta since 24939e42; depth on post-804c8db3 commits.
+**HEAD reviewed:** 4cf01035 (main)
+**Scope:** hot paths (submit, claim, SSE, catalog pages), cycle-1's perf
+changes, retention jobs, dashboard fetches.
 
 ## Findings
 
-### P1 — Full-catalog ID fetch on every /problems and /practice page view (MEDIUM, confidence High)
-Commit f977ef4c (`src/app/(public)/problems/page.tsx:469-482`,
-`src/app/(public)/practice/page.tsx:538-549`) computes the "stable per-problem
-number" by SELECTing the id of **every visible problem** (no LIMIT) on **every
-page load**, then building a JS `Map` of the whole catalog — to label the ~20
-rows actually displayed. Two server pages, every paginated request, every
-user. With a 10k-problem catalog that is a 10k-row transfer + 10k-entry Map
-per view; today (~1–3k problems) it is measurable but not critical — this is
-exactly the query-shape the same cycle's M4 fix (84c55ce7) removed from
-contest analytics.
-**Fix:** compute the rank in SQL and fetch it only for the page's rows:
-`SELECT id, row_number() OVER (ORDER BY sequence_number ASC, created_at ASC) rn
-FROM problems WHERE <same filter>` as a subquery, outer-filtered by
-`id IN (<page ids>)`. Transfers ≤ PAGE_SIZE rows; identical numbering
-semantics. (Note: `/problems` Path B already had a full-ID fetch for the
-progress filter — pre-existing, different purpose; this finding is about the
-NEW unconditional scan.)
+### PERF2-1 — `code_snapshots` grows without bound (MEDIUM, High confidence — shared with SEC2-2)
+Every active examinee posts a snapshot every 10 s while typing (60 s idle),
+≤256 KiB/row (`problem-submission-form.tsx:140-182`), and nothing ever
+deletes rows. A 100-seat 2-hour exam adds up to ~70k rows; a year of courses
+makes the `cs_user_problem_idx` and timeline queries progressively slower and
+the DB volume grows monotonically. Fix: retention prune keyed on `createdAt`
+(index already exists), batched like the existing `batchedDelete`.
 
-### P2 — Claim path +1 query per claim (LOW, confidence High)
-`claim/route.ts:330-337` — separate `assignments.scoringModel` SELECT per
-claim instead of a join in the claim SQL. ~1 ms per claim; the claim rate is
-bounded by judge throughput. Not actionable alone; fold into the carried
-claim-consolidation deferred item (F3/F4 cluster).
+### PERF2-2 — ipOverlap report fetch per dashboard mount (INFO, verified acceptable)
+`anti-cheat-dashboard.tsx:208-228` fetches the report once per mount (not on
+the 30 s poll) — deliberate and fine. The UNION CTE is assignment-scoped and
+hits `ace_assignment_user_idx` / exam_sessions PK; LIMIT 100 on both arms.
+No action.
 
-### P3 — Draft autosave write load during contests (INFO/LOW, confidence Medium)
-`use-server-source-draft.ts` PUTs at most once per 3 s debounce per active
-editor; each PUT is a single-row upsert. With N concurrent contestants worst
-case ≈ N/3 writes/s (typing continuously). For the documented scale (hundreds
-of users) this is fine; the per-user rate limit caps abuse. Flag only because
-contest start is the platform's load spike moment; if p95 DB latency during a
-live contest degrades, this is the first new write source to inspect.
-Monitoring note, not a defect.
+### PERF2-3 — Rate-limit conflict-500 wastes a request round-trip (LOW)
+Same defect as CR2-2; perf angle: the aborted transaction forces the client
+into a retry it should never need on the first-use path. Fix as CR2-2.
 
-## Verified sound (no finding)
-- **M4 contest analytics** (84c55ce7): first-AC via `DISTINCT ON`, progression
-  via bounded window — the unbounded all-submissions scan is gone. Verified in
-  `src/lib/assignments/contest-analytics.ts`.
-- **H5 reply counts** (90558b22): `COUNT(*) GROUP BY thread_id` batched —
-  eager post fetch removed from all 4 list functions.
-- **Output cap / compile limits** (f44baab6, 86999c13): env-configurable with
-  unchanged defaults; worker RAM worst case now operator-tunable.
-- **Staleness sweep**: one 60 s interval per process; two indexed UPDATEs
-  (status + last_heartbeat_at indexes exist, schema.pg.ts:444-445). Negligible.
-- **prev_worker_release**: touches at most 1 extra row per claim. Negligible.
-- Per-claim IOI flag adds no per-test-case overhead; the run-all cost for IOI
-  is inherent to correct partial scoring (the C1 trade-off was explicitly
-  accepted in the plan).
+## Verified-good
+- **Cycle-1 F3 (catalog numbers in SQL)** delivers the intended win: both
+  pages now transfer ≤ PAGE_SIZE ranked rows instead of the whole catalog id
+  list per view (`src/lib/problems/catalog-numbers.ts`); `row_number()` runs
+  over the scope filter with the existing order, and the outer
+  `inArray(ids)` keeps the result tiny.
+- **Cycle-1 F1/AGG-5 deslop**: submit hot path kept the single parallel
+  enrollment+examSession round trip (`submissions.ts:229-242`), now hoisted
+  before the schedule checks (one extra read on reject paths — accepted and
+  commented).
+- **Settings double-fetch removed** (5e14fdf9): `getEffectiveModeRestrictions`
+  accepts a preloaded settings record; both AI-flag resolvers pass it.
+- SSE connection tracking remains O(1) per add/remove with two-phase eviction
+  (`submissions/[id]/events/route.ts:38-72`); ARCH-CARRY-2 (>500-conn
+  eviction behavior) carries with unchanged preconditions.
+- Draft autosave write load remains bounded (3 s debounce + per-user rate
+  limit) — P3 monitoring note carries.
 
-## Concurrency / shared state
-- `sweepStaleWorkers` is safe to run concurrently with the heartbeat-route
-  sweep (status-conditional UPDATEs are idempotent; both use DB time).
-- Cross-worker reclaim lock ordering: see debugger D1 (rare deadlock, LOW).
-
-## Final sweep
-Grepped the delta for new N+1 loops (`for ... await db.` — none added), new
-unbounded `findMany` (none), new `JSON.parse` on hot paths (none), client
-re-render hazards in the new hook (refs used; effects keyed correctly). Done.
+## Carried (unchanged preconditions, see cycle-1 register)
+- CR2/P2 claim-route per-claim scoringModel SELECT (~1 ms; fold into next
+  claim-SQL change).
+- P3 draft-autosave contest write load (watch p95 during first live contest).

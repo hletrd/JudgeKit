@@ -1,54 +1,50 @@
-# Critic (multi-perspective) — RPF Cycle 1 (2026-06-11)
+# Critic (multi-perspective) — RPF Cycle 2 (2026-06-11)
 
-**HEAD reviewed:** f977ef4c. Role: challenge the change surface and the other
-lenses' calls; surface what everyone else is incentivized to miss.
+**HEAD reviewed:** 4cf01035 (main)
 
-## Critique of the remediation wave itself
-1. **The fixes are real, but two of them re-created the pattern they fixed.**
-   - H4 (release dead worker's slot) fixed distinct-worker reclaim and left the
-     self-reclaim sibling leaking (CR1). The H4 guard test pins the fixed case
-     only — the suite now actively *asserts* the incomplete boundary.
-   - The CSP patch (6035ca83) fixed four routes by extending the same fragile
-     enumeration that caused the bug; second occurrence of the class. A
-     finding-driven loop that patches instances without closing classes will
-     meet these again; A1(b)'s route→matcher guard test is the cheap class fix.
+## Critique of the current state
 
-2. **The stable-numbering fix traded a UX paper-cut for an O(N) query on the
-   two most-visited catalog pages** (P1) — in the same week M4 removed exactly
-   this query shape from analytics. Inconsistent internal standard; fix P1.
+1. **The platform keeps fixing the same class of bug one table at a time.**
+   Cycle 0 fixed unbounded growth nowhere, cycle 1 fixed `source_drafts`
+   (F2), and TODAY `code_snapshots` — a strictly higher-volume table — is
+   still unpruned and its write route still accepts unvalidated language
+   strings (`code-snapshots/route.ts:14-19`). The remediation should not just
+   patch the table; it should add a class-closing check. Concrete suggestion:
+   a unit test that walks `schema.pg.ts` for tables with a
+   user-writable-row + timestamp shape and asserts each is either in
+   `DATA_RETENTION_DAYS` or on a documented allowlist (mirrors the cycle-1
+   CSP-matcher class-closer F5). MEDIUM.
 
-3. **Severity honesty check:** S1 (draft language) is rate-limit-bounded and
-   authenticated-only; MEDIUM is right, don't inflate it to HIGH in the
-   aggregate. CR1 is a slow capacity corrosion, not an outage: MEDIUM with a
-   trivially safe fix is the correct framing. Nothing in this delta is HIGH —
-   and that should be stated plainly rather than padded.
+2. **F12 shipped the staff half of time extensions but not the student
+   half.** The grant works (verified), but the student-facing countdown is a
+   static prop and the page's expired-state gate is render-time
+   (`assignments/[assignmentId]/page.tsx:168-201`). The accommodation story
+   is incomplete in exactly the high-stress moment it exists for. Shared
+   with verifier V2-1. LOW-MEDIUM.
 
-4. **Per-viewer problem numbers** (/problems) will eventually confuse a
-   classroom ("everyone open problem 37" — different 37s). The /practice
-   variant is viewer-independent (public catalog) and fine. Worth a one-line
-   doc/UI hint or switching /problems to a viewer-independent ordinal later;
-   LOW product note, not a defect.
+3. **Deploy reliability is now the weakest link in the loop.** Two of three
+   targets needed manual operator rescue in cycle 1 (BuildKit history
+   corruption). The script has good DB-safety bones but no resilience to
+   builder-state corruption, and its all-languages path maximizes the
+   trigger (90-target parallel bake on cold cache,
+   `deploy-docker.sh:651-656`). The injected DEFERRED-OPS-1 hardening is
+   the right next move; do it BEFORE this cycle's deploy. HIGH (ops).
 
-5. **The admin override knobs** (allowAiAssistantInRestrictedModes /
-   allowStandaloneCompilerInRestrictedModes) are global. The plausible operator
-   mistake is enabling one for a workshop and forgetting it before an exam.
-   Mitigations already present: default-false, admin-only, durable audit. A
-   "restricted-mode overrides active" banner on the admin dashboard would
-   close the forgetting loop (LOW, UX).
+4. **Review-artifact sprawl.** `.context/reviews/` carries ~36 dated
+   aggregates plus per-agent files from many series; `plans/done` has 184
+   entries. Navigability for the owner is degrading. Not this cycle's
+   blocking work, but a `_archive/` sweep of pre-2026-06 review files is
+   cheap and reduces confusion about what is current. LOW.
 
-6. **Process note:** cycle 9 declared convergence (0 findings) and a fresh
-   multi-agent pass days later confirmed 16 real issues, one CRITICAL. The
-   honest conclusion: convergence claims should be scoped to "this lens set
-   over this surface", which this cycle's reports do. Keep persona lenses in
-   the rotation — C1 (IOI scoring) was invisible to file-by-file review and
-   found by behavioral review.
+5. **What cycle 1 got right** (credit where due): every fix it shipped
+   verified clean (see verifier.md); the deslop pass caught its own two
+   regressions; the migration-journal drift catch-up (F6 bonus) closed a
+   real DR gap that pre-dated the cycle.
 
-## Where I disagree with other lenses (none materially)
-- D1 (reclaim deadlock): agree LOW/defer — the trigger needs two simultaneously
-  half-dead-but-alive workers; engineering for it now is speculative.
-- D3 (clock-skew insta-stale): agree note-only; the heal window is ≤30 s.
-
-## Final sweep
-Re-read the six "verified sound" remediation diffs hunting for camouflage
-(tests adjusted to pass rather than behavior fixed) — found none; the IOI fix
-in particular fixed the masking test explicitly. No additional findings.
+## Priority ordering for cycle 2
+1. DEFERRED-OPS-1 deploy hardening (HIGH ops, injected; gates the deploy).
+2. code_snapshots retention + language gate (MEDIUM, two-sided fix).
+3. Rate-limit insert race (LOW-MEDIUM correctness in a security control).
+4. Student-visible extension refresh (LOW-MEDIUM, completes F12).
+5. Class-closer retention-coverage test (MEDIUM leverage).
+6. Dialog polish + journal newline (LOW, batch).

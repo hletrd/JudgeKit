@@ -1,65 +1,44 @@
-# Document Specialist — RPF Cycle 1 (2026-06-11)
+# Document Specialist — RPF Cycle 2 (2026-06-11)
 
-**HEAD reviewed:** f977ef4c. Lens: doc↔code mismatches against authoritative
-sources (code wins).
+**HEAD reviewed:** 4cf01035 (main)
 
-## Checked surfaces
-`AGENTS.md`, `README.md`, `docs/` (25 files incl. the new
-`judge-worker-gvisor.md`), `.env.example`, `.env.production.example`,
-`SECURITY.md`, in-code contract comments in the delta.
+## Doc/code mismatches
 
-## Findings
+### DOC2-1 — `docs/data-retention-policy.md` omits `code_snapshots` (MEDIUM, paired with SEC2-2)
+The policy table covers chat, anti-cheat events, recruiting, submissions,
+login events, audit events, and (since cycle 1) source drafts — but not the
+highest-volume sensitive table, `code_snapshots`. Whatever retention the fix
+picks must land in the policy doc in the same commit, including the env
+override name.
 
-### DS1 — Retention policy doc vs code: NOW CONSISTENT (no finding)
-`docs/data-retention-policy.md:13` documents "Audit events — 90 days
-(`AUDIT_EVENT_RETENTION_DAYS`)"; before H2 this was a doc-promises-more-than-
-code-delivers mismatch, and `pruneAuditEvents`
-(`data-retention-maintenance.ts:86-90`) now actually enforces it. Verified
-consistent — H2 closed a doc/code mismatch as a side effect. One gap remains:
-the new `source_drafts` table has no retention window in either the doc or the
-code (cross-ref security S1 — drafts are never pruned). When S1's fix lands,
-decide and document a draft retention policy line.
+### DOC2-2 — Deploy runbook lacks the BuildKit failure signature (HIGH ops, part of DEFERRED-OPS-1)
+The confirmed signature (`failed to solve: Internal: unknown blob sha256:...
+in history`), its confirmed remedy (`docker buildx history rm --all`,
+metadata-only, zero downtime), the explicit NON-remedy (`docker builder
+prune -af` does not clear it), and the re-trigger mechanism (full-parallel
+compose bake) must be documented in AGENTS.md's deploy-hardening section /
+ops runbook so the next operator doesn't rediscover it. Include the
+CLAUDE.md guardrail reminder (never `docker image prune -a` on worker hosts).
 
-### DS2 — NODE_ENCRYPTION_KEY is now boot-required but absent from every operator-facing template/doc (MEDIUM, confidence High — verified by grep)
-Commit a5e66736 added `NODE_ENCRYPTION_KEY` to `assertProductionConfig`
-(`src/lib/security/production-config.ts:31`), so a production app container
-**refuses to boot** without it. But grep confirms the variable appears in
-NONE of: `.env.example`, `.env.production.example` (the template operators
-copy for the compose `env_file`), `docs/deployment.md` (whose required-env
-table lists only `PLUGIN_CONFIG_ENCRYPTION_KEY` — a DIFFERENT key used by
-`src/lib/security/derive-key.ts:10` for plugin secrets), or
-`docs/admin-security-operations.md`.
-**Failure scenario:** a fresh tenant deploy following `docs/deployment.md` +
-`.env.production.example` verbatim crash-loops at startup (clear error
-message, but the docs led straight into it). Existing prod hosts are
-unaffected (their `.env.production` already carries the key — Jun-4 deploy
-succeeded).
-**Fix:** add `NODE_ENCRYPTION_KEY` to `.env.example`,
-`.env.production.example`, and the `docs/deployment.md` required-env table,
-clearly distinguishing it from `PLUGIN_CONFIG_ENCRYPTION_KEY`.
-Other new knobs (`JUDGE_MAX_OUTPUT_BYTES`, `JUDGE_COMPILE_TIMEOUT_MS`,
-`JUDGE_COMPILE_MEMORY_MB`, `JUDGE_OCI_RUNTIME`, `PRIVACY_CONTACT_EMAIL`) are
-documented (gVisor has a dedicated doc).
+### DOC2-3 — data-retention-maintenance docstring count (LOW, mechanical)
+`src/lib/data-retention-maintenance.ts:101-104` says "Seven independent
+prunes" — adding the snapshots prune makes it eight; update the sentence in
+the same commit (this comment was updated correctly in cycle 1; keep the
+streak).
 
-### DS3 — AGENTS.md language table self-declares drift tolerance (no finding)
-The table header says to treat `languages.ts`/`docs/languages.md` as source of
-truth when drifting — the documented contract makes the static table advisory.
-OK as-is.
+## Verified accurate (spot-checked against code)
+- `docs/exam-integrity-model.md` "Deliberate telemetry boundaries" (cycle-1
+  F13b) matches the implemented posture (no fullscreen signal; similarity +
+  snapshot replay as containment).
+- `.env.example` / `.env.production.example` / `docs/deployment.md` document
+  NODE_ENCRYPTION_KEY vs PLUGIN_CONFIG_ENCRYPTION_KEY correctly (cycle-1 F4).
+- deploy-docker.sh header comments match behavior for all flags checked
+  (SKIP_*, LANGUAGE_FILTER presets incl. `everything`, DEPLOY_INSTANCE,
+  SUDO_PASSWORD fallback, DEPLOY_SSH_RETRY_MAX clamp).
+- The claim-query invariant comments added by F1 accurately describe
+  Postgres CTE semantics (verified: two modifying CTEs may not update the
+  same row; the `<>` guard plus SET-side compensation is the correct shape).
 
-### DS4 — In-code contract comments verified accurate (no finding)
-- `claim-query.ts` header (token fence, SKIP LOCKED, named params) — matches.
-- `use-server-source-draft.ts` SAFETY INVARIANTS — verified true (tracer T4).
-- `worker-staleness.ts` two-threshold doc — matches sweep implementation.
-- `verify-db-backup.sh` usage comment matches its opt-in restore-test behavior.
-- The carried DOC-C5-2 (`staleClaimTimeoutMs` dead field in /register payload
-  docs) is unchanged — RE-DEFER (Rust worker only deserializes).
-
-### DS5 — README `/api/v1/time` doc (carried C7-DS-1) — unchanged, RE-DEFER
-(README rewrite cycle precondition unmet.)
-
-## Final sweep
-Grepped the delta's new i18n keys (en/ko both updated — `messages/` diff
-symmetric); checked SECURITY.md against the new gVisor option (gVisor doc
-cross-links correctly); checked that no doc instructs `docker system prune`
-variants forbidden by CLAUDE.md (deploy docs comply — explicit warnings
-present). No HIGH/MEDIUM doc mismatch.
+## Carried doc items
+- DOC-C5-2 (`staleClaimTimeoutMs` doc field), C7-DS-1 (README /api/v1/time)
+  — unchanged preconditions, carried in the register.

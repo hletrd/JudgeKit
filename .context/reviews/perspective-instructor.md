@@ -1,74 +1,49 @@
-# Persona: Instructor (authoring, grading, groups, cheating, exports) — RPF Cycle 1 (2026-06-11)
+# Persona: Instructor (authoring, grading, groups, exams, exports) — RPF Cycle 2 (2026-06-11)
 
-**Seat:** course instructor running two groups, weekly assignments, one
-midterm (windowed exam), one class contest. **HEAD:** f977ef4c.
+**HEAD reviewed:** 4cf01035. Seat: group instructor running a windowed exam
+and weekly assignments; flows: authoring → roster → live monitoring →
+extensions → similarity → grading → export.
 
-## Authoring & exam setup — improved
-- Anti-cheat defaults ON in the general assignment form (48856f17) — the trap
-  where my exam silently shipped unproctored is closed.
-- `freezeLeaderboardAt` outside the contest window is now rejected with a
-  field error (9a99d7ae) instead of silently freezing nothing/everything.
-- Corrupt `examMode` values can no longer wedge the manage page with i18n
-  errors (2388302e).
-- Editing deadline/penalty/scoring now invalidates the leaderboard cache
-  (43b7cda0): what I show on the projector matches the gradebook within the
-  same 30 s, not a stale standings view.
+## What improved since cycle 1 (verified at HEAD)
+- **Time extensions exist and are audit-trailed** (F12): timer icon next to
+  each in-progress session on the status board (mobile + desktop), 1–600 min,
+  composes under concurrent grants, recorded with who/whom/how much. This
+  closes the accommodation gap that previously required DB surgery.
+- **IP-overlap report** (F11): shared-IP and many-IP participants surface as
+  an advisory panel on the anti-cheat dashboard with benign-explanation
+  guidance — the duplicate-account hunt no longer means eyeballing raw rows.
+- **Anti-cheat defaults ON for new exams** (48856f17 pre-cycle), and the
+  numbering hint on /problems means my class stops citing per-viewer numbers.
 
-## My problems are now actually mine
-The biggest prior-cycle win for this seat is the RBAC scoping wave: another
-instructor can no longer read my private problems (091f7fac/91399a8f), pick
-them into their assignments (285f637a), duplicate them WITH hidden test cases
-(82afa260), browse them in the set-builder (577cb7d5), or — worst —
-PATCH/DELETE them before my exam (8b6affdd). Each verified implemented
-(see security-reviewer). A co-instructor can also no longer transfer my group
-to themselves (b6e38593).
+## Pain points found this cycle
 
-## Findings from this seat
+### IN2-1 — I can extend a student's time, but the student can't see it (LOW-MEDIUM)
+The natural workflow — outage, grant +20 min, tell the class "keep working" —
+breaks because each student's countdown still shows the old deadline until
+they reload (V2-1). During an incident I should not have to broadcast
+"everyone refresh your page" as a workaround. Same fix as the student-seat
+finding: live deadline refetch.
 
-### IN1 (MEDIUM, product/fairness — same as student ST1, confidence High)
-I cannot grant a time extension on a windowed exam — no per-student
-`personalDeadline` mutation exists. Real term scenario: documented
-accommodation letters (extra 50% time) or a power cut in the lab. Today my
-options are pre-creating a SEPARATE assignment with longer
-`examDurationMinutes` for those students (clumsy, leaks who has
-accommodations via the duplicate assignment) or post-hoc score overrides
-(doesn't return the lost time). Needs: staff endpoint + audit event +
-monitor-view surfacing of extended deadlines.
+### IN2-2 — No extension affordance before the student starts (LOW, product note)
+The extend control renders only when a session exists (status-board guards on
+`examSession`). A documented accommodation (×1.5 time) currently requires
+waiting for the student to click Start, then extending. Correct workaround
+exists, but a pre-grant (per-student duration override at roster level) would
+match how accommodations are actually issued. Defer as product decision —
+note it next to TA2 in the register.
 
-### IN2 (LOW, communication, confidence High)
-The new stable problem numbers on `/problems` are per-viewer (rank within
-each viewer's visible set). If I say "solve #37 tonight", students with
-different group memberships may see different #37s. `/practice` numbers are
-viewer-independent and safe to cite. Fix alongside perf P1, or label the
-column to discourage citing it.
+### IN2-3 (carried) — Judging-delay visibility (IN3/JA2)
+Unchanged: when the worker fleet stalls, instructors have no banner; students
+ask "is it just me?". Carried with original exit criterion (ops-surface
+feature cycle).
 
-### IN3 (LOW, monitoring UX, confidence Medium)
-Anti-cheat monitoring is now correctly scoped to my own groups (1d40297a) and
-the exam status board shows session timing. But when the staleness sweep
-reaps a dead judge worker mid-exam (4e836c4a logs it server-side), MY view of
-"why are 30 submissions stuck in queued?" is still the admin-health page I
-don't have access to. A small banner on the assignment monitor ("judging
-delayed — workers offline") would let me make the call (pause the exam?)
-without paging the admin. Feature-ish; LOW.
-
-## Grading & exports
-- IOI partial scores now computed over the true test-case denominator —
-  my gradebook, CSV/JSON export, and recruiting results all read the same
-  corrected score (c3a29e8a). Verified flow: verdict.ts → leaderboard →
-  export use the same submission score.
-- Score overrides overlay correctly into single-user live rank (15b37782);
-  ICPC override-on-live-rank remains a known carried deferral (N7-C7 — an
-  ICPC override has no AC timestamp; product decision still pending; unchanged
-  this cycle).
-
-## Roster & TA management
-- Group ownership transfer is owner-only now (M1). Roster visibility is
-  manager-gated (3dfc2cf5 tests). My TA workflow is reviewed from the TA seat
-  (perspective-assistant.md); from MY seat the boundary is: TAs I add via
-  taught-group roles can grade/monitor but cannot transfer or delete the
-  group. Correct.
-
-## Verdict
-Authoring/grading integrity issues from the last persona pass are closed.
-The seat's remaining ask is IN1 (time extensions) — promoted as this cycle's
-main product-gap finding (shared with the student seat).
+## Re-checked, fine
+- Roster management (members/bulk, instructors routes) gated by
+  `canManageGroupResourcesAsync`; monitor-only staff cannot mutate.
+- Similarity reports: staff-gated, assignment-scoped, with pair views;
+  export route covers submissions + scores; contest export includes
+  anti-cheat columns where appropriate.
+- Score overrides + extensions both land in the durable audit trail — my
+  grading decisions are reconstructable for appeals.
+- Exam-mode integrity: the new DB CHECK on `exam_mode` (F6) means a corrupt
+  value can no longer make my exam silently behave as a non-exam.

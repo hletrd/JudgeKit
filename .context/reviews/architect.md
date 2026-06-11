@@ -1,58 +1,47 @@
-# Architect — RPF Cycle 1 (2026-06-11)
+# Architect — RPF Cycle 2 (2026-06-11)
 
-**HEAD reviewed:** f977ef4c. Lens: structure, coupling, layering of the delta.
+**HEAD reviewed:** 4cf01035 (main)
 
-## Findings
+## Assessment
 
-### A1 — CSP route coverage is an enumerated allowlist split across two files (LOW→MEDIUM trend, confidence High)
-The nonce-CSP contract is distributed between `proxy.ts` (matcher enumeration)
-and `next.config.ts` (strict static fallback). Adding a page route requires
-remembering a matcher entry; two regressions of this class have now shipped
-(SEC-21-3, then 6035ca83's four routes). Architecturally this is an implicit
-cross-file invariant with no guard. Options: (a) catch-all matcher with a
-static-asset negative lookahead — single source of truth; (b) a unit test that
-walks `src/app/**/page.tsx` route dirs and asserts each maps into the matcher
-list (cheap, no runtime change — fits the repo's existing source-grep-guard
-test idiom, e.g. `tests/unit/infra/source-grep-inventory.test.ts`). Recommend (b)
-now, (a) when middleware cost on assets is measured.
+### A2-1 — Telemetry write-surfaces lack a shared ingestion contract (MEDIUM, structural)
+Three sibling student-write surfaces (submissions, source drafts, code
+snapshots) each hand-roll the same trio of concerns — language registry gate,
+size cap, retention — and each has drifted independently (snapshots currently
+missing two of three). Minimal structural fix this cycle: close the snapshot
+gaps (SEC2-1/2) and add the retention class-closer test (T2-2). Larger
+refactor (a shared `validateTelemetryWrite` helper) is NOT recommended yet —
+two call sites do not justify the indirection; revisit if a fourth telemetry
+table appears.
 
-### A2 — "Effective restrictions" now have two resolution helpers (LOW, confidence High)
-`getEffectiveModeRestrictions` (system-settings.ts:205-216) and the inline
-logic in `isAiAssistantEnabledForContext` (platform-mode-context.ts:288-293)
-implement the same override rule independently. They agree today; a future
-edit to one (e.g. a third override flag) can drift. Consolidate: have
-`isAiAssistantEnabledForContext` call `getEffectiveModeRestrictions(effectiveMode)`.
+### A2-2 — deploy-docker.sh: build-resilience belongs in the script, not the operator (HIGH ops)
+The script already embodies DB-safety architecture (pre-deploy dump, volume
+safety check, destructive-diff halt), but build-state resilience is absent:
+one corrupted buildx history store turns a deploy into a manual incident
+(cycle-1 auraedu). The DEFERRED-OPS-1 hardening (signature detection +
+`docker buildx history rm --all` + bounded retry + serialized language
+builds) is architecturally consistent with the script's existing
+"detect → remediate → verify" patterns (cf. Step 5b secret_token flow).
+Carry-forward note: C3-AGG-5 (modular extraction of SSH helpers) trigger
+remains TRIPPED for the SSH-helpers area specifically; this cycle's edits
+touch the language-build step, not SSH helpers — the extraction obligation
+carries unchanged, and the file is now ~1335 lines, approaching the
+1500-line size trigger. Record in the deferral register again.
 
-### A3 — Claim SQL grows by accretion (LOW, watch item)
-`buildClaimSql` now chains 5 CTEs with subtle cross-CTE invariants (snapshot
-semantics, same-row-update prohibition, lock ordering). Each fix (token fence,
-slot bump, prev release, next: self-reclaim compensation) raises the cost of
-the next change. The module's "single source of truth + structural tests"
-discipline is good; when the self-reclaim fix lands, add invariant comments
-covering (i) why `<> @workerId` must stay on the release CTE and (ii) the
-lock-order rationale. If one more capacity-accounting case appears, consider
-moving active_tasks accounting out of the claim statement into the poll/
-finalize path (single-writer model).
+### A2-3 — Exam-session domain boundary held up well under F12 (positive)
+The extension feature landed without violating layering: SQL-composition in
+the lib (`extendExamSession`), gate + audit in the route, render in a
+client component, validation honoring in `validateAssignmentSubmission`.
+The one seam it missed is the client-side deadline subscription (V2-1) —
+the student page treats the session deadline as immutable-per-render. The
+fix should stay client-local (poll/refetch), NOT introduce a push channel;
+SSE for exam sessions would be over-architecture at current scale.
 
-### A4 — Drafts vs snapshots separation: correct (no finding)
-`source_drafts` (read-back, upsert, user-facing) vs `code_snapshots`
-(append-only anti-cheat telemetry) are properly distinct tables/modules with
-opposite contracts — the commit message's rationale is implemented as stated.
-Good boundary.
-
-### A5 — Background-job registry is healthy (no finding)
-`instrumentation.ts` is the single composition point for process-level jobs
-(rate-limit eviction, audit pruning, retention pruning, staleness sweep,
-shutdown flush). Each is idempotent and unref'd.
-
-## Carried items re-assessed (unchanged preconditions)
-- ARCH-CARRY-1 (raw API handlers vs createApiHandler): the delta added no new
-  raw handler; judge claim/poll remain raw by documented exception. RE-DEFER.
-- ARCH-CARRY-2 (SSE O(n) eviction >500 conns): unchanged. RE-DEFER.
-- deploy-docker.sh size (C3-AGG-5): +0 growth this cycle. RE-DEFER.
-
-## Final sweep
-Layering: new code respects lib/ ↔ app/ boundaries (draft store in lib,
-route thin). i18n: new strings via messages (en+ko both updated — checked
-messages/ diff). No schema layering violations (migration 0026 idempotent per
-repo convention; drift guard green in unit run). Done.
+## Carried architectural items (unchanged preconditions)
+- ARCH-CARRY-1: raw judge handlers (claim/poll) not on createApiHandler —
+  deliberate (streaming/latency); re-evaluate only if a third raw handler
+  appears.
+- ARCH-CARRY-2: SSE O(n) eviction beyond 500 tracked connections.
+- C7-AGG-9: two rate-limit modules drift risk — NOTE: this cycle's CR2-2 fix
+  touches both modules' shared core; apply the fix in `rate-limit-core.ts`
+  where possible so the consolidation debt does not grow.

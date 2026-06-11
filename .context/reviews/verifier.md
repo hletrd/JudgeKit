@@ -1,77 +1,45 @@
-# Verifier (evidence-based correctness) — RPF Cycle 1 (2026-06-11)
+# Verifier (evidence-based correctness) — RPF Cycle 2 (2026-06-11)
 
-**HEAD reviewed:** f977ef4c. Role: validate that the cycle's stated behavior
-(commit messages, plan checkmarks, doc claims) matches the code, with evidence.
+**HEAD reviewed:** 4cf01035 (main)
+**Mission:** verify cycle-1's 13 implemented fixes (F1–F13) actually do what
+their plan/commit messages claim, from the code, not the comments.
 
-## Gate baseline re-established on this exact HEAD
-- `npx tsc --noEmit` → 0 errors
-- `npm run lint` (eslint) → 0 errors / 0 warnings
-- `npm run lint:bash` → clean
-- `npm run test:unit` → **330 files / 2551 tests PASS** (was 2472 at cycle-9 —
-  +79 tests added by the remediation work, consistent with the commit log)
+## Verdicts on cycle-1 claims
 
-## Claims verified TRUE (evidence)
-1. **"C1 fixed: IOI runs all test cases"** — server: `claim/route.ts:326-338`
-   sets `runAllTestCases = scoringModel === "ioi"`; worker:
-   `types.rs:244-245` (`#[serde(rename="runAllTestCases", default)]`),
-   `executor.rs:617-622` breaks only `if verdict != Accepted &&
-   !submission.run_all_test_cases`. Denominator now true total for IOI.
-   ICPC/practice keep fail-fast (flag false / absent). MATCHES claim.
-2. **"H4 fixed: dead worker's slot released on reclaim"** —
-   `claim-query.ts:80-94` `prev_worker_release` CTE; fires only when a distinct
-   prior owner exists AND a claim happened. MATCHES claim — but see the NEW
-   self-reclaim gap (code-reviewer CR1): the commit's "previous worker" framing
-   silently excludes the same-worker case, which still leaks. The claim in
-   ed73a23b's message is therefore *narrowly* true.
-3. **"Audit events durably persisted for security-critical actions"** —
-   `recordAuditEventDurable` awaits the insert; wired into role CRUD +
-   system-settings (grep confirms call sites). MATCHES.
-4. **"Sweep reaps stale workers without heartbeat traffic"** —
-   `instrumentation.ts:28` starts a 60 s unref'd interval; sweep flips
-   online→stale→offline using DB time. MATCHES.
-5. **"Anti-cheat defaults ON in the general assignment form"** —
-   `assignment-form-dialog.tsx`: both useState init and reset use `?? true`.
-   MATCHES (existing assignments keep stored value — `??` only catches
-   null/undefined).
-6. **"Backup verification does a real restore-test"** (abfa90f5) —
-   `scripts/verify-db-backup.sh:27-49`: when given a restore DSN it creates a
-   scratch DB (`verify_restore_<ts>`), restores the gzip dump with
-   `ON_ERROR_STOP=1`, and drops it on EXIT trap. Without the DSN it falls back
-   to the old gzip/non-empty checks (documented in-script). MATCHES, with the
-   documented opt-in caveat — ops must pass the DSN for the real test.
-7. **"freezeLeaderboardAt validated inside [startsAt, deadline)"** —
-   `validators/assignments.ts:76-90`; reject paths covered by 2 new tests.
-   MATCHES.
-8. **"exam-session ?userId now group-staff-scoped"** — route now calls
-   `canViewAssignmentSubmissions` only (diff verified). MATCHES.
+| Item | Claim | Verdict | Evidence |
+|---|---|---|---|
+| F1 | self-reclaim no longer leaks active_tasks | **HOLDS** | candidate LIMIT 1 (`claim-query.ts:51`); compensation 0/1 gated on `EXISTS claimed` (`:120-126`); all requeue paths null judgeWorkerId so previous_worker_id=workerId implies a genuinely held slot |
+| F2 | draft PUT gated, retention added | **HOLDS** | `draft/route.ts:56-58`; `data-retention.ts` sourceDrafts=180; pruner wired (`data-retention-maintenance.ts:139`) |
+| F3 | numbering identical, ≤PAGE_SIZE transfer | **HOLDS** | window `ORDER BY sequence_number ASC, created_at ASC` matches both pages' display order; scope filters are problems-only (verified buildAccessFilter / buildTaughtGroupAccessFilter / visibilityFilter); fallback chain preserved (`problems/page.tsx:694`) |
+| F5 | CSP matcher guard test | HOLDS | `tests/unit/infra/csp-matcher-coverage.test.ts` walks page routes; non-vacuous (walker-sanity assertion) |
+| F6 | exam_mode CHECK + journal catch-up | **HOLDS** | schema check (`schema.pg.ts:977`) + idempotent 0027 with pre-normalize; journal entry idx 27 present |
+| F7/F8 | DB-outage default + single override source | **HOLDS** | try/catch in `isAiAssistantEnabled` (`system-settings.ts:223-241`); both resolvers delegate to `getEffectiveModeRestrictions` |
+| F9 | toast fires only on server-draft restore | **HOLDS** | `onRestoredRef` invoked only inside the hydration match branch (`use-server-source-draft.ts:82-86`); localStorage path untouched |
+| F11 | ipOverlap correct + scoped | **HOLDS** | repeated `@assignmentId` is safe — `namedToPositional` dedupes (`named-params.ts:40-46`); report branch returns before events query |
+| F12 | extension composes; honored past close; cannot leak | **HOLDS** | SQL-side `make_interval` increment; `validateAssignmentSubmission` overrides close only when a session deadline ≥ now (`submissions.ts:259-267`); `startExamSession` clamps to assignment deadline (`exam-sessions.ts:83-86`) so only staff extensions can exceed close |
 
-## Claims verified with CAVEATS
-9. **"Stable per-problem number across pagination"** (f977ef4c) — numbering is
-   stable across pages/filters ✔, but on `/problems` it is **per-viewer**
-   (rank within the *viewer's visible set*, comment admits this): two students
-   in different groups can see different numbers for the same problem, and a
-   problem's number shifts for everyone when any earlier problem is added/
-   removed/made visible. Acceptable as a display affordance; do not let users
-   cite these numbers as stable identifiers (the persona reviews flag the
-   instructor-communication risk). Also the implementation is a full-catalog
-   scan per view — perf-reviewer P1.
-10. **"Draft recovery can never lose work"** — the invariants hold for the
-    implemented paths (template-only hydration; post-hydration-gated autosave).
-    Caveat: `isTemplateLike` decides "empty/template"; if a student's real
-    solution is byte-identical to the template (possible for trivial
-    fill-in-one-line templates) a server draft could overwrite it — with the
-    student's OWN earlier draft. Not data loss in any meaningful sense.
+## New issues found while verifying (escalated to this cycle's aggregate)
 
-## Claims I could NOT verify in this environment
-- Live deploy state of worker-0 (image a5442080) and algo — asserted by plan
-  notes, not verifiable from the repo. The runtime flag code is verified; the
-  deployed-image assertion is taken on record.
-- DB-backed integration tests (`tests/integration/db/*`, incl. the new
-  judge-claim-reclaim suite) require a provisioned Postgres — carried
-  DEFER-ENV-GATES applies; structural unit guards stand in.
+### V2-1 — Staff-granted extension is invisible to the student until reload (LOW-MEDIUM, High confidence, CONFIRMED)
+The student page renders `CountdownTimer deadline={examSession.personalDeadline}`
+from server props (`groups/[id]/assignments/[assignmentId]/page.tsx:196-201`)
+and gates the problem list on a render-time `isExamExpired` (`:168-169`).
+After a staff extension (F12), the running countdown still hits 0 at the OLD
+deadline; the student believes time is up (and on next navigation sees the
+expired panel) even though the server now accepts their submissions. The exam
+flow exposes a session GET (`exam-session/route.ts:93`), so the deadline can
+be re-fetched live. Failure scenario is exactly the accommodation/incident
+case F12 was built for — the grant exists but the student can't see it.
+Fix: client-side periodic/visibility refetch of the personal deadline for
+windowed exams (and let the countdown extend), or at minimum surface "your
+deadline may have been extended — reload" on expiry.
 
-## Verdict
-All 16 remediation items are genuinely implemented (not just checkmarked).
-Two narrow gaps surfaced by verification: CR1 (self-reclaim leak — the H4 fix's
-uncovered sibling case) and P1 (the numbering fix's query shape). Both are
-this cycle's real actionable output.
+### V2-2 — Dropped candidate finding (documented so it is not re-raised)
+`recordAuditEventDurable` after `extendExamSession` looked like a
+500-after-success risk; verified NOT an issue — it never throws
+(`audit/events.ts:272-285`, buffer fallback).
+
+## Gate verification on HEAD (executed)
+tsc 0 · eslint 0 errors/0 warnings · lint:bash clean · vitest unit 332
+files / 2571 tests PASS. Production build deferred to the implementation
+phase (runs as part of this cycle's gates).

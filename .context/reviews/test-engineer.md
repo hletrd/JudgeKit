@@ -1,62 +1,46 @@
-# Test Engineer — RPF Cycle 1 (2026-06-11)
+# Test Engineer — RPF Cycle 2 (2026-06-11)
 
-**HEAD reviewed:** f977ef4c. Baseline: 330 files / 2551 unit tests, all green
-on this HEAD (re-run this cycle). +79 tests vs cycle-9.
+**HEAD reviewed:** 4cf01035 (main)
+**Suite state:** 332 unit files / 2571 tests PASS; DB-backed integration
+suite (env-gated) 5 files / 45+ tests passed against real Postgres 17 in
+cycle 1; Playwright smoke profile used post-deploy.
 
-## Coverage assessment of the delta
-Every remediation commit shipped with tests (verified by reading them, not the
-checkmarks): claim reclaim guard (`tests/unit/judge/claim-query.test.ts`,
-+ DB-backed `tests/integration/db/judge-claim-reclaim.test.ts`), IOI run-all
-(`ioi-run-all-tests-implementation.test.ts` — drives the truncated worker shape
-through scoring), retention (`data-retention-maintenance.test.ts`), draft route
-(`problem-draft.route.test.ts`, 6 cases), draft hook
-(`use-server-source-draft.test.ts`, 98 lines incl. the never-clobber cases),
-staleness sweep (`worker-staleness-sweep.test.ts`), a11y guards
-(`a11y-review-fixes-implementation.test.ts`), settings overrides
-(`system-settings.test.ts` +85 lines).
+## Coverage gaps to close with this cycle's fixes (TDD targets)
 
-## Gaps (NEW findings)
+### T2-1 — code-snapshots route has no language-gate or size tests (MEDIUM)
+When implementing the `isJudgeLanguage` gate (CR2-1/SEC2-1), add red→green
+tests mirroring the cycle-1 draft-route tests: 400 on junk language, happy
+path on a real language, and the existing access/validation paths still pin.
 
-### T1 — No test for the SELF-reclaim active_tasks path (MEDIUM, confidence High)
-`claim-query.test.ts:` structural tests assert `prev_worker_release` exists and
-excludes `@workerId`, but no test (unit-structural or integration) covers the
-same-worker reclaim accounting — which is exactly where the live leak hides
-(code-reviewer CR1). The DB-backed `judge-claim-reclaim.test.ts` exercises
-distinct-worker reclaim only. When CR1 is fixed, add: (a) structural assertion
-that `worker_bump` compensates the self-case; (b) an integration case
-(same worker id reclaims its own stale row → active_tasks unchanged net).
+### T2-2 — Retention coverage class-closer (MEDIUM, high leverage)
+Critic #1: add a structural unit test asserting every prunable
+sensitive-data table is either in `DATA_RETENTION_DAYS` + the
+`pruneSensitiveOperationalData` allSettled set, or on an explicit documented
+allowlist. Start the allowlist with genuinely-permanent tables (users,
+problems, groups, settings...). This converts "we forgot snapshots" from a
+review finding into a failing test.
 
-### T2 — Draft route: no negative test for junk `language` (LOW→same fix as S1, confidence High)
-`problem-draft.route.test.ts` covers auth/authz/size-cap/upsert/delete but
-accepts any language string. Once S1 (registry validation) lands, add a 400
-case for an unknown language and keep a happy case for a real one.
+### T2-3 — Rate-limit conflict-race test (LOW-MEDIUM)
+The fix (onConflictDoNothing + re-read) needs a structural test pinning the
+SQL shape (mock-level: insert is called with onConflictDoNothing) and, if
+cheap, an env-gated integration case firing two concurrent first-hits on one
+key and asserting neither throws.
 
-### T3 — No guard test mapping app routes → CSP matcher (LOW, confidence High)
-The repo's source-grep-guard idiom (`tests/unit/infra/source-grep-inventory.test.ts`)
-fits A1/S2 perfectly: enumerate `src/app/{(public),(auth),change-password}/**`
-top-level segments and assert each appears in `proxy.ts` config.matcher. Would
-have caught both prior CSP regressions at commit time.
+### T2-4 — Student-deadline refresh (V2-1) hook test (LOW)
+If the live-refresh lands as a hook/component change, pin: (a) refetch on
+interval/visibility, (b) countdown target updates when the server returns a
+later deadline, (c) no refetch storm (interval ≥ 30 s).
 
-### T4 — `verify-db-backup.sh` restore-test has no CI exercise (LOW, env-bound)
-The restore path needs a Postgres; falls under carried DEFER-ENV-GATES (no
-provisioned CI DB). Re-defer with that item; do not fake it with mocks.
+## Carried test debt (unchanged preconditions)
+- T4: `scripts/verify-db-backup.sh` restore-test not CI-exercised
+  (DEFER-ENV-GATES — no provisioned CI Postgres; mocking would fake the
+  guarantee).
+- TH1: pino error noise from intentional error-path tests in
+  `contests.route.test.ts` (cosmetic; batch with next test-infra pass).
+- DES-ENV: live agent-browser UI pass needs a provisioned staging host.
 
-## Flakiness / hygiene
-- Unit run is deterministic (38.9 s, no retries seen). The pino error noise in
-  the run log (`contests.route.test.ts` "crash" stack traces) is *intentional*
-  error-path coverage writing through the real logger — cosmetic, but it makes
-  real failures harder to spot in CI logs. Consider silencing the logger in
-  those specific tests via the existing test logger shim (LOW, hygiene).
-- `tests/integration/db/*` (incl. the new reclaim suite) remain env-gated;
-  documented and acceptable (DEFER-ENV-GATES).
-
-## TDD opportunities for this cycle's fixes
-Write T1's structural assertion BEFORE changing `buildClaimSql` (red→green),
-and T2's 400 case BEFORE adding the language guard. Both are cheap and pin the
-exact regression class.
-
-## Final sweep
-Checked for masking tests (the verdict.test.ts class fixed in C1 — no new
-hand-built result arrays that bypass the worker shape), over-mocked routes
-(b38062ae correctly mocks getEffectiveModeRestrictions where the real DB isn't
-available), and orphaned snapshots (none). Done.
+## Suite health notes
+- No flaky tests observed across this cycle's three full unit runs.
+- The cycle-1 source-grep inventory baseline (136→138) remains accurate at
+  HEAD; any new `sql\`` usage this cycle must update it deliberately.
+- tsconfig/vitest configs unchanged; component/integration configs intact.

@@ -1,60 +1,47 @@
-# Persona: Job Applicant (recruiting coding test) — RPF Cycle 1 (2026-06-11)
+# Persona: Job Applicant (recruiting coding test) — RPF Cycle 2 (2026-06-11)
 
-**Seat:** an external candidate clicking an emailed invitation link for a
-timed recruiting test. I've never seen this platform; my job offer rides on
-the next 90 minutes. **HEAD:** f977ef4c.
+**HEAD reviewed:** 4cf01035. Seat: external candidate with an emailed
+invitation, first contact with the platform, timed assessment.
 
-## First-run experience
-- Invitation email → `/recruit` token redemption (single-use, hashed at rest,
-  expiry/revocation handled — error paths verified in unit logs:
-  invalidToken/tokenRevoked/tokenExpired/alreadyRedeemed each give a distinct
-  message rather than a generic failure). Good: I learn WHY my link failed.
-- **Consent at collection is now real (df74b7d3):** a privacy/consent line
-  with a working link appears BEFORE I start, and the data-controller contact
-  is the actual hiring company's (PRIVACY_CONTACT_EMAIL), not a hardcoded
-  third party. This was a prior trust/legal gap; closed.
-- Timer copy for scheduled contests no longer lies about when my window
-  starts (4c937f10).
+## First-run experience (re-walked at HEAD)
+- Invitation → validate → scoped problem access works; my catalog and tag
+  list are invitation-scoped (`recruitingAccess.problemIds` paths in
+  /problems) so I can't wander into the company's other content, and they
+  can't see me wandering.
+- Language support is honest: the language picker only offers what the
+  judge actually runs (registry-driven), so no "submitted in X, judged
+  never" trap.
+- The recovered-draft toast (cycle-1 F9) matters MOST in this seat: code
+  appearing in my editor on a fresh login at a recruiting test would read as
+  a planted-code integrity trap; the timestamped "your own saved work" note
+  defuses it.
 
-## Environment clarity & language support
-- 125 language variants with per-language version info on /languages; the
-  editor's language picker matches what the judge actually runs (DB-synced
-  language configs). For a candidate the risk of "my local Python ≠ judge
-  Python" is addressed by visible versions. Good relative to commercial
-  alternatives.
-- Compiler/AI assistant are disabled in recruiting mode by default — and the
-  new admin override that could re-enable them is platform-global, default
-  OFF, and audited. As a candidate I'm assessed under the same rules as
-  everyone in the pool. Fair.
+## Trust/fairness findings
 
-## Time pressure & accidental disqualification risks
-- **Crash safety:** server-side draft autosave (cb8dd09e) means a browser
-  crash at minute 80 no longer destroys my solution — the single worst
-  candidate-experience failure mode, now fixed. Recovery is silent though
-  (ST3/UX3): a one-line "draft recovered" notice matters MOST in this seat,
-  where I can't ask anyone what happened.
-- **JA1 (MEDIUM, fairness — shared root with ST1/IN1, confidence High):**
-  no staff mechanism extends my personal window if the COMPANY's side fails
-  (platform outage, judge backlog during my slot). For recruiting this is
-  sharper than for classes: a re-invite forces me to redo the test with
-  burned problems (and the company to re-screen). Even a manual
-  personalDeadline+N endpoint (audited) would cover incident recovery.
-- **JA2 (LOW, anxiety, confidence Medium):** when the judge queue is slow
-  (worker reaped mid-window), my submission sits "queued" with no ETA or
-  reassurance. The status page shows state but not "the platform is degraded,
-  your timer/judging will be honored" — and nothing CAN be honored (see JA1).
-  Queue-delay messaging + extension tooling together close the loop.
+### JA2-1 — Mid-test extension invisibility hits candidates hardest (LOW-MEDIUM, shared V2-1)
+If my recruiter extends my window after a platform hiccup, my countdown
+still dies at the old time. A student can ask the instructor in the room; I
+am remote with no back-channel and will assume I am done. The live
+deadline-refetch fix is a fairness fix in this seat, not a convenience.
 
-## Trust / fairness perception
-- Anti-cheat telemetry is disclosed via the consent line; retention windows
-  are published (data-retention-policy.md) and now enforced incl. audit
-  events; my PII on the invitation is scrubbed if my account is permanently
-  deleted (16212175). Strong story.
-- Score integrity: IOI partial credit computed over all tests (c3a29e8a)
-  means the hiring report reflects real performance, not early-break
-  artifacts.
+### JA2-2 (carried — IN3/JA2) — Judging-delay blindness
+If the worker fleet stalls during my one-shot assessment, "Queued" with no
+ETA reads as "my submission is being judged against me". Carried banner
+work; from this seat a simple "judging is slower than usual, your timer is
+unaffected / will be compensated" note is the minimum viable trust repair —
+note that today the timer is NOT automatically compensated (extension is a
+manual staff action).
 
-## Verdict
-The recruiting flow's legal and data-loss sharp edges from the prior pass are
-fixed. Remaining: incident-recovery time extension (JA1, shared finding) and
-two small reassurance-UX gaps (draft-recovery notice, queue-delay messaging).
+### JA2-3 — Accidental-disqualification audit: acceptable at HEAD
+Probed disqualification vectors: tab-switch logging (signals only, no
+auto-action), copy/paste (logged, not blocked), disconnect (windowed session
+survives), double-submit (rate-limited, not penalized), wrong language
+(blocked at submit with a clear 400, no attempt consumed). No path found
+where an innocent mistake silently zeroes a candidate. The anti-cheat model
+is signals-for-humans, which is the right posture for recruiting.
+
+## Re-checked, fine
+- Invitation expiry windows enforced (`expires_at` checks in validate +
+  redeem paths); failed-redeem counters rate-limit brute force.
+- Candidate sees per-test results with failed-case index — feedback quality
+  comparable to the student seat.
