@@ -216,5 +216,28 @@ iteration; then DEPLOY_CMD (per-cycle mode).
 ## Completion record (2026-06-11)
 - G1 ✅ 8f500ff8 · G2 ✅ 9ce94272 · G3 ✅ 72e02a64 · G4 ✅ 7776d739 ·
   G5 ✅ d693939c · G6 ✅ 14c04715 · G7 ✅ 257feda4
-- Gates: (final run recorded below after the post-implementation pass)
-- Deploy: (recorded below after DEPLOY_CMD)
+- Post-review deslop pass (ralph 7.5): a0570eda (dead test spy removed;
+  the duplicated race-handling block in api-rate-limit.ts reviewed and
+  deliberately kept inline — different early-return semantics per site).
+- GATE_FIX beyond the plan: 2f06913c — pre-existing deterministic failure
+  in tests/component/submission-status-badge.test.tsx (stale pre-explainer
+  expectation; component intent documented in code since 1e6755a8);
+  re-pinned + 2 negative cases. Verified pre-existing at 4cf01035.
+- **Final gates on the completed tree (HEAD 2f06913c):** tsc 0 ·
+  eslint 0/0 · lint:bash clean · unit 333 files / 2579 tests PASS ·
+  component 70 files / 230 tests PASS · production build OK.
+- **Deploy record (2026-06-11, per-cycle, HEAD 2f06913c): SUCCESS — all
+  three targets.** DEPLOY_CMD exit 0; "Deployment complete!" on worv,
+  auraedu, algo; HTTPS 200 on test.worv.ai / oj.auraedu.me /
+  algo.xylolabs.com. **DEFERRED-OPS-1 exit criterion MET:** the auraedu
+  all-languages leg ran the new G1 sequential path (~80 language builds)
+  with ZERO `unknown blob ... in history` events — no auto-recovery needed;
+  the hardened path is the new default. Worker hosts (worker.test.worv.ai,
+  worker-0.algo.xylolabs.com) rebuilt and up. Playwright smoke: public
+  subsets green (worv 142✓, algo 142✓, auraedu 138✓); the only failures are
+  (a) login-gated specs — no E2E_PASSWORD available in this run env, and
+  (b) on auraedu, the generic hero-heading regex (/Write code|코드를/) vs
+  the instance-branded h1 "AuraEdu Online Judge" — config-dependent
+  expectation; the page renders correctly (verified by direct fetch).
+  Note for a future cycle: make the homepage-heading smoke expectation
+  instance-brand-aware.
