@@ -958,6 +958,7 @@
     "examStartConfirmAction": "시험 시작",
     "examTimeRemaining": "남은 시간",
     "examTimeExpired": "응시 시간 종료",
+    "examDeadlineExtended": "감독자가 응시 시간을 연장했어요. 위 타이머가 새 마감 시각 기준으로 표시됩니다.",
     "examWarning15Min": "15분 남았어요",
     "examWarning5Min": "5분 남았어요",
     "examWarning1Min": "1분 남았어요",

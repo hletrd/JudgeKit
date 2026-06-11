@@ -24,6 +24,7 @@ import { getDbNow } from "@/lib/db-time";
 import { notFound, redirect } from "next/navigation";
 import { getExamSession, getExamSessionsForAssignment } from "@/lib/assignments/exam-sessions";
 import { CountdownTimer } from "@/components/exam/countdown-timer";
+import { ExamDeadlineSync } from "@/components/exam/exam-deadline-sync";
 import { StartExamButton } from "@/components/exam/start-exam-button";
 import { AssignmentOverview } from "@/components/assignment/assignment-overview";
 import { FilterForm } from "./filter-form";
@@ -194,8 +195,13 @@ export default async function GroupAssignmentDetailPage({
         )}
 
         {assignment.examMode === "windowed" && examSession && (
-          <CountdownTimer
-            deadline={new Date(examSession.personalDeadline).getTime()}
+          // ExamDeadlineSync (RPF cycle-2 AGG2-4): keeps the countdown live
+          // against staff-granted extensions — the render-time snapshot died
+          // at the OLD deadline while the server already honored the new one.
+          <ExamDeadlineSync
+            groupId={groupId}
+            assignmentId={assignmentId}
+            initialDeadline={new Date(examSession.personalDeadline).getTime()}
             label={tGroups("examTimeRemaining")}
           />
         )}

@@ -958,6 +958,7 @@
     "examStartConfirmAction": "Start Exam",
     "examTimeRemaining": "Time remaining",
     "examTimeExpired": "Assessment time ended",
+    "examDeadlineExtended": "Your exam time was extended by staff — the timer above reflects your new deadline.",
     "examWarning15Min": "15 minutes remaining",
     "examWarning5Min": "5 minutes remaining",
     "examWarning1Min": "1 minute remaining",
