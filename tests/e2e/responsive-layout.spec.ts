@@ -77,8 +77,16 @@ async function expectNoFixedOverlap(page: Page) {
 // Public pages to test
 // ---------------------------------------------------------------------------
 
+// Homepage h1 is instance-branded via system_settings.homePageContent —
+// override per remote target with E2E_HOME_HEADING (regex source, matched
+// case-insensitively). See tests/e2e/public-shell.spec.ts (RPF cycle-3 AGG3-3).
+const HOME_HEADING = new RegExp(
+  process.env.E2E_HOME_HEADING || "JudgeKit|Write code|구조|코딩",
+  "i"
+);
+
 const PUBLIC_PAGES = [
-  { path: "/", heading: /JudgeKit|Write code|구조|코딩/, label: "Homepage" },
+  { path: "/", heading: HOME_HEADING, label: "Homepage" },
   { path: "/practice", heading: /Public problem catalog|공개 문제 카탈로그|Practice|연습/, label: "Practice" },
   { path: "/playground", heading: /Public playground|공개 플레이그라운드|Playground|실행/, label: "Playground" },
   { path: "/rankings", heading: /Rankings|랭킹/, label: "Rankings" },

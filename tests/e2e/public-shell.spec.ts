@@ -1,5 +1,13 @@
 import { test, expect, type Page } from "@playwright/test";
 
+// The homepage h1 is instance-configurable (system_settings.homePageContent —
+// src/app/page.tsx), so branded deployments (e.g. "AuraEdu Online Judge")
+// don't render the default-instance hero text. Remote smoke runs can override
+// the expectation per target via E2E_HOME_HEADING (a regex source, matched
+// case-insensitively); the default covers the stock en/ko hero (RPF cycle-3
+// AGG3-3).
+const HOME_HEADING = new RegExp(process.env.E2E_HOME_HEADING || "Write code|코드를", "i");
+
 async function expectNoPublicErrorShell(page: Page) {
   await expect(page.getByRole("heading", { name: /This page couldn’t load/i })).toHaveCount(0);
   await expect(page.getByText(/A server error occurred\\. Reload to try again\\./i)).toHaveCount(0);
@@ -10,7 +18,7 @@ test.describe("Public shell", () => {
     await page.goto("/", { waitUntil: "networkidle" });
 
     await expectNoPublicErrorShell(page);
-    await expect(page.getByRole("heading", { name: /Write code|코드를/i })).toBeVisible();
+    await expect(page.getByRole("heading", { name: HOME_HEADING })).toBeVisible();
     await expect(page.getByRole("link", { name: /Practice|연습/i }).first()).toBeVisible();
     await expect(page.getByRole("link", { name: /Community|커뮤니티/i }).first()).toBeVisible();
     await expect(page.getByRole("link", { name: /Dashboard|대시보드/i }).first()).toBeVisible();

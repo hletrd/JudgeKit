@@ -71,6 +71,13 @@
 #   COMPOSE_PARALLEL_LIMIT — Build-parallelism cap for the opt-in
 #                            LANGUAGE_BUILD_STRATEGY=compose path (default 4).
 #                            Ignored by the sequential strategy.
+#   E2E_HOME_HEADING       — Expected homepage h1 pattern for the post-deploy
+#                            smoke (regex source, case-insensitive). Set per
+#                            target when the instance brands its hero via
+#                            system_settings.homePageContent (e.g.
+#                            E2E_HOME_HEADING='AuraEdu' for oj.auraedu.me).
+#                            Empty/unset keeps the stock en/ko default
+#                            (RPF cycle-3 AGG3-3).
 #
 # Deploy hardening (cycle-1/2/3/5 fixes — see AGENTS.md "Deploy hardening"):
 #   - .env.production is chmod 0600 by this script (cycle 2).
@@ -1390,6 +1397,7 @@ if [[ "${SKIP_POST_DEPLOY_SMOKE:-0}" != "1" && "${USE_TLS}" == "true" ]]; then
             PLAYWRIGHT_PROFILE=smoke \
             E2E_USERNAME="${E2E_USERNAME:-admin}" \
             E2E_PASSWORD="${E2E_PASSWORD:-skip-login}" \
+            E2E_HOME_HEADING="${E2E_HOME_HEADING:-}" \
             npx playwright test --reporter=list >/tmp/judgekit-smoke-${DOMAIN}.log 2>&1
         ); then
             success "Post-deploy smoke passed"
