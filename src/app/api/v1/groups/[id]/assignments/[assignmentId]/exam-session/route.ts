@@ -109,11 +109,19 @@ export const GET = createApiHandler({
     // or submissions.view_all) — NOT a bare global contests.view_analytics
     // capability, which would let any analytics-holder enrolled as a participant
     // read a co-participant's exam timing. Mirrors the participant-timeline route.
+    //
+    // The staff check is resolved LAZILY (RPF cycle-3 AGG3-4): this GET is
+    // polled every 60 s by EVERY active windowed examinee (ExamDeadlineSync),
+    // and plain students never send ?userId — paying the multi-query staff
+    // resolution on each poll was pure waste. Semantics are unchanged:
+    // non-staff requesting another user still silently falls back to self.
     const url = new URL(_req.url);
-    const canViewOthers = await canViewAssignmentSubmissions(assignmentId, user.id, user.role);
-    const targetUserId = canViewOthers
-      ? (url.searchParams.get("userId") ?? user.id)
-      : user.id;
+    const requestedUserId = url.searchParams.get("userId");
+    let targetUserId = user.id;
+    if (requestedUserId && requestedUserId !== user.id) {
+      const canViewOthers = await canViewAssignmentSubmissions(assignmentId, user.id, user.role);
+      if (canViewOthers) targetUserId = requestedUserId;
+    }
 
     if (targetUserId !== user.id) {
       const targetEnrollment = await db.query.enrollments.findFirst({
