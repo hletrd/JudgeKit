@@ -2,11 +2,10 @@ import { render, screen, act } from "@testing-library/react";
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import { ExamDeadlineSync } from "@/components/exam/exam-deadline-sync";
 
-const { apiFetchMock, toastInfoMock, routerRefreshMock, countdownPropsSpy } = vi.hoisted(() => ({
+const { apiFetchMock, toastInfoMock, routerRefreshMock } = vi.hoisted(() => ({
   apiFetchMock: vi.fn(),
   toastInfoMock: vi.fn(),
   routerRefreshMock: vi.fn(),
-  countdownPropsSpy: vi.fn(),
 }));
 
 vi.mock("@/lib/api/client", () => ({
@@ -25,13 +24,12 @@ vi.mock("next-intl", () => ({
   useTranslations: () => (key: string) => key,
 }));
 
-// Spy on the deadline the wrapper passes down; the real CountdownTimer's
+// Stub renders the deadline as a data attribute; the real CountdownTimer's
 // behavior on a deadline-prop change is covered by countdown-timer.test.tsx.
 vi.mock("@/components/exam/countdown-timer", () => ({
-  CountdownTimer: (props: { deadline: number; label?: string }) => {
-    countdownPropsSpy(props);
-    return <span data-testid="countdown" data-deadline={props.deadline} />;
-  },
+  CountdownTimer: (props: { deadline: number; label?: string }) => (
+    <span data-testid="countdown" data-deadline={props.deadline} />
+  ),
 }));
 
 const INITIAL_DEADLINE = new Date("2026-01-01T01:00:00.000Z").getTime();
