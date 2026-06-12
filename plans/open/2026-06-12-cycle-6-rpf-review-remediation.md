@@ -162,3 +162,15 @@ iteration; then DEPLOY_CMD (per-cycle mode, detached + polled in-turn).
   in-flight regressions caught and fixed before push (member-delete source
   pin updated+strengthened for the new tx return; monitor terminal-state
   asserts adapted to queue-first drain; source-grep baseline bump).
+- **Deploy record (2026-06-12, per-cycle, HEAD 4e7691cf): SUCCESS — all
+  three targets in one run of the exact DEPLOY_CMD (exit 0,
+  "Deployment complete!" ×3 on worv, auraedu, algo; ZERO `unknown blob`
+  events — fifth consecutive clean sequential-language run; auraedu built
+  the full language set + worker image; algo stayed app-only per policy).
+  HTTPS 200 on test.worv.ai / oj.auraedu.me / algo.xylolabs.com.
+  Post-deploy smokes: public subsets green (worv 142✓, algo 142✓,
+  auraedu 141✓). Remaining failures: (a) 6 login-gated specs per target —
+  no E2E_PASSWORD in this run env (DEFER-ENV-GATES, unchanged); (b) the
+  known auraedu tablet-rankings cold-start transient (responsive-layout
+  tablet spec; green on worv and algo; /rankings returns HTTP 200 on
+  direct fetch post-deploy — same signature as the cycle-3/4/5 records).**
