@@ -13,7 +13,7 @@ Status legend: ✅ done+pushed · 🔧 in progress · ⬜ todo · 🟡 needs dec
 
 ## Implement this cycle
 
-### G1 ⬜ AGG6-1 — Contest access-token lifecycle: shared expiry-checked predicate + revocation on roster removal + effective-close expiry at creation (MEDIUM, High, CONFIRMED; 12-lens agreement)
+### G1 ✅ AGG6-1 — Contest access-token lifecycle: shared expiry-checked predicate + revocation on roster removal + effective-close expiry at creation (MEDIUM, High, CONFIRMED; 12-lens agreement)
 - New `src/lib/assignments/contest-access-tokens.ts` (A6-1): exports
   `findValidContestAccessToken(assignmentId, userId)` (Drizzle; filters
   `expiresAt IS NULL OR expiresAt > NOW()` via DB-time SQL) and
@@ -39,7 +39,7 @@ Status legend: ✅ done+pushed · 🔧 in progress · ⬜ todo · 🟡 needs dec
   deletes the tokens (and audit count); (d) read-side gates deny expired
   tokens; (e) invite/redemption store effective-close expiry.
 
-### G2 ⬜ AGG6-2 — Queue-first `reportEvent`: close the last silent telemetry-loss window (MEDIUM, High, CONFIRMED; fired cycle-5 G4 residual)
+### G2 ✅ AGG6-2 — Queue-first `reportEvent`: close the last silent telemetry-loss window (MEDIUM, High, CONFIRMED; fired cycle-5 G4 residual)
 - `anti-cheat-monitor.tsx:195-225`: after the MIN_INTERVAL throttle, append the
   event to the pending queue synchronously (retries: 0) and call
   `flushPendingEvents()`; delete the direct `sendEvent` branch. The claim
@@ -50,14 +50,14 @@ Status legend: ✅ done+pushed · 🔧 in progress · ⬜ todo · 🟡 needs dec
   remount → event transmitted exactly once; existing monitor tests must stay
   green (ordering: queued events flush FIFO).
 
-### G3 ⬜ AGG6-3 — Keyboard-operable filter chips with pressed semantics (MEDIUM a11y, High, CONFIRMED)
+### G3 ✅ AGG6-3 — Keyboard-operable filter chips with pressed semantics (MEDIUM a11y, High, CONFIRMED)
 - `anti-cheat-dashboard.tsx:459-475` + `participant-anti-cheat-timeline.tsx:251-269`:
   Badge `render={<button type="button" />}` + `aria-pressed={active}`; keep
   the existing classes (focus-visible ring already in badge variants).
 - Tests (TE6-3): chips reachable by Tab and toggled by keyboard activation;
   `aria-pressed` asserted in both components.
 
-### G4 ⬜ AGG6-5 + AGG6-6 — Listing/timeline determinism: offset id tiebreak; stale-loadMore guard (LOW-MEDIUM + LOW)
+### G4 ✅ AGG6-5 + AGG6-6 — Listing/timeline determinism: offset id tiebreak; stale-loadMore guard (LOW-MEDIUM + LOW)
 - `submissions/route.ts:167`: `orderBy(desc(submittedAt), desc(id))` to match
   cursor mode; shape test (TE6-4). Note the (submittedAt, id) order in
   `docs/api.md` submissions section (doc-specialist follow-through).
@@ -66,7 +66,7 @@ Status legend: ✅ done+pushed · 🔧 in progress · ⬜ todo · 🟡 needs dec
   it; defensive id-dedupe on append. Component test interleaving poll reset
   with an in-flight loadMore (no duplicate ids rendered).
 
-### G5 ⬜ AGG6-7 + AGG6-8 — Similarity evidence and vocabulary hygiene (LOW, High)
+### G5 ✅ AGG6-7 + AGG6-8 — Similarity evidence and vocabulary hygiene (LOW, High)
 - `code-similarity.ts:428-432`: add `language: pair.language` to the
   `code_similarity` details payload; test asserts it.
 - Remove unreachable `service_unavailable`: enum member
@@ -75,14 +75,14 @@ Status legend: ✅ done+pushed · 🔧 in progress · ⬜ todo · 🟡 needs dec
   `messages/en.json:2313` + `messages/ko.json`; adjust the catalog-pin /
   source-grep baselines WITH justification in the commit body (TE6-5).
 
-### G6 ⬜ AGG6-4 — Heartbeat LRU eviction on insert failure (LOW, Medium, RISK)
+### G6 ✅ AGG6-4 — Heartbeat LRU eviction on insert failure (LOW, Medium, RISK)
 - `anti-cheat/route.ts:146-158`: wrap the heartbeat insert; on throw, delete
   the LRU key, then rethrow (client correctly sees 5xx → retries → next
   attempt re-inserts). Shared-coordination path unchanged (DB-backed).
 - Test (TE6-6): one-shot insert failure → key evicted → immediate retry
   records the row.
 
-### G7 ⬜ AGG6-9 — Registers + comment truthfulness (LOW–MEDIUM doc, High)
+### G7 ✅ AGG6-9 — Registers + comment truthfulness (LOW–MEDIUM doc, High)
 - `plans/open/user-injected/pending-next-cycle.md`: mark #1 RESOLVED
   (evidence: `plans/archive/2026-04-29-archived-workspace-to-public-migration.md`
   "ALL PHASES COMPLETE"; no `(workspace)` route group in `src/app`) and #3
@@ -141,3 +141,24 @@ AGENTS.md).
 4. G5 (similarity hygiene) → G7 (registers/comment).
 Gates after each item; fine-grained signed commits; pull --rebase + push per
 iteration; then DEPLOY_CMD (per-cycle mode, detached + polled in-turn).
+
+---
+
+## Completion record (2026-06-12)
+- G1 ✅ 22339ef2 (token-validity module + revocation + effective-close expiry;
+  source-grep baseline 140→141 with justification) · G2 ✅ 3f2f6071
+  (queue-first reportEvent) · G6 ✅ 6ce4bd8e (LRU eviction on insert failure) ·
+  G3 ✅ a1f290cf (keyboard chips + aria-pressed) · G4 ✅ 16d25da0 (offset id
+  tiebreak + stale-loadMore guard + api.md order contract) · G5 ✅ 150b74ed
+  (similarity language in evidence; dead service_unavailable vocabulary
+  pruned across enum/UI/both catalogs) · G7 ✅ cc15c4d5 (registers #1/#3
+  RESOLVED with evidence; GET authz comment corrected).
+- **Final gates on the completed tree:** tsc 0 · eslint 0/0 · lint:bash
+  clean · unit 339 files / 2650 tests PASS · component 71 files / 246 tests
+  PASS · production build OK. (One transient tsc EXIT:2 during the parallel
+  gate run was a race with `next build` regenerating `.next/types`;
+  re-verified clean on the settled tree.)
+- GATE_FIXES this cycle: 0 pre-existing gate errors (baseline clean); 3
+  in-flight regressions caught and fixed before push (member-delete source
+  pin updated+strengthened for the new tx return; monitor terminal-state
+  asserts adapted to queue-first drain; source-grep baseline bump).
