@@ -3,6 +3,7 @@ import type { PlatformMode } from "@/types";
 import { db } from "@/lib/db";
 import { assignments, recruitingInvitations } from "@/lib/db/schema";
 import { rawQueryOne } from "@/lib/db/queries";
+import { CONTEST_ACCESS_TOKEN_VALIDITY_SQL } from "@/lib/assignments/contest-access-tokens";
 import { getEffectiveModeRestrictions, getResolvedPlatformMode, getSystemSettings } from "@/lib/system-settings";
 
 export type PlatformModeContextOptions = {
@@ -92,7 +93,7 @@ async function findRestrictedAssignmentIdForProblem(
          OR EXISTS (
            SELECT 1 FROM contest_access_tokens cat
            WHERE cat.assignment_id = a.id AND cat.user_id = @userId
-             AND (cat.expires_at IS NULL OR cat.expires_at > NOW())
+             AND ${CONTEST_ACCESS_TOKEN_VALIDITY_SQL}
          )
        )
      ORDER BY a.starts_at DESC NULLS LAST, a.created_at DESC, a.id ASC
@@ -122,7 +123,7 @@ async function findAccessibleAssignmentIdForProblem(
          OR EXISTS (
            SELECT 1 FROM contest_access_tokens cat
            WHERE cat.assignment_id = a.id AND cat.user_id = @userId
-             AND (cat.expires_at IS NULL OR cat.expires_at > NOW())
+             AND ${CONTEST_ACCESS_TOKEN_VALIDITY_SQL}
          )
        )
      LIMIT 1`,
@@ -147,7 +148,7 @@ async function findActiveRestrictedAssignmentIdForUser(
          OR EXISTS (
            SELECT 1 FROM contest_access_tokens cat
            WHERE cat.assignment_id = a.id AND cat.user_id = @userId
-             AND (cat.expires_at IS NULL OR cat.expires_at > NOW())
+             AND ${CONTEST_ACCESS_TOKEN_VALIDITY_SQL}
          )
        )
        AND (

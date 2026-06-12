@@ -4,6 +4,7 @@ import { z } from "zod";
 import { createApiHandler } from "@/lib/api/handler";
 import { apiSuccess, apiError } from "@/lib/api/responses";
 import { getContestAssignment, canManageContest } from "@/lib/assignments/contests";
+import { contestAccessTokenExpiry } from "@/lib/assignments/contest-access-tokens";
 import { db, execTransaction } from "@/lib/db";
 import { users, enrollments, contestAccessTokens } from "@/lib/db/schema";
 import { and, eq, inArray, or, sql } from "drizzle-orm";
@@ -108,7 +109,10 @@ export const POST = createApiHandler({
           userId: targetUser.id,
           redeemedAt: now,
           ipAddress: null,
-          expiresAt: assignment.deadline,
+          // Effective close (lateDeadline ?? deadline) — token expiry is now
+          // enforced uniformly (RPF cycle-6 AGG6-1), so it must span the
+          // late-submission window or invited users lose it.
+          expiresAt: contestAccessTokenExpiry(assignment),
         })
         .onConflictDoNothing({
           target: [contestAccessTokens.assignmentId, contestAccessTokens.userId],

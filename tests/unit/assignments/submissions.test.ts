@@ -317,6 +317,71 @@ describe("validateAssignmentSubmission", () => {
   });
 });
 
+// RPF cycle-6 AGG6-1: the token-as-enrollment gate must enforce the shared
+// validity rule — an expired token previously passed THIS gate while every
+// raw-SQL surface (catalog, platform mode, anti-cheat ingest) rejected it.
+describe("validateAssignmentSubmission — contest access-token validity (AGG6-1)", () => {
+  const NOW = new Date("2026-03-10T00:00:00.000Z");
+
+  function setupUnenrolledActiveAssignment() {
+    getDbNowUncachedMock.mockResolvedValue(NOW);
+    dbMock.query.assignments.findFirst.mockResolvedValue(
+      createAssignmentRecord({ deadline: new Date("2026-03-10T02:00:00.000Z") })
+    );
+    dbMock.query.enrollments.findFirst.mockResolvedValue(undefined);
+    dbMock.query.assignmentProblems.findFirst.mockResolvedValue({ id: "ap-1" });
+  }
+
+  it("denies an EXPIRED contest access token (enrollment required)", async () => {
+    setupUnenrolledActiveAssignment();
+    dbMock.query.contestAccessTokens.findFirst.mockResolvedValue({
+      id: "token-1",
+      expiresAt: new Date(NOW.getTime() - 1_000),
+    });
+
+    await expect(
+      validateAssignmentSubmission("assignment-1", "problem-1", "student-1", "student")
+    ).resolves.toEqual({
+      ok: false,
+      status: 403,
+      error: "assignmentEnrollmentRequired",
+    });
+  });
+
+  it("accepts a VALID (unexpired) token as the enrollment alternative", async () => {
+    setupUnenrolledActiveAssignment();
+    dbMock.query.contestAccessTokens.findFirst.mockResolvedValue({
+      id: "token-1",
+      expiresAt: new Date(NOW.getTime() + 60_000),
+    });
+
+    await expect(
+      validateAssignmentSubmission("assignment-1", "problem-1", "student-1", "student")
+    ).resolves.toEqual({
+      ok: true,
+      assignment: {
+        id: "assignment-1",
+        groupId: "group-1",
+        instructorId: "instructor-1",
+      },
+      staleHeartbeat: null,
+    });
+  });
+
+  it("accepts a token without expiry (open-ended grant)", async () => {
+    setupUnenrolledActiveAssignment();
+    dbMock.query.contestAccessTokens.findFirst.mockResolvedValue({
+      id: "token-1",
+      expiresAt: null,
+    });
+
+    const result = await validateAssignmentSubmission(
+      "assignment-1", "problem-1", "student-1", "student"
+    );
+    expect(result.ok).toBe(true);
+  });
+});
+
 describe("canViewAssignmentSubmissions", () => {
   it("rejects null assignment IDs and roles without submission-review capabilities", async () => {
     await expect(canViewAssignmentSubmissions(null, "student-1", "student")).resolves.toBe(

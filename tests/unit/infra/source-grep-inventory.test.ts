@@ -149,7 +149,15 @@ describe("source-grep test inventory", () => {
     //     escalate flag rendered as a raw i18n key path). Inherently an
     //     i18n-catalog↔event-model cross-file text contract; a component
     //     test can only see the one locale it mounts with.
-    const DOCUMENTED_BASELINE = 140;
+    // Bumped 140 -> 141 (2026-06-12, RPF cycle-6):
+    //   - tests/unit/assignments/contest-access-tokens.test.ts — pins that
+    //     every gate consumes the SHARED token-validity semantic (AGG6-1:
+    //     six call sites had drifted into two semantics; expired tokens
+    //     passed the Drizzle gates while the raw-SQL gates rejected them)
+    //     and that no inline expiry-rule copy re-appears. Inherently a
+    //     multi-file consumption contract; behavioural tests cover each
+    //     gate's verdict but cannot see a re-inlined duplicate rule.
+    const DOCUMENTED_BASELINE = 141;
     expect(sourceGrepFiles.length).toBe(DOCUMENTED_BASELINE);
   });
 

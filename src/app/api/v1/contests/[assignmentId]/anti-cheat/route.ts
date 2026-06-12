@@ -20,6 +20,7 @@ import { getUnsupportedRealtimeGuard, shouldRecordSharedHeartbeat, usesSharedRea
 // still rejects server-originated event classes (ip_change, code_similarity,
 // submission_stale_heartbeat) from contestant POSTs.
 import { CLIENT_EVENT_TYPES } from "@/lib/anti-cheat/client-events";
+import { CONTEST_ACCESS_TOKEN_VALIDITY_SQL } from "@/lib/assignments/contest-access-tokens";
 
 /** last heartbeat insert time per "assignmentId:userId" — only insert once per 60s */
 const lastHeartbeatTime = new LRUCache<string, number>({ max: 10_000, ttl: 120_000 });
@@ -81,7 +82,7 @@ export const POST = createApiHandler({
     const hasAccess = await rawQueryOne(
       `SELECT 1 FROM enrollments WHERE group_id = @groupId AND user_id = @userId
        UNION ALL
-       SELECT 1 FROM contest_access_tokens WHERE assignment_id = @assignmentId AND user_id = @userId AND (expires_at IS NULL OR expires_at > NOW())
+       SELECT 1 FROM contest_access_tokens cat WHERE cat.assignment_id = @assignmentId AND cat.user_id = @userId AND ${CONTEST_ACCESS_TOKEN_VALIDITY_SQL}
        LIMIT 1`,
       { groupId: assignment.groupId, userId: user.id, assignmentId }
     );

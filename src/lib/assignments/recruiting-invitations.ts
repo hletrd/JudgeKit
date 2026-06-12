@@ -18,6 +18,7 @@ import { getDbNowUncached } from "@/lib/db-time";
 import { escapeLikePattern } from "@/lib/db/like";
 import { logger } from "@/lib/logger";
 import { hashToken } from "@/lib/security/token-hash";
+import { contestAccessTokenExpiry } from "@/lib/assignments/contest-access-tokens";
 
 type RecruitingInvitationExecutor =
   Pick<TransactionClient, "insert" | "select" | "update" | "delete">
@@ -622,6 +623,7 @@ export async function redeemRecruitingToken(
           groupId: assignments.groupId,
           examMode: assignments.examMode,
           deadline: assignments.deadline,
+          lateDeadline: assignments.lateDeadline,
         })
         .from(assignments)
         .where(eq(assignments.id, invitation.assignmentId))
@@ -683,7 +685,10 @@ export async function redeemRecruitingToken(
         userId: uid,
         redeemedAt: dbNow,
         ipAddress: ipAddress ?? null,
-        expiresAt: assignment.deadline,
+        // Effective close (lateDeadline ?? deadline) — token expiry is now
+        // enforced uniformly (RPF cycle-6 AGG6-1), so it must span the
+        // late-submission window or the candidate loses it.
+        expiresAt: contestAccessTokenExpiry(assignment),
       });
 
       // Atomically claim — rolls back entire tx if already redeemed or expired

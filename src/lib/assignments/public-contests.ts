@@ -1,6 +1,7 @@
 import { and, asc, eq, ne } from "drizzle-orm";
 import { db } from "@/lib/db";
-import { assignments, enrollments, contestAccessTokens, examSessions } from "@/lib/db/schema";
+import { assignments, enrollments, examSessions } from "@/lib/db/schema";
+import { findValidContestAccessToken } from "@/lib/assignments/contest-access-tokens";
 import { getContestStatus, canManageContest, type ContestStatus } from "@/lib/assignments/contests";
 import { DEFAULT_PROBLEM_POINTS } from "@/lib/assignments/constants";
 import type { ExamMode, ScoringModel } from "@/types";
@@ -222,13 +223,13 @@ export async function getUserContestAccess(
   });
   if (enrollmentRow) return "enrolled";
 
-  const tokenRow = await db.query.contestAccessTokens.findFirst({
-    where: and(
-      eq(contestAccessTokens.assignmentId, assignmentId),
-      eq(contestAccessTokens.userId, userId)
-    ),
-    columns: { id: true },
-  });
+  // Shared validity rule (RPF cycle-6 AGG6-1): expired tokens no longer count
+  // as enrollment — consistent with the contest catalog and submit gates.
+  const tokenRow = await findValidContestAccessToken(
+    assignmentId,
+    userId,
+    (await getDbNow()).valueOf()
+  );
   if (tokenRow) return "enrolled";
 
   // Public contests are viewable but not "enrolled"
@@ -288,13 +289,11 @@ export async function getEnrolledContestDetail(
       ),
       columns: { id: true },
     });
-    const tokenRow = enrollmentRow ? null : await db.query.contestAccessTokens.findFirst({
-      where: and(
-        eq(contestAccessTokens.assignmentId, assignmentId),
-        eq(contestAccessTokens.userId, userId)
-      ),
-      columns: { id: true },
-    });
+    // Shared validity rule (RPF cycle-6 AGG6-1): an expired token no longer
+    // opens the contest detail — consistent with the catalog and submit gates.
+    const tokenRow = enrollmentRow
+      ? null
+      : await findValidContestAccessToken(assignmentId, userId, (await getDbNow()).valueOf());
     if (!enrollmentRow && !tokenRow) return null;
   }
 

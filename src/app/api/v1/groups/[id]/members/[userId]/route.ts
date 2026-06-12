@@ -5,6 +5,7 @@ import { recordAuditEvent } from "@/lib/audit/events";
 import { db, execTransaction } from "@/lib/db";
 import { assignments, enrollments, submissions, users } from "@/lib/db/schema";
 import { canManageGroupMembersAsync } from "@/lib/assignments/management";
+import { revokeContestAccessTokensForGroup } from "@/lib/assignments/contest-access-tokens";
 import { forbidden, notFound, createApiHandler } from "@/lib/api/handler";
 
 export const DELETE = createApiHandler({
@@ -60,14 +61,21 @@ export const DELETE = createApiHandler({
           .limit(1);
 
         await tx.delete(enrollments).where(eq(enrollments.id, enrollment.id));
-        return { member };
+
+        // Roster removal must REVOKE contest access, not just enrollment
+        // (RPF cycle-6 AGG6-1/SEC6-1): invite-era contest_access_tokens
+        // otherwise survive and silently re-grant submit + contest detail
+        // for this group's assignments.
+        const revokedTokens = await revokeContestAccessTokensForGroup(tx, id, userId);
+
+        return { member, revokedTokens };
       });
 
       if ("error" in txResult) {
         return apiError("studentEnrollmentNotFound", 404);
       }
 
-      const { member } = txResult;
+      const { member, revokedTokens } = txResult;
 
       recordAuditEvent({
         actorId: user.id,
@@ -80,6 +88,7 @@ export const DELETE = createApiHandler({
         details: {
           groupId: id,
           username: member?.username ?? null,
+          revokedAccessTokens: revokedTokens,
         },
         request: req,
       });

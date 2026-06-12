@@ -1,5 +1,6 @@
 import { canManageGroupResourcesAsync } from "@/lib/assignments/management";
 import { rawQueryOne, rawQueryAll } from "@/lib/db/queries";
+import { CONTEST_ACCESS_TOKEN_VALIDITY_SQL } from "@/lib/assignments/contest-access-tokens";
 import type { ExamMode, ScoringModel } from "@/types";
 import { resolveCapabilities } from "@/lib/capabilities/cache";
 
@@ -181,7 +182,7 @@ export async function getContestsForUser(
          OR EXISTS (
            SELECT 1 FROM contest_access_tokens cat
            WHERE cat.assignment_id = a.id AND cat.user_id = @userId
-             AND (cat.expires_at IS NULL OR cat.expires_at > NOW())
+             AND ${CONTEST_ACCESS_TOKEN_VALIDITY_SQL}
          )
        )
      ${ORDER_BY}`,
@@ -198,6 +199,7 @@ export type ContestAssignmentRow = {
   enableAntiCheat: boolean;
   startsAt: Date | null;
   deadline: Date | null;
+  lateDeadline: Date | null;
 };
 
 /**
@@ -256,11 +258,12 @@ type RawContestAssignmentRow = {
   enableAntiCheat: boolean;
   starts_at: Date | null;
   deadline: Date | null;
+  late_deadline: Date | null;
 };
 
 export async function getContestAssignment(assignmentId: string): Promise<ContestAssignmentRow | undefined> {
   const row = await rawQueryOne<RawContestAssignmentRow>(
-    `SELECT a.title, a.group_id AS "groupId", g.instructor_id AS "instructorId", a.exam_mode AS "examMode", a.enable_anti_cheat AS "enableAntiCheat", a.starts_at, a.deadline
+    `SELECT a.title, a.group_id AS "groupId", g.instructor_id AS "instructorId", a.exam_mode AS "examMode", a.enable_anti_cheat AS "enableAntiCheat", a.starts_at, a.deadline, a.late_deadline
      FROM assignments a INNER JOIN groups g ON g.id = a.group_id WHERE a.id = @assignmentId`,
     { assignmentId }
   );
@@ -273,5 +276,6 @@ export async function getContestAssignment(assignmentId: string): Promise<Contes
     enableAntiCheat: Boolean(row.enableAntiCheat),
     startsAt: row.starts_at ? new Date(row.starts_at) : null,
     deadline: row.deadline ? new Date(row.deadline) : null,
+    lateDeadline: row.late_deadline ? new Date(row.late_deadline) : null,
   };
 }

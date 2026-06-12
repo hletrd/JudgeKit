@@ -4,7 +4,6 @@ import {
   antiCheatEvents,
   assignmentProblems,
   assignments,
-  contestAccessTokens,
   enrollments,
   examSessions,
   groups,
@@ -13,6 +12,7 @@ import {
   submissions,
   users,
 } from "@/lib/db/schema";
+import { findValidContestAccessToken } from "@/lib/assignments/contest-access-tokens";
 import { and, asc, desc, eq, inArray } from "drizzle-orm";
 import { CLIENT_EVENT_TYPES } from "@/lib/anti-cheat/client-events";
 import type { SubmissionStatus } from "@/types";
@@ -320,14 +320,13 @@ export async function validateAssignmentSubmission(
 
   if (!isAdminLevel) {
     if (!enrollment) {
-      // Check for contest access token as enrollment alternative
-      const accessToken = await db.query.contestAccessTokens.findFirst({
-        where: and(
-          eq(contestAccessTokens.assignmentId, assignment.id),
-          eq(contestAccessTokens.userId, userId)
-        ),
-        columns: { id: true },
-      });
+      // Check for a VALID (unexpired) contest access token as enrollment
+      // alternative. Shared validity rule (RPF cycle-6 AGG6-1): this gate
+      // previously accepted expired tokens that the contest catalog,
+      // platform-mode gate, and anti-cheat ingest all rejected — a removed/
+      // expired participant could still submit while every other surface
+      // denied them. `now` is DB time, consistent with the SQL gates.
+      const accessToken = await findValidContestAccessToken(assignment.id, userId, now);
 
       if (!accessToken) {
         return {
