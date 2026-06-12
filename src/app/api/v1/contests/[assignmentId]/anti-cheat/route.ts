@@ -145,17 +145,31 @@ export const POST = createApiHandler({
       }
 
       if (shouldRecord) {
-        await db.insert(antiCheatEvents)
-          .values({
-            id: nanoid(),
-            assignmentId,
-            userId: user.id,
-            eventType: "heartbeat",
-            details: null,
-            ipAddress: extractClientIp(req.headers),
-            userAgent: null,
-            createdAt: now,
-          });
+        try {
+          await db.insert(antiCheatEvents)
+            .values({
+              id: nanoid(),
+              assignmentId,
+              userId: user.id,
+              eventType: "heartbeat",
+              details: null,
+              ipAddress: extractClientIp(req.headers),
+              userAgent: null,
+              createdAt: now,
+            });
+        } catch (error) {
+          // The LRU marked this 60 s window as recorded BEFORE the insert
+          // committed (RPF cycle-6 AGG6-4): a failed insert would otherwise
+          // suppress heartbeats on this instance for the rest of the window,
+          // silently shrinking the 90 s submit-freshness margin honest
+          // candidates depend on. Evict so the client's retry (it sees the
+          // 5xx) can re-record immediately. Shared-coordination dedup is
+          // DB-backed and unaffected.
+          if (!usesSharedRealtimeCoordination()) {
+            lastHeartbeatTime.delete(`${assignmentId}:${user.id}`);
+          }
+          throw error;
+        }
       }
       return apiSuccess({ logged: true });
     }

@@ -169,3 +169,52 @@ describe("POST anti-cheat — extended personal deadline (AGG3-1)", () => {
     expect(insertMock).toHaveBeenCalledTimes(1);
   });
 });
+
+// RPF cycle-6 AGG6-4: the LRU marks the heartbeat-dedup window BEFORE the
+// insert commits — a failed insert must evict the key, or this instance
+// suppresses heartbeats for the rest of the 60 s window and silently shrinks
+// the 90 s submit-freshness margin.
+describe("POST anti-cheat — heartbeat LRU eviction on insert failure (AGG6-4)", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    insertMock.mockImplementation(() => ({ values: valuesMock }));
+  });
+
+  it("evicts the dedup key when the insert fails so the client's retry re-records immediately", async () => {
+    // A time bucket >60 s past anything earlier tests recorded, so the LRU
+    // (module-level, shared across this file) starts fresh for this window.
+    const windowNow = new Date(NOW.getTime() + 10 * 60_000);
+
+    // Attempt 1: insert blows up — the request fails AND the key must be evicted.
+    getContestAssignmentMock.mockResolvedValue({
+      id: ASSIGNMENT_ID,
+      groupId: "group-1",
+      examMode: "windowed",
+      enableAntiCheat: true,
+      startsAt: null,
+      deadline: null,
+    });
+    rawQueryOneMock
+      .mockResolvedValueOnce({ exists: 1 })
+      .mockResolvedValueOnce({ now: windowNow });
+    valuesMock.mockRejectedValueOnce(new Error("db down"));
+
+    await expect(postEvent("heartbeat")).rejects.toThrow("db down");
+    expect(insertMock).toHaveBeenCalledTimes(1);
+
+    // Attempt 2 (same 60 s window): without eviction the dedup would swallow
+    // this heartbeat (logged:true, no insert) — the row must be recorded.
+    rawQueryOneMock
+      .mockResolvedValueOnce({ exists: 1 })
+      .mockResolvedValueOnce({ now: windowNow });
+    valuesMock.mockResolvedValueOnce(undefined);
+
+    const res = await postEvent("heartbeat");
+
+    expect(res.status).toBe(200);
+    expect(insertMock).toHaveBeenCalledTimes(2);
+    expect(valuesMock).toHaveBeenLastCalledWith(
+      expect.objectContaining({ eventType: "heartbeat" })
+    );
+  });
+});
