@@ -243,6 +243,12 @@ describe("AntiCheatMonitor", () => {
         await Promise.resolve();
       });
 
+      // Queue-first reportEvent (AGG6-2) leaves the mount heartbeat queued
+      // behind the in-flight flush; the backoff timer drains it.
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(1_500);
+      });
+
       const copySends = apiFetchMock.mock.calls.filter((call) => eventTypeOf(call) === "copy");
       expect(copySends).toHaveLength(1);
       expect(loadPendingEvents("assignment-doubleflush")).toHaveLength(0);
@@ -281,6 +287,12 @@ describe("AntiCheatMonitor", () => {
 
       await acceptNoticeAndRender("assignment-orphan");
 
+      // Queue-first reportEvent (AGG6-2): the mount heartbeat may still be
+      // queued behind the recovery flush; the backoff timer drains it.
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(1_500);
+      });
+
       const copySends = apiFetchMock.mock.calls.filter((call) => eventTypeOf(call) === "copy");
       expect(copySends).toHaveLength(1);
       expect(loadInflightEvent("assignment-orphan")).toBeNull();
@@ -305,9 +317,10 @@ describe("AntiCheatMonitor", () => {
 
       await acceptNoticeAndRender("assignment-window");
 
-      // Mid-send: the event has left the queue but MUST be in the slot —
-      // an unload here loses nothing.
-      expect(loadPendingEvents("assignment-window")).toHaveLength(0);
+      // Mid-send: the claimed copy has left the queue but MUST be in the
+      // slot — an unload here loses nothing. (The mount heartbeat may sit
+      // queued behind the held send — queue-first reportEvent, AGG6-2.)
+      expect(loadPendingEvents("assignment-window").some((e) => e.eventType === "copy")).toBe(false);
       expect(loadInflightEvent("assignment-window")?.eventType).toBe("copy");
 
       await act(async () => {
@@ -315,7 +328,68 @@ describe("AntiCheatMonitor", () => {
         await Promise.resolve();
       });
 
+      // Drain the queue-first mount heartbeat (AGG6-2) so the slot's
+      // terminal state is asserted after ALL sends completed.
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(1_500);
+      });
+
       expect(loadInflightEvent("assignment-window")).toBeNull();
+      expect(loadPendingEvents("assignment-window")).toHaveLength(0);
+    });
+  });
+
+  // RPF cycle-6 AGG6-2: reportEvent is QUEUE-FIRST — the first transmission
+  // of every event must flow through the queue + in-flight slot so no unload
+  // window can silently lose it (the cycle-5 slot covered only retries).
+  describe("queue-first reportEvent (AGG6-2)", () => {
+    async function acceptNoticeAndRender(assignmentId: string) {
+      render(<AntiCheatMonitor assignmentId={assignmentId} enabled />);
+      await act(async () => {
+        fireEvent.click(screen.getByRole("button", { name: "privacyNoticeAccept" }));
+        await Promise.resolve();
+      });
+    }
+
+    afterEach(() => {
+      localStorage.clear();
+    });
+
+    it("keeps a first-transmission event in the in-flight slot for the whole send window", async () => {
+      let resolveBlurSend: ((value: { ok: boolean }) => void) | undefined;
+      apiFetchMock.mockImplementation(async (_url: unknown, init: unknown) => {
+        const { eventType } = JSON.parse((init as { body: string }).body) as { eventType: string };
+        if (eventType === "blur") {
+          return new Promise<{ ok: boolean }>((resolve) => {
+            resolveBlurSend = resolve;
+          });
+        }
+        return { ok: true };
+      });
+
+      await acceptNoticeAndRender("assignment-first-tx");
+
+      await act(async () => {
+        window.dispatchEvent(new Event("blur"));
+        await Promise.resolve();
+      });
+
+      // Mid-send: the blur event MUST be recoverable — in the slot, not in
+      // limbo. An unload here loses nothing (the old direct-send shape did).
+      expect(loadInflightEvent("assignment-first-tx")?.eventType).toBe("blur");
+
+      await act(async () => {
+        resolveBlurSend?.({ ok: true });
+        await Promise.resolve();
+      });
+
+      const blurSends = apiFetchMock.mock.calls.filter((call) => {
+        const init = call[1] as { body: string };
+        return (JSON.parse(init.body) as { eventType: string }).eventType === "blur";
+      });
+      expect(blurSends).toHaveLength(1);
+      expect(loadInflightEvent("assignment-first-tx")).toBeNull();
+      expect(loadPendingEvents("assignment-first-tx")).toHaveLength(0);
     });
   });
 

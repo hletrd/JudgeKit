@@ -192,6 +192,10 @@ export function AntiCheatMonitor({
     };
   }, [performFlush]);
 
+  // Ref for stable access in event handlers — prevents listener re-registration
+  const flushPendingEventsRef = useRef(flushPendingEvents);
+  useEffect(() => { flushPendingEventsRef.current = flushPendingEvents; }, [flushPendingEvents]);
+
   const reportEvent = useCallback(
     async (eventType: string, details?: Record<string, unknown>) => {
       const now = Date.now();
@@ -206,29 +210,28 @@ export function AntiCheatMonitor({
         retries: 0,
       };
 
-      const result = await sendEvent(event);
-      if (result === "retry") {
-        const pending = loadPendingEvents(assignmentId);
-        pending.push({ ...event, retries: 1 });
-        savePendingEvents(assignmentId, pending);
-
-        // Delegate retry scheduling to scheduleRetryRef instead of duplicating
-        // the timer logic. This ensures the backoff formula stays consistent.
-        scheduleRetryRef.current(pending);
-      }
+      // QUEUE-FIRST (RPF cycle-6 AGG6-2): the previous shape sent the first
+      // transmission directly, bypassing both the pending queue and the
+      // in-flight slot — a tab close mid-send silently lost the event, and
+      // first transmissions are exactly the ones that coincide with
+      // navigation (tab_switch, blur). Enqueue synchronously, then flush:
+      // the claim loop's slot+claim ordering guarantees no unload window
+      // sees the event in neither place, the single-flight guard prevents
+      // double-sends, transient failures inherit the existing retry ladder
+      // (requeued as retries+1 by the loop), and a flush already in
+      // progress leaves the event for the retry timer (≤1 s) via
+      // scheduleRetryRef.
+      const pending = loadPendingEvents(assignmentId);
+      pending.push(event);
+      savePendingEvents(assignmentId, pending);
+      await flushPendingEventsRef.current();
     },
-    // `flushPendingEvents` was previously listed here but is no longer called
-    // in this body — retry scheduling is delegated to scheduleRetryRef.current.
-    // Removing it prevents needless re-creation of `reportEvent` whenever
-    // performFlush identity changes.
-    [assignmentId, sendEvent]
+    [assignmentId]
   );
 
-  // Refs for stable access in event handlers — prevents listener re-registration
+  // Ref for stable access in event handlers — prevents listener re-registration
   const reportEventRef = useRef(reportEvent);
-  const flushPendingEventsRef = useRef(flushPendingEvents);
   useEffect(() => { reportEventRef.current = reportEvent; }, [reportEvent]);
-  useEffect(() => { flushPendingEventsRef.current = flushPendingEvents; }, [flushPendingEvents]);
 
   useEffect(() => {
     if (!enabled || showPrivacyNotice) return;
