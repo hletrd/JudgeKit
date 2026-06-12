@@ -205,9 +205,10 @@ export const GET = createApiHandler({
     }
 
     // Read-only monitoring surface: extend to group TAs so a teaching
-    // assistant can supervise a live exam without inheriting write
-    // power. Write semantics (e.g., the POST heartbeat) keep
-    // canManageContest above.
+    // assistant can supervise a live exam without inheriting write power.
+    // (The POST in this file is the STUDENT ingest — enrollment/token-gated,
+    // not staff-gated. The staff WRITE surfaces stay behind canManageContest
+    // elsewhere: similarity-check runs, exam-session extensions, invites.)
     const canView = await canMonitorContest(user, assignment);
 
     if (!canView) {

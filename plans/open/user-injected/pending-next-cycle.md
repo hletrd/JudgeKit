@@ -3,9 +3,7 @@
 ## 1. Move workspace-only pages to public with new top navbar layout (ONGOING)
 
 **Priority: High**
-**Status:** Phase 1 complete — workspace route group eliminated, My Discussions tab added to community. Continue with Phase 2: implement the unified top navbar layout and migrate remaining workspace-only pages.
-
-See `plans/open/2026-04-19-workspace-to-public-migration.md` for the full migration plan and phase breakdown.
+**Status: RESOLVED (RPF cycle-6, 2026-06-12)** — All phases complete. Evidence: the migration plan was archived as `plans/archive/2026-04-29-archived-workspace-to-public-migration.md` with "ALL PHASES COMPLETE"; no `(workspace)` route group exists under `src/app` (route groups today: `(auth)`, `(dashboard)`, `(public)`); the unified top navbar ships in the `(public)` layout. No action remaining.
 
 ## 2. Fix rsync overwriting remote .env on worker server
 
@@ -15,4 +13,4 @@ See `plans/open/2026-04-19-workspace-to-public-migration.md` for the full migrat
 ## 3. Deploy-docker.sh should handle COMPILER_RUNNER_URL for algo target
 
 **Priority: Medium**
-The deploy script failed because the remote `.env.production` was missing `COMPILER_RUNNER_URL=http://host.docker.internal:3001`. This should be auto-injected by the deploy script when `INCLUDE_WORKER=false` is set, similar to how `AUTH_TRUST_HOST` is handled.
+**Status: RESOLVED (RPF cycle-6, 2026-06-12)** — `deploy-docker.sh` auto-injects the key: `ensure_env_literal "COMPILER_RUNNER_URL" "http://host.docker.internal:3001"` (line 657) runs for app-only targets, with a drift warning when the remote value differs (lines 663-666). Verified across the cycle-4/5 three-target deploys (algo leg green with `INCLUDE_WORKER=false`). No action remaining.
