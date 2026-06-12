@@ -738,6 +738,27 @@ describe("GET /api/v1/submissions", () => {
     ]);
   });
 
+  it("orders the offset listing by (submittedAt, id) to match cursor mode (AGG6-5)", async () => {
+    const chain = {
+      from: vi.fn().mockReturnThis(),
+      where: vi.fn().mockReturnThis(),
+      orderBy: vi.fn().mockReturnThis(),
+      limit: vi.fn().mockReturnThis(),
+      offset: vi.fn().mockResolvedValue([]),
+    };
+    dbSelectMock.mockImplementation(() => chain);
+
+    const { GET } = await import("@/app/api/v1/submissions/route");
+    const response = await GET(makeGetRequest());
+
+    expect(response.status).toBe(200);
+    // Two sort keys: submittedAt DESC + the id DESC tiebreak — same total
+    // order as cursor mode, so same-timestamp rows cannot shuffle across
+    // page boundaries.
+    expect(chain.orderBy).toHaveBeenCalledTimes(1);
+    expect(chain.orderBy.mock.calls[0]).toHaveLength(2);
+  });
+
   it("filters to the current user when they lack submissions.view_all", async () => {
     const { GET } = await import("@/app/api/v1/submissions/route");
     const response = await GET(makeGetRequest());

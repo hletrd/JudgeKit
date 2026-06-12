@@ -164,7 +164,11 @@ export const GET = createApiHandler({
       })
       .from(submissions)
       .where(whereClause)
-      .orderBy(desc(submissions.submittedAt))
+      // (submittedAt, id) — same total order as cursor mode (RPF cycle-6
+      // AGG6-5): same-timestamp rows otherwise shuffle across pages, so a
+      // burst submitter could see an entry duplicated or missing at a page
+      // boundary.
+      .orderBy(desc(submissions.submittedAt), desc(submissions.id))
       .limit(limit)
       .offset(offset);
 

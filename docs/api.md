@@ -418,7 +418,9 @@ Returns `409` if submissions or assignments reference it. Admin can force delete
 
 List submissions. Students see only their own.
 
-Supports both offset and cursor pagination.
+Supports both offset and cursor pagination. Both modes return rows in the
+same total order: `submittedAt` descending with `id` descending as the
+tiebreak for same-timestamp submissions.
 
 | Query Param | Type | Description |
 |-------------|------|-------------|

@@ -83,6 +83,13 @@ export function ParticipantAntiCheatTimeline({
   const [loadingMore, setLoadingMore] = useState(false);
   const PAGE_SIZE = 50;
   const abortControllerRef = useRef<AbortController | null>(null);
+  // Monotonic fetch sequence (RPF cycle-6 AGG6-6): a poll refresh RESETS the
+  // list to the fresh first page, so a loadMore that was already in flight
+  // when the reset happened would append rows positioned against the OLD
+  // list — duplicating evidence rows in the reviewer's view. loadMore
+  // captures the sequence before awaiting and discards its response if a
+  // reset bumped it.
+  const fetchSeqRef = useRef(0);
 
   const fetchEvents = useCallback(async () => {
     // Abort any in-flight request before starting a new one
@@ -91,6 +98,7 @@ export function ParticipantAntiCheatTimeline({
     }
     const controller = new AbortController();
     abortControllerRef.current = controller;
+    fetchSeqRef.current += 1;
 
     try {
       // `includeGaps=1` opts into the server-side heartbeat-gap scan (RPF
@@ -125,14 +133,23 @@ export function ParticipantAntiCheatTimeline({
 
   const loadMore = useCallback(async () => {
     setLoadingMore(true);
+    const seqAtStart = fetchSeqRef.current;
     try {
       const { ok, data: json } = await apiFetchJson<{ data: { events: AntiCheatEvent[]; total: number } }>(
         `/api/v1/contests/${assignmentId}/anti-cheat?userId=${userId}&limit=${PAGE_SIZE}&offset=${offset}`,
         undefined,
         { data: { events: [], total: 0 } }
       );
+      // A poll reset replaced the list while this page was in flight — its
+      // offset no longer means anything against the fresh list (AGG6-6).
+      if (seqAtStart !== fetchSeqRef.current) return;
       if (ok) {
-        setEvents((prev) => [...prev, ...json.data.events]);
+        // Defensive id-dedupe: even within one sequence, rows can shift
+        // pages server-side between requests as new events arrive.
+        setEvents((prev) => {
+          const seen = new Set(prev.map((e) => e.id));
+          return [...prev, ...json.data.events.filter((e) => !seen.has(e.id))];
+        });
         setTotal(json.data.total);
         setOffset((prev) => prev + json.data.events.length);
       }

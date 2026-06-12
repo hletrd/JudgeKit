@@ -41,10 +41,17 @@ vi.mock("@/contexts/timezone-context", () => ({
   useSystemTimezone: () => "UTC",
 }));
 
+const { pollTickRef } = vi.hoisted(() => ({
+  pollTickRef: { current: null as null | (() => void) },
+}));
+
 vi.mock("@/hooks/use-visibility-polling", async () => {
   const { useEffect, useRef } = await import("react");
   return {
+    // Test double: fire once on mount and expose the callback so tests can
+    // simulate later poll ticks (AGG6-6 interleaving).
     useVisibilityPolling: (callback: () => void) => {
+      pollTickRef.current = callback;
       const firedRef = useRef(false);
       useEffect(() => {
         if (!firedRef.current) {
@@ -159,5 +166,63 @@ describe("ParticipantAntiCheatTimeline", () => {
     fireEvent.click(typeChip);
     expect(typeChip).toHaveAttribute("aria-pressed", "true");
     expect(allChip).toHaveAttribute("aria-pressed", "false");
+  });
+
+  // RPF cycle-6 AGG6-6: a loadMore whose response lands AFTER a poll reset
+  // replaced the list must be discarded — its offset was computed against
+  // the OLD list and appending it duplicates evidence rows.
+  it("discards a stale loadMore response that resolves after a poll reset", async () => {
+    const event = (id: string) => ({
+      id,
+      userId: "user-1",
+      userName: "Alice",
+      username: "alice",
+      eventType: "tab_switch",
+      details: null,
+      ipAddress: null,
+      createdAt: "2026-06-12T00:00:00.000Z",
+    });
+
+    let resolveLoadMore:
+      | ((value: { ok: boolean; data: { data: { events: unknown[]; total: number } } }) => void)
+      | undefined;
+    apiFetchJsonMock.mockImplementation(async (input) => {
+      const url = String(input);
+      if (url.includes("offset=1")) {
+        // The loadMore page — held open until the test resolves it.
+        return new Promise((resolve) => {
+          resolveLoadMore = resolve;
+        });
+      }
+      // Mount poll and later poll ticks: fresh first page.
+      return { ok: true, data: { data: { events: [event("evt-1")], total: 2 } } };
+    });
+
+    const { fireEvent, act } = await import("@testing-library/react");
+    render(<ParticipantAntiCheatTimeline assignmentId="assignment-1" userId="user-1" />);
+
+    const loadMoreButton = await screen.findByRole("button", {
+      name: "contests.antiCheat.loadMore",
+    });
+    fireEvent.click(loadMoreButton); // in-flight, held
+
+    // Poll reset replaces the list while the loadMore page is in flight.
+    await act(async () => {
+      pollTickRef.current?.();
+      await Promise.resolve();
+    });
+
+    // The stale page resolves — it must be DISCARDED, not appended.
+    await act(async () => {
+      resolveLoadMore?.({
+        ok: true,
+        data: { data: { events: [event("evt-2")], total: 2 } },
+      });
+      await Promise.resolve();
+    });
+
+    const rows = screen.getAllByRole("row");
+    // header row + exactly the fresh first page (evt-1); no evt-2 append.
+    expect(rows).toHaveLength(2);
   });
 });
