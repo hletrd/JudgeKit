@@ -71,7 +71,7 @@ type SimilarityPairView = {
 
 type SimilarityCheckResponse = {
   status: "completed" | "not_run" | "timed_out";
-  reason: "no_submissions" | "too_many_submissions" | "service_unavailable" | "timeout" | null;
+  reason: "no_submissions" | "too_many_submissions" | "timeout" | null;
   flaggedPairs: number;
   submissionCount: number | null;
   maxSupportedSubmissions: number | null;
@@ -293,12 +293,6 @@ export function AntiCheatDashboard({ assignmentId }: AntiCheatDashboardProps) {
           const message = t("similaritySkippedTooManySubmissions", {
             count: data.submissionCount ?? 0,
             limit: data.maxSupportedSubmissions ?? 0,
-          });
-          setSimilarityStatusMessage(message);
-          toast.warning(message);
-        } else if (data.reason === "service_unavailable") {
-          const message = t("similarityServiceUnavailable", {
-            count: data.submissionCount ?? 0,
           });
           setSimilarityStatusMessage(message);
           toast.warning(message);

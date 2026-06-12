@@ -75,10 +75,13 @@ describe("POST /api/v1/contests/[assignmentId]/similarity-check", () => {
     dbSelectMock.mockReturnValue({ from: dbFromMock });
   });
 
-  it("returns explicit service_unavailable status instead of silently reporting zero flagged pairs", async () => {
+  it("returns the explicit not_run reason instead of silently reporting zero flagged pairs", async () => {
+    // Vocabulary follows the engine (RPF cycle-6 AGG6-8): the unreachable
+    // service_unavailable member was removed; too_many_submissions is the
+    // real reason for the oversized-fallback case.
     runAndStoreSimilarityCheckMock.mockResolvedValue({
       status: "not_run",
-      reason: "service_unavailable",
+      reason: "too_many_submissions",
       flaggedPairs: 0,
       submissionCount: 700,
       maxSupportedSubmissions: 500,
@@ -96,7 +99,7 @@ describe("POST /api/v1/contests/[assignmentId]/similarity-check", () => {
     expect(res.status).toBe(200);
     expect(body.data).toMatchObject({
       status: "not_run",
-      reason: "service_unavailable",
+      reason: "too_many_submissions",
       submissionCount: 700,
     });
   });

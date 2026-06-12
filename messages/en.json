@@ -2310,7 +2310,6 @@
       "signalsDisclaimer": "These signals are review aids, not proof of misconduct on their own.",
       "similarityNoSubmissions": "Similarity scan not run because there are no submissions to compare yet.",
       "similaritySkippedTooManySubmissions": "Similarity scan not run because {count} submissions exceed the current review limit of {limit}.",
-      "similarityServiceUnavailable": "Similarity scan not run because the Rust similarity service is unavailable for this large contest ({count} submissions).",
       "similarityTimedOut": "Similarity scan did not finish in time. No results were recorded.",
       "participantNoticeTitle": "Integrity monitoring is active for this assessment.",
       "participantNoticeBody": "Focus changes, copy/paste, and similar events may be logged for review while the assessment is open.",

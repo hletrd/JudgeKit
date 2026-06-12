@@ -2310,7 +2310,6 @@
       "signalsDisclaimer": "여기 신호는 참고용이에요. 이것만으로 부정행위를 단정하면 안 되고, 다른 정보와 같이 봐야 해요.",
       "similarityNoSubmissions": "비교할 제출물이 없어서 유사도 스캔을 돌리지 않았어요.",
       "similaritySkippedTooManySubmissions": "제출물 {count}건이 현재 검토 한도 {limit}건을 넘어서 유사도 스캔을 건너뛰었어요.",
-      "similarityServiceUnavailable": "Rust 유사도 서비스에 연결할 수 없어서 대규모 대회 제출물 {count}건을 처리하지 못했고, 유사도 스캔도 돌리지 않았어요.",
       "similarityTimedOut": "유사도 스캔이 시간 안에 끝나지 않아서 결과를 기록하지 않았어요.",
       "participantNoticeTitle": "이 평가는 무결성 모니터링이 켜져 있어요",
       "participantNoticeBody": "평가 중에 다음 활동이 기록될 수 있어요: 다른 탭이나 창으로 전환, 텍스트 복사/붙여넣기, 우클릭 메뉴 사용, 브라우저 창 밖으로 포커스 이동. 기록된 내용은 평가가 끝난 뒤 검토자가 참고 자료로 확인해요.",

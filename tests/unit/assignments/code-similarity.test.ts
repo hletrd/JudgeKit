@@ -137,6 +137,31 @@ describe("code similarity status reporting", () => {
     expect(dbInsertMock).toHaveBeenCalled();
   });
 
+  it("persists the language bucket in code_similarity evidence details (AGG6-7)", async () => {
+    rawQueryAllMock.mockResolvedValue([
+      { userId: "u1", problemId: "p1", language: "python", sourceCode: "print(1)" },
+      { userId: "u2", problemId: "p1", language: "python", sourceCode: "print(1)" },
+    ]);
+    computeSimilarityRustMock.mockResolvedValue([
+      { userId1: "u1", userId2: "u2", problemId: "p1", language: "python", similarity: 0.99 },
+    ]);
+    const valuesFn = vi.fn(async (_rows: unknown) => undefined);
+    dbInsertMock.mockReturnValue({ values: valuesFn });
+
+    await runAndStoreSimilarityCheck("assignment-1");
+
+    expect(valuesFn).toHaveBeenCalledTimes(1);
+    const rows = valuesFn.mock.calls[0][0] as Array<{ details: string }>;
+    expect(rows).toHaveLength(2);
+    for (const row of rows) {
+      expect(JSON.parse(row.details)).toMatchObject({
+        problemId: "p1",
+        language: "python",
+        similarity: 0.99,
+      });
+    }
+  });
+
   it("still flags renamed-variable solutions when the TypeScript fallback runs", async () => {
     rawQueryAllMock.mockResolvedValue([
       {

@@ -239,7 +239,6 @@ export type SimilarityRunStatus = "completed" | "not_run" | "timed_out";
 export type SimilarityRunReason =
   | "no_submissions"
   | "too_many_submissions"
-  | "service_unavailable"
   | "timeout"
   | null;
 
@@ -428,6 +427,10 @@ export async function runAndStoreSimilarityCheck(
         details: JSON.stringify({
           pairedWith: otherUserId,
           problemId: pair.problemId,
+          // Same-language bucket the pair was compared in (RPF cycle-6
+          // AGG6-7): without it a reviewer cannot tell which of a
+          // multi-language participant's submissions matched.
+          language: pair.language,
           similarity: pair.similarity,
         }),
         createdAt: now,
