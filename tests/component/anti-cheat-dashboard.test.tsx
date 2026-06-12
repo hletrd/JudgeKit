@@ -122,4 +122,36 @@ describe("AntiCheatDashboard", () => {
     // escalate red tone from the shared presentation module.
     expect(labels.some((el) => el.className.includes("bg-red-100"))).toBe(true);
   });
+
+  // RPF cycle-6 AGG6-3: filter chips must be REAL buttons — reachable by
+  // keyboard, exposing pressed state (WCAG 2.1.1 / 4.1.2).
+  it("renders filter chips as keyboard-operable buttons with pressed semantics", async () => {
+    mockEventResponses([
+      {
+        id: "evt-1",
+        userId: "user-1",
+        userName: "Alice",
+        username: "alice",
+        eventType: "tab_switch",
+        details: null,
+        ipAddress: null,
+        userAgent: null,
+        createdAt: "2026-06-12T00:00:00.000Z",
+      },
+    ]);
+
+    const { fireEvent } = await import("@testing-library/react");
+    render(<AntiCheatDashboard assignmentId="assignment-1" />);
+
+    const allChip = await screen.findByRole("button", { name: "contests.antiCheat.allTypes" });
+    expect(allChip).toHaveAttribute("aria-pressed", "true");
+
+    // Unknown-locale label falls back to the raw event type (shared helper).
+    const typeChip = screen.getByRole("button", { name: "tab_switch" });
+    expect(typeChip).toHaveAttribute("aria-pressed", "false");
+
+    fireEvent.click(typeChip);
+    expect(typeChip).toHaveAttribute("aria-pressed", "true");
+    expect(allChip).toHaveAttribute("aria-pressed", "false");
+  });
 });

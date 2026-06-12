@@ -249,8 +249,12 @@ export function ParticipantAntiCheatTimeline({
         {/* Filter chips */}
         {!loading && events.length > 0 && (
           <div className="flex flex-wrap items-center gap-1.5">
+            {/* Real <button>s (RPF cycle-6 AGG6-3): keyboard-operable with
+                pressed semantics — see the dashboard's identical chips. */}
             <Badge
               variant={typeFilter === null ? "default" : "outline"}
+              render={<button type="button" />}
+              aria-pressed={typeFilter === null}
               className="cursor-pointer select-none"
               onClick={() => setTypeFilter(null)}
             >
@@ -260,6 +264,8 @@ export function ParticipantAntiCheatTimeline({
               <Badge
                 key={type}
                 variant={typeFilter === type ? "default" : "outline"}
+                render={<button type="button" />}
+                aria-pressed={typeFilter === type}
                 className={`cursor-pointer select-none ${typeFilter !== type ? (EVENT_TYPE_COLORS[type] ?? "") : ""}`}
                 onClick={() => setTypeFilter(typeFilter === type ? null : type)}
               >

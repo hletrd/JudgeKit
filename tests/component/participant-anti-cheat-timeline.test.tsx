@@ -122,4 +122,42 @@ describe("ParticipantAntiCheatTimeline", () => {
     expect(await screen.findByText("Anti-cheat timeline")).toBeInTheDocument();
     expect(screen.queryByText("Monitor coverage gaps")).not.toBeInTheDocument();
   });
+
+  // RPF cycle-6 AGG6-3: filter chips must be REAL buttons — reachable by
+  // keyboard, exposing pressed state (WCAG 2.1.1 / 4.1.2).
+  it("renders filter chips as keyboard-operable buttons with pressed semantics", async () => {
+    apiFetchJsonMock.mockResolvedValue({
+      ok: true,
+      data: {
+        data: {
+          events: [
+            {
+              id: "evt-1",
+              userId: "user-1",
+              userName: "Alice",
+              username: "alice",
+              eventType: "tab_switch",
+              details: null,
+              ipAddress: null,
+              createdAt: "2026-06-12T00:00:00.000Z",
+            },
+          ],
+          total: 1,
+        },
+      },
+    });
+
+    const { fireEvent } = await import("@testing-library/react");
+    render(<ParticipantAntiCheatTimeline assignmentId="assignment-1" userId="user-1" />);
+
+    const allChip = await screen.findByRole("button", { name: "contests.antiCheat.allTypes" });
+    expect(allChip).toHaveAttribute("aria-pressed", "true");
+
+    const typeChip = screen.getByRole("button", { name: "tab_switch" });
+    expect(typeChip).toHaveAttribute("aria-pressed", "false");
+
+    fireEvent.click(typeChip);
+    expect(typeChip).toHaveAttribute("aria-pressed", "true");
+    expect(allChip).toHaveAttribute("aria-pressed", "false");
+  });
 });
