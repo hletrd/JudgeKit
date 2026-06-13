@@ -1,73 +1,61 @@
-# Code Reviewer — RPF Cycle 8 (2026-06-13)
+# Code Reviewer — RPF Cycle 9 (2026-06-13)
 
-**HEAD:** c862ff72 (main == origin/main; cycle-7 G1–G4 complete + review archive).
-**Baseline gates:** tsc 0 · eslint 0/0 · lint:bash 0 · unit 340 files / 2661 PASS.
-**Method:** full inventory of `src/`; deep focus on the cycle-6/7 churn surface
-(contest access-token lifecycle, listing-order tiebreaks, anti-cheat dashboard
-paging) to find sibling-mutation points earlier cycles missed.
+**HEAD reviewed:** da6179f3 (main == origin/main, clean tree).
+**Baseline gates:** tsc 0 · eslint 0/0 · lint:bash clean · unit 340 files / 2663 PASS.
+**Method:** full src inventory (610 ts/tsx). Focus: what the cycle-7 deterministic
+listing-order sweep ("7 sibling routes", commit 4cf6dfe0) and cycle-8 token sweep
+left behind. Validated behavior from code, not comments.
 
-## CR8-1 — Access-code redemption stamps token expiry at bare `deadline`, not the canonical `lateDeadline ?? deadline` (MEDIUM, High, CONFIRMED)
-**File:** `src/lib/assignments/access-codes.ts:191` (`redeemAccessCode`).
-```ts
-await tx.insert(contestAccessTokens).values({
-  id: nanoid(), assignmentId: assignment.id, userId,
-  redeemedAt: now, ipAddress: ipAddress ?? null,
-  expiresAt: assignment.deadline,   // <-- bare deadline
-});
+## CR9-1 — code-snapshot evidence timeline paginates by `createdAt` only, no unique tiebreak (MEDIUM, High, CONFIRMED)
+**File:** `src/app/api/v1/contests/[assignmentId]/code-snapshots/[userId]/route.ts:54`
 ```
-Cycle-6 AGG6-1 established a single token-expiry invariant — a contest access
-token expires at the **effective close** `lateDeadline ?? deadline` — and put
-it behind one helper, `contestAccessTokenExpiry()`
-(`contest-access-tokens.ts:99-104`). Cycle-7 AGG7-3 then propagated that rule to
-the invite insert (`invite/route.ts:115,124`) and to the schedule-edit sync
-(`management.ts:320`, `syncContestAccessTokenExpiry`). **The access-code
-redemption path — the primary self-service join flow — was never converted and
-still hard-codes `assignment.deadline`.**
-
-This is internally inconsistent within the same function: line 135 already
-computes `const effectiveClose = assignment.lateDeadline ?? assignment.deadline`
-to gate the *join* ("block join after contest deadline"), yet line 191 stamps
-the *token expiry* at bare `deadline`. The function both loads `lateDeadline`
-(line 120) and uses it (line 135) — only the token insert ignores it.
-
-**Concrete failure:** a contest configured with a late-submission window
-(`lateDeadline > deadline`). A participant who joins via **access code** gets a
-token expiring at `deadline`; a participant who joins via **invite** gets one
-expiring at `lateDeadline`. After `deadline` passes (but before `lateDeadline`),
-the access-code joiner's token is expired, so the three platform-mode /
-contest-catalog gates that key on `CONTEST_ACCESS_TOKEN_VALIDITY_SQL`
-(`platform-mode-context.ts:96,126,151`) deny them — the contest disappears from
-their catalog / platform-mode view during a window the instructor explicitly
-opened. (Submission access is incidentally rescued by the auto-enrollment row at
-access-codes.ts:195, so this is a consistency/visibility defect, not a total
-lockout — which is why it is MEDIUM, not HIGH — but it is the exact "divergent
-verdicts on the same logical access" class cycle-6/7 set out to eliminate.)
-
-**Fix:** import `contestAccessTokenExpiry` and use it (the loaded `assignment`
-already has the right shape), or reuse the `effectiveClose` already computed at
-line 135:
-```ts
-import { contestAccessTokenExpiry } from "@/lib/assignments/contest-access-tokens";
-...
-expiresAt: contestAccessTokenExpiry(assignment),
+.orderBy(asc(codeSnapshots.createdAt))   // no desc(id)/asc(id) tiebreak
+.limit(limit).offset(offset)             // offset-paginated, default 50 / max 200
 ```
-**Red-first test:** `access-codes.test.ts` fixtures all set `lateDeadline: null`
-(lines 154, 213), so the divergence is untested — add a redeem test with
-`lateDeadline` set asserting the inserted token's `expiresAt === lateDeadline`.
+The `code_snapshots` table (`schema.pg.ts:1007`) has a `nanoid` PK `id` and a
+plain `created_at` index (`cs_created_at_idx`). Snapshots are POSTed one row at a
+time by the editor's autosave (`/api/v1/code-snapshots`, insert at
+`code-snapshots/route.ts:79`) with `created_at` defaulting to `new Date()` — so
+**multiple snapshots from rapid editing land in the same millisecond.** Postgres
+gives no stable order among equal `created_at` rows, and it can choose a
+different order per query, so an instructor paging a candidate's snapshot
+timeline can see a row **duplicated across page N/N+1 or dropped at the seam.**
+This is the *exact* class cycle-7 (4cf6dfe0) fixed for 7 sibling routes — this
+anti-cheat evidence route was missed, and it is MORE collision-prone than the
+heartbeat scan deferred as AGG8-2 (heartbeats are ~60 s apart; snapshots cluster).
+**Fix:** append `asc(codeSnapshots.id)` to the orderBy.
 
-## Confirmations (cycle-7 fixes verified correct, not regressions)
-- `syncContestAccessTokenExpiry` is reached by BOTH assignment-edit entry points
-  (`groups/.../[assignmentId]/route.ts:199` PATCH calls
-  `updateAssignmentWithProblems`, which contains the in-tx sync) — no missed
-  edit path. ✅
-- All 7 sibling listings carry the `(createdAt desc, id desc)` tiebreak. The
-  anti-cheat route's *second* `orderBy(desc(createdAt))` at line 324 is the
-  bounded heartbeat-gap scan (limit 5000, reversed for gap walk), not a paged
-  listing — id tiebreak is immaterial to gap detection. ✅
-- Dashboard poll-merge id-union + loadMore stale-guard/dedupe are correct and
-  covered by 3 component tests. ✅
+## CR9-2 — recruiting-invitation list paginates by `createdAt` only, no tiebreak (MEDIUM, High, CONFIRMED)
+**File:** `src/lib/assignments/recruiting-invitations.ts:272`
+```
+.orderBy(recruitingInvitations.createdAt)   // single column, asc
+.limit(limit).offset(offset)                // limit ≤ 500, offset paged (lines 247-248,273-274)
+```
+`recruiting_invitations.id` is the nanoid PK. A recruiter paging the candidate
+list (or any consumer requesting page 2+) can get an invitation duplicated or
+skipped at a page boundary when two invitations were created in the same
+instant (bulk CSV invite import creates many rows fast). Same seam-loss class as
+CR9-1 and the cycle-7 sweep. **Fix:** append `, recruitingInvitations.id`
+(asc) to the orderBy.
 
-## Carried (unchanged this cycle)
-P6-1 (TS similarity normalize/n-gram phase not time-sliced,
-`code-similarity.ts:266-275`) — `runSimilarityCheckTS` not edited this cycle;
-exit criterion not fired. Stays deferred.
+## CR9-3 — public accepted-solutions list: all 3 sort modes lack a unique tiebreak (MEDIUM, Medium, CONFIRMED)
+**File:** `src/app/api/v1/problems/[id]/accepted-solutions/route.ts:54-59`, offset-paged (`offset = (page-1)*pageSize` line 34, `.offset(offset)` line 80).
+- `newest` → `desc(submittedAt)` alone;
+- `shortest` → `[asc(octet_length(...)), desc(submittedAt)]`;
+- `fastest` → `[asc(coalesce(executionTimeMs,…)), desc(submittedAt)]`.
+None ends in a unique column, so equal-key rows (same length / same time / same
+submittedAt) reorder nondeterministically across pages → dup/skip at the seam on
+the public solution browser. **Fix:** append `desc(submissions.id)` as the final
+clause of every branch.
+
+## Provenance / no-new-finding lenses
+Token-lifecycle theme (cycles 6–8) is fully converged: all 4 contest-access-token
+insert/upsert sites (`access-codes.ts:199`, `invite/route.ts:115,124`,
+`recruiting-invitations.ts:691`) and the schedule-edit sync route through the
+single `contestAccessTokenExpiry()` owner; AGG8-1 fix verified at line 199.
+The deferred AGG8-2 gap-scan (`anti-cheat/route.ts:316-325`) and P6-1 similarity
+fallback are UNCHANGED this cycle — exit criteria not fired.
+
+**Confidence:** CR9-1/CR9-2 High (offset-paged, non-unique sort key, established
+class). CR9-3 Medium (same mechanism; lower-traffic surface). All three are
+correctness on listing endpoints — not deferrable.

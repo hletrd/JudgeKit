@@ -1,21 +1,19 @@
-# Perspective: TA / Assistant (partial permissions) — RPF Cycle 8 (2026-06-13)
+# Perspective — Teaching Assistant (partial permissions) — RPF Cycle 9 (2026-06-13)
 
-**HEAD:** c862ff72.
+**HEAD:** da6179f3. Seat: TA with scoped grading/roster permissions.
 
-## TA8-1 — As a TA fielding "I lost access" reports, the access-code expiry bug wastes my time (MEDIUM via CR8-1)
-**File:** `access-codes.ts:191`. When students report the contest vanished during
-a late window, I (as a TA without DB access) can't easily distinguish "expected
-behavior" from "bug." The inconsistency between invited and access-code joiners
-makes triage harder and the reports non-reproducible depending on how a student
-joined. Fixing the canonical expiry removes a whole class of confusing tickets
-from my queue.
+## TA9-1 — snapshot evidence completeness within my scope (MEDIUM, via CR9-1)
+As a TA reviewing flagged submissions, I rely on the code-snapshot timeline being
+complete and stable across pages. The missing `id` tiebreak
+(`code-snapshots/[userId]/route.ts:54`) means a snapshot can drop/duplicate at a
+page boundary — I could escalate or clear a case on incomplete evidence. The
+fix benefits my workflow identically to the instructor's. Access to the route is
+correctly gated by `contests.view_analytics` + `canViewAssignmentSubmissions`
+(`route.ts:11,14`), so the permission boundary itself is intact — this is a
+correctness issue inside an already-authorized view, not an authz gap.
 
-## Permission-boundary check (no new gaps found)
-- TA management gating on contests goes through `canManageContest`
-  (invite/route.ts:29,89) and `getManageableProblemsForGroup` for problem edits
-  (groups assignment PATCH:187) — boundaries intact; no privilege escalation
-  introduced by cycle-7. ✅
-- Anti-cheat dashboard is manager-gated; the paging fix didn't widen who can read
-  events. ✅
-
-## Carried: none TA-specific beyond the shared register.
+## Permission-boundary pass — no NEW gap
+Re-checked the capability gates on the snapshot, recruiting-invitation, and
+accepted-solution routes: each enforces the expected capability/role before
+returning data. No over-broad TA access introduced this cycle. The group-detail
+manager-gated roster (recent commit) keeps TA roster actions correctly scoped.

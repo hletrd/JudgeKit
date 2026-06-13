@@ -1,25 +1,22 @@
-# Designer (UI/UX) — RPF Cycle 8 (2026-06-13)
+# Designer (UI/UX) — RPF Cycle 9 (2026-06-13)
 
-**HEAD:** c862ff72. No login-gated live-browser run available (no provisioned
-staging session/credentials this cycle — DEFER-ENV-GATES). Static review of the
-contest/anti-cheat UI surface touched by cycle-7.
+**HEAD:** da6179f3. No dev server / browser available in this environment
+(standing DEFER-ENV-GATES); review is source + structural.
 
-## DES8-1 — UX symptom of CR8-1: candidate sees inconsistent contest availability (MEDIUM via CR8-1)
-The access-code expiry bug (access-codes.ts:191) surfaces to the candidate as a
-*disappearing contest*: a participant who joined by access code finds the contest
-gone from their platform-mode catalog at `deadline`, even though the instructor
-opened a late window and invite-joiners still see it. From the seat, this reads
-as "the system lost my access" — an anxiety/trust hit during a timed assessment.
-The fix (canonical expiry) makes both join paths show identical availability.
+## DES9-1 — paging glitch is user-visible on the snapshot/invite tables (LOW, Medium)
+The CR9-1/2/3 non-determinism manifests in the UI as a row that "jumps" between
+pages or disappears when an instructor clicks Next/Prev on the code-snapshot
+evidence table or the recruiting-invitation table. Beyond correctness, this reads
+as a trust defect on an integrity surface — a reviewer who sees a snapshot on
+page 1 then cannot find it on a refresh loses confidence in the evidence. The
+backend `id`-tiebreak fix resolves the UX symptom; no component change needed.
 
-## Confirmations (cycle-6/7 a11y + paging fixes verified in markup)
-- Anti-cheat filter chips are real `<button>`s with `aria-pressed`
-  (anti-cheat-dashboard.tsx:474-494). ✅
-- Detail disclosure uses `aria-expanded`/`aria-controls` with a stable id
-  (`anti-cheat-dashboard-detail-${event.id}`). ✅
-- IP-overlap panel is a labelled `role="region"`; load-more preserves the
-  loaded tail (no evidence vanishing mid-review). ✅
+## Carried a11y register (browser exit criterion not fired)
+- **DES3-1** expired→active live-region assertiveness (`exam-deadline-sync.tsx:107`)
+  — carry; needs a browser a11y pass.
+- The anti-cheat filter-chip a11y (aria-pressed real buttons) fix from cycle-6
+  (a1f290cf) remains in place; no regression in the dashboard markup changed by
+  cycle-7's paging-fidelity commit (3cf9cb39).
 
-## Carried a11y deferrals (no browser this cycle)
-DES3-1 (expired→active assertive announcement, exam-deadline-sync.tsx:107),
-DES4-4 (extension audit events in participant timeline). Carried.
+No NEW UI-only defect found in the static pass. Korean text carries no custom
+letter-spacing (project rule honored) in the files touched this cycle.

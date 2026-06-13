@@ -1,29 +1,31 @@
-# Verifier — RPF Cycle 8 (2026-06-13)
+# Verifier — RPF Cycle 9 (2026-06-13)
 
-**HEAD:** c862ff72. Evidence-based correctness check against stated invariants.
+**HEAD:** da6179f3. Gates executed on review HEAD: tsc 0 · eslint 0/0 ·
+lint:bash clean · unit 340 files / 2663 tests PASS.
 
-## Invariant under test: "a contest access token expires at lateDeadline ?? deadline"
-Stated in `contest-access-tokens.ts:93-104` (the `contestAccessTokenExpiry`
-docstring) and enforced by `CONTEST_ACCESS_TOKEN_VALIDITY_SQL`.
+## V9-1 — confirm CR9-1/2/3 are offset-paged with non-unique sort keys (CONFIRMED)
+Verified from code (not comments):
+- `code-snapshots/[userId]/route.ts`: `parsePagination` → `offset` (line 20),
+  `.orderBy(asc(codeSnapshots.createdAt))` (54), `.offset(offset)` (56). `id` is
+  the nanoid PK (`schema.pg.ts:1011`). **Offset-paged, non-unique sort key →
+  confirmed seam-loss risk.**
+- `recruiting-invitations.ts`: `offset` (248), `.orderBy(...createdAt)` (272),
+  `.offset(offset)` (274). Confirmed.
+- `accepted-solutions/route.ts`: `offset = (page-1)*pageSize` (34),
+  `.orderBy(...orderByClause)` (78) where no branch ends in a unique column,
+  `.offset(offset)` (80). Confirmed.
 
-**Site-by-site verification of token `expiresAt`:**
-| Creation/mutation site | expiresAt value | Conforms? |
-|---|---|---|
-| invite POST insert (`invite/route.ts:115`) | `contestAccessTokenExpiry(assignment)` | ✅ |
-| invite POST upsert refresh (`:124`) | `contestAccessTokenExpiry(assignment)` | ✅ |
-| schedule-edit sync (`management.ts:320` → `syncContestAccessTokenExpiry`) | `contestAccessTokenExpiry({deadline,lateDeadline})` | ✅ |
-| **access-code redeem (`access-codes.ts:191`)** | **`assignment.deadline`** | ❌ **VIOLATION (V8-1)** |
+## V9-2 — token-lifecycle invariant holds (CONFIRMED)
+All 4 token insert/upsert sites use `contestAccessTokenExpiry(assignment)`;
+`assignment` loads include both `deadline` and `lateDeadline` at each site
+(access-codes 120-121, invite, recruiting-invitations 625-626). AGG8-1 fix at
+`access-codes.ts:199` verified.
 
-**V8-1 (MEDIUM, High, CONFIRMED):** the access-code redeem insert violates the
-stated invariant. Evidence: line 191 vs. the docstring + every other site.
-Internal contradiction: line 135 computes `lateDeadline ?? deadline` for the
-join gate, line 191 uses bare `deadline` for the token. Fix:
-`expiresAt: contestAccessTokenExpiry(assignment)`.
+## Test-gap note
+No existing unit test pins the listing order of the three CR9 routes. A red-first
+test should capture the `.orderBy(...)` arguments (or assert stable ordering
+across a simulated page seam with equal-timestamp fixtures) and assert the `id`
+tiebreak is present — mirrors the cycle-7 route tests. See test-engineer.md.
 
-## Verified-correct claims
-- The cycle-7 plan's claim "both assignment-edit entry points reach the sync" —
-  VERIFIED: the groups PATCH route calls `updateAssignmentWithProblems`. ✅
-- Doc claim (`docs/api.md`) anti-cheat POST eventType enum = 6 client types —
-  VERIFIED against `client-events.ts` CLIENT_EVENT_TYPES. ✅
-- Listing-order doc claim `(createdAt desc, id desc)` for anti-cheat GET —
-  VERIFIED against `anti-cheat/route.ts:295`. ✅
+## Deferred register
+AGG8-2 and P6-1 exit criteria NOT fired (no edit to either block this cycle).

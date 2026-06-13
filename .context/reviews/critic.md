@@ -1,32 +1,35 @@
-# Critic — RPF Cycle 8 (2026-06-13)
+# Critic — RPF Cycle 9 (2026-06-13)
 
-**HEAD:** c862ff72.
+**HEAD:** da6179f3. Baseline green (2663 unit PASS).
 
-## Theme: cycle-7 finished two of three token-lifecycle mutation points; the
-THIRD creation point was never enumerated.
-Cycle-6 fixed the validity rule and roster-removal revoke. Cycle-7 fixed the
-schedule-edit sync and the invite re-issue refresh. Both cycles framed the work
-as "propagate the canonical rule to every sibling." Yet the access-code
-**redemption** insert — arguably the single most common way a participant
-acquires a contest token — was never in the enumerated set. The cycle-7 aggregate
-lists "invite re-issue" and "schedule edit" as the two unmaintained points; it
-silently omitted "redeem." That omission is the cycle-8 finding (CR8-1/SEC8-1).
+## Theme
+**Finish the deterministic-listing-order sweep.** Cycle-7 (commit 4cf6dfe0)
+claimed "deterministic offset/cap listing order across 7 sibling routes" and
+cycle-8 deferred the heartbeat-gap scan (AGG8-2) as a *bounded, non-paged* scan.
+But the sweep's own class — **offset-paged listings ordered by a non-unique
+column** — still has three live offenders this cycle missed:
+1. `code-snapshots/[userId]/route.ts:54` (`asc(created_at)`) — anti-cheat
+   evidence timeline, highest-signal because snapshots cluster in time;
+2. `recruiting-invitations.ts:272` (`createdAt`) — recruiter candidate list;
+3. `accepted-solutions/route.ts:54-59` (3 sort modes, none ending in a unique
+   column) — public solution browser.
 
-This is a recurring failure mode of incremental hardening: each cycle fixes the
-sites it happened to grep for, and the grep that would have caught all three
-(`insert(contestAccessTokens)`) was never run until now. The structural
-remedy (A8-1: a single values-constructor) is what actually closes the class.
+These are not new feature surface and not a manufactured finding: they are the
+literal residue of an incomplete sweep, on routes that include an
+academic-integrity evidence view the owner cares about. The fix is one
+`id`-tiebreak append per route — mirrors the cycle-7 pattern exactly.
 
-## Severity honesty
-CR8-1 is MEDIUM not HIGH because the auto-enrollment row incidentally rescues
-*submission* access; only the token-keyed *catalog/platform-mode visibility*
-breaks. I am explicitly NOT downgrading it to LOW: it is an access-control
-predicate inconsistency on the recruiting/exam surface the owner cares about
-(candidates seeing the wrong availability), and it is trivially fixable. Not
-deferrable.
+## Skepticism check
+- Is CR9-1 a duplicate of the deferred AGG8-2? **No.** AGG8-2 is a *bounded
+  non-paged* `limit(5000)` scan whose deferral rationale (heartbeats 60 s apart,
+  time-based gap detection tolerant of a one-interval shift) is sound and
+  unchanged. CR9-1 is a *user-paged offset listing* where same-ms collisions are
+  likely and a dropped row is a missing evidence row. Different route, different
+  mechanism, different severity. AGG8-2 stays deferred; CR9-1 is scheduled.
+- Did I invent severity? No — MEDIUM, consistent with how cycle-7 rated the same
+  class for the 7 routes it did fix.
 
-## Credit where due
-The cycle-7 fixes are genuinely correct and well-tested (3 component tests for
-the dashboard, red-first sync/refresh tests, listing-order arity pins). No
-cosmetic churn, no over-engineering. The codebase is mature; cycle-8 finds one
-real thing, which is the expected yield at this stage.
+## Convergence honesty
+This is a genuine residual finding cluster, not busywork. Beyond it, the
+token-lifecycle theme is converged and no other 17-lens pass surfaced a new
+actionable defect this cycle.

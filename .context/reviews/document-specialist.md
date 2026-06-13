@@ -1,21 +1,23 @@
-# Document Specialist — RPF Cycle 8 (2026-06-13)
+# Document Specialist — RPF Cycle 9 (2026-06-13)
 
-**HEAD:** c862ff72.
+**HEAD:** da6179f3.
 
-## No NEW doc/code mismatch found this cycle.
-- `docs/api.md` anti-cheat POST eventType enum now lists the 6 client types with
-  the server-only note (cycle-7 G4) — matches `client-events.ts`. ✅
-- `docs/api.md` documents the anti-cheat GET order `(createdAt desc, id desc)` —
-  matches `anti-cheat/route.ts:295`. ✅
+## DOC9-1 — listing-order contract doc scope (LOW, Low)
+`listing-order-tiebreak.test.ts` header documents the invariant ("Every
+offset-paginated or row-capped listing must order by a UNIQUE second key")
+correctly, but its case list lagged the actual route set. After the CR9 fix the
+header remains accurate and the case list will match reality. No prose doc edit
+required beyond keeping the test's case list complete (handled in
+test-engineer.md). No doc/code mismatch introduced.
 
-## DOC8-1 (LOW) — Code comment is the only "spec" for the token-expiry invariant
-The rule "token expires at `lateDeadline ?? deadline`" lives only in the
-`contestAccessTokenExpiry` docstring (contest-access-tokens.ts:93-104) and the
-exam-integrity model doc. Because CR8-1 shows a creation site can silently
-diverge from a docstring-only invariant, recommend the exam-integrity / access
-docs explicitly state that **all** token creation paths (invite, access-code
-redeem) derive expiry from the effective close — so the next reviewer/author has
-an authoritative cross-check. Tie this note to the CR8-1 fix commit.
+## Token-lifecycle docs
+The access/exam-integrity comments at `access-codes.ts:184-191` and
+`contest-access-tokens.ts:93-104` accurately describe the effective-close expiry
+rule after AGG8-1. The optional DOC8-1 ("note that ALL token creation paths
+derive expiry from the effective close") was not added because the
+values-constructor it referenced was not built; the inline comments already make
+the invariant discoverable at each of the 4 sites. No doc gap.
 
-## Carried: CI-RESTORE (wire RESTORE_DATABASE_URL into CI postgres service) —
-no CI workflow edit this cycle; carried.
+## No other doc-code drift
+README / deploy docs / API enum docs (corrected in cycle-7 at 576949e1) remain
+consistent with code.

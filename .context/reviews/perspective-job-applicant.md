@@ -1,22 +1,19 @@
-# Perspective: Job Applicant (recruiting coding test) — RPF Cycle 8 (2026-06-13)
+# Perspective — Job Applicant (recruiting coding test) — RPF Cycle 9 (2026-06-13)
 
-**HEAD:** c862ff72. Seat: a candidate in a timed recruiting test, joining by code.
+**HEAD:** da6179f3. Seat: candidate in a recruiting coding test.
 
-## JA8-1 — A late/grace window may not apply to me if I joined by code (MEDIUM via CR8-1)
-**File:** `access-codes.ts:191`. If a recruiter gives a grace/late window and I
-entered via an access code, my token expires at the hard deadline, so the test
-could drop out of my view during the grace period I was told I had. For a
-candidate, "the assessment disappeared while the clock said I still had time" is
-a maximally trust-destroying, potentially disqualifying experience — and it would
-hit only the code-join cohort, which is unfair and invisible to the recruiter.
-The fix makes the access lifetime identical to invited candidates.
+## JA9-1 — accidental-disqualification risk from incomplete snapshot evidence (MEDIUM, via CR9-1)
+If a recruiter reviews my code-snapshot timeline to judge whether I cheated, the
+listing dropping or duplicating a snapshot at a page seam
+(`code-snapshots/[userId]/route.ts:54`) could make my organic problem-solving look
+like a paste-in (a missing intermediate snapshot) — an accidental-disqualification
+risk that lands on ME. Deterministic, complete evidence (the `id`-tiebreak fix)
+protects candidates from being misjudged on a rendering artifact. This is the
+candidate-trust reason the fix matters.
 
-## First-run / fairness experience (otherwise solid)
-- The access-code gate gives clear errors (invalid / closed / not-a-contest)
-  instead of silent failures (access-codes.ts:126-138). ✅
-- Concurrent/double redemption is handled gracefully (already-enrolled path), so
-  a nervous double-click won't error me out. ✅
-- Anti-cheat is opt-in per assignment and its evidence view is now stable.
-
-## Carried (owner-gated): JA-clarity (no pre-test language-availability preview).
-Carried — no candidate test-info page added this cycle.
+## First-run / environment / time-pressure
+- Token expiry now spans the configured late window (cycle-8), so I don't lose
+  access mid-test on a contest with a grace period — good.
+- JA-clarity (no pre-test language-availability preview) remains a carried
+  product item; exit criterion (owner decision on a candidate test-info page) not
+  fired. No new first-run defect surfaced.

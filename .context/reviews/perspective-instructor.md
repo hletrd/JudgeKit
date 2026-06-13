@@ -1,25 +1,25 @@
-# Perspective: Instructor (authoring/grading) — RPF Cycle 8 (2026-06-13)
+# Perspective — Instructor (authoring/grading/integrity) — RPF Cycle 9 (2026-06-13)
 
-**HEAD:** c862ff72. Seat: instructor running an exam with a late-submission window.
+**HEAD:** da6179f3. Seat: instructor authoring + grading + reviewing integrity.
 
-## IN8-1 — My late window doesn't apply uniformly to access-code joiners (MEDIUM via CR8-1)
-**File:** `access-codes.ts:191`.
-When I configure a late deadline, I expect it to apply to *everyone* in the
-contest. It doesn't: students who join via the access code get tokens that expire
-at the regular deadline, so their token-keyed access (contest catalog /
-platform-mode visibility) ends early, while invited students get the full late
-window. Two students, same contest, different access lifetimes — that's a
-grading-fairness and support-burden problem (I'll get "the contest vanished"
-tickets from exactly the access-code cohort). I'd want the platform to enforce my
-late window identically for both join paths. Fix is the canonical-expiry one-liner.
+## IN9-1 — code-snapshot evidence table can mislead at page boundaries (MEDIUM, via CR9-1)
+When I review a student's code-snapshot timeline to judge whether code was pasted
+in or developed organically, I page through the snapshots. Today that listing
+(`code-snapshots/[userId]/route.ts:54`) orders by timestamp only, so on a busy
+session two snapshots sharing a millisecond can swap, duplicate, or drop across
+pages — I might miss the very snapshot that shows a sudden full-solution paste, or
+see a duplicate and miscount. For a defensible academic-integrity decision I need
+the timeline to be deterministic and complete. The `id`-tiebreak fix gives me
+that. Highest-priority of the three for my workflow.
 
-## What works well for me
-- Schedule edits now re-sync token expiry in-transaction (extend/shorten both
-  handled) — so editing the deadline correctly re-grants/revokes token access.
-- Roster removal revokes contest tokens (removed students lose access cleanly).
-- Anti-cheat dashboard no longer drops evidence rows on poll/load-more — I can
-  trust what I'm reviewing.
-- Similarity evidence carries the language; flagged pairs sort by similarity.
+## IN9-2 — recruiting/candidate-roster paging (MEDIUM, via CR9-2)
+When I page the recruiting-invitation list (`recruiting-invitations.ts:272`),
+bulk-imported candidates created in the same instant can shuffle across pages —
+I could overlook a candidate or double-count. Same tiebreak fix.
 
-## Carried (owner-gated): TA3-1-followup/DES4-4 (extension audit events in the
-participant timeline), IN2-2 (per-student duration overrides/accommodations).
+## Otherwise
+Grouping/roster, grading, similarity reports, exporting results: no NEW defect.
+The schedule-edit token-expiry sync (cycle-7) + access-code expiry (cycle-8) mean
+extending/shortening a deadline now keeps every joiner's access consistent — a
+real authoring-side improvement. Extension-event timeline enrichment
+(TA3-1-followup) remains a carried product item awaiting your scheduling.

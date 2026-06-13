@@ -1,42 +1,35 @@
-# Perspective: Authorized Defensive Security Assessment — RPF Cycle 8 (2026-06-13)
+# Perspective — Security (authorized defensive assessment) — RPF Cycle 9 (2026-06-13)
+*(Owner-authorized hardening review of the owner's own platform.)*
 
-**HEAD:** c862ff72. Owner-authorized hardening review of JudgeKit's exam/contest
-integrity and judging pipeline.
+**HEAD:** da6179f3.
 
-## 1. Authorization boundaries between join paths — ONE inconsistency (MEDIUM)
-The contest access-token expiry — a security-relevant access predicate — is
-canonical at the invite and schedule-edit paths but NOT at the **access-code
-redemption** path (`access-codes.ts:191`, bare `deadline`). The defect is
-*restrictive* (expiry set earlier than the rule), so it cannot over-grant access
-past the close — there is no privilege-escalation here. It does create
-inconsistent access lifetimes across join paths and prematurely de-provisions
-token-keyed visibility during a configured late window. **Fix:** canonical
-`contestAccessTokenExpiry(assignment)`. Structural hardening (A8-1): funnel all
-token inserts through one values-constructor so a future grant site cannot
-diverge.
+## §1 Academic-dishonesty / integrity-evidence completeness (MEDIUM, via CR9-1)
+The code-snapshot timeline is a primary collusion/paste-detection evidence
+surface. Its paged read (`code-snapshots/[userId]/route.ts:54`) orders by
+`created_at` only with offset paging — same-millisecond snapshots can drop or
+duplicate at page seams, so the integrity evidence an instructor/recruiter acts on
+may be incomplete. **Hardening:** add the `id` tiebreak so the evidence listing is
+deterministic and complete; a contested misconduct finding must rest on a stable
+record. Complements (does not reopen) the deferred AGG8-2 heartbeat-gap-scan order.
 
-## 2. Hidden test cases & other users' submissions — confidentiality intact
-- Submission listing/access goes through the enrollment-or-valid-token gate;
-  hidden test cases are server-side only. No new leak path introduced. ✅
+## §2 Authorization boundaries between roles/groups
+Re-audited the snapshot, recruiting-invitation, and accepted-solutions routes:
+capability gates (`contests.view_analytics`, `canViewAssignmentSubmissions`) and
+the `assignmentId IS NULL` + anonymity filters on accepted-solutions are intact.
+No cross-role / cross-group leak introduced this cycle.
 
-## 3. Sandbox isolation for judged code — unchanged, healthy
-- Optional gVisor (runsc) runtime available (b3497c75); compile time/memory
-  limits configurable to bound compiler-bomb DoS (86999c13). No regressions this
-  cycle (judge-worker-rs not edited). ✅
+## §3 Confidentiality of hidden tests & other users' submissions
+accepted-solutions still excludes assignment-tied submissions and nulls the
+author id for anonymous shares — no peer-code or hidden-test leak. No change.
 
-## 4. Scoreboard / grading integrity — unchanged, healthy
-- IOI live-rank uses per-problem best with override overlay (f0d79935/15b37782);
-  ranking aggregates are GROUP-BY and unaffected by the listing-order tiebreak
-  work. Leaderboard freeze preserved across edits. ✅
+## §4 Token/access lifecycle
+The effective-close expiry invariant holds at all 4 token sites after AGG8-1 — no
+over-grant past close, no dishonesty window. Converged.
 
-## 5. Academic-dishonesty detection — intact
-- IP-overlap (duplicate-account/shared-seat), similarity (Rust default + TS
-  fallback), anti-cheat telemetry with server-only event classes rejected from
-  client POST. Dashboard evidence no longer drops rows (cycle-7). ✅
+## §5 Sandbox isolation / scoreboard / peak-load resilience
+No NEW weakness vs the cycle-8 assessment. Judge claim/heartbeat reaping, worker
+secret-token auth, and rate limiting unchanged and sound.
 
-## 6. Availability under peak contest load — one early-de-provision risk (the
-CR8-1 expiry) aside, no new bottleneck. Listing-order change is index-friendly;
-poll/loadMore merges are O(page). ✅
-
-## Carried deferral (security/evidence policy): AGG5-8 (similarity rerun resets
-first-flagged timestamps) — owner evidence-retention decision; carried.
+## Not deferrable
+§1 is correctness on an integrity-evidence surface; repo rules permit no deferral
+of correctness/security findings.

@@ -1,33 +1,34 @@
-# Test Engineer — RPF Cycle 8 (2026-06-13)
+# Test Engineer — RPF Cycle 9 (2026-06-13)
 
-**HEAD:** c862ff72. Baseline: unit 340 files / 2661 PASS.
+**HEAD:** da6179f3. Baseline: 340 files / 2663 tests PASS.
 
-## TE8-1 — Coverage gap let CR8-1 slip: access-code redeem never tested with a lateDeadline (MEDIUM, High)
-**File:** `tests/unit/assignments/access-codes.test.ts` — every redeem fixture
-sets `lateDeadline: null` (lines 154, 213), so the `lateDeadline ?? deadline`
-divergence is structurally untestable in the current suite. That is exactly why
-the bare-`deadline` token expiry (access-codes.ts:191) survived cycles 6–7.
+## TE9-1 — the cycle-7 listing-order contract test is incomplete (test gap, High)
+**File:** `tests/unit/api/listing-order-tiebreak.test.ts`. The AGG7-2 source-grep
+contract enumerates only 5 routes (audit-logs, login-logs, users, files,
+problems). It **omits three offset-paged listings that lack the unique tiebreak**
+(CR9-1/2/3): `code-snapshots/[userId]/route.ts`, `recruiting-invitations.ts`,
+`accepted-solutions/route.ts`. Because the test is an explicit allow-list, those
+routes were never guarded — the sweep's own gate let them slip.
 
-**Red-first test to add (drives the CR8-1 fix):**
-- redeem with `deadline=T`, `lateDeadline=T+1h` → assert the inserted
-  `contestAccessTokens` row has `expiresAt` equal to `lateDeadline` (T+1h), NOT
-  `deadline`. With the current code this asserts T and FAILS (red); after the
-  fix it asserts T+1h and passes.
-- redeem with `lateDeadline=null`, `deadline=T` → `expiresAt === T` (guards the
-  `?? deadline` branch).
-- (optional) redeem with both null → `expiresAt === null`.
+**Red-first plan:** extend `listing-order-tiebreak.test.ts` with three tailored
+assertions (the existing harness asserts a `desc(createdAt), desc(id)` string;
+the new routes use different orders, so assert the *presence of the id tiebreak*
+and the *absence of the single-key order* per route):
+- code-snapshots: contains `asc(codeSnapshots.createdAt), asc(codeSnapshots.id)`;
+  must NOT match `orderBy(asc(codeSnapshots.createdAt))` alone.
+- recruiting-invitations: contains `recruitingInvitations.createdAt,
+  recruitingInvitations.id`; must NOT keep `orderBy(recruitingInvitations.createdAt)`
+  as the sole clause.
+- accepted-solutions: every `orderByClause` branch ends with `desc(submissions.id)`;
+  the `newest` branch must NOT be `[desc(submissions.submittedAt)]` alone.
 
-Mirror the existing redeem test harness (`access-codes.test.ts` already mocks
-the tx insert and can capture the `.values(...)` argument).
+All three assertions are RED on current source and GREEN after the one-line
+orderBy fix per route. This keeps the contract test the single source of truth
+for the listing-order invariant and prevents a 4th omission.
 
-## Confirmations (good coverage added in cycle-7)
-- `contest-access-tokens.test.ts` covers the sync (extend/shorten/clear) and the
-  invite refresh. ✅ — but note it tests the *helper*, not the *redeem caller*,
-  which is the untested seam.
-- `anti-cheat-dashboard.test.tsx` covers poll-merge seam loss, loadMore dedupe,
-  stale-loadMore discard. ✅
-- `listing-order-tiebreak.test.ts` + per-route arity pins cover G2. ✅
-
-## Carried test debt
-DEFER-ENV-GATES (login-gated E2E + browser a11y audit) — no provisioned staging
-server/browser this cycle; carried.
+## Existing coverage note
+`code-snapshots.route.test.ts`, `contest-code-snapshots-get.route.test.ts`,
+`problem-accepted-solutions.route.test.ts`, and the recruiting-invitation suite
+exist but none asserts page-seam ordering — the contract test is the right place
+(behavioural per-route seam tests would need full db-chain mocks per the existing
+source-grep-inventory rationale in the test file header).
