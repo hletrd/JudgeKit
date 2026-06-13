@@ -102,3 +102,31 @@ export function contestAccessTokenExpiry(assignment: {
 }): Date | null {
   return assignment.lateDeadline ?? assignment.deadline ?? null;
 }
+
+/**
+ * Re-derive every existing token's expiry for an assignment to its CURRENT
+ * effective close (RPF cycle-7 AGG7-3 / SEC7-1). The token-expiry invariant
+ * ("a token expires at `lateDeadline ?? deadline`") was previously established
+ * only at creation; a later schedule edit left tokens stale:
+ *  - EXTEND  → tokens expired early, denying token-only participants during
+ *    the bonus window;
+ *  - SHORTEN → tokens outlived the new close, re-granting ingest/catalog
+ *    visibility past the close the instructor set.
+ * Called inside the schedule-edit transaction (mirrors the in-tx
+ * `revokeContestAccessTokensForGroup` lifecycle ownership). Also retro-repairs
+ * pre-cycle-6 `deadline`-stamped rows on the next edit (no migration needed).
+ * Returns the number of token rows updated.
+ */
+export async function syncContestAccessTokenExpiry(
+  tx: TransactionClient,
+  assignmentId: string,
+  assignment: { deadline: Date | null; lateDeadline?: Date | null }
+): Promise<number> {
+  const expiresAt = contestAccessTokenExpiry(assignment);
+  const updated = await tx
+    .update(contestAccessTokens)
+    .set({ expiresAt })
+    .where(eq(contestAccessTokens.assignmentId, assignmentId))
+    .returning({ id: contestAccessTokens.id });
+  return updated.length;
+}

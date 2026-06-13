@@ -15,6 +15,7 @@ import {
 } from "@/lib/db/schema";
 import { syncGroupAccessRows } from "@/lib/problem-sets/management";
 import { resolveCapabilities } from "@/lib/capabilities/cache";
+import { syncContestAccessTokenExpiry } from "@/lib/assignments/contest-access-tokens";
 import type { AssignmentMutationInput } from "@/lib/validators/assignments";
 
 type AssignmentManagerProblem = {
@@ -311,6 +312,15 @@ export async function updateAssignmentWithProblems(
     await tx.delete(assignmentProblems).where(eq(assignmentProblems.assignmentId, assignmentId));
     await tx.insert(assignmentProblems)
       .values(mapAssignmentProblems(assignmentId, input.problems));
+
+    // RPF cycle-7 AGG7-3: re-derive existing contest access-token expiries to
+    // the NEW effective close inside the same transaction, so a deadline edit
+    // does not leave token-only participants locked out (extend) or grant them
+    // access past the close (shorten). Mirrors the in-tx revocation ownership.
+    await syncContestAccessTokenExpiry(tx, assignmentId, {
+      deadline: input.deadline ? new Date(input.deadline) : null,
+      lateDeadline: input.lateDeadline ? new Date(input.lateDeadline) : null,
+    });
 
     await syncGroupAccessRows(assignment.groupId);
   });

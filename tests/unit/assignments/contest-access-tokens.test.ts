@@ -20,7 +20,9 @@ import {
   CONTEST_ACCESS_TOKEN_VALIDITY_SQL,
   contestAccessTokenExpiry,
   findValidContestAccessToken,
+  syncContestAccessTokenExpiry,
 } from "@/lib/assignments/contest-access-tokens";
+import type { TransactionClient } from "@/lib/db";
 
 const NOW_MS = new Date("2026-04-20T12:00:00Z").valueOf();
 
@@ -84,6 +86,49 @@ describe("contestAccessTokenExpiry", () => {
   });
 });
 
+// RPF cycle-7 AGG7-3 / SEC7-1: the expiry invariant must survive schedule edits.
+describe("syncContestAccessTokenExpiry", () => {
+  function makeTx(returningRows: Array<{ id: string }>) {
+    const setMock = vi.fn();
+    const whereMock = vi.fn();
+    const returningMock = vi.fn(async () => returningRows);
+    const updateMock = vi.fn(() => ({ set: setMock }));
+    setMock.mockReturnValue({ where: whereMock });
+    whereMock.mockReturnValue({ returning: returningMock });
+    const tx = { update: updateMock } as unknown as TransactionClient;
+    return { tx, updateMock, setMock, returningMock };
+  }
+
+  it("EXTEND: sets expiry to the new (later) effective close", async () => {
+    const { tx, setMock, returningMock } = makeTx([{ id: "t-1" }, { id: "t-2" }]);
+    const lateDeadline = new Date("2026-05-10T00:00:00Z");
+    const count = await syncContestAccessTokenExpiry(tx, "a-1", {
+      deadline: new Date("2026-05-05T00:00:00Z"),
+      lateDeadline,
+    });
+    expect(setMock).toHaveBeenCalledWith({ expiresAt: lateDeadline });
+    expect(returningMock).toHaveBeenCalled();
+    expect(count).toBe(2);
+  });
+
+  it("SHORTEN: sets expiry to the new (earlier) deadline when no late window", async () => {
+    const { tx, setMock } = makeTx([{ id: "t-1" }]);
+    const deadline = new Date("2026-05-02T00:00:00Z");
+    await syncContestAccessTokenExpiry(tx, "a-1", { deadline, lateDeadline: null });
+    expect(setMock).toHaveBeenCalledWith({ expiresAt: deadline });
+  });
+
+  it("CLEAR DEADLINE: sets expiry to null (open-ended)", async () => {
+    const { tx, setMock } = makeTx([]);
+    const count = await syncContestAccessTokenExpiry(tx, "a-1", {
+      deadline: null,
+      lateDeadline: null,
+    });
+    expect(setMock).toHaveBeenCalledWith({ expiresAt: null });
+    expect(count).toBe(0);
+  });
+});
+
 // Structural pins: the shared semantic must actually be consumed everywhere —
 // a re-inlined copy is exactly the drift AGG6-1 closed.
 describe("contest access-token validity — single-source consumption pins", () => {
@@ -130,5 +175,26 @@ describe("contest access-token validity — single-source consumption pins", () 
         "expiresAt: contestAccessTokenExpiry(assignment)"
       );
     }
+  });
+
+  // RPF cycle-7 AGG7-3 / SEC7-1: the expiry invariant is maintained at every
+  // mutation point, not just at creation.
+  it("the schedule-edit path syncs token expiry inside the transaction", () => {
+    const source = read("src/lib/assignments/management.ts");
+    expect(source, "management.ts must import the sync helper").toContain(
+      "syncContestAccessTokenExpiry"
+    );
+    // Called with the transaction client `tx`, not the top-level db.
+    expect(source, "the sync must run inside the update transaction").toContain(
+      "syncContestAccessTokenExpiry(tx,"
+    );
+  });
+
+  it("the invite route refreshes a stale token expiry on re-invite", () => {
+    const source = read("src/app/api/v1/contests/[assignmentId]/invite/route.ts");
+    // The token upsert must refresh expiresAt on conflict (was onConflictDoNothing).
+    expect(source, "invite token insert must onConflictDoUpdate").toMatch(
+      /onConflictDoUpdate\(\{[\s\S]*?set: \{ expiresAt: contestAccessTokenExpiry\(assignment\) \}/
+    );
   });
 });

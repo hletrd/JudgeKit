@@ -114,8 +114,14 @@ export const POST = createApiHandler({
           // late-submission window or invited users lose it.
           expiresAt: contestAccessTokenExpiry(assignment),
         })
-        .onConflictDoNothing({
+        // RPF cycle-7 AGG7-3 / CR7-3: refresh a stale expiry on re-invite.
+        // The previous onConflictDoNothing left a pre-existing token row's
+        // expiry untouched, so re-inviting after a schedule edit kept the old
+        // (or pre-cycle-6 deadline-based) expiry. Refresh only expiresAt;
+        // redeemedAt/ipAddress reflect the ORIGINAL grant and stay untouched.
+        .onConflictDoUpdate({
           target: [contestAccessTokens.assignmentId, contestAccessTokens.userId],
+          set: { expiresAt: contestAccessTokenExpiry(assignment) },
         });
 
       await tx.insert(enrollments)
