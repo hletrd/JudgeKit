@@ -104,6 +104,13 @@ export function AntiCheatDashboard({ assignmentId }: AntiCheatDashboardProps) {
   const [ipOverlap, setIpOverlap] = useState<IpOverlapReport | null>(null);
   const PAGE_SIZE = 100;
   const abortControllerRef = useRef<AbortController | null>(null);
+  // Monotonic fetch sequence (RPF cycle-7 AGG7-1): a poll refresh rebuilds the
+  // list (id-union of the fresh first page with the already-loaded tail), so a
+  // loadMore already in flight when the refresh happened would append rows
+  // positioned against the OLD list — duplicating evidence rows. loadMore
+  // captures the sequence before awaiting and discards its response if a
+  // refresh bumped it. Mirrors the participant timeline (cycle-6 AGG6-6).
+  const fetchSeqRef = useRef(0);
 
   const fetchEvents = useCallback(async () => {
     // Abort any in-flight request before starting a new one
@@ -112,6 +119,7 @@ export function AntiCheatDashboard({ assignmentId }: AntiCheatDashboardProps) {
     }
     const controller = new AbortController();
     abortControllerRef.current = controller;
+    fetchSeqRef.current += 1;
 
     try {
       const { ok, data: json } = await apiFetchJson<{ data: { events: AntiCheatEvent[]; total: number } }>(
@@ -123,28 +131,28 @@ export function AntiCheatDashboard({ assignmentId }: AntiCheatDashboardProps) {
         const firstPage = json.data.events as AntiCheatEvent[];
         setTotal(json.data.total);
         setEvents((prev) => {
-          // If the user has already loaded beyond the first page (via loadMore),
-          // only refresh the first page slice and keep the rest intact.
-          // This prevents polling from discarding loaded-beyond-first-page data.
-
-          // Skip re-render if first-page data is identical (same IDs in same order)
-          const firstPageIds = firstPage.map((e) => e.id);
-          const prevFirstPageIds = prev.slice(0, PAGE_SIZE).map((e) => e.id);
-          const firstPageUnchanged = firstPageIds.length === prevFirstPageIds.length
-            && firstPageIds.every((id, i) => id === prevFirstPageIds[i]);
-
-          if (prev.length > PAGE_SIZE) {
-            return firstPageUnchanged ? prev : [...firstPage, ...prev.slice(PAGE_SIZE)];
-          }
-          return firstPageUnchanged ? prev : firstPage;
+          // ID-UNION MERGE (RPF cycle-7 AGG7-1): the previous shape kept
+          // `firstPage ++ prev.slice(PAGE_SIZE)`, which DROPPED already-loaded
+          // rows when N new events arrived (the prev[PAGE_SIZE-N..PAGE_SIZE-1]
+          // rows fell out of both slices — evidence silently vanished from the
+          // proctor's view). Rebuild as the fresh first page followed by every
+          // previously-loaded row not already in it: nothing loaded is lost,
+          // newest rows refresh in place, order stays newest-first.
+          const freshIds = new Set(firstPage.map((e) => e.id));
+          const tail = prev.filter((e) => !freshIds.has(e.id));
+          const merged = [...firstPage, ...tail];
+          // Skip the re-render if the merged list is identical (same ids in
+          // same order) to avoid churn on an unchanged poll.
+          const unchanged = merged.length === prev.length
+            && merged.every((e, i) => e.id === prev[i]?.id);
+          return unchanged ? prev : merged;
         });
         setOffset((prev) => {
-          // Only reset offset to first-page length if the user hasn't loaded more.
-          // Otherwise preserve the offset so loadMore doesn't re-fetch duplicates.
-          if (prev <= PAGE_SIZE) {
-            return firstPage.length;
-          }
-          return prev;
+          // Offset = the number of rows now held, so the next loadMore asks
+          // for the page after everything currently loaded. Derive it from the
+          // merged length: first page plus the retained tail.
+          const merged = prev <= PAGE_SIZE ? firstPage.length : prev;
+          return merged < firstPage.length ? firstPage.length : merged;
         });
       } else {
         setError(true);
@@ -160,14 +168,23 @@ export function AntiCheatDashboard({ assignmentId }: AntiCheatDashboardProps) {
 
   const loadMore = useCallback(async () => {
     setLoadingMore(true);
+    const seqAtStart = fetchSeqRef.current;
     try {
       const { ok, data: json } = await apiFetchJson<{ data: { events: AntiCheatEvent[]; total: number } }>(
         `/api/v1/contests/${assignmentId}/anti-cheat?limit=${PAGE_SIZE}&offset=${offset}`,
         undefined,
         { data: { events: [], total: 0 } }
       );
+      // A poll refresh rebuilt the list while this page was in flight — its
+      // offset no longer means anything against the fresh list (AGG7-1).
+      if (seqAtStart !== fetchSeqRef.current) return;
       if (ok) {
-        setEvents((prev) => [...prev, ...json.data.events]);
+        // Defensive id-dedupe: rows can shift pages server-side between
+        // requests as new events arrive (AGG7-1).
+        setEvents((prev) => {
+          const seen = new Set(prev.map((e) => e.id));
+          return [...prev, ...json.data.events.filter((e) => !seen.has(e.id))];
+        });
         setTotal(json.data.total);
         setOffset((prev) => prev + json.data.events.length);
       }

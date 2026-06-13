@@ -28,12 +28,18 @@ vi.mock("@/contexts/timezone-context", () => ({
   useSystemTimezone: () => "UTC",
 }));
 
+const { pollTickRef } = vi.hoisted(() => ({
+  pollTickRef: { current: null as null | (() => void) },
+}));
+
 vi.mock("@/hooks/use-visibility-polling", async () => {
   const { useEffect, useRef } = await import("react");
   return {
-    // Test double: fire the polling callback exactly once on mount (the real
-    // hook does an immediate tick + interval; the interval is irrelevant here).
+    // Test double: fire the polling callback once on mount and expose it so
+    // tests can simulate later poll ticks (AGG7-1 interleaving). The real
+    // hook does an immediate tick + interval; the interval is irrelevant here.
     useVisibilityPolling: (callback: () => void) => {
+      pollTickRef.current = callback;
       const firedRef = useRef(false);
       useEffect(() => {
         if (!firedRef.current) {
@@ -153,5 +159,112 @@ describe("AntiCheatDashboard", () => {
     fireEvent.click(typeChip);
     expect(typeChip).toHaveAttribute("aria-pressed", "true");
     expect(allChip).toHaveAttribute("aria-pressed", "false");
+  });
+
+  // RPF cycle-7 AGG7-1 — dashboard paging fidelity. Helpers shared by the
+  // three interleave tests below. The row does not render the raw id, so each
+  // event carries a DISTINCT username (which DOES render) to identify it.
+  const evt = (id: string, createdAt = "2026-06-13T00:00:00.000Z") => ({
+    id,
+    userId: id,
+    userName: id,
+    username: id,
+    eventType: "tab_switch",
+    details: null,
+    ipAddress: null,
+    userAgent: null,
+    createdAt,
+  });
+
+  function mountAndLoadMoreResponders(opts: {
+    firstPage: () => unknown[];
+    firstPageTotal: () => number;
+    onLoadMore: () => Promise<{ ok: boolean; data: { data: { events: unknown[]; total: number } } }>;
+  }) {
+    apiFetchJsonMock.mockImplementation(async (input) => {
+      const url = String(input);
+      if (url.includes("report=ipOverlap")) {
+        return { ok: true, data: { data: { sharedIps: [], multiIpUsers: [] } } };
+      }
+      // loadMore uses a non-zero offset; the mount/poll page uses offset=0.
+      if (!url.includes("offset=0")) {
+        return opts.onLoadMore();
+      }
+      return { ok: true, data: { data: { events: opts.firstPage(), total: opts.firstPageTotal() } } };
+    });
+  }
+
+  it("poll refresh after loadMore keeps every already-loaded row (no seam loss)", async () => {
+    // First page = evt-2 (newest); loadMore brings evt-1 (older). After a poll
+    // tick adds evt-3 (newest) to the first page, evt-1 must NOT disappear.
+    let firstPage: unknown[] = [evt("evt-2")];
+    mountAndLoadMoreResponders({
+      firstPage: () => firstPage,
+      firstPageTotal: () => 2,
+      onLoadMore: async () => ({ ok: true, data: { data: { events: [evt("evt-1")], total: 2 } } }),
+    });
+
+    const { fireEvent, act } = await import("@testing-library/react");
+    render(<AntiCheatDashboard assignmentId="assignment-1" />);
+
+    const loadMoreButton = await screen.findByRole("button", { name: "contests.antiCheat.loadMore" });
+    await act(async () => { fireEvent.click(loadMoreButton); await Promise.resolve(); });
+
+    // evt-1 (older) is now loaded. A poll tick adds a newer evt-3.
+    firstPage = [evt("evt-3")];
+    await act(async () => { pollTickRef.current?.(); await Promise.resolve(); });
+
+    // The previously-loaded older row must survive the refresh.
+    expect(screen.getByText("evt-1")).toBeInTheDocument();
+    expect(screen.getByText("evt-3")).toBeInTheDocument();
+  });
+
+  it("loadMore does not duplicate a row already present after a poll refresh", async () => {
+    // First page = evt-2; loadMore page returns evt-2 again (server list
+    // shifted) — the id-dedupe must drop the duplicate.
+    mountAndLoadMoreResponders({
+      firstPage: () => [evt("evt-2")],
+      firstPageTotal: () => 2,
+      onLoadMore: async () => ({ ok: true, data: { data: { events: [evt("evt-2"), evt("evt-1")], total: 2 } } }),
+    });
+
+    const { fireEvent, act } = await import("@testing-library/react");
+    render(<AntiCheatDashboard assignmentId="assignment-1" />);
+
+    const loadMoreButton = await screen.findByRole("button", { name: "contests.antiCheat.loadMore" });
+    await act(async () => { fireEvent.click(loadMoreButton); await Promise.resolve(); });
+
+    // evt-2 must appear exactly once even though loadMore re-returned it.
+    expect(screen.getAllByText("evt-2")).toHaveLength(1);
+    expect(screen.getByText("evt-1")).toBeInTheDocument();
+  });
+
+  it("discards a stale loadMore response that resolves after a poll refresh", async () => {
+    let resolveLoadMore:
+      | ((value: { ok: boolean; data: { data: { events: unknown[]; total: number } } }) => void)
+      | undefined;
+    mountAndLoadMoreResponders({
+      firstPage: () => [evt("evt-1")],
+      firstPageTotal: () => 2,
+      onLoadMore: () => new Promise((resolve) => { resolveLoadMore = resolve; }),
+    });
+
+    const { fireEvent, act } = await import("@testing-library/react");
+    render(<AntiCheatDashboard assignmentId="assignment-1" />);
+
+    const loadMoreButton = await screen.findByRole("button", { name: "contests.antiCheat.loadMore" });
+    fireEvent.click(loadMoreButton); // in-flight, held
+
+    // Poll refresh bumps the fetch sequence while the loadMore page is in flight.
+    await act(async () => { pollTickRef.current?.(); await Promise.resolve(); });
+
+    // The stale page resolves — it must be DISCARDED, not appended.
+    await act(async () => {
+      resolveLoadMore?.({ ok: true, data: { data: { events: [evt("evt-2")], total: 2 } } });
+      await Promise.resolve();
+    });
+
+    expect(screen.queryByText("evt-2")).not.toBeInTheDocument();
+    expect(screen.getByText("evt-1")).toBeInTheDocument();
   });
 });
