@@ -812,10 +812,15 @@ Log an anti-cheat event. Rate limit: `anti-cheat:log`.
 **Request Body:**
 ```json
 {
-  "eventType": "tab_switch|copy|paste|blur|contextmenu|ip_change|code_similarity|heartbeat",
+  "eventType": "tab_switch|copy|paste|blur|contextmenu|heartbeat",
   "details": "string?"
 }
 ```
+
+Only the six CLIENT event types above are accepted; the request is rejected
+otherwise. `ip_change`, `code_similarity`, and `submission_stale_heartbeat`
+are SERVER-generated event classes (inserted by the platform, not contestants)
+and are not valid in this POST body.
 
 Heartbeat events throttled to once per 60 seconds. Contest must be active.
 
