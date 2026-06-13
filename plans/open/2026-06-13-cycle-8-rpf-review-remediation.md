@@ -112,4 +112,13 @@ DEPLOY_CMD (per-cycle worv + algo, detached + polled in-turn).
 unit 340 files / 2663 tests PASS (2 new) · production build OK.
 **GATE_FIXES this cycle:** 0 pre-existing gate errors (baseline clean); 0
 suppressions.
-**Deploy record:** (filled after DEPLOY_CMD)
+**Deploy record:** per-cycle-success at 53f16e77. Both worv (test.worv.ai) and
+algo (algo.xylolabs.com) reported "Deployment complete!"; DEPLOY_EXIT=0; both
+verified HTTP 200 + HTTPS 200 by the deploy script AND independently
+(`curl` → worv 200, algo 200). The post-deploy Playwright smoke shows
+142 passed / 6 failed / 18 skipped IDENTICALLY on both targets; all 6 failures
+are at the "Step 1: Login as admin" stage (`loginAsAdmin` →
+`page.waitForURL` timeout) — the standing DEFER-ENV-GATES login-gated-E2E
+condition (no seeded admin / smoke creds in this environment), unrelated to the
+G1 token-expiry value change (which has no route/UI surface and is covered by
+green unit tests). auraedu NOT deployed this cycle (out-of-band per orchestrator).
