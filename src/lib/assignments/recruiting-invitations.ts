@@ -269,7 +269,11 @@ export async function getRecruitingInvitations(
     })
     .from(recruitingInvitations)
     .where(and(...conditions))
-    .orderBy(recruitingInvitations.createdAt)
+    // Unique `id` tiebreak after the non-unique `created_at`: bulk CSV invite
+    // import creates many same-instant rows, so this offset-paged list (limit
+    // ≤500) would otherwise drop/dup an invitation at a page seam (cycle-9
+    // AGG9-2).
+    .orderBy(recruitingInvitations.createdAt, recruitingInvitations.id)
     .limit(limit)
     .offset(offset);
 }
