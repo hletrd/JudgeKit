@@ -51,12 +51,16 @@ export const GET = createApiHandler({
       .where(whereClause);
     const total = Number(countRow?.total ?? 0);
 
+    // Every branch ends in the unique `id` so this offset-paged public listing
+    // is deterministic — equal sort keys (same code length, same exec time, or
+    // same submittedAt) would otherwise reorder across pages and drop/dup a
+    // solution at a page seam (RPF cycle-9 AGG9-3).
     const orderByClause =
       sort === "shortest"
-        ? [asc(sql<number>`octet_length(${submissions.sourceCode})`), desc(submissions.submittedAt)]
+        ? [asc(sql<number>`octet_length(${submissions.sourceCode})`), desc(submissions.submittedAt), desc(submissions.id)]
         : sort === "fastest"
-          ? [asc(sql<number>`coalesce(${submissions.executionTimeMs}, 2147483647)`), desc(submissions.submittedAt)]
-          : [desc(submissions.submittedAt)];
+          ? [asc(sql<number>`coalesce(${submissions.executionTimeMs}, 2147483647)`), desc(submissions.submittedAt), desc(submissions.id)]
+          : [desc(submissions.submittedAt), desc(submissions.id)];
 
     const solutions = await db
       .select({
