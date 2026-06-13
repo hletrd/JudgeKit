@@ -1,24 +1,37 @@
-# Tracer — RPF Cycle 6 (2026-06-12)
+# Tracer — RPF Cycle 7 (2026-06-13)
 
-**HEAD reviewed:** 22e1510f. Causal traces of three suspicious flows, with competing hypotheses resolved by code evidence.
+**HEAD reviewed:** 0472b007. Lens executed directly by the cycle agent (fallback per cycles 1–6).
+Causal traces of the cycle's suspicious flows with competing hypotheses.
 
-## Trace 1 — "Removed student still submitted to the contest"
-**Path:** staff DELETE `/groups/[id]/members/[userId]` → tx deletes `enrollments` only → student POSTs `/api/v1/submissions` with assignmentId → `validateAssignmentSubmission` finds no enrollment (`submissions.ts:322`) → token fallback `:324-330` finds the invite-era `contest_access_tokens` row (no `expires_at` filter, and no deletion ever happens) → access granted → submission accepted.
-**Hypotheses:** (a) token cleanup happens elsewhere (cascade?) — REFUTED: FK cascades only on assignment/user deletion (`schema.pg.ts:1071-1076`); zero `delete(contestAccessTokens)` call sites; (b) expiry saves us — REFUTED for `expiresAt` NULL-or-future and for the no-filter gates regardless.
-**Verdict:** real flow; CONFIRMED (= SEC6-1). The same trace through `getEnrolledContestDetail` shows the removed student also still loads the contest detail page; only the contest LIST and the platform-mode gate disagree (expiry-checked) — i.e., the user sees the contest vanish from their list yet deep links and submits still work. Maximally confusing for support.
+## Trace 1 — "Evidence row disappears from the proctor dashboard mid-exam"
+**Observed (constructed) symptom:** an instructor watching the live anti-cheat
+dashboard sees a copy/paste event, loads more, and on the next 30 s refresh
+that event is gone — but it is still in the DB.
+- H1 (server deleted it): rejected — anti-cheat events are append-only; no DELETE path for client events.
+- H2 (filter changed): rejected — symptom reproduces with no filter change.
+- **H3 (client merge seam loss): CONFIRMED.** `anti-cheat-dashboard.tsx:136-138` keeps `firstPage ++ prev.slice(PAGE_SIZE)`; when N new events push the old first-page tail below index PAGE_SIZE, the `PAGE_SIZE-N..PAGE_SIZE-1` rows fall out of both slices. Causal chain ends at the merge logic. → AGG7-1 / CR7-2 / D7-1.
 
-## Trace 2 — "Copy event missing from a candidate's timeline despite reviewer watching them copy"
-**Path A (confirmed loss):** copy → `handleCopy` → `reportEvent` → direct `sendEvent` (`anti-cheat-monitor.tsx:209`) → tab closed before response → event in neither queue nor slot → lost (D6-1/AGG6-2).
-**Path B (throttle):** second copy within 1 s of the first → `MIN_INTERVAL_MS` dedup `:199` — by design.
-**Path C (server 4xx):** contest ended/origin mismatch → "permanent" → intentionally dropped (AGG3-5) — by design.
-Only Path A is unintended; queue-first transmission closes it.
+## Trace 2 — "Same evidence row appears twice (React key warning in console)"
+- H1 (server returned a dup): unlikely — the query is a single ordered select.
+- **H2 (loadMore appends a row already in state): CONFIRMED.** `anti-cheat-dashboard.tsx:170` appends with no id-dedupe; after a poll merge shifts the server list under a preserved `offset`, the next page overlaps rendered rows. The timeline guards this (cycle-6); the dashboard does not. → AGG7-1 / D7-2.
 
-## Trace 3 — "Participant shows a heartbeat-coverage hole but swears the tab was open"
-**Hypotheses:** (a) tab hidden ≥ scheduled tick — heartbeat skipped while hidden (`:252`) — TRUE by design (absence signal); (b) LRU set-before-insert swallowed a heartbeat after a transient insert failure (`anti-cheat/route.ts:139-158`) — POSSIBLE, 60 s hole per incident (D6-3); (c) shared-coordination path on multi-instance — uses DB-backed dedup, not implicated; (d) clock skew — refuted, all timestamps are DB-time end-to-end since cycle-3/5.
-**Verdict:** (b) is the only unintended contributor; two-line fix.
+## Trace 3 — "Recruiting candidate locked out after the instructor extended the contest"
+**Symptom:** instructor pushes the deadline back to give more time; a
+token-only candidate is denied at the ingest/catalog gate during the new
+window.
+- H1 (schedule gate denies): rejected — the schedule check uses the NEW deadline (NOW() vs assignment.deadline), which is open.
+- **H2 (token validity denies on stale expiry): CONFIRMED as the mechanism.** The token's `expires_at` still holds the OLD effective close; `CONTEST_ACCESS_TOKEN_VALIDITY_SQL` (`cat.expires_at > NOW()`) is now false, so the token branch fails. Today the `enrollments` branch rescues access (both creation sites write enrollment), so the lockout is latent, not live — but for pre-cycle-6 `deadline`-stamped rows, or if enrollment is ever removed independently, it becomes a real lockout that is hard to diagnose (the token EXISTS). Causal fix: sync token expiry on schedule edit. → SEC7-1 / A7-1 / D7-3.
 
-## Trace 4 — Cross-check: can a REJECTED submission still produce an escalate flag anywhere?
-Walked every `submission_stale_heartbeat` producer: exactly one (`submissions/route.ts:404-425`), strictly after `txResult` success. Rejection exits (`:284-289` validation, `:293-295` access, `:390-394` tx errors) all return before it. NEGATIVE — invariant holds platform-wide.
+## Trace 4 (negative) — "Could a tab close still lose the first anti-cheat event?"
+Traced the queue-first path: `reportEvent` enqueues to localStorage
+synchronously (anti-cheat-monitor.tsx:224-226) BEFORE any await, then flushes.
+A tab close between enqueue and flush leaves the event in `pending` →
+recovered on next mount. A close mid-send leaves it in the in-flight slot →
+recovered by the crash-recovery unshift (performFlush:116-122). **No loss
+window remains.** Cycle-6 AGG6-2 is genuinely closed.
 
-## Final sweep
-Traced the `includeGaps` synthetic-boundary math against a fabricated last-heartbeat 10 min old: `ongoing:true` gap emitted with DB-now end — consistent with the UI badge. No further anomalous flows identified on the changed surface.
+## Competing-hypothesis discipline
+The three confirmed traces all bottom out in client-merge logic or
+token-lifecycle completeness — no server-side data corruption hypothesis
+survived. This points cycle-7 squarely at the paging glue and the
+mutate-side token sync.

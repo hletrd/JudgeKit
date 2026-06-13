@@ -1,31 +1,43 @@
-# Test Engineer — RPF Cycle 6 (2026-06-12)
+# Test Engineer — RPF Cycle 7 (2026-06-13)
 
-**HEAD reviewed:** 22e1510f. **Suite state:** unit 338 files / 2632 tests PASS; component suite present (242 tests at cycle-5 close); integration/chaos suites present; E2E gated on env (DEFER-ENV-GATES). No flaky tests observed across this cycle's three full runs.
+**HEAD reviewed:** 0472b007. Lens executed directly by the cycle agent (fallback per cycles 1–6).
+**Baseline:** unit 339 files / 2650 tests PASS; component 71 files / 246 tests PASS (cycle-6 record). No flaky tests observed in the baseline run.
 
-## Coverage gaps mapped to cycle-6 findings (red-first targets)
+## Test gaps for this cycle's findings
 
-### TE6-1 — Token expiry/revocation paths have ZERO tests (HIGH-priority gap, High confidence)
-No test exercises: (a) expired token → submit denied; (b) un-enrolled+valid-token → submit allowed; (c) member removal deletes the group's tokens; (d) `getContestUserStatus`/`getEnrolledContestDetail` with expired token. Red-first order for AGG6-1: write (a)+(c) failing first, then implement the shared predicate + revocation; (b) pins the intended grant so the fix can't over-correct; (d) covers the read sides.
+### TE7-1 — Offset-ordering tiebreak pins missing on 7 sibling listings (HIGH for CR7-1)
+The submissions listing has the canonical pin
+(`tests/unit/api/submissions.route.test.ts:758-759`:
+`orderBy.mock.calls[0]` has length 2). The siblings have NO equivalent pin, so
+a regression that drops the id tiebreak would pass CI. Add the SAME shape pin
+to each fixed route's test:
+- `anti-cheat-get-behavioral.test.ts` (or a new `anti-cheat.route.test.ts`) — assert the events query `orderBy` receives 2 args.
+- new/extended tests for `admin/audit-logs`, `admin/login-logs`, `users`, `files`, `problems` routes asserting the 2-key order on the paged query (and the cap query for audit/login exports).
+Red-first: add the assertion BEFORE the route change so it fails on the
+single-key order, then make it pass.
 
-### TE6-2 — `reportEvent` unload-loss has no regression test (component)
-Existing monitor tests cover the FLUSH path's slot (claim → unmount mid-send → re-sent once). Add the symmetric case: `reportEvent` fires, unmount before the fetch resolves, remount → event must still transmit exactly once. Red against the current direct-send (it loses the event), green after queue-first.
+### TE7-2 — Dashboard paging has no poll-merge / loadMore-race coverage (HIGH for CR7-2/D7-1/D7-2)
+`tests/component/anti-cheat-dashboard.test.tsx` exists but does not exercise:
+(a) poll merge after loadMore drops no previously-loaded rows; (b) loadMore
+after a poll reset does not duplicate ids; (c) fetch-sequence guard discards a
+stale in-flight loadMore. The participant-timeline test
+(`participant-anti-cheat-timeline.test.tsx`) already has the analogous
+interleave test (cycle-6) — mirror it for the dashboard. Without these the
+fix is unverified and can silently regress.
 
-### TE6-3 — Filter chips have no keyboard-interaction tests
-After AGG6-7 (button-rendered chips): component test tabbing to a chip and activating with Enter/Space toggles the filter; `aria-pressed` asserted for the active chip in both dashboard and timeline.
+### TE7-3 — Schedule-edit token-expiry sync needs red-first coverage (HIGH for SEC7-1/A7-1)
+No test asserts that editing an assignment's deadline updates existing
+`contest_access_tokens.expiresAt`. Add to
+`tests/unit/assignments/management.test.ts` (or a focused
+`contest-access-tokens.test.ts` case): extend → tokens' expiry moves to new
+`lateDeadline ?? deadline`; shorten → moves earlier; clear deadline → NULL.
+And invite-route refresh (CR7-3): re-invite of an existing token updates a
+stale `expiresAt` (assert `onConflictDoUpdate` set).
 
-### TE6-4 — Offset pagination tie-stability untested
-Unit test for the submissions GET offset mode asserting the ORDER BY includes the id tiebreak (route-shape test in `submissions.route.test.ts` style), preventing silent regression.
-
-### TE6-5 — Suite updates owed by the dead-vocabulary removal (CR6-2)
-`code-similarity.test.ts` and the dashboard component test must drop/replace `service_unavailable` expectations; the i18n catalog pin (`source-grep-inventory.test.ts`) baseline will change if message keys are removed — adjust WITH justification in the commit body (the pin exists to force exactly this conversation).
-
-### TE6-6 — LRU failure-path test (D6-3)
-Route unit test: first heartbeat insert rejects → key evicted → immediate retry inserts successfully (assert two insert attempts, one row recorded). Mock the db insert to fail once.
-
-## Suite-health observations
-- The cycle-5 additions (anti-cheat-get-behavioral, presentation, storage tests) are well-isolated and deterministic (fake timers, no real network). Good patterns to reuse for TE6-2.
-- `submissions.route.test.ts` already models the tx/rate-limit/flag matrix — TE6-1(a) fits there with minimal new scaffolding.
-- No `xfail`/skipped tests in the unit suite; 4 expected-warn log lines in recruiting tests are assertions on failure paths, not noise.
+## Quality / no-gap confirmations
+- Cycle-6 added solid red-first pins for G1 (token validity boundary, in-tx revocation, effective-close expiry, single-source consumption) and the queue-first reportEvent terminal-state asserts. No over-mocking that would hide the new logic.
+- Source-grep inventory test (`tests/unit/infra/source-grep-inventory.test.ts`) is the right guard for the single-source-of-truth invariants; any new interpolation of `CONTEST_ACCESS_TOKEN_VALIDITY_SQL` or new `orderBy` should keep that baseline honest — bump with justification if a fix legitimately adds a call site.
 
 ## Final sweep
-Checked for tests asserting the FALSE comment/string surfaces (V6-7/V6-8): none do — removal is safe without test rewrites beyond TE6-5.
+No flaky/time-dependent assertions introduced. The three gaps above (TE7-1/2/3)
+map 1:1 to this cycle's planned fixes and must be written red-first.

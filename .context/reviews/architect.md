@@ -1,24 +1,44 @@
-# Architect — RPF Cycle 6 (2026-06-12)
+# Architect — RPF Cycle 7 (2026-06-13)
 
-**HEAD reviewed:** 22e1510f. **Lens:** boundary ownership, predicate duplication, layering of the cycle-5 additions.
+**HEAD reviewed:** 0472b007. Lens executed directly by the cycle agent (no reviewer subagents registered; fallback per cycles 1–6).
+**Focus:** layering, coupling, single-source-of-truth invariants introduced by cycle-6, lifecycle-completeness of the contest-access-token model.
 
-## Findings
+## A7-1 — Token-expiry invariant is owned at CREATE but not at MUTATE (MEDIUM, High, CONFIRMED)
+Cycle-6 correctly centralized the token VALIDITY rule
+(`CONTEST_ACCESS_TOKEN_VALIDITY_SQL` + `findValidContestAccessToken`) and the
+EXPIRY-derivation rule (`contestAccessTokenExpiry = lateDeadline ?? deadline`)
+in `src/lib/assignments/contest-access-tokens.ts`. That is good layering. But
+the lifecycle has three mutation points and only one is wired:
+- CREATE (invite route, recruiting redemption) → uses `contestAccessTokenExpiry` ✓
+- ROSTER-REMOVE → `revokeContestAccessTokensForGroup` ✓
+- **SCHEDULE-EDIT** (`updateAssignmentWithProblems`, management.ts:291-309) → **NOT wired**: the assignment's `deadline`/`lateDeadline` can change after tokens exist, but no code re-derives token expiry. The invariant the module documents ("token expiry = effective close") is therefore violated by a normal instructor action.
+This is an architecture gap, not just a bug: the module is positioned as the
+single owner of the lifecycle, so the sync belongs THERE (a
+`syncContestAccessTokenExpiry(tx, assignmentId, assignment)` helper) and must
+be called from the same transaction that mutates the schedule — the same
+pattern as `revokeContestAccessTokensForGroup` being called inside the
+member-removal tx. Detail in SEC7-1 / CR7-3.
 
-### A6-1 — "Has contest access via token" is a boundary predicate implemented six times with two semantics (MEDIUM, High, CONFIRMED)
-The token-validity rule lives inline in: `platform-mode-context.ts` (×3, expiry-checked SQL), `contests.ts:getContestsForUser` (expiry-checked SQL), `anti-cheat/route.ts` POST (expiry-checked SQL), `submissions.ts:validateAssignmentSubmission` (Drizzle, NO expiry), `public-contests.ts` ×2 (Drizzle, NO expiry). Predictably they drifted (SEC6-1). Architectural fix: one owning module (new `src/lib/assignments/contest-access-tokens.ts`, sibling to the existing `access-codes.ts`) exporting (a) a Drizzle `findValidContestAccessToken(assignmentId, userId)` and (b) an SQL fragment/EXISTS builder for the raw-SQL call sites, both expiry-checked. Lifecycle writes (creation expiry policy, revocation-on-roster-removal) belong to the same module so the next policy change lands once.
+## A7-2 — Two divergent client paging implementations for the SAME anti-cheat GET (LOW-MEDIUM, High, CONFIRMED)
+`anti-cheat-dashboard.tsx` and `participant-anti-cheat-timeline.tsx` both
+consume `GET /contests/[id]/anti-cheat` with poll-reset + loadMore, but have
+DIVERGED: the timeline got the fetch-sequence guard + id-dedupe in cycle-6
+G4; the dashboard did not (CR7-2). Two copies of subtly-different paging glue
+is a maintenance hazard — the next fix to one will miss the other (it already
+happened this cycle). **Recommendation:** after fixing the dashboard
+(AGG7-1), extract the shared "poll-reset-aware infinite list" logic into a
+hook (e.g. `usePolledOffsetList`) so the two views cannot drift again. Note:
+the hook extraction itself is a refactor beyond the review findings — schedule
+only the dashboard FIX this cycle; record the extraction as an architecture
+note, not a deferred finding (it is a new idea, not an existing finding).
 
-### A6-2 — Telemetry transmission has two shapes; only one is crash-safe (MEDIUM, High — same root as D6-3/AGG6-2)
-The monitor has a hardened queue path (claim loop + in-flight slot + backoff) and a legacy direct-send path (`reportEvent`). Every hard-won invariant of cycle-4/5 (no loss window, single-flight, bounded duplicates) holds only on the first path. Unify: `reportEvent` becomes enqueue-then-flush, making the queue the single transmission pipeline. This deletes a behavioral fork rather than adding code.
-
-### A6-3 — Presentation module extraction (cycle-5 A5-2) verified holding
-`anti-cheat-presentation.ts` is the single source for colors/labels/details formatting; both consumers import it; the source-grep inventory test pins catalog coverage. No drift after one cycle. The tier MODEL stays in `lib/anti-cheat/review-model.ts` — layering respected (lib has no component imports).
-
-### A6-4 — Dead vocabulary should be pruned from the similarity result contract (LOW, High)
-`SimilarityRunReason` retains `service_unavailable` though no producer emits it (CR6-2). Contracts that advertise unreachable states get cargo-culted into new consumers (the dashboard branch proves it). Prune the member; the type system then guarantees honesty.
-
-## Standing observations (unchanged, carried)
-- `deploy-docker.sh` remains 1433 lines with the SSH-helper extraction trigger TRIPPED (C3-AGG-5) — binding on the next cycle that touches SSH/remote-exec plumbing; this cycle does not.
-- `judge-worker-rs` cosmetics (AGG5-7) untouched by design — exit criterion is a behavioral Rust edit, none planned this cycle.
+## Clean / sound
+- Pure-vs-DB split for worker staleness (`worker-staleness.ts` predicates DB-free; `worker-staleness-sweep.ts` DB-backed) is correct and keeps the predicate unit tests cheap.
+- `getEffectiveExamCloseAt` single-owner contract (exam-close.ts) consumed by both the submit validator and the anti-cheat ingest — no drift.
+- Route files remain leaves (no lib imports a route); the cycle-4 AGG4-7 client-events extraction holds.
+- API handler factory + capability cache keep authz centralized.
 
 ## Final sweep
-No new cross-layer imports (components → lib only; lib never imports components); dynamic imports in `canMonitorContest` resolve to the same cached `resolveCapabilities` (`capabilities/index.ts:27` re-exports the cache implementation) — no split-brain capability resolution.
+No new circular deps, no layering inversions introduced by cycle-6. The one
+real architectural debt this cycle is A7-1 (complete the lifecycle ownership);
+A7-2 is a divergence to converge after the functional fix.

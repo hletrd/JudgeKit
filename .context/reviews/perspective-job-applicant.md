@@ -1,29 +1,48 @@
-# Perspective: Job Applicant (recruiting coding test) — RPF Cycle 6 (2026-06-12)
+# Perspective: Job Applicant (recruiting coding test) — RPF Cycle 7 (2026-06-13)
 
-**HEAD reviewed:** 22e1510f. Walked the candidate journey: invitation link → token redemption + account creation → first-run environment → timed test under pressure → submission → what happens to me afterwards.
+Seat: a candidate invited to a recruiting coding test via a token link.
+Reviewed first-run experience, environment clarity, time-pressure UX, and
+accidental-disqualification risk. **HEAD 0472b007.**
 
-## Trust and fairness — what's solid
-- **No accidental disqualification by infrastructure:** the integrity gate fails open; rejected submit attempts (rate limit, queue full, expired window) can no longer place an escalate flag on my record (cycle-5 G1). Flags carry the exact submission id + threshold so a human reviewer sees calibrated evidence, not vibes.
-- **Redemption flow is careful with me:** password-format mistakes don't burn brute-force counters; the token is the auth boundary, claimed atomically; my window is enforced in DB time, not my laptop's clock.
-- **Transparency:** the privacy notice enumerates recorded signals before monitoring starts, and the review-notice copy explicitly states similarity checks do not by themselves identify AI-generated code.
+## JA7-1 — Token-only candidate can be locked out if the recruiter extends the window (LOW-MEDIUM, Medium, CONFIRMED — candidate face of SEC7-1)
+A recruiting candidate's access is the `contest_access_token` minted at
+redemption (`recruiting-invitations.ts:682-692`). If the recruiter extends the
+deadline (a kindness — "take another 30 minutes"), my token still expires at
+the old close and every token gate denies me during the bonus window. Today a
+parallel enrollment row rescues me, but that is incidental. From the
+candidate seat, being told "you have extra time" and then hitting a
+forbidden/contest-ended error is exactly the kind of accidental
+disqualification that destroys trust in the employer's process. Fix: sync
+token expiry on schedule edit (SEC7-1). This is the highest-trust item from my
+seat.
 
-## Risks from my seat
+## JA7-2 — My submission history can look duplicated/missing near the deadline (LOW, High, CONFIRMED — candidate face of CR7-1)
+Same defect class as the student seat: same-second submissions can shuffle
+across pages on timestamp-only ordering. Near a hard recruiting deadline this
+reads as "did it submit?" and pushes me to re-submit under pressure. Fix:
+id tiebreak (CR7-1).
 
-### JA6-1 — Disqualification doesn't actually stop my access (MEDIUM, High — candidate-side face of SEC6-1)
-If the recruiter removes me mid-test (suspicion, withdrawal, wrong cohort), my access token still lets me submit until the deadline on some gates while other surfaces deny me. From my side this looks like a glitchy system ("the contest vanished from my list but submitting still works") — and anything I submit in that limbo may be used against me ("kept submitting after removal"). A removed candidate must be cleanly, consistently out.
+## Works well from the candidate seat (verified)
+- **Brute-force fairness:** password FORMAT errors during account setup do NOT
+  increment the failed-redeem counter (recruiting-invitations.ts:652-661) — I
+  can't lock my own token by mistyping a too-short password; only real wrong-
+  password attempts count.
+- **Concurrent-claim race:** an "alreadyRedeemed" race does NOT count against
+  my brute-force budget (recruiting-invitations.ts:741-748) — fair.
+- **Resilience:** the anti-cheat monitor queues events locally first, so a
+  flaky home connection during the test doesn't silently flag me or lose my
+  activity (queue-first, cycle-6).
+- **Late window preserved:** token expiry is set to the EFFECTIVE close
+  (`lateDeadline ?? deadline`) at redemption, so a configured late window
+  doesn't cut me off — the only gap is the post-edit case (JA7-1).
 
-### JA6-2 — A telemetry hiccup can shave my recorded liveness margin (LOW, Medium — D6-3)
-A single failed heartbeat insert silences my recorded liveness for up to 60 s of the 90 s freshness window. The gate fails open so my submission is safe, but the flag that MIGHT then attach to it puts the burden of explanation on me. Two-line server fix; cheap fairness.
+## Carried (product)
+- JA-clarity: no pre-test language-availability preview — I can't see which
+  languages are offered before starting. Owner decision on a candidate
+  test-info page. Carry.
 
-### JA6-3 — Lost copy/paste context can remove exculpatory evidence (LOW — AGG6-2)
-If my last action before closing the tab was a copy INSIDE the editor (legitimate), losing that event leaves the reviewer with a worse picture of me, not a better one. Lossless telemetry is in my interest.
-
-### JA6-4 (carried — JA-clarity) — Still no pre-test environment preview (language list, judge limits) before the timer starts. For a high-stakes first run, knowing "Python 3.13, 256 MB, 2 s" beforehand is the difference between confidence and panic. Owner product decision; carried with unchanged exit criterion.
-
-## Pressure-UX spot-checks (acceptable)
-- Timer: server-enforced; display-only client drift carried as ST5-5.
-- Disconnect mid-test: queue + retry keeps my monitor record; my personal deadline doesn't shrink; clear translated errors if I truly run out.
-- Submission feedback: pending→judged states poll visibly; compile output redaction follows the problem's setting consistently.
-
-## Verdict
-The platform treats candidates fairly by design at this HEAD. JA6-1 is the one scenario where the system's ambiguity could be read as MY misconduct — close it before the next recruiting round.
+## Net
+The dominant candidate concern is JA7-1 (extend-window token lockout — a trust
+and accidental-DQ risk), with JA7-2 (deadline paging anxiety) secondary; both
+map to scheduled fixes. The recruiting brute-force/race fairness is genuinely
+well handled.

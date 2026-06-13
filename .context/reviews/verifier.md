@@ -1,23 +1,43 @@
-# Verifier — RPF Cycle 6 (2026-06-12)
+# Verifier — RPF Cycle 7 (2026-06-13)
 
-**HEAD reviewed:** 22e1510f. **Method:** evidence-based check of stated behavior (docs, comments, plan completion claims, registers) against the code at this exact HEAD.
+**HEAD reviewed:** 0472b007. Lens executed directly by the cycle agent (fallback per cycles 1–6).
+**Method:** verify stated behavior against code; confirm cycle-6 completion claims; check doc/code agreement.
 
-## Claims verified TRUE at this HEAD
-- **V6-1** `docs/exam-integrity-model.md` claim "flags are recorded only for accepted submissions and carry the submission id" — matches `submissions/route.ts:396-425` (insert after tx success, details include `submissionId`, `ipAddress`, DB-time `createdAt`) and the probe-only validator (`submissions.ts:375-403`). Cycle-5 G1 completion claim is truthful.
-- **V6-2** Cycle-5 plan completion records (G1–G5 ✅ with SHAs) — all five SHAs exist on main with the described content (spot-checked diffs of 16f64ab2, 0083a577, 1e6457b6, 34a6a9c1).
-- **V6-3** Baseline gate claims — re-executed this cycle: tsc 0, eslint 0/0, lint:bash clean, unit 2632/2632 PASS. Matches the cycle-5 completion record's shape (2632 tests).
-- **V6-4** `includeGaps=1` gating claim — confirmed: without the param the route never runs the 5000-row scan (`anti-cheat/route.ts:292`); the timeline is the only `includeGaps` consumer (repo-wide grep: 1 call site).
-- **V6-5** AGG4-5 disposition claim ("count(*) retained for pagination total") — confirmed at `:280-283`; still fed to the response `total`.
+## V7-1 — Cycle-6 commit claim "enforced uniformly" is only true at create-time (MEDIUM, High, CONFIRMED)
+Commit 22339ef2 states token expiry is "enforced uniformly." Verified the
+ENFORCEMENT (validity check) is uniform across all 6 gates ✓. But the
+DERIVATION of expiry is only applied at the two creation sites; the
+schedule-edit path (`management.ts:291-309`) does not re-derive it. So the
+end-to-end claim "a token always expires at the effective close" is FALSE
+after any deadline edit. Evidence: zero `update(...).set({ expiresAt ...})`
+call sites in repo (grepped). Re-opens as SEC7-1. The claim should be made
+true (sync on edit), not weakened.
 
-## Claims verified FALSE / STALE (action required)
-- **V6-6 (MEDIUM-doc, High, CONFIRMED)** `plans/open/user-injected/pending-next-cycle.md` lists item #1 (workspace migration Phase 2) as ONGOING/High and item #3 (COMPILER_RUNNER_URL auto-injection) as pending. Both are complete in-repo: the migration plan was archived 2026-04-29 with "ALL PHASES COMPLETE" (`plans/archive/2026-04-29-archived-workspace-to-public-migration.md`), and `deploy-docker.sh:657` auto-injects `COMPILER_RUNNER_URL` via `ensure_env_literal` on the `INCLUDE_WORKER=false` path (with a drift warning at `:663-666`). A stale High-priority register risks a future cycle re-doing finished work. Update the register with evidence (move resolved items to `plans/done/user-injected/` per existing convention).
-- **V6-7 (LOW-doc, High, CONFIRMED)** `anti-cheat/route.ts:192-195` comment claims the POST keeps `canManageContest` — the POST's actual gates are enrollment/token + origin pinning (`:80-90`, `:54-78`). Comment must be corrected (CR6-5).
-- **V6-8 (LOW, High, CONFIRMED)** `messages/en.json:2313` (`similarityServiceUnavailable`) describes a scan-skip state the engine can no longer produce (CR6-2). The string is a behavior claim shown to operators; it is now false by construction.
+## V7-2 — `docs/api.md` anti-cheat eventType list overstates the POST contract (LOW, High, CONFIRMED)
+`docs/api.md:813` documents the POST body eventType enum as
+`tab_switch|copy|paste|blur|contextmenu|ip_change|code_similarity|heartbeat`.
+The actual POST schema is `z.enum(CLIENT_EVENT_TYPES)` =
+`tab_switch|copy|paste|blur|contextmenu|heartbeat` (client-events.ts:18-25) —
+`ip_change` and `code_similarity` are SERVER-originated and are REJECTED from
+a contestant POST (that rejection is a security feature, cycle-4 AGG4-2). The
+doc tells an integrator they may POST event classes the server forbids.
+**Fix:** correct the documented enum to the 6 client types, and note that
+`ip_change` / `code_similarity` / `submission_stale_heartbeat` are
+server-inserted and not acceptable in the POST body.
 
-## Cross-checks with no discrepancy
-- `SECURITY.md` heartbeat-gate fail-open statement vs `submissions/route.ts:396-403` — consistent.
-- `EVENT_TIERS` ↔ `EVENT_TYPE_COLORS` ↔ both locale catalogs: every tier key has a color and an `eventTypes.*` message in en+ko (the catalog-coverage pin at `tests/unit/infra/source-grep-inventory.test.ts` enforces it; baseline 140 matches actual).
-- `MAX_PENDING_EVENTS=200` doc comment matches enforcement (`anti-cheat-storage.ts:53`).
+## V7-3 — anti-cheat GET listing order is undocumented (LOW, Medium, CONFIRMED — pairs with CR7-1)
+Unlike the submissions section (cycle-6 added the `(submittedAt, id)` order
+contract to `docs/api.md`), the anti-cheat GET section (`docs/api.md:824-840`)
+documents no ordering. After CR7-1 fixes the order, state it
+(`(createdAt desc, id desc)`) so paging consumers can rely on it.
 
-## Verdict
-Cycle-5's work is honestly recorded. The two stale-register/comment items (V6-6, V6-7) and the false operator-facing string (V6-8) are the verification debt of this cycle.
+## Verified-correct claims (no finding)
+- Member-removal revokes tokens with an audit count — verified the tx calls `revokeContestAccessTokensForGroup` and records `revokedTokens` (groups/[id]/members/[userId]/route.ts:69).
+- `getEffectiveExamCloseAt` honored by both submit validator and ingest — verified the past-close branch in anti-cheat/route.ts:109-120 and submissions.ts:305-317 use the same helper.
+- Queue-first reportEvent: verified the enqueue-then-flush ordering and that the direct-send path is gone (anti-cheat-monitor.tsx:224-227).
+- `NODE_ENCRYPTION_KEY` startup assertion present (production-config.ts) — verified.
+
+## Final sweep
+The two doc/code mismatches (V7-2 eventType, V7-3 missing order) and the
+invariant-not-maintained claim (V7-1) are the verifier-specific findings; all
+overlap and reinforce the code-reviewer/security findings.

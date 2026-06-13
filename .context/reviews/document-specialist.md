@@ -1,28 +1,34 @@
-# Document Specialist — RPF Cycle 6 (2026-06-12)
+# Document Specialist — RPF Cycle 7 (2026-06-13)
 
-**HEAD reviewed:** 22e1510f. **Method:** doc/code mismatch audit across `docs/`, `SECURITY.md`, in-code comments on the changed surface, plan registers, and both i18n catalogs (operator-facing strings are documentation).
+**HEAD reviewed:** 0472b007. Lens executed directly by the cycle agent (fallback per cycles 1–6).
+**Method:** code-vs-doc agreement against authoritative repo sources (the route schemas, the validator code) — not against external/general knowledge.
 
-## Mismatches (action required)
+## DOC7-1 — `docs/api.md` anti-cheat POST eventType enum is wrong (LOW-MEDIUM, High, CONFIRMED)
+`docs/api.md:815` lists the POST body eventType as
+`tab_switch|copy|paste|blur|contextmenu|ip_change|code_similarity|heartbeat`.
+Authoritative source = the route's zod schema = `z.enum(CLIENT_EVENT_TYPES)`
+(`src/lib/anti-cheat/client-events.ts:18-25`) = the 6 CLIENT types only.
+`ip_change` and `code_similarity` are server-inserted classes that the POST
+schema REJECTS (a deliberate anti-forgery control, cycle-4 AGG4-2). The doc
+invites integrators to send forbidden values. **Fix:** correct the enum to the
+6 client types and add a one-line note that `ip_change`, `code_similarity`,
+and `submission_stale_heartbeat` are server-generated and not accepted in the
+POST body. (Same finding as V7-2.)
 
-### DOC6-1 — User-injected ops register is stale on two of three items (MEDIUM-doc, High, CONFIRMED)
-`plans/open/user-injected/pending-next-cycle.md`: item #1 marked "ONGOING / Priority: High" but the referenced plan was archived 2026-04-29 as "ALL PHASES COMPLETE" (`plans/archive/2026-04-29-archived-workspace-to-public-migration.md` — verified: no `(workspace)` route group exists in `src/app`); item #3 (COMPILER_RUNNER_URL auto-injection for the algo target) is implemented at `deploy-docker.sh:657` (`ensure_env_literal COMPILER_RUNNER_URL "${COMPILER_RUNNER_DEFAULT}"`) with a drift warning at `:663-666`. Update both entries with resolution evidence, following the file's own item-#2 precedent ("RESOLVED (cycle 22)" with line citations).
+## DOC7-2 — anti-cheat GET listing order undocumented (LOW, Medium, CONFIRMED)
+The submissions section gained an explicit order contract in cycle-6; the
+anti-cheat GET section (`docs/api.md:824-840`) states no order. After CR7-1
+adds the `(createdAt desc, id desc)` tiebreak, document it there so paging
+consumers can rely on a total order. (Same as V7-3.)
 
-### DOC6-2 — False authz comment on the anti-cheat GET (LOW-doc, High, CONFIRMED)
-`src/app/api/v1/contests/[assignmentId]/anti-cheat/route.ts:192-195` claims the POST keeps `canManageContest`; the POST is the student ingest (enrollment/token + origin pinning). Correct the comment to name real write surfaces guarded by `canManageContest` (similarity POST, score overrides, leaderboard freeze).
-
-### DOC6-3 — Operator-facing string documents an unreachable state (LOW, High, CONFIRMED)
-`messages/en.json:2313` / `messages/ko.json` `similarityServiceUnavailable` — no code path can produce `reason: "service_unavailable"` since AGG5-5. Remove with the enum member (CR6-2) so the catalog documents only real states.
-
-## Verified consistent (no action)
-- `docs/exam-integrity-model.md` ↔ flag-recording behavior (accepted-only, submission linkage, fail-open) — exact match at this HEAD.
-- `SECURITY.md` heartbeat-gate fail-open posture — matches `submissions/route.ts:396-403`.
-- `review-model.ts` tier doc-comment ↔ actual producers (single producer, post-accept) — match.
-- `anti-cheat-storage.ts` module docs (queue cap rationale, in-flight slot semantics) ↔ implementation — match, including the "bounded duplicate beats silent loss" tradeoff note.
-- `docs/judge-workers.md` staleness lifecycle (online→stale→offline, background sweep) ↔ `worker-staleness-sweep.ts` — match.
-- Deploy policy docs ↔ `.env.deploy.algo` (SKIP_LANGUAGES/BUILD_WORKER_IMAGE/INCLUDE_WORKER) — match; CLAUDE.md production rules reflected in `deploy-docker.sh` guards.
-
-## i18n catalog parity sweep
-`contests.antiCheat.*` namespace: en and ko key sets identical (including cycle-5's `heartbeatGaps.*`, `detailStale*`, `durationMinutesSeconds`); no Korean string uses `tracking-*` styling (rule honored via locale-conditional classes). One asymmetry to remove with DOC6-3 (both locales).
+## Checked, in agreement (no finding)
+- `docs/api.md` GET anti-cheat "Instructor or above" matches `canMonitorContest` (which also admits group TAs + scoped `anti_cheat.view_events`) — the doc's "or above" is a reasonable summary; no contradiction.
+- The 60 s heartbeat throttle doc matches the route's LRU/shared-coordination dedup.
+- Export-CSV docs ("includes anti-cheat event counts and IP addresses") match the export route.
+- No stale references to the removed `service_unavailable` similarity vocabulary in docs (cycle-6 G5 removed it; only an explanatory CODE comment remains at code-similarity.ts:373, which is accurate).
+- `pending-next-cycle.md` register items #1/#3 marked RESOLVED with evidence — accurate (verified the cited `deploy-docker.sh:657` and the archived migration plan in cycle-6).
 
 ## Final sweep
-README/docs reference no removed scripts or routes; `docs/api.md` submissions pagination section does not promise tie-stability (so CR6-3's fix is non-breaking documentation-wise, but adding a sentence about the (submittedAt, id) order after the fix would make the contract explicit).
+The two doc mismatches (DOC7-1 enum, DOC7-2 order) are the only doc/code
+divergences found; both are LOW–LOW-MEDIUM and both pair with code fixes this
+cycle.

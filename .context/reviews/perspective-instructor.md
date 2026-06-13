@@ -1,32 +1,45 @@
-# Perspective: Instructor (author, grader, proctor) — RPF Cycle 6 (2026-06-12)
+# Perspective: Instructor (authoring / grading / proctoring) — RPF Cycle 7 (2026-06-13)
 
-**HEAD reviewed:** 22e1510f. Walked authoring → roster → live proctoring → similarity review → grading/export as the owning instructor of a group.
+Seat: an instructor authoring problems/exams, managing rosters, proctoring
+live exams, reviewing similarity/anti-cheat evidence, and exporting results.
+**HEAD 0472b007.**
 
-## What works well
-- **Live proctoring view** finally answers "who is dark RIGHT NOW": the ongoing heartbeat-gap badge (cycle-5 G3) plus the legible escalate flag with humanized details and the linked submission id. The signals disclaimer correctly frames telemetry as low-confidence input, not verdicts.
-- **Collusion tooling:** the ipOverlap report (shared IPs, multi-IP users) over data I already see per-row; similarity scan with truthful skip reasons and language-bucketed pairs.
-- **Accommodations:** `extendExamSession` composes concurrent extensions in SQL and is honored end-to-end (submission gate, telemetry gate, late-penalty scoring) — the cross-gate consistency work from cycles 1–3 holds.
+## IN7-1 — The live anti-cheat dashboard drops and duplicates evidence rows (MEDIUM, High, CONFIRMED — instructor face of CR7-2)
+This is my primary proctoring surface during a live exam. After I click "Load
+more," the 30 s auto-refresh can make already-loaded evidence rows VANISH
+(seam loss) and can DUPLICATE rows (no id-dedupe). If I'm deciding whether to
+intervene on a suspected cheater, an evidence list I can't trust is worse than
+no list — I might miss a paste event that scrolled out, or over-count a
+duplicated tab-switch. The participant timeline was hardened in cycle-6; the
+dashboard must match. Fix: AGG7-1.
 
-## Pain points / risks found
+## IN7-2 — Editing a contest's deadline silently leaves access tokens stale (LOW-MEDIUM, High, CONFIRMED — instructor face of SEC7-1)
+When I extend an exam (a routine accommodation), I expect everyone who had
+access to keep it through the new deadline. The schedule edit doesn't
+re-derive `contest_access_tokens.expiresAt`, so token-based participants rely
+on a parallel enrollment row to not be locked out — fragile and invisible to
+me. I want "extend deadline" to Just Work for all participants. Fix: sync
+token expiry inside the schedule-edit transaction.
 
-### IN6-1 — Removing a student from my roster does NOT revoke their contest access (MEDIUM, High — instructor-visible face of SEC6-1)
-My mental model of the roster page is "this list = who can participate." Reality: anyone I ever invited keeps a `contest_access_tokens` row that the submit gate honors even after I remove them (and even past expiry on some gates). During a recruiting test this means a candidate I disqualified can keep submitting until the window closes. The removal action must delete the group's tokens for that user, and all gates must check expiry identically.
+## IN7-3 — Exported audit/result CSVs are nondeterministic at the row cap (LOW, High, CONFIRMED — instructor face of CR7-1)
+When I export audit logs or login logs near the cap, the truncation boundary
+shuffles for same-timestamp rows, so two exports of the same window can
+differ. For anything I might hand to an academic-integrity committee, the
+export must be reproducible. Fix: id tiebreak on the export queries (CR7-1).
 
-### IN6-2 — Similarity evidence rows don't record the language (LOW, High — CR6-4)
-The scan compares per (problem, language) and the on-screen pair table shows language, but the persisted `code_similarity` event (what I'd cite in an academic-integrity case file) omits it. Two-language flags for the same pair look like duplicates. Add language to the stored details.
+## Works well (verified from the instructor seat)
+- Roster removal now actually revokes contest access tokens (cycle-6) with an
+  audit count — removing a student mid-course no longer leaves a backdoor.
+- Similarity evidence carries the language bucket (cycle-6 G5) — I can tell
+  which language a flagged pair was in.
+- IP-overlap report (shared-IP / multi-IP) gives me a collusion-hunting view
+  over data I already collect — no eyeballing hundreds of rows.
+- Leaderboard freeze auto-unfreezes after the contest closes — students aren't
+  stuck on a frozen board forever.
+- Filter chips on both proctoring views are keyboard-accessible (cycle-6).
 
-### IN6-3 — My timeline can show duplicate rows while I watch a student live (LOW, Medium — P6-2/D6-2)
-Poll refresh + "Load more" can interleave into doubled events. I can't trust an evidence view that visibly duplicates rows, even cosmetically.
-
-### IN6-4 — I cannot filter events from the keyboard (MEDIUM a11y, High — DES6-1)
-The type-filter chips on both proctoring views are mouse-only spans.
-
-### IN6-5 (carried) — Extension grants don't appear in the participant timeline (TA3-1-followup/DES4-4): when I extend a student's window mid-incident there's no timeline artifact to point at later. Carried with its owner-scheduling exit criterion.
-
-## Authoring/grading spot-checks (no new issues)
-- Score overrides flow into the status rows exactly once (`getAssignmentStatusRows` override map) and are flagged `isOverridden`.
-- Late-penalty math keys on personal deadlines for windowed exams — consistent across leaderboard/status/stats (single SQL case-expr source).
-- IN2-2 (pre-start accommodations / per-student duration) remains an owner decision; workaround (extend after start) documented — carried.
-
-## Verdict
-Proctoring UX took a real step forward in cycle-5. The roster-revocation gap (IN6-1) is the one item I'd insist on before my next recruiting round.
+## Net
+Two real proctoring/grading-integrity items (IN7-1 dashboard evidence
+fidelity, IN7-2 extend-deadline token sync) plus the export determinism
+(IN7-3). All map to scheduled fixes; authoring and roster management are
+solid.

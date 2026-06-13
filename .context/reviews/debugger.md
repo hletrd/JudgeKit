@@ -1,27 +1,46 @@
-# Debugger — RPF Cycle 6 (2026-06-12)
+# Debugger — RPF Cycle 7 (2026-06-13)
 
-**HEAD reviewed:** 22e1510f. **Method:** failure-mode walkthroughs of the cycle-5 surface + latent-bug hunt on the interacting flows (monitor ↔ ingest ↔ probe ↔ flag; poll ↔ loadMore; token gates).
+**HEAD reviewed:** 0472b007. Lens executed directly by the cycle agent (fallback per cycles 1–6).
+**Focus:** latent failure modes, regressions introduced by cycle-6, races in the merged-state client surfaces.
 
-## Findings
+## D7-1 — Dashboard poll-merge seam loss (MEDIUM, High, CONFIRMED — same defect as CR7-2)
+`anti-cheat-dashboard.tsx:125-148`. Reproduce: load page 1 (100 rows), click
+"Load more" (now 200 rows in state, `offset=200`). N new events arrive
+server-side. 30 s poll fires: fresh first page = newest 100 (includes the N
+new + 100-N of the old first page). Merge keeps `firstPage` ++
+`prev.slice(100)`. The 100-N rows that were at indices `100-N .. 99` of `prev`
+are in neither slice → **gone from the reviewer's view** even though they are
+still valid evidence. Failure is silent (no error, no warning). Fix: id-union
+merge (AGG7-1).
 
-### D6-1 — `reportEvent` direct send: tab close mid-send silently loses the event (MEDIUM, High, CONFIRMED — fired residual from cycle-5 G4)
-`anti-cheat-monitor.tsx:195-225`. Repro: candidate copies problem text → `handleCopy` → `reportEvent("copy", …)` → `sendEvent` awaited with the event in NEITHER the pending queue NOR the in-flight slot → user closes the tab before the response → event gone with no trace. Cycle-5's in-flight slot only protects the *flush* path (`performFlush:129-145`); the *first* transmission of every event goes through this unprotected direct send. This is exactly the loss window the cycle-5 plan recorded as "out of AGG5-4 scope… for the next monitor pass" — that pass is now. Fix: queue-first — append to the pending queue (retries:0) synchronously, then trigger `flushPendingEvents()`; the claim loop's slot+claim ordering then covers every event. The single-flight guard + `scheduleRetryRef` already handle the "flush already running" case (backoff timer picks the event up ≤1 s later).
+## D7-2 — Dashboard loadMore duplicate rows → React key collision (LOW-MEDIUM, High, CONFIRMED)
+`anti-cheat-dashboard.tsx:161-179`: `setEvents((prev) => [...prev, ...new])`
+with no id-dedupe and no stale-sequence guard. After a poll merge shifts the
+server list, the preserved `offset` points into a range that now overlaps
+already-rendered rows → duplicate `key={event.id}` (line 577) → React "two
+children with the same key" warning + duplicated evidence row. The timeline
+fixed exactly this in cycle-6 (`participant-anti-cheat-timeline.tsx:145-152`);
+the dashboard was missed. Fix: fetch-seq guard + id-dedupe.
 
-### D6-2 — Timeline poll-reset vs loadMore append → duplicated rows and duplicate React keys (LOW, Medium, LIKELY)
-`participant-anti-cheat-timeline.tsx`: `fetchEvents` (poll, `:104-113`) unconditionally `setEvents(firstPage)` + `setOffset(firstPage.length)`; `loadMore` (`:126-144`) appends `prev => [...prev, ...page]` from an offset captured before the reset. Interleaving (poll completes while loadMore in flight) renders the same event ids twice — `TableRow key={event.id}` duplicates. The dashboard variant already reconciles; the timeline needs the seq-counter guard (see perf P6-2).
+## D7-3 — Stale token expiry after schedule edit produces a confusing access denial (LOW-MEDIUM, Medium, CONFIRMED — surfaces SEC7-1)
+If an instructor EXTENDS a contest, a participant who holds only a
+`contest_access_token` (e.g. a recruiting candidate, no separate live
+enrollment edit) would be denied by every token gate during the extension
+window because the token still expires at the old close. Today both creation
+sites ALSO write an `enrollments` row, so the enrollment branch rescues
+access — but if an operator ever removes the enrollment while keeping the
+token, or for the pre-cycle-6 rows stamped with `deadline`-based expiry, the
+candidate hits an inexplicable "not enrolled / forbidden" mid-window. Hard to
+debug from logs because the token EXISTS but silently fails the validity
+predicate. Fix: schedule-edit token-expiry sync (SEC7-1).
 
-### D6-3 — Heartbeat LRU set-before-insert: one failed insert silences heartbeats for 60 s (LOW, Medium, RISK)
-`anti-cheat/route.ts:139-158`. Failure scenario: pool exhaustion blip at insert time → 500 to the client → client's `sendEvent` sees 5xx → "retry" → requeued; but the server LRU already recorded the attempt, so every retry inside the 60 s window hits `shouldRecord=false` → `apiSuccess({logged:true})` while NO row exists. Worst case the participant's recorded coverage gets a 60–90 s hole through no fault of theirs (it then takes only one more lost event to cross the 90 s probe threshold at submit time). Fix: `delete` the LRU key on insert failure.
-
-### D6-4 — Expired/orphaned token gates (shared with SEC6-1) — divergent verdicts are themselves a bug
-The same user at the same instant gets: contest list 404-equivalent (list omits it), platform-mode restriction lifted/absent, but submit 201. Any support ticket arising from this state is undiagnosable without reading six call sites. Root cause and fix recorded in SEC6-1/CR6-1.
-
-## Checked, not bugs
-- `performFlush` orphan recovery cannot double-recover (slot cleared synchronously after re-queue, before any await).
-- `heartbeats[i].createdAt` is a Drizzle Date; `new Date(Date)` copies safely; reverse-then-scan ordering correct; the 5000-row DESC window truncates at the OLD end, never the live end.
-- `startExamSession` insert-vanish path returns `examSessionUnavailable` → generic retryable 500 (AGG4-4 still honored).
-- Admin-level submit path: `now=0` short-circuits all schedule checks BUT the probe stays un-run (probe is inside `!isAdminLevel`) — admins never self-flag. Confirmed intentional per review-model doc.
-- `formatAntiCheatDetails` discriminates stale payloads by `thresholdMs` number — copy/paste `{target}` payloads can't collide (string field).
+## Verified non-issues (checked, no bug)
+- Queue-first `reportEvent`: the `await flushPendingEventsRef.current()` after enqueue cannot double-send (single-flight `isFlushingRef`); if a flush is mid-run the event waits for the ≤1 s retry timer. Crash-recovery in-flight slot replays at most one duplicate (by design). Sound.
+- Heartbeat LRU eviction on insert failure (anti-cheat/route.ts:160-172): `throw` after `delete` re-surfaces the 5xx so the client retries; shared-coordination path correctly skipped. Sound.
+- Worker staleness background interval: unref'd, idempotent guard (`if (sweepTimer) return`), `.catch` on the async callback — no unhandled rejection, no double-scheduling. Sound.
+- `key={i}` on the dashboard loading skeleton (line 546) is a CONSTANT array rendered only while loading=true — never reordered; not a key-stability bug.
 
 ## Final sweep
-Walked every `setTimeout`/`setInterval` on the changed surface for leak-on-unmount: monitor timers cleared in effect cleanup (`:261-267`, `:351-366`); sweep interval unref'd and idempotent (`worker-staleness-sweep.ts:99-107`); similarity route timer cleared in `finally`. No unhandled-rejection paths found on the touched routes (flag insert has `.catch`, audit fire-and-forget is internally guarded).
+No regressions from cycle-6 G1/G2/G3/G6 found. The active latent surface is
+the dashboard paging pair (D7-1/D7-2) and the schedule-edit token staleness
+(D7-3).

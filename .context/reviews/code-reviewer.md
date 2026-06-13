@@ -1,34 +1,46 @@
-# Code Reviewer — RPF Cycle 6 (2026-06-12)
+# Code Reviewer — RPF Cycle 7 (2026-06-12)
 
-**HEAD reviewed:** 22e1510f (main, == origin/main, clean tree)
-**Baseline gates at this HEAD (executed):** tsc 0 · eslint 0/0 · lint:bash clean · unit 338 files / 2632 tests PASS.
-**Inventory:** full `src/` (609 TS/TSX files) walked by subsystem; deep reads on the cycle-5 change surface (submissions validator/route, anti-cheat monitor/storage/route/presentation, timeline/dashboard, code-similarity, exam-sessions, contests, claim-query, staleness sweep), token lifecycle call sites (6), group member removal, judge claim SQL, i18n catalogs.
+**HEAD reviewed:** 0472b007 (main == origin/main, clean tree).
+**Lens executed directly by the cycle agent** (no reviewer subagents registered in this environment — same fallback as cycles 1–6, recorded in `_aggregate.md`).
+**Inventory:** full `src/app/api/v1/**` route surface (112 route files), `src/lib/assignments/**`, `src/lib/judge/**`, `src/lib/security/**`, `src/lib/db/**`, cycle-6 diff (22e1510f..0472b007) re-reviewed line-by-line, anti-cheat client/components, docs/api.md cross-checks.
+**Baseline gates on this HEAD (executed):** tsc 0 · eslint 0/0 · lint:bash clean · unit 339 files / 2650 tests PASS.
 
-## Findings
+## CR7-1 — Offset-paginated listings still order by a single timestamp key (LOW-MEDIUM, High, CONFIRMED)
+Cycle-6 G4 fixed exactly ONE instance (submissions offset listing) of a defect
+class that exists in seven other offset-paginated or row-capped listings. All
+order by a non-unique timestamp only, so same-timestamp rows shuffle across
+pages/exports (Postgres gives no stable order within equal keys):
+- `src/app/api/v1/contests/[assignmentId]/anti-cheat/route.ts:292` — `orderBy(desc(antiCheatEvents.createdAt))`, offset-paginated by BOTH the dashboard and the participant timeline (`limit`/`offset` params, lines 268-269). Same-millisecond events are routine (queued batch flush, multi-user dashboards).
+- `src/app/api/v1/admin/audit-logs/route.ts:269` (paged) and `:219` (CSV export row cap — the truncation boundary is nondeterministic too).
+- `src/app/api/v1/admin/login-logs/route.ts:129` (paged) and `:93` (CSV cap).
+- `src/app/api/v1/users/route.ts:46` — bulk roster imports create many users with identical `createdAt`; the admin user list shuffles across pages.
+- `src/app/api/v1/files/route.ts:197`.
+- `src/app/api/v1/problems/route.ts:61` and `:131` — bulk problem imports share `createdAt`.
+**Failure scenario:** an instructor pages through anti-cheat evidence during a live exam; two same-timestamp rows swap between page 1 and page 2 between requests — one row is shown twice, another never. For the audit-log CSV the exported row set itself is nondeterministic at the cap boundary.
+**Fix:** add the table's `id` as a second `desc(...)` key (the exact cycle-6 G4 contract), mirror the `orderBy` arity test pin from `tests/unit/api/submissions.route.test.ts:758-759` for each route, and note the order contract in `docs/api.md` where the endpoint is documented.
 
-### CR6-1 — Contest access-token validity checked inconsistently across the six gates that consume it (MEDIUM, High, CONFIRMED)
-- Expiry-checked (`expires_at IS NULL OR expires_at > NOW()`): `src/lib/platform-mode-context.ts:93,123,148`; `src/lib/assignments/contests.ts:182-185` (`getContestsForUser`); `src/app/api/v1/contests/[assignmentId]/anti-cheat/route.ts:84` (POST access check).
-- NOT expiry-checked: `src/lib/assignments/submissions.ts:324-330` (`validateAssignmentSubmission` — the SUBMIT gate), `src/lib/assignments/public-contests.ts:224-231` (`getContestUserStatus`) and `:291-297` (`getEnrolledContestDetail`).
-- Tokens are created with `expiresAt: assignment.deadline` (`invite/route.ts:104-115`, `recruiting-invitations.ts:680-687`), so for an assignment with a `lateDeadline` the submit API accepts an un-enrolled token-holder whom the platform-mode gate and the contest list already deny. Divergent boundaries on the same row are a defect regardless of which semantic the owner wants.
-- Fix: one shared expiry-checked predicate consumed by all read sides; set `expiresAt` to the effective close (`lateDeadline ?? deadline`) at creation so invited users keep the late window. See SEC6-1 for the revocation half.
+## CR7-2 — Anti-cheat dashboard poll-merge drops loaded rows at the page seam; loadMore appends without dedupe or stale-guard (MEDIUM, High, CONFIRMED)
+`src/components/contest/anti-cheat-dashboard.tsx`:
+- Poll merge (lines 125-148): when the reviewer has loaded >1 page, the 30 s poll replaces the first PAGE_SIZE rows and keeps `prev.slice(PAGE_SIZE)`. If N new events arrived server-side, old rows at indices `PAGE_SIZE-N .. PAGE_SIZE-1` are in NEITHER the fresh first page NOR the preserved tail — **already-loaded evidence rows silently vanish** from the reviewer's screen.
+- `loadMore` (lines 161-179) appends `json.data.events` with **no id-dedupe** and **no fetch-sequence guard** — the exact pair of defects cycle-6 G4 fixed in the participant timeline (`participant-anti-cheat-timeline.tsx:136-154`) but not here. Because `offset` is preserved across poll merges (lines 141-148) while the server list shifts, the next page re-contains rows already rendered → duplicate `key={event.id}` rows (line 577): React key-collision warnings + visually duplicated evidence.
+**Fix:** mirror the timeline's pattern, adapted to the dashboard's preserve-tail UX: (a) id-union merge on poll (fresh first page first, then ALL previous rows not present in it — no seam loss), `setOffset(merged.length)`; (b) `fetchSeqRef` bump in `fetchEvents`, capture in `loadMore`, discard stale responses; (c) id-dedupe on append. Component tests interleaving poll-merge with an in-flight loadMore.
 
-### CR6-2 — `service_unavailable` similarity reason is unreachable but still declared, branched on, and translated (LOW, High, CONFIRMED)
-`src/lib/assignments/code-similarity.ts:242` declares the member; nothing returns it since AGG5-5 (the >MAX guard now returns `too_many_submissions`, and a sidecar failure with ≤MAX rows always reaches the TS fallback). Dead branch at `anti-cheat-dashboard.tsx:299` and dead keys `similarityServiceUnavailable` in `messages/en.json:2313` + `ko.json`. The stale message also misleads operators ("the Rust similarity service is unavailable for this large contest") about a state that cannot occur. Remove member + branch + keys + test rows.
+## CR7-3 — Contest invite re-issue keeps a stale token expiry (LOW, Medium, CONFIRMED logic / limited blast radius)
+`src/app/api/v1/contests/[assignmentId]/invite/route.ts:104-119`: the token
+insert is `onConflictDoNothing`, so re-inviting a user whose token row already
+exists does NOT refresh `expiresAt` to the current effective close. Since
+cycle-6 made expiry uniformly enforced, a pre-existing row stamped with an
+older (or pre-cycle-6 `deadline`-based) expiry stays stale. Blast radius is
+limited because the same POST upserts the `enrollments` row (lines 121-130)
+and every gate accepts enrollment OR a valid token — but the row now
+misstates the invariant the module documents ("token expiry = effective
+close", `contest-access-tokens.ts:93-104`).
+**Fix:** `onConflictDoUpdate` refreshing `expiresAt: contestAccessTokenExpiry(assignment)` (leave `redeemedAt`/`ipAddress` untouched). Pairs with SEC7-1 (schedule-edit sync) — one invariant, all lifecycle points.
 
-### CR6-3 — Offset-mode submissions listing lacks the id tiebreak that cursor mode has (LOW-MEDIUM, High, CONFIRMED)
-`src/app/api/v1/submissions/route.ts:167` orders by `desc(submittedAt)` only, while cursor mode (`:123`) orders by `(submittedAt desc, id desc)` and the cursor filter is tuple-correct. `submittedAt` is the request-level `dbNow`, so deadline bursts produce equal timestamps across users; offset pages over ties are then nondeterministic between requests (rows repeat/vanish across pages). Add `desc(submissions.id)`.
-
-### CR6-4 — `code_similarity` event details omit the language bucket (LOW, High, CONFIRMED)
-Pairs are computed per `(problemId, language)` (`code-similarity.ts:267-275`), and the dashboard pair table renders language, but the persisted evidence row (`code-similarity.ts:428-432`) stores only `pairedWith/problemId/similarity`. Two flags for the same user-pair+problem in different languages are indistinguishable in the stored trail. Add `language` to the details payload.
-
-### CR6-5 — Misleading authorization comment on the anti-cheat GET (LOW, High, CONFIRMED)
-`anti-cheat/route.ts:192-195` says "Write semantics (e.g., the POST heartbeat) keep canManageContest above" — the POST is the STUDENT-facing ingest gated by enrollment/token, not by `canManageContest`. A maintainer auditing authz from comments would mis-model the boundary. Reword to point at the actual write surfaces (score overrides, leaderboard freeze, similarity POST).
-
-## Verified-good (no action)
-- `performFlush` claim loop + in-flight slot ordering (`anti-cheat-monitor.tsx:108-151`) is correct: slot write precedes queue claim; `finally` clears; orphan recovery at flush start. The remaining loss path is `reportEvent`'s direct send — owned by debugger/D6-3 (aggregate AGG6-2).
-- `getAssignmentStatusRows` SQL aggregation, override application, and per-user latest derivation are consistent with the scoring source of truth.
-- `startExamSession` insert/conflict/refetch shape and `extendExamSession` SQL-composed extension are race-safe.
-- Judge claim CTE chain (`claim-query.ts`) — re-derived the self-reclaim compensation and lock-order notes; the invariants hold as documented.
-
-## Final sweep
-No other dead i18n branches in the contests namespace; no stray `?? t(...)` fallback patterns survived cycle-5's CR5-2 fix; no new `tracking-*` on Korean text (locale-conditional usages at `public-header.tsx:306`, problem-set headers are correctly gated).
+## Clean checks (explicitly verified, no findings)
+- `contest-access-tokens.ts` module itself: validity rule, DB-clock contract, in-tx revocation — sound; both creation sites verified to also insert enrollments (recruiting-invitations.ts:675-692, invite route:104-131).
+- Community vote toggle transaction (votes/route.ts:93-141) — TOCTOU-safe, self-vote guarded.
+- Files bulk-delete (DB-first, best-effort disk, audited) — sound.
+- Judge claim CTE chain (claim-query.ts) — invariants documented and intact; heartbeat route + staleness sweep refactor consistent.
+- `exam-sessions.ts` idempotent start + SQL-composed extension — sound.
+- Final sweep: re-grepped all `.orderBy(` call sites for the CR7-1 class (the 7 listed are exhaustive for offset/cap consumers; `admin/workers/route.ts:34` is a single-page fleet list — not paginated, excluded deliberately).
