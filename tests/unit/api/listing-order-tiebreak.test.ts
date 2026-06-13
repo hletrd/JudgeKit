@@ -48,3 +48,52 @@ describe("listing-order id tiebreak (AGG7-2)", () => {
     });
   }
 });
+
+/**
+ * RPF cycle-9 AGG9-1/2/3 — three offset-paged listings in the SAME class that
+ * slipped the cycle-7 5-route allow-list above. They use different orderings
+ * (ascending timestamp, plain column, or a sort-mode branch) so the assertions
+ * are tailored: each must carry the unique `id` tiebreak and must NOT keep its
+ * single-key order. A regression that drops the id tiebreak fails this gate.
+ */
+describe("listing-order id tiebreak (AGG9 — completing the sweep)", () => {
+  it("code-snapshots timeline orders by (createdAt asc, id asc)", () => {
+    const source = read(
+      "src/app/api/v1/contests/[assignmentId]/code-snapshots/[userId]/route.ts"
+    );
+    expect(
+      source,
+      "code-snapshots must use (createdAt asc, id asc) — paged anti-cheat evidence"
+    ).toContain("asc(codeSnapshots.createdAt), asc(codeSnapshots.id)");
+    expect(
+      source,
+      "code-snapshots must not keep a single-key createdAt order"
+    ).not.toMatch(/orderBy\(asc\(codeSnapshots\.createdAt\)\)/);
+  });
+
+  it("recruiting-invitation list orders by (createdAt, id)", () => {
+    const source = read("src/lib/assignments/recruiting-invitations.ts");
+    expect(
+      source,
+      "recruiting-invitation list must carry the id tiebreak"
+    ).toContain("recruitingInvitations.createdAt, recruitingInvitations.id");
+    expect(
+      source,
+      "recruiting-invitation list must not keep a single-key createdAt order"
+    ).not.toMatch(/orderBy\(recruitingInvitations\.createdAt\)/);
+  });
+
+  it("accepted-solutions sort modes all end in a unique id tiebreak", () => {
+    const source = read(
+      "src/app/api/v1/problems/[id]/accepted-solutions/route.ts"
+    );
+    expect(
+      source,
+      "accepted-solutions must carry desc(submissions.id) in its sort clauses"
+    ).toContain("desc(submissions.id)");
+    expect(
+      source,
+      "accepted-solutions newest branch must not be desc(submittedAt) alone"
+    ).not.toMatch(/:\s*\[desc\(submissions\.submittedAt\)\];/);
+  });
+});
