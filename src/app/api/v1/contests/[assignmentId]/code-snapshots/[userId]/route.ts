@@ -51,7 +51,13 @@ export const GET = createApiHandler({
       .from(codeSnapshots)
       .leftJoin(problems, eq(problems.id, codeSnapshots.problemId))
       .where(whereClause)
-      .orderBy(asc(codeSnapshots.createdAt))
+      // Unique `id` tiebreak after the non-unique `created_at` so the
+      // offset-paged anti-cheat evidence timeline is deterministic: snapshots
+      // are POSTed one row at a time by editor autosave (created_at defaults to
+      // new Date()), so rapid edits share a millisecond — without the tiebreak
+      // Postgres could reorder equal-timestamp rows per query and drop/dup a
+      // snapshot at a page seam (RPF cycle-9 AGG9-1).
+      .orderBy(asc(codeSnapshots.createdAt), asc(codeSnapshots.id))
       .limit(limit)
       .offset(offset);
 
