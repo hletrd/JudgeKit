@@ -127,5 +127,27 @@ iteration; then DEPLOY_CMD (per-cycle, detached + polled in-turn).
 
 ---
 
-## Completion record
-(to be filled during PROMPT 3)
+## Completion record (2026-06-13)
+- G1 ✅ 5db875c6 — `syncContestAccessTokenExpiry` helper; wired into the
+  schedule-edit transaction; invite token upsert → `onConflictDoUpdate`
+  refreshing `expiresAt`. Red-first: extend/shorten/clear-deadline sync,
+  in-tx call pin, invite refresh pin.
+- G2 ✅ 4cf6dfe0 — `(createdAt desc, id desc)` total order on the anti-cheat
+  GET + admin audit-logs (paged + CSV cap) + admin login-logs (paged + CSV
+  cap) + users + files + problems listings; `docs/api.md` states the
+  anti-cheat GET order; behavioural arity pin (anti-cheat GET) + source-grep
+  contract for the other 5 (source-grep baseline 141→142 with justification).
+- G3 ✅ 3cf9cb39 — dashboard poll merge is an id-union (no seam loss);
+  loadMore gets a fetch-sequence stale-guard + id-dedupe. Component tests:
+  no-seam-loss, no-duplicate, stale-loadMore-discard.
+- G4 ✅ 576949e1 — `docs/api.md` anti-cheat POST eventType enum corrected to
+  the six client classes with a server-only-classes note.
+
+**Final gates on the completed tree:** tsc 0 · eslint 0/0 · lint:bash clean ·
+unit 340 files / 2661 tests PASS · component 71 files / 249 tests PASS ·
+production build OK.
+**GATE_FIXES this cycle:** 0 pre-existing gate errors (baseline clean); 1
+in-flight baseline bump handled (source-grep inventory 141→142 for the new
+listing-order contract test, justified in the test).
+
+**Deploy record:** (filled after DEPLOY_CMD)
