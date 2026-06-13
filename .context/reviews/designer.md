@@ -1,22 +1,12 @@
-# Designer (UI/UX) — RPF Cycle 9 (2026-06-13)
+# designer (UI/UX) — RPF Cycle 10 (2026-06-13)
 
-**HEAD:** da6179f3. No dev server / browser available in this environment
-(standing DEFER-ENV-GATES); review is source + structural.
+**HEAD:** 03125b44 (clean tree).
+**Note:** No login-gated staging server / browser is provisioned in this environment (DEFER-ENV-GATES), so this is a static-evidence pass (source + CSS + class usage), not a live agent-browser audit.
 
-## DES9-1 — paging glitch is user-visible on the snapshot/invite tables (LOW, Medium)
-The CR9-1/2/3 non-determinism manifests in the UI as a row that "jumps" between
-pages or disappears when an instructor clicks Next/Prev on the code-snapshot
-evidence table or the recruiting-invitation table. Beyond correctness, this reads
-as a trust defect on an integrity surface — a reviewer who sees a snapshot on
-page 1 then cannot find it on a refresh loses confidence in the evidence. The
-backend `id`-tiebreak fix resolves the UX symptom; no component change needed.
+## Findings
+**No new actionable UI/UX findings.**
+- Korean letter-spacing rule (CLAUDE.md) is fully honored: every `tracking-*` / `letter-spacing` usage in `globals.css`, `not-found.tsx`, admin pages, and `recruit/[token]/results` is `locale !== "ko"`-gated with an explicit CLAUDE.md-referencing comment; Korean glyphs render at default spacing. No global Latin tracking leaks onto Korean text.
+- No frontend component or style was changed this cycle (the cycle-9 fixes are backend ORDER-BY-only), so there is no new surface to audit for IA / affordances / focus / WCAG / responsive / loading-empty-error / dark-light / i18n.
 
-## Carried a11y register (browser exit criterion not fired)
-- **DES3-1** expired→active live-region assertiveness (`exam-deadline-sync.tsx:107`)
-  — carry; needs a browser a11y pass.
-- The anti-cheat filter-chip a11y (aria-pressed real buttons) fix from cycle-6
-  (a1f290cf) remains in place; no regression in the dashboard markup changed by
-  cycle-7's paging-fidelity commit (3cf9cb39).
-
-No NEW UI-only defect found in the static pass. Korean text carries no custom
-letter-spacing (project rule honored) in the files touched this cycle.
+## Carried (need a provisioned browser/staging — exit criterion did not fire)
+- DES3-1 (expired→active aria-live politeness), ST5-5 (countdown client-clock indicator), DES4-4 (contest-list status nuance / timeline extension events) — all require a live browser a11y pass. Carry; severity preserved at origin.

@@ -1,25 +1,14 @@
-# Perspective — Instructor (authoring/grading/integrity) — RPF Cycle 9 (2026-06-13)
+# perspective-instructor — RPF Cycle 10 (2026-06-13)
 
-**HEAD:** da6179f3. Seat: instructor authoring + grading + reviewing integrity.
+Seat: an instructor authoring problems/assignments/exams, grading, managing rosters, reviewing similarity, exporting results.
 
-## IN9-1 — code-snapshot evidence table can mislead at page boundaries (MEDIUM, via CR9-1)
-When I review a student's code-snapshot timeline to judge whether code was pasted
-in or developed organically, I page through the snapshots. Today that listing
-(`code-snapshots/[userId]/route.ts:54`) orders by timestamp only, so on a busy
-session two snapshots sharing a millisecond can swap, duplicate, or drop across
-pages — I might miss the very snapshot that shows a sudden full-solution paste, or
-see a duplicate and miscount. For a defensible academic-integrity decision I need
-the timeline to be deterministic and complete. The `id`-tiebreak fix gives me
-that. Highest-priority of the three for my workflow.
+## Assessment
+**No new actionable findings.** The instructor-facing integrity surfaces are sound:
+- Reviewing a candidate's code-snapshot evidence timeline: now paginates deterministically (cycle-9 AGG9-1) — no dropped/duplicated snapshot at a page seam, so a misconduct finding is defensible.
+- Recruiting-invitation roster (bulk CSV import): list now paginates deterministically (cycle-9 AGG9-2) — no invitation dropped/duped across pages.
+- Similarity report: capped at 500 submissions with a truthful skip reason and language-carrying evidence; the comparison phase is abort-able.
+- Exporting results: the export engine is snapshot-isolated and id-ordered, redaction maps apply correctly — a consistent, complete export.
+- Grading/overrides: IOI score overrides overlay both the full board and the live rank consistently (presence test, override of 0 zeroes the problem).
 
-## IN9-2 — recruiting/candidate-roster paging (MEDIUM, via CR9-2)
-When I page the recruiting-invitation list (`recruiting-invitations.ts:272`),
-bulk-imported candidates created in the same instant can shuffle across pages —
-I could overlook a candidate or double-count. Same tiebreak fix.
-
-## Otherwise
-Grouping/roster, grading, similarity reports, exporting results: no NEW defect.
-The schedule-edit token-expiry sync (cycle-7) + access-code expiry (cycle-8) mean
-extending/shortening a deadline now keeps every joiner's access consistent — a
-real authoring-side improvement. Extension-event timeline enrichment
-(TA3-1-followup) remains a carried product item awaiting your scheduling.
+## Carried
+IN2-2 (pre-start accommodations / per-student duration overrides) — owner decision, carry. Extension audit events in the participant timeline (TA3-1-followup/DES4-4) — owner schedules timeline enrichment, carry.

@@ -1,29 +1,14 @@
-# Architect — RPF Cycle 9 (2026-06-13)
+# architect — RPF Cycle 10 (2026-06-13)
 
-**HEAD:** da6179f3.
+**HEAD:** 03125b44 (clean tree).
 
-## A9-1 — listing-order invariant is enforced by an allow-list, not a structural guard (LOW, Medium)
-The "every offset-paged listing ends in a unique sort key" invariant is real and
-correct, but it is currently policed by a hand-maintained 5-route allow-list in
-`listing-order-tiebreak.test.ts`. New or previously-missed offset routes
-(CR9-1/2/3) silently escape it. **Structural options (not all in scope now):**
-- (taken this cycle) extend the allow-list to the 3 missed routes;
-- (future, optional) a `parsePagination`-coupled lint/AST check that any query
-  combining `.offset(` with `.orderBy(` must include the table PK as the final
-  ORDER BY key. Recorded as a hardening direction, NOT a deferred *finding* (no
-  current defect beyond the 3 routes the allow-list extension covers).
+## Findings
+**No new actionable architectural findings.**
+- The listing-order invariant is now enforced by a single source-of-truth contract test covering all paged listings — a good cross-cutting invariant gate. The sweep that began cycle-6 (submissions) → cycle-7 (7 siblings) → cycle-9 (3 stragglers) is complete and self-policing.
+- Module boundaries are clean: scoring/leaderboard SQL is centralized (`contest-scoring.ts`, `leaderboard.ts`, shared `buildIoiLatePenaltyCaseExpr`); exam lifecycle in `exam-sessions.ts`; auth/authz behind dedicated helpers.
+- Deploy architecture honors the app-only vs. worker-host split (algo = app-only; worker-0 = judge images), encoded in `.env.deploy.*` and AGENTS.md.
 
-The fix itself is purely additive and respects the established single-owner
-pattern (the contract test stays the one source of truth for the invariant).
-
-## Token-lifecycle architecture — converged
-`contest-access-tokens.ts` is the single owner of validity + expiry; all 4
-creation/mutation sites route through it after AGG8-1. The optional
-`buildContestAccessTokenValues(...)` constructor (A8-1) remains an unimplemented
-*hardening direction* (no future-drift insurance), explicitly recorded in the
-cycle-8 plan as NOT a deferred finding — no action required unless a 5th token
-insert site is added.
-
-## No other architectural drift
-Module boundaries, API handler factory, and DB-time discipline unchanged and
-sound.
+## Standing structural debts (carried, no exit criterion fired)
+- C3-AGG-5: `deploy-docker.sh` SSH-helper extraction (1433 lines) — no SSH/remote-exec plumbing touched this cycle. Carry.
+- AGENTS.md Step 5b backfill sunset (target 2026-10-26) — not yet due. Carry.
+No High/Medium architectural risk is open.

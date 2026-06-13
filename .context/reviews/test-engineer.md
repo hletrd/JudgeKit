@@ -1,34 +1,15 @@
-# Test Engineer — RPF Cycle 9 (2026-06-13)
+# test-engineer — RPF Cycle 10 (2026-06-13)
 
-**HEAD:** da6179f3. Baseline: 340 files / 2663 tests PASS.
+**HEAD:** 03125b44 (clean tree). Unit: 340 files / 2666 tests PASS.
 
-## TE9-1 — the cycle-7 listing-order contract test is incomplete (test gap, High)
-**File:** `tests/unit/api/listing-order-tiebreak.test.ts`. The AGG7-2 source-grep
-contract enumerates only 5 routes (audit-logs, login-logs, users, files,
-problems). It **omits three offset-paged listings that lack the unique tiebreak**
-(CR9-1/2/3): `code-snapshots/[userId]/route.ts`, `recruiting-invitations.ts`,
-`accepted-solutions/route.ts`. Because the test is an explicit allow-list, those
-routes were never guarded — the sweep's own gate let them slip.
+## Method
+Audited the listing-order contract test for completeness against the live `.offset(` inventory, and checked whether any paged route is unprotected by a gate.
 
-**Red-first plan:** extend `listing-order-tiebreak.test.ts` with three tailored
-assertions (the existing harness asserts a `desc(createdAt), desc(id)` string;
-the new routes use different orders, so assert the *presence of the id tiebreak*
-and the *absence of the single-key order* per route):
-- code-snapshots: contains `asc(codeSnapshots.createdAt), asc(codeSnapshots.id)`;
-  must NOT match `orderBy(asc(codeSnapshots.createdAt))` alone.
-- recruiting-invitations: contains `recruitingInvitations.createdAt,
-  recruitingInvitations.id`; must NOT keep `orderBy(recruitingInvitations.createdAt)`
-  as the sole clause.
-- accepted-solutions: every `orderByClause` branch ends with `desc(submissions.id)`;
-  the `newest` branch must NOT be `[desc(submissions.submittedAt)]` alone.
+## Findings
+**No new actionable test gaps.**
+- `listing-order-tiebreak.test.ts` covers all 8 offset/cap-paged routes that have a non-unique primary sort key (5 cycle-7 + 3 cycle-9). The cycle-9 additions assert both presence of the id tiebreak AND absence of the single-key order per route — a regression on any route fails the gate. Cycle-9's AGG9-4 "incomplete allow-list" gap is closed.
+- `export.ts` is implicitly covered: its `orderColumns` are unique PKs by construction (`TABLE_ORDER`), so no per-route grep assertion is required; the snapshot isolation makes chunk paging deterministic regardless.
 
-All three assertions are RED on current source and GREEN after the one-line
-orderBy fix per route. This keeps the contract test the single source of truth
-for the listing-order invariant and prevents a 4th omission.
-
-## Existing coverage note
-`code-snapshots.route.test.ts`, `contest-code-snapshots-get.route.test.ts`,
-`problem-accepted-solutions.route.test.ts`, and the recruiting-invitation suite
-exist but none asserts page-seam ordering — the contract test is the right place
-(behavioural per-route seam tests would need full db-chain mocks per the existing
-source-grep-inventory rationale in the test file header).
+## Residual coverage notes (pre-existing, not new)
+- The contract is a SOURCE-GREP test (asserts query SHAPE), legitimate per the in-file note since a full db-chain mock per route would be disproportionate; behavioural arity pins live with routes that already have a chain harness (submissions, anti-cheat GET). No new behavioural gap introduced this cycle.
+- DEFER-ENV-GATES (login-gated E2E + browser a11y) remains carried — needs a provisioned staging server / seeded admin creds, absent in this environment. Exit criterion (provisioned staging) did not fire.

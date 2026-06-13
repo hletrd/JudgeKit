@@ -1,27 +1,14 @@
-# Tracer — RPF Cycle 9 (2026-06-13)
+# tracer — RPF Cycle 10 (2026-06-13)
 
-**HEAD:** da6179f3.
+**HEAD:** 03125b44 (clean tree).
 
-## Trace 1 — snapshot evidence: insert → store → paged read
-- **Write:** editor autosave → `POST /api/v1/code-snapshots` → `insert(codeSnapshots)`
-  (`code-snapshots/route.ts:79`) with `created_at` defaulting to `new Date()`
-  (`schema.pg.ts` `$defaultFn(() => new Date())`). No monotonic sequence column;
-  bursts share a millisecond.
-- **Read:** instructor → `GET .../code-snapshots/[userId]` →
-  `ORDER BY created_at ASC LIMIT n OFFSET k` (`route.ts:54-56`), **no `id`
-  tiebreak**. → equal-`created_at` rows reorder between page requests → a
-  snapshot can vanish/duplicate at a page boundary. The data layer offers a
-  unique `id` (PK) that the read path simply does not use as a tiebreak. Fix:
-  add `asc(codeSnapshots.id)`.
+## Method
+Traced the listing-order invariant end-to-end: every `.offset(` call site → its `orderBy` → whether a unique key terminates the order; traced the contract test (`listing-order-tiebreak.test.ts`) against the actual routes it claims to cover.
 
-## Trace 2 — the cycle-7 sweep's coverage boundary
-The AGG7-2 contract test (`listing-order-tiebreak.test.ts`) is an explicit
-allow-list of 5 routes. Tracing "which offset-paged listings exist" vs "which the
-test guards" shows three uncovered: code-snapshots, recruiting-invitations,
-accepted-solutions. The sweep fixed what it enumerated; it did not enumerate
-these. This is a coverage-boundary miss, not a regression.
+## Findings
+**No new actionable findings.** The invariant "every offset/cap-paged listing ends in a unique key" holds across all 11 `.offset(` sites:
+1. `submissions/route.ts` ✓  2. `anti-cheat/route.ts` (paged) ✓  3. `code-snapshots` ✓  4. `recruiting-invitations.ts` ✓  5. `accepted-solutions` (3 branches) ✓  6. `export.ts` (orderColumns=["id"] per table, snapshot-isolated) ✓  7-11. audit-logs / login-logs / users / files / problems ✓.
 
-## Token-lifecycle trace (re-verified)
-join gate (`access-codes.ts:136` effectiveClose) and token expiry
-(`:199` `contestAccessTokenExpiry`) now derive from the same `lateDeadline ??
-deadline` — no divergence remains across the 4 insert sites. AGG8-1 closed.
+The contract test now enumerates 8 routes (5 cycle-7 + 3 cycle-9) and the assertions match the live source exactly (verified by reading both). The test's allow-list is no longer incomplete for the offset-paged class — its prior gap (cycle-9 AGG9-4) is closed.
+
+The only ordered query WITHOUT a unique tiebreak is the anti-cheat gap-scan (`limit(5000)`, non-paged, AGG8-2) — correctly excluded from the paged-listing invariant and tracked as a carried deferral.

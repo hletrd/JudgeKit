@@ -1,23 +1,16 @@
-# Document Specialist — RPF Cycle 9 (2026-06-13)
+# document-specialist — RPF Cycle 10 (2026-06-13)
 
-**HEAD:** da6179f3.
+**HEAD:** 03125b44 (clean tree).
 
-## DOC9-1 — listing-order contract doc scope (LOW, Low)
-`listing-order-tiebreak.test.ts` header documents the invariant ("Every
-offset-paginated or row-capped listing must order by a UNIQUE second key")
-correctly, but its case list lagged the actual route set. After the CR9 fix the
-header remains accurate and the case list will match reality. No prose doc edit
-required beyond keeping the test's case list complete (handled in
-test-engineer.md). No doc/code mismatch introduced.
+## Method
+Cross-checked AGENTS.md / CLAUDE.md claims against the live code: language count, Step 5b sunset criteria, deploy env-var contract, and the relational-query footgun note.
 
-## Token-lifecycle docs
-The access/exam-integrity comments at `access-codes.ts:184-191` and
-`contest-access-tokens.ts:93-104` accurately describe the effective-close expiry
-rule after AGG8-1. The optional DOC8-1 ("note that ALL token creation paths
-derive expiry from the effective close") was not added because the
-values-constructor it referenced was not built; the inline comments already make
-the invariant discoverable at each of the 4 sites. No doc gap.
+## Findings
+**No new actionable doc-code mismatches.**
+- AGENTS.md Step 5b sunset subsection: target re-eval date 2026-10-26 is NOT yet reached (today 2026-06-13). The backfill correctly remains in `deploy-docker.sh` and the doc correctly still describes it. No edit due.
+- The cycle-9 fixes are documented in the cycle-9 plan completion record (commits + final gates + deploy record) — accurate against `git log`.
+- AGENTS.md language table notes it can drift from `languages.ts`/`docs/languages.md` (source of truth) — an honest, self-documenting caveat, not a defect.
+- The deferred-register in the cycle-9 plan accurately reflects AGG8-2 / P6-1 status (both blocks unedited this cycle).
 
-## No other doc-code drift
-README / deploy docs / API enum docs (corrected in cycle-7 at 576949e1) remain
-consistent with code.
+## Carried
+None doc-specific with a fired exit criterion. The Step 5b doc-removal is gated on 2026-10-26 + column-absence verification (carry).

@@ -1,31 +1,19 @@
-# Verifier — RPF Cycle 9 (2026-06-13)
+# verifier — RPF Cycle 10 (2026-06-13)
 
-**HEAD:** da6179f3. Gates executed on review HEAD: tsc 0 · eslint 0/0 ·
-lint:bash clean · unit 340 files / 2663 tests PASS.
+**HEAD:** 03125b44 (clean tree).
 
-## V9-1 — confirm CR9-1/2/3 are offset-paged with non-unique sort keys (CONFIRMED)
-Verified from code (not comments):
-- `code-snapshots/[userId]/route.ts`: `parsePagination` → `offset` (line 20),
-  `.orderBy(asc(codeSnapshots.createdAt))` (54), `.offset(offset)` (56). `id` is
-  the nanoid PK (`schema.pg.ts:1011`). **Offset-paged, non-unique sort key →
-  confirmed seam-loss risk.**
-- `recruiting-invitations.ts`: `offset` (248), `.orderBy(...createdAt)` (272),
-  `.offset(offset)` (274). Confirmed.
-- `accepted-solutions/route.ts`: `offset = (page-1)*pageSize` (34),
-  `.orderBy(...orderByClause)` (78) where no branch ends in a unique column,
-  `.offset(offset)` (80). Confirmed.
+## Gate verification (executed this cycle)
+- `npx tsc --noEmit` → **0 errors**
+- `npm run lint` (eslint) → **0 errors / 0 warnings**
+- `npm run lint:bash` → **clean** (`bash -n deploy-docker.sh && bash -n deploy.sh`)
+- `npm run test:unit` (vitest) → **340 files / 2666 tests PASS**
 
-## V9-2 — token-lifecycle invariant holds (CONFIRMED)
-All 4 token insert/upsert sites use `contestAccessTokenExpiry(assignment)`;
-`assignment` loads include both `deadline` and `lateDeadline` at each site
-(access-codes 120-121, invite, recruiting-invitations 625-626). AGG8-1 fix at
-`access-codes.ts:199` verified.
+Matches the cycle-9 completion record exactly (2666 tests) — no drift since the cycle-9 deploy at HEAD da6179f3→03125b44.
 
-## Test-gap note
-No existing unit test pins the listing order of the three CR9 routes. A red-first
-test should capture the `.orderBy(...)` arguments (or assert stable ordering
-across a simulated page seam with equal-timestamp fixtures) and assert the `id`
-tiebreak is present — mirrors the cycle-7 route tests. See test-engineer.md.
+## Claim verification
+- Cycle-9 plan claims G1–G4 done at 883c42aa / 53826cff / 20d67c03 (+ test 2d542442): VERIFIED present in `git log` and in the live source (each orderBy carries its tiebreak; the contract test asserts all 3).
+- AGENTS.md Step 5b sunset target (2026-10-26): NOT yet due (today 2026-06-13) — Step 5b correctly remains.
+- Korean letter-spacing rule: all `tracking-*`/`letter-spacing` usages are `locale !== "ko"`-gated with CLAUDE.md-referencing comments — VERIFIED compliant.
 
-## Deferred register
-AGG8-2 and P6-1 exit criteria NOT fired (no edit to either block this cycle).
+## Findings
+**No new actionable findings.** All gates green; all prior-cycle claims verified true.

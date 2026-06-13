@@ -1,19 +1,13 @@
-# Perspective — Job Applicant (recruiting coding test) — RPF Cycle 9 (2026-06-13)
+# perspective-job-applicant — RPF Cycle 10 (2026-06-13)
 
-**HEAD:** da6179f3. Seat: candidate in a recruiting coding test.
+Seat: a candidate in a recruiting coding test — first-run experience, environment clarity, time-pressure UX, fairness perception, accidental-disqualification risk.
 
-## JA9-1 — accidental-disqualification risk from incomplete snapshot evidence (MEDIUM, via CR9-1)
-If a recruiter reviews my code-snapshot timeline to judge whether I cheated, the
-listing dropping or duplicating a snapshot at a page seam
-(`code-snapshots/[userId]/route.ts:54`) could make my organic problem-solving look
-like a paste-in (a missing intermediate snapshot) — an accidental-disqualification
-risk that lands on ME. Deterministic, complete evidence (the `id`-tiebreak fix)
-protects candidates from being misjudged on a rendering artifact. This is the
-candidate-trust reason the fix matters.
+## Assessment
+**No new actionable findings.**
+- Invitation redemption: `redeemRecruitingToken` returns truthful, distinct errors (`tokenExpired`, `alreadyRedeemed`) so a candidate sees a clear reason, not a generic failure.
+- Time-pressure fairness: windowed-exam personal deadline is computed once and survives reconnect (idempotent session); staff extensions compose correctly — a candidate is not penalized by a transient disconnect.
+- Trust/fairness: the candidate's submission evidence (code snapshots) is recorded and paged deterministically; the recruiter cannot accidentally see a corrupted (dropped/duped) timeline that misrepresents the candidate (cycle-9 AGG9-1).
+- Accidental disqualification: anti-cheat events are recorded, but the integrity-evidence surfaces are now consistent, reducing the risk of a false misconduct read from shuffled evidence.
 
-## First-run / environment / time-pressure
-- Token expiry now spans the configured late window (cycle-8), so I don't lose
-  access mid-test on a contest with a grace period — good.
-- JA-clarity (no pre-test language-availability preview) remains a carried
-  product item; exit criterion (owner decision on a candidate test-info page) not
-  fired. No new first-run defect surfaced.
+## Carried
+JA-clarity: no pre-test language-availability preview page — a candidate cannot confirm their language is supported before starting. LOW/Medium, owner decision on a candidate test-info page. Carry.

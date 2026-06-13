@@ -1,22 +1,13 @@
-# Perspective — Student (assignments/exams) — RPF Cycle 9 (2026-06-13)
+# perspective-student — RPF Cycle 10 (2026-06-13)
 
-**HEAD:** da6179f3. Seat: a student taking a timed assignment/exam.
+Seat: a student taking assignments/exams.
 
-## ST9-1 — fairness of misconduct review depends on complete snapshot evidence (MEDIUM, via CR9-1)
-If I'm ever flagged for misconduct, the instructor reviews my code-snapshot
-timeline. Because that listing can drop or duplicate a snapshot at a page seam
-(`code-snapshots/[userId]/route.ts:54`, no `id` tiebreak), the evidence shown
-about MY work could be incomplete or misordered — a fairness risk that cuts
-against the student. I want the evidence trail to be deterministic and complete.
-The `id`-tiebreak fix addresses this. This is the student-facing reason CR9-1 is
-not a cosmetic nicety.
+## Assessment
+**No new actionable findings.** The flows central to a student's experience are sound at this HEAD:
+- Mid-exam disconnect/timeout: `startExamSession` is idempotent (re-entry returns the same session, never a panic-inducing false "closed" — RPF cycle-4 AGG4-4 intact); the personal deadline is computed once and respected by scoring.
+- Anxiety-inducing failure modes: the `insert-then-vanish` anomaly returns a retryable 500, not a terminal "your exam is closed."
+- Fairness: a frozen leaderboard now auto-unfreezes at the deadline (no permanent freeze), and the student's own live rank is computed consistently with the full board (IOI per-problem-best, override-overlaid).
+- Late penalty keys on the per-session `personal_deadline`, so staff-granted extensions are honored fairly.
 
-## Otherwise no NEW student-facing defect
-- Submission flow, deadline/late-window handling, exam disconnect/timeout: the
-  token-expiry fix (cycle-8) means an access-code joiner no longer loses contest
-  visibility during a configured late window — a real student-facing improvement
-  already shipped. No regression.
-- Countdown-timer client-clock trust (ST5-5) remains carried (needs a server-time
-  sync indicator; exit criterion not fired this cycle).
-
-No new anxiety-inducing failure mode surfaced.
+## Carried (need a live browser; exit criterion did not fire)
+- ST5-5: the countdown timer trusts the client clock between server syncs — a server-time sync indicator would reduce anxiety about a drifting local clock. LOW/Medium, carry.

@@ -1,34 +1,23 @@
-# Security Reviewer — RPF Cycle 9 (2026-06-13)
-*(Authorized defensive hardening assessment of the owner's own platform.)*
+# security-reviewer — RPF Cycle 10 (2026-06-13)
 
-**HEAD:** da6179f3. Baseline green.
+**Framing:** Authorized defensive hardening assessment of the owner's own JudgeKit platform.
+**HEAD:** 03125b44 (clean tree).
 
-## SEC9-1 — anti-cheat evidence completeness: snapshot-timeline paging can drop/dup rows (MEDIUM, High)
-**File:** `code-snapshots/[userId]/route.ts:54`. The code-snapshot timeline is an
-academic-integrity / recruiting-integrity evidence surface (it shows a
-candidate's keystroke-level code evolution to detect paste-ins / unauthorized
-assistance). Because the listing paginates `asc(created_at)` + offset with no
-unique tiebreak, an instructor reviewing a misconduct case can be shown an
-**incomplete or duplicated** snapshot sequence at every page boundary when
-snapshots share a millisecond (common under rapid autosave). A defensible
-misconduct finding requires the evidence listing to be deterministic and
-complete. **Hardening:** add `asc(codeSnapshots.id)` so the page seam is stable.
-This complements (does not reopen) the deferred AGG8-2 heartbeat-gap-scan order.
+## Method
+Reviewed the auth/authz helper surface (`src/lib/auth/permissions.ts`, `role-helpers.ts`, `recruiting-token.ts`, `trusted-host.ts`), the recruiting/exam/contest route gates, the export redaction maps, the LIKE-search escaping on recruiting search, and the integrity-evidence ordering surfaces (anti-cheat events, code snapshots).
 
-## Authorization / confidentiality pass — no NEW gap
-- The token-lifecycle invariant (a contest access token expires at the effective
-  close `lateDeadline ?? deadline`) is now enforced at every creation/mutation
-  site (cycle-8 AGG8-1 closed the access-code redeem path at
-  `access-codes.ts:199`). No over-grant past close; the access-code defect was
-  restrictive, now consistent. Verified all 4 insert/upsert sites + the
-  schedule-edit sync route through `contestAccessTokenExpiry()`.
-- `accepted-solutions/route.ts` correctly excludes assignment-tied submissions
-  (`assignmentId IS NULL`, line 44) and nulls the userId for anonymous shares
-  (line 88) — hidden-test / peer-code confidentiality intact. The missing
-  id-tiebreak there (CR9-3) is a correctness nicety, not a leak.
-- Hidden test cases, other users' submissions, scoreboard integrity, sandbox
-  isolation: re-scanned, no NEW weakness vs the cycle-8 assessment.
+## Findings
+**No new actionable security findings.**
 
-## Not deferrable
-SEC9-1 is correctness on an integrity-evidence surface — repo rules contain no
-exception permitting deferral of correctness/security findings.
+Verified-good (defensive controls intact):
+- Recruiting-invitation search uses parameterized `ILIKE ... ESCAPE '\\'` with `escapeLikePattern` (`recruiting-invitations.ts:259-263`) — no LIKE/SQL injection.
+- Export engine redacts via `mergeRedactionMaps` UNION (not overwrite) and `EXPORT_ALWAYS_REDACT_COLUMNS` always applied even in full-fidelity mode (`export.ts:103-105`) — secrets never leak through the sanitized path.
+- Hidden-test-case / cross-user-submission confidentiality: `accepted-solutions` route excludes assignment-tied submissions (`assignmentId IS NULL`, line 44) so contest code never leaks to peers when a problem flips public post-contest, and honors the per-user `shareAcceptedSolutions` flag.
+- Integrity evidence (code-snapshot timeline) now paginates deterministically (cycle-9 AGG9-1 fix) — a defensible misconduct finding can no longer drop/dup evidence rows at a page seam.
+- Korean letter-spacing rule, `config.ts` preservation, and seccomp deny-list posture unchanged and compliant.
+
+## Carried (exit criteria did NOT fire this cycle)
+- AGG8-2 heartbeat-gap scan order (LOW): bounded NON-paged scan, block unedited. Carry.
+- P6-1 similarity normalize-loop (LOW/RISK): bounded by 500-row + 10k-literal caps, Rust sidecar is default engine, fallback unedited. Carry.
+
+No High/Medium security/correctness finding is open or deferred this cycle.
