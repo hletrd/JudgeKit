@@ -58,7 +58,10 @@ export const GET = createApiHandler({
         })
         .from(problems)
         .where(visibilityFilter)
-        .orderBy(desc(problems.createdAt))
+        // (createdAt desc, id desc) — total order so bulk-imported problems
+        // with identical createdAt do not shuffle across offset pages (RPF
+        // cycle-7 AGG7-2).
+        .orderBy(desc(problems.createdAt), desc(problems.id))
         .limit(limit)
         .offset(offset);
 
@@ -128,7 +131,10 @@ export const GET = createApiHandler({
         })
       .from(problems)
       .where(whereClause)
-      .orderBy(desc(problems.createdAt))
+      // (createdAt desc, id desc) — total order so bulk-imported problems with
+      // identical createdAt do not shuffle across offset pages (RPF cycle-7
+      // AGG7-2).
+      .orderBy(desc(problems.createdAt), desc(problems.id))
       .limit(limit)
       .offset(offset);
 

@@ -43,7 +43,10 @@ export const GET = createApiHandler({
       })
       .from(users)
       .where(whereClause)
-      .orderBy(desc(users.createdAt))
+      // (createdAt desc, id desc) — total order so bulk-imported users with
+      // identical createdAt do not shuffle across offset pages (RPF cycle-7
+      // AGG7-2).
+      .orderBy(desc(users.createdAt), desc(users.id))
       .limit(limit)
       .offset(offset);
 

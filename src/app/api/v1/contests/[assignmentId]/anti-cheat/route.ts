@@ -289,7 +289,10 @@ export const GET = createApiHandler({
       .from(antiCheatEvents)
       .innerJoin(users, eq(users.id, antiCheatEvents.userId))
       .where(whereClause)
-      .orderBy(desc(antiCheatEvents.createdAt))
+      // (createdAt desc, id desc) — total order so same-timestamp evidence
+      // rows do not shuffle across offset pages (RPF cycle-7 AGG7-2). Same
+      // contract documented in docs/api.md.
+      .orderBy(desc(antiCheatEvents.createdAt), desc(antiCheatEvents.id))
       .limit(limit)
       .offset(offset);
 

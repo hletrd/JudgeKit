@@ -161,6 +161,21 @@ describe("GET /api/v1/contests/[assignmentId]/anti-cheat", () => {
     expect(eventsChain.limit).toHaveBeenCalledWith(100);
   });
 
+  it("orders the events listing by (createdAt desc, id desc) — total order, no page shuffle (AGG7-2)", async () => {
+    const { eventsChain } = buildSelectChain([], 0);
+
+    const { GET } = await import("@/app/api/v1/contests/[assignmentId]/anti-cheat/route");
+    const req = new NextRequest(
+      `http://localhost/api/v1/contests/${ASSIGNMENT_ID}/anti-cheat`
+    );
+    await GET(req);
+
+    // Two sort keys: createdAt DESC + the id DESC tiebreak, so same-timestamp
+    // evidence rows cannot shuffle across offset page boundaries.
+    expect(eventsChain.orderBy).toHaveBeenCalledTimes(1);
+    expect(eventsChain.orderBy.mock.calls[0]).toHaveLength(2);
+  });
+
   it("caps limit at 500 even when a larger value is requested", async () => {
     const { eventsChain } = buildSelectChain([], 0);
 

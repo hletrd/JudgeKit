@@ -157,7 +157,16 @@ describe("source-grep test inventory", () => {
     //     and that no inline expiry-rule copy re-appears. Inherently a
     //     multi-file consumption contract; behavioural tests cover each
     //     gate's verdict but cannot see a re-inlined duplicate rule.
-    const DOCUMENTED_BASELINE = 141;
+    // Bumped 141 -> 142 (2026-06-13, RPF cycle-7):
+    //   - tests/unit/api/listing-order-tiebreak.test.ts — pins that every
+    //     offset/cap listing orders by a UNIQUE second key (id) after its
+    //     non-unique timestamp (AGG7-2: same-timestamp rows shuffled across
+    //     pages and the CSV cap boundary was nondeterministic). The
+    //     behavioural arity pins live with the routes that already have a
+    //     db-chain harness (submissions, anti-cheat GET); this cross-route
+    //     query-SHAPE invariant would otherwise need a full chain mock per
+    //     route, so a source-grep contract is the proportionate guard.
+    const DOCUMENTED_BASELINE = 142;
     expect(sourceGrepFiles.length).toBe(DOCUMENTED_BASELINE);
   });
 

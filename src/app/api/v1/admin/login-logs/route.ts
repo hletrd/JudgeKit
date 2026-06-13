@@ -90,7 +90,9 @@ export const GET = createApiHandler({
 
     const filteredQuery = whereClause ? eventsQuery.where(whereClause) : eventsQuery;
     if (format === "csv") {
-      const rows = await filteredQuery.orderBy(desc(loginEvents.createdAt)).limit(MAX_CSV_EXPORT_ROWS);
+      // (createdAt desc, id desc) — total order so the CSV cap boundary is
+      // deterministic for same-timestamp rows (RPF cycle-7 AGG7-2).
+      const rows = await filteredQuery.orderBy(desc(loginEvents.createdAt), desc(loginEvents.id)).limit(MAX_CSV_EXPORT_ROWS);
       const BOM = "\uFEFF";
       const header = [
         "Timestamp",
@@ -126,7 +128,9 @@ export const GET = createApiHandler({
     }
 
     const data = await filteredQuery
-      .orderBy(desc(loginEvents.createdAt))
+      // (createdAt desc, id desc) — total order so same-timestamp rows do not
+      // shuffle across offset pages (RPF cycle-7 AGG7-2).
+      .orderBy(desc(loginEvents.createdAt), desc(loginEvents.id))
       .limit(limit)
       .offset(offset);
 

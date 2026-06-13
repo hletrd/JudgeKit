@@ -194,7 +194,9 @@ export const GET = createApiHandler({
       .from(files)
       .leftJoin(users, eq(files.uploadedBy, users.id))
       .where(where)
-      .orderBy(desc(files.createdAt))
+      // (createdAt desc, id desc) — total order so same-timestamp files do not
+      // shuffle across offset pages (RPF cycle-7 AGG7-2).
+      .orderBy(desc(files.createdAt), desc(files.id))
       .limit(limit)
       .offset(offset);
 

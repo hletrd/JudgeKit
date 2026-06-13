@@ -832,6 +832,9 @@ List anti-cheat events. **Instructor or above.**
 | `limit` | number | 100 | Max 500 |
 | `offset` | number | 0 | Pagination offset |
 
+Events are returned in `(createdAt desc, id desc)` order — a total order, so
+same-timestamp rows do not shuffle across offset pages.
+
 **Response:**
 ```json
 { "data": { "events": [...], "total": 42, "limit": 100, "offset": 0 } }
