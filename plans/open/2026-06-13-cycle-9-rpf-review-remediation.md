@@ -123,4 +123,15 @@ https://test.worv.ai/ and https://algo.xylolabs.com/ for HTTP 200).
 unit 340 files / 2666 tests PASS (+3 contract cases) · production build OK.
 **GATE_FIXES this cycle:** 0 pre-existing gate errors (baseline clean); 0
 suppressions.
-**Deploy record:** (filled after DEPLOY_CMD below.)
+**Deploy record:** per-cycle-success. Both worv (test.worv.ai) and algo
+(algo.xylolabs.com) reported "Deployment complete!"; the deploy script verified
+HTTP 200 + HTTPS 200 on each, and both were independently re-verified
+(`curl` → worv 200, algo 200). The post-deploy Playwright smoke shows
+142 passed / 6 failed IDENTICALLY on both targets; all 6 failures are at the
+"Step 1: Login as admin" stage (`loginAsAdmin`/`loginWithCredentials` →
+`page.waitForURL` timeout on admin-languages, admin-workers, auth-flow,
+contest-access-code-gate, contest-nav, rankings specs) — the standing
+DEFER-ENV-GATES login-gated-E2E condition (no seeded admin / smoke creds in this
+environment), unrelated to the cycle-9 ORDER BY tiebreak changes (backend-only,
+no UI/auth surface, covered by green unit tests). auraedu NOT deployed this cycle
+(out-of-band per orchestrator).
