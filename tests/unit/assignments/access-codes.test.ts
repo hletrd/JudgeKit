@@ -226,6 +226,94 @@ describe("access code helpers", () => {
     expect(getDbNowUncached).toHaveBeenCalled();
   });
 
+  it("stamps the redeemed token's expiry at the effective close (lateDeadline ?? deadline)", async () => {
+    // AGG8-1 (cycle-8): the access-code redeem path must derive token expiry
+    // from the canonical effective close, identical to the invite path and the
+    // schedule-edit sync — NOT bare `deadline`. With a late window configured,
+    // a deadline-stamped token expires early and drops token-keyed catalog /
+    // platform-mode visibility during the window the instructor opened.
+    const deadline = new Date("2026-05-01T17:00:00Z");
+    const lateDeadline = new Date("2026-05-01T18:00:00Z");
+
+    // Capture the values passed to each tx.insert(...).values(...) call so we
+    // can pick out the contest-access-token insert (the one without an
+    // onConflict clause).
+    // The contest-access-token insert is the one carrying `expiresAt`
+    // (awaited directly, no onConflict chain); the enrollment insert carries
+    // `enrolledAt` and chains onConflictDoNothing.
+    const tokenInsertValues: Array<Record<string, unknown>> = [];
+    const insertMock = vi.fn(() => ({
+      values: vi.fn((vals: Record<string, unknown>) => {
+        if ("expiresAt" in vals) {
+          tokenInsertValues.push(vals);
+          return Promise.resolve(undefined);
+        }
+        return { onConflictDoNothing: vi.fn().mockResolvedValue(undefined) };
+      }),
+    }));
+
+    const tx = { select: txSelectMock, insert: insertMock };
+
+    txLimitMock
+      .mockResolvedValueOnce([{
+        id: "assignment-1",
+        groupId: "group-1",
+        accessCode: "LATEWNDW",
+        examMode: "scheduled",
+        deadline,
+        lateDeadline,
+      }])
+      .mockResolvedValueOnce([]) // no existing token
+      .mockResolvedValueOnce([]); // no existing enrollment
+
+    // Redeem must succeed (now=2026-04-20, well before the close).
+    dbTransactionMock.mockImplementation(async (callback: (client: typeof tx) => Promise<unknown>) => callback(tx));
+
+    const accessCodesModule = await import("@/lib/assignments/access-codes");
+    const result = await accessCodesModule.redeemAccessCode("LATEWNDW", "user-1");
+    expect(result).toMatchObject({ ok: true, assignmentId: "assignment-1" });
+
+    expect(tokenInsertValues).toHaveLength(1);
+    expect(tokenInsertValues[0].expiresAt).toEqual(lateDeadline);
+  });
+
+  it("stamps the redeemed token's expiry at deadline when no late window is set", async () => {
+    const deadline = new Date("2026-05-01T17:00:00Z");
+
+    const tokenInsertValues: Array<Record<string, unknown>> = [];
+    const insertMock = vi.fn(() => ({
+      values: vi.fn((vals: Record<string, unknown>) => {
+        if ("expiresAt" in vals) {
+          tokenInsertValues.push(vals);
+          return Promise.resolve(undefined);
+        }
+        return { onConflictDoNothing: vi.fn().mockResolvedValue(undefined) };
+      }),
+    }));
+
+    const tx = { select: txSelectMock, insert: insertMock };
+
+    txLimitMock
+      .mockResolvedValueOnce([{
+        id: "assignment-1",
+        groupId: "group-1",
+        accessCode: "NOLATEWN",
+        examMode: "scheduled",
+        deadline,
+        lateDeadline: null,
+      }])
+      .mockResolvedValueOnce([])
+      .mockResolvedValueOnce([]);
+
+    dbTransactionMock.mockImplementation(async (callback: (client: typeof tx) => Promise<unknown>) => callback(tx));
+
+    const accessCodesModule = await import("@/lib/assignments/access-codes");
+    await accessCodesModule.redeemAccessCode("NOLATEWN", "user-1");
+
+    expect(tokenInsertValues).toHaveLength(1);
+    expect(tokenInsertValues[0].expiresAt).toEqual(deadline);
+  });
+
   it("uses DB-sourced time for setAccessCode and revokeAccessCode", async () => {
     const { getDbNowUncached } = await import("@/lib/db-time");
 

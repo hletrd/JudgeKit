@@ -5,6 +5,7 @@ import { assignments, contestAccessTokens, enrollments } from "@/lib/db/schema";
 import { and, eq } from "drizzle-orm";
 import { withUpdatedAt } from "@/lib/db/helpers";
 import { getDbNowUncached } from "@/lib/db-time";
+import { contestAccessTokenExpiry } from "@/lib/assignments/contest-access-tokens";
 
 /**
  * Generate a random 8-character uppercase alphanumeric access code.
@@ -180,7 +181,14 @@ export async function redeemAccessCode(
         return { ok: true as const, alreadyEnrolled: true, assignmentId: assignment.id, groupId: assignment.groupId };
       }
 
-      // Create access token with expiry tied to assignment deadline
+      // Create access token with expiry tied to the assignment's EFFECTIVE
+      // close (lateDeadline ?? deadline) via the canonical helper — RPF
+      // cycle-8 AGG8-1. This was the one token-creation site cycles 6–7 missed:
+      // it stamped bare `deadline`, so on a contest with a late window an
+      // access-code joiner's token expired early and lost token-keyed catalog /
+      // platform-mode visibility (CONTEST_ACCESS_TOKEN_VALIDITY_SQL) during the
+      // window the instructor opened, while invited joiners kept it. The join
+      // gate above already uses the same effective close (effectiveClose).
       await tx.insert(contestAccessTokens)
         .values({
           id: nanoid(),
@@ -188,7 +196,7 @@ export async function redeemAccessCode(
           userId,
           redeemedAt: now,
           ipAddress: ipAddress ?? null,
-          expiresAt: assignment.deadline,
+          expiresAt: contestAccessTokenExpiry(assignment),
         });
 
       // Auto-enroll in group if not already enrolled
