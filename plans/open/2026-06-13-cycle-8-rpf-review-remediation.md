@@ -46,7 +46,13 @@ constructor is a no-future-drift hardening, do it only if it stays clean.
 **Doc (DOC8-1, optional, LOW):** if the constructor lands, note in the
 access/exam-integrity doc that all token creation paths derive expiry from the
 effective close.
-**Status:** ☐ pending
+**Status:** ☑ DONE (51f232c9) — `redeemAccessCode` now stamps
+`expiresAt: contestAccessTokenExpiry(assignment)`; red-first tests: late-window
+redeem asserts `expiresAt == lateDeadline`, no-late-window redeem asserts
+`expiresAt == deadline`. Minimal value fix taken; the optional A8-1
+values-constructor was NOT added this cycle (kept the correctness fix isolated
+and bisectable — the constructor is recorded in `_aggregate.md` A8-1 as a
+no-future-drift hardening for a later cycle, not a deferred *finding*).
 
 ---
 
@@ -100,6 +106,10 @@ DEPLOY_CMD (per-cycle worv + algo, detached + polled in-turn).
 ---
 
 ## Completion record (filled during implementation)
-- G1: ☐
-**Final gates on the completed tree:** (filled after implementation)
+- G1 ✅ 51f232c9 — `redeemAccessCode` token expiry routed through
+  `contestAccessTokenExpiry(assignment)`; 2 red-first tests added.
+**Final gates on the completed tree:** tsc 0 · eslint 0/0 · lint:bash clean ·
+unit 340 files / 2663 tests PASS (2 new) · production build OK.
+**GATE_FIXES this cycle:** 0 pre-existing gate errors (baseline clean); 0
+suppressions.
 **Deploy record:** (filled after DEPLOY_CMD)
