@@ -33,3 +33,11 @@ Severities preserved at origin: AGG5-7 (judge-worker-rs cosmetics), AGG5-8 (simi
 
 ## Implementation (PROMPT 3)
 No functional work to implement. The only change this cycle is the review + archival documentation (this plan, the cycle-10 reviews, the cycle-9 review/plan archival). Gates re-confirmed green on this HEAD. Per the per-cycle deploy policy, doc-only commits still trigger the worv+algo deploy + HTTP-200 smoke; no source changed.
+
+## Completion record (filled during implementation)
+- Reviews + cycle-9 archival committed at **c4313855** (GPG-signed, Good sig).
+- Cycle-10 plan + cycle-9 plan archival committed at **dcd669f0** (GPG-signed, Good sig).
+- Pushed `03125b44..dcd669f0` to origin/main (local == remote; `git pull --rebase` clean before push).
+- **Final gates on the committed tree:** tsc 0 · eslint 0/0 · lint:bash clean · unit 340 files / 2666 tests PASS · listing-order contract test 8/8 PASS. No gate errors, no suppressions (docs-only change).
+- **GATE_FIXES this cycle:** 0 (baseline clean throughout).
+- **Deploy record:** per-cycle-success. Both worv (test.worv.ai) and algo (algo.xylolabs.com) reported "Deployment complete!"; the deploy script verified HTTP 200 + HTTPS 200 on each, and both were independently re-verified (`curl` → worv 200, algo 200). The post-deploy Playwright smoke shows 142 passed / 6 failed IDENTICALLY to cycle-9; all 6 failures are at the "Step 1: Login as admin" stage (admin-languages, admin-workers, auth-flow, contest-access-code-gate, contest-nav, rankings) — the standing DEFER-ENV-GATES login-gated-E2E condition (no seeded admin / smoke creds in this environment), wholly unrelated to this docs-only cycle (no source changed). auraedu NOT deployed this cycle (out-of-band per orchestrator).
