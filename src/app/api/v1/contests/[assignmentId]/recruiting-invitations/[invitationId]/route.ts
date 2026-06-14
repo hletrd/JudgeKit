@@ -6,6 +6,7 @@ import {
   updateRecruitingInvitation,
   deleteRecruitingInvitation,
   resetRecruitingInvitationAccountPassword,
+  regenerateRecruitingInvitationToken,
 } from "@/lib/assignments/recruiting-invitations";
 import { canManageContest, getContestAssignment } from "@/lib/assignments/contests";
 import { updateRecruitingInvitationSchema } from "@/lib/validators/recruiting-invitations";
@@ -81,6 +82,31 @@ export const PATCH = createApiHandler({
       });
 
       return apiSuccess({ id: params.invitationId, passwordResetRequired: true });
+    }
+
+    if (body.regenerateToken) {
+      // Tokens are stored hashed and cannot be recovered, so re-sending a link
+      // requires minting a fresh token. Revoked invitations must not be revived.
+      if (invitation.status === "revoked") {
+        return apiError("invitationCannotRegenerateToken", 400);
+      }
+
+      const token = await regenerateRecruitingInvitationToken(params.invitationId);
+
+      recordAuditEvent({
+        actorId: user.id,
+        actorRole: user.role,
+        action: "recruiting_invitation.token_regenerated",
+        resourceType: "recruiting_invitation",
+        resourceId: params.invitationId,
+        resourceLabel: invitation.candidateName,
+        summary: `Regenerated recruiting invitation link for "${invitation.candidateName}"`,
+        request: req,
+      });
+
+      // The plaintext token is returned once so the client can build and copy
+      // the link; it is never persisted in plaintext or returned again.
+      return apiSuccess({ id: params.invitationId, token });
     }
 
 

@@ -86,6 +86,11 @@ export function RecruitStartForm({
 
       if (result?.error || !result?.ok) {
         setError(t("startFailed"));
+        // A failed attempt may have just tripped the brute-force lockout. Ask
+        // the server component to re-render so it can swap in the explicit
+        // "link locked" card instead of leaving the candidate on this generic
+        // error with no idea they are now locked out.
+        router.refresh();
       } else {
         router.push(`/contests/${assignmentId}`);
         router.refresh();

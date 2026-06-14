@@ -39,6 +39,7 @@ export const updateRecruitingInvitationSchema = z.object({
     .refine(sysNamespaceRefine, { message: SYS_NAMESPACE_REJECT_MESSAGE }),
   status: z.enum(["revoked"]).optional(),
   resetAccountPassword: z.literal(true).optional(),
+  regenerateToken: z.literal(true).optional(),
 });
 
 export const bulkCreateRecruitingInvitationsSchema = z.object({
