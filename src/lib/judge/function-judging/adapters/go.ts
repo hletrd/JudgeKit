@@ -30,13 +30,31 @@ function goScalar(t: string): string {
 // inner spaces, true/false, strings quoted) and renders float64 in a shortest
 // round-trip form the worker's whitespace-token float comparator accepts. The
 // student's bare func is appended after this prelude; main() is appended last.
+//
+// Go forbids imports after declarations and errors on unused imports, so the
+// student's sandwiched Solution code cannot add packages itself. A common set
+// (math/sort/strconv/strings) is pre-imported here; package-level blank
+// references keep the file compiling under `go build` (the worker's command)
+// when the student uses none of them. `go vet` may flag the blank-usage form,
+// but the worker only runs `go build`, which succeeds.
 const PRELUDE = `package main
 
 import (
 	"bufio"
 	"encoding/json"
 	"fmt"
+	"math"
 	"os"
+	"sort"
+	"strconv"
+	"strings"
+)
+
+var (
+	_ = math.Abs
+	_ = sort.Ints
+	_ = strconv.Itoa
+	_ = strings.Split
 )
 
 func __decode(raw json.RawMessage, dst any) {

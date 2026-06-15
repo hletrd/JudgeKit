@@ -31,7 +31,14 @@ function javaScalar(t: string): string {
 // libraries (Gson/Jackson are not on the classpath). The Solution class is
 // appended after this; class order is irrelevant to javac so Main (appended
 // last) can reference both this helper and Solution.
-const PRELUDE = `import java.util.ArrayList;
+//
+// Broad java.util / java.util.stream imports are placed at the very top so the
+// student's Solution code can use HashMap/HashSet/Arrays/List/streams without
+// writing its own imports (student code is sandwiched between this prelude and
+// the generated main, so it cannot add top-of-file imports). javac treats
+// unused imports as warnings, not errors.
+const PRELUDE = `import java.util.*;
+import java.util.stream.*;
 
 final class __FnJudge {
     private final String s;

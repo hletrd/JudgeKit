@@ -32,9 +32,15 @@ function csScalar(t: string): string {
 // only sees mscorlib/System by default, so System.Text.Json is unavailable and
 // a hand-written reader is used instead. The Solution class is appended after
 // this; the Main entry is appended last.
+//
+// Common usings (collections + LINQ) live at the top so the student's Solution
+// code can use Dictionary/List/LINQ without writing its own usings (student
+// code is sandwiched between this prelude and the generated main). Unused
+// usings are fine in Mono's mcs.
 const PRELUDE = `using System;
 using System.Collections.Generic;
 using System.Globalization;
+using System.Linq;
 using System.Text;
 
 sealed class __FnJudge {

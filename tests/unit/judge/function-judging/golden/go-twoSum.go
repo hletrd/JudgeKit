@@ -4,7 +4,18 @@ import (
 	"bufio"
 	"encoding/json"
 	"fmt"
+	"math"
 	"os"
+	"sort"
+	"strconv"
+	"strings"
+)
+
+var (
+	_ = math.Abs
+	_ = sort.Ints
+	_ = strconv.Itoa
+	_ = strings.Split
 )
 
 func __decode(raw json.RawMessage, dst any) {

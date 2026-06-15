@@ -1,4 +1,5 @@
-import java.util.ArrayList;
+import java.util.*;
+import java.util.stream.*;
 
 final class __FnJudge {
     private final String s;
