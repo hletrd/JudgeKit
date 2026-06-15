@@ -25,6 +25,8 @@ export const GET = createApiHandler({
             showCompileOutput: true,
             showDetailedResults: true,
             showRuntimeErrors: true,
+            problemType: true,
+            functionSpec: true,
           },
         },
         results: {

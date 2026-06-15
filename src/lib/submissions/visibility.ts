@@ -1,6 +1,11 @@
 import { db } from "@/lib/db";
 import { assignments } from "@/lib/db/schema";
 import { eq } from "drizzle-orm";
+import { mapCompileError } from "@/lib/judge/function-judging/error-mapping";
+import { functionPreludeLineCount } from "@/lib/judge/function-judging/assemble";
+import { parseFunctionSpec } from "@/lib/judge/function-judging/types";
+import { supportsFunctionJudging } from "@/lib/judge/function-judging/registry";
+import { logger } from "@/lib/logger";
 
 type SubmissionProblemVisibility = Record<string, unknown> | null | undefined;
 
@@ -11,6 +16,7 @@ type SubmissionResultVisibility = Record<string, unknown>;
 type SubmissionVisibilityRecord = Record<string, unknown> & {
   userId: string;
   assignmentId: string | null;
+  language?: string;
   problem?: SubmissionProblemVisibility;
   results?: SubmissionResultVisibility[];
 };
@@ -144,6 +150,37 @@ export async function sanitizeSubmissionForViewer(
 
   if (!isOwner && !canViewSource) {
     delete sanitized.sourceCode;
+  }
+
+  // Function-signature problems compile `prelude + studentCode + generatedMain`,
+  // so worker-reported compile-error line numbers are offset by the prelude.
+  // Rewrite any surviving compile output to student-relative line numbers. The
+  // prelude offset is RECOMPUTED deterministically from the spec + language
+  // (never stored). Only applied when compile output actually survived the
+  // showCompileOutput gate above (it is null otherwise).
+  const problemType = submission.problem?.problemType as string | null | undefined;
+  const functionSpec = submission.problem?.functionSpec;
+  const language = typeof submission.language === "string" ? submission.language : null;
+  if (
+    problemType === "function" &&
+    functionSpec &&
+    language &&
+    supportsFunctionJudging(language) &&
+    typeof sanitized.compileOutput === "string" &&
+    sanitized.compileOutput.length > 0
+  ) {
+    try {
+      const spec = parseFunctionSpec(functionSpec);
+      const preludeLineCount = functionPreludeLineCount(spec, language);
+      sanitized.compileOutput = mapCompileError(sanitized.compileOutput, preludeLineCount);
+    } catch (mappingErr) {
+      // A malformed stored spec must not break the submission view; show the
+      // raw (un-remapped) compile output rather than failing the read.
+      logger.error(
+        { err: mappingErr, language },
+        "[submissions/visibility] Function compile-error remapping failed; showing raw output",
+      );
+    }
   }
 
   return sanitized;
