@@ -10,7 +10,9 @@ import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { LanguageSelector } from "@/components/language-selector";
 import { apiFetch, parseApiResponse } from "@/lib/api/client";
-import { DEFAULT_TEMPLATES, isTemplateLike } from "@/lib/judge/code-templates";
+import { DEFAULT_TEMPLATES, getStarterCode, isTemplateLike } from "@/lib/judge/code-templates";
+import { FUNCTION_JUDGING_LANGUAGES } from "@/lib/judge/function-judging/registry";
+import type { FunctionSpec } from "@/lib/judge/function-judging/types";
 import { useSourceDraft } from "@/hooks/use-source-draft";
 import { useServerSourceDraft } from "@/hooks/use-server-source-draft";
 import { useUnsavedChangesGuard } from "@/hooks/use-unsaved-changes-guard";
@@ -33,6 +35,10 @@ type ProblemSubmissionFormProps = {
   problemDefaultLanguage?: string | null;
   siteDefaultLanguage?: string | null;
   editorTheme?: string | null;
+  /** Problem kind. When "function", the editor preloads adapter stubs. */
+  problemType?: string | null;
+  /** Function-judging spec (function problems only). */
+  functionSpec?: FunctionSpec | null;
   submissionHrefBuilder?: (submissionId: string) => string;
   onSubmitted?: (submissionId: string) => void;
 };
@@ -40,12 +46,14 @@ type ProblemSubmissionFormProps = {
 export function ProblemSubmissionForm({
   userId,
   problemId,
-  languages,
+  languages: allLanguages,
   assignmentId = null,
   preferredLanguage = null,
   problemDefaultLanguage = null,
   siteDefaultLanguage = null,
   editorTheme = null,
+  problemType = null,
+  functionSpec = null,
   submissionHrefBuilder = (submissionId) => `/submissions/${submissionId}?from=problem`,
   onSubmitted,
 }: ProblemSubmissionFormProps) {
@@ -64,6 +72,22 @@ export function ProblemSubmissionForm({
     const isMac = /Mac|iPhone|iPad|iPod/i.test(ua);
     setSubmitShortcutLabel(isMac ? "⌘+Enter" : "Ctrl+Enter");
   }, []);
+  // Function-signature problems judge a specific stubbed function, so only the
+  // intersection of the author's enabled languages and the harness-supported
+  // set is offered. Non-function problems keep the full enabled-language list.
+  const isFunctionProblem = problemType === "function" && functionSpec != null;
+  const activeFunctionSpec = isFunctionProblem ? functionSpec : null;
+  const languages = useMemo(() => {
+    if (!isFunctionProblem || !functionSpec) return allLanguages;
+    const enabled = new Set(functionSpec.enabledLanguages);
+    const gated = allLanguages.filter(
+      (entry) => enabled.has(entry.language) && FUNCTION_JUDGING_LANGUAGES.has(entry.language),
+    );
+    // Defensive: if gating removes everything (misconfigured problem), keep the
+    // full list rather than rendering an empty, unusable picker.
+    return gated.length > 0 ? gated : allLanguages;
+  }, [allLanguages, isFunctionProblem, functionSpec]);
+
   const availableLanguages = useMemo(() => languages.map((entry) => entry.language), [languages]);
   const { language, setLanguage, sourceCode, setSourceCode, isDirty, clearAllDrafts } = useSourceDraft({
     userId,
@@ -104,12 +128,26 @@ export function ProblemSubmissionForm({
   useEffect(() => {
     if (prevLanguageRef.current !== language) {
       prevLanguageRef.current = language;
-      if (isTemplateLike(sourceCode)) {
-        const tmpl = DEFAULT_TEMPLATES[language] ?? "";
-        setSourceCode(tmpl);
+      // Swap the starter code on language switch, but only when the editor
+      // still holds template/stub content (never clobber real student work).
+      if (isTemplateLike(sourceCode, activeFunctionSpec)) {
+        setSourceCode(getStarterCode({ problemType, functionSpec: activeFunctionSpec, language }));
       }
     }
-  }, [language, sourceCode, setSourceCode]);
+  }, [language, sourceCode, setSourceCode, problemType, activeFunctionSpec]);
+
+  // Initial stub preload for function problems: a freshly opened editor starts
+  // empty, so seed the adapter stub for the selected language. Mirrors the
+  // language-switch guard above and only ever fills an empty/stub editor.
+  const stubPreloadedRef = useRef(false);
+  useEffect(() => {
+    if (stubPreloadedRef.current) return;
+    if (!activeFunctionSpec) return;
+    if (sourceCode.trim().length === 0) {
+      setSourceCode(getStarterCode({ problemType, functionSpec: activeFunctionSpec, language }));
+    }
+    stubPreloadedRef.current = true;
+  }, [activeFunctionSpec, problemType, language, sourceCode, setSourceCode]);
 
   const lastSnapshotRef = useRef<string>("");
   const lastChangeRef = useRef<number>(0);
@@ -361,16 +399,18 @@ export function ProblemSubmissionForm({
           >
             {t("uploadSourceFile")}
           </Button>
-          {DEFAULT_TEMPLATES[language] && (
+          {(activeFunctionSpec || DEFAULT_TEMPLATES[language]) && (
             <Button
               type="button"
               variant="outline"
               size="sm"
-              onClick={() => setSourceCode(DEFAULT_TEMPLATES[language] ?? "")}
-              title={t("resetToTemplate")}
+              onClick={() =>
+                setSourceCode(getStarterCode({ problemType, functionSpec: activeFunctionSpec, language }))
+              }
+              title={activeFunctionSpec ? t("resetToStub") : t("resetToTemplate")}
             >
               <RotateCcw className="mr-1 size-3.5" />
-              {t("resetToTemplate")}
+              {activeFunctionSpec ? t("resetToStub") : t("resetToTemplate")}
             </Button>
           )}
         </div>

@@ -3,6 +3,9 @@
  * Preloaded into the editor when a user selects a language and the editor is empty.
  */
 
+import type { FunctionSpec } from "@/lib/judge/function-judging/types";
+import { getAdapter, supportsFunctionJudging, FUNCTION_JUDGING_LANGUAGES } from "@/lib/judge/function-judging/registry";
+
 export const DEFAULT_TEMPLATES: Record<string, string> = {
   c: `#include <stdio.h>
 
@@ -142,16 +145,58 @@ fscanf(STDIN, "%d", $n);
 };
 
 /**
+ * Resolve the starter code an editor should preload for a problem + language.
+ *
+ * For function-signature problems (`problemType === "function"`) with a spec
+ * in a function-judging-capable language, this returns the adapter-generated
+ * student stub (signature + empty body). Everything else falls back to the
+ * normal per-language `DEFAULT_TEMPLATES` entry (empty string when none).
+ */
+export function getStarterCode(opts: {
+  problemType?: string | null;
+  functionSpec?: FunctionSpec | null;
+  language: string;
+}): string {
+  const { problemType, functionSpec, language } = opts;
+  if (problemType === "function" && functionSpec && supportsFunctionJudging(language)) {
+    try {
+      return getAdapter(language).generateStub(functionSpec);
+    } catch {
+      // Defensive: a malformed spec must not break the editor. Fall through to
+      // the normal template (or empty) rather than throwing in render.
+    }
+  }
+  return DEFAULT_TEMPLATES[language] ?? "";
+}
+
+/**
  * Check if the current editor content is effectively empty or
  * matches a known template (meaning the user hasn't written anything).
+ *
+ * For function-signature problems, the per-language adapter stubs are the
+ * "template" the editor preloads, so when a `functionSpec` is supplied they
+ * are treated as template-like too — this lets a language switch swap stubs
+ * without clobbering code the student actually wrote.
  */
-export function isTemplateLike(code: string): boolean {
+export function isTemplateLike(code: string, functionSpec?: FunctionSpec | null): boolean {
   const trimmed = code.trim();
   if (trimmed.length === 0) return true;
 
   // Check if it matches any existing template (ignoring whitespace)
   for (const tmpl of Object.values(DEFAULT_TEMPLATES)) {
     if (tmpl.trim() === trimmed) return true;
+  }
+
+  // For function problems, the adapter stub for any supported language is also
+  // template-like (the student hasn't written real code yet).
+  if (functionSpec) {
+    for (const lang of FUNCTION_JUDGING_LANGUAGES) {
+      try {
+        if (getAdapter(lang).generateStub(functionSpec).trim() === trimmed) return true;
+      } catch {
+        /* malformed spec for this language — ignore */
+      }
+    }
   }
 
   return false;

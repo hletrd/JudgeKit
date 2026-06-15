@@ -357,6 +357,7 @@
     "sourceFileLoadFailed": "Failed to read the selected source file.",
     "submissionCreated": "Submission created successfully",
     "resetToTemplate": "Reset to Template",
+    "resetToStub": "Reset to Starter Code",
     "writeCodePlaceholder": "Write your code here...",
     "descriptionTitle": "Description",
     "noDescription": "No description.",

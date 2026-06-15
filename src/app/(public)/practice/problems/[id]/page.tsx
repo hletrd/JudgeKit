@@ -640,6 +640,8 @@ export default async function PublicProblemDetailPage({
                         userId={session.user.id}
                         problemId={problem.id}
                         problemTitle={problem.title}
+                        problemType={problem.problemType ?? null}
+                        functionSpec={problem.functionSpec ?? null}
                         languages={enabledLanguages}
                         assignmentId={assignmentContext?.id ?? null}
                         preferredLanguage={session.user.preferredLanguage ?? null}

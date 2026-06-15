@@ -357,6 +357,7 @@
     "sourceFileLoadFailed": "선택한 소스 파일을 읽지 못했어요.",
     "submissionCreated": "제출 완료",
     "resetToTemplate": "템플릿 초기화",
+    "resetToStub": "기본 코드로 초기화",
     "writeCodePlaceholder": "여기에 코드를 입력하세요",
     "descriptionTitle": "설명",
     "noDescription": "설명이 없어요.",

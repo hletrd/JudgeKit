@@ -8,6 +8,7 @@ import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } f
 import { Sheet, SheetContent, SheetDescription, SheetHeader, SheetTitle } from "@/components/ui/sheet";
 import { useIsMobile } from "@/hooks/use-mobile";
 import { ProblemSubmissionForm } from "@/components/problem/problem-submission-form";
+import type { FunctionSpec } from "@/lib/judge/function-judging/types";
 
 type SubmissionLanguage = {
   id: string;
@@ -24,6 +25,8 @@ type PublicQuickSubmitProps = {
   problemDefaultLanguage?: string | null;
   problemId: string;
   problemTitle: string;
+  problemType?: string | null;
+  functionSpec?: FunctionSpec | null;
   siteDefaultLanguage?: string | null;
   userId: string;
   layout?: "dialog" | "inline";
@@ -37,6 +40,8 @@ export function PublicQuickSubmit({
   problemDefaultLanguage = null,
   problemId,
   problemTitle,
+  problemType = null,
+  functionSpec = null,
   siteDefaultLanguage = null,
   userId,
   layout = "dialog",
@@ -57,6 +62,8 @@ export function PublicQuickSubmit({
       problemDefaultLanguage={problemDefaultLanguage}
       siteDefaultLanguage={siteDefaultLanguage}
       editorTheme={editorTheme}
+      problemType={problemType}
+      functionSpec={functionSpec}
       onSubmitted={(submissionId) => {
         setOpen(false);
         router.push(`/submissions/${submissionId}?from=problem`);
