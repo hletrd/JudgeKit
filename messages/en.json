@@ -467,6 +467,7 @@
     "testCaseInputRequired": "Each test case needs an input",
     "testCaseOutputRequired": "Each test case needs an expected output",
     "tooManyTestCases": "You can add up to 100 test cases per problem",
+    "unsupportedReferenceLanguage": "The reference solution language is not supported for function judging.",
     "testCasesLocked": "Test cases cannot be changed after submissions exist for this problem",
     "testCasesLockedNotice": "Test cases are locked because this problem already has submissions. You can still edit the statement and limits.",
     "testCasesUnlockForAdmin": "Unlock test cases",

@@ -333,6 +333,8 @@ export default function CreateProblemForm({
         return t("testCaseOutputRequired");
       case "tooManyTestCases":
         return t("tooManyTestCases");
+      case "unsupportedReferenceLanguage":
+        return t("unsupportedReferenceLanguage");
       case "testCasesLocked":
         return t("testCasesLocked");
       case "updateError":

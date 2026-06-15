@@ -467,6 +467,7 @@
     "testCaseInputRequired": "각 테스트 케이스에 입력이 필요해요",
     "testCaseOutputRequired": "각 테스트 케이스에 기대 출력이 필요해요",
     "tooManyTestCases": "문제당 테스트 케이스는 100개까지만 추가할 수 있어요",
+    "unsupportedReferenceLanguage": "함수 채점에서 지원하지 않는 참조 풀이 언어예요.",
     "testCasesLocked": "이미 제출 내역이 있어서 테스트 케이스를 바꿀 수 없어요",
     "testCasesLockedNotice": "이미 제출 내역이 있어서 테스트 케이스가 잠겨 있어요. 설명과 제한은 계속 수정할 수 있어요.",
     "testCasesUnlockForAdmin": "테스트 케이스 잠금 해제",

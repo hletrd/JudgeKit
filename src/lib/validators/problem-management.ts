@@ -1,6 +1,7 @@
 import { z } from "zod";
 import { trimString } from "@/lib/validators/preprocess";
 import { functionSpecSchema } from "@/lib/judge/function-judging/types";
+import { supportsFunctionJudging } from "@/lib/judge/function-judging/registry";
 
 export const problemVisibilityValues = ["public", "private", "hidden"] as const;
 export const problemTypeValues = ["auto", "manual", "function"] as const;
@@ -16,7 +17,9 @@ export const problemTestCaseSchema = z.object({
  * function-signature problems. Never exposed to students.
  */
 export const referenceSolutionSchema = z.object({
-  language: z.string(),
+  // Must be one of the languages that ship a function-judging harness adapter,
+  // since the reference solution is assembled + executed via that harness.
+  language: z.string().refine(supportsFunctionJudging, "unsupportedReferenceLanguage"),
   source: z.string(),
 });
 

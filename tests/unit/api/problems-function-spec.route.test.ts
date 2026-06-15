@@ -228,6 +228,32 @@ describe("POST /api/v1/problems — function spec", () => {
     expect(createProblemWithTestCasesMock).not.toHaveBeenCalled();
   });
 
+  it("returns 400 for a referenceSolution with an unsupported language", async () => {
+    const res = await POST(
+      makePostRequest({
+        ...BASE_BODY,
+        problemType: "function",
+        functionSpec: VALID_SPEC,
+        referenceSolution: { language: "rust", source: "fn twoSum() {}" },
+      })
+    );
+    expect(res.status).toBe(400);
+    expect(createProblemWithTestCasesMock).not.toHaveBeenCalled();
+  });
+
+  it("accepts a referenceSolution with a supported function-judging language", async () => {
+    const res = await POST(
+      makePostRequest({
+        ...BASE_BODY,
+        problemType: "function",
+        functionSpec: VALID_SPEC,
+        referenceSolution: { language: "python", source: "def twoSum(): pass" },
+      })
+    );
+    expect(res.status).toBe(201);
+    expect(createProblemWithTestCasesMock).toHaveBeenCalledOnce();
+  });
+
   it("returns 400 when problemType is function but functionSpec missing", async () => {
     const res = await POST(
       makePostRequest({ ...BASE_BODY, problemType: "function" })
