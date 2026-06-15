@@ -8,7 +8,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { cn } from "@/lib/utils";
 import {
-  SUPPORTED_FUNCTION_TYPES,
+  AUTHORABLE_FUNCTION_TYPES,
   type FunctionSpec,
   type FunctionType,
 } from "@/lib/judge/function-judging/types";
@@ -58,7 +58,7 @@ function TypeSelect({
         "disabled:cursor-not-allowed disabled:opacity-50 dark:bg-input/30",
       )}
     >
-      {SUPPORTED_FUNCTION_TYPES.map((t) => (
+      {AUTHORABLE_FUNCTION_TYPES.map((t) => (
         <option key={t} value={t}>
           {t}
         </option>
