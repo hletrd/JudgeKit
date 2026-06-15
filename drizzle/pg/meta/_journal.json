@@ -197,6 +197,13 @@
       "when": 1781108948466,
       "tag": "0027_exam_mode_check_and_drift_catchup",
       "breakpoints": true
+    },
+    {
+      "idx": 28,
+      "version": "7",
+      "when": 1781537263895,
+      "tag": "0028_striped_nicolaos",
+      "breakpoints": true
     }
   ]
 }

@@ -267,6 +267,10 @@ export const problems = pgTable(
     comparisonMode: text("comparison_mode").notNull().default("exact"),
     floatAbsoluteError: doublePrecision("float_absolute_error"),
     floatRelativeError: doublePrecision("float_relative_error"),
+    // Function-signature judging (problemType === "function"). Null for auto/manual.
+    functionSpec: jsonb("function_spec").$type<import("@/lib/judge/function-judging/types").FunctionSpec>(),
+    // Author-only reference solution; never sent to students.
+    referenceSolution: jsonb("reference_solution").$type<{ language: string; source: string }>(),
     difficulty: doublePrecision("difficulty"),
     defaultLanguage: text("default_language"),
     authorId: text("author_id").references(() => users.id, {
