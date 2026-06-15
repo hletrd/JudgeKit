@@ -3,16 +3,20 @@ import { getAdapter, supportsFunctionJudging, FUNCTION_JUDGING_LANGUAGES } from 
 
 describe("function-judging registry", () => {
   it("registers exactly the implemented v1 languages", () => {
-    // Only python, cpp23, and javascript are implemented so far. A follow-up
-    // dispatch extends this to the full 7-language set.
+    // The full v1 set: the canonical platform language ids for python, C++,
+    // JavaScript, TypeScript, Java, Go, and C#.
     expect([...FUNCTION_JUDGING_LANGUAGES].sort()).toEqual(
-      ["cpp23", "javascript", "python"].sort(),
+      ["cpp23", "csharp", "go", "java", "javascript", "python", "typescript"].sort(),
     );
   });
   it("supportsFunctionJudging gates by registry", () => {
     expect(supportsFunctionJudging("python")).toBe(true);
     expect(supportsFunctionJudging("cpp23")).toBe(true);
     expect(supportsFunctionJudging("javascript")).toBe(true);
+    expect(supportsFunctionJudging("typescript")).toBe(true);
+    expect(supportsFunctionJudging("java")).toBe(true);
+    expect(supportsFunctionJudging("go")).toBe(true);
+    expect(supportsFunctionJudging("csharp")).toBe(true);
     expect(supportsFunctionJudging("brainfuck")).toBe(false);
   });
   it("getAdapter returns an adapter exposing generateStub + assemble", () => {
