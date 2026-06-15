@@ -19,6 +19,16 @@ export type ParseResult =
 const INT_RE = /^[+-]?\d+$/;
 const NUMBER_RE = /^[+-]?(\d+\.?\d*|\.\d+)([eE][+-]?\d+)?$/;
 
+/**
+ * int/long authored values flow through JS `Number` and the harnesses read
+ * ints via double, so magnitudes beyond ±2^53 silently lose precision. Reject
+ * those at authoring time; within ±Number.MAX_SAFE_INTEGER everything is exact.
+ * BigInt rework is deferred (out of v1 scope).
+ */
+function isSafeInteger(n: number): boolean {
+  return Number.isSafeInteger(n);
+}
+
 function scalarErrorKey(scalar: string, array: boolean): string {
   switch (scalar) {
     case "int":
@@ -34,13 +44,23 @@ function scalarErrorKey(scalar: string, array: boolean): string {
   }
 }
 
-function parseScalar(raw: string, scalar: string): { ok: true; value: unknown } | { ok: false } {
+function intRangeErrorKey(array: boolean): string {
+  return array ? "fnValueArrayIntOutOfRange" : "fnValueIntOutOfRange";
+}
+
+type ScalarParse =
+  | { ok: true; value: unknown }
+  | { ok: false; errorKey?: string };
+
+function parseScalar(raw: string, scalar: string): ScalarParse {
   const trimmed = raw.trim();
   switch (scalar) {
     case "int":
     case "long": {
       if (!INT_RE.test(trimmed)) return { ok: false };
-      return { ok: true, value: Number(trimmed) };
+      const value = Number(trimmed);
+      if (!isSafeInteger(value)) return { ok: false, errorKey: intRangeErrorKey(false) };
+      return { ok: true, value };
     }
     case "double": {
       if (!NUMBER_RE.test(trimmed)) return { ok: false };
@@ -65,7 +85,9 @@ export function parseFieldValue(raw: string, type: FunctionType): ParseResult {
   if (!isArrayType(type)) {
     const scalar = type;
     const result = parseScalar(raw, scalar);
-    if (!result.ok) return { ok: false, errorKey: scalarErrorKey(scalar, false) };
+    if (!result.ok) {
+      return { ok: false, errorKey: result.errorKey ?? scalarErrorKey(scalar, false) };
+    }
     return { ok: true, value: result.value };
   }
 
@@ -79,7 +101,14 @@ export function parseFieldValue(raw: string, type: FunctionType): ParseResult {
   for (const part of parts) {
     // For string[] an empty element between commas is a deliberate "" entry.
     const result = parseScalar(scalar === "string" ? part : part, scalar);
-    if (!result.ok) return { ok: false, errorKey: scalarErrorKey(scalar, true) };
+    if (!result.ok) {
+      // Map a scalar out-of-range error onto its array variant.
+      const errorKey =
+        result.errorKey === intRangeErrorKey(false)
+          ? intRangeErrorKey(true)
+          : scalarErrorKey(scalar, true);
+      return { ok: false, errorKey };
+    }
     out.push(result.value);
   }
   return { ok: true, value: out };
