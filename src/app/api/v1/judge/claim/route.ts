@@ -16,6 +16,9 @@ import { logger } from "@/lib/logger";
 import { consumeUserApiRateLimit } from "@/lib/security/api-rate-limit";
 import { extractClientIp } from "@/lib/security/ip";
 import { deserializeStoredJudgeCommand } from "@/lib/judge/languages";
+import { supportsFunctionJudging } from "@/lib/judge/function-judging/registry";
+import { assembleFunctionSubmission } from "@/lib/judge/function-judging/assemble";
+import { parseFunctionSpec } from "@/lib/judge/function-judging/types";
 
 import { getConfiguredSettings } from "@/lib/system-settings-config";
 import { getDbNowUncached } from "@/lib/db-time";
@@ -249,6 +252,8 @@ export async function POST(request: NextRequest) {
         comparisonMode: true,
         floatAbsoluteError: true,
         floatRelativeError: true,
+        problemType: true,
+        functionSpec: true,
       },
     });
 
@@ -337,8 +342,39 @@ export async function POST(request: NextRequest) {
       runAllTestCases = asg?.scoringModel === "ioi";
     }
 
+    // Function-signature problems: assemble the student's source into a full
+    // stdin/stdout harness (prelude + student code + generated main) so the
+    // unchanged worker judges it like any auto problem. Only the source SENT
+    // to the worker is wrapped — the persisted submission row keeps the
+    // student's original source untouched. Every other case (auto, manual,
+    // missing spec, unsupported language) passes the source through verbatim.
+    let workerSourceCode = claimed.sourceCode;
+    if (
+      problem.problemType === "function" &&
+      problem.functionSpec &&
+      supportsFunctionJudging(claimed.language)
+    ) {
+      try {
+        const spec = parseFunctionSpec(problem.functionSpec);
+        workerSourceCode = assembleFunctionSubmission(
+          spec,
+          claimed.language,
+          claimed.sourceCode,
+        ).source;
+      } catch (assembleErr) {
+        // A malformed stored spec must not crash the hot path or block the
+        // queue. Fall back to the verbatim source; the submission will simply
+        // fail to compile as the student wrote it, which is surfaced normally.
+        logger.error(
+          { err: assembleErr, submissionId: claimed.id, problemId: claimed.problemId },
+          "[judge/claim] Function assembly failed; sending verbatim source",
+        );
+      }
+    }
+
     return apiSuccess({
       ...claimed,
+      sourceCode: workerSourceCode,
       timeLimitMs: adjustedTimeLimitMs,
       memoryLimitMb: problem.memoryLimitMb,
       comparisonMode: problem.comparisonMode ?? "exact",
