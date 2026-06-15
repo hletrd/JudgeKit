@@ -38,8 +38,9 @@ function scalarErrorKey(scalar: string, array: boolean): string {
       return array ? "fnValueInvalidArrayDouble" : "fnValueInvalidDouble";
     case "bool":
       return array ? "fnValueInvalidArrayBool" : "fnValueInvalidBool";
+    case "string":
+      return array ? "fnValueInvalidArrayString" : "fnValueInvalidString";
     default:
-      // string never fails to parse.
       return "fnValueInvalidInt";
   }
 }
@@ -80,6 +81,49 @@ function parseScalar(raw: string, scalar: string): ScalarParse {
   }
 }
 
+/** Coerce a JSON-decoded element into the editor's scalar value, with range/type checks. */
+function coerceJsonElement(el: unknown, scalar: string): ScalarParse {
+  switch (scalar) {
+    case "int":
+    case "long": {
+      if (typeof el !== "number" || !Number.isInteger(el)) return { ok: false };
+      if (!isSafeInteger(el)) return { ok: false, errorKey: intRangeErrorKey(true) };
+      return { ok: true, value: el };
+    }
+    case "double":
+      if (typeof el !== "number") return { ok: false };
+      return { ok: true, value: el };
+    case "bool":
+      if (typeof el !== "boolean") return { ok: false };
+      return { ok: true, value: el };
+    case "string":
+      if (typeof el !== "string") return { ok: false };
+      return { ok: true, value: el };
+    default:
+      return { ok: false };
+  }
+}
+
+/** Parse an array field whose text is a JSON array literal (e.g. `["a,b", "c"]`). */
+function parseJsonArray(trimmed: string, scalar: string): ParseResult {
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(trimmed);
+  } catch {
+    return { ok: false, errorKey: scalarErrorKey(scalar, true) };
+  }
+  if (!Array.isArray(parsed)) return { ok: false, errorKey: scalarErrorKey(scalar, true) };
+  const out: unknown[] = [];
+  for (const el of parsed) {
+    const result = coerceJsonElement(el, scalar);
+    if (!result.ok) {
+      return { ok: false, errorKey: result.errorKey ?? scalarErrorKey(scalar, true) };
+    }
+    out.push(result.value);
+  }
+  return { ok: true, value: out };
+}
+
 /** Parse the editor text for a single typed field into a JS value. */
 export function parseFieldValue(raw: string, type: FunctionType): ParseResult {
   if (!isArrayType(type)) {
@@ -96,11 +140,23 @@ export function parseFieldValue(raw: string, type: FunctionType): ParseResult {
   if (trimmed === "") {
     return { ok: true, value: [] };
   }
+
+  // A JSON array literal is the canonical, comma-safe authoring format and is
+  // accepted for every element type. `string[]` REQUIRES it because commas are
+  // significant inside string elements and bare comma-splitting would corrupt
+  // them (e.g. "a,b" -> ["a","b"]).
+  if (trimmed.startsWith("[")) {
+    return parseJsonArray(trimmed, scalar);
+  }
+  if (scalar === "string") {
+    return { ok: false, errorKey: scalarErrorKey("string", true) };
+  }
+
+  // Non-string arrays accept the friendlier bare comma-separated form.
   const parts = trimmed.split(",").map((p) => p.trim());
   const out: unknown[] = [];
   for (const part of parts) {
-    // For string[] an empty element between commas is a deliberate "" entry.
-    const result = parseScalar(scalar === "string" ? part : part, scalar);
+    const result = parseScalar(part, scalar);
     if (!result.ok) {
       // Map a scalar out-of-range error onto its array variant.
       const errorKey =
@@ -141,9 +197,13 @@ export function formatValue(value: unknown, type: FunctionType): string {
   }
   if (!Array.isArray(value)) return "";
   const scalar = elementType(type);
+  // `string[]` formats back to a JSON array literal so commas inside elements
+  // survive the format -> parse round-trip (matches the required input format).
+  if (scalar === "string") {
+    return JSON.stringify(value.map((v) => (typeof v === "string" ? v : String(v ?? ""))));
+  }
   return value
     .map((v) => {
-      if (scalar === "string") return typeof v === "string" ? v : String(v ?? "");
       if (scalar === "bool") return v ? "true" : "false";
       return v == null ? "" : String(v);
     })

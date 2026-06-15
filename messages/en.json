@@ -408,6 +408,8 @@
     "fnValueInvalidArrayInt": "Enter comma-separated whole numbers.",
     "fnValueInvalidArrayDouble": "Enter comma-separated numbers.",
     "fnValueInvalidArrayBool": "Enter comma-separated true/false values.",
+    "fnValueInvalidString": "Enter a value.",
+    "fnValueInvalidArrayString": "Enter a JSON array of strings, e.g. [\"a,b\", \"c\"].",
     "fnValueIntOutOfRange": "Whole numbers must be within ±9007199254740991 (2^53 − 1).",
     "fnValueArrayIntOutOfRange": "Each whole number must be within ±9007199254740991 (2^53 − 1).",
     "fnBoolTrue": "true",

@@ -408,6 +408,8 @@
     "fnValueInvalidArrayInt": "쉼표로 구분한 정수를 입력하세요.",
     "fnValueInvalidArrayDouble": "쉼표로 구분한 숫자를 입력하세요.",
     "fnValueInvalidArrayBool": "쉼표로 구분한 true/false 값을 입력하세요.",
+    "fnValueInvalidString": "값을 입력하세요.",
+    "fnValueInvalidArrayString": "문자열 JSON 배열을 입력하세요. 예: [\"a,b\", \"c\"]",
     "fnValueIntOutOfRange": "정수는 ±9007199254740991(2^53 − 1) 범위 안이어야 해요.",
     "fnValueArrayIntOutOfRange": "각 정수는 ±9007199254740991(2^53 − 1) 범위 안이어야 해요.",
     "fnBoolTrue": "true",
