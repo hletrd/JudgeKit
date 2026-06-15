@@ -416,9 +416,23 @@ persisted submission keeps the student's original source untouched.
 }
 ```
 
-**Supported types** (`SUPPORTED_FUNCTION_TYPES`): the scalars `int`, `long`,
-`double`, `bool`, `string`, plus 1-D arrays of each (`int[]`, `long[]`,
-`double[]`, `bool[]`, `string[]`).
+**Authorable types** (`AUTHORABLE_FUNCTION_TYPES`): the scalars `int`, `long`,
+`bool`, `string`, plus 1-D arrays of each (`int[]`, `long[]`, `bool[]`,
+`string[]`). `functionSpecSchema` rejects any other type in `params` /
+`returnType`.
+
+- **`double` / `double[]` are deferred to v1.1.** Correct cross-language float
+  judging needs a dedicated float comparison mode plus space-separated numeric
+  output (under the default `exact` mode the TS serializer, C/Java/C# `%g`, and
+  Go `json.Marshal` emit three different texts for the same value, and the
+  worker's float comparator can't tokenize a JSON array). The serializer and
+  harness adapters retain their `double` mapping/printing for v1.1; only
+  authoring/validation excludes it.
+- **`int` / `long` are limited to the JS safe-integer range** — magnitudes must
+  be within ±`Number.MAX_SAFE_INTEGER` (±9007199254740991, i.e. ±2^53 − 1).
+  Authored values flow through JS `Number` and the harnesses read ints via
+  double, so larger magnitudes would silently lose precision; the authoring
+  editor rejects out-of-range values. BigInt support is deferred.
 
 **Supported languages** (7): `python`, `cpp23`, `javascript`, `typescript`,
 `java`, `go`, `csharp`. Each has a harness adapter that generates the student
@@ -435,6 +449,12 @@ args `[2,7,11,15]` and `9`:
 | `input` | `[[2,7,11,15],9]` |
 | `expectedOutput` | `[0,1]` |
 
+**Array authoring input.** In the authoring editor, array fields accept a JSON
+array literal (e.g. `["a,b", "c"]`), which is the canonical, comma-safe format.
+`string[]` **requires** JSON because commas are significant inside string
+elements; numeric / bool arrays additionally accept the friendlier bare
+comma-separated form (e.g. `2, 7, 11`). Malformed input yields a clear error.
+
 **Producing expected outputs.** Two options:
 1. **Manual** — hand-enter the serialized `expectedOutput` for each case.
 2. **Compute from a reference solution** — attach a `referenceSolution`
@@ -447,9 +467,12 @@ args `[2,7,11,15]` and `9`:
 - **Non-void return only** — the function must return a value; void / in-place
   mutation signatures are not yet supported.
 - **Comparison is exact and order-sensitive** — the existing stdout comparator
-  is used. For `double` / `double[]` returns, set `comparisonMode` to `float`
-  (with `floatAbsoluteError` / `floatRelativeError`) so floating-point output is
-  compared within tolerance.
+  is used.
+- **`double` / `double[]` deferred to v1.1** — not authorable in v1 (see
+  Authorable types above); they require a float comparison mode plus
+  space-separated numeric output.
+- **`int` / `long` limited to ±2^53** — must stay within the JS safe-integer
+  range (±9007199254740991); BigInt support is deferred.
 - **No nested / map / `ListNode` / `TreeNode` types** — only the scalar and 1-D
   array types listed above. Nested collections, maps, and linked-list / tree
   node structures are deferred.
