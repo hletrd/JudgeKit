@@ -372,6 +372,7 @@ Create a problem. **Instructor or above.** Rate limit: `problems:create`.
 |-------|------|---------|-------------|
 | `title` | string | — | 1-200 chars, required |
 | `description` | string | — | Markdown content |
+| `problemType` | string | `auto` | `auto`, `manual`, or `function` (see [Function-Signature Problems](#function-signature-problems)) |
 | `timeLimitMs` | number | 2000 | 100-30000 |
 | `memoryLimitMb` | number | 256 | 16-1024 |
 | `visibility` | string | `private` | `public`, `private`, `hidden` |
@@ -383,10 +384,101 @@ Create a problem. **Instructor or above.** Rate limit: `problems:create`.
 | `floatAbsoluteError` | number | — | 0-1, for float mode |
 | `floatRelativeError` | number | — | 0-1, for float mode |
 | `difficulty` | number | — | 0-10 |
+| `functionSpec` | object | — | Required when `problemType` is `function` (see below) |
+| `referenceSolution` | object | — | Author-only `{ language, source }`; only meaningful for `function` problems |
 | `testCases` | array | — | Test case objects |
 | `tags` | array | — | Max 20 tags |
 
 **Response (201):** Problem object with test cases.
+
+---
+
+#### Function-Signature Problems
+
+A `function` problem lets the author define a function signature plus typed
+input/output examples; the student implements **only the function body**. At
+judge-claim time the app assembles `prelude + studentCode + generatedMain` into
+an ordinary stdin/stdout compile unit and sends it to the **unchanged** judge
+worker, so a function problem is judged exactly like an `auto` problem. The
+Rust worker is never modified; the wrapping happens server-side and the
+persisted submission keeps the student's original source untouched.
+
+**`functionSpec` shape:**
+```jsonc
+{
+  "functionName": "twoSum",                 // identifier
+  "params": [                                // ≥ 1 parameter
+    { "name": "nums", "type": "int[]" },
+    { "name": "target", "type": "int" }
+  ],
+  "returnType": "int[]",                     // non-void only (v1)
+  "enabledLanguages": ["python", "cpp23"]    // subset of the 7 supported
+}
+```
+
+**Supported types** (`SUPPORTED_FUNCTION_TYPES`): the scalars `int`, `long`,
+`double`, `bool`, `string`, plus 1-D arrays of each (`int[]`, `long[]`,
+`double[]`, `bool[]`, `string[]`).
+
+**Supported languages** (7): `python`, `cpp23`, `javascript`, `typescript`,
+`java`, `go`, `csharp`. Each has a harness adapter that generates the student
+stub and the I/O `main`. A student may only submit in a language listed in
+`enabledLanguages`.
+
+**Test-case serialization.** For a function problem the test case's `input` is
+the JSON-encoded argument tuple and `expectedOutput` is the JSON-encoded return
+value (compact, no spaces). For `twoSum(int[] nums, int target) -> int[]` with
+args `[2,7,11,15]` and `9`:
+
+| Field | Value |
+|-------|-------|
+| `input` | `[[2,7,11,15],9]` |
+| `expectedOutput` | `[0,1]` |
+
+**Producing expected outputs.** Two options:
+1. **Manual** — hand-enter the serialized `expectedOutput` for each case.
+2. **Compute from a reference solution** — attach a `referenceSolution`
+   (`{ language, source }`) and call
+   `POST /api/v1/problems/:id/compute-expected` (below). The reference is run
+   against every case's `input` and the produced output becomes the canonical
+   `expectedOutput`.
+
+**v1 limitations:**
+- **Non-void return only** — the function must return a value; void / in-place
+  mutation signatures are not yet supported.
+- **Comparison is exact and order-sensitive** — the existing stdout comparator
+  is used. For `double` / `double[]` returns, set `comparisonMode` to `float`
+  (with `floatAbsoluteError` / `floatRelativeError`) so floating-point output is
+  compared within tolerance.
+- **No nested / map / `ListNode` / `TreeNode` types** — only the scalar and 1-D
+  array types listed above. Nested collections, maps, and linked-list / tree
+  node structures are deferred.
+
+---
+
+#### `POST /api/v1/problems/:id/compute-expected`
+
+**Author or Admin.** For a `function` problem with both a `functionSpec` and a
+`referenceSolution`, assembles the reference solution into a full stdin/stdout
+unit and runs it once per test case (same single-run mechanism the playground
+uses), returning the produced output for each case. Per-case failures are
+reported (`ok: false` + `error`) rather than aborting the batch. The caller
+(authoring UI) persists the successful `expectedOutput` values back onto the
+test cases via `PATCH /api/v1/problems/:id`.
+
+**Response (200):**
+```jsonc
+{
+  "data": {
+    "results": [
+      { "testCaseIndex": 0, "input": "[[2,7,11,15],9]", "expectedOutput": "[0,1]", "ok": true }
+    ]
+  }
+}
+```
+
+Errors: `400 notAFunctionProblem`, `400 functionSpecRequired`,
+`400 referenceSolutionRequired`, `400 unsupportedReferenceLanguage`.
 
 ---
 

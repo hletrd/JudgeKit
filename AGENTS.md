@@ -164,6 +164,31 @@ After syncing, the judge worker reads `dockerImage`, `compileCommand`, and `runC
 
 See `.context/development/problem-descriptions.md` for full specification.
 
+## Problem Types & Judging
+
+Each problem has a `problemType` that selects how it is judged:
+
+- **`auto`** — standard stdin/stdout judging. The student's full program is run
+  against each test case's `input` and its stdout is compared to
+  `expectedOutput` using the comparator (`exact` or `float` per
+  `comparisonMode`).
+- **`manual`** — judged outside the automatic pipeline (operator/manual grade).
+- **`function`** — **function-signature judging**. The author defines a function
+  signature (`functionSpec`) + typed I/O; the student implements only the
+  function. At judge-claim time the app assembles
+  `prelude + studentCode + generatedMain` into a stdin/stdout unit and sends it
+  to the **unchanged** Rust worker, so it is judged like an `auto` problem.
+  Implemented under `src/lib/judge/function-judging/` (types, serialization,
+  per-language harness adapters, assembly). v1 supports the scalar types `int`,
+  `long`, `double`, `bool`, `string` and their 1-D arrays, across 7 languages
+  (`python`, `cpp23`, `javascript`, `typescript`, `java`, `go`, `csharp`).
+  Non-void return only; comparison is exact/order-sensitive (use
+  `comparisonMode=float` for `double` returns); no nested/map/`ListNode`/
+  `TreeNode` types yet. Expected outputs are either hand-entered (serialized) or
+  computed from an author-only reference solution via
+  `POST /api/v1/problems/:id/compute-expected`. See `docs/api.md` →
+  "Function-Signature Problems".
+
 ## Admin Language Management
 
 `/dashboard/admin/languages` lets admins view and override per-language settings stored in the DB:
