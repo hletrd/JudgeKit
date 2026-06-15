@@ -166,7 +166,18 @@ describe("source-grep test inventory", () => {
     //     db-chain harness (submissions, anti-cheat GET); this cross-route
     //     query-SHAPE invariant would otherwise need a full chain mock per
     //     route, so a source-grep contract is the proportionate guard.
-    const DOCUMENTED_BASELINE = 142;
+    // Bumped 142 -> 149 (2026-06-16, function-signature judging):
+    //   - tests/unit/judge/function-judging/adapters/{python,cpp,javascript,
+    //     typescript,java,go,csharp}.test.ts (+7) — golden/snapshot tests for
+    //     the per-language harness code GENERATORS: each asserts that
+    //     adapter.assemble(spec, code) reproduces a committed golden source
+    //     file (the exact stdin-reading harness the judge compiles). These are
+    //     output-fixture comparisons for a code generator, not src/-grepping
+    //     wiring checks — readFileSync loads the expected-output fixture, which
+    //     is the proportionate test for a deterministic generator (a behavioural
+    //     test would have to compile+run every language, covered separately by
+    //     the adapters' own assemble/stub assertions and the E2E suite).
+    const DOCUMENTED_BASELINE = 149;
     expect(sourceGrepFiles.length).toBe(DOCUMENTED_BASELINE);
   });
 
