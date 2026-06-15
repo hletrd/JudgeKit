@@ -8,14 +8,17 @@ import { forbidden, notFound, createApiHandler } from "@/lib/api/handler";
 import { recordAuditEvent } from "@/lib/audit/events";
 import { canAccessProblem, canManageProblem } from "@/lib/auth/permissions";
 import { mergeTestCasePatchIntoExisting, updateProblemWithTestCases } from "@/lib/problem-management";
-import { problemMutationSchema } from "@/lib/validators/problem-management";
+import { problemMutationSchema, referenceSolutionSchema } from "@/lib/validators/problem-management";
+import { functionSpecSchema } from "@/lib/judge/function-judging/types";
 import { resolveCapabilities } from "@/lib/capabilities/cache";
 
 const problemPatchSchema = z.object({
   title: z.string().min(1).max(200).optional(),
   description: z.string().optional(),
   sequenceNumber: z.number().int().min(0).nullable().optional(),
-  problemType: z.enum(["auto", "manual"]).optional(),
+  problemType: z.enum(["auto", "manual", "function"]).optional(),
+  functionSpec: functionSpecSchema.nullable().optional(),
+  referenceSolution: referenceSolutionSchema.nullable().optional(),
   timeLimitMs: z.number().int().min(100).max(30000).optional(),
   memoryLimitMb: z.number().int().min(16).max(1024).optional(),
   visibility: z.enum(["public", "private", "hidden"]).optional(),
@@ -61,7 +64,12 @@ export const GET = createApiHandler({
     if (!problem) return notFound("Problem");
 
     if (!canManageProblem) {
-      return apiSuccess(problem);
+      // SECURITY: referenceSolution is author-only and must never reach a
+      // student-facing read. functionSpec stays — it drives the student's
+      // stub + language list.
+      const { referenceSolution: _referenceSolution, ...studentVisible } = problem;
+      void _referenceSolution;
+      return apiSuccess(studentVisible);
     }
 
     // Only fetch test cases for managers (single additional query instead of re-fetching problem)
@@ -117,6 +125,10 @@ export const PATCH = createApiHandler({
       existingTagNames = existingProblemTags.map((t) => t.name);
     }
 
+    // Function-judging fields are only meaningful for function problems; null
+    // them out otherwise so a stale spec/reference can never be persisted.
+    const effectiveProblemType = body.problemType ?? problem.problemType ?? "auto";
+    const isFunctionProblem = effectiveProblemType === "function";
     const parsedInput = problemMutationSchema.safeParse({
       title: body.title ?? problem.title,
       description: body.description ?? problem.description ?? "",
@@ -134,6 +146,12 @@ export const PATCH = createApiHandler({
       floatRelativeError: body.floatRelativeError !== undefined ? body.floatRelativeError : problem.floatRelativeError ?? null,
       difficulty: body.difficulty !== undefined ? body.difficulty : problem.difficulty ?? null,
       defaultLanguage: body.defaultLanguage !== undefined ? body.defaultLanguage : problem.defaultLanguage ?? null,
+      functionSpec: isFunctionProblem
+        ? (body.functionSpec !== undefined ? body.functionSpec : problem.functionSpec ?? null)
+        : null,
+      referenceSolution: isFunctionProblem
+        ? (body.referenceSolution !== undefined ? body.referenceSolution : problem.referenceSolution ?? null)
+        : null,
       testCases: (() => {
           const sortedExisting = [...existingTestCases].sort(
             (left, right) => (left.sortOrder ?? 0) - (right.sortOrder ?? 0)

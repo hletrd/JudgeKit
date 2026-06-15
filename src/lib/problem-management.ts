@@ -262,6 +262,10 @@ export async function createProblemWithTestCases(input: ProblemMutationInput, au
         floatRelativeError: input.floatRelativeError ?? null,
         difficulty: input.difficulty ?? null,
         defaultLanguage: input.defaultLanguage ?? null,
+        // Function-judging fields are persisted only for function problems;
+        // for auto/manual they are forced to null so stale specs can never leak.
+        functionSpec: input.problemType === "function" ? input.functionSpec ?? null : null,
+        referenceSolution: input.problemType === "function" ? input.referenceSolution ?? null : null,
         authorId,
         createdAt: now,
         updatedAt: now,
@@ -306,6 +310,10 @@ export async function updateProblemWithTestCases(problemId: string, input: Probl
         floatRelativeError: input.floatRelativeError ?? null,
         difficulty: input.difficulty ?? null,
         defaultLanguage: input.defaultLanguage ?? null,
+        // Function-judging fields are persisted only for function problems;
+        // for auto/manual they are forced to null so stale specs can never leak.
+        functionSpec: input.problemType === "function" ? input.functionSpec ?? null : null,
+        referenceSolution: input.problemType === "function" ? input.referenceSolution ?? null : null,
         updatedAt: now,
       })
       .where(eq(problems.id, problemId));

@@ -1,14 +1,43 @@
 import { z } from "zod";
 import { trimString } from "@/lib/validators/preprocess";
+import { functionSpecSchema } from "@/lib/judge/function-judging/types";
 
 export const problemVisibilityValues = ["public", "private", "hidden"] as const;
-export const problemTypeValues = ["auto", "manual"] as const;
+export const problemTypeValues = ["auto", "manual", "function"] as const;
 
 export const problemTestCaseSchema = z.object({
   input: z.string().default(""),
   expectedOutput: z.string().min(1, "testCaseOutputRequired"),
   isVisible: z.boolean().default(false),
 });
+
+/**
+ * Author-only reference solution used to compute expected outputs for
+ * function-signature problems. Never exposed to students.
+ */
+export const referenceSolutionSchema = z.object({
+  language: z.string(),
+  source: z.string(),
+});
+
+/**
+ * Enforces the type-conditional shape for function-signature judging:
+ * when `problemType === "function"` a valid `functionSpec` is REQUIRED;
+ * otherwise `functionSpec` / `referenceSolution` are ignored downstream
+ * (the mutation helpers null them out unless problemType is "function").
+ */
+function refineFunctionProblem(
+  data: { problemType?: string; functionSpec?: unknown },
+  ctx: z.RefinementCtx
+) {
+  if (data.problemType === "function" && data.functionSpec == null) {
+    ctx.addIssue({
+      code: z.ZodIssueCode.custom,
+      message: "functionSpecRequired",
+      path: ["functionSpec"],
+    });
+  }
+}
 
 export const problemMutationSchema = z.object({
   title: z.preprocess(trimString, z.string().min(1, "titleRequired").max(200, "titleTooLong")),
@@ -28,9 +57,11 @@ export const problemMutationSchema = z.object({
   difficulty: z.number().min(0, "invalidDifficulty").max(10, "invalidDifficulty").nullable().optional()
     .transform((v) => v != null ? Math.round(v * 100) / 100 : v),
   defaultLanguage: z.string().max(50).nullable().optional(),
+  functionSpec: functionSpecSchema.nullable().optional(),
+  referenceSolution: referenceSolutionSchema.nullable().optional(),
   testCases: z.array(problemTestCaseSchema).max(100, "tooManyTestCases").default([]),
   tags: z.array(z.string().min(1).max(50)).max(20, "tooManyTags").default([]),
-});
+}).superRefine(refineFunctionProblem);
 
 /**
  * Schema for the raw request body of POST /api/v1/problems.
@@ -55,9 +86,11 @@ export const problemCreateSchema = z.object({
   difficulty: z.number().min(0, "invalidDifficulty").max(10, "invalidDifficulty").nullable().optional()
     .transform((v) => v != null ? Math.round(v * 100) / 100 : v),
   defaultLanguage: z.string().max(50).nullable().optional(),
+  functionSpec: functionSpecSchema.nullable().optional(),
+  referenceSolution: referenceSolutionSchema.nullable().optional(),
   testCases: z.array(problemTestCaseSchema).max(100, "tooManyTestCases").optional().default([]),
   tags: z.array(z.string().min(1).max(50)).max(20, "tooManyTags").optional().default([]),
-});
+}).superRefine(refineFunctionProblem);
 
 export type ProblemTestCaseInput = z.infer<typeof problemTestCaseSchema>;
 export type ProblemMutationInput = z.infer<typeof problemMutationSchema>;

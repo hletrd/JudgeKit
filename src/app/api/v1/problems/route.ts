@@ -149,6 +149,9 @@ export const POST = createApiHandler({
   auth: { capabilities: ["problems.create"] },
   schema: problemCreateSchema,
   handler: async (req: NextRequest, { user, body }) => {
+    // Function-judging fields are only meaningful for function problems; null
+    // them out otherwise so a stale spec/reference can never be persisted.
+    const isFunctionProblem = (body.problemType ?? "auto") === "function";
     const parsedInput = problemMutationSchema.safeParse({
       title: body.title,
       description: body.description ?? "",
@@ -166,6 +169,8 @@ export const POST = createApiHandler({
       floatRelativeError: body.floatRelativeError,
       difficulty: body.difficulty ?? null,
       defaultLanguage: body.defaultLanguage ?? null,
+      functionSpec: isFunctionProblem ? body.functionSpec ?? null : null,
+      referenceSolution: isFunctionProblem ? body.referenceSolution ?? null : null,
       testCases: body.testCases ?? [],
       tags: body.tags ?? [],
     });
