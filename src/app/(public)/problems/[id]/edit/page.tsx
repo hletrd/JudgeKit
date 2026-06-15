@@ -85,7 +85,7 @@ export default async function EditProblemPage({ params }: { params: Promise<{ id
               title: problem.title,
               description: problem.description ?? "",
               sequenceNumber: problem.sequenceNumber ?? null,
-              problemType: (problem.problemType ?? "auto") as "auto" | "manual",
+              problemType: (problem.problemType ?? "auto") as "auto" | "manual" | "function",
               timeLimitMs: problem.timeLimitMs ?? 2000,
               memoryLimitMb: problem.memoryLimitMb ?? 256,
               visibility: (problem.visibility ?? "private") as "public" | "private" | "hidden",
@@ -104,6 +104,8 @@ export default async function EditProblemPage({ params }: { params: Promise<{ id
                 isVisible: testCase.isVisible ?? false,
               })),
               tags: problemTagNames,
+              functionSpec: problem.functionSpec ?? null,
+              referenceSolution: problem.referenceSolution ?? null,
             }}
             testCasesLocked={hasSubmissions}
             allowTestCaseOverride={hasSubmissions && canOverrideTestCases}

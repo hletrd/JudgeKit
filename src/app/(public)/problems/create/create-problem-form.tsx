@@ -23,9 +23,22 @@ import {
   serializeProblemTestCaseDraftsForMutation,
   type ProblemTestCaseDraft,
 } from "@/lib/problems/test-case-drafts";
+import { FunctionSignatureBuilder } from "@/components/problem/function-signature-builder";
+import { FunctionTestCaseEditor } from "@/components/problem/function-test-case-editor";
+import { FunctionReferenceSolution, type ReferenceSolution } from "@/components/problem/function-reference-solution";
+import type { FunctionSpec } from "@/lib/judge/function-judging/types";
 
 type ProblemVisibility = "public" | "private" | "hidden";
-type ProblemType = "auto" | "manual";
+type ProblemType = "auto" | "manual" | "function";
+
+const DEFAULT_FUNCTION_SPEC: FunctionSpec = {
+  functionName: "",
+  params: [{ name: "", type: "int" }],
+  returnType: "int",
+  enabledLanguages: ["python"],
+};
+
+const DEFAULT_REFERENCE_SOLUTION: ReferenceSolution = { language: "python", source: "" };
 
 const LARGE_TESTCASE_THRESHOLD = 5000;
 
@@ -49,6 +62,8 @@ export type ProblemFormInitialData = {
   defaultLanguage: string | null;
   testCases: ProblemTestCaseDraft[];
   tags: string[];
+  functionSpec?: FunctionSpec | null;
+  referenceSolution?: ReferenceSolution | null;
 };
 
 type CreateProblemFormProps = {
@@ -96,6 +111,14 @@ export default function CreateProblemForm({
   const [timeLimitMs, setTimeLimitMs] = useState(initialProblem?.timeLimitMs ?? 2000);
   const [memoryLimitMb, setMemoryLimitMb] = useState(initialProblem?.memoryLimitMb ?? 256);
   const [problemType, setProblemType] = useState<ProblemType>(initialProblem?.problemType ?? "auto");
+  const [functionSpec, setFunctionSpec] = useState<FunctionSpec>(
+    initialProblem?.functionSpec ?? DEFAULT_FUNCTION_SPEC
+  );
+  const [referenceSolution, setReferenceSolution] = useState<ReferenceSolution>(
+    initialProblem?.referenceSolution ?? DEFAULT_REFERENCE_SOLUTION
+  );
+  // Bumped after "Compute expected outputs" so the typed editor re-hydrates.
+  const [expectedOutputsVersion, setExpectedOutputsVersion] = useState(0);
   const [visibility, setVisibility] = useState<ProblemVisibility>(initialProblem?.visibility ?? "private");
   const [showCompileOutput, setShowCompileOutput] = useState(initialProblem?.showCompileOutput ?? true);
   const [showDetailedResults, setShowDetailedResults] = useState(initialProblem?.showDetailedResults ?? true);
@@ -143,7 +166,11 @@ export default function CreateProblemForm({
     testCaseOverrideEnabled !== false ||
     JSON.stringify(testCases.map((t) => ({ input: t.input, expectedOutput: t.expectedOutput, isVisible: t.isVisible }))) !==
       JSON.stringify((initialProblem?.testCases ?? []).map((t) => ({ input: t.input, expectedOutput: t.expectedOutput, isVisible: t.isVisible }))) ||
-    JSON.stringify(currentTags) !== JSON.stringify(initialProblem?.tags ?? []);
+    JSON.stringify(currentTags) !== JSON.stringify(initialProblem?.tags ?? []) ||
+    (problemType === "function" && (
+      JSON.stringify(functionSpec) !== JSON.stringify(initialProblem?.functionSpec ?? DEFAULT_FUNCTION_SPEC) ||
+      JSON.stringify(referenceSolution) !== JSON.stringify(initialProblem?.referenceSolution ?? DEFAULT_REFERENCE_SOLUTION)
+    ));
 
   const { allowNextNavigation } = useUnsavedChangesGuard({ isDirty });
 
@@ -382,6 +409,18 @@ export default function CreateProblemForm({
     setTestCases((current) => [...current, createEmptyProblemTestCaseDraft()]);
   }
 
+  // Fill each successful case's serialized expectedOutput from the reference
+  // solution compute results, then signal the typed editor to re-hydrate.
+  function applyComputedExpected(results: Array<{ testCaseIndex: number; expectedOutput: string; ok: boolean }>) {
+    setTestCases((current) =>
+      current.map((testCase, index) => {
+        const result = results.find((r) => r.testCaseIndex === index);
+        return result && result.ok ? { ...testCase, expectedOutput: result.expectedOutput } : testCase;
+      })
+    );
+    setExpectedOutputsVersion((v) => v + 1);
+  }
+
   function removeTestCase(index: number) {
     setTestCases((current) => current.filter((_, currentIndex) => currentIndex !== index));
     testCaseInputFileRefs.current.splice(index, 1);
@@ -446,6 +485,12 @@ export default function CreateProblemForm({
           difficulty: difficulty !== "" && Number.isFinite(parseFloat(difficulty)) ? parseFloat(difficulty) : null,
           defaultLanguage: defaultLanguage || null,
           tags: currentTags,
+          ...(problemType === "function"
+            ? {
+                functionSpec,
+                referenceSolution: referenceSolution.source.trim() ? referenceSolution : null,
+              }
+            : {}),
           ...(areTestCasesEditable
             ? { testCases: serializeProblemTestCaseDraftsForMutation(testCases, isEditing) }
             : {}),
@@ -695,15 +740,26 @@ export default function CreateProblemForm({
           <Label htmlFor="problemType">{t("problemTypeLabel")}</Label>
           <Select value={problemType} onValueChange={(v) => { if (v) setProblemType(v as ProblemType); }}>
             <SelectTrigger id="problemType">
-              <SelectValue>{problemType === "auto" ? t("problemTypeAuto") : t("problemTypeManual")}</SelectValue>
+              <SelectValue>
+                {problemType === "auto"
+                  ? t("problemTypeAuto")
+                  : problemType === "function"
+                    ? t("problemTypeFunction")
+                    : t("problemTypeManual")}
+              </SelectValue>
             </SelectTrigger>
             <SelectContent>
               <SelectItem value="auto" label={t("problemTypeAuto")}>{t("problemTypeAuto")}</SelectItem>
               <SelectItem value="manual" label={t("problemTypeManual")}>{t("problemTypeManual")}</SelectItem>
+              <SelectItem value="function" label={t("problemTypeFunction")}>{t("problemTypeFunction")}</SelectItem>
             </SelectContent>
           </Select>
           <p className="text-xs text-muted-foreground">
-            {problemType === "manual" ? t("problemTypeManualHint") : t("problemTypeAutoHint")}
+            {problemType === "manual"
+              ? t("problemTypeManualHint")
+              : problemType === "function"
+                ? t("problemTypeFunctionHint")
+                : t("problemTypeAutoHint")}
           </p>
         </div>
         <div className="space-y-2">
@@ -763,6 +819,34 @@ export default function CreateProblemForm({
           </div>
         )}
       </div>}
+
+      {problemType === "function" && (
+        <>
+          <FunctionSignatureBuilder
+            value={functionSpec}
+            onChange={setFunctionSpec}
+            disabled={isLoading}
+          />
+          <FunctionTestCaseEditor
+            params={functionSpec.params}
+            returnType={functionSpec.returnType}
+            testCases={testCases}
+            onChange={setTestCases}
+            disabled={isLoading || !areTestCasesEditable}
+            expectedOutputsVersion={expectedOutputsVersion}
+          />
+          <FunctionReferenceSolution
+            spec={functionSpec}
+            value={referenceSolution}
+            onChange={setReferenceSolution}
+            problemId={mode === "edit" ? (initialProblem?.id ?? null) : null}
+            onComputed={applyComputedExpected}
+            testCaseCount={testCases.length}
+            disabled={isLoading}
+            editorTheme={editorTheme}
+          />
+        </>
+      )}
 
       <div className="space-y-3 rounded-lg border p-4">
         <h3 className="text-base font-semibold">{t("studentVisibilityLabel")}</h3>
