@@ -39,6 +39,10 @@ export const updateRecruitingInvitationSchema = z.object({
     .refine(sysNamespaceRefine, { message: SYS_NAMESPACE_REJECT_MESSAGE }),
   status: z.enum(["revoked"]).optional(),
   resetAccountPassword: z.literal(true).optional(),
+  // Rotate the invitation token in place, returning a fresh one-time link.
+  // Recruiting tokens are hashed at rest, so a usable link cannot be recovered
+  // after creation — it must be re-minted via this flag.
+  regenerateToken: z.literal(true).optional(),
 });
 
 export const bulkCreateRecruitingInvitationsSchema = z.object({

@@ -51,7 +51,6 @@ import {
 
 type Invitation = {
   id: string;
-  token: string;
   candidateName: string;
   candidateEmail: string | null;
   metadata: Record<string, string>;
@@ -244,18 +243,48 @@ export function RecruitingInvitationsPanel({ assignmentId }: { assignmentId: str
     }
   }
 
-  async function handleCopyLink(invitation: Invitation) {
-    const url = `${baseUrl}/recruit/${invitation.token}`;
-    if (!(await copyToClipboard(url))) {
-      toast.error(t("copyError"));
-      return;
+  // Recruiting tokens are hashed at rest, so a usable link cannot be recovered
+  // from the list — it must be re-minted. This rotates the token on the existing
+  // invitation (invalidating any previously shared link), copies the fresh link,
+  // and surfaces it in the created-link dialog. The server also re-sends the
+  // invitation email when the candidate has an address and SMTP is configured.
+  async function handleRegenerateLink(invitation: Invitation) {
+    try {
+      const res = await apiFetch(
+        `/api/v1/contests/${assignmentId}/recruiting-invitations/${invitation.id}`,
+        {
+          method: "PATCH",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ regenerateToken: true }),
+        }
+      );
+      if (!res.ok) {
+        toast.error(t("regenerateLinkError"));
+        return;
+      }
+      const json = await res.json().catch(() => ({ data: {} }));
+      const token = (json as { data?: { token?: string } }).data?.token;
+      if (!token) {
+        toast.error(t("regenerateLinkError"));
+        return;
+      }
+      const url = `${baseUrl}/recruit/${token}`;
+      // Show the link in the dialog first so it's always recoverable even if the
+      // clipboard write is blocked by the browser after the async round-trip.
+      setCreatedLink(url);
+      if (await copyToClipboard(url)) {
+        if (copiedIdTimer.current) {
+          clearTimeout(copiedIdTimer.current);
+        }
+        setCopiedId(invitation.id);
+        copiedIdTimer.current = setTimeout(() => setCopiedId(null), 2000);
+        toast.success(t("linkCopied"));
+      } else {
+        toast.error(t("copyError"));
+      }
+    } catch {
+      toast.error(t("regenerateLinkError"));
     }
-    if (copiedIdTimer.current) {
-      clearTimeout(copiedIdTimer.current);
-    }
-    setCopiedId(invitation.id);
-    toast.success(t("linkCopied"));
-    copiedIdTimer.current = setTimeout(() => setCopiedId(null), 2000);
   }
 
   async function handleRevoke(invitation: Invitation) {
@@ -556,19 +585,33 @@ export function RecruitingInvitationsPanel({ assignmentId }: { assignmentId: str
                   <TableCell>{formatDate(inv.createdAt)}</TableCell>
                   <TableCell>
                     <div className="flex items-center gap-1">
-                      <Button
-                        variant="ghost"
-                        size="sm"
-                        onClick={() => handleCopyLink(inv)}
-                        title={t("copyLink")}
-                        aria-label={t("copyLink")}
-                      >
-                        {copiedId === inv.id ? (
-                          <Check className="h-4 w-4" />
-                        ) : (
-                          <Link className="h-4 w-4" />
-                        )}
-                      </Button>
+                      {inv.status === "pending" && (
+                        <AlertDialog>
+                          <AlertDialogTrigger render={
+                            <Button variant="ghost" size="sm" title={t("regenerateLink")} aria-label={t("regenerateLink")}>
+                              {copiedId === inv.id ? (
+                                <Check className="h-4 w-4" />
+                              ) : (
+                                <Link className="h-4 w-4" />
+                              )}
+                            </Button>
+                          } />
+                          <AlertDialogContent>
+                            <AlertDialogHeader>
+                              <AlertDialogTitle>{t("regenerateLinkConfirmTitle")}</AlertDialogTitle>
+                              <AlertDialogDescription>
+                                {t("regenerateLinkConfirm", { name: inv.candidateName })}
+                              </AlertDialogDescription>
+                            </AlertDialogHeader>
+                            <AlertDialogFooter>
+                              <AlertDialogCancel>{t("cancel")}</AlertDialogCancel>
+                              <AlertDialogAction onClick={() => handleRegenerateLink(inv)}>
+                                {t("regenerateLink")}
+                              </AlertDialogAction>
+                            </AlertDialogFooter>
+                          </AlertDialogContent>
+                        </AlertDialog>
+                      )}
                       {inv.status === "redeemed" && (
                         <AlertDialog>
                             <AlertDialogTrigger render={

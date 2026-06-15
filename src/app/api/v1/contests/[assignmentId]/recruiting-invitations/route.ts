@@ -13,10 +13,8 @@ import { createRecruitingInvitationSchema } from "@/lib/validators/recruiting-in
 import { recordAuditEvent } from "@/lib/audit/events";
 import { getDbNowUncached } from "@/lib/db-time";
 import { MAX_EXPIRY_MS, computeExpiryFromDays } from "@/lib/assignments/recruiting-constants";
-import { sendEmail, isEmailConfigured } from "@/lib/email/smtp";
-import { renderRecruitingInvitationEmail } from "@/lib/email/templates";
+import { dispatchRecruitingInvitationEmail } from "@/lib/email/recruiting";
 import { getPublicBaseUrl } from "@/lib/security/env";
-import { logger } from "@/lib/logger";
 
 export const GET = createApiHandler({
   auth: { capabilities: ["recruiting.manage_invitations"] },
@@ -121,10 +119,11 @@ export const POST = createApiHandler({
         request: req,
       });
 
-      // Auto-send invitation email if the candidate has an email address
-      // and SMTP is configured. Fire-and-forget so the API response isn't
-      // delayed by mail delivery; failures are logged inside sendEmail.
-      if (body.candidateEmail && invitation.token && await isEmailConfigured()) {
+      // Auto-send the invitation email when the candidate has an email address.
+      // dispatchRecruitingInvitationEmail is fire-and-forget and no-ops silently
+      // unless SMTP is enabled AND configured, so the API response isn't delayed
+      // by mail delivery and unconfigured instances simply skip the send.
+      if (body.candidateEmail && invitation.token) {
         // Canonical-first origin (see getPublicBaseUrl): prefer the configured
         // AUTH_URL over the client-supplied Host header for the link domain.
         const baseUrl = getPublicBaseUrl(
@@ -132,26 +131,13 @@ export const POST = createApiHandler({
           req.headers.get("x-forwarded-proto"),
         );
         const accessUrl = `${baseUrl}/recruit/${invitation.token}`;
-        renderRecruitingInvitationEmail({
+        void dispatchRecruitingInvitationEmail({
           to: body.candidateEmail,
           candidateName: body.candidateName,
           assessmentTitle: assignment.title,
           accessUrl,
           expiresAt: invitation.expiresAt ?? null,
-        }).then((template) =>
-          sendEmail({
-            to: body.candidateEmail!,
-            subject: template.subject,
-            text: template.text,
-            html: template.html,
-          })
-        ).catch((error) => {
-          // Fire-and-forget: sendEmail() logs its own send failures, but a
-          // throw from rendering or provider detection would otherwise vanish.
-          logger.warn(
-            { assignmentId, error: error instanceof Error ? error.message : String(error) },
-            "Recruiting invitation email dispatch failed"
-          );
+          assignmentId,
         });
       }
 

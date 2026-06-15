@@ -185,6 +185,49 @@ export async function createRecruitingInvitation(params: {
   return { ...invitation, token };
 }
 
+/**
+ * Rotate a pending invitation's token in place, returning the fresh plaintext
+ * token once (the same once-only contract as createRecruitingInvitation).
+ *
+ * Recruiting tokens are hashed at rest (only tokenHash is persisted), so a
+ * usable access link cannot be recovered after creation — it must be re-minted.
+ * This overwrites tokenHash on the EXISTING row, which (a) preserves the
+ * candidate's identity, email, metadata, and expiry, and (b) invalidates any
+ * previously shared link because its hash no longer matches. The per-invitation
+ * brute-force counter is reset for the freshly minted link.
+ *
+ * Restricted to `pending` invitations via an atomic WHERE guard: redeemed
+ * candidates authenticate with an account password (the token is spent), and
+ * revoked invitations must be recreated rather than rotated. Throws
+ * "invitationNotRegeneratable" when the row is not pending (or no longer exists).
+ */
+export async function regenerateRecruitingInvitationToken(id: string) {
+  const token = generateRecruitingToken();
+  const now = await getDbNowUncached();
+  const [updated] = await db
+    .update(recruitingInvitations)
+    .set({
+      // Only the new hash is persisted; the plaintext is returned to the caller.
+      tokenHash: hashToken(token),
+      // Reset the per-invitation brute-force counter for the freshly minted
+      // link. sql.raw is safe here: FAILED_REDEEM_ATTEMPTS_KEY is a module-level
+      // constant (asserted above against INTERNAL_KEY_PATTERN), never user input.
+      metadata: sql`jsonb_set(COALESCE(${recruitingInvitations.metadata}, '{}'), '{${sql.raw(FAILED_REDEEM_ATTEMPTS_KEY)}}', '0')`,
+      updatedAt: now,
+    })
+    .where(
+      and(
+        eq(recruitingInvitations.id, id),
+        eq(recruitingInvitations.status, "pending"),
+      )
+    )
+    .returning();
+  if (!updated) {
+    throw new Error("invitationNotRegeneratable");
+  }
+  return { ...updated, token };
+}
+
 export async function bulkCreateRecruitingInvitations(params: {
   assignmentId: string;
   invitations: {

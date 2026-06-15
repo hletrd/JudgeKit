@@ -6,12 +6,15 @@ import {
   updateRecruitingInvitation,
   deleteRecruitingInvitation,
   resetRecruitingInvitationAccountPassword,
+  regenerateRecruitingInvitationToken,
 } from "@/lib/assignments/recruiting-invitations";
 import { canManageContest, getContestAssignment } from "@/lib/assignments/contests";
 import { updateRecruitingInvitationSchema } from "@/lib/validators/recruiting-invitations";
 import { recordAuditEvent } from "@/lib/audit/events";
 import { getDbNowUncached } from "@/lib/db-time";
 import { MAX_EXPIRY_MS, computeExpiryFromDays } from "@/lib/assignments/recruiting-constants";
+import { dispatchRecruitingInvitationEmail } from "@/lib/email/recruiting";
+import { getPublicBaseUrl } from "@/lib/security/env";
 
 type AuthorizedInvitationResult =
   | {
@@ -81,6 +84,66 @@ export const PATCH = createApiHandler({
       });
 
       return apiSuccess({ id: params.invitationId, passwordResetRequired: true });
+    }
+
+    if (body.regenerateToken) {
+      // Tokens are hashed at rest, so the usable link cannot be recovered — it
+      // is re-minted in place. Only pending invitations can be re-issued:
+      // redeemed candidates authenticate with an account password, and revoked
+      // invitations must be recreated. The atomic WHERE guard in the library
+      // function enforces this; the pre-check returns a clearer error code.
+      if (invitation.status !== "pending") {
+        return apiError("invitationNotRegeneratable", 400);
+      }
+
+      let regenerated: Awaited<ReturnType<typeof regenerateRecruitingInvitationToken>>;
+      try {
+        regenerated = await regenerateRecruitingInvitationToken(params.invitationId);
+      } catch (error) {
+        if (error instanceof Error && error.message === "invitationNotRegeneratable") {
+          // Lost a race with a concurrent redeem/revoke between the read and the
+          // atomic update.
+          return apiError("invitationNotRegeneratable", 400);
+        }
+        throw error;
+      }
+
+      // Re-send the invitation email with the NEW link. Fire-and-forget and
+      // gated on isEmailConfigured() inside the dispatcher, so it silently skips
+      // when the candidate has no email or SMTP is not enabled/configured.
+      if (invitation.candidateEmail) {
+        const assignment = await getContestAssignment(params.assignmentId);
+        if (assignment) {
+          const baseUrl = getPublicBaseUrl(
+            req.headers.get("host"),
+            req.headers.get("x-forwarded-proto"),
+          );
+          void dispatchRecruitingInvitationEmail({
+            to: invitation.candidateEmail,
+            candidateName: invitation.candidateName,
+            assessmentTitle: assignment.title,
+            accessUrl: `${baseUrl}/recruit/${regenerated.token}`,
+            expiresAt: regenerated.expiresAt ?? null,
+            assignmentId: params.assignmentId,
+          });
+        }
+      }
+
+      recordAuditEvent({
+        actorId: user.id,
+        actorRole: user.role,
+        action: "recruiting_invitation.link_regenerated",
+        resourceType: "recruiting_invitation",
+        resourceId: params.invitationId,
+        resourceLabel: invitation.candidateName,
+        summary: `Regenerated recruiting invitation link for "${invitation.candidateName}"`,
+        details: { assignmentId: params.assignmentId },
+        request: req,
+      });
+
+      // Return the fresh plaintext token once — the same one-time contract as
+      // invitation creation. It is never persisted in plaintext or re-listed.
+      return apiSuccess({ id: params.invitationId, token: regenerated.token });
     }
 
 
