@@ -48,6 +48,8 @@ toolchains.
 - File: `scripts/seed.ts` — move the built-in role seed (line ~210) before the
   super-admin user insert (line ~179) so a fresh DB with the
   `users_role_roles_name_fk` FK bootstraps cleanly.
+- Status: DONE in cycle 2 (reproduced live on a fresh DB, roles now seeded
+  first, fresh-DB `npm run seed` verified). See plan/cycle-2-rpf-... P2.
 
 ### P7 — AGG-6/AGG-7 (Low) Local Playwright webServer bring-up
 - `playwright.config.ts` + `scripts/playwright-local-webserver.sh`: the

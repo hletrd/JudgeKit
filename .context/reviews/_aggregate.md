@@ -1,98 +1,77 @@
-# Aggregate Review — cycle 1 (2026-06-16)
+# Aggregate Review — cycle 2 (2026-06-16)
 
-Multi-perspective review of the recently-shipped `function` problem type
-(LeetCode-style function-signature judging) and its authoring + student UI.
-Reviews were performed across specialist angles (code-reviewer, security,
-perf, critic, verifier, test-engineer, tracer, architect, debugger,
-document-specialist, designer). The designer review was browser-driven
-(Playwright, chromium) at mobile 375 / tablet 768 / desktop 1280 against a live
-`next dev` server — the user's primary focus this run.
+Multi-perspective review focused on the `function` problem type (LeetCode-style
+function-signature judging) and its authoring + student UI. The designer review
+was browser-driven (`agent-browser`, Chromium headless) at mobile 375 / tablet
+768 / desktop 1280 against a live `next dev` server seeded with a real function
+problem — the user's primary focus this run.
 
 ## METHODOLOGY NOTE (agent fan-out)
-No nested subagent dispatch tool is registered in this environment (only a
-task-list tool), so the specialist reviews were executed directly by the cycle
-agent rather than as parallel subagents. Each angle still produced its own
-provenance file under `.context/reviews/<angle>.md`. No reviewer angle was
-dropped.
+No nested subagent dispatch tool is registered in this environment (this cycle
+itself runs as a single `general-purpose` agent; there is no Agent/Task spawn
+tool with a schema to fan out into parallel reviewer subagents). Each specialist
+angle was therefore executed directly by the cycle agent, with the designer
+angle driving a real browser. Per-angle provenance files remain under
+`.context/reviews/<angle>.md`. No reviewer angle was dropped.
 
-## HIGH-SIGNAL / CROSS-AGENT FINDINGS
+## NEW THIS CYCLE
 
-### AGG-1 (High) Student problem tab bar overflows mobile viewport — RESPONSIVE DEFECT
-Agents: designer (live, confirmed), critic.
-`/practice/problems/[id]` overflows at 375px (doc 422px vs 375px, +47px). Cause:
-`tabsListVariants` (`src/components/ui/tabs.tsx:27`) uses `inline-flex w-fit ...
-overflow-x-auto scrollbar-none` with no width cap, so the 4-tab list grows to
-406px and `overflow-x-auto` never engages. Fix: add `max-w-full`. THIS RUN:
-fix + cover with the new responsive spec. Severity High (visible page-level
-horizontal scroll on the primary student surface).
+### DSG-1 (Medium, High-confidence) Active/first problem tab clipped on overflowing tab bar — RESPONSIVE DEFECT
+Agent: designer (live, confirmed). `src/components/ui/tabs.tsx:27`
+(`tabsListVariants`) pairs `justify-center` with `overflow-x-auto`. On
+`/practice/problems/[id]` at mobile 375 the 4-tab bar overflows its `max-w-full`
+cap; `justify-center` then centres the overflow, so the first/ACTIVE tab renders
+at `offsetLeft=-13` (clipped left of the list content box) while `scrollLeft=0`
+is already the left scroll limit → the active tab's label is permanently
+truncated and unreachable. In-browser fix proof: `justify-content:flex-start`
+moves `offsetLeft -13 → 19`, makes the active tab fully visible, and the list
+still scrolls (`scrollWidth 406 > clientWidth 343`). Desktop (`w-fit`,
+non-overflowing) is unaffected by the change (`firstOffsetLeft=99` identical).
+THIS RUN: fix (`justify-center` → `justify-start`) + extend the responsive spec
+with a tab-clipping regression guard. Slips past the existing page-overflow
+guard because `documentWidth == viewportWidth` (the page does not scroll; only
+the tab content is clipped within the scrolled list).
 
-### AGG-2 (Medium) mapCompileError `:(\d+):` regex over-matches non-line tokens
-Agents: code-reviewer (CR-1), debugger (DBG-1), test-engineer (TST-2).
-`src/lib/judge/function-judging/error-mapping.ts:26` shifts ANY `:N:` token, not
-just file:line:col, corrupting student-visible compiler/runtime output that
-contains time-like or ratio tokens. Fix: only rewrite `:N:` when preceded by a
-source-filename token; add a regression unit test.
+### AGG-5 RE-CONFIRMED LIVE (Medium) seed.ts FK ordering — admin user before roles
+Reproduced this run during local server bring-up: `npm run seed` on a truly
+empty DB failed with `users_role_roles_name_fk` because `scripts/seed.ts`
+inserted the super-admin user (FK `users.role -> roles.name`, onDelete:restrict,
+schema.pg.ts:34) BEFORE the built-in roles. Scheduled as P6 in the cycle-1 plan;
+fixed THIS RUN (roles now seeded first) and verified (fresh-DB seed succeeds, 5
+roles + 1 super_admin present). Not deferrable (breaks first-time bootstrap).
 
-### AGG-3 (Medium) Cross-language string-escaping divergence in harness writers
-Agents: tracer (Hypothesis A), critic, document-specialist (DOC-3).
-Each language's JSON string writer escapes a different set: C++/Java escape only
-`" \ \n \t \r` and emit other bytes (incl. non-ASCII, `<`,`>`,`&`) raw, while Go's
-`encoding/json` escapes `<,>,&` as `\uXXXX`. For a `string`/`string[]`-returning
-problem judged in `exact` mode, a correct student solution in language A can be
-marked WRONG_ANSWER vs an expected output computed in language B. Fix: define a
-single canonical string-escaping contract and a cross-language golden test.
-(Affects string-returning problems only.)
+## CARRIED FORWARD (confirmed still real; scheduled in plan/cycle-1-rpf-... — no new severity change)
+- AGG-2 (Medium) `mapCompileError` `:(\d+):` regex over-matches non-line tokens
+  (`error-mapping.ts:26`). Scheduled P3. Re-confirmed by re-reading: the second
+  `.replace(/:(\d+):/g, ...)` still shifts ANY `:N:` token.
+- AGG-3 (Medium) Cross-language string-escaping divergence. Re-confirmed:
+  `string`/`string[]` ARE authorable (only `double`/`double[]` excluded, types.ts
+  :20). C++ (cpp.ts:117-130) and Java (java.ts:178-192) escape only `" \ \n \t \r`
+  and emit non-ASCII / `<` `>` `&` raw; Go uses `json.Marshal` (go.ts:92) which
+  escapes `<>&` as `\uXXXX`. In `exact` mode a string-returning problem judged
+  across languages diverges. Scheduled P4.
+- AGG-4 (Medium) Implicit single-line stdin contract across 7 adapters.
+  Scheduled P5.
+- AGG-6 (Low) Playwright local webServer placeholder `JUDGE_AUTH_TOKEN` rejected
+  by `getValidatedJudgeAuthToken` (env.ts:223-227 still lists the playwright
+  placeholder only in the REJECT branch). Scheduled P7.
+- AGG-7 (Low) Local webServer uses `next start`, which no-ops under
+  `output:standalone`. Scheduled P7. (Worked around this run by serving via
+  `next dev` for the browser review.)
+- P8 low cleanups (SEC-3 host-path trim, PERF-1 compute-expected concurrency,
+  ARC-4 shared resolveExecLanguage, DBG-4 confirm-on-param-removal, TST-3/TST-4
+  serialization fuzz + student-GET referenceSolution-absence). Scheduled P8.
 
-### AGG-4 (Medium) Single-line stdin contract is implicit across all 7 adapters
-Agents: debugger (DBG-2), architect (ARC-1), document-specialist (DOC-2).
-Every harness reads exactly one stdin line and `JSON.parse`s it; correct today
-because `encodeArgs` emits compact single-line JSON, but undocumented and
-unasserted. Fix: assert no-newline in `encodeArgs` output and document the
-invariant.
-
-## MEDIUM / LOW FINDINGS (single-agent, scheduled or deferred)
-- CR-2/VER-3 (Low, latent): C++ `snprintf("%.10g")` + Java `String.format("%.10g")`
-  double printers are locale-sensitive; `double` is deferred from authorable
-  types so unreachable in v1. Re-open before v1.1 re-enables double. (C# already
-  uses InvariantCulture.)
-- SEC-3 (Medium): compute-expected echoes raw stderr/compileOutput (may include
-  host paths) to the author client. Author-only; trim host paths.
-- PERF-1 (Low): compute-expected runs test cases serially; bounded by case count,
-  author-only. Optional concurrency cap.
-- DBG-4 (Low): FunctionTestCaseEditor silently drops typed args when a param is
-  removed. Consider a confirm.
-- ARC-4 (Low): compute-expected duplicates language-config resolution from the
-  compiler/run route; extract a shared helper.
-- TST-1 (High, THIS RUN): no responsive render e2e for function authoring +
-  submit UI — ADDRESSED this run via tests/e2e/function-judging-responsive.spec.ts.
-- TST-3/TST-4 (Low): add serialization round-trip fuzz for adversarial string[]
-  and an integration test asserting referenceSolution absence on student GET.
-
-## OPERATIONAL FINDINGS (discovered while standing up the live review)
-### AGG-5 (Medium) seed.ts inserts the admin user before built-in roles → FK violation on a fresh DB
-`scripts/seed.ts:179` inserts the super-admin user (FK `users.role ->
-roles.name`) BEFORE the roles are inserted at line 215. On a truly empty DB with
-the FK enforced this fails with `users_role_roles_name_fk` (reproduced this run).
-Fix: seed built-in roles before the admin user. Severity Medium (breaks
-first-time local/CI bootstrap on an empty DB; may be masked when roles
-pre-exist).
-
-### AGG-6 (Low) Playwright local webServer cannot seed — JUDGE_AUTH_TOKEN placeholder is rejected
-`playwright.config.ts` passes `JUDGE_AUTH_TOKEN=playwright-local-token-for-smoke`
-to the local webServer, but `getValidatedJudgeAuthToken`
-(`src/lib/security/env.ts:226`) explicitly rejects that exact placeholder, so
-`npm run seed` throws during webServer startup. The placeholder constant exists
-(env.ts:6) but is only listed in the REJECT branch, never in an allow path. Fix:
-either allow the playwright placeholder when not in production, or have the
-webServer script mint a strong token.
-
-### AGG-7 (Low) Local webServer uses `next start` which no-ops under output:standalone
-`next.config.ts` hardcodes `output: "standalone"`; `scripts/playwright-local-webserver.sh`
-runs `npm run start` (`next start`), which prints "does not work with output:
-standalone" and exits without serving, so the local Playwright webServer never
-comes up via the documented path. Fix: serve via `node .next/standalone/server.js`
-(copying static/public) or run `next dev` for the local test server.
+## DEFERRED (severity preserved, exit criterion stated — see plan D1)
+- D1 / CR-2 / VER-3 (Low, latent) Locale-sensitive double printers (C++ `%.10g`,
+  Java `String.format("%.10g")`) in `adapters/cpp.ts:115`, `adapters/java.ts:176`.
+  Unreachable in v1 because `double`/`double[]` are excluded from
+  `AUTHORABLE_FUNCTION_TYPES` (types.ts:20), documented as deferred to v1.1
+  (types.ts:11-22) — the repo's own design note is the authority permitting the
+  deferral. Exit criterion: re-open and fix (force `"C"` locale / `Locale.ROOT`)
+  with a cross-locale double golden test BEFORE re-enabling authorable double.
 
 ## AGENT FAILURES
 None. (Subagent dispatch is unavailable in this environment; see methodology
-note. Reviews were produced directly, one provenance file per angle.)
+note. Reviews were produced directly, one provenance file per angle, with the
+designer angle browser-driven.)

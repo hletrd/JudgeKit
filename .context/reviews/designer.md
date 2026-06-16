@@ -1,50 +1,73 @@
-# Designer — Live responsive review (browser-driven) of function-judging UI (cycle 1, 2026-06-16)
+# Designer Review — cycle 2 (2026-06-16, browser-driven)
 
-Method: Playwright (chromium) against a local `next dev` server on :3110 with a
-seeded admin and a real `function` problem (twoSum: `int[] nums, int target -> int[]`,
-all 7 function-judging languages enabled). Loaded each surface at mobile 375,
-tablet 768, desktop 1280. Findings are backed by computed box metrics (text
-extractable; model is treated as non-multimodal).
+Browser-driven responsive review of the `function` problem-type UI, the user's
+primary focus this run. Driven with `agent-browser` (Chromium, headless) against
+a live `next dev` server on `http://localhost:3110` seeded with a real function
+problem (`twoSum`, params `int[] nums, int target`, return `int[]`, 7 enabled
+languages, python reference). Viewports: mobile 375×812, tablet 768×1024,
+desktop 1280×900. All findings are backed by text-extractable box metrics
+(`getBoundingClientRect`, `offsetLeft`, `scrollLeft/scrollWidth/clientWidth`,
+computed `justify-content`) — no reliance on raw screenshots.
 
-## CONFIRMED DEFECT
+## SURFACES EXERCISED
+- Authoring edit: `/problems/[id]/edit` (problemType=function):
+  FunctionSignatureBuilder (name input, param rows + type selects, return-type
+  select, 7-language multiselect), FunctionTestCaseEditor (typed per-param +
+  expected-return inputs, add/remove, visible toggle), FunctionReferenceSolution
+  (gated language picker, CodeEditor, compute button, stub-preview `<pre>`).
+- Authoring create: `/problems/create` with problemType switched to function.
+- Student submit: `/practice/problems/[id]` (stub-preloaded editor, gated
+  language dropdown, problem tab bar).
 
-### DSGN-1 (High) Student problem-detail tab bar overflows the viewport on mobile
-Surface: `/practice/problems/[id]` (the student submit page — primary focus).
-Viewport: 375×812. Measured: `document.documentElement.scrollWidth = 422px` vs
-viewport `375px` → 47px horizontal overflow of the whole page.
-Offending element (leaf): `div[data-slot="tabs-list"]` with classes
-`group/tabs-list inline-flex w-fit items-center justify-center rounded-lg p-[3px] ... overflow-x-auto scrollbar-none`
-— box: left=16, right=422, width=406, scrollWidth=406. Its children are the four
-triggers Problem / Editorial / Accepted Solutions / Problem discussion
-(e.g. the "Problem discussion" trigger: left=284, right=419, width=135).
-Root cause: `tabsListVariants` in `src/components/ui/tabs.tsx:27` declares
-`inline-flex w-fit ... overflow-x-auto scrollbar-none` but NO width cap. `w-fit`
-sizes the list to its content (406px); with no `max-w-full`/`w-full` the box is
-never constrained to the parent, so `overflow-x-auto` never engages and the
-oversized list pushes the document wider than the viewport. Every page using a
-many-tab `TabsList` at narrow widths is affected (the student problem page is the
-one in this run's focus). Fix: add `max-w-full` to the base variant so the list
-caps at its container and the existing `overflow-x-auto scrollbar-none` lets the
-triggers scroll horizontally instead of overflowing the page. Confidence: High.
+## DSG-1 (Medium) Active/first problem tab is clipped on an overflowing tab bar — RESPONSIVE DEFECT (NEW)
+- Surface: `/practice/problems/[id]` (student submit), all widths where the
+  4-tab bar overflows its cap (confirmed at mobile 375; the cap is `max-w-full`,
+  so it overflows whenever the 4 tabs exceed the container width).
+- File: `src/components/ui/tabs.tsx:27` — `tabsListVariants` uses
+  `justify-center` together with `overflow-x-auto`.
+- Evidence (mobile 375, fresh load, no user scroll):
+  - `[role=tablist]`: `scrollLeft=0`, `scrollWidth=375`, `clientWidth=343`,
+    `overflowX=auto`, rect x=16 (page `px-4`).
+  - First/active tab "Problem": `offsetLeft=-13`, rect x=-13 → its left ~29px is
+    **clipped left of the list's content box**; `activeFullyVisible=false`.
+  - Last tab "Problem discussion": rect right=388 (> 375 viewport).
+- Why it's a defect: `justify-center` centers an OVERFLOWING flex scroll
+  container, splitting the overflow to BOTH ends. The left-clipped portion is
+  unreachable because the scroll origin is already at its left limit
+  (`scrollLeft=0`), so the **active tab's label is permanently truncated** on the
+  primary student surface with no scroll affordance to recover it.
+- Root-cause confirmation (in-browser experiment): setting
+  `justify-content: flex-start` on the live list moved `offsetLeft -13 → 19`
+  (flush with the 3px padding box), `activeFullyVisible=true`, and the list still
+  scrolls (`scrollWidth=406 > clientWidth=343`) to reveal the remaining tabs.
+  Toggling `flex:none/shrink-0` on the tabs did NOT move anything (`-13`
+  unchanged) → `flex-1` is not the cause; `justify-center` is.
+- Non-regression: at desktop 1280 the list is `w-fit` (406px, `canScroll=false`)
+  and `firstOffsetLeft=99` is identical before and after `justify-start` (a
+  `w-fit` flex box has no free space to justify), so the fix is a no-op for the
+  fits-in-one-row case and only repairs the overflow case.
+- Fix: change `justify-center` → `justify-start` in `tabsListVariants`.
+- Confidence: High. Severity Medium (active control clipped/inaccessible on the
+  main student page at mobile; NOT a page-level scroll regression — page
+  `documentWidth==viewportWidth`, so it slips past the existing overflow guard).
 
-## PASSED (no overflow / within viewport at 375/768/1280)
-- Authoring edit page (`/problems/[id]/edit`, problemType=function): the three
-  function sections (FunctionSignatureBuilder, FunctionTestCaseEditor,
-  FunctionReferenceSolution) all render with NO horizontal overflow at all three
-  widths. The signature builder's `flex-wrap` param rows wrap cleanly; the
-  `min-w-[160px]` name input + `min-w-[120px]` type select + trash button fit
-  within 375px (they wrap, trash button stays attached on its own line only when
-  needed). Return-type select (`max-w-[200px]`) and language checkboxes
-  (`grid-cols-2 sm:grid-cols-3`) stay within bounds.
-- Stub-preview `<pre>` (`max-h-[260px] overflow-auto whitespace-pre`): contained;
-  scrolls internally, does not push the page.
-- Create page (`/problems/create`) after switching the type selector to
-  "function": function sections render, no overflow at 375.
+## CLEARED (checked, NOT defects — recorded to avoid re-flagging)
+- Page-level horizontal overflow: `documentWidth - innerWidth == 0` on the edit
+  page (375/768/1280), the create page (375), and the student page (375/768/1280)
+  — the cycle-1 `max-w-full` TabsList cap holds; no page bleeds.
+- Stub-preview `<pre>`: `overflow-auto`, never pushes the doc wider (right=326 <
+  375 at mobile); scrolls internally as intended.
+- Param-type selects / return-type select / fn-name input / languages
+  multiselect / test-case inputs: all within viewport at every width; the
+  languages grid wraps cleanly (`grid-cols-2` → `sm:grid-cols-3`).
+- Small (16×16) checkboxes (language multiselect, "Visible to users", and the
+  app-wide "Show compile errors"/"Allow AI Assistant" toggles): below the WCAG
+  2.2 (2.5.8) 24×24 target minimum in raw size, BUT the nearest checkbox-to-
+  checkbox centre distance is 28px (≥24px) so the **spacing exception is met**;
+  the clickable `<label>` is 135px wide. These are shadcn/ui app-wide defaults,
+  not function-judging-specific, and were already cleared in cycle 1 — NOT a new
+  finding.
 
-## NOTES
-- Korean typography rule: no custom `letter-spacing`/`tracking-*` is applied to
-  any function-judging component or to `ui/tabs.tsx`; the fix adds only
-  `max-w-full`. Rule preserved.
-- The authoring UI being clean is a real positive — the recently-shipped builder
-  components were designed responsively (flex-wrap, min-w + grid). The single
-  defect is in the shared Tabs primitive, surfaced on the student page.
+## KOREAN TYPOGRAPHY
+No custom `letter-spacing`/`tracking-*` added or proposed. The fix touches only
+`justify-content` (alignment), never glyph spacing.
