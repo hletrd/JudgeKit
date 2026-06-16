@@ -1,26 +1,26 @@
-# code-reviewer — RPF Cycle 10 (2026-06-13)
+# Code Reviewer — Function-Judging Feature (cycle 1, 2026-06-16)
 
-**HEAD:** 03125b4453653986be9e9e27e7803467feef5362 (main == origin/main, clean tree).
-**Baseline gates (executed):** tsc 0 · eslint 0/0 · lint:bash clean · unit 340 files / 2666 tests PASS.
-
-## Method
-Built a full inventory of every offset/cap-paged DB listing (`grep -rln "\.offset(" src/app/api src/lib`) and every `orderBy` in the API + lib layer; read each paged route's order clause; diffed the cycle-9 functional changes (2d542442..20d67c03) for regressions; spot-read the highest-risk integrity surfaces (leaderboard, contest-scoring, exam-sessions, recruiting-invitations, accepted-solutions, code-snapshots).
+Scope: `src/lib/judge/function-judging/**`, function authoring/submit UI, API routes.
 
 ## Findings
-**No new actionable code findings.** The cycle-9 deterministic-listing-order sweep is verified complete:
-- Every offset/cap-paged listing now carries a unique `id` tiebreak after its non-unique sort key:
-  - `submissions/route.ts:171` → `desc(submittedAt), desc(id)` ✓
-  - `anti-cheat/route.ts:295` (paged events) → `desc(createdAt), desc(id)` ✓
-  - `code-snapshots/[userId]/route.ts:54` → `asc(createdAt), asc(id)` ✓ (cycle-9 AGG9-1)
-  - `recruiting-invitations.ts:272` → `createdAt, id` ✓ (cycle-9 AGG9-2)
-  - `accepted-solutions/route.ts:58-63` → all 3 sort branches end in `desc(submissions.id)` ✓ (cycle-9 AGG9-3)
-  - `export.ts` chunked offset paging → every table's `orderColumns` is `["id"]` (or unique `sessionToken`), inside a REPEATABLE READ snapshot — deterministic ✓
-  - audit-logs / login-logs / users / files / problems → `desc(createdAt), desc(id)` ✓ (cycle-7)
-- The cycle-9 diff is minimal, correct, well-commented, and introduced no regression.
 
-## Pre-existing, NOT a new regression (no change this cycle)
-- `accepted-solutions/route.ts:88` filters `shareAcceptedSolutions` AFTER pagination, so a page can render fewer than `pageSize` rows while `total` (line 52) counts all accepted rows. This is a long-standing privacy-toggle-on-a-join cosmetic count mismatch, deterministic ordering is preserved (id tiebreak), no row shuffle. Not introduced or touched this cycle; not an integrity finding.
+### CR-1 (Medium) `mapCompileError` `:(\d+):` regex over-matches non-line column refs
+File: `src/lib/judge/function-judging/error-mapping.ts:26`
+The `:(\d+):` replacement shifts ANY `:N:` token in compiler output, not just file:line:col references. Compiler diagnostics or student `print`/log lines that contain time-like tokens (`12:34:`) or ratios get their middle number shifted by `preludeLineCount`, corrupting student-visible output. Failure scenario: a C++ error message embedding `note: candidate: 'foo(int):12:'` or any user string with `:7:` mutates. Confidence: Medium. Fix: anchor to file-extension-prefixed forms (e.g. `\.(cpp|java|go|cs|ts|js|py):(\d+):(\d+):`) or only rewrite when preceded by a filename token.
 
-## Carried deferrals re-checked
-- AGG8-2 (anti-cheat gap scan `limit(5000)` ordered `desc(createdAt)` only, line 324): block UNCHANGED this cycle (last edit 4cf6dfe0, cycle-7). Exit criterion (next edit to the block) did NOT fire. Carry.
-- P6-1 (similarity TS fallback normalize/n-gram pre-loop): `code-similarity.ts` NOT edited this cycle (last edit 150b74ed). The O(n²) comparison phase already time-slices + aborts (lines 285-304); residual is only the bounded pre-loop (500-row + 10k-literal caps). Exit criterion (edit to `runSimilarityCheckTS`) did NOT fire. Carry.
+### CR-2 (Low) C++/Java double writer uses locale-sensitive `%.10g`
+File: `adapters/cpp.ts:115`, `adapters/java.ts:176`
+`snprintf(..., "%.10g", v)` (C++) and `String.format("%.10g", v)` (Java, default locale) emit a comma decimal separator under some locales, breaking JSON. C# correctly uses `CultureInfo.InvariantCulture`. `double`/`double[]` are DEFERRED from authorable types (types.ts:20), so not reachable in v1, but the latent bug should be fixed before v1.1 re-enables doubles. Confidence: High (latent). Fix: C++ `setlocale(LC_ALL,"C")` or manual formatting; Java `String.format(Locale.ROOT, ...)`.
+
+### CR-3 (Low) `decodeValue` ignores its type param and trusts JSON.parse
+File: `serialization.ts:25`
+`decodeValue(s, _t)` does a bare `JSON.parse` with no shape/type validation; callers (`function-test-case-editor.hydrateFields`) wrap in try/catch and fall back to blank, so impact is limited to the editor. Confidence: High. Acceptable for v1 but document the trust boundary.
+
+### CR-4 (Low) `formatValue` for non-array number leaks JS `String()` form
+File: `value-fields.ts:196`
+For scalar `int/long`, `formatValue` returns `String(value)`; if `decodeValue` returns a float (e.g. `1.0`) it round-trips as `1` — fine. No action.
+
+## Positives
+- Reference solution correctly stripped from student reads (`api/v1/problems/[id]/route.ts:70`).
+- `preludeLineCount` recomputed, never stored (assemble.ts) — no drift risk.
+- Safe-integer guard on int/long authoring (value-fields.ts:28).

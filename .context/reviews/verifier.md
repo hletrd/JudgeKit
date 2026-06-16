@@ -1,19 +1,18 @@
-# verifier — RPF Cycle 10 (2026-06-13)
+# Verifier — evidence-based correctness (cycle 1, 2026-06-16)
 
-**HEAD:** 03125b44 (clean tree).
+Claim vs code checks for function-judging.
 
-## Gate verification (executed this cycle)
-- `npx tsc --noEmit` → **0 errors**
-- `npm run lint` (eslint) → **0 errors / 0 warnings**
-- `npm run lint:bash` → **clean** (`bash -n deploy-docker.sh && bash -n deploy.sh`)
-- `npm run test:unit` (vitest) → **340 files / 2666 tests PASS**
+### VER-1 (OK) "reference solution never reaches students"
+Evidence: route.ts:70 omit; submission read path does not select referenceSolution for students. PASS.
 
-Matches the cycle-9 completion record exactly (2666 tests) — no drift since the cycle-9 deploy at HEAD da6179f3→03125b44.
+### VER-2 (OK) "preludeLineCount never stored"
+Evidence: assemble.ts recomputes via `getAdapter(language).assemble(spec,"")`; grep shows no DB column for prelude offset. PASS.
 
-## Claim verification
-- Cycle-9 plan claims G1–G4 done at 883c42aa / 53826cff / 20d67c03 (+ test 2d542442): VERIFIED present in `git log` and in the live source (each orderBy carries its tiebreak; the contract test asserts all 3).
-- AGENTS.md Step 5b sunset target (2026-10-26): NOT yet due (today 2026-06-13) — Step 5b correctly remains.
-- Korean letter-spacing rule: all `tracking-*`/`letter-spacing` usages are `locale !== "ko"`-gated with CLAUDE.md-referencing comments — VERIFIED compliant.
+### VER-3 (PARTIAL) "doubles deferred but mapping code intact"
+Evidence: AUTHORABLE_FUNCTION_TYPES filters double/double[] (types.ts:20); adapters still map double. BUT C++/Java double printers are locale-unsafe (CR-2) — when v1.1 re-enables, cross-locale judges will diverge. Re-open criterion: before enabling double in AUTHORABLE_FUNCTION_TYPES.
 
-## Findings
-**No new actionable findings.** All gates green; all prior-cycle claims verified true.
+### VER-4 (OK) "function name/params validated before harness interpolation"
+Evidence: functionSpecSchema regex IDENTIFIER on functionName + each param.name (types.ts:48-53). Harness templates interpolate these verbatim; regex prevents injection. PASS.
+
+### VER-5 (UNVERIFIED-LIVE) Responsive rendering of authoring + submit UI at 375/768/1280
+Requires live browser run (designer.md). Pending server build.

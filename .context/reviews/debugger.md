@@ -1,20 +1,15 @@
-# debugger — RPF Cycle 10 (2026-06-13)
+# Debugger — Function-Judging latent bug surface (cycle 1, 2026-06-16)
 
-**HEAD:** 03125b44 (clean tree).
+### DBG-1 (Medium) mapCompileError corrupts non-line `:N:` tokens — see CR-1.
 
-## Method
-Hunted for latent logic bugs / edge cases in the recently-changed surfaces and adjacent code: exam-session start (race/idempotency), leaderboard freeze boundary, accepted-solutions count vs. page filtering, and the tiebreak fixes.
+### DBG-2 (Medium) JS/TS harness reads only the first stdin line
+`adapters/javascript.ts:12`, `typescript.ts:37`: `JSON.parse(__input.split("\\n")[0])`. Correct ONLY because `encodeArgs` emits compact single-line JSON and string elements escape `\n`. If a future serializer ever pretty-prints args (multi-line), JS/TS silently parse a truncated prefix → runtime JSON error. Python/Go/Java/C#/C++ read one line too (`readline`/`getline`/`ReadLine`), same coupling. Confidence: High that current behavior is correct; Medium risk of future regression. Mitigation: assert single-line invariant in encodeArgs or read all of stdin in harnesses.
 
-## Findings
-**No new actionable bugs.**
-- `startExamSession` is correctly idempotent: existence check + `onConflictDoNothing` + authoritative re-fetch inside a transaction; the `insert-then-vanish` anomaly throws `examSessionUnavailable` (retryable 500) instead of the panic-inducing `assignmentClosed` (RPF cycle-4 AGG4-4, intact).
-- `extendExamSession` composes concurrent extensions in SQL (`personal_deadline + make_interval`), never clobbers, validates `extendMinutes >= 1`.
-- Leaderboard freeze has a correct upper bound (auto-unfreeze at lateDeadline/deadline) so a frozen board does not stick forever for students.
-- Live-rank IOI/ICPC queries handle the empty-target (no submissions) case explicitly (return null) rather than misreporting rank 1.
-- The 3 cycle-9 tiebreak fixes are correct in every branch; the contract test pins them.
+### DBG-3 (Low) Empty-array friendly-form parse: `"[]"` vs bare empty
+`value-fields.ts:140`: empty trimmed text → `[]` (ok). `"[]"` → parseJsonArray → `[]` (ok). Consistent.
 
-## Pre-existing (not a regression, not introduced this cycle)
-- `accepted-solutions` page-size shrinkage from post-pagination `shareAcceptedSolutions` filtering — a long-standing cosmetic count quirk, deterministic order preserved. Noted, not actionable as a new finding.
+### DBG-4 (Low) FunctionTestCaseEditor paramCount effect can drop typed args on shrink
+`function-test-case-editor.tsx:96-105`: when params shrink, `Array.from({length: paramCount})` truncates typed args; on re-growing the params the previously-typed values are gone. Expected (signature changed) but author may lose data silently. Confidence: High. Consider a confirm when removing a param that has authored values.
 
-## Carried
-AGG8-2 (gap-scan order) and P6-1 (similarity pre-loop) — exit criteria did not fire (neither block edited). Carry.
+### DBG-5 (Low) C++ readInt uses llround(stod(...)) — overflow for long near 2^63
+`adapters/cpp.ts:47`: parses via `stod` (double) then `llround`. Values above 2^53 lose precision — but authoring rejects > 2^53 (value-fields.ts), so unreachable from authored inputs; compute-expected reference outputs could still exceed it. Confidence: Medium. Document the 2^53 ceiling for returns too.

@@ -1,14 +1,8 @@
-# tracer — RPF Cycle 10 (2026-06-13)
+# Tracer — causal flows (cycle 1, 2026-06-16)
 
-**HEAD:** 03125b44 (clean tree).
+Flow: author types args → parseFieldValue → encodeArgs (compact JSON line) → stored as testCase.input → compute-expected assembles reference + runs → stdout becomes expectedOutput → student submit assembled at claim time → worker compares stdout to expectedOutput (exact).
 
-## Method
-Traced the listing-order invariant end-to-end: every `.offset(` call site → its `orderBy` → whether a unique key terminates the order; traced the contract test (`listing-order-tiebreak.test.ts`) against the actual routes it claims to cover.
+Hypothesis A (string escaping divergence): expectedOutput is produced by the REFERENCE language's writer, student output by the STUDENT language's writer. If two languages escape a string return differently (e.g. C++ emits `é` but Go emits raw UTF-8 `é`), an otherwise-correct student solution gets WRONG_ANSWER cross-language. Evidence: C++ writeStr only escapes `" \\ \n \t \r` and emits other bytes raw (cpp.ts:117-130); Go uses encoding/json which escapes `<,>,&` as \u and emits non-ASCII raw; Java escapes same minimal set as C++. CONFIRMED DIVERGENCE for non-ASCII / HTML-significant chars in string/string[] returns. Severity: Medium (only affects string-returning problems with special chars). Re-open: add a cross-language string-return golden test.
 
-## Findings
-**No new actionable findings.** The invariant "every offset/cap-paged listing ends in a unique key" holds across all 11 `.offset(` sites:
-1. `submissions/route.ts` ✓  2. `anti-cheat/route.ts` (paged) ✓  3. `code-snapshots` ✓  4. `recruiting-invitations.ts` ✓  5. `accepted-solutions` (3 branches) ✓  6. `export.ts` (orderColumns=["id"] per table, snapshot-isolated) ✓  7-11. audit-logs / login-logs / users / files / problems ✓.
-
-The contract test now enumerates 8 routes (5 cycle-7 + 3 cycle-9) and the assertions match the live source exactly (verified by reading both). The test's allow-list is no longer incomplete for the offset-paged class — its prior gap (cycle-9 AGG9-4) is closed.
-
-The only ordered query WITHOUT a unique tiebreak is the anti-cheat gap-scan (`limit(5000)`, non-paged, AGG8-2) — correctly excluded from the paged-listing invariant and tracked as a carried deferral.
+Hypothesis B (int writer): all emit decimal long — consistent.
+Hypothesis C (bool/array): consistent compact `[a,b]`, true/false — consistent.

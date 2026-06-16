@@ -1,57 +1,98 @@
-# RPF Cycle 10 (2026-06-13) — Aggregate Review
+# Aggregate Review — cycle 1 (2026-06-16)
 
-**Date:** 2026-06-13
-**HEAD reviewed:** 03125b44 (main == origin/main, clean tree) — cycle-9's completed tree (G1–G4 done at 883c42aa / 53826cff / 20d67c03 + test 2d542442) plus cycle-9 deploy/plan docs.
-**Cycle:** 10/100 (orchestrator-numbered).
-**Lenses:** 11 specialist + 6 persona files in this directory, all fresh at this HEAD (cycle-9 versions moved to `_archive/cycle-9-2026-06-13/`).
-**Baseline gates on review HEAD (executed):** tsc 0 · eslint 0/0 · lint:bash clean · unit 340 files / **2666** tests PASS.
+Multi-perspective review of the recently-shipped `function` problem type
+(LeetCode-style function-signature judging) and its authoring + student UI.
+Reviews were performed across specialist angles (code-reviewer, security,
+perf, critic, verifier, test-engineer, tracer, architect, debugger,
+document-specialist, designer). The designer review was browser-driven
+(Playwright, chromium) at mobile 375 / tablet 768 / desktop 1280 against a live
+`next dev` server — the user's primary focus this run.
+
+## METHODOLOGY NOTE (agent fan-out)
+No nested subagent dispatch tool is registered in this environment (only a
+task-list tool), so the specialist reviews were executed directly by the cycle
+agent rather than as parallel subagents. Each angle still produced its own
+provenance file under `.context/reviews/<angle>.md`. No reviewer angle was
+dropped.
+
+## HIGH-SIGNAL / CROSS-AGENT FINDINGS
+
+### AGG-1 (High) Student problem tab bar overflows mobile viewport — RESPONSIVE DEFECT
+Agents: designer (live, confirmed), critic.
+`/practice/problems/[id]` overflows at 375px (doc 422px vs 375px, +47px). Cause:
+`tabsListVariants` (`src/components/ui/tabs.tsx:27`) uses `inline-flex w-fit ...
+overflow-x-auto scrollbar-none` with no width cap, so the 4-tab list grows to
+406px and `overflow-x-auto` never engages. Fix: add `max-w-full`. THIS RUN:
+fix + cover with the new responsive spec. Severity High (visible page-level
+horizontal scroll on the primary student surface).
+
+### AGG-2 (Medium) mapCompileError `:(\d+):` regex over-matches non-line tokens
+Agents: code-reviewer (CR-1), debugger (DBG-1), test-engineer (TST-2).
+`src/lib/judge/function-judging/error-mapping.ts:26` shifts ANY `:N:` token, not
+just file:line:col, corrupting student-visible compiler/runtime output that
+contains time-like or ratio tokens. Fix: only rewrite `:N:` when preceded by a
+source-filename token; add a regression unit test.
+
+### AGG-3 (Medium) Cross-language string-escaping divergence in harness writers
+Agents: tracer (Hypothesis A), critic, document-specialist (DOC-3).
+Each language's JSON string writer escapes a different set: C++/Java escape only
+`" \ \n \t \r` and emit other bytes (incl. non-ASCII, `<`,`>`,`&`) raw, while Go's
+`encoding/json` escapes `<,>,&` as `\uXXXX`. For a `string`/`string[]`-returning
+problem judged in `exact` mode, a correct student solution in language A can be
+marked WRONG_ANSWER vs an expected output computed in language B. Fix: define a
+single canonical string-escaping contract and a cross-language golden test.
+(Affects string-returning problems only.)
+
+### AGG-4 (Medium) Single-line stdin contract is implicit across all 7 adapters
+Agents: debugger (DBG-2), architect (ARC-1), document-specialist (DOC-2).
+Every harness reads exactly one stdin line and `JSON.parse`s it; correct today
+because `encodeArgs` emits compact single-line JSON, but undocumented and
+unasserted. Fix: assert no-newline in `encodeArgs` output and document the
+invariant.
+
+## MEDIUM / LOW FINDINGS (single-agent, scheduled or deferred)
+- CR-2/VER-3 (Low, latent): C++ `snprintf("%.10g")` + Java `String.format("%.10g")`
+  double printers are locale-sensitive; `double` is deferred from authorable
+  types so unreachable in v1. Re-open before v1.1 re-enables double. (C# already
+  uses InvariantCulture.)
+- SEC-3 (Medium): compute-expected echoes raw stderr/compileOutput (may include
+  host paths) to the author client. Author-only; trim host paths.
+- PERF-1 (Low): compute-expected runs test cases serially; bounded by case count,
+  author-only. Optional concurrency cap.
+- DBG-4 (Low): FunctionTestCaseEditor silently drops typed args when a param is
+  removed. Consider a confirm.
+- ARC-4 (Low): compute-expected duplicates language-config resolution from the
+  compiler/run route; extract a shared helper.
+- TST-1 (High, THIS RUN): no responsive render e2e for function authoring +
+  submit UI — ADDRESSED this run via tests/e2e/function-judging-responsive.spec.ts.
+- TST-3/TST-4 (Low): add serialization round-trip fuzz for adversarial string[]
+  and an integration test asserting referenceSolution absence on student GET.
+
+## OPERATIONAL FINDINGS (discovered while standing up the live review)
+### AGG-5 (Medium) seed.ts inserts the admin user before built-in roles → FK violation on a fresh DB
+`scripts/seed.ts:179` inserts the super-admin user (FK `users.role ->
+roles.name`) BEFORE the roles are inserted at line 215. On a truly empty DB with
+the FK enforced this fails with `users_role_roles_name_fk` (reproduced this run).
+Fix: seed built-in roles before the admin user. Severity Medium (breaks
+first-time local/CI bootstrap on an empty DB; may be masked when roles
+pre-exist).
+
+### AGG-6 (Low) Playwright local webServer cannot seed — JUDGE_AUTH_TOKEN placeholder is rejected
+`playwright.config.ts` passes `JUDGE_AUTH_TOKEN=playwright-local-token-for-smoke`
+to the local webServer, but `getValidatedJudgeAuthToken`
+(`src/lib/security/env.ts:226`) explicitly rejects that exact placeholder, so
+`npm run seed` throws during webServer startup. The placeholder constant exists
+(env.ts:6) but is only listed in the REJECT branch, never in an allow path. Fix:
+either allow the playwright placeholder when not in production, or have the
+webServer script mint a strong token.
+
+### AGG-7 (Low) Local webServer uses `next start` which no-ops under output:standalone
+`next.config.ts` hardcodes `output: "standalone"`; `scripts/playwright-local-webserver.sh`
+runs `npm run start` (`next start`), which prints "does not work with output:
+standalone" and exits without serving, so the local Playwright webServer never
+comes up via the documented path. Fix: serve via `node .next/standalone/server.js`
+(copying static/public) or run `next dev` for the local test server.
 
 ## AGENT FAILURES
-No named reviewer subagents are registered in this environment (`.claude/agents/` and `~/.claude/agents/` both empty), and no `Agent`/`Task`-spawn tool is available to this cycle's runner — same condition as cycles 1–9. Per the established fan-out fallback, every lens was executed directly by the cycle agent and written to its own file; no lens was dropped. Recorded for provenance.
-
-## Outcome: earned convergence — NEW_FINDINGS: 0
-
-A fresh, honest 17-lens review of the CURRENT HEAD surfaced **no new actionable findings**, and no carried deferred exit-criterion fired this cycle. This is a real, earned convergence (per the orchestrator's cycle-10 note), not manufactured busywork and not suppression. Evidence:
-
-### The cycle-6→7→9 deterministic-listing-order sweep is verifiably complete
-Independently re-derived the full `.offset(` inventory (11 sites) and confirmed every offset/cap-paged listing terminates in a unique key:
-- `submissions/route.ts` → `desc(submittedAt), desc(id)` ✓
-- `anti-cheat/route.ts:295` (paged events) → `desc(createdAt), desc(id)` ✓
-- `code-snapshots/[userId]/route.ts:54` → `asc(createdAt), asc(id)` ✓ (cycle-9 AGG9-1)
-- `recruiting-invitations.ts:272` → `createdAt, id` ✓ (cycle-9 AGG9-2)
-- `accepted-solutions/route.ts:58-63` → all 3 sort branches end in `desc(submissions.id)` ✓ (cycle-9 AGG9-3)
-- `export.ts` → every table's `orderColumns` is a unique PK (`["id"]` / `sessionToken`), under REPEATABLE READ ✓
-- audit-logs / login-logs / users / files / problems → `desc(createdAt), desc(id)` ✓ (cycle-7)
-
-The contract test (`listing-order-tiebreak.test.ts`) now enumerates 8 routes (5 cycle-7 + 3 cycle-9), and its assertions match the live source exactly — cycle-9's AGG9-4 "incomplete allow-list" gap is closed.
-
-### Other integrity/security surfaces re-checked, all sound
-- Leaderboard freeze auto-unfreezes at deadline; IOI/ICPC live-rank queries match the full board and handle the empty-target case.
-- `startExamSession` idempotent + retryable-500 on insert-then-vanish (no panic-inducing false "closed"); `extendExamSession` composes concurrently in SQL.
-- Recruiting search uses parameterized `ILIKE ... ESCAPE`; export redaction UNIONs the ALWAYS map; `accepted-solutions` excludes assignment-tied submissions.
-- Korean letter-spacing rule honored (all `tracking-*`/`letter-spacing` are `locale !== "ko"`-gated); `config.ts` preserved; AGENTS.md Step 5b sunset (2026-10-26) not yet due.
-
-## Cross-cycle carried register (exit criteria re-checked; NONE fired this cycle)
-| ID | Item | Sev/Conf | Exit criterion | This cycle |
-|---|---|---|---|---|
-| AGG8-2 | heartbeat-gap scan `limit(5000)` ordered `desc(createdAt)` only (`anti-cheat/route.ts:324`) | LOW/Medium | next edit to the gap-scan block, or a disputed gap boundary | carry — block UNCHANGED (last edit 4cf6dfe0, cycle-7); bounded NON-paged scan |
-| P6-1 | TS similarity fallback normalize/n-gram PRE-loop no time-slice/abort (`code-similarity.ts:267-274`) | LOW/Medium (RISK) | any edit to `runSimilarityCheckTS`, or an event-loop-stall incident | carry — file NOT edited (last edit 150b74ed); comparison phase already yields+aborts; bounded by 500-row + 10k-literal caps |
-| AGG5-7 | judge-worker-rs cosmetics | LOW/High | next behavioral judge-worker-rs edit | carry (no Rust edit) |
-| AGG5-8 | similarity rerun delete+reinsert resets first-flagged ts | LOW(policy)/Medium | owner evidence-retention decision, or a real dispute | carry |
-| AGG3-7 | `run_remote_build` retry overwrites first failure log | LOW/Medium | next `run_remote_build` edit, or incident needing the first log | carry |
-| DES3-1 | expired→active announced assertively (`exam-deadline-sync.tsx`) | LOW/Medium | next exam-page a11y pass (browser) | carry (no browser) |
-| ST5-5 | countdown trusts client clock between syncs | LOW/Medium | a cycle adding a server-time sync indicator | carry |
-| TA3-1-followup / DES4-4 | extension audit events in participant timeline; contest-list status nuance | LOW(product)/High | owner schedules timeline enrichment | carry |
-| JA-clarity | no pre-test language-availability preview | LOW/Medium | owner decision on candidate test-info page | carry |
-| DEFER-ENV-GATES | login-gated E2E + browser a11y audit | — | provisioned staging server/browser | carry (none provisioned) |
-| CI-RESTORE | wire `RESTORE_DATABASE_URL` into CI's postgres service | LOW(ops)/High | next CI workflow edit touching the db service | carry |
-| C3-AGG-5 | deploy-docker.sh SSH-helpers extraction (1433 lines) | — | any cycle touching SSH/remote-exec plumbing | carry (not touched) |
-| IN2-2 | pre-start accommodations / per-student duration overrides | — | owner decision | carry |
-| A8-1 | optional `buildContestAccessTokenValues(...)` constructor (hardening direction, NOT a finding) | — | a 5th token-insert site is added | carry |
-| (cycle-1 origin set) | as recorded at origin | severities preserved at origin | unchanged preconditions | carry |
-
-## Cross-agent agreement summary
-All 17 lenses independently reached **NEW_FINDINGS: 0** and re-confirmed the same two carried deferrals (AGG8-2, P6-1) with non-fired exit criteria. The critic lens explicitly validated this as an earned convergence (no real finding hidden, no busywork manufactured).
-
-## Recommended action for PROMPT 2 / PROMPT 3
-No new plan needed (no new finding to schedule). All carried deferrals remain bound by repo policy with concrete exit criteria, re-materialized in the cycle-10 planning record. No functional commits; the only change this cycle is the review + archival documentation. Skip the deploy (genuine convergence — DEPLOY: none unless a doc commit is made; if docs are committed, the orchestrator's per-cycle deploy of worv+algo applies, but no source changed).
+None. (Subagent dispatch is unavailable in this environment; see methodology
+note. Reviews were produced directly, one provenance file per angle.)

@@ -1,16 +1,12 @@
-# document-specialist — RPF Cycle 10 (2026-06-13)
+# Document Specialist — doc/code consistency (cycle 1, 2026-06-16)
 
-**HEAD:** 03125b44 (clean tree).
+### DOC-1 (OK) function-judging v1 type limits documented
+Commit b6a6acc5 "docs(api): reflect function-judging v1 type limits". docs/ describes the 7 languages and excluded double. Cross-checked against AUTHORABLE_FUNCTION_TYPES — consistent.
 
-## Method
-Cross-checked AGENTS.md / CLAUDE.md claims against the live code: language count, Step 5b sunset criteria, deploy env-var contract, and the relational-query footgun note.
+### DOC-2 (Low) Single-line stdin contract undocumented
+The implicit "args are one compact JSON line" invariant (ARC-1/DBG-2) is not stated in the design doc. Add a short note so future serializer changes preserve it.
 
-## Findings
-**No new actionable doc-code mismatches.**
-- AGENTS.md Step 5b sunset subsection: target re-eval date 2026-10-26 is NOT yet reached (today 2026-06-13). The backfill correctly remains in `deploy-docker.sh` and the doc correctly still describes it. No edit due.
-- The cycle-9 fixes are documented in the cycle-9 plan completion record (commits + final gates + deploy record) — accurate against `git log`.
-- AGENTS.md language table notes it can drift from `languages.ts`/`docs/languages.md` (source of truth) — an honest, self-documenting caveat, not a defect.
-- The deferred-register in the cycle-9 plan accurately reflects AGG8-2 / P6-1 status (both blocks unedited this cycle).
+### DOC-3 (Low) Cross-language string-escaping equivalence not specified
+The design doc does not state that all 7 language writers MUST produce byte-identical JSON for the same value (required for exact-match cross-language judging). Document this contract and back it with a golden test (see tracer Hypothesis A).
 
-## Carried
-None doc-specific with a fired exit criterion. The Step 5b doc-removal is gated on 2026-10-26 + column-absence verification (carry).
+No CLAUDE.md / AGENTS.md violations introduced. Korean-typography rule (no custom letter-spacing/tracking on Korean) not violated by function-judging components (no tracking-* utilities present).

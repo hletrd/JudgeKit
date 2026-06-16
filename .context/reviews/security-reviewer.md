@@ -1,23 +1,20 @@
-# security-reviewer — RPF Cycle 10 (2026-06-13)
+# Security Reviewer — Function-Judging (cycle 1, 2026-06-16)
 
-**Framing:** Authorized defensive hardening assessment of the owner's own JudgeKit platform.
-**HEAD:** 03125b44 (clean tree).
-
-## Method
-Reviewed the auth/authz helper surface (`src/lib/auth/permissions.ts`, `role-helpers.ts`, `recruiting-token.ts`, `trusted-host.ts`), the recruiting/exam/contest route gates, the export redaction maps, the LIKE-search escaping on recruiting search, and the integrity-evidence ordering surfaces (anti-cheat events, code snapshots).
+Authorized defensive review of the owner's own platform.
 
 ## Findings
-**No new actionable security findings.**
 
-Verified-good (defensive controls intact):
-- Recruiting-invitation search uses parameterized `ILIKE ... ESCAPE '\\'` with `escapeLikePattern` (`recruiting-invitations.ts:259-263`) — no LIKE/SQL injection.
-- Export engine redacts via `mergeRedactionMaps` UNION (not overwrite) and `EXPORT_ALWAYS_REDACT_COLUMNS` always applied even in full-fidelity mode (`export.ts:103-105`) — secrets never leak through the sanitized path.
-- Hidden-test-case / cross-user-submission confidentiality: `accepted-solutions` route excludes assignment-tied submissions (`assignmentId IS NULL`, line 44) so contest code never leaks to peers when a problem flips public post-contest, and honors the per-user `shareAcceptedSolutions` flag.
-- Integrity evidence (code-snapshot timeline) now paginates deterministically (cycle-9 AGG9-1 fix) — a defensible misconduct finding can no longer drop/dup evidence rows at a page seam.
-- Korean letter-spacing rule, `config.ts` preservation, and seccomp deny-list posture unchanged and compliant.
+### SEC-1 (Confirmed-OK) Reference solution non-exposure
+`api/v1/problems/[id]/route.ts:66-72` strips `referenceSolution` for non-managers via destructure-and-omit. compute-expected route (`compute-expected/route.ts:49-54`) gates on author OR `problems.edit` cap AND `canManageProblem`. Verdict: correctly author-only. Confidence: High.
 
-## Carried (exit criteria did NOT fire this cycle)
-- AGG8-2 heartbeat-gap scan order (LOW): bounded NON-paged scan, block unedited. Carry.
-- P6-1 similarity normalize-loop (LOW/RISK): bounded by 500-row + 10k-literal caps, Rust sidecar is default engine, fallback unedited. Carry.
+### SEC-2 (Low) compute-expected runs author-supplied code with author privileges
+`compute-expected/route.ts:131` executes the assembled reference solution via `executeCompilerRun` (sandboxed compiler path). This is author-initiated arbitrary code execution, but it is the SAME sandbox used by the playground and only reachable by users with problem-edit capability — accepted risk consistent with existing playground exposure. Rate-limited via `rateLimit: "problems:update"`. Confidence: High. No change; ensure the sandbox resource limits match the playground.
 
-No High/Medium security/correctness finding is open or deferred this cycle.
+### SEC-3 (Low) Per-case `error` field echoes raw stderr/compileOutput to the author client
+`compute-expected/route.ts:143,163,181` returns `run.compileOutput` / `run.stderr` verbatim. Author-only surface, so low risk, but stderr could contain sandbox host paths. Confidence: Medium. Consider trimming absolute host paths from returned diagnostics.
+
+### SEC-4 (Confirmed-OK) referenceSolution language constrained to harness set
+`validators/problem-management.ts:22` refines language via `supportsFunctionJudging`; claim-time assembly (`judge/claim/route.ts`) re-parses spec with `parseFunctionSpec`. Defense-in-depth present. Confidence: High.
+
+## No injection vectors found
+Student code is sandwiched (prelude + student + main) and compiled in the existing judge sandbox; no eval of author/student text in the Next.js process. functionSpec identifiers are regex-validated (`^[A-Za-z_][A-Za-z0-9_]*$`) before interpolation into generated harness source, preventing harness code injection via function/param names. Confidence: High.
