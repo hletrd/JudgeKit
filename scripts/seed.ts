@@ -159,6 +159,44 @@ async function seed() {
   const pool = new Pool({ connectionString: url });
   const db = drizzle(pool, { schema });
 
+  // Seed built-in roles FIRST: `users.role` has an FK to `roles.name`
+  // (`users_role_roles_name_fk`, onDelete: restrict). On a truly empty DB the
+  // super-admin insert below would violate that FK if the roles do not yet
+  // exist, so the roles must be present before any user is inserted.
+  const existingRoleNames = new Set(
+    (await db.select({ name: schema.roles.name }).from(schema.roles))
+      .map((row) => row.name)
+  );
+  const insertedRoles: string[] = [];
+
+  for (const roleName of BUILTIN_ROLE_NAMES) {
+    if (existingRoleNames.has(roleName)) {
+      continue;
+    }
+
+    await db.insert(schema.roles)
+      .values({
+        id: nanoid(),
+        name: roleName,
+        displayName: DEFAULT_ROLE_DISPLAY_NAMES[roleName],
+        description: null,
+        isBuiltin: true,
+        level: DEFAULT_ROLE_LEVELS[roleName],
+        capabilities: DEFAULT_ROLE_CAPABILITIES[roleName] as string[],
+        createdAt: new Date(),
+        updatedAt: new Date(),
+      })
+
+
+    insertedRoles.push(roleName);
+  }
+
+  if (insertedRoles.length > 0) {
+    console.log(`Seeded built-in roles: ${insertedRoles.join(", ")}`);
+  } else {
+    console.log("Built-in roles already exist, skipping.");
+  }
+
   // Seed super admin
   const [existingAdmin] = await db
     .select()
@@ -198,41 +236,6 @@ async function seed() {
     console.log(`  Password written to: ${passwordFile}`);
     console.log("  Role: super_admin");
     console.log("  (mustChangePassword: true — will be forced to change on first login)");
-  }
-
-  // Seed built-in roles
-  const existingRoleNames = new Set(
-    (await db.select({ name: schema.roles.name }).from(schema.roles))
-      .map((row) => row.name)
-  );
-  const insertedRoles: string[] = [];
-
-  for (const roleName of BUILTIN_ROLE_NAMES) {
-    if (existingRoleNames.has(roleName)) {
-      continue;
-    }
-
-    await db.insert(schema.roles)
-      .values({
-        id: nanoid(),
-        name: roleName,
-        displayName: DEFAULT_ROLE_DISPLAY_NAMES[roleName],
-        description: null,
-        isBuiltin: true,
-        level: DEFAULT_ROLE_LEVELS[roleName],
-        capabilities: DEFAULT_ROLE_CAPABILITIES[roleName] as string[],
-        createdAt: new Date(),
-        updatedAt: new Date(),
-      })
-
-
-    insertedRoles.push(roleName);
-  }
-
-  if (insertedRoles.length > 0) {
-    console.log(`Seeded built-in roles: ${insertedRoles.join(", ")}`);
-  } else {
-    console.log("Built-in roles already exist, skipping.");
   }
 
   // Seed default language configs
