@@ -87,5 +87,15 @@ toolchains.
   (function-judging-responsive.spec.ts). Both verified green at 375/768/1280
   against a local server. P3–P8 scheduled for a later cycle; D1 deferred with
   exit criterion. No finding dropped.
+- Gates (whole repo): tsc 0 errors, eslint 0/0, lint:bash 0, vitest
+  2776 passed (359 files), next build exit 0 (7 pre-existing Edge-runtime
+  `process.exit` warnings in production-config.ts, unrelated), new e2e spec
+  16/16 green. The 6 responsive-layout `duplicate footer` failures are
+  pre-existing dev-server-only (reproduced at HEAD without the change).
+- Deploy (DEPLOY_MODE=per-cycle): per-cycle-success. worv + auraedu + algo all
+  "Deployment complete" with HTTP 200 + HTTPS 200 verified by the script and
+  re-confirmed live (test.worv.ai, oj.auraedu.me, algo.xylolabs.com all 200).
+  Post-deploy smoke 6-7 failures per leg are the pre-existing "Step 1: Login"
+  credential timeouts (documented since cycle-5), not a regression.
 EOF
 echo "plan written"; ls plan/*.md
