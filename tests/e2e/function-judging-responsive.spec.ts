@@ -236,6 +236,40 @@ test.describe.serial("Function-judging responsive rendering", () => {
       // Allow the editor + stub preload to settle.
       await page.waitForTimeout(1500);
       await expectNoHorizontalOverflow(page, `${vp.name} student submit`);
+
+      // Regression for DSG-1 (cycle 2): the problem tab bar uses
+      // overflow-x-auto + max-w-full. The active/first tab must NOT be clipped to
+      // the left of the list's content box (which happens under justify-center
+      // when the bar overflows, because scrollLeft is already at its left limit).
+      const tabState = await page.evaluate(() => {
+        const list = document.querySelector("[role=tablist]");
+        if (!list) return null;
+        const active =
+          list.querySelector("[role=tab][data-state=active]") ??
+          list.querySelector("[role=tab][aria-selected=true]") ??
+          list.querySelector("[role=tab]");
+        if (!active) return null;
+        const lr = list.getBoundingClientRect();
+        const ar = active.getBoundingClientRect();
+        return {
+          // active tab must start at or after the list's left edge (not clipped left)
+          notClippedLeft: ar.left >= lr.left - 1,
+          // and must end at or before the list's right edge (fully visible)
+          fullyVisible: ar.left >= lr.left - 1 && ar.right <= lr.right + 1,
+          activeLeft: Math.round(ar.left),
+          listLeft: Math.round(lr.left),
+        };
+      });
+      if (tabState) {
+        expect(
+          tabState.notClippedLeft,
+          `${vp.name} active tab clipped left: tab.left ${tabState.activeLeft}px < list.left ${tabState.listLeft}px`,
+        ).toBe(true);
+        expect(
+          tabState.fullyVisible,
+          `${vp.name} active tab not fully visible within the scrollable tab bar`,
+        ).toBe(true);
+      }
     });
   }
 
