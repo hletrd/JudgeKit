@@ -24,3 +24,30 @@ For scalar `int/long`, `formatValue` returns `String(value)`; if `decodeValue` r
 - Reference solution correctly stripped from student reads (`api/v1/problems/[id]/route.ts:70`).
 - `preludeLineCount` recomputed, never stored (assemble.ts) — no drift risk.
 - Safe-integer guard on int/long authoring (value-fields.ts:28).
+
+---
+
+## Cycle 3 (2026-06-16) re-confirmation + new
+
+### AGG-8 (Low, NEW this cycle) local Playwright webServer cannot self-start
+- `playwright.config.ts:81` — `JUDGE_AUTH_TOKEN ?? "playwright-local-token-for-
+  smoke"`; the fallback equals `JUDGE_AUTH_TOKEN_PLAYWRIGHT_PLACEHOLDER`
+  (`src/lib/security/env.ts:6`), rejected by `getValidatedJudgeAuthToken()`
+  (env.ts:223-229) → app throws at boot when no strong token is exported.
+- `scripts/playwright-local-webserver.sh:45` runs `next start` while
+  `next.config.ts:9` sets `output: "standalone"` (Next 16.2.3) — not the
+  standalone serve path; the build emits `.next/standalone/server.js`.
+- Failure: a contributor running `npx playwright test` with no `JUDGE_AUTH_TOKEN`
+  cannot bring the app up → e2e gate unrunnable locally. Fix THIS RUN: mint a
+  strong ephemeral token in the script, drop the placeholder fallback in the
+  config, serve the standalone `server.js`. Confidence High.
+
+### Re-confirmed carry-forward (unchanged severity)
+- CR-1 / AGG-2 (Medium) `error-mapping.ts:26` `:(\d+):` over-match — still present.
+- CR-2 / AGG-3 (Medium) cross-language string escaping divergence — still present.
+- AGG-4 (Medium) `serialization.ts` single-line stdin contract unasserted — still
+  present.
+
+### Browser-verified clean (designer angle)
+- The three function-judging UI components are responsive-clean at mobile/tablet/
+  desktop in light + dark; no state-handling regressions on re-read.
