@@ -1,68 +1,73 @@
-# Designer Review — cycle 3 (2026-06-16, browser-driven)
+# Designer / UI-UX Review — cycle 4 (2026-06-17) — BROWSER-DRIVEN
 
-Fresh browser-driven responsive review of the `function` problem-type UI, the
-user's primary focus this run. Driven with `agent-browser` 0.22.2 (Chromium,
-headless) against a live `next dev` server on `http://localhost:3110`, backed by
-a fresh seeded Postgres (`db:push` + `seed` + `languages:sync`) and a real
-function problem minted via the authenticated API (`twoSum`, params
-`int[] nums, int target`, return `int[]`, 7 enabled languages, python
-reference). Viewports: mobile 375×812, tablet 768×1024, desktop 1280×900; both
-light and dark `prefers-color-scheme`. All findings are backed by
-text-extractable box metrics (`getBoundingClientRect`, `scrollLeft/scrollWidth/
-clientWidth`, computed `justify-content`) — no reliance on raw screenshots.
+Primary focus this run: responsive rendering of the `function` problem-type
+authoring + student UI at mobile / tablet / desktop, verified live with a real
+browser. Driver: Playwright (Chromium headless via the local standalone-server
+e2e harness) + ad-hoc `agent-browser` 0.22.2 for interactive diagnosis.
 
-## SURFACES EXERCISED (live)
-- Authoring edit `/problems/[id]/edit` (problemType=function):
-  FunctionSignatureBuilder (`#fn-name`, 2 param-type selects + return-type
-  `#fn-return-type`, 7-language checkbox grid), FunctionTestCaseEditor (6 typed
-  per-param + expected-return inputs), FunctionReferenceSolution (gated language
-  picker, CodeEditor, compute button, stub-preview `<pre>`).
-- Student submit `/practice/problems/[id]`: 4-tab problem bar, stub-preloaded
-  editor, gated language dropdown, run-result panel markup.
-- Authoring create `/problems/create` (problemType switched to function) — the
-  base-ui Select selection does not commit under a synthetic agent-browser
-  `.click()` (a harness limitation, not a product defect); this surface stays
-  covered by the existing passing Playwright spec
-  (`function-judging-responsive.spec.ts` "Mobile: create page function sections
-  render after switching type").
+## METHOD
+The browser pass ran the full `tests/e2e/function-judging-responsive.spec.ts`
+against a freshly-seeded Postgres + the Next 16 standalone production server
+(`scripts/playwright-local-webserver.sh`) at mobile 375 / tablet 768 / desktop
+1280, plus manual `agent-browser` drives of the login + forced-change flow to
+isolate a harness blocker. All 16 assertions green after the harness fix.
 
-## RESULT: NO NEW RESPONSIVE DEFECTS — DSG-1 FIX VERIFIED LIVE
-The cycle-2 fix (`justify-center` → `justify-start` in `tabsListVariants`,
-`src/components/ui/tabs.tsx:32`) is live and holding. Concrete live metrics:
+## RESULT — NO NEW RESPONSIVE RENDERING DEFECT
+All 16 responsive assertions pass at all three viewports:
+- Authoring `/problems/[id]/edit`: the three function sections (signature
+  builder, test-case editor, reference solution) render; `documentWidth <=
+  viewport+1` at 375/768/1280; `#fn-name`, every param/return type `select`, all
+  7 language labels, and the stub `<pre>` + CodeEditor stay within the viewport.
+- Create `/problems/create` (switch problemType -> function at 375): function
+  sections render with no horizontal overflow.
+- Student `/practice/problems/[id]`: no horizontal overflow at any width; the
+  DSG-1 (cycle 2) regression guard passes — the overflowing problem tab bar
+  starts at `flex-start`, the active tab is `notClippedLeft` and `fullyVisible`
+  while the list still scrolls.
+No overflow, clipping, overlap, tiny-tap-target, bad-wrap, or editor/preview
+bleed surfaced. Earned convergence on the UI focus continues into cycle 4.
 
-- Student `/practice/problems/[id]` tab bar @ mobile 375 (fresh load, no scroll):
-  `justifyContent=flex-start`, `scrollWidth=406 > clientWidth=343` (scrolls),
-  active "Problem" tab `left=19 >= list.left=16` → `notClippedLeft=true`,
-  `fullyVisible=true`. (Cycle-2 defect was `offsetLeft=-13` clipped left.) Page
-  `docWidth==innerWidth==375`, `overflow=0`. The single element whose rect
-  exceeds 375 (the last tab "Problem discussion", `right=419`) lives INSIDE the
-  `overflow-x-auto` tablist and is reachable by scroll — intended, not a defect
-  (cycle-2 cleared the same last-tab overflow).
-- Student tab bar @ tablet 768 & desktop 1280: `flex-start`, active tab fully
-  visible, `overflow=0`, `bleedCount=0`.
-- Edit page @ 375 / 768 / 1280: `overflow=0`, `bleedCount=0` at every width.
-  Sub-elements @ mobile 375: `#fn-name` right=326 (<375); `#fn-return-type`
-  right=249 (w=200, respects `max-w-[200px]`); 3 type selects, 0 overflow; 7
-  language labels, 0 overflow (grid `grid-cols-2 sm:grid-cols-3` wraps); stub
-  `<pre>` right=326, `overflowX=auto` (scrolls internally, never bleeds).
-- Edit page @ mobile 375 DARK mode: `overflow=0`; 6 test-case inputs
-  (`grid sm:grid-cols-2`), 0 overflow; CodeEditor right=325 (<375).
-- Create page @ mobile 375 (function): `overflow=0`, `bleedCount=0`, tab bar
-  `flex-start`, active tab fully visible.
+## NEW THIS CYCLE (test-infra, app-adjacent) — DSG4-1 (Medium) Local e2e auth was fully broken; the responsive gate could not run
+The function-judging responsive gate (and any local full-profile e2e run) could
+NOT authenticate at all before this cycle. Root cause, isolated live:
+1. `scripts/seed.ts:225` seeds the admin with `mustChangePassword: true`, so the
+   first login is force-redirected to `/change-password`.
+2. The local harness serves the Next 16 **standalone** build, which runs in
+   `NODE_ENV=production`. The change-password form
+   (`src/app/change-password/change-password-form.tsx:51`) commits the change
+   server-side (it sets `tokenInvalidatedAt`, invalidating the session) and then
+   immediately calls `signIn("credentials", …)` to re-auth. Under the Playwright
+   runner's tight timing that automatic re-sign-in races the just-invalidated
+   session token and leaves the browser stuck on `/change-password` even though
+   the password change already committed (verified: `must_change_password`
+   flips to `false` in the DB, yet the page never reaches `/dashboard`).
+3. The previous spec helper also tried to set the NEW password equal to the
+   current one; a same-as-current change makes the race worse and, under
+   Playwright, could drop the change entirely.
+Net effect: every `loginAsAdmin` timed out → all 16 responsive tests failed in
+`beforeAll`. The e2e gate's function-judging coverage was dead.
+FIX THIS RUN:
+- `scripts/playwright-local-webserver.sh`: after `npm run seed`, clear
+  `must_change_password` for the seeded admin in the DISPOSABLE local DB (one
+  `UPDATE … users`). Production seed semantics untouched (the forced-change flow
+  is a real first-login security feature; only the throwaway e2e DB is relaxed).
+- `tests/e2e/function-judging-responsive.spec.ts`: make `loginAsAdmin` resilient
+  — if a forced change still appears (e.g. against a remote server), set a
+  DISTINCT strong policy-compliant new password (a same-as-current change is
+  unreliable) and track it for the rest of the run.
+Confidence: High (reproduced live; all 16 tests green after the fix). Severity
+Medium — no production impact (local tooling only), but it silently disabled the
+very gate this run exists to enforce.
 
-## CLEARED (checked live, NOT defects)
-- Page-level horizontal overflow: 0 on edit (375/768/1280) and student
-  (375/768/1280) and create (375) — the `max-w-full` TabsList cap (cycle 1) +
-  `justify-start` (cycle 2) hold; no page bleeds.
-- Run-result panel (`problem-submission-form.tsx:484-533`): all `<pre>` use
-  `whitespace-pre-wrap overflow-auto max-h-40`, so long stdout/stderr/compile
-  output wraps and never widens the document. Action buttons row
-  (`flex gap-2`, two `flex-1` buttons) splits evenly. Top language/upload row is
-  `flex flex-col gap-2 sm:flex-row` — stacks on mobile. No overflow risk.
-- FunctionReferenceSolution stub `<pre>`: `max-h-[260px] overflow-auto
-  whitespace-pre` — scrolls in both axes internally, contained at all widths.
+## OBSERVATION (not a new scheduled finding) — change-password local-prod re-auth race
+The same-password re-sign-in race in (2) is only reachable under the standalone
+production server with a forced first-login change AND a near-instant client
+re-auth — i.e. an automated runner, not a human. Against `next dev` (prior
+cycles) the path differs because `NODE_ENV !== production`. No human-facing
+defect was reproduced (a real user takes >100 ms to fill the form, and the
+distinct-password path redirects cleanly). Left as an observation; revisit only
+if it recurs for real users.
 
 ## KOREAN TYPOGRAPHY
-No custom `letter-spacing`/`tracking-*` added or proposed this cycle.
-</content>
-</invoke>
+No custom `letter-spacing` / `tracking-*` added to any Korean text this cycle
+(binding repo rule honored). No CSS / component styling touched.

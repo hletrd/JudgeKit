@@ -11,3 +11,23 @@ Add a regression test feeding output with a non-line `:N:` token and asserting i
 
 ### TST-4 (Low) No test asserting reference solution absence on student GET
 Add an integration test: student fetch of a function problem must not include `referenceSolution`.
+
+---
+
+## Cycle 4 (2026-06-17)
+
+### TST4-1 (Medium, FIXED THIS RUN) function-judging-responsive spec could not authenticate locally
+The spec added in TST-1 was effectively dead against the local standalone
+harness: `loginAsAdmin` timed out in `beforeAll` because the seeded admin is
+`mustChangePassword=true` and the standalone (production-mode) change-password
+form's automatic re-sign-in races the just-invalidated session token, stranding
+the browser on `/change-password`. All 16 tests failed before any assertion ran.
+FIX: clear `must_change_password` for the seeded admin in the disposable local
+e2e DB (`scripts/playwright-local-webserver.sh`, after `npm run seed`) + make
+`loginAsAdmin` set a DISTINCT strong password if a forced change still appears.
+Verified: all 16 tests green at mobile/tablet/desktop. See designer.md DSG4-1.
+
+### TST-2..TST-4 still open (unchanged)
+mapCompileError over-match regression test, string[] round-trip fuzz, and the
+student-GET referenceSolution-absence integration test remain to be added with
+their respective fixes (CF-1, CF-5).

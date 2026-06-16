@@ -1,53 +1,73 @@
-# Code Reviewer — Function-Judging Feature (cycle 1, 2026-06-16)
+# Code Review — cycle 4 (2026-06-17)
 
-Scope: `src/lib/judge/function-judging/**`, function authoring/submit UI, API routes.
+Focus: function-signature judging pipeline + the cross-file interactions that
+carry the open findings forward. Re-read live this cycle; nothing downgraded.
 
-## Findings
+## CARRIED FORWARD — re-confirmed real this cycle
 
-### CR-1 (Medium) `mapCompileError` `:(\d+):` regex over-matches non-line column refs
-File: `src/lib/judge/function-judging/error-mapping.ts:26`
-The `:(\d+):` replacement shifts ANY `:N:` token in compiler output, not just file:line:col references. Compiler diagnostics or student `print`/log lines that contain time-like tokens (`12:34:`) or ratios get their middle number shifted by `preludeLineCount`, corrupting student-visible output. Failure scenario: a C++ error message embedding `note: candidate: 'foo(int):12:'` or any user string with `:7:` mutates. Confidence: Medium. Fix: anchor to file-extension-prefixed forms (e.g. `\.(cpp|java|go|cs|ts|js|py):(\d+):(\d+):`) or only rewrite when preceded by a filename token.
+### CR4-1 = AGG-2 / CF-1 (Medium) mapCompileError `:(\d+):` over-matches
+`src/lib/judge/function-judging/error-mapping.ts:26`. The second
+`.replace(/:(\d+):/g, …)` shifts ANY `:N:` token, not only `file:line:col`. A
+column-pair rendered as `12:5` inside a caret line, or an unrelated `:8:` in a
+path or message, gets silently decremented by `preludeLineCount`. The existing
+test (`error-mapping.test.ts`) only exercises real `file:line:col` shapes, so it
+does not catch the over-match. Fix: gate the `:N:` rewrite on a preceding
+source-filename token (e.g. require `\.\w+:N:` or a `file:line:col` anchor) and
+add a unit test that proves a bare `:8:` in prose is left intact.
 
-### CR-2 (Low) C++/Java double writer uses locale-sensitive `%.10g`
-File: `adapters/cpp.ts:115`, `adapters/java.ts:176`
-`snprintf(..., "%.10g", v)` (C++) and `String.format("%.10g", v)` (Java, default locale) emit a comma decimal separator under some locales, breaking JSON. C# correctly uses `CultureInfo.InvariantCulture`. `double`/`double[]` are DEFERRED from authorable types (types.ts:20), so not reachable in v1, but the latent bug should be fixed before v1.1 re-enables doubles. Confidence: High (latent). Fix: C++ `setlocale(LC_ALL,"C")` or manual formatting; Java `String.format(Locale.ROOT, ...)`.
+### CR4-2 = AGG-3 / CF-2 (Medium) Cross-language string-escaping divergence — BROADER THAN PREVIOUSLY RECORDED
+Expected output is computed by running the reference solution in ONE language
+(`compute-expected/route.ts:75-79` assembles with
+`problem.referenceSolution.language`), stored, then student output in ANY enabled
+language is compared against it. For a `string` / `string[]` return (both ARE
+authorable; only `double` is excluded, `types.ts:20`) the per-language JSON
+writers diverge:
+- **C++** (`adapters/cpp.ts:117`) and **Java** (`adapters/java.ts:178`): escape
+  only `" \ \n \t \r`; emit `<`, `>`, `&` and all non-ASCII bytes RAW.
+- **Go** (`adapters/go.ts:92`, `json.Marshal`): escapes `<`,`>`,`&` as
+  `<`/`>`/`&`; emits non-ASCII raw.
+- **Python** (`adapters/python.ts:12`, `json.dumps` default `ensure_ascii=True`):
+  escapes ALL non-ASCII to `\uXXXX`; keeps `<`,`>`,`&` raw. **(Python was NOT
+  called out in the cycle-3 note — the divergence is wider than recorded: the
+  default-language reference (python) itself diverges from C++/Java/Go/JS/TS on
+  non-ASCII.)**
+- **JS/TS** (`JSON.stringify`): keeps `<`,`>`,`&` and non-ASCII raw.
+So a `string` problem whose expected is computed in Python and submitted in Go
+(or vice-versa) WRONG-ANSWERs a correct solution whenever the value contains
+`<`, `>`, `&`, or any non-ASCII character, under the default `exact` mode. Fix:
+pin one canonical escaping contract and reconcile every writer to it
+(recommended: keep `<>&` raw and non-ASCII raw — Python emit with
+`ensure_ascii=False`, Go use an `Encoder` with `SetEscapeHTML(false)`), then add
+a cross-language golden test for `string` / `string[]` returns containing `<`,
+`>`, `&`, non-ASCII, quotes, backslash, and control chars.
 
-### CR-3 (Low) `decodeValue` ignores its type param and trusts JSON.parse
-File: `serialization.ts:25`
-`decodeValue(s, _t)` does a bare `JSON.parse` with no shape/type validation; callers (`function-test-case-editor.hydrateFields`) wrap in try/catch and fall back to blank, so impact is limited to the editor. Confidence: High. Acceptable for v1 but document the trust boundary.
+### CR4-3 = AGG-4 / CF-3 (Medium) Implicit single-line stdin contract is unasserted
+`serialization.ts:18,22` join encoded args with no newline, and every harness
+reads exactly one stdin line. Nothing asserts the encoded output is
+newline-free. A `string` arg carrying `\n` is escaped to `\\n` by
+`JSON.stringify` (safe today), but the invariant is undocumented and unguarded:
+the moment any path emits a literal newline into `encodeArgs` output the
+one-line protocol breaks silently across all adapters. Fix: assert/document that
+`encodeArgs` output contains no raw `\n`, plus a round-trip fuzz test.
 
-### CR-4 (Low) `formatValue` for non-array number leaks JS `String()` form
-File: `value-fields.ts:196`
-For scalar `int/long`, `formatValue` returns `String(value)`; if `decodeValue` returns a float (e.g. `1.0`) it round-trips as `1` — fine. No action.
+## LOW (carried) CF-5
+SEC-3 (host-path trim from compute-expected diagnostics), PERF-1
+(compute-expected concurrency cap), ARC-4 (shared `resolveExecLanguage`), DBG-4
+(confirm-on-param-removal), TST-3/TST-4 (string[] fuzz + student-GET
+referenceSolution-absence integration test). All still open, unchanged.
 
-## Positives
-- Reference solution correctly stripped from student reads (`api/v1/problems/[id]/route.ts:70`).
-- `preludeLineCount` recomputed, never stored (assemble.ts) — no drift risk.
-- Safe-integer guard on int/long authoring (value-fields.ts:28).
+## DEFERRED (unchanged, exit criterion preserved)
+D1 / CR-2 / VER-3 (Low, latent) locale-sensitive double printers
+(`adapters/cpp.ts:115` `%.10g`, `adapters/java.ts:176` `String.format("%.10g")`).
+Unreachable while `double`/`double[]` are excluded from
+`AUTHORABLE_FUNCTION_TYPES` (`types.ts:20`), documented deferred to v1.1
+(`types.ts:11-22`) — the repo's own design note authorizes the deferral. Exit
+criterion: re-open and fix (force `"C"` locale / `Locale.ROOT`) with a
+cross-locale double golden test BEFORE re-enabling authorable double.
 
----
-
-## Cycle 3 (2026-06-16) re-confirmation + new
-
-### AGG-8 (Low, NEW this cycle) local Playwright webServer cannot self-start
-- `playwright.config.ts:81` — `JUDGE_AUTH_TOKEN ?? "playwright-local-token-for-
-  smoke"`; the fallback equals `JUDGE_AUTH_TOKEN_PLAYWRIGHT_PLACEHOLDER`
-  (`src/lib/security/env.ts:6`), rejected by `getValidatedJudgeAuthToken()`
-  (env.ts:223-229) → app throws at boot when no strong token is exported.
-- `scripts/playwright-local-webserver.sh:45` runs `next start` while
-  `next.config.ts:9` sets `output: "standalone"` (Next 16.2.3) — not the
-  standalone serve path; the build emits `.next/standalone/server.js`.
-- Failure: a contributor running `npx playwright test` with no `JUDGE_AUTH_TOKEN`
-  cannot bring the app up → e2e gate unrunnable locally. Fix THIS RUN: mint a
-  strong ephemeral token in the script, drop the placeholder fallback in the
-  config, serve the standalone `server.js`. Confidence High.
-
-### Re-confirmed carry-forward (unchanged severity)
-- CR-1 / AGG-2 (Medium) `error-mapping.ts:26` `:(\d+):` over-match — still present.
-- CR-2 / AGG-3 (Medium) cross-language string escaping divergence — still present.
-- AGG-4 (Medium) `serialization.ts` single-line stdin contract unasserted — still
-  present.
-
-### Browser-verified clean (designer angle)
-- The three function-judging UI components are responsive-clean at mobile/tablet/
-  desktop in light + dark; no state-handling regressions on re-read.
+## POSITIVES (re-confirmed)
+- Reference solution stripped from student reads (problem GET route).
+- `preludeLineCount` recomputed, never stored (`assemble.ts`) — no drift.
+- Safe-integer guard on int/long authoring (`value-fields.ts:28`).
+- Local e2e standalone bring-up (cycle-3 P1) holds: strong ephemeral secrets
+  minted, standalone `server.js` served.

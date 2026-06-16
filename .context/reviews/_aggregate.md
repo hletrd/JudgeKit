@@ -1,82 +1,84 @@
-# Aggregate Review — cycle 3 (2026-06-16)
+# Aggregate Review — cycle 4 (2026-06-17)
 
 Multi-perspective review focused on the `function` problem type (LeetCode-style
 function-signature judging) and its authoring + student UI. The designer review
-was browser-driven (`agent-browser` 0.22.2, Chromium headless) at mobile 375 /
-tablet 768 / desktop 1280, light + dark, against a live `next dev` server backed
-by a freshly seeded Postgres and a real function problem minted via the
-authenticated API — the user's primary focus this run.
+was browser-driven (Playwright/Chromium headless via the local standalone-server
+e2e harness, plus `agent-browser` 0.22.2 for interactive diagnosis) at mobile
+375 / tablet 768 / desktop 1280 against a freshly-seeded Postgres + a real
+function problem — the user's primary focus this run. All 16 function-judging
+responsive assertions are green after this cycle's harness fix.
 
 ## METHODOLOGY NOTE (agent fan-out)
-No nested subagent dispatch tool is registered in this environment (this cycle
-runs as a single `general-purpose` agent; there is no Agent/Task spawn tool with
-a schema to fan out into parallel reviewer subagents). Each specialist angle was
-executed directly by the cycle agent, with the designer angle driving a real
-browser. Per-angle provenance files remain under `.context/reviews/<angle>.md`.
-No reviewer angle was dropped.
+No nested subagent dispatch tool with a callable schema is registered in this
+environment (team/task tooling exists but no Agent-spawn schema for parallel
+reviewer subagents). Each specialist angle was executed directly by the cycle
+agent; the designer angle drove a real browser. Per-angle provenance files
+remain under `.context/reviews/<angle>.md`. No reviewer angle was dropped.
 
 ## NEW THIS CYCLE
 
-### AGG-8 (Low) Local Playwright webServer cannot self-start — token rejected + `next start` wrong for standalone — RE-CONFIRMED, SCHEDULED + FIXED THIS RUN
-Two coupled defects in the local-only Playwright bring-up (carry-forward CF-4 =
-old AGG-6/AGG-7), re-confirmed by reading live code this cycle and FIXED this run
-because they block the very harness the e2e gate (and this run's browser pass)
-depend on:
-- `playwright.config.ts:81` falls back to `JUDGE_AUTH_TOKEN ??
-  "playwright-local-token-for-smoke"`, which is byte-identical to
-  `JUDGE_AUTH_TOKEN_PLAYWRIGHT_PLACEHOLDER` (`src/lib/security/env.ts:6`) and is
-  REJECTED by `getValidatedJudgeAuthToken()` (env.ts:223-229). So when the
-  operator has no strong `JUDGE_AUTH_TOKEN` exported, the local webServer throws
-  at startup and `npx playwright test` cannot bring the app up at all.
-- `scripts/playwright-local-webserver.sh:45` runs `npm run start` = `next start`
-  (package.json:8), but `next.config.ts:9` sets `output: "standalone"`. Under
-  Next 16.2.3 standalone output, `next start` is not the supported serve path
-  (the build emits `.next/standalone/server.js`); serving must launch that
-  entrypoint with the right `PORT`/`HOSTNAME`.
-Severity Low (local-tooling only, no production impact) but actionable and
-already scheduled (CF-4). FIX THIS RUN: mint a strong ephemeral token in the
-webServer script when none is provided, drop the placeholder fallback in
-playwright.config.ts, and serve the standalone `server.js`.
+### AGG4-1 (Medium) Local e2e auth fully broken — function-judging responsive gate could not run — FIXED THIS RUN
+The function-judging responsive gate (and any local full-profile e2e run) could
+not authenticate at all. The Next 16 **standalone** local server runs in
+`NODE_ENV=production`; the seeded admin is `mustChangePassword=true`
+(`scripts/seed.ts:225`); on the forced change the change-password form
+(`change-password-form.tsx:51`) commits server-side (sets `tokenInvalidatedAt`)
+then immediately re-`signIn`s — under the Playwright runner's tight timing that
+re-auth races the just-invalidated token and strands the browser on
+`/change-password` even though `must_change_password` already flipped to `false`
+in the DB. Every `loginAsAdmin` timed out → all 16 responsive tests failed in
+`beforeAll`. The spec's old helper also set new==current password, worsening the
+race. FIX THIS RUN: (a) `scripts/playwright-local-webserver.sh` clears
+`must_change_password` for the seeded admin in the disposable local DB after
+`npm run seed` (production seed semantics untouched); (b)
+`function-judging-responsive.spec.ts` `loginAsAdmin` now sets a DISTINCT strong
+policy-compliant password if a forced change still appears and tracks it for the
+run. Verified: all 16 tests green at all three viewports. Severity Medium
+(local-tooling only; no production impact) but it had silently disabled the very
+gate this run enforces. Confidence High.
 
 ## CARRIED FORWARD (re-confirmed still real this cycle; no severity change)
 - AGG-2 (Medium) `mapCompileError` `:(\d+):` regex over-matches non-line tokens
-  (`error-mapping.ts:26`). Re-confirmed by re-reading: the second
-  `.replace(/:(\d+):/g, ...)` still shifts ANY `:N:` token (e.g. a `12:5` column
-  pair or an unrelated `:8:` in a path/message), not only `file:line:col`.
-  Scheduled (plan CF-1).
-- AGG-3 (Medium) Cross-language string-escaping divergence. Re-confirmed:
-  `string`/`string[]` ARE authorable (only `double`/`double[]` excluded,
-  `types.ts:20`). C++/Java escape only `" \ \n \t \r` and emit `< > &` / non-ASCII
-  raw; Go uses `json.Marshal` which escapes `< > &` as `\uXXXX`. In `exact` mode a
-  string-returning problem judged across languages diverges. Scheduled (CF-2).
-- AGG-4 (Medium) Implicit single-line stdin contract across the adapters.
-  Re-confirmed: `encodeArgs`/`encodeValue` (`serialization.ts:18,22`) join with
-  no newline but nothing asserts the output is newline-free; a future string
-  value carrying `\n` would silently break the one-line stdin protocol.
-  Scheduled (CF-3).
+  (`error-mapping.ts:26`). The bare `:N:` rewrite shifts any `:N:` (column pair,
+  path/message segment), not only `file:line:col`. Scheduled (plan CF-1).
+- AGG-3 (Medium) Cross-language string-escaping divergence — re-confirmed AND
+  WIDENED: `string`/`string[]` are authorable; expected is computed in ONE
+  reference language then compared against ANY student language. C++/Java emit
+  `<>&`/non-ASCII raw; Go `json.Marshal` escapes `<>&`; Python `json.dumps`
+  (default `ensure_ascii=True`) escapes ALL non-ASCII to `\uXXXX`; JS/TS keep all
+  raw. A `string`-returning problem judged cross-language WRONG-ANSWERs correct
+  code on `<`,`>`,`&`, or any non-ASCII. Scheduled (CF-2).
+- AGG-4 (Medium) Implicit single-line stdin contract unasserted
+  (`serialization.ts:18,22`). Scheduled (CF-3).
 - P8/low cleanups (SEC-3 host-path trim, PERF-1 compute-expected concurrency,
   ARC-4 shared resolveExecLanguage, DBG-4 confirm-on-param-removal, TST-3/TST-4
   serialization fuzz + student-GET referenceSolution-absence). Scheduled (CF-5).
 
 ## RESOLVED / NOT RE-OPENED
 - DSG-1 (cycle 2, Medium) active-tab clipping on the overflowing student tab bar
-  — VERIFIED FIXED LIVE this cycle (see designer.md: `flex-start`,
-  `notClippedLeft=true`, `fullyVisible=true` at mobile 375). No re-open.
-- AGG-5 (cycle 2, Medium) seed.ts FK ordering — fixed cycle 2; re-verified this
-  cycle on a fresh DB (`seed` printed "Seeded built-in roles" before the super
-  admin user; 5 roles + 1 super_admin present). No re-open.
+  — re-VERIFIED FIXED LIVE this cycle (the responsive spec's tab-bar guard
+  passes at mobile 375). No re-open.
+- AGG-8 (cycle 3, Low) local Playwright webServer self-start — FIXED cycle 3 and
+  re-verified this cycle: the standalone server boots with minted strong secrets
+  and serves the responsive spec. No re-open.
 
 ## DEFERRED (severity preserved, exit criterion stated — see plan D1)
 - D1 / CR-2 / VER-3 (Low, latent) Locale-sensitive double printers (C++ `%.10g`,
   Java `String.format("%.10g")`) in `adapters/cpp.ts:115`, `adapters/java.ts:176`.
   Unreachable in v1 because `double`/`double[]` are excluded from
   `AUTHORABLE_FUNCTION_TYPES` (`types.ts:20`), documented as deferred to v1.1
-  (types.ts:11-22) — the repo's own design note is the authority permitting the
+  (`types.ts:11-22`) — the repo's own design note is the authority permitting the
   deferral. Exit criterion: re-open and fix (force `"C"` locale / `Locale.ROOT`)
   with a cross-locale double golden test BEFORE re-enabling authorable double.
 
+## OBSERVATIONS (not new scheduled work)
+- change-password local-prod re-auth race (the mechanism behind AGG4-1) only
+  triggers under the standalone production server with a forced first-login
+  change AND a near-instant automated re-auth — not a human-facing path
+  (recorded in designer.md). No app change scheduled; revisit only if it recurs
+  for real users.
+
 ## AGENT FAILURES
 None. (Subagent dispatch is unavailable in this environment; see methodology
-note. Reviews were produced directly, one provenance file per angle, with the
-designer angle browser-driven.)
-</content>
+note. Reviews produced directly, one provenance file per angle, designer angle
+browser-driven.)
