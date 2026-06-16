@@ -65,6 +65,20 @@ docker exec "$CONTAINER_NAME" pg_isready -U "$POSTGRES_USER" >/dev/null 2>&1
 npm run db:push
 npm run seed
 npm run languages:sync
+
+# The seed marks the admin mustChangePassword=true so a real first login is
+# forced to rotate the password. Against this DISPOSABLE local e2e database that
+# forced-change detour is pure friction: the standalone server runs in
+# production mode, where the change-password form's automatic re-sign-in races
+# the just-invalidated session token and can leave the browser stuck on
+# /change-password even though the change committed. Clear the flag here (local
+# throwaway DB only — production seed semantics are untouched) so the e2e admin
+# logs straight into the dashboard.
+SEED_ADMIN_USERNAME="${ADMIN_USERNAME:-admin}"
+docker exec "$CONTAINER_NAME" psql -U "$POSTGRES_USER" -d "$POSTGRES_DB" \
+  -c "UPDATE users SET must_change_password = false WHERE username = '${SEED_ADMIN_USERNAME}';" \
+  >/dev/null 2>&1 || true
+
 npm run build
 
 # next.config.ts sets `output: "standalone"`, so `next start` is not the

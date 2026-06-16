@@ -31,6 +31,14 @@ const CSRF_HEADERS = {
 } as const;
 
 /**
+ * Live admin password for this run. Starts as the seeded value
+ * (E2E_USERNAME/E2E_PASSWORD). If the server forces a first-login change we set
+ * a DISTINCT strong password and remember it here, so every later loginAsAdmin
+ * in the run authenticates with the new value.
+ */
+let adminPassword = DEFAULT_CREDENTIALS.password;
+
+/**
  * Log in as the seeded admin (E2E_USERNAME/E2E_PASSWORD), transparently
  * completing the first-login forced password change if the server requires it.
  * Avoids the DB-backed runtime-admin fixture (its dynamic `src/lib/db` import
@@ -41,15 +49,25 @@ async function loginAsAdmin(page: Page): Promise<void> {
   await loginWithCredentials(
     page,
     DEFAULT_CREDENTIALS.username,
-    DEFAULT_CREDENTIALS.password,
+    adminPassword,
     { allowPasswordChange: true },
   );
   if (page.url().includes("/change-password")) {
-    await page.locator("#currentPassword").fill(DEFAULT_CREDENTIALS.password);
-    await page.locator("#newPassword").fill(DEFAULT_CREDENTIALS.password);
-    await page.locator("#confirmPassword").fill(DEFAULT_CREDENTIALS.password);
+    // Forced first-login change. Set a DISTINCT new password: a same-as-current
+    // change makes the form's automatic re-sign-in race the just-invalidated
+    // session token, and under the Playwright runner's tight timing that race
+    // can drop the change entirely (the account stays mustChangePassword=true).
+    // A distinct password commits reliably; we record it so the rest of the run
+    // logs in with it. It must satisfy the 12-char policy
+    // (src/lib/system-settings-config.ts) and stay >= the seeded password's
+    // strength.
+    const nextPassword = `${DEFAULT_CREDENTIALS.password}-e2e1`;
+    await page.locator("#currentPassword").fill(adminPassword);
+    await page.locator("#newPassword").fill(nextPassword);
+    await page.locator("#confirmPassword").fill(nextPassword);
     await page.getByRole("button", { name: /change password|비밀번호 변경/i }).click();
     await page.waitForURL("**/dashboard", { timeout: 15_000 });
+    adminPassword = nextPassword;
   }
 }
 
