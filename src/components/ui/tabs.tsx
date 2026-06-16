@@ -24,7 +24,12 @@ function Tabs({
 }
 
 const tabsListVariants = cva(
-  "group/tabs-list inline-flex w-fit max-w-full items-center justify-center rounded-lg p-[3px] text-muted-foreground group-data-horizontal/tabs:h-8 group-data-vertical/tabs:h-fit group-data-vertical/tabs:flex-col data-[variant=line]:rounded-none overflow-x-auto scrollbar-none",
+  // justify-start (not justify-center): when the list overflows its max-w-full
+  // cap and scrolls (overflow-x-auto), centring would clip BOTH ends and leave
+  // the left-clipped (often active) tab unreachable since scrollLeft is already
+  // at its left limit. Starting from the left lets the list scroll cleanly. For
+  // a non-overflowing w-fit list this is a visual no-op (no free space to align).
+  "group/tabs-list inline-flex w-fit max-w-full items-center justify-start rounded-lg p-[3px] text-muted-foreground group-data-horizontal/tabs:h-8 group-data-vertical/tabs:h-fit group-data-vertical/tabs:flex-col data-[variant=line]:rounded-none overflow-x-auto scrollbar-none",
   {
     variants: {
       variant: {
