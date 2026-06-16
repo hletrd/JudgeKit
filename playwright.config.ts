@@ -77,10 +77,18 @@ export default defineConfig({
           ...process.env,
           AUTH_URL: localBaseUrl,
           AUTH_TRUST_HOST: "true",
-          JUDGE_AUTH_TOKEN: process.env.JUDGE_AUTH_TOKEN ?? "playwright-local-token-for-smoke",
+          // Pass through the operator's JUDGE_AUTH_TOKEN only when it is a real
+          // value. Never inject the placeholder fallback: it is byte-identical
+          // to JUDGE_AUTH_TOKEN_PLAYWRIGHT_PLACEHOLDER, which
+          // getValidatedJudgeAuthToken() rejects (src/lib/security/env.ts), so
+          // the server would throw at boot. When unset, the webServer script
+          // mints a strong ephemeral token itself.
+          ...(process.env.JUDGE_AUTH_TOKEN
+            ? { JUDGE_AUTH_TOKEN: process.env.JUDGE_AUTH_TOKEN }
+            : {}),
         },
         reuseExistingServer: false,
-        timeout: 120_000,
+        timeout: 180_000,
         url: localServerUrl,
       },
 });
