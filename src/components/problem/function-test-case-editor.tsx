@@ -13,7 +13,7 @@ import {
 } from "@/lib/problems/test-case-drafts";
 import { encodeArgs, encodeValue, decodeValue } from "@/lib/judge/function-judging/serialization";
 import { isArrayType, type FunctionType } from "@/lib/judge/function-judging/types";
-import { parseFieldValue, formatValue } from "@/lib/judge/function-judging/value-fields";
+import { parseFieldValue, formatValue, decodeFieldValue } from "@/lib/judge/function-judging/value-fields";
 
 type Param = { name: string; type: FunctionType };
 
@@ -62,7 +62,7 @@ function hydrateFields(
   let ret = "";
   try {
     if (draft.expectedOutput) {
-      ret = formatValue(decodeValue(draft.expectedOutput, returnType), returnType);
+      ret = formatValue(decodeFieldValue(draft.expectedOutput, returnType), returnType);
     }
   } catch {
     ret = "";
@@ -117,7 +117,7 @@ export function FunctionTestCaseEditor({
         let ret = current.ret;
         try {
           ret = draft.expectedOutput
-            ? formatValue(decodeValue(draft.expectedOutput, returnType), returnType)
+            ? formatValue(decodeFieldValue(draft.expectedOutput, returnType), returnType)
             : "";
         } catch {
           ret = current.ret;

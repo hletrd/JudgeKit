@@ -4,6 +4,7 @@ import {
   isArrayType,
   type FunctionType,
 } from "./types";
+import { decodeValue } from "./serialization";
 
 /**
  * UI-layer helpers for the typed function test-case editor: parse the raw text
@@ -187,6 +188,33 @@ export function parseFieldValue(raw: string, type: FunctionType): ParseResult {
     out.push(result.value);
   }
   return { ok: true, value: out };
+}
+
+/**
+ * Decode a stored canonical value back into a JS value for the editor.
+ *
+ * For non-double types this is exactly the core `decodeValue` (canonical JSON).
+ * Double RETURNS, however, are serialized under the float / space-separated
+ * contract (see serialization.ts `encodeValue`): a scalar `double` is a single
+ * numeric token (`0.5`, still valid JSON) and a `double[]` is whitespace-
+ * separated tokens (`0.5 0.25 -3`) which is NOT valid JSON. Core `decodeValue`
+ * (JSON-only) cannot parse the array form, so this UI-layer helper splits the
+ * double[] tokens itself. Throws on malformed input so callers' try/catch leaves
+ * the field blank, matching the existing hydrate behavior.
+ */
+export function decodeFieldValue(serialized: string, type: FunctionType): unknown {
+  if (type === "double[]") {
+    const trimmed = serialized.trim();
+    if (trimmed === "") return [];
+    return trimmed.split(/\s+/).map((token) => {
+      const n = Number(token);
+      if (!Number.isFinite(n)) {
+        throw new Error(`non-finite double token in stored value: ${token}`);
+      }
+      return n;
+    });
+  }
+  return decodeValue(serialized, type);
 }
 
 /**
