@@ -182,9 +182,11 @@ Each problem has a `problemType` that selects how it is judged:
   per-language harness adapters, assembly). v1 supports the scalar types `int`,
   `long`, `double`, `bool`, `string` and their 1-D arrays, across 7 languages
   (`python`, `cpp23`, `javascript`, `typescript`, `java`, `go`, `csharp`).
-  Non-void return only; comparison is exact/order-sensitive (use
-  `comparisonMode=float` for `double` returns); no nested/map/`ListNode`/
-  `TreeNode` types yet. Expected outputs are either hand-entered (serialized) or
+  Non-void return only; non-double returns compare exact/order-sensitive, while
+  `double`/`double[]` returns are forced to float comparison server-side
+  (`resolveComparisonMode`, default tolerance `1e-9`) and emitted as
+  whitespace-separated numeric tokens; no nested/map/`ListNode`/`TreeNode` types
+  yet. Expected outputs are either hand-entered (serialized) or
   computed from an author-only reference solution via
   `POST /api/v1/problems/:id/compute-expected`. See `docs/api.md` →
   "Function-Signature Problems".

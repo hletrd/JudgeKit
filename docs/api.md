@@ -417,17 +417,24 @@ persisted submission keeps the student's original source untouched.
 ```
 
 **Authorable types** (`AUTHORABLE_FUNCTION_TYPES`): the scalars `int`, `long`,
-`bool`, `string`, plus 1-D arrays of each (`int[]`, `long[]`, `bool[]`,
-`string[]`). `functionSpecSchema` rejects any other type in `params` /
-`returnType`.
+`double`, `bool`, `string`, plus 1-D arrays of each (`int[]`, `long[]`,
+`double[]`, `bool[]`, `string[]`). `functionSpecSchema` rejects any other type in
+`params` / `returnType`.
 
-- **`double` / `double[]` are deferred to v1.1.** Correct cross-language float
-  judging needs a dedicated float comparison mode plus space-separated numeric
-  output (under the default `exact` mode the TS serializer, C/Java/C# `%g`, and
-  Go `json.Marshal` emit three different texts for the same value, and the
-  worker's float comparator can't tokenize a JSON array). The serializer and
-  harness adapters retain their `double` mapping/printing for v1.1; only
-  authoring/validation excludes it.
+- **`double` / `double[]` are supported as of v1.1.** A `double` PARAM is read
+  from stdin as a JSON number like any other arg. A `double`/`double[]` RETURN is
+  judged with **float comparison**, forced server-side (`resolveComparisonMode`):
+  whenever `returnType` is `double`/`double[]` the problem is persisted with
+  `comparisonMode = "float"`, using the author's `floatAbsoluteError` /
+  `floatRelativeError` (each defaults to the worker's `1e-9` when null). Double
+  returns are emitted as **whitespace-separated numeric tokens** (a scalar is one
+  token, e.g. `0.5`; an array is space-separated, e.g. `0.5 0.25 -3`) — never a
+  JSON array — which is the cross-language-safe contract the worker's float
+  comparator tokenizes and compares within tolerance, so each language's exact
+  textual form (`0.5` vs `0.500000000`) need not byte-match. `NaN` / `Infinity`
+  are out of scope and rejected at the authoring boundary. The compile+run smoke
+  layer (`tests/harness/adapters-smoke.test.ts`) exercises double across all 7
+  languages with float-tolerance assertions.
 - **`int` / `long` are limited to the JS safe-integer range** — magnitudes must
   be within ±`Number.MAX_SAFE_INTEGER` (±9007199254740991, i.e. ±2^53 − 1).
   Authored values flow through JS `Number` and the harnesses read ints via
@@ -440,14 +447,25 @@ stub and the I/O `main`. A student may only submit in a language listed in
 `enabledLanguages`.
 
 **Test-case serialization.** For a function problem the test case's `input` is
-the JSON-encoded argument tuple and `expectedOutput` is the JSON-encoded return
-value (compact, no spaces). For `twoSum(int[] nums, int target) -> int[]` with
+the JSON-encoded argument tuple (compact, no spaces) for **every** type,
+including `double`/`double[]` params. The `expectedOutput` is the JSON-encoded
+return value for non-double returns; a **`double` return is one numeric token and
+a `double[]` return is whitespace-separated numeric tokens** (the float-comparison
+contract), not a JSON array. For `twoSum(int[] nums, int target) -> int[]` with
 args `[2,7,11,15]` and `9`:
 
 | Field | Value |
 |-------|-------|
 | `input` | `[[2,7,11,15],9]` |
 | `expectedOutput` | `[0,1]` |
+
+For `scale(double[] xs) -> double[]` with arg `[0.5, 0.25, -3]` returning the same
+values, the args stay JSON while the return uses the space-separated form:
+
+| Field | Value |
+|-------|-------|
+| `input` | `[[0.5,0.25,-3]]` |
+| `expectedOutput` | `0.5 0.25 -3` |
 
 **Array authoring input.** In the authoring editor, array fields accept a JSON
 array literal (e.g. `["a,b", "c"]`), which is the canonical, comma-safe format.
@@ -463,14 +481,13 @@ comma-separated form (e.g. `2, 7, 11`). Malformed input yields a clear error.
    against every case's `input` and the produced output becomes the canonical
    `expectedOutput`.
 
-**v1 limitations:**
+**Current limitations:**
 - **Non-void return only** — the function must return a value; void / in-place
   mutation signatures are not yet supported.
-- **Comparison is exact and order-sensitive** — the existing stdout comparator
-  is used.
-- **`double` / `double[]` deferred to v1.1** — not authorable in v1 (see
-  Authorable types above); they require a float comparison mode plus
-  space-separated numeric output.
+- **Comparison** — non-double returns use the existing exact, order-sensitive
+  stdout comparator. `double` / `double[]` returns use float comparison with
+  configurable absolute/relative tolerance (default `1e-9`); see Authorable types
+  above.
 - **`int` / `long` limited to ±2^53** — must stay within the JS safe-integer
   range (±9007199254740991); BigInt support is deferred.
 - **No nested / map / `ListNode` / `TreeNode` types** — only the scalar and 1-D
