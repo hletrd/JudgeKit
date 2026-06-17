@@ -9,6 +9,8 @@ import { Label } from "@/components/ui/label";
 import { cn } from "@/lib/utils";
 import {
   AUTHORABLE_FUNCTION_TYPES,
+  isArrayType,
+  elementType,
   type FunctionSpec,
   type FunctionType,
 } from "@/lib/judge/function-judging/types";
@@ -26,7 +28,24 @@ type FunctionSignatureBuilderProps = {
   value: FunctionSpec;
   onChange: (spec: FunctionSpec) => void;
   disabled?: boolean;
+  /**
+   * Optional float-comparison tolerance binding. When the return type is
+   * `double`/`double[]`, judging is forced to float comparison server-side; these
+   * let the author override the worker's default (`1e-9`) absolute/relative
+   * tolerance. The values are the raw input strings (kept as the form's source of
+   * truth); leaving them blank means "use the default". When omitted entirely,
+   * only the explanatory note is shown (no tolerance inputs).
+   */
+  floatAbsoluteError?: string;
+  floatRelativeError?: string;
+  onFloatAbsoluteErrorChange?: (value: string) => void;
+  onFloatRelativeErrorChange?: (value: string) => void;
 };
+
+/** A return type is float-compared when it is `double` or `double[]`. */
+export function isFloatComparedReturn(type: FunctionType): boolean {
+  return (isArrayType(type) ? elementType(type) : type) === "double";
+}
 
 /**
  * Shared shadcn-styled native <select> so the parameter/return type pickers
@@ -71,8 +90,15 @@ export function FunctionSignatureBuilder({
   value,
   onChange,
   disabled = false,
+  floatAbsoluteError,
+  floatRelativeError,
+  onFloatAbsoluteErrorChange,
+  onFloatRelativeErrorChange,
 }: FunctionSignatureBuilderProps) {
   const t = useTranslations("problems");
+  const returnIsFloat = isFloatComparedReturn(value.returnType);
+  const showToleranceInputs =
+    Boolean(onFloatAbsoluteErrorChange) && Boolean(onFloatRelativeErrorChange);
 
   const functionNameInvalid = value.functionName.length > 0 && !IDENTIFIER.test(value.functionName);
   const hasParams = value.params.length > 0;
@@ -202,6 +228,42 @@ export function FunctionSignatureBuilder({
             disabled={disabled}
           />
         </div>
+        {returnIsFloat && (
+          <div className="space-y-3 rounded-lg border border-dashed bg-muted/20 p-3">
+            <p className="text-xs text-muted-foreground">{t("fnReturnFloatNote")}</p>
+            {showToleranceInputs && (
+              <div className="space-y-3">
+                <p className="text-sm font-medium">{t("fnFloatToleranceTitle")}</p>
+                <div className="grid gap-3 sm:grid-cols-2">
+                  <div className="space-y-1">
+                    <Label htmlFor="fn-float-abs-error">{t("fnFloatAbsoluteErrorLabel")}</Label>
+                    <Input
+                      id="fn-float-abs-error"
+                      value={floatAbsoluteError ?? ""}
+                      onChange={(e) => onFloatAbsoluteErrorChange?.(e.target.value)}
+                      placeholder="1e-9"
+                      disabled={disabled}
+                      className="font-mono text-sm"
+                    />
+                    <p className="text-xs text-muted-foreground">{t("fnFloatAbsoluteErrorHint")}</p>
+                  </div>
+                  <div className="space-y-1">
+                    <Label htmlFor="fn-float-rel-error">{t("fnFloatRelativeErrorLabel")}</Label>
+                    <Input
+                      id="fn-float-rel-error"
+                      value={floatRelativeError ?? ""}
+                      onChange={(e) => onFloatRelativeErrorChange?.(e.target.value)}
+                      placeholder="1e-9"
+                      disabled={disabled}
+                      className="font-mono text-sm"
+                    />
+                    <p className="text-xs text-muted-foreground">{t("fnFloatRelativeErrorHint")}</p>
+                  </div>
+                </div>
+              </div>
+            )}
+          </div>
+        )}
       </div>
 
       <div className="space-y-2">

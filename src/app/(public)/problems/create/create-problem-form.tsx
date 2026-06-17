@@ -23,7 +23,7 @@ import {
   serializeProblemTestCaseDraftsForMutation,
   type ProblemTestCaseDraft,
 } from "@/lib/problems/test-case-drafts";
-import { FunctionSignatureBuilder } from "@/components/problem/function-signature-builder";
+import { FunctionSignatureBuilder, isFloatComparedReturn } from "@/components/problem/function-signature-builder";
 import { FunctionTestCaseEditor } from "@/components/problem/function-test-case-editor";
 import { FunctionReferenceSolution, type ReferenceSolution } from "@/components/problem/function-reference-solution";
 import type { FunctionSpec } from "@/lib/judge/function-judging/types";
@@ -127,8 +127,16 @@ export default function CreateProblemForm({
     forceDisableAiAssistant ? false : (initialProblem?.allowAiAssistant ?? true)
   );
   const [comparisonMode, setComparisonMode] = useState<"exact" | "float">(initialProblem?.comparisonMode ?? "exact");
-  const [floatAbsoluteError, setFloatAbsoluteError] = useState<string>(initialProblem?.floatAbsoluteError?.toString() ?? "1e-6");
-  const [floatRelativeError, setFloatRelativeError] = useState<string>(initialProblem?.floatRelativeError?.toString() ?? "1e-6");
+  // Auto problems default the visible tolerance to "1e-6"; function problems whose
+  // double return forces float comparison instead start blank so a blank field
+  // round-trips to null => the worker's default tolerance (1e-9).
+  const initialFunctionFloatReturn =
+    initialProblem?.problemType === "function" &&
+    initialProblem?.functionSpec != null &&
+    isFloatComparedReturn(initialProblem.functionSpec.returnType);
+  const initialToleranceDefault = initialFunctionFloatReturn ? "" : "1e-6";
+  const [floatAbsoluteError, setFloatAbsoluteError] = useState<string>(initialProblem?.floatAbsoluteError?.toString() ?? initialToleranceDefault);
+  const [floatRelativeError, setFloatRelativeError] = useState<string>(initialProblem?.floatRelativeError?.toString() ?? initialToleranceDefault);
   // Stored as string to handle partial input during typing; converted to number at submit time
   const [difficulty, setDifficulty] = useState<string>(initialProblem?.difficulty?.toString() ?? "");
   const [defaultLanguage, setDefaultLanguage] = useState<string>(initialProblem?.defaultLanguage ?? "");
@@ -161,8 +169,8 @@ export default function CreateProblemForm({
     comparisonMode !== (initialProblem?.comparisonMode ?? "exact") ||
     difficulty !== (initialProblem?.difficulty?.toString() ?? "") ||
     defaultLanguage !== (initialProblem?.defaultLanguage ?? "") ||
-    floatAbsoluteError !== (initialProblem?.floatAbsoluteError?.toString() ?? "1e-6") ||
-    floatRelativeError !== (initialProblem?.floatRelativeError?.toString() ?? "1e-6") ||
+    floatAbsoluteError !== (initialProblem?.floatAbsoluteError?.toString() ?? initialToleranceDefault) ||
+    floatRelativeError !== (initialProblem?.floatRelativeError?.toString() ?? initialToleranceDefault) ||
     testCaseOverrideEnabled !== false ||
     JSON.stringify(testCases.map((t) => ({ input: t.input, expectedOutput: t.expectedOutput, isVisible: t.isVisible }))) !==
       JSON.stringify((initialProblem?.testCases ?? []).map((t) => ({ input: t.input, expectedOutput: t.expectedOutput, isVisible: t.isVisible }))) ||
@@ -466,6 +474,12 @@ export default function CreateProblemForm({
       if (difficulty !== "" && !Number.isFinite(parseFloat(difficulty))) {
         toast.warning(t("invalidDifficultyWarning"));
       }
+      // Float tolerances are persisted whenever judging is float-compared: the
+      // author-selected float mode (auto problems) OR a function problem whose
+      // double-valued return is forced to float comparison server-side.
+      const sendFloatTolerances =
+        comparisonMode === "float" ||
+        (problemType === "function" && isFloatComparedReturn(functionSpec.returnType));
       const res = await apiFetch(isEditing && editingProblemId ? `/api/v1/problems/${editingProblemId}` : "/api/v1/problems", {
         method: isEditing ? "PATCH" : "POST",
         headers: { "Content-Type": "application/json" },
@@ -482,8 +496,13 @@ export default function CreateProblemForm({
           showRuntimeErrors,
           allowAiAssistant,
           comparisonMode,
-          floatAbsoluteError: comparisonMode === "float" ? (Number.isFinite(parseFloat(floatAbsoluteError)) ? parseFloat(floatAbsoluteError) : null) : null,
-          floatRelativeError: comparisonMode === "float" ? (Number.isFinite(parseFloat(floatRelativeError)) ? parseFloat(floatRelativeError) : null) : null,
+          // Tolerances apply whenever judging is float-compared: either the
+          // author picked float comparison for an auto problem, OR this is a
+          // function problem whose double-valued return forces float comparison
+          // server-side (resolveComparisonMode). A blank field => null => the
+          // worker's default tolerance.
+          floatAbsoluteError: sendFloatTolerances ? (Number.isFinite(parseFloat(floatAbsoluteError)) ? parseFloat(floatAbsoluteError) : null) : null,
+          floatRelativeError: sendFloatTolerances ? (Number.isFinite(parseFloat(floatRelativeError)) ? parseFloat(floatRelativeError) : null) : null,
           difficulty: difficulty !== "" && Number.isFinite(parseFloat(difficulty)) ? parseFloat(difficulty) : null,
           defaultLanguage: defaultLanguage || null,
           tags: currentTags,
@@ -828,6 +847,10 @@ export default function CreateProblemForm({
             value={functionSpec}
             onChange={setFunctionSpec}
             disabled={isLoading}
+            floatAbsoluteError={floatAbsoluteError}
+            floatRelativeError={floatRelativeError}
+            onFloatAbsoluteErrorChange={setFloatAbsoluteError}
+            onFloatRelativeErrorChange={setFloatRelativeError}
           />
           <FunctionTestCaseEditor
             params={functionSpec.params}
