@@ -130,6 +130,15 @@ function makeTestCases(count: number) {
   }));
 }
 
+function fnSpec(returnType: string): NonNullable<ProblemMutationInput["functionSpec"]> {
+  return {
+    functionName: "f",
+    params: [{ name: "x", type: "int" }],
+    returnType: returnType as never,
+    enabledLanguages: ["python"],
+  };
+}
+
 // ── Reset mocks between tests ────────────────────────────────────────────────
 
 beforeEach(() => {
@@ -262,6 +271,60 @@ describe("createProblemWithTestCases", () => {
     );
   });
 
+  // ── H1: function-problem comparisonMode is server-authoritative ──────────────
+  // The persisted comparisonMode is FULLY determined by the function's return
+  // type (double-valued → float, everything else → exact), regardless of the
+  // inbound comparisonMode.
+  it("persists comparisonMode=float for a function problem with a double return", async () => {
+    await createProblemWithTestCases(
+      makeInput({
+        problemType: "function",
+        comparisonMode: "exact",
+        functionSpec: fnSpec("double"),
+      }),
+      "author-1"
+    );
+    const valuesCall = dbInsertMock.mock.results[0].value.values;
+    expect(valuesCall).toHaveBeenCalledWith(
+      expect.objectContaining({ comparisonMode: "float" })
+    );
+  });
+
+  it("persists comparisonMode=exact for a function problem with a string return", async () => {
+    await createProblemWithTestCases(
+      makeInput({
+        problemType: "function",
+        comparisonMode: "exact",
+        functionSpec: fnSpec("string"),
+      }),
+      "author-1"
+    );
+    const valuesCall = dbInsertMock.mock.results[0].value.values;
+    expect(valuesCall).toHaveBeenCalledWith(
+      expect.objectContaining({ comparisonMode: "exact" })
+    );
+  });
+
+  it("persists comparisonMode=exact for a function problem with a double PARAM but an int return", async () => {
+    await createProblemWithTestCases(
+      makeInput({
+        problemType: "function",
+        comparisonMode: "float",
+        functionSpec: {
+          functionName: "f",
+          params: [{ name: "x", type: "double" }],
+          returnType: "int" as never,
+          enabledLanguages: ["python"],
+        },
+      }),
+      "author-1"
+    );
+    const valuesCall = dbInsertMock.mock.results[0].value.values;
+    expect(valuesCall).toHaveBeenCalledWith(
+      expect.objectContaining({ comparisonMode: "exact" })
+    );
+  });
+
   it("propagates errors thrown during the transaction", async () => {
     insertRunMock.mockImplementationOnce(() => {
       throw new Error("DB constraint violation");
@@ -344,6 +407,42 @@ describe("updateProblemWithTestCases", () => {
     inserted.forEach((tc) => {
       expect(tc.problemId).toBe("problem-99");
     });
+  });
+
+  // ── H1 regression: a double→string return must drop the stale float mode ────
+  // Models the PATCH route after merge: the new functionSpec returns "string",
+  // but the inbound comparisonMode is still the stale persisted "float" (carried
+  // forward from when the return was double). The persisted mode MUST become
+  // "exact" — otherwise the worker's float tokenizer Accepts whitespace-
+  // differing wrong string answers.
+  it("persists comparisonMode=exact when a double-return problem is edited to a string return", async () => {
+    await updateProblemWithTestCases(
+      "problem-1",
+      makeInput({
+        problemType: "function",
+        comparisonMode: "float",
+        functionSpec: fnSpec("string"),
+      })
+    );
+    const setCall = dbUpdateMock.mock.results[0].value.set;
+    expect(setCall).toHaveBeenCalledWith(
+      expect.objectContaining({ comparisonMode: "exact" })
+    );
+  });
+
+  it("persists comparisonMode=float when a function problem keeps a double return", async () => {
+    await updateProblemWithTestCases(
+      "problem-1",
+      makeInput({
+        problemType: "function",
+        comparisonMode: "exact",
+        functionSpec: fnSpec("double[]"),
+      })
+    );
+    const setCall = dbUpdateMock.mock.results[0].value.set;
+    expect(setCall).toHaveBeenCalledWith(
+      expect.objectContaining({ comparisonMode: "float" })
+    );
   });
 
   it("propagates errors thrown during the transaction", async () => {

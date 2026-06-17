@@ -58,7 +58,33 @@ describe("resolveComparisonMode — float coupling for double returns", () => {
     expect(resolveComparisonMode(input)).toBe("exact");
   });
 
-  it("keeps a non-double function return at the author-chosen mode", () => {
+  // Server-authoritative (H1): for a FUNCTION problem the comparison mode is
+  // FULLY determined by the return type, regardless of the inbound
+  // comparisonMode. A stale `float` carried forward from a prior double return
+  // must NOT survive a non-double return, otherwise whitespace-differing wrong
+  // string answers are wrongly Accepted by the worker's float tokenizer.
+  it("forces exact for a non-double function return even when the inbound mode is float (stale carry-forward)", () => {
+    expect(
+      resolveComparisonMode({
+        problemType: "function",
+        comparisonMode: "float",
+        functionSpec: spec("string"),
+      }),
+    ).toBe("exact");
+    expect(
+      resolveComparisonMode({
+        problemType: "function",
+        comparisonMode: "float",
+        functionSpec: spec("string[]"),
+      }),
+    ).toBe("exact");
+    expect(
+      resolveComparisonMode({
+        problemType: "function",
+        comparisonMode: "float",
+        functionSpec: spec("int"),
+      }),
+    ).toBe("exact");
     expect(
       resolveComparisonMode({
         problemType: "function",
@@ -66,17 +92,9 @@ describe("resolveComparisonMode — float coupling for double returns", () => {
         functionSpec: spec("int[]"),
       }),
     ).toBe("exact");
-    // An author who explicitly asked for float on a non-double return keeps it.
-    expect(
-      resolveComparisonMode({
-        problemType: "function",
-        comparisonMode: "float",
-        functionSpec: spec("int"),
-      }),
-    ).toBe("float");
   });
 
-  it("leaves non-function problems untouched", () => {
+  it("leaves non-function problems untouched (inbound mode respected)", () => {
     expect(
       resolveComparisonMode({
         problemType: "auto",
@@ -84,5 +102,19 @@ describe("resolveComparisonMode — float coupling for double returns", () => {
         functionSpec: null,
       }),
     ).toBe("exact");
+    expect(
+      resolveComparisonMode({
+        problemType: "auto",
+        comparisonMode: "float",
+        functionSpec: null,
+      }),
+    ).toBe("float");
+    expect(
+      resolveComparisonMode({
+        problemType: "manual",
+        comparisonMode: "float",
+        functionSpec: null,
+      }),
+    ).toBe("float");
   });
 });
