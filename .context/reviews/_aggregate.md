@@ -1,3 +1,62 @@
+# Aggregate Review — cycle 5 (2026-06-17)
+
+Fresh first-principles re-review of the `function`-judging pipeline this cycle,
+focused on clearing the carried-forward NON-responsive correctness findings
+(AGG-2/AGG-3/AGG-4). Re-read every adapter (cpp/java/csharp/go/python/javascript/
+typescript), `serialization.ts`, `error-mapping.ts`, `types.ts`, and the
+`compute-expected` route. Empirically probed `JSON.stringify` control-char and
+non-ASCII behavior with Node to pin the canonical contract. Browser responsive
+gate stays the regression guard (16/16 green prior cycle; no UI change made).
+
+## METHODOLOGY NOTE (agent fan-out)
+No nested Agent/Task subagent dispatch tool with a callable schema is registered
+in this environment (TeamCreate/SendMessage spawn heavyweight teammate processes,
+not reviewer subagents; there is no `Task`/Agent spawn schema). Per the
+orchestrator rule "skip any not registered", each specialist angle was executed
+directly by the cycle agent. Per-angle provenance files remain under
+`.context/reviews/<angle>.md`. No reviewer angle was dropped.
+
+## CYCLE-5 DECISION: FIX the carry-forward set (no new findings)
+Fresh review surfaced NO new defect beyond the tracked carry-forward set. This
+cycle moves AGG-2, AGG-3, AGG-4 from CARRIED-FORWARD to FIXED:
+
+### AGG-2 / CF-1 (Medium) mapCompileError `:(\d+):` over-match — FIXED
+`error-mapping.ts:26`. Confirmed: the bare `:N:` rewrite shifts ANY `:N:` token
+(column pairs `12:5`, clock times `:30:`, unrelated path/message digits), not
+only `file:line:col`. Display-only (gated by showCompileOutput), never affects
+verdicts, but the rewritten output misleads. FIX: anchor the `:N:` rewrite on a
+preceding source-filename token (`<name>.<ext>:N:` — optionally with a trailing
+`:col:`), so only real compiler file:line refs are shifted. Added regression
+tests proving bare `:8:` / `12:5` / clock `:30:` in prose are left intact.
+
+### AGG-3 / CF-2 (Medium) Cross-language string-escaping divergence — FIXED
+Expected output is computed by RUNNING the reference solution in ITS language
+(`compute-expected/route.ts:75-79`), then student output in ANY enabled language
+is compared byte-wise. For `string`/`string[]` returns the per-language JSON
+writers diverged: Python `json.dumps` default `ensure_ascii=True` → all non-ASCII
+as `\uXXXX`; Go `json.Marshal` default `SetEscapeHTML(true)` → `<>&` as
+`</>/&`; C++/Java/C# escaped only `" \ \n \t \r` (missing `\b`,
+`\f`, and other control chars U+0000–U+001F); JS/TS (`JSON.stringify`) keep `<>&`
+and non-ASCII raw with full control-char escaping. Canonical contract chosen =
+`JSON.stringify` (ECMA-404): raw `<>&` + raw non-ASCII (UTF-8) + named short
+escapes `\b \t \n \f \r \" \\` + `\u00XX` for remaining controls. FIX: Python
+`ensure_ascii=False`; Go `Encoder.SetEscapeHTML(false)`; C++/Java/C# string
+writers extended to add `\b`/`\f` and `\u00XX` fallback for control chars. Added
+cross-language golden test asserting every adapter's expected writer output for a
+string with `<>&`, non-ASCII (café/你好/😀), quotes, backslash, `\n\t\r\b\f`, NUL,
+and U+001F is BYTE-IDENTICAL to `serialization.ts encodeValue`.
+
+### AGG-4 / CF-3 (Medium) Single-line stdin contract — FIXED (asserted+documented)
+`serialization.ts`. The harnesses each read exactly ONE stdin line as the JSON
+args. `JSON.stringify` escapes any newline inside a string element to `\n`, so
+the contract holds today — but it was unguarded. FIX: documented the single-line
+invariant on `encodeArgs` and added a defensive assertion that the produced
+encoding contains no raw `\n`/`\r` (throws if violated), plus round-trip fuzz
+tests for string/string[] args containing newlines, commas, quotes, backslashes,
+and non-ASCII.
+
+---
+
 # Aggregate Review — cycle 4 (2026-06-17)
 
 Multi-perspective review focused on the `function` problem type (LeetCode-style
