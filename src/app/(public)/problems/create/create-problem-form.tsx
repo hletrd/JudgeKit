@@ -23,7 +23,8 @@ import {
   serializeProblemTestCaseDraftsForMutation,
   type ProblemTestCaseDraft,
 } from "@/lib/problems/test-case-drafts";
-import { FunctionSignatureBuilder, isFloatComparedReturn } from "@/components/problem/function-signature-builder";
+import { isFloatComparedReturn } from "@/lib/judge/function-judging/comparison";
+import { FunctionSignatureBuilder } from "@/components/problem/function-signature-builder";
 import { FunctionTestCaseEditor } from "@/components/problem/function-test-case-editor";
 import { FunctionReferenceSolution, type ReferenceSolution } from "@/components/problem/function-reference-solution";
 import type { FunctionSpec } from "@/lib/judge/function-judging/types";

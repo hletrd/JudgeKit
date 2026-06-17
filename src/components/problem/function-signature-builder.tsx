@@ -7,10 +7,9 @@ import { Checkbox } from "@/components/ui/checkbox";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { cn } from "@/lib/utils";
+import { isFloatComparedReturn } from "@/lib/judge/function-judging/comparison";
 import {
   AUTHORABLE_FUNCTION_TYPES,
-  isArrayType,
-  elementType,
   type FunctionSpec,
   type FunctionType,
 } from "@/lib/judge/function-judging/types";
@@ -41,11 +40,6 @@ type FunctionSignatureBuilderProps = {
   onFloatAbsoluteErrorChange?: (value: string) => void;
   onFloatRelativeErrorChange?: (value: string) => void;
 };
-
-/** A return type is float-compared when it is `double` or `double[]`. */
-export function isFloatComparedReturn(type: FunctionType): boolean {
-  return (isArrayType(type) ? elementType(type) : type) === "double";
-}
 
 /**
  * Shared shadcn-styled native <select> so the parameter/return type pickers

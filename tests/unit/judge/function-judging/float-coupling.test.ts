@@ -8,7 +8,7 @@ vi.mock("@/lib/db", () => ({
   execTransaction: vi.fn(),
 }));
 
-import { resolveComparisonMode } from "@/lib/problem-management";
+import { resolveComparisonMode } from "@/lib/judge/function-judging/comparison";
 import type { ProblemMutationInput } from "@/lib/validators/problem-management";
 
 type CouplingInput = Pick<
