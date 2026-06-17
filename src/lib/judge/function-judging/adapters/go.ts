@@ -43,6 +43,7 @@ import (
 	"bufio"
 	"encoding/json"
 	"fmt"
+	"io"
 	"math"
 	"os"
 	"sort"
@@ -83,12 +84,16 @@ export const goAdapter: FunctionHarnessAdapter = {
     const main = `
 
 func main() {
-	__reader := bufio.NewReader(os.Stdin)
-	__line, _ := __reader.ReadString('\\n')
-	var __raw []json.RawMessage
-	__decode(json.RawMessage(__line), &__raw)
+\t__reader := bufio.NewReader(os.Stdin)
+\t__line, __err := __reader.ReadString('\\n')
+\tif __err != nil && __err != io.EOF {
+\t\tfmt.Fprintln(os.Stderr, "read error:", __err)
+\t\tos.Exit(1)
+\t}
+\tvar __raw []json.RawMessage
+\t__decode(json.RawMessage(__line), &__raw)
 ${decls}
-	__result := ${spec.functionName}(${callArgs})
+\t__result := ${spec.functionName}(${callArgs})
 ${printBlock(spec.returnType)}
 }
 `;
@@ -109,29 +114,29 @@ ${printBlock(spec.returnType)}
  */
 function printBlock(returnType: FunctionType): string {
   if (returnType === "double") {
-    return `	os.Stdout.WriteString(strconv.FormatFloat(__result, 'g', -1, 64))`;
+    return `\tos.Stdout.WriteString(strconv.FormatFloat(__result, 'g', -1, 64))`;
   }
   if (returnType === "double[]") {
-    return `	__tokens := make([]string, len(__result))
-	for __i, __v := range __result {
-		__tokens[__i] = strconv.FormatFloat(__v, 'g', -1, 64)
-	}
-	os.Stdout.WriteString(strings.Join(__tokens, " "))`;
+    return `\t__tokens := make([]string, len(__result))
+\tfor __i, __v := range __result {
+\t\t__tokens[__i] = strconv.FormatFloat(__v, 'g', -1, 64)
+\t}
+\tos.Stdout.WriteString(strings.Join(__tokens, " "))`;
   }
   // The emitted comment below documents the generated harness (kept inside the
   // template so an assembled source stays self-explanatory during debugging).
-  return `	// Encoder with SetEscapeHTML(false) keeps <, >, & raw — matching the
-	// canonical JSON.stringify contract in serialization.ts and the other
-	// adapters. json.Marshal's default escapes them to \\u003c/\\u003e/\\u0026,
-	// which would byte-diverge expected/actual for string returns judged
-	// cross-language. The encoder appends a trailing newline; trim it so the
-	// output stays a single compact JSON value like the other adapters.
-	var __buf strings.Builder
-	__enc := json.NewEncoder(&__buf)
-	__enc.SetEscapeHTML(false)
-	if __err := __enc.Encode(__result); __err != nil {
-		fmt.Fprintln(os.Stderr, "json:", __err)
-		os.Exit(1)
-	}
-	os.Stdout.WriteString(strings.TrimRight(__buf.String(), "\\n"))`;
+  return `\t// Encoder with SetEscapeHTML(false) keeps <, >, & raw — matching the
+\t// canonical JSON.stringify contract in serialization.ts and the other
+\t// adapters. json.Marshal's default escapes them to \\u003c/\\u003e/\\u0026,
+\t// which would byte-diverge expected/actual for string returns judged
+\t// cross-language. The encoder appends a trailing newline; trim it so the
+\t// output stays a single compact JSON value like the other adapters.
+\tvar __buf strings.Builder
+\t__enc := json.NewEncoder(&__buf)
+\t__enc.SetEscapeHTML(false)
+\tif __err := __enc.Encode(__result); __err != nil {
+\t\tfmt.Fprintln(os.Stderr, "json:", __err)
+\t\tos.Exit(1)
+\t}
+\tos.Stdout.WriteString(strings.TrimRight(__buf.String(), "\\n"))`;
 }
