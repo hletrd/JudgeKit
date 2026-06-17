@@ -29,6 +29,7 @@
 - **Role-based access** — Super admin, admin, instructor, assistant (group-scoped TA), student. Capabilities are granular (43 of them) and admin-editable; the assistant role is intentionally view+comment-only and respects per-group `group_instructors.role` assignments.
 - **Classroom management** — Groups, enrollments, assignments with deadlines and late penalties
 - **Contest system** — IOI and ICPC scoring, scheduled and windowed modes, real-time leaderboard, anti-cheat
+- **Function-signature judging** — LeetCode-style `function` problems: define a typed signature (scalars + 1-D arrays incl. `double`) plus I/O examples, and the platform auto-generates a per-language harness + starter stub, judged across Python, C++, Java, JavaScript, TypeScript, Go, and C#. See [function-signature judging](docs/function-judging.md)
 - **Code similarity** — Rust-accelerated Jaccard n-gram analysis with TS fallback
 
 ## Getting Started
