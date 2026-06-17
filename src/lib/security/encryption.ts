@@ -7,7 +7,7 @@
  *
  * Plaintext-fallback risk profile (C7-AGG-7, deferred):
  *   - `decrypt()` accepts an `allowPlaintextFallback` option that defaults to
- *     `false` in production and `true` in non-production. When the flag is on
+ *     `false` in all environments. When the flag is explicitly set to `true`
  *     and the input lacks the `enc:` prefix, the value is returned as-is and a
  *     warn-level log line is emitted in production noting "possible data
  *     tampering or incomplete migration".
@@ -83,12 +83,12 @@ export function encrypt(plaintext: string): string {
  *
  * If the value does not start with `enc:`, the behavior depends on the
  * `allowPlaintextFallback` option:
- *   - When `true` (the default in non-production environments), the value
- *     is returned as-is. This is the legacy behavior for data that was
- *     stored before encryption was enabled.
- *   - When `false` (the default in production), an error is thrown. This
- *     prevents silent encryption bypass if an attacker manages to write
- *     plaintext to a column that should contain encrypted data.
+ *   - When `true` (must be passed explicitly), the value is returned as-is.
+ *     This is the legacy behavior for data that was stored before encryption
+ *     was enabled.
+ *   - When `false` (the default), an error is thrown. This prevents silent
+ *     encryption bypass if an attacker manages to write plaintext to a column
+ *     that should contain encrypted data.
  *
  * Callers that read from columns with mixed encrypted/plaintext data during
  * migration should pass `{ allowPlaintextFallback: true }` explicitly.
@@ -96,8 +96,7 @@ export function encrypt(plaintext: string): string {
  * Throws if NODE_ENCRYPTION_KEY is not set.
  */
 export function decrypt(encoded: string, options?: { allowPlaintextFallback?: boolean }): string {
-  const allowPlaintext = options?.allowPlaintextFallback ??
-    (process.env.NODE_ENV !== "production");
+  const allowPlaintext = options?.allowPlaintextFallback ?? false;
 
   if (!encoded.startsWith("enc:")) {
     if (!allowPlaintext) {

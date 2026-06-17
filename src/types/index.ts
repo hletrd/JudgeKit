@@ -9,7 +9,7 @@ export type BuiltinUserRole = "super_admin" | "admin" | "instructor" | "assistan
 export type UserRole = BuiltinUserRole;
 export type ProblemVisibility = "public" | "private" | "hidden";
 export type AssignmentVisibility = "public" | "private";
-export type ProblemType = "auto" | "manual";
+export type ProblemType = "auto" | "manual" | "function";
 export type PlatformMode = "homework" | "exam" | "contest" | "recruiting";
 export type SubmissionStatus =
   | "pending"
@@ -17,11 +17,13 @@ export type SubmissionStatus =
   | "judging"
   | "accepted"
   | "wrong_answer"
-  | "time_limit"
-  | "memory_limit"
-  | "runtime_error"
   | "compile_error"
-  | "submitted";
+  | "runtime_error"
+  | "time_limit_exceeded"
+  | "memory_limit_exceeded"
+  | "output_limit_exceeded"
+  | "internal_error"
+  | "cancelled";
 export type ExamMode = "none" | "scheduled" | "windowed";
 export type ScoringModel = "ioi" | "icpc";
 export type Language =
