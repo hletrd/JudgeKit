@@ -4,12 +4,17 @@ import type { FunctionSpec } from "../types";
 const PRELUDE = `import sys, json
 `;
 
+// ensure_ascii=False keeps non-ASCII characters raw (UTF-8), matching the
+// canonical JSON.stringify contract in serialization.ts and every other
+// adapter. The default ensure_ascii=True would escape non-ASCII to \uXXXX and
+// produce a byte-divergent expected/actual for string returns judged
+// cross-language. separators stay compact (no inner spaces) like encodeValue.
 const MAIN = (fn: string) => `
 
 def _main():
     args = json.loads(sys.stdin.readline())
     result = Solution().${fn}(*args)
-    sys.stdout.write(json.dumps(result, separators=(",", ":")))
+    sys.stdout.write(json.dumps(result, ensure_ascii=False, separators=(",", ":")))
 
 if __name__ == "__main__":
     _main()

@@ -141,15 +141,27 @@ sealed class __FnJudge {
     public static void Write(StringBuilder o, double v) { o.Append(v.ToString("R", CultureInfo.InvariantCulture)); }
     public static void Write(StringBuilder o, bool v) { o.Append(v ? "true" : "false"); }
     public static void Write(StringBuilder o, string v) {
+        // Canonical JSON.stringify (ECMA-404) escaping: named short escapes for
+        // \\b \\t \\n \\f \\r \\" \\\\, \\u00XX for any other control char < 0x20,
+        // everything else (incl. <, >, &, and non-ASCII) raw. Matches
+        // serialization.ts encodeValue and the other adapters byte-for-byte.
         o.Append('"');
         foreach (char c in v) {
             switch (c) {
                 case '"': o.Append("\\\\\\""); break;
                 case '\\\\': o.Append("\\\\\\\\"); break;
+                case '\\b': o.Append("\\\\b"); break;
+                case '\\f': o.Append("\\\\f"); break;
                 case '\\n': o.Append("\\\\n"); break;
                 case '\\t': o.Append("\\\\t"); break;
                 case '\\r': o.Append("\\\\r"); break;
-                default: o.Append(c); break;
+                default:
+                    if (c < 0x20) {
+                        o.Append("\\\\u").Append(((int) c).ToString("x4", CultureInfo.InvariantCulture));
+                    } else {
+                        o.Append(c);
+                    }
+                    break;
             }
         }
         o.Append('"');

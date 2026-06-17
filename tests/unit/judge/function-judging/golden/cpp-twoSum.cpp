@@ -85,15 +85,29 @@ inline void writeVal(string &o, long long v) { o += to_string(v); }
 inline void writeVal(string &o, double v) { char buf[64]; snprintf(buf, sizeof(buf), "%.10g", v); o += buf; }
 inline void writeVal(string &o, bool v) { o += v ? "true" : "false"; }
 inline void writeVal(string &o, const string &v) {
+    // Canonical JSON.stringify (ECMA-404) escaping: named short escapes for
+    // \b \t \n \f \r \" \\, \u00XX for any other control char < 0x20,
+    // everything else (incl. <, >, &, and non-ASCII UTF-8 bytes) raw. Matches
+    // serialization.ts encodeValue and the other adapters byte-for-byte.
     o.push_back('"');
     for (char c : v) {
         switch (c) {
             case '"': o += "\\\""; break;
             case '\\': o += "\\\\"; break;
+            case '\b': o += "\\b"; break;
+            case '\f': o += "\\f"; break;
             case '\n': o += "\\n"; break;
             case '\t': o += "\\t"; break;
             case '\r': o += "\\r"; break;
-            default: o.push_back(c); break;
+            default:
+                if ((unsigned char)c < 0x20) {
+                    char ubuf[8];
+                    snprintf(ubuf, sizeof(ubuf), "\\u%04x", (unsigned char)c);
+                    o += ubuf;
+                } else {
+                    o.push_back(c);
+                }
+                break;
         }
     }
     o.push_back('"');

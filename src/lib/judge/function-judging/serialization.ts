@@ -18,8 +18,27 @@ export function encodeValue(v: unknown, t: FunctionType): string {
   return `[${items.join(",")}]`;
 }
 
+/**
+ * Encode a positional argument vector as ONE JSON line for the harness stdin.
+ *
+ * SINGLE-LINE STDIN CONTRACT: every language harness reads exactly one stdin
+ * line (`readline` / `ReadString('\n')` / `getline` / `split("\n")[0]`) and
+ * parses it as the JSON args array. The encoded output MUST therefore be free
+ * of raw newlines. `encodeScalar("string")` uses `JSON.stringify`, which
+ * escapes any `\n`/`\r` inside a string element to `\\n`/`\\r`, so the contract
+ * holds for all supported value types today. The assertion below guards the
+ * invariant: if any future change ever lets a literal newline reach this output
+ * it fails loudly here rather than silently truncating args across every
+ * adapter at judge time.
+ */
 export function encodeArgs(args: unknown[], params: { name: string; type: FunctionType }[]): string {
-  return `[${params.map((p, i) => encodeValue(args[i], p.type)).join(",")}]`;
+  const encoded = `[${params.map((p, i) => encodeValue(args[i], p.type)).join(",")}]`;
+  if (encoded.includes("\n") || encoded.includes("\r")) {
+    throw new Error(
+      "encodeArgs produced a multi-line value, violating the single-line stdin contract",
+    );
+  }
+  return encoded;
 }
 
 export function decodeValue(s: string, _t: FunctionType): unknown {

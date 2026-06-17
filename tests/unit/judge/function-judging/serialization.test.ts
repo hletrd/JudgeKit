@@ -20,4 +20,32 @@ describe("function-judging serialization", () => {
     expect(decodeValue("[1,2,3]", "int[]")).toEqual([1, 2, 3]);
     expect(decodeValue("true", "bool")).toBe(true);
   });
+
+  // AGG-4 / CF-3 — single-line stdin contract: encodeArgs output must never
+  // contain a raw newline (each harness reads exactly one stdin line).
+  it("keeps adversarial string args on a single line and round-trips them", () => {
+    const corpus = [
+      "comma,sep",
+      'has"quote',
+      "back\\slash",
+      "line\nbreak",
+      "carriage\rreturn",
+      "tab\there",
+      "café 你好 \u{1f600}",
+    ];
+    for (const s of corpus) {
+      const encoded = encodeArgs([s], [{ name: "s", type: "string" }]);
+      expect(encoded.includes("\n")).toBe(false);
+      expect(encoded.includes("\r")).toBe(false);
+      // The harness parses the whole line as JSON and spreads it as args.
+      expect(JSON.parse(encoded)).toEqual([s]);
+    }
+  });
+
+  it("keeps a string[] arg with newlines/commas on a single line", () => {
+    const arr = ["a,b", "x\"y", "l\nm", "你好"];
+    const encoded = encodeArgs([arr], [{ name: "xs", type: "string[]" }]);
+    expect(encoded.includes("\n")).toBe(false);
+    expect(JSON.parse(encoded)).toEqual([arr]);
+  });
 });

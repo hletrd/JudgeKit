@@ -137,16 +137,28 @@ final class __FnJudge {
     static void write(StringBuilder o, double v) { o.append(String.format("%.10g", v)); }
     static void write(StringBuilder o, boolean v) { o.append(v ? "true" : "false"); }
     static void write(StringBuilder o, String v) {
+        // Canonical JSON.stringify (ECMA-404) escaping: named short escapes for
+        // \b \t \n \f \r \" \\, \u00XX for any other control char < 0x20,
+        // everything else (incl. <, >, &, and non-ASCII) raw. Matches
+        // serialization.ts encodeValue and the other adapters byte-for-byte.
         o.append('"');
         for (int k = 0; k < v.length(); k++) {
             char c = v.charAt(k);
             switch (c) {
                 case '"': o.append("\\\""); break;
                 case '\\': o.append("\\\\"); break;
+                case '\b': o.append("\\b"); break;
+                case '\f': o.append("\\f"); break;
                 case '\n': o.append("\\n"); break;
                 case '\t': o.append("\\t"); break;
                 case '\r': o.append("\\r"); break;
-                default: o.append(c); break;
+                default:
+                    if (c < 0x20) {
+                        o.append(String.format("\\u%04x", (int) c));
+                    } else {
+                        o.append(c);
+                    }
+                    break;
             }
         }
         o.append('"');

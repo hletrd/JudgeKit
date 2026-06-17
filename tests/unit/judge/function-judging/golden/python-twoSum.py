@@ -12,7 +12,7 @@ class Solution:
 def _main():
     args = json.loads(sys.stdin.readline())
     result = Solution().twoSum(*args)
-    sys.stdout.write(json.dumps(result, separators=(",", ":")))
+    sys.stdout.write(json.dumps(result, ensure_ascii=False, separators=(",", ":")))
 
 if __name__ == "__main__":
     _main()
