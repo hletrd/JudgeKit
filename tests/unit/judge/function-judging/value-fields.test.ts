@@ -84,4 +84,46 @@ describe("value-fields parseFieldValue", () => {
       if (r.ok) expect(r.value).toEqual([2, 7, 11]);
     });
   });
+
+  describe("double authoring (v1.1)", () => {
+    it("accepts a finite double scalar", () => {
+      const r = parseFieldValue("0.5", "double");
+      expect(r.ok).toBe(true);
+      if (r.ok) expect(r.value).toBe(0.5);
+    });
+
+    it("accepts a negative and small double scalar", () => {
+      expect(parseFieldValue("-3", "double")).toEqual({ ok: true, value: -3 });
+      expect(parseFieldValue("1e-7", "double")).toEqual({ ok: true, value: 1e-7 });
+    });
+
+    it("accepts a finite double[] (bare comma form and JSON form)", () => {
+      expect(parseFieldValue("0.5, 0.25, -3", "double[]")).toEqual({
+        ok: true,
+        value: [0.5, 0.25, -3],
+      });
+      expect(parseFieldValue("[0.5, 0.25, -3]", "double[]")).toEqual({
+        ok: true,
+        value: [0.5, 0.25, -3],
+      });
+    });
+
+    it("rejects a non-finite double scalar (overflows to Infinity)", () => {
+      const r = parseFieldValue("1e999", "double");
+      expect(r.ok).toBe(false);
+      if (!r.ok) expect(r.errorKey).toBe("fnValueDoubleNotFinite");
+    });
+
+    it("rejects a non-finite double[] element (bare comma form)", () => {
+      const r = parseFieldValue("0.5, 1e999, 3", "double[]");
+      expect(r.ok).toBe(false);
+      if (!r.ok) expect(r.errorKey).toBe("fnValueArrayDoubleNotFinite");
+    });
+
+    it("rejects a non-finite double[] element (JSON form)", () => {
+      const r = parseFieldValue("[0.5, 1e999, 3]", "double[]");
+      expect(r.ok).toBe(false);
+      if (!r.ok) expect(r.errorKey).toBe("fnValueArrayDoubleNotFinite");
+    });
+  });
 });

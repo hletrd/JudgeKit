@@ -7,6 +7,31 @@ import type { ProblemMutationInput } from "@/lib/validators/problem-management";
 import { sanitizeMarkdown } from "@/lib/security/sanitize-html";
 import { getDbNowUncached } from "@/lib/db-time";
 
+/**
+ * Resolve the comparison mode actually persisted for a problem.
+ *
+ * Float-comparison coupling (function-judging v1.1): when a FUNCTION problem's
+ * RETURN type is `double`/`double[]`, judging MUST use `float` comparison — the
+ * return is printed as whitespace-separated numeric tokens and exact
+ * byte-comparison of floats across languages is unreliable. We therefore force
+ * `comparisonMode = "float"` regardless of what the author sent. Author-set
+ * `floatAbsoluteError` / `floatRelativeError` are preserved as-is (left null →
+ * the worker's default tolerance). Only the RETURN forces float; a double PARAM
+ * with a non-double return stays `exact`. Non-function problems are untouched.
+ */
+export function resolveComparisonMode(
+  input: Pick<
+    ProblemMutationInput,
+    "problemType" | "comparisonMode" | "functionSpec"
+  >,
+): ProblemMutationInput["comparisonMode"] {
+  if (input.problemType === "function") {
+    const returnType = input.functionSpec?.returnType;
+    if (returnType === "double" || returnType === "double[]") return "float";
+  }
+  return input.comparisonMode;
+}
+
 function mapTestCases(problemId: string, values: ProblemMutationInput["testCases"]) {
   return values.map((testCase, index) => ({
     id: nanoid(),
@@ -257,7 +282,7 @@ export async function createProblemWithTestCases(input: ProblemMutationInput, au
         showDetailedResults: input.showDetailedResults,
         showRuntimeErrors: input.showRuntimeErrors,
         allowAiAssistant: input.allowAiAssistant,
-        comparisonMode: input.comparisonMode,
+        comparisonMode: resolveComparisonMode(input),
         floatAbsoluteError: input.floatAbsoluteError ?? null,
         floatRelativeError: input.floatRelativeError ?? null,
         difficulty: input.difficulty ?? null,
@@ -305,7 +330,7 @@ export async function updateProblemWithTestCases(problemId: string, input: Probl
         showDetailedResults: input.showDetailedResults,
         showRuntimeErrors: input.showRuntimeErrors,
         allowAiAssistant: input.allowAiAssistant,
-        comparisonMode: input.comparisonMode,
+        comparisonMode: resolveComparisonMode(input),
         floatAbsoluteError: input.floatAbsoluteError ?? null,
         floatRelativeError: input.floatRelativeError ?? null,
         difficulty: input.difficulty ?? null,

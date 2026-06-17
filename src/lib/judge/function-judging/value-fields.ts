@@ -49,6 +49,17 @@ function intRangeErrorKey(array: boolean): string {
   return array ? "fnValueArrayIntOutOfRange" : "fnValueIntOutOfRange";
 }
 
+/**
+ * NaN/Infinity are out of scope for double judging (the worker's float
+ * comparator and the space-separated numeric contract assume finite values), so
+ * reject non-finite author-supplied doubles at the authoring boundary. A literal
+ * like `1e999` matches NUMBER_RE yet `Number()` overflows it to `Infinity`; this
+ * is the realistic vector (JSON.parse can also yield Infinity from such a token).
+ */
+function doubleNotFiniteErrorKey(array: boolean): string {
+  return array ? "fnValueArrayDoubleNotFinite" : "fnValueDoubleNotFinite";
+}
+
 type ScalarParse =
   | { ok: true; value: unknown }
   | { ok: false; errorKey?: string };
@@ -65,7 +76,9 @@ function parseScalar(raw: string, scalar: string): ScalarParse {
     }
     case "double": {
       if (!NUMBER_RE.test(trimmed)) return { ok: false };
-      return { ok: true, value: Number(trimmed) };
+      const value = Number(trimmed);
+      if (!Number.isFinite(value)) return { ok: false, errorKey: doubleNotFiniteErrorKey(false) };
+      return { ok: true, value };
     }
     case "bool": {
       const lowered = trimmed.toLowerCase();
@@ -92,6 +105,7 @@ function coerceJsonElement(el: unknown, scalar: string): ScalarParse {
     }
     case "double":
       if (typeof el !== "number") return { ok: false };
+      if (!Number.isFinite(el)) return { ok: false, errorKey: doubleNotFiniteErrorKey(true) };
       return { ok: true, value: el };
     case "bool":
       if (typeof el !== "boolean") return { ok: false };
@@ -158,11 +172,16 @@ export function parseFieldValue(raw: string, type: FunctionType): ParseResult {
   for (const part of parts) {
     const result = parseScalar(part, scalar);
     if (!result.ok) {
-      // Map a scalar out-of-range error onto its array variant.
-      const errorKey =
-        result.errorKey === intRangeErrorKey(false)
-          ? intRangeErrorKey(true)
-          : scalarErrorKey(scalar, true);
+      // Map a scalar-specific error (out-of-range int, non-finite double) onto
+      // its array variant; otherwise fall back to the generic array error.
+      let errorKey: string;
+      if (result.errorKey === intRangeErrorKey(false)) {
+        errorKey = intRangeErrorKey(true);
+      } else if (result.errorKey === doubleNotFiniteErrorKey(false)) {
+        errorKey = doubleNotFiniteErrorKey(true);
+      } else {
+        errorKey = scalarErrorKey(scalar, true);
+      }
       return { ok: false, errorKey };
     }
     out.push(result.value);

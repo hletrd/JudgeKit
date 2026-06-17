@@ -9,23 +9,22 @@ export const SUPPORTED_FUNCTION_TYPES = [
 export type FunctionType = (typeof SUPPORTED_FUNCTION_TYPES)[number];
 
 /**
- * Types an author may actually pick in v1. `double`/`double[]` are DEFERRED to
- * v1.1 because correct cross-language float judging needs a float comparison
- * mode plus space-separated numeric output: under the default `exact` mode the
- * TS serializer, C/Java/C# `%g`, and Go `json.Marshal` emit three different
- * texts for the same value, and the worker's float comparator can't tokenize a
- * JSON `[a,b]` array. The encoder + adapters keep their `double` mapping/printing
- * code intact so v1.1 can re-enable it; only authoring/validation excludes it.
+ * Types an author may pick. As of v1.1 every supported type — including
+ * `double`/`double[]` — is authorable. Correct cross-language float judging is
+ * achieved by (a) forcing `comparisonMode = "float"` at create/update when the
+ * RETURN type is double-valued (see problem-management) and (b) printing double
+ * returns as whitespace-separated numeric tokens (see serialization.ts +
+ * adapters), which the worker's whitespace-token float comparator tokenizes and
+ * compares within tolerance. Under that contract the per-language textual form
+ * (`0.5` vs `0.500000000`) need not byte-match.
  */
-export const AUTHORABLE_FUNCTION_TYPES = SUPPORTED_FUNCTION_TYPES.filter(
-  (t) => t !== "double" && t !== "double[]",
-) as readonly FunctionType[];
+export const AUTHORABLE_FUNCTION_TYPES = SUPPORTED_FUNCTION_TYPES as readonly FunctionType[];
 
 export function isFunctionType(value: string): value is FunctionType {
   return (SUPPORTED_FUNCTION_TYPES as readonly string[]).includes(value);
 }
 
-/** True only for types an author may pick in v1 (excludes deferred `double`). */
+/** True for any type an author may pick (every supported type as of v1.1). */
 export function isAuthorableFunctionType(value: string): value is FunctionType {
   return (AUTHORABLE_FUNCTION_TYPES as readonly string[]).includes(value);
 }
@@ -38,11 +37,11 @@ export function elementType(t: FunctionType): (typeof SCALAR_TYPES)[number] {
 }
 
 const IDENTIFIER = /^[A-Za-z_][A-Za-z0-9_]*$/;
-// Validation rejects `double`/`double[]` (deferred to v1.1) with a clear
-// message, while the encoder/adapters still understand them internally.
+// Validation accepts every authorable type (all supported scalars + 1-D arrays,
+// including `double`/`double[]` as of v1.1) and rejects anything else.
 const functionTypeSchema = z.string().refine(
   isAuthorableFunctionType,
-  "unsupported type (double/double[] are not yet supported)",
+  "unsupported function type",
 );
 
 export const functionSpecSchema = z.object({

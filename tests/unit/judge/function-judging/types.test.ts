@@ -35,24 +35,25 @@ describe("function-judging types", () => {
     expect(() => parseFunctionSpec({ functionName: "f", params: [], returnType: "int", enabledLanguages: ["python"] })).toThrow();
   });
 
-  it("excludes the deferred double / double[] types from the authorable set", () => {
-    expect(AUTHORABLE_FUNCTION_TYPES).not.toContain("double");
-    expect(AUTHORABLE_FUNCTION_TYPES).not.toContain("double[]");
-    // Everything else (scalars + 1-D arrays) stays authorable.
+  it("includes double / double[] in the authorable set (v1.1)", () => {
+    expect(AUTHORABLE_FUNCTION_TYPES).toContain("double");
+    expect(AUTHORABLE_FUNCTION_TYPES).toContain("double[]");
+    // Everything else (scalars + 1-D arrays) stays authorable too.
     expect(AUTHORABLE_FUNCTION_TYPES).toContain("int");
     expect(AUTHORABLE_FUNCTION_TYPES).toContain("string[]");
-    expect(AUTHORABLE_FUNCTION_TYPES).toHaveLength(SUPPORTED_FUNCTION_TYPES.length - 2);
+    // Now every supported type is authorable.
+    expect(AUTHORABLE_FUNCTION_TYPES).toHaveLength(SUPPORTED_FUNCTION_TYPES.length);
   });
 
-  it("rejects a spec with a double or double[] param/return (deferred to v1.1)", () => {
+  it("accepts a spec with a double or double[] param/return (v1.1)", () => {
     expect(() => parseFunctionSpec({
       functionName: "f", params: [{ name: "x", type: "double" }], returnType: "int", enabledLanguages: ["python"],
-    })).toThrow();
+    })).not.toThrow();
     expect(() => parseFunctionSpec({
       functionName: "f", params: [{ name: "x", type: "int" }], returnType: "double", enabledLanguages: ["python"],
-    })).toThrow();
+    })).not.toThrow();
     expect(() => parseFunctionSpec({
-      functionName: "f", params: [{ name: "x", type: "double[]" }], returnType: "int", enabledLanguages: ["python"],
-    })).toThrow();
+      functionName: "f", params: [{ name: "x", type: "double[]" }], returnType: "double[]", enabledLanguages: ["python"],
+    })).not.toThrow();
   });
 });

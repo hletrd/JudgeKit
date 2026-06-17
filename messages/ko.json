@@ -412,6 +412,8 @@
     "fnValueInvalidArrayString": "문자열 JSON 배열을 입력하세요. 예: [\"a,b\", \"c\"]",
     "fnValueIntOutOfRange": "정수는 ±9007199254740991(2^53 − 1) 범위 안이어야 해요.",
     "fnValueArrayIntOutOfRange": "각 정수는 ±9007199254740991(2^53 − 1) 범위 안이어야 해요.",
+    "fnValueDoubleNotFinite": "유한한 숫자를 입력하세요. (NaN, Infinity는 사용할 수 없어요.)",
+    "fnValueArrayDoubleNotFinite": "각 숫자는 유한해야 해요. (NaN, Infinity는 사용할 수 없어요.)",
     "fnBoolTrue": "true",
     "fnBoolFalse": "false",
     "fnReferenceTitle": "참조 풀이",

@@ -412,6 +412,8 @@
     "fnValueInvalidArrayString": "Enter a JSON array of strings, e.g. [\"a,b\", \"c\"].",
     "fnValueIntOutOfRange": "Whole numbers must be within ±9007199254740991 (2^53 − 1).",
     "fnValueArrayIntOutOfRange": "Each whole number must be within ±9007199254740991 (2^53 − 1).",
+    "fnValueDoubleNotFinite": "Enter a finite number (NaN and Infinity are not allowed).",
+    "fnValueArrayDoubleNotFinite": "Each number must be finite (NaN and Infinity are not allowed).",
     "fnBoolTrue": "true",
     "fnBoolFalse": "false",
     "fnReferenceTitle": "Reference Solution",
