@@ -528,6 +528,7 @@
       "assignmentProblemMismatch": "이 문제는 선택한 과제에 들어 있지 않아요.",
       "languageRequired": "언어를 선택하세요.",
       "languageNotSupported": "제출할 수 없는 언어예요.",
+      "languageNotEnabledForProblem": "이 문제에서는 사용할 수 없는 언어예요. 허용된 언어 중에서 선택해 주세요.",
       "sourceCodeRequired": "소스 코드를 입력하세요.",
       "sourceCodeTooLarge": "소스 코드가 크기 제한을 넘었어요.",
       "submissionRateLimited": "제출이 너무 빨라요. 잠시 후 다시 시도해 주세요.",

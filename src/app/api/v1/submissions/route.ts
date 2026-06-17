@@ -3,6 +3,8 @@ import { extractClientIp } from "@/lib/security/ip";
 import { db, execTransaction } from "@/lib/db";
 import { antiCheatEvents, examSessions, languageConfigs, problems, submissions } from "@/lib/db/schema";
 import { isJudgeLanguage } from "@/lib/judge/languages";
+import { parseFunctionSpec } from "@/lib/judge/function-judging/types";
+import { supportsFunctionJudging } from "@/lib/judge/function-judging/registry";
 import { and, desc, eq, lt, or, sql } from "drizzle-orm";
 import { recordAuditEvent } from "@/lib/audit/events";
 import { canAccessProblem } from "@/lib/auth/permissions";
@@ -221,7 +223,7 @@ export const POST = createApiHandler({
     // Fetch problem and language config in parallel
     const [[problem], [languageConfig]] = await Promise.all([
       db
-        .select({ id: problems.id, title: problems.title, problemType: problems.problemType, showCompileOutput: problems.showCompileOutput })
+        .select({ id: problems.id, title: problems.title, problemType: problems.problemType, showCompileOutput: problems.showCompileOutput, functionSpec: problems.functionSpec })
         .from(problems)
         .where(eq(problems.id, problemId))
         .limit(1),
@@ -241,6 +243,22 @@ export const POST = createApiHandler({
 
     if (!languageConfig) {
       return apiError("languageNotSupported", 400);
+    }
+
+    // Function-judging problems are restricted to the languages the author
+    // enabled in their functionSpec AND for which a harness adapter exists.
+    // Without this gate a registry-supported-but-not-enabled language (e.g.
+    // java on a python-only problem) would be accepted and judged, and a
+    // language with no adapter would fall through to a confusing verbatim-
+    // source failure (M1/M2).
+    if (problem.problemType === "function") {
+      const functionSpec = parseFunctionSpec(problem.functionSpec);
+      if (
+        !functionSpec.enabledLanguages.includes(language) ||
+        !supportsFunctionJudging(language)
+      ) {
+        return apiError("languageNotEnabledForProblem", 400);
+      }
     }
 
     if (!normalizedAssignmentId) {

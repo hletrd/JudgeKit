@@ -316,6 +316,158 @@ describe("POST /api/v1/submissions", () => {
     expect(payload.error).toBe("languageNotSupported");
   });
 
+  // ── M1/M2: enabledLanguages enforcement for function problems ───────────────
+  it("returns 400 with languageNotEnabledForProblem when the language is not in the function problem's enabledLanguages", async () => {
+    queueSelectResults([
+      [{
+        id: "problem-1",
+        title: "Two Sum",
+        problemType: "function",
+        showCompileOutput: true,
+        functionSpec: {
+          functionName: "twoSum",
+          params: [{ name: "x", type: "int" }],
+          returnType: "int",
+          enabledLanguages: ["python"],
+        },
+      }],
+      [{ id: "lc-1" }],
+    ]);
+    const { POST } = await import("@/app/api/v1/submissions/route");
+
+    const response = await POST(makeRequest({ ...VALID_BODY, language: "java" }));
+    const payload = await response.json();
+
+    expect(response.status).toBe(400);
+    expect(payload.error).toBe("languageNotEnabledForProblem");
+    // The submission must never be inserted when the language gate rejects it.
+    expect(dbInsertMock).not.toHaveBeenCalled();
+  });
+
+  it("returns 400 with languageNotEnabledForProblem when the language is enabled but lacks a function-judging adapter", async () => {
+    queueSelectResults([
+      [{
+        id: "problem-1",
+        title: "Two Sum",
+        problemType: "function",
+        showCompileOutput: true,
+        functionSpec: {
+          functionName: "twoSum",
+          params: [{ name: "x", type: "int" }],
+          returnType: "int",
+          // rust has no function-judging adapter, so even though listed it is gated.
+          enabledLanguages: ["python", "rust"],
+        },
+      }],
+      [{ id: "lc-1" }],
+    ]);
+    const { POST } = await import("@/app/api/v1/submissions/route");
+
+    const response = await POST(makeRequest({ ...VALID_BODY, language: "rust" }));
+    const payload = await response.json();
+
+    expect(response.status).toBe(400);
+    expect(payload.error).toBe("languageNotEnabledForProblem");
+    expect(dbInsertMock).not.toHaveBeenCalled();
+  });
+
+  it("passes the language gate for a function problem when the language is enabled and supported", async () => {
+    queueSelectResults([
+      [{
+        id: "problem-1",
+        title: "Two Sum",
+        problemType: "function",
+        showCompileOutput: true,
+        functionSpec: {
+          functionName: "twoSum",
+          params: [{ name: "x", type: "int" }],
+          returnType: "int",
+          enabledLanguages: ["python", "java"],
+        },
+      }],
+      [{ id: "lc-1" }],
+      [{ recentCount: 0, pendingCount: 0 }],
+      [{ count: 0 }],
+      [{
+        id: "submission-abc123",
+        userId: "user-1",
+        problemId: "problem-1",
+        assignmentId: null,
+        language: "python",
+        status: "pending",
+        compileOutput: null,
+        executionTimeMs: null,
+        memoryUsedKb: null,
+        score: null,
+        judgedAt: null,
+        submittedAt: new Date(),
+      }],
+      [{
+        id: "submission-abc123",
+        userId: "user-1",
+        problemId: "problem-1",
+        assignmentId: null,
+        language: "python",
+        status: "pending",
+        compileOutput: null,
+        executionTimeMs: null,
+        memoryUsedKb: null,
+        score: null,
+        judgedAt: null,
+        submittedAt: new Date(),
+      }],
+    ]);
+    const { POST } = await import("@/app/api/v1/submissions/route");
+
+    const response = await POST(makeRequest({ ...VALID_BODY, language: "python" }));
+
+    expect(response.status).toBe(201);
+    expect(dbInsertMock).toHaveBeenCalled();
+  });
+
+  it("does not gate languages for a non-function problem", async () => {
+    queueSelectResults([
+      // problemType "auto" — no functionSpec; the enabledLanguages gate must not apply.
+      [{ id: "problem-1", title: "Hello World", problemType: "auto", showCompileOutput: true, functionSpec: null }],
+      [{ id: "lc-1" }],
+      [{ recentCount: 0, pendingCount: 0 }],
+      [{ count: 0 }],
+      [{
+        id: "submission-abc123",
+        userId: "user-1",
+        problemId: "problem-1",
+        assignmentId: null,
+        language: "java",
+        status: "pending",
+        compileOutput: null,
+        executionTimeMs: null,
+        memoryUsedKb: null,
+        score: null,
+        judgedAt: null,
+        submittedAt: new Date(),
+      }],
+      [{
+        id: "submission-abc123",
+        userId: "user-1",
+        problemId: "problem-1",
+        assignmentId: null,
+        language: "java",
+        status: "pending",
+        compileOutput: null,
+        executionTimeMs: null,
+        memoryUsedKb: null,
+        score: null,
+        judgedAt: null,
+        submittedAt: new Date(),
+      }],
+    ]);
+    const { POST } = await import("@/app/api/v1/submissions/route");
+
+    const response = await POST(makeRequest({ ...VALID_BODY, language: "java" }));
+
+    expect(response.status).toBe(201);
+  });
+
   it("returns 403 when user does not have access to the problem", async () => {
     canAccessProblemMock.mockResolvedValue(false);
     const { POST } = await import("@/app/api/v1/submissions/route");

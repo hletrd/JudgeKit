@@ -528,6 +528,7 @@
       "assignmentProblemMismatch": "This problem is not part of the selected assignment.",
       "languageRequired": "Please select a language.",
       "languageNotSupported": "This language is not available for submissions.",
+      "languageNotEnabledForProblem": "This language is not enabled for this problem. Choose one of the allowed languages.",
       "sourceCodeRequired": "Please enter your source code.",
       "sourceCodeTooLarge": "Your source code exceeds the allowed size limit.",
       "submissionRateLimited": "You are submitting too quickly. Please wait a moment before trying again.",
