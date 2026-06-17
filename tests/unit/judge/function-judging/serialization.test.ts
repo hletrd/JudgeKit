@@ -11,10 +11,33 @@ describe("function-judging serialization", () => {
     expect(encodeValue([2, 7, 11], "int[]")).toBe("[2,7,11]");
     expect(encodeValue(["x", "y"], "string[]")).toBe('["x","y"]');
   });
+
+  // double / double[] returns are printed as whitespace-separated numeric
+  // tokens (NOT JSON) so the worker's whitespace-token float comparator can
+  // tokenize them. A scalar is one token; an array is space-separated tokens.
+  it("encodes a double scalar as a single numeric token (no brackets)", () => {
+    expect(encodeValue(0.5, "double")).toBe("0.5");
+    expect(encodeValue(-3, "double")).toBe("-3");
+    expect(encodeValue(7, "double")).toBe("7");
+  });
+  it("encodes a double[] as space-separated tokens (no brackets/commas)", () => {
+    expect(encodeValue([0.5, 0.25, -3], "double[]")).toBe("0.5 0.25 -3");
+    expect(encodeValue([], "double[]")).toBe("");
+    expect(encodeValue([1e-7], "double[]")).toBe("1e-7");
+  });
   it("encodes an argument vector as one JSON line", () => {
     expect(encodeArgs([[2, 7, 11, 15], 9], [
       { name: "nums", type: "int[]" }, { name: "target", type: "int" },
     ])).toBe("[[2,7,11,15],9]");
+  });
+
+  // PARAMS (stdin) stay canonical JSON for every type INCLUDING double — only
+  // the RETURN print format changes for double. The harnesses read params as
+  // JSON numbers exactly as before.
+  it("encodes double params as JSON numbers on the stdin line", () => {
+    expect(encodeArgs([0.5, [0.25, -3]], [
+      { name: "x", type: "double" }, { name: "ys", type: "double[]" },
+    ])).toBe("[0.5,[0.25,-3]]");
   });
   it("round-trips through decode", () => {
     expect(decodeValue("[1,2,3]", "int[]")).toEqual([1, 2, 3]);

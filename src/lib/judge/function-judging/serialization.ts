@@ -11,11 +11,37 @@ function encodeScalar(v: unknown, t: string): string {
   }
 }
 
-export function encodeValue(v: unknown, t: FunctionType): string {
+/** Canonical JSON form of a value used for stdin args (every type, incl. double). */
+function encodeJson(v: unknown, t: FunctionType): string {
   if (!isArrayType(t)) return encodeScalar(v, t);
   const el = elementType(t);
   const items = (v as unknown[]).map((x) => encodeScalar(x, el));
   return `[${items.join(",")}]`;
+}
+
+/**
+ * Encode the canonical RETURN representation stored as a test case's
+ * `expectedOutput` (and what each adapter's harness must print byte-equivalently
+ * under its comparison mode).
+ *
+ * FLOAT / SPACE-SEPARATED CONTRACT for double returns: a `double` scalar return
+ * is a SINGLE numeric token (e.g. `0.5`) and a `double[]` return is
+ * SPACE-SEPARATED numeric tokens (e.g. `0.5 0.25 -3`) — never JSON `[a,b]`. The
+ * worker's `compare_float_output` splits expected/actual on whitespace into
+ * tokens, requires equal token counts, and compares each token as f64 within
+ * tolerance, so a JSON array (one unparseable token) cannot be judged. Because
+ * comparison is float-tolerant, the exact textual form per language need NOT
+ * byte-match — only the token COUNT and each token's parsed f64 value must agree.
+ *
+ * Every NON-double type (int/long/bool/string + their arrays) keeps the
+ * canonical JSON form and is judged with exact comparison.
+ */
+export function encodeValue(v: unknown, t: FunctionType): string {
+  if (t === "double") return encodeScalar(v, "double");
+  if (t === "double[]") {
+    return (v as unknown[]).map((x) => encodeScalar(x, "double")).join(" ");
+  }
+  return encodeJson(v, t);
 }
 
 /**
@@ -32,7 +58,11 @@ export function encodeValue(v: unknown, t: FunctionType): string {
  * adapter at judge time.
  */
 export function encodeArgs(args: unknown[], params: { name: string; type: FunctionType }[]): string {
-  const encoded = `[${params.map((p, i) => encodeValue(args[i], p.type)).join(",")}]`;
+  // STDIN args are always canonical JSON for EVERY type, including double — only
+  // the RETURN print format diverges for double (see encodeValue). Using
+  // encodeJson (not encodeValue) keeps double params as JSON numbers the
+  // harnesses parse exactly as before.
+  const encoded = `[${params.map((p, i) => encodeJson(args[i], p.type)).join(",")}]`;
   if (encoded.includes("\n") || encoded.includes("\r")) {
     throw new Error(
       "encodeArgs produced a multi-line value, violating the single-line stdin contract",
