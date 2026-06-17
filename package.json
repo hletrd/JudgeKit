@@ -24,6 +24,7 @@
     "languages:sync": "tsx scripts/sync-language-configs.ts",
     "test:integration": "vitest run --config vitest.config.integration.ts",
     "test:component": "vitest run --config vitest.config.component.ts",
+    "test:harness": "vitest run --config vitest.config.harness.ts",
     "test:e2e": "playwright test"
   },
   "dependencies": {
