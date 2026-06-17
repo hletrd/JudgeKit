@@ -77,11 +77,13 @@ describe("security constants", () => {
       expect(isSubmissionStatus("pending")).toBe(true);
       expect(isSubmissionStatus("accepted")).toBe(true);
       expect(isSubmissionStatus("wrong_answer")).toBe(true);
-      expect(isSubmissionStatus("time_limit")).toBe(true);
-      expect(isSubmissionStatus("memory_limit")).toBe(true);
+      expect(isSubmissionStatus("time_limit_exceeded")).toBe(true);
+      expect(isSubmissionStatus("memory_limit_exceeded")).toBe(true);
       expect(isSubmissionStatus("runtime_error")).toBe(true);
       expect(isSubmissionStatus("compile_error")).toBe(true);
-      expect(isSubmissionStatus("submitted")).toBe(true);
+      expect(isSubmissionStatus("output_limit_exceeded")).toBe(true);
+      expect(isSubmissionStatus("internal_error")).toBe(true);
+      expect(isSubmissionStatus("cancelled")).toBe(true);
     });
 
     it("returns false for invalid statuses", () => {
@@ -159,11 +161,13 @@ describe("security constants", () => {
         "judging",
         "accepted",
         "wrong_answer",
-        "time_limit",
-        "memory_limit",
-        "runtime_error",
         "compile_error",
-        "submitted",
+        "runtime_error",
+        "time_limit_exceeded",
+        "memory_limit_exceeded",
+        "output_limit_exceeded",
+        "internal_error",
+        "cancelled",
       ]);
     });
   });

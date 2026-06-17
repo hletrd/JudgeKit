@@ -55,6 +55,9 @@ const statusLabels = {
   memory_limit: "Memory limit",
   runtime_error: "Runtime error",
   compile_error: "Compile error",
+  output_limit_exceeded: "Output limit exceeded",
+  internal_error: "Internal error",
+  cancelled: "Cancelled",
 } as const;
 
 function createRow(overrides: Partial<AssignmentStudentStatusRow>): AssignmentStudentStatusRow {

@@ -13,11 +13,11 @@ import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/comp
 import { type AssignmentStudentStatusRow } from "@/lib/assignments/submissions";
 import {
   getAssignmentParticipantStatus,
+  toParticipantStatus,
   type AssignmentParticipantStatus,
 } from "@/lib/assignments/participant-status";
 import { formatDateTimeInTimeZone } from "@/lib/datetime";
 import { formatSubmissionIdPrefix } from "@/lib/submissions/format";
-import type { SubmissionStatus } from "@/types";
 import { ScoreOverrideDialog, type ScoreOverrideLabels } from "./score-override-dialog";
 import { ExamExtendDialog } from "./exam-extend-dialog";
 
@@ -253,7 +253,7 @@ function MobileStudentCard({
                         {problemRow.latestStatus ? (
                           <SubmissionStatusBadge
                             className="text-xs"
-                            label={statusLabels[problemRow.latestStatus as SubmissionStatus]}
+                            label={problemRow.latestStatus ? statusLabels[toParticipantStatus(problemRow.latestStatus)] : statusLabels.not_submitted}
                             status={problemRow.latestStatus}
                             locale={locale}
                           />
@@ -527,7 +527,7 @@ export function StatusBoard({
                               {problem.latestStatus ? (
                                 <SubmissionStatusBadge
                                   className="text-xs"
-                                  label={statusLabels[problem.latestStatus as SubmissionStatus]}
+                                  label={problem.latestStatus ? statusLabels[toParticipantStatus(problem.latestStatus)] : statusLabels.not_submitted}
                                   status={problem.latestStatus}
                                   locale={locale}
                                 />

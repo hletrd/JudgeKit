@@ -14,6 +14,9 @@ export const ASSIGNMENT_PARTICIPANT_STATUS_VALUES = [
   "memory_limit",
   "runtime_error",
   "compile_error",
+  "output_limit_exceeded",
+  "internal_error",
+  "cancelled",
 ] as const;
 
 export type AssignmentParticipantStatus = (typeof ASSIGNMENT_PARTICIPANT_STATUS_VALUES)[number];
@@ -36,6 +39,21 @@ function toTimestamp(value: Date | string | null | undefined): number | null {
 
   const timestamp = value instanceof Date ? value.getTime() : new Date(value).getTime();
   return Number.isFinite(timestamp) ? timestamp : null;
+}
+
+/**
+ * Map canonical database submission status names to UI participant status names.
+ * The UI uses shorter names for display (e.g., "time_limit" instead of "time_limit_exceeded").
+ */
+export function toParticipantStatus(status: SubmissionStatus): AssignmentParticipantStatus {
+  switch (status) {
+    case "time_limit_exceeded":
+      return "time_limit";
+    case "memory_limit_exceeded":
+      return "memory_limit";
+    default:
+      return status as AssignmentParticipantStatus;
+  }
 }
 
 /**
@@ -79,7 +97,7 @@ export function getAssignmentParticipantStatus({
   examSessionPersonalDeadline,
   now,
 }: AssignmentParticipantStatusParams): AssignmentParticipantStatus {
-  if (isActiveSubmissionStatus(latestStatus) || latestStatus === "submitted") {
+  if (isActiveSubmissionStatus(latestStatus)) {
     return latestStatus as AssignmentParticipantStatus;
   }
 
@@ -108,5 +126,5 @@ export function getAssignmentParticipantStatus({
     return "submitted";
   }
 
-  return latestStatus;
+  return toParticipantStatus(latestStatus);
 }
