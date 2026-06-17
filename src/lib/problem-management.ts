@@ -1,5 +1,6 @@
 import { asc, eq, inArray } from "drizzle-orm";
 import { nanoid } from "nanoid";
+import { createHash } from "node:crypto";
 import { db, execTransaction, type TransactionClient } from "@/lib/db";
 import { problems, testCases, tags, problemTags, files } from "@/lib/db/schema";
 import { extractLinkedFileIds } from "@/lib/files/problem-links";
@@ -32,6 +33,23 @@ type PlannedTestCaseRow = ProblemMutationInput["testCases"][number] & {
   problemId: string;
   sortOrder: number;
 };
+
+/** Fast, collision-resistant signature for test-case deduplication.
+ *  Replaces JSON.stringify so large cases don't allocate huge intermediate
+ *  strings on every problem update. */
+function testCaseSignature(
+  input: string,
+  expectedOutput: string,
+  isVisible: boolean,
+): string {
+  const hash = createHash("sha256");
+  hash.update(input);
+  hash.update("\0");
+  hash.update(expectedOutput);
+  hash.update("\0");
+  hash.update(isVisible ? "1" : "0");
+  return hash.digest("hex");
+}
 
 /**
  * Sparse test case patch coming from the client during problem edit. The
@@ -83,22 +101,22 @@ export function planProblemTestCaseSync(
   const inserts: PlannedTestCaseRow[] = [];
 
   for (const existing of existingCases) {
-    const signature = JSON.stringify([
+    const signature = testCaseSignature(
       existing.input,
       existing.expectedOutput,
       Boolean(existing.isVisible),
-    ]);
+    );
     const bucket = existingBySignature.get(signature) ?? [];
     bucket.push(existing);
     existingBySignature.set(signature, bucket);
   }
 
   for (const [index, testCase] of nextCases.entries()) {
-    const signature = JSON.stringify([
+    const signature = testCaseSignature(
       testCase.input,
       testCase.expectedOutput,
       Boolean(testCase.isVisible),
-    ]);
+    );
     const bucket = existingBySignature.get(signature) ?? [];
     const match = bucket.find((existing) => !matchedIds.has(existing.id));
 
