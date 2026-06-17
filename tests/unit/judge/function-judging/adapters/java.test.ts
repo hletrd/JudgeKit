@@ -55,4 +55,15 @@ describe("java adapter", () => {
     );
     expect(source).toBe(golden);
   });
+
+  // L1 (defense-in-depth): every String.format in the harness must pass
+  // Locale.ROOT, so a comma-decimal JVM locale cannot emit "0,5" for a double
+  // (which the worker's whitespace-token float comparator cannot parse).
+  it("passes Locale.ROOT to every String.format in the assembled harness", () => {
+    const { source } = javaAdapter.assemble(spec, CORRECT_TWO_SUM);
+    // The double writer must be locale-independent.
+    expect(source).toContain('String.format(java.util.Locale.ROOT, "%.10g", v)');
+    // No String.format may be called without an explicit Locale first arg.
+    expect(source).not.toMatch(/String\.format\(\s*"/);
+  });
 });

@@ -134,7 +134,7 @@ final class __FnJudge {
     }
 
     static void write(StringBuilder o, long v) { o.append(v); }
-    static void write(StringBuilder o, double v) { o.append(String.format("%.10g", v)); }
+    static void write(StringBuilder o, double v) { o.append(String.format(java.util.Locale.ROOT, "%.10g", v)); }
     static void write(StringBuilder o, boolean v) { o.append(v ? "true" : "false"); }
     static void write(StringBuilder o, String v) {
         // Canonical JSON.stringify (ECMA-404) escaping: named short escapes for
@@ -156,7 +156,7 @@ final class __FnJudge {
                 case '\r': o.append("\\r"); break;
                 default:
                     if (c < 0x20) {
-                        o.append(String.format("\\u%04x", (int) c));
+                        o.append(String.format(java.util.Locale.ROOT, "\\u%04x", (int) c));
                     } else {
                         o.append(c);
                     }
