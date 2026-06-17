@@ -458,6 +458,37 @@ Every new feature MUST have tests across all applicable layers:
 | **API / Mock** | Vitest | `tests/unit/api/` | Route handlers with mocked DB/auth, mock external deps | When API routes are added/changed |
 | **Integration** | Vitest | `tests/integration/` | Cross-module interactions, real DB queries | When DB logic is complex |
 | **E2E** | Playwright | `tests/e2e/` | Full user flows through the browser UI | Always for user-facing features |
+| **Harness smoke** | Vitest (`vitest.config.harness.ts`) | `tests/harness/` | Compile+run each function-judging adapter's harness and assert byte-identical output to `serialization.ts` `encodeValue` | When a function-judging adapter (`src/lib/judge/function-judging/adapters/*`) or `serialization.ts` changes |
+
+### Function-Judging Harness Smoke Layer
+
+The adapter unit tests (`tests/unit/judge/function-judging/adapters/*.test.ts`)
+only diff the GENERATED harness source against committed goldens — they never
+compile or run it. That blind spot let two real bugs ship (the Java harness
+never compiled due to a stray `\u` in a comment; C# mangled non-ASCII under the
+POSIX locale). The harness smoke layer closes that gap by ACTUALLY compiling and
+running every language's assembled harness and asserting its stdout is
+byte-identical to the canonical `encodeValue`.
+
+```bash
+# Run the compile+run smoke layer (separate from the fast unit run).
+npm run test:harness
+```
+
+- **When to run:** after any change to a function-judging adapter, the shared
+  `serialization.ts`, or the adapter `types.ts`. It is intentionally kept out of
+  `npm run test:unit` because it spawns real compilers (g++/clang++, javac, go,
+  tsc) and a Docker container (Mono 6.12 for C#).
+- **Toolchain-gated:** each language is skipped (never failed) when its
+  toolchain is absent. To exercise a language locally you need its toolchain:
+  `python3`, `node`, repo-local or global `tsc`, `go`, a C++23 `g++`/`clang++`
+  (macOS Apple clang is fine — the runner injects a `bits/stdc++.h` shim), a
+  JDK **>= 25** (`javac --release 25`; Homebrew `openjdk@25` is auto-detected),
+  and for C# `docker` plus a locally cached `mono:6.12` image
+  (`docker pull mono:6.12`). Languages whose toolchain is missing report SKIPPED
+  with a clear reason.
+- **CI:** wired into the `quality` job (`.github/workflows/ci.yml`) as a
+  best-effort step; missing toolchains skip, so it cannot break CI.
 
 ### Per-Feature Test Checklist
 

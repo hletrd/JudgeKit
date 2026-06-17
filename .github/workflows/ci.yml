@@ -101,6 +101,18 @@ jobs:
       - name: Run integration tests
         run: npm run test:integration
 
+      - name: Run function-judging harness smoke tests
+        # Compile+run smoke layer for the function-judging adapters: actually
+        # builds and runs each language's assembled harness and asserts stdout
+        # is byte-identical to the canonical serialization.ts encodeValue. This
+        # catches the class of bug that golden-diff unit tests cannot (e.g. a
+        # harness that never compiles, or mangles non-ASCII output). Every
+        # language is TOOLCHAIN-GATED: missing compilers/runtimes SKIP, never
+        # fail, so this step is best-effort and cannot break CI. ubuntu-latest
+        # ships node/python3/g++/go and a JDK, so those run here; C# (Mono via
+        # Docker) skips unless the mono:6.12 image is cached on the runner.
+        run: npm run test:harness
+
       - name: Run judge worker tests
         run: cargo test --quiet --manifest-path judge-worker-rs/Cargo.toml
 
