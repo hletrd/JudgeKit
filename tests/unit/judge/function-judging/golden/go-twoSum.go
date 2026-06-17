@@ -4,6 +4,7 @@ import (
 	"bufio"
 	"encoding/json"
 	"fmt"
+	"io"
 	"math"
 	"os"
 	"sort"
@@ -39,7 +40,11 @@ func twoSum(nums []int64, target int64) []int64 {
 
 func main() {
 	__reader := bufio.NewReader(os.Stdin)
-	__line, _ := __reader.ReadString('\n')
+	__line, __err := __reader.ReadString('\n')
+	if __err != nil && __err != io.EOF {
+		fmt.Fprintln(os.Stderr, "read error:", __err)
+		os.Exit(1)
+	}
 	var __raw []json.RawMessage
 	__decode(json.RawMessage(__line), &__raw)
 	var nums []int64
