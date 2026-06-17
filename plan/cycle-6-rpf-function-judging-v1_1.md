@@ -114,3 +114,16 @@ None this cycle. D1 from cycle 5 is now P1 (active) because double is authorable
 ## PROGRESS
 - 2026-06-18: Fresh review (7 new findings). Plan created. P1-P7 scheduled for
   implementation in PROMPT 3.
+- 2026-06-18: P1 DONE — C++ locale fix (`std::setlocale(LC_ALL, "C")` in main).
+  Commit: `c15b57f0`.
+- 2026-06-18: P5 DONE — Extracted `resolveComparisonMode` + `isFloatComparedReturn`
+  to `src/lib/judge/function-judging/comparison.ts`. Commit: `1b2fdf7d`.
+- 2026-06-18: P7 DONE — Go adapter error handling (`io.EOF` check). Commit: `e43b582c`.
+- 2026-06-18: P4 DONE — Added `decodeFieldValue` and `isFloatComparedReturn` unit
+  tests. Updated golden fixtures for C++ and Go. Commits: `fd7a2e26`, `beb24bf6`.
+- 2026-06-18: P6 VERIFIED — Server-side validator already enforces
+  `z.number().min(0).max(1)` for both tolerance fields. No change needed.
+- 2026-06-18: P2 VERIFIED — `executeCompilerRun` already enforces `MAX_OUTPUT_BYTES`
+  (128 MiB) via `runDocker`. No change needed.
+- 2026-06-18: P3 DONE — Replaced `JSON.stringify` with `crypto.createHash('sha256')`
+  in `planProblemTestCaseSync`. Commit: `d190dbc2`.
