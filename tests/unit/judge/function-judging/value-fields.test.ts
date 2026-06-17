@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { encodeValue } from "@/lib/judge/function-judging/serialization";
-import { parseFieldValue, formatValue } from "@/lib/judge/function-judging/value-fields";
+import { parseFieldValue, formatValue, decodeFieldValue } from "@/lib/judge/function-judging/value-fields";
+import { isFloatComparedReturn } from "@/lib/judge/function-judging/comparison";
 
 describe("value-fields parseFieldValue", () => {
   describe("int/long safe-integer guard (H2)", () => {
@@ -125,5 +126,53 @@ describe("value-fields parseFieldValue", () => {
       expect(r.ok).toBe(false);
       if (!r.ok) expect(r.errorKey).toBe("fnValueArrayDoubleNotFinite");
     });
+  });
+});
+
+describe("decodeFieldValue", () => {
+  it("decodes an empty string to an empty double[]", () => {
+    expect(decodeFieldValue("", "double[]")).toEqual([]);
+  });
+
+  it("decodes a single double token", () => {
+    expect(decodeFieldValue("0.5", "double[]")).toEqual([0.5]);
+  });
+
+  it("decodes multiple space-separated tokens", () => {
+    expect(decodeFieldValue("0.5 0.25 -3", "double[]")).toEqual([0.5, 0.25, -3]);
+  });
+
+  it("handles varying whitespace between tokens", () => {
+    expect(decodeFieldValue("0.5   0.25\t-3", "double[]")).toEqual([0.5, 0.25, -3]);
+  });
+
+  it("trims leading and trailing whitespace", () => {
+    expect(decodeFieldValue("  0.5 0.25  ", "double[]")).toEqual([0.5, 0.25]);
+  });
+
+  it("throws on a non-finite token", () => {
+    expect(() => decodeFieldValue("0.5 abc 3", "double[]")).toThrow();
+  });
+
+  it("passes through non-double types to decodeValue", () => {
+    expect(decodeFieldValue("42", "int")).toBe(42);
+    expect(decodeFieldValue('"hello"', "string")).toBe("hello");
+    expect(decodeFieldValue("true", "bool")).toBe(true);
+  });
+});
+
+describe("isFloatComparedReturn", () => {
+  it("returns true for double scalar", () => {
+    expect(isFloatComparedReturn("double")).toBe(true);
+  });
+
+  it("returns true for double[]", () => {
+    expect(isFloatComparedReturn("double[]")).toBe(true);
+  });
+
+  it("returns false for non-double types", () => {
+    expect(isFloatComparedReturn("int")).toBe(false);
+    expect(isFloatComparedReturn("string[]")).toBe(false);
+    expect(isFloatComparedReturn("bool")).toBe(false);
   });
 });
