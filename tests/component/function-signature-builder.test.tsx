@@ -9,12 +9,27 @@ vi.mock("next-intl", () => ({
     vars ? `${key}:${JSON.stringify(vars)}` : key,
 }));
 
-function Harness({ initial }: { initial: FunctionSpec }) {
+function Harness({ initial, withTolerances }: { initial: FunctionSpec; withTolerances?: boolean }) {
   const [spec, setSpec] = useState<FunctionSpec>(initial);
+  const [abs, setAbs] = useState("");
+  const [rel, setRel] = useState("");
   return (
     <>
-      <FunctionSignatureBuilder value={spec} onChange={setSpec} />
+      <FunctionSignatureBuilder
+        value={spec}
+        onChange={setSpec}
+        {...(withTolerances
+          ? {
+              floatAbsoluteError: abs,
+              floatRelativeError: rel,
+              onFloatAbsoluteErrorChange: setAbs,
+              onFloatRelativeErrorChange: setRel,
+            }
+          : {})}
+      />
       <output data-testid="spec">{JSON.stringify(spec)}</output>
+      <output data-testid="abs">{abs}</output>
+      <output data-testid="rel">{rel}</output>
     </>
   );
 }
@@ -83,5 +98,55 @@ describe("FunctionSignatureBuilder", () => {
   it("flags an invalid function-name identifier", () => {
     render(<Harness initial={{ ...baseSpec, functionName: "2bad" }} />);
     expect(screen.getByText("fnNameInvalid")).toBeInTheDocument();
+  });
+
+  it("offers double and double[] in the parameter and return type selects", () => {
+    render(<Harness initial={baseSpec} />);
+
+    const returnSelect = screen.getByLabelText("fnReturnTypeLabel") as HTMLSelectElement;
+    const returnOptions = Array.from(returnSelect.options).map((o) => o.value);
+    expect(returnOptions).toContain("double");
+    expect(returnOptions).toContain("double[]");
+
+    const paramSelect = screen.getByLabelText('fnParamTypeLabel:{"number":1}') as HTMLSelectElement;
+    const paramOptions = Array.from(paramSelect.options).map((o) => o.value);
+    expect(paramOptions).toContain("double");
+    expect(paramOptions).toContain("double[]");
+
+    // Selecting a double return is accepted by the spec.
+    fireEvent.change(returnSelect, { target: { value: "double[]" } });
+    expect(currentSpec().returnType).toBe("double[]");
+  });
+
+  it("surfaces the float-comparison note + tolerance inputs only for a double return", () => {
+    render(<Harness initial={baseSpec} withTolerances />);
+
+    // Non-double return: no float note / tolerance inputs.
+    expect(screen.queryByText("fnReturnFloatNote")).not.toBeInTheDocument();
+    expect(screen.queryByLabelText("fnFloatAbsoluteErrorLabel")).not.toBeInTheDocument();
+
+    // Switch the return type to double -> note + abs/rel tolerance inputs appear.
+    fireEvent.change(screen.getByLabelText("fnReturnTypeLabel"), { target: { value: "double" } });
+    expect(screen.getByText("fnReturnFloatNote")).toBeInTheDocument();
+
+    const abs = screen.getByLabelText("fnFloatAbsoluteErrorLabel") as HTMLInputElement;
+    const rel = screen.getByLabelText("fnFloatRelativeErrorLabel") as HTMLInputElement;
+    expect(abs.placeholder).toBe("1e-9");
+    expect(rel.placeholder).toBe("1e-9");
+
+    fireEvent.change(abs, { target: { value: "1e-3" } });
+    fireEvent.change(rel, { target: { value: "1e-4" } });
+    expect(screen.getByTestId("abs").textContent).toBe("1e-3");
+    expect(screen.getByTestId("rel").textContent).toBe("1e-4");
+
+    // double[] also surfaces the float note.
+    fireEvent.change(screen.getByLabelText("fnReturnTypeLabel"), { target: { value: "double[]" } });
+    expect(screen.getByText("fnReturnFloatNote")).toBeInTheDocument();
+  });
+
+  it("shows the float note without tolerance inputs when no tolerance handlers are bound", () => {
+    render(<Harness initial={{ ...baseSpec, returnType: "double" }} />);
+    expect(screen.getByText("fnReturnFloatNote")).toBeInTheDocument();
+    expect(screen.queryByLabelText("fnFloatAbsoluteErrorLabel")).not.toBeInTheDocument();
   });
 });

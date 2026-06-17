@@ -72,6 +72,131 @@ describe("FunctionTestCaseEditor", () => {
     expect(screen.getByText("fnValueInvalidInt")).toBeInTheDocument();
   });
 
+  it("round-trips a double[] expected return through encodeValue (space-separated)", () => {
+    const doubleParams: { name: string; type: FunctionType }[] = [{ name: "xs", type: "double[]" }];
+    function DoubleHarness() {
+      const [cases, setCases] = useState<ProblemTestCaseDraft[]>(
+        createInitialProblemTestCaseDrafts([{ input: "", expectedOutput: "", isVisible: false }]),
+      );
+      return (
+        <>
+          <FunctionTestCaseEditor
+            params={doubleParams}
+            returnType="double[]"
+            testCases={cases}
+            onChange={setCases}
+          />
+          <output data-testid="cases">{JSON.stringify(cases)}</output>
+        </>
+      );
+    }
+    render(<DoubleHarness />);
+
+    fireEvent.change(screen.getByLabelText(/xs/), { target: { value: "0.5, 0.25, -3" } });
+    fireEvent.change(screen.getByLabelText(/fnExpectedReturnLabel/), { target: { value: "0.5, 0.25, -3" } });
+
+    const [c] = currentCases();
+    // double[] returns serialize as whitespace-separated numeric tokens (the
+    // cross-language float-comparison contract), never JSON brackets/commas.
+    expect(c.expectedOutput).toBe("0.5 0.25 -3");
+    // double[] args remain canonical JSON on stdin.
+    expect(c.input).toBe("[[0.5,0.25,-3]]");
+  });
+
+  it("rejects a non-finite double[] expected value inline", () => {
+    function DoubleHarness() {
+      const [cases, setCases] = useState<ProblemTestCaseDraft[]>(
+        createInitialProblemTestCaseDrafts([{ input: "", expectedOutput: "", isVisible: false }]),
+      );
+      return (
+        <FunctionTestCaseEditor
+          params={[{ name: "xs", type: "double[]" }]}
+          returnType="double[]"
+          testCases={cases}
+          onChange={setCases}
+        />
+      );
+    }
+    render(<DoubleHarness />);
+
+    // 1e999 parses then overflows to Infinity -> the non-finite array error key.
+    fireEvent.change(screen.getByLabelText(/fnExpectedReturnLabel/), { target: { value: "0.5, 1e999" } });
+    expect(screen.getByText("fnValueArrayDoubleNotFinite")).toBeInTheDocument();
+  });
+
+  it("rejects a non-finite scalar double expected value inline", () => {
+    function DoubleHarness() {
+      const [cases, setCases] = useState<ProblemTestCaseDraft[]>(
+        createInitialProblemTestCaseDrafts([{ input: "", expectedOutput: "", isVisible: false }]),
+      );
+      return (
+        <FunctionTestCaseEditor
+          params={[{ name: "x", type: "double" }]}
+          returnType="double"
+          testCases={cases}
+          onChange={setCases}
+        />
+      );
+    }
+    render(<DoubleHarness />);
+
+    fireEvent.change(screen.getByLabelText(/fnExpectedReturnLabel/), { target: { value: "1e999" } });
+    expect(screen.getByText("fnValueDoubleNotFinite")).toBeInTheDocument();
+  });
+
+  it("hydrates a stored space-separated double[] expected return into the field", () => {
+    // Stored expectedOutput uses the float/space-separated contract (not JSON);
+    // editing an existing double[] problem must populate the return field.
+    const initial = createInitialProblemTestCaseDrafts([
+      { input: "[[0.5,0.25]]", expectedOutput: "0.5 0.25 -3", isVisible: false },
+    ]);
+    function DoubleHarness() {
+      const [cases, setCases] = useState<ProblemTestCaseDraft[]>(initial);
+      return (
+        <FunctionTestCaseEditor
+          params={[{ name: "xs", type: "double[]" }]}
+          returnType="double[]"
+          testCases={cases}
+          onChange={setCases}
+        />
+      );
+    }
+    render(<DoubleHarness />);
+    expect((screen.getByLabelText(/fnExpectedReturnLabel/) as HTMLInputElement).value).toBe("0.5, 0.25, -3");
+  });
+
+  it("re-hydrates a double[] return field when expectedOutputsVersion bumps", () => {
+    function VersionHarness() {
+      const [cases, setCases] = useState<ProblemTestCaseDraft[]>(
+        createInitialProblemTestCaseDrafts([{ input: "[[1.0]]", expectedOutput: "", isVisible: false }]),
+      );
+      const [version, setVersion] = useState(0);
+      return (
+        <>
+          <button
+            type="button"
+            onClick={() => {
+              setCases((cur) => cur.map((c) => ({ ...c, expectedOutput: "0.5 0.25" })));
+              setVersion((v) => v + 1);
+            }}
+          >
+            compute
+          </button>
+          <FunctionTestCaseEditor
+            params={[{ name: "xs", type: "double[]" }]}
+            returnType="double[]"
+            testCases={cases}
+            onChange={setCases}
+            expectedOutputsVersion={version}
+          />
+        </>
+      );
+    }
+    render(<VersionHarness />);
+    fireEvent.click(screen.getByRole("button", { name: "compute" }));
+    expect((screen.getByLabelText(/fnExpectedReturnLabel/) as HTMLInputElement).value).toBe("0.5, 0.25");
+  });
+
   it("re-hydrates the return field when expectedOutputsVersion bumps", () => {
     const initial = createInitialProblemTestCaseDrafts([
       { input: "[[1,2],3]", expectedOutput: "", isVisible: false },
