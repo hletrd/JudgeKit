@@ -22,14 +22,53 @@ import { exec, makeCppStdcShim, makeTempDir, writeSource } from "./support/run";
  * compiled (a stray `\u` in a comment tripped javac's unicode-escape lexer) and
  * C# mangled non-ASCII output under the POSIX locale. This suite closes the gap
  * by ACTUALLY compiling + running each language's assembled harness and
- * asserting its stdout is byte-identical to the canonical `encodeValue`.
+ * asserting its stdout matches the canonical `encodeValue` — byte-identical for
+ * exact (non-double) returns, or within float-token tolerance for
+ * `double`/`double[]` returns (where per-language textual forms legitimately
+ * diverge but the parsed f64 values must agree, exactly as the worker judges).
  *
  * Every language is toolchain-gated via `describe.skipIf`: if the compiler /
  * runtime is missing, that language SKIPS (never FAILS). The suite therefore
  * passes cleanly with only a subset of toolchains present.
  */
 
-/** Run one assembled harness binary/script and assert byte-identical stdout. */
+/**
+ * Assert the program stdout matches `encodeValue` with FLOAT tolerance.
+ *
+ * The worker's `compare_float_output` splits both sides on whitespace into
+ * tokens, requires equal token counts, and compares each token as f64 within
+ * abs OR rel tolerance (default 1e-9). We replicate exactly that here, so a
+ * `double`/`double[]` return whose per-language textual form diverges (`0.5` vs
+ * `0.500000000`, `1e-7` vs `1.0000000000e-07`) still passes as long as the
+ * parsed values agree — but a wrong token count or an out-of-tolerance value
+ * (a real adapter bug) FAILS.
+ */
+const FLOAT_TOL = 1e-9;
+function assertFloatTokensEqual(actual: string, expected: string, label: string): void {
+  const actualTokens = actual.trim() === "" ? [] : actual.trim().split(/\s+/);
+  const expectedTokens = expected.trim() === "" ? [] : expected.trim().split(/\s+/);
+  expect(
+    actualTokens.length,
+    `${label}: token count mismatch (actual=${JSON.stringify(actual)} expected=${JSON.stringify(expected)})`,
+  ).toBe(expectedTokens.length);
+  for (let i = 0; i < expectedTokens.length; i++) {
+    const exp = Number(expectedTokens[i]);
+    const act = Number(actualTokens[i]);
+    expect(Number.isFinite(act), `${label}: non-finite token ${JSON.stringify(actualTokens[i])}`).toBe(true);
+    const diff = Math.abs(exp - act);
+    const within = diff <= FLOAT_TOL || diff <= FLOAT_TOL * Math.abs(exp);
+    expect(
+      within,
+      `${label}: token[${i}] ${actualTokens[i]} vs ${expectedTokens[i]} outside 1e-9 abs/rel tolerance`,
+    ).toBe(true);
+  }
+}
+
+/**
+ * Run one assembled harness binary/script and assert its stdout against the
+ * canonical `encodeValue`: byte-identity for exact (non-double) returns, or
+ * float-token tolerance for `double`/`double[]` returns (c.float).
+ */
 function assertCase(
   c: SmokeCase,
   lang: string,
@@ -44,6 +83,10 @@ function assertCase(
   try {
     const actual = produceStdout(source, dir);
     const expected = encodeValue(c.expectedReturn, c.spec.returnType);
+    if (c.float) {
+      assertFloatTokensEqual(actual.toString("utf8"), expected, `${lang} ${c.name}`);
+      return;
+    }
     expect(actual.toString("utf8")).toBe(expected);
     // Byte-level guard: catches encoding divergences (e.g. UTF-8 vs `?`
     // replacement) that a string compare on a lossy decode could miss.

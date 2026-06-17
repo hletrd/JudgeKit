@@ -13,6 +13,14 @@ export interface SmokeCase {
   expectedReturn: unknown;
   /** Correct student source per language id (registry id, C++ = `cpp23`). */
   solutions: Record<string, string>;
+  /**
+   * When true the runner compares the program stdout to `encodeValue` with
+   * FLOAT tolerance (parse both as whitespace-separated f64 tokens; equal token
+   * count; each token within 1e-9 abs OR rel) instead of byte-identity. Set for
+   * `double`/`double[]` returns, where per-language textual forms legitimately
+   * diverge (`0.5` vs `0.500000000`) but are judged within tolerance.
+   */
+  float?: boolean;
 }
 
 function spec(
@@ -90,6 +98,46 @@ const twoSumSolutions: Record<string, string> = {
     "class Solution {\n    public long[] twoSum(long[] nums, long target) {\n        var seen = new Dictionary<long, long>();\n        for (long i = 0; i < nums.Length; i++) {\n            if (seen.ContainsKey(target - nums[i])) return new long[]{seen[target - nums[i]], i};\n            seen[nums[i]] = i;\n        }\n        return new long[]{};\n    }\n}\n",
 };
 
+// identDouble(double) -> double identity: exercises the scalar double RETURN
+// print path (single numeric token) end to end. The expected output is the
+// `encodeValue` token; the runner compares with float tolerance so each
+// language's textual form (0.5 vs 0.500000000) is fine.
+const IDENT_DOUBLE = spec("identDouble", [{ name: "x", type: "double" }], "double");
+const identDoubleSolutions: Record<string, string> = {
+  python: "class Solution:\n    def identDouble(self, x):\n        return x\n",
+  cpp23: "class Solution {\npublic:\n    double identDouble(double x) { return x; }\n};\n",
+  javascript: "function identDouble(x) {\n  return x;\n}\n",
+  typescript: "function identDouble(x: number): number {\n  return x;\n}\n",
+  java: "class Solution {\n    double identDouble(double x) {\n        return x;\n    }\n}\n",
+  go: "func identDouble(x float64) float64 {\n\treturn x\n}\n",
+  csharp: "class Solution {\n    public double identDouble(double x) {\n        return x;\n    }\n}\n",
+};
+function doubleCase(name: string, value: number): SmokeCase {
+  return {
+    name,
+    spec: IDENT_DOUBLE,
+    args: [value],
+    expectedReturn: value,
+    solutions: identDoubleSolutions,
+    float: true,
+  };
+}
+
+// identDoubleArr(double[]) -> double[] identity: exercises the double[] RETURN
+// print path (space-separated numeric tokens, NOT a JSON array).
+const IDENT_DOUBLE_ARR = spec("identDoubleArr", [{ name: "xs", type: "double[]" }], "double[]");
+const identDoubleArrSolutions: Record<string, string> = {
+  python: "class Solution:\n    def identDoubleArr(self, xs):\n        return xs\n",
+  cpp23:
+    "class Solution {\npublic:\n    std::vector<double> identDoubleArr(std::vector<double> xs) { return xs; }\n};\n",
+  javascript: "function identDoubleArr(xs) {\n  return xs;\n}\n",
+  typescript: "function identDoubleArr(xs: number[]): number[] {\n  return xs;\n}\n",
+  java: "class Solution {\n    double[] identDoubleArr(double[] xs) {\n        return xs;\n    }\n}\n",
+  go: "func identDoubleArr(xs []float64) []float64 {\n\treturn xs\n}\n",
+  csharp:
+    "class Solution {\n    public double[] identDoubleArr(double[] xs) {\n        return xs;\n    }\n}\n",
+};
+
 /**
  * The canonical smoke matrix. Every language runs every case; the runner skips
  * a (language, case) only if the language has no solution entry (none do today).
@@ -115,5 +163,20 @@ export const SMOKE_CASES: SmokeCase[] = [
     args: [[2, 7, 11, 15], 9],
     expectedReturn: [0, 1],
     solutions: twoSumSolutions,
+  },
+  // double scalar RETURN coverage (float-tolerance comparison).
+  doubleCase("double: plain 0.5", 0.5),
+  doubleCase("double: negative -3.25", -3.25),
+  doubleCase("double: small 1e-7", 1e-7),
+  doubleCase("double: integral-valued 7.0", 7.0),
+  // double[] RETURN coverage: mixed plain/negative/small/integral, printed as
+  // space-separated tokens (must NOT be a JSON array).
+  {
+    name: "double[]: [0.5, -3.25, 1e-7, 7.0]",
+    spec: IDENT_DOUBLE_ARR,
+    args: [[0.5, -3.25, 1e-7, 7.0]],
+    expectedReturn: [0.5, -3.25, 1e-7, 7.0],
+    solutions: identDoubleArrSolutions,
+    float: true,
   },
 ];
