@@ -194,6 +194,7 @@ export const cppAdapter: FunctionHarnessAdapter = {
     const main = `
 
 int main() {
+    std::setlocale(LC_ALL, "C");
     std::string __line;
     std::getline(std::cin, __line);
     __fnjudge::Reader __r(__line);

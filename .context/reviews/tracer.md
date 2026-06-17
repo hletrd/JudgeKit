@@ -1,8 +1,39 @@
-# Tracer — causal flows (cycle 1, 2026-06-16)
+# Tracer — cycle 6 (2026-06-18)
 
-Flow: author types args → parseFieldValue → encodeArgs (compact JSON line) → stored as testCase.input → compute-expected assembles reference + runs → stdout becomes expectedOutput → student submit assembled at claim time → worker compares stdout to expectedOutput (exact).
+Causal tracing of v1.1 double support flow.
 
-Hypothesis A (string escaping divergence): expectedOutput is produced by the REFERENCE language's writer, student output by the STUDENT language's writer. If two languages escape a string return differently (e.g. C++ emits `é` but Go emits raw UTF-8 `é`), an otherwise-correct student solution gets WRONG_ANSWER cross-language. Evidence: C++ writeStr only escapes `" \\ \n \t \r` and emits other bytes raw (cpp.ts:117-130); Go uses encoding/json which escapes `<,>,&` as \u and emits non-ASCII raw; Java escapes same minimal set as C++. CONFIRMED DIVERGENCE for non-ASCII / HTML-significant chars in string/string[] returns. Severity: Medium (only affects string-returning problems with special chars). Re-open: add a cross-language string-return golden test.
+## FLOW TRACE: Double-return judging
 
-Hypothesis B (int writer): all emit decimal long — consistent.
-Hypothesis C (bool/array): consistent compact `[a,b]`, true/false — consistent.
+1. Author sets return type to `double` or `double[]` in `FunctionSignatureBuilder`
+2. `createProblemForm` / `editProblemForm` calls `resolveComparisonMode` → `"float"`
+3. Problem is persisted with `comparisonMode = "float"`
+4. Author computes expected outputs via `compute-expected/route.ts`
+5. `compute-expected` assembles reference solution with adapter's `printBlock`
+6. For double: adapter prints whitespace-separated numeric tokens (e.g., `0.5` or `0.5 0.25`)
+7. Expected output stored as space-separated tokens
+8. Student submits solution in any enabled language
+9. Judge worker claims submission, assembles student code with same adapter
+10. Worker runs test cases, compares with `compare_float_output`
+11. `compare_float_output` tokenizes on whitespace, parses each token as f64
+
+## HYPOTHESIS A: C++ locale causes WrongAnswer for all double submissions
+**Evidence:** C++ `snprintf` with `%.10g` is locale-sensitive. In comma-locale,
+`0.5` prints as `0,5`. The worker's `parse::<f64>()` expects dot-decimal.
+**Status:** CONFIRMED — the C++ adapter lacks locale pinning that Java has.
+**Severity:** Medium (affects all double-return C++ submissions in non-C locale).
+
+## HYPOTHESIS B: C++ `stod` locale causes arg parsing truncation
+**Evidence:** C++ `stod` is locale-sensitive. In comma-locale, `stod("0.5")` stops
+at the dot and parses `0`.
+**Status:** CONFIRMED — same root cause as Hypothesis A.
+**Severity:** Medium (affects all double-arg C++ submissions in non-C locale).
+
+## HYPOTHESIS C: Float tolerance defaults are reasonable
+**Evidence:** `compare_float_output` defaults to `abs=1e-9, rel=1e-9`. The `%.10g`
+format in C++ and Java produces ~10 significant digits. The tolerance is slightly
+looser than the precision, which is appropriate for cross-language comparison.
+**Status:** LIKELY OK — no issue found.
+
+## CARRIED FORWARD
+
+- Hypothesis from cycle 1 (string escaping divergence): FIXED in cycle 5

@@ -1,33 +1,50 @@
-# Test Engineer — coverage gaps (cycle 1, 2026-06-16)
+# Test Engineer — cycle 6 (2026-06-18)
 
-### TST-1 (High, THIS RUN FOCUS) No responsive/render e2e for function authoring + submit UI
-`tests/e2e/function-judging.spec.ts` is API-only (create→compute→judge→verdict) and needs a judge worker. `responsive-layout.spec.ts` covers only public pages. There is NO Playwright spec that loads `problems/create` / `problems/[id]/edit` with problemType=function or the student submit page and asserts no horizontal overflow / usable controls at mobile(375)/tablet(768)/desktop(1280). GAP. Action: add `function-judging-responsive.spec.ts` (no worker needed).
+Test coverage review of v1.1 changes.
 
-### TST-2 (Medium) No unit test for mapCompileError over-match (CR-1)
-Add a regression test feeding output with a non-line `:N:` token and asserting it is NOT shifted, once CR-1 is fixed.
+## NEW FINDINGS
 
-### TST-3 (Low) serialization round-trip not property-tested for string[] with commas/quotes/newlines
-`value-fields` + `serialization` have golden cases but no fuzz/round-trip for adversarial string elements (`"a,b"`, `"x\"y"`, `"l\nm"`). Add round-trip unit coverage.
+### TST6-1 (Medium) No test for C++ locale-sensitive double printing
+The cross-language string escaping test (`cross-language-string-escaping.test.ts`)
+covers string/string[] returns but there is no equivalent test for double returns
+across locales. Given that the Java locale fix was explicitly needed, a C++ locale
+test is warranted.
 
-### TST-4 (Low) No test asserting reference solution absence on student GET
-Add an integration test: student fetch of a function problem must not include `referenceSolution`.
+Fix: Add a golden test that assembles a C++ harness with a double return, runs it
+in a locale with comma decimal separator (or mocks the locale), and verifies the
+output uses dot-decimal.
+Confidence: High.
 
----
+### TST6-2 (Medium) No test for comparison mode derivation on type change
+`resolveComparisonMode` in `problem-management.ts` derives the comparison mode from
+the return type. There should be a test verifying:
+1. `double` return → `"float"`
+2. `double[]` return → `"float"`
+3. `string` return → `"exact"`
+4. Type change from `double` to `string` updates comparison mode
 
-## Cycle 4 (2026-06-17)
+Fix: Add unit tests for `resolveComparisonMode`.
+Confidence: High.
 
-### TST4-1 (Medium, FIXED THIS RUN) function-judging-responsive spec could not authenticate locally
-The spec added in TST-1 was effectively dead against the local standalone
-harness: `loginAsAdmin` timed out in `beforeAll` because the seeded admin is
-`mustChangePassword=true` and the standalone (production-mode) change-password
-form's automatic re-sign-in races the just-invalidated session token, stranding
-the browser on `/change-password`. All 16 tests failed before any assertion ran.
-FIX: clear `must_change_password` for the seeded admin in the disposable local
-e2e DB (`scripts/playwright-local-webserver.sh`, after `npm run seed`) + make
-`loginAsAdmin` set a DISTINCT strong password if a forced change still appears.
-Verified: all 16 tests green at mobile/tablet/desktop. See designer.md DSG4-1.
+### TST6-3 (Low) No test for `decodeFieldValue` double[] edge cases
+`decodeFieldValue` handles the space-separated double[] contract. Tests should
+cover:
+- Empty string → `[]`
+- Single token → `[n]`
+- Multiple tokens with varying whitespace
+- Non-finite token → throws
 
-### TST-2..TST-4 still open (unchanged)
-mapCompileError over-match regression test, string[] round-trip fuzz, and the
-student-GET referenceSolution-absence integration test remain to be added with
-their respective fixes (CF-1, CF-5).
+Fix: Add unit tests for `decodeFieldValue`.
+Confidence: Low.
+
+## CARRIED FORWARD
+
+- TST-3 (Low) serialization round-trip fuzz for string[] with commas/quotes/newlines
+- TST-4 (Low) student-GET referenceSolution-absence integration test
+- TST-2 (Medium) mapCompileError over-match regression test — FIXED in cycle 5, test added
+
+## VERIFIED
+
+- Harness smoke tests exist for double returns (`tests/harness/adapters-smoke.test.ts`)
+- Unit tests exist for double return adapters (`tests/unit/judge/function-judging/adapters/double-return.test.ts`)
+- Float coupling tests exist (`tests/unit/judge/function-judging/float-coupling.test.ts`)

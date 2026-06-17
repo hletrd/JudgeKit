@@ -1,20 +1,46 @@
-# Security Reviewer — Function-Judging (cycle 1, 2026-06-16)
+# Security Review — cycle 6 (2026-06-18)
 
-Authorized defensive review of the owner's own platform.
+Review of function-judging v1.1 changes and security posture.
 
-## Findings
+## NEW FINDINGS
 
-### SEC-1 (Confirmed-OK) Reference solution non-exposure
-`api/v1/problems/[id]/route.ts:66-72` strips `referenceSolution` for non-managers via destructure-and-omit. compute-expected route (`compute-expected/route.ts:49-54`) gates on author OR `problems.edit` cap AND `canManageProblem`. Verdict: correctly author-only. Confidence: High.
+### SEC6-1 (Medium) `compute-expected` runs author code with no output size limit
+`src/app/api/v1/problems/[id]/compute-expected/route.ts` (not re-read this cycle,
+but the design is unchanged from cycle 1): The reference solution execution via
+`executeCompilerRun` has no output size limit. A malicious author could craft a
+reference solution that prints an extremely large string (e.g., a loop printing
+a 100MB string), causing memory pressure on the app server during compute-expected.
 
-### SEC-2 (Low) compute-expected runs author-supplied code with author privileges
-`compute-expected/route.ts:131` executes the assembled reference solution via `executeCompilerRun` (sandboxed compiler path). This is author-initiated arbitrary code execution, but it is the SAME sandbox used by the playground and only reachable by users with problem-edit capability — accepted risk consistent with existing playground exposure. Rate-limited via `rateLimit: "problems:update"`. Confidence: High. No change; ensure the sandbox resource limits match the playground.
+The sandbox has resource limits (time, memory), but the output itself is captured
+in memory before being returned to the client. The existing `RUNTIME_ERROR_OUTPUT_LIMIT`
+(500 chars) only applies to the judge worker, not the app server's compiler execution.
 
-### SEC-3 (Low) Per-case `error` field echoes raw stderr/compileOutput to the author client
-`compute-expected/route.ts:143,163,181` returns `run.compileOutput` / `run.stderr` verbatim. Author-only surface, so low risk, but stderr could contain sandbox host paths. Confidence: Medium. Consider trimming absolute host paths from returned diagnostics.
+Fix: Add an output size cap to `executeCompilerRun` in the compiler path, or
+specifically in the compute-expected route. Reject if stdout exceeds a reasonable
+limit (e.g., 1MB for expected outputs).
+Confidence: Medium.
 
-### SEC-4 (Confirmed-OK) referenceSolution language constrained to harness set
-`validators/problem-management.ts:22` refines language via `supportsFunctionJudging`; claim-time assembly (`judge/claim/route.ts`) re-parses spec with `parseFunctionSpec`. Defense-in-depth present. Confidence: High.
+### SEC6-2 (Low) `submissions/route.ts` POST does not validate `sourceCode` for null bytes
+`src/app/api/v1/submissions/route.ts:219`
+```typescript
+if (Buffer.byteLength(sourceCode, "utf8") > getMaxSourceCodeSizeBytes()) {
+```
+The source code size check happens before any content validation. Null bytes in
+source code could cause issues with some language compilers or the judge worker's
+string handling. While most compilers handle null bytes gracefully (treating them
+as end-of-string in C, or as literal bytes in others), this is an edge case that
+could cause unexpected behavior.
 
-## No injection vectors found
-Student code is sandwiched (prelude + student + main) and compiled in the existing judge sandbox; no eval of author/student text in the Next.js process. functionSpec identifiers are regex-validated (`^[A-Za-z_][A-Za-z0-9_]*$`) before interpolation into generated harness source, preventing harness code injection via function/param names. Confidence: High.
+Fix: Add a null byte check to the validator or reject null bytes in source code.
+Confidence: Low.
+
+## CARRIED FORWARD
+
+- SEC-3 (Low) host-path trim from compute-expected diagnostics — still open
+
+## VERIFIED OK
+
+- Reference solution non-exposure: still correctly stripped
+- Function name/param injection: still regex-validated
+- Language restriction at submit time: confirmed enforced at `submissions/route.ts:254-261`
+- Comparison mode derivation: server-authoritative, client cannot override

@@ -1,12 +1,46 @@
-# Perf Reviewer — Function-Judging (cycle 1, 2026-06-16)
+# Performance Review — cycle 6 (2026-06-18)
 
-### PERF-1 (Low) compute-expected runs cases serially
-`compute-expected/route.ts:129` loops cases with `await executeCompilerRun` sequentially. For a problem with many test cases this is O(n) sandbox spawns end-to-end. Author-only, bounded by case count; acceptable but could batch/parallelize with a concurrency cap. Confidence: High.
+Review of performance implications from v1.1 changes.
 
-### PERF-2 (Low) FunctionTestCaseEditor recomputes errorsByCase on every keystroke
-`function-test-case-editor.tsx:217` `useMemo` over all cases × params reparses every field on each `fields` change. Fine for typical case counts (<50) but parsing scales with total fields. Confidence: Medium. Acceptable for v1.
+## NEW FINDINGS
 
-### PERF-3 (Low) Stub regenerated via getAdapter().generateStub on every spec change
-`function-reference-solution.tsx:100` `useMemo` keyed on `[selectedLanguage, spec]` — spec is a new object each render so memo rarely hits. Cheap string build; negligible. Confidence: High.
+### PERF6-1 (Medium) `planProblemTestCaseSync` uses JSON.stringify for signature hashing
+`src/lib/problem-management.ts:126-127`
+```typescript
+const signature = JSON.stringify([
+  existing.input,
+  existing.expectedOutput,
+  Boolean(existing.isVisible),
+]);
+```
+For problems with large test cases (e.g., 10MB input/expected), `JSON.stringify`
+is called twice per test case (once for existing, once for next). This creates
+large temporary strings and could be slow for problems with many large cases.
 
-No CPU/memory hot paths or N+1 DB queries in the function-judging request handlers beyond PERF-1.
+The function is only called during problem update, which is an admin operation,
+so this is not a hot path. But for large problem sets, this could cause the update
+to timeout.
+
+Fix: Use a content hash (e.g., SHA-256) instead of JSON.stringify for signature
+comparison. Or at least, avoid stringifying large values by hashing them directly.
+Confidence: Medium (admin-only, but could cause timeouts on large problems).
+
+### PERF6-2 (Low) `compare_float_output` in Rust allocates two `String::from_utf8_lossy`
+`judge-worker-rs/src/comparator.rs:122-123`
+```rust
+let exp_str = String::from_utf8_lossy(expected);
+let act_str = String::from_utf8_lossy(actual);
+```
+For large outputs, this allocates two Cow strings. The float comparison is only
+used for double returns, which are typically small (single tokens or a few space-
+separated tokens). But if a malicious/problematic output is large, this allocates.
+
+Fix: Since float comparison tokenizes on whitespace, we could work directly on
+byte slices without UTF-8 conversion, using `split(|c| c.is_ascii_whitespace())`.
+Confidence: Low.
+
+## CARRIED FORWARD
+
+- PERF-1 (Low) compute-expected runs cases serially
+- PERF-2 (Low) FunctionTestCaseEditor recomputes errorsByCase on every keystroke
+- PERF-3 (Low) Stub regenerated via getAdapter().generateStub on every spec change

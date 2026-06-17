@@ -1,13 +1,42 @@
-# Architect — design/coupling (cycle 1, 2026-06-16)
+# Architect — cycle 6 (2026-06-18)
 
-### ARC-1 (Low) Single-line stdin contract is implicit across 7 adapters
-The args wire format (one compact JSON line) is assumed by every adapter's harness but not asserted anywhere central. Coupling is fine but fragile (see DBG-2). Recommend a documented invariant + an encodeArgs assertion (no newline in output) as the single source of truth.
+Architectural review of v1.1 changes.
 
-### ARC-2 (OK) Adapter registry is clean and extensible
-`registry.ts` maps language→adapter; `FUNCTION_JUDGING_LANGUAGES` derived from keys; UI reads the same set. Good single source. No layering violations.
+## NEW FINDINGS
 
-### ARC-3 (Low) FunctionType authorability split lives in two places conceptually
-`AUTHORABLE_FUNCTION_TYPES` (types.ts) gates UI selects + zod; adapters still handle the full SUPPORTED set. This is intentional (v1.1 re-enable) and documented. Keep, but add a single test that AUTHORABLE ⊆ SUPPORTED and every authorable type has adapter coverage.
+### ARC6-1 (Medium) Locale sensitivity is an implicit environmental assumption across adapters
+The function-judging system assumes all adapters run in a dot-decimal locale.
+This is true for most Docker containers (defaulting to POSIX/C), but it's an
+implicit environmental assumption, not an explicit contract. The C++ and Java
+adapters were both locale-sensitive; Java was fixed, C++ was not.
 
-### ARC-4 (Low) compute-expected duplicates language-config resolution from compiler/run
-`compute-expected/route.ts:87-107` re-implements DB-config-then-builtin fallback also present in the compiler run route. Extract a shared `resolveExecLanguage(language)` helper to avoid drift.
+This is an architectural gap: the system should either (a) explicitly set locale
+in every harness, or (b) use locale-independent formatting/parsing everywhere.
+Option (b) is preferable because it makes the harnesses self-contained and correct
+regardless of environment.
+
+Fix: Audit all adapters for locale independence. Add a CI check or golden test
+that verifies dot-decimal output in a non-C locale.
+Confidence: Medium.
+
+### ARC6-2 (Low) `resolveComparisonMode` is a pure function but lives in `problem-management.ts`
+`src/lib/problem-management.ts:38-49`
+This function derives the comparison mode from the return type. It's a pure
+function with no DB dependency. It could live closer to the function-judging
+module (e.g., `src/lib/judge/function-judging/`) for better cohesion. Currently,
+`problem-management.ts` imports from `judge/function-judging/types` but also
+exports a function that the judge layer needs.
+
+Fix: Move `resolveComparisonMode` to `src/lib/judge/function-judging/comparison.ts`
+or similar.
+Confidence: Low.
+
+## CARRIED FORWARD
+
+- ARC-4 (Low) compute-expected duplicates language-config resolution from compiler/run
+- ARC-1 (Low) Single-line stdin contract is implicit — partially addressed by assertion
+
+## VERIFIED
+
+- Adapter registry extensibility: still clean
+- AUTHORABLE ⊆ SUPPORTED: now true (all types are authorable as of v1.1)

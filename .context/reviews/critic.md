@@ -1,6 +1,45 @@
-# Critic — multi-perspective (cycle 1, 2026-06-16)
+# Critic — cycle 6 (2026-06-18)
 
-- Authoring UX (instructor): the FunctionSignatureBuilder param rows use a flex-wrap with min-w-[160px] name + min-w-[120px] type select + ghost remove button. On a ~375px phone the three items can wrap so the remove (trash) button drops to its own line, detaching it from the row it removes — confusing. LIVE-CHECK pending (designer).
-- Student UX: the gated language dropdown only lists enabledLanguages for function problems — good, prevents submitting in an unsupported language. Reset-to-stub button present.
-- Maintainability: 7 hand-written JSON readers/writers (one per language) duplicate escaping logic; a subtle divergence (e.g. C++ vs Java string-escape set) could cause cross-language judge disagreement on the SAME expected output. Only `\n \t \r \b \f / " \\` handled; control chars < 0x20 other than these are emitted raw by JS JSON.stringify as `\u00XX` — verify each reader handles `\uXXXX` (C++/Java do; JS/TS/Python/Go/C# use native JSON). Medium.
-- Doc/code: AUTHORABLE excludes double; docs (commit b6a6acc5) updated. Consistent.
+Multi-perspective critique of v1.1 changes.
+
+## NEW FINDINGS
+
+### CRIT6-1 (Medium) Inconsistent locale handling across adapters
+Seven adapters, three different approaches to locale:
+- C++: uses `snprintf`/`stod` — locale-sensitive, NOT fixed
+- Java: uses `Locale.ROOT` — locale-independent, FIXED
+- C#: uses `CultureInfo.InvariantCulture` — locale-independent, correct
+- Go: uses `strconv` — locale-independent by design, correct
+- Python: uses `repr`/`json.dumps` — locale-independent, correct
+- JS/TS: uses `String()`/`JSON.stringify` — locale-independent, correct
+
+The inconsistency is a maintainability risk. A future developer adding a new
+adapter might not know to handle locale. The C++ adapter's omission is the
+most critical because it was not fixed when Java was.
+
+Fix: Document the locale-independence requirement in the adapter contract
+(`adapter.ts` interface docs) and add a golden test.
+Confidence: Medium.
+
+### CRIT6-2 (Low) `isFloatComparedReturn` duplicates logic from `resolveComparisonMode`
+`src/components/problem/function-signature-builder.tsx:46-48`
+```typescript
+export function isFloatComparedReturn(type: FunctionType): boolean {
+  return (isArrayType(type) ? elementType(type) : type) === "double";
+}
+```
+This logic is duplicated from `resolveComparisonMode` in `problem-management.ts`.
+The UI uses this to show the float-comparison note. If the server-side logic
+changes, the UI might drift.
+
+Fix: Share the logic via a shared utility (e.g., `isFloatComparisonMode(returnType)`).
+Confidence: Low.
+
+## CARRIED FORWARD
+
+- Remove button detachment on mobile (from cycle 1) — still present but not a regression
+
+## VERIFIED
+
+- Cross-language string escaping divergence: FIXED in cycle 5, all adapters now match
+- Single-line stdin contract: ASSERTED in cycle 5

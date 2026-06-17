@@ -1,12 +1,33 @@
-# Document Specialist — doc/code consistency (cycle 1, 2026-06-16)
+# Document Specialist — cycle 6 (2026-06-18)
 
-### DOC-1 (OK) function-judging v1 type limits documented
-Commit b6a6acc5 "docs(api): reflect function-judging v1 type limits". docs/ describes the 7 languages and excluded double. Cross-checked against AUTHORABLE_FUNCTION_TYPES — consistent.
+Documentation review of v1.1 changes.
 
-### DOC-2 (Low) Single-line stdin contract undocumented
-The implicit "args are one compact JSON line" invariant (ARC-1/DBG-2) is not stated in the design doc. Add a short note so future serializer changes preserve it.
+## NEW FINDINGS
 
-### DOC-3 (Low) Cross-language string-escaping equivalence not specified
-The design doc does not state that all 7 language writers MUST produce byte-identical JSON for the same value (required for exact-match cross-language judging). Document this contract and back it with a golden test (see tracer Hypothesis A).
+### DOC6-1 (Medium) `docs/function-judging.md` may not mention locale requirements
+The function-judging documentation should explicitly state that all adapters
+must use locale-independent formatting for doubles. The current docs focus on
+type support and comparison modes but may not mention the locale issue.
 
-No CLAUDE.md / AGENTS.md violations introduced. Korean-typography rule (no custom letter-spacing/tracking on Korean) not violated by function-judging components (no tracking-* utilities present).
+Fix: Add a "Locale Independence" section to `docs/function-judging.md` stating
+that all adapters must produce dot-decimal output regardless of environment locale.
+Confidence: Medium.
+
+### DOC6-2 (Low) `README.md` was updated for v1.1 but should be checked for completeness
+Commit `dbf55d70` updated README.md. Verify that all v1.1 features are documented:
+- double/double[] support
+- float comparison mode
+- tolerance inputs
+
+Fix: Verify README completeness.
+Confidence: Low.
+
+## CARRIED FORWARD
+
+- DOC-2 (Low) Single-line stdin contract documented — partially addressed by `serialization.ts` comment
+- DOC-3 (Low) Cross-language string-escaping equivalence documented — partially addressed by adapter comments
+
+## VERIFIED
+
+- `docs/function-judging.md` exists and was updated in recent commits
+- `docs/api.md` documents double/double[] v1.1 support (commit `ff0b2f93`)

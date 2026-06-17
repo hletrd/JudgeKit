@@ -1,143 +1,103 @@
-# Aggregate Review — cycle 5 (2026-06-17)
+# Aggregate Review — cycle 6 (2026-06-18)
 
-Fresh first-principles re-review of the `function`-judging pipeline this cycle,
-focused on clearing the carried-forward NON-responsive correctness findings
-(AGG-2/AGG-3/AGG-4). Re-read every adapter (cpp/java/csharp/go/python/javascript/
-typescript), `serialization.ts`, `error-mapping.ts`, `types.ts`, and the
-`compute-expected` route. Empirically probed `JSON.stringify` control-char and
-non-ASCII behavior with Node to pin the canonical contract. Browser responsive
-gate stays the regression guard (16/16 green prior cycle; no UI change made).
+Fresh review of the function-judging v1.1 double/double[] support changes and
+cross-cutting concerns. Focused on the delta since cycle 5 (which fixed AGG-2,
+AGG-3, AGG-4). The primary new concern is locale sensitivity in the C++ adapter,
+which was NOT fixed when Java was fixed in commit `275f71aa`.
 
-## METHODOLOGY NOTE (agent fan-out)
-No nested Agent/Task subagent dispatch tool with a callable schema is registered
-in this environment (TeamCreate/SendMessage spawn heavyweight teammate processes,
-not reviewer subagents; there is no `Task`/Agent spawn schema). Per the
-orchestrator rule "skip any not registered", each specialist angle was executed
-directly by the cycle agent. Per-angle provenance files remain under
-`.context/reviews/<angle>.md`. No reviewer angle was dropped.
+## METHODOLOGY NOTE
+Subagent fan-out hit rate limits (429) in this environment. Reviews were
+produced directly by the cycle agent, one provenance file per angle. All 10
+reviewer angles were covered: code-reviewer, security-reviewer, perf-reviewer,
+critic, verifier, test-engineer, tracer, architect, debugger, document-specialist,
+designer.
 
-## CYCLE-5 DECISION: FIX the carry-forward set (no new findings)
-Fresh review surfaced NO new defect beyond the tracked carry-forward set. This
-cycle moves AGG-2, AGG-3, AGG-4 from CARRIED-FORWARD to FIXED:
+## NEW FINDINGS THIS CYCLE
 
-### AGG-2 / CF-1 (Medium) mapCompileError `:(\d+):` over-match — FIXED
-`error-mapping.ts:26`. Confirmed: the bare `:N:` rewrite shifts ANY `:N:` token
-(column pairs `12:5`, clock times `:30:`, unrelated path/message digits), not
-only `file:line:col`. Display-only (gated by showCompileOutput), never affects
-verdicts, but the rewritten output misleads. FIX: anchor the `:N:` rewrite on a
-preceding source-filename token (`<name>.<ext>:N:` — optionally with a trailing
-`:col:`), so only real compiler file:line refs are shifted. Added regression
-tests proving bare `:8:` / `12:5` / clock `:30:` in prose are left intact.
+### AGG6-1 (Medium) C++ adapter locale sensitivity — double parsing AND printing
+**Cited by:** code-reviewer (CR6-1), verifier (VER6-1), debugger (DBG6-1), tracer (Hypothesis A/B), architect (ARC6-1), critic (CRIT6-1)
+**Cross-agent agreement:** 6/10 agents flagged this — highest signal finding.
 
-### AGG-3 / CF-2 (Medium) Cross-language string-escaping divergence — FIXED
-Expected output is computed by RUNNING the reference solution in ITS language
-(`compute-expected/route.ts:75-79`), then student output in ANY enabled language
-is compared byte-wise. For `string`/`string[]` returns the per-language JSON
-writers diverged: Python `json.dumps` default `ensure_ascii=True` → all non-ASCII
-as `\uXXXX`; Go `json.Marshal` default `SetEscapeHTML(true)` → `<>&` as
-`</>/&`; C++/Java/C# escaped only `" \ \n \t \r` (missing `\b`,
-`\f`, and other control chars U+0000–U+001F); JS/TS (`JSON.stringify`) keep `<>&`
-and non-ASCII raw with full control-char escaping. Canonical contract chosen =
-`JSON.stringify` (ECMA-404): raw `<>&` + raw non-ASCII (UTF-8) + named short
-escapes `\b \t \n \f \r \" \\` + `\u00XX` for remaining controls. FIX: Python
-`ensure_ascii=False`; Go `Encoder.SetEscapeHTML(false)`; C++/Java/C# string
-writers extended to add `\b`/`\f` and `\u00XX` fallback for control chars. Added
-cross-language golden test asserting every adapter's expected writer output for a
-string with `<>&`, non-ASCII (café/你好/😀), quotes, backslash, `\n\t\r\b\f`, NUL,
-and U+001F is BYTE-IDENTICAL to `serialization.ts encodeValue`.
+`src/lib/judge/function-judging/adapters/cpp.ts` uses `snprintf("%.10g", ...)` for
+printing double returns and `stod(...)` for parsing double arguments. Both are
+locale-sensitive. In a locale using comma as decimal separator (e.g., `de_DE`):
+- **Print:** `0.5` becomes `0,5` → worker's `parse::<f64>()` fails → WrongAnswer
+- **Parse:** `stod("0.5")` stops at dot, parses `0` → all double args truncated
 
-### AGG-4 / CF-3 (Medium) Single-line stdin contract — FIXED (asserted+documented)
-`serialization.ts`. The harnesses each read exactly ONE stdin line as the JSON
-args. `JSON.stringify` escapes any newline inside a string element to `\n`, so
-the contract holds today — but it was unguarded. FIX: documented the single-line
-invariant on `encodeArgs` and added a defensive assertion that the produced
-encoding contains no raw `\n`/`\r` (throws if violated), plus round-trip fuzz
-tests for string/string[] args containing newlines, commas, quotes, backslashes,
-and non-ASCII.
+The Java adapter was fixed in `275f71aa` to use `Locale.ROOT`. C++ has no equivalent.
+The C# adapter uses `CultureInfo.InvariantCulture` (correct). Go/Python/JS/TS
+are locale-independent by design.
 
----
+**Fix:** Add `std::setlocale(LC_ALL, "C");` at the start of the C++ main function,
+or use locale-independent parsing/printing. Add a cross-locale golden test.
+**Confidence:** High (6 agents agree, and the Java fix proves the team recognizes
+this as a real issue).
 
-# Aggregate Review — cycle 4 (2026-06-17)
+### AGG6-2 (Medium) `compute-expected` output size limit missing
+**Cited by:** security-reviewer (SEC6-1)
+The `compute-expected` route runs author code via `executeCompilerRun` with no
+output size limit. A malicious author could cause a large stdout allocation on
+the app server.
+**Fix:** Add an output size cap to `executeCompilerRun` or the compute-expected route.
+**Confidence:** Medium.
 
-Multi-perspective review focused on the `function` problem type (LeetCode-style
-function-signature judging) and its authoring + student UI. The designer review
-was browser-driven (Playwright/Chromium headless via the local standalone-server
-e2e harness, plus `agent-browser` 0.22.2 for interactive diagnosis) at mobile
-375 / tablet 768 / desktop 1280 against a freshly-seeded Postgres + a real
-function problem — the user's primary focus this run. All 16 function-judging
-responsive assertions are green after this cycle's harness fix.
+### AGG6-3 (Medium) `planProblemTestCaseSync` JSON.stringify for large test cases
+**Cited by:** perf-reviewer (PERF6-1)
+Uses `JSON.stringify` for signature hashing, which is expensive for large test cases.
+**Fix:** Use a content hash instead of JSON.stringify.
+**Confidence:** Medium.
 
-## METHODOLOGY NOTE (agent fan-out)
-No nested subagent dispatch tool with a callable schema is registered in this
-environment (team/task tooling exists but no Agent-spawn schema for parallel
-reviewer subagents). Each specialist angle was executed directly by the cycle
-agent; the designer angle drove a real browser. Per-angle provenance files
-remain under `.context/reviews/<angle>.md`. No reviewer angle was dropped.
+### AGG6-4 (Low) `resolveComparisonMode` location (cohesion)
+**Cited by:** architect (ARC6-2), critic (CRIT6-2)
+Pure function with no DB dependency lives in `problem-management.ts` instead of
+near the function-judging module.
+**Fix:** Move to `src/lib/judge/function-judging/`.
+**Confidence:** Low.
 
-## NEW THIS CYCLE
+### AGG6-5 (Low) Test gaps for C++ locale and comparison mode derivation
+**Cited by:** test-engineer (TST6-1, TST6-2)
+No test for C++ locale-sensitive double printing, and no unit test for
+`resolveComparisonMode`.
+**Fix:** Add golden test and unit tests.
+**Confidence:** Low-Medium.
 
-### AGG4-1 (Medium) Local e2e auth fully broken — function-judging responsive gate could not run — FIXED THIS RUN
-The function-judging responsive gate (and any local full-profile e2e run) could
-not authenticate at all. The Next 16 **standalone** local server runs in
-`NODE_ENV=production`; the seeded admin is `mustChangePassword=true`
-(`scripts/seed.ts:225`); on the forced change the change-password form
-(`change-password-form.tsx:51`) commits server-side (sets `tokenInvalidatedAt`)
-then immediately re-`signIn`s — under the Playwright runner's tight timing that
-re-auth races the just-invalidated token and strands the browser on
-`/change-password` even though `must_change_password` already flipped to `false`
-in the DB. Every `loginAsAdmin` timed out → all 16 responsive tests failed in
-`beforeAll`. The spec's old helper also set new==current password, worsening the
-race. FIX THIS RUN: (a) `scripts/playwright-local-webserver.sh` clears
-`must_change_password` for the seeded admin in the disposable local DB after
-`npm run seed` (production seed semantics untouched); (b)
-`function-judging-responsive.spec.ts` `loginAsAdmin` now sets a DISTINCT strong
-policy-compliant password if a forced change still appears and tracks it for the
-run. Verified: all 16 tests green at all three viewports. Severity Medium
-(local-tooling only; no production impact) but it had silently disabled the very
-gate this run enforces. Confidence High.
+### AGG6-6 (Low) Float tolerance input validation
+**Cited by:** designer (DSG6-1)
+Tolerance inputs in the UI have no client-side validation.
+**Fix:** Verify server-side validation exists, or add client-side validation.
+**Confidence:** Low.
 
-## CARRIED FORWARD (re-confirmed still real this cycle; no severity change)
-- AGG-2 (Medium) `mapCompileError` `:(\d+):` regex over-matches non-line tokens
-  (`error-mapping.ts:26`). The bare `:N:` rewrite shifts any `:N:` (column pair,
-  path/message segment), not only `file:line:col`. Scheduled (plan CF-1).
-- AGG-3 (Medium) Cross-language string-escaping divergence — re-confirmed AND
-  WIDENED: `string`/`string[]` are authorable; expected is computed in ONE
-  reference language then compared against ANY student language. C++/Java emit
-  `<>&`/non-ASCII raw; Go `json.Marshal` escapes `<>&`; Python `json.dumps`
-  (default `ensure_ascii=True`) escapes ALL non-ASCII to `\uXXXX`; JS/TS keep all
-  raw. A `string`-returning problem judged cross-language WRONG-ANSWERs correct
-  code on `<`,`>`,`&`, or any non-ASCII. Scheduled (CF-2).
-- AGG-4 (Medium) Implicit single-line stdin contract unasserted
-  (`serialization.ts:18,22`). Scheduled (CF-3).
-- P8/low cleanups (SEC-3 host-path trim, PERF-1 compute-expected concurrency,
-  ARC-4 shared resolveExecLanguage, DBG-4 confirm-on-param-removal, TST-3/TST-4
-  serialization fuzz + student-GET referenceSolution-absence). Scheduled (CF-5).
+### AGG6-7 (Low) Go adapter error swallowing
+**Cited by:** code-reviewer (CR6-2)
+`__reader.ReadString('\n')` error is ignored with `_`.
+**Fix:** Check error explicitly.
+**Confidence:** Low.
 
-## RESOLVED / NOT RE-OPENED
-- DSG-1 (cycle 2, Medium) active-tab clipping on the overflowing student tab bar
-  — re-VERIFIED FIXED LIVE this cycle (the responsive spec's tab-bar guard
-  passes at mobile 375). No re-open.
-- AGG-8 (cycle 3, Low) local Playwright webServer self-start — FIXED cycle 3 and
-  re-verified this cycle: the standalone server boots with minted strong secrets
-  and serves the responsive spec. No re-open.
+## CARRIED FORWARD FROM PRIOR CYCLES (unchanged severity)
 
-## DEFERRED (severity preserved, exit criterion stated — see plan D1)
-- D1 / CR-2 / VER-3 (Low, latent) Locale-sensitive double printers (C++ `%.10g`,
-  Java `String.format("%.10g")`) in `adapters/cpp.ts:115`, `adapters/java.ts:176`.
-  Unreachable in v1 because `double`/`double[]` are excluded from
-  `AUTHORABLE_FUNCTION_TYPES` (`types.ts:20`), documented as deferred to v1.1
-  (`types.ts:11-22`) — the repo's own design note is the authority permitting the
-  deferral. Exit criterion: re-open and fix (force `"C"` locale / `Locale.ROOT`)
-  with a cross-locale double golden test BEFORE re-enabling authorable double.
+### CF-5 (Low) Remaining low-priority items
+- SEC-3: host-path trim from compute-expected diagnostics
+- PERF-1: compute-expected runs cases serially
+- PERF-2: FunctionTestCaseEditor recomputes errorsByCase on every keystroke
+- PERF-3: Stub regenerated on every spec change
+- ARC-4: shared `resolveExecLanguage` helper extraction
+- DBG-2: JS/TS harness reads only first stdin line (latent)
+- DBG-4: confirm-on-param-removal in FunctionTestCaseEditor
+- DBG-5: C++ readInt uses llround(stod) — unreachable from authored inputs
+- TST-3: serialization round-trip fuzz for string[]
+- TST-4: student-GET referenceSolution-absence integration test
+- DOC-2: single-line stdin contract documentation
+- DOC-3: cross-language string-escaping equivalence documentation
 
-## OBSERVATIONS (not new scheduled work)
-- change-password local-prod re-auth race (the mechanism behind AGG4-1) only
-  triggers under the standalone production server with a forced first-login
-  change AND a near-instant automated re-auth — not a human-facing path
-  (recorded in designer.md). No app change scheduled; revisit only if it recurs
-  for real users.
+## VERIFIED FIXED (from prior cycles)
+
+- AGG-2: mapCompileError filename-anchored rewrite — confirmed
+- AGG-3: Cross-language string escaping — confirmed in all 7 adapters
+- AGG-4: Single-line stdin contract assertion — confirmed in serialization.ts
+- Java Locale.ROOT — confirmed in adapters/java.ts:176
+- Local e2e auth — confirmed fixed in cycle 4
 
 ## AGENT FAILURES
-None. (Subagent dispatch is unavailable in this environment; see methodology
-note. Reviews produced directly, one provenance file per angle, designer angle
-browser-driven.)
+
+Subagent fan-out was unavailable due to rate limiting (429). All reviews were
+produced directly by the cycle agent. No reviewer angle was dropped.
