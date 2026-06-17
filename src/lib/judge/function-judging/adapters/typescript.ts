@@ -28,15 +28,27 @@ function tsScalar(t: string): string {
 // count stays explicit and consistent with the other adapters.
 const PRELUDE = "";
 
+// double / double[] returns print whitespace-separated numeric tokens (a single
+// token for a scalar, space-joined for an array) to match encodeValue's
+// float/space-separated contract — the worker's whitespace-token float
+// comparator tokenizes these but cannot tokenize a JSON `[a,b]`. `String()` is
+// JS's shortest round-trip number form, fine under tolerance-based comparison.
+// `__result` is typed `unknown`, so the array path casts to `number[]`.
+function printExpr(returnType: FunctionType): string {
+  if (returnType === "double") return "String(__result)";
+  if (returnType === "double[]") return "(__result as number[]).map(String).join(\" \")";
+  return "JSON.stringify(__result)";
+}
+
 // The harness compiles under `tsc --strict`. `require` comes from @types/node;
 // the parsed args are typed `unknown[]` and the call is cast so the spread is
 // accepted regardless of the student function's parameter types.
-const MAIN = (fn: string) => `
+const MAIN = (fn: string, returnType: FunctionType) => `
 
 const __input: string = require("fs").readFileSync(0, "utf8");
 const __args: unknown[] = JSON.parse(__input.split("\\n")[0]);
 const __result = (${fn} as (...args: unknown[]) => unknown)(...__args);
-process.stdout.write(JSON.stringify(__result));
+process.stdout.write(${printExpr(returnType)});
 `;
 
 export const typescriptAdapter: FunctionHarnessAdapter = {
@@ -49,7 +61,7 @@ export const typescriptAdapter: FunctionHarnessAdapter = {
   assemble(spec: FunctionSpec, studentCode: string) {
     // The prelude is empty, so the student code starts at line 0.
     const preludeLineCount = 0;
-    const source = `${PRELUDE}${studentCode}${MAIN(spec.functionName)}`;
+    const source = `${PRELUDE}${studentCode}${MAIN(spec.functionName, spec.returnType)}`;
     return { source, preludeLineCount };
   },
 };

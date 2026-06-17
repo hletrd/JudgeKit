@@ -89,7 +89,38 @@ func main() {
 	__decode(json.RawMessage(__line), &__raw)
 ${decls}
 	__result := ${spec.functionName}(${callArgs})
-	// Encoder with SetEscapeHTML(false) keeps <, >, & raw — matching the
+${printBlock(spec.returnType)}
+}
+`;
+    const source = `${PRELUDE}${studentCode}${main}`;
+    return { source, preludeLineCount };
+  },
+};
+
+/**
+ * Emit the Go statements that print the return value.
+ *
+ * double / double[] returns print whitespace-separated numeric tokens (a single
+ * token for a scalar, space-joined for an array) to match encodeValue's
+ * float/space-separated contract — the worker's whitespace-token float
+ * comparator tokenizes these but cannot tokenize a JSON `[a,b]`. strconv with
+ * 'g'/-1 gives Go's shortest round-trip float form, fine under tolerance-based
+ * comparison. Every other type keeps the canonical compact-JSON encoder path.
+ */
+function printBlock(returnType: FunctionType): string {
+  if (returnType === "double") {
+    return `	os.Stdout.WriteString(strconv.FormatFloat(__result, 'g', -1, 64))`;
+  }
+  if (returnType === "double[]") {
+    return `	__tokens := make([]string, len(__result))
+	for __i, __v := range __result {
+		__tokens[__i] = strconv.FormatFloat(__v, 'g', -1, 64)
+	}
+	os.Stdout.WriteString(strings.Join(__tokens, " "))`;
+  }
+  // The emitted comment below documents the generated harness (kept inside the
+  // template so an assembled source stays self-explanatory during debugging).
+  return `	// Encoder with SetEscapeHTML(false) keeps <, >, & raw — matching the
 	// canonical JSON.stringify contract in serialization.ts and the other
 	// adapters. json.Marshal's default escapes them to \\u003c/\\u003e/\\u0026,
 	// which would byte-diverge expected/actual for string returns judged
@@ -102,10 +133,5 @@ ${decls}
 		fmt.Fprintln(os.Stderr, "json:", __err)
 		os.Exit(1)
 	}
-	os.Stdout.WriteString(strings.TrimRight(__buf.String(), "\\n"))
+	os.Stdout.WriteString(strings.TrimRight(__buf.String(), "\\n"))`;
 }
-`;
-    const source = `${PRELUDE}${studentCode}${main}`;
-    return { source, preludeLineCount };
-  },
-};

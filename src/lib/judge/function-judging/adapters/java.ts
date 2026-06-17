@@ -288,7 +288,7 @@ ${reads}
         __r.expect(']');
         ${javaType(spec.returnType)} __result = new Solution().${spec.functionName}(${callArgs});
         StringBuilder __out = new StringBuilder();
-        __FnJudge.write(__out, __result);
+${printBlock(spec.returnType)}
         System.out.print(__out);
     }
 }
@@ -297,3 +297,26 @@ ${reads}
     return { source, preludeLineCount };
   },
 };
+
+/**
+ * Emit the Java statements that serialize `__result` into `__out`.
+ *
+ * double / double[] returns print whitespace-separated numeric tokens (a single
+ * token for a scalar, space-joined for an array) to match encodeValue's
+ * float/space-separated contract — the worker's whitespace-token float
+ * comparator tokenizes these but cannot tokenize a JSON `[a,b]`. Both reuse the
+ * existing `write(StringBuilder, double)` formatter (`%.10g`), accepted under
+ * the comparator's tolerance. Every other type keeps the JSON writer.
+ */
+function printBlock(returnType: FunctionType): string {
+  if (returnType === "double") {
+    return "        __FnJudge.write(__out, __result);";
+  }
+  if (returnType === "double[]") {
+    return `        for (int __k = 0; __k < __result.length; __k++) {
+            if (__k > 0) __out.append(' ');
+            __FnJudge.write(__out, __result[__k]);
+        }`;
+  }
+  return "        __FnJudge.write(__out, __result);";
+}

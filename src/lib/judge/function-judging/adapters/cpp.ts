@@ -202,7 +202,7 @@ ${reads}
     __r.expect(']');
     auto __result = Solution().${spec.functionName}(${callArgs});
     std::string __out;
-    __fnjudge::writeVal(__out, __result);
+${printBlock(spec.returnType)}
     std::cout << __out;
     return 0;
 }
@@ -211,3 +211,26 @@ ${reads}
     return { source, preludeLineCount };
   },
 };
+
+/**
+ * Emit the C++ statements that serialize `__result` into `__out`.
+ *
+ * double / double[] returns print whitespace-separated numeric tokens (a single
+ * token for a scalar, space-joined for an array) to match encodeValue's
+ * float/space-separated contract — the worker's whitespace-token float
+ * comparator tokenizes these but cannot tokenize a JSON `[a,b]`. Both reuse the
+ * existing `writeVal(string&, double)` formatter (`%.10g`), which the float
+ * comparator accepts under tolerance. Every other type keeps the JSON writer.
+ */
+function printBlock(returnType: FunctionType): string {
+  if (returnType === "double") {
+    return "    __fnjudge::writeVal(__out, __result);";
+  }
+  if (returnType === "double[]") {
+    return `    for (size_t __k = 0; __k < __result.size(); __k++) {
+        if (__k) __out.push_back(' ');
+        __fnjudge::writeVal(__out, __result[__k]);
+    }`;
+  }
+  return "    __fnjudge::writeVal(__out, __result);";
+}

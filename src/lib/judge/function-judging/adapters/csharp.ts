@@ -257,7 +257,7 @@ ${reads}
         __r.Expect(']');
         ${csType(spec.returnType)} __result = new Solution().${spec.functionName}(${callArgs});
         var __out = new StringBuilder();
-        __FnJudge.Write(__out, __result);
+${printBlock(spec.returnType)}
         // Write raw UTF-8 bytes straight to stdout instead of Console.Write.
         // Mono 6.12 runs under the judge container's default (POSIX/C) locale,
         // so Console.Out picks a non-UTF-8 encoding and replaces every non-ASCII
@@ -278,3 +278,27 @@ ${reads}
     return { source, preludeLineCount };
   },
 };
+
+/**
+ * Emit the C# statements that serialize `__result` into `__out`.
+ *
+ * double / double[] returns print whitespace-separated numeric tokens (a single
+ * token for a scalar, space-joined for an array) to match encodeValue's
+ * float/space-separated contract — the worker's whitespace-token float
+ * comparator tokenizes these but cannot tokenize a JSON `[a,b]`. Both reuse the
+ * existing `Write(StringBuilder, double)` formatter (invariant "R" round-trip),
+ * accepted under the comparator's tolerance. Every other type keeps the JSON
+ * writer.
+ */
+function printBlock(returnType: FunctionType): string {
+  if (returnType === "double") {
+    return "        __FnJudge.Write(__out, __result);";
+  }
+  if (returnType === "double[]") {
+    return `        for (int __k = 0; __k < __result.Length; __k++) {
+            if (__k > 0) __out.Append(' ');
+            __FnJudge.Write(__out, __result[__k]);
+        }`;
+  }
+  return "        __FnJudge.Write(__out, __result);";
+}
