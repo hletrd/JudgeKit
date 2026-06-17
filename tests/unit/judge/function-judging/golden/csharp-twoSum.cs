@@ -164,7 +164,16 @@ class Solution {
 
 static class __Program {
     static void Main(string[] __ignored) {
-        string __line = Console.In.ReadLine() ?? "";
+        // Read stdin as UTF-8 explicitly. Mono 6.12 runs under the judge
+        // container's default (POSIX/C) locale, so Console.In would decode the
+        // args line with a non-UTF-8 encoding and replace every non-ASCII input
+        // byte with '?' before the harness ever parses it — corrupting any
+        // string argument containing non-ASCII (e.g. "café→", "한국어"). A UTF-8
+        // StreamReader over the raw standard input stream keeps the bytes intact.
+        string __line;
+        using (var __stdin = new System.IO.StreamReader(Console.OpenStandardInput(), new System.Text.UTF8Encoding(false))) {
+            __line = __stdin.ReadLine() ?? "";
+        }
         var __r = new __FnJudge(__line);
         __r.Expect('[');
         long[] nums = __r.ReadLongArray();
@@ -174,6 +183,18 @@ static class __Program {
         long[] __result = new Solution().twoSum(nums, target);
         var __out = new StringBuilder();
         __FnJudge.Write(__out, __result);
-        Console.Write(__out.ToString());
+        // Write raw UTF-8 bytes straight to stdout instead of Console.Write.
+        // Mono 6.12 runs under the judge container's default (POSIX/C) locale,
+        // so Console.Out picks a non-UTF-8 encoding and replaces every non-ASCII
+        // char with '?'. That would byte-diverge expected/actual for any string
+        // return containing non-ASCII (e.g. "café→", "한국어"). Encoding the
+        // canonical text as UTF-8 (no BOM) and writing it to the standard output
+        // stream keeps the bytes identical to serialization.ts encodeValue and
+        // the other adapters regardless of the ambient locale.
+        var __bytes = new System.Text.UTF8Encoding(false).GetBytes(__out.ToString());
+        using (var __stdout = Console.OpenStandardOutput()) {
+            __stdout.Write(__bytes, 0, __bytes.Length);
+            __stdout.Flush();
+        }
     }
 }
