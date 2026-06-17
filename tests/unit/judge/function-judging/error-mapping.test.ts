@@ -56,4 +56,37 @@ describe("mapCompileError", () => {
       "expected 256 bytes but got 512",
     );
   });
+
+  it("does not shift a bare ':N:' token that is not a filename-anchored line ref", () => {
+    // A bare ":8:" in prose must be left intact — only "<file>.<ext>:N" is a
+    // real compiler line reference.
+    expect(mapCompileError("compiled at 12:30:45 with :8: issues", 4)).toBe(
+      "compiled at 12:30:45 with :8: issues",
+    );
+  });
+
+  it("does not shift a column pair inside a caret/annotation line", () => {
+    // GCC/Clang caret annotations contain "12:5"-style column pairs that are not
+    // preceded by a filename; they must not be decremented.
+    const input = "   12 |     x = 1;\n   |   ^ 12:5 here";
+    expect(mapCompileError(input, 5)).toBe(input);
+  });
+
+  it("does not shift a URL port that resembles ':N:'", () => {
+    expect(mapCompileError("note: see http://host:8080: link", 4)).toBe(
+      "note: see http://host:8080: link",
+    );
+  });
+
+  it("shifts a filename-anchored ':N' with no trailing column", () => {
+    expect(mapCompileError("solution.cpp:20: error", 5)).toBe(
+      "solution.cpp:15: error",
+    );
+  });
+
+  it("shifts a Java 'File.java:N:col' reference", () => {
+    expect(mapCompileError("Main.java:30:12: error: cannot find symbol", 10)).toBe(
+      "Main.java:20:12: error: cannot find symbol",
+    );
+  });
 });
