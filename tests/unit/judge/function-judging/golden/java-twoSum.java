@@ -138,9 +138,11 @@ final class __FnJudge {
     static void write(StringBuilder o, boolean v) { o.append(v ? "true" : "false"); }
     static void write(StringBuilder o, String v) {
         // Canonical JSON.stringify (ECMA-404) escaping: named short escapes for
-        // \b \t \n \f \r \" \\, \u00XX for any other control char < 0x20,
+        // \b \t \n \f \r \" \\, \\u00XX for any other control char < 0x20,
         // everything else (incl. <, >, &, and non-ASCII) raw. Matches
         // serialization.ts encodeValue and the other adapters byte-for-byte.
+        // (The \\u00XX above uses two backslashes so javac's JLS-3.3 lexer does
+        // not treat it as a malformed unicode escape inside this comment.)
         o.append('"');
         for (int k = 0; k < v.length(); k++) {
             char c = v.charAt(k);
