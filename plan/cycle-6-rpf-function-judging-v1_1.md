@@ -101,6 +101,20 @@ and not correctness/security/data-loss blockers:
 
 Exit criterion for all: schedule in a future RPF cycle; no severity downgrade.
 
+### P8 — SEC6-2 (Low) submission sourceCode NUL-byte rejection — FIX
+- **File:** `src/lib/validators/api.ts` (`submissionCreateSchema.sourceCode`).
+- **Problem:** `sourceCode` was validated only for min/max length. A submission
+  containing an embedded NUL byte (U+0000) could truncate/corrupt downstream
+  string handling in compilers and the judge worker. The finding was raised in
+  the cycle-6 security review (`.context/reviews/security-reviewer.md` SEC6-2) but
+  was not promoted into the aggregate or scheduled — re-opened here so no finding
+  is silently dropped (skill no-silent-drop rule; security findings not deferrable).
+- **Fix:** Add a `.refine` rejecting any `sourceCode` containing `U+0000`, message
+  `sourceCodeInvalid` (returned verbatim as the 400 `error` by `createApiHandler`).
+- **Tests:** Added two cases to `tests/unit/validators/api.test.ts` (NUL embedded
+  in otherwise-valid source; NUL-only source). Full suite green (2847 unit tests).
+- **Status:** DONE.
+
 ## DEFERRED
 
 None this cycle. D1 from cycle 5 is now P1 (active) because double is authorable.
