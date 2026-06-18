@@ -5,7 +5,15 @@ import { getMaxSourceCodeSizeBytes } from "@/lib/security/constants";
 export const submissionCreateSchema = z.object({
   problemId: z.preprocess(trimString, z.string().min(1, "problemRequired")),
   language: z.preprocess(trimString, z.string().min(1, "languageRequired")),
-  sourceCode: z.string().min(1, "sourceCodeRequired").max(getMaxSourceCodeSizeBytes(), "sourceCodeTooLarge"),
+  sourceCode: z
+    .string()
+    .min(1, "sourceCodeRequired")
+    .max(getMaxSourceCodeSizeBytes(), "sourceCodeTooLarge")
+    // Reject NUL bytes (U+0000): no language's source legitimately contains a
+    // raw NUL, and embedded NULs can truncate or corrupt downstream string
+    // handling in compilers and the judge worker (SEC6-2). Fail closed at the
+    // boundary rather than relying on per-language tolerance.
+    .refine((value) => !value.includes("\u0000"), "sourceCodeInvalid"),
   assignmentId: z.preprocess(
     normalizeOptionalString,
     z.string().min(1, "invalidAssignmentId").nullable().optional()

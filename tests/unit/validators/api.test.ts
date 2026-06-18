@@ -70,6 +70,23 @@ describe("submissionCreateSchema", () => {
     expect(result.success).toBe(true);
   });
 
+  it("rejects sourceCode containing a NUL byte (SEC6-2)", () => {
+    const result = submissionCreateSchema.safeParse({
+      ...validPayload,
+      sourceCode: "int main() {\u0000return 0; }",
+    });
+    expect(result.success).toBe(false);
+    const messages = result.error?.issues.map((i) => i.message);
+    expect(messages).toContain("sourceCodeInvalid");
+  });
+
+  it("rejects sourceCode that is only a NUL byte (SEC6-2)", () => {
+    const result = submissionCreateSchema.safeParse({ ...validPayload, sourceCode: "\u0000" });
+    expect(result.success).toBe(false);
+    const messages = result.error?.issues.map((i) => i.message);
+    expect(messages).toContain("sourceCodeInvalid");
+  });
+
   it("accepts optional assignmentId when omitted", () => {
     const result = submissionCreateSchema.safeParse(validPayload);
     expect(result.success).toBe(true);
