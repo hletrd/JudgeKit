@@ -1,0 +1,12 @@
+[Unit]
+Description=Safe Docker disk cleanup (images + build cache; never volumes)
+Documentation=https://docs.docker.com/config/pruning/
+After=docker.service
+Requires=docker.service
+
+[Service]
+Type=oneshot
+ExecStart=/usr/local/bin/docker-disk-cleanup.sh
+# Run at low priority so it never competes with a live deploy/build.
+Nice=10
+IOSchedulingClass=idle
