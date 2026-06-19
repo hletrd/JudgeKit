@@ -483,6 +483,33 @@ success "SSH connection to ${REMOTE_HOST} verified"
 remote "docker info >/dev/null 2>&1" || die "docker is not available on the remote host"
 success "Remote docker verified"
 
+# Pre-build disk guard.
+# A full image build (judgekit-app + any language images) needs several GB.
+# If the remote root FS is already near-full the build dies mid-layer and
+# leaves a half-written image + build cache that fills the disk *further* —
+# the exact failure that took algo.xylolabs.com to 100% (Jun 2026) and left a
+# broken deploy. Reclaim safely first (dangling images + build cache + the
+# BuildKit history store — NEVER volumes, the PostgreSQL data lives there),
+# then abort cleanly if still critical instead of starting a doomed build.
+# Thresholds overridable via DEPLOY_DISK_WARN_PCT / DEPLOY_DISK_HARD_PCT.
+DISK_WARN_PCT="${DEPLOY_DISK_WARN_PCT:-85}"
+DISK_HARD_PCT="${DEPLOY_DISK_HARD_PCT:-92}"
+_remote_disk_pct() { remote "df --output=pcent / | tail -1 | tr -dc '0-9'" 2>/dev/null; }
+DISK_PCT="$(_remote_disk_pct)"
+if [[ -n "$DISK_PCT" && "$DISK_PCT" -ge "$DISK_WARN_PCT" ]]; then
+    warn "Remote root FS is ${DISK_PCT}% full (>= ${DISK_WARN_PCT}%). Reclaiming dangling images + build cache before building (volumes are never touched)..."
+    # -f NOT -af: dangling only, so tagged judge-* language images survive.
+    remote "docker image prune -f 2>&1 | tail -1" || true
+    remote "docker builder prune -af 2>&1 | tail -1" || true
+    remote "docker buildx history rm --all 2>&1 | tail -1" || true
+    DISK_PCT="$(_remote_disk_pct)"
+    info "Remote root FS now ${DISK_PCT:-unknown}% full after cleanup"
+fi
+if [[ -n "$DISK_PCT" && "$DISK_PCT" -ge "$DISK_HARD_PCT" ]]; then
+    die "Remote root FS still ${DISK_PCT}% full (>= ${DISK_HARD_PCT}%) after safe cleanup on ${REMOTE_HOST}. Refusing to build — free disk manually, but do NOT prune volumes (the PostgreSQL data lives there). See AGENTS.md 'Deploy hardening'."
+fi
+success "Remote disk preflight OK (${DISK_PCT:-unknown}% used)"
+
 # Detect remote architecture
 REMOTE_ARCH=$(remote "uname -m")
 case "$REMOTE_ARCH" in
