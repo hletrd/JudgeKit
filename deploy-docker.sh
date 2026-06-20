@@ -338,10 +338,15 @@ remote_copy() {
 }
 
 remote_rsync() {
+    local protect_args=()
+    if rsync --help 2>&1 | grep -q -- '--protect-args'; then
+        protect_args=(-s)
+    fi
+
     if [[ -n "${SSH_PASSWORD:-}" ]]; then
-        SSHPASS="$SSH_PASSWORD" rsync -s -e "sshpass -e ssh $SSH_OPTS" "$@"
+        SSHPASS="$SSH_PASSWORD" rsync "${protect_args[@]}" -e "sshpass -e ssh $SSH_OPTS" "$@"
     else
-        rsync -s -e "ssh $SSH_OPTS" "$@"
+        rsync "${protect_args[@]}" -e "ssh $SSH_OPTS" "$@"
     fi
 }
 
