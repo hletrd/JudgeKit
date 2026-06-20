@@ -144,6 +144,14 @@ SSH_KEY=key.pem REMOTE_HOST=... REMOTE_USER=... DOMAIN=... ./deploy-docker.sh
 # Flags: --skip-build, --skip-languages, --languages=core, --languages=cpp,python
 ```
 
+Current production target shortcuts used by the local deploy environment:
+
+| Target | Domain | SSH user | SSH key | Worker topology |
+|--------|--------|----------|---------|-----------------|
+| `oj` / AuraEdu | `oj.auraedu.me` | `ubuntu` | `~/.ssh/xylolabs-algo.pem` | Integrated app + worker host |
+| `algo` | `algo.xylolabs.com` | `ubuntu` | `~/.ssh/xylolabs-algo.pem` | App host + dedicated `worker-0.algo.xylolabs.com` |
+| `worv` | `test.worv.ai` | `ubuntu` | `~/.ssh/worv-judgekit.pem` | App host + dedicated `worker.test.worv.ai` |
+
 ## Dedicated Judge Workers
 
 Add judging capacity by deploying workers on separate machines. Each worker connects to the app server via HTTP(S), registers on startup, and sends periodic heartbeats.

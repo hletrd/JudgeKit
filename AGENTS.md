@@ -574,6 +574,11 @@ The primary deploy script is `deploy-docker.sh`. Pass environment variables from
 - `SSH_KEY` — for key-based SSH auth (Target 2)
 - `REMOTE_HOST`, `REMOTE_USER`, `DOMAIN` — target overrides
 
+Current deployment shortcut files use `~/.ssh/xylolabs-algo.pem` for both
+`oj.auraedu.me` and `algo.xylolabs.com`; `test.worv.ai` uses
+`~/.ssh/worv-judgekit.pem`. Keep this aligned with `docs/deployment.md` when
+rotating keys.
+
 **Server-side builds:** `deploy-docker.sh` builds all Docker images directly on the remote server (not locally), avoiding architecture mismatches between dev machines and the target host. The script auto-detects the server's architecture (`amd64`/`arm64`) and sets the appropriate platform flag automatically.
 
 **Docker Compose configuration (production):**

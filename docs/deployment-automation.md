@@ -10,6 +10,14 @@ JudgeKit production deploys currently run from a trusted workstation or operator
 REMOTE_HOST=... REMOTE_USER=... DOMAIN=... SSH_KEY=... ./deploy-docker.sh
 ```
 
+Current target-specific SSH keys in the local deploy environment:
+
+| Target | Domain | SSH key |
+|--------|--------|---------|
+| `oj` / AuraEdu | `oj.auraedu.me` | `~/.ssh/xylolabs-algo.pem` |
+| `algo` | `algo.xylolabs.com` | `~/.ssh/xylolabs-algo.pem` |
+| `worv` | `test.worv.ai` | `~/.ssh/worv-judgekit.pem` |
+
 That path is the canonical baseline because it:
 
 - builds images on the target host
