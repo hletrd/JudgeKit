@@ -10,7 +10,7 @@
  *   npx playwright test responsive-layout
  *   PLAYWRIGHT_BASE_URL=https://algo.xylolabs.com npx playwright test responsive-layout
  */
-import { devices, type Page } from "@playwright/test";
+import { devices, type Locator, type Page } from "@playwright/test";
 import { test, expect } from "./fixtures";
 
 const baseUrl = process.env.PLAYWRIGHT_BASE_URL;
@@ -71,6 +71,16 @@ async function expectNoFixedOverlap(page: Page) {
       expect(mainBox.y).toBeGreaterThanOrEqual(headerBox.y + headerBox.height - 2);
     }
   }
+}
+
+async function hasVisible(locator: Locator) {
+  const count = await locator.count().catch(() => 0);
+  for (let i = 0; i < count; i += 1) {
+    if (await locator.nth(i).isVisible().catch(() => false)) {
+      return true;
+    }
+  }
+  return false;
 }
 
 // ---------------------------------------------------------------------------
@@ -183,10 +193,10 @@ test.describe("Mobile-specific layout checks", () => {
     // The page should render without horizontal overflow regardless of layout mode
     await expectNoHorizontalOverflow(page);
     // There should be visible content (table, cards, or empty state message)
-    const hasTable = await page.locator("table").isVisible().catch(() => false);
-    const hasCards = await page.locator("[role='list']").isVisible().catch(() => false);
-    const hasEmpty = await page.getByText(/no submissions|제출 없음|empty/i).isVisible().catch(() => false);
-    const hasCardSlot = await page.locator("[data-slot='card-content']").first().isVisible().catch(() => false);
+    const hasTable = await hasVisible(page.locator("table"));
+    const hasCards = await hasVisible(page.locator("[role='list']"));
+    const hasEmpty = await hasVisible(page.getByText(/no submissions|제출 없음|empty/i));
+    const hasCardSlot = await hasVisible(page.locator("[data-slot='card-content']"));
     expect(hasTable || hasCards || hasEmpty || hasCardSlot, "Page should render some content").toBeTruthy();
   });
 
@@ -195,9 +205,9 @@ test.describe("Mobile-specific layout checks", () => {
     await page.goto("/rankings", { waitUntil: "networkidle" });
     await page.waitForTimeout(2000);
     await expectNoHorizontalOverflow(page);
-    const hasTable = await page.locator("table").isVisible().catch(() => false);
-    const hasCards = await page.locator("[role='list']").isVisible().catch(() => false);
-    const hasEmpty = await page.getByText(/no rankings|랭킹 없음|empty/i).isVisible().catch(() => false);
+    const hasTable = await hasVisible(page.locator("table"));
+    const hasCards = await hasVisible(page.locator("[role='list']"));
+    const hasEmpty = await hasVisible(page.getByText(/no rankings|랭킹 없음|empty/i));
     expect(hasTable || hasCards || hasEmpty, "Page should render some content").toBeTruthy();
   });
 
@@ -253,10 +263,10 @@ test.describe("Tablet-specific layout checks", () => {
     await page.goto("/submissions", { waitUntil: "networkidle" });
     await page.waitForTimeout(2000);
     await expectNoHorizontalOverflow(page);
-    const hasTable = await page.locator("table").isVisible().catch(() => false);
-    const hasCards = await page.locator("[role='list']").isVisible().catch(() => false);
-    const hasEmpty = await page.getByText(/no submissions|제출 없음|empty/i).isVisible().catch(() => false);
-    const hasCardSlot = await page.locator("[data-slot='card-content']").first().isVisible().catch(() => false);
+    const hasTable = await hasVisible(page.locator("table"));
+    const hasCards = await hasVisible(page.locator("[role='list']"));
+    const hasEmpty = await hasVisible(page.getByText(/no submissions|제출 없음|empty/i));
+    const hasCardSlot = await hasVisible(page.locator("[data-slot='card-content']"));
     expect(hasTable || hasCards || hasEmpty || hasCardSlot, "Page should render some content").toBeTruthy();
   });
 
@@ -265,9 +275,9 @@ test.describe("Tablet-specific layout checks", () => {
     await page.goto("/rankings", { waitUntil: "networkidle" });
     await page.waitForTimeout(2000);
     await expectNoHorizontalOverflow(page);
-    const hasTable = await page.locator("table").isVisible().catch(() => false);
-    const hasCards = await page.locator("[role='list']").isVisible().catch(() => false);
-    const hasEmpty = await page.getByText(/no rankings|랭킹 없음|empty/i).isVisible().catch(() => false);
+    const hasTable = await hasVisible(page.locator("table"));
+    const hasCards = await hasVisible(page.locator("[role='list']"));
+    const hasEmpty = await hasVisible(page.getByText(/no rankings|랭킹 없음|empty/i));
     expect(hasTable || hasCards || hasEmpty, "Page should render some content").toBeTruthy();
   });
 });
@@ -293,10 +303,10 @@ test.describe("Desktop-specific layout checks", () => {
     await page.goto("/submissions", { waitUntil: "networkidle" });
     await page.waitForTimeout(2000);
     await expectNoHorizontalOverflow(page);
-    const hasTable = await page.locator("table").isVisible().catch(() => false);
-    const hasCards = await page.locator("[role='list']").isVisible().catch(() => false);
-    const hasEmpty = await page.getByText(/no submissions|제출 없음|empty/i).isVisible().catch(() => false);
-    const hasCardSlot = await page.locator("[data-slot='card-content']").first().isVisible().catch(() => false);
+    const hasTable = await hasVisible(page.locator("table"));
+    const hasCards = await hasVisible(page.locator("[role='list']"));
+    const hasEmpty = await hasVisible(page.getByText(/no submissions|제출 없음|empty/i));
+    const hasCardSlot = await hasVisible(page.locator("[data-slot='card-content']"));
     expect(hasTable || hasCards || hasEmpty || hasCardSlot, "Page should render some content").toBeTruthy();
   });
 });
