@@ -26,6 +26,7 @@ export const EXPORT_SANITIZED_COLUMNS: Record<string, Set<string>> = {
   judgeWorkers: new Set(["secretTokenHash", "judgeClaimToken"]),
   recruitingInvitations: new Set(["tokenHash"]),
   systemSettings: new Set(["hcaptchaSecret", "smtpPass"]),
+  plugins: new Set(["config"]),
 };
 
 /**
@@ -61,6 +62,7 @@ export const LOGGER_REDACT_PATHS = [
   "access_token",
   "refresh_token",
   "id_token",
+  "config",
   "encryptedKey",
   "hcaptchaSecret",
   "body.hcaptchaSecret",

@@ -148,6 +148,16 @@ export const DELETE = createApiHandler({
     }
     const result = await removeDockerImage(body.imageTag);
     if (!result.success) {
+      recordAuditEvent({
+        actorId: user.id,
+        actorRole: user.role,
+        action: "docker_image.remove_failed",
+        resourceType: "docker_image",
+        resourceId: body.imageTag,
+        summary: `Failed Docker image removal for ${body.imageTag}`,
+        details: { error: result.error ?? "removeFailed" },
+        request: req,
+      });
       return NextResponse.json(
         { error: result.error ?? "removeFailed" },
         { status: 500 }

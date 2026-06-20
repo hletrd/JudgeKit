@@ -28,7 +28,7 @@ test("dashboard root exposes judge status tabs and full languages catalog", asyn
   await expect(
     mainContent.getByRole("tab", { name: /Judge runtime overview|채점 시스템 현황/i })
   ).toBeVisible();
-  await expect(mainContent.getByText(/Online workers|온라인 워커/i)).toBeVisible();
+  await expect(mainContent.getByText(/Online workers|온라인 워커/i).first()).toBeVisible();
 
   await mainContent.getByRole("tab", { name: /Supported languages|지원 언어/i }).click();
   await expect(
@@ -36,9 +36,10 @@ test("dashboard root exposes judge status tabs and full languages catalog", asyn
   ).toBeVisible();
 
   await mainContent.getByRole("link", { name: /View all languages|전체 지원 언어 보기/i }).click();
-  await expect(page).toHaveURL(/\/dashboard\/languages/);
+  await expect(page).toHaveURL(/\/languages/);
   await expect(
-    page.getByRole("heading", { name: /Supported languages|지원 언어/i })
+    page.getByRole("heading", { name: /Judge Environments|Compilation Options|채점 환경/i })
   ).toBeVisible();
+  await expect(page.getByText(/All enabled languages|전체 활성 언어/i).first()).toBeVisible();
   await expect(page.locator("#main-content table")).toBeVisible();
 });

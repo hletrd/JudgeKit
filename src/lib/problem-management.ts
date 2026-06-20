@@ -242,6 +242,7 @@ async function syncProblemTestCases(
 async function syncProblemFileLinks(
   problemId: string,
   description: string,
+  actorId: string,
   executor: DatabaseExecutor | TransactionClient = db
 ) {
   const linkedFileIds = extractLinkedFileIds(description);
@@ -251,6 +252,26 @@ async function syncProblemFileLinks(
     .where(eq(files.problemId, problemId));
 
   if (linkedFileIds.length === 0) return;
+
+  const linkedRows = await executor
+    .select({
+      id: files.id,
+      uploadedBy: files.uploadedBy,
+      problemId: files.problemId,
+    })
+    .from(files)
+    .where(inArray(files.id, linkedFileIds));
+
+  const linkedRowById = new Map(linkedRows.map((row) => [row.id, row]));
+  const unauthorized = linkedFileIds.filter((id) => {
+    const row = linkedRowById.get(id);
+    if (!row) return true;
+    return row.uploadedBy !== actorId && row.problemId !== problemId;
+  });
+
+  if (unauthorized.length > 0) {
+    throw new Error("fileLinkNotAllowed");
+  }
 
   await executor.update(files)
     .set({ problemId })
@@ -300,7 +321,7 @@ export async function createProblemWithTestCases(input: ProblemMutationInput, au
       await syncProblemTags(id, tagIds, tx);
     }
 
-    await syncProblemFileLinks(id, input.description, tx);
+    await syncProblemFileLinks(id, input.description, authorId, tx);
 
   });
 
@@ -342,7 +363,7 @@ export async function updateProblemWithTestCases(problemId: string, input: Probl
     const tagIds = await resolveTagIdsWithExecutor(input.tags, actorId ?? "", tx);
     await syncProblemTags(problemId, tagIds, tx);
 
-    await syncProblemFileLinks(problemId, input.description, tx);
+    await syncProblemFileLinks(problemId, input.description, actorId ?? "", tx);
 
   });
 }

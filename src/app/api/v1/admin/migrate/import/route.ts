@@ -5,6 +5,7 @@ import { consumeApiRateLimit } from "@/lib/security/api-rate-limit";
 import { resolveCapabilities } from "@/lib/capabilities/cache";
 import { importDatabase } from "@/lib/db/import";
 import { validateExport, isSanitizedExport, type JudgeKitExport } from "@/lib/db/export";
+import { takePreRestoreSnapshot } from "@/lib/db/pre-restore-snapshot";
 import { MAX_IMPORT_BYTES, readJsonBodyWithLimit, readUploadedJsonFileWithLimit } from "@/lib/db/import-transfer";
 import { recordAuditEvent } from "@/lib/audit/events";
 import { verifyAndRehashPassword } from "@/lib/security/password-hash";
@@ -105,13 +106,15 @@ export async function POST(request: NextRequest) {
         request,
       });
 
+      const preSnapshotPath = await takePreRestoreSnapshot(user.id);
       const result = await importDatabase(data);
 
-      if (!result.success) {
+      if (!result.success || result.errors.length > 0) {
         return NextResponse.json({
           error: "importFailed",
           details: result.errors,
           partial: result.tableResults,
+          preRestoreSnapshotPath: preSnapshotPath,
         }, { status: 500 });
       }
 
@@ -120,6 +123,7 @@ export async function POST(request: NextRequest) {
         tablesImported: result.tablesImported,
         totalRowsImported: result.totalRowsImported,
         tableResults: result.tableResults,
+        preRestoreSnapshotPath: preSnapshotPath,
       });
     }
 
@@ -203,13 +207,15 @@ export async function POST(request: NextRequest) {
       request,
     });
 
+    const preSnapshotPath = await takePreRestoreSnapshot(user.id);
     const result = await importDatabase(data);
 
-    if (!result.success) {
+    if (!result.success || result.errors.length > 0) {
       return NextResponse.json({
         error: "importFailed",
         details: result.errors,
         partial: result.tableResults,
+        preRestoreSnapshotPath: preSnapshotPath,
       }, { status: 500, headers: { "Deprecation": "true", "Sunset": "Sun, 01 Nov 2026 00:00:00 GMT" } });
     }
 
@@ -218,6 +224,7 @@ export async function POST(request: NextRequest) {
       tablesImported: result.tablesImported,
       totalRowsImported: result.totalRowsImported,
       tableResults: result.tableResults,
+      preRestoreSnapshotPath: preSnapshotPath,
     }, { headers: { "Deprecation": "true", "Sunset": "Sun, 01 Nov 2026 00:00:00 GMT" } });
   } catch (error) {
     logger.error({ err: error }, "Database import error");

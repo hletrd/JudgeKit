@@ -4,9 +4,10 @@ import { auditEvents, groups, systemSettings, users } from "@/lib/db/schema";
 import { captureEvidence } from "./support/evidence";
 import { expect, test } from "./fixtures";
 import {
-  RUNTIME_ADMIN_UPDATED_PASSWORD,
+  RUNTIME_ADMIN_INITIAL_PASSWORD,
   RUNTIME_ADMIN_USERNAME,
 } from "./support/runtime-admin";
+import { loginWithCredentials } from "./support/helpers";
 
 const AUDIT_LOGS_PATH = "/dashboard/admin/audit-logs";
 const GLOBAL_SETTINGS_ID = "global";
@@ -50,62 +51,82 @@ test("admin audit logs render server-action and route mutation events", async ({
 
   try {
     await test.step("create an audit event from a server action", async () => {
-      await page.goto("/dashboard/admin/settings", { waitUntil: "networkidle" });
-      await page.locator("#site-title").fill(auditTitle);
-      await page.getByRole("button", { name: "Save" }).click();
+    await page.goto("/dashboard/admin/settings", { waitUntil: "networkidle" });
+    await page.locator("#site-title").fill(auditTitle);
+    await page.getByRole("button", { name: "Save" }).click();
 
-      await expect(page.getByText("System settings updated successfully")).toBeVisible();
+      await expect(page.getByText("System settings updated")).toBeVisible();
+      await expect.poll(async () => {
+        const event = await db.query.auditEvents.findFirst({
+          where: and(
+            eq(auditEvents.action, "system_settings.updated"),
+            eq(auditEvents.actorId, runtimeAdmin.id),
+            gt(auditEvents.createdAt, verificationStart)
+          ),
+        });
+
+        return event?.details?.includes(auditTitle) ?? false;
+      }).toBe(true);
     });
 
     await test.step("create an audit event from a route handler", async () => {
-      await page.goto("/dashboard/groups", { waitUntil: "networkidle" });
+      await page.goto("/groups", { waitUntil: "networkidle" });
       await page.getByRole("button", { name: "Create Group" }).click();
       await page.locator("#group-name").fill(groupName);
       await page.locator("#group-description").fill(groupDescription);
       await page.getByRole("button", { name: "Create" }).click();
 
-      await expect(page).toHaveURL(/\/dashboard\/groups\//);
+      await expect(page).toHaveURL(/\/groups\//);
       await expect(page.getByRole("heading", { name: groupName })).toBeVisible();
       createdGroupId = page.url().split("/").pop() ?? null;
     });
 
     await test.step("record profile and password audit events", async () => {
-      await page.goto("/dashboard/profile", { waitUntil: "networkidle" });
-      await page.getByPlaceholder("e.g. Class 1-2").fill(profileClassName);
-      await page.getByRole("button", { name: "Save" }).click();
-      await expect(page.getByText("Profile updated successfully")).toBeVisible();
+      await page.goto("/profile", { waitUntil: "networkidle" });
+      await page.getByPlaceholder("e.g. Affiliation 1-2").fill(profileClassName);
+      await page.locator("form").getByRole("button", { name: "Save" }).click();
+      await expect(page.getByText("Profile updated")).toBeVisible();
 
       await page.goto("/change-password", { waitUntil: "networkidle" });
-      await page.locator("#currentPassword").fill(RUNTIME_ADMIN_UPDATED_PASSWORD);
+      await page.locator("#currentPassword").fill(RUNTIME_ADMIN_INITIAL_PASSWORD);
       await page.locator("#newPassword").fill(rotatedPassword);
       await page.locator("#confirmPassword").fill(rotatedPassword);
       await page.getByRole("button", { name: "Change Password" }).click();
+
+      await expect.poll(async () => {
+        const profileUpdatedAudit = await db.query.auditEvents.findFirst({
+          where: and(
+            eq(auditEvents.action, "user.profile_updated"),
+            eq(auditEvents.actorId, runtimeAdmin.id),
+            gt(auditEvents.createdAt, verificationStart)
+          ),
+        });
+
+        return profileUpdatedAudit?.details?.includes("classNameSet") ?? false;
+      }).toBe(true);
+
+      await expect.poll(async () => {
+        const passwordChangedAudit = await db.query.auditEvents.findFirst({
+          where: and(
+            eq(auditEvents.action, "user.password_changed"),
+            eq(auditEvents.actorId, runtimeAdmin.id),
+            gt(auditEvents.createdAt, verificationStart)
+          ),
+        });
+
+        return Boolean(passwordChangedAudit);
+      }).toBe(true);
+
+      await page.context().clearCookies();
+      await loginWithCredentials(page, RUNTIME_ADMIN_USERNAME, rotatedPassword);
       await page.waitForURL("**/dashboard", { timeout: 15_000 });
-
-      const profileUpdatedAudit = await db.query.auditEvents.findFirst({
-        where: and(
-          eq(auditEvents.action, "user.profile_updated"),
-          eq(auditEvents.actorId, runtimeAdmin.id),
-          gt(auditEvents.createdAt, verificationStart)
-        ),
-      });
-      const passwordChangedAudit = await db.query.auditEvents.findFirst({
-        where: and(
-          eq(auditEvents.action, "user.password_changed"),
-          eq(auditEvents.actorId, runtimeAdmin.id),
-          gt(auditEvents.createdAt, verificationStart)
-        ),
-      });
-
-      expect(profileUpdatedAudit).not.toBeUndefined();
-      expect(passwordChangedAudit).not.toBeUndefined();
     });
 
     await test.step("search and filter the audit-log page", async () => {
       const auditLogsTable = page.locator("#main-content table:visible").first();
 
       await page.goto(AUDIT_LOGS_PATH, { waitUntil: "networkidle" });
-      await expect(page.getByRole("link", { name: "Audit Logs" })).toBeVisible();
+      await expect(page.getByRole("heading", { name: "Audit Logs" })).toBeVisible();
 
       await page.locator("#audit-log-search").fill(prefix);
       await page.getByRole("button", { name: "Apply Filters" }).click();
@@ -115,9 +136,12 @@ test("admin audit logs render server-action and route mutation events", async ({
       await expect(auditLogsTable).toContainText(groupName);
       await expect(auditLogsTable).toContainText(`@${runtimeAdmin.username}`);
 
-      await auditLogsTable.locator("summary").first().click();
-      await expect(auditLogsTable).toContainText("SERVER_ACTION");
-      await expect(auditLogsTable).toContainText("/dashboard/admin/settings");
+      const systemSettingsRow = auditLogsTable.getByRole("row", {
+        name: /system_settings\.updated/,
+      });
+      await systemSettingsRow.getByRole("button", { name: "View details" }).click();
+      await expect(systemSettingsRow).toContainText("SERVER_ACTION");
+      await expect(systemSettingsRow).toContainText("/dashboard/admin/settings");
 
       if (!createdGroupId) {
         throw new Error("Expected created group id to be captured for audit-log verification");
@@ -130,8 +154,10 @@ test("admin audit logs render server-action and route mutation events", async ({
       await expect(auditLogsTable).toContainText(`ID: ${createdGroupId}`);
       await expect(auditLogsTable).not.toContainText("system_settings.updated");
 
-      await page.locator("#audit-log-resource-type").selectOption("group");
-      await page.getByRole("button", { name: "Apply Filters" }).click();
+      await page.goto(
+        `${AUDIT_LOGS_PATH}?search=${encodeURIComponent(createdGroupId)}&resource=group`,
+        { waitUntil: "networkidle" }
+      );
 
       await expect(auditLogsTable).toContainText("group.created");
       await expect(auditLogsTable).toContainText(groupName);

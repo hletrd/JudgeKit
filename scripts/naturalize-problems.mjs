@@ -1,13 +1,14 @@
 #!/usr/bin/env node
 // Korean naturalization pass 2 - pages 1 & 2
 
-const JUDGE_BASE = 'https://algo.xylolabs.com';
-const JUDGE_KEY = 'jk_d74b5170d9202945aa32a033c0b33b0bf106d1b7';
+const JUDGE_BASE = (process.env.JUDGE_BASE_URL || 'https://algo.xylolabs.com').replace(/\/$/, '');
+const JUDGE_KEY = process.env.JUDGE_API_KEY;
 
 const ANTHROPIC_KEY = process.env.ANTHROPIC_API_KEY || process.env.ANTHROPIC_AUTH_TOKEN;
 const ANTHROPIC_BASE = (process.env.ANTHROPIC_BASE_URL || 'https://api.anthropic.com').replace(/\/$/, '');
 const MODEL = process.env.ANTHROPIC_DEFAULT_OPUS_MODEL || 'claude-opus-4-5';
 
+if (!JUDGE_KEY) { console.error('Need JUDGE_API_KEY'); process.exit(1); }
 if (!ANTHROPIC_KEY) { console.error('Need ANTHROPIC_API_KEY or ANTHROPIC_AUTH_TOKEN'); process.exit(1); }
 console.log(`Base: ${ANTHROPIC_BASE}  Model: ${MODEL}`);
 

@@ -66,6 +66,10 @@ const STATUS_FULL_KEYS = new Set([
   "judging",
   "accepted",
   "wrong_answer",
+  "time_limit_exceeded",
+  "memory_limit_exceeded",
+  "output_limit_exceeded",
+  "internal_error",
   "time_limit",
   "memory_limit",
   "runtime_error",
@@ -75,6 +79,28 @@ const STATUS_FULL_KEYS = new Set([
   "submitted",
 ]);
 
+function statusMessageKey(status: string): string {
+  switch (status) {
+    case "time_limit_exceeded":
+      return "time_limit";
+    case "memory_limit_exceeded":
+      return "memory_limit";
+    default:
+      return status;
+  }
+}
+
+function normalizeStatus(status: string | null | undefined): string | null | undefined {
+  switch (status) {
+    case "time_limit":
+      return "time_limit_exceeded";
+    case "memory_limit":
+      return "memory_limit_exceeded";
+    default:
+      return status;
+  }
+}
+
 function StatusFullName({
   status,
   tSub,
@@ -82,7 +108,7 @@ function StatusFullName({
   if (!status || !STATUS_FULL_KEYS.has(status)) return null;
   return (
     <div className="text-sm font-semibold">
-      {tSub(`statusFull.${status}` as Parameters<typeof tSub>[0])}
+      {tSub(`statusFull.${statusMessageKey(status)}` as Parameters<typeof tSub>[0])}
     </div>
   );
 }
@@ -124,7 +150,7 @@ function TooltipBody({
       {status === "wrong_answer" && score !== null && score !== undefined && (
         <span className="font-medium">{tSub("scoreLabel", { score: formatScore(score, locale) })}</span>
       )}
-      {status === "time_limit" && executionTimeMs != null && (
+      {status === "time_limit_exceeded" && executionTimeMs != null && (
         <div className="text-muted-foreground">
           {formatBadgeNumber(executionTimeMs, locale)} ms / {timeLimitMs != null ? `${formatBadgeNumber(timeLimitMs, locale)} ms` : "—"}
         </div>
@@ -137,19 +163,19 @@ function TooltipBody({
 
       {/* Resource usage */}
       <div className="space-y-2 pt-1">
-        {executionTimeMs !== null && executionTimeMs !== undefined && status !== "time_limit" && timeLimitMs != null && timeLimitMs > 0 && (
+        {executionTimeMs !== null && executionTimeMs !== undefined && status !== "time_limit_exceeded" && timeLimitMs != null && timeLimitMs > 0 && (
           <ResourceUsageBar
             current={executionTimeMs}
             limit={timeLimitMs}
             label="Time"
             unit="ms"
-            exceeded={status === "time_limit"}
+            exceeded={status === "time_limit_exceeded"}
             compact
             icon="timer"
             locale={locale}
           />
         )}
-        {executionTimeMs !== null && executionTimeMs !== undefined && (timeLimitMs == null || timeLimitMs <= 0) && status !== "time_limit" && (
+        {executionTimeMs !== null && executionTimeMs !== undefined && (timeLimitMs == null || timeLimitMs <= 0) && status !== "time_limit_exceeded" && (
           <span className="inline-flex items-center gap-1 text-xs text-muted-foreground">
             <Timer aria-hidden="true" className="size-3 shrink-0" />
             {formatBadgeNumber(executionTimeMs, locale)} ms
@@ -161,7 +187,7 @@ function TooltipBody({
             limit={memoryLimitMb * 1024}
             label="Memory"
             unit="KB"
-            exceeded={status === "memory_limit"}
+            exceeded={status === "memory_limit_exceeded"}
             compact
             icon="memory"
             locale={locale}
@@ -195,15 +221,16 @@ export function SubmissionStatusBadge({
   locale,
 }: SubmissionStatusBadgeProps) {
   const tSub = useTranslations("submissions");
+  const normalizedStatus = normalizeStatus(status);
 
   const badge = (
     <Badge
-      variant={variant ?? getSubmissionStatusVariant(status)}
+      variant={variant ?? getSubmissionStatusVariant(normalizedStatus)}
       className={cn("inline-flex items-center gap-1.5", className)}
       aria-label={label}
     >
-      <SubmissionStatusIcon status={status} />
-      {showLivePulse && isActiveSubmissionStatus(status) && (
+      <SubmissionStatusIcon status={normalizedStatus} />
+      {showLivePulse && isActiveSubmissionStatus(normalizedStatus) && (
         <span aria-hidden="true" className="inline-flex size-2 rounded-full bg-current animate-pulse" />
       )}
       <span>{label}</span>
@@ -213,7 +240,7 @@ export function SubmissionStatusBadge({
   // Show tooltip whenever there's a known verdict — the full-name expansion
   // alone (e.g., "WA" → "오답 (Wrong Answer)") is reason enough. In-progress
   // statuses skip the tooltip so the live pulse remains uncluttered.
-  if (isActiveSubmissionStatus(status) || !status || !STATUS_FULL_KEYS.has(status)) {
+  if (isActiveSubmissionStatus(normalizedStatus) || !normalizedStatus || !STATUS_FULL_KEYS.has(normalizedStatus)) {
     return badge;
   }
 
@@ -223,7 +250,7 @@ export function SubmissionStatusBadge({
         <TooltipTrigger render={<button type="button" className="inline-flex cursor-default border-none bg-transparent p-0" />}>{badge}</TooltipTrigger>
         <TooltipContent className="bg-popover/80 text-popover-foreground backdrop-blur-md border border-border/50 shadow-lg" arrowClassName="bg-popover/80 fill-popover/80 backdrop-blur-md">
           <TooltipBody
-            status={status}
+            status={normalizedStatus}
             compileOutput={compileOutput}
             executionTimeMs={executionTimeMs}
             memoryUsedKb={memoryUsedKb}

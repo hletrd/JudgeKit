@@ -96,10 +96,14 @@ export const POST = createApiHandler({
       .where(eq(languageConfigs.language, refLanguage))
       .limit(1);
 
+    if (langConfig && !langConfig.isEnabled) {
+      return apiError("languageDisabled", 400, "language");
+    }
+
     const langDef = getJudgeLanguageDefinition(refLanguage);
     const extension = langConfig?.extension || langDef?.extension;
     const dockerImage = langConfig?.dockerImage || langDef?.dockerImage;
-    const runCommand = langConfig?.runCommand || (langDef ? langDef.runCommand.join(" ") : null);
+    const runCommand = langConfig?.runCommand || serializeJudgeCommand(langDef?.runCommand);
     const compileCommand = langConfig?.compileCommand || serializeJudgeCommand(langDef?.compileCommand);
 
     if (!extension || !dockerImage || !runCommand) {
@@ -116,6 +120,7 @@ export const POST = createApiHandler({
       dockerImage: dockerImage.trim(),
       compileCommand: compileCommand?.trim() || null,
       runCommand: runCommand.trim(),
+      id: refLanguage,
     };
 
     const results: Array<{

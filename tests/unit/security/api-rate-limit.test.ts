@@ -59,7 +59,12 @@ vi.mock("nanoid", () => ({
   nanoid: vi.fn(() => "test-nanoid"),
 }));
 
-import { consumeApiRateLimit, consumeUserApiRateLimit, checkServerActionRateLimit } from "@/lib/security/api-rate-limit";
+import {
+  checkServerActionRateLimit,
+  consumeApiRateLimit,
+  consumeUserApiRateLimit,
+  consumeUserDailyQuota,
+} from "@/lib/security/api-rate-limit";
 
 function mockSelectResult(row: Record<string, unknown> | undefined) {
   const rows = row ? [row] : [];
@@ -266,6 +271,66 @@ describe("atomicConsumeRateLimit internal paths", () => {
     expect(setArgs.blockedUntil).toBeTypeOf("number");
     // blockedUntil is based on DB time (MOCK_DB_NOW_MS + window), not Date.now()
     expect(setArgs.blockedUntil).toBeGreaterThan(MOCK_DB_NOW_MS);
+  });
+});
+
+describe("consumeUserDailyQuota", () => {
+  it("creates a new daily quota bucket on first use", async () => {
+    const result = await consumeUserDailyQuota("user-1", "compiler", 3);
+
+    expect(result).toBeNull();
+    expect(dbMock.insert).toHaveBeenCalled();
+    expect(dbMock.update).not.toHaveBeenCalled();
+  });
+
+  it("increments an existing daily quota bucket while under the limit", async () => {
+    mockSelectResult({
+      key: "daily:compiler:user:user-1",
+      attempts: 2,
+      windowStartedAt: MOCK_DB_NOW_MS,
+      blockedUntil: null,
+      consecutiveBlocks: 0,
+      lastAttempt: MOCK_DB_NOW_MS,
+    });
+
+    const result = await consumeUserDailyQuota("user-1", "compiler", 3);
+
+    expect(result).toBeNull();
+    expect(dbMock.update).toHaveBeenCalled();
+  });
+
+  it("resets an expired daily quota window", async () => {
+    mockSelectResult({
+      key: "daily:compiler:user:user-1",
+      attempts: 3,
+      windowStartedAt: MOCK_DB_NOW_MS - 25 * 60 * 60 * 1000,
+      blockedUntil: null,
+      consecutiveBlocks: 0,
+      lastAttempt: MOCK_DB_NOW_MS - 25 * 60 * 60 * 1000,
+    });
+
+    const result = await consumeUserDailyQuota("user-1", "compiler", 3);
+
+    expect(result).toBeNull();
+    expect(dbMock.update).toHaveBeenCalled();
+  });
+
+  it("returns dailyQuotaExceeded when the daily bucket is exhausted", async () => {
+    mockSelectResult({
+      key: "daily:compiler:user:user-1",
+      attempts: 3,
+      windowStartedAt: MOCK_DB_NOW_MS,
+      blockedUntil: null,
+      consecutiveBlocks: 0,
+      lastAttempt: MOCK_DB_NOW_MS,
+    });
+
+    const response = await consumeUserDailyQuota("user-1", "compiler", 3);
+
+    expect(response?.status).toBe(429);
+    expect(response?.headers.get("X-RateLimit-Limit")).toBe("3");
+    expect(response?.headers.get("X-RateLimit-Remaining")).toBe("0");
+    await expect(response?.json()).resolves.toEqual({ error: "dailyQuotaExceeded" });
   });
 });
 

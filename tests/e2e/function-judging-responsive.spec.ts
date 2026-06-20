@@ -22,7 +22,7 @@
  *   npx playwright test function-judging-responsive
  */
 import { test, expect, type APIRequestContext, type Locator, type Page } from "@playwright/test";
-import { loginWithCredentials } from "./support/helpers";
+import { loginWithCredentials, makeProblemDescription } from "./support/helpers";
 import { DEFAULT_CREDENTIALS } from "./support/constants";
 
 const CSRF_HEADERS = {
@@ -130,7 +130,7 @@ async function createFunctionProblem(request: APIRequestContext): Promise<string
     headers: CSRF_HEADERS,
     data: {
       title: problemTitle,
-      description: "Responsive rendering fixture for the function problem type.",
+      description: makeProblemDescription("Responsive rendering fixture for the function problem type."),
       problemType: "function",
       timeLimitMs: 5000,
       memoryLimitMb: 256,

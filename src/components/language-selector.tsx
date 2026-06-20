@@ -65,6 +65,7 @@ export function LanguageSelector({
   const [inputValue, setInputValue] = useState("");
   const resolvedPlaceholder = placeholder ?? t("selectLanguage");
   const resolvedSearchPlaceholder = searchPlaceholder ?? t("searchLanguages");
+  const clearSearchLabel = t("clearSearch");
   const resolvedRecentlyUsedLabel = recentlyUsedLabel ?? t("recentlyUsed");
   const resolvedOtherLabel = otherLabel ?? t("otherLanguages");
 
@@ -196,9 +197,9 @@ export function LanguageSelector({
                   type="button"
                   onClick={() => setInputValue("")}
                   className="ml-1 rounded-sm p-0.5 text-muted-foreground transition-colors hover:text-foreground"
-                  aria-label="Clear search"
+                  aria-label={clearSearchLabel}
                 >
-                  <XIcon className="size-3.5" />
+                  <XIcon aria-hidden="true" className="size-3.5" />
                 </button>
               )}
             </div>

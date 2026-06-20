@@ -1,6 +1,7 @@
 import { type APIRequestContext } from "@playwright/test";
 import { test, expect } from "./fixtures";
 import { BASE_URL } from "./support/constants";
+import { makeProblemDescription } from "./support/helpers";
 
 const CSRF_HEADERS = {
   "Content-Type": "application/json",
@@ -36,7 +37,7 @@ test("recruiting invitation candidates are scoped to their contest only", async 
 
   const allowedProblemRes = await apiPost(adminRequest, "/api/v1/problems", {
     title: `[E2E] Recruit Allowed ${suffix}`,
-    description: "Visible to invited candidate",
+    description: makeProblemDescription("Visible to invited candidate."),
     visibility: "private",
     timeLimitMs: 2000,
     memoryLimitMb: 256,
@@ -46,7 +47,7 @@ test("recruiting invitation candidates are scoped to their contest only", async 
 
   const blockedProblemRes = await apiPost(adminRequest, "/api/v1/problems", {
     title: `[E2E] Recruit Blocked ${suffix}`,
-    description: "Must stay hidden from invited candidate",
+    description: makeProblemDescription("Must stay hidden from invited candidate."),
     visibility: "public",
     timeLimitMs: 2000,
     memoryLimitMb: 256,
@@ -85,9 +86,14 @@ test("recruiting invitation candidates are scoped to their contest only", async 
   await candidatePage.getByLabel(/account password|계정 비밀번호/i).fill("CandidatePass123!");
 
   await candidatePage.getByRole("button", { name: /start|continue|시작|계속/i }).click();
-  await candidatePage.waitForURL(new RegExp(`/dashboard/contests/${assignmentId}$`), {
+  await candidatePage.getByRole("button", { name: /start now|지금 시작/i }).click();
+  await expect(candidatePage).toHaveURL(/\/(?:dashboard|contests\/)/, {
     timeout: 15_000,
   });
+  if (!candidatePage.url().includes(`/contests/${assignmentId}`)) {
+    await candidatePage.goto(`${BASE_URL}/contests/${assignmentId}`, { waitUntil: "networkidle" });
+  }
+  await expect(candidatePage).toHaveURL(new RegExp(`/contests/${assignmentId}$`));
 
   await expect(candidatePage.locator('a[href="/dashboard/groups"]')).toHaveCount(0);
   await expect(candidatePage.getByRole("columnheader", { name: /rank|순위/i })).toHaveCount(0);
@@ -102,27 +108,27 @@ test("recruiting invitation candidates are scoped to their contest only", async 
   expect(leaderboardResponse.status).toBe(403);
 
 
-  await candidatePage.goto(`${BASE_URL}/dashboard/contests`, { waitUntil: "networkidle" });
-  await expect(candidatePage).toHaveURL(/\/dashboard\/contests$/);
+  await candidatePage.goto(`${BASE_URL}/contests`, { waitUntil: "networkidle" });
+  await expect(candidatePage).toHaveURL(/\/contests$/);
   await expect(candidatePage.getByText(`[E2E] Recruiting Contest ${suffix}`)).toBeVisible();
 
-  await candidatePage.goto(`${BASE_URL}/dashboard/problems`, { waitUntil: "networkidle" });
-  await expect(candidatePage).toHaveURL(/\/dashboard\/problems$/);
+  await candidatePage.goto(`${BASE_URL}/problems`, { waitUntil: "networkidle" });
+  await expect(candidatePage).toHaveURL(/\/problems$/);
   await expect(candidatePage.getByText(`[E2E] Recruit Allowed ${suffix}`)).toBeVisible();
   await expect(candidatePage.getByText(`[E2E] Recruit Blocked ${suffix}`)).toHaveCount(0);
 
-  await candidatePage.goto(`${BASE_URL}/dashboard/problems/${allowedProblemId}/rankings`, {
+  await candidatePage.goto(`${BASE_URL}/practice/problems/${allowedProblemId}/rankings`, {
     waitUntil: "networkidle",
   });
-  await expect(candidatePage).toHaveURL(new RegExp(`/dashboard/problems/${allowedProblemId}(?:\\?.*)?$`));
+  await expect(candidatePage).toHaveURL(new RegExp(`/practice/problems/${allowedProblemId}(?:\\?.*)?$`));
 
-  await candidatePage.goto(`${BASE_URL}/dashboard/problems/${blockedProblemId}`, {
+  await candidatePage.goto(`${BASE_URL}/practice/problems/${blockedProblemId}`, {
     waitUntil: "networkidle",
   });
-  await expect(candidatePage).toHaveURL(/\/dashboard\/contests(?:$|\/)/);
+  await expect(candidatePage).toHaveURL(/\/contests(?:$|\/)/);
 
   await candidatePage.goto(`${BASE_URL}/contests/join`, { waitUntil: "networkidle" });
-  await expect(candidatePage).toHaveURL(/\/dashboard\/contests$/);
+  await expect(candidatePage).toHaveURL(/\/contests$/);
 
   await candidatePage.goto(`${BASE_URL}/playground`, { waitUntil: "networkidle" });
   await expect(candidatePage).toHaveURL(/\/dashboard$/);

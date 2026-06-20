@@ -260,7 +260,7 @@ export async function resetLanguageToDefaults(
         dockerImage: definition.dockerImage,
         compiler: definition.compiler ?? null,
         compileCommand: serializeJudgeCommand(definition.compileCommand),
-        runCommand: definition.runCommand.join(" "),
+        runCommand: serializeJudgeCommand(definition.runCommand) ?? "",
         updatedAt: await getDbNowUncached(),
       })
       .where(eq(languageConfigs.language, language));
@@ -311,7 +311,7 @@ export async function resetAllLanguagesToDefaults(): Promise<LanguageConfigActio
             dockerImage: definition.dockerImage,
             compiler: definition.compiler ?? null,
             compileCommand: serializeJudgeCommand(definition.compileCommand),
-            runCommand: definition.runCommand.join(" "),
+            runCommand: serializeJudgeCommand(definition.runCommand) ?? "",
             updatedAt: now,
           })
           .where(eq(languageConfigs.language, lang));

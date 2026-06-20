@@ -50,6 +50,7 @@ export const SUBMISSION_STATUSES: readonly SubmissionStatus[] = [
   "pending",
   "queued",
   "judging",
+  "submitted",
   "accepted",
   "wrong_answer",
   "compile_error",

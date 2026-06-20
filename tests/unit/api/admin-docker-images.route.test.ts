@@ -119,6 +119,30 @@ describe("admin docker image mutation routes", () => {
     expect(res.status).toBe(400);
     expect(body.error).toBe("imageTagMustStartWithJudge");
     expect(removeDockerImageMock).not.toHaveBeenCalled();
+    expect(recordAuditEventMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        action: "docker_image.remove_rejected",
+        resourceId: "evil.example.com/team/judge-python:latest",
+      })
+    );
+  });
+
+  it("records a failure audit event when an allowed remove fails", async () => {
+    removeDockerImageMock.mockResolvedValue({ success: false, error: "image in use" });
+
+    const { DELETE } = await import("@/app/api/v1/admin/docker/images/route");
+    const res = await DELETE(makeRequest("DELETE", { imageTag: "judge-python:latest" }));
+    const body = await res.json();
+
+    expect(res.status).toBe(500);
+    expect(body.error).toBe("image in use");
+    expect(recordAuditEventMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        action: "docker_image.remove_failed",
+        resourceId: "judge-python:latest",
+        details: { error: "image in use" },
+      })
+    );
   });
 
   it("removes allowed images and records the audit event", async () => {

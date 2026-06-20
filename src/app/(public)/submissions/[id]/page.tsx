@@ -20,6 +20,7 @@ import { buildStatusLabels } from "@/lib/judge/status-labels";
 import { formatDateTimeInTimeZone } from "@/lib/datetime";
 import { canViewAssignmentSubmissions } from "@/lib/assignments/submissions";
 import { resolveCapabilities } from "@/lib/capabilities/cache";
+import { mapFunctionCompileOutputForDisplay } from "@/lib/submissions/visibility";
 
 export async function generateMetadata(): Promise<Metadata> {
   const t = await getTranslations("submissions");
@@ -61,7 +62,7 @@ export default async function PublicSubmissionDetailPage({ params, searchParams 
         columns: { name: true },
       },
       problem: {
-        columns: { id: true, title: true, timeLimitMs: true, showCompileOutput: true, showDetailedResults: true, showRuntimeErrors: true, visibility: true },
+        columns: { id: true, title: true, timeLimitMs: true, showCompileOutput: true, showDetailedResults: true, showRuntimeErrors: true, visibility: true, problemType: true, functionSpec: true },
       },
       results: {
         with: {
@@ -133,6 +134,13 @@ export default async function PublicSubmissionDetailPage({ params, searchParams 
   const showDetailedResults = canViewDetails && (isOwner ? (submission.problem?.showDetailedResults ?? true) : true);
   const showRuntimeErrors = canViewDetails && (isOwner ? (submission.problem?.showRuntimeErrors ?? true) : true);
   const showCompileOutput = canViewDetails && (isOwner ? (submission.problem?.showCompileOutput ?? true) : true);
+  const compileOutput = showCompileOutput
+    ? mapFunctionCompileOutputForDisplay({
+        compileOutput: submission.compileOutput ?? null,
+        language: submission.language,
+        problem: submission.problem,
+      })
+    : null;
 
   const filteredResults = submission.results.map((result) => {
     let executionTimeMs = result.executionTimeMs ?? null;
@@ -178,7 +186,7 @@ export default async function PublicSubmissionDetailPage({ params, searchParams 
           language: submission.language,
           status: submission.status ?? "pending",
           sourceCode: canViewDetails ? submission.sourceCode : "",
-          compileOutput: canViewDetails ? (submission.compileOutput ?? null) : null,
+          compileOutput,
           executionTimeMs: submission.executionTimeMs ?? null,
           memoryUsedKb: submission.memoryUsedKb ?? null,
           score: submission.score ?? null,

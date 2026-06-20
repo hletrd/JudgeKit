@@ -11,14 +11,19 @@
  * Usage: node scripts/verify-naive-tle.mjs
  */
 
-const BASE_URL = 'https://algo.xylolabs.com';
-const API_KEY = 'jk_d74b5170d9202945aa32a033c0b33b0bf106d1b7';
+const BASE_URL = (process.env.JUDGE_BASE_URL || 'https://algo.xylolabs.com').replace(/\/$/, '');
+const API_KEY = process.env.JUDGE_API_KEY;
 const LANGUAGE = 'cpp20';
 const SUBMIT_DELAY_MS = 15000;  // delay between submissions (rate limit: 5/min)
 const POLL_INTERVAL_MS = 2000;  // polling interval
 const POLL_TIMEOUT_MS = 90000;  // max wait per submission
 
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+
+if (!API_KEY) {
+  console.error('Need JUDGE_API_KEY');
+  process.exit(1);
+}
 
 // ─── Problem IDs (from /api/v1/problems search) ───────────────────────────────
 // seq 269 — 나무 자르기

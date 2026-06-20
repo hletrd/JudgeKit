@@ -1,10 +1,12 @@
-import { notFound } from "next/navigation";
+import { notFound, redirect } from "next/navigation";
 import Link from "next/link";
 import { getLocale, getTranslations } from "next-intl/server";
 import { db } from "@/lib/db";
 import { rawQueryAll } from "@/lib/db/queries";
 import { problems } from "@/lib/db/schema";
 import { eq } from "drizzle-orm";
+import { auth } from "@/lib/auth";
+import { getRecruitingAccessContext } from "@/lib/recruiting/access";
 import { Card, CardContent } from "@/components/ui/card";
 import {
   Table,
@@ -48,6 +50,14 @@ export default async function PublicProblemRankingsPage({
   const { id } = await params;
   const locale = await getLocale();
   const t = await getTranslations("rankings");
+  const session = await auth();
+
+  if (session?.user) {
+    const recruitingAccess = await getRecruitingAccessContext(session.user.id);
+    if (recruitingAccess.isRecruitingCandidate) {
+      redirect(buildLocalePath(`/practice/problems/${id}`, locale));
+    }
+  }
 
   const problem = await db.query.problems.findFirst({
     where: eq(problems.id, id),

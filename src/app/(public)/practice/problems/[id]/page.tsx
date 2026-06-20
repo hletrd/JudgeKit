@@ -42,6 +42,7 @@ import { getExamSession } from "@/lib/assignments/exam-sessions";
 import { getDbNow } from "@/lib/db-time";
 import Link from "next/link";
 import { resolveCapabilities } from "@/lib/capabilities/cache";
+import { getRecruitingAccessContext } from "@/lib/recruiting/access";
 
 export async function generateMetadata({ params }: { params: Promise<{ id: string }> }): Promise<Metadata> {
   const { id } = await params;
@@ -214,6 +215,17 @@ export default async function PublicProblemDetailPage({
         isSubmissionBlocked,
         groupId: assignment.groupId,
       };
+    }
+  }
+
+  if (session?.user) {
+    const recruitingAccess = await getRecruitingAccessContext(session.user.id);
+    if (
+      recruitingAccess.isRecruitingCandidate &&
+      !assignmentContext &&
+      !recruitingAccess.problemIds.includes(problem.id)
+    ) {
+      redirect("/contests");
     }
   }
 
@@ -704,7 +716,7 @@ export default async function PublicProblemDetailPage({
                                         current={sub.executionTimeMs}
                                         limit={problem.timeLimitMs}
                                         unit="ms"
-                                        exceeded={sub.status === "time_limit"}
+                                        exceeded={sub.status === "time_limit_exceeded"}
                                         compact
                                         icon="timer"
                                         locale={locale}
@@ -721,7 +733,7 @@ export default async function PublicProblemDetailPage({
                                         current={sub.memoryUsedKb}
                                         limit={problem.memoryLimitMb * 1024}
                                         unit="KB"
-                                        exceeded={sub.status === "memory_limit"}
+                                        exceeded={sub.status === "memory_limit_exceeded"}
                                         compact
                                         icon="memory"
                                         locale={locale}

@@ -3,6 +3,7 @@ import { z } from "zod";
 import { sendEmailVerification } from "@/lib/email";
 import { consumeRateLimitAttemptMulti, getRateLimitKey } from "@/lib/security/rate-limit";
 import { createApiHandler } from "@/lib/api/handler";
+import { getPublicBaseUrl } from "@/lib/security/env";
 
 const resendSchema = z.object({
   userId: z.string().min(1),
@@ -31,7 +32,10 @@ export const POST = createApiHandler({
       );
     }
 
-    const baseUrl = process.env.NEXT_PUBLIC_AUTH_URL || `${req.nextUrl.protocol}//${req.nextUrl.host}`;
+    const baseUrl = getPublicBaseUrl(
+      req.headers.get("host"),
+      req.headers.get("x-forwarded-proto") ?? req.nextUrl.protocol.replace(/:$/, "")
+    );
     const result = await sendEmailVerification(body.userId, baseUrl);
 
     if (!result.success) {

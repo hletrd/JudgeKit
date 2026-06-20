@@ -68,6 +68,39 @@ const claimedSubmissionRowSchema = z.object({
 
 type ClaimedSubmissionRow = z.infer<typeof claimedSubmissionRowSchema>;
 
+async function releaseClaimedSubmission(
+  submissionId: string,
+  claimToken: string,
+  workerId: string | null,
+) {
+  await execTransaction(async (tx) => {
+    const [current] = await tx
+      .select({ judgeClaimToken: submissions.judgeClaimToken })
+      .from(submissions)
+      .where(eq(submissions.id, submissionId))
+      .limit(1);
+
+    if (current?.judgeClaimToken !== claimToken) {
+      return;
+    }
+
+    await tx.update(submissions)
+      .set({
+        status: "pending",
+        judgeWorkerId: null,
+        judgeClaimToken: null,
+        judgeClaimedAt: null,
+      })
+      .where(eq(submissions.id, submissionId));
+
+    if (workerId) {
+      await tx.update(judgeWorkers)
+        .set({ activeTasks: sql`GREATEST(${judgeWorkers.activeTasks} - 1, 0)` })
+        .where(eq(judgeWorkers.id, workerId));
+    }
+  });
+}
+
 const claimRequestSchema = z.object({
   workerId: z.string().min(1).optional(),
   workerSecret: z.string().min(1).optional(),
@@ -82,6 +115,10 @@ const claimRequestSchema = z.object({
 });
 
 export async function POST(request: NextRequest) {
+  let claimedForCleanup: ClaimedSubmissionRow | undefined;
+  let claimTokenForCleanup: string | undefined;
+  let workerIdForCleanup: string | null = null;
+
   try {
     if (!isJudgeIpAllowed(request)) {
       return apiError("ipNotAllowed", 403);
@@ -105,6 +142,7 @@ export async function POST(request: NextRequest) {
 
     const workerId = parsed.data.workerId ?? null;
     const workerSecret = parsed.data.workerSecret ?? null;
+    workerIdForCleanup = workerId;
 
     const clientIp = extractClientIp(request.headers);
     let rateLimitScope: string;
@@ -128,8 +166,8 @@ export async function POST(request: NextRequest) {
     }
 
     // Per-worker auth: when a workerId is provided, validate the Bearer token
-    // against the worker's secretTokenHash (or fall back to shared JUDGE_AUTH_TOKEN).
-    // Without a workerId, use the shared token.
+    // against the worker's secretTokenHash. Without a workerId, use the shared
+    // token only for the bootstrap/no-worker registration-compatible path.
     if (workerId) {
       const workerAuth = await isJudgeAuthorizedForWorker(request, workerId);
       if (!workerAuth.authorized) {
@@ -171,6 +209,7 @@ export async function POST(request: NextRequest) {
     }
 
     const claimToken = nanoid();
+    claimTokenForCleanup = claimToken;
     // Use DB server time for claimCreatedAt to avoid clock skew between app
     // and DB servers. The stale claim detection compares judge_claimed_at
     // against NOW() in SQL, so the timestamp must be DB-consistent.
@@ -192,8 +231,25 @@ export async function POST(request: NextRequest) {
     if (claimedRaw) {
       try {
         claimed = claimedSubmissionRowSchema.parse(claimedRaw);
+        claimedForCleanup = claimed;
       } catch (parseErr) {
         logger.error({ err: parseErr, claimedRaw }, "[judge/claim] Claimed row schema mismatch");
+        if (
+          claimedRaw &&
+          typeof claimedRaw === "object" &&
+          typeof (claimedRaw as { id?: unknown }).id === "string"
+        ) {
+          await releaseClaimedSubmission(
+            (claimedRaw as { id: string }).id,
+            claimToken,
+            workerId,
+          ).catch((cleanupError: unknown) => {
+            logger.error(
+              { err: cleanupError, submissionId: (claimedRaw as { id: string }).id },
+              "POST /api/v1/judge/claim parse-error cleanup failed",
+            );
+          });
+        }
         return apiError("invalidJudgeClaim", 422);
       }
     }
@@ -261,34 +317,7 @@ export async function POST(request: NextRequest) {
       // Reset the submission to pending so it doesn't get stuck in a
       // claim-failure loop. The claim fields are cleared so another worker
       // can pick it up if the problem reappears, or an admin can investigate.
-      // Wrap in a transaction and verify the claim token still matches to
-      // prevent races where another worker claimed the submission while we
-      // were looking up the problem.
-      await execTransaction(async (tx) => {
-        const [current] = await tx
-          .select({ judgeClaimToken: submissions.judgeClaimToken })
-          .from(submissions)
-          .where(eq(submissions.id, claimed.id))
-          .limit(1);
-
-        if (current?.judgeClaimToken === claimToken) {
-          await tx.update(submissions)
-            .set({
-              status: "pending",
-              judgeWorkerId: null,
-              judgeClaimToken: null,
-              judgeClaimedAt: null,
-            })
-            .where(eq(submissions.id, claimed.id));
-
-          // Only decrement active_tasks if this worker still owns the claim
-          if (workerId) {
-            await tx.update(judgeWorkers)
-              .set({ activeTasks: sql`${judgeWorkers.activeTasks} - 1` })
-              .where(eq(judgeWorkers.id, workerId));
-          }
-        }
-      });
+      await releaseClaimedSubmission(claimed.id, claimToken, workerId);
 
       return apiError("problemNotFound", 422);
     }
@@ -388,6 +417,18 @@ export async function POST(request: NextRequest) {
       runCommand: deserializeStoredJudgeCommand(langConfig?.runCommand),
     });
   } catch (error) {
+    if (claimedForCleanup && claimTokenForCleanup) {
+      await releaseClaimedSubmission(
+        claimedForCleanup.id,
+        claimTokenForCleanup,
+        workerIdForCleanup,
+      ).catch((cleanupError: unknown) => {
+        logger.error(
+          { err: cleanupError, submissionId: claimedForCleanup?.id },
+          "POST /api/v1/judge/claim cleanup failed",
+        );
+      });
+    }
     logger.error({ err: error }, "POST /api/v1/judge/claim error");
     return apiError("internalServerError", 500);
   }

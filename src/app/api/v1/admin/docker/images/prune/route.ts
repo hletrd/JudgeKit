@@ -59,6 +59,19 @@ export const POST = createApiHandler({
       });
     }
 
+    if (result.errors.length > 0) {
+      recordAuditEvent({
+        actorId: user.id,
+        actorRole: user.role,
+        action: "docker_image.prune_failed",
+        resourceType: "docker_image",
+        resourceId: "bulk_prune",
+        summary: `Failed to prune ${result.errors.length} stale Docker images`,
+        details: { errors: result.errors },
+        request: req,
+      });
+    }
+
     return apiSuccess({
       removed: result.removed,
       errors: result.errors,

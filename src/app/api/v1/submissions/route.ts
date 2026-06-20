@@ -252,7 +252,16 @@ export const POST = createApiHandler({
     // language with no adapter would fall through to a confusing verbatim-
     // source failure (M1/M2).
     if (problem.problemType === "function") {
-      const functionSpec = parseFunctionSpec(problem.functionSpec);
+      let functionSpec;
+      try {
+        functionSpec = parseFunctionSpec(problem.functionSpec);
+      } catch (error) {
+        logger.error(
+          { err: error, problemId },
+          "[submissions] Function problem has invalid functionSpec",
+        );
+        return apiError("functionSpecInvalid", 409);
+      }
       if (
         !functionSpec.enabledLanguages.includes(language) ||
         !supportsFunctionJudging(language)

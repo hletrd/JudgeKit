@@ -45,6 +45,7 @@ vi.mock("@/lib/judge/verdict", () => ({
   buildSubmissionResultRows: buildSubmissionResultRowsMock,
   computeFinalJudgeMetrics: computeFinalJudgeMetricsMock,
   extractFinalJudgeDetail: extractFinalJudgeDetailMock,
+  truncateJudgeDiagnostic: (value: string | null | undefined) => value ?? null,
 }));
 
 vi.mock("@/lib/security/constants", () => ({
@@ -55,10 +56,13 @@ vi.mock("@/lib/security/constants", () => ({
       "judging",
       "accepted",
       "wrong_answer",
-      "time_limit",
+      "time_limit_exceeded",
       "runtime_error",
       "compile_error",
-      "memory_limit",
+      "memory_limit_exceeded",
+      "output_limit_exceeded",
+      "internal_error",
+      "cancelled",
     ].includes(value),
 }));
 

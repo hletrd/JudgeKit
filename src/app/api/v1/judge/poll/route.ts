@@ -16,6 +16,7 @@ import {
   computeFinalJudgeMetrics,
   extractFinalJudgeDetail,
   IN_PROGRESS_JUDGE_STATUSES,
+  truncateJudgeDiagnostic,
 } from "@/lib/judge/verdict";
 import { isSubmissionStatus } from "@/lib/security/constants";
 import { judgeStatusReportSchema } from "@/lib/validators/api";
@@ -143,7 +144,7 @@ export async function POST(request: NextRequest) {
           judgeClaimToken: null,
           judgeClaimedAt: null,
           judgeWorkerId: null,
-          compileOutput: compileOutput ?? null,
+          compileOutput: truncateJudgeDiagnostic(compileOutput),
           score,
           executionTimeMs: maxExecutionTimeMs,
           memoryUsedKb: maxMemoryUsedKb,

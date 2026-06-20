@@ -11,8 +11,8 @@ const STATUS_FILTER_VALUES = [
   "judging",
   "accepted",
   "wrong_answer",
-  "time_limit",
-  "memory_limit",
+  "time_limit_exceeded",
+  "memory_limit_exceeded",
   "runtime_error",
   "compile_error",
 ] as const;

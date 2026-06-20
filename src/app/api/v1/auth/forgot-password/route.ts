@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { z } from "zod";
 import { sendPasswordResetEmail } from "@/lib/email";
 import { consumeRateLimitAttemptMulti, getRateLimitKey } from "@/lib/security/rate-limit";
+import { getPublicBaseUrl } from "@/lib/security/env";
 
 const forgotPasswordSchema = z.object({
   email: z.string().email(),
@@ -28,7 +29,10 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
     );
   }
 
-  const baseUrl = process.env.NEXT_PUBLIC_AUTH_URL || `${req.nextUrl.protocol}//${req.nextUrl.host}`;
+  const baseUrl = getPublicBaseUrl(
+    req.headers.get("host"),
+    req.headers.get("x-forwarded-proto") ?? req.nextUrl.protocol.replace(/:$/, "")
+  );
   const result = await sendPasswordResetEmail(email, baseUrl);
 
   if (!result.success) {

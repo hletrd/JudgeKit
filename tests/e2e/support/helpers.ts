@@ -79,6 +79,63 @@ const CSRF_HEADERS = {
   "X-Requested-With": "XMLHttpRequest",
 };
 
+export function makeProblemDescription(statement = "Given an integer N, print N."): string {
+  return [
+    "### Problem",
+    statement,
+    "",
+    "### Input",
+    "A single line containing the problem input.",
+    "",
+    "### Output",
+    "Print the expected answer.",
+    "",
+    "### Constraints",
+    "- Input values fit within the stated limits.",
+    "- Time and memory limits follow the problem settings.",
+    "",
+    "### Examples",
+    "**Input 1**",
+    "```",
+    "1 2",
+    "```",
+    "",
+    "**Output 1**",
+    "```",
+    "3",
+    "```",
+    "",
+    "The sample demonstrates the expected input and output format.",
+  ].join("\n");
+}
+
+export async function hasOnlineJudgeWorker(request: APIRequestContext): Promise<boolean> {
+  try {
+    const res = await request.get("/api/v1/admin/workers/stats");
+    if (!res.ok()) return false;
+    const json = await res.json().catch(() => ({}));
+    const data = json.data ?? json;
+    return Number(data.workersOnline ?? 0) > 0;
+  } catch {
+    return false;
+  }
+}
+
+export async function hasDockerImage(request: APIRequestContext, imageTag: string): Promise<boolean> {
+  try {
+    const res = await request.get("/api/v1/admin/docker/images");
+    if (!res.ok()) return false;
+    const json = await res.json().catch(() => ({}));
+    const data = json.data ?? {};
+    const images = Array.isArray(data.images) ? data.images : Array.isArray(data) ? data : [];
+    return images.some((image: { repository?: string; tag?: string }) => {
+      return `${image.repository ?? ""}:${image.tag ?? ""}` === imageTag;
+    });
+  } catch {
+    return false;
+  }
+}
+
 /**
  * Create a problem directly via API for test setup.
  *
@@ -91,7 +148,7 @@ export async function createProblemViaApi(
   const suffix = `e2e-${Date.now()}`;
   const body = {
     title: `[E2E] Test Problem ${suffix}`,
-    description: "Automated test problem.",
+    description: makeProblemDescription("Automated test problem."),
     timeLimitMs: 2000,
     memoryLimitMb: 256,
     visibility: "public",

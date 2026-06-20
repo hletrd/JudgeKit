@@ -1,9 +1,39 @@
 import { describe, expect, it } from "vitest";
 import {
+  problemDescriptionSchema,
   problemMutationSchema,
   problemTestCaseSchema,
   problemVisibilityValues,
 } from "@/lib/validators/problem-management";
+
+function makeProblemDescription(statement = "Given an integer N, print N."): string {
+  return [
+    "### Problem",
+    statement,
+    "",
+    "### Input",
+    "A single line containing one integer.",
+    "",
+    "### Output",
+    "Print the requested value.",
+    "",
+    "### Constraints",
+    "- 0 <= N <= 100",
+    "",
+    "### Examples",
+    "**Input 1**",
+    "```",
+    "1",
+    "```",
+    "",
+    "**Output 1**",
+    "```",
+    "1",
+    "```",
+    "",
+    "Explanation: the input is already the requested value.",
+  ].join("\n");
+}
 
 // ------- problemTestCaseSchema -------
 
@@ -57,6 +87,7 @@ describe("problemTestCaseSchema", () => {
 describe("problemMutationSchema", () => {
   const validPayload = {
     title: "Two Sum",
+    description: makeProblemDescription(),
     timeLimitMs: 1000,
     memoryLimitMb: 256,
     visibility: "public",
@@ -67,9 +98,11 @@ describe("problemMutationSchema", () => {
     expect(result.success).toBe(true);
   });
 
-  it("defaults description to empty string", () => {
-    const parsed = problemMutationSchema.parse(validPayload);
-    expect(parsed.description).toBe("");
+  it("rejects missing description", () => {
+    const { description: _description, ...withoutDescription } = validPayload;
+    const result = problemMutationSchema.safeParse(withoutDescription);
+    expect(result.success).toBe(false);
+    expect(result.error?.issues.map((i) => i.message)).toContain("descriptionRequired");
   });
 
   it("defaults testCases to empty array", () => {
@@ -107,18 +140,34 @@ describe("problemMutationSchema", () => {
   it("rejects description longer than 50000 characters", () => {
     const result = problemMutationSchema.safeParse({
       ...validPayload,
-      description: "a".repeat(50001),
+      description: makeProblemDescription("a".repeat(50000)),
     });
     expect(result.success).toBe(false);
     expect(result.error?.issues.map((i) => i.message)).toContain("descriptionTooLong");
   });
 
   it("accepts description at exactly 50000 characters", () => {
+    const baseDescription = makeProblemDescription("");
+    const statement = "a".repeat(50000 - baseDescription.length);
     const result = problemMutationSchema.safeParse({
       ...validPayload,
-      description: "a".repeat(50000),
+      description: makeProblemDescription(statement),
     });
     expect(result.success).toBe(true);
+  });
+
+  it("rejects HTML problem descriptions", () => {
+    const result = problemDescriptionSchema.safeParse("<h3>Problem</h3><p>Use HTML.</p>");
+    expect(result.success).toBe(false);
+    expect(result.error?.issues.map((i) => i.message)).toContain("descriptionMarkdownOnly");
+  });
+
+  it("rejects descriptions without the mandatory sections and examples", () => {
+    const result = problemDescriptionSchema.safeParse("### Problem\nOnly a statement.");
+    expect(result.success).toBe(false);
+    const messages = result.error?.issues.map((i) => i.message) ?? [];
+    expect(messages).toContain("descriptionFormatRequired");
+    expect(messages).toContain("descriptionExampleRequired");
   });
 
   it("rejects timeLimitMs below 100", () => {
@@ -218,6 +267,39 @@ describe("problemMutationSchema", () => {
   it("rejects missing required fields", () => {
     expect(problemMutationSchema.safeParse({}).success).toBe(false);
     expect(problemMutationSchema.safeParse({ title: "T" }).success).toBe(false);
+  });
+
+  it("rejects function problems whose enabled languages have no harness support", () => {
+    const result = problemMutationSchema.safeParse({
+      ...validPayload,
+      problemType: "function",
+      functionSpec: {
+        functionName: "solve",
+        params: [{ name: "x", type: "int" }],
+        returnType: "int",
+        enabledLanguages: ["brainfuck"],
+      },
+    });
+
+    expect(result.success).toBe(false);
+    expect(result.error?.issues.map((i) => i.message)).toContain(
+      "functionSpecUnsupportedLanguages",
+    );
+  });
+
+  it("accepts function problems with at least one supported harness language", () => {
+    const result = problemMutationSchema.safeParse({
+      ...validPayload,
+      problemType: "function",
+      functionSpec: {
+        functionName: "solve",
+        params: [{ name: "x", type: "int" }],
+        returnType: "int",
+        enabledLanguages: ["brainfuck", "python"],
+      },
+    });
+
+    expect(result.success).toBe(true);
   });
 });
 

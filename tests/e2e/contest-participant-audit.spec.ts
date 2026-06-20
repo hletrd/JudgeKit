@@ -40,12 +40,12 @@ test.describe("Contest Participant Audit", () => {
     await login(page);
 
     // Go to contests list
-    await page.goto("/dashboard/contests");
+    await page.goto("/contests/manage");
     await page.waitForLoadState("domcontentloaded");
 
     // Find the first contest link and click
     const contestLink = page
-      .locator("a[href*='/dashboard/contests/']")
+      .locator("a[href*='/contests/manage/']")
       .first();
     const isVisible = await contestLink.isVisible().catch(() => false);
     if (!isVisible) {
@@ -92,7 +92,7 @@ test.describe("Contest Participant Audit", () => {
 
     // Verify back link exists
     const backLink = page.locator(
-      "a[href*='/dashboard/contests/']"
+      "a[href*='/contests/manage/']"
     ).first();
     await expect(backLink).toBeVisible();
   });
@@ -100,11 +100,11 @@ test.describe("Contest Participant Audit", () => {
   test("participant audit page renders all sections", async ({ page }) => {
     await login(page);
 
-    await page.goto("/dashboard/contests");
+    await page.goto("/contests/manage");
     await page.waitForLoadState("domcontentloaded");
 
     const contestLink = page
-      .locator("a[href*='/dashboard/contests/']")
+      .locator("a[href*='/contests/manage/']")
       .first();
     const isVisible = await contestLink.isVisible().catch(() => false);
     if (!isVisible) {
@@ -166,11 +166,11 @@ test.describe("Contest Participant Audit", () => {
   test("back link returns to contest page", async ({ page }) => {
     await login(page);
 
-    await page.goto("/dashboard/contests");
+    await page.goto("/contests/manage");
     await page.waitForLoadState("domcontentloaded");
 
     const contestLink = page
-      .locator("a[href*='/dashboard/contests/']")
+      .locator("a[href*='/contests/manage/']")
       .first();
     const isVisible = await contestLink.isVisible().catch(() => false);
     if (!isVisible) {
@@ -209,7 +209,7 @@ test.describe("Contest Participant Audit", () => {
 
     // Click back link
     const backLink = page.locator(
-      "a[href*='/dashboard/contests/']"
+      "a[href*='/contests/manage/']"
     ).first();
     await backLink.click();
     await page.waitForLoadState("domcontentloaded");

@@ -181,7 +181,7 @@ test("assignment board renders earned points for non-100-point problems", async 
 
   try {
     await page.goto(
-      `/dashboard/groups/${fixtures.groupId}/assignments/${fixtures.assignmentId}`,
+      `/groups/${fixtures.groupId}/assignments/${fixtures.assignmentId}`,
       { waitUntil: "networkidle" }
     );
 

@@ -11,7 +11,7 @@
  */
 
 import { test, expect, type Page, type APIRequestContext } from "@playwright/test";
-import { loginWithCredentials, navigateTo, waitForToast } from "./support/helpers";
+import { loginWithCredentials, makeProblemDescription, navigateTo, waitForToast } from "./support/helpers";
 import { DEFAULT_CREDENTIALS, BASE_URL } from "./support/constants";
 
 const CSRF_HEADERS = {
@@ -80,7 +80,7 @@ test.describe.serial("Problem Difficulty & Tags", () => {
   test("Step 2: Create problem with difficulty via API", async () => {
     const res = await apiPost(adminRequest, "/api/v1/problems", {
       title: titleWithDifficulty,
-      description: "Test problem with difficulty 3.14",
+      description: makeProblemDescription("Test problem with difficulty 3.14."),
       timeLimitMs: 2000,
       memoryLimitMb: 256,
       visibility: "public",
@@ -98,7 +98,7 @@ test.describe.serial("Problem Difficulty & Tags", () => {
   test("Step 3: Create problem without difficulty via API", async () => {
     const res = await apiPost(adminRequest, "/api/v1/problems", {
       title: titleNoDifficulty,
-      description: "Test problem without difficulty",
+      description: makeProblemDescription("Test problem without difficulty."),
       timeLimitMs: 2000,
       memoryLimitMb: 256,
       visibility: "public",
@@ -114,7 +114,7 @@ test.describe.serial("Problem Difficulty & Tags", () => {
   });
 
   test("Step 4: Difficulty badge visible on detail page", async () => {
-    await navigateTo(adminPage, `/dashboard/problems/${problemWithDifficultyId}`);
+    await navigateTo(adminPage, `/practice/problems/${problemWithDifficultyId}`);
     await adminPage.waitForLoadState("networkidle");
 
     const content = await adminPage.textContent("body");
@@ -123,7 +123,7 @@ test.describe.serial("Problem Difficulty & Tags", () => {
   });
 
   test("Step 5: No difficulty badge when null", async () => {
-    await navigateTo(adminPage, `/dashboard/problems/${problemNoDifficultyId}`);
+    await navigateTo(adminPage, `/practice/problems/${problemNoDifficultyId}`);
     await adminPage.waitForLoadState("networkidle");
 
     // The detail page should NOT show a difficulty badge
@@ -132,7 +132,7 @@ test.describe.serial("Problem Difficulty & Tags", () => {
   });
 
   test("Step 6: Difficulty visible in problems list", async () => {
-    await navigateTo(adminPage, "/dashboard/problems?search=" + encodeURIComponent("[E2E]"));
+    await navigateTo(adminPage, "/problems?search=" + encodeURIComponent("[E2E]"));
     await adminPage.waitForLoadState("networkidle");
 
     const content = await adminPage.textContent("body");
@@ -150,7 +150,7 @@ test.describe.serial("Problem Difficulty & Tags", () => {
   });
 
   test("Step 8: Updated difficulty reflected on detail page", async () => {
-    await navigateTo(adminPage, `/dashboard/problems/${problemWithDifficultyId}`);
+    await navigateTo(adminPage, `/practice/problems/${problemWithDifficultyId}`);
     await adminPage.waitForLoadState("networkidle");
 
     const content = await adminPage.textContent("body");
@@ -166,7 +166,7 @@ test.describe.serial("Problem Difficulty & Tags", () => {
   });
 
   test("Step 10: Cleared difficulty - no badge on detail page", async () => {
-    await navigateTo(adminPage, `/dashboard/problems/${problemWithDifficultyId}`);
+    await navigateTo(adminPage, `/practice/problems/${problemWithDifficultyId}`);
     await adminPage.waitForLoadState("networkidle");
 
     const badges = adminPage.locator("text=/\\d+(\\.\\d+)?\\s*\\/\\s*10/");
@@ -179,7 +179,7 @@ test.describe.serial("Problem Difficulty & Tags", () => {
     const res = await adminRequest.post("/api/v1/problems", {
       data: {
         title: `[E2E] Invalid Difficulty ${suffix}`,
-        description: "Should fail",
+        description: makeProblemDescription("This problem should fail because the difficulty is above the maximum."),
         timeLimitMs: 2000,
         memoryLimitMb: 256,
         visibility: "public",
@@ -195,7 +195,7 @@ test.describe.serial("Problem Difficulty & Tags", () => {
     const res = await adminRequest.post("/api/v1/problems", {
       data: {
         title: `[E2E] Negative Difficulty ${suffix}`,
-        description: "Should fail",
+        description: makeProblemDescription("This problem should fail because the difficulty is below the minimum."),
         timeLimitMs: 2000,
         memoryLimitMb: 256,
         visibility: "public",
@@ -212,7 +212,7 @@ test.describe.serial("Problem Difficulty & Tags", () => {
   test("Step 13: Create problem with tags via API", async () => {
     const res = await apiPost(adminRequest, "/api/v1/problems", {
       title: titleWithTags,
-      description: "Test problem with tags",
+      description: makeProblemDescription("Test problem with tags."),
       timeLimitMs: 2000,
       memoryLimitMb: 256,
       visibility: "public",
@@ -228,7 +228,7 @@ test.describe.serial("Problem Difficulty & Tags", () => {
   });
 
   test("Step 14: Tags visible in problems list", async () => {
-    await navigateTo(adminPage, "/dashboard/problems?search=" + encodeURIComponent("[E2E] Tags Test"));
+    await navigateTo(adminPage, "/problems?search=" + encodeURIComponent("[E2E] Tags Test"));
     await adminPage.waitForLoadState("networkidle");
 
     const content = await adminPage.textContent("body");
@@ -237,7 +237,7 @@ test.describe.serial("Problem Difficulty & Tags", () => {
   });
 
   test("Step 15: Filter by tag works", async () => {
-    await navigateTo(adminPage, `/dashboard/problems?tag=e2e-tag-${suffix}`);
+    await navigateTo(adminPage, `/problems?tag=e2e-tag-${suffix}`);
     await adminPage.waitForLoadState("networkidle");
 
     const content = await adminPage.textContent("body");
@@ -247,10 +247,13 @@ test.describe.serial("Problem Difficulty & Tags", () => {
   // ── UI Form: Create with difficulty ──
 
   test("Step 16: Create problem with difficulty via form UI", async () => {
-    await navigateTo(adminPage, "/dashboard/problems/create");
+    await navigateTo(adminPage, "/problems/create");
     await adminPage.waitForLoadState("networkidle");
 
     await adminPage.locator("#title").fill(`[E2E] UI Difficulty ${suffix}`);
+    await adminPage.locator("#description").fill(
+      makeProblemDescription("Create a problem with difficulty through the form UI.")
+    );
     await adminPage.locator("#difficulty").fill("6.28");
 
     // Add a test case (required for submission)
@@ -266,13 +269,13 @@ test.describe.serial("Problem Difficulty & Tags", () => {
 
     // Wait for navigation away from the create page
     await adminPage.waitForURL((url) => url.toString() !== createUrl, { timeout: 15_000 });
-    await expect(adminPage.getByText(/6\.28\s*\/\s*10/)).toBeVisible();
+    await expect(adminPage.getByText("6.28").first()).toBeVisible();
   });
 
   // ── Edit difficulty via form UI ──
 
   test("Step 17: Edit difficulty via form UI", async () => {
-    await navigateTo(adminPage, `/dashboard/problems/${problemWithTagsId}/edit`);
+    await navigateTo(adminPage, `/problems/${problemWithTagsId}/edit`);
     await adminPage.waitForLoadState("networkidle");
 
     const difficultyInput = adminPage.locator("#difficulty");
@@ -283,7 +286,7 @@ test.describe.serial("Problem Difficulty & Tags", () => {
     await adminPage.locator('form button[type="submit"]').click();
     await adminPage.waitForURL((url) => url.toString() !== editUrl, { timeout: 15_000 });
 
-    await expect(adminPage.getByText(/8\.5\s*\/\s*10/)).toBeVisible();
+    await expect(adminPage.getByText("8.5").first()).toBeVisible();
   });
 
   // ── Cleanup ──

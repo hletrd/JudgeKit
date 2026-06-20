@@ -4,6 +4,11 @@ import { groups, problems, submissions } from "@/lib/db/schema";
 import { captureEvidence } from "./support/evidence";
 import { test, expect } from "./fixtures";
 import { getPlaywrightBaseUrl } from "./support/runtime-admin";
+import {
+  createSubmissionViaApi,
+  hasOnlineJudgeWorker,
+  makeProblemDescription,
+} from "./support/helpers";
 
 test("@smoke preserves remediation login, problem, submission, and group flows", async ({
   browser,
@@ -26,9 +31,11 @@ test("@smoke preserves remediation login, problem, submission, and group flows",
 
   try {
     await test.step("create a problem with managed test cases", async () => {
-      await page.goto("/dashboard/problems/create", { waitUntil: "networkidle" });
+      await page.goto("/problems/create", { waitUntil: "networkidle" });
       await page.locator("#title").fill(problemTitle);
-      await page.locator("#description").fill("Verify create and edit flows with managed test cases.");
+      await page.locator("#description").fill(
+        makeProblemDescription("Verify create and edit flows with managed test cases.")
+      );
       await page.locator("#visibility").click();
       await page.getByRole("option", { name: "Public" }).click();
       await page.getByRole("button", { name: "Add Test Case" }).click();
@@ -38,7 +45,7 @@ test("@smoke preserves remediation login, problem, submission, and group flows",
       await page.locator("#test-case-input-1").fill("5 8\n");
       await page.locator("#test-case-output-1").fill("13\n");
       await page.locator('button[type="submit"]').click();
-      await page.waitForURL(/\/dashboard\/problems\/[^/]+$/, { timeout: 15_000 });
+      await page.waitForURL(/\/practice\/problems\/[^/]+$/, { timeout: 15_000 });
       await expect(page.getByText(problemTitle, { exact: true })).toBeVisible();
       await expect(page.getByRole("button", { name: "Edit" })).toBeVisible();
       await captureEvidence(page, testInfo, "problem-created");
@@ -51,13 +58,13 @@ test("@smoke preserves remediation login, problem, submission, and group flows",
 
     await test.step("edit the problem and persist test case changes", async () => {
       await page.getByRole("button", { name: "Edit" }).click();
-      await page.waitForURL(`**/dashboard/problems/${problemId}/edit`, { timeout: 15_000 });
+      await page.waitForURL(`**/problems/${problemId}/edit`, { timeout: 15_000 });
       await page.locator("#test-case-output-0").fill("4\n");
       await page.getByRole("button", { name: "Remove" }).nth(1).click();
       await page.locator('button[type="submit"]').click();
-      await page.waitForURL(`**/dashboard/problems/${problemId}`, { timeout: 15_000 });
+      await page.waitForURL(`**/practice/problems/${problemId}`, { timeout: 15_000 });
       await page.getByRole("button", { name: "Edit" }).click();
-      await page.waitForURL(`**/dashboard/problems/${problemId}/edit`, { timeout: 15_000 });
+      await page.waitForURL(`**/problems/${problemId}/edit`, { timeout: 15_000 });
       await expect(page.locator("#test-case-output-0")).toHaveValue("4\n");
       await expect(page.locator("#test-case-output-1")).toHaveCount(0);
     });
@@ -78,13 +85,35 @@ test("@smoke preserves remediation login, problem, submission, and group flows",
     });
 
     await test.step("submit a solution and verify test cases lock afterwards", async () => {
-      await page.goto(`/dashboard/problems/${problemId}`, { waitUntil: "networkidle" });
-      await page.locator("#sourceCode").fill("a, b = map(int, input().split())\nprint(a + b)\n");
-      await page.getByRole("button", { name: "Submit" }).click();
-      await page.getByRole("button", { name: "Send to Judge" }).click();
-      await page.waitForURL(/\/dashboard\/submissions\/[^/]+$/, { timeout: 15_000 });
+      if (!problemId) {
+        throw new Error("Problem id missing before submission lock verification");
+      }
+      const submittedProblemId = problemId;
+      const solutionSource = [
+        "#include <stdio.h>",
+        "int main(void) {",
+        "  int a, b;",
+        "  if (scanf(\"%d %d\", &a, &b) == 2) {",
+        "    printf(\"%d\\n\", a + b);",
+        "  }",
+        "  return 0;",
+        "}",
+      ].join("\n");
 
-      await page.goto(`/dashboard/problems/${problemId}/edit`, { waitUntil: "networkidle" });
+      if (await hasOnlineJudgeWorker(page.request)) {
+        await page.goto(`/practice/problems/${submittedProblemId}`, { waitUntil: "domcontentloaded" });
+        await page.locator("#sourceCode").fill(solutionSource);
+        await page.getByRole("button", { name: /^Submit \(Ctrl\+Enter\)$/ }).click();
+        await page.getByRole("button", { name: "Send to Judge" }).click();
+        await page.waitForURL(/\/submissions\/[^/]+$/, {
+          timeout: 15_000,
+          waitUntil: "domcontentloaded",
+        });
+      } else {
+        await createSubmissionViaApi(page.request, submittedProblemId, "c17", solutionSource);
+      }
+
+      await page.goto(`/problems/${submittedProblemId}/edit`, { waitUntil: "domcontentloaded" });
       await expect(
         page.getByText("Test cases are locked because this problem already has submissions.")
       ).toBeVisible();
@@ -114,7 +143,7 @@ test("@smoke preserves remediation login, problem, submission, and group flows",
     });
 
     await test.step("create a group through the dashboard dialog", async () => {
-      await page.goto("/dashboard/groups", { waitUntil: "networkidle" });
+      await page.goto("/groups", { waitUntil: "networkidle" });
       await page.getByRole("button", { name: "Create Group" }).click();
 
       const groupDialog = page.getByRole("dialog", { name: "Create Group" });
@@ -123,7 +152,7 @@ test("@smoke preserves remediation login, problem, submission, and group flows",
         "Created by the Playwright remediation smoke suite."
       );
       await groupDialog.locator('button[type="submit"]').click();
-      await page.waitForURL(/\/dashboard\/groups\/[^/]+$/, { timeout: 15_000 });
+      await page.waitForURL(/\/groups\/[^/]+$/, { timeout: 15_000 });
       await expect(page.getByRole("heading", { name: groupName })).toBeVisible();
       await captureEvidence(page, testInfo, "group-created");
 

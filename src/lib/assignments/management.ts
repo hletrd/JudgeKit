@@ -218,7 +218,7 @@ export async function createAssignmentWithProblems(
       });
 
     await tx.insert(assignmentProblems).values(mapAssignmentProblems(id, input.problems));
-    await syncGroupAccessRows(groupId);
+    await syncGroupAccessRows(groupId, tx);
   });
   return id;
 }
@@ -322,7 +322,7 @@ export async function updateAssignmentWithProblems(
       lateDeadline: input.lateDeadline ? new Date(input.lateDeadline) : null,
     });
 
-    await syncGroupAccessRows(assignment.groupId);
+    await syncGroupAccessRows(assignment.groupId, tx);
   });
 }
 
@@ -351,6 +351,6 @@ export async function deleteAssignmentWithProblems(assignmentId: string) {
 
     await tx.delete(assignmentProblems).where(eq(assignmentProblems.assignmentId, assignmentId));
     await tx.delete(assignments).where(eq(assignments.id, assignmentId));
-    await syncGroupAccessRows(assignment.groupId);
+    await syncGroupAccessRows(assignment.groupId, tx);
   });
 }

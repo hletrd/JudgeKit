@@ -32,7 +32,7 @@ async function ensureRuntimeAdminUserViaDb(): Promise<string> {
   const { eq } = await import("drizzle-orm");
   const { nanoid } = await import("nanoid");
   const { db } = await import("../../../src/lib/db");
-  const { submissions, users } = await import("../../../src/lib/db/schema");
+  const { submissions, users } = await import("../../../src/lib/db/schema.pg");
 
   const passwordHash = await hash(RUNTIME_ADMIN_INITIAL_PASSWORD, 12);
   const existingUser = await db.query.users.findFirst({
@@ -46,7 +46,7 @@ async function ensureRuntimeAdminUserViaDb(): Promise<string> {
       .set({
         email: RUNTIME_ADMIN_EMAIL,
         isActive: true,
-        mustChangePassword: true,
+        mustChangePassword: false,
         name: RUNTIME_ADMIN_NAME,
         passwordHash,
         role: "admin",
@@ -64,7 +64,7 @@ async function ensureRuntimeAdminUserViaDb(): Promise<string> {
       id,
       email: RUNTIME_ADMIN_EMAIL,
       isActive: true,
-      mustChangePassword: true,
+      mustChangePassword: false,
       name: RUNTIME_ADMIN_NAME,
       passwordHash,
       role: "admin",

@@ -199,6 +199,28 @@ describe("export-with-files integrity manifests", () => {
     expect(writeUploadedFileMock).toHaveBeenCalledWith("upload-1.bin", Buffer.from("hello upload"));
   });
 
+  it("parses ZIP backups without mutating upload storage", async () => {
+    const { parseBackupZip } = await import("@/lib/db/export-with-files");
+    const zip = new JSZip();
+    const dbJson = JSON.stringify({
+      version: 1,
+      exportedAt: "2026-04-17T00:00:00.000Z",
+      sourceDialect: "postgresql",
+      appVersion: "test",
+      tables: {},
+    });
+
+    zip.file("database.json", dbJson);
+    zip.file("uploads/upload-1.bin", Buffer.from("hello upload"));
+
+    const result = await parseBackupZip(await zip.generateAsync({ type: "nodebuffer" }));
+
+    expect(result.uploads).toEqual([
+      { storedName: "upload-1.bin", buffer: Buffer.from("hello upload") },
+    ]);
+    expect(writeUploadedFileMock).not.toHaveBeenCalled();
+  });
+
   it("skips path-traversal upload entries when restoring ZIP backups", async () => {
     const { restoreFilesFromZip } = await import("@/lib/db/export-with-files");
     const zip = new JSZip();

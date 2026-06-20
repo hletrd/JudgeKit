@@ -10,13 +10,16 @@
 # Prerequisites:
 #   - Set JUDGE_BASE_URL to the app server's API URL (HTTPS recommended)
 #   - Set JUDGE_AUTH_TOKEN to match the app server's judge auth token
+#   - Set RUNNER_AUTH_TOKEN to a separate runner/admin endpoint token
 #   - Judge language images must be available locally or via registry
 #   - /judge-workspaces directory must exist on the host
 # =============================================================================
 
 services:
   docker-proxy:
-    image: tecnativa/docker-socket-proxy:latest
+    # Digest-pinned because this service is the only container with direct
+    # Docker daemon access. Update intentionally after reviewing upstream.
+    image: tecnativa/docker-socket-proxy@sha256:1f3a6f303320723d199d2316a3e82b2e2685d86c275d5e3deeaf182573b47476
     container_name: judgekit-worker-docker-proxy
     restart: unless-stopped
     environment:
@@ -54,7 +57,7 @@ services:
     environment:
       - JUDGE_BASE_URL=${JUDGE_BASE_URL:?Set JUDGE_BASE_URL to the app server API URL}
       - JUDGE_AUTH_TOKEN=${JUDGE_AUTH_TOKEN:?Set JUDGE_AUTH_TOKEN to match the app server}
-      - RUNNER_AUTH_TOKEN=${RUNNER_AUTH_TOKEN:-}
+      - RUNNER_AUTH_TOKEN=${RUNNER_AUTH_TOKEN:?Set RUNNER_AUTH_TOKEN for runner/admin endpoints}
       - JUDGE_CONCURRENCY=${JUDGE_CONCURRENCY:-4}
       - JUDGE_WORKER_HOSTNAME=${JUDGE_WORKER_HOSTNAME:-}
       - JUDGE_SECCOMP_PROFILE=/etc/judge/seccomp-profile.json

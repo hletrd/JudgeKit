@@ -28,16 +28,46 @@ export const POST = createApiHandler({
       .limit(1);
 
     if (!langConfig) {
+      recordAuditEvent({
+        actorId: user.id,
+        actorRole: user.role,
+        action: "docker_image.build_rejected",
+        resourceType: "docker_image",
+        resourceId: body.language,
+        summary: `Rejected Docker image build for unknown language ${body.language}`,
+        details: { reason: "languageNotFound" },
+        request: req,
+      });
       return NextResponse.json({ error: "languageNotFound" }, { status: 404 });
     }
 
     if (!isAllowedJudgeDockerImage(langConfig.dockerImage)) {
+      recordAuditEvent({
+        actorId: user.id,
+        actorRole: user.role,
+        action: "docker_image.build_rejected",
+        resourceType: "docker_image",
+        resourceId: langConfig.dockerImage,
+        summary: `Rejected Docker image build for ${langConfig.dockerImage}`,
+        details: { reason: "imageTagMustStartWithJudge", language: body.language },
+        request: req,
+      });
       return NextResponse.json(
         { error: "imageTagMustStartWithJudge" },
         { status: 400 }
       );
     }
     if (!isLocalJudgeDockerImage(langConfig.dockerImage)) {
+      recordAuditEvent({
+        actorId: user.id,
+        actorRole: user.role,
+        action: "docker_image.build_rejected",
+        resourceType: "docker_image",
+        resourceId: langConfig.dockerImage,
+        summary: `Rejected Docker image build for non-local image ${langConfig.dockerImage}`,
+        details: { reason: "imageTagMustBeLocalJudge", language: body.language },
+        request: req,
+      });
       return NextResponse.json(
         { error: "imageTagMustBeLocalJudge" },
         { status: 400 }
@@ -52,6 +82,16 @@ export const POST = createApiHandler({
       await access(dockerfilePath);
     } catch (err) {
       logger.info({ err, dockerfilePath }, "[docker] Dockerfile not found for build request");
+      recordAuditEvent({
+        actorId: user.id,
+        actorRole: user.role,
+        action: "docker_image.build_rejected",
+        resourceType: "docker_image",
+        resourceId: langConfig.dockerImage,
+        summary: `Rejected Docker image build for missing Dockerfile ${dockerfilePath}`,
+        details: { reason: "dockerfileNotFound", language: body.language, dockerfilePath },
+        request: req,
+      });
       return NextResponse.json(
         { error: "dockerfileNotFound" },
         { status: 404 },
@@ -69,6 +109,7 @@ export const POST = createApiHandler({
       summary: result.success
         ? `Built Docker image ${langConfig.dockerImage}`
         : `Failed to build Docker image ${langConfig.dockerImage}`,
+      details: result.success ? undefined : { error: result.error ?? "buildFailed" },
       request: req,
     });
 

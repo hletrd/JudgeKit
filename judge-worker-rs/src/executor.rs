@@ -115,6 +115,7 @@ struct VerdictInputs {
     effective_time_limit_ms: u64,
     oom_killed: bool,
     exit_code: Option<i32>,
+    output_limit_exceeded: bool,
     is_correct: bool,
 }
 
@@ -134,6 +135,8 @@ fn classify_test_case_verdict(inputs: VerdictInputs) -> Verdict {
         Verdict::TimeLimit
     } else if inputs.oom_killed || inputs.exit_code == Some(137) {
         Verdict::MemoryLimit
+    } else if inputs.output_limit_exceeded {
+        Verdict::OutputLimitExceeded
     } else if inputs.exit_code.unwrap_or(1) != 0 {
         Verdict::RuntimeError
     } else if !inputs.is_correct {
@@ -588,6 +591,7 @@ async fn execute_inner(
                 effective_time_limit_ms,
                 oom_killed: execution.oom_killed,
                 exit_code: execution.exit_code,
+                output_limit_exceeded: execution.stdout_truncated || execution.stderr_truncated,
                 is_correct,
             },
         );
@@ -663,6 +667,7 @@ mod tests {
             effective_time_limit_ms: 1_000,
             oom_killed: false,
             exit_code: Some(0),
+            output_limit_exceeded: false,
             is_correct: true,
         }
     }
@@ -677,6 +682,14 @@ mod tests {
         let mut inputs = base_inputs();
         inputs.is_correct = false;
         assert_eq!(classify_test_case_verdict(inputs), Verdict::WrongAnswer);
+    }
+
+    #[test]
+    fn classifies_output_limit_when_stream_was_truncated() {
+        let mut inputs = base_inputs();
+        inputs.output_limit_exceeded = true;
+        inputs.is_correct = false;
+        assert_eq!(classify_test_case_verdict(inputs), Verdict::OutputLimitExceeded);
     }
 
     #[test]

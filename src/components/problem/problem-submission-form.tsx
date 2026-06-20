@@ -451,18 +451,24 @@ export function ProblemSubmissionForm({
           type="button"
           className="flex items-center gap-1 text-sm text-muted-foreground transition-colors hover:text-foreground"
           onClick={() => setStdinOpen((prev) => !prev)}
+          aria-expanded={stdinOpen}
+          aria-controls="submission-stdin-panel"
         >
-          {stdinOpen ? <ChevronDown className="size-4" /> : <ChevronRight className="size-4" />}
+          {stdinOpen ? <ChevronDown aria-hidden="true" className="size-4" /> : <ChevronRight aria-hidden="true" className="size-4" />}
           {t("stdinLabel")}
         </button>
         {stdinOpen && (
-          <Textarea
-            placeholder={t("stdinPlaceholder")}
-            value={stdin}
-            onChange={(e) => setStdin(e.target.value)}
-            rows={4}
-            className="font-mono text-sm"
-          />
+          <div id="submission-stdin-panel">
+            <Label htmlFor="submission-stdin" className="sr-only">{t("stdinLabel")}</Label>
+            <Textarea
+              id="submission-stdin"
+              placeholder={t("stdinPlaceholder")}
+              value={stdin}
+              onChange={(e) => setStdin(e.target.value)}
+              rows={4}
+              className="font-mono text-sm"
+            />
+          </div>
         )}
       </div>
       <div className="flex gap-2">

@@ -34,6 +34,7 @@ pub enum Verdict {
     WrongAnswer,
     TimeLimit,
     MemoryLimit,
+    OutputLimitExceeded,
     RuntimeError,
     CompileError,
 }
@@ -43,8 +44,9 @@ impl Verdict {
         match self {
             Verdict::Accepted => "accepted",
             Verdict::WrongAnswer => "wrong_answer",
-            Verdict::TimeLimit => "time_limit",
-            Verdict::MemoryLimit => "memory_limit",
+            Verdict::TimeLimit => "time_limit_exceeded",
+            Verdict::MemoryLimit => "memory_limit_exceeded",
+            Verdict::OutputLimitExceeded => "output_limit_exceeded",
             Verdict::RuntimeError => "runtime_error",
             Verdict::CompileError => "compile_error",
         }

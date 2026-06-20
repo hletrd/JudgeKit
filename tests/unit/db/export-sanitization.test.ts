@@ -57,6 +57,7 @@ describe("export.ts sanitization", () => {
     expect(tables).toContain("judgeWorkers");
     expect(tables).toContain("recruitingInvitations");
     expect(tables).toContain("systemSettings");
+    expect(tables).toContain("plugins");
   });
 
   it("covers all required sensitive column names", () => {
@@ -75,6 +76,7 @@ describe("export.ts sanitization", () => {
     expect(allColumns).toContain("judgeClaimToken");
     expect(allColumns).toContain("tokenHash");
     expect(allColumns).toContain("hcaptchaSecret");
+    expect(allColumns).toContain("config");
   });
 
   it("does NOT reference columns that have been dropped from the schema", () => {
@@ -123,6 +125,9 @@ describe("export.ts sanitization", () => {
     const riColumns = getSchemaColumnNames("recruitingInvitations");
     expect(riColumns).toContain("tokenHash");
     expect(riColumns).not.toContain("token");
+
+    // Plugins table stores provider secrets inside JSON config.
+    expect(getSchemaColumnNames("plugins")).toContain("config");
   });
 
   it("streamDatabaseExport accepts a sanitize option", () => {
@@ -185,6 +190,11 @@ describe("export.ts sanitization", () => {
     expect(EXPORT_ALWAYS_REDACT_COLUMNS.accounts).toContain("refresh_token");
     expect(EXPORT_ALWAYS_REDACT_COLUMNS.accounts).toContain("access_token");
     expect(EXPORT_ALWAYS_REDACT_COLUMNS.accounts).toContain("id_token");
+  });
+
+  it("plugins.config is redacted in sanitized exports because it can contain provider secrets", () => {
+    expect(EXPORT_SANITIZED_COLUMNS.plugins).toContain("config");
+    expect(EXPORT_ALWAYS_REDACT_COLUMNS.plugins).toBeUndefined();
   });
 
   it("hcaptchaSecret column exists in the systemSettings schema table", () => {

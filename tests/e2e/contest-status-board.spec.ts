@@ -169,7 +169,7 @@ test("contest submissions tab shows in-progress participant statuses instead of 
 
   try {
     await loginAsLocalAdmin(page);
-    await page.goto(`/dashboard/contests/${fixtures.assignmentId}`, {
+    await page.goto(`/contests/manage/${fixtures.assignmentId}`, {
       waitUntil: "networkidle",
     });
 

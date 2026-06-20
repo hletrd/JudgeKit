@@ -2,17 +2,29 @@ import { describe, expect, it } from "vitest";
 import { existsSync, readdirSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 
-function readPgMigrationSql() {
+function readJournalAndSqlTags() {
   const dir = join(process.cwd(), "drizzle/pg");
   const journalPath = join(dir, "meta/_journal.json");
   const journalEntries = JSON.parse(readFileSync(journalPath, "utf8")) as {
     entries?: Array<{ tag?: string }>;
   };
-  const journalFiles = (journalEntries.entries ?? [])
+  const journalTags = (journalEntries.entries ?? [])
     .map((entry) => entry.tag)
     .filter((tag): tag is string => typeof tag === "string")
-    .map((tag) => `${tag}.sql`);
-  const discoveredFiles = readdirSync(dir).filter((file) => file.endsWith(".sql"));
+    .sort();
+  const sqlTags = readdirSync(dir)
+    .filter((file) => file.endsWith(".sql"))
+    .map((file) => file.replace(/\.sql$/, ""))
+    .sort();
+
+  return { journalTags, sqlTags };
+}
+
+function readPgMigrationSql() {
+  const dir = join(process.cwd(), "drizzle/pg");
+  const { journalTags, sqlTags } = readJournalAndSqlTags();
+  const journalFiles = journalTags.map((tag) => `${tag}.sql`);
+  const discoveredFiles = sqlTags.map((tag) => `${tag}.sql`);
 
   return Array.from(new Set([...journalFiles, ...discoveredFiles]))
     .filter((file) => existsSync(join(dir, file)))
@@ -22,6 +34,12 @@ function readPgMigrationSql() {
 }
 
 describe("PostgreSQL migration drift guards", () => {
+  it("keeps every top-level migration SQL file represented in the Drizzle journal", () => {
+    const { journalTags, sqlTags } = readJournalAndSqlTags();
+
+    expect(journalTags).toEqual(sqlTags);
+  });
+
   it("uses idempotent DDL for mixed-state deploy safety", () => {
     const sql = readPgMigrationSql();
 

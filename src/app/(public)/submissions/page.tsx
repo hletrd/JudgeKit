@@ -33,14 +33,15 @@ import { normalizePage, normalizePageSize, setPaginationParams } from "@/lib/pag
 import { FilterSelect } from "@/components/filter-select";
 import { getEnabledCompilerLanguages } from "@/lib/compiler/catalog";
 import { resolveCapabilities } from "@/lib/capabilities/cache";
+import { mapFunctionCompileOutputForDisplay } from "@/lib/submissions/visibility";
 
 const PAGE_PATH = "/submissions";
 
-type StatusFilter = "all" | "accepted" | "wrong_answer" | "time_limit" | "memory_limit" | "runtime_error" | "compile_error";
+type StatusFilter = "all" | "accepted" | "wrong_answer" | "time_limit_exceeded" | "memory_limit_exceeded" | "runtime_error" | "compile_error";
 type PeriodFilter = "all" | "today" | "week" | "month";
 type ScopeFilter = "all" | "mine";
 
-const STATUS_FILTER_VALUES: readonly StatusFilter[] = ["all", "accepted", "wrong_answer", "time_limit", "memory_limit", "runtime_error", "compile_error"];
+const STATUS_FILTER_VALUES: readonly StatusFilter[] = ["all", "accepted", "wrong_answer", "time_limit_exceeded", "memory_limit_exceeded", "runtime_error", "compile_error"];
 const PERIOD_FILTER_VALUES: readonly PeriodFilter[] = ["all", "today", "week", "month"];
 const SCOPE_FILTER_VALUES: readonly ScopeFilter[] = ["all", "mine"];
 
@@ -56,6 +57,8 @@ type SubmissionRow = {
   problem: {
     id: string | null;
     title: string | null;
+    problemType?: string | null;
+    functionSpec?: unknown;
   } | null;
   user: {
     id: string | null;
@@ -224,6 +227,8 @@ export default async function SubmissionsPage({
     problem: {
       id: problems.id,
       title: problems.title,
+      problemType: problems.problemType,
+      functionSpec: problems.functionSpec,
     },
     user: {
       id: users.id,
@@ -268,7 +273,14 @@ export default async function SubmissionsPage({
   const clampedPage = clampedOffset === 0 ? 1 : currentPage;
 
   // Strip the internal _total field from the visible rows
-  const cleanSubmissions: SubmissionRow[] = rawSubmissions.map(({ _total, ...rest }) => rest);
+  const cleanSubmissions: SubmissionRow[] = rawSubmissions.map(({ _total, ...rest }) => ({
+    ...rest,
+    compileOutput: mapFunctionCompileOutputForDisplay({
+      compileOutput: rest.compileOutput,
+      language: rest.language,
+      problem: rest.problem,
+    }),
+  }));
   const rangeStart = cleanSubmissions.length === 0 ? 0 : clampedOffset + 1;
   const rangeEnd = clampedOffset + cleanSubmissions.length;
   const hasActiveSubmissions = cleanSubmissions.some(
@@ -291,8 +303,8 @@ export default async function SubmissionsPage({
     all: t("statusFilter.all"),
     accepted: t("statusFilter.accepted"),
     wrong_answer: t("statusFilter.wrong_answer"),
-    time_limit: t("statusFilter.time_limit"),
-    memory_limit: t("statusFilter.memory_limit"),
+    time_limit_exceeded: t("statusFilter.time_limit"),
+    memory_limit_exceeded: t("statusFilter.memory_limit"),
     runtime_error: t("statusFilter.runtime_error"),
     compile_error: t("statusFilter.compile_error"),
   };

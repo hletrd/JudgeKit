@@ -39,6 +39,8 @@ pub enum Phase {
 pub struct DockerRunResult {
     pub stdout: Vec<u8>,
     pub stderr: String,
+    pub stdout_truncated: bool,
+    pub stderr_truncated: bool,
     pub exit_code: Option<i32>,
     pub timed_out: bool,
     pub oom_killed: bool,
@@ -344,31 +346,6 @@ async fn run_docker_once(
         .spawn()
         .map_err(DockerError::SpawnFailed)?;
 
-    if let Some(ref input) = options.input {
-        if let Some(mut stdin) = child.stdin.take() {
-            if let Err(e) = stdin.write_all(input.as_bytes()).await {
-                // EPIPE means the child closed stdin (exited or stopped reading)
-                // before we finished writing — a normal outcome for submissions
-                // that don't consume all input or that crash early. Surface the
-                // child's actual exit status and output instead of failing the
-                // whole run with an environment error.
-                if e.kind() == std::io::ErrorKind::BrokenPipe {
-                    tracing::debug!(
-                        container = %container_name,
-                        "child closed stdin before all input was written; continuing to wait for exit"
-                    );
-                } else {
-                    tracing::error!(error = %e, container = %container_name, "Failed to write stdin to container");
-                    drop(stdin);
-                    kill_container(&container_name).await;
-                    remove_container(&container_name).await;
-                    return Err(DockerError::StdinFailed(e));
-                }
-            }
-            drop(stdin);
-        }
-    }
-
     let timeout_duration =
         std::time::Duration::from_millis(options.timeout_ms.max(MIN_TIMEOUT_MS));
 
@@ -393,41 +370,81 @@ async fn run_docker_once(
     let stdout_handle = {
         let stdout = child.stdout.take().expect("stdout not captured");
         tokio::spawn(async move {
-            let mut take = stdout.take(max_output_bytes);
+            let mut take = stdout.take(max_output_bytes.saturating_add(1));
             let mut buf = Vec::new();
             let _ = take.read_to_end(&mut buf).await;
+            let truncated = u64::try_from(buf.len()).unwrap_or(u64::MAX) > max_output_bytes;
+            if truncated {
+                let cap = usize::try_from(max_output_bytes).unwrap_or(usize::MAX);
+                buf.truncate(cap);
+            }
             let mut inner = take.into_inner();
             let _ = tokio::io::copy(&mut inner, &mut tokio::io::sink()).await;
-            buf
+            (buf, truncated)
         })
     };
 
     let stderr_handle = {
         let stderr = child.stderr.take().expect("stderr not captured");
         tokio::spawn(async move {
-            let mut take = stderr.take(max_output_bytes);
+            let mut take = stderr.take(max_output_bytes.saturating_add(1));
             let mut buf = Vec::new();
             let _ = take.read_to_end(&mut buf).await;
+            let truncated = u64::try_from(buf.len()).unwrap_or(u64::MAX) > max_output_bytes;
+            if truncated {
+                let cap = usize::try_from(max_output_bytes).unwrap_or(usize::MAX);
+                buf.truncate(cap);
+            }
             let mut inner = take.into_inner();
             let _ = tokio::io::copy(&mut inner, &mut tokio::io::sink()).await;
-            String::from_utf8_lossy(&buf).into_owned()
+            (String::from_utf8_lossy(&buf).into_owned(), truncated)
         })
     };
 
     let start = Instant::now();
 
-    let wait_result = tokio::time::timeout(timeout_duration, child.wait()).await;
+    let wait_result = tokio::time::timeout(timeout_duration, async {
+        if let Some(ref input) = options.input {
+            if let Some(mut stdin) = child.stdin.take() {
+                if let Err(e) = stdin.write_all(input.as_bytes()).await {
+                    // EPIPE means the child closed stdin (exited or stopped reading)
+                    // before we finished writing — a normal outcome for submissions
+                    // that don't consume all input or that crash early. Surface the
+                    // child's actual exit status and output instead of failing the
+                    // whole run with an environment error.
+                    if e.kind() == std::io::ErrorKind::BrokenPipe {
+                        tracing::debug!(
+                            container = %container_name,
+                            "child closed stdin before all input was written; continuing to wait for exit"
+                        );
+                    } else {
+                        tracing::error!(error = %e, container = %container_name, "Failed to write stdin to container");
+                        drop(stdin);
+                        return Err(DockerError::StdinFailed(e));
+                    }
+                }
+                drop(stdin);
+            }
+        }
+
+        child
+            .wait()
+            .await
+            .map_err(|e| DockerError::ProcessError(e.to_string()))
+    }).await;
 
     match wait_result {
         Ok(Ok(exit_status)) => {
             let wall_duration_ms = u64::try_from(start.elapsed().as_millis()).unwrap_or(u64::MAX);
-            let stdout = stdout_handle.await.unwrap_or_default();
-            let stderr = stderr_handle.await.unwrap_or_default();
+            let (stdout, stdout_truncated) = stdout_handle.await.unwrap_or_default();
+            let (stderr, stderr_truncated) = stderr_handle.await.unwrap_or_default();
             let state = inspect_container_state(&container_name).await;
             remove_container(&container_name).await;
             Ok(DockerRunResult {
                 stdout,
                 stderr,
+                stdout_truncated,
+                stderr_truncated,
                 exit_code: exit_status.code(),
                 timed_out: false,
                 oom_killed: state.oom_killed,
@@ -438,7 +455,7 @@ async fn run_docker_once(
         Ok(Err(e)) => {
             kill_container(&container_name).await;
             remove_container(&container_name).await;
-            Err(DockerError::ProcessError(e.to_string()))
+            Err(e)
         }
         Err(_) => {
             // Timeout
@@ -449,6 +466,8 @@ async fn run_docker_once(
             Ok(DockerRunResult {
                 stdout: Vec::new(),
                 stderr: String::new(),
+                stdout_truncated: false,
+                stderr_truncated: false,
                 exit_code: None,
                 timed_out: true,
                 oom_killed: state.oom_killed,

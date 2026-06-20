@@ -1,8 +1,13 @@
 #!/usr/bin/env node
 // Restore SVG diagrams to 24 problems that lost them
 
-const BASE = 'https://algo.xylolabs.com';
-const KEY = 'jk_d74b5170d9202945aa32a033c0b33b0bf106d1b7';
+const BASE = (process.env.JUDGE_BASE_URL || 'https://algo.xylolabs.com').replace(/\/$/, '');
+const KEY = process.env.JUDGE_API_KEY;
+
+if (!KEY) {
+  console.error('Need JUDGE_API_KEY');
+  process.exit(1);
+}
 
 const TARGET_SEQS = new Set([
   340, 341, 342, 343, 347, 351, 353, 355, 357, 360, 361, 362,

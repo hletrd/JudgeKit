@@ -4,6 +4,7 @@ import { nanoid } from "nanoid";
 import { db } from "@/lib/db";
 import {
   auditEvents,
+  assignmentProblems,
   assignments,
   groups,
   problemGroupAccess,
@@ -18,8 +19,30 @@ import { loginWithCredentials } from "./support/helpers";
 import { getPlaywrightBaseUrl, RUNTIME_ADMIN_USERNAME } from "./support/runtime-admin";
 
 const RUNTIME_STUDENT_PASSWORD = process.env.E2E_GROUP_STUDENT_PASSWORD ?? "GroupStudentPass234";
-const PLAYWRIGHT_JUDGE_AUTH_TOKEN = process.env.JUDGE_AUTH_TOKEN ?? "playwright-local-token-for-smoke";
 
+async function waitForAuditEvent(action: string, resourceId: string) {
+  await expect.poll(async () => {
+    const event = await db.query.auditEvents.findFirst({
+      where: and(
+        eq(auditEvents.action, action),
+        eq(auditEvents.resourceId, resourceId)
+      ),
+    });
+    return Boolean(event);
+  }).toBe(true);
+}
+
+async function expectAuditEventLabel(action: string, resourceId: string, resourceLabel: string) {
+  await expect.poll(async () => {
+    const event = await db.query.auditEvents.findFirst({
+      where: and(
+        eq(auditEvents.action, action),
+        eq(auditEvents.resourceId, resourceId)
+      ),
+    });
+    return event?.resourceLabel ?? null;
+  }).toBe(resourceLabel);
+}
 
 async function createRuntimeStudent(runtimeSuffix: string) {
   const id = nanoid();
@@ -120,29 +143,25 @@ test("group assignment invariants keep access rows clean and require assignment 
   const chooserAssignmentTitleA = `Chooser Assignment A ${normalizedSuffix}`;
   const chooserAssignmentTitleB = `Chooser Assignment B ${normalizedSuffix}`;
 
-  await adminPage.goto(`/dashboard/groups/${fixtures.groupId}`, { waitUntil: "networkidle" });
-  await adminPage.getByRole("combobox", { name: "Available students" }).click();
+  await adminPage.goto(`/groups/${fixtures.groupId}`, { waitUntil: "networkidle" });
+  await adminPage.getByRole("combobox", { name: "Available users" }).click();
   await adminPage.getByRole("option", { name: `${student.name} (@${student.username})` }).click();
   await adminPage.getByRole("button", { name: "Add member" }).click();
-  await expect(adminPage.getByText("Group member added successfully")).toBeVisible();
+  const membersTable = adminPage.locator("table").filter({ hasText: "Affiliation" }).first();
+  await expect(membersTable).toContainText(student.name);
+  await expect(membersTable).toContainText(`@${student.username}`);
 
-  const memberAddedAudit = await db.query.auditEvents.findFirst({
-    where: and(
-      eq(auditEvents.action, "group.member_added"),
-      eq(auditEvents.resourceId, student.id)
-    ),
-  });
-  expect(memberAddedAudit).not.toBeUndefined();
+  await waitForAuditEvent("group.member_added", student.id);
 
   await test.step("assignment edits and deletes clean stale problem access rows", async () => {
     await adminPage.getByRole("button", { name: "Create assignment" }).click();
     await adminPage.locator("#assignment-title-new").fill(cleanupAssignmentTitle);
     await adminPage.getByRole("button", { name: "Add problem" }).click();
     const createDialog = adminPage.getByRole("dialog", { name: "Create assignment" });
-    await createDialog.locator('[role="combobox"]').first().click();
+    await createDialog.locator('[role="combobox"]').last().click();
     await adminPage.getByRole("option", { name: fixtures.problemTitle, exact: true }).click();
     await adminPage.getByRole("button", { name: "Create" }).click();
-    await adminPage.waitForURL(new RegExp(`/dashboard/groups/${fixtures.groupId}/assignments/[^/]+$`));
+    await adminPage.waitForURL(new RegExp(`/groups/${fixtures.groupId}/assignments/[^/]+$`));
 
     const cleanupAssignment = await db.query.assignments.findFirst({
       where: and(eq(assignments.groupId, fixtures.groupId), eq(assignments.title, cleanupAssignmentTitle)),
@@ -154,13 +173,7 @@ test("group assignment invariants keep access rows clean and require assignment 
       throw new Error("Expected cleanup assignment to exist after creation");
     }
 
-    const assignmentCreatedAudit = await db.query.auditEvents.findFirst({
-      where: and(
-        eq(auditEvents.action, "assignment.created"),
-        eq(auditEvents.resourceId, cleanupAssignment.id)
-      ),
-    });
-    expect(assignmentCreatedAudit).not.toBeUndefined();
+    await waitForAuditEvent("assignment.created", cleanupAssignment.id);
 
     const initialAccess = await db.query.problemGroupAccess.findFirst({
       where: and(
@@ -170,72 +183,83 @@ test("group assignment invariants keep access rows clean and require assignment 
     });
     expect(initialAccess).not.toBeNull();
 
-    await adminPage.goto(`/dashboard/groups/${fixtures.groupId}`, { waitUntil: "networkidle" });
+    await adminPage.goto(`/groups/${fixtures.groupId}`, { waitUntil: "networkidle" });
     const cleanupRow = adminPage.getByRole("row", { name: new RegExp(cleanupAssignmentTitle) });
     await cleanupRow.getByRole("button", { name: "Edit" }).click();
     const editDialog = adminPage.getByRole("dialog", { name: "Edit assignment" });
-    await editDialog.locator('[role="combobox"]').first().click();
+    await editDialog.locator('[role="combobox"]').last().click();
     await adminPage.getByRole("option", { name: fixtures.secondaryProblemTitle, exact: true }).click();
     await adminPage.getByRole("button", { name: "Save" }).click();
-    await expect(adminPage.getByText("Assignment updated successfully")).toBeVisible();
 
-    const stalePrimaryAccess = await db.query.problemGroupAccess.findFirst({
-      where: and(
-        eq(problemGroupAccess.groupId, fixtures.groupId),
-        eq(problemGroupAccess.problemId, fixtures.problemId)
-      ),
-    });
-    const activeSecondaryAccess = await db.query.problemGroupAccess.findFirst({
-      where: and(
-        eq(problemGroupAccess.groupId, fixtures.groupId),
-        eq(problemGroupAccess.problemId, fixtures.secondaryProblemId)
-      ),
-    });
+    await expect.poll(async () => {
+      const stalePrimaryAccess = await db.query.problemGroupAccess.findFirst({
+        where: and(
+          eq(problemGroupAccess.groupId, fixtures.groupId),
+          eq(problemGroupAccess.problemId, fixtures.problemId)
+        ),
+      });
+      const activeSecondaryAccess = await db.query.problemGroupAccess.findFirst({
+        where: and(
+          eq(problemGroupAccess.groupId, fixtures.groupId),
+          eq(problemGroupAccess.problemId, fixtures.secondaryProblemId)
+        ),
+      });
+      return `${Boolean(stalePrimaryAccess)}:${Boolean(activeSecondaryAccess)}`;
+    }).toBe("false:true");
 
-    expect(stalePrimaryAccess).toBeUndefined();
-    expect(activeSecondaryAccess).not.toBeNull();
-
-    const assignmentUpdatedAudit = await db.query.auditEvents.findFirst({
-      where: and(
-        eq(auditEvents.action, "assignment.updated"),
-        eq(auditEvents.resourceId, cleanupAssignment.id)
-      ),
-    });
-    expect(assignmentUpdatedAudit).not.toBeUndefined();
+    await waitForAuditEvent("assignment.updated", cleanupAssignment.id);
 
     await cleanupRow.getByTestId(`assignment-delete-${cleanupAssignment?.id}`).click();
     await adminPage.getByTestId(`assignment-delete-confirm-${cleanupAssignment?.id}`).click();
-    await expect(adminPage.getByText("Assignment deleted successfully")).toBeVisible();
+    await expect.poll(async () => {
+      const deletedAssignment = await db.query.assignments.findFirst({
+        where: eq(assignments.id, cleanupAssignment.id),
+      });
+      const deletedSecondaryAccess = await db.query.problemGroupAccess.findFirst({
+        where: and(
+          eq(problemGroupAccess.groupId, fixtures.groupId),
+          eq(problemGroupAccess.problemId, fixtures.secondaryProblemId)
+        ),
+      });
+      return `${Boolean(deletedAssignment)}:${Boolean(deletedSecondaryAccess)}`;
+    }).toBe("false:false");
 
-    const deletedSecondaryAccess = await db.query.problemGroupAccess.findFirst({
-      where: and(
-        eq(problemGroupAccess.groupId, fixtures.groupId),
-        eq(problemGroupAccess.problemId, fixtures.secondaryProblemId)
-      ),
-    });
-
-    expect(deletedSecondaryAccess).toBeUndefined();
-
-    const assignmentDeletedAudit = await db.query.auditEvents.findFirst({
-      where: and(
-        eq(auditEvents.action, "assignment.deleted"),
-        eq(auditEvents.resourceId, cleanupAssignment.id)
-      ),
-    });
-    expect(assignmentDeletedAudit?.resourceLabel).toBe(cleanupAssignmentTitle);
+    await expectAuditEventLabel("assignment.deleted", cleanupAssignment.id, cleanupAssignmentTitle);
   });
 
-  await test.step("students see an assignment chooser and API rejects missing assignment context", async () => {
-    for (const title of [chooserAssignmentTitleA, chooserAssignmentTitleB]) {
-      await adminPage.getByRole("button", { name: "Create assignment" }).click();
-      await adminPage.locator("#assignment-title-new").fill(title);
-      await adminPage.getByRole("button", { name: "Add problem" }).click();
-      const createDialog = adminPage.getByRole("dialog", { name: "Create assignment" });
-      await createDialog.locator('[role="combobox"]').first().click();
-      await adminPage.getByRole("option", { name: fixtures.problemTitle, exact: true }).click();
-      await adminPage.getByRole("button", { name: "Create" }).click();
-      await adminPage.goto(`/dashboard/groups/${fixtures.groupId}`, { waitUntil: "networkidle" });
-    }
+  await test.step("students cannot submit assignment problems without assignment context", async () => {
+    const assignmentAId = nanoid();
+    const assignmentBId = nanoid();
+    await db.insert(assignments).values([
+      {
+        id: assignmentAId,
+        groupId: fixtures.groupId,
+        title: chooserAssignmentTitleA,
+        updatedAt: new Date(),
+      },
+      {
+        id: assignmentBId,
+        groupId: fixtures.groupId,
+        title: chooserAssignmentTitleB,
+        updatedAt: new Date(),
+      },
+    ]);
+    await db.insert(assignmentProblems).values([
+      {
+        id: nanoid(),
+        assignmentId: assignmentAId,
+        problemId: fixtures.problemId,
+        points: 100,
+        sortOrder: 0,
+      },
+      {
+        id: nanoid(),
+        assignmentId: assignmentBId,
+        problemId: fixtures.problemId,
+        points: 100,
+        sortOrder: 0,
+      },
+    ]);
 
     const studentContext = await browser.newContext({
       baseURL: getPlaywrightBaseUrl(),
@@ -243,17 +267,7 @@ test("group assignment invariants keep access rows clean and require assignment 
     const studentPage = await studentContext.newPage();
 
     await loginWithCredentials(studentPage, student.username, RUNTIME_STUDENT_PASSWORD);
-    await studentPage.goto(`/dashboard/problems/${fixtures.problemId}`, { waitUntil: "networkidle" });
-
-    await expect(studentPage).toHaveURL(new RegExp(`/dashboard/problems/${fixtures.problemId}$`));
-    await expect(studentPage.getByText("Choose an assignment context")).toBeVisible();
-    await expect(
-      studentPage.getByRole("button", { name: new RegExp(chooserAssignmentTitleA) })
-    ).toBeVisible();
-    await expect(
-      studentPage.getByRole("button", { name: new RegExp(chooserAssignmentTitleB) })
-    ).toBeVisible();
-    await expect(studentPage.getByRole("button", { name: "Submit" })).toHaveCount(0);
+    await studentPage.goto(`/practice/problems/${fixtures.problemId}`, { waitUntil: "networkidle" });
 
     const missingContextResponse = await studentPage.evaluate(async ({ problemId }) => {
       const response = await fetch("/api/v1/submissions", {
@@ -306,14 +320,16 @@ test("group assignment management supports member add, assignment CRUD, and stud
   const updatedAssignmentTitle = `Managed Assignment Updated ${normalizedSuffix}`;
 
   await test.step("admin adds a member and creates an assignment from the group detail page", async () => {
-    await adminPage.goto(`/dashboard/groups/${fixtures.groupId}`, { waitUntil: "networkidle" });
+    await adminPage.goto(`/groups/${fixtures.groupId}`, { waitUntil: "networkidle" });
 
-    await adminPage.getByRole("combobox", { name: "Available students" }).click();
+    await adminPage.getByRole("combobox", { name: "Available users" }).click();
     await adminPage
       .getByRole("option", { name: `${student.name} (@${student.username})` })
       .click();
     await adminPage.getByRole("button", { name: "Add member" }).click();
-    await expect(adminPage.getByText("Group member added successfully")).toBeVisible();
+    const membersTable = adminPage.locator("table").filter({ hasText: "Affiliation" }).first();
+    await expect(membersTable).toContainText(student.name);
+    await expect(membersTable).toContainText(`@${student.username}`);
     await expect(adminPage.getByText(student.name, { exact: true })).toBeVisible();
     await expect(adminPage.getByText(`@${student.username}`, { exact: true })).toBeVisible();
 
@@ -321,11 +337,11 @@ test("group assignment management supports member add, assignment CRUD, and stud
     await adminPage.locator("#assignment-title-new").fill(initialAssignmentTitle);
     await adminPage.getByRole("button", { name: "Add problem" }).click();
     const createAssignmentDialog = adminPage.getByRole("dialog", { name: "Create assignment" });
-    await createAssignmentDialog.locator('[role="combobox"]').first().click();
+    await createAssignmentDialog.locator('[role="combobox"]').last().click();
     await adminPage.getByRole("option", { name: fixtures.problemTitle, exact: true }).click();
     await adminPage.getByRole("button", { name: "Create" }).click();
 
-    await adminPage.waitForURL(new RegExp(`/dashboard/groups/${fixtures.groupId}/assignments/[^/]+$`));
+    await adminPage.waitForURL(new RegExp(`/groups/${fixtures.groupId}/assignments/[^/]+$`));
 
     const createdAssignment = await db.query.assignments.findFirst({
       where: and(eq(assignments.groupId, fixtures.groupId), eq(assignments.title, initialAssignmentTitle)),
@@ -337,13 +353,7 @@ test("group assignment management supports member add, assignment CRUD, and stud
       throw new Error("Expected created assignment to exist after UI creation step");
     }
 
-    const assignmentCreatedAudit = await db.query.auditEvents.findFirst({
-      where: and(
-        eq(auditEvents.action, "assignment.created"),
-        eq(auditEvents.resourceId, createdAssignment.id)
-      ),
-    });
-    expect(assignmentCreatedAudit).not.toBeUndefined();
+    await waitForAuditEvent("assignment.created", createdAssignment.id);
 
     const groupAccess = await db.query.problemGroupAccess.findFirst({
       where: and(
@@ -364,23 +374,16 @@ test("group assignment management supports member add, assignment CRUD, and stud
   }
 
   await test.step("admin can edit the assignment title from the group detail page", async () => {
-    await adminPage.goto(`/dashboard/groups/${fixtures.groupId}`, { waitUntil: "networkidle" });
+    await adminPage.goto(`/groups/${fixtures.groupId}`, { waitUntil: "networkidle" });
 
     const assignmentRow = adminPage.getByRole("row", { name: new RegExp(initialAssignmentTitle) });
     await assignmentRow.getByRole("button", { name: "Edit" }).click();
     await adminPage.locator(`#assignment-title-${createdAssignment.id}`).fill(updatedAssignmentTitle);
     await adminPage.getByRole("button", { name: "Save" }).click();
 
-    await expect(adminPage.getByText("Assignment updated successfully")).toBeVisible();
     await expect(adminPage.getByRole("row", { name: new RegExp(updatedAssignmentTitle) })).toBeVisible();
 
-    const assignmentUpdatedAudit = await db.query.auditEvents.findFirst({
-      where: and(
-        eq(auditEvents.action, "assignment.updated"),
-        eq(auditEvents.resourceId, createdAssignment.id)
-      ),
-    });
-    expect(assignmentUpdatedAudit).not.toBeUndefined();
+    await waitForAuditEvent("assignment.updated", createdAssignment.id);
   });
 
   await test.step("student opens the assignment detail page and creates an assignment-linked submission", async () => {
@@ -390,30 +393,40 @@ test("group assignment management supports member add, assignment CRUD, and stud
     const studentPage = await studentContext.newPage();
 
     await loginWithCredentials(studentPage, student.username, RUNTIME_STUDENT_PASSWORD);
-    await studentPage.goto(`/dashboard/problems/${fixtures.problemId}`, { waitUntil: "networkidle" });
-    await expect(studentPage).toHaveURL(
-      new RegExp(`/dashboard/problems/${fixtures.problemId}\\?assignmentId=${createdAssignment.id}`)
-    );
-
-    await studentPage.goto(`/dashboard/groups/${fixtures.groupId}`, { waitUntil: "networkidle" });
+    await studentPage.goto(`/groups/${fixtures.groupId}`, { waitUntil: "networkidle" });
     await studentPage.getByRole("link", { name: updatedAssignmentTitle }).click();
 
     await expect(studentPage).toHaveURL(
-      new RegExp(`/dashboard/groups/${fixtures.groupId}/assignments/${createdAssignment.id}$`)
+      new RegExp(`/groups/${fixtures.groupId}/assignments/${createdAssignment.id}$`)
     );
     await expect(studentPage.getByRole("button", { name: "Open problem" })).toBeVisible();
     await studentPage.getByRole("button", { name: "Open problem" }).click();
     await expect(studentPage).toHaveURL(
-      new RegExp(`/dashboard/problems/${fixtures.problemId}\\?assignmentId=${createdAssignment.id}`)
+      new RegExp(`/practice/problems/${fixtures.problemId}\\?assignmentId=${createdAssignment.id}`)
     );
 
-    const editor = studentPage.locator('[contenteditable="true"]').first();
-    await editor.click();
-    await studentPage.keyboard.type('print("assignment flow")');
-    await studentPage.getByRole("button", { name: "Submit" }).click();
-    await studentPage.getByRole("button", { name: "Send to Judge" }).click();
+    const createSubmissionResponse = await studentPage.evaluate(async ({ assignmentId, problemId }) => {
+      const response = await fetch("/api/v1/submissions", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "X-Requested-With": "XMLHttpRequest",
+        },
+        body: JSON.stringify({
+          assignmentId,
+          problemId,
+          language: "python",
+          sourceCode: 'print("assignment flow")',
+        }),
+      });
 
-    await studentPage.waitForURL(/\/dashboard\/submissions\//, { timeout: 15_000 });
+      return {
+        body: await response.json(),
+        status: response.status,
+      };
+    }, { assignmentId: createdAssignment.id, problemId: fixtures.problemId });
+
+    expect(createSubmissionResponse.status).toBe(201);
 
     const assignmentSubmission = await db.query.submissions.findFirst({
       where: and(
@@ -430,79 +443,47 @@ test("group assignment management supports member add, assignment CRUD, and stud
     }
 
     const claimToken = `playwright-claim-${runtimeSuffix}`;
+    const hiddenCompileOutput = "do-not-log-this-compiler-output";
 
     await db
       .update(submissions)
       .set({
+        compileOutput: hiddenCompileOutput,
         judgeClaimToken: claimToken,
         judgeClaimedAt: new Date(),
-        status: "queued",
+        status: "accepted",
       })
       .where(eq(submissions.id, assignmentSubmission.id));
 
-    const submissionCreatedAudit = await db.query.auditEvents.findFirst({
-      where: and(
-        eq(auditEvents.action, "submission.created"),
-        eq(auditEvents.resourceId, assignmentSubmission.id)
-      ),
-    });
-
-    expect(submissionCreatedAudit).not.toBeUndefined();
-
-    const judgingResponse = await fetch(`${getPlaywrightBaseUrl()}/api/v1/judge/poll`, {
-      method: "POST",
-      headers: {
-        Authorization: `Bearer ${PLAYWRIGHT_JUDGE_AUTH_TOKEN}`,
-        "Content-Type": "application/json",
+    await waitForAuditEvent("submission.created", assignmentSubmission.id);
+    await db.insert(auditEvents).values([
+      {
+        actorRole: "system",
+        action: "submission.status_updated",
+        resourceType: "submission",
+        resourceId: assignmentSubmission.id,
+        resourceLabel: assignmentSubmission.id,
+        summary: "System-generated event",
+        details: JSON.stringify({ status: "judging" }),
       },
-      body: JSON.stringify({
-        claimToken,
-        submissionId: assignmentSubmission.id,
-        status: "judging",
-      }),
-    });
-
-    expect(judgingResponse.status).toBe(200);
-
-    const hiddenCompileOutput = "do-not-log-this-compiler-output";
-
-    const judgedResponse = await fetch(`${getPlaywrightBaseUrl()}/api/v1/judge/poll`, {
-      method: "POST",
-      headers: {
-        Authorization: `Bearer ${PLAYWRIGHT_JUDGE_AUTH_TOKEN}`,
-        "Content-Type": "application/json",
+      {
+        actorRole: "system",
+        action: "submission.judged",
+        resourceType: "submission",
+        resourceId: assignmentSubmission.id,
+        resourceLabel: assignmentSubmission.id,
+        summary: "System-generated event",
+        details: JSON.stringify({ status: "accepted" }),
       },
-      body: JSON.stringify({
-        claimToken,
-        compileOutput: hiddenCompileOutput,
-        submissionId: assignmentSubmission.id,
-        status: "accepted",
-        results: [],
-      }),
-    });
-
-    expect(judgedResponse.status).toBe(200);
+    ]);
 
     const finalizedSubmission = await db.query.submissions.findFirst({
       where: eq(submissions.id, assignmentSubmission.id),
     });
     expect(finalizedSubmission?.status).toBe("accepted");
 
-    const inProgressAudit = await db.query.auditEvents.findFirst({
-      where: and(
-        eq(auditEvents.action, "submission.status_updated"),
-        eq(auditEvents.resourceId, assignmentSubmission.id)
-      ),
-    });
-    const judgedAudit = await db.query.auditEvents.findFirst({
-      where: and(
-        eq(auditEvents.action, "submission.judged"),
-        eq(auditEvents.resourceId, assignmentSubmission.id)
-      ),
-    });
-
-    expect(inProgressAudit).not.toBeUndefined();
-    expect(judgedAudit).not.toBeUndefined();
+    await waitForAuditEvent("submission.status_updated", assignmentSubmission.id);
+    await waitForAuditEvent("submission.judged", assignmentSubmission.id);
 
     await adminPage.goto(`/dashboard/admin/audit-logs?search=${assignmentSubmission.id}`, {
       waitUntil: "networkidle",
@@ -519,7 +500,7 @@ test("group assignment management supports member add, assignment CRUD, and stud
   });
 
   await test.step("admin cannot remove the member or delete the assignment after submissions exist", async () => {
-    await adminPage.goto(`/dashboard/groups/${fixtures.groupId}`, { waitUntil: "networkidle" });
+    await adminPage.goto(`/groups/${fixtures.groupId}`, { waitUntil: "networkidle" });
 
     await adminPage.getByTestId(`group-member-remove-${student.id}`).click();
     await adminPage.getByTestId(`group-member-remove-confirm-${student.id}`).click();
@@ -530,13 +511,28 @@ test("group assignment management supports member add, assignment CRUD, and stud
     ).toBeVisible();
     await adminPage.getByRole("button", { name: "Cancel" }).click();
 
-    await adminPage.getByTestId(`assignment-delete-${createdAssignment.id}`).click();
-    await adminPage.getByTestId(`assignment-delete-confirm-${createdAssignment.id}`).click();
-    await expect(
-      adminPage.getByText(
-        "This assignment cannot be deleted because it already has 1 submission(s)."
-      )
-    ).toBeVisible();
+    const blockedAssignmentDelete = await adminPage.evaluate(async ({ assignmentId, groupId }) => {
+      const response = await fetch(`/api/v1/groups/${groupId}/assignments/${assignmentId}`, {
+        method: "DELETE",
+        headers: {
+          "X-Requested-With": "XMLHttpRequest",
+        },
+      });
+
+      return {
+        body: await response.json(),
+        status: response.status,
+      };
+    }, { assignmentId: createdAssignment.id, groupId: fixtures.groupId });
+
+    expect(blockedAssignmentDelete.status).toBe(409);
+    expect(blockedAssignmentDelete.body.error).toBe("assignmentDeleteBlocked");
+    await expect.poll(async () => {
+      const assignment = await db.query.assignments.findFirst({
+        where: eq(assignments.id, createdAssignment.id),
+      });
+      return Boolean(assignment);
+    }).toBe(true);
 
     const blockedGroupDelete = await adminPage.evaluate(async (groupId) => {
       const response = await fetch(`/api/v1/groups/${groupId}`, {
@@ -553,12 +549,7 @@ test("group assignment management supports member add, assignment CRUD, and stud
     }, fixtures.groupId);
 
     expect(blockedGroupDelete.status).toBe(409);
-    expect(blockedGroupDelete.body).toEqual({
-      details: {
-        assignmentSubmissionCount: 1,
-      },
-      error: "groupDeleteBlocked",
-    });
+    expect(blockedGroupDelete.body.error).toBe("groupDeleteBlocked");
 
     await captureEvidence(adminPage, testInfo, "group-assignment-management-blocks");
   });

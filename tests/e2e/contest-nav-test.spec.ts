@@ -16,43 +16,43 @@ test("full contest navigation test", async ({ page }) => {
   await page.click('button[type="submit"]');
   await page.waitForURL("**/dashboard**", { timeout: 15000 });
 
-  // Sidebar -> contests list
-  await page.locator('a[href="/dashboard/contests"]').first().click();
-  await page.waitForURL("**/dashboard/contests**", { timeout: 10000 });
+  // Header -> contests list
+  await page.locator('a[href="/contests"]').first().click();
+  await page.waitForURL("**/contests**", { timeout: 10000 });
   await page.waitForLoadState("domcontentloaded");
   console.log(`sidebar->contests: ${errors.length} errors`);
 
   // Contests list -> create
-  const create = page.locator('a[href="/dashboard/contests/create"]');
+  const create = page.locator('a[href="/contests/manage/create"]');
   if (await create.isVisible({ timeout: 3000 }).catch(() => false)) {
     const e1 = errors.length;
     await create.click();
-    await page.waitForURL("**/dashboard/contests/create**", { timeout: 10000 });
+    await page.waitForURL("**/contests/manage/create**", { timeout: 10000 });
     await page.waitForLoadState("domcontentloaded");
     console.log(`list->create: ${errors.length - e1} errors, url=${page.url()}`);
   }
 
   // Create -> sidebar problems (from contest page)
-  const prob = page.locator('a[href="/dashboard/problems"]').first();
+  const prob = page.locator('a[href="/problems"]').first();
   if (await prob.isVisible({ timeout: 3000 }).catch(() => false)) {
     const e2 = errors.length;
     await prob.click();
-    await page.waitForURL("**/dashboard/problems**", { timeout: 10000 });
+    await page.waitForURL("**/problems**", { timeout: 10000 });
     await page.waitForLoadState("domcontentloaded");
     console.log(`create->problems: ${errors.length - e2} errors, url=${page.url()}`);
   }
 
   // Go back to contests via sidebar
-  await page.locator('a[href="/dashboard/contests"]').first().click();
-  await page.waitForURL("**/dashboard/contests**", { timeout: 10000 });
+  await page.locator('a[href="/contests"]').first().click();
+  await page.waitForURL("**/contests**", { timeout: 10000 });
   await page.waitForLoadState("domcontentloaded");
 
   // Click a real contest
-  const detail = page.locator('a[href*="/dashboard/contests/"]:not([href*="create"]):not([href*="join"])').first();
+  const detail = page.locator('a[href*="/contests/"]:not([href*="create"]):not([href*="join"]):not([href*="manage"])').first();
   if (await detail.isVisible({ timeout: 3000 }).catch(() => false)) {
     const e3 = errors.length;
     await detail.click();
-    await page.waitForURL(/\/dashboard\/contests\/[^/]+/, { timeout: 10000 });
+    await page.waitForURL(/\/contests\/[^/]+/, { timeout: 10000 });
     await page.waitForLoadState("domcontentloaded");
     console.log(`list->detail: ${errors.length - e3} errors, url=${page.url()}`);
 

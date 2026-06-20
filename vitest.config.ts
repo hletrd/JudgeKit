@@ -16,6 +16,17 @@ export default defineConfig({
     coverage: {
       provider: "v8",
       reporter: ["text", "html"],
+      exclude: [
+        "**/node_modules/**",
+        "**/.git/**",
+        // Unit coverage is for helpers, validators, server routes, and pure
+        // logic. UI/page execution is covered by component and Playwright gates.
+        "src/app/(dashboard)/**",
+        "src/app/(public)/**",
+        "src/components/**",
+        "src/contexts/**",
+        "src/hooks/**",
+      ],
       thresholds: {
         statements: 60,
         branches: 50,

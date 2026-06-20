@@ -13,7 +13,8 @@ const {
   readUploadedJsonFileWithLimitMock,
   validateExportMock,
   importDatabaseMock,
-  restoreFilesFromZipMock,
+  parseBackupZipMock,
+  restoreParsedBackupFilesMock,
 } = vi.hoisted(() => ({
   getApiUserMock: vi.fn(),
   csrfForbiddenMock: vi.fn(),
@@ -26,7 +27,8 @@ const {
   readUploadedJsonFileWithLimitMock: vi.fn(),
   validateExportMock: vi.fn(),
   importDatabaseMock: vi.fn(),
-  restoreFilesFromZipMock: vi.fn(),
+  parseBackupZipMock: vi.fn(),
+  restoreParsedBackupFilesMock: vi.fn(),
 }));
 
 vi.mock("@/lib/api/auth", () => ({
@@ -84,7 +86,8 @@ vi.mock("@/lib/audit/events", () => ({
 }));
 
 vi.mock("@/lib/db/export-with-files", () => ({
-  restoreFilesFromZip: restoreFilesFromZipMock,
+  parseBackupZip: parseBackupZipMock,
+  restoreParsedBackupFiles: restoreParsedBackupFilesMock,
 }));
 
 vi.mock("@/lib/logger", () => ({
@@ -141,7 +144,7 @@ describe("destructive backup/import route password confirmation", () => {
     verifyAndRehashPasswordMock.mockResolvedValue({ valid: false });
     dbSelectMock.mockReturnValue(makeLimitChain([{ passwordHash: "stored-hash" }]));
     validateExportMock.mockReturnValue([]);
-    restoreFilesFromZipMock.mockResolvedValue({
+    parseBackupZipMock.mockResolvedValue({
       dbExport: {
         version: 1,
         exportedAt: "2026-04-12T00:00:00.000Z",
@@ -150,8 +153,9 @@ describe("destructive backup/import route password confirmation", () => {
         redactionMode: "full-fidelity",
         tables: {},
       },
-      filesRestored: 0,
+      uploads: [],
     });
+    restoreParsedBackupFilesMock.mockResolvedValue(0);
     readUploadedJsonFileWithLimitMock.mockResolvedValue({
       version: 1,
       exportedAt: "2026-04-12T00:00:00.000Z",
@@ -326,7 +330,7 @@ describe("backup restore semantic safety", () => {
   });
 
   it("rejects ZIP backups whose integrity manifest fails validation", async () => {
-    restoreFilesFromZipMock.mockRejectedValue(new Error("backupIntegrityMismatch"));
+    parseBackupZipMock.mockRejectedValue(new Error("backupIntegrityMismatch"));
 
     const { POST } = await import("@/app/api/v1/admin/restore/route");
     const form = new FormData();

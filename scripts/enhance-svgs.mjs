@@ -1,8 +1,13 @@
 #!/usr/bin/env node
 // ESM script to enhance problem descriptions with SVGs
 
-const API_BASE = 'https://algo.xylolabs.com';
-const API_KEY = 'jk_d74b5170d9202945aa32a033c0b33b0bf106d1b7';
+const API_BASE = (process.env.JUDGE_BASE_URL || 'https://algo.xylolabs.com').replace(/\/$/, '');
+const API_KEY = process.env.JUDGE_API_KEY;
+
+if (!API_KEY) {
+  console.error('Need JUDGE_API_KEY');
+  process.exit(1);
+}
 
 async function fetchAllProblems() {
   const all = [];

@@ -12,7 +12,7 @@ import { logger } from "@/lib/logger";
 
 const exec = promisify(execFile);
 
-const MEMORY_LIMIT_MB = 256;
+const MEMORY_LIMIT_MB = 2048;
 // Keep aligned with the Rust judge worker so stdout/stderr truncation matches
 // between local compiler-run requests and remote judge execution.
 const MAX_OUTPUT_BYTES = 134_217_728; // 128 MiB
@@ -97,6 +97,7 @@ export interface CompilerRunOptions {
   stdin: string;
   /** Language config from DB */
   language: {
+    id?: string;
     extension: string;
     dockerImage: string;
     compileCommand: string | null;
@@ -545,6 +546,7 @@ async function tryRustRunner(
         dockerImage: options.language.dockerImage,
         compileCommand: options.language.compileCommand,
         runCommand: options.language.runCommand,
+        language: options.language.id,
         timeLimitMs,
       }),
       signal: AbortSignal.timeout(Math.max(timeLimitMs * 4, 120_000)),
@@ -607,6 +609,18 @@ async function tryRustRunner(
 export async function executeCompilerRun(
   options: CompilerRunOptions,
 ): Promise<CompilerRunResult> {
+  if (options.sourceCode.includes("\u0000")) {
+    return {
+      stdout: "",
+      stderr: "sourceCodeInvalid",
+      exitCode: null,
+      executionTimeMs: 0,
+      timedOut: false,
+      oomKilled: false,
+      compileOutput: "sourceCodeInvalid",
+    };
+  }
+
   // Try Rust runner first
   const rustResult = await tryRustRunner(options);
   if (rustResult !== null) return rustResult;

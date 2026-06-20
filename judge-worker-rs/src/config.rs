@@ -110,20 +110,7 @@ impl Config {
             )
         };
 
-        for url in [&claim_url, &report_url] {
-            if url.starts_with("http://")
-                && !url.starts_with("http://localhost")
-                && !url.starts_with("http://127.0.0.1")
-                && !url.starts_with("http://[::1]")
-            {
-                tracing::warn!(
-                    "Judge URL uses unencrypted HTTP for a non-localhost address ({url}). \
-                     This exposes the auth token and submission data in transit. \
-                     Use HTTPS in production."
-                );
-                break;
-            }
-        }
+        validate_secure_judge_urls(&[&claim_url, &report_url])?;
 
         let poll_interval_ms: u64 = match env::var("POLL_INTERVAL") {
             Ok(val) => {
@@ -156,7 +143,6 @@ impl Config {
                     .to_string(),
             );
         }
-        let auth_token = SecretString::new(auth_token_raw);
         let runner_auth_token = match env::var("RUNNER_AUTH_TOKEN") {
             Ok(token) => {
                 if token.is_empty() {
@@ -168,16 +154,16 @@ impl Config {
                             .to_string(),
                     );
                 }
+                if token == auth_token_raw {
+                    return Err(
+                        "RUNNER_AUTH_TOKEN must be different from JUDGE_AUTH_TOKEN".to_string(),
+                    );
+                }
                 SecretString::new(token)
             }
-            Err(_) => {
-                tracing::warn!(
-                    "RUNNER_AUTH_TOKEN is not set — falling back to JUDGE_AUTH_TOKEN for runner/admin endpoints. \
-                     Set RUNNER_AUTH_TOKEN separately in production to reduce bearer-token blast radius."
-                );
-                auth_token.clone()
-            }
+            Err(_) => return Err("RUNNER_AUTH_TOKEN environment variable is required".to_string()),
         };
+        let auth_token = SecretString::new(auth_token_raw);
 
         let disable_custom_seccomp = match env::var("JUDGE_DISABLE_CUSTOM_SECCOMP") {
             Ok(val) => {
@@ -348,9 +334,60 @@ fn validate_runtime_path(raw: &str, var_name: &str) -> Result<PathBuf, String> {
     Ok(path)
 }
 
+fn validate_secure_judge_urls(urls: &[&str]) -> Result<(), String> {
+    let allow_insecure_http = env::var("JUDGE_ALLOW_INSECURE_HTTP")
+        .map(|value| matches!(value.trim().to_lowercase().as_str(), "1" | "true" | "yes" | "on"))
+        .unwrap_or(false);
+
+    validate_secure_judge_urls_with_override(urls, allow_insecure_http)
+}
+
+fn validate_secure_judge_urls_with_override(
+    urls: &[&str],
+    allow_insecure_http: bool,
+) -> Result<(), String> {
+    for url in urls {
+        let parsed = reqwest::Url::parse(url)
+            .map_err(|_| format!("Judge URL must be a valid absolute URL: {url}"))?;
+
+        if parsed.scheme() != "http" {
+            continue;
+        }
+
+        if is_local_control_plane_host(parsed.host_str()) {
+            continue;
+        }
+
+        if allow_insecure_http {
+            tracing::warn!(
+                "Judge URL uses unencrypted HTTP for a non-local address ({url}) because \
+                 JUDGE_ALLOW_INSECURE_HTTP is enabled. This exposes auth tokens and \
+                 submission data in transit."
+            );
+            continue;
+        }
+
+        return Err(format!(
+            "Judge URL must use HTTPS for non-local addresses ({url}). \
+             Set JUDGE_ALLOW_INSECURE_HTTP=1 only for controlled development networks."
+        ));
+    }
+
+    Ok(())
+}
+
+fn is_local_control_plane_host(host: Option<&str>) -> bool {
+    matches!(
+        host,
+        Some("localhost") | Some("127.0.0.1") | Some("::1") | Some("app")
+    )
+}
+
 #[cfg(test)]
 mod tests {
-    use super::validate_runtime_path;
+    use super::{
+        is_local_control_plane_host, validate_runtime_path, validate_secure_judge_urls_with_override,
+    };
     use std::path::PathBuf;
 
     #[test]
@@ -371,5 +408,30 @@ mod tests {
         assert!(validate_runtime_path("", "DEAD_LETTER_DIR").is_err());
         assert!(validate_runtime_path("../dead-letter", "DEAD_LETTER_DIR").is_err());
         assert!(validate_runtime_path("/tmp/../../etc/passwd", "DEAD_LETTER_DIR").is_err());
+    }
+
+    #[test]
+    fn accepts_local_plain_http_judge_urls() {
+        validate_secure_judge_urls_with_override(
+            &[
+                "http://localhost:3000/api/v1/judge/claim",
+                "http://app:3000/api/v1/judge/poll",
+            ],
+            false,
+        )
+        .unwrap();
+        assert!(is_local_control_plane_host(Some("127.0.0.1")));
+        assert!(is_local_control_plane_host(Some("::1")));
+    }
+
+    #[test]
+    fn rejects_remote_plain_http_judge_urls() {
+        let err = validate_secure_judge_urls_with_override(
+            &["http://worker.example.com/api/v1/judge/claim"],
+            false,
+        )
+        .unwrap_err();
+
+        assert!(err.contains("must use HTTPS"));
     }
 }

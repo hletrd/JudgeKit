@@ -34,6 +34,7 @@ import { InboxIcon } from "lucide-react";
 import { FilterSelect } from "@/components/filter-select";
 import { AdminSubmissionsBulkRejudge } from "./admin-submissions-bulk-rejudge";
 import { normalizePage } from "@/lib/pagination";
+import { mapFunctionCompileOutputForDisplay } from "@/lib/submissions/visibility";
 
 export async function generateMetadata(): Promise<Metadata> {
   const t = await getTranslations("admin.submissions");
@@ -48,8 +49,8 @@ const STATUS_FILTER_VALUES = [
   "judging",
   "accepted",
   "wrong_answer",
-  "time_limit",
-  "memory_limit",
+  "time_limit_exceeded",
+  "memory_limit_exceeded",
   "runtime_error",
   "compile_error",
 ] as const;
@@ -203,6 +204,8 @@ export default async function AdminSubmissionsPage({
       problem: {
         id: problems.id,
         title: problems.title,
+        problemType: problems.problemType,
+        functionSpec: problems.functionSpec,
       },
     })
     .from(submissions)
@@ -224,9 +227,18 @@ export default async function AdminSubmissionsPage({
     .limit(PAGE_SIZE)
     .offset(clampedOffset);
 
-  const rangeStart = visibleSubmissions.length === 0 ? 0 : clampedOffset + 1;
-  const rangeEnd = clampedOffset + visibleSubmissions.length;
-  const hasActiveSubmissions = visibleSubmissions.some(
+  const cleanSubmissions = visibleSubmissions.map((submission) => ({
+    ...submission,
+    compileOutput: mapFunctionCompileOutputForDisplay({
+      compileOutput: submission.compileOutput,
+      language: submission.language,
+      problem: submission.problem,
+    }),
+  }));
+
+  const rangeStart = cleanSubmissions.length === 0 ? 0 : clampedOffset + 1;
+  const rangeEnd = clampedOffset + cleanSubmissions.length;
+  const hasActiveSubmissions = cleanSubmissions.some(
     (sub) => sub.status === "pending" || sub.status === "queued" || sub.status === "judging"
   );
 
@@ -393,7 +405,7 @@ export default async function AdminSubmissionsPage({
                 <Button type="button" variant="outline">{t("exportCsv")}</Button>
               </Link>
               {canBulkRejudge ? (
-                <AdminSubmissionsBulkRejudge submissionIds={visibleSubmissions.map((submission) => submission.id)} />
+                <AdminSubmissionsBulkRejudge submissionIds={cleanSubmissions.map((submission) => submission.id)} />
               ) : null}
             </div>
           </form>
@@ -404,7 +416,7 @@ export default async function AdminSubmissionsPage({
           <CardTitle>{t("recent")}</CardTitle>
         </CardHeader>
         <CardContent>
-          {visibleSubmissions.length > 0 && (
+          {cleanSubmissions.length > 0 && (
             <p className="mb-4 text-sm text-muted-foreground">
               {tSubmissions("pagination.showingRange", { start: rangeStart, end: rangeEnd })}
             </p>
@@ -426,7 +438,7 @@ export default async function AdminSubmissionsPage({
               </TableRow>
             </TableHeader>
             <TableBody>
-              {visibleSubmissions.map((sub) => (
+              {cleanSubmissions.map((sub) => (
                 <TableRow key={sub.id}>
                   <TableCell className="font-mono text-xs">
                     <Link href={`/submissions/${sub.id}?from=admin`} className="text-primary hover:underline">
@@ -485,7 +497,7 @@ export default async function AdminSubmissionsPage({
                   </TableCell>
                 </TableRow>
               ))}
-              {visibleSubmissions.length === 0 && (
+              {cleanSubmissions.length === 0 && (
                 <TableRow>
                   <TableCell colSpan={9}>
                     <EmptyState icon={InboxIcon} title={t("noSubmissions")} />

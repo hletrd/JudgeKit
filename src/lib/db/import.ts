@@ -175,9 +175,9 @@ export async function importDatabase(data: JudgeKitExport): Promise<ImportResult
           const msg = `${tableName}: column mismatch — ${details.join("; ")}`;
           logger.warn({ tableName, unknownColumns, missingColumns }, "[import] schema drift detected");
           result.errors.push(msg);
-          // Continue importing other tables but mark this one as failed
+          result.success = false;
           result.tableResults[tableName] = { imported: 0, skipped: rows.length };
-          continue;
+          throw new Error(msg);
         }
 
         // Insert in batches of 100 to avoid parameter limits
@@ -226,4 +226,3 @@ export async function importDatabase(data: JudgeKitExport): Promise<ImportResult
 
   return result;
 }
-

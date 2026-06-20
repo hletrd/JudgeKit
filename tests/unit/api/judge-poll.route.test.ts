@@ -1,7 +1,18 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { NextRequest } from "next/server";
 
-const { rawQueryOneMock, problemsFindFirstMock, dbSelectMock, recordAuditEventMock, consumeUserApiRateLimitMock, getDbNowUncachedMock } =
+const {
+  rawQueryOneMock,
+  problemsFindFirstMock,
+  dbSelectMock,
+  recordAuditEventMock,
+  consumeUserApiRateLimitMock,
+  getDbNowUncachedMock,
+  execTransactionMock,
+  txUpdateMock,
+  isJudgeAuthorizedMock,
+  isJudgeAuthorizedForWorkerMock,
+} =
   vi.hoisted(() => ({
     rawQueryOneMock: vi.fn(),
     problemsFindFirstMock: vi.fn(),
@@ -9,11 +20,15 @@ const { rawQueryOneMock, problemsFindFirstMock, dbSelectMock, recordAuditEventMo
     recordAuditEventMock: vi.fn(),
     consumeUserApiRateLimitMock: vi.fn(),
     getDbNowUncachedMock: vi.fn(),
+    execTransactionMock: vi.fn(),
+    txUpdateMock: vi.fn(),
+    isJudgeAuthorizedMock: vi.fn(),
+    isJudgeAuthorizedForWorkerMock: vi.fn(),
   }));
 
 vi.mock("@/lib/judge/auth", () => ({
-  isJudgeAuthorized: vi.fn(() => true),
-  isJudgeAuthorizedForWorker: vi.fn(async () => ({ authorized: true })),
+  isJudgeAuthorized: isJudgeAuthorizedMock,
+  isJudgeAuthorizedForWorker: isJudgeAuthorizedForWorkerMock,
   hashToken: (value: string) => `hashed:${value}`,
 }));
 
@@ -46,6 +61,7 @@ vi.mock("@/lib/db", () => ({
     },
     select: dbSelectMock,
   },
+  execTransaction: execTransactionMock,
 }));
 
 import { POST } from "@/app/api/v1/judge/claim/route";
@@ -65,7 +81,9 @@ function makeSelectChain(rows: unknown[]) {
 }
 
 beforeEach(() => {
-  vi.clearAllMocks();
+  vi.resetAllMocks();
+  isJudgeAuthorizedMock.mockReturnValue(true);
+  isJudgeAuthorizedForWorkerMock.mockResolvedValue({ authorized: true });
 
   rawQueryOneMock.mockResolvedValue({
     id: "submission-1",
@@ -94,6 +112,27 @@ beforeEach(() => {
   });
 
   dbSelectMock.mockReturnValue(makeSelectChain([]));
+  txUpdateMock.mockReturnValue({
+    set: vi.fn(() => ({ where: vi.fn() })),
+  });
+  execTransactionMock.mockImplementation(async (fn: (tx: unknown) => Promise<void>) => {
+    const txSelectChain = {
+      from: vi.fn(() => ({
+        where: vi.fn(() => ({
+          limit: vi.fn(async () => [
+            {
+              judgeClaimToken: rawQueryOneMock.mock.calls[0]?.[1]?.claimToken,
+            },
+          ]),
+        })),
+      })),
+    };
+
+    await fn({
+      select: vi.fn(() => txSelectChain),
+      update: txUpdateMock,
+    });
+  });
   consumeUserApiRateLimitMock.mockResolvedValue(null);
   getDbNowUncachedMock.mockResolvedValue(new Date());
 });
@@ -319,6 +358,30 @@ describe("POST /api/v1/judge/claim", () => {
     });
   });
 
+  it("releases the claimed row when post-claim row validation fails", async () => {
+    rawQueryOneMock.mockResolvedValueOnce({
+      id: "submission-parse-bad",
+      problemId: "problem-1",
+      claimToken: "claim-token",
+    });
+
+    const response = await POST(
+      new NextRequest("http://localhost:3000/api/v1/judge/claim", {
+        method: "POST",
+        headers: {
+          Authorization: "Bearer test-token",
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({}),
+      })
+    );
+
+    expect(response.status).toBe(422);
+    await expect(response.json()).resolves.toEqual({ error: "invalidJudgeClaim" });
+    expect(execTransactionMock).toHaveBeenCalledOnce();
+    expect(txUpdateMock).toHaveBeenCalled();
+  });
+
   it("rejects worker claims when the per-worker secret is missing", async () => {
     const response = await POST(
       new NextRequest("http://localhost:3000/api/v1/judge/claim", {
@@ -340,7 +403,7 @@ describe("POST /api/v1/judge/claim", () => {
       makeSelectChain([
         {
           status: "online",
-          secretTokenHash: "hashed:expected-secret",
+          secretTokenHash: "hashed:worker-secret",
         },
       ])
     );

@@ -121,8 +121,8 @@ target host. The script also runs the safe dangling-only prune at the
 end (`docker image prune -f`, NOT `-af`) so it doesn't undo its own
 work.
 
-### Worker crash-loops with `RUNNER_AUTH_TOKEN must not be empty`
+### Worker fails to start because `RUNNER_AUTH_TOKEN` is missing
 
-The worker validates `RUNNER_AUTH_TOKEN` strictly: unset → falls back to `JUDGE_AUTH_TOKEN`, but a present-and-empty value is rejected at startup. The dedicated worker compose file always renders `RUNNER_AUTH_TOKEN=${RUNNER_AUTH_TOKEN:-}`, so if the host env or `.env` file does not define the variable the container receives `""` and exits in a loop.
+The worker validates `RUNNER_AUTH_TOKEN` strictly: it must be set and at least 32 characters long. The dedicated worker compose file requires `RUNNER_AUTH_TOKEN` at interpolation time, so if the host env or `.env` file does not define the variable `docker compose` exits before starting the worker.
 
 Fix by writing a real token (≥32 chars, e.g. `openssl rand -hex 32`) into the worker host's `.env` for the same value the app server has in its `.env.production`, then `docker compose -f docker-compose.worker.yml up -d --force-recreate judge-worker`.

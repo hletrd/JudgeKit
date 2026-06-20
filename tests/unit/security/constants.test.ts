@@ -159,6 +159,7 @@ describe("security constants", () => {
         "pending",
         "queued",
         "judging",
+        "submitted",
         "accepted",
         "wrong_answer",
         "compile_error",

@@ -66,8 +66,10 @@ data/backups/
 data/uploads/
 
 # rust
+target/
 judge-worker-rs/target/
 rate-limiter-rs/target/
+._*
 
 # dead-letter queue (failed result payloads for manual recovery)
 dead-letter/

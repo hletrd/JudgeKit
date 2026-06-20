@@ -10,6 +10,7 @@ POSTGRES_PASSWORD="judgekit_test"
 SERVER_PORT="3110"
 SERVER_HOST="localhost"
 export DATABASE_URL="postgres://${POSTGRES_USER}:${POSTGRES_PASSWORD}@127.0.0.1:${POSTGRES_PORT}/${POSTGRES_DB}"
+STARTED_DB_CONTAINER=0
 
 # The Next standalone server runs with NODE_ENV=production, so
 # validateProductionConfig() (src/lib/security/production-config.ts) hard-exits
@@ -34,33 +35,50 @@ mint_secret RATE_LIMITER_AUTH_TOKEN
 mint_secret NODE_ENCRYPTION_KEY
 
 cleanup() {
-  docker rm -f "$CONTAINER_NAME" >/dev/null 2>&1 || true
+  if [ "$STARTED_DB_CONTAINER" = "1" ]; then
+    docker rm -f "$CONTAINER_NAME" >/dev/null 2>&1 || true
+  fi
 }
 trap cleanup EXIT INT TERM
 
-cleanup
+docker rm -f "$CONTAINER_NAME" >/dev/null 2>&1 || true
 
 if ! docker info >/dev/null 2>&1; then
   echo "Docker daemon is required for local Playwright webServer startup." >&2
   exit 1
 fi
 
-docker run -d \
-  --name "$CONTAINER_NAME" \
-  -e POSTGRES_DB="$POSTGRES_DB" \
-  -e POSTGRES_USER="$POSTGRES_USER" \
-  -e POSTGRES_PASSWORD="$POSTGRES_PASSWORD" \
-  -p "${POSTGRES_PORT}:5432" \
-  "$POSTGRES_IMAGE" >/dev/null
+database_ready() {
+  node - <<'NODE'
+const { Pool } = require("pg");
+const pool = new Pool({ connectionString: process.env.DATABASE_URL, max: 1 });
+pool.query("select 1")
+  .then(() => pool.end().then(() => process.exit(0)))
+  .catch(() => pool.end().finally(() => process.exit(1)));
+NODE
+}
+
+if database_ready; then
+  echo "Reusing existing Playwright database at ${DATABASE_URL}" >&2
+else
+  docker run -d \
+    --name "$CONTAINER_NAME" \
+    -e POSTGRES_DB="$POSTGRES_DB" \
+    -e POSTGRES_USER="$POSTGRES_USER" \
+    -e POSTGRES_PASSWORD="$POSTGRES_PASSWORD" \
+    -p "${POSTGRES_PORT}:5432" \
+    "$POSTGRES_IMAGE" >/dev/null
+  STARTED_DB_CONTAINER=1
+fi
 
 for _ in $(seq 1 60); do
-  if docker exec "$CONTAINER_NAME" pg_isready -U "$POSTGRES_USER" >/dev/null 2>&1; then
+  if database_ready; then
     break
   fi
   sleep 1
 done
 
-docker exec "$CONTAINER_NAME" pg_isready -U "$POSTGRES_USER" >/dev/null 2>&1
+database_ready
 
 npm run db:push
 npm run seed
@@ -74,10 +92,15 @@ npm run languages:sync
 # /change-password even though the change committed. Clear the flag here (local
 # throwaway DB only — production seed semantics are untouched) so the e2e admin
 # logs straight into the dashboard.
-SEED_ADMIN_USERNAME="${ADMIN_USERNAME:-admin}"
-docker exec "$CONTAINER_NAME" psql -U "$POSTGRES_USER" -d "$POSTGRES_DB" \
-  -c "UPDATE users SET must_change_password = false WHERE username = '${SEED_ADMIN_USERNAME}';" \
-  >/dev/null 2>&1 || true
+export SEED_ADMIN_USERNAME="${ADMIN_USERNAME:-admin}"
+node - <<'NODE' >/dev/null 2>&1 || true
+const { Pool } = require("pg");
+const pool = new Pool({ connectionString: process.env.DATABASE_URL, max: 1 });
+pool.query(
+  "UPDATE users SET must_change_password = false WHERE username = $1",
+  [process.env.SEED_ADMIN_USERNAME ?? "admin"]
+).finally(() => pool.end());
+NODE
 
 npm run build
 

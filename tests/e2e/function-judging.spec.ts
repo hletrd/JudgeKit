@@ -27,7 +27,7 @@
  */
 
 import { test, expect, type Page, type APIRequestContext } from "@playwright/test";
-import { loginWithCredentials } from "./support/helpers";
+import { hasDockerImage, hasOnlineJudgeWorker, loginWithCredentials, makeProblemDescription } from "./support/helpers";
 import { DEFAULT_CREDENTIALS } from "./support/constants";
 
 const CSRF_HEADERS = {
@@ -94,6 +94,7 @@ const WRONG_SOLUTION = `class Solution:
 let adminPage: Page;
 let adminRequest: APIRequestContext;
 let problemId: string;
+let judgePrerequisitesAvailable = true;
 
 async function loginAsAdmin(page: Page) {
   await loginWithCredentials(
@@ -172,9 +173,9 @@ test.describe.serial("Function-Signature Judging", () => {
   test("Step 2: Create a function problem with a Python reference solution", async () => {
     const res = await apiPost(adminRequest, "/api/v1/problems", {
       title: problemTitle,
-      description:
-        "Given an array of integers `nums` and an integer `target`, return the " +
-        "indices of the two numbers that add up to `target`.",
+      description: makeProblemDescription(
+        "Given an array of integers `nums` and an integer `target`, return the indices of the two numbers that add up to `target`."
+      ),
       problemType: "function",
       timeLimitMs: 5000,
       memoryLimitMb: 256,
@@ -201,6 +202,14 @@ test.describe.serial("Function-Signature Judging", () => {
   });
 
   test("Step 3: Compute expected output from the reference solution", async () => {
+    judgePrerequisitesAvailable =
+      (await hasOnlineJudgeWorker(adminRequest)) &&
+      (await hasDockerImage(adminRequest, "judge-python:latest"));
+    test.skip(
+      !judgePrerequisitesAvailable,
+      "requires an online judge worker and judge-python:latest image"
+    );
+
     const res = await apiPost(
       adminRequest,
       `/api/v1/problems/${problemId}/compute-expected`,
@@ -242,6 +251,7 @@ test.describe.serial("Function-Signature Judging", () => {
   });
 
   test("Step 4: Correct submission is Accepted", async () => {
+    test.skip(!judgePrerequisitesAvailable, "requires judge prerequisites from compute-expected step");
     test.setTimeout(150_000);
     const subRes = await apiPost(adminRequest, "/api/v1/submissions", {
       problemId,
@@ -264,6 +274,7 @@ test.describe.serial("Function-Signature Judging", () => {
   });
 
   test("Step 5: Wrong submission is Wrong Answer", async () => {
+    test.skip(!judgePrerequisitesAvailable, "requires judge prerequisites from compute-expected step");
     test.setTimeout(150_000);
     const subRes = await apiPost(adminRequest, "/api/v1/submissions", {
       problemId,

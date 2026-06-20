@@ -96,6 +96,12 @@ describe("POST /api/v1/admin/docker/images/build", () => {
     expect(res.status).toBe(400);
     expect(body.error).toBe("imageTagMustStartWithJudge");
     expect(accessMock).not.toHaveBeenCalled();
+    expect(recordAuditEventMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        action: "docker_image.build_rejected",
+        resourceId: "alpine:3.18",
+      })
+    );
   });
 
   it("rejects trusted-registry judge images because build only supports local Dockerfiles", async () => {
@@ -117,6 +123,12 @@ describe("POST /api/v1/admin/docker/images/build", () => {
     expect(res.status).toBe(400);
     expect(body.error).toBe("imageTagMustBeLocalJudge");
     expect(accessMock).not.toHaveBeenCalled();
+    expect(recordAuditEventMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        action: "docker_image.build_rejected",
+        resourceId: "registry.example.com/team/judge-python:1.0",
+      })
+    );
     delete process.env.TRUSTED_DOCKER_REGISTRIES;
   });
 
@@ -136,6 +148,41 @@ describe("POST /api/v1/admin/docker/images/build", () => {
     const res = await POST(makeRequest({ language: "python" }));
 
     expect(res.status).toBe(404);
+    expect(recordAuditEventMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        action: "docker_image.build_rejected",
+        resourceId: "judge-python:latest",
+        details: expect.objectContaining({ reason: "dockerfileNotFound" }),
+      })
+    );
+  });
+
+  it("records a failure audit event when the Docker build fails", async () => {
+    dbSelectMock.mockReturnValue({
+      from: vi.fn(() => ({
+        where: vi.fn(() => ({
+          limit: vi.fn().mockResolvedValue([
+            { language: "python", dockerImage: "judge-python:latest" },
+          ]),
+        })),
+      })),
+    });
+    accessMock.mockResolvedValue(undefined);
+    buildDockerImageMock.mockResolvedValue({ success: false, error: "build exploded" });
+
+    const { POST } = await import("@/app/api/v1/admin/docker/images/build/route");
+    const res = await POST(makeRequest({ language: "python" }));
+    const body = await res.json();
+
+    expect(res.status).toBe(500);
+    expect(body.error).toBe("build exploded");
+    expect(recordAuditEventMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        action: "docker_image.build_failed",
+        resourceId: "judge-python:latest",
+        details: { error: "build exploded" },
+      })
+    );
   });
 
   it("builds judge images from the matching Dockerfile and records an audit event", async () => {

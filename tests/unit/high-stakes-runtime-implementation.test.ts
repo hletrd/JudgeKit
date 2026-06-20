@@ -12,7 +12,7 @@ describe("high-stakes runtime implementation", () => {
 
     expect(source).toContain("REALTIME_COORDINATION_BACKEND=postgresql");
     expect(source).toContain("COMPILER_RUNNER_URL must be set");
-    expect(source).toContain("RUNNER_AUTH_TOKEN (or JUDGE_AUTH_TOKEN fallback) must be set");
+    expect(source).toContain("RUNNER_AUTH_TOKEN must be set");
     expect(source).toContain("ENABLE_COMPILER_LOCAL_FALLBACK=1 is not allowed");
     expect(source).toContain("JUDGE_ALLOW_DEFAULT_COMPILE_SECCOMP=1 is not allowed");
   });

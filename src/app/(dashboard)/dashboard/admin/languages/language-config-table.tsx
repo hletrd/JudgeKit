@@ -396,12 +396,12 @@ export function LanguageConfigTable({ languages }: { languages: LanguageConfig[]
         </div>
         );
       })()}
-      <div className="flex items-center gap-2 mb-4">
+      <div className="flex flex-wrap items-center gap-2 mb-4">
         <Input
           value={search}
           onChange={(e) => setSearch(e.target.value)}
           placeholder={t("search")}
-          className="max-w-xs"
+          className="min-w-48 flex-1 sm:max-w-xs"
         />
         <div className="ml-auto flex items-center gap-2">
           <Button variant="default" size="sm" onClick={() => setAddOpen(true)} disabled={isPending}>
@@ -454,6 +454,7 @@ export function LanguageConfigTable({ languages }: { languages: LanguageConfig[]
                     checked={lang.isEnabled ?? true}
                     onCheckedChange={(checked) => handleToggle(lang.language, checked === true)}
                     disabled={isPending}
+                    aria-label={`${t("table.enabled")}: ${lang.displayName} (${lang.language})`}
                   />
                 </TableCell>
                 <TableCell>
@@ -498,7 +499,7 @@ export function LanguageConfigTable({ languages }: { languages: LanguageConfig[]
                 </TableCell>
                 <TableCell>
                   <div className="flex items-center gap-0.5">
-                    <Button variant="ghost" size="icon-sm" onClick={() => openEdit(lang)} aria-label={t("edit.title")}>
+                    <Button variant="ghost" size="icon-sm" onClick={() => openEdit(lang)} aria-label={`${t("edit.title")}: ${lang.displayName} (${lang.language})`}>
                       <Pencil className="size-3.5" />
                     </Button>
                     <Button
@@ -507,7 +508,7 @@ export function LanguageConfigTable({ languages }: { languages: LanguageConfig[]
                       onClick={() => handleBuild(lang)}
                       disabled={buildingLangs.has(lang.language)}
                       title={t("actions.build")}
-                      aria-label={t("actions.build")}
+                      aria-label={`${t("actions.build")}: ${lang.displayName} (${lang.dockerImage})`}
                     >
                       {buildingLangs.has(lang.language)
                         ? <Loader2 className="size-3.5 animate-spin" />
@@ -519,7 +520,7 @@ export function LanguageConfigTable({ languages }: { languages: LanguageConfig[]
                         size="icon-sm"
                         onClick={() => handleRemoveImage(lang)}
                         title={t("actions.remove")}
-                        aria-label={t("actions.remove")}
+                        aria-label={`${t("actions.remove")}: ${lang.displayName} (${lang.dockerImage})`}
                         className="text-destructive"
                       >
                         <Trash2 className="size-3.5" />
@@ -545,8 +546,9 @@ export function LanguageConfigTable({ languages }: { languages: LanguageConfig[]
 
           <div className="flex-1 overflow-y-auto px-6 py-6 space-y-6">
             <div className="space-y-2">
-              <Label>{t("edit.dockerImage")}</Label>
+              <Label htmlFor="edit-docker-image">{t("edit.dockerImage")}</Label>
               <Input
+                id="edit-docker-image"
                 value={editForm.dockerImage}
                 onChange={(e) => setEditForm(prev => ({ ...prev, dockerImage: e.target.value }))}
                 placeholder={t("edit.dockerImagePlaceholder")}
@@ -560,37 +562,43 @@ export function LanguageConfigTable({ languages }: { languages: LanguageConfig[]
             </div>
 
             <div className="space-y-2">
-              <Label>{t("edit.compileCommand")}</Label>
+              <Label htmlFor="edit-compile-command">{t("edit.compileCommand")}</Label>
               <Textarea
+                id="edit-compile-command"
+                aria-describedby="edit-compile-command-help"
                 value={editForm.compileCommand}
                 onChange={(e) => setEditForm(prev => ({ ...prev, compileCommand: e.target.value }))}
                 rows={3}
                 className="font-mono text-sm"
               />
-              <p className="text-xs text-muted-foreground">{t("edit.compileCommandHelp")}</p>
+              <p id="edit-compile-command-help" className="text-xs text-muted-foreground">{t("edit.compileCommandHelp")}</p>
             </div>
 
             <div className="space-y-2">
-              <Label>{t("edit.runCommand")}</Label>
+              <Label htmlFor="edit-run-command">{t("edit.runCommand")}</Label>
               <Textarea
+                id="edit-run-command"
+                aria-describedby="edit-run-command-help"
                 value={editForm.runCommand}
                 onChange={(e) => setEditForm(prev => ({ ...prev, runCommand: e.target.value }))}
                 rows={2}
                 className="font-mono text-sm"
               />
-              <p className="text-xs text-muted-foreground">{t("edit.runCommandHelp")}</p>
+              <p id="edit-run-command-help" className="text-xs text-muted-foreground">{t("edit.runCommandHelp")}</p>
             </div>
 
             <div className="space-y-2">
-              <Label>{t("edit.dockerfile")}</Label>
+              <Label htmlFor="edit-dockerfile">{t("edit.dockerfile")}</Label>
               <Textarea
+                id="edit-dockerfile"
+                aria-describedby="edit-dockerfile-help"
                 value={editForm.dockerfile}
                 onChange={(e) => setEditForm(prev => ({ ...prev, dockerfile: e.target.value }))}
                 rows={10}
                 className="font-mono text-sm"
                 placeholder={t("edit.dockerfilePlaceholder")}
               />
-              <p className="text-xs text-muted-foreground">{t("edit.dockerfileHelp")}</p>
+              <p id="edit-dockerfile-help" className="text-xs text-muted-foreground">{t("edit.dockerfileHelp")}</p>
             </div>
           </div>
 
@@ -626,18 +634,22 @@ export function LanguageConfigTable({ languages }: { languages: LanguageConfig[]
 
           <div className="flex-1 overflow-y-auto px-6 py-6 space-y-6">
             <div className="space-y-2">
-              <Label>{t("add.languageKey")}</Label>
+              <Label htmlFor="add-language-key">{t("add.languageKey")}</Label>
               <Input
+                id="add-language-key"
+                required
                 value={addForm.language}
                 onChange={(e) => setAddForm(prev => ({ ...prev, language: e.target.value }))}
                 placeholder={t("add.languageKeyPlaceholder")}
               />
-              <p className="text-xs text-muted-foreground">{t("add.languageKeyHelp")}</p>
+              <p id="add-language-key-help" className="text-xs text-muted-foreground">{t("add.languageKeyHelp")}</p>
             </div>
 
             <div className="space-y-2">
-              <Label>{t("table.language")}</Label>
+              <Label htmlFor="add-display-name">{t("table.language")}</Label>
               <Input
+                id="add-display-name"
+                required
                 value={addForm.displayName}
                 onChange={(e) => setAddForm(prev => ({ ...prev, displayName: e.target.value }))}
                 placeholder={t("add.displayNamePlaceholder")}
@@ -645,8 +657,9 @@ export function LanguageConfigTable({ languages }: { languages: LanguageConfig[]
             </div>
 
             <div className="space-y-2">
-              <Label>{t("table.standard")} <span className="text-muted-foreground text-xs">({tCommon("optional")})</span></Label>
+              <Label htmlFor="add-standard">{t("table.standard")} <span className="text-muted-foreground text-xs">({tCommon("optional")})</span></Label>
               <Input
+                id="add-standard"
                 value={addForm.standard}
                 onChange={(e) => setAddForm(prev => ({ ...prev, standard: e.target.value }))}
                 placeholder={t("add.standardPlaceholder")}
@@ -654,8 +667,10 @@ export function LanguageConfigTable({ languages }: { languages: LanguageConfig[]
             </div>
 
             <div className="space-y-2">
-              <Label>{t("table.extension")}</Label>
+              <Label htmlFor="add-extension">{t("table.extension")}</Label>
               <Input
+                id="add-extension"
+                required
                 value={addForm.extension}
                 onChange={(e) => setAddForm(prev => ({ ...prev, extension: e.target.value }))}
                 placeholder={t("add.extensionPlaceholder")}
@@ -663,8 +678,10 @@ export function LanguageConfigTable({ languages }: { languages: LanguageConfig[]
             </div>
 
             <div className="space-y-2">
-              <Label>{t("edit.dockerImage")}</Label>
+              <Label htmlFor="add-docker-image">{t("edit.dockerImage")}</Label>
               <Input
+                id="add-docker-image"
+                required
                 value={addForm.dockerImage}
                 onChange={(e) => setAddForm(prev => ({ ...prev, dockerImage: e.target.value }))}
                 placeholder={t("edit.dockerImagePlaceholder")}
@@ -678,37 +695,44 @@ export function LanguageConfigTable({ languages }: { languages: LanguageConfig[]
             </div>
 
             <div className="space-y-2">
-              <Label>{t("edit.compileCommand")} <span className="text-muted-foreground text-xs">({tCommon("optional")})</span></Label>
+              <Label htmlFor="add-compile-command">{t("edit.compileCommand")} <span className="text-muted-foreground text-xs">({tCommon("optional")})</span></Label>
               <Textarea
+                id="add-compile-command"
+                aria-describedby="add-compile-command-help"
                 value={addForm.compileCommand}
                 onChange={(e) => setAddForm(prev => ({ ...prev, compileCommand: e.target.value }))}
                 rows={3}
                 className="font-mono text-sm"
               />
-              <p className="text-xs text-muted-foreground">{t("edit.compileCommandHelp")}</p>
+              <p id="add-compile-command-help" className="text-xs text-muted-foreground">{t("edit.compileCommandHelp")}</p>
             </div>
 
             <div className="space-y-2">
-              <Label>{t("edit.runCommand")}</Label>
+              <Label htmlFor="add-run-command">{t("edit.runCommand")}</Label>
               <Textarea
+                id="add-run-command"
+                required
+                aria-describedby="add-run-command-help"
                 value={addForm.runCommand}
                 onChange={(e) => setAddForm(prev => ({ ...prev, runCommand: e.target.value }))}
                 rows={2}
                 className="font-mono text-sm"
               />
-              <p className="text-xs text-muted-foreground">{t("edit.runCommandHelp")}</p>
+              <p id="add-run-command-help" className="text-xs text-muted-foreground">{t("edit.runCommandHelp")}</p>
             </div>
 
             <div className="space-y-2">
-              <Label>{t("edit.dockerfile")} <span className="text-muted-foreground text-xs">({tCommon("optional")})</span></Label>
+              <Label htmlFor="add-dockerfile">{t("edit.dockerfile")} <span className="text-muted-foreground text-xs">({tCommon("optional")})</span></Label>
               <Textarea
+                id="add-dockerfile"
+                aria-describedby="add-dockerfile-help"
                 value={addForm.dockerfile}
                 onChange={(e) => setAddForm(prev => ({ ...prev, dockerfile: e.target.value }))}
                 rows={10}
                 className="font-mono text-sm"
                 placeholder={t("edit.dockerfilePlaceholder")}
               />
-              <p className="text-xs text-muted-foreground">{t("edit.dockerfileHelp")}</p>
+              <p id="add-dockerfile-help" className="text-xs text-muted-foreground">{t("edit.dockerfileHelp")}</p>
             </div>
           </div>
 
@@ -727,9 +751,13 @@ export function LanguageConfigTable({ languages }: { languages: LanguageConfig[]
       <AlertDialog open={confirmAction !== null} onOpenChange={(open) => { if (!open) setConfirmAction(null); }}>
         <AlertDialogContent>
           <AlertDialogHeader>
-            <AlertDialogTitle>{tCommon("confirm")}</AlertDialogTitle>
+            <AlertDialogTitle>
+              {confirmAction?.type === "removeImage"
+                ? `${t("actions.remove")}: ${confirmAction.payload.displayName}`
+                : tCommon("confirm")}
+            </AlertDialogTitle>
             <AlertDialogDescription>
-              {confirmAction?.type === "removeImage" ? t("actions.removeConfirm")
+              {confirmAction?.type === "removeImage" ? `${t("actions.removeConfirm")} ${confirmAction.payload.dockerImage}`
                 : confirmAction?.type === "prune" ? t("actions.pruneConfirm")
                 : confirmAction?.type === "reset" ? t("edit.resetConfirm")
                 : t("actions.resetAllConfirm")}

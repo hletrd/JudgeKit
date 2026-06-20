@@ -7,6 +7,13 @@ const baseURL = process.env.PLAYWRIGHT_BASE_URL ?? localBaseUrl;
 const isRemoteRun = Boolean(process.env.PLAYWRIGHT_BASE_URL);
 const evidenceRoot = path.join(".sisyphus", "evidence", "playwright");
 
+if (!isRemoteRun) {
+  process.env.PLAYWRIGHT_BASE_URL ??= localBaseUrl;
+  process.env.DATABASE_URL ??= "postgres://judgekit:judgekit_test@127.0.0.1:55432/judgekit";
+  process.env.E2E_USERNAME ??= "admin";
+  process.env.E2E_PASSWORD ??= "admin123";
+}
+
 /**
  * Specs that are safe to execute against a live remote deployment.
  * These tests do not mutate critical state, create heavy DB load, or

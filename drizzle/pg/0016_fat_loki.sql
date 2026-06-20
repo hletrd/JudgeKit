@@ -1,1 +1,1 @@
-ALTER TABLE "system_settings" ADD COLUMN "site_icon_url" text;
+ALTER TABLE "system_settings" ADD COLUMN IF NOT EXISTS "site_icon_url" text;

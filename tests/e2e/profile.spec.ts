@@ -1,7 +1,7 @@
 /**
  * Profile Page E2E Test
  *
- * Tests the profile page: login, navigate to /dashboard/profile, verify
+ * Tests the profile page: login, navigate to /profile, verify
  * profile info is displayed (username and name), update the name field,
  * and verify a toast confirms the update.
  *
@@ -89,15 +89,15 @@ test.describe.serial("Profile Page", () => {
   });
 
   test("Step 3: Navigate to profile page", async () => {
-    await navigateTo(testUserPage, "/dashboard/profile");
+    await navigateTo(testUserPage, "/profile");
     await testUserPage.waitForLoadState("networkidle");
 
     const url = testUserPage.url();
-    expect(url).toContain("/dashboard/profile");
+    expect(url).toContain("/profile");
   });
 
   test("Step 4: Profile page displays username", async () => {
-    await navigateTo(testUserPage, "/dashboard/profile");
+    await navigateTo(testUserPage, "/profile");
     await testUserPage.waitForLoadState("networkidle");
 
     const content = await testUserPage.textContent("body");
@@ -110,7 +110,7 @@ test.describe.serial("Profile Page", () => {
   });
 
   test("Step 6: Update name field and save", async () => {
-    await navigateTo(testUserPage, "/dashboard/profile");
+    await navigateTo(testUserPage, "/profile");
     await testUserPage.waitForLoadState("networkidle");
 
     // Find the name input field (common patterns: #name, input[name="name"], placeholder with "Name")
@@ -163,7 +163,7 @@ test.describe.serial("Profile Page", () => {
   });
 
   test("Step 8: Updated name persists after page reload", async () => {
-    await navigateTo(testUserPage, "/dashboard/profile");
+    await navigateTo(testUserPage, "/profile");
     await testUserPage.waitForLoadState("networkidle");
 
     const content = await testUserPage.textContent("body");
@@ -173,7 +173,7 @@ test.describe.serial("Profile Page", () => {
   });
 
   test("Step 9: Profile page is accessible as admin too", async () => {
-    await navigateTo(adminPage, "/dashboard/profile");
+    await navigateTo(adminPage, "/profile");
     await adminPage.waitForLoadState("networkidle");
 
     const content = await adminPage.textContent("body");

@@ -70,14 +70,6 @@ test.describe.serial("Auth Flow", () => {
     await loginAsAdmin(page);
     await expect(page).toHaveURL(/\/dashboard/);
 
-    // Trigger logout via API route
-    const response = await page.request.post("/api/auth/signout", {
-      headers: {
-        "Content-Type": "application/json",
-        "X-Requested-With": "XMLHttpRequest",
-      },
-    });
-
     // Navigate to logout or use the UI logout link
     const logoutLink = page.getByRole("link", { name: /logout|sign out|로그아웃/i });
     const logoutCount = await logoutLink.count();
@@ -93,6 +85,10 @@ test.describe.serial("Auth Flow", () => {
       } else {
         await page.goto("/api/auth/signout", { waitUntil: "domcontentloaded" });
       }
+    }
+
+    if (page.url().includes("/api/auth/signout")) {
+      await page.getByRole("button", { name: /sign out|로그아웃/i }).click();
     }
 
     await page.waitForURL(/\/login/, { timeout: 15_000 });

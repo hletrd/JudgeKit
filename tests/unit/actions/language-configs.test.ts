@@ -580,7 +580,7 @@ describe("resetLanguageToDefaults", () => {
       compileCommand: undefined,
       runCommand: ["python3", "solution.py"],
     };
-    mocks.serializeJudgeCommand.mockReturnValue(null);
+    mocks.serializeJudgeCommand.mockImplementation((cmd) => cmd?.join(" ") ?? null);
 
     const result = await resetLanguageToDefaults("python3");
     expect(result).toEqual({ success: true });

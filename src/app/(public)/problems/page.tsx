@@ -603,6 +603,7 @@ export default async function ProblemsPage({
                   {t("filterByVisibility")}
                 </label>
                 <FilterSelect
+                  id="problem-visibility"
                   name="visibility"
                   defaultValue={currentVisibility}
                   placeholder={t("visibilityFilter.all")}
@@ -615,10 +616,11 @@ export default async function ProblemsPage({
             )}
 
             <div className="space-y-1.5">
-              <label className="block text-sm font-medium">
+              <label id="problem-tag-label" className="block text-sm font-medium">
                 {t("filterByTag")}
               </label>
               <FilterSelect
+                aria-labelledby="problem-tag-label"
                 name="tag"
                 defaultValue={currentTag}
                 placeholder={t("allTags")}

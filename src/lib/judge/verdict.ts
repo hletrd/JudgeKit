@@ -1,6 +1,8 @@
 import { nanoid } from "nanoid";
 
 export const IN_PROGRESS_JUDGE_STATUSES = new Set(["pending", "queued", "judging"]);
+const MAX_DIAGNOSTIC_OUTPUT_BYTES = 16 * 1024;
+const TRUNCATED_SUFFIX = "\n...[truncated]";
 
 type JudgeResultInput = {
   testCaseId: string;
@@ -10,6 +12,20 @@ type JudgeResultInput = {
   memoryUsedKb?: number;
   runtimeErrorType?: string;
 };
+
+export function truncateJudgeDiagnostic(value: string | null | undefined): string | null {
+  if (value == null) return null;
+  if (Buffer.byteLength(value, "utf8") <= MAX_DIAGNOSTIC_OUTPUT_BYTES) {
+    return value;
+  }
+
+  const truncated = Buffer
+    .from(value)
+    .subarray(0, MAX_DIAGNOSTIC_OUTPUT_BYTES)
+    .toString("utf8")
+    .replace(/\uFFFD+$/u, "");
+  return `${truncated}${TRUNCATED_SUFFIX}`;
+}
 
 export function extractFinalJudgeDetail(results: JudgeResultInput[] | undefined) {
   if (!Array.isArray(results) || results.length === 0) {
@@ -80,7 +96,7 @@ export function buildSubmissionResultRows(
     submissionId,
     testCaseId: result.testCaseId,
     status: result.status,
-    actualOutput: result.actualOutput ?? null,
+    actualOutput: truncateJudgeDiagnostic(result.actualOutput),
     executionTimeMs: result.executionTimeMs ?? null,
     memoryUsedKb: result.memoryUsedKb ?? null,
   }));

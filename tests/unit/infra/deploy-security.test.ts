@@ -143,7 +143,9 @@ describe("deployment security defaults", () => {
     expect(workerCompose).toMatch(/^\s*-\s*ALLOW_START=\$\{WORKER_DOCKER_PROXY_ALLOW_START:-1\}\s*$/m);
     expect(workerCompose).toMatch(/^\s*-\s*ALLOW_STOP=\$\{WORKER_DOCKER_PROXY_ALLOW_STOP:-1\}\s*$/m);
     expect(workerCompose).toContain('127.0.0.1:${RUNNER_PORT:-3001}:3001');
-    expect(workerCompose).toContain("RUNNER_AUTH_TOKEN=${RUNNER_AUTH_TOKEN:-}");
+    expect(workerCompose).toContain(
+      "RUNNER_AUTH_TOKEN=${RUNNER_AUTH_TOKEN:?Set RUNNER_AUTH_TOKEN for runner/admin endpoints}",
+    );
     expect(workerDocs).toContain("WORKER_DOCKER_PROXY_IMAGES=1");
     expect(workerDocs).toContain("runner now defaults to `127.0.0.1`");
   });

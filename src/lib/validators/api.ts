@@ -2,6 +2,10 @@ import { z } from "zod";
 import { normalizeOptionalString, trimString } from "@/lib/validators/preprocess";
 import { getMaxSourceCodeSizeBytes } from "@/lib/security/constants";
 
+export function hasNoRawNul(value: string): boolean {
+  return !value.includes("\u0000");
+}
+
 export const submissionCreateSchema = z.object({
   problemId: z.preprocess(trimString, z.string().min(1, "problemRequired")),
   language: z.preprocess(trimString, z.string().min(1, "languageRequired")),
@@ -13,7 +17,7 @@ export const submissionCreateSchema = z.object({
     // raw NUL, and embedded NULs can truncate or corrupt downstream string
     // handling in compilers and the judge worker (SEC6-2). Fail closed at the
     // boundary rather than relying on per-language tolerance.
-    .refine((value) => !value.includes("\u0000"), "sourceCodeInvalid"),
+    .refine(hasNoRawNul, "sourceCodeInvalid"),
   assignmentId: z.preprocess(
     normalizeOptionalString,
     z.string().min(1, "invalidAssignmentId").nullable().optional()

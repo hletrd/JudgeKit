@@ -9,7 +9,7 @@
  */
 
 import { test, expect, type Page, type APIRequestContext } from "@playwright/test";
-import { loginWithCredentials, waitForToast, navigateTo } from "./support/helpers";
+import { hasOnlineJudgeWorker, loginWithCredentials, makeProblemDescription, waitForToast, navigateTo } from "./support/helpers";
 import { DEFAULT_CREDENTIALS, BASE_URL } from "./support/constants";
 
 const CSRF_HEADERS = {
@@ -82,7 +82,7 @@ test.describe.serial("Student Submission Flow", () => {
   test("Step 2: Create test problem via API", async () => {
     const res = await apiPost(adminRequest, "/api/v1/problems", {
       title: `[E2E] A+B Problem ${suffix}`,
-      description: "Read two integers A and B from stdin and print their sum.",
+      description: makeProblemDescription("Read two integers A and B from stdin and print their sum."),
       timeLimitMs: 2000,
       memoryLimitMb: 256,
       visibility: "public",
@@ -124,7 +124,7 @@ test.describe.serial("Student Submission Flow", () => {
   });
 
   test("Step 5: Student navigates to problems list", async () => {
-    await navigateTo(studentPage, "/dashboard/problems");
+    await navigateTo(studentPage, "/problems");
     await studentPage.waitForLoadState("networkidle");
 
     const content = await studentPage.textContent("body");
@@ -133,7 +133,7 @@ test.describe.serial("Student Submission Flow", () => {
   });
 
   test("Step 6: Student opens the test problem", async () => {
-    await navigateTo(studentPage, `/dashboard/problems/${problemId}`);
+    await navigateTo(studentPage, `/practice/problems/${problemId}`);
     await studentPage.waitForLoadState("networkidle");
 
     const content = await studentPage.textContent("body");
@@ -173,6 +173,10 @@ test.describe.serial("Student Submission Flow", () => {
       console.log("  No submission ID available (likely assignment context required) — skipping poll");
       return;
     }
+    test.skip(
+      !(await hasOnlineJudgeWorker(adminRequest)),
+      "requires an online judge worker to reach a terminal verdict"
+    );
     const result = await pollSubmission(adminRequest, submissionId);
     console.log(`  Submission result: status=${result.status}, score=${result.score}`);
     expect(["accepted", "wrong_answer", "time_limit", "runtime_error", "compile_error"]).toContain(
@@ -185,7 +189,7 @@ test.describe.serial("Student Submission Flow", () => {
       console.log("  No submission ID available — skipping detail view");
       return;
     }
-    await navigateTo(studentPage, `/dashboard/submissions/${submissionId}`);
+    await navigateTo(studentPage, `/submissions/${submissionId}`);
     await studentPage.waitForLoadState("networkidle");
 
     const content = await studentPage.textContent("body");

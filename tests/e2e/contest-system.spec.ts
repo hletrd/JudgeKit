@@ -13,6 +13,8 @@ import { loginWithCredentials } from "./support/helpers";
 import { DEFAULT_CREDENTIALS } from "./support/constants";
 
 const NEW_PASSWORD = process.env.E2E_NEW_PASSWORD || DEFAULT_CREDENTIALS.password;
+const CONTESTS_MANAGE_PATH = "/contests/manage";
+const CONTESTS_CREATE_PATH = "/contests/manage/create";
 
 async function login(page: import("@playwright/test").Page) {
   await loginWithCredentials(page, DEFAULT_CREDENTIALS.username, DEFAULT_CREDENTIALS.password, {
@@ -32,7 +34,7 @@ test.describe("Contest System", () => {
   test.describe("Contest List Page", () => {
     test("loads contest list page and shows filter tabs", async ({ page }) => {
       await login(page);
-      await page.goto("/dashboard/contests");
+      await page.goto(CONTESTS_MANAGE_PATH);
       await page.waitForLoadState("domcontentloaded");
 
       await expect(page.getByRole("heading", { level: 2 }).first()).toContainText(/Contests|대회/);
@@ -44,7 +46,7 @@ test.describe("Contest System", () => {
 
     test("shows Create Contest button for non-student users", async ({ page }) => {
       await login(page);
-      await page.goto("/dashboard/contests");
+      await page.goto(CONTESTS_MANAGE_PATH);
       await page.waitForLoadState("domcontentloaded");
 
       const createBtn = page.getByRole("link", { name: /Create Contest|대회 만들기/ });
@@ -53,7 +55,7 @@ test.describe("Contest System", () => {
 
     test("shows Join with Code button", async ({ page }) => {
       await login(page);
-      await page.goto("/dashboard/contests");
+      await page.goto(CONTESTS_MANAGE_PATH);
       await page.waitForLoadState("domcontentloaded");
 
       const joinBtn = page.getByRole("link", { name: /Join with Code|코드로 참가/ });
@@ -62,7 +64,7 @@ test.describe("Contest System", () => {
 
     test("filter tabs exist and are clickable", async ({ page }) => {
       await login(page);
-      await page.goto("/dashboard/contests");
+      await page.goto(CONTESTS_MANAGE_PATH);
       await page.waitForLoadState("domcontentloaded");
 
       // Verify filter badges exist (All, Upcoming, Active, Past)
@@ -72,7 +74,7 @@ test.describe("Contest System", () => {
       // Click the Past filter and verify we stay on the contests list page
       await pastFilter.click();
       await page.waitForLoadState("domcontentloaded");
-      await expect(page).toHaveURL(/\/dashboard\/contests/);
+      await expect(page).toHaveURL(/\/contests\/manage/);
       await expect(page.locator("h2.text-3xl").first()).toContainText(/Contests|대회/);
     });
   });
@@ -80,7 +82,7 @@ test.describe("Contest System", () => {
   test.describe("Create Contest Flow", () => {
     test("navigates to create page and shows group selection", async ({ page }) => {
       await login(page);
-      await page.goto("/dashboard/contests/create");
+      await page.goto(CONTESTS_CREATE_PATH);
       await page.waitForLoadState("domcontentloaded");
 
       await expect(page.getByRole("heading", { level: 2 }).first()).toContainText(/Create Contest|대회 만들기/);
@@ -88,13 +90,13 @@ test.describe("Contest System", () => {
 
     test("create page has back link to contests", async ({ page }) => {
       await login(page);
-      await page.goto("/dashboard/contests/create");
+      await page.goto(CONTESTS_CREATE_PATH);
       await page.waitForLoadState("domcontentloaded");
 
       const backLink = page.getByRole("link", { name: /Back|뒤로/ });
       await expect(backLink).toBeVisible();
       await backLink.click();
-      await page.waitForURL("**/dashboard/contests");
+      await page.waitForURL("**/contests/manage");
     });
   });
 
@@ -199,7 +201,7 @@ test.describe("Contest System", () => {
       await page.waitForLoadState("domcontentloaded");
 
       await page.getByRole("link", { name: /Contests|대회/ }).first().click();
-      await page.waitForURL("**/dashboard/contests", { timeout: 15_000 });
+      await page.waitForURL("**/contests/manage", { timeout: 15_000 });
     });
   });
 });

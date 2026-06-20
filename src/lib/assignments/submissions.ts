@@ -749,17 +749,18 @@ export async function getAssignmentStatusRows(
   // ---- Derive per-user aggregates from problem-level data (avoids duplicate table scan) ----
   const userLatestMap = new Map<string, UserLatestRow>();
   for (const row of problemAggRows) {
+    const attemptCount = Number(row.attemptCount) || 0;
     const existing = userLatestMap.get(row.userId);
     if (!existing) {
       userLatestMap.set(row.userId, {
         userId: row.userId,
-        totalAttempts: row.attemptCount,
+        totalAttempts: attemptCount,
         latestSubId: row.latestSubId,
         latestStatus: row.latestStatus,
         latestSubmittedAt: row.latestSubmittedAt,
       });
     } else {
-      existing.totalAttempts += row.attemptCount;
+      existing.totalAttempts += attemptCount;
       const rowDate = row.latestSubmittedAt != null ? new Date(row.latestSubmittedAt) : null;
       const existDate = existing.latestSubmittedAt != null ? new Date(existing.latestSubmittedAt) : null;
       if (

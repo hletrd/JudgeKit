@@ -9,7 +9,7 @@
  */
 
 import { test, expect, type Page, type APIRequestContext } from "@playwright/test";
-import { loginWithCredentials, navigateTo } from "./support/helpers";
+import { loginWithCredentials, makeProblemDescription, navigateTo } from "./support/helpers";
 import { DEFAULT_CREDENTIALS, BASE_URL } from "./support/constants";
 
 const CSRF_HEADERS = {
@@ -58,7 +58,7 @@ test.describe.serial("Problem Management", () => {
   });
 
   test("Step 2: Navigate to problems page", async () => {
-    await navigateTo(adminPage, "/dashboard/problems");
+    await navigateTo(adminPage, "/problems");
     await adminPage.waitForLoadState("networkidle");
 
     const content = await adminPage.textContent("body");
@@ -68,7 +68,7 @@ test.describe.serial("Problem Management", () => {
   test("Step 3: Create problem via API", async () => {
     const res = await apiPost(adminRequest, "/api/v1/problems", {
       title: problemTitle,
-      description: "Read two integers and print their sum.\n\n## Input\nTwo space-separated integers A and B.\n\n## Output\nPrint A+B.",
+      description: makeProblemDescription("Read two integers and print their sum."),
       timeLimitMs: 1000,
       memoryLimitMb: 128,
       visibility: "private",
@@ -84,7 +84,7 @@ test.describe.serial("Problem Management", () => {
   });
 
   test("Step 4: Problem appears in problems list", async () => {
-    await navigateTo(adminPage, "/dashboard/problems");
+    await navigateTo(adminPage, "/problems");
     await adminPage.waitForLoadState("networkidle");
 
     const content = await adminPage.textContent("body");
@@ -92,7 +92,7 @@ test.describe.serial("Problem Management", () => {
   });
 
   test("Step 5: Navigate to problem detail page", async () => {
-    await navigateTo(adminPage, `/dashboard/problems/${problemId}`);
+    await navigateTo(adminPage, `/practice/problems/${problemId}`);
     await adminPage.waitForLoadState("networkidle");
 
     const content = await adminPage.textContent("body");
@@ -103,7 +103,7 @@ test.describe.serial("Problem Management", () => {
 
   test("Step 6: Navigate to problem edit page and verify fields", async () => {
     // Navigate to edit page
-    await navigateTo(adminPage, `/dashboard/problems/${problemId}/edit`);
+    await navigateTo(adminPage, `/problems/${problemId}/edit`);
     await adminPage.waitForLoadState("networkidle");
 
     const url = adminPage.url();
@@ -122,7 +122,7 @@ test.describe.serial("Problem Management", () => {
       }
     } else {
       // Edit page might be at a different path; verify detail page has edit controls
-      await navigateTo(adminPage, `/dashboard/problems/${problemId}`);
+      await navigateTo(adminPage, `/practice/problems/${problemId}`);
       await adminPage.waitForLoadState("networkidle");
       const bodyContent = await adminPage.textContent("body");
       expect(bodyContent).toContain(problemTitle);
@@ -140,7 +140,7 @@ test.describe.serial("Problem Management", () => {
   });
 
   test("Step 8: Updated title visible on detail page", async () => {
-    await navigateTo(adminPage, `/dashboard/problems/${problemId}`);
+    await navigateTo(adminPage, `/practice/problems/${problemId}`);
     await adminPage.waitForLoadState("networkidle");
 
     const content = await adminPage.textContent("body");
@@ -158,7 +158,7 @@ test.describe.serial("Problem Management", () => {
   });
 
   test("Step 10: Deleted problem no longer appears in list", async () => {
-    await navigateTo(adminPage, "/dashboard/problems");
+    await navigateTo(adminPage, "/problems");
     await adminPage.waitForLoadState("networkidle");
 
     const content = await adminPage.textContent("body");

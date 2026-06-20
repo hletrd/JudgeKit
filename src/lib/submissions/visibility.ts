@@ -21,6 +21,40 @@ type SubmissionVisibilityRecord = Record<string, unknown> & {
   results?: SubmissionResultVisibility[];
 };
 
+export function mapFunctionCompileOutputForDisplay(input: {
+  compileOutput: string | null | undefined;
+  language?: string | null;
+  problem?: SubmissionProblemVisibility;
+}): string | null {
+  const { compileOutput, language, problem } = input;
+  if (!compileOutput) return compileOutput ?? null;
+
+  const problemType = problem?.problemType as string | null | undefined;
+  const functionSpec = problem?.functionSpec;
+  if (
+    problemType !== "function" ||
+    !functionSpec ||
+    !language ||
+    !supportsFunctionJudging(language)
+  ) {
+    return compileOutput;
+  }
+
+  try {
+    const spec = parseFunctionSpec(functionSpec);
+    const preludeLineCount = functionPreludeLineCount(spec, language);
+    return mapCompileError(compileOutput, preludeLineCount);
+  } catch (mappingErr) {
+    // A malformed stored spec must not break the submission view; show the
+    // raw (un-remapped) compile output rather than failing the read.
+    logger.error(
+      { err: mappingErr, language },
+      "[submissions/visibility] Function compile-error remapping failed; showing raw output",
+    );
+    return compileOutput;
+  }
+}
+
 function sanitizeSubmissionResults(
   results: SubmissionResultVisibility[] | undefined,
   options: {
@@ -152,36 +186,11 @@ export async function sanitizeSubmissionForViewer(
     delete sanitized.sourceCode;
   }
 
-  // Function-signature problems compile `prelude + studentCode + generatedMain`,
-  // so worker-reported compile-error line numbers are offset by the prelude.
-  // Rewrite any surviving compile output to student-relative line numbers. The
-  // prelude offset is RECOMPUTED deterministically from the spec + language
-  // (never stored). Only applied when compile output actually survived the
-  // showCompileOutput gate above (it is null otherwise).
-  const problemType = submission.problem?.problemType as string | null | undefined;
-  const functionSpec = submission.problem?.functionSpec;
-  const language = typeof submission.language === "string" ? submission.language : null;
-  if (
-    problemType === "function" &&
-    functionSpec &&
-    language &&
-    supportsFunctionJudging(language) &&
-    typeof sanitized.compileOutput === "string" &&
-    sanitized.compileOutput.length > 0
-  ) {
-    try {
-      const spec = parseFunctionSpec(functionSpec);
-      const preludeLineCount = functionPreludeLineCount(spec, language);
-      sanitized.compileOutput = mapCompileError(sanitized.compileOutput, preludeLineCount);
-    } catch (mappingErr) {
-      // A malformed stored spec must not break the submission view; show the
-      // raw (un-remapped) compile output rather than failing the read.
-      logger.error(
-        { err: mappingErr, language },
-        "[submissions/visibility] Function compile-error remapping failed; showing raw output",
-      );
-    }
-  }
+  sanitized.compileOutput = mapFunctionCompileOutputForDisplay({
+    compileOutput: typeof sanitized.compileOutput === "string" ? sanitized.compileOutput : null,
+    language: typeof submission.language === "string" ? submission.language : null,
+    problem: submission.problem,
+  });
 
   return sanitized;
 }

@@ -151,9 +151,36 @@ function routeCtx(id: string) {
   return { params: Promise.resolve({ id }) };
 }
 
+const VALID_DESCRIPTION = [
+  "### Problem",
+  "Return the sum of two integers.",
+  "",
+  "### Input",
+  "A single line contains two integers.",
+  "",
+  "### Output",
+  "Print the sum of the two integers.",
+  "",
+  "### Constraints",
+  "- -1000 <= A, B <= 1000",
+  "",
+  "### Examples",
+  "**Input 1**",
+  "```",
+  "1 2",
+  "```",
+  "",
+  "**Output 1**",
+  "```",
+  "3",
+  "```",
+  "",
+  "Explanation: `1 + 2 = 3`.",
+].join("\n");
+
 const BASE_BODY = {
   title: "Two Sum",
-  description: "desc",
+  description: VALID_DESCRIPTION,
   timeLimitMs: 2000,
   memoryLimitMb: 256,
   visibility: "private",
@@ -294,7 +321,7 @@ describe("PATCH /api/v1/problems/[id] — function spec", () => {
     problemsFindFirstMock.mockResolvedValue({
       id: "prob-1",
       title: "Two Sum",
-      description: "desc",
+      description: VALID_DESCRIPTION,
       problemType: "auto",
       visibility: "private",
       timeLimitMs: 2000,

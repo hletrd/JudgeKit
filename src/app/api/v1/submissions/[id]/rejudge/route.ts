@@ -1,7 +1,7 @@
 import { NextRequest } from "next/server";
 import { db, execTransaction } from "@/lib/db";
-import { submissions, submissionResults, assignments } from "@/lib/db/schema";
-import { eq } from "drizzle-orm";
+import { submissions, submissionResults, assignments, judgeWorkers } from "@/lib/db/schema";
+import { eq, sql } from "drizzle-orm";
 import { forbidden, notFound } from "@/lib/api/auth";
 import { canAccessSubmission } from "@/lib/auth/permissions";
 import { recordAuditEvent } from "@/lib/audit/events";
@@ -35,6 +35,15 @@ export const POST = createApiHandler({
 
     // Delete existing test case results and reset submission (atomic transaction)
     await execTransaction(async (tx) => {
+      const [current] = await tx
+        .select({
+          status: submissions.status,
+          judgeWorkerId: submissions.judgeWorkerId,
+        })
+        .from(submissions)
+        .where(eq(submissions.id, id))
+        .limit(1);
+
       await tx.delete(submissionResults).where(eq(submissionResults.submissionId, id));
 
       await tx.update(submissions)
@@ -50,6 +59,15 @@ export const POST = createApiHandler({
           judgedAt: null,
         })
         .where(eq(submissions.id, id));
+
+      if (
+        current?.judgeWorkerId &&
+        (current.status === "queued" || current.status === "judging")
+      ) {
+        await tx.update(judgeWorkers)
+          .set({ activeTasks: sql`GREATEST(${judgeWorkers.activeTasks} - 1, 0)` })
+          .where(eq(judgeWorkers.id, current.judgeWorkerId));
+      }
     });
 
     // Invalidate leaderboard cache so instructors see updated rankings immediately.

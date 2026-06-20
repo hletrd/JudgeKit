@@ -11,6 +11,9 @@ import {
 
 interface FilterSelectProps {
   name: string;
+  id?: string;
+  "aria-label"?: string;
+  "aria-labelledby"?: string;
   defaultValue?: string;
   options: { value: string; label: string }[];
   placeholder?: string;
@@ -18,6 +21,9 @@ interface FilterSelectProps {
 
 export function FilterSelect({
   name,
+  id,
+  "aria-label": ariaLabel,
+  "aria-labelledby": ariaLabelledBy,
   defaultValue = "",
   options,
   placeholder,
@@ -28,7 +34,7 @@ export function FilterSelect({
     <div>
       <input type="hidden" name={name} value={value} />
       <Select value={value} onValueChange={(v) => setValue(v ?? "")}>
-        <SelectTrigger className="min-w-[12rem] max-w-[12rem] h-10">
+        <SelectTrigger id={id} aria-label={ariaLabel} aria-labelledby={ariaLabelledBy} className="min-w-[12rem] max-w-[12rem] h-10">
           <SelectValue placeholder={placeholder}>{selectedLabel}</SelectValue>
         </SelectTrigger>
         <SelectContent>

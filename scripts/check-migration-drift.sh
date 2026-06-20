@@ -30,6 +30,34 @@ cd "$(dirname "$0")/.."
 # never connect, but supply a dummy so config evaluation never errors in CI.
 export DATABASE_URL="${DATABASE_URL:-postgres://drift:drift@127.0.0.1:5432/drift}"
 
+echo "==> SQL file / journal bijection"
+node <<'NODE'
+const { readdirSync, readFileSync } = require("node:fs");
+const { join, basename } = require("node:path");
+
+const migrationDir = join(process.cwd(), "drizzle/pg");
+const journal = JSON.parse(readFileSync(join(migrationDir, "meta/_journal.json"), "utf8"));
+const sqlTags = new Set(
+  readdirSync(migrationDir)
+    .filter((file) => file.endsWith(".sql"))
+    .map((file) => basename(file, ".sql")),
+);
+const journalTags = new Set((journal.entries ?? []).map((entry) => entry.tag).filter(Boolean));
+
+const missingFromJournal = [...sqlTags].filter((tag) => !journalTags.has(tag)).sort();
+const missingSqlFiles = [...journalTags].filter((tag) => !sqlTags.has(tag)).sort();
+
+if (missingFromJournal.length || missingSqlFiles.length) {
+  if (missingFromJournal.length) {
+    console.error(`::error::Migration SQL files missing from drizzle journal: ${missingFromJournal.join(", ")}`);
+  }
+  if (missingSqlFiles.length) {
+    console.error(`::error::Drizzle journal entries missing SQL files: ${missingSqlFiles.join(", ")}`);
+  }
+  process.exit(1);
+}
+NODE
+
 echo "==> drizzle-kit check (journal consistency)"
 npx drizzle-kit check
 

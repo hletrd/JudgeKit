@@ -1,5 +1,6 @@
 import type { APIRequestContext } from "@playwright/test";
 import { test, expect } from "./fixtures";
+import { makeProblemDescription } from "./support/helpers";
 
 const CSRF_HEADERS = {
   "Content-Type": "application/json",
@@ -34,7 +35,7 @@ test("contest detail page lets admins delete a contest and returns to the contes
 
   const problemRes = await apiPost(adminRequest, "/api/v1/problems", {
     title: `[E2E] Contest Delete Problem ${suffix}`,
-    description: "Contest delete UI test problem",
+    description: makeProblemDescription("Contest delete UI test problem."),
     visibility: "private",
     timeLimitMs: 2000,
     memoryLimitMb: 256,
@@ -55,7 +56,7 @@ test("contest detail page lets admins delete a contest and returns to the contes
   });
   const assignmentId = contestRes.data.id as string;
 
-  await runtimeAdminPage.goto(`/dashboard/contests/${assignmentId}`, {
+  await runtimeAdminPage.goto(`/contests/manage/${assignmentId}`, {
     waitUntil: "networkidle",
   });
   await expect(
@@ -67,7 +68,7 @@ test("contest detail page lets admins delete a contest and returns to the contes
   await runtimeAdminPage.getByTestId(`assignment-delete-${assignmentId}`).click();
   await runtimeAdminPage.getByTestId(`assignment-delete-confirm-${assignmentId}`).click();
 
-  await runtimeAdminPage.waitForURL(/\/dashboard\/contests$/, { timeout: 15_000 });
-  await expect(runtimeAdminPage).toHaveURL(/\/dashboard\/contests$/);
+  await runtimeAdminPage.waitForURL(/\/contests\/manage$/, { timeout: 15_000 });
+  await expect(runtimeAdminPage).toHaveURL(/\/contests\/manage$/);
   await expect(runtimeAdminPage.getByText(`[E2E] Contest Delete ${suffix}`)).toHaveCount(0);
 });

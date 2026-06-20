@@ -1,13 +1,14 @@
-export type SubmissionStatus = "pending" | "queued" | "judging" | "accepted" | "wrong_answer" | "compile_error" | "runtime_error" | "time_limit_exceeded" | "memory_limit_exceeded" | "output_limit_exceeded" | "internal_error" | "cancelled";
+export type SubmissionStatus = "pending" | "queued" | "judging" | "submitted" | "accepted" | "wrong_answer" | "compile_error" | "runtime_error" | "time_limit_exceeded" | "memory_limit_exceeded" | "output_limit_exceeded" | "internal_error" | "cancelled";
 
 export const ACTIVE_SUBMISSION_STATUSES = new Set<string>(["pending", "queued", "judging"]);
 
 /**
  * Statuses that represent a judged, user-caused outcome — the only ones that
  * should contribute to attempt counts, ICPC penalty, or best-score
- * aggregation. Pending / queued / judging are in-flight; cancelled and
- * internal_error are either user-requested or judge-side failures and must
- * not count against the submitter.
+ * aggregation. Pending / queued / judging are in-flight; submitted is the
+ * manual-grading handoff state; cancelled and internal_error are either
+ * user-requested or judge-side failures and must not count against the
+ * submitter.
  */
 export const TERMINAL_SUBMISSION_STATUSES = [
   "accepted",

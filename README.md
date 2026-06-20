@@ -209,7 +209,7 @@ JUDGE_CONCURRENCY=4 \
 docker compose -f docker-compose.worker.yml up -d
 ```
 
-`docker-compose.worker.yml` always interpolates `RUNNER_AUTH_TOKEN` into the worker environment, so leaving it unset materialises it as `""` — which the worker now rejects on startup with `RUNNER_AUTH_TOKEN must not be empty`. Always pass the token explicitly (≥32 chars).
+`docker-compose.worker.yml` requires `RUNNER_AUTH_TOKEN` during interpolation, and the worker also rejects missing, empty, or short values. Always pass the token explicitly (≥32 chars).
 
 Or use the deploy script:
 
@@ -234,7 +234,7 @@ Monitor workers at `/dashboard/admin/workers`.
 
 ### Prerequisites
 
-- **Docker socket proxy**: The deployment uses a dedicated `docker-proxy` service (`tecnativa/docker-socket-proxy`) as the only container with direct `/var/run/docker.sock` access. The **judge worker only** talks to Docker through `DOCKER_HOST=tcp://docker-proxy:2375`; the Next.js app uses the worker’s authenticated internal API instead of direct daemon access.
+- **Docker socket proxy**: The deployment uses a dedicated `docker-proxy` service (`tecnativa/docker-socket-proxy`, digest-pinned in compose) as the only container with direct `/var/run/docker.sock` access. The **judge worker only** talks to Docker through `DOCKER_HOST=tcp://docker-proxy:2375`; the Next.js app uses the worker’s authenticated internal API instead of direct daemon access.
 - **`/judge-workspaces`**: Must exist on the host before starting the stack — used as the shared workspace volume between the judge worker and sibling judge containers.
 - **`COMPILER_RUNNER_URL`**: Set to `http://judge-worker:3001` in the app container to delegate interactive code execution to the Rust runner. When a runner URL is configured, local Docker fallback is now disabled by default; set `ENABLE_COMPILER_LOCAL_FALLBACK=1` only for explicit development/debug scenarios.
 - **Output-only languages**: `plaintext`, `verilog`, `systemverilog`, and

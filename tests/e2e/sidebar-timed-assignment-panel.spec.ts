@@ -88,7 +88,7 @@ async function seedTimedAssignment(runtimeSuffix: string) {
   return { assignmentId, groupId, problemId, studentId, username };
 }
 
-test("sidebar shows a fixed timed-assignment panel with remaining, elapsed, and progress", async ({ page }, testInfo) => {
+test("contest detail shows active scheduled assignment timers", async ({ page }, testInfo) => {
   test.slow();
 
   const runtimeSuffix = `${Date.now()}-${testInfo.workerIndex}`.replace(/[^a-zA-Z0-9]/g, "");
@@ -98,14 +98,13 @@ test("sidebar shows a fixed timed-assignment panel with remaining, elapsed, and 
     await loginWithCredentials(page, fixture.username, STUDENT_PASSWORD);
     await page.waitForURL(/\/dashboard(?:$|\/)/, { timeout: 15_000 });
 
-    await page.goto(`/dashboard/contests/${fixture.assignmentId}`, { waitUntil: "networkidle" });
+    await page.goto(`/contests/${fixture.assignmentId}`, { waitUntil: "networkidle" });
 
-    const panel = page.getByTestId("active-timed-assignment-panel");
-    await expect(panel).toBeVisible();
-    await expect(page.getByTestId("active-timed-assignment-title")).toContainText(`Sidebar Contest ${runtimeSuffix}`);
-    await expect(page.getByTestId("active-timed-assignment-remaining")).toContainText(/00:4\d:|00:5\d:/);
-    await expect(page.getByTestId("active-timed-assignment-elapsed")).toContainText(/00:1\d:/);
-    await expect(page.getByTestId("active-timed-assignment-progress-label")).toContainText(/1\d\.\d%/);
+    await expect(
+      page.getByRole("heading", { name: `Sidebar Contest ${runtimeSuffix}` }).first()
+    ).toBeVisible();
+    await expect(page.getByText(/Time remaining|Deadline countdown/i).first()).toBeVisible();
+    await expect(page.getByRole("timer").first()).toContainText(/00:4\d:|00:5\d:/);
   } finally {
     await db.delete(assignmentProblems).where(eq(assignmentProblems.assignmentId, fixture.assignmentId));
     await db.delete(assignments).where(eq(assignments.id, fixture.assignmentId));

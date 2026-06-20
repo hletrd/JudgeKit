@@ -12,7 +12,7 @@ import { eq } from "drizzle-orm";
 import { importDatabase } from "@/lib/db/import";
 import { isSanitizedExport, validateExport, type JudgeKitExport } from "@/lib/db/export";
 import { MAX_IMPORT_BYTES, readUploadedJsonFileWithLimit } from "@/lib/db/import-transfer";
-import { restoreFilesFromZip } from "@/lib/db/export-with-files";
+import { parseBackupZip, restoreParsedBackupFiles } from "@/lib/db/export-with-files";
 import { takePreRestoreSnapshot } from "@/lib/db/pre-restore-snapshot";
 
 export const dynamic = "force-dynamic";
@@ -77,6 +77,7 @@ export async function POST(request: NextRequest) {
 
     let data: JudgeKitExport;
     let filesRestored = 0;
+    let pendingUploadedFiles: Array<{ storedName: string; buffer: Buffer }> = [];
 
     if (isZipFile) {
       // ZIP archive: extract database.json + uploaded files
@@ -84,9 +85,9 @@ export async function POST(request: NextRequest) {
       const zipBuffer = Buffer.from(arrayBuffer);
 
       try {
-        const result = await restoreFilesFromZip(zipBuffer);
+        const result = await parseBackupZip(zipBuffer);
         data = result.dbExport;
-        filesRestored = result.filesRestored;
+        pendingUploadedFiles = result.uploads;
       } catch (error) {
         if (
           error instanceof Error &&
@@ -157,13 +158,17 @@ export async function POST(request: NextRequest) {
 
     const result = await importDatabase(data);
 
-    if (!result.success) {
+    if (!result.success || result.errors.length > 0) {
       return NextResponse.json({
         error: "restoreFailed",
         details: result.errors,
         partial: result.tableResults,
         preRestoreSnapshotPath: preSnapshotPath,
       }, { status: 500 });
+    }
+
+    if (isZipFile) {
+      filesRestored = await restoreParsedBackupFiles(pendingUploadedFiles);
     }
 
     return NextResponse.json({

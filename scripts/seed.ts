@@ -1,3 +1,4 @@
+import "./load-env";
 import { Pool } from "pg";
 import { drizzle } from "drizzle-orm/node-postgres";
 import { eq } from "drizzle-orm";
@@ -27,18 +28,30 @@ const sampleProblems: SeededProblem[] = [
   {
     title: "A+B",
     description: `
-      <h3>Problem</h3>
-      <p>Given two integers <strong>A</strong> and <strong>B</strong>, print their sum.</p>
-      <h3>Input</h3>
-      <p>A single line containing two integers separated by a space.</p>
-      <h3>Output</h3>
-      <p>Print <code>A + B</code>.</p>
-      <h3>Example</h3>
-      <pre>Input
-1 2
+### Problem
+Given two integers A and B, print their sum.
 
-Output
-3</pre>
+### Input
+A single line contains two integers separated by one space.
+
+### Output
+Print \`A + B\`.
+
+### Constraints
+- -1,000,000 <= A, B <= 1,000,000
+
+### Examples
+**Input 1**
+\`\`\`
+1 2
+\`\`\`
+
+**Output 1**
+\`\`\`
+3
+\`\`\`
+
+Explanation: \`1 + 2 = 3\`.
     `.trim(),
     timeLimitMs: 1000,
     memoryLimitMb: 128,
@@ -52,18 +65,30 @@ Output
   {
     title: "A-B",
     description: `
-      <h3>Problem</h3>
-      <p>Given two integers <strong>A</strong> and <strong>B</strong>, print <code>A - B</code>.</p>
-      <h3>Input</h3>
-      <p>A single line containing two integers separated by a space.</p>
-      <h3>Output</h3>
-      <p>Print the difference between the two numbers.</p>
-      <h3>Example</h3>
-      <pre>Input
-7 5
+### Problem
+Given two integers A and B, print \`A - B\`.
 
-Output
-2</pre>
+### Input
+A single line contains two integers separated by one space.
+
+### Output
+Print the difference between the two numbers.
+
+### Constraints
+- -1,000,000 <= A, B <= 1,000,000
+
+### Examples
+**Input 1**
+\`\`\`
+7 5
+\`\`\`
+
+**Output 1**
+\`\`\`
+2
+\`\`\`
+
+Explanation: \`7 - 5 = 2\`.
     `.trim(),
     timeLimitMs: 1000,
     memoryLimitMb: 128,
@@ -77,18 +102,30 @@ Output
   {
     title: "A*B",
     description: `
-      <h3>Problem</h3>
-      <p>Given two integers <strong>A</strong> and <strong>B</strong>, print their product.</p>
-      <h3>Input</h3>
-      <p>A single line containing two integers separated by a space.</p>
-      <h3>Output</h3>
-      <p>Print <code>A × B</code>.</p>
-      <h3>Example</h3>
-      <pre>Input
-3 4
+### Problem
+Given two integers A and B, print their product.
 
-Output
-12</pre>
+### Input
+A single line contains two integers separated by one space.
+
+### Output
+Print \`A * B\`.
+
+### Constraints
+- -1,000,000 <= A, B <= 1,000,000
+
+### Examples
+**Input 1**
+\`\`\`
+3 4
+\`\`\`
+
+**Output 1**
+\`\`\`
+12
+\`\`\`
+
+Explanation: \`3 * 4 = 12\`.
     `.trim(),
     timeLimitMs: 1000,
     memoryLimitMb: 128,
@@ -102,19 +139,31 @@ Output
   {
     title: "Fibonacci",
     description: `
-      <h3>Problem</h3>
-      <p>Given a non-negative integer <strong>N</strong>, print the <strong>N</strong>th Fibonacci number.</p>
-      <p>Use the definition <code>F(0) = 0</code>, <code>F(1) = 1</code>, and <code>F(n) = F(n-1) + F(n-2)</code> for <code>n ≥ 2</code>.</p>
-      <h3>Input</h3>
-      <p>A single integer <code>N</code> where <code>0 ≤ N ≤ 40</code>.</p>
-      <h3>Output</h3>
-      <p>Print the <strong>N</strong>th Fibonacci number.</p>
-      <h3>Example</h3>
-      <pre>Input
-10
+### Problem
+Given a non-negative integer N, print the Nth Fibonacci number.
+Use \`F(0) = 0\`, \`F(1) = 1\`, and \`F(n) = F(n - 1) + F(n - 2)\` for \`n >= 2\`.
 
-Output
-55</pre>
+### Input
+A single integer N.
+
+### Output
+Print the Nth Fibonacci number.
+
+### Constraints
+- 0 <= N <= 40
+
+### Examples
+**Input 1**
+\`\`\`
+10
+\`\`\`
+
+**Output 1**
+\`\`\`
+55
+\`\`\`
+
+Explanation: the tenth Fibonacci number is 55.
     `.trim(),
     timeLimitMs: 1000,
     memoryLimitMb: 128,
@@ -128,18 +177,30 @@ Output
   {
     title: "Factorial",
     description: `
-      <h3>Problem</h3>
-      <p>Given a non-negative integer <strong>N</strong>, print <code>N!</code>.</p>
-      <h3>Input</h3>
-      <p>A single integer <code>N</code> where <code>0 ≤ N ≤ 12</code>.</p>
-      <h3>Output</h3>
-      <p>Print the factorial of <strong>N</strong>.</p>
-      <h3>Example</h3>
-      <pre>Input
-5
+### Problem
+Given a non-negative integer N, print \`N!\`.
 
-Output
-120</pre>
+### Input
+A single integer N.
+
+### Output
+Print the factorial of N.
+
+### Constraints
+- 0 <= N <= 12
+
+### Examples
+**Input 1**
+\`\`\`
+5
+\`\`\`
+
+**Output 1**
+\`\`\`
+120
+\`\`\`
+
+Explanation: \`5! = 120\`.
     `.trim(),
     timeLimitMs: 1000,
     memoryLimitMb: 128,
@@ -260,7 +321,7 @@ async function seed() {
         extension: language.extension,
         dockerImage: language.dockerImage,
         compiler: language.compiler,
-        runCommand: language.runCommand.join(" "),
+        runCommand: serializeJudgeCommand(language.runCommand) ?? "",
         isEnabled: true,
         updatedAt: new Date(),
         ...(language.standard ? { standard: language.standard } : {}),
@@ -332,4 +393,7 @@ async function seed() {
   await pool.end();
 }
 
-seed().catch(console.error);
+seed().catch((error) => {
+  console.error(error);
+  process.exit(1);
+});

@@ -15,6 +15,7 @@ export type SubmissionStatus =
   | "pending"
   | "queued"
   | "judging"
+  | "submitted"
   | "accepted"
   | "wrong_answer"
   | "compile_error"

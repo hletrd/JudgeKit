@@ -138,7 +138,28 @@ const STUDENT_USER = { id: "student-1", role: "student", username: "student" };
 
 const VALID_POST_BODY = {
   title: "My Problem",
-  description: "A test problem",
+  description: `
+### Problem
+Read two integers and print their sum.
+
+### Input
+A single line contains two integers.
+
+### Output
+Print the sum.
+
+### Constraints
+- -1,000,000 <= each input value <= 1,000,000
+
+### Examples
+\`\`\`
+1 2
+\`\`\`
+
+\`\`\`
+3
+\`\`\`
+  `.trim(),
   timeLimitMs: 2000,
   memoryLimitMb: 256,
   visibility: "private",

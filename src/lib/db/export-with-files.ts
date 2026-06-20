@@ -213,12 +213,21 @@ export async function streamBackupWithFiles(signal?: AbortSignal, dbNow?: Date):
 /**
  * Restore uploaded files and extract database.json from a ZIP backup archive.
  *
- * @param zipBuffer - The ZIP file content as a Buffer
- * @returns The parsed database export and count of restored files
+ * Prefer `parseBackupZip` + `restoreParsedBackupFiles` in destructive restore
+ * routes so DB validation/import can finish before live uploaded files mutate.
  */
 export async function restoreFilesFromZip(zipBuffer: Buffer): Promise<{
   dbExport: JudgeKitExport;
   filesRestored: number;
+}> {
+  const parsed = await parseBackupZip(zipBuffer);
+  const filesRestored = await restoreParsedBackupFiles(parsed.uploads);
+  return { dbExport: parsed.dbExport, filesRestored };
+}
+
+export async function parseBackupZip(zipBuffer: Buffer): Promise<{
+  dbExport: JudgeKitExport;
+  uploads: Array<{ storedName: string; buffer: Buffer }>;
 }> {
   const JSZip = (await import("jszip")).default;
   const zip = await JSZip.loadAsync(zipBuffer);
@@ -252,10 +261,9 @@ export async function restoreFilesFromZip(zipBuffer: Buffer): Promise<{
     throw new Error("invalidDatabaseJson");
   }
 
-  // 2. Extract uploaded files to disk
-  await ensureUploadsDir();
-  let filesRestored = 0;
-
+  // 2. Validate uploaded files and keep them staged in memory. The restore
+  // route writes these only after DB validation/import succeeds.
+  const uploads: Array<{ storedName: string; buffer: Buffer }> = [];
   const fileEntries = zip.filter(
     (relativePath) => relativePath.startsWith("uploads/") && !relativePath.endsWith("/")
   );
@@ -288,15 +296,25 @@ export async function restoreFilesFromZip(zipBuffer: Buffer): Promise<{
       }
       manifestUploads.delete(entry.name);
     }
-    await writeUploadedFile(storedName, buffer);
-    filesRestored++;
+    uploads.push({ storedName, buffer });
   }
 
   if (manifestUploads && manifestUploads.size > 0) {
     throw new Error("backupIntegrityMismatch");
   }
 
-  logger.info({ filesRestored }, "Restored uploaded files from backup ZIP");
+  logger.info({ filesPendingRestore: uploads.length }, "Validated uploaded files from backup ZIP");
 
-  return { dbExport, filesRestored };
+  return { dbExport, uploads };
+}
+
+export async function restoreParsedBackupFiles(
+  uploads: Array<{ storedName: string; buffer: Buffer }>
+): Promise<number> {
+  await ensureUploadsDir();
+  for (const upload of uploads) {
+    await writeUploadedFile(upload.storedName, upload.buffer);
+  }
+  logger.info({ filesRestored: uploads.length }, "Restored uploaded files from backup ZIP");
+  return uploads.length;
 }

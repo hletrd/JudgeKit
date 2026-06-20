@@ -6,6 +6,7 @@ import { eq } from "drizzle-orm";
 import { z } from "zod";
 import { isJudgeLanguage, getJudgeLanguageDefinition, serializeJudgeCommand } from "@/lib/judge/languages";
 import { executeCompilerRun } from "@/lib/compiler/execute";
+import { hasNoRawNul } from "@/lib/validators/api";
 import { getEffectiveModeRestrictions } from "@/lib/system-settings";
 import { getEffectivePlatformMode } from "@/lib/platform-mode-context";
 
@@ -17,6 +18,9 @@ const playgroundRunSchema = z.object({
   sourceCode: z.string().min(1).refine(
     (v) => Buffer.byteLength(v, "utf8") <= MAX_SOURCE_CODE_BYTES,
     { message: "sourceCodeTooLarge" }
+  ).refine(
+    hasNoRawNul,
+    { message: "sourceCodeInvalid" }
   ),
   stdin: z.string().refine(
     (v) => Buffer.byteLength(v, "utf8") <= MAX_STDIN_BYTES,
@@ -82,7 +86,7 @@ export const POST = createApiHandler({
     const langDef = getJudgeLanguageDefinition(body.language);
     const extension = langConfig.extension || langDef?.extension;
     const dockerImage = langConfig.dockerImage || langDef?.dockerImage;
-    const runCommand = langConfig.runCommand || (langDef ? langDef.runCommand.join(" ") : null);
+    const runCommand = langConfig.runCommand || serializeJudgeCommand(langDef?.runCommand);
     const compileCommand = langConfig.compileCommand || serializeJudgeCommand(langDef?.compileCommand);
 
     if (!extension || !dockerImage || !runCommand) {
@@ -97,6 +101,7 @@ export const POST = createApiHandler({
         dockerImage: dockerImage.trim(),
         compileCommand: compileCommand?.trim() || null,
         runCommand: runCommand.trim(),
+        id: body.language,
       },
     });
 

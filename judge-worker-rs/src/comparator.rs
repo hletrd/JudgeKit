@@ -62,47 +62,38 @@ impl<'a> Iterator for Lines<'a> {
 /// globally, but only trailing whitespace is removed per-line (leading
 /// whitespace on a line is preserved).
 ///
-/// This implementation works directly on `&[u8]` with no heap allocation.
+/// This implementation mirrors the documented normalization directly so
+/// boundary spaces and tabs are treated the same as JavaScript `.trim()`.
 pub fn compare_output(expected: &[u8], actual: &[u8]) -> bool {
-    let mut exp_lines = Lines::new(expected).map(trim_end).peekable();
-    let mut act_lines = Lines::new(actual).map(trim_end).peekable();
+    normalize_exact_output(expected) == normalize_exact_output(actual)
+}
 
-    // Skip leading blank lines (the outer .trim() of the normalized string
-    // removes leading blank lines because trimming the joined string removes
-    // everything before the first non-whitespace character, which for a
-    // multi-line string means leading empty lines).
-    while exp_lines.peek() == Some(&b"".as_ref()) {
-        exp_lines.next();
-    }
-    while act_lines.peek() == Some(&b"".as_ref()) {
-        act_lines.next();
-    }
+#[inline]
+fn is_ascii_trim_byte(byte: u8) -> bool {
+    matches!(byte, b' ' | b'\t' | b'\r' | b'\n')
+}
 
-    loop {
-        match (exp_lines.next(), act_lines.next()) {
-            (None, None) => return true,
-            (Some(e), Some(a)) => {
-                if e != a {
-                    return false;
-                }
-            }
-            // One side has content, the other is exhausted — check if the
-            // remaining lines on the non-exhausted side are all blank (trailing
-            // newlines after the last real line).
-            (Some(e), None) => {
-                if !e.is_empty() {
-                    return false;
-                }
-                return exp_lines.all(|l| l.is_empty());
-            }
-            (None, Some(a)) => {
-                if !a.is_empty() {
-                    return false;
-                }
-                return act_lines.all(|l| l.is_empty());
-            }
+fn normalize_exact_output(data: &[u8]) -> Vec<u8> {
+    let mut normalized = Vec::with_capacity(data.len());
+
+    for (index, line) in Lines::new(data).map(trim_end).enumerate() {
+        if index > 0 {
+            normalized.push(b'\n');
         }
+        normalized.extend_from_slice(line);
     }
+
+    let start = normalized
+        .iter()
+        .position(|byte| !is_ascii_trim_byte(*byte))
+        .unwrap_or(normalized.len());
+    let end = normalized
+        .iter()
+        .rposition(|byte| !is_ascii_trim_byte(*byte))
+        .map(|index| index + 1)
+        .unwrap_or(start);
+
+    normalized[start..end].to_vec()
 }
 
 /// Compare outputs using floating-point tolerance.
@@ -256,6 +247,9 @@ mod tests {
         assert!(compare_output(b"42", b"42"));
         assert!(compare_output(b"42\n", b"42"));
         assert!(compare_output(b"42   ", b"42"));
+        assert!(compare_output(b"42", b" 42"));
+        assert!(compare_output(b"\t42", b"42"));
+        assert!(compare_output(b"\n 42", b"42"));
     }
 
     #[test]

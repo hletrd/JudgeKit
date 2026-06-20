@@ -1,16 +1,14 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { NextRequest } from "next/server";
 
-const { getTrustedAuthHostsMock, normalizeHostMock, shouldTrustAuthHostMock } = vi.hoisted(() => ({
+const { getTrustedAuthHostsMock, normalizeHostMock } = vi.hoisted(() => ({
   getTrustedAuthHostsMock: vi.fn(),
   normalizeHostMock: vi.fn(),
-  shouldTrustAuthHostMock: vi.fn(),
 }));
 
 vi.mock("@/lib/security/env", () => ({
   getTrustedAuthHosts: getTrustedAuthHostsMock,
   normalizeHostForComparison: normalizeHostMock,
-  shouldTrustAuthHost: shouldTrustAuthHostMock,
 }));
 
 import { validateTrustedAuthHost } from "@/lib/auth/trusted-host";
@@ -24,7 +22,6 @@ function makeRequest(headers: Record<string, string> = {}) {
 beforeEach(() => {
   vi.clearAllMocks();
   normalizeHostMock.mockImplementation((h: string) => h.toLowerCase().replace(/:\d+$/, ""));
-  shouldTrustAuthHostMock.mockReturnValue(false);
 });
 
 describe("validateTrustedAuthHost", () => {
@@ -44,13 +41,13 @@ describe("validateTrustedAuthHost", () => {
     expect(result).toBeNull();
   });
 
-  it("returns null when AUTH_TRUST_HOST mode is enabled", async () => {
-    shouldTrustAuthHostMock.mockReturnValue(true);
+  it("does not bypass the trusted-host allowlist for proxy trust mode", async () => {
+    getTrustedAuthHostsMock.mockResolvedValue(new Set(["trusted.com"]));
 
     const result = await validateTrustedAuthHost(makeRequest({ host: "evil.com" }));
 
-    expect(result).toBeNull();
-    expect(getTrustedAuthHostsMock).not.toHaveBeenCalled();
+    expect(result).not.toBeNull();
+    expect(result!.status).toBe(400);
   });
 
   it("returns null when no host header is present", async () => {

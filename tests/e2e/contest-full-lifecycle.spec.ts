@@ -9,7 +9,7 @@
  */
 
 import { test, expect, type Page, type APIRequestContext } from "@playwright/test";
-import { loginWithCredentials } from "./support/helpers";
+import { loginWithCredentials, makeProblemDescription } from "./support/helpers";
 import { DEFAULT_CREDENTIALS } from "./support/constants";
 
 const CSRF_HEADERS = {
@@ -141,7 +141,7 @@ test.describe.serial("Contest Full Lifecycle", () => {
   test("Step 5: Create Problem A (A+B)", async () => {
     const res = await apiPost(adminRequest, "/api/v1/problems", {
       title: `[E2E] A+B ${suffix}`,
-      description: "Read two integers and print their sum.",
+      description: makeProblemDescription("Read two integers and print their sum."),
       timeLimitMs: 2000,
       memoryLimitMb: 256,
       visibility: "private",
@@ -158,7 +158,7 @@ test.describe.serial("Contest Full Lifecycle", () => {
   test("Step 6: Create Problem B (Multiply)", async () => {
     const res = await apiPost(adminRequest, "/api/v1/problems", {
       title: `[E2E] Multiply ${suffix}`,
-      description: "Read two integers and print their product.",
+      description: makeProblemDescription("Read two integers and print their product."),
       timeLimitMs: 2000,
       memoryLimitMb: 256,
       visibility: "private",
@@ -228,7 +228,7 @@ test.describe.serial("Contest Full Lifecycle", () => {
 
   // ─── Verify contest pages as admin ─────────────────────────────────────
   test("Step 11: Admin sees contests in list", async () => {
-    await adminPage.goto("/dashboard/contests");
+    await adminPage.goto("/contests/manage");
     await adminPage.waitForLoadState("networkidle");
 
     const pageContent = await adminPage.textContent("body");
@@ -243,7 +243,7 @@ test.describe.serial("Contest Full Lifecycle", () => {
     );
     console.log(`  IOI assignment ID: ${ioiAssignmentId}, leaderboard API: ${apiStatus}`);
 
-    const response = await adminPage.goto(`/dashboard/contests/${ioiAssignmentId}`);
+    const response = await adminPage.goto(`/contests/manage/${ioiAssignmentId}`);
     console.log(`  Page status: ${response?.status()}, URL: ${adminPage.url()}`);
     await adminPage.waitForLoadState("networkidle");
 
@@ -257,7 +257,7 @@ test.describe.serial("Contest Full Lifecycle", () => {
   });
 
   test("Step 13: Admin sees access code manager", async () => {
-    await adminPage.goto(`/dashboard/contests/${ioiAssignmentId}`);
+    await adminPage.goto(`/contests/manage/${ioiAssignmentId}`);
     await adminPage.waitForLoadState("networkidle");
 
     // Access code should be visible on the page (may be in Overview tab)
@@ -267,21 +267,21 @@ test.describe.serial("Contest Full Lifecycle", () => {
 
   // ─── Student flow (use admin page for API, browser for UI verification) ──
   test("Step 14: Verify contest visible in list", async () => {
-    await adminPage.goto("/dashboard/contests");
+    await adminPage.goto("/contests/manage");
     await adminPage.waitForLoadState("networkidle");
     const content = await adminPage.textContent("body");
     expect(content).toContain(`[E2E] IOI Contest ${suffix}`);
   });
 
   test("Step 15: Verify IOI contest detail page", async () => {
-    await adminPage.goto(`/dashboard/contests/${ioiAssignmentId}`);
+    await adminPage.goto(`/contests/manage/${ioiAssignmentId}`);
     await adminPage.waitForLoadState("networkidle");
     const content = await adminPage.textContent("body");
     expect(content).toMatch(/IOI|A\+B|Overview|개요/);
   });
 
   test("Step 16: Verify ICPC contest detail page", async () => {
-    await adminPage.goto(`/dashboard/contests/${icpcAssignmentId}`);
+    await adminPage.goto(`/contests/manage/${icpcAssignmentId}`);
     await adminPage.waitForLoadState("networkidle");
     const content = await adminPage.textContent("body");
     expect(content).toMatch(/ICPC|A\+B|Overview|개요/);
@@ -337,7 +337,7 @@ test.describe.serial("Contest Full Lifecycle", () => {
 
   // ─── Check IOI Leaderboard UI ──────────────────────────────────────────
   test("Step 20: IOI leaderboard renders in browser", async () => {
-    await adminPage.goto(`/dashboard/contests/${ioiAssignmentId}`);
+    await adminPage.goto(`/contests/manage/${ioiAssignmentId}`);
     await adminPage.waitForLoadState("networkidle");
 
     // Leaderboard should be accessible via tab or on page
@@ -496,7 +496,7 @@ test.describe.serial("Contest Full Lifecycle", () => {
 
   // ─── Verify contest UI components ──────────────────────────────────────
   test("Step 31: Admin analytics page renders charts", async () => {
-    await adminPage.goto(`/dashboard/contests/${ioiAssignmentId}`);
+    await adminPage.goto(`/contests/manage/${ioiAssignmentId}`);
     await adminPage.waitForLoadState("networkidle");
 
     // Wait deterministically for at least one SVG chart to appear instead of
@@ -509,7 +509,7 @@ test.describe.serial("Contest Full Lifecycle", () => {
   });
 
   test("Step 32: Admin anti-cheat dashboard shows events", async () => {
-    await adminPage.goto(`/dashboard/contests/${ioiAssignmentId}`);
+    await adminPage.goto(`/contests/manage/${ioiAssignmentId}`);
     await adminPage.waitForLoadState("networkidle");
     // Wait for the anti-cheat section to render before scraping body text.
     await adminPage
@@ -540,7 +540,7 @@ test.describe.serial("Contest Full Lifecycle", () => {
     console.log(`  Testing participant audit for user: ${participantUserId}`);
 
     await adminPage.goto(
-      `/dashboard/contests/${ioiAssignmentId}/participant/${participantUserId}`
+      `/contests/manage/${ioiAssignmentId}/participant/${participantUserId}`
     );
     await adminPage.waitForLoadState("networkidle");
 
@@ -566,12 +566,12 @@ test.describe.serial("Contest Full Lifecycle", () => {
 
     // Verify back link navigates to contest
     const backLink = adminPage
-      .locator(`a[href*='/dashboard/contests/${ioiAssignmentId}']`)
+      .locator(`a[href*='/contests/manage/${ioiAssignmentId}']`)
       .first();
     await expect(backLink).toBeVisible();
     await backLink.click();
     await adminPage.waitForLoadState("networkidle");
-    expect(adminPage.url()).toContain(`/dashboard/contests/${ioiAssignmentId}`);
+    expect(adminPage.url()).toContain(`/contests/manage/${ioiAssignmentId}`);
   });
 
   // ─── Admin Console: Roles page shows built-in roles ─────────────────

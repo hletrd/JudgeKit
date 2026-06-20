@@ -3,6 +3,7 @@ import { eq } from "drizzle-orm";
 import { db } from "@/lib/db";
 import { problems, submissions } from "@/lib/db/schema";
 import { expect, test } from "./fixtures";
+import { makeProblemDescription } from "./support/helpers";
 
 const EDITOR_PLACEHOLDER = "Write your code here...";
 
@@ -29,7 +30,8 @@ type SubmissionLanguage = {
 };
 
 async function createProblem(page: Page, title: string) {
-  const response = await page.evaluate(async (problemTitle) => {
+  const description = makeProblemDescription("Task 7 unsaved-changes browser history verification.");
+  const response = await page.evaluate(async ({ problemTitle, problemDescription }) => {
     const request = await fetch("/api/v1/problems", {
       method: "POST",
       headers: {
@@ -37,7 +39,7 @@ async function createProblem(page: Page, title: string) {
         "X-Requested-With": "XMLHttpRequest",
       },
       body: JSON.stringify({
-        description: "Task 7 unsaved-changes browser history verification.",
+        description: problemDescription,
         testCases: [
           {
             expectedOutput: "3\n",
@@ -54,7 +56,7 @@ async function createProblem(page: Page, title: string) {
       body: await request.json(),
       status: request.status,
     };
-  }, title);
+  }, { problemTitle: title, problemDescription: description });
 
   expect(response.status).toBe(201);
   expect(response.body.data?.id).toBeTruthy();
@@ -144,9 +146,9 @@ test("task 7 guards browser back navigation while dirty and stays clean after su
   const normalizedSolution = normalizeSourceText(solution);
 
   try {
-    await page.goto("/dashboard/problems", { waitUntil: "networkidle" });
+    await page.goto("/problems", { waitUntil: "networkidle" });
     await page.getByRole("link", { name: problemTitle, exact: true }).click();
-    await page.waitForURL(`/dashboard/problems/${problemId}`, { timeout: 15_000 });
+    await page.waitForURL(`/practice/problems/${problemId}`, { timeout: 15_000 });
     await chooseLanguage(page, label);
     await page.locator("#sourceCode").fill(solution);
     // Wait for editor to register the content change as dirty state
@@ -154,7 +156,7 @@ test("task 7 guards browser back navigation while dirty and stays clean after su
 
     await test.step("browser back stays on the page when the dirty-history dialog is dismissed", async () => {
       await expectBackDialog(page, false);
-      await expect(page).toHaveURL(new RegExp(`/dashboard/problems/${problemId}$`));
+      await expect(page).toHaveURL(new RegExp(`/practice/problems/${problemId}$`));
       await expect.poll(async () => normalizeSourceText(await readEditorText(page))).toContain(solutionPreview);
     });
 
@@ -163,7 +165,7 @@ test("task 7 guards browser back navigation while dirty and stays clean after su
       await expect(page).toHaveURL(/\/dashboard\/problems$/);
 
       await page.goForward();
-      await page.waitForURL(`/dashboard/problems/${problemId}`, { timeout: 15_000 });
+      await page.waitForURL(`/practice/problems/${problemId}`, { timeout: 15_000 });
       await chooseLanguage(page, label);
       await expect.poll(async () => normalizeSourceText(await readEditorText(page))).toBe(normalizedSolution);
     });
@@ -177,7 +179,7 @@ test("task 7 guards browser back navigation while dirty and stays clean after su
         await page.evaluate(() => {
           window.history.back();
         });
-        await expect(page).toHaveURL(new RegExp(`/dashboard/problems/${problemId}$`));
+        await expect(page).toHaveURL(new RegExp(`/practice/problems/${problemId}$`));
       });
 
       await expect.poll(async () => normalizeSourceText(await readEditorText(page))).toBe("");

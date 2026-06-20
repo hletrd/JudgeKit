@@ -29,15 +29,15 @@ test('capture all contest page errors', async ({ page }) => {
   console.log('Logged in:', page.url());
 
   // Contest list (goto already waits for networkidle)
-  await page.goto(`${BASE_URL}/dashboard/contests`, { waitUntil: 'networkidle' });
+  await page.goto(`${BASE_URL}/contests/manage`, { waitUntil: 'networkidle' });
   console.log(`After list page: ${errors.length} errors`);
 
   // Discover contest links
   const contestLinks = await page.$$eval(
-    'a[href*="/dashboard/contests/"]',
+    'a[href*="/contests/manage/"]',
     els => [...new Set(
       els.map(el => el.getAttribute('href'))
-        .filter(h => h && !h.endsWith('/contests') && !h.includes('create') && !h.includes('join'))
+        .filter(h => h && !h.endsWith('/contests/manage') && !h.includes('create') && !h.includes('join'))
     )]
   );
   console.log(`Found ${contestLinks.length} contest links:`, contestLinks.slice(0, 5));

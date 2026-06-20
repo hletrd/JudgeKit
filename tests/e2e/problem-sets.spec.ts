@@ -27,6 +27,7 @@ let groupId: string;
 
 const groupName = `[E2E] Problem Set ${suffix}`;
 const groupDescription = `E2E test problem set created at ${suffix}`;
+const groupListSearchPath = `/groups?search=${encodeURIComponent(groupName)}`;
 
 async function loginAsAdmin(page: Page) {
   await loginWithCredentials(page, DEFAULT_CREDENTIALS.username, DEFAULT_CREDENTIALS.password, {
@@ -59,7 +60,7 @@ test.describe.serial("Problem Sets (Groups)", () => {
   });
 
   test("Step 2: Navigate to groups/problem-sets page", async () => {
-    await navigateTo(adminPage, "/dashboard/groups");
+    await navigateTo(adminPage, "/groups");
     await adminPage.waitForLoadState("networkidle");
 
     const content = await adminPage.textContent("body");
@@ -77,15 +78,15 @@ test.describe.serial("Problem Sets (Groups)", () => {
   });
 
   test("Step 4: Problem set appears in groups list", async () => {
-    await navigateTo(adminPage, "/dashboard/groups");
+    await navigateTo(adminPage, groupListSearchPath);
     await adminPage.waitForLoadState("networkidle");
 
-    const content = await adminPage.textContent("body");
+    const content = await adminPage.locator("#main-content table").textContent();
     expect(content).toContain(groupName);
   });
 
   test("Step 5: Navigate to problem set detail page", async () => {
-    await navigateTo(adminPage, `/dashboard/groups/${groupId}`);
+    await navigateTo(adminPage, `/groups/${groupId}`);
     await adminPage.waitForLoadState("networkidle");
 
     const url = adminPage.url();
@@ -97,7 +98,7 @@ test.describe.serial("Problem Sets (Groups)", () => {
   });
 
   test("Step 6: Problem set detail shows description", async () => {
-    await navigateTo(adminPage, `/dashboard/groups/${groupId}`);
+    await navigateTo(adminPage, `/groups/${groupId}`);
     await adminPage.waitForLoadState("networkidle");
 
     const content = await adminPage.textContent("body");
@@ -124,10 +125,10 @@ test.describe.serial("Problem Sets (Groups)", () => {
   });
 
   test("Step 9: Deleted problem set no longer appears in list", async () => {
-    await navigateTo(adminPage, "/dashboard/groups");
+    await navigateTo(adminPage, groupListSearchPath);
     await adminPage.waitForLoadState("networkidle");
 
-    const content = await adminPage.textContent("body");
+    const content = await adminPage.locator("#main-content table").textContent();
     expect(content).not.toContain(groupName);
   });
 

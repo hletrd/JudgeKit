@@ -68,6 +68,14 @@ if [[ -z "${AUTH_TOKEN:-}" ]]; then
   fi
 fi
 
+RUNNER_AUTH_TOKEN_VALUE="${RUNNER_AUTH_TOKEN:-}"
+if [[ -z "${RUNNER_AUTH_TOKEN_VALUE}" && -f .env.production ]]; then
+  RUNNER_AUTH_TOKEN_VALUE=$(grep -E '^RUNNER_AUTH_TOKEN=' .env.production | cut -d= -f2- || true)
+fi
+if [[ -z "${RUNNER_AUTH_TOKEN_VALUE}" ]]; then
+  RUNNER_AUTH_TOKEN_VALUE=$(openssl rand -hex 32)
+fi
+
 REMOTE="${SSH_USER}@${HOST}"
 
 echo "=== JudgeKit Worker Deployment ==="
@@ -130,6 +138,7 @@ ssh "${SSH_OPTS[@]}" "${REMOTE}" "touch ${REMOTE_DIR}/.env && chmod 600 ${REMOTE
 
 ensure_env_var JUDGE_BASE_URL "${APP_URL}"
 ensure_env_var JUDGE_AUTH_TOKEN "${AUTH_TOKEN}"
+ensure_env_var RUNNER_AUTH_TOKEN "${RUNNER_AUTH_TOKEN_VALUE}"
 ensure_env_var JUDGE_CONCURRENCY "${CONCURRENCY}"
 ensure_env_var JUDGE_WORKER_HOSTNAME "${HOST}"
 ensure_env_var RUST_LOG "info"

@@ -1,5 +1,6 @@
 import { test, expect, type Page, type BrowserContext } from "@playwright/test";
 import { BASE_URL, DEFAULT_CREDENTIALS as CREDENTIALS } from "./support/constants";
+import { makeProblemDescription } from "./support/helpers";
 
 // Detect target server architecture from PLAYWRIGHT_BASE_URL
 // ARM64 target uses HTTPS (oj.auraedu.me), AMD64 uses HTTP
@@ -1139,6 +1140,10 @@ test.describe("Judge all supported languages", () => {
     const page = await ctx.newPage();
     await login(page);
 
+    const statsRes = await apiGet(ctx, "/api/v1/admin/workers/stats");
+    const stats = statsRes.ok() ? (await statsRes.json().catch(() => ({}))).data ?? {} : {};
+    test.skip(Number(stats.workersOnline ?? 0) === 0, "requires an online judge worker");
+
     // Delete stale E2E problems
     const listRes = await apiGet(ctx, "/api/v1/problems");
     if (listRes.status() === 200) {
@@ -1151,7 +1156,7 @@ test.describe("Judge all supported languages", () => {
 
     const createRes = await apiPost(ctx, "/api/v1/problems", {
       title: `[E2E] A+B All Languages — ${Date.now()}`,
-      description: "Read two integers A and B from stdin, print A+B.",
+      description: makeProblemDescription("Read two integers A and B from stdin, then print their sum."),
       timeLimitMs: 10000,
       memoryLimitMb: 512,
       visibility: "public",

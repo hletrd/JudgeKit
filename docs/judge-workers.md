@@ -57,7 +57,8 @@ Workers poll `/api/v1/judge/claim` to claim submissions. The claim request inclu
 |----------|---------|-------------|
 | `JUDGE_BASE_URL` | `http://localhost:3000/api/v1` | App server API URL |
 | `JUDGE_AUTH_TOKEN` | (required, ≥32 chars) | Shared bootstrap token. Authorises **registration only**; once a worker is registered the app rejects `claim` / `heartbeat` / `deregister` calls that present this token instead of the per-worker `secretTokenHash` (since 2026-05). |
-| `RUNNER_AUTH_TOKEN` | Unset → falls back to `JUDGE_AUTH_TOKEN`; **set-but-empty → startup error** | Bearer token for runner/docker-admin endpoints. The worker validates strictly: the value must either be absent or be ≥32 chars. `docker-compose.worker.yml` always renders this variable (`${RUNNER_AUTH_TOKEN:-}`), so on that path an unconfigured host variable becomes `""` and the worker exits with `RUNNER_AUTH_TOKEN must not be empty`. Set it explicitly when using compose. |
+| `RUNNER_AUTH_TOKEN` | (required, ≥32 chars) | Bearer token for runner/docker-admin endpoints. The worker validates strictly: the value must be present, ≥32 chars, and different from `JUDGE_AUTH_TOKEN`. `docker-compose.worker.yml` now requires this variable at interpolation time so dedicated workers fail before startup when it is missing. |
+| `JUDGE_ALLOW_INSECURE_HTTP` | `false` | Development-only escape hatch for non-local `http://` `JUDGE_BASE_URL` / `JUDGE_POLL_URL` values. Remote/dedicated workers should use HTTPS; local Docker service host `http://app:3000` and loopback URLs are allowed without this flag. |
 | `JUDGE_ALLOW_DEFAULT_COMPILE_SECCOMP` | `false` | Explicitly let compile containers fall back to Docker's default seccomp profile |
 | `JUDGE_CONCURRENCY` | `1` | Max concurrent submissions (1-16) |
 | `JUDGE_WORKER_HOSTNAME` | System hostname | Hostname reported to app server |
@@ -112,7 +113,7 @@ path instead of running a co-located judge worker.
 
 Outside containerized deployments, the Rust runner now defaults to `127.0.0.1` unless `RUNNER_HOST` is set explicitly. The Docker compose files still set `RUNNER_HOST=0.0.0.0` where container port publishing is required.
 
-> **Recommended:** set `RUNNER_AUTH_TOKEN` separately from `JUDGE_AUTH_TOKEN` in production so a leaked judge polling token does not automatically authorize the runner's Docker-management endpoints. The worker still falls back to `JUDGE_AUTH_TOKEN` for backward compatibility when `RUNNER_AUTH_TOKEN` is unset.
+> **Required:** set `RUNNER_AUTH_TOKEN` separately from `JUDGE_AUTH_TOKEN` in production so a leaked judge polling token does not automatically authorize the runner's Docker-management endpoints. The worker no longer falls back to `JUDGE_AUTH_TOKEN` when `RUNNER_AUTH_TOKEN` is unset.
 
 > **Compile seccomp:** compile containers now use the repository seccomp profile by default too. If a specific toolchain is incompatible with that profile, set `JUDGE_ALLOW_DEFAULT_COMPILE_SECCOMP=1` explicitly as a compatibility escape hatch instead of relying on the weaker default implicitly.
 

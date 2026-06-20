@@ -4,16 +4,19 @@ import { apiSuccess } from "@/lib/api/responses";
 import { createApiHandler, forbidden } from "@/lib/api/handler";
 import { createProblemWithTestCases } from "@/lib/problem-management";
 import { resolveCapabilities } from "@/lib/capabilities/cache";
+import { functionSpecSchema } from "@/lib/judge/function-judging/types";
+import { supportsFunctionJudging } from "@/lib/judge/function-judging/registry";
+import { problemDescriptionSchema, referenceSolutionSchema } from "@/lib/validators/problem-management";
 
-const problemImportSchema = z.object({
+export const problemImportSchema = z.object({
   version: z.number().optional(),
   problem: z.object({
     title: z.string().min(1).max(200),
-    description: z.string().default(""),
+    description: problemDescriptionSchema,
     sequenceNumber: z.number().int().min(0).nullable().optional(),
-    timeLimitMs: z.number().int().min(100).max(30000).default(1000),
+    timeLimitMs: z.number().int().min(100).max(10000).default(1000),
     memoryLimitMb: z.number().int().min(16).max(1024).default(256),
-    problemType: z.enum(["auto", "manual"]).default("auto"),
+    problemType: z.enum(["auto", "manual", "function"]).default("auto"),
     visibility: z.enum(["public", "private", "hidden"]).default("private"),
     showCompileOutput: z.boolean().default(true),
     showDetailedResults: z.boolean().default(true),
@@ -23,6 +26,8 @@ const problemImportSchema = z.object({
     floatAbsoluteError: z.number().min(0).max(1).nullable().optional(),
     floatRelativeError: z.number().min(0).max(1).nullable().optional(),
     difficulty: z.number().min(0).max(10).nullable().optional(),
+    functionSpec: functionSpecSchema.nullable().optional(),
+    referenceSolution: referenceSolutionSchema.nullable().optional(),
     tags: z.array(z.string().min(1).max(50)).max(20).default([]),
     testCases: z.array(z.object({
       input: z.string(),
@@ -30,6 +35,25 @@ const problemImportSchema = z.object({
       isVisible: z.boolean().default(false),
       sortOrder: z.number().int().optional(),
     })).default([]),
+  }).superRefine((problem, ctx) => {
+    if (problem.problemType !== "function") return;
+
+    if (problem.functionSpec == null) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        message: "functionSpecRequired",
+        path: ["functionSpec"],
+      });
+      return;
+    }
+
+    if (!problem.functionSpec.enabledLanguages.some(supportsFunctionJudging)) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        message: "functionSpecUnsupportedLanguages",
+        path: ["functionSpec", "enabledLanguages"],
+      });
+    }
   }),
 });
 
@@ -59,6 +83,8 @@ export const POST = createApiHandler({
         floatAbsoluteError: problem.floatAbsoluteError ?? null,
         floatRelativeError: problem.floatRelativeError ?? null,
         difficulty: problem.difficulty ?? null,
+        functionSpec: problem.problemType === "function" ? problem.functionSpec ?? null : null,
+        referenceSolution: problem.problemType === "function" ? problem.referenceSolution ?? null : null,
         tags: problem.tags,
         testCases: problem.testCases.map((tc) => ({
           input: tc.input,

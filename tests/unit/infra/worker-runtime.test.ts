@@ -36,7 +36,9 @@ describe("judge worker runtime loops", () => {
     expect(configSource).toContain('Defaults to `127.0.0.1`');
     expect(configSource).toContain('"127.0.0.1".to_string()');
     expect(configSource).toContain("RUNNER_AUTH_TOKEN");
-    expect(workerCompose).toContain("RUNNER_AUTH_TOKEN=${RUNNER_AUTH_TOKEN:-}");
+    expect(workerCompose).toContain(
+      "RUNNER_AUTH_TOKEN=${RUNNER_AUTH_TOKEN:?Set RUNNER_AUTH_TOKEN for runner/admin endpoints}",
+    );
     expect(workerCompose).toContain("RUNNER_HOST=0.0.0.0");
   });
 

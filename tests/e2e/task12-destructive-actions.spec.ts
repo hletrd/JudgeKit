@@ -158,8 +158,8 @@ test("task 12 destructive flows revoke user access and guard problem deletes", a
   const studentPage = await studentContext.newPage();
 
   await loginWithCredentials(studentPage, student.username, RUNTIME_STUDENT_PASSWORD);
-  await studentPage.goto("/dashboard/problems", { waitUntil: "networkidle" });
-  await expect(studentPage).toHaveURL(/\/dashboard\/problems$/);
+  await studentPage.goto("/problems", { waitUntil: "networkidle" });
+  await expect(studentPage).toHaveURL(/\/problems$/);
 
   await test.step("admin users UI hides destructive toggles for self and super admin rows", async () => {
     await page.goto("/dashboard/admin/users", { waitUntil: "networkidle" });
@@ -181,8 +181,8 @@ test("task 12 destructive flows revoke user access and guard problem deletes", a
     await expect(page.getByTestId(`user-access-toggle-${student.id}`)).toContainText("Restore access");
     await captureEvidence(page, testInfo, "task12-user-deactivated");
 
-    await studentPage.goto("/dashboard/problems", { waitUntil: "networkidle" });
-    await expect(studentPage).toHaveURL(/\/login\?callbackUrl=%2Fdashboard%2Fproblems$/);
+    await studentPage.goto("/problems", { waitUntil: "networkidle" });
+    await expect(studentPage).toHaveURL(/\/login\?callbackUrl=%2Fproblems$/);
     await expect(studentPage.getByRole("button", { name: "Sign in" })).toBeVisible();
 
     const accessDeactivatedAudit = await db.query.auditEvents.findFirst({
@@ -214,8 +214,8 @@ test("task 12 destructive flows revoke user access and guard problem deletes", a
     await expect(page.getByTestId(`user-access-toggle-${student.id}`)).toContainText("Deactivate access");
 
     await loginWithCredentials(studentPage, student.username, RUNTIME_STUDENT_PASSWORD);
-    await studentPage.goto("/dashboard/problems", { waitUntil: "networkidle" });
-    await expect(studentPage).toHaveURL(/\/dashboard\/problems$/);
+    await studentPage.goto("/problems", { waitUntil: "networkidle" });
+    await expect(studentPage).toHaveURL(/\/problems$/);
 
     const accessRestoredAudit = await db.query.auditEvents.findFirst({
       where: and(
@@ -227,7 +227,7 @@ test("task 12 destructive flows revoke user access and guard problem deletes", a
   });
 
   await test.step("problem delete stays blocked when submissions and assignment links exist", async () => {
-    await page.goto(`/dashboard/problems/${blockedProblemId}`, { waitUntil: "networkidle" });
+    await page.goto(`/problems/${blockedProblemId}/edit`, { waitUntil: "networkidle" });
     await expect(page.getByTestId(`problem-delete-${blockedProblemId}`)).toBeVisible();
 
     const blockedDeleteResponse = page.waitForResponse(
@@ -257,15 +257,15 @@ test("task 12 destructive flows revoke user access and guard problem deletes", a
         "This problem cannot be deleted because it still has 1 submission(s) and 1 assignment link(s)."
       )
     ).toBeVisible();
-    await expect(page).toHaveURL(new RegExp(`/dashboard/problems/${blockedProblemId}$`));
+    await expect(page).toHaveURL(new RegExp(`/problems/${blockedProblemId}/edit$`));
     await captureEvidence(page, testInfo, "task12-problem-delete-blocked");
 
-    await page.goto(`/dashboard/problems/${blockedProblemId}/edit`, { waitUntil: "networkidle" });
+    await page.goto(`/problems/${blockedProblemId}/edit`, { waitUntil: "networkidle" });
     await expect(page.getByTestId(`problem-delete-${blockedProblemId}`)).toBeVisible();
   });
 
   await test.step("safe draft problems can still be deleted from the edit surface", async () => {
-    await page.goto(`/dashboard/problems/${safeProblemId}/edit`, { waitUntil: "networkidle" });
+    await page.goto(`/problems/${safeProblemId}/edit`, { waitUntil: "networkidle" });
     await expect(page.getByTestId(`problem-delete-${safeProblemId}`)).toBeVisible();
 
     const safeDeleteResponse = page.waitForResponse(

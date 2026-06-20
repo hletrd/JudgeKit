@@ -1,14 +1,30 @@
-import { getValidatedAuthSecret, getValidatedJudgeAuthToken } from "@/lib/security/env";
-import { assertProductionConfig } from "@/lib/security/production-config";
-import { startRateLimitEviction } from "@/lib/security/rate-limit";
-import { startWorkerStalenessSweep } from "@/lib/judge/worker-staleness-sweep";
-import { startAuditEventPruning } from "@/lib/audit/events";
-import { startSensitiveDataPruning } from "@/lib/data-retention-maintenance";
-import { registerAuditFlushOnShutdown } from "@/lib/audit/node-shutdown";
-import { syncLanguageConfigsOnStartup } from "@/lib/judge/sync-language-configs";
-import { initializeSettings } from "@/lib/system-settings-config";
-
 export async function register() {
+  if (process.env.NEXT_RUNTIME === "edge") {
+    return;
+  }
+
+  const [
+    { getValidatedAuthSecret, getValidatedJudgeAuthToken },
+    { assertProductionConfig },
+    { startRateLimitEviction },
+    { startWorkerStalenessSweep },
+    { startAuditEventPruning },
+    { startSensitiveDataPruning },
+    { registerAuditFlushOnShutdown },
+    { syncLanguageConfigsOnStartup },
+    { initializeSettings },
+  ] = await Promise.all([
+    import("@/lib/security/env"),
+    import("@/lib/security/production-config"),
+    import("@/lib/security/rate-limit"),
+    import("@/lib/judge/worker-staleness-sweep"),
+    import("@/lib/audit/events"),
+    import("@/lib/data-retention-maintenance"),
+    import("@/lib/audit/node-shutdown"),
+    import("@/lib/judge/sync-language-configs"),
+    import("@/lib/system-settings-config"),
+  ]);
+
   assertProductionConfig();
   getValidatedAuthSecret();
   getValidatedJudgeAuthToken();

@@ -41,7 +41,7 @@ JUDGE_DISABLE_CUSTOM_SECCOMP=0
 |----------|----------|---------|-------------|
 | `AUTH_SECRET` | Yes | — | Session encryption key (`openssl rand -base64 32`) |
 | `AUTH_URL` | Yes | — | App public URL |
-| `AUTH_TRUST_HOST` | No | `false` | Set `true` behind a reverse proxy |
+| `AUTH_TRUST_HOST` | No | `false` | Set `true` behind a reverse proxy for Auth.js proxy handling. This does **not** bypass JudgeKit's auth-route host allowlist; `AUTH_URL` and configured allowed hosts remain enforced. |
 | `PLUGIN_CONFIG_ENCRYPTION_KEY` | Yes | — | Dedicated AES-GCM key for plugin secrets and API key encryption (`openssl rand -hex 32`) |
 | `NODE_ENCRYPTION_KEY` | Yes (production) | — | AES-256-GCM key for secrets stored in the DB (SMTP password, hCaptcha secret, API keys). The production startup gate refuses to boot without it. NOT the same key as `PLUGIN_CONFIG_ENCRYPTION_KEY` — generate each independently. (`openssl rand -hex 32`) |
 | `DATABASE_URL` | Yes | — | PostgreSQL connection string (e.g. `postgres://user:pass@host:5432/judgekit`) |
@@ -163,6 +163,7 @@ Add judging capacity by deploying workers on separate machines. Each worker conn
 ```bash
 JUDGE_BASE_URL=https://oj.example.com/api/v1 \
 JUDGE_AUTH_TOKEN=<same-token-as-app> \
+RUNNER_AUTH_TOKEN=<separate-runner-token> \
 JUDGE_CONCURRENCY=4 \
 JUDGE_WORKER_HOSTNAME=worker-2 \
 docker compose -f docker-compose.worker.yml up -d
@@ -210,7 +211,8 @@ curl http://127.0.0.1:3000/api/health
 
 - Confirm submissions progress out of `pending`
 - Confirm `/api/health` returns `{"status":"ok"...}` with `checks.database` set to `ok`
-- If `401 Unauthorized` in worker logs, verify `JUDGE_AUTH_TOKEN`
+- If registration logs show `401 Unauthorized`, verify `JUDGE_AUTH_TOKEN`
+- If runner/admin calls return `401 Unauthorized`, verify `RUNNER_AUTH_TOKEN`
 - If container-init error (`fsmount:fscontext:proc`), set `JUDGE_DISABLE_CUSTOM_SECCOMP=1`
 
 ## Database Durability (READ BEFORE TOUCHING COMPOSE OR DEPLOY SCRIPTS)
