@@ -20,7 +20,7 @@ if (!isRemoteRun) {
  * require local-only fixtures or seeded contest data that may be absent on a
  * shared test host.
  */
-const remoteSafeSpecs = [
+const remoteSafeSpecsWithAuth = [
   "tests/e2e/admin-languages.spec.ts",
   "tests/e2e/admin-workers.spec.ts",
   "tests/e2e/auth-flow.spec.ts",
@@ -36,6 +36,18 @@ const remoteSafeSpecs = [
   "tests/e2e/system-settings-recent-changes.spec.ts",
 ];
 
+const remoteSafeSpecsWithoutAuth = remoteSafeSpecsWithAuth.filter(
+  (spec) =>
+    ![
+      "tests/e2e/admin-languages.spec.ts",
+      "tests/e2e/admin-workers.spec.ts",
+      "tests/e2e/auth-flow.spec.ts",
+      "tests/e2e/contest-access-code-gate.spec.ts",
+      "tests/e2e/contest-nav-test.spec.ts",
+      "tests/e2e/rankings.spec.ts",
+    ].includes(spec),
+);
+
 /**
  * Profile selection:
  *
@@ -45,7 +57,14 @@ const remoteSafeSpecs = [
  * Legacy behaviour: `PLAYWRIGHT_BASE_URL` alone still implies smoke.
  */
 const profile = process.env.PLAYWRIGHT_PROFILE ?? (isRemoteRun ? "smoke" : "full");
-const testMatch = profile === "smoke" ? remoteSafeSpecs : undefined;
+const hasRemoteSmokeCredentials =
+  !isRemoteRun || Boolean(process.env.E2E_PASSWORD && process.env.E2E_PASSWORD !== "skip-login");
+const testMatch =
+  profile === "smoke"
+    ? hasRemoteSmokeCredentials
+      ? remoteSafeSpecsWithAuth
+      : remoteSafeSpecsWithoutAuth
+    : undefined;
 
 export default defineConfig({
   testDir: "./tests/e2e",
