@@ -1,4 +1,4 @@
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { afterAll, beforeEach, describe, expect, it, vi } from "vitest";
 import {
   decryptPluginConfigForUse,
   decryptPluginSecret,
@@ -8,6 +8,9 @@ import {
   redactPluginConfigForRead,
 } from "@/lib/plugins/secrets";
 
+const ORIGINAL_AUTH_SECRET = process.env.AUTH_SECRET;
+const ORIGINAL_PLUGIN_CONFIG_ENCRYPTION_KEY = process.env.PLUGIN_CONFIG_ENCRYPTION_KEY;
+
 process.env.AUTH_SECRET = "plugin-secret-test-key-material-32chars";
 process.env.PLUGIN_CONFIG_ENCRYPTION_KEY = "plugin-config-encryption-key-test-material-32chars";
 
@@ -15,6 +18,15 @@ process.env.PLUGIN_CONFIG_ENCRYPTION_KEY = "plugin-config-encryption-key-test-ma
 beforeEach(() => {
   process.env.PLUGIN_CONFIG_ENCRYPTION_KEY = "plugin-config-encryption-key-test-material-32chars";
   vi.resetModules();
+});
+
+// Restore env after the suite so these mutations (including in-test deletes)
+// don't leak into other test files sharing the same worker process.
+afterAll(() => {
+  if (ORIGINAL_AUTH_SECRET === undefined) delete process.env.AUTH_SECRET;
+  else process.env.AUTH_SECRET = ORIGINAL_AUTH_SECRET;
+  if (ORIGINAL_PLUGIN_CONFIG_ENCRYPTION_KEY === undefined) delete process.env.PLUGIN_CONFIG_ENCRYPTION_KEY;
+  else process.env.PLUGIN_CONFIG_ENCRYPTION_KEY = ORIGINAL_PLUGIN_CONFIG_ENCRYPTION_KEY;
 });
 
 describe("plugin secret helpers", () => {
