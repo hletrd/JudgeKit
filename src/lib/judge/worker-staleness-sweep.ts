@@ -105,3 +105,15 @@ export function startWorkerStalenessSweep(intervalMs = 60_000): void {
   }, intervalMs);
   if (typeof sweepTimer.unref === "function") sweepTimer.unref();
 }
+
+/**
+ * Stop the background staleness sweep. The interval is already unref'd so it
+ * never blocks process exit, but an explicit stop is useful for test teardown
+ * and hot-reload to avoid leaking timers across runs.
+ */
+export function stopWorkerStalenessSweep(): void {
+  if (sweepTimer) {
+    clearInterval(sweepTimer);
+    sweepTimer = null;
+  }
+}
