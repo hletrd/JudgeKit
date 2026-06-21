@@ -123,15 +123,32 @@ pub fn compare_float_output(
     for (exp_tok, act_tok) in exp_tokens.iter().zip(act_tokens.iter()) {
         match (exp_tok.parse::<f64>(), act_tok.parse::<f64>()) {
             (Ok(exp_val), Ok(act_val)) => {
-                let diff = (exp_val - act_val).abs();
-                let abs_ok = diff <= abs_eps;
-                let rel_ok = if exp_val.abs() > f64::EPSILON {
-                    diff <= rel_eps * exp_val.abs()
+                // f64::parse accepts "nan"/"inf"/"-inf", but the abs/rel
+                // tolerance math yields NaN for these and would wrongly fail.
+                // Handle the IEEE-754 special values explicitly.
+                if exp_val.is_nan() || act_val.is_nan() {
+                    // Both NaN => equal; exactly one NaN => mismatch.
+                    if exp_val.is_nan() != act_val.is_nan() {
+                        return false;
+                    }
+                } else if exp_val.is_infinite() || act_val.is_infinite() {
+                    // Equal only if both are infinite with the same sign.
+                    // (inf == inf is true, inf == -inf is false in IEEE-754;
+                    // NaN is already excluded above.)
+                    if exp_val != act_val {
+                        return false;
+                    }
                 } else {
-                    diff <= abs_eps
-                };
-                if !abs_ok && !rel_ok {
-                    return false;
+                    let diff = (exp_val - act_val).abs();
+                    let abs_ok = diff <= abs_eps;
+                    let rel_ok = if exp_val.abs() > f64::EPSILON {
+                        diff <= rel_eps * exp_val.abs()
+                    } else {
+                        diff <= abs_eps
+                    };
+                    if !abs_ok && !rel_ok {
+                        return false;
+                    }
                 }
             }
             _ => {
@@ -185,6 +202,23 @@ mod tests {
     fn different_content() {
         assert!(!compare_output(b"hello", b"world"));
         assert!(!compare_output(b"hello\nworld", b"hello\nearth"));
+    }
+
+    #[test]
+    fn float_nan_and_infinity() {
+        // Both NaN => equal (parse accepts nan/NaN/NAN).
+        assert!(compare_float_output(b"nan", b"NaN", None, None));
+        assert!(compare_float_output(b"1.0 nan 2.0", b"1.0 NAN 2.0", None, None));
+        // Exactly one NaN => mismatch.
+        assert!(!compare_float_output(b"nan", b"1.0", None, None));
+        assert!(!compare_float_output(b"1.0", b"nan", None, None));
+        // Same-sign infinity => equal.
+        assert!(compare_float_output(b"inf", b"inf", None, None));
+        assert!(compare_float_output(b"-inf", b"-inf", None, None));
+        assert!(compare_float_output(b"inf", b"Infinity", None, None));
+        // Opposite-sign / finite-vs-infinite => mismatch.
+        assert!(!compare_float_output(b"inf", b"-inf", None, None));
+        assert!(!compare_float_output(b"inf", b"1.0", None, None));
     }
 
     #[test]
