@@ -193,31 +193,54 @@ export async function consumeRateLimitAttemptMulti(...keys: string[]) {
     let shouldBlock = false;
 
     for (const { key, now, entry, exists } of entries) {
-      const attempts = entry.attempts + 1;
-      let blockedUntil = entry.blockedUntil;
-      let consecutiveBlocks = entry.consecutiveBlocks;
-
-      if (attempts >= config.maxAttempts) {
-        consecutiveBlocks += 1;
-        const blockMs = calculateBlockDuration(consecutiveBlocks - 1, config.blockMs);
-        blockedUntil = now + blockMs;
+      const { payload, blocked } = computeNextRateLimitEntry(entry, now, config);
+      if (blocked) {
         shouldBlock = true;
       }
 
       // Conflict-safe shared upsert (AGG2-3): two concurrent first attempts
       // on a fresh key no longer throw a duplicate-key error out of the
       // rate-limit transaction.
-      await upsertRateLimitEntry(tx, key, {
-        attempts,
-        windowStartedAt: entry.windowStartedAt,
-        blockedUntil: blockedUntil > 0 ? blockedUntil : null,
-        consecutiveBlocks,
-        lastAttempt: now,
-      }, exists);
+      await upsertRateLimitEntry(tx, key, payload, exists);
     }
 
     return shouldBlock;
   });
+}
+
+type RateLimitEntrySnapshot = Awaited<ReturnType<typeof getEntry>>["entry"];
+
+/**
+ * Compute the next rate-limit entry payload after one failed attempt. Shared by
+ * the single-key, multi-key, and consume-attempt increment paths so the
+ * attempt-count and block-duration math lives in exactly one place.
+ */
+function computeNextRateLimitEntry(
+  entry: RateLimitEntrySnapshot,
+  now: number,
+  config: { maxAttempts: number; blockMs: number },
+) {
+  const attempts = entry.attempts + 1;
+  let blockedUntil = entry.blockedUntil;
+  let consecutiveBlocks = entry.consecutiveBlocks;
+  let blocked = false;
+
+  if (attempts >= config.maxAttempts) {
+    consecutiveBlocks += 1;
+    blockedUntil = now + calculateBlockDuration(consecutiveBlocks - 1, config.blockMs);
+    blocked = true;
+  }
+
+  return {
+    payload: {
+      attempts,
+      windowStartedAt: entry.windowStartedAt,
+      blockedUntil: blockedUntil > 0 ? blockedUntil : null,
+      consecutiveBlocks,
+      lastAttempt: now,
+    },
+    blocked,
+  };
 }
 
 /**
@@ -231,53 +254,21 @@ export async function recordRateLimitFailure(key: string) {
   await execTransaction(async (tx) => {
     const nowMs = await getDbNowMs();
     const { now, entry, exists } = await getEntry(key, tx, nowMs);
-    const attempts = entry.attempts + 1;
-
-    let blockedUntil = entry.blockedUntil;
-    let consecutiveBlocks = entry.consecutiveBlocks;
-
-    const cfg = getRateLimitConfig();
-    if (attempts >= cfg.maxAttempts) {
-      consecutiveBlocks += 1;
-      const blockDuration = calculateBlockDuration(consecutiveBlocks - 1, cfg.blockMs);
-      blockedUntil = now + blockDuration;
-    }
-
     // Conflict-safe shared upsert (AGG2-3).
-    await upsertRateLimitEntry(tx, key, {
-      attempts,
-      windowStartedAt: entry.windowStartedAt,
-      blockedUntil: blockedUntil > 0 ? blockedUntil : null,
-      consecutiveBlocks,
-      lastAttempt: now,
-    }, exists);
+    const { payload } = computeNextRateLimitEntry(entry, now, getRateLimitConfig());
+    await upsertRateLimitEntry(tx, key, payload, exists);
   });
 }
 
 export async function recordRateLimitFailureMulti(...keys: string[]) {
   await execTransaction(async (tx) => {
     const nowMs = await getDbNowMs();
+    const config = getRateLimitConfig();
     for (const key of keys) {
       const { now, entry, exists } = await getEntry(key, tx, nowMs);
-      const config = getRateLimitConfig();
-      const newAttempts = entry.attempts + 1;
-      let blockedUntil = entry.blockedUntil;
-      let consecutiveBlocks = entry.consecutiveBlocks;
-
-      if (newAttempts >= config.maxAttempts) {
-        consecutiveBlocks += 1;
-        const blockMs = calculateBlockDuration(consecutiveBlocks - 1, config.blockMs);
-        blockedUntil = now + blockMs;
-      }
-
       // Conflict-safe shared upsert (AGG2-3).
-      await upsertRateLimitEntry(tx, key, {
-        attempts: newAttempts,
-        windowStartedAt: entry.windowStartedAt,
-        blockedUntil: blockedUntil > 0 ? blockedUntil : null,
-        consecutiveBlocks,
-        lastAttempt: now,
-      }, exists);
+      const { payload } = computeNextRateLimitEntry(entry, now, config);
+      await upsertRateLimitEntry(tx, key, payload, exists);
     }
   });
 }
