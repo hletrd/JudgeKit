@@ -3,7 +3,12 @@ import { systemSettings } from "@/lib/db/schema";
 import { eq } from "drizzle-orm";
 
 const GLOBAL_SETTINGS_ID = "global";
-const CACHE_TTL_MS = 60_000;
+// Stale-while-revalidate window. On the instance that made the change,
+// invalidateSettingsCache() forces an immediate reload; this TTL only bounds
+// how long OTHER instances serve stale settings before a background refresh.
+// Kept low so admin setting changes propagate across instances quickly; the
+// cost is just a slightly more frequent background DB read.
+const CACHE_TTL_MS = 15_000;
 
 export type ConfiguredSettings = {
   loginRateLimitMaxAttempts: number;
