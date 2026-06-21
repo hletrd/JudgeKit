@@ -77,38 +77,47 @@ export async function POST(request: NextRequest) {
 
     if (IN_PROGRESS_JUDGE_STATUSES.has(status)) {
       const dbNow = await getDbNowUncached();
-      const updatedInProgress = await execTransaction(async (tx) => {
-        const inProgressResult = await tx
-          .update(submissions)
-          .set({
-            status,
-            judgeClaimedAt: dbNow,
-            failedTestCaseIndex,
-            runtimeErrorType,
-          })
-          .where(
-            and(eq(submissions.id, submissionId), eq(submissions.judgeClaimToken, claimToken))
-          );
+      // Mirror the final path: wrap the claim update so a stale/invalid claim
+      // token yields a clean 403 instead of bubbling to the outer 500 handler.
+      try {
+        await execTransaction(async (tx) => {
+          const inProgressResult = await tx
+            .update(submissions)
+            .set({
+              status,
+              judgeClaimedAt: dbNow,
+              failedTestCaseIndex,
+              runtimeErrorType,
+            })
+            .where(
+              and(eq(submissions.id, submissionId), eq(submissions.judgeClaimToken, claimToken))
+            );
 
-        if ((inProgressResult.rowCount ?? 0) === 0) {
-          throw new Error("invalidJudgeClaim");
-        }
-
-        if (Array.isArray(results) && results.length > 0) {
-          await tx.delete(submissionResults).where(eq(submissionResults.submissionId, submissionId));
-
-          const rows = buildSubmissionResultRows(submissionId, results);
-          if (rows.length > 0) {
-            await tx.insert(submissionResults).values(rows);
+          if ((inProgressResult.rowCount ?? 0) === 0) {
+            throw new Error("invalidJudgeClaim");
           }
-        }
 
-        return await tx.query.submissions.findFirst({
-          where: eq(submissions.id, submissionId),
-          columns: {
-            sourceCode: false,
-          },
+          if (Array.isArray(results) && results.length > 0) {
+            await tx.delete(submissionResults).where(eq(submissionResults.submissionId, submissionId));
+
+            const rows = buildSubmissionResultRows(submissionId, results);
+            if (rows.length > 0) {
+              await tx.insert(submissionResults).values(rows);
+            }
+          }
         });
+      } catch (err: unknown) {
+        if (err instanceof Error && err.message === "invalidJudgeClaim") {
+          return apiError("invalidJudgeClaim", 403);
+        }
+        throw err;
+      }
+
+      const updatedInProgress = await db.query.submissions.findFirst({
+        where: eq(submissions.id, submissionId),
+        columns: {
+          sourceCode: false,
+        },
       });
 
       if (!updatedInProgress) {
