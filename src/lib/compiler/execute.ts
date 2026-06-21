@@ -424,7 +424,15 @@ async function runDocker(opts: {
       throw spawnError;
     }
 
-    // Handle stdin
+    // Handle stdin. A fast-exiting child can close its stdin before we finish
+    // writing, which surfaces as an EPIPE/ECONNRESET 'error' event on the
+    // stream. Without a listener that becomes an unhandled error and crashes
+    // the process, so attach one that downgrades it to a warning.
+    if (child.stdin) {
+      child.stdin.on("error", (err: unknown) => {
+        logger.warn({ err }, "child stdin error (child likely closed input early)");
+      });
+    }
     if (opts.stdin !== null && child.stdin) {
       child.stdin.write(opts.stdin);
       child.stdin.end();
