@@ -74,7 +74,7 @@ See [Language presets](docs/languages.md#docker-image-presets) for preset option
 
 ## Docker Judge Images
 
-102 language-specific Docker images for sandboxed code execution on both AMD64 and ARM64.
+102 language-specific Docker images for sandboxed code execution on both AMD64 and ARM64. (The 125 language variants include multiple compiler standards and modes — e.g. `cpp17`, `cpp23`, `clang17`, `clang20` — that share a single Docker image; the 102 images cover every distinct image, while 125 is the total count of named language variants.)
 
 | Image | amd64 | arm64 | Image | amd64 | arm64 |
 |-------|-------|-------|-------|-------|-------|
@@ -282,6 +282,8 @@ The client uses `GET /api/v1/time` to align its clock with the database server b
 - `npx tsc --noEmit` — Type-check without emitting JS.
 - `npm run build` — Next.js production build.
 - `npm run test:unit` / `:integration` / `:component` / `:security` / `:e2e` — Vitest and Playwright test suites (integration / e2e require a provisioned PostgreSQL + Playwright sidecar; see `docs/deployment.md`).
+- `npm run test:harness` — compile-and-run smoke tests for function-judging harnesses; toolchain-gated (skips any language whose toolchain is absent). See [function-signature judging](docs/function-judging.md#testing).
+- `npm run languages:sync` — sync built-in language defaults (`DEFAULT_JUDGE_LANGUAGES`) into the database language config table, inserting missing entries and updating changed metadata.
 
 ## Documentation
 

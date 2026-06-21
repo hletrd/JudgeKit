@@ -373,7 +373,7 @@ Create a problem. **Instructor or above.** Rate limit: `problems:create`.
 | `title` | string | — | 1-200 chars, required |
 | `description` | string | — | Markdown content |
 | `problemType` | string | `auto` | `auto`, `manual`, or `function` (see [Function-Signature Problems](#function-signature-problems)) |
-| `timeLimitMs` | number | 2000 | 100-30000 |
+| `timeLimitMs` | number | 2000 | 100-10000 |
 | `memoryLimitMb` | number | 256 | 16-1024 |
 | `visibility` | string | `private` | `public`, `private`, `hidden` |
 | `showCompileOutput` | boolean | — | Show compile output to students |
@@ -1474,9 +1474,14 @@ Update a language. **Admin only.**
   "compileCommand": "string|null",
   "runCommand": "string",
   "dockerfile": "string|null",
-  "isEnabled": true
+  "isEnabled": true,
+  "timeLimitMultiplier": 1.0
 }
 ```
+
+| Field | Type | Range | Description |
+|-------|------|-------|-------------|
+| `timeLimitMultiplier` | number | 0.1–50 | Scales the problem's `timeLimitMs` for this language at judge-claim time. Default `1.0` (no scaling). Useful for slower runtimes (e.g. `2.0` doubles the limit). |
 
 ---
 

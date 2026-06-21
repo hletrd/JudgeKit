@@ -39,6 +39,9 @@ Limits and conventions:
   numeric tokens** so cross-language formatting differences (`0.5` vs
   `0.500000000`) compare equal within tolerance. All other return types use exact
   comparison.
+  - `floatAbsoluteError` — maximum allowed absolute difference per token (0–1, default `1e-9` when null).
+  - `floatRelativeError` — maximum allowed relative difference per token (0–1, default `1e-9` when null).
+  Both tolerances are set on the problem and apply identically to `function` problems with a `double`/`double[]` return type.
 - A non-`void` return is required.
 - Not yet supported (deferred): 2-D/nested arrays, maps, and `ListNode`/`TreeNode`
   structures.
@@ -95,3 +98,7 @@ Two layers:
   and is wired best-effort into CI. It exists because golden-vs-source tests
   alone cannot catch runtime bugs (e.g. a harness that doesn't compile, or
   locale/encoding output corruption).
+
+## Locale Independence
+
+Generated harnesses format and parse floating-point values in a fixed, locale-independent way so that judging is consistent regardless of the system locale of the machine running the judge worker. Concretely: the C++ adapter calls `std::setlocale(LC_ALL, "C")` at harness startup; the Java adapter uses `java.util.Locale.ROOT` in all `String.format` calls for doubles; the C# adapter relies on the judge container's POSIX/C default locale. The result is that a `double` return is always printed with a dot (`.`) as the decimal separator across all supported languages, matching the canonical expected output produced by the server-side serializer.
