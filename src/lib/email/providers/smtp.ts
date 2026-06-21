@@ -89,7 +89,14 @@ function buildTransporter(config: {
     // Explicit "true" only — matches the SMTP_SECURE convention above. Using a
     // mere truthiness check would let SMTP_SKIP_TLS_VERIFY="false" silently
     // DISABLE cert verification, which is the opposite of the operator's intent.
-    tls: { rejectUnauthorized: process.env.SMTP_SKIP_TLS_VERIFY !== "true" },
+    // In production, cert verification is always enforced regardless of the env
+    // var, so a misconfigured deployment can never silently skip TLS checks.
+    tls: {
+      rejectUnauthorized:
+        process.env.NODE_ENV === "production"
+          ? true
+          : process.env.SMTP_SKIP_TLS_VERIFY !== "true",
+    },
   });
 }
 
