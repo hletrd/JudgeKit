@@ -127,13 +127,18 @@ async function ensureActorCanManageTarget(
 function applyBasicFieldUpdates(
   updates: UserUpdates,
   body: Record<string, unknown>,
-  isAdminActor: boolean
+  isAdminActor: boolean,
+  normalizedProfile: Record<string, unknown> | null
 ) {
   const normalizedEmail = normalizeOptionalEmail(body.email);
   const normalizedClassName = normalizeOptionalText(body.className);
 
-  if (body.name !== undefined) updates.name = body.name;
-  if (body.username !== undefined && isAdminActor) updates.username = body.username;
+  // Persist the schema-normalized values (name trimmed, username trimmed and
+  // lowercased) instead of the raw request body, matching the user-create path.
+  if (body.name !== undefined) updates.name = normalizedProfile?.name ?? body.name;
+  if (body.username !== undefined && isAdminActor) {
+    updates.username = normalizedProfile?.username ?? body.username;
+  }
   if (body.email !== undefined && isAdminActor) updates.email = normalizedEmail;
   if (body.className !== undefined) updates.className = normalizedClassName;
 
@@ -299,7 +304,7 @@ export const PATCH = createApiHandler({
 
     if (!found) return notFound("User");
 
-    const { error: profileValidationError } = validateProfileFields(body, isAdminActor);
+    const { error: profileValidationError, data: normalizedProfile } = validateProfileFields(body, isAdminActor);
     if (profileValidationError) return profileValidationError;
 
     if (!isAdminActor && body.username !== undefined) {
@@ -319,7 +324,7 @@ export const PATCH = createApiHandler({
     if (targetManagementError) return targetManagementError;
 
     const updates: Record<string, unknown> = {};
-    const { normalizedEmail } = applyBasicFieldUpdates(updates, body, isAdminActor);
+    const { normalizedEmail } = applyBasicFieldUpdates(updates, body, isAdminActor, normalizedProfile);
 
     // Fetch DB server time once for all tokenInvalidatedAt assignments in this
     // request. Using DB time instead of new Date() ensures session revocation
