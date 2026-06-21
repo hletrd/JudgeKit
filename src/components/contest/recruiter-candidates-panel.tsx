@@ -147,23 +147,23 @@ export function RecruiterCandidatesPanel({ assignmentId }: { assignmentId: strin
         <Table>
           <TableHeader>
             <TableRow>
-              <TableHead>
+              <TableHead aria-sort={sortKey === "rank" ? (sortAsc ? "ascending" : "descending") : "none"}>
                 <Button variant="ghost" size="sm" className="h-auto p-0 font-medium" onClick={() => handleSort("rank")}>
                   # <ArrowUpDown className="ml-1 inline size-3" />
                 </Button>
               </TableHead>
-              <TableHead>
+              <TableHead aria-sort={sortKey === "name" ? (sortAsc ? "ascending" : "descending") : "none"}>
                 <Button variant="ghost" size="sm" className="h-auto p-0 font-medium" onClick={() => handleSort("name")}>
                   {t("name")} <ArrowUpDown className="ml-1 inline size-3" />
                 </Button>
               </TableHead>
-              <TableHead>
+              <TableHead aria-sort={sortKey === "totalScore" ? (sortAsc ? "ascending" : "descending") : "none"}>
                 <Button variant="ghost" size="sm" className="h-auto p-0 font-medium" onClick={() => handleSort("totalScore")}>
                   {t("score")} <ArrowUpDown className="ml-1 inline size-3" />
                 </Button>
               </TableHead>
               <TableHead>{t("solved")}</TableHead>
-              <TableHead>
+              <TableHead aria-sort={sortKey === "antiCheatEventCount" ? (sortAsc ? "ascending" : "descending") : "none"}>
                 <Button variant="ghost" size="sm" className="h-auto p-0 font-medium" onClick={() => handleSort("antiCheatEventCount")}>
                   {t("flags")} <ArrowUpDown className="ml-1 inline size-3" />
                 </Button>

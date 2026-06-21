@@ -510,7 +510,7 @@ export function ApiKeysClient({ roleOptions }: { roleOptions?: RoleOption[] }) {
                           <AlertDialog>
                             <AlertDialogTrigger
                               render={
-                                <Button variant="destructive" size="sm">
+                                <Button variant="destructive" size="sm" aria-label={t("delete")}>
                                   <Trash2 className="h-4 w-4" />
                                 </Button>
                               }
