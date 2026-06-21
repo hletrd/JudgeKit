@@ -8,6 +8,7 @@ import { problemTags, problems, tags } from "@/lib/db/schema";
 import { resolveCapabilities } from "@/lib/capabilities/cache";
 import { canAccessProblem } from "@/lib/auth/permissions";
 import CreateProblemForm from "./create-problem-form";
+import { getUserPreferences } from "@/lib/user-preferences";
 import { getResolvedPlatformMode, getEffectiveModeRestrictions } from "@/lib/system-settings";
 
 export default async function CreateProblemPage({
@@ -19,6 +20,7 @@ export default async function CreateProblemPage({
   if (!session?.user) redirect("/login");
 
   const caps = await resolveCapabilities(session.user.role);
+  const prefs = await getUserPreferences(session.user.id);
   if (!caps.has("problems.create")) {
     redirect("/problems");
   }
@@ -103,7 +105,7 @@ export default async function CreateProblemPage({
             canUploadFiles={caps.has("files.upload")}
             initialProblem={duplicateProblemData ?? undefined}
             forceDisableAiAssistant={forceDisableAiAssistant}
-            editorTheme={session.user.editorTheme}
+            editorTheme={prefs.editorTheme}
           />
         </CardContent>
       </Card>

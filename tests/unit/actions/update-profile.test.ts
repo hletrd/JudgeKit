@@ -273,12 +273,12 @@ describe("updateProfile", () => {
     });
 
     expect(result).toEqual({ success: true });
-    expect(mocks.unstable_update).toHaveBeenCalledWith(
+    // Preferences are persisted to the DB now (not the session token), so they
+    // appear in the DB update payload rather than the unstable_update call.
+    expect(mocks.dbUpdateSetPayload).toHaveBeenCalledWith(
       expect.objectContaining({
-        user: expect.objectContaining({
-          shareAcceptedSolutions: false,
-          acceptedSolutionsAnonymous: true,
-        }),
+        shareAcceptedSolutions: false,
+        acceptedSolutionsAnonymous: true,
       })
     );
   });

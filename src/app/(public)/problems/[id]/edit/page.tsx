@@ -10,6 +10,7 @@ import CreateProblemForm from "@/app/(public)/problems/create/create-problem-for
 import { ProblemDeleteButton } from "../problem-delete-button";
 import { resolveCapabilities } from "@/lib/capabilities/cache";
 import { getResolvedPlatformMode, getEffectiveModeRestrictions } from "@/lib/system-settings";
+import { getUserPreferences } from "@/lib/user-preferences";
 import Link from "next/link";
 
 export default async function EditProblemPage({ params }: { params: Promise<{ id: string }> }) {
@@ -29,6 +30,7 @@ export default async function EditProblemPage({ params }: { params: Promise<{ id
   }
 
   const caps = await resolveCapabilities(session.user.role);
+  const prefs = await getUserPreferences(session.user.id);
   const canEdit = problem.authorId === session.user.id || caps.has("problems.edit");
   const canOverrideTestCases = caps.has("problems.delete");
 
@@ -110,7 +112,7 @@ export default async function EditProblemPage({ params }: { params: Promise<{ id
             testCasesLocked={hasSubmissions}
             allowTestCaseOverride={hasSubmissions && canOverrideTestCases}
             forceDisableAiAssistant={forceDisableAiAssistant}
-            editorTheme={session.user.editorTheme}
+            editorTheme={prefs.editorTheme}
           />
         </CardContent>
       </Card>

@@ -7,6 +7,7 @@ import { LectureModeToggle } from "@/components/layout/lecture-mode-toggle";
 import { EditorContentProvider } from "@/contexts/editor-content-context";
 import { getResolvedSystemSettings } from "@/lib/system-settings";
 import { auth } from "@/lib/auth";
+import { getUserPreferences } from "@/lib/user-preferences";
 import { resolveCapabilities } from "@/lib/capabilities/cache";
 import { getPublicNavItems, getPublicNavActions } from "@/lib/navigation/public-nav";
 import { updatePreferences } from "@/lib/actions/update-preferences";
@@ -22,6 +23,7 @@ export default async function PublicLayout({ children }: { children: React.React
   ]);
 
   const capabilities = session?.user ? [...await resolveCapabilities(session.user.role)] : undefined;
+  const prefs = session?.user ? await getUserPreferences(session.user.id) : null;
   const settings = await getResolvedSystemSettings({
     siteTitle: tCommon("appName"),
     siteDescription: tCommon("appDescription"),
@@ -29,9 +31,9 @@ export default async function PublicLayout({ children }: { children: React.React
 
   return (
     <LectureModeProvider
-      initialActive={session?.user?.lectureMode === "on"}
-      initialFontScale={session?.user?.lectureFontScale ?? "1.5"}
-      initialColorScheme={session?.user?.lectureColorScheme ?? "dark"}
+      initialActive={prefs?.lectureMode === "on"}
+      initialFontScale={prefs?.lectureFontScale ?? "1.5"}
+      initialColorScheme={prefs?.lectureColorScheme ?? "dark"}
       persistAction={session?.user ? (updatePreferences as (input: Record<string, string | null>) => Promise<unknown>) : undefined}
     >
       <EditorContentProvider>

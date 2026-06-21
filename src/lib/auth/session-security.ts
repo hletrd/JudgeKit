@@ -1,6 +1,5 @@
 import type { JWT } from "next-auth/jwt";
 import { getConfiguredSettings } from "@/lib/system-settings-config";
-import { AUTH_PREFERENCE_FIELDS } from "@/lib/auth/types";
 
 export function getSessionMaxAgeSeconds() {
   return getConfiguredSettings().sessionMaxAgeSeconds;
@@ -36,11 +35,9 @@ export function isTokenInvalidated(
 }
 
 /**
- * Token field names that carry auth-relevant user data.
- * Derived from AUTH_PREFERENCE_FIELDS (imported from config.ts) plus
- * token-specific fields (sub, id, role, etc.) and metadata fields
- * (authenticatedAt, uaHash). When a new preference field is added to
- * AUTH_PREFERENCE_FIELDS, it is automatically included here.
+ * Token field names that carry auth-relevant user data: core identity/security
+ * fields plus metadata (authenticatedAt, uaHash). User preferences are no
+ * longer stored in the token — they are read on demand via getUserPreferences().
  */
 const AUTH_TOKEN_FIELDS = [
   "sub",
@@ -51,7 +48,6 @@ const AUTH_TOKEN_FIELDS = [
   "name",
   "className",
   "mustChangePassword",
-  ...AUTH_PREFERENCE_FIELDS,
   "authenticatedAt",
   "uaHash",
 ] as const;

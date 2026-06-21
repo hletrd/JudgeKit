@@ -12,16 +12,6 @@ declare module "next-auth" {
       role: string;
       mustChangePassword: boolean;
       image?: string | null;
-      preferredLanguage?: string | null;
-      preferredTheme?: string | null;
-      shareAcceptedSolutions?: boolean;
-      acceptedSolutionsAnonymous?: boolean;
-      editorTheme?: string | null;
-      editorFontSize?: string | null;
-      editorFontFamily?: string | null;
-      lectureMode?: string | null;
-      lectureFontScale?: string | null;
-      lectureColorScheme?: string | null;
     };
   }
 
@@ -33,16 +23,6 @@ declare module "next-auth" {
     className?: string | null;
     role: string;
     mustChangePassword?: boolean;
-    preferredLanguage?: string | null;
-    preferredTheme?: string | null;
-    shareAcceptedSolutions?: boolean;
-    acceptedSolutionsAnonymous?: boolean;
-    editorTheme?: string | null;
-    editorFontSize?: string | null;
-    editorFontFamily?: string | null;
-    lectureMode?: string | null;
-    lectureFontScale?: string | null;
-    lectureColorScheme?: string | null;
   }
 }
 
@@ -56,16 +36,6 @@ declare module "next-auth/jwt" {
     mustChangePassword?: boolean;
     authenticatedAt?: number;
     uaHash?: string;
-    preferredLanguage?: string | null;
-    preferredTheme?: string | null;
-    shareAcceptedSolutions?: boolean;
-    acceptedSolutionsAnonymous?: boolean;
-    editorTheme?: string | null;
-    editorFontSize?: string | null;
-    editorFontFamily?: string | null;
-    lectureMode?: string | null;
-    lectureFontScale?: string | null;
-    lectureColorScheme?: string | null;
   }
 }
 

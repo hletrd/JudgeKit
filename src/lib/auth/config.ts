@@ -40,7 +40,6 @@ import {
 import { extractClientIp } from "@/lib/security/ip";
 import { authorizeRecruitingToken } from "@/lib/auth/recruiting-token";
 import type { AuthUserRecord, AuthUserInput } from "@/lib/auth/types";
-import { AUTH_PREFERENCE_FIELDS } from "@/lib/auth/types";
 
 type AuthenticatedLoginUser = Omit<AuthUserRecord, "mustChangePassword"> & {
   mustChangePassword: boolean;
@@ -65,9 +64,13 @@ const AUTH_CORE_FIELDS = [
   "tokenInvalidatedAt",
 ] as const;
 
-/** All columns to select when querying a user for auth purposes. */
+/**
+ * Columns to select when querying a user for auth purposes. Only core/security
+ * fields — preferences are no longer carried in the token; read them via
+ * getUserPreferences() (src/lib/user-preferences.ts).
+ */
 export const AUTH_USER_COLUMNS: Record<string, true> = Object.fromEntries(
-  [...AUTH_CORE_FIELDS, ...AUTH_PREFERENCE_FIELDS].map((f) => [f, true as const]),
+  AUTH_CORE_FIELDS.map((f) => [f, true as const]),
 );
 
 /**
@@ -86,19 +89,6 @@ export function mapUserToAuthFields(user: AuthUserInput) {
     className: user.className ?? null,
     role: user.role ?? "",
     mustChangePassword: user.mustChangePassword ?? false,
-    preferredLanguage: user.preferredLanguage ?? null,
-    preferredTheme: user.preferredTheme ?? null,
-    // shareAcceptedSolutions defaults to true (opt-out) for the educational
-    // use case: students are expected to share solutions for collaborative
-    // learning unless they explicitly opt out.
-    shareAcceptedSolutions: user.shareAcceptedSolutions ?? true,
-    acceptedSolutionsAnonymous: user.acceptedSolutionsAnonymous ?? false,
-    editorTheme: user.editorTheme ?? null,
-    editorFontSize: user.editorFontSize ?? null,
-    editorFontFamily: user.editorFontFamily ?? null,
-    lectureMode: user.lectureMode ?? null,
-    lectureFontScale: user.lectureFontScale ?? null,
-    lectureColorScheme: user.lectureColorScheme ?? null,
   };
 }
 
@@ -135,13 +125,12 @@ function syncTokenWithUser(
 }
 
 /**
- * Map JWT token fields to the NextAuth session.user object.
- * Core fields are assigned explicitly; preference fields are assigned
- * directly to the typed session.user (no cast needed since next-auth.d.ts
- * declares all preference fields on Session["user"]).
+ * Map JWT token fields to the NextAuth session.user object. Only core identity/
+ * security fields live on the token now; user preferences are read on demand
+ * via getUserPreferences() (src/lib/user-preferences.ts) rather than being
+ * carried in the token/session.
  */
 function mapTokenToSession(token: JWT, session: Session) {
-  // Core fields — each has a specific default pattern
   session.user.id = token.id ?? "";
   session.user.role = token.role ?? "";
   session.user.username = token.username ?? "";
@@ -151,21 +140,6 @@ function mapTokenToSession(token: JWT, session: Session) {
 
   if (typeof token.email === "string") {
     session.user.email = token.email;
-  }
-
-  // Preference fields — assigned programmatically from AUTH_PREFERENCE_FIELDS
-  // so that new preference fields are automatically included. When adding a
-  // new preference field, add it to AUTH_PREFERENCE_FIELDS, AuthUserRecord,
-  // and next-auth.d.ts (Session["user"] and JWT) — this loop picks it up.
-  // Default values must stay aligned with mapUserToAuthFields().
-  const PREFERENCE_DEFAULTS: Record<string, unknown> = {
-    shareAcceptedSolutions: true,   // opt-out model
-    acceptedSolutionsAnonymous: false,
-  };
-  for (const field of AUTH_PREFERENCE_FIELDS) {
-    const tokenValue = token[field as keyof typeof token];
-    const defaultValue = PREFERENCE_DEFAULTS[field] ?? null;
-    (session.user as Record<string, unknown>)[field] = tokenValue ?? defaultValue;
   }
 }
 

@@ -111,17 +111,13 @@ export async function updateProfile(
     return { success: false, error: "updateError" };
   }
 
+  // Only core identity fields (name, className) live in the session token now;
+  // preference changes are persisted to the DB above and read on demand via
+  // getUserPreferences(), so they need no token refresh.
   await unstable_update({
     user: {
       name,
       className: normalizedClassName,
-      preferredLanguage: normalizedPreferredLanguage,
-      preferredTheme: normalizedPreferredTheme,
-      shareAcceptedSolutions: shareAcceptedSolutions ?? true,
-      acceptedSolutionsAnonymous: acceptedSolutionsAnonymous ?? false,
-      editorTheme: normalizedEditorTheme,
-      editorFontSize: normalizedEditorFontSize,
-      editorFontFamily: normalizedEditorFontFamily,
     },
   });
 

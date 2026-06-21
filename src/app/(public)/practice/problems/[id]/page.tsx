@@ -43,6 +43,7 @@ import { getDbNow } from "@/lib/db-time";
 import Link from "next/link";
 import { resolveCapabilities } from "@/lib/capabilities/cache";
 import { getRecruitingAccessContext } from "@/lib/recruiting/access";
+import { getUserPreferences } from "@/lib/user-preferences";
 
 export async function generateMetadata({ params }: { params: Promise<{ id: string }> }): Promise<Metadata> {
   const { id } = await params;
@@ -133,6 +134,7 @@ export default async function PublicProblemDetailPage({
     getLocale(),
   ]);
   const caps = session?.user ? await resolveCapabilities(session.user.role) : new Set<string>();
+  const prefs = session?.user ? await getUserPreferences(session.user.id) : null;
 
   const problem = await db.query.problems.findFirst({
     where: eq(problems.id, id),
@@ -656,10 +658,10 @@ export default async function PublicProblemDetailPage({
                         functionSpec={problem.functionSpec ?? null}
                         languages={enabledLanguages}
                         assignmentId={assignmentContext?.id ?? null}
-                        preferredLanguage={session.user.preferredLanguage ?? null}
+                        preferredLanguage={prefs?.preferredLanguage ?? null}
                         problemDefaultLanguage={problem.defaultLanguage ?? null}
                         siteDefaultLanguage={settings.defaultLanguage ?? null}
-                        editorTheme={session.user.editorTheme ?? null}
+                        editorTheme={prefs?.editorTheme ?? null}
                         layout="inline"
                       />
                     </CardContent>

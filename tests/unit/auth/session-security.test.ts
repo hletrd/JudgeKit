@@ -137,16 +137,6 @@ describe("clearAuthToken", () => {
       name: "Alice",
       className: "CS101",
       mustChangePassword: false,
-      preferredLanguage: "python",
-      preferredTheme: "dark",
-      shareAcceptedSolutions: true,
-      acceptedSolutionsAnonymous: false,
-      editorTheme: "midnight",
-      editorFontSize: "16",
-      editorFontFamily: "mono",
-      lectureMode: "on",
-      lectureFontScale: "1.5",
-      lectureColorScheme: "dark",
       authenticatedAt: 1_700_000_000,
       uaHash: "abcd1234",
       jti: "some-jti",
@@ -162,16 +152,6 @@ describe("clearAuthToken", () => {
     expect(result).not.toHaveProperty("name");
     expect(result).not.toHaveProperty("className");
     expect(result).not.toHaveProperty("mustChangePassword");
-    expect(result).not.toHaveProperty("preferredLanguage");
-    expect(result).not.toHaveProperty("preferredTheme");
-    expect(result).not.toHaveProperty("shareAcceptedSolutions");
-    expect(result).not.toHaveProperty("acceptedSolutionsAnonymous");
-    expect(result).not.toHaveProperty("editorTheme");
-    expect(result).not.toHaveProperty("editorFontSize");
-    expect(result).not.toHaveProperty("editorFontFamily");
-    expect(result).not.toHaveProperty("lectureMode");
-    expect(result).not.toHaveProperty("lectureFontScale");
-    expect(result).not.toHaveProperty("lectureColorScheme");
     expect(result).not.toHaveProperty("uaHash");
     // authenticatedAt is set to 0 instead of deleted, so that
     // getTokenAuthenticatedAtSeconds returns 0 (not falling back to iat)

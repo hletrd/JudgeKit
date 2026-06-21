@@ -15,6 +15,7 @@ import { getJudgeLanguageDefinition } from "@/lib/judge/languages";
 import { getRoleLevel } from "@/lib/capabilities/cache";
 import ProfileForm from "./profile-form";
 import { EditorThemePicker } from "./editor-theme-picker";
+import { getUserPreferences } from "@/lib/user-preferences";
 
 export async function generateMetadata(): Promise<Metadata> {
   const t = await getTranslations("profile");
@@ -27,13 +28,14 @@ export default async function ProfilePage() {
 
   const t = await getTranslations("profile");
   const tCommon = await getTranslations("common");
-  const [langs, actorRoleLevel, roleRecord] = await Promise.all([
+  const [langs, actorRoleLevel, roleRecord, prefs] = await Promise.all([
     db.select({ language: languageConfigs.language, displayName: languageConfigs.displayName, standard: languageConfigs.standard, isEnabled: languageConfigs.isEnabled }).from(languageConfigs).where(eq(languageConfigs.isEnabled, true)),
     getRoleLevel(session.user.role),
     db.query.roles.findFirst({
       where: eq(roles.name, session.user.role),
       columns: { displayName: true },
     }),
+    getUserPreferences(session.user.id),
   ]);
   const enabledLanguages = langs.flatMap((lang) => {
     const def = getJudgeLanguageDefinition(lang.language);
@@ -97,12 +99,12 @@ export default async function ProfilePage() {
           <ProfileForm
             initialName={session.user.name || ""}
             initialClassName={session.user.className || ""}
-            initialPreferredLanguage={session.user.preferredLanguage || ""}
-            initialPreferredTheme={session.user.preferredTheme || "system"}
-            initialShareAcceptedSolutions={session.user.shareAcceptedSolutions ?? true}
-            initialAcceptedSolutionsAnonymous={session.user.acceptedSolutionsAnonymous ?? false}
-            initialEditorFontSize={session.user.editorFontSize || "14"}
-            initialEditorFontFamily={session.user.editorFontFamily || "system"}
+            initialPreferredLanguage={prefs.preferredLanguage || ""}
+            initialPreferredTheme={prefs.preferredTheme || "system"}
+            initialShareAcceptedSolutions={prefs.shareAcceptedSolutions}
+            initialAcceptedSolutionsAnonymous={prefs.acceptedSolutionsAnonymous}
+            initialEditorFontSize={prefs.editorFontSize || "14"}
+            initialEditorFontFamily={prefs.editorFontFamily || "system"}
             languages={enabledLanguages}
             canEditClassName={canEditClassName}
           />
@@ -115,7 +117,7 @@ export default async function ProfilePage() {
           <CardDescription>{t("editorThemeDesc")}</CardDescription>
         </CardHeader>
         <CardContent>
-          <EditorThemePicker initialTheme={session.user.editorTheme || ""} />
+          <EditorThemePicker initialTheme={prefs.editorTheme || ""} />
         </CardContent>
       </Card>
 

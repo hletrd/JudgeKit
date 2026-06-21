@@ -7,6 +7,7 @@ import { CompilerClient } from "@/components/code/compiler-client";
 import { JsonLd } from "@/components/seo/json-ld";
 import { buildAbsoluteUrl, buildLocalePath, buildPublicMetadata } from "@/lib/seo";
 import { getResolvedSystemSettings } from "@/lib/system-settings";
+import { getUserPreferences } from "@/lib/user-preferences";
 import { getEffectivePlatformMode } from "@/lib/platform-mode-context";
 import { getEffectiveModeRestrictions } from "@/lib/system-settings";
 
@@ -55,6 +56,7 @@ export default async function PlaygroundPage() {
   }
 
   const languages = await getEnabledCompilerLanguages();
+  const prefs = session?.user ? await getUserPreferences(session.user.id) : null;
   const playgroundJsonLd = {
     "@context": "https://schema.org",
     "@type": "WebApplication",
@@ -96,7 +98,7 @@ export default async function PlaygroundPage() {
         languages={languages}
         title={tShell("playground.liveTitle")}
         description={tShell("playground.liveDescription")}
-        preferredLanguage={session?.user?.preferredLanguage ?? null}
+        preferredLanguage={prefs?.preferredLanguage ?? null}
         runEndpoint="/api/v1/playground/run"
       />
     </>

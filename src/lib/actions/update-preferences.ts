@@ -5,7 +5,7 @@ import { db } from "@/lib/db";
 import { users } from "@/lib/db/schema";
 import { withUpdatedAt } from "@/lib/db/helpers";
 import { getDbNowUncached } from "@/lib/db-time";
-import { auth, unstable_update } from "@/lib/auth";
+import { auth } from "@/lib/auth";
 import { isTrustedServerActionOrigin } from "@/lib/security/server-actions";
 import { checkServerActionRateLimit } from "@/lib/security/api-rate-limit";
 import { logger } from "@/lib/logger";
@@ -109,9 +109,8 @@ export async function updatePreferences(
     return { success: false, error: "updateError" };
   }
 
-  await unstable_update({
-    user: updates,
-  });
-
+  // Preferences are no longer carried in the session token — they are read
+  // from the DB on demand via getUserPreferences() — so no token refresh is
+  // needed after persisting the change.
   return { success: true };
 }
