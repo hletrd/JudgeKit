@@ -163,6 +163,7 @@ describe("buildSubmissionResultRows", () => {
         actualOutput: "42\n",
         executionTimeMs: 100,
         memoryUsedKb: 1024,
+        runtimeErrorType: null,
       },
       {
         id: "id-2",
@@ -172,6 +173,7 @@ describe("buildSubmissionResultRows", () => {
         actualOutput: "0\n",
         executionTimeMs: 200,
         memoryUsedKb: 2048,
+        runtimeErrorType: null,
       },
     ]);
   });
@@ -191,6 +193,29 @@ describe("buildSubmissionResultRows", () => {
         actualOutput: null,
         executionTimeMs: null,
         memoryUsedKb: null,
+        runtimeErrorType: null,
+      },
+    ]);
+  });
+
+  it("persists runtimeErrorType per test case when present", () => {
+    nanoidMock.mockReturnValueOnce("id-rt");
+
+    const results = [
+      { testCaseId: "tc1", status: "runtime_error", runtimeErrorType: "SIGSEGV" },
+    ];
+    const rows = buildSubmissionResultRows("sub-rt", results);
+
+    expect(rows).toEqual([
+      {
+        id: "id-rt",
+        submissionId: "sub-rt",
+        testCaseId: "tc1",
+        status: "runtime_error",
+        actualOutput: null,
+        executionTimeMs: null,
+        memoryUsedKb: null,
+        runtimeErrorType: "SIGSEGV",
       },
     ]);
   });

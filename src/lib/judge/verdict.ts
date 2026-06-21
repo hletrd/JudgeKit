@@ -99,5 +99,6 @@ export function buildSubmissionResultRows(
     actualOutput: truncateJudgeDiagnostic(result.actualOutput),
     executionTimeMs: result.executionTimeMs ?? null,
     memoryUsedKb: result.memoryUsedKb ?? null,
+    runtimeErrorType: result.runtimeErrorType ?? null,
   }));
 }

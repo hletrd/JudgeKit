@@ -849,6 +849,7 @@ export const submissionResults = pgTable(
     actualOutput: text("actual_output"),
     executionTimeMs: integer("execution_time_ms"),
     memoryUsedKb: integer("memory_used_kb"),
+    runtimeErrorType: text("runtime_error_type"),
   },
   (table) => [
     index("sr_submission_idx").on(table.submissionId),
