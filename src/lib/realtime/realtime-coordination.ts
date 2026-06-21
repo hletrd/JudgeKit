@@ -1,6 +1,6 @@
 import { and, eq, gte, lt, sql } from "drizzle-orm";
 import { db } from "@/lib/db";
-import { rateLimits } from "@/lib/db/schema";
+import { realtimeCoordination } from "@/lib/db/schema";
 import { getDbNowUncached } from "@/lib/db-time";
 import { logger } from "@/lib/logger";
 
@@ -105,10 +105,10 @@ export async function acquireSharedSseConnectionSlot({
     // is not needed here. This diverges from other LIKE sites that use
     // user-supplied search terms (e.g., recruiting-invitations.ts, audit-logs).
     // See C11-2.
-    await tx.delete(rateLimits).where(
+    await tx.delete(realtimeCoordination).where(
       and(
-        sql`${rateLimits.key} LIKE ${getSsePrefixPattern()} ESCAPE '\\'`,
-        lt(rateLimits.blockedUntil, nowMs),
+        sql`${realtimeCoordination.key} LIKE ${getSsePrefixPattern()} ESCAPE '\\'`,
+        lt(realtimeCoordination.expiresAt, nowMs),
       )
     );
 
@@ -117,13 +117,13 @@ export async function acquireSharedSseConnectionSlot({
     const [counts] = await tx
       .select({
         total: sql<number>`count(*)`,
-        userTotal: sql<number>`count(*) filter (where ${rateLimits.key} like ${getSseUserPattern(userId)} escape '\\')`,
+        userTotal: sql<number>`count(*) filter (where ${realtimeCoordination.key} like ${getSseUserPattern(userId)} escape '\\')`,
       })
-      .from(rateLimits)
+      .from(realtimeCoordination)
       .where(
         and(
-          sql`${rateLimits.key} LIKE ${getSsePrefixPattern()} ESCAPE '\\'`,
-          gte(rateLimits.blockedUntil, nowMs),
+          sql`${realtimeCoordination.key} LIKE ${getSsePrefixPattern()} ESCAPE '\\'`,
+          gte(realtimeCoordination.expiresAt, nowMs),
         )
       );
 
@@ -135,14 +135,10 @@ export async function acquireSharedSseConnectionSlot({
       return { ok: false as const, reason: "tooManyConnections" as const };
     }
 
-    await tx.insert(rateLimits).values({
+    await tx.insert(realtimeCoordination).values({
       key,
-      attempts: 1,
-      windowStartedAt: nowMs,
-      blockedUntil: expiresAt,
-      consecutiveBlocks: 0,
-      lastAttempt: nowMs,
-      createdAt: nowMs,
+      expiresAt,
+      lastSeenAt: nowMs,
     });
 
     return { ok: true as const, key };
@@ -150,7 +146,7 @@ export async function acquireSharedSseConnectionSlot({
 }
 
 export async function releaseSharedSseConnectionSlot(connectionKey: string) {
-  await db.delete(rateLimits).where(eq(rateLimits.key, connectionKey));
+  await db.delete(realtimeCoordination).where(eq(realtimeCoordination.key, connectionKey));
 }
 
 export async function shouldRecordSharedHeartbeat({
@@ -172,44 +168,39 @@ export async function shouldRecordSharedHeartbeat({
 
   return withPgAdvisoryLock(key, async (tx) => {
     const [existing] = await tx
-      .select({ lastAttempt: rateLimits.lastAttempt })
-      .from(rateLimits)
-      .where(eq(rateLimits.key, key))
+      .select({ lastSeenAt: realtimeCoordination.lastSeenAt })
+      .from(realtimeCoordination)
+      .where(eq(realtimeCoordination.key, key))
       .limit(1);
 
-    if (existing && nowMs - existing.lastAttempt < minIntervalMs) {
+    if (existing && nowMs - existing.lastSeenAt < minIntervalMs) {
       return false;
     }
 
     if (existing) {
       await tx
-        .update(rateLimits)
+        .update(realtimeCoordination)
         .set({
-          lastAttempt: nowMs,
-          blockedUntil: nowMs + minIntervalMs,
-          windowStartedAt: nowMs,
+          lastSeenAt: nowMs,
+          expiresAt: nowMs + minIntervalMs,
         })
-        .where(eq(rateLimits.key, key));
+        .where(eq(realtimeCoordination.key, key));
     } else {
-      await tx.insert(rateLimits).values({
+      await tx.insert(realtimeCoordination).values({
         key,
-        attempts: 1,
-        windowStartedAt: nowMs,
-        blockedUntil: nowMs + minIntervalMs,
-        consecutiveBlocks: 0,
-        lastAttempt: nowMs,
-        createdAt: nowMs,
+        expiresAt: nowMs + minIntervalMs,
+        lastSeenAt: nowMs,
       });
     }
 
     // Cleanup stale heartbeat entries for this assignment to prevent
     // unbounded table growth. Entries older than one interval past their
     // expiration are safe to delete (the just-updated entry has
-    // blockedUntil = nowMs + minIntervalMs, so it is retained).
-    await tx.delete(rateLimits).where(
+    // expiresAt = nowMs + minIntervalMs, so it is retained).
+    await tx.delete(realtimeCoordination).where(
       and(
-        sql`${rateLimits.key} LIKE ${getHeartbeatPrefixPattern()} ESCAPE '\\'`,
-        lt(rateLimits.blockedUntil, nowMs - minIntervalMs),
+        sql`${realtimeCoordination.key} LIKE ${getHeartbeatPrefixPattern()} ESCAPE '\\'`,
+        lt(realtimeCoordination.expiresAt, nowMs - minIntervalMs),
       )
     );
 

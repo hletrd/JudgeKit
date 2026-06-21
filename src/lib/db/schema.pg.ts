@@ -653,6 +653,23 @@ export const rateLimits = pgTable(
   ]
 );
 
+// Ephemeral realtime coordination rows (SSE connection slots + heartbeat
+// dedup). Kept in a dedicated table rather than overloading `rate_limits`, so
+// the rate-limit eviction sweep can never evict an active SSE slot and the two
+// concerns stay independent.
+export const realtimeCoordination = pgTable(
+  "realtime_coordination",
+  {
+    key: text("key").primaryKey(),
+    expiresAt: bigint("expires_at", { mode: "number" }).notNull(),
+    lastSeenAt: bigint("last_seen_at", { mode: "number" }).notNull(),
+    createdAt: bigint("created_at", { mode: "number" }).$defaultFn(() => Date.now()),
+  },
+  (table) => [
+    index("realtime_coordination_expires_at_idx").on(table.expiresAt),
+  ]
+);
+
 export const submissionComments = pgTable(
   "submission_comments",
   {
