@@ -220,7 +220,7 @@ impl ApiClient {
         claim_token: &str,
         status: &str,
         compile_output: &str,
-        results: Vec<TestResult>,
+        results: &[TestResult],
         worker_secret: Option<&str>,
     ) -> Result<(), String> {
         let body = ResultReport {
@@ -228,7 +228,7 @@ impl ApiClient {
             claim_token,
             status,
             compile_output,
-            results,
+            results: std::borrow::Cow::Borrowed(results),
         };
 
         let response = self

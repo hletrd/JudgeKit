@@ -289,7 +289,9 @@ pub struct ResultReport<'a> {
     pub status: &'a str,
     #[serde(rename = "compileOutput")]
     pub compile_output: &'a str,
-    pub results: Vec<TestResult>,
+    // Borrowed so the retry loop can re-serialize without cloning the (possibly
+    // large) result vector on every attempt. Deserializes to an owned Vec.
+    pub results: std::borrow::Cow<'a, [TestResult]>,
 }
 
 #[derive(Debug, Clone, Serialize)]

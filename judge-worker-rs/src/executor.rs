@@ -471,7 +471,7 @@ async fn execute_inner(
                 &submission,
                 Verdict::CompileError.as_str(),
                 "Compilation timed out",
-                vec![],
+                &[],
                 worker_secret,
             )
             .await;
@@ -490,7 +490,7 @@ async fn execute_inner(
                 &submission,
                 Verdict::CompileError.as_str(),
                 output,
-                vec![],
+                &[],
                 worker_secret,
             )
             .await;
@@ -640,7 +640,7 @@ async fn execute_inner(
         &submission,
         &final_status,
         &compile_output,
-        results,
+        &results,
         worker_secret,
     )
     .await;
@@ -858,7 +858,7 @@ async fn report_error(
         &submission.claim_token,
         status,
         message,
-        vec![],
+        &[],
         worker_secret,
     )
     .await;
@@ -870,7 +870,7 @@ async fn report_result(
     submission: &Submission,
     status: &str,
     compile_output: &str,
-    results: Vec<TestResult>,
+    results: &[TestResult],
     worker_secret: Option<&str>,
 ) {
     report_with_retry(
@@ -903,7 +903,7 @@ async fn report_with_retry(
     claim_token: &str,
     status: &str,
     compile_output: &str,
-    results: Vec<TestResult>,
+    results: &[TestResult],
     worker_secret: Option<&str>,
 ) {
     for attempt in 0..3u32 {
@@ -913,7 +913,7 @@ async fn report_with_retry(
                 claim_token,
                 status,
                 compile_output,
-                results.clone(),
+                results,
                 worker_secret,
             )
             .await
@@ -995,7 +995,7 @@ async fn report_with_retry(
         submission_id,
         status,
         compile_output,
-        results: &results,
+        results,
         failed_at: failed_at.clone(),
     };
 
