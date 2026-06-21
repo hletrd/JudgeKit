@@ -43,10 +43,22 @@ impl ApiClient {
     }
 
     fn auth_header_for_worker(&self, worker_secret: Option<&str>) -> String {
-        format!(
-            "Bearer {}",
-            worker_secret.unwrap_or_else(|| self.auth_token.expose())
-        )
+        match worker_secret {
+            Some(secret) => format!("Bearer {secret}"),
+            None => {
+                // Falling back to the shared token is supported but worth
+                // surfacing once so an operator can notice a missing per-worker
+                // secret. Logged at most once per process to avoid per-request spam.
+                use std::sync::atomic::{AtomicBool, Ordering};
+                static WARNED: AtomicBool = AtomicBool::new(false);
+                if !WARNED.swap(true, Ordering::Relaxed) {
+                    tracing::warn!(
+                        "no per-worker secret available; falling back to shared auth token (logged once)"
+                    );
+                }
+                format!("Bearer {}", self.auth_token.expose())
+            }
+        }
     }
 
     /// Register this worker with the app server.
