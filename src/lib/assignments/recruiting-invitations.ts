@@ -585,7 +585,7 @@ export async function redeemRecruitingToken(
         }
 
         if (passwordResetRequired) {
-          const passwordValidationError = getPasswordValidationError(accountPassword);
+          const passwordValidationError = getPasswordValidationError(accountPassword, { username: existingUser.username, email: existingUser.email });
           if (passwordValidationError) {
             return { ok: false as const, error: passwordValidationError };
           }
@@ -696,7 +696,7 @@ export async function redeemRecruitingToken(
       // security-sensitive lookups, this should be increased to the default 21
       // chars (~126 bits). See C11-3.
       const username = nanoid(10);
-      const passwordValidationError = getPasswordValidationError(accountPassword);
+      const passwordValidationError = getPasswordValidationError(accountPassword, { username, email: invitation.candidateEmail ?? undefined });
       if (passwordValidationError) {
         // Do NOT increment the brute-force counter for password FORMAT
         // validation errors (too short, too long, weak password). These are

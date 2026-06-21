@@ -80,7 +80,7 @@ export const POST = createApiHandler({
     let passwordHash: string;
 
     if (password) {
-      const passwordResult = await validateAndHashPassword(password);
+      const passwordResult = await validateAndHashPassword(password, { username, email: normalizedEmail });
       if (passwordResult.error) {
         return apiError(passwordResult.error, 400);
       }

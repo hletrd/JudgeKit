@@ -238,7 +238,7 @@ describe("changePassword", () => {
     expect(mocks.recordAuditEvent).not.toHaveBeenCalled();
   });
 
-  it("calls getPasswordValidationError with just the new password (no context arg)", async () => {
+  it("calls getPasswordValidationError with the new password and the user's identity context", async () => {
     const { changePassword } = await import("@/lib/actions/change-password");
     setupAuthenticatedUser();
     mocks.verifyPassword.mockResolvedValue({ valid: true, needsRehash: false });
@@ -247,10 +247,12 @@ describe("changePassword", () => {
 
     await changePassword("correctpass", "StrongNewPass1");
 
-    // The optional context arg (username, email) was removed when the policy
-    // simplified to minimum-length-only — see AGENTS.md / password.ts. Guard
-    // against accidental reintroduction.
-    expect(mocks.getPasswordValidationError).toHaveBeenCalledWith("StrongNewPass1");
+    // The policy rejects passwords that embed the account's own username/email,
+    // so the user's identity is passed as context alongside the new password.
+    expect(mocks.getPasswordValidationError).toHaveBeenCalledWith("StrongNewPass1", {
+      username: "testuser",
+      email: "test@example.com",
+    });
     expect(mocks.getPasswordValidationError).toHaveBeenCalledTimes(1);
   });
 

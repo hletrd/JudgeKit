@@ -63,4 +63,57 @@ describe("isStrongPassword", () => {
   it("returns false for a password under 12 chars", () => {
     expect(isStrongPassword("Abc123abc")).toBe(false);
   });
+
+  it("returns false when the password contains the username", () => {
+    expect(isStrongPassword("xxmyusernamexx99", { username: "myusername" })).toBe(false);
+  });
+});
+
+describe("getPasswordValidationError identity rules", () => {
+  it("rejects a password that contains the username (case-insensitive)", () => {
+    expect(
+      getPasswordValidationError("XXMyUserNameXX99", { username: "myusername" })
+    ).toBe("passwordContainsUsername");
+  });
+
+  it("rejects a password equal to the username", () => {
+    expect(
+      getPasswordValidationError("longusername12", { username: "longusername12" })
+    ).toBe("passwordContainsUsername");
+  });
+
+  it("rejects a password that contains the email local-part", () => {
+    expect(
+      getPasswordValidationError("alicewonder-pw1", { email: "alice@example.com" })
+    ).toBe("passwordContainsEmail");
+  });
+
+  it("rejects a password that contains the full email address", () => {
+    expect(
+      getPasswordValidationError("x-alice@example.com-y", { email: "alice@example.com" })
+    ).toBe("passwordContainsEmail");
+  });
+
+  it("ignores an identity fragment shorter than 3 chars", () => {
+    expect(getPasswordValidationError("abxyzqwerty12", { username: "ab" })).toBeNull();
+  });
+
+  it("accepts a valid password that does not embed the identity", () => {
+    expect(
+      getPasswordValidationError("Kj7xMq9zN2pA", {
+        username: "alice",
+        email: "alice@example.com",
+      })
+    ).toBeNull();
+  });
+
+  it("applies the length check before the identity check", () => {
+    expect(getPasswordValidationError("alice", { username: "alice" })).toBe(
+      "passwordTooShort"
+    );
+  });
+
+  it("falls back to length-only validation when no context is given", () => {
+    expect(getPasswordValidationError("zlxkwmqjabcd")).toBeNull();
+  });
 });

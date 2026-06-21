@@ -4,7 +4,11 @@ import { db, type TransactionClient } from "@/lib/db";
 import { users } from "@/lib/db/schema";
 import { canManageRoleAsync, isUserRole } from "@/lib/security/constants";
 import { isValidRole, isSuperAdminRole } from "@/lib/capabilities/cache";
-import { getPasswordValidationError, type PasswordValidationError } from "@/lib/security/password";
+import {
+  getPasswordValidationError,
+  type PasswordValidationContext,
+  type PasswordValidationError,
+} from "@/lib/security/password";
 
 // ─── Uniqueness checks ────────────────────────────────────────────────────────
 
@@ -54,8 +58,9 @@ export async function isEmailTaken(
  */
 export async function validateAndHashPassword(
   password: string,
+  context?: PasswordValidationContext,
 ): Promise<{ hash: string; error?: never } | { error: PasswordValidationError; hash?: never }> {
-  const validationError = getPasswordValidationError(password);
+  const validationError = getPasswordValidationError(password, context);
   if (validationError) {
     return { error: validationError };
   }

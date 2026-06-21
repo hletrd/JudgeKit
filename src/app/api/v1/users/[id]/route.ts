@@ -237,7 +237,9 @@ async function applyPasswordUpdate(
   isSelf: boolean,
   targetRole: string,
   isAdminActor: boolean,
-  dbNow: Date
+  dbNow: Date,
+  found: ExistingUserRecord,
+  normalizedProfile: Record<string, unknown> | null
 ): Promise<ReturnType<typeof apiError> | null> {
   if (password === undefined) {
     return null;
@@ -259,7 +261,9 @@ async function applyPasswordUpdate(
     return apiError("passwordTooShort", 400);
   }
 
-  const passwordResult = await validateAndHashPassword(password);
+  const targetUsername = (normalizedProfile?.username as string | undefined) ?? found.username;
+  const targetEmail = (normalizedProfile?.email as string | undefined) ?? found.email;
+  const passwordResult = await validateAndHashPassword(password, { username: targetUsername, email: targetEmail });
 
   if (passwordResult.error) {
     return apiError(passwordResult.error, 400);
@@ -348,7 +352,9 @@ export const PATCH = createApiHandler({
       isSelf,
       found.role,
       isAdminActor,
-      dbNow
+      dbNow,
+      found,
+      normalizedProfile
     );
     if (passwordUpdateError) return passwordUpdateError;
 

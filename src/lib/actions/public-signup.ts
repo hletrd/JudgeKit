@@ -38,6 +38,8 @@ export type PublicSignupResult = {
     | "nameTooLong"
     | "emailTooLong"
     | "passwordTooLong"
+    | "passwordContainsUsername"
+    | "passwordContainsEmail"
     | "confirmPasswordRequired";
 };
 
@@ -123,7 +125,7 @@ export async function registerPublicUser(input: PublicSignupInput): Promise<Publ
     }
   }
 
-  const passwordResult = await validateAndHashPassword(password);
+  const passwordResult = await validateAndHashPassword(password, { username, email });
   if (passwordResult.error) {
     return { success: false, error: passwordResult.error };
   }
