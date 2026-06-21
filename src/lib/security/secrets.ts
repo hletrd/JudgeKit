@@ -38,7 +38,8 @@ export const EXPORT_ALWAYS_REDACT_COLUMNS: Record<string, Set<string>> = {
   sessions: new Set(["sessionToken"]),
   accounts: new Set(["refresh_token", "access_token", "id_token"]),
   apiKeys: new Set(["encryptedKey"]),
-  systemSettings: new Set(["hcaptchaSecret", "smtpPass"]),
+  systemSettings: new Set(["hcaptchaSecret"]),
+  smtpSettings: new Set(["smtpPass"]),
 };
 
 /**

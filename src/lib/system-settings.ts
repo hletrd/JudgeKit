@@ -2,7 +2,7 @@ import { cache } from "react";
 import { eq } from "drizzle-orm";
 import { DEFAULT_TIME_ZONE } from "@/lib/datetime";
 import { db } from "@/lib/db";
-import { systemSettings } from "@/lib/db/schema";
+import { systemSettings, smtpSettings, uiContentSettings } from "@/lib/db/schema";
 import type { PlatformMode } from "@/types";
 import {
   DEFAULT_PLATFORM_MODE,
@@ -88,26 +88,73 @@ export type SystemSettingsRecord = {
   communityDownvoteEnabled?: boolean | null;
 };
 
-export async function getSystemSettings(): Promise<SystemSettingsRecord | undefined> {
+async function getSmtpSettingsRow() {
   try {
-    return await db.query.systemSettings.findFirst({
-      where: eq(systemSettings.id, GLOBAL_SETTINGS_ID),
+    return await db.query.smtpSettings.findFirst({
+      where: eq(smtpSettings.id, GLOBAL_SETTINGS_ID),
     });
   } catch {
-    // Fallback: query without new columns (migration may not have run yet).
-    // Construct a full SystemSettingsRecord by spreading the partial result
-    // with explicit null for missing fields — never cast a partial select
-    // to the full type.
+    // Table may not exist yet (migration lag). SMTP fields degrade to null.
+    return undefined;
+  }
+}
+
+async function getUiContentSettingsRow() {
+  try {
+    return await db.query.uiContentSettings.findFirst({
+      where: eq(uiContentSettings.id, GLOBAL_SETTINGS_ID),
+    });
+  } catch {
+    // Table may not exist yet (migration lag). UI content degrades to null.
+    return undefined;
+  }
+}
+
+/**
+ * Merge the SMTP and UI-content domain tables onto a base system_settings row,
+ * preserving the flat SystemSettingsRecord shape that callers depend on. The
+ * SMTP config and UI content were split out of the system_settings god-table
+ * but the read facade stays identical.
+ */
+function mergeDomainSettings(
+  base: Record<string, unknown>,
+  smtp: Awaited<ReturnType<typeof getSmtpSettingsRow>>,
+  ui: Awaited<ReturnType<typeof getUiContentSettingsRow>>,
+): SystemSettingsRecord {
+  return {
+    ...(base as SystemSettingsRecord),
+    smtpHost: smtp?.smtpHost ?? null,
+    smtpPort: smtp?.smtpPort ?? null,
+    smtpSecure: smtp?.smtpSecure ?? null,
+    smtpUser: smtp?.smtpUser ?? null,
+    smtpPass: smtp?.smtpPass ?? null,
+    smtpFrom: smtp?.smtpFrom ?? null,
+    emailVerificationRequired: smtp?.emailVerificationRequired ?? null,
+    homePageContent: ui?.homePageContent ?? null,
+    footerContent: ui?.footerContent ?? null,
+  };
+}
+
+export async function getSystemSettings(): Promise<SystemSettingsRecord | undefined> {
+  const [smtp, ui] = await Promise.all([getSmtpSettingsRow(), getUiContentSettingsRow()]);
+
+  try {
+    const base = await db.query.systemSettings.findFirst({
+      where: eq(systemSettings.id, GLOBAL_SETTINGS_ID),
+    });
+    if (!base) return undefined;
+    return mergeDomainSettings(base, smtp, ui);
+  } catch {
+    // Fallback: query without new columns (a migration may not have run yet).
     const rows = await db
       .select({
         id: systemSettings.id,
         siteTitle: systemSettings.siteTitle,
         siteDescription: systemSettings.siteDescription,
+        siteIconUrl: systemSettings.siteIconUrl,
         timeZone: systemSettings.timeZone,
         updatedAt: systemSettings.updatedAt,
         aiAssistantEnabled: systemSettings.aiAssistantEnabled,
-        homePageContent: systemSettings.homePageContent,
-        footerContent: systemSettings.footerContent,
       })
       .from(systemSettings)
       .where(eq(systemSettings.id, GLOBAL_SETTINGS_ID))
@@ -116,59 +163,9 @@ export async function getSystemSettings(): Promise<SystemSettingsRecord | undefi
     const partial = rows[0];
     if (!partial) return undefined;
 
-    return {
-      id: partial.id,
-      siteTitle: partial.siteTitle,
-      siteDescription: partial.siteDescription,
-      siteIconUrl: null,
-      timeZone: partial.timeZone,
-      platformMode: null,
-      aiAssistantEnabled: partial.aiAssistantEnabled,
-      allowAiAssistantInRestrictedModes: null,
-      allowStandaloneCompilerInRestrictedModes: null,
-      publicSignupEnabled: null,
-      signupHcaptchaEnabled: null,
-      hcaptchaSiteKey: null,
-      hcaptchaSecret: null,
-      defaultLanguage: null,
-      defaultLocale: null,
-      updatedAt: partial.updatedAt,
-      allowedHosts: null,
-      homePageContent: partial.homePageContent ?? null,
-      footerContent: partial.footerContent ?? null,
-      loginRateLimitMaxAttempts: null,
-      loginRateLimitWindowMs: null,
-      loginRateLimitBlockMs: null,
-      apiRateLimitMax: null,
-      apiRateLimitWindowMs: null,
-      submissionRateLimitMaxPerMinute: null,
-      submissionMaxPending: null,
-      submissionGlobalQueueLimit: null,
-      defaultTimeLimitMs: null,
-      defaultMemoryLimitMb: null,
-      maxSourceCodeSizeBytes: null,
-      staleClaimTimeoutMs: null,
-      sessionMaxAgeSeconds: null,
-      minPasswordLength: null,
-      defaultPageSize: null,
-      maxSseConnectionsPerUser: null,
-      ssePollIntervalMs: null,
-      sseTimeoutMs: null,
-      compilerTimeLimitMs: null,
-      uploadMaxImageSizeBytes: null,
-      uploadMaxFileSizeBytes: null,
-      uploadMaxImageDimension: null,
-      uploadMaxZipDecompressedSizeBytes: null,
-      smtpHost: null,
-      smtpPort: null,
-      smtpSecure: null,
-      smtpUser: null,
-      smtpPass: null,
-      smtpFrom: null,
-      emailVerificationRequired: null,
-      communityUpvoteEnabled: null,
-      communityDownvoteEnabled: null,
-    };
+    // Remaining fields are optional on SystemSettingsRecord; absent values are
+    // treated identically to null by callers (they all read with `?? default`).
+    return mergeDomainSettings(partial, smtp, ui);
   }
 }
 

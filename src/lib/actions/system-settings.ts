@@ -5,7 +5,7 @@ import { auth } from "@/lib/auth";
 import { buildServerActionAuditContext, recordAuditEvent } from "@/lib/audit/events";
 import { resolveCapabilities } from "@/lib/capabilities/cache";
 import { db } from "@/lib/db";
-import { systemSettings } from "@/lib/db/schema";
+import { systemSettings, smtpSettings, uiContentSettings } from "@/lib/db/schema";
 import { DEFAULT_PLATFORM_MODE, GLOBAL_SETTINGS_ID } from "@/lib/system-settings";
 import { invalidateSettingsCache } from "@/lib/system-settings-config";
 import { isHcaptchaConfigured } from "@/lib/security/hcaptcha";
@@ -222,16 +222,63 @@ export async function updateSystemSettings(
     baseValues.allowedHosts = allowedHosts.length > 0 ? JSON.stringify(allowedHosts) : null;
   }
 
-  await db
-    .insert(systemSettings)
-    .values({
-      id: GLOBAL_SETTINGS_ID,
-      ...baseValues,
-    })
-    .onConflictDoUpdate({
-      target: systemSettings.id,
-      set: baseValues,
-    });
+  // SMTP config and UI content live in their own domain tables (split out of
+  // the system_settings god-table). Partition the change set by destination
+  // table, then upsert each in a single transaction so a partial write can't
+  // leave the three rows inconsistent.
+  const SMTP_KEYS = new Set([
+    "smtpHost",
+    "smtpPort",
+    "smtpSecure",
+    "smtpUser",
+    "smtpPass",
+    "smtpFrom",
+    "emailVerificationRequired",
+  ]);
+  const UI_CONTENT_KEYS = new Set(["homePageContent", "footerContent"]);
+
+  const updatedAt = baseValues.updatedAt as Date;
+  const systemValues: Record<string, unknown> = {};
+  const smtpValues: Record<string, unknown> = {};
+  const uiValues: Record<string, unknown> = {};
+  for (const [key, value] of Object.entries(baseValues)) {
+    if (key === "updatedAt") continue;
+    if (SMTP_KEYS.has(key)) smtpValues[key] = value;
+    else if (UI_CONTENT_KEYS.has(key)) uiValues[key] = value;
+    else systemValues[key] = value;
+  }
+
+  await db.transaction(async (tx) => {
+    // Always upsert system_settings so the global anchor row exists and its
+    // updatedAt is bumped, matching the pre-split behavior.
+    await tx
+      .insert(systemSettings)
+      .values({ id: GLOBAL_SETTINGS_ID, ...systemValues, updatedAt })
+      .onConflictDoUpdate({
+        target: systemSettings.id,
+        set: { ...systemValues, updatedAt },
+      });
+
+    if (Object.keys(smtpValues).length > 0) {
+      await tx
+        .insert(smtpSettings)
+        .values({ id: GLOBAL_SETTINGS_ID, ...smtpValues, updatedAt })
+        .onConflictDoUpdate({
+          target: smtpSettings.id,
+          set: { ...smtpValues, updatedAt },
+        });
+    }
+
+    if (Object.keys(uiValues).length > 0) {
+      await tx
+        .insert(uiContentSettings)
+        .values({ id: GLOBAL_SETTINGS_ID, ...uiValues, updatedAt })
+        .onConflictDoUpdate({
+          target: uiContentSettings.id,
+          set: { ...uiValues, updatedAt },
+        });
+    }
+  });
 
   invalidateSettingsCache();
 

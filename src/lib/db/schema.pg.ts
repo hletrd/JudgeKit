@@ -599,7 +599,37 @@ export const systemSettings = pgTable("system_settings", {
   defaultLocale: text("default_locale"),
   // Allowed Hosts (JSON array of domain strings)
   allowedHosts: text("allowed_hosts"),
-  // Home Page Content (locale-keyed JSON overrides for jumbotron + section cards)
+  // Community discussion knobs — let an operator dial down voting without
+  // disabling the board entirely. Defaults preserve current behavior.
+  communityUpvoteEnabled: boolean("community_upvote_enabled").notNull().default(true),
+  communityDownvoteEnabled: boolean("community_downvote_enabled").notNull().default(true),
+  updatedAt: timestamp("updated_at", { withTimezone: true })
+    .notNull()
+    .$defaultFn(() => new Date()),
+});
+
+// SMTP configuration, split out of the system_settings god-table into its own
+// domain table. Single global row (id = "global"). emailVerificationRequired
+// lives here as an email-domain concern.
+export const smtpSettings = pgTable("smtp_settings", {
+  id: text("id").primaryKey().default("global"),
+  smtpHost: text("smtp_host"),
+  smtpPort: integer("smtp_port"),
+  smtpSecure: boolean("smtp_secure").notNull().default(false),
+  smtpUser: text("smtp_user"),
+  // Stored encrypted via src/lib/security/encryption.ts — never write plaintext.
+  smtpPass: text("smtp_pass"),
+  smtpFrom: text("smtp_from"),
+  emailVerificationRequired: boolean("email_verification_required").notNull().default(false),
+  updatedAt: timestamp("updated_at", { withTimezone: true })
+    .notNull()
+    .$defaultFn(() => new Date()),
+});
+
+// Locale-keyed UI content overrides (home page jumbotron/cards + footer),
+// split out of the system_settings god-table. Single global row (id = "global").
+export const uiContentSettings = pgTable("ui_content_settings", {
+  id: text("id").primaryKey().default("global"),
   homePageContent: jsonb("home_page_content").$type<Record<string, {
     eyebrow?: string;
     title?: string;
@@ -611,23 +641,10 @@ export const systemSettings = pgTable("system_settings", {
       community?: { title?: string; description?: string };
     };
   }>>(),
-  // Footer Content (locale-keyed JSON overrides for copyright text and custom links)
   footerContent: jsonb("footer_content").$type<Record<string, {
     copyrightText?: string;
     links?: { label: string; url: string }[];
   }>>(),
-  // SMTP Configuration
-  smtpHost: text("smtp_host"),
-  smtpPort: integer("smtp_port"),
-  smtpSecure: boolean("smtp_secure").notNull().default(false),
-  smtpUser: text("smtp_user"),
-  smtpPass: text("smtp_pass"),
-  smtpFrom: text("smtp_from"),
-  emailVerificationRequired: boolean("email_verification_required").notNull().default(false),
-  // Community discussion knobs — let an operator dial down voting without
-  // disabling the board entirely. Defaults preserve current behavior.
-  communityUpvoteEnabled: boolean("community_upvote_enabled").notNull().default(true),
-  communityDownvoteEnabled: boolean("community_downvote_enabled").notNull().default(true),
   updatedAt: timestamp("updated_at", { withTimezone: true })
     .notNull()
     .$defaultFn(() => new Date()),

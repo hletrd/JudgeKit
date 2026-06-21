@@ -6,6 +6,10 @@ const mocks = vi.hoisted(() => {
   return {
     // db.query.systemSettings.findFirst
     dbQuerySystemSettingsFindFirst: vi.fn(),
+    // db.query.smtpSettings.findFirst / db.query.uiContentSettings.findFirst
+    // (SMTP + UI content were split out of the system_settings god-table).
+    dbQuerySmtpSettingsFindFirst: vi.fn(),
+    dbQueryUiContentSettingsFindFirst: vi.fn(),
 
     // db.select chain
     dbSelectFrom: vi.fn(),
@@ -37,10 +41,14 @@ vi.mock("@/lib/db/schema", () => ({
     id: "systemSettings.id",
     siteTitle: "systemSettings.siteTitle",
     siteDescription: "systemSettings.siteDescription",
+    siteIconUrl: "systemSettings.siteIconUrl",
     timeZone: "systemSettings.timeZone",
     platformMode: "systemSettings.platformMode",
+    aiAssistantEnabled: "systemSettings.aiAssistantEnabled",
     updatedAt: "systemSettings.updatedAt",
   },
+  smtpSettings: { id: "smtpSettings.id" },
+  uiContentSettings: { id: "uiContentSettings.id" },
 }));
 
 vi.mock("@/lib/db", () => ({
@@ -48,6 +56,12 @@ vi.mock("@/lib/db", () => ({
     query: {
       systemSettings: {
         findFirst: (...args: unknown[]) => mocks.dbQuerySystemSettingsFindFirst(...args),
+      },
+      smtpSettings: {
+        findFirst: (...args: unknown[]) => mocks.dbQuerySmtpSettingsFindFirst(...args),
+      },
+      uiContentSettings: {
+        findFirst: (...args: unknown[]) => mocks.dbQueryUiContentSettingsFindFirst(...args),
       },
     },
     select: vi.fn(() => ({
@@ -72,6 +86,12 @@ vi.mock("@/lib/db", () => ({
 
 beforeEach(() => {
   vi.clearAllMocks();
+  // clearAllMocks resets call history but NOT mockResolvedValue on vi.fn()s,
+  // so reset the per-table findFirst mocks to avoid one test's resolved value
+  // leaking into the next (the merge test sets SMTP/UI return values).
+  mocks.dbQuerySystemSettingsFindFirst.mockReset();
+  mocks.dbQuerySmtpSettingsFindFirst.mockReset();
+  mocks.dbQueryUiContentSettingsFindFirst.mockReset();
 });
 
 afterEach(() => {
@@ -107,7 +127,20 @@ describe("getSystemSettings", () => {
     mocks.dbQuerySystemSettingsFindFirst.mockResolvedValue(fakeSettings);
 
     const result = await getSystemSettings();
-    expect(result).toEqual(fakeSettings);
+    // SMTP + UI content now come from their own tables (absent here → null),
+    // merged onto the base system_settings row.
+    expect(result).toEqual({
+      ...fakeSettings,
+      smtpHost: null,
+      smtpPort: null,
+      smtpSecure: null,
+      smtpUser: null,
+      smtpPass: null,
+      smtpFrom: null,
+      emailVerificationRequired: null,
+      homePageContent: null,
+      footerContent: null,
+    });
     expect(mocks.dbQuerySystemSettingsFindFirst).toHaveBeenCalledOnce();
   });
 
@@ -125,49 +158,16 @@ describe("getSystemSettings", () => {
     mocks.dbSelectFromWhereLimit.mockResolvedValue([fakeRow]);
 
     const result = await getSystemSettings();
+    // The fallback returns the base columns it could read, merged with the
+    // SMTP + UI-content domain tables (absent here → null). Other optional
+    // fields are absent; callers read them with `?? default`.
     expect(result).toEqual({
       id: "global",
       siteTitle: "Fallback Site",
       siteDescription: "Fallback desc",
-      siteIconUrl: null,
       timeZone: "America/New_York",
-      platformMode: null,
-      aiAssistantEnabled: true,
-      allowAiAssistantInRestrictedModes: null,
-      allowStandaloneCompilerInRestrictedModes: null,
-      publicSignupEnabled: null,
-      signupHcaptchaEnabled: null,
-      hcaptchaSiteKey: null,
-      hcaptchaSecret: null,
-      defaultLanguage: null,
-      defaultLocale: null,
       updatedAt: fakeRow.updatedAt,
-      allowedHosts: null,
-      homePageContent: null,
-      footerContent: null,
-      loginRateLimitMaxAttempts: null,
-      loginRateLimitWindowMs: null,
-      loginRateLimitBlockMs: null,
-      apiRateLimitMax: null,
-      apiRateLimitWindowMs: null,
-      submissionRateLimitMaxPerMinute: null,
-      submissionMaxPending: null,
-      submissionGlobalQueueLimit: null,
-      defaultTimeLimitMs: null,
-      defaultMemoryLimitMb: null,
-      maxSourceCodeSizeBytes: null,
-      staleClaimTimeoutMs: null,
-      sessionMaxAgeSeconds: null,
-      minPasswordLength: null,
-      defaultPageSize: null,
-      maxSseConnectionsPerUser: null,
-      ssePollIntervalMs: null,
-      sseTimeoutMs: null,
-      compilerTimeLimitMs: null,
-      uploadMaxImageSizeBytes: null,
-      uploadMaxFileSizeBytes: null,
-      uploadMaxImageDimension: null,
-      uploadMaxZipDecompressedSizeBytes: null,
+      aiAssistantEnabled: true,
       smtpHost: null,
       smtpPort: null,
       smtpSecure: null,
@@ -175,10 +175,48 @@ describe("getSystemSettings", () => {
       smtpPass: null,
       smtpFrom: null,
       emailVerificationRequired: null,
-      communityUpvoteEnabled: null,
-      communityDownvoteEnabled: null,
+      homePageContent: null,
+      footerContent: null,
     });
     expect(mocks.dbSelectFromWhereLimit).toHaveBeenCalledWith(1);
+  });
+
+  it("merges SMTP and UI content from their own tables", async () => {
+    const { getSystemSettings } = await import("@/lib/system-settings");
+    mocks.dbQuerySystemSettingsFindFirst.mockResolvedValue({
+      id: "global",
+      siteTitle: "Site",
+      updatedAt: new Date("2025-01-01"),
+    });
+    mocks.dbQuerySmtpSettingsFindFirst.mockResolvedValue({
+      id: "global",
+      smtpHost: "smtp.example.com",
+      smtpPort: 587,
+      smtpSecure: true,
+      smtpUser: "mailer",
+      smtpPass: "enc:secret",
+      smtpFrom: "no-reply@example.com",
+      emailVerificationRequired: true,
+    });
+    mocks.dbQueryUiContentSettingsFindFirst.mockResolvedValue({
+      id: "global",
+      homePageContent: { en: { title: "Welcome" } },
+      footerContent: { en: { copyrightText: "© Example" } },
+    });
+
+    const result = await getSystemSettings();
+    expect(result).toMatchObject({
+      siteTitle: "Site",
+      smtpHost: "smtp.example.com",
+      smtpPort: 587,
+      smtpSecure: true,
+      smtpUser: "mailer",
+      smtpPass: "enc:secret",
+      smtpFrom: "no-reply@example.com",
+      emailVerificationRequired: true,
+      homePageContent: { en: { title: "Welcome" } },
+      footerContent: { en: { copyrightText: "© Example" } },
+    });
   });
 
   it("returns undefined when fallback select returns no rows", async () => {
