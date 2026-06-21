@@ -426,7 +426,7 @@ export const POST = createApiHandler({
           "Transfer-Encoding": "chunked",
           "X-Chat-Session-Id": sessionId,
         },
-      }) as unknown as NextResponse;
+      });
     }
 
     // Tool-calling agent loop
@@ -548,6 +548,6 @@ export const POST = createApiHandler({
         "Transfer-Encoding": "chunked",
         "X-Chat-Session-Id": sessionId,
       },
-    }) as unknown as NextResponse;
+    });
   },
 });
