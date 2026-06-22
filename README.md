@@ -291,7 +291,7 @@ The client uses `GET /api/v1/time` to align its clock with the database server b
 - [Deployment Guide](docs/deployment.md) — provisioning, deploy scripts, nginx, post-deploy checks
 - [Deployment Automation](docs/deployment-automation.md) — current production deploy baseline, CI verification path, and CD status
 - [Monitoring & Alerting](docs/monitoring.md) — health surfaces, metrics, and minimum operator alerting guidance
-- [Authentication](docs/authentication.md) — sign-in flow, cookie architecture, API smoke test
+- [Authentication](docs/authentication.md) — sign-in flow, session token & cookie architecture, password policy, API smoke test
 - [Admin Security Operations](docs/admin-security-operations.md) — lockout policy, MFA/SSO integration guidance, and dependency scanning baseline
 - [Languages](docs/languages.md) — all 125 variants, Docker image presets, admin management
 - [Judge Workers](docs/judge-workers.md) — multi-worker architecture, registration, deployment
