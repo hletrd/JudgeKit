@@ -42,8 +42,6 @@ const NO_RETENTION_ALLOWLIST: Record<string, string> = {
   judgeWorkers: "fleet registry; rows removed via deregister/admin delete",
   languageConfigs: "configuration, bounded by the language registry size",
   systemSettings: "singleton configuration",
-  smtpSettings: "singleton configuration (SMTP), split out of systemSettings",
-  uiContentSettings: "singleton configuration (UI content), split out of systemSettings",
   realtimeCoordination: "ephemeral SSE connection/heartbeat coordination; rows self-expire and are cleaned inline",
   rateLimits: "self-expiring window state keyed for reuse; bounded by active key cardinality",
   submissionComments: "grading/feedback record; must live as long as the submission story",

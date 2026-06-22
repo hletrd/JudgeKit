@@ -190,8 +190,6 @@ export const TABLE_ORDER: { name: string; table: PgTable; orderColumns: string[]
   { name: "roles", table: schema.roles, orderColumns: ["id"] },
   { name: "tags", table: schema.tags, orderColumns: ["id"] },
   { name: "systemSettings", table: schema.systemSettings, orderColumns: ["id"] },
-  { name: "smtpSettings", table: schema.smtpSettings, orderColumns: ["id"] },
-  { name: "uiContentSettings", table: schema.uiContentSettings, orderColumns: ["id"] },
   { name: "judgeWorkers", table: schema.judgeWorkers, orderColumns: ["id"] },
   { name: "languageConfigs", table: schema.languageConfigs, orderColumns: ["id"] },
   { name: "plugins", table: schema.plugins, orderColumns: ["id"] },

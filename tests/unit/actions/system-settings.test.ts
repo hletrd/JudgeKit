@@ -67,8 +67,6 @@ vi.mock("next/cache", () => ({
 
 vi.mock("@/lib/db/schema", () => ({
   systemSettings: { id: "systemSettings.id" },
-  smtpSettings: { id: "smtpSettings.id" },
-  uiContentSettings: { id: "uiContentSettings.id" },
 }));
 
 vi.mock("@/lib/validators/system-settings", async () => {
@@ -78,30 +76,21 @@ vi.mock("@/lib/validators/system-settings", async () => {
   return actual;
 });
 
-vi.mock("@/lib/db", () => {
-  const makeInsertChain = () => ({
-    values: vi.fn((...args: unknown[]) => {
-      mocks.dbInsertValues(...args);
-      return {
-        onConflictDoUpdate: vi.fn((...opts: unknown[]) => {
-          mocks.dbInsertOnConflictDoUpdate(...opts);
-          return Promise.resolve();
-        }),
-      };
-    }),
-  });
-  return {
-    db: {
-      insert: vi.fn(() => makeInsertChain()),
-      // The write path now fans SMTP + UI content out to their own tables in a
-      // single transaction. Mock tx with the same insert chain so every insert
-      // (system_settings, smtp_settings, ui_content_settings) is captured.
-      transaction: vi.fn(async (cb: (tx: { insert: () => ReturnType<typeof makeInsertChain> }) => Promise<unknown>) =>
-        cb({ insert: vi.fn(() => makeInsertChain()) })
-      ),
-    },
-  };
-});
+vi.mock("@/lib/db", () => ({
+  db: {
+    insert: vi.fn(() => ({
+      values: vi.fn((...args: unknown[]) => {
+        mocks.dbInsertValues(...args);
+        return {
+          onConflictDoUpdate: vi.fn((...opts: unknown[]) => {
+            mocks.dbInsertOnConflictDoUpdate(...opts);
+            return Promise.resolve();
+          }),
+        };
+      }),
+    })),
+  },
+}));
 
 vi.mock("@/lib/db-time", () => ({
   getDbNowUncached: vi.fn().mockResolvedValue(new Date("2026-04-20T12:00:00Z")),
@@ -352,14 +341,10 @@ describe("updateSystemSettings", () => {
     });
     expect(result).toEqual({ success: true });
 
-    // The encrypted values ARE stored in their DB columns (not redacted there).
-    // SMTP config lives in its own table now, so smtpPass and hcaptchaSecret
-    // land in separate inserts within the transaction.
-    const insertCalls = mocks.dbInsertValues.mock.calls.map((c) => c[0] as Record<string, unknown>);
-    const smtpInsert = insertCalls.find((v) => "smtpPass" in v);
-    const systemInsert = insertCalls.find((v) => "hcaptchaSecret" in v);
-    expect(smtpInsert?.smtpPass).toBe("enc:super-secret-smtp-password");
-    expect(systemInsert?.hcaptchaSecret).toBe("enc:super-secret-hcaptcha-key");
+    // The encrypted value IS stored in the DB column (not redacted there).
+    const insertedValues = mocks.dbInsertValues.mock.calls.at(-1)?.[0] as Record<string, unknown>;
+    expect(insertedValues.smtpPass).toBe("enc:super-secret-smtp-password");
+    expect(insertedValues.hcaptchaSecret).toBe("enc:super-secret-hcaptcha-key");
 
     // The audit log MUST mask both secrets and never leak the plaintext or the
     // ciphertext.

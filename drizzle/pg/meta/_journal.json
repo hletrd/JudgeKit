@@ -246,13 +246,6 @@
       "when": 1782058695587,
       "tag": "0034_noisy_justin_hammer",
       "breakpoints": true
-    },
-    {
-      "idx": 35,
-      "version": "7",
-      "when": 1782059410764,
-      "tag": "0035_panoramic_thunderbolts",
-      "breakpoints": true
     }
   ]
 }
