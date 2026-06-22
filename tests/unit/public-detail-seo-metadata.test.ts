@@ -106,6 +106,18 @@ vi.mock("@/lib/discussions/permissions", () => ({
   canModerateDiscussions: vi.fn(async () => false),
 }));
 
+// generateMetadata needs none of the page-body UI components, but importing the
+// problem page module transforms their entire dependency graph (react-markdown,
+// CodeMirror, KaTeX, discussion widgets), which made this metadata test take
+// ~60s. Mock the heavy components so the import stays cheap.
+vi.mock("@/app/(public)/_components/public-problem-detail", () => ({ PublicProblemDetail: () => null }));
+vi.mock("@/components/assistant-markdown", () => ({ AssistantMarkdown: () => null }));
+vi.mock("@/components/problem/public-quick-submit", () => ({ PublicQuickSubmit: () => null }));
+vi.mock("@/components/problem/accepted-solutions", () => ({ AcceptedSolutions: () => null }));
+vi.mock("@/components/discussions/discussion-thread-form", () => ({ DiscussionThreadForm: () => null }));
+vi.mock("@/components/discussions/discussion-thread-list", () => ({ DiscussionThreadList: () => null }));
+vi.mock("@/components/discussions/discussion-vote-buttons", () => ({ DiscussionVoteButtons: () => null }));
+
 describe("public detail page SEO metadata", () => {
   const METADATA_TEST_TIMEOUT_MS = 30_000;
 

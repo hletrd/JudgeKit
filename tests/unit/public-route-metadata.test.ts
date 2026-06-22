@@ -66,7 +66,7 @@ describe("public personal-route metadata", () => {
     vi.clearAllMocks();
   });
 
-  it("marks the submissions index as noindex", { timeout: 15000 }, async () => {
+  it("marks the submissions index as noindex", async () => {
     const submissionsPage = await import("@/app/(public)/submissions/page");
     const metadata = await submissionsPage.generateMetadata();
 
@@ -77,7 +77,7 @@ describe("public personal-route metadata", () => {
     });
   });
 
-  it("marks submission detail pages as noindex", { timeout: 15000 }, async () => {
+  it("marks submission detail pages as noindex", async () => {
     const submissionDetailPage = await import("@/app/(public)/submissions/[id]/page");
     const metadata = await submissionDetailPage.generateMetadata();
 
