@@ -13,13 +13,15 @@ describe("Playwright profile configuration", () => {
     expect(config).toContain("process.env.PLAYWRIGHT_PROFILE");
   });
 
-  it("profile 'smoke' maps to remoteSafeSpecs only", () => {
-    expect(config).toContain('profile === "smoke" ? remoteSafeSpecs : undefined');
+  it("profile 'smoke' maps to the remote-safe allowlist only", () => {
+    expect(config).toContain('profile === "smoke"');
+    expect(config).toContain('remoteSafeSpecsWithAuth');
   });
 
   it("profile 'full' runs all specs (testMatch is undefined)", () => {
     // When profile is not "smoke", testMatch resolves to undefined (no filter)
-    expect(config).toContain('profile === "smoke" ? remoteSafeSpecs : undefined');
+    expect(config).toContain('profile === "smoke"');
+    expect(config).toContain(": undefined");
     // The undefined branch is the full profile — verify the variable is used as testMatch
     expect(config).toContain("testMatch,");
   });
@@ -43,8 +45,10 @@ describe("Playwright profile configuration", () => {
   it("destructive specs are excluded from the remoteSafeSpecs allowlist", () => {
     // Extract only the remoteSafeSpecs array body to avoid false positives
     // from comments or other references elsewhere in the file.
-    const arrayMatch = config.match(/const remoteSafeSpecs\s*=\s*\[([\s\S]*?)\];/);
-    expect(arrayMatch, "remoteSafeSpecs array not found").toBeTruthy();
+    // remoteSafeSpecsWithoutAuth is derived (filtered) from remoteSafeSpecsWithAuth,
+    // so checking the superset allowlist is sufficient for destructive-spec exclusion.
+    const arrayMatch = config.match(/const remoteSafeSpecsWithAuth\s*=\s*\[([\s\S]*?)\];/);
+    expect(arrayMatch, "remoteSafeSpecsWithAuth array not found").toBeTruthy();
     const arrayBody = arrayMatch![1];
 
     expect(arrayBody).not.toContain("admin-users.spec.ts");

@@ -12,7 +12,13 @@ describe("deployment security defaults", () => {
 
     expect(deployDocker).toContain("StrictHostKeyChecking=accept-new");
     expect(deployDocker).toContain("remote_sudo()");
-    expect(deployDocker).toContain('SSHPASS="$SSH_PASSWORD" rsync -s -e "sshpass -e ssh $SSH_OPTS"');
+    // rsync authenticates via the SSHPASS env var (never the password on the
+    // command line) over `sshpass -e ssh`, and protects args. The remote_rsync()
+    // helper selects --protect-args when the local rsync supports it and falls
+    // back gracefully for legacy rsync.
+    expect(deployDocker).toContain('SSHPASS="$SSH_PASSWORD" rsync');
+    expect(deployDocker).toContain('-e "sshpass -e ssh $SSH_OPTS"');
+    expect(deployDocker).toContain("--protect-args");
     expect(deployDocker).not.toContain("echo '${SSH_PASSWORD}' | sudo -S");
     expect(deployDocker).not.toContain(".env.dbcreds");
     expect(deployDocker).toContain("-e POSTGRES_PASSWORD -e PGPASSWORD -e DATABASE_URL");
