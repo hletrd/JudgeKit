@@ -1,0 +1,2 @@
+CREATE INDEX "submissions_queue_claim_idx" ON "submissions" USING btree ("status","submitted_at","id");--> statement-breakpoint
+CREATE INDEX "submissions_stale_claim_idx" ON "submissions" USING btree ("status","judge_claimed_at","submitted_at","id");

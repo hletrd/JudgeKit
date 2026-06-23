@@ -506,6 +506,13 @@ export const submissions = pgTable(
     index("submissions_assignment_idx").on(table.assignmentId),
     index("submissions_judge_worker_idx").on(table.judgeWorkerId),
     index("submissions_submitted_at_idx").on(table.submittedAt),
+    index("submissions_queue_claim_idx").on(table.status, table.submittedAt, table.id),
+    index("submissions_stale_claim_idx").on(
+      table.status,
+      table.judgeClaimedAt,
+      table.submittedAt,
+      table.id,
+    ),
     index("submissions_leaderboard_idx").on(table.assignmentId, table.userId, table.submittedAt),
     // Supports the data-retention DELETE: WHERE submittedAt < ? AND status NOT IN (...)
     // Placing submittedAt first lets the retention cutoff use the leading column.

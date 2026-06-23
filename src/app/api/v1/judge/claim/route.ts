@@ -300,7 +300,7 @@ export async function POST(request: NextRequest) {
       request,
     });
 
-    const problem = await db.query.problems.findFirst({
+    const problemPromise = db.query.problems.findFirst({
       where: eq(problems.id, claimed.problemId),
       columns: {
         timeLimitMs: true,
@@ -313,17 +313,7 @@ export async function POST(request: NextRequest) {
       },
     });
 
-    if (!problem) {
-      // Reset the submission to pending so it doesn't get stuck in a
-      // claim-failure loop. The claim fields are cleared so another worker
-      // can pick it up if the problem reappears, or an admin can investigate.
-      await releaseClaimedSubmission(claimed.id, claimToken, workerId);
-
-      return apiError("problemNotFound", 422);
-    }
-
-    // Fetch test cases for the problem
-    const cases = await db
+    const casesPromise = db
       .select({
         id: testCases.id,
         input: testCases.input,
@@ -335,7 +325,7 @@ export async function POST(request: NextRequest) {
       .where(eq(testCases.problemId, claimed.problemId))
       .orderBy(asc(testCases.sortOrder));
 
-    const [langConfig] = await db
+    const langConfigPromise = db
       .select({
         dockerImage: languageConfigs.dockerImage,
         compileCommand: languageConfigs.compileCommand,
@@ -345,6 +335,30 @@ export async function POST(request: NextRequest) {
       .from(languageConfigs)
       .where(eq(languageConfigs.language, claimed.language))
       .limit(1);
+
+    const assignmentPromise = claimed.assignmentId
+      ? db
+          .select({ scoringModel: assignments.scoringModel })
+          .from(assignments)
+          .where(eq(assignments.id, claimed.assignmentId))
+          .limit(1)
+      : Promise.resolve([]);
+
+    const [problem, cases, [langConfig], [assignment]] = await Promise.all([
+      problemPromise,
+      casesPromise,
+      langConfigPromise,
+      assignmentPromise,
+    ]);
+
+    if (!problem) {
+      // Reset the submission to pending so it doesn't get stuck in a
+      // claim-failure loop. The claim fields are cleared so another worker
+      // can pick it up if the problem reappears, or an admin can investigate.
+      await releaseClaimedSubmission(claimed.id, claimToken, workerId);
+
+      return apiError("problemNotFound", 422);
+    }
 
     // Apply per-language time-limit multiplier so e.g. Python gets 3x the
     // C++ TL on the same problem. Default multiplier 1.0 leaves the problem
@@ -361,15 +375,7 @@ export async function POST(request: NextRequest) {
     // `passed / results.length` score uses the true denominator. ICPC (AC-only)
     // and practice (no assignment) keep the fail-fast early break — the worker
     // defaults run_all_test_cases to false when this flag is absent.
-    let runAllTestCases = false;
-    if (claimed.assignmentId) {
-      const [asg] = await db
-        .select({ scoringModel: assignments.scoringModel })
-        .from(assignments)
-        .where(eq(assignments.id, claimed.assignmentId))
-        .limit(1);
-      runAllTestCases = asg?.scoringModel === "ioi";
-    }
+    const runAllTestCases = assignment?.scoringModel === "ioi";
 
     // Function-signature problems: assemble the student's source into a full
     // stdin/stdout harness (prelude + student code + generated main) so the

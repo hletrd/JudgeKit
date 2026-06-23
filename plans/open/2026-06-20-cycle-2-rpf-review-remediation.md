@@ -79,7 +79,7 @@ Planned work:
 |---|---|---|---|---|
 | AGG2-11 | Drizzle migration SQL and journal metadata diverge | `drizzle/pg`, `scripts/check-migration-drift.sh` | High/High | [x] |
 | AGG2-12 | Host DB gates resolve Docker-internal hosts | `drizzle.config.ts`, `playwright.config.ts`, env loading | High/High | [x] |
-| AGG2-16 | Queue claim/position paths lack composite indexes and do sequential reads | schema, claim, queue-status route | Medium/High | [ ] |
+| AGG2-16 | Queue claim/position paths lack composite indexes and do sequential reads | schema, claim, queue-status route | Medium/High | [x] |
 | AGG2-17 | Submission creation scans all historical submissions inside transaction | `src/app/api/v1/submissions/route.ts` | Medium/High | [ ] |
 | AGG2-24 | Root Cargo workspace and AppleDouble artifacts are unignored | `.gitignore`, `.dockerignore`, `deploy-docker.sh` | Medium/High | [x] |
 | AGG2-39 | Import drift and diagnostic/status tests do not directly prove named behavior | tests | Low/Medium | [ ] |
@@ -187,3 +187,4 @@ Run every configured gate from the cycle context:
 - [x] AGG2-23 verified/completed: `src/app/api/v1/judge/claim/route.ts` token-fences `releaseClaimedSubmission()` for schema parse errors, missing problems, and outer post-claim exceptions; `tests/unit/api/judge-poll.route.test.ts` now covers worker-slot cleanup when response assembly fails after a successful claim.
 - [x] AGG2-25 completed: `judge-worker-rs/src/runner.rs` now uses the same 2048 MiB compiler-runner memory envelope as `src/lib/compiler/execute.ts`, with a Rust unit guard so the runner sidecar cannot drift back to the old 256 MiB cap; `cargo test --quiet --manifest-path judge-worker-rs/Cargo.toml` passes.
 - [x] AGG2-12 completed: host-run npm scripts now set `JUDGEKIT_HOST_DATABASE_URL=1`, and `scripts/load-env.ts` resolves `HOST_DATABASE_URL`/`DATABASE_URL_HOST` first or translates known Docker DB service hosts (`db`, `db-postgres`) to loopback only in that host-run mode; `.env.example` documents the override and `tests/unit/infra/host-database-url.test.ts` covers the resolver and script wiring.
+- [x] AGG2-16 completed: `src/lib/db/schema.pg.ts` and `drizzle/pg/0035_queue_claim_indexes.sql` add `submissions_queue_claim_idx` and `submissions_stale_claim_idx` for queue-position, claim, and stale-reclaim scans; `src/app/api/v1/judge/claim/route.ts` now fetches problem metadata, test cases, language config, and assignment scoring metadata in one `Promise.all()` after reserving a row to reduce worker-slot hold time. Focused queue/claim tests, `npx tsc --noEmit`, and `npm run db:check` pass.
