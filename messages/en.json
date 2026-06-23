@@ -1804,6 +1804,7 @@
         "languageKeyPlaceholder": "e.g. mylang",
         "languageKeyHelp": "Unique identifier (lowercase, no spaces)",
         "create": "Create Language",
+        "requiredFields": "Required: language key, display name, extension, Docker image, and run command.",
         "createSuccess": "Language created.",
         "createError": "Failed to create language.",
         "displayNamePlaceholder": "e.g. My Language",

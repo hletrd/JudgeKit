@@ -434,6 +434,14 @@ export function LanguageConfigTable({ languages }: { languages: LanguageConfig[]
       })
     : languages;
   const dockerManagementUnavailable = dockerCapabilities?.mode === "unavailable";
+  const commandPlaceholderTokens = { file: "{file}", binary: "{binary}" };
+  const canCreateLanguage = Boolean(
+    addForm.language &&
+    addForm.displayName &&
+    addForm.extension &&
+    addForm.dockerImage &&
+    addForm.runCommand,
+  );
 
   return (
     <>
@@ -473,6 +481,7 @@ export function LanguageConfigTable({ languages }: { languages: LanguageConfig[]
           value={search}
           onChange={(e) => setSearch(e.target.value)}
           placeholder={t("search")}
+          aria-label={t("search")}
           className="min-w-48 flex-1 sm:max-w-xs"
         />
         <div className="ml-auto flex items-center gap-2">
@@ -481,9 +490,12 @@ export function LanguageConfigTable({ languages }: { languages: LanguageConfig[]
             {t("add.button")}
           </Button>
           <DropdownMenu>
-            <DropdownMenuTrigger className="inline-flex items-center justify-center gap-1.5 whitespace-nowrap rounded-md border border-input bg-background px-3 text-sm font-medium shadow-xs transition-colors hover:bg-accent hover:text-accent-foreground h-8 cursor-pointer">
+            <DropdownMenuTrigger
+              type="button"
+              aria-label={t("actions.more")}
+              className="inline-flex size-8 items-center justify-center rounded-md border border-input bg-background text-sm font-medium shadow-xs transition-colors hover:bg-accent hover:text-accent-foreground focus-visible:border-ring focus-visible:ring-ring/50 focus-visible:ring-[3px]"
+            >
               <MoreHorizontal className="size-4" />
-              {t("actions.more")}
             </DropdownMenuTrigger>
             <DropdownMenuContent align="end">
               <DropdownMenuItem onClick={handlePrune} disabled={isPruning || staleCount === 0 || dockerCapabilities?.canPrune !== true}>
@@ -644,7 +656,7 @@ export function LanguageConfigTable({ languages }: { languages: LanguageConfig[]
                 rows={3}
                 className="font-mono text-sm"
               />
-              <p id="edit-compile-command-help" className="text-xs text-muted-foreground">{t("edit.compileCommandHelp")}</p>
+              <p id="edit-compile-command-help" className="text-xs text-muted-foreground">{t("edit.compileCommandHelp", commandPlaceholderTokens)}</p>
             </div>
 
             <div className="space-y-2">
@@ -657,7 +669,7 @@ export function LanguageConfigTable({ languages }: { languages: LanguageConfig[]
                 rows={2}
                 className="font-mono text-sm"
               />
-              <p id="edit-run-command-help" className="text-xs text-muted-foreground">{t("edit.runCommandHelp")}</p>
+              <p id="edit-run-command-help" className="text-xs text-muted-foreground">{t("edit.runCommandHelp", commandPlaceholderTokens)}</p>
             </div>
 
             <div className="space-y-2">
@@ -711,6 +723,7 @@ export function LanguageConfigTable({ languages }: { languages: LanguageConfig[]
               <Input
                 id="add-language-key"
                 required
+                aria-describedby="add-language-key-help"
                 value={addForm.language}
                 onChange={(e) => setAddForm(prev => ({ ...prev, language: e.target.value }))}
                 placeholder={t("add.languageKeyPlaceholder")}
@@ -777,7 +790,7 @@ export function LanguageConfigTable({ languages }: { languages: LanguageConfig[]
                 rows={3}
                 className="font-mono text-sm"
               />
-              <p id="add-compile-command-help" className="text-xs text-muted-foreground">{t("edit.compileCommandHelp")}</p>
+              <p id="add-compile-command-help" className="text-xs text-muted-foreground">{t("edit.compileCommandHelp", commandPlaceholderTokens)}</p>
             </div>
 
             <div className="space-y-2">
@@ -791,7 +804,7 @@ export function LanguageConfigTable({ languages }: { languages: LanguageConfig[]
                 rows={2}
                 className="font-mono text-sm"
               />
-              <p id="add-run-command-help" className="text-xs text-muted-foreground">{t("edit.runCommandHelp")}</p>
+              <p id="add-run-command-help" className="text-xs text-muted-foreground">{t("edit.runCommandHelp", commandPlaceholderTokens)}</p>
             </div>
 
             <div className="space-y-2">
@@ -810,9 +823,14 @@ export function LanguageConfigTable({ languages }: { languages: LanguageConfig[]
           </div>
 
           <div className="border-t px-6 py-4 flex gap-2">
-            <Button onClick={handleCreate} disabled={isPending || !addForm.language || !addForm.displayName || !addForm.extension || !addForm.dockerImage || !addForm.runCommand}>
-              {t("add.create")}
-            </Button>
+            <div className="flex flex-col gap-1">
+              <Button onClick={handleCreate} disabled={isPending || !canCreateLanguage} aria-describedby="add-required-fields-help">
+                {t("add.create")}
+              </Button>
+              <p id="add-required-fields-help" className="max-w-sm text-xs text-muted-foreground">
+                {t("add.requiredFields")}
+              </p>
+            </div>
             <Button variant="outline" onClick={() => setAddOpen(false)} disabled={isPending}>
               {t("edit.cancel")}
             </Button>
