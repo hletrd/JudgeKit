@@ -1,6 +1,6 @@
 import { test, expect, type BrowserContext, type Page } from "@playwright/test";
 import { BASE_URL, DEFAULT_CREDENTIALS as CREDENTIALS } from "./support/constants";
-import { makeProblemDescription } from "./support/helpers";
+import { isE2ETerminalSubmissionStatus, makeProblemDescription } from "./support/helpers";
 
 const OUTPUT_ONLY_CASE = {
   input: "",
@@ -74,14 +74,6 @@ async function waitForJudging(
   submissionId: string,
   timeoutMs = 60_000
 ): Promise<{ status: string; score: number; compileOutput: string }> {
-  const terminalStatuses = new Set([
-    "accepted",
-    "wrong_answer",
-    "time_limit",
-    "memory_limit",
-    "runtime_error",
-    "compile_error",
-  ]);
   const start = Date.now();
 
   while (Date.now() - start < timeoutMs) {
@@ -89,7 +81,7 @@ async function waitForJudging(
     if (response.status() === 200) {
       const json = await response.json();
       const data = json.data ?? json;
-      if (terminalStatuses.has(data.status)) {
+      if (isE2ETerminalSubmissionStatus(data.status)) {
         return {
           status: data.status,
           score: Number(data.score ?? 0),

@@ -9,7 +9,14 @@
  */
 
 import { test, expect, type Page, type APIRequestContext } from "@playwright/test";
-import { hasOnlineJudgeWorker, loginWithCredentials, makeProblemDescription, waitForToast, navigateTo } from "./support/helpers";
+import {
+  E2E_TERMINAL_SUBMISSION_STATUS_SET,
+  hasOnlineJudgeWorker,
+  loginWithCredentials,
+  makeProblemDescription,
+  navigateTo,
+  waitForToast,
+} from "./support/helpers";
 import { DEFAULT_CREDENTIALS, BASE_URL } from "./support/constants";
 
 const CSRF_HEADERS = {
@@ -179,9 +186,7 @@ test.describe.serial("Student Submission Flow", () => {
     );
     const result = await pollSubmission(adminRequest, submissionId);
     console.log(`  Submission result: status=${result.status}, score=${result.score}`);
-    expect(["accepted", "wrong_answer", "time_limit", "runtime_error", "compile_error"]).toContain(
-      result.status
-    );
+    expect(E2E_TERMINAL_SUBMISSION_STATUS_SET.has(result.status)).toBe(true);
   });
 
   test("Step 9: View submission detail page", async () => {

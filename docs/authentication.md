@@ -9,7 +9,10 @@
 
 - Next.js 16 route protection lives in `src/proxy.ts`, not `src/middleware.ts`.
 - HTTPS deployments behind a reverse proxy must preserve the original scheme. Auth.js JWT readers rely on `src/lib/auth/secure-cookie.ts` for the correct secure cookie name.
-- Protected `/api/v1/*` routes use the Auth.js session cookie (JWT-backed), not a standalone bearer token. The bearer token is reserved for `GET`/`POST /api/v1/judge/poll`.
+- Protected `/api/v1/*` routes accept the Auth.js session cookie (JWT-backed)
+  for browser clients. Programmatic clients can use JudgeKit API keys via
+  `Authorization: Bearer jk_...`; API-key requests skip the API-route CSRF
+  header. Judge worker endpoints use separate worker tokens.
 - The session token (JWT) carries only core identity and security fields: `id`, `username`, `email`, `name`, `className`, `role`, `mustChangePassword`, plus `authenticatedAt`/`uaHash`. User editor/UI **preferences are not stored in the token** — they are read on demand from the database via `getUserPreferences()` (`src/lib/user-preferences.ts`, React-cached per request), so the cookie stays small and preference changes take effect without a token refresh.
 - Token revocation is enforced by comparing the token's `authenticatedAt` against the user's `tokenInvalidatedAt`. Both the Auth.js `jwt` callback and `src/proxy.ts` re-validate the user against the DB (the proxy lookup is briefly cached).
 

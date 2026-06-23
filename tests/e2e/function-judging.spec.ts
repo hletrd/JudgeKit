@@ -27,7 +27,13 @@
  */
 
 import { test, expect, type Page, type APIRequestContext } from "@playwright/test";
-import { hasDockerImage, hasOnlineJudgeWorker, loginWithCredentials, makeProblemDescription } from "./support/helpers";
+import {
+  hasDockerImage,
+  hasOnlineJudgeWorker,
+  isE2ETerminalSubmissionStatus,
+  loginWithCredentials,
+  makeProblemDescription,
+} from "./support/helpers";
 import { DEFAULT_CREDENTIALS } from "./support/constants";
 
 const CSRF_HEADERS = {
@@ -133,14 +139,6 @@ async function waitForSubmissionVerdict(
   submissionId: string,
   timeoutMs = 120_000,
 ): Promise<{ status: string; score: number; compileOutput: string }> {
-  const terminalStatuses = new Set([
-    "accepted",
-    "wrong_answer",
-    "time_limit",
-    "memory_limit",
-    "runtime_error",
-    "compile_error",
-  ]);
   const start = Date.now();
 
   while (Date.now() - start < timeoutMs) {
@@ -148,7 +146,7 @@ async function waitForSubmissionVerdict(
     if (res.ok()) {
       const json = await res.json();
       const data = json.data ?? json;
-      if (terminalStatuses.has(data.status)) {
+      if (isE2ETerminalSubmissionStatus(data.status)) {
         return {
           status: data.status,
           score: Number(data.score ?? 0),

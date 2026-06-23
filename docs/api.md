@@ -77,7 +77,10 @@ API key requests skip CSRF validation automatically.
 
 ### CSRF Protection
 
-Mutation methods (`POST`, `PUT`, `PATCH`, `DELETE`) require a valid CSRF token header when using session cookie authentication. The CSRF token is obtained from `/api/auth/csrf`.
+Mutation methods (`POST`, `PUT`, `PATCH`, `DELETE`) require the custom header
+`X-Requested-With: XMLHttpRequest` when using session-cookie authentication.
+This is the API-route CSRF guard; it is separate from Auth.js sign-in CSRF.
+API-key requests skip CSRF validation automatically.
 
 ---
 
@@ -1579,7 +1582,7 @@ Returns images, disk usage info, and stale image detection.
 
 #### `POST /api/v1/admin/docker/images`
 
-Pull a Docker image. **Super Admin only.**
+Pull a Docker image. Requires `system.settings` capability.
 
 **Request Body:**
 ```json
@@ -1592,7 +1595,7 @@ Only `judge-*` images are allowed.
 
 #### `DELETE /api/v1/admin/docker/images`
 
-Remove a Docker image. **Super Admin only.**
+Remove a Docker image. Requires `system.settings` capability.
 
 **Request Body:**
 ```json
@@ -1603,18 +1606,21 @@ Remove a Docker image. **Super Admin only.**
 
 #### `POST /api/v1/admin/docker/images/build`
 
-Build a Docker image for a language. **Admin or Super Admin.**
+Build a Docker image for a configured language. Requires `system.settings`
+capability. The server derives the Docker image and Dockerfile from the stored
+language configuration.
 
 **Request Body:**
 ```json
-{ "language": "python3" }
+{ "language": "python" }
 ```
 
 ---
 
 #### `POST /api/v1/admin/docker/images/prune`
 
-Remove stale images (where Dockerfile is newer than the built image). **Super Admin only.**
+Remove stale images (where Dockerfile is newer than the built image). Requires
+`system.settings` capability.
 
 **Response:**
 ```json

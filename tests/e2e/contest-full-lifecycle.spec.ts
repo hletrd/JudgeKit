@@ -9,7 +9,7 @@
  */
 
 import { test, expect, type Page, type APIRequestContext } from "@playwright/test";
-import { loginWithCredentials, makeProblemDescription } from "./support/helpers";
+import { E2E_TERMINAL_SUBMISSION_STATUS_SET, loginWithCredentials, makeProblemDescription } from "./support/helpers";
 import { DEFAULT_CREDENTIALS } from "./support/constants";
 
 const CSRF_HEADERS = {
@@ -301,7 +301,7 @@ test.describe.serial("Contest Full Lifecycle", () => {
     // Poll for result
     const result = await pollSubmission(adminRequest, submissionId);
     console.log(`  Problem A result: status=${result.status}, score=${result.score}`);
-    expect(["accepted", "wrong_answer", "time_limit", "runtime_error", "compile_error"]).toContain(result.status);
+    expect(E2E_TERMINAL_SUBMISSION_STATUS_SET.has(result.status)).toBe(true);
   });
 
   // ─── Submit partially correct solution to Problem B (IOI) ──────────────
@@ -318,7 +318,7 @@ test.describe.serial("Contest Full Lifecycle", () => {
 
     const result = await pollSubmission(adminRequest, submissionId);
     console.log(`  Problem B wrong: status=${result.status}, score=${result.score}`);
-    expect(["wrong_answer", "accepted", "runtime_error", "time_limit", "compile_error"]).toContain(result.status);
+    expect(E2E_TERMINAL_SUBMISSION_STATUS_SET.has(result.status)).toBe(true);
   });
 
   // ─── Check IOI Leaderboard ─────────────────────────────────────────────
@@ -371,7 +371,7 @@ test.describe.serial("Contest Full Lifecycle", () => {
 
     const result = await pollSubmission(adminRequest, submissionId);
     console.log(`  ICPC Problem A: status=${result.status}, score=${result.score}`);
-    expect(["accepted", "wrong_answer", "compile_error", "runtime_error", "time_limit"]).toContain(result.status);
+    expect(E2E_TERMINAL_SUBMISSION_STATUS_SET.has(result.status)).toBe(true);
   });
 
   // ─── ICPC: Submit wrong then correct to Problem B ──────────────────────
@@ -384,7 +384,7 @@ test.describe.serial("Contest Full Lifecycle", () => {
       sourceCode: "#include <iostream>\nusing namespace std;\nint main() { cout << \"wrong\" << endl; return 0; }",
     });
     const wrongResult = await pollSubmission(adminRequest, wrongRes.data.id);
-    expect(["wrong_answer", "compile_error", "runtime_error", "time_limit"]).toContain(wrongResult.status);
+    expect(E2E_TERMINAL_SUBMISSION_STATUS_SET.has(wrongResult.status)).toBe(true);
 
     // Correct attempt
     const correctRes = await apiPost(adminRequest, "/api/v1/submissions", {
@@ -395,7 +395,7 @@ test.describe.serial("Contest Full Lifecycle", () => {
     });
     const correctResult = await pollSubmission(adminRequest, correctRes.data.id);
     console.log(`  ICPC Problem B correct: status=${correctResult.status}, score=${correctResult.score}`);
-    expect(["accepted", "wrong_answer", "compile_error", "runtime_error", "time_limit"]).toContain(correctResult.status);
+    expect(E2E_TERMINAL_SUBMISSION_STATUS_SET.has(correctResult.status)).toBe(true);
   });
 
   // ─── ICPC Leaderboard ──────────────────────────────────────────────────

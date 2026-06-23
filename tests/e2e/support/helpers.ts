@@ -79,6 +79,36 @@ const CSRF_HEADERS = {
   "X-Requested-With": "XMLHttpRequest",
 };
 
+export const ACTIVE_SUBMISSION_STATUSES = ["pending", "queued", "judging"] as const;
+
+export const TERMINAL_SUBMISSION_STATUSES = [
+  "accepted",
+  "wrong_answer",
+  "time_limit_exceeded",
+  "memory_limit_exceeded",
+  "output_limit_exceeded",
+  "runtime_error",
+  "compile_error",
+] as const;
+
+export const LEGACY_TERMINAL_SUBMISSION_STATUSES = [
+  "time_limit",
+  "memory_limit",
+] as const;
+
+export const E2E_TERMINAL_SUBMISSION_STATUS_SET = new Set<string>([
+  ...TERMINAL_SUBMISSION_STATUSES,
+  ...LEGACY_TERMINAL_SUBMISSION_STATUSES,
+]);
+
+export function isE2ETerminalSubmissionStatus(status: unknown): status is string {
+  return typeof status === "string" && E2E_TERMINAL_SUBMISSION_STATUS_SET.has(status);
+}
+
+export function isE2EActiveSubmissionStatus(status: unknown): status is string {
+  return typeof status === "string" && (ACTIVE_SUBMISSION_STATUSES as readonly string[]).includes(status);
+}
+
 export function makeProblemDescription(statement = "Given an integer N, print N."): string {
   return [
     "### Problem",
@@ -201,14 +231,6 @@ export async function waitForSubmissionResult(
   submissionId: string,
   timeoutMs = 60_000,
 ): Promise<{ id: string; status: string; score: number | null }> {
-  const terminalStatuses = new Set([
-    "accepted",
-    "wrong_answer",
-    "time_limit",
-    "memory_limit",
-    "runtime_error",
-    "compile_error",
-  ]);
   const start = Date.now();
 
   while (Date.now() - start < timeoutMs) {
@@ -216,7 +238,7 @@ export async function waitForSubmissionResult(
     if (res.ok()) {
       const json = await res.json();
       const data = json.data ?? json;
-      if (terminalStatuses.has(data.status)) {
+      if (isE2ETerminalSubmissionStatus(data.status)) {
         return data;
       }
     }

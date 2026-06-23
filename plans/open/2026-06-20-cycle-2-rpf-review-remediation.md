@@ -2,7 +2,7 @@
 
 **Date:** 2026-06-20
 **Source:** `.context/reviews/_aggregate.md` (cycle 2) and all cycle-2 per-agent reviews
-**Repo rules read before planning:** `CLAUDE.md`, `AGENTS.md`, `.context/README.md`, `.context/development/conventions.md`, `.context/development/problem-descriptions.md`, `.context/development/documentation-rules.md`, `plans/README.md`, `plans/open/README.md`
+**Repo rules read before planning:** `CLAUDE.md`, `AGENTS.md`, `docs/data-retention-policy.md`, `docs/transcript-access-policy.md`, `plans/README.md`, `plans/open/README.md`. This local clone does not contain `.context/README.md`, `.context/development/**`, `.cursorrules`, or `CONTRIBUTING.md`; those paths were checked and are absent.
 
 ## Scope
 
@@ -15,7 +15,7 @@ Cycle 2 found 39 deduped aggregate findings. Every finding is scheduled below. N
 | ID | Finding | Files | Severity/confidence | Status |
 |---|---|---|---|---|
 | AGG2-1 | Manual submissions are active `pending` rows that no worker can claim | `src/app/api/v1/submissions/route.ts`, `src/lib/judge/claim-query.ts`, docs/tests | High/High | [ ] |
-| AGG2-2 | Status vocabulary drift across worker, app, UI, filters, exports, tests | worker/app status files, badges, messages, E2E waiters | High/High | [ ] |
+| AGG2-2 | Status vocabulary drift across worker, app, UI, filters, exports, tests | worker/app status files, badges, messages, E2E waiters | High/High | [x] |
 
 Planned work:
 - Add a canonical manual-submission status or terminal manual state and prevent manual rows from entering the auto-judge queue.
@@ -105,7 +105,7 @@ Planned work:
 | AGG2-26 | Function problems can be saved with no supported enabled language | function validators/submission form | Medium/High | [ ] |
 | AGG2-27 | Mandatory problem description structure is not enforced | validators, seed/import/admin/API paths | Medium/High | [ ] |
 | AGG2-30 | `INCLUDE_WORKER=false` deploys still start/configure worker behavior | `deploy-docker.sh`, compose/docs | Medium/High | [ ] |
-| AGG2-34 | API/auth docs are out of sync with implementation | `docs/api.md`, `docs/authentication.md`, README | Medium/High | [ ] |
+| AGG2-34 | API/auth docs are out of sync with implementation | `docs/api.md`, `docs/authentication.md`, README | Medium/High | [x] |
 | AGG2-35 | Runtime/version docs drift from deployed configs | `AGENTS.md`, `.context/project/current-state.md`, language/seccomp docs | Medium/High | [ ] |
 | AGG2-36 | Function compile-error line remapping is skipped on display paths | submission display routes/components | Medium/High | [ ] |
 | AGG2-37 | UI controls have invalid composition, missing labels, weak context | UI components/admin language/form rows | Medium/High | [ ] |
@@ -163,3 +163,14 @@ Run every configured gate from the cycle context:
 - [ ] Required gates green.
 - [ ] Fine-grained GPG-signed commits pushed.
 - [ ] Per-cycle deployment completed.
+
+### Cycle 2 Resumed Progress (2026-06-23)
+
+- [x] AGG2-2: Added a shared E2E terminal-status catalog in `tests/e2e/support/helpers.ts` that includes canonical `time_limit_exceeded`, `memory_limit_exceeded`, and `output_limit_exceeded` verdicts while still accepting legacy `time_limit`/`memory_limit` aliases during migration. Updated local E2E pollers and verdict assertions to use it.
+- [x] AGG2-34: Updated `docs/api.md` and `docs/authentication.md` so API-route CSRF, API-key bearer auth, and Docker image management docs match the implementation.
+- [x] AGG2-1 verified already fixed in current HEAD: manual submissions now start as `submitted`, and pending/queue checks are skipped for manual problems in `src/app/api/v1/submissions/route.ts`.
+- [x] AGG2-4 verified already fixed in current HEAD: `src/lib/db/pre-restore-snapshot.ts` streams pre-restore snapshots with `sanitize: false` and 0600 file mode.
+- [x] AGG2-10 verified already fixed in tracked source: `git grep`/`rg` found no checked-in production-looking `jk_` API keys or long token assignments outside excluded review/plan text.
+- [x] AGG2-11 verified already fixed in current HEAD: `scripts/check-migration-drift.sh` checks SQL-file/journal bijection before Drizzle checks, and current journal/file counts match.
+- [x] AGG2-24 verified already fixed in current HEAD: `.gitignore`, `.dockerignore`, and deploy rsync excludes cover root `target/` and AppleDouble files.
+- [x] AGG2-31/AGG2-32/AGG2-33 verified already fixed in current HEAD: dedicated worker compose/docs require `RUNNER_AUTH_TOKEN`, Docker socket proxy images are digest-pinned, and Docker image mutation failure paths are audit logged.
