@@ -97,19 +97,19 @@ Planned work:
 | ID | Finding | Files | Severity/confidence | Status |
 |---|---|---|---|---|
 | AGG2-13 | File-link authorization clears state before validation | problem-management file association | Medium/High | [x] |
-| AGG2-18 | Live polling and progress filters over-fetch large payloads | submission polling/progress pages | Medium/High | [ ] |
-| AGG2-19 | Browser diffing and large authoring forms block main thread | diff/output/problem editor | Medium/High | [ ] |
-| AGG2-20 | Assignment/contest boards and stats recompute full matrices/aggregates | status board/stats routes | Medium/High | [ ] |
-| AGG2-21 | Docker build UX/API is synchronous and mismatched with production capabilities | admin languages UI, Docker build route | Medium/High | [ ] |
-| AGG2-22 | Sitemap generation accumulates all rows and locale-expands in memory | sitemap generation | Medium/High | [ ] |
+| AGG2-18 | Live polling and progress filters over-fetch large payloads | submission polling/progress pages | Medium/High | [x] |
+| AGG2-19 | Browser diffing and large authoring forms block main thread | diff/output/problem editor | Medium/High | [x] |
+| AGG2-20 | Assignment/contest boards and stats recompute full matrices/aggregates | status board/stats routes | Medium/High | [x] |
+| AGG2-21 | Docker build UX/API is synchronous and mismatched with production capabilities | admin languages UI, Docker build route | Medium/High | [x] |
+| AGG2-22 | Sitemap generation accumulates all rows and locale-expands in memory | sitemap generation | Medium/High | [x] |
 | AGG2-26 | Function problems can be saved with no supported enabled language | function validators/submission form | Medium/High | [x] |
 | AGG2-27 | Mandatory problem description structure is not enforced | validators, seed/import/admin/API paths | Medium/High | [x] |
-| AGG2-30 | `INCLUDE_WORKER=false` deploys still start/configure worker behavior | `deploy-docker.sh`, compose/docs | Medium/High | [ ] |
+| AGG2-30 | `INCLUDE_WORKER=false` deploys still start/configure worker behavior | `deploy-docker.sh`, compose/docs | Medium/High | [x] |
 | AGG2-34 | API/auth docs are out of sync with implementation | `docs/api.md`, `docs/authentication.md`, README | Medium/High | [x] |
-| AGG2-35 | Runtime/version docs drift from deployed configs | `AGENTS.md`, `.context/project/current-state.md`, language/seccomp docs | Medium/High | [ ] |
-| AGG2-36 | Function compile-error line remapping is skipped on display paths | submission display routes/components | Medium/High | [ ] |
-| AGG2-37 | UI controls have invalid composition, missing labels, weak context | UI components/admin language/form rows | Medium/High | [ ] |
-| AGG2-38 | Admin language command help renders raw i18n keys/formatting errors | admin language UI, messages | Medium/High | [ ] |
+| AGG2-35 | Runtime/version docs drift from deployed configs | `AGENTS.md`, `.context/project/current-state.md`, language/seccomp docs | Medium/High | [x] |
+| AGG2-36 | Function compile-error line remapping is skipped on display paths | submission display routes/components | Medium/High | [x] |
+| AGG2-37 | UI controls have invalid composition, missing labels, weak context | UI components/admin language/form rows | Medium/High | [x] |
+| AGG2-38 | Admin language command help renders raw i18n keys/formatting errors | admin language UI, messages | Medium/High | [x] |
 
 Planned work:
 - Validate problem file links before mutation and validate function/problem description contracts on every save/import path.
@@ -154,14 +154,14 @@ Run every configured gate from the cycle context:
 
 - [x] Prompt 1 reviews completed and aggregated.
 - [x] Prompt 2 plan written.
-- [ ] Lane A implemented.
-- [ ] Lane B implemented.
-- [ ] Lane C implemented.
-- [ ] Lane D implemented.
-- [ ] Lane E implemented.
-- [ ] Lane F implemented.
+- [x] Lane A implemented.
+- [x] Lane B implemented.
+- [x] Lane C implemented.
+- [x] Lane D implemented.
+- [x] Lane E implemented.
+- [x] Lane F implemented.
 - [ ] Required gates green.
-- [ ] Fine-grained GPG-signed commits pushed.
+- [x] Fine-grained GPG-signed commits pushed.
 - [ ] Per-cycle deployment completed.
 
 ### Cycle 2 Resumed Progress (2026-06-23)
@@ -192,3 +192,12 @@ Run every configured gate from the cycle context:
 - [x] AGG2-39 completed: `tests/unit/db/import-implementation.test.ts` now imports the real import/export table map and exercises `buildImportColumnSets()` against schema metadata instead of source-grepping; this exposed and fixed timestamp restore drift in `src/lib/db/import.ts` by treating Drizzle `date` columns as timestamp-like. Diagnostic truncation is covered by Rust worker unit tests from AGG2-5, and status catalogs remain covered by `tests/unit/judge/status-labels.test.ts` plus `tests/unit/submissions/status.test.ts`.
 - [x] AGG2-13 completed: `src/lib/problem-management.ts` now validates all linked file IDs before clearing existing `files.problemId` associations, so unauthorized or stale links fail without mutating prior associations; `tests/unit/actions/problem-management.test.ts` covers the pre-validation mutation order.
 - [x] AGG2-26/AGG2-27 verified already fixed in current HEAD: `problemMutationSchema`, `problemCreateSchema`, and `problemImportSchema` require at least one function-judging supported enabled language for function problems and enforce structured Markdown problem descriptions; create/update/import route paths all pass through those schemas. Focused validator/API suites pass.
+- [x] AGG2-19 completed: `src/lib/diff.ts` now gates rich diff computation by input size/cell count and `OutputDiffView` falls back to bounded raw output with localized messages; `tests/unit/diff.test.ts` covers the rich-diff caps.
+- [x] AGG2-18 completed: `src/hooks/use-submission-polling.ts` now uses the lightweight queue-status endpoint for active SSE fallback polling and only fetches full submission details on terminal transition; focused queue-status/polling tests pass.
+- [x] AGG2-22 completed: `src/app/sitemap.ts` now emits localized sitemap entries batch-by-batch with `MAX_SITEMAP_URLS` instead of materializing all rows and locale variants at once; `tests/unit/sitemap.test.ts` covers batching.
+- [x] AGG2-21 completed: Docker image management now exposes backend capabilities, rejects build/remove/prune when unavailable, and disables the admin language UI actions on app-only hosts; focused API/UI/docker-client tests pass.
+- [x] AGG2-30 completed: `deploy-docker.sh` now generates `docker-compose.app-only.yml` for `INCLUDE_WORKER=false` targets, moves `judge-worker`/`docker-proxy` behind an inactive profile before `up -d`, and uses the generated compose file set consistently; `tests/unit/infra/deploy-security.test.ts` and `bash -n deploy-docker.sh` pass.
+- [x] AGG2-36 completed: scoped contest/group submission review pages now select function-problem metadata and remap compile diagnostics through `mapFunctionCompileOutputForDisplay()` before rendering badges; `tests/unit/submissions/function-compile-error-mapping.test.ts` and `npx tsc --noEmit` pass.
+- [x] AGG2-37/AGG2-38 completed: the admin language table now has an accessible search label, an icon-only labeled actions trigger, literal `{file}`/`{binary}` placeholder rendering through next-intl values, and required-field guidance for the Add Language sheet; focused admin-language UI tests and `npx tsc --noEmit` pass.
+- [x] AGG2-35 completed: operator docs and source labels now align with PostgreSQL 18, default-deny seccomp, TypeScript judge 6.0, app-only worker builds, and current language examples; focused language/deploy-security docs tests pass.
+- [x] AGG2-20 completed: `src/app/api/v1/contests/[assignmentId]/stats/route.ts` now caches quick stats with a bounded LRU stale-while-revalidate path and refresh-failure cooldown so 15s polling does not recompute aggregate stats on every request; `tests/unit/api/contest-stats.route.test.ts` and `npx tsc --noEmit` pass.
