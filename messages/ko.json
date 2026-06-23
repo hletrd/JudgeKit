@@ -1769,7 +1769,8 @@
         "pruneSuccess": "오래된 이미지 {count}개를 삭제했어요.",
         "pruneNone": "정리할 오래된 이미지가 없어요.",
         "pruneError": "오래된 이미지 정리에 실패했어요.",
-        "fetchImageStatusError": "이미지 상태를 불러오지 못했어요."
+        "fetchImageStatusError": "이미지 상태를 불러오지 못했어요.",
+        "dockerUnavailable": "이 앱 호스트에서는 Docker 이미지 관리를 사용할 수 없어요."
       },
       "diskUsage": "디스크",
       "diskAvailable": "사용 가능",
@@ -1777,7 +1778,8 @@
         "available": "사용 가능",
         "stale": "재빌드 필요",
         "notBuilt": "미빌드",
-        "loadError": "불러오기 실패"
+        "loadError": "불러오기 실패",
+        "managementUnavailable": "이 앱 호스트에서는 Docker 이미지 관리를 사용할 수 없어요. 언어 이미지를 빌드하거나 삭제하려면 워커 Docker API를 설정하세요."
       },
       "edit": {
         "title": "언어 설정 편집",

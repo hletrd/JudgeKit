@@ -1769,7 +1769,8 @@
         "pruneSuccess": "{count} stale image(s) removed.",
         "pruneNone": "No stale images to clean up.",
         "pruneError": "Failed to prune stale images.",
-        "fetchImageStatusError": "Failed to load image status."
+        "fetchImageStatusError": "Failed to load image status.",
+        "dockerUnavailable": "Docker image management is not available on this app host."
       },
       "diskUsage": "Disk",
       "diskAvailable": "available",
@@ -1777,7 +1778,8 @@
         "available": "Available",
         "stale": "Stale",
         "notBuilt": "Not built",
-        "loadError": "Failed to load"
+        "loadError": "Failed to load",
+        "managementUnavailable": "Docker image management is unavailable on this app host. Configure the worker Docker API to build or remove language images."
       },
       "edit": {
         "title": "Edit Language Configuration",

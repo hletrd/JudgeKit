@@ -2,8 +2,8 @@ import { NextRequest } from "next/server";
 import { stat } from "fs/promises";
 import { join } from "path";
 import { createApiHandler } from "@/lib/api/handler";
-import { apiSuccess } from "@/lib/api/responses";
-import { listDockerImages, inspectDockerImage, removeDockerImages } from "@/lib/docker/client";
+import { apiError, apiSuccess } from "@/lib/api/responses";
+import { getDockerManagementCapabilities, listDockerImages, inspectDockerImage, removeDockerImages } from "@/lib/docker/client";
 import { isAllowedJudgeDockerImage } from "@/lib/judge/docker-image-validation";
 import { recordAuditEvent } from "@/lib/audit/events";
 import { logger } from "@/lib/logger";
@@ -11,6 +11,21 @@ import { logger } from "@/lib/logger";
 export const POST = createApiHandler({
   auth: { capabilities: ["system.settings"] },
   handler: async (req: NextRequest, { user }) => {
+    const capabilities = getDockerManagementCapabilities();
+    if (!capabilities.canPrune) {
+      recordAuditEvent({
+        actorId: user.id,
+        actorRole: user.role,
+        action: "docker_image.prune_rejected",
+        resourceType: "docker_image",
+        resourceId: "bulk_prune",
+        summary: "Rejected stale Docker image prune because Docker management is unavailable",
+        details: { reason: capabilities.reason ?? "dockerManagementUnavailable" },
+        request: req,
+      });
+      return apiError(capabilities.reason ?? "dockerManagementUnavailable", 409);
+    }
+
     const images = await listDockerImages("judge-*");
 
     // Find stale images: Dockerfile mtime > image creation time

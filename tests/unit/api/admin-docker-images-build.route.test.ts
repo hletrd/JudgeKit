@@ -8,12 +8,14 @@ const {
   buildDockerImageMock,
   recordAuditEventMock,
   accessMock,
+  getDockerManagementCapabilitiesMock,
 } = vi.hoisted(() => ({
   getApiUserMock: vi.fn(),
   dbSelectMock: vi.fn(),
   buildDockerImageMock: vi.fn(),
   recordAuditEventMock: vi.fn(),
   accessMock: vi.fn(),
+  getDockerManagementCapabilitiesMock: vi.fn(),
 }));
 
 vi.mock("@/lib/api/handler", () => ({
@@ -46,6 +48,7 @@ vi.mock("drizzle-orm", async () => {
 });
 
 vi.mock("@/lib/docker/client", () => ({
+  getDockerManagementCapabilities: getDockerManagementCapabilitiesMock,
   buildDockerImage: buildDockerImageMock,
 }));
 
@@ -76,6 +79,39 @@ describe("POST /api/v1/admin/docker/images/build", () => {
       role: "admin",
       username: "admin",
     });
+    getDockerManagementCapabilitiesMock.mockReturnValue({
+      mode: "worker",
+      canList: true,
+      canBuild: true,
+      canRemove: true,
+      canPrune: true,
+    });
+  });
+
+  it("rejects build requests before DB lookup when Docker management is unavailable", async () => {
+    getDockerManagementCapabilitiesMock.mockReturnValue({
+      mode: "unavailable",
+      canList: false,
+      canBuild: false,
+      canRemove: false,
+      canPrune: false,
+      reason: "dockerManagementUnavailable",
+    });
+
+    const { POST } = await import("@/app/api/v1/admin/docker/images/build/route");
+    const res = await POST(makeRequest({ language: "python" }));
+    const body = await res.json();
+
+    expect(res.status).toBe(409);
+    expect(body.error).toBe("dockerManagementUnavailable");
+    expect(dbSelectMock).not.toHaveBeenCalled();
+    expect(buildDockerImageMock).not.toHaveBeenCalled();
+    expect(recordAuditEventMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        action: "docker_image.build_rejected",
+        details: { reason: "dockerManagementUnavailable" },
+      }),
+    );
   });
 
   it("rejects non-judge image tags from language configs", async () => {

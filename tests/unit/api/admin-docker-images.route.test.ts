@@ -6,11 +6,13 @@ const {
   pullDockerImageMock,
   removeDockerImageMock,
   recordAuditEventMock,
+  getDockerManagementCapabilitiesMock,
 } = vi.hoisted(() => ({
   getApiUserMock: vi.fn(),
   pullDockerImageMock: vi.fn(),
   removeDockerImageMock: vi.fn(),
   recordAuditEventMock: vi.fn(),
+  getDockerManagementCapabilitiesMock: vi.fn(),
 }));
 
 vi.mock("@/lib/api/handler", () => ({
@@ -28,6 +30,7 @@ vi.mock("@/lib/docker/client", () => ({
   listDockerImages: vi.fn(),
   inspectDockerImage: vi.fn(),
   getDiskUsage: vi.fn(),
+  getDockerManagementCapabilities: getDockerManagementCapabilitiesMock,
   pullDockerImage: pullDockerImageMock,
   removeDockerImage: removeDockerImageMock,
 }));
@@ -55,6 +58,65 @@ describe("admin docker image mutation routes", () => {
       role: "admin",
       username: "admin",
     });
+    getDockerManagementCapabilitiesMock.mockReturnValue({
+      mode: "worker",
+      canList: true,
+      canBuild: true,
+      canRemove: true,
+      canPrune: true,
+    });
+  });
+
+  it("returns capabilities and no images when Docker management is unavailable", async () => {
+    getDockerManagementCapabilitiesMock.mockReturnValue({
+      mode: "unavailable",
+      canList: false,
+      canBuild: false,
+      canRemove: false,
+      canPrune: false,
+      reason: "dockerManagementUnavailable",
+    });
+
+    const { GET } = await import("@/app/api/v1/admin/docker/images/route");
+    const res = await GET(new NextRequest("http://localhost:3000/api/v1/admin/docker/images"));
+    const body = await res.json();
+
+    expect(res.status).toBe(200);
+    expect(body.data).toMatchObject({
+      images: [],
+      disk: null,
+      staleImages: [],
+      capabilities: {
+        mode: "unavailable",
+        canBuild: false,
+        reason: "dockerManagementUnavailable",
+      },
+    });
+  });
+
+  it("rejects image pulls when Docker management is unavailable", async () => {
+    getDockerManagementCapabilitiesMock.mockReturnValue({
+      mode: "unavailable",
+      canList: false,
+      canBuild: false,
+      canRemove: false,
+      canPrune: false,
+      reason: "dockerManagementUnavailable",
+    });
+
+    const { POST } = await import("@/app/api/v1/admin/docker/images/route");
+    const res = await POST(makeRequest("POST", { imageTag: "judge-python:latest" }));
+    const body = await res.json();
+
+    expect(res.status).toBe(409);
+    expect(body.error).toBe("dockerManagementUnavailable");
+    expect(pullDockerImageMock).not.toHaveBeenCalled();
+    expect(recordAuditEventMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        action: "docker_image.pull_rejected",
+        details: { reason: "dockerManagementUnavailable" },
+      }),
+    );
   });
 
   it("rejects untrusted registry-qualified pull targets", async () => {

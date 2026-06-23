@@ -5,7 +5,14 @@ import { join } from "path";
 import pLimit from "p-limit";
 import { createApiHandler } from "@/lib/api/handler";
 import { apiSuccess } from "@/lib/api/responses";
-import { listDockerImages, inspectDockerImage, pullDockerImage, removeDockerImage, getDiskUsage } from "@/lib/docker/client";
+import {
+  getDockerManagementCapabilities,
+  listDockerImages,
+  inspectDockerImage,
+  pullDockerImage,
+  removeDockerImage,
+  getDiskUsage,
+} from "@/lib/docker/client";
 import { recordAuditEvent } from "@/lib/audit/events";
 import { isAllowedJudgeDockerImage } from "@/lib/judge/docker-image-validation";
 import { logger } from "@/lib/logger";
@@ -53,6 +60,16 @@ export const GET = createApiHandler({
     if (!/^[a-zA-Z0-9*][a-zA-Z0-9._\-/*:]*$/.test(filter)) {
       return NextResponse.json({ error: "invalidFilter" }, { status: 400 });
     }
+    const capabilities = getDockerManagementCapabilities();
+    if (!capabilities.canList) {
+      return apiSuccess({
+        images: [],
+        disk: null,
+        staleImages: [],
+        capabilities,
+      });
+    }
+
     const [images, disk] = await Promise.all([
       listDockerImages(filter),
       getDiskUsage(),
@@ -64,6 +81,7 @@ export const GET = createApiHandler({
       images,
       disk,
       staleImages: [...staleSet],
+      capabilities,
     });
   },
 });
@@ -76,6 +94,24 @@ export const POST = createApiHandler({
   auth: { capabilities: ["system.settings"] },
   schema: pullSchema,
   handler: async (req: NextRequest, { body, user }) => {
+    const capabilities = getDockerManagementCapabilities();
+    if (!capabilities.canBuild) {
+      recordAuditEvent({
+        actorId: user.id,
+        actorRole: user.role,
+        action: "docker_image.pull_rejected",
+        resourceType: "docker_image",
+        resourceId: body.imageTag,
+        summary: `Rejected Docker image pull for unavailable Docker management: ${body.imageTag}`,
+        details: { reason: capabilities.reason ?? "dockerManagementUnavailable" },
+        request: req,
+      });
+      return NextResponse.json(
+        { error: capabilities.reason ?? "dockerManagementUnavailable" },
+        { status: 409 }
+      );
+    }
+
     if (!isAllowedJudgeDockerImage(body.imageTag)) {
       recordAuditEvent({
         actorId: user.id,
@@ -130,6 +166,24 @@ export const DELETE = createApiHandler({
   auth: { capabilities: ["system.settings"] },
   schema: deleteSchema,
   handler: async (req: NextRequest, { body, user }) => {
+    const capabilities = getDockerManagementCapabilities();
+    if (!capabilities.canRemove) {
+      recordAuditEvent({
+        actorId: user.id,
+        actorRole: user.role,
+        action: "docker_image.remove_rejected",
+        resourceType: "docker_image",
+        resourceId: body.imageTag,
+        summary: `Rejected Docker image removal for unavailable Docker management: ${body.imageTag}`,
+        details: { reason: capabilities.reason ?? "dockerManagementUnavailable" },
+        request: req,
+      });
+      return NextResponse.json(
+        { error: capabilities.reason ?? "dockerManagementUnavailable" },
+        { status: 409 }
+      );
+    }
+
     if (!isAllowedJudgeDockerImage(body.imageTag)) {
       recordAuditEvent({
         actorId: user.id,

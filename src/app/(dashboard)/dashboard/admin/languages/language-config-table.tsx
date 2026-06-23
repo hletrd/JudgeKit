@@ -62,6 +62,48 @@ interface LanguageConfig {
   dockerSize: string | null;
 }
 
+type DockerManagementCapabilities = {
+  mode: "worker" | "local" | "unavailable";
+  canList: boolean;
+  canBuild: boolean;
+  canRemove: boolean;
+  canPrune: boolean;
+  reason?: string;
+};
+
+const unavailableDockerCapabilities: DockerManagementCapabilities = {
+  mode: "unavailable",
+  canList: false,
+  canBuild: false,
+  canRemove: false,
+  canPrune: false,
+  reason: "dockerManagementUnavailable",
+};
+
+function parseDockerCapabilities(value: unknown): DockerManagementCapabilities | null {
+  if (value === null || typeof value !== "object" || Array.isArray(value)) {
+    return null;
+  }
+  const record = value as Record<string, unknown>;
+  if (
+    (record.mode !== "worker" && record.mode !== "local" && record.mode !== "unavailable") ||
+    typeof record.canList !== "boolean" ||
+    typeof record.canBuild !== "boolean" ||
+    typeof record.canRemove !== "boolean" ||
+    typeof record.canPrune !== "boolean"
+  ) {
+    return null;
+  }
+  return {
+    mode: record.mode,
+    canList: record.canList,
+    canBuild: record.canBuild,
+    canRemove: record.canRemove,
+    canPrune: record.canPrune,
+    reason: typeof record.reason === "string" ? record.reason : undefined,
+  };
+}
+
 export function LanguageConfigTable({ languages }: { languages: LanguageConfig[] }) {
   const t = useTranslations("admin.languages");
   const tCommon = useTranslations("common");
@@ -84,6 +126,7 @@ export function LanguageConfigTable({ languages }: { languages: LanguageConfig[]
   const [confirmAction, setConfirmAction] = useState<ConfirmAction | null>(null);
   const [imageStatusLoading, setImageStatusLoading] = useState(true);
   const [imageStatusError, setImageStatusError] = useState(false);
+  const [dockerCapabilities, setDockerCapabilities] = useState<DockerManagementCapabilities | null>(null);
   const buildAbortControllerRef = useRef<AbortController | null>(null);
   const removeAbortControllerRef = useRef<AbortController | null>(null);
   const pruneAbortControllerRef = useRef<AbortController | null>(null);
@@ -126,6 +169,7 @@ export function LanguageConfigTable({ languages }: { languages: LanguageConfig[]
       if (res.ok) {
         const json = await res.json().catch(() => ({ data: {} }));
         const data = json.data ?? {};
+        setDockerCapabilities(parseDockerCapabilities(data.capabilities) ?? unavailableDockerCapabilities);
         const images = data.images ?? data ?? [];
         const staleSet = new Set<string>(data.staleImages ?? []);
         const info = new Map<string, { size: string; created: string; stale: boolean }>();
@@ -141,6 +185,7 @@ export function LanguageConfigTable({ languages }: { languages: LanguageConfig[]
         setStaleCount(staleSet.size);
         if (data.disk) setDiskUsage(data.disk);
       } else {
+        setDockerCapabilities(unavailableDockerCapabilities);
         setImageStatusError(true);
         toast.error(t("toast.fetchImageStatusError"));
       }
@@ -148,6 +193,7 @@ export function LanguageConfigTable({ languages }: { languages: LanguageConfig[]
       if (err instanceof Error && err.name === "AbortError") {
         return;
       }
+      setDockerCapabilities(unavailableDockerCapabilities);
       setImageStatusError(true);
       toast.error(t("toast.fetchImageStatusError"));
     } finally {
@@ -158,6 +204,10 @@ export function LanguageConfigTable({ languages }: { languages: LanguageConfig[]
   useEffect(() => { fetchImageStatus(); }, [fetchImageStatus]);
 
   function handleBuild(lang: LanguageConfig) {
+    if (dockerCapabilities?.canBuild !== true) {
+      toast.error(t("toast.dockerUnavailable"));
+      return;
+    }
     setBuildingLangs(prev => new Set(prev).add(lang.language));
     if (buildAbortControllerRef.current) {
       buildAbortControllerRef.current.abort();
@@ -187,10 +237,18 @@ export function LanguageConfigTable({ languages }: { languages: LanguageConfig[]
   }
 
   function handleRemoveImage(lang: LanguageConfig) {
+    if (dockerCapabilities?.canRemove !== true) {
+      toast.error(t("toast.dockerUnavailable"));
+      return;
+    }
     setConfirmAction({ type: "removeImage", payload: lang });
   }
 
   function confirmRemoveImage(lang: LanguageConfig) {
+    if (dockerCapabilities?.canRemove !== true) {
+      toast.error(t("toast.dockerUnavailable"));
+      return;
+    }
     if (removeAbortControllerRef.current) {
       removeAbortControllerRef.current.abort();
     }
@@ -218,10 +276,18 @@ export function LanguageConfigTable({ languages }: { languages: LanguageConfig[]
   }
 
   function handlePrune() {
+    if (dockerCapabilities?.canPrune !== true) {
+      toast.error(t("toast.dockerUnavailable"));
+      return;
+    }
     setConfirmAction({ type: "prune" });
   }
 
   function confirmPrune() {
+    if (dockerCapabilities?.canPrune !== true) {
+      toast.error(t("toast.dockerUnavailable"));
+      return;
+    }
     setIsPruning(true);
     if (pruneAbortControllerRef.current) {
       pruneAbortControllerRef.current.abort();
@@ -367,6 +433,7 @@ export function LanguageConfigTable({ languages }: { languages: LanguageConfig[]
         );
       })
     : languages;
+  const dockerManagementUnavailable = dockerCapabilities?.mode === "unavailable";
 
   return (
     <>
@@ -396,6 +463,11 @@ export function LanguageConfigTable({ languages }: { languages: LanguageConfig[]
         </div>
         );
       })()}
+      {dockerManagementUnavailable && (
+        <div className="mb-4 rounded-md border border-yellow-300 bg-yellow-50 p-3 text-sm text-yellow-900 dark:border-yellow-800 dark:bg-yellow-950/30 dark:text-yellow-100">
+          {t("imageStatus.managementUnavailable")}
+        </div>
+      )}
       <div className="flex flex-wrap items-center gap-2 mb-4">
         <Input
           value={search}
@@ -414,7 +486,7 @@ export function LanguageConfigTable({ languages }: { languages: LanguageConfig[]
               {t("actions.more")}
             </DropdownMenuTrigger>
             <DropdownMenuContent align="end">
-              <DropdownMenuItem onClick={handlePrune} disabled={isPruning || staleCount === 0}>
+              <DropdownMenuItem onClick={handlePrune} disabled={isPruning || staleCount === 0 || dockerCapabilities?.canPrune !== true}>
                 {isPruning ? <Loader2 className="size-4 mr-2 animate-spin" /> : <Eraser className="size-4 mr-2" />}
                 {t("actions.pruneStale")}{staleCount > 0 ? ` (${staleCount})` : ""}
               </DropdownMenuItem>
@@ -506,7 +578,7 @@ export function LanguageConfigTable({ languages }: { languages: LanguageConfig[]
                       variant="ghost"
                       size="icon-sm"
                       onClick={() => handleBuild(lang)}
-                      disabled={buildingLangs.has(lang.language)}
+                      disabled={buildingLangs.has(lang.language) || dockerCapabilities?.canBuild !== true}
                       title={t("actions.build")}
                       aria-label={`${t("actions.build")}: ${lang.displayName} (${lang.dockerImage})`}
                     >
@@ -519,6 +591,7 @@ export function LanguageConfigTable({ languages }: { languages: LanguageConfig[]
                         variant="ghost"
                         size="icon-sm"
                         onClick={() => handleRemoveImage(lang)}
+                        disabled={dockerCapabilities?.canRemove !== true}
                         title={t("actions.remove")}
                         aria-label={`${t("actions.remove")}: ${lang.displayName} (${lang.dockerImage})`}
                         className="text-destructive"

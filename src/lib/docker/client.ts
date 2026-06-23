@@ -38,6 +38,8 @@ const WORKER_DOCKER_API_CONFIG_DETAIL =
 // pick up the detail from the server log line emitted by getWorkerDockerApiConfigError.
 const WORKER_DOCKER_API_CONFIG_ERROR_CODE = "configError";
 const USE_WORKER_DOCKER_API = Boolean(JUDGE_WORKER_URL && RUNNER_AUTH_TOKEN);
+const ALLOW_LOCAL_DOCKER_ADMIN =
+  process.env.NODE_ENV !== "production" || process.env.JUDGEKIT_ALLOW_LOCAL_DOCKER_ADMIN === "1";
 
 let configErrorLogged = false;
 function emitConfigErrorLog(): void {
@@ -82,6 +84,59 @@ export interface DockerImage {
 export interface DockerPullProgress {
   status: string;
   error?: string;
+}
+
+export type DockerManagementMode = "worker" | "local" | "unavailable";
+
+export interface DockerManagementCapabilities {
+  mode: DockerManagementMode;
+  canList: boolean;
+  canBuild: boolean;
+  canRemove: boolean;
+  canPrune: boolean;
+  reason?: "configError" | "dockerManagementUnavailable";
+}
+
+export function getDockerManagementCapabilities(): DockerManagementCapabilities {
+  if (WORKER_DOCKER_API_CONFIG_DETAIL) {
+    return {
+      mode: "unavailable",
+      canList: false,
+      canBuild: false,
+      canRemove: false,
+      canPrune: false,
+      reason: WORKER_DOCKER_API_CONFIG_ERROR_CODE,
+    };
+  }
+
+  if (USE_WORKER_DOCKER_API) {
+    return {
+      mode: "worker",
+      canList: true,
+      canBuild: true,
+      canRemove: true,
+      canPrune: true,
+    };
+  }
+
+  if (ALLOW_LOCAL_DOCKER_ADMIN) {
+    return {
+      mode: "local",
+      canList: true,
+      canBuild: true,
+      canRemove: true,
+      canPrune: true,
+    };
+  }
+
+  return {
+    mode: "unavailable",
+    canList: false,
+    canBuild: false,
+    canRemove: false,
+    canPrune: false,
+    reason: "dockerManagementUnavailable",
+  };
 }
 
 function isValidImageReference(value: string) {
@@ -341,11 +396,18 @@ async function removeDockerImageLocal(imageTag: string): Promise<{ success: bool
 
 /** List local Docker images, optionally filtered by reference pattern */
 export async function listDockerImages(filter?: string): Promise<DockerImage[]> {
+  const capabilities = getDockerManagementCapabilities();
+  if (!capabilities.canList) {
+    if (capabilities.reason === WORKER_DOCKER_API_CONFIG_ERROR_CODE) {
+      emitConfigErrorLog();
+    }
+    throw new Error(capabilities.reason ?? "dockerManagementUnavailable");
+  }
   const configError = getWorkerDockerApiConfigError();
   if (configError) {
     throw new Error(configError);
   }
-  if (!USE_WORKER_DOCKER_API) {
+  if (capabilities.mode === "local") {
     return listDockerImagesLocal(filter);
   }
 
@@ -368,11 +430,18 @@ export async function listDockerImages(filter?: string): Promise<DockerImage[]> 
 
 /** Pull a Docker image by tag. Returns success/error */
 export async function pullDockerImage(imageTag: string): Promise<{ success: boolean; error?: string }> {
+  const capabilities = getDockerManagementCapabilities();
+  if (!capabilities.canBuild) {
+    if (capabilities.reason === WORKER_DOCKER_API_CONFIG_ERROR_CODE) {
+      emitConfigErrorLog();
+    }
+    return { success: false, error: capabilities.reason ?? "dockerManagementUnavailable" };
+  }
   const configError = getWorkerDockerApiConfigError();
   if (configError) {
     return { success: false, error: configError };
   }
-  if (!USE_WORKER_DOCKER_API) {
+  if (capabilities.mode === "local") {
     return pullDockerImageLocal(imageTag);
   }
 
@@ -394,11 +463,18 @@ export async function pullDockerImage(imageTag: string): Promise<{ success: bool
 
 /** Inspect a Docker image */
 export async function inspectDockerImage(imageTag: string): Promise<Record<string, unknown> | null> {
+  const capabilities = getDockerManagementCapabilities();
+  if (!capabilities.canList) {
+    if (capabilities.reason === WORKER_DOCKER_API_CONFIG_ERROR_CODE) {
+      emitConfigErrorLog();
+    }
+    throw new Error(capabilities.reason ?? "dockerManagementUnavailable");
+  }
   const configError = getWorkerDockerApiConfigError();
   if (configError) {
     throw new Error(configError);
   }
-  if (!USE_WORKER_DOCKER_API) {
+  if (capabilities.mode === "local") {
     return inspectDockerImageLocal(imageTag);
   }
 
@@ -421,11 +497,18 @@ export async function buildDockerImage(
   imageName: string,
   dockerfilePath: string,
 ): Promise<{ success: boolean; error?: string; logs?: string }> {
+  const capabilities = getDockerManagementCapabilities();
+  if (!capabilities.canBuild) {
+    if (capabilities.reason === WORKER_DOCKER_API_CONFIG_ERROR_CODE) {
+      emitConfigErrorLog();
+    }
+    return { success: false, error: capabilities.reason ?? "dockerManagementUnavailable" };
+  }
   const configError = getWorkerDockerApiConfigError();
   if (configError) {
     return { success: false, error: configError };
   }
-  if (!USE_WORKER_DOCKER_API) {
+  if (capabilities.mode === "local") {
     return buildDockerImageLocal(imageName, dockerfilePath);
   }
 
@@ -454,11 +537,18 @@ export async function buildDockerImage(
 
 /** Get disk usage info */
 export async function getDiskUsage(): Promise<{ total: string; used: string; available: string; usePercent: string } | null> {
+  const capabilities = getDockerManagementCapabilities();
+  if (!capabilities.canList) {
+    if (capabilities.reason === WORKER_DOCKER_API_CONFIG_ERROR_CODE) {
+      emitConfigErrorLog();
+    }
+    throw new Error(capabilities.reason ?? "dockerManagementUnavailable");
+  }
   const configError = getWorkerDockerApiConfigError();
   if (configError) {
     throw new Error(configError);
   }
-  if (!USE_WORKER_DOCKER_API) {
+  if (capabilities.mode === "local") {
     return getDiskUsageLocal();
   }
 
@@ -482,11 +572,18 @@ export async function getDiskUsage(): Promise<{ total: string; used: string; ava
 
 /** Remove a Docker image */
 export async function removeDockerImage(imageTag: string): Promise<{ success: boolean; error?: string }> {
+  const capabilities = getDockerManagementCapabilities();
+  if (!capabilities.canRemove) {
+    if (capabilities.reason === WORKER_DOCKER_API_CONFIG_ERROR_CODE) {
+      emitConfigErrorLog();
+    }
+    return { success: false, error: capabilities.reason ?? "dockerManagementUnavailable" };
+  }
   const configError = getWorkerDockerApiConfigError();
   if (configError) {
     return { success: false, error: configError };
   }
-  if (!USE_WORKER_DOCKER_API) {
+  if (capabilities.mode === "local") {
     return removeDockerImageLocal(imageTag);
   }
 

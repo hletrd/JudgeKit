@@ -4,7 +4,7 @@ import { access } from "fs/promises";
 import { join } from "path";
 import { createApiHandler } from "@/lib/api/handler";
 import { apiSuccess } from "@/lib/api/responses";
-import { buildDockerImage } from "@/lib/docker/client";
+import { buildDockerImage, getDockerManagementCapabilities } from "@/lib/docker/client";
 import { recordAuditEvent } from "@/lib/audit/events";
 import { db } from "@/lib/db";
 import { languageConfigs } from "@/lib/db/schema";
@@ -20,6 +20,24 @@ export const POST = createApiHandler({
   auth: { capabilities: ["system.settings"] },
   schema: buildSchema,
   handler: async (req: NextRequest, { body, user }) => {
+    const capabilities = getDockerManagementCapabilities();
+    if (!capabilities.canBuild) {
+      recordAuditEvent({
+        actorId: user.id,
+        actorRole: user.role,
+        action: "docker_image.build_rejected",
+        resourceType: "docker_image",
+        resourceId: body.language,
+        summary: `Rejected Docker image build for unavailable Docker management: ${body.language}`,
+        details: { reason: capabilities.reason ?? "dockerManagementUnavailable" },
+        request: req,
+      });
+      return NextResponse.json(
+        { error: capabilities.reason ?? "dockerManagementUnavailable" },
+        { status: 409 }
+      );
+    }
+
     // Look up the language config to find the docker image name
     const [langConfig] = await db
       .select({ dockerImage: languageConfigs.dockerImage })
