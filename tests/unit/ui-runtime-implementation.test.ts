@@ -32,6 +32,9 @@ describe("UI/runtime implementation guards", () => {
     expect(pollingSource).toContain('document.removeEventListener("visibilitychange", handleVisibilityChange);');
     expect(pollingSource).toContain("fallbackCleanup?.();");
     expect(pollingSource).toContain("es.close();");
+    expect(pollingSource).toContain("/api/v1/submissions/${submissionId}/queue-status");
+    expect(pollingSource).toContain("ACTIVE_SUBMISSION_STATUSES.has(nextStatus)");
+    expect(pollingSource).toContain("submissionStatusRefreshFailed");
   });
 
   it("uses null-safe plugin config access and explicit migrate JSON parse errors", () => {

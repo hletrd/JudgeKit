@@ -40,6 +40,10 @@ type SubmissionDetailView = {
   results: SubmissionResultView[];
 };
 
+type SubmissionStatusView = {
+  status: string;
+};
+
 export type { SubmissionResultView, SubmissionDetailView };
 
 function normalizeSubmission(data: unknown): SubmissionDetailView {
@@ -127,6 +131,36 @@ function normalizeSubmission(data: unknown): SubmissionDetailView {
 }
 
 export { normalizeSubmission };
+
+function normalizeSubmissionStatus(data: unknown): SubmissionStatusView {
+  const record =
+    data !== null && typeof data === "object" && !Array.isArray(data)
+      ? data as Record<string, unknown>
+      : {};
+
+  if (typeof record.status !== "string") {
+    throw new Error("submissionStatusMissing");
+  }
+
+  return { status: record.status };
+}
+
+async function readApiData(response: Response, failurePrefix: string): Promise<unknown> {
+  if (!response.ok) {
+    throw new Error(`${failurePrefix}:${response.status}`);
+  }
+
+  const payload = await response.json().catch(() => ({ data: null }));
+
+  if (typeof payload !== "object" || payload === null || !("data" in payload)) {
+    throw new Error("submissionPayloadMissing");
+  }
+  const data = payload.data;
+  if (data === null || data === undefined) {
+    throw new Error("submissionPayloadMissing");
+  }
+  return data;
+}
 
 /**
  * Try SSE (EventSource) for real-time updates. If EventSource is unavailable
@@ -252,40 +286,38 @@ function initFetchPolling(
     }
 
     try {
-      const response = await apiFetch(`/api/v1/submissions/${submissionId}`, {
+      const statusResponse = await apiFetch(`/api/v1/submissions/${submissionId}/queue-status`, {
         cache: "no-store",
         signal: controller.signal,
       });
+      const statusData = await readApiData(statusResponse, "submissionStatusRefreshFailed");
+      const nextStatus = normalizeSubmissionStatus(statusData).status;
 
-      if (!response.ok) {
-        // Preserve status for error-classification below.
-        throw new Error(`submissionRefreshFailed:${response.status}`);
+      if (ACTIVE_SUBMISSION_STATUSES.has(nextStatus)) {
+        if (!isCancelled) {
+          setSubmission((prev) => ({ ...prev, status: nextStatus }));
+          setError(false);
+          delayMs = 3000;
+        }
+        scheduleRefresh();
+        return;
       }
 
-      const payload = await response.json().catch(() => ({ data: null }));
-
-      if (typeof payload !== "object" || payload === null || !("data" in payload)) {
-        throw new Error("submissionPayloadMissing");
-      }
-      const data = payload.data;
-      if (data === null || data === undefined) {
-        throw new Error("submissionPayloadMissing");
-      }
+      const detailResponse = await apiFetch(`/api/v1/submissions/${submissionId}`, {
+        cache: "no-store",
+        signal: controller.signal,
+      });
+      const detailData = await readApiData(detailResponse, "submissionRefreshFailed");
 
       if (isCancelled) {
         return;
       }
 
-      const nextSubmission = normalizeSubmission(data);
+      const nextSubmission = normalizeSubmission(detailData);
       setSubmission((prev) => ({ ...nextSubmission, sourceCode: nextSubmission.sourceCode || prev.sourceCode }));
       setError(false);
       delayMs = 3000;
-
-      if (ACTIVE_SUBMISSION_STATUSES.has(nextSubmission.status)) {
-        scheduleRefresh();
-      } else {
-        setIsPolling(false);
-      }
+      setIsPolling(false);
     } catch (err) {
       if (isCancelled || (err instanceof DOMException && err.name === "AbortError")) {
         return;
@@ -294,7 +326,7 @@ function initFetchPolling(
       // Classify errors: stop polling on terminal statuses (404/403),
       // back off on 5xx and network errors.
       const statusMatch =
-        err instanceof Error ? err.message.match(/submissionRefreshFailed:(\d+)/) : null;
+        err instanceof Error ? err.message.match(/submission(?:Status)?RefreshFailed:(\d+)/) : null;
       const statusCode = statusMatch ? parseInt(statusMatch[1], 10) : null;
       const isTerminalError = statusCode === 404 || statusCode === 403;
 
