@@ -780,6 +780,8 @@
     "actualOutput": "Actual Output",
     "diffView": "Diff",
     "sideBySideView": "Side by Side",
+    "diffTooLargeTitle": "Output is too large for rich diffing",
+    "diffTooLargeDescription": "Showing the expected and actual output without line-by-line diffing to keep the page responsive.",
     "rejudge": "Rejudge",
     "rejudgeSuccess": "Submission queued for rejudging.",
     "rejudgeFailed": "Failed to rejudge submission.",

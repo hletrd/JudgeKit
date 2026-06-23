@@ -20,6 +20,28 @@ export interface SideBySidePair {
   right: { kind: DiffLineKind; lineNo: number | null; content: string } | null;
 }
 
+export const MAX_RICH_DIFF_CHARS = 20000;
+export const MAX_RICH_DIFF_CELLS = 160000;
+
+function countLines(value: string): number {
+  if (value.length === 0) return 1;
+  let count = 1;
+  for (let i = 0; i < value.length; i++) {
+    if (value.charCodeAt(i) === 10) count++;
+  }
+  return count;
+}
+
+export function canComputeRichDiff(expected: string, actual: string): boolean {
+  if (expected.length + actual.length > MAX_RICH_DIFF_CHARS) {
+    return false;
+  }
+
+  const expectedLines = countLines(expected);
+  const actualLines = countLines(actual);
+  return expectedLines * actualLines <= MAX_RICH_DIFF_CELLS;
+}
+
 /**
  * Compute the LCS table for two string arrays.
  */
@@ -72,6 +94,10 @@ function backtrack(dp: number[][], a: string[], b: string[]): DiffLine[] {
  * Compute a unified diff between two strings, line by line.
  */
 export function computeDiff(expected: string, actual: string): DiffLine[] {
+  if (!canComputeRichDiff(expected, actual)) {
+    throw new Error("diffTooLarge");
+  }
+
   const a = expected.split("\n");
   const b = actual.split("\n");
   const dp = lcsTable(a, b);

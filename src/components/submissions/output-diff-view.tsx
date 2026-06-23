@@ -2,7 +2,7 @@
 
 import { useMemo } from "react";
 import { useTranslations } from "next-intl";
-import { computeDiff, toSideBySide, type DiffLine, type SideBySidePair } from "@/lib/diff";
+import { canComputeRichDiff, computeDiff, toSideBySide, type DiffLine, type SideBySidePair } from "@/lib/diff";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
 
 type OutputDiffViewProps = {
@@ -12,8 +12,19 @@ type OutputDiffViewProps = {
 
 export function OutputDiffView({ expectedOutput, actualOutput }: OutputDiffViewProps) {
   const t = useTranslations("submissions");
-  const diffLines = useMemo(() => computeDiff(expectedOutput, actualOutput), [expectedOutput, actualOutput]);
+  const richDiffAvailable = useMemo(
+    () => canComputeRichDiff(expectedOutput, actualOutput),
+    [expectedOutput, actualOutput],
+  );
+  const diffLines = useMemo(
+    () => richDiffAvailable ? computeDiff(expectedOutput, actualOutput) : [],
+    [actualOutput, expectedOutput, richDiffAvailable],
+  );
   const sideBySidePairs = useMemo(() => toSideBySide(diffLines), [diffLines]);
+
+  if (!richDiffAvailable) {
+    return <LargeOutputDiffFallback expectedOutput={expectedOutput} actualOutput={actualOutput} />;
+  }
 
   return (
     <Tabs defaultValue="diff">
@@ -30,6 +41,34 @@ export function OutputDiffView({ expectedOutput, actualOutput }: OutputDiffViewP
         <SideBySideDiffView pairs={sideBySidePairs} />
       </TabsContent>
     </Tabs>
+  );
+}
+
+function LargeOutputDiffFallback({ expectedOutput, actualOutput }: OutputDiffViewProps) {
+  const t = useTranslations("submissions");
+
+  return (
+    <div className="space-y-3 rounded border bg-muted/30 p-3">
+      <div>
+        <p className="text-sm font-medium">{t("diffTooLargeTitle")}</p>
+        <p className="text-xs text-muted-foreground">{t("diffTooLargeDescription")}</p>
+      </div>
+      <div className="grid gap-3 md:grid-cols-2">
+        <OutputPreview title={t("expectedOutput")} value={expectedOutput} />
+        <OutputPreview title={t("actualOutput")} value={actualOutput} />
+      </div>
+    </div>
+  );
+}
+
+function OutputPreview({ title, value }: { title: string; value: string }) {
+  return (
+    <div className="min-w-0">
+      <p className="mb-1 text-xs font-medium text-muted-foreground">{title}</p>
+      <pre className="max-h-80 overflow-auto rounded border bg-[var(--code-surface-background)] p-2 text-xs leading-relaxed whitespace-pre-wrap break-all">
+        {value}
+      </pre>
+    </div>
   );
 }
 

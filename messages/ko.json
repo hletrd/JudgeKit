@@ -780,6 +780,8 @@
     "actualOutput": "실제 출력",
     "diffView": "비교",
     "sideBySideView": "나란히 보기",
+    "diffTooLargeTitle": "출력이 커서 자세한 비교를 생략했어요",
+    "diffTooLargeDescription": "화면이 멈추지 않도록 줄 단위 비교 대신 예상 출력과 실제 출력만 보여줘요.",
     "rejudge": "재채점",
     "rejudgeSuccess": "재채점 대기열에 넣었어요.",
     "rejudgeFailed": "재채점 요청에 실패했어요.",
