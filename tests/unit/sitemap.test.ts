@@ -1,3 +1,5 @@
+import { readFileSync } from "node:fs";
+import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 const mocks = vi.hoisted(() => ({
@@ -116,5 +118,15 @@ describe("sitemap metadata route", () => {
         priority: 0.6,
       },
     ]));
+  });
+
+  it("appends dynamic URLs in bounded batches instead of accumulating all DB rows first", () => {
+    const source = readFileSync(join(process.cwd(), "src/app/sitemap.ts"), "utf8");
+
+    expect(source).toContain("const MAX_SITEMAP_URLS = 45000");
+    expect(source).toContain("appendLocalizedEntriesInBatches");
+    expect(source).toContain("entries.push(...buildLocalizedSitemapEntries");
+    expect(source).not.toContain("fetchAllInBatches");
+    expect(source).not.toContain("const [publicProblems, publicContests, generalThreads]");
   });
 });
