@@ -116,6 +116,17 @@ describe("deployment security defaults", () => {
     expect(dockerfile).not.toContain("addgroup nextjs docker");
   });
 
+  it("excludes local worker services before app-only compose startup", () => {
+    const deployDocker = read("deploy-docker.sh");
+
+    expect(deployDocker).toContain("docker-compose.app-only.yml");
+    expect(deployDocker).toContain("profiles: ['local-worker']");
+    expect(deployDocker).toContain('COMPOSE_DEPLOY_FILES="-f docker-compose.production.yml -f docker-compose.app-only.yml"');
+    expect(deployDocker).toContain("docker compose ${COMPOSE_DEPLOY_FILES} --env-file .env.production up -d");
+    expect(deployDocker).toContain("docker rm -f judgekit-judge-worker judgekit-docker-proxy");
+    expect(deployDocker).not.toContain("local judge worker will be stopped after startup");
+  });
+
   it("packages the Drizzle env loader used by legacy in-container migrations", () => {
     const dockerfile = read("Dockerfile");
     const drizzleConfig = read("drizzle.config.ts");

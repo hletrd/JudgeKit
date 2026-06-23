@@ -23,9 +23,11 @@
 #   SKIP_LANGUAGES        — "1"/"true" to skip building judge language images
 #   LANGUAGE_FILTER       — Comma-separated language IDs or "core" to scope builds
 #   BUILD_WORKER_IMAGE    — "1"/"true" to build the dedicated judge worker image
-#                            (default false on the app server; see CLAUDE.md)
+#                            (default follows INCLUDE_WORKER; set false on
+#                            app-only targets; see CLAUDE.md)
 #   INCLUDE_WORKER        — "1"/"true" to start the worker container in the
-#                            production stack (default false on the app server)
+#                            production stack (default true unless disabled by
+#                            the target deploy env)
 #   SKIP_PREDEPLOY_BACKUP — "1"/"true" to skip the pg_dump pre-deploy backup
 #                            (escape hatch when DB host is unreachable; use with care)
 #   SKIP_POST_DEPLOY_PRUNE — "1"/"true" to skip the default post-deploy
@@ -814,6 +816,20 @@ fi
 # ---------------------------------------------------------------------------
 info "Setting up docker-compose config on remote..."
 remote "cp -f ${REMOTE_DIR}/docker-compose.production.yml ${REMOTE_DIR}/docker-compose.yml.deploy 2>/dev/null || true"
+COMPOSE_DEPLOY_FILES="-f docker-compose.production.yml"
+if [[ "${INCLUDE_WORKER}" != "true" ]]; then
+    info "Generating app-only compose override (INCLUDE_WORKER=${INCLUDE_WORKER})..."
+    remote "cat > ${REMOTE_DIR}/docker-compose.app-only.yml <<'COMPOSE_APP_ONLY_YAML'
+services:
+  docker-proxy:
+    profiles: ['local-worker']
+  judge-worker:
+    profiles: ['local-worker']
+COMPOSE_APP_ONLY_YAML"
+    COMPOSE_DEPLOY_FILES="-f docker-compose.production.yml -f docker-compose.app-only.yml"
+else
+    remote "rm -f ${REMOTE_DIR}/docker-compose.app-only.yml 2>/dev/null || true"
+fi
 success "Config ready"
 
 # ---------------------------------------------------------------------------
@@ -890,20 +906,22 @@ fi
 # ---------------------------------------------------------------------------
 # Step 5: Stop old containers, start DB first, migrate, then start all
 #
-# The `judge-worker` service used to be gated behind `profiles: ["worker"]`,
-# which required every `docker compose` invocation to pass `--profile worker`
-# or the worker would silently be skipped. The profile was removed (Apr 2026)
-# after an incident where a manual `docker compose up` forgot the flag and
-# the worker vanished on two targets at once. The worker is now always part
-# of the stack; deployments that run dedicated workers elsewhere can stop
-# the local worker with `docker compose stop judge-worker` after `up -d`.
+# The base production compose keeps `judge-worker` unprofiled so integrated
+# targets and manual recovery commands start it by default. App-only targets
+# use the generated docker-compose.app-only.yml override above, which moves
+# judge-worker and docker-proxy into an inactive `local-worker` profile before
+# the deploy `up -d` runs.
 # ---------------------------------------------------------------------------
 info "Stopping existing containers (if any)..."
-remote "cd ${REMOTE_DIR} && cp -f .env.production .env && (docker compose -f docker-compose.production.yml down --remove-orphans || docker-compose -f docker-compose.production.yml down --remove-orphans || true)"
+remote "cd ${REMOTE_DIR} && cp -f .env.production .env && (docker compose ${COMPOSE_DEPLOY_FILES} down --remove-orphans || docker-compose ${COMPOSE_DEPLOY_FILES} down --remove-orphans || true)"
+
+if [[ "${INCLUDE_WORKER}" != "true" ]]; then
+    remote "docker rm -f judgekit-judge-worker judgekit-docker-proxy 2>/dev/null || true"
+fi
 
 # 5a. Start only the database container
 info "Starting database container..."
-remote "cd ${REMOTE_DIR} && (docker compose -f docker-compose.production.yml --env-file .env.production up -d db || docker-compose -f docker-compose.production.yml --env-file .env.production up -d db)"
+remote "cd ${REMOTE_DIR} && (docker compose ${COMPOSE_DEPLOY_FILES} --env-file .env.production up -d db || docker-compose ${COMPOSE_DEPLOY_FILES} --env-file .env.production up -d db)"
 
 info "Waiting for database to be healthy..."
 DB_BECAME_HEALTHY=0
@@ -1094,21 +1112,12 @@ remote "PG_PASS=\$(grep '^POSTGRES_PASSWORD=' ${REMOTE_DIR}/.env.production | cu
 success "Database statistics updated"
 
 # 6b. Now start all remaining containers.
-# The judge-worker service is always in the compose file (no profile gate).
-# For targets that outsource judging to remote workers, INCLUDE_WORKER=false
-# will stop the local worker immediately after it starts so the app and
-# sidecars still come up cleanly.
 if [[ "${INCLUDE_WORKER}" == "true" ]]; then
     info "Starting all containers (with local judge worker)..."
 else
-    info "Starting all containers (local judge worker will be stopped after startup)..."
+    info "Starting app containers (local judge worker excluded by compose override)..."
 fi
-remote "cd ${REMOTE_DIR} && (docker compose -f docker-compose.production.yml --env-file .env.production up -d || docker-compose -f docker-compose.production.yml --env-file .env.production up -d)"
-
-if [[ "${INCLUDE_WORKER}" != "true" ]]; then
-    info "Stopping local judge-worker per INCLUDE_WORKER=${INCLUDE_WORKER}..."
-    remote "cd ${REMOTE_DIR} && (docker compose -f docker-compose.production.yml --env-file .env.production stop judge-worker || docker-compose -f docker-compose.production.yml --env-file .env.production stop judge-worker 2>/dev/null || true)"
-fi
+remote "cd ${REMOTE_DIR} && (docker compose ${COMPOSE_DEPLOY_FILES} --env-file .env.production up -d || docker-compose ${COMPOSE_DEPLOY_FILES} --env-file .env.production up -d)"
 
 info "Waiting for app container to be healthy..."
 for i in $(seq 1 60); do
@@ -1414,7 +1423,7 @@ HTTP_CODE=$(remote "curl -s -o /dev/null -w '%{http_code}' http://127.0.0.1:${AP
 if [[ "$HTTP_CODE" =~ ^(200|302|308)$ ]]; then
     success "JudgeKit is responding (HTTP ${HTTP_CODE})"
 else
-    die "App returned HTTP ${HTTP_CODE}. Check logs: ssh ${REMOTE_USER}@${REMOTE_HOST} 'cd ${REMOTE_DIR} && docker compose -f docker-compose.production.yml logs -f'"
+    die "App returned HTTP ${HTTP_CODE}. Check logs: ssh ${REMOTE_USER}@${REMOTE_HOST} 'cd ${REMOTE_DIR} && docker compose ${COMPOSE_DEPLOY_FILES} logs -f'"
 fi
 
 if [[ "${USE_TLS}" == "true" ]]; then
@@ -1485,7 +1494,7 @@ else
     info "URL:        http://${DOMAIN}"
 fi
 info "Remote dir: ${REMOTE_DIR}"
-info "Logs:       ssh ${REMOTE_USER}@${REMOTE_HOST} 'cd ${REMOTE_DIR} && docker compose -f docker-compose.production.yml logs -f'"
+info "Logs:       ssh ${REMOTE_USER}@${REMOTE_HOST} 'cd ${REMOTE_DIR} && docker compose ${COMPOSE_DEPLOY_FILES} logs -f'"
 info "Seed admin: ssh ${REMOTE_USER}@${REMOTE_HOST} 'docker exec -it judgekit-app node scripts/seed.ts'"
-info "Restart:    ssh ${REMOTE_USER}@${REMOTE_HOST} 'cd ${REMOTE_DIR} && docker compose -f docker-compose.production.yml --env-file .env.production restart'"
+info "Restart:    ssh ${REMOTE_USER}@${REMOTE_HOST} 'cd ${REMOTE_DIR} && docker compose ${COMPOSE_DEPLOY_FILES} --env-file .env.production restart'"
 echo "==========================================================================="

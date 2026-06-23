@@ -118,11 +118,11 @@ services:
       start_period: 15s
 
   judge-worker:
-    # No profile gate — the worker is always part of the production stack.
-    # Targets that run workers on separate machines can stop the service
-    # with `docker compose stop judge-worker` after `up -d`. The previous
-    # `profiles: ["worker"]` gate caused silent worker outages on redeploys
-    # when operators forgot `--profile worker` during manual recovery.
+    # No profile gate in the base compose file — integrated targets and
+    # manual recovery commands start the worker by default. App-only targets
+    # use deploy-docker.sh's generated docker-compose.app-only.yml override
+    # to move this service and docker-proxy behind an inactive profile before
+    # `up -d` runs.
     build:
       context: .
       dockerfile: Dockerfile.judge-worker
