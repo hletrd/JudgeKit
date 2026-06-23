@@ -21,6 +21,8 @@ function read(relativePath: string) {
  * - Fetches deadline, latePenalty, examMode from the assignment row
  * - Passes these parameters to the raw query
  * - Uses canManageContest for instructor access check
+ * - Caches quick stats with stale-while-revalidate so 15s polling does not
+ *   recompute the aggregate query on every request
  */
 describe("contest stats route implementation", () => {
   const source = read("src/app/api/v1/contests/[assignmentId]/stats/route.ts");
@@ -99,6 +101,24 @@ describe("contest stats route implementation", () => {
       expect(source).toContain("statsResult?.submittedCount ?? 0");
       expect(source).toContain("statsResult?.avgScore ?? 0");
       expect(source).toContain("statsResult?.problemsSolvedCount ?? 0");
+    });
+  });
+
+  describe("polling cache", () => {
+    it("uses a bounded LRU cache with stale-while-revalidate refresh", () => {
+      expect(source).toContain('import { LRUCache } from "lru-cache"');
+      expect(source).toContain("const statsCache = new LRUCache");
+      expect(source).toContain("STALE_AFTER_MS = 15_000");
+      expect(source).toContain("REFRESH_FAILURE_COOLDOWN_MS");
+      expect(source).toContain("refreshStatsCacheInBackground");
+      expect(source).toContain("statsCache.get(cacheKey)");
+      expect(source).toContain("return apiSuccess(cached.data)");
+    });
+
+    it("uses database time only when writing fresh cache entries", () => {
+      expect(source).toContain('import { getDbNowMs } from "@/lib/db-time"');
+      expect(source).toContain("createdAt: await getDbNowMs()");
+      expect(source).toContain("const nowMs = Date.now()");
     });
   });
 });
