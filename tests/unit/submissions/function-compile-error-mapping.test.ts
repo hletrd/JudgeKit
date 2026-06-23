@@ -1,4 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
+import { readFileSync } from "node:fs";
+import { join } from "node:path";
 
 /**
  * Integration of the function-judging compile-error remapper into the central
@@ -121,5 +123,22 @@ describe("sanitizeSubmissionForViewer — function compile-error mapping", () =>
     expect(sanitized.compileOutput).toBe(
       "solution.py:4:5: SyntaxError: invalid syntax\ncheck line 4",
     );
+  });
+
+  it("remaps compile output on scoped submission review pages before rendering badges", () => {
+    const contestParticipantPage = readFileSync(
+      join(process.cwd(), "src/app/(public)/contests/manage/[assignmentId]/participant/[userId]/submissions/page.tsx"),
+      "utf8",
+    );
+    const groupStudentPage = readFileSync(
+      join(process.cwd(), "src/app/(public)/groups/[id]/assignments/[assignmentId]/student/[userId]/page.tsx"),
+      "utf8",
+    );
+
+    for (const source of [contestParticipantPage, groupStudentPage]) {
+      expect(source).toContain("mapFunctionCompileOutputForDisplay");
+      expect(source).toContain("functionSpec");
+      expect(source).toContain("problemType");
+    }
   });
 });

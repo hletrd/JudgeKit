@@ -13,6 +13,7 @@ import { formatScore } from "@/lib/formatting";
 import { formatSubmissionIdPrefix } from "@/lib/submissions/format";
 import { buildStatusLabels } from "@/lib/judge/status-labels";
 import { getLanguageDisplayLabel } from "@/lib/judge/languages";
+import { mapFunctionCompileOutputForDisplay } from "@/lib/submissions/visibility";
 import { SubmissionStatusBadge } from "@/components/submission-status-badge";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -67,6 +68,8 @@ export default async function ContestParticipantSubmissionsPage({
         id: submissions.id,
         problemId: submissions.problemId,
         problemTitle: problems.title,
+        problemType: problems.problemType,
+        functionSpec: problems.functionSpec,
         language: submissions.language,
         status: submissions.status,
         score: submissions.score,
@@ -89,6 +92,15 @@ export default async function ContestParticipantSubmissionsPage({
   if (!assignment || assignment.examMode === "none" || !student) {
     notFound();
   }
+
+  const visibleRows = rows.map(({ problemType, functionSpec, ...row }) => ({
+    ...row,
+    compileOutput: mapFunctionCompileOutputForDisplay({
+      compileOutput: row.compileOutput,
+      language: row.language,
+      problem: { problemType, functionSpec },
+    }),
+  }));
 
   const statusLabels: Record<string, string> = buildStatusLabels(tSubmissions);
 
@@ -113,7 +125,7 @@ export default async function ContestParticipantSubmissionsPage({
 
       <Card>
         <CardContent className="p-0">
-          {rows.length === 0 ? (
+          {visibleRows.length === 0 ? (
             <p className="px-6 py-8 text-center text-sm text-muted-foreground">
               {t("noAttempts")}
             </p>
@@ -134,7 +146,7 @@ export default async function ContestParticipantSubmissionsPage({
                   </TableRow>
                 </TableHeader>
                 <TableBody>
-                  {rows.map((sub) => (
+                  {visibleRows.map((sub) => (
                     <TableRow key={sub.id}>
                       <TableCell className="pl-6 font-mono text-xs">
                         <Link

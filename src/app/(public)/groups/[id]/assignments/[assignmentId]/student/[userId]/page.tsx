@@ -19,6 +19,7 @@ import { formatScore } from "@/lib/formatting";
 import { formatSubmissionIdPrefix } from "@/lib/submissions/format";
 import { buildStatusLabels } from "@/lib/judge/status-labels";
 import { getLanguageDisplayLabel } from "@/lib/judge/languages";
+import { mapFunctionCompileOutputForDisplay } from "@/lib/submissions/visibility";
 import { DEFAULT_PROBLEM_POINTS } from "@/lib/assignments/constants";
 import { SubmissionStatusBadge } from "@/components/submission-status-badge";
 import { Badge } from "@/components/ui/badge";
@@ -94,6 +95,8 @@ export default async function StudentSubmissionsPage({
     .select({
       problemId: assignmentProblems.problemId,
       title: problems.title,
+      problemType: problems.problemType,
+      functionSpec: problems.functionSpec,
       points: assignmentProblems.points,
       sortOrder: assignmentProblems.sortOrder,
     })
@@ -124,9 +127,28 @@ export default async function StudentSubmissionsPage({
     )
     .orderBy(desc(submissions.submittedAt));
 
+  const problemMetadataById = new Map(
+    assignmentProblemRows.map((problem) => [
+      problem.problemId,
+      {
+        problemType: problem.problemType,
+        functionSpec: problem.functionSpec,
+      },
+    ]),
+  );
+
+  const visibleSubmissions = studentSubmissions.map((submission) => ({
+    ...submission,
+    compileOutput: mapFunctionCompileOutputForDisplay({
+      compileOutput: submission.compileOutput,
+      language: submission.language,
+      problem: problemMetadataById.get(submission.problemId) ?? null,
+    }),
+  }));
+
   // Group submissions by problemId
-  const submissionsByProblem = new Map<string, typeof studentSubmissions>();
-  for (const sub of studentSubmissions) {
+  const submissionsByProblem = new Map<string, typeof visibleSubmissions>();
+  for (const sub of visibleSubmissions) {
     const entry = submissionsByProblem.get(sub.problemId);
     if (entry) {
       entry.push(sub);
