@@ -64,7 +64,9 @@ impl Config {
         //   -> claim_url  = JUDGE_POLL_URL with "/judge/poll" replaced by "/judge/claim"
         //
         // Default: http://localhost:3000/api/v1
-        let (claim_url, report_url, register_url, heartbeat_url, deregister_url) = if let Ok(base) = env::var("JUDGE_BASE_URL") {
+        let (claim_url, report_url, register_url, heartbeat_url, deregister_url) = if let Ok(base) =
+            env::var("JUDGE_BASE_URL")
+        {
             let base = base.trim_end_matches('/');
             (
                 format!("{base}/judge/claim"),
@@ -118,7 +120,9 @@ impl Config {
                     .parse::<u64>()
                     .map_err(|_| format!("POLL_INTERVAL must be a positive integer, got: {val}"))?;
                 if ms == 0 {
-                    return Err("POLL_INTERVAL must be a positive integer greater than 0".to_string());
+                    return Err(
+                        "POLL_INTERVAL must be a positive integer greater than 0".to_string()
+                    );
                 }
                 ms
             }
@@ -156,7 +160,7 @@ impl Config {
                 }
                 if token == auth_token_raw {
                     return Err(
-                        "RUNNER_AUTH_TOKEN must be different from JUDGE_AUTH_TOKEN".to_string(),
+                        "RUNNER_AUTH_TOKEN must be different from JUDGE_AUTH_TOKEN".to_string()
                     );
                 }
                 SecretString::new(token)
@@ -180,8 +184,7 @@ impl Config {
             );
         }
 
-        let allow_default_compile_seccomp = match env::var("JUDGE_ALLOW_DEFAULT_COMPILE_SECCOMP")
-        {
+        let allow_default_compile_seccomp = match env::var("JUDGE_ALLOW_DEFAULT_COMPILE_SECCOMP") {
             Ok(val) => {
                 let lower = val.trim().to_lowercase();
                 matches!(lower.as_str(), "1" | "true" | "yes" | "on")
@@ -212,12 +215,12 @@ impl Config {
 
         let judge_concurrency: usize = match env::var("JUDGE_CONCURRENCY") {
             Ok(val) => {
-                let n = val
-                    .parse::<usize>()
-                    .map_err(|_| format!("JUDGE_CONCURRENCY must be a positive integer, got: {val}"))?;
+                let n = val.parse::<usize>().map_err(|_| {
+                    format!("JUDGE_CONCURRENCY must be a positive integer, got: {val}")
+                })?;
                 if n < 1 || n > 16 {
                     return Err(
-                        "JUDGE_CONCURRENCY must be between 1 and 16 (inclusive)".to_string(),
+                        "JUDGE_CONCURRENCY must be between 1 and 16 (inclusive)".to_string()
                     );
                 }
                 n
@@ -251,11 +254,13 @@ impl Config {
 
         let runner_concurrency: usize = match env::var("RUNNER_CONCURRENCY") {
             Ok(val) => {
-                let n = val
-                    .parse::<usize>()
-                    .map_err(|_| format!("RUNNER_CONCURRENCY must be a positive integer, got: {val}"))?;
+                let n = val.parse::<usize>().map_err(|_| {
+                    format!("RUNNER_CONCURRENCY must be a positive integer, got: {val}")
+                })?;
                 if !(1..=64).contains(&n) {
-                    return Err("RUNNER_CONCURRENCY must be between 1 and 64 (inclusive)".to_string());
+                    return Err(
+                        "RUNNER_CONCURRENCY must be between 1 and 64 (inclusive)".to_string()
+                    );
                 }
                 n
             }
@@ -336,7 +341,12 @@ fn validate_runtime_path(raw: &str, var_name: &str) -> Result<PathBuf, String> {
 
 fn validate_secure_judge_urls(urls: &[&str]) -> Result<(), String> {
     let allow_insecure_http = env::var("JUDGE_ALLOW_INSECURE_HTTP")
-        .map(|value| matches!(value.trim().to_lowercase().as_str(), "1" | "true" | "yes" | "on"))
+        .map(|value| {
+            matches!(
+                value.trim().to_lowercase().as_str(),
+                "1" | "true" | "yes" | "on"
+            )
+        })
         .unwrap_or(false);
 
     validate_secure_judge_urls_with_override(urls, allow_insecure_http)
@@ -386,7 +396,8 @@ fn is_local_control_plane_host(host: Option<&str>) -> bool {
 #[cfg(test)]
 mod tests {
     use super::{
-        is_local_control_plane_host, validate_runtime_path, validate_secure_judge_urls_with_override,
+        is_local_control_plane_host, validate_runtime_path,
+        validate_secure_judge_urls_with_override,
     };
     use std::path::PathBuf;
 

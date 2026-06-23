@@ -1,5 +1,22 @@
+fn is_trusted_registry_image(image: &str, trusted_prefixes: &[&str]) -> bool {
+    trusted_prefixes.iter().any(|prefix| {
+        if !image.starts_with(prefix) {
+            return false;
+        }
+
+        let Some(last_char) = prefix.chars().last() else {
+            return false;
+        };
+        if matches!(last_char, '/' | ':') {
+            return true;
+        }
+
+        matches!(image.as_bytes().get(prefix.len()), Some(b'/' | b':') | None)
+    })
+}
+
 fn validate_docker_image_with_trusted(image: &str, trusted_prefixes: &[&str]) -> bool {
-    if image.is_empty() || image.contains("://") {
+    if image.is_empty() || image.contains("://") || image.contains("..") {
         return false;
     }
     let first = image.as_bytes()[0];
@@ -16,7 +33,8 @@ fn validate_docker_image_with_trusted(image: &str, trusted_prefixes: &[&str]) ->
 
     let segments: Vec<&str> = image.split('/').collect();
     let first_segment = segments.first().copied().unwrap_or_default();
-    let has_registry_prefix = segments.len() > 1 && first_segment.contains('.');
+    let has_registry_prefix =
+        segments.len() > 1 && (first_segment.contains('.') || first_segment == "localhost");
     let image_name = segments
         .last()
         .and_then(|segment| segment.split(':').next())
@@ -30,10 +48,7 @@ fn validate_docker_image_with_trusted(image: &str, trusted_prefixes: &[&str]) ->
         return segments.len() == 1;
     }
 
-    !trusted_prefixes.is_empty()
-        && trusted_prefixes
-            .iter()
-            .any(|prefix| image.starts_with(prefix))
+    !trusted_prefixes.is_empty() && is_trusted_registry_image(image, trusted_prefixes)
 }
 
 /// Validate that a docker image reference is safe (no protocol, alphanumeric start).
@@ -91,6 +106,10 @@ mod tests {
             "registry.example.com/team/judge-rust:1.0",
             &["registry.example.com/"],
         ));
+        assert!(validate_docker_image_with_trusted(
+            "localhost/team/judge-rust:1.0",
+            &["localhost/"],
+        ));
     }
 
     #[test]
@@ -104,6 +123,18 @@ mod tests {
         assert!(!validate_docker_image_with_trusted(
             "registry.example.com/judge-rust:1.0",
             &[],
+        ));
+        assert!(!validate_docker_image_with_trusted(
+            "registry.example.com.evil.com/judge-rust:1.0",
+            &["registry.example.com"],
+        ));
+        assert!(validate_docker_image_with_trusted(
+            "registry.example.com/team/judge-rust:1.0",
+            &["registry.example.com"],
+        ));
+        assert!(validate_docker_image_with_trusted(
+            "registry.example.com:5000/judge-rust:1.0",
+            &["registry.example.com"],
         ));
     }
 
@@ -141,8 +172,12 @@ mod tests {
 
     #[test]
     fn dockerfile_build_path_stays_under_judge_dockerfiles() {
-        assert!(validate_dockerfile_path_for_build("docker/Dockerfile.judge-python"));
-        assert!(!validate_dockerfile_path_for_build("../docker/Dockerfile.judge-python"));
+        assert!(validate_dockerfile_path_for_build(
+            "docker/Dockerfile.judge-python"
+        ));
+        assert!(!validate_dockerfile_path_for_build(
+            "../docker/Dockerfile.judge-python"
+        ));
         assert!(!validate_dockerfile_path_for_build("docker/Dockerfile.app"));
     }
 }

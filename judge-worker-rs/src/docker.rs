@@ -92,13 +92,17 @@ fn parse_timestamp_epoch_ms(s: &str) -> Option<u64> {
     // Split into date and time at 'T'
     let (date_part, rest) = s.split_once('T')?;
     let date_parts: Vec<&str> = date_part.split('-').collect();
-    if date_parts.len() != 3 { return None; }
+    if date_parts.len() != 3 {
+        return None;
+    }
     let year: i64 = date_parts[0].parse().ok()?;
     let month: i64 = date_parts[1].parse().ok()?;
     let day: i64 = date_parts[2].parse().ok()?;
 
     // Strip timezone suffix to get time portion
-    let end = rest.find(|c: char| !c.is_ascii_digit() && c != ':' && c != '.').unwrap_or(rest.len());
+    let end = rest
+        .find(|c: char| !c.is_ascii_digit() && c != ':' && c != '.')
+        .unwrap_or(rest.len());
     let time_part = &rest[..end];
 
     let mut parts = time_part.split(':');
@@ -119,7 +123,10 @@ fn parse_timestamp_epoch_ms(s: &str) -> Option<u64> {
     // Days from Unix epoch using a simplified calculation (sufficient for 2000-2100)
     let mut y = year;
     let mut m = month;
-    if m <= 2 { y -= 1; m += 12; }
+    if m <= 2 {
+        y -= 1;
+        m += 12;
+    }
     let days = 365 * y + y / 4 - y / 100 + y / 400 + (153 * (m - 3) + 2) / 5 + day - 719469;
     let total_ms = ((days * 86400 + hours * 3600 + minutes * 60 + secs) * 1000) + millis;
     if total_ms < 0 {
@@ -177,9 +184,7 @@ async fn inspect_container_state(container_name: &str) -> ContainerInspect {
                     parse_timestamp_epoch_ms(parts[1]),
                     parse_timestamp_epoch_ms(parts[2]),
                 ) {
-                    (Some(start), Some(end)) if end >= start => {
-                        Some(end - start)
-                    }
+                    (Some(start), Some(end)) if end >= start => Some(end - start),
                     _ => None,
                 }
             } else {
@@ -223,7 +228,9 @@ async fn remove_container(container_name: &str) {
 }
 
 fn should_retry_without_seccomp(stderr: &str) -> bool {
-    SECCOMP_INIT_ERROR_SNIPPETS.iter().any(|snippet| stderr.contains(snippet))
+    SECCOMP_INIT_ERROR_SNIPPETS
+        .iter()
+        .any(|snippet| stderr.contains(snippet))
 }
 
 fn resolve_seccomp_profile<'a>(
@@ -261,7 +268,11 @@ async fn run_docker_once(
     let mem_limit = get_memory_limit_mb(options.memory_limit_mb);
     // VM-based languages (JVM, BEAM, .NET, pwsh) spawn many threads even at
     // runtime, so the run-phase limit must accommodate them.
-    let pids_limit = if options.phase == Phase::Compile { "128" } else { "128" };
+    let pids_limit = if options.phase == Phase::Compile {
+        "128"
+    } else {
+        "128"
+    };
 
     let workspace_volume = if options.read_only_workspace {
         format!("{}:/workspace:ro", options.workspace_dir)
@@ -296,7 +307,12 @@ async fn run_docker_once(
         pids_limit.into(),
         "--read-only".into(),
         "--tmpfs".into(),
-        if options.phase == Phase::Compile || options.needs_exec_tmp { COMPILE_TMPFS } else { RUN_TMPFS }.into(),
+        if options.phase == Phase::Compile || options.needs_exec_tmp {
+            COMPILE_TMPFS
+        } else {
+            RUN_TMPFS
+        }
+        .into(),
         "--cap-drop=ALL".into(),
         "--security-opt=no-new-privileges".into(),
         "--ulimit".into(),
@@ -346,8 +362,7 @@ async fn run_docker_once(
         .spawn()
         .map_err(DockerError::SpawnFailed)?;
 
-    let timeout_duration =
-        std::time::Duration::from_millis(options.timeout_ms.max(MIN_TIMEOUT_MS));
+    let timeout_duration = std::time::Duration::from_millis(options.timeout_ms.max(MIN_TIMEOUT_MS));
 
     // Per-stream output cap. Bounds worker RAM under an output flood (a
     // malicious submission printing gigabytes). 128 MiB default — generous so it
@@ -511,7 +526,7 @@ pub async fn run_docker(
 
 #[cfg(test)]
 mod tests {
-    use super::{parse_timestamp_epoch_ms, resolve_seccomp_profile, JudgeEnvironmentError, Phase};
+    use super::{JudgeEnvironmentError, Phase, parse_timestamp_epoch_ms, resolve_seccomp_profile};
     use std::path::PathBuf;
     use tempfile::NamedTempFile;
 
@@ -538,7 +553,9 @@ mod tests {
         let missing = PathBuf::from("/tmp/nonexistent-seccomp-profile.json");
         let result = resolve_seccomp_profile(Phase::Run, &missing, false, false);
 
-        assert!(matches!(result, Err(JudgeEnvironmentError(message)) if message.contains("Seccomp profile not found")));
+        assert!(
+            matches!(result, Err(JudgeEnvironmentError(message)) if message.contains("Seccomp profile not found"))
+        );
     }
 
     #[test]
@@ -562,7 +579,10 @@ mod tests {
     #[test]
     fn parse_timestamp_handles_unix_epoch() {
         assert_eq!(parse_timestamp_epoch_ms("1970-01-01T00:00:00Z"), Some(0));
-        assert_eq!(parse_timestamp_epoch_ms("1970-01-01T00:00:00.123456789Z"), Some(123));
+        assert_eq!(
+            parse_timestamp_epoch_ms("1970-01-01T00:00:00.123456789Z"),
+            Some(123)
+        );
     }
 
     #[test]
@@ -573,7 +593,15 @@ mod tests {
 
 pub async fn cleanup_orphaned_containers() {
     let output = tokio::process::Command::new("docker")
-        .args(["ps", "-a", "--filter", "name=oj-", "--filter", "status=exited", "-q"])
+        .args([
+            "ps",
+            "-a",
+            "--filter",
+            "name=oj-",
+            "--filter",
+            "status=exited",
+            "-q",
+        ])
         .output()
         .await;
 
@@ -592,7 +620,10 @@ pub async fn cleanup_orphaned_containers() {
             .await
         {
             Ok(_) => {
-                tracing::debug!(count = container_ids.len(), "Cleaned up orphaned containers");
+                tracing::debug!(
+                    count = container_ids.len(),
+                    "Cleaned up orphaned containers"
+                );
             }
             Err(e) => {
                 tracing::warn!(error = %e, "Failed to batch-remove orphaned containers");

@@ -10,7 +10,7 @@ import { describe, it, expect } from "vitest";
 function validateShellCommand(cmd: string): boolean {
   if (!cmd || cmd.length > 10_000) return false;
   if (cmd.includes("\0")) return false;
-  const dangerous = /`|\$\(|\$\{|[<>]\(|\|\||\||>|<|\n|\r|\beval\b/;
+  const dangerous = /`|\$\(|\$\{|\$[A-Za-z0-9_]|[<>]\(|\|\||\||>|<|\n|\r|\beval\b|\bsource\b/;
   return !dangerous.test(cmd);
 }
 
@@ -62,6 +62,13 @@ describe("validateShellCommand", () => {
 
   it("rejects eval", () => {
     expect(validateShellCommand("eval 'rm -rf /'")).toBe(false);
+  });
+
+  it("rejects source and unbraced shell variables", () => {
+    expect(validateShellCommand("source /workspace/env.sh")).toBe(false);
+    expect(validateShellCommand("echo $PATH")).toBe(false);
+    expect(validateShellCommand("echo $1")).toBe(false);
+    expect(validateShellCommand("echo $_")).toBe(false);
   });
 
   it("rejects newlines in commands", () => {

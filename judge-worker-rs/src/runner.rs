@@ -1,6 +1,6 @@
+use std::path::Path;
 use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, Ordering};
-use std::path::Path;
 
 use axum::extract::{DefaultBodyLimit, Query, State};
 use axum::http::{HeaderMap, StatusCode};
@@ -135,7 +135,7 @@ fn validate_shell_command(cmd: &str) -> bool {
     // Denylist (must match src/lib/compiler/execute.ts#validateShellCommand):
     //   Backtick: `
     //   Command substitution: $(
-    //   Variable substitution: ${
+    //   Variable substitution: ${ or $a, $1
     //   Process substitution: <( >(
     //   Logical OR: ||
     //   Pipe: |
@@ -157,19 +157,27 @@ fn validate_shell_command(cmd: &str) -> bool {
     //
     // Kept in lock-step with src/lib/compiler/execute.ts#validateShellCommand
     // so the TS and Rust paths accept the same set of admin-supplied commands.
-    let dangerous_patterns = [
-        "`", "$(", "${", "<(", ">(", "||", "|", ">", "<", "\n", "\r",
-    ];
+    let dangerous_patterns = ["`", "$(", "${", "<(", ">(", "||", "|", ">", "<", "\n", "\r"];
     for pat in &dangerous_patterns {
         if cmd.contains(pat) {
             return false;
         }
+    }
+    if contains_shell_variable_expansion(cmd) {
+        return false;
     }
     // Block eval and source as words
     if cmd.split_whitespace().any(|w| w == "eval" || w == "source") {
         return false;
     }
     true
+}
+
+fn contains_shell_variable_expansion(cmd: &str) -> bool {
+    let bytes = cmd.as_bytes();
+    bytes
+        .windows(2)
+        .any(|window| window[0] == b'$' && (window[1].is_ascii_alphanumeric() || window[1] == b'_'))
 }
 
 #[cfg(test)]
@@ -179,7 +187,9 @@ mod tests {
     #[test]
     fn accepts_simple_commands() {
         assert!(validate_shell_command("python3 /workspace/main.py"));
-        assert!(validate_shell_command("HOME=/tmp mono /workspace/solution.exe"));
+        assert!(validate_shell_command(
+            "HOME=/tmp mono /workspace/solution.exe"
+        ));
         assert!(validate_shell_command("java -cp /workspace Main"));
     }
 
@@ -213,6 +223,14 @@ mod tests {
     fn rejects_eval_even_without_other_metacharacters() {
         assert!(!validate_shell_command("eval python3 /workspace/main.py"));
     }
+
+    #[test]
+    fn rejects_source_and_unbraced_shell_variables() {
+        assert!(!validate_shell_command("source /workspace/env.sh"));
+        assert!(!validate_shell_command("echo $PATH"));
+        assert!(!validate_shell_command("echo $1"));
+        assert!(!validate_shell_command("echo $_"));
+    }
 }
 
 async fn run_command(
@@ -241,7 +259,13 @@ fn combined_output(output: &std::process::Output) -> String {
 async fn docker_list_images(filter: &str) -> Result<Vec<DockerImageSummary>, String> {
     let output = run_command(
         "docker",
-        &["images", "--format", "{{json .}}", "--filter", &format!("reference={filter}")],
+        &[
+            "images",
+            "--format",
+            "{{json .}}",
+            "--filter",
+            &format!("reference={filter}"),
+        ],
         None,
     )
     .await?;
@@ -264,15 +288,27 @@ async fn docker_list_images(filter: &str) -> Result<Vec<DockerImageSummary>, Str
                 .and_then(Value::as_str)
                 .unwrap_or("")
                 .to_string(),
-            tag: value.get("Tag").and_then(Value::as_str).unwrap_or("").to_string(),
-            id: value.get("ID").and_then(Value::as_str).unwrap_or("").to_string(),
+            tag: value
+                .get("Tag")
+                .and_then(Value::as_str)
+                .unwrap_or("")
+                .to_string(),
+            id: value
+                .get("ID")
+                .and_then(Value::as_str)
+                .unwrap_or("")
+                .to_string(),
             created: value
                 .get("CreatedSince")
                 .or_else(|| value.get("CreatedAt"))
                 .and_then(Value::as_str)
                 .unwrap_or("")
                 .to_string(),
-            size: value.get("Size").and_then(Value::as_str).unwrap_or("").to_string(),
+            size: value
+                .get("Size")
+                .and_then(Value::as_str)
+                .unwrap_or("")
+                .to_string(),
         });
     }
 
@@ -287,9 +323,7 @@ async fn docker_inspect_image(image_tag: &str) -> Result<Option<Value>, String> 
 
     let value: Value = serde_json::from_slice(&output.stdout)
         .map_err(|e| format!("Failed to parse docker inspect output: {e}"))?;
-    Ok(value
-        .as_array()
-        .and_then(|items| items.first().cloned()))
+    Ok(value.as_array().and_then(|items| items.first().cloned()))
 }
 
 async fn docker_pull_image(image_tag: &str) -> Result<(), String> {
@@ -341,7 +375,9 @@ async fn host_disk_usage() -> Result<DiskUsageResponse, String> {
     let stdout = String::from_utf8_lossy(&output.stdout);
     let mut lines = stdout.lines();
     let _header = lines.next();
-    let data = lines.next().ok_or_else(|| "df output missing data line".to_string())?;
+    let data = lines
+        .next()
+        .ok_or_else(|| "df output missing data line".to_string())?;
     let parts: Vec<&str> = data.split_whitespace().collect();
 
     Ok(DiskUsageResponse {
@@ -358,7 +394,9 @@ fn check_auth(headers: &HeaderMap, config: &Config) -> Result<(), StatusCode> {
         .and_then(|v| v.to_str().ok())
         .ok_or(StatusCode::UNAUTHORIZED)?;
 
-    let token = auth.strip_prefix("Bearer ").ok_or(StatusCode::UNAUTHORIZED)?;
+    let token = auth
+        .strip_prefix("Bearer ")
+        .ok_or(StatusCode::UNAUTHORIZED)?;
     // Use constant-time comparison to prevent timing side-channel attacks
     let expected = config.runner_auth_token.expose();
     if token.len() != expected.len() || !constant_time_eq(token.as_bytes(), expected.as_bytes()) {
@@ -433,7 +471,10 @@ pub async fn probe_docker_capability() -> Result<(), String> {
         .await
         .map_err(|e| format!("docker rm failed: {e}"))?;
     if !rm_output.status.success() {
-        return Err(format!("docker rm rejected: {}", combined_output(&rm_output)));
+        return Err(format!(
+            "docker rm rejected: {}",
+            combined_output(&rm_output)
+        ));
     }
 
     Ok(())
@@ -602,7 +643,9 @@ async fn docker_build_handler(
             .into_response();
     }
 
-    if !validate_admin_image_tag(&req.image_name) || !validate_dockerfile_path_for_build(&req.dockerfile_path) {
+    if !validate_admin_image_tag(&req.image_name)
+        || !validate_dockerfile_path_for_build(&req.dockerfile_path)
+    {
         return (
             StatusCode::BAD_REQUEST,
             Json(ErrorResponse {
@@ -753,7 +796,8 @@ async fn execute_run(config: &Config, req: &RunRequest) -> Result<RunResponse, S
         .is_some_and(|c| c.needs_exec_tmp);
 
     // Create temp workspace
-    let temp_dir = tempfile::TempDir::new().map_err(|e| format!("Failed to create temp dir: {e}"))?;
+    let temp_dir =
+        tempfile::TempDir::new().map_err(|e| format!("Failed to create temp dir: {e}"))?;
     let workspace_dir = temp_dir.path();
 
     // Set permissions to 0o777 — allow nobody (65534) in sandbox container to access workspace

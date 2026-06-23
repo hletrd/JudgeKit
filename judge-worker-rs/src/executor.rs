@@ -22,6 +22,8 @@ const MIN_TIMEOUT_MS: u64 = 100;
 const DOCKER_RUN_OVERHEAD_BUDGET_MS: u64 = 2_000;
 const MAX_MEMORY_LIMIT_MB: u32 = 1024;
 const RUNTIME_ERROR_OUTPUT_LIMIT: usize = 500;
+const MAX_DIAGNOSTIC_OUTPUT_BYTES: usize = 16 * 1024;
+const TRUNCATED_SUFFIX: &str = "\n...[truncated]";
 
 fn max_time_limit_ms() -> u64 {
     std::env::var("MAX_TIME_LIMIT_MS")
@@ -75,6 +77,34 @@ fn reported_memory_used_kb(
     memory_peak_kb.unwrap_or(0).min(memory_limit_kb)
 }
 
+fn truncate_diagnostic_bytes(bytes: &[u8]) -> String {
+    if bytes.len() <= MAX_DIAGNOSTIC_OUTPUT_BYTES {
+        return String::from_utf8_lossy(bytes).into_owned();
+    }
+
+    let mut end = MAX_DIAGNOSTIC_OUTPUT_BYTES;
+    while end > 0 && std::str::from_utf8(&bytes[..end]).is_err() {
+        end -= 1;
+    }
+
+    let mut value = String::from_utf8_lossy(&bytes[..end]).into_owned();
+    value.push_str(TRUNCATED_SUFFIX);
+    value
+}
+
+fn truncate_diagnostic_str(value: &str) -> String {
+    if value.len() <= MAX_DIAGNOSTIC_OUTPUT_BYTES {
+        return value.to_string();
+    }
+
+    let mut end = MAX_DIAGNOSTIC_OUTPUT_BYTES;
+    while !value.is_char_boundary(end) {
+        end -= 1;
+    }
+
+    format!("{}{}", &value[..end], TRUNCATED_SUFFIX)
+}
+
 fn reportable_test_case_output(verdict: Verdict, stdout: &[u8], stderr: &str) -> String {
     if verdict == Verdict::RuntimeError {
         let trimmed_stderr = stderr.trim();
@@ -86,7 +116,7 @@ fn reportable_test_case_output(verdict: Verdict, stdout: &[u8], stderr: &str) ->
         }
     }
 
-    String::from_utf8_lossy(stdout).into_owned()
+    truncate_diagnostic_bytes(stdout)
 }
 
 fn runtime_error_type(stderr: &str, exit_code: Option<i32>) -> Option<String> {
@@ -462,7 +492,8 @@ async fn execute_inner(
             .into_iter()
             .filter(|s| !s.is_empty())
             .collect();
-        compile_output = parts.join("\n").trim().to_string();
+        let raw_compile_output = parts.join("\n").trim().to_string();
+        compile_output = truncate_diagnostic_str(&raw_compile_output);
 
         if compilation.timed_out {
             report_result(
@@ -524,8 +555,7 @@ async fn execute_inner(
         // isn't killed prematurely. The verdict logic below still uses the
         // Docker-reported `duration_ms` (StartedAt → FinishedAt) for TLE so
         // the buffer doesn't change pass/fail semantics.
-        let run_timeout_ms =
-            effective_time_limit_ms.saturating_add(DOCKER_RUN_OVERHEAD_BUDGET_MS);
+        let run_timeout_ms = effective_time_limit_ms.saturating_add(DOCKER_RUN_OVERHEAD_BUDGET_MS);
 
         let run_opts = DockerRunOptions {
             image: docker_image.to_string(),
@@ -584,17 +614,15 @@ async fn execute_inner(
         // reported runtime crosses the problem's time limit on its own.
         // The classification is delegated to `classify_test_case_verdict` so
         // it can be unit-tested without spinning up a real container.
-        let verdict = classify_test_case_verdict(
-            VerdictInputs {
-                timed_out: execution.timed_out,
-                duration_ms: execution.duration_ms,
-                effective_time_limit_ms,
-                oom_killed: execution.oom_killed,
-                exit_code: execution.exit_code,
-                output_limit_exceeded: execution.stdout_truncated || execution.stderr_truncated,
-                is_correct,
-            },
-        );
+        let verdict = classify_test_case_verdict(VerdictInputs {
+            timed_out: execution.timed_out,
+            duration_ms: execution.duration_ms,
+            effective_time_limit_ms,
+            oom_killed: execution.oom_killed,
+            exit_code: execution.exit_code,
+            output_limit_exceeded: execution.stdout_truncated || execution.stderr_truncated,
+            is_correct,
+        });
 
         let actual_output =
             reportable_test_case_output(verdict, &execution.stdout, &execution.stderr);
@@ -651,10 +679,10 @@ async fn execute_inner(
 #[cfg(test)]
 mod tests {
     use super::{
-        COMPILATION_TIMEOUT_MS, MIN_COMPILE_TIMEOUT_MS, RUNTIME_ERROR_OUTPUT_LIMIT,
-        VerdictInputs, classify_test_case_verdict, compile_timeout_ms_for_submission,
-        prune_dead_letter_dir, reportable_test_case_output, reported_memory_used_kb,
-        runtime_error_type,
+        COMPILATION_TIMEOUT_MS, MAX_DIAGNOSTIC_OUTPUT_BYTES, MIN_COMPILE_TIMEOUT_MS,
+        RUNTIME_ERROR_OUTPUT_LIMIT, TRUNCATED_SUFFIX, VerdictInputs, classify_test_case_verdict,
+        compile_timeout_ms_for_submission, prune_dead_letter_dir, reportable_test_case_output,
+        reported_memory_used_kb, runtime_error_type, truncate_diagnostic_str,
     };
     use crate::types::Verdict;
     use tempfile::tempdir;
@@ -689,7 +717,10 @@ mod tests {
         let mut inputs = base_inputs();
         inputs.output_limit_exceeded = true;
         inputs.is_correct = false;
-        assert_eq!(classify_test_case_verdict(inputs), Verdict::OutputLimitExceeded);
+        assert_eq!(
+            classify_test_case_verdict(inputs),
+            Verdict::OutputLimitExceeded
+        );
     }
 
     #[test]
@@ -813,6 +844,26 @@ mod tests {
             reportable_test_case_output(Verdict::WrongAnswer, b"stdout", "stderr"),
             "stdout"
         );
+    }
+
+    #[test]
+    fn reportable_test_case_output_truncates_large_stdout_reports() {
+        let stdout = vec![b'x'; MAX_DIAGNOSTIC_OUTPUT_BYTES + 100];
+        let output = reportable_test_case_output(Verdict::WrongAnswer, &stdout, "");
+
+        assert!(output.ends_with(TRUNCATED_SUFFIX));
+        assert!(output.len() <= MAX_DIAGNOSTIC_OUTPUT_BYTES + TRUNCATED_SUFFIX.len());
+    }
+
+    #[test]
+    fn truncate_diagnostic_str_keeps_utf8_boundary() {
+        let mut input = "x".repeat(MAX_DIAGNOSTIC_OUTPUT_BYTES - 1);
+        input.push('한');
+
+        let output = truncate_diagnostic_str(&input);
+
+        assert!(output.ends_with(TRUNCATED_SUFFIX));
+        assert!(output.is_char_boundary(output.len()));
     }
 
     #[tokio::test]

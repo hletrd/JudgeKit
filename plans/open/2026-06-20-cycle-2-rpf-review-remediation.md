@@ -41,10 +41,10 @@ Planned work:
 
 | ID | Finding | Files | Severity/confidence | Status |
 |---|---|---|---|---|
-| AGG2-5 | Output-limit handling builds oversized reports before app truncation | `judge-worker-rs/src/docker.rs`, `judge-worker-rs/src/executor.rs`, poll validators | High/High | [ ] |
+| AGG2-5 | Output-limit handling builds oversized reports before app truncation | `judge-worker-rs/src/docker.rs`, `judge-worker-rs/src/executor.rs`, poll validators | High/High | [x] |
 | AGG2-14 | Local compiler fallback workspace permissions can block sandbox users | `src/lib/compiler/execute.ts`, `judge-worker-rs/src/executor.rs` | Medium/High | [x] |
-| AGG2-15 | TS/Rust command and image validators have incompatible contracts | `src/lib/compiler/execute.ts`, `judge-worker-rs/src/runner.rs`, language sync | Medium/High | [ ] |
-| AGG2-23 | Claim schema parse failures leak claims and worker active-task slots | `src/app/api/v1/judge/claim/route.ts`, `src/lib/judge/claim-query.ts` | Medium/Medium | [ ] |
+| AGG2-15 | TS/Rust command and image validators have incompatible contracts | `src/lib/compiler/execute.ts`, `judge-worker-rs/src/runner.rs`, language sync | Medium/High | [x] |
+| AGG2-23 | Claim schema parse failures leak claims and worker active-task slots | `src/app/api/v1/judge/claim/route.ts`, `src/lib/judge/claim-query.ts` | Medium/Medium | [x] |
 | AGG2-25 | Interactive compiler/playground compile limits diverge from judged submissions | compiler/playground routes, runner limits | Medium/High | [ ] |
 
 Planned work:
@@ -182,3 +182,6 @@ Run every configured gate from the cycle context:
 - [x] AGG2-3 completed: `tests/unit/api/admin-backup-security.route.test.ts` now proves ZIP uploads are staged by `parseBackupZip`, skipped when `importDatabase()` fails, and written via `restoreParsedBackupFiles()` only after a successful database import.
 - [x] AGG2-28 verified already fixed in current HEAD: `src/app/api/v1/problems/import/route.ts` accepts `problemType: "function"` with `functionSpec`, rejects unsupported/missing specs, uses `problemDescriptionSchema`, and keeps `timeLimitMs` at the same 10s ceiling as `problemMutationSchema`; `tests/unit/validators/problem-import.test.ts` covers these contracts.
 - [x] AGG2-29 completed: `Dockerfile` now copies `scripts/load-env.ts` and its `@next/env` runtime dependency into the app image so legacy `docker exec judgekit-app npx drizzle-kit push` can resolve the `drizzle.config.ts` import; `tests/unit/infra/deploy-security.test.ts` guards the packaging contract.
+- [x] AGG2-5 completed: `judge-worker-rs/src/executor.rs` now truncates report-facing `actualOutput` and compile diagnostics to 16 KiB before JSON report/dead-letter serialization, while leaving Docker-captured stdout available for comparison; Rust worker unit tests cover report truncation and UTF-8 boundaries.
+- [x] AGG2-15 completed: `judge-worker-rs/src/runner.rs` now rejects unbraced `$VAR`/`$1` shell expansions like the TypeScript compiler path, and `judge-worker-rs/src/validation.rs` now enforces trusted-registry delimiter boundaries plus the same local-registry handling as `src/lib/judge/docker-image-validation.ts`; focused Rust and Vitest validator tests pass.
+- [x] AGG2-23 verified/completed: `src/app/api/v1/judge/claim/route.ts` token-fences `releaseClaimedSubmission()` for schema parse errors, missing problems, and outer post-claim exceptions; `tests/unit/api/judge-poll.route.test.ts` now covers worker-slot cleanup when response assembly fails after a successful claim.

@@ -22,7 +22,10 @@ struct Lines<'a> {
 
 impl<'a> Lines<'a> {
     fn new(data: &'a [u8]) -> Self {
-        Self { remaining: data, done: false }
+        Self {
+            remaining: data,
+            done: false,
+        }
     }
 }
 
@@ -165,7 +168,7 @@ pub fn compare_float_output(
 
 #[cfg(test)]
 mod tests {
-    use super::{compare_output, compare_float_output};
+    use super::{compare_float_output, compare_output};
 
     #[test]
     fn exact_match() {
@@ -208,7 +211,12 @@ mod tests {
     fn float_nan_and_infinity() {
         // Both NaN => equal (parse accepts nan/NaN/NAN).
         assert!(compare_float_output(b"nan", b"NaN", None, None));
-        assert!(compare_float_output(b"1.0 nan 2.0", b"1.0 NAN 2.0", None, None));
+        assert!(compare_float_output(
+            b"1.0 nan 2.0",
+            b"1.0 NAN 2.0",
+            None,
+            None
+        ));
         // Exactly one NaN => mismatch.
         assert!(!compare_float_output(b"nan", b"1.0", None, None));
         assert!(!compare_float_output(b"1.0", b"nan", None, None));
@@ -305,7 +313,12 @@ mod tests {
 
     #[test]
     fn float_exact_match() {
-        assert!(compare_float_output(b"1.0 2.0 3.0", b"1.0 2.0 3.0", None, None));
+        assert!(compare_float_output(
+            b"1.0 2.0 3.0",
+            b"1.0 2.0 3.0",
+            None,
+            None
+        ));
     }
 
     #[test]

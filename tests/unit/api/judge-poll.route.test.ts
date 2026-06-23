@@ -382,6 +382,34 @@ describe("POST /api/v1/judge/claim", () => {
     expect(txUpdateMock).toHaveBeenCalled();
   });
 
+  it("releases worker reservations when post-claim response assembly fails", async () => {
+    dbSelectMock.mockReturnValueOnce(
+      makeSelectChain([
+        {
+          status: "online",
+          secretTokenHash: "hashed:worker-secret",
+        },
+      ])
+    );
+    problemsFindFirstMock.mockRejectedValueOnce(new Error("problem lookup failed"));
+
+    const response = await POST(
+      new NextRequest("http://localhost:3000/api/v1/judge/claim", {
+        method: "POST",
+        headers: {
+          Authorization: "Bearer test-token",
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({ workerId: "worker-1", workerSecret: "worker-secret" }),
+      })
+    );
+
+    expect(response.status).toBe(500);
+    await expect(response.json()).resolves.toEqual({ error: "internalServerError" });
+    expect(execTransactionMock).toHaveBeenCalledOnce();
+    expect(txUpdateMock).toHaveBeenCalledTimes(2);
+  });
+
   it("rejects worker claims when the per-worker secret is missing", async () => {
     const response = await POST(
       new NextRequest("http://localhost:3000/api/v1/judge/claim", {
