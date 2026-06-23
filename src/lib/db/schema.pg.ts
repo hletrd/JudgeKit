@@ -505,6 +505,8 @@ export const submissions = pgTable(
     index("submissions_problem_idx").on(table.problemId),
     index("submissions_assignment_idx").on(table.assignmentId),
     index("submissions_judge_worker_idx").on(table.judgeWorkerId),
+    index("submissions_user_submitted_at_idx").on(table.userId, table.submittedAt),
+    index("submissions_user_status_idx").on(table.userId, table.status),
     index("submissions_submitted_at_idx").on(table.submittedAt),
     index("submissions_queue_claim_idx").on(table.status, table.submittedAt, table.id),
     index("submissions_stale_claim_idx").on(

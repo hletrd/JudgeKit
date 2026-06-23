@@ -5,7 +5,7 @@ import { antiCheatEvents, examSessions, languageConfigs, problems, submissions }
 import { isJudgeLanguage } from "@/lib/judge/languages";
 import { parseFunctionSpec } from "@/lib/judge/function-judging/types";
 import { supportsFunctionJudging } from "@/lib/judge/function-judging/registry";
-import { and, desc, eq, lt, or, sql } from "drizzle-orm";
+import { and, desc, eq, gt, inArray, lt, or, sql } from "drizzle-orm";
 import { recordAuditEvent } from "@/lib/audit/events";
 import { canAccessProblem } from "@/lib/auth/permissions";
 import { logger } from "@/lib/logger";
@@ -348,17 +348,17 @@ export const POST = createApiHandler({
       // Use hashtextextended (PG 14+) for 64-bit hash space to minimize collisions.
       await tx.execute(sql`SELECT pg_advisory_xact_lock(hashtextextended(${user.id}, 0)::bigint)`);
 
-      // Rate-limit checks with row-level advisory lock on user submissions
-      const userCounts = await tx
-        .select({
-          recentCount: sql<number>`SUM(CASE WHEN ${submissions.submittedAt} > ${oneMinuteAgo} THEN 1 ELSE 0 END)`,
-          pendingCount: sql<number>`SUM(CASE WHEN ${submissions.status} IN ('pending', 'judging', 'queued') THEN 1 ELSE 0 END)`,
-        })
+      const [recentRow] = await tx
+        .select({ count: sql<number>`COUNT(*)` })
         .from(submissions)
-        .where(eq(submissions.userId, user.id));
+        .where(
+          and(
+            eq(submissions.userId, user.id),
+            gt(submissions.submittedAt, oneMinuteAgo),
+          ),
+        );
 
-      const recentSubmissions = Number(userCounts[0]?.recentCount ?? 0);
-      const pendingCount = Number(userCounts[0]?.pendingCount ?? 0);
+      const recentSubmissions = Number(recentRow?.count ?? 0);
 
       if (recentSubmissions >= maxPerMinute) {
         return { error: "submissionRateLimited" as const, status: 429, retryAfter: "60" };
@@ -366,6 +366,17 @@ export const POST = createApiHandler({
 
       // Skip judge queue checks for manual problems (no judging needed)
       if (!isManualProblem) {
+        const [pendingRow] = await tx
+          .select({ count: sql<number>`COUNT(*)` })
+          .from(submissions)
+          .where(
+            and(
+              eq(submissions.userId, user.id),
+              inArray(submissions.status, ["pending", "judging", "queued"]),
+            ),
+          );
+        const pendingCount = Number(pendingRow?.count ?? 0);
+
         if (pendingCount >= maxPending) {
           return { error: "tooManyPendingSubmissions" as const, status: 429, retryAfter: "10" };
         }

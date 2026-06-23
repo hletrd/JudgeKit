@@ -121,6 +121,13 @@ function queueSelectResults(results: unknown[]) {
   });
 }
 
+function userSubmissionLimitRows(recentCount: number, pendingCount: number): unknown[] {
+  return [
+    [{ count: recentCount }],
+    [{ count: pendingCount }],
+  ];
+}
+
 const VALID_USER = {
   id: "user-1",
   role: "student",
@@ -159,7 +166,7 @@ describe("POST /api/v1/submissions", () => {
     queueSelectResults([
       [{ id: "problem-1", title: "Hello World" }],
       [{ id: "lc-1" }],
-      [{ recentCount: 0, pendingCount: 0 }],
+      ...userSubmissionLimitRows(0, 0),
       [{ count: 0 }],
       [{
         id: "submission-abc123",
@@ -386,7 +393,7 @@ describe("POST /api/v1/submissions", () => {
         },
       }],
       [{ id: "lc-1" }],
-      [{ recentCount: 0, pendingCount: 0 }],
+      ...userSubmissionLimitRows(0, 0),
       [{ count: 0 }],
       [{
         id: "submission-abc123",
@@ -430,7 +437,7 @@ describe("POST /api/v1/submissions", () => {
       // problemType "auto" — no functionSpec; the enabledLanguages gate must not apply.
       [{ id: "problem-1", title: "Hello World", problemType: "auto", showCompileOutput: true, functionSpec: null }],
       [{ id: "lc-1" }],
-      [{ recentCount: 0, pendingCount: 0 }],
+      ...userSubmissionLimitRows(0, 0),
       [{ count: 0 }],
       [{
         id: "submission-abc123",
@@ -483,7 +490,7 @@ describe("POST /api/v1/submissions", () => {
     queueSelectResults([
       [{ id: "problem-1", title: "Hello World" }],
       [{ id: "lc-1" }],
-      [{ recentCount: 120, pendingCount: 0 }],
+      ...userSubmissionLimitRows(120, 0),
     ]);
     const { POST } = await import("@/app/api/v1/submissions/route");
 
@@ -499,7 +506,7 @@ describe("POST /api/v1/submissions", () => {
     queueSelectResults([
       [{ id: "problem-1", title: "Hello World" }],
       [{ id: "lc-1" }],
-      [{ recentCount: 0, pendingCount: 3 }],
+      ...userSubmissionLimitRows(0, 3),
     ]);
     const { POST } = await import("@/app/api/v1/submissions/route");
 
@@ -515,7 +522,7 @@ describe("POST /api/v1/submissions", () => {
     queueSelectResults([
       [{ id: "problem-1", title: "Hello World" }],
       [{ id: "lc-1" }],
-      [{ recentCount: 0, pendingCount: 0 }],
+      ...userSubmissionLimitRows(0, 0),
       [{ count: 100 }],
     ]);
     const { POST } = await import("@/app/api/v1/submissions/route");
@@ -553,7 +560,7 @@ describe("POST /api/v1/submissions", () => {
     queueSelectResults([
       [{ id: "problem-1", title: "Hello World" }],
       [{ id: "lc-1" }],
-      [{ recentCount: 0, pendingCount: 0 }],
+      ...userSubmissionLimitRows(0, 0),
       [{ count: 0 }],
       [],
       [{
@@ -609,7 +616,7 @@ describe("POST /api/v1/submissions", () => {
     queueSelectResults([
       [{ id: "problem-1", title: "Hello World" }],
       [{ id: "lc-1" }],
-      [{ recentCount: 0, pendingCount: 0 }],
+      ...userSubmissionLimitRows(0, 0),
       [{ count: 0 }],
       [],
       [{
@@ -671,7 +678,7 @@ describe("POST /api/v1/submissions", () => {
     queueSelectResults([
       [{ id: "problem-1", title: "Hello World" }],
       [{ id: "lc-1" }],
-      [{ recentCount: 0, pendingCount: 0 }],
+      ...userSubmissionLimitRows(0, 0),
       [{ count: 0 }],
       [],
       [{
@@ -720,7 +727,7 @@ describe("POST /api/v1/submissions", () => {
     queueSelectResults([
       [{ id: "problem-1", title: "Hello World" }],
       [{ id: "lc-1" }],
-      [{ recentCount: 120, pendingCount: 0 }],
+      ...userSubmissionLimitRows(120, 0),
     ]);
     const { POST } = await import("@/app/api/v1/submissions/route");
 
@@ -745,7 +752,7 @@ describe("POST /api/v1/submissions", () => {
     queueSelectResults([
       [{ id: "problem-1", title: "Hello World" }],
       [{ id: "lc-1" }],
-      [{ recentCount: 0, pendingCount: 0 }],
+      ...userSubmissionLimitRows(0, 0),
       [{ count: 0 }],
       [],
       [{
@@ -779,7 +786,7 @@ describe("POST /api/v1/submissions", () => {
     queueSelectResults([
       [{ id: "problem-1", title: "Hello World" }],
       [{ id: "lc-1" }],
-      [{ recentCount: 0, pendingCount: 0 }],
+      ...userSubmissionLimitRows(0, 0),
       [{ count: 0 }],
       [],
       [{
@@ -847,7 +854,7 @@ describe("POST /api/v1/submissions", () => {
     queueSelectResults([
       [{ id: "problem-1", title: "Hello World" }],
       [{ id: "lc-1" }],
-      [{ recentCount: 0, pendingCount: 0 }],
+      ...userSubmissionLimitRows(0, 0),
       [{ count: 0 }],
       [],
     ]);
