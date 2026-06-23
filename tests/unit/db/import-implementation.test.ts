@@ -1,6 +1,22 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
+
+vi.mock("@/lib/db/index", () => ({
+  activeDialect: "postgresql",
+  db: { transaction: vi.fn() },
+}));
+
+vi.mock("@/lib/logger", () => ({
+  logger: {
+    debug: vi.fn(),
+    error: vi.fn(),
+    warn: vi.fn(),
+  },
+}));
+
+import { buildImportColumnSets, TABLE_MAP } from "@/lib/db/import";
+import { getTableOrder, TABLE_ORDER } from "@/lib/db/export";
 
 describe("importDatabase implementation guards", () => {
   it("aborts the transaction on batch insert failure instead of silently committing partial state", () => {
@@ -13,47 +29,27 @@ describe("importDatabase implementation guards", () => {
   });
 
   it("derives timestamp, boolean, and json coercion columns from schema metadata", () => {
-    const source = readFileSync(join(process.cwd(), "src/lib/db/import.ts"), "utf8");
+    const { timestampColumns, booleanColumns, jsonColumns } = buildImportColumnSets(TABLE_MAP);
 
-    expect(source).toContain("buildImportColumnSets(TABLE_MAP)");
-    expect(source).toContain("const dataType = (column as { dataType?: string }).dataType;");
-    expect(source).not.toContain('const BOOLEAN_COLUMNS = new Set([');
-    expect(source).not.toContain('const TIMESTAMP_COLUMNS = new Set([');
-    expect(source).not.toContain('const JSON_COLUMNS = new Set([');
+    expect(timestampColumns.has("createdAt")).toBe(true);
+    expect(timestampColumns.has("submittedAt")).toBe(true);
+    expect(timestampColumns.has("judgeClaimedAt")).toBe(true);
+    expect(booleanColumns.has("isActive")).toBe(true);
+    expect(booleanColumns.has("showCompileOutput")).toBe(true);
+    expect(booleanColumns.has("isEnabled")).toBe(true);
+    expect(jsonColumns.has("functionSpec")).toBe(true);
+    expect(jsonColumns.has("labels")).toBe(true);
+    expect(jsonColumns.has("config")).toBe(true);
   });
 
-  it("TABLE_MAP is derived from TABLE_ORDER, not manually maintained", () => {
-    const importSource = readFileSync(join(process.cwd(), "src/lib/db/import.ts"), "utf8");
-    const exportSource = readFileSync(join(process.cwd(), "src/lib/db/export.ts"), "utf8");
+  it("keeps TABLE_MAP and TABLE_ORDER consistent at runtime", () => {
+    expect(Object.keys(TABLE_MAP).sort()).toEqual([...getTableOrder()].sort());
 
-    // Verify TABLE_MAP is built by iterating TABLE_ORDER, not hardcoded
-    expect(importSource).toContain("for (const { name, table } of TABLE_ORDER)");
-    // Verify the old hardcoded object literal is gone
-    expect(importSource).not.toContain("users: schema.users,");
-    // Verify TABLE_ORDER is exported from export.ts so import.ts can use it
-    expect(exportSource).toContain("export const TABLE_ORDER");
-  });
-
-  it("TABLE_MAP and TABLE_ORDER table names are consistent (source-level check)", () => {
-    const importSource = readFileSync(join(process.cwd(), "src/lib/db/import.ts"), "utf8");
-    const exportSource = readFileSync(join(process.cwd(), "src/lib/db/export.ts"), "utf8");
-
-    // Extract table names from TABLE_ORDER in export.ts
-    const orderNameRegex = /\{\s*name:\s*"(\w+)"/g;
-    const orderNames = new Set<string>();
-    let match: RegExpExecArray | null;
-    while ((match = orderNameRegex.exec(exportSource)) !== null) {
-      orderNames.add(match[1]);
+    for (const { name, table } of TABLE_ORDER) {
+      expect(TABLE_MAP[name]).toBe(table);
     }
-
-    // Since TABLE_MAP is derived from TABLE_ORDER at runtime, they must match.
-    // Verify the derivation loop is present and uses TABLE_ORDER.
-    expect(importSource).toContain("TABLE_MAP[name] = table");
-
-    // Verify TABLE_ORDER has the expected tables
-    expect(orderNames.has("users")).toBe(true);
-    expect(orderNames.has("submissions")).toBe(true);
-    expect(orderNames.has("submissionResults")).toBe(true);
-    expect(orderNames.size).toBeGreaterThanOrEqual(30);
+    expect(TABLE_MAP.users).toBeDefined();
+    expect(TABLE_MAP.submissions).toBeDefined();
+    expect(TABLE_MAP.submissionResults).toBeDefined();
   });
 });

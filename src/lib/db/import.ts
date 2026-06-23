@@ -22,7 +22,7 @@ for (const { name, table } of TABLE_ORDER) {
   TABLE_MAP[name] = table;
 }
 
-function buildImportColumnSets(tableMap: Record<string, PgTable>) {
+export function buildImportColumnSets(tableMap: Record<string, PgTable>) {
   const timestampColumns = new Set<string>();
   const booleanColumns = new Set<string>();
   const jsonColumns = new Set<string>();
@@ -31,7 +31,7 @@ function buildImportColumnSets(tableMap: Record<string, PgTable>) {
     const columns = getTableColumns(table);
     for (const [columnName, column] of Object.entries(columns)) {
       const dataType = (column as { dataType?: string }).dataType;
-      if (dataType === "timestamp") {
+      if (dataType === "timestamp" || dataType === "date") {
         timestampColumns.add(columnName);
       } else if (dataType === "boolean") {
         booleanColumns.add(columnName);
