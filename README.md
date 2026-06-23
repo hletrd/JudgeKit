@@ -74,7 +74,7 @@ See [Language presets](docs/languages.md#docker-image-presets) for preset option
 
 ## Docker Judge Images
 
-102 language-specific Docker images for sandboxed code execution on both AMD64 and ARM64. (The 125 language variants include multiple compiler standards and modes — e.g. `cpp17`, `cpp23`, `clang17`, `clang20` — that share a single Docker image; the 102 images cover every distinct image, while 125 is the total count of named language variants.)
+102 language-specific Docker images for sandboxed code execution on both AMD64 and ARM64. (The 125 language variants include multiple compiler standards and modes — e.g. `c89`, `cpp20`, `cpp23`, `cpp26`, `clang_c23`, and `clang_cpp23` — that share a single Docker image; the 102 images cover every distinct image, while 125 is the total count of named language variants.)
 
 | Image | amd64 | arm64 | Image | amd64 | arm64 |
 |-------|-------|-------|-------|-------|-------|

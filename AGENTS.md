@@ -36,7 +36,7 @@ JudgeKit currently defines 125 language variants. Treat `src/lib/judge/languages
 | 11 | `kotlin` | Kotlin 2.3 | `judge-jvm` |
 | 12 | `python` | Python 3.14 | `judge-python` |
 | 13 | `javascript` | Node.js 24 | `judge-node` |
-| 14 | `typescript` | TypeScript 5.9 (Node.js 24) | `judge-node` |
+| 14 | `typescript` | TypeScript 6.0 (Node.js 24) | `judge-node` |
 | 15 | `coffeescript` | CoffeeScript 2.7 | `judge-node` |
 | 16 | `rust` | Rust 1.94 | `judge-rust` |
 | 17 | `go` | Go 1.26 | `judge-go` |
@@ -289,14 +289,14 @@ JudgeKit supports full contest management with two scoring models and two schedu
 ## Architecture
 
 ### Database
-- **PostgreSQL 17** runtime
+- **PostgreSQL 18** runtime (`docker-compose.production.yml` pins `postgres:18-alpine`)
 - **ORM**: Drizzle ORM with PostgreSQL runtime schema (`schema.pg.ts`); legacy SQLite/MySQL schema artifacts remain in-repo for migration/test context
 - **Migrations**: PostgreSQL runtime migrations under `drizzle/pg/`; older SQLite/MySQL migration artifacts remain in-repo for migration/test context
 - **Sync**: `npm run languages:sync` syncs language definitions from TypeScript config to the `language_configs` table
 - **Relational-query `where` rewrite footgun**: `db.query.<table>.findMany({ where, … })` routes its `where` clause through `mapColumnsInSQLToAlias`, which rewrites every `${otherTable.col}` reference inside a `sql\`...\`` template to use the outer table's alias. EXISTS / IN subqueries that reference foreign tables silently emit invalid SQL (e.g. `${tags.name}` becomes `"problems"."name"`), so `db.select().from(problems).where(…)` works on the count path while the relational `findMany` 500s. Pre-resolve the foreign-table predicate to an ID list and switch to `inArray(<thisTable>.id, ids)` — single-column predicates survive the alias rewrite. See commit `5907931c` (`fix(public): unbreak tag filter on practice and problem-sets lists`).
 
 ### Security Sandbox
-- **Seccomp profile**: Uses a **deny-list** approach — default action is `SCMP_ACT_ALLOW`, with specific dangerous syscalls explicitly blocked. This is more permissive during container init (avoids Docker 28+/modern-kernel init errors) while still restricting the attack surface during code execution.
+- **Seccomp profile**: Uses a **default-deny allow-list** approach — default action is `SCMP_ACT_ERRNO`, with required runtime syscalls explicitly allowed and targeted compatibility blocks (for example `clone3`) returning errno. This keeps container execution constrained while avoiding hard crashes in runtimes that probe unsupported syscalls.
 - **Docker isolation**: No network access, memory/CPU limits, non-root user, resource timeouts
 - **`JUDGE_DISABLE_CUSTOM_SECCOMP=1`**: Env var to fall back to Docker default seccomp on hosts where the custom profile is rejected
 
@@ -345,7 +345,7 @@ The recommended deployment method. Workflow:
 1. **Pre-flight**: Tests SSH, verifies remote Docker, detects remote architecture
 2. **Generate `.env.production`**: Creates with fresh secrets if not present
 3. **rsync source to remote**: Syncs entire repo excluding `node_modules/`, `.next/`, `.git/`, `data/`, `.env*`, `*.db`, `judge-worker-rs/target/`, `rate-limiter-rs/target/`, `.omc/`, `.claude/`, `tests/`, `.playwright/`, `backups/`, `._*`
-4. **Build images on remote**: Builds `judgekit-app` and `judgekit-judge-worker` with `--platform` flag, then builds judge language images
+4. **Build images on remote**: Builds `judgekit-app` and, when the target includes a local worker, `judgekit-judge-worker` with `--platform` flag, then builds judge language images unless skipped
 5. **Stop old containers, start new**: Uses `docker-compose.production.yml`
 6. **Run database migrations**: Executes Drizzle SQL migrations inside the app container via a Node one-liner
 7. **Configure nginx**: Writes config to `/tmp`, transfers via `scp`, then `sudo cp` into `/etc/nginx/sites-available/` (avoids heredoc + sudo + tee issues)
@@ -586,7 +586,7 @@ rotating keys.
 - `/judge-workspaces:/judge-workspaces` volume is mounted on the worker container for workspace sharing; `TMPDIR=/judge-workspaces` ensures the worker writes temp files there
 - The host **must** have `/judge-workspaces` directory created before starting the stack
 
-**Seccomp profile:** Uses a deny-list approach — default action is `SCMP_ACT_ALLOW`, with specific dangerous syscalls explicitly blocked. This is more permissive during container init (avoids Docker 28+/modern-kernel init errors) while still restricting the attack surface during code execution.
+**Seccomp profile:** Uses a default-deny allow-list approach — default action is `SCMP_ACT_ERRNO`, with required runtime syscalls explicitly allowed and targeted compatibility blocks (for example `clone3`) returning errno.
 
 Always test against the test server documented in `.env`, never against production. Read `.env` for all target hosts and domains.
 

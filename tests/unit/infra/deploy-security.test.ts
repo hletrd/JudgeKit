@@ -193,4 +193,18 @@ describe("deployment security defaults", () => {
     expect(seccomp).toContain('"connect"');
   });
 
+  it("keeps operator docs aligned with production PostgreSQL and seccomp defaults", () => {
+    const agents = read("AGENTS.md");
+    const production = read("docker-compose.production.yml");
+    const seccomp = read("docker/seccomp-profile.json");
+
+    expect(production).toContain("postgres:18-alpine");
+    expect(seccomp).toContain('"defaultAction": "SCMP_ACT_ERRNO"');
+    expect(agents).toContain("PostgreSQL 18");
+    expect(agents).toContain("default-deny allow-list");
+    expect(agents).toContain("SCMP_ACT_ERRNO");
+    expect(agents).not.toContain("PostgreSQL 17");
+    expect(agents).not.toContain("default action is `SCMP_ACT_ALLOW`");
+  });
+
 });

@@ -294,7 +294,7 @@ export const JUDGE_LANGUAGE_CONFIGS: Record<Language, JudgeLanguageDefinition> =
   typescript: {
     language: "typescript",
     displayName: "TypeScript",
-    standard: "TS 5.9",
+    standard: "TS 6.0",
     extension: ".ts",
     dockerImage: "judge-node:latest",
     compiler: `TypeScript ${JUDGE_TOOLCHAIN_VERSIONS.typescript} (tsc) / Node.js ${JUDGE_TOOLCHAIN_VERSIONS.nodejs}`,

@@ -195,6 +195,8 @@ describe("judge language definitions", () => {
     const def = getJudgeLanguageDefinition("typescript");
     expect(def).not.toBeNull();
     expect(def?.displayName).toBe("TypeScript");
+    expect(def?.standard).toBe("TS 6.0");
+    expect(def?.compiler).toContain("TypeScript 6.0");
     expect(def?.extension).toBe(".ts");
     expect(def?.dockerImage).toBe("judge-node:latest");
     const compile = serializeJudgeCommand(def?.compileCommand);
