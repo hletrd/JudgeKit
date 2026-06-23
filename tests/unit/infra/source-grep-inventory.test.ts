@@ -177,7 +177,21 @@ describe("source-grep test inventory", () => {
     //     is the proportionate test for a deterministic generator (a behavioural
     //     test would have to compile+run every language, covered separately by
     //     the adapters' own assemble/stub assertions and the E2E suite).
-    const DOCUMENTED_BASELINE = 149;
+    // Bumped 149 -> 154 (2026-06-23, RPF cycle-2 remediation):
+    //   - tests/unit/admin-language-docker-capabilities-implementation.test.ts
+    //     pins admin Docker capability wiring, literal command placeholders, and
+    //     cross-locale help text. This is a UI/API/i18n text contract.
+    //   - tests/unit/infra/host-database-url.test.ts pins package scripts to use
+    //     host-safe database URL mode; the invariant is package.json script text.
+    //   - tests/unit/submissions/create-route-implementation.test.ts pins the
+    //     create-route limit queries to targeted indexed predicates plus matching
+    //     schema/migration indexes, a query-shape performance contract.
+    //   - tests/unit/sitemap.test.ts pins bounded sitemap batching in source so
+    //     large public datasets are not accumulated before URL emission.
+    //   - tests/unit/submissions/function-compile-error-mapping.test.ts pins two
+    //     scoped review pages to remap function diagnostics before badge display,
+    //     a page-wiring contract complementing behavioural sanitizer coverage.
+    const DOCUMENTED_BASELINE = 154;
     expect(sourceGrepFiles.length).toBe(DOCUMENTED_BASELINE);
   });
 
