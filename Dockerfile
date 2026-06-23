@@ -75,6 +75,7 @@ COPY --from=builder /app/docker ./docker
 # Drizzle migration support: config + schema + dependencies needed by drizzle-kit push
 COPY --from=builder /app/drizzle.config.ts ./drizzle.config.ts
 COPY --from=builder /app/tsconfig.json ./tsconfig.json
+COPY --from=builder /app/scripts/load-env.ts ./scripts/load-env.ts
 COPY --from=builder /app/src/lib/db ./src/lib/db
 COPY --from=builder /app/src/lib/submissions/id.ts ./src/lib/submissions/id.ts
 COPY --from=builder /app/src/types ./src/types
@@ -97,6 +98,9 @@ COPY --from=builder /app/node_modules/xtend ./node_modules/xtend
 # sharp native module for image processing
 COPY --from=builder /app/node_modules/sharp ./node_modules/sharp
 COPY --from=builder /app/node_modules/@img ./node_modules/@img
+
+# Runtime Drizzle config imports scripts/load-env.ts, which depends on @next/env.
+COPY --from=builder /app/node_modules/@next/env ./node_modules/@next/env
 
 # Data directory (for uploads, logs, etc.)
 RUN mkdir -p /app/data && chown nextjs:nodejs /app/data

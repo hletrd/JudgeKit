@@ -14,7 +14,7 @@ Cycle 2 found 39 deduped aggregate findings. Every finding is scheduled below. N
 
 | ID | Finding | Files | Severity/confidence | Status |
 |---|---|---|---|---|
-| AGG2-1 | Manual submissions are active `pending` rows that no worker can claim | `src/app/api/v1/submissions/route.ts`, `src/lib/judge/claim-query.ts`, docs/tests | High/High | [ ] |
+| AGG2-1 | Manual submissions are active `pending` rows that no worker can claim | `src/app/api/v1/submissions/route.ts`, `src/lib/judge/claim-query.ts`, docs/tests | High/High | [x] |
 | AGG2-2 | Status vocabulary drift across worker, app, UI, filters, exports, tests | worker/app status files, badges, messages, E2E waiters | High/High | [x] |
 
 Planned work:
@@ -26,10 +26,10 @@ Planned work:
 
 | ID | Finding | Files | Severity/confidence | Status |
 |---|---|---|---|---|
-| AGG2-3 | ZIP restore writes uploads before DB validation/import succeeds | `src/app/api/v1/admin/restore/route.ts`, `src/lib/db/export-with-files.ts`, `src/lib/db/import.ts` | High/High | [ ] |
-| AGG2-4 | Pre-restore snapshots are redacted despite full-fidelity expectations | `src/lib/db/pre-restore-snapshot.ts`, docs | High/High | [ ] |
-| AGG2-28 | Problem import rejects function problems and allows editor-incompatible time limits | `src/app/api/v1/problems/import/route.ts`, validators | Medium/Medium | [ ] |
-| AGG2-29 | `drizzle.config.ts` imports a script absent from production app images | `drizzle.config.ts`, `scripts/load-env.ts`, Docker/deploy paths | Medium/High | [ ] |
+| AGG2-3 | ZIP restore writes uploads before DB validation/import succeeds | `src/app/api/v1/admin/restore/route.ts`, `src/lib/db/export-with-files.ts`, `src/lib/db/import.ts` | High/High | [x] |
+| AGG2-4 | Pre-restore snapshots are redacted despite full-fidelity expectations | `src/lib/db/pre-restore-snapshot.ts`, docs | High/High | [x] |
+| AGG2-28 | Problem import rejects function problems and allows editor-incompatible time limits | `src/app/api/v1/problems/import/route.ts`, validators | Medium/Medium | [x] |
+| AGG2-29 | `drizzle.config.ts` imports a script absent from production app images | `drizzle.config.ts`, `scripts/load-env.ts`, Docker/deploy paths | Medium/High | [x] |
 
 Planned work:
 - Validate `database.json`, manifest, archive entry count, decompressed size, and sanitized/full-fidelity mode before any live file mutation.
@@ -42,7 +42,7 @@ Planned work:
 | ID | Finding | Files | Severity/confidence | Status |
 |---|---|---|---|---|
 | AGG2-5 | Output-limit handling builds oversized reports before app truncation | `judge-worker-rs/src/docker.rs`, `judge-worker-rs/src/executor.rs`, poll validators | High/High | [ ] |
-| AGG2-14 | Local compiler fallback workspace permissions can block sandbox users | `src/lib/compiler/execute.ts`, `judge-worker-rs/src/executor.rs` | Medium/High | [ ] |
+| AGG2-14 | Local compiler fallback workspace permissions can block sandbox users | `src/lib/compiler/execute.ts`, `judge-worker-rs/src/executor.rs` | Medium/High | [x] |
 | AGG2-15 | TS/Rust command and image validators have incompatible contracts | `src/lib/compiler/execute.ts`, `judge-worker-rs/src/runner.rs`, language sync | Medium/High | [ ] |
 | AGG2-23 | Claim schema parse failures leak claims and worker active-task slots | `src/app/api/v1/judge/claim/route.ts`, `src/lib/judge/claim-query.ts` | Medium/Medium | [ ] |
 | AGG2-25 | Interactive compiler/playground compile limits diverge from judged submissions | compiler/playground routes, runner limits | Medium/High | [ ] |
@@ -57,14 +57,14 @@ Planned work:
 
 | ID | Finding | Files | Severity/confidence | Status |
 |---|---|---|---|---|
-| AGG2-6 | Production auth-host allowlist bypassed by default `AUTH_TRUST_HOST=true` | auth trusted-host/env files | High/High | [ ] |
-| AGG2-7 | Dedicated workers only warn on insecure remote HTTP control-plane URLs | `judge-worker-rs/src/config.rs`, worker docs/compose | High/High | [ ] |
-| AGG2-8 | Runner/admin endpoints can share the judge submission token | runner auth config, compose, compiler execution | High/High | [ ] |
-| AGG2-9 | Sanitized exports include plaintext plugin provider secrets | DB export redaction pipeline | High/High | [ ] |
-| AGG2-10 | Production-capable API keys are hardcoded in scripts/artifacts | scripts/artifacts found by secret scan | High/High | [ ] |
-| AGG2-31 | Dedicated worker helper/docs omit required `RUNNER_AUTH_TOKEN` | `scripts/deploy-worker.sh`, `docs/deployment.md`, compose | Medium/High | [ ] |
-| AGG2-32 | Docker socket proxy image is mutable at privileged boundary | production/worker compose files | Medium/Medium | [ ] |
-| AGG2-33 | Docker image delete/prune failures are not consistently audit logged | Docker image API routes/client | Medium/High | [ ] |
+| AGG2-6 | Production auth-host allowlist bypassed by default `AUTH_TRUST_HOST=true` | auth trusted-host/env files | High/High | [x] |
+| AGG2-7 | Dedicated workers only warn on insecure remote HTTP control-plane URLs | `judge-worker-rs/src/config.rs`, worker docs/compose | High/High | [x] |
+| AGG2-8 | Runner/admin endpoints can share the judge submission token | runner auth config, compose, compiler execution | High/High | [x] |
+| AGG2-9 | Sanitized exports include plaintext plugin provider secrets | DB export redaction pipeline | High/High | [x] |
+| AGG2-10 | Production-capable API keys are hardcoded in scripts/artifacts | scripts/artifacts found by secret scan | High/High | [x] |
+| AGG2-31 | Dedicated worker helper/docs omit required `RUNNER_AUTH_TOKEN` | `scripts/deploy-worker.sh`, `docs/deployment.md`, compose | Medium/High | [x] |
+| AGG2-32 | Docker socket proxy image is mutable at privileged boundary | production/worker compose files | Medium/Medium | [x] |
+| AGG2-33 | Docker image delete/prune failures are not consistently audit logged | Docker image API routes/client | Medium/High | [x] |
 
 Planned work:
 - Enforce canonical auth hosts and secure worker URLs in production.
@@ -77,11 +77,11 @@ Planned work:
 
 | ID | Finding | Files | Severity/confidence | Status |
 |---|---|---|---|---|
-| AGG2-11 | Drizzle migration SQL and journal metadata diverge | `drizzle/pg`, `scripts/check-migration-drift.sh` | High/High | [ ] |
+| AGG2-11 | Drizzle migration SQL and journal metadata diverge | `drizzle/pg`, `scripts/check-migration-drift.sh` | High/High | [x] |
 | AGG2-12 | Host DB gates resolve Docker-internal hosts | `drizzle.config.ts`, `playwright.config.ts`, env loading | High/High | [ ] |
 | AGG2-16 | Queue claim/position paths lack composite indexes and do sequential reads | schema, claim, queue-status route | Medium/High | [ ] |
 | AGG2-17 | Submission creation scans all historical submissions inside transaction | `src/app/api/v1/submissions/route.ts` | Medium/High | [ ] |
-| AGG2-24 | Root Cargo workspace and AppleDouble artifacts are unignored | `.gitignore`, `.dockerignore`, `deploy-docker.sh` | Medium/High | [ ] |
+| AGG2-24 | Root Cargo workspace and AppleDouble artifacts are unignored | `.gitignore`, `.dockerignore`, `deploy-docker.sh` | Medium/High | [x] |
 | AGG2-39 | Import drift and diagnostic/status tests do not directly prove named behavior | tests | Low/Medium | [ ] |
 
 Planned work:
@@ -174,3 +174,11 @@ Run every configured gate from the cycle context:
 - [x] AGG2-11 verified already fixed in current HEAD: `scripts/check-migration-drift.sh` checks SQL-file/journal bijection before Drizzle checks, and current journal/file counts match.
 - [x] AGG2-24 verified already fixed in current HEAD: `.gitignore`, `.dockerignore`, and deploy rsync excludes cover root `target/` and AppleDouble files.
 - [x] AGG2-31/AGG2-32/AGG2-33 verified already fixed in current HEAD: dedicated worker compose/docs require `RUNNER_AUTH_TOKEN`, Docker socket proxy images are digest-pinned, and Docker image mutation failure paths are audit logged.
+- [x] AGG2-7 verified already fixed in current HEAD: `judge-worker-rs/src/config.rs` rejects non-local plain HTTP judge URLs unless `JUDGE_ALLOW_INSECURE_HTTP=1` is explicitly set, with unit coverage for local allow and remote reject cases.
+- [x] AGG2-8 verified already fixed in current HEAD: the Rust worker requires `RUNNER_AUTH_TOKEN`, rejects reuse of `JUDGE_AUTH_TOKEN`, and the app compiler/docker clients send only `RUNNER_AUTH_TOKEN` for runner/admin endpoints.
+- [x] AGG2-14 verified already fixed in current HEAD: `src/lib/compiler/execute.ts` chmods local fallback workspaces to `0o770`, writes source files as `0o644`, and keeps compiler containers on uid/gid `65534:65534`; `tests/unit/compiler/execute-implementation.test.ts` locks this behavior.
+- [x] AGG2-6 verified already fixed in current HEAD: `/api/auth/*` calls `validateTrustedAuthHost()` before Auth.js handlers, and `tests/unit/auth/trusted-host.test.ts` proves proxy trust mode does not bypass the allowed-host check.
+- [x] AGG2-9 verified already fixed in current HEAD: `src/lib/security/secrets.ts` includes `plugins.config` in `EXPORT_SANITIZED_COLUMNS`, so portable exports null plugin provider secret configs; `tests/unit/db/export-sanitization.test.ts` covers the redaction entry.
+- [x] AGG2-3 completed: `tests/unit/api/admin-backup-security.route.test.ts` now proves ZIP uploads are staged by `parseBackupZip`, skipped when `importDatabase()` fails, and written via `restoreParsedBackupFiles()` only after a successful database import.
+- [x] AGG2-28 verified already fixed in current HEAD: `src/app/api/v1/problems/import/route.ts` accepts `problemType: "function"` with `functionSpec`, rejects unsupported/missing specs, uses `problemDescriptionSchema`, and keeps `timeLimitMs` at the same 10s ceiling as `problemMutationSchema`; `tests/unit/validators/problem-import.test.ts` covers these contracts.
+- [x] AGG2-29 completed: `Dockerfile` now copies `scripts/load-env.ts` and its `@next/env` runtime dependency into the app image so legacy `docker exec judgekit-app npx drizzle-kit push` can resolve the `drizzle.config.ts` import; `tests/unit/infra/deploy-security.test.ts` guards the packaging contract.

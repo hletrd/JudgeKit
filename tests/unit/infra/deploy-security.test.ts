@@ -116,6 +116,17 @@ describe("deployment security defaults", () => {
     expect(dockerfile).not.toContain("addgroup nextjs docker");
   });
 
+  it("packages the Drizzle env loader used by legacy in-container migrations", () => {
+    const dockerfile = read("Dockerfile");
+    const drizzleConfig = read("drizzle.config.ts");
+    const legacyDeploy = read("deploy.sh");
+
+    expect(drizzleConfig).toContain('import "./scripts/load-env";');
+    expect(legacyDeploy).toContain("docker exec judgekit-app npx drizzle-kit push");
+    expect(dockerfile).toContain("COPY --from=builder /app/scripts/load-env.ts ./scripts/load-env.ts");
+    expect(dockerfile).toContain("COPY --from=builder /app/node_modules/@next/env ./node_modules/@next/env");
+  });
+
   it("keeps upload persistence and docker-proxy capabilities aligned with the admin deployment contract", () => {
     const production = read("docker-compose.production.yml");
     const workerCompose = read("docker-compose.worker.yml");
