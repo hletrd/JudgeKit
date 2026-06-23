@@ -16,7 +16,9 @@ use crate::docker::{self, DockerRunOptions, Phase};
 use crate::languages;
 use crate::types::Language;
 
-const MEMORY_LIMIT_MB: u32 = 256;
+// Keep aligned with src/lib/compiler/execute.ts so the app-side compiler
+// fallback and Rust runner sidecar expose the same resource envelope.
+const MEMORY_LIMIT_MB: u32 = 2048;
 const MAX_SOURCE_CODE_BYTES: usize = 64 * 1024; // 64KB
 const MAX_STDIN_BYTES: usize = 64 * 1024; // 64KB
 const DEFAULT_TIME_LIMIT_MS: u64 = 10_000;
@@ -182,7 +184,12 @@ fn contains_shell_variable_expansion(cmd: &str) -> bool {
 
 #[cfg(test)]
 mod tests {
-    use super::validate_shell_command;
+    use super::{MEMORY_LIMIT_MB, validate_shell_command};
+
+    #[test]
+    fn compiler_runner_memory_limit_matches_node_executor() {
+        assert_eq!(MEMORY_LIMIT_MB, 2048);
+    }
 
     #[test]
     fn accepts_simple_commands() {

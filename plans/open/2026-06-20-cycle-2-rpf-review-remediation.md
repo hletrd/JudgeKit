@@ -45,7 +45,7 @@ Planned work:
 | AGG2-14 | Local compiler fallback workspace permissions can block sandbox users | `src/lib/compiler/execute.ts`, `judge-worker-rs/src/executor.rs` | Medium/High | [x] |
 | AGG2-15 | TS/Rust command and image validators have incompatible contracts | `src/lib/compiler/execute.ts`, `judge-worker-rs/src/runner.rs`, language sync | Medium/High | [x] |
 | AGG2-23 | Claim schema parse failures leak claims and worker active-task slots | `src/app/api/v1/judge/claim/route.ts`, `src/lib/judge/claim-query.ts` | Medium/Medium | [x] |
-| AGG2-25 | Interactive compiler/playground compile limits diverge from judged submissions | compiler/playground routes, runner limits | Medium/High | [ ] |
+| AGG2-25 | Interactive compiler/playground compile limits diverge from judged submissions | compiler/playground routes, runner limits | Medium/High | [x] |
 
 Planned work:
 - Truncate stdout/stderr diagnostics in the worker before report serialization and keep explicit overflow metadata.
@@ -185,3 +185,4 @@ Run every configured gate from the cycle context:
 - [x] AGG2-5 completed: `judge-worker-rs/src/executor.rs` now truncates report-facing `actualOutput` and compile diagnostics to 16 KiB before JSON report/dead-letter serialization, while leaving Docker-captured stdout available for comparison; Rust worker unit tests cover report truncation and UTF-8 boundaries.
 - [x] AGG2-15 completed: `judge-worker-rs/src/runner.rs` now rejects unbraced `$VAR`/`$1` shell expansions like the TypeScript compiler path, and `judge-worker-rs/src/validation.rs` now enforces trusted-registry delimiter boundaries plus the same local-registry handling as `src/lib/judge/docker-image-validation.ts`; focused Rust and Vitest validator tests pass.
 - [x] AGG2-23 verified/completed: `src/app/api/v1/judge/claim/route.ts` token-fences `releaseClaimedSubmission()` for schema parse errors, missing problems, and outer post-claim exceptions; `tests/unit/api/judge-poll.route.test.ts` now covers worker-slot cleanup when response assembly fails after a successful claim.
+- [x] AGG2-25 completed: `judge-worker-rs/src/runner.rs` now uses the same 2048 MiB compiler-runner memory envelope as `src/lib/compiler/execute.ts`, with a Rust unit guard so the runner sidecar cannot drift back to the old 256 MiB cap; `cargo test --quiet --manifest-path judge-worker-rs/Cargo.toml` passes.
