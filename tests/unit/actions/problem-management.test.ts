@@ -38,6 +38,16 @@ function makeSelectChain(rows: unknown[]) {
   return chain;
 }
 
+function makeWhereRowsSelectChain(rows: unknown[]) {
+  const chain = {
+    from: vi.fn(),
+    where: vi.fn(),
+  };
+  chain.from.mockReturnValue(chain);
+  chain.where.mockReturnValue(rows);
+  return chain;
+}
+
 // db.insert(table).values(v)
 const dbInsertMock = vi.hoisted(() =>
   vi.fn(() => ({
@@ -452,6 +462,30 @@ describe("updateProblemWithTestCases", () => {
 
     await expect(updateProblemWithTestCases("problem-1", makeInput())).rejects.toThrow(
       "DB update failure"
+    );
+  });
+
+  it("validates linked files before clearing existing file associations", async () => {
+    dbSelectMock
+      .mockImplementationOnce(() => makeSelectChain([]))
+      .mockImplementationOnce(() => makeWhereRowsSelectChain([
+        { id: "leaked-file", uploadedBy: "other-author", problemId: "other-problem" },
+      ]));
+
+    await expect(
+      updateProblemWithTestCases(
+        "problem-1",
+        makeInput({
+          description: "![diagram](/api/v1/files/leaked-file)",
+        }),
+        "author-1",
+      ),
+    ).rejects.toThrow("fileLinkNotAllowed");
+
+    expect(dbUpdateMock).toHaveBeenCalledTimes(1);
+    const setCall = dbUpdateMock.mock.results[0].value.set;
+    expect(setCall).toHaveBeenCalledWith(
+      expect.objectContaining({ title: "Two Sum" }),
     );
   });
 });

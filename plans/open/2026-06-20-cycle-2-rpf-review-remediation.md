@@ -96,14 +96,14 @@ Planned work:
 
 | ID | Finding | Files | Severity/confidence | Status |
 |---|---|---|---|---|
-| AGG2-13 | File-link authorization clears state before validation | problem-management file association | Medium/High | [ ] |
+| AGG2-13 | File-link authorization clears state before validation | problem-management file association | Medium/High | [x] |
 | AGG2-18 | Live polling and progress filters over-fetch large payloads | submission polling/progress pages | Medium/High | [ ] |
 | AGG2-19 | Browser diffing and large authoring forms block main thread | diff/output/problem editor | Medium/High | [ ] |
 | AGG2-20 | Assignment/contest boards and stats recompute full matrices/aggregates | status board/stats routes | Medium/High | [ ] |
 | AGG2-21 | Docker build UX/API is synchronous and mismatched with production capabilities | admin languages UI, Docker build route | Medium/High | [ ] |
 | AGG2-22 | Sitemap generation accumulates all rows and locale-expands in memory | sitemap generation | Medium/High | [ ] |
-| AGG2-26 | Function problems can be saved with no supported enabled language | function validators/submission form | Medium/High | [ ] |
-| AGG2-27 | Mandatory problem description structure is not enforced | validators, seed/import/admin/API paths | Medium/High | [ ] |
+| AGG2-26 | Function problems can be saved with no supported enabled language | function validators/submission form | Medium/High | [x] |
+| AGG2-27 | Mandatory problem description structure is not enforced | validators, seed/import/admin/API paths | Medium/High | [x] |
 | AGG2-30 | `INCLUDE_WORKER=false` deploys still start/configure worker behavior | `deploy-docker.sh`, compose/docs | Medium/High | [ ] |
 | AGG2-34 | API/auth docs are out of sync with implementation | `docs/api.md`, `docs/authentication.md`, README | Medium/High | [x] |
 | AGG2-35 | Runtime/version docs drift from deployed configs | `AGENTS.md`, `.context/project/current-state.md`, language/seccomp docs | Medium/High | [ ] |
@@ -190,3 +190,5 @@ Run every configured gate from the cycle context:
 - [x] AGG2-16 completed: `src/lib/db/schema.pg.ts` and `drizzle/pg/0035_queue_claim_indexes.sql` add `submissions_queue_claim_idx` and `submissions_stale_claim_idx` for queue-position, claim, and stale-reclaim scans; `src/app/api/v1/judge/claim/route.ts` now fetches problem metadata, test cases, language config, and assignment scoring metadata in one `Promise.all()` after reserving a row to reduce worker-slot hold time. Focused queue/claim tests, `npx tsc --noEmit`, and `npm run db:check` pass.
 - [x] AGG2-17 completed: `src/app/api/v1/submissions/route.ts` now replaces the broad per-user `SUM(CASE ...)` aggregate with targeted `COUNT(*)` queries for recent submissions and active queue submissions, backed by `submissions_user_submitted_at_idx` and `submissions_user_status_idx` in `drizzle/pg/0036_submission_create_indexes.sql`; route tests, the new implementation guard, `npx tsc --noEmit`, and `npm run db:check` pass.
 - [x] AGG2-39 completed: `tests/unit/db/import-implementation.test.ts` now imports the real import/export table map and exercises `buildImportColumnSets()` against schema metadata instead of source-grepping; this exposed and fixed timestamp restore drift in `src/lib/db/import.ts` by treating Drizzle `date` columns as timestamp-like. Diagnostic truncation is covered by Rust worker unit tests from AGG2-5, and status catalogs remain covered by `tests/unit/judge/status-labels.test.ts` plus `tests/unit/submissions/status.test.ts`.
+- [x] AGG2-13 completed: `src/lib/problem-management.ts` now validates all linked file IDs before clearing existing `files.problemId` associations, so unauthorized or stale links fail without mutating prior associations; `tests/unit/actions/problem-management.test.ts` covers the pre-validation mutation order.
+- [x] AGG2-26/AGG2-27 verified already fixed in current HEAD: `problemMutationSchema`, `problemCreateSchema`, and `problemImportSchema` require at least one function-judging supported enabled language for function problems and enforce structured Markdown problem descriptions; create/update/import route paths all pass through those schemas. Focused validator/API suites pass.

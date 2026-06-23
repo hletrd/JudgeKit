@@ -247,31 +247,33 @@ async function syncProblemFileLinks(
 ) {
   const linkedFileIds = extractLinkedFileIds(description);
 
+  if (linkedFileIds.length > 0) {
+    const linkedRows = await executor
+      .select({
+        id: files.id,
+        uploadedBy: files.uploadedBy,
+        problemId: files.problemId,
+      })
+      .from(files)
+      .where(inArray(files.id, linkedFileIds));
+
+    const linkedRowById = new Map(linkedRows.map((row) => [row.id, row]));
+    const unauthorized = linkedFileIds.filter((id) => {
+      const row = linkedRowById.get(id);
+      if (!row) return true;
+      return row.uploadedBy !== actorId && row.problemId !== problemId;
+    });
+
+    if (unauthorized.length > 0) {
+      throw new Error("fileLinkNotAllowed");
+    }
+  }
+
   await executor.update(files)
     .set({ problemId: null })
     .where(eq(files.problemId, problemId));
 
   if (linkedFileIds.length === 0) return;
-
-  const linkedRows = await executor
-    .select({
-      id: files.id,
-      uploadedBy: files.uploadedBy,
-      problemId: files.problemId,
-    })
-    .from(files)
-    .where(inArray(files.id, linkedFileIds));
-
-  const linkedRowById = new Map(linkedRows.map((row) => [row.id, row]));
-  const unauthorized = linkedFileIds.filter((id) => {
-    const row = linkedRowById.get(id);
-    if (!row) return true;
-    return row.uploadedBy !== actorId && row.problemId !== problemId;
-  });
-
-  if (unauthorized.length > 0) {
-    throw new Error("fileLinkNotAllowed");
-  }
 
   await executor.update(files)
     .set({ problemId })
