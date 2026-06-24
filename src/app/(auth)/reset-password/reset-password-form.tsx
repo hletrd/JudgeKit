@@ -7,6 +7,7 @@ import { Eye, EyeOff } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { FIXED_MIN_PASSWORD_LENGTH } from "@/lib/security/password";
 
 export function ResetPasswordForm() {
   const router = useRouter();
@@ -41,6 +42,12 @@ export function ResetPasswordForm() {
 
     setLoading(true);
     setError(null);
+
+    if (password.length < FIXED_MIN_PASSWORD_LENGTH) {
+      setError(t("passwordTooShort", { minLength: FIXED_MIN_PASSWORD_LENGTH }));
+      setLoading(false);
+      return;
+    }
 
     if (password !== confirmPassword) {
       setError(t("passwordsDoNotMatch"));
@@ -116,6 +123,7 @@ export function ResetPasswordForm() {
             type={showPassword ? "text" : "password"}
             autoComplete="new-password"
             required
+            minLength={FIXED_MIN_PASSWORD_LENGTH}
             value={password}
             onChange={(e) => setPassword(e.target.value)}
             className="pr-10"
@@ -143,6 +151,7 @@ export function ResetPasswordForm() {
             type={showConfirm ? "text" : "password"}
             autoComplete="new-password"
             required
+            minLength={FIXED_MIN_PASSWORD_LENGTH}
             value={confirmPassword}
             onChange={(e) => setConfirmPassword(e.target.value)}
             className="pr-10"
