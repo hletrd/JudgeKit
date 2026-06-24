@@ -104,6 +104,11 @@ mod tests {
 
     #[test]
     fn valid_docker_images() {
+        // Ensure we're not in production mode for this test
+        unsafe {
+            std::env::remove_var("JUDGE_PRODUCTION_MODE");
+            std::env::remove_var("TRUSTED_DOCKER_REGISTRIES");
+        }
         assert!(validate_docker_image("judge-python:latest"));
         assert!(validate_docker_image_with_trusted(
             "registry.example.com/judge-rust:1.0",

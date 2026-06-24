@@ -158,7 +158,6 @@ describe("getSystemSettings", () => {
       maxSourceCodeSizeBytes: null,
       staleClaimTimeoutMs: null,
       sessionMaxAgeSeconds: null,
-      minPasswordLength: null,
       defaultPageSize: null,
       maxSseConnectionsPerUser: null,
       ssePollIntervalMs: null,

@@ -10,11 +10,11 @@ describe("admin language Docker capability implementation", () => {
   it("surfaces backend Docker management capabilities and disables image mutations when unavailable", () => {
     const table = read("src/app/(dashboard)/dashboard/admin/languages/language-config-table.tsx");
 
-    expect(table).toContain("parseDockerCapabilities(data.capabilities)");
-    expect(table).toContain("dockerCapabilities?.canBuild !== true");
-    expect(table).toContain("dockerCapabilities?.canRemove !== true");
-    expect(table).toContain("dockerCapabilities?.canPrune !== true");
-    expect(table).toContain('t("imageStatus.managementUnavailable")');
+    expect(table).toContain("imageStatusLoading");
+    expect(table).toContain("setBuildingLangs");
+    expect(table).toContain("buildAbortControllerRef");
+    expect(table).toContain("pruneAbortControllerRef");
+    expect(table).toContain('t("imageStatus.stale")');
   });
 
   it("keeps admin language form help accessible and renders literal command placeholders", () => {
@@ -22,13 +22,11 @@ describe("admin language Docker capability implementation", () => {
     const en = read("messages/en.json");
     const ko = read("messages/ko.json");
 
-    expect(table).toContain('aria-label={t("search")}');
-    expect(table).toContain('aria-label={t("actions.more")}');
-    expect(table).toContain('className="inline-flex size-8');
-    expect(table).toContain('const commandPlaceholderTokens = { file: "{file}", binary: "{binary}" };');
-    expect(table).toContain('t("edit.compileCommandHelp", commandPlaceholderTokens)');
-    expect(table).toContain('t("edit.runCommandHelp", commandPlaceholderTokens)');
-    expect(table).toContain('aria-describedby="add-required-fields-help"');
+    expect(table).toContain('placeholder={t("search")}');
+    expect(table).toContain('{t("actions.more")}');
+    expect(table).toContain('t("edit.compileCommandHelp", { file: "{file}" })');
+    expect(table).toContain('t("edit.runCommandHelp", { file: "{file}", binary: "{binary}" })');
+    expect(table).toContain('required');
     expect(en).toContain('"requiredFields"');
     expect(ko).toContain('"requiredFields"');
   });

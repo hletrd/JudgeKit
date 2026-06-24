@@ -160,7 +160,6 @@ describe("SETTING_DEFAULTS", () => {
       "maxSourceCodeSizeBytes",
       "staleClaimTimeoutMs",
       "sessionMaxAgeSeconds",
-      "minPasswordLength",
       "defaultPageSize",
       "maxSseConnectionsPerUser",
       "ssePollIntervalMs",
