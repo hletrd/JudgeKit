@@ -1,216 +1,129 @@
-# Debugger Review - Cycle 2
+# Debugger Review - Prompt 1, Cycle 2
 
-Date: 2026-06-20
+Findings count: 8
 
-Scope: latent bug surfaces, edge cases, failure modes, regressions, exception handling, and operational failures in the current dirty worktree. No fixes were implemented.
+## Inventory
 
-## Instructions and Inventory
+I treated the dirty tree as intentional prior-cycle work and reviewed the changed behavior surfaces rather than reverting or fixing anything.
 
-Instructions read before review:
+Review-relevant files inventoried from `git status --short` and `git diff --stat`:
 
-- `AGENTS.md`
-- `CLAUDE.md`
-- `.context/development/problem-descriptions.md`
-- `.context/reviews/_aggregate.md` and prior per-agent reviews for carryover context
-
-Review-relevant inventory built from `rg --files`, `git status --short`, `git diff --stat`, and targeted reads. The dirty worktree is in-scope and was reviewed as part of the current change surface.
-
-Primary failure-surface files reviewed:
-
-- Root/config/deploy: `.gitignore`, `.dockerignore`, `.npmrc`, `Cargo.toml`, `Cargo.lock`, `Dockerfile`, `docker-compose*.yml`, `drizzle.config.ts`, `deploy-docker.sh`, `deploy.sh`, `scripts/load-env.ts`, deploy/backup/safety scripts.
-- Submission/judge API: `src/app/api/v1/submissions/route.ts`, `src/app/api/v1/submissions/[id]/rejudge/route.ts`, `src/app/api/v1/judge/claim/route.ts`, `src/app/api/v1/judge/poll/route.ts`, `src/app/api/v1/problems/import/route.ts`, `src/app/api/v1/problems/[id]/compute-expected/route.ts`, `src/app/api/v1/compiler/playground/route.ts`.
-- Judge domain logic: `src/lib/judge/claim-query.ts`, `src/lib/judge/verdict.ts`, `src/lib/judge/languages.ts`, `src/lib/judge/function-judging/**`, `src/lib/compiler/execute.ts`, `src/lib/submissions/status.ts`, `src/lib/security/constants.ts`.
-- Rust worker: `judge-worker-rs/src/types.rs`, `judge-worker-rs/src/executor.rs`, `judge-worker-rs/src/docker.rs`, `judge-worker-rs/src/comparator.rs`, `judge-worker-rs/src/languages.rs`, worker tests.
-- Restore/import/export: `src/app/api/v1/admin/restore/route.ts`, `src/app/api/v1/admin/migrate/import/route.ts`, `src/lib/db/import.ts`, `src/lib/db/export.ts`, `src/lib/db/export-with-files.ts`, `src/lib/db/pre-restore-snapshot.ts`, `src/lib/files/storage.ts`.
-- Status/UI consumers: `src/lib/assignments/participant-status.ts`, submission status badge components, public/admin submission pages, contest/student detail pages.
-- Test coverage reviewed for regression expectations: `tests/unit/**`, `tests/integration/**`, `tests/e2e/**`, Rust unit tests under `judge-worker-rs/src/**`.
+- Deploy/test infrastructure: `deploy-docker.sh`, `playwright.config.ts`, `scripts/playwright-local-webserver.sh`.
+- Judge/runtime and Docker: `judge-worker-rs/src/executor.rs`, `judge-worker-rs/src/validation.rs`, `src/lib/compiler/execute.ts`, `src/lib/docker/client.ts`.
+- Backup, restore, export, and plugin secrets: `src/app/api/v1/admin/restore/route.ts`, `src/lib/db/export-with-files.ts`, `src/lib/db/export.ts`, `src/lib/db/import-transfer.ts`, `src/lib/db/import.ts`, `src/lib/db/pre-restore-snapshot.ts`, `src/lib/plugins/secrets.ts`.
+- Auth/password/host trust: `src/app/api/v1/auth/reset-password/route.ts`, `src/app/change-password/change-password-form.tsx`, `src/lib/actions/public-signup.ts`, `src/lib/actions/user-management.ts`, `src/lib/auth/trusted-host.ts`, `src/lib/security/password.ts`, `src/lib/system-settings-config.ts`, `src/lib/validators/system-settings.ts`, `messages/en.json`, `messages/ko.json`, `docs/authentication.md`.
+- Problem/language/realtime validation: `src/app/api/v1/problems/import/route.ts`, `src/lib/problem-management.ts`, `src/lib/judge/sync-language-configs.ts`, `src/lib/realtime/realtime-coordination.ts`, `src/lib/validators/api.ts`.
+- UI changes: `src/app/(dashboard)/dashboard/admin/languages/language-config-table.tsx`, `src/app/(public)/languages/page.tsx`.
+- Tests covering the above areas: the modified unit and E2E files under `tests/unit/**` and `tests/e2e/function-judging-responsive.spec.ts`.
+- Prior-cycle review/plan artifacts: `.context/reviews/*.md`, `plans/open/2026-06-22-rpf-cycle-1-review-remediation.md`; these were used for context but not treated as runtime behavior.
 
 ## Findings
 
-### DBG2-1 - Manual submissions are inserted as active `pending` rows that no worker can claim
+### DBG2-1 - ZIP restore still commits the database before uploaded files are durably restored
 
-Severity: High
-Confidence: High
-Type: confirmed regression
+- Status: confirmed
+- Confidence: High
+- Files/regions: `src/app/api/v1/admin/restore/route.ts:149-178`, `src/lib/db/export-with-files.ts:267-348`, `src/lib/db/export-with-files.ts:351-357`
 
-Evidence:
+The route parses and validates the ZIP, takes a pre-restore snapshot, imports the database at `restore/route.ts:165`, and only then writes the uploaded files at `restore/route.ts:176-178`. `parseBackupZip()` validates file contents into in-memory buffers, but `restoreParsedBackupFiles()` is the first durable write to the live uploads directory.
 
-- `src/app/api/v1/submissions/route.ts:330-331` computes `isManualProblem` but then sets `const initialStatus = "pending";` for every problem type.
-- `src/app/api/v1/submissions/route.ts:352-356` counts all user submissions with `status IN ('pending', 'judging', 'queued')` before allowing another submission.
-- `src/app/api/v1/submissions/route.ts:367-382` skips judge-queue availability checks for manual problems, but does not assign a terminal/manual-review status.
-- `src/app/api/v1/submissions/route.ts:405-416` inserts the submission with that active `pending` status.
-- `src/lib/judge/claim-query.ts:46-49` and `src/lib/judge/claim-query.ts:140-143` explicitly exclude manual problems from both worker-backed and no-worker claim paths.
-- `src/lib/submissions/status.ts:1-4` defines active statuses as `pending`, `queued`, and `judging`; the canonical `SubmissionStatus` union no longer includes a non-active `submitted` status.
-- `src/lib/assignments/participant-status.ts:100-102` returns the latest active status directly for participant progress displays.
+Concrete failure scenario: an admin restores a valid ZIP backup, `importDatabase(data)` commits successfully, then `writeUploadedFile()` fails because the uploads volume is full, read-only, missing, or loses connectivity. The route falls into the outer catch and returns `restoreFailed`, but the database has already been replaced and now points at files that were not restored. This is exactly the hard-to-debug "DB says files exist but storage does not" split-brain state.
 
-Failure scenario:
+Suggested fix: stage uploaded files durably before `importDatabase()` commits, preferably into a temp restore directory on the same volume, verify all staged writes and hashes, then after the DB transaction succeeds atomically swap or promote staged files. If durable staging fails, abort before touching the DB. For rollback safety, also decide what to do if promotion fails after commit.
 
-1. A student submits a manual problem.
-2. The submission row is stored as `pending`.
-3. The judge claim query excludes manual problems, so the row can never be claimed or completed.
-4. The student and instructor views can show an indefinitely pending manual submission.
-5. Because the pending-count throttle includes that row, repeated manual submissions can also block later normal submissions with `tooManyPendingSubmissions`.
+### DBG2-2 - Backups that the app can create can be too large for the restore route to accept
 
-Suggested fix:
+- Status: confirmed
+- Confidence: High
+- Files/regions: `src/lib/db/import-transfer.ts:3`, `src/app/api/v1/admin/restore/route.ts:68-70`, `src/lib/db/export-with-files.ts:197-214`, `src/lib/db/export-with-files.ts:238-247`
 
-- Restore an explicit non-active manual status, for example `submitted` or `manual_review`, and add it consistently to `SubmissionStatus`, status constants, labels, filters, and participant-status mapping.
-- Alternatively, if the product intentionally wants `pending` for manual review, exclude manual-problem rows from judge pending quotas and active judging indicators. The explicit status is less error-prone.
-- Add a regression test proving manual submissions are not claimable, not counted against the automatic-judge active queue, and render as awaiting/manual review rather than active judging.
+`MAX_IMPORT_BYTES` is 100 MiB and the restore route rejects any uploaded file above that before checking whether it is JSON or ZIP. The ZIP backup exporter, however, includes every uploaded file it finds and then generates a single ZIP buffer; there is no corresponding export cap that guarantees the produced backup is at most 100 MiB.
 
-### DBG2-2 - ZIP restore writes upload files before DB validation/import succeeds, leaving split-brain state on failure
+Concrete failure scenario: production has 150 MiB of uploaded PDFs/images. `streamBackupWithFiles()` succeeds and returns a ZIP backup. During disaster recovery, the same backup is rejected immediately by `restore/route.ts:68-70` with `fileTooLarge`, before the new 512 MiB decompressed ZIP cap is even consulted. Operators are left with a backup artifact produced by JudgeKit that JudgeKit cannot restore.
 
-Severity: High
-Confidence: High
-Type: confirmed operational failure
+Suggested fix: split JSON import and ZIP backup limits. Set a backup ZIP upload cap that is at least as large as the maximum backup the exporter is willing to produce, or enforce/export a documented backup-size ceiling. Ideally stream ZIP generation and restore so the compressed outer file limit and decompressed entry limits are part of one coherent contract.
 
-Evidence:
+### DBG2-3 - Language sync now preserves every existing command, including stale first-party defaults
 
-- `src/app/api/v1/admin/restore/route.ts:81-89` calls `restoreFilesFromZip(zipBuffer)` before validating the extracted database export.
-- `src/app/api/v1/admin/restore/route.ts:119-130` performs `validateExport` and sanitized-export checks only after files have already been restored.
-- `src/app/api/v1/admin/restore/route.ts:142-158` creates the DB snapshot and imports the database after file restoration.
-- `src/app/api/v1/admin/restore/route.ts:160-166` reports import failure but has no rollback for files written earlier.
-- `src/lib/db/export-with-files.ts:219-223` returns `{ dbExport, filesRestored }` from `restoreFilesFromZip`.
-- `src/lib/db/export-with-files.ts:248-257` parses export metadata and creates the upload directory.
-- `src/lib/db/export-with-files.ts:266-292` writes each ZIP upload entry through `writeUploadedFile` before the manifest completeness check at `src/lib/db/export-with-files.ts:295-297`.
-- `src/lib/files/storage.ts:27-30` writes directly to the final upload path, overwriting any existing file with the same stored name.
-- `src/lib/db/import.ts:121-225` now wraps database import in a transaction, but filesystem writes remain outside that transaction.
+- Status: confirmed
+- Confidence: High
+- Files/regions: `src/lib/judge/sync-language-configs.ts:43-55`, `AGENTS.md` "Adding a New Language" / "After syncing" sections
 
-Failure scenario:
+The dirty change fixes override clobbering by only backfilling missing `runCommand` and `compileCommand`. That also means any existing non-empty command is treated as an admin override forever. The sync code has no provenance bit or default-version comparison, so ordinary rows originally inserted from the TypeScript defaults will not receive future default command fixes.
 
-1. An admin uploads a ZIP backup containing upload files plus a database export that is invalid for the current schema, fails sanitized checks, or fails during import.
-2. `restoreFilesFromZip` writes/overwrites the uploaded files on disk.
-3. The route later rejects the database export or rolls back the database transaction.
-4. The database remains on the old state while the upload directory contains files from the failed restore.
-5. Existing problem attachments can point at overwritten, unrelated, or missing content.
+Concrete failure scenario: a Dockerfile or language config changes because a compiler flag is wrong, for example a Zig output-path flag or a runtime path fix. `src/lib/judge/languages.ts` is updated and `npm run languages:sync` is run as documented, but the DB row already has an old non-null command from the previous default sync. The dirty sync path skips it, the worker reads stale commands from the DB at runtime, and submissions keep failing even though the source-of-truth TypeScript file is fixed.
 
-Suggested fix:
+Suggested fix: track whether a DB command is admin-customized, or store a hash/version of the default command last synced. Update rows that still match the previous default, and preserve only rows marked customized or rows whose value has diverged from known defaults.
 
-- Split ZIP restore into parse/validate/stage/install phases.
-- Extract uploads into a temporary staging directory, validate the database export, and complete the DB import before moving staged files into the final upload directory.
-- If final file installation can fail after DB import, keep a rollback/backup strategy for overwritten files or use content-addressed file names plus a post-import reconcile.
-- Add tests where `validateExport` or `importDatabase` fails and assert final upload files are unchanged.
+### DBG2-4 - Local Playwright can silently test a stale standalone build
 
-### DBG2-3 - `drizzle.config.ts` imports a script that is absent from the production app image used by the legacy deploy path
+- Status: confirmed
+- Confidence: High
+- Files/regions: `scripts/playwright-local-webserver.sh:102-104`, `playwright.config.ts:114-117`
 
-Severity: Medium
-Confidence: High
-Type: confirmed deployment regression
+The webserver helper now skips `npm run build` whenever `.next/standalone/server.js` exists unless `PLAYWRIGHT_REBUILD_APP=1` is set. Playwright still starts that standalone server and the timeout was extended to 600 seconds, so a local full E2E gate can pass against a previous build after source files have changed.
 
-Evidence:
+Concrete failure scenario: a developer changes an API route or page component, runs `npx playwright test`, and an old `.next/standalone/server.js` from yesterday is reused. The tests exercise stale code and pass, then the deploy build fails or production regresses. This is especially dangerous in this review-plan-fix workflow because Playwright is the blocking gate and the worktree is intentionally dirty.
 
-- `drizzle.config.ts:1` imports `./scripts/load-env`.
-- `scripts/load-env.ts:1-3` imports `loadEnvConfig` from `@next/env` and calls `loadEnvConfig(process.cwd())`.
-- `Dockerfile:75-80` copies `drizzle.config.ts`, `tsconfig.json`, and a limited subset of `src/**` into the runner image, but does not copy `scripts/load-env.ts`.
-- `deploy.sh:222-224` runs `docker exec judgekit-app npx drizzle-kit push` inside that app container.
-- `deploy.sh:225` prints `Database migrated` after the command block, even though the error path only logs a warning and does not make the deployment fail.
+Suggested fix: make rebuild the default for local gates and add an explicit `PLAYWRIGHT_REUSE_BUILD=1` opt-in, or compare `.next/standalone/server.js` against source/package/config mtimes. In CI, fail if a preexisting standalone build is reused from cache without an explicit cache key tied to the source tree.
 
-Failure scenario:
+### DBG2-5 - `RUNNER_AUTH_DISABLED=1` disables auth warnings but the runner is never called without a token
 
-1. An operator uses the legacy `deploy.sh` path documented in the repository.
-2. The app container runs `npx drizzle-kit push`.
-3. Drizzle loads `/app/drizzle.config.ts`, which imports `./scripts/load-env`.
-4. The import fails because `/app/scripts/load-env.ts` was not copied into the runner image.
-5. The deploy can continue with stale schema while logging a misleading migration success line.
+- Status: confirmed
+- Confidence: High
+- Files/regions: `src/lib/compiler/execute.ts:61-83`, `src/lib/compiler/execute.ts:530-563`, `src/lib/compiler/execute.ts:634-657`
 
-Suggested fix:
+The environment comment says `RUNNER_AUTH_DISABLED=1` is an explicit opt-out for local development with an unauthenticated runner. The config error also respects that flag. But `tryRustRunner()` returns `null` whenever `RUNNER_AUTH_TOKEN` is absent, and it unconditionally builds an `Authorization: Bearer ${RUNNER_AUTH_TOKEN}` header. When `COMPILER_RUNNER_URL` is set, local fallback is disabled by default, so the final result is `Compiler runner unavailable`.
 
-- Either copy `scripts/load-env.ts` into the runner image, or make `drizzle.config.ts` self-contained in files that are shipped to every environment where Drizzle runs.
-- Make the legacy deploy path fail hard when the migration command fails, or at minimum avoid printing success after the warning path.
-- Add a Docker-image smoke test that runs `npx drizzle-kit --config drizzle.config.ts check` or an equivalent config-load command inside the production runner image.
+Concrete failure scenario: a developer starts an unauthenticated local Rust runner and launches Next with `COMPILER_RUNNER_URL=http://localhost:3001 RUNNER_AUTH_DISABLED=1`. The warning is suppressed, but every compiler run refuses to call the runner and also refuses local fallback, so the playground/judge path fails with a misleading runner-unavailable result.
 
-### DBG2-4 - Judge claim schema parse failures still leak the SQL claim and worker active-task slot
+Suggested fix: change `tryRustRunner()` to allow `!RUNNER_AUTH_TOKEN && RUNNER_AUTH_DISABLED`, omit the `Authorization` header in that mode, and add a unit test that exercises the exact env combination. Alternatively remove `RUNNER_AUTH_DISABLED` if unauthenticated runners are no longer supported.
 
-Severity: Medium
-Confidence: Medium
-Type: likely failure mode
+### DBG2-6 - Output-limit-exceeded signals are masked by timeout/runtime classification
 
-Evidence:
+- Status: likely
+- Confidence: Medium
+- Files/regions: `judge-worker-rs/src/executor.rs:142-154`, `judge-worker-rs/src/executor.rs:601-609`
 
-- `src/app/api/v1/judge/claim/route.ts:117-120` initializes cleanup state, but `claimedForCleanup` is only assigned after a full row parse succeeds.
-- `src/app/api/v1/judge/claim/route.ts:211-228` creates a claim token and executes the raw claim SQL. The SQL path mutates submission status and, for worker-backed claims, increments `active_tasks`.
-- `src/app/api/v1/judge/claim/route.ts:230-238` parses `claimedRaw`; on parse failure it logs and returns `invalidJudgeClaim` without cleanup.
-- `src/app/api/v1/judge/claim/route.ts:403-415` has catch-path cleanup, but that cleanup is guarded by `claimedForCleanup && claimTokenForCleanup` and is not reached by the explicit parse-error return.
-- `src/lib/judge/claim-query.ts:54-79` updates the submission to `queued`/`judging`.
-- `src/lib/judge/claim-query.ts:111-127` increments the selected worker's `active_tasks`.
+The worker passes `execution.stdout_truncated || execution.stderr_truncated` into `output_limit_exceeded`, but `classify_test_case_verdict()` checks timeouts, memory, and non-zero exit before it checks the output-limit flag. A program that floods output until truncation and then times out will be classified as `time_limit` or `runtime_error`, not `output_limit_exceeded`.
 
-Failure scenario:
+Concrete failure scenario: a submission loops printing data. Docker output capture hits the output cap, then the process is killed by the timeout. The result persisted for the test case is TLE/RE even though the more actionable cause was output overflow. Students and operators will chase timing/runtime behavior while the real fix is to stop printing.
 
-1. A valid claim candidate is selected and the SQL claim mutation succeeds.
-2. The returned row fails Zod parsing because of migration drift, unexpected driver conversion, corrupt data, or a future column shape change.
-3. The route returns `422 invalidJudgeClaim`.
-4. The submission remains claimed/active and the worker `active_tasks` counter remains incremented until stale-claim cleanup or manual intervention.
-5. With low worker concurrency, one malformed row can consume capacity and cause unrelated submissions to stop being claimed.
+Suggested fix: define verdict precedence explicitly. If output cap is meant to be authoritative, check `output_limit_exceeded` before timeout and non-zero exit, or record both primary and secondary signals. Add unit tests for `timed_out=true + output_limit_exceeded=true` and `exit_code != 0 + output_limit_exceeded=true`.
 
-Suggested fix:
+### DBG2-7 - Password minimum remains configurable in settings but runtime validation is fixed at 8
 
-- After the SQL mutation, capture minimal cleanup-safe identifiers before full response parsing, especially `submissionId` and `claimToken`.
-- On parse failure, release by claim token and decrement the worker active-task counter in the same way as post-claim assembly failures.
-- Consider making the SQL claim return a smaller, stable shape for the claim mutation and loading the larger payload only after the claim row is safely parsed.
-- Add a fault-injection test where `rawQueryOne` returns an invalid shape after mutating and assert cleanup runs.
+- Status: risk
+- Confidence: Medium
+- Files/regions: `src/lib/security/password.ts:1-28`, `src/lib/system-settings-config.ts:52-54`, `src/lib/validators/system-settings.ts:125-128`, `src/app/api/v1/auth/reset-password/route.ts:31-41`, `docs/authentication.md:16-19`
 
-### DBG2-5 - Root Cargo workspace creates a root `target/` tree that is not ignored
+The runtime validator now enforces exactly `FIXED_MIN_PASSWORD_LENGTH = 8`, and the reset route removed its `getSystemSettings()` lookup. At the same time, `minPasswordLength` is still present in configured settings and remains writable through the system settings validator with a range of 8 to 128. That leaves an apparent hardening knob that no longer hardens password-setting flows.
 
-Severity: Low
-Confidence: High
-Type: confirmed operational/repository hygiene issue
+Concrete failure scenario: an operator sets `minPasswordLength` to 12 or 16 during a high-stakes contest, sees the setting accepted, and assumes new passwords follow that floor. A reset-password request with an 8-character password passes because the route delegates to the fixed validator and passes `FIXED_MIN_PASSWORD_LENGTH` to `resetPassword()`.
 
-Evidence:
+Suggested fix: either remove/hide/deprecate `minPasswordLength` from settings and migrations, or restore configured-min enforcement while still honoring the repo-level minimum floor. If the intended policy is truly non-configurable 8, writes above 8 should be rejected or ignored with an explicit admin-facing explanation.
 
-- `Cargo.toml:1-7` introduces a root Cargo workspace for `code-similarity-rs`, `judge-worker-rs`, and `rate-limiter-rs`.
-- `.gitignore:68-70` ignores `judge-worker-rs/target/` and `rate-limiter-rs/target/`, but not the new root `/target/`.
-- Current worktree state includes untracked `target/**` entries and `._target`; the local root `target/` is approximately 471 MB.
-- The individual Rust crate release profiles were moved into the new root workspace, so running Cargo from the workspace root is now a natural workflow that will continue to populate `/target`.
+### DBG2-8 - ZIP restore audit logs always report zero files for successful ZIP restores
 
-Failure scenario:
+- Status: confirmed
+- Confidence: High
+- Files/regions: `src/app/api/v1/admin/restore/route.ts:78-80`, `src/app/api/v1/admin/restore/route.ts:151-160`, `src/app/api/v1/admin/restore/route.ts:176-178`
 
-1. A developer or CI helper runs root-level `cargo test` or `cargo build`.
-2. Cargo writes build outputs into `/target`.
-3. `git status` is flooded with generated files, hiding real source changes.
-4. A broad `git add .` can accidentally stage large artifacts or AppleDouble metadata.
+`filesRestored` is initialized to `0`, the audit event is recorded before file restoration, and the summary interpolates `filesRestored` for ZIP backups. The actual restore count is assigned only after the DB import and after the audit event has already been queued.
 
-Suggested fix:
+Concrete failure scenario: an admin restores a ZIP with 42 uploaded files. The API response returns `filesRestored: 42`, but the audit log summary says `0 files`. During incident review, operators cannot trust the audit trail to determine whether a backup was restored without uploads or whether the summary was stale.
 
-- Add `/target/` and `._*` to `.gitignore`.
-- Keep the root `Cargo.toml` and `Cargo.lock` only if the workspace is intentional, but never commit generated build output.
-- Remove local generated artifacts after ignore rules are corrected.
+Suggested fix: use `pendingUploadedFiles.length` for the pre-restore audit summary, or record a second completion audit event after `restoreParsedBackupFiles()` returns. If restore can partially fail, log both pending and restored counts.
 
-### DBG2-6 - Problem import route rejects function-signature problems and allows time limits outside the normal editor contract
+## Missed-Issue Sweep
 
-Severity: Medium
-Confidence: Medium
-Type: likely product/API regression
+I did a final pass over the required bug classes against the inventoried files:
 
-Evidence:
+- Null/undefined paths: checked restore file detection, runner auth envs, plugin secret empty/null handling, and password settings drift.
+- Race/stale state: language sync stale defaults, restore DB/files split, stale Playwright builds, and stale audit count are covered above.
+- Env-dependent failures: runner auth opt-out and production/local Docker behavior were traced; only the auth-disabled path had enough evidence for a finding here.
+- Bad fallback/error swallowing: restore snapshot failure still returns `null` and allows restore to continue, but I did not list it separately because DBG2-1 is the larger committed-DB/no-files failure. It should still be considered when fixing restore atomicity.
+- Deploy/test flakes: Playwright stale-build reuse is covered; deploy script changes looked fail-closed rather than introducing a confirmed new flaky path.
+- Worker/runtime failures: output-limit precedence and runner auth/fallback behavior are covered.
 
-- `src/app/api/v1/problems/import/route.ts:8-34` defines its own import schema with `problemType: z.enum(["auto", "manual"]).default("auto")`; `function` is not accepted.
-- `src/app/api/v1/problems/import/route.ts:14` allows `timeLimitMs` up to `30000`.
-- `src/lib/validators/problem-management.ts:45-67` is the normal problem mutation contract and accepts `problemType` values `auto`, `manual`, and `function`, but caps `timeLimitMs` at `10000`.
-- `src/lib/validators/problem-management.ts:85-116` contains the function-problem validation rules that the import route bypasses entirely.
-
-Failure scenario:
-
-1. An instructor exports or constructs a function-signature problem and imports it through `/api/v1/problems/import`.
-2. The route rejects the payload because `problemType: "function"` is not allowed, or callers omit `problemType` and lose the function-specific fields.
-3. Separately, this route can import a 30-second problem that cannot later be represented or edited through the normal problem-management form, creating inconsistent admin behavior.
-
-Suggested fix:
-
-- Reuse `problemMutationSchema` or a deliberate import wrapper around it instead of maintaining a separate divergent schema.
-- If this route is intentionally legacy auto/manual-only, document that in the route/API and reject function payloads with a specific compatibility error.
-- Align the time-limit cap with the normal problem editor or add a clear product rule explaining why imports can exceed the editor maximum.
-- Add API tests for importing each supported problem type.
-
-## Final Missed-Issues Sweep
-
-Additional sweep areas:
-
-- Rechecked the previous cycle blockers against current dirty changes. The Rust worker status strings and Docker stdin timeout appear addressed in `judge-worker-rs/src/types.rs`, `judge-worker-rs/src/docker.rs`, and `judge-worker-rs/src/executor.rs`.
-- Rechecked judge output-size handling. Current worker changes cap and drain stdout/stderr, and `src/lib/judge/verdict.ts` truncates stored verdict output. I did not find a new blocker there.
-- Rechecked function-spec submission handling. The submission route now catches invalid `functionSpec` and returns a typed API error rather than a generic 500.
-- Rechecked database import atomicity. `src/lib/db/import.ts` now uses a transaction for the database portion, but the ZIP filesystem restore in DBG2-2 remains outside that transaction.
-- Rechecked Docker deploy failure handling. `deploy-docker.sh` now appears stricter on health/smoke failures, but the legacy `deploy.sh` migration path remains vulnerable to the Drizzle config packaging problem in DBG2-3.
-
-Residual risk:
-
-- I did not execute the full gate suite for this review-only prompt.
-- The repository has a large dirty worktree with many independent edits. Findings above prioritize confirmed or high-probability failure modes from code inspection; additional lower-signal regressions may surface only under the full gate run and deployment smoke tests.
+No fixes were implemented as part of this review.

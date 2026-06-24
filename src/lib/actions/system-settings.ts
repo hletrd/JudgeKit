@@ -33,7 +33,6 @@ const CONFIG_KEYS = [
   "maxSourceCodeSizeBytes",
   "staleClaimTimeoutMs",
   "sessionMaxAgeSeconds",
-  "minPasswordLength",
   "defaultPageSize",
   "maxSseConnectionsPerUser",
   "ssePollIntervalMs",

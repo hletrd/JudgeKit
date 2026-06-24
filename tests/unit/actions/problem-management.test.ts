@@ -455,6 +455,31 @@ describe("updateProblemWithTestCases", () => {
     );
   });
 
+  it("validates linked file ownership before clearing existing file links", async () => {
+    dbSelectMock
+      .mockImplementationOnce(() => makeSelectChain([]))
+      .mockImplementationOnce(() => ({
+        from: vi.fn(() => ({
+          where: vi.fn().mockResolvedValue([
+            { id: "file-1", uploadedBy: "other-user", problemId: null },
+          ]),
+        })),
+      }));
+
+    await expect(
+      updateProblemWithTestCases(
+        "problem-1",
+        makeInput({ description: "See /api/v1/files/file-1" }),
+        "actor-1"
+      )
+    ).rejects.toThrow("fileLinkNotAllowed");
+
+    // Only the problem-row update should have reached `.where()`. The old
+    // ordering detached files for this problem before discovering that the
+    // newly linked file was not owned by the actor.
+    expect(updateWhereMock).toHaveBeenCalledTimes(1);
+  });
+
   it("propagates errors thrown during the transaction", async () => {
     updateWhereMock.mockImplementationOnce(() => {
       throw new Error("DB update failure");

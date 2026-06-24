@@ -242,4 +242,48 @@ describe("export-with-files integrity manifests", () => {
     expect(writeUploadedFileMock).toHaveBeenCalledTimes(1);
     expect(writeUploadedFileMock).toHaveBeenCalledWith("upload-1.bin", Buffer.from("hello upload"));
   });
+
+  it("rejects ZIP backups with too many expanded entries", async () => {
+    const {
+      MAX_BACKUP_ZIP_ENTRIES,
+      enforceBackupZipSizeLimits,
+    } = await import("@/lib/db/export-with-files");
+
+    expect(() => enforceBackupZipSizeLimits(
+      Array.from({ length: MAX_BACKUP_ZIP_ENTRIES + 1 }, (_, index) => ({
+        name: `uploads/${index}.bin`,
+        dir: false,
+        _data: { uncompressedSize: 0 },
+      }))
+    )).toThrow("backupZipTooLarge");
+  });
+
+  it("rejects ZIP backups with an oversized expanded entry", async () => {
+    const {
+      MAX_BACKUP_ZIP_ENTRY_BYTES,
+      enforceBackupZipSizeLimits,
+    } = await import("@/lib/db/export-with-files");
+
+    expect(() => enforceBackupZipSizeLimits([
+      {
+        name: "uploads/large.bin",
+        dir: false,
+        _data: { uncompressedSize: MAX_BACKUP_ZIP_ENTRY_BYTES + 1 },
+      },
+    ])).toThrow("backupZipTooLarge");
+  });
+
+  it("rejects ZIP backups whose total expanded size exceeds the cap", async () => {
+    const {
+      MAX_BACKUP_ZIP_DECOMPRESSED_BYTES,
+      enforceBackupZipSizeLimits,
+    } = await import("@/lib/db/export-with-files");
+
+    const half = Math.floor(MAX_BACKUP_ZIP_DECOMPRESSED_BYTES / 2);
+    expect(() => enforceBackupZipSizeLimits([
+      { name: "uploads/a.bin", dir: false, _data: { uncompressedSize: half } },
+      { name: "uploads/b.bin", dir: false, _data: { uncompressedSize: half } },
+      { name: "uploads/c.bin", dir: false, _data: { uncompressedSize: 1 } },
+    ])).toThrow("backupZipTooLarge");
+  });
 });

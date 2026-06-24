@@ -1,4 +1,4 @@
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
 
@@ -10,12 +10,26 @@ describe("buildDockerImage implementation", () => {
     expect(source).toContain('spawn("docker", ["build", "-t", imageName, "-f", dockerfilePath, contextDir])');
   });
 
+  it("gives remote Docker builds the same long timeout budget as local builds", () => {
+    const source = readFileSync(join(process.cwd(), "src/lib/docker/client.ts"), "utf8");
+
+    expect(source).toContain("timeoutMs = 30_000");
+    expect(source).toContain("}, 600_000);");
+    expect(source).toContain('resolve({ success: false, error: "docker build timed out after 600s" })');
+  });
+
   beforeEach(() => {
     vi.resetModules();
     vi.restoreAllMocks();
+    vi.unstubAllEnvs();
     delete process.env.COMPILER_RUNNER_URL;
+    delete process.env.JUDGE_WORKER_URL;
     delete process.env.JUDGE_AUTH_TOKEN;
     delete process.env.RUNNER_AUTH_TOKEN;
+  });
+
+  afterEach(() => {
+    vi.unstubAllEnvs();
   });
 
   it("routes Docker management through the worker API when a runner is configured", async () => {
@@ -77,6 +91,35 @@ describe("buildDockerImage implementation", () => {
 
     await expect(listDockerImages("judge-*")).rejects.toThrow("configError");
     await expect(pullDockerImage("judge-python:latest")).resolves.toEqual({
+      success: false,
+      error: "configError",
+    });
+  });
+
+  it("fails closed instead of using local Docker when production has no runner API", async () => {
+    vi.stubEnv("NODE_ENV", "production");
+
+    const {
+      buildDockerImage,
+      getDiskUsage,
+      inspectDockerImage,
+      listDockerImages,
+      pullDockerImage,
+      removeDockerImage,
+    } = await import("@/lib/docker/client");
+
+    await expect(listDockerImages("judge-*")).rejects.toThrow("configError");
+    await expect(inspectDockerImage("judge-python:latest")).rejects.toThrow("configError");
+    await expect(getDiskUsage()).rejects.toThrow("configError");
+    await expect(pullDockerImage("judge-python:latest")).resolves.toEqual({
+      success: false,
+      error: "configError",
+    });
+    await expect(buildDockerImage("judge-python:latest", "docker/Dockerfile.judge-python")).resolves.toEqual({
+      success: false,
+      error: "configError",
+    });
+    await expect(removeDockerImage("judge-python:latest")).resolves.toEqual({
       success: false,
       error: "configError",
     });

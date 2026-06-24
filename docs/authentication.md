@@ -19,7 +19,7 @@
 ## Password policy
 
 - Enforced by `getPasswordValidationError()` in `src/lib/security/password.ts`.
-- Rules: a minimum length (default 12, overridable via `system_settings.min_password_length`, range 4–128) **and** a check that the password does not contain the account's own username or email — case-insensitive, including the email local-part. There are no character-class complexity rules and no common-password blocklist; identity context is passed in at every password-setting flow (signup, change-password, recruiting redemption, admin create/update, bulk import).
+- Rules: exactly an 8-character minimum. There are no character-class complexity rules, common-password blocklist, or username/email similarity checks. This mirrors the mandatory repository policy in `AGENTS.md`; do not change the minimum or add similarity checks without explicit approval there.
 
 ## Remote API Smoke Test
 

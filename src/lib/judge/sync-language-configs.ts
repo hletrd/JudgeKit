@@ -18,7 +18,7 @@ async function doSync(): Promise<boolean> {
 
   const existingMap = new Map(existing.map((r) => [r.language, r]));
   let inserted = 0;
-  let updated = 0;
+  let backfilled = 0;
 
   for (const lang of DEFAULT_JUDGE_LANGUAGES) {
     const record = existingMap.get(lang.language);
@@ -43,24 +43,31 @@ async function doSync(): Promise<boolean> {
       continue;
     }
 
-    if (record.runCommand !== runCmd || record.compileCommand !== (compileCmd ?? null)) {
+    const updates: { runCommand?: string; compileCommand?: string | null } = {};
+    if (!record.runCommand && runCmd) {
+      updates.runCommand = runCmd;
+    }
+    if (record.compileCommand == null && compileCmd) {
+      updates.compileCommand = compileCmd;
+    }
+
+    if (Object.keys(updates).length > 0) {
       await db
         .update(languageConfigs)
         .set({
-          runCommand: runCmd,
-          compileCommand: compileCmd ?? null,
+          ...updates,
           updatedAt: await getDbNowUncached(),
         })
         .where(eq(languageConfigs.language, lang.language));
-      updated++;
+      backfilled++;
     }
   }
 
   if (inserted > 0) {
     logger.info({ inserted }, "[language-sync] inserted new language configs");
   }
-  if (updated > 0) {
-    logger.info({ updated }, "[language-sync] back-filled commands for existing configs");
+  if (backfilled > 0) {
+    logger.info({ backfilled }, "[language-sync] back-filled missing commands for existing configs");
   }
   return true;
 }

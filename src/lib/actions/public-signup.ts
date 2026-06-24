@@ -38,8 +38,6 @@ export type PublicSignupResult = {
     | "nameTooLong"
     | "emailTooLong"
     | "passwordTooLong"
-    | "passwordContainsUsername"
-    | "passwordContainsEmail"
     | "confirmPasswordRequired";
 };
 

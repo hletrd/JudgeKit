@@ -67,7 +67,7 @@ export const PUT = createApiHandler({
       "apiRateLimitMax", "apiRateLimitWindowMs",
       "submissionRateLimitMaxPerMinute", "submissionMaxPending", "submissionGlobalQueueLimit",
       "defaultTimeLimitMs", "defaultMemoryLimitMb", "maxSourceCodeSizeBytes", "staleClaimTimeoutMs",
-      "sessionMaxAgeSeconds", "minPasswordLength",
+      "sessionMaxAgeSeconds",
       "defaultPageSize",
       "maxSseConnectionsPerUser", "ssePollIntervalMs", "sseTimeoutMs",
       "compilerTimeLimitMs",

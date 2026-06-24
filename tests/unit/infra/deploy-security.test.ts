@@ -28,6 +28,21 @@ describe("deployment security defaults", () => {
     expect(deployDocker).toContain("Database did not become healthy in 30s — aborting deploy before migrations");
   });
 
+  it("fails closed on deployment recovery paths that need operator action", () => {
+    const deployDocker = read("deploy-docker.sh");
+
+    expect(deployDocker).toContain(
+      'die "drizzle-kit push detected a destructive schema change but did NOT apply it',
+    );
+    expect(deployDocker).toContain('die "worker on ${WHOST} is NOT running after restart');
+    expect(deployDocker).toContain('die "Nginx config test failed');
+    expect(deployDocker).not.toContain(
+      'warn "drizzle-kit push detected a destructive schema change but did NOT apply it',
+    );
+    expect(deployDocker).not.toContain('warn "worker on ${WHOST} is NOT running after restart');
+    expect(deployDocker).not.toContain('warn "Nginx config test failed');
+  });
+
   it("uses https AUTH_URL defaults for deploy scripts", () => {
     expect(read("deploy.sh")).toContain("AUTH_URL=https://${DOMAIN}");
     expect(read("deploy-test-backends.sh")).toContain("AUTH_URL=https://${DOMAIN}");

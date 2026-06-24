@@ -6,7 +6,11 @@ import { createProblemWithTestCases } from "@/lib/problem-management";
 import { resolveCapabilities } from "@/lib/capabilities/cache";
 import { functionSpecSchema } from "@/lib/judge/function-judging/types";
 import { supportsFunctionJudging } from "@/lib/judge/function-judging/registry";
-import { problemDescriptionSchema, referenceSolutionSchema } from "@/lib/validators/problem-management";
+import {
+  problemDescriptionSchema,
+  problemTestCaseSchema,
+  referenceSolutionSchema,
+} from "@/lib/validators/problem-management";
 
 export const problemImportSchema = z.object({
   version: z.number().optional(),
@@ -29,12 +33,11 @@ export const problemImportSchema = z.object({
     functionSpec: functionSpecSchema.nullable().optional(),
     referenceSolution: referenceSolutionSchema.nullable().optional(),
     tags: z.array(z.string().min(1).max(50)).max(20).default([]),
-    testCases: z.array(z.object({
-      input: z.string(),
-      expectedOutput: z.string(),
-      isVisible: z.boolean().default(false),
-      sortOrder: z.number().int().optional(),
-    })).default([]),
+    testCases: z.array(
+      problemTestCaseSchema.extend({
+        sortOrder: z.number().int().optional(),
+      })
+    ).max(100, "tooManyTestCases").default([]),
   }).superRefine((problem, ctx) => {
     if (problem.problemType !== "function") return;
 

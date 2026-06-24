@@ -102,7 +102,9 @@ pool.query(
 ).finally(() => pool.end());
 NODE
 
-npm run build
+if [ "${PLAYWRIGHT_REBUILD_APP:-0}" = "1" ] || [ ! -f .next/standalone/server.js ]; then
+  npm run build
+fi
 
 # next.config.ts sets `output: "standalone"`, so `next start` is not the
 # supported serve path under Next 16. The build emits a self-contained server at

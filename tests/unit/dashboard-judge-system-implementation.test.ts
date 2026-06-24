@@ -20,6 +20,7 @@ describe("dashboard judge system implementation", () => {
     expect(source).toContain("getJudgeSystemSnapshot()");
     expect(source).toContain("auth()");
     expect(source).toContain("resolveCapabilities");
+    expect(source).toContain('export const dynamic = "force-dynamic"');
     // Auth-aware: worker count visible to admins only
     expect(source).toContain("showWorkerCount");
     expect(source).toContain("onlineWorkerCount");

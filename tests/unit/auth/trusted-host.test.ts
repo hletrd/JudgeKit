@@ -67,8 +67,8 @@ describe("validateTrustedAuthHost", () => {
     expect(result!.status).toBe(400);
   });
 
-  it("uses x-forwarded-host header when present", async () => {
-    getTrustedAuthHostsMock.mockResolvedValue(new Set(["proxy.com"]));
+  it("does not trust client-supplied x-forwarded-host over host", async () => {
+    getTrustedAuthHostsMock.mockResolvedValue(new Set(["backend.com"]));
 
     const result = await validateTrustedAuthHost(
       makeRequest({ "x-forwarded-host": "proxy.com", host: "backend.com" })
@@ -77,21 +77,11 @@ describe("validateTrustedAuthHost", () => {
     expect(result).toBeNull();
   });
 
-  it("uses first value from comma-separated x-forwarded-host", async () => {
-    getTrustedAuthHostsMock.mockResolvedValue(new Set(["first.com"]));
-
-    const result = await validateTrustedAuthHost(
-      makeRequest({ "x-forwarded-host": "first.com, second.com" })
-    );
-
-    expect(result).toBeNull();
-  });
-
-  it("rejects when x-forwarded-host is not trusted", async () => {
+  it("rejects when host is untrusted even if x-forwarded-host is trusted", async () => {
     getTrustedAuthHostsMock.mockResolvedValue(new Set(["trusted.com"]));
 
     const result = await validateTrustedAuthHost(
-      makeRequest({ "x-forwarded-host": "evil.com", host: "trusted.com" })
+      makeRequest({ "x-forwarded-host": "trusted.com", host: "evil.com" })
     );
 
     expect(result).not.toBeNull();

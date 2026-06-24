@@ -62,7 +62,6 @@ export type SystemSettingsRecord = {
   staleClaimTimeoutMs?: number | null;
   // Session & Auth
   sessionMaxAgeSeconds?: number | null;
-  minPasswordLength?: number | null;
   // Pagination
   defaultPageSize?: number | null;
   // Real-time / SSE
@@ -149,7 +148,6 @@ export async function getSystemSettings(): Promise<SystemSettingsRecord | undefi
       maxSourceCodeSizeBytes: null,
       staleClaimTimeoutMs: null,
       sessionMaxAgeSeconds: null,
-      minPasswordLength: null,
       defaultPageSize: null,
       maxSseConnectionsPerUser: null,
       ssePollIntervalMs: null,

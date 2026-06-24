@@ -1,53 +1,36 @@
-# Document Specialist Review - Cycle 2
+# Document Specialist Review - Prompt 1
 
-Date: 2026-06-20
+Date: 2026-06-22
 
-Role: document-specialist for PROMPT 1. This review checks documentation/code mismatches against authoritative repo docs (`AGENTS.md`, `CLAUDE.md`, `README.md`, `docs/**`, `.context/**`), API docs, deployment docs, language docs, and observed implementation. Uncommitted worktree changes were included in the review. No fixes were implemented.
+Role: document-specialist for a review-plan-fix cycle. This pass checked documentation/code mismatches across the current repo docs and authoritative operational sources. I did not edit implementation code.
 
 ## Inventory
 
-Reviewed documentation surfaces:
+Review-relevant documentation examined:
 
-- `AGENTS.md`, `CLAUDE.md`, `README.md`, `.context/development/**`, `.context/project/current-state.md`, `.context/plans/**`, existing `.context/reviews/**`
-- `docs/api.md`, `docs/authentication.md`, `docs/deployment.md`, `docs/judge-workers.md`, `docs/function-judging.md`, `docs/languages.md`, `docs/data-retention-policy.md`, operator/security runbooks
-- Deployment script help and comments in `deploy-docker.sh`, `scripts/deploy-worker.sh`, compose files, ignore files
-- Language/runtime docs and sync behavior in `src/lib/judge/languages.ts`, `docs/languages.md`, Dockerfiles, and `scripts/sync-language-configs.ts`
-- API route families under `src/app/api/v1/**/route.ts`
-- Submission, judging, backup/restore, auth, CSRF, Docker image, function-judging, and visibility implementation touchpoints
+- `AGENTS.md`, `CLAUDE.md`, `README.md`
+- `.context/development/**`, `.context/project/current-state.md`, active `.context/plans/**`, existing `.context/reviews/**`
+- `docs/api.md`, `docs/authentication.md`, `docs/deployment.md`, `docs/judge-workers.md`, `docs/function-judging.md`, `docs/languages.md`, `docs/data-retention-policy.md`, `docs/privacy-retention.md`, `docs/operator-incident-runbook.md`, `docs/high-stakes-*.md`
 
-The final sweep also searched for drift markers including `CSRF`, `X-Requested-With`, `RUNNER_AUTH_TOKEN`, `PostgreSQL 17`, `postgres:18`, `TypeScript 5.9`, `SCMP_ACT_ALLOW`, `deny-list`, `standalone bearer token`, `python3`, `target/`, and API completeness claims.
+Implementation surfaces cross-checked:
 
-## Findings
+- API handlers under `src/app/api/**`, especially auth, CSRF, Docker image management, restore/backup, submissions, language APIs, community/auth/admin routes
+- `src/lib/security/csrf.ts`, `src/lib/api/handler.ts`, `src/lib/api/auth.ts`, `src/lib/data-retention*.ts`
+- `src/lib/judge/languages.ts`, `src/types/index.ts`, `judge-worker-rs/src/types.rs`, `judge-worker-rs/src/languages.rs`, `docker/Dockerfile.judge-*`
+- `deploy-docker.sh`, `deploy.sh`, `deploy-test-backends.sh`, `scripts/setup.sh`, `scripts/sync-language-configs.ts`, `scripts/docker-disk-cleanup.sh`, `scripts/deploy-worker.sh`
+- PostgreSQL runtime compose/migration context under `docker-compose*.yml` and `drizzle/pg/**`
 
-### DOC-C2-1 - API CSRF docs tell session-cookie clients to use the wrong mechanism
+Static inventory checks performed:
 
-Severity: High
+- Parsed `src/lib/judge/languages.ts`: 125 language configs, 98 unique Docker image names.
+- Parsed `docs/languages.md`: 125 language rows, 97 unique Docker image names.
+- The config image absent from `docs/languages.md` is `judge-flix`.
+- Listed current `src/app/api/v1/**/route.ts` route families and spot-checked omissions against `docs/api.md`.
+- Final sweep searched for drift markers: `CSRF token`, `X-Requested-With`, `standalone bearer token`, `CHAT_MESSAGE_RETENTION_DAYS`, `30 days`, `5 years`, `judge-flix`, `judge-jvm`, `TypeScript 5.9`, `TypeScript 6.0`, `PostgreSQL 17`, `postgres:18`, `SCMP_ACT_ALLOW`, `deny-list`, `102`, `full 99 set`, `python3`, `all (~14`, `all (~30`, and `privileged:true`.
 
-Confidence: High
+## Confirmed Issues
 
-Status: Confirmed
-
-Evidence: `docs/api.md:78-80` says mutation methods require a valid CSRF token header from `/api/auth/csrf` when using session cookies. The implementation requires the custom header instead: `src/lib/security/csrf.ts:19-45` documents and enforces `X-Requested-With: XMLHttpRequest`, and `src/lib/api/handler.ts:138-148` applies the check to mutation methods except API-key requests. The local agent guide is already correct at `AGENTS.md:263-265`.
-
-Failure scenario: An external integration follows the API reference, fetches `/api/auth/csrf`, sends a token header, and receives `403 {"error":"csrfValidationFailed"}` for every cookie-authenticated `POST`, `PUT`, `PATCH`, or `DELETE`.
-
-Suggested fix: Update `docs/api.md` to distinguish Auth.js login CSRF from API-route CSRF. Document `X-Requested-With: XMLHttpRequest` for session-cookie mutations, and keep the note that API-key requests skip CSRF.
-
-### DOC-C2-2 - Authentication docs say protected API routes do not support bearer tokens, but API keys do
-
-Severity: Medium
-
-Confidence: High
-
-Status: Confirmed
-
-Evidence: `docs/authentication.md:8-13` says protected `/api/v1/*` routes use the Auth.js session cookie and that bearer tokens are reserved for `GET`/`POST /api/v1/judge/poll`. In code, `src/lib/api/auth.ts:61-83` first authenticates `Authorization: Bearer jk_...` API keys, then falls back to session cookies and non-standard bearer API key parsing. `docs/api.md:68-76` also documents `jk_` API keys and says they skip CSRF.
-
-Failure scenario: A CLI or LMS integration author reads `docs/authentication.md` and builds a brittle browser-cookie workflow instead of using the supported `jk_` API key path, or treats successful bearer API-key calls as undocumented behavior.
-
-Suggested fix: Update `docs/authentication.md` to distinguish public/user API keys (`Bearer jk_...`) from internal judge worker bearer tokens. Clarify which protected route families accept API keys.
-
-### DOC-C2-3 - Manual problem docs promise out-of-band grading, but submissions are inserted as permanent `pending`
+### DOC-P1-1 - API CSRF docs tell session-cookie clients to use the wrong mechanism
 
 Severity: High
 
@@ -55,13 +38,31 @@ Confidence: High
 
 Status: Confirmed
 
-Evidence: `AGENTS.md:169-176` describes `manual` problems as judged outside the automatic pipeline. `docs/api.md:567-579` documents `POST /api/v1/submissions` as submitting code for judging and says pending/global queue limits are enforced. The implementation detects manual problems at `src/app/api/v1/submissions/route.ts:328-331`, but still sets `initialStatus = "pending"` and inserts that status at `src/app/api/v1/submissions/route.ts:405-416`. It then skips queue checks for manual problems at `src/app/api/v1/submissions/route.ts:367-382`, while judge claiming excludes manual problems at `src/lib/judge/claim-query.ts:43-50` and `src/lib/judge/claim-query.ts:138-144`.
+Evidence: `docs/api.md:78-80` says mutation methods require a valid CSRF token header obtained from `/api/auth/csrf`. The implementation requires `X-Requested-With: XMLHttpRequest`: `src/lib/security/csrf.ts:19-45` documents and enforces that exact header, and `src/lib/api/handler.ts:138-148` applies it to mutation methods unless the request uses API-key auth. `AGENTS.md:265` is already correct and explicitly says not to use `x-csrf-token`.
 
-Failure scenario: A manual-problem submission is accepted into the database as `pending`, never claimed by a worker, and never reaches a documented manual-review or final status. Students and staff see an in-progress submission that cannot complete through the described pipeline.
+Mismatch: The API reference describes Auth.js login CSRF behavior as if it were the API mutation-route CSRF contract.
 
-Suggested fix: Implement and document a manual grading/status workflow, or insert manual submissions with an explicit manual-review/terminal status and update API docs and UI copy accordingly.
+Concrete failure scenario: An integration follows `docs/api.md`, fetches `/api/auth/csrf`, sends a token header on `POST /api/v1/problems`, and receives `403 {"error":"csrfValidationFailed"}` because the required `X-Requested-With` header is missing.
 
-### DOC-C2-4 - `deploy-docker.sh` header claims app-server worker defaults that the script does not implement
+Suggested fix: Update `docs/api.md` to distinguish Auth.js credential-login CSRF from API-route CSRF. Document `X-Requested-With: XMLHttpRequest` for session-cookie `POST`/`PUT`/`PATCH`/`DELETE`, and keep the note that `Bearer jk_...` API-key requests skip CSRF.
+
+### DOC-P1-2 - Authentication docs deny bearer-token support for protected API routes, but API keys use bearer auth
+
+Severity: Medium
+
+Confidence: High
+
+Status: Confirmed
+
+Evidence: `docs/authentication.md:8-13` says protected `/api/v1/*` routes use the Auth.js session cookie, "not a standalone bearer token", reserving bearer tokens for `/api/v1/judge/poll`. In code, `src/lib/api/auth.ts:61-83` authenticates `Authorization: Bearer jk_...` API keys before trying session cookies, and `docs/api.md:68-76` separately documents those API keys and says they skip CSRF.
+
+Mismatch: The auth architecture doc contradicts the API reference and the current auth implementation.
+
+Concrete failure scenario: A CLI/LMS integration author reads `docs/authentication.md`, builds a cookie-login workflow, and misses the supported `Bearer jk_...` API-key path. Conversely, a successful API-key call looks like undocumented behavior.
+
+Suggested fix: Update `docs/authentication.md` to distinguish public API keys (`Bearer jk_...`) from internal judge-worker bearer tokens. State which protected route families accept API keys and that session cookies remain the browser UI path.
+
+### DOC-P1-3 - Operator privacy-retention doc says AI chat logs default to 30 days, but runtime default is 5 years
 
 Severity: High
 
@@ -69,13 +70,63 @@ Confidence: High
 
 Status: Confirmed
 
-Evidence: The deploy script header says `BUILD_WORKER_IMAGE` defaults false on the app server and `INCLUDE_WORKER` defaults false on the app server at `deploy-docker.sh:25-28`. Actual defaults are `INCLUDE_WORKER="${INCLUDE_WORKER:-true}"` and `BUILD_WORKER_IMAGE="${BUILD_WORKER_IMAGE:-auto}"` at `deploy-docker.sh:180-185`, with `auto` resolved to `INCLUDE_WORKER` at `deploy-docker.sh:225-226`. `CLAUDE.md:7-12` says `algo.xylolabs.com` is app-only and must be deployed with `SKIP_LANGUAGES=true`, `BUILD_WORKER_IMAGE=false`, and `INCLUDE_WORKER=false`.
+Evidence: `docs/privacy-retention.md:12-18` says the public `/privacy` page and operator doc must stay in sync, and `docs/privacy-retention.md:20-28` lists "AI chat logs" as 30 days. The newer retention policy says 5 years at `docs/data-retention-policy.md:9-24`. Runtime defaults also use 5 years: `src/lib/data-retention.ts:1-34` sets `chatMessages: 365 * 5` with `CHAT_MESSAGE_RETENTION_DAYS` override, and `src/lib/data-retention-maintenance.ts:40-43` prunes chat messages with that value. The public privacy page now derives retention from `DATA_RETENTION_DAYS` at `src/app/(public)/privacy/page.tsx:39-49`, so the stale surface is the operator-facing `docs/privacy-retention.md`.
 
-Failure scenario: An operator trusts the script header and runs an app-server deploy without explicit worker env vars. The script builds and starts worker-related containers on a host where repo policy says this must not happen.
+Mismatch: Two current policy docs give materially different AI-chat retention periods, and the older "current platform baseline" doc disagrees with code.
 
-Suggested fix: Either implement host-aware app-server defaults or change the header to say the default is local-worker-on, with app servers requiring explicit `INCLUDE_WORKER=false BUILD_WORKER_IMAGE=false`.
+Concrete failure scenario: An operator or data subject relies on `docs/privacy-retention.md` and expects chat logs to be purged after 30 days, while the default deployment retains them for 1825 days. This is a privacy/compliance disclosure failure even though the public page is code-derived.
 
-### DOC-C2-5 - Dedicated worker deployment guide/helper omit required `RUNNER_AUTH_TOKEN`
+Suggested fix: Update or retire `docs/privacy-retention.md`. If 5 years is the intended baseline, change the table and last-updated date. If 30 days is required for a deployment, document that it must set `CHAT_MESSAGE_RETENTION_DAYS=30` and verify the public `/privacy` page reflects that override.
+
+### DOC-P1-4 - Docker image API docs use stale authorization labels and an invalid build example
+
+Severity: Medium
+
+Confidence: High
+
+Status: Confirmed
+
+Evidence: `docs/api.md:1566-1617` documents image pull/remove/prune as "Super Admin only" and shows `POST /api/v1/admin/docker/images/build` with `{ "language": "python3" }`. The actual handlers authorize by capability, not direct role label: `src/app/api/v1/admin/docker/images/route.ts:48-50`, `src/app/api/v1/admin/docker/images/route.ts:75-77`, `src/app/api/v1/admin/docker/images/route.ts:129-131`, `src/app/api/v1/admin/docker/images/build/route.ts:19-21`, and `src/app/api/v1/admin/docker/images/prune/route.ts:11-13` all require `system.settings`. The build route looks up exact `language_configs.language` at `src/app/api/v1/admin/docker/images/build/route.ts:23-42`; the configured language ID is `python`, not `python3` (`docs/languages.md:20`).
+
+Mismatch: The docs describe role requirements too narrowly/broadly depending on custom roles, and the build example is not a valid current language ID.
+
+Concrete failure scenario: A client copies the documented build body and receives `404 {"error":"languageNotFound"}`. An operator reviewing custom roles may also think only `super_admin` can pull/remove/prune images, while any role carrying `system.settings` can call those endpoints.
+
+Suggested fix: Document the required capability (`system.settings`) plus the built-in roles that currently carry it. Change the build example to `{ "language": "python" }`.
+
+### DOC-P1-5 - Flix Docker image is documented as `judge-jvm`, but runtime config uses `judge-flix`
+
+Severity: Medium
+
+Confidence: High
+
+Status: Confirmed
+
+Evidence: `docs/languages.md:68-74` and `AGENTS.md:108-114` list `flix` as using `judge-jvm`. The TypeScript source of truth uses `judge-flix:latest` at `src/lib/judge/languages.ts:1192-1200`; the Rust fallback config also uses `judge-flix:latest` at `judge-worker-rs/src/languages.rs:1148-1156`; and `docker/Dockerfile.judge-flix:1-11` defines a separate image layered on `judge-jvm`. The static count check found `judge-flix` present in config but absent from `docs/languages.md` image rows.
+
+Mismatch: The language docs point operators to the base JVM image while the judge/admin UI expects a distinct `judge-flix` image.
+
+Concrete failure scenario: An operator builds `judge-jvm` only, sees Flix documented as available, and then the admin language table or worker reports `judge-flix` as missing/not built. A Docker image remove/build flow may also target the wrong image.
+
+Suggested fix: Update `docs/languages.md` and the AGENTS static table to `judge-flix`. If the desired architecture is to reuse `judge-jvm` directly, then change `src/lib/judge/languages.ts`, the Rust fallback, and remove the separate Dockerfile.
+
+### DOC-P1-6 - TypeScript judge version is split between 5.9 and 6.0
+
+Severity: Medium
+
+Confidence: High
+
+Status: Confirmed
+
+Evidence: `AGENTS.md:35-40` says the `typescript` judge language is TypeScript 5.9. `src/lib/judge/languages.ts:3-13` sets `JUDGE_TOOLCHAIN_VERSIONS.typescript = "6.0"`, `docker/Dockerfile.judge-node:1-4` installs `typescript@6.0`, and `docs/languages.md:20-24` says TypeScript 6.0. However the synced language metadata still says `standard: "TS 5.9"` at `src/lib/judge/languages.ts:294-300`, and `scripts/sync-language-configs.ts:60-70` syncs that standard into `language_configs`.
+
+Mismatch: The compiler/runtime is TypeScript 6.0, while the AGENTS table and DB-backed `standard` metadata advertise 5.9.
+
+Concrete failure scenario: A student or admin debugs a compiler behavior difference using the admin language table or AGENTS guidance and assumes TS 5.9, while submissions actually compile with TS 6.0.
+
+Suggested fix: Set the TypeScript language `standard` and AGENTS table to 6.0, or pin the Docker/runtime compiler back to 5.9. If the README badge at `README.md:10` is only the app's package TypeScript version (`package.json` uses 5.9.3), label it as app/framework TypeScript to avoid judge-toolchain confusion.
+
+### DOC-P1-7 - `deploy-docker.sh` header says app-server worker defaults are false, but the script defaults them on
 
 Severity: High
 
@@ -83,27 +134,15 @@ Confidence: High
 
 Status: Confirmed
 
-Evidence: `docs/deployment.md:151-169` recommends `./scripts/deploy-worker.sh` and shows a direct `docker-compose.worker.yml` command without `RUNNER_AUTH_TOKEN`. Other docs already document the requirement: `README.md:204-212` and `docs/judge-workers.md:56-60`, `docs/judge-workers.md:82-90`. Compose injects `RUNNER_AUTH_TOKEN=${RUNNER_AUTH_TOKEN:-}` at `docker-compose.worker.yml:55-58`; the worker rejects a present empty value at `judge-worker-rs/src/config.rs:160-164`; and `scripts/deploy-worker.sh:131-139` writes `JUDGE_BASE_URL`, `JUDGE_AUTH_TOKEN`, `JUDGE_CONCURRENCY`, `JUDGE_WORKER_HOSTNAME`, and `RUST_LOG`, but not `RUNNER_AUTH_TOKEN`.
+Evidence: The deploy header says `BUILD_WORKER_IMAGE` defaults false on the app server and `INCLUDE_WORKER` defaults false on the app server at `deploy-docker.sh:15-28`. Actual defaults are `INCLUDE_WORKER="${INCLUDE_WORKER:-true}"` and `BUILD_WORKER_IMAGE="${BUILD_WORKER_IMAGE:-auto}"` at `deploy-docker.sh:180-185`; `auto` resolves to `INCLUDE_WORKER` at `deploy-docker.sh:225-226`. `CLAUDE.md:7-12` says `algo.xylolabs.com` is app-only and must be deployed with `SKIP_LANGUAGES=true BUILD_WORKER_IMAGE=false INCLUDE_WORKER=false`.
 
-Failure scenario: A new remote worker deployed from `docs/deployment.md` or the helper starts with `RUNNER_AUTH_TOKEN=""`, then crash-loops with `RUNNER_AUTH_TOKEN must not be empty`.
+Mismatch: Script documentation implies host-aware app-server defaults that are not implemented.
 
-Suggested fix: Add `RUNNER_AUTH_TOKEN` to the deployment guide and direct compose example. Update `scripts/deploy-worker.sh` to accept, generate, or require a runner token before starting compose.
+Concrete failure scenario: An operator deploying to `algo.xylolabs.com` trusts the script header and omits `INCLUDE_WORKER=false BUILD_WORKER_IMAGE=false`. The deploy builds/starts worker pieces on an app-only host, violating the project deployment rules.
 
-### DOC-C2-6 - Agent guide says PostgreSQL 17, production compose and deployment docs use PostgreSQL 18
+Suggested fix: Either implement host-aware defaults keyed by target, or change the header to say local worker is enabled by default and app-only targets require explicit `INCLUDE_WORKER=false BUILD_WORKER_IMAGE=false SKIP_LANGUAGES=true`.
 
-Severity: Medium
-
-Confidence: High
-
-Status: Confirmed
-
-Evidence: `AGENTS.md:291-293` says the database runtime is PostgreSQL 17. Production compose uses `postgres:18-alpine` at `docker-compose.production.yml:17-18`, and `docs/deployment.md:216-224` explicitly documents the PostgreSQL 18 PGDATA behavior.
-
-Failure scenario: An operator plans backups, restore testing, extension compatibility, or upgrade work using PostgreSQL 17 assumptions and discovers during an incident that production is running PostgreSQL 18.
-
-Suggested fix: Update `AGENTS.md` to PostgreSQL 18 or make the compose file match PostgreSQL 17. Name `docker-compose.production.yml` as the source of truth for the image tag.
-
-### DOC-C2-7 - Seccomp docs describe a default-allow deny-list, but the profile is default-deny allow-list
+### DOC-P1-8 - AGENTS database version says PostgreSQL 17, production compose uses PostgreSQL 18
 
 Severity: Medium
 
@@ -111,27 +150,15 @@ Confidence: High
 
 Status: Confirmed
 
-Evidence: `AGENTS.md:298-301` and `AGENTS.md:584` say the seccomp profile uses a deny-list with `SCMP_ACT_ALLOW` as the default action. `.context/project/current-state.md:181` and `.context/development/open-workstreams.md:84` repeat the same default-allow story. The actual profile says default-deny in its comment and sets `"defaultAction": "SCMP_ACT_ERRNO"` at `docker/seccomp-profile.json:1-4`; the syscall list is explicitly allowed at `docker/seccomp-profile.json:265-270`, with a separate `clone3` errno compatibility entry at `docker/seccomp-profile.json:272-275`.
+Evidence: `AGENTS.md:289-296` says the runtime database is PostgreSQL 17. Production compose uses `postgres:18-alpine` at `docker-compose.production.yml:17-18`, and `docs/deployment.md:226-232` explicitly documents PostgreSQL 18's `PGDATA` behavior.
 
-Failure scenario: A future hardening change or incident response starts from the wrong mental model, assumes unlisted syscalls are allowed, and either weakens the profile unnecessarily or misdiagnoses runtime failures.
+Mismatch: The agent guide and production deployment source disagree on the active PostgreSQL major version.
 
-Suggested fix: Update `AGENTS.md` and `.context/**` to say the active profile is default-deny allow-list. If default-allow was intended, change the profile and tests instead.
+Concrete failure scenario: An operator plans backup/restore drills, extension compatibility, or incident recovery using PostgreSQL 17 assumptions, then discovers production is on PostgreSQL 18 during a restore or migration incident.
 
-### DOC-C2-8 - Restore docs say ZIP backups are integrity-checked before import, but uploaded files are written before DB validation
+Suggested fix: Update `AGENTS.md` to PostgreSQL 18 or make the compose file match PostgreSQL 17. Name `docker-compose.production.yml` as the runtime image source of truth.
 
-Severity: High
-
-Confidence: High
-
-Status: Confirmed
-
-Evidence: `docs/api.md:1716-1720` says ZIP backups include a checksum manifest and are integrity-checked before import. `docs/data-retention-policy.md:44-50` says the manifest lets the restore route reject tampered archives before import. In code, the ZIP path calls `restoreFilesFromZip` before `validateExport`, sanitized-export rejection, or pre-restore snapshot at `src/app/api/v1/admin/restore/route.ts:81-142`. `restoreFilesFromZip` parses `database.json` and then writes uploads to disk at `src/lib/db/export-with-files.ts:248-292`.
-
-Failure scenario: A ZIP with valid upload checksums but an invalid, sanitized, or wrong-version `database.json` can overwrite files under `data/uploads` and then fail DB validation. The docs promise a pre-import rejection, but the filesystem has already been mutated and no DB snapshot has been taken yet.
-
-Suggested fix: Split ZIP verification from file writes. Validate manifest, `database.json`, export shape, and sanitized/full-fidelity status first; then take the pre-restore snapshot; then stage and atomically restore uploads with rollback semantics.
-
-### DOC-C2-9 - Function-judging docs overstate compile-error line remapping coverage
+### DOC-P1-9 - Seccomp docs describe default-allow deny-list, but the active profile is default-deny allow-list
 
 Severity: Medium
 
@@ -139,27 +166,15 @@ Confidence: High
 
 Status: Confirmed
 
-Evidence: `docs/function-judging.md:21-23` says compile errors are mapped back to student-relative line numbers, and `docs/function-judging.md:68-79` lists `error-mapping.ts` as part of the architecture. The mapper is real and is applied by `sanitizeSubmissionForViewer` at `src/lib/submissions/visibility.ts:155-181`. However, several display paths bypass that sanitizer and pass raw `submissions.compileOutput`: public submission detail at `src/app/(public)/submissions/[id]/page.tsx:172-182`, admin submissions table at `src/app/(dashboard)/dashboard/admin/submissions/page.tsx:185-193` and `src/app/(dashboard)/dashboard/admin/submissions/page.tsx:462-469`, and public submissions list for logged-in users at `src/app/(public)/submissions/page.tsx:214-222` and `src/app/(public)/submissions/page.tsx:483-487`. The worker poll path also stores raw truncated output at `src/app/api/v1/judge/poll/route.ts:141-148`.
+Evidence: `AGENTS.md:298-301` says the seccomp profile uses a deny-list with default action `SCMP_ACT_ALLOW`. `.context/project/current-state.md:176-181` and `.context/development/open-workstreams.md:80-84` repeat the default-allow/deny-list story. The actual profile states default-deny and sets `"defaultAction": "SCMP_ACT_ERRNO"` at `docker/seccomp-profile.json:1-4`; the syscall list action is `SCMP_ACT_ALLOW` at `docker/seccomp-profile.json:264-270`, with a `clone3` errno compatibility rule at `docker/seccomp-profile.json:272-275`.
 
-Failure scenario: A student or staff member viewing a function-signature compile error through a page that does not use `sanitizeSubmissionForViewer` sees line numbers from `prelude + studentCode + generatedMain`, while docs promise student-relative lines.
+Mismatch: Operator and agent docs describe the opposite security model from the profile Docker actually loads.
 
-Suggested fix: Route all compile-output display/API surfaces through the central sanitizer or move remapping to the write path with enough metadata to keep it correct. If raw admin views are intentional, document that only sanitized submission-detail APIs remap line numbers.
+Concrete failure scenario: A future sandbox change or incident response assumes unlisted syscalls are allowed, misdiagnoses runtime failures, or weakens the profile based on the wrong model.
 
-### DOC-C2-10 - TypeScript judge version is inconsistent between docs, DB standard, and Docker/runtime compiler
+Suggested fix: Update `AGENTS.md` and active `.context/**` notes to say the profile is default-deny with an allow-list. If default-allow was intended, change `docker/seccomp-profile.json` and tests instead.
 
-Severity: Medium
-
-Confidence: High
-
-Status: Confirmed
-
-Evidence: `AGENTS.md:35-40` says the `typescript` judge language is TypeScript 5.9. The runtime constants set `JUDGE_TOOLCHAIN_VERSIONS.typescript = "6.0"` at `src/lib/judge/languages.ts:3-13`, and `docker/Dockerfile.judge-node:1-4` installs `typescript@6.0`. `docs/languages.md:22-24` also says TypeScript 6.0. But the synced language config still advertises `standard: "TS 5.9"` at `src/lib/judge/languages.ts:294-300`, and `scripts/sync-language-configs.ts:60-70` syncs that `standard` value to the database.
-
-Failure scenario: The admin language table and any DB-backed language metadata show TS 5.9 while submissions compile with TypeScript 6.0. Users debug syntax and compiler behavior against the wrong version.
-
-Suggested fix: Set the judge language `standard` and `AGENTS.md` entry to TypeScript 6.0, or pin the Docker/runtime compiler back to 5.9. If `README.md:10` is only the app framework TypeScript badge, label it that way to avoid confusing it with judge toolchains.
-
-### DOC-C2-11 - Root Rust build artifacts are unignored even though this repo now has root Cargo artifacts
+### DOC-P1-10 - Docker image counts, examples, and preset semantics are inconsistent across current docs and scripts
 
 Severity: Medium
 
@@ -167,27 +182,15 @@ Confidence: High
 
 Status: Confirmed
 
-Evidence: `.gitignore:68-70` ignores only `judge-worker-rs/target/` and `rate-limiter-rs/target/`. `.dockerignore:15-20` ignores subcrate targets, including `code-similarity-rs/target/`, but not root `/target/`. `deploy-docker.sh:647-656` and `deploy-docker.sh:1134-1143` also exclude subcrate targets but not root `target/`. Current `git status --short --untracked-files=all` shows untracked root `Cargo.toml`, `Cargo.lock`, `.npmrc`, `scripts/load-env.ts`, and many `target/...` build outputs.
+Evidence: `README.md:75-132` says there are 102 language-specific Docker images, gives removed/stale examples (`cpp17`, `clang17`, `clang20`) at `README.md:77`, and still lists `judge-malbolge` and `judge-j` at `README.md:86` and `README.md:94`. `docs/languages.md:190-200` still says 102/102 images and 113-language E2E summaries despite the top of the same file saying 125 variants at `docs/languages.md:1-3`; `docs/languages.md:240-247` calls `LANGUAGE_FILTER=everything` the "full 99 set". `AGENTS.md:318-320` also says all 102 Docker images build/run on arm64, while `AGENTS.md:375` says `all` is about 14 GB. Current deploy help says `all` is everything except 18 ARM-prohibitive images and about 30 GB at `deploy-docker.sh:140-176` and `deploy-docker.sh:208-216`. `scripts/setup.sh:53-76` uses a different `all` list that includes the ARM-prohibitive set, including `roc` and `flix`, with no separate `everything` escape hatch.
 
-Failure scenario: A future commit or deploy accidentally includes or transfers thousands of root Cargo build artifacts. The dirty worktree also hides real review changes and makes commit staging error-prone.
+Mismatch: "All", image counts, and example image names mean different things depending on which current doc or script the operator reads.
 
-Suggested fix: Decide whether the root `Cargo.toml` and `Cargo.lock` are intentional for the `cargo audit` gate and document them if so. Add `/target/` to `.gitignore`, `.dockerignore`, and deploy rsync excludes.
+Concrete failure scenario: An operator sizes a worker host from README/AGENTS, picks `all` in setup or deploy expecting the same image set, and either under-provisions disk/time or unexpectedly attempts ARM-prohibitive/disabled image builds. Another operator may try to build or preserve `judge-j`/`judge-malbolge` because the README still lists them as part of the fleet.
 
-### DOC-C2-12 - Docker image API docs use role labels and an invalid build example that do not match code
+Suggested fix: Generate the Docker-image inventory from `DEFAULT_JUDGE_LANGUAGES` plus explicit disabled/orphan metadata. Align `scripts/setup.sh` presets with `deploy-docker.sh` (`all` vs `everything`) or document the intentional difference. Remove or archive stale README rows for images no longer present in current language config.
 
-Severity: Medium
-
-Confidence: High
-
-Status: Confirmed
-
-Evidence: `docs/api.md:1563-1595` documents image list/pull/remove using "Admin or Super Admin" and "Super Admin only" role labels, while the actual handlers authorize `capabilities: ["system.settings"]` at `src/app/api/v1/admin/docker/images/route.ts:48-50`, `src/app/api/v1/admin/docker/images/route.ts:75-78`, and `src/app/api/v1/admin/docker/images/route.ts:129-132`. Capability enforcement is generic at `src/lib/api/handler.ts:129-135`, and the built-in admin role has `system.settings` at `src/lib/capabilities/defaults.ts:82-100`. The build endpoint docs show `{ "language": "python3" }` at `docs/api.md:1599-1606`, but the route looks up exact `language_configs.language` at `src/app/api/v1/admin/docker/images/build/route.ts:15-31`, and the documented/configured ID is `python` at `docs/languages.md:20`.
-
-Failure scenario: Operators infer the wrong authorization boundary for pull/remove, and API clients copying the build example get `404 {"error":"languageNotFound"}` for `python3`.
-
-Suggested fix: Document the required capability (`system.settings`) and current built-in roles that include it. Change the build example to `{ "language": "python" }`.
-
-### DOC-C2-13 - API reference is advertised as complete, but shipped route families are omitted
+### DOC-P1-11 - API reference is advertised as complete, but shipped route families are omitted
 
 Severity: Medium
 
@@ -195,13 +198,15 @@ Confidence: High
 
 Status: Confirmed
 
-Evidence: `README.md:286-289` describes `docs/api.md` as covering "all REST endpoints, authentication, request/response formats". The `docs/api.md` table of contents does not cover multiple shipped route families. Representative examples include `POST /api/v1/community/threads` at `src/app/api/v1/community/threads/route.ts:12-16`, `POST /api/v1/auth/forgot-password` at `src/app/api/v1/auth/forgot-password/route.ts:11-17`, and `GET /api/v1/admin/submissions/export` at `src/app/api/v1/admin/submissions/export/route.ts:45-50`.
+Evidence: `README.md:288-290` describes `docs/api.md` as "all REST endpoints, authentication, request/response formats". The route tree includes endpoint families that are not covered by `docs/api.md`; representative examples are `POST /api/v1/community/threads` at `src/app/api/v1/community/threads/route.ts:12-16`, `POST /api/v1/auth/forgot-password` at `src/app/api/v1/auth/forgot-password/route.ts:11-17`, and `GET /api/v1/admin/submissions/export` at `src/app/api/v1/admin/submissions/export/route.ts:45-58`. A grep of `docs/api.md` found no entries for `community`, `forgot-password`, or `admin/submissions/export`; it only matched contest access-code and a submission rejudge endpoint among the sampled omitted families.
 
-Failure scenario: An operator or integrator assumes functions like community thread creation, password reset, admin submission export, rejudge, code snapshots, or recruiting flows are unavailable because the advertised complete API reference omits them.
+Mismatch: The README promises complete REST coverage, while the API reference is a partial/core reference.
 
-Suggested fix: Either label `docs/api.md` as core/stable coverage or generate/fill a route inventory so every shipped endpoint family is documented.
+Concrete failure scenario: Integrators or operators assume community threads, password reset, admin submission CSV export, code snapshots, recruiting validation, or other route families are unavailable or unsupported because the advertised complete API reference omits them.
 
-### DOC-C2-14 - `.context/project/current-state.md` is stale enough to mislead future agents
+Suggested fix: Either relabel `docs/api.md` as a core/stable API reference, or generate a route inventory and fill endpoint sections for all shipped `src/app/api/v1/**/route.ts` families.
+
+### DOC-P1-12 - `.context/project/current-state.md` is stale enough to mislead future agents
 
 Severity: Medium
 
@@ -209,15 +214,108 @@ Confidence: High
 
 Status: Confirmed
 
-Evidence: `.context/project/current-state.md:176-181` says both test and production hosts run `judgekit-app` and `judgekit-judge-worker`, and repeats the default-allow seccomp model. `.context/project/current-state.md:314-316` says the README and docs reflect 86 supported language variants across 69 Docker images and mentions `privileged:true`. Current repo rules say `algo.xylolabs.com` is app-only and must not build judge/worker images at `CLAUDE.md:7-12`; current `AGENTS.md` lists many more language variants and says the static table can drift while `src/lib/judge/languages.ts` and `docs/languages.md` are source of truth; current worker architecture uses docker-proxy rather than direct privileged worker access per `AGENTS.md:303-318` and `AGENTS.md:580-584`.
+Evidence: `.context/project/current-state.md:176-181` says both test and production hosts run `judgekit-app` and `judgekit-judge-worker`, and repeats the default-allow seccomp model. `.context/project/current-state.md:312-316` says README/docs reflect 86 language variants across 69 Docker images and mentions `privileged:true`. Current project rules say `algo.xylolabs.com` is app-only at `CLAUDE.md:7-12`; current Docker architecture says the worker uses `docker-proxy` rather than direct privileged access at `AGENTS.md:303-318`; current language docs/config have 125 variants (`AGENTS.md:18-20`, `docs/languages.md:1-3`, `src/lib/judge/languages.ts:1510`).
 
-Failure scenario: Review-plan-fix agents are explicitly told to read `.context/**` before planning deferrals. A future cycle could rely on stale current-state text, deploy workers to an app-only host, reason from the wrong seccomp policy, or plan language work from an 86-language snapshot.
+Mismatch: A file named `current-state.md` in `.context/project/` presents historical deployment/language/security details as current.
 
-Suggested fix: Archive or update `.context/project/current-state.md` so it no longer presents stale deployment and language state as current. Add a short pointer to the live sources of truth (`CLAUDE.md`, `AGENTS.md`, `docs/languages.md`, `src/lib/judge/languages.ts`, compose files).
+Concrete failure scenario: A future review-plan-fix agent reads `.context/**` as requested context, assumes worker/app topology and seccomp posture from this stale file, and produces an unsafe deploy plan or stale language remediation.
+
+Suggested fix: Archive the file or replace it with a short current pointer document listing the live sources of truth: `CLAUDE.md`, `AGENTS.md`, `docs/languages.md`, `src/lib/judge/languages.ts`, compose files, and `deploy-docker.sh`.
+
+## Likely Issues
+
+### LIKELY-P1-1 - Historical language E2E summaries read like current status
+
+Severity: Low
+
+Confidence: Medium
+
+Status: Likely issue
+
+Evidence: `docs/languages.md:190-200` has dated 2026-03-29 E2E summaries for 113 languages directly under the current "Supported Languages (125 variants)" page. `docs/languages.md:133` says output-only languages were excluded from historical totals, which helps, but the section is still placed in a current status document without a freshness boundary.
+
+Mismatch: Historical validation data is mixed into the current support matrix.
+
+Concrete failure scenario: An operator cites "113 of 113 pass" as current validation evidence for a 125-variant deployment and misses newer languages/output-only modes that were not part of that run.
+
+Suggested fix: Move dated E2E results to an archive/changelog section, or regenerate the matrix from current all-language E2E runs and label exclusions explicitly.
+
+### LIKELY-P1-2 - Deploy cleanup comments use dangerous shorthand despite safe code
+
+Severity: Low
+
+Confidence: Medium
+
+Status: Likely issue
+
+Evidence: `deploy-docker.sh:31-36` and `deploy-docker.sh:1208-1214` describe post-deploy cleanup as removing "unused images" and "orphan volumes". The actual cleanup helper is safer and more specific: `deploy-docker.sh:365-401` warns against `docker image prune -af`, uses `docker image prune -f`, and gates `docker volume prune -f` on `judgekit-db` running. `docs/deployment.md:264-275` and `AGENTS.md:432-435` correctly emphasize dangling-only image pruning and volume-prune constraints.
+
+Mismatch: Comments near the operational entry points use shorthand that can be read as `docker image prune -a` or broad volume cleanup, while the detailed docs and code intentionally avoid that.
+
+Concrete failure scenario: During an incident, an operator copies the shorthand into a manual cleanup command and uses `docker image prune -af`, wiping tagged judge images on worker hosts.
+
+Suggested fix: Change script comments/header to "stopped containers, dangling images, BuildKit cache, and DB-gated volume prune" and remove "unused images" wording.
+
+## Manual-Validation Risks
+
+### RISK-P1-1 - Production retention overrides need verification
+
+Severity: High if deployed disclosure differs from configured environment
+
+Confidence: Manual validation required
+
+Evidence: Code defaults to 5-year chat retention (`src/lib/data-retention.ts:1-34`) and public `/privacy` derives values from code (`src/app/(public)/privacy/page.tsx:39-49`), but production may set `CHAT_MESSAGE_RETENTION_DAYS`.
+
+Mismatch to validate: The deployed privacy disclosure, runtime env, and operator docs may not describe the same retention window.
+
+Concrete failure scenario: A production deployment sets a non-default chat retention window but the public privacy page or operator runbook still describes the default, creating a disclosure gap.
+
+Manual validation: Check deployed `.env.production`/runtime env for `CHAT_MESSAGE_RETENTION_DAYS`, then load `/privacy` in that deployment and confirm it matches the legal/operator retention policy.
+
+Suggested fix: If mismatch is found, update env, docs, or policy together; do not leave a doc-only override.
+
+### RISK-P1-2 - Docker image inventory should be regenerated from real build hosts
+
+Severity: Medium
+
+Confidence: Manual validation required
+
+Evidence: Local static config says 98 unique images; docs mention 97/99/102 depending section. Actual remote hosts may have additional orphan/stale images from older deployments.
+
+Mismatch to validate: The repository source-of-truth image set may not match what production hosts actually retain.
+
+Concrete failure scenario: Cleanup or build planning removes an image that is still required by a DB language override, or preserves stale images because docs overstate the current fleet.
+
+Manual validation: On each worker/app Docker host, compare `docker images 'judge-*'` with the generated set from `DEFAULT_JUDGE_LANGUAGES`, `deploy-docker.sh` presets, and intentionally preserved disabled Dockerfiles.
+
+Suggested fix: If mismatch is found, add a generated inventory doc or script output committed with a timestamp, and separate "current config images" from "historical/orphan Dockerfiles kept for reference".
+
+### RISK-P1-3 - API docs completeness should be checked by generation, not spot inspection
+
+Severity: Medium
+
+Confidence: Manual validation required
+
+Evidence: Spot checks found omitted shipped route families, but this review did not build a full route-to-doc coverage map.
+
+Mismatch to validate: The full `src/app/api/v1/**/route.ts` surface may be larger than the advertised complete API reference.
+
+Concrete failure scenario: A route family with production behavior or security requirements remains undocumented because only sampled omissions were reviewed.
+
+Manual validation: Generate the `src/app/api/v1/**/route.ts` route list, normalize dynamic segments, and compare it against headings in `docs/api.md`. Decide whether undocumented internal/test endpoints should be excluded by policy.
+
+Suggested fix: If mismatch is found, add a docs coverage check or a generated appendix so the README's "all REST endpoints" claim stays true.
+
+## Verified Non-Findings From Prior Reviews
+
+- Manual submissions no longer insert as permanent `pending`: `src/app/api/v1/submissions/route.ts:328-331` now sets manual problem submissions to `submitted`, and judge claim still excludes manual problems at `src/lib/judge/claim-query.ts:44-50` and `src/lib/judge/claim-query.ts:139-144`.
+- Dedicated worker docs/helper now include `RUNNER_AUTH_TOKEN`: `docs/deployment.md:169-174`, `README.md:200-212`, `docs/judge-workers.md:54-60`, `scripts/deploy-worker.sh:139-142`, and `docker-compose.worker.yml:58-60` are aligned.
+- Function-judging compile-output remapping now routes through `mapFunctionCompileOutputForDisplay` in the public detail page (`src/app/(public)/submissions/[id]/page.tsx:137-142`), admin submissions list (`src/app/(dashboard)/dashboard/admin/submissions/page.tsx:230-236`), and public submissions list (`src/app/(public)/submissions/page.tsx:276-282`).
+- ZIP restore staging/integrity appears aligned with current docs: `src/app/api/v1/admin/restore/route.ts` uses `parseBackupZip` before DB validation and later calls `restoreParsedBackupFiles`; `src/lib/db/export-with-files.ts` validates the manifest/checksums before staging upload contents.
 
 ## Final Missed-Issues Sweep
 
-- Rechecked the high-risk docs/code seams: auth and CSRF, worker deployment tokens, app-vs-worker deployment defaults, database versioning, seccomp policy, restore/import sequencing, function-judging compile-output mapping, language metadata, Docker image API docs, and route inventory coverage.
-- Verified uncommitted changes were part of the review by inspecting current modified files and untracked root build artifacts with `git status --short --untracked-files=all`.
-- Did not run tests or modify implementation. Findings are based on static line-by-line inspection of current files.
-- No relevant documentation surface was intentionally skipped, though historical `.context/reviews/_archive/**` was treated as provenance rather than current operator documentation.
+- Rechecked high-risk doc/code seams: auth/API-key/CSRF, privacy retention, Docker image admin APIs, language source of truth, deploy presets, app-vs-worker deployment defaults, database version, seccomp model, API route coverage, backup/restore claims, function judging, and manual problem judging.
+- Searched for stale terms and footguns across `AGENTS.md`, `README.md`, `docs/**`, `.context/**`, `src/**`, `scripts/**`, and `deploy-docker.sh`.
+- Did not run tests because this was a documentation/code mismatch review. No implementation source files were edited.
+- Existing dirty review files from other agents were left untouched; this pass only wrote `.context/reviews/document-specialist.md`.

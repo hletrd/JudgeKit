@@ -1034,7 +1034,7 @@ success "secret_token backfill + idempotent column drop complete (column verifie
 # left unanswered — drizzle-kit prints a warning, exits 0, and the
 # destructive change is NOT applied. To keep deploy honest, the block
 # below CAPTURES the push output, then scans for the data-loss prompt
-# markers; when detected, it downgrades the success log to a warning.
+# markers; when detected, it aborts before new app code is started.
 #
 # To force-apply destructive changes via push, set DRIZZLE_PUSH_FORCE=1
 # (passes --force to drizzle-kit push). The Step 5b backfill above runs
@@ -1076,7 +1076,7 @@ printf '%s\n' "$PUSH_OUT"
 # Detect the data-loss / interactive-prompt markers. drizzle-kit emits these
 # when it finds a destructive diff and there's no TTY to answer the prompt.
 if grep -qiE "data loss|are you sure|warning:.*destructive|please confirm" <<<"$PUSH_OUT"; then
-  warn "drizzle-kit push detected a destructive schema change but did NOT apply it (interactive prompt unanswered or declined). Manual intervention required: review the diff above, then re-run with DRIZZLE_PUSH_FORCE=1 to apply, or use the journal-driven migrate strategy. See AGENTS.md \"Database migration recovery (DRIZZLE_PUSH_FORCE)\" section for details."
+  die "drizzle-kit push detected a destructive schema change but did NOT apply it (interactive prompt unanswered or declined). Review the diff above, then re-run with DRIZZLE_PUSH_FORCE=1 to apply, or use the journal-driven migrate strategy. See AGENTS.md \"Database migration recovery (DRIZZLE_PUSH_FORCE)\" section for details."
 else
   success "Database migrated"
 fi
@@ -1209,7 +1209,7 @@ if [[ -n "${WORKER_HOSTS:-}" ]]; then
             }
             prune_old_docker_artifacts "worker ${WHOST}" _worker_ssh
         else
-            warn "  worker on ${WHOST} is NOT running after restart — check the docker-capability probe log"
+            die "worker on ${WHOST} is NOT running after restart — check the docker-capability probe log"
         fi
     done
 fi
@@ -1410,7 +1410,7 @@ if remote_sudo "nginx -t 2>&1"; then
     remote_sudo "systemctl reload nginx"
     success "Nginx configured and reloaded for ${DOMAIN}"
 else
-    warn "Nginx config test failed — check manually on the remote host"
+    die "Nginx config test failed — check manually on the remote host"
 fi
 
 # ---------------------------------------------------------------------------

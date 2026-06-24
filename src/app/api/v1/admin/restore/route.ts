@@ -95,6 +95,12 @@ export async function POST(request: NextRequest) {
         ) {
           return NextResponse.json({ error: "invalidBackupIntegrity" }, { status: 400 });
         }
+        if (
+          error instanceof Error &&
+          (error.message === "backupZipTooLarge" || error.message === "backupZipSizeUnknown")
+        ) {
+          return NextResponse.json({ error: "fileTooLarge" }, { status: 400 });
+        }
         throw error;
       }
     } else {

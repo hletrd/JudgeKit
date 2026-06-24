@@ -8,6 +8,7 @@ function read(relativePath: string) {
 
 describe("Playwright profile configuration", () => {
   const config = read("playwright.config.ts");
+  const localWebServerScript = read("scripts/playwright-local-webserver.sh");
 
   it("exports PLAYWRIGHT_PROFILE env var handling", () => {
     expect(config).toContain("process.env.PLAYWRIGHT_PROFILE");
@@ -40,6 +41,16 @@ describe("Playwright profile configuration", () => {
     expect(config).toContain('"tests/e2e/contest-nav-test.spec.ts"');
     expect(config).toContain('"tests/e2e/ops-health.spec.ts"');
     expect(config).toContain('"tests/e2e/rankings.spec.ts"');
+  });
+
+  it("allows enough time for the local web server production build", () => {
+    expect(config).toContain("timeout: 600_000");
+  });
+
+  it("reuses the prebuilt standalone app during local webServer startup", () => {
+    expect(localWebServerScript).toContain("PLAYWRIGHT_REBUILD_APP");
+    expect(localWebServerScript).toContain("[ ! -f .next/standalone/server.js ]");
+    expect(localWebServerScript).toContain("npm run build");
   });
 
   it("destructive specs are excluded from the remoteSafeSpecs allowlist", () => {

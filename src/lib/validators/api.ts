@@ -2,8 +2,15 @@ import { z } from "zod";
 import { normalizeOptionalString, trimString } from "@/lib/validators/preprocess";
 import { getMaxSourceCodeSizeBytes } from "@/lib/security/constants";
 
+export const MAX_JUDGE_REPORT_DIAGNOSTIC_BYTES = 64 * 1024;
+export const MAX_JUDGE_REPORT_RESULTS = 100;
+
 export function hasNoRawNul(value: string): boolean {
   return !value.includes("\u0000");
+}
+
+function isWithinUtf8ByteLimit(value: string, maxBytes: number): boolean {
+  return new TextEncoder().encode(value).length <= maxBytes;
 }
 
 export const submissionCreateSchema = z.object({
@@ -27,7 +34,9 @@ export const submissionCreateSchema = z.object({
 const judgeResultItemSchema = z.object({
   testCaseId: z.preprocess(trimString, z.string().min(1, "invalidJudgeResult")),
   status: z.preprocess(trimString, z.string().min(1, "invalidJudgeResult")),
-  actualOutput: z.string().optional(),
+  actualOutput: z.string()
+    .refine((value) => isWithinUtf8ByteLimit(value, MAX_JUDGE_REPORT_DIAGNOSTIC_BYTES), "invalidJudgeResult")
+    .optional(),
   executionTimeMs: z.number().int().nonnegative().optional(),
   memoryUsedKb: z.number().int().nonnegative().optional(),
   runtimeErrorType: z.preprocess(
@@ -40,6 +49,8 @@ export const judgeStatusReportSchema = z.object({
   submissionId: z.preprocess(trimString, z.string().min(1, "submissionIdRequired")),
   claimToken: z.preprocess(trimString, z.string().min(1, "claimTokenRequired")),
   status: z.preprocess(trimString, z.string().min(1, "statusRequired")),
-  compileOutput: z.string().optional(),
-  results: z.array(judgeResultItemSchema).optional(),
+  compileOutput: z.string()
+    .refine((value) => isWithinUtf8ByteLimit(value, MAX_JUDGE_REPORT_DIAGNOSTIC_BYTES), "invalidJudgeResult")
+    .optional(),
+  results: z.array(judgeResultItemSchema).max(MAX_JUDGE_REPORT_RESULTS, "invalidJudgeResult").optional(),
 });

@@ -1,6 +1,6 @@
 import { spawn, execFile } from "child_process";
 import { promisify } from "util";
-import { chmod, mkdir, writeFile, rm, mkdtemp, lstat } from "fs/promises";
+import { chmod, chown, mkdir, writeFile, rm, mkdtemp, lstat } from "fs/promises";
 import { join } from "path";
 import { tmpdir, cpus } from "os";
 import { randomUUID } from "crypto";
@@ -45,6 +45,8 @@ const MAX_CONTAINER_AGE_MS = 10 * 60 * 1000; // 10 minutes
  * Falls back to os.tmpdir() for local development.
  */
 const WORKSPACE_BASE = process.env.COMPILER_WORKSPACE_DIR || tmpdir();
+const SANDBOX_UID = 65534;
+const SANDBOX_GID = 65534;
 
 /**
  * URL of the Rust runner HTTP endpoint (e.g. "http://judge-worker:3001").
@@ -719,7 +721,7 @@ export async function executeCompilerRun(
   if (!workspaceStat.isDirectory() || workspaceStat.isSymbolicLink()) {
     throw new Error("Compiler workspace path is invalid");
   }
-  await chmod(workspaceDir, 0o770);
+  await chmod(workspaceDir, 0o700);
 
   try {
     // Write source file (world-readable for sibling container access)
@@ -727,7 +729,22 @@ export async function executeCompilerRun(
     await writeFile(join(workspaceDir, sourceFileName), options.sourceCode, {
       encoding: "utf8",
     });
-    await chmod(join(workspaceDir, sourceFileName), 0o644);
+    const sourcePath = join(workspaceDir, sourceFileName);
+    await chmod(sourcePath, 0o600);
+
+    try {
+      await chown(workspaceDir, SANDBOX_UID, SANDBOX_GID);
+      await chown(sourcePath, SANDBOX_UID, SANDBOX_GID);
+      await chmod(workspaceDir, 0o777);
+      await chmod(sourcePath, 0o666);
+    } catch (error) {
+      logger.warn(
+        { error },
+        "[compiler] Failed to chown workspace for sandbox user; falling back to broad workspace permissions"
+      );
+      await chmod(workspaceDir, 0o777);
+      await chmod(sourcePath, 0o666);
+    }
 
     let compileOutput: string | null = null;
 

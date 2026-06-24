@@ -1,155 +1,168 @@
-# Verifier Review
+# Verifier Review - Prompt 1, Cycle 2
 
-Verifier scope: evidence-based correctness check against repository documentation, tests, and current code, including uncommitted changes. No fixes were implemented.
+Findings count: 6
 
-## Review Inventory
+## Inventory
 
-I inventoried the repository with `rg --files`, inspected `git status --short`, `git diff --stat`, and reviewed the uncommitted change surface rather than only committed code.
+Scope built from `git status --short`, `git diff --name-only -- . ':(exclude).context/reviews/*'`, repo instructions, and targeted contract searches. I treated the dirty worktree as intentional prior-cycle work and did not revert or fix anything.
 
-Review-relevant files examined:
+Review-relevant instruction/docs sources:
 
-- Repository rules and documented behavior: `CLAUDE.md`, `AGENTS.md`, `.context/development/problem-descriptions.md`, `.context/reviews/*.md`
-- Submission and status model: `src/types/index.ts`, `src/lib/submissions/status.ts`, `src/lib/judge/status-labels.ts`, `src/lib/judge/verdict.ts`, `src/lib/security/constants.ts`, `src/components/submission-status-badge.tsx`
-- Judge claim/poll lifecycle: `src/app/api/v1/judge/claim/route.ts`, `src/app/api/v1/judge/poll/route.ts`, `src/lib/judge/claim-query.ts`, `judge-worker-rs/src/types.rs`, `judge-worker-rs/src/executor.rs`, `judge-worker-rs/src/docker.rs`, `judge-worker-rs/src/comparator.rs`
-- Submission API and UI flows: `src/app/api/v1/submissions/route.ts`, `src/app/api/v1/submissions/[id]/route.ts`, `src/app/api/v1/admin/submissions/route.ts`, `src/components/submissions/_components/submission-result-panel.tsx`, `src/components/submissions/submission-detail-client.tsx`, `src/app/(public)/problems/page.tsx`, `src/app/(public)/contests/manage/[assignmentId]/students/[userId]/page.tsx`
-- Import/restore flow: `src/lib/db/import.ts`, `src/app/api/v1/admin/database/import/route.ts`, `src/app/api/v1/admin/database/restore-upload/route.ts`, `tests/unit/cycle-23-remediation.test.ts`
-- Admin languages and Docker image management: `src/app/dashboard/admin/languages/page.tsx`, `src/app/dashboard/admin/languages/_components/language-management-client.tsx`, `src/app/api/v1/admin/languages/[language]/route.ts`, `src/app/api/v1/admin/docker/images/build/route.ts`
-- Environment/deploy changes: `.npmrc`, `package.json`, `scripts/load-env.ts`, `drizzle.config.ts`, `deploy-docker.sh`, root `Cargo.toml`, Rust crate `Cargo.toml` files
-- Gate and behavior tests: `tests/unit/validators/api.test.ts`, `tests/unit/judge/status-labels.test.ts`, `tests/unit/cycle-23-remediation.test.ts`, `tests/component/submission-status-badge.test.tsx`, `tests/e2e/support/helpers.ts`, `tests/e2e/all-languages-judge.spec.ts`, `tests/e2e/student-submission-flow.spec.ts`, `tests/e2e/function-judging.spec.ts`, `tests/e2e/output-only-languages.spec.ts`, `tests/e2e/contest-full-lifecycle.spec.ts`
+- `AGENTS.md` password policy, deployment recovery, language/admin behavior, Docker image API, problem-description requirements.
+- `CLAUDE.md` deploy topology rules for `algo.xylolabs.com`.
+- `.context/development/problem-descriptions.md` mandatory Markdown problem-description contract.
+- `docs/authentication.md`, `docs/deployment.md`, `docs/api.md`, `docs/function-judging.md`.
+- `plans/open/2026-06-22-rpf-cycle-1-review-remediation.md` prior-cycle intent and remaining gate notes.
 
-Verification commands run:
+Dirty implementation/test files examined:
 
-- `npx tsc --noEmit --pretty false` passed.
-- `npm run test:unit -- tests/unit/validators/api.test.ts tests/unit/judge/status-labels.test.ts tests/unit/cycle-23-remediation.test.ts` passed, 45 tests.
-- `npm run test:component -- tests/component/submission-status-badge.test.tsx` passed, 18 tests.
-- `cargo test --quiet --manifest-path judge-worker-rs/Cargo.toml` passed, 65 tests.
-- `npm view nodemailer@9.0.1 version` confirmed the package version exists.
+- Deployment/test harness: `deploy-docker.sh`, `playwright.config.ts`, `scripts/playwright-local-webserver.sh`, `tests/unit/infra/deploy-security.test.ts`, `tests/unit/infra/playwright-profiles.test.ts`.
+- Password/auth/settings: `src/lib/security/password.ts`, `src/lib/security/constants.ts`, `src/lib/system-settings-config.ts`, `src/lib/validators/system-settings.ts`, `src/app/api/v1/admin/settings/route.ts`, `src/lib/actions/system-settings.ts`, `src/app/api/v1/auth/reset-password/route.ts`, `src/app/(auth)/reset-password/reset-password-form.tsx`, `src/app/change-password/change-password-form.tsx`, `src/app/(auth)/signup/signup-form.tsx`, `src/app/(auth)/recruit/[token]/recruit-start-form.tsx`, `src/lib/actions/public-signup.ts`, `src/lib/actions/user-management.ts`, `messages/en.json`, `messages/ko.json`, relevant password tests.
+- Docker/language/judge: `src/lib/docker/client.ts`, `src/app/api/v1/admin/docker/images/build/route.ts`, `src/lib/judge/docker-image-validation.ts`, `judge-worker-rs/src/validation.rs`, `src/lib/judge/sync-language-configs.ts`, `src/app/(dashboard)/dashboard/admin/languages/language-config-table.tsx`, `src/app/(public)/languages/page.tsx`, `tests/unit/docker/client.test.ts`, `tests/unit/sync-language-configs-skip-instrumentation.test.ts`, `tests/unit/dashboard-judge-system-implementation.test.ts`.
+- Judge report/API validation: `judge-worker-rs/src/executor.rs`, `src/lib/validators/api.ts`, `src/app/api/v1/judge/poll/route.ts`, `src/app/api/v1/judge/claim/route.ts`, `tests/unit/validators/api.test.ts`, judge status/report tests.
+- Import/export/restore/problem/realtime/plugins: `src/app/api/v1/admin/restore/route.ts`, `src/lib/db/export-with-files.ts`, `src/lib/db/export.ts`, `src/app/api/v1/problems/import/route.ts`, `src/lib/problem-management.ts`, `src/lib/validators/problem-management.ts`, `src/lib/plugins/secrets.ts`, `src/lib/realtime/realtime-coordination.ts`, and their listed unit/E2E tests.
+
+No issue found in the reviewed language count/sync source of truth, problem import validator reuse, judge-report app-side schema limits, Rust trusted-registry boundary check, SSE LIKE escaping, plugin secret export encryption for newly handled values, or function-problem API contract paths beyond the findings below.
 
 ## Findings
 
-### V1. Manual submissions now remain `pending` forever
+### V2-1 - Password minimum remains configurable even though policy is fixed at 8
 
-Severity: High
+Status: confirmed  
 Confidence: High
-Status: Confirmed issue
 
 Evidence:
 
-- `AGENTS.md:169-176` documents `manual` problems as judged outside the automatic pipeline.
-- `src/app/api/v1/submissions/route.ts:330-331` computes `const isManualProblem = problem.problemType === "manual";` but now sets `const initialStatus = "pending";` unconditionally.
-- `src/app/api/v1/submissions/route.ts:367` still says manual problems need no judging: `// Skip judge queue checks for manual problems (no judging needed)`.
-- `src/lib/judge/claim-query.ts:46-49` explicitly excludes manual problems from worker claims with `COALESCE(p.problem_type, 'auto') != 'manual'`.
+- `AGENTS.md:628-634` mandates only a fixed 8-character minimum and says not to change the minimum without explicit approval.
+- `src/lib/security/password.ts:1-27` implements that fixed policy with `FIXED_MIN_PASSWORD_LENGTH = 8` and only checks `password.length < 8`.
+- The admin settings UI still exposes `minPasswordLength` in `src/app/(dashboard)/dashboard/admin/settings/page.tsx:49-52` and renders it as an editable numeric field via `src/app/(dashboard)/dashboard/admin/settings/config-settings-form.tsx:86-114`.
+- The API/action paths still accept and store the key: `src/app/api/v1/admin/settings/route.ts:63-80` and `src/lib/actions/system-settings.ts:21-46`.
+- The validator allows values from 8 to 128 in `src/lib/validators/system-settings.ts:126-130`, and settings resolution still reads the DB value in `src/lib/system-settings-config.ts:120-124`.
+- UI copy still tells operators this is a configurable requirement: `messages/en.json:1549-1550`, `messages/ko.json:1549-1550`.
+- `src/lib/security/constants.ts:6-8` still returns the configured value, creating a second password-minimum source that disagrees with the real validator.
 
 Failure scenario:
 
-When a student submits a manual problem, the row is inserted as `pending`. The judge worker cannot claim it because the claim query excludes manual problems, and the submission route skips queue availability checks because manual submissions are not meant to be judged automatically. The status therefore stays in an active/processing state indefinitely instead of representing a manual-grade-ready submission.
+An admin sets "Minimum Password Length" to `12` from the settings page. The setting persists and appears effective, but signup/change/reset/recruit password validation still accepts 8-character passwords through `getPasswordValidationError()`. That creates a documented/admin-visible policy that the server does not enforce.
 
 Suggested fix:
 
-Restore a non-queued initial status for manual problems, such as the previous `submitted` status, or introduce a first-class manual-awaiting-grade status across `SubmissionStatus`, labels, filters, terminal-state logic, and UI. Keep manual submissions excluded from judge claims, but ensure UI and metrics do not present them as still processing.
+Remove `minPasswordLength` from configurable settings, API allowlists, admin UI, i18n, and the `getMinPasswordLength()` helper, or make it a read-only display of `FIXED_MIN_PASSWORD_LENGTH`. Add a regression test that setting payloads cannot change the password minimum.
 
-### V2. New worker status names are not fully wired through translations and E2E waiters
+### V2-2 - Reset-password form does not validate the mandatory 8-character minimum before submission
 
-Severity: High
+Status: confirmed  
 Confidence: High
-Status: Confirmed issue
 
 Evidence:
 
-- `judge-worker-rs/src/types.rs:44-50` now serializes final statuses as `time_limit_exceeded`, `memory_limit_exceeded`, and `output_limit_exceeded`.
-- `src/types/index.ts:19-25` and `src/lib/security/constants.ts:49-61` define the canonical TypeScript status set using those new names.
-- `messages/en.json:731-745` and `messages/ko.json:731-745` still define `status.time_limit` and `status.memory_limit`, but not `status.time_limit_exceeded` or `status.memory_limit_exceeded`.
-- Several callers still construct translation keys directly from raw status values:
-  - `src/components/submissions/_components/submission-result-panel.tsx:81-83`
-  - `src/components/submissions/submission-detail-client.tsx:237-240`
-  - `src/app/(public)/problems/page.tsx:513`
-  - `src/app/(public)/contests/manage/[assignmentId]/students/[userId]/page.tsx:230`
-- E2E terminal-state waiters still recognize the old names:
-  - `tests/e2e/support/helpers.ts:147-154`
-  - `tests/e2e/all-languages-judge.spec.ts:1058-1065`
-  - `tests/e2e/student-submission-flow.spec.ts:178`
-  - `tests/e2e/function-judging.spec.ts:138-139`
-  - `tests/e2e/output-only-languages.spec.ts:79-80`
-  - `tests/e2e/contest-full-lifecycle.spec.ts:304`, `:321`, `:374`, `:387`, `:398`
+- `AGENTS.md:632-633` requires client-side password forms to validate `length >= 8` before submission and show a clear error.
+- The reset-password form submits after only checking token and password equality in `src/app/(auth)/reset-password/reset-password-form.tsx:34-51`; there is no length check before `fetch()`.
+- The password input at `src/app/(auth)/reset-password/reset-password-form.tsx:113-122` and confirmation input at `src/app/(auth)/reset-password/reset-password-form.tsx:140-149` have `required` but no `minLength`.
+- The server does reject short passwords and returns the fixed minimum in `src/app/api/v1/auth/reset-password/route.ts:34-38`, and the client maps that response at `src/app/(auth)/reset-password/reset-password-form.tsx:68-75`. That is post-submission, not the required client-side pre-submit validation.
 
 Failure scenario:
 
-A submission that finishes as TLE or MLE under the new worker reaches the app as `time_limit_exceeded` or `memory_limit_exceeded`. UI paths that call `t(\`status.${status}\`)` lack matching message keys, producing missing-message output or runtime i18n errors depending on configuration. Playwright helpers that wait for terminal status strings can also time out because they still check `time_limit` and `memory_limit`.
+A user enters a matching 7-character password and submits the reset form. The browser sends the request, consumes rate-limit attempts, and only then receives `passwordTooShort`. This violates the repository's explicit client-side validation contract and can make reset-password UX/rate-limiting behavior differ from signup and change-password.
 
 Suggested fix:
 
-Route all status display through the centralized status label normalizer or add the canonical `status.time_limit_exceeded` and `status.memory_limit_exceeded` message keys in every locale that uses status labels. Update E2E helper terminal sets and assertions to use canonical names, while optionally accepting legacy names only for migration compatibility.
+Import `FIXED_MIN_PASSWORD_LENGTH`, add `minLength={FIXED_MIN_PASSWORD_LENGTH}` to both reset-password inputs, and add an explicit pre-fetch length check that sets the same localized `passwordTooShort` message. Add a component or route-level test for the short-password pre-submit path.
 
-### V3. Poll route rejects legacy worker statuses during app/worker version skew
+### V2-3 - Docker admin API contract says generic `configError`, but production URL-without-token throws at module import
 
-Severity: High
+Status: confirmed  
+Confidence: High
+
+Evidence:
+
+- `src/lib/docker/client.ts:28-41` documents that worker Docker API misconfiguration details are logged server-side and only generic `configError` is returned to API callers.
+- `src/lib/docker/client.ts:145-149` implements the generic return helper.
+- `tests/unit/docker/client.test.ts:77-97` asserts a runner URL without `RUNNER_AUTH_TOKEN` yields generic `configError`, and `tests/unit/docker/client.test.ts:99-126` asserts production without a runner API also yields generic `configError`.
+- But `src/lib/docker/client.ts:21-27` throws at import time when `NODE_ENV === "production"`, a worker URL is configured, and `RUNNER_AUTH_TOKEN` is missing.
+
+Failure scenario:
+
+In production, an operator configures `COMPILER_RUNNER_URL` or `JUDGE_WORKER_URL` but forgets `RUNNER_AUTH_TOKEN`. Any admin Docker image API route importing `@/lib/docker/client` can fail before handler code runs, bypassing the intended `{ error: "configError" }` API response and the admin UI's generic i18n path. The tests miss this exact production combination.
+
+Suggested fix:
+
+Remove the top-level throw and let `WORKER_DOCKER_API_CONFIG_DETAIL` plus `getWorkerDockerApiConfigError()` handle this case, or add a route-level production test for URL-without-token and intentionally document/handle the startup failure path.
+
+### V2-4 - ZIP restore audit summary always records `0 files`
+
+Status: confirmed  
+Confidence: High
+
+Evidence:
+
+- `src/app/api/v1/admin/restore/route.ts:78-80` initializes `filesRestored = 0` and `pendingUploadedFiles = []`.
+- ZIP parsing fills `pendingUploadedFiles` at `src/app/api/v1/admin/restore/route.ts:82-91`.
+- The audit event is recorded before file restoration, and its ZIP summary interpolates `${filesRestored}` at `src/app/api/v1/admin/restore/route.ts:151-163`.
+- Files are actually restored later, after successful DB import, at `src/app/api/v1/admin/restore/route.ts:176-178`.
+- The HTTP response returns the real restored count after that at `src/app/api/v1/admin/restore/route.ts:180-184`, so the audit trail and API response can disagree.
+
+Failure scenario:
+
+An admin restores a ZIP backup containing uploaded files. The restore succeeds and the API returns a positive `filesRestored`, but the audit log permanently says "0 files". During incident response, operators reading audit logs will think no uploaded files were restored.
+
+Suggested fix:
+
+Use `pendingUploadedFiles.length` in the pre-import audit summary, move the audit event after `restoreParsedBackupFiles()`, or emit a second completion audit event with the actual `filesRestored` count.
+
+### V2-5 - `AGENTS.md` migration-recovery docs still describe a warn path, but the script/tests now abort
+
+Status: confirmed  
+Confidence: High
+
+Evidence:
+
+- `AGENTS.md:379-384` says destructive `drizzle-kit push` detection "downgrades the success log to a warn" and shows the operator a `[WARN]` message.
+- The same file later says the policy is to "halt and escalate" at `AGENTS.md:430`, so the doc is internally inconsistent.
+- `deploy-docker.sh:1011-1020` documents the updated behavior: capture output and abort before new app code starts.
+- `deploy-docker.sh:1058-1064` calls `die` when destructive prompt markers are detected.
+- `tests/unit/infra/deploy-security.test.ts:31-43` now explicitly expects `die` and rejects the old `warn` behavior.
+
+Failure scenario:
+
+An operator hits a destructive migration prompt during deploy and consults `AGENTS.md`. The recovery section tells them to look for a warning and implies deploy continued, while the actual script exits. This can waste incident time and confuse whether new app code was started.
+
+Suggested fix:
+
+Update `AGENTS.md:377-388` to state that detection aborts the deploy with `die`, not warning-only behavior, and adjust the recovery prose from "When you see the warn" to "When the deploy aborts with this error".
+
+### V2-6 - Playwright local web server can run stale standalone code by default
+
+Status: risk  
 Confidence: Medium
-Status: Likely issue
 
 Evidence:
 
-- `src/lib/security/constants.ts:49-61` accepts only the new canonical names and omits legacy `time_limit` and `memory_limit`.
-- `src/app/api/v1/judge/poll/route.ts:48-54` validates both top-level `status` and nested `testResults[].status` using `isSubmissionStatus`, returning `400 invalidSubmissionStatus` for unknown values.
-- The current uncommitted Rust worker now returns new names in `judge-worker-rs/src/types.rs:44-50`, implying older deployed workers from the previous schema emitted different names.
-- `CLAUDE.md` documents deployment topologies where the app server can be deployed without worker images, including `BUILD_WORKER_IMAGE=false INCLUDE_WORKER=false` for the app-server target.
+- The Playwright local webServer uses `bash scripts/playwright-local-webserver.sh` in `playwright.config.ts:98-119`, with `reuseExistingServer: false`, so this script owns the served app.
+- `scripts/playwright-local-webserver.sh:105-107` only runs `npm run build` when `PLAYWRIGHT_REBUILD_APP=1` or `.next/standalone/server.js` is missing.
+- It then refreshes static assets and starts the existing standalone server at `scripts/playwright-local-webserver.sh:109-118`.
+- `tests/unit/infra/playwright-profiles.test.ts:46-53` locks in this reuse behavior.
+- The remediation plan notes the full local Playwright gate is still not green in `plans/open/2026-06-22-rpf-cycle-1-review-remediation.md:181-191`, so false stale-code signals matter for the current cycle.
 
 Failure scenario:
 
-If the Next.js app is deployed before all judge workers are updated, an older worker can report `time_limit` or `memory_limit` to `/api/v1/judge/poll`. The new app rejects the poll payload with `400 invalidSubmissionStatus`, so the submission never finalizes from the app perspective. This is especially plausible in the documented split app/worker deployment topology.
+A developer changes app code, has an old `.next/standalone/server.js` from a previous run, and runs `npx playwright test` without `PLAYWRIGHT_REBUILD_APP=1`. The tests can exercise the old server bundle while copying current static assets, producing false passes or misleading failures unrelated to the current source tree.
 
 Suggested fix:
 
-Accept legacy status spellings at API boundaries for a transitional period and normalize them before database writes and UI rendering. Add tests for poll payload normalization from both old and new worker versions. If compatibility is intentionally not supported, document and enforce a worker-first deployment gate rather than letting poll fail at runtime.
+Default to rebuilding for local Playwright runs, or add a freshness check based on source/package timestamps or a build fingerprint. If reuse is required for incident speed, expose it as an opt-in such as `PLAYWRIGHT_REUSE_BUILD=1` and update tests/docs accordingly.
 
-### V4. Output-limit floods can be classified as timeout instead of output-limit-exceeded
+## Final Missed-Issue Sweep
 
-Severity: Medium
-Confidence: Medium
-Status: Likely issue
+I ran targeted sweeps for the required coverage areas after the initial inventory:
 
-Evidence:
+- Password-policy and reset/change/signup/recruit flows: found V2-1 and V2-2.
+- Judge report size/result-count validation across Rust worker, app validator, and tests: worker-side truncation and app-side caps align; no additional finding.
+- Problem-description/import validation: import now reuses the normal bounded test-case/description/function schema; no finding.
+- Deployment docs vs script/tests: found V2-5; worker/nginx fatal paths align with tests.
+- Language/judge docs vs config: counted 125 language config entries with no duplicate language ids; startup sync preserves command overrides while explicit `npm run languages:sync` remains source-of-truth sync; no finding.
+- Docker image API/admin contract: build route validates local `judge-*` Dockerfiles and Rust/TS trusted registry boundary checks align; found only V2-3.
+- Backup/export/restore contracts: ZIP extraction caps and plugin secret export encryption paths are present; found V2-4 audit-count drift.
+- Realtime SSE connection counting: SQL LIKE wildcard escaping is present and covered; no finding.
 
-- `judge-worker-rs/src/docker.rs:370-383` detects stdout truncation only inside the stdout read task, then drains the rest of stdout to EOF.
-- `judge-worker-rs/src/docker.rs:387-400` does the same for stderr.
-- `judge-worker-rs/src/docker.rs:406-434` waits for stdin, process completion, and read tasks under the execution timeout.
-- `judge-worker-rs/src/docker.rs:455-470` handles timeout by killing/removing the container and returns empty output with `stdout_truncated: false` and `stderr_truncated: false`.
-- `judge-worker-rs/src/executor.rs:138-139` classifies `OutputLimitExceeded` only when the execution result reports `output_limit_exceeded`.
-- `judge-worker-rs/src/executor.rs:594` derives `output_limit_exceeded` from the truncation flags.
-
-Failure scenario:
-
-A solution that prints indefinitely exceeds `max_output_bytes` quickly. The read task notices the cap but then drains the stream until EOF, while the main wait path keeps waiting for the process to exit or for the time limit. If the process only stops because the time limit expires, the timeout branch discards the truncation state and returns no truncated flag. The submission can be reported as TLE/runtime failure instead of OLE, and the worker spends the full time limit on an output flood.
-
-Suggested fix:
-
-Propagate output-cap detection to the main execution path with an atomic flag or cancellation channel, kill the container when the cap is hit, and preserve the truncation reason in the returned `DockerRunResult`. Classify an output-cap-triggered kill as `output_limit_exceeded` before ordinary timeout handling.
-
-### V5. Import drift test is source-grep based and no longer proves the documented behavior implied by its name
-
-Severity: Low
-Confidence: Medium
-Status: Confirmed test gap
-
-Evidence:
-
-- `src/lib/db/import.ts:175-180` now throws an error on import column mismatch.
-- `src/lib/db/import.ts:219-224` catches the failure, clears `tableResults`, and returns a failed all-or-nothing import result.
-- `tests/unit/cycle-23-remediation.test.ts:78-80` still names the behavior as skipping mismatched tables, but only asserts that the source contains `"column mismatch"`.
-
-Failure scenario:
-
-A future regression could change the actual import transaction semantics, rollback handling, or returned error details while preserving the string `"column mismatch"` in source. The test would still pass without proving that corrupted or partial imports are prevented.
-
-Suggested fix:
-
-Replace the source-grep assertion with a behavioral test that feeds a backup containing a mismatched table shape into `importDatabase`, asserts `success: false`, verifies no partial table results are reported after rollback, and checks that the returned error details identify the mismatched table and columns. Rename the test to match the current all-or-nothing policy if that policy is intended.
-
-## Final Missed-Issues Sweep
-
-I did an additional sweep for commonly missed correctness gaps after the main review:
-
-- Searched for legacy and canonical status names across source and tests; the incomplete migration is captured in V2 and V3.
-- Rechecked documented manual-problem behavior against submission creation and judge claim filtering; the lifecycle mismatch is captured in V1.
-- Reviewed import/restore route changes against the transaction behavior in `src/lib/db/import.ts`; the all-or-nothing route behavior appears internally consistent, with the remaining gap captured as V5.
-- Reviewed environment/deploy config changes (`scripts/load-env.ts`, `drizzle.config.ts`, `.npmrc`, root Cargo workspace profile changes) and did not find a verified correctness issue from those changes.
-- Ran focused type, unit, component, and Rust worker tests listed above. These passing tests do not cover V1, V2 raw translation callers, V3 rolling-version compatibility, V4 infinite-output behavior, or V5 behavioral import semantics.
+No tests were run as part of this verifier pass; this was an evidence review only.

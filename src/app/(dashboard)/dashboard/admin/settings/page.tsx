@@ -48,7 +48,6 @@ const JUDGE_FIELDS: { key: keyof ConfiguredSettings }[] = [
 
 const SESSION_FIELDS: { key: keyof ConfiguredSettings }[] = [
   { key: "sessionMaxAgeSeconds" },
-  { key: "minPasswordLength" },
 ];
 
 const ADVANCED_FIELDS: { key: keyof ConfiguredSettings }[] = [

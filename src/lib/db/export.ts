@@ -15,6 +15,7 @@ import {
   EXPORT_SANITIZED_COLUMNS,
   EXPORT_ALWAYS_REDACT_COLUMNS,
 } from "@/lib/security/secrets";
+import { encryptPluginConfigSecrets } from "@/lib/plugins/secrets";
 
 export type JudgeKitExportRedactionMode = "full-fidelity" | "sanitized";
 
@@ -136,7 +137,9 @@ export function streamDatabaseExport(options: { signal?: AbortSignal; sanitize?:
                 if (cancelled) return;
                 await waitForReadableStreamDemand(controller, () => cancelled);
                 const normalizedRow = columns.map((col) =>
-                  redactSet?.has(col) ? null : normalizeValue((row as Record<string, unknown>)[col])
+                  redactSet?.has(col)
+                    ? null
+                    : normalizeExportValue(name, row as Record<string, unknown>, col)
                 );
                 controller.enqueue(
                   encoder.encode(`${rowIndex === 0 ? "" : ","}${JSON.stringify(normalizedRow)}`)
@@ -257,6 +260,26 @@ function normalizeValue(val: unknown): unknown {
   // since we can't distinguish boolean columns from integer columns
   // without schema metadata. The import side handles conversion.
   return val;
+}
+
+function normalizeExportValue(
+  tableName: string,
+  row: Record<string, unknown>,
+  column: string
+): unknown {
+  const value = row[column];
+  if (
+    tableName === "plugins" &&
+    column === "config" &&
+    value &&
+    typeof value === "object" &&
+    !Array.isArray(value) &&
+    typeof row.id === "string"
+  ) {
+    return encryptPluginConfigSecrets(row.id, value as Record<string, unknown>);
+  }
+
+  return normalizeValue(value);
 }
 
 const EXPORT_CHUNK_SIZE = 1000;

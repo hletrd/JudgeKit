@@ -32,6 +32,8 @@ if (!RUNNER_AUTH_TOKEN && JUDGE_WORKER_URL && process.env.NODE_ENV === "producti
 const WORKER_DOCKER_API_CONFIG_DETAIL =
   JUDGE_WORKER_URL && !RUNNER_AUTH_TOKEN
     ? "COMPILER_RUNNER_URL is set but RUNNER_AUTH_TOKEN is missing"
+    : process.env.NODE_ENV === "production" && !(JUDGE_WORKER_URL && RUNNER_AUTH_TOKEN)
+      ? "COMPILER_RUNNER_URL and RUNNER_AUTH_TOKEN must be set for production Docker image management"
     : null;
 // Generic error returned to the API. The admin UI maps this i18n key
 // (errors.configError) to a "config error — see logs" message; operators
@@ -160,6 +162,7 @@ async function callWorkerJson<T>(
   path: string,
   init?: RequestInit,
   validate?: (data: unknown) => boolean,
+  timeoutMs = 30_000,
 ): Promise<T> {
   if (!JUDGE_WORKER_URL) throw new Error("JUDGE_WORKER_URL is not configured");
   const headers = new Headers(init?.headers);
@@ -167,8 +170,8 @@ async function callWorkerJson<T>(
   headers.set("Authorization", `Bearer ${RUNNER_AUTH_TOKEN}`);
 
   const signal = init?.signal
-    ? withTimeout(init.signal, 30_000)
-    : AbortSignal.timeout(30_000);
+    ? withTimeout(init.signal, timeoutMs)
+    : AbortSignal.timeout(timeoutMs);
 
   const response = await fetch(`${JUDGE_WORKER_URL}${path}`, {
     ...init,
@@ -527,7 +530,7 @@ export async function buildDockerImage(
     }, (data): boolean => {
       if (typeof data !== "object" || data === null) return false;
       return typeof (data as Record<string, unknown>).logs === "string";
-    });
+    }, 600_000);
     return { success: true, logs: response.logs };
   } catch (error) {
     logger.error({ error, imageName }, "[docker] Remote build failed");

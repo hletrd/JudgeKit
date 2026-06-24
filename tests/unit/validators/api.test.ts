@@ -5,7 +5,12 @@ vi.mock("@/lib/security/constants", () => ({
   MAX_SOURCE_CODE_SIZE_BYTES: 256 * 1024,
 }));
 
-import { submissionCreateSchema, judgeStatusReportSchema } from "@/lib/validators/api";
+import {
+  MAX_JUDGE_REPORT_DIAGNOSTIC_BYTES,
+  MAX_JUDGE_REPORT_RESULTS,
+  judgeStatusReportSchema,
+  submissionCreateSchema,
+} from "@/lib/validators/api";
 import { MAX_SOURCE_CODE_SIZE_BYTES } from "@/lib/security/constants";
 
 describe("submissionCreateSchema", () => {
@@ -159,6 +164,15 @@ describe("judgeStatusReportSchema", () => {
     expect(parsed.compileOutput).toBe("error on line 1");
   });
 
+  it("rejects oversized compileOutput before persistence truncation", () => {
+    const result = judgeStatusReportSchema.safeParse({
+      ...validPayload,
+      compileOutput: "x".repeat(MAX_JUDGE_REPORT_DIAGNOSTIC_BYTES + 1),
+    });
+    expect(result.success).toBe(false);
+    expect(result.error?.issues.map((i) => i.message)).toContain("invalidJudgeResult");
+  });
+
   it("accepts results array with valid items", () => {
     const parsed = judgeStatusReportSchema.parse({
       ...validPayload,
@@ -176,6 +190,33 @@ describe("judgeStatusReportSchema", () => {
     expect(parsed.results).toHaveLength(1);
     expect(parsed.results?.[0]?.testCaseId).toBe("tc-1");
     expect(parsed.results?.[0]?.runtimeErrorType).toBe("SIGSEGV");
+  });
+
+  it("rejects oversized actualOutput before persistence truncation", () => {
+    const result = judgeStatusReportSchema.safeParse({
+      ...validPayload,
+      results: [
+        {
+          testCaseId: "tc-1",
+          status: "wrong_answer",
+          actualOutput: "한".repeat(Math.ceil(MAX_JUDGE_REPORT_DIAGNOSTIC_BYTES / 3) + 1),
+        },
+      ],
+    });
+    expect(result.success).toBe(false);
+    expect(result.error?.issues.map((i) => i.message)).toContain("invalidJudgeResult");
+  });
+
+  it("rejects more results than a problem can define", () => {
+    const result = judgeStatusReportSchema.safeParse({
+      ...validPayload,
+      results: Array.from({ length: MAX_JUDGE_REPORT_RESULTS + 1 }, (_, index) => ({
+        testCaseId: `tc-${index}`,
+        status: "accepted",
+      })),
+    });
+    expect(result.success).toBe(false);
+    expect(result.error?.issues.map((i) => i.message)).toContain("invalidJudgeResult");
   });
 
   it("trims whitespace in result testCaseId and status", () => {

@@ -1,92 +1,88 @@
-# Test Engineer Review - Cycle 2
+# Test Engineer Review - review-plan-fix cycle 2 prompt 1
 
-Scope: comprehensive test-engineering review for coverage gaps, flaky tests, TDD opportunities, gate risks, and regression exposure in the current dirty worktree. I reviewed uncommitted changes and did not implement fixes.
+## Inventory
 
-## Inventory Built
+Reviewed the dirty-tree inventory from `git status --short` and `git diff --stat`.
+Review-relevant changes are concentrated in these areas:
 
-- Repo rules and gates reviewed: `AGENTS.md`, `CLAUDE.md`, `package.json:10-28`, `vitest.config.ts:10-39`, `vitest.config.integration.ts:10-18`, `vitest.config.component.ts:10-23`, `vitest.config.harness.ts:20-32`, `playwright.config.ts:1-91`, and `.github/workflows/ci.yml:24-330`.
-- Test inventory: 501 TypeScript/TSX test-support files under `tests/`, including 486 executable `*.test.ts`, `*.test.tsx`, and `*.spec.ts` files: 362 unit, 76 component, 5 integration, 1 harness, and 42 e2e specs.
-- API/gate inventory: 113 `src/app/api/**/route.ts` handlers and 87 API unit test files under `tests/unit/api`.
-- Changed surface reviewed: judge claim/poll/rejudge/submission routes, status labels and UI badges, admin submission filters/export, DB env loading, Playwright config, CI workflow, Rust worker verdict/output-limit paths, root Cargo workspace changes, and generated artifact hygiene.
-- Existing review provenance checked: current cycle reviews in `.context/reviews/*.md`, especially code-reviewer, critic, verifier, and security-reviewer, to avoid silently missing cross-agent findings.
+- Quality gates and E2E setup: `playwright.config.ts`, `scripts/playwright-local-webserver.sh`, `.github/workflows/ci.yml`, `tests/e2e/function-judging-responsive.spec.ts`, `tests/unit/infra/playwright-profiles.test.ts`, `deploy-docker.sh`, `tests/unit/infra/deploy-security.test.ts`.
+- Security/auth and password policy: `src/lib/security/password.ts`, `src/app/api/v1/auth/reset-password/route.ts`, `src/lib/actions/public-signup.ts`, `src/lib/actions/user-management.ts`, `src/lib/auth/trusted-host.ts`, `docs/authentication.md`, related unit tests.
+- Backup/import/export and plugin secrets: `src/lib/db/export.ts`, `src/lib/db/export-with-files.ts`, `src/app/api/v1/admin/restore/route.ts`, `src/lib/plugins/secrets.ts`, related unit/API tests.
+- Judge/compiler/runtime limits: `judge-worker-rs/src/executor.rs`, `judge-worker-rs/src/validation.rs`, `src/lib/compiler/execute.ts`, `src/lib/validators/api.ts`, related Rust/Vitest tests.
+- Problem import/management: `src/app/api/v1/problems/import/route.ts`, `src/lib/problem-management.ts`, related validator/action tests.
+- UI/i18n and language admin pages: language pages/table components, `messages/en.json`, `messages/ko.json`, related unit/E2E tests.
+- Realtime and Docker client: `src/lib/realtime/realtime-coordination.ts`, `src/lib/docker/client.ts`, related unit tests.
+
+Findings count: 7
 
 ## Findings
 
-### TST-C2-1 - CI E2E job still cannot provision PostgreSQL before DB gates
+### 1. CI still does not run Playwright E2E, despite changed Playwright/UI behavior
 
-- Severity: High
+- Type: quality-gate gap, missing E2E coverage
+- Status: confirmed
 - Confidence: High
-- Status: Confirmed gate failure
-- Evidence: The `quality` job has a PostgreSQL service and `INTEGRATION_DATABASE_URL` (`.github/workflows/ci.yml:30-52`), but the separate `e2e` job has no `services:` block or `DATABASE_URL` env before it runs `npm run db:push`, `npm run seed`, `npm run languages:sync`, backup verification, build, and Playwright (`.github/workflows/ci.yml:264-319`). The e2e setup still deletes SQLite files in a step named "Reset SQLite database" (`.github/workflows/ci.yml:296-299`), while `drizzle.config.ts:1-10` uses PostgreSQL credentials from `process.env.DATABASE_URL`.
-- Failure scenario: A clean GitHub Actions e2e run reaches "Apply database schema" with no PostgreSQL DSN. `drizzle-kit push` fails before browser tests start, so the configured end-to-end gate is red even if app code is otherwise correct.
-- Suggested fix/test: Give the `e2e` job a PostgreSQL service and `DATABASE_URL`, or remove the direct DB setup from the job and let `scripts/playwright-local-webserver.sh` own disposable DB setup. Add an infra unit test that parses `.github/workflows/ci.yml` and fails if the e2e job contains direct DB commands without a PostgreSQL service and DSN.
+- Evidence: `AGENTS.md:450` requires tests for every feature/fix and `AGENTS.md:525` makes E2E testing mandatory for user-facing features. The CI quality job runs unit coverage, component, integration, harness, Rust tests, audit, build, and Docker checks in `.github/workflows/ci.yml:78-119`, but there is no `npm run test:e2e` / `playwright test` step. The dirty tree changes `playwright.config.ts` and `tests/e2e/function-judging-responsive.spec.ts`, so the changed E2E surface is not gated.
+- Failure scenario: a responsive regression in the function-judging UI or a broken Playwright profile can pass PR CI because only Vitest/source checks run. The first time it is caught is a manual post-deploy E2E run, which is after the gate that should have blocked the change.
+- Suggested fix: add a CI Playwright job or a smoke E2E job using the configured local webServer. If the full suite is too expensive, gate at least `PLAYWRIGHT_PROFILE=smoke npm run test:e2e` and schedule/full-run the complete suite separately.
 
-### TST-C2-2 - Playwright judge helpers wait for obsolete terminal statuses
+### 2. Remote smoke silently drops authenticated smoke specs when credentials are missing
 
-- Severity: High
+- Type: flaky Playwright setup, false-green smoke
+- Status: confirmed
 - Confidence: High
-- Status: Confirmed flaky/broken tests
-- Evidence: The Rust worker now serializes terminal verdicts as `time_limit_exceeded`, `memory_limit_exceeded`, and `output_limit_exceeded` (`judge-worker-rs/src/types.rs:47-49`). Three Playwright polling helpers still treat only `time_limit` and `memory_limit` as terminal and omit `output_limit_exceeded`: `tests/e2e/all-languages-judge.spec.ts:1058-1065`, `tests/e2e/support/helpers.ts:147-154`, and `tests/e2e/function-judging.spec.ts:135-142`.
-- Failure scenario: A TLE, MLE, or OLE submission reaches a final API status. The helper keeps polling until timeout because the status string is not in its terminal set. This can turn a legitimate terminal verdict into a 60-120 second failure, and it explains the carried-over Playwright admin/all-languages failures around status migration.
-- Suggested fix/test: Centralize an e2e terminal-status list that includes canonical statuses and optionally accepts legacy aliases only for migration. Add a unit-style test for the e2e helper status set, plus one Playwright fixture that forces TLE/MLE/OLE and asserts the poller returns promptly.
+- Evidence: `playwright.config.ts:24-39` defines the authenticated remote smoke list, including admin/auth/contest/rankings specs. `playwright.config.ts:41-52` removes those specs for `remoteSafeSpecsWithoutAuth`. `playwright.config.ts:62-70` selects that reduced list whenever `PLAYWRIGHT_BASE_URL` is set and `E2E_PASSWORD` is absent or equals `skip-login`.
+- Failure scenario: a post-deploy smoke run with `PLAYWRIGHT_BASE_URL` but missing `E2E_PASSWORD` exits green while skipping the admin language, worker, auth flow, contest access, contest nav, and rankings checks. That masks broken login/admin behavior behind a successful smoke label.
+- Suggested fix: fail fast for `PLAYWRIGHT_PROFILE=smoke` remote runs when credentials are required, or require an explicit `PLAYWRIGHT_PROFILE=public-smoke` for the unauthenticated subset. Add a profile test that asserts missing credentials produce an intentional failure or an explicit public-only profile.
 
-### TST-C2-3 - No regression test covers manual submissions staying out of the judge queue
+### 3. Compiler workspace permission tests are source-grep false positives
 
-- Severity: High
+- Type: false-positive test, inadequate assertions
+- Status: confirmed
 - Confidence: High
-- Status: Confirmed product bug plus missing coverage
-- Evidence: The submission route now sets `const initialStatus = "pending"` for every problem, including manual problems (`src/app/api/v1/submissions/route.ts:328-331`). The same route comments that manual problems need no judge queue checks (`src/app/api/v1/submissions/route.ts:367-382`). Claim SQL explicitly excludes manual problems from worker claims in both worker and no-worker arms (`src/lib/judge/claim-query.ts:46-50`, `src/lib/judge/claim-query.ts:140-144`). The main route test default fixture only asserts auto-style `pending` creation (`tests/unit/api/submissions.route.test.ts:159-208`) and the pending-limit tests do not seed manual pending rows (`tests/unit/api/submissions.route.test.ts:498-529`).
-- Failure scenario: A student submits a manual problem. It is inserted as `pending`, no worker can claim it, the UI reports it as in progress forever, and those rows can inflate pending counts for later auto submissions.
-- Suggested fix/test: Restore or introduce a non-judge status for manual submissions, then add a route test that submits `problemType: "manual"` and asserts the inserted status is not in `pending/queued/judging`. Add an integration test that a manual submission is not claimable by `buildClaimSql` and does not count against auto pending queue limits.
+- Evidence: the changed behavior in `src/lib/compiler/execute.ts:724-746` creates a workspace, chmods it, chowns the workspace/source to `65534:65534`, and falls back to broad permissions. The regression test in `tests/unit/compiler/execute-implementation.test.ts:6-14` only checks that source strings are present. The behavioral `executeCompilerRun` tests in `tests/unit/compiler/execute.test.ts:81-145` stop at command validation or runner config failures, so they never reach the local Docker fallback workspace branch.
+- Failure scenario: the chown/chmod calls could be moved after `runDocker`, skipped under a condition, or applied to the wrong path while the source-grep test still passes. Local fallback would then fail under the non-root sandbox user only in manual Docker execution.
+- Suggested fix: add a behavioral unit test that mocks `fs/promises`, `child_process.spawn`, and Docker inspect/cleanup, calls `executeCompilerRun()` through the local fallback path, and asserts the exact order and target paths for `mkdir`, `mkdtemp`, `writeFile`, `chown`, `chmod`, and the Docker run invocation.
 
-### TST-C2-4 - Claim cleanup is not tested for malformed claimed rows after mutation
+### 4. Full-fidelity plugin export encryption is not behavior-tested
 
-- Severity: High
+- Type: false-positive test, missing coverage for changed backup behavior
+- Status: confirmed
 - Confidence: High
-- Status: Confirmed missing coverage on a real failure mode
-- Evidence: `src/app/api/v1/judge/claim/route.ts:231-237` parses `claimedRaw` and returns `invalidJudgeClaim` on schema mismatch before `claimedForCleanup` is set. The cleanup helper is used for missing-problem failures (`src/app/api/v1/judge/claim/route.ts:300-306`) and catch-block errors after `claimedForCleanup` exists (`src/app/api/v1/judge/claim/route.ts:403-418`), but not for this parse-error path. Integration tests exercise the raw SQL builder and worker counters (`tests/integration/db/judge-claim-reclaim.test.ts:221-270`), not the route-level Zod parse failure after the DB update.
-- Failure scenario: A schema drift or driver type change makes the raw claim return an invalid `submittedAt`, numeric field, or null shape after the SQL has already set `status='queued'`, `judge_claim_token`, and worker ownership. The route returns 422 without releasing the claim or decrementing the worker slot. Existing tests remain green because they never mock `rawQueryOne` to return a malformed claimed row through the route.
-- Suggested fix/test: Add a route-level unit test for malformed `claimedRaw` that proves the claim is released when enough identifiers are present, or change the implementation to capture a minimal raw id/token before full parse. Also test that cleanup uses `GREATEST(active_tasks - 1, 0)` and token-matches before reset.
+- Evidence: `src/lib/db/export.ts:139-143` is the only export path that calls `normalizeExportValue()` for each row/column, and `src/lib/plugins/secrets.ts:103-129` contains the helper that encrypts plugin secret fields. The new test in `tests/unit/db/export-sanitization.test.ts:200-206` only greps `src/lib/db/export.ts` for three strings. `tests/unit/plugins.secrets.test.ts:95-107` proves the helper works in isolation, but not that `streamDatabaseExport()` applies it to plugin rows.
+- Failure scenario: a table-name mismatch, column-name mismatch, redaction-map change, or future refactor could export raw plaintext plugin API keys in full-fidelity backups while all current tests still pass because the strings remain in the source file.
+- Suggested fix: add a behavior test around `streamDatabaseExport()` with a mocked transaction returning a `plugins` row containing plaintext `config.openaiApiKey`; consume the stream and assert the exported JSON contains an `enc:v1:` value that decrypts to the original secret. Also assert sanitized exports null `plugins.config`.
 
-### TST-C2-5 - Diagnostic truncation has no direct regression coverage
+### 5. Trusted-host production fail-closed branches have no production-mode tests
 
-- Severity: Medium
+- Type: missing security regression tests
+- Status: confirmed
 - Confidence: High
-- Status: Confirmed test gap
-- Evidence: Truncation is implemented in `truncateJudgeDiagnostic` with a 16 KiB byte cap and UTF-8 boundary cleanup (`src/lib/judge/verdict.ts:4-28`), then used for per-test actual output (`src/lib/judge/verdict.ts:94-100`) and terminal compile output (`src/app/api/v1/judge/poll/route.ts:142-148`). The poll route test mocks `truncateJudgeDiagnostic` as identity (`tests/unit/api/judge-status-report.route.test.ts:43-49`), and `tests/unit/judge/verdict.test.ts:126-212` covers row mapping but not over-limit output or multibyte boundary behavior.
-- Failure scenario: A future refactor removes truncation from `compileOutput`, truncates by UTF-16 code units instead of bytes, or stores broken replacement characters at the byte boundary. The route tests still pass because they replace the helper with an identity function, and the verdict tests do not cover the helper.
-- Suggested fix/test: Add pure tests for `truncateJudgeDiagnostic` with ASCII over-limit data, exact-limit data, null/undefined, and multibyte data cut at the boundary. Add a poll route test that uses the real helper or asserts the stored payload is capped for both `compileOutput` and `submissionResults.actualOutput`.
+- Evidence: production-only branches in `src/lib/auth/trusted-host.ts:14-27` reject a missing host header and reject an empty trusted-host set. Current tests assert the development fallbacks instead: empty trusted host set returns `null` in `tests/unit/auth/trusted-host.test.ts:28-34`, and missing host returns `null` in `tests/unit/auth/trusted-host.test.ts:53-59`. These tests do not stub `NODE_ENV=production`.
+- Failure scenario: a regression that allows all hosts in production when no trusted hosts are configured would not fail the current unit suite, because the existing tests only pin the non-production behavior.
+- Suggested fix: add `vi.stubEnv("NODE_ENV", "production")` cases that assert `MissingHostHeader` returns 400 and `NoTrustedHostsConfigured` returns 500, plus separate development-mode tests for the permissive fallback.
 
-### TST-C2-6 - Rejudge worker-counter behavior has no route-level test
+### 6. Problem import route changes only have schema tests, not API handler tests
 
-- Severity: Medium
-- Confidence: High
-- Status: Confirmed test gap
-- Evidence: The rejudge route now reads current submission status and worker ownership, resets claim fields, and decrements `judge_workers.active_tasks` when rejudging a queued/judging submission (`src/app/api/v1/submissions/[id]/rejudge/route.ts:36-70`). A search found no direct route test for `src/app/api/v1/submissions/[id]/rejudge/route.ts`; the closest unit check only source-greps capabilities (`tests/unit/api/problem-set-and-submission-capabilities-implementation.test.ts:30-31`), and worker-counter tests focus on claim/poll flows (`tests/unit/api/judge-status-report.route.test.ts:171-232`, `tests/integration/db/judge-claim-reclaim.test.ts:221-270`).
-- Failure scenario: A future rejudge refactor resets a claimed submission without decrementing the worker's active task count, or decrements on terminal rows where the worker no longer owns work. The queue appears at capacity until heartbeat/staleness recovery, but existing tests do not exercise the rejudge route.
-- Suggested fix/test: Add a route-level unit test with mocked `execTransaction` for queued, judging, pending, and terminal submissions. Assert claimed queued/judging rows decrement exactly once, terminal/pending rows do not, claim fields are cleared, previous results are deleted, and leaderboard cache invalidation remains fire-and-forget.
+- Type: missing API/mock coverage
+- Status: likely
+- Confidence: Medium
+- Evidence: the changed API route wires validation, capability checks, and persistence mapping in `src/app/api/v1/problems/import/route.ts:63-101`. The added coverage in `tests/unit/validators/problem-import.test.ts:50-136` imports `problemImportSchema` and calls `safeParse()` only. It does not exercise `POST`, `createApiHandler`, `resolveCapabilities`, or the `createProblemWithTestCases()` payload.
+- Failure scenario: the schema can reject empty expected outputs and too many test cases, but the route could still regress by bypassing the schema, returning the wrong status, allowing a role without `problems.create`, or mapping defaults/test cases incorrectly, and these tests would stay green.
+- Suggested fix: add `tests/unit/api/problems-import.route.test.ts` with mocked auth/capabilities and `createProblemWithTestCases()`. Cover 201 happy path, 403 without `problems.create`, 400 invalid `testCases`, and the exact payload passed to persistence.
 
-### TST-C2-7 - Status filter/export tests do not enforce the canonical status catalog
+### 7. Successful ZIP restore path is not tested, leaving an audit/count regression visible in code
 
-- Severity: Medium
-- Confidence: High
-- Status: Confirmed coverage gap
-- Evidence: Public submissions filters include only accepted, wrong_answer, TLE, MLE, runtime, and compile errors (`src/app/(public)/submissions/page.tsx:39-43`). Admin submissions filters add pending/queued/judging but still omit `output_limit_exceeded`, `internal_error`, and `cancelled` (`src/app/(dashboard)/dashboard/admin/submissions/page.tsx:44-55`). Admin CSV export omits the same statuses (`src/app/api/v1/admin/submissions/export/route.ts:8-18`). Canonical statuses exist in `src/lib/security/constants.ts:54-63` and component coverage only shows one local mapping for OLE in an assignment board fixture (`tests/component/assignment-status-board.test.tsx:58`).
-- Failure scenario: Production accumulates `output_limit_exceeded`, `internal_error`, or `cancelled` submissions. Admins cannot filter or export them by status, and no current test fails because each surface hand-maintains its own smaller list.
-- Suggested fix/test: Export a single canonical filterable-status list or add tests that compare public/admin/export status lists against `SUBMISSION_STATUSES` with documented exclusions. Include OLE/internal/cancelled cases in page/component tests and CSV route tests.
+- Type: missing API coverage, inadequate assertions
+- Status: confirmed
+- Confidence: Medium
+- Evidence: `src/app/api/v1/admin/restore/route.ts:151-163` records the ZIP restore audit before `restoreParsedBackupFiles()` is called in `src/app/api/v1/admin/restore/route.ts:176-177`, so the ZIP audit summary uses the still-zero `filesRestored` value. The new route coverage only adds rejection coverage for oversized ZIPs in the restore safety tests; it does not cover a successful ZIP restore with uploaded files.
+- Failure scenario: a ZIP restore that actually restores files returns the correct response after line 177, but the audit trail says `0 files`. Operators investigating a restore get misleading evidence, and current tests do not catch it because they only assert failure responses.
+- Suggested fix: add a successful ZIP restore API test where `parseBackupZip()` returns two staged uploads, `importDatabase()` succeeds, and `restoreParsedBackupFiles()` returns `2`; assert both the response and `recordAuditEvent()` details/summary report the restored count. Move the audit emission after file restoration or log a pending/actual two-step audit.
 
-### TST-C2-8 - Root Cargo workspace artifacts are not ignored or covered by hygiene gates
+## Final Missed-Issue Sweep
 
-- Severity: Low
-- Confidence: High
-- Status: Confirmed test hygiene issue
-- Evidence: A root workspace was added at `Cargo.toml:1-12`, which causes `cargo test` and `cargo audit` from the repo root to create `target/`. `.gitignore` only ignores `judge-worker-rs/target/` and `rate-limiter-rs/target/` under its Rust section (`.gitignore:68-70`), while `git status --short --untracked-files=all` now reports root `target/...` artifacts and `code-similarity-rs/target/`. `.dockerignore` was updated for several target paths and `._*` (`.dockerignore:15-20`), but source-control hygiene remains uncovered.
-- Failure scenario: Repository-wide searches, review inventories, and accidental commits get polluted by generated Rust dependency files. This already happened during this review when an unrestricted `rg` matched thousands of `target/debug/deps/*.d` paths before narrowing to source roots.
-- Suggested fix/test: Ignore `/target/`, `code-similarity-rs/target/`, and macOS `._*` artifacts in `.gitignore`. Add a lightweight hygiene check that fails if `git status --porcelain --untracked-files=all` contains known build-artifact directories after the configured gates.
-
-## Final Missed-Issues Sweep
-
-- Rechecked all configured test layers: unit coverage, component, integration, harness, Playwright, Rust crate tests, cargo audit, npm audit, Dockerfile checks, compose validation, script syntax checks, backup verification, DB push/seed/language sync, and full Playwright.
-- Searched for stale status strings, skipped tests, source-grep-only tests, route handlers with no route-level tests, output truncation paths, manual problem lifecycle, worker counter drift, and generated-artifact pollution.
-- Verified adjacent tests before filing each gap so findings are not just "no test exists" claims; the cited tests either miss the behavior, mock it away, or assert only source shape.
-- Did not run the full gate suite because this prompt explicitly requested review only and no implementation.
+- Checked for missing tests on changed validation limits, backup ZIP limits, plugin secret encryption, compiler fallback permissions, trusted-host production branches, problem import mapping, and Playwright smoke selection.
+- Checked for brittle/source-grep tests. The highest-risk examples are compiler workspace permissions and export plugin encryption.
+- Checked quality gates against configured scripts and repo rules. E2E and Bash syntax checking are not represented in CI despite `test:e2e` and `lint:bash` existing and the current dirty tree touching Playwright/deploy code.
+- No fixes were implemented and no tests were run; this is a static review of the current dirty repository.

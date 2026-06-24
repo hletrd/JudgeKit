@@ -114,7 +114,7 @@ export default defineConfig({
             : {}),
         },
         reuseExistingServer: false,
-        timeout: 180_000,
+        timeout: 600_000,
         url: localServerUrl,
       },
 });

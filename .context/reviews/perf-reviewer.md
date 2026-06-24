@@ -1,198 +1,201 @@
 # perf-reviewer Review - Cycle 2
 
-Scope: performance, concurrency, CPU/memory pressure, database access paths, Docker/build cost, and UI responsiveness. I reviewed the current repository state including the dirty worktree and did not implement fixes.
+Date: 2026-06-23
+
+Scope: performance, concurrency, CPU/memory pressure, database query shape, Docker and judge throughput, and UI responsiveness for `/Users/hletrd/flash-shared/judgekit`. The worktree was intentionally dirty from cycle 1; this pass did not revert or modify source files.
 
 ## Inventory
 
-Review-relevant inventory was built with `rg --files`, `git status --short`, `git diff --name-only`, targeted `rg`, and line reads. The source inventory contains about 1,457 files across `src/`, `judge-worker-rs/`, `code-similarity-rs/`, `rate-limiter-rs/`, `scripts/`, `docker/`, `tests/`, `docs/`, and `drizzle/`, excluding generated `target/`, `.next/`, and dependency folders.
+I first built a review inventory with `rg --files`, `find`, `git status --short`, targeted `rg`, and line-numbered reads. The relevant source inventory contains 1,935 tracked/untracked paths visible to ripgrep, including:
 
-Examined areas:
-
-- API hot paths: judge claim/report/heartbeat, submission create/detail/SSE/queue-status/rejudge, contests stats/analytics/leaderboard, Docker image management, compiler runner.
-- Database/query layer: PostgreSQL schema/indexes, raw claim SQL, assignment/contest aggregation helpers, progress filters, sitemap DB reads, migration/deploy behavior.
-- Rust worker: polling loop, claim concurrency, Docker execution, output capture, result reporting, runner sidecar, Docker admin endpoints.
-- Frontend/UI responsiveness: submission detail polling/diff rendering, problem/practice filters, problem editor, assignment/contest status boards, quick stats polling.
-- Docker/build/deploy: app/worker Dockerfiles, `.dockerignore`, `docker-compose*.yml`, `deploy-docker.sh`, admin build API, Rust runner Docker build endpoint.
-- Tests/docs cross-check: component/e2e coverage, judge-worker docs, deploy/operator docs, repo rules in `AGENTS.md`, `CLAUDE.md`, and `.context/`.
+- API hot paths: 113 `src/app/api/**/route.ts` files, especially judge claim/report, submissions, contest stats, anti-cheat, admin Docker, backup/import/export, files, and compiler routes.
+- UI paths: 277 app/page/component TypeScript/TSX files under `src/app`, plus submission polling/SSE, contest widgets, status boards, problem/practice listing, diff rendering, admin language/image UI, and exam anti-cheat monitors.
+- Query/data layer: `src/lib/db/schema.pg.ts`, query helpers, assignment/contest aggregation helpers, problem-set/public list helpers, realtime coordination, retention, export/import, Docker client, validators, and judge helper modules.
+- Worker/runtime: `judge-worker-rs/src/{api,config,docker,executor,languages,main,runner,types,validation}.rs`, `code-similarity-rs/src/**`, `rate-limiter-rs/src/**`, worker manifests, and Dockerfiles.
+- Docker/deploy: `deploy-docker.sh`, `deploy.sh`, `docker-compose*.yml`, `.dockerignore`, `Dockerfile*`, and `docker/Dockerfile.judge-*`.
+- Tests/docs used as interaction cross-checks: `tests/**`, `docs/**`, `drizzle/pg/**`, and existing `.context/reviews/**` provenance. Generated/dependency output (`node_modules`, `.next`, `target`, caches) was skipped except for ignore/deploy implications.
 
 ## Findings
 
-### PERF2-01 - Judge output is bounded too late and still permits large worker/app memory spikes
+### PERF2-01 - Queue claim and queue-position queries lack covering queue indexes
 
 - Severity: High
 - Confidence: High
 - Status: Confirmed
-- Evidence:
-  - `judge-worker-rs/src/docker.rs:352-362` defaults `JUDGE_MAX_OUTPUT_BYTES` to 128 MiB per stream.
-  - `judge-worker-rs/src/docker.rs:370-401` reads stdout into a `Vec<u8>` and stderr into a `String` up to that cap before draining the rest.
-  - `judge-worker-rs/src/executor.rs:78-90` converts full captured stdout into the per-test report for non-runtime-error verdicts.
-  - `judge-worker-rs/src/executor.rs:599-618` stores that output in every `TestResult`; IOI/run-all cases can accumulate one such string per test.
-  - `src/app/api/v1/judge/poll/route.ts:34-46` parses and validates the whole JSON report before any truncation.
-  - `src/lib/validators/api.ts:27-45` has no `.max()` bound for `actualOutput`, `compileOutput`, or result count.
-  - `src/lib/judge/verdict.ts:16-28` and `src/lib/judge/verdict.ts:86-102` truncate before DB insertion, but only after the app has already received and parsed the large payload.
-- Concrete failure scenario: a malicious or buggy submission prints 128 MiB on stdout and stderr for each visible test. With `JUDGE_CONCURRENCY` allowed up to 16, the worker can allocate multiple gigabytes in captured buffers and report strings; then the Next.js route must parse a very large JSON payload only to truncate it afterward. The database is protected by the 16 KiB truncation, but the worker and app request path are still exposed to OOM and long GC pauses.
-- Suggested fix: add a much smaller report cap in the worker, separate from the execution drain cap. Send only bounded diagnostic snippets, plus `stdoutTruncated`/`stderrTruncated` flags, and align the app schema with `.max()` bounds and a max result count. Keep full-output comparison internal to the worker if needed, but never serialize 128 MiB per stream into the status report.
+- Location: `src/lib/judge/claim-query.ts:38-52`, `src/lib/judge/claim-query.ts:133-147`, `src/app/api/v1/submissions/[id]/queue-status/route.ts:40-51`, `src/app/api/v1/submissions/route.ts:373-379`, `src/lib/db/schema.pg.ts:500-513`
+- Evidence: worker claim scans `pending` plus stale `queued`/`judging`, joins `problems`, orders by `submitted_at, id`, and uses `FOR UPDATE SKIP LOCKED`. Queue-status and submission-create global queue checks count `pending`/`queued` rows. The schema has separate `status`, `submitted_at`, `assignment`, and `judge_worker` indexes, but no partial/composite index matching the queue scan order, the stale-claim predicate, or the queue count.
+- Concrete failure scenario: at a deadline rush, hundreds or thousands of submissions enter `pending` while workers poll and students keep live result pages open. PostgreSQL can use single-column indexes, but it still has to filter/sort/count more rows than a queue-shaped index would require. Queue pickup latency and DB CPU rise exactly when workers should be claiming quickly.
+- Suggested fix: add partial composite indexes for the hot queue paths, for example `(status, submitted_at, id) WHERE status IN ('pending','queued')`, plus a stale-claim index that includes `judge_claimed_at` for `queued`/`judging`. Consider a partial count-friendly active queue index for the global queue limit. Validate with `EXPLAIN (ANALYZE, BUFFERS)` on production-scale row counts.
 
-### PERF2-02 - Queue claim and queue-position queries lack composite queue indexes
-
-- Severity: High
-- Confidence: High
-- Status: Confirmed
-- Evidence:
-  - Claim SQL filters `pending` or stale `queued`/`judging` rows and orders by `submitted_at, id`: `src/lib/judge/claim-query.ts:38-52` and `src/lib/judge/claim-query.ts:133-147`.
-  - Queue status counts older pending/queued submissions: `src/app/api/v1/submissions/[id]/queue-status/route.ts:40-51`.
-  - The submission detail page polls queue status every 5 s while live: `src/components/submissions/submission-detail-client.tsx:115-182`.
-  - Current indexes are single-column/non-covering for these access patterns: `src/lib/db/schema.pg.ts:500-513`.
-- Concrete failure scenario: during a contest, thousands of submissions are pending while many workers poll and many students keep live submission pages open. PostgreSQL can use `submissions_status_idx` and `submissions_submitted_at_idx` separately, but still has to filter/sort/count more rows than a purpose-built queue index would require. Queue pickup latency and status-polling DB CPU rise with queue depth.
-- Suggested fix: add partial/composite indexes for the hot paths, for example `(status, submitted_at, id) WHERE status IN ('pending','queued')` for queue scans and a stale-claim index that includes `judge_claimed_at` for `queued`/`judging` reclaim checks. Verify with `EXPLAIN (ANALYZE, BUFFERS)` on production-scale row counts.
-
-### PERF2-03 - Submission creation scans all historical submissions for the user inside the transaction
+### PERF2-02 - Submission creation scans full per-user history while holding the advisory lock
 
 - Severity: Medium
 - Confidence: High
 - Status: Confirmed
-- Evidence:
-  - `src/app/api/v1/submissions/route.ts:345-358` takes a per-user advisory transaction lock, then computes `recentCount` and `pendingCount` with `SUM(CASE ...)` over all rows where `user_id = user.id`.
-  - The recent one-minute predicate is inside the aggregate expression, not the `WHERE` clause, so the query must consider every historical submission for that user.
-  - The same transaction also counts the global pending queue at `src/app/api/v1/submissions/route.ts:373-379`.
-  - Existing indexes include `submissions_user_idx` and `submissions_user_problem_idx`, but no `(user_id, submitted_at)` or partial per-user active-status index: `src/lib/db/schema.pg.ts:500-513`.
-- Concrete failure scenario: a candidate with thousands of historical attempts submits during a high-traffic contest. Every submit scans that user's whole submission history while holding the advisory lock, increasing submit latency and extending the locked section that serializes that user's concurrent submissions.
-- Suggested fix: split this into indexed queries with predicates in `WHERE`: one `COUNT(*) WHERE user_id = ? AND submitted_at > ?`, one `COUNT(*) WHERE user_id = ? AND status IN (...)`, backed by `(user_id, submitted_at)` and a partial `(user_id, status)` active-submission index. The global queue count can reuse the queue index from PERF2-02.
+- Location: `src/app/api/v1/submissions/route.ts:345-358`, `src/app/api/v1/submissions/route.ts:373-379`, `src/lib/db/schema.pg.ts:500-513`
+- Evidence: the create route enters a transaction, takes a per-user `pg_advisory_xact_lock`, then computes `recentCount` and `pendingCount` with `SUM(CASE ...)` over all rows for that user. The one-minute predicate is inside the aggregate rather than in `WHERE`, and the schema lacks `(user_id, submitted_at)` or partial per-user active-status indexes.
+- Concrete failure scenario: a student with thousands of historical attempts submits during the last minute of a contest. Every attempt scans that student's full history inside the serialized lock section, so browser retries or double-clicks wait longer and any concurrent submission by that user is blocked for unnecessary DB work.
+- Suggested fix: split the aggregate into targeted indexed counts: `COUNT(*) WHERE user_id = ? AND submitted_at > ?`, `COUNT(*) WHERE user_id = ? AND status IN (...)`, plus the global queue count backed by the queue index from PERF2-01. Add `(user_id, submitted_at)` and a partial active-status index if row counts justify it.
 
-### PERF2-04 - Live submission fallback polling fetches full submission payloads repeatedly
+### PERF2-03 - Judge and playground execution still capture up to 128 MiB per stream before truncation
 
 - Severity: Medium
 - Confidence: High
 - Status: Confirmed
-- Evidence:
-  - SSE is attempted first, but fetch polling falls back to `/api/v1/submissions/:id` every 3 s: `src/hooks/use-submission-polling.ts:151-209` and `src/hooks/use-submission-polling.ts:248-285`.
-  - The REST detail route fetches the submission with user, problem, all results, test-case metadata, and default columns including `sourceCode`: `src/app/api/v1/submissions/[id]/route.ts:15-40`.
-  - Owners keep `sourceCode` after sanitization: `src/lib/submissions/visibility.ts:151-153`.
-  - The same page also polls the queue-status endpoint every 5 s while live: `src/components/submissions/submission-detail-client.tsx:115-182`.
-- Concrete failure scenario: if EventSource is blocked by a proxy or browser setting, each live submission tab fetches immutable source code plus result rows every 3 s, while also polling queue status. A classroom with many active tabs produces avoidable DB reads, JSON parse work, and client rerenders even though most fields do not change during judging.
-- Suggested fix: add a lightweight live-status endpoint or a `?lite=1` mode that omits `sourceCode`, stable problem/user fields, and hidden result payloads. The client already preserves previous `sourceCode`, so fallback polling can merge slim status updates and perform one terminal full fetch only when needed.
+- Location: `judge-worker-rs/src/docker.rs:352-400`, `judge-worker-rs/src/executor.rs:80-104`, `judge-worker-rs/src/executor.rs:472-480`, `judge-worker-rs/src/executor.rs:613-625`, `judge-worker-rs/src/config.rs:213-226`, `src/lib/compiler/execute.ts:18`, `src/lib/compiler/execute.ts:451-461`, `src/lib/validators/api.ts:5-6`, `src/lib/validators/api.ts:34-55`
+- Evidence: the app-side judge report validator now caps compile output/result diagnostics at 64 KiB and max 100 results, and the worker truncates reportable diagnostics to 16 KiB. However, the worker still reads up to `JUDGE_MAX_OUTPUT_BYTES`, default 128 MiB, for stdout and stderr before building the small report. The local compiler fallback uses the same 128 MiB cap per stdout/stderr string.
+- Concrete failure scenario: a malicious or buggy solution prints until the cap on several concurrent jobs. With `JUDGE_CONCURRENCY` allowed up to 16, worst-case capture memory can reach roughly `128 MiB * 2 streams * active jobs`, before container/runtime overhead and report objects. The final report is small, but the worker or local playground process can stall or OOM first.
+- Suggested fix: separate the comparison/drain cap from the diagnostic capture cap. Keep draining to avoid EPIPE, but only retain a small head/tail sample needed for verdict display. For exact-output comparison, stream through the comparator or cap retained bytes to the maximum expected-output budget. Lower the default `JUDGE_MAX_OUTPUT_BYTES` or make output-limit verdicts trigger far earlier for retained buffers.
 
-### PERF2-05 - Problem/practice progress filters load the full catalog into memory
+### PERF2-04 - Claimed worker capacity is consumed before post-claim DB reads and harness assembly
 
 - Severity: Medium
-- Confidence: High
-- Status: Confirmed
-- Evidence:
-  - Problems page progress-filter path fetches all matching problem IDs: `src/app/(public)/problems/page.tsx:356-365`.
-  - It then fetches all of the user's submissions for those IDs and filters/slices in JavaScript: `src/app/(public)/problems/page.tsx:366-405`.
-  - Practice page has the same shape and explicitly notes the 10k+ problem concern: `src/app/(public)/practice/page.tsx:423-446`.
-  - Practice then computes `matchingIds` in memory before pagination: `src/app/(public)/practice/page.tsx:454-465`.
-- Concrete failure scenario: a user selects "unsolved" on a large public catalog. The server loads every matching problem ID and a large `IN (...)` submission query before slicing one page. This adds DB CPU, network transfer, and Node heap use proportional to total catalog size rather than page size.
-- Suggested fix: push progress filtering into SQL with `EXISTS`/anti-join or a CTE that computes solved/attempted status per problem for the current user, then apply `ORDER BY`, `LIMIT`, and `OFFSET` in the database. Avoid building large `IN` lists in the request path.
-
-### PERF2-06 - Wrong-answer diff remains quadratic on the browser main thread
-
-- Severity: Medium
-- Confidence: High
-- Status: Confirmed
-- Evidence:
-  - `src/lib/diff.ts:26-41` allocates an `(m + 1) * (n + 1)` LCS table.
-  - `src/lib/diff.ts:74-78` splits full expected/actual strings and computes the LCS synchronously.
-  - `src/components/submissions/output-diff-view.tsx:13-16` runs the diff in `useMemo` during render.
-- Concrete failure scenario: an instructor exposes a visible test with thousands of expected lines and a student prints thousands of different lines. Opening the submission tries to allocate and fill a huge DP matrix in the tab, freezing the UI before the user can switch views or navigate away.
-- Suggested fix: add byte/line-count guards before diffing. For large outputs, render truncated raw expected/actual text and skip LCS, or use a capped/windowed diff in a Web Worker. Add a component/unit test that proves large output does not enter the quadratic path.
-
-### PERF2-07 - Assignment and contest status boards build/render the full student x problem matrix
-
-- Severity: Medium
-- Confidence: High
-- Status: Confirmed
-- Evidence:
-  - `getAssignmentStatusRows` fetches all assignment problems and enrolled students: `src/lib/assignments/submissions.ts:636-659`.
-  - It aggregates all terminal submissions for the assignment in one raw query: `src/lib/assignments/submissions.ts:691-731`.
-  - It assembles every enrolled-student x problem cell in memory: `src/lib/assignments/submissions.ts:781-832`.
-  - The desktop board renders all filtered rows and all problem cells: `src/app/(public)/groups/[id]/assignments/[assignmentId]/status-board.tsx:351-567`.
-  - The mobile representation maps the same `filteredRows` again: `src/app/(public)/groups/[id]/assignments/[assignmentId]/status-board.tsx:569-607`.
-- Concrete failure scenario: a contest with 2,000 participants and 12 problems produces 24,000 per-problem cell objects server-side and a very large table/client tree. Searching or changing filters still starts from the full in-memory matrix, so the first page load and hydration cost grow with the entire roster.
-- Suggested fix: split summary stats from row data, add server-side pagination/search/status filtering, and render only the active page. For large desktop tables, use virtualization or a paged API; avoid rendering the mobile and desktop full representations from the same full dataset.
-
-### PERF2-08 - Contest quick stats polling recomputes uncached aggregates
-
-- Severity: Medium
-- Confidence: High
-- Status: Confirmed
-- Evidence:
-  - `ContestQuickStats` defaults to a 15 s refresh interval: `src/components/contest/contest-quick-stats.tsx:31-36`.
-  - It polls `/api/v1/contests/:assignmentId/stats` through visibility polling: `src/components/contest/contest-quick-stats.tsx:49-85`.
-  - The stats route recomputes participants, per-user best scores, totals, averages, and solved-problem counts on every request: `src/app/api/v1/contests/[assignmentId]/stats/route.ts:99-140`.
-- Concrete failure scenario: several admins keep the management page open during a large contest. Every browser triggers the same aggregate scan every 15 s, duplicating work that competes with judge report writes and leaderboard reads.
-- Suggested fix: cache stats per assignment with the same stale-while-revalidate approach used by the analytics path, and invalidate on judge report completion where leaderboard caches are already invalidated. Alternatively derive quick stats from the cached leaderboard/status data.
-
-### PERF2-09 - Remote Docker image build API is synchronous with a 30 s app timeout
-
-- Severity: Medium
-- Confidence: High
-- Status: Confirmed
-- Evidence:
-  - Admin build route waits for `buildDockerImage` before responding: `src/app/api/v1/admin/docker/images/build/route.ts:61-82`.
-  - Worker-backed JSON calls time out after 30 s: `src/lib/docker/client.ts:104-117`.
-  - Remote image build uses that helper: `src/lib/docker/client.ts:419-448`.
-  - The Rust runner runs `docker build` and returns the combined build log synchronously: `judge-worker-rs/src/runner.rs:313-333` and `judge-worker-rs/src/runner.rs:590-620`.
-  - The local build path uses a 600 s timeout and bounded head/tail logs, which is much closer to real language image build cost: `src/lib/docker/client.ts:248-300`.
-- Concrete failure scenario: an admin clicks Build for a heavy language image on a split app/worker deployment. The app aborts after 30 s and reports failure while the worker-side Docker build may continue consuming CPU, disk, and network. Retrying from the UI can start duplicate expensive builds and worsen disk pressure.
-- Suggested fix: make builds asynchronous jobs with build IDs, status polling, cancellation, and bounded logs. As an interim fix, use a build-specific timeout consistent with the local 600 s path and cap logs in the Rust runner as well.
-
-### PERF2-10 - Sitemap generation accumulates all rows and locale-expands them in memory
-
-- Severity: Low
-- Confidence: High
-- Status: Confirmed
-- Evidence:
-  - `src/app/sitemap.ts:21-34` fetches all batches into one array.
-  - It concurrently fetches all public problems, public contests, and general discussion threads using offset pagination: `src/app/sitemap.ts:48-71`.
-  - It expands each route across every supported locale before returning: `src/app/sitemap.ts:73-94`.
-- Concrete failure scenario: as public problems and community threads grow, one sitemap request loads all IDs, pays increasingly expensive offset scans, and multiplies the result by locale count in memory. The route can exceed sitemap size limits or time out under crawler traffic.
-- Suggested fix: split into sitemap index segments, use cursor/keyset pagination, cap each sitemap below the standard 50,000 URL limit, and cache or precompute entries where possible.
-
-### PERF2-11 - Local compiler fallback output cap counts JavaScript string length, not bytes
-
-- Severity: Low
-- Confidence: High
-- Status: Confirmed
-- Evidence:
-  - `src/lib/compiler/execute.ts:15-19` sets `MAX_OUTPUT_BYTES` to 128 MiB.
-  - The local Docker path stores stdout/stderr as strings: `src/lib/compiler/execute.ts:392-397`.
-  - Data handlers compare `stdout.length`/`stderr.length` with a byte constant and append `chunk.toString(...)`: `src/lib/compiler/execute.ts:441-450`.
-  - The final result slices strings by the same byte constant: `src/lib/compiler/execute.ts:482-484`.
-  - Local fallback is still reachable when the Rust runner is unavailable and fallback is allowed: `src/lib/compiler/execute.ts:624-648`.
-- Concrete failure scenario: a local fallback run prints multibyte output. The cap is intended to be bytes, but JavaScript string length is UTF-16 code units, so memory use can exceed the intended byte budget. Repeated string concatenation on large outputs also creates avoidable copying and GC churn.
-- Suggested fix: accumulate `Buffer` chunks with an explicit byte counter, truncate by bytes, and decode once at the end. Prefer the smaller report/output cap from PERF2-01.
-
-### PERF2-12 - Claim response performs several sequential DB reads after reserving a worker slot
-
-- Severity: Low
 - Confidence: Medium
-- Status: Confirmed
-- Evidence:
-  - The route authenticates, checks worker status, fetches DB time, then runs the atomic claim: `src/app/api/v1/judge/claim/route.ts:168-228`.
-  - After a row is claimed, it records an audit event and then fetches problem metadata, test cases, language config, and assignment scoring model in sequence: `src/app/api/v1/judge/claim/route.ts:268-356`.
-- Concrete failure scenario: with many very short submissions, the worker slot is already reserved and the submission is marked `queued`, but execution cannot start until multiple round trips complete. On a remote DB or during write contention, this serialized post-claim work becomes a measurable fraction of total job latency.
-- Suggested fix: parallelize independent post-claim reads with `Promise.all`, and consider returning stable problem/language fields from the claim query or caching language configs. Keep the claim transaction narrow, but avoid unnecessary serial dependency after the row is claimed.
+- Status: Likely
+- Location: `src/app/api/v1/judge/claim/route.ts:221-228`, `src/app/api/v1/judge/claim/route.ts:303-418`, `judge-worker-rs/src/main.rs:496-552`
+- Evidence: the worker acquires a semaphore permit before polling; the claim SQL then increments the worker's active task count. Only after that does the app fetch the problem, test cases, language config, assignment scoring model, and possibly assemble a function-judging harness before returning the job payload.
+- Concrete failure scenario: for short A+B style jobs at a deadline rush, a worker slot is marked active while the app performs several DB round trips and source assembly. The overhead is small per job, but with many tiny submissions it reduces effective judge throughput and makes active task counters include "preparing payload" time rather than only worker execution time.
+- Suggested fix: reduce post-claim work after the capacity bump. Options include including needed problem/language fields in the claim query, batching the independent reads with `Promise.all`, caching language config/test-case metadata briefly, or changing accounting so the worker slot is consumed only when the payload is ready. Preserve atomic claim/reclaim semantics when moving this work.
 
-### PERF2-13 - Problem editor dirty check stringifies large test cases on every render
+### PERF2-05 - Remote Docker image builds bypass runner concurrency and capture unbounded logs
 
 - Severity: Medium
 - Confidence: High
 - Status: Confirmed
-- Evidence:
-  - The problem editor accepts large test-case input/output loaded from files: `src/app/(public)/problems/create/create-problem-form.tsx:441-456`.
-  - The `isDirty` calculation serializes every current and initial test case body with `JSON.stringify` during render: `src/app/(public)/problems/create/create-problem-form.tsx:160-182`.
-  - Large textareas are collapsed in the UI after 5 KB, but the dirty check still serializes the full content: `src/app/(public)/problems/create/create-problem-form.tsx:44` and `src/app/(public)/problems/create/create-problem-form.tsx:1040-1085`.
-- Concrete failure scenario: an instructor edits a problem with many uploaded test cases, each hundreds of KB. Typing in the title or description still causes React to allocate and compare megabytes of JSON strings for unchanged test-case bodies, causing input jank and unnecessary memory churn.
-- Suggested fix: track dirty state incrementally when fields change, or memoize stable hashes/revision counters for large test cases. Avoid serializing full test-case bodies during unrelated renders.
+- Location: `judge-worker-rs/src/runner.rs:218-239`, `judge-worker-rs/src/runner.rs:313-333`, `judge-worker-rs/src/runner.rs:590-622`, `judge-worker-rs/src/runner.rs:720-732`, `src/lib/docker/client.ts:443-450`, `src/app/api/v1/admin/docker/images/build/route.ts:101-123`
+- Evidence: `/run` requests acquire the runner semaphore, but `/docker/build` does not. The Docker build path calls `Command::output()`, then returns `stdout + stderr` as one string. The app waits up to 600 seconds for the remote build and returns the logs in the HTTP response.
+- Concrete failure scenario: an admin starts multiple heavy language-image builds during a live exam, or double-clicks Build after a slow response. The builds can run concurrently outside the runner/judge semaphore, consume CPU, disk, network, and BuildKit cache, and allocate large build logs in the worker process.
+- Suggested fix: make Docker image builds asynchronous and single-flight per image tag. Gate them behind a dedicated build semaphore, cap logs with head/tail retention, stream logs to a file, and expose build status polling/cancel endpoints. Consider rejecting admin builds while judging load is above a threshold.
 
-## Final Missed-Issues Sweep
+### PERF2-06 - Function expected-output computation recompiles the reference solution for every test case
 
-- Rechecked Rust worker concurrency: `judge-worker-rs/src/main.rs` acquires a semaphore permit before polling and moves it into the spawned judge task, so the worker does not intentionally claim more jobs than configured.
-- Rechecked runner request size: `judge-worker-rs/src/runner.rs:27` and `judge-worker-rs/src/runner.rs:920-930` apply a 4 MiB body limit, so runner request payload size is not a separate finding.
-- Rechecked DB result storage: current `src/lib/judge/verdict.ts` truncates compile/output diagnostics before insertion, so the remaining high-severity issue is pre-truncation worker/app memory and network pressure, not unbounded DB text rows.
-- Rechecked Docker deploy cleanup: `.dockerignore` excludes heavy generated artifacts, and `deploy-docker.sh` uses disk guards/pruning without `docker system prune --volumes`; no new deploy-prune performance issue was found.
-- Rechecked Rust workspace changes: the new root Cargo workspace centralizes release profile settings for the Rust crates; I did not find a current build-regression finding there.
-- Rechecked previous server-side large-test-case sync concern: `src/lib/problem-management.ts:37-52` now hashes test-case content instead of using `JSON.stringify`, so I did not carry that older issue forward.
-- Rechecked analytics route behavior: contest analytics already has caching; the uncached path is specifically the quick stats endpoint in PERF2-08.
-- Rechecked tests for UI diff: component tests mock `OutputDiffView`, so large-output diff behavior is not covered; this is captured under PERF2-06 rather than as a separate runtime issue.
+- Severity: Medium
+- Confidence: High
+- Status: Confirmed
+- Location: `src/app/api/v1/problems/[id]/compute-expected/route.ts:21-27`, `src/app/api/v1/problems/[id]/compute-expected/route.ts:113-139`, `src/lib/compiler/execute.ts:763-819`
+- Evidence: the endpoint advertises that it runs the assembled reference solution against every test case using `executeCompilerRun`. It then loads all test cases, loops over `cases.entries()`, and awaits `executeCompilerRun` once per case. `executeCompilerRun` creates a fresh workspace and, when `compileCommand` is present, runs the compile Docker phase before the run phase on every invocation.
+- Concrete failure scenario: an author computes expected outputs for a function problem with a C++/Java/C# reference and 100 tests. The API request performs 100 compile containers plus 100 run containers for the same source, occupying the compiler runner for minutes and making the authoring UI look hung. On shared deployments this competes with playground runs and admin Docker operations even though one compile artifact would suffice.
+- Suggested fix: compile once per reference solution and run all cases against that artifact. Practical options are a batched function harness that reads all serialized inputs and emits one expected output per case, or a compiler-runner API that preserves the compiled workspace for N run inputs. Also cap test-case count/output for this synchronous endpoint or move large computations to an async job with progress polling.
+
+### PERF2-07 - Live submission fallback polling repeatedly fetches full submission detail plus queue status
+
+- Severity: Medium
+- Confidence: High
+- Status: Confirmed
+- Location: `src/hooks/use-submission-polling.ts:151-209`, `src/hooks/use-submission-polling.ts:248-285`, `src/app/api/v1/submissions/[id]/route.ts:15-40`, `src/lib/submissions/visibility.ts:103-140`, `src/components/submissions/submission-detail-client.tsx:115-182`, `src/app/api/v1/submissions/[id]/queue-status/route.ts:40-67`
+- Evidence: SSE is attempted first, but fallback polling fetches `/api/v1/submissions/:id` every 3 seconds. The detail route loads user, problem, results, test-case metadata, and default submission columns including owner-visible `sourceCode`. The same page separately polls `/queue-status` every 5 seconds while the submission is live.
+- Concrete failure scenario: EventSource is blocked by a classroom proxy or intermittently fails. Each active result tab repeatedly transfers immutable source code and relational result data, while also issuing queue count/progress requests. During deadline rush this creates avoidable DB reads, JSON parsing, and React state churn.
+- Suggested fix: add a lightweight live-status endpoint or `?lite=1` mode that omits `sourceCode`, stable problem/user fields, and full result payloads until terminal status. Merge queue position and grading progress into the same live-status response. Do one terminal full-detail fetch.
+
+### PERF2-08 - Problem and practice progress filters materialize whole catalogs before pagination
+
+- Severity: Medium
+- Confidence: High
+- Status: Confirmed
+- Location: `src/app/(public)/problems/page.tsx:356-405`, `src/app/(public)/practice/page.tsx:423-466`
+- Evidence: when a solved/attempted/unsolved filter is active, both pages fetch all matching problem IDs, fetch all of the current user's submissions for those IDs, compute progress in JavaScript, and only then slice the requested page.
+- Concrete failure scenario: with a 10k+ public catalog, a user selects "unsolved" during class. The server builds a large `IN (...)` list, pulls many submission rows, and allocates maps/lists proportional to the whole catalog instead of the page size.
+- Suggested fix: push progress filtering into SQL with `EXISTS`/anti-joins or a CTE that derives solved/attempted status for the current user. Apply `ORDER BY`, `LIMIT`, and `OFFSET` after the progress predicate in the database.
+
+### PERF2-09 - Assignment and contest status boards build and render the full student-by-problem matrix
+
+- Severity: Medium
+- Confidence: High
+- Status: Confirmed
+- Location: `src/lib/assignments/submissions.ts:636-659`, `src/lib/assignments/submissions.ts:691-740`, `src/lib/assignments/submissions.ts:782-844`, `src/app/(public)/groups/[id]/assignments/[assignmentId]/status-board.tsx:351-607`
+- Evidence: the server fetches all assignment problems and all enrolled students, aggregates all terminal submissions, and builds every enrolled-student x problem cell in memory. The UI renders the full desktop table and maps the same filtered rows again for the mobile card representation.
+- Concrete failure scenario: a contest with 2,000 participants and 12 problems creates 24,000 per-problem cell objects plus a large React tree. Staff opening the board near the deadline pay the cost before any search/filter interaction, and mobile users still pay for the same full data shape.
+- Suggested fix: split summary stats from row data, add server-side pagination/search/status filters, and render one page/window at a time. For the desktop matrix, use virtualization or a paged problem-column view for large contests.
+
+### PERF2-10 - Contest quick stats polling recomputes aggregate submission CTEs every 15 seconds
+
+- Severity: Medium
+- Confidence: High
+- Status: Confirmed
+- Location: `src/components/contest/contest-quick-stats.tsx:31-36`, `src/components/contest/contest-quick-stats.tsx:49-85`, `src/app/api/v1/contests/[assignmentId]/stats/route.ts:92-140`, `src/lib/assignments/contest-scoring.ts:49-190`
+- Evidence: `ContestQuickStats` defaults to 15-second polling. Each stats request recomputes participant count, per-user best scores, totals, averages, and solved-problem counts from submissions/enrollments. The leaderboard path already has a stale-while-revalidate cache, but quick stats does not reuse it.
+- Concrete failure scenario: several staff keep the contest management page open during a live contest. The same aggregate scan repeats every 15 seconds per browser and competes with judge finalization writes, queue claims, and leaderboard reads.
+- Suggested fix: cache quick stats per assignment with the same stale-while-revalidate pattern as contest rankings, invalidating on judge finalization, rejudge, and score override. Alternatively derive quick stats from the cached leaderboard/status data.
+
+### PERF2-11 - Browser output diff is quadratic on the main thread
+
+- Severity: Medium
+- Confidence: High
+- Status: Confirmed
+- Location: `src/lib/diff.ts:26-41`, `src/lib/diff.ts:74-78`, `src/components/submissions/output-diff-view.tsx:13-16`, `src/components/submissions/output-diff-view.tsx:41-63`, `src/components/submissions/output-diff-view.tsx:80-132`
+- Evidence: `computeDiff` synchronously builds an `(m + 1) * (n + 1)` LCS table in render-time `useMemo`, and both unified and side-by-side views render all diff rows.
+- Concrete failure scenario: a visible wrong-answer test contains thousands of expected and actual lines. Opening the submission blocks the browser main thread while filling the DP table, then renders thousands of rows, making navigation and tab switching unresponsive.
+- Suggested fix: guard by byte and line count before diffing. For large outputs, show bounded raw excerpts and skip LCS, or run a capped/windowed diff in a Web Worker with row virtualization.
+
+### PERF2-12 - Similarity checks load and serialize all best source code before enforcing fallback limits
+
+- Severity: Medium
+- Confidence: High
+- Status: Confirmed
+- Location: `src/app/api/v1/contests/[assignmentId]/similarity-check/route.ts:27-49`, `src/lib/assignments/code-similarity.ts:329-339`, `src/lib/assignments/code-similarity.ts:354-390`, `src/lib/assignments/code-similarity-client.ts:45-54`, `src/lib/assignments/code-similarity.ts:441-454`
+- Evidence: the checker first selects best `source_code` for every `(user, problem, language)` bucket. It sends the full row array to the Rust sidecar with `JSON.stringify` before the TypeScript fallback's `MAX_SUBMISSIONS_FOR_SIMILARITY` guard runs. The route also has no per-assignment single-flight lock, so concurrent admin requests can run the same expensive check simultaneously; the delete/insert write is atomic, but the compute work is duplicated.
+- Concrete failure scenario: two instructors click "run similarity check" on a large contest near deadline. The app loads all best source rows twice, serializes two large JSON bodies, and the sidecar or TypeScript fallback does duplicated pairwise work while the main app handles live contest traffic.
+- Suggested fix: add an advisory/single-flight lock per assignment and return the in-progress/latest result to duplicate callers. Preflight with counts and total source bytes before loading `source_code`; enforce limits before sidecar serialization. Consider an async job model for large contests.
+
+### PERF2-13 - Shared SSE poll timer can overlap ticks under slow DB responses
+
+- Severity: Medium
+- Confidence: Medium
+- Status: Risk
+- Location: `src/app/api/v1/submissions/[id]/events/route.ts:180-216`, `src/app/api/v1/submissions/[id]/events/route.ts:223-253`
+- Evidence: active SSE connections share one in-process `setInterval` that calls `void sharedPollTick()`. There is no `isPolling` guard or self-scheduling wait. If one tick is still awaiting the batched DB query when the next interval fires, another tick can start against the same subscriber map.
+- Concrete failure scenario: the database stalls for longer than the configured poll interval during a deadline rush. Overlapping ticks query the same active submission IDs and invoke callbacks redundantly, amplifying load and potentially sending duplicate status events.
+- Suggested fix: replace `setInterval` with a self-scheduling `setTimeout` after each tick completes, or add an `inFlight` guard with a missed-tick flag. Snapshot subscribers at tick start and avoid callback dispatch from concurrent ticks.
+
+### PERF2-14 - PostgreSQL realtime coordination serializes all SSE slot acquisition through one lock and prefix scans
+
+- Severity: Medium
+- Confidence: Medium
+- Status: Risk
+- Location: `src/lib/realtime/realtime-coordination.ts:73-139`, `src/lib/realtime/realtime-coordination.ts:146-202`, `src/lib/db/schema.pg.ts:660-670`
+- Evidence: shared SSE slot acquisition takes a single advisory lock key, deletes expired `realtime:sse:user:%` rows, and counts active global/user slots with prefix `LIKE`. The table schema has primary key `key` and an `expires_at` index, but no typed columns for connection kind or user ID.
+- Concrete failure scenario: after a network flap, many clients reconnect at once. Every SSE acquisition serializes behind `realtime:sse:acquire`; each lock holder runs cleanup/count queries with prefix predicates. This can delay legitimate live-result connections and add DB pressure during the same deadline-rush window.
+- Suggested fix: split `realtime_coordination` into structured columns such as `kind`, `user_id`, `connection_id`, `expires_at`, with indexes on `(kind, expires_at)` and `(kind, user_id, expires_at)`. Move cleanup out of the acquisition critical section or rate-limit it, and narrow locks to user-level or lockless insert/count semantics where possible.
+
+### PERF2-15 - Dynamic sitemap accumulates all rows and locale-expanded entries in memory
+
+- Severity: Low
+- Confidence: High
+- Status: Confirmed
+- Location: `src/app/sitemap.ts:21-34`, `src/app/sitemap.ts:48-71`, `src/app/sitemap.ts:73-94`
+- Evidence: `fetchAllInBatches` accumulates all public problems, contests, and general threads into arrays, then the returned sitemap expands every URL across all supported locales in one response.
+- Concrete failure scenario: as public problems/community threads grow, crawler hits to `/sitemap.xml` allocate arrays for all rows and all locale variants. Multiple crawler requests can add avoidable DB and heap pressure to the same app process serving users.
+- Suggested fix: shard sitemap generation by resource type/page (`/sitemap/problems/0.xml`, etc.), cache responses, and avoid offset pagination for very large tables by using cursor/keyset batches.
+
+### PERF2-16 - Instructor audit-log filtering materializes every scoped submission ID before pagination
+
+- Severity: Medium
+- Confidence: High
+- Status: Confirmed
+- Location: `src/app/api/v1/admin/audit-logs/route.ts:73-147`, `src/app/api/v1/admin/audit-logs/route.ts:187-190`, `src/app/api/v1/admin/audit-logs/route.ts:270-275`, `src/lib/db/schema.pg.ts:140-144`
+- Evidence: for non-admin instructors, the route fetches all owned group IDs, all assignment IDs for those groups, all submission IDs for those assignments, and all authored problem IDs, then constructs `resource_type/resource_id IN (...)` filters. It does this before both the count query and the paginated data query. The audit schema has separate `resource_type` and `created_at` indexes, but no composite `(resource_type, resource_id, created_at)` index to match the generated predicate/order.
+- Concrete failure scenario: an instructor with several large contests opens audit logs after a semester. The app pulls tens or hundreds of thousands of submission IDs into memory, generates a huge `IN` list, then asks PostgreSQL to count and page audit rows through predicates that are not covered by the current indexes. CSV export hits the same scope-building path before applying its row cap.
+- Suggested fix: avoid pre-materializing submission IDs. Filter audit events with `EXISTS`/joins against assignments/enrollments/groups by `resource_type`, or denormalize `group_id`/`assignment_id` onto audit events that need instructor scoping. Add a composite index on `(resource_type, resource_id, created_at DESC, id DESC)` or narrower partial indexes for high-volume resource types, and apply date filters before any fallback ID materialization.
+
+### PERF2-17 - Backup-with-files is named as streaming but buffers the database, every upload, and final ZIP
+
+- Severity: Low
+- Confidence: High
+- Status: Confirmed
+- Location: `src/lib/db/export-with-files.ts:162-249`, `src/lib/files/storage.ts:40-42`, `src/lib/db/export-with-files.ts:267-340`, `src/app/api/v1/admin/backup/route.ts:90-100`
+- Evidence: `streamBackupWithFiles` reads the streaming database export into chunks, concatenates and parses it, reads every uploaded file into a `Buffer`, adds all files to JSZip, then `generateAsync({ type: "uint8array" })` builds the complete archive before returning a one-chunk `ReadableStream`. Restore parsing similarly loads all ZIP uploads into memory before writing.
+- Concrete failure scenario: an admin runs a full backup with uploads during a live contest. A large database export plus uploaded files and compressed ZIP bytes coexist in the Node heap, competing with API requests and judge report processing.
+- Suggested fix: use a true streaming ZIP writer or spool the archive to a temp file outside the Node heap. For restore, stage uploads to temp files while validating manifest hashes instead of keeping all upload buffers in memory.
+
+## Final Sweep
+
+- Verified that the stale cycle-1 issue about unbounded judge report payloads has been partly fixed: `src/lib/validators/api.ts:5-6` and `src/lib/validators/api.ts:34-55` cap reported diagnostics/results, while `judge-worker-rs/src/executor.rs:80-104` truncates reportable diagnostics. PERF2-03 is therefore scoped to internal capture memory, not DB/report storage.
+- Reviewed generic client polling. `src/hooks/use-visibility-polling.ts:56-66` uses recursive timers instead of interval catch-up, and major callers abort in-flight requests before starting a new one; I did not raise a broad client-polling overlap finding. The remaining overlap risk is the server-side shared SSE timer in PERF2-13.
+- Reviewed anti-cheat timeline polling and heartbeat-gap detection. `src/app/api/v1/contests/[assignmentId]/anti-cheat/route.ts:304-325` makes the gap scan opt-in, user-scoped, and capped at 5000 rows; `src/components/contest/participant-anti-cheat-timeline.tsx:86-161` aborts stale refreshes and dedupes page appends. No additional finding.
+- Reviewed worker polling loop. `judge-worker-rs/src/main.rs:496-552` acquires a semaphore permit before polling, reaps finished task handles, and releases the permit on empty polls. No worker-side overclaim finding beyond the app-side post-claim slot accounting in PERF2-04.
+- Reviewed data retention maintenance. `src/lib/data-retention-maintenance.ts:21-35` deletes in batches with delay and `src/lib/data-retention-maintenance.ts:146-150` runs independent tables concurrently; no deadline-hot-path finding.
+- Reviewed dirty deploy/test changes. `deploy-docker.sh` now fails closed on destructive Drizzle prompts, worker restart failure, and nginx config failure; `scripts/playwright-local-webserver.sh` skips rebuilds when a standalone build exists; `playwright.config.ts:72-117` remains intentionally serialized with a longer web-server timeout. I did not raise a separate test/build finding.
+
+## Summary
+
+I found 17 performance/concurrency issues: 1 High, 14 Medium, and 2 Low. The most deadline-sensitive items are the queue indexes, submission-create locked scans, live submission polling amplification, full status-board rendering, repeated function reference compilation, instructor audit-log scope materialization, and Docker build concurrency outside the runner limiter.

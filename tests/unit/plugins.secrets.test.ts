@@ -2,7 +2,9 @@ import { afterAll, beforeEach, describe, expect, it, vi } from "vitest";
 import {
   decryptPluginConfigForUse,
   decryptPluginSecret,
+  encryptPluginConfigSecrets,
   encryptPluginSecret,
+  isEncryptedPluginSecret,
   preparePluginConfigForStorage,
   redactPluginConfigForAudit,
   redactPluginConfigForRead,
@@ -30,11 +32,10 @@ afterAll(() => {
 });
 
 describe("plugin secret helpers", () => {
-  it("stores plugin secrets verbatim (plaintext policy) and preserves existing values on blank updates", () => {
-    // Plaintext storage policy (cycle 8): preparePluginConfigForStorage now
-    // keeps both legacy `enc:v1:` values and new plaintext values verbatim.
+  it("encrypts plugin secrets for storage and preserves existing values on blank updates", () => {
     // Blank inputs continue to fall back to whatever was stored previously
-    // so partial updates don't wipe other secrets.
+    // so partial updates don't wipe other secrets. Existing plaintext rows are
+    // encrypted opportunistically when the admin saves the form.
     const existingSecret = encryptPluginSecret("existing-openai-key");
 
     const prepared = preparePluginConfigForStorage(
@@ -54,8 +55,8 @@ describe("plugin secret helpers", () => {
 
     expect(prepared.openaiApiKey).toBe(existingSecret);
     expect(prepared.claudeApiKey).toBeNull();
-    // New writes go through verbatim (no encryption wrapper).
-    expect(prepared.geminiApiKey).toBe("new-gemini-key");
+    expect(isEncryptedPluginSecret(prepared.geminiApiKey)).toBe(true);
+    expect(decryptPluginSecret(prepared.geminiApiKey as string)).toBe("new-gemini-key");
   });
 
   it("rejects malformed enc:v1: payloads on the storage path (defense in depth)", () => {
@@ -89,6 +90,20 @@ describe("plugin secret helpers", () => {
       {}
     );
     expect(prepared.openaiApiKey).toBe(encrypted);
+  });
+
+  it("encrypts plaintext legacy config values for backup/export serialization", () => {
+    const encrypted = encryptPluginConfigSecrets("chat-widget", {
+      provider: "openai",
+      openaiApiKey: "plain-openai",
+      claudeApiKey: "",
+      assistantName: "Tutor",
+    });
+
+    expect(isEncryptedPluginSecret(encrypted.openaiApiKey)).toBe(true);
+    expect(decryptPluginSecret(encrypted.openaiApiKey as string)).toBe("plain-openai");
+    expect(encrypted.claudeApiKey).toBe("");
+    expect(encrypted.assistantName).toBe("Tutor");
   });
 
   it("redacts secrets for admin reads and restores them for runtime use", () => {
@@ -151,11 +166,10 @@ describe("plugin secret helpers", () => {
       expect(decryptPluginSecret(encrypted!)).toBe("my-secret");
     });
 
-    it("returns plaintext verbatim in production under the plaintext-storage policy", () => {
-      // Plaintext storage policy (cycle 8): plugin secrets are stored as-is
-      // in every environment, so decryptPluginSecret returns plaintext values
-      // unchanged rather than throwing. Callers can still opt into the strict
-      // mode by passing { allowPlaintextFallback: false }.
+    it("returns plaintext verbatim in production for legacy rows", () => {
+      // Legacy plaintext rows remain readable until the next plugin save or
+      // export path encrypts them. Callers can still opt into strict mode by
+      // passing { allowPlaintextFallback: false }.
       vi.stubEnv("NODE_ENV", "production");
       try {
         expect(decryptPluginSecret("plaintext-value")).toBe("plaintext-value");
@@ -195,11 +209,10 @@ describe("plugin secret helpers", () => {
       }
     });
 
-    it("decryptPluginConfigForUse passes plaintext through under the plaintext-storage policy", () => {
-      // Plaintext storage policy (cycle 8): runtime decryption returns
-      // plaintext values verbatim instead of clearing them. This is required
-      // so operator-typed API keys actually reach the upstream provider
-      // SDK without an additional encryption migration step.
+    it("decryptPluginConfigForUse passes plaintext through for legacy rows", () => {
+      // Runtime decryption returns legacy plaintext values verbatim instead of
+      // clearing them, so pre-migration API keys keep working until the next
+      // admin save encrypts the row.
       vi.stubEnv("NODE_ENV", "production");
       try {
         const storedConfig = {

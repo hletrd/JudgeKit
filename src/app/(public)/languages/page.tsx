@@ -13,6 +13,8 @@ import { auth } from "@/lib/auth";
 import { resolveCapabilities } from "@/lib/capabilities/cache";
 import { formatNumber } from "@/lib/formatting";
 
+export const dynamic = "force-dynamic";
+
 export async function generateMetadata(): Promise<Metadata> {
   const [tCommon, tShell, locale] = await Promise.all([
     getTranslations("common"),

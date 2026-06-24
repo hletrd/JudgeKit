@@ -7,8 +7,11 @@ describe("compiler execute implementation", () => {
     const source = readFileSync(join(process.cwd(), "src/lib/compiler/execute.ts"), "utf8");
 
     expect(source).toContain('"65534:65534"');
-    expect(source).toContain("await chmod(workspaceDir, 0o770);");
-    expect(source).toContain("await chmod(join(workspaceDir, sourceFileName), 0o644);");
+    expect(source).toContain("await chmod(workspaceDir, 0o700);");
+    expect(source).toContain("await chown(workspaceDir, SANDBOX_UID, SANDBOX_GID);");
+    expect(source).toContain("await chown(sourcePath, SANDBOX_UID, SANDBOX_GID);");
+    expect(source).toContain("await chmod(workspaceDir, 0o777);");
+    expect(source).toContain("await chmod(sourcePath, 0o666);");
   });
 
   it("keeps the legacy deploy path compatible with compiler workspace creation", () => {

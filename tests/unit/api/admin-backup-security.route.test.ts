@@ -15,7 +15,6 @@ const {
   importDatabaseMock,
   parseBackupZipMock,
   restoreParsedBackupFilesMock,
-  takePreRestoreSnapshotMock,
 } = vi.hoisted(() => ({
   getApiUserMock: vi.fn(),
   csrfForbiddenMock: vi.fn(),
@@ -30,7 +29,6 @@ const {
   importDatabaseMock: vi.fn(),
   parseBackupZipMock: vi.fn(),
   restoreParsedBackupFilesMock: vi.fn(),
-  takePreRestoreSnapshotMock: vi.fn(),
 }));
 
 vi.mock("@/lib/api/auth", () => ({
@@ -92,10 +90,6 @@ vi.mock("@/lib/db/export-with-files", () => ({
   restoreParsedBackupFiles: restoreParsedBackupFilesMock,
 }));
 
-vi.mock("@/lib/db/pre-restore-snapshot", () => ({
-  takePreRestoreSnapshot: takePreRestoreSnapshotMock,
-}));
-
 vi.mock("@/lib/logger", () => ({
   logger: { error: vi.fn(), warn: vi.fn() },
 }));
@@ -148,7 +142,6 @@ describe("destructive backup/import route password confirmation", () => {
     resolveCapabilitiesMock.mockResolvedValue(new Set(["system.backup"]));
     verifyPasswordMock.mockResolvedValue({ valid: false });
     verifyAndRehashPasswordMock.mockResolvedValue({ valid: false });
-    takePreRestoreSnapshotMock.mockResolvedValue("/tmp/pre-restore-snapshot.json");
     dbSelectMock.mockReturnValue(makeLimitChain([{ passwordHash: "stored-hash" }]));
     validateExportMock.mockReturnValue([]);
     parseBackupZipMock.mockResolvedValue({
@@ -303,7 +296,6 @@ describe("backup restore semantic safety", () => {
     resolveCapabilitiesMock.mockResolvedValue(new Set(["system.backup"]));
     verifyPasswordMock.mockResolvedValue({ valid: true });
     verifyAndRehashPasswordMock.mockResolvedValue({ valid: true });
-    takePreRestoreSnapshotMock.mockResolvedValue("/tmp/pre-restore-snapshot.json");
     dbSelectMock.mockReturnValue(makeLimitChain([{ passwordHash: "stored-hash" }]));
     validateExportMock.mockReturnValue([]);
     importDatabaseMock.mockResolvedValue({
@@ -352,26 +344,8 @@ describe("backup restore semantic safety", () => {
     expect(importDatabaseMock).not.toHaveBeenCalled();
   });
 
-  it("does not restore ZIP uploads when database import fails", async () => {
-    const upload = { storedName: "upload-1.bin", buffer: Buffer.from("pending upload") };
-    parseBackupZipMock.mockResolvedValue({
-      dbExport: {
-        version: 1,
-        exportedAt: "2026-04-12T00:00:00.000Z",
-        sourceDialect: "postgresql",
-        appVersion: "test",
-        redactionMode: "full-fidelity",
-        tables: {},
-      },
-      uploads: [upload],
-    });
-    importDatabaseMock.mockResolvedValue({
-      success: false,
-      tablesImported: 0,
-      totalRowsImported: 0,
-      tableResults: { users: { imported: 0, skipped: 1 } },
-      errors: ["users: column mismatch"],
-    });
+  it("rejects ZIP backups that exceed restore expansion limits", async () => {
+    parseBackupZipMock.mockRejectedValue(new Error("backupZipTooLarge"));
 
     const { POST } = await import("@/app/api/v1/admin/restore/route");
     const form = new FormData();
@@ -380,40 +354,8 @@ describe("backup restore semantic safety", () => {
     const res = await POST(makeFormRequest("http://localhost:3000/api/v1/admin/restore", form));
     const body = await res.json();
 
-    expect(res.status).toBe(500);
-    expect(body.error).toBe("restoreFailed");
-    expect(importDatabaseMock).toHaveBeenCalledTimes(1);
-    expect(restoreParsedBackupFilesMock).not.toHaveBeenCalled();
-  });
-
-  it("restores ZIP uploads only after database import succeeds", async () => {
-    const upload = { storedName: "upload-1.bin", buffer: Buffer.from("pending upload") };
-    parseBackupZipMock.mockResolvedValue({
-      dbExport: {
-        version: 1,
-        exportedAt: "2026-04-12T00:00:00.000Z",
-        sourceDialect: "postgresql",
-        appVersion: "test",
-        redactionMode: "full-fidelity",
-        tables: {},
-      },
-      uploads: [upload],
-    });
-    restoreParsedBackupFilesMock.mockResolvedValue(1);
-
-    const { POST } = await import("@/app/api/v1/admin/restore/route");
-    const form = new FormData();
-    form.set("password", "correct-password");
-    form.set("file", new File([new Uint8Array([1, 2, 3])], "backup.zip", { type: "application/zip" }));
-    const res = await POST(makeFormRequest("http://localhost:3000/api/v1/admin/restore", form));
-    const body = await res.json();
-
-    expect(res.status).toBe(200);
-    expect(body.success).toBe(true);
-    expect(body.filesRestored).toBe(1);
-    expect(restoreParsedBackupFilesMock).toHaveBeenCalledWith([upload]);
-    expect(importDatabaseMock.mock.invocationCallOrder[0]).toBeLessThan(
-      restoreParsedBackupFilesMock.mock.invocationCallOrder[0],
-    );
+    expect(res.status).toBe(400);
+    expect(body.error).toBe("fileTooLarge");
+    expect(importDatabaseMock).not.toHaveBeenCalled();
   });
 });

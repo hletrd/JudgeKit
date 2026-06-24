@@ -3,6 +3,7 @@ import { db } from "@/lib/db";
 import { realtimeCoordination } from "@/lib/db/schema";
 import { getDbNowUncached } from "@/lib/db-time";
 import { logger } from "@/lib/logger";
+import { escapeLikePattern } from "@/lib/db/like";
 
 let hasWarnedSingleInstanceOnly = false;
 const TRUE_VALUES = /^(1|true|yes|on)$/i;
@@ -57,8 +58,8 @@ function getSsePrefixPattern() {
   return `${SSE_KEY_PREFIX}%`;
 }
 
-function getSseUserPattern(userId: string) {
-  return `${SSE_KEY_PREFIX}${userId}:%`;
+export function getSseUserPattern(userId: string) {
+  return `${SSE_KEY_PREFIX}${escapeLikePattern(userId)}:%`;
 }
 
 function getHeartbeatPrefixPattern() {
@@ -100,11 +101,6 @@ export async function acquireSharedSseConnectionSlot({
   return withPgAdvisoryLock("realtime:sse:acquire", async (tx) => {
     const expiresAt = nowMs + timeoutMs + 30_000;
 
-    // LIKE pattern uses a module-level constant prefix (SSE_KEY_PREFIX)
-    // that cannot contain SQL wildcards (% or _), so escapeLikePattern()
-    // is not needed here. This diverges from other LIKE sites that use
-    // user-supplied search terms (e.g., recruiting-invitations.ts, audit-logs).
-    // See C11-2.
     await tx.delete(realtimeCoordination).where(
       and(
         sql`${realtimeCoordination.key} LIKE ${getSsePrefixPattern()} ESCAPE '\\'`,
@@ -112,8 +108,6 @@ export async function acquireSharedSseConnectionSlot({
       )
     );
 
-    // LIKE patterns use constant prefixes (SSE_KEY_PREFIX) that cannot contain
-    // SQL wildcards, so escapeLikePattern() is not needed. See comment above. C11-2.
     const [counts] = await tx
       .select({
         total: sql<number>`count(*)`,

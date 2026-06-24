@@ -30,6 +30,17 @@ interface BackupIntegrityManifest {
 }
 
 const BACKUP_MANIFEST_PATH = "backup-manifest.json";
+export const MAX_BACKUP_ZIP_ENTRIES = 10_000;
+export const MAX_BACKUP_ZIP_ENTRY_BYTES = 100 * 1024 * 1024;
+export const MAX_BACKUP_ZIP_DECOMPRESSED_BYTES = 512 * 1024 * 1024;
+
+export type LoadedZipEntry = {
+  name: string;
+  dir: boolean;
+  _data?: {
+    uncompressedSize?: number;
+  };
+};
 
 // Intentionally uses inline createHash rather than hashToken — this computes
 // an integrity checksum for backup verification, not a verification hash.
@@ -107,6 +118,34 @@ function parseBackupIntegrityManifest(raw: string): BackupIntegrityManifest {
   }
 
   return manifest as BackupIntegrityManifest;
+}
+
+function getDeclaredUncompressedSize(entry: LoadedZipEntry): number {
+  const size = entry._data?.uncompressedSize;
+  if (typeof size !== "number" || !Number.isSafeInteger(size) || size < 0) {
+    throw new Error("backupZipSizeUnknown");
+  }
+  return size;
+}
+
+export function enforceBackupZipSizeLimits(entries: LoadedZipEntry[]) {
+  if (entries.length > MAX_BACKUP_ZIP_ENTRIES) {
+    throw new Error("backupZipTooLarge");
+  }
+
+  let totalExpandedBytes = 0;
+  for (const entry of entries) {
+    if (entry.dir) continue;
+
+    const uncompressedSize = getDeclaredUncompressedSize(entry);
+    if (uncompressedSize > MAX_BACKUP_ZIP_ENTRY_BYTES) {
+      throw new Error("backupZipTooLarge");
+    }
+    totalExpandedBytes += uncompressedSize;
+    if (totalExpandedBytes > MAX_BACKUP_ZIP_DECOMPRESSED_BYTES) {
+      throw new Error("backupZipTooLarge");
+    }
+  }
 }
 
 /**
@@ -231,6 +270,7 @@ export async function parseBackupZip(zipBuffer: Buffer): Promise<{
 }> {
   const JSZip = (await import("jszip")).default;
   const zip = await JSZip.loadAsync(zipBuffer);
+  enforceBackupZipSizeLimits(Object.values(zip.files) as LoadedZipEntry[]);
 
   // 1. Extract database.json
   const dbEntry = zip.file("database.json");

@@ -134,7 +134,7 @@ export function ChangePasswordForm({ username }: { username: string }) {
         {passwordsMatch && (
           <p className="flex items-center gap-1 text-sm text-green-600 dark:text-green-400">
             <Check className="size-3.5" aria-hidden="true" />
-            Passwords match
+            {t("passwordsMatch")}
           </p>
         )}
         {passwordsMismatch && (

@@ -197,6 +197,14 @@ describe("export.ts sanitization", () => {
     expect(EXPORT_ALWAYS_REDACT_COLUMNS.plugins).toBeUndefined();
   });
 
+  it("full-fidelity exports encrypt plugin config secrets before serialization", () => {
+    const source = readFileSync(join(process.cwd(), EXPORT_PATH), "utf8");
+
+    expect(source).toContain("encryptPluginConfigSecrets");
+    expect(source).toContain('tableName === "plugins"');
+    expect(source).toContain('column === "config"');
+  });
+
   it("hcaptchaSecret column exists in the systemSettings schema table", () => {
     // Validate the column referenced in the redaction maps actually exists
     const columns = getSchemaColumnNames("systemSettings");

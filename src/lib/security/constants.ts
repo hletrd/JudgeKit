@@ -2,9 +2,10 @@ import type { SubmissionStatus, UserRole } from "@/types";
 import { DEFAULT_ROLE_LEVELS } from "@/lib/capabilities/defaults";
 import { getRoleLevel, isSuperAdminRole } from "@/lib/capabilities/cache";
 import { getConfiguredSettings } from "@/lib/system-settings-config";
+import { FIXED_MIN_PASSWORD_LENGTH } from "@/lib/security/password";
 
 export function getMinPasswordLength() {
-  return getConfiguredSettings().minPasswordLength;
+  return FIXED_MIN_PASSWORD_LENGTH;
 }
 export function getMaxSourceCodeSizeBytes() {
   return getConfiguredSettings().maxSourceCodeSizeBytes;

@@ -99,4 +99,12 @@ describe("realtime coordination guard", () => {
     expect(getUnsupportedRealtimeGuard("/api/v1/submissions/[id]/events")).toBeNull();
     expect(loggerWarnMock).toHaveBeenCalledTimes(1);
   });
+
+  it("escapes user IDs before embedding them in SSE LIKE patterns", async () => {
+    const { getSseUserPattern } = await import("@/lib/realtime/realtime-coordination");
+
+    expect(getSseUserPattern("user_100%\\id")).toBe(
+      "realtime:sse:user:user\\_100\\%\\\\id:%",
+    );
+  });
 });

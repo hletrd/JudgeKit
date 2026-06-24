@@ -101,4 +101,37 @@ describe("problemImportSchema", () => {
       "descriptionMarkdownOnly",
     );
   });
+
+  it("rejects imported test cases with empty expected output", () => {
+    const result = problemImportSchema.safeParse({
+      ...BASE_IMPORT,
+      problem: {
+        ...BASE_IMPORT.problem,
+        testCases: [{ input: "1\n", expectedOutput: "" }],
+      },
+    });
+
+    expect(result.success).toBe(false);
+    expect(result.error?.issues.map((issue) => issue.message)).toContain(
+      "testCaseOutputRequired",
+    );
+  });
+
+  it("rejects imported problems with more than 100 test cases", () => {
+    const result = problemImportSchema.safeParse({
+      ...BASE_IMPORT,
+      problem: {
+        ...BASE_IMPORT.problem,
+        testCases: Array.from({ length: 101 }, (_, index) => ({
+          input: `${index}\n`,
+          expectedOutput: `${index}\n`,
+        })),
+      },
+    });
+
+    expect(result.success).toBe(false);
+    expect(result.error?.issues.map((issue) => issue.message)).toContain(
+      "tooManyTestCases",
+    );
+  });
 });

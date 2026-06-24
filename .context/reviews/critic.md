@@ -1,187 +1,310 @@
-# Cycle 2 Critic Review
+# Critic Review - Review-Plan-Fix Cycle 2 Prompt 1
 
-Scope: whole-repository critique from product correctness, operator safety, security, test-gate, UX consistency, and maintainability perspectives. I reviewed the current dirty worktree and did not implement fixes.
+Scope: static, cross-file critique of the current dirty repository in `/Users/hletrd/flash-shared/judgekit` on 2026-06-23. I treated all uncommitted changes as intentional prior-cycle work, did not revert anything, and did not implement source fixes.
 
-## Inventory And Review Path
+Findings count: 9
 
-Instructions read:
+## Inventory
+
+I built the inventory from `git status --short`, `git diff --name-only`, `git diff --stat`, and the repo instructions. I then read the changed files and the files they interact with, including API callers, schema definitions, deployment compose files, tests, and docs. I did not sample within the changed surface.
+
+Review-relevant dirty runtime, docs, ops, and test files examined:
+
+- `deploy-docker.sh`
+- `docs/authentication.md`
+- `judge-worker-rs/src/executor.rs`
+- `judge-worker-rs/src/validation.rs`
+- `messages/en.json`
+- `messages/ko.json`
+- `playwright.config.ts`
+- `scripts/playwright-local-webserver.sh`
+- `src/app/(dashboard)/dashboard/admin/languages/language-config-table.tsx`
+- `src/app/(public)/languages/page.tsx`
+- `src/app/api/v1/admin/restore/route.ts`
+- `src/app/api/v1/auth/reset-password/route.ts`
+- `src/app/api/v1/problems/import/route.ts`
+- `src/app/change-password/change-password-form.tsx`
+- `src/lib/actions/public-signup.ts`
+- `src/lib/actions/user-management.ts`
+- `src/lib/auth/trusted-host.ts`
+- `src/lib/compiler/execute.ts`
+- `src/lib/db/export-with-files.ts`
+- `src/lib/db/export.ts`
+- `src/lib/docker/client.ts`
+- `src/lib/judge/sync-language-configs.ts`
+- `src/lib/plugins/secrets.ts`
+- `src/lib/problem-management.ts`
+- `src/lib/realtime/realtime-coordination.ts`
+- `src/lib/security/password.ts`
+- `src/lib/system-settings-config.ts`
+- `src/lib/validators/api.ts`
+- `src/lib/validators/system-settings.ts`
+- `tests/e2e/function-judging-responsive.spec.ts`
+- `tests/unit/actions/problem-management.test.ts`
+- `tests/unit/api/admin-backup-security.route.test.ts`
+- `tests/unit/auth/trusted-host.test.ts`
+- `tests/unit/compiler/execute-implementation.test.ts`
+- `tests/unit/dashboard-judge-system-implementation.test.ts`
+- `tests/unit/db/export-sanitization.test.ts`
+- `tests/unit/db/export-with-files.test.ts`
+- `tests/unit/docker/client.test.ts`
+- `tests/unit/infra/deploy-security.test.ts`
+- `tests/unit/infra/playwright-profiles.test.ts`
+- `tests/unit/plugins.secrets.test.ts`
+- `tests/unit/realtime/realtime-coordination.test.ts`
+- `tests/unit/security/password.test.ts`
+- `tests/unit/sync-language-configs-skip-instrumentation.test.ts`
+- `tests/unit/validators/api.test.ts`
+- `tests/unit/validators/problem-import.test.ts`
+
+Cross-file dependencies and unchanged files examined because they are needed to validate behavior:
+
 - `AGENTS.md`
-- `CLAUDE.md`
-- `.context/development/problem-descriptions.md`
-
-Repository inventory built with `rg --files`, `git status --short`, `git diff --stat`, and targeted scans:
-- `src/`: 632 files, including 113 App Router API route files and 105 component files.
-- Rust services: `judge-worker-rs/src` (10 files), plus `code-similarity-rs` and `rate-limiter-rs` manifests.
-- Tests: 508 files across unit, component, integration, harness, and Playwright E2E suites.
-- Runtime/deploy: 106 Docker files under `docker/`, production/test compose files, deploy scripts, backup/safety scripts, and root Rust workspace files.
-- Documentation/context: `AGENTS.md`, `CLAUDE.md`, `docs/**`, `.context/**` with deeper inspection of mandatory problem-description rules and prior review artifacts.
-
-Uncommitted change surface examined:
-- Judge status vocabulary and output-limit changes in `judge-worker-rs/src/{types,executor,docker,comparator}.rs`, `src/app/api/v1/judge/{claim,poll}/route.ts`, `src/lib/judge/{verdict,status-labels}.ts`, `src/lib/security/constants.ts`, and submission UI/pages.
-- Manual/function submission flow in `src/app/api/v1/submissions/route.ts` and claim SQL.
-- Compiler/playground runner path in `src/lib/compiler/execute.ts`, `src/app/api/v1/{compiler,playground}/run/route.ts`, `judge-worker-rs/src/runner.rs`.
-- Deployment/env/test-gate changes in `deploy-docker.sh`, `drizzle.config.ts`, `playwright.config.ts`, `.npmrc`, root `Cargo.toml`, `Cargo.lock`, and ignore/deploy excludes.
-- Admin import/restore/export and auth email link changes.
-- Secret-bearing scripts and seed data.
+- `docker-compose.production.yml`
+- `docker-compose.worker.yml`
+- `docs/api.md`
+- `docs/data-retention-policy.md`
+- `docs/judge-workers.md`
+- `src/app/api/v1/admin/backup/route.ts`
+- `src/app/api/v1/admin/migrate/export/route.ts`
+- `src/app/api/v1/admin/languages/[language]/route.ts`
+- `src/app/api/v1/admin/languages/route.ts`
+- `src/lib/db/import.ts`
+- `src/lib/db/pre-restore-snapshot.ts`
+- `src/lib/db/schema.pg.ts`
+- `src/lib/judge/languages.ts`
+- `src/lib/security/derive-key.ts`
+- `.github/workflows/ci.yml`
+- `package.json`
+- `plans/open/2026-06-22-rpf-cycle-1-review-remediation.md`
+- Current review artifacts in `.context/reviews/`
 
 ## Findings
 
-### 1. Manual submissions now get stuck in `pending` forever
+### CRIT-1 - Admin language image builds still route through a Docker proxy that explicitly blocks builds
 
-Severity: High
-Confidence: High
-Status: Confirmed
+Severity: High  
+Confidence: High  
+Status: confirmed  
+Perspectives: product correctness, operational readiness, UI risk, deployment safety
 
-Locations:
-- `AGENTS.md:175` says `manual` problems are judged outside the automatic pipeline.
-- `src/app/api/v1/submissions/route.ts:330-331` now sets every submission, including manual problems, to `initialStatus = "pending"`.
-- `src/lib/judge/claim-query.ts:46-50` and `src/lib/judge/claim-query.ts:140-144` explicitly exclude manual problems from judge claiming with `COALESCE(p.problem_type, 'auto') != 'manual'`.
-- `src/lib/judge/verdict.ts:3` and `src/lib/submissions/status.ts:3` treat `pending` as an in-progress status.
+Evidence:
 
-Concrete failure scenario:
-A student submits a manual problem. The row is inserted as `pending`, but no worker can claim it because the claim query filters manual problems out. The submission remains in queue/in-progress UI forever, can inflate pending counts, and never reaches a manual-review terminal state.
-
-Suggested fix:
-Restore a non-worker status for manual submissions, such as canonical `submitted` or `pending_manual`, and add it consistently to the `SubmissionStatus` union, API validation, filters, labels, and queue metrics. Do not use an auto-judge in-progress status for work that claim SQL intentionally excludes.
-
-### 2. The status migration is still half-applied across E2E waits and filters
-
-Severity: Medium
-Confidence: High
-Status: Confirmed
-
-Locations:
-- `judge-worker-rs/src/types.rs:47-49` now emits `time_limit_exceeded`, `memory_limit_exceeded`, and `output_limit_exceeded`.
-- `src/lib/security/constants.ts:49-62` accepts the new canonical statuses.
-- `tests/e2e/all-languages-judge.spec.ts:1058-1065`, `tests/e2e/function-judging.spec.ts:135-142`, and `tests/e2e/support/helpers.ts:147-154` still wait for legacy `time_limit` and `memory_limit`, not the new statuses or `output_limit_exceeded`.
-- `tests/e2e/student-submission-flow.spec.ts:176-180` and `tests/e2e/contest-full-lifecycle.spec.ts:301-398` still assert legacy `time_limit`.
-- `src/app/(public)/submissions/page.tsx:39-43`, `src/app/(dashboard)/dashboard/admin/submissions/page.tsx:44-55`, and `src/app/api/v1/admin/submissions/export/route.ts:8-18` omit `output_limit_exceeded`, `internal_error`, and `cancelled` from filterable statuses.
+- The app's Docker build client calls the worker runner endpoint `/docker/build` with a 600 second timeout: `src/lib/docker/client.ts:443-450`.
+- The Rust runner exposes `/docker/build` and shells out to `docker build -t ... -f ... .`: `judge-worker-rs/src/runner.rs:313-325`, `judge-worker-rs/src/runner.rs:590-623`, `judge-worker-rs/src/runner.rs:919-928`.
+- In production, the worker uses the Docker socket proxy through `DOCKER_HOST=tcp://docker-proxy:2375`: `docker-compose.production.yml:137-143`.
+- That same proxy is configured with `BUILD=0`, with a comment that image builds must not flow through the worker path: `docker-compose.production.yml:70-79`.
+- Dedicated workers also hardcode `BUILD=0`: `docker-compose.worker.yml:37-39`.
+- The dedicated worker docs tell operators to opt into `WORKER_DOCKER_PROXY_BUILD=1`, but the compose file does not read that variable: `docs/judge-workers.md:95-102` versus `docker-compose.worker.yml:37-39`.
 
 Concrete failure scenario:
-A TLE/MLE/OLE submission finalizes correctly in production, but Playwright helpers keep polling until timeout because their terminal-status sets do not include the canonical names. Separately, admins cannot filter/export OLE or internal-error submissions even though the API can now persist them.
+
+An admin opens `/dashboard/admin/languages` and clicks the Build button for a missing language image. The app sends `/docker/build` to the worker. The worker invokes `docker build`, but the only Docker daemon access path is the proxy with `BUILD=0`, so the request is forbidden by proxy policy. The UI now exposes a build workflow that cannot succeed in the documented production topology, and the docs advertise an env opt-in that is ignored by the compose file.
 
 Suggested fix:
-Centralize terminal/filterable status lists in one shared module or generated fixture, update all E2E helpers/assertions to the canonical vocabulary, and include every canonical terminal/admin-relevant status in public/admin filter/export surfaces.
 
-### 3. Claim cleanup does not cover schema-parse failures after a row was already claimed
+Pick one explicit production model. Either disable/hide the Build action when the worker is behind a no-build proxy and route image builds through `deploy-docker.sh`, or add a reviewed build-capable override/compose profile that actually sets `BUILD=${WORKER_DOCKER_PROXY_BUILD:-0}` and documents the security tradeoff. The app should also surface "build disabled by worker policy" distinctly from generic build failure.
 
-Severity: Medium
-Confidence: Medium
-Status: Likely
+### CRIT-2 - Startup language sync preserves overrides by freezing stale generated defaults forever
 
-Locations:
-- `src/lib/judge/claim-query.ts:54-78` performs the `UPDATE submissions SET status = 'queued', judge_claim_token = ...` and returns the claimed row.
-- `src/lib/judge/claim-query.ts:111-128` increments the worker's `active_tasks` for worker claims.
-- `src/app/api/v1/judge/claim/route.ts:230-238` parses `claimedRaw`, but assigns `claimedForCleanup = claimed` only after parsing succeeds.
-- `src/app/api/v1/judge/claim/route.ts:403-415` cleanup runs only when `claimedForCleanup` was populated.
+Severity: High  
+Confidence: High  
+Status: confirmed  
+Perspectives: product correctness, maintainability, deployment safety
+
+Evidence:
+
+- Startup sync now inserts missing rows, but for existing rows it only backfills empty `runCommand` and null `compileCommand`: `src/lib/judge/sync-language-configs.ts:23-63`.
+- `language_configs` stores the live runtime values but no provenance, default hash, or override flag: `src/lib/db/schema.pg.ts:516-528`.
+- The admin PATCH route writes the same `compileCommand` and `runCommand` columns that startup sync writes: `src/app/api/v1/admin/languages/[language]/route.ts:46-58`.
+- The project guide says the worker reads these DB fields at runtime and `npm run languages:sync` is the source of truth synchronization step after language config changes.
 
 Concrete failure scenario:
-If the raw claim returns an unexpected shape after the DB update already happened, for example due to schema drift, driver type changes, or a malformed timestamp/numeric value, `claimedSubmissionRowSchema.parse()` throws. The route returns `invalidJudgeClaim` at line 237 without clearing `judge_claim_token`, resetting `status`, or decrementing `active_tasks`. The submission is stuck until stale-claim recovery, and the worker slot can remain consumed during that window.
+
+A default command bug is fixed in `src/lib/judge/languages.ts`, for example a compiler output path or runtime flag. The operator runs the documented sync command. Every existing production row already has a non-empty `runCommand` and usually a non-null `compileCommand`, so sync skips it. Fresh test databases pass with the corrected default, while production continues using the stale DB command because the sync code cannot distinguish "old generated default" from "intentional admin override."
 
 Suggested fix:
-Populate cleanup state from minimally validated raw fields immediately after `claimedRaw` is non-null, or run claim plus response validation in a transaction that can roll back on parse failure. Add a unit test where `rawQueryOne` returns a claimed row with one invalid field and assert the claim is released.
 
-### 4. Root Rust workspace creates unignored build artifacts that deploy rsync will upload
+Add provenance. Store generated default hashes or explicit override flags per command. On sync, update rows that still match the previous generated default, preserve rows marked as admin overrides, and add a "reset to current default" admin action. Add a regression test with three rows: old generated default updates, real admin override remains, and missing command backfills.
 
-Severity: Medium
-Confidence: High
-Status: Confirmed
+### CRIT-3 - ZIP restore commits the database before uploaded files are restored
 
-Locations:
-- `Cargo.toml:1-7` adds a root workspace for the Rust crates.
-- `.gitignore:68-70` ignores only `judge-worker-rs/target/` and `rate-limiter-rs/target/`; it does not ignore root `/target/`, `code-similarity-rs/target/`, or `._target`.
-- `.dockerignore:15-20` ignores subcrate targets but not root `/target/`.
-- `deploy-docker.sh:647-668` excludes subcrate targets from rsync but not root `target/`.
-- Current `git status --short` shows untracked `target/` and `._target`.
+Severity: High  
+Confidence: High  
+Status: confirmed  
+Perspectives: product correctness, operational readiness, deployment safety
+
+Evidence:
+
+- ZIP restore parses `database.json` and holds uploaded files in memory as `pendingUploadedFiles`: `src/app/api/v1/admin/restore/route.ts:78-90`.
+- The route imports the database first: `src/app/api/v1/admin/restore/route.ts:165-174`.
+- Only after the DB import succeeds does it write uploaded files: `src/app/api/v1/admin/restore/route.ts:176-178`.
+- File restoration writes each upload sequentially and can fail mid-loop: `src/lib/db/export-with-files.ts:351-357`.
+- The cycle plan already records this as still open: `plans/open/2026-06-22-rpf-cycle-1-review-remediation.md:161-162`.
 
 Concrete failure scenario:
-Running `cargo test` from the root workspace creates a large root `target/` directory. Because neither git nor deploy rsync excludes it, a later deploy can sync hundreds of megabytes or gigabytes of build artifacts to production, slowing deploys and consuming disk on hosts that already have tight disk budgets.
+
+An operator restores a ZIP backup with a valid database and uploads. `importDatabase(data)` commits the new database state. Then `restoreParsedBackupFiles()` fails because the uploads directory is unwritable, the disk fills, or a later file write errors. The route returns a 500, but the database has already been replaced and now references files that were not restored. The pre-restore snapshot helps manual recovery but does not prevent inconsistent live state.
 
 Suggested fix:
-Ignore `/target/`, `/._target`, and `code-similarity-rs/target/` in `.gitignore`; add root `target/` to `.dockerignore` and `deploy-docker.sh` rsync excludes. Consider setting `CARGO_TARGET_DIR` to an ignored path in gate scripts.
 
-### 5. Production-capable API keys are hardcoded in repository scripts
+Stage and verify uploads before the destructive DB import. A safer flow is: unpack to a bounded temp directory, verify manifest hashes and file count, verify available space, import DB, then atomically promote the staged upload tree. If atomic promotion is not feasible, restore should have an explicit rollback/cleanup path and should not report success until DB and files are consistent.
 
-Severity: High
-Confidence: High
-Status: Confirmed
+### CRIT-4 - Local compiler fallback makes submission workspaces world-writable even when chown succeeds
 
-Locations:
-- `scripts/verify-naive-tle.mjs:14-15` hardcodes `https://algo.xylolabs.com` and `jk_d74b...`.
-- `scripts/enhance-svgs.mjs:4-5`, `scripts/naturalize-problems.mjs:4-5`, `scripts/add-svgs.mjs:4-5`, `scripts/tle-verify.mjs:4-5`, and `scripts/restore-svgs.mjs:4-5` hardcode the same key or variable.
-- `scripts/verify-naive-tle.mjs:354-360` uses that key as a Bearer token to submit to production.
-- `scripts/enhance-svgs.mjs:22-29` uses that key to PATCH production problems.
+Severity: High  
+Confidence: High  
+Status: confirmed  
+Perspectives: security, product correctness, maintainability
+
+Evidence:
+
+- The fallback workspace starts restrictive at `0700` and source files start at `0600`: `src/lib/compiler/execute.ts:718-733`.
+- After successful `chown` to UID/GID 65534, the code still broadens the workspace to `0777` and source to `0666`: `src/lib/compiler/execute.ts:735-739`.
+- The error fallback also uses `0777`/`0666`: `src/lib/compiler/execute.ts:740-746`.
+- The unit test locks in those broad permissions: `tests/unit/compiler/execute-implementation.test.ts:9-14`.
 
 Concrete failure scenario:
-Any clone of the repository or log bundle containing these scripts gives the reader a reusable production API token. Depending on that token's capabilities, an attacker or accidental script run can submit code, patch problem content, or mutate production data.
+
+On a shared host or any environment where another local process can traverse `COMPILER_WORKSPACE_DIR`, a different user or compromised process can read or rewrite `solution.*` before the sibling judge container runs. That leaks submitted code and can also tamper with what gets judged. The risk remains even on the successful `chown` path, where UID 65534 ownership should have allowed restrictive permissions.
 
 Suggested fix:
-Immediately revoke/rotate the leaked key, remove hardcoded keys from all scripts, require an environment variable, and add secret scanning for `jk_` tokens. If these scripts are still needed, fail fast unless `JUDGEKIT_API_KEY` and an explicit `JUDGEKIT_API_BASE` are provided.
 
-### 6. Interactive compiler/playground still uses a 256 MB compile cap while judged submissions get 2 GB
+When `chown` succeeds, keep the directory and source readable only to the sandbox user, for example owner `65534:65534` with `0700` and `0600` or the narrowest permissions the container needs. If `chown` fails, prefer fail-closed or a controlled group/ACL over world-writable fallback. Update the test to assert restricted permissions on the successful path and only narrowly document any local-dev fallback.
 
-Severity: Medium
-Confidence: High
-Status: Confirmed
+### CRIT-5 - The admin password-length setting is still exposed and writable but no longer affects validation
 
-Locations:
-- `src/lib/compiler/execute.ts:15` sets the local compiler path memory cap to 256 MB.
-- `src/lib/compiler/execute.ts:351-353` applies that same cap to compile and run containers.
-- `judge-worker-rs/src/runner.rs:19` sets the Rust runner cap to 256 MB.
-- `judge-worker-rs/src/runner.rs:805-815` applies the 256 MB cap to compile phase.
-- `judge-worker-rs/src/executor.rs:13` and `judge-worker-rs/src/executor.rs:420` give judged submission compilation a 2048 MB default.
+Severity: Medium  
+Confidence: High  
+Status: confirmed  
+Perspectives: product correctness, security, docs/code mismatch, UI risk
+
+Evidence:
+
+- Runtime password validation is fixed at exactly the repository policy minimum of 8 characters: `src/lib/security/password.ts:1-30`.
+- Admin settings still expose `minPasswordLength` under session/auth settings: `src/app/(dashboard)/dashboard/admin/settings/page.tsx:49-52`.
+- The settings validator still accepts `minPasswordLength` values from 8 to 128: `src/lib/validators/system-settings.ts:124-130`.
+- The admin settings API still accepts the key: `src/app/api/v1/admin/settings/route.ts:63-76`.
+- Config defaults and translations still describe it as "Minimum Password Length": `src/lib/system-settings-config.ts:50-56`, `messages/en.json:1547-1550`.
 
 Concrete failure scenario:
-A Java, Rust, TypeScript, C#, or .NET solution compiles successfully as an actual submission but fails in the playground or `/api/v1/compiler/run` due to the lower compile memory ceiling. Students see a false compile failure while the judge would accept the same code.
+
+An operator raises the minimum password length to 12 in the admin UI and believes the site is hardened. New public signup, password reset, user management, and change-password flows still accept any 8-character password because they call the fixed policy validator. The UI presents a control whose value is ignored by the implementation.
 
 Suggested fix:
-Separate compile and run memory limits for interactive runner paths. Default compile memory to the judged compile budget or a language-configured compile cap, while keeping runtime memory bounded separately. Add a regression case for a compiled language that exceeds 256 MB during compile.
 
-### 7. Exact-output comparison now allocates full normalized buffers in the worker
+Because `AGENTS.md` mandates the 8-character length-only policy, remove or disable this setting from the admin UI and reject new writes to `minPasswordLength`, or label it as deprecated/no-op until a migration removes it. If configurability is desired later, first change the project policy explicitly and then wire every password path to the configured value.
 
-Severity: Medium
-Confidence: Medium
-Status: Risk
+### CRIT-6 - Local Playwright runs can test a stale standalone build by default
 
-Locations:
-- `judge-worker-rs/src/comparator.rs:67-96` normalizes expected and actual outputs into new `Vec<u8>` buffers before comparing.
-- `judge-worker-rs/src/docker.rs:352-362` allows each captured stream to reach 128 MiB by default.
-- `judge-worker-rs/src/executor.rs:579-585` compares expected output against captured stdout for every test case in the worker process.
+Severity: Medium  
+Confidence: High  
+Status: confirmed  
+Perspectives: test strategy, maintainability, product correctness
+
+Evidence:
+
+- The Playwright webServer script only rebuilds when `PLAYWRIGHT_REBUILD_APP=1` or `.next/standalone/server.js` is missing: `scripts/playwright-local-webserver.sh:105-107`.
+- The package script does not set that env var: `package.json:24-28`.
+- Playwright uses that script for local non-remote runs: `playwright.config.ts:98-119`.
+- CI happens to build immediately before Playwright: `.github/workflows/ci.yml:315-319`, so the primary risk is local and ad hoc validation.
+- The cycle plan records that full Playwright was still not green after the webServer change: `plans/open/2026-06-22-rpf-cycle-1-review-remediation.md:181-185`.
 
 Concrete failure scenario:
-A legitimate large-output problem or an adversarial output flood near the 128 MiB cap forces the worker to hold the original expected string, captured stdout, and two normalized copies at once. With concurrent jobs, this can push the worker process into high memory pressure even though the student container itself is memory-limited.
+
+A developer changes a route or component, then runs `npm run test:e2e` while an old `.next/standalone/server.js` exists. The webServer starts the stale build and Playwright validates old code. The run can pass despite the new source being broken, or fail on behavior that no longer matches the source, wasting debugging time.
 
 Suggested fix:
-Return to a streaming/allocation-light comparator that still matches the documented JavaScript normalization, or cap exact-comparison normalization memory separately. Add a large-output benchmark/regression test that measures worker-side allocation under the configured `JUDGE_MAX_OUTPUT_BYTES`.
 
-### 8. Seeded problem descriptions still violate the mandatory Markdown policy
+Make local e2e rebuild the default. For example, set `PLAYWRIGHT_REBUILD_APP=1` in `npm run test:e2e`, or invert the flag to `PLAYWRIGHT_REUSE_BUILD=1` for the fast path. A stronger option is an mtime/build-id check against source, lockfile, and config files before deciding reuse is safe.
 
-Severity: Low
-Confidence: High
-Status: Confirmed
+### CRIT-7 - "Full-fidelity" backup/export docs and metadata are false for auth-critical fields
 
-Locations:
-- `.context/development/problem-descriptions.md:1-20` says all problem descriptions, including seed scripts, must be Markdown and must not use HTML tags.
-- `scripts/seed.ts:30-43` seeds A+B with `<h3>`, `<p>`, `<strong>`, `<code>`, and `<pre>`.
-- `scripts/seed.ts:55-68` repeats the same HTML format for A-B.
+Severity: High  
+Confidence: High  
+Status: confirmed  
+Perspectives: operational readiness, docs/code mismatch, security, product correctness
+
+Evidence:
+
+- Docs say full-fidelity export means "all fields included" and should be used for disaster recovery: `docs/data-retention-policy.md:44-50`.
+- API docs say sanitized exports are rejected and a full-fidelity backup should be used for disaster recovery restores: `docs/api.md:1719-1725`.
+- The export stream labels `sanitize: false` output as `"full-fidelity"`: `src/lib/db/export.ts:98-106`, `src/lib/db/export.ts:288`.
+- Even when `sanitize` is false, `EXPORT_ALWAYS_REDACT_COLUMNS` is still applied: `src/lib/db/export.ts:104-106`.
+- Always-redacted fields include `users.passwordHash`, `sessions.sessionToken`, OAuth tokens, API key encrypted material, and selected system secrets: `src/lib/security/secrets.ts:36-42`.
+- Import inserts rows as-is: `src/lib/db/import.ts:183-197`.
+- `sessions.session_token` is a primary key, so redacted session rows are not full-fidelity and can fail restore if present: `src/lib/db/schema.pg.ts:65-70`.
 
 Concrete failure scenario:
-Fresh installs seeded by `npm run seed` start with examples that violate the project's own authoring spec. This weakens tests and admin examples because new operators see HTML descriptions as acceptable even though the policy says Markdown is mandatory.
+
+An operator downloads a backup that the API and docs call full-fidelity, then restores it during disaster recovery. User password hashes are redacted, sessions are not restorable as original session rows, OAuth tokens and some secrets are missing, and any session rows with null tokens can cause import errors. Even if import succeeds for nullable columns, the restored system is not a faithful recovery of authentication state or integrations.
 
 Suggested fix:
-Rewrite seed descriptions in the required Markdown template with fenced input/output examples and constraints. Add a seed/unit check that rejects `<h3>`, `<p>`, and `<pre>` in seeded problem descriptions.
 
-## Missed-Issues Sweep
+Separate the concepts. Either make true disaster-recovery backups include restorable encrypted secret/auth fields under strict access controls, or rename the current mode to a redacted administrative export and document exactly which tables cannot be restored faithfully. If intentionally excluding ephemeral tables such as sessions, transform or omit them with explicit restore semantics rather than exporting invalid redacted primary keys under a "full-fidelity" label.
 
-Final sweep performed:
-- Rechecked manual submission lifecycle against claim SQL and the AGENTS problem-type contract.
-- Rechecked canonical judge statuses across Rust worker, API validation, labels, public/admin filters, export route, and Playwright wait helpers.
-- Rechecked claim cleanup paths for errors after DB mutation and before response serialization.
-- Rechecked root Rust workspace side effects against git ignores, Docker ignores, and deploy rsync excludes.
-- Rechecked compiler/playground request flow through TypeScript and Rust runner paths after the new `language` field was added.
-- Rechecked high-risk admin import/restore/export edits; the pre-restore snapshot and stricter import failure handling look directionally correct from static inspection.
-- Rechecked auth email base-url changes; `getPublicBaseUrl` correctly prefers configured `AUTH_URL`, so I did not file host-header link poisoning there.
-- Ran a targeted secret scan for `jk_` tokens and found multiple hardcoded production-looking keys in scripts.
+### CRIT-8 - Plugin secret encryption makes restored backups dependent on an undeclared environment-key coupling
 
-Residual risk:
-This was a static critic pass. I did not run the full gate list, browser flows, or production deploy command. The highest-value follow-up checks are: manual-problem submission E2E, status-vocabulary Playwright helpers, root workspace deploy artifact exclusion, and a secret-rotation audit for the hardcoded `jk_` token.
+Severity: Medium  
+Confidence: Medium  
+Status: likely  
+Perspectives: operational readiness, docs/code mismatch, security
+
+Evidence:
+
+- Plugin secret config values are encrypted before storage/export: `src/lib/plugins/secrets.ts:103-129`, `src/lib/db/export.ts:271-280`.
+- Runtime plugin use decrypts with the current `PLUGIN_CONFIG_ENCRYPTION_KEY`; on failure it logs and clears the secret value: `src/lib/plugins/secrets.ts:148-169`.
+- Key derivation depends entirely on `process.env.PLUGIN_CONFIG_ENCRYPTION_KEY`: `src/lib/security/derive-key.ts:9-16`.
+- `deploy-docker.sh` generates a fresh `PLUGIN_CONFIG_ENCRYPTION_KEY` for a new `.env.production`: `deploy-docker.sh:541-560`.
+- The backup/restore docs cited in CRIT-7 do not state that this key must be preserved with the backup for plugin secrets to remain usable.
+
+Concrete failure scenario:
+
+An operator restores a backup to a fresh host whose `.env.production` was generated independently. The database import succeeds, but plugin config secret ciphertext was encrypted under the old host key. When the plugin runs, decryption fails and the secret fields become empty, breaking chat/provider integrations after an otherwise successful restore.
+
+Suggested fix:
+
+Document `PLUGIN_CONFIG_ENCRYPTION_KEY` as part of the disaster-recovery backup set and add backup metadata or restore preflight that can warn when encrypted plugin secrets are present. Longer term, add key identifiers and a re-key flow so restores can detect, validate, and rotate encrypted plugin config safely.
+
+### CRIT-9 - ZIP restore audit records "0 files" before file restore happens
+
+Severity: Low  
+Confidence: High  
+Status: confirmed  
+Perspectives: operational readiness, security auditability
+
+Evidence:
+
+- `filesRestored` is initialized to zero before ZIP parsing: `src/app/api/v1/admin/restore/route.ts:78-80`.
+- The audit event is recorded before `importDatabase()` and before uploaded files are written, and the summary interpolates that still-zero value: `src/app/api/v1/admin/restore/route.ts:151-163`.
+- Actual restore count is only assigned later: `src/app/api/v1/admin/restore/route.ts:176-184`.
+
+Concrete failure scenario:
+
+An admin restores a ZIP backup containing hundreds of uploaded files. The audit trail says "Restoring from ZIP backup (..., 0 files, ... MB)" even when the response later says files were restored. During incident response, audit logs underreport the scope of restored file data and make it harder to distinguish a DB-only restore from a DB+uploads restore.
+
+Suggested fix:
+
+Record the planned upload count in the pre-import audit event, for example `pendingUploadedFiles.length`, and record a second post-restore audit event with the actual restored count after `restoreParsedBackupFiles()` returns. For failures, include whether the failure happened before DB import, during DB import, or during file promotion.
+
+## Positive Validations
+
+- The destructive `drizzle-kit push` prompt path now aborts before app startup: `deploy-docker.sh:1009-1064`, and app startup happens later at `deploy-docker.sh:1096-1123`.
+- Dedicated worker restart failure is now fatal: `deploy-docker.sh:1190-1204`.
+- Nginx config-test failure is now fatal: `deploy-docker.sh:1399-1405`.
+- Password validation itself is now aligned with the repo-mandated 8-character length-only policy: `src/lib/security/password.ts:1-30`.
+- Restore rejects sanitized exports before import: `src/app/api/v1/admin/restore/route.ts:126-138`.
+- The backup ZIP parser applies entry count, per-entry size, and total decompressed-size checks before extracting file contents: `src/lib/db/export-with-files.ts:32-35`, `src/lib/db/export-with-files.ts:267-273`.
+
+## Final Missed-Issue Sweep
+
+After drafting the findings, I rechecked the dirty file list and the cross-file paths most likely to hide regressions: Docker image management, language sync, restore/import/export, plugin secrets, password settings, local compiler fallback, and Playwright webServer behavior. I also compared the docs that describe those features against the code paths that implement them.
+
+Lower-signal items I did not promote to findings:
+
+- Judge report diagnostics now have a 64 KiB API validation cap and a 16 KiB persistence cap. That is a maintainability mismatch, but the current code intentionally validates before persistence truncation and I did not find a concrete user-visible failure.
+- `/languages` is forced dynamic to avoid production build-time DB access. That has caching/performance cost, but it is an acceptable operational tradeoff unless the public page becomes hot.
+- Trusted-host validation now ignores client-supplied `X-Forwarded-Host`; with the current nginx config forwarding `Host`, I did not find a concrete deployment break.
+- The backup ZIP limits appear enforceable from JSZip's loaded entry metadata in the current package shape, so I did not keep the older "unknown uncompressed size" concern as a finding.
+
+No source fixes were applied in this review pass.

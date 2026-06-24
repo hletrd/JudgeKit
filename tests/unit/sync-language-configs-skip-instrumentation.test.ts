@@ -13,23 +13,38 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
  *     empty, unset) to avoid accidental production trigger.
  */
 
-const { dbSelectMock, loggerWarnMock } = vi.hoisted(() => ({
+const {
+  dbInsertMock,
+  dbInsertValuesMock,
+  dbSelectMock,
+  dbUpdateMock,
+  dbUpdateSetMock,
+  dbUpdateWhereMock,
+  loggerInfoMock,
+  loggerWarnMock,
+} = vi.hoisted(() => ({
+  dbInsertMock: vi.fn(),
+  dbInsertValuesMock: vi.fn(),
   dbSelectMock: vi.fn(),
+  dbUpdateMock: vi.fn(),
+  dbUpdateSetMock: vi.fn(),
+  dbUpdateWhereMock: vi.fn(),
+  loggerInfoMock: vi.fn(),
   loggerWarnMock: vi.fn(),
 }));
 
 vi.mock("@/lib/db", () => ({
   db: {
     select: dbSelectMock,
-    insert: vi.fn(),
-    update: vi.fn(),
+    insert: dbInsertMock,
+    update: dbUpdateMock,
   },
 }));
 
 vi.mock("@/lib/logger", () => ({
   logger: {
     warn: loggerWarnMock,
-    info: vi.fn(),
+    info: loggerInfoMock,
     error: vi.fn(),
   },
 }));
@@ -39,7 +54,18 @@ describe("syncLanguageConfigsOnStartup SKIP_INSTRUMENTATION_SYNC guard", () => {
 
   beforeEach(() => {
     dbSelectMock.mockReset();
+    dbInsertMock.mockReset();
+    dbInsertValuesMock.mockReset();
+    dbUpdateMock.mockReset();
+    dbUpdateSetMock.mockReset();
+    dbUpdateWhereMock.mockReset();
+    loggerInfoMock.mockReset();
     loggerWarnMock.mockReset();
+    dbInsertMock.mockReturnValue({ values: dbInsertValuesMock });
+    dbInsertValuesMock.mockResolvedValue(undefined);
+    dbUpdateMock.mockReturnValue({ set: dbUpdateSetMock });
+    dbUpdateSetMock.mockReturnValue({ where: dbUpdateWhereMock });
+    dbUpdateWhereMock.mockResolvedValue(undefined);
     delete process.env.SKIP_INSTRUMENTATION_SYNC;
     vi.resetModules();
   });
@@ -120,5 +146,33 @@ describe("syncLanguageConfigsOnStartup SKIP_INSTRUMENTATION_SYNC guard", () => {
     expect(threw).toBe(true);
     expect(dbSelectMock).toHaveBeenCalled();
     expect(loggerWarnMock).not.toHaveBeenCalled();
+  });
+
+  it("does not overwrite existing admin command overrides during startup sync", async () => {
+    const { DEFAULT_JUDGE_LANGUAGES, serializeJudgeCommand } = await import("@/lib/judge/languages");
+    const rows = DEFAULT_JUDGE_LANGUAGES.map((language) => ({
+      language: language.language,
+      runCommand: serializeJudgeCommand(language.runCommand) ?? "",
+      compileCommand: serializeJudgeCommand(language.compileCommand) ?? null,
+    }));
+    const python = rows.find((row) => row.language === "python");
+    expect(python).toBeDefined();
+    python!.runCommand = "custom-python-run";
+    python!.compileCommand = "custom-python-compile";
+
+    dbSelectMock.mockReturnValue({
+      from: vi.fn().mockResolvedValue(rows),
+    });
+
+    const { syncLanguageConfigsOnStartup } = await import("@/lib/judge/sync-language-configs");
+
+    await syncLanguageConfigsOnStartup();
+
+    expect(dbInsertMock).not.toHaveBeenCalled();
+    expect(dbUpdateMock).not.toHaveBeenCalled();
+    expect(loggerInfoMock).not.toHaveBeenCalledWith(
+      expect.objectContaining({ backfilled: expect.any(Number) }),
+      expect.stringContaining("back-filled"),
+    );
   });
 });

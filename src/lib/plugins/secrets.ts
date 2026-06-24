@@ -50,20 +50,9 @@ export function encryptPluginSecret(plaintext: string | null | undefined): strin
 }
 
 /**
- * Read a plugin secret value, decrypting only when it's a legacy
- * `enc:v1:iv:tag:ciphertext` ciphertext.
- *
- * @policy plaintext — Per operator decision (cycle 8), plugin secrets are
- *   stored as plaintext at rest. This function therefore acts as a *reader*
- *   that pass-through plaintext values unchanged and only decrypts legacy
- *   `enc:v1:` rows for backward compatibility. The name `decryptPluginSecret`
- *   is preserved to avoid churn but does NOT imply current writes are
- *   encrypted; see `preparePluginConfigForStorage` for the storage-side
- *   policy enforcement.
- *
- * @param value the persisted secret string (plaintext or `enc:v1:…`)
- * @param options.allowPlaintextFallback when false, throws on non-`enc:v1:`
- *   inputs. Defaults to `true` (matches the plaintext-storage policy).
+ * Read a plugin secret value. Current writes store `enc:v1:iv:tag:ciphertext`
+ * ciphertexts, but plaintext fallback remains enabled by default so older rows
+ * can still be used until they are touched and migrated.
  */
 export function decryptPluginSecret(
   value: string,
@@ -111,6 +100,35 @@ function getSecretConfigKeys(pluginId: string) {
   return getPluginDefinition(pluginId)?.secretConfigKeys ?? [];
 }
 
+export function encryptPluginConfigSecrets(
+  pluginId: string,
+  config: Record<string, unknown>
+): Record<string, unknown> {
+  const encrypted = { ...config };
+
+  for (const key of getSecretConfigKeys(pluginId)) {
+    const value = encrypted[key];
+    if (typeof value !== "string" || value.length === 0) {
+      continue;
+    }
+
+    if (isEncryptedPluginSecret(value)) {
+      if (!isValidEncryptedPluginSecret(value)) {
+        throw new Error(
+          `Malformed encrypted plugin secret for ${pluginId}.${key}: ` +
+            "value starts with `enc:v1:` but does not match the expected " +
+            "`enc:v1:iv:tag:ciphertext` shape. Refusing to persist."
+        );
+      }
+      continue;
+    }
+
+    encrypted[key] = encryptPluginSecret(value);
+  }
+
+  return encrypted;
+}
+
 export function redactPluginConfigForRead(
   pluginId: string,
   config: Record<string, unknown>
@@ -154,15 +172,10 @@ export function decryptPluginConfigForUse(
 /**
  * Prepare a plugin config payload for persistence.
  *
- * @policy plaintext — Per operator decision (cycle 8), plugin secret values
- *   are stored verbatim. This function preserves the value as typed by the
- *   operator (no encryption applied to new writes). Legacy `enc:v1:`
- *   ciphertexts that arrive on existing rows are also preserved verbatim,
- *   but only after a defense-in-depth shape check — malformed `enc:v1:`
- *   values would otherwise become un-decryptable on the read path.
- *
  * Empty-string inputs mean "keep existing value if it's a real secret,
- * otherwise clear" so the redacted-on-read UI ("•••") can round-trip safely.
+ * otherwise clear" so the redacted-on-read UI can round-trip safely. Existing
+ * plaintext rows are opportunistically encrypted when an admin saves the
+ * plugin form.
  */
 export function preparePluginConfigForStorage(
   pluginId: string,
@@ -177,7 +190,7 @@ export function preparePluginConfigForStorage(
 
     if (typeof incomingValue !== "string") {
       if (typeof existingValue === "string") {
-        prepared[key] = existingValue;
+        prepared[key] = encryptPluginConfigSecrets(pluginId, { [key]: existingValue })[key];
       }
       continue;
     }
@@ -185,29 +198,14 @@ export function preparePluginConfigForStorage(
     if (incomingValue.length === 0) {
       // Empty string means "keep existing value if it's a real secret, otherwise clear"
       if (typeof existingValue === "string" && existingValue.length > 0) {
-        prepared[key] = existingValue;
+        prepared[key] = encryptPluginConfigSecrets(pluginId, { [key]: existingValue })[key];
       } else {
         prepared[key] = null;
       }
       continue;
     }
 
-    // Defense-in-depth: if the operator (or a migration tool) submits an
-    // `enc:v1:`-prefixed value, the structure must be well-formed so the
-    // read path can later decrypt it. A malformed `enc:v1:` token would
-    // round-trip into the DB as plaintext-but-prefixed, where the read path
-    // would attempt decryption and fail. Reject up front with a clear error.
-    if (isEncryptedPluginSecret(incomingValue) && !isValidEncryptedPluginSecret(incomingValue)) {
-      throw new Error(
-        `Malformed encrypted plugin secret for ${pluginId}.${key}: ` +
-          "value starts with `enc:v1:` but does not match the expected " +
-          "`enc:v1:iv:tag:ciphertext` shape. Refusing to persist."
-      );
-    }
-
-    // Plaintext storage policy: keep both plaintext and well-formed legacy
-    // `enc:v1:` values verbatim. New writes go in as-typed by the operator.
-    prepared[key] = incomingValue;
+    prepared[key] = encryptPluginConfigSecrets(pluginId, { [key]: incomingValue })[key];
   }
 
   return prepared;

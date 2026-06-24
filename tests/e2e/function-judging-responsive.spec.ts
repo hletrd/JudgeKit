@@ -58,7 +58,7 @@ async function loginAsAdmin(page: Page): Promise<void> {
     // session token, and under the Playwright runner's tight timing that race
     // can drop the change entirely (the account stays mustChangePassword=true).
     // A distinct password commits reliably; we record it so the rest of the run
-    // logs in with it. It must satisfy the 12-char policy
+    // logs in with it. It must satisfy the repository password policy.
     // (src/lib/system-settings-config.ts) and stay >= the seeded password's
     // strength.
     const nextPassword = `${DEFAULT_CREDENTIALS.password}-e2e1`;

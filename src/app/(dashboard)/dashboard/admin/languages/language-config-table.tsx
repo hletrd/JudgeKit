@@ -62,48 +62,6 @@ interface LanguageConfig {
   dockerSize: string | null;
 }
 
-type DockerManagementCapabilities = {
-  mode: "worker" | "local" | "unavailable";
-  canList: boolean;
-  canBuild: boolean;
-  canRemove: boolean;
-  canPrune: boolean;
-  reason?: string;
-};
-
-const unavailableDockerCapabilities: DockerManagementCapabilities = {
-  mode: "unavailable",
-  canList: false,
-  canBuild: false,
-  canRemove: false,
-  canPrune: false,
-  reason: "dockerManagementUnavailable",
-};
-
-function parseDockerCapabilities(value: unknown): DockerManagementCapabilities | null {
-  if (value === null || typeof value !== "object" || Array.isArray(value)) {
-    return null;
-  }
-  const record = value as Record<string, unknown>;
-  if (
-    (record.mode !== "worker" && record.mode !== "local" && record.mode !== "unavailable") ||
-    typeof record.canList !== "boolean" ||
-    typeof record.canBuild !== "boolean" ||
-    typeof record.canRemove !== "boolean" ||
-    typeof record.canPrune !== "boolean"
-  ) {
-    return null;
-  }
-  return {
-    mode: record.mode,
-    canList: record.canList,
-    canBuild: record.canBuild,
-    canRemove: record.canRemove,
-    canPrune: record.canPrune,
-    reason: typeof record.reason === "string" ? record.reason : undefined,
-  };
-}
-
 export function LanguageConfigTable({ languages }: { languages: LanguageConfig[] }) {
   const t = useTranslations("admin.languages");
   const tCommon = useTranslations("common");
@@ -126,7 +84,6 @@ export function LanguageConfigTable({ languages }: { languages: LanguageConfig[]
   const [confirmAction, setConfirmAction] = useState<ConfirmAction | null>(null);
   const [imageStatusLoading, setImageStatusLoading] = useState(true);
   const [imageStatusError, setImageStatusError] = useState(false);
-  const [dockerCapabilities, setDockerCapabilities] = useState<DockerManagementCapabilities | null>(null);
   const buildAbortControllerRef = useRef<AbortController | null>(null);
   const removeAbortControllerRef = useRef<AbortController | null>(null);
   const pruneAbortControllerRef = useRef<AbortController | null>(null);
@@ -169,7 +126,6 @@ export function LanguageConfigTable({ languages }: { languages: LanguageConfig[]
       if (res.ok) {
         const json = await res.json().catch(() => ({ data: {} }));
         const data = json.data ?? {};
-        setDockerCapabilities(parseDockerCapabilities(data.capabilities) ?? unavailableDockerCapabilities);
         const images = data.images ?? data ?? [];
         const staleSet = new Set<string>(data.staleImages ?? []);
         const info = new Map<string, { size: string; created: string; stale: boolean }>();
@@ -185,7 +141,6 @@ export function LanguageConfigTable({ languages }: { languages: LanguageConfig[]
         setStaleCount(staleSet.size);
         if (data.disk) setDiskUsage(data.disk);
       } else {
-        setDockerCapabilities(unavailableDockerCapabilities);
         setImageStatusError(true);
         toast.error(t("toast.fetchImageStatusError"));
       }
@@ -193,7 +148,6 @@ export function LanguageConfigTable({ languages }: { languages: LanguageConfig[]
       if (err instanceof Error && err.name === "AbortError") {
         return;
       }
-      setDockerCapabilities(unavailableDockerCapabilities);
       setImageStatusError(true);
       toast.error(t("toast.fetchImageStatusError"));
     } finally {
@@ -204,10 +158,6 @@ export function LanguageConfigTable({ languages }: { languages: LanguageConfig[]
   useEffect(() => { fetchImageStatus(); }, [fetchImageStatus]);
 
   function handleBuild(lang: LanguageConfig) {
-    if (dockerCapabilities?.canBuild !== true) {
-      toast.error(t("toast.dockerUnavailable"));
-      return;
-    }
     setBuildingLangs(prev => new Set(prev).add(lang.language));
     if (buildAbortControllerRef.current) {
       buildAbortControllerRef.current.abort();
@@ -237,18 +187,10 @@ export function LanguageConfigTable({ languages }: { languages: LanguageConfig[]
   }
 
   function handleRemoveImage(lang: LanguageConfig) {
-    if (dockerCapabilities?.canRemove !== true) {
-      toast.error(t("toast.dockerUnavailable"));
-      return;
-    }
     setConfirmAction({ type: "removeImage", payload: lang });
   }
 
   function confirmRemoveImage(lang: LanguageConfig) {
-    if (dockerCapabilities?.canRemove !== true) {
-      toast.error(t("toast.dockerUnavailable"));
-      return;
-    }
     if (removeAbortControllerRef.current) {
       removeAbortControllerRef.current.abort();
     }
@@ -276,18 +218,10 @@ export function LanguageConfigTable({ languages }: { languages: LanguageConfig[]
   }
 
   function handlePrune() {
-    if (dockerCapabilities?.canPrune !== true) {
-      toast.error(t("toast.dockerUnavailable"));
-      return;
-    }
     setConfirmAction({ type: "prune" });
   }
 
   function confirmPrune() {
-    if (dockerCapabilities?.canPrune !== true) {
-      toast.error(t("toast.dockerUnavailable"));
-      return;
-    }
     setIsPruning(true);
     if (pruneAbortControllerRef.current) {
       pruneAbortControllerRef.current.abort();
@@ -433,15 +367,6 @@ export function LanguageConfigTable({ languages }: { languages: LanguageConfig[]
         );
       })
     : languages;
-  const dockerManagementUnavailable = dockerCapabilities?.mode === "unavailable";
-  const commandPlaceholderTokens = { file: "{file}", binary: "{binary}" };
-  const canCreateLanguage = Boolean(
-    addForm.language &&
-    addForm.displayName &&
-    addForm.extension &&
-    addForm.dockerImage &&
-    addForm.runCommand,
-  );
 
   return (
     <>
@@ -471,17 +396,11 @@ export function LanguageConfigTable({ languages }: { languages: LanguageConfig[]
         </div>
         );
       })()}
-      {dockerManagementUnavailable && (
-        <div className="mb-4 rounded-md border border-yellow-300 bg-yellow-50 p-3 text-sm text-yellow-900 dark:border-yellow-800 dark:bg-yellow-950/30 dark:text-yellow-100">
-          {t("imageStatus.managementUnavailable")}
-        </div>
-      )}
       <div className="flex flex-wrap items-center gap-2 mb-4">
         <Input
           value={search}
           onChange={(e) => setSearch(e.target.value)}
           placeholder={t("search")}
-          aria-label={t("search")}
           className="min-w-48 flex-1 sm:max-w-xs"
         />
         <div className="ml-auto flex items-center gap-2">
@@ -490,15 +409,12 @@ export function LanguageConfigTable({ languages }: { languages: LanguageConfig[]
             {t("add.button")}
           </Button>
           <DropdownMenu>
-            <DropdownMenuTrigger
-              type="button"
-              aria-label={t("actions.more")}
-              className="inline-flex size-8 items-center justify-center rounded-md border border-input bg-background text-sm font-medium shadow-xs transition-colors hover:bg-accent hover:text-accent-foreground focus-visible:border-ring focus-visible:ring-ring/50 focus-visible:ring-[3px]"
-            >
+            <DropdownMenuTrigger className="inline-flex items-center justify-center gap-1.5 whitespace-nowrap rounded-md border border-input bg-background px-3 text-sm font-medium shadow-xs transition-colors hover:bg-accent hover:text-accent-foreground h-8 cursor-pointer">
               <MoreHorizontal className="size-4" />
+              {t("actions.more")}
             </DropdownMenuTrigger>
             <DropdownMenuContent align="end">
-              <DropdownMenuItem onClick={handlePrune} disabled={isPruning || staleCount === 0 || dockerCapabilities?.canPrune !== true}>
+              <DropdownMenuItem onClick={handlePrune} disabled={isPruning || staleCount === 0}>
                 {isPruning ? <Loader2 className="size-4 mr-2 animate-spin" /> : <Eraser className="size-4 mr-2" />}
                 {t("actions.pruneStale")}{staleCount > 0 ? ` (${staleCount})` : ""}
               </DropdownMenuItem>
@@ -590,7 +506,7 @@ export function LanguageConfigTable({ languages }: { languages: LanguageConfig[]
                       variant="ghost"
                       size="icon-sm"
                       onClick={() => handleBuild(lang)}
-                      disabled={buildingLangs.has(lang.language) || dockerCapabilities?.canBuild !== true}
+                      disabled={buildingLangs.has(lang.language)}
                       title={t("actions.build")}
                       aria-label={`${t("actions.build")}: ${lang.displayName} (${lang.dockerImage})`}
                     >
@@ -603,7 +519,6 @@ export function LanguageConfigTable({ languages }: { languages: LanguageConfig[]
                         variant="ghost"
                         size="icon-sm"
                         onClick={() => handleRemoveImage(lang)}
-                        disabled={dockerCapabilities?.canRemove !== true}
                         title={t("actions.remove")}
                         aria-label={`${t("actions.remove")}: ${lang.displayName} (${lang.dockerImage})`}
                         className="text-destructive"
@@ -656,7 +571,7 @@ export function LanguageConfigTable({ languages }: { languages: LanguageConfig[]
                 rows={3}
                 className="font-mono text-sm"
               />
-              <p id="edit-compile-command-help" className="text-xs text-muted-foreground">{t("edit.compileCommandHelp", commandPlaceholderTokens)}</p>
+              <p id="edit-compile-command-help" className="text-xs text-muted-foreground">{t("edit.compileCommandHelp", { file: "{file}" })}</p>
             </div>
 
             <div className="space-y-2">
@@ -669,7 +584,7 @@ export function LanguageConfigTable({ languages }: { languages: LanguageConfig[]
                 rows={2}
                 className="font-mono text-sm"
               />
-              <p id="edit-run-command-help" className="text-xs text-muted-foreground">{t("edit.runCommandHelp", commandPlaceholderTokens)}</p>
+              <p id="edit-run-command-help" className="text-xs text-muted-foreground">{t("edit.runCommandHelp", { file: "{file}", binary: "{binary}" })}</p>
             </div>
 
             <div className="space-y-2">
@@ -723,7 +638,6 @@ export function LanguageConfigTable({ languages }: { languages: LanguageConfig[]
               <Input
                 id="add-language-key"
                 required
-                aria-describedby="add-language-key-help"
                 value={addForm.language}
                 onChange={(e) => setAddForm(prev => ({ ...prev, language: e.target.value }))}
                 placeholder={t("add.languageKeyPlaceholder")}
@@ -790,7 +704,7 @@ export function LanguageConfigTable({ languages }: { languages: LanguageConfig[]
                 rows={3}
                 className="font-mono text-sm"
               />
-              <p id="add-compile-command-help" className="text-xs text-muted-foreground">{t("edit.compileCommandHelp", commandPlaceholderTokens)}</p>
+              <p id="add-compile-command-help" className="text-xs text-muted-foreground">{t("edit.compileCommandHelp", { file: "{file}" })}</p>
             </div>
 
             <div className="space-y-2">
@@ -804,7 +718,7 @@ export function LanguageConfigTable({ languages }: { languages: LanguageConfig[]
                 rows={2}
                 className="font-mono text-sm"
               />
-              <p id="add-run-command-help" className="text-xs text-muted-foreground">{t("edit.runCommandHelp", commandPlaceholderTokens)}</p>
+              <p id="add-run-command-help" className="text-xs text-muted-foreground">{t("edit.runCommandHelp", { file: "{file}", binary: "{binary}" })}</p>
             </div>
 
             <div className="space-y-2">
@@ -823,14 +737,9 @@ export function LanguageConfigTable({ languages }: { languages: LanguageConfig[]
           </div>
 
           <div className="border-t px-6 py-4 flex gap-2">
-            <div className="flex flex-col gap-1">
-              <Button onClick={handleCreate} disabled={isPending || !canCreateLanguage} aria-describedby="add-required-fields-help">
-                {t("add.create")}
-              </Button>
-              <p id="add-required-fields-help" className="max-w-sm text-xs text-muted-foreground">
-                {t("add.requiredFields")}
-              </p>
-            </div>
+            <Button onClick={handleCreate} disabled={isPending || !addForm.language || !addForm.displayName || !addForm.extension || !addForm.dockerImage || !addForm.runCommand}>
+              {t("add.create")}
+            </Button>
             <Button variant="outline" onClick={() => setAddOpen(false)} disabled={isPending}>
               {t("edit.cancel")}
             </Button>
