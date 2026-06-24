@@ -1,6 +1,6 @@
 # Privacy and retention policy (current platform baseline)
 
-_Last updated: 2026-04-12_
+_Last updated: 2026-06-24_
 
 This document defines the current default handling expectations for sensitive operational data in JudgeKit.
 
@@ -22,7 +22,7 @@ in sync when retention windows change.
 | Data class | Default retention window | Intended access |
 | --- | --- | --- |
 | Audit logs | 90 days | authorized operators/admins investigating platform actions |
-| AI chat logs | 30 days | authorized staff with `system.chat_logs`, only for support, misuse review, or governance |
+| AI chat logs | 5 years (1,825 days) | authorized staff with `system.chat_logs`, only for support, misuse review, or governance |
 | Anti-cheat events | 180 days | authorized instructors/admins reviewing assessment integrity telemetry |
 | Recruiting invitation records | 365 days | authorized recruiting/instructor/admin staff for assessment operations and dispute review |
 | Submissions and grading records | 365 days | instructors/admins and the submitting user, subject to normal platform permissions |

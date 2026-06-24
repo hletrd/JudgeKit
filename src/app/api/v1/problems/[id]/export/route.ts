@@ -4,7 +4,7 @@ import { apiSuccess } from "@/lib/api/responses";
 import { db } from "@/lib/db";
 import { problems, testCases, problemTags, tags } from "@/lib/db/schema";
 import { createApiHandler, forbidden, notFound } from "@/lib/api/handler";
-import { canAccessProblem } from "@/lib/auth/permissions";
+import { canManageProblem } from "@/lib/auth/permissions";
 
 export const GET = createApiHandler({
   handler: async (_req: NextRequest, { user, params }) => {
@@ -32,7 +32,7 @@ export const GET = createApiHandler({
 
     if (!problem) return notFound("Problem");
 
-    const hasAccess = await canAccessProblem(id, user.id, user.role);
+    const hasAccess = await canManageProblem(id, user.id, user.role);
     if (!hasAccess) return forbidden();
 
     const cases = await db
