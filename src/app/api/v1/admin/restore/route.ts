@@ -156,7 +156,7 @@ export async function POST(request: NextRequest) {
       resourceId: "database",
       resourceLabel: "Database restore",
       summary: isZipFile
-        ? `Restoring from ZIP backup (source: ${data.sourceDialect}, ${filesRestored} files, ${(file.size / 1024 / 1024).toFixed(1)} MB)`
+        ? `Restoring from ZIP backup (source: ${data.sourceDialect}, ${pendingUploadedFiles.length} files pending, ${(file.size / 1024 / 1024).toFixed(1)} MB)`
         : `Restoring from JSON export (source: ${data.sourceDialect}, ${(file.size / 1024 / 1024).toFixed(1)} MB)`,
       details: { preRestoreSnapshotPath: preSnapshotPath },
       request,
