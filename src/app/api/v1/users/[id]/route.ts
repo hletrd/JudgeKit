@@ -466,12 +466,14 @@ export const DELETE = createApiHandler({
         return apiError("confirmUsernameRequired", 400);
       }
 
-      // Record audit BEFORE deletion since actorId FK gets set-null on cascade
-      recordAuditEvent({
+      // Capture audit context BEFORE deletion since actorId FK gets set-null on
+      // cascade, but only record the event after the deletion succeeds —
+      // otherwise a failed deletion would produce a phantom audit entry.
+      const auditContext = {
         actorId: user.id,
         actorRole: user.role,
-        action: "user.permanently_deleted",
-        resourceType: "user",
+        action: "user.permanently_deleted" as const,
+        resourceType: "user" as const,
         resourceId: found.id,
         resourceLabel: found.username,
         summary: `Permanently deleted user @${found.username}`,
@@ -479,7 +481,7 @@ export const DELETE = createApiHandler({
           role: found.role,
         },
         request: req,
-      });
+      };
 
       // GDPR right-to-erasure: deleting the user only set-nulls
       // recruiting_invitations.userId via the FK cascade, leaving the
@@ -499,6 +501,9 @@ export const DELETE = createApiHandler({
 
         await tx.delete(users).where(eq(users.id, id));
       });
+
+      // Record audit AFTER successful deletion
+      recordAuditEvent(auditContext);
 
       return apiSuccess({ id, deleted: true });
     }
