@@ -19,8 +19,14 @@ const JUDGE_WORKER_URL = process.env.JUDGE_WORKER_URL || process.env.COMPILER_RU
 // and Docker management access. See commit 909fcbf5 for the same hardening
 // applied to the judge routes.
 const RUNNER_AUTH_TOKEN = process.env.RUNNER_AUTH_TOKEN || "";
-if (!RUNNER_AUTH_TOKEN && JUDGE_WORKER_URL && process.env.NODE_ENV === "production") {
-  throw new Error(
+// Production misconfiguration is logged but not thrown at import time.
+// Routes that call getWorkerDockerApiConfigError() will return a generic
+// configError response to API callers, keeping deployment details out of
+// the HTTP response.
+const _productionMissingToken =
+  !RUNNER_AUTH_TOKEN && JUDGE_WORKER_URL && process.env.NODE_ENV === "production";
+if (_productionMissingToken) {
+  logger.error(
     "RUNNER_AUTH_TOKEN must be set in production when JUDGE_WORKER_URL is configured. " +
     "Generate one with: openssl rand -hex 32"
   );
