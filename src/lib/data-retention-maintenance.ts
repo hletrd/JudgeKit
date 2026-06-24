@@ -165,7 +165,7 @@ async function pruneSensitiveOperationalData() {
 
 let pruneTimer: ReturnType<typeof setInterval> | null = null;
 declare global {
-  let __sensitiveDataPruneTimer: ReturnType<typeof setInterval> | undefined;
+  var __sensitiveDataPruneTimer: ReturnType<typeof setInterval> | undefined;
 }
 
 export function startSensitiveDataPruning() {
