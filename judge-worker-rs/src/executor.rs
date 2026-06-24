@@ -22,7 +22,7 @@ const MIN_TIMEOUT_MS: u64 = 100;
 const DOCKER_RUN_OVERHEAD_BUDGET_MS: u64 = 2_000;
 const MAX_MEMORY_LIMIT_MB: u32 = 1024;
 const RUNTIME_ERROR_OUTPUT_LIMIT: usize = 500;
-const MAX_DIAGNOSTIC_OUTPUT_BYTES: usize = 16 * 1024;
+const REPORT_DIAGNOSTIC_OUTPUT_LIMIT_BYTES: usize = 16 * 1024;
 const TRUNCATED_SUFFIX: &str = "\n...[truncated]";
 
 fn max_time_limit_ms() -> u64 {
@@ -77,31 +77,15 @@ fn reported_memory_used_kb(
     memory_peak_kb.unwrap_or(0).min(memory_limit_kb)
 }
 
-fn truncate_diagnostic_bytes(bytes: &[u8]) -> String {
-    if bytes.len() <= MAX_DIAGNOSTIC_OUTPUT_BYTES {
-        return String::from_utf8_lossy(bytes).into_owned();
-    }
-
-    let mut end = MAX_DIAGNOSTIC_OUTPUT_BYTES;
-    while end > 0 && std::str::from_utf8(&bytes[..end]).is_err() {
-        end -= 1;
-    }
-
-    let mut value = String::from_utf8_lossy(&bytes[..end]).into_owned();
-    value.push_str(TRUNCATED_SUFFIX);
-    value
-}
-
-fn truncate_diagnostic_str(value: &str) -> String {
-    if value.len() <= MAX_DIAGNOSTIC_OUTPUT_BYTES {
+fn truncate_report_diagnostic(value: &str) -> String {
+    if value.len() <= REPORT_DIAGNOSTIC_OUTPUT_LIMIT_BYTES {
         return value.to_string();
     }
 
-    let mut end = MAX_DIAGNOSTIC_OUTPUT_BYTES;
+    let mut end = REPORT_DIAGNOSTIC_OUTPUT_LIMIT_BYTES;
     while !value.is_char_boundary(end) {
         end -= 1;
     }
-
     format!("{}{}", &value[..end], TRUNCATED_SUFFIX)
 }
 
@@ -116,7 +100,7 @@ fn reportable_test_case_output(verdict: Verdict, stdout: &[u8], stderr: &str) ->
         }
     }
 
-    truncate_diagnostic_bytes(stdout)
+    truncate_report_diagnostic(&String::from_utf8_lossy(stdout))
 }
 
 fn runtime_error_type(stderr: &str, exit_code: Option<i32>) -> Option<String> {
@@ -492,8 +476,7 @@ async fn execute_inner(
             .into_iter()
             .filter(|s| !s.is_empty())
             .collect();
-        let raw_compile_output = parts.join("\n").trim().to_string();
-        compile_output = truncate_diagnostic_str(&raw_compile_output);
+        compile_output = truncate_report_diagnostic(parts.join("\n").trim());
 
         if compilation.timed_out {
             report_result(
@@ -555,7 +538,8 @@ async fn execute_inner(
         // isn't killed prematurely. The verdict logic below still uses the
         // Docker-reported `duration_ms` (StartedAt → FinishedAt) for TLE so
         // the buffer doesn't change pass/fail semantics.
-        let run_timeout_ms = effective_time_limit_ms.saturating_add(DOCKER_RUN_OVERHEAD_BUDGET_MS);
+        let run_timeout_ms =
+            effective_time_limit_ms.saturating_add(DOCKER_RUN_OVERHEAD_BUDGET_MS);
 
         let run_opts = DockerRunOptions {
             image: docker_image.to_string(),
@@ -614,15 +598,17 @@ async fn execute_inner(
         // reported runtime crosses the problem's time limit on its own.
         // The classification is delegated to `classify_test_case_verdict` so
         // it can be unit-tested without spinning up a real container.
-        let verdict = classify_test_case_verdict(VerdictInputs {
-            timed_out: execution.timed_out,
-            duration_ms: execution.duration_ms,
-            effective_time_limit_ms,
-            oom_killed: execution.oom_killed,
-            exit_code: execution.exit_code,
-            output_limit_exceeded: execution.stdout_truncated || execution.stderr_truncated,
-            is_correct,
-        });
+        let verdict = classify_test_case_verdict(
+            VerdictInputs {
+                timed_out: execution.timed_out,
+                duration_ms: execution.duration_ms,
+                effective_time_limit_ms,
+                oom_killed: execution.oom_killed,
+                exit_code: execution.exit_code,
+                output_limit_exceeded: execution.stdout_truncated || execution.stderr_truncated,
+                is_correct,
+            },
+        );
 
         let actual_output =
             reportable_test_case_output(verdict, &execution.stdout, &execution.stderr);
@@ -679,10 +665,10 @@ async fn execute_inner(
 #[cfg(test)]
 mod tests {
     use super::{
-        COMPILATION_TIMEOUT_MS, MAX_DIAGNOSTIC_OUTPUT_BYTES, MIN_COMPILE_TIMEOUT_MS,
+        COMPILATION_TIMEOUT_MS, MIN_COMPILE_TIMEOUT_MS, REPORT_DIAGNOSTIC_OUTPUT_LIMIT_BYTES,
         RUNTIME_ERROR_OUTPUT_LIMIT, TRUNCATED_SUFFIX, VerdictInputs, classify_test_case_verdict,
         compile_timeout_ms_for_submission, prune_dead_letter_dir, reportable_test_case_output,
-        reported_memory_used_kb, runtime_error_type, truncate_diagnostic_str,
+        reported_memory_used_kb, runtime_error_type, truncate_report_diagnostic,
     };
     use crate::types::Verdict;
     use tempfile::tempdir;
@@ -717,10 +703,7 @@ mod tests {
         let mut inputs = base_inputs();
         inputs.output_limit_exceeded = true;
         inputs.is_correct = false;
-        assert_eq!(
-            classify_test_case_verdict(inputs),
-            Verdict::OutputLimitExceeded
-        );
+        assert_eq!(classify_test_case_verdict(inputs), Verdict::OutputLimitExceeded);
     }
 
     #[test]
@@ -847,23 +830,21 @@ mod tests {
     }
 
     #[test]
-    fn reportable_test_case_output_truncates_large_stdout_reports() {
-        let stdout = vec![b'x'; MAX_DIAGNOSTIC_OUTPUT_BYTES + 100];
-        let output = reportable_test_case_output(Verdict::WrongAnswer, &stdout, "");
+    fn reportable_test_case_output_caps_large_stdout_payloads() {
+        let stdout = "a".repeat(REPORT_DIAGNOSTIC_OUTPUT_LIMIT_BYTES + 50);
+        let output = reportable_test_case_output(Verdict::WrongAnswer, stdout.as_bytes(), "");
 
         assert!(output.ends_with(TRUNCATED_SUFFIX));
-        assert!(output.len() <= MAX_DIAGNOSTIC_OUTPUT_BYTES + TRUNCATED_SUFFIX.len());
+        assert!(output.len() <= REPORT_DIAGNOSTIC_OUTPUT_LIMIT_BYTES + TRUNCATED_SUFFIX.len());
     }
 
     #[test]
-    fn truncate_diagnostic_str_keeps_utf8_boundary() {
-        let mut input = "x".repeat(MAX_DIAGNOSTIC_OUTPUT_BYTES - 1);
-        input.push('한');
-
-        let output = truncate_diagnostic_str(&input);
+    fn report_diagnostic_truncation_preserves_utf8_boundaries() {
+        let prefix = "a".repeat(REPORT_DIAGNOSTIC_OUTPUT_LIMIT_BYTES - 1);
+        let output = truncate_report_diagnostic(&format!("{prefix}한"));
 
         assert!(output.ends_with(TRUNCATED_SUFFIX));
-        assert!(output.is_char_boundary(output.len()));
+        assert!(!output.contains('\u{fffd}'));
     }
 
     #[tokio::test]
@@ -988,60 +969,7 @@ async fn report_with_retry(
     // All retries exhausted — persist to dead-letter directory so the result
     // can be replayed manually and the submission does not remain stuck in
     // `judging` status indefinitely.
-    let failed_at = {
-        let now = std::time::SystemTime::now()
-            .duration_since(std::time::UNIX_EPOCH)
-            .unwrap_or_default()
-            .as_secs();
-        let secs_per_min = 60u64;
-        let secs_per_hour = 3600u64;
-        let secs_per_day = 86400u64;
-        // Days since Unix epoch (1970-01-01)
-        let mut days = now / secs_per_day;
-        let time_of_day = now % secs_per_day;
-        let hh = time_of_day / secs_per_hour;
-        let mm = (time_of_day % secs_per_hour) / secs_per_min;
-        let ss = time_of_day % secs_per_min;
-        // Compute year/month/day using the Gregorian proleptic calendar
-        let mut year = 1970u64;
-        loop {
-            let leap = (year % 4 == 0 && year % 100 != 0) || year % 400 == 0;
-            let days_in_year = if leap { 366 } else { 365 };
-            if days < days_in_year {
-                break;
-            }
-            days -= days_in_year;
-            year += 1;
-        }
-        let leap = (year % 4 == 0 && year % 100 != 0) || year % 400 == 0;
-        let days_in_month = [
-            31u64,
-            if leap { 29 } else { 28 },
-            31,
-            30,
-            31,
-            30,
-            31,
-            31,
-            30,
-            31,
-            30,
-            31,
-        ];
-        let mut month = 1u64;
-        for &dim in &days_in_month {
-            if days < dim {
-                break;
-            }
-            days -= dim;
-            month += 1;
-        }
-        let day = days + 1;
-        format!(
-            "{:04}{:02}{:02}T{:02}{:02}{:02}Z",
-            year, month, day, hh, mm, ss
-        )
-    };
+    let failed_at = chrono::Utc::now().format("%Y%m%dT%H%M%SZ").to_string();
     let entry = DeadLetterEntry {
         submission_id,
         status,

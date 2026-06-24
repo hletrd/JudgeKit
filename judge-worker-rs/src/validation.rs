@@ -1,22 +1,5 @@
-fn is_trusted_registry_image(image: &str, trusted_prefixes: &[&str]) -> bool {
-    trusted_prefixes.iter().any(|prefix| {
-        if !image.starts_with(prefix) {
-            return false;
-        }
-
-        let Some(last_char) = prefix.chars().last() else {
-            return false;
-        };
-        if matches!(last_char, '/' | ':') {
-            return true;
-        }
-
-        matches!(image.as_bytes().get(prefix.len()), Some(b'/' | b':') | None)
-    })
-}
-
 fn validate_docker_image_with_trusted(image: &str, trusted_prefixes: &[&str]) -> bool {
-    if image.is_empty() || image.contains("://") || image.contains("..") {
+    if image.is_empty() || image.contains("://") {
         return false;
     }
     let first = image.as_bytes()[0];
@@ -33,8 +16,7 @@ fn validate_docker_image_with_trusted(image: &str, trusted_prefixes: &[&str]) ->
 
     let segments: Vec<&str> = image.split('/').collect();
     let first_segment = segments.first().copied().unwrap_or_default();
-    let has_registry_prefix =
-        segments.len() > 1 && (first_segment.contains('.') || first_segment == "localhost");
+    let has_registry_prefix = segments.len() > 1 && first_segment.contains('.');
     let image_name = segments
         .last()
         .and_then(|segment| segment.split(':').next())
@@ -48,10 +30,27 @@ fn validate_docker_image_with_trusted(image: &str, trusted_prefixes: &[&str]) ->
         return segments.len() == 1;
     }
 
-    !trusted_prefixes.is_empty() && is_trusted_registry_image(image, trusted_prefixes)
+    !trusted_prefixes.is_empty()
+        && trusted_prefixes
+            .iter()
+            .any(|prefix| is_trusted_registry_image(image, prefix))
+}
+
+fn is_trusted_registry_image(image: &str, prefix: &str) -> bool {
+    if !image.starts_with(prefix) {
+        return false;
+    }
+
+    match prefix.as_bytes().last().copied() {
+        Some(b'/' | b':') => true,
+        Some(_) => matches!(image.as_bytes().get(prefix.len()), Some(b'/' | b':') | None),
+        None => false,
+    }
 }
 
 /// Validate that a docker image reference is safe (no protocol, alphanumeric start).
+/// In production (JUDGE_PRODUCTION_MODE=1), requires non-empty trusted registries
+/// and rejects images without a trusted registry prefix.
 pub fn validate_docker_image(image: &str) -> bool {
     let trusted = std::env::var("TRUSTED_DOCKER_REGISTRIES").unwrap_or_default();
     let trusted: Vec<&str> = trusted
@@ -59,6 +58,14 @@ pub fn validate_docker_image(image: &str) -> bool {
         .map(|item| item.trim())
         .filter(|item| !item.is_empty())
         .collect();
+
+    let is_production = std::env::var("JUDGE_PRODUCTION_MODE")
+        .map(|v| v == "1" || v.eq_ignore_ascii_case("true"))
+        .unwrap_or(false);
+
+    if is_production && trusted.is_empty() {
+        return false;
+    }
 
     validate_docker_image_with_trusted(image, &trusted)
 }
@@ -107,8 +114,12 @@ mod tests {
             &["registry.example.com/"],
         ));
         assert!(validate_docker_image_with_trusted(
-            "localhost/team/judge-rust:1.0",
-            &["localhost/"],
+            "registry.example.com:5000/judge-rust:1.0",
+            &["registry.example.com"],
+        ));
+        assert!(validate_docker_image_with_trusted(
+            "registry.example.com/team/judge-rust:1.0",
+            &["registry.example.com"],
         ));
     }
 
@@ -126,14 +137,6 @@ mod tests {
         ));
         assert!(!validate_docker_image_with_trusted(
             "registry.example.com.evil.com/judge-rust:1.0",
-            &["registry.example.com"],
-        ));
-        assert!(validate_docker_image_with_trusted(
-            "registry.example.com/team/judge-rust:1.0",
-            &["registry.example.com"],
-        ));
-        assert!(validate_docker_image_with_trusted(
-            "registry.example.com:5000/judge-rust:1.0",
             &["registry.example.com"],
         ));
     }
@@ -171,13 +174,29 @@ mod tests {
     }
 
     #[test]
+    fn production_mode_rejects_images_without_trusted_registry() {
+        // Temporarily set production mode
+        unsafe {
+            std::env::set_var("JUDGE_PRODUCTION_MODE", "1");
+        }
+        // Without trusted registries, even simple judge- images should be rejected
+        assert!(!validate_docker_image("judge-python:latest"));
+        // With trusted registries configured, they should pass
+        unsafe {
+            std::env::set_var("TRUSTED_DOCKER_REGISTRIES", "registry.example.com");
+        }
+        assert!(validate_docker_image("registry.example.com/judge-python:latest"));
+        // Clean up
+        unsafe {
+            std::env::remove_var("JUDGE_PRODUCTION_MODE");
+            std::env::remove_var("TRUSTED_DOCKER_REGISTRIES");
+        }
+    }
+
+    #[test]
     fn dockerfile_build_path_stays_under_judge_dockerfiles() {
-        assert!(validate_dockerfile_path_for_build(
-            "docker/Dockerfile.judge-python"
-        ));
-        assert!(!validate_dockerfile_path_for_build(
-            "../docker/Dockerfile.judge-python"
-        ));
+        assert!(validate_dockerfile_path_for_build("docker/Dockerfile.judge-python"));
+        assert!(!validate_dockerfile_path_for_build("../docker/Dockerfile.judge-python"));
         assert!(!validate_dockerfile_path_for_build("docker/Dockerfile.app"));
     }
 }
