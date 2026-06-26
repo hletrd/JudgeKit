@@ -179,6 +179,7 @@ async fn inspect_container_state(container_name: &str) -> ContainerInspect {
                 "{{json .State.OOMKilled}} {{.State.StartedAt}} {{.State.FinishedAt}} {{.Id}}",
                 container_name,
             ])
+            .kill_on_drop(true)
             .output(),
     )
     .await
@@ -244,6 +245,7 @@ async fn kill_container(container_name: &str) {
         std::time::Duration::from_secs(DOCKER_CLEANUP_TIMEOUT_SECS),
         tokio::process::Command::new("docker")
             .args(["kill", container_name])
+            .kill_on_drop(true)
             .output(),
     )
     .await
@@ -262,6 +264,7 @@ async fn remove_container(container_name: &str) {
         std::time::Duration::from_secs(DOCKER_CLEANUP_TIMEOUT_SECS),
         tokio::process::Command::new("docker")
             .args(["rm", "-f", container_name])
+            .kill_on_drop(true)
             .output(),
     )
     .await
@@ -637,45 +640,170 @@ mod tests {
     fn parse_timestamp_rejects_pre_epoch_docker_zero_time() {
         assert_eq!(parse_timestamp_epoch_ms("0001-01-01T00:00:00Z"), None);
     }
+
+    // Source-grep contract for the cleanup-hardening bundle (debugger N1 + R2 +
+    // R4 / feature-dev F2). A wedged dockerd must not freeze the worker.
+    #[test]
+    fn cleanup_sweep_and_startup_reap_are_timeout_guarded_with_kill_on_drop() {
+        let src = include_str!("docker.rs");
+
+        // Periodic sweep is timeout-wrapped (N1).
+        assert!(
+            src.contains("tokio::time::timeout(\n        std::time::Duration::from_secs(DOCKER_CLEANUP_TIMEOUT_SECS),\n        tokio::process::Command::new(\"docker\")\n            .args([\n                \"ps\","),
+            "periodic sweep must timeout-wrap the docker ps call"
+        );
+        // Startup reap-all function exists and force-removes every oj-* (R2).
+        assert!(
+            src.contains("pub async fn cleanup_all_oj_containers_at_startup()"),
+            "startup reap-all sweep must exist"
+        );
+        assert!(
+            src.contains("\"rm\".to_string(), \"-f\".to_string()"),
+            "startup sweep must force-remove (rm -f) every oj-* container"
+        );
+        // kill_on_drop on the cleanup Commands so a dropped handle tears down
+        // the docker CLI child (R4).
+        assert!(
+            src.matches(".kill_on_drop(true)").count() >= 5,
+            "inspect/kill/rm + sweep ps/rm + startup ps/rm must all chain kill_on_drop (>=5 sites)"
+        );
+    }
 }
 
 pub async fn cleanup_orphaned_containers() {
-    let output = tokio::process::Command::new("docker")
-        .args([
-            "ps",
-            "-a",
-            "--filter",
-            "name=oj-",
-            "--filter",
-            "status=exited",
-            "-q",
-        ])
-        .output()
-        .await;
-
-    if let Ok(output) = output {
-        let ids = String::from_utf8_lossy(&output.stdout);
-        let container_ids: Vec<&str> = ids.lines().filter(|l| !l.is_empty()).collect();
-        if container_ids.is_empty() {
+    // The periodic sweep runs on the hot loop, so every docker invocation is
+    // wrapped in the cleanup timeout + kill_on_drop. Without these a wedged
+    // dockerd blocks the sweep indefinitely, freezing polling AND blocking the
+    // shutdown select below it (debugger N1). `status=exited` is intentional
+    // here: reaping `running` containers mid-loop would race in-flight
+    // judgements. The startup sweep (`cleanup_all_oj_containers_at_startup`)
+    // is the path that reaps every `oj-*` regardless of status.
+    let ps_output = match tokio::time::timeout(
+        std::time::Duration::from_secs(DOCKER_CLEANUP_TIMEOUT_SECS),
+        tokio::process::Command::new("docker")
+            .args([
+                "ps",
+                "-a",
+                "--filter",
+                "name=oj-",
+                "--filter",
+                "status=exited",
+                "-q",
+            ])
+            .kill_on_drop(true)
+            .output(),
+    )
+    .await
+    {
+        Ok(Ok(output)) => output,
+        Ok(Err(e)) => {
+            tracing::warn!(error = %e, "Failed to list orphaned containers");
             return;
         }
-        // Batch remove all orphaned containers in a single docker rm call
-        let mut args = vec!["rm".to_string()];
-        args.extend(container_ids.iter().map(|s| s.to_string()));
-        match tokio::process::Command::new("docker")
+        Err(_elapsed) => {
+            tracing::warn!(
+                secs = DOCKER_CLEANUP_TIMEOUT_SECS,
+                "docker ps during orphan sweep timed out; skipping this tick"
+            );
+            return;
+        }
+    };
+
+    let ids = String::from_utf8_lossy(&ps_output.stdout);
+    let container_ids: Vec<String> = ids.lines().filter(|l| !l.is_empty()).map(String::from).collect();
+    if container_ids.is_empty() {
+        return;
+    }
+    // Batch remove all orphaned containers in a single docker rm call.
+    let mut args = vec!["rm".to_string()];
+    args.extend(container_ids.iter().map(|s| s.to_string()));
+    match tokio::time::timeout(
+        std::time::Duration::from_secs(DOCKER_CLEANUP_TIMEOUT_SECS),
+        tokio::process::Command::new("docker")
             .args(&args)
-            .output()
-            .await
-        {
-            Ok(_) => {
-                tracing::debug!(
-                    count = container_ids.len(),
-                    "Cleaned up orphaned containers"
-                );
-            }
-            Err(e) => {
-                tracing::warn!(error = %e, "Failed to batch-remove orphaned containers");
-            }
+            .kill_on_drop(true)
+            .output(),
+    )
+    .await
+    {
+        Ok(Ok(_)) => {
+            tracing::debug!(
+                count = container_ids.len(),
+                "Cleaned up orphaned containers"
+            );
+        }
+        Ok(Err(e)) => {
+            tracing::warn!(error = %e, "Failed to batch-remove orphaned containers");
+        }
+        Err(_elapsed) => {
+            tracing::warn!(
+                secs = DOCKER_CLEANUP_TIMEOUT_SECS,
+                "docker rm during orphan sweep timed out; containers may leak until next tick"
+            );
+        }
+    }
+}
+
+/// One-shot startup sweep: force-remove EVERY `oj-*` container regardless of
+/// status. At startup there are no in-flight judgements, so nuking every
+/// `oj-*` container is safe and reaps the `running` containers leaked by a
+/// forced restart (deploy SIGTERM→SIGKILL, OOM-kill, host reboot) that the
+/// periodic `status=exited` sweep cannot touch (R2 / feature-dev F2).
+pub async fn cleanup_all_oj_containers_at_startup() {
+    let ps_output = match tokio::time::timeout(
+        std::time::Duration::from_secs(DOCKER_CLEANUP_TIMEOUT_SECS),
+        tokio::process::Command::new("docker")
+            .args(["ps", "-a", "--filter", "name=oj-", "-q"])
+            .kill_on_drop(true)
+            .output(),
+    )
+    .await
+    {
+        Ok(Ok(output)) => output,
+        Ok(Err(e)) => {
+            tracing::warn!(error = %e, "Startup sweep: failed to list oj-* containers");
+            return;
+        }
+        Err(_elapsed) => {
+            tracing::warn!(
+                secs = DOCKER_CLEANUP_TIMEOUT_SECS,
+                "Startup sweep: docker ps timed out; skipping (running containers may persist)"
+            );
+            return;
+        }
+    };
+
+    let ids = String::from_utf8_lossy(&ps_output.stdout);
+    let container_ids: Vec<String> = ids.lines().filter(|l| !l.is_empty()).map(String::from).collect();
+    if container_ids.is_empty() {
+        tracing::debug!("Startup sweep: no oj-* containers to reap");
+        return;
+    }
+    let mut args = vec!["rm".to_string(), "-f".to_string()];
+    args.extend(container_ids.iter().map(|s| s.to_string()));
+    match tokio::time::timeout(
+        std::time::Duration::from_secs(DOCKER_CLEANUP_TIMEOUT_SECS),
+        tokio::process::Command::new("docker")
+            .args(&args)
+            .kill_on_drop(true)
+            .output(),
+    )
+    .await
+    {
+        Ok(Ok(_)) => {
+            tracing::info!(
+                count = container_ids.len(),
+                "Startup sweep: reaped leftover oj-* containers"
+            );
+        }
+        Ok(Err(e)) => {
+            tracing::warn!(error = %e, "Startup sweep: failed to force-remove oj-* containers");
+        }
+        Err(_elapsed) => {
+            tracing::warn!(
+                secs = DOCKER_CLEANUP_TIMEOUT_SECS,
+                "Startup sweep: docker rm -f timed out; some oj-* containers may persist"
+            );
         }
     }
 }

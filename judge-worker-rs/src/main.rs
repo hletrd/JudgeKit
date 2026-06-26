@@ -490,6 +490,13 @@ async fn main() {
     let cleanup_interval = std::time::Duration::from_secs(300);
     let mut last_cleanup_at = std::time::Instant::now();
 
+    // One-shot startup sweep: force-remove every leftover `oj-*` container
+    // (any status). At startup there are no in-flight judgements, so this is
+    // safe and reaps the `running` containers leaked by a forced restart
+    // (deploy SIGTERM→SIGKILL, OOM-kill, host reboot) that the periodic
+    // `status=exited` sweep cannot touch (R2 / feature-dev F2).
+    docker::cleanup_all_oj_containers_at_startup().await;
+
     // Exponential backoff for idle polling.
     // After consecutive empty polls the sleep doubles up to MAX_BACKOFF,
     // reducing CPU and network overhead when no submissions are queued.
@@ -502,8 +509,17 @@ async fn main() {
         // Reap completed tasks to avoid unbounded handle accumulation
         task_handles.retain(|h| !h.is_finished());
 
+        // Periodic orphan sweep. The sweep is internally timeout-bounded and
+        // also wrapped in a shutdown select so a wedged dockerd can neither
+        // freeze polling nor block graceful shutdown (debugger N1).
         if last_cleanup_at.elapsed() >= cleanup_interval {
-            docker::cleanup_orphaned_containers().await;
+            tokio::select! {
+                _ = &mut shutdown => {
+                    tracing::info!("Shutdown signal received during cleanup sweep, stopping polling");
+                    break;
+                }
+                _ = docker::cleanup_orphaned_containers() => {}
+            }
             last_cleanup_at = std::time::Instant::now();
         }
 
