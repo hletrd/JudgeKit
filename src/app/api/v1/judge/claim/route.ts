@@ -155,6 +155,13 @@ export async function POST(request: NextRequest) {
 
     const workerId = parsed.data.workerId;
     const workerSecret = parsed.data.workerSecret;
+    // `claimRequestSchema` uses `.optional()` + `superRefine` so the parsed
+    // fields still type as `string | undefined`; narrow them for the type
+    // checker (and as defense-in-depth — the superRefine already rejects a
+    // missing workerId/workerSecret at the parse boundary).
+    if (!workerId || !workerSecret) {
+      return apiError("invalidRequest", 400);
+    }
     workerIdForCleanup = workerId;
 
     const rateLimitScope = workerId;
