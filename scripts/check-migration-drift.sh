@@ -74,9 +74,35 @@ if [ "$before" != "$after" ]; then
   echo "::error::Migration drift detected — schema.pg.ts has changes not captured in drizzle/pg." >&2
   echo "Run 'npx drizzle-kit generate' locally and commit the new migration + snapshot." >&2
   git --no-pager diff --stat -- drizzle/ >&2 || true
-  # Leave the CI workspace clean: discard the probe artifacts.
-  git checkout -- drizzle/pg/meta/_journal.json 2>/dev/null || true
-  git clean -fdq -- drizzle/ 2>/dev/null || true
+  # Restore the workspace WITHOUT discarding developer changes. Revert only the
+  # exact files the probe touched: tracked modifications via `git checkout`,
+  # newly-created untracked files via targeted `rm`. Never `git clean -fd`,
+  # which would delete a developer's untracked migration work under drizzle/.
+  DRIFT_BEFORE="$before" DRIFT_AFTER="$after" node <<'NODE'
+const { execFileSync } = require("node:child_process");
+const { rmSync } = require("node:fs");
+
+const before = new Set((process.env.DRIFT_BEFORE ?? "").split("\n").filter(Boolean));
+const after = (process.env.DRIFT_AFTER ?? "").split("\n").filter(Boolean);
+
+// Entries present after the probe but not before are the probe's footprint;
+// developer files (in `before`) are left untouched.
+for (const line of after.filter((entry) => !before.has(entry))) {
+  // Porcelain v1: "XY <path>" (2 status chars + space + path). Renames are not
+  // produced by drizzle-kit; paths may be quoted — strip quotes defensively.
+  const path = line.slice(3).trim().replace(/^"|"$/g, "");
+  if (!path) continue;
+  if (line.startsWith("??")) {
+    rmSync(path, { force: true });
+  } else {
+    try {
+      execFileSync("git", ["checkout", "--", path], { stdio: "ignore" });
+    } catch {
+      // Best-effort cleanup; the drift error is the real signal below.
+    }
+  }
+}
+NODE
   exit 1
 fi
 
