@@ -1,9 +1,38 @@
 import type { FunctionType } from "./types";
 import { isArrayType, elementType } from "./types";
 
+/**
+ * Encode an int/long value verbatim, without IEEE-754 float64 coercion.
+ *
+ * `String(Math.trunc(Number(v)))` previously rounded every integer > 2^53 at
+ * encode time (F1): e.g. author enters `9223372036854775807` (LLONG_MAX) and
+ * `Number()` rounds it to `9223372036854775808`, which is OUTSIDE the int64
+ * range — the harness then receives a value no strict int64 reader can parse,
+ * and large-int function problems get wrong verdicts. To stay exact, the value
+ * must be carried as a `bigint` or digit-`string` through authoring→DB→encode
+ * and emitted byte-identical. A JS `number` is accepted only when it is a
+ * safe integer; an unsafe `number` throws loudly rather than silently rounding.
+ */
+function encodeIntLiteral(v: unknown): string {
+  if (typeof v === "bigint") return v.toString();
+  if (typeof v === "string") {
+    if (!/^-?\d+$/.test(v)) {
+      throw new Error(`invalid integer literal for function judging: ${JSON.stringify(v)}`);
+    }
+    return v;
+  }
+  if (typeof v === "number" && Number.isSafeInteger(v)) {
+    return String(v);
+  }
+  throw new Error(
+    `integer value ${String(v)} exceeds safe-integer range or is the wrong type; ` +
+      "pass it as a string or bigint to preserve int64 precision (F1).",
+  );
+}
+
 function encodeScalar(v: unknown, t: string): string {
   switch (t) {
-    case "int": case "long": return String(Math.trunc(Number(v)));
+    case "int": case "long": return encodeIntLiteral(v);
     case "double": return String(Number(v)); // shortest round-trip form
     case "bool": return v ? "true" : "false";
     case "string": return JSON.stringify(String(v));

@@ -13,8 +13,11 @@ struct Reader {
         ws();
         size_t start = i;
         if (i < s.size() && (s[i] == '-' || s[i] == '+')) i++;
-        while (i < s.size() && (isdigit((unsigned char)s[i]) || s[i] == '.' || s[i] == 'e' || s[i] == 'E' || s[i] == '+' || s[i] == '-')) i++;
-        return (long long)llround(stod(s.substr(start, i - start)));
+        while (i < s.size() && isdigit((unsigned char)s[i])) i++;
+        // Parse the integer-only token with strtoll so the full int64 range
+        // round-trips exactly (F1). The previous llround(stod(...)) path parsed
+        // through double and rounded every value > 2^53.
+        return std::strtoll(s.substr(start, i - start).c_str(), nullptr, 10);
     }
     double readDouble() {
         ws();

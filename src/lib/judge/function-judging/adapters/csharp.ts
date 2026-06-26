@@ -75,8 +75,18 @@ sealed class __FnJudge {
         }
         return s.Substring(start, i - start);
     }
+    // Integer-only token for ReadLong so the full int64 range round-trips
+    // exactly (F1). The previous Math.Round(double.Parse(...)) path parsed
+    // through double and rounded every value > 2^53.
+    private string IntegerToken() {
+        Ws();
+        int start = i;
+        if (i < s.Length && (s[i] == '-' || s[i] == '+')) i++;
+        while (i < s.Length && char.IsDigit(s[i])) i++;
+        return s.Substring(start, i - start);
+    }
     public long ReadLong() {
-        return (long)Math.Round(double.Parse(Number(), CultureInfo.InvariantCulture));
+        return long.Parse(IntegerToken(), CultureInfo.InvariantCulture);
     }
     public double ReadDouble() {
         return double.Parse(Number(), CultureInfo.InvariantCulture);

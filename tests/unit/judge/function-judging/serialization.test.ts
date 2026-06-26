@@ -7,6 +7,26 @@ describe("function-judging serialization", () => {
     expect(encodeValue(true, "bool")).toBe("true");
     expect(encodeValue("a,b", "string")).toBe('"a,b"');
   });
+
+  it("encodes int/long values > 2^53 verbatim (no float64 rounding) — F1", () => {
+    // 2^53 + 1 cannot be represented as a JS Number; previously
+    // String(Math.trunc(Number(v))) rounded it. BigInt and digit-string inputs
+    // must round-trip byte-identical so large-int function problems are judged
+    // on the author's actual value.
+    expect(encodeValue(9007199254740993n, "int")).toBe("9007199254740993");
+    expect(encodeValue("9223372036854775807", "long")).toBe("9223372036854775807");
+    expect(encodeValue(-9223372036854775808n, "long")).toBe("-9223372036854775808");
+    // Safe-integer JS numbers still pass through.
+    expect(encodeValue(9007199254740991, "int")).toBe("9007199254740991");
+    // An UNSAFE JS number throws loudly rather than silently rounding.
+    expect(() => encodeValue(9007199254740993, "int")).toThrow(/safe-integer/);
+  });
+
+  it("encodes int[] arrays of bigint/string values verbatim — F1", () => {
+    expect(encodeValue([9007199254740993n, "9223372036854775807"], "int[]")).toBe(
+      "[9007199254740993,9223372036854775807]",
+    );
+  });
   it("encodes 1-D arrays without inner spaces", () => {
     expect(encodeValue([2, 7, 11], "int[]")).toBe("[2,7,11]");
     expect(encodeValue(["x", "y"], "string[]")).toBe('["x","y"]');

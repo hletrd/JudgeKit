@@ -33,7 +33,17 @@ final class __FnJudge {
         }
         return s.substring(start, i);
     }
-    long readLong() { return Math.round(Double.parseDouble(number())); }
+    // Integer-only token for readLong so the full int64 range round-trips
+    // exactly (F1). The previous Math.round(Double.parseDouble(...)) path
+    // parsed through double and rounded every value > 2^53.
+    private String integerToken() {
+        ws();
+        int start = i;
+        if (i < s.length() && (s.charAt(i) == '-' || s.charAt(i) == '+')) i++;
+        while (i < s.length() && Character.isDigit(s.charAt(i))) i++;
+        return s.substring(start, i);
+    }
+    long readLong() { return Long.parseLong(integerToken()); }
     double readDouble() { return Double.parseDouble(number()); }
     boolean readBool() {
         ws();
