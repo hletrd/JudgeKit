@@ -48,30 +48,66 @@ fn is_trusted_registry_image(image: &str, prefix: &str) -> bool {
     }
 }
 
-/// Validate that a docker image reference is safe (no protocol, alphanumeric start).
-/// In production (JUDGE_PRODUCTION_MODE=1), requires non-empty trusted registries
-/// and rejects images without a trusted registry prefix.
-pub fn validate_docker_image(image: &str) -> bool {
-    let trusted = std::env::var("TRUSTED_DOCKER_REGISTRIES").unwrap_or_default();
-    let trusted: Vec<&str> = trusted
-        .split(',')
-        .map(|item| item.trim())
-        .filter(|item| !item.is_empty())
-        .collect();
-
-    let is_production = std::env::var("JUDGE_PRODUCTION_MODE")
-        .map(|v| v == "1" || v.eq_ignore_ascii_case("true"))
-        .unwrap_or(false);
-
-    if is_production && trusted.is_empty() {
+/// Validate a docker image reference against an explicit production flag and
+/// trusted-registry list. Pure — no process-env access. Tests inject config
+/// here instead of mutating the global environment (which races under parallel
+/// `cargo test`).
+pub fn validate_docker_image_with_config(
+    image: &str,
+    is_production: bool,
+    trusted_prefixes: &[&str],
+) -> bool {
+    if is_production && trusted_prefixes.is_empty() {
         return false;
     }
 
-    validate_docker_image_with_trusted(image, &trusted)
+    validate_docker_image_with_trusted(image, trusted_prefixes)
+}
+
+/// Read `TRUSTED_DOCKER_REGISTRIES` into an owned list (single env boundary).
+fn parse_trusted_registries() -> Vec<String> {
+    std::env::var("TRUSTED_DOCKER_REGISTRIES")
+        .unwrap_or_default()
+        .split(',')
+        .map(|item| item.trim().to_owned())
+        .filter(|item| !item.is_empty())
+        .collect()
+}
+
+/// Read `JUDGE_PRODUCTION_MODE` into a bool (single env boundary).
+fn is_production_mode() -> bool {
+    std::env::var("JUDGE_PRODUCTION_MODE")
+        .map(|v| v == "1" || v.eq_ignore_ascii_case("true"))
+        .unwrap_or(false)
+}
+
+/// Validate that a docker image reference is safe (no protocol, alphanumeric start).
+/// In production (JUDGE_PRODUCTION_MODE=1), requires non-empty trusted registries
+/// and rejects images without a trusted registry prefix.
+///
+/// This is the env-reading boundary kept for production callers; tests should
+/// call [`validate_docker_image_with_config`] instead so they never mutate the
+/// process-global environment.
+pub fn validate_docker_image(image: &str) -> bool {
+    let trusted = parse_trusted_registries();
+    let trusted: Vec<&str> = trusted.iter().map(String::as_str).collect();
+    validate_docker_image_with_config(image, is_production_mode(), &trusted)
+}
+
+/// Pure variant of [`validate_admin_image_tag`] that takes explicit config.
+pub fn validate_admin_image_tag_with_config(
+    image: &str,
+    is_production: bool,
+    trusted_prefixes: &[&str],
+) -> bool {
+    validate_docker_image_with_config(image, is_production, trusted_prefixes)
+        && (image.starts_with("judge-") || image.contains("/judge-"))
 }
 
 pub fn validate_admin_image_tag(image: &str) -> bool {
-    validate_docker_image(image) && (image.starts_with("judge-") || image.contains("/judge-"))
+    let trusted = parse_trusted_registries();
+    let trusted: Vec<&str> = trusted.iter().map(String::as_str).collect();
+    validate_admin_image_tag_with_config(image, is_production_mode(), &trusted)
 }
 
 pub fn validate_image_filter(filter: &str) -> bool {
@@ -104,12 +140,13 @@ mod tests {
 
     #[test]
     fn valid_docker_images() {
-        // Ensure we're not in production mode for this test
-        unsafe {
-            std::env::remove_var("JUDGE_PRODUCTION_MODE");
-            std::env::remove_var("TRUSTED_DOCKER_REGISTRIES");
-        }
-        assert!(validate_docker_image("judge-python:latest"));
+        // Inject config explicitly — never mutate the process env (which races
+        // under parallel `cargo test`).
+        assert!(validate_docker_image_with_config(
+            "judge-python:latest",
+            false,
+            &[],
+        ));
         assert!(validate_docker_image_with_trusted(
             "registry.example.com/judge-rust:1.0",
             &["registry.example.com/"],
@@ -130,12 +167,24 @@ mod tests {
 
     #[test]
     fn invalid_docker_images() {
-        assert!(!validate_docker_image(""));
-        assert!(!validate_docker_image("http://evil.com/image"));
-        assert!(!validate_docker_image("../../../etc/passwd"));
-        assert!(!validate_docker_image("-flag"));
-        assert!(!validate_docker_image("alpine:3.18"));
-        assert!(!validate_docker_image("library/judge-python:latest"));
+        assert!(!validate_docker_image_with_config("", false, &[]));
+        assert!(!validate_docker_image_with_config(
+            "http://evil.com/image",
+            false,
+            &[],
+        ));
+        assert!(!validate_docker_image_with_config(
+            "../../../etc/passwd",
+            false,
+            &[],
+        ));
+        assert!(!validate_docker_image_with_config("-flag", false, &[]));
+        assert!(!validate_docker_image_with_config("alpine:3.18", false, &[]));
+        assert!(!validate_docker_image_with_config(
+            "library/judge-python:latest",
+            false,
+            &[],
+        ));
         assert!(!validate_docker_image_with_trusted(
             "registry.example.com/judge-rust:1.0",
             &[],
@@ -164,9 +213,17 @@ mod tests {
 
     #[test]
     fn admin_image_tag_must_stay_in_judge_namespace() {
-        assert!(validate_admin_image_tag("judge-python:latest"));
-        assert!(!validate_admin_image_tag("alpine:latest"));
-        assert!(!validate_admin_image_tag("library/judge-python:latest"));
+        assert!(validate_admin_image_tag_with_config(
+            "judge-python:latest",
+            false,
+            &[],
+        ));
+        assert!(!validate_admin_image_tag_with_config("alpine:latest", false, &[]));
+        assert!(!validate_admin_image_tag_with_config(
+            "library/judge-python:latest",
+            false,
+            &[],
+        ));
     }
 
     #[test]
@@ -180,22 +237,18 @@ mod tests {
 
     #[test]
     fn production_mode_rejects_images_without_trusted_registry() {
-        // Temporarily set production mode
-        unsafe {
-            std::env::set_var("JUDGE_PRODUCTION_MODE", "1");
-        }
-        // Without trusted registries, even simple judge- images should be rejected
-        assert!(!validate_docker_image("judge-python:latest"));
-        // With trusted registries configured, they should pass
-        unsafe {
-            std::env::set_var("TRUSTED_DOCKER_REGISTRIES", "registry.example.com");
-        }
-        assert!(validate_docker_image("registry.example.com/judge-python:latest"));
-        // Clean up
-        unsafe {
-            std::env::remove_var("JUDGE_PRODUCTION_MODE");
-            std::env::remove_var("TRUSTED_DOCKER_REGISTRIES");
-        }
+        // In production with no trusted registries, even simple judge- images are rejected.
+        assert!(!validate_docker_image_with_config(
+            "judge-python:latest",
+            true,
+            &[],
+        ));
+        // With trusted registries configured, trusted-registry images pass.
+        assert!(validate_docker_image_with_config(
+            "registry.example.com/judge-python:latest",
+            true,
+            &["registry.example.com"],
+        ));
     }
 
     #[test]
