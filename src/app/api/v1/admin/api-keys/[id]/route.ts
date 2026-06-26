@@ -48,7 +48,7 @@ export const PATCH = createApiHandler({
   schema: updateSchema,
   handler: async (req: NextRequest, { user, params, body }) => {
     const { id } = params;
-    const [existing] = await db.select({ id: apiKeys.id, name: apiKeys.name }).from(apiKeys).where(eq(apiKeys.id, id)).limit(1);
+    const [existing] = await db.select({ id: apiKeys.id, name: apiKeys.name, role: apiKeys.role }).from(apiKeys).where(eq(apiKeys.id, id)).limit(1);
     if (!existing) return apiError("notFound", 404, "ApiKey");
 
     const updates: Record<string, unknown> = { updatedAt: await getDbNowUncached() };
@@ -75,12 +75,18 @@ export const PATCH = createApiHandler({
           return apiError("invalidRole", 400);
         }
       }
-      // Privilege escalation check
-      const canManage = await canManageRoleAsync(user.role, body.role);
-      if (!canManage && user.role !== body.role) {
-        return apiError("cannotAssignHigherRole", 403);
-      }
       updates.role = body.role;
+    }
+
+    // Privilege-escalation gate: applies to ALL field mutations, not only role
+    // changes. Compute the effective target role (patched or existing) and
+    // require the actor be authorized to manage it. Without fetching the
+    // existing key's role, isActive/name/expiryDays mutations on a
+    // higher-privilege key would skip this check.
+    const targetRole = body.role ?? existing.role;
+    const canManage = await canManageRoleAsync(user.role, targetRole);
+    if (!canManage && user.role !== targetRole) {
+      return apiError("cannotAssignHigherRole", 403);
     }
 
     await db.update(apiKeys).set(updates).where(eq(apiKeys.id, id));

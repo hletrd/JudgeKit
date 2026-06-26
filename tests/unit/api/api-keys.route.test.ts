@@ -8,6 +8,7 @@ const {
   recordAuditEventMock,
   dbSelectMock,
   dbInsertMock,
+  dbUpdateMock,
   canManageRoleAsyncMock,
   isUserRoleMock,
   generateApiKeyMock,
@@ -20,6 +21,7 @@ const {
   recordAuditEventMock: vi.fn(),
   dbSelectMock: vi.fn(),
   dbInsertMock: vi.fn(),
+  dbUpdateMock: vi.fn(),
   canManageRoleAsyncMock: vi.fn(),
   isUserRoleMock: vi.fn(),
   generateApiKeyMock: vi.fn(),
@@ -82,7 +84,7 @@ vi.mock("@/lib/db", () => ({
   db: {
     select: dbSelectMock,
     insert: dbInsertMock,
-    update: vi.fn(),
+    update: dbUpdateMock,
     delete: vi.fn(),
   },
 }));
@@ -131,6 +133,10 @@ describe("admin api keys routes", () => {
       rawKey: "jk_test_generated_key_1234567890",
       keyPrefix: "jk_test_",
       keyHash: "hashed-api-key-value",
+    });
+    // Default update chain: db.update(...).set(...).where(...)
+    dbUpdateMock.mockReturnValue({
+      set: vi.fn(() => ({ where: vi.fn().mockResolvedValue(undefined) })),
     });
   });
 
@@ -217,5 +223,60 @@ describe("admin api keys routes", () => {
 
     expect(res.status).toBe(410);
     expect(body.error).toBe("rawKeyRevealDisabled");
+  });
+
+  // -------------------------------------------------------------------------
+  // PATCH — privilege-escalation guard (AGG-7 / SEC-7)
+  // -------------------------------------------------------------------------
+
+  it("denies toggling isActive on a higher-privilege key when unauthorized", async () => {
+    // A manager-tier caller holds system.settings (so the capability gate
+    // passes) but is NOT authorized to manage super_admin-level keys. Without
+    // fetching the existing key's role, the isActive-only mutation would skip
+    // the escalation check entirely.
+    getApiUserMock.mockResolvedValue({ ...adminUser, id: "manager-1", role: "manager" });
+    resolveCapabilitiesMock.mockResolvedValue(new Set(["system.settings"]));
+    dbSelectMock.mockReturnValueOnce(
+      makeSelectChain([{ id: "key-1", name: "Root Key", role: "super_admin" }])
+    );
+    canManageRoleAsyncMock.mockResolvedValue(false);
+
+    const { PATCH } = await import("@/app/api/v1/admin/api-keys/[id]/route");
+    const res = await PATCH(
+      makeRequest("http://localhost:3000/api/v1/admin/api-keys/key-1", {
+        method: "PATCH",
+        body: { isActive: false },
+      }),
+      { params: Promise.resolve({ id: "key-1" }) } as never,
+    );
+
+    expect(res.status).toBe(403);
+    const body = await res.json();
+    expect(body.error).toBe("cannotAssignHigherRole");
+    // The escalation check must consult the existing role, not body.role.
+    expect(canManageRoleAsyncMock).toHaveBeenCalledWith("manager", "super_admin");
+    expect(dbUpdateMock).not.toHaveBeenCalled();
+  });
+
+  it("allows toggling isActive when the caller can manage the key's existing role", async () => {
+    getApiUserMock.mockResolvedValue({ ...adminUser, id: "manager-1", role: "manager" });
+    resolveCapabilitiesMock.mockResolvedValue(new Set(["system.settings"]));
+    dbSelectMock.mockReturnValueOnce(
+      makeSelectChain([{ id: "key-1", name: "Deploy Key", role: "manager" }])
+    );
+    canManageRoleAsyncMock.mockResolvedValue(true);
+
+    const { PATCH } = await import("@/app/api/v1/admin/api-keys/[id]/route");
+    const res = await PATCH(
+      makeRequest("http://localhost:3000/api/v1/admin/api-keys/key-1", {
+        method: "PATCH",
+        body: { isActive: false },
+      }),
+      { params: Promise.resolve({ id: "key-1" }) } as never,
+    );
+
+    expect(res.status).toBe(200);
+    expect(canManageRoleAsyncMock).toHaveBeenCalledWith("manager", "manager");
+    expect(dbUpdateMock).toHaveBeenCalledOnce();
   });
 });
